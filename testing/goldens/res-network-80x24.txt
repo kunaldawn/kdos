@@ -11,9 +11,8 @@
 | Net  |                                                                       |
 | Bat  |                                                                       |
 | Ene  |                                                                       |
+| Sen  |                                                                       |
 | Box  |                                                                       |
-|      |                                                                       |
-|      |                                                                       |
 |      |                                                                       |
 |      |eth0  received / sent                                              -  -|
 |      |                                                                       |
@@ -21,4 +20,5 @@
 |      |                                                                       |
 |      |                                                                       |
 |      |totals since boot  .  Enter for details  .  n opens kdos-net for Wi-Fi |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                            |
 +==============================================================================+

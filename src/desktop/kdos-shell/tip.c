@@ -25,7 +25,7 @@
  * SIGTERMs it when the pointer moves on; at 700 ms of stillness that is one
  * fork per thing somebody actually looked at.
  *
- * IT TAKES NO INPUT AT ALL. `kwl_input_cells(NULL, 0)` is an EMPTY input
+ * IT TAKES NO INPUT AT ALL. `kdisp_input_cells(NULL, 0)` is an EMPTY input
  * region, so every click, every wheel notch and every motion goes straight
  * through to whatever is underneath — which for a tooltip anchored over the
  * panel is the panel. A tip that ate the click that was aimed at the thing it
@@ -424,13 +424,13 @@ int tip_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = cols,
 		.rows = rows,
-		.corner = at_x < 0	? KWL_CORNER_CENTER
-			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
-					: KWL_CORNER_TOP_LEFT,
+		.corner = at_x < 0	? KDISP_CORNER_CENTER
+			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
+					: KDISP_CORNER_TOP_LEFT,
 		.margin_x = at_x < 0 ? 0 : at_x,
 		.margin_y = at_x < 0 ? 0 : at_y,
 		.app_id = "kdos-tip",
@@ -449,7 +449,7 @@ int tip_main(int argc, char **argv)
 	 * hover that did nothing, with no evidence anywhere that it had even
 	 * been tried.
 	 */
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-tip: no compositor, no layer-shell or no "
 				"font\n");
 		return 1;
@@ -458,7 +458,7 @@ int tip_main(int argc, char **argv)
 	kch_px_popup(KT_DIM);
 
 	/*
-	 * THE PICTURE IS TAKEN AFTER kwl_init, AND THE SURFACE IS THEN GROWN.
+	 * THE PICTURE IS TAKEN AFTER kdisp_init, AND THE SURFACE IS THEN GROWN.
 	 *
 	 * The tip does not know how tall it is until it knows whether there is
 	 * a thumbnail to put in it, and it cannot resize a surface that does
@@ -481,7 +481,7 @@ int tip_main(int argc, char **argv)
 			 * picture is the enhancement, and this is the same rule
 			 * every icon on this desktop keeps.
 			 */
-			if (kwl_overlay_resize(want_c, rows + pv_rows) == 0) {
+			if (kdisp_overlay_resize(want_c, rows + pv_rows) == 0) {
 				cols = want_c;
 				rows += pv_rows;
 				ktui_draw_resize();
@@ -507,7 +507,7 @@ int tip_main(int argc, char **argv)
 	 * never come — the program then paints for its whole life into a
 	 * surface nobody can see.
 	 */
-	kwl_input_cells(NULL, 0);
+	kdisp_input_cells(NULL, 0);
 
 	if (getenv("KDOS_PANEL_DEBUG"))
 		fprintf(stderr, "kdos-tip: %dx%d cells at %d,%d%s\n", ktui_w,
@@ -534,7 +534,7 @@ int tip_main(int argc, char **argv)
 	 */
 	int64_t end = tip_now_ms() + ms;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		KtuiEvent ev;
 		int64_t left = end - tip_now_ms();
 		int slice = left > 500 ? 500 : (int)left;
@@ -550,6 +550,6 @@ int tip_main(int argc, char **argv)
 			ktui_draw_flush();
 		}
 	}
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

@@ -1,0 +1,101 @@
+italic upright
+struck plain
+overlined plain
+all three none
+bold under rev done
+blink and dim carry no bit
+curly dotted double off
+red underline plain
+ansi red is a slot
+bright nine is a slot too
+two hundred is a literal
+true colour
+the colon spelling
+on a literal ground
+both ends
+
+
+
+
+
+
+
+
+
+--
+iiiiii
+ssssss
+ooooooooo
+iiiiiiiii
+bbbb.uuuuu.rrr
+
+33333.444444.222222
+uuuuuuuuuuuuu
+
+
+
+
+
+
+
+r
+
+
+
+
+
+
+
+
+--
+
+
+
+
+
+
+
+uuuuuuuuuuuuu
+
+
+ffffffffffffffffffffffff
+fffffffffff
+ffffffffffffffffff
+bbbbbbbbbbbbbbbbbbb
+BBBBBBBBB
+
+
+
+
+
+
+
+
+
+--
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--
+........................

@@ -148,6 +148,11 @@ typedef struct {
 } KCellGlyph;
 
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out);
+/* The same, from the italic face where the loaded font has a companion whose
+ * cell is the same size. Where it has none the upright glyph comes back, so a
+ * caller never has to ask whether italic exists — the style is lost, the
+ * layout is not. */
+bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out);
 
 /*
  * Paint the grid.
@@ -210,6 +215,27 @@ int kcell_canvas_text(KCellCanvas *c, int x, int baseline, int px,
 int kcell_canvas_text_width(int px, const char *utf8);
 int kcell_canvas_text_ascent(int px);
 int kcell_canvas_text_height(int px);
+
+/* ── a decoded picture becomes sprite tiles (kcell_tile.c) ───────────────
+ *
+ * One scale and one cut, between a pixman image of whatever size its format
+ * declared and libktui's sprite table, which does no pixel work of its own.
+ *
+ * `key` is the caller's content identity, `cw`/`ch` the size in CELLS, and
+ * `cell_w`/`cell_h` how many pixels one cell is at the current scale. Returns
+ * what the table said: > 0 when every tile took a slot, -1 when the caller
+ * must draw the fallback instead — which a tty, a full table and a build with
+ * no pixel path all look like.
+ *
+ * `kcell_tile_free` is the evictor to hand `ktui_sprite_evictor`: the table
+ * holds a borrowed pointer, so nothing else can know when a tile stops being
+ * named. A caller that registers tiles WITHOUT an evictor leaks one picture
+ * per put.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+int kcell_tile_picture(pixman_image_t *img, uint64_t key, int cw, int ch,
+		       int cell_w, int cell_h, uint32_t fallback);
+void kcell_tile_free(uint64_t key, const void *pix, void *user);
 
 /* ── pixels to characters, by shape (kcell_ascii.c) ──────────────────────
  *

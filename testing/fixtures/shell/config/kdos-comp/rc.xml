@@ -3,8 +3,10 @@
   A FIXTURE rc.xml, frozen on purpose: the golden for kdos-keys is a check on
   the CARD, not on whatever the shipped skel happens to bind this week. It
   carries one of every shape the parser has to get right — a plain bind, an
-  &amp; that must come back as itself, and a commented-out example that must
-  never be advertised as live.
+  &amp; that must come back as itself, a commented-out example that must never
+  be advertised as live, and both halves of a run-or-raise row: one whose
+  program every machine has and one whose program no machine has, so the card
+  is checked for keeping the first and dropping the second on any host.
 
   <keybind key="W-x"><action name="Execute" command="never-bound"/></keybind>
 -->
@@ -22,6 +24,31 @@
     </keybind>
     <keybind key="W-q">
       <action name="Close" />
+    </keybind>
+    <keybind key="W-e">
+      <action name="ForEach">
+        <query identifier="sh" />
+        <then><action name="Focus" /><action name="Raise" /></then>
+        <none><action name="Execute" command="foot -e sh" /></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-e">
+      <action name="ForEach">
+        <query identifier="kdos-no-such-program" />
+        <then><action name="Focus" /><action name="Raise" /></then>
+        <none><action name="Execute" command="foot -e kdos-no-such-program" /></none>
+      </action>
+    </keybind>
+    <keybind key="W-grave">
+      <action name="ForEach">
+        <query identifier="kdos-scratchpad" />
+        <then>
+          <action name="ToggleOmnipresent" />
+          <action name="Raise" />
+          <action name="Focus" />
+        </then>
+        <none><action name="Execute" command="foot --app-id kdos-scratchpad" /></none>
+      </action>
     </keybind>
     <keybind key="A-Tab">
       <action name="NextWindow" />

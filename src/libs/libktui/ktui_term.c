@@ -41,6 +41,10 @@ static char *obuf;
 static size_t obuf_len, obuf_cap;
 static int write_ms = -1;	/* -1 blocks; >=0 bounds one flush         */
 static int dropped;
+/* The host terminal hung up: every write since has failed. Sticky, because a
+ * terminal that has gone does not come back and the consumer may not look
+ * until its next turn round the loop. */
+static int hungup;
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
@@ -110,8 +114,17 @@ void ktui_term_flush(void)
 		if (w < 0) {
 			if (errno == EINTR)
 				continue;
-			if (errno != EAGAIN && errno != EWOULDBLOCK)
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				/* THE HOST TERMINAL WENT AWAY. An `ssh` drop
+				 * hangs up the pty and every write after it
+				 * fails; without a record of that, a
+				 * full-screen program spins at its poll
+				 * timeout writing frames into a descriptor
+				 * with nothing on the other end, and never
+				 * decides to leave. */
+				hungup = 1;
 				break;
+			}
 			if (write_ms < 0) {
 				/* Someone else made this fd non-blocking; the
 				 * rest of the frame has nowhere to go. */
@@ -140,6 +153,11 @@ void ktui_term_flush(void)
 void ktui_term_set_write_timeout(int ms)
 {
 	write_ms = ms;
+}
+
+int ktui_term_hungup(void)
+{
+	return hungup;
 }
 
 int ktui_term_flush_dropped(void)
@@ -322,19 +340,189 @@ static void emit(const char *s)
 	ktui_term_write(s, strlen(s));
 }
 
+/*
+ * WHETHER THE KITTY KEYBOARD PROTOCOL WAS PUSHED ONTO THIS TERMINAL'S STACK.
+ *
+ * Popped exactly where it was pushed and only if it was. A pop that never had
+ * a push corrupts the stack of a terminal that was already using the protocol
+ * for something else; a push that is never popped leaves the person's terminal
+ * in a mode their shell does not understand, with no way back short of
+ * `reset` — which is a worse failure than a chord that does not fire.
+ */
+static int kkbd_pushed;
+
+/*
+ * ASK FIRST, AND USE ONLY WHAT ANSWERS.
+ *
+ * Two facts about a terminal follow from no `TERM` value and no capability
+ * database entry, so both are asked for, and asked for together:
+ *
+ *   `CSI ? u`         which kitty keyboard flags it has set. A terminal that
+ *                     implements the protocol replies `CSI ? <flags> u`; one
+ *                     that does not replies nothing at all and the xterm
+ *                     modifier encoding stays as the fallback. It is what
+ *                     makes Super arrive at all.
+ *   `CSI ? 2026 $ p`  DECRQM for synchronized output. The reply carries the
+ *                     mode and its state: 0 is "not recognised" and 4 is
+ *                     "permanently reset", so only 1, 2 and 3 mean a frame
+ *                     can be bracketed.
+ *
+ * ONE WRITE AND ONE WAIT. Asking in turn would pay the timeout twice on a
+ * terminal that answers neither, and the second wait would swallow a slow
+ * reply to the first query as if it were its own. The answers come back in
+ * the order the queries went out, so they are told apart by scanning the
+ * buffer rather than by turn-taking.
+ *
+ * THE REPLIES ARE CONSUMED HERE OR THEY ARE TYPED INTO THE DESKTOP. They
+ * arrive on standard input like any other key, and the decoder has no case for
+ * them, so a reply left in the buffer reaches the session as stray characters.
+ *
+ * The Linux VT answers nothing and is skipped outright rather than waited on:
+ * it is what a `--tty` view on tty1 runs in, so this timeout would be paid on
+ * the most common console of all.
+ */
+static void probe_terminal(void)
+{
+	char buf[96];
+	size_t n = 0;
+
+	kkbd_pushed = 0;
+	ktui_caps &= ~KT_CAP_SYNC;
+	if (ktui_caps & KT_CAP_LINUXVT)
+		return;
+
+	emit("\033[?u\033[?2026$p");
+	ktui_term_flush();
+
+	while (n < sizeof(buf) - 1) {
+		struct pollfd p = { 0, POLLIN, 0 };
+		int r = poll(&p, 1, 60);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		if (read(0, buf + n, 1) != 1)
+			break;
+		/* DECRQM went out second, so its terminator ends the wait for
+		 * both. A terminal that answers only the first still waits out
+		 * the one timeout, and one that answers neither still waits
+		 * out exactly one. */
+		if (buf[n++] == 'y')
+			break;
+	}
+	buf[n] = 0;
+
+	for (size_t i = 0; i + 3 < n; i++) {
+		if (buf[i] != 0x1b || buf[i + 1] != '[' || buf[i + 2] != '?')
+			continue;
+
+		size_t j = i + 3;
+		while (j < n && ((buf[j] >= '0' && buf[j] <= '9') ||
+				 buf[j] == ';' || buf[j] == '$'))
+			j++;
+		if (j >= n)
+			break;
+
+		if (buf[j] == 'u') {
+			/* Flag 1: disambiguate escape codes. It is the one this
+			 * desktop needs — it is what makes Super arrive at all
+			 * — and asking for more would be asking for reports
+			 * nothing reads. */
+			emit("\033[>1u");
+			kkbd_pushed = 1;
+		} else if (buf[j] == 'y') {
+			const char *semi = memchr(buf + i, ';', j - i);
+			int val = semi ? atoi(semi + 1) : 0;
+
+			if (atoi(buf + i + 3) == 2026 && val >= 1 && val <= 3)
+				ktui_caps |= KT_CAP_SYNC;
+		}
+	}
+
+	ktui_term_flush();
+}
+
 static void enter_screen(void)
 {
 	/* The Linux VT has no alternate buffer and ignores 1049; harmless. */
 	emit("\033[?1049h\033[?25l\033[2J\033[H");
+	/*
+	 * BRACKETED PASTE, ALWAYS. Without it a paste arrives as the keys it
+	 * spells and a line beginning with a chord runs the chord — and a view
+	 * in somebody's terminal has no other way to be handed text at all,
+	 * because the host terminal owns the clipboard and this program never
+	 * sees the menu. A terminal that does not implement it ignores the
+	 * mode and nothing changes.
+	 */
+	emit("\033[?2004h");
 	if (ktui_caps & KT_CAP_MOUSE)
 		emit("\033[?1000h\033[?1002h\033[?1006h");
+	ktui_term_flush();
+	probe_terminal();
+}
+
+/*
+ * THE CURSOR IS HIDDEN BY enter_screen AND SHOWN ONLY FOR A CARET. A terminal
+ * cursor parked wherever the last write left it is a distraction on a screen
+ * this library is painting cell by cell; one placed deliberately is the caret.
+ */
+void ktui_term_caret(int x, int y)
+{
+	static int last_x = -2, last_y = -2;
+	const KtuiBackend *b = ktui_backend();
+	char seq[48];
+
+	if (x == last_x && y == last_y)
+		return;
+	last_x = x;
+	last_y = y;
+
+	/* A display server places it, and the escape is never written: this
+	 * surface's stdout is not the screen it is drawn on. */
+	if (b && b->caret) {
+		b->caret(x, y);
+		return;
+	}
+
+	/*
+	 * AND OFFSCREEN THERE IS NO TERMINAL TO PLACE ONE ON. stdout is where
+	 * the dump goes, so the escape lands INSIDE the frame — which is how
+	 * a committed reference frame came to begin with a cursor move, and
+	 * how a frame taken with no size imposed came to differ from the same
+	 * frame taken with one depending on which message arrived first.
+	 */
+	if (ktui_offscreen())
+		return;
+
+	if (x < 0 || y < 0) {
+		emit("\033[?25l");
+		ktui_term_flush();
+		return;
+	}
+
+	/* One-based, row first, which is what every terminal has meant by CUP
+	 * since the VT100. */
+	snprintf(seq, sizeof(seq), "\033[%d;%dH\033[?25h", y + 1, x + 1);
+	emit(seq);
 	ktui_term_flush();
 }
 
 static void leave_screen(void)
 {
+	if (kkbd_pushed) {
+		emit("\033[<1u");
+		kkbd_pushed = 0;
+	}
 	if (ktui_caps & KT_CAP_MOUSE)
 		emit("\033[?1006l\033[?1002l\033[?1000l");
+	/* A frame whose close was dropped left the mode on, and a terminal
+	 * handed back inside a synchronized block shows nothing the shell
+	 * writes into it. Closing here costs one sequence and is the only
+	 * place that runs whether or not another frame ever follows. */
+	if (ktui_caps & KT_CAP_SYNC)
+		emit("\033[?2026l");
+	emit("\033[?2004l");
 	emit("\033[0m\033[?25h\033[2J\033[H\033[?1049l");
 	ktui_term_flush();
 }

@@ -6,7 +6,15 @@ drawn as a grid of character cells — see
 [the design language](../03-architecture/design-language.md) for why, and
 [kdos-shell](../04-programs/kdos-shell.md) for how.
 
-The desktop starts with `kdos-desktop` from a terminal. There is no display manager.
+**There are two desktops and this page describes both.** The console desktop (`kdos-con`) is what a
+login on `tty1` reaches, and it needs no Wayland; the graphical one (`kdos-comp`) starts with
+`kdos-desktop` from a terminal and takes a terminal of its own. There is no display manager for
+either.
+
+The chords, the Start menu, the applications and the window model are the **same** on both — the
+placement and tiling arithmetic is literally the same code. Where they differ is called out below;
+the short version is that a Wayland application needs the graphical one, and everything KDOS ships
+runs on either.
 
 ![The KDOS desktop: the panel along the bottom, desktop icons on the wallpaper, and a terminal](../../screenshots/desktop.png)
 
@@ -93,6 +101,19 @@ container start and you are entitled to know before you click.
 
 The star at the right edge of a row pins the application to the quick-launch row.
 
+**Terminal programs are applications here.** btop, lazygit, yazi, aerc, calcurse, visidata, nmtui
+and the rest of the installed catalogue carry a desktop entry each, so they are rows in the menu,
+answer to the search, pin to the quick-launch row and open with a double-click — the same as
+anything with a window of its own. Each entry names the program and not an emulator, and the
+desktop supplies the terminal: `kdos-term` on the console, `foot` under the compositor. The entry
+belongs to the package, so installing the program adds the row and removing it takes the row away.
+
+**On the console desktop two rows are different.** Terminal opens `kdos-term`, which draws on the
+character grid directly and can show a picture in a cell. And a **Desktop** row appears, which starts the full graphical session on a
+virtual terminal of its own — under the compositor that row is not built, because you are already in
+it. Every other row opens an ordinary window there, the same as here: a graphical application is
+composited in a process of its own and its picture goes into the cells.
+
 ![The Start menu: pinned applications on the left with `[box]` markers, Places and System on the right, and the search field showing the selected row's description](../../screenshots/start-menu.png)
 
 
@@ -116,12 +137,17 @@ the border, or `Super+Alt` and drag.
 
 The complete set, from the shipped `~/.config/kdos-comp/rc.xml`. `Super` is written `W` there.
 
+**The console desktop binds the same chords**, from `~/.config/kdos-con/keys.conf` — a different
+file because `rc.xml` is labwc's XML and the console reads no XML. It implements the window and
+workspace half of the table below; a chord it has no action for does nothing rather than something
+else.
+
 ### Applications and the shell
 
 | Key | Action |
 |---|---|
-| `Super+Return` | Terminal (`foot`) |
-| `Super+grave` | Focus the terminal, or start one |
+| `Super+Return` | Terminal (`foot`; on the console desktop, whatever `con.conf`'s `terminal` names — `sh` by default, in a window the session runs itself) |
+| `Super+grave` | The scratchpad: one window kept over the others on whatever workspace you are on, shown and hidden by the same key. The first press opens a terminal and gives it the role; `Super+Alt+grave` hands the role to the focused window |
 | `Super+A` | Start menu |
 | `Super+D` | Launcher |
 | `Alt+F2` | Run box |
@@ -204,7 +230,22 @@ Middle-clicking the badge toggles **do not disturb**, which silences toasts with
 the notification is still recorded and still counted, and the sending application cannot tell the
 difference. An **urgent** notification is shown anyway.
 
-Clicking a toast dismisses it.
+Clicking a toast dismisses it, and so does `Super+x` — the cheapest chord on the keyboard, because a
+toast interrupts. `Super+Shift+x` puts every one away, `Super+Ctrl+x` is do not disturb, and
+`Super+Alt+x` brings the last one back for the press that came a moment too early. **It comes back
+without its buttons**: the notification it came from is closed and its actions belong to the program
+that sent it.
+
+`Super+Ctrl+i` stops the screen locking or blanking on idle, and again lets it.
+`Super+Ctrl+Shift+n` warms the palette — not `Super+Ctrl+n`, which is the scratch pad's and has been
+since this desktop had accessories. `Super+Shift+Space` puts the taskbar away and brings it back;
+every window re-fits against the row it frees, and a docked panel goes with it. That last one is
+**the console desktop's alone** — labwc has no equivalent action, so binding it under the compositor
+would make one chord mean two different things.
+
+Each of the three switches raises a one-line notice saying where it now stands, because two of them
+change nothing you can see and a keystroke answered by nothing is one you cannot tell from a broken
+key.
 
 ## The clipboard
 
@@ -213,12 +254,46 @@ is the clipboard history, reachable from the overflow popup or by name.
 
 ## Files
 
-`kdos-desk` draws the desktop. Right-clicking the wallpaper opens New Folder, New File, Open
-Terminal Here, Sort Icons, Refresh, plus Applications, Change Wallpaper, Display Settings and
-Settings. `~/Desktop` is created if it is missing.
+`kdos-desk` draws the desktop. Right-clicking the wallpaper opens Open Terminal Here, Find Here,
+Add to Places and Git Status Here — the verbs that mean *here* — then New Folder, New File, Sort
+Icons, Refresh, Applications, Change Wallpaper, Display Settings and Settings. Right-clicking an
+**icon** offers the file verbs instead: Open, Peek, Edit, Terminal Here, Add to Places, Share, Git
+Status Here and Move to Trash, plus Rename and, on the Trash, Empty Trash. `~/Desktop` is created
+if it is missing.
+
+The file half is the same table `kdos-pick` and `mc`'s `F2` read, so a verb arrives on all three at
+once — and a verb whose program is not installed is not offered anywhere.
+
+### The console desktop's ground is a picture made of characters
+
+Under the compositor the wallpaper is a PNG, set on Settings' Appearance page. **On the console
+there is no wallpaper and no compositor**, so the ground is character art: `Super+Ctrl+Space` cycles
+the shipped pieces and `none`, `kdos background list` names them, and
+`~/.config/kdos/background.txt` is your own and outranks all of them. The chord and the `kdos`
+verb are the same thing, and `style.background` is the route.
+
+**A piece is what a program would have written to a terminal** — UTF-8 text with SGR colour — and
+it is read by the parser that reads a terminal, through the same render boundary. So there is one
+answer to what an escape means, and the colours **reduce to the theme's eight slots**: art written
+in cyan is drawn in this accent's cyan-most slot, and `kdos theme` moves the picture with
+everything else. Art carrying literal colours would be the one rectangle of the desktop a retint
+could not reach.
+
+**The glyphs are the ones `tty1` has, which is a hard limit and not a style.** The kernel's text
+plane carries 512 of them; a character outside that set draws *blank* on the console and correctly
+in `kdos-term` or over `ssh`, so the shipped pieces use only the single box set, `═ ║ ╔ ╗ ╚ ╝ ╬`,
+the three shades `█ ▒ ░`, and ASCII. There are no half blocks, no `▓` and no double tees in that
+font. `/usr/share/kdos/backgrounds/README` says so at length, and `selftest.sh` reads the font's own
+charset out of the port and fails a piece that leaves it.
+
+**The state file holds a name and never a path.** A chord that cycles pictures must not become a way
+to point the desktop at any file on the machine; a person's own art is a file they wrote, in a
+place they already own.
 
 `Delete` on a desktop icon moves the file to the freedesktop trash — the same implementation
-`kdos trash` uses from a prompt, so the two mean the same thing.
+`kdos trash` uses from a prompt, so the two mean the same thing. Opening the **Trash** icon opens
+`kdos-trash`: what was deleted, when, and where it came from, with `Enter` putting a row back where
+it was. A trash you cannot get anything out of is a slower delete.
 
 `kdos-pick --browse` is the file browser; the same program is the file dialog that boxed
 applications get through the portal, so Open and Save in Firefox or GIMP are drawn on this grid
@@ -227,20 +302,39 @@ rather than by their own toolkit.
 Double-clicking a file opens it with the handler for its type. `kdos-openwith` chooses a
 different one.
 
+**A spreadsheet and a data file open in different programs, on purpose.** A `.csv` goes to
+`visidata`, which is built for exploring columns; an `.xlsx` goes to `sc-im`, which is a spreadsheet
+and reads the format in C with nothing in between. `visidata` can open an `.xlsx` too if you ask it
+to — that is what `openpyxl` is on the image for — and it is the one of the two that can write one
+back.
+
+**A link opens the same way a file does.** `mailto:` reaches `aerc` on either desktop; `http`,
+`https` and a saved page reach `w3m` on the console, and the browser you installed as a box under
+the compositor.
+A link clicked on the desktop or in a terminal program goes through `xdg-open`, which here **is**
+the same resolver a double-click uses; a link clicked inside a boxed application goes to the portal
+instead, which resolves it itself — but out of the same tables, so both end at the same handler.
+**On the console a handler that wants a terminal is preferred**, since a windowed one there would
+open nothing you could see, and a handler that wants a terminal is given one wherever it is
+launched from.
+
 ## Lock, idle and power
 
-`Super+L` locks. The lock screen asks the compositor to hold every output, and the compositor —
-not the lock client — owns the locked state: if the lock program crashes, the screens stay
-covered and a new lock client can replace it.
+`Super+L` locks. The lock screen asks the **session** to hold every output, and the session — not
+the lock client — owns the locked state: if the lock program crashes, the screen stays covered and
+a new lock client can replace it. That is true on both desktops, and on both the unlock is a
+message the lock client sends, never something inferred from it exiting.
 
-The idle policy is one timer with three stages, each measured from your last activity rather than
-from the previous stage: **dim**, then **lock**, then **outputs off**. Activity ends the dim and
-powers the screens back on. It never unlocks. An application holding an idle inhibitor stops the
-policy entirely.
+The idle policy is one timer, measured from your last activity rather than from the previous stage:
+**dim**, then **lock**, then **outputs off**. Activity ends the dim and powers the screen back on.
+It never unlocks. An application holding an idle inhibitor stops the policy entirely.
 
-All three timers **default to zero in a virtual machine**, because a blanked screen over a remote
-display is indistinguishable from a crashed compositor. Set any `idle_*` key in
-`~/.config/kdos/comp.conf` to turn them on anyway. See
+**The console desktop has no dim** — two stages, not three. A dim is a brightness, and that desktop's
+colours are eight palette slots with no brightness between them.
+
+The timers **default to zero in a virtual machine**, because a blanked screen over a remote display
+is indistinguishable from a crashed session. Set any `idle_*` key in `~/.config/kdos/comp.conf` or
+`~/.config/kdos-con/con.conf` to turn them on anyway. See
 [Configuration](../06-reference/configuration.md).
 
 Suspend, restart and shut down are in the Start menu's footer and in the System menu. Each asks
@@ -248,7 +342,9 @@ before acting.
 
 ## Displays
 
-`Super+P` opens `kdos-display`: the outputs, their modes, scale, and which is enabled.
+`Super+P` opens `kdos-display`: the outputs, their modes, scale, and which is enabled. `m` opens
+the list of modes the selected monitor published; Enter takes the highlighted one and Escape leaves
+the screen as it was.
 
 Screens are laid out edge to edge from the left in list order. A vertical arrangement, an overlap
 or a deliberate gap cannot be expressed — that is a deliberate narrowing, since what people
@@ -256,6 +352,12 @@ usually want is an order.
 
 Each output gets its own panel and its own desktop icons. Both panels list every window rather
 than only that output's; see [Known gaps](../06-reference/known-gaps.md).
+
+**On the console the same surface configures the same screens, with one verb of the four.** It
+lists every connector the attached view lit and `m` picks a mode; off, scale and rotate are drawn
+disabled because a text grid has no scale factor and a rotated screen would give its cells a
+different shape from the one beside it. A mode taken there starts a fifteen-second countdown —
+there is no second screen to fix an unreadable one from, so `K` keeps it and anything else reverts.
 
 ## Removable media and devices
 
@@ -291,6 +393,48 @@ desktop stops missing frames.
 
 For everything else, the meters strip is the way in: left click for
 [`kdos-res`](../04-programs/kdos-res.md), middle for `kdos stutter`, right for `kdos-energy`.
+
+## A day at `tty1`
+
+The console session is not a fallback, and the shortest way to say so is a whole day in it. Every
+step below is a chord or a row somebody reaches for, in the order the day happens; nothing here
+needs the compositor, a browser, or a second machine. The photographs are `build/shots/day-NN.png`.
+
+1. **The welcome card is open on the first login.** `Esc` puts it away. `Super+F1` brings the key
+   card back whenever you want it, and typing into it **searches**: `work` narrows sixty chords to
+   the workspace ones.
+2. **`Super+space` is the search over everything** — applications, routes, settings pages, files.
+   Type `ma`, press `Enter`, and mail opens: `aerc` in a terminal window, reading `~/Mail`. An HTML
+   message is rendered by `w3m` in place, the inline photograph is a picture in the terminal, and
+   the PDF attachment opens in the viewer the table names. `rr` replies.
+3. **`Super+e` is the file manager.** A `.docx` opens read-only in `doxx`, in a terminal, because
+   the office suite that would open it is a Wayland application and there is none here.
+   `Shift+F10` on a desktop icon offers **Share**, and the toast carries the code word the other
+   end needs.
+4. **`Super+grave` is the scratchpad** — one terminal, on every workspace, that comes and goes with
+   the chord. Start a build in it, press the chord again, and the build's own `OSC 9` arrives as a
+   toast while you are somewhere else.
+5. **`Super+Shift+m` marks a rectangle of the screen.** Arrows place one corner, `Shift+`arrows drag
+   the other, `Enter` copies — an error out of a build's output is a rectangle, not a line, and
+   that is why it is a rectangle. `Super+Ctrl+n` opens Notes, `Ctrl+D` edits.
+6. **`Super+Ctrl+q` is a calculator that reads units.** `3 in to mm` answers `76.2 mm`; `Enter`
+   copies the answer, and `Super+Shift+v` puts it in the spreadsheet.
+7. **A photograph on the desktop opens in `kdos-pix`** as pixels rather than as blocks, if the
+   terminal has a picture path. `Print` takes a screenshot, which is a picture like any other and
+   opens in the same viewer.
+8. **`Super+F3` is the sound panel**; `Super+Shift+u` raises the music player. What is playing is
+   in the taskbar, and what the player shows is whatever the daemon it connects to has queued.
+9. **`Super+Shift+t` tiles the workspace**, `Super+r` rearranges from the keyboard, `Super+F2` lists
+   every window — `Enter` raises, `Del` closes, `m` minimises — and `Super+Shift+d` shows the
+   desktop and brings everything back.
+10. **`Super+Ctrl+Shift+space` changes the accent** with a live preview, and every program follows:
+    the panel, the terminal, the editor, the pager, the file manager.
+11. **`Super+Ctrl+r` sets a reminder**, and it fires once, whatever the machine did in between.
+12. **The Start menu's search finds the printer page**, and `kdos-keys --print` prints the key card
+    onto the terminal, which is where a paper copy comes from.
+13. **`Super+l` locks.** `Ctrl+Alt+F2` is another terminal with its own login; `Ctrl+Alt+F1` comes
+    back to the session with every window where it was.
+14. **`Super+Shift+q` ends the session** and `exit` logs out. The next login puts the layout back.
 
 ## See also
 

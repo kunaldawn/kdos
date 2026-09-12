@@ -24,7 +24,14 @@ export DEBUG=-DNDEBUG
 	--enable-lto=no
 
 make
-make DESTDIR=$PKG install install-dev
+
+# -j1 FOR THE INSTALL ONLY. The phase exports MAKEFLAGS=-j12, and xfsprogs'
+# install targets regenerate their dependency files while other jobs are
+# reading them: a half-written .dep leaves a bare line continuation, and make
+# reports `No rule to make target '\'` against an object it was building
+# happily a moment earlier. It is a race, so it passes as often as it fails.
+# A command-line -j overrides the one in MAKEFLAGS.
+make -j1 DESTDIR=$PKG install install-dev
 
 # The install puts the shared libs in /usr/lib but leaves .la files behind;
 # they name build-tree paths and confuse anything that reads them later.

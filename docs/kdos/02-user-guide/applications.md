@@ -95,6 +95,31 @@ have pinned are warmed in the background when you log in.
 Stage timings for a launch are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace` if you want to see
 where the time went.
 
+### From the console desktop
+
+**A graphical application is a window**, with a title bar, a close button, snapping, a workspace and
+a taskbar entry, exactly like every other window there. A small compositor holds it in a process of
+its own and hands the picture back; the desktop puts the picture in its cells.
+
+Everything else about the launch is the same — the same desktop entry, the same container, the same
+tagged socket — so an application does not know which desktop started it.
+
+**Over `ssh`, or in a terminal, it is characters.** The picture is matched to the characters whose
+shapes cover the same parts of a cell, so a graphical application reached from another machine is
+recognisable rather than absent. That is not a special case: every display is sent the same thing and
+each shows what it can.
+
+**Pinning one to a terminal of its own.** An application that needs acceleration a software renderer
+cannot give it — a game, a video editor — is better full screen on a virtual terminal. Put
+`display = vt` in its box profile (`~/.config/kdos/boxes/<name>.conf`) and it takes one: it appears
+in the taskbar marked with the terminal it is on, `[vt3]`, and `Ctrl+Alt+F<n>` is how you get back
+while it is running. Closing it returns the screen on its own. `kdos doctor` reports which
+applications are pinned.
+
+An application that runs **in a terminal** rather than in a window — a file manager, an editor —
+opens as an ordinary window on the console desktop instead, because a terminal is exactly what that
+desktop is made of.
+
 ## Opening files
 
 Double-clicking a file, or `kdos-appbox open <path>`, resolves the file's type from its name and

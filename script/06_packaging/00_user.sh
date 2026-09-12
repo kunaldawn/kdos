@@ -20,6 +20,20 @@ source script/packaging.env.sh
 
 echo "Creating user home directories..."
 
+# THE FILES THAT CARRY A PASSWORD ARE 0600, AND GIT CANNOT SAY SO: it records
+# the execute bit and nothing else, so phase 1's replay lands them 644. msmtp
+# refuses to send through an .msmtprc that carries a `password` line and is not
+# 600, and mbsync's PassCmd output is a password by definition. Skel is fixed
+# here rather than in phase 1 because a port may own one of these paths too,
+# and phase 4 has run by now.
+#
+# aerc's accounts.conf IS NOT IN THIS LIST because it is not shipped: aerc
+# refuses to start on one that group or other can read, and its own wizard
+# writes the file at 0600 on first run.
+for _s in .msmtprc .mbsyncrc; do
+    [ -f "/etc/skel/$_s" ] && chmod 600 "/etc/skel/$_s"
+done
+
 while IFS=: read -r name _pw uid gid _gecos home shell; do
     case "$uid" in
         ''|*[!0-9]*) continue ;;
@@ -69,10 +83,27 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # XDG user dirs. ~/.config/user-dirs.dirs names them, but git cannot carry
     # an empty directory through /etc/skel, so they are created here.
     # `kdos-shot` writes into Pictures/Screenshots and will not create the tree
-    # itself.
-    for _d in Desktop Downloads Documents Music Pictures Pictures/Screenshots \
-              Videos Public Templates .local/bin .local/share/applications; do
+    # itself. Mail is here for the same reason from the other direction:
+    # notmuch's mail_root and mbsync's MaildirStore both name ~/Mail, and both
+    # report an error on a directory that is not there rather than making one.
+    # The calendar and contact stores are here for the same reason Mail is:
+    # khal's shipped config globs `.local/share/calendars/*` and khard's names
+    # `.local/share/contacts/personal`, and a store that is a plain directory
+    # of files is a store `cp -r` backs up. khal's `discover` type does NOT
+    # create what it is pointed at — deliberately, so a login grows nothing —
+    # which is exactly why they are made here.
+    for _d in Desktop Downloads Documents Mail Music Pictures \
+              Pictures/Screenshots Videos Public Templates .local/bin \
+              .local/share/applications .local/share/calendars \
+              .local/share/contacts/personal; do
         mkdir -p "$home/$_d"
+    done
+
+    # The same two, in the home. `cp` gives a NEW file skel's mode but leaves
+    # an EXISTING one alone, so a home materialised by an earlier build still
+    # has them at 644 and the first password written into one would be refused.
+    for _s in .msmtprc .mbsyncrc; do
+        [ -f "$home/$_s" ] && chmod 600 "$home/$_s"
     done
 
     chown -R "$uid:$gid" "$home"

@@ -1,0 +1,30 @@
+KDOS RES
+
+One page per thing this machine can be short of. The list on the left names
+them; the page beside it is the one in front of you.
+
+  F10       opens the page list over the body, for a window too narrow to
+            show the list beside the page.
+  [ and ]   step to the previous and next page.
+  Tab       moves the focus between the page list and the page.
+  Esc       steps back one level: out of a detail view to its list, out of
+            the page list to the page, and only then out of the program.
+  q         leaves, from anywhere except a question.
+
+Pages
+
+  Processes, Applications and Boxes each list something running, newest
+  measurement first. Enter opens the detail view for the selected row, which
+  is the whole frame: one subject, with the page list put away, because a
+  list beside it would be offering to leave without saying so.
+
+  CPU, Memory, GPU, Drives, Network, Batteries and Energy are measurements.
+  They sample on a timer and the charts are the last two minutes.
+
+Questions
+
+  Ending a process asks first, and the question owns the keyboard while it is
+  up. `y` confirms, `n` and Escape refuse. Neither leaves the program: a
+  dialog whose cancel key also quits is one that loses the answer.
+
+  [[doc:index]]

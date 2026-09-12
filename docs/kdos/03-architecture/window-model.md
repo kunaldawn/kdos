@@ -1,0 +1,191 @@
+# The window model
+
+Where a window goes, what tiling does to it, which edge it stops against, and
+what order it is cycled in. **Two desktops obey this model and there is one
+implementation of it**, `libkwm` — so a defect in any rule here is one fix, not
+two that drift until somebody uses both desktops in the same day.
+
+## What the library is and is not
+
+`libkwm` is handed rectangles and told what is being asked. It knows nothing
+about windows.
+
+| It answers | The caller still owns |
+|---|---|
+| Where a new window lands among the ones already there | What a window *is*, and which output it is on |
+| What the tiled state becomes, and what rectangle that state occupies | Whether the view is maximised, and whether a client accepted the size |
+| Which other edge a moving edge meets first | Walking the view list, and reading decoration thickness |
+| The next index in a ring, and the nearest occupied workspace | Which windows exist, and what "occupied" means here |
+
+That division is the whole reason a compositor drawing pixels and a session
+server drawing cells can share it. It links `libkbase` and **no maths library**
+— the same constraint `libkcolor` and `kcell_ascii.c` are written under.
+
+**One rule is shared without a shared call, and it is window cycling.**
+`kwm_ring_next` steps a ring of `n` by index, which is what `kdos-con` holds;
+`kdos-comp` holds its cycle list as a `wl_list` and steps it by following a
+link, using the list head as the same sentinel. The rule is identical — the
+sentinel between the last item and the first is stepped over, so the ring always
+closes — but an index-based signature cannot take a linked list without turning
+a pointer hop into a scan of the list. So the compositor keeps its walk, and
+what the `ring` rows in the contract hold to account is the library's.
+
+## The contract
+
+`testing/fixtures/wm/geometry.txt`. Every row cites the line of `kdos-comp` it
+was derived from, and the self-test **replays the file** rather than asserting
+anything of its own. Adding a case means adding a row and citing its line.
+
+The file is not a description of what the model ought to do. It is a record of
+what the shipping compositor already does, taken by reading it, so that adopting
+`libkwm` is a behaviour change only where a row says the old behaviour was
+wrong.
+
+Eleven kinds of row: `tile`, `geom`, `place`, `fit`, `drag`, `ring`, `wsadj`, `gaprule`, and the `clip`, `best` and `btwn`
+primitives the edge search is built from.
+
+## Tiling is two steps
+
+**What the state becomes** is a decision over a bitmask, and **what that state
+looks like** is arithmetic over a rectangle. Keeping them apart is what makes
+either testable.
+
+The transition splits the current tiled state into the component parallel to the
+snap axis and the component orthogonal to it. A half plus an orthogonal edge is
+a quarter; a quarter snapped against its own parallel component is the half that
+remains.
+
+**A quarter snapped towards the edge it already occupies collapses to a half.**
+The parallel component is then neither the inverse of the request nor absent, so
+no branch matches, the request is taken unchanged, and the orthogonal component
+is discarded. That reads as a bug and is not.
+
+**The two halves of an axis come from different expressions** — `(size + gap) / 2`
+and `(size - gap) / 2`. That is what puts a *whole* gap between two tiled
+windows rather than half a gap each, and it means an odd dimension gives the
+right or bottom half one extra pixel.
+
+A state matching none of the four cardinal bits is the whole usable area inset
+by the gap, so the centre state is maximise-shaped rather than centred.
+
+**A state holding BOTH edges of an axis collapses that axis.** Left sets the
+axis's far bound to the midpoint and right sets its near bound to the same
+midpoint, so the two together give a width of zero — a negative one once the
+margins come off. That is not a tile the model defines: the transition above
+never produces an opposing pair, so the contract fixture has no row for one and
+none may be invented for it. **A caller that means "fill the area" must ask for
+the area**, not for all four edges at once. `kdos-con`'s maximise is that
+caller: it keeps the four-edge mask as its own *state* — so one restore
+rectangle serves every tile — and computes the rectangle from the work area
+itself.
+
+## Placement is a search, not a cascade
+
+A new window is placed by **minimising overlap**: an irregular grid is built by
+extending the edges of every window on the output to infinity, each interval is
+counted for how many windows cover it, and the candidate is convolved across the
+grid in four directions. The first position with no overlap at all ends the
+search.
+
+With nothing else on the output the grid is empty and the window lands in the
+upper-left corner, inset by both the decoration margin and the configured gap.
+
+## The edge search is one question
+
+*Moving this edge in this direction, which other edge does it meet first?*
+`MoveToEdge`, `GrowToEdge` and `ShrinkToEdge` are all built on it, and so is the console desktop's
+directional focus — `kwm_edge_best` is the whole of "which of these two candidates is nearer the
+way I am pointing", and the caller supplies the rest.
+
+**Directional focus is that question with an overlap test in front of it.** A candidate has to start
+past where the focused window starts — its leading edge, not its trailing one, so a window that
+merely overlaps a little is still to the right of the one it overlaps — and it has to share rows
+with it going sideways, or columns going up and down. Nothing overlapping means the focus does not
+move: a window that shares no rows with the focused one is not to its right in any sense a hand
+means, and the ring is the way to a window the arrows cannot see.
+
+An **opposing** edge keeps the gap and an **aligned** edge does not — the first
+is two windows placed beside each other, the second is two windows lined up — so
+only the aligned edge is padded.
+
+An edge the caller reports as not visible is pushed out of bounds rather than
+dropped, so it loses every comparison without the search needing a case for it.
+Working out what is visible needs the scene graph, so it stays with the caller.
+
+The moving edge sweeps a quadrilateral, and the test is against that
+quadrilateral's extent at the obstacle's own offset. It interpolates with
+doubles: plain arithmetic that calls nothing, so the no-maths-library rule holds.
+
+## Occupancy is an input
+
+A workspace being "occupied" is asked by two programs and they mean different
+things. The compositor counts views that are not omnipresent. The panel counts
+windows that are not minimised, because the workspace protocol reports active,
+urgent and hidden but never *there is something here*.
+
+Two rules, two right answers. `libkwm` picks neither: it is told which
+workspaces are occupied and finds the nearest one, wrapping **at most once** so
+that a set of empty workspaces terminates the search rather than circling it.
+
+The console desktop is the third caller and has a third rule: a minimised window still holds its
+workspace, because it has a taskbar row and comes back to where it was, while a panel, a toast and
+the icon layer are nobody's work. `Super+PageUp` and `Super+PageDown` step over the empty ones —
+with nine workspaces and two in use, an arrow that stopped on every empty one between them is an
+arrow nobody presses twice.
+
+## What cannot be expressed
+
+**Screen layout is an order, not a geometry.** Screens are placed edge to edge
+from the left in list order; a vertical arrangement, an overlap or a deliberate
+gap cannot be said. That is a deliberate narrowing — what people usually want is
+an order — and it is recorded in [Known gaps](../06-reference/known-gaps.md).
+
+**The console means it literally.** `libkkms` takes every connected connector in
+DRM connector order — the kernel's own, stable across a boot, so a layout does
+not rearrange itself depending on which monitor woke up first — and lays their
+modes end to end into one virtual box. The grid the session is told about is
+that box divided by the cell, so **a window dragged past the right edge of one
+screen is on the next** because there was never a boundary in the grid to stop
+at: the cut into screens happens at the paint, below everything that knows what
+a window is. A screen showing fewer rows than the grid has shows the **top** of
+it and is padded, never scaled — every cell is the same size on every screen,
+which is what lets a window keep its shape across the seam.
+
+**A moved window stops at the seam once.** With two or more screens lit, a move
+runs `kwm_edge_output` over each output's columns before it is fitted to the
+work area: the edge that was moving lands on the nearest screen boundary ahead
+of it, and the other axis is left alone — a nudge is one direction, and snapping
+both would put the window somewhere the arrow was not pointing. A second nudge
+crosses. One screen has no seam, so the search is skipped entirely and a move is
+the plain one.
+
+**Pointer resistance is not in the model.** How a drag feels as it crosses an
+edge — the resist and attract zones — is interaction, and it stays in the
+compositor with its own validator. The two desktops share where an edge *is*,
+not how it feels to cross one.
+
+**Effective geometry after a refused resize is not in the model either.** A
+Wayland client may ignore the size it is configured with, and remembering what
+was asked for is a Wayland problem; a terminal window on the console always
+accepts the size it is given.
+
+**Where a window was last time is not in the model either.** The library places a rectangle from
+the space available and the obstacles present; remembering one across a close and an open is a
+question about a *program*, which is a thing the library has no word for. Both desktops answer it
+themselves — `comp.conf`'s `window_memory` and `con.conf`'s `remember` — and each keeps its own
+file, because one is in pixels and the other in cells. `kwm_fit()` is the shared half: whatever
+either of them remembers is fitted back into the area that exists now.
+
+**Which workspace a window is on is not in the model.** The library places and
+fits rectangles; a workspace is a set the session keeps, and "on every one of
+them" is a flag on a window rather than a number it holds. The console's
+[scratchpad](../04-programs/kdos-con.md#the-scratchpad) is that flag and the
+compositor's omnipresence is the same statement, which is why neither desktop
+asks `libkwm` about it.
+
+## See also
+
+- [The C libraries](../05-developer/c-libraries.md#libkwm) — the constraint it is built under
+- [kdos-comp](../04-programs/kdos-comp.md) — the compositor that calls it
+- [Testing](../05-developer/testing.md) — how the contract file is replayed
+- [Known gaps](../06-reference/known-gaps.md) — the layout narrowing, stated

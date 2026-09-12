@@ -20,5 +20,5 @@
 |   /nonexistent-kdos-data/kdos/doc                                            |
 | or in /usr/share/kdos/doc and it is listed above.                            |
 |                                                                              |
-| Tab link   Enter follow   Bksp back   / search   Esc close                   |
+| Tab link  Enter follow  / search  Esc Close                                  |
 +==============================================================================+

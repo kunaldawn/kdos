@@ -316,3 +316,114 @@ void kb_json_str(KbBuf *b, const char *s)
 	}
 	kb_buf_add(b, "\"", 1);
 }
+
+/*
+ * The one reader of a desktop toggle. See kbase.h.
+ *
+ * The path is rebuilt on each call rather than kept: the whole point of a flag
+ * file is that another process owns the answer, and a cached path would be the
+ * one place this could still go stale after $HOME changed under a program that
+ * re-execs.
+ */
+int kb_state_path(const char *rel, char *out, size_t n)
+{
+	const char *state = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+
+	if (!rel || !*rel || !out || !n)
+		return 0;
+	if (state && *state)
+		return snprintf(out, n, "%s/%s", state, rel) < (int)n;
+	if (home && *home)
+		return snprintf(out, n, "%s/.local/state/%s", home, rel)
+		       < (int)n;
+	return 0;
+}
+
+static int toggle_path(const char *name, char *out, size_t n)
+{
+	char rel[256];
+
+	if (!name || !*name)
+		return 0;
+	if (snprintf(rel, sizeof(rel), "kdos/toggles/%s", name) >=
+	    (int)sizeof(rel))
+		return 0;
+	return kb_state_path(rel, out, n);
+}
+
+int kb_toggle_on(const char *name)
+{
+	char path[512];
+
+	if (!toggle_path(name, path, sizeof(path)))
+		return 0;
+	return access(path, F_OK) == 0;
+}
+
+int kb_toggle_set(const char *name, int on)
+{
+	char path[512];
+	char *slash;
+	int fd;
+
+	if (!toggle_path(name, path, sizeof(path)))
+		return -1;
+	if (!on)
+		return unlink(path) == 0 || errno == ENOENT ? 0 : -1;
+
+	slash = strrchr(path, '/');
+	if (slash) {
+		*slash = '\0';
+		kb_mkdir_p(path);
+		*slash = '/';
+	}
+	fd = open(path, O_WRONLY | O_CREAT, 0644);
+	if (fd < 0)
+		return -1;
+	close(fd);
+	return 0;
+}
+
+/* See kbase.h. The FIRST entry only: the variable is a preference order and
+ * the desktop actually running is the one at its head — honouring the rest
+ * would let a session inherit choices made for a desktop it merely resembles. */
+int kb_desktop_prefix(char *out, size_t n)
+{
+	const char *d = getenv("XDG_CURRENT_DESKTOP");
+	size_t i = 0;
+
+	if (!out || n == 0)
+		return 0;
+	out[0] = '\0';
+	if (!d || !*d)
+		return 0;
+	for (; d[i] && d[i] != ':' && i + 1 < n; i++)
+		out[i] = (char)((d[i] >= 'A' && d[i] <= 'Z') ? d[i] + 32 : d[i]);
+	out[i] = '\0';
+	return i > 0;
+}
+
+/* See kbase.h. `$KDOS_CON` is set by the console session and by nothing else,
+ * which is the same test every other program in the tree uses to tell the two
+ * desktops apart. */
+const char *kb_terminal(void)
+{
+	const char *con = getenv("KDOS_CON");
+	const char *wl = getenv("WAYLAND_DISPLAY");
+
+	if (con && *con)
+		return "kdos-term";
+	if (wl && *wl)
+		return "foot";
+	/*
+	 * NEITHER EMULATOR EXISTS WITHOUT A SESSION TO OPEN IT IN. `foot` is a
+	 * Wayland client and `kdos-term` needs the console session's socket, so
+	 * a bare virtual terminal — `Ctrl+Alt+F2`, a serial console, an ssh
+	 * login — has neither. NULL is the honest answer and every caller
+	 * already has to have one: a name returned here would resolve the right
+	 * program and then fail to open a window for it, which reads as the
+	 * handler being wrong.
+	 */
+	return NULL;
+}

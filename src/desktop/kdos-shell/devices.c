@@ -12,7 +12,9 @@
  *   ║ ▶ /dev/video0  Integrated Camera   uvcvideo    free             ║
  *   ║   /dev/video2  USB Camera          uvcvideo    IN USE by firefox║
  *   ║ MICROPHONES                                              muted  ║
- *   ║   hw:0  HDA Intel PCH             capture 62%                   ║
+ *   ║   hw:1,0 ALC623 Analog            capture 62%                   ║
+ *   ║ SCANNERS                                                        ║
+ *   ║   Canon TR8500 series           airscan:e0:Canon TR8500         ║
  *   ║ INPUT                                                           ║
  *   ║   AT Translated Set 2 keyboard                                  ║
  *   ╟─────────────────────────────────────────────────────────────────╢
@@ -37,6 +39,13 @@
  * thing in this program and it costs about forty lines, because the renderer
  * was already here.
  *
+ * THE SCANNERS COME FROM `scanimage -L`, NOT FROM libsane. Linking the library
+ * would put every backend's shared object and its configuration into this
+ * process to ask a question `scanimage` already answers — and the scanning
+ * itself is `scanimage` too, so there is nothing left for the link to buy. The
+ * probe walks a USB bus and the network and takes seconds, so it runs once per
+ * refresh and never on a keystroke.
+ *
  * OPENING A CAMERA TO PREVIEW IT *IS* USING IT. The privacy lamp lights for
  * this program exactly as it would for anything else, the fd is closed the
  * moment the frame is taken, and there is no continuous preview — a device
@@ -55,9 +64,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/un.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -66,15 +73,16 @@
 #include "kcell.h"
 #include "kwl.h"
 #include "shell.h"
+#include "kproc.h"
 
 #define DV_COLS 76
 #define DV_ROWS 26
 #define DV_MAX_CAM 8
 #define DV_MAX_MIC 8
 #define DV_MAX_INPUT 16
+#define DV_MAX_SCAN 8
 #define DV_MAX_MEDIA 16
 #define DV_NAME 64
-#define DV_MOUNTD_SOCKET "/run/kdos-mountd.sock"
 /*
  * A `/dev` node's path. Sized for what a V4L2 node actually is — `/dev/video0`
  * — rather than for what readdir may return, because widening it pushes
@@ -105,18 +113,35 @@ struct dv_input {
 };
 
 /*
- * A removable filesystem, as kdos-mountd reports it. The INDEX is the daemon's
- * own row number and is the only thing sent back — this program never names a
- * device or a mountpoint, because the protocol has no way to say one.
+ * A scanner, as SANE names one. `dev` is the backend device string —
+ * `airscan:e0:Canon TR8500`, `genesys:libusb:001:004` — which is what every
+ * scanimage invocation takes and is not a path; `name` is the vendor and model
+ * SANE reports beside it.
  */
-struct dv_media {
-	int idx;
-	char kname[32];
-	char label[DV_NAME];
-	char fstype[24];
-	char size[16];
-	char mnt[256];
+struct dv_scan {
+	char dev[128];
+	char name[DV_NAME];
 };
+
+/*
+ * A RECORDED ANSWER INSTEAD OF THE PROGRAM'S, for the one thing on this
+ * surface that comes from another command. Everything else here reads /dev,
+ * /proc and /sys, which the harness already points elsewhere; a scanner list
+ * is whatever is plugged into the machine running the test.
+ */
+static const char *fixture;
+
+static int recorded(const char *name, char *out, size_t n)
+{
+	char path[512];
+
+	if (!fixture)
+		return 0;
+	snprintf(path, sizeof(path), "%s/%s", fixture, name);
+	out[0] = '\0';
+	kb_read_file(path, out, n);
+	return 1;
+}
 
 static struct dv_cam cams[DV_MAX_CAM];
 static int ncam;
@@ -124,14 +149,17 @@ static struct dv_mic mics[DV_MAX_MIC];
 static int nmic;
 static struct dv_input inputs[DV_MAX_INPUT];
 static int ninput;
-static struct dv_media media[DV_MAX_MEDIA];
+static struct dv_scan scans[DV_MAX_SCAN];
+static int nscan;
+static char scan_why[96];
+static ShMountRow media[DV_MAX_MEDIA];
 static int nmedia;
 static char media_why[96];
 /* What `kdos app update --check` said, once per refresh: a stick that IS
  * newer than the disk is the offline update story, and it had no surface. */
 static char updates_line[96];
 static int updates_n;
-static int sel;
+static KtuiTable tbl;
 static char status[128];
 
 /* The preview, as cells. Held until something else is previewed or Esc. */
@@ -140,6 +168,24 @@ static uint32_t pv_cp[PV_MAX];
 static uint32_t pv_tint[PV_MAX];
 static int pv_cols, pv_rows;
 static char pv_from[32];
+
+/* ONE RUNG: the camera preview. Esc over it goes back to the list and Esc on
+ * the list closes the window, and the row says which — the reason the old
+ * two-case arm becomes a declaration. */
+static KtuiKeys keys;
+
+static int pv_up(void *user)
+{
+	(void)user;
+	return pv_cols != 0;
+}
+
+static void pv_hide(void *user)
+{
+	(void)user;
+	pv_cols = pv_rows = 0;
+	status[0] = '\0';
+}
 
 /* `$KDOS_PRIVACY_PROC` moves the /proc walk, the same seam privacy.c uses —
  * which is what makes the "who holds the camera" half testable on a machine
@@ -451,30 +497,29 @@ out:
 /* ── microphones and input devices ─────────────────────────────────────── */
 
 /*
- * The capture cards, from /proc/asound/cards — the same file `aplay -l` reads
- * and one this program can read without linking ALSA a second time. osd.c owns
- * the mixer and this owns the LIST.
+ * The capture PCMs, through `kpr_sound_pcms()` — a file read that links no
+ * ALSA library. osd.c owns the mixer and this owns the LIST.
+ *
+ * A CARD IS NOT A MICROPHONE. An HDMI codec is a card with four playback PCMs
+ * and no capture stream, so a list built from /proc/asound/cards offers a
+ * monitor's audio output as an input. kdos-rec reads the same function: two
+ * surfaces must not give two answers to what a microphone is.
  */
 static void scan_mics(void)
 {
-	FILE *f = fopen("/proc/asound/cards", "r");
-	char line[256];
+	int n = 0;
+	KprSoundPcm *p = kpr_sound_pcms(&n);
 
 	nmic = 0;
-	if (!f)
-		return;
-	while (fgets(line, sizeof(line), f) && nmic < DV_MAX_MIC) {
-		int idx = -1;
-		char rest[200] = "";
-
-		/* ` 0 [PCH            ]: HDA-Intel - HDA Intel PCH` */
-		if (sscanf(line, " %d [%*[^]]]: %199[^\n]", &idx, rest) != 2)
+	for (int i = 0; i < n && nmic < DV_MAX_MIC; i++) {
+		if (!p[i].capture)
 			continue;
 		struct dv_mic *m = &mics[nmic++];
-		snprintf(m->id, sizeof(m->id), "hw:%d", idx);
-		snprintf(m->name, sizeof(m->name), "%s", rest);
+
+		snprintf(m->id, sizeof(m->id), "%s", p[i].id);
+		snprintf(m->name, sizeof(m->name), "%s", p[i].name);
 	}
-	fclose(f);
+	kpr_sound_free(p);
 }
 
 /*
@@ -517,94 +562,89 @@ static void scan_inputs(void)
 
 /* ── removable media, through kdos-mountd ──────────────────────────────────
  *
- * A SHORT connection per request, from a surface that is up for as long as
- * somebody is looking at it. The panel deliberately has no media widget yet:
- * the rule there is that nothing blocks the frame, and a socket round trip per
- * tick is exactly what that rule is about. Here the surface is already waiting
- * for a keystroke.
+ * `sh_mountd_*` is the one client, shared with kdos-mediad and kdos-disks. A
+ * short connection per request from a surface that is already waiting for a
+ * keystroke; the panel deliberately has no media widget, because nothing there
+ * may block the frame and a socket round trip per tick is exactly what that
+ * rule is about.
  */
-static int mountd_ask(const char *req, char *out, size_t n)
-{
-	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	const char *path = getenv("KDOS_MOUNTD_SOCKET");
-	size_t got = 0;
-	ssize_t r;
-
-	out[0] = '\0';
-	if (fd < 0)
-		return -1;
-	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
-		 path && *path ? path : DV_MOUNTD_SOCKET);
-	/* A one-second ceiling on a local socket that answers in microseconds:
-	 * the daemon is a `scan()` of a handful of file reads, and anything
-	 * slower than this is a daemon that is wedged. */
-	struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(fd);
-		return -1;
-	}
-	dprintf(fd, "%s\n", req);
-	while (got + 1 < n && (r = read(fd, out + got, n - got - 1)) > 0)
-		got += (size_t)r;
-	out[got] = '\0';
-	close(fd);
-	return 0;
-}
-
 static void scan_updates(void);
 
 static void scan_media(void)
 {
-	char buf[8192];
-
-	nmedia = 0;
-	media_why[0] = '\0';
-	if (mountd_ask("list", buf, sizeof(buf)) != 0) {
-		snprintf(media_why, sizeof(media_why),
-			 "kdos-mountd is not running (service start 58_mountd)");
-		return;
-	}
-	for (char *p = buf; *p && nmedia < DV_MAX_MEDIA;) {
-		char *nl = strchr(p, '\n');
-		if (nl)
-			*nl = '\0';
-		struct dv_media *m = &media[nmedia];
-		memset(m, 0, sizeof(*m));
-		/* `index\tkname\tlabel\tfstype\tsize\tmount`, and a `-` where
-		 * the daemon had nothing to say. */
-		if (sscanf(p, "%d\t%31[^\t]\t%63[^\t]\t%23[^\t]\t%15[^\t]\t%255[^\n]",
-			   &m->idx, m->kname, m->label, m->fstype, m->size,
-			   m->mnt) >= 5) {
-			if (!strcmp(m->label, "-"))
-				m->label[0] = '\0';
-			if (!strcmp(m->mnt, "-"))
-				m->mnt[0] = '\0';
-			nmedia++;
-		}
-		if (!nl)
-			break;
-		p = nl + 1;
-	}
+	nmedia = sh_mountd_list(media, DV_MAX_MEDIA, media_why,
+				sizeof(media_why));
 }
 
 static void media_action(int i, const char *verb)
 {
-	char req[64], buf[512];
-
 	if (i < 0 || i >= nmedia)
 		return;
-	snprintf(req, sizeof(req), "%s %d", verb, media[i].idx);
-	if (mountd_ask(req, buf, sizeof(buf)) != 0) {
-		snprintf(status, sizeof(status), "kdos-mountd is not running");
-		return;
-	}
-	buf[strcspn(buf, "\r\n")] = '\0';
-	snprintf(status, sizeof(status), "%.100s", buf);
+	sh_mountd_do(media[i].idx, verb, status, sizeof(status));
 	scan_media();
 	scan_updates();
+}
+
+/*
+ * THE SCANNERS, OVER `scanimage -L` AND NOT libsane.
+ *
+ * Linking the library would put every backend's shared object and its
+ * configuration in this process, and the answer to "what scanners are there"
+ * would still be SANE's — `sane_get_devices()` is what `scanimage -L` calls.
+ * The list is what this surface needs; the scanning is `scanimage` too, and a
+ * program that already has to exec it for the work has nothing to gain by
+ * linking it for the enumeration.
+ *
+ * ONE CALL, AND IT IS SLOW. Probing a USB bus and the network for scanners
+ * takes seconds, so it runs once per refresh like the update check and never
+ * on a keystroke.
+ *
+ * `-f` RATHER THAN THE DEFAULT LISTING, because the default is prose — "device
+ * `x' is a Y Z flatbed scanner" — with the device string in backquotes that a
+ * parser has to find. The format string asks for exactly two fields and a
+ * separator no SANE name contains.
+ */
+static void scan_scanners(void)
+{
+	char buf[4096];
+	KbArgv a = { 0 };
+
+	nscan = 0;
+	scan_why[0] = '\0';
+	if (!recorded("scanimage-L", buf, sizeof(buf))) {
+		kb_argv_add(&a, "scanimage");
+		kb_argv_add(&a, "-f");
+		kb_argv_add(&a, "%d\t%v %m\n");
+		kb_argv_end(&a);
+		if (kb_run_capture(&a, buf, sizeof(buf)) < 0) {
+			snprintf(scan_why, sizeof(scan_why),
+				 "scanimage is not installed");
+			return;
+		}
+	}
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
+	     ln && nscan < DV_MAX_SCAN; ln = strtok_r(NULL, "\n", &sp)) {
+		char *tab = strchr(ln, '\t');
+
+		if (!tab)
+			continue;
+		*tab = '\0';
+		if (!ln[0])
+			continue;
+		snprintf(scans[nscan].dev, sizeof(scans[nscan].dev), "%s", ln);
+		snprintf(scans[nscan].name, sizeof(scans[nscan].name), "%s",
+			 tab + 1);
+		nscan++;
+	}
+	/*
+	 * A SCANNER THE USER CANNOT OPEN LOOKS EXACTLY LIKE NO SCANNER, and
+	 * that is the failure worth naming: 70-kdos-scanner.rules grants the
+	 * device to `dialout`, and without that membership SANE enumerates
+	 * nothing and reports no error at all.
+	 */
+	if (!nscan && !scan_why[0])
+		snprintf(scan_why, sizeof(scan_why),
+			 "none found — `id` should list dialout");
 }
 
 /*
@@ -636,7 +676,7 @@ static void scan_updates(void)
 
 /* ── the row list ──────────────────────────────────────────────────────── */
 
-enum { R_HEAD = 0, R_CAM, R_MIC, R_INPUT, R_MEDIA, R_UPDATE };
+enum { R_HEAD = 0, R_CAM, R_MIC, R_INPUT, R_MEDIA, R_UPDATE, R_SCAN };
 
 struct drow {
 	int kind;
@@ -645,7 +685,7 @@ struct drow {
 };
 
 static struct drow rows[2 + DV_MAX_CAM + DV_MAX_MIC + DV_MAX_INPUT +
-			DV_MAX_MEDIA + 6];
+			DV_MAX_MEDIA + DV_MAX_SCAN + 8];
 static int nrows;
 
 static void build_rows(void)
@@ -676,15 +716,143 @@ static void build_rows(void)
 		rows[nrows++].idx = 0;
 	}
 	rows[nrows].kind = R_HEAD;
+	rows[nrows++].head = "SCANNERS";
+	for (int i = 0; i < nscan; i++) {
+		rows[nrows].kind = R_SCAN;
+		rows[nrows++].idx = i;
+	}
+	rows[nrows].kind = R_HEAD;
 	rows[nrows++].head = "INPUT";
 	for (int i = 0; i < ninput; i++) {
 		rows[nrows].kind = R_INPUT;
 		rows[nrows++].idx = i;
 	}
-	if (sel >= nrows)
-		sel = nrows - 1;
-	if (sel < 0)
-		sel = 0;
+	ktui_table_clamp(&tbl, nrows, ktui_h > 4 ? ktui_h - 4 : 1);
+}
+
+/*
+ * A SECTION CAPTION IS FURNITURE HERE and the selection steps over it: every
+ * verb on this surface acts on a device, so a caption that could be selected
+ * would be a row where Enter, Delete and the preview all do nothing.
+ */
+static int dv_span(int idx, void *user)
+{
+	(void)user;
+	return rows[idx].kind == R_HEAD ? KT_TABLE_SKIP : 0;
+}
+
+/* ONE ELASTIC COLUMN: the four kinds of row below put their fields at four
+ * different offsets, so the column set is the row's rather than the table's. */
+static const KtuiCol DV_COL[] = { { NULL, 0 } };
+
+static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
+		    void *user)
+{
+	const struct drow *r = &rows[idx];
+	int list_w = *(const int *)user;
+	int on = bg == KT_ACCENT;
+
+	(void)col;
+	(void)x;
+	(void)w;
+	if (r->kind == R_HEAD) {
+		ktui_draw_text(2, y, list_w - 4, r->head, KT_ACCENT, KT_BG,
+			       KT_A_NONE);
+		/*
+		 * An empty section with nothing beside it is
+		 * indistinguishable from a section that failed to read. Every
+		 * one of these says which it is.
+		 */
+		const char *empty = NULL;
+
+		if (!strcmp(r->head, "CAMERAS") && !ncam)
+			/* Short enough for the POPUP form: the panel opens
+			 * this at fifty-six columns and the section text is
+			 * drawn at column twenty, so a sentence here comes
+			 * out as `can ca`. */
+			empty = "none — no /dev/video device";
+		else if (!strcmp(r->head, "MICROPHONES") && !nmic)
+			empty = "none — no sound card is present";
+		else if (!strcmp(r->head, "REMOVABLE MEDIA") && !nmedia)
+			empty = media_why[0] ? media_why : "nothing plugged in";
+		else if (!strcmp(r->head, "UPDATES ON THE MEDIUM") && !updates_n)
+			empty = "up to date";
+		else if (!strcmp(r->head, "SCANNERS") && !nscan)
+			empty = scan_why;
+		else if (!strcmp(r->head, "INPUT") && !ninput)
+			empty = "none";
+		if (empty)
+			ktui_draw_text(20, y, list_w - 22, empty,
+				       media_why[0] &&
+					       !strcmp(r->head,
+						       "REMOVABLE MEDIA")
+					       ? KT_ERR : KT_DIM,
+				       KT_BG, KT_A_NONE);
+		return;
+	}
+	if (r->kind == R_CAM) {
+		const struct dv_cam *c = &cams[r->idx];
+
+		ktui_draw_text(3, y, 14, c->path, fg, bg, KT_A_NONE);
+		ktui_draw_text(18, y, 24, c->name, fg, bg, KT_A_NONE);
+		ktui_draw_text(43, y, 10, c->driver,
+			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+		if (c->holder[0])
+			ktui_draw_textf(54, y, list_w - 56,
+					on ? KT_SURFACE : KT_WARN, bg,
+					KT_A_NONE, "in use by %s", c->holder);
+		else
+			ktui_draw_text(54, y, 8, "free",
+				       on ? KT_SURFACE : KT_MID, bg,
+				       KT_A_NONE);
+	} else if (r->kind == R_MIC) {
+		const struct dv_mic *m = &mics[r->idx];
+
+		ktui_draw_text(3, y, 8, m->id, fg, bg, KT_A_NONE);
+		ktui_draw_text(12, y, list_w - 24, m->name, fg, bg, KT_A_NONE);
+		if (r->idx == 0)
+			ktui_draw_text(list_w - 10, y, 8,
+				       sh_mic_muted() ? "MUTED" : "live",
+				       on	       ? KT_SURFACE
+				       : sh_mic_muted() ? KT_WARN
+						        : KT_MID,
+				       bg, KT_A_NONE);
+	} else if (r->kind == R_MEDIA) {
+		const ShMountRow *m = &media[r->idx];
+
+		ktui_draw_text(3, y, 10, m->kname, fg, bg, KT_A_NONE);
+		ktui_draw_text(14, y, 20,
+			       m->label[0] ? m->label : "(no label)", fg, bg,
+			       KT_A_NONE);
+		ktui_draw_text(35, y, 8, m->fstype,
+			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+		ktui_draw_text(44, y, 8, m->size,
+			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+		ktui_draw_text(53, y, list_w - 55,
+			       m->mnt[0] ? m->mnt : "not mounted",
+			       on	   ? KT_SURFACE
+			       : m->mnt[0] ? KT_ACCENT
+					   : KT_MID,
+			       bg, KT_A_NONE);
+	} else if (r->kind == R_UPDATE) {
+		ktui_draw_text(3, y, list_w - 5, updates_line,
+			       on ? KT_SURFACE : KT_ACCENT, bg, KT_A_NONE);
+	} else if (r->kind == R_SCAN) {
+		const struct dv_scan *sc = &scans[r->idx];
+
+		/* The MODEL first and the backend string after it: the model
+		 * is what a person recognises, and the device string is what
+		 * they would have to type at scanimage. */
+		ktui_draw_text(3, y, 30, sc->name, fg, bg, KT_A_NONE);
+		ktui_draw_text(34, y, list_w - 36, sc->dev,
+			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+	} else {
+		const struct dv_input *d = &inputs[r->idx];
+
+		ktui_draw_text(3, y, 10, d->kind,
+			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+		ktui_draw_text(14, y, list_w - 16, d->name, fg, bg, KT_A_NONE);
+	}
 }
 
 static void draw_frame(void)
@@ -699,102 +867,10 @@ static void draw_frame(void)
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "devices", KT_ACCENT, KT_BG, 1);
 
-	for (int i = 0; i < body && i < nrows; i++) {
-		const struct drow *r = &rows[i];
-		int y = 1 + i;
-		int on = i == sel && r->kind != R_HEAD;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
-
-		if (r->kind == R_HEAD) {
-			ktui_draw_text(2, y, list_w - 4, r->head, KT_ACCENT,
-				       KT_BG, KT_A_NONE);
-			/*
-			 * An empty section with nothing beside it is
-			 * indistinguishable from a section that failed to
-			 * read. Every one of these says which it is.
-			 */
-			const char *empty = NULL;
-			if (!strcmp(r->head, "CAMERAS") && !ncam)
-				/* Short enough for the POPUP form: the panel
-				 * opens this at fifty-six columns and the
-				 * section text is drawn at column twenty, so
-				 * a sentence here comes out as `can ca`. */
-				empty = "none — no /dev/video device";
-			else if (!strcmp(r->head, "MICROPHONES") && !nmic)
-				empty = "none — no sound card is present";
-			else if (!strcmp(r->head, "REMOVABLE MEDIA") && !nmedia)
-				empty = media_why[0] ? media_why
-						     : "nothing plugged in";
-			else if (!strcmp(r->head, "UPDATES ON THE MEDIUM") && !updates_n)
-				empty = "up to date";
-			else if (!strcmp(r->head, "INPUT") && !ninput)
-				empty = "none";
-			if (empty)
-				ktui_draw_text(20, y, list_w - 22, empty,
-					       media_why[0] &&
-						       !strcmp(r->head,
-							       "REMOVABLE MEDIA")
-					       ? KT_ERR : KT_DIM,
-					       KT_BG, KT_A_NONE);
-			continue;
-		}
-		ktui_draw_fill(krect(1, y, list_w - 2, 1), bg);
-		if (r->kind == R_CAM) {
-			const struct dv_cam *c = &cams[r->idx];
-			ktui_draw_text(3, y, 14, c->path, fg, bg, KT_A_NONE);
-			ktui_draw_text(18, y, 24, c->name, fg, bg, KT_A_NONE);
-			ktui_draw_text(43, y, 10, c->driver,
-				       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
-			if (c->holder[0])
-				ktui_draw_textf(54, y, list_w - 56,
-						on ? KT_SURFACE : KT_WARN, bg,
-						KT_A_NONE, "in use by %s",
-						c->holder);
-			else
-				ktui_draw_text(54, y, 8, "free",
-					       on ? KT_SURFACE : KT_MID, bg,
-					       KT_A_NONE);
-		} else if (r->kind == R_MIC) {
-			const struct dv_mic *m = &mics[r->idx];
-			ktui_draw_text(3, y, 8, m->id, fg, bg, KT_A_NONE);
-			ktui_draw_text(12, y, list_w - 24, m->name, fg, bg,
-				       KT_A_NONE);
-			if (r->idx == 0)
-				ktui_draw_text(list_w - 10, y, 8,
-					       sh_mic_muted() ? "MUTED"
-							      : "live",
-					       on	       ? KT_SURFACE
-					       : sh_mic_muted() ? KT_WARN
-								: KT_MID,
-					       bg, KT_A_NONE);
-		} else if (r->kind == R_MEDIA) {
-			const struct dv_media *m = &media[r->idx];
-			ktui_draw_text(3, y, 10, m->kname, fg, bg, KT_A_NONE);
-			ktui_draw_text(14, y, 20,
-				       m->label[0] ? m->label : "(no label)",
-				       fg, bg, KT_A_NONE);
-			ktui_draw_text(35, y, 8, m->fstype,
-				       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
-			ktui_draw_text(44, y, 8, m->size,
-				       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
-			ktui_draw_text(53, y, list_w - 55,
-				       m->mnt[0] ? m->mnt : "not mounted",
-				       on	   ? KT_SURFACE
-				       : m->mnt[0] ? KT_ACCENT
-						   : KT_MID,
-				       bg, KT_A_NONE);
-		} else if (r->kind == R_UPDATE) {
-			ktui_draw_text(3, y, list_w - 5, updates_line,
-				       on ? KT_SURFACE : KT_ACCENT, bg, KT_A_NONE);
-		} else {
-			const struct dv_input *d = &inputs[r->idx];
-			ktui_draw_text(3, y, 10, d->kind,
-				       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
-			ktui_draw_text(14, y, list_w - 16, d->name, fg, bg,
-				       KT_A_NONE);
-		}
-	}
+	/* `list_w - 2` from column one: the frame's right border is the column
+	 * after the table, and a fill that reached it would rub it out. */
+	ktui_table_draw(krect(1, 1, list_w - 2, body), &tbl, nrows, DV_COL, 1,
+			dv_cell, dv_span, &list_w, -1);
 
 	/* ── the preview pane ── */
 	if (pv_w) {
@@ -818,11 +894,42 @@ static void draw_frame(void)
 	}
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
-	ktui_draw_text(2, h - 2, w - 4,
-		       status[0] ? status
-				 : "Enter mount  u eject  p preview  "
-				   "r rescan  Esc",
-		       status[0] ? KT_MID : KT_DIM, KT_BG, KT_A_NONE);
+
+	/*
+	 * WHAT ENTER DOES DEPENDS ON THE ROW, which is why the old constant
+	 * string was wrong: it read `Enter mount` while the caret sat on a
+	 * camera. The verb is computed from the selection, and the key is
+	 * named only on a row that answers it.
+	 */
+	const struct drow *sr = tbl.sel < nrows ? &rows[tbl.sel] : NULL;
+	const ShMountRow *sm = sr && sr->kind == R_MEDIA
+					    ? &media[sr->idx]
+					    : NULL;
+	const char *ev_verb = "apply";
+
+	if (sr && sr->kind == R_CAM)
+		ev_verb = "preview";
+	else if (sm)
+		ev_verb = sm->mnt[0] ? "open" : "mount";
+
+	if (status[0]) {
+		/* A MESSAGE OUTRANKS THE ROW and they share the cells. The row
+		 * is still called, with an empty rect: it clears the pool as
+		 * its first act, and a frame that skipped it would carry these
+		 * hints into the next one. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+		ktui_draw_text(2, h - 2, w - 4, status, KT_MID, KT_BG,
+			       KT_A_NONE);
+	} else {
+		ktui_hint_if(sr && (sr->kind == R_CAM || sr->kind == R_MEDIA ||
+				    sr->kind == R_UPDATE),
+			     "Enter", ev_verb);
+		ktui_hint_if(sm && sm->mnt[0], "u", "unmount");
+		ktui_hint("m", sh_mic_muted() ? "unmute mics" : "mute all mics");
+		ktui_hint("r", "rescan");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_BG);
+	}
 	ktui_draw_flush();
 }
 
@@ -833,6 +940,7 @@ static void rescan(void)
 	scan_inputs();
 	scan_media();
 	scan_updates();
+	scan_scanners();
 	build_rows();
 }
 
@@ -855,16 +963,29 @@ int devices_main(int argc, char **argv)
 			dump = 1;
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* Recorded `scanimage -L` output, so a golden does not depend
+		 * on what is plugged into the machine running it. */
+		else if (!strcmp(argv[i], "--fixture") && i + 1 < argc)
+			fixture = argv[++i];
 		else {
 			fprintf(stderr,
-				"usage: kdos-devices [--font NAME] [--dump]\n");
+				"usage: kdos-devices [--font NAME] "
+				"[--fixture DIR] [--dump]\n");
 			return 2;
 		}
 	}
 
 	rescan();
 	/* The first selectable row, not the heading above it. */
-	sel = ncam ? 1 : 0;
+	tbl.sel = ncam ? 1 : 0;
+	tbl.top = 0;
+	/* BEFORE the dump branch: that path draws — and so calls
+	 * ktui_esc_verb — and returns without ever reaching kdisp_init. */
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "devices";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Back", pv_up, pv_hide, NULL);
 
 	if (dump) {
 		sh_theme_from_cache();
@@ -877,7 +998,7 @@ int devices_main(int argc, char **argv)
 	/* Anchored means popup, centred means window — see the same block in
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -888,10 +1009,10 @@ int devices_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : DV_COLS,
 		.rows = popup ? 18 : DV_ROWS,
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -904,7 +1025,7 @@ int devices_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr,
 			"kdos-devices: no compositor or no layer-shell\n");
 		return 1;
@@ -914,7 +1035,7 @@ int devices_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		draw_frame();
 
@@ -928,11 +1049,16 @@ int devices_main(int argc, char **argv)
 			continue;
 		}
 		if (ev.type == KT_EVT_MOUSE) {
-			int idx = ev.my - 1;
+			/* THE TABLE'S OWN HIT TEST, because the list scrolls:
+			 * a screen row stopped being a row index the moment
+			 * `top` could be anything but zero. */
+			int idx = ktui_table_hit(krect(1, 1, ktui_w - 2,
+						       ktui_h - 4),
+						 &tbl, nrows, 1, DV_COL,
+						 ev.mx, ev.my);
 			if (ev.press == KT_MP_DRAG) {
-				if (idx >= 0 && idx < nrows &&
-				    rows[idx].kind != R_HEAD)
-					sel = idx;
+				ktui_table_pick(&tbl, nrows, idx, dv_span,
+						NULL);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -946,23 +1072,22 @@ int devices_main(int argc, char **argv)
 			 * as they are for the arrow keys.
 			 */
 			if (ev.btn == KT_MB_WHEEL_UP) {
-				while (sel > 0 && rows[--sel].kind == R_HEAD)
-					;
+				ktui_table_key(&tbl, nrows, ktui_h - 4,
+					       KT_K_UP, dv_span, NULL);
 				continue;
 			}
 			if (ev.btn == KT_MB_WHEEL_DOWN) {
-				while (sel + 1 < nrows &&
-				       rows[++sel].kind == R_HEAD)
-					;
+				ktui_table_key(&tbl, nrows, ktui_h - 4,
+					       KT_K_DOWN, dv_span, NULL);
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT)
 				break;
-			if (ev.btn == KT_MB_LEFT && idx >= 0 && idx < nrows &&
+			if (ev.btn == KT_MB_LEFT && idx >= 0 &&
 			    rows[idx].kind != R_HEAD) {
-				int was = sel;
+				int was = tbl.sel;
 
-				sel = idx;
+				tbl.sel = idx;
 				if (rows[idx].kind == R_CAM) {
 					preview(&cams[rows[idx].idx]);
 				} else if (rows[idx].kind == R_MEDIA &&
@@ -976,7 +1101,7 @@ int devices_main(int argc, char **argv)
 					 * mounted, open what is, exactly as
 					 * Enter does.
 					 */
-					const struct dv_media *m =
+					const ShMountRow *m =
 						&media[rows[idx].idx];
 					if (!m->mnt[0]) {
 						media_action(rows[idx].idx,
@@ -994,38 +1119,50 @@ int devices_main(int argc, char **argv)
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		switch (ev.key) {
-		case KT_K_ESC:
-			if (pv_cols) {
-				pv_cols = pv_rows = 0;
-				status[0] = '\0';
-				break;
-			}
-			goto done;
 		case KT_K_UP:
-			while (sel > 0 && rows[--sel].kind == R_HEAD)
-				;
+			ktui_table_key(&tbl, nrows, ktui_h - 4, KT_K_UP,
+				       dv_span, NULL);
 			break;
 		case KT_K_DOWN:
-			while (sel + 1 < nrows && rows[++sel].kind == R_HEAD)
-				;
+			ktui_table_key(&tbl, nrows, ktui_h - 4, KT_K_DOWN,
+				       dv_span, NULL);
 			break;
 		case KT_K_ENTER:
 		case 'p':
-			if (sel < nrows && rows[sel].kind == R_CAM) {
-				preview(&cams[rows[sel].idx]);
-			} else if (sel < nrows && rows[sel].kind == R_UPDATE) {
-				const char *argv[] = { "foot", "-e", "kdos", "app",
-						       "update", NULL };
+			if (tbl.sel < nrows && rows[tbl.sel].kind == R_CAM) {
+				preview(&cams[rows[tbl.sel].idx]);
+			} else if (tbl.sel < nrows && rows[tbl.sel].kind == R_UPDATE) {
+				const char *argv[10];
+				char id[160];
+				int k = sh_term_argv(argv, 0, 10, "kdos", id,
+						     sizeof(id));
+
+				argv[k++] = "kdos";
+				argv[k++] = "app";
+				argv[k++] = "update";
+				argv[k] = NULL;
 				sh_spawn(argv);
-			} else if (sel < nrows && rows[sel].kind == R_MEDIA) {
+			} else if (tbl.sel < nrows && rows[tbl.sel].kind == R_MEDIA) {
 				/* Enter is the obvious verb for the state it
 				 * is in: mount what is not mounted, open what
-				 * is. Ejecting is `u`, because a key that
-				 * sometimes unmounts is a key nobody trusts. */
-				const struct dv_media *m = &media[rows[sel].idx];
+				 * is. Unmounting is `u`, on its own key,
+				 * because a key that sometimes unmounts is a
+				 * key nobody trusts. EJECT is a separate verb
+				 * on the daemon and is not bound here: the
+				 * surface that offers it is kdos-disks. */
+				const ShMountRow *m = &media[rows[tbl.sel].idx];
 				if (!m->mnt[0]) {
-					media_action(rows[sel].idx, "mount");
+					media_action(rows[tbl.sel].idx, "mount");
 				} else {
 					const char *argv[] = { "kdos-appbox",
 							       "open", m->mnt,
@@ -1035,8 +1172,8 @@ int devices_main(int argc, char **argv)
 			}
 			break;
 		case 'u':
-			if (sel < nrows && rows[sel].kind == R_MEDIA)
-				media_action(rows[sel].idx, "unmount");
+			if (tbl.sel < nrows && rows[tbl.sel].kind == R_MEDIA)
+				media_action(rows[tbl.sel].idx, "unmount");
 			break;
 		case 'm':
 			sh_mic_toggle();
@@ -1052,6 +1189,6 @@ int devices_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

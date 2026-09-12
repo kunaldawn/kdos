@@ -1,0 +1,27 @@
+[?1049h[22;0;0t[>4;2m[?1h=[?2004h[1;24r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[24;1H"README.md" 262 lines, 10331 bytes[1;1H<p align="center">
+  <img src="kdos.png" alt="KDOS" width="260"/>
+</p>
+
+<h1 align="center">KDOS</h1>
+
+<p align="center"><b><i>I use KDOS btw.</i></b></p>
+
+<p align="center">
+A Linux distribution compiled from source, one <code>kpkgbuild</code> at a time  [11;1H—[11;2H<br>
+with a desktop that is a character grid all the way down.
+</p>
+
+<p align="center">
+<b>musl</b> ·[16;15H<b>toybox</b> ·[16;31H<b>wlroots</b> ·[16;48H<b>no systemd</b> ·[16;68H<b>no Xorg</bb[17;1H> ·[17;5H<b>no GTK or Qt on the host</b>
+</p>
+
+<p align="center">
+<sub>764 ports ·[21;18HLinux 7.0.10 ·[21;33H758 packages ·[21;48H181 containerised applications ·[21;80H  [22;1Hbuilds offline from this repo</sub>
+</p>[?25h[1;1H[?4m[?25l[1;1H[K[2;1H## Status[2;10H[K[3;1H[K[4;1HThis is the **v0.2** line: it installs, boots, runs a desktop and runs
+applications, and its interfaces are stable enough to document. It is not a
+release with a support commitment or a tested hardware matrix —[6;65Hyou are the
+integrator.[7;12H[K[9;1HMaturity per subsystem, with the evidence behind each verdict, is in
+[Status](docs/kdos/06-reference/status.md).[10;44H[K[11;1H[K[12;1H---[12;4H[K[13;1H[K[14;1H## License[15;1H[K[16;1HMIT for the KDOS-authored parts. Vendored artwork keeps its upstream license —[16;79H[K[17;1Hsee `LICENSE.notice` in `src/packages/kdos-cursors/`, `kdos-icons/` and
+`kdos-gtk-theme/`, each of which records exactly what was changed. Monocypher is[19;1Hpublic domain. `kdos-comp` and `kdos-bb` are forks of GPL-2.0 projects and keep
+that license and their upstream copyright headers. Every port under
+`ports/core/` is upstream's own code under upstream's own terms.[21;66H[K[22;1H[K[23;1HGo forth and segfault.[?25h

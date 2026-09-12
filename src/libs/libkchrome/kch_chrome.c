@@ -183,6 +183,16 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 		 */
 		int hot = enabled && hover_my == row && hover_mx >= x &&
 			  hover_mx < x + lw + 4;
+
+		/*
+		 * THE FOCUSED BUTTON NAMES ITSELF, and only it. Every caller
+		 * that draws this bar with focus -1 answers no Enter, so a row
+		 * that named one would advertise a key that does nothing —
+		 * which is the failure the hint line exists to prevent. A
+		 * disabled button is skipped for the same reason.
+		 */
+		if (on && enabled)
+			ktui_hint("Enter", b[i].label);
 		int bg = on && enabled ? KT_ACCENT
 			 : hot		? KT_DIM
 					: kch_body_slot();

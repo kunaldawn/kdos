@@ -68,6 +68,31 @@ all_members() {
 packed_members() { [ -f "$MANIFEST" ] && sed -n 's/^M://p' "$MANIFEST" || true; }
 manifest_packs() { [ -f "$MANIFEST" ] && sed -n 's/^P://p' "$MANIFEST" || true; }
 
+# What the recipe says one member's sha256 is, or nothing. A `sha256 =` line is
+# `<hash>  <file>` and a recipe may carry several, so the FILE picks the line.
+#
+# THIS IS THE ONLY COPY OF THE HASH, which is why the manifest names members and
+# not their hashes — and why both directions have to consult it. A packfile's
+# own sha256 says the bytes arrived intact; it cannot say they were ever right.
+recipe_sha() {
+    local port=${1%%/*} file=${1#*/}
+    awk -v f="$file" '$1 == "sha256" && $2 == "=" && $4 == f { print $3; exit }' \
+        "$PORT_REPO/$port/kpkgbuild" 2>/dev/null
+}
+
+# Refuse a member whose bytes are not what its recipe declares. A member whose
+# recipe spells its filename through a helper has no line to match and is left
+# to `ports/fetch`, which resolves the name before it checks.
+verify_member() {
+    local m=$1 want got
+    want=$(recipe_sha "$m")
+    [ -n "$want" ] || return 0
+    got=$(sha256sum "$PORT_REPO/$m" | cut -d' ' -f1)
+    [ "$got" = "$want" ] && return 0
+    echo "✗   $m: sha256 is $got, its recipe says $want" >&2
+    return 1
+}
+
 cmd_pack() {
     mkdir -p "$OUTDIR"
     local have new n=0
@@ -103,6 +128,12 @@ cmd_pack() {
     echo "==> packing $(printf '%s\n' "$new" | wc -l) new archive(s)"
     while read -r f; do
         [ -z "$f" ] && continue
+        # A PACKFILE IS IMMUTABLE, so a bad archive published in one is bad for
+        # ever: it cannot be corrected in place, only superseded by a recipe
+        # that names a different file. A mirror's 502 page under a tarball's
+        # name reached a release this way, and every clone since has had it.
+        verify_member "$f" || {
+            echo "ports/sources: refusing to publish it" >&2; exit 1; }
         sz=$(stat -c%s "$PORT_REPO/$f")
         hdr=$(( 512 + (sz + 511) / 512 * 512 ))
         [ $((size + hdr)) -gt $CAP ] && [ ${#cur[@]} -gt 0 ] && flush
@@ -114,14 +145,15 @@ cmd_pack() {
 
 cmd_fetch() {
     [ -f "$MANIFEST" ] || { echo "ports/sources: no $MANIFEST" >&2; exit 1; }
-    local pack sha want got n=0
+    local pack sha want got n=0 bad=0 mem=()
     # A packfile is needed when ANY member of it is missing here. Its members
     # are named in the manifest, so this costs no network to decide.
     while read -r line; do
         case "$line" in
-            P:*) pack=${line#P:}; sha=""; want=0 ;;
+            P:*) pack=${line#P:}; sha=""; want=0; mem=() ;;
             C:*) sha=${line#C:} ;;
-            M:*) [ -f "$PORT_REPO/${line#M:}" ] || want=1 ;;
+            M:*) mem+=("${line#M:}")
+                 [ -f "$PORT_REPO/${line#M:}" ] || want=1 ;;
             "")  [ -n "$pack" ] && [ "$want" = 1 ] && {
                      echo "⬇   $pack"
                      # A progress meter is worth having on a 1.5 GB download and is unreadable
@@ -133,12 +165,24 @@ cmd_fetch() {
                          echo "✗   $pack: sha256 mismatch — refusing to extract" >&2
                          rm -f "$OUTDIR/$pack"; exit 1; }
                      tar -xf "$OUTDIR/$pack" -C "$PORT_REPO"
+                     # AND EVERY MEMBER IT JUST WROTE. The packfile's own hash
+                     # says the bytes arrived intact; only the recipe says they
+                     # were ever right, and extracting overwrites whatever was
+                     # there — so an archive published wrong replaces a good
+                     # local copy and is not noticed until a build refuses it,
+                     # hours in and a hundred packages later.
+                     for m in "${mem[@]}"; do
+                         verify_member "$m" || bad=$((bad + 1))
+                     done
                      n=$((n + 1))
                  }
                  pack="" ;;
         esac
     done < <(mkdir -p "$OUTDIR"; cat "$MANIFEST"; echo)
-    echo "==> $n packfile(s) fetched; every archive is verified against its own recipe by ports/fetch"
+    [ "$bad" = 0 ] || {
+        echo "ports/sources: $bad extracted archive(s) do not match their recipe" >&2
+        exit 1; }
+    echo "==> $n packfile(s) fetched, every archive checked against its own recipe"
 }
 
 read_token() {

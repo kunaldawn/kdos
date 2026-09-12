@@ -50,6 +50,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <wayland-client.h>
 
@@ -413,8 +414,99 @@ static void logical_size(const struct head *h, int *w, int *ht)
 	*ht = (int)((rotated ? mw : mh) / s);
 }
 
+/*
+ * ── the console's screens ────────────────────────────────────────────────
+ *
+ * THE SAME MODEL, FILLED FROM A DIFFERENT PLACE. `heads[]` is the plan and the
+ * draw, the selection, the snapshot and the keep/revert countdown all read it;
+ * what differs between the two desktops is only where the list comes from and
+ * what an apply calls. A second surface for the console would be a second
+ * answer to what a screen is.
+ *
+ * WHAT THIS DESKTOP CAN CHANGE IS THE MODE, and the header says why: the scale
+ * is the FONT, the position is connector order, off is the screensaver's verb,
+ * and a character grid has no transform. So the rows show a screen and its
+ * mode and nothing else is editable here.
+ */
+static int con_outs;		/* screens the display reported, or 0 */
+
+static void con_fill(void)
+{
+	int ox = 0;
+
+	con_outs = kdisp_out_count();
+	if (con_outs > MAX_HEADS)
+		con_outs = MAX_HEADS;
+	nheads = 0;
+	for (int i = 0; i < con_outs; i++) {
+		KDispOut o;
+		struct head *h = &heads[nheads];
+
+		if (!kdisp_out_at(i, &o))
+			break;
+		memset(h, 0, sizeof(*h));
+		snprintf(h->name, sizeof(h->name), "%s", o.name);
+		snprintf(h->desc, sizeof(h->desc), "columns %d..%d", o.col,
+			 o.col + o.cols - 1);
+		h->nmodes = o.nmodes > MAX_MODES ? MAX_MODES : o.nmodes;
+		for (int m = 0; m < h->nmodes; m++) {
+			KDispMode md;
+
+			if (!kdisp_out_mode_at(i, m, &md))
+				break;
+			h->modes[m].w = md.width;
+			h->modes[m].h = md.height;
+			h->modes[m].refresh = md.refresh;
+		}
+		h->cur_mode = o.cur_mode;
+		h->enabled = 1;
+		h->scale = 1.0;
+		/* EDGE TO EDGE FROM THE LEFT, TOPS ALIGNED — the same
+		 * arrangement the view cut the grid with, so the position a
+		 * row reports is the position a pointer crosses. */
+		h->x = ox;
+		h->y = 0;
+		ox += o.width;
+		order[nheads] = nheads;
+		nheads++;
+	}
+}
+
+static int persist_layout(void);
+
+/*
+ * THE COUNTDOWN SURVIVED, so the applied state becomes the one to come back
+ * to. The console says so over the same verb it applied with — `keep` is the
+ * whole difference between the two — while a Wayland session writes the
+ * arrangement out for `--apply` to replay at the next login.
+ */
+static void keep_now(void)
+{
+	if (con_outs) {
+		for (int k = 0; k < nheads; k++)
+			if (heads[k].cur_mode >= 0)
+				kdisp_out_set_mode(k, heads[k].cur_mode, 1);
+		return;
+	}
+	persist_layout();
+}
+
 static void apply_now(void)
 {
+	if (con_outs) {
+		/*
+		 * KEEP IS 0 UNTIL A PERSON SAYS SO. The countdown below is
+		 * what turns an applied mode into a kept one; an apply that
+		 * persisted would leave a screen nobody can read as the one
+		 * the next login comes up on.
+		 */
+		for (int k = 0; k < nheads; k++)
+			if (heads[k].cur_mode >= 0)
+				kdisp_out_set_mode(k, heads[k].cur_mode, 0);
+		applied = 1;
+		applied_note[0] = '\0';
+		return;
+	}
 	if (!mgr || !have_serial) {
 		applied = -1;
 		snprintf(applied_note, sizeof(applied_note),
@@ -500,6 +592,36 @@ static void snap_restore(void)
 	}
 	if (snap_n == nheads)
 		memcpy(order, snap_order, sizeof(order));
+}
+
+/*
+ * ONE RUNG: the fifteen-second countdown. Esc there means revert, which is
+ * what the timeout does on its own — so it cannot lose work, and the row can
+ * say `Esc revert` instead of promising a close the countdown refuses.
+ *
+ * The display is the layer's `user` because the revert has to reach the
+ * compositor before the frame ends.
+ */
+static KtuiKeys keys;
+
+static int cd_up(void *user)
+{
+	(void)user;
+	return confirm_deadline > 0.0;
+}
+
+static void cd_revert(void *user)
+{
+	struct wl_display *dpy = user;
+
+	confirm_deadline = 0.0;
+	snap_restore();
+	reverting = 1;
+	apply_now();
+	/* NULL ON THE CONSOLE: apply_now() has already reached the session
+	 * over its own socket and there is no display to flush. */
+	if (dpy)
+		wl_display_flush(dpy);
 }
 
 static int conf_path(char *out, size_t n)
@@ -771,9 +893,20 @@ static void toggle_enabled(struct head *h)
  * Apply. Escape and a click away still close it. */
 enum { DB_APPLY, DB_ONOFF, DB_MODE, DB_SCALE, DB_ROTATE, DB_CLOSE, DB_N };
 
+/*
+ * IS THERE STILL A SCREEN BEHIND THIS ROW. A Wayland head loses its proxy when
+ * the monitor goes, and nothing about it may be edited after that. A console
+ * head has no proxy at all — it is a slice of the session's grid — so the test
+ * has to name where the row came from or every console screen reads as gone.
+ */
+static int head_live(const struct head *h)
+{
+	return h && (h->proxy || con_outs);
+}
+
 static void mode_label(const struct head *h, char *out, size_t n)
 {
-	if (!h->proxy) {
+	if (!head_live(h)) {
 		snprintf(out, n, "%s", "unplugged");
 		return;
 	}
@@ -784,6 +917,59 @@ static void mode_label(const struct head *h, char *out, size_t n)
 	const struct mode *m = &h->modes[h->cur_mode];
 	snprintf(out, n, "%dx%d@%d%s", m->w, m->h, (m->refresh + 500) / 1000,
 		 m->preferred ? "*" : "");
+}
+
+static int preferred_mode(const struct head *h)
+{
+	for (int i = 0; i < h->nmodes; i++)
+		if (h->modes[i].preferred)
+			return i;
+	return 0;
+}
+
+/*
+ * THE MODE LIST IS A DROPDOWN, not a cycle. A screen's modes are a list the
+ * monitor published and a person has to READ to choose from — stepping
+ * blindly through it means pressing a key until the picture looks right, and
+ * on a screen that cannot show the mode being tried that is a black screen
+ * and a wait for the revert.
+ */
+static KtuiDrop mode_drop;
+static char mode_opt[MAX_MODES][40];
+static const char *mode_optv[MAX_MODES];
+
+static int mode_options(const struct head *h)
+{
+	int n = 0;
+
+	if (!h)
+		return 0;
+	for (; n < h->nmodes && n < MAX_MODES; n++) {
+		const struct mode *m = &h->modes[n];
+
+		snprintf(mode_opt[n], sizeof(mode_opt[n]), "%dx%d@%d%s", m->w,
+			 m->h, (m->refresh + 500) / 1000,
+			 m->preferred ? "  (preferred)" : "");
+		mode_optv[n] = mode_opt[n];
+	}
+	return n;
+}
+
+/* The row the open list hangs under: the selected screen's, at the mode
+ * field, so the list appears where the value it replaces is written. */
+static KRect mode_rect(void)
+{
+	return krect(14, 1 + sel, 24, 1);
+}
+
+static void mode_open(struct head *h)
+{
+	if (!h || h->nmodes < 1)
+		return;
+	mode_options(h);
+	mode_drop.sel = h->cur_mode >= 0 ? h->cur_mode : preferred_mode(h);
+	mode_drop.hi = mode_drop.sel;
+	mode_drop.open = 1;
 }
 
 static void draw(void)
@@ -809,8 +995,8 @@ static void draw(void)
 			       on ? KT_ACCENT : KT_SURFACE);
 		ktui_draw_text(2, 1 + k, w - 4, line,
 			       on ? KT_SURFACE
-				  : (hd->enabled && hd->proxy ? KT_TEXT
-							      : KT_DIM),
+				  : (hd->enabled && head_live(hd) ? KT_TEXT
+								  : KT_DIM),
 			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
 	}
 	if (!nheads)
@@ -818,11 +1004,6 @@ static void draw(void)
 			       KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
-	ktui_draw_text(2, h - 3, w - 4,
-		       confirm_deadline > 0.0
-			       ? "K keep   R revert now"
-			       : "SPACE on/off   m/M mode   s scale   t rotate   [ ] order",
-		       KT_MID, KT_SURFACE, KT_A_NONE);
 	/*
 	 * EVERY VERB IN THIS WINDOW WAS A KEY, and the row of keys above is a
 	 * legend, not a control: a pointer could select a screen and then do
@@ -842,48 +1023,52 @@ static void draw(void)
 							   : "Turn On",
 					  bh && bh->proxy &&
 						  (!bh->enabled || live > 1) };
-	b[DB_MODE] = (struct kch_button){ "Mode", bh && bh->proxy &&
+	b[DB_MODE] = (struct kch_button){ "Mode", head_live(bh) &&
 							bh->nmodes > 1 };
 	b[DB_SCALE] = (struct kch_button){ "Scale", bh && bh->proxy };
 	b[DB_ROTATE] = (struct kch_button){ "Rotate", bh && bh->proxy };
 	b[DB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, DB_N, -1);
 	int room = bx - 3;
-	const char *note = applied_note[0] ? applied_note
-					   : "ENTER apply    ESC cancel";
-	/* A MESSAGE takes whatever room is left; a HINT is drawn whole or not
-	 * at all, because half a sentence is worse than none. */
-	if (room > 0 && (applied_note[0]
-				 ? 1
-				 : room >= (int)ktui_utf8_width(note)))
-		ktui_draw_text(2, h - 2, room, note,
+	/* A MESSAGE takes whatever room is left. The keys are the row's now,
+	 * one row up, where the legend used to be written by hand. */
+	if (applied_note[0] && room > 0)
+		ktui_draw_text(2, h - 2, room, applied_note,
 			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,
 			       KT_A_NONE);
+
+	/*
+	 * `s` SCALE AND `t` ROTATE ARE DELIBERATELY NOT PUSHED. This window is
+	 * sixty columns and eight hints need seventy-four; the row stops at
+	 * the first that does not fit, and what it would drop is the Esc hint
+	 * that must always be there. The Scale and Rotate buttons name those
+	 * two actions on the bar. Widening the window is the fix if they are
+	 * wanted here — never reordering Esc.
+	 */
+	ktui_hint_if(confirm_deadline > 0.0, "K", "keep");
+	ktui_hint_if(confirm_deadline > 0.0, "R", "revert");
+	/* The bar is drawn with focus -1 and so pushes no Enter hint of its
+	 * own; this surface names its own Apply. */
+	ktui_hint_if(confirm_deadline == 0.0 && nheads > 0, "Enter", "apply");
+	ktui_hint_if(confirm_deadline == 0.0 && bh && bh->proxy &&
+			     (!bh->enabled || live > 1),
+		     "Space", "on/off");
+	ktui_hint_if(confirm_deadline == 0.0 && head_live(bh) &&
+			     bh->nmodes > 1,
+		     "m", "mode");
+	ktui_hint_if(confirm_deadline == 0.0 && nheads > 1, "[/]", "order");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 3, w - 4, 1), KT_SURFACE);
+
+	/* LAST, over everything: the list is drawn on top of the rows it
+	 * covers, so anything drawn after it would paint through it. */
+	if (mode_drop.open && sel >= 0 && sel < nheads)
+		ktui_dropdown_draw_open(mode_rect(), &mode_drop, mode_optv,
+					mode_options(&heads[order[sel]]));
 	ktui_draw_flush();
 }
 
 /* ── the plan, as keys ─────────────────────────────────────────────────── */
-
-static int preferred_mode(const struct head *h)
-{
-	for (int i = 0; i < h->nmodes; i++)
-		if (h->modes[i].preferred)
-			return i;
-	return 0;
-}
-
-static void cycle_mode(struct head *h, int dir)
-{
-	if (h->nmodes < 1)
-		return;
-	/* From `auto`, the first press lands on the preferred mode — the one
-	 * the monitor itself advertises — not on whatever slot came first. */
-	if (h->cur_mode < 0) {
-		h->cur_mode = preferred_mode(h);
-		return;
-	}
-	h->cur_mode = (h->cur_mode + dir + h->nmodes) % h->nmodes;
-}
 
 static void cycle_scale(struct head *h)
 {
@@ -958,44 +1143,100 @@ int display_main(int argc, char **argv)
 	 * on — and --apply runs at session start and on hotplug, where there
 	 * is nobody to draw for.
 	 */
-	KwlConfig cfg = {
-		.role = (list_only || apply_only) ? KWL_ROLE_NONE
-						  : KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = (list_only || apply_only) ? KDISP_ROLE_NONE
+						  : KDISP_ROLE_OVERLAY,
 		.cols = 60,
 		.rows = 14,
 		.app_id = "kdos-display",
 		.font = font,
 		.keyboard = 1,
+		/*
+		 * A MODE CHANGE IS A MANAGEMENT VERB. It re-cuts the grid
+		 * under every window on the desktop, so the privilege is
+		 * asked for explicitly — the rule the window list and the
+		 * screen's font both keep, and the thing that makes the
+		 * console answer this surface at all.
+		 */
+		.manage = 1,
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-display: no compositor\n");
 		return 1;
 	}
 
+	/*
+	 * NULL ON THE CONSOLE, and this is the guard that stops it being a
+	 * crash. `kdisp_init` succeeds there — the console backend probes
+	 * first and takes it — so reaching past libkdisp for a Wayland
+	 * display hands `wl_display_get_registry` a null pointer, from a Start
+	 * menu row a person can click.
+	 *
+	 * Output management is Wayland's. The console desktop has one grid at
+	 * one size, so there is nothing here for this program to arrange.
+	 */
+	/*
+	 * THE CONSOLE ASKS THE DISPLAY, NOT THE COMPOSITOR. `kwl_display()` is
+	 * NULL there — reaching past libkdisp for a Wayland display would hand
+	 * `wl_display_get_registry` a null pointer from a Start menu row a
+	 * person can click — and the screens come over the session's own wire
+	 * instead, gathered by the view that is driving them.
+	 *
+	 * ASKED AND THEN WAITED FOR. The answer crosses a socket and arrives
+	 * some pumps later, so a surface that read the count once would draw
+	 * an empty list for ever; this is the one place that spins, because
+	 * everything below it needs a list to draw.
+	 */
 	struct wl_display *dpy = kwl_display();
-	struct wl_registry *reg = wl_display_get_registry(dpy);
-	wl_registry_add_listener(reg, &registry_listener, NULL);
-	wl_display_roundtrip(dpy);		/* the manager */
-	wl_display_roundtrip(dpy);		/* its heads */
-	wl_display_roundtrip(dpy);		/* and their modes */
 
-	if (!mgr) {
-		fprintf(stderr, "kdos-display: this compositor has no "
-				"wlr-output-management\n");
-		kwl_shutdown();
-		return 1;
+	if (!dpy) {
+		/*
+		 * ASKED, THEN WAITED OUT IN FULL. The session answers from
+		 * what it holds at once and the display's own answer follows,
+		 * so a spin that stopped at the first non-zero count would
+		 * draw whichever screens the LAST display had. One second is
+		 * far longer than a unix socket needs and far shorter than a
+		 * person notices.
+		 */
+		kdisp_out_ask();
+		for (int i = 0; i < 200; i++) {
+			kdisp_pump();
+			usleep(5000);
+		}
+		con_fill();
+		if (!nheads) {
+			fprintf(stderr, "kdos-display: this display reports no "
+					"screens it can change\n");
+			kdisp_shutdown();
+			return 1;
+		}
+	}
+	if (dpy) {
+		struct wl_registry *reg = wl_display_get_registry(dpy);
+
+		wl_registry_add_listener(reg, &registry_listener, NULL);
+		wl_display_roundtrip(dpy);	/* the manager */
+		wl_display_roundtrip(dpy);	/* its heads */
+		wl_display_roundtrip(dpy);	/* and their modes */
+
+		if (!mgr) {
+			fprintf(stderr, "kdos-display: this compositor has no "
+					"wlr-output-management\n");
+			kdisp_shutdown();
+			return 1;
+		}
 	}
 
 	if (list_only) {
 		print_list();
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 0;
 	}
 	if (apply_only) {
 		int rc = apply_saved(dpy);
-		kwl_shutdown();
+		kdisp_shutdown();
 		return rc;
 	}
 
@@ -1004,8 +1245,13 @@ int display_main(int argc, char **argv)
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "display";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "revert", cd_up, cd_revert, dpy);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		/*
@@ -1033,7 +1279,8 @@ int display_main(int argc, char **argv)
 				snap_restore();
 				reverting = 1;
 				apply_now();
-				wl_display_flush(dpy);
+				if (dpy)
+					wl_display_flush(dpy);
 			} else {
 				snprintf(applied_note, sizeof(applied_note),
 					 "Keep these settings? reverting in %ds — press K",
@@ -1053,13 +1300,22 @@ int display_main(int argc, char **argv)
 			continue;
 		}
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		/* The countdown answers two keys and nothing else: editing a
 		 * plan mid-revert would apply a state nobody chose. */
 		if (confirm_deadline > 0.0) {
 			if (ev.type == KT_EVT_KEY &&
 			    (ev.key == 'k' || ev.key == 'K')) {
 				confirm_deadline = 0.0;
-				persist_layout();
+				keep_now();
 				goto done;
 			}
 			if (ev.type == KT_EVT_KEY &&
@@ -1068,7 +1324,33 @@ int display_main(int argc, char **argv)
 				snap_restore();
 				reverting = 1;
 				apply_now();
-				wl_display_flush(dpy);
+				if (dpy)
+					wl_display_flush(dpy);
+			}
+			continue;
+		}
+
+		/*
+		 * THE OPEN LIST TAKES EVERY EVENT, above the surface's own
+		 * keys and above the button bar. A list drawn over the rows
+		 * that a key underneath still answered would move the
+		 * selection out from under the list a person is reading.
+		 */
+		if (mode_drop.open) {
+			struct head *dh = (sel >= 0 && sel < nheads)
+						  ? &heads[order[sel]]
+						  : NULL;
+			int n = mode_options(dh);
+
+			if (ev.type == KT_EVT_KEY) {
+				if (ktui_dropdown_key(&mode_drop, n, ev.key) &&
+				    dh)
+					dh->cur_mode = mode_drop.sel;
+			} else if (ev.type == KT_EVT_MOUSE &&
+				   ev.press == KT_MP_PRESS) {
+				if (ktui_dropdown_hit(mode_rect(), &mode_drop,
+						      n, ev.mx, ev.my) && dh)
+					dh->cur_mode = mode_drop.sel;
 			}
 			continue;
 		}
@@ -1106,7 +1388,7 @@ int display_main(int argc, char **argv)
 				struct head *hh = (sel >= 0 && sel < nheads)
 							  ? &heads[order[sel]]
 							  : NULL;
-				if (hh && !hh->proxy)
+				if (!head_live(hh))
 					hh = NULL;
 				switch (bi) {
 				case DB_APPLY:
@@ -1114,14 +1396,14 @@ int display_main(int argc, char **argv)
 					applied = 0;
 					applied_note[0] = '\0';
 					apply_now();
-					wl_display_flush(dpy);
+					if (dpy)
+						wl_display_flush(dpy);
 					break;
 				case DB_ONOFF:
 					toggle_enabled(hh);
 					break;
 				case DB_MODE:
-					if (hh)
-						cycle_mode(hh, 1);
+					mode_open(hh);
 					break;
 				case DB_SCALE:
 					if (hh)
@@ -1147,11 +1429,9 @@ int display_main(int argc, char **argv)
 					 ? &heads[order[sel]]
 					 : NULL;
 		/* Nothing is editable on a screen that has been unplugged. */
-		if (h && !h->proxy)
+		if (!head_live(h))
 			h = NULL;
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;
@@ -1164,12 +1444,8 @@ int display_main(int argc, char **argv)
 			toggle_enabled(h);
 			break;
 		case 'm':
-			if (h)
-				cycle_mode(h, 1);
-			break;
 		case 'M':
-			if (h)
-				cycle_mode(h, -1);
+			mode_open(h);
 			break;
 		case 's':
 			if (h)
@@ -1192,13 +1468,14 @@ int display_main(int argc, char **argv)
 			applied = 0;
 			applied_note[0] = '\0';
 			apply_now();
-			wl_display_flush(dpy);
+			if (dpy)
+				wl_display_flush(dpy);
 			break;
 		default:
 			break;
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return applied < 0 ? 1 : 0;
 }

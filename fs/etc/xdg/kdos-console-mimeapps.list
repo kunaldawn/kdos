@@ -1,0 +1,77 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What opens a file on the CONSOLE desktop.
+#
+# The console session exports XDG_CURRENT_DESKTOP=KDOS-Console:KDOS, so this
+# file is consulted for it and never under the compositor — which is the whole
+# point: a picture opens in `timg` inside a terminal here and in a boxed viewer
+# there, and neither desktop edits the other's choices.
+#
+# AT /etc/xdg AND NOT IN A HOME. A person's own choice, wherever they make it,
+# lives in their config directory and is searched first; a shipped default that
+# outranked it would be a chooser that appears to do nothing. This is the
+# fallback, which is what a distribution default is.
+#
+# ONLY WHAT THE TWO DESKTOPS ANSWER DIFFERENTLY. A type both would open the
+# same way — a directory in `mc` — belongs in the plain `mimeapps.list` beside
+# this file, or the same decision is written twice and drifts.
+#
+# EVERY ROW NAMES AN ENTRY THAT IS INSTALLED. An id nothing provides falls
+# through to the next candidate silently, so a row for a program that is not
+# here is a row nobody can tell is dead.
+# ---------------------------------
+
+[Default Applications]
+text/plain=micro.desktop
+text/markdown=micro.desktop
+text/x-shellscript=micro.desktop
+application/json=micro.desktop
+application/xml=micro.desktop
+# THE THREE `libkimg` DECODES GO TO THE VIEWER, and the rest to `timg`.
+# `kdos-pix` fits, zooms, pans and steps through the folder; `timg` prints a
+# picture once and exits, which is the right answer only for a format the
+# viewer cannot open. A row here for a type `kdos-pix` refuses would be a
+# viewer that opens and says it cannot read the file.
+image/png=kdos-pix.desktop
+image/jpeg=kdos-pix.desktop
+image/webp=kdos-pix.desktop
+image/gif=timg.desktop
+image/bmp=timg.desktop
+image/tiff=timg.desktop
+text/csv=visidata.desktop
+# A SPREADSHEET GOES TO sc-im AND A DATA FILE TO visidata, and the difference is
+# measured rather than tasted. sc-im reads xlsx in C — libzip and libxml2, an
+# `open_xlsx` symbol, `-DXLSX` in the binary — so it opens one with no Python
+# in the way. visidata reaches the same file only through openpyxl, which is
+# why that port exists: `vd` on an xlsx without it answers "package `openpyxl`
+# not installed" and writes nothing.
+#
+# IT READS ONE AND CANNOT WRITE ONE. sc-im's xlsx EXPORT is gated on
+# libxlsxwriter, which is not a port here, so saving goes back out as .sc, .csv
+# or .ods — see the gaps page.
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=sc-im.desktop
+# A .docx ON THE CONSOLE, where the office suite that would open it is a
+# Wayland application and cannot run. `doxx` renders it read-only in the
+# terminal; under the compositor the plain table's answer stands.
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=doxx.desktop
+# AND A PAGE ALREADY ON THE DISK. Without this row `text/html` is claimed only
+# by the browser box's generated entry, which is a Wayland client: opening a
+# saved page on the console answered "could not compose box 'app.firefox-esr'".
+# Nothing can reorder its way out of that — there is one candidate, and the
+# console's own browser is reachable only by a row like this one, because
+# w3m.desktop carries no MimeType line and /usr/share/applications has no
+# mimeinfo.cache.
+text/html=w3m.desktop
+# A LINK, ON A DESKTOP WITH NO COMPOSITOR. `w3m` and not `lynx` for the reason
+# it is this image's text browser at all: it lays tables out on the grid, and a
+# page that is nothing but tables is readable. The entry is `Terminal=true`, so
+# the opener wraps it in `kdos-term` rather than starting a browser nobody can
+# see. Under the compositor these types are the browser box's, which is why
+# they are here and not in the plain list beside this file.
+x-scheme-handler/http=w3m.desktop
+x-scheme-handler/https=w3m.desktop

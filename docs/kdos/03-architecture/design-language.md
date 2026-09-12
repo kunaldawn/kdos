@@ -26,6 +26,12 @@ The consequence to internalise: **a control is as tall as one row of text**. Whe
 wrong, the answer is a picture drawn into whole cells, not a second renderer. See
 [Pictures](#pictures-are-an-enhancement-layer).
 
+**And nothing on this desktop is drawn by another toolkit.** The last thing that was is the
+input-method candidate window: an engine draws its own with its own renderer, which on a character
+grid is a rounded antialiased panel sitting on top of a text-mode desktop. `kdos-ime` draws it here
+instead — the same chrome, the same slots, one program on both desktops — by speaking the
+input-method framework's own generic panel protocol rather than by writing an input method.
+
 ## A window is a double-line box
 
 ```
@@ -79,6 +85,52 @@ what is left.
 another is worse than an empty half-row. A **message** takes whatever room there is, because it is
 what the user just did.
 
+## The keys every surface answers
+
+Five keys mean the same thing on every surface here, and the bottom row says what the rest of them
+do **right now**.
+
+| Key | What it does | Where it comes from |
+|---|---|---|
+| `F1` | Opens this surface's page in `kdos-doc` | `KtuiKeys.doc`, drawn first in the row |
+| `F10` | Opens the surface's menu bar | `KtuiMenu.has_bar` |
+| `Shift+F10` | Opens the menu of the thing under the caret | `KtuiKeys.ctx_at` |
+| `Alt+letter` | Opens a menu pane by its underlined letter | the `&` in a pane title |
+| `Esc` | Steps back **one** level, and only then closes | the Esc ladder |
+
+**A key with nothing behind it is neither advertised nor answered.** A surface with no page in
+`/usr/share/kdos/doc` leaves `doc` NULL, and `F1` then returns PASS: a key that opens an index
+reading *no such document* teaches that help is broken, which is worse than never offering it.
+`testing/preflight.sh` refuses a `.doc` naming a file that does not ship. The same rule holds for
+`F10` on a surface with no bar and `Shift+F10` on one with nothing focused.
+
+**Esc is a ladder of declared layers, asked at the instant the key arrives and never cached.** A
+surface registers each raised state once with `ktui_keys_layer()`, outermost first, and
+`ktui_keys()` takes exactly one rung per press. A dialog dismissed by a click leaves no raised bit
+behind — the predicate is a question, not a flag — which is the defect that makes a hand-written
+ladder swallow the next keystroke. `ktui_esc_verb()` names the topmost open rung, so the row
+cannot read *Esc Close* on a screen where Escape goes back.
+
+**The row is pushed during the draw, by whatever holds the focus.** `ktui_hint(key, verb)` and
+`ktui_hint_if(cond, …)` push; `ktui_hint_row()` draws and clears the pool. A fixed string cannot
+follow the focus, and a row naming keys the focused control does not answer is worse than no row:
+the whole value of the line is that a key on it works.
+
+**The row drops its tail.** A hint that does not fit takes every hint after it, and `Esc` is
+pushed last — so on a narrow surface it is the first thing lost. Where a surface is too narrow for
+everything it answers, drop a hint deliberately rather than reordering `Esc`; widening the surface
+is the other honest fix.
+
+**A menu's `sel` indexes its items, never its drawn rows.** A caller's `show` callback hides rows,
+and a selection counted in drawn rows lands on a different item the moment one is hidden. The same
+callback answers the drawing and the hit test, from one walk: two copies of a visibility rule
+disagree eventually, and a click then runs the row above the one under the pointer.
+
+**An accelerator is marked, not assumed.** `&` before a letter in a label or a pane title marks
+it; `&&` is a literal ampersand. The letter is underlined where the tier has underline and
+bracketed where it does not — a Linux VT has none, and drawing one there puts an unowned colour on
+the screen.
+
 ## Colour
 
 Colour comes from a **slot**, never from a literal value:
@@ -86,7 +138,8 @@ Colour comes from a **slot**, never from a literal value:
 | Slot | Role |
 |---|---|
 | `KT_ACCENT` | The accent |
-| `KT_WARN` | Urgent |
+| `KT_ERR` | Urgent |
+| `KT_WARN` | Secondary — a caution, not a failure |
 | `KT_TEXT` | Body text |
 | `KT_MID` | Labels, secondary text, borders |
 | `KT_DIM` | **A fill** — see below |
@@ -96,6 +149,14 @@ Colour comes from a **slot**, never from a literal value:
 The values behind those slots are one table in `libkcolor`, expanded at compile time by everything
 that draws. Nobody keeps a second copy of the numbers, which is why one word repaints the whole
 desktop.
+
+**The one exception is a colour that is not ours to name.** A program running in a terminal may ask
+for a 24-bit colour, or one of the 216-colour cube: no palette names those, nothing about them
+follows an accent, and reducing them to eight slots is what loses a photograph. Such a cell carries
+the literal **beside** the slot it reduces to, and only terminal content ever does. **Chrome is
+slots, always** — a piece of chrome holding a literal is a piece of chrome that stops following
+`kdos theme`, and the ANSI sixteen stay slots for the same reason: they are colours this desktop's
+palette names.
 
 Two rules on top of that, both of which have shipped as defects:
 
@@ -140,6 +201,90 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 | Scrollbar | Is **dragged**, not merely looked at |
 | Column header | Sets the sort; a second press reverses it |
 | Click away | Closes a transient surface |
+
+### Drawing the pointer
+
+**The view draws it, never the session.** The session owns the windows and the view owns the
+screen, so a pointer the session drew would cost a round trip for every motion event and trail the
+hand moving it. The view already holds the device and already knows where it is.
+
+**The pointer is the cell under it, reversed** — on a screen of its own, in a terminal, and over
+`ssh` alike. It is the pointer every text mode has drawn. It needs no artwork, no pixel layer and
+no second code path, and a person looking at the same session through two displays sees the same
+picture in both.
+
+`ktui_draw_cursor(x, y)` names the cell; `ktui_draw_flush()` does the drawing, and how it does it
+is the whole of the contract:
+
+- **The reverse goes on for the flush and comes straight back off.** `back` is where the session's
+  cells accumulate and it survives between frames, so a reverse left in it is a stain the next
+  frame draws around — one per cell the pointer was ever over.
+- **Taking it off again is what erases it.** `front` keeps the reversed cell and `back` does not,
+  so the cell differs and repaints as itself the moment the pointer leaves. One XOR does both jobs.
+- **A cell with no glyph still honours the reverse.** A space and a control cell carry colour and
+  nothing to draw, and the fill pass has already painted each in its background slot — so a painter
+  that skips them loses the swap, and the pointer becomes visible only where it happens to sit over
+  text. `kcell_paint` fills those cells with the foreground slot instead.
+- **Motion is a change even when no cell's content is**, so the framebuffer is marked dirty for it.
+  Otherwise the pointer moves only when something else on the screen happens to.
+
+Nothing is drawn before the first motion — the named cell starts at no cell at all — so a machine
+with no pointing device does not wear a pointer in its corner for the life of the session.
+
+The sub-cell offsets in the wire format, biased so that zero is the centre of a cell, are not for
+this. They are for the one thing on the desktop that can be pointed at more finely than a cell: an
+embedded pixel guest, which is told where inside the cell the press landed.
+
+## Touch
+
+A touchscreen answers the same contract, because **one recogniser turns a finger into the pointer
+events above**. `ktui_gesture_feed` in `libktui` is fed by `wl_touch` on the graphical desktop and
+by `libinput` on the console; a disambiguator written inside a backend would be written twice and
+would disagree twice.
+
+| Gesture | Reported as | And also arrives as |
+|---|---|---|
+| Tap | `KT_GEST_TAP` | a left press and release |
+| Long press | `KT_GEST_LONG` | nothing — a surface that wants a context menu reads the gesture |
+| Drag | `KT_GEST_DRAG` | motion with the button held |
+| Two-finger scroll | `KT_GEST_SCROLL` | a wheel tick |
+| Pinch | `KT_GEST_PINCH` | nothing |
+| Edge swipe | `KT_GEST_SWIPE_EDGE` | motion, and it says which edge it came from |
+
+So **a surface written before touch existed already works under a finger**, and one that wants more
+reads `ev.gesture` on a `KT_EVT_TOUCH`.
+
+Two rules that are each a defect if missed:
+
+- **Movement is measured in CELLS.** A drag begins when the finger leaves the cell it went down in.
+  Coarse on purpose: everything here is a grid, and a threshold in pixels is a number the console
+  cannot see. The same threshold decides when a pointer press became a drag, from `libkwm`, so both
+  desktops pick a file up on the same gesture.
+- **One finger of two says nothing.** Moving away from a stationary finger is a pinch and a scroll
+  at the same time; the answer arrives when the second finger agrees or disagrees. Guessing makes
+  the two flip back and forth mid-gesture, which is unusable.
+
+Long press has no event to arrive on — the finger is down and nothing is moving — so it is polled
+with `ktui_gesture_tick` from the backend's idle wait, and reported **once**. **Both backends poll
+it**: `libkwl` from the Wayland loop and `libkkms` from the KMS one, with the same
+`CLOCK_MONOTONIC` milliseconds the recogniser was fed — a deadline compared against a different
+clock never expires, and nothing says so.
+
+**A long press is `Shift+F10` with a finger, and the contract answers it.** `ktui_keys()` opens the
+surface's context pane on `KT_GEST_LONG`, so a surface that declared one inherits touch without a
+touch path of its own — and it opens **at the finger**, not where `ctx_at` says the keyboard's focus
+is drawn, because a person holding a row expects the menu on that row. A surface that refuses a
+context menu refuses a finger too, and a **tap** opens nothing: a tap is a click, every widget
+already handles one, and a tap that opened a menu would put a pane under every finger.
+
+## Drops
+
+A drop is a position **and** a payload, and an event has room for one of them. `KT_EVT_DROP`
+carries where; `ktui_drop_take` yields the payload, once, so two surfaces in one process cannot both
+act on one drop.
+
+`text/uri-list` arrives as it came — CRLF-separated URIs, comment lines and all — because what a URI
+means differs per surface.
 
 Three subtleties that are each a defect if missed:
 
@@ -230,6 +375,21 @@ Two rules for pixel tiles:
 - **The geometry is decided before the tile is claimed.** Bailing out after claiming it leaves the
   tile believing it drew that content, and the next frame presents a stale slot.
 
+**A picture from a terminal is the same sprite**, which is why nothing new was invented to draw
+one. A picture wider or taller than sixteen cells becomes a grid of sprites sharing a key prefix,
+all-or-nothing, so it evicts and re-registers as a unit rather than leaving three quarters of a
+photograph on the screen. Each backend does what it can:
+
+| Backend | What a picture is |
+|---|---|
+| Wayland, KMS | Real pixels, scaled to the cells it occupies |
+| The console wire | The bytes, forwarded once per slot; the **display** scales them to its own cell size, because a client has no way to know what that is |
+| A tty, or a display built without a pixel library | The fallback shade, in every cell of the picture |
+
+**A picture that renders as nothing is worse than one that renders as a mark.** Blank cells are
+indistinguishable from output that never arrived, which is why the tiled path carries a fallback
+codepoint rather than a space.
+
 **A sprite is two cells wide and one tall** wherever it sits beside text. A cell is twice as tall
 as it is wide, so two cells across one row is a square on the same optical line as the text. Asking
 for a two-cell-wide, two-row box next to a single row of text centres the picture across the
@@ -264,6 +424,9 @@ A new surface is not finished until every line is answered.
 5. Hit map recorded from the draw; coordinates handed down by the frame.
 6. `--dump` at 80x24 and 132x43, with a reference frame committed for both.
 7. Read it back at the **vt** tier before believing it reads on `tty1`.
+8. One `KtuiKeys`, `ktui_keys()` first in the dispatch and `ktui_hint_row()` last in the draw —
+   on **every** path, the `--dump` one included, because the row is what clears the pool.
+9. Every raised state declared with `ktui_keys_layer()` rather than written into an `Esc` arm.
 
 `grep -c KT_EVT_MOUSE` returning zero for a new file is the same defect four surfaces have
 shipped with.

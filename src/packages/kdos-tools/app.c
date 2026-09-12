@@ -27,6 +27,7 @@
  * from `wheel` from being `mount /dev/sda2 /etc`.
  */
 
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,10 @@
 #include <unistd.h>
 
 #include "kbase.h"
+/* The entry writer quotes each field through the same library that reads one,
+ * so a command survives the round trip through a file two other programs
+ * parse. */
+#include "kxdg.h"
 #include "kpack.h"
 #include "kpkg.h"
 #include "kdos-tools.h"
@@ -881,6 +886,285 @@ static int cmd_sources(void)
 	return 0;
 }
 
+/* ── kdos app tui ───────────────────────────────────────────────────────
+ *
+ * A TERMINAL PROGRAM BECOMES AN APPLICATION, without anybody editing a file
+ * by hand. Everything the catalogue's own entries carry, written the way the
+ * spec says to write it: `Terminal=true`, an `Exec` quoted per field rather
+ * than concatenated, and the two KDOS keys that say how the window should
+ * open.
+ *
+ * `X-KDOS-TUI=true` IS WHAT `rm` CHECKS. This command deletes only a file it
+ * wrote — a slug is a person's word and the same word can name an entry the
+ * image shipped, so the marker is what keeps `kdos app tui rm` from being a
+ * way to delete somebody else's application.
+ *
+ * AND THE SLUG IS PREFIXED for the other half of that: a file called
+ * `mc.desktop` in the user's directory SHADOWS the one in `/usr/share`, so a
+ * name that happened to collide would take the shipped entry off the menu
+ * rather than adding a row beside it.
+ */
+#define TUI_PREFIX "kdos-tui-"
+
+/* The whole command's usage, which every wrong shape here answers with. */
+static int usage(void);
+
+/* ~/.local/share/applications, made if it is not there — the same directory
+ * `genlaunchers --user` writes into, and the one XDG says a person's own
+ * entries live in. */
+static char *tui_dir(void)
+{
+	const char *xdg = getenv("XDG_DATA_HOME");
+	char *base = xdg && *xdg ? kb_strdup(xdg)
+				 : kb_path_join(kb_home_dir(), ".local/share");
+	char *dir = kb_path_join(base, "applications");
+
+	free(base);
+	kb_mkdir_p(dir);
+	return dir;
+}
+
+/*
+ * A DISPLAY NAME BECOMES A FILENAME. Lower case, and anything that is not a
+ * letter or a digit becomes one dash — a filename with a space in it is a
+ * filename half the tools that read this directory will hand to a shell.
+ */
+static int tui_slug(const char *name, char *out, size_t n)
+{
+	size_t o = 0;
+	int last_dash = 1;	/* so a leading run produces nothing */
+
+	for (const char *p = name; *p && o + 1 < n; p++) {
+		unsigned char c = (unsigned char)*p;
+
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+		    (c >= '0' && c <= '9')) {
+			out[o++] = (char)(c >= 'A' && c <= 'Z' ? c + 32 : c);
+			last_dash = 0;
+			continue;
+		}
+		if (last_dash)
+			continue;
+		out[o++] = '-';
+		last_dash = 1;
+	}
+	while (o && out[o - 1] == '-')
+		o--;
+	out[o] = '\0';
+	return o > 0;
+}
+
+/*
+ * THE EXEC LINE, QUOTED PER FIELD AND NEVER CONCATENATED.
+ *
+ * The command is split by the library that READS an Exec and each word is
+ * quoted by the one that writes one, so a path with a space in it survives the
+ * round trip through a file two other programs parse.
+ *
+ * `%` IS DOUBLED. A percent begins a field code in an Exec line, so a literal
+ * one has to be `%%` — `kxdg_exec_quote` does not do it, because it is
+ * quoting a word rather than writing an Exec, and a filename with a percent in
+ * it would otherwise reach the launcher as half a field code.
+ */
+static int tui_exec(const char *cmd, char *out, size_t n)
+{
+	char store[1024];
+	const char *av[32];
+	int argc = kxdg_exec_split(cmd, NULL, -1, store, sizeof(store), av, 32);
+	size_t o = 0;
+
+	if (argc <= 0)
+		return 0;
+	for (int i = 0; i < argc; i++) {
+		char q[512];
+
+		if (kxdg_exec_quote(av[i], q, sizeof(q)) != 0)
+			return 0;
+		for (const char *p = q; *p; p++) {
+			if (o + 3 >= n)
+				return 0;
+			if (*p == '%')
+				out[o++] = '%';
+			out[o++] = *p;
+		}
+		if (i + 1 < argc) {
+			if (o + 2 >= n)
+				return 0;
+			out[o++] = ' ';
+		}
+	}
+	out[o] = '\0';
+	return 1;
+}
+
+/* True when this file is one this command wrote. */
+static int tui_ours(const char *path, char *name, size_t nn)
+{
+	KxdgEntry e = { 0 };
+	int ours;
+
+	if (kxdg_load(&e, path, "Desktop Entry") != 0)
+		return 0;
+	ours = kxdg_bool(&e, "X-KDOS-TUI", 0);
+	if (ours && name)
+		snprintf(name, nn, "%s", kxdg_get(&e, "Name", ""));
+	kxdg_free(&e);
+	return ours;
+}
+
+static int tui_add(int argc, char **argv)
+{
+	const char *name = NULL, *cmd = NULL;
+	const char *icon = "utilities-terminal", *cat = "Utility";
+	const char *size = NULL;
+	int flt = 0;
+	char slug[128], exec[2048], path[1024];
+	char *dir;
+	FILE *f;
+
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "--float")) {
+			flt = 1;
+		} else if (!strcmp(argv[i], "--size") && i + 1 < argc) {
+			int c = 0, r = 0;
+
+			size = argv[++i];
+			if (sscanf(size, "%dx%d", &c, &r) != 2 || c < 4 ||
+			    r < 2) {
+				fprintf(stderr, "kdos app tui: --size wants "
+						"COLSxROWS, at least 4x2\n");
+				return 2;
+			}
+		} else if (!strcmp(argv[i], "--icon") && i + 1 < argc) {
+			icon = argv[++i];
+		} else if (!strcmp(argv[i], "--category") && i + 1 < argc) {
+			cat = argv[++i];
+		} else if (argv[i][0] == '-') {
+			return usage();
+		} else if (!name) {
+			name = argv[i];
+		} else if (!cmd) {
+			cmd = argv[i];
+		} else {
+			return usage();
+		}
+	}
+	if (!name || !cmd)
+		return usage();
+	if (!tui_slug(name, slug, sizeof(slug))) {
+		fprintf(stderr, "kdos app tui: '%s' has no letters or digits "
+				"to make a filename from\n", name);
+		return 2;
+	}
+	if (!tui_exec(cmd, exec, sizeof(exec))) {
+		fprintf(stderr, "kdos app tui: cannot write '%s' as an Exec "
+				"line\n", cmd);
+		return 2;
+	}
+
+	dir = tui_dir();
+	snprintf(path, sizeof(path), "%s/" TUI_PREFIX "%s.desktop", dir, slug);
+	free(dir);
+
+	f = fopen(path, "we");
+	if (!f) {
+		fprintf(stderr, "kdos app tui: %s: %s\n", path,
+			strerror(errno));
+		return 1;
+	}
+	fprintf(f, "[Desktop Entry]\n");
+	fprintf(f, "Type=Application\n");
+	fprintf(f, "Name=%s\n", name);
+	fprintf(f, "Exec=%s\n", exec);
+	fprintf(f, "Icon=%s\n", icon);
+	fprintf(f, "Terminal=true\n");
+	fprintf(f, "Categories=%s;\n", cat);
+	fprintf(f, "X-KDOS-TUI=true\n");
+	if (flt)
+		fprintf(f, "X-KDOS-Float=true\n");
+	if (size)
+		fprintf(f, "X-KDOS-Size=%s\n", size);
+	fclose(f);
+
+	printf("%s%s\n", TUI_PREFIX, slug);
+	return 0;
+}
+
+static int tui_rm(const char *slug)
+{
+	char *dir = tui_dir();
+	char path[1024];
+
+	if (strchr(slug, '/')) {
+		free(dir);
+		fprintf(stderr, "kdos app tui: a slug is a name, not a path\n");
+		return 2;
+	}
+	/* Either spelling: what `add` printed, or the same without the prefix
+	 * it added — a person reading `ls` sees the whole filename. */
+	if (!strncmp(slug, TUI_PREFIX, sizeof(TUI_PREFIX) - 1))
+		snprintf(path, sizeof(path), "%s/%s.desktop", dir, slug);
+	else
+		snprintf(path, sizeof(path), "%s/" TUI_PREFIX "%s.desktop",
+			 dir, slug);
+	free(dir);
+
+	if (!tui_ours(path, NULL, 0)) {
+		fprintf(stderr, "kdos app tui: %s is not one this command "
+				"wrote\n", path);
+		return 2;
+	}
+	if (unlink(path) != 0) {
+		fprintf(stderr, "kdos app tui: %s: %s\n", path,
+			strerror(errno));
+		return 1;
+	}
+	return 0;
+}
+
+static int tui_ls(void)
+{
+	char *dir = tui_dir();
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	int n = 0;
+
+	if (!d) {
+		free(dir);
+		return 0;
+	}
+	while ((e = readdir(d))) {
+		char path[1024], name[256];
+		size_t len = strlen(e->d_name);
+
+		if (len < 9 || strcmp(e->d_name + len - 8, ".desktop"))
+			continue;
+		snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
+		if (!tui_ours(path, name, sizeof(name)))
+			continue;
+		printf("%-32.*s  %s\n", (int)(len - 8), e->d_name, name);
+		n++;
+	}
+	closedir(d);
+	free(dir);
+	if (!n)
+		printf("no terminal applications added here\n");
+	return 0;
+}
+
+static int cmd_tui(int argc, char **argv)
+{
+	if (argc < 1)
+		return usage();
+	if (!strcmp(argv[0], "add"))
+		return tui_add(argc - 1, argv + 1);
+	if (!strcmp(argv[0], "rm") && argc > 1)
+		return tui_rm(argv[1]);
+	if (!strcmp(argv[0], "ls"))
+		return tui_ls();
+	return usage();
+}
+
 static int usage(void)
 {
 	fprintf(stderr,
@@ -893,6 +1177,10 @@ static int usage(void)
 		"       kdos app rollback <id>\n"
 		"       kdos app update [<id>] [--dry-run] [--online <url>]\n"
 		"       kdos app sources\n"
+		"       kdos app tui add <name> <command> [--float]\n"
+		"                       [--size COLSxROWS] [--icon NAME]\n"
+		"                       [--category X]\n"
+		"       kdos app tui rm <slug> | ls\n"
 		"\nAn application is one signed file. Installing it is a mount.\n"
 		"To install something that is not packed at all, from a network:\n"
 		"kdos-fetch-app <name>.\n");
@@ -909,6 +1197,16 @@ int kdt_app(int argc, char **argv)
 
 	if (!strcmp(cmd, "-h") || !strcmp(cmd, "--help"))
 		return usage();
+
+	/*
+	 * BEFORE THE DAEMON GATE. `tui` writes a file in this person's own
+	 * data directory and asks `kdos-packd` nothing — a verb that needed
+	 * the pack daemon to be running, and the caller to be in `wheel`,
+	 * before it could add a menu row for `ncdu` would be a verb refused
+	 * for a reason that has nothing to do with it.
+	 */
+	if (!strcmp(cmd, "tui"))
+		return cmd_tui(argc - 1, argv + 1);
 
 	{
 		/*

@@ -161,7 +161,20 @@ static int unseen;
  * With the history in place it is honest — the toast is not drawn, the entry
  * is kept, and the badge says how many are waiting.
  */
-static int dnd;
+/*
+ * IS DO NOT DISTURB ON? ONE FLAG, and it is the `dnd` toggle file — what
+ * `kdos toggle dnd` writes and what a chord or a script sets. This daemon
+ * keeps no copy of its own: a second flag OR'd with this one is a state the
+ * notification centre's own button cannot clear, so Allow Toasts left the
+ * toasts silenced and said it had not.
+ *
+ * The file also outlives the daemon, which is the behaviour a person expects
+ * from a switch they left on.
+ */
+static int dnd_on(void)
+{
+	return kb_toggle_on("dnd");
+}
 
 static void hist_push(const struct toast *t)
 {
@@ -201,6 +214,13 @@ static int notify_sock_path(char *out, size_t n)
 }
 
 static void open_href(const char *href);
+/* The socket's verbs reach into the stack, which is defined below it: the
+ * commands are answered where the socket is read and the stack is kept where
+ * it is drawn. */
+static void drop_at(int i, uint32_t reason);
+static int wrap_ranges(const char *s, int w, int starts[BODY_LINES],
+		       int lens[BODY_LINES]);
+static int64_t now_ms(void);
 
 static void serve_client(int c)
 {
@@ -215,7 +235,7 @@ static void serve_client(int c)
 	if (!strcmp(buf, "count")) {
 		/* `<unseen> <total> <dnd>` — everything the panel's badge
 		 * needs in one line, because it asks once a second. */
-		dprintf(c, "%d %d %d\n", unseen, nhist, dnd);
+		dprintf(c, "%d %d %d\n", unseen, nhist, dnd_on());
 	} else if (!strcmp(buf, "list")) {
 		/*
 		 * NEWEST FIRST, which is the order a list of things that
@@ -248,6 +268,59 @@ static void serve_client(int c)
 				unseen = nhist;
 		}
 		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "dismiss")) {
+		/* THE NEWEST, which is the one a chord means: the stack is
+		 * newest-last and the newest is the one that just interrupted
+		 * whatever was being done. Reason 2 — dismissed by the user —
+		 * so a client waiting on NotificationClosed is told the truth
+		 * about why. */
+		if (ntoasts)
+			drop_at(ntoasts - 1, 2);
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "dismiss all")) {
+		while (ntoasts)
+			drop_at(ntoasts - 1, 2);
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "raise")) {
+		/*
+		 * THE LAST ONE DISMISSED, BACK ON THE SCREEN — the undo for a
+		 * chord pressed a moment too early.
+		 *
+		 * TAKEN OUT OF THE HISTORY, not copied from it: a notification
+		 * is on the screen or it is in the centre and never both, or
+		 * dismissing it again would file a second copy of one thing.
+		 *
+		 * AND IT COMES BACK WITHOUT ITS BUTTONS. The notification it
+		 * came from is closed and its actions are the client's — a
+		 * button pressed here would fire a verb nothing is waiting
+		 * for. The markup styling is gone for the same reason it was
+		 * never kept: the centre stores what a notification SAID.
+		 */
+		if (nhist) {
+			struct hentry *h = &hist[nhist - 1];
+			struct toast *t;
+			int st_[BODY_LINES], ln_[BODY_LINES];
+
+			if (ntoasts == MAX_TOASTS)
+				drop_at(0, 1);
+			t = &toasts[ntoasts++];
+			memset(t, 0, sizeof(*t));
+			t->id = next_id++;
+			snprintf(t->app, sizeof(t->app), "%s", h->app);
+			snprintf(t->summary, sizeof(t->summary), "%s",
+				 h->summary);
+			snprintf(t->body, sizeof(t->body), "%s", h->body);
+			snprintf(t->href, sizeof(t->href), "%s", h->href);
+			t->nlinks = h->href[0] ? 1 : 0;
+			t->body_rows = t->body[0]
+				? wrap_ranges(t->body, BODY_W, st_, ln_) : 0;
+			t->urgent = h->urgent;
+			t->expires_ms = t->urgent ? 0 : now_ms() + 5000;
+			nhist--;
+			if (unseen > nhist)
+				unseen = nhist;
+		}
+		(void)!write(c, "ok\n", 3);
 	} else if (!strcmp(buf, "clear")) {
 		nhist = 0;
 		unseen = 0;
@@ -258,12 +331,16 @@ static void serve_client(int c)
 		while (*a == ' ')
 			a++;
 		if (!strcmp(a, "on"))
-			dnd = 1;
+			kb_toggle_set("dnd", 1);
 		else if (!strcmp(a, "off"))
-			dnd = 0;
+			kb_toggle_set("dnd", 0);
 		else if (!strcmp(a, "toggle") || !*a)
-			dnd = !dnd;
-		dprintf(c, "%d\n", dnd);
+			kb_toggle_set("dnd", !dnd_on());
+		/* The state as it now READS, not as it was asked for: a state
+		 * directory that cannot be written leaves the switch where it
+		 * was, and a centre told otherwise would draw the wrong
+		 * button. */
+		dprintf(c, "%d\n", dnd_on());
 	} else {
 		(void)!write(c, "err unknown command\n", 20);
 	}
@@ -610,28 +687,6 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	if (r < 0)
 		return r;
 
-	/*
-	 * DND: while $XDG_RUNTIME_DIR/kdos-dnd exists (the panel creates and
-	 * removes it), a non-critical notification is answered — an id, and
-	 * NotificationClosed so no client waits on it — and never stored.
-	 * Nothing is queued for later either: a DND that ambushes on exit is
-	 * worse than one that drops. Critical still shows; that is what the
-	 * urgency byte is FOR.
-	 */
-	if (urgency < 2) {
-		const char *rt = getenv("XDG_RUNTIME_DIR");
-		char dnd[512];
-		struct stat st;
-		if (rt && *rt) {
-			snprintf(dnd, sizeof(dnd), "%s/kdos-dnd", rt);
-			if (stat(dnd, &st) == 0) {
-				uint32_t id = replaces ? replaces : next_id++;
-				emit_closed(id, 1);
-				return sd_bus_reply_method_return(m, "u", id);
-			}
-		}
-	}
-
 	struct toast *t = NULL;
 	if (replaces) {
 		for (int i = 0; i < ntoasts; i++)
@@ -681,10 +736,18 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	 * one: it stays until it is dismissed, which is what every other
 	 * daemon does and what the urgency is for. A five-second toast about a
 	 * battery at 3% is a toast that will be missed.
+	 *
+	 * AND DIFFERENTLY AGAIN FOR ONE THAT CAN BE ACTED ON. A toast with
+	 * buttons asks for a decision, and five seconds is not long enough to
+	 * read it, find the pointer and aim — a button that expires before it
+	 * can be pressed is a button that is not there. It still goes away on
+	 * its own, because a stick nobody wants to open should not leave a
+	 * card on the screen forever.
 	 */
 	t->expires_ms = timeout == 0	 ? 0
 			: timeout > 0	 ? now_ms() + timeout
 			: t->urgent	 ? 0
+			: t->nact	 ? now_ms() + 20000
 					 : now_ms() + 5000;
 
 	/*
@@ -696,7 +759,7 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	 * routine", and a Do Not Disturb that hid a battery-critical warning
 	 * would be a switch nobody dares leave on.
 	 */
-	if (dnd && !t->urgent) {
+	if (dnd_on() && !t->urgent) {
 		uint32_t id = t->id;
 
 		drop_at((int)(t - toasts), 1);
@@ -871,7 +934,7 @@ static void draw_toasts(void)
 		 * backdrop owns — leaves everything else see-through.
 		 */
 		{
-			int cw = kwl_cell_w(), ch = kwl_cell_h();
+			int cw = kdisp_cell_w(), ch = kdisp_cell_h();
 
 			kch_px_grad(r.x * cw + 1, r.y * ch + 1,
 				    r.w * cw - 2, r.h * ch - 2,
@@ -1028,16 +1091,16 @@ int notifyd_main(int argc, char **argv)
 	 * covers the middle of the screen covers the thing the user was doing
 	 * when it arrived.
 	 */
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
-		.corner = KWL_CORNER_TOP_RIGHT,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
+		.corner = KDISP_CORNER_TOP_RIGHT,
 		.cols = TOAST_COLS,
 		.rows = 3,
 		.app_id = "kdos-notifyd",
 		.font = font,
 	};
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-notifyd: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -1046,7 +1109,7 @@ int notifyd_main(int argc, char **argv)
 	 * them — see the plate in draw_toasts(). */
 	kch_px_bare(KT_BG);
 
-	int wl_fd = kwl_fd();
+	int wl_fd = kdisp_fd();
 	int bus_fd = sd_bus_get_fd(bus);
 
 	/* Same live retint as the panel: this daemon outlives an accent
@@ -1055,7 +1118,7 @@ int notifyd_main(int argc, char **argv)
 	sh_theme_watch();
 
 	int shown_rows = -1;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
@@ -1092,18 +1155,18 @@ int notifyd_main(int argc, char **argv)
 		if (want != shown_rows) {
 			/*
 			 * With nothing to show the surface is DESTROYED, not
-			 * shrunk: kwl_overlay_hide()/show() replace the old
+			 * shrunk: kdisp_overlay_hide()/show() replace the old
 			 * one-cell workaround, and the show path completes the
 			 * initial-commit handshake before returning, so the
 			 * first toast after an idle period is drawn on a
 			 * surface that exists. The resize lesson still holds:
-			 * the configure lands in kwl_pump() below and the cell
+			 * the configure lands in kdisp_pump() below and the cell
 			 * buffer follows only through ktui_draw_resize().
 			 */
 			if (want > 0)
-				kwl_overlay_show(TOAST_COLS, want);
+				kdisp_overlay_show(TOAST_COLS, want);
 			else
-				kwl_overlay_hide();
+				kdisp_overlay_hide();
 			shown_rows = want;
 			/*
 			 * show() has already dispatched the configure, so the
@@ -1201,7 +1264,7 @@ int notifyd_main(int argc, char **argv)
 			}
 		}
 		/*
-		 * The configure that answers kwl_overlay_resize() lands here, and
+		 * The configure that answers kdisp_overlay_resize() lands here, and
 		 * the cell buffer does NOT follow by itself — `ktui_w`/`ktui_h`
 		 * come from ktui_draw_resize(), exactly as panel.c and
 		 * launcher.c already do it. Without this the surface grew and
@@ -1246,6 +1309,6 @@ int notifyd_main(int argc, char **argv)
 		unlink(spath);
 	}
 	sd_bus_unref(bus);
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

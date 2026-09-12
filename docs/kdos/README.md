@@ -14,8 +14,9 @@ records what it was.
 2. [Installation](02-user-guide/installation.md) — put it on a disk
 3. [The desktop](02-user-guide/desktop.md) — live in it
 4. [Applications](02-user-guide/applications.md) — the software library on the medium
-5. [Theming](02-user-guide/theming.md) — the four accents and the CRT pass
+5. [Theming](02-user-guide/theming.md) — the seven accents and the CRT pass
 6. [Administration](02-user-guide/administration.md) — services, network, hardware, updates
+7. [Accessibility](02-user-guide/accessibility.md) — the braille route, the voice, and what a reader may do
 
 **I want to build KDOS**
 
@@ -58,8 +59,9 @@ Getting a system running and living in it.
 | [Installation](02-user-guide/installation.md) | The installer page by page: disks, filesystems, encryption, applications, unattended installs |
 | [The desktop](02-user-guide/desktop.md) | Panel, menus, windows, workspaces, keybindings, notifications, lock and power, devices |
 | [Applications](02-user-guide/applications.md) | Alien apps: installing from the medium, launching, file handling, updates, rollback |
-| [Theming](02-user-guide/theming.md) | The four accents, what retints live, the CRT knobs, wallpaper, fonts, boxed applications |
+| [Theming](02-user-guide/theming.md) | The seven accents, what retints live, the CRT knobs, wallpaper, fonts, boxed applications |
 | [Administration](02-user-guide/administration.md) | Services, networking, firewall, storage, users, hardware, codecs, updates, diagnosis |
+| [Accessibility](02-user-guide/accessibility.md) | Reading the console desktop: the braille route, the voice, what a widget announces, what a reader may do |
 
 ### III — Architecture and core
 
@@ -74,6 +76,7 @@ How the system is put together, and the models a change has to respect.
 | [Packs and boxes](03-architecture/packs-and-boxes.md) | The pack format, mounting, composition, grafts, the catalogue, one box per application |
 | [Security model](03-architecture/security-model.md) | Signing, setuid, daemon authorisation, sandboxing, containers — and what is not protected |
 | [Design language](03-architecture/design-language.md) | The character grid as a specification: frame, chrome, colour, pointer, glyph tiers |
+| [The window model](03-architecture/window-model.md) | Placement, tiling, the edge search and the ring walks — one implementation, obeyed by both desktops |
 
 ### IV — Programs and applications
 
@@ -83,8 +86,11 @@ A page per program KDOS itself ships.
 |---|---|
 | [Program map](04-programs/README.md) | Every KDOS binary, what it is, and which name it answers to |
 | [kdos-comp](04-programs/kdos-comp.md) | The compositor: configuration, decorations, the CRT pass, wallpaper, idle, sockets |
+| [kdos-con](04-programs/kdos-con.md) | The console desktop: the default session, the session/view split, both sockets, the greeter, a graphical application as a window, and recording one |
 | [kdos-shell](04-programs/kdos-shell.md) | One binary under many names: the panel, Start menu, desktop, chooser, notifications, applets |
 | [kdos-res](04-programs/kdos-res.md) | The resource monitor: its pages, identity by box, and what it refuses to invent |
+| [kdos-term](04-programs/kdos-term.md) | The terminal: one binary on both desktops, its keys and clipboards, the three image protocols and animation |
+| [kdos-cage](04-programs/kdos-cage.md) | The kiosk: one application embedded in the cell desktop or full screen on a VT, and what the fork of cage changed |
 | [kdos-appbox](04-programs/kdos-appbox.md) | Launching alien apps, generating launchers, and boxes as first-class objects |
 | [The root daemons](04-programs/daemons.md) | powerd, energyd, oomd, mountd, packd, boxsock, and the portal backend |
 | [kinstall](04-programs/kinstall.md) | The installer's design: the probe, the page model, the install child, answer files |

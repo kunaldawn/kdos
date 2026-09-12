@@ -37,3 +37,18 @@ export CARGO_NET_OFFLINE=true
 ./configure --prefix=/usr --disable-static
 make
 make DESTDIR=$PKG install
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/lnav.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Log Viewer
+GenericName=Log Viewer
+Comment=Merge, filter and search log files
+Exec=lnav %F
+Icon=text-x-generic
+Terminal=true
+Categories=System;Monitor;Utility;
+Keywords=log;journal;syslog;filter;lnav;
+EOF
+chmod 644 "$PKG/usr/share/applications/lnav.desktop"

@@ -1,0 +1,32 @@
+KDOS DISPLAY
+
+One row per screen the compositor reports, in the order they are arranged
+left to right.
+
+  Space     turns the selected screen off, or back on. The last screen that
+            is still on cannot be turned off — there would be nothing left to
+            answer with.
+  m         steps the selected screen's mode. From `auto` the first press
+            lands on the mode the monitor itself advertises as preferred.
+  s         steps the scale.
+  t         rotates.
+  [ and ]   move the selected screen earlier or later in the arrangement.
+  Enter     applies the whole plan.
+
+Nothing above touches the screen until Enter.
+
+The fifteen seconds
+
+  An applied plan is provisional. A countdown runs, and unless you press K
+  the previous arrangement comes back. That is not a confirmation dialog
+  being cautious: a mode a monitor cannot show leaves a black screen, and a
+  black screen cannot be used to answer a question.
+
+  K         keep this arrangement, and write it.
+  R         revert now, without waiting.
+  Escape    the same as R — reverting is what the countdown does on its own,
+            so it cannot lose work.
+
+The kept arrangement is written and applied again at the next login.
+
+  [[doc:index]]

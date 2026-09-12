@@ -56,13 +56,42 @@ const char *kb_basename(const char *p);
  * buffers, so several calls can appear in the same printf. */
 const char *kb_human_size(unsigned long long bytes);
 
+/*
+ * DOES THIS ROW MATCH WHAT WAS TYPED, and how well. A subsequence — so `sm`
+ * finds `System Monitor`, which no substring search can do — scored so that a
+ * prefix beats an acronym, an acronym beats a run, and a run beats a scatter.
+ *
+ * HIGHER IS BETTER; ZERO IS NO MATCH. An empty needle matches everything with
+ * the same small score, because a caller filtering as somebody types starts
+ * with nothing typed.
+ *
+ * THERE IS ONE OF THESE ON PURPOSE. The palette, the launcher and the Start
+ * menu search the same applications, and three private matchers meant three
+ * answers to one query — which teaches a person that the search cannot be
+ * relied on. A caller that sorts on this must sort DESCENDING; the matcher
+ * this replaced in `launcher.c` was lower-is-better, and a sort left ascending
+ * ranks a correct list backwards.
+ */
+int kb_fuzzy(const char *hay, const char *needle);
+
+/* The best score over several fields — a name, an id, keywords, a command —
+ * so the field that happens to be checked first cannot decide the ranking. */
+int kb_fuzzy_best(const char *const *fields, int n, const char *needle);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Files
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* Reads at most cap-1 bytes and NUL-terminates. Returns the byte count, or
- * -1. Short reads are not retried: every caller is a /sys or /proc file. */
+ * -1. Short reads are not retried: every caller is a /sys or /proc file, whose
+ * length the kernel bounds. A file a PERSON edits wants kb_read_whole. */
 int kb_read_file(const char *path, char *buf, size_t cap);
+
+/* The whole file, NUL-terminated, on the heap; the caller frees it. `len` may
+ * be NULL. Returns NULL if the file cannot be read. For anything whose length
+ * is not bounded — a configuration file grows, and a fixed buffer stops seeing
+ * the end of one without saying so. */
+char *kb_read_whole(const char *path, size_t *len);
 
 /* First line, newline stripped. Returns its length, or -1. */
 int kb_read_line_file(const char *path, char *buf, size_t cap);
@@ -82,6 +111,15 @@ int kb_read_line_file(const char *path, char *buf, size_t cap);
 #define KB_BOX_PATH \
 	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" \
 	"/usr/games:/usr/local/games"
+
+/*
+ * THE SHIPPED CONSOLE BACKGROUNDS, one `<name>.txt` per piece. Here rather
+ * than in either consumer's own header because two of them need it and neither
+ * owns it: `kdos background` writes the name a person chose and `kdos-desk`
+ * turns that name into this path. Two spellings of one directory is a desktop
+ * that offers a piece it cannot then draw.
+ */
+#define KB_BACKGROUND_DIR "/usr/share/kdos/backgrounds"
 
 int kb_write_file(const char *path, const char *data);
 /* Replace a state file atomically: temp, fsync the file, rename, fsync the
@@ -195,11 +233,84 @@ int kb_tar_finish(int fd);		/* the two zero blocks that end it */
 
 const char *kb_runtime_dir(void);	/* $XDG_RUNTIME_DIR, or /tmp       */
 const char *kb_home_dir(void);		/* $HOME, or /root                 */
+
+/* A virtual machine, by the DMI vendor string. The idle timers and the lid
+ * policy both default to off here: a blanked screen over VNC cannot be told
+ * from a crash, and a VM's lid event is a stray ACPI report. Misses a
+ * hypervisor not on its list, which fails in the safe direction. */
+int kb_in_vm(void);
 char *kb_path_join(const char *a, const char *b);	/* malloc'd        */
 int kb_mkdir_p(const char *path);
 
 /* flock() wrapper. Returns the held fd, or -1. Close to release. */
 int kb_lock_file(const char *path, int nonblock);
+
+/*
+ * A PATH UNDER THE STATE DIRECTORY, and the one place either spelling of it
+ * appears. `$XDG_STATE_HOME` when the session set one, `~/.local/state`
+ * otherwise; `rel` is the part below it, without a leading slash.
+ *
+ * Rebuilt on every call rather than cached, because a program that re-execs
+ * after `$HOME` changed under it would otherwise keep writing where nobody is
+ * reading. Returns 0 when there is no home to put it in — which a caller must
+ * treat as "no state", never as a relative path it can use anyway.
+ */
+int kb_state_path(const char *rel, char *out, size_t n);
+
+/*
+ * IS A DESKTOP TOGGLE ON? `kdos toggle <name>` writes a flag file under
+ * `$XDG_STATE_HOME/kdos/toggles/` and its presence is the whole state.
+ *
+ * A FLAG FILE RATHER THAN A CONFIGURATION KEY, because the configuration is
+ * documented as read once when a session starts: a runtime writer would make
+ * half a program's answers come from before an edit and half from after.
+ *
+ * STAT'ED PER CALL, NEVER CACHED. Every toggle is set by a different process —
+ * a chord, a menu row, a script before a long build — so a program holding a
+ * copy is one that has to be told, and there is nothing to tell it with.
+ */
+int kb_toggle_on(const char *name);
+
+/*
+ * SET ONE. Creating or removing the flag file, with the directory made on the
+ * way; 0 on success, -1 if the state directory is not reachable. There is no
+ * temp-and-rename because there is nothing to tear: an empty file either
+ * exists or it does not, and a half-written nothing is still nothing.
+ *
+ * THIS AND kb_toggle_on() ARE THE ONLY TWO PLACES THE PATH IS SPELLED. A
+ * program that builds it itself is a program writing where nothing reads.
+ */
+int kb_toggle_set(const char *name, int on);
+
+/*
+ * THE FIRST NAME IN $XDG_CURRENT_DESKTOP, which is the prefix a desktop's own
+ * `<desktop>-mimeapps.list` is spelled with — lowercased, because the variable
+ * is `KDOS-Console:KDOS` and the file the spec asks for is
+ * `kdos-console-mimeapps.list`.
+ *
+ * Returns 0 when the variable is unset or empty, and the caller then searches
+ * only the plain lists: a machine with no desktop declared has no per-desktop
+ * choices to honour, and inventing a prefix would look for a file nobody wrote.
+ */
+int kb_desktop_prefix(char *out, size_t n);
+
+/*
+ * WHICH TERMINAL A `Terminal=true` ENTRY IS RUN IN, and it follows the desktop:
+ * `kdos-term` inside a console session, `foot` under the compositor. Both take
+ * `-e`, so the name is the whole of the difference.
+ *
+ * IT IS NOT A PREFERENCE. `foot` is a Wayland client, so a console session that
+ * wrapped an entry in it would resolve the right program and then fail to open
+ * a window for it — which reads as the handler being wrong rather than the
+ * terminal being unreachable.
+ *
+ * NULL WHERE THERE IS NEITHER SESSION, which is a bare virtual terminal, a
+ * serial console or an ssh login. There is no emulator to open and nothing to
+ * open it in, so the caller runs the program where it already is — which on
+ * every one of those is a terminal. A caller that cannot is a caller with
+ * nowhere to draw, and it must say so rather than name a window nobody gets.
+ */
+const char *kb_terminal(void);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Processes
@@ -238,6 +349,22 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n);
  * is right for kdos-checkpass and would make `kdos help --pager` render the
  * help text into nothing. Same reason kb_run_tty exists beside kb_run. */
 int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
+/* Fed on stdin AND captured from stdout — a FILTER, which neither of the other
+ * two serve. THE INPUT MUST FIT IN ONE PIPE BUFFER: nothing reads the output
+ * until the whole input is written, so a child that fills its output pipe
+ * before draining its input deadlocks. Feeding a word and reading a picture of
+ * it is the case this is for. */
+int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
+			size_t cap);
+/* Fed on stdin, with `nenv` `NAME=VALUE` strings ADDED to the child's
+ * environment, and the child's stderr captured into `err`. A mount helper is
+ * the case: `mount.cifs` takes a password from the descriptor `$PASSWD_FD`
+ * names, so the secret reaches it on stdin and never through argv, where
+ * /proc/<pid>/cmdline would publish it; and its refusal is on stderr, so a
+ * caller that dropped it could report a status and no reason. THE INPUT MUST
+ * FIT IN ONE PIPE BUFFER, for kb_run_feed_capture's reason. */
+int kb_run_feed_env(const KbArgv *a, const char *const *env, int nenv,
+		    const char *in, size_t n, char *err, size_t cap);
 /* Same, but the child INHERITS stdin/stdout/stderr. A package build writes
  * straight to the build log, unbuffered and interleaved, and that is what the
  * per-port logs are. */
@@ -245,6 +372,18 @@ int kb_run_tty(const KbArgv *a);
 /* Same, but copy up to n-1 bytes of stdout into buf, NUL terminated with any
  * trailing newline stripped. */
 int kb_run_capture(const KbArgv *a, char *buf, size_t n);
+
+/*
+ * A DESKTOP NOTIFICATION, over `gdbus`.
+ *
+ * Best effort and detached: a program that emitted OSC 9 has finished, and a
+ * terminal that blocked raising a toast about it would be a terminal that
+ * stopped drawing to say something had stopped. Nothing here links a bus
+ * library — `gdbus` is on every image for the portal — and a machine without
+ * it silently raises nothing, which is what a machine with no notification
+ * daemon should do.
+ */
+void kb_notify(const char *app, const char *summary, const char *body);
 /* Same, unbounded: stdout is appended to a growing buffer, NUL terminated,
  * with the trailing newline left alone. Use this whenever the output has no
  * natural ceiling — a `tar -tf` listing does not. */
@@ -261,6 +400,29 @@ void kb_run_detach(const KbArgv *a);
  * its member list. The authorisation both root daemons here are built on, in
  * one place: two copies of a security decision eventually disagree. */
 int kb_user_in_group(const char *user, gid_t primary, const char *group);
+
+/*
+ * THE HUMAN ACCOUNTS ON THIS MACHINE, in /etc/passwd order.
+ *
+ * uid >= 1000 and a shell that is not a refusal — the two tests every login
+ * screen makes, and why `nobody` and the service accounts are not offered.
+ * One answer, because two would disagree and the disagreement would be
+ * invisible: a greeter offering an account the user manager does not list
+ * looks like a bug in whichever one was opened second.
+ *
+ * `gecos` is the FIRST field of the GECOS record only. The rest of it is an
+ * office number and a phone extension, and neither belongs on a login screen.
+ */
+typedef struct {
+	char name[64];
+	char gecos[64];
+	char home[128];
+	char shell[64];
+	uid_t uid;
+	gid_t gid;
+} KbUser;
+
+int kb_users(KbUser *out, int max);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Time
@@ -293,6 +455,54 @@ void kb_sha256_final(KbSha256 *s, char out[65]);	/* lowercase hex */
 int kb_sha256_file(const char *path, char out[65]);
 /* 0 match, 1 mismatch, -1 unreadable. Comparison is case-insensitive. */
 int kb_sha256_check(const char *path, const char *want);
+
+/*
+ * MD5 — a FILE NAME, never a security claim.
+ *
+ * The thumbnail standard names its cache files by the MD5 of the source URI,
+ * and every other program on the machine that writes one does the same. A
+ * stronger hash here would produce a cache nothing else could read and would
+ * read nothing else's, in exchange for a property nothing here relies on:
+ * `kb_sha256_*` is what authenticates.
+ */
+typedef struct {
+	uint32_t h[4];
+	uint64_t len;
+	uint8_t buf[64];
+	size_t n;
+} KbMd5;
+
+void kb_md5_init(KbMd5 *s);
+void kb_md5_update(KbMd5 *s, const void *data, size_t n);
+void kb_md5_final(KbMd5 *s, char out[33]);	/* lowercase hex */
+void kb_md5_str(const char *s, char out[33]);
+
+/*
+ * A path as a `file://` URI. THE ESCAPE SET IS NOT A CHOICE: the thumbnail
+ * cache is named by the MD5 of this string and the cache is SHARED, so a
+ * character escaped differently is a thumbnail nothing else can find. The set
+ * is glib's `G_URI_RESERVED_CHARS_ALLOWED_IN_PATH` plus the unreserved ones,
+ * in uppercase hex, which is what `g_filename_to_uri()` writes.
+ */
+void kb_uri_file(const char *path, char *out, size_t n);
+
+/*
+ * THE OTHER DIRECTION: a `file://` URI back to a path, percent-decoded.
+ *
+ * A STRING THAT IS NOT A URI IS COPIED THROUGH. One surface hands a program a
+ * path and another hands it a URI — `kdos-pick` prints one, a command line
+ * carries the other — and a caller that had to know which it was given is a
+ * caller that will one day be given the other.
+ *
+ * A HOST IS REFUSED, NOT DROPPED. `file://otherbox/etc/passwd` names a file on
+ * another machine; ignoring the host would silently open THIS machine's copy,
+ * which is a different file and not a failure anybody would see. Only an empty
+ * host and `localhost` are here.
+ *
+ * Returns 0 when the URI names another host, decodes to something that is not
+ * an absolute path, or does not fit.
+ */
+int kb_uri_path(const char *uri, char *out, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Landlock — unprivileged self-sandboxing. Three syscalls, no library.
@@ -331,5 +541,20 @@ int kb_landlock_allow_tcp(KbLandlock *ll, uint16_t port, int connect);
 /* Sets PR_SET_NO_NEW_PRIVS then restricts. Irreversible. */
 int kb_landlock_enforce(KbLandlock *ll);
 void kb_landlock_free(KbLandlock *ll);
+
+/*
+ * Base64. The decoder returns the byte count, or -1 when the input is not
+ * base64 or would not fit — refused whole rather than partially decoded, so a
+ * caller never pastes half a selection. The encoder returns the string length
+ * it wrote, or -1 when it would not fit; `out` needs (n + 2) / 3 * 4 + 1
+ * bytes.
+ *
+ * `libktui` has an encoder of its own and keeps it: that library links nothing
+ * but libc, and pulling this one in for a single OSC 52 write would break the
+ * property every other file there depends on.
+ */
+int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
+		  size_t *outlen);
+int kb_b64_encode(const void *in, size_t n, char *out, size_t outsz);
 
 #endif /* KBASE_H */

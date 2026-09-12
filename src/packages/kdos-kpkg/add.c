@@ -408,7 +408,18 @@ int add_main(int argc, char **argv)
 
 	KbArgv x = {0};
 	kb_argv_add(&x, "tar");
-	kb_argv_add(&x, "-xf");
+	/*
+	 * `-p` OR EVERY SETUID BIT IN EVERY PACKAGE IS SILENTLY DROPPED.
+	 *
+	 * GNU tar restores permissions in full only for the superuser unless
+	 * it is asked; extracting as an ordinary user applies the umask and
+	 * strips setuid and setgid without a word. A build run as a person
+	 * rather than as root therefore produced an image whose `su`, `mount`
+	 * and `newuidmap` were plain executables — and nothing failed until
+	 * something needed the privilege, in a program that had no way to say
+	 * why it could not have it.
+	 */
+	kb_argv_add(&x, "-xpf");
 	kb_argv_add(&x, pkgfile);
 	kb_argv_add(&x, "-C");
 	kb_argv_add(&x, tmpl);

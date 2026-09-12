@@ -53,7 +53,8 @@ enum { SH_PRIV_MIC = 0, SH_PRIV_CAM, SH_PRIV_SCR, SH_PRIV_NKIND };
  * MPRIS is the transport for whatever is playing. */
 enum { SH_AP_CLOCK = 0, SH_AP_BATT, SH_AP_VOL, SH_AP_NET, SH_AP_RESTART,
        SH_AP_MIC, SH_AP_CAM, SH_AP_MPRIS, SH_AP_CPU, SH_AP_LAYOUT,
-       SH_AP_CLIP, SH_AP_MEDIA, SH_AP_NOTIFY, SH_AP_STUTTER, SH_AP_MORE,
+       SH_AP_CLIP, SH_AP_MEDIA, SH_AP_NOTIFY, SH_AP_STUTTER,
+       SH_AP_UPDATE, SH_AP_MORE,
        SH_AP_N };
 
 /* One app holding one capture device. `pid` is set for the camera half, which
@@ -92,7 +93,12 @@ struct sh_tray_item {
 struct sh_tray;
 
 struct sh_task {
-	void *handle;			/* zwlr_foreign_toplevel_handle_v1 * */
+	/*
+	 * WHICH WINDOW, as libkdisp names it. Not a display-server handle and
+	 * not an index: the list is rebuilt whenever the server says it
+	 * changed, and a click acts a frame or more after the row was drawn.
+	 */
+	unsigned id;
 	char title[128];
 	char app_id[64];
 	/* The `Name` from the app's own desktop entry, resolved once when the
@@ -180,8 +186,9 @@ int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn);
 const KtuiBackend *sh_cells_backend(int w, int h);
 
 struct sh_state {
+	/* The workspace pager's alone: NULL on the console, where the session
+	 * draws its own. The task list is libkdisp's on both desktops. */
 	void *display;			/* the panel shares libkwl's connection */
-	void *ftl_mgr;
 	void *ws_mgr;
 
 	struct sh_task tasks[SH_MAX_TASKS];
@@ -274,7 +281,9 @@ struct sh_state {
  * chain from a keybinding to a running program. */
 int panel_main(int argc, char **argv);		/* kdos-shell    */
 int start_main(int argc, char **argv);		/* kdos-start    */
-int launcher_main(int argc, char **argv);	/* kdos-launcher */
+/* kdos-launcher and kdos-palette are one front end: the launcher is the
+ * palette showing applications only, chosen by the name it was reached by. */
+int palette_main(int argc, char **argv);	/* kdos-palette  */
 int menu_main(int argc, char **argv);		/* kdos-menu     */
 int desk_main(int argc, char **argv);		/* kdos-desk     */
 int pick_main(int argc, char **argv);		/* kdos-pick     */
@@ -285,12 +294,71 @@ int prompt_main(int argc, char **argv);		/* kdos-prompt   */
 
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
 int notify_main(int argc, char **argv);		/* kdos-notify   */
+int mediad_main(int argc, char **argv);		/* kdos-mediad   */
+int netagent_main(int argc, char **argv);	/* kdos-netagent */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
 int cal_main(int argc, char **argv);		/* kdos-cal      */
 int display_main(int argc, char **argv);	/* kdos-display  */
 int keys_main(int argc, char **argv);		/* kdos-keys     */
 int teams_main(int argc, char **argv);		/* kdos-teams    */
 int saver_main(int argc, char **argv);		/* kdos-saver    */
+int about_main(int argc, char **argv);		/* kdos-about    */
+int theme_main(int argc, char **argv);		/* kdos-theme    */
+
+/* The console desktop's character-art background. Its own header, because the
+ * loader needs no compositor and this one pulls in Wayland. */
+#include "background.h"
+/* ────────────────────────────────────────────────────────────────────────
+ * kdos-mountd, from the session side
+ *
+ * ONE CLIENT for the three surfaces that ask: the device manager, the media
+ * watcher and the disks window. Three parses of one tab-separated format is
+ * two of them being wrong the day a column is added.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	/* The DAEMON'S OWN ROW NUMBER, and the only thing ever sent back. This
+	 * side never names a device or a mountpoint, because the protocol has
+	 * no way to say one — and an index is true only of the list it came
+	 * with, so acting on one means having just asked. */
+	int idx;
+	char kname[32];
+	char label[64];
+	char fstype[24];
+	char size[16];
+	char mnt[256];
+} ShMountRow;
+
+/* A NETWORK SHARE IS NOT A DEVICE ROW. It has no kernel name, no size and no
+ * filesystem to probe: what there is to say is where it came from and where
+ * it landed, and its index counts a list of its own. */
+typedef struct {
+	int idx;
+	char unc[352];		/* //server/share                          */
+	char mnt[256];
+} ShShareRow;
+
+int sh_mountd_ask(const char *req, char *out, size_t n);
+int sh_mountd_list(ShMountRow *out, int max, char *why, size_t nwhy);
+/* A verb on one row. 0 when the daemon answered `ok`; `out` carries its
+ * message either way. */
+int sh_mountd_do(int idx, const char *verb, char *out, size_t nout);
+/* What is connected now, rebuilt from the daemon on every call for the reason
+ * an index exists: a row number is true only of the list it came with. */
+int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy);
+
+int calc_main(int argc, char **argv);		/* kdos-calc     */
+int chars_main(int argc, char **argv);		/* kdos-chars    */
+int connect_main(int argc, char **argv);	/* kdos-connect  */
+int contacts_main(int argc, char **argv);	/* kdos-contacts */
+int disks_main(int argc, char **argv);		/* kdos-disks    */
+int print_main(int argc, char **argv);		/* kdos-print    */
+int timezone_main(int argc, char **argv);	/* kdos-time     */
+int users_main(int argc, char **argv);		/* kdos-users    */
+int update_main(int argc, char **argv);		/* kdos-update   */
+int firewall_main(int argc, char **argv);	/* kdos-firewall */
+int backup_main(int argc, char **argv);		/* kdos-backup   */
+int note_main(int argc, char **argv);		/* kdos-note     */
 int slit_main(int argc, char **argv);		/* kdos-slit     */
 int doc_main(int argc, char **argv);		/* kdos-doc      */
 int settings_main(int argc, char **argv);	/* kdos-settings */
@@ -300,6 +368,49 @@ int net_main(int argc, char **argv);		/* kdos-net      */
 int bt_main(int argc, char **argv);		/* kdos-bt       */
 int devices_main(int argc, char **argv);	/* kdos-devices  */
 int clip_main(int argc, char **argv);		/* kdos-clip     */
+int trash_main(int argc, char **argv);		/* kdos-trash    */
+int peek_main(int argc, char **argv);		/* kdos-peek     */
+int find_main(int argc, char **argv);		/* kdos-find     */
+
+/* ── a picture in the cell grid (picture.c) ──────────────────────────────
+ *
+ * What `kdos-peek` and `kdos-pix` share: the decode, the crop, the scale, the
+ * cut into sprite tiles and the draw. See the file for the four things that
+ * are easy to get wrong and were each found the hard way.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* A picture may cost this much, enforced by libkimg BEFORE it allocates: a
+ * header is an allocation request from a file somebody sent you. */
+#define SH_PIC_MAX_W    16384
+#define SH_PIC_MAX_H    16384
+#define SH_PIC_MAX_PIX  (256u << 20)	/* the decoded image */
+#define SH_PIC_MAX_FILE (256u << 20)	/* what is read off the disk */
+#define SH_PIC_BUDGET   (64u << 20)	/* the sprite table's tiles */
+
+typedef struct {
+	void *img;		/* pixman_image_t *, this struct's own      */
+	int w, h;		/* the decoded size                         */
+	uint64_t id;		/* content identity, over the whole file    */
+	uint64_t key;		/* what the registered tiles are under      */
+	int cw, ch;		/* their size in cells; 0 when none         */
+} ShPic;
+
+int sh_pic_cell_w(void);
+int sh_pic_cell_h(void);
+/* AFTER kdisp_init, never before — see picture.c. */
+void sh_pic_backend(void);
+int sh_pic_is_image(const unsigned char *b, size_t n);
+unsigned char *sh_pic_slurp(const char *path, size_t *len);
+int sh_pic_set(ShPic *p, const unsigned char *b, size_t n);
+int sh_pic_load(ShPic *p, const char *path);
+void sh_pic_fit(int sw, int sh, int pane_w, int pane_h, int *cw, int *ch);
+int sh_pic_view(ShPic *p, int sx, int sy, int sw, int sh, int cw, int ch);
+void sh_pic_tiles_drop(ShPic *p);
+void sh_pic_draw(const ShPic *p, int x, int y);
+void sh_pic_free(ShPic *p);
+
+int pix_main(int argc, char **argv);		/* kdos-pix      */
+int rec_main(int argc, char **argv);		/* kdos-rec      */
 /* What the notification area's chevron opens — the widgets that are hidden
  * behind it, and the two KDOS tools (`kdos stutter`, `kdos-energy`) that used
  * to be reachable only as a terminal nobody could get rid of. */
@@ -307,6 +418,9 @@ int status_main(int argc, char **argv);		/* kdos-status   */
 /* The tooltip, which is a surface and therefore a process. Half this bar is
  * pictures with no words; this is what says what they are. */
 int tip_main(int argc, char **argv);		/* kdos-tip      */
+/* The candidate window, drawn as cells rather than by the input engine's own
+ * toolkit — the last thing on this desktop that was not. It speaks kimpanel. */
+int ime_main(int argc, char **argv);		/* kdos-ime      */
 
 /*
  * The ALSA mixer, shared with the panel (osd.c).
@@ -338,6 +452,9 @@ void sh_alsa_quiet(void);
 int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);
 void sh_dispatch(struct sh_state *sh);
+/* Re-read the window list. Called by sh_dispatch; exposed for the dump path,
+ * which draws one frame and never dispatches. */
+void sh_tasks_refresh(struct sh_state *sh);
 void sh_activate_task(struct sh_state *sh, int i);
 /* Left click on a task entry: minimise the window you are in, restore the one
  * you are not — what every taskbar does, and what makes the entry worth
@@ -448,7 +565,11 @@ struct sh_app {
 	char comment[128];
 	char keywords[192];		/* Keywords + GenericName, for search */
 	int group;			/* index into the category table     */
-	int terminal;			/* Terminal=true — run it in foot    */
+	int terminal;			/* Terminal=true — run it in one     */
+	char term[24];			/* X-KDOS-Term: the emulator it asked
+					   for, or empty for this session's */
+	int floating;			/* X-KDOS-Float: open unanchored     */
+	char size[16];			/* X-KDOS-Size: COLSxROWS, or empty  */
 	int alien;			/* lives in the appbox — see apps.c  */
 	int uses;			/* launch count, from appusage       */
 	long last;			/* when it was last launched         */
@@ -483,7 +604,82 @@ int sh_app_group_for(const char *categories);
  * shell anywhere in it. Every surface here spawns the same way. */
 void sh_spawn(const char *const argv[]);
 
+/* THE F1 HANDLER every surface with a page uses, as `KtuiKeys.help`. It opens
+ * the named document in kdos-doc. A surface with no page in
+ * /usr/share/kdos/doc leaves `doc` NULL and F1 is then neither advertised nor
+ * answered — a key that opens an index reading "no such document" teaches
+ * that help is broken. testing/preflight.sh refuses a `.doc` naming a file
+ * that is not in the corpus. */
+void sh_help(const char *doc, void *user);
+
+/* The terminal emulator on THIS desktop: kdos-term on the console, foot under
+ * the compositor. Both take `-e CMD` and `-D DIR`. */
+/*
+ * The KDOS logo as cells, from /usr/share/kdos/logo.txt. The file carries SGR
+ * colour for the login banner; this strips it, because a surface paints slots.
+ * Returns 0 when at least one line was read. See logo.c.
+ */
+#define SH_LOGO_LINES 48
+#define SH_LOGO_BYTES 512
+int sh_logo_load(const char *path, char (*out)[SH_LOGO_BYTES], int max,
+		 int *nlines, int *width);
+
+/* The wall clock every surface that shows one reads, frozen by
+ * $KDOS_PANEL_NOW so a frame with a time in it can be goldened. */
+time_t sh_wall(void);
+
+const char *sh_term(void);
+/* The favourites file names the terminal; this says which one this desktop
+ * runs. See sh_fav_id() for why one file serves both. */
+const char *sh_fav_id(const char *id);
+
+/* The terminal, the identity it wears and the `-e` that ends it, appended to
+ * argv from n; returns the new n. `id` is scratch that must outlive the exec. */
+int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
+		 char *id, size_t idsz);
+
+/*
+ * The same, in the terminal a desktop entry ASKED for with `X-KDOS-Term`.
+ * `want` is that key, or NULL for the session's own.
+ *
+ * `floating` and `size` are `X-KDOS-Float` and `X-KDOS-Size`, and they are
+ * emitted ONLY WHERE THERE IS ROOM in the caller's argv: a hint dropped is a
+ * window that opens the ordinary way, which is better than a terminal that
+ * does not open because its wrapper would not fit.
+ */
+int sh_term_argv_in(const char *want, int floating, const char *size,
+		    const char *argv[], int n, int max,
+		    const char *cmd, char *id, size_t idsz);
+
+/* Which emulator `X-KDOS-Term` names. A NAME AND NOT A PROGRAM: only the two
+ * this image ships are accepted, and anything else falls back to sh_term(),
+ * so an entry cannot turn the key into a way to run something. */
+const char *sh_term_named(const char *want);
+
+/* The same as one command string, for the callers that re-split one. The
+ * buffer must be the command's length plus SH_TERM_PREFIX_MAX: what goes in
+ * front is an emulator's name, an identity taken from the command, and `-e`,
+ * and a buffer sized for the bare command truncates all three into it. */
+#define SH_TERM_PREFIX_MAX 160
+void sh_term_cmd(char *out, size_t n, const char *cmd);
+
+/* The program that IS this session: `kdos-con` on the console, `kdos-comp`
+ * under the compositor. Log Out sends it SIGTERM. */
+const char *sh_session_prog(void);
+
 #include "kchrome.h"
+
+#include "kdisp.h"
+
+/*
+ * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
+ * first, so a surface started FROM the console desktop attaches to it even on a
+ * machine that also has a compositor running. libkdisp names no implementation;
+ * this list is what links each one in.
+ */
+extern const KDispImpl *const kdos_disp[];
+extern const int kdos_disp_n;
+
 
 /* ── the pinned list (chrome.c) ────────────────────────────────────────────
  * `~/.config/kdos/favorites`, one desktop-entry id per line — what the
@@ -493,6 +689,9 @@ void sh_spawn(const char *const argv[]);
  * ──────────────────────────────────────────────────────────────────────── */
 int sh_fav_path(char *out, size_t n);
 int sh_fav_has(const char *id);
+/* The two-letter launch code a line carries, or NULL. One reader, so the menu
+ * and the palette cannot disagree about what a code is. */
+const char *sh_fav_code(const char *id);
 int sh_fav_set(const char *id, int pinned);
 /* Move one pinned id to a position in the row — what a drag on the taskbar's
  * quick-launch strip writes. */
@@ -555,6 +754,10 @@ void sh_theme_from_cache(void);
  * gets changed, and it was left wearing the old one.
  */
 extern volatile sig_atomic_t sh_theme_dirty;
+/* Raised by SIGUSR1: the bar was asked to go away or come back. Read and
+ * cleared by the panel's loop; see sh_bar_watch(). */
+extern volatile sig_atomic_t sh_bar_dirty;
+void sh_bar_watch(void);
 void sh_theme_watch(void);
 void sh_theme_poll(void);
 

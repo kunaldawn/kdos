@@ -1,0 +1,44 @@
+#!/bin/sh
+# kdos-openarchive — extract an archive `mc` cannot browse as a directory.
+#
+# TWO ANSWERS TO "OPEN AN ARCHIVE", AND THEY ARE DIFFERENT QUESTIONS. `mc`
+# mounts a tar, a cpio or a zip as a DIRECTORY through its own VFS — a view no
+# MIME type expresses, and the right one when you want a file out of an
+# archive. Everything mc's VFS cannot reach on this image ends up here, and
+# extracting is the only thing left to mean.
+#
+# THE CWD IS SET HERE AND NOT INHERITED. `ouch decompress` puts its output
+# under the directory the PROCESS was started in, not under the archive's — so
+# a desktop or a file manager that spawns this from an arbitrary place would
+# scatter extractions wherever it happened to be standing.
+#
+# `--no` BECAUSE THERE IS NO TERMINAL TO ANSWER IN. Left alone, ouch prompts
+# four ways when the destination exists, and a menu row spawned from a surface
+# has no stdin — it would sit there forever looking like a hung extract. `--no`
+# cancels instead, and the message says which directory is in the way.
+set -eu
+
+if [ $# -lt 1 ]; then
+	echo "usage: kdos-openarchive ARCHIVE" >&2
+	exit 2
+fi
+
+archive=$1
+if [ ! -f "$archive" ]; then
+	echo "kdos-openarchive: $archive: no such file" >&2
+	exit 1
+fi
+if ! command -v ouch >/dev/null 2>&1; then
+	echo "kdos-openarchive: ouch is not installed" >&2
+	exit 1
+fi
+
+dir=$(dirname -- "$archive")
+base=$(basename -- "$archive")
+
+cd -- "$dir" || exit 1
+if ! ouch decompress --no -- "$base"; then
+	echo "kdos-openarchive: could not extract $base — a directory of that" \
+	     "name may already be there" >&2
+	exit 1
+fi

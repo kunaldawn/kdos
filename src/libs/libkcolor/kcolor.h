@@ -29,6 +29,21 @@
  *
  * Field order is the one `kdos theme` has always used:
  *   primary  dim  secondary  urgent  deep  text  variant  pdark  backdrop
+ *
+ * `deep` is the surface a scheme is read against and `text` is what is read on
+ * it, so those two carry the legibility of everything: the self-test asserts
+ * 7:1 between them and 4.5:1 between the accent and the same ground, for every
+ * scheme. A scheme is not a set of colours somebody liked, it is a set that
+ * clears those two floors.
+ *
+ * EVERY SCHEME HERE IS DARK, and that is a limit of the chrome rather than a
+ * preference. `libkchrome` solves the focused plate along `dim`-to-`pdark` and
+ * writes `text` on it — one label colour for every plate — so on a light ground
+ * the plate darkens away from a dark label and no mix clears both the
+ * separation floor and the legibility one: the best light candidate reaches
+ * 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off the
+ * bar where the label reads at 6.58:1. A light scheme needs the ladder to
+ * choose its label per plate first, and `selftest.c` refuses one until then.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KCOL_SCHEMES(X)                                                       \
@@ -39,7 +54,13 @@
 	X(ice, "ICE", "KDOS-Ice",                                             \
 	  4dd7ff, 123a4a, 7aa2ff, ff4d6d, 00080d, bfeeff, 031420, 1f7fa0, 021a26) \
 	X(bone, "BONE", "KDOS-Bone",                                          \
-	  f4f0e2, 3a3833, b9b3a1, ff5a5a, 0a0a09, ded9cb, 141412, 8f8b7e, 161512)
+	  f4f0e2, 3a3833, b9b3a1, ff5a5a, 0a0a09, ded9cb, 141412, 8f8b7e, 161512) \
+	X(norton, "NORTON", "KDOS-Norton",                                    \
+	  ffd75f, 1c3f8f, 5fd7ff, ff5f5f, 00021a, f0f6ff, 000f3c, a88a20, 000214) \
+	X(borland, "BORLAND", "KDOS-Borland",                                 \
+	  5fd7d7, 24494d, ffd75f, ff5f5f, 020e12, f0fcfc, 07181c, 2f8f8f, 010c0f) \
+	X(perfect, "PERFECT", "KDOS-Perfect",                                 \
+	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38)
 
 #define KCOL_HEX(x) ((uint32_t)0x##x)
 
@@ -172,6 +193,22 @@ enum {
 	KCOL_FAM_URGENT		/* red                                     */
 };
 
+/*
+ * THE NEAREST OF THE 256, for a program that cannot be told a colour.
+ *
+ * Some terminal programs take an INDEX and nothing else — newsboat is the one
+ * this exists for: a `#rrggbb` there is not ignored, it truncates the line at
+ * the `#` and the whole entry is refused. So a scheme reaches those programs
+ * approximated or not at all, and this is where the approximation is made,
+ * once, rather than in each writer.
+ *
+ * Indices 16-231 are the 6x6x6 cube and 232-255 the grey ramp; 0-15 are the
+ * terminal's own sixteen and are NOT searched, because those are exactly the
+ * colours a scheme has already replaced — matching one would hand back the
+ * value we were trying to move away from.
+ */
+int kcol_xterm256(uint32_t rgb);
+
 int kcol_family(uint32_t rgb);
 
 /* Remap one source colour into `sc`, keeping its own lightness and
@@ -188,5 +225,13 @@ uint32_t kcol_remap(const KcolScheme *sc, uint32_t rgb);
  * half-rewritten. Returns a malloc'd NUL-terminated buffer. */
 char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
 		       size_t *outlen);
+
+/*
+ * The accent `kdos theme` last wrote, from $XDG_CACHE_HOME/kdos/theme. The
+ * READ is shared because every front end resolves the same two paths; what
+ * each does with the name is its own. Empty `out` means the default scheme,
+ * which is not an error.
+ */
+int kcol_theme_name(char *out, size_t cap);
 
 #endif /* KCOLOR_H */

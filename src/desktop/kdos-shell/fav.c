@@ -25,6 +25,7 @@
  * header band, the button bar and the list helpers moved to libkchrome.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +48,89 @@ int sh_fav_path(char *out, size_t n)
 	return 0;
 }
 
+/*
+ * THE TERMINAL FOLLOWS THE DESKTOP, so one favourites file serves both.
+ *
+ * `foot` is a Wayland client and the console session has no compositor to run
+ * it on, so a pinned row naming it there is a row that launches nothing; the
+ * mirror case is `kdos-term` on the graphical desktop, where `foot` is the
+ * terminal that has run on real hardware. The file names *the terminal* and
+ * this resolves which one — the same decision `sh_term()` makes for every
+ * chord, menu row and `Terminal=true` entry.
+ *
+ * Two favourites files would be two things to keep in agreement, and the one
+ * nobody is looking at is the one that goes stale.
+ */
+const char *sh_fav_id(const char *id)
+{
+	if (!id)
+		return NULL;
+	if (!strcmp(id, "foot") || !strcmp(id, "kdos-term"))
+		return sh_term();
+	return id;
+}
+
+/*
+ * THE ID IS THE FIRST WORD; THE REST OF THE LINE IS METADATA.
+ *
+ * A favourites line is `mc code=FM` since the two-letter launch codes landed,
+ * and every comparison here was against the WHOLE trimmed line. So `sh_fav_has`
+ * answered no for all seven seeded favourites, and three things followed from
+ * that one mistake: the context menu offered to Pin what was already pinned,
+ * clicking it appended a second line WITHOUT the code rather than unpinning,
+ * and `sh_fav_move` could not find a coded row to reorder it. The whole line is
+ * still what gets KEPT on a rewrite, or the codes would be dropped by the first
+ * pin of anything else.
+ */
+static int line_is(const char *line, const char *id)
+{
+	size_t n = strlen(id);
+
+	return !strncmp(line, id, n) &&
+	       (line[n] == '\0' || line[n] == ' ' || line[n] == '\t');
+}
+
+/*
+ * The two-letter code a favourites line carries, or NULL. Typing both letters
+ * with nothing else in the field opens it — in the menu and in the palette,
+ * from this one reader, because a second parse of this file is a second answer
+ * to what a code is.
+ */
+const char *sh_fav_code(const char *id)
+{
+	static char code[3];
+	char path[512], line[256];
+	FILE *f;
+	int got = 0;
+
+	code[0] = '\0';
+	if (!id || !*id || sh_fav_path(path, sizeof(path)) != 0)
+		return NULL;
+	f = fopen(path, "r");
+	if (!f)
+		return NULL;
+	while (!got && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\n")] = '\0';
+		char *p = line;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (!*p || *p == '#' || !line_is(p, id))
+			continue;
+		got = 1;
+
+		const char *c = strstr(p, "code=");
+
+		if (c && c[5] && c[6]) {
+			code[0] = (char)toupper((unsigned char)c[5]);
+			code[1] = (char)toupper((unsigned char)c[6]);
+			code[2] = '\0';
+		}
+	}
+	fclose(f);
+	return code[0] ? code : NULL;
+}
+
 int sh_fav_has(const char *id)
 {
 	char path[512], line[256];
@@ -63,7 +147,7 @@ int sh_fav_has(const char *id)
 		char *p = line;
 		while (*p == ' ' || *p == '\t')
 			p++;
-		if (*p && *p != '#' && !strcmp(p, id))
+		if (*p && *p != '#' && line_is(p, id))
 			found = 1;
 	}
 	fclose(f);
@@ -98,7 +182,7 @@ int sh_fav_move(const char *id, int to)
 			p++;
 		if (!*p || *p == '#')
 			continue;
-		if (!strcmp(p, id))
+		if (line_is(p, id))
 			from = nkeep;
 		snprintf(keep[nkeep++], sizeof(keep[0]), "%.*s",
 			 (int)sizeof(keep[0]) - 1, p);
@@ -158,7 +242,7 @@ int sh_fav_set(const char *id, int pinned)
 				p++;
 			if (!*p || *p == '#')
 				continue;
-			if (!strcmp(p, id)) {
+			if (line_is(p, id)) {
 				have = 1;
 				if (!pinned)
 					continue;	/* dropped */

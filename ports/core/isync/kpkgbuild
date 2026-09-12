@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = isync
+version     = 1.5.1
+release     = 1
+source      = https://downloads.sourceforge.net/project/$name/$name/$version/$name-$version.tar.gz
+sha256      = 28cc90288036aa5b6f5307bfc7178a397799003b96f7fd6e4bd2478265bb22fa  isync-1.5.1.tar.gz
+description = mbsync — an IMAP mailbox and a local Maildir made equal; no XOAUTH2, which needs cyrus-sasl
+homepage    = https://isync.sourceforge.io/
+depends     = openssl zlib pkgconf perl

@@ -23,9 +23,19 @@
  * TTY (see `bb`, and the `audio` group). Going through pipewire would make the
  * media keys a desktop-only feature for no benefit.
  *
- * Brightness is /sys/class/backlight. Writing it needs permission the user may
- * not have, and that is reported rather than silently swallowed — "my
- * brightness keys do nothing" is otherwise unattributable.
+ * BRIGHTNESS IS /sys/class/backlight, WHICH A DESKTOP DOES NOT HAVE. That tree
+ * is the panel a display controller drives directly — a laptop, an all-in-one,
+ * a tablet — and an external monitor on HDMI or DisplayPort appears in it not
+ * at all. Its brightness is a DDC/CI write down the same wire that carries the
+ * EDID, which is `ddcutil` and a /dev/i2c node, and that is a bounded I2C round
+ * trip rather than a write to a file. This program does not make it: the OSD is
+ * on a media key and must be on screen before the key repeats.
+ *
+ * WRITING THE PANEL'S BRIGHTNESS NEEDS A GROUP THE USER MAY NOT BE IN, and
+ * every failure here names which of the two it was. "My brightness keys do
+ * nothing" is otherwise unattributable, and the two causes have different
+ * fixes: no panel at all is a desktop, and a panel that refuses the write is
+ * 70-kdos-backlight.rules not having run.
  */
 
 #include <alsa/asoundlib.h>
@@ -394,7 +404,11 @@ static int backlight_path(char *buf, size_t len, const char *leaf)
 			continue;
 		snprintf(buf, len, "/sys/class/backlight/%s/%s", e->d_name, leaf);
 		found = 1;
-		break;		/* the first one; a laptop has exactly one */
+		/* The FIRST one. A machine with a panel has exactly one; a
+		 * machine with none has an empty directory and this returns
+		 * -1, which is a desktop rather than a fault. An external
+		 * monitor is never in here — see the header. */
+		break;
 	}
 	closedir(d);
 	return found ? 0 : -1;
@@ -734,16 +748,16 @@ static int slider_main(int at_x, int at_y, const char *font)
 		return 1;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = SL_COLS,
 		.rows = SL_ROWS,
 		/* Above the applet that opened it, or centred when nobody
 		 * said where — the anchor kdos-cal and kdos-start already
 		 * use, and the reason a popup reads as belonging to the thing
 		 * it came from. */
-		.corner = at_x >= 0 ? KWL_CORNER_BOTTOM_LEFT
-				    : KWL_CORNER_CENTER,
+		.corner = at_x >= 0 ? KDISP_CORNER_BOTTOM_LEFT
+				    : KDISP_CORNER_CENTER,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-osd",
@@ -754,18 +768,18 @@ static int slider_main(int at_x, int at_y, const char *font)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0)
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
 		return 1;
-	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	/* AFTER kdisp_init: the icon layer needs the cell size and the output
 	 * scale. No artwork is a slider with a glyph in it, not a failure. */
-	kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+	kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
 	int hover = 0, dragging = 0;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		pct = sh_volume_get(&muted);
 		if (pct < 0)
 			pct = 0;
@@ -868,7 +882,7 @@ static int slider_main(int at_x, int at_y, const char *font)
 	}
 done:
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }
 
@@ -938,15 +952,34 @@ int osd_main(int argc, char **argv)
 	} else if (!strcmp(what, "brightness")) {
 		pct = backlight_get();
 		if (pct < 0) {
-			fprintf(stderr, "kdos-osd: no backlight device\n");
+			/*
+			 * NAME THE CAUSE, NOT THE SYMPTOM. An empty
+			 * /sys/class/backlight is what a desktop looks like,
+			 * and the answer there is a DDC/CI write to the
+			 * monitor rather than a permission to chase.
+			 */
+			fprintf(stderr,
+				"kdos-osd: no panel in /sys/class/backlight\n"
+				"          an external monitor is `ddcutil "
+				"setvcp 10 <0-100>`\n");
 			return 1;
 		}
 		if (arg && (arg[0] == '+' || arg[0] == '-')) {
 			if (backlight_set(pct + atoi(arg)) != 0) {
+				/*
+				 * The panel is there and the write was
+				 * refused, which is one thing: the group.
+				 * 70-kdos-backlight.rules hands the attribute
+				 * to `video` at boot, so either the rule did
+				 * not run or this user is not in the group —
+				 * and `id` answers the second in one command.
+				 */
 				fprintf(stderr,
-					"kdos-osd: cannot write brightness — "
-					"the user needs write access to "
-					"/sys/class/backlight/*/brightness\n");
+					"kdos-osd: brightness refused the "
+					"write\n"
+					"          it belongs to group video; "
+					"check `id` and "
+					"70-kdos-backlight.rules\n");
 				return 1;
 			}
 			pct = backlight_get();
@@ -967,26 +1000,26 @@ int osd_main(int argc, char **argv)
 	if (!osd_claim())
 		return 0;		/* another OSD is up; it will refresh */
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		/*
 		 * Bottom-centre, where a volume bezel goes — dead centre put
 		 * it on top of whatever the media key was pressed OVER.
 		 */
-		.corner = KWL_CORNER_BOTTOM_CENTER,
+		.corner = KDISP_CORNER_BOTTOM_CENTER,
 		.cols = OSD_COLS,
 		.rows = OSD_ROWS,
 		.app_id = "kdos-osd",
 	};
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0)
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
 		return 0;
 	/*
 	 * NO pointer input, ever: this overlay sat mid-screen with the default
 	 * input region and ate every click under it for 1.2 s per keypress.
 	 * It changes nothing on a click and must be transparent to one.
 	 */
-	kwl_input_cells(NULL, 0);
+	kdisp_input_cells(NULL, 0);
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -1009,7 +1042,7 @@ int osd_main(int argc, char **argv)
 	 */
 	KtuiEvent ev;
 	int64_t until = osd_now_ms() + OSD_MS;
-	while (osd_now_ms() < until && !kwl_should_close()) {
+	while (osd_now_ms() < until && !kdisp_should_close()) {
 		int rem = (int)(until - osd_now_ms());
 		ktui_backend()->poll_event(&ev, rem > 100 ? 100 : rem);
 		if (!poked)
@@ -1023,6 +1056,6 @@ int osd_main(int argc, char **argv)
 		until = osd_now_ms() + OSD_MS;
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

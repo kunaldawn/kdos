@@ -7,10 +7,17 @@
  * ---------------------------------
  *   apps.c — one index of what is installed
  *
- * `kdos-start`, `kdos-launcher`, `kdos-run` and `kdos-openwith` each used to
- * walk /usr/share/applications for themselves, which is four answers to "what
- * is installed on this machine" and four places for a rule about NoDisplay to
- * be slightly different. This is the one answer.
+ * `kdos-start`, `kdos-launcher`, `kdos-run` and `kdos-openwith` each walked
+ * /usr/share/applications for themselves, which is four answers to "what is
+ * installed on this machine" and four places for a rule about NoDisplay to be
+ * slightly different. This is the answer `kdos-start` uses.
+ *
+ * IT IS NOT YET THE ONLY ONE. `kdos-launcher` still keeps its own index —
+ * frecency and the alien mark ride on its entries — and `kdos-run` and
+ * `kdos-openwith` have their own reasons. What the launcher no longer keeps is
+ * its own idea of WHERE applications live: it reads the XDG data directories in
+ * this file's order, because ignoring `XDG_DATA_DIRS` made it the one surface
+ * that could not find what the others listed.
  *
  * WHAT IS HERE THAT WAS NOT ANYWHERE: a USAGE COUNT. A Start menu whose left
  * column is "the things you actually run" cannot be built without one, and
@@ -39,6 +46,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kcon.h"
 #include "kxdg.h"
 #include "shell.h"
 
@@ -257,6 +265,25 @@ static void add_desktop_file(const char *path)
 	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
 	a->terminal = kxdg_bool(&e, "Terminal", 0);
 	/*
+	 * WHICH TERMINAL, for the few entries that need one in particular.
+	 * A program drawing pictures in the grid needs the emulator that links
+	 * the decoders; everything else gets the session's own, which is
+	 * lighter. Validated in sh_term_named(), so the key names one of two
+	 * emulators and never a program.
+	 */
+	snprintf(a->term, sizeof(a->term), "%s",
+		 kxdg_get(&e, "X-KDOS-Term", ""));
+	/*
+	 * HOW THE WINDOW SHOULD OPEN, for the entries that have a shape rather
+	 * than a size somebody drags. Read here and in `desk.c`, which parses
+	 * an entry of its own — a key read in one and not the other is a
+	 * desktop icon that behaves differently from the same row in the Start
+	 * menu.
+	 */
+	a->floating = kxdg_bool(&e, "X-KDOS-Float", 0);
+	snprintf(a->size, sizeof(a->size), "%s",
+		 kxdg_get(&e, "X-KDOS-Size", ""));
+	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
 	 * distro's menus can answer and only this distro's users need asked.
 	 * An entry whose Exec IS the box launcher is a boxed app whatever the
@@ -410,29 +437,27 @@ int sh_apps_in_group(int group, const struct sh_app **out, int max)
 }
 
 /*
- * A substring match over the name, the id, the keywords and the command,
- * case-insensitively — and RANKED, because "fi" matching forty entries in
- * alphabetical order is a list nobody reads to the end of.
+ * A FUZZY match over the name, the id, the keywords and the command — and
+ * RANKED, because "fi" matching forty entries in alphabetical order is a list
+ * nobody reads to the end of.
  *
- * The rank is a prefix of the name first, then a word start inside it, then
- * anywhere at all, and the usage count breaks ties inside each band. That is
- * the order a person means when they type two letters.
+ * `kb_fuzzy()` AND NOT A MATCHER OF OUR OWN. This used to be a
+ * case-insensitive SUBSTRING in six bands, which meant `sm` found nothing at
+ * all where a person plainly meant System Monitor — and it meant the launcher,
+ * which had a subsequence matcher of its own, answered the same query
+ * differently. One function in libkbase is what stops three surfaces ranking
+ * one query three ways; see kbase.h for the ladder it scores by.
+ *
+ * HIGHER IS BETTER HERE, which is the opposite of what the launcher's private
+ * matcher meant by a score. The comparison below sorts descending, and a sort
+ * left the other way round would rank a correct list backwards.
+ *
+ * The usage count still breaks ties, and the name breaks those: that is the
+ * order a person means when two rows are equally good matches.
  */
-static const char *ci_str(const char *hay, const char *needle)
-{
-	size_t n = strlen(needle);
-
-	if (!n)
-		return hay;
-	for (const char *p = hay; *p; p++)
-		if (!strncasecmp(p, needle, n))
-			return p;
-	return NULL;
-}
-
 struct hit {
 	const struct sh_app *app;
-	int band;
+	int fuzz;
 };
 
 static int cmp_hit(const void *pa, const void *pb)
@@ -440,8 +465,8 @@ static int cmp_hit(const void *pa, const void *pb)
 	const struct hit *a = pa, *b = pb;
 	long now = time(NULL);
 
-	if (a->band != b->band)
-		return a->band - b->band;
+	if (a->fuzz != b->fuzz)
+		return a->fuzz < b->fuzz ? 1 : -1;	/* DESCENDING */
 	long sa = score(a->app, now), sb = score(b->app, now);
 	if (sa != sb)
 		return sa < sb ? 1 : -1;
@@ -464,25 +489,37 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 
 	for (int i = 0; i < napps; i++) {
 		const struct sh_app *a = &apps[i];
-		const char *p = ci_str(a->name, needle);
-		int band = -1;
+		/*
+		 * THE NAME IS WORTH MORE THAN THE COMMAND. All four fields are
+		 * searched, because somebody typing `gimp` may mean any of
+		 * them, but a hit in the name is what they almost always mean
+		 * — so the weaker fields are scored and then discounted rather
+		 * than being a separate band that outranks a good name match.
+		 */
+		static const int DISCOUNT[4] = { 0, 4, 8, 8 };
+		const char *field[4];
+		int best = 0;
 
-		if (p == a->name)
-			band = 0;
-		else if (p && p[-1] == ' ')
-			band = 1;
-		else if (p)
-			band = 2;
-		else if (ci_str(a->id, needle))
-			band = 3;
-		else if (ci_str(a->keywords, needle))
-			band = 4;
-		else if (ci_str(a->exec, needle))
-			band = 5;
-		if (band < 0)
+		field[0] = a->name;
+		field[1] = a->id;
+		field[2] = a->keywords;
+		field[3] = a->exec;
+		for (int k = 0; k < 4; k++) {
+			int sc = kb_fuzzy(field[k], needle);
+
+			/* Discounted, never floored to nothing: a hit in the
+			 * keywords is a weaker reason than a hit in the name
+			 * and is still a reason. */
+			if (!sc)
+				continue;
+			sc = sc > DISCOUNT[k] ? sc - DISCOUNT[k] : 1;
+			if (sc > best)
+				best = sc;
+		}
+		if (!best)
 			continue;
 		hits[n].app = a;
-		hits[n].band = band;
+		hits[n].fuzz = best;
 		n++;
 	}
 	qsort(hits, (size_t)n, sizeof(hits[0]), cmp_hit);
@@ -524,6 +561,7 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 			 int nfiles)
 {
 	char store[SH_APP_EXEC * 2];
+	char id[160];			/* argv points into it until the exec */
 	const char *argv[48];
 	int n = 0;
 
@@ -539,10 +577,19 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 		usage_save();
 	}
 
-	if (a->terminal) {
-		argv[n++] = "foot";
-		argv[n++] = "-e";
-	}
+	/*
+	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
+	 * socket, set by the session for everything started inside it, and it
+	 * decides how a NON-terminal entry is started below. A terminal entry
+	 * needs no branch here: sh_term_argv_in() names the emulator, from the
+	 * entry's own X-KDOS-Term when it asked for one.
+	 */
+	const char *con = getenv("KDOS_CON");
+
+	if (a->terminal)
+		n = sh_term_argv_in(a->term, a->floating, a->size, argv, n,
+				    (int)(sizeof(argv) / sizeof(*argv)),
+				    a->exec, id, sizeof(id));
 	int got = kxdg_exec_split(a->exec, files, nfiles, store, sizeof(store),
 				  argv + n, (int)(sizeof(argv) / sizeof(*argv))
 						    - n - 1 - nfiles);
@@ -557,5 +604,26 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 		for (int i = 0; i < nfiles && n < 47; i++)
 			argv[n++] = files[i];
 	argv[n] = NULL;
+
+	/*
+	 * A GRAPHICAL APPLICATION ON THE CONSOLE GETS A TERMINAL OF ITS OWN.
+	 * This desktop composites character cells and a Wayland client's
+	 * surface is pixels; the session allocates a VT, kdos-cage holds it,
+	 * and the guest is full screen there. Everything else about the launch
+	 * — the desktop entry, kdos-appbox, the box's tagged socket — is the
+	 * same path the graphical desktop uses, which is the point.
+	 *
+	 * A terminal entry is not one of these: it became a kdos-term window
+	 * above and belongs on this grid.
+	 */
+	if (con && *con && !a->terminal) {
+		if (kcon_run(con, argv, a->name[0] ? a->name : argv[0], 0) < 0)
+			fprintf(stderr,
+				"kdos-shell: cannot start '%s' — the session "
+				"has no free terminal to give it\n",
+				a->name[0] ? a->name : argv[0]);
+		return;
+	}
+
 	sh_spawn(argv);
 }

@@ -16,13 +16,15 @@
  *   kdos version
  *
  * The palette is libkcolor's and nothing else's. This file used to carry a
- * second copy of the table — four schemes, nine colours, hand-kept in step
+ * second copy of the table — seven schemes, nine colours, hand-kept in step
  * with the installer's — and the two were edited separately.
  * ---------------------------------
  */
 
+#include <ctype.h>
 #include <dirent.h>
 #include <grp.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,7 +38,11 @@
 #include <sys/utsname.h>
 
 #include <stdbool.h>
+#include <time.h>
 
+/* The battery is a file under /sys and libkproc is what reads it — the same
+ * reader the resource monitor uses, so there is one answer and not two. */
+#include "kproc.h"
 #include "kdos-tools.h"
 
 /* Where kdos-cursors installs its artwork. kdos-theme's own CURSOR_ART_DEFAULT
@@ -71,6 +77,52 @@ char *kdt_cfg_home(const char *rest)
 	return p;
 }
 
+/*
+ * One key out of con.conf, or NULL. The user's file first, then the shipped
+ * one — the same order libkcon reads them in, stated here because this binary
+ * links no libkcon and must not: `kdos` is on every image and the console
+ * desktop is not.
+ */
+static char *con_conf_key(const char *key)
+{
+	char *user = kdt_cfg_home("kdos-con/con.conf");
+	const char *files[2];
+	char *out = NULL;
+
+	files[0] = user;
+	files[1] = "/etc/kdos/con.conf";
+
+	for (int f = 0; f < 2 && !out; f++) {
+		char *data = kb_read_all(files[f], NULL);
+
+		if (!data)
+			continue;
+		for (char *line = data, *next; line && *line; line = next) {
+			char *nl = strchr(line, '\n');
+			char *eq;
+
+			next = nl ? nl + 1 : line + strlen(line);
+			if (nl)
+				*nl = '\0';
+			while (*line == ' ' || *line == '\t')
+				line++;
+			if (strncmp(line, key, strlen(key)))
+				continue;
+			eq = strchr(line, '=');
+			if (!eq)
+				continue;
+			eq++;
+			while (*eq == ' ' || *eq == '\t')
+				eq++;
+			out = kb_strdup(eq);
+			break;
+		}
+		free(data);
+	}
+	free(user);
+	return out;
+}
+
 char *kdt_data_home(const char *rest)
 {
 	const char *x = getenv("XDG_DATA_HOME");
@@ -81,7 +133,10 @@ char *kdt_data_home(const char *rest)
 	return p;
 }
 
-static char *cache_home(const char *rest)
+/* Exported because `kdos thumb` writes into the same cache root and a second
+ * answer to where that is would put its thumbnails somewhere nothing else
+ * looks. */
+char *kdt_cache_home(const char *rest)
 {
 	const char *x = getenv("XDG_CACHE_HOME");
 	char *base = (x && *x) ? kb_strdup(x)
@@ -94,7 +149,7 @@ static char *cache_home(const char *rest)
 static const char *current_theme(void)
 {
 	static char name[32];
-	char *p = cache_home("kdos/theme");
+	char *p = kdt_cache_home("kdos/theme");
 	name[0] = 0;
 	if (kb_read_line_file(p, name, sizeof(name)) > 0 && kcol_find(name)) {
 		free(p);
@@ -111,7 +166,7 @@ const char *kdt_current_accent(void)
 	return current_theme();
 }
 
-static void mkparent(const char *path)
+void kdt_mkparent(const char *path)
 {
 	char *copy = kb_strdup(path);
 	char *slash = strrchr(copy, '/');
@@ -134,7 +189,75 @@ static void mkparent(const char *path)
  *
  * Everything under this point exists for software that is NOT ours and cannot
  * be told: GTK and Qt apps in the appbox, foot, btop, starship. */
-static void reload_session(void)
+/*
+ * THE BAR, AWAY AND BACK, under the compositor.
+ *
+ * BY SIGNAL AND BY NAME. `kdos-shell` is basename-dispatched, so
+ * `pkill -USR1 kdos-shell` reaches the panel and not the desktop icons or the
+ * notification daemon, which are other argv[0]s of the same binary — the same
+ * property `kdos theme`'s SIGHUP already relies on.
+ *
+ * A VERB AND NOT A CHORD'S OWN BUSINESS. `rc.xml` runs a command and cannot
+ * send a signal, and the console's half of this chord is a session action with
+ * no process to signal at all; one name for both is what makes the key card
+ * one card.
+ *
+ * Nothing is reported when no panel is running: a desktop with no bar has
+ * already granted the request.
+ */
+/*
+ * SIGNALLED FROM HERE AND NOT THROUGH `pkill`, which is the one signal in this
+ * program that cannot go that way: this image's `pkill` is toybox's, its `-U`
+ * takes a user id, and `-USR1` is therefore parsed as `-U SR1` and refused —
+ * `-HUP` survives only because there is no `-H`. A signal spelled so that it
+ * depends on which options a `pkill` happens to have is a signal that stops
+ * being sent the day one is swapped, silently, because pkill's own refusal
+ * goes to a stderr nobody reads.
+ *
+ * EXACT AND BY `comm`, which is what `pkill -x` compares: `kdos-shell` is
+ * basename-dispatched, so the panel, the desktop icons and the notification
+ * daemon are three argv[0]s of one binary and only one of them answers this.
+ * An unanchored match would reach a future name carrying this one, and
+ * SIGUSR1's default disposition is death.
+ */
+static int signal_named(const char *name, int sig)
+{
+	int n = 0, hit = 0;
+	char **ents = kb_listdir("/proc", &n);
+
+	if (!ents)
+		return 0;
+	for (int i = 0; i < n; i++) {
+		char path[64], *comm;
+
+		if (!isdigit((unsigned char)ents[i][0]))
+			continue;
+		snprintf(path, sizeof(path), "/proc/%s/comm", ents[i]);
+		comm = kb_read_all(path, NULL);
+		if (!comm)
+			continue;
+		comm[strcspn(comm, "\n")] = '\0';
+		if (!strcmp(comm, name)) {
+			kill((pid_t)atoi(ents[i]), sig);
+			hit++;
+		}
+		free(comm);
+	}
+	kb_strv_free(ents);
+	return hit;
+}
+
+static int cmd_panel(int argc, char **argv)
+{
+	if (argc != 1 || strcmp(argv[0], "toggle")) {
+		fprintf(stderr, "usage: kdos panel toggle\n");
+		return 2;
+	}
+	signal_named("kdos-shell", SIGUSR1);
+	return 0;
+}
+
+void kdt_reload_session(void)
 {
 	if (!kb_have_prog("pkill"))
 		return;
@@ -165,10 +288,21 @@ static void reload_session(void)
 	 * `kdos-res` is here and `kdos-resctl` must never be: the exact match
 	 * below is what keeps them apart, since one name is a prefix of the
 	 * other. The setuid helper is short-lived and handles no signals.
+	 *
+	 * Both halves of the console desktop are here and both have to be.
+	 * `kdos-con` holds the cells and `kdos-view` holds the palette its
+	 * backend paints them with, so signalling one and not the other
+	 * retints half a screen. `kdos-con-login` and `kdos-con-start` are NOT
+	 * reached: the match is exact, and one is a login and the other a
+	 * /bin/sh script that would die of a signal it does not handle.
+	 *
+	 * `kdos-term` handles it and redraws; foot cannot reload its config at
+	 * all, which is why the note below says a foot window keeps the accent
+	 * it opened in and this one does not.
 	 */
 	static const char *const who[] = {
 		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-slit",
-		"kdos-res", "kdos-comp"
+		"kdos-res", "kdos-comp", "kdos-con", "kdos-view", "kdos-term"
 	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
@@ -386,7 +520,7 @@ static void write_icons(const KcolScheme *sc)
 	if (!kb_have_prog("kdos-theme"))
 		return;
 	char *out = kb_path_join(kb_home_dir(), ".icons/KDOS");
-	mkparent(out);
+	kdt_mkparent(out);
 	KbArgv a = {0};
 	kb_argv_add(&a, "kdos-theme");
 	kb_argv_add(&a, "icons");
@@ -418,7 +552,7 @@ static void write_cursors(const KcolScheme *sc)
 	if (!(art && *art && kb_is_dir(art)) && !kb_is_dir(CURSOR_ART_PATH))
 		return;
 	char *out = kb_path_join(kb_home_dir(), ".icons/KDOS-cursors");
-	mkparent(out);
+	kdt_mkparent(out);
 	KbArgv a = {0};
 	kb_argv_add(&a, "kdos-theme");
 	kb_argv_add(&a, "cursors");
@@ -526,7 +660,7 @@ static void ansi_all(const KcolScheme *sc, AnsiDerived *o)
 static void write_foot(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("foot/themes/kdos");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	AnsiDerived a;
 	ansi_all(sc, &a);
@@ -592,10 +726,564 @@ static void write_foot(const KcolScheme *sc)
  * colour-bearing line, so `kdos theme amber` repaints the next attach — and a
  * running server too, via the source-file reload cmd_theme already sends.
  */
+/*
+ * THE SIXTEEN COLOURS A PROGRAM ASKS FOR, in this desktop's own terminals.
+ *
+ * NOT term.conf. That file is a person's — the shell, the font, the size — and
+ * this is generated: a writer that rewrote it would throw away what they had
+ * put there. `kdos-term` and the console session both read this one beside it,
+ * which is the same "one generated file, the config consumes it" shape every
+ * writer here keeps; the consuming is in our own code rather than an include
+ * line because we own both readers.
+ *
+ * IT IS A TENTH PALETTE, NOT A REPLACEMENT FOR THE NINE. libkvt carries
+ * upstream's named palettes — `nord`, `solarized`, `base16-dark` — and a
+ * person may still ask for one by name. This fills the `custom` entry the vte
+ * already understands, so a scheme is one more choice rather than the removal
+ * of nine.
+ *
+ * THE CONTENT PALETTE IS NOT THE CHROME SLOTS. What a program asks for with
+ * an ANSI escape is answered here; what this desktop's own surfaces draw with
+ * is the slot table, and the two are separate on purpose — a program that
+ * asks for red should get red, not the accent.
+ */
+static void write_kdosterm(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("kdos/term-colors.conf");
+	kdt_mkparent(f);
+
+	AnsiDerived a;
+	ansi_all(sc, &a);
+
+	char blk[8], red[8], grn[8], yel[8], blu[8], mag[8], cyn[8], lgy[8];
+	char dgy[8], lrd[8], lgn[8], lyl[8], lbl[8], lmg[8], lcy[8], wht[8];
+	char fg[8], bg[8];
+
+	/* Black is the ground and white the text, so the two ends of the ramp
+	 * are the scheme's own rather than 0x000000 and 0xffffff: a terminal
+	 * whose black was blacker than the desktop behind it would draw a
+	 * rectangle nobody asked for. */
+	kcol_format(sc->deep, blk);
+	kcol_format(sc->urgent, red);
+	kcol_format(sc->primary, grn);
+	kcol_format(sc->secondary, yel);
+	kcol_format(a.blue, blu);
+	kcol_format(a.magenta, mag);
+	kcol_format(a.cyan, cyn);
+	kcol_format(sc->text, lgy);
+	kcol_format(kcol_muted(sc), dgy);
+	kcol_format(a.burgent, lrd);
+	kcol_format(a.bprimary, lgn);
+	kcol_format(a.bsecondary, lyl);
+	kcol_format(a.bblue, lbl);
+	kcol_format(a.bmagenta, lmg);
+	kcol_format(a.bcyan, lcy);
+	kcol_format(a.btext, wht);
+	kcol_format(sc->text, fg);
+	kcol_format(sc->deep, bg);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS terminal colours — GENERATED by `kdos theme`; edits "
+		"will be overwritten.\n"
+		"# The sixteen a program asks for. Chrome is the slot table and "
+		"is not here.\n"
+		"black = #%s\nred = #%s\ngreen = #%s\nyellow = #%s\n"
+		"blue = #%s\nmagenta = #%s\ncyan = #%s\nlight-grey = #%s\n"
+		"dark-grey = #%s\nlight-red = #%s\nlight-green = #%s\n"
+		"light-yellow = #%s\nlight-blue = #%s\nlight-magenta = #%s\n"
+		"light-cyan = #%s\nwhite = #%s\n"
+		"foreground = #%s\nbackground = #%s\n",
+		blk, red, grn, yel, blu, mag, cyn, lgy,
+		dgy, lrd, lgn, lyl, lbl, lmg, lcy, wht, fg, bg);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/*
+ * ── THE PROGRAMS A CONSOLE USER LIVES IN ────────────────────────────────
+ *
+ * Each of these follows write_foot's shape and each was written against the
+ * program's own parser, because every one of them fails a generated file
+ * DIFFERENTLY and most of them fail it in silence:
+ *
+ *   micro DISCARDS THE WHOLE SCHEME on one unparsable line and falls back to
+ *   its default, so a stray character costs every colour rather than one.
+ *
+ *   newsboat CANNOT BE TOLD A COLOUR AT ALL. `#` is its comment character, so
+ *   a hex value truncates the line and the entry is refused for having too
+ *   few parameters. It takes the 256 indices, which is why kcol_xterm256()
+ *   exists — the scheme reaches it approximated or not at all.
+ *
+ *   fzf and delta both treat `#` as a comment in the wrong place: a space
+ *   before a colour in fzf, an unquoted value in delta, and the colour is
+ *   silently dropped with a zero exit.
+ *
+ *   bat reads three-digit hex as raw nibbles rather than expanding it, so a
+ *   short form renders near-black with no warning.
+ *
+ * WHAT IS NOT HERE, AND WHY: lazygit. Its configuration has no include, no
+ * import and no separate theme file — the colours live in `gui.theme` inside
+ * the one `config.yml` a person edits. Writing them would mean owning that
+ * file and throwing away whatever else they had put in it, which is the one
+ * thing a generated file must never do.
+ */
+
+/*
+ * bat: a Sublime `.tmTheme` plist, and the name is the FILE STEM rather than
+ * the `name` key inside it — `--theme=kdos` finds this file, `--theme="KDOS"`
+ * finds nothing. Hex must be the six-digit form: bat reads `#abc` as the raw
+ * nibbles rather than expanding it, and renders a near-black palette without
+ * a word of complaint.
+ *
+ * THE CACHE IS REBUILT AFTER, and its exit status means nothing — `bat cache
+ * --build` returns 0 having dropped a theme it could not parse, so the only
+ * way to know is to ask for the theme back.
+ */
+static void write_bat(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("bat/themes/kdos.tmTheme");
+	kdt_mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(sc->variant, var);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+		"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+		"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+		"<plist version=\"1.0\">\n<dict>\n"
+		"<!-- KDOS bat theme — GENERATED by `kdos theme`; edits will "
+		"be overwritten. -->\n"
+		"  <key>name</key><string>KDOS</string>\n"
+		"  <key>settings</key>\n  <array>\n"
+		"    <dict><key>settings</key><dict>\n"
+		"      <key>background</key><string>#%s</string>\n"
+		"      <key>foreground</key><string>#%s</string>\n"
+		"      <key>caret</key><string>#%s</string>\n"
+		"      <key>lineHighlight</key><string>#%s</string>\n"
+		"      <key>selection</key><string>#%s</string>\n"
+		"      <key>gutterForeground</key><string>#%s</string>\n"
+		"    </dict></dict>\n"
+		"    <dict><key>scope</key><string>comment, "
+		"punctuation.definition.comment</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"    <dict><key>scope</key><string>string</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"    <dict><key>scope</key><string>constant.numeric, "
+		"constant.language</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"    <dict><key>scope</key><string>keyword, storage</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string><key>fontStyle</key><string>bold</string>"
+		"</dict></dict>\n"
+		"    <dict><key>scope</key><string>entity.name.function, "
+		"support.function</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"    <dict><key>scope</key><string>entity.name.type, "
+		"support.type, support.class</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"    <dict><key>scope</key><string>variable</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"    <dict><key>scope</key><string>invalid</string>\n"
+		"      <key>settings</key><dict><key>foreground</key>"
+		"<string>#%s</string></dict></dict>\n"
+		"  </array>\n</dict>\n</plist>\n",
+		deep, text, p, dim, dim, mut,
+		mut, p, sec, urg, p, var, text, urg);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+
+	/*
+	 * THE CACHE, REBUILT — a theme file bat has not cached is a theme bat
+	 * does not have. Forked rather than linked for the reason the icon and
+	 * cursor writers fork: it is another program's job.
+	 */
+	if (kb_have_prog("bat")) {
+		KbArgv a = { 0 };
+
+		kb_argv_add(&a, "bat");
+		kb_argv_add(&a, "cache");
+		kb_argv_add(&a, "--build");
+		kb_argv_end(&a);
+		kb_run(&a);
+	}
+}
+
+/* micro: `include "kdos"` from a scheme of the person's own, or the file is
+ * selected by name in settings.json. The directory is made here because micro
+ * creates only its config root and reads this one with the error discarded —
+ * an absent directory registers nothing and the name resolves to a built-in. */
+static void write_micro(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("micro/colorschemes/kdos.micro");
+	kdt_mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(sc->variant, var);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS micro colorscheme — GENERATED by `kdos theme`; edits "
+		"will be overwritten.\n"
+		"# Whole-line comments only: micro discards the entire scheme "
+		"on one bad line.\n"
+		"color-link default \"#%s,#%s\"\n"
+		"color-link comment \"#%s\"\n"
+		"color-link identifier \"#%s\"\n"
+		"color-link constant \"#%s\"\n"
+		"color-link constant.string \"#%s\"\n"
+		"color-link statement \"#%s\"\n"
+		"color-link preproc \"#%s\"\n"
+		"color-link type \"#%s\"\n"
+		"color-link special \"#%s\"\n"
+		"color-link symbol \"#%s\"\n"
+		"color-link underlined \"underline #%s\"\n"
+		"color-link error \"bold #%s\"\n"
+		"color-link todo \"bold #%s\"\n"
+		"color-link selection \"#%s,#%s\"\n"
+		"color-link statusline \"#%s,#%s\"\n"
+		"color-link tabbar \"#%s,#%s\"\n"
+		"color-link line-number \"#%s,#%s\"\n"
+		"color-link current-line-number \"#%s,#%s\"\n"
+		"color-link cursor-line \"#%s\"\n"
+		"color-link color-column \"#%s\"\n"
+		"color-link match-brace \"#%s,#%s\"\n",
+		text, deep, mut, p, sec, p, urg, urg, sec, var, sec,
+		p, urg, sec, deep, p, deep, text, deep, text,
+		mut, dim, sec, dim, dim, dim, deep, sec);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/* helix: no include exists — `inherits = "kdos"` from a theme of the person's
+ * own is the composition it has. A palette entry must be hex or an index; a
+ * colour NAME there is a parse error that loses the theme. */
+static void write_helix(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("helix/themes/kdos.toml");
+	kdt_mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(sc->variant, var);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS helix theme — GENERATED by `kdos theme`; edits will be "
+		"overwritten.\n"
+		"# Your own theme may `inherits = \"kdos\"`; helix has no "
+		"include.\n"
+		"\"ui.background\" = { bg = \"deep\" }\n"
+		"\"ui.text\" = { fg = \"text\" }\n"
+		"\"ui.text.focus\" = { fg = \"primary\", modifiers = [\"bold\"] }\n"
+		"\"ui.cursor\" = { fg = \"deep\", bg = \"primary\" }\n"
+		"\"ui.cursor.primary\" = { fg = \"deep\", bg = \"primary\" }\n"
+		"\"ui.linenr\" = { fg = \"muted\" }\n"
+		"\"ui.linenr.selected\" = { fg = \"secondary\" }\n"
+		"\"ui.selection\" = { bg = \"dim\" }\n"
+		"\"ui.statusline\" = { fg = \"deep\", bg = \"primary\" }\n"
+		"\"ui.statusline.inactive\" = { fg = \"text\", bg = \"dim\" }\n"
+		"\"ui.help\" = { fg = \"text\", bg = \"dim\" }\n"
+		"\"ui.popup\" = { fg = \"text\", bg = \"dim\" }\n"
+		"\"ui.menu\" = { fg = \"text\", bg = \"dim\" }\n"
+		"\"ui.menu.selected\" = { fg = \"deep\", bg = \"primary\" }\n"
+		"\"ui.virtual.whitespace\" = { fg = \"muted\" }\n"
+		"\"comment\" = { fg = \"muted\", modifiers = [\"italic\"] }\n"
+		"\"variable\" = { fg = \"text\" }\n"
+		"\"constant\" = { fg = \"secondary\" }\n"
+		"\"string\" = { fg = \"primary\" }\n"
+		"\"keyword\" = { fg = \"urgent\" }\n"
+		"\"function\" = { fg = \"primary\" }\n"
+		"\"type\" = { fg = \"variant\" }\n"
+		"\"operator\" = { fg = \"secondary\" }\n"
+		"\"punctuation\" = { fg = \"muted\" }\n"
+		"\"error\" = { fg = \"urgent\" }\n"
+		"\"warning\" = { fg = \"secondary\" }\n"
+		"\n[palette]\n"
+		"primary = \"#%s\"\n"
+		"secondary = \"#%s\"\n"
+		"urgent = \"#%s\"\n"
+		"deep = \"#%s\"\n"
+		"text = \"#%s\"\n"
+		"variant = \"#%s\"\n"
+		"dim = \"#%s\"\n"
+		"muted = \"#%s\"\n",
+		p, sec, urg, deep, text, var, dim, mut);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/* neovim: an ordinary vimscript colorscheme. LF endings — a CRLF file half
+ * loads, which is worse than not loading, and `hi clear` before anything is
+ * what makes a re-source clean. */
+static void write_nvim(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("nvim/colors/kdos.vim");
+	kdt_mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(sc->variant, var);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"\" KDOS neovim colorscheme — GENERATED by `kdos theme`; edits "
+		"will be overwritten.\n"
+		"hi clear\n"
+		"if exists(\"syntax_on\")\n  syntax reset\nendif\n"
+		"set background=dark\n"
+		"let g:colors_name = \"kdos\"\n"
+		"hi Normal guifg=#%s guibg=#%s\n"
+		"hi Comment guifg=#%s gui=italic\n"
+		"hi Constant guifg=#%s\n"
+		"hi String guifg=#%s\n"
+		"hi Identifier guifg=#%s\n"
+		"hi Function guifg=#%s\n"
+		"hi Statement guifg=#%s\n"
+		"hi PreProc guifg=#%s\n"
+		"hi Type guifg=#%s\n"
+		"hi Special guifg=#%s\n"
+		"hi Underlined guifg=#%s gui=underline\n"
+		"hi Error guifg=#%s gui=bold\n"
+		"hi Todo guifg=#%s guibg=#%s gui=bold\n"
+		"hi LineNr guifg=#%s\n"
+		"hi CursorLineNr guifg=#%s\n"
+		"hi CursorLine guibg=#%s\n"
+		"hi Visual guibg=#%s\n"
+		"hi StatusLine guifg=#%s guibg=#%s\n"
+		"hi StatusLineNC guifg=#%s guibg=#%s\n"
+		"hi Pmenu guifg=#%s guibg=#%s\n"
+		"hi PmenuSel guifg=#%s guibg=#%s\n"
+		"hi Search guifg=#%s guibg=#%s\n"
+		"hi MatchParen guifg=#%s guibg=#%s\n"
+		"hi VertSplit guifg=#%s\n"
+		"hi NonText guifg=#%s\n",
+		text, deep, mut, sec, p, p, p, urg, urg, var, sec,
+		p, urg, deep, sec, mut, sec, dim, dim,
+		deep, p, text, dim, text, dim, deep, p, deep, sec,
+		deep, sec, mut, mut);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/* delta: git's own `[include] path`, which is delta's documented mechanism.
+ * Every hex value is QUOTED — unquoted, git takes the `#` as a comment and the
+ * style silently loses its colour. */
+static void write_delta(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("git/kdos-delta");
+	kdt_mkparent(f);
+
+	char p[8], sec[8], urg[8], mut[8], minus[8], plus[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(kcol_muted(sc), mut);
+	/* A removed line is the urgent hue laid over the ground and an added
+	 * one the primary: dark enough to read text on, which a full-strength
+	 * accent as a background is not. */
+	kcol_format(kcol_mix(sc->urgent, sc->deep, 78), minus);
+	kcol_format(kcol_mix(sc->primary, sc->deep, 78), plus);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS delta colours — GENERATED by `kdos theme`; edits will "
+		"be overwritten.\n"
+		"# Included from the shipped gitconfig. Every hex is quoted: "
+		"unquoted, `#` starts a comment.\n"
+		"[delta \"kdos\"]\n"
+		"\tminus-style = \"normal\" \"#%s\"\n"
+		"\tminus-emph-style = \"normal\" \"#%s\"\n"
+		"\tplus-style = \"syntax\" \"#%s\"\n"
+		"\tplus-emph-style = \"syntax\" \"#%s\"\n"
+		"\tline-numbers-minus-style = \"#%s\"\n"
+		"\tline-numbers-plus-style = \"#%s\"\n"
+		"\tline-numbers-zero-style = \"#%s\"\n"
+		"\tfile-style = \"#%s\" bold\n"
+		"\tfile-decoration-style = \"#%s\" ul\n"
+		"\thunk-header-style = \"#%s\"\n"
+		"\thunk-header-decoration-style = \"#%s\"\n"
+		"\tcommit-style = \"#%s\" bold\n"
+		"\tcommit-decoration-style = \"#%s\"\n"
+		"\twhitespace-error-style = \"#%s\" reverse\n",
+		minus, urg, plus, p, urg, p, mut, sec, mut, mut, mut, sec,
+		mut, urg);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/* newsboat: `include <path>` from the shipped config. INDICES, not hex — `#`
+ * is newsboat's comment character, so a hex colour truncates the line and the
+ * entry is refused outright. kcol_xterm256 is where the scheme is
+ * approximated, and it is approximated because there is no other way in. */
+static void write_newsboat(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("newsboat/kdos-colors");
+	kdt_mkparent(f);
+
+	int p = kcol_xterm256(sc->primary);
+	int sec = kcol_xterm256(sc->secondary);
+	int deep = kcol_xterm256(sc->deep);
+	int text = kcol_xterm256(sc->text);
+	int mut = kcol_xterm256(kcol_muted(sc));
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS newsboat colours — GENERATED by `kdos theme`; edits "
+		"will be overwritten.\n"
+		"# INDICES, NOT HEX: `#` is a comment here, so a hex colour "
+		"truncates the line.\n"
+		"color background color%d color%d\n"
+		"color listnormal color%d color%d\n"
+		"color listnormal_unread color%d color%d bold\n"
+		"color listfocus color%d color%d bold\n"
+		"color listfocus_unread color%d color%d bold\n"
+		"color info color%d color%d bold\n"
+		"color article color%d color%d\n"
+		"color hint-key color%d color%d bold\n"
+		"color hint-description color%d color%d\n"
+		"color title color%d color%d bold\n"
+		"color end-of-text-marker color%d color%d\n"
+		"color important color%d color%d bold\n",
+		text, deep, text, deep, p, deep, deep, p, deep, p,
+		deep, sec, text, deep, sec, deep, text, deep,
+		deep, sec, mut, deep, kcol_xterm256(sc->urgent), deep);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/* aerc: a styleset is its own file, named once in the shipped aerc.conf —
+ * there is no include, but there does not need to be, because a styleset is
+ * already a file of its own rather than a section of somebody's config. */
+static void write_aerc(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("aerc/stylesets/kdos");
+	kdt_mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS aerc styleset — GENERATED by `kdos theme`; edits will "
+		"be overwritten.\n"
+		/* A KEY IS object[.pseudo].attribute AND THE ONLY PSEUDO IS
+		 * `selected`. `*.default.fg` names a pseudo called `default`,
+		 * which aerc refuses — and it refuses the whole file, so a
+		 * single bad key is a mail client that will not start. */
+		"*.fg=#%s\n"
+		"*.bg=#%s\n"
+		"*.selected.fg=#%s\n"
+		"*.selected.bg=#%s\n"
+		"title.fg=#%s\n"
+		"title.bg=#%s\n"
+		"header.fg=#%s\n"
+		"header.bold=true\n"
+		"statusline_default.fg=#%s\n"
+		"statusline_default.bg=#%s\n"
+		"statusline_error.fg=#%s\n"
+		"statusline_success.fg=#%s\n"
+		"msglist_unread.fg=#%s\n"
+		"msglist_unread.bold=true\n"
+		"msglist_read.fg=#%s\n"
+		"msglist_deleted.fg=#%s\n"
+		"msglist_marked.fg=#%s\n"
+		"dirlist_default.fg=#%s\n"
+		"dirlist_unread.fg=#%s\n"
+		"border.fg=#%s\n"
+		"completion_default.fg=#%s\n",
+		text, deep, deep, p, deep, p, sec,
+		deep, p, urg, p, p, text, mut, sec, text, p, mut, text);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/* fzf: no include and no rc file of its own — the flags go in an environment
+ * variable, so the generated file is a shell fragment `profile.d` sources. NO
+ * SPACE may appear before a colour: fzf takes the `#` as a comment and drops
+ * the rest of the line, with a zero exit and nothing on stderr. */
+static void write_fzf(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("kdos/fzf-colors");
+	kdt_mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS fzf colours — GENERATED by `kdos theme`; edits will be "
+		"overwritten.\n"
+		"# Sourced by /etc/profile.d/30-kdos-colors.sh. No space "
+		"before a colour: fzf reads `#` as a comment.\n"
+		"KDOS_FZF_COLORS='--color=fg:#%s,bg:#%s,hl:#%s"
+		",fg+:#%s,bg+:#%s,hl+:#%s"
+		",info:#%s,prompt:#%s,pointer:#%s"
+		",marker:#%s,spinner:#%s,header:#%s,border:#%s'\n",
+		text, deep, p, text, dim, p, mut, sec, p, urg, sec, mut, mut);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
 static void write_tmux(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("tmux/themes/kdos.conf");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], mut[8];
 	kcol_format(sc->primary, p);
@@ -664,7 +1352,7 @@ static void write_tmux(const KcolScheme *sc)
 static void write_lscolors(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("kdos/ls-colors");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	AnsiDerived a;
 	ansi_all(sc, &a);
@@ -698,7 +1386,7 @@ static void write_lscolors(const KcolScheme *sc)
  *
  * This was the LAST thing on the desktop that an accent switch could not
  * reach. The file shipped as a fixed neutral grey precisely so it would read
- * acceptably under all four accents without being regenerated, and the cost of
+ * acceptably under all seven accents without being regenerated, and the cost of
  * that was a desktop where `kdos theme amber` retinted the panel, the shader,
  * the icons, the cursors, GTK, Qt, foot, btop, mc and starship — and left the
  * bar across the top of every window looking like somebody else's desktop.
@@ -720,7 +1408,7 @@ static void write_lscolors(const KcolScheme *sc)
 static void write_themerc(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("kdos-comp/themerc-override");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], pdark[8];
 	kcol_format(sc->primary, p);
@@ -998,7 +1686,7 @@ static void write_mc(const KcolScheme *sc)
 	 * find — it falls back to `default` and reports nothing.
 	 */
 	char *f = kdt_data_home("mc/skins/kdos.ini");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	KbBuf b = {0};
 	kb_buf_printf(&b,
@@ -1114,7 +1802,7 @@ static void write_mc(const KcolScheme *sc)
 	 * you own — is not specific to KDE.
 	 */
 	char *ini = kdt_cfg_home("mc/ini");
-	mkparent(ini);
+	kdt_mkparent(ini);
 	kdt_ini_set(ini, "Midnight-Commander", "skin", "kdos");
 	free(ini);
 }
@@ -1122,7 +1810,7 @@ static void write_mc(const KcolScheme *sc)
 static void write_btop(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("btop/themes/kdos.theme");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	AnsiDerived a;
 	ansi_all(sc, &a);
@@ -1179,6 +1867,170 @@ static void write_btop(const KcolScheme *sc)
 		p, sec, urg, p, sec, cyan,
 		p, sec, cyan, p, sec, cyan, p, sec, cyan,
 		p, sec, cyan, p, sec, cyan, p, sec, cyan);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+static void write_yazi(const KcolScheme *sc)
+{
+	/*
+	 * PARTIAL, AND THAT IS THE FORMAT. yazi deserializes `theme.toml`
+	 * OVER its own `theme-dark.toml` preset, key by key, so a file naming
+	 * only what this palette decides leaves the rest of the preset intact
+	 * — the separators and the file-type rules. A full copy would be a
+	 * copy that goes stale on the next yazi release.
+	 *
+	 * THE ICONS ARE THE ONE PART THAT IS EMPTIED RATHER THAN LEFT. The
+	 * preset's `[icon]` is nine hundred Nerd Font codepoints, which are
+	 * private-use and are exactly what the 512-glyph console font cannot
+	 * carry: on `tty1` every one is a blank cell, so a name arrives with a
+	 * hole punched in front of it. Five empty arrays replace five full
+	 * ones, because deserializing OVER means an empty array is an answer
+	 * and an absent key is not.
+	 *
+	 * `#rrggbb`, which is what a flavour writes; a colour NAME here would
+	 * be one of the terminal's sixteen and not this scheme's.
+	 *
+	 * `[flavor]` IS NOT WRITTEN. It is the one part the preset splits by
+	 * dark and light mode, and a `theme.toml` that set it would override
+	 * that split for both.
+	 */
+	char p[10], dim[10], sec[10], urg[10], deep[10], text[10];
+	char cyan[10], mut[10];
+	char raw[8];
+	AnsiDerived a;
+
+	/*
+	 * THE FOURTH COLOUR IS THE DERIVED CYAN AND NOT `variant`. A scheme's
+	 * variant is a near-black — a second ground, not a foreground — so a
+	 * marker bar drawn in it is invisible and a permission letter written
+	 * in it is unreadable. The ANSI derivation is where a scheme's fourth
+	 * READABLE hue comes from, which is what btop's gauges already use.
+	 */
+	ansi_all(sc, &a);
+
+#define HX(field, out) do {                       \
+		kcol_format((field), raw);        \
+		snprintf((out), sizeof(out), "#%s", raw); \
+	} while (0)
+	HX(sc->primary, p);
+	HX(sc->dim, dim);
+	HX(sc->secondary, sec);
+	HX(sc->urgent, urg);
+	HX(sc->deep, deep);
+	HX(sc->text, text);
+	HX(a.cyan, cyan);
+	HX(kcol_muted(sc), mut);
+#undef HX
+
+	char *f = kdt_cfg_home("yazi/theme.toml");
+	kdt_mkparent(f);
+
+	/* A BORDER IS A BORDER AND A LABEL IS A LABEL: frames take `dim`,
+	 * which is a fill, and anything with words in it takes `mut` or
+	 * `text`, which are read. The hovered row is reversed by the preset
+	 * and stays that way — a colour of its own would be a second answer to
+	 * "which row am I on". */
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS theme for yazi — GENERATED by `kdos theme`;\n"
+		"# edits will be overwritten. It is deserialized OVER yazi's\n"
+		"# own preset, so only what this palette decides is here.\n"
+		"\n"
+		"[mgr]\n"
+		"cwd = { fg = \"%s\" }\n"
+		"find_keyword = { fg = \"%s\", bold = true }\n"
+		"find_position = { fg = \"%s\", bold = true }\n"
+		"marker_copied = { fg = \"%s\", bg = \"%s\" }\n"
+		"marker_cut = { fg = \"%s\", bg = \"%s\" }\n"
+		"marker_marked = { fg = \"%s\", bg = \"%s\" }\n"
+		"marker_selected = { fg = \"%s\", bg = \"%s\" }\n"
+		"count_copied = { fg = \"%s\", bg = \"%s\" }\n"
+		"count_cut = { fg = \"%s\", bg = \"%s\" }\n"
+		"count_selected = { fg = \"%s\", bg = \"%s\" }\n"
+		"border_style = { fg = \"%s\" }\n"
+		"\n"
+		"[tabs]\n"
+		"active = { fg = \"%s\", bg = \"%s\", bold = true }\n"
+		"inactive = { fg = \"%s\", bg = \"%s\" }\n"
+		"\n"
+		"[mode]\n"
+		"normal_main = { fg = \"%s\", bg = \"%s\", bold = true }\n"
+		"normal_alt = { fg = \"%s\", bg = \"%s\" }\n"
+		"select_main = { fg = \"%s\", bg = \"%s\", bold = true }\n"
+		"select_alt = { fg = \"%s\", bg = \"%s\" }\n"
+		"unset_main = { fg = \"%s\", bg = \"%s\", bold = true }\n"
+		"unset_alt = { fg = \"%s\", bg = \"%s\" }\n"
+		"\n"
+		"[status]\n"
+		"perm_sep = { fg = \"%s\" }\n"
+		"perm_type = { fg = \"%s\" }\n"
+		"perm_read = { fg = \"%s\" }\n"
+		"perm_write = { fg = \"%s\" }\n"
+		"perm_exec = { fg = \"%s\" }\n"
+		"progress_label = { fg = \"%s\", bold = true }\n"
+		"progress_normal = { fg = \"%s\", bg = \"%s\" }\n"
+		"progress_error = { fg = \"%s\", bg = \"%s\" }\n"
+		"\n"
+		"[which]\n"
+		"border = { fg = \"%s\" }\n"
+		"cand = { fg = \"%s\" }\n"
+		"rest = { fg = \"%s\" }\n"
+		"desc = { fg = \"%s\" }\n"
+		"separator_style = { fg = \"%s\" }\n"
+		"\n"
+		"[confirm]\n"
+		"border = { fg = \"%s\" }\n"
+		"title = { fg = \"%s\" }\n"
+		"\n"
+		"[spot]\n"
+		"border = { fg = \"%s\" }\n"
+		"title = { fg = \"%s\" }\n"
+		"tbl_col = { fg = \"%s\" }\n"
+		"\n"
+		"[notify]\n"
+		"title_info = { fg = \"%s\" }\n"
+		"title_warn = { fg = \"%s\" }\n"
+		"title_error = { fg = \"%s\" }\n"
+		"\n"
+		"[pick]\n"
+		"border = { fg = \"%s\" }\n"
+		"active = { fg = \"%s\", bold = true }\n"
+		"\n"
+		"[input]\n"
+		"border = { fg = \"%s\" }\n"
+		"\n"
+		"# Nerd Font codepoints the console font cannot carry: five\n"
+		"# empty arrays for five full ones. A person who wants them\n"
+		"# installs a Nerd Font and puts the preset's [icon] back.\n"
+		"[icon]\n"
+		"globs = []\n"
+		"dirs = []\n"
+		"files = []\n"
+		"exts = []\n"
+		"conds = []\n",
+		p, sec, sec,
+		/* FOUR MARKERS AND FOUR COLOURS. The bars say which of copy,
+		 * cut, mark and select a row is in, so two of them sharing a
+		 * colour is a bar that answers nothing; the count badge on the
+		 * status line takes the same four, or the two halves of one
+		 * state disagree. */
+		sec, sec, urg, urg, p, p, cyan, cyan,
+		deep, sec, deep, urg, deep, cyan,
+		dim,
+		deep, p, p, dim,
+		deep, p, p, dim,
+		deep, urg, urg, dim,
+		deep, urg, urg, dim,
+		mut, p, sec, urg, cyan,
+		text, p, deep, urg, deep,
+		p, sec, mut, cyan, mut,
+		p, p,
+		p, p, p,
+		p, sec, urg,
+		p, sec,
+		p);
 	kb_write_all(f, b.p, b.n);
 	kb_buf_free(&b);
 	free(f);
@@ -1563,7 +2415,7 @@ static void write_kde(const KcolScheme *sc)
 			kb_buf_printf(&b, "%s=%s\n", kv[i].key, kv[i].val);
 		}
 	}
-	mkparent(colors);
+	kdt_mkparent(colors);
 	kb_write_all(colors, b.p, b.n);
 	kb_buf_free(&b);
 
@@ -1577,7 +2429,7 @@ static void write_kde(const KcolScheme *sc)
 		"yours and is kept.\n");
 	kde_merge(&b, old ? old : "", kv, n);
 	free(old);
-	mkparent(globals);
+	kdt_mkparent(globals);
 	kb_write_all(globals, b.p, b.n);
 	kb_buf_free(&b);
 
@@ -1752,8 +2604,8 @@ static void write_wallpaper(const KcolScheme *sc)
 	free(ck);
 	free(cv);
 
-	char *out = cache_home("kdos/wallpaper.png");
-	mkparent(out);
+	char *out = kdt_cache_home("kdos/wallpaper.png");
+	kdt_mkparent(out);
 	KbBuf tb = {0};
 	kb_buf_printf(&tb, "%s.tmp", out);
 
@@ -1796,9 +2648,19 @@ static void theme_apply(const KcolScheme *sc)
 	write_kde(sc);
 	write_themerc(sc);
 	write_foot(sc);
+	write_kdosterm(sc);
+	write_bat(sc);
+	write_micro(sc);
+	write_helix(sc);
+	write_nvim(sc);
+	write_delta(sc);
+	write_newsboat(sc);
+	write_aerc(sc);
+	write_fzf(sc);
 	write_tmux(sc);
 	write_btop(sc);
 	write_mc(sc);
+	write_yazi(sc);
 	write_starship(sc);
 	write_lscolors(sc);
 }
@@ -1807,23 +2669,34 @@ static void theme_apply(const KcolScheme *sc)
  * AFTER the artefacts are regenerated, in the one order that works — the
  * wallpaper cache and the state file are both inputs to the SIGHUP, so both
  * are written before it is sent. */
-static void theme_commit(const KcolScheme *sc)
+/*
+ * THE STATE FILE AND THE SIGNAL, which is the whole of what repaints a running
+ * KDOS surface — everything else a theme switch writes is for software that is
+ * not ours and is read when that software next starts.
+ *
+ * The state file is the desktop's ONLY input, so it is written before the
+ * session is signalled: a SIGHUP that arrived first would make the shell
+ * re-read the accent it already had. ATOMIC for the other half of that race —
+ * a plain O_TRUNC write is zero bytes until it finishes, and four processes
+ * re-read this file the moment the signal lands.
+ */
+static void theme_state(const KcolScheme *sc)
 {
-	write_wallpaper(sc);
-
-	/* The state file is the desktop's ONLY input, so it is written before
-	 * the session is signalled — a SIGHUP that arrives first would make the
-	 * shell re-read the accent it already had. ATOMIC for the other half of
-	 * that race: a plain O_TRUNC write is zero bytes until it finishes, and
-	 * four processes re-read this file the moment the signal lands. */
-	char *state = cache_home("kdos/theme");
-	mkparent(state);
+	char *state = kdt_cache_home("kdos/theme");
 	char line[40];
+
+	kdt_mkparent(state);
 	snprintf(line, sizeof(line), "%s\n", sc->name);
 	kb_write_file_atomic(state, line);
 	free(state);
 
-	reload_session();
+	kdt_reload_session();
+}
+
+static void theme_commit(const KcolScheme *sc)
+{
+	write_wallpaper(sc);
+	theme_state(sc);
 
 	/* A regenerated file does not repaint a running process. kdos-shell and
 	 * kdos-comp retint on the SIGHUP above; starship on the next prompt;
@@ -1869,7 +2742,7 @@ static const char *const STYLE_COMP_KEYS[] = {
 static void style_write_comp(char *const *val)
 {
 	char *f = kdt_cfg_home("kdos/comp.conf");
-	mkparent(f);
+	kdt_mkparent(f);
 	char *old = kb_read_all(f, NULL);
 	KbBuf out = {0};
 	int done[NSTYLE_COMP] = {0};
@@ -1999,7 +2872,7 @@ static int cmd_theme_style(const char *path)
 	 * a style is a whole look, not a patch on the last one. */
 	{
 		char *f = kdt_cfg_home("kdos/style-themerc");
-		mkparent(f);
+		kdt_mkparent(f);
 		if (trc.n)
 			kb_write_all(f, trc.p, trc.n);
 		else
@@ -2016,6 +2889,129 @@ static int cmd_theme_style(const char *path)
 	return 0;
 }
 
+/*
+ * THE CONSOLE DESKTOP'S BACKGROUND, which is a picture made of characters and
+ * not a photograph. `kdos-desk` draws it; this chooses which one.
+ *
+ * A NAME AND NEVER A PATH. The state file holds the stem of a file in the
+ * shipped directory, so a chord cycling backgrounds cannot be turned into a
+ * way to point the desktop at any file on the machine. A person's own art goes
+ * in `~/.config/kdos/background.txt`, which outranks all of these and is
+ * theirs to put anywhere in — it is a file they wrote, not a name this wrote.
+ *
+ * `none` IS SPELLED. A missing state file means nobody has chosen and an empty
+ * one would be indistinguishable from choosing to have nothing.
+ */
+#define BG_NAME_MAX 64
+
+static int bg_names(char names[][BG_NAME_MAX], int max)
+{
+	DIR *d = opendir(KB_BACKGROUND_DIR);
+	struct dirent *e;
+	int n = 0;
+
+	if (!d)
+		return 0;
+	while (n < max && (e = readdir(d))) {
+		const char *dot = strrchr(e->d_name, '.');
+		size_t stem;
+
+		if (!dot || strcmp(dot, ".txt"))
+			continue;
+		stem = (size_t)(dot - e->d_name);
+		if (!stem || stem >= BG_NAME_MAX)
+			continue;
+		memcpy(names[n], e->d_name, stem);
+		names[n][stem] = '\0';
+		n++;
+	}
+	closedir(d);
+
+	/* SORTED, because `next` has to mean the same thing twice. A directory
+	 * hands out entries in whatever order the filesystem holds them. */
+	for (int i = 1; i < n; i++)
+		for (int j = i; j > 0 && strcmp(names[j - 1], names[j]) > 0; j--) {
+			char t[BG_NAME_MAX];
+
+			kb_strlcpy(t, names[j - 1], sizeof(t));
+			kb_strlcpy(names[j - 1], names[j], BG_NAME_MAX);
+			kb_strlcpy(names[j], t, BG_NAME_MAX);
+		}
+	return n;
+}
+
+static void bg_current(char *out, size_t n)
+{
+	char sf[512];
+
+	out[0] = '\0';
+	if (kb_state_path("kdos/background", sf, sizeof(sf)))
+		kb_read_line_file(sf, out, n);
+	if (!out[0])
+		kb_strlcpy(out, "none", n);
+}
+
+static int bg_set(const char *name)
+{
+	char sf[512], line[BG_NAME_MAX + 2];
+
+	if (!kb_state_path("kdos/background", sf, sizeof(sf)))
+		kb_die("no home directory to keep the choice in");
+	kdt_mkparent(sf);
+	snprintf(line, sizeof(line), "%s\n", name);
+	if (kb_write_file_atomic(sf, line) != 0)
+		kb_die("cannot write %s", sf);
+	kdt_reload_session();
+	printf("%s%s%s\n", C_A, name, C_0);
+	return 0;
+}
+
+static int cmd_background(int argc, char **argv)
+{
+	char names[64][BG_NAME_MAX];
+	char cur[BG_NAME_MAX];
+	const char *want = argc > 0 ? argv[0] : "";
+	int n = bg_names(names, 64);
+	int at = -1;
+
+	bg_current(cur, sizeof(cur));
+	for (int i = 0; i < n; i++)
+		if (!strcmp(names[i], cur))
+			at = i;
+
+	if (!*want || !strcmp(want, "show") || !strcmp(want, "current")) {
+		printf("%s\n", cur);
+		return 0;
+	}
+	if (!strcmp(want, "list")) {
+		printf("%s  %-12s%s the theme's ground, and no picture\n",
+		       at < 0 ? C_A : "  ", "none", at < 0 ? C_0 : "");
+		for (int i = 0; i < n; i++)
+			printf("%s  %-12s%s\n", i == at ? C_A : "  ",
+			       names[i], i == at ? C_0 : "");
+		return 0;
+	}
+
+	/* `none` IS IN THE RING. Cycling through every piece and never back to
+	 * a plain desktop would be a chord that cannot undo itself. */
+	if (!strcmp(want, "next") || !strcmp(want, "prev")) {
+		int ring = n + 1;		/* the pieces, then none */
+		int here = at < 0 ? n : at;
+		int step = !strcmp(want, "next") ? 1 : ring - 1;
+		int to = (here + step) % ring;
+
+		return bg_set(to == n ? "none" : names[to]);
+	}
+
+	if (!strcmp(want, "none"))
+		return bg_set("none");
+	for (int i = 0; i < n; i++)
+		if (!strcmp(names[i], want))
+			return bg_set(names[i]);
+	kb_die("unknown background '%s' (try: kdos background list)", want);
+	return 1;
+}
+
 static int cmd_theme(int argc, char **argv)
 {
 	const char *cur = current_theme();
@@ -2025,6 +3021,31 @@ static int cmd_theme(int argc, char **argv)
 		if (argc < 2)
 			kb_die("usage: kdos theme style <file>");
 		return cmd_theme_style(argv[1]);
+	}
+
+	/*
+	 * `--preview` REPAINTS AND GENERATES NOTHING. It is the picker's arrow
+	 * key: the state file and the signal, which is every KDOS surface, and
+	 * not the GTK stylesheet, the icon theme, the cursors or the eight
+	 * foreign configuration files — those take seconds and are read by
+	 * programs that are not running yet.
+	 *
+	 * So a preview is HALF a theme: the desktop moves and a boxed
+	 * application does not. That is the honest shape of a live preview, and
+	 * it is why the picker restores the accent it started from unless it is
+	 * told to keep one.
+	 */
+	if (!strcmp(want, "--preview")) {
+		const KcolScheme *sc;
+
+		if (argc < 2)
+			kb_die("usage: kdos theme --preview <accent>");
+		sc = kcol_find(argv[1]);
+		if (!sc)
+			kb_die("unknown theme '%s' (try: kdos theme list)",
+			       argv[1]);
+		theme_state(sc);
+		return 0;
 	}
 
 	if (!strcmp(want, "--audit") || !strcmp(want, "audit")) {
@@ -2115,21 +3136,30 @@ static void help_body(FILE *o)
 		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
 		{ "kdos-fetch-app <name>", "install an alien app from a network" },
-		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
+		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
+		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-theme's arrows do" },
+		{ "kdos background [name]", "the console desktop's character art: list | next | prev | none" },
 		{ "kdos status", "packages, containers, exported apps" },
 		{ "kdos doctor", "check the session for common breakage" },
 		{ "kdos appid", "do launcher icons match the windows they open?" },
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
-		{ "kdos update check", "what the ports tree pins that is not installed" },
+		{ "kdos update check", "what the ports tree pins that is not installed; --json for a surface" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
+		{ "kdos places", "the places column the desktop shows — also `add DIR`" },
+		{ "kdos toggle [name]", "stay-awake, night-light, dnd — list, flip or set" },
+		{ "kdos notify <text>", "raise a toast: `make && kdos notify done`" },
+		{ "kdos con ls", "console sessions: new, attach, detach, kill, forward, run" },
+		{ "kdos settings [page]", "the control centre — appearance, panel, hardware, system…" },
+		{ "kdos menu summon <route>", "open the menu on a named place: `setup.network`" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
+		{ "kdos-mpctl toggle", "the music: toggle, stop, next, prev, now, watch" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
@@ -2256,6 +3286,9 @@ static int cmd_help(int argc, char **argv)
 /* Is this process up? Defined with doctor's other probes below; declared here
  * because `kdos status` names the compositor and asks the same question. */
 static int running(const char *exact, const char *contains);
+/* Which session this process is in, or NULL. One place decides, so `kdos
+ * info`, `kdos version` and `kdos doctor` cannot disagree. */
+static const char *session_name(void);
 
 /* Non-empty, non-comment lines. The alien-apps table is one line per app. */
 static int count_lines(const char *path)
@@ -2340,13 +3373,17 @@ static int cmd_status(int argc, char **argv)
 	 * created, which is every machine before the first launch. */
 	printf("%s%-16s%s %d\n", C_B, "Alien apps", C_0,
 	       count_lines("/usr/share/kdos/alien-apps"));
-	/* Naming the compositor rather than saying "wayland": on KDOS the
-	 * answer is normally kdos-comp, and "wayland" would hide the case where
-	 * the session is something else entirely. */
+	/* Naming the session rather than saying "wayland": on KDOS the answer
+	 * is kdos-con or kdos-comp, and "wayland" would hide the case where the
+	 * session is something else entirely. `session_name()` is the one place
+	 * that decides, so this line cannot disagree with `kdos version`. */
+	const char *sn = session_name();
+
 	printf("%s%-16s%s %s\n", C_B, "Session", C_0,
-	       !getenv("WAYLAND_DISPLAY") ? "tty"
-	       : running("kdos-comp", NULL) ? "kdos-comp"
-					  : "wayland (not kdos-comp)");
+	       !sn			      ? "tty"
+	       : strcmp(sn, "kdos-comp")      ? sn
+	       : running("kdos-comp", NULL)   ? "kdos-comp"
+					      : "wayland (not kdos-comp)");
 	putchar('\n');
 
 	printf("%sCONTAINERS%s\n", C_A, C_0);
@@ -2510,6 +3547,75 @@ static int has_line_prefix(const char *path, const char *prefix)
 	}
 	free(data);
 	return hit;
+}
+
+/*
+ * WHICH SESSION IS RUNNING. $KDOS_CON is set by the console session and by
+ * nothing else, so it is the test and it is asked once: a check that reports a
+ * missing compositor on a machine whose desktop is a cell grid teaches people
+ * to ignore the tool that reported it.
+ *
+ * Returns "kdos-con", "kdos-comp", or NULL where neither is running — a shell
+ * on tty2 has no session and saying so is the true answer.
+ */
+/*
+ * `display` OUT OF A BOX PROFILE, by the same rule `kdos-con` reads it with.
+ *
+ * The parse is duplicated for the reason `con_conf_key` above it is: this
+ * binary is on every image and links no libkcon, which would drag libktui and
+ * the cell model in with it. What must NOT be duplicated is the rule, so this
+ * matches `profile_display()` in `src/desktop/kdos-con/embed.c` line for line:
+ * leading whitespace skipped, the key matched at the start of the line so a
+ * commented-out `# display = vt` is not one, and whitespace after the `=`
+ * skipped so `display=vt` is.
+ *
+ * A `strstr` for "display = vt" got both of those backwards: it reported a
+ * commented-out line as pinned and missed the spaceless form the session
+ * honours — a diagnostic disagreeing with the thing it is diagnosing.
+ */
+static int box_pinned_to_vt(const char *path)
+{
+	char *data = kb_read_all(path, NULL);
+	int vt = 0;
+
+	if (!data)
+		return 0;
+
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		char *eq;
+
+		next = nl ? nl + 1 : line + strlen(line);
+		if (nl)
+			*nl = '\0';
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (strncmp(line, "display", 7))
+			continue;
+		eq = strchr(line, '=');
+		if (!eq)
+			continue;
+		eq++;
+		while (*eq == ' ' || *eq == '\t')
+			eq++;
+		vt = !strncmp(eq, "vt", 2);
+		break;
+	}
+
+	free(data);
+	return vt;
+}
+
+static const char *session_name(void)
+{
+	const char *kcon = getenv("KDOS_CON");
+	const char *wl = getenv("WAYLAND_DISPLAY");
+
+	if (kcon && *kcon)
+		return "kdos-con";
+	if (wl && *wl)
+		return "kdos-comp";
+	return NULL;
 }
 
 static int running(const char *exact, const char *contains)
@@ -3101,8 +4207,25 @@ static int cmd_doctor(int argc, char **argv)
 	 */
 	const char *wd = getenv("WAYLAND_DISPLAY");
 	const char *wl_rt = getenv("XDG_RUNTIME_DIR");
+	const char *con_sock = getenv("KDOS_CON");
+
+	/*
+	 * THE CONSOLE SESSION IS A SESSION. Its surface socket is what a child
+	 * inherits, and it is checked the same way the Wayland one is — the
+	 * socket rather than the variable, because a variable that outlived
+	 * its session is exactly the state this block exists to catch.
+	 */
+	if (con_sock && *con_sock) {
+		if (kb_path_exists(con_sock))
+			ok("KDOS_CON=%s", con_sock);
+		else
+			warn_("KDOS_CON=%s but the socket is gone — the "
+			      "session it names has ended", con_sock);
+	}
 	if (!wd || !*wd) {
-		warn_("no WAYLAND_DISPLAY — not inside the desktop session");
+		if (!con_sock || !*con_sock)
+			warn_("neither KDOS_CON nor WAYLAND_DISPLAY — not "
+			      "inside a desktop session");
 	} else {
 		char sock[512];
 		if (*wd == '/')
@@ -3124,20 +4247,96 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("XDG_RUNTIME_DIR missing — pipewire and podman will "
 		      "misbehave");
 
-	if (running("kdos-comp", NULL))
-		ok("kdos-comp running");
-	else
-		warn_("kdos-comp not running — no desktop (start with: "
-		      "kdos-desktop)");
-	if (running("kdos-shell", NULL))
-		ok("kdos-shell running");
-	else
-		warn_("kdos-shell not running — no panel or launcher");
-	if (running(NULL, "xdg-desktop-portal-wlr"))
-		ok("wlr portal running");
-	else
-		warn_("wlr portal not running — screen capture and file pickers "
-		      "degraded");
+	/*
+	 * THREE CHECKS THAT ONLY APPLY TO ONE OF THE TWO DESKTOPS. The
+	 * compositor, its panel and the wlroots portal are absent by design on
+	 * a console session — the panel needs a foreign-toplevel manager the
+	 * console does not offer, and the console starts a portal backend of
+	 * its own — so reporting them as faults there fails a working machine.
+	 */
+	const char *sess = session_name();
+	int on_console = sess && !strcmp(sess, "kdos-con");
+
+	if (on_console) {
+		if (running("kdos-con", NULL))
+			ok("kdos-con running");
+		else
+			warn_("kdos-con not running — no session (start with: "
+			      "kdos-con-start)");
+		if (running("kdos-view", NULL))
+			ok("kdos-view attached — the session has a display");
+		else
+			warn_("no kdos-view attached — the session is running "
+			      "and nothing is showing it. See "
+			      "$XDG_RUNTIME_DIR/kdos-view.log");
+	} else {
+		if (running("kdos-comp", NULL))
+			ok("kdos-comp running");
+		else
+			warn_("kdos-comp not running — no desktop (start with: "
+			      "kdos-desktop)");
+		if (running("kdos-shell", NULL))
+			ok("kdos-shell running");
+		else
+			warn_("kdos-shell not running — no panel or launcher");
+		if (running(NULL, "xdg-desktop-portal-wlr"))
+			ok("wlr portal running");
+		else
+			warn_("wlr portal not running — screen capture and "
+			      "file pickers degraded");
+	}
+
+	/*
+	 * HOW A GRAPHICAL APPLICATION WILL BE SHOWN on the console desktop.
+	 * The two answers look nothing alike — a window among the cells, or a
+	 * full-screen guest on a terminal of its own — and which one a person
+	 * gets is decided by files rather than by anything they can see. So the
+	 * inputs are reported, not the decision: kdos-con makes that, and a
+	 * second implementation here would be a second thing to be wrong.
+	 */
+	if (on_console) {
+		char *ce = con_conf_key("embed");
+		int off = ce && (!strcmp(ce, "false") || !strcmp(ce, "0") ||
+				 !strcmp(ce, "no"));
+
+		if (off)
+			ok("graphical applications take a terminal of their "
+			   "own — con.conf says embed = false");
+		else
+			ok("graphical applications are windows — kdos-cage "
+			   "composites each in a process of its own");
+		free(ce);
+
+		char *bd = kdt_cfg_home("kdos/boxes");
+		DIR *bdd = bd ? opendir(bd) : NULL;
+		char pinned[256] = { 0 };
+
+		if (bdd) {
+			struct dirent *be;
+
+			while ((be = readdir(bdd))) {
+				char path[600];
+				size_t nl = strlen(be->d_name);
+
+				if (nl < 6 || strcmp(be->d_name + nl - 5, ".conf"))
+					continue;
+				snprintf(path, sizeof(path), "%s/%s", bd,
+					 be->d_name);
+				if (box_pinned_to_vt(path)) {
+					size_t at = strlen(pinned);
+
+					snprintf(pinned + at,
+						 sizeof(pinned) - at, "%s%.*s",
+						 at ? ", " : "",
+						 (int)(nl - 5), be->d_name);
+				}
+			}
+			closedir(bdd);
+		}
+		free(bd);
+		if (*pinned)
+			ok("pinned to a terminal of their own: %s", pinned);
+	}
 	doctor_gap();
 
 	doctor_head("Containers");
@@ -3177,7 +4376,7 @@ static int cmd_doctor(int argc, char **argv)
 	/* The accent NAME in the cache is what kdos-comp and kdos-shell read;
 	 * they carry the palette itself in libkcolor. No colours are written
 	 * for the desktop, so this file is the whole of its theme state. */
-	char *ct = cache_home("kdos/theme");
+	char *ct = kdt_cache_home("kdos/theme");
 	if (kb_path_exists(ct))
 		ok("accent applied (%s)", current_theme());
 	else
@@ -3430,6 +4629,10 @@ static int cmd_doctor(int argc, char **argv)
 	 * has never heard of KDOS — so without that file ScreenCast comes back
 	 * with no backend and the app says "no capture sources available",
 	 * which sounds like a driver problem and is not.
+	 *
+	 * TWO FILES, BECAUSE THERE ARE TWO DESKTOPS. The compositor's backend is
+	 * a Wayland client and there is none on the console, where the backend
+	 * is a second kdos-view rasterising into a stream instead.
 	 */
 	if (!kb_path_exists("/usr/lib/xdg-desktop-portal-wlr"))
 		warn_("xdg-desktop-portal-wlr missing — no screen sharing and "
@@ -3440,6 +4643,13 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("kdos-portals.conf missing — the portal is installed but "
 		      "nothing selects it, so ScreenCast will report no "
 		      "backend");
+
+	if (kb_path_exists("/usr/share/xdg-desktop-portal/kdos-console-portals.conf"))
+		ok("the console session records through kdos-view --cast");
+	else
+		warn_("kdos-console-portals.conf missing — recording the "
+		      "console session would look for a Wayland backend that "
+		      "cannot run there");
 
 	const char *path = getenv("PATH");
 	char *want = kb_path_join(kb_home_dir(), ".local/bin");
@@ -3475,11 +4685,621 @@ static int cmd_version(void)
 	printf("  kernel   %s\n", u.release);
 	printf("  libc     musl\n");
 	printf("  userland toybox\n");
-	printf("  session  kdos-comp (%s)\n", current_theme());
+	const char *sess = session_name();
+
+	if (sess)
+		printf("  session  %s (%s)\n", sess, current_theme());
+	else
+		printf("  session  none (%s)\n", current_theme());
 	return 0;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * `kdos con …` — the console desktop's sessions.
+ *
+ * EXECS kdos-con RATHER THAN LINKING THE PROTOCOL. kdos-tools is on every
+ * image and must stay thin; libkcon would drag libktui and the cell model in
+ * behind it for the sake of five verbs that are one argument each.
+ *
+ * `forward` is the exception and lives here, because it is entirely an ssh
+ * command line and kdos-con has no business knowing about ssh.
+ */
+static int cmd_con_forward(int argc, char **argv)
+{
+	const char *host = argc > 0 ? argv[0] : NULL;
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	const char *name = argc > 1 ? argv[1] : "con";
+	char local[256];
+
+	if (!host) {
+		fprintf(stderr, "usage: kdos con forward <host> [session]\n");
+		return 2;
+	}
+	if (!run || !*run) {
+		fprintf(stderr, "kdos con: no XDG_RUNTIME_DIR\n");
+		return 1;
+	}
+
+	/*
+	 * REMOTE IS OFF BY DEFAULT AND THIS IS WHERE IT IS ENFORCED. There is
+	 * no TCP listener anywhere in this desktop, so a remote view can only
+	 * arrive through a tunnel somebody set up — and refusing to set one up
+	 * is a complete refusal, not a check that can be bypassed by connecting
+	 * some other way.
+	 */
+	char conf[4096];
+	int allow = 0;
+
+	if (kb_read_file("/etc/kdos/con.conf", conf, sizeof(conf)) > 0) {
+		char *line, *save;
+
+		for (line = strtok_r(conf, "\n", &save); line;
+		     line = strtok_r(NULL, "\n", &save)) {
+			char *hash = strchr(line, '#'), *eq;
+
+			if (hash)
+				*hash = '\0';
+			eq = strchr(line, '=');
+			if (!eq || strncmp(line, "remote", 6))
+				continue;
+			allow = strstr(eq, "yes") || strstr(eq, "1");
+			break;
+		}
+	}
+	if (!allow) {
+		fprintf(stderr,
+			"kdos con: remote is off. Set `remote = yes` in\n"
+			"          /etc/kdos/con.conf (or ~/.config/kdos-con/con.conf)\n"
+			"          to allow a view on another machine.\n");
+		return 1;
+	}
+
+	snprintf(local, sizeof(local), "%s/kdos/%s.view", run, name);
+	if (!kb_path_exists(local)) {
+		fprintf(stderr, "kdos con: no session '%s'\n", name);
+		return 1;
+	}
+
+	/*
+	 * THE VIEW SOCKET AND ONLY THE VIEW SOCKET. A display is handed cells
+	 * and reports events; forwarding the surface socket would hand the far
+	 * end the right to place windows in this session, which is a different
+	 * thing entirely from showing it.
+	 *
+	 * The tunnel dies with the ssh process, so there is nothing to tear
+	 * down on a dropped connection — that is the whole reason it is a
+	 * foreground ssh rather than a daemon and a lock file.
+	 */
+	char spec[512];
+
+	snprintf(spec, sizeof(spec), "/tmp/kdos-%s-%d.view:%s", name,
+		 (int)getuid(), local);
+
+	char cmd[768];
+
+	snprintf(cmd, sizeof(cmd),
+		 "kdos-view --tty --socket /tmp/kdos-%s-%d.view", name,
+		 (int)getuid());
+
+	printf("forwarding %s to %s — the session ends when this exits\n",
+	       local, host);
+
+	execlp("ssh", "ssh", "-t", "-R", spec, host, cmd, (char *)NULL);
+	fprintf(stderr, "kdos con: cannot run ssh\n");
+	return 127;
+}
+
+/* The longest guest command line this front end passes on. It matches
+ * KCON_MAX_ARGV, which is what the session's wire carries — a longer one is
+ * refused there, and refusing it here as well would be a second limit to keep
+ * in step. */
+#define KDT_RUN_MAX 32
+
+/*
+ * `kdos settings [page]` — the control centre from a prompt.
+ *
+ * THE PAGE NAME IS NOT VALIDATED HERE. `kdos-settings` owns the list and
+ * already refuses a name it does not have; a second copy of it in this file is
+ * a second list to keep in step, and the failure mode of the copy going stale
+ * is a page that exists and cannot be reached from the command line.
+ *
+ * No shell: the page word comes from a command line and reaches execvp as one
+ * argument, so a name with a space in it is a name, not two arguments.
+ */
+static int cmd_settings(int argc, char **argv)
+{
+	const char *av[4];
+	int n = 0;
+
+	av[n++] = "kdos-settings";
+	if (argc > 0 && argv[0][0]) {
+		av[n++] = "--page";
+		av[n++] = argv[0];
+	}
+	av[n] = NULL;
+	execvp(av[0], (char *const *)av);
+	fprintf(stderr, "kdos settings: kdos-settings is not installed\n");
+	return 127;
+}
+
+/*
+ * ONE KEY OUT OF con.conf, the user's copy over the system's — the same order
+ * every other configuration here is read in. A twenty-line scan rather than
+ * libkcon: this program is not a session client and linking the whole console
+ * protocol to answer "which program is the menu" would be a dependency for one
+ * string.
+ */
+static const char *con_conf_str(const char *key, const char *def, char *out,
+				size_t n)
+{
+	const char *home = getenv("HOME");
+	char path[512];
+	char conf[8192];
+	const char *files[2];
+	int nf = 0;
+
+	if (home && *home) {
+		snprintf(path, sizeof(path),
+			 "%s/.config/kdos-con/con.conf", home);
+		files[nf++] = path;
+	}
+	files[nf++] = "/etc/kdos/con.conf";
+
+	for (int f = 0; f < nf; f++) {
+		if (kb_read_file(files[f], conf, sizeof(conf)) <= 0)
+			continue;
+
+		char *line, *save;
+
+		for (line = strtok_r(conf, "\n", &save); line;
+		     line = strtok_r(NULL, "\n", &save)) {
+			char *hash = strchr(line, '#'), *eq, *v, *end;
+
+			if (hash)
+				*hash = '\0';
+			eq = strchr(line, '=');
+			if (!eq)
+				continue;
+			*eq = '\0';
+			end = line + strlen(line);
+			while (end > line && (end[-1] == ' ' || end[-1] == '\t'))
+				*--end = '\0';
+			while (*line == ' ' || *line == '\t')
+				line++;
+			if (strcmp(line, key))
+				continue;
+			v = eq + 1;
+			while (*v == ' ' || *v == '\t')
+				v++;
+			end = v + strlen(v);
+			while (end > v && (end[-1] == ' ' || end[-1] == '\t'))
+				*--end = '\0';
+			if (!*v)
+				continue;
+			snprintf(out, n, "%s", v);
+			return out;
+		}
+	}
+	return def;
+}
+
+/*
+ * `kdos menu summon <route>` and `kdos menu toggle [<route>]`.
+ *
+ * A ROUTE IS A NAME FOR A PLACE IN THE SYSTEM, from `/etc/kdos/menu.conf` and
+ * the user's copy of it, and this is what a script holds instead of a chord: a
+ * chord is rebindable and a menu row moves, and neither is a thing another
+ * program can refer to.
+ *
+ * The menu is whatever `con.conf` names, because which key opens a thing is
+ * `keys.conf`'s and which program is the thing is `con.conf`'s — and a command
+ * that hardcoded `kdos-start` would be a third answer to that question.
+ *
+ * TOGGLE CLOSES BY SIGNAL AND OPENS BY SPAWN, in that order: `pkill` reports
+ * whether it signalled anything, so one call answers "was it open" and closes
+ * it, with no pidfile and no round trip. An exact match, because the menu's
+ * name is a prefix of nothing here but the rule is what keeps it that way.
+ */
+static int cmd_menu(int argc, char **argv)
+{
+	const char *verb = argc > 0 ? argv[0] : NULL;
+	const char *route = argc > 1 ? argv[1] : NULL;
+	char prog[128];
+	const char *av[8];
+	int n = 0;
+
+	if (!verb || (strcmp(verb, "summon") && strcmp(verb, "toggle"))) {
+		fprintf(stderr, "usage: kdos menu summon <route>\n"
+				"       kdos menu toggle [<route>]\n");
+		return 2;
+	}
+	/*
+	 * THE PALETTE IS WHAT A ROUTE OPENS INTO, and the `menu` key is the
+	 * fallback rather than the answer. `kdos menu summon setup.network`
+	 * means "take me there", and taking somebody there is a search with
+	 * the name already typed — which is the palette. A `palette` key that
+	 * was read and then ignored would leave every route opening the menu,
+	 * silently and with nothing failing.
+	 */
+	con_conf_str("palette", "", prog, sizeof(prog));
+	if (!prog[0])
+		con_conf_str("menu", "kdos-start", prog, sizeof(prog));
+
+	/* The key may carry arguments — the session runs it through an argument
+	 * builder too — so it is split here rather than taken as one name. The
+	 * FIRST word is the process to signal: `pkill -x` matches a comm, which
+	 * is a program's name and never its command line. */
+	char *p = prog;
+
+	while (*p && n < (int)(sizeof(av) / sizeof(av[0])) - 3) {
+		while (*p == ' ' || *p == '\t')
+			*p++ = '\0';
+		if (!*p)
+			break;
+		av[n++] = p;
+		while (*p && *p != ' ' && *p != '\t')
+			p++;
+	}
+	if (!n) {
+		fprintf(stderr, "kdos menu: con.conf names no menu\n");
+		return 1;
+	}
+
+	if (!strcmp(verb, "toggle")) {
+		KbArgv a = { 0 };
+
+		kb_argv_add(&a, "pkill");
+		kb_argv_add(&a, "-x");
+		kb_argv_add(&a, av[0]);
+		kb_argv_end(&a);
+		if (kb_run(&a) == 0)
+			return 0;	/* it was open; that closed it */
+	}
+
+	if (route && *route) {
+		av[n++] = "--route";
+		av[n++] = route;
+	}
+	av[n] = NULL;
+	execvp(av[0], (char *const *)av);
+	fprintf(stderr, "kdos menu: %s is not installed\n", prog);
+	return 127;
+}
+
+static int cmd_con(int argc, char **argv)
+{
+	static const struct { const char *verb, *flag; } V[] = {
+		{ "ls",     "--ls" },
+		{ "new",    "--new" },
+		{ "attach", "--attach" },
+		{ "detach", "--detach" },
+		{ "kill",   "--kill" },
+	};
+	const char *verb = argc > 0 ? argv[0] : "ls";
+
+	if (!strcmp(verb, "forward"))
+		return cmd_con_forward(argc - 1, argv + 1);
+
+	/*
+	 * `capture` TAKES A FLAG THE FIVE-VERB TABLE BELOW CANNOT PASS, which
+	 * is why it is here rather than in it: that table forwards a session
+	 * name and nothing else, on purpose, so it cannot become an argument
+	 * tunnel into the session binary.
+	 */
+	/*
+	 * `record` AND `replay` REACH THE VIEW, not the session: a recording is
+	 * a view that writes a file and a replay is a view that reads one, so
+	 * both are `kdos-view` with a flag. One spelling everywhere — the flag,
+	 * this verb and the page all say `replay`.
+	 */
+	if (!strcmp(verb, "record") || !strcmp(verb, "replay")) {
+		const char *av[8];
+		int n = 0;
+
+		if (argc < 2) {
+			fprintf(stderr, "usage: kdos con %s FILE\n", verb);
+			return 2;
+		}
+		av[n++] = "kdos-view";
+		if (!strcmp(verb, "record")) {
+			/* A recording rides a view that is drawing, and the
+			 * one a person has here is this terminal. */
+			av[n++] = "--tty";
+			av[n++] = "--record";
+		} else {
+			av[n++] = "--tty";
+			av[n++] = "--replay";
+		}
+		av[n++] = argv[1];
+		av[n] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-view is not installed\n");
+		return 127;
+	}
+
+	/*
+	 * `layout` TAKES A SUB-VERB AND A NAME, which the five-verb table
+	 * cannot carry — the same reason `capture` is written out here. It
+	 * passes a NAME and never an argument vector, so it does not widen
+	 * what the front end can do: the session resolves the name to a file
+	 * and the file's rows to roles `con.conf` names.
+	 */
+	if (!strcmp(verb, "layout")) {
+		const char *what = argc > 1 ? argv[1] : NULL;
+		const char *lname = argc > 2 ? argv[2] : NULL;
+		int save;
+
+		if (!what || !lname ||
+		    (strcmp(what, "save") && strcmp(what, "load"))) {
+			fprintf(stderr,
+				"usage: kdos con layout save|load <name>\n");
+			return 2;
+		}
+		save = !strcmp(what, "save");
+
+		/* Through kdos-con, for the reason the banner above gives. */
+		const char *av[4];
+
+		av[0] = "kdos-con";
+		av[1] = save ? "--layout-save" : "--layout-load";
+		av[2] = lname;
+		av[3] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-con is not installed\n");
+		return 127;
+	}
+
+	if (!strcmp(verb, "capture")) {
+		const char *av[8];
+		int n = 0, i = 1;
+
+		av[n++] = "kdos-con";
+		av[n++] = "--capture";
+		for (; i < argc && n + 3 < (int)(sizeof(av) / sizeof(av[0]));
+		     i++) {
+			if (!strcmp(argv[i], "--window") && i + 1 < argc) {
+				av[n++] = "-w";
+				av[n++] = argv[++i];
+				continue;
+			}
+			av[n++] = "-t";
+			av[n++] = argv[i];
+		}
+		av[n] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-con is not installed\n");
+		return 127;
+	}
+
+	/*
+	 * `run` IS the argument tunnel the five verbs below are not, and
+	 * deliberately: everything after it is the guest's argument vector,
+	 * passed on whole. Re-joining it into a string here would be inventing
+	 * a quoting rule for something that already had none.
+	 */
+	if (!strcmp(verb, "run")) {
+		const char *av[KDT_RUN_MAX + 4];
+		int n = 0, i = 1;
+
+		if (argc > 1 && !strcmp(argv[1], "--"))
+			i = 2;
+		if (i >= argc) {
+			fprintf(stderr, "usage: kdos con run [--] CMD [ARG...]\n");
+			return 2;
+		}
+		av[n++] = "kdos-con";
+		av[n++] = "--run";
+		for (; i < argc && n < KDT_RUN_MAX + 3; i++)
+			av[n++] = argv[i];
+		av[n] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-con is not installed\n");
+		return 127;
+	}
+
+	for (int i = 0; i < (int)(sizeof(V) / sizeof(V[0])); i++) {
+		if (strcmp(verb, V[i].verb))
+			continue;
+
+		const char *av[8];
+		int n = 0;
+		int at = 1;
+
+		av[n++] = "kdos-con";
+		av[n++] = V[i].flag;
+		/*
+		 * `--observe` IS THE ONE FLAG THIS TABLE FORWARDS, and only on
+		 * an attach: it asks for LESS — a view that watches and does
+		 * not type — so passing it on cannot widen what the verb can
+		 * do, which is the property that keeps this a verb table
+		 * rather than an argument tunnel.
+		 */
+		if (!strcmp(verb, "attach") && argc > at &&
+		    !strcmp(argv[at], "--observe")) {
+			av[n++] = "--observe";
+			at++;
+		}
+		/* A name, if one was given. Anything else is not passed on:
+		 * this is a five-verb front end, not an argument tunnel. */
+		if (argc > at && n + 2 < (int)(sizeof(av) / sizeof(av[0]))) {
+			av[n++] = "-t";
+			av[n++] = argv[at];
+		}
+		av[n] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-con is not installed\n");
+		return 127;
+	}
+
+	fprintf(stderr,
+		"usage: kdos con {ls|new|attach|detach|kill} [session]\n"
+		"       kdos con attach [--observe] [session]\n"
+		"       kdos con capture [--window N] [session]\n"
+		"       kdos con record FILE   |  kdos con replay FILE\n"
+		"       kdos con forward <host> [session]\n"
+		"       kdos con run [--] CMD [ARG...]\n");
+	return 2;
+}
+
+/*
+ * ── A TOAST FROM A PROMPT ───────────────────────────────────────────────
+ *
+ *   make && kdos notify "the build finished"
+ *
+ * `notify-send` is not on this image and `libnotify` is not a port, so a long
+ * job had no way to say it was done.
+ *
+ * `kdos-notify` IS NOT THE SENDER — it is the notification centre, a viewer of
+ * what has already arrived. A toast is a `Notify` on the session bus, and this
+ * makes it through `kb_notify()`, the same call a terminal makes for a child's
+ * OSC 9 so the two cannot drift apart.
+ *
+ * ONE INTERFACE, THREE CALLERS, AND THE DIFFERENCE IS WHAT CONNECTION EACH
+ * ALREADY HAS. `kb_notify()` is for a program with no bus of its own: it
+ * double-forks `gdbus` and is gone. The panel sends on the connection its tray
+ * already holds (`sh_tray_notify`), because opening a second one to say one
+ * sentence is a second thing to keep alive. The compositor spawns `gdbus`
+ * itself, because it links neither libkbase nor sd-bus. A fourth route would
+ * be one too many; these three are the three kinds of caller there are.
+ */
+/*
+ * WHAT TIME IS IT, AS A TOAST.
+ *
+ * A CHORD CANNOT COMPUTE A STRING. `rc.xml` binds a static command and
+ * `con.conf` names one, so a chord that wanted the time could not be a chord
+ * that formatted it — which is why these are verbs rather than an argument
+ * somebody has to write into two configuration files in two syntaxes.
+ */
+static int notify_time(void)
+{
+	time_t now = time(NULL);
+	struct tm tm;
+	char hhmm[16], date[64];
+
+	localtime_r(&now, &tm);
+	strftime(hhmm, sizeof(hhmm), "%H:%M", &tm);
+	strftime(date, sizeof(date), "%A %e %B %Y", &tm);
+	kb_notify("kdos", hhmm, date);
+	return 0;
+}
+
+/*
+ * AND HOW MUCH CHARGE IS LEFT.
+ *
+ * READ FROM THE KERNEL, NOT FROM `kdos-energyd`. That daemon estimates what a
+ * program is COSTING; it holds no battery state and its socket answers
+ * `ping`, `report` and `report-json` about nothing else. The charge is a file
+ * under /sys, which is what libkproc already reads for the resource monitor —
+ * and one reader means one answer.
+ */
+static int notify_battery(void)
+{
+	KprBattery *b = NULL;
+	int n = kpr_power_list(&b);
+	char sum[64], body[128];
+	int mains = 0, found = 0;
+
+	for (int i = 0; i < n; i++)
+		if (!b[i].is_battery && b[i].online)
+			mains = 1;
+
+	for (int i = 0; i < n; i++) {
+		if (!b[i].is_battery)
+			continue;
+		found = 1;
+		snprintf(sum, sizeof(sum), "Battery %d%%", b[i].capacity);
+		/* HEALTH IS WEAR AND IS A DIFFERENT NUMBER FROM CHARGE: a
+		 * battery reporting 90% can hold 70% of what it held new, and
+		 * a person deciding whether to unplug wants both. */
+		if (b[i].health > 0)
+			snprintf(body, sizeof(body), "%s, %d%% of its "
+				 "original capacity",
+				 b[i].state[0] ? b[i].state : "unknown",
+				 (int)(b[i].health * 100.0 + 0.5));
+		else
+			snprintf(body, sizeof(body), "%s",
+				 b[i].state[0] ? b[i].state : "unknown");
+		break;
+	}
+	if (!found)
+		snprintf(sum, sizeof(sum), "%s",
+			 mains ? "On mains" : "No battery");
+	if (!found)
+		snprintf(body, sizeof(body),
+			 "this machine reports no battery");
+	kpr_power_free(b);
+	kb_notify("kdos", sum, body);
+	return 0;
+}
+
+/*
+ * ONE LINE TO THE CENTRE'S SOCKET, and no second daemon.
+ *
+ * `kdos-notifyd` already holds the toasts, the history and the Do Not Disturb
+ * flag, and already answers a socket in `$XDG_RUNTIME_DIR`. A chord needs a
+ * COMMAND, and this is it: the verb goes down the same socket the centre uses,
+ * so there is one owner of what is on the screen.
+ *
+ * SILENT WHEN NOTHING IS LISTENING. A chord pressed on a machine with no
+ * notification daemon should do nothing, not print an error into a session
+ * that has nowhere to show it.
+ */
+static int notify_say(const char *verb)
+{
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	struct sockaddr_un a = { 0 };
+	char reply[64];
+	int fd;
+
+	if (!run || !*run)
+		return 1;
+	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return 1;
+	a.sun_family = AF_UNIX;
+	snprintf(a.sun_path, sizeof(a.sun_path), "%s/kdos-notify.sock", run);
+	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) {
+		close(fd);
+		return 1;
+	}
+	if (write(fd, verb, strlen(verb)) < 0 || write(fd, "\n", 1) < 0) {
+		close(fd);
+		return 1;
+	}
+	/* Read the answer before closing: the daemon writes `ok` and a peer
+	 * that hung up first would leave it writing into a closed pipe. */
+	(void)!read(fd, reply, sizeof(reply));
+	close(fd);
+	return 0;
+}
+
+static int cmd_notify(int argc, char **argv)
+{
+	if (argc >= 1 && !strcmp(argv[0], "--time"))
+		return notify_time();
+	if (argc >= 1 && !strcmp(argv[0], "--battery"))
+		return notify_battery();
+	if (argc >= 1 && !strcmp(argv[0], "--dismiss"))
+		return notify_say("dismiss");
+	if (argc >= 1 && !strcmp(argv[0], "--dismiss-all"))
+		return notify_say("dismiss all");
+	if (argc >= 1 && !strcmp(argv[0], "--raise"))
+		return notify_say("raise");
+	if (argc >= 1 && !strcmp(argv[0], "--dnd"))
+		return notify_say("dnd toggle");
+	if (argc < 1) {
+		fprintf(stderr,
+			"usage: kdos notify <summary> [body]\n"
+			"       kdos notify --time | --battery\n"
+			"       kdos notify --dismiss | --dismiss-all | "
+			"--raise | --dnd\n");
+		return 2;
+	}
+	kb_notify("kdos", argv[0], argc > 1 ? argv[1] : "");
+	return 0;
+}
 
 int kdos_main(int argc, char **argv)
 {
@@ -3493,10 +5313,18 @@ int kdos_main(int argc, char **argv)
 		return cmd_help(rest, restv);
 	if (!strcmp(cmd, "theme"))
 		return cmd_theme(rest, restv);
+	if (!strcmp(cmd, "background"))
+		return cmd_background(rest, restv);
 	if (!strcmp(cmd, "status"))
 		return cmd_status(rest, restv);
 	if (!strcmp(cmd, "doctor"))
 		return cmd_doctor(rest, restv);
+	if (!strcmp(cmd, "toggle"))
+		return cmd_toggle(rest, restv);
+	if (!strcmp(cmd, "panel"))
+		return cmd_panel(rest, restv);
+	if (!strcmp(cmd, "notify"))
+		return cmd_notify(rest, restv);
 	if (!strcmp(cmd, "why"))
 		return why_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "explain"))
@@ -3529,6 +5357,26 @@ int kdos_main(int argc, char **argv)
 		return kdt_app(argc - 2, argv + 2);
 	if (!strcmp(cmd, "trash"))
 		return kdt_trash(argc - 2, argv + 2);
+	if (!strcmp(cmd, "places"))
+		return kdt_places(argc - 2, argv + 2);
+	if (!strcmp(cmd, "thumb"))
+		return kdt_thumb(argc - 2, argv + 2);
+	if (!strcmp(cmd, "con"))
+		return cmd_con(argc - 2, argv + 2);
+	if (!strcmp(cmd, "settings"))
+		return cmd_settings(argc - 2, argv + 2);
+	if (!strcmp(cmd, "menu"))
+		return cmd_menu(argc - 2, argv + 2);
+	/*
+	 * `kdos-share` IS THE NAME THE VERB TABLE RESOLVES, and this is the
+	 * same program under the spelling a person types. libkxdg offers the
+	 * Share row only when `kdos-share` is on PATH, so the symlink is what
+	 * turns it on and this line is only the convenience.
+	 */
+	if (!strcmp(cmd, "share"))
+		return share_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "remind"))
+		return remind_main(argc - 1, argv + 1);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

@@ -1,0 +1,54 @@
+Recorded terminal streams, and the grid libkvt makes of them.
+
+Each `.esc` is the raw bytes a real program wrote to an 80x24 pty with
+TERM=xterm-256color: vim on this repository's README, htop, mc, less paged once,
+and tmux with a horizontal split. `malformed.esc` is written by hand — an
+unterminated CSI, a parameter past any bound, an OSC with no terminator, a
+truncated UTF-8 lead byte, a surrogate, a DCS carrying rubbish — because no
+program emits those and the parser has to survive them anyway.
+
+THEY ARE NEVER RE-DERIVED. A re-recording picks up a different program version,
+a different terminfo and a different hostname, so a fixture that regenerated
+itself would be a test that changed its own question. The hostname and the clock
+inside them are part of the recording, not something live.
+
+EACH ENDS ON A LIVE FRAME, never on the program's exit. A stream that ended with
+the alternate screen being restored renders to an empty grid — and so does a
+parser that gave up on the first byte, which is why the self-test refuses an
+empty grid outright.
+
+`attrs.esc` is hand-written too: SGR 3, 9 and 53 with each of their offs, the
+underline shapes of `4:n`, the underline colour of 58, and the four spellings of
+a colour — an ANSI name, a bright name, an index above the sixteen and a 24-bit
+triple in both the semicolon and the colon form. None of the recordings here
+happens to contain any of them, and the colour lines are what pin the BOUNDARY:
+the sixteen named colours reduce to the theme's slots and everything above them
+is kept as the literal the program chose.
+
+`links.esc` is the third hand-written one: `OSC 8` around a run, the empty form
+that closes it, the same address twice — which must intern to one link — a
+scheme the whitelist refuses, and a `params` field that must be ignored.
+
+`prompts.esc` is the fourth: `OSC 133` marking two finished commands — one that
+succeeded and one that failed — and a third prompt whose command is still
+running, which is what pins the status landing on the PROMPT rather than on the
+line the shell reported it from.
+
+`vtrender.c` replays one into the 80x24 screen it produces, in small uneven
+chunks so that escape sequences are split across reads the way a pty splits
+them. `testing/goldens/vt-*.txt` are its output: the characters, then `--`, then one
+letter per cell for the attributes — `i`, `s`, `o`, `u` (or the shape's digit for
+`4:1`-`4:5`), `b`, `r`, first set wins — then `--` again and which cells carry a
+colour of their own: `f`, `b`, `B`, `u`; then `--` once more and which cells are
+a hyperlink, as the id itself — `1` for the first address a stream named, `+`
+past nine. No colour VALUE is in a golden, because a value moves with the theme
+and a palette change must not read as "vim drifted"; what is here is the
+decision about which colours become literals, and that moves only when the rule
+does. The link block holds the id rather than a flag because the two things
+worth pinning are that one run is one link and that the same address twice is
+the same link. Last comes one character per ROW for the prompt marks — `?` a
+prompt whose command has not finished, `0` one that succeeded, `!` one that
+failed — because a mark is a property of the line and not of a cell.
+
+`record.py` is how they were made. It is here so that the knowledge is
+recoverable, not because anything re-runs it.

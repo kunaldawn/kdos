@@ -1,0 +1,7 @@
+# The accounts and the sessions a greeter golden is drawn from. Two of each,
+# because one of either draws no chooser at all: a single account is a name
+# rather than a list, and a single session is not a question.
+user ada Ada Lovelace
+user grace Grace Hopper
+session Console
+session Desktop

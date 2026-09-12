@@ -10,45 +10,24 @@
 #include "snap-constraints.h"
 #include "ssd.h"
 #include "view.h"
+#include "kwm.h"
 
+/*
+ * The rule is libkwm's, so kdos-con stops at the same edges as this does. What
+ * arrives here is the compositor's own edge type; the two are the same three
+ * fields, copied rather than cast because a cast would silently survive one of
+ * them gaining a fourth.
+ */
 static void
 check_edge(int *next, struct edge current, struct edge target,
 		struct edge oppose, struct edge align, bool lesser)
 {
-	int cur = current.offset;
-	int tgt = target.offset;
-	int opp = oppose.offset;
-	int aln = align.offset;
+	KwmEdge c = { current.offset, current.min, current.max };
+	KwmEdge t = { target.offset, target.min, target.max };
+	KwmEdge o = { oppose.offset, oppose.min, oppose.max };
+	KwmEdge a = { align.offset, align.min, align.max };
 
-	if (cur == tgt) {
-		return;
-	}
-
-	/*
-	 * The edge defined by current and moving to target may encounter two
-	 * edges of another region: the opposing edge of the region is that in
-	 * the opposite orientation of the moving edge (i.e., left <-> right or
-	 * top <-> bottom); the aligned edge of the region is that in the same
-	 * orientation as the moving edge (i.e., left <-> left, top <-> top,
-	 * right <-> right, bottom <-> bottom).
-	 *
-	 * Any opposing or aligned edge of a region is considered "valid" in
-	 * this search if the edge sits between the current and target
-	 * positions of the moving edge (including the target position itself).
-	 */
-
-	/* Direction of motion for the edge */
-	const bool decreasing = tgt < cur;
-
-	/* Check the opposing edge */
-	if ((tgt <= opp && opp < cur) || (cur < opp && opp <= tgt)) {
-		*next = edge_get_best(*next, opp, decreasing);
-	}
-
-	/* Check the aligned edge */
-	if ((tgt <= aln && aln < cur) || (cur < aln && aln <= tgt)) {
-		*next = edge_get_best(*next, aln, decreasing);
-	}
+	kwm_edge_check(next, c, t, o, a, lesser, NULL);
 }
 
 void

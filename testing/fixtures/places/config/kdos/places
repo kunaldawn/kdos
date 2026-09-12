@@ -1,0 +1,6 @@
+# The user's own rows, merged over the XDG directories.
+Work = $HOME/Bureau/work
+# Already an XDG directory under another name: dropped rather than listed twice.
+Papers = $HOME/Documents
+# A directory that is not there is never returned.
+Gone = $HOME/nowhere

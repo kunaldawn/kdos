@@ -284,23 +284,39 @@ void sh_theme_watch(void)
 	sigaction(SIGHUP, &sa, NULL);
 }
 
-static struct sh_task *task_for(struct sh_state *sh, void *handle)
+/*
+ * PUT THE BAR AWAY, AND BRING IT BACK.
+ *
+ * A SECOND SIGNAL AND NOT A SECOND MEANING FOR THE FIRST. SIGHUP is "re-read
+ * what changed on disk" and every surface answers it; this is an instruction
+ * with no file behind it, and folding it into SIGHUP would make every other
+ * surface's reload a toggle of something.
+ *
+ * SIGUSR1, delivered by exact `comm`: `kdos-shell` is basename-dispatched, so
+ * matching the name reaches the panel and not the desktop icons or the
+ * notification daemon, which are other argv[0]s of the same binary.
+ *
+ * A caught signal rather than the default, which for SIGUSR1 is death — a
+ * panel that died on the chord would be respawned by the supervisor and come
+ * back shown, which reads as a chord that does nothing.
+ */
+volatile sig_atomic_t sh_bar_dirty;
+
+static void on_sigusr1(int sig)
 {
-	for (int i = 0; i < sh->ntasks; i++)
-		if (sh->tasks[i].handle == handle)
-			return &sh->tasks[i];
-	return NULL;
+	(void)sig;
+	sh_bar_dirty = 1;
 }
 
-/* ── foreign-toplevel ──────────────────────────────────────────────────── */
-
-static void tl_title(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
-		     const char *title)
+void sh_bar_watch(void)
 {
-	struct sh_task *t = task_for(data, h);
-	if (t)
-		snprintf(t->title, sizeof(t->title), "%s", title);
+	struct sigaction sa = { 0 };
+	sa.sa_handler = on_sigusr1;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGUSR1, &sa, NULL);
 }
+
+/* ── the window list ───────────────────────────────────────────────────── */
 
 /*
  * The name a person would recognise, from the app's own desktop entry.
@@ -560,115 +576,64 @@ static void task_box(struct sh_task *t)
 	}
 }
 
-static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
-		      const char *app_id)
-{
-	struct sh_task *t = task_for(data, h);
-	if (!t)
-		return;
-	snprintf(t->app_id, sizeof(t->app_id), "%s", app_id);
-	/* Resolved once, here, rather than per frame: this fires when a window
-	 * maps and when it changes its id, which is the only time the answer
-	 * can change, and the panel redraws every second. */
-	desktop_name(app_id, t->name, sizeof(t->name), t->did, sizeof(t->did));
-	task_box(t);
-}
-
-static void tl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
-			    struct wl_output *o)
-{ (void)d; (void)h; (void)o; }
-static void tl_output_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
-			    struct wl_output *o)
-{ (void)d; (void)h; (void)o; }
-
 /*
- * State arrives as an ARRAY of enum values, not as a bitmask — the protocol
- * sends the complete set every time, so a state that is absent is a state that
- * is off. Reading it as flags to OR together would make a window that was once
- * activated stay highlighted forever.
+ * REBUILT FROM libkdisp, not accumulated from events.
+ *
+ * The list is short and the panel redraws on a change rather than on a timer,
+ * so a copy of at most sixty-four rows is cheaper than a cache to keep in step
+ * with the one the display server already keeps. It is also the only shape
+ * that works on both desktops: the console publishes whole rows and announces
+ * no per-window events for a listener to accumulate.
+ *
+ * THE RESOLVED FIELDS ARE CARRIED OVER, not recomputed. `name`, `did` and
+ * `box` cost a desktop-entry lookup and a read of the box registry, and they
+ * can only change when the window's application id does — so they are copied
+ * from the previous list whenever the id and the app id both match, and looked
+ * up otherwise. Resolving per refresh would put that work on every state
+ * change of every window.
+ *
+ * ORDER IS THE SERVER'S. Position N in the panel is tasks[N] and the click map
+ * is dense, so a list that reordered itself between the draw and the click
+ * would activate the wrong window.
  */
-static void tl_state(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
-		     struct wl_array *states)
+void sh_tasks_refresh(struct sh_state *sh)
 {
-	struct sh_task *t = task_for(data, h);
-	if (!t)
-		return;
-	t->activated = 0;
-	t->minimized = 0;
-	t->maximized = 0;
-	t->fullscreen = 0;
-	uint32_t *st;
-	wl_array_for_each(st, states) {
-		if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED)
-			t->activated = 1;
-		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED)
-			t->minimized = 1;
-		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED)
-			t->maximized = 1;
-		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN)
-			t->fullscreen = 1;
+	static struct sh_task prev[SH_MAX_TASKS];
+	int nprev = sh->ntasks;
+	KDispWin w;
+
+	memcpy(prev, sh->tasks, sizeof(prev[0]) * (size_t)nprev);
+	sh->ntasks = 0;
+	for (int i = 0; sh->ntasks < SH_MAX_TASKS && kdisp_win_at(i, &w); i++) {
+		struct sh_task *t = &sh->tasks[sh->ntasks++];
+		int carried = 0;
+
+		memset(t, 0, sizeof(*t));
+		t->id = w.id;
+		snprintf(t->title, sizeof(t->title), "%s", w.title);
+		snprintf(t->app_id, sizeof(t->app_id), "%s", w.app_id);
+		t->activated = (w.flags & KDISP_WIN_FOCUSED) != 0;
+		t->minimized = (w.flags & KDISP_WIN_MINIMISED) != 0;
+		t->maximized = (w.flags & KDISP_WIN_MAXIMISED) != 0;
+		t->fullscreen = (w.flags & KDISP_WIN_FULLSCREEN) != 0;
+
+		for (int j = 0; j < nprev; j++) {
+			if (prev[j].id != w.id ||
+			    strcmp(prev[j].app_id, t->app_id))
+				continue;
+			snprintf(t->name, sizeof(t->name), "%s", prev[j].name);
+			snprintf(t->did, sizeof(t->did), "%s", prev[j].did);
+			snprintf(t->box, sizeof(t->box), "%s", prev[j].box);
+			carried = 1;
+			break;
+		}
+		if (!carried && t->app_id[0]) {
+			desktop_name(t->app_id, t->name, sizeof(t->name),
+				     t->did, sizeof(t->did));
+			task_box(t);
+		}
 	}
 }
-
-static void tl_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
-{ (void)d; (void)h; }
-
-static void tl_closed(void *data, struct zwlr_foreign_toplevel_handle_v1 *h)
-{
-	struct sh_state *sh = data;
-	for (int i = 0; i < sh->ntasks; i++) {
-		if (sh->tasks[i].handle != h)
-			continue;
-		/* Compact the array so the click map stays dense: position N in
-		 * the panel must always be tasks[N]. */
-		memmove(&sh->tasks[i], &sh->tasks[i + 1],
-			(size_t)(sh->ntasks - i - 1) * sizeof(sh->tasks[0]));
-		sh->ntasks--;
-		break;
-	}
-	zwlr_foreign_toplevel_handle_v1_destroy(h);
-}
-
-static void tl_parent(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
-		      struct zwlr_foreign_toplevel_handle_v1 *p)
-{ (void)d; (void)h; (void)p; }
-
-static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener = {
-	.title = tl_title,
-	.app_id = tl_app_id,
-	.output_enter = tl_output_enter,
-	.output_leave = tl_output_leave,
-	.state = tl_state,
-	.done = tl_done,
-	.closed = tl_closed,
-	.parent = tl_parent,
-};
-
-static void ftl_toplevel(void *data, struct zwlr_foreign_toplevel_manager_v1 *m,
-			 struct zwlr_foreign_toplevel_handle_v1 *h)
-{
-	struct sh_state *sh = data;
-	(void)m;
-	if (sh->ntasks >= SH_MAX_TASKS) {
-		/* Dropped rather than wrapped. A panel that silently replaces
-		 * one window's entry with another's is worse than one that
-		 * stops adding at 64 — and nobody has 64 windows open. */
-		zwlr_foreign_toplevel_handle_v1_destroy(h);
-		return;
-	}
-	struct sh_task *t = &sh->tasks[sh->ntasks++];
-	memset(t, 0, sizeof(*t));
-	t->handle = h;
-	zwlr_foreign_toplevel_handle_v1_add_listener(h, &toplevel_listener, sh);
-}
-
-static void ftl_finished(void *d, struct zwlr_foreign_toplevel_manager_v1 *m)
-{ (void)d; (void)m; }
-
-static const struct zwlr_foreign_toplevel_manager_v1_listener ftl_listener = {
-	.toplevel = ftl_toplevel,
-	.finished = ftl_finished,
-};
 
 /* ── ext-workspace ─────────────────────────────────────────────────────── */
 
@@ -789,12 +754,10 @@ static void reg_global(void *data, struct wl_registry *r, uint32_t name,
 {
 	struct sh_state *sh = data;
 	(void)version;
-	if (!strcmp(iface, zwlr_foreign_toplevel_manager_v1_interface.name)) {
-		sh->ftl_mgr = wl_registry_bind(
-			r, name, &zwlr_foreign_toplevel_manager_v1_interface, 3);
-		zwlr_foreign_toplevel_manager_v1_add_listener(sh->ftl_mgr,
-							      &ftl_listener, sh);
-	} else if (!strcmp(iface, ext_workspace_manager_v1_interface.name)) {
+	/* The window list is libkdisp's on both desktops; only the workspace
+	 * pager is still asked for here, because ext-workspace has no console
+	 * equivalent and the session draws its own pager there. */
+	if (!strcmp(iface, ext_workspace_manager_v1_interface.name)) {
 		sh->ws_mgr = wl_registry_bind(
 			r, name, &ext_workspace_manager_v1_interface, 1);
 		ext_workspace_manager_v1_add_listener(sh->ws_mgr, &wsm_listener,
@@ -812,34 +775,58 @@ static const struct wl_registry_listener registry_listener = {
 
 int sh_connect(struct sh_state *sh)
 {
+	/*
+	 * The window list is what a panel IS. Without it there is a clock and
+	 * a row of workspace numbers, which is not worth a layer-shell surface
+	 * and an exclusive zone taken off every other window. Asked of
+	 * libkdisp, so the answer is the same question on both desktops.
+	 *
+	 * SUPPORTED, NOT NON-EMPTY. A freshly booted session has no windows
+	 * open and a panel must still start on it.
+	 */
+	if (!kdisp_win_supported())
+		return -1;
+	sh_tasks_refresh(sh);
+
+	/*
+	 * The workspace pager is the compositor's alone. NULL on the console,
+	 * and unguarded that is a null dereference from a chord a person can
+	 * press: `kdisp_init` succeeds there because the console backend
+	 * probes first, so a Wayland display asked for afterwards is simply
+	 * absent. The session draws its own pager on that desktop.
+	 */
 	sh->display = kwl_display();
 	if (!sh->display)
-		return -1;
+		return 0;
 
 	struct wl_registry *r = wl_display_get_registry(sh->display);
 	wl_registry_add_listener(r, &registry_listener, sh);
 	wl_display_roundtrip(sh->display);	/* the globals */
 	wl_display_roundtrip(sh->display);	/* and what they then send us */
-
-	/*
-	 * The window list is what a panel IS. Without it there is a clock and a
-	 * row of workspace numbers, which is not worth a layer-shell surface
-	 * and an exclusive zone taken off every other window.
-	 */
-	return sh->ftl_mgr ? 0 : -1;
+	return 0;
 }
 
+/*
+ * TAKE IN WHAT THE SERVERS SAID, once per turn.
+ *
+ * The window list is re-read rather than accumulated from events, and it is
+ * re-read HERE rather than from a callback inside a pump: on the console the
+ * only pump that reads the socket is the one that also delivers key events, so
+ * a pump added for the list would swallow the panel's input. The refresh is a
+ * copy of at most sixty-four short rows and carries the resolved fields over,
+ * so it costs no desktop-entry lookup on a frame where nothing changed.
+ */
 void sh_dispatch(struct sh_state *sh)
 {
 	if (sh->display)
 		wl_display_dispatch_pending(sh->display);
+	sh_tasks_refresh(sh);
 }
 
 void sh_disconnect(struct sh_state *sh)
 {
-	/* The connection is libkwl's; kwl_shutdown() closes it. Only the
+	/* The connection is libkwl's; kdisp_shutdown() closes it. Only the
 	 * objects bound here are this file's to release. */
-	sh->ftl_mgr = NULL;
 	sh->ws_mgr = NULL;
 	sh->display = NULL;
 }
@@ -856,8 +843,7 @@ void sh_minimize_task(struct sh_state *sh, int i)
 {
 	if (i < 0 || i >= sh->ntasks || sh->tasks[i].minimized)
 		return;
-	zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
-	wl_display_flush(sh->display);
+	kdisp_win_minimise(sh->tasks[i].id, 1);
 }
 
 /*
@@ -869,8 +855,7 @@ void sh_close_task(struct sh_state *sh, int i)
 {
 	if (i < 0 || i >= sh->ntasks)
 		return;
-	zwlr_foreign_toplevel_handle_v1_close(sh->tasks[i].handle);
-	wl_display_flush(sh->display);
+	kdisp_win_close(sh->tasks[i].id);
 }
 
 /*
@@ -884,13 +869,12 @@ void sh_toggle_task(struct sh_state *sh, int i)
 	if (i < 0 || i >= sh->ntasks)
 		return;
 	if (sh->tasks[i].minimized) {
-		zwlr_foreign_toplevel_handle_v1_unset_minimized(sh->tasks[i].handle);
+		kdisp_win_minimise(sh->tasks[i].id, 0);
 		sh_activate_task(sh, i);
 		return;
 	}
 	if (sh->tasks[i].activated) {
-		zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
-		wl_display_flush(sh->display);
+		kdisp_win_minimise(sh->tasks[i].id, 1);
 		return;
 	}
 	sh_activate_task(sh, i);
@@ -901,16 +885,12 @@ void sh_activate_task(struct sh_state *sh, int i)
 	if (i < 0 || i >= sh->ntasks)
 		return;
 	/*
-	 * The seat is required: the compositor uses it to decide whether the
-	 * request came from something the user is actually driving, which is
-	 * what stops a background client raising itself over what you are
-	 * typing into.
+	 * Under a compositor this carries the seat, which is how it decides
+	 * the request came from something the person is actually driving —
+	 * that is what stops a background client raising itself over what
+	 * they are typing into. libkdisp holds the seat, so nothing here does.
 	 */
-	struct wl_seat *seat = kwl_seat();
-	if (!seat)
-		return;
-	zwlr_foreign_toplevel_handle_v1_activate(sh->tasks[i].handle, seat);
-	wl_display_flush(sh->display);
+	kdisp_win_activate(sh->tasks[i].id);
 }
 
 void sh_activate_workspace(struct sh_state *sh, int i)
@@ -939,6 +919,16 @@ void sh_activate_workspace(struct sh_state *sh, int i)
  *
  * No shell. argv is exec'd as given.
  */
+void sh_help(const char *doc, void *user)
+{
+	const char *argv[] = { "kdos-doc", doc, NULL };
+
+	(void)user;
+	if (!doc || !*doc)
+		return;
+	sh_spawn(argv);
+}
+
 void sh_spawn(const char *const argv[])
 {
 	pid_t pid;
@@ -957,6 +947,183 @@ void sh_spawn(const char *const argv[])
 		while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
 			;
 	}
+}
+
+/*
+ * THE TERMINAL EMULATOR ON THIS DESKTOP, which is not the same program on the
+ * two of them. foot is a Wayland client and there is no compositor on the
+ * console path to be one under; kdos-term is a cell surface and opens as a
+ * window on either. $KDOS_CON is the console session's surface socket and is
+ * set by the session for everything started inside it, so its presence is the
+ * question "am I on the console desktop" already answered.
+ *
+ * Both accept `-e CMD` and `-D DIR` with the same meaning, so a call site
+ * picks the name here and needs no other branch.
+ */
+/*
+ * THE WALL CLOCK, AND THE ONE PLACE $KDOS_PANEL_NOW IS READ.
+ *
+ * A surface that draws the time draws a different picture every minute, so a
+ * dump of one is a golden that fails an hour after it is written. The harness
+ * exports a fixed second and every surface that shows a clock takes its time
+ * from here — the panel's bar and the saver's clock face both — because two
+ * readers of one variable is one of them being forgotten the next time a
+ * surface learns to tell the time.
+ */
+time_t sh_wall(void)
+{
+	const char *e = getenv("KDOS_PANEL_NOW");
+
+	if (e && *e)
+		return (time_t)strtoll(e, NULL, 10);
+	return time(NULL);
+}
+
+const char *sh_term(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return (con && *con) ? "kdos-term" : "foot";
+}
+
+/*
+ * THE TERMINAL AND THE IDENTITY IT WEARS, written into argv from n; returns
+ * the new n. `cmd` is the command that will draw inside it and `id` is the
+ * caller's scratch, which must outlive the exec.
+ *
+ * A terminal running somebody else's program must not answer to its own name.
+ * The compositor matches a window to a desktop entry by app-id, so every
+ * terminal entry started as a bare `foot -e …` is a taskbar row called foot,
+ * wearing foot's icon, however many of them are open. The identity is the
+ * first word of `cmd` without its directory, which is the desktop id for
+ * everything that ships one. foot takes it as `--app-id`; kdos-term as the
+ * `--title` the panel shows until the program sets one.
+ */
+/*
+ * A NAME, NOT A PROGRAM. `X-KDOS-Term` chooses between the two emulators this
+ * image ships and can name nothing else: an entry is a file anything can
+ * write, and a key that named an arbitrary program would be a second Exec line
+ * with none of the field-code rules. An unknown value is the session's own
+ * terminal rather than a refusal, because an entry written for another desktop
+ * must still start.
+ */
+const char *sh_term_named(const char *want)
+{
+	if (want && (!strcmp(want, "kdos-term") || !strcmp(want, "foot")))
+		return want;
+	return sh_term();
+}
+
+int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
+		 char *id, size_t idsz)
+{
+	return sh_term_argv_in(NULL, 0, NULL, argv, n, max, cmd, id, idsz);
+}
+
+int sh_term_argv_in(const char *want, int floating, const char *size,
+		    const char *argv[], int n, int max,
+		    const char *cmd, char *id, size_t idsz)
+{
+	const char *prog = sh_term_named(want);
+	char word[128];
+	size_t i = 0;
+
+	if (n + 5 >= max)
+		return n;
+	while (cmd && cmd[i] && cmd[i] != ' ' && cmd[i] != '\t' &&
+	       i < sizeof(word) - 1) {
+		word[i] = cmd[i];
+		i++;
+	}
+	word[i] = '\0';
+	const char *base = strrchr(word, '/');
+
+	base = base ? base + 1 : word;
+	argv[n++] = prog;
+	/*
+	 * THE FLAG BELONGS TO THE EMULATOR AND NOT TO THE DESKTOP. `foot`
+	 * takes `--app-id`, `kdos-term` takes `--title`, and either can be the
+	 * one running here now that an entry may ask for the other: keying
+	 * this off which session is up would hand `kdos-term` a `--app-id` it
+	 * does not know the moment an entry asked for it under the compositor.
+	 */
+	if (*base) {
+		if (!strcmp(prog, "foot")) {
+			snprintf(id, idsz, "--app-id=%s", base);
+			argv[n++] = id;
+		} else {
+			/*
+			 * BOTH, AND THEY ARE DIFFERENT THINGS. The title is
+			 * what a person reads until the program sets its own;
+			 * the app id is what the desktop files the window
+			 * under, and it is what a run-or-raise chord matches —
+			 * so a terminal entry given only a title is a window
+			 * whose identity is `kdos-term`, the same as every
+			 * other terminal on the screen.
+			 */
+			snprintf(id, idsz, "%s", base);
+			argv[n++] = "--title";
+			argv[n++] = id;
+			argv[n++] = "--app-id";
+			argv[n++] = id;
+		}
+	}
+	/*
+	 * WHAT THE ENTRY ASKED FOR ABOUT THE WINDOW, and only to the emulator
+	 * that knows the flags. `foot` has neither, and a window under the
+	 * compositor is the compositor's to place.
+	 *
+	 * ONLY WHERE THERE IS ROOM. Thirteen callers size their own argv, and
+	 * a hint dropped is a window that opens the ordinary way — which is
+	 * better than a terminal that does not open at all because its wrapper
+	 * would not fit.
+	 */
+	if (strcmp(prog, "foot")) {
+		if (size && *size && n + 3 <= max) {
+			argv[n++] = "--size";
+			argv[n++] = size;
+		}
+		if (floating && n + 2 <= max)
+			argv[n++] = "--float";
+	}
+	argv[n++] = "-e";
+	return n;
+}
+
+/*
+ * The same, as the single command string the callers that re-split one need.
+ * No argument here may contain a space: the identity is one word and `--app-id`
+ * is joined to it with `=` for exactly that reason.
+ */
+void sh_term_cmd(char *out, size_t n, const char *cmd)
+{
+	const char *argv[8];
+	char id[160];
+	int k = sh_term_argv(argv, 0, 8, cmd, id, sizeof(id));
+	size_t len = 0;
+
+	out[0] = '\0';
+	for (int i = 0; i < k && len < n; i++)
+		len += (size_t)snprintf(out + len, n - len, "%s ", argv[i]);
+	if (len < n)
+		snprintf(out + len, n - len, "%s", cmd);
+}
+
+/*
+ * THE PROGRAM THAT IS THE SESSION, and killing it is what logging out means.
+ * The compositor is the graphical session and `kdos-con` is the console one;
+ * both end on SIGTERM and tear down in order, and neither publishes its pid,
+ * so an exact-name `pkill` is the route. Exact, not a pattern: a pattern that
+ * matched `kdos-con` would match `kdos-con-login` and `kdos-con-start` too.
+ *
+ * Both names are inside the 15 characters `pkill -x` compares against, which
+ * is the length at which an exact-name kill silently matches nothing.
+ */
+const char *sh_session_prog(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return (con && *con) ? "kdos-con" : "kdos-comp";
 }
 
 /*
@@ -1065,7 +1232,7 @@ int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn)
 
 void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl)
 {
-	if (kwl_decorated()) {
+	if (kdisp_decorated()) {
 		ktui_draw_fill(krect(0, 0, w, h), bg);
 		return;
 	}

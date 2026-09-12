@@ -1,0 +1,11 @@
+# kdos-con layout: talk — mail, the diary and chat, side by side.
+#
+# THE DIARY'S ROLE IS `agenda` and not `calendar`: `calendar` is this desktop's
+# own surface on Super+c, and two things under one name is a name that answers
+# the wrong one. What fills it is a con.conf key — khal's `ikhal` by default,
+# which is a console script the recipe installs rather than a port of its own.
+#
+# kind	workspace	x	y	w	h	app	flags	title
+app	0	1	1	25	21	mail	-	mail
+app	0	28	1	25	21	agenda	-	agenda
+app	0	55	1	24	21	chat	-	chat

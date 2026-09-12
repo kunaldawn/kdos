@@ -11,6 +11,7 @@
 | Net  |300     root      0.0    6.0M     sshd                                 |
 | Bat  |800     kdos      0.0    8.0M     backup                               |
 | Ene  |                                                                       |
+| Sen  |                                                                       |
 | Box  |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
@@ -18,7 +19,6 @@
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
-|      |                                                                       |
-|      |                                                                       |
 |      |2 hidden kernel threads  .  sort: cpu                                  |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                            |
 +==============================================================================+

@@ -1,0 +1,559 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   libkdisp — which display server, decided in one place
+ *
+ * A KDOS surface reaches a screen three ways: as a Wayland client under
+ * kdos-comp, as a cell client under kdos-con, or through escape sequences on a
+ * terminal. kdos-shell alone opens a surface from more than twenty places, and
+ * each of them then asks whether it should close, resizes itself, or hides its
+ * panel. Branching on the server at every one of those is the same decision
+ * written twenty times in one program and again in the next — which is exactly
+ * what the shared window model was introduced to stop.
+ *
+ * So the LIFECYCLE is an interface and the servers are implementations of it.
+ *
+ * THE CONSUMER DECIDES WHAT IT LINKS. This library names no implementation and
+ * pulls in none; a caller hands over the ones it compiled, in preference order,
+ * and a console-only program never sees Wayland:
+ *
+ *     extern const KDispImpl kwl_impl;   // libkwl
+ *     extern const KDispImpl kcon_impl;  // libkcon
+ *     static const KDispImpl *const have[] = { &kcon_impl, &kwl_impl };
+ *     kdisp_init(&cfg, have, 2);
+ *
+ * LINKS libktui AND NOTHING ELSE, so gaining it costs a surface a vtable and a
+ * struct rather than a font renderer.
+ *
+ * NOTE THE TWO EDGE VOCABULARIES IN THIS TREE AND DO NOT CONFLATE THEM.
+ * KDISP_EDGE_* below is a SEQUENCE naming which edge a panel is anchored to.
+ * libkwm's KWM_EDGE_* is a BITMASK whose values match the compositor's own
+ * enum, so that corners are combinations. They are different questions.
+ * ---------------------------------
+ */
+
+#ifndef KDISP_H
+#define KDISP_H
+
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "ktui.h"
+
+typedef union pixman_image pixman_image_t;
+
+enum kdisp_role {
+	KDISP_ROLE_TOPLEVEL = 0,	/* an ordinary window (xdg-shell)          */
+	/*
+	 * Connect, bind the globals, install NO backend and create no surface.
+	 * This is what `--dump` runs under: the caller wants the protocol state
+	 * a panel would draw from, rendered offscreen as text rather than into
+	 * a buffer nobody will look at.
+	 */
+	KDISP_ROLE_NONE,
+	KDISP_ROLE_PANEL,		/* layer-shell, anchored, exclusive zone   */
+	KDISP_ROLE_OVERLAY,	/* layer-shell, no exclusive zone          */
+	/*
+	 * The desktop itself: the BACKGROUND layer, anchored on all four edges,
+	 * no exclusive zone. Above the wallpaper the compositor draws and below
+	 * every window. Reserving space for it would shrink the usable box and
+	 * every maximised window with it, which is why it is its own role
+	 * rather than a panel with the zone turned off.
+	 */
+	KDISP_ROLE_BACKGROUND,
+	/*
+	 * ext-session-lock-v1: a surface the compositor keeps on screen even if
+	 * this process dies, which is the entire reason a lock screen is not
+	 * just a fullscreen window.
+	 *
+	 * The protocol wants ONE surface PER OUTPUT and will not report the
+	 * session locked until every output has one. libktui has a single cell
+	 * buffer, so the prompt is drawn on the first output and every other
+	 * one is filled with the theme background — covered, and honest about
+	 * it. Multi-output cell drawing is a libktui limitation, not a
+	 * protocol one.
+	 */
+	KDISP_ROLE_LOCK,
+	/*
+	 * A screensaver: the whole screen, above everything, taking nothing.
+	 *
+	 * It is not an OVERLAY with a size. An overlay is centred and sized in
+	 * cells by the client, and a client cannot see the output — one that
+	 * measured the screen itself would leave a strip of desktop showing
+	 * wherever the arithmetic rounded down. THE DISPLAY DECIDES THE SIZE
+	 * AND SAYS SO, exactly as it does for BACKGROUND.
+	 *
+	 * It is not a LOCK either, and the difference is the whole safety
+	 * story: this surface takes NO keyboard and claims NO pointer region,
+	 * so every keystroke and every click goes to whatever is underneath and
+	 * the display's own idle policy sees the activity. A saver that
+	 * swallowed input would be a lock screen with no password.
+	 */
+	KDISP_ROLE_SAVER,
+};
+
+enum kdisp_edge {
+	KDISP_EDGE_TOP = 0,
+	KDISP_EDGE_BOTTOM,
+	KDISP_EDGE_LEFT,
+	KDISP_EDGE_RIGHT,
+};
+
+enum kdisp_corner {
+	KDISP_CORNER_CENTER = 0,	/* the launcher: what you are looking at   */
+	KDISP_CORNER_TOP_RIGHT,	/* a toast: what you are not looking at    */
+	/*
+	 * A dropdown, under the word on the menu bar that opened it. Together
+	 * with margin_x/margin_y this is as close to a coordinate as
+	 * layer-shell gets: the protocol has no positions, only anchors and
+	 * margins, so "at x" is "anchored left, with a left margin of x".
+	 * Without it every menu opened in the CENTRE of the screen, which
+	 * reads as a dialog rather than as a menu belonging to the word that
+	 * was clicked.
+	 */
+	KDISP_CORNER_TOP_LEFT,
+	/*
+	 * The same, measured from the bottom — what a menu belonging to a bar
+	 * on the BOTTOM edge needs. A client cannot express this by anchoring
+	 * TOP with a computed margin: it does not know the output's pixel
+	 * height, so it cannot say where "just above the taskbar" is. margin_y
+	 * is the gap from the bottom edge (the panel's own height), margin_x
+	 * the offset from the left.
+	 */
+	KDISP_CORNER_BOTTOM_LEFT,
+	/*
+	 * A bezel: the OSD's place, where every desktop has put the volume
+	 * overlay since the laptop grew media keys. Anchored to the bottom
+	 * edge ONLY — anchoring left and right as well would stretch the
+	 * surface across the output, so the horizontal centring is the
+	 * compositor's own for an unanchored axis. margin_y is the gap from
+	 * the bottom; margin_x is meaningless here and ignored.
+	 */
+	KDISP_CORNER_BOTTOM_CENTER,
+};
+
+typedef struct {
+	enum kdisp_role role;
+	enum kdisp_edge edge;	/* panels only                             */
+	int cells;		/* panel thickness in CELLS, not pixels    */
+	const char *title;	/* toplevel only                           */
+	const char *app_id;	/* must equal the .desktop id — `kdos appid` */
+	const char *font;	/* fontconfig name; NULL for the default   */
+	/*
+	 * Which screen, by the compositor's own name for it (`eDP-1`,
+	 * `HDMI-A-1`). NULL leaves the choice to the compositor, and what a
+	 * compositor chooses is exactly one output — so a panel with no
+	 * `output` on a two-monitor machine is a panel on one of them and
+	 * nothing on the other. Ignored for roles that are not layer-shell.
+	 *
+	 * An unknown name is not an error: it falls back to the compositor's
+	 * choice, because a screen that was unplugged between the supervisor
+	 * deciding and this process starting is a race, not a mistake.
+	 */
+	const char *output;
+	int exclusive;		/* reserve the zone so windows do not overlap */
+	/*
+	 * Overlay only: the size in CELLS, because a launcher is a grid of text
+	 * and its natural unit is rows of results, not pixels.
+	 */
+	int cols, rows;
+	/*
+	 * THE SMALLEST GRID THIS SURFACE CAN DRAW ON, in cells. Zero is no
+	 * minimum, and it is the right answer for a surface that reflows to
+	 * anything it is given.
+	 *
+	 * It is reported at ATTACH because the session is the only thing that
+	 * can act on it: a tiling window manager divides a screen and hands
+	 * out what is left, and a surface handed forty columns when it needs
+	 * fifty-six composes nothing at all and leaves the cells under it
+	 * carrying the last program's picture. Told the minimum, the session
+	 * gives the window that size and CLIPS it, which is a window with a
+	 * corner off the screen rather than a hole in the desktop.
+	 *
+	 * It is not a promise the surface may skip its own too-small check.
+	 * A console session honours this; a Wayland compositor is told the
+	 * same numbers through xdg_toplevel's min size and may ignore them.
+	 */
+	int min_cols, min_rows;
+	/*
+	 * Overlay only: where it sits. Centre is right for a launcher, which is
+	 * what the user is looking at; it is wrong for a toast, which must not
+	 * cover the middle of the screen for as long as it is up. Anything
+	 * non-zero also gets a margin, because a notification flush against the
+	 * screen edge reads as a rendering fault.
+	 */
+	int corner;
+	/*
+	 * A WINDOW THAT OPENS WHERE THE EYE IS, AT THE SIZE IT ASKED FOR.
+	 *
+	 * A terminal application that wants a fixed shape — a monitor, a
+	 * mixer — is not asking to be one pane among others; it is asking to
+	 * be looked at and dismissed. Toplevel only: an overlay is already
+	 * unanchored and a panel is anchored on purpose.
+	 */
+	int floating;
+	/*
+	 * Overlay only, PIXELS, and only meaningful with a corner: the gap
+	 * from the two edges the corner anchors to. Zero means the library's
+	 * own margin, which is what a toast wants.
+	 */
+	int margin_x, margin_y;
+	/*
+	 * Take the keyboard. A panel must NOT — it would steal focus from
+	 * whatever you were typing into every time the clock redrew — but a
+	 * launcher is useless without it, and layer-shell surfaces get no
+	 * keyboard at all unless they ask.
+	 */
+	int keyboard;
+	/*
+	 * Close when the keyboard focus goes elsewhere. Right for a MENU and
+	 * for the launcher and the run box — clicking on a window while one is
+	 * open used to leave it floating over that window until somebody found
+	 * Escape, and there is no useful "unfocused menu" state.
+	 *
+	 * WRONG for a dialog, which is why it is opt-in rather than implied by
+	 * `keyboard`. The file chooser is the case: it is what every boxed
+	 * application's Open reaches through the portal, people click back to
+	 * the application mid-choice as a matter of course, and a picker that
+	 * vanished when they did would answer the portal "cancelled" for a
+	 * dialog the user had not finished with. Same for the yes/no prompt.
+	 */
+	int dismiss_on_unfocus;
+	/*
+	 * A RULE ALONG THE SURFACE'S TOP EDGE, in logical pixels, drawn in
+	 * `rule_slot` and outside the cell grid entirely.
+	 *
+	 * The panel is the reason. Every other surface on this desktop puts a
+	 * double-line box round itself and reads as a framed thing; the bar at
+	 * the bottom of the screen had no edge at all, so on a dark wallpaper
+	 * it read as a region of the desktop rather than as a piece of chrome.
+	 * A box needs four sides and two spare rows, which on a two-row bar is
+	 * the whole bar — but the top edge is the only one a bottom-anchored
+	 * panel has, and it is worth three pixels rather than a row of cells.
+	 *
+	 * Outside the grid because a cell is 32 pixels tall and a rule is
+	 * three: the grid starts BELOW it, the pointer's row is measured from
+	 * below it, and the layer surface asks for those pixels on top of its
+	 * cells. Zero — the default — is exactly what every other surface
+	 * wants.
+	 */
+	int rule;
+	int rule_slot;
+
+	/*
+	 * The panel's body opacity, in PERCENT. 0 means unset and is treated
+	 * as 100 — a surface that said nothing gets the opaque behaviour it
+	 * has always had, and every consumer but the panel says nothing.
+	 *
+	 * Below 100 this clears KT_SURFACE's alpha in libkcell and forces an
+	 * alpha-capable buffer format, so the wallpaper and the windows show
+	 * through the bar's own background while its text and its fills stay
+	 * ink. It is the BACKGROUND slot only: a translucent glyph is a glyph
+	 * nobody can read, which is the whole reason this is per-slot rather
+	 * than a multiplier on the surface.
+	 */
+	int opacity;
+
+	/*
+	 * THIS SURFACE MANAGES THE SESSION'S WINDOWS: a panel, a task
+	 * switcher, a window menu. It asks to be sent the window list and to
+	 * be allowed to raise, close and minimise what is on it.
+	 *
+	 * IT IS A PRIVILEGE AND IT IS ASKED FOR EXPLICITLY. A surface that
+	 * did not ask cannot act on another program's window, which is what
+	 * stops a launcher or a calculator from closing somebody's editor.
+	 * The console grants it because the surface socket never leaves the
+	 * machine; a Wayland compositor grants its own equivalent through
+	 * foreign-toplevel and ignores this.
+	 */
+	int manage;
+} KDispConfig;
+
+/*
+ * ONE SCREEN AND ITS MODES. A mode list without the screen it belongs to is a
+ * picker that cannot say which monitor a choice is for.
+ */
+typedef struct {
+	char name[32];		/* `HDMI-A-1`, `eDP-1`                     */
+	int col, cols;		/* its slice of the shared grid, in cells  */
+	int width, height;	/* its mode, in pixels                     */
+	int cur_mode, nmodes;
+} KDispOut;
+
+typedef struct {
+	int width, height;
+	int refresh;		/* millihertz, so 59.94 Hz is not 59       */
+} KDispMode;
+
+typedef void (*KDispBackdropFn)(pixman_image_t *dst, int w, int h, int scale);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Somebody else's windows
+ *
+ * What a panel, a window menu or a task switcher needs, and no more: enough
+ * to draw a row and enough to act on the one that was clicked. It is not a
+ * handle — a caller holds an id and asks again, because a window can go
+ * between the frame that drew it and the click that follows.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KDISP_WIN_FOCUSED = 1u << 0,
+	KDISP_WIN_MINIMISED = 1u << 1,
+	KDISP_WIN_MAXIMISED = 1u << 2,
+	KDISP_WIN_FULLSCREEN = 1u << 3,
+};
+
+typedef struct {
+	unsigned id;
+	unsigned flags;
+	/* Which workspace it is on, or -1 where the server does not say.
+	 * wlr-foreign-toplevel has no workspace, so a Wayland row is -1 and a
+	 * caller that groups by workspace groups them all together. */
+	int workspace;
+	char app_id[64];
+	char title[128];
+} KDispWin;
+
+enum kdisp_cursor {
+	KDISP_CUR_DEFAULT = 0,	/* the arrow                               */
+	KDISP_CUR_TEXT,		/* an I-beam: over a text field            */
+	KDISP_CUR_POINTER,	/* a hand: over something clickable        */
+	KDISP_CUR_PROGRESS,	/* working, but still interactive          */
+};
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The interface
+ *
+ * Every entry is something a surface already asks libkwl today. A server that
+ * cannot answer one leaves it NULL, and the forwarder below returns the
+ * neutral answer rather than crashing — a console has no server-side
+ * decoration to report and no Wayland handle to hand out.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	const char *name;
+
+	/* Is the server this implements actually reachable? Cheap, and with no
+	 * side effects: it is called on implementations that will not be used. */
+	int (*probe)(void);
+
+	int (*init)(const KDispConfig *cfg);
+	void (*shutdown)(void);
+
+	int (*should_close)(void);
+	int (*fd)(void);
+	void (*pump)(void);
+
+	int (*overlay_resize)(int cols, int rows);
+	int (*overlay_show)(int cols, int rows);
+	void (*overlay_hide)(void);
+	void (*layer_autohide)(bool hidden);
+
+	int (*copy)(const char *text, size_t len, int primary);
+
+	/* Begin a drag carrying `data`. The payload is COPIED: the drag
+	 * outlives the frame that started it, and a caller's buffer does not. */
+	int (*drag_start)(const char *mime, const char *data, size_t len);
+
+	int (*cell_w)(void);
+	int (*cell_h)(void);
+	int (*px_h)(void);
+	int (*scale)(void);
+	int (*decorated)(void);
+	int (*popup_offset)(void);
+	int (*edge_bottom)(void);
+
+	void (*cursor_set)(enum kdisp_cursor c);
+	void (*set_backdrop)(KDispBackdropFn fn);
+	void (*input_cells)(const KRect *rects, int n);
+	void (*report_error)(void);
+
+	int (*lock_engaged)(void);
+	int (*lock_finished)(void);
+	void (*unlock)(void);
+
+	/*
+	 * DOES THIS SURFACE HAVE THE KEYBOARD?
+	 *
+	 * A terminal has to tell its child when the focus moved (`CSI I` /
+	 * `CSI O`), because an editor that is not told does not reload a file
+	 * changed underneath it and its next write is over somebody else's
+	 * work. Both servers already know the answer — `wl_keyboard` enter and
+	 * leave on one, `KCON_OP_FOCUS` on the other — and neither told anybody.
+	 *
+	 * A backend that cannot answer returns 1: a surface that assumed it had
+	 * the focus is what every program did before this existed, so the
+	 * neutral answer is the old behaviour rather than a terminal that never
+	 * reports focus at all.
+	 */
+	int (*focused)(void);
+
+	/*
+	 * THE WINDOW LIST. A server that has no way to enumerate somebody
+	 * else's windows leaves these NULL, and a caller sees an empty list
+	 * rather than a crash — which is a panel with no task row, not a panel
+	 * that fails to start.
+	 *
+	 * `win_at` fills `out` and returns 1, or returns 0 when `i` is past
+	 * the end. Copying rather than returning a pointer is deliberate: the
+	 * list is rebuilt whenever the server says so, and a caller holding a
+	 * pointer across a pump is holding freed memory.
+	 *
+	 * A CALLER RE-READS THE LIST ON EACH TURN rather than being called
+	 * back. Both consumers already have a poll loop with a timeout, and a
+	 * callback fired from inside a pump would have to be delivered from
+	 * whichever of the two event paths happened to read the socket —
+	 * which on the console is the one that also delivers key events, so a
+	 * pump added for the callback would swallow them.
+	 *
+	 * Every verb is a REQUEST. The server owns the stack and the lifetime,
+	 * and nothing here reports what happened — the change arrives as a new
+	 * list, which is the only account of it either backend can give.
+	 */
+	/*
+	 * DOES THIS SERVER HAVE A WINDOW LIST AT ALL? A count of zero is a
+	 * desktop with nothing open, which is an ordinary state; a panel that
+	 * treated it as "no window list" would refuse to start on a freshly
+	 * booted session. Only the presence of the entries answers that, and
+	 * a caller that needs to say what is missing asks this.
+	 */
+	int (*win_count)(void);
+	int (*win_at)(int i, KDispWin *out);
+	void (*win_activate)(unsigned id);
+	void (*win_close)(unsigned id);
+	/* One KDISP_WIN_ bit, and the value wanted. Minimise, maximise and
+	 * fullscreen are one request with a different bit; the named callers
+	 * below are the forwarder's, so a backend implements this once. */
+	void (*win_set_state)(unsigned id, unsigned flag, int on);
+
+	/*
+	 * THE SCREEN'S FONT, WHERE THERE IS A SCREEN.
+	 *
+	 * A surface never loads one — it draws cells and something else turns
+	 * them into pixels — so this is the only way a picker can ask what
+	 * faces exist, and the list is the DISPLAY'S: on the console it is
+	 * gathered by the view, which may be at the far end of an ssh link
+	 * with its own machine's fonts.
+	 *
+	 * `font_count` is 0 where the font is not this desktop's to change,
+	 * which is a `--tty` view inside somebody else's terminal and the
+	 * compositor, where every program carries its own. `font_at` fills
+	 * `out` with a display name and returns 1, or 0 past the end.
+	 * `font_current` is the index in force or -1.
+	 *
+	 * `font_set` takes an INDEX into that list and never a name, because
+	 * the names belong to the display and mean nothing here. A negative
+	 * index puts back the one the display started with. `keep` is whether
+	 * it survives the logout: a picker's arrows pass 0, because every step
+	 * is a real font on a real screen and a step that persisted would make
+	 * the last face a highlight passed over the one the next login wears.
+	 *
+	 * A CALLER RE-READS THE LIST ON EACH TURN, the rule the window list
+	 * keeps: the answer arrives over a socket some pumps later, and a
+	 * caller that asked once and believed the first answer would draw an
+	 * empty list for ever.
+	 */
+	/*
+	 * THE SCREENS, AND THEIR MODES.
+	 *
+	 * The same shape the font list keeps and for the same reason: a
+	 * surface never drives a screen, so the list is the DISPLAY'S — on the
+	 * console the view gathers it, and that view may be at the far end of
+	 * an ssh link driving somebody else's monitors.
+	 *
+	 * `out_count` is 0 where the screens are not this desktop's to change:
+	 * a `--tty` view inside somebody's terminal, and the compositor, which
+	 * takes its output configuration on `wlr-output-management` — a
+	 * protocol carrying scale, transform and position that this vtable
+	 * deliberately does not model.
+	 *
+	 * `out_set_mode` takes two INDICES and never a resolution, because the
+	 * modes belong to the display and mean nothing here. `keep` is whether
+	 * the choice survives the logout, so a picker's countdown passes 0
+	 * until a person says the screen is readable.
+	 */
+	void (*out_ask)(void);
+	int (*out_count)(void);
+	int (*out_at)(int i, KDispOut *out);
+	int (*out_mode_at)(int i, int m, KDispMode *mode);
+	void (*out_set_mode)(int i, int m, int keep);
+
+	void (*font_ask)(void);
+	int (*font_count)(void);
+	int (*font_at)(int i, char *out, int cap);
+	int (*font_current)(void);
+	void (*font_set)(int index, int keep);
+} KDispImpl;
+
+/*
+ * Pick the first implementation whose probe succeeds, in the order given, and
+ * initialise it. Returns 0 on success, -1 when none of them can draw — a
+ * caller that cannot draw should say so and exit rather than run blind.
+ *
+ * Passing n == 0 selects nothing and leaves libktui on its built-in terminal
+ * backend, which is what a --tty flag means.
+ */
+int kdisp_init(const KDispConfig *cfg, const KDispImpl *const *impls, int n);
+
+/* Which one was chosen, or NULL. For a program that wants to say so. */
+const KDispImpl *kdisp_current(void);
+
+void kdisp_shutdown(void);
+int kdisp_should_close(void);
+int kdisp_fd(void);
+void kdisp_pump(void);
+int kdisp_overlay_resize(int cols, int rows);
+int kdisp_overlay_show(int cols, int rows);
+void kdisp_overlay_hide(void);
+void kdisp_layer_autohide(bool hidden);
+int kdisp_copy(const char *text, size_t len, int primary);
+int kdisp_drag_start(const char *mime, const char *data, size_t len);
+int kdisp_cell_w(void);
+int kdisp_cell_h(void);
+int kdisp_px_h(void);
+int kdisp_scale(void);
+int kdisp_decorated(void);
+int kdisp_popup_offset(void);
+int kdisp_edge_bottom(void);
+void kdisp_cursor_set(enum kdisp_cursor c);
+void kdisp_set_backdrop(KDispBackdropFn fn);
+void kdisp_input_cells(const KRect *rects, int n);
+void kdisp_report_error(void);
+int kdisp_lock_engaged(void);
+/* Does this surface have the keyboard? See KDispImpl.focused. */
+int kdisp_focused(void);
+int kdisp_lock_finished(void);
+void kdisp_unlock(void);
+
+/* Somebody else's windows. See KDispImpl: an implementation that cannot
+ * enumerate them reports none, and the verbs do nothing. */
+/* Whether this display server can enumerate windows at all, as distinct from
+ * a desktop with none open. */
+int kdisp_win_supported(void);
+/* See the vtable: 0 where the font is not this desktop's to change. */
+int kdisp_font_count(void);
+int kdisp_font_at(int i, char *out, int cap);
+int kdisp_font_current(void);
+void kdisp_font_set(int index, int keep);
+/* Ask the display to send its list. Cheap, answered later, and a caller that
+ * never asks sees a count of zero for ever. */
+void kdisp_font_ask(void);
+/* See the vtable: 0 where the screens are not this desktop's to change. */
+void kdisp_out_ask(void);
+int kdisp_out_count(void);
+int kdisp_out_at(int i, KDispOut *out);
+int kdisp_out_mode_at(int i, int m, KDispMode *mode);
+void kdisp_out_set_mode(int i, int m, int keep);
+int kdisp_win_count(void);
+int kdisp_win_at(int i, KDispWin *out);
+void kdisp_win_activate(unsigned id);
+void kdisp_win_close(unsigned id);
+void kdisp_win_minimise(unsigned id, int on);
+void kdisp_win_maximise(unsigned id, int on);
+void kdisp_win_fullscreen(unsigned id, int on);
+
+#endif /* KDISP_H */

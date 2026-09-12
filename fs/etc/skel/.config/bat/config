@@ -1,0 +1,2 @@
+# One command-line argument per line. `#` is a whole-line comment.
+--theme="kdos"

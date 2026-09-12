@@ -1,0 +1,35 @@
+KDOS SETTINGS
+
+Two screens. The grid names nine categories; Enter opens one and Escape comes
+back to the grid rather than leaving the program.
+
+A page has two panes. Tab moves between them, the left one chooses a category
+and the right one holds that category's fields.
+
+Fields
+
+  A choice field steps with the left and right arrows.
+  A number field steps with the arrows and can also be typed: Enter opens the
+  editor, Enter again accepts it, Escape abandons it.
+  A text field is typed the same way.
+  A tool row runs a program rather than storing anything; Enter opens it.
+
+Nothing is written until you press `a`. Edits are held in the page until then,
+which is why stepping back to the grid loses nothing and why the unsaved-
+changes question is asked once, at the single exit.
+
+Boxes
+
+  The Boxes category lists the boxed applications on this machine. Enter opens
+  one's profile, Escape steps back to the list, and `a` writes the profile.
+  A profile that has never been written is created by `a` instead.
+
+Appearance
+
+  The accent, the scheme and the CRT pass are applied live: `kdos theme` is
+  what the page calls, and every running surface retints without a restart.
+
+  [[doc:display]] is a separate program — screens, modes and layout are not
+  settings that can be reverted by editing a file.
+
+  [[doc:index]]

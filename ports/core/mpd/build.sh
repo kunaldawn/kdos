@@ -16,9 +16,14 @@
 # the island network. That is a different thing from mpv, which plays a file
 # in front of you.
 #
-# Every GUI and network-fetch feature is off: no curl input plugin fetching
-# streams and no upnp. What remains is a local library indexed into
-# sqlite. The output plugins are alsa and pipewire for the tty1/session split.
+# curl is the HTTP input plugin and the Icy metadata parser with it, which is
+# what makes a stream URL playable at all and what gives one a title to show.
+# Nothing else that reaches the network is on: upnp, webdav and qobuz would each
+# put a library browser or a service account behind a music player, and the
+# httpd output plugin would make a daemon that opens a listening socket nobody
+# asked it to open. What remains beside the streams is a local library indexed
+# into sqlite; the output plugins are alsa and pipewire for the tty1/session
+# split.
 meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -34,7 +39,10 @@ meson setup build \
 	-Dvorbis=enabled \
 	-Dopus=enabled \
 	-Dsqlite=enabled \
-	-Dcurl=disabled \
+	-Dcurl=enabled \
+	-Dwebdav=disabled \
+	-Dqobuz=disabled \
+	-Dhttpd=false \
 	-Dupnp=disabled \
 	-Dsystemd=disabled \
 	-Ddocumentation=disabled

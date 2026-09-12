@@ -8,16 +8,56 @@ specification; this page is how to implement it.
 
 ## What a surface is
 
-A grid of character cells drawn by `libktui` onto one of three backends:
+A grid of character cells drawn by `libktui` onto one of four backends:
 
 | Backend | Used by |
 |---|---|
-| A terminal | Anything run at a prompt or on a console |
+| A terminal | Anything run at a prompt |
 | `libkwl` | Anything under the compositor |
+| `libkcon` | Anything on the console desktop — a window in `kdos-con` |
 | An offscreen buffer | `--dump`, and the committed reference frames |
 
 **Nothing above that line knows which.** That is what makes a program identical on a console, in a
 window and in a test fixture.
+
+### Reaching a display
+
+A surface does not call a backend by name. `libkdisp` owns the choice and the whole surface
+lifecycle — open, close, resize, autohide, cell size, scale, clipboard, cursor — and each program
+states **once** which implementations it links:
+
+```c
+extern const KDispImpl kcon_impl;           /* libkcon */
+extern const KDispImpl kwl_impl;            /* libkwl  */
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+```
+
+**Order is the policy.** The first whose `probe` succeeds is used, and the console goes first so a
+surface started *from* the console desktop attaches to it even on a machine that is also running a
+compositor. A probe must be cheap and free of side effects — `kcon_probe` tests `$KDOS_CON` and does
+not connect, because `kdisp_init` probes implementations it will not go on to use.
+
+Then every call site is the same three lines regardless of server:
+
+```c
+KDispConfig cfg = { .role = KDISP_ROLE_TOPLEVEL, .app_id = "kdos-thing", … };
+if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
+        return 1;                            /* say so and exit, do not run blind */
+```
+
+**libkdisp names no implementation and links none**, so that array is what pulls Wayland — or the
+console client — into a program, and it is the one line that changed when the second display server
+was added. Every other line in `kdos-shell`, `kdos-res` and `kdos-lock` stayed as it was. Passing zero
+implementations selects the terminal backend, which is what a `--tty` flag means.
+
+`kdos-shell` alone opens a surface from more than twenty places. Branching on the display server at
+each of them is the same decision written twenty times in one program and again in the next, which
+is why the lifecycle is an interface.
+
+**A cell dump does not go through it.** `--dump-cells` installs its own `KtuiBackend` with
+`ktui_backend_set`, because the cell buffer is private to `libktui` and the vtable is its documented
+seam. Routing a dump through `kdisp_init` would change every committed golden.
 
 ## The frame protocol
 
@@ -52,11 +92,17 @@ Three rules:
 
 | Role | Is | Notes |
 |---|---|---|
-| `PANEL` | A layer surface with an exclusive zone | Per output |
+| `PANEL` | A layer surface with an exclusive zone | Per output; set `.cells`, not `.cols`/`.rows` |
 | `BACKGROUND` | A layer surface behind everything | Per output |
 | `OVERLAY` | A layer surface above windows | Menus, popups, tooltips |
 | `TOPLEVEL` | An ordinary window | See below |
 | `LOCK` | A session-lock surface | Covers every output |
+| `SAVER` | The whole screen, above windows, taking nothing | See below |
+
+**A panel gives its thickness and nothing else.** `.cells` is the depth across the edge; the extent
+along it belongs to the display, on both backends — a layer surface is anchored to three sides and
+the console session docks it to the screen. Set `.cols`/`.rows` on a panel and the console attaches
+at that size instead, which is a bar the length of a window sitting where nobody put it.
 
 ### A toplevel must ask for its frame
 
@@ -70,6 +116,14 @@ and has no decoration to negotiate.
 
 **Ask for a size that leaves the frame somewhere to go**, and treat it as a default rather than a
 demand — the compositor's first configure carries the size it wants, and that wins.
+
+**And say the smallest grid you can compose on, in `.min_cols`/`.min_rows`.** It travels with the
+attach and the console session honours it: a window given fewer cells than it needs is one that
+draws nothing at all, leaving the cells under it carrying the last program's picture. Told the
+minimum, the session hands the window that size and lets it hang off the edge. Zero is no minimum,
+which is right for anything that reflows to whatever it is given. It is not a licence to drop the
+surface's own `ktui_toosmall` check — a Wayland compositor is told the same numbers and may ignore
+them.
 
 ### Bind the layer shell at the right version
 
@@ -88,6 +142,21 @@ normal elsewhere. The backend skips it for that role.
 **The lock role covers every output**, because the protocol will not report the session locked
 until they all have a surface. The toolkit has one cell buffer, so the prompt is on the first
 output and the rest are filled with the background colour — a toolkit limitation, said out loud.
+
+### A saver asks for no size and takes no input
+
+`SAVER` is neither a big `OVERLAY` nor a soft `LOCK`.
+
+**It asks for no size.** An overlay is centred and sized in cells by the client, and a client cannot
+see the output; one that measured the screen itself would have to round pixels into cells, and a row
+rounded down is a strip of desktop along the bottom edge of a surface whose whole job is to cover
+it. The display sends the size in the first configure, exactly as it does for `BACKGROUND`.
+
+**It takes no keyboard and claims no pointer region** — `kdisp_input_cells(NULL, 0)`. Every
+keystroke and every click goes to what is underneath, which is what lets the display's idle policy
+see the activity and take the surface away. A saver that swallowed input would be a lock screen with
+no password. It is asked to close rather than killed, so exiting on `kdisp_should_close()` is not
+optional: a saver that ignores the request stays on the screen.
 
 ### Anchoring a popup
 
@@ -167,6 +236,13 @@ global diff; only the paint is per buffer.**
 **The scale and the resized buffer must land in one commit.** Split them and the compositor sees a
 buffer whose size disagrees with its declared scale for a frame.
 
+**A widget you use already announces itself.** Every toolkit widget states its role, its label where
+it has one, and its position in its set at the point it computes focus — so a surface built out of
+them needs no accessibility code of its own. What a widget cannot know it does not invent: a list
+and a table take their rows from **your** callback, so they state "3 of 9" and leave the name to
+you. If your rows have text a reader should hear, call `ktui_announce()` from the row callback for
+the selected row; the queue is cleared every frame, so what you say is only ever about this one.
+
 ## Chrome
 
 Use `libkchrome`. Two implementations of a button bar are two button bars.
@@ -185,6 +261,54 @@ first and clip the status text to what it left.
 neither — a leftover glyph otherwise shows through the gap.
 
 **A hint row is drawn whole or not at all.** A message takes whatever room there is.
+
+### The keys contract
+
+Two calls and one descriptor. A surface holds a file-scope `KtuiKeys`, calls `ktui_keys()` first
+in the dispatch it already has, and `ktui_hint_row()` last in the draw it already has.
+
+```c
+static KtuiKeys keys;
+
+static int pane_up(void *user)    { (void)user; return detail_open; }
+static void pane_close(void *user){ (void)user; detail_open = 0; }
+
+/* Once, before the loop AND before any --dump branch: a dumped frame reads
+ * the same Esc verb the live surface does. */
+keys.doc = "settings";                 /* fs/usr/share/kdos/doc/settings.txt */
+keys.help = sh_help;
+ktui_keys_layer(&keys, "Back", pane_up, pane_close, NULL);
+
+/* In the draw, last: */
+ktui_hint_if(nrows > 0, "Enter", "open");
+ktui_hint("Esc", ktui_esc_verb(&keys));
+ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
+
+/* In the dispatch, first: */
+int r = ktui_keys(&keys, &ev);
+if (r == KTUI_KEY_CLOSE) goto done;
+if (r == KTUI_KEY_TAKEN) continue;
+```
+
+`ktui_keys()` returns PASS for everything it does not own, so an unconverted surface behaves byte
+for byte as it did. It takes **every** event and not only a key, because a surface with a menu
+would otherwise need a second call site in its pointer path — and two call sites for one widget
+disagree about which of them saw the click.
+
+**`ktui_hint_row()` must run on every path that draws, including `--dump`.** It clears the pool as
+its first act, before it measures the rect, so a zero-width rect is the right way to drain a frame
+where a message owns the row. A frame that skips it carries its hints into the next one — and
+`kdos-shell` is one binary with thirty-odd front ends sharing that pool.
+
+**Push only what the surface answers right now.** `ktui_hint_if()` exists so a key that is inert
+in the current state does not appear; that is the entire value of the line over a fixed string.
+
+**`kch_buttons()` already pushes `Enter <label>` for its focused enabled button** — do not push a
+second one for it. A bar drawn with focus `-1` pushes nothing, and a surface using one that way
+must push its own Enter hint.
+
+**`F1` is not pushed.** It comes from `keys.doc` and is drawn first. A surface with no page in
+`fs/usr/share/kdos/doc` leaves it NULL; `testing/preflight.sh` refuses a name with no file.
 
 The list, wheel and scrollbar rule is `libkchrome`'s and has exactly one implementation. The
 selection-follow flag is set by everything that **moves the cursor** and by nothing that scrolls the
@@ -226,6 +350,22 @@ Three rules:
 **A tile is bounded to a modest number of cells**, because the sub-cell coordinate is a few bits
 each way. A page-wide chart is past that and must be drawn as cells — see
 [kdos-res](../04-programs/kdos-res.md#the-charts).
+
+### A picture on the console needs its bytes offered
+
+`libkcon` links no pixel library and must not — it is linked by `kdos-con`, which links none either.
+So a sprite crosses to the display as **metadata** unless the surface registers
+`kcon_set_sprite_bits()`, which hands libkcon the ARGB the picture already holds.
+
+**Register it AFTER `kdisp_init()`, never before.** The console backend clears its whole client
+state when it connects, so a callback registered earlier is erased — and the failure does not look
+like a missing picture: the session maps a slot it was never sent to −1 and the cell becomes a
+**space**, so the pane is blank rather than showing the fallback codepoint.
+
+**The cell's pixel size is nominal there.** A console surface has no pixels of its own — the display
+it is eventually drawn on has them and scales what arrives — so `kdisp_cell_w()` answers nothing
+usable and a picture is rendered at a fixed nominal cell, which bounds what goes on the wire without
+pretending to know the font at the other end. `kdos-term` and `kdos-peek` take the same two numbers.
 
 ### Two font traps, both silent
 
@@ -292,6 +432,8 @@ procedure:
 | 5 | Hit map recorded from the draw | Resize and click the top row |
 | 6 | Dump at two sizes, commit both | `testing/selftest.sh` |
 | 7 | Read it at the vt tier | `--dump` on a console |
+| 8 | One `KtuiKeys`; `ktui_keys()` first, `ktui_hint_row()` last, on every path | `grep -c ktui_hint_row` — the dump path counts |
+| 9 | Every raised state a declared layer, never an `Esc` arm | `grep KT_K_ESC` — a remaining case is one the ladder should own |
 
 ## See also
 

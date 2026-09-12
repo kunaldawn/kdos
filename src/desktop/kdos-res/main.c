@@ -30,8 +30,15 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "kcon.h"
 #include "kwl.h"
 #include "res.h"
+
+/* See the declaration: naming kwl_impl is what links Wayland into this
+ * program. A console-only build would name a different one, or none. */
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+
 
 /*
  * THE PAGE LIST IS READ OUT OF THE REGISTRY, never spelled again here. A
@@ -204,6 +211,10 @@ int main(int argc, char **argv)
 	}
 
 	res_theme_from_cache();
+	/* BEFORE the dump face, which draws and reads the Esc verb: a dumped
+	 * frame that consulted an empty ladder would say something the live
+	 * window does not. */
+	res_keys_init();
 
 	/* ── the dump face ─────────────────────────────────────────────── */
 	if (dump) {
@@ -241,15 +252,28 @@ int main(int argc, char **argv)
 	}
 
 	/* ── the window, or the terminal ───────────────────────────────── */
+	/*
+	 * WHICH DISPLAY SERVER IS THERE, and there are two.
+	 *
+	 * `WAYLAND_DISPLAY` alone was the test, so on the console session this
+	 * program took the terminal path — it registered `kcon_impl`, never
+	 * offered it a chance to probe, and drew its process table over
+	 * whatever terminal it had been started from instead of opening a
+	 * window. `$KDOS_CON` is the console session's surface socket and is in
+	 * every child's environment there, which is the same fact `sh_term()`
+	 * and `kdos doctor` decide on.
+	 */
 	int gui = want_gui;
 	if (!want_tty && !want_gui) {
 		const char *wd = getenv("WAYLAND_DISPLAY");
-		gui = wd && *wd;
+		const char *con = getenv("KDOS_CON");
+
+		gui = (wd && *wd) || (con && *con);
 	}
 
 	if (gui) {
-		KwlConfig cfg = {
-			.role = KWL_ROLE_TOPLEVEL,
+		KDispConfig cfg = {
+			.role = KDISP_ROLE_TOPLEVEL,
 			.title = "Resources",
 			.app_id = "kdos-res",
 			.font = font,
@@ -263,9 +287,20 @@ int main(int argc, char **argv)
 			 */
 			.cols = 104,
 			.rows = 26,
+			/*
+			 * AND IT OPENS WHERE THE EYE IS. A monitor is looked
+			 * at and dismissed rather than kept as one pane among
+			 * others, which is the same request `btop`'s entry
+			 * makes with `X-KDOS-Float`. Set here rather than in
+			 * an entry key because this surface attaches for
+			 * itself — a key on a `Terminal=false` row is a key
+			 * nothing would read.
+			 */
+			.floating = 1,
 		};
-		if (kwl_init(&cfg) != 0) {
-			fprintf(stderr, "kdos-res: no compositor — try --tty\n");
+		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
+			fprintf(stderr, "kdos-res: no display server reachable "
+					"— try --tty\n");
 			return 1;
 		}
 	} else {
@@ -288,7 +323,7 @@ int main(int argc, char **argv)
 	unsigned long long next = 0;
 
 	for (;;) {
-		if (gui && kwl_should_close())
+		if (gui && kdisp_should_close())
 			break;
 
 		if (g_reload) {
@@ -356,7 +391,7 @@ int main(int argc, char **argv)
 	}
 
 	if (gui)
-		kwl_shutdown();
+		kdisp_shutdown();
 	else
 		ktui_term_shutdown();
 	return 0;

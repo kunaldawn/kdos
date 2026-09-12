@@ -109,6 +109,19 @@ static char status[128];
  * rather than in a terminal that has to be closed to get rid of it.
  */
 static int pane_on;
+
+/*
+ * The contract. ONE Esc layer here — the detail pane — declared rather than
+ * written into two switch arms, so the row can name what Esc means on the
+ * screen it is on: "Back" over the pane, "Close" over the list.
+ */
+static KtuiKeys keys;
+static void pane_close(void);
+static int pane_up(void *u) { (void)u; return pane_on; }
+/* A wrapper and not a cast: calling a `void(void)` through a `void(void*)` is
+ * undefined, and the one architecture where it happens to work is not the
+ * argument. */
+static void pane_close_cb(void *u) { (void)u; pane_close(); }
 static pid_t pane_pid = -1;
 static int pane_fd = -1;
 static int pane_done;
@@ -197,7 +210,7 @@ static void pane_close(void)
 	npending = 0;
 	lfollow = 1;
 	if (was && popup)
-		kwl_overlay_resize(LIST_COLS, LIST_ROWS);
+		kdisp_overlay_resize(LIST_COLS, LIST_ROWS);
 }
 
 /*
@@ -237,11 +250,11 @@ static int pane_open(const char *title, const char *const argv[])
 	pane_pid = pid;
 	pane_on = 1;
 	pane_done = 0;
-	/* Room for a report — see the KwlConfig below. The first line or two
+	/* Room for a report — see the KDispConfig below. The first line or two
 	 * are wrapped at the narrow width and stay that way, which costs
 	 * nothing: `kdos stutter` opens with a 44-column sentence. */
 	if (popup)
-		kwl_overlay_resize(PANE_COLS, PANE_ROWS);
+		kdisp_overlay_resize(PANE_COLS, PANE_ROWS);
 	snprintf(pane_title, sizeof(pane_title), "%s", title);
 	snprintf(pane_cmd, sizeof(pane_cmd), "%s", argv[0]);
 	return 0;
@@ -410,13 +423,42 @@ static int act_key(const char *key, const struct srow *r)
 		return 0;
 	}
 	if (!strcmp(key, "cpu")) {
-		const char *argv[] = { "foot", "-e", "btop", NULL };
+		const char *argv[10];
+		char id[160];
+		int n = sh_term_argv(argv, 0,
+				     (int)(sizeof(argv) / sizeof(*argv)),
+				     "btop", id, sizeof(id));
 
+		argv[n++] = "btop";
+		argv[n] = NULL;
+		sh_spawn(argv);
+		return 1;
+	}
+	if (!strcmp(key, "disk")) {
+		/* ncdu and not a file manager: the question a full disk asks
+		 * is WHERE the space went, and that is a recursive sum no
+		 * listing shows. On the mountpoint the panel named, and `-x`
+		 * so it stays there: a scan that wandered onto a network mount
+		 * would answer about the wrong filesystem and take all day. */
+		const char *argv[10];
+		char id[160];
+		int n = sh_term_argv(argv, 0, 10, "ncdu", id, sizeof(id));
+
+		argv[n++] = "ncdu";
+		argv[n++] = "-x";
+		argv[n++] = r && r->path[0] ? r->path : "/";
+		argv[n] = NULL;
 		sh_spawn(argv);
 		return 1;
 	}
 	if (!strcmp(key, "clip")) {
 		const char *argv[] = { "kdos-clip", "--pick", NULL };
+
+		sh_spawn(argv);
+		return 1;
+	}
+	if (!strcmp(key, "update")) {
+		const char *argv[] = { "kdos-update", NULL };
 
 		sh_spawn(argv);
 		return 1;
@@ -531,12 +573,24 @@ static void draw_list(int w, int h)
 	b[SB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, SB_N, -1);
 	int room = bx - 3;
-	static const char HINT[] = "Enter opens   Esc closes";
 
-	if (room > 0 &&
-	    (status[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT)))
-		ktui_draw_text(2, h - 2, room, status[0] ? status : HINT,
-			       status[0] ? KT_WARN : KT_MID, KT_BG, KT_A_NONE);
+	/*
+	 * A MESSAGE DISPLACES THE HINTS. A status line and a key row want the
+	 * same cells, and what went wrong is more urgent than what the keys
+	 * do — but the pool must be drained either way, or the hints pushed
+	 * this frame are still in it on the next one.
+	 */
+	if (status[0]) {
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+		if (room >= 8)
+			ktui_draw_text(2, h - 2, room, status, KT_WARN, KT_BG,
+				       KT_A_NONE);
+		return;
+	}
+	ktui_hint_if(nrows > 0, "Enter", "open");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	if (room > 0)
+		ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_BG);
 }
 
 static void draw_pane(int w, int h)
@@ -671,7 +725,7 @@ int status_main(int argc, char **argv)
 	 * a layer surface can do, and the deep link (`--open`, what the stutter
 	 * chip and the meters strip use) opens at the report's size directly.
 	 */
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -682,12 +736,12 @@ int status_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? (open ? PANE_COLS : LIST_COLS) : ST_COLS,
 		.rows = popup ? (open ? PANE_ROWS : LIST_ROWS) : ST_ROWS,
-		.corner = !popup	? KWL_CORNER_CENTER
-			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
-					: KWL_CORNER_TOP_LEFT,
+		.corner = !popup	? KDISP_CORNER_CENTER
+			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
+					: KDISP_CORNER_TOP_LEFT,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -700,13 +754,16 @@ int status_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-status: no compositor or no layer-shell\n");
 		return 1;
 	}
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
+	/* Registered once, INNERMOST LAST. One rung here; the walk runs from
+	 * the end, so registration order is the order Esc unwinds. */
+	ktui_keys_layer(&keys, "Back", pane_up, pane_close_cb, NULL);
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
@@ -717,7 +774,7 @@ int status_main(int argc, char **argv)
 	if (open && act_key(open, NULL))
 		goto done;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		pane_pump();
 		draw_frame();
@@ -859,13 +916,20 @@ int status_main(int argc, char **argv)
 
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		/* FIRST, above both switches: Esc means one rung of the ladder
+		 * wherever it is pressed, and the ladder is declared once. */
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
 		if (pane_on) {
 			int pv = ktui_h - list_y0 - 2;
 
 			switch (ev.key) {
-			case KT_K_ESC:
-				pane_close();
-				break;
 			case KT_K_UP:
 				lfollow = 0;
 				if (ltop > 0)
@@ -893,8 +957,6 @@ int status_main(int argc, char **argv)
 		}
 		sel_follow = 1;
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;
@@ -923,6 +985,6 @@ int status_main(int argc, char **argv)
 done:
 	pane_close();
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

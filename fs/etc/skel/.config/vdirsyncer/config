@@ -1,0 +1,50 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# WHAT MAKES A SERVER'S COLLECTION AND ~/.local/share EQUAL, the way mbsync
+# does it for mail. Nothing is configured: with no pair, `vdirsyncer sync` has
+# nothing to do and says so.
+#
+# `[general]` AND `status_path` ARE THE MINIMUM THAT PARSES. vdirsyncer with
+# neither answers `general section is missing the parameters: status_path` and
+# exits 1, so this file is live rather than commented out — the same reason
+# khal's and khard's are.
+#
+# THE STATUS IS NOT THE DATA. It records what was seen last time so a change on
+# one side can be told from a change on both; deleting it is safe and costs one
+# slow re-sync, which is why it lives under .local/state and not beside the
+# calendars.
+
+[general]
+status_path = "~/.local/state/vdirsyncer/status"
+
+# A pair is two storages and the rules for reconciling them. Fill in the server
+# and run `vdirsyncer discover` once, then `vdirsyncer sync` from a timer.
+#
+# [pair personal]
+# a = "local_calendar"
+# b = "remote_calendar"
+# collections = ["from a", "from b"]
+# # WHICH SIDE WINS when both changed since the last sync. There is no right
+# # default: `a` silently discards the server's edit and `b` discards yours.
+# conflict_resolution = "a wins"
+#
+# [storage local_calendar]
+# type = "filesystem"
+# path = "~/.local/share/calendars/"
+# fileext = ".ics"
+#
+# [storage remote_calendar]
+# type = "caldav"
+# url = "https://dav.example.com/"
+# username = "you"
+# # KEEP THE PASSWORD OUT OF THIS FILE. `pass` is on the image and
+# # `password.fetch` runs a command instead of storing one.
+# password.fetch = ["command", "pass", "show", "dav/example"]

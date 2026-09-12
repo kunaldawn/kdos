@@ -67,3 +67,6 @@ ports/core/*/*.tgz
 ports/core/*/*.zip
 ports/appbox/image/
 ports/appbox/packs/
+
+# The mobile build root. Firmware blobs land under it and are never committed.
+build-mobile/

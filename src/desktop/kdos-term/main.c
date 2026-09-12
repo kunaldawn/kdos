@@ -1,0 +1,725 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   KD's Homebrew Linux Distro
+ * ---------------------------------
+ */
+
+/* See term.h. */
+
+#include <errno.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "kbase.h"
+#include "kcon.h"	/* kcon_impl */
+#ifndef KDOS_TERM_CONSOLE_ONLY
+#include "kwl.h"	/* kwl_impl — naming these is what links each one in */
+#endif
+#include "kxdg.h"
+#include "term.h"
+
+#ifdef HAVE_KIMG
+#include <pixman.h>
+#endif
+
+/*
+ * See the declaration: naming kwl_impl is what links Wayland into this binary,
+ * and naming kcon_impl is what makes the same one a console surface.
+ *
+ * KDOS_TERM_CONSOLE_ONLY drops the Wayland half, which is what the self-test
+ * builds: the state machine, the frame and the image path are the whole of
+ * what a `--dump` exercises, and they must be asserted on a bare host rather
+ * than only where fcft and wayland-client happen to exist. The SHIPPED binary
+ * is the one without it — a define that has to be present for the desktop to
+ * work would be a define somebody forgets.
+ */
+#ifdef KDOS_TERM_CONSOLE_ONLY
+const KDispImpl *const kdos_disp[] = { &kcon_impl };
+const int kdos_disp_n = 1;
+#else
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+#endif
+
+/* Zeroed: `selecting` is what says whether a drag is in progress, so the
+ * sentinel the cell coordinates used to carry is not needed. */
+Term T;
+
+static volatile sig_atomic_t g_reload;
+static char g_title[128] = "Terminal";
+
+static const char USAGE[] =
+"usage: kdos-term [options] [-e command [args...]]\n"
+"\n"
+"  -e, --exec CMD     run CMD instead of the shell; everything after it is\n"
+"                     its argument vector\n"
+"      --title TEXT   the window title before the program sets one\n"
+"      --app-id NAME  the identity the desktop files this window under;\n"
+"                     defaults to kdos-term\n"
+"  -D, --working-directory DIR\n"
+"                     start the program in DIR\n"
+"      --size WxH     open at this many columns and rows, rather than at\n"
+"                     the size term.conf asks for\n"
+"      --float        open unanchored, where the eye is, at that size —\n"
+"                     what a desktop entry's X-KDOS-Float asks for\n"
+"      --font NAME    fontconfig name; overrides term.conf\n"
+"      --tty          draw on the terminal this was started from\n"
+"      --dump WxH     run to completion offscreen and write the cells\n"
+"  -h, --help\n"
+"\n"
+"Configuration is ~/.config/kdos/term.conf.\n";
+
+/*
+ * The accent, from the one word `kdos theme` writes. No colours are read: the
+ * palette is compiled in through libkcolor and the state file names which of
+ * its schemes is in force.
+ */
+static void theme_from_cache(void)
+{
+	char path[512], name[64];
+	const char *cache = getenv("XDG_CACHE_HOME");
+	const char *home = getenv("HOME");
+
+	if (cache && *cache)
+		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
+	else
+		return;
+
+	char *d = kb_read_all(path, NULL);
+
+	if (!d)
+		return;		/* absent: ktui_theme_set already defaulted */
+
+	char *nl = strchr(d, '\n');
+
+	if (nl)
+		*nl = 0;
+	kb_strlcpy(name, d, sizeof(name));
+	free(d);
+	if (*name)
+		ktui_theme_set(name);
+}
+
+/*
+ * The default disposition for SIGHUP is death, so a program on
+ * reload_session()'s list that does not handle it is a program `kdos theme`
+ * KILLS. A flag rather than the work itself: a handler that reparsed a file
+ * would be allocating inside a signal.
+ */
+static void on_hup(int sig)
+{
+	(void)sig;
+	g_reload = 1;
+}
+
+/* OSC 0 and OSC 2, which is how a program names its own window. Only the
+ * undecorated frame can show it: an xdg-toplevel's title was set at
+ * initialisation and libkdisp has no path to change it. */
+/*
+ * A CHILD PUT SOMETHING ON THE CLIPBOARD, through OSC 52. It goes wherever
+ * this program's display server puts a selection — the compositor's data
+ * device under Wayland, the session's own buffer on the console.
+ */
+static void on_clip(struct kvt_vte *vte, const char *text, size_t len,
+		    int primary, void *data)
+{
+	(void)vte;
+	(void)data;
+	kdisp_copy(text, len, primary);
+}
+
+static void on_osc(struct kvt_vte *vte, const char *u8, size_t len, void *data)
+{
+	(void)vte;
+	(void)data;
+
+	if (len > 2 && (!strncmp(u8, "0;", 2) || !strncmp(u8, "2;", 2)))
+		kb_strlcpy(g_title, u8 + 2, sizeof(g_title));
+}
+
+#ifdef HAVE_KIMG
+/*
+ * WHERE A SPRITE'S PIXELS COME FROM when this program is a console surface.
+ * libkcon links no pixel library and must not; it asks for the bytes through
+ * this and puts them on the wire, and the display on the other end scales them
+ * to whatever a cell is there.
+ */
+static int sprite_bits(const void *pix, const uint32_t **argb, int *w, int *h,
+		       int *stride_px, void *user)
+{
+	pixman_image_t *img = (pixman_image_t *)pix;
+
+	(void)user;
+	if (!img)
+		return -1;
+	*argb = pixman_image_get_data(img);
+	*w = pixman_image_get_width(img);
+	*h = pixman_image_get_height(img);
+	*stride_px = pixman_image_get_stride(img) / 4;
+	return *argb && *w > 0 && *h > 0 ? 0 : -1;
+}
+#endif
+
+/* ── drawing ───────────────────────────────────────────────────────────── */
+
+/*
+ * WHOEVER OWNS THE FRAME DRAWS IT. Under kdos-comp the compositor is already
+ * drawing one round the outside, so a box here would be a second frame inside
+ * the first with the title written twice. On a tty and under `--dump` nothing
+ * else is drawing one, and then this is the only frame there is.
+ */
+static void inner(int *x, int *y, int *w, int *h)
+{
+	if (kdisp_decorated()) {
+		*x = 0;
+		*y = 0;
+		*w = ktui_w;
+		*h = ktui_h;
+		return;
+	}
+	char t[132];
+
+	snprintf(t, sizeof(t), " %s ", g_title);
+	ktui_draw_box(krect(0, 0, ktui_w, ktui_h), t, KT_ACCENT, KT_BG, 1);
+	*x = 1;
+	*y = 1;
+	*w = ktui_w - 2;
+	*h = ktui_h - 2;
+}
+
+/*
+ * THE PROMPT MARKS, ON THE FRAME'S LEFT BORDER.
+ *
+ * A terminal has no gutter — every column belongs to the child — so this is
+ * drawn on the one column that is this program's, and a DECORATED window has
+ * no such column and gets nothing. The chords still jump; what is lost is the
+ * dot, not the facility.
+ *
+ * The colour carries the meaning and the glyph is the same either way: a
+ * bullet in the error slot is a command that failed, in the accent one that
+ * did not, and a dot where nothing has finished yet.
+ */
+static void draw_marks(int y, int h)
+{
+	if (kdisp_decorated())
+		return;
+	for (int r = 0; r < h; r++) {
+		int status = -1;
+
+		if (!kvt_term_mark_at(T.t, (unsigned int)r, &status))
+			continue;
+		ktui_draw_text(0, y + r, 1,
+			       status < 0 ? ktui_glyph[KT_G_DOT]
+					  : ktui_glyph[KT_G_BULLET],
+			       status < 0 ? KT_DIM
+					  : status ? KT_ERR : KT_ACCENT,
+			       KT_BG, 0);
+	}
+}
+
+/*
+ * A PROGRAM IN THIS TERMINAL SAYS IT FINISHED — OSC 9, 777 or 99. `make &&
+ * notify-send done` does not work on this image, and this is what does.
+ */
+static void on_notify(struct kvt_vte *vte, const char *summary,
+		      const char *body, void *user)
+{
+	(void)vte;
+	(void)user;
+	kb_notify("kdos-term", summary, body);
+}
+
+static void draw(void)
+{
+	static KtuiCell *buf;
+	static int bufn;
+	int x, y, w, h;
+
+	ktui_draw_clear();
+	inner(&x, &y, &w, &h);
+	if (w <= 0 || h <= 0)
+		return;
+
+	if (w * h > bufn) {
+		KtuiCell *nb = realloc(buf, (size_t)w * h * sizeof(*buf));
+
+		if (!nb)
+			return;
+		buf = nb;
+		bufn = w * h;
+	}
+
+	kvt_term_render(T.t, buf, w, h);
+	/* A picture a program inside `tmux` asked for by id rather than by
+	 * placing it — see term_pic_placeholders(). */
+	term_pic_placeholders(buf, w, h);
+
+	/* Copied WHOLE, because a terminal's cell may carry a colour it named
+	 * exactly and the slot-and-attribute form has nowhere to put it. */
+	for (int r = 0; r < h; r++)
+		for (int c = 0; c < w; c++) {
+			KtuiCell cell = buf[r * w + c];
+
+			/* THE HOVERED LINK'S WHOLE RUN, not the cell under the
+			 * pointer: an address is one thing and underlining the
+			 * character somebody happens to be over says nothing
+			 * about where it ends. The id is the run. */
+			if (T.hover &&
+			    kvt_term_link_at(T.t, (unsigned int)c,
+					     (unsigned int)r) == T.hover)
+				cell.attr |= KT_A_UNDERLINE;
+			ktui_draw_put(x + c, y + r, &cell);
+		}
+
+	/*
+	 * The cursor is the SCREEN's, offset into the frame. Drawn only while
+	 * the child is alive: a block sitting under the exit message reads as
+	 * a prompt waiting for input that nothing will ever receive.
+	 */
+	draw_marks(y, h);
+
+	if (kvt_term_alive(T.t)) {
+		struct kvt_screen *sc = kvt_term_screen(T.t);
+		unsigned cx = kvt_screen_get_cursor_x(sc);
+		unsigned cy = kvt_screen_get_cursor_y(sc);
+
+		if ((int)cx < w && (int)cy < h)
+			ktui_draw_cursor(x + (int)cx, y + (int)cy);
+	}
+}
+
+/* ── the terminal's own chords ─────────────────────────────────────────── */
+
+/*
+ * FOUR, AND NO MORE THAN FOUR. Every chord this program claims is a chord no
+ * program running inside it can ever use, and a terminal that ate Ctrl+Shift+K
+ * is a terminal somebody's editor is broken in.
+ *
+ * Ctrl+Shift is the prefix because a bare Ctrl chord belongs to the child.
+ */
+static int chord(const KtuiEvent *ev)
+{
+	if (!(ev->mods & KT_MOD_CTRL) || !(ev->mods & KT_MOD_SHIFT))
+		return 0;
+
+	switch (ev->key) {
+	case 'C': case 'c': case 0x03: {
+		/* THE CLIPBOARD, not the primary selection: a drag already put
+		 * the selection there, and a copy that only wrote the same
+		 * place would be a copy that did nothing. */
+		char *text = NULL;
+
+		if (kvt_screen_selection_copy(kvt_term_screen(T.t), &text) >= 0
+		    && text) {
+			kdisp_copy(text, strlen(text), 0);
+			free(text);
+		}
+		return 1;
+	}
+	case 'V': case 'v': case 0x16:
+		/* The backend started the receive when it saw the key; the
+		 * bytes arrive on a later pass and term_paste_pending() is
+		 * what writes them. */
+		return 1;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static int scroll_chord(const KtuiEvent *ev)
+{
+	if (!(ev->mods & KT_MOD_SHIFT))
+		return 0;
+	/*
+	 * CTRL+SHIFT+UP/DOWN JUMPS BY PROMPT, where the shell marked them.
+	 * A screen of build output has one prompt at each end of it, and
+	 * scrolling by lines to find the last one is what this replaces. It
+	 * moves nothing when nothing is marked, which is what a shell that
+	 * emits no marks should feel like.
+	 */
+	if ((ev->mods & KT_MOD_CTRL) &&
+	    (ev->key == KT_K_UP || ev->key == KT_K_DOWN)) {
+		if (kvt_term_scroll_to_mark(T.t, ev->key == KT_K_UP ? -1 : 1))
+			ktui_draw_invalidate();
+		return 1;
+	}
+	if (ev->key == KT_K_PGUP) {
+		kvt_term_scroll(T.t, -(T.rows / 2));
+		return 1;
+	}
+	if (ev->key == KT_K_PGDN) {
+		kvt_term_scroll(T.t, T.rows / 2);
+		return 1;
+	}
+	return 0;
+}
+
+/* ── the loop ──────────────────────────────────────────────────────────── */
+
+static void resize_to_frame(void)
+{
+	int x, y, w, h;
+
+	ktui_draw_resize();
+	ktui_draw_invalidate();
+	inner(&x, &y, &w, &h);
+	if (w < 1 || h < 1 || (w == T.cols && h == T.rows))
+		return;
+	T.cols = w;
+	T.rows = h;
+	kvt_term_resize(T.t, w, h);
+	/* Half the picture bound is the grid, so the geometry a program is
+	 * told has to move with it. */
+	term_pic_geom();
+}
+
+/*
+ * Run the child to completion and consume everything it wrote, then draw one
+ * frame. What makes a dump reproducible: a frame taken while a program is
+ * still writing is a different frame every time it is taken.
+ */
+static void settle(void)
+{
+	for (int spin = 0; spin < 4000; spin++) {
+		struct pollfd p = { kvt_term_fd(T.t), POLLIN, 0 };
+		int live = kvt_term_alive(T.t);
+
+		kvt_term_pump(T.t);
+		if (p.fd < 0)
+			return;
+		if (poll(&p, 1, live ? 5 : 1) <= 0 && !live) {
+			kvt_term_pump(T.t);
+			return;
+		}
+	}
+}
+
+int main(int argc, char **argv)
+{
+	const char *title = NULL, *font = NULL, *cwd = NULL;
+	/*
+	 * THE IDENTITY, WHICH IS NOT THE TITLE. A title is the guest's to
+	 * rewrite the moment it emits an OSC; the app id is the desktop's, and
+	 * it is what a taskbar row, a window rule and a run-or-raise chord all
+	 * key on. A terminal running somebody else's program is given that
+	 * program's name here, the same way `foot --app-id` is given it.
+	 */
+	const char *app_id = "kdos-term";
+	/* What a desktop entry asked for, or zero for what term.conf says. */
+	int want_cols = 0, want_rows = 0, floating = 0;
+	int tty = 0, dump_w = 0, dump_h = 0;
+	const char *av[64];
+	int nav = 0;
+
+	kb_set_progname("kdos-term");
+	term_conf_load();
+
+	for (int i = 1; i < argc; i++) {
+		const char *a = argv[i];
+
+		if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
+			fputs(USAGE, stdout);
+			return 0;
+		} else if ((!strcmp(a, "-e") || !strcmp(a, "--exec")) &&
+			   i + 1 < argc) {
+			/* EVERYTHING AFTER -e IS THE CHILD'S, which is what -e
+			 * means in every terminal there has ever been. */
+			for (int j = i + 1; j < argc && nav < 63; j++)
+				av[nav++] = argv[j];
+			break;
+		} else if (!strcmp(a, "--title") && i + 1 < argc) {
+			title = argv[++i];
+		} else if (!strcmp(a, "--float")) {
+			floating = 1;
+		} else if (!strcmp(a, "--size") && i + 1 < argc) {
+			int sc = 0, sr = 0;
+
+			/* THE SAME FLOOR `--dump` KEEPS. A grid smaller than
+			 * this has nowhere to put a frame, and the number came
+			 * off a desktop entry somebody else wrote. */
+			if (sscanf(argv[++i], "%dx%d", &sc, &sr) == 2 &&
+			    sc >= 4 && sr >= 2) {
+				want_cols = sc;
+				want_rows = sr;
+			}
+		} else if (!strcmp(a, "--app-id") && i + 1 < argc) {
+			app_id = argv[++i];
+		} else if ((!strcmp(a, "-D") ||
+			    !strcmp(a, "--working-directory")) && i + 1 < argc) {
+			cwd = argv[++i];
+		} else if (!strcmp(a, "--font") && i + 1 < argc) {
+			font = argv[++i];
+		} else if (!strcmp(a, "--tty")) {
+			tty = 1;
+		} else if (!strcmp(a, "--dump") && i + 1 < argc) {
+			if (sscanf(argv[++i], "%dx%d", &dump_w, &dump_h) != 2 ||
+			    dump_w < 4 || dump_h < 2) {
+				fprintf(stderr,
+					"kdos-term: --dump wants COLSxROWS\n");
+				return 1;
+			}
+		} else if (!strcmp(a, "--")) {
+			for (int j = i + 1; j < argc && nav < 63; j++)
+				av[nav++] = argv[j];
+			break;
+		} else {
+			fprintf(stderr, "kdos-term: unknown option '%s'\n", a);
+			return 1;
+		}
+	}
+
+	/*
+	 * NO SHELL AND NO system(). The vector is built here and executed
+	 * directly, because $SHELL and term.conf are both strings somebody
+	 * else wrote — split the way a desktop entry is, by libkxdg.
+	 */
+	char store[1024];
+
+	if (!nav) {
+		const char *sh = *TC.shell ? TC.shell : getenv("SHELL");
+
+		if (!sh || !*sh)
+			sh = "/bin/sh";
+		nav = kxdg_exec_split(sh, NULL, 0, store, sizeof(store), av, 63);
+		if (nav <= 0) {
+			fprintf(stderr, "kdos-term: cannot read '%s'\n", sh);
+			return 1;
+		}
+	}
+	av[nav] = NULL;
+
+	if (title)
+		kb_strlcpy(g_title, title, sizeof(g_title));
+	if (!font && *TC.font)
+		font = TC.font;
+
+	theme_from_cache();
+
+	if (dump_w) {
+		if (ktui_offscreen_init(dump_w, dump_h) != 0) {
+			fprintf(stderr, "kdos-term: cannot draw offscreen\n");
+			return 1;
+		}
+	} else if (tty) {
+		ktui_backend_set(NULL);	/* NULL selects the built-in tty */
+		if (ktui_term_init(1) != 0) {
+			fprintf(stderr, "kdos-term: no terminal\n");
+			return 1;
+		}
+	} else {
+		KDispConfig cfg = {
+			.role = KDISP_ROLE_TOPLEVEL,
+			.title = g_title,
+			.app_id = app_id,
+			.font = font,
+			.keyboard = 1,
+			.cols = want_cols > 0 ? want_cols : TC.cols,
+			.rows = want_rows > 0 ? want_rows : TC.rows,
+			.floating = floating,
+		};
+
+		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
+			fprintf(stderr,
+				"kdos-term: no display — try --tty\n");
+			return 1;
+		}
+	}
+	ktui_draw_init();
+
+	int x, y, w, h;
+
+	inner(&x, &y, &w, &h);
+	T.cols = w > 0 ? w : TC.cols;
+	T.rows = h > 0 ? h : TC.rows;
+
+	/* Before the fork, so the shell and anything it starts are in the
+	 * directory the caller named. After the configuration and the theme,
+	 * which are read from absolute paths and are already loaded. */
+	if (cwd && chdir(cwd) < 0)
+		fprintf(stderr, "kdos-term: cannot enter %s: %s\n", cwd,
+			strerror(errno));
+
+	T.t = kvt_term_open(av, T.cols, T.rows);
+	if (!T.t) {
+		fprintf(stderr, "kdos-term: cannot open a pty\n");
+		return 1;
+	}
+	kvt_term_scrollback(T.t, (unsigned)TC.scrollback);
+	/* The accent's sixteen, if an accent has been chosen. */
+	kvt_term_theme(T.t);
+	kvt_term_osc_cb(T.t, on_osc, NULL);
+	kvt_term_notify_cb(T.t, on_notify, NULL);
+	kvt_term_clip_cb(T.t, on_clip, NULL);
+
+#ifdef HAVE_KIMG
+	kcon_set_sprite_bits(sprite_bits, NULL);
+#endif
+	term_pic_init();
+
+	if (dump_w) {
+		settle();
+		draw();
+		ktui_draw_dump();
+		term_pic_shutdown();
+		kvt_term_close(T.t);
+		return 0;
+	}
+
+	signal(SIGHUP, on_hup);
+
+	int status = 0;
+
+	for (;;) {
+		if (!tty && kdisp_should_close())
+			break;
+		if (g_reload) {
+			g_reload = 0;
+			term_conf_load();
+			theme_from_cache();
+			ktui_draw_invalidate();
+		}
+		if (ktui_resized) {
+			ktui_resized = 0;
+			resize_to_frame();
+		}
+
+		kvt_term_pump(T.t);
+		term_paste_pending();
+
+		/*
+		 * THE FOCUS MOVED, AND THE CHILD IS TOLD — by a diff against
+		 * the last turn rather than from an event, because both
+		 * display servers already hold the answer and neither delivers
+		 * it as one. `CSI I` / `CSI O` go out only while the child
+		 * asked with DECSET 1004; an editor that is not told does not
+		 * reload a file changed underneath it.
+		 */
+		{
+			static int had = -1;
+			int now = tty ? 1 : kdisp_focused();
+
+			if (now != had) {
+				had = now;
+				kvt_term_focus(T.t, now);
+			}
+		}
+
+		/*
+		 * THE CHILD IS GONE AND ITS LAST OUTPUT IS ON THE SCREEN. One
+		 * more draw so the exit message is visible, then out: a window
+		 * that stayed open on a dead shell is a window with no way to
+		 * type into it.
+		 */
+		if (!kvt_term_alive(T.t)) {
+			status = kvt_term_status(T.t);
+			/* BEFORE THE LAST DRAW. A program killed before it
+			 * could tidy up leaves the alternate screen up, and
+			 * the frame this window closes on would be its buffer
+			 * rather than the shell's — with the scrollback behind
+			 * it and nothing able to reach either. */
+			kvt_term_reset_modes(T.t);
+			draw();
+			ktui_draw_flush();
+			break;
+		}
+
+		if (!kvt_term_sync_hold(T.t)) {
+			draw();
+			/* The paste guard's dialog, over the grid. This is the
+			 * only modal this program raises, and without it the
+			 * confirmation would be a question nobody could see. */
+			ktui_modal_draw();
+			ktui_draw_flush();
+		}
+
+		struct pollfd p[2];
+		int n = 0;
+		int dfd = tty ? -1 : kdisp_fd();
+
+		if (dfd >= 0) {
+			p[n].fd = dfd;
+			p[n].events = POLLIN;
+			p[n].revents = 0;
+			n++;
+		}
+		p[n].fd = kvt_term_fd(T.t);
+		p[n].events = POLLIN;
+		p[n].revents = 0;
+		n++;
+
+		/*
+		 * THE ANIMATION DECIDES THE WAIT. A terminal with nothing
+		 * moving in it wakes ten times a second for the cursor blink
+		 * and no more; one with a picture playing wakes when its next
+		 * frame is due, which is what makes the frame rate the
+		 * picture's rather than the loop's.
+		 */
+		int anim = term_pic_tick();
+		int wait = anim >= 0 && anim < 100 ? anim : 100;
+
+		if (poll(p, (nfds_t)n, wait) < 0)
+			continue;
+
+		KtuiEvent ev;
+
+		while (ktui_backend()->poll_event(&ev, 0)) {
+			if (ev.type == KT_EVT_RESIZE) {
+				resize_to_frame();
+				continue;
+			}
+			/*
+			 * A MODAL OWNS THE KEYBOARD WHILE IT IS UP, ahead of
+			 * the child: a question about whether to paste must
+			 * not be answered by typing into the thing the paste
+			 * would run in.
+			 */
+			if (ktui_modal_active()) {
+				ktui_modal_event(&ev);
+				ktui_draw_invalidate();
+				continue;
+			}
+			if (ev.type == KT_EVT_MOUSE) {
+				int fx, fy, fw, fh;
+				KtuiEvent in = ev;
+
+				inner(&fx, &fy, &fw, &fh);
+				in.mx -= fx;
+				in.my -= fy;
+				if (in.mx < 0 || in.my < 0 ||
+				    in.mx >= fw || in.my >= fh)
+					continue;
+				term_mouse(&in);
+				continue;
+			}
+			if (ev.type != KT_EVT_KEY)
+				continue;
+			if (chord(&ev) || scroll_chord(&ev))
+				continue;
+			term_key(&ev);
+		}
+	}
+
+	term_pic_shutdown();
+	kvt_term_close(T.t);
+	if (tty)
+		ktui_term_shutdown();
+	else
+		kdisp_shutdown();
+
+	/* The child's status is this program's: a terminal opened to run one
+	 * command is a wrapper round it, and a caller that checks the exit
+	 * code must see the command's. */
+	return status < 0 ? 0 : status;
+}

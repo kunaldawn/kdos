@@ -101,6 +101,26 @@ static char query[64];
 static int marks[DOC_MAX_MARKS];
 static int nmarks, cur_mark;
 
+/* ONE RUNG: the search prompt. Esc in it abandons the search and Esc on the
+ * page closes the viewer, and the row says which. `keys.doc` stays NULL —
+ * this surface IS the help, and F1 opening it on top of itself is worse than
+ * F1 doing nothing. */
+static KtuiKeys keys;
+
+static int search_up(void *user)
+{
+	(void)user;
+	return searching;
+}
+
+static void search_cancel(void *user)
+{
+	(void)user;
+	searching = 0;
+	query[0] = '\0';
+	nmarks = 0;
+}
+
 /* ── where documents live ──────────────────────────────────────────────── */
 
 static int doc_dirs(char out[][512], int max)
@@ -638,7 +658,8 @@ static void go_back(void)
 static void follow(const struct doc_link *L)
 {
 	struct doc_page next = { 0, "" };
-	const char *argv[8];
+	const char *argv[12];
+	char id[160];			/* argv points into it until the exec */
 
 	note[0] = '\0';
 
@@ -650,11 +671,13 @@ static void follow(const struct doc_link *L)
 		}
 		/* The one link kind that leaves the grid: a manual page is
 		 * somebody else's formatter and belongs in a terminal. */
-		argv[0] = "foot";
-		argv[1] = "-e";
-		argv[2] = "man";
-		argv[3] = L->target;
-		argv[4] = NULL;
+		int k = sh_term_argv(argv, 0,
+				     (int)(sizeof(argv) / sizeof(*argv)),
+				     "man", id, sizeof(id));
+
+		argv[k++] = "man";
+		argv[k++] = L->target;
+		argv[k] = NULL;
 		spawn_detached(argv);
 		snprintf(note, sizeof(note), "man %.120s opened in a terminal",
 			 L->target);
@@ -812,28 +835,48 @@ static void draw(void)
 			       on ? KT_A_NONE : KT_A_UNDERLINE);
 	}
 
+	/*
+	 * ROW h-2 IS SHARED. The typed query, a message and the hints are
+	 * three different things that all belong there, so the left-hand text
+	 * is drawn first and the row starts after it. `w - 2 - hx` may go
+	 * negative on a long message: that is safe and deliberate, because
+	 * ktui_hint_row clears the pool BEFORE it measures — so the frame
+	 * still drains and nothing leaks into the next one.
+	 */
+	int hx = 2;
+
 	if (searching) {
 		char line[128];
+
 		snprintf(line, sizeof(line), "/%s", query);
 		ktui_draw_text(2, h - 2, w - 4, line, KT_TEXT, KT_SURFACE,
 			       KT_A_UNDERLINE);
+		hx = 2 + ktui_utf8_width(line) + 2;
 	} else if (note[0]) {
 		ktui_draw_text(2, h - 2, w - 4, note, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
-	} else {
-		char hint[160];
-		if (query[0] && nmarks)
-			snprintf(hint, sizeof(hint),
-				 "%d matches   n/N walk   Tab link   Enter "
-				 "follow   Bksp back   Esc close",
-				 nmarks);
-		else
-			snprintf(hint, sizeof(hint),
-				 "Tab link   Enter follow   Bksp back   "
-				 "/ search   Esc close");
-		ktui_draw_text(2, h - 2, w - 4, hint, KT_MID, KT_SURFACE,
+		hx = 2 + ktui_utf8_width(note) + 2;
+	} else if (query[0] && nmarks) {
+		char cnt[32];
+
+		snprintf(cnt, sizeof(cnt), "%d matches", nmarks);
+		ktui_draw_text(2, h - 2, w - 4, cnt, KT_MID, KT_SURFACE,
 			       KT_A_NONE);
+		hx = 2 + ktui_utf8_width(cnt) + 2;
 	}
+
+	/* Every one of these is gated on the page in front of the reader:
+	 * Bksp has nowhere to go on the first page and n/N nothing to walk
+	 * with no search behind them. */
+	ktui_hint_if(searching, "Enter", "find");
+	ktui_hint_if(!searching && nmarks > 0, "n/N", "walk");
+	ktui_hint_if(!searching && nlinks > 0, "Tab", "link");
+	ktui_hint_if(!searching && sel_link >= 0 && sel_link < nlinks, "Enter",
+		     "follow");
+	ktui_hint_if(!searching && nhist > 0, "Bksp", "back");
+	ktui_hint_if(!searching, "/", "search");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(hx, h - 2, w - 2 - hx, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -932,6 +975,11 @@ int doc_main(int argc, char **argv)
 		load_index();
 	}
 
+	/* BEFORE the dump branches, which draw and read the Esc verb: a
+	 * dumped frame that consulted an empty ladder would say something the
+	 * live viewer does not. */
+	ktui_keys_layer(&keys, "Cancel", search_up, search_cancel, NULL);
+
 	if (dump || cells) {
 		sh_theme_from_cache();
 		if (cells) {
@@ -946,7 +994,7 @@ int doc_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -957,7 +1005,7 @@ int doc_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 80,
 		.rows = 24,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -969,7 +1017,7 @@ int doc_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-doc: no compositor or no layer-shell\n");
 		return 2;
 	}
@@ -978,7 +1026,7 @@ int doc_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		clamp_scroll();
@@ -1031,13 +1079,18 @@ int doc_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		if (searching) {
 			size_t n = strlen(query);
-			if (ev.key == KT_K_ESC) {
-				searching = 0;
-				query[0] = '\0';
-				nmarks = 0;
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				searching = 0;
 				marks_rebuild();
 				if (nmarks)
@@ -1061,7 +1114,6 @@ int doc_main(int argc, char **argv)
 			rows = 1;
 
 		switch (ev.key) {
-		case KT_K_ESC:
 		case 'q':
 			goto done;
 		case KT_K_UP:
@@ -1123,7 +1175,7 @@ int doc_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	free(source);
 	source = NULL;
 	return 0;

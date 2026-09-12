@@ -108,6 +108,32 @@ int kxdg_mime_from_globs(const char *base, char *out, size_t n);
 /* A path's type, with `inode/directory` for a directory and
  * `application/octet-stream` when nothing matched. Never fails. */
 void kxdg_mime_for_path(const char *path, char *out, size_t n);
+
+/*
+ * WHAT A COMMAND-LINE ARGUMENT IS. One place decides, because the chooser and
+ * the opener must not disagree about the same word.
+ *
+ * A scheme makes it a URL, typed `x-scheme-handler/<scheme>`. That is the only
+ * thing that can be true of `mailto:a@b.c`, whose basename otherwise matches
+ * the `*.C` glob — case-insensitively — and resolves to C++ source, a mail
+ * address handed to an editor. `file:` is the exception: it names a path, so
+ * the path is unwrapped and typed like any other. A name that `stat()`s is a
+ * path whatever it looks like, so a real `notes:2026.txt` is not read as a
+ * scheme; `stat` follows symlinks, so a dangling one is not a name that is
+ * there.
+ *
+ * THE RETURN VALUE IS WHAT THE CALLER MUST PASS ON — the unwrapped path for
+ * `file:`, the argument itself otherwise — and it is READ-ONLY. It points into
+ * `arg`, except for a `file:` URL naming no path at all, where it is a static
+ * `/`; either way it outlives the call. Re-resolving the raw argument
+ * afterwards would open something other than the thing that was typed.
+ *
+ * PERCENT-ESCAPES ARE NOT DECODED, and a user sees it:
+ * `file:///home/kdos/My%20Report.pdf`, which is what a conforming caller emits
+ * for a name with a space, resolves to a path that does not exist and opens
+ * nothing.
+ */
+const char *kxdg_mime_for_arg(const char *arg, char *out, size_t n);
 /* The icon names a type may be drawn with, most specific first. Returns how
  * many were written. */
 int kxdg_mime_icon_names(const char *mime, char out[][64], int n);
@@ -121,5 +147,114 @@ int kxdg_mime_icon_names(const char *mime, char out[][64], int n);
  * collapsed. A missing or unreadable store is simply an empty list.
  */
 int kxdg_recent(const char *app, char out[][512], int max);
+
+/* Every application's, newest first — what a Recent list on a menu wants,
+ * where a jump list wants one program's. Same rules: only paths that still
+ * exist, duplicates collapsed. */
+int kxdg_recent_all(char out[][512], int max);
+
+/* Record an open. `mime` NULL is derived from the path.
+ *
+ * ONE ENTRY PER URI: an existing bookmark for this file is cut out and a fresh
+ * one appended, so the store holds it once and at the end — which is what
+ * "newest first" reads as on the way back. The oldest past the cap are dropped
+ * on the same pass, because nothing else on this system prunes the file.
+ *
+ * TEMP AND RENAME. The store is shared with every other program on the machine
+ * that keeps recents, and a half-written one is one they all lose. Returns 0
+ * written, -1 refused — a relative path, or no home to write into. */
+int kxdg_recent_add(const char *app, const char *path, const char *mime);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Places
+ *
+ * ONE READER FOR THE WHOLE DESKTOP. The desktop folder, the Places menu and
+ * the chooser's sidebar all resolve here, so a renamed user directory moves
+ * all three together. There is no xdg-user-dirs on this system: KDOS seeds
+ * `~/.config/user-dirs.dirs` from `/etc/skel` and it is the user's to edit.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KXDG_PLACES_MAX = 32 };
+
+typedef struct {
+	char name[64];
+	char path[512];
+} KxdgPlace;
+
+/* One XDG user directory by its key — "DESKTOP", "DOCUMENTS", "DOWNLOAD",
+ * "MUSIC", "PICTURES", "VIDEOS". Writes the default under $HOME first, so a
+ * caller that ignores the return value still has a usable path. Returns 0 for
+ * a key this system does not carry. */
+int kxdg_user_dir(const char *key, char *out, size_t n);
+
+/* The places column: Home, the user directories that EXIST, then the rows in
+ * `~/.config/kdos/places` (`Name = /path`, `$HOME` expanded) that are not
+ * already listed. A directory that is not there is never returned — the user
+ * directories are created on demand, and a row that opens an error is worse
+ * than a row that is not offered. Returns how many were written. */
+int kxdg_places(KxdgPlace *out, int max);
+
+/* The directories a shell has been in, from `zoxide query -l`, newest in
+ * frecency first. Empty when zoxide is absent or its database is — which is
+ * the same answer, and is why the absence is not reported.
+ *
+ * SEPARATE from kxdg_places() on purpose: kxdg_places_add() decides whether a
+ * directory is already a place by asking kxdg_places(), so folding a frecency
+ * guess into that answer would make *Add to Places* refuse a folder somebody
+ * had merely visited. Pass what the caller already collected as `have` and a
+ * directory is not offered twice. Returns how many were written. */
+int kxdg_places_recent(KxdgPlace *out, int max, const KxdgPlace *have,
+		       int nhave);
+
+/* Append one to `~/.config/kdos/places`. Returns 0 written, 1 already there,
+ * -1 refused — a path that does not exist, or a name carrying `=` or a
+ * newline, which would split the row somewhere else on the next read. */
+int kxdg_places_add(const char *name, const char *path);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The verbs on a file
+ *
+ * ONE TABLE FOR THREE SURFACES. The desktop's icons, the chooser's rows and
+ * `mc`'s `F2` all ask "what can I do with this", and three tables meant a verb
+ * landed on one and not the others — which reads as a surface being
+ * incomplete rather than as three lists.
+ *
+ * A ROW WHOSE PROGRAM IS ABSENT IS NOT OFFERED, so a verb still being built
+ * turns on when it ships with no edit to any caller. `mc`'s F2 reads a text
+ * file and can ask none of this, which is why that file carries only what
+ * exists today and `testing/preflight.sh` refuses a row that does not.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KXDG_VERB_OPEN = 0, KXDG_VERB_PEEK, KXDG_VERB_EDIT, KXDG_VERB_TERM,
+       KXDG_VERB_FIND, KXDG_VERB_PLACE, KXDG_VERB_SHARE, KXDG_VERB_GIT,
+       KXDG_VERB_EXTRACT, KXDG_VERB_TRASH, KXDG_VERB_MAX };
+
+/* Which kind of thing a verb is offered on. */
+#define KXDG_V_FILE 1
+#define KXDG_V_DIR  2
+#define KXDG_V_BOTH (KXDG_V_FILE | KXDG_V_DIR)
+
+typedef struct {
+	int id;			/* KXDG_VERB_*; dispatch on this, never on i */
+	const char *label;	/* "&Move to Trash" — `&` marks the letter  */
+	int flags;		/* KXDG_V_*                                 */
+	int present;		/* its program is on this machine           */
+} KxdgVerb;
+
+int kxdg_verb_count(void);
+/* Fills `out` for row i. `present` is resolved on every call rather than
+ * cached: a surface is long-lived, and a table resolved once would hide a verb
+ * for the life of the desktop after its program was installed. */
+int kxdg_verb_at(int i, KxdgVerb *out);
+/* Whether this verb belongs on this thing right now. */
+int kxdg_verb_shown(const KxdgVerb *v, const char *path, int isdir);
+
+/* The argument vector for a verb, never a command line. `term` is the
+ * terminal a wrapped verb runs in — `kb_terminal()` — and `store` holds what
+ * the vector points at, because an argv of pointers into a stack frame is a
+ * vector that outlives what it names. Returns the count, or 0 when the verb
+ * cannot be built. */
+int kxdg_verb_argv(int id, const char *path, int isdir, const char *term,
+		   char *store, size_t cap, const char **argv, int max);
 
 #endif /* KXDG_H */

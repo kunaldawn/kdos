@@ -1,0 +1,11 @@
+A recorded `restic snapshots --json`, taken from a real repository this tree's
+own restic created — not hand-written, because the field set is restic's and a
+made-up one agrees with the parser only by luck.
+
+The times, the host and the paths are edited to fixed values so the frame does
+not move: a golden whose first column is "3 days ago" is a golden that fails on
+the fourth day.
+
+TWO SNAPSHOTS, DIFFERENT SHAPES. One has no `tags` key at all and one path; the
+other has a tag and two. A parser that assumed `tags` was always present, or
+that a snapshot covered one path, gets one of the two wrong.

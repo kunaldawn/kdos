@@ -155,10 +155,24 @@ would refuse an install until the daemon had run once — which reads as the fea
 
 Flat `key = value`, written by a save flag and read by a config flag.
 
+`greet` is one of them, and it is the one key whose **default differs from what the live medium
+ships**. The medium ships `greet = no` — a machine with one account and no password has nothing to
+ask — and the installer writes `yes`, because a system somebody installed has a real answer to give.
+The key is written by **editing the line** in the target's `/etc/kdos/con.conf`, not by replacing
+the file: that file is mostly the explanation of what each key does, and a one-line rewrite would
+leave the installed system with a configuration file nobody can read.
+
 Two fallbacks keep an unattended run from failing over a spelling, and both are deliberate:
 an unknown application falls back to the recommended set, and an unknown filesystem falls back to
 the default. Both are read **before** the point of no return, and refusing there would leave a
 machine with no operating system on it.
+
+**AND "UNKNOWN" MEANS "NOT ON THE LIST", WHICH IS NOT THE SAME AS "NOT ON THE MEDIUM."** The
+applications page holds a fixed number of packs — `MAX_PACKS`, sized for the whole index with room
+to grow — and one past it is not a row, cannot be ticked, and makes an answer file naming it fall
+the whole selection back to the recommended set. A run that asked for one application and got four
+looks exactly like a run that misspelled it. The page says how many it dropped whenever it drops
+any, so the two are told apart.
 
 **An unattended run ends by itself, whichever way it went.** The event loop has two exits — a key,
 and the reboot branch — and the reboot branch is gated on a key in the answer file. So an
@@ -216,7 +230,7 @@ Each of these existed for the installer and would otherwise be decorative:
 - **`fstab` is appended to, never replaced** — the shipped file carries the temporary-filesystem
   entry every graphical application depends on.
 - Renaming the user rewrites the account files, the primary group's own name, the home directory
-  **and the autologin line**.
+  **and `con.conf`'s `autologin`**, which is what tty1 logs in.
 - The kernel and initramfs are copied onto the ESP, and the boot configuration points at those
   paths.
 

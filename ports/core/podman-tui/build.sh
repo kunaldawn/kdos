@@ -26,3 +26,18 @@ export CGO_ENABLED=0
 go build -mod=vendor -tags "containers_image_openpgp exclude_graphdriver_btrfs" \
 	-ldflags "-s -w" -o podman-tui
 install -Dm755 podman-tui $PKG/usr/bin/podman-tui
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/podman-tui.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Containers
+GenericName=Container Manager
+Comment=Images, containers, pods and volumes
+Exec=podman-tui
+Icon=system-software-install
+Terminal=true
+Categories=System;
+Keywords=container;podman;image;pod;box;
+EOF
+chmod 644 "$PKG/usr/share/applications/podman-tui.desktop"

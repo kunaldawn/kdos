@@ -25,6 +25,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -99,6 +100,63 @@ void kxdg_mime_for_path(const char *path, char *out, size_t n)
 	if (kxdg_mime_from_globs(base_of(path), out, n))
 		return;
 	snprintf(out, n, "application/octet-stream");
+}
+
+const char *kxdg_mime_for_arg(const char *arg, char *out, size_t n)
+{
+	char scheme[32];
+	struct stat st;
+	size_t i, k;
+
+	if (!arg || !*arg) {
+		snprintf(out, n, "application/octet-stream");
+		return arg;
+	}
+	/* A NAME THAT `stat()`s IS A PATH. Checked first, so a file whose name
+	 * happens to carry a colon is opened rather than handed to a handler
+	 * for a scheme nobody registered. It follows symlinks, so a dangling
+	 * one is not a name that is there. */
+	if (stat(arg, &st) == 0) {
+		kxdg_mime_for_path(arg, out, n);
+		return arg;
+	}
+	/* RFC 3986: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":" */
+	if (!isalpha((unsigned char)arg[0]))
+		goto path;
+	for (i = 1; arg[i] && arg[i] != ':'; i++)
+		if (!isalnum((unsigned char)arg[i]) && arg[i] != '+' &&
+		    arg[i] != '-' && arg[i] != '.')
+			goto path;
+	if (arg[i] != ':')
+		goto path;
+
+	if (i == 4 && !strncasecmp(arg, "file", 4)) {
+		const char *p = arg + 5;
+
+		/* `file://host/path` and `file:///path` alike: the path starts
+		 * at the slash that ends the authority. `file:/path` has no
+		 * authority and starts immediately. */
+		if (!strncmp(p, "//", 2)) {
+			p += 2;
+			while (*p && *p != '/')
+				p++;
+		}
+		if (!*p)
+			p = "/";
+		kxdg_mime_for_path(p, out, n);
+		return p;
+	}
+
+	/* A scheme is case-insensitive; the table it is looked up in is not. */
+	k = i < sizeof(scheme) - 1 ? i : sizeof(scheme) - 1;
+	for (size_t j = 0; j < k; j++)
+		scheme[j] = (char)tolower((unsigned char)arg[j]);
+	scheme[k] = '\0';
+	snprintf(out, n, "x-scheme-handler/%s", scheme);
+	return arg;
+path:
+	kxdg_mime_for_path(arg, out, n);
+	return arg;
 }
 
 /*

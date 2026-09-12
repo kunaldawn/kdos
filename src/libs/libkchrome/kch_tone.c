@@ -82,7 +82,7 @@ static uint32_t over(uint32_t fg, uint32_t bg, uint8_t a)
  * It has two jobs that pull against each other: stand far enough off the bar
  * to say which window you are in, and stay dark enough that the label on it
  * reads. Mixing further toward `pdark` does the first and undoes the second,
- * and no single percentage serves all four accents — measured, 68% gives
+ * and no single percentage serves all seven accents — measured, 68% gives
  * 3.95:1 for text on bone and 50% still only gives 4.83:1.
  *
  * So walk down from 68% and stop at the first mix whose label clears 7:1,
@@ -92,19 +92,39 @@ static uint32_t over(uint32_t fg, uint32_t bg, uint8_t a)
  * not decoration. On bone it carries more of the focused state than the plate
  * does.
  */
-static uint32_t solve_active(const KcolScheme *s, uint32_t body_ref)
+/*
+ * TWO FLOORS, AND THEY PULL AGAINST EACH OTHER. The plate has to stand off the
+ * bar it sits on and it has to carry the label written on it, and mixing
+ * toward `pdark` buys the first at the second's expense. So the walk keeps the
+ * lowest mix that still separates, and stops early the moment one also clears
+ * the label floor.
+ *
+ * THE RANGE IS THE WHOLE ONE, not its top half. A light scheme's answer is
+ * below where a search bounded at 30 stopped looking, so it fell out of the
+ * loop and returned a plate whose label read at 6.4:1 — and the failure looks
+ * like a badly chosen palette rather than a search that gave up early.
+ */
+static uint32_t solve_active(const KcolScheme *s, uint32_t body_ref, int floor)
 {
 	uint32_t best = kcol_mix(s->dim, s->pdark, 30);
+	int have = 0;
 
-	for (int x = 68; x >= 30; x--) {
+	for (int x = 68; x >= 10; x--) {
 		uint32_t plate = kcol_mix(s->dim, s->pdark, x);
 		uint32_t seen = over(plate, body_ref, A_ACTIVE);
 
+		/* Below the floor it is not a plate: either it has sunk into
+		 * the bar, or it stands off less than HOVER does and the
+		 * ladder reads backwards — the focused control looking flatter
+		 * than the one merely under the pointer. */
+		if (kcol_contrast(seen, body_ref) < floor)
+			continue;
+		best = plate;
+		have = 1;
 		if (kcol_contrast(s->text, seen) >= 700)
 			return plate;
-		best = plate;
 	}
-	return best;
+	return have ? best : kcol_mix(s->dim, s->pdark, 68);
 }
 
 static void build(void)
@@ -135,7 +155,21 @@ static void build(void)
 	tone[KCH_T_HOVER] = kcol_mix(s->dim, s->pdark, 40);
 
 	body_ref = over(kcol_mix(s->deep, s->variant, 60), s->backdrop, A_BODY);
-	tone[KCH_T_ACTIVE] = solve_active(s, body_ref);
+	/*
+	 * THE ACTIVE PLATE IS SOLVED AGAINST HOVER'S OWN SEPARATION, not
+	 * against a constant. Hover and active are drawn at different alphas,
+	 * so the only honest floor for the focused one is what the hovered one
+	 * actually measures — a fixed 2:1 lets a scheme land with active
+	 * flatter than hover, which is the ladder in the wrong order.
+	 */
+	{
+		uint32_t hov = over(tone[KCH_T_HOVER], body_ref, A_HOVER);
+		int floor = kcol_contrast(hov, body_ref);
+
+		if (floor < 200)
+			floor = 200;
+		tone[KCH_T_ACTIVE] = solve_active(s, body_ref, floor);
+	}
 
 	tone_for = ktui_theme;
 }

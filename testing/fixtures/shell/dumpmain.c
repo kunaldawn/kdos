@@ -40,29 +40,47 @@
 
 /* libkwl, stubbed. A dump never reaches any of it; the symbols exist only
  * because the same translation units carry the interactive path. */
-int kwl_init(const KwlConfig *cfg) { (void)cfg; return -1; }
-void kwl_shutdown(void) {}
-int kwl_should_close(void) { return 1; }
-int kwl_cell_w(void) { return 16; }
-int kwl_cell_h(void) { return 32; }
-void kwl_input_cells(const KRect *r, int n) { (void)r; (void)n; }
+/*
+ * The stub stands in for libkdisp, not for libkwl: the front ends reach a
+ * display through the interface now, so that is what has to be absent here.
+ * Returning -1 is what it always did — no compositor — and the front ends take
+ * their non-Wayland path exactly as before.
+ */
+int kdisp_init(const KDispConfig *cfg, const KDispImpl *const *impls, int n)
+{
+	(void)cfg;
+	(void)impls;
+	(void)n;
+	return -1;
+}
+
+const KDispImpl *kdisp_current(void) { return NULL; }
+
+/* The front ends name this list; nothing in it is reachable from here. */
+const KDispImpl *const kdos_disp[] = { NULL };
+const int kdos_disp_n = 0;
+void kdisp_shutdown(void) {}
+int kdisp_should_close(void) { return 1; }
+int kdisp_cell_w(void) { return 16; }
+int kdisp_cell_h(void) { return 32; }
+void kdisp_input_cells(const KRect *r, int n) { (void)r; (void)n; }
 void *kwl_display(void) { return NULL; }
 void *kwl_seat(void) { return NULL; }
-void kwl_overlay_hide(void) {}
-int kwl_overlay_show(int c, int r) { (void)c; (void)r; return 0; }
-int kwl_overlay_resize(int c, int r) { (void)c; (void)r; return -1; }
-void kwl_cursor_set(enum kwl_cursor c) { (void)c; }
-int kwl_fd(void) { return -1; }
-void kwl_pump(void) {}
-int kwl_scale(void) { return 1; }
+void kdisp_overlay_hide(void) {}
+int kdisp_overlay_show(int c, int r) { (void)c; (void)r; return 0; }
+int kdisp_overlay_resize(int c, int r) { (void)c; (void)r; return -1; }
+void kdisp_cursor_set(enum kdisp_cursor c) { (void)c; }
+int kdisp_fd(void) { return -1; }
+void kdisp_pump(void) {}
+int kdisp_scale(void) { return 1; }
 /* Nothing is drawing a frame round an offscreen grid, so the surface draws its
  * own — which is what makes a golden the picture tty1 shows. */
-int kwl_decorated(void) { return 0; }
-int kwl_px_h(void) { return 0; }
-int kwl_popup_offset(void) { return 0; }
-void kwl_report_error(void) {}
-void kwl_set_backdrop(KwlBackdropFn fn) { (void)fn; }
-int kwl_copy(const char *t, size_t n, int p)
+int kdisp_decorated(void) { return 0; }
+int kdisp_px_h(void) { return 0; }
+int kdisp_popup_offset(void) { return 0; }
+void kdisp_report_error(void) {}
+void kdisp_set_backdrop(KDispBackdropFn fn) { (void)fn; }
+int kdisp_copy(const char *t, size_t n, int p)
 {
 	(void)t; (void)n; (void)p;
 	return -1;
@@ -94,9 +112,9 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
 	return -1;
 }
 
-int kwl_lock_engaged(void) { return 0; }
-int kwl_lock_finished(void) { return 1; }
-void kwl_unlock(void) {}
+int kdisp_lock_engaged(void) { return 0; }
+int kdisp_lock_finished(void) { return 1; }
+void kdisp_unlock(void) {}
 
 /*
  * libkicon, stubbed to "there are no icons".
@@ -183,8 +201,73 @@ int kch_body_slot(void) { return KT_BG; }
  * grid, and a layout that only lines up once the pictures rasterise is a
  * layout that is broken.
  */
-int kwl_edge_bottom(void) { return 0; }
-void kwl_layer_autohide(bool hidden) { (void)hidden; }
+int kdisp_edge_bottom(void) { return 0; }
+void kdisp_layer_autohide(bool hidden) { (void)hidden; }
+
+/*
+ * THE WINDOW LIST IS EMPTY HERE, and answering `supported` with 0 is the point:
+ * a dump renders one frame with no compositor, so a surface that draws window
+ * rows must draw the state it has on a machine with no window manager. A stub
+ * that invented two windows would make the goldens assert a fiction.
+ */
+int kdisp_win_supported(void) { return 0; }
+int kdisp_win_count(void) { return 0; }
+int kdisp_win_at(int i, KDispWin *out) { (void)i; (void)out; return 0; }
+void kdisp_win_activate(unsigned id) { (void)id; }
+void kdisp_win_close(unsigned id) { (void)id; }
+void kdisp_win_minimise(unsigned id, int on) { (void)id; (void)on; }
+void kdisp_win_maximise(unsigned id, int on) { (void)id; (void)on; }
+void kdisp_win_fullscreen(unsigned id, int on) { (void)id; (void)on; }
+
+/*
+ * AND THE SCREEN'S FONT LIST IS EMPTY, for the reason the window list is: a
+ * dump has no display, and a display is the only thing that knows what faces
+ * it can render. `$KDOS_FONT_LIST` is what puts rows in front of a golden —
+ * one name per line, read here rather than gathered, because a real
+ * enumeration is the HOST'S fonts and would differ on every machine.
+ */
+int kdisp_font_count(void)
+{
+	const char *f = getenv("KDOS_FONT_LIST");
+	FILE *fp = f && *f ? fopen(f, "r") : NULL;
+	char line[256];
+	int n = 0;
+
+	if (!fp)
+		return 0;
+	while (n < 64 && fgets(line, sizeof(line), fp))
+		if (line[0] != '\n')
+			n++;
+	fclose(fp);
+	return n;
+}
+
+int kdisp_font_at(int i, char *out, int cap)
+{
+	const char *f = getenv("KDOS_FONT_LIST");
+	FILE *fp = f && *f ? fopen(f, "r") : NULL;
+	char line[256];
+	int n = 0;
+
+	if (!fp || i < 0 || !out || cap <= 0)
+		return 0;
+	while (fgets(line, sizeof(line), fp)) {
+		if (line[0] == '\n')
+			continue;
+		line[strcspn(line, "\r\n")] = '\0';
+		if (n++ == i) {
+			snprintf(out, (size_t)cap, "%s", line);
+			fclose(fp);
+			return 1;
+		}
+	}
+	fclose(fp);
+	return 0;
+}
+
+int kdisp_font_current(void) { return kdisp_font_count() > 0 ? 0 : -1; }
+void kdisp_font_set(int index, int keep) { (void)index; (void)keep; }
+void kdisp_font_ask(void) { }
 
 int kicon_slot_pad(const char *n, int cw, int ch, int pad)
 { (void)n; (void)cw; (void)ch; (void)pad; return -1; }
@@ -293,8 +376,10 @@ int __wrap_ktui_offscreen_init(int w, int h)
 #define FRONT_END(sym) __attribute__((weak)) int sym(int argc, char **argv)
 
 FRONT_END(cal_main);
+FRONT_END(peek_main);
+FRONT_END(find_main);
+FRONT_END(pix_main);
 FRONT_END(menu_main);
-FRONT_END(launcher_main);
 FRONT_END(pick_main);
 FRONT_END(keys_main);
 FRONT_END(teams_main);
@@ -312,14 +397,31 @@ FRONT_END(notify_main);
 FRONT_END(status_main);
 FRONT_END(tip_main);
 FRONT_END(panel_main);
+FRONT_END(trash_main);
+FRONT_END(rec_main);
+FRONT_END(chars_main);
+FRONT_END(contacts_main);
+FRONT_END(disks_main);
+FRONT_END(print_main);
+FRONT_END(timezone_main);
+FRONT_END(users_main);
+FRONT_END(update_main);
+FRONT_END(firewall_main);
+FRONT_END(backup_main);
+FRONT_END(theme_main);
+FRONT_END(palette_main);
 
 static const struct {
 	const char *name;
 	int (*fn)(int, char **);
 } fronts[] = {
 	{ "cal",	cal_main },
+	{ "trash",	trash_main },
+	{ "peek",	peek_main },
+	{ "find",	find_main },
+	{ "pix",	pix_main },
 	{ "menu",	menu_main },
-	{ "launcher",	launcher_main },
+	{ "launcher",	palette_main },
 	{ "pick",	pick_main },
 	{ "keys",	keys_main },
 	{ "teams",	teams_main },
@@ -336,6 +438,18 @@ static const struct {
 	{ "notify",	notify_main },
 	{ "status",	status_main },
 	{ "tip",	tip_main },
+	{ "rec",	rec_main },
+	{ "chars",	chars_main },
+	{ "contacts",	contacts_main },
+	{ "disks",	disks_main },
+	{ "print",	print_main },
+	{ "time",	timezone_main },
+	{ "users",	users_main },
+	{ "update",	update_main },
+	{ "firewall",	firewall_main },
+	{ "backup",	backup_main },
+	{ "theme",	theme_main },
+	{ "palette",	palette_main },
 	{ "shell",	panel_main },
 };
 

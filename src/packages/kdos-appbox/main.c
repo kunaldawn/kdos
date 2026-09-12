@@ -611,8 +611,18 @@ int cmd_warmup(void)
 				snprintf(path, sizeof(path),
 					 "/usr/share/applications/%s.desktop", line);
 			if (kxdg_load(&e, path, "Desktop Entry") == 0) {
+				/* kxdg_get answers `def` or a stored value, and
+				 * every stored value is allocated — so this is
+				 * never NULL. Said out loud because the
+				 * compiler cannot see through the allocator,
+				 * and the alternative to saying it is a
+				 * strrchr on NULL if that ever changes. */
 				const char *ex = kxdg_get(&e, "Exec", "");
-				const char *b = strrchr(ex, '/');
+				const char *b;
+
+				if (!ex)
+					ex = "";
+				b = strrchr(ex, '/');
 				b = b ? b + 1 : ex;
 				snprintf(shim, sizeof(shim), "%.*s",
 					 (int)strcspn(b, " \t"), b);
@@ -741,6 +751,17 @@ int main(int argc, char **argv)
 	 * ksvc/service already are — not a second program. */
 	if (!strcmp(self, "kdos-box"))
 		return box_main(argc - 1, argv + 1);
+	/*
+	 * AND xdg-open IS A THIRD, because everything that opens a link says
+	 * that word and means "whatever this machine opens it with": a mail
+	 * client's :open-link, a portal, anything reading $BROWSER.
+	 * /usr/local/bin comes first on the shipped $PATH, so this answers
+	 * before xdg-utils' script — which stays installed and is still what
+	 * cmd_open falls back to, by absolute path, when nothing here claims
+	 * the type.
+	 */
+	if (!strcmp(self, "xdg-open"))
+		return cmd_open(argc - 1, argv + 1);
 	if (strcmp(self, "kdos-appbox"))
 		return run_as_shim(self, argc - 1, argv + 1);
 

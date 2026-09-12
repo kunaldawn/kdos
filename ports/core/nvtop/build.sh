@@ -32,3 +32,18 @@ cmake .. -G Ninja \
 	-DTPU_SUPPORT=OFF
 ninja
 DESTDIR=$PKG ninja install
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/nvtop.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=GPU Monitor
+GenericName=GPU Monitor
+Comment=GPU load, memory and processes
+Exec=nvtop
+Icon=chart-line
+Terminal=true
+Categories=System;Monitor;
+Keywords=gpu;nvidia;amd;intel;nvtop;
+EOF
+chmod 644 "$PKG/usr/share/applications/nvtop.desktop"

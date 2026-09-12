@@ -1,6 +1,6 @@
 # The C libraries
 
-Thirteen static libraries under `src/libs/`, the constraint they are built under, the dependency
+Nineteen static libraries under `src/libs/`, the constraint they are built under, the dependency
 direction that must not be violated, and the invariants each one exists to protect.
 
 Everything KDOS writes is built on these. Adding one is a small decision; giving one a new
@@ -29,31 +29,159 @@ painter is not made to link a Wayland client library to get it.
 |---|---|---|---|
 | `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, group membership, the argument-vector builder and process helpers, and the freedesktop trash | Nothing |
 | `libkcolor` | `kcol_` | **The palette table**, colour-space conversion, mixing, the readable muted colour, the hue-family classifier, remapping and retinting | Nothing |
-| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, the three glyph tiers, charts, offscreen rendering | Nothing |
-| `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, and **the one correct way to turn a command line into an argument vector** | `libkbase` |
+| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, **the keys contract — the hint row, the Esc ladder and the menu**, the three glyph tiers, charts, offscreen rendering | Nothing |
+| `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, **the one correct way to turn a command line into an argument vector**, and the places column | `libkbase` |
 | `libkpkg` | `kp_` | The package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` |
 | `libksig` | `ksig_` | Signing and verification, key files, keyrings. **The one library with vendored third-party source** | `libkbase` |
 | `libkbuild` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only structured-data scanner | `libkbase` |
-| `libkproc` | `kpr_` | Every reading about the running machine, from a **movable root**: processes, uptime, container identity, processor, memory, block devices, network, power, graphics — and the sample ring | `libkbase` |
+| `libkproc` | `kpr_` | Every reading about the running machine, from a **movable root**: processes, uptime, container identity, processor, memory, block devices, network, power, graphics, sound PCMs — and the sample ring | `libkbase` |
 | `libkpack` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` |
+| `libkvt` | `kvt_` | The terminal: the VT100-VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. **A hard fork of libtsm 4.7.1** | `libktui` |
+| `libkimg` | `kimg_` | **The only place untrusted image bytes are decoded**, and reachable by anything that can write to a terminal. Two entry points — one picture, or every frame of the one format that has more than one — five optional decoders, and a budget enforced from the header the format declares *before* any allocation | pixman, plus png/jpeg/webp/sixel/gif where present |
+| `libkkms` | `kkms_` | **The cell grid on a screen**: seat, connector, mode, a dumb buffer, libinput and xkb. The one thing on the console path that needs a GPU device, which is why only the view links it | `libkcell`, plus drm, input, seat, xkb, udev |
+| `libkcon` | `kcon_` | **A surface over a socket**, both ends: the wire, the client's `KDispImpl` and `KtuiBackend`, and the server side a display composites. **No file descriptors cross it**, which is what makes it forwardable | `libkdisp`, `libktui` |
+| `libkwm` | `kwm_` | **The window model both desktops obey**: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
+| `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the seven roles, the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor — and the window list a panel manages | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
-| `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, and the pixel canvas | A font renderer, a pixel library |
+| `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, the pixel canvas, and the one scale-and-cut of a decoded picture into sprite tiles | A font renderer, a pixel library |
 | `libkwl` | `kwl_` | The toolkit's **Wayland backend**: surface roles, buffers, scale, input, clipboard, compose, cursors, frame throttling | `libkcell`, plus Wayland client libraries |
 
 ## Dependency direction
 
 ```
 libkwl → libkcell → libktui → libkcolor → libkbase
+libkwl → libkdisp → libktui
 libkchrome → libktui
 libkicon   → libktui
+libkdisp   → libktui
 libkxdg    → libkbase
 libkpkg    → libkbase
 libksig    → libkbase
 libkbuild  → libkbase
 libkproc   → libkbase
+libkwm     → libkbase
 libkpack   → libksig, libkpkg, libkbase
+
+libkvt     → libktui, libkcolor, libkbase
+libkcon    → libkdisp, libktui, libkcolor, libkbase
+libkimg    → libkbase
+libkkms    → libkcell, libktui, libkcolor, libkbase
 ```
+
+**The four edges worth stating are the console's.** `libkvt` is a terminal's
+private screen and reaches libktui only at its render boundary, in one file.
+`libkcon` carries cells over a socket and links **no** pixel library, which is
+what lets the session come up on a machine whose GPU driver does not. `libkimg`
+decodes untrusted bytes and depends on nothing but libkbase, so the decoder
+cannot reach the toolkit. `libkkms` is the only one of the four that opens a
+device, and it is a separate archive for exactly that reason: `kdos-con` links
+none of it and only the view does.
+
+## libkwm
+
+The window model, and only the model. `kdos-comp` draws windows in pixels and
+`kdos-con` draws them in cells; a defect in placement, tiling, the edge search
+or the ring walks is **one fix**, because there is one implementation.
+
+It is handed rectangles and told what is being asked. What a window *is*, which
+output it is on, whether a client accepted its size and whether it is maximised
+all stay with the caller — which is what lets a compositor and a cell grid share
+it at all.
+
+**The contract is `testing/fixtures/wm/geometry.txt`**, every row of which cites
+the line of `kdos-comp` it was derived from, and the self-test replays the file
+rather than asserting anything of its own. Adding a case means adding a row and
+citing its line.
+
+Three things that file pins, each of which reads as a bug and is not:
+
+- **A quarter snapped towards the edge it already occupies collapses to a
+  half.** The parallel component is then neither the inverse of the request nor
+  absent, so no branch of the transition matches and the orthogonal component is
+  discarded.
+- **The two halves of an axis come from different expressions** — `(size + gap) / 2`
+  and `(size - gap) / 2` — which is what puts a whole gap between two tiled
+  windows rather than half a gap each. An odd dimension therefore gives the right
+  or bottom half one extra pixel.
+- **Occupancy is an input, not a derivation.** The compositor counts views that
+  are not omnipresent; the panel counts windows that are not minimised, because
+  the workspace protocol has active, urgent and hidden but no "there is something
+  here". Two rules, two right answers, and this library picks neither.
+
+**No maths library**, the constraint `libkcolor` and `kcell_ascii.c` are already
+written under. The edge sweep interpolates with doubles, which is plain
+arithmetic and calls nothing.
+
+## libkdisp
+
+Which display server a surface reaches, decided in one place.
+
+`kdos-shell` alone opens a surface from **more than twenty** call sites, and each
+then asks whether it should close, resizes itself, or hides its panel. Branching
+on the server at every one of those is the same decision written twenty times in
+one program and again in the next.
+
+**The consumer decides what it links.** This library names no implementation and
+pulls in none; a caller hands over the ones it compiled, in preference order, so
+a console-only program never sees Wayland:
+
+```c
+extern const KDispImpl kcon_impl;  /* libkcon — the console session   */
+extern const KDispImpl kwl_impl;   /* libkwl  — the Wayland compositor */
+static const KDispImpl *const have[] = { &kcon_impl, &kwl_impl };
+kdisp_init(&cfg, have, 2);
+```
+
+**Both, and the console first.** Every shipped surface registers this pair: a
+program that offered only `kwl_impl` compiles and runs and simply cannot be
+opened on the console desktop, which is the default session. The order is the
+preference order, and the console comes first because a program started inside
+a console session must not find a Wayland display left over from somewhere else
+and attach to that instead.
+
+Each program states that list once, and it is the single line that changes when
+a third server is added.
+
+**The screen's font is here for the reason the window list is.** A surface never
+loads a font — it draws cells and something else turns them into pixels — so
+`kdisp_font_count` / `_at` / `_current` / `_set` is the only way a picker can
+ask what faces exist, and the list is the **display's**: on the console the view
+gathers it, and that view may be at the far end of an `ssh` link with its own
+machine's fonts. `font_set` takes an **index into that list and never a name**,
+so no fontconfig syntax crosses from a surface to a display that has never seen
+it. A backend leaves the entries NULL where the font is not the desktop's to
+change — the compositor, where every program carries its own — and a count of
+zero is then the honest answer rather than an empty list. `keep` is whether the
+choice survives the logout, so a picker's arrows pass 0 and only its `Enter`
+passes 1.
+
+**A caller re-reads the list on each turn**, the rule the window list keeps: the
+answer arrives over a socket some pumps after `kdisp_font_ask()`, and a caller
+that believed the first count would draw an empty list for ever.
+
+**A server that cannot answer an entry leaves it NULL** and the forwarder
+returns the neutral answer rather than crashing — a console has no server-side
+decoration to report and no Wayland handle to hand out. `kwl_display` and
+`kwl_seat` are deliberately *not* in the vtable for that reason: they hand out a
+Wayland object and nothing else can stand in for one.
+
+**Somebody else's windows are five entries, and they are asked for.** `win_count`, `win_at`,
+`win_activate`, `win_close` and `win_set_state` are what a panel, a task switcher
+and a window menu need — enough to draw a row and act on the one that was clicked. A surface only
+receives them if it set `manage` on its configuration, which on the console makes it a shell in the
+session's eyes and under a compositor is what `wlr-foreign-toplevel-management` grants anyway. An
+**id** crosses the interface, never a handle: a caller draws a list in one frame and acts on a row
+in a later one, and a stale handle is a request to a destroyed proxy that kills the connection.
+
+**The Wayland side binds foreign-toplevel on first use, not at start-up.** A compositor announces
+every window to whoever binds it, and a terminal, a lock screen and a resource monitor all link
+this library and want none of that traffic.
+
+**Two edge vocabularies in this tree, and they must not be conflated.**
+`KDISP_EDGE_*` is a sequence naming which edge a panel is anchored to.
+`KWM_EDGE_*` is a bitmask whose values match the compositor's own enum, so that
+corners are combinations. They are different questions.
 
 **Nothing points back up.**
 
@@ -76,8 +204,26 @@ Two members worth knowing about specifically:
   a file whole to write it whole asks for its size in anonymous memory for no reason.
 - **The process helpers send a child's error output to nothing unless verbose output is enabled**,
   so anything whose *failure* is diagnosed by the child's own message has to turn that on.
+- **A secret reaches a child on a descriptor and never in argv.** `kb_run_feed` writes to the
+  child's stdin; `kb_run_feed_env` does the same and additionally sets names in the child's
+  environment and captures its stderr, which is what a mount helper needs — `mount.cifs` reads a
+  password from the descriptor `$PASSWD_FD` names and reports its refusal on stderr, and a caller
+  without both would either put the secret in an argument list or report a status with no reason.
+  **The input must fit in one pipe buffer** in the feeding-and-reading forms: nothing is read back
+  until the whole input has been written.
 - **The freedesktop trash lives here**, so a prompt and the desktop's delete key are one
   implementation. See [The kdos command](../04-programs/kdos-command.md#trash).
+- **`kb_fuzzy` is the desktop's only answer to "does this row match what was typed".** A
+  subsequence rather than a substring — so `sm` finds `System Monitor`, which no substring search
+  can — scored so a prefix beats an acronym, an acronym beats a run, and a run beats a scatter.
+  **Higher is better and zero is no match.** It is here rather than in a surface because three of
+  them search the same applications: the palette, the launcher and the Start menu. Before it they
+  ranked one query three ways — the launcher scored a subsequence and *lower* was better, the
+  application index did a case-insensitive substring in six bands and higher was better — and a
+  person who finds something in one surface and nothing in another has learned that the desktop's
+  search cannot be relied on. **A caller that sorts on it must sort descending**; the matcher it
+  replaced in the launcher was lower-is-better, and a sort left as it was ranks a correct list
+  backwards, which reads as bad ranking rather than as a bug.
 
 **One trap the argument-vector builder carries, and it has bitten several callers:** it **stores
 the pointer and does not copy**. Several arguments built one after another in a single reused
@@ -120,6 +266,23 @@ The toolkit. Terminal ownership, the cell buffer, the diff, input decoding, widg
 glyphs and a character it lacks renders as a **blank**. The table is in
 [the design language](../03-architecture/design-language.md#the-glyph-tiers).
 
+**What a terminal can do is asked for once, in one write, on entering the screen.** Two facts
+follow from no `TERM` value and no capability database entry: the kitty keyboard flags (`CSI ? u`),
+which is what makes `Super` arrive at all, and synchronized output (`CSI ? 2026 $ p`), which is what
+lets a frame be bracketed. Both queries go out together and their replies are told apart by scanning
+the buffer — asking in turn pays the timeout twice on a terminal that answers neither, and the
+second wait would swallow a slow answer to the first as if it were its own. A DECRQM value of `0`
+means "not recognised" and `4` means "can never be set", so only `1`, `2` and `3` set `KT_CAP_SYNC`.
+**The replies are consumed there or they are typed into the desktop**, and the Linux VT, which
+answers neither, is skipped rather than waited on.
+
+**A frame is bracketed where that bit is set** — `CSI ?2026h` before the diff and `CSI ?2026l`
+after it — because a diff frame is a scatter of cursor moves and single cells, and a terminal
+drawing as they arrive shows a menu before the one under it is erased. The close is written again
+when a bounded flush dropped the frame, and once more when the terminal is handed back:
+**a terminal left inside the block draws nothing further**, so an unclosed bracket is a frozen
+screen rather than a tear.
+
 **The progress bar is a wrapper whose pixels must not move.** The installer links it and only it,
 pinning a solid two-state bar. Change the general form freely; leave that branch alone.
 
@@ -128,9 +291,107 @@ size follows only when the loop calls the resize and invalidate functions. Any l
 surface owns this — a surface that was always a fixed size and then starts being resized will draw
 against stale dimensions and silently fail its own bounds checks.
 
+**The caret goes to the backend when the backend has one.** `ktui_term_caret()` is the one call a
+surface makes to say where it is typing, and it writes the terminal escape only when nothing else
+claims the answer. The console client claims it: a surface drawn through a display server is not on
+a terminal, its stdout is not the screen it appears on, and the position it knows is in its own
+cells — which only the server can place on a screen. A backend that leaves the entry NULL keeps the
+escape, which is what the Wayland one does, because a compositor's surfaces draw their own.
+
 **Offscreen rendering** takes a fixed size and writes the cell buffer out as plain text, with no
 terminal at all. Every geometry defect this toolkit has shipped was invisible to the compiler and
 to a test suite that cannot draw; this is how they get looked at.
+
+**A widget is either an immediate-mode call or a draw-and-key pair, and which one is decided by
+its callers.** `ktui_list`, the buttons, the checks and the input field read the frame's focus and
+return what happened in one call, for a surface built around the frame. The page strip, the column
+table, the dropdown and the text block are a `_draw`, a `_key` and a `_hit` instead, because every
+surface that wanted them runs its own event loop and holds its own selection — an immediate-mode
+form would have meant rebuilding each of them around the frame before it drew anything at all. A
+hit test takes the same rect its draw took, so it measures what is on the screen rather than what
+the widget remembered from an earlier size.
+
+**No widget owns its selection.** The caller holds it, because the caller is what persists it,
+dumps it and restores it — and because a page strip and the body under it are one selection seen
+twice.
+
+**A table's heading row says whether the selection may land on it.** Both readings are in the tree:
+a network device heading is the row Enter rescans from, and a device-section caption is furniture.
+The row-kind callback answers per row rather than the widget choosing for both, and a row the
+selection steps over never lights.
+
+**A sprite table entry is a borrowed pointer, so eviction is what the owner told it to do.** The
+table does no pixel work and cannot free a picture; an owner registers an evictor and the table
+calls it whenever it stops naming a picture — a slot taken back under the byte budget, a slot
+reused for a *different* picture under the same key, or a tile refused part-way through a tiled put.
+Without an evictor a full table simply answers -1, which every consumer already handles by drawing
+its glyph. That is right for icons, which are owned for the life of the session, and wrong for
+photographs, which are megabytes each.
+
+**Whether a sprite is still on screen is asked of the CELL BUFFER'S own size**, not of `ktui_w` and
+`ktui_h`. A backend reports a new size the moment it is resized and the buffer is reallocated only
+when the consumer calls the resize function, so between those two points the globals describe a
+grid larger than the allocation.
+
+**One rule for reducing a colour that came from outside the palette.** A terminal's SGR and a
+picture's average tint both land on the nearest of the theme's slots by squared distance, through
+one function here. A second implementation would drift, and a table saying "red means the error
+slot" would be a second set of colour decisions beside the palette — one that would stop following
+the accent, so `kdos theme amber` would move some colours and not others.
+
+**Night light is a transform over the slots, not a scheme.** `ktui_theme_night()` warms whatever
+`ktui_theme_set()` last loaded — green to 93%, blue to 77%, red untouched, the shape of a colour
+temperature and the reason a warmed accent still reads as itself — and hands out a copy, keeping
+the chosen scheme beside it: eight bits do not divide back, so turning it off returns to the table
+rather than undoing the arithmetic. **The caller reads the toggle**, because this library holds no
+opinion about where a desktop keeps its state, and it returns whether the palette actually moved so
+a caller can skip a repaint it does not owe.
+
+**A widget says what it is, because it already knows.** Every widget computes which item has focus
+each frame from the same id the hit test uses, so a reader working that out again from a grid of
+cells would be guessing at what the surface has in hand — and it guesses wrong first on the controls
+that matter most: which cell of a table, which tab of a strip, which item of how many. `ktui_announce()`
+takes a role, a label, a value and the item's **position in its set**, so "3 of 9" is a fact the
+widget states rather than a count somebody has to make.
+
+- **It lives here, not in a session.** A record composed in `kdos-con` would reach the console and
+  give the graphical desktop nothing; one set in this library is set once and both desktops read it.
+- **The queue is per frame, fixed, and cleared at the start of every frame.** Nothing on the draw
+  path allocates — a widget that allocated to say its own name would drop frames on the link this
+  desktop is sold on — and a frame with more to say than the queue holds drops the rest.
+- **Silence is the failure mode, never a stale name.** A widget that says nothing announces nothing;
+  a reader told the wrong control is worse off than one told nothing, and last frame's record is the
+  wrong control by default.
+- **A widget says what it knows and no more.** A tab strip has its names and says them; a list and a
+  table take their rows from the caller's own callback, so they state the position and leave the
+  name to a surface that has it. **A secret field announces that it is one and never its contents.**
+- **A repeated record is the same control.** Dropping the repeat is the reader's job; the widget's
+  job is to be right every frame.
+
+**A cell's attribute byte carries five styles and the wire stays eight bytes wide.** Bold, reverse
+and underline were the first three; italic, strikethrough and overline are three of the five free
+bits, so a terminal's own text reaches a KDOS surface without the per-cell run growing for it. **All
+of them but reverse are dropped on a real VT**, where an attribute bit selects a font page or a
+colour the palette does not own rather than a style — the same guard, for the same reason, as bold's.
+
+**Above the eighth bit nothing travels in that byte.** The attribute is sixteen bits wide in memory
+and eight on the wire; the high half says which of the cell's three literal colours — foreground,
+background, underline — mean anything, and what shape the underline is. They are set **only** by a
+[negotiated colour run](#libkcon), so a consumer that was never sent a literal cannot receive a cell
+claiming to have one and draw the black it never got. **One bit per colour, not one for the pair**:
+a program that sets a foreground and leaves the background alone is the common case, and a single
+bit would freeze the theme's background into the cell as a literal, after which a retint leaves a
+rectangle of the old scheme behind.
+
+**A literal reaches a frame only through `ktui_draw_put()`.** Every other draw call takes slots and
+clears the literals, because chrome that stopped following `kdos theme` would be a second palette
+nobody can change. Terminal content is what uses it: the two places that copy a terminal's grid into
+a frame copy whole cells.
+
+**A pointer event carries where in the cell it landed**, as an offset from the cell's centre in
+1/256ths, and zero — what a backend with no pixel geometry leaves behind — means the centre.
+Nothing drawn in cells reads it. It exists for the one thing on this desktop that is not cells: a
+pixel guest embedded in a window, whose buttons are smaller than the grid pointing at them.
 
 Three rules the extraction from its original single consumer exists to keep:
 
@@ -141,6 +402,116 @@ Three rules the extraction from its original single consumer exists to keep:
   field; it is behind accessors now.
 - **Chrome identifiers are the library's business.** Chrome registers with caller-local
   identifiers in a reserved range that never joins the focus ring and never drags the page scroll.
+
+## libkvt
+
+The terminal as a state machine — a hard fork of libtsm 4.7.1, kmscon's own. What a *consumer*
+touches is `struct kvt_term`: a screen, a state machine and a child on a pty as one object, with a
+descriptor to poll and a grid to draw.
+
+**The bytes a key produces are decided in here, never by the caller.** The escape an arrow sends
+depends on application cursor mode, on keypad mode and on the modifier encoding, and all three are
+state machine state. A caller hands over a libktui key and modifier set; `kvt_term_key` turns it
+into a keysym and lets the machine answer. Both terminals in this tree go through it, so there is
+one implementation rather than two that drift.
+
+**A hyperlink is a 16-bit id on the screen's own cell, and the address is interned.** `OSC 8` names
+an address for a run of text; the cell keeps an id into a per-terminal table, so the text scrolls
+into the scrollback still knowing what it points at, and two runs of the same address are one link.
+The table is capped and is **not** freed on a reset, which is what makes an id in the scrollback
+safe to resolve for ever. `KtuiCell` is deliberately not widened for it: a link is a property of a
+terminal's buffer, not of every surface the toolkit draws. `kvt_ui_mouse()`'s coordinates are the
+**terminal's own grid** for the same reason a link lookup's are — a caller whose terminal is a
+window subtracts its origin, or both the selection and the link land as far from the pointer as the
+window is from the corner.
+
+**A screen can be read out as text and written back in.** `kvt_screen_text()` gives the scrollback
+and then the screen, oldest first, characters only — colour, attributes and pictures are not what a
+saved session puts back, and a picture cannot be put back at all because the tiles it named belong
+to a program that has exited. **The screen's empty tail is padding, not output**, so it is trimmed:
+a terminal showing two lines would otherwise end with a dozen blank ones, and a caller feeding that
+back scrolls the two lines it cared about off the top. `kvt_term_show()` is the other direction —
+text the terminal SHOWS, into the state machine where the child's own bytes go, never to the child.
+
+**A prompt mark is on the LINE, and the exit status is walked back to.** `OSC 133` says where a
+prompt starts and what the command typed at it exited with; the mark rides the line so it survives
+into the scrollback as one thing, where a mark per cell would be eighty copies of one fact and a
+mark kept beside the screen would be lost the moment the line scrolled off. The status is walked
+back to the nearest marked line at or above the cursor rather than remembered in a pointer — a
+pointer to a line kept across a scroll is a pointer to a line the screen may have recycled.
+
+**The render boundary is where an attribute becomes a cell, and what it cannot carry it drops.**
+Bold, underline, inverse, italic, strikethrough and overline each have a bit; `blink` and `dim` are
+parsed and reach none. That is deliberate: a blink drawn as bold and a dim drawn as normal are both
+a lie about the text, and the cell is the one place that can say so rather than approximate.
+
+**A picture is written into the SCREEN as sprite cells.** `kvt_term_place` names tiles the caller
+already registered in libktui's table and writes their codepoints at the cursor. In the screen
+rather than in an overlay beside it, because that is what makes a picture scroll with its output,
+clear with it and reach the scrollback — three behaviours an overlay would have to reimplement
+against a screen already doing all three. A tile the table has since dropped becomes a blank.
+
+**It decodes nothing.** The three image protocols are delimited by one collector — they differ only
+in how they are framed — and the payload goes to a callback the consumer set. That is what keeps
+this library free of image decoders, and it has to stay free of them because `kdos-con` links it
+and links no pixel code at all.
+
+## libkcon
+
+A surface over a socket, both ends in one file so the two cannot drift.
+
+**No file descriptor crosses it, ever.** That is the whole reason the view socket can be forwarded
+over `ssh`: a desktop reached from another machine is the same desktop. The one descriptor anywhere
+near this design goes over a different channel — a `socketpair` between the session and the
+`kdos-cage` it forked — which is private, local and parent-to-child, and is not this protocol.
+
+**A field at a time, little-endian.** A struct written whole is a struct whose padding and alignment
+become protocol, and the two ends of a forwarded socket are not always the same build.
+
+**A cell run is eight bytes a cell and stays eight bytes a cell.** The colours a terminal named
+itself ride a **separate run**, sent only to a view that asked for it in its hello and only for a
+run that carries any: three bytes each for the foreground, the background and the underline, then
+one byte saying which of them mean anything. It repeats the position and count of the commit it
+follows, so a view patches cells it already has rather than holding a frame back for a message that
+may never come — and a view that declined draws the slots every cell still carries. Widening the
+cell record instead would have doubled what every commit costs across the `ssh` link this desktop is
+sold on, to carry colour most cells on a desktop do not have.
+
+**Two ways to put bytes, and the difference is what a reader has to know.** `kcon_put_blob` writes a
+length first, for a payload whose size the message does not otherwise give. `kcon_put_bytes` writes
+none, for one it does — a sprite's pixels are `pw * ph * 4` and nothing else. A second length is a
+second thing that can disagree with the first, and a reader computing the size from the header would
+then be four bytes out for every picture on the desktop.
+
+**A string is valid only until the next get.** The payload's bytes are not terminated where a string
+ends, so one scratch buffer is shared by every call; a reader taking several strings copies each
+before it reads the next, or every pointer it kept names the last one.
+
+**A message may gain optional trailing fields**, and `kcon_rd_left` is how a reader tells a peer that
+predates them from a truncated message. A view's pixel geometry and a pointer's position inside its
+cell arrived that way.
+
+**A surface's slot numbers are its own.** Two surfaces both using slot 0 is the normal case, so the
+server assigns a session slot on first sight and a compositing session rewrites the slot in every
+sprite cell it copies out. A session that owns a picture itself — an embedded application's frame —
+takes slots from the same rotation, because a second numbering would eventually hand a view a number
+a surface is already using.
+
+**A picture is sent when its PIXELS change, not once per slot.** An animation registers a new frame
+under the same key and therefore in the same slot, without touching a single cell — so a client that
+remembered "slot sent" would leave the display holding the first frame for ever. The client tracks
+the picture behind each slot and compares the pointer.
+
+**And a display that attached late is told to start again.** `KCON_OP_SPRITE_RESEND` asks every
+surface to forget what the display has: cells that name a slot do not change, so a view that arrived
+after a picture was placed would show the fallback mark for the rest of its life.
+
+**A surface with nothing to show says so.** `KCON_OP_HIDE` is not a close — the connection, the
+sprites and the clipboard all survive it — and it is what an overlay needs on this desktop: a
+candidate window or a stack of toasts is up for a fraction of the time its program runs, and a
+surface that could not say so would park an empty box on somebody's desktop. **A different size is a
+second attach**, because the session already reads a requested size out of one and a separate resize
+message would be a second place for the two to disagree.
 
 ## libkxdg
 
@@ -153,6 +524,51 @@ than running one. Its inverse re-quotes, so a generator's output round-trips.
 
 Every launch path in the system goes through it. See
 [kdos-appbox](../04-programs/kdos-appbox.md#exec-lines).
+
+**`kxdg_mime_for_arg()` says what a command-line argument is**, and it exists because the two
+openers were answering that question separately and getting a URL wrong in two different ways. An
+argument carrying a scheme is typed `x-scheme-handler/<scheme>`; `file:` names a path, so the path
+is unwrapped and typed like any other; a name that **`stat()`s** is a path whatever it looks like.
+Without it the basename decided, and `mailto:a@b.c` matched the `*.C` glob — case-insensitively —
+and resolved to C++ source.
+
+It returns **the argument the caller must pass on**, read-only and never a copy, so a long path
+cannot be silently truncated on the way to the handler. The pointer is into the argument, except
+for a `file:` URL naming no path at all, where it is a static `/`. Percent-escapes are
+**not** decoded, and a reader sees that: `file:///home/kdos/My%20Report.pdf`, which is what a
+conforming caller emits for a name with a space, resolves to a path that does not exist and opens
+nothing.
+
+**`kxdg_places()` is one reader for the whole desktop**, and it replaced two. `kdos-desk` read
+`~/.config/user-dirs.dirs` for the desktop folder while `kdos-menu`'s Places list assumed six names
+under `$HOME`, so on a machine where somebody had renamed one the icons were in the folder the file
+named and the menu opened an empty one beside it — which reads as a broken menu rather than as two
+readers. The desktop folder, the Places menu, the chooser's `Ctrl+P` list and *Add to Places* now
+resolve through the same call.
+
+There is no `xdg-user-dirs` on this system: KDOS **seeds** `user-dirs.dirs` from `/etc/skel` and it
+is the user's to edit. `$HOME` is the only expansion the reader understands, because it is the only
+one that file's format defines — a reader that guessed at the rest would be a shell.
+
+**A place that is not there is not a place.** The user directories are created on demand, and every
+row is checked before it is returned: a row that opens an error is worse than a row that is not
+offered.
+
+**`kxdg_recent_add()` is written from one place**, `kdos-appbox open` — the function every open on
+this desktop passes through, so a recent-files store can be kept without a second copy of the rule
+going stale beside it. It is the same scanner run backwards: the bookmark this URI already had is
+cut out whole and a fresh one appended, so a file opened twice is one entry and it is the newest.
+The oldest past the cap are dropped on the same pass, because nothing else on this system prunes
+`recently-used.xbel`, and the rewrite is temp-and-rename because the store is shared with every
+other program on the machine that keeps recents.
+
+**`kxdg_verb_*` is one table of what can be done to a file**, read by the desktop's icons, the file
+chooser and — in the one form a text file allows — `mc`'s `F2`. Three tables meant a verb landed on
+one surface and not the others, which reads as a surface being incomplete rather than as three
+lists. A row whose program is absent is not offered, so a verb still being built turns on when it
+ships with no edit to any caller; the resolution is repeated on every call rather than cached,
+because a surface is long-lived and a table resolved once would hide a verb for the life of the
+desktop. Every verb builds an **argument vector**, never a command line.
 
 ## libkpkg
 
@@ -236,9 +652,30 @@ The test harness stubs it to exactly that, so a committed reference frame is the
 The glyph cache and the cell painter: a grid of cells into a pixel buffer, the character ramp built
 from it, and the pixel canvas a block of cells can be drawn as.
 
+**A cell's style is drawn here, and italic is the one that needs a second face.** Underline, strike
+and overline are one horizontal rule each, differing only in the row they land on and drawn after
+the glyph so a descender crossing a strike is cut by it. Italic asks fontconfig for the loaded name
+with `:slant=italic` and **keeps the answer only if its advance and height match the upright
+face** — fontconfig never fails a match, so asking an italic Terminus returns a different family at
+a different size, and a companion that disagrees would draw a row out of step with the one above
+it. Where none agrees, italic text is upright: a style lost, not a grid broken. The face
+is part of the glyph cache's key, because the same codepoint from two faces is two glyphs.
+
 **The canvas is what makes a pixel tile possible** without a second renderer — a pixel image exactly
 some number of cells across, with fills and text at an arbitrary pixel size, handed to the toolkit
 as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button).
+
+## libkkms
+
+The cell grid on a screen: seat, connector, mode, a dumb buffer, libinput and xkb. The one library
+here that opens a GPU device, which is why only the view links it.
+
+**The grid is derived, never stored.** The backend answers its size by dividing the mode by the
+cell, so `kkms_set_font()` is the whole of a font change on a screen that is already up: reload,
+and every consumer of `ktui_w`/`ktui_h` sees a different answer the next time it asks. The caller
+calls `ktui_draw_resize()` and tells whoever is composing for it — this library knows the pixels and
+nothing about the session on top of them. **The old font comes back if the new one will not load**,
+because a screen is the one thing a person cannot work around from somewhere else.
 
 ## libkwl
 

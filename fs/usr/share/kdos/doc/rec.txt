@@ -1,0 +1,64 @@
+KDOS REC
+
+Record from a microphone, watch the level, keep the file.
+
+  Up/Down   choose the input.
+  Enter     starts recording, and stops it. Escape stops it too — a window
+            holding the microphone does not close out from under itself.
+  m         mutes every capture device, or unmutes them. Recording refuses to
+            start while the input is muted, and says so.
+  t         transcribes the selected recording.
+  p         plays it.
+  d         deletes it, after a y/n.
+  r         rescans the inputs, the recordings and the model.
+
+The inputs
+
+  Default is the card ALSA picks, and it is the row that works while the
+  session's audio server holds the hardware. A hw:C,D row names one PCM
+  directly, which is what answers on a console with no session running.
+
+  Only PCMs that carry a capture stream are listed. A card is not a
+  microphone: an HDMI codec has four playback PCMs and no capture stream at
+  all, and offering it as an input produces a recorder that fails to open with
+  a message about the device rather than about the choice.
+
+The file
+
+  ~/Recordings/YYYY-MM-DD-HHMMSS.wav, 16 kHz mono 16-bit PCM. That format is
+  not a preference: it is exactly what whisper.cpp requires, so the file this
+  writes is the file the transcriber reads with no second conversion.
+
+  Both length fields in the header are rewritten every tenth of a second. A
+  header written only at the end leaves a file no player will open whenever
+  the machine goes away mid-recording.
+
+The level
+
+  The chart is this program's own peak over the samples it just wrote, one
+  column per tenth of a second, and the number beside it is the loudest of the
+  columns on screen. Full scale is fixed rather than fitted to what has been
+  heard, so a quiet room draws as a quiet room; CLIP replaces the number when
+  a sample reaches the top of the range.
+
+Transcription
+
+  Transcribe is greyed until a whisper.cpp model is on this machine. Three
+  places are looked at, in order, and the first hit is the answer:
+
+    $KDOS_WHISPER_MODEL             one file, named exactly. When this is set
+                                    nothing else is searched.
+    ~/.local/share/whisper.cpp/models
+    /usr/share/whisper.cpp/models
+
+  Inside a directory the first ggml-*.bin in name order wins. A candidate
+  counts only if it really is a model — the first four bytes are checked — so
+  a half-finished download reads as no model rather than as a crash behind an
+  enabled button. The header line names the model that was found, or the
+  directory that was searched.
+
+  No model ships with KDOS and the desktop cannot fetch one. Upstream's
+  models/download-ggml-model.sh is the fetch, and where it writes is the
+  second path above.
+
+  [[doc:index]]

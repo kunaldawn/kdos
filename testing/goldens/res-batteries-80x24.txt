@@ -11,6 +11,7 @@
 | Net  | technology  Li-ion                                                    |
 | Bat  |                                                                       |
 | Ene  | AC0          not connected                                            |
+| Sen  |                                                                       |
 | Box  |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
@@ -19,6 +20,5 @@
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
-|      |                                                                       |
-|      |                                                                       |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                            |
 +==============================================================================+

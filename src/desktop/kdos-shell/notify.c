@@ -72,6 +72,9 @@ static int nrows;
 static int sel, top, sel_follow = 1;
 static int dnd;
 static char status[128];
+
+/* No layers: Esc closes the list. */
+static KtuiKeys keys;
 /* The daemon is not answering. That is an EMPTY STATE — the middle of the
  * window, where somebody is already looking — and not a status line squeezed
  * between a button bar and the border. */
@@ -318,15 +321,27 @@ static void draw_frame(void)
 	b[NB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, NB_N, -1);
 	int room = bx - 3;
-	static const char HINT[] = "Enter open   f forget   c clear   Esc";
-
-	/* A MESSAGE takes whatever room is left; a HINT is drawn whole or not
-	 * at all — half a sentence against the start of another is worse than
-	 * an empty half-row. The rule the device managers already keep. */
-	if (room > 0 &&
-	    (status[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT)))
-		ktui_draw_text(2, h - 2, room, status[0] ? status : HINT,
-			       status[0] ? KT_WARN : KT_MID, KT_BG, KT_A_NONE);
+	/*
+	 * A MESSAGE OUTRANKS THE ROW and they share the same cells. The row is
+	 * still called on that path, with an empty rect: it clears the pool as
+	 * its first act, and a frame that skipped it would carry its hints
+	 * into the next one.
+	 *
+	 * Only Enter and Esc are pushed. Forget, Clear All and Do Not Disturb
+	 * name themselves in the button bar; Enter-opens is the one action
+	 * that is deliberately not a button, and at eighty columns the bar
+	 * leaves twenty-one cells, which is exactly what those two fit in.
+	 */
+	if (status[0]) {
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+		if (room >= 8)
+			ktui_draw_text(2, h - 2, room, status, KT_WARN, KT_BG,
+				       KT_A_NONE);
+	} else {
+		ktui_hint_if(nrows > 0, "Enter", "open");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_BG);
+	}
 	ktui_draw_flush();
 }
 
@@ -417,13 +432,13 @@ int notify_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = popup ? 56 : NT_COLS,
 		.rows = popup ? 18 : NT_ROWS,
-		.corner = !popup	? KWL_CORNER_CENTER
-			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
-					: KWL_CORNER_TOP_LEFT,
+		.corner = !popup	? KDISP_CORNER_CENTER
+			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
+					: KDISP_CORNER_TOP_LEFT,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		.app_id = "kdos-notify",
@@ -435,12 +450,12 @@ int notify_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-notify: no compositor or no layer-shell\n");
 		return 1;
 	}
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -453,7 +468,7 @@ int notify_main(int argc, char **argv)
 	 * count nobody trusts. */
 	ask("seen", NULL, 0);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		draw_frame();
 
@@ -552,10 +567,11 @@ int notify_main(int argc, char **argv)
 
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
+			goto done;
+
 		sel_follow = 1;
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;
@@ -592,6 +608,6 @@ int notify_main(int argc, char **argv)
 	}
 done:
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

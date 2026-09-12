@@ -54,6 +54,12 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.c
+"$SCANNER" client-header \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
 # libpng is libkicon's: the icon layer decodes the alien apps' own PNGs.
 PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng"
@@ -76,12 +82,12 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_RES_VERSION="\"$version\"" \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" \
-	-I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkxdg" \
+	-I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkxdg" \
 	-I"$LIBS/libkicon" -I"$LIBS/libkchrome" -I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-res \
 	$RES_SRC \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c \
 	"$LIBS"/libkcolor/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c \
 	"$LIBS"/libkicon/*.c "$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c \
 	./*-protocol.c \

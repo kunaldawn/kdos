@@ -1,0 +1,1428 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   KD's Homebrew Linux Distro
+ * ---------------------------------
+ */
+
+/*
+ * The three image protocols, joined to the decoder.
+ *
+ * libkvt delimits and hands over a payload; libkimg turns bytes into a picture
+ * or into nothing; this file is the only thing between them, and it does four
+ * jobs: strip the transport encoding, decide how many CELLS the picture
+ * occupies, scale it to them, and write the sprite cells into the screen.
+ *
+ * NOTHING HERE PARSES AN IMAGE FORMAT. Base64 and the key=value control blocks
+ * are transport, and they are bounded here; the moment a byte could be part of
+ * a picture it goes to libkimg, which is the one place in KDOS that decodes
+ * one.
+ *
+ * A BUILD WITHOUT libkimg LEAVES THE PROTOCOLS OFF ENTIRELY, rather than
+ * parsing them and dropping the result: with no callback registered libkvt
+ * ignores a sixel dump exactly as it always did, and an APC keeps going
+ * nowhere. Parsing bytes nobody can use is a buffer somebody can fill.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include "term.h"
+
+#ifdef HAVE_KIMG
+#include <pixman.h>
+
+#include "kcell.h"
+#include "kimg.h"
+
+/*
+ * A CELL'S PIXEL SIZE, WHERE THERE IS ONE. Under kdos-comp the backend knows;
+ * under kdos-con this program has no pixels at all — the display it is
+ * eventually drawn on does, and it scales what arrives. So a cell client
+ * renders at a nominal size, which bounds what goes on the wire without
+ * pretending to know the font somebody else is using.
+ */
+#define NOMINAL_CW 10
+#define NOMINAL_CH 20
+
+/* Sprites are megabytes where an icon is kilobytes, so the table is given a
+ * budget and an evictor; without them the second picture in a session would
+ * find the table full and draw its fallback forever. */
+#define SPRITE_BUDGET (32u << 20)
+
+/* Kitty transmits a picture and places it later, so a decoded image outlives
+ * the sequence that carried it. Bounded, because the peer chooses both how
+ * many and how big. */
+#define KITTY_STORE 8
+
+/*
+ * ANIMATION. A frame is a picture with a delay after it, which is how the
+ * protocol describes one and is all this needs to hold: the frames are
+ * transmitted whole or composed onto an earlier one, and playback is a timer
+ * and an index.
+ *
+ * A FRAME REPLACES THE PICTURE UNDER THE SAME SPRITE KEY, so the screen is
+ * never rewritten. The cells naming the slots stay exactly as they are and only
+ * the pixels behind them change — which is why an animation costs no damage in
+ * the cell grid at all, and why it needs no extra slots however many frames it
+ * has.
+ */
+#define KITTY_FRAMES 32
+
+/*
+ * THE BUDGET IS ON THE FRAMES, not on the slots. Frames are our own memory —
+ * the sprite table only ever holds the one that is showing — so an animation
+ * that would exceed this drops the frames that do not fit and plays the ones
+ * that do, rather than pushing the desktop's own icons out of the table.
+ */
+#define KITTY_ANIM_BYTES (16u << 20)
+
+struct kitty_frame {
+	pixman_image_t *img;
+	int gap_ms;			/* after this frame */
+};
+
+/*
+ * `gen` is what makes a re-transmitted picture a DIFFERENT picture. The sprite
+ * key has to change when the pixels behind an id change, or the table answers
+ * the new id with the old image's tiles.
+ */
+static struct {
+	uint32_t id;
+	uint32_t gen;
+	pixman_image_t *img;
+
+	struct kitty_frame fr[KITTY_FRAMES];
+	int nfr;			/* frames AFTER the root one */
+	int cur;			/* 0 is the root frame */
+	int loops;			/* -1 forever, 0 stopped */
+	int running;
+	unsigned long long due_ms;
+
+	/* Where it was placed, so a frame can replace the pixels behind cells
+	 * that are already on the screen. Zero cells means never placed. */
+	uint64_t key;
+	int cw, ch;
+} store[KITTY_STORE];
+
+static uint32_t store_gen;
+static size_t anim_bytes;
+
+/* The chunked form: `m=1` says more is coming, and the control block of the
+ * first chunk is the one that describes the picture. */
+static struct {
+	int active;
+	char ctl[512];
+	uint8_t *buf;
+	size_t len, cap;
+} chunk;
+
+static int cell_w(void)
+{
+	int w = kdisp_cell_w();
+
+	return w > 1 ? w : NOMINAL_CW;
+}
+
+static int cell_h(void)
+{
+	int h = kdisp_cell_h();
+
+	return h > 1 ? h : NOMINAL_CH;
+}
+
+/* ── transport ─────────────────────────────────────────────────────────── */
+
+static int b64_val(unsigned char c)
+{
+	if (c >= 'A' && c <= 'Z')
+		return c - 'A';
+	if (c >= 'a' && c <= 'z')
+		return c - 'a' + 26;
+	if (c >= '0' && c <= '9')
+		return c - '0' + 52;
+	if (c == '+')
+		return 62;
+	if (c == '/')
+		return 63;
+	return -1;
+}
+
+/*
+ * Base64, in place of the caller's buffer and never larger than it: three
+ * bytes out for every four in, so the output cannot outgrow the input and the
+ * cap the parser already enforced still holds. Whitespace is skipped —
+ * a payload wrapped at 76 columns is the normal case — and any other
+ * character ends the decode, because a picture is not worth guessing at.
+ */
+static size_t b64_decode(const uint8_t *in, size_t len, uint8_t *out)
+{
+	size_t n = 0;
+	int acc = 0, bits = 0;
+
+	for (size_t i = 0; i < len; i++) {
+		unsigned char c = in[i];
+		int v;
+
+		if (c == '\n' || c == '\r' || c == ' ' || c == '\t')
+			continue;
+		if (c == '=')
+			break;
+		v = b64_val(c);
+		if (v < 0)
+			break;
+		acc = (acc << 6) | v;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			out[n++] = (uint8_t)((acc >> bits) & 0xff);
+		}
+	}
+	return n;
+}
+
+/*
+ * One `key=value` out of a control block, which is `a=T,f=100,s=10` for kitty
+ * and `name=x;width=4;inline=1` for iTerm2 — the same shape with a different
+ * separator. Returns the value's length, or -1.
+ */
+static int ctl_get(const char *ctl, const char *key, char sep,
+		   char *out, size_t cap)
+{
+	size_t klen = strlen(key);
+	const char *p = ctl;
+
+	while (*p) {
+		const char *eq = strchr(p, '=');
+		const char *end = strchr(p, sep);
+
+		if (!end)
+			end = p + strlen(p);
+		if (eq && eq < end && (size_t)(eq - p) == klen &&
+		    !strncmp(p, key, klen)) {
+			size_t n = (size_t)(end - eq - 1);
+
+			if (n >= cap)
+				n = cap - 1;
+			memcpy(out, eq + 1, n);
+			out[n] = 0;
+			return (int)n;
+		}
+		if (!*end)
+			break;
+		p = end + 1;
+	}
+	return -1;
+}
+
+/* ── the picture becomes cells ─────────────────────────────────────────── */
+
+/* pixman hands the image back to its destroy function and free() does not
+ * take one; a cast between the two signatures is undefined behaviour. */
+static void free_bits(pixman_image_t *img, void *data)
+{
+	(void)img;
+	free(data);
+}
+
+/* WHAT A PICTURE LOOKS LIKE WHERE THERE ARE NO PIXELS — a tty, a view built
+ * without a pixel library, a dump. Something rather than nothing: a photograph
+ * that rendered as blank cells is indistinguishable from output that never
+ * arrived. The same shade libkicon falls back to, and the same reason its
+ * ASCII form exists: a Linux VT has no UTF-8. */
+static uint32_t fallback_cp(void)
+{
+	return (ktui_caps & KT_CAP_UTF8) ? 0x2593u : (uint32_t)'#';
+}
+
+/* FNV-1a over the payload, which is what makes the same picture sent twice
+ * reuse its slots instead of taking a second set. */
+static uint64_t hash_bytes(const uint8_t *p, size_t n, int cw, int ch)
+{
+	uint64_t h = 0xcbf29ce484222325ULL;
+
+	for (size_t i = 0; i < n; i++) {
+		h ^= p[i];
+		h *= 0x100000001b3ULL;
+	}
+	h ^= (uint64_t)cw << 32 | (uint64_t)ch;
+	h *= 0x100000001b3ULL;
+	return h;
+}
+
+/*
+ * Scale a picture to `cw` by `ch` cells and register its tiles under `key`.
+ * Returns what the table said: > 0 when every tile took a slot.
+ *
+ * A KEY THAT IS ALREADY REGISTERED IS REPLACED, which is the whole of playing
+ * an animation: the cells on the screen name these slots and go on naming them,
+ * and the picture behind them becomes the next frame.
+ */
+static int register_tiles(pixman_image_t *img, uint64_t key, int cw, int ch)
+{
+	return kcell_tile_picture(img, key, cw, ch, cell_w(), cell_h(),
+				  fallback_cp());
+}
+
+/*
+ * Put a decoded picture on the screen, `cw` by `ch` cells.
+ *
+ * ALL OR NOTHING, and the sprite table enforces it: a picture that registered
+ * two thirds of its tiles would draw two thirds of itself over whatever the
+ * cells beneath it held. A refusal draws the fallback codepoint instead, which
+ * is what a terminal with no pixel path shows anyway.
+ */
+static void place(pixman_image_t *img, uint64_t key, int cw, int ch)
+{
+	int sw = pixman_image_get_width(img);
+	int sh = pixman_image_get_height(img);
+	int dw = cw * cell_w(), dh = ch * cell_h();
+
+	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
+		return;
+
+	/*
+	 * ALREADY REGISTERED, and every tile of it: the same picture drawn
+	 * twice must not be scaled twice. Every tile, because the table evicts
+	 * one slot at a time and a picture missing one of them would be drawn
+	 * with a hole in it.
+	 */
+	int cols = (cw + 15) / 16, rows = (ch + 15) / 16, have = 1;
+
+	for (int i = 0; i < cols * rows; i++)
+		if (ktui_sprite_find(key ^ ((uint64_t)i * KTUI_TILE_STRIDE)) < 0) {
+			have = 0;
+			break;
+		}
+	if (have) {
+		kvt_term_place(T.t, key, cw, ch);
+		return;
+	}
+
+	if (register_tiles(img, key, cw, ch) > 0)
+		kvt_term_place(T.t, key, cw, ch);
+}
+
+/*
+ * HOW BIG IS IT, IN CELLS. A size the sequence asked for wins; otherwise the
+ * picture's own pixels divided by a cell, rounded up so the last row of pixels
+ * has a cell to be in.
+ *
+ * Clamped to the screen and to `image_cells`, because the number in the
+ * sequence came off a pty: a picture asked to be nine thousand cells wide is a
+ * request to scale one to nine thousand cells' worth of pixels.
+ */
+static void size_in_cells(pixman_image_t *img, int want_w, int want_h,
+			  int *cw, int *ch)
+{
+	int sw = pixman_image_get_width(img);
+	int sh = pixman_image_get_height(img);
+
+	/*
+	 * CLAMPED BEFORE ANY ARITHMETIC, not after. The numbers came off a
+	 * pty, and the aspect-ratio branch below multiplies one of them by a
+	 * cell size — clamping the result would be clamping a value that had
+	 * already overflowed on the way there.
+	 */
+	if (want_w < 0 || want_w > TC.image_cells)
+		want_w = want_w < 0 ? 0 : TC.image_cells;
+	if (want_h < 0 || want_h > TC.image_cells)
+		want_h = want_h < 0 ? 0 : TC.image_cells;
+
+	*cw = want_w > 0 ? want_w : (sw + cell_w() - 1) / cell_w();
+	*ch = want_h > 0 ? want_h : (sh + cell_h() - 1) / cell_h();
+
+	/* One dimension given and not the other keeps the aspect ratio, which
+	 * is what every one of these protocols means by it. */
+	if (want_w > 0 && want_h <= 0 && sw > 0)
+		*ch = (want_w * cell_w() * sh) / (sw * cell_h());
+	if (want_h > 0 && want_w <= 0 && sh > 0)
+		*cw = (want_h * cell_h() * sw) / (sh * cell_w());
+
+	if (*cw < 1)
+		*cw = 1;
+	if (*ch < 1)
+		*ch = 1;
+	if (*cw > TC.image_cells)
+		*cw = TC.image_cells;
+	if (*ch > TC.image_cells)
+		*ch = TC.image_cells;
+	if (*cw > T.cols)
+		*cw = T.cols;
+	if (*ch > T.rows)
+		*ch = T.rows;
+}
+
+static KimgBudget budget(void)
+{
+	KimgBudget b;
+
+	b.max_w = TC.image_cells * 64;
+	b.max_h = TC.image_cells * 64;
+	b.max_bytes = 64u << 20;
+	return b;
+}
+
+/*
+ * A number out of a control block, bounded before it is used in arithmetic.
+ * The `%` and `px` forms below multiply it by a cell size or a column count,
+ * and a peer that wrote two billion would overflow the multiply rather than
+ * the clamp. 100000 is far past any picture and far short of that.
+ */
+static int clamp_num(const char *v)
+{
+	long n = strtol(v, NULL, 10);
+
+	if (n < 0)
+		return 0;
+	return n > 100000 ? 100000 : (int)n;
+}
+
+/* The kitty store, reached from the inline path as well: an animated GIF
+ * arrives whole and takes the same frame machinery. Defined with the rest of
+ * that protocol below, because that is where it belongs. */
+static uint32_t store_put(uint32_t id, pixman_image_t *img);
+static int store_slot(uint32_t id);
+static void gif_anim(int i, KimgFrame *fr, int n);
+static uint32_t gif_id(void);
+
+/* ── iTerm2: OSC 1337 ──────────────────────────────────────────────────── */
+
+/*
+ * `File=<key=value;...>:<base64>`. Only an INLINE file is a picture: the same
+ * sequence without it is a download, and this terminal does not write files
+ * somebody else named.
+ */
+static void do_osc1337(const uint8_t *p, size_t len)
+{
+	const uint8_t *colon = memchr(p, ':', len);
+
+	if (!colon)
+		return;
+
+	size_t hlen = (size_t)(colon - p);
+	char head[512];
+
+	if (hlen >= sizeof(head))
+		return;
+	memcpy(head, p, hlen);
+	head[hlen] = 0;
+
+	if (strncmp(head, "File=", 5))
+		return;
+
+	char v[64];
+
+	if (ctl_get(head + 5, "inline", ';', v, sizeof(v)) < 0 || atoi(v) != 1)
+		return;
+
+	const uint8_t *b64 = colon + 1;
+	size_t b64len = len - hlen - 1;
+	uint8_t *raw = malloc(b64len ? b64len : 1);
+
+	if (!raw)
+		return;
+
+	size_t n = b64_decode(b64, b64len, raw);
+	pixman_image_t *img = NULL;
+	KimgFrame fr[KITTY_FRAMES + 1];
+	int nfr = 0;
+	KimgBudget b = budget();
+
+	/*
+	 * EVERY FRAME, because this is the sequence an animated GIF arrives
+	 * in. A still answers one and `fr[0]` is the picture, so there is one
+	 * path rather than two.
+	 */
+	if (n)
+		nfr = kimg_decode_all(raw, n, KIMG_AUTO, &b, fr,
+				      KITTY_FRAMES + 1);
+	if (nfr > 0)
+		img = fr[0].img;
+	if (img) {
+		int want_w = 0, want_h = 0;
+
+		/*
+		 * `auto`, `N`, `Npx` and `N%`. Cells are the bare number,
+		 * which is the unit this grid is in; the other two are
+		 * converted here so nothing downstream carries a unit.
+		 */
+		if (ctl_get(head + 5, "width", ';', v, sizeof(v)) > 0 &&
+		    strcmp(v, "auto")) {
+			int n2 = clamp_num(v);
+			const char *u = v + strspn(v, "0123456789");
+
+			want_w = !strcmp(u, "px") ? (n2 + cell_w() - 1) / cell_w()
+				 : !strcmp(u, "%") ? T.cols * n2 / 100 : n2;
+		}
+		if (ctl_get(head + 5, "height", ';', v, sizeof(v)) > 0 &&
+		    strcmp(v, "auto")) {
+			int n2 = clamp_num(v);
+			const char *u = v + strspn(v, "0123456789");
+
+			want_h = !strcmp(u, "px") ? (n2 + cell_h() - 1) / cell_h()
+				 : !strcmp(u, "%") ? T.rows * n2 / 100 : n2;
+		}
+
+		int cw, ch;
+		uint64_t key;
+
+		size_in_cells(img, want_w, want_h, &cw, &ch);
+		key = hash_bytes(raw, n, cw, ch);
+		place(img, key, cw, ch);
+
+		/*
+		 * More than one frame is an animation, and it needs a store
+		 * entry: the timer replaces the pixels behind the cells that
+		 * were just placed, and only a stored picture has a key, a
+		 * size and a frame list to do that with.
+		 */
+		if (nfr > 1) {
+			uint32_t id = gif_id();
+			int i;
+
+			store_put(id, img);
+			/* The store owns the root from here, whatever happens
+			 * next: store_put evicts to make room and never
+			 * refuses. */
+			fr[0].img = NULL;
+			i = store_slot(id);
+			if (i >= 0) {
+				store[i].key = key;
+				store[i].cw = cw;
+				store[i].ch = ch;
+				gif_anim(i, fr, nfr);
+			}
+		}
+	}
+	/* Whatever the store did not take is this function's — the still it
+	 * just placed, and every frame past the animation budget. */
+	for (int f = 0; f < nfr; f++)
+		if (fr[f].img)
+			pixman_image_unref(fr[f].img);
+	free(raw);
+}
+
+/* ── kitty: APC G ──────────────────────────────────────────────────────── */
+
+/* Every frame of one entry, and the bytes they were charged for. */
+static void frames_free(int i)
+{
+	for (int f = 0; f < store[i].nfr; f++) {
+		pixman_image_t *im = store[i].fr[f].img;
+
+		if (!im)
+			continue;
+		anim_bytes -= (size_t)pixman_image_get_width(im) *
+			      (size_t)pixman_image_get_height(im) * 4;
+		pixman_image_unref(im);
+		store[i].fr[f].img = NULL;
+	}
+	store[i].nfr = 0;
+	store[i].cur = 0;
+	store[i].running = 0;
+	store[i].loops = 0;
+}
+
+static int store_slot(uint32_t id)
+{
+	for (int i = 0; i < KITTY_STORE; i++)
+		if (store[i].img && store[i].id == id)
+			return i;
+	return -1;
+}
+
+static uint32_t store_put(uint32_t id, pixman_image_t *img)
+{
+	uint32_t gen = ++store_gen;
+
+	for (int i = 0; i < KITTY_STORE; i++) {
+		if (store[i].img && store[i].id == id) {
+			/* New pixels under an id are a new picture, so its
+			 * frames are somebody else's animation. */
+			frames_free(i);
+			pixman_image_unref(store[i].img);
+			store[i].img = img;
+			store[i].gen = gen;
+			store[i].cw = store[i].ch = 0;
+			return gen;
+		}
+	}
+	for (int i = 0; i < KITTY_STORE; i++) {
+		if (!store[i].img) {
+			store[i].id = id;
+			store[i].gen = gen;
+			store[i].img = img;
+			return gen;
+		}
+	}
+	/* Full. The oldest goes, because a peer that transmits nine pictures
+	 * without placing any is a peer whose ninth is the one it wants. */
+	frames_free(0);
+	pixman_image_unref(store[0].img);
+	memmove(&store[0], &store[1], sizeof(store[0]) * (KITTY_STORE - 1));
+	store[KITTY_STORE - 1].id = id;
+	store[KITTY_STORE - 1].gen = gen;
+	store[KITTY_STORE - 1].img = img;
+	return gen;
+}
+
+static void store_drop(uint32_t id, int all)
+{
+	for (int i = 0; i < KITTY_STORE; i++) {
+		if (!store[i].img)
+			continue;
+		if (!all && store[i].id != id)
+			continue;
+		frames_free(i);
+		pixman_image_unref(store[i].img);
+		store[i].img = NULL;
+		store[i].cw = store[i].ch = 0;
+	}
+}
+
+/*
+ * RAW RGB AND RGBA, which are not a format and are not decoded: the payload IS
+ * the pixels, and the only thing that can go wrong is a declared size that
+ * disagrees with how many arrived. That is exactly the check libkimg exists to
+ * make, so it is made here in the same shape and before anything allocates.
+ */
+static pixman_image_t *raw_pixels(const uint8_t *p, size_t n, int w, int h,
+				  int comp)
+{
+	KimgBudget b = budget();
+
+	if (w <= 0 || h <= 0 || w > b.max_w || h > b.max_h)
+		return NULL;
+	if ((size_t)w * (size_t)h * 4 > b.max_bytes)
+		return NULL;
+	if (n != (size_t)w * (size_t)h * (size_t)comp)
+		return NULL;
+
+	uint32_t *bits = malloc((size_t)w * (size_t)h * 4);
+
+	if (!bits)
+		return NULL;
+
+	for (size_t i = 0; i < (size_t)w * (size_t)h; i++) {
+		const uint8_t *s = p + i * (size_t)comp;
+		uint32_t a = comp == 4 ? s[3] : 0xff;
+
+		/* Premultiplied, because PIXMAN_a8r8g8b8 is. Compositing an
+		 * unpremultiplied buffer as if it were one puts a bright halo
+		 * round everything transparent. */
+		bits[i] = (a << 24) |
+			  ((uint32_t)(s[0] * a / 255) << 16) |
+			  ((uint32_t)(s[1] * a / 255) << 8) |
+			  (uint32_t)(s[2] * a / 255);
+	}
+
+	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h,
+						      bits, w * 4);
+
+	if (!img) {
+		free(bits);
+		return NULL;
+	}
+	return img;
+}
+
+static unsigned long long anim_now(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned long long)ts.tv_sec * 1000ull +
+	       (unsigned long long)(ts.tv_nsec / 1000000);
+}
+
+/* The picture that should be on the screen for this entry right now. */
+static pixman_image_t *anim_image(int i)
+{
+	if (store[i].cur <= 0 || store[i].cur > store[i].nfr)
+		return store[i].img;
+	return store[i].fr[store[i].cur - 1].img;
+}
+
+static int anim_gap(int i)
+{
+	if (store[i].cur <= 0 || store[i].cur > store[i].nfr)
+		return store[i].nfr ? store[i].fr[0].gap_ms : 0;
+	return store[i].fr[store[i].cur - 1].gap_ms;
+}
+
+/*
+ * TRANSMIT A FRAME — `a=f`. The payload is a whole picture at the root's size,
+ * or a rectangle composed onto an earlier frame at `x`,`y`; `c` names the frame
+ * to compose onto and `z` is the delay after this one.
+ *
+ * A frame that will not fit the budget is DROPPED, and the ones already
+ * accepted still play. An animation that is half there is worth more than an
+ * animation that pushed every icon on the desktop out of the sprite table.
+ */
+static void kitty_frame(int i, pixman_image_t *img, int base, int gap,
+			int at_x, int at_y)
+{
+	int rw = pixman_image_get_width(store[i].img);
+	int rh = pixman_image_get_height(store[i].img);
+	size_t cost = (size_t)rw * (size_t)rh * 4;
+
+	if (store[i].nfr >= KITTY_FRAMES || anim_bytes + cost > KITTY_ANIM_BYTES) {
+		pixman_image_unref(img);
+		return;
+	}
+
+	uint32_t *bits = calloc((size_t)rw * (size_t)rh, 4);
+	pixman_image_t *fr = bits ? pixman_image_create_bits(PIXMAN_a8r8g8b8,
+							    rw, rh, bits,
+							    rw * 4)
+				  : NULL;
+
+	if (!fr) {
+		free(bits);
+		pixman_image_unref(img);
+		return;
+	}
+	pixman_image_set_destroy_function(fr, free_bits, bits);
+
+	/*
+	 * THE BASE FIRST, THEN THE NEW PIXELS OVER IT. `c=0` and a frame that
+	 * covers everything are the same thing here — the base is copied and
+	 * then painted over — so composition needs no separate path.
+	 */
+	pixman_image_t *under = (base > 0 && base <= store[i].nfr)
+				? store[i].fr[base - 1].img
+				: store[i].img;
+
+	pixman_image_composite32(PIXMAN_OP_SRC, under, NULL, fr, 0, 0, 0, 0,
+				 0, 0, rw, rh);
+	pixman_image_composite32(PIXMAN_OP_OVER, img, NULL, fr, 0, 0, 0, 0,
+				 at_x, at_y, pixman_image_get_width(img),
+				 pixman_image_get_height(img));
+	pixman_image_unref(img);
+
+	store[i].fr[store[i].nfr].img = fr;
+	store[i].fr[store[i].nfr].gap_ms = gap > 0 ? gap : 100;
+	store[i].nfr++;
+	anim_bytes += cost;
+}
+
+/*
+ * AN ANIMATED GIF IS AN ANIMATION THAT ARRIVED WHOLE, so it takes the store
+ * the kitty protocol fills a frame at a time — the timer, the eviction, the
+ * budget and the "replace the pixels under the same key" trick are all already
+ * there, and a second animator would be a second answer to what a frame is.
+ *
+ * The frames are TAKEN, not composed. libnsgif has already applied disposal
+ * and transparency, so every frame it returns is the complete canvas as it
+ * should appear; running one through kitty_frame's base-then-over would show
+ * the first frame through anything transparent in a later one.
+ *
+ * Frames past the budget are left for the caller to free, and the ones already
+ * taken still play — the same trade kitty_frame makes.
+ */
+static void gif_anim(int i, KimgFrame *fr, int n)
+{
+	for (int f = 1; f < n && store[i].nfr < KITTY_FRAMES; f++) {
+		size_t cost;
+
+		if (!fr[f].img)
+			break;
+		cost = (size_t)pixman_image_get_width(fr[f].img) *
+		       (size_t)pixman_image_get_height(fr[f].img) * 4;
+		if (anim_bytes + cost > KITTY_ANIM_BYTES)
+			break;
+		store[i].fr[store[i].nfr].img = fr[f].img;
+		store[i].fr[store[i].nfr].gap_ms = fr[f].gap_ms > 0
+							   ? fr[f].gap_ms
+							   : 100;
+		store[i].nfr++;
+		anim_bytes += cost;
+		fr[f].img = NULL;	/* the store owns it now */
+	}
+	if (!store[i].nfr)
+		return;
+	/* A GIF loops forever unless it says otherwise, and libnsgif's
+	 * loop_count is the count of REPEATS — so zero is endless, which is
+	 * what -1 means here. */
+	store[i].loops = -1;
+	store[i].cur = 0;
+	store[i].running = 1;
+	store[i].due_ms = anim_now() + (unsigned long long)anim_gap(i);
+}
+
+/*
+ * ── THE UNICODE PLACEHOLDERS ────────────────────────────────────────────
+ *
+ * `tmux` cannot pass an APC through, so a program inside one transmits the
+ * image with `a=t` and then writes `U+10EEEE` cells where it wants it drawn,
+ * carrying the image's id in each cell's FOREGROUND COLOUR — the low 24 bits
+ * as a truecolor value, or the palette index when the program used one.
+ *
+ * THE ROW AND COLUMN ARE INFERRED FROM THE RUN. The protocol also allows
+ * combining diacritics after the placeholder to state them outright; this
+ * reads the position instead, which is what the specification says a terminal
+ * does when they are absent and is what both programs emit. A picture drawn
+ * out of order, or one split across two places on the screen, is not what
+ * either does and would need the diacritic table — three hundred codepoints
+ * for a case nothing here produces.
+ */
+#define KITTY_PLACEHOLDER 0x10eeeeu
+
+/* The store row an id names, or NULL. A picture that was never placed has no
+ * tiles registered and no size, so it cannot answer for a cell. */
+static int placeholder_store(uint32_t id)
+{
+	for (int i = 0; i < KITTY_STORE; i++)
+		if (store[i].id == id && store[i].key && store[i].cw > 0 &&
+		    store[i].ch > 0)
+			return i;
+	return -1;
+}
+
+/*
+ * The sprite cell for one tile of a placed picture, or 0 when the table has
+ * since dropped it.
+ *
+ * The tiling is `place()`'s: 16x16 cells to a tile, row-major, each keyed by
+ * the picture's key mixed with the tile's index. A cell pointing at an evicted
+ * slot would draw whatever took that slot next, which is why a miss is a blank
+ * rather than a guess.
+ */
+static uint32_t placeholder_cell(int si, int row, int col)
+{
+	int cols = (store[si].cw + 15) / 16;
+	int tile = (row / 16) * cols + (col / 16);
+	int slot = ktui_sprite_find(store[si].key ^
+				    ((uint64_t)tile * KTUI_TILE_STRIDE));
+
+	if (slot < 0)
+		return 0;
+	return KTUI_SPRITE_BASE | ((uint32_t)slot << 8) |
+	       ((uint32_t)(row % 16) << 4) | (uint32_t)(col % 16);
+}
+
+/* See term.h. */
+void term_pic_placeholders(KtuiCell *buf, int w, int h)
+{
+	/* One counter per store row: how many rows of this picture's run have
+	 * been seen so far, and which screen row the current one is. A picture
+	 * is written top to bottom, so the screen order IS the image order. */
+	int nrow[KITTY_STORE], atrow[KITTY_STORE];
+
+	for (int i = 0; i < KITTY_STORE; i++) {
+		nrow[i] = 0;
+		atrow[i] = -1;
+	}
+
+	for (int y = 0; y < h; y++) {
+		int col[KITTY_STORE];
+
+		for (int i = 0; i < KITTY_STORE; i++)
+			col[i] = 0;
+
+		for (int x = 0; x < w; x++) {
+			KtuiCell *c = &buf[y * w + x];
+			uint32_t id;
+			int si;
+
+			if (c->ch != KITTY_PLACEHOLDER)
+				continue;
+			/*
+			 * THE COLOUR IS THE ID, AND ONLY A TRUECOLOR ONE IS.
+			 *
+			 * `38;2;r;g;b` reaches here intact. A `38;5;<n>` does
+			 * not: the state machine resolves an indexed colour to
+			 * the xterm cube's RGB and throws the index away, and
+			 * what survives into a cell's slot is one of the
+			 * theme's eight — which would collide with the small
+			 * ids a client actually uses and answer a
+			 * default-coloured placeholder with somebody else's
+			 * picture. A cell with no literal colour names no id.
+			 */
+			if (!(c->attr & KT_A_FGRGB)) {
+				c->ch = ' ';
+				continue;
+			}
+			id = c->fgc & 0xffffffu;
+			si = placeholder_store(id);
+			if (si < 0) {
+				/* Transmitted but never placed, or evicted: a
+				 * codepoint no font has is worse than a
+				 * space. */
+				c->ch = ' ';
+				continue;
+			}
+			if (atrow[si] != y) {
+				atrow[si] = y;
+				nrow[si]++;
+			}
+			/* A RUN BIGGER THAN THE PICTURE IS NOT A BIGGER
+			 * PICTURE. The tiles were cut to the size the transmit
+			 * asked for; a cell past that edge would index a tile
+			 * of some other picture, so it is a blank. */
+			if (nrow[si] > store[si].ch ||
+			    col[si] >= store[si].cw) {
+				c->ch = ' ';
+				col[si]++;
+				continue;
+			}
+			c->ch = placeholder_cell(si, nrow[si] - 1, col[si]);
+			if (!c->ch)
+				c->ch = ' ';
+			col[si]++;
+		}
+	}
+}
+
+/*
+ * A STORE ID FOR A PICTURE THAT HAS NONE. The kitty protocol's ids are the
+ * peer's; an inline GIF arrived without one, and these count down from the top
+ * so a peer using small numbers — which every implementation does — cannot
+ * place ours by accident.
+ */
+static uint32_t gif_id(void)
+{
+	static uint32_t next = 0xffffffffu;
+
+	return next--;
+}
+
+static void kitty_apply(const char *ctl, const uint8_t *payload, size_t len)
+{
+	char v[64];
+	char action = 'T';
+	uint32_t id = 0;
+	int fmt = 32, sw = 0, sh = 0;
+	int cols = 0, rows = 0;
+	int gap = 0, at_x = 0, at_y = 0, base = 0, anim_state = 0, loops = 0;
+	int have_loops = 0;
+
+	int unicode = 0;
+
+	if (ctl_get(ctl, "a", ',', v, sizeof(v)) > 0)
+		action = v[0];
+	/*
+	 * `U=1` SAYS THE CLIENT WILL PLACE IT ITSELF, with a run of U+10EEEE
+	 * cells wherever it wants the picture — which is what a program inside
+	 * `tmux` does, because `tmux` will not pass an APC through. Without
+	 * reading it, `a=T,U=1` both stamps the picture at the cursor AND
+	 * answers the client's own run: the picture is drawn twice and the
+	 * cursor copy scrolls on its own.
+	 */
+	if (ctl_get(ctl, "U", ',', v, sizeof(v)) > 0)
+		unicode = atoi(v) != 0;
+	if (ctl_get(ctl, "i", ',', v, sizeof(v)) > 0)
+		id = (uint32_t)strtoul(v, NULL, 10);
+	if (ctl_get(ctl, "f", ',', v, sizeof(v)) > 0)
+		fmt = atoi(v);
+	if (ctl_get(ctl, "s", ',', v, sizeof(v)) > 0)
+		sw = clamp_num(v);
+	if (ctl_get(ctl, "v", ',', v, sizeof(v)) > 0)
+		sh = clamp_num(v);
+	if (ctl_get(ctl, "c", ',', v, sizeof(v)) > 0)
+		cols = clamp_num(v);
+	if (ctl_get(ctl, "r", ',', v, sizeof(v)) > 0)
+		rows = clamp_num(v);
+	if (ctl_get(ctl, "z", ',', v, sizeof(v)) > 0)
+		gap = clamp_num(v);
+	if (ctl_get(ctl, "x", ',', v, sizeof(v)) > 0)
+		at_x = clamp_num(v);
+	if (ctl_get(ctl, "y", ',', v, sizeof(v)) > 0)
+		at_y = clamp_num(v);
+	/*
+	 * `s` AND `v` MEAN DIFFERENT THINGS PER ACTION, which is the protocol's
+	 * doing and not a shortcut here: on a transmission they are the source
+	 * width and height, and on an animation control they are the state and
+	 * the loop count. The action is read first, so there is no ambiguity.
+	 */
+	if (action == 'a') {
+		anim_state = sw;
+		if (ctl_get(ctl, "v", ',', v, sizeof(v)) > 0) {
+			loops = clamp_num(v);
+			have_loops = 1;
+		}
+	}
+
+	base = cols;	/* `c` is the base frame for a=f and the frame to show
+			 * for a=a; it is the column count for everything else,
+			 * which is what the protocol does with one letter. */
+
+	if (action == 'd') {
+		store_drop(id, id == 0);
+		return;
+	}
+
+	/*
+	 * ANIMATION CONTROL — `a=a`. `S` is stop, run-and-wait or run; `v` is
+	 * how many times round, where zero is for ever; `c` selects the frame
+	 * to show; `z` sets the delay after it.
+	 */
+	if (action == 'a') {
+		int i = store_slot(id);
+
+		if (i < 0)
+			return;
+		if (base > 0 && base <= store[i].nfr + 1)
+			store[i].cur = base - 1;
+		/* `r` names the frame `z` applies to, counting the root as 1. */
+		if (gap > 0 && rows > 1 && rows <= store[i].nfr + 1)
+			store[i].fr[rows - 2].gap_ms = gap;
+		if (have_loops)
+			store[i].loops = loops > 0 ? loops : -1;
+		if (anim_state == 1) {
+			store[i].running = 0;
+		} else if (anim_state >= 2) {
+			if (!store[i].loops)
+				store[i].loops = -1;
+			store[i].running = store[i].nfr > 0;
+			store[i].due_ms = anim_now() +
+					  (unsigned long long)anim_gap(i);
+		}
+		return;
+	}
+
+	if (action == 'p') {
+		int i = store_slot(id);
+		int cw, ch;
+
+		if (i < 0)
+			return;
+		size_in_cells(store[i].img, cols, rows, &cw, &ch);
+
+		uint64_t key = hash_bytes((const uint8_t *)&store[i].gen,
+					  sizeof(store[i].gen), cw, ch);
+
+		place(store[i].img, key, cw, ch);
+		/* WHERE IT LANDED, so a frame can replace the pixels behind
+		 * cells that are already on the screen. */
+		store[i].key = key;
+		store[i].cw = cw;
+		store[i].ch = ch;
+		return;
+	}
+
+	/*
+	 * `a=q` IS A QUESTION, AND SILENCE IS THE ONE ANSWER THAT BREAKS IT.
+	 *
+	 * A picture program sends a tiny transmission with `a=q` and waits: an
+	 * `OK` means it may use this protocol, an error code means it must
+	 * fall back, and NOTHING means it waits for its own timeout and then
+	 * draws as though the terminal were a teletype. Dropping the query is
+	 * therefore the most expensive way to not support something.
+	 *
+	 * NOTHING IS STORED. A query names an id so the reply can be matched
+	 * to it, and it must not leave an image behind — which is exactly why
+	 * this returns here rather than falling into the transmit path.
+	 */
+	if (action == 'q') {
+		char reply[64];
+		int n;
+
+		/*
+		 * The id is echoed so a program with several in flight knows
+		 * which it is hearing about. A query that named none is
+		 * answered anyway, with i=0: the alternative is silence, which
+		 * is the failure this branch exists to prevent.
+		 */
+		n = snprintf(reply, sizeof(reply), "\033_Gi=%u;OK\033\\",
+			     (unsigned)id);
+		kvt_term_write(T.t, reply, (size_t)n);
+		return;
+	}
+
+	if (action != 'T' && action != 't' && action != 'f')
+		return;		/* a query, or an action this does not have */
+
+	uint8_t *raw = malloc(len ? len : 1);
+
+	if (!raw)
+		return;
+
+	size_t n = b64_decode(payload, len, raw);
+	pixman_image_t *img = NULL;
+
+	if (n) {
+		KimgBudget b = budget();
+
+		if (fmt == 24 || fmt == 32)
+			img = raw_pixels(raw, n, sw, sh, fmt == 24 ? 3 : 4);
+		else
+			img = kimg_decode(raw, n, KIMG_AUTO, &b);
+	}
+	free(raw);
+	if (!img)
+		return;
+
+	/*
+	 * A FRAME BELONGS TO A PICTURE THAT ALREADY EXISTS. There is nothing to
+	 * animate otherwise, and storing it as a picture in its own right would
+	 * put a frame of somebody's animation in the store under their id.
+	 */
+	if (action == 'f') {
+		int i = store_slot(id);
+
+		if (i < 0) {
+			pixman_image_unref(img);
+			return;
+		}
+		kitty_frame(i, img, base, gap, at_x, at_y);
+		return;
+	}
+
+	/* Stored either way, and stored FIRST: `a=T` is transmit AND display,
+	 * a peer that displayed one may place it again by id without
+	 * re-sending it, and the generation the store hands back is what makes
+	 * this picture's sprite key different from the last one under this
+	 * id. */
+	uint32_t gen = store_put(id, img);
+
+	/*
+	 * THE TILES ARE REGISTERED ON A TRANSMIT AND NOT ONLY ON A PLACEMENT.
+	 *
+	 * A program inside `tmux` sends `a=t` — transmit, do not display — and
+	 * then stamps a run of U+10EEEE cells naming the id. If the tiles were
+	 * cut only when something was placed at the cursor, that id would name
+	 * a picture with no tiles and every cell of the run would be a blank:
+	 * the whole protocol would be a picture transmitted and never drawn.
+	 */
+	if (action == 'T' || action == 't') {
+		int cw, ch;
+
+		size_in_cells(img, cols, rows, &cw, &ch);
+
+		uint64_t key = hash_bytes((const uint8_t *)&gen, sizeof(gen),
+					  cw, ch);
+		int i;
+
+		/* AT THE CURSOR ONLY WHEN THE CLIENT ASKED FOR THAT. `a=t` is
+		 * transmit alone, and `U=1` says the client will stamp its own
+		 * cells — placing here as well would draw the picture twice. */
+		if (action == 'T' && !unicode)
+			place(img, key, cw, ch);
+		else if (register_tiles(img, key, cw, ch) <= 0)
+			return;
+
+		i = store_slot(id);
+		if (i >= 0) {
+			store[i].key = key;
+			store[i].cw = cw;
+			store[i].ch = ch;
+		}
+	}
+}
+
+/*
+ * Advance every running animation whose frame is due, and say how long until
+ * the next one is — or -1 when nothing is animating, so a caller with nothing
+ * else to do waits on its descriptors instead of on a clock.
+ *
+ * THE SCREEN IS NOT TOUCHED. Each frame re-registers the SAME sprite key, so
+ * the cells that name its slots go on naming them and only the pixels change.
+ */
+int term_pic_tick(void)
+{
+	unsigned long long now = anim_now();
+	long long next = -1;
+
+	for (int i = 0; i < KITTY_STORE; i++) {
+		if (!store[i].img || !store[i].running || !store[i].nfr)
+			continue;
+		if (!store[i].cw || !store[i].ch)
+			continue;	/* transmitted but never placed */
+
+		if (now >= store[i].due_ms) {
+			store[i].cur++;
+			if (store[i].cur > store[i].nfr) {
+				store[i].cur = 0;
+				if (store[i].loops > 0 &&
+				    --store[i].loops == 0) {
+					store[i].running = 0;
+					continue;
+				}
+			}
+
+			pixman_image_t *im = anim_image(i);
+
+			if (im)
+				register_tiles(im, store[i].key, store[i].cw,
+					       store[i].ch);
+			store[i].due_ms = now +
+					  (unsigned long long)anim_gap(i);
+		}
+
+		long long wait = (long long)store[i].due_ms - (long long)now;
+
+		if (wait < 0)
+			wait = 0;
+		if (next < 0 || wait < next)
+			next = wait;
+	}
+	return (int)next;
+}
+
+static void chunk_reset(void)
+{
+	chunk.active = 0;
+	chunk.len = 0;
+	chunk.ctl[0] = 0;
+}
+
+static void do_kitty(const char *ctl, const uint8_t *payload, size_t len)
+{
+	char v[64];
+	int more = 0;
+
+	if (ctl_get(ctl, "m", ',', v, sizeof(v)) > 0)
+		more = atoi(v);
+
+	if (!more && !chunk.active) {
+		kitty_apply(ctl, payload, len);
+		return;
+	}
+
+	/* The FIRST chunk's control block describes the picture; the ones
+	 * after it carry `m` and nothing worth keeping. */
+	if (!chunk.active) {
+		chunk.active = 1;
+		chunk.len = 0;
+		snprintf(chunk.ctl, sizeof(chunk.ctl), "%s", ctl);
+	}
+
+	size_t cap = (size_t)TC.image_max * 1024;
+
+	if (chunk.len + len > cap) {
+		chunk_reset();
+		return;
+	}
+	if (chunk.len + len > chunk.cap) {
+		size_t want = chunk.cap ? chunk.cap * 2 : 8192;
+
+		while (want < chunk.len + len)
+			want *= 2;
+		if (want > cap)
+			want = cap;
+
+		uint8_t *nb = realloc(chunk.buf, want);
+
+		if (!nb) {
+			chunk_reset();
+			return;
+		}
+		chunk.buf = nb;
+		chunk.cap = want;
+	}
+	memcpy(chunk.buf + chunk.len, payload, len);
+	chunk.len += len;
+
+	if (!more) {
+		kitty_apply(chunk.ctl, chunk.buf, chunk.len);
+		chunk_reset();
+	}
+}
+
+/*
+ * ANSWER A KITTY QUERY WITH A REFUSAL. Used only where pictures are off; the
+ * reply shape is the protocol's own `<code>:<message>`, which a client reads
+ * as "do not use this protocol here" rather than as a transient failure.
+ *
+ * Only a QUERY is answered. Every other action is silently dropped, because a
+ * transmission that was never going to be shown has no reply in the protocol
+ * and a client sending one is not waiting for one.
+ */
+static void kitty_refuse(const char *ctl)
+{
+	char v[64], reply[96];
+	uint32_t id = 0;
+	int n;
+
+	if (!ctl || ctl_get(ctl, "a", ',', v, sizeof(v)) <= 0 || v[0] != 'q')
+		return;
+	if (ctl_get(ctl, "i", ',', v, sizeof(v)) > 0)
+		id = (uint32_t)strtoul(v, NULL, 10);
+	n = snprintf(reply, sizeof(reply),
+		     "\033_Gi=%u;ENOTSUP:pictures are off in this terminal"
+		     "\033\\", (unsigned)id);
+	kvt_term_write(T.t, reply, (size_t)n);
+}
+
+/* ── the one callback ──────────────────────────────────────────────────── */
+
+static void on_image(struct kvt_vte *vte, enum kvt_img_kind kind,
+		     const char *params, const uint8_t *payload, size_t len,
+		     void *data)
+{
+	(void)vte;
+	(void)data;
+
+	if (!T.t)
+		return;
+	/*
+	 * PICTURES OFF STILL ANSWERS THE KITTY QUESTION, and refuses it.
+	 *
+	 * `a=q` asks whether this terminal will take a picture. A terminal
+	 * with pictures turned off that says nothing is one the program waits
+	 * on and then times out against — the same cost as not implementing
+	 * the protocol at all, paid by a person who turned pictures off on
+	 * purpose. An error reply is instant and is what the fallback path is
+	 * written for.
+	 */
+	if (!TC.images) {
+		if (kind == KVT_IMG_KITTY)
+			kitty_refuse(params);
+		return;
+	}
+
+	switch (kind) {
+	case KVT_IMG_SIXEL: {
+		/*
+		 * THE INTRODUCER IS PUT BACK HERE, because the delimiter ate
+		 * it. libkvt consumes the DCS final `q` as a state transition
+		 * and hands the parameters over separately, and libsixel's
+		 * parser leaves its DCS state on `q` and on nothing else — so
+		 * a body passed on alone is skipped to the terminator and
+		 * decodes as a one-pixel image with no error. The frame is
+		 * built here rather than in libkimg because the fixtures that
+		 * exercise libkimg carry their own introducer and would get
+		 * two.
+		 */
+		KimgBudget b = budget();
+		size_t plen = params ? strlen(params) : 0;
+		size_t flen = plen + len + 5;
+		uint8_t *framed = malloc(flen + 1);
+		pixman_image_t *img;
+		int cw, ch;
+
+		if (!framed)
+			return;
+		framed[0] = 0x1b;
+		framed[1] = 'P';
+		memcpy(framed + 2, params, plen);
+		framed[2 + plen] = 'q';
+		memcpy(framed + 3 + plen, payload, len);
+		framed[3 + plen + len] = 0x1b;
+		framed[4 + plen + len] = '\\';
+		framed[flen] = 0;
+
+		img = kimg_decode(framed, flen, KIMG_SIXEL, &b);
+		free(framed);
+		if (!img)
+			return;
+		size_in_cells(img, 0, 0, &cw, &ch);
+		place(img, hash_bytes(payload, len, cw, ch), cw, ch);
+		pixman_image_unref(img);
+		break;
+	}
+	case KVT_IMG_OSC1337:
+		do_osc1337(payload, len);
+		break;
+	case KVT_IMG_KITTY:
+		do_kitty(params, payload, len);
+		break;
+	}
+}
+
+/*
+ * WHAT A PROGRAM IS TOLD IT MAY SEND, in pixels, and it is the same bound
+ * `fit()` above actually enforces: `image_cells` cells in each direction, and
+ * never more of them than the grid has. Reporting the decoder's own pixel
+ * budget instead would name a size this terminal then clamps, and a picture
+ * clipped after the terminal said it would fit is worse than one refused.
+ *
+ * RE-STATED WHENEVER THE GRID CHANGES, because half the bound is the number of
+ * columns and rows — a geometry answered from the size the window opened at is
+ * wrong for every size after the first.
+ */
+void term_pic_geom(void)
+{
+	int cw = TC.image_cells < T.cols ? TC.image_cells : T.cols;
+	int ch = TC.image_cells < T.rows ? TC.image_cells : T.rows;
+
+	kvt_term_cell_px(T.t, cell_w(), cell_h());
+	if (!TC.images) {
+		/* A build or a session with pictures off answers the query
+		 * with a failure, which is what "no geometry" means. */
+		kvt_term_img_geom(T.t, 0, 0);
+		return;
+	}
+	kvt_term_img_geom(T.t, cw * cell_w(), ch * cell_h());
+}
+
+void term_pic_init(void)
+{
+	/*
+	 * THE CALLBACK IS REGISTERED EVEN WITH PICTURES OFF, and it is what
+	 * makes the refusal above reachable: with none, libkvt routes the whole
+	 * APC to its ignore state and `a=q` gets silence — which is the one
+	 * answer a program cannot act on. The cap is small on that path because
+	 * nothing there is decoded; a body over it is dropped by libkvt before
+	 * it reaches the screen, which is what a body nobody will look at
+	 * deserves.
+	 */
+	kvt_term_cell_px(T.t, cell_w(), cell_h());
+	if (!TC.images) {
+		kvt_term_img_cb(T.t, on_image, 4096, NULL);
+		term_pic_geom();
+		return;
+	}
+
+	ktui_sprite_evictor(kcell_tile_free, NULL);
+	ktui_sprite_budget(SPRITE_BUDGET, cell_w(), cell_h());
+	kvt_term_img_cb(T.t, on_image, (size_t)TC.image_max * 1024, NULL);
+	term_pic_geom();
+}
+
+void term_pic_shutdown(void)
+{
+	store_drop(0, 1);
+	free(chunk.buf);
+	chunk.buf = NULL;
+	chunk.cap = 0;
+	ktui_sprite_clear();
+}
+
+#else	/* no libkimg in this build */
+
+/* Nothing decodes, so there is no geometry to report and the query says so. */
+void term_pic_geom(void)
+{
+	kvt_term_img_geom(T.t, 0, 0);
+}
+
+void term_pic_init(void)
+{
+	term_pic_geom();
+}
+
+void term_pic_shutdown(void)
+{
+}
+
+/* Nothing decodes, so nothing animates: -1 is "wait on the descriptors". */
+int term_pic_tick(void)
+{
+	return -1;
+}
+
+/*
+ * A PLACEHOLDER STILL HAS TO BE ANSWERED, even here — with a space.
+ *
+ * Nothing was decoded, so nothing can be drawn; but a build with no decoder
+ * silently drops the transmit and would then draw the client's run as a
+ * codepoint no font has, which is a screen of tofu where a terminal without
+ * pictures should show a gap.
+ */
+void term_pic_placeholders(KtuiCell *buf, int w, int h)
+{
+	for (int i = 0; i < w * h; i++)
+		if (buf[i].ch == 0x10eeeeu)
+			buf[i].ch = ' ';
+}
+
+#endif

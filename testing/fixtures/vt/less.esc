@@ -1,0 +1,47 @@
+[0;0H[K<p align="center">
+[K  <img src="kdos.png" alt="KDOS" width="260"/>
+[K</p>
+[K
+[K<h1 align="center">KDOS</h1>
+[K
+[K<p align="center"><b><i>I use KDOS btw.</i></b></p>
+[K
+[K<p align="center">
+[KA Linux distribution compiled from source, one <code>kpkgbuild</code> at a time 
+[K—<br>
+[Kwith a desktop that is a character grid all the way down.
+[K</p>
+[K
+[K<p align="center">
+[K<b>musl</b> · <b>toybox</b> · <b>wlroots</b> · <b>no systemd</b> · <b>no Xor
+[Kg</b> · <b>no GTK or Qt on the host</b>
+[K</p>
+[K
+[K<p align="center">
+[K<sub>764 ports · Linux 7.0.10 · 758 packages · 181 containerised applications
+[K · builds offline from this repo</sub>
+[K</p>
+[24;0H[K[7mREADME.md[m[0;0H[K
+[K<p align="center">
+[K  <img src="docs/screenshots/desktop.png" alt="The KDOS desktop: the panel along
+[K the bottom with live meters, desktop icons on the wallpaper, and a terminal" wi
+[Kdth="100%"/>
+[K</p>
+[K
+[K<p align="center">
+[K<sub>Screenshots are 1920×1080, taken on the current image in a QEMU guest.
+[KThe phosphor shader is not in them — that renderer path declines on software
+[Krendering, so what you see is the cell grid underneath it.</sub>
+[K</p>
+[K
+[K---
+[K
+[K## What KDOS is
+[K
+[KFour properties. Everything else in this repository follows from them, and each
+[Kis covered in [Why KDOS](docs/kdos/01-philosophy/why-kdos.md).
+[K
+[K**Built from source, with named exceptions.** The host is compiled here from
+[Kupstream tarballs by 764 recipes: cross toolchain → musl userland →
+[Kself-hosting bootstrap → libraries → desktop → kernel. No base image, no b
+[24;0H[K:

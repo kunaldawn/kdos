@@ -16,5 +16,5 @@ sha256      = 94b26cc8e8aba61a5f2099715fe640e18c5f678e9a500408b38761263954228a  
 sha256      = 1602e6127a4e261dee832c79dc622a098ed16abc25e294e0bc79b435e53b8dc6  python3-maturin-vendor-1.15.0.tar.xz
 description = The build backend every Rust-backed python extension uses
 homepage    = https://github.com/PyO3/maturin
-depends     = python3 python3-setuptools python3-pip rust
+depends     = python3 python3-setuptools python3-setuptools-rust python3-pip rust
 vendoring   = rust

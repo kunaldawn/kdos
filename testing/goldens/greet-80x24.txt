@@ -1,0 +1,24 @@
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                 += KDOS =====================================+                 
+                 |                                            |                 
+                 |  > Ada Lovelace                            |                 
+                 |    Grace Hopper                            |                 
+                 |                                            |                 
+                 |  Password: *******                         |                 
+                 |                                            |                 
+                 |  Session:  < Console >                     |                 
+                 |                                            |                 
+                 |                                            |                 
+                 |                                            |                 
+                 |                                            |                 
+                 +============================================+                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+  Up/Down account  Left/Right session  Enter log in  Esc clear                  
+                                                                                

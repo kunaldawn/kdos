@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pizauth
+version     = 1.1.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ltratt/pizauth/archive/refs/tags/$name-$version.tar.gz
+sha256      = 1e7219795937160f74fabfe98e948818a1fa28cfc9dc9b7bcfb6853bce5fb72d  pizauth-1.1.0.tar.gz
+sha256      = ba4edb5ddd5125a1ffcce5137a073d8dc662b041928af9805227fa28f06ab8be  pizauth-vendor-1.1.0.tar.xz
+description = An OAuth2 token, minted and refreshed for a mail client to present
+homepage    = https://tratt.net/laurie/src/pizauth/
+depends     = rust
+vendoring   = rust

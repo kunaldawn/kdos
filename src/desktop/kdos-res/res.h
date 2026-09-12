@@ -36,6 +36,18 @@
 #include "kproc.h"
 #include "ktui.h"
 
+#include "kdisp.h"
+
+/*
+ * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
+ * first, so a surface started FROM the console desktop attaches to it even on a
+ * machine that also has a compositor running. libkdisp names no implementation;
+ * this list is what links each one in.
+ */
+extern const KDispImpl *const kdos_disp[];
+extern const int kdos_disp_n;
+
+
 /* ── the pages ───────────────────────────────────────────────────────────
  *
  * The ids are the only spelling: --page takes them, res.conf's sort keys use
@@ -52,6 +64,7 @@ enum res_page_id {
 	RP_NETWORK,
 	RP_BATTERIES,
 	RP_ENERGY,
+	RP_SENSORS,
 	RP_BOXES,
 	RP_NPAGES
 };
@@ -153,6 +166,8 @@ void res_page_set(int idx);
 int  res_page_current(void);
 /* Route input at the frame level: the sidebar, the page cycle and F1 first,
  * then the page's own handler. Returns 1 when the program should exit. */
+/* Registered once, before the loop: the Esc ladder and the F1 page. */
+void res_keys_init(void);
 int  res_frame_key(int k);
 int  res_frame_click(int mx, int my, int btn);
 int  res_frame_wheel(int up);
@@ -176,6 +191,9 @@ const char *res_counter(unsigned long long v);
 const char *res_none(void);
 const char *res_cpu_headline(void);
 const char *res_mem_headline(void);
+void res_sensor_prepare(void);
+const char *res_sensor_headline(void);
+void res_draw_sensors(int x, int y, int w, int h);
 const char *res_proc_headline(void);
 void res_draw_procs(int x, int y, int w, int h);
 int  res_procs_key(int k);

@@ -635,8 +635,8 @@ static const char *hash_password(const char *plain)
 
 /* Rewrite one colon-separated database in place, field by field. Renaming
  * the live user touches passwd, shadow, group (as a member AND as the
- * primary group name) and the autologin line in inittab — miss any one of
- * them and the installed system logs nobody in. */
+ * primary group name) and con.conf's `autologin` — miss any one of them and
+ * the installed system logs nobody in. */
 static void rewrite_accounts(const char *oldu, const char *newu,
 			     const char *fullname, const char *userhash,
 			     const char *roothash)
@@ -741,28 +741,46 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 		logf_("updated %s", path);
 	}
 
-	/* inittab: tty1 autologs in by name, so a rename has to reach it */
-	snprintf(path, sizeof(path), "%s/etc/inittab", TARGET);
+	/*
+	 * con.conf's `autologin`: tty1 logs in the account this key names, so
+	 * a rename has to reach it. It is the ONLY place the desktop's account
+	 * is named — `/etc/inittab` runs `kdos-getty tty1 kdos-con-login tty1`
+	 * and carries no account at all — so missing this key leaves the key
+	 * naming a user the installed system does not have and the machine
+	 * reachable only from tty2.
+	 *
+	 * Edited in place and after the `greet` rewrite, for the same reason
+	 * that one is: the shipped file is mostly the explanation of what each
+	 * key does, and replacing it wholesale leaves a configuration file
+	 * nobody can read.
+	 */
+	snprintf(path, sizeof(path), "%s/etc/kdos/con.conf", TARGET);
 	if (strcmp(oldu, newu) && slurp(path, buf, sizeof(buf)) > 0) {
-		char needle[80], repl[80];
-		snprintf(needle, sizeof(needle), "--autologin %s", oldu);
-		snprintf(repl, sizeof(repl), "--autologin %s", newu);
-		out[0] = 0;
 		size_t o = 0;
-		const char *src = buf;
-		const char *hit;
-		while ((hit = strstr(src, needle)) && o + 128 < sizeof(out)) {
-			size_t n = (size_t)(hit - src);
-			if (o + n >= sizeof(out))
+		int done = 0;
+
+		out[0] = 0;
+		for (char *line = strtok(buf, "\n"); line;
+		     line = strtok(NULL, "\n")) {
+			const char *p = line;
+
+			while (*p == ' ' || *p == '\t')
+				p++;
+			if (!strncmp(p, "autologin", 9) &&
+			    (p[9] == ' ' || p[9] == '\t' || p[9] == '=')) {
+				o += (size_t)snprintf(out + o, sizeof(out) - o,
+						      "autologin = %s\n", newu);
+				done = 1;
+				continue;
+			}
+			o += (size_t)snprintf(out + o, sizeof(out) - o, "%s\n",
+					      line);
+			if (o >= sizeof(out) - 64)
 				break;
-			memcpy(out + o, src, n);
-			o += n;
-			out[o] = 0;
-			cat(out, sizeof(out), repl);
-			o = strlen(out);
-			src = hit + strlen(needle);
 		}
-		cat(out, sizeof(out), src);
+		if (!done)
+			snprintf(out + o, sizeof(out) - o, "autologin = %s\n",
+				 newu);
 		if (!cfg.dry_run && kb_write_file(path, out) < 0)
 			fail("cannot write %s", path);
 		logf_("updated %s (autologin -> %s)", path, newu);
@@ -1174,25 +1192,87 @@ static void do_config(void)
 
 	wr("/etc/hostname", "%s\n", cfg.hostname);
 
-	/* KDOS has no tzdata: musl falls back to UTC unless TZ is set, so the
-	 * timezone is a POSIX TZ string in the environment. If a zoneinfo tree
-	 * ever ships, the symlink below starts working and this stays valid. */
+	/*
+	 * BOTH HALVES OR NEITHER. `/etc/localtime` is what a program reading
+	 * the zoneinfo tree follows; `TZ` is what musl reads, and it WINS
+	 * where it is set — so a `TZ` naming different rules from the symlink
+	 * makes `date` and the desktop disagree about the time. The colon form
+	 * points musl at the same file, which is the only value that cannot
+	 * drift from it. `kdos-powerd`'s `timezone` verb writes exactly these
+	 * two afterwards.
+	 */
 	wr("/etc/profile.d/20-timezone.sh",
 	   "# Written by the KDOS installer.\n"
-	   "# KDOS ships no tzdata, so the zone is a POSIX TZ string that musl\n"
-	   "# parses directly. Change it here, or run `kinstall` again.\n"
+	   "# `/etc/localtime` is what a program reading the zoneinfo tree\n"
+	   "# follows; this is what musl reads, and it wins where it is set.\n"
+	   "# Both say the same zone or `date` and the desktop disagree.\n"
 	   "export TZ='%s'\n", cfg.tz);
-	if (kb_path_exists("/usr/share/zoneinfo") && cfg.tz_label[0]) {
+	if (cfg.tz_label[0]) {
 		char zi[256];
 		snprintf(zi, sizeof(zi), "/usr/share/zoneinfo/%s", cfg.tz_label);
 		if (kb_path_exists(zi) && !cfg.dry_run) {
 			unlink(TARGET "/etc/localtime");
 			if (symlink(zi, TARGET "/etc/localtime") == 0)
 				logf_("linked /etc/localtime -> %s", zi);
+		} else if (!kb_path_exists(zi)) {
+			/* A zone the picker offered and the target does not
+			 * carry leaves `TZ` pointing at a symlink that is not
+			 * there, and musl answers UTC with no error. Said
+			 * here, where the log is read. */
+			logf_("no zone file for %s; the machine will keep UTC",
+			      cfg.tz_label);
 		}
 	}
 
 	wr("/etc/keymap", "%s\n", cfg.keymap);
+
+	/*
+	 * con.conf's `greet`, edited in place rather than rewritten: the
+	 * shipped file is mostly the explanation of what each key does, and a
+	 * one-line replacement would leave the installed system with a
+	 * configuration file nobody can read. Only the line is replaced; a
+	 * file that has none gains one, and a missing file is left missing
+	 * because the default already matches what would be written.
+	 */
+	{
+		char cc[8192];
+		int n = slurp(TARGET "/etc/kdos/con.conf", cc, sizeof(cc));
+
+		if (n > 0) {
+			char out[8192];
+			size_t o = 0;
+			int done = 0;
+
+			for (char *line = strtok(cc, "\n"); line;
+			     line = strtok(NULL, "\n")) {
+				const char *p = line;
+
+				while (*p == ' ' || *p == '\t')
+					p++;
+				if (!strncmp(p, "greet", 5) &&
+				    (p[5] == ' ' || p[5] == '\t' ||
+				     p[5] == '=')) {
+					o += (size_t)snprintf(out + o,
+							      sizeof(out) - o,
+							      "greet = %s\n",
+							      cfg.greet ? "yes"
+									: "no");
+					done = 1;
+					continue;
+				}
+				o += (size_t)snprintf(out + o, sizeof(out) - o,
+						      "%s\n", line);
+				if (o >= sizeof(out) - 64)
+					break;
+			}
+			if (!done)
+				snprintf(out + o, sizeof(out) - o,
+					 "greet = %s\n",
+					 cfg.greet ? "yes" : "no");
+			wr("/etc/kdos/con.conf", "%s", out);
+		}
+	}
+
 	emit('P', "0.6");
 
 	if (kb_path_exists("/etc/resolv.conf") && !cfg.dry_run) {

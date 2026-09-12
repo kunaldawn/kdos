@@ -22,13 +22,23 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kwm.h"
+#include "kvt.h"
+#include "kcon.h"
+#ifdef HAVE_KIMG
+#include "kimg.h"
+#endif
 #include "kcolor.h"
 #include "kbuild.h"
 #include "kpkg.h"
@@ -104,6 +114,68 @@ static void test_colour(void)
 	}
 	ok(rt, "HLS round-trip is exact for every scheme colour");
 
+	/*
+	 * EVERY SCHEME CLEARS THE SAME TWO FLOORS. A palette is judged by eye
+	 * at the bright end and the dark end of this one is compressed enough
+	 * that eyes are wrong about it — which is why a scheme added without
+	 * this check is a scheme whose labels are a shade of its background.
+	 */
+	{
+		int text_bad = -1, accent_bad = -1;
+
+		for (int i = 0; i < kcol_nscheme; i++) {
+			const KcolScheme *sc = &kcol_schemes[i];
+
+			if (text_bad < 0 &&
+			    kcol_contrast(sc->text, sc->deep) < 700)
+				text_bad = i;
+			if (accent_bad < 0 &&
+			    kcol_contrast(sc->primary, sc->deep) < 450)
+				accent_bad = i;
+		}
+		ok(text_bad < 0, text_bad < 0
+		   ? "every scheme reads 7:1 or better, text on its ground"
+		   : kcol_schemes[text_bad < 0 ? 0 : text_bad].name);
+		ok(accent_bad < 0, accent_bad < 0
+		   ? "and 4.5:1 or better, accent on the same ground"
+		   : kcol_schemes[accent_bad < 0 ? 0 : accent_bad].name);
+
+		/*
+		 * AND EVERY GROUND IS THE DARK END, which is a limit of the
+		 * chrome rather than a preference. `libkchrome` solves the
+		 * focused plate along one axis and writes one label colour on
+		 * every plate, so on a light ground the plate darkens away
+		 * from its own label: the best light candidate reaches 7.63:1
+		 * on the label where it stands off the bar at 1.94:1, and
+		 * 2.25:1 off the bar where the label reads at 6.58:1. Nothing
+		 * in the range clears both.
+		 *
+		 * Asserted rather than written down, because the two floors
+		 * above would PASS for a light scheme — they measure the text
+		 * against the ground and say nothing about the plates. A light
+		 * scheme lands when the ladder chooses a label per plate, and
+		 * this line is what has to be removed to add one.
+		 *
+		 * White against the ground beating black against it is the
+		 * whole test: it needs no luminance accessor libkcolor does
+		 * not already export.
+		 */
+		int light = -1;
+
+		for (int i = 0; i < kcol_nscheme; i++) {
+			const KcolScheme *sc = &kcol_schemes[i];
+
+			if (light < 0 &&
+			    kcol_contrast(0xffffff, sc->deep) <=
+				    kcol_contrast(0x000000, sc->deep))
+				light = i;
+		}
+		ok(light < 0, light < 0
+		   ? "and every ground is the dark end, which the plate ladder requires"
+		   : kcol_schemes[light < 0 ? 0 : light].name);
+	}
+	eq_int(kcol_nscheme, 7, "and there are seven of them");
+
 	/* Measured against CPython over 8476 colours: black and white are
 	 * STRUCTURE and must come back untouched, or a recoloured icon set
 	 * turns to mush. */
@@ -164,8 +236,391 @@ static void test_colour(void)
 		   "recent: another application's files are its own");
 		n = kxdg_recent("no-such-app", got, 8);
 		ok(n == 0, "recent: an application with no history has none");
+		n = kxdg_recent_all(got, 8);
+		ok(n == 3, "recent: every application's, for a Recent list");
 		unsetenv("XDG_DATA_HOME");
 	}
+
+	/*
+	 * The write half, into a scratch store. Every open on this desktop
+	 * passes through `kdos-appbox open`, which calls this — so the two
+	 * things asserted are the two that make a recent list wrong rather
+	 * than empty: a file opened twice is ONE entry, and it is the newest.
+	 */
+	{
+		char got[8][512], dir[512], store[600];
+		char *cwd = getcwd(NULL, 0);
+		int n;
+
+		snprintf(dir, sizeof(dir), "%s/recent-write",
+			 getenv("KDOS_SELFTEST_OUT") ? getenv("KDOS_SELFTEST_OUT")
+						    : "/tmp");
+		kb_mkdir_p(dir);
+		snprintf(store, sizeof(store), "%s/recently-used.xbel", dir);
+		unlink(store);
+		setenv("XDG_DATA_HOME", dir, 1);
+
+		eq_int(kxdg_recent_add("ed", "/etc/hostname", NULL), 0,
+		       "recent: a first open creates the store");
+		eq_int(kxdg_recent_add("ed", "/etc/os-release", NULL), 0,
+		       "recent: and a second appends to it");
+		n = kxdg_recent("ed", got, 8);
+		ok(n == 2 && !strcmp(got[0], "/etc/os-release"),
+		   "recent: newest first, read back through the same scanner");
+
+		eq_int(kxdg_recent_add("ed", "/etc/hostname", NULL), 0,
+		       "recent: opening one of them again");
+		n = kxdg_recent("ed", got, 8);
+		ok(n == 2, "recent: is still two entries, not three");
+		ok(n == 2 && !strcmp(got[0], "/etc/hostname"),
+		   "recent: and the one just opened leads");
+
+		eq_int(kxdg_recent_add("ed", "etc/hostname", NULL), -1,
+		       "recent: a relative path is refused — it means nothing "
+		       "to whatever reads the store next");
+
+		unlink(store);
+		unsetenv("XDG_DATA_HOME");
+		free(cwd);
+	}
+	/*
+	 * kxdg_places is ONE reader for the whole desktop. It replaced two —
+	 * `kdos-desk` honouring `user-dirs.dirs` while the Places menu assumed
+	 * six names under `$HOME` — and the fixture is the machine those two
+	 * disagreed on: a desktop folder renamed to `Bureau`. Every assertion
+	 * here is a way a places column misleads rather than fails.
+	 */
+	{
+		char dir[512];
+		KxdgPlace got[KXDG_PLACES_MAX];
+		char home[512], cfg[512];
+		char *cwd = getcwd(NULL, 0);
+		int np;
+
+		snprintf(home, sizeof(home), "%s/testing/fixtures/places/home",
+			 cwd ? cwd : ".");
+		snprintf(cfg, sizeof(cfg), "%s/testing/fixtures/places/config",
+			 cwd ? cwd : ".");
+		setenv("HOME", home, 1);
+		setenv("XDG_CONFIG_HOME", cfg, 1);
+
+		ok(kxdg_user_dir("DESKTOP", dir, sizeof(dir)) &&
+		   strstr(dir, "/Bureau") != NULL,
+		   "places: the desktop folder is the one user-dirs.dirs names");
+		ok(kxdg_user_dir("MUSIC", dir, sizeof(dir)) &&
+		   strstr(dir, "/Music") != NULL,
+		   "places: a key the file omits falls back under $HOME");
+		ok(!kxdg_user_dir("NOSUCHKEY", dir, sizeof(dir)),
+		   "places: a key this system does not carry is refused");
+
+		np = kxdg_places(got, KXDG_PLACES_MAX);
+		ok(np == 5, "places: Home, three that exist, and one of the "
+			    "user's own");
+		ok(np > 0 && !strcmp(got[0].name, "Home"),
+		   "places: Home leads the column");
+		ok(np > 1 && !strcmp(got[1].name, "Desktop") &&
+		   strstr(got[1].path, "/Bureau") != NULL,
+		   "places: the renamed folder is still called Desktop, and "
+		   "points where the file says");
+		{
+			int seen_music = 0, seen_work = 0, seen_papers = 0,
+			    seen_gone = 0;
+
+			for (int i = 0; i < np; i++) {
+				if (!strcmp(got[i].name, "Music"))
+					seen_music = 1;
+				if (!strcmp(got[i].name, "Work"))
+					seen_work = 1;
+				if (!strcmp(got[i].name, "Papers"))
+					seen_papers = 1;
+				if (!strcmp(got[i].name, "Gone"))
+					seen_gone = 1;
+			}
+			ok(!seen_music,
+			   "places: a user directory that does not exist is "
+			   "not a place");
+			ok(seen_work, "places: the user's own row is on it");
+			ok(!seen_papers,
+			   "places: and one whose path is already listed is "
+			   "dropped rather than shown twice under two names");
+			ok(!seen_gone,
+			   "places: a row pointing at nothing is never "
+			   "returned");
+		}
+		/*
+		 * THE FRECENCY GROUP, driven by a stand-in for zoxide so the
+		 * assertion is about this code and not about the developer's
+		 * own database. The three lines cover the three answers:
+		 * a directory nothing else lists is offered, one already on
+		 * the column is not offered twice, and one that is not there
+		 * is never offered at all.
+		 */
+		{
+			char bin[600], prog[700], line[900];
+			KxdgPlace rec[8];
+			const char *oldpath = getenv("PATH");
+			char keep[1024];
+			FILE *zf;
+			int nr;
+
+			snprintf(keep, sizeof(keep), "%s", oldpath ? oldpath : "");
+			snprintf(bin, sizeof(bin), "%s/places-fakebin",
+				 getenv("KDOS_SELFTEST_OUT")
+					 ? getenv("KDOS_SELFTEST_OUT")
+					 : "/tmp");
+			kb_mkdir_p(bin);
+			snprintf(prog, sizeof(prog), "%s/zoxide", bin);
+			zf = fopen(prog, "w");
+			if (zf) {
+				fprintf(zf, "#!/bin/sh\n"
+					    "printf '%%s\\n' \"%s/scratch\" "
+					    "\"%s/Documents\" /no/such/dir\n",
+					home, home);
+				fclose(zf);
+				chmod(prog, 0755);
+			}
+			snprintf(line, sizeof(line), "%.600s:%.290s", bin, keep);
+			setenv("PATH", line, 1);
+
+			nr = kxdg_places_recent(rec, 8, got, np);
+			eq_int(nr, 1,
+			       "places: the frecency group offers only what "
+			       "the column does not already have");
+			ok(nr == 1 && !strcmp(rec[0].name, "scratch"),
+			   "places: named by its last component");
+
+			setenv("PATH", keep, 1);
+		}
+
+		/*
+		 * WHAT AN ARGUMENT IS. Two openers ask this one function, so
+		 * what it answers for a URL is what the whole desktop does
+		 * with a link. The glob half is the host's own table and is
+		 * not asserted here; the scheme half depends on nothing.
+		 */
+		{
+			char m[128];
+			const char *p;
+
+			p = kxdg_mime_for_arg("mailto:ada@example.com", m,
+					      sizeof(m));
+			eq_str(m, "x-scheme-handler/mailto",
+			       "arg: a mail address is a scheme, not a file");
+			ok(!strcmp(p, "mailto:ada@example.com"),
+			   "arg: and it is passed on unchanged");
+
+			/* The one that made this function necessary: the
+			 * basename `a@b.c` matches the `*.c` glob, so a mail
+			 * address used to resolve to C++ source. */
+			kxdg_mime_for_arg("mailto:a@b.c", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/mailto",
+			       "arg: even when the basename matches a glob");
+
+			kxdg_mime_for_arg("https://example.com", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/https",
+			       "arg: a bare host is still a scheme");
+			kxdg_mime_for_arg("HTTPS://EXAMPLE.COM", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/https",
+			       "arg: a scheme is case-insensitive");
+			kxdg_mime_for_arg("webcal://x/y.ics", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/webcal",
+			       "arg: and the suffix does not win over it");
+
+			/* file: names a path, and the caller must be handed
+			 * the path rather than the URL. */
+			p = kxdg_mime_for_arg("file:///etc/hostname", m,
+					      sizeof(m));
+			eq_str(p, "/etc/hostname",
+			       "arg: file:// is unwrapped to its path");
+			p = kxdg_mime_for_arg("file://localhost/etc/hostname",
+					      m, sizeof(m));
+			eq_str(p, "/etc/hostname",
+			       "arg: and so is one carrying an authority");
+			p = kxdg_mime_for_arg("file:/etc/hostname", m,
+					      sizeof(m));
+			eq_str(p, "/etc/hostname",
+			       "arg: and one carrying none");
+
+			/* A NAME THAT EXISTS IS A PATH. /etc/hostname has no
+			 * colon, so the case that matters is that a plain
+			 * path is never read as a scheme. */
+			p = kxdg_mime_for_arg("/etc/hostname", m, sizeof(m));
+			ok(!strcmp(p, "/etc/hostname") &&
+			   strncmp(m, "x-scheme-handler/", 17) != 0,
+			   "arg: a path is a path");
+			kxdg_mime_for_arg("notes.txt", m, sizeof(m));
+			ok(strncmp(m, "x-scheme-handler/", 17) != 0,
+			   "arg: a relative name with a dot is not a scheme");
+			kxdg_mime_for_arg("", m, sizeof(m));
+			eq_str(m, "application/octet-stream",
+			       "arg: nothing is not a scheme either");
+		}
+
+		/*
+		 * THE VERB TABLE, which three surfaces read. The two things
+		 * worth asserting are the two that make a shared table worth
+		 * having: a verb whose program is absent is not offered, and a
+		 * verb builds an argument VECTOR rather than a command line.
+		 */
+		{
+			KxdgVerb v;
+			const char *av[12];
+			char store[512];
+			int n, found_place = 0, unbuilt = 0, share = 0;
+
+			ok(kxdg_verb_count() > 0, "verbs: the table is not empty");
+			for (int i = 0; i < kxdg_verb_count(); i++) {
+				if (!kxdg_verb_at(i, &v))
+					break;
+				if (v.id == KXDG_VERB_PLACE)
+					found_place = v.present;
+				/* Peek is the row whose program is still not
+				 * built; Share's is, so it can no longer carry
+				 * the "absent stays hidden" half. */
+				if (v.id == KXDG_VERB_PEEK)
+					unbuilt = v.present;
+				if (v.id == KXDG_VERB_SHARE)
+					share = v.present;
+			}
+			ok(found_place,
+			   "verbs: one needing no program of its own is always "
+			   "offered");
+			ok(!unbuilt,
+			   "verbs: and one whose program is not built yet is "
+			   "not offered at all");
+			/* `kdos-share` is a link on the kdos-tools binary, so
+			 * the row turns on exactly when that link is on PATH —
+			 * which is the whole mechanism, and it is a filesystem
+			 * test rather than anything the table decides. */
+			ok(share == kb_have_prog("kdos-share"),
+			   "verbs: Share follows whether kdos-share is on PATH");
+
+			/* Add to Places is a directory's verb and not a file's,
+			 * because a file is not a place. THE ID, NOT THE INDEX:
+			 * kxdg_verb_at takes a position and the two agree only
+			 * for as long as nobody reorders the table. */
+			for (int i = 0; i < kxdg_verb_count(); i++) {
+				kxdg_verb_at(i, &v);
+				if (v.id == KXDG_VERB_PLACE)
+					break;
+			}
+			ok(kxdg_verb_shown(&v, home, 1),
+			   "verbs: Add to Places is offered on a directory");
+			ok(!kxdg_verb_shown(&v, home, 0),
+			   "verbs: and never on a file");
+
+			n = kxdg_verb_argv(KXDG_VERB_TRASH, "/etc/hostname", 0,
+					   "kdos-term", store, sizeof(store),
+					   av, 12);
+			eq_int(n, 3, "verbs: Move to Trash is three arguments");
+			ok(n == 3 && !strcmp(av[0], "kdos") &&
+			   !strcmp(av[1], "trash") &&
+			   !strcmp(av[2], "/etc/hostname"),
+			   "verbs: and it is `kdos trash <path>`, with no "
+			   "`put` word to trash a file called put");
+
+			/*
+			 * NO TWO VERBS SHARE A LETTER. A menu picks the first
+			 * SHOWN row carrying the mark, so a duplicate is a row
+			 * that can never be reached by its own accelerator —
+			 * and the surfaces letter their own rows around this
+			 * set, so it is the one that has to be checked.
+			 */
+			{
+				int mark[128];
+
+				memset(mark, 0, sizeof(mark));
+				for (int i = 0; i < kxdg_verb_count(); i++) {
+					int c;
+
+					if (!kxdg_verb_at(i, &v))
+						break;
+					c = ktui_menu_accel_of(v.label);
+					ok(c > 0 && c < 128,
+					   "verbs: every row carries a mark");
+					if (c > 0 && c < 128)
+						mark[c]++;
+				}
+				n = 0;
+				for (int c = 0; c < 128; c++)
+					if (mark[c] > 1)
+						n++;
+				eq_int(n, 0,
+				       "verbs: and no two rows carry the same "
+				       "one");
+			}
+
+			n = kxdg_verb_argv(KXDG_VERB_TERM, "/etc/hostname", 0,
+					   "kdos-term", store, sizeof(store),
+					   av, 12);
+			ok(n == 3 && !strcmp(store, "/etc"),
+			   "verbs: `here` on a FILE means the directory "
+			   "holding it");
+			eq_int(kxdg_verb_argv(KXDG_VERB_TERM, "/etc", 1, NULL,
+					      store, sizeof(store), av, 12), 0,
+			       "verbs: a wrapped verb with no terminal builds "
+			       "nothing rather than half a vector");
+		}
+
+		/* A row is refused rather than mangled: an `=` in a name would
+		 * split the row somewhere else on the next read. */
+		ok(kxdg_places_add("a = b", home) == -1,
+		   "places: a name carrying `=` is refused at the write");
+		ok(kxdg_places_add("Nowhere", "/no/such/path") == -1,
+		   "places: and so is a path that is not there");
+
+		unsetenv("HOME");
+		unsetenv("XDG_CONFIG_HOME");
+		free(cwd);
+	}
+
+	/*
+	 * MD5 AND THE URI, together, because the pair is the thumbnail cache's
+	 * FILE NAME and both halves have to match what every other program on
+	 * the machine computes. The vectors are RFC 1321's; the URI cases are
+	 * the two that a hand-rolled escaper gets wrong — a space, and a
+	 * character glib deliberately leaves alone.
+	 */
+	{
+		char h[33], uri[512];
+
+		kb_md5_str("", h);
+		eq_str(h, "d41d8cd98f00b204e9800998ecf8427e", "md5 of nothing");
+		kb_md5_str("abc", h);
+		eq_str(h, "900150983cd24fb0d6963f7d28e17f72", "md5 of abc");
+		kb_md5_str("The quick brown fox jumps over the lazy dog", h);
+		eq_str(h, "9e107d9d372bb6826bd81d3542a419d6",
+		       "md5 of a sentence — the block boundary at 56 bytes");
+		kb_md5_str("12345678901234567890123456789012345678901234567890"
+			   "123456789012345678901234567890", h);
+		eq_str(h, "57edf4a22be3c955ac49da2e2107b67a",
+		       "md5 of eighty digits — two blocks and a pad");
+
+		kb_uri_file("/home/kdos/a b.txt", uri, sizeof(uri));
+		eq_str(uri, "file:///home/kdos/a%20b.txt",
+		       "uri: a space is escaped, and the slashes are not");
+		/* The sub-delimiters glib deliberately leaves ALONE in a path.
+		 * Escaping any of them would be a name nothing else computes. */
+		kb_uri_file("/tmp/it's (1)+2,3;4=5@6.png", uri, sizeof(uri));
+		eq_str(uri, "file:///tmp/it's%20(1)+2,3;4=5@6.png",
+		       "uri: the sub-delimiters a path may carry are left alone");
+		/*
+		 * THE PAIR, AS A CACHE NAME. This is the whole interop
+		 * claim — the same URI hashed the same way as every other
+		 * program that writes into the shared cache. The value is
+		 * `md5sum` of the exact string, checked against it.
+		 */
+		kb_uri_file("/home/jens/photo/me.png", uri, sizeof(uri));
+		kb_md5_str(uri, h);
+		eq_str(h, "d40775e596682f2a16d1b834c221c0a2",
+		       "the thumbnail cache name is the md5 of the escaped URI");
+
+		kb_uri_file("/tmp/a#b?c%d[e]", uri, sizeof(uri));
+		eq_str(uri, "file:///tmp/a%23b%3Fc%25d%5Be%5D",
+		       "uri: and the ones that would end it are not — in "
+		       "UPPERCASE hex, because the hash is over the string");
+	}
+
 	ok(kcol_mixf(0x000000, 0xffffff, 0.5) == 0x808080, "float mix at 0.5");
 	ok(kcol_mix(0x000000, 0xffffff, 50) != kcol_mixf(0x000000, 0xffffff, 0.5),
 	   "the two mixes genuinely disagree");
@@ -188,19 +643,32 @@ static void test_colour(void)
 	 * background than dim is by a wide enough margin to be a different
 	 * decision rather than a nudge. Checked for every scheme, because a
 	 * palette that only reads in phosphor is the bug this replaces.
+	 *
+	 * STATED AS DISTANCE FROM THE GROUND, not as a luma ORDER. A light
+	 * scheme runs the other way — its text is darker than its background —
+	 * and an ordering test passes or fails on which direction the palette
+	 * happens to go rather than on whether the tones separate.
 	 */
 	int muted_ok = 1, muted_far = 1;
 	for (int i = 0; i < kcol_nscheme; i++) {
 		const KcolScheme *sc = &kcol_schemes[i];
 		unsigned m = kcol_muted(sc);
-		double ld = kcol_luma(sc->deep), lm = kcol_luma(m);
+		double ld = kcol_luma(sc->deep);
+		double dm = kcol_luma(m) - ld;
+		double dd = kcol_luma(sc->dim) - ld;
+		double dt = kcol_luma(sc->text) - ld;
+
+		if (dm < 0) {		/* a light ground: measure the other way */
+			dm = -dm;
+			dd = -dd;
+			dt = -dt;
+		}
 		if (m == sc->dim || m == sc->text || m == sc->deep)
 			muted_ok = 0;
-		if (!(ld < kcol_luma(sc->dim) && kcol_luma(sc->dim) < lm &&
-		      lm < kcol_luma(sc->text)))
+		if (!(dd > 0 && dd < dm && dm < dt))
 			muted_ok = 0;
 		/* Measured: 2.2x in bone, 2.7x in phosphor. */
-		if ((lm - ld) <= 2.0 * (kcol_luma(sc->dim) - ld))
+		if (dm <= 2.0 * dd)
 			muted_far = 0;
 	}
 	ok(muted_ok, "muted is its own colour, between deep and text, in every scheme");
@@ -227,6 +695,35 @@ static void test_base(void)
 	eq_str(kb_human_size(0), "0B", "human_size zero");
 	eq_str(kb_human_size(1024), "1.0K", "human_size exact K");
 	eq_str(kb_human_size(1536), "1.5K", "human_size fractional");
+
+	/*
+	 * ONE MATCHER FOR THREE SURFACES, so the palette, the launcher and the
+	 * Start menu cannot rank one query three ways. What is asserted is the
+	 * LADDER rather than any particular number: the constants may be tuned,
+	 * and these orderings may not change without somebody meaning it.
+	 */
+	ok(kb_fuzzy("System Monitor", "xyz") == 0, "fuzzy: no match is zero");
+	ok(kb_fuzzy("System Monitor", "") > 0,
+	   "fuzzy: an empty query matches, or a list empties before the first key");
+	/* The whole reason this is a subsequence and not a substring. */
+	ok(kb_fuzzy("System Monitor", "sm") > 0, "fuzzy: an acronym matches at all");
+	ok(kb_fuzzy("System Monitor", "sm") > kb_fuzzy("Assembler", "sm"),
+	   "fuzzy: an acronym beats the same letters scattered mid-word");
+	ok(kb_fuzzy("Terminal", "term") > kb_fuzzy("KDOS Terminal", "term"),
+	   "fuzzy: a prefix beats the same word further in");
+	ok(kb_fuzzy("abcdef", "abc") > kb_fuzzy("axbxcx", "abc"),
+	   "fuzzy: a run beats a scatter");
+	ok(kb_fuzzy("System Monitor", "SM") == kb_fuzzy("System Monitor", "sm"),
+	   "fuzzy: case-insensitive");
+	/* camelCase is a word boundary, or every application id is one word. */
+	ok(kb_fuzzy("SystemMonitor", "sm") > kb_fuzzy("Assembler", "sm"),
+	   "fuzzy: a capital inside a word starts one");
+	{
+		const char *f[3] = { "Files", "org.kdos.pick", "browse files" };
+		ok(kb_fuzzy_best(f, 3, "pick") > 0,
+		   "fuzzy_best takes the best field, not the first");
+		ok(kb_fuzzy_best(f, 3, "zzz") == 0, "fuzzy_best: no field matches");
+	}
 
 	/* kb_buf_printf must never truncate: a fixed stack buffer here once cut
 	 * a generated btop theme in half, and the half-file looked plausible. */
@@ -447,6 +944,134 @@ static void test_trash(void)
 			ok(!kb_path_exists(g), "no temp file left behind");
 		}
 		unlink(p);
+	}
+
+	/*
+	 * A TOGGLE IS A FILE'S PRESENCE, and every program must look in the
+	 * one place `kdos toggle` writes. A second copy of the path is what
+	 * made `kdos toggle dnd` set a flag the notification daemon read
+	 * somewhere else and therefore silence nothing.
+	 */
+	{
+		char dir[512], tp[600];
+
+		snprintf(dir, sizeof(dir), "%s/state", work);
+		setenv("XDG_STATE_HOME", dir, 1);
+		snprintf(tp, sizeof(tp), "%s/kdos/toggles", dir);
+		kb_mkdir_p(tp);
+
+		ok(!kb_toggle_on("dnd"), "a toggle nobody set is off");
+		snprintf(tp, sizeof(tp), "%s/kdos/toggles/dnd", dir);
+		kb_write_file(tp, "");
+		ok(kb_toggle_on("dnd"), "and present means on");
+		ok(!kb_toggle_on("stay-awake"),
+		   "one toggle does not answer for another");
+		unlink(tp);
+		ok(!kb_toggle_on("dnd"), "and removing it turns it off again");
+		ok(!kb_toggle_on(""), "an empty name is off, not a directory");
+
+		/* THE WRITER IS THE READER'S OWN, so a surface that sets a
+		 * toggle and a command that lists it cannot disagree about
+		 * where it lives. Both spell the path in one place. */
+		ok(kb_toggle_set("dnd", 1) == 0 && kb_toggle_on("dnd"),
+		   "kb_toggle_set writes where kb_toggle_on looks");
+		ok(kb_toggle_set("dnd", 0) == 0 && !kb_toggle_on("dnd"),
+		   "and clearing it turns it off");
+		ok(kb_toggle_set("dnd", 0) == 0,
+		   "clearing one that is already off is not a failure");
+		snprintf(dir, sizeof(dir), "%s/state-fresh", work);
+		setenv("XDG_STATE_HOME", dir, 1);
+		ok(kb_toggle_set("dnd", 1) == 0 && kb_toggle_on("dnd"),
+		   "and the state directory is made on the way");
+
+		unsetenv("XDG_STATE_HOME");
+	}
+
+	/*
+	 * NIGHT LIGHT IS A TRANSFORM, and the scheme has to survive it. Eight
+	 * bits do not divide back: a blue scaled down and up again is not the
+	 * blue it started as, so turning the toggle off must return to the
+	 * table rather than undo the arithmetic — which is the whole reason
+	 * the chosen scheme is kept beside the warmed copy.
+	 */
+	{
+		KtuiTheme cold;
+
+		ktui_theme_set(ktui_themes[0].name);
+		cold = *ktui_theme;
+
+		ok(ktui_theme_night(1) == 1, "night light says it changed");
+		ok(ktui_theme_night(1) == 0, "and setting it again does not");
+
+		int warmer = 0, cooler = 0;
+
+		for (int i = 0; i < KT_NCOLOR; i++) {
+			if (ktui_theme->slot[i].r != cold.slot[i].r)
+				cooler = 1;	/* red must not move at all */
+			if (ktui_theme->slot[i].b < cold.slot[i].b)
+				warmer = 1;
+		}
+		ok(!cooler, "red is untouched, so the accent still reads");
+		ok(warmer, "and blue comes down");
+
+		ok(ktui_theme_night(0) == 1, "turning it off changes it back");
+		ok(!memcmp(ktui_theme->slot, cold.slot, sizeof(cold.slot)),
+		   "back to the scheme's own bytes, not the arithmetic undone");
+	}
+
+	/*
+	 * WHICH DESKTOP, for the `<desktop>-mimeapps.list` the console and the
+	 * compositor keep separately. The FIRST name only and lowercased: the
+	 * variable is a preference order spelled `KDOS-Console:KDOS` and the
+	 * file the spec asks for is `kdos-console-mimeapps.list`.
+	 */
+	{
+		char pre[80];
+
+		setenv("XDG_CURRENT_DESKTOP", "KDOS-Console:KDOS", 1);
+		ok(kb_desktop_prefix(pre, sizeof(pre)) == 1 &&
+		   !strcmp(pre, "kdos-console"),
+		   "the desktop prefix is the first name, lowercased");
+		setenv("XDG_CURRENT_DESKTOP", "KDOS", 1);
+		ok(kb_desktop_prefix(pre, sizeof(pre)) == 1 &&
+		   !strcmp(pre, "kdos"),
+		   "and a single name is taken whole");
+		setenv("XDG_CURRENT_DESKTOP", "", 1);
+		ok(kb_desktop_prefix(pre, sizeof(pre)) == 0 && pre[0] == '\0',
+		   "an empty variable names no desktop rather than an empty one");
+		unsetenv("XDG_CURRENT_DESKTOP");
+		ok(kb_desktop_prefix(pre, sizeof(pre)) == 0,
+		   "and neither does an unset one");
+	}
+
+	/*
+	 * AND WHICH TERMINAL A `Terminal=true` ENTRY RUNS IN. `foot` needs a
+	 * compositor, so a console session that wrapped an entry in it would
+	 * resolve the right program and then fail to open a window for it —
+	 * which reads as the handler being wrong.
+	 */
+	{
+		unsetenv("KDOS_CON");
+		setenv("WAYLAND_DISPLAY", "wayland-0", 1);
+		eq_str(kb_terminal(), "foot",
+		       "a compositor session runs a terminal entry in foot");
+		setenv("KDOS_CON", "/run/user/1000/kdos/con.sock", 1);
+		eq_str(kb_terminal(), "kdos-term",
+		       "and a console session in the one that draws in cells");
+		/*
+		 * AND A BARE VIRTUAL TERMINAL HAS NEITHER. `Ctrl+Alt+F2` is a
+		 * login with no session of either kind, so there is no
+		 * emulator to open — and a name answered here would wrap a
+		 * terminal program in a window that cannot start.
+		 */
+		unsetenv("KDOS_CON");
+		unsetenv("WAYLAND_DISPLAY");
+		ok(kb_terminal() == NULL,
+		   "and a login no session started has no terminal to open");
+		setenv("KDOS_CON", "/run/user/1000/kdos/con.sock", 1);
+		eq_str(kb_terminal(), "kdos-term",
+		       "the console's own answer needs no display to give it");
+		unsetenv("KDOS_CON");
 	}
 
 	/*
@@ -2063,9 +2688,5529 @@ static void test_pack(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * libkwm, against testing/fixtures/wm/geometry.txt.
+ *
+ * THE FIXTURE IS THE CONTRACT AND THIS ONLY REPLAYS IT. Every row there was
+ * derived from a named line of kdos-comp, so a failure here means the library
+ * and the compositor have parted company — which is the one thing sharing a
+ * window model between two desktops exists to prevent. Adding a case means
+ * adding a row and citing its line, never writing an assertion here.
+ */
+
+static unsigned wm_edge(const char *s)
+{
+	unsigned e = 0;
+
+	if (!strcmp(s, "N"))
+		return KWM_EDGE_NONE;
+	if (!strcmp(s, "C"))
+		return KWM_EDGE_CENTER;
+
+	for (; *s; s++)
+		switch (*s) {
+		case 'T':
+			e |= KWM_EDGE_TOP;
+			break;
+		case 'B':
+			e |= KWM_EDGE_BOTTOM;
+			break;
+		case 'L':
+			e |= KWM_EDGE_LEFT;
+			break;
+		case 'R':
+			e |= KWM_EDGE_RIGHT;
+			break;
+		}
+
+	return e;
+}
+
+/* UNB is either bound: which one it means is decided by the comparison, not
+ * by the token, so both map to INT_MAX and no row relies on the difference. */
+static int wm_num(const char *s)
+{
+	if (!strcmp(s, "UNB") || !strcmp(s, "INT_MAX"))
+		return INT_MAX;
+	if (!strcmp(s, "INT_MIN"))
+		return INT_MIN;
+	if (!strcmp(s, "INT_MAX-1"))
+		return INT_MAX - 1;
+	return atoi(s);
+}
+
+/*
+ * The gap rule, asserted against what the search hands its validator rather
+ * than against a rectangle it returns — the rule IS which of the two candidate
+ * edges carries the padding.
+ *
+ * The moving box arrives ALREADY PADDED by the gap (kdos-comp builds it that
+ * way in src/edges.c:28-31), so an unpadded opposing edge leaves that padding
+ * standing as the space between two windows placed beside each other, and an
+ * aligned edge padded outward by the same amount cancels it so the two line up
+ * exactly. Swap the two pads and both rows fail.
+ */
+typedef struct {
+	int want_cur;		/* the mover edge offset that picks one call */
+	int seen;
+	int oppose;
+	int align;
+} WmGapProbe;
+
+static void wm_gap_probe(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
+			 KwmEdge align, int lesser, void *user)
+{
+	WmGapProbe *p = user;
+
+	(void)best;
+	(void)tgt;
+	(void)lesser;
+
+	if (cur.offset != p->want_cur)
+		return;
+
+	p->seen++;
+	p->oppose = oppose.offset;
+	p->align = align.offset;
+}
+
+static void test_wm(void)
+{
+	printf("\n==> libkwm replays the window-model contract\n");
+
+	const char *path = "testing/fixtures/wm/geometry.txt";
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		ok(0, "testing/fixtures/wm/geometry.txt is readable");
+		return;
+	}
+
+	char line[512];
+	int rows = 0;
+	/*
+	 * Rows the replay deliberately does not drive, and rows it did not
+	 * recognise at all. The second must stay zero: a kind with no branch
+	 * used to leave the file silently, which is a contract row nothing
+	 * checks wearing the appearance of one that passed.
+	 */
+	int stated = 0, unknown = 0;
+
+	while (fgets(line, sizeof(line), f)) {
+		char a[64], b[64], c[64];
+		int i2, i3, i4, want;
+
+		if (line[0] == '#' || line[0] == '\n' || line[0] == '\0')
+			continue;
+
+		/*
+		 * A row whose answer is "@unchanged" states what the CALLER
+		 * does: kwm_place is never reached when the output is unusable,
+		 * so there is no library call to make. It is in the contract
+		 * because the contract is the caller's too, and it is counted
+		 * here so the file and the replay reconcile.
+		 */
+		if (strstr(line, "@unchanged")) {
+			stated++;
+			continue;
+		}
+
+		if (!strncmp(line, "tile ", 5)) {
+			int combine, across, mv = 0;
+			char mark[64];
+
+			mark[0] = '\0';
+			if (sscanf(line, "tile %63s %63s %d %d -> %63s %63s",
+				   a, b, &combine, &across, c, mark) < 5)
+				continue;
+
+			unsigned got = kwm_tile_next(wm_edge(a), wm_edge(b),
+						     combine, across, &mv);
+			rows++;
+
+			/*
+			 * The no-adjacent-output row asserts what the CALLER
+			 * must do, not what this returns: the library says
+			 * "move outputs" and the caller leaves the view alone
+			 * when there is nowhere to move it, which is why the
+			 * expected state on that row is the one it started in.
+			 */
+			if (!strcmp(mark, "@no-adjacent-output-unchanged")) {
+				ok(mv != 0, line);
+			} else {
+				if (!strcmp(mark, "@adjacent"))
+					ok(mv != 0, line);
+				eq_int(got, wm_edge(c), line);
+			}
+		} else if (!strncmp(line, "geom ", 5)) {
+			KwmRect u;
+			KwmBorder m;
+			int gap, ml, mt, mr, mb, rx, ry, rw, rh;
+
+			if (sscanf(line,
+				   "geom %d,%d,%d,%d %d %d,%d,%d,%d %63s"
+				   " -> %d,%d,%d,%d",
+				   &u.x, &u.y, &u.w, &u.h, &gap,
+				   &ml, &mt, &mr, &mb, a,
+				   &rx, &ry, &rw, &rh) != 14)
+				continue;
+
+			/* The fixture writes a margin left,top,right,bottom;
+			 * KwmBorder is top,right,bottom,left, as struct border
+			 * is. Assigning by name is what keeps that straight. */
+			m.left = ml;
+			m.top = mt;
+			m.right = mr;
+			m.bottom = mb;
+
+			KwmRect g = kwm_tile_geom(u, gap, m, wm_edge(a));
+
+			rows++;
+			ok(g.x == rx && g.y == ry && g.w == rw && g.h == rh,
+			   line);
+		} else if (!strncmp(line, "place ", 6)) {
+			KwmRect u;
+			KwmBorder m;
+			KwmBox ex[8];
+			int gap, ml, mt, mr, mb, ww, hh;
+			int nex = 0;
+			char rest[256], wnt[64];
+
+			if (sscanf(line,
+				   "place %d,%d,%d,%d %d %d,%d,%d,%d %dx%d"
+				   " %255[^\n]",
+				   &u.x, &u.y, &u.w, &u.h, &gap,
+				   &ml, &mt, &mr, &mb, &ww, &hh, rest) != 12)
+				continue;
+
+			m.left = ml; m.top = mt; m.right = mr; m.bottom = mb;
+
+			/* The rows list existing windows as x,y,w,h; kwm_place
+			 * takes absolute edges, already inflated. */
+			char *p = rest;
+			while (nex < 8) {
+				int x, y, w, h, n = 0;
+
+				if (sscanf(p, " %d,%d,%d,%d%n",
+					   &x, &y, &w, &h, &n) != 4)
+					break;
+				ex[nex].left = x;
+				ex[nex].top = y;
+				ex[nex].right = x + w;
+				ex[nex].bottom = y + h;
+				nex++;
+				p += n;
+			}
+
+			if (sscanf(p, " -> %63s", wnt) != 1)
+				continue;
+
+			KwmRect g = kwm_place(u, gap, m, ww, hh, ex, nex);
+			int wx, wy;
+
+			rows++;
+			if (sscanf(wnt, "%d,%d", &wx, &wy) == 2)
+				ok(g.x == wx && g.y == wy, line);
+			else if (!strncmp(wnt, "@not-", 5) &&
+				 sscanf(wnt + 5, "%d,%d", &wx, &wy) == 2)
+				ok(g.x != wx || g.y != wy, line);
+			else
+				ok(0, line);
+		} else if (!strncmp(line, "fit ", 4)) {
+			KwmRect work, wnt;
+			int rx, ry, rw, rh, mw = 0, mh = 0;
+
+			/* The minimum is OPTIONAL in the fixture: a row that
+			 * names none is the same rule with no floor, which is
+			 * what a terminal passes. */
+			if (sscanf(line,
+				   "fit %d,%d,%d,%d %d,%d,%d,%d min %d,%d"
+				   " -> %d,%d,%d,%d",
+				   &work.x, &work.y, &work.w, &work.h,
+				   &wnt.x, &wnt.y, &wnt.w, &wnt.h, &mw, &mh,
+				   &rx, &ry, &rw, &rh) != 14 &&
+			    sscanf(line,
+				   "fit %d,%d,%d,%d %d,%d,%d,%d"
+				   " -> %d,%d,%d,%d",
+				   &work.x, &work.y, &work.w, &work.h,
+				   &wnt.x, &wnt.y, &wnt.w, &wnt.h,
+				   &rx, &ry, &rw, &rh) != 12)
+				continue;
+
+			KwmRect g = kwm_fit(wnt, work, mw, mh);
+
+			rows++;
+			ok(g.x == rx && g.y == ry && g.w == rw && g.h == rh,
+			   line);
+		} else if (!strncmp(line, "drag ", 5)) {
+			int dx, dy;
+			char w[16];
+
+			if (sscanf(line, "drag %d %d -> %15s", &dx, &dy, w) != 3)
+				continue;
+
+			rows++;
+			eq_int(kwm_drag_threshold(dx, dy), !strcmp(w, "yes"),
+			       line);
+		} else if (!strncmp(line, "clip ", 5)) {
+			if (sscanf(line, "clip %63s %63s -> %63s", a, b, c) != 3)
+				continue;
+
+			rows++;
+			eq_int(kwm_clip_add(wm_num(a), wm_num(b)), wm_num(c),
+			       line);
+		} else if (!strncmp(line, "best ", 5)) {
+			if (sscanf(line, "best %63s %63s %d -> %63s",
+				   a, b, &i2, c) != 4)
+				continue;
+
+			rows++;
+			eq_int(kwm_edge_best(wm_num(a), wm_num(b), i2),
+			       wm_num(c), line);
+		} else if (!strncmp(line, "btwn ", 5)) {
+			if (sscanf(line, "btwn %d %d %d -> %63s",
+				   &i2, &i3, &i4, c) != 4)
+				continue;
+
+			rows++;
+			eq_int(!!kwm_edge_between(i2, i3, i4),
+			       !strcmp(c, "yes"), line);
+		} else if (!strncmp(line, "gaprule ", 8)) {
+			/* top, right, bottom, left */
+			const KwmBox mover = { 50, 1000, 900, 10 };
+			const KwmRegion reg = {
+				{ 100, 400, 300, 200 },
+				KWM_EDGE_TOP | KWM_EDGE_BOTTOM |
+				KWM_EDGE_LEFT | KWM_EDGE_RIGHT
+			};
+			const int gap = 7;
+			WmGapProbe probe = { mover.left, 0, 0, 0 };
+			KwmBox best;
+
+			if (sscanf(line, "gaprule %63s -> %63s", a, b) != 2)
+				continue;
+
+			kwm_edge_init(&best);
+			kwm_edge_regions(&best, mover, mover, &reg, 1, gap,
+					 wm_gap_probe, &probe);
+
+			/*
+			 * What the mover's REAL edge keeps from the region edge
+			 * it met, once its own padding is added back.
+			 */
+			int landed = !strcmp(a, "oppose") ? probe.oppose
+							  : probe.align;
+			int refer = !strcmp(a, "oppose") ? reg.box.right
+							 : reg.box.left;
+
+			rows++;
+			ok(probe.seen == 1, "the gap rule's left-edge call ran");
+			eq_int((landed + gap) - refer,
+			       !strcmp(b, "gap") ? gap : 0, line);
+		} else if (!strncmp(line, "ring ", 5)) {
+			if (sscanf(line, "ring %d %d %d -> %d",
+				   &i2, &i3, &i4, &want) != 4)
+				continue;
+
+			rows++;
+			eq_int(kwm_ring_next(i2, i3, i4), want, line);
+		} else if (!strncmp(line, "wsadj ", 6)) {
+			unsigned char bits[64];
+
+			if (sscanf(line, "wsadj %63s %d %d %d -> %d",
+				   a, &i2, &i3, &i4, &want) != 5)
+				continue;
+
+			int n = (int)strlen(a);
+			if (n > (int)sizeof(bits))
+				continue;
+			for (int k = 0; k < n; k++)
+				bits[k] = a[k] == '1';
+
+			rows++;
+			eq_int(kwm_ws_adjacent(bits, n, i2, i3, i4), want, line);
+		} else {
+			unknown++;
+			printf("  UNKNOWN ROW  %s", line);
+		}
+	}
+
+	fclose(f);
+
+	/*
+	 * A fixture that stopped being found, or that lost its rows to an
+	 * editing accident, must fail rather than report a clean run over
+	 * nothing. The floor is well under the current count on purpose: this
+	 * asserts the file was read, not how many rows anyone has added.
+	 */
+	ok(rows >= 80, "the contract file was read and had rows in it");
+	ok(unknown == 0, "every row in the contract has a branch that drives it");
+	printf("  %d rows replayed, %d stated for the caller\n", rows, stated);
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The gesture recogniser.
+ *
+ * DRIVEN, NOT SLEPT THROUGH. Every timestamp here is supplied on the event,
+ * which is the whole reason the recogniser reads no clock: a long press is
+ * asserted in microseconds instead of half a second, and the suite stays a
+ * pure function of its input.
+ *
+ * Both halves are checked on every scenario — the gesture, and the ordinary
+ * mouse event synthesised beneath it — because a widget that never heard of
+ * touch is supposed to keep working, and that only holds if the synthesis does.
+ */
+
+static KtuiEvent touch_ev(int phase, int slot, int x, int y, unsigned ms)
+{
+	KtuiEvent ev;
+
+	memset(&ev, 0, sizeof(ev));
+	ev.type = KT_EVT_TOUCH;
+	ev.phase = phase;
+	ev.slot = slot;
+	ev.mx = x;
+	ev.my = y;
+	ev.ms = ms;
+	return ev;
+}
+
+static void test_gesture(void)
+{
+	printf("\n==> touch becomes a gesture, and a mouse\n");
+
+	KtuiEvent ev, m;
+	KtuiGesture g;
+	int have = 0;
+
+	/* start_edge() reads the grid, so the scenarios below need one. */
+	ktui_w = 80;
+	ktui_h = 24;
+
+	/* ── a tap ─────────────────────────────────────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 5, 1000);
+	ok(!ktui_gesture_feed(&ev, &g, &m, &have),
+	   "a finger down is not yet a gesture");
+	ok(have && m.type == KT_EVT_MOUSE && m.btn == KT_MB_LEFT
+	   && m.press == KT_MP_PRESS,
+	   "a finger down synthesises a left press");
+	eq_int(m.mx, 10, "the synthesised press is where the finger is");
+
+	ev = touch_ev(KT_TOUCH_UP, 0, 10, 5, 1100);
+	ok(ktui_gesture_feed(&ev, &g, &m, &have),
+	   "a short press in one cell reports");
+	eq_int(g.type, KT_GEST_TAP, "and it is a tap");
+	eq_int(g.fingers, 1, "a tap is one finger");
+	eq_int(g.x, 10, "the tap is at the cell it went down in");
+	ok(have && m.press == KT_MP_RELEASE,
+	   "and a release is synthesised under it");
+
+	/* ── held too long is not a tap ────────────────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_UP, 0, 10, 5, KT_TAP_MS);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "a press held past the tap window is not a tap");
+
+	/* ── a move inside the cell says nothing ───────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_MOVE, 0, 10, 5, 10);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "a move that stays in the cell is not a gesture");
+
+	ev = touch_ev(KT_TOUCH_MOVE, 0, 12, 5, 20);
+	ok(ktui_gesture_feed(&ev, &g, &m, &have), "leaving the cell reports");
+	eq_int(g.type, KT_GEST_DRAG, "and it is a drag");
+	eq_int(g.dx, 2, "the drag carries the cells moved");
+	ok(have && m.press == KT_MP_DRAG,
+	   "a drag synthesises a dragging pointer");
+
+	/* A drag disqualifies the tap that would otherwise follow. */
+	ev = touch_ev(KT_TOUCH_UP, 0, 12, 5, 30);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "a finger that moved does not tap when it lifts");
+
+	/* ── an edge swipe is a drag that started against an edge ──────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 0, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_MOVE, 0, 4, 5, 10);
+	ok(ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "a drag from the edge reports");
+	eq_int(g.type, KT_GEST_SWIPE_EDGE, "and it is an edge swipe");
+	eq_int(g.edge, KT_K_LEFT, "naming the edge it came from");
+
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, ktui_w - 1, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_MOVE, 0, ktui_w - 5, 5, 10);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	eq_int(g.edge, KT_K_RIGHT, "the far edge is the right one");
+
+	/* ── a long press has no event of its own ──────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ok(!ktui_gesture_tick(KT_LONG_MS - 1, &g),
+	   "a press short of the long window is not a long press");
+	ok(ktui_gesture_tick(KT_LONG_MS, &g), "held past it, it is");
+	eq_int(g.type, KT_GEST_LONG, "and it says so");
+	ok(!ktui_gesture_tick(KT_LONG_MS + 100, &g),
+	   "a long press is reported once, not once per tick");
+	ev = touch_ev(KT_TOUCH_UP, 0, 10, 5, KT_LONG_MS + 200);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "and no tap follows the long press");
+
+	/* A finger that has moved never becomes a long press. */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_MOVE, 0, 14, 5, 10);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ok(!ktui_gesture_tick(KT_LONG_MS, &g),
+	   "a finger that moved does not become a long press");
+
+	/* ── two fingers: nothing is decided by one of them ────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 10, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_DOWN, 1, 20, 10, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+
+	ev = touch_ev(KT_TOUCH_MOVE, 0, 10, 14, 10);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "one finger moving while the other has not is undecided");
+	ev = touch_ev(KT_TOUCH_MOVE, 1, 20, 14, 20);
+	ok(ktui_gesture_feed(&ev, &g, &m, &have),
+	   "the second finger decides it");
+	eq_int(g.type, KT_GEST_SCROLL, "two fingers the same way is a scroll");
+	eq_int(g.fingers, 2, "and it says how many");
+	ok(have && m.btn == KT_MB_WHEEL_DOWN,
+	   "a downward scroll synthesises a wheel");
+
+	/* ── two fingers apart is a pinch ──────────────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 10, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_DOWN, 1, 20, 10, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_MOVE, 0, 6, 10, 10);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL), "still undecided");
+	ev = touch_ev(KT_TOUCH_MOVE, 1, 24, 10, 20);
+	ok(ktui_gesture_feed(&ev, &g, NULL, NULL), "the pair disagreed");
+	eq_int(g.type, KT_GEST_PINCH, "and that is a pinch");
+	ok(g.dx > 0, "spreading reports a growing span");
+
+	/* ── a second finger disqualifies the tap ──────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 10, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_DOWN, 1, 20, 10, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_UP, 1, 20, 10, 10);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_UP, 0, 10, 10, 20);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "a sequence that had two fingers in it never taps");
+
+	/* ── cancel is not up ──────────────────────────────────────────── */
+	ktui_gesture_reset();
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 10, 5, 0);
+	ktui_gesture_feed(&ev, &g, NULL, NULL);
+	ev = touch_ev(KT_TOUCH_CANCEL, 0, 10, 5, 10);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "a cancelled sequence reports nothing");
+	ok(!ktui_gesture_tick(KT_LONG_MS, &g),
+	   "and leaves nothing half-recognised behind it");
+
+	/* ── a caller that wants only gestures passes NULL ─────────────── */
+	ktui_gesture_reset();
+	have = 1;
+	ev = touch_ev(KT_TOUCH_DOWN, 0, 3, 3, 0);
+	ok(!ktui_gesture_feed(&ev, &g, NULL, NULL),
+	   "NULL for the mouse pair is allowed");
+
+	/* ── anything that is not a touch event is not ours ────────────── */
+	memset(&ev, 0, sizeof(ev));
+	ev.type = KT_EVT_KEY;
+	have = 1;
+	ok(!ktui_gesture_feed(&ev, &g, &m, &have),
+	   "a key event is not a gesture");
+	eq_int(have, 0, "and the mouse flag is cleared before anything else");
+
+	ktui_gesture_reset();
+	ktui_w = 0;
+	ktui_h = 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The sprite table: its cap, its byte budget, its opt-in eviction, and the
+ * grid a picture larger than one slot becomes.
+ *
+ * EVERY PICTURE HERE IS A FAKE POINTER. The table holds an opaque `const void
+ * *` and never dereferences it — that is the property that keeps libktui
+ * linking nothing but the C library — so a distinct address per picture is a
+ * complete test subject, and the suite needs no pixel library to run this.
+ */
+
+static uint64_t spr_freed[64];
+static const void *spr_freed_pix[64];
+static int spr_nfreed;
+
+static void spr_evictor(uint64_t key, const void *pix, void *user)
+{
+	(void)user;
+	if (spr_nfreed < (int)(sizeof(spr_freed) / sizeof(spr_freed[0]))) {
+		spr_freed_pix[spr_nfreed] = pix;
+		spr_freed[spr_nfreed++] = key;
+	}
+}
+
+/* The tile callback hands back a distinct address per tile, and records the
+ * cell rectangle it was asked for. */
+static int spr_tw[64], spr_th[64], spr_tx[64], spr_ty[64];
+static int spr_ntiles;
+static int spr_fail_at = -1;
+static char spr_pixels[64];
+
+static const void *spr_tile(void *user, int cell_x, int cell_y, int cw, int ch)
+{
+	(void)user;
+	if (spr_ntiles >= 64)
+		return NULL;
+	if (spr_fail_at >= 0 && spr_ntiles == spr_fail_at) {
+		spr_ntiles++;
+		return NULL;
+	}
+	spr_tx[spr_ntiles] = cell_x;
+	spr_ty[spr_ntiles] = cell_y;
+	spr_tw[spr_ntiles] = cw;
+	spr_th[spr_ntiles] = ch;
+	return &spr_pixels[spr_ntiles++];
+}
+
+/*
+ * A BACKEND THAT PRESENTS, and the block needs one.
+ *
+ * The eviction rule is "is anything still drawing this", and ktui_cells()
+ * answers it with the PRESENTED frame — `front`, which a backend's flush
+ * updates as it presents. Offscreen mode deliberately makes ktui_draw_flush()
+ * a no-op, so `front` there is always empty and nothing ever looks on-screen.
+ * Presenting into it is the backend's documented job, so the test does the
+ * smallest possible one rather than reaching around the seam.
+ */
+static void spr_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		      int force_full)
+{
+	(void)force_full;
+	memcpy(prev, cur, (size_t)w * h * sizeof(*prev));
+}
+
+static void spr_size(int *w, int *h)
+{
+	if (w)
+		*w = 80;
+	if (h)
+		*h = 24;
+}
+
+static int spr_caps(void) { return 0; }
+
+static int spr_poll(KtuiEvent *ev, int timeout_ms)
+{
+	(void)ev;
+	(void)timeout_ms;
+	return 0;
+}
+
+static const KtuiBackend spr_backend = {
+	.name = "selftest",
+	.flush = spr_flush,
+	.poll_event = spr_poll,
+	.size = spr_size,
+	.caps = spr_caps,
+};
+
+static void spr_reset(void)
+{
+	ktui_sprite_clear();
+	ktui_sprite_evictor(NULL, NULL);
+	ktui_sprite_budget(0, 0, 0);
+	spr_nfreed = 0;
+	spr_ntiles = 0;
+	spr_fail_at = -1;
+}
+
+static void test_sprite(void)
+{
+	printf("\n==> the sprite table: the cap, the budget and the grid\n");
+
+	char a_pix, b_pix, c_pix;
+
+	const KtuiBackend *was = ktui_backend();
+
+	ktui_backend_set(&spr_backend);
+	ktui_w = 80;
+	ktui_h = 24;
+	ktui_draw_resize();
+	ktui_draw_clip_none();
+	ktui_draw_clear();
+	ktui_draw_flush();
+	spr_reset();
+
+	/* ── the cap, and where the number comes from ──────────────────── */
+	eq_int(KTUI_MAX_SPRITES, 4096, "the slot table holds four thousand");
+	ok(((240 + 15) / 16) * ((67 + 15) / 16) <= KTUI_MAX_SPRITES,
+	   "a full screen tiled edge to edge fits inside it");
+
+	/* ── the round trip ────────────────────────────────────────────── */
+	int sa = ktui_sprite_put(1, &a_pix, 2, 2, 'A');
+	ok(sa >= 0, "a picture registers");
+	eq_int(ktui_sprite_find(1), sa, "and is found again by its key");
+	const KtuiSprite *got = ktui_sprite_get(sa);
+	ok(got && got->pix == &a_pix, "the slot holds the pointer it was given");
+	eq_int(got ? got->fallback : 0, 'A', "and the fallback beside it");
+
+	eq_int(ktui_sprite_find(999), -1, "an unknown key is not found");
+	eq_int(ktui_sprite_put(2, NULL, 2, 2, 'x'), -1,
+	       "a null picture is refused");
+	eq_int(ktui_sprite_put(2, &b_pix, 17, 2, 'x'), -1,
+	       "wider than a slot is refused");
+	eq_int(ktui_sprite_put(2, &b_pix, 2, 17, 'x'), -1,
+	       "taller than a slot is refused");
+	eq_int(ktui_sprite_put(2, &b_pix, 0, 2, 'x'), -1,
+	       "a zero dimension is refused");
+
+	/* ── re-registering ────────────────────────────────────────────── */
+	ktui_sprite_evictor(spr_evictor, NULL);
+	spr_nfreed = 0;
+	eq_int(ktui_sprite_put(1, &a_pix, 2, 2, 'A'), sa,
+	       "the same picture under the same key keeps its slot");
+	eq_int(spr_nfreed, 0, "and hands nothing back");
+
+	eq_int(ktui_sprite_put(1, &b_pix, 2, 2, 'A'), sa,
+	       "a different picture under the same key reuses the slot");
+	eq_int(spr_nfreed, 1, "and hands the old one back");
+	ok(spr_nfreed == 1 && spr_freed_pix[0] == &a_pix,
+	   "handing back exactly the picture it replaced");
+
+	/* ── dropping is the owner's, so it calls nobody ───────────────── */
+	spr_nfreed = 0;
+	ktui_sprite_drop(1);
+	eq_int(ktui_sprite_find(1), -1, "a dropped key is gone");
+	eq_int(spr_nfreed, 0,
+	       "dropping does not call the evictor: the owner is already there");
+
+	/* ── clearing hands everything back ────────────────────────────── */
+	spr_reset();
+	ktui_sprite_evictor(spr_evictor, NULL);
+	ktui_sprite_put(10, &a_pix, 1, 1, 'a');
+	ktui_sprite_put(11, &b_pix, 1, 1, 'b');
+	spr_nfreed = 0;
+	ktui_sprite_clear();
+	eq_int(spr_nfreed, 2, "clearing hands back every picture it held");
+	eq_int(ktui_sprite_slots(), 0, "and empties the table");
+
+	/* ── the byte budget ───────────────────────────────────────────── */
+	spr_reset();
+	ktui_sprite_put(20, &a_pix, 2, 2, 'a');
+	eq_int((long long)ktui_sprite_bytes(), 0,
+	       "with no cell size declared the byte budget is off");
+
+	spr_reset();
+	ktui_sprite_budget(1024 * 1024, 8, 16);
+	ktui_sprite_put(20, &a_pix, 2, 2, 'a');
+	eq_int((long long)ktui_sprite_bytes(), (long long)(2 * 8 * 2 * 16 * 4),
+	       "a sprite costs its cells times the cell size, in ARGB");
+
+	/* A cap too small for the next picture, and nobody to hand one back
+	 * to: refused, and the total is left where it was. */
+	spr_reset();
+	ktui_sprite_budget(2 * 8 * 2 * 16 * 4, 8, 16);
+	ok(ktui_sprite_put(20, &a_pix, 2, 2, 'a') >= 0,
+	   "the first picture fits the cap exactly");
+	size_t before = ktui_sprite_bytes();
+	eq_int(ktui_sprite_put(21, &b_pix, 2, 2, 'b'), -1,
+	       "the second is refused with no evictor to make room");
+	eq_int((long long)ktui_sprite_bytes(), (long long)before,
+	       "and the refusal left the total alone");
+
+	/* With an evictor, room is made from the least recently used. */
+	spr_reset();
+	ktui_sprite_budget(2 * (2 * 8 * 2 * 16 * 4), 8, 16);
+	ktui_sprite_evictor(spr_evictor, NULL);
+	ktui_sprite_put(30, &a_pix, 2, 2, 'a');
+	ktui_sprite_put(31, &b_pix, 2, 2, 'b');
+	ktui_sprite_find(31);		/* touch 31, so 30 is the oldest */
+	spr_nfreed = 0;
+	ok(ktui_sprite_put(32, &c_pix, 2, 2, 'c') >= 0,
+	   "a third picture is taken once there is an evictor");
+	eq_int(spr_nfreed, 1, "exactly one picture was handed back");
+	eq_int((long long)spr_freed[0], 30,
+	       "and it is the least recently used one");
+	eq_int(ktui_sprite_find(31), 1, "the one that was touched survived");
+
+	/* ── what is on the screen is not evictable ────────────────────── */
+	spr_reset();
+	ktui_draw_clear();
+	ktui_sprite_budget(2 * 8 * 2 * 16 * 4, 8, 16);
+	ktui_sprite_evictor(spr_evictor, NULL);
+	int son = ktui_sprite_put(40, &a_pix, 2, 2, 'a');
+	KRect r = { 0, 0, 2, 2 };
+	ktui_draw_sprite(r, son, 7, 0);
+	ktui_draw_flush();		/* now the frame on screen names it */
+
+	/*
+	 * LOUD, BECAUSE THE DEPENDENCY IS INVISIBLE. ktui_offscreen_init() is a
+	 * ONE-WAY LATCH — nothing clears it — and it makes ktui_draw_flush() a
+	 * no-op, so a block that runs after one of the offscreen blocks would
+	 * find `front` empty, every sprite would look evictable, and the two
+	 * assertions below would pass for the wrong reason. This is why
+	 * test_sprite() runs first in main().
+	 */
+	int fw = 0, fh = 0;
+	const KtuiCell *frame = ktui_cells(&fw, &fh);
+	ok(frame && fw > 0 && KTUI_IS_SPRITE(frame[0].ch) &&
+	   (int)KTUI_SPRITE_SLOT(frame[0].ch) == son,
+	   "a frame was presented, so the on-screen rule can be exercised");
+
+	spr_nfreed = 0;
+	eq_int(ktui_sprite_put(41, &b_pix, 2, 2, 'b'), -1,
+	       "a sprite the cell buffer still names is not evictable");
+	eq_int(spr_nfreed, 0, "so nothing was handed back");
+	ktui_draw_clear();
+	ktui_draw_flush();
+	ok(ktui_sprite_put(41, &b_pix, 2, 2, 'b') >= 0,
+	   "and once nothing draws it, it is");
+
+	/* ── a text backend's substitute ───────────────────────────────── */
+	spr_reset();
+	int st = ktui_sprite_put(50, &a_pix, 2, 2, 0x2588);
+	uint32_t tl = KTUI_SPRITE_BASE | ((uint32_t)st << 8);
+	eq_int(ktui_sprite_text_cell(tl), 0x2588,
+	       "a text backend puts the fallback in the top-left cell");
+	eq_int(ktui_sprite_text_cell(tl | 1u), ' ',
+	       "and blanks the rest, so two icons do not merge");
+	eq_int(ktui_sprite_text_cell('Z'), 'Z',
+	       "an ordinary character passes through untouched");
+
+	/* ── a picture larger than a slot is a grid ────────────────────── */
+	spr_reset();
+	eq_int(ktui_sprite_put_tiled(100, 40, 30, 0x2588, spr_tile, NULL), 6,
+	       "a 40x30 picture is six tiles");
+	eq_int(spr_ntiles, 6, "and the callback was asked six times");
+
+	int sx = -1, sy = -1;
+	int tslot = ktui_sprite_tile_at(100, 40, 17, 3, &sx, &sy);
+	ok(tslot >= 0, "cell 17,3 lands in a registered tile");
+	eq_int(sx, 1, "at sub-cell x 1 of the second column");
+	eq_int(sy, 3, "and sub-cell y 3");
+	eq_int(tslot, ktui_sprite_tile_at(100, 40, 16, 0, NULL, NULL),
+	       "which is the same tile cell 16,0 is in");
+
+	/* The remainder tile is the remainder, not a padded full one. */
+	eq_int(spr_tw[5], 8, "the last tile is the 8-cell remainder wide");
+	eq_int(spr_th[5], 14, "and the 14-cell remainder tall");
+	eq_int(spr_tw[0], 16, "while the first is a full slot");
+
+	const KtuiSprite *last = ktui_sprite_get(
+		ktui_sprite_tile_at(100, 40, 39, 29, NULL, NULL));
+	ok(last && last->fallback == 0x2588,
+	   "every tile carries the fallback, so a picture leaves a mark");
+
+	/* ── an adjacent key must not collide ──────────────────────────── */
+	int slots_before = ktui_sprite_slots();
+	spr_ntiles = 0;
+	eq_int(ktui_sprite_put_tiled(101, 40, 30, 0x2588, spr_tile, NULL), 6,
+	       "a picture with an adjacent key registers six tiles of its own");
+	eq_int(ktui_sprite_slots(), slots_before + 6,
+	       "in six slots of their own — the stride is XORed, not added");
+
+	/* ── all or nothing ────────────────────────────────────────────── */
+	spr_reset();
+	ktui_sprite_evictor(spr_evictor, NULL);
+	spr_fail_at = 3;
+	eq_int(ktui_sprite_put_tiled(200, 40, 30, 0x2588, spr_tile, NULL), -1,
+	       "a tile the caller cannot supply abandons the whole picture");
+	/* ktui_sprite_slots() is a HIGH-WATER MARK, not a live count: a dropped
+	 * slot is emptied in place so the next put can reuse it. What "nothing
+	 * is registered" means is that no tile can be found. */
+	eq_int(ktui_sprite_tile_at(200, 40, 0, 0, NULL, NULL), -1,
+	       "leaving no tile of it registered");
+	eq_int(ktui_sprite_tile_at(200, 40, 17, 3, NULL, NULL), -1,
+	       "not one of the tiles it had already taken either");
+	eq_int(spr_nfreed, 3,
+	       "and handing back the tiles it had already taken");
+
+	/* ── dropping a tiled picture drops all of it ──────────────────── */
+	spr_reset();
+	ktui_sprite_put_tiled(300, 40, 30, 0x2588, spr_tile, NULL);
+	ktui_sprite_drop_tiled(300, 40, 30);
+	eq_int(ktui_sprite_tile_at(300, 40, 0, 0, NULL, NULL), -1,
+	       "dropping a tiled picture drops every tile of it");
+
+	spr_reset();
+	ktui_draw_clear();
+	ktui_draw_flush();
+	ktui_backend_set(was);
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * libkvt's three image protocols, through the real state machine.
+ *
+ * The library DECODES NOTHING — it is linked by kdos-con, which links no pixel
+ * code at all — so what is asserted here is the parse: which protocol, what the
+ * introducer said, and exactly which bytes came out. Sixel is a DCS, iTerm2's
+ * is an OSC and kitty's is an APC; one callback serves all three because they
+ * differ only in how they are delimited.
+ *
+ * The recorded streams under testing/fixtures/vt/ are the other half of this
+ * library's coverage and are replayed by testing/selftest.sh, which builds a
+ * renderer of its own for them.
+ */
+
+struct vt_seen {
+	int calls;
+	int kind;
+	char params[128];
+	char payload[256];
+	size_t len;
+	int osc_calls;
+	char osc[128];
+};
+
+static void vt_on_write(struct kvt_vte *vte, const char *u8, size_t len,
+			void *data)
+{
+	/* The terminal's replies to the host. Nothing reads them: a test that
+	 * answered would be testing the answer. */
+	(void)vte; (void)u8; (void)len; (void)data;
+}
+
+static void vt_on_osc(struct kvt_vte *vte, const char *u8, size_t len,
+		      void *data)
+{
+	struct vt_seen *s = data;
+
+	(void)vte;
+	s->osc_calls++;
+	if (len >= sizeof(s->osc))
+		len = sizeof(s->osc) - 1;
+	memcpy(s->osc, u8, len);
+	s->osc[len] = '\0';
+}
+
+static void vt_on_img(struct kvt_vte *vte, enum kvt_img_kind kind,
+		      const char *params, const uint8_t *payload, size_t len,
+		      void *data)
+{
+	struct vt_seen *s = data;
+
+	(void)vte;
+	s->calls++;
+	s->kind = (int)kind;
+	s->len = len;
+	snprintf(s->params, sizeof(s->params), "%s", params ? params : "");
+	size_t n = len < sizeof(s->payload) - 1 ? len : sizeof(s->payload) - 1;
+	if (payload && n)
+		memcpy(s->payload, payload, n);
+	s->payload[n] = '\0';
+}
+
+/* Feed one stream through a fresh terminal. `cap` of 0 leaves the image
+ * callback unset, which is the default and turns all three protocols off. */
+static void vt_feed(struct vt_seen *s, const char *bytes, size_t n, size_t cap,
+		    char *row0, size_t row0n)
+{
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+	KtuiCell cells[40 * 4];
+
+	memset(s, 0, sizeof(*s));
+	if (kvt_screen_new(&scr, NULL, NULL) != 0)
+		return;
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		return;
+	}
+	kvt_vte_set_osc_cb(vte, vt_on_osc, s);
+	if (cap)
+		kvt_vte_set_img_cb(vte, vt_on_img, cap, s);
+
+	/* A BYTE AT A TIME, because a pty splits a sequence across reads and a
+	 * parser that only works on whole ones works only in a test. */
+	for (size_t i = 0; i < n; i++)
+		kvt_vte_input(vte, bytes + i, 1);
+
+	kvt_grid_render(scr, cells, 40, 4);
+	if (row0 && row0n) {
+		size_t k = 0;
+		for (; k < row0n - 1 && k < 40; k++)
+			row0[k] = cells[k].ch >= 32 && cells[k].ch < 127
+				? (char)cells[k].ch : '.';
+		row0[k] = '\0';
+	}
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/* The terminal's replies, for the one test that reads them. */
+static char vt_reply[256];
+static size_t vt_reply_n;
+
+static void vt_on_write_capture(struct kvt_vte *vte, const char *u8, size_t len,
+				void *data)
+{
+	(void)vte;
+	(void)data;
+	for (size_t i = 0; i < len && vt_reply_n < sizeof(vt_reply) - 1; i++)
+		vt_reply[vt_reply_n++] = u8[i];
+	vt_reply[vt_reply_n] = '\0';
+}
+
+/*
+ * WHAT THE TERMINAL SAYS IT IS, which is what every picture program asks
+ * before it decides how to draw one.
+ *
+ * `chafa`, `img2sixel`, `lsix`, `timg` and `mpv --vo=sixel` all send DA1 and
+ * read parameter 4 as sixel support. Without it every one of them falls back
+ * to half blocks on a terminal that decodes sixel, OSC 1337 and the kitty
+ * protocol — a capability the tree has and cannot be asked about.
+ */
+static void test_vt_da(void)
+{
+	printf("\n==> libkvt answers the question a picture program asks\n");
+
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0) {
+		ok(0, "a screen");
+		return;
+	}
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write_capture, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		ok(0, "a vte");
+		return;
+	}
+
+	static const char da1[] = "\033[c";
+
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, da1, sizeof(da1) - 1);
+	ok(strstr(vt_reply, ";4;") != NULL,
+	   "the primary DA reports sixel");
+	ok(strstr(vt_reply, "\033[?60;") == vt_reply,
+	   "at the conformance level it was measured at");
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/*
+ * ── THE CONTRACT EVERY SURFACE ANSWERS ──────────────────────────────────
+ *
+ * The hint row and the Esc ladder, driven offscreen. A golden cannot check
+ * this: a dump carries codepoints and no attributes, and the row's whole point
+ * is that its CONTENT changes with the focus. So it is asserted here, where the
+ * pushed hints and the classification are both readable.
+ *
+ * THE TOTAL RULE: every key the row advertises must be answered. A surface that
+ * names a key `ktui_keys` returns PASS for is a surface advertising a key that
+ * does nothing, which is the failure the whole wave exists to remove.
+ */
+static int lay_a, lay_b;
+static int lay_a_up(void *u) { (void)u; return lay_a; }
+static int lay_b_up(void *u) { (void)u; return lay_b; }
+static void lay_a_close(void *u) { (void)u; lay_a = 0; }
+static void lay_b_close(void *u) { (void)u; lay_b = 0; }
+
+static char help_opened[64];
+static void on_help(const char *doc, void *u)
+{
+	(void)u;
+	snprintf(help_opened, sizeof(help_opened), "%s", doc ? doc : "");
+}
+
+/*
+ * THE SLOT NAMES, which are what the colour picker hands a person.
+ *
+ * An array indexed by the enum: a slot added to `KT_NCOLOR` without a row here
+ * would answer NULL and the picker would say nothing at all, and a row that
+ * drifted would name the wrong colour — which is worse, because it reads
+ * right.
+ */
+/*
+ * A `file://` URI BACK TO A PATH. One surface hands a program a path and
+ * another hands it a URI, so the decoder is what lets a caller take either —
+ * and the host is the field that must be refused rather than dropped: ignoring
+ * it opens THIS machine's copy of a file that names another machine's.
+ */
+static void test_uri_path(void)
+{
+	printf("\n==> a file:// URI comes back as the path it names\n");
+
+	char out[256];
+
+	ok(kb_uri_path("file:///home/kdos/My%20Report.pdf", out, sizeof(out)),
+	   "a URI with an escape decodes");
+	eq_str(out, "/home/kdos/My Report.pdf", "and the space comes back");
+
+	ok(kb_uri_path("file://localhost/etc/hosts", out, sizeof(out)),
+	   "localhost is this machine");
+	eq_str(out, "/etc/hosts", "and drops out of the path");
+
+	ok(!kb_uri_path("file://otherbox/etc/passwd", out, sizeof(out)),
+	   "a URI naming another machine is refused, not silently localised");
+
+	ok(kb_uri_path("/plain/path", out, sizeof(out)),
+	   "a plain path is not a URI and is carried through");
+	eq_str(out, "/plain/path", "unchanged");
+
+	/* A NUL in the middle would end the path early and open a different
+	 * file from the one named. */
+	ok(!kb_uri_path("file:///etc/passwd%00.png", out, sizeof(out)),
+	   "an escaped NUL is refused");
+
+	/* Uppercase and lowercase hex are the same URI. */
+	ok(kb_uri_path("file:///a%2fb", out, sizeof(out)), "lowercase hex");
+	eq_str(out, "/a/b", "decodes the same as uppercase");
+
+	ok(!kb_uri_path("file:///0123456789abcdef", out, 8),
+	   "and a result that does not fit is refused rather than cut");
+}
+
+static void test_slot_names(void)
+{
+	printf("\n==> every colour slot has a name the picker can hand over\n");
+
+	int named = 1, unique = 1;
+
+	for (int i = 0; i < KT_NCOLOR; i++) {
+		const char *a = ktui_slot_name(i);
+
+		if (!a || !*a) {
+			named = 0;
+			continue;
+		}
+		for (int j = i + 1; j < KT_NCOLOR; j++) {
+			const char *b = ktui_slot_name(j);
+
+			if (b && !strcmp(a, b))
+				unique = 0;
+		}
+	}
+	ok(named, "all eight slots are named");
+	ok(unique, "and no two share a name");
+	ok(!ktui_slot_name(-1) && !ktui_slot_name(KT_NCOLOR),
+	   "a value that is not a slot is not named");
+	eq_str(ktui_slot_name(KT_ACCENT), "accent",
+	       "and the name is the one a person would write");
+}
+
+static void test_keys(void)
+{
+	printf("\n==> the hint row follows the focus, and Esc unwinds one rung\n");
+
+	KtuiKeys k = { 0 };
+	KtuiEvent ev = { 0 };
+
+	ev.type = KT_EVT_KEY;
+
+	/* ── F1 is answered only where there is a page ───────────────── */
+	ev.key = KT_K_F1;
+	eq_int(ktui_keys(&k, &ev), KTUI_KEY_PASS,
+	       "a surface with no documentation does not answer F1");
+	k.doc = "kdos-shell.md#settings";
+	k.help = on_help;
+	help_opened[0] = '\0';
+	eq_int(ktui_keys(&k, &ev), KTUI_KEY_TAKEN, "and one with a page does");
+	eq_str(help_opened, "kdos-shell.md#settings",
+	       "opening the page the surface named, not an index");
+
+	/* ── Esc unwinds ONE rung per press, innermost first ─────────── */
+	ktui_keys_layer(&k, "Back", lay_a_up, lay_a_close, NULL);
+	ktui_keys_layer(&k, "Cancel", lay_b_up, lay_b_close, NULL);
+	lay_a = lay_b = 1;
+	ev.key = KT_K_ESC;
+	eq_str(ktui_esc_verb(&k), "Cancel",
+	       "the row names the INNERMOST open layer");
+	eq_int(ktui_keys(&k, &ev), KTUI_KEY_TAKEN, "Esc takes the inner one");
+	eq_int(lay_b, 0, "closing it");
+	eq_int(lay_a, 1, "and leaving the one under it up");
+	eq_str(ktui_esc_verb(&k), "Back", "which the row now names");
+	eq_int(ktui_keys(&k, &ev), KTUI_KEY_TAKEN, "the next Esc takes that");
+	eq_int(lay_a, 0, "closing it too");
+	eq_str(ktui_esc_verb(&k), "Close",
+	       "and with nothing open the row says Close");
+	eq_int(ktui_keys(&k, &ev), KTUI_KEY_CLOSE,
+	       "which is what the third Esc means");
+
+	/*
+	 * A LAYER THAT WENT DOWN BY ITSELF IS NOT STILL UP. A dialog dismissed
+	 * by a click leaves no raised bit, because the predicate is asked at
+	 * the instant Esc arrives rather than cached — this is the defect that
+	 * makes an Esc ladder swallow a keystroke.
+	 */
+	lay_a = 1;
+	lay_b = 0;
+	eq_str(ktui_esc_verb(&k), "Back",
+	       "a layer taken down elsewhere is skipped, not remembered");
+
+	/* ── the row is pushed, and clears itself ────────────────────── */
+	ktui_offscreen_init(60, 12);
+	ktui_draw_init();
+	ktui_hint_if(0, "F10", "Menu");
+	ktui_hint_if(1, "Enter", "Open");
+	eq_int(ktui_hint_row(&k, krect(0, 11, 60, 1), KT_BG), 1,
+	       "a row is drawn when there is room");
+
+	int cw = 0, chh = 0;
+	const KtuiCell *cells = ktui_draw_cells(&cw, &chh);
+	const KtuiCell *row = cells + 11 * cw;
+	char got[61];
+
+	for (int i = 0; i < 60 && i < cw; i++)
+		got[i] = row[i].ch >= 0x20 && row[i].ch < 0x7f ?
+			 (char)row[i].ch : ' ';
+	got[60] = '\0';
+	ok(strstr(got, "F1 help") != NULL,
+	   "F1 comes from the DESCRIPTOR, so no surface pushes it per frame");
+	ok(strstr(got, "Enter Open") != NULL, "and the one pushed with a true");
+	ok(strstr(got, "F10") == NULL,
+	   "and NOT the one whose condition was false");
+
+	/* Drawn once, then gone: the pool is cleared by the draw, so a second
+	 * row on a surface that pushed nothing is empty rather than a repeat
+	 * of the last one. F1 survives because it is the DESCRIPTOR's and not
+	 * a frame's, which is exactly the difference being asserted. */
+	ktui_hint_row(&k, krect(0, 11, 60, 1), KT_BG);
+	cells = ktui_draw_cells(&cw, &chh);
+	row = cells + 11 * cw;
+	for (int i = 0; i < 60 && i < cw; i++)
+		got[i] = row[i].ch >= 0x20 && row[i].ch < 0x7f ?
+			 (char)row[i].ch : ' ';
+	got[60] = '\0';
+	ok(strstr(got, "Enter Open") == NULL,
+	   "a second row does not repeat the hints the first one drew");
+	ok(strstr(got, "F1 help") != NULL, "though F1 is still named");
+
+	/* A surface with NO page says nothing about F1, on the same row. */
+	{
+		KtuiKeys nodoc = { 0 };
+
+		ktui_offscreen_init(60, 12);
+		ktui_draw_init();
+		ktui_hint("Enter", "Open");
+		ktui_hint_row(&nodoc, krect(0, 11, 60, 1), KT_BG);
+		cells = ktui_draw_cells(&cw, &chh);
+		row = cells + 11 * cw;
+		for (int i = 0; i < 60 && i < cw; i++)
+			got[i] = row[i].ch >= 0x20 && row[i].ch < 0x7f ?
+				 (char)row[i].ch : ' ';
+		got[60] = '\0';
+		ok(strstr(got, "F1") == NULL,
+		   "a surface with no page neither answers F1 nor advertises it");
+	}
+
+	/* ── not on a short window ───────────────────────────────────── */
+	ktui_offscreen_init(60, 6);
+	ktui_draw_init();
+	ktui_hint("Enter", "Open");
+	eq_int(ktui_hint_row(&k, krect(0, 5, 60, 1), KT_BG), 0,
+	       "and no row at all below eight rows");
+}
+
+/*
+ * ── THE MENU ────────────────────────────────────────────────────────────
+ *
+ * One widget for a bar and for a popup, because they are the same list drawn
+ * in two places. The two things worth asserting are the two that a second
+ * implementation always gets wrong: that `sel` indexes the ITEMS and not the
+ * drawn rows, so a hidden row cannot move the selection onto something else;
+ * and that the drawing and the hit test ask the same `show` from the same
+ * walk, so a click cannot run the row above the one under the pointer.
+ */
+enum { MI_NEW = 11, MI_OPEN, MI_SAVE, MI_QUIT };
+
+static const KtuiMenuItem file_items[] = {
+	{ "&New", MI_NEW, "Ctrl+N", 1 },
+	{ "&Open", MI_OPEN, NULL, 1 },
+	{ "", 0, NULL, 0 },			/* a rule */
+	{ "&Save", MI_SAVE, NULL, 0 },		/* disabled */
+	{ "&Quit", MI_QUIT, NULL, 1 },
+};
+
+static const KtuiMenuItem edit_items[] = {
+	{ "&Copy", 21, NULL, 1 },
+	{ "&Paste", 22, NULL, 1 },
+};
+
+static const KtuiMenuPane test_panes[] = {
+	{ "&File", file_items, 5 },
+	{ "&Edit", edit_items, 2 },
+};
+
+/* Open is hidden, which is what makes the index-not-row rule testable. */
+static int menu_show(int i, void *user)
+{
+	(void)user;
+	return i != 1;
+}
+
+/*
+ * WHERE THIS SURFACE WOULD PUT A CONTEXT PANE, and whether it has one at all.
+ * A real `ctx_at` answers where the KEYBOARD'S focus is drawn; the pair below
+ * is a place a finger is not, so a menu opened at the finger can be told from
+ * one opened at the focus.
+ */
+enum { ST_CTX_X = 30, ST_CTX_Y = 9 };
+static int st_ctx_refuse;
+
+static int st_ctx_at(int *x, int *y, void *user)
+{
+	(void)user;
+	if (st_ctx_refuse)
+		return 0;
+	*x = ST_CTX_X;
+	*y = ST_CTX_Y;
+	return 1;
+}
+
+static void test_menu(void)
+{
+	printf("\n==> the menu: one widget, a bar and a popup\n");
+
+	KtuiMenu m = { 0 };
+	KtuiEvent ev = { 0 };
+	int id = 0;
+
+	m.pane = test_panes;
+	m.npane = 2;
+	m.show = menu_show;
+	m.has_bar = 1;
+	m.bar_row = 0;
+
+	eq_int(ktui_menu_accel_of("&File"), 'f', "the mark names its letter");
+	eq_int(ktui_menu_accel_of("Se&ttings"), 't', "wherever it falls");
+	eq_int(ktui_menu_accel_of("R&&D"), 0,
+	       "and a doubled mark is a literal ampersand, not an accelerator");
+	eq_int(ktui_menu_accel_of("Plain"), 0, "no mark, no letter");
+
+	/* ── the caret never rests on a rule or a hidden row ──────────── */
+	ktui_menu_open(&m, 0, 2, 1);
+	eq_int(ktui_menu_active(&m), 1, "the pane is down");
+	eq_int(m.sel, 0, "opening lands on the first row that can be picked");
+
+	ev.type = KT_EVT_KEY;
+	ev.key = KT_K_DOWN;
+	ktui_menu_event(&m, &ev, &id);
+	eq_int(m.sel, 4,
+	       "Down skips the hidden row, the rule AND the disabled row");
+	ktui_menu_event(&m, &ev, &id);
+	eq_int(m.sel, 0, "and wraps");
+
+	/* ── a letter picks its own row, and only a pickable one ─────── */
+	ev.key = 'q';
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_PICKED,
+	       "a letter picks the row it marks");
+	eq_int(id, MI_QUIT, "by ID, never by position");
+	eq_int(ktui_menu_active(&m), 0, "and the pane goes down with it");
+
+	ktui_menu_open(&m, 0, 2, 1);
+	ev.key = 's';
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_TAKEN,
+	       "a letter on a DISABLED row picks nothing");
+	eq_int(id, MI_QUIT, "leaving the last answer alone");
+	ev.key = 'o';
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_TAKEN,
+	       "and one on a row `show` hid picks nothing either");
+
+	/* ── Left and Right walk the bar; a popup has no neighbour ───── */
+	ev.key = KT_K_RIGHT;
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_TAKEN, "Right on a bar");
+	eq_int(m.open, 2, "moves to the next pane");
+	m.has_bar = 0;
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_NONE,
+	       "and on a popup it is not the menu's key to take");
+	m.has_bar = 1;
+
+	/* ── the hit test walks the same skip the drawing does ───────── */
+	ktui_offscreen_init(40, 12);
+	ktui_draw_init();
+	ktui_menu_open(&m, 0, 2, 1);
+	ktui_menu_draw(&m);
+	eq_int(m.rows, 4, "four of the five items are shown");
+
+	ev.type = KT_EVT_MOUSE;
+	ev.press = KT_MP_PRESS;
+	ev.btn = KT_MB_LEFT;
+	ev.mx = m.x + 2;
+	ev.my = m.y + 4;			/* the fourth drawn row */
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_PICKED,
+	       "a click on the last drawn row picks");
+	eq_int(id, MI_QUIT,
+	       "the item that was DRAWN there, not the one at that index");
+
+	/* ── a click away closes rather than picking ─────────────────── */
+	ktui_menu_open(&m, 0, 2, 1);
+	ev.mx = 39;
+	ev.my = 11;
+	eq_int(ktui_menu_event(&m, &ev, &id), KTUI_MENU_TAKEN,
+	       "a click outside the pane");
+	eq_int(ktui_menu_active(&m), 0, "closes it");
+
+	/* ── the keys contract routes into it ────────────────────────── */
+	{
+		KtuiKeys k = { 0 };
+		KtuiEvent kev = { 0 };
+
+		k.menu = &m;
+		kev.type = KT_EVT_KEY;
+		kev.key = KT_K_F10;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_TAKEN, "F10 opens the bar");
+		eq_int(m.open, 1, "on its first pane");
+		eq_str(ktui_esc_verb(&k), "Cancel",
+		       "and the row says Escape cancels the menu, not closes");
+		kev.key = KT_K_ESC;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_TAKEN, "Esc takes it down");
+		eq_int(ktui_menu_active(&m), 0, "leaving nothing open");
+		eq_str(ktui_esc_verb(&k), "Close",
+		       "and the row goes back to naming the surface");
+
+		/* Alt+letter opens a pane by its mark, from closed. */
+		kev.key = 'e';
+		kev.mods = KT_MOD_ALT;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_TAKEN,
+		       "Alt+letter opens the pane it marks");
+		eq_int(m.open, 2, "which is the second one here");
+		kev.mods = 0;
+		kev.key = KT_K_ENTER;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_MENU,
+		       "and Enter on a row reports a pick through the contract");
+		eq_int(k.menu_id, 21, "naming the item");
+
+		/* A surface with no bar does not answer F10. */
+		m.has_bar = 0;
+		kev.key = KT_K_F10;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_PASS,
+		       "a surface with no bar neither opens nor swallows F10");
+		m.has_bar = 1;
+
+		/*
+		 * ── A LONG PRESS IS Shift+F10 WITH A FINGER ───────────
+		 *
+		 * Answered in the contract so every surface with a context
+		 * pane inherits it, rather than thirty of them growing a
+		 * touch path each — and AT THE FINGER, not at the keyboard's
+		 * focus: a person holding a row expects the menu on that row.
+		 * `ctx_at` is still asked, because a surface that refuses one
+		 * must refuse the other.
+		 */
+		KtuiEvent tev = { 0 };
+
+		tev.type = KT_EVT_TOUCH;
+		tev.gesture = KT_GEST_LONG;
+		tev.mx = 7;
+		tev.my = 5;
+		k.ctx_pane = 1;
+		k.ctx_at = NULL;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_PASS,
+		       "a long press on a surface that names no context is passed on");
+		k.ctx_at = st_ctx_at;
+		st_ctx_refuse = 1;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_PASS,
+		       "and one that refuses refuses a finger too");
+		st_ctx_refuse = 0;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_TAKEN,
+		       "a long press opens the context pane");
+		eq_int(m.open, 2, "the pane the surface named");
+		/* `x` and `y` are the popup as DRAWN and are clamped on
+		 * screen, which is why the assertion is that they are the
+		 * finger's and not the focus's rather than an exact pair. */
+		ok(m.x != ST_CTX_X || m.y != ST_CTX_Y,
+		   "at the FINGER and not where the keyboard's focus is");
+		kev.key = KT_K_ESC;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_TAKEN,
+		       "and Esc takes it down again");
+
+		/* AND ONLY A LONG PRESS. A tap is a click and every widget
+		 * already handles one; a tap that opened a menu would put a
+		 * pane under every finger. */
+		tev.gesture = KT_GEST_TAP;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_PASS,
+		       "a tap is a click and opens nothing");
+	}
+}
+
+/*
+ * ── XTSMGRAPHICS: HOW BIG A PICTURE MAY BE ──────────────────────────────
+ *
+ * `CSI ? Pi ; Pa ; Pv S` and `CSI Ps S` differ by the private marker alone,
+ * and the second scrolls the screen. A terminal that misses the marker
+ * answers a capability probe by scrolling — the program learns nothing, and
+ * what it sees is its own output moving.
+ *
+ * THE GEOMETRY IS THE CONSUMER'S. A terminal that has not declared one
+ * answers failure rather than a size: a program told a geometry the terminal
+ * will not honour sends a picture that comes back clipped, and nothing in
+ * that failure names the terminal.
+ */
+static void test_vt_graphics(void)
+{
+	printf("\n==> libkvt says how big a picture may be, and refuses to guess\n");
+
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0) {
+		ok(0, "a screen");
+		return;
+	}
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write_capture, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		ok(0, "a vte");
+		return;
+	}
+
+	/* No geometry declared: the sixel query is a failure, not a size. */
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, "\033[?2;1;S", 8);
+	eq_str(vt_reply, "\033[?2;3;S",
+	       "a terminal that never declared a geometry refuses to invent one");
+
+	kvt_vte_set_img_geom(vte, 1000, 500);
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, "\033[?2;1;S", 8);
+	eq_str(vt_reply, "\033[?2;0;1000;500S",
+	       "and reports the one it was given, in pixels");
+
+	/* Colour registers, which the decoder owns. */
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, "\033[?1;1;S", 8);
+	eq_str(vt_reply, "\033[?1;0;256S", "the colour registers are reported");
+
+	/* A SET is refused rather than ignored: a program that believed it had
+	 * negotiated a bigger picture would send one and have it clipped. */
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, "\033[?2;3;99;99S", 13);
+	eq_str(vt_reply, "\033[?2;3;S",
+	       "a request to SET the geometry is refused, not silently dropped");
+
+	/* A resource this terminal does not have. */
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, "\033[?9;1;S", 8);
+	eq_str(vt_reply, "\033[?9;1;S", "an unknown resource says so");
+
+	/*
+	 * AND THE PRIVATE MARKER IS THE WHOLE DIFFERENCE. Without it this is
+	 * SU: it must still scroll, and it must not answer.
+	 */
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, "\033[1S", 4);
+	eq_str(vt_reply, "", "and CSI S with no marker still scrolls, silently");
+
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/*
+ * ── THE MODES A PROGRAM PROBES BEFORE IT DOES ANYTHING CLEVER ───────────
+ *
+ * DECRQM is what a program falls back on when nothing else answers, so
+ * answering it is what makes every later mode safe to add. The rule that
+ * matters is the LAST case: a mode nothing implements is answered `0`, which
+ * is "not recognised" and is what a probing program is built to handle.
+ * Silence is what it is not built to handle — it waits, times out, and draws
+ * like a terminal from 1978.
+ */
+static void test_vt_modes(void)
+{
+	printf("\n==> libkvt answers DECRQM, reports focus and brackets a frame\n");
+
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0) {
+		ok(0, "a screen");
+		return;
+	}
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write_capture, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		ok(0, "a vte");
+		return;
+	}
+
+	struct { const char *feed; const char *want; const char *what; } q[] = {
+		{ "\033[?2004$p", "\033[?2004;2$y",
+		  "bracketed paste is off until it is asked for" },
+		{ "\033[?2004h\033[?2004$p", "\033[?2004;1$y",
+		  "and on once it is" },
+		{ "\033[?7$p", "\033[?7;1$y", "auto wrap is on" },
+		{ "\033[?25$p", "\033[?25;1$y", "the cursor is visible" },
+		{ "\033[?1004$p", "\033[?1004;2$y", "focus reporting is off" },
+		{ "\033[?2026$p", "\033[?2026;2$y", "synchronized output is off" },
+		{ "\033[?64738$p", "\033[?64738;0$y",
+		  "and a mode nothing implements is answered, not ignored" },
+	};
+
+	for (unsigned i = 0; i < sizeof(q) / sizeof(q[0]); i++) {
+		vt_reply_n = 0;
+		vt_reply[0] = '\0';
+		kvt_vte_input(vte, q[i].feed, strlen(q[i].feed));
+		ok(strstr(vt_reply, q[i].want) != NULL, q[i].what);
+	}
+
+	/*
+	 * FOCUS IS SILENT UNTIL IT IS ASKED FOR. A terminal that wrote CSI I
+	 * unasked would put two stray characters into every program that never
+	 * requested them.
+	 */
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_focus(vte, true);
+	eq_int((long long)vt_reply_n, 0,
+	       "no focus report until the child asks for one");
+
+	static const char on[] = "\033[?1004h";
+
+	kvt_vte_input(vte, on, sizeof(on) - 1);
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_focus(vte, true);
+	eq_str(vt_reply, "\033[I", "and CSI I once it has");
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_focus(vte, false);
+	eq_str(vt_reply, "\033[O", "and CSI O on the way out");
+
+	static const char sync_on[] = "\033[?2026h";
+
+	kvt_vte_input(vte, sync_on, sizeof(sync_on) - 1);
+	ok(kvt_vte_sync_output(vte), "a frame can be bracketed");
+
+	static const char sync_off[] = "\033[?2026l";
+
+	kvt_vte_input(vte, sync_off, sizeof(sync_off) - 1);
+	ok(!kvt_vte_sync_output(vte), "and unbracketed");
+
+	/*
+	 * ── WHAT A DEAD CHILD LEAVES BEHIND ────────────────────────────
+	 *
+	 * A program killed before it could tidy up leaves its modes set, and
+	 * the window OUTLIVES it on both desktops: the console keeps a
+	 * terminal window showing how its program finished, and kdos-term
+	 * draws one more frame before it goes. Every mode below is one the
+	 * next thing in that window would inherit.
+	 *
+	 * THE SCREEN AND THE SCROLLBACK MUST SURVIVE IT. The last thing the
+	 * program printed is the whole reason the window is still there, so a
+	 * reset that cleared them would take away what it exists to show.
+	 */
+	{
+		static const char all_on[] =
+			"\033[?2004h"	/* bracketed paste          */
+			"\033[?1004h"	/* focus reporting          */
+			"\033[?2026h"	/* synchronized output      */
+			"\033[?1006h\033[?1002h"	/* mouse reporting  */
+			"\033[?1049h";	/* the alternate screen     */
+
+		kvt_vte_input(vte, all_on, sizeof(all_on) - 1);
+		kvt_vte_input(vte, "gone", 4);
+		ok(kvt_vte_sync_output(vte), "a dying child had synchronized output on");
+		ok(kvt_vte_get_mouse_mode(vte) != 0, "and mouse reporting");
+		ok(kvt_screen_get_flags(scr) & KVT_SCREEN_ALTERNATE,
+		   "and the alternate screen");
+
+		kvt_vte_reset_modes(vte);
+
+		ok(!kvt_vte_sync_output(vte), "reset_modes puts synchronized output back");
+		eq_int((long long)kvt_vte_get_mouse_mode(vte), 0,
+		       "and mouse reporting");
+		ok(!(kvt_screen_get_flags(scr) & KVT_SCREEN_ALTERNATE),
+		   "and leaves the primary screen showing");
+
+		vt_reply_n = 0;
+		vt_reply[0] = '\0';
+		kvt_vte_input(vte, "\033[?2004$p", 10);
+		ok(strstr(vt_reply, "\033[?2004;2$y") != NULL,
+		   "and bracketed paste, which a paste would otherwise wrap");
+		vt_reply_n = 0;
+		vt_reply[0] = '\0';
+		kvt_vte_input(vte, "\033[?1004$p", 10);
+		ok(strstr(vt_reply, "\033[?1004;2$y") != NULL,
+		   "and focus reporting, which would put CSI I in a shell");
+	}
+
+	/*
+	 * ── THE PASTE GUARD ────────────────────────────────────────────
+	 *
+	 * With bracketed paste ON the child sees the text as text and decides
+	 * for itself. With it OFF a newline EXECUTES, which is the one place a
+	 * terminal can be made to act as the user — and a remote clipboard is
+	 * what turns that from a thought experiment into a way in.
+	 */
+	/* Bracketed paste was turned on by the DECRQM block above; the guard
+	 * only has anything to say when it is off. */
+	static const char bp_off[] = "\033[?2004l";
+
+	kvt_vte_input(vte, bp_off, sizeof(bp_off) - 1);
+	ok(kvt_vte_paste_needs_confirm(vte, "make && rm -rf /\n"),
+	   "an unbracketed payload with a newline is held back");
+	ok(kvt_vte_paste_needs_confirm(vte, "yes\r"),
+	   "and a carriage return, which submits at the same prompts");
+	ok(!kvt_vte_paste_needs_confirm(vte, "a plain\tword"),
+	   "a tab is not a control byte a person needs warning about");
+	ok(!kvt_vte_paste_needs_confirm(vte, "one line, no newline"),
+	   "and text with no control byte goes straight through");
+
+	static const char bp[] = "\033[?2004h";
+
+	kvt_vte_input(vte, bp, sizeof(bp) - 1);
+	ok(!kvt_vte_paste_needs_confirm(vte, "make && rm -rf /\n"),
+	   "with bracketed paste on, the child decides and nothing is held");
+
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/*
+ * ── THE THREE STYLES A CELL HAS ROOM FOR ────────────────────────────────
+ *
+ * `KtuiCell.attr` is one byte and the wire carries it as one byte, so italic,
+ * strikethrough and overline cost nothing to add and nothing to send. What
+ * they cost is a mapping that has to be complete at BOTH ends: an SGR the vte
+ * drops is a style the terminal silently loses, and an attribute the grid does
+ * not carry is one every renderer downstream cannot see. Both halves are here.
+ *
+ * `blink` and `dim` are parsed and deliberately NOT carried: there is no bit
+ * for them, and a blink drawn as bold is a lie about the text.
+ */
+static uint8_t vt_attr_of(const char *bytes)
+{
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+	KtuiCell cells[40 * 4];
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0)
+		return 0xff;
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		return 0xff;
+	}
+	for (size_t i = 0; bytes[i]; i++)
+		kvt_vte_input(vte, bytes + i, 1);
+	memset(cells, 0, sizeof(cells));
+	kvt_grid_render(scr, cells, 40, 4);
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+	return cells[0].attr;
+}
+
+/*
+ * ── WHAT A WIDGET SAYS IT IS ────────────────────────────────────────────
+ *
+ * A widget already knows which item has focus — it computes that every frame
+ * from the same id the hit test uses — so a reader that worked it out again
+ * from a grid of cells would be guessing at what the surface has in hand.
+ * These assertions are that each widget states it, and states the position
+ * facts a reader would otherwise have to count.
+ *
+ * SILENCE IS THE FAILURE MODE. The queue is cleared at the start of every
+ * frame, so a frame in which nothing is focused announces nothing — a reader
+ * told the wrong control is worse off than one told nothing.
+ */
+/* A row callback that draws the index and nothing else: the list needs one,
+ * and what it paints is not what this block is about. */
+static void a11y_row(int idx, int x, int y, int w, int sel, int focus,
+		     void *user)
+{
+	char buf[16];
+
+	(void)user;
+	snprintf(buf, sizeof(buf), "row %d", idx);
+	ktui_draw_text(x, y, w, buf, sel && focus ? KT_BG : KT_TEXT,
+		       sel ? KT_ACCENT : KT_BG, 0);
+}
+
+static const KtuiA11y *a11y_find(int role)
+{
+	for (int i = 0; i < ktui_announce_count(); i++)
+		if (ktui_announce_at(i)->role == role)
+			return ktui_announce_at(i);
+	return NULL;
+}
+
+static void test_ktui_announce(void)
+{
+	KtuiEvent ev = { 0 };
+	const KtuiA11y *a;
+
+	printf("\n==> a widget says what it is, and where in its set\n");
+
+	if (ktui_offscreen_init(60, 20) != 0) {
+		ok(0, "an offscreen surface for the announce test");
+		return;
+	}
+
+	/* A BUTTON, FOCUSED. The frame is driven the way a program drives it:
+	 * begin, draw, end — the focus lands on the first control claimed. */
+	ktui_frame_begin(&ev);
+	ktui_button(krect(1, 1, 12, 1), "Install", 1, 1);
+	a = a11y_find(KT_A11Y_BUTTON);
+	ok(a && !strcmp(a->label, "Install"),
+	   "a focused button says its label");
+	ktui_frame_end();
+
+	/* AND THE QUEUE IS THIS FRAME'S. Nothing drawn, nothing said. */
+	ktui_frame_begin(&ev);
+	eq_int(ktui_announce_count(), 0,
+	       "a frame that draws nothing announces nothing");
+	ktui_frame_end();
+
+	/* A CHECK SAYS ITS VALUE, because "on" and "off" is what the box is
+	 * for and a label alone leaves a reader guessing. */
+	int on = 1;
+
+	ktui_frame_begin(&ev);
+	ktui_check(1, 1, 20, "Night light", &on);
+	a = a11y_find(KT_A11Y_CHECK);
+	ok(a && !strcmp(a->label, "Night light") && !strcmp(a->value, "on"),
+	   "a focused check says its label and its state");
+	ktui_frame_end();
+
+	/* A SECRET FIELD SAYS IT IS ONE AND NEVER WHAT IS IN IT. */
+	char pw[64] = "hunter2";
+
+	ktui_frame_begin(&ev);
+	ktui_input(krect(1, 1, 20, 1), pw, sizeof(pw), 1, "Password");
+	a = a11y_find(KT_A11Y_INPUT);
+	ok(a && !strcmp(a->value, "hidden"),
+	   "a secret field never announces its contents");
+	ok(a && !strstr(a->value, "hunter2"), "and really never");
+	ktui_frame_end();
+
+	/* A LIST SAYS WHICH ITEM OF HOW MANY. The rows come from the caller's
+	 * callback, so the position is what the widget can state. */
+	KtuiList st = { 0 };
+
+	st.sel = 2;
+	ktui_frame_begin(&ev);
+	ktui_list(krect(1, 1, 20, 5), &st, 9, a11y_row, NULL, 0);
+	a = a11y_find(KT_A11Y_LIST);
+	ok(a && a->index == 3 && a->count == 9, "a list says 3 of 9");
+	ktui_frame_end();
+
+	/* A TAB STRIP HAS ITS NAMES, so it says the name as well. */
+	static const KtuiTab tabs[] = { { "General", NULL }, { "Keys", NULL },
+					{ "Network", NULL } };
+
+	ktui_frame_begin(&ev);
+	ktui_tabs_draw(krect(0, 0, 40, 1), tabs, 3, 1, -1, 0);
+	a = a11y_find(KT_A11Y_TAB);
+	ok(a && !strcmp(a->label, "Keys") && a->index == 2 && a->count == 3,
+	   "a tab strip says which tab, by name");
+	ktui_frame_end();
+
+	/* AND A MOVE SAYS THE NEW POSITION, from the key handler that made it. */
+	int sel = 0;
+
+	ktui_frame_begin(&ev);
+	ktui_tabs_key(&sel, 3, 0, KT_K_RIGHT);
+	a = a11y_find(KT_A11Y_TAB);
+	ok(a && a->index == 2, "moving to the next tab says so");
+	ktui_frame_end();
+
+	/* A TEXT BLOCK SAYS WHICH LINE OF HOW MANY. */
+	static char lines[4][256] = { "one", "two", "three", "" };
+	KtuiTextArea ta = { 0 };
+	int n = 3;
+
+	ktui_frame_begin(&ev);
+	ktui_textarea_key(&ta, lines[0], &n, 4, sizeof(lines[0]), KT_K_DOWN);
+	a = a11y_find(KT_A11Y_TEXT);
+	ok(a && a->index == 2 && a->count == 3, "a text block says line 2 of 3");
+	ktui_frame_end();
+
+	/* THE QUEUE IS FIXED AND DROPS THE REST: nothing on the draw path
+	 * allocates, and a frame with more to say than it holds says what
+	 * fits. */
+	ktui_frame_begin(&ev);
+	for (int i = 0; i < KTUI_A11Y_MAX + 8; i++)
+		ktui_announce(KT_A11Y_BUTTON, "x", NULL, 0, 0);
+	eq_int(ktui_announce_count(), KTUI_A11Y_MAX,
+	       "the queue is capped rather than grown");
+	ktui_frame_end();
+}
+
+static void test_vt_styles(void)
+{
+	printf("\n==> libkvt carries italic, strikethrough and overline\n");
+
+	eq_int(vt_attr_of("\033[3mX"), KT_A_ITALIC, "SGR 3 is italic");
+	eq_int(vt_attr_of("\033[9mX"), KT_A_STRIKE, "SGR 9 is a strike");
+	eq_int(vt_attr_of("\033[53mX"), KT_A_OVERLINE, "SGR 53 is an overline");
+	eq_int(vt_attr_of("\033[3;9;53;4;1mX"),
+	       KT_A_ITALIC | KT_A_STRIKE | KT_A_OVERLINE | KT_A_UNDERLINE |
+	       KT_A_BOLD,
+	       "and all five ride the same cell");
+
+	/* Each has its own off, and turning one off leaves the others. */
+	eq_int(vt_attr_of("\033[3;9;53m\033[23mX"),
+	       KT_A_STRIKE | KT_A_OVERLINE, "SGR 23 ends italic and nothing else");
+	eq_int(vt_attr_of("\033[3;9;53m\033[29mX"),
+	       KT_A_ITALIC | KT_A_OVERLINE, "SGR 29 ends the strike");
+	eq_int(vt_attr_of("\033[3;9;53m\033[55mX"),
+	       KT_A_ITALIC | KT_A_STRIKE, "SGR 55 ends the overline");
+	eq_int(vt_attr_of("\033[3;9;53m\033[0mX"), KT_A_NONE,
+	       "and SGR 0 ends all three");
+
+	/* Parsed, and deliberately dropped at the cell. */
+	eq_int(vt_attr_of("\033[5;2mX"), KT_A_NONE,
+	       "blink and dim reach no bit rather than a wrong one");
+
+	/*
+	 * AND A PRIVATE MARKER IS NOT AN SGR AT ALL. `CSI ? 4 m` and
+	 * `CSI > 4 ; 1 m` are a private sequence and XTMODKEYS; read as SGR 4
+	 * either one underlines every cell drawn after it, which is a whole
+	 * screen wearing an attribute nothing asked for.
+	 */
+	eq_int(vt_attr_of("\033[?4mX"), KT_A_NONE,
+	       "a private marker is not an SGR");
+	eq_int(vt_attr_of("\033[>4;1mX"), KT_A_NONE, "and neither is XTMODKEYS");
+}
+
+/*
+ * ── OSC 8, AND EVERYTHING IT REFUSES ────────────────────────────────────
+ *
+ * A URI from a child process is untrusted input, and this is the one place a
+ * terminal hands one to a program that opens things. Anything that can write
+ * to a terminal can write an OSC — a `cat` of a hostile file, a compromised
+ * program on the other end of an `ssh` — so the interesting assertions here
+ * are the refusals: a scheme that is not one of four, a byte outside printable
+ * ASCII, a URI longer than the cap, and a table that has been filled.
+ *
+ * A refused link is TEXT, not an error. The characters are still drawn; what
+ * does not happen is a link being offered, and nothing can be made to follow
+ * one that was never there.
+ */
+static struct kvt_screen *lk_scr;
+static struct kvt_vte *lk_vte;
+
+static void lk_open(void)
+{
+	lk_scr = NULL;
+	lk_vte = NULL;
+	if (kvt_screen_new(&lk_scr, NULL, NULL) != 0)
+		return;
+	kvt_screen_resize(lk_scr, 40, 4);
+	if (kvt_vte_new(&lk_vte, lk_scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(lk_scr);
+		lk_scr = NULL;
+	}
+}
+
+static void lk_close(void)
+{
+	if (lk_vte)
+		kvt_vte_unref(lk_vte);
+	if (lk_scr)
+		kvt_screen_unref(lk_scr);
+	lk_vte = NULL;
+	lk_scr = NULL;
+}
+
+static void lk_feed(const char *bytes)
+{
+	for (size_t i = 0; bytes[i]; i++)
+		kvt_vte_input(lk_vte, bytes + i, 1);
+}
+
+/* `8 ; params ; URI` around one word, then the empty form that closes it. */
+static void lk_link(const char *uri, const char *word)
+{
+	char buf[4096];
+
+	snprintf(buf, sizeof(buf), "\033]8;;%s\033\\%s\033]8;;\033\\.",
+		 uri, word);
+	lk_feed(buf);
+}
+
+static void test_vt_links(void)
+{
+	printf("\n==> libkvt interns an OSC 8 link and refuses the rest\n");
+
+	lk_open();
+	if (!lk_vte) {
+		ok(0, "a terminal for the link tests");
+		return;
+	}
+
+	lk_link("https://kdos.example/a", "abc");
+
+	unsigned id = kvt_screen_link_at(lk_scr, 0, 0);
+
+	ok(id != 0, "a link is stamped on the cells it covers");
+	eq_int(kvt_screen_link_at(lk_scr, 2, 0), id,
+	       "every cell of the run carries the same id");
+	eq_int(kvt_screen_link_at(lk_scr, 3, 0), 0,
+	       "and the cell after the close carries none");
+	eq_str(kvt_vte_link_uri(lk_vte, id), "https://kdos.example/a",
+	       "the id resolves to the address");
+	ok(kvt_vte_link_uri(lk_vte, id + 1000) == NULL,
+	   "an id nothing issued resolves to nothing");
+
+	/* THE SAME ADDRESS IS ONE LINK. A program that reuses an `id=` for a
+	 * different URI cannot make one run point at another's. */
+	lk_feed("\r\n");
+	lk_link("https://kdos.example/a", "again");
+	eq_int(kvt_screen_link_at(lk_scr, 0, 1), id, "the same URI interns once");
+	lk_feed("\r\n");
+	lk_link("https://kdos.example/b", "other");
+	ok(kvt_screen_link_at(lk_scr, 0, 2) != id &&
+	   kvt_screen_link_at(lk_scr, 0, 2) != 0,
+	   "a different URI is a different link");
+
+	/*
+	 * AN ERASED CELL CARRIES NO TEXT, SO IT CARRIES NO LINK — and the way
+	 * one would is not obvious. Background-colour-erase copies the CURRENT
+	 * attribute into the screen's default so that an erase paints in the
+	 * colour a program set; an SGR emitted while a link is open therefore
+	 * puts the link into that default, and every blank the screen makes
+	 * afterwards would be clickable empty space. The SGR below is what
+	 * makes this a test of the rule rather than of a zero that was already
+	 * zero.
+	 */
+	lk_feed("\033]8;;https://kdos.example/c\033\\\033[31mabc");
+	lk_feed("\033]8;;\033\\\033[2J");
+	eq_int(kvt_screen_link_at(lk_scr, 0, 0), 0,
+	       "an erase takes the link with the text");
+	eq_int(kvt_screen_link_at(lk_scr, 20, 3), 0,
+	       "and empty space a link was never on is not clickable");
+	lk_close();
+
+	/* ── the refusals ──────────────────────────────────────────────── */
+	static const struct { const char *uri, *what; } bad[] = {
+		{ "javascript:alert(1)", "a script scheme" },
+		{ "data:text/html,<script>", "a data URI" },
+		{ "vscode://file/etc/shadow", "an unknown scheme" },
+		{ "https://kdos.example/\xc3\xa9", "a byte above 126" },
+		{ "", "an empty address" },
+	};
+
+	for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+		lk_open();
+		if (!lk_vte)
+			continue;
+		lk_link(bad[i].uri, "xy");
+		eq_int(kvt_screen_link_at(lk_scr, 0, 0), 0, bad[i].what);
+		lk_close();
+	}
+
+	/* A URI longer than the cap: the text still lands, the link does not. */
+	{
+		char big[4096];
+
+		memset(big, 'a', sizeof(big) - 1);
+		big[sizeof(big) - 1] = 0;
+		memcpy(big, "https://", 8);
+		lk_open();
+		if (lk_vte) {
+			lk_link(big, "xy");
+			eq_int(kvt_screen_link_at(lk_scr, 0, 0), 0,
+			       "a URI past the length cap");
+			lk_close();
+		}
+	}
+
+	/*
+	 * AND A TABLE THAT HAS BEEN FILLED. A child emitting a fresh URI per
+	 * cell is the shape of the attack; past the cap the text is still text
+	 * and the link is simply not offered.
+	 */
+	lk_open();
+	if (lk_vte) {
+		char uri[64];
+		unsigned last = 1;
+
+		for (unsigned i = 0; i < 200; i++) {
+			snprintf(uri, sizeof(uri), "https://kdos.example/%u", i);
+			lk_feed("\033[H");
+			lk_link(uri, "x");
+			last = kvt_screen_link_at(lk_scr, 0, 0);
+		}
+		eq_int(last, 0, "past the table's cap, nothing more is interned");
+		lk_close();
+	}
+}
+
+/*
+ * ── OSC 133, THE PROMPT MARKS ───────────────────────────────────────────
+ *
+ * A shell says where its prompt starts and what the last command exited with.
+ * The mark is on the LINE, so it survives into the scrollback — which is
+ * exactly when it is worth having, because a screen of build output has one
+ * prompt at each end of it and the interesting one has already scrolled away.
+ *
+ * The status is walked back to rather than written where the cursor is: a
+ * shell reports `D` after the output, and the place a person looks for "did
+ * that work" is the prompt they typed at.
+ */
+static void test_vt_marks(void)
+{
+	printf("\n==> libkvt keeps OSC 133's marks, and jumps between them\n");
+
+	lk_open();
+	if (!lk_vte) {
+		ok(0, "a terminal for the mark tests");
+		return;
+	}
+	kvt_screen_set_max_sb(lk_scr, 200);
+
+	int st = 0;
+
+	/* A prompt, a command, its output, and a failure reported after it. */
+	lk_feed("\033]133;A\033\\$ make\r\n");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1, "the prompt line is marked");
+	eq_int(st, -1, "and carries no status until the command finishes");
+	eq_int(kvt_screen_mark_at(lk_scr, 1, &st), 0,
+	       "the line under it is not a prompt");
+
+	lk_feed("error: no rule\r\n\033]133;D;2\033\\");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1 && st == 2,
+	   "the status lands on the PROMPT, not where the shell reported it");
+
+	/* A second prompt on the same screen keeps its own status. */
+	lk_feed("\033]133;A\033\\$ true\r\n\033]133;D;0\033\\");
+	ok(kvt_screen_mark_at(lk_scr, 2, &st) == 1 && st == 0,
+	   "a second prompt carries its own status");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1 && st == 2,
+	   "and the first one keeps the one it had");
+
+	/* A `D` with nothing marked above it is a report about nothing, and
+	 * must not invent a mark to hang it on. */
+	lk_close();
+	lk_open();
+	if (lk_vte) {
+		lk_feed("\033]133;D;1\033\\x");
+		eq_int(kvt_screen_mark_at(lk_scr, 0, &st), 0,
+		       "a status with no prompt marks nothing");
+		lk_close();
+	}
+
+	/*
+	 * ── THE JUMP ───────────────────────────────────────────────────
+	 *
+	 * Twelve prompts through a four-row screen: everything but the last is
+	 * in the scrollback, which is the case the mark exists for.
+	 */
+	lk_open();
+	if (!lk_vte) {
+		ok(0, "a terminal for the jump test");
+		return;
+	}
+	kvt_screen_set_max_sb(lk_scr, 200);
+	for (int i = 0; i < 12; i++)
+		lk_feed("\033]133;A\033\\$ cmd\r\nout\r\n\033]133;D;0\033\\");
+
+	ok(kvt_screen_scroll_to_mark(lk_scr, -1) == 1,
+	   "the view jumps back to a prompt");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1,
+	   "and the marked line is the one at the top");
+
+	int hops = 0;
+
+	while (kvt_screen_scroll_to_mark(lk_scr, -1))
+		hops++;
+	ok(hops >= 8, "every prompt in the scrollback can be reached");
+	ok(kvt_screen_scroll_to_mark(lk_scr, -1) == 0,
+	   "and the top of the history is where it stops");
+	ok(kvt_screen_scroll_to_mark(lk_scr, 1) == 1,
+	   "the jump works downwards too");
+	lk_close();
+}
+
+/* What the three notification escapes carried, for the test below. */
+static struct { int calls; char sum[128], body[128]; } vt_note;
+
+static void vt_on_notify(struct kvt_vte *vte, const char *summary,
+			 const char *body, void *data)
+{
+	(void)vte;
+	(void)data;
+	vt_note.calls++;
+	snprintf(vt_note.sum, sizeof(vt_note.sum), "%s", summary ? summary : "");
+	snprintf(vt_note.body, sizeof(vt_note.body), "%s", body ? body : "");
+}
+
+/*
+ * ── A PROGRAM SAYING IT FINISHED ────────────────────────────────────────
+ *
+ * Three spellings because none of them won, and all three are what programs on
+ * this image actually emit. `make && notify-send done` does not work here —
+ * `libnotify` is not a port — so these escapes are the whole of that facility.
+ */
+static void test_vt_notify(void)
+{
+	printf("\n==> libkvt hears a program say it finished\n");
+
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0) {
+		ok(0, "a screen");
+		return;
+	}
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		ok(0, "a vte");
+		return;
+	}
+
+	static const char nine[] = "\033]9;the build finished\007";
+
+	memset(&vt_note, 0, sizeof(vt_note));
+	kvt_vte_input(vte, nine, sizeof(nine) - 1);
+	eq_int(vt_note.calls, 0,
+	       "nothing is raised while no handler is set");
+
+	kvt_vte_set_notify_cb(vte, vt_on_notify, NULL);
+	kvt_vte_input(vte, nine, sizeof(nine) - 1);
+	eq_int(vt_note.calls, 1, "OSC 9 reaches the handler");
+	eq_str(vt_note.sum, "the build finished", "with its text");
+
+	static const char seven[] =
+		"\033]777;notify;make;42 packages\007";
+
+	memset(&vt_note, 0, sizeof(vt_note));
+	kvt_vte_input(vte, seven, sizeof(seven) - 1);
+	eq_int(vt_note.calls, 1, "OSC 777 does too");
+	eq_str(vt_note.sum, "make", "with a summary");
+	eq_str(vt_note.body, "42 packages", "and a body");
+
+	static const char kitty[] = "\033]99;i=1:d=0;done\007";
+
+	memset(&vt_note, 0, sizeof(vt_note));
+	kvt_vte_input(vte, kitty, sizeof(kitty) - 1);
+	eq_int(vt_note.calls, 1, "and OSC 99, past its parameter list");
+	eq_str(vt_note.sum, "done", "which is not part of the text");
+
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+static void test_vt_img(void)
+{
+	printf("\n==> libkvt parses the three image protocols and decodes none\n");
+
+	struct vt_seen s;
+	char row[21];		/* twenty columns is plenty */
+
+	/* ── sixel: a DCS ──────────────────────────────────────────────── */
+	static const char sixel[] = "A\033P0;1;0q#0;2;0;0;0~-\033\\B";
+
+	vt_feed(&s, sixel, sizeof(sixel) - 1, 4096, row, sizeof(row));
+	eq_int(s.calls, 1, "a sixel is delivered once");
+	eq_int(s.kind, KVT_IMG_SIXEL, "and says which protocol it was");
+	/*
+	 * THE INTRODUCER IS REBUILT FROM THE PARSED PARAMETERS, so a trailing
+	 * zero has to survive the round trip: the parameter after the last
+	 * separator needs the same bump the CSI path makes, or `0;1;0` reads
+	 * back as `0;1` and the raster attributes change meaning.
+	 */
+	eq_str(s.params, "0;1;0", "the introducer's parameters come back whole");
+	eq_str(s.payload, "#0;2;0;0;0~-", "and the body is exactly the bytes between");
+	eq_int((long long)s.len, 12, "with its own length");
+	eq_str(row, "AB                  ",
+	       "the text on either side of it still lands");
+
+	/* ── iTerm2: an OSC ────────────────────────────────────────────── */
+	static const char it[] = "A\033]1337;File=inline=1:aGVsbG8=\033\\B";
+
+	vt_feed(&s, it, sizeof(it) - 1, 4096, row, sizeof(row));
+	eq_int(s.calls, 1, "an OSC 1337 is delivered once");
+	eq_int(s.kind, KVT_IMG_OSC1337, "as the iTerm2 protocol");
+	eq_str(s.params, "1337", "named by its OSC number");
+	eq_int((long long)s.len, 22, "delivering exactly the bytes after it");
+	eq_str(s.payload, "File=inline=1:aGVsbG8=",
+	       "which are the argument list and the base64 together");
+	eq_int(s.osc_calls, 0, "and it does not also reach the title handler");
+
+	/* An ordinary OSC is untouched by any of this. */
+	static const char title[] = "A\033]0;a title\033\\B";
+
+	vt_feed(&s, title, sizeof(title) - 1, 4096, row, sizeof(row));
+	eq_int(s.calls, 0, "an OSC 0 is not a picture");
+	eq_int(s.osc_calls, 1, "it goes to the ordinary handler");
+	eq_str(s.osc, "0;a title", "with its payload intact");
+
+	/* ── kitty: an APC, control block split from payload ───────────── */
+	static const char kitty[] = "A\033_Ga=T,f=32,s=2,v=2;AAECAwQFBgc=\033\\B";
+
+	vt_feed(&s, kitty, sizeof(kitty) - 1, 4096, row, sizeof(row));
+	eq_int(s.calls, 1, "a kitty APC is delivered once");
+	eq_int(s.kind, KVT_IMG_KITTY, "as the kitty protocol");
+	/*
+	 * SPLIT IN THE PARSER, because the split is part of the sequence's
+	 * grammar: a consumer would otherwise have to find the semicolon again
+	 * inside a buffer that may be megabytes of base64.
+	 */
+	eq_str(s.params, "a=T,f=32,s=2,v=2", "the control block arrives on its own");
+	eq_str(s.payload, "AAECAwQFBgc=", "and the payload separately");
+
+	/* A delete or a query has no payload and is still a message. */
+	static const char kdel[] = "A\033_Ga=d\033\\B";
+
+	vt_feed(&s, kdel, sizeof(kdel) - 1, 4096, row, sizeof(row));
+	eq_int(s.calls, 1, "a control block with no payload is still delivered");
+	eq_str(s.params, "a=d", "carrying what it asked for");
+	eq_int((long long)s.len, 0, "with an empty payload");
+
+	/* ── off is the default ────────────────────────────────────────── */
+	vt_feed(&s, sixel, sizeof(sixel) - 1, 0, row, sizeof(row));
+	eq_int(s.calls, 0, "with no callback a sixel goes nowhere");
+	eq_str(row, "AB                  ",
+	       "and the text around it still lands");
+
+	vt_feed(&s, kitty, sizeof(kitty) - 1, 0, row, sizeof(row));
+	eq_int(s.calls, 0, "an APC is ignored to its terminator");
+	eq_str(row, "AB                  ",
+	       "leaving the text on either side of it alone");
+
+	/* ── the cap drops a payload whole ─────────────────────────────── */
+	vt_feed(&s, kitty, sizeof(kitty) - 1, 4, row, sizeof(row));
+	eq_int(s.calls, 0,
+	       "a payload past the cap is dropped entirely, not truncated");
+	eq_str(row, "AB                  ",
+	       "and the terminal carries on with the text");
+
+	/*
+	 * THE CAP IS CHECKED ON EVERY BYTE, not only when the buffer grows.
+	 * The collector is kept between payloads so a video does not allocate
+	 * a megabyte per frame — which means a later payload starts with a
+	 * large allocation already in hand, and a check that only fired on
+	 * growth would let it through.
+	 */
+	static const char big[] =
+		"A\033_Ga=T;AAECAwQFBgcAAAECAwQFBgcAAAECAwQFBgcA\033\\"
+		"\033_Ga=T;AA\033\\B";
+
+	vt_feed(&s, big, sizeof(big) - 1, 8, row, sizeof(row));
+	eq_int(s.calls, 1,
+	       "an oversized payload is dropped and the next small one is not");
+	eq_str(s.payload, "AA", "and the small one arrives whole");
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * libkcon's wire, and a message across a real socketpair.
+ *
+ * THE WIRE IS WRITTEN A FIELD AT A TIME, little-endian, and never as a struct:
+ * a struct written whole makes its padding and its alignment into protocol, and
+ * the two ends of a forwarded socket are not always the same build. Everything
+ * below is that rule being checked from both directions.
+ */
+
+static void test_kcon(void)
+{
+	printf("\n==> libkcon's wire, and a message over a socketpair\n");
+
+	KconBuf b = { 0 };
+	KconRd r;
+
+	/* ── scalars, in the order and the endianness declared ─────────── */
+	kcon_put_u8(&b, 0x12);
+	kcon_put_u16(&b, 0x3456);
+	kcon_put_u32(&b, 0x89abcdefu);
+	kcon_put_i32(&b, -2);
+	eq_int(b.err, 0, "a run of puts sets no error");
+	eq_int((long long)b.len, 1 + 2 + 4 + 4, "and writes exactly its fields");
+	ok(b.b && b.b[1] == 0x56 && b.b[2] == 0x34,
+	   "a u16 goes out little-endian");
+
+	kcon_rd_init(&r, b.b, b.len);
+	eq_int(kcon_get_u8(&r), 0x12, "a u8 comes back");
+	eq_int(kcon_get_u16(&r), 0x3456, "a u16 comes back");
+	eq_int((long long)kcon_get_u32(&r), 0x89abcdefll, "a u32 comes back");
+	eq_int(kcon_get_i32(&r), -2, "and an i32 keeps its sign");
+	eq_int((long long)kcon_rd_left(&r), 0, "with nothing left over");
+	eq_int(r.err, 0, "and no error along the way");
+
+	/* A read past the end is an error, not a crash and not a guess. */
+	eq_int(kcon_get_u32(&r), 0, "a read past the end answers zero");
+	ok(r.err != 0, "and sets the error flag");
+
+	/*
+	 * A STRING LONGER THAN THE SCRATCH BUFFER GOES OUT WHOLE, and comes
+	 * back whole only through the BLOB. kcon_get_str copies into one
+	 * shared 1023-byte buffer, so a reader that used it for a clipboard or
+	 * a paste would hand its caller a document with the tail quietly gone
+	 * — which is why both of those read the length and the bytes instead.
+	 */
+	{
+		static char big[4096];
+		uint32_t got;
+		const char *blob;
+
+		memset(big, 'x', sizeof(big) - 1);
+		big[sizeof(big) - 1] = '\0';
+		kcon_buf_reset(&b);
+		kcon_put_str(&b, big);
+		kcon_rd_init(&r, b.b, b.len);
+		got = kcon_get_u32(&r);
+		blob = kcon_get_blob(&r, got);
+		eq_int((long long)got, (long long)sizeof(big) - 1,
+		       "a long string goes out at its full length");
+		ok(blob && !memcmp(blob, big, got),
+		   "and the blob read gives every byte of it back");
+
+		kcon_rd_init(&r, b.b, b.len);
+		eq_int((long long)strlen(kcon_get_str(&r)), 1023,
+		       "while kcon_get_str stops at its scratch buffer");
+	}
+
+	/*
+	 * OPTIONAL TRAILING FIELDS. A peer that predates a field sends a
+	 * shorter message, and kcon_rd_left is how a reader tells that from a
+	 * truncated one rather than refusing both.
+	 */
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 7);
+	kcon_rd_init(&r, b.b, b.len);
+	kcon_get_u16(&r);
+	eq_int((long long)kcon_rd_left(&r), 0,
+	       "a message without its optional tail reads as complete");
+
+	/* ── strings share one scratch buffer, by contract ──────────────── */
+	kcon_buf_reset(&b);
+	kcon_put_str(&b, "first");
+	kcon_put_str(&b, "second");
+	kcon_rd_init(&r, b.b, b.len);
+
+	const char *s1 = kcon_get_str(&r);
+	eq_str(s1, "first", "a string comes back");
+	const char *s2 = kcon_get_str(&r);
+	eq_str(s2, "second", "and so does the one after it");
+	/*
+	 * AND THE FIRST POINTER NOW READS AS THE SECOND. The payload's own
+	 * bytes are not NUL-terminated, so the string is copied into one shared
+	 * scratch buffer — a caller keeping N pointers keeps N copies of the
+	 * LAST one, which is exactly how an argv reached execvp as five copies
+	 * of its final argument. Stated here so nobody re-derives it from a
+	 * bug report.
+	 */
+	eq_str(s1, "second",
+	       "a string is valid only until the next get: both point at one buffer");
+
+	/* ── a blob carries its length; bytes do not ───────────────────── */
+	kcon_buf_reset(&b);
+	static const unsigned char raw[4] = { 1, 2, 3, 4 };
+	kcon_put_blob(&b, raw, sizeof(raw));
+	eq_int((long long)b.len, 4 + (long long)sizeof(raw),
+	       "a blob writes a length in front of its bytes");
+
+	kcon_buf_reset(&b);
+	kcon_put_bytes(&b, raw, sizeof(raw));
+	eq_int((long long)b.len, (long long)sizeof(raw),
+	       "raw bytes write no length at all");
+
+	/*
+	 * A PICTURE, BYTE FOR BYTE, out of a source whose STRIDE IS WIDER THAN
+	 * ITS WIDTH — which is what a pixman image is. The size comes from the
+	 * header's pw and ph and nothing else: a second length would be a
+	 * second thing that can disagree with the first, and a reader computing
+	 * the size from the header would then be four bytes out for every
+	 * picture on the desktop.
+	 */
+	enum { PW = 3, PH = 2, STRIDE = 5 };
+	uint32_t src[STRIDE * PH];
+	uint32_t packed[PW * PH];
+
+	for (int i = 0; i < STRIDE * PH; i++)
+		src[i] = 0xdeadbeefu;			/* the padding */
+	for (int y = 0; y < PH; y++)
+		for (int x = 0; x < PW; x++)
+			src[y * STRIDE + x] = 0x01000000u | (uint32_t)(y * PW + x);
+
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, PW);
+	kcon_put_u16(&b, PH);
+	for (int y = 0; y < PH; y++)
+		kcon_put_bytes(&b, &src[y * STRIDE], (size_t)PW * 4);
+
+	kcon_rd_init(&r, b.b, b.len);
+	int gw = kcon_get_u16(&r), gh = kcon_get_u16(&r);
+	eq_int(gw, PW, "the picture's width comes off the header");
+	eq_int(gh, PH, "and its height");
+	const void *pix = kcon_get_blob(&r, (size_t)gw * gh * 4);
+	ok(pix != NULL, "and its pixels are exactly that many bytes");
+	if (pix)
+		memcpy(packed, pix, sizeof(packed));
+
+	int same = 1;
+	for (int y = 0; y < PH; y++)
+		for (int x = 0; x < PW; x++)
+			if (packed[y * PW + x] != src[y * STRIDE + x])
+				same = 0;
+	ok(same, "every pixel arrives where it started, with no stride padding");
+	eq_int((long long)kcon_rd_left(&r), 0,
+	       "and nothing is left over — no length crept in per row");
+
+	/* ── a run of cells is the protocol's record, not KtuiCell's ───── */
+	KtuiCell cells[3], back[3];
+
+	memset(cells, 0, sizeof(cells));
+	cells[0].ch = 'x'; cells[0].fg = 3; cells[0].bg = 1; cells[0].attr = 0;
+	cells[1].ch = 0x2588; cells[1].fg = 7; cells[1].bg = 0;
+	cells[2].ch = 0x4e2d; cells[2].fg = 2; cells[2].bg = 4;
+
+	kcon_buf_reset(&b);
+	kcon_put_run(&b, 4, 9, cells, 3);
+	eq_int((long long)b.len, 2 + 2 + 2 + 3 * KCON_CELL_BYTES,
+	       "a run is a position, a count, and packed records of a fixed size");
+
+	uint16_t rx = 0, ry = 0;
+	kcon_rd_init(&r, b.b, b.len);
+	eq_int(kcon_get_run(&r, &rx, &ry, back, 3), 3, "the run reads back");
+	eq_int(rx, 4, "at the x it was written at");
+	eq_int(ry, 9, "and the y");
+	ok(back[0].ch == 'x' && back[1].ch == 0x2588 && back[2].ch == 0x4e2d,
+	   "with every codepoint intact");
+	ok(back[0].fg == 3 && back[2].bg == 4,
+	   "and the colours that travelled with them");
+
+	kcon_buf_free(&b);
+
+	/* ── a real socketpair ─────────────────────────────────────────── */
+	int sv[2];
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+		ok(0, "a socketpair for the connection test");
+		return;
+	}
+
+	KconConn *tx = kcon_conn_new(sv[0]);
+	KconConn *rxc = kcon_conn_new(sv[1]);
+
+	ok(tx && rxc, "both ends of the socketpair become connections");
+
+	KconMsg msg;
+
+	eq_int(kcon_recv(rxc, &msg), 0,
+	       "nothing has been sent, so nothing is complete yet");
+
+	KconBuf p = { 0 };
+	kcon_put_u32(&p, 0xcafebabeu);
+	kcon_put_str(&p, "hello");
+	eq_int(kcon_send(tx, 42, &p), 0, "a message goes out");
+	kcon_flush(tx);
+
+	eq_int(kcon_recv(rxc, &msg), 1, "and arrives whole at the other end");
+	eq_int(msg.op, 42, "carrying the op it was sent with");
+	kcon_rd_init(&r, msg.payload, msg.len);
+	eq_int((long long)kcon_get_u32(&r), 0xcafebabell,
+	       "and the payload it was given");
+	eq_str(kcon_get_str(&r), "hello", "string and all");
+
+	/* A message with no payload is a message. */
+	eq_int(kcon_send(tx, 7, NULL), 0, "an op with no payload is allowed");
+	kcon_flush(tx);
+	eq_int(kcon_recv(rxc, &msg), 1, "and arrives");
+	eq_int(msg.op, 7, "as itself");
+	eq_int((long long)msg.len, 0, "carrying nothing");
+
+	kcon_buf_free(&p);
+	kcon_conn_free(tx);
+	kcon_conn_free(rxc);
+
+	/* ── the caps are what they claim ──────────────────────────────── */
+	eq_int((long long)KCON_MAX_PAYLOAD, 1ll << 20,
+	       "a payload is refused above a megabyte");
+	/* PINNED, so a bump is a decision rather than a side effect. Every
+	 * client of the session is rebuilt from this tree, so the number costs
+	 * nothing to raise — and the enum it guards is positional, which is
+	 * what makes raising it the cheap half of an op that moved. */
+	eq_int(KCON_VERSION, 16, "and the version the two ends agree on");
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * A terminal window: a real child on a real pty, and the selection over what
+ * it wrote.
+ *
+ * THE ARGUMENT VECTOR IS EXECUTED DIRECTLY. There is no shell anywhere in this
+ * path — the rule the whole tree is written under — so a program is named by
+ * its argv and nothing re-splits it.
+ *
+ * THE CHILD'S STATUS OUTLIVES IT, in the shell's own convention: the exit code,
+ * 128 plus the signal when it was killed, and 127 when the exec never happened.
+ * That is what lets a window say how its program finished instead of vanishing
+ * with the message.
+ */
+
+/* Pump until the child is gone, then a little more for what it left in the
+ * pty. Bounded, because a test that hangs is worse than one that fails. */
+static int term_settle(struct kvt_term *t)
+{
+	for (int i = 0; i < 400 && kvt_term_alive(t); i++) {
+		kvt_term_pump(t);
+		usleep(2000);
+	}
+	for (int i = 0; i < 20; i++)
+		kvt_term_pump(t);
+	return kvt_term_status(t);
+}
+
+static void kvt_write_cb(struct kvt_vte *vte, const char *u8, size_t len,
+			 void *data)
+{
+	(void)vte; (void)u8; (void)len; (void)data;
+}
+
+static void test_kvt_term(void)
+{
+	printf("\n==> a terminal window: a child on a pty, and the selection\n");
+
+	enum { TW = 20, TH = 4 };
+	KtuiCell cells[TW * TH];
+	char row[TW + 1];
+
+	/* ── a command runs and its output lands ───────────────────────── */
+	static const char *const echo_argv[] = { "/bin/echo", "hello", NULL };
+	struct kvt_term *t = kvt_term_open(echo_argv, TW, TH);
+
+	ok(t != NULL, "a terminal opens on a real pty");
+	if (!t)
+		return;
+
+	eq_int(term_settle(t), 0, "a command that succeeded reports zero");
+	eq_int(kvt_term_alive(t), 0, "and is no longer alive");
+	eq_int(kvt_term_status(t), 0,
+	       "its status is still readable after it has gone");
+
+	kvt_term_render(t, cells, TW, TH);
+	for (int x = 0; x < TW; x++)
+		row[x] = cells[x].ch >= 32 && cells[x].ch < 127
+			? (char)cells[x].ch : ' ';
+	row[TW] = '\0';
+	ok(!strncmp(row, "hello", 5), "what it printed is on the first row");
+	kvt_term_close(t);
+
+	/* ── how a program finished ────────────────────────────────────── */
+	static const char *const fail_argv[] = { "/bin/sh", "-c", "exit 3", NULL };
+
+	t = kvt_term_open(fail_argv, TW, TH);
+	ok(t != NULL, "a second terminal opens");
+	if (t) {
+		eq_int(term_settle(t), 3, "an exit code comes back as itself");
+		kvt_term_close(t);
+	}
+
+	static const char *const kill_argv[] = {
+		"/bin/sh", "-c", "kill -TERM $$", NULL
+	};
+
+	t = kvt_term_open(kill_argv, TW, TH);
+	if (t) {
+		eq_int(term_settle(t), 128 + 15,
+		       "a killed child reports 128 plus its signal");
+		kvt_term_close(t);
+	}
+
+	/*
+	 * AN EXEC THAT NEVER HAPPENED IS 127, the same answer a shell gives.
+	 * The window has to be able to say "there is no such program" rather
+	 * than opening empty and closing again with nothing said.
+	 */
+	static const char *const missing_argv[] = {
+		"/nonexistent/kdos-selftest-no-such-binary", NULL
+	};
+
+	t = kvt_term_open(missing_argv, TW, TH);
+	ok(t != NULL, "a terminal for a program that does not exist still opens");
+	if (t) {
+		eq_int(term_settle(t), 127, "and reports that the exec failed");
+		kvt_term_close(t);
+	}
+
+	/* ── the selection, over a line the terminal wrapped itself ────── */
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0) {
+		ok(0, "a screen for the selection assertions");
+		return;
+	}
+	kvt_screen_resize(scr, 10, 4);
+	if (kvt_vte_new(&vte, scr, kvt_write_cb, NULL, NULL, NULL) != 0) {
+		ok(0, "a state machine for the selection assertions");
+		kvt_screen_unref(scr);
+		return;
+	}
+
+	static const char wrapped[] = "abcdefghijklmno";	/* wraps at 10 */
+
+	kvt_vte_input(vte, wrapped, sizeof(wrapped) - 1);
+	eq_int((int)kvt_screen_get_cursor_y(scr), 1,
+	       "fifteen characters into ten columns puts the cursor on row two");
+
+	char *out = NULL;
+
+	kvt_screen_selection_reset(scr);
+	kvt_screen_selection_start(scr, 0, 0);
+	kvt_screen_selection_target(scr, 4, 1);
+	int n = kvt_screen_selection_copy(scr, &out);
+
+	ok(out != NULL, "a selection copies");
+	eq_int(n, 16, "spanning both rows of the wrapped line");
+	/*
+	 * A SOFT WRAP COMES BACK AS A NEWLINE. The screen stores rows and the
+	 * copy walks rows, so the point at which the terminal ran out of
+	 * columns is indistinguishable from the point at which the program
+	 * pressed return. Recorded because it decides what you get when you
+	 * copy a long path out of a terminal, and because it is the fork's
+	 * behaviour rather than a choice made here.
+	 */
+	eq_str(out ? out : "", "abcdefghij\nklmno",
+	       "and the wrap comes back as a newline");
+	free(out);
+	out = NULL;
+
+	/* Double click takes the word under the pointer. */
+	kvt_screen_selection_reset(scr);
+	kvt_screen_selection_word(scr, 2, 0);
+	n = kvt_screen_selection_copy(scr, &out);
+	eq_int(n, 10, "a word selection takes the run of characters around it");
+	eq_str(out ? out : "", "abcdefghij", "which here is the whole row");
+	free(out);
+	out = NULL;
+
+	/* Reset means reset: nothing is left selected. */
+	kvt_screen_selection_reset(scr);
+	n = kvt_screen_selection_copy(scr, &out);
+	ok(n <= 0 || (out && out[0] == '\0'),
+	   "resetting the selection leaves nothing to copy");
+	free(out);
+
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * libkimg: the only place in KDOS where untrusted image bytes are decoded.
+ *
+ * The corpus under testing/fixtures/img/ is one file per ANSWER rather than one
+ * per format: a valid picture, a truncated one, one whose header declares a
+ * size past any budget, and one that declares a zero dimension. What is
+ * asserted is that every failure is the SAME failure — NULL — because there is
+ * nothing useful a caller could do differently, and a reason string reaching a
+ * log is a reason string an attacker chose.
+ *
+ * Guarded on the decoders being present, the way the kdos-shell block is: none
+ * of the four is on a bare host, and a library nobody can build is a library
+ * nobody runs the assertions for — which is worse than a skip that says so.
+ * testing/fixtures/img/fuzz.c is the other half, and it is its own binary so it
+ * can be run under the sanitisers on its own.
+ */
+
+#ifdef HAVE_KIMG
+
+static unsigned char *img_slurp(const char *name, size_t *len)
+{
+	char path[256];
+	snprintf(path, sizeof(path), "testing/fixtures/img/%s", name);
+
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+
+	static unsigned char buf[1 << 16];
+	size_t n = fread(buf, 1, sizeof(buf), f);
+
+	fclose(f);
+	*len = n;
+	return n ? buf : NULL;
+}
+
+/* The budget every case below is measured against. Small on purpose: the
+ * "huge" fixtures declare a size past it in their own headers, which is what
+ * lets the refusal happen before a single pixel is allocated. */
+static const KimgBudget img_budget = {
+	.max_w = 256, .max_h = 256, .max_bytes = 256 * 256 * 4
+};
+
+static int img_have(int type)
+{
+	return (kimg_formats() & (1u << (unsigned)type)) != 0;
+}
+
+/* Decode one fixture and say whether anything came back. */
+static int img_decodes(const char *name, int type)
+{
+	size_t n = 0;
+	const unsigned char *b = img_slurp(name, &n);
+
+	if (!b)
+		return -1;			/* fixture missing */
+
+	pixman_image_t *img = kimg_decode(b, n, type, &img_budget);
+
+	if (!img)
+		return 0;
+	pixman_image_unref(img);
+	return 1;
+}
+
+static void test_kimg(void)
+{
+	printf("\n==> libkimg decodes a picture, and refuses everything else\n");
+
+	static const struct {
+		const char *valid, *truncated, *huge, *zero;
+		int type;
+		const char *what;
+	} fmt[] = {
+		{ "valid.png",  "truncated.png",  "huge.png",  "zero.png",
+		  KIMG_PNG,  "PNG" },
+		{ "valid.jpg",  "truncated.jpg",  "huge.jpg",  "zero.jpg",
+		  KIMG_JPEG, "JPEG" },
+		{ "valid.webp", "truncated.webp", "huge.webp", NULL,
+		  KIMG_WEBP, "WebP" },
+		{ "valid.six",  NULL,             NULL,        "zero.six",
+		  KIMG_SIXEL, "sixel" },
+		{ "valid.gif",  "truncated.gif",  "huge.gif",  "zero.gif",
+		  KIMG_GIF,  "GIF" },
+	};
+
+	int ran = 0;
+
+	for (size_t i = 0; i < sizeof(fmt) / sizeof(fmt[0]); i++) {
+		char msg[128];
+
+		if (!img_have(fmt[i].type))
+			continue;
+		ran++;
+
+		snprintf(msg, sizeof(msg), "a valid %s decodes", fmt[i].what);
+		eq_int(img_decodes(fmt[i].valid, fmt[i].type), 1, msg);
+
+		if (fmt[i].truncated) {
+			snprintf(msg, sizeof(msg),
+				 "a truncated %s is refused", fmt[i].what);
+			eq_int(img_decodes(fmt[i].truncated, fmt[i].type), 0,
+			       msg);
+		}
+		if (fmt[i].huge) {
+			snprintf(msg, sizeof(msg),
+				 "a %s declaring a size past the budget is"
+				 " refused before it is decoded", fmt[i].what);
+			eq_int(img_decodes(fmt[i].huge, fmt[i].type), 0, msg);
+		}
+		if (fmt[i].zero) {
+			snprintf(msg, sizeof(msg),
+				 "a %s with a zero dimension is refused",
+				 fmt[i].what);
+			eq_int(img_decodes(fmt[i].zero, fmt[i].type), 0, msg);
+		}
+	}
+
+	ok(ran > 0, "at least one decoder was present to check");
+
+	/* A decompression bomb is four lines of sixel. */
+	if (img_have(KIMG_SIXEL))
+		eq_int(img_decodes("bomb.six", KIMG_SIXEL), 0,
+		       "a sixel that expands past the budget is refused");
+
+	/* A WebP that declares no dimensions at all. */
+	if (img_have(KIMG_WEBP))
+		eq_int(img_decodes("nodims.webp", KIMG_WEBP), 0,
+		       "a WebP that declares no dimensions is refused");
+
+	/*
+	 * A DECLARED TYPE THAT DISAGREES WITH THE BYTES IS A REFUSAL, NOT A
+	 * RE-SNIFF. A peer saying PNG and sending JPEG is not making a mistake
+	 * worth accommodating, and re-sniffing would mean its declaration
+	 * decided nothing.
+	 */
+	if (img_have(KIMG_PNG) && img_have(KIMG_JPEG)) {
+		eq_int(img_decodes("valid.png", KIMG_JPEG), 0,
+		       "PNG bytes declared as JPEG are refused, not re-sniffed");
+		eq_int(img_decodes("valid.jpg", KIMG_PNG), 0,
+		       "and JPEG bytes declared as PNG likewise");
+	}
+
+	/*
+	 * KIMG_AUTO sniffs, and it exists for OSC 1337 — which names a FILE,
+	 * not a format, so there is nothing for the sender to have declared.
+	 */
+	if (img_have(KIMG_PNG))
+		eq_int(img_decodes("valid.png", KIMG_AUTO), 1,
+		       "and with nothing declared, the magic is sniffed");
+
+	/*
+	 * AN ANIMATED GIF IS THE ONE THING HERE WITH MORE THAN ONE PICTURE IN
+	 * IT, and `kimg_decode_all` is the only way to reach the rest. A still
+	 * answers one through the same call, which is what lets a caller have
+	 * one path instead of two.
+	 */
+	if (img_have(KIMG_GIF)) {
+		size_t n = 0;
+		const unsigned char *b = img_slurp("anim.gif", &n);
+		KimgFrame fr[8];
+		int got = b ? kimg_decode_all(b, n, KIMG_GIF, &img_budget, fr,
+					      8)
+			    : -1;
+
+		eq_int(got, 3, "every frame of an animated GIF comes back");
+		for (int i = 0; i < got; i++) {
+			if (i == 0)
+				ok(fr[i].gap_ms > 0,
+				   "  each carries the delay after it");
+			pixman_image_unref(fr[i].img);
+		}
+
+		b = img_slurp("valid.gif", &n);
+		got = b ? kimg_decode_all(b, n, KIMG_GIF, &img_budget, fr, 8)
+			: -1;
+		eq_int(got, 1, "a still answers one through the same call");
+		for (int i = 0; i < got; i++)
+			pixman_image_unref(fr[i].img);
+
+		/* And `kimg_decode` is that call with a max of one: the first
+		 * frame, which is what a still viewer wants. */
+		eq_int(img_decodes("anim.gif", KIMG_GIF), 1,
+		       "kimg_decode answers an animation's first frame");
+	}
+
+	/* Nothing at all is still an answer. */
+	pixman_image_t *none = kimg_decode(NULL, 0, KIMG_AUTO, &img_budget);
+
+	ok(none == NULL, "no bytes decode to nothing rather than crashing");
+	ok(kimg_formats() != 0,
+	   "this build reports which formats it can actually decode");
+}
+
+#else	/* !HAVE_KIMG */
+
+static void test_kimg(void)
+{
+	printf("\n==> libkimg: skipped, no pixman on this host\n");
+}
+
+#endif
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The server half: a real listening socket, a real client on it, and the two
+ * refusals that are the whole of the protocol's safety.
+ *
+ * A SESSION A VIEW CAN ATTACH TO IS A KEYLOGGER IF ANYTHING CAN ATTACH, so the
+ * rules that decide who gets in are worth more assertions than the ones that
+ * carry cells: a first message that is not a hello, and a version that does not
+ * match, are both refusals rather than best-effort.
+ */
+
+/* Connect to a unix socket and wrap it. Returns NULL rather than asserting, so
+ * a host that cannot make one skips instead of failing. */
+static KconConn *srv_client(const char *path)
+{
+	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+	if (fd < 0)
+		return NULL;
+
+	struct sockaddr_un a;
+
+	memset(&a, 0, sizeof(a));
+	a.sun_family = AF_UNIX;
+	snprintf(a.sun_path, sizeof(a.sun_path), "%s", path);
+	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
+		close(fd);
+		return NULL;
+	}
+	return kcon_conn_new(fd);
+}
+
+static KconSurface *srv_attached;
+static char srv_pasted[256];
+static int srv_bells;
+static unsigned srv_min_id;
+static unsigned srv_min_flag;
+static int srv_min_on = -1;
+
+static void srv_on_win_state(KconSurface *f, unsigned id, unsigned flag,
+			     int on, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_min_id = id;
+	srv_min_flag = flag;
+	srv_min_on = on;
+}
+
+/* What a view's key reached the session as, for the observer test. */
+static int srv_keys;
+static int srv_last_key;
+
+static void srv_on_view_key(KconSurface *v, int key, int mods, void *user)
+{
+	(void)v;
+	(void)mods;
+	(void)user;
+	srv_keys++;
+	srv_last_key = key;
+}
+
+static void srv_on_paste(KconSurface *v, const char *text, void *user)
+{
+	(void)v;
+	(void)user;
+	snprintf(srv_pasted, sizeof(srv_pasted), "%s", text);
+}
+
+static void srv_on_attached(KconSurface *f, void *user)
+{
+	(void)user;
+	srv_attached = f;
+}
+
+static void srv_attach_min(KconConn *c, unsigned role, unsigned edge,
+			   unsigned cells, unsigned cols, unsigned rows,
+			   unsigned corner, unsigned mx, unsigned my,
+			   unsigned min_c, unsigned min_r)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)role);
+	kcon_put_u16(&b, (uint16_t)edge);
+	kcon_put_u16(&b, (uint16_t)cells);
+	kcon_put_u16(&b, (uint16_t)cols);
+	kcon_put_u16(&b, (uint16_t)rows);
+	kcon_put_u8(&b, 1);			/* exclusive */
+	kcon_put_str(&b, "probe");
+	kcon_put_str(&b, "probe");
+	kcon_put_str(&b, "");
+	kcon_put_u16(&b, (uint16_t)corner);
+	kcon_put_u16(&b, (uint16_t)mx);
+	kcon_put_u16(&b, (uint16_t)my);
+	kcon_put_u16(&b, (uint16_t)min_c);
+	kcon_put_u16(&b, (uint16_t)min_r);
+	kcon_send(c, KCON_OP_ATTACH, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+static void srv_attach_at(KconConn *c, unsigned role, unsigned edge,
+			  unsigned cells, unsigned cols, unsigned rows,
+			  unsigned corner, unsigned mx, unsigned my)
+{
+	srv_attach_min(c, role, edge, cells, cols, rows, corner, mx, my, 0, 0);
+}
+
+static void srv_attach(KconConn *c, unsigned role, unsigned edge,
+		       unsigned cells, unsigned cols, unsigned rows)
+{
+	srv_attach_at(c, role, edge, cells, cols, rows, 0, 0, 0);
+}
+
+static void srv_hello(KconConn *c, unsigned ver, unsigned kind)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)ver);
+	kcon_put_u16(&b, (uint16_t)kind);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+/* The same again, with what a view is ALLOWED to do — the field after the
+ * capabilities. */
+static void srv_hello_rights(KconConn *c, unsigned rights)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_VIEW);
+	kcon_put_u16(&b, 8);
+	kcon_put_u16(&b, 16);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, (uint16_t)rights);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_send(c, KCON_OP_VIEW_SIZE, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+/* The same, with what a view says it can do. Four numbers rather than two:
+ * the cell's pixels and the capability word. */
+static void srv_hello_caps(KconConn *c, unsigned caps)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_VIEW);
+	kcon_put_u16(&b, 8);
+	kcon_put_u16(&b, 16);
+	kcon_put_u16(&b, (uint16_t)caps);
+	kcon_send(c, KCON_OP_HELLO, &b);
+
+	/* AND THE SIZE, which is what attaches a view: a display that never
+	 * said what it can show is a display the session has nothing to send
+	 * to. Zero is "I impose nothing", the answer a screenshot gives. */
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_send(c, KCON_OP_VIEW_SIZE, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+/*
+ * THE CHORDS A TERMINAL CAN CARRY.
+ *
+ * A view in a terminal reads its keys as escape sequences, and Super arrives
+ * only in the kitty form `CSI <codepoint> ; <modifiers>[:<event>] u`. Without
+ * that form fifteen of this desktop's seventeen chords cannot be typed over
+ * ssh at all, which is the display mode the two-socket split exists for. The
+ * decoder reads standard input, so a pipe standing in for the terminal feeds
+ * it the real bytes.
+ */
+static void feed_seq(int w, const char *bytes)
+{
+	ssize_t n = write(w, bytes, strlen(bytes));
+
+	(void)n;
+}
+
+/*
+ * OSC 52 AND THE BUFFER THAT CARRIES IT.
+ *
+ * `osc_arg` was a fixed 128 bytes — enough for a title or a colour and nothing
+ * else — so every useful OSC would have truncated silently. A truncated base64
+ * selection decodes to garbage and is pasted as garbage, which is why the rule
+ * is to drop the payload whole.
+ */
+static char clip52[512];
+static size_t clip52_len;
+static int clip52_primary;
+static int clip52_calls;
+
+static void vt_on_clip(struct kvt_vte *vte, const char *text, size_t len,
+		       int primary, void *data)
+{
+	(void)vte;
+	(void)data;
+	clip52_calls++;
+	if (len >= sizeof(clip52))
+		len = sizeof(clip52) - 1;
+	memcpy(clip52, text, len);
+	clip52[len] = '\0';
+	clip52_len = len;
+	clip52_primary = primary;
+}
+
+/*
+ * A LITERAL'S LENGTH IS THE COMPILER'S TO COUNT. This block passed 18 and 11
+ * by hand for sequences of 16 and 9, and read past both — which only the
+ * sanitized run notices, because the bytes after a string literal are usually
+ * another literal.
+ */
+#define vt_feed_clip(s) vt_feed_clip_n((s), sizeof(s) - 1)
+
+static void vt_feed_clip_n(const char *bytes, size_t n)
+{
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	clip52[0] = '\0';
+	clip52_len = 0;
+	clip52_primary = -1;
+	clip52_calls = 0;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0)
+		return;
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		return;
+	}
+	kvt_vte_set_clip_cb(vte, vt_on_clip, NULL);
+	for (size_t i = 0; i < n; i++)
+		kvt_vte_input(vte, bytes + i, 1);
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/*
+ * A TERMINAL WINDOW SET UP THE WAY THE SESSION SETS ONE UP.
+ *
+ * `kdos-con` opens a terminal, gives it a scrollback and two callbacks, pumps
+ * it and renders it — and a photograph of one on the ISO shows an empty
+ * window while its title still changes, so the bytes reach the parser and
+ * something between the screen and the cells does not. This drives that exact
+ * order and reads the cells back.
+ */
+static void test_term_render(void)
+{
+	printf("\n==> a session terminal renders what its child wrote\n");
+
+	const char *const argv[] = { "/bin/sh", "-c",
+				     "printf 'HELLOWORLD\\n'", NULL };
+	struct kvt_term *t = kvt_term_open(argv, 40, 6);
+
+	if (!t) {
+		ok(0, "a terminal opens");
+		return;
+	}
+
+	/* The session's own order: scrollback, then the callbacks. */
+	kvt_term_scrollback(t, 2000);
+
+	KtuiCell cells[40 * 6];
+	char row[41];
+	int found = 0;
+
+	for (int spin = 0; spin < 2000 && !found; spin++) {
+		kvt_term_pump(t);
+		kvt_term_render(t, cells, 40, 6);
+		for (int y = 0; y < 6 && !found; y++) {
+			for (int x = 0; x < 40; x++)
+				row[x] = cells[y * 40 + x].ch >= 32 &&
+						 cells[y * 40 + x].ch < 127
+						 ? (char)cells[y * 40 + x].ch
+						 : ' ';
+			row[40] = '\0';
+			if (strstr(row, "HELLOWORLD"))
+				found = 1;
+		}
+		if (!found)
+			usleep(1000);
+	}
+
+	ok(found, "the child's output reaches the rendered cells");
+	kvt_term_close(t);
+
+	/*
+	 * NOW THE WAY THE SESSION ACTUALLY DOES IT: a bare interactive shell
+	 * at the geometry a 182x61 screen gives a window, driven by writing to
+	 * its pty the way a keystroke does. Those are the only two differences
+	 * between the case above, which passes, and a window on the ISO, which
+	 * shows nothing.
+	 */
+	const char *const shargv[] = { "sh", NULL };
+	struct kvt_term *s = kvt_term_open(shargv, 121, 40);
+
+	if (!s) {
+		ok(0, "a bare interactive shell opens");
+		return;
+	}
+	kvt_term_scrollback(s, 2000);
+
+	static KtuiCell wide[121 * 40];
+	int saw = 0;
+
+	kvt_term_write(s, "echo HELLOWORLD\n", 16);
+	for (int spin = 0; spin < 3000 && !saw; spin++) {
+		kvt_term_pump(s);
+		kvt_term_render(s, wide, 121, 40);
+		for (int y = 0; y < 40 && !saw; y++) {
+			char r[122];
+
+			for (int x = 0; x < 121; x++)
+				r[x] = wide[y * 121 + x].ch >= 32 &&
+					       wide[y * 121 + x].ch < 127
+					       ? (char)wide[y * 121 + x].ch
+					       : ' ';
+			r[121] = '\0';
+			if (strstr(r, "HELLOWORLD"))
+				saw = 1;
+		}
+		if (!saw)
+			usleep(1000);
+	}
+
+	ok(saw, "a bare shell's output reaches the cells at a window's size");
+
+	/*
+	 * AND IT HAS TO BE LEGIBLE. A cell whose foreground reduces to the same
+	 * theme slot as its background holds the character and shows nothing —
+	 * which a dump cannot reveal, because a dump prints the character and
+	 * throws the colour away. That is the difference between a terminal
+	 * that works and a window a person sees as empty.
+	 */
+	if (saw) {
+		int fg = -1, bg = -1;
+
+		for (int y = 0; y < 40 && fg < 0; y++) {
+			char r[122];
+
+			for (int x = 0; x < 121; x++)
+				r[x] = wide[y * 121 + x].ch >= 32 &&
+					       wide[y * 121 + x].ch < 127
+					       ? (char)wide[y * 121 + x].ch
+					       : ' ';
+			r[121] = '\0';
+
+			char *hit = strstr(r, "HELLOWORLD");
+
+			if (hit) {
+				int x = (int)(hit - r);
+
+				fg = wide[y * 121 + x].fg;
+				bg = wide[y * 121 + x].bg;
+			}
+		}
+		ok(fg != bg,
+		   "and its foreground is not the slot its background is");
+	}
+
+	kvt_term_close(s);
+}
+
+static void test_osc52(void)
+{
+	printf("\n==> a child puts something on the clipboard\n");
+
+	/* ── base64, refused whole rather than half-decoded ─────────────── */
+	char out[64];
+	size_t n = 0;
+
+	eq_int(kb_b64_decode("aGVsbG8=", 8, out, sizeof(out), &n), 5,
+	       "base64 decodes, padding and all");
+	ok(!strcmp(out, "hello"), "  to the bytes that went in");
+	eq_int(kb_b64_decode("aGVs\nbG8=", 9, out, sizeof(out), &n), 5,
+	       "a wrapped payload decodes, because a long one arrives wrapped");
+	eq_int(kb_b64_decode("not base64!", 11, out, sizeof(out), &n), -1,
+	       "and one that is not base64 is refused");
+	eq_int(kb_b64_decode("aGVsbG8=", 8, out, 3, &n), -1,
+	       "a payload that would not fit is refused WHOLE, not truncated");
+
+	/* ── the sequence ───────────────────────────────────────────────── */
+	vt_feed_clip("\033]52;c;aGVsbG8=\007");
+	eq_int(clip52_calls, 1, "OSC 52 reaches the clipboard callback");
+	ok(!strcmp(clip52, "hello"), "  with the decoded selection");
+	eq_int(clip52_primary, 0, "  and names the clipboard");
+
+	vt_feed_clip("\033]52;p;aGVsbG8=\007");
+	eq_int(clip52_primary, 1, "`p` in the targets means the primary");
+
+	/*
+	 * THE READ FORM IS REFUSED. `52;c;?` asks the terminal to hand the
+	 * clipboard to the program running inside it, which would let anything
+	 * that can write to a terminal read whatever was last copied anywhere
+	 * on the desktop.
+	 */
+	vt_feed_clip("\033]52;c;?\007");
+	eq_int(clip52_calls, 0, "the read form is refused and calls nothing");
+
+	/*
+	 * A PAYLOAD PAST WHAT A TITLE NEEDS. The old fixed buffer stopped at
+	 * 128 bytes, so this is the case that could not work before.
+	 */
+	{
+		char big[1024];
+		char seq[1400];
+		size_t i;
+
+		for (i = 0; i < 600; i++)
+			big[i] = 'A';
+		big[i] = '\0';
+		/* "QUFB..." is base64 for a run of 'A's; 600 base64 chars is
+		 * 450 decoded bytes, well past the old ceiling. */
+		int len = snprintf(seq, sizeof(seq), "\033]52;c;%s\007", big);
+
+		vt_feed_clip_n(seq, (size_t)len);
+		eq_int(clip52_calls, 1,
+		       "a selection far past a title's length still arrives");
+		ok(clip52_len > 128,
+		   "  decoded whole rather than cut at the old buffer");
+	}
+}
+
+/*
+ * BRACKETED PASTE, THROUGH THE REAL INPUT PATH.
+ *
+ * `ktui_input_next` reads descriptor 0, so a pipe standing in for the terminal
+ * is the whole fixture. Two writes on purpose: a paste is not one read, and
+ * the terminator split across two of them is the case that turns a paste into
+ * a session-long one if the tail is taken for text.
+ */
+static void test_bracketed_paste(void)
+{
+	printf("\n==> a paste from the host terminal is text, not keys\n");
+
+	int pfd[2];
+	int saved = dup(0);
+
+	if (pipe(pfd) != 0 || saved < 0) {
+		ok(0, "a pipe standing in for the terminal");
+		return;
+	}
+	dup2(pfd[0], 0);
+
+	KtuiEvent ev;
+	const char *out = NULL;
+
+	/* Whole, in one write. */
+	const char *p1 = "\033[200~pasted line\033[201~";
+	ssize_t w = write(pfd[1], p1, strlen(p1));
+
+	(void)w;
+	for (int i = 0; i < 20 && !ktui_paste_take(&out); i++)
+		ktui_input_next(&ev, 5);
+	eq_str(out ? out : "", "pasted line",
+	       "the bytes between the brackets are the paste");
+
+	/*
+	 * The terminator in pieces. `\033[20` at the tail of one read is not
+	 * text: taken as text it leaves a `1~` that ends nothing, and the
+	 * paste runs to the end of the session.
+	 */
+	out = NULL;
+	const char *p2 = "\033[200~split\033[20";
+
+	w = write(pfd[1], p2, strlen(p2));
+	for (int i = 0; i < 5; i++)
+		ktui_input_next(&ev, 5);
+	ok(ktui_paste_take(&out) == 0, "an unterminated paste is not delivered");
+	w = write(pfd[1], "1~", 2);
+	out = NULL;
+	for (int i = 0; i < 20 && !ktui_paste_take(&out); i++)
+		ktui_input_next(&ev, 5);
+	eq_str(out ? out : "", "split",
+	       "and a terminator split across two reads still ends it");
+
+	/*
+	 * AND A CHORD INSIDE A PASTE IS NOT A CHORD. This is the whole point:
+	 * a pasted line beginning with Ctrl+A would otherwise arm the leader
+	 * key and swallow the character after it.
+	 */
+	out = NULL;
+	const char *p3 = "\033[200~\001a\033[201~";
+
+	w = write(pfd[1], p3, strlen(p3));
+	for (int i = 0; i < 20 && !ktui_paste_take(&out); i++)
+		ktui_input_next(&ev, 5);
+	ok(out != NULL, "a control byte inside a paste stays in the paste");
+
+	dup2(saved, 0);
+	close(saved);
+	close(pfd[0]);
+	close(pfd[1]);
+}
+
+static void test_ktui_csi_u(void)
+{
+	printf("\n==> Super reaches a view that is a terminal\n");
+
+	int pv[2];
+
+	if (pipe(pv) != 0) {
+		ok(0, "a pipe standing in for the terminal");
+		return;
+	}
+
+	int saved = dup(0);
+
+	if (saved < 0 || dup2(pv[0], 0) < 0) {
+		ok(0, "standard input redirected to it");
+		close(pv[0]);
+		close(pv[1]);
+		return;
+	}
+
+	KtuiEvent ev;
+
+	feed_seq(pv[1], "\x1b[13;9u");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI 13;9u decodes");
+	eq_int(ev.key, KT_K_ENTER, "  as Return");
+	eq_int(ev.mods, KT_MOD_SUPER, "  with Super, which is bit 8");
+
+	feed_seq(pv[1], "\x1b[113;9u");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI 113;9u decodes");
+	eq_int(ev.key, 'q', "  as the letter the chord table was written with");
+	eq_int(ev.mods, KT_MOD_SUPER, "  and Super");
+
+	/*
+	 * A RELEASE IS NOT A CHORD. Both halves of a keypress reaching the
+	 * table fires every chord twice — once down, once up.
+	 */
+	feed_seq(pv[1], "\x1b[13;9:3u");
+	eq_int(ktui_input_next(&ev, 50), 0, "a release is consumed and not reported");
+
+	/* A repeat is a press: holding Super+Left tiles more than once. */
+	feed_seq(pv[1], "\x1b[13;9:2u");
+	eq_int(ktui_input_next(&ev, 50), 1, "a repeat is");
+	eq_int(ev.key, KT_K_ENTER, "  the same key");
+
+	/*
+	 * THE SUB-PARAMETER MUST BE EATEN WHOLE. A parser that stops at the
+	 * colon leaves the rest of the sequence in the buffer, and it is then
+	 * decoded as characters typed into whatever has the focus.
+	 */
+	feed_seq(pv[1], "\x1b[13;9:3u\x1b[113;9u");
+	eq_int(ktui_input_next(&ev, 50), 0, "a release before another chord is dropped");
+	eq_int(ktui_input_next(&ev, 50), 1, "and the chord behind it still decodes");
+	eq_int(ev.key, 'q', "  intact");
+	eq_int(ev.mods, KT_MOD_SUPER, "  with its modifier");
+
+	/* The older mask still means what it did: 5 is 4+1, ctrl and shift. */
+	feed_seq(pv[1], "\x1b[1;5A");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI 1;5A still decodes");
+	eq_int(ev.key, KT_K_UP, "  as Up");
+	eq_int(ev.mods, KT_MOD_CTRL, "  with Ctrl and nothing else");
+
+	dup2(saved, 0);
+	close(saved);
+	close(pv[0]);
+	close(pv[1]);
+}
+
+/*
+ * `kdos con kill` REACHES THE SESSION AS A MESSAGE, and only from a shell
+ * surface: a client with a window in the session has no business ending it for
+ * the person using it.
+ */
+static int srv_quits;
+
+/* What the session was told, for the clipboard round trip below. */
+static char clip_text[64];
+static int clip_primary = -1;
+static int clip_asked = -1;
+
+/* What a shell asked the session to do, for the management block below. */
+static unsigned srv_activated, srv_closed;
+
+/* How many times a colour pick was asked for. */
+static unsigned srv_picked;
+
+/* What a view reported as a finger, for the touch block below. */
+static int srv_touch_n, srv_touch_x, srv_touch_y, srv_touch_gest;
+static int srv_touch_phase;
+
+static void srv_on_view_touch(KconSurface *v, int x, int y, int slot,
+			      int phase, unsigned ms, int gesture, void *user)
+{
+	(void)v;
+	(void)slot;
+	(void)ms;
+	(void)user;
+	srv_touch_n++;
+	srv_touch_x = x;
+	srv_touch_y = y;
+	srv_touch_phase = phase;
+	srv_touch_gest = gesture;
+}
+
+/* What a shell asked about the screen's font, for the font block below. */
+static int srv_font_asked;
+static int srv_font_idx = -99;
+static int srv_font_keep = -1;
+
+static KconSurface *srv_font_who;
+
+static void srv_on_fonts_ask(KconSurface *f, void *user)
+{
+	(void)user;
+	srv_font_asked++;
+	/* THE SURFACE THAT ASKED, kept: the answer goes back to that one and
+	 * not to whichever the server happens to list last, which on this
+	 * socketpair is an ordinary window. */
+	srv_font_who = f;
+}
+
+static void srv_on_font_set(KconSurface *f, int index, int keep, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_font_idx = index;
+	srv_font_keep = keep;
+}
+
+/* What a surface said it had picked up, for the drag block below. */
+static char srv_drag_mime[64];
+static char srv_drag_data[256];
+static size_t srv_drag_len;
+
+static void srv_on_drag_start(KconSurface *f, const char *mime,
+			      const char *data, size_t len, void *user)
+{
+	(void)f;
+	(void)user;
+	snprintf(srv_drag_mime, sizeof(srv_drag_mime), "%s", mime ? mime : "");
+	srv_drag_len = len < sizeof(srv_drag_data) - 1
+		? len : sizeof(srv_drag_data) - 1;
+	if (data)
+		memcpy(srv_drag_data, data, srv_drag_len);
+	srv_drag_data[srv_drag_len] = '\0';
+}
+
+static void srv_on_pick(KconSurface *f, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_picked++;
+}
+
+static void srv_on_activate(KconSurface *f, unsigned id, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_activated = id;
+}
+
+static void srv_on_close_req(KconSurface *f, unsigned id, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_closed = id;
+}
+
+static void srv_on_clip_offer(KconSurface *f, const char *text, size_t len,
+			      int primary, void *user)
+{
+	(void)f;
+	(void)user;
+	if (len >= sizeof(clip_text))
+		len = sizeof(clip_text) - 1;
+	memcpy(clip_text, text, len);
+	clip_text[len] = '\0';
+	clip_primary = primary;
+}
+
+static void srv_on_clip_request(KconSurface *f, int primary, void *user)
+{
+	(void)f;
+	(void)user;
+	clip_asked = primary;
+}
+
+static void srv_on_quit(KconSurface *f, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_quits++;
+}
+
+static void test_kcon_server(void)
+{
+	printf("\n==> the session socket: who gets in, and who is dropped\n");
+
+	char dir[] = "/tmp/kdos-selftest-con.XXXXXX";
+
+	if (!mkdtemp(dir)) {
+		ok(0, "a directory for the session socket");
+		return;
+	}
+
+	char path[256];
+
+	snprintf(path, sizeof(path), "%s/session.sock", dir);
+
+	KconServer *s = kcon_server_new(path);
+
+	ok(s != NULL, "a session listens on a unix socket");
+	if (!s) {
+		rmdir(dir);
+		return;
+	}
+
+	/* ── a peer that says hello properly is admitted ───────────────── */
+	KconConn *good = srv_client(path);
+
+	ok(good != NULL, "a client connects to it");
+	if (good) {
+		srv_hello(good, KCON_VERSION, 0);
+		kcon_server_pump(s);
+		eq_int(kcon_server_count(s), 1, "and the session counts it");
+	}
+
+	/* ── a version that does not match is refused, with both numbers ── */
+	KconConn *old = srv_client(path);
+
+	if (old) {
+		srv_hello(old, KCON_VERSION + 1, 0);
+		kcon_server_pump(s);
+
+		/*
+		 * BOTH NUMBERS COME BACK. "Protocol error" tells the person
+		 * nothing about which half to rebuild, and the two ends of a
+		 * forwarded socket are not always the same build.
+		 */
+		KconMsg m;
+		int got = 0;
+
+		for (int i = 0; i < 50 && !got; i++) {
+			if (kcon_recv(old, &m) == 1)
+				got = 1;
+			else
+				usleep(1000);
+		}
+		ok(got, "a version mismatch is answered rather than dropped");
+		if (got) {
+			KconRd r;
+
+			kcon_rd_init(&r, m.payload, m.len);
+			eq_int(kcon_get_u16(&r), KCON_VERSION,
+			       "the answer carries the version the session speaks");
+			eq_int(kcon_get_u16(&r), KCON_VERSION + 1,
+			       "and the one the peer claimed");
+		}
+		kcon_conn_free(old);
+	}
+
+	/* ── a first message that is not a hello ends the connection ───── */
+	KconConn *rude = srv_client(path);
+
+	if (rude) {
+		int before = kcon_server_count(s);
+		KconBuf b = { 0 };
+
+		kcon_put_u16(&b, 1);
+		kcon_send(rude, KCON_OP_COMMIT, &b);	/* before saying hello */
+		kcon_flush(rude);
+		kcon_buf_free(&b);
+
+		for (int i = 0; i < 20; i++) {
+			kcon_server_pump(s);
+			usleep(1000);
+		}
+		ok(kcon_server_count(s) <= before,
+		   "a peer whose first message is not a hello is dropped");
+		kcon_conn_free(rude);
+	}
+
+	/* ── a docked panel names a thickness and no size ──────────────── */
+	{
+		KconServerHooks h = { 0 };
+
+		h.attached = srv_on_attached;
+		kcon_server_hooks(s, &h, NULL);
+
+		KconConn *bar = srv_client(path);
+
+		if (bar) {
+			srv_attached = NULL;
+			srv_hello(bar, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach(bar, KDISP_ROLE_PANEL, KDISP_EDGE_RIGHT,
+				   10, 0, 0);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+
+			/*
+			 * THE EXTENT ALONG THE EDGE IS THE SESSION'S. A panel
+			 * refused for asking nothing would be a slit that
+			 * never appears, and one let through at a made-up
+			 * 80x24 is a column drawn where it was not asked for:
+			 * both are silent, so the thickness is asserted here.
+			 */
+			ok(srv_attached != NULL,
+			   "a panel attaches asking only for a thickness");
+			if (srv_attached) {
+				eq_int(kcon_surface_want_cells(srv_attached),
+				       10, "and the session is told how thick");
+				eq_int(kcon_surface_edge(srv_attached),
+				       KDISP_EDGE_RIGHT, "and which edge");
+				eq_int(kcon_surface_cols(srv_attached), 0,
+				       "with no size of its own to override it");
+			}
+			kcon_conn_free(bar);
+		}
+
+		/*
+		 * ── AN OVERLAY'S CORNER SURVIVES THE ATTACH ────────────
+		 *
+		 * A menu belongs to the button that opened it, and the only
+		 * thing that carries it there is this field. It is asserted
+		 * over the wire rather than in the session, because the wire
+		 * is what a forwarded socket has: a session placing overlays
+		 * correctly against a client that sends nothing would place
+		 * every one of them in the same corner and look right until
+		 * two surfaces asked for different ones.
+		 */
+		KconConn *pop = srv_client(path);
+
+		if (pop) {
+			srv_attached = NULL;
+			srv_hello(pop, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach_at(pop, KDISP_ROLE_OVERLAY, 0, 0, 30, 12,
+				      KDISP_CORNER_BOTTOM_LEFT, 7, 1);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_attached != NULL, "an overlay attaches with a corner");
+			if (srv_attached) {
+				eq_int(kcon_surface_corner(srv_attached),
+				       KDISP_CORNER_BOTTOM_LEFT,
+				       "and the session is told which corner");
+				eq_int(kcon_surface_margin_x(srv_attached), 7,
+				       "and how far from the left");
+				eq_int(kcon_surface_margin_y(srv_attached), 1,
+				       "and how far from the bottom");
+			}
+			kcon_conn_free(pop);
+		}
+
+		/*
+		 * ── AND THE SMALLEST GRID IT CAN DRAW ON ───────────────
+		 *
+		 * The session is the only thing that can act on a minimum: it
+		 * is what divides the screen. A surface handed fewer cells
+		 * than it needs composes nothing and the cells under it keep
+		 * the last picture — a hole in the desktop, and silent.
+		 */
+		KconConn *tiny = srv_client(path);
+
+		if (tiny) {
+			srv_attached = NULL;
+			srv_hello(tiny, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach_min(tiny, KDISP_ROLE_TOPLEVEL, 0, 0, 80, 24,
+				       0, 0, 0, 56, 24);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_attached != NULL,
+			   "a surface attaches naming a minimum");
+			if (srv_attached) {
+				eq_int(kcon_surface_min_cols(srv_attached), 56,
+				       "and the session is told the columns");
+				eq_int(kcon_surface_min_rows(srv_attached), 24,
+				       "and the rows");
+			}
+			kcon_conn_free(tiny);
+		}
+
+		/*
+		 * ── A RESIZE IS A SECOND ATTACH, AND CARRIES THE SAME FIELDS
+		 *
+		 * An overlay that grows re-attaches at the new size. There are
+		 * two senders for that payload, and a field added to only one
+		 * of them makes the server read past the end of the message,
+		 * refuse the attach and DROP the surface — which looks like a
+		 * toast vanishing the moment it has something to say, not like
+		 * a protocol error. It happened; this is the assertion that
+		 * fails when it happens again.
+		 */
+		KconConn *grow = srv_client(path);
+
+		if (grow) {
+			srv_attached = NULL;
+			srv_hello(grow, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach_at(grow, KDISP_ROLE_OVERLAY, 0, 0, 20, 3,
+				      KDISP_CORNER_TOP_RIGHT, 1, 1);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			KconSurface *was = srv_attached;
+
+			ok(was != NULL, "a toast attaches");
+			/* The same client, a bigger size: a second attach. */
+			srv_attach_at(grow, KDISP_ROLE_OVERLAY, 0, 0, 20, 9,
+				      KDISP_CORNER_TOP_RIGHT, 1, 1);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			if (was)
+				eq_int(kcon_surface_rows(was), 9,
+				       "and re-attaching at a new size resizes "
+				       "it rather than dropping it");
+			kcon_conn_free(grow);
+		}
+
+		/* An ordinary window has no such answer coming. */
+		KconConn *win0 = srv_client(path);
+
+		if (win0) {
+			srv_attached = NULL;
+			srv_hello(win0, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach(win0, KDISP_ROLE_TOPLEVEL, 0, 0, 0, 0);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_attached == NULL,
+			   "a window with neither size nor thickness is refused");
+			kcon_conn_free(win0);
+		}
+		kcon_server_hooks(s, NULL, NULL);
+	}
+
+	/* ── the paste verb: a display may hand the session text, a surface
+	 *    may not, and a bell reaches every view ─────────────────────── */
+	{
+		KconServerHooks h = { 0 };
+
+		h.paste = srv_on_paste;
+		kcon_server_hooks(s, &h, NULL);
+
+		KconConn *v = srv_client(path);
+		KconConn *win1 = srv_client(path);
+
+		if (v && win1) {
+			KconBuf b = { 0 };
+
+			srv_hello(v, KCON_VERSION, KCON_KIND_VIEW);
+			srv_hello(win1, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+
+			srv_pasted[0] = 0;
+			kcon_put_str(&b, "from the host terminal");
+			kcon_send(v, KCON_OP_PASTE, &b);
+			kcon_flush(v);
+			for (int i = 0; i < 20 && !srv_pasted[0]; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(!strcmp(srv_pasted, "from the host terminal"),
+			   "a display hands the session pasted text");
+
+			/*
+			 * A SURFACE MAY NOT. A client that could paste could
+			 * type into whatever has the focus without the person
+			 * touching a key, which is the one thing nothing on
+			 * this socket is allowed to do.
+			 */
+			srv_pasted[0] = 0;
+			kcon_buf_reset(&b);
+			kcon_put_str(&b, "typed by a client");
+			kcon_send(win1, KCON_OP_PASTE, &b);
+			kcon_flush(win1);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_pasted[0] == 0,
+			   "and a surface pasting into the session is ignored");
+			kcon_buf_free(&b);
+
+			/* The bell goes the other way, and only to displays. */
+			srv_bells = 0;
+			kcon_view_bell(s);
+			kcon_flush(v);
+
+			KconMsg m;
+
+			for (int i = 0; i < 50 && !srv_bells; i++) {
+				if (kcon_recv(v, &m) == 1 &&
+				    m.op == KCON_OP_BELL)
+					srv_bells++;
+				else
+					usleep(1000);
+			}
+			ok(srv_bells == 1, "a bell reaches an attached view");
+		}
+		if (v)
+			kcon_conn_free(v);
+		if (win1)
+			kcon_conn_free(win1);
+		kcon_server_hooks(s, NULL, NULL);
+	}
+
+	/* ── two views, two rights ────────────────────────────────────────
+	 *
+	 * A VIEW THAT MAY WATCH AND NOT TYPE. Over a forwarded socket that is
+	 * the difference between showing somebody a problem and handing them
+	 * the machine — so the refusal is on the SERVER's side: the observer
+	 * below sends a key exactly as the driver does, and only one of them
+	 * arrives.
+	 *
+	 * A client cannot ask for more by saying nothing, either: a hello that
+	 * stops at the capabilities is a driver, which is what every view was
+	 * before this field existed.
+	 */
+	{
+		KconServerHooks h = { 0 };
+
+		h.view_key = srv_on_view_key;
+		kcon_server_hooks(s, &h, NULL);
+
+		KconConn *drv = srv_client(path);
+		KconConn *obs = srv_client(path);
+
+		if (drv && obs) {
+			srv_hello_rights(drv, KCON_RIGHTS_DRIVE);
+			srv_hello_rights(obs, KCON_RIGHTS_OBSERVE);
+			for (int i = 0;
+			     i < 50 && kcon_server_view_count(s) < 2; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(kcon_server_view_count(s) >= 2,
+			   "a driver and an observer are both attached");
+
+			KconBuf b = { 0 };
+
+			srv_keys = 0;
+			srv_last_key = 0;
+			kcon_put_i32(&b, 'd');
+			kcon_put_u8(&b, 0);
+			kcon_send(drv, KCON_OP_KEY, &b);
+			kcon_flush(drv);
+			for (int i = 0; i < 50 && !srv_keys; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_keys == 1 && srv_last_key == 'd',
+			   "the driver's key reaches the session");
+
+			kcon_buf_reset(&b);
+			kcon_put_i32(&b, 'o');
+			kcon_put_u8(&b, 0);
+			kcon_send(obs, KCON_OP_KEY, &b);
+			kcon_flush(obs);
+			/* Read to the end of the spin rather than stopping at
+			 * the first pump: a test that gave up early would pass
+			 * against a session that simply answered slowly. */
+			for (int i = 0; i < 50; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_keys == 1 && srv_last_key == 'd',
+			   "and the observer's key reaches nothing");
+			kcon_buf_free(&b);
+		}
+		if (drv)
+			kcon_conn_free(drv);
+		if (obs)
+			kcon_conn_free(obs);
+		kcon_server_hooks(s, NULL, NULL);
+		kcon_server_pump(s);
+	}
+
+	/* ── the literals, and only for the view that asked ───────────────
+	 *
+	 * TWO VIEWS ON ONE SESSION, one of which said KCON_VIEW_COLOR. Both
+	 * are sent the same frame. The one that asked gets the cells and then
+	 * their colours; the one that did not gets the cells and NOTHING
+	 * ELSE — not a shorter colour run, not a run of zeros, no second
+	 * message at all — because the cost this negotiation exists to avoid
+	 * is bytes on a slow link, and a run of zeros costs exactly as much as
+	 * a run of colours.
+	 *
+	 * The declining view's cells still carry their slots, so it draws the
+	 * same frame it drew before this op existed. That is the property the
+	 * whole design rests on and it is asserted here rather than assumed.
+	 */
+	{
+		KconConn *rich = srv_client(path);
+		KconConn *plain = srv_client(path);
+
+		if (rich && plain) {
+			srv_hello_caps(rich, KCON_VIEW_COLOR);
+			srv_hello_caps(plain, 0);
+			/* An accept and a hello are not the same pump: the
+			 * connection exists one turn before what it said
+			 * about itself has been read. */
+			for (int i = 0;
+			     i < 50 && kcon_server_view_count(s) < 2; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+
+			KtuiCell frame[4];
+			int nviews = kcon_server_view_count(s);
+
+			ok(nviews >= 2, "both views are on the session");
+
+			memset(frame, 0, sizeof(frame));
+			for (int i = 0; i < 4; i++) {
+				frame[i].ch = 'a' + i;
+				frame[i].fg = KT_TEXT;
+				frame[i].bg = KT_BG;
+			}
+			/* One cell a program coloured itself, curly and
+			 * underlined in a colour of its own. */
+			frame[1].attr = KT_A_UNDERLINE | KT_A_FGRGB |
+					KT_A_ULCOLOR | KT_UL_SET(KT_UL_CURLY);
+			frame[1].fgc = 0x123456;
+			frame[1].ulc = 0xfedcba;
+
+			for (int i = 0; i < nviews; i++)
+				kcon_view_send(kcon_server_view_at(s, i),
+					       frame, 4, 1);
+
+			struct { KconConn *c; int cells, colors; } got[2] = {
+				{ rich, 0, 0 }, { plain, 0, 0 }
+			};
+
+			for (unsigned k = 0; k < 2; k++) {
+				KconMsg m;
+				KtuiCell out[8];
+				uint16_t x, y;
+
+				for (int spin = 0; spin < 60; spin++) {
+					int r = kcon_recv(got[k].c, &m);
+
+					if (r != 1) {
+						kcon_server_pump(s);
+						usleep(1000);
+						continue;
+					}
+					if (m.op == KCON_OP_COMMIT) {
+						KconRd rd;
+
+						kcon_rd_init(&rd, m.payload,
+							     m.len);
+						memset(out, 0, sizeof(out));
+						if (kcon_get_run(&rd, &x, &y,
+								 out, 8) == 4) {
+							got[k].cells = 1;
+							/* THE WIRE BYTE IS THE
+							 * LOW BYTE: a bit
+							 * above it would be a
+							 * colour claimed
+							 * without one sent. */
+							ok(!(out[1].attr &
+							     ~0xffu),
+							   k == 0 ?
+							   "a commit carries no bit above the wire's byte" :
+							   "and none to a view that declined either");
+							ok(out[1].fg == KT_TEXT,
+							   k == 0 ?
+							   "the slot is on the cell for both views" :
+							   "including the one with no colours");
+						}
+					} else if (m.op == KCON_OP_COLOR) {
+						KconRd rd;
+
+						kcon_rd_init(&rd, m.payload,
+							     m.len);
+						memset(out, 0, sizeof(out));
+						if (kcon_get_color_run(&rd, &x,
+								       &y, out,
+								       8) == 4) {
+							got[k].colors = 1;
+							eq_int(out[1].fgc,
+							       0x123456,
+							       "the colour the program named arrives");
+							eq_int(out[1].ulc,
+							       0xfedcba,
+							       "and the underline's own");
+							eq_int(KT_UL_STYLE(out[1].attr),
+							       KT_UL_CURLY,
+							       "and the shape of it");
+						}
+					}
+					/*
+					 * THE DECLINING VIEW IS READ TO THE
+					 * END OF THE SPIN, not stopped at its
+					 * cells: a test that stopped as soon
+					 * as the commit arrived would pass
+					 * just as well against a session that
+					 * sends the colours to everybody.
+					 */
+					if (got[k].cells && got[k].colors)
+						break;
+				}
+			}
+			ok(got[0].cells && got[0].colors,
+			   "the view that asked is sent the literals");
+			ok(got[1].cells && !got[1].colors,
+			   "and the view that did not is sent nothing extra");
+		}
+		if (rich)
+			kcon_conn_free(rich);
+		if (plain)
+			kcon_conn_free(plain);
+		kcon_server_pump(s);
+	}
+
+	/* ── the quit verb: a shell surface ends the session, a window does
+	 *    not ────────────────────────────────────────────────────────── */
+	{
+		KconServerHooks h = { 0 };
+
+		h.quit = srv_on_quit;
+		kcon_server_hooks(s, &h, NULL);
+		srv_quits = 0;
+
+		KconConn *win = srv_client(path);
+
+		if (win) {
+			KconBuf b = { 0 };
+
+			srv_hello(win, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			kcon_send(win, KCON_OP_QUIT, &b);
+			kcon_flush(win);
+			kcon_buf_free(&b);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			eq_int(srv_quits, 0,
+			       "a window asking the session to quit is ignored");
+			kcon_conn_free(win);
+		}
+
+		KconConn *sh = srv_client(path);
+
+		if (sh) {
+			KconBuf b = { 0 };
+
+			srv_hello(sh, KCON_VERSION, KCON_KIND_SHELL);
+			kcon_server_pump(s);
+			kcon_send(sh, KCON_OP_QUIT, &b);
+			kcon_flush(sh);
+			kcon_buf_free(&b);
+			for (int i = 0; i < 20 && !srv_quits; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			eq_int(srv_quits, 1,
+			       "and a shell surface's quit reaches the session");
+			kcon_conn_free(sh);
+		}
+
+		/*
+		 * A COPY REACHES THE SESSION AND A REQUEST IS ANSWERED.
+		 *
+		 * Both hooks were unset and `kcon_surface_clip_data()` had no
+		 * caller, so a copy crossed the wire and was dropped and a
+		 * paste could never fire: there was no clipboard on this
+		 * desktop at all. Sent as real messages rather than asserted
+		 * on the struct, because the defect was that nothing carried
+		 * them end to end.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.clip_offer = srv_on_clip_offer;
+			h.clip_request = srv_on_clip_request;
+			kcon_server_hooks(s, &h, NULL);
+			clip_text[0] = '\0';
+			clip_primary = -1;
+			clip_asked = -1;
+
+			KconConn *cc = srv_client(path);
+
+			if (cc) {
+				KconBuf b = { 0 };
+
+				srv_hello(cc, KCON_VERSION, KCON_KIND_SURFACE);
+				kcon_server_pump(s);
+
+				kcon_put_u8(&b, 1);	/* the primary */
+				kcon_put_blob(&b, "hello", 5);
+				kcon_send(cc, KCON_OP_CLIP_OFFER, &b);
+				kcon_flush(cc);
+				kcon_buf_reset(&b);
+				for (int i = 0; i < 30 && !clip_text[0]; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+				ok(!strcmp(clip_text, "hello"),
+				   "a copy reaches the session with its bytes");
+				eq_int(clip_primary, 1,
+				   "  and says which selection it means");
+
+				kcon_put_u8(&b, 0);	/* the clipboard */
+				kcon_send(cc, KCON_OP_CLIP_REQUEST, &b);
+				kcon_flush(cc);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30 && clip_asked < 0; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+				eq_int(clip_asked, 0,
+				   "a request reaches it, naming the other one");
+
+				/* And the answer crosses back, which is the
+				 * half that had no sender at all. */
+				kcon_surface_clip_data(
+					kcon_server_at(s, kcon_server_count(s) - 1),
+					"served");
+				KconMsg m;
+				int got = 0;
+
+				for (int i = 0; i < 60 && !got; i++) {
+					if (kcon_recv(cc, &m) == 1 &&
+					    m.op == KCON_OP_CLIP_DATA)
+						got = 1;
+					else
+						usleep(1000);
+				}
+				ok(got, "and the session's answer crosses back");
+				if (got) {
+					KconRd rr;
+
+					kcon_rd_init(&rr, m.payload, m.len);
+					ok(!strcmp(kcon_get_str(&rr), "served"),
+					   "  carrying the selection");
+				}
+				kcon_conn_free(cc);
+			}
+		}
+
+		/*
+		 * THE LOCK GRANT HAS A SENDER AND A READER.
+		 *
+		 * `kdos-lock` refuses every keystroke until the display server
+		 * reports the session locked, so an implementation that
+		 * answers neither question leaves a lock screen nobody can
+		 * type into and an idle timeout that strands the machine. The
+		 * entries are what make the answer come from the session
+		 * rather than from libkdisp's default of zero.
+		 */
+		/*
+		 * ── THE REAL CLIENT, AGAINST THE REAL SERVER ────────────
+		 *
+		 * Every other attach in this file is hand-built by
+		 * `srv_attach_at()`, which is the test's own writer — so a
+		 * client that malformed its payload passed all of them while
+		 * no surface on the desktop could attach at all. That
+		 * happened: the corner fields were appended without the five
+		 * they were meant to replace, and every toast, icon layer and
+		 * candidate window silently failed to appear.
+		 *
+		 * This drives `kcon_impl` itself through `kdisp_init`, which
+		 * is the path a surface takes, and asserts the server made
+		 * sense of what it sent.
+		 */
+		{
+			const KDispImpl *only[] = { &kcon_impl };
+			KDispConfig cfg = {
+				.role = KDISP_ROLE_OVERLAY,
+				.cols = 24,
+				.rows = 5,
+				.app_id = "selftest-client",
+				.title = "selftest",
+				.corner = KDISP_CORNER_BOTTOM_LEFT,
+				.margin_x = 6,
+				.margin_y = 2,
+				.manage = 1,
+			};
+
+			srv_attached = NULL;
+			setenv("KDOS_CON", path, 1);
+
+			KconServerHooks h2 = { 0 };
+
+			h2.attached = srv_on_attached;
+			kcon_server_hooks(s, &h2, NULL);
+
+			int rc = kdisp_init(&cfg, only, 1);
+
+			ok(rc == 0, "the real client connects through kdisp_init");
+			for (int i = 0; i < 40 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_attached != NULL,
+			   "and the attach it writes is one the server accepts");
+			if (srv_attached) {
+				eq_int(kcon_surface_cols(srv_attached), 24,
+				       "with the size it asked for");
+				eq_str(kcon_surface_app_id(srv_attached),
+				       "selftest-client", "and its app id");
+				eq_int(kcon_surface_corner(srv_attached),
+				       KDISP_CORNER_BOTTOM_LEFT,
+				       "and the corner it named");
+				eq_int(kcon_surface_margin_x(srv_attached), 6,
+				       "and its margin");
+			}
+
+			/*
+			 * ── THE WINDOW LIST, BOTH WAYS ──────────────────
+			 *
+			 * A panel is the only consumer of this and it is
+			 * three programs away from a test, so the path is
+			 * driven here: the session publishes a window, the
+			 * client reads it back through `libkdisp`, and the
+			 * request it sends arrives at the server's hook.
+			 *
+			 * The whole chain matters because every link is
+			 * silent when it breaks. A list that never arrives is
+			 * a panel with no task row, and a request refused for
+			 * the wrong kind does nothing and says nothing.
+			 */
+			if (rc == 0 && srv_attached) {
+				KconServerHooks h3 = { 0 };
+
+				h3.win_state = srv_on_win_state;
+				kcon_server_hooks(s, &h3, NULL);
+
+				kcon_mgmt_add(s, 77, "kdos-term", "a window");
+				kcon_mgmt_state(s, 77,
+						KCON_TL_FOCUSED |
+						KCON_TL_MAXIMISED, 2);
+				for (int i = 0; i < 40 &&
+				     kdisp_win_count() == 0; i++) {
+					kcon_server_pump(s);
+					kdisp_pump();
+					usleep(1000);
+				}
+				eq_int(kdisp_win_count(), 1,
+				       "a window the session published reaches "
+				       "the panel through libkdisp");
+
+				KDispWin w = { 0 };
+
+				ok(kdisp_win_at(0, &w) == 1,
+				   "and the row can be read out");
+				eq_str(w.app_id, "kdos-term",
+				       "with the application that owns it");
+				eq_str(w.title, "a window", "and its title");
+				eq_int((long long)w.flags,
+				       KDISP_WIN_FOCUSED | KDISP_WIN_MAXIMISED,
+				       "and the state it is in");
+				eq_int(w.workspace, 2,
+				       "and the workspace it is on");
+				ok(kdisp_win_at(1, &w) == 0,
+				   "and reading past the end says so rather "
+				   "than answering with the last row again");
+
+				/* The request half. A surface that did not ask
+				 * to manage would be refused here and the hook
+				 * would never fire, which is the assertion. */
+				kdisp_win_minimise(77, 1);
+				for (int i = 0; i < 40 && srv_min_on < 0; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+				eq_int((long long)srv_min_id, 77,
+				       "and a minimise it sends names that "
+				       "window at the session");
+				eq_int(srv_min_on, 1,
+				       "carrying the state asked for rather "
+				       "than a toggle");
+				eq_int((long long)srv_min_flag,
+				       KCON_TL_MINIMISED,
+				       "and which state it means");
+
+				kcon_mgmt_remove(s, 77);
+				for (int i = 0; i < 40 &&
+				     kdisp_win_count() != 0; i++) {
+					kcon_server_pump(s);
+					kdisp_pump();
+					usleep(1000);
+				}
+				eq_int(kdisp_win_count(), 0,
+				       "and a window that closed leaves the "
+				       "list");
+			}
+
+			if (rc == 0)
+				kdisp_shutdown();
+			kcon_server_hooks(s, NULL, NULL);
+			unsetenv("KDOS_CON");
+		}
+
+		ok(kcon_impl.lock_engaged != NULL,
+		   "the console display answers whether the lock is engaged");
+		ok(kcon_impl.lock_finished != NULL,
+		   "and whether it was refused");
+		ok((KCON_LOCK_ENGAGED & KCON_LOCK_FINISHED) == 0,
+		   "engaged and refused are separate bits, so both can be told apart");
+
+		/*
+		 * EVERY CLIENT HAS A DESCRIPTOR A CALLER CAN POLL.
+		 *
+		 * The session's poll loop pushed -1 for each client under a
+		 * comment saying it was polling them, so it woke on none of
+		 * them AND consumed a fixed budget the terminal and embed
+		 * loops below it needed. Forty is past that old budget of
+		 * thirty-four, which is the case that used to lose descriptors
+		 * silently.
+		 */
+		{
+			KconConn *many[40];
+			int opened = 0;
+
+			/*
+			 * PUMPED BETWEEN CONNECTIONS. The listener's backlog is
+			 * sixteen, so forty connects with nothing accepting
+			 * them fills it and the seventeenth blocks in
+			 * `connect()` for ever. A real session pumps its loop
+			 * between arrivals; a test that does not is testing a
+			 * situation that cannot occur.
+			 */
+			for (int i = 0; i < 40; i++) {
+				many[i] = srv_client(path);
+				if (!many[i])
+					break;
+				srv_hello(many[i], KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				kcon_server_pump(s);
+				opened++;
+			}
+			for (int i = 0; i < 60; i++) {
+				kcon_server_pump(s);
+				usleep(200);
+			}
+
+			int seen = kcon_server_count(s);
+			int bad = 0, dupes = 0;
+
+			for (int i = 0; i < seen; i++) {
+				int fd = kcon_surface_fd(
+					kcon_server_at(s, i));
+
+				if (fd < 0) {
+					bad++;
+					continue;
+				}
+				for (int j = 0; j < i; j++)
+					if (fd == kcon_surface_fd(
+						    kcon_server_at(s, j)))
+						dupes++;
+			}
+
+			ok(opened == 40, "forty clients attach to one session");
+			ok(seen >= 40, "and the session counts them all");
+			eq_int(bad, 0,
+			       "every one has a descriptor a poll can wait on");
+			eq_int(dupes, 0, "and no two share it");
+
+			for (int i = 0; i < opened; i++)
+				kcon_conn_free(many[i]);
+			for (int i = 0; i < 40; i++) {
+				kcon_server_pump(s);
+				usleep(200);
+			}
+		}
+
+		/*
+		 * A SHELL CAN STILL BE A SHELL ONCE A VIEW SOCKET EXISTS.
+		 *
+		 * Adding the view listener demotes the surface listener from
+		 * ANY to SURFACE, and fixing the kind there made
+		 * KCON_KIND_SHELL unreachable on every session that has a
+		 * display — which is every real one. Every shell-only verb
+		 * then did nothing at all: `kdos con run`, `detach`, `kill`,
+		 * activate, close, and the whole window list.
+		 *
+		 * The test that missed it used one ANY listener. This one has
+		 * both sockets, which is the shape a session actually runs in.
+		 */
+		{
+			char vpath[256];
+
+			snprintf(vpath, sizeof(vpath), "%s/session.view", dir);
+			eq_int(kcon_server_listen(s, vpath, KCON_LISTEN_VIEW),
+			       0, "a session listens on a view socket too");
+
+			KconConn *sh2 = srv_client(path);
+
+			if (sh2) {
+				srv_hello(sh2, KCON_VERSION, KCON_KIND_SHELL);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				int found = 0;
+
+				for (int i = 0; i < kcon_server_count(s); i++)
+					if (kcon_surface_kind(
+						    kcon_server_at(s, i)) ==
+					    KCON_KIND_SHELL)
+						found = 1;
+				ok(found,
+				   "and a shell on the surface socket is still a shell");
+				kcon_conn_free(sh2);
+			}
+
+			/* And the refusal the surface socket must keep: a
+			 * client there is not a display, whatever it claims. */
+			KconConn *liar = srv_client(path);
+
+			if (liar) {
+				srv_hello(liar, KCON_VERSION, KCON_KIND_VIEW);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(kcon_server_view_count(s), 0,
+				   "a surface-socket client claiming to be a display is refused");
+				kcon_conn_free(liar);
+			}
+			kcon_server_unlisten(s, vpath);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── the colour pick: who may ask ────────────────────────
+		 *
+		 * It carries nothing and answers nothing, so the ONLY thing
+		 * the wire can get wrong is who is allowed to send it. A
+		 * window that could put the session into a mode owning the
+		 * pointer could take every click on the screen.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.pick = srv_on_pick;
+			kcon_server_hooks(s, &h, NULL);
+			srv_picked = 0;
+
+			KconConn *shell = srv_client(path);
+			KconConn *plain = srv_client(path);
+
+			if (shell && plain) {
+				KconBuf b = { 0 };
+
+				srv_hello(shell, KCON_VERSION,
+					  KCON_KIND_SHELL);
+				srv_hello(plain, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				kcon_send(plain, KCON_OP_PICK, &b);
+				kcon_flush(plain);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_picked, 0,
+				   "a window cannot put the session into the colour pick");
+
+				kcon_send(shell, KCON_OP_PICK, &b);
+				kcon_flush(shell);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_picked, 1,
+				   "and a shell can");
+				kcon_buf_free(&b);
+			}
+			if (shell)
+				kcon_conn_free(shell);
+			if (plain)
+				kcon_conn_free(plain);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── a drag, in four verbs and in order ──────────────────
+		 *
+		 * The session is the only half that knows what is under the
+		 * pointer, so it sends all four and a surface hears nothing
+		 * between picking something up and the drag arriving over it.
+		 *
+		 * THE ORDER IS THE ASSERTION. `enter` before `motion` before
+		 * `leave`, and the payload only on the `drop` — a drag that
+		 * handed its bytes to every window it crossed would give six
+		 * programs a filename the person was carrying past them.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.drag_start = srv_on_drag_start;
+			kcon_server_hooks(s, &h, NULL);
+			srv_drag_mime[0] = srv_drag_data[0] = '\0';
+			srv_drag_len = 0;
+
+			KconConn *src = srv_client(path);
+
+			if (src) {
+				KconBuf b = { 0 };
+				static const char uri[] =
+					"file:///home/kdos/x.txt\r\n";
+
+				srv_hello(src, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				kcon_put_str(&b, "text/uri-list");
+				kcon_put_blob(&b, uri, sizeof(uri) - 1);
+				kcon_send(src, KCON_OP_DRAG_START, &b);
+				kcon_flush(src);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_str(srv_drag_mime, "text/uri-list",
+				   "a surface says what it picked up");
+				eq_str(srv_drag_data, uri,
+				   "and hands the payload over once");
+
+				/* And the four verbs, back to a surface the
+				 * drag is over. The session picks the target;
+				 * here the test is the wire. */
+				KconSurface *tgt = NULL;
+
+				for (int i = 0; i < kcon_server_count(s); i++)
+					if (kcon_server_at(s, i) != NULL)
+						tgt = kcon_server_at(s, i);
+				if (tgt) {
+					int ops[8], nops = 0;
+
+					kcon_surface_drag_enter(tgt, 3, 4,
+							"text/uri-list");
+					kcon_surface_drag_motion(tgt, 5, 6);
+					kcon_surface_drag_leave(tgt);
+					kcon_surface_drop(tgt, 7, 8, uri);
+					/* The pump is what writes: every
+					 * sender above queues. */
+					kcon_server_pump(s);
+					for (int i = 0; i < 60 && nops < 4;
+					     i++) {
+						KconMsg m;
+						int r = kcon_recv(src, &m);
+
+						if (r == 1) {
+							if (m.op == KCON_OP_DRAG_ENTER ||
+							    m.op == KCON_OP_DRAG_MOTION ||
+							    m.op == KCON_OP_DRAG_LEAVE ||
+							    m.op == KCON_OP_DRAG_DROP)
+								ops[nops++] = m.op;
+							continue;
+						}
+						if (r < 0)
+							break;
+						usleep(500);
+					}
+					eq_int(nops, 4,
+					   "all four drag verbs arrive");
+					if (nops == 4) {
+						ok(ops[0] == KCON_OP_DRAG_ENTER &&
+						   ops[1] == KCON_OP_DRAG_MOTION &&
+						   ops[2] == KCON_OP_DRAG_LEAVE &&
+						   ops[3] == KCON_OP_DRAG_DROP,
+						   "and in the order they were sent");
+					}
+				}
+				kcon_conn_free(src);
+			}
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── a surface says where its caret is ───────────────────
+		 *
+		 * IN ITS OWN CELLS, and the session adds the window's
+		 * position — a surface that sent screen coordinates would be
+		 * a surface guessing where it had been put. Until it says
+		 * anything it has NO caret, which is not the same as one at
+		 * the origin: the difference is a cursor parked in a corner
+		 * nobody is typing in.
+		 */
+		{
+			KconConn *typer = srv_client(path);
+
+			if (typer) {
+				srv_hello(typer, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				KconSurface *f = NULL;
+
+				for (int i = 0; i < kcon_server_count(s); i++)
+					if (kcon_server_at(s, i) != NULL)
+						f = kcon_server_at(s, i);
+
+				int cx = 0, cy = 0;
+
+				ok(f && !kcon_surface_caret(f, &cx, &cy),
+				   "a surface that has not said has no caret");
+
+				KconBuf b = { 0 };
+
+				kcon_put_u16(&b, (uint16_t)(int16_t)9);
+				kcon_put_u16(&b, (uint16_t)(int16_t)3);
+				kcon_send(typer, KCON_OP_CARET, &b);
+				kcon_flush(typer);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				cx = cy = -1;
+				ok(f && kcon_surface_caret(f, &cx, &cy) &&
+				   cx == 9 && cy == 3,
+				   "and the one it sent arrives in its own cells");
+
+				/* AND IT CAN TAKE IT AWAY. A field that closed
+				 * reports a negative x, and the session must
+				 * read that as no caret rather than as a
+				 * position off the left edge. */
+				KconBuf gone = { 0 };
+
+				kcon_put_u16(&gone, (uint16_t)(int16_t)-1);
+				kcon_put_u16(&gone, (uint16_t)(int16_t)-1);
+				kcon_send(typer, KCON_OP_CARET, &gone);
+				kcon_flush(typer);
+				kcon_buf_free(&gone);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(f && !kcon_surface_caret(f, &cx, &cy),
+				   "and a negative one takes it away again");
+				kcon_conn_free(typer);
+			}
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── a finger, and the verdict that travels with it ──────
+		 *
+		 * THE GESTURE IS DECIDED AT THE VIEW. There is one recogniser
+		 * and it lives where the touch device is; a second one here
+		 * would be fed a message rather than a device and would
+		 * disagree the first time a link was slow. What crosses is the
+		 * verdict.
+		 *
+		 * AND A DISPLAY ONLY, the rule the pointer keeps: a window
+		 * that could report a finger could put a long press on
+		 * somebody else's surface.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.view_touch = srv_on_view_touch;
+			kcon_server_hooks(s, &h, NULL);
+			srv_touch_n = 0;
+
+			/* A VIEW SOCKET OF ITS OWN. The listener decides what
+			 * a client may be — that is the whole point of the
+			 * split — so a finger from a display has to arrive on
+			 * the display's socket. */
+			char tvp[256];
+
+			snprintf(tvp, sizeof(tvp), "%s/touch.view", dir);
+			eq_int(kcon_server_listen(s, tvp, KCON_LISTEN_VIEW), 0,
+			       "a view socket for the touch block");
+
+			KconConn *v = srv_client(tvp);
+			KconConn *win = srv_client(path);
+
+			if (v && win) {
+				srv_hello(v, KCON_VERSION, KCON_KIND_VIEW);
+				srv_hello(win, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				KconBuf b = { 0 };
+
+				kcon_put_i32(&b, 11);
+				kcon_put_i32(&b, 4);
+				kcon_put_u8(&b, 0);
+				kcon_put_u8(&b, (uint8_t)KT_TOUCH_MOVE);
+				kcon_put_u32(&b, 1234);
+				kcon_put_u8(&b, (uint8_t)KT_GEST_LONG);
+				kcon_send(v, KCON_OP_TOUCH, &b);
+				kcon_flush(v);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(srv_touch_n == 1 && srv_touch_x == 11 &&
+				   srv_touch_y == 4 &&
+				   srv_touch_gest == KT_GEST_LONG &&
+				   srv_touch_phase == KT_TOUCH_MOVE,
+				   "a view's finger arrives with its gesture");
+
+				KconBuf w = { 0 };
+
+				kcon_put_i32(&w, 1);
+				kcon_put_i32(&w, 1);
+				kcon_put_u8(&w, 0);
+				kcon_put_u8(&w, (uint8_t)KT_TOUCH_DOWN);
+				kcon_put_u32(&w, 2345);
+				kcon_put_u8(&w, (uint8_t)KT_GEST_TAP);
+				kcon_send(win, KCON_OP_TOUCH, &w);
+				kcon_flush(win);
+				kcon_buf_free(&w);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(srv_touch_n, 1,
+				   "and a window that is not a display reports none");
+			}
+			if (v)
+				kcon_conn_free(v);
+			if (win)
+				kcon_conn_free(win);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── the screen's font: the display lists, the shell picks ──
+		 *
+		 * THE LIST TRAVELS ONE WAY AND AN INDEX THE OTHER. A view is
+		 * the only end with a font stack and it may be on another
+		 * machine, so a name going back would be a session deciding
+		 * what a display it has never seen can render — the rule the
+		 * font STEP already keeps, said about a list.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.fonts_ask = srv_on_fonts_ask;
+			h.font_set = srv_on_font_set;
+			kcon_server_hooks(s, &h, NULL);
+			srv_font_asked = 0;
+			srv_font_idx = -99;
+			srv_font_keep = -1;
+
+			KconConn *sh = srv_client(path);
+			KconConn *plain = srv_client(path);
+
+			if (sh && plain) {
+				srv_hello(sh, KCON_VERSION, KCON_KIND_SHELL);
+				srv_hello(plain, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				KconBuf b = { 0 };
+
+				kcon_send(sh, KCON_OP_VIEW_FONTS, &b);
+				kcon_flush(sh);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(srv_font_asked, 1,
+				   "a shell may ask what faces the display has");
+
+				/*
+				 * AND AN ORDINARY WINDOW MAY NOT. Changing the
+				 * cell re-cuts the grid under every window on
+				 * the desktop, so it is a management verb like
+				 * raising somebody else's window.
+				 */
+				KconBuf pb = { 0 };
+
+				kcon_put_u16(&pb, 3);
+				kcon_put_u8(&pb, 1);
+				kcon_send(plain, KCON_OP_VIEW_SETFONT, &pb);
+				kcon_flush(plain);
+				kcon_buf_free(&pb);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(srv_font_idx, -99,
+				   "and a window that is not a shell may not set one");
+
+				/* THE INDEX AND THE KEEP BOTH ARRIVE. A picker's
+				 * arrows pass keep=0 and only its Enter passes
+				 * 1: a preview that persisted would make the
+				 * last face a highlight passed over the one the
+				 * next login wears. */
+				KconBuf sb = { 0 };
+
+				kcon_put_u16(&sb, (uint16_t)(int16_t)2);
+				kcon_put_u8(&sb, 0);
+				kcon_send(sh, KCON_OP_VIEW_SETFONT, &sb);
+				kcon_flush(sh);
+				kcon_buf_free(&sb);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(srv_font_idx == 2 && srv_font_keep == 0,
+				   "a preview carries its index and does not keep");
+
+				KconBuf kb = { 0 };
+
+				kcon_put_u16(&kb, (uint16_t)(int16_t)-1);
+				kcon_put_u8(&kb, 1);
+				kcon_send(sh, KCON_OP_VIEW_SETFONT, &kb);
+				kcon_flush(sh);
+				kcon_buf_free(&kb);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(srv_font_idx == -1 && srv_font_keep == 1,
+				   "and putting it back is a negative index, kept");
+
+				/*
+				 * THE LIST GOES OUT AS THE DISPLAY GAVE IT.
+				 * Read back off the wire rather than trusted:
+				 * the reader answers into ONE static buffer, so
+				 * an array of its return value would hold the
+				 * last name over and over.
+				 */
+				static const char *const faces[3] = {
+					"Terminus (TTF):size=11",
+					"DejaVu Sans Mono:size=11",
+					"A Family, With A Comma:size=11",
+				};
+				KconSurface *shf = srv_font_who;
+
+				if (shf) {
+					kcon_surface_fonts(shf, faces, 3, 1);
+					for (int i = 0; i < 10; i++) {
+						kcon_server_pump(s);
+						usleep(500);
+					}
+
+					int seen = 0;
+					char first[64] = "", last[64] = "";
+					int cur = -99, cnt = -1;
+
+					for (int i = 0; i < 80 && !seen; i++) {
+						KconMsg m;
+						int rr = kcon_recv(sh, &m);
+
+						if (rr == 1) {
+							if (m.op != KCON_OP_VIEW_FONTS)
+								continue;
+
+							KconRd rd;
+
+							kcon_rd_init(&rd,
+								     m.payload,
+								     m.len);
+							cnt = (int)kcon_get_u16(&rd);
+							cur = (int)(int16_t)
+							      kcon_get_u16(&rd);
+							snprintf(first,
+								 sizeof(first),
+								 "%s",
+								 kcon_get_str(&rd));
+							kcon_get_str(&rd);
+							snprintf(last,
+								 sizeof(last),
+								 "%s",
+								 kcon_get_str(&rd));
+							seen = 1;
+							continue;
+						}
+						if (rr < 0)
+							break;
+						usleep(500);
+					}
+					ok(seen && cnt == 3 && cur == 1,
+					   "the list carries its count and which is in force");
+					eq_str(first, faces[0],
+					   "the first face arrives as the display spelt it");
+					eq_str(last, faces[2],
+					   "and so does one whose name holds a comma");
+				}
+			}
+			if (sh)
+				kcon_conn_free(sh);
+			if (plain)
+				kcon_conn_free(plain);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/* ── the window list: who is told, and who may ask ──────── */
+		{
+			KconServerHooks h = { 0 };
+
+			h.activate = srv_on_activate;
+			h.close_request = srv_on_close_req;
+			kcon_server_hooks(s, &h, NULL);
+			srv_activated = srv_closed = 0;
+
+			KconConn *shell = srv_client(path);
+			KconConn *plain = srv_client(path);
+
+			if (shell && plain) {
+				srv_hello(shell, KCON_VERSION,
+					  KCON_KIND_SHELL);
+				srv_hello(plain, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				kcon_mgmt_add(s, 7, "term", "a title");
+				kcon_mgmt_state(s, 7, KCON_TL_FOCUSED, 2);
+				kcon_mgmt_remove(s, 7);
+
+				/*
+				 * THE SHELL IS TOLD AND THE WINDOW IS NOT. A
+				 * program with a window in the session has no
+				 * business knowing what else is open.
+				 */
+				int add = 0, state = 0, rem = 0, leaked = 0;
+				KconMsg m;
+
+				for (int i = 0; i < 200; i++) {
+					if (kcon_recv(shell, &m) == 1) {
+						if (m.op == KCON_OP_TOPLEVEL_ADD)
+							add = 1;
+						else if (m.op == KCON_OP_TOPLEVEL_STATE)
+							state = 1;
+						else if (m.op == KCON_OP_TOPLEVEL_REMOVE)
+							rem = 1;
+					} else {
+						usleep(500);
+					}
+					if (add && state && rem)
+						break;
+				}
+				for (int i = 0; i < 40; i++) {
+					if (kcon_recv(plain, &m) == 1 &&
+					    (m.op == KCON_OP_TOPLEVEL_ADD ||
+					     m.op == KCON_OP_TOPLEVEL_STATE ||
+					     m.op == KCON_OP_TOPLEVEL_REMOVE))
+						leaked = 1;
+					usleep(500);
+				}
+				ok(add, "a shell surface is sent a window as it appears");
+				ok(state, "  its state as it changes");
+				ok(rem, "  and its removal as it goes");
+				ok(!leaked,
+				   "and a plain surface is told none of it");
+
+				/* And the two requests, from a shell only. */
+				KconBuf b = { 0 };
+
+				kcon_put_u32(&b, 42);
+				kcon_send(plain, KCON_OP_ACTIVATE, &b);
+				kcon_flush(plain);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_activated, 0,
+				   "a window asking to raise another is ignored");
+
+				kcon_send(shell, KCON_OP_ACTIVATE, &b);
+				kcon_flush(shell);
+				kcon_buf_reset(&b);
+				kcon_put_u32(&b, 43);
+				kcon_send(shell, KCON_OP_CLOSE_REQUEST, &b);
+				kcon_flush(shell);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 60 &&
+				     (!srv_activated || !srv_closed); i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_activated, 42,
+				   "and a shell's raise names the window");
+				eq_int((int)srv_closed, 43,
+				   "as does its close request");
+			}
+			if (shell)
+				kcon_conn_free(shell);
+			if (plain)
+				kcon_conn_free(plain);
+		}
+
+		/* A stopped listener unlinks its own path, so nothing new
+		 * attaches to a session on its way out and `kdos con ls` stops
+		 * reporting it as alive. */
+		eq_int(kcon_server_unlisten(s, path), 0,
+		       "the listener is stopped by path");
+		ok(access(path, F_OK) != 0,
+		   "and stopping it takes the socket file with it");
+	}
+
+	if (good)
+		kcon_conn_free(good);
+	kcon_server_free(s);
+	unlink(path);
+	rmdir(dir);
+
+	/* ── a peer that stops reading is dropped, not waited for ──────── */
+	int sv[2];
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+		ok(0, "a socketpair for the queue-cap assertion");
+		return;
+	}
+
+	KconConn *tx = kcon_conn_new(sv[0]);
+
+	/*
+	 * THE FAR END NEVER READS. sv[1] is left open and undrained, so the
+	 * socket buffer fills and everything after it queues in the sender.
+	 * Past KCON_MAX_QUEUE that is not backpressure to wait out — it is a
+	 * peer that has stopped — and the session drops it rather than
+	 * blocking the display behind it.
+	 */
+	KconBuf big = { 0 };
+	static unsigned char filler[32 * 1024];
+
+	kcon_put_bytes(&big, filler, sizeof(filler));
+
+	int died = 0;
+
+	for (int i = 0; i < 4096 && !died; i++) {
+		if (kcon_send(tx, 99, &big) != 0 || kcon_conn_dead(tx))
+			died = 1;
+		kcon_flush(tx);
+	}
+	ok(died, "a peer that stops reading is dropped past the queue cap");
+	ok(kcon_conn_dead(tx), "and the connection says so");
+	eq_int((long long)KCON_MAX_QUEUE, 4ll << 20,
+	       "which is four megabytes of unread output");
+
+	kcon_buf_free(&big);
+	kcon_conn_free(tx);
+	close(sv[1]);
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Driving a real full-screen program, interactively.
+ *
+ * The recorded streams under testing/fixtures/vt/ prove the state machine
+ * against what these programs actually wrote. What a recording cannot show is
+ * the other direction — that a keystroke REACHES the child, and that a program
+ * REFLOWS when its window changes size — because both are things the program
+ * does in response to us rather than things it once did.
+ *
+ * Neither needs a booted desktop: a pty and a child are the whole apparatus.
+ * What the rig still owes after this is the integration — the same program in a
+ * kdos-term window on a console desktop somebody is looking at — and not the
+ * mechanism, which is here.
+ *
+ * EVERY PROGRAM IS OPTIONAL. An exec that did not happen reports 127, so a host
+ * without one skips it by name instead of failing, exactly as the decoder
+ * blocks do.
+ */
+
+#define DRV_W 60
+#define DRV_H 12
+
+/* The rendered screen as printable text, rows joined by newlines. */
+static void drv_text(struct kvt_term *t, char *out, size_t cap, int w, int h)
+{
+	KtuiCell cells[DRV_W * DRV_H];
+	size_t o = 0;
+
+	if (w > DRV_W)
+		w = DRV_W;
+	if (h > DRV_H)
+		h = DRV_H;
+	kvt_term_render(t, cells, w, h);
+	for (int y = 0; y < h && o + 1 < cap; y++) {
+		for (int x = 0; x < w && o + 1 < cap; x++) {
+			uint32_t ch = cells[y * w + x].ch;
+
+			out[o++] = ch >= 32 && ch < 127 ? (char)ch : ' ';
+		}
+		if (o + 1 < cap)
+			out[o++] = '\n';
+	}
+	out[o] = '\0';
+}
+
+/*
+ * A signature over the WHOLE cell, not just its character.
+ *
+ * Comparing rendered text alone misses a change that is only colour or
+ * attribute — a file manager moving its panel highlight redraws no glyph at
+ * all — and "the keystroke did nothing" and "the keystroke changed something I
+ * am not looking at" are not the same answer.
+ */
+static unsigned long drv_sig(struct kvt_term *t, int w, int h)
+{
+	KtuiCell cells[DRV_W * DRV_H];
+	unsigned long g = 1469598103934665603UL;
+
+	if (w > DRV_W)
+		w = DRV_W;
+	if (h > DRV_H)
+		h = DRV_H;
+	kvt_term_render(t, cells, w, h);
+	for (int i = 0; i < w * h; i++) {
+		unsigned long v = cells[i].ch ^ ((unsigned long)cells[i].fg << 24)
+			^ ((unsigned long)cells[i].bg << 32)
+			^ ((unsigned long)cells[i].attr << 40);
+
+		g = (g ^ v) * 1099511628211UL;
+	}
+	return g;
+}
+
+/* Pump for a while, whether or not the child has exited. */
+static void drv_settle(struct kvt_term *t, int ms)
+{
+	for (int i = 0; i < ms / 5; i++) {
+		kvt_term_pump(t);
+		usleep(5000);
+	}
+}
+
+static int drv_nonblank(const char *s)
+{
+	for (; *s; s++)
+		if (*s != ' ' && *s != '\n')
+			return 1;
+	return 0;
+}
+
+static void test_kvt_drive(void)
+{
+	printf("\n==> a real program, driven: a keystroke lands and a resize reflows\n");
+
+	/* Something with more lines than the window, for the pager. */
+	const char *big = "/tmp/kdos-selftest-pager.txt";
+	FILE *bf = fopen(big, "w");
+
+	if (bf) {
+		for (int i = 1; i <= 400; i++)
+			fprintf(bf, "line %03d ------------------------------\n", i);
+		fclose(bf);
+	}
+
+	static const struct {
+		const char *name;
+		const char *argv[8];
+		int key;		/* what to press */
+		const char *want;	/* what pressing it must put on screen */
+	} progs[] = {
+		/* A pager: `j` moves one line, so line 001 leaves the top. */
+		{ "less",  { "less", "-X", "/tmp/kdos-selftest-pager.txt", NULL },
+		  'j', "line 002" },
+		/*
+		 * THE EDITOR THIS SYSTEM SHIPS IS `nvim`, and the name matters
+		 * more than it looks: a row naming `vim` exits 127 on every
+		 * KDOS machine and is skipped, so the strongest assertion in
+		 * this block would run only on a developer host that happens
+		 * to have one. `i` is insert mode and says so on the last row
+		 * because nvim is always nocompatible and 'showmode' is on;
+		 * `-u NONE` keeps a user's configuration out of the frame.
+		 */
+		{ "nvim",  { "nvim", "-u", "NONE", NULL }, 'i', "INSERT" },
+		/* A process monitor redraws on any key; `h` opens its help. */
+		{ "htop",  { "htop", NULL }, 'h', NULL },
+		{ "top",   { "top", NULL }, 'h', NULL },
+		/* A file manager: Tab moves to the other panel. */
+		{ "mc",    { "mc", "-d", NULL }, KT_K_TAB, NULL },
+		/*
+		 * The other file manager, which moves a HIGHLIGHT and redraws
+		 * no glyph — `j` on a list of files repaints two rows in
+		 * different colours and leaves every character where it was.
+		 * That is what `drv_sig` hashes the whole cell for; a check
+		 * comparing rendered text would call this "nothing happened".
+		 */
+		{ "lf",    { "lf", NULL }, 'j', NULL },
+		/*
+		 * A task list. BOTH paths are given: `--taskrc` names a file
+		 * that exists, so `task` does not stop to ask whether it may
+		 * create one and wait for an answer nothing will type, and
+		 * `--taskdata` keeps the scratch tasks out of the caller's own.
+		 * `]` IS THE NEXT TAB AND NOT `j`: the scratch list is empty,
+		 * so a selection has nothing to move to and the screen after a
+		 * `j` is the screen before it — a program behaving correctly
+		 * failing the assertion.
+		 */
+		{ "taskwarrior-tui",
+		  { "taskwarrior-tui", "--taskrc",
+		    "/tmp/kdos-selftest-drive/task/taskrc", "--taskdata",
+		    "/tmp/kdos-selftest-drive/task", NULL }, ']', NULL },
+		/* A multiplexer draws a status bar and passes keys to a shell. */
+		{ "tmux",  { "tmux", "-f", "/dev/null", NULL }, 'e', NULL },
+		{ "nano",  { "nano", NULL }, 'Z', "Z" },
+	};
+
+	int ran = 0;
+	char cwd[4096];
+
+	/*
+	 * Drive them from a scratch directory. A program interrupted mid-edit
+	 * writes its rescue file into the CURRENT one — nano leaves
+	 * `nano.<pid>.save` — and the current one here is the source tree.
+	 */
+	if (!getcwd(cwd, sizeof(cwd)))
+		cwd[0] = '\0';
+	mkdir("/tmp/kdos-selftest-drive", 0700);
+	if (chdir("/tmp/kdos-selftest-drive") < 0) {
+		puts("  (no scratch directory to drive them from — skipped)");
+		return;
+	}
+	/*
+	 * A file manager needs FILES: `j` on an empty directory moves a
+	 * selection that has nothing to move to, the screen is identical
+	 * afterwards, and the assertion fails on a program that behaved
+	 * correctly.
+	 */
+	mkdir("task", 0700);
+	{
+		FILE *rc = fopen("task/taskrc", "w");
+
+		if (rc) {
+			fprintf(rc, "data.location=/tmp/kdos-selftest-drive/task\n"
+				    "confirmation=no\nverbose=nothing\n");
+			fclose(rc);
+		}
+	}
+	for (int i = 1; i <= 6; i++) {
+		char nm[64];
+		snprintf(nm, sizeof(nm), "file-%02d.txt", i);
+		FILE *f = fopen(nm, "w");
+		if (f) {
+			fprintf(f, "row %d\n", i);
+			fclose(f);
+		}
+	}
+
+	for (size_t i = 0; i < sizeof(progs) / sizeof(progs[0]); i++) {
+		char before[DRV_W * DRV_H + DRV_H + 1];
+		char after[sizeof(before)];
+		char wide[sizeof(before)];
+		char msg[160];
+
+		struct kvt_term *t = kvt_term_open(progs[i].argv, DRV_W, DRV_H);
+
+		if (!t)
+			continue;
+
+		drv_settle(t, 600);
+
+		/* 127 is an exec that never happened: this host has not got it. */
+		if (!kvt_term_alive(t) && kvt_term_status(t) == 127) {
+			printf("  %s: not on this host, skipped\n", progs[i].name);
+			kvt_term_close(t);
+			continue;
+		}
+		if (!kvt_term_alive(t)) {
+			printf("  %s: exited before it could be driven, skipped\n",
+			       progs[i].name);
+			kvt_term_close(t);
+			continue;
+		}
+		ran++;
+
+		drv_text(t, before, sizeof(before), DRV_W, DRV_H);
+		unsigned long sig0 = drv_sig(t, DRV_W, DRV_H);
+
+		snprintf(msg, sizeof(msg), "%s draws something to begin with",
+			 progs[i].name);
+		ok(drv_nonblank(before), msg);
+
+		/* ── a keystroke reaches the child ─────────────────────────── */
+		kvt_term_key(t, progs[i].key, 0);
+		drv_settle(t, 700);
+		drv_text(t, after, sizeof(after), DRV_W, DRV_H);
+
+		snprintf(msg, sizeof(msg),
+			 "%s: a keystroke reaches the child and changes the screen",
+			 progs[i].name);
+		ok(drv_sig(t, DRV_W, DRV_H) != sig0, msg);
+
+		if (progs[i].want) {
+			snprintf(msg, sizeof(msg), "%s: and it did the thing —"
+				 " '%s' is on screen", progs[i].name,
+				 progs[i].want);
+			ok(strstr(after, progs[i].want) != NULL, msg);
+		}
+
+		/* ── the window resizes with the program in it ─────────────── */
+		kvt_term_resize(t, DRV_W - 20, DRV_H);
+		drv_settle(t, 700);
+		drv_text(t, wide, sizeof(wide), DRV_W - 20, DRV_H);
+
+		snprintf(msg, sizeof(msg),
+			 "%s: it is still drawing after the window changed size",
+			 progs[i].name);
+		ok(drv_nonblank(wide), msg);
+
+		snprintf(msg, sizeof(msg),
+			 "%s: and reflowed into the narrower window",
+			 progs[i].name);
+		ok(strcmp(wide, after) != 0, msg);
+		(void)after;
+
+		/*
+		 * CLOSED BY A SIGNAL, not by a quit key. Every one of these
+		 * quits differently and a test that typed the wrong one would
+		 * hang waiting for a program that is still asking whether to
+		 * save.
+		 */
+		kvt_term_signal(t, SIGTERM);
+		drv_settle(t, 300);
+		kvt_term_close(t);
+	}
+
+	if (cwd[0] && chdir(cwd) < 0)
+		puts("  (could not return to the directory this started in)");
+
+	ok(ran > 0, "at least one catalogue program was here to drive");
+	printf("  %d program(s) driven\n", ran);
+	unlink(big);
+}
+
 int main(void)
 {
 	kb_set_progname("selftest");
+
+	/* FIRST, and it has to be: it needs a presented frame, and
+	 * ktui_offscreen_init() below is a one-way latch that makes a flush a
+	 * no-op for the rest of the process. Its own guard says so if this
+	 * moves. */
+	test_sprite();
 
 	test_base();
 	test_trash();
@@ -2077,6 +8222,30 @@ int main(void)
 	test_grid();
 	test_pack();
 	test_portup();
+	test_wm();
+	test_gesture();
+	test_vt_da();
+	test_uri_path();
+	test_slot_names();
+	test_keys();
+	test_menu();
+	test_vt_graphics();
+	test_vt_modes();
+	test_ktui_announce();
+	test_vt_styles();
+	test_vt_links();
+	test_vt_marks();
+	test_vt_notify();
+	test_vt_img();
+	test_kvt_term();
+	test_kvt_drive();
+	test_kimg();
+	test_kcon();
+	test_term_render();
+	test_osc52();
+	test_ktui_csi_u();
+	test_bracketed_paste();
+	test_kcon_server();
 
 	printf("\n%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;

@@ -19,6 +19,6 @@
 |                                                      |
 |                                                      |
 |                                                      |
-|                                                      |
 |2 hidden kernel threads  .  sort: cpu                 |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close    |
 +======================================================+

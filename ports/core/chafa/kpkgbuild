@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chafa
+version     = 1.18.2
+release     = 1
+source      = https://github.com/hpjansson/chafa/releases/download/$version/$name-$version.tar.xz
+sha256      = 0b8d9ba9f347e8b6c0c71878217c9b0e478b4a42aa4babea0bf20840567239c2  chafa-1.18.2.tar.xz
+description = chafa — images as terminal graphics: sixel, kitty, iTerm2 or Unicode
+homepage    = https://hpjansson.org/chafa/
+depends     = glib libjpeg-turbo librsvg libtiff libheif

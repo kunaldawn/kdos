@@ -19,6 +19,14 @@
 #include <string.h>
 
 #include "shell.h"
+#include "kcon.h"	/* kcon_impl */
+#include "kwl.h"	/* kwl_impl — naming these is what links each one in */
+
+/* See the declaration: naming kwl_impl is what links Wayland into this
+ * program. A console-only build would name a different one, or none. */
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+
 
 static const struct {
 	const char *name;
@@ -26,7 +34,11 @@ static const struct {
 } TOOLS[] = {
 	{ "kdos-shell", panel_main },
 	{ "kdos-start", start_main },
-	{ "kdos-launcher", launcher_main },
+	/* THE LAUNCHER IS THE PALETTE WITH ONE SOURCE. Two search programs
+	 * meant two matchers and two ideas of ranking; palette_main reads the
+	 * name it was reached by and shows applications only under this one. */
+	{ "kdos-launcher", palette_main },
+	{ "kdos-palette", palette_main },
 	{ "kdos-menu", menu_main },
 	{ "kdos-desk", desk_main },
 	{ "kdos-pick", pick_main },
@@ -35,12 +47,28 @@ static const struct {
 	{ "kdos-prompt", prompt_main },
 	{ "kdos-notifyd", notifyd_main },
 	{ "kdos-notify", notify_main },
+	{ "kdos-mediad", mediad_main },
+	{ "kdos-netagent", netagent_main },
 	{ "kdos-osd", osd_main },
 	{ "kdos-cal", cal_main },
 	{ "kdos-display", display_main },
 	{ "kdos-keys", keys_main },
 	{ "kdos-teams", teams_main },
 	{ "kdos-saver", saver_main },
+	{ "kdos-about", about_main },
+	{ "kdos-style", theme_main },
+	{ "kdos-calc", calc_main },
+	{ "kdos-chars", chars_main },
+	{ "kdos-connect", connect_main },
+	{ "kdos-contacts", contacts_main },
+	{ "kdos-disks", disks_main },
+	{ "kdos-print", print_main },
+	{ "kdos-time", timezone_main },
+	{ "kdos-users", users_main },
+	{ "kdos-update", update_main },
+	{ "kdos-firewall", firewall_main },
+	{ "kdos-backup", backup_main },
+	{ "kdos-note", note_main },
 	{ "kdos-slit", slit_main },
 	{ "kdos-doc", doc_main },
 	{ "kdos-settings", settings_main },
@@ -52,6 +80,12 @@ static const struct {
 	{ "kdos-clip", clip_main },
 	{ "kdos-status", status_main },
 	{ "kdos-tip", tip_main },
+	{ "kdos-ime", ime_main },
+	{ "kdos-trash", trash_main },
+	{ "kdos-peek",  peek_main },
+	{ "kdos-find",  find_main },
+	{ "kdos-pix",   pix_main },
+	{ "kdos-rec",   rec_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

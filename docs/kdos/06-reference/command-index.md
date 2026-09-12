@@ -17,6 +17,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
 | `kdos-bb` | The ASCII-art demo | [kdos-bb](../04-programs/kdos-bb.md) |
 | `kdos-bootctl` | A/B slot selection and confirmation | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
+| `kdos-backup` | What is in the restic repository, and one key to add to it | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-box` | Manage boxes | [kdos-appbox](../04-programs/kdos-appbox.md) |
 | `kdos-boxinit` | Process 1 inside a box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
 | `kdos-boxsock` | One tagged compositor socket per box | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
@@ -24,11 +25,17 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-cal` | The calendar | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-checkpass` | Check the caller's own password. **setuid** | [The security model](../03-architecture/security-model.md#kdos-checkpass) |
 | `kdos-clip` | Clipboard history | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-trash` | What was deleted, and the way back; the Trash icon opens it | [kdos-shell](../04-programs/kdos-shell.md#kdos-trash) |
 | `kdos-comp` | The compositor | [kdos-comp](../04-programs/kdos-comp.md) |
 | `kdos-desk` | The desktop and its icons | [kdos-shell](../04-programs/kdos-shell.md#kdos-desk) |
+| `kdos-peek` | What is in a file, without starting its application | [kdos-shell](../04-programs/kdos-shell.md#kdos-peek) |
+| `kdos-find` | Files by name or contents, applications and recents | [kdos-shell](../04-programs/kdos-shell.md#kdos-find) |
+| `kdos-pix` | One picture, and the folder it is in | [kdos-shell](../04-programs/kdos-shell.md#kdos-pix) |
+| `kdos-rec` | Record a microphone, watch the level, transcribe it. `--input hw:C,D`, `--font`, `--dump`, and the test seams `--fixture DIR`, `--meter FILE`, `--write OUT` | [kdos-shell](../04-programs/kdos-shell.md#kdos-rec) |
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-desktop-start` | Bring up services, then the compositor | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-devices` | Cameras, microphones, removable media | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
+| `kdos-connect` | A folder on another machine, over SMB. Five fields to `kdos-mountd`'s `cifs` verb; the password never in an argument | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-display` | Screen configuration | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-doc` | The documentation viewer | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-energy` | Per-application energy report | [The daemons](../04-programs/daemons.md#kdos-energyd) |
@@ -41,32 +48,51 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-menu` | Root, System and window menus | [kdos-shell](../04-programs/kdos-shell.md#kdos-menu) |
 | `kdos-mountd` | The removable-media daemon | [The daemons](../04-programs/daemons.md#kdos-mountd) |
 | `kdos-net` | Networking | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
+| `kdos-netagent` | The NetworkManager secret agent: the passphrase box the service asks for | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-notify` | The notification centre | [kdos-shell](../04-programs/kdos-shell.md#notifications) |
 | `kdos-notifyd` | The notification daemon | [kdos-shell](../04-programs/kdos-shell.md#notifications) |
 | `kdos-oomd` | The memory-pressure daemon | [The daemons](../04-programs/daemons.md#kdos-oomd) |
 | `kdos-openwith` | Choose a handler for a file | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-osd` | Volume and brightness | [kdos-shell](../04-programs/kdos-shell.md#kdos-osd) |
+| `kdos-mpctl toggle\|stop\|next\|prev\|now\|watch` | The music, over mpd's unix socket. `watch` writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle` | [kdos-con](../04-programs/kdos-con.md#the-media-keys) |
 | `kdos-pack` | Build, sign, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-packd` | The pack daemon | [The daemons](../04-programs/daemons.md#kdos-packd) |
 | `kdos-pick` | The file chooser and browser | [kdos-shell](../04-programs/kdos-shell.md#kdos-pick) |
 | `kdos-power` | Client for the power daemon | [The daemons](../04-programs/daemons.md#kdos-powerd) |
 | `kdos-powerd` | Suspend, poweroff, reboot | [The daemons](../04-programs/daemons.md#kdos-powerd) |
-| `kdos-prompt` | Yes or no, by exit status | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-prompt [--input]` | Yes or no, by exit status. `--input` is a one-row box instead: the typed line on stdout, 0 for an answer and 254 for none | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-con` | The console session server. Its client flags ask a session already running: `--capture`, `--keys`, `--clip-text` (stdin, never argv), `--clip-take`, `--layout-save NAME`, `--layout-load NAME`, `--pick-colour` | [kdos-con](../04-programs/kdos-con.md) |
+| `kdos-con-login` | The tty1 login: greeter or autologin | [kdos-con](../04-programs/kdos-con.md#the-login) |
+| `kdos-con-start` | Bring up the console session | [The session](../03-architecture/session.md#starting-a-session) |
+| `kdos-grid` | A console session and a view, in one command | [kdos-con](../04-programs/kdos-con.md#four-names-one-binary) |
+| `kdos-record [FILE.mkv]` | Record the desktop to a file, through the ScreenCast portal. **Run it again to stop**; while it runs, its pid is in `$XDG_RUNTIME_DIR/kdos/screencast.pid` and the console bar draws a `•REC` lamp | [The session](../03-architecture/session.md#the-kdos-backend) |
 | `kdos-res` | The resource monitor | [kdos-res](../04-programs/kdos-res.md) |
+| `kdos-term` | The terminal: `-e`, `--title`, `--font`, `-D DIR`, `--tty`, `--dump WxH` | [kdos-term](../04-programs/kdos-term.md) |
+| `kdos-cage` | One application full screen, or embedded: `-d`, `-D`, `-m extend\|last`, `-s`, `-v`, `--embed WxH` | [kdos-cage](../04-programs/kdos-cage.md) |
+| `kdos con run` | Run a graphical program on the console desktop. Prints the terminal it was given, or `0` for a window | [kdos-con](../04-programs/kdos-con.md#reaching-it) |
+| `kdos con layout save\|load <name>` | Write what the running session has open under a name, or open that arrangement. A load closes nothing | [The kdos command](../04-programs/kdos-command.md#con) |
+| `kdos-view --cast` | Rasterise the console session into a PipeWire stream. Prints the node id and the stream's pixel size | [kdos-con](../04-programs/kdos-con.md#recording-it) |
 | `kdos-resctl` | Signal or renice a process. **setuid** | [The security model](../03-architecture/security-model.md#kdos-resctl) |
 | `kdos-run` | The run box | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
-| `kdos-saver` | Attract mode between dim and lock | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-saver` | Attract mode between idle and lock | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-settings` | Settings | [kdos-shell](../04-programs/kdos-shell.md#kdos-settings) |
+| `kdos-share [--clipboard] [FILE\|file://URI]...` | A file to another machine over `croc`: one code word, **this network only**, no account. With nothing named, `kdos-pick` asks. What the Share verb resolves | [The kdos command](../04-programs/kdos-command.md#share) |
 | `kdos-sfx` | Sound effects | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
-| `kdos-shot` | Screenshots | [The desktop](../02-user-guide/desktop.md) |
+| `kdos-shot [region\|screen\|qr\|colour] [--geom X,Y,W,H]` | Screenshots. On the console, through `kdos-view --shot`; `--geom` is a rectangle in cells and only the console has one. `qr` decodes a QR code in the picture through `zbarimg` onto the clipboard and removes the picture, so a pairing token never reaches the disk. `colour` is the slot name and hex of the cell under the pointer, **on the console only** — the compositor tells no client where the pointer is | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--shot`, `--cast`. `--tty` probes its host terminal and hands it pictures as pixels where it can | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
+| `kdos-view --shot FILE.png [--crop X,Y,W,H]` | One settled frame of the composited grid, rasterised through the painter a screen uses; the crop is in cells | [kdos-con](../04-programs/kdos-con.md) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |
 | `kdos-status` | The overflow popup | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-teams` | The window list | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos panel toggle` | Put the compositor's panel away and bring it back — what `Super+Shift+space` runs there, beside the session action of the same name on the console | [kdos-shell](../04-programs/kdos-shell.md#autohide) |
+| `kdos-contacts` | The address book, `Super+Ctrl+b`. Type a name, `Enter` copies the address or the number | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-style` | How the screen looks: the accent on one page, the screen's font on the other. `--page accent\|font` opens either | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-theme` | Generate the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-tip` | Tooltips | [kdos-shell](../04-programs/kdos-shell.md#tooltips) |
+| `kdos-ime` | The input-method candidate window, as cells | [kdos-shell](../04-programs/kdos-shell.md#the-candidate-window) |
 | `kinstall` | The installer | [kinstall](../04-programs/kinstall.md) |
 | `kpkg` | The package manager | [Packaging](../03-architecture/packaging.md#kpkg) |
 | `kpkgadd` | Install a prebuilt package file | [Packaging](../03-architecture/packaging.md#kpkg) |
@@ -76,6 +102,8 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `ksvc` | The service supervisor | [Administration](../02-user-guide/administration.md#services) |
 | `service` | The same supervisor, conventional name | [Administration](../02-user-guide/administration.md#services) |
 | `xdg-desktop-portal-kdos` | The portal backend | [The session](../03-architecture/session.md#the-kdos-backend) |
+| `xdg-open` | Open a file or a link with its handler — a name on `kdos-appbox` | [kdos-appbox](../04-programs/kdos-appbox.md#the-open-path) |
+| `xdg-terminal-exec` | Run a command in this desktop's terminal, for a caller that only knows the standard name | [kdos-appbox](../04-programs/kdos-appbox.md#the-open-path) |
 
 Plus **one shim per installed application**, named after the application and pointing at
 `kdos-appbox`.
@@ -86,9 +114,11 @@ Plus **one shim per installed application**, named after the application and poi
 |---|---|
 | `kdos help` | Every command, grouped by which question it answers |
 | `kdos theme` | Switch accent, apply a style, audit the palette |
+| `kdos settings [page]` | The control centre, or one of its nine pages |
+| `kdos menu summon\|toggle [route]` | Open the menu on a named place; a route is what a script holds instead of a chord |
 | `kdos status` | What this machine is and what it is running |
 | `kdos doctor` | Check the things that actually break here |
-| `kdos app` | Applications: list, search, show, install, launch, remove, rollback, update, sources |
+| `kdos app` | Applications: list, search, show, install, launch, remove, rollback, update, sources. `kdos app tui add\|rm\|ls` makes a terminal program an application — a `.desktop` in `~/.local/share/applications` with `Terminal=true`, `X-KDOS-TUI` as the marker `rm` checks, and optional `X-KDOS-Float` and `X-KDOS-Size` | [kdos-command](../04-programs/kdos-command.md#app) |
 | `kdos version` | Release, commit, and whether that tree was clean |
 | `kdos why` / `kdos explain` | Why something is the way it is |
 | `kdos sandbox` | What a box may do |
@@ -100,7 +130,14 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos clone` | Copy this medium to another device |
 | `kdos cve` | Which pins carry known vulnerabilities, offline |
 | `kdos trash` | The freedesktop trash |
+| `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |
+| `kdos thumb <file>` | A thumbnail in the shared freedesktop cache — also `--path` and `--ppm` | [kdos-command](../04-programs/kdos-command.md#thumb) |
+| `kdos share [--clipboard] [FILE…]` | The same program as `kdos-share`, under the spelling a person types | [kdos-command](../04-programs/kdos-command.md#share) |
+| `kdos remind in 20m\|at 15:30\|tomorrow 9 TEXT` | A toast, later — a row in J.13's per-user table, delivered **once**. Also `ls`, `clear`, `--ask` (the one-row prompt a chord opens) and `fire ID` (what the timer runs) | [kdos-command](../04-programs/kdos-command.md#remind) |
+| `kdos notify <summary> [body]` | Raise a toast. `--time` and `--battery` compute their own; `--dismiss`, `--dismiss-all`, `--raise` and `--dnd` are one line down `kdos-notifyd`'s socket | [kdos-command](../04-programs/kdos-command.md#notify) |
+| `kdos-openarchive ARCHIVE` | Extract an archive `mc` cannot browse as a directory, beside itself | [kdos-shell](../04-programs/kdos-shell.md) |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
+| `kdos con` | Console sessions: `ls`, `new`, `attach` (`--observe` to watch without typing), `detach`, `kill` (asks the session to end, and it drains), `capture`, `record`, `replay`, `forward` |
 | `kdos oracle` | An aphorism |
 | `kdos update` | Orchestrate a system update |
 

@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://code.videolan.org/videolan/libplace
 sha256      = 14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39  libplacebo-7.360.1.tar.gz
 description = The GPU video rendering pipeline mpv is built on — colour, scaling, tone mapping
 homepage    = https://libplacebo.org/
-depends     = meson ninja pkgconf lcms2 xxhash python3 python3-jinja2
+depends     = meson ninja pkgconf lcms2 xxhash python3 python3-jinja2 vulkan-headers vulkan-loader

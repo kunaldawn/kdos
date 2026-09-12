@@ -1,17 +1,27 @@
 # Theming
 
-Changing how KDOS looks: the four accents, the phosphor shader, the wallpaper, fonts, and how
+Changing how KDOS looks: the seven accents, the phosphor shader, the wallpaper, fonts, and how
 applications inside boxes get the same palette. One command does almost all of it, and most of
 the result appears without restarting anything.
 
-## The four accents
+## The seven accents
 
 | Accent | Character |
 |---|---|
 | `phosphor` | Green on near-black. The default, and the project's own colour |
 | `amber` | Amber on warm black |
 | `ice` | Cyan and blue on deep blue-black |
-| `bone` | Warm off-white on near-black — the least saturated of the four |
+| `bone` | Warm off-white on near-black — the least saturated of them |
+| `norton` | Yellow and cyan on deep blue. The two-pane file manager's own colours |
+| `borland` | Cyan and yellow on dark teal. The blue-box IDEs of the late eighties |
+| `perfect` | White on blue, and almost nothing else. The word processor that showed a blank screen |
+
+**Every accent is dark, and that is the chrome rather than a preference.** The focused plate is
+solved along one axis and carries one label colour, so on a light ground the plate darkens away
+from its own label and no mix clears both the separation floor and the legibility one: the best
+light candidate reaches 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off
+the bar where the label reads at 6.58:1. A light accent needs the plate ladder to choose its label
+per plate first; until then the self-test refuses a scheme whose ground is the light end.
 
 An accent is not a colour, it is a small palette: a primary, a dim variant of it, a secondary, an
 urgent colour, a background, a text colour, a surface, and two more derived shades. Everything
@@ -21,11 +31,39 @@ values, which is why one word repaints the entire desktop. See
 
 ## Switching
 
+`Super+Ctrl+Shift+Space` opens **`kdos-style`**, the picker: one row per accent, each drawn in its
+own colours, the desktop repainting live as the highlight moves. `Enter` keeps the highlighted one
+and `Esc` puts back the one you opened on. Settings' Appearance page and the `style.theme` route
+open the same window — the accent is chosen there and nowhere else, because a list of names is the
+worse of two ways to pick a colour.
+
+**`kdos-style` is the picker and `kdos-theme` is the generator**, and they are two programs. One
+name for both meant one of them was whichever package installed last, and for a release that was
+the generator: the chord, the route and the settings row all reached a command-line tool that
+printed a usage line.
+
+**A preview is half a theme, and it says so by what it leaves alone.** Moving the highlight writes
+the accent's state file and signals the session, so every KDOS surface repaints at once; it
+regenerates nothing, because the GTK stylesheet, the icon theme, the cursors and the eight foreign
+configuration files take seconds and are read by programs that are not running. So the desktop
+moves under the highlight and a boxed application does not, and `Enter` — which runs the real
+switch — is what makes the rest agree. Leaving any other way puts the original back, including on
+a kill: a picker that died halfway through would otherwise leave the desktop wearing an accent
+nothing else on the machine had been regenerated for.
+
+**The swatches are the one place on this desktop a cell carries a literal colour.** Everything else
+draws in named slots so that one word repaints all of it; a swatch that took the accent in force
+would show seven identical rows, which is the one thing that window exists not to do.
+`preflight.sh` names the file as the exception rather than dropping the check.
+
+From a prompt:
+
 ```sh
 kdos theme amber        # switch
-kdos theme list         # the four names
+kdos theme list         # the seven names
 kdos theme next         # cycle forward
 kdos theme prev         # cycle back
+kdos theme --preview X  # the state file and the signal only — what the picker's arrows do
 ```
 
 **The desktop retints live.** The panel, the desktop icons, any notification on screen, the window
@@ -49,6 +87,15 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | The starship palette block | starship | On the next shell prompt |
 | `~/.config/foot/themes/kdos` | foot | On the next terminal — foot cannot reload its configuration at all |
 | `~/.config/btop/themes/kdos.theme` | btop | On the next start |
+| `~/.config/kdos/term-colors.conf` | `kdos-term` and the console session | On the next terminal |
+| `~/.config/kdos/fzf-colors` | fzf, through `$FZF_DEFAULT_OPTS` | On the next login shell |
+| `~/.config/bat/themes/kdos.tmTheme` | bat | On the next start, once the cache is built |
+| `~/.config/micro/colorschemes/kdos.micro` | micro | On the next start |
+| `~/.config/helix/themes/kdos.toml` | helix | On the next start |
+| `~/.config/nvim/colors/kdos.vim` | neovim | On the next start |
+| `~/.config/git/kdos-delta` | delta, included from the shipped gitconfig | On the next diff |
+| `~/.config/newsboat/kdos-colors` | newsboat, `include`d from its config | On the next start |
+| `~/.config/aerc/stylesets/kdos` | aerc | On the next start |
 | The `mc` skin and `LS_COLORS` | mc, ls | On the next start |
 | `~/.themes/KDOS/` | GTK3 applications in boxes | On the application's next launch |
 | `~/.config/gtk-3.0/gtk.css`, `gtk-4.0/gtk.css` | libadwaita applications | On the application's next launch |
@@ -58,6 +105,20 @@ repaint. The timing differs by target, and this is the table worth knowing:
 
 GTK re-reads neither its theme nor its icons when the files change, so boxed applications pick up
 an accent switch when you next start them. There is no way around that from outside the toolkit.
+
+**A generated file is never a file you edit.** Each of the above is written whole on every accent
+switch, and each is *selected* by something that ships once and is then yours: `settings.json` for
+micro, `config.toml` for helix, `init.vim` for neovim, an `[include]` for delta, an `include` line
+for newsboat, `styleset-name` for aerc, `--theme` for bat. Change those freely; they are not
+rewritten. Your own micro scheme may `include "kdos"` and your own helix theme may
+`inherits = "kdos"`, so you can keep the accent and override a colour.
+
+**Two programs cannot take a colour, and the table says how each is answered.** **newsboat** reads
+`#` as a comment, so a hex value truncates the line and the entry is refused outright — its colours
+are therefore the nearest of the 256 terminal indices rather than the scheme's exact values.
+**lazygit** has no include, no import and no separate theme file: its colours live inside the one
+`config.yml` you edit, so `kdos theme` does not write them at all. Writing them would mean owning
+that file and discarding whatever else you had put in it.
 
 ## The CRT pass
 

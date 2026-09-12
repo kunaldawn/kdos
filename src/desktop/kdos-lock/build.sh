@@ -56,16 +56,26 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.c
+# foreign-toplevel: libkwl answers libkdisp's window list from it, and the
+# header is included unconditionally, so every consumer generates it whether or
+# not it asks for a window list. The lock screen never binds the manager — that
+# happens on the first call, and the lock screen makes none.
+"$SCANNER" client-header \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
 PKGCFG="fcft pixman-1 xkbcommon wayland-client"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" \
+	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-lock \
 	"$PORT_SRC"/main.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS

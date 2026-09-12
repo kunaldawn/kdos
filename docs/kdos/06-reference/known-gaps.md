@@ -11,19 +11,55 @@ Where something is deliberately absent rather than merely missing, the reason is
 
 ## Desktop
 
-**No drag and drop.** The clipboard is complete in both directions, including the primary
-selection, but a drag cannot be started and nothing can accept a drop. A file cannot be dragged
-from the desktop into a window.
+**Drag and drop carries text and files, and nothing else.** `text/plain` and `text/uri-list` are
+offered and accepted; there is no MIME negotiation, no deferred transfer and no image payload.
+Only the trash accepts a drop on the desktop — dropping onto a folder would be a move, and a move
+that half-succeeds across filesystems is worse than not offering it. Both directions work between
+a KDOS surface and a boxed application, and on the console the session carries the drag itself.
+See [Status](status.md) for what that rests on.
 
-**No touch input.** The seat's touch capability is not bound at all, so a touchscreen drives none
-of the chrome. Pointer and keyboard only.
+**A drag on the console has no picture under the pointer.** The pointer is a reversed cell, which is
+the whole of what it is on every tier this desktop draws on, so there is nothing to hang a carried
+icon from — the bar says what is being carried instead. A target does not highlight either: the
+session sends `ENTER` and `LEAVE`, and `kdos-desk` keeps them rather than drawing on them, which is
+what `libkwl` does with the compositor's own.
+
+**No multi-seat.** `seat0` only. The session and view split makes a second seat
+reachable — a second session with a second view — and nothing implements it, so
+the claim is not made.
+
+**A console session's PROCESSES end with the login that started it; its window list can come
+back.** `kdos con new` makes a session the service supervisor owns for the length of that login, so
+logging out takes every running program with it. Sessions that outlive a logout need a lingering
+policy, a per-user enable and an answer for what the greeter does when you log back in; none of the
+three is decided, so that mechanism is not built.
+
+What is built is the list. With `restore = yes` a session started under the same name reopens the
+windows it had — kind, size, place and workspace — with terminals running `con.conf`'s own
+`terminal` and applications started through their desktop entry by app id. **Nothing in the state
+file is ever run as a command**: it is written by a program and read by a program, and a file that
+named an argv would be a file that chooses what somebody's session starts. `restore_scrollback`
+puts the last session's output back above the fresh prompt, marked in the terminal as the previous
+session's, and is off by default because old output that is not marked reads as live.
 
 **No fractional scaling.** The toolkit adopts an output's **integer** scale and renders glyphs at
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
 scale is not negotiated.
 
-**One font size for every output.** The font every KDOS surface draws with is a single setting, so
-it is right on a machine with one screen and wrong on two of different densities.
+**One font for every output, size and face alike.** The font every KDOS surface draws with is a
+single setting, so it is right on a machine with one screen and wrong on two of different densities.
+The console's font chords step every view that has a screen of its own and the font picker sets the
+face on all of them, which keeps the two screens agreeing rather than letting each be right: a
+per-output font is a different design, not a missing call. The picker also shows one list where two
+displays are attached — the FIRST to answer — because two lists would be one question with two
+answers and nothing to say which screen a person meant.
+
+**No console font is loadable from `/usr/share/consolefonts`.** Every one of those is a PSF, and
+the cell painter loads a face through fontconfig, which cannot scan a PSF at all: FreeType has no
+driver for the format. The console draws in a fontconfig face like every other surface, and the
+picker lists what fontconfig offers. The shipped PCF bitmap faces are also invisible to it — the
+`70-no-bitmaps-except-emoji` rule rejects them and the rescue rule names `Terminus` where the files
+report `xos4 Terminus` — so what is listed is the scalable monospaced families.
 
 **A per-output panel shows every window, not that output's.** The window-management protocol
 reports which output a window is on and the panel ignores it, so on two screens both taskbars list
@@ -50,12 +86,128 @@ deliberate narrowing — what people usually want is an order.
 a dialog over the window that asked for it needs cross-process window referencing that is not
 wired up.
 
-**The input-method candidate window is not a character grid.** It is drawn by the input engine with
-its own toolkit — the one thing on this desktop that is not cells. Making it one would mean writing
-an input method.
-
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
+
+**A recording of a screen that does not change is an empty file.** `wlr-screencopy` hands over a
+frame when the output is damaged and at no other time, so a session left alone produces no buffers,
+the muxer writes no header, and `~/Videos/<name>.mkv` ends at zero bytes with nothing in the
+recorder's log to say why. It is the shape of the protocol rather than a defect — a desk somebody
+is sitting at always changes — but a recording taken to prove the pipeline needs something moving
+on the screen while it runs.
+
+**No input method in the console session.** fcitx5 is a Wayland client and speaks
+`input-method-v2` to the compositor; there is no compositor on that path. The candidate *window* is
+drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
+not running.
+
+**A terminal application opens nothing from the palette.** `Super+space`, `ma`, `Enter` on
+**Mail** leaves the desktop as it was, and so does any other row whose desktop entry says
+`Terminal=true`; a row that does not — *Resources* — opens its window from the same list, the same
+keystroke and the same code path. The wrapper the launcher builds is not the problem: typed by
+hand, `kdos-term --title mc --app-id mc -e mc` opens the window and the taskbar names it. The
+chord route is unaffected, so `Super+Shift+e` still opens mail.
+
+**A graphical application launched from the console's Start menu ends the session.** Measured twice
+with `cups.desktop` (*Manage Printing*): `kdos-cage` starts on the headless backend with the pixman
+renderer, its log lands in the session's, an empty guest window appears — and the console desktop
+exits, leaving the login banner. Every *console* surface the same menu offers is unaffected, and
+`kdos-print` — the printer page this desktop has of its own — opens and lists its queues.
+
+**No VT has ever been allocated.** Embedding is what a graphical application gets and it has been
+run end to end; `--vt` is the exception for something that needs acceleration, and that path — the
+session allocates a terminal, activates it, starts `kdos-cage` there and supervises it, and the
+guest appears in the taskbar marked with its terminal — has **never been run**. It needs an ISO
+carrying `kdos-cage` and a machine with real terminals. What exists is the mechanism and the
+reasoning behind its ordering; what is missing is the evidence that a guest ever appeared on a
+screen that way.
+
+**An embedded application is pointed at a cell at a time.** A press and a release carry where in the
+cell they landed, so a small button is clickable; a drag that stays inside one cell moves the
+guest's pointer nowhere, because a view reports a move when the cell changes. Nothing on this
+desktop that is drawn in cells needs finer, and the one thing that is not is the thing that has to
+live with it.
+
+**An embedded application is typed at through a US keymap.** A view resolves the person's own layout
+to a character before the session sees it, and the session maps that character back to the key that
+produces it on a US keyboard — which is the keymap the guest is given. An application reading raw
+scancodes therefore sees US positions.
+
+**A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
+code by design, so a terminal window it opens itself shows the fallback shade where a picture is.
+`kdos-term` is the terminal that joins the parser to the decoder, and it is a surface like any
+other — so a picture on the console desktop means opening one of those. A `--tty` view running
+inside one of the session's own terminal windows detects this and stays on characters: that window
+answers the device-attributes probe claiming sixel and then reports no picture geometry, and it is
+the second answer that decides.
+
+**Italic is upright wherever the loaded font has no italic companion at the same cell size.** The
+painter asks fontconfig for the face with `:slant=italic` and keeps it only if its advance and
+height match — and fontconfig never fails a match, so an italic Terminus comes back as a different
+family at a different size and is refused. The attribute still travels: the cell carries it, a
+terminal view emits `SGR 3` and the host terminal draws it. It is the KMS and Wayland painters,
+drawing with the console's own bitmap face, that show the words upright.
+
+**Nothing reads the GRAPHICAL desktop.** The console session is read by `kdos-a11y` over its third
+socket, because it holds the literal text of every cell and every widget announces itself.
+`kdos-comp` draws pixels and has no such buffer, so a reader there would need the tree of accessible
+objects this project does not build. What exists for a boxed application is that box's own registry,
+opted into with `~/.config/kdos/a11y`.
+
+**Braille is the `brltty` route and not a library this tree links.** `a11y = yes` keeps the kernel's
+text plane so `brltty` reads it over `/dev/vcsa`; BrlAPI is not linked by anything here, and a
+display driven that way is driven by `brltty` rather than by the desktop.
+
+**A recording is not an asciicast, and there is no player port.** `kdos con record` writes the
+session's own messages — cell frames, sprites, window chrome — so no asciinema player will open one,
+and a view that draws cells is already the player. An `asciinema` port to replay a format this tree
+writes would be weight with no user on it.
+
+**A window in the console session is never held while the program in it draws.** Synchronized
+output (`DECSET 2026`) is answered by `libkvt`, so both terminals report the mode and a program's
+brackets are parsed rather than misread — but only `kdos-term` acts on them, because it owns one
+grid per window. The session composes **one** grid for every window it shows, so holding a frame
+for one window would either freeze the whole desktop or need a per-window cache of the last render.
+A KDOS surface running in a session window brackets its frames like any other terminal and gets
+nothing for it; the frames are shown as they arrive, which is what every terminal did before the
+mode existed.
+
+**A terminal view's cell size is a guess unless the terminal names one.** `kdos-view --tty` asks
+`CSI 16t`, which `kdos-term` answers and most terminals do not; without an answer it uses 8x16 and
+`KDOS_VIEW_CELL=WxH` is the override. A wrong cell is a correctly encoded picture at the wrong
+scale, which does not look like a probe failure.
+
+**The last grid row of a terminal view is never pixels.** A picture at the bottom margin scrolls the
+host terminal in every protocol, and a scroll invalidates the frame diff with nothing able to detect
+it, so those cells keep the fallback mark.
+
+**No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
+the catalogue emits either. The three raster protocols are what a modern program reaches for.
+
+**A console screen can be given a mode but not turned off, scaled or rotated.** The session lights
+every connected connector into one grid, and `kdos-display` lists them and sets a mode on one; the
+other three verbs are Wayland's, because a text grid has no scale factor, a rotation would give the
+cells a different shape on one screen than on the next, and a dark connector would leave a hole in
+the middle of a grid that windows are already placed across. The buttons for them are drawn
+disabled on the console rather than hidden, so the surface is the same surface in both sessions.
+
+**A mode chosen on the console does not survive the session.** `kdos-display`'s keep sends the
+mode with its `keep` flag set and the view acts on the mode and drops the flag: there is nowhere on
+this desktop a mode is written down, so the next login comes up at the preferred mode again. The
+flag is on the wire because the countdown is the only thing that distinguishes an applied mode from
+a kept one, and a keep that could not be expressed would make the countdown a lie.
+
+**Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off.** They are
+private-use codepoints and the console font is 512 glyphs, which is a kernel limit: a glyph the font
+does not carry renders as a blank cell, so an icon in front of a filename is a hole rather than a
+picture. `yazi`'s generated theme empties all five `[icon]` tables, `starship`'s format uses box
+drawing only, the `eza` aliases say `--icons=never` rather than relying on a default, and `lazygit`
+0.61 already ships `showIcons: false`. **No shipped program has been found that draws them with no
+way to be told** — and a scan of the built binaries is not evidence either way, because a
+private-use codepoint in compiled data is a coincidence far more often than it is a glyph. The
+answer for a person who wants icons is a Nerd Font in `~/.local/share/fonts` and a `kdos-term`
+window at the TTF, which draws what fontconfig can find; there is no Nerd Font port and no
+console-font patching.
 
 ## Applications and boxes
 
@@ -80,13 +232,97 @@ depend on that.
 stack is built without X11 platform support. Enabling it means rebuilding the graphics stack and
 adding several X libraries. Wayland-native applications are unaffected.
 
+**The initramfs must carry util-linux's `switch_root` and not toybox's, and the difference is
+every container on the machine.** toybox's applet chroot()s into the new root and never moves that
+root onto the root of the mount namespace, so every process on the booted system is chrooted for
+ever — and `create_user_ns()` refuses a chrooted caller outright. The symptom is `EPERM` from
+`CLONE_NEWUSER` for uid 0 with the full capability set as readily as for anybody, on a kernel
+reporting `CONFIG_USER_NS=y`, 15440 namespaces available, no LSM, no seccomp filter, no lockdown
+and nothing on the command line; `/proc/self/mountinfo` gives it away, with the root mount present
+on the right device and a **parent id that is not in the table**. toybox owns the name
+`/usr/sbin/switch_root` on the finished image and is installed after util-linux, so the copy has to
+name util-linux's own file, and the packaging step refuses to build an initramfs whose
+`switch_root` is toybox's.
+
 **A live session cannot create a persistent box.** The home directory is on the boot overlay, and
-the kernel refuses to stack a container's writable layer on an overlay. `kdos doctor` reports this
-as a property of the session rather than as a failure.
+the kernel refuses to stack a container's writable layer on an overlay. A pack is mounted from the
+medium and is gone when the session ends; `kdos doctor` reports this as a property of the session
+rather than as a failure.
 
 **A box is not a security boundary against you.** It shares your home directory in full. It
 constrains what an application can do to the **desktop**, not to your data. See
 [The security model](../03-architecture/security-model.md#what-is-not-protected).
+
+**An invitation in a message is read, never answered.** `aerc`'s calendar filter prints the event —
+summary, times, location, who was asked — and writes nothing anywhere. There is no verb that accepts
+or declines one, because a filter runs every time a message scrolls past and one that imported would
+accept every meeting it was scrolled over, and nothing on this image sends a reply to an organiser.
+**Filing one is now manual and it works**: `:save` the part out of the message and `khal import` it,
+and the day carries a mark in the panel's calendar. No `text/calendar` handler is registered for the
+same reason the filter writes nothing — opening a file would file it.
+
+**With no browser pack installed, the compositor has nothing that opens `http`.** The console
+answers with `w3m` in a terminal, and a browser installed as a box claims the scheme through the
+launcher table the generator writes — but a graphical session with neither falls through to
+xdg-utils' own script, whose last resort is to start a **text** browser with no terminal around it,
+which means nothing visible happens. The console rows are not copied to the compositor on purpose:
+they would outrank the browser box's entry the moment one was installed.
+
+**Nothing on this image has a clipboard a Rust program can reach.** `iamb` and `atuin` both offer
+one through `arboard`, which speaks the X11 protocol in pure Rust — it links no C library, so it
+costs nothing to carry — but there is no X server here and the Wayland path is not compiled into it,
+so a yank inside such a program has nowhere to go. The desktop's own clipboard is `kdos-clip`, and
+`kdos-term` puts a selection there.
+
+**A spreadsheet can be read and not written back.** `sc-im` opens an `.xlsx` natively — it links
+`libzip` and `libxml2` and carries the reader in C — but its **export** is gated on
+`libxlsxwriter`, which is not a port here, so it answers `XLSX export support not compiled in.` and
+saves back out as `.sc`, `.csv` or `.ods`. You can open a file somebody sent you and cannot hand it
+back in the format they sent. `visidata` reaches the same file only through `openpyxl` and can
+write one, so the round trip exists — through the other program.
+
+**A call is voice only, and out of the box it is G.711.** `baresip` is the SIP phone here and its
+interface is a terminal menu. The codecs are all built — `opus.so`, `vp8.so`, `vp9.so` and
+`avcodec.so` are among the 55 modules installed — but baresip's own generated `config` leaves every
+one of them commented out, so a first run reports `Populated 0 video codecs` and negotiates G.711
+alone. Uncommenting the module lines in `~/.baresip/config` turns them on.
+
+**Video calling has nowhere to put the picture.** The capture half is there — the built `avformat`
+module registers a video source and the shipped ffmpeg carries `video4linux2` — and the codecs
+build. What is missing is a **display**: of baresip's video outputs only `fakevideo` (a null sink)
+and `vidbridge` (a loopback) were built, because `x11` needs the X headers this image refuses by
+rule and `sdl` needs an SDL port that does not exist. A call can send your camera and cannot show
+you theirs.
+
+**`mbsync` cannot use XOAUTH2, so mail from such a provider cannot be mirrored locally.** `isync`
+reaches XOAUTH2 and OAUTHBEARER only through `cyrus-sasl`, which this tree does not build —
+measured: the shipped `mbsync` links `libssl`, `libcrypto`, `libz` and `libc` and carries no XOAUTH2
+string at all, and `pizauth` does not lift it because there is nothing to present a token to.
+
+**The rest of the lane does.** Measured on the image: `msmtp --version` reports
+`Authentication library: built-in` and lists `oauthbearer` and `xoauth2`, and `aerc` carries
+`imaps+oauthbearer`, `smtps+oauthbearer` and its own `xoauth2Client`. So an account whose provider
+has withdrawn application passwords is **read in `aerc` directly and sent through `msmtp`** — what
+it does not get is a local Maildir kept in step by `mbsync`, and with it `notmuch`'s index and
+offline search.
+
+**A network share is reached by an address or a DNS name, never by a workgroup name.** musl
+resolves through `/etc/hosts` and `/etc/resolv.conf`; `nsswitch.conf` is inert on this C library,
+there is no winbind and there is no mDNS responder, so a name only a NetBIOS or a Bonjour
+broadcast could answer fails inside `mount.cifs` with a message nobody can act on.
+`kdos-mountd`'s `cifs` verb refuses such a name up front rather than passing it on, and there is
+no browse list: a server has to be named.
+
+**Kerberos is not reachable from this image, and `CONFIG_CIFS_UPCALL=y` is not evidence that it
+is.** `cifs.upcall` is disabled in the `cifs-utils` recipe and is absent from the image, and there
+is no krb5 port, so `sec=krb5` has nothing to call out to. A server that will accept only a ticket
+cannot be mounted from here; the verb offers username, domain and password and nothing else.
+
+**Neither synchroniser in the mail and calendar lanes has ever run against a server.** The rig has
+no account, no network and no IMAP or CalDAV server on the image, so what is measured of `mbsync`
+and `vdirsyncer` is that each runs, reports its version, and does nothing and exits cleanly with
+nothing configured. That a password account synchronises is unproven here and can only be proven
+against a real account.
 
 ## Hardware and platform
 
@@ -105,6 +341,19 @@ covers a great deal — but nothing here is tested against a wide device matrix.
 
 **Much of `kdos doctor` cannot answer in a virtual machine**, which is why it has a *skip with a
 reason* level rather than reporting those as passing.
+
+**No speech model ships and the desktop cannot fetch one.** `kdos-rec`'s *Transcribe* is therefore
+permanently greyed on a fresh image, and the transcribed text has never been read back on this
+tree: the model gate, the `whisper-cli` argv, the spawn and the exit status are what is verified.
+The way in is upstream's `models/download-ggml-model.sh` writing to
+`~/.local/share/whisper.cpp/models`.
+
+**Transcription is batch over a closed file**, not live. The streaming example needs SDL2, which is
+not a port here.
+
+**The emulated HDA codec gives the guest no capture signal**, so the rig cannot photograph a
+deflecting meter from `--audio` alone. The recording evidence comes from `snd-aloop`, loaded by
+hand in a root script.
 
 ## Security
 

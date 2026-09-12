@@ -1,19 +1,11 @@
-# KDOS default applications.
-# Read by xdg-open and the KDOS launcher. Only host-side apps are listed —
-# anything opened by an alien app is that box's business, and kdos-fetch-app
-# exports its .desktop into ~/.local/share/applications where it wins by name.
+# YOUR OWN CHOICES, and nothing else.
+#
+# This file is searched before every system table, so a row here is a decision
+# that outranks whatever the desktop ships — which is why KDOS ships none of
+# its own defaults in it. `Open With` writes here when you tick "always".
+#
+# The defaults live at /etc/xdg: `kdos-mimeapps.list` for the compositor,
+# `kdos-console-mimeapps.list` for the console, and `mimeapps.list` for what
+# both desktops agree on. Anything you put here beats all three.
 
 [Default Applications]
-image/png=imv.desktop
-image/jpeg=imv.desktop
-image/gif=imv.desktop
-image/webp=imv.desktop
-image/bmp=imv.desktop
-image/tiff=imv.desktop
-image/svg+xml=imv.desktop
-text/plain=nvim.desktop
-text/markdown=nvim.desktop
-text/x-shellscript=nvim.desktop
-application/json=nvim.desktop
-application/x-shellscript=nvim.desktop
-inode/directory=mc.desktop

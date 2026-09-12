@@ -90,6 +90,31 @@ unsigned long long kpr_uptime_s(void);
 long long kpr_num_sys(long long def, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 
+/* ── Sensors ─────────────────────────────────────────────────────────────
+ *
+ * Every reading the kernel publishes under `hwmon` and `thermal`, with the
+ * kernel's own names. NO libsensors: that library exists to parse a
+ * configuration file renaming and scaling these for a human, and a name the
+ * kernel did not choose is one nothing else on the machine agrees with.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KPR_SENSOR_TEMP = 0, KPR_SENSOR_FAN, KPR_SENSOR_VOLT,
+       KPR_SENSOR_POWER };
+
+typedef struct {
+	int kind;
+	char chip[48];		/* the hwmon `name`, or the zone `type`    */
+	char label[48];		/* the channel `label`, or `tempN`         */
+	double value;		/* °C, RPM, V or W — by `kind`             */
+	double crit;		/* the chip's own critical point, or -1    */
+} KprSensor;
+
+int kpr_sensors_list(KprSensor **out);
+void kpr_sensors_free(KprSensor *v);
+/* The hottest temperature, or -1 when nothing answered — which a renderer
+ * must draw as an em dash. A machine with no sensor is not one at 0 °C. */
+double kpr_sensors_hottest(void);
+
 /* ── CPU ─────────────────────────────────────────────────────────────────── */
 typedef struct {
 	unsigned long long user, nice, sys, idle, iowait, irq, softirq, steal;
@@ -212,6 +237,25 @@ void kpr_block_free(KprDisk *d);
  * the drive's own sector size. queue/hw_sector_size is the classic way to be
  * eight times wrong on a 4K disk. */
 #define KPR_SECTOR 512ULL
+
+/* ── sound ───────────────────────────────────────────────────────────────── */
+/*
+ * One PCM device. `capture` is the whole reason this exists: a card is not a
+ * microphone, and a picker built from /proc/asound/cards offers an HDMI codec
+ * as an input. `id` is the `hw:C,D` an ALSA client is handed.
+ */
+typedef struct {
+	int card, device;
+	int capture, playback;		/* which streams the PCM carries   */
+	char id[16];			/* hw:C,D                          */
+	char name[64];			/* the PCM's own name, not the card's */
+} KprSoundPcm;
+
+/* Every PCM the kernel lists, in file order. malloc'd; NULL and *n 0 when
+ * /proc/asound is absent, which is a machine with no sound card rather than an
+ * error. */
+KprSoundPcm *kpr_sound_pcms(int *n);
+void kpr_sound_free(KprSoundPcm *v);
 
 /* ── network ─────────────────────────────────────────────────────────────── */
 typedef struct {

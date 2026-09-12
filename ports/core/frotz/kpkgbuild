@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = frotz
+version     = 2.55
+release     = 1
+_story      = Gnu_in_the_Zoo.zblorb
+source      = $name-$version.tar.gz::https://gitlab.com/DavidGriffith/frotz/-/archive/$version/frotz-$version.tar.gz
+source      = https://ifarchive.org/if-archive/games/zcode/$_story
+sha256      = a8c4c4d79a2aa9b39e0efbbd3e0803f1dc5ef36f75f2c2945e295d190575eb09  frotz-2.55.tar.gz
+sha256      = d0854f37afd8c1a3eebf7617e7f18f22a27d9f3a484864c1f8c05b136002cead  Gnu_in_the_Zoo.zblorb
+description = Z-machine interpreter — Infocom-era interactive fiction in a terminal
+homepage    = https://661.org/proj/if/frotz/
+depends     = ncurses pkgconf

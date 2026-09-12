@@ -1,0 +1,17 @@
+# kdos-con layout: work — a terminal, the file manager, the monitor.
+#
+# THE ROWS NAME ROLES AND `con.conf` NAMES THE PROGRAMS. `files` is whatever
+# that key says a file manager is and `monitor` whatever it says the resource
+# monitor is, so this file survives somebody preferring a different one — and
+# it holds no command line, which is the rule the session record keeps.
+#
+# A row whose program this image does not carry opens nothing and is not an
+# error: a layout that refused to load at all would be one nobody could use.
+#
+# The rectangles are cells on an 80x24 grid and are fitted to whatever screen
+# is actually there. Left half, then the right half split.
+#
+# kind	workspace	x	y	w	h	app	flags	title
+term	0	1	1	38	21	terminal	-	terminal
+app	0	41	1	38	9	files	-	files
+app	0	41	12	38	10	monitor	-	monitor

@@ -798,22 +798,48 @@ static int cmd_box_remove(const char *box, int force)
  * and a clock, on the ksvc timer the session already runs, rather than a
  * seventh root daemon for a job this size.
  *
- * A BOX WITH A MAPPED WINDOW IS NEVER IDLE, whatever its clock says: the
- * compositor's command socket is asked, and a box it names is left alone.
+ * A BOX WITH A MAPPED WINDOW IS NEVER IDLE, whatever its clock says.
+ *
+ * THREE ANSWERS, NOT TWO: 1 has a window, 0 has none, -1 there was nothing to
+ * ask. The third is not the second. A collector that read "cannot tell" as "no
+ * window" would stop every warmed box on a desktop it did not know how to
+ * question — which is exactly what happened to the console desktop, whose
+ * session is not a compositor and does not answer `kdos hey`.
+ *
+ * The console publishes its window set as a file beside its socket, because
+ * teaching this binary that protocol would pull libkcon and the whole cell
+ * model into something that is on every image.
  */
 static int box_has_window(const char *box)
 {
+	const char *con = getenv("KDOS_CON");
 	KbArgv a = {0};
-	char *buf = kb_calloc(1, 1 << 16);
+	char *buf;
 	int found;
 
+	if (con && *con) {
+		char path[256];
+		size_t n = strlen(con);
+
+		if (n < 6 || strcmp(con + n - 5, ".sock"))
+			return -1;
+		snprintf(path, sizeof(path), "%.*s.windows", (int)(n - 5), con);
+
+		char win[4096];
+
+		if (kb_read_file(path, win, sizeof(win)) < 0)
+			return -1;	/* the session has not published yet */
+		return strstr(win, box) != NULL;
+	}
+
+	buf = kb_calloc(1, 1 << 16);
 	kb_argv_add(&a, "kdos");
 	kb_argv_add(&a, "hey");
 	kb_argv_add(&a, "boxes");
 	kb_argv_end(&a);
 	if (kb_run_capture(&a, buf, 1 << 16) != 0) {
 		free(buf);
-		return 0;	/* no compositor to ask: not a reason to keep it */
+		return -1;	/* no session to ask */
 	}
 	found = strstr(buf, box) != NULL;
 	free(buf);
@@ -857,8 +883,18 @@ static int cmd_box_gc(int dry)
 		started = atol(t2);
 		if (started <= 0 || time(NULL) - started < p.autostop_s)
 			continue;
-		if (box_has_window(line)) {
+		int win = box_has_window(line);
+
+		if (win > 0) {
 			printf("  %-16s has a window open — left alone\n", line);
+			continue;
+		}
+		if (win < 0) {
+			/* NOT EVIDENCE OF NO WINDOW. Stopping a box because
+			 * nothing could be asked would collect a running
+			 * application from under whoever is using it. */
+			printf("  %-16s no session to ask — left alone\n",
+			       line);
 			continue;
 		}
 		if (dry) {

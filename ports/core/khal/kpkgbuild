@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = khal
+version     = 0.14.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/k/khal/khal-$version.tar.gz
+sha256      = 2b51679d80662b2d65e757c509813bd72b496043d789839bfd970f0026da687d  khal-0.14.1.tar.gz
+sha256      = 05234308f919b6bcf3a14aea5f782bde19aa41209324ecde0bb5f4c272db51c5  khal-vendor-0.14.1.tar.xz
+description = A calendar over a vdir, on the grid
+homepage    = https://lostpackets.de/khal/
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = click click-log configobj icalendar python-dateutil pytz pyxdg six typing-extensions tzdata tzlocal urwid wcwidth flit-core poetry-core packaging pathspec calver tomlkit trove-classifiers vcs-versioning setuptools-scm pluggy hatchling hatch-vcs

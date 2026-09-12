@@ -19,7 +19,7 @@
 #
 # WHAT IT DOES NOT DO: recolour. The blobs go in wearing upstream's own
 # colours and libkicon tints them at load through kcol_remap — the wallpaper's
-# pipeline — so ONE atlas serves all four accents and `kdos theme amber`
+# pipeline — so ONE atlas serves all seven accents and `kdos theme amber`
 # retints it live. An atlas per accent would be four copies of eight megabytes
 # in git and a fifth the day somebody adds a scheme.
 #

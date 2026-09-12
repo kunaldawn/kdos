@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wiremix
+version     = 0.11.0
+release     = 1
+source      = https://github.com/tsowell/wiremix/archive/v$version.tar.gz
+sha256      = 62a7cace79c9af537e0917a6d4e5da66b2efe2b4abc5f08c0fbaed727acc8c9f  wiremix-0.11.0.tar.gz
+sha256      = b9ced0b576af188426f3e9c97d2acb1daadfa8c9d1c69ab9fe757f6b68cf056d  wiremix-vendor-0.11.0.tar.xz
+description = wiremix — a PipeWire mixer and routing panel for the terminal
+homepage    = https://github.com/tsowell/wiremix
+depends     = rust pipewire clang
+vendoring   = rust

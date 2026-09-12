@@ -15,14 +15,20 @@
  *   ║ ─────────────────────────────────────────────────────────────── ║
  *   ║ eth0                                       cable unplugged      ║
  *   ╟─────────────────────────────────────────────────────────────────╢
- *   ║ Enter join   f forget   r rescan   a wifi on/off   Esc          ║
+ *   ║ Enter join  f forget  c copy  a wifi off  Esc Close             ║
  *   ╚═════════════════════════════════════════════════════════════════╝
  *
- * WHAT WAS HERE BEFORE: `foot -e nmtui`. NetworkManager has been running on
- * this distro since it was a distro, with polkit configured and `wheel` given
- * admin rights, and the only way to reach it from the desktop was a terminal
- * with a curses program in it. That is the single largest daily-use gap on
- * this machine and it is not a missing dependency — it is a missing surface.
+ * A SURFACE, NOT A TERMINAL WITH `nmtui` IN IT. NetworkManager runs on this
+ * machine and answers D-Bus; what it lacked was somewhere to be seen from.
+ *
+ * EVERY WRITE HERE IS AUTHORISED BY polkit, AND ONLY BY THE SHIPPED RULES.
+ * There is no authentication agent on this system and there cannot be one —
+ * polkit has no way to see a session here, so a refusal is flat and raises no
+ * challenge for an agent to answer. `/etc/polkit-1/rules.d/50-kdos.rules`
+ * names the actions this file calls and grants them to `wheel`; without
+ * it, joining, forgetting, scanning and the wifi toggle are all refused and
+ * the status line is the only thing that says so. The reasoning is in
+ * `docs/kdos/03-architecture/security-model.md`.
  *
  * D-BUS, NEVER `nmcli`. Shelling out to a CLI to parse its output is how an
  * SSID with a space in it becomes two networks, and this program has no shell
@@ -40,12 +46,13 @@
  * per REFRESH, by (connected, saved, strength), and the selection is followed
  * by SSID rather than by index across a refresh.
  *
- * KNOWN LIMIT, STATED: there is no org.freedesktop.NetworkManager.SecretAgent
- * here, so the passphrase is written into the connection when it is created
- * and NetworkManager cannot come back and ASK for another one. A wrong
- * password fails the activation and is retried by joining again; 802.1X
- * enterprise wifi and a VPN with a one-time code still need `nmtui`. The agent
- * is the correct answer and it is a piece of work, not an oversight.
+ * THE PASSPHRASE TYPED HERE IS WRITTEN INTO THE PROFILE, AND EVERY LATER ONE
+ * IS ASKED FOR BY kdos-netagent. This surface joins a network it can see and
+ * has no way to be asked anything: NetworkManager raises a secret request
+ * against the registered agents, not against whichever program started the
+ * activation. So a key that has changed since, 802.1X enterprise wifi and a
+ * VPN one-time code are the agent's questions and never this window's, and a
+ * session running without kdos-netagent fails those activations in silence.
  * ---------------------------------
  */
 
@@ -79,6 +86,8 @@
 #define NM_IF_WL NM_SVC ".Device.Wireless"
 #define NM_IF_AP NM_SVC ".AccessPoint"
 #define NM_IF_CONN NM_SVC ".Settings.Connection"
+#define NM_IF_ACT NM_SVC ".Connection.Active"
+#define NM_IF_VPN NM_SVC ".VPN.Connection"
 
 #define NET_COLS 74
 #define NET_ROWS 24
@@ -104,6 +113,14 @@
 
 /* NM_DEVICE_TYPE */
 enum { NMDT_ETHERNET = 1, NMDT_WIFI = 2 };
+/* NM_WIFI_DEVICE_CAP_AP. Without the bit NetworkManager refuses an AP-mode
+ * activation outright, so the control is drawn as unavailable rather than
+ * offered and then refused with a message nobody can act on. */
+#define NM_WIFI_CAP_AP 0x40u
+/* _NM_802_11_MODE_AP, on Device.Wireless.Mode — the honest "the hotspot is up"
+ * signal. The fake access point NetworkManager publishes for a hotspot reports
+ * itself as INFRASTRUCTURE, so the AP list cannot answer it. */
+#define NM_WIFI_MODE_AP 3u
 /* NM_DEVICE_STATE, the few that matter to a person reading a list */
 enum {
 	NMDS_UNAVAILABLE = 20,
@@ -114,8 +131,18 @@ enum {
 struct net_dev {
 	char path[160];
 	char iface[32];
-	unsigned type, state;
+	unsigned type, state, wcaps, wmode;
 	char active_ap[160];
+	/*
+	 * THE ACCESS POINTS THIS RADIO SEES, BY OBJECT PATH, and there is no
+	 * other way to know. An AccessPoint is exported at
+	 * /org/freedesktop/NetworkManager/AccessPoint/<n> and a device at
+	 * /org/freedesktop/NetworkManager/Devices/<n>: the two share a prefix
+	 * and nothing more, so a path test cannot associate them. This list is
+	 * the association, and it arrives in the same reply.
+	 */
+	char aps[NET_MAX_AP][160];
+	int nap;
 };
 
 struct net_ap {
@@ -133,6 +160,31 @@ struct net_conn {
 	char id[64];
 	char type[40];
 	char ssid[64];
+	/* The ActiveConnection carrying this profile, or "" — the object that
+	 * DeactivateConnection takes and the only place its live state is. */
+	char active[160];
+	unsigned state;			/* NM_ACTIVE_CONNECTION_STATE */
+	unsigned vpn_state;		/* NM_VPN_CONNECTION_STATE, VPNs only */
+};
+
+/*
+ * WHAT KIND OF PROFILE IT IS, CACHED AGAINST ITS OBJECT PATH.
+ *
+ * `Settings.Connection` publishes only Unsaved, Flags and Filename — the type,
+ * the id and the uuid are not properties and are not in the ObjectManager
+ * reply at all. Telling a `vpn` from a `wireguard` from an `802-11-wireless`
+ * needs one GetSettings per profile, which needs no polkit but is a round trip.
+ *
+ * KEYED BY PATH BECAUSE `conns[]` IS REFILLED FROM SCRATCH EVERY REFRESH. An
+ * async reply lands after at least one such reset, so an index into conns[]
+ * would by then describe a different profile. A profile's type does not change
+ * while it exists, so a path seen before is never asked about again.
+ */
+struct conn_kind {
+	char path[160];
+	char type[40];
+	char id[64];
+	int asked;
 };
 
 static sd_bus *bus;
@@ -142,6 +194,33 @@ static struct net_ap aps[NET_MAX_AP];
 static int nap;
 static struct net_conn conns[NET_MAX_CONN];
 static int nconn;
+static struct conn_kind kinds[NET_MAX_CONN];
+static int nkind;
+/* GetSettings questions still outstanding. A dump has to wait for these as
+ * well as for the object list: they are ASKED at the moment the object list
+ * arrives, so a settle that watched only the list would stop exactly then. */
+static int kind_pending;
+
+/*
+ * The active connections, which arrive in the SAME ObjectManager reply — they
+ * are ordinary exported objects and this surface used to skip them. One is
+ * what DeactivateConnection takes, and its `Connection` property is the only
+ * link back to the profile that started it.
+ */
+struct net_act {
+	char path[160];
+	char conn[160];
+	/* The device it is on. A wifi activation has exactly one, and it is
+	 * the only way to find the activation that is running the hotspot —
+	 * the profile behind it is an ordinary wifi profile, not a tunnel. */
+	char dev[160];
+	unsigned state;
+	unsigned vpn_state;
+	int is_vpn;
+};
+
+static struct net_act acts[NET_MAX_CONN];
+static int nact;
 static int wifi_enabled = 1;
 static int pending;
 static char why[128];
@@ -149,15 +228,33 @@ static char status[128];
 
 /* ── rows: devices and their networks, in one list ─────────────────────── */
 
-enum { ROW_DEV = 0, ROW_AP };
+enum { ROW_DEV = 0, ROW_AP, ROW_CONN };
 
 struct row {
 	int kind;
 	int dev;			/* index into devs */
 	int ap;				/* index into aps, for ROW_AP */
+	int conn;			/* index into conns, for ROW_CONN */
+	/*
+	 * WHAT THE SELECTION FOLLOWS ACROSS A REFRESH, and it is qualified by
+	 * kind. The list is re-sorted by a signal strength that moves on its
+	 * own, so an index points at a different network every few seconds —
+	 * but a bare name is not enough either once a second kind is in the
+	 * list: a VPN may be called the same thing as an access point, and the
+	 * selection would jump between them. An access point is followed by
+	 * SSID and a profile by its object path, which is the only identity
+	 * NetworkManager guarantees unique.
+	 */
+	char key[176];
 };
 
-static struct row rows[NET_MAX_DEV + NET_MAX_AP];
+/*
+ * Every kind at once, and the device append is bounds-checked like the others.
+ * It was safe only because ndev is capped at eight; a third kind reading a
+ * third field makes an unchecked append a stack overwrite rather than a
+ * truncated list.
+ */
+static struct row rows[NET_MAX_DEV + NET_MAX_AP + NET_MAX_CONN];
 static int nrows;
 static int sel, top;
 /* Where the last frame put the list. The header band is two rows plus a rule,
@@ -167,13 +264,32 @@ static int list_y0 = 4, list_rows;
 /* comp.conf's `icons = no`, through --no-icons. Off is not a degraded mode:
  * it is what a tty draws. */
 static int icons_on = 1;
-static char sel_ssid[64];	/* what the selection FOLLOWS across a refresh */
+static char sel_key[176];	/* the selected row's `key`, followed across a refresh */
 
 /* ── the passphrase prompt ─────────────────────────────────────────────── */
 
 static int asking;		/* the prompt is up */
+static int asking_hotspot;	/* …and the answer starts a hotspot, not a join */
 static char pass[128];
 static char ask_ssid[64];
+
+/* ONE RUNG: the passphrase prompt. Esc in it abandons the join and Esc on the
+ * list closes the window. */
+static KtuiKeys keys;
+
+static int ask_up(void *user)
+{
+	(void)user;
+	return asking;
+}
+
+static void ask_cancel(void *user)
+{
+	(void)user;
+	asking = 0;
+	asking_hotspot = 0;
+	pass[0] = '\0';
+}
 
 /* ── sd-bus helpers ────────────────────────────────────────────────────── */
 
@@ -234,6 +350,34 @@ static int take_obj(sd_bus_message *m, const char *contents, char *out,
 		return 0;
 	if (sd_bus_message_read_basic(m, 'o', &s) >= 0 && s)
 		snprintf(out, n, "%s", s);
+	sd_bus_message_exit_container(m);
+	return 1;
+}
+
+/*
+ * An array of object paths into a fixed table, and the count with it. Anything
+ * past the table is dropped rather than wrapped: a truncated list shows fewer
+ * networks, and a wrapped one shows the wrong ones.
+ */
+static int take_ao(sd_bus_message *m, const char *contents,
+		   char out[][160], int cap, int *n)
+{
+	if (!contents || strcmp(contents, "ao"))
+		return 0;
+	if (sd_bus_message_enter_container(m, 'v', "ao") <= 0)
+		return 0;
+	*n = 0;
+	if (sd_bus_message_enter_container(m, 'a', "o") > 0) {
+		for (;;) {
+			const char *s = NULL;
+
+			if (sd_bus_message_read_basic(m, 'o', &s) <= 0)
+				break;
+			if (*n < cap && s)
+				snprintf(out[(*n)++], 160, "%s", s);
+		}
+		sd_bus_message_exit_container(m);
+	}
 	sd_bus_message_exit_container(m);
 	return 1;
 }
@@ -318,6 +462,53 @@ static void wl_prop(void *ctx, const char *key, sd_bus_message *m,
 	if (!strcmp(key, "ActiveAccessPoint") &&
 	    take_obj(m, c, d->active_ap, sizeof(d->active_ap)))
 		return;
+	if (!strcmp(key, "AccessPoints") &&
+	    take_ao(m, c, d->aps, NET_MAX_AP, &d->nap))
+		return;
+	/* Whether this radio can be an access point at all. Without the bit
+	 * NetworkManager refuses the activation outright, so the hotspot is
+	 * drawn as unavailable rather than offered and then refused. */
+	if (!strcmp(key, "WirelessCapabilities") && take_u32(m, c, &d->wcaps))
+		return;
+	/* 3 is AP mode, which is the honest "the hotspot is up" signal: the
+	 * profile that started it is an ordinary active connection and the
+	 * fake AP it publishes reports itself as infrastructure. */
+	if (!strcmp(key, "Mode") && take_u32(m, c, &d->wmode))
+		return;
+	sd_bus_message_skip(m, "v");
+}
+
+static void act_prop(void *ctx, const char *key, sd_bus_message *m,
+		     const char *c)
+{
+	struct net_act *a = ctx;
+
+	if (!strcmp(key, "Connection") &&
+	    take_obj(m, c, a->conn, sizeof(a->conn)))
+		return;
+	if (!strcmp(key, "State") && take_u32(m, c, &a->state))
+		return;
+	if (!strcmp(key, "Devices")) {
+		char d[1][160];
+		int n = 0;
+
+		if (take_ao(m, c, d, 1, &n)) {
+			if (n > 0)
+				snprintf(a->dev, sizeof(a->dev), "%s", d[0]);
+			return;
+		}
+	}
+	sd_bus_message_skip(m, "v");
+}
+
+static void vpn_prop(void *ctx, const char *key, sd_bus_message *m,
+		     const char *c)
+{
+	struct net_act *a = ctx;
+
+	a->is_vpn = 1;
+	if (!strcmp(key, "VpnState") && take_u32(m, c, &a->vpn_state))
+		return;
 	sd_bus_message_skip(m, "v");
 }
 
@@ -378,6 +569,8 @@ static void conn_prop(void *ctx, const char *key, sd_bus_message *m,
 }
 
 static int which_dev(const char *ap_path);
+static struct conn_kind *kind_find(const char *path);
+static void ask_kinds(void);
 
 static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 {
@@ -392,7 +585,7 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 		return 0;
 	}
 	why[0] = '\0';
-	ndev = nap = nconn = 0;
+	ndev = nap = nconn = nact = 0;
 
 	if (sd_bus_message_enter_container(reply, 'a', "{oa{sa{sv}}}") <= 0)
 		return 0;
@@ -411,6 +604,7 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 			struct net_dev *d = NULL;
 			struct net_ap *a = NULL;
 			struct net_conn *cn = NULL;
+			struct net_act *ac = NULL;
 
 			while (sd_bus_message_enter_container(reply, 'e',
 							      "sa{sv}") > 0) {
@@ -452,6 +646,24 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 							 obj);
 					}
 					read_props(reply, conn_prop, cn);
+				} else if ((!strcmp(iface, NM_IF_ACT) ||
+					    !strcmp(iface, NM_IF_VPN)) &&
+					   nact < NET_MAX_CONN) {
+					/* Both interfaces are on the SAME
+					 * object for a VPN, exactly as Device
+					 * and Device.Wireless are for a radio. */
+					if (!ac) {
+						ac = &acts[nact++];
+						memset(ac, 0, sizeof(*ac));
+						snprintf(ac->path,
+							 sizeof(ac->path), "%s",
+							 obj);
+					}
+					read_props(reply,
+						   !strcmp(iface, NM_IF_VPN)
+							   ? vpn_prop
+							   : act_prop,
+						   ac);
 				} else if (!strcmp(iface, NM_SVC)) {
 					read_props(reply, nm_prop, NULL);
 				} else {
@@ -465,9 +677,13 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	}
 	sd_bus_message_exit_container(reply);
 
-	/* An access point's object path is the wireless device's path plus
-	 * /AccessPoint/<n>, which is the only association the ObjectManager
-	 * reply carries — the alternative is a Get per AP. */
+	/*
+	 * WHICH RADIO SAW WHICH NETWORK, out of the device's own AccessPoints
+	 * list. The paths cannot answer it: an AccessPoint is exported under
+	 * /org/freedesktop/NetworkManager/AccessPoint/<n> and a device under
+	 * .../Devices/<n>, so a prefix test associates nothing and every
+	 * network is dropped from a list that still draws its radios.
+	 */
 	for (int i = 0; i < nap; i++)
 		aps[i].dev = which_dev(aps[i].path);
 
@@ -486,6 +702,8 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	 * it wrong costs a "saved" mark, not a wrong action: joining goes
 	 * through AddAndActivateConnection either way and NM reuses a matching
 	 * profile. */
+	ask_kinds();
+
 	for (int i = 0; i < nap; i++) {
 		aps[i].saved = 0;
 		for (int c = 0; c < nconn; c++) {
@@ -506,14 +724,119 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 
 static int which_dev(const char *ap_path)
 {
-	for (int d = 0; d < ndev; d++) {
-		size_t n = strlen(devs[d].path);
-		if (n && !strncmp(ap_path, devs[d].path, n) &&
-		    ap_path[n] == '/')
-			return d;
-	}
+	for (int d = 0; d < ndev; d++)
+		for (int i = 0; i < devs[d].nap; i++)
+			if (!strcmp(ap_path, devs[d].aps[i]))
+				return d;
 	return -1;
 }
+
+/* ── what kind of profile, asked once per path ─────────────────────────── */
+
+static struct conn_kind *kind_find(const char *path)
+{
+	for (int i = 0; i < nkind; i++)
+		if (!strcmp(kinds[i].path, path))
+			return &kinds[i];
+	return NULL;
+}
+
+/*
+ * The `connection` setting's `id` and `type` out of a GetSettings reply, and
+ * nothing else.
+ *
+ * THE REPLY IS ONE LEVEL DEEPER THAN ANYTHING ELSE HERE — a{sa{sv}} whose
+ * values are themselves a{sv} — and the dict-entry rule bites harder for it:
+ * every early exit must leave the entry it is inside, because an exit taken
+ * from within one closes the entry instead and every exit above it is then a
+ * level off, silently.
+ */
+static int settings_reply(sd_bus_message *m, void *userdata, sd_bus_error *e)
+{
+	struct conn_kind *k = userdata;
+
+	(void)e;
+	if (kind_pending > 0)
+		kind_pending--;
+	if (!k || sd_bus_message_is_method_error(m, NULL))
+		return 0;
+	if (sd_bus_message_enter_container(m, 'a', "{sa{sv}}") <= 0)
+		return 0;
+	while (sd_bus_message_enter_container(m, 'e', "sa{sv}") > 0) {
+		const char *setting = NULL;
+
+		if (sd_bus_message_read(m, "s", &setting) < 0) {
+			sd_bus_message_exit_container(m);
+			break;
+		}
+		if (strcmp(setting, "connection")) {
+			sd_bus_message_skip(m, "a{sv}");
+			sd_bus_message_exit_container(m);
+			continue;
+		}
+		if (sd_bus_message_enter_container(m, 'a', "{sv}") <= 0) {
+			sd_bus_message_exit_container(m);
+			break;
+		}
+		while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+			const char *key = NULL, *contents = NULL;
+			char t = 0;
+
+			if (sd_bus_message_read(m, "s", &key) < 0) {
+				sd_bus_message_exit_container(m);
+				break;
+			}
+			sd_bus_message_peek_type(m, &t, &contents);
+			if (!strcmp(key, "type"))
+				take_str(m, contents, k->type, sizeof(k->type));
+			else if (!strcmp(key, "id"))
+				take_str(m, contents, k->id, sizeof(k->id));
+			else
+				sd_bus_message_skip(m, "v");
+			sd_bus_message_exit_container(m);
+		}
+		sd_bus_message_exit_container(m);
+		sd_bus_message_exit_container(m);
+	}
+	sd_bus_message_exit_container(m);
+	return 0;
+}
+
+/* One question per profile this surface has never seen, and never a second. */
+static void ask_kinds(void)
+{
+	for (int c = 0; c < nconn && nkind < NET_MAX_CONN; c++) {
+		struct conn_kind *k = kind_find(conns[c].path);
+
+		if (k)
+			continue;
+		k = &kinds[nkind++];
+		memset(k, 0, sizeof(*k));
+		snprintf(k->path, sizeof(k->path), "%s", conns[c].path);
+		k->asked = 1;
+		if (!bus)
+			continue;
+		if (sd_bus_call_method_async(bus, NULL, NM_SVC, k->path,
+					     NM_IF_CONN, "GetSettings",
+					     settings_reply, k, NULL) >= 0)
+			kind_pending++;
+	}
+}
+
+/*
+ * A tunnel is a profile with no place in the radio list: NetworkManager calls
+ * one `vpn` and the other `wireguard`, and they are not the same thing —
+ * a VPN runs a plugin service and a WireGuard profile realises a DEVICE — but
+ * to a person choosing one they are the same row.
+ */
+static int conn_is_tunnel(const struct net_conn *c)
+{
+	return !strcmp(c->type, "vpn") || !strcmp(c->type, "wireguard");
+}
+
+/* The tunnel is up, and not on its way down — see conn_state_word for why the
+ * two have to be told apart. */
+static int conn_is_up(const struct net_conn *c);
 
 static void refresh(void)
 {
@@ -552,24 +875,85 @@ static int cmp_ap(const void *pa, const void *pb)
 	return strcasecmp(a->ssid, b->ssid);
 }
 
+#define NROWS_MAX ((int)(sizeof(rows) / sizeof(rows[0])))
+
+/*
+ * A row is written WHOLE. They used to be filled field by field, so a device
+ * row carried whatever `.ap` the previous build left in that slot — harmless
+ * only while nothing read it, and a wrong-target action the moment a third
+ * kind reads a third field.
+ */
+static struct row *row_push(int kind, int dev)
+{
+	struct row *r;
+
+	if (nrows >= NROWS_MAX)
+		return NULL;
+	r = &rows[nrows++];
+	memset(r, 0, sizeof(*r));
+	r->kind = kind;
+	r->dev = dev;
+	r->ap = -1;
+	r->conn = -1;
+	return r;
+}
+
+/*
+ * THE TYPE AND THE LIVE STATE, JOINED ONTO EACH PROFILE — here rather than
+ * where the reply is parsed, because the type arrives on a LATER reply than the
+ * one that listed the profile. GetSettings is asked when a path is first seen;
+ * joining at parse time would leave the answer unused until the next refresh
+ * five seconds later, and a `--dump` would never see it at all.
+ */
+static void conn_sync(void)
+{
+	for (int c = 0; c < nconn; c++) {
+		const struct conn_kind *k = kind_find(conns[c].path);
+
+		conns[c].type[0] = '\0';
+		conns[c].active[0] = '\0';
+		conns[c].state = 0;
+		conns[c].vpn_state = 0;
+		if (k) {
+			snprintf(conns[c].type, sizeof(conns[c].type), "%s",
+				 k->type);
+			if (k->id[0])
+				snprintf(conns[c].id, sizeof(conns[c].id), "%s",
+					 k->id);
+		}
+		for (int i = 0; i < nact; i++)
+			if (!strcmp(acts[i].conn, conns[c].path)) {
+				snprintf(conns[c].active,
+					 sizeof(conns[c].active), "%s",
+					 acts[i].path);
+				conns[c].state = acts[i].state;
+				conns[c].vpn_state = acts[i].vpn_state;
+				break;
+			}
+	}
+}
+
 static void build_rows(void)
 {
 	nrows = 0;
+	conn_sync();
 	qsort(aps, (size_t)nap, sizeof(aps[0]), cmp_ap);
 
 	for (int d = 0; d < ndev; d++) {
+		struct row *r;
+
 		if (devs[d].type != NMDT_WIFI && devs[d].type != NMDT_ETHERNET)
 			continue;
-		rows[nrows].kind = ROW_DEV;
-		rows[nrows].dev = d;
-		nrows++;
+		if (!(r = row_push(ROW_DEV, d)))
+			break;
+		snprintf(r->key, sizeof(r->key), "d:%s", devs[d].path);
 		if (devs[d].type != NMDT_WIFI)
 			continue;
 		/* An SSID can be broadcast by several radios; one row per name
 		 * is what a person is choosing between. */
-		for (int i = 0; i < nap && nrows < (int)(sizeof(rows) /
-							 sizeof(rows[0]));
-		     i++) {
+		for (int i = 0; i < nap; i++) {
+			struct row *ar;
+
 			if (aps[i].dev != d || !aps[i].ssid[0])
 				continue;
 			int dup = 0;
@@ -579,26 +963,51 @@ static void build_rows(void)
 					dup = 1;
 			if (dup)
 				continue;
-			rows[nrows].kind = ROW_AP;
-			rows[nrows].dev = d;
-			rows[nrows].ap = i;
-			nrows++;
+			if (!(ar = row_push(ROW_AP, d)))
+				break;
+			ar->ap = i;
+			snprintf(ar->key, sizeof(ar->key), "a:%s",
+				 aps[i].ssid);
 		}
 	}
 
-	/* Follow the selection by NAME across a refresh: the list is re-sorted
-	 * by a signal strength that moves on its own, and an index would point
-	 * at a different network every few seconds. */
-	if (sel_ssid[0]) {
+	/*
+	 * THE TUNNELS, AFTER THE RADIOS. A VPN and a WireGuard profile are
+	 * saved connections rather than anything the machine can see, so they
+	 * have no device to sit under and no signal to sort by: they are one
+	 * section at the end, in the order NetworkManager listed them, which
+	 * does not move.
+	 */
+	for (int c = 0; c < nconn; c++) {
+		struct row *r;
+
+		if (!conn_is_tunnel(&conns[c]))
+			continue;
+		if (!(r = row_push(ROW_CONN, -1)))
+			break;
+		r->conn = c;
+		snprintf(r->key, sizeof(r->key), "c:%s", conns[c].path);
+	}
+
+	if (sel_key[0]) {
 		for (int i = 0; i < nrows; i++)
-			if (rows[i].kind == ROW_AP &&
-			    !strcmp(aps[rows[i].ap].ssid, sel_ssid)) {
+			if (!strcmp(rows[i].key, sel_key)) {
 				sel = i;
 				return;
 			}
 	}
 	if (sel >= nrows)
 		sel = nrows ? nrows - 1 : 0;
+}
+
+/* Both the keyboard and the pointer move the selection, and they used to carry
+ * a verbatim copy of this each. One of the two was always going to be missed. */
+static void select_row(int i)
+{
+	sel = i;
+	sel_key[0] = '\0';
+	if (i >= 0 && i < nrows)
+		snprintf(sel_key, sizeof(sel_key), "%s", rows[i].key);
 }
 
 /* ── actions ───────────────────────────────────────────────────────────── */
@@ -666,6 +1075,23 @@ static int append_sv_str(sd_bus_message *m, const char *k, const char *v)
 	return sd_bus_message_close_container(m);
 }
 
+static int append_sv_bool(sd_bus_message *m, const char *k, int v)
+{
+	int r = sd_bus_message_open_container(m, 'e', "sv");
+
+	if (r < 0)
+		return r;
+	if ((r = sd_bus_message_append_basic(m, 's', k)) < 0)
+		return r;
+	if ((r = sd_bus_message_open_container(m, 'v', "b")) < 0)
+		return r;
+	if ((r = sd_bus_message_append_basic(m, 'b', &v)) < 0)
+		return r;
+	if ((r = sd_bus_message_close_container(m)) < 0)
+		return r;
+	return sd_bus_message_close_container(m);
+}
+
 static int append_sv_ay(sd_bus_message *m, const char *k, const void *d,
 			size_t n)
 {
@@ -715,6 +1141,24 @@ static void join_new(const struct net_ap *a, const char *psk)
 	sd_bus_message_open_container(m, 'a', "{sv}");
 	append_sv_str(m, "id", a->ssid);
 	append_sv_str(m, "type", "802-11-wireless");
+	/*
+	 * NO `permissions` KEY, SO THIS IS A SYSTEM CONNECTION — and on this
+	 * build that is not a preference, it is the only kind that works.
+	 *
+	 * NetworkManager decides a profile is VISIBLE by asking its session
+	 * monitor whether each user named in `permissions` has a session. This
+	 * build has none: it is compiled `-Dsession_tracking=no` because there
+	 * is no logind and no ConsoleKit here, so that call is a literal
+	 * `return FALSE`. A profile carrying `user:NAME:` is therefore
+	 * permanently invisible, and an invisible profile has autoconnect
+	 * blocked — the wifi joined here would never come back after a reboot.
+	 *
+	 * The cost is that `forget` and reading the passphrase back are gated
+	 * on `settings.modify.system` rather than `settings.modify.own`, which
+	 * is why 50-kdos.rules grants it. That grant hands `wheel` nothing it
+	 * did not have: `%wheel ALL=(ALL) ALL` is in the shipped sudoers, and
+	 * the passphrases are files under /etc/NetworkManager.
+	 */
 	sd_bus_message_close_container(m);
 	sd_bus_message_close_container(m);
 
@@ -749,6 +1193,15 @@ out:
 	sd_bus_message_unref(m);
 }
 
+static void forget_conn(const struct net_conn *c)
+{
+	if (!bus || !c->path[0])
+		return;
+	sd_bus_call_method_async(bus, NULL, NM_SVC, c->path, NM_IF_CONN,
+				 "Delete", action_reply, NULL, NULL);
+	set_status("forgot %s", c->id);
+}
+
 static void forget(const struct net_ap *a)
 {
 	if (!bus || !a->saved || !a->conn[0])
@@ -756,6 +1209,195 @@ static void forget(const struct net_ap *a)
 	sd_bus_call_method_async(bus, NULL, NM_SVC, a->conn, NM_IF_CONN,
 				 "Delete", action_reply, NULL, NULL);
 	set_status("forgot %s", a->ssid);
+}
+
+/*
+ * A TUNNEL IS A TOGGLE, NOT AN "Enter joins". NetworkManager refuses to
+ * re-activate a connection that is already active — CONNECTION_ALREADY_ACTIVE,
+ * and its own source calls that a bug — so the row has to dispatch on whether
+ * an ActiveConnection carrying this profile exists.
+ *
+ * THE DEVICE ARGUMENT IS "/", AND THE INTROSPECTION XML IS WRONG ABOUT IT. The
+ * documentation says the parameter is ignored for a VPN; NetworkManager errors
+ * with "The device doesn't match the active connection" whenever a device is
+ * passed that is not the one carrying the primary connection — so copying the
+ * access point's shape here works until ethernet and wifi are up at once.
+ * With "/" NetworkManager picks the primary connection itself, and says
+ * "Could not find source connection" when there is none.
+ */
+static void tunnel_toggle(const struct net_conn *c)
+{
+	if (!bus)
+		return;
+	if (conn_is_up(c)) {
+		sd_bus_call_method_async(bus, NULL, NM_SVC, NM_OBJ, NM_SVC,
+					 "DeactivateConnection", action_reply,
+					 NULL, "o", c->active);
+		set_status("disconnecting %s…", c->id);
+		return;
+	}
+	sd_bus_call_method_async(bus, NULL, NM_SVC, NM_OBJ, NM_SVC,
+				 "ActivateConnection", action_reply, NULL,
+				 "ooo", c->path, "/", "/");
+	set_status("connecting %s…", c->id);
+}
+
+/*
+ * Forget whatever the selection is, which is a Delete on the profile either
+ * way: an access point's saved connection, or the tunnel's own. One function
+ * because two controls meaning the same verb must not mean two different
+ * things — the same rule the rescan button already keeps.
+ */
+static void forget_selected(void)
+{
+	if (sel < 0 || sel >= nrows)
+		return;
+	if (rows[sel].kind == ROW_AP)
+		forget(&aps[rows[sel].ap]);
+	else if (rows[sel].kind == ROW_CONN)
+		forget_conn(&conns[rows[sel].conn]);
+}
+
+/* ── the hotspot ───────────────────────────────────────────────────────── */
+
+/* The radio that can be an access point, or -1. */
+static int hotspot_dev(void)
+{
+	for (int d = 0; d < ndev; d++)
+		if (devs[d].type == NMDT_WIFI && (devs[d].wcaps & NM_WIFI_CAP_AP))
+			return d;
+	return -1;
+}
+
+static int hotspot_up(void)
+{
+	int d = hotspot_dev();
+
+	return d >= 0 && devs[d].wmode == NM_WIFI_MODE_AP;
+}
+
+/*
+ * Share this machine's network over its own radio.
+ *
+ * `ipv4.method = "shared"` is what makes it a hotspot rather than an unrouted
+ * AP: NetworkManager takes an address out of its own pool, starts dnsmasq for
+ * DHCP and DNS, and installs an nftables table of its own for the NAT. That
+ * table is `nm-shared-<iface>`, and /etc/nftables.conf has to leave room for it
+ * — see the comment there.
+ *
+ * NO band AND NO channel. Both are optional for AP mode and NetworkManager
+ * chooses a frequency the radio actually supports, seeded from the SSID so it
+ * is stable; sending a channel WITHOUT a band is a hard rejection, and sending
+ * a band alone narrows the radio for no gain.
+ *
+ * `key-mgmt = "wpa-psk"` AND NOT `"sae"`. The supplicant adds SAE to an AP's
+ * key management by itself where it can, which is WPA2 and WPA3 from one
+ * value; asking for `sae` forces protected management frames and locks out
+ * every WPA2-only client.
+ *
+ * autoconnect = false, because NetworkManager always allows autoconnect for an
+ * AP profile: a saved hotspot left on would take the radio at the next boot
+ * instead of joining the network the machine is normally on.
+ */
+static void hotspot_on(const char *psk)
+{
+	sd_bus_message *m = NULL;
+	int d = hotspot_dev();
+	char id[80];
+	const char *ssid = "KDOS";
+
+	if (!bus || d < 0)
+		return;
+	snprintf(id, sizeof(id), "%s hotspot", ssid);
+	if (sd_bus_message_new_method_call(bus, &m, NM_SVC, NM_OBJ, NM_SVC,
+					   "AddAndActivateConnection") < 0)
+		return;
+	if (sd_bus_message_open_container(m, 'a', "{sa{sv}}") < 0)
+		goto out;
+
+	if (sd_bus_message_open_container(m, 'e', "sa{sv}") < 0)
+		goto out;
+	sd_bus_message_append_basic(m, 's', "connection");
+	sd_bus_message_open_container(m, 'a', "{sv}");
+	append_sv_str(m, "id", id);
+	append_sv_str(m, "type", "802-11-wireless");
+	append_sv_bool(m, "autoconnect", 0);
+	sd_bus_message_close_container(m);
+	sd_bus_message_close_container(m);
+
+	if (sd_bus_message_open_container(m, 'e', "sa{sv}") < 0)
+		goto out;
+	sd_bus_message_append_basic(m, 's', "802-11-wireless");
+	sd_bus_message_open_container(m, 'a', "{sv}");
+	append_sv_ay(m, "ssid", ssid, strlen(ssid));
+	append_sv_str(m, "mode", "ap");
+	sd_bus_message_close_container(m);
+	sd_bus_message_close_container(m);
+
+	if (sd_bus_message_open_container(m, 'e', "sa{sv}") < 0)
+		goto out;
+	sd_bus_message_append_basic(m, 's', "802-11-wireless-security");
+	sd_bus_message_open_container(m, 'a', "{sv}");
+	append_sv_str(m, "key-mgmt", "wpa-psk");
+	append_sv_str(m, "psk", psk);
+	sd_bus_message_close_container(m);
+	sd_bus_message_close_container(m);
+
+	/*
+	 * SPELLED OUT, unlike join_new's deliberately partial dict. With no
+	 * [ipv4] setting NetworkManager normalises one in with method `auto` —
+	 * a hotspot running a DHCP CLIENT on its own access point, which never
+	 * comes up.
+	 */
+	if (sd_bus_message_open_container(m, 'e', "sa{sv}") < 0)
+		goto out;
+	sd_bus_message_append_basic(m, 's', "ipv4");
+	sd_bus_message_open_container(m, 'a', "{sv}");
+	append_sv_str(m, "method", "shared");
+	sd_bus_message_close_container(m);
+	sd_bus_message_close_container(m);
+
+	if (sd_bus_message_open_container(m, 'e', "sa{sv}") < 0)
+		goto out;
+	sd_bus_message_append_basic(m, 's', "ipv6");
+	sd_bus_message_open_container(m, 'a', "{sv}");
+	append_sv_str(m, "method", "ignore");
+	sd_bus_message_close_container(m);
+	sd_bus_message_close_container(m);
+
+	if (sd_bus_message_close_container(m) < 0)
+		goto out;
+	/* "/" for the access point: AP mode has none to point at. */
+	if (sd_bus_message_append(m, "oo", devs[d].path, "/") < 0)
+		goto out;
+	sd_bus_call_async(bus, NULL, m, action_reply, NULL, NET_TIMEOUT_US);
+	set_status("starting the hotspot on %s…", devs[d].iface);
+out:
+	sd_bus_message_unref(m);
+}
+
+/*
+ * DeactivateConnection, never Device.Disconnect. Disconnect marks the DEVICE
+ * autoconnect-blocked, so after turning the hotspot off the radio would not
+ * come back to the saved network at all and nothing would say why.
+ */
+static void hotspot_off(void)
+{
+	int d = hotspot_dev();
+
+	if (!bus || d < 0)
+		return;
+	for (int i = 0; i < nact; i++)
+		if (!strcmp(acts[i].dev, devs[d].path)) {
+			sd_bus_call_method_async(bus, NULL, NM_SVC, NM_OBJ,
+						 NM_SVC, "DeactivateConnection",
+						 action_reply, NULL, "o",
+						 acts[i].path);
+			set_status("stopping the hotspot on %s…",
+				   devs[d].iface);
+			return;
+		}
+	set_status("nothing is running on %s", devs[d].iface);
 }
 
 static void rescan(int d)
@@ -830,6 +1472,49 @@ static const char *dev_state_word(const struct net_dev *d)
 	return "connecting…";
 }
 
+/* NM_ACTIVE_CONNECTION_STATE and NM_VPN_CONNECTION_STATE, the values a person
+ * can be told apart. */
+enum { NMAC_ACTIVATING = 1, NMAC_ACTIVATED = 2, NMAC_DEACTIVATING = 3 };
+enum { NMVPN_NEED_AUTH = 2, NMVPN_CONNECT = 3, NMVPN_IP_CONFIG = 4,
+       NMVPN_ACTIVATED = 5, NMVPN_FAILED = 6 };
+
+/*
+ * WHAT A TUNNEL IS DOING, AND WHY THE VPN STATE IS NOT ASKED FIRST.
+ * NetworkManager reports a VPN that is TEARING DOWN as still ACTIVATED, to
+ * preserve an API it cannot change — so a row drawn from VpnState alone says
+ * "connected" for the whole of a disconnect. Connection.Active's own state is
+ * honest there, so it is consulted first and the VPN's finer states only after.
+ */
+static const char *conn_state_word(const struct net_conn *c)
+{
+	if (!c->active[0])
+		return "saved";
+	if (c->state == NMAC_DEACTIVATING)
+		return "disconnecting…";
+	switch (c->vpn_state) {
+	case NMVPN_NEED_AUTH:
+		return "asking";
+	case NMVPN_CONNECT:
+		return "connecting…";
+	case NMVPN_IP_CONFIG:
+		return "addressing…";
+	case NMVPN_FAILED:
+		return "failed";
+	case NMVPN_ACTIVATED:
+		return "connected";
+	default:
+		break;
+	}
+	return c->state == NMAC_ACTIVATED	? "connected"
+	       : c->state == NMAC_ACTIVATING	? "connecting…"
+						: "saved";
+}
+
+static int conn_is_up(const struct net_conn *c)
+{
+	return c->active[0] && c->state != NMAC_DEACTIVATING;
+}
+
 /*
  * The header's subject line: what this machine's networking is DOING, in one
  * sentence, at the top of the window rather than somewhere in the list. The
@@ -865,12 +1550,25 @@ static int net_buttons(int w, int row)
 {
 	const struct row *r = sel >= 0 && sel < nrows ? &rows[sel] : NULL;
 	const struct net_ap *a = r && r->kind == ROW_AP ? &aps[r->ap] : NULL;
+	const struct net_conn *c = r && r->kind == ROW_CONN ? &conns[r->conn]
+							    : NULL;
 	struct kch_button b[NB_N];
 
-	b[NB_CONNECT].label = a && a->active ? "Disconnect" : "Connect";
-	b[NB_CONNECT].enabled = a != NULL;
+	/*
+	 * NO SIXTH BUTTON, and that is a measurement rather than a preference.
+	 * kch_buttons drops from the right until the row fits and returns the
+	 * column it took, which is what the status line and the hint row are
+	 * clipped to. At seventy-four columns the five already leave eleven,
+	 * and a sixth takes the left footer entirely — F1, every key hint, and
+	 * every polkit refusal, which on a system with no authentication agent
+	 * is the ONLY way a denial is ever reported.
+	 */
+	b[NB_CONNECT].label = (a && a->active) || (c && conn_is_up(c))
+				      ? "Disconnect"
+				      : "Connect";
+	b[NB_CONNECT].enabled = a != NULL || c != NULL;
 	b[NB_FORGET].label = "Forget";
-	b[NB_FORGET].enabled = a && a->saved;
+	b[NB_FORGET].enabled = (a && a->saved) || c != NULL;
 	b[NB_RESCAN].label = "Rescan";
 	b[NB_RESCAN].enabled = 1;
 	b[NB_WIFI].label = wifi_enabled ? "Wi-Fi Off" : "Wi-Fi On";
@@ -971,6 +1669,38 @@ static void draw_frame(void)
 			continue;
 		}
 
+		if (r->kind == ROW_CONN) {
+			const struct net_conn *c = &conns[r->conn];
+			const char *st = conn_state_word(c);
+			int sw = ktui_utf8_width(st) + 1;
+			int kindmax = w - 2 - sw - 42;
+
+			ktui_draw_fill(krect(1, y, w - 2, 1), bg);
+			/*
+			 * AT COLUMN TWO, WHERE THE DEVICES ARE, and not
+			 * indented like an access point. A tunnel hangs off no
+			 * radio; indenting one puts it visually under
+			 * whichever device happened to be listed last.
+			 */
+			ktui_draw_text(2, y, 34, c->id[0] ? c->id : c->path,
+				       fg, bg, KT_A_NONE);
+			/* Whole or not at all, for the reason the security
+			 * word on an access-point row is: `wiregu` is not an
+			 * abbreviation of anything. */
+			if (kindmax > 9)
+				kindmax = 9;
+			if (kindmax >= (int)strlen(c->type))
+				ktui_draw_text(42, y, kindmax, c->type,
+					       on ? KT_SURFACE : KT_MID, bg,
+					       KT_A_NONE);
+			ktui_draw_text_right(0, y, w - 2, st,
+					     on		    ? KT_SURFACE
+					     : conn_is_up(c) ? KT_ACCENT
+							     : KT_MID,
+					     bg, KT_A_NONE);
+			continue;
+		}
+
 		const struct net_ap *a = &aps[r->ap];
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
 		/* The mark is the SIGNAL, not a generic wifi icon: it is the
@@ -982,17 +1712,44 @@ static void draw_frame(void)
 		else
 			ktui_draw_textf(36, y, 4, fg, bg, KT_A_NONE, "%3u%%",
 					a->strength);
-		ktui_draw_text(42, y, 6,
-			       ap_secure(a) ? (a->rsn ? "WPA2" : "WPA") : "open",
-			       on ? KT_SURFACE : ap_secure(a) ? KT_MID : KT_WARN,
-			       bg, KT_A_NONE);
-		if (a->active)
-			ktui_draw_text(50, y, 12, "connected",
-				       on ? KT_SURFACE : KT_ACCENT, bg,
-				       KT_A_NONE);
-		else if (a->saved)
-			ktui_draw_text(50, y, 12, "saved",
-				       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
+		/*
+		 * THE STATE WORD IS RIGHT-ALIGNED, like the device row's, and
+		 * not placed at a fixed column. ktui_draw_text clips to the
+		 * CELL BUFFER and not to the frame, so a fixed x of 50 with a
+		 * width of 12 wrote over the box's right border on the
+		 * fifty-two-column popup — the word truncated and the border
+		 * gone with it.
+		 */
+		const char *state = a->active ? "connected"
+				  : a->saved  ? "saved"
+					      : NULL;
+		int sw = state ? ktui_utf8_width(state) + 1 : 0;
+		/*
+		 * AND THE SECURITY WORD IS DRAWN WHOLE OR NOT AT ALL, because
+		 * it is the least important thing on the row and a truncated
+		 * one reads as a different standard: `WPA` is what this prints
+		 * for a network with no RSN, so a clipped `WPA2` is a lie
+		 * rather than an abbreviation. Four is the longest of the
+		 * three words it can be.
+		 */
+		int secmax = w - 2 - sw - 42;
+
+		if (secmax > 6)
+			secmax = 6;
+		if (secmax >= 4)
+			ktui_draw_text(42, y, secmax,
+				       ap_secure(a) ? (a->rsn ? "WPA2" : "WPA")
+						    : "open",
+				       on	     ? KT_SURFACE
+				       : ap_secure(a) ? KT_MID
+						      : KT_WARN,
+				       bg, KT_A_NONE);
+		if (state)
+			ktui_draw_text_right(0, y, w - 2, state,
+					     on	       ? KT_SURFACE
+					     : a->active ? KT_ACCENT
+							 : KT_MID,
+					     bg, KT_A_NONE);
 	}
 
 	/* ── the footer ── */
@@ -1006,6 +1763,10 @@ static void draw_frame(void)
 			masked[i] = '*';
 		masked[n] = '_';
 		masked[n + 1] = '\0';
+		/* The field owns the row whole; the pool is still drained,
+		 * because a frame that skipped the call would carry its hints
+		 * into the next one. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
 		ktui_draw_textf(2, h - 2, w - 4, KT_TEXT, KT_BG, KT_A_NONE,
 				"passphrase for %s: %s", ask_ssid, masked);
 	} else {
@@ -1029,15 +1790,45 @@ static void draw_frame(void)
 		 * another. A message is different: it is what the user just
 		 * did, so it takes whatever room there is.
 		 */
-		static const char HINT[] = "Enter join   f forget   c copy   "
-					   "r rescan   Esc";
 		int room = bx - 3;
-		if (status[0] ? room >= 8
-			      : room >= (int)ktui_utf8_width(HINT))
-			ktui_draw_text(2, h - 2, room,
-				       status[0] ? status : HINT,
-				       status[0] ? KT_MID : KT_DIM, KT_BG,
-				       KT_A_NONE);
+		const struct row *sr = sel >= 0 && sel < nrows ? &rows[sel]
+							      : NULL;
+		const struct net_ap *sa = sr && sr->kind == ROW_AP
+						  ? &aps[sr->ap]
+						  : NULL;
+		const struct net_conn *sc = sr && sr->kind == ROW_CONN
+						    ? &conns[sr->conn]
+						    : NULL;
+
+		if (status[0]) {
+			ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+			if (room >= 8)
+				ktui_draw_text(2, h - 2, room, status, KT_MID,
+					       KT_BG, KT_A_NONE);
+		} else {
+			/* An ACTIVE network gets no Enter hint: joining it
+			 * answers "already on", so naming the key would
+			 * advertise one that does nothing. */
+			ktui_hint_if(sa && !sa->active, "Enter", "join");
+			ktui_hint_if(sr && sr->kind == ROW_DEV, "Enter",
+				     "rescan");
+			ktui_hint_if(sc != NULL, "Enter",
+				     sc && conn_is_up(sc) ? "disconnect"
+							  : "connect");
+			ktui_hint_if((sa && sa->saved) || sc != NULL, "f",
+				     "forget");
+			ktui_hint_if(sa != NULL, "c", "copy");
+			ktui_hint_if(hotspot_dev() >= 0, "h",
+				     hotspot_up() ? "hotspot off"
+						  : "hotspot");
+			ktui_hint_if(have_wifi, "a",
+				     wifi_enabled ? "wifi off" : "wifi on");
+			ktui_hint("Esc", ktui_esc_verb(&keys));
+			/* UNCONDITIONALLY, even where `room` is negative: the
+			 * popup's button bar can start at column two, and the
+			 * row is what clears the pool. */
+			ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_BG);
+		}
 	}
 	ktui_draw_flush();
 }
@@ -1050,6 +1841,10 @@ static void activate_row(void)
 		return;
 	if (rows[sel].kind == ROW_DEV) {
 		rescan(rows[sel].dev);
+		return;
+	}
+	if (rows[sel].kind == ROW_CONN) {
+		tunnel_toggle(&conns[rows[sel].conn]);
 		return;
 	}
 	struct net_ap *a = &aps[rows[sel].ap];
@@ -1074,15 +1869,13 @@ static void step(int d)
 {
 	if (!nrows)
 		return;
-	sel += d;
-	if (sel < 0)
-		sel = nrows - 1;
-	if (sel >= nrows)
-		sel = 0;
-	sel_ssid[0] = '\0';
-	if (rows[sel].kind == ROW_AP)
-		snprintf(sel_ssid, sizeof(sel_ssid), "%s",
-			 aps[rows[sel].ap].ssid);
+	int i = sel + d;
+
+	if (i < 0)
+		i = nrows - 1;
+	if (i >= nrows)
+		i = 0;
+	select_row(i);
 }
 
 static void settle(int ms)
@@ -1090,11 +1883,13 @@ static void settle(int ms)
 	/* Connect, ask, and wait out the reply — a dump that drew before the
 	 * answer arrived would report a machine with no networks because it
 	 * asked three milliseconds ago. The same settle audio.c needs. */
-	for (int i = 0; i < ms / 10 && pending; i++) {
-		sd_bus_process(bus, NULL);
+	for (int i = 0; i < ms / 10 && (pending || kind_pending); i++) {
+		while (sd_bus_process(bus, NULL) > 0)
+			;
 		usleep(10000);
 	}
-	sd_bus_process(bus, NULL);
+	while (sd_bus_process(bus, NULL) > 0)
+		;
 }
 
 int net_main(int argc, char **argv)
@@ -1165,7 +1960,7 @@ int net_main(int argc, char **argv)
 	 * middle of using it.
 	 */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -1176,10 +1971,10 @@ int net_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 52 : NET_COLS,
 		.rows = popup ? 16 : NET_ROWS,
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -1196,21 +1991,26 @@ int net_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-net: no compositor or no layer-shell\n");
 		return 1;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	/* AFTER kdisp_init: the icon layer needs the cell size and the output
 	 * scale, neither of which exists until the surface does. */
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "net";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Cancel", ask_up, ask_cancel, NULL);
 
 	time_t last = 0;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		time_t now = time(NULL);
 		if (now - last >= NET_REFRESH_S) {
@@ -1244,14 +2044,8 @@ int net_main(int argc, char **argv)
 				      ev.my < list_y0 + list_rows &&
 				      idx >= 0 && idx < nrows;
 			if (ev.press == KT_MP_DRAG) {
-				if (in_list) {
-					sel = idx;
-					sel_ssid[0] = '\0';
-					if (rows[sel].kind == ROW_AP)
-						snprintf(sel_ssid,
-							 sizeof(sel_ssid), "%s",
-							 aps[rows[sel].ap].ssid);
-				}
+				if (in_list)
+					select_row(idx);
 				/* The button bar lights under the pointer —
 				 * see kch_hover. */
 				kch_hover(ev.mx, ev.my);
@@ -1278,9 +2072,7 @@ int net_main(int argc, char **argv)
 					activate_row();
 					break;
 				case NB_FORGET:
-					if (sel < nrows &&
-					    rows[sel].kind == ROW_AP)
-						forget(&aps[rows[sel].ap]);
+					forget_selected();
 					break;
 				case NB_RESCAN:
 					/* The device the selection is under —
@@ -1304,17 +2096,37 @@ int net_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		if (asking) {
-			if (ev.key == KT_K_ESC) {
+			if (ev.key == KT_K_ENTER) {
+				if (asking_hotspot) {
+					/* WPA rejects anything shorter, and
+					 * NetworkManager would take it and
+					 * fail the activation instead. */
+					if (strlen(pass) >= 8)
+						hotspot_on(pass);
+					else
+						set_status("a hotspot needs "
+							   "eight characters "
+							   "or more%s", "");
+				} else {
+					for (int i = 0; i < nap; i++)
+						if (!strcmp(aps[i].ssid,
+							    ask_ssid)) {
+							join_new(&aps[i], pass);
+							break;
+						}
+				}
 				asking = 0;
-				pass[0] = '\0';
-			} else if (ev.key == KT_K_ENTER) {
-				for (int i = 0; i < nap; i++)
-					if (!strcmp(aps[i].ssid, ask_ssid)) {
-						join_new(&aps[i], pass);
-						break;
-					}
-				asking = 0;
+				asking_hotspot = 0;
 				/* The passphrase does not stay in memory for
 				 * the life of the surface. */
 				memset(pass, 0, sizeof(pass));
@@ -1333,8 +2145,6 @@ int net_main(int argc, char **argv)
 		}
 
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			step(-1);
 			break;
@@ -1345,8 +2155,27 @@ int net_main(int argc, char **argv)
 			activate_row();
 			break;
 		case 'f':
-			if (sel < nrows && rows[sel].kind == ROW_AP)
-				forget(&aps[rows[sel].ap]);
+			forget_selected();
+			break;
+		case 'h':
+			/*
+			 * ONE KEY, BOTH DIRECTIONS, because the radio can only
+			 * be in one of the two states and a separate "off"
+			 * would be a control that does nothing most of the
+			 * time.
+			 */
+			if (hotspot_dev() < 0)
+				set_status("no radio here can be an access "
+					   "point%s", "");
+			else if (hotspot_up())
+				hotspot_off();
+			else {
+				asking = 1;
+				asking_hotspot = 1;
+				pass[0] = '\0';
+				snprintf(ask_ssid, sizeof(ask_ssid), "%s",
+					 "the hotspot");
+			}
 			break;
 		case 'c':
 			/* The SSID, on the clipboard. Small, and the reason
@@ -1354,7 +2183,7 @@ int net_main(int argc, char **argv)
 			 * the sort of thing a person retypes into a phone. */
 			if (sel < nrows && rows[sel].kind == ROW_AP) {
 				const char *id = aps[rows[sel].ap].ssid;
-				if (kwl_copy(id, strlen(id), 0) == 0)
+				if (kdisp_copy(id, strlen(id), 0) == 0)
 					set_status("copied %s", id);
 				else
 					set_status("nothing to copy with%s",
@@ -1374,6 +2203,6 @@ int net_main(int argc, char **argv)
 done:
 	if (bus)
 		sd_bus_unref(bus);
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

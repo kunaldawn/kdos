@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Word Document
+GenericName=Document Viewer
+Comment=Read a .docx in the terminal
+Exec=doxx %f
+Icon=x-office-document
+Terminal=true
+NoDisplay=true
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;
+Categories=Office;Viewer;

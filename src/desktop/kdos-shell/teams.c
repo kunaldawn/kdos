@@ -73,6 +73,9 @@ static int sock_up;
 /* The result of the last action, one line under the list. */
 static char status[120];
 
+/* No layers: Esc closes the monitor. */
+static KtuiKeys keys;
+
 /* ── a read-only JSON scanner ──────────────────────────────────────────── */
 
 /*
@@ -558,8 +561,13 @@ static void draw(int sel, int top)
 		if (status[0])
 			ktui_draw_text(2, h - 3, w - 4, status, KT_WARN,
 				       KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(2, h - 2, w - 4, "r retry   Esc close", KT_MID,
-			       KT_SURFACE, KT_A_NONE);
+		/* THE EMPTY LIST'S OWN ROW. Enter and `k` act on a selected
+		 * window and there is none, so neither is named here — a row
+		 * that promised them would be the failure this contract
+		 * exists to remove. */
+		ktui_hint("r", "retry");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 		ktui_draw_flush();
 		return;
 	}
@@ -626,9 +634,15 @@ static void draw(int sel, int top)
 	if (status[0])
 		ktui_draw_text(2, h - 3, w - 4, status, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
-	ktui_draw_text(2, h - 2, w - 4,
-		       "Enter close   k SIGTERM   r refresh   Esc quit",
-		       KT_MID, KT_SURFACE, KT_A_NONE);
+	ktui_hint("Enter", "close window");
+	/* `k` is named on a row with a process to signal. kill_view() also
+	 * refuses this session's own chrome, and that test is a /proc read
+	 * this surface will not do once per drawn frame while somebody is
+	 * staring at a wedged screen; the refusal prints on the status row. */
+	ktui_hint_if(sel < nviews && views[sel].pid > 1, "k", "sigterm");
+	ktui_hint("r", "refresh");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -673,7 +687,11 @@ static int cap_caps(void)
 }
 
 static const KtuiBackend cap_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
+	.name = "dump-cells",
+	.flush = cap_flush,
+	.poll_event = cap_poll,
+	.size = cap_size,
+	.caps = cap_caps,
 };
 
 /* ── main ──────────────────────────────────────────────────────────────── */
@@ -738,13 +756,13 @@ int teams_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = TEAMS_COLS,
 		.rows = TEAMS_ROWS,
-		.corner = at_x < 0	? KWL_CORNER_CENTER
-			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
-					: KWL_CORNER_TOP_LEFT,
+		.corner = at_x < 0	? KDISP_CORNER_CENTER
+			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
+					: KDISP_CORNER_TOP_LEFT,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-teams",
@@ -754,7 +772,7 @@ int teams_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-teams: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -770,7 +788,7 @@ int teams_main(int argc, char **argv)
 	 * moves the PAGE — see kch_list_clamp. */
 	int sel_follow = 1;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int rowsv = list_rows();
@@ -864,10 +882,12 @@ int teams_main(int argc, char **argv)
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
+			goto done;
+
 		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
 		switch (ev.key) {
-		case KT_K_ESC:
 		case 'q':
 			goto done;
 		case KT_K_ENTER:
@@ -909,6 +929,6 @@ int teams_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

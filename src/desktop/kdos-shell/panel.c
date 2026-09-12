@@ -173,19 +173,6 @@ static FILE *panel_fopen(const char *path)
 }
 
 /*
- * The clock, frozen by KDOS_PANEL_NOW for the same reason. A dump of a bar
- * whose right-hand end says 19:12 is a golden that fails a minute later.
- */
-static time_t panel_wall(void)
-{
-	const char *e = getenv("KDOS_PANEL_NOW");
-
-	if (e && *e)
-		return (time_t)strtoll(e, NULL, 10);
-	return time(NULL);
-}
-
-/*
  * WHICH EDGE THE BAR IS ON, because a popup belonging to it has to grow the
  * other way. Layer-shell has no coordinates: `--at-bottom` is an anchor to the
  * BOTTOM edge plus a margin, which is the only way a client can say "just
@@ -588,6 +575,11 @@ static void load_favorites(void)
 		if (!*s || *s == '#')
 			continue;
 		struct fav *fv = &favs[nfavs];
+
+		/* The terminal follows the desktop — see sh_fav_id(). The
+		 * RESOLVED id is what is stored, so Unpin removes the line the
+		 * row actually stands for. */
+		s = (char *)sh_fav_id(s);
 		snprintf(fv->id, sizeof(fv->id), "%s", s);
 		if (sh_desktop_entry(s, fv->name, sizeof(fv->name),
 				     fv->exec, sizeof(fv->exec)) != 0 ||
@@ -676,7 +668,7 @@ static void panel_backdrop(pixman_image_t *dst, int w, int h, int scale)
 	 * derivation lives there rather than being `panel_top` spelled a
 	 * second way. */
 	kch_px_body(dst, w, h, scale, a,
-		    kwl_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP);
+		    kdisp_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP);
 	kch_px_replay(dst, scale);
 }
 /*
@@ -705,7 +697,7 @@ static int start_label = 1;
  * long before any of them are sampled, and a table that had to be hoisted with
  * its enum would drag the sampling half up with it.
  */
-enum { MT_CPU = 0, MT_RAM, MT_DISK, MT_NET, MT_DIO, MT_N };
+enum { MT_CPU = 0, MT_RAM, MT_DISK, MT_NET, MT_DIO, MT_TEMP, MT_N };
 static int meters_sel[MT_N] = { MT_CPU, MT_RAM, MT_NET };
 static int nmeters_sel = 3;
 static int meter_by_key(const char *name);
@@ -717,7 +709,14 @@ static int icons_on = 1;
 
 static int icon_ok(void)
 {
-	return icons_on && task_labels != TL_ALWAYS;
+	/*
+	 * NOT WHERE A CELL IS A CHARACTER. Icon mode gives a chip four cells
+	 * and spends them on a picture, which the console has no way to draw
+	 * at that size — `kdisp_cell_w()` is 1 there, so a two-by-two icon is
+	 * two pixels by two. The chip then holds a label one letter wide and
+	 * no picture, which is a taskbar that names nothing.
+	 */
+	return icons_on && task_labels != TL_ALWAYS && kdisp_cell_w() > 1;
 }
 
 /* ── the window list: one chip per APP, not per window ─────────────────── */
@@ -1037,7 +1036,7 @@ static const char *chip_unity_id(const struct sh_state *sh,
  */
 static int icon_air(void)
 {
-	int a = kwl_cell_h() / 5;
+	int a = kdisp_cell_h() / 5;
 
 	return a < 1 ? 1 : a;
 }
@@ -1122,7 +1121,7 @@ static void chip_badge(const struct sh_state *sh, const struct chip *c, int x,
 	const char *id = chip_unity_id(sh, c);
 	long count = 0;
 	int prog = -1, urgent = 0;
-	int cw = kwl_cell_w(), chh = kwl_cell_h();
+	int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 
 	if (!id || !sh_unity_get(id, &count, &prog, &urgent))
 		return;
@@ -1316,7 +1315,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		 * a pixel wide.
 		 */
 		if (c->count > 1) {
-			int cw = kwl_cell_w(), chh = kwl_cell_h();
+			int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 			int px = (x + per - 1) * cw - 1;
 			int n = c->count > 2 ? 2 : 1;
 
@@ -1328,7 +1327,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 					    kch_tone_alpha(KCH_T_REST));
 		}
 		if (c->count > 0) {
-			int cw = kwl_cell_w(), chh = kwl_cell_h();
+			int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 			int uw = c->active ? (per - 1) * cw - 2 : (per - 1) * cw / 2;
 			int ux = x * cw + 1 + ((per - 1) * cw - 2 - uw) / 2;
 
@@ -1539,8 +1538,8 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 
 	snprintf(xs, sizeof(xs), "%d",
 		 (sh->task_hit_x + (ci - chip_off) * sh->task_cell_w) *
-			 kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+			 kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	/*
 	 * THE BOX GOES WITH IT. The panel groups by (app_id, box), so the
 	 * app_id alone does not say which of two GIMPs this menu is for —
@@ -1776,8 +1775,8 @@ static int applet_lit(struct sh_state *sh, int id, int *right_x, int x_min,
 	if (!lw || *right_x - x_min < lw + 2)
 		return 0;
 	*right_x -= lw + 1;
-	kch_px_round(*right_x * kwl_cell_w() + 1, applet_row * kwl_cell_h() + 1,
-		     lw * kwl_cell_w() - 2, kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+	kch_px_round(*right_x * kdisp_cell_w() + 1, applet_row * kdisp_cell_h() + 1,
+		     lw * kdisp_cell_w() - 2, kdisp_cell_h() - 2, KCH_PLATE_RADIUS,
 		     kch_slot_rgb(bg), 0xFF);
 	ktui_draw_text(*right_x, applet_row, lw, label, KT_SURFACE, KT_SURFACE,
 		       KT_A_NONE);
@@ -1814,6 +1813,59 @@ static int applet_lit(struct sh_state *sh, int id, int *right_x, int x_min,
  * refuse rather than overflow, and record the span that was DRAWN.
  */
 #define AP_WIDE_TEXT 12
+
+/*
+ * WHAT IS PLAYING, WHEN NOTHING SPEAKS MPRIS.
+ *
+ * MPRIS is the protocol a desktop player answers on, and a player that speaks
+ * it also answers the transport keys beside this cell. mpd speaks none — so
+ * `kdos-mpctl watch` writes the same answer to a file, and one applet reads
+ * both rather than two cells disagreeing about what is playing.
+ *
+ * The line is `> Artist - Title` or `|| Artist - Title`; the marker is the
+ * play state and is stripped before the title is drawn. ASCII by the file's
+ * own contract, because the reader is a cell grid whose glyph tier the writer
+ * cannot see.
+ *
+ * READ AT MOST ONCE A SECOND. This runs on the draw, which is not on a tick,
+ * and an unthrottled read is fifty opens a second for a line that changes
+ * between tracks.
+ */
+static const char *now_file(int *playing)
+{
+	static char line[128];
+	static int64_t last;
+	static int play;
+	char path[256];
+	const char *rt;
+	int64_t now = panel_now_ms();
+
+	if (!last || now - last >= 1000) {
+		last = now ? now : 1;
+		line[0] = '\0';
+		rt = getenv("XDG_RUNTIME_DIR");
+		if (rt && *rt) {
+			snprintf(path, sizeof(path), "%s/kdos/nowplaying", rt);
+			if (kb_read_file(path, line, sizeof(line)) <= 0)
+				line[0] = '\0';
+		}
+		for (char *q = line; *q; q++)
+			if (*q == '\n' || *q == '\r') {
+				*q = '\0';
+				break;
+			}
+		play = line[0] == '>';
+	}
+	if (!line[0])
+		return NULL;
+	*playing = play;
+
+	const char *t = line;
+
+	while (*t == '>' || *t == '|' || *t == ' ')
+		t++;
+	return *t ? t : NULL;
+}
 
 static int applet2(struct sh_state *sh, int id, int *right_x, int x_min,
 		   const char *icon, const char *l1, const char *l2, int fg1,
@@ -2068,8 +2120,64 @@ static int panel_media, panel_media_mounted;
  * to keep. */
 static void meters_sample(void);
 static int cpu_percent(void);
+/*
+ * HOW MANY PACKAGES ARE BEHIND, READ FROM A FILE AND NEVER COMPUTED HERE.
+ *
+ * `kdos update check` walks the ports tree against the package database, which
+ * is hundreds of file reads — nothing the panel may do on a tick, where the
+ * rule is that nothing blocks the frame. So the number comes from a document
+ * `kdos update check --json --out` wrote, and a timer refreshes; ABSENT IS
+ * ZERO and the badge is simply not there, which is the honest picture of a
+ * machine nobody has checked.
+ *
+ * THE MACHINE'S ANSWER FIRST, THEN THE USER'S. What the ports tree pins
+ * against what is installed is a fact about the MACHINE — it is the same for
+ * everyone logged into it — so the system timer computes it once into
+ * /var/lib/kdos and every session reads that. A per-user copy would be one
+ * walk of the whole ports tree per user for one answer. The home path is the
+ * fallback for somebody who ran the check themselves on a machine whose timer
+ * is off.
+ *
+ * Once a minute: the file changes at most as often as the timer fires, and a
+ * read per frame would be a read per frame for a number that moves once a day.
+ */
+static int update_behind(void)
+{
+	static time_t asked;
+	static int cached;
+	time_t now = time(NULL);
+	const char *st = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+	char path[512], buf[4096];
+	const char *p;
+
+	if (asked && now - asked < 60)
+		return cached;
+	asked = now;
+	cached = 0;
+
+	if (kb_read_file("/var/lib/kdos/update.json", buf, sizeof(buf)) <= 0) {
+		if (st && *st)
+			snprintf(path, sizeof(path), "%s/kdos/update.json", st);
+		else if (home && *home)
+			snprintf(path, sizeof(path),
+				 "%s/.local/state/kdos/update.json", home);
+		else
+			return 0;
+		if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+			return 0;
+	}
+	p = strstr(buf, "\"behind\":");
+	if (p)
+		cached = atoi(p + 9);
+	if (cached < 0)
+		cached = 0;
+	return cached;
+}
+
 static int clip_depth(void);
 static int media_count(int *mounted);
+static void disk_policy(struct sh_state *sh);
 static void notify_poll(void);
 static void frames_poll(void);
 
@@ -2104,6 +2212,7 @@ static void panel_tick(struct sh_state *sh)
 	}
 	panel_measure();
 	battery_policy(sh, panel_pct, panel_discharging);
+	disk_policy(sh);
 
 	/*
 	 * A pin made from a MENU is made in another process, so the only way
@@ -2144,13 +2253,13 @@ static void panel_tick(struct sh_state *sh)
 enum {
 	W_CLOCK = 0, W_BATTERY, W_VOLUME, W_NET, W_RESTART, W_PRIVACY,
 	W_TRAY, W_PAGER, W_MPRIS, W_CPU, W_CLIP, W_MEDIA, W_NOTIFY,
-	W_STUTTER, W_MORE, W_N
+	W_STUTTER, W_UPDATE, W_MORE, W_N
 };
 
 static const char *const WIDGET_NAMES[W_N] = {
 	"clock", "battery", "volume", "net", "restart", "privacy",
 	"tray", "pager", "mpris", "cpu", "clipboard", "media", "notify",
-	"stutter", "more"
+	"stutter", "update", "more"
 };
 
 /* Left to right as they appear on the bar. The clock is last because the
@@ -2167,11 +2276,13 @@ static const char *const WIDGET_NAMES[W_N] = {
  */
 static const int WIDGETS_SHIPPED[W_N] = { W_PAGER, W_TRAY, W_MORE, W_MEDIA,
 					  W_PRIVACY, W_MPRIS, W_CLIP, W_CPU,
-					  W_STUTTER, W_RESTART, W_NET, W_VOLUME,
-					  W_BATTERY, W_NOTIFY, W_CLOCK };
+					  W_STUTTER, W_UPDATE, W_RESTART,
+					  W_NET, W_VOLUME, W_BATTERY, W_NOTIFY,
+					  W_CLOCK };
 static int widgets[W_N] = { W_PAGER, W_TRAY, W_MORE, W_MEDIA, W_PRIVACY,
-			    W_MPRIS, W_CLIP, W_CPU, W_STUTTER, W_RESTART,
-			    W_NET, W_VOLUME, W_BATTERY, W_NOTIFY, W_CLOCK };
+			    W_MPRIS, W_CLIP, W_CPU, W_STUTTER, W_UPDATE,
+			    W_RESTART, W_NET, W_VOLUME, W_BATTERY, W_NOTIFY,
+			    W_CLOCK };
 static int nwidgets = W_N;
 
 /*
@@ -2206,7 +2317,9 @@ struct ovitem {
 	char label[48];
 	char detail[96];
 	int warn;
-	char service[SH_TRAY_NAME];	/* tray items only */
+	char service[SH_TRAY_NAME];	/* the tray item's bus name */
+	/* What the key acts ON: a tray item's object path, a disk row's
+	 * mountpoint. `key` is 24 bytes and neither of those is a name. */
 	char path[SH_TRAY_NAME];
 };
 
@@ -2891,7 +3004,7 @@ struct meter {
  * series about a midline, because a rate has a direction and the sum of the
  * two answers neither question anybody opens a network meter to ask.
  */
-static struct meter met_cpu, met_ram, met_disk;
+static struct meter met_cpu, met_ram, met_disk, met_temp;
 static struct meter met_rx, met_tx;		/* network, received / sent  */
 static struct meter met_rd, met_wr;		/* disk, read / written      */
 
@@ -3018,6 +3131,265 @@ static int read_disk_used(double *pct)
 		avail = total;
 	*pct = (total - avail) * 100.0 / total;
 	return 0;
+}
+
+/*
+ * EVERY WRITABLE FILESYSTEM, because the one that fills is not always `/`.
+ *
+ * The meter beside this has room for one number and takes the root; a warning
+ * has to reach a separate /home or a stick somebody is copying onto. The
+ * source is /proc/mounts and statvfs — kdos-mountd cannot answer it, being
+ * wheel-gated, carrying no free-space field in its reply, and listing the
+ * media that are NOT mounted, which is the complement of the set that can be
+ * full.
+ *
+ * Pseudo-filesystems are skipped: a tmpfs is sized from RAM and the panel
+ * already charts that, and calling one "disk almost full" names the wrong
+ * resource. Read-only mounts are skipped because a squashfs is 100% full by
+ * construction and a warning nobody can act on is noise. Deduplicated by the
+ * SOURCE DEVICE — a btrfs subvolume and a bind mount are further names for one
+ * filesystem, and without this one full disk warns three times.
+ *
+ * On the ten-second cadence of the meter beside it: this performs one statvfs
+ * per mount and a statvfs on a network mount can block.
+ */
+#define DISK_WARN_PCT 90	/* the first warning */
+#define DISK_WARN_STEP 5	/* and one more every this much past it */
+#define DISK_WARN_MAX 16	/* mounts tracked; a desktop has a handful */
+
+struct disk_mount {
+	char mnt[128];
+	int pct;
+};
+static struct disk_mount disk_mounts[DISK_WARN_MAX];
+static int ndisk_mounts;
+/* The worst step any mount has reached, which is what the bar marks. */
+static int panel_disk_warn;
+
+/* Zero while there is nothing to say, otherwise the step past the threshold
+ * counted from 1, so the mark, the popup row and the latch all agree. */
+static int disk_level(int pct)
+{
+	int lv, max;
+
+	if (pct < DISK_WARN_PCT)
+		return 0;
+	lv = (pct - DISK_WARN_PCT) / DISK_WARN_STEP + 1;
+	max = (100 - DISK_WARN_PCT) / DISK_WARN_STEP + 1;
+	return lv > max ? max : lv;
+}
+
+/* /proc/mounts writes a space as `\040`; a mountpoint used without decoding
+ * them names a directory that is not there. */
+static void mount_unescape(char *s)
+{
+	char *o = s;
+
+	for (const char *q = s; *q;) {
+		if (q[0] == '\\' && q[1] >= '0' && q[1] <= '3' &&
+		    q[2] >= '0' && q[2] <= '7' && q[3] >= '0' && q[3] <= '7') {
+			*o++ = (char)(((q[1] - '0') << 6) |
+				      ((q[2] - '0') << 3) | (q[3] - '0'));
+			q += 4;
+		} else {
+			*o++ = *q++;
+		}
+	}
+	*o = '\0';
+}
+
+static int mount_is_pseudo(const char *type)
+{
+	static const char *const pseudo[] = {
+		"autofs", "binfmt_misc", "bpf", "cgroup", "cgroup2",
+		"configfs", "debugfs", "devpts", "devtmpfs", "efivarfs",
+		"fusectl", "hugetlbfs", "iso9660", "mqueue", "nsfs", "proc",
+		"pstore", "ramfs", "securityfs", "squashfs", "sysfs", "tmpfs",
+		"tracefs", NULL
+	};
+
+	for (int i = 0; pseudo[i]; i++)
+		if (!strcmp(type, pseudo[i]))
+			return 1;
+	return 0;
+}
+
+/* The first option is `ro` or `rw`; a comma walk rather than strstr, which
+ * would find the `ro` inside `errors=remount-ro`. */
+static int mount_is_ro(const char *opts)
+{
+	const char *o = opts;
+
+	while (*o) {
+		const char *e = strchr(o, ',');
+		size_t n = e ? (size_t)(e - o) : strlen(o);
+
+		if (n == 2 && !strncmp(o, "ro", 2))
+			return 1;
+		if (!e)
+			break;
+		o = e + 1;
+	}
+	return 0;
+}
+
+static void disk_scan(void)
+{
+	char seen[DISK_WARN_MAX][256];
+	char line[512];
+	int nseen = 0;
+	FILE *f;
+
+	ndisk_mounts = 0;
+	panel_disk_warn = 0;
+	/* A fixture describes a machine that is not this one and statvfs
+	 * cannot be pointed at it, so a recorded root gets no reading at all
+	 * rather than this machine's. */
+	if (*panel_root())
+		return;
+	f = fopen("/proc/mounts", "r");
+	if (!f)
+		return;
+	while (ndisk_mounts < DISK_WARN_MAX && fgets(line, sizeof(line), f)) {
+		char dev[256], mnt[256], type[64], opts[256];
+		struct statvfs vfs;
+		double total, avail;
+		int dup = 0, lv;
+
+		if (sscanf(line, "%255s %255s %63s %255s", dev, mnt, type,
+			   opts) != 4)
+			continue;
+		if (mount_is_pseudo(type) || mount_is_ro(opts))
+			continue;
+		for (int i = 0; i < nseen; i++)
+			if (!strcmp(seen[i], dev))
+				dup = 1;
+		if (dup)
+			continue;
+		mount_unescape(mnt);
+		if (statvfs(mnt, &vfs) != 0 || vfs.f_blocks == 0)
+			continue;
+		snprintf(seen[nseen++], sizeof(seen[0]), "%s", dev);
+		total = (double)vfs.f_blocks;
+		avail = (double)vfs.f_bavail;
+		if (avail > total)
+			avail = total;
+		snprintf(disk_mounts[ndisk_mounts].mnt,
+			 sizeof(disk_mounts[0].mnt), "%s", mnt);
+		disk_mounts[ndisk_mounts].pct =
+			(int)((total - avail) * 100.0 / total + 0.5);
+		lv = disk_level(disk_mounts[ndisk_mounts].pct);
+		if (lv > panel_disk_warn)
+			panel_disk_warn = lv;
+		ndisk_mounts++;
+	}
+	fclose(f);
+}
+
+static int diskwarn_path(char *buf, size_t n)
+{
+	const char *state = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+
+	if (state && *state)
+		return snprintf(buf, n, "%s/kdos/diskwarn", state) < (int)n;
+	if (home && *home)
+		return snprintf(buf, n, "%s/.local/state/kdos/diskwarn",
+				home) < (int)n;
+	return 0;
+}
+
+/*
+ * ONE NOTIFICATION PER STEP, LATCHED ON DISK.
+ *
+ * A latch in memory warns once per login, which for a disk that stays full is
+ * a notification every morning saying what the person already declined to fix.
+ * The file records the step each mountpoint has already been warned about;
+ * only a mount that has crossed a HIGHER one speaks. A step that falls is
+ * recorded too, so emptying the disk and filling it again warns again.
+ *
+ * Written plainly rather than through apps.c's temp-and-rename: a lost latch
+ * costs one repeated warning, and this writes to a filesystem that is by
+ * definition nearly full, where a second file is one more thing to fail.
+ */
+static void disk_policy(struct sh_state *sh)
+{
+	static struct { char mnt[128]; int level; } latch[DISK_WARN_MAX];
+	static int nlatch, loaded;
+	char path[512], dir[512];
+	int changed = 0;
+
+	if (!diskwarn_path(path, sizeof(path)))
+		return;
+	if (!loaded) {
+		FILE *f = fopen(path, "r");
+		char line[256];
+
+		loaded = 1;
+		if (f) {
+			while (nlatch < DISK_WARN_MAX &&
+			       fgets(line, sizeof(line), f)) {
+				int lv = 0;
+				char mnt[128];
+
+				if (sscanf(line, "%d %127[^\n]", &lv, mnt) != 2)
+					continue;
+				latch[nlatch].level = lv;
+				snprintf(latch[nlatch].mnt,
+					 sizeof(latch[0].mnt), "%s", mnt);
+				nlatch++;
+			}
+			fclose(f);
+		}
+	}
+
+	for (int i = 0; i < ndisk_mounts; i++) {
+		int lv = disk_level(disk_mounts[i].pct);
+		int j;
+
+		for (j = 0; j < nlatch; j++)
+			if (!strcmp(latch[j].mnt, disk_mounts[i].mnt))
+				break;
+		if (j == nlatch) {
+			if (!lv)
+				continue;
+			if (nlatch >= DISK_WARN_MAX)
+				continue;
+			latch[nlatch].level = 0;
+			snprintf(latch[nlatch].mnt, sizeof(latch[0].mnt), "%s",
+				 disk_mounts[i].mnt);
+			nlatch++;
+		}
+		if (lv == latch[j].level)
+			continue;
+		if (lv > latch[j].level) {
+			char body[192];
+
+			snprintf(body, sizeof(body), "%s is %d%% full.",
+				 disk_mounts[i].mnt, disk_mounts[i].pct);
+			sh_tray_notify(sh, "Disk almost full", body);
+		}
+		latch[j].level = lv;
+		changed = 1;
+	}
+	if (!changed)
+		return;
+
+	snprintf(dir, sizeof(dir), "%s", path);
+	char *slash = strrchr(dir, '/');
+	if (!slash)
+		return;
+	*slash = '\0';
+	/* mkdir -p of one level, as apps.c does: $XDG_STATE_HOME itself
+	 * belongs to the session and 15_userdirs.sh already made it. */
+	mkdir(dir, 0700);
+	FILE *f = fopen(path, "w");
+	if (!f)
+		return;
+	for (int i = 0; i < nlatch; i++)
+		if (latch[i].level > 0)
+			fprintf(f, "%d %s\n", latch[i].level, latch[i].mnt);
+	fclose(f);
 }
 
 /*
@@ -3192,6 +3564,26 @@ static void meters_sample(void)
 		last_idle = idle;
 	}
 
+	/*
+	 * THE HOTTEST SENSOR, AND ONLY EVERY FOURTH SAMPLE. Reading it walks
+	 * `/sys/class/hwmon` — sixty-odd `open`/`read` pairs — and a die's
+	 * temperature does not move meaningfully in half a second. The meter
+	 * HOLDS between reads rather than dropping out, so the chart is a line
+	 * rather than a comb.
+	 */
+	static int temp_tick;
+
+	if (temp_tick++ % 4 == 0) {
+		double hot = kpr_sensors_hottest();
+
+		if (hot >= 0)
+			meter_push(&met_temp, hot > 100 ? 100 : hot, 0.3);
+		else
+			meter_hold(&met_temp);
+	} else {
+		meter_hold(&met_temp);
+	}
+
 	double mem;
 	if (read_mem_used(&mem) == 0)
 		meter_push(&met_ram, mem, 0.35);
@@ -3210,6 +3602,7 @@ static void meters_sample(void)
 			meter_push(&met_disk, du, 1.0);
 		else
 			meter_hold(&met_disk);
+		disk_scan();
 	} else {
 		meter_hold(&met_disk);
 	}
@@ -3324,8 +3717,8 @@ static void start_plate(int cx, int cells, int h, int hovered, int open)
 		kch_px_plate(cx, 0, cells, h, KCH_T_REST, 1);
 		return;
 	}
-	kch_px_grad(cx * kwl_cell_w() + 1, 1, cells * kwl_cell_w() - 2,
-		    h * kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+	kch_px_grad(cx * kdisp_cell_w() + 1, 1, cells * kdisp_cell_w() - 2,
+		    h * kdisp_cell_h() - 2, KCH_PLATE_RADIUS,
 		    kch_slot_rgb(open ? KT_WARN : KT_ACCENT),
 		    kch_slot_rgb(KT_MID), 0xFF);
 }
@@ -3400,8 +3793,8 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * and a full sprite table are all unaffected.
 	 */
 	if (h > 1 && !compact && lw) {
-		int cell_w = kwl_cell_w(), cell_h = kwl_cell_h();
-		int scale = kwl_scale();
+		int cell_w = kdisp_cell_w(), cell_h = kdisp_cell_h();
+		int scale = kdisp_scale();
 		/* The word at ~62% of the button's height, which is the
 		 * proportion a label has to a button on every desktop this
 		 * shape came from — and the mark square at the same height. */
@@ -3724,7 +4117,7 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 				 * it is high, so the height is derived from
 				 * the width.
 				 */
-				int cw = kwl_cell_w(), chh = kwl_cell_h();
+				int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 				int sw = hw * cw - 2;
 				int sh_px = sw * 3 / 4;
 				int sx = (px + i * 2) * cw + 1;
@@ -3979,6 +4372,14 @@ static const struct mdesc {
 	{ "disk",   "SSD", 5, 1, &met_disk, NULL,     NULL, NULL },
 	{ "net",    "NET", 6, 0, &met_rx,   &met_tx,  "\xe2\x86\x93", "\xe2\x86\x91" },
 	{ "diskio", "I/O", 6, 0, &met_rd,   &met_wr,  "\xe2\x86\x93", "\xe2\x86\x91" },
+	/*
+	 * `pct` IS 1 FOR A TEMPERATURE, and that is not a category error: the
+	 * band is a fixed 0-100 scale, and 0-100 °C is the range a machine
+	 * actually lives in. An auto-scaled temperature axis would redraw
+	 * itself every time the fan came on, which is the one moment a person
+	 * is looking at it.
+	 */
+	{ "temp",   "TMP", 5, 1, &met_temp, NULL,     NULL, NULL },
 };
 
 static int meter_by_key(const char *name)
@@ -4287,7 +4688,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 		return -1;
 	}
 
-	int H = rows * kwl_cell_h() * kwl_scale();
+	int H = rows * kdisp_cell_h() * kdisp_scale();
 	/*
 	 * 23%, not 26. A four-cell band is sixty-two pixels wide and the two
 	 * strings on its top line are `CPU` and `100%`; at 26% they came to
@@ -4355,7 +4756,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 		 * peak to be able to fall, and a peak over everything ever
 		 * sampled barely can.
 		 */
-		int span = d->cells * kwl_cell_w() * kwl_scale();
+		int span = d->cells * kdisp_cell_w() * kdisp_scale();
 		double peak = 0;
 		const struct meter *pair[2] = { d->a, d->b };
 		for (int q = 0; q < 2 && pair[q]; q++) {
@@ -4748,6 +5149,17 @@ static void build_overflow(struct sh_state *sh)
 			 panel_stutter, panel_stutter == 1 ? "" : "s");
 		ov_push("stutter", "dialog-warning", "Stutter", buf, 1);
 	}
+	if (in_overflow[W_UPDATE]) {
+		int n = update_behind();
+
+		if (n > 0) {
+			snprintf(buf, sizeof(buf),
+				 "%d package%s the ports tree pins newer", n,
+				 n == 1 ? "" : "s");
+			ov_push("update", "system-software-update", "Updates",
+				buf, 0);
+		}
+	}
 	if (in_overflow[W_RESTART] && panel_restarts > 0) {
 		snprintf(buf, sizeof(buf),
 			 "%d program%s still using files an upgrade replaced",
@@ -4771,6 +5183,27 @@ static void build_overflow(struct sh_state *sh)
 		ov_push("notify", notify_dnd ? "weather-clear-night"
 					     : "dialog-information",
 			"Notifications", buf, 0);
+	}
+	/*
+	 * Not gated on in_overflow: the disk warning has no widget of its own
+	 * on the bar, only the mark by the clock, and a mark cannot say WHICH
+	 * filesystem or by how much. This row is where that sentence lives.
+	 */
+	if (panel_disk_warn > 0) {
+		int worst = 0;
+
+		for (int i = 1; i < ndisk_mounts; i++)
+			if (disk_mounts[i].pct > disk_mounts[worst].pct)
+				worst = i;
+		if (ndisk_mounts > 0) {
+			snprintf(buf, sizeof(buf), "%s is %d%% full",
+				 disk_mounts[worst].mnt,
+				 disk_mounts[worst].pct);
+			ov_push("disk", "drive-harddisk", "Disk", buf, 1);
+			if (nov > 0 && !strcmp(ov[nov - 1].key, "disk"))
+				snprintf(ov[nov - 1].path, sizeof(ov[0].path),
+					 "%s", disk_mounts[worst].mnt);
+		}
 	}
 	if (in_overflow[W_CPU] && panel_cpu >= 0) {
 		snprintf(buf, sizeof(buf), "%d%% of the machine", panel_cpu);
@@ -4940,7 +5373,7 @@ static int draw_more(struct sh_state *sh, int right_x, int x_min, int h)
 	 * pixel layer is absent on a terminal and in every golden frame.
 	 */
 	if (px_live) {
-		int cw = kwl_cell_w(), chh = kwl_cell_h();
+		int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 		int bh = irows * chh;
 		/* SIZED FROM THE WIDTH. The box is two cells and the height is
 		 * two rows, so a triangle derived from the height overflows
@@ -4994,7 +5427,7 @@ static void draw_taskbar(struct sh_state *sh)
 	build_overflow(sh);
 
 	/* ── measurements, once per frame, before any layout pass ── */
-	time_t now = panel_wall();
+	time_t now = sh_wall();
 	struct tm tm;
 	localtime_r(&now, &tm);
 
@@ -5141,6 +5574,26 @@ static void draw_taskbar(struct sh_state *sh)
 						       cbg, KT_A_NONE);
 				sh->ap_x[SH_AP_CLOCK] = right_x;
 				sh->ap_end[SH_AP_CLOCK] = right_x + clockw;
+				/*
+				 * A FULL DISK, one column inside the clock's
+				 * own segment. The clock is the only landmark
+				 * on this bar that never moves, and the
+				 * warning is about the machine rather than
+				 * about whichever applet happens to be next
+				 * to it. A letter and not a glyph slot:
+				 * nothing in the tiers is a warning sign, and
+				 * a missing one draws a box.
+				 */
+				if (panel_disk_warn > 0
+				    && right_x - 1 > floor_x) {
+					right_x -= 1;
+					ktui_draw_text(right_x, applet_row, 1,
+						       "!",
+						       panel_disk_warn > 1
+							       ? KT_ERR
+							       : KT_WARN,
+						       cbg, KT_A_NONE);
+				}
 				right_x -= 1;
 				/* The clock is its own segment — it is the one
 				 * thing on this bar that is never a control
@@ -5260,12 +5713,19 @@ static void draw_taskbar(struct sh_state *sh)
 				       KT_A_NONE);
 				break;
 			case W_MPRIS: {
-				if (!sh_mpris_have(sh->mpris))
-					break;
-				int play = sh_mpris_playing(sh->mpris);
+				int play;
+				const char *title;
+
+				if (sh_mpris_have(sh->mpris)) {
+					play = sh_mpris_playing(sh->mpris);
+					title = sh_mpris_title(sh->mpris);
+				} else {
+					title = now_file(&play);
+					if (!title)
+						break;
+				}
 				char t[64];
-				sh_utf8_trunc(t, sizeof(t),
-					      sh_mpris_title(sh->mpris),
+				sh_utf8_trunc(t, sizeof(t), title,
 					      AP_WIDE_TEXT);
 				snprintf(label, sizeof(label), "%s", t);
 				applet2(sh, SH_AP_MPRIS, &right_x, floor_x,
@@ -5369,6 +5829,18 @@ static void draw_taskbar(struct sh_state *sh)
 					    floor_x, "dialog-warning", label,
 					    KT_WARN, KT_WARN);
 				break;
+			case W_UPDATE: {
+				int n = update_behind();
+
+				if (n <= 0)
+					break;
+				snprintf(label, sizeof(label), "%d",
+					 n > 999 ? 999 : n);
+				applet_tile(sh, SH_AP_UPDATE, &right_x,
+					    floor_x, "system-software-update",
+					    label, KT_ACCENT, KT_ACCENT);
+				break;
+			}
 			case W_MORE:
 				right_x = draw_more(sh, right_x, floor_x, h);
 				break;
@@ -5870,6 +6342,11 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 					 "panel.conf decides what lives here");
 			}
 			return 1;
+		case SH_AP_UPDATE:
+			snprintf(t1, n1, "%d packages behind", update_behind());
+			snprintf(t2, n2, "%s",
+				 "click to see what, and what is vulnerable");
+			return 1;
 		case SH_AP_STUTTER:
 			snprintf(t1, n1, "%d dropped frames", panel_stutter);
 			snprintf(t2, n2, "%s",
@@ -5954,8 +6431,8 @@ static void tip_tick(struct sh_state *sh)
 	tip_shown = 1;			/* one attempt per dwell, whatever happens */
 	if (!tip_text(sh, tip_kind, tip_idx, t1, sizeof(t1), t2, sizeof(t2)))
 		return;
-	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	/*
 	 * A WINDOW BUTTON'S TIP CARRIES THE WINDOW.
 	 *
@@ -6064,8 +6541,8 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	 * readout" is an anchor plus a margin.
 	 */
 	snprintf(xs, sizeof(xs), "%d",
-		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 
 	if (id == SH_AP_MPRIS && btn != SH_TRAY_BTN_LEFT) {
 		/* Middle steps back, right steps forward — the transport a
@@ -6174,6 +6651,15 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		popup_toggle(id, argv);
 		break;
 	}
+	case SH_AP_UPDATE: {
+		/* A WINDOW, not a popup: the list is as long as the machine is
+		 * behind, and a person reading it is deciding whether to run
+		 * an apply — which is not a glance. */
+		const char *argv[] = { "kdos-update", NULL };
+
+		sh_spawn(argv);
+		break;
+	}
 	case SH_AP_STUTTER: {
 		/* Straight to the attribution, without the list: this cell IS
 		 * the one thing the popup would have been opened to read. */
@@ -6217,8 +6703,8 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_CLIP: {
 		/* Anchored under itself, above the bar — the same trick the
 		 * clock's calendar uses. */
-		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kdisp_cell_w());
+		snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 		const char *argv[] = { "kdos-clip", "--pick", at, xs, ys, NULL };
 		popup_toggle(id, argv);
 		break;
@@ -6294,7 +6780,7 @@ static void start_click(int btn)
 	char ys[16];
 	const char *at = panel_at_flag();
 
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	if (btn == SH_TRAY_BTN_MIDDLE) {
 		const char *argv[] = { "kdos-run", NULL };
 		panel_spawn(argv);
@@ -6348,8 +6834,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 */
 		char mx[16], my[16];
 
-		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kwl_cell_w());
-		snprintf(my, sizeof(my), "%d", kwl_popup_offset());
+		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kdisp_cell_w());
+		snprintf(my, sizeof(my), "%d", kdisp_popup_offset());
 		if (btn == SH_TRAY_BTN_MIDDLE) {
 			/* In a POPUP, not a terminal — see SH_AP_STUTTER. */
 			const char *argv[] = { "kdos-status", "--open", "stutter",
@@ -6360,7 +6846,15 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 					       panel_at_flag(), mx, my, NULL };
 			panel_spawn(argv);
 		} else {
-			const char *argv[] = { "foot", "-e", "btop", NULL };
+			const char *argv[10];
+			char id[160];
+			int k = sh_term_argv(argv, 0,
+					     (int)(sizeof(argv) /
+						   sizeof(*argv)), "btop", id,
+					     sizeof(id));
+
+			argv[k++] = "btop";
+			argv[k] = NULL;
 			panel_spawn(argv);
 		}
 		return;
@@ -6379,7 +6873,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 * ignores the argument loses nothing. */
 		if (k >= 0 && k < tray_nvis)
 			sh_tray_activate(sh, tray_map[k], btn,
-					 cx * kwl_cell_w(), kwl_cell_h());
+					 cx * kdisp_cell_w(), kdisp_cell_h());
 		return;
 	}
 
@@ -6432,8 +6926,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 * row still steps, which is the gesture that wanted stepping.
 		 */
 		char xs[16], ys[16];
-		snprintf(xs, sizeof(xs), "%d", plusn_x * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+		snprintf(xs, sizeof(xs), "%d", plusn_x * kdisp_cell_w());
+		snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 		const char *argv[] = { "kdos-teams", panel_at_flag(), xs, ys,
 				       NULL };
 		panel_spawn(argv);
@@ -6482,6 +6976,22 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 static int autohide;		/* --autohide was given                    */
 static int ah_hidden;		/* the panel is collapsed right now        */
 static int64_t ah_hide_at;	/* when to collapse it, or 0 for "not armed" */
+/*
+ * PUT AWAY BY THE CHORD, which is not the same as autohidden.
+ *
+ * Autohide is the POINTER's: an enter shows the bar and a leave arms the
+ * deadline. This is a person's answer to "I do not want the bar", so the
+ * pointer must not undo it — `ah_show()` refuses while it is set, and the
+ * chord is the only thing that clears it. Without that the bar came back the
+ * first time the mouse crossed the bottom row, which reads as a chord that
+ * did not work.
+ *
+ * It is also what makes the chord mean the same thing on both desktops: the
+ * console's own bar goes away on `Super+Shift+space` and takes its row out of
+ * the work area, and a chord that hid one bar and left the other would mean
+ * two different things on two machines.
+ */
+static int bar_away;
 
 /* The meters block's clock, shared rather than a second copy of it. */
 static int64_t ah_now_ms(void)
@@ -6492,10 +7002,11 @@ static int64_t ah_now_ms(void)
 static void ah_show(void)
 {
 	ah_hide_at = 0;
-	if (!ah_hidden)
+	/* THE CHORD OUTRANKS THE POINTER. See bar_away. */
+	if (bar_away || !ah_hidden)
 		return;
 	ah_hidden = 0;
-	kwl_layer_autohide(false);
+	kdisp_layer_autohide(false);
 	ktui_draw_invalidate();
 }
 
@@ -6505,7 +7016,7 @@ static void ah_hide(void)
 	if (ah_hidden)
 		return;
 	ah_hidden = 1;
-	kwl_layer_autohide(true);
+	kdisp_layer_autohide(true);
 	ktui_draw_invalidate();
 }
 
@@ -6524,7 +7035,7 @@ int panel_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *output = NULL;
-	int edge = KWL_EDGE_BOTTOM;
+	int edge = KDISP_EDGE_BOTTOM;
 	int dump = 0, dump_w = 100;
 
 	for (int i = 1; i < argc; i++) {
@@ -6538,9 +7049,9 @@ int panel_main(int argc, char **argv)
 		 * login on somebody's edited comp.conf. `--top` is the whole
 		 * of what `panel = top` does. */
 		else if (!strcmp(argv[i], "--bottom"))
-			edge = KWL_EDGE_BOTTOM;
+			edge = KDISP_EDGE_BOTTOM;
 		else if (!strcmp(argv[i], "--top")) {
-			edge = KWL_EDGE_TOP;
+			edge = KDISP_EDGE_TOP;
 			/* Which way this bar's own popups have to grow — see
 			 * panel_at_flag(). */
 			panel_top = 1;
@@ -6617,8 +7128,8 @@ int panel_main(int argc, char **argv)
 	sh.menu_open = -1;
 	sh.hover_menu = -1;
 	sh.hover_task = -1;
-	KwlConfig cfg = {
-		.role = KWL_ROLE_PANEL,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_PANEL,
 		.edge = edge,
 		.cells = tb_rows,
 		/* Must equal the .desktop id or the shell shows a second, unnamed
@@ -6628,6 +7139,9 @@ int panel_main(int argc, char **argv)
 		.font = font,
 		.output = output,
 		.exclusive = 1,
+		/* The task list is what a bar IS, and asking is what grants it:
+		 * see KDispConfig.manage. */
+		.manage = 1,
 		/*
 		 * THE BAR IS FRAMED, like everything else on this desktop.
 		 *
@@ -6684,8 +7198,8 @@ int panel_main(int argc, char **argv)
 		 * because a dump is a grid of CELLS and the pixel layer under
 		 * it is never replayed without a surface to replay it onto.
 		 */
-		cfg.role = KWL_ROLE_NONE;
-		kwl_init(&cfg);
+		cfg.role = KDISP_ROLE_NONE;
+		kdisp_init(&cfg, kdos_disp, kdos_disp_n);
 		if (sh_connect(&sh) != 0)
 			sh.ntasks = 0;
 		/* The tray too: a dump that omits it is a dump of a panel
@@ -6725,11 +7239,11 @@ int panel_main(int argc, char **argv)
 		sh_priv_free(&sh);
 		sh_tray_free(&sh);
 		sh_disconnect(&sh);
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 0;
 	}
 
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-shell: no compositor, no font, or no "
 				"layer-shell — not starting\n");
 		return 1;
@@ -6738,7 +7252,7 @@ int panel_main(int argc, char **argv)
 	/*
 	 * THE BODY BELONGS TO THE BACKDROP, so the cell painter must not touch
 	 * it. KT_SURFACE at alpha 0 means "leave these pixels alone" once a
-	 * backdrop is installed — kwl_set_backdrop() is what flips that sense —
+	 * backdrop is installed — kdisp_set_backdrop() is what flips that sense —
 	 * and every cell the bar does not draw on then shows the gradient,
 	 * the plates and the rules underneath.
 	 *
@@ -6746,23 +7260,25 @@ int panel_main(int argc, char **argv)
 	 * and the backdrop has to exist before the slot is cleared, or one
 	 * frame goes out with a hole where the bar should be.
 	 */
-	kwl_set_backdrop(panel_backdrop);
+	kdisp_set_backdrop(panel_backdrop);
 	px_live = 1;
 	kcell_set_slot_alpha(KT_SURFACE, 0);
 	if (sh_connect(&sh) != 0) {
-		fprintf(stderr, "kdos-shell: the compositor exposes no window "
-				"list; the panel would be blank\n");
-		kwl_shutdown();
+		fprintf(stderr, "kdos-shell: %s offers no window list; the "
+				"panel would be blank\n",
+			kdisp_current() ? kdisp_current()->name
+					: "no display server");
+		kdisp_shutdown();
 		return 1;
 	}
 	/*
-	 * The icon layer, AFTER kwl_init because it needs the cell size and the
+	 * The icon layer, AFTER kdisp_init because it needs the cell size and the
 	 * output scale, and BEFORE the favorites because those resolve an icon
 	 * name each. Failing is a desktop with no pictures, which is the one it
 	 * had last week — every draw path here falls back to its glyph tier.
 	 */
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	/* Canvas text is the chrome's own family at whatever pixel size a tile
 	 * asks for — the size in `--font` is the CELL's and is replaced per
 	 * request. Off with the icons: a tile is a picture, and `icons = no`
@@ -6784,12 +7300,42 @@ int panel_main(int argc, char **argv)
 	ktui_draw_init();
 	/* `kdos theme <accent>` SIGHUPs us; see sh_theme_watch(). */
 	sh_theme_watch();
+	/* `kdos panel toggle` SIGUSR1s us, which is what Super+Shift+space
+	 * runs on this desktop; see sh_bar_watch(). */
+	sh_bar_watch();
 	/* Start hidden: a panel that came up shown and then collapsed a
 	 * moment later would read as a redraw fault at every login. */
 	if (autohide)
 		ah_hide();
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
+		if (sh_bar_dirty) {
+			sh_bar_dirty = 0;
+			/*
+			 * THE BAR, AWAY AND BACK. Hiding drops the exclusive
+			 * zone, so the strip the panel was holding goes back
+			 * to the windows and every one of them re-fits — which
+			 * is the half that makes this the same verb as the
+			 * console's, where the row is taken out of the work
+			 * area.
+			 */
+			bar_away = !bar_away;
+			if (bar_away)
+				ah_hide();
+			else
+				ah_show();	/* bar_away is clear: it acts */
+			/*
+			 * A CHORD THAT CHANGES THE LAYOUT SAYS SO, in the
+			 * console's words. What is left is one row of shade,
+			 * and the chord that undoes it is not written anywhere
+			 * on the screen — a person who pressed this by
+			 * accident would have nothing to read.
+			 */
+			kb_notify("kdos",
+				  bar_away ? "Taskbar hidden" : "Taskbar back",
+				  bar_away ? "the same chord brings it back"
+					   : "");
+		}
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
@@ -6821,7 +7367,11 @@ int panel_main(int argc, char **argv)
 		 * and the auto-suspend must not be a side effect of whether
 		 * the pointer happens to be on the bar. */
 		panel_tick(&sh);
-		if (autohide && ah_hidden)
+		/* `ah_hidden` ALONE, never `autohide && ah_hidden`: the chord
+		 * collapses this surface to the strip whether autohide is on
+		 * or not, and a two-row taskbar painted into one cell is the
+		 * bar the chord was asked to take away, drawn wrong. */
+		if (ah_hidden)
 			ah_draw_edge();
 		else
 			draw_taskbar(&sh);
@@ -6890,7 +7440,8 @@ int panel_main(int argc, char **argv)
 			/* Nothing on the strip is a control: it is one row of
 			 * shade, and the frame that drew it recorded no hit
 			 * map. Clicks and the wheel wait for the panel. */
-			if (autohide && ah_hidden) {
+			/* `ah_hidden` alone, for the reason the draw gives. */
+			if (ah_hidden) {
 				/* the edge answers hover and nothing else */
 			} else if (ev.press == KT_MP_DRAG) {
 				handle_motion(&sh, ev.mx, ev.my);
@@ -6943,6 +7494,6 @@ int panel_main(int argc, char **argv)
 	sh_tray_free(&sh);
 	sh_disconnect(&sh);
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

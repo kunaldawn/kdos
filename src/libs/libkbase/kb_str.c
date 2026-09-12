@@ -59,3 +59,209 @@ const char *kb_human_size(unsigned long long bytes)
 		snprintf(b, 32, "%.0f%s", v, u[i]);
 	return b;
 }
+
+/*
+ * ── base64 ───────────────────────────────────────────────────────────────
+ *
+ * Here rather than in a state machine or a terminal: OSC 52 carries a base64
+ * selection and the clipboard is not the only thing that will ever want this.
+ *
+ * DECODE ONLY. The encode side has one caller — `ktui_clip_copy` writes the
+ * sequence as it goes, without a buffer — and a second implementation of the
+ * same table would be a second thing to keep in step.
+ */
+
+static int b64_val(unsigned char c)
+{
+	if (c >= 'A' && c <= 'Z')
+		return c - 'A';
+	if (c >= 'a' && c <= 'z')
+		return c - 'a' + 26;
+	if (c >= '0' && c <= '9')
+		return c - '0' + 52;
+	if (c == '+')
+		return 62;
+	if (c == '/')
+		return 63;
+	return -1;
+}
+
+/*
+ * Base64, out. Returns the length written, or -1 when it would not fit.
+ *
+ * A table and three shifts: the alphabet is the standard one with padding,
+ * because everything this encodes is read by something that expects exactly
+ * that — an OSC 52 selection, a recorded protocol message.
+ */
+int kb_b64_encode(const void *in, size_t n, char *out, size_t outsz)
+{
+	static const char A[] =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	const unsigned char *p = in;
+	size_t need = (n + 2) / 3 * 4 + 1;
+	size_t k = 0;
+
+	if (!out || !outsz || (!p && n))
+		return -1;
+	if (need > outsz)
+		return -1;
+
+	for (size_t i = 0; i < n; i += 3) {
+		unsigned char b0 = p[i];
+		unsigned char b1 = i + 1 < n ? p[i + 1] : 0;
+		unsigned char b2 = i + 2 < n ? p[i + 2] : 0;
+
+		out[k++] = A[b0 >> 2];
+		out[k++] = A[((b0 & 0x3) << 4) | (b1 >> 4)];
+		out[k++] = i + 1 < n ? A[((b1 & 0xf) << 2) | (b2 >> 6)] : '=';
+		out[k++] = i + 2 < n ? A[b2 & 0x3f] : '=';
+	}
+	out[k] = '\0';
+	return (int)k;
+}
+
+/*
+ * Decodes `in` into `out`, writing at most `outsz` bytes and NUL-terminating.
+ * Returns the number of bytes written, or -1 when the input is not base64 or
+ * would not fit.
+ *
+ * REFUSED WHOLE, NEVER PARTIAL. A half-decoded selection is a paste of
+ * garbage; a refusal is a paste that did not happen, which is visible.
+ * Whitespace is skipped, because a long payload may arrive wrapped.
+ */
+int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
+		  size_t *outlen)
+{
+	unsigned int acc = 0;
+	int bits = 0;
+	size_t n = 0;
+
+	if (!in || !out || !outsz)
+		return -1;
+
+	for (size_t i = 0; i < inlen; i++) {
+		unsigned char c = (unsigned char)in[i];
+		int v;
+
+		if (c == '\n' || c == '\r' || c == ' ' || c == '\t')
+			continue;
+		if (c == '=')
+			break;		/* padding: nothing follows it */
+		v = b64_val(c);
+		if (v < 0)
+			return -1;
+		acc = (acc << 6) | (unsigned int)v;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			if (n + 1 >= outsz)
+				return -1;
+			out[n++] = (char)((acc >> bits) & 0xff);
+		}
+	}
+
+	out[n] = '\0';
+	if (outlen)
+		*outlen = n;
+	return (int)n;
+}
+
+/*
+ * A path as a `file://` URI, escaped the way every other program on the
+ * machine escapes it.
+ *
+ * THE ESCAPE SET IS NOT A CHOICE. The thumbnail cache is named by the MD5 of
+ * this string, and the cache is SHARED — a file manager, an image viewer and
+ * this desktop all write into it. Escape one character differently and every
+ * thumbnail misses: the entry is there, under a name nothing else computes.
+ * The set is glib's `G_URI_RESERVED_CHARS_ALLOWED_IN_PATH` plus the unreserved
+ * characters, which is what `g_filename_to_uri()` produces.
+ *
+ * Uppercase hex, for the same reason: `%2F` and `%2f` are the same URI and
+ * different strings, and the hash is over the string.
+ */
+void kb_uri_file(const char *path, char *out, size_t n)
+{
+	static const char hex[] = "0123456789ABCDEF";
+	static const char keep[] = "-_.~!$&'()*+,;=:@/";
+	size_t o = 0;
+
+	if (!out || n < 8)
+		return;
+	o += (size_t)snprintf(out, n, "file://");
+	for (const unsigned char *p = (const unsigned char *)path;
+	     *p && o + 4 < n; p++) {
+		if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+		    (*p >= '0' && *p <= '9') || strchr(keep, *p)) {
+			out[o++] = (char)*p;
+			continue;
+		}
+		out[o++] = '%';
+		out[o++] = hex[*p >> 4];
+		out[o++] = hex[*p & 0x0f];
+	}
+	out[o] = '\0';
+}
+
+static int hexval(unsigned char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+/* See kbase.h. */
+int kb_uri_path(const char *uri, char *out, size_t n)
+{
+	const char *p;
+	size_t o = 0;
+
+	if (!uri || !out || n < 2)
+		return 0;
+	if (strncmp(uri, "file://", 7) != 0) {
+		if (strlen(uri) >= n)
+			return 0;
+		snprintf(out, n, "%s", uri);
+		return 1;
+	}
+
+	p = uri + 7;
+	if (!strncmp(p, "localhost/", 10))
+		p += 9;
+	/* Whatever is left must be the path itself. Anything else between the
+	 * slashes is a host, and this machine is not it. */
+	if (*p != '/')
+		return 0;
+
+	for (; *p; p++) {
+		int hi, lo;
+
+		if (o + 1 >= n)
+			return 0;
+		if (*p != '%') {
+			out[o++] = *p;
+			continue;
+		}
+		hi = hexval((unsigned char)p[1]);
+		lo = hi < 0 ? -1 : hexval((unsigned char)p[2]);
+		/* A stray `%` is a literal one. A URI this program wrote never
+		 * has one, and a file whose name does is not a reason to
+		 * refuse to open it. */
+		if (lo < 0) {
+			out[o++] = *p;
+			continue;
+		}
+		/* A NUL would end the path early and hand the caller a
+		 * different file from the one named. */
+		if (!(hi * 16 + lo))
+			return 0;
+		out[o++] = (char)(hi * 16 + lo);
+		p += 2;
+	}
+	out[o] = '\0';
+	return 1;
+}

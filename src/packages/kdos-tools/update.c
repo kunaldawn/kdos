@@ -38,6 +38,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -206,10 +207,114 @@ static int check_ports_or_explain(const KpConf *c)
 
 /* ── check ─────────────────────────────────────────────────────────────── */
 
-static int cmd_check(const KpConf *c)
+/*
+ * THE SAME SURVEY AS ONE LINE OF JSON, for a surface rather than a person.
+ *
+ * A panel badge and a settings page need a number and a list, and the
+ * alternative is parsing the human output — which is coloured, wrapped, and
+ * written to be read. A second command computing the same answer would be a
+ * second answer; this is the same `survey()` printed differently.
+ *
+ * ITS EXIT STATUS IS THE SAME AS THE HUMAN FORM'S: non-zero when something is
+ * behind, so a caller that only wants to know whether to draw a badge does not
+ * have to parse anything at all.
+ */
+static int check_json(const KpConf *c, FILE *o)
 {
-	if (!check_ports_or_explain(c))
+	Behind *v = NULL;
+	int orphans = 0;
+	int n = survey(c, &v, &orphans);
+	char *dir = binhost_dir();
+
+	if (n < 0) {
+		fprintf(o, "{\"error\":\"no package database\"}\n");
+		free(dir);
 		return 2;
+	}
+	fprintf(o, "{\"behind\":%d,\"orphans\":%d,\"binhost\":", n, orphans);
+	if (dir) {
+		char *idx = kb_path_join(dir, "PACKAGES");
+		char *sig = kb_path_join(dir, "PACKAGES.sig");
+
+		fprintf(o, "\"%s\",\"signed\":%s", dir,
+		       kb_path_exists(idx) && kb_path_exists(sig) ? "true"
+								 : "false");
+		free(idx);
+		free(sig);
+	} else {
+		fprintf(o, "null,\"signed\":false");
+	}
+	fprintf(o, ",\"packages\":[");
+	for (int i = 0; i < n; i++)
+		fprintf(o, "%s{\"name\":\"%s\",\"have\":\"%s\",\"want\":\"%s-%s\"}",
+		       i ? "," : "", v[i].name, v[i].have, v[i].want,
+		       v[i].want_rel[0] ? v[i].want_rel : "1");
+	fprintf(o, "]}\n");
+	free(dir);
+	free(v);
+	return n ? 1 : 0;
+}
+
+/*
+ * THE DOCUMENT TO A PATH, ATOMICALLY — so a scheduled job needs no shell.
+ *
+ * `kdos update check --json > file` is a redirection, and a redirection means
+ * the timer table has to be a shell script. Everything in this tree execs
+ * through an argument vector precisely so that no configuration file has to
+ * be one.
+ *
+ * TEMP AND RENAME, because a reader arrives on its own schedule: the panel
+ * badge reads this file on a tick, and half a document parses as nothing
+ * behind — a machine that is out of date reporting that it is not.
+ */
+static int check_json_to(const KpConf *c, const char *path)
+{
+	char tmp[512];
+	FILE *o;
+	int rc;
+
+	if (snprintf(tmp, sizeof(tmp), "%s.new", path) >= (int)sizeof(tmp)) {
+		fprintf(stderr, "kdos update: path too long\n");
+		return 2;
+	}
+	o = fopen(tmp, "w");
+	if (!o) {
+		fprintf(stderr, "kdos update: cannot write %s: %s\n", tmp,
+			strerror(errno));
+		return 2;
+	}
+	rc = check_json(c, o);
+	fflush(o);
+	fsync(fileno(o));
+	if (fclose(o) != 0 || rename(tmp, path) != 0) {
+		remove(tmp);
+		fprintf(stderr, "kdos update: cannot write %s: %s\n", path,
+			strerror(errno));
+		return 2;
+	}
+	return rc;
+}
+
+static int cmd_check(const KpConf *c, int json)
+{
+	/*
+	 * THE JSON FORM ANSWERS IN JSON EVEN WHEN IT CANNOT ANSWER. The prose
+	 * explanation is right for a person and is prose; a caller that asked
+	 * for a document and got a paragraph has to decide whether the parse
+	 * failed or the machine did, and it cannot.
+	 */
+	if (!have_ports(c)) {
+		if (json) {
+			printf("{\"error\":\"no ports tree — build the stick "
+			       "with KDOS_ISO_SOURCES=1, or point PORT_REPO at "
+			       "a checkout\"}\n");
+			return 2;
+		}
+		check_ports_or_explain(c);
+		return 2;
+	}
+	if (json)
+		return check_json(c, stdout);
 
 	Behind *v = NULL;
 	int orphans = 0;
@@ -567,14 +672,36 @@ int kdt_update(int argc, char **argv, int (*theme)(int, char **))
 	KpConf c;
 	kp_conf_load(&c);
 
-	if (!strcmp(what, "check"))
-		return cmd_check(&c);
+	if (!strcmp(what, "check")) {
+		int json = 0;
+		const char *out = NULL;
+
+		for (int i = 0; i < rest; i++) {
+			if (!strcmp(restv[i], "--json"))
+				json = 1;
+			else if (!strcmp(restv[i], "--out") && i + 1 < rest)
+				out = restv[++i];
+		}
+		/* `--out` IMPLIES `--json`: there is no other document to
+		 * write, and a file of coloured, wrapped human text is not
+		 * something anything reads back. */
+		if (out) {
+			if (!have_ports(&c)) {
+				fprintf(stderr, "kdos update: no ports tree; "
+						"%s not written\n", out);
+				return 2;
+			}
+			return check_json_to(&c, out);
+		}
+		return cmd_check(&c, json);
+	}
 	if (!strcmp(what, "apply"))
 		return cmd_apply(&c, rest, restv);
 
 	fprintf(stderr, "usage: kdos update {check|apply|theme}\n"
 			"  check   what the ports tree pins that is not "
-			"installed\n"
+			"installed; --json for a surface, --out PATH to\n"
+			"          write that document atomically\n"
 			"  apply   take it — binhost first, source second; "
 			"A/B aware\n"
 			"  theme   re-run the theme generators for $HOME after "

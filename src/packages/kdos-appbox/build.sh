@@ -24,3 +24,8 @@ gcc $CFLAGS -O2 -std=c11 -D_GNU_SOURCE -Wall -Wextra \
 install -Dm755 kdos-appbox "$PKG/usr/local/bin/kdos-appbox"
 # A name the build does not symlink is a program nothing can reach.
 ln -s kdos-appbox "$PKG/usr/local/bin/kdos-box"
+# THE NAME EVERY LINK-OPENER SAYS. It belongs to the package that implements
+# it, not to fs/: a tree whose kdos-appbox predates the xdg-open branch would
+# otherwise get a symlink shadowing /usr/bin/xdg-open with a binary that falls
+# through to run_as_shim.
+ln -s kdos-appbox "$PKG/usr/local/bin/xdg-open"

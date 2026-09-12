@@ -83,6 +83,42 @@ extern const KtuiTheme *ktui_theme;
 
 int ktui_theme_set(const char *name);
 
+/*
+ * NIGHT LIGHT — a warm transform over the eight slots, not a scheme of its own.
+ *
+ * Seven accents times a warm copy is fourteen palettes to keep in step, and
+ * the cast belongs to the screen rather than to the theme: the scheme stays
+ * the one the user chose and `ktui_theme` points at a warmed copy of it while
+ * this is on. Blue loses the most and red nothing, which is what a colour
+ * temperature is and why a warmed accent still reads as itself.
+ *
+ * Returns non-zero when the palette actually changed, so a caller can skip a
+ * repaint it does not owe. THE CALLER READS THE TOGGLE: this library holds no
+ * opinion about where a desktop keeps its state, and both consumers already
+ * have the state directory in hand.
+ */
+int ktui_theme_night(int on);
+
+/*
+ * THE NEAREST SLOT TO AN ARBITRARY COLOUR, by squared distance.
+ *
+ * The one rule for reducing a colour that came from outside the palette — a
+ * terminal's SGR, a picture's average — to something this desktop can draw. A
+ * table mapping "red means the error slot" would be a second set of colour
+ * decisions beside the palette, and it would stop following the accent:
+ * `kdos theme amber` has to move every colour with it.
+ */
+int ktui_theme_nearest(uint32_t rgb);
+
+/*
+ * THE NAME OF A SLOT, for the one place a colour is shown to a person rather
+ * than drawn: the desktop's colour picker, which answers with a slot and its
+ * hex. The names are the ones the enum uses, lowercased, so what a person is
+ * handed is what they would write in a configuration file. NULL for a value
+ * that is not a slot.
+ */
+const char *ktui_slot_name(int slot);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Terminal
  * ──────────────────────────────────────────────────────────────────────── */
@@ -93,7 +129,13 @@ enum {
 	KT_CAP_LINUXVT = 1 << 2,	/* real VT: PIO_CMAP palette, no     */
 					/* bold, no xterm mouse -> evdev     */
 	KT_CAP_UTF8 = 1 << 3,
-	KT_CAP_MOUSE = 1 << 4
+	KT_CAP_MOUSE = 1 << 4,
+	/* DECSET 2026 is understood, so a frame may be bracketed and is shown
+	 * whole or not at all. Probed with DECRQM and never assumed: a
+	 * terminal that does not know the mode ignores the brackets, but one
+	 * that knows it and is left INSIDE a block shows nothing further, so
+	 * the bit also says who is owed the closing sequence. */
+	KT_CAP_SYNC = 1 << 5
 };
 
 extern int ktui_caps;
@@ -113,6 +155,17 @@ void ktui_term_flush(void);
  * and asks ktui_term_flush_dropped() whether the last frame survived. */
 void ktui_term_set_write_timeout(int ms);
 int ktui_term_flush_dropped(void);
+
+/*
+ * THE HOST TERMINAL WENT AWAY — an `ssh` drop, a closed window, a pty whose
+ * far end is gone. Sticky: a terminal that has hung up does not come back.
+ *
+ * A CONSUMER THAT DRAWS FOR EVER HAS TO ASK. Nothing else says so: a write to
+ * a hung-up descriptor fails and a read returns end of file, and a loop that
+ * checked neither spins at its poll timeout painting frames nobody receives —
+ * and never reaches the exit that would have put the terminal back.
+ */
+int ktui_term_hungup(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
 /* OSC 52 clipboard write, base64 encoded by hand (this library links nothing
@@ -130,12 +183,70 @@ enum {
 	KT_A_NONE = 0,
 	KT_A_BOLD = 1 << 0,	/* suppressed on a VT: the bit is the font page */
 	KT_A_REVERSE = 1 << 1,
-	KT_A_UNDERLINE = 1 << 2
+	KT_A_UNDERLINE = 1 << 2,
+	/* The three a terminal's SGR carries and this desktop draws. They are
+	 * bits in the byte a cell already had, so nothing on the wire is wider
+	 * for them; a real VT is where they are dropped, because there an
+	 * attribute bit selects a FONT PAGE rather than a style. */
+	KT_A_ITALIC = 1 << 3,
+	KT_A_STRIKE = 1 << 4,
+	KT_A_OVERLINE = 1 << 5,
+
+	/*
+	 * ABOVE THE EIGHTH BIT NOTHING TRAVELS IN THE WIRE'S ATTRIBUTE BYTE.
+	 *
+	 * The per-cell run is eight bytes and stays eight bytes; a literal
+	 * colour arrives in a SEPARATE run that a view has to have asked for.
+	 * Putting these bits in the low byte would send a view that declined
+	 * the colours a cell claiming to have them, and it would draw the
+	 * black it was never sent.
+	 *
+	 * ONE BIT PER COLOUR, not one for the pair. A program that sets a
+	 * foreground and leaves the background alone is the common case, and a
+	 * single bit would have to freeze the theme's background into the cell
+	 * as a literal — after which that cell stops following `kdos theme`
+	 * and a retint leaves a rectangle of the old scheme behind.
+	 */
+	KT_A_FGRGB = 1 << 8,		/* fgc is the glyph's colour         */
+	KT_A_BGRGB = 1 << 9,		/* bgc is the colour behind it       */
+	KT_A_ULCOLOR = 1 << 10		/* ulc is the underline's own colour */
 };
+
+/*
+ * THE UNDERLINE'S SHAPE, in three bits above those.
+ *
+ * `KT_A_UNDERLINE` says there is one and is what every consumer already
+ * honours; the style refines it, so a view that never hears the colour run
+ * draws a straight line rather than nothing. SGR `4:0`-`4:5` in order, and 0
+ * means the plain line the attribute alone asks for.
+ */
+enum {
+	KT_UL_PLAIN = 0,
+	KT_UL_SINGLE,
+	KT_UL_DOUBLE,
+	KT_UL_CURLY,
+	KT_UL_DOTTED,
+	KT_UL_DASHED
+};
+
+#define KT_UL_SHIFT 11
+#define KT_A_ULSTYLE (7u << KT_UL_SHIFT)
+#define KT_UL_STYLE(a) (((unsigned)(a) >> KT_UL_SHIFT) & 7u)
+#define KT_UL_SET(n) (((unsigned)(n) & 7u) << KT_UL_SHIFT)
 
 typedef struct {
 	uint32_t ch;
-	uint8_t fg, bg, attr;
+	uint8_t fg, bg;
+	uint16_t attr;
+	/*
+	 * The literal a terminal asked for, kept BESIDE the slot the same
+	 * colour reduced to rather than instead of it. Every consumer that has
+	 * only slots — a view that declined the colour run, a golden, a tty
+	 * with sixteen colours — reads `fg`/`bg` and is unaffected by whatever
+	 * is here. Meaningful only with KT_A_FGRGB, KT_A_BGRGB and
+	 * KT_A_ULCOLOR.
+	 */
+	uint32_t fgc, bgc, ulc;
 } KtuiCell;
 
 /* A double-width codepoint occupies TWO cells: the glyph in cell i and this
@@ -163,7 +274,15 @@ typedef struct {
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KTUI_SPRITE_BASE  0x02000000u
-#define KTUI_MAX_SPRITES  256
+/*
+ * FOUR THOUSAND, and the number comes from a full screen. A picture is tiled
+ * into 16x16-cell sprites, so a 240x67 grid covered edge to edge is
+ * ceil(240/16) * ceil(67/16) = 75 of them — and a terminal showing several
+ * pictures, plus every icon the panel and the desktop hold, is the case that
+ * has to fit. The slot encoding already carries sixteen bits, so this is the
+ * table's size and nothing else.
+ */
+#define KTUI_MAX_SPRITES  4096
 #define KTUI_IS_SPRITE(ch) (((ch) & 0xff000000u) == KTUI_SPRITE_BASE)
 #define KTUI_SPRITE_SLOT(ch) (((ch) >> 8) & 0xffffu)
 #define KTUI_SPRITE_SX(ch) ((ch) & 0xfu)
@@ -174,6 +293,17 @@ typedef struct {
 	const void *pix;	/* pixman_image_t *, owned by the caller    */
 	uint32_t fallback;	/* what a text backend puts there instead   */
 	int w, h;		/* size in cells, 1..16                     */
+	/*
+	 * BUMPED ON EVERY PUT, AND IT IS WHAT A FORWARDING BACKEND COMPARES.
+	 * An animation re-registers the same key so the cells go on naming the
+	 * same slot and only the pixels change — and the new picture is very
+	 * often the SAME POINTER, because the evictor freed the old one and
+	 * the allocator handed the memory straight back. A backend that keyed
+	 * its "already sent" cache on the pointer would then never send a
+	 * frame after the first, and the animation would run everywhere except
+	 * over the wire.
+	 */
+	unsigned long gen;
 } KtuiSprite;
 
 /* Register (or refresh) the picture for `key`. `pix` must already be scaled to
@@ -184,8 +314,83 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 int ktui_sprite_find(uint64_t key);
 const KtuiSprite *ktui_sprite_get(int slot);
 int ktui_sprite_slots(void);
-/* Call BEFORE freeing the picture. There is no refcount and no eviction. */
+/* Call BEFORE freeing the picture. */
 void ktui_sprite_drop(uint64_t key);
+
+/*
+ * EVICTION IS OPT-IN, and it is opt-in because of what a sprite is: the table
+ * holds a borrowed pointer and this library does no pixel work, so it cannot
+ * free a picture and must not drop one somebody is still drawing. Both
+ * problems are solved by the owner saying how:
+ *
+ *   - `fn` is called with the key and the picture when a slot is taken back,
+ *     so the owner frees it at the moment the table stops naming it. It is
+ *     also called for a picture the table REFUSED mid-way through a tiled
+ *     put, which carries the same message: nothing here will ever name it.
+ *   - Only a sprite NOT referenced by the current cell buffer is evictable.
+ *     The table can check that because the cell buffer is this library's.
+ *   - Least recently used first, where "used" means put or found.
+ *
+ * With no evictor registered the table fills and `ktui_sprite_put` answers -1,
+ * which every consumer already handles by drawing its glyph. That is the right
+ * behaviour for icons, which are owned for the life of the session.
+ */
+typedef void (*KtuiSpriteFree)(uint64_t key, const void *pix, void *user);
+
+void ktui_sprite_evictor(KtuiSpriteFree fn, void *user);
+
+/*
+ * A byte budget on top of the slot count, for pictures rather than icons: a
+ * full-screen photograph is megabytes and a hundred of them is a leak with a
+ * cap. `cell_px` is how many pixels one cell is at the current scale — the
+ * table does no pixel work, so it cannot know that and has to be told. Zero
+ * bytes, or an unset cell size, means the slot count is the only limit.
+ */
+void ktui_sprite_budget(size_t max_bytes, int cell_w_px, int cell_h_px);
+size_t ktui_sprite_bytes(void);
+
+/*
+ * The buffer a backend last diffed against, and its OWN size — which is not
+ * ktui_w by ktui_h between a backend resize and the consumer's
+ * ktui_draw_resize(). For the sprite table's eviction check and nothing else.
+ *
+ * IT IS NOT WHAT IS ON THE SCREEN, and a backend need not maintain it at all:
+ * `kdos-con`'s ignores it, because a session with several views has one
+ * previous frame per view rather than one between them. Read
+ * `ktui_draw_cells()` for the composed frame.
+ */
+const KtuiCell *ktui_cells(int *w, int *h);
+/* The frame being composed: what ktui_draw_cell writes and what the next flush
+ * sends. This is what is on the screen. */
+const KtuiCell *ktui_draw_cells(int *w, int *h);
+
+/*
+ * A picture larger than one slot is a GRID of slots sharing a key prefix, so
+ * it evicts and re-registers as a unit rather than leaving three quarters of a
+ * photograph on the screen. The stride is XORed rather than added, because two
+ * pictures with adjacent keys — a file path and a frame number is exactly that
+ * — would otherwise collide on their tiles.
+ */
+#define KTUI_TILE_STRIDE 0x9e3779b97f4a7c15ULL
+
+/* Called once per tile with the sub-rectangle it covers, in CELLS. Returns the
+ * picture for that tile, already scaled, or NULL to abandon the whole thing. */
+typedef const void *(*KtuiSpriteTile)(void *user, int cell_x, int cell_y,
+				      int cw, int ch);
+
+/*
+ * Tiles registered, or -1. All or nothing: a partial picture draws a hole.
+ *
+ * `fallback` is what EVERY tile shows where pixels cannot be drawn — a tty, a
+ * view with no pixel library, a dump. A picture is worth a mark there: a
+ * photograph that renders as nothing at all is indistinguishable from output
+ * that never arrived.
+ */
+int ktui_sprite_put_tiled(uint64_t key, int cw, int ch, uint32_t fallback,
+			  KtuiSpriteTile tile, void *user);
+void ktui_sprite_drop_tiled(uint64_t key, int cw, int ch);
+int ktui_sprite_tile_at(uint64_t key, int cw, int cell_x, int cell_y,
+			int *sx, int *sy);
 void ktui_sprite_clear(void);
 void ktui_draw_sprite(KRect r, int slot, int fg, int bg);
 /* A text backend's substitute for a sprite cell. */
@@ -234,6 +439,15 @@ typedef struct {
 	int (*poll_event)(KtuiEvent *ev, int timeout_ms);
 	void (*size)(int *w, int *h);
 	int (*caps)(void);
+	/*
+	 * WHERE THIS SURFACE'S CARET IS, in its own cells, or a negative x for
+	 * none. A backend drawing on somebody else's screen has no terminal
+	 * cursor to place and something else that does: the console client
+	 * sends it to the session, which is the only thing that knows where
+	 * this surface sits on the screen. NULL is a backend that places its
+	 * own cursor, and ktui_term_caret() then writes the escape.
+	 */
+	void (*caret)(int x, int y);
 } KtuiBackend;
 
 /* NULL selects the built-in tty backend. A backend must outlive the library's
@@ -249,6 +463,10 @@ int ktui_draw_init(void);
  * strip past its rect, a column out from under its own header) was invisible
  * to the compiler and to a test suite that cannot draw. */
 int ktui_offscreen_init(int w, int h);
+/* Whether this process is drawing offscreen. Asked by the few places that
+ * would otherwise write to a terminal that is not there — the caret is one,
+ * and the escape it wrote landed inside a committed reference frame. */
+int ktui_offscreen(void);
 void ktui_draw_dump(void);
 void ktui_draw_resize(void);
 void ktui_draw_clear(void);
@@ -256,6 +474,18 @@ void ktui_draw_flush(void);
 void ktui_draw_invalidate(void);	/* force a full repaint next flush */
 
 void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr);
+/*
+ * A CELL COPIED WHOLE, which is the only way a literal colour reaches a frame.
+ *
+ * Terminal content and nothing else uses it: chrome is slots, always, because
+ * a chrome colour that stopped following `kdos theme` would be a second
+ * palette nobody can change. It clips like any other draw.
+ */
+void ktui_draw_put(int x, int y, const KtuiCell *c);
+/* XOR the reverse attribute over a rectangle of the frame being composed —
+ * a selection, which leaves the content and changes only how it reads. Not
+ * expressible through ktui_cells(), which hands out the flushed frame. */
+void ktui_draw_reverse(KRect r);
 void ktui_draw_fill(KRect r, int bg);
 int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg,
 		   int attr);
@@ -334,8 +564,14 @@ enum {
 	KT_EVT_KEY,
 	KT_EVT_MOUSE,
 	KT_EVT_RESIZE,
-	KT_EVT_TICK
+	KT_EVT_TICK,
+	KT_EVT_TOUCH,
+	KT_EVT_DROP
 };
+
+/* Touch phases. CANCEL is not UP: the compositor or the driver has taken the
+ * sequence away, and a gesture in progress is abandoned rather than completed. */
+enum { KT_TOUCH_DOWN = 0, KT_TOUCH_MOVE, KT_TOUCH_UP, KT_TOUCH_CANCEL };
 
 enum {
 	KT_K_ESC = 27,
@@ -347,10 +583,37 @@ enum {
 	KT_K_HOME, KT_K_END, KT_K_PGUP, KT_K_PGDN, KT_K_INS, KT_K_DEL,
 	KT_K_BTAB,
 	KT_K_F1, KT_K_F2, KT_K_F3, KT_K_F4, KT_K_F5, KT_K_F6,
-	KT_K_F7, KT_K_F8, KT_K_F9, KT_K_F10, KT_K_F11, KT_K_F12
+	KT_K_F7, KT_K_F8, KT_K_F9, KT_K_F10, KT_K_F11, KT_K_F12,
+	/*
+	 * THE KEYS A KEYBOARD HAS AND A TERMINAL DOES NOT. A media key
+	 * produces no character, so a backend reading a terminal never sees
+	 * one and never will: these reach a session through libkkms and
+	 * nowhere else.
+	 *
+	 * APPENDED, NEVER INSERTED. The enum is positional from
+	 * KT_K_SPECIAL and the NUMBER travels: a session writes it over the
+	 * socket to a surface, so a key added in the middle renumbers every
+	 * key after it and a client built before the change reads Home where
+	 * the session sent End.
+	 */
+	KT_K_VOLUP, KT_K_VOLDOWN, KT_K_MUTE,
+	KT_K_PLAY, KT_K_STOP, KT_K_NEXT, KT_K_PREV,
+	/* Print is one of them: it produces no character either, so a terminal
+	 * reports nothing for it and the capture chords on it reach a KMS view
+	 * and nowhere else. */
+	KT_K_PRINT
 };
 
-enum { KT_MOD_SHIFT = 1, KT_MOD_ALT = 2, KT_MOD_CTRL = 4 };
+/* KT_MOD_SUPER is the desktop's own modifier — the one every window-management
+ * chord is on, so that none of them can collide with what a program inside a
+ * window wants. A backend that cannot report it leaves it clear, and those
+ * chords simply do not fire. */
+enum {
+	KT_MOD_SHIFT = 1,
+	KT_MOD_ALT = 2,
+	KT_MOD_CTRL = 4,
+	KT_MOD_SUPER = 8
+};
 
 enum {
 	KT_MB_LEFT = 0, KT_MB_MIDDLE, KT_MB_RIGHT,
@@ -365,9 +628,93 @@ struct KtuiEvent {
 	int key;		/* codepoint or KT_K_*                     */
 	int mods;
 	int mx, my;
+	/*
+	 * WHERE IN THE CELL, as an offset from its CENTRE in 1/256ths of a
+	 * cell width and height, -128..127. Zero is the centre — which is what
+	 * a backend with no pixel geometry leaves behind, and is the right
+	 * answer for one, because a cell's corner is a pixel that belongs to
+	 * its neighbour.
+	 *
+	 * Nothing drawn in cells reads these. They exist for the one thing on
+	 * this desktop that is not cells: a pixel guest embedded in a window,
+	 * whose buttons are smaller than the grid pointing at them.
+	 */
+	int subx, suby;
 	int btn;
 	int press;
+	/* Touch only. `ms` is the BACKEND'S timestamp, not a clock read here:
+	 * both libinput and wl_touch carry one, and taking theirs is what lets
+	 * the recogniser be a pure function of its input and the test suite
+	 * drive it without sleeping. */
+	int slot;
+	int phase;
+	unsigned ms;
+	/* What the recogniser made of it, KT_GEST_*, or KT_GEST_NONE. Filled by
+	 * whichever backend fed ktui_gesture_feed, so a surface that wants the
+	 * gesture reads it here instead of running a second recogniser. */
+	int gesture;
 };
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Gestures
+ *
+ * ONE recogniser, fed by every backend that has touch: libinput under the KMS
+ * backend and wl_touch under the Wayland one. Putting the disambiguation in a
+ * backend would mean writing it twice and having it disagree twice.
+ *
+ * It emits a gesture AND synthesises the ordinary mouse events every existing
+ * widget already handles, so the toolkit inherits touch without being
+ * rewritten. A widget that wants the gesture reads it; a widget that does not
+ * sees a mouse.
+ *
+ * KT_GEST_, not KT_G_: the glyph tiers above own that prefix, and a collision
+ * there is a compile error in every consumer at once.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KT_GEST_NONE = 0,
+	KT_GEST_TAP,
+	KT_GEST_LONG,
+	KT_GEST_DRAG,
+	KT_GEST_SCROLL,
+	KT_GEST_PINCH,
+	KT_GEST_SWIPE_EDGE
+};
+
+/* Milliseconds. A press shorter than TAP that never left its cell is a tap; one
+ * held past LONG without leaving it is a long press, reported ONCE. */
+enum { KT_TAP_MS = 250, KT_LONG_MS = 500 };
+
+typedef struct {
+	int type;		/* KT_GEST_*                               */
+	int x, y;		/* cell the gesture is at                  */
+	int dx, dy;		/* cells moved since the last report       */
+	int fingers;
+	int edge;		/* KT_K_LEFT/RIGHT/UP/DOWN for an edge swipe */
+} KtuiGesture;
+
+/*
+ * Feed one touch event. Returns 1 when `g` holds a gesture.
+ *
+ * `mouse` is filled with the synthesised pointer event when one is due and
+ * `*have_mouse` set; a caller that only wants gestures may pass NULL for both.
+ *
+ * MOVEMENT IS MEASURED IN CELLS, so a drag begins when the finger leaves the
+ * cell it started in. That is coarse on purpose: everything above this line is
+ * a grid, and a threshold in pixels would be a number this library cannot see.
+ */
+int ktui_gesture_feed(const KtuiEvent *ev, KtuiGesture *g,
+		      KtuiEvent *mouse, int *have_mouse);
+
+/* Abandon anything in progress. A backend calls this when it loses the seat. */
+void ktui_gesture_reset(void);
+
+/*
+ * Long press has no event of its own to arrive on: the finger is still down and
+ * nothing is moving. A caller that wants it polls with the current timestamp,
+ * from its own idle tick.
+ */
+int ktui_gesture_tick(unsigned ms, KtuiGesture *g);
 
 int ktui_input_init(int want_mouse);
 void ktui_input_shutdown(void);
@@ -401,6 +748,64 @@ void ktui_hit_chrome(KRect r, int id);	/* id is caller-local, 0..N        */
 int ktui_chrome_clicked(int id);
 int ktui_focused(int id);
 int ktui_activated(int id, KRect r);	/* Enter on focus, or a click      */
+
+/* ────────────────────────────────────────────────────────────────────────
+ * What a widget is, said out loud
+ *
+ * A WIDGET ALREADY KNOWS WHICH ITEM HAS FOCUS. It computes that every frame
+ * from the same id the hit test uses, so a reader that worked it out again
+ * from a grid of cells would be guessing at what the surface has in hand — and
+ * it guesses wrong first on the controls that matter most: which cell of a
+ * table, which tab of a strip, which item of how many in a menu.
+ *
+ * SO THE WIDGET SAYS IT, AND IT SAYS IT HERE. A record composed in `kdos-con`
+ * would reach the console and give the graphical desktop nothing; one set in
+ * this library is set once and both desktops read it.
+ *
+ * THE QUEUE IS PER FRAME AND FIXED. Nothing on the draw path allocates — a
+ * widget that allocated to say its own name would drop frames on the link this
+ * desktop is sold on — and it is cleared at the start of every frame, so a
+ * widget that says nothing announces nothing. SILENCE IS THE FAILURE MODE,
+ * NEVER A STALE NAME: a reader told the wrong control is worse off than one
+ * told nothing, and last frame's record is the wrong control by default.
+ * A frame with more to say than the queue holds drops the rest.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KT_A11Y_NONE = 0,
+	KT_A11Y_BUTTON,
+	KT_A11Y_CHECK,
+	KT_A11Y_RADIO,
+	KT_A11Y_INPUT,
+	KT_A11Y_LIST,
+	KT_A11Y_TABLE,
+	KT_A11Y_TAB,
+	KT_A11Y_CHOICE,
+	KT_A11Y_TEXT,
+	/* Not a widget: the window a session has just focused. The toolkit
+	 * never sets it — a surface does not know it is in a window — and it
+	 * is here so that a reader has one vocabulary rather than two. */
+	KT_A11Y_WINDOW
+};
+
+/*
+ * `index` and `count` are one-based and are 0 when the control is not one of a
+ * set — so "3 of 9" is a fact the widget states rather than a count a reader
+ * has to make from what it can see.
+ */
+typedef struct {
+	int role;
+	char label[64];
+	char value[64];
+	int index, count;
+} KtuiA11y;
+
+#define KTUI_A11Y_MAX 16
+
+void ktui_announce(int role, const char *label, const char *value, int index,
+		   int count);
+int ktui_announce_count(void);
+const KtuiA11y *ktui_announce_at(int i);
 int ktui_key(int k);		/* consume a key press this frame          */
 void ktui_focus_next(int dir);
 void ktui_focus_set(int id);
@@ -441,7 +846,39 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret,
  * multi-line paste cannot fake an Enter. libkwl calls this when an async
  * clipboard receive completes; the tty backend has no paste channel and
  * simply never calls it. */
+/*
+ * WHERE THE CARET IS, said once by every surface that has one.
+ *
+ * On a terminal it places that terminal's own cursor, or hides it with a
+ * negative x — a screen this library paints itself draws its caret as a cell
+ * like everything else. It is what lets a `--tty` view show a person their
+ * caret in the cursor their own terminal draws, and what a screen reader
+ * following a terminal reads to know where the focus is.
+ *
+ * A BACKEND WITH A `caret` ENTRY TAKES IT INSTEAD, and no escape is written:
+ * a surface drawing through a display server is not on a terminal, and the
+ * position it knows is in its own cells, which only the server can place.
+ */
+void ktui_term_caret(int x, int y);
+
 void ktui_paste_push(const char *utf8, size_t len);
+
+/* Take the pending paste instead, for a consumer with no text field to insert
+ * into — a terminal, whose caret is a child on a pty. Returns the length and
+ * clears the queue; the text stays valid until the next push. */
+size_t ktui_paste_take(const char **out);
+
+/* A drop that landed on this surface. KT_EVT_DROP carries WHERE in mx/my and
+ * the payload is taken separately, because a drop is a position and a payload
+ * and an event has room for one of them. The text is held until taken and
+ * replaced by the next drop; taking it twice returns NULL the second time, so
+ * two surfaces in one process cannot both act on one drop.
+ *
+ * text/uri-list arrives as it came: CRLF-separated URIs, comment lines and all.
+ * Unpicking that is the caller's, because what a URI means differs per
+ * surface. */
+void ktui_drop_push(const char *utf8, size_t len);
+const char *ktui_drop_take(size_t *len);
 /* Bar styles. SOLID is the original: whole cells only. TIP adds one
  * fractional cell from the horizontal ramp, so a 40-column bar carries 320
  * positions on a rich terminal instead of 40 — a solid bar quantises to 2.5%
@@ -478,6 +915,268 @@ int ktui_pw_score(const char *p);
 
 /* Terminal too small for the application to draw at all. */
 void ktui_toosmall(const char *title, int min_w, int min_h);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The four views — a page strip, a column table, a choice, a text block
+ *
+ * DRAW AND KEY ARE SEPARATE CALLS, unlike ktui_list() and like the menu.
+ * The surfaces these serve run their own event loop and hold their own
+ * selection; an immediate-mode widget reading the frame's focus would need
+ * every one of them rebuilt around ktui_frame_begin() first.
+ *
+ * A HIT TEST TAKES THE RECT THE DRAW TOOK, so it measures what is on the
+ * screen rather than what the widget remembered from an earlier size.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	const char *name;
+	const char *abbr;	/* drawn where `name` will not fit; NULL     */
+				/* takes the first three characters          */
+} KtuiTab;
+
+/* The cells one tab occupies: the widest name plus its padding across a row,
+ * or the whole width down a column. Exposed because a caller sizing the strip
+ * and the caller drawing it must agree. */
+int ktui_tab_span(const KtuiTab *t, int n, int vertical, int w);
+
+void ktui_tabs_draw(KRect r, const KtuiTab *t, int n, int sel, int hover,
+		    int vertical);
+/* 1 when `*sel` moved. */
+int ktui_tabs_key(int *sel, int n, int vertical, int k);
+/* The tab under the pointer, or -1. */
+int ktui_tabs_hit(KRect r, const KtuiTab *t, int n, int vertical, int mx,
+		  int my);
+
+#define KT_TABLE_COLS 8
+
+typedef struct {
+	const char *title;	/* NULL in every column: no header row       */
+	int width;		/* cells; <= 0 asks for the remainder        */
+} KtuiCol;
+
+/* Paint one cell of one row. The table has filled the row and chosen the
+ * colours; `col` is -1 for a span row, where `w` is the whole table. */
+typedef void (*KtuiTableCell)(int idx, int col, int x, int y, int w, int fg,
+			      int bg, void *user);
+/* What kind of row this is: 0 a record, KT_TABLE_HEAD a heading drawn across
+ * the table and still selectable, KT_TABLE_SKIP a heading the selection steps
+ * over. Both readings are in the tree — a network device heading is the row
+ * Enter rescans from, and a device-section caption is furniture — so the
+ * callback says which rather than the widget deciding for both. */
+enum { KT_TABLE_HEAD = 1, KT_TABLE_SKIP = 2 };
+typedef int (*KtuiTableSpan)(int idx, void *user);
+
+typedef struct {
+	int sel;
+	int top;
+} KtuiTable;
+
+/* Column origins and widths for a table `w` cells wide; returns the cells
+ * used. The FIRST column asking for the remainder gets it and the rest keep
+ * what they asked for — two elastic columns would need a distribution rule,
+ * and every table here has exactly one field that should absorb a wider
+ * window. */
+int ktui_table_layout(const KtuiCol *col, int ncol, int w, int *x, int *cw);
+/* `hover` is the row under the pointer or -1; it is an ARGUMENT rather than a
+ * field of KtuiTable because a zeroed struct would then light row 0 on a
+ * surface that never tracks the pointer at all. */
+void ktui_table_draw(KRect r, KtuiTable *st, int count, const KtuiCol *col,
+		     int ncol, KtuiTableCell cell, KtuiTableSpan span,
+		     void *user, int hover);
+void ktui_table_clamp(KtuiTable *st, int count, int rows);
+int ktui_table_key(KtuiTable *st, int count, int rows, int k,
+		   KtuiTableSpan span, void *user);
+/* Move the selection to a clicked row; 0 when that row refuses it. */
+int ktui_table_pick(KtuiTable *st, int count, int idx, KtuiTableSpan span,
+		    void *user);
+/* The row under the pointer, or -1; a click on the header is not a row. */
+int ktui_table_hit(KRect r, const KtuiTable *st, int count, int ncol,
+		   const KtuiCol *col, int mx, int my);
+
+typedef struct {
+	int sel;
+	int open;
+	int hi;			/* the highlighted row while open            */
+} KtuiDrop;
+
+void ktui_dropdown_draw(KRect r, const KtuiDrop *d, const char *const *opt,
+			int n, int focus);
+/* The open list is a SECOND call because it is drawn over whatever is under
+ * it: a surface draws every closed control, then this, last. */
+void ktui_dropdown_draw_open(KRect r, const KtuiDrop *d,
+			     const char *const *opt, int n);
+/* 1 when the choice changed. */
+int ktui_dropdown_key(KtuiDrop *d, int n, int k);
+int ktui_dropdown_hit(KRect r, KtuiDrop *d, int n, int mx, int my);
+
+typedef struct {
+	int cy, cx;		/* the caret, in lines and columns           */
+	int top;		/* the first line drawn                      */
+} KtuiTextArea;
+
+/* FIXED-WIDTH LINES, NOT A ROPE: `text` is `maxlines` strings of `stride`
+ * bytes each, terminator included, which is what a caller writes to a file
+ * line by line. A rope would make the widget the owner of the storage and the
+ * caller a serialiser of it. */
+void ktui_textarea_draw(KRect r, KtuiTextArea *ta, const char *text,
+			int nlines, size_t stride, int fg, int bg);
+/* 1 when the text changed. */
+int ktui_textarea_key(KtuiTextArea *ta, char *text, int *nlines, int maxlines,
+		      size_t stride, int k);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The contract every surface answers
+ *
+ * A hint row that names the keys that do something RIGHT NOW, and the keys
+ * themselves. A surface holds one KtuiKeys, calls ktui_keys() first in the
+ * dispatch it already has and ktui_hint_row() last in the draw it already has.
+ * ktui_keys() returns PASS for everything it does not own, so a surface that
+ * has not adopted it behaves exactly as it did.
+ *
+ * THE ROW IS PUSHED DURING THE DRAW by whatever holds the focus, which is why
+ * it is a toolkit function and not a string a surface writes: a fixed string
+ * cannot follow the focus, and a row naming keys the focused control does not
+ * answer is worse than no row at all.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The menu — a bar with panes, or one pane popped at a point
+ *
+ * One widget for both, because they are the same list drawn in two places.
+ * `F10` opens a bar, `Alt+letter` opens a pane by its mark, `Shift+F10` pops
+ * the context pane where the surface says its focus is, and `Esc` closes what
+ * is down before it touches the Esc ladder.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KTUI_MENU_PANE_MAX = 8 };
+enum { KTUI_MENU_NONE = 0, KTUI_MENU_TAKEN, KTUI_MENU_PICKED };
+
+typedef struct {
+	/* `&` marks the accelerator and `&&` is a literal one. NULL or an
+	 * empty label is a RULE: drawn, never selected — a separator that can
+	 * hold the caret is a menu with a row that does nothing. */
+	const char *label;
+	int id;			/* handed back when picked; a rule has none */
+	const char *accel;	/* "Ctrl+N", drawn right-aligned, or NULL   */
+	int enabled;
+} KtuiMenuItem;
+
+/* Is item i on the menu right now? NULL means every one is. Asked by the draw
+ * AND by the hit test from the same walk: two copies of a visibility rule
+ * disagree eventually, and a click then runs the row above the one under the
+ * pointer. */
+typedef int (*KtuiMenuShow)(int i, void *user);
+
+typedef struct {
+	const char *title;	/* "&File" — only a bar draws it            */
+	const KtuiMenuItem *item;
+	int n;
+} KtuiMenuPane;
+
+typedef struct {
+	/* Declared by the surface, once. */
+	const KtuiMenuPane *pane;
+	int npane;
+	KtuiMenuShow show;
+	void *user;
+	/* A BAR IS OPT-IN, not a row number that defaults to zero: a menu
+	 * declared for a popup alone would otherwise draw a bar across the top
+	 * of a surface that never asked for one. */
+	int has_bar;
+	int bar_row;
+	int bar_bg;
+	/* Owned here. `sel` indexes item[], NEVER a drawn row — a selection
+	 * counted in drawn rows moves to a different item the moment `show`
+	 * hides one. */
+	int open;		/* 0 closed, else 1 + the pane that is down */
+	int sel;
+	int x, y, w, rows;	/* the popup AS DRAWN, clamped on screen    */
+	int bar_x[KTUI_MENU_PANE_MAX], bar_w[KTUI_MENU_PANE_MAX];
+} KtuiMenu;
+
+void ktui_menu_open(KtuiMenu *m, int pane, int x, int y);
+void ktui_menu_close(KtuiMenu *m);
+int ktui_menu_active(const KtuiMenu *m);
+/* Draws the bar (where there is one) and the open pane, and pushes its own
+ * hints — so no surface writes them. */
+void ktui_menu_draw(KtuiMenu *m);
+/* One event, keys and pointer alike. PICKED writes the item's id through
+ * `id`. A surface that calls ktui_keys() need not call this: ktui_keys()
+ * routes into it. */
+int ktui_menu_event(KtuiMenu *m, const KtuiEvent *ev, int *id);
+int ktui_menu_alt(KtuiMenu *m, const KtuiEvent *ev);
+/* The accelerator letter of a label, lowercased, or 0 — read from the same
+ * string the drawing reads, so a title cannot advertise a letter that opens
+ * nothing. */
+int ktui_menu_accel_of(const char *s);
+/* A label with its accelerator marked: underlined where the tier has
+ * underline, bracketed where it does not. Returns the cells written. */
+int ktui_menu_label(int x, int y, int w, const char *s, int fg, int bg);
+
+/* Is this Esc layer up RIGHT NOW? Asked at the instant the key arrives and
+ * never cached: a dialog that dismissed itself from a click would otherwise
+ * leave a raised bit that swallows the next Esc. */
+typedef int (*KtuiLayerUp)(void *user);
+typedef void (*KtuiLayerClose)(void *user);	/* take down exactly one   */
+
+enum { KTUI_LAYER_MAX = 6 };
+
+typedef struct {
+	const char *verb;	/* what Esc reads as here: "Back", "Cancel" */
+	KtuiLayerUp up;
+	KtuiLayerClose close;
+	void *user;
+} KtuiLayer;
+
+typedef struct {
+	/* Declared by the surface. `doc` NULL means F1 is neither advertised
+	 * nor answered — a key that opens an index saying "no such document"
+	 * teaches that help is broken. */
+	const char *doc;
+	void (*help)(const char *doc, void *user);
+	void *user;
+	KtuiLayer layer[KTUI_LAYER_MAX];
+	int nlayer;
+	/* The surface's menu, or NULL. Routed into FIRST, so a pane that is
+	 * down owns the arrows and Esc before the ladder sees them. */
+	KtuiMenu *menu;
+	/* Where Shift+F10 pops the context pane. ONLY THE SURFACE KNOWS where
+	 * its focus is drawn; a menu that opened at the origin would name a
+	 * row nobody is looking at. Returns 0 to refuse — nothing is focused. */
+	int (*ctx_at)(int *x, int *y, void *user);
+	int ctx_pane;
+	/* The item KTUI_KEY_MENU is reporting. Read only after that return. */
+	int menu_id;
+} KtuiKeys;
+
+enum { KTUI_KEY_PASS = 0, KTUI_KEY_TAKEN, KTUI_KEY_CLOSE, KTUI_KEY_MENU };
+
+/* Registered ONCE at surface start, INNERMOST LAST: the walk runs from the
+ * end, so registration order is the order Esc unwinds. */
+void ktui_keys_layer(KtuiKeys *k, const char *verb, KtuiLayerUp up,
+		     KtuiLayerClose close, void *user);
+
+/* Called FIRST in the surface's dispatch, above its own switch. Classifies;
+ * it neither polls nor draws. Takes any event, not only a key: a surface with
+ * a menu would otherwise need a second call site in its pointer path, and the
+ * two would drift. KTUI_KEY_MENU means an item was picked and `k->menu_id`
+ * names it. */
+int ktui_keys(KtuiKeys *k, const KtuiEvent *ev);
+
+/* Pushed during the draw. Both strings are COPIED, so no lifetime rule
+ * reaches the caller. */
+void ktui_hint(const char *key, const char *verb);
+void ktui_hint_if(int on, const char *key, const char *verb);
+
+/* Draws the pushed hints into `r` and CLEARS THE POOL as its first act — a
+ * pool emptied at flush time would carry one surface's hints into the next
+ * dump in the same process. Returns 1 if a row was drawn, 0 on a window
+ * shorter than eight rows or too narrow for one whole hint. */
+int ktui_hint_row(const KtuiKeys *k, KRect r, int bg);
+
+/* The verb of the topmost OPEN layer, or "Close". Read when building the row,
+ * so it cannot say Close on a screen where Esc goes back. */
+const char *ktui_esc_verb(const KtuiKeys *k);
 
 /* Drop out of the TUI, run a program on the real terminal, come back. */
 int ktui_run_console(char *const argv[]);

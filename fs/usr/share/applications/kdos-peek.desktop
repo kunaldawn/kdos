@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Peek
+GenericName=File Viewer
+Comment=Look inside a file without starting its application
+Exec=kdos-peek %f
+Icon=document-preview
+Terminal=false
+NoDisplay=true
+MimeType=application/pdf;application/epub+zip;application/vnd.comicbook+zip;application/oxps;application/x-fictionbook+xml;
+Categories=Utility;Viewer;
+StartupWMClass=kdos-peek

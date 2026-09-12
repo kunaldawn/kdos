@@ -1,0 +1,20 @@
+# The file index `plocate` searches, rebuilt nightly.
+#
+# ENABLED, unlike the backup beside it, and the difference is what it costs and
+# what it holds. It walks $HOME ONLY — never the whole filesystem — writes into
+# this user's own cache, and can therefore contain nothing this user could not
+# already list. There is no shared database and no setgid binary to read one;
+# the decision is in docs/kdos/03-architecture/security-model.md.
+#
+# kdos-updatedb rather than `updatedb` directly, because THIS TABLE IS AN
+# ARGUMENT VECTOR AND IS NEVER SOURCED: a `$HOME` written on this line would be
+# four literal characters. The wrapper resolves the two paths and is where the
+# scoping rule is written down.
+#
+# 03:05, which is neither the update check's 04:17 nor the backup's 03:40: two
+# jobs at the same second on a laptop that has just woken are two jobs
+# competing for one disk. -s 8h is snooze's missed-run rule — once when the
+# machine WAKES, not once per missed occurrence, and not at all for a machine
+# that was off across the slot; see the README beside this file.
+
+updatedb  -H 3 -M 5 -s 8h  --  kdos-updatedb

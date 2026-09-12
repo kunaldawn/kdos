@@ -1,0 +1,12 @@
+Recorded answers from `kdos update check --json`, `kdos cve --json` and
+`kdos-bootctl status`.
+
+kdos-update computes none of the three: each is already answered by a program
+in this tree, and a surface re-deriving a version comparison would be a second
+answer that drifts. That makes its picture depend on the host's ports tree, its
+package database and its boot state — none of which a golden may depend on, so
+`KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT` point at these.
+
+The security table's own AGE is in cve.json on purpose: a table three months
+stale reporting nothing to fix is worse than no answer, and the golden is what
+proves the age reaches the screen.

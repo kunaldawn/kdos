@@ -63,6 +63,12 @@ int kd_fixture;
 int kd_fixture_trust;
 static int quiet;
 
+/*
+ * The format is GUARDED, as it is in libkbase's kb_warn. A null format is
+ * undefined in vfprintf, and the sanitiser build's interprocedural pass cannot
+ * prove one non-null across a whole program compiled in a single line — so
+ * without the guard `-Wformat-overflow` refuses to build at all.
+ */
 void kd_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -71,7 +77,8 @@ void kd_log(const char *fmt, ...)
 		return;
 	fputs("kdos-packd: ", stderr);
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	if (fmt)
+		vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	fputc('\n', stderr);
 }
