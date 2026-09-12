@@ -42,8 +42,10 @@ make build            # compile everything (no network at all)
 
 `make bootstrap` downloads the upstream archive from the release assets and extracts it into
 `ports/core`. Only the packfiles holding sources you are missing are fetched; each is checked
-against a hash before it is unpacked, and every archive inside is verified again against the
-`sha256 =` in its own recipe.
+against a hash before it is unpacked, and every archive it writes is checked afterwards against the
+`sha256 =` in its own recipe. **Afterwards matters**: extracting overwrites whatever was there, so
+an archive published wrong replaces a good local copy, and the run names the file and stops rather
+than leaving it for a build to refuse hours later.
 
 `make build` builds the container image, then runs the orchestrator inside it with
 `--network none`. The result is:

@@ -459,7 +459,12 @@ make publish-sources
 ```
 
 Archives are **release assets, sharded by first letter**, with git holding only the checksums that
-identify them. Two guarantees:
+identify them. Three guarantees:
+
+- **Nothing is published that does not match its recipe.** The packer hashes every archive before
+  it goes in and refuses the run naming the file. A packfile is immutable, so an archive published
+  wrong is wrong for ever — it cannot be corrected in place, only superseded by a recipe naming a
+  different file — and every clone made afterwards carries it.
 
 - **Append-only.** An asset is never deleted and never replaced, because replacing one silently
   changes what an old commit builds. The publisher skips one that is already there rather than

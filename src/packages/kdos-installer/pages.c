@@ -1418,6 +1418,14 @@ static void packs_draw(KRect b)
 		  "An application is one signed file, and installing it is a "
 		  "mount. Space toggles one; the base and the runtimes under "
 		  "them are carried always.", KT_MID);
+	if (ki_packs_dropped) {
+		snprintf(v, sizeof(v),
+			 "%d pack(s) on this medium are not on this list — it "
+			 "holds %d and the index is longer. An answer file "
+			 "naming one of them installs the recommended set "
+			 "instead.", ki_packs_dropped, MAX_PACKS);
+		y += ktui_para(b.x, y, b.w, v, KT_WARN);
+	}
 	y++;
 
 	int lh = b.y + b.h - y - 3;

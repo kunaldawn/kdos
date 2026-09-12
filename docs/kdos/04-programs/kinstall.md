@@ -167,6 +167,13 @@ an unknown application falls back to the recommended set, and an unknown filesys
 the default. Both are read **before** the point of no return, and refusing there would leave a
 machine with no operating system on it.
 
+**AND "UNKNOWN" MEANS "NOT ON THE LIST", WHICH IS NOT THE SAME AS "NOT ON THE MEDIUM."** The
+applications page holds a fixed number of packs — `MAX_PACKS`, sized for the whole index with room
+to grow — and one past it is not a row, cannot be ticked, and makes an answer file naming it fall
+the whole selection back to the recommended set. A run that asked for one application and got four
+looks exactly like a run that misspelled it. The page says how many it dropped whenever it drops
+any, so the two are told apart.
+
 **An unattended run ends by itself, whichever way it went.** The event loop has two exits — a key,
 and the reboot branch — and the reboot branch is gated on a key in the answer file. So an
 unattended install told not to reboot did all its work and then spun on its own last screen

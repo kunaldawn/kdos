@@ -215,7 +215,17 @@ fi
 if command -v fcitx5 >/dev/null 2>&1; then
 	(
 		_wait_con || exit 0
-		kdos-ime >/dev/null 2>&1
+		# ONE kimpanel PER BUS, AND THE TWO SESSIONS SHARE ONE. A
+		# graphical session is started FROM this one and takes the name
+		# for as long as it runs, because it is the session with the
+		# keyboard; `kdos-ime` refuses to take a name it could not hand
+		# back, so the console's panel waits for it rather than
+		# fighting for it, and has the candidate window again within
+		# five seconds of that session ending.
+		while :; do
+			kdos-ime >/dev/null 2>&1
+			sleep 5
+		done
 	) &
 fi
 

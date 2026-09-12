@@ -21,19 +21,21 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
 fi
 
 export XDG_SESSION_TYPE=wayland
-# NOT OVER A SESSION THAT ALREADY SAID WHICH ONE IT IS. The console session
-# exports `KDOS-Console:KDOS` before it starts anything and the greeter exports
-# `KDOS` for the graphical one, and that name is what selects
-# `kdos-console-mimeapps.list` or `kdos-mimeapps.list` — so a profile script
-# overwriting it would make every shell inside one desktop resolve a file's
-# handler as though it were running under the other.
+# THIS IS A FALLBACK FOR A SHELL NO SESSION STARTED, NOT THE SESSION'S ANSWER.
+# The name selects `kdos-console-mimeapps.list` or `kdos-mimeapps.list` and
+# `kdos-console-portals.conf` or `kdos-portals.conf`, so each session names
+# itself in the program that starts its display: `kdos-con-start` exports
+# `KDOS-Console:KDOS` and `kdos-desktop-start` exports `KDOS`, both before they
+# start anything and both over whatever a login shell guessed here. A guess
+# from `WAYLAND_DISPLAY` cannot do that job: a graphical session begins in a
+# login shell that has no compositor yet, so this file would name it the
+# console and leave every portal request routed to the console's backends.
 #
-# AND A LOGIN THAT NO SESSION STARTED IS NOT THE COMPOSITOR'S. `Ctrl+Alt+F2`, a
-# serial console and an ssh login all reach here with the variable unset and no
-# display of any kind; naming `KDOS` there sent every link and every document to
-# `kdos-mimeapps.list`, whose every row is a Wayland client with nothing to
-# connect to. The console's rows are the terminal ones, which are the only ones
-# that can run on a bare virtual terminal — so that is the name it gets.
+# `Ctrl+Alt+F2`, a serial console and an ssh login reach here with no display
+# of any kind and no session to correct them; naming `KDOS` there sends every
+# link and every document to `kdos-mimeapps.list`, whose every row is a Wayland
+# client with nothing to connect to. The console's rows are the terminal ones,
+# which are the only ones that can run on a bare virtual terminal.
 if [ -z "$XDG_CURRENT_DESKTOP" ]; then
 	if [ -n "$WAYLAND_DISPLAY" ]; then
 		export XDG_CURRENT_DESKTOP=KDOS
