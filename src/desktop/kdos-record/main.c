@@ -62,6 +62,15 @@
  * milliseconds, and a longer wait only makes a broken session look slow. */
 #define REPLY_TIMEOUT_US (5ULL * 1000000ULL)
 
+/* `SelectSources` IS ANSWERED BY A PERSON, and a person is not a timeout. The
+ * wlr backend's chooser is `slurp` — it covers the screen and waits for the
+ * pointer to pick an output — so a deadline of seconds cancels every recording
+ * before anybody has decided which screen to record, and the failure reads as
+ * `no answer to SelectSources` rather than as the question it really was. Two
+ * minutes is long enough to choose and short enough that a chooser nothing
+ * ever answers does not hang the terminal it was typed in. */
+#define CHOOSE_TIMEOUT_US (120ULL * 1000000ULL)
+
 /* `Start` is the exception, and it is not a slow bus — it is a whole display
  * being brought up. The backend forks a view onto the session, waits for it to
  * attach, load a font and register a PipeWire node, and only then answers. */
@@ -498,8 +507,8 @@ int main(int argc, char **argv)
 	}
 	sd_bus_message_read(reply, "o", &req);
 	rp.path = req;
-	if (wait_reply(bus, &rp, REPLY_TIMEOUT_US) < 0) {
-		fprintf(stderr, "kdos-record: no answer to SelectSources\n");
+	if (wait_reply(bus, &rp, CHOOSE_TIMEOUT_US) < 0) {
+		fprintf(stderr, "kdos-record: no screen was picked\n");
 		goto out;
 	}
 	if (rp.code != 0) {

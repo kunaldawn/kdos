@@ -89,28 +89,24 @@ wired up.
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
 
-**Screen recording works on the live medium and is refused on an installed disk.** `kdos-record`
-on a graphical session booted from the ISO gets its node and the pipeline goes live; the same
-program on a graphical session booted from a disk installed from that ISO answers `the cast was
-refused (2)` — the portal's `Start` returning 2 in under 20 ms, so no chooser ever runs. Measured
-with nothing else running and again with a boxed OBS asking first, which logs `Failed to start
-screencast, denied or cancelled by user`. The wlr backend, `slurp`, the one output and
-`~/.config/xdg-desktop-portal-wlr/config` are identical on both machines. **A box only exists on an
-installed system**, so this is what stands between the box lane and a recorder inside one.
+**A recording of a screen that does not change is an empty file.** `wlr-screencopy` hands over a
+frame when the output is damaged and at no other time, so a session left alone produces no buffers,
+the muxer writes no header, and `~/Videos/<name>.mkv` ends at zero bytes with nothing in the
+recorder's log to say why. It is the shape of the protocol rather than a defect — a desk somebody
+is sitting at always changes — but a recording taken to prove the pipeline needs something moving
+on the screen while it runs.
 
 **No input method in the console session.** fcitx5 is a Wayland client and speaks
 `input-method-v2` to the compositor; there is no compositor on that path. The candidate *window* is
 drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
 not running.
 
-**AND NO KEYSTROKE REACHES IT UNDER THE COMPOSITOR EITHER.** Everything either side of the relay is
-in place and was traced: fcitx5 loads `waylandim`, binds `zwp_input_method_manager_v2` and
-`zwp_virtual_keyboard_manager_v1`, is sent `activate()` and answers with `grab_keyboard()`; `foot`
-binds `zwp_text_input_manager_v3`, enables a text input and commits it; `fcitx5-remote` reports
-state 2 with `pinyin` selected. A key typed after all of that still arrives at the terminal as
-Latin, and no `key` event ever reaches the grab — so the candidate window stays empty on **both**
-desktops. What has not been isolated is why `get_keyboard_grab()` in the compositor's relay answers
-with nothing while the input method holds a grab.
+**A terminal application opens nothing from the palette.** `Super+space`, `ma`, `Enter` on
+**Mail** leaves the desktop as it was, and so does any other row whose desktop entry says
+`Terminal=true`; a row that does not — *Resources* — opens its window from the same list, the same
+keystroke and the same code path. The wrapper the launcher builds is not the problem: typed by
+hand, `kdos-term --title mc --app-id mc -e mc` opens the window and the taskbar names it. The
+chord route is unaffected, so `Super+Shift+e` still opens mail.
 
 **A graphical application launched from the console's Start menu ends the session.** Measured twice
 with `cups.desktop` (*Manage Printing*): `kdos-cage` starts on the headless backend with the pixman

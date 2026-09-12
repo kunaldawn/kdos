@@ -137,10 +137,19 @@ org.freedesktop.impl.portal.AppChooser=kdos
 
 **TWO SESSIONS, TWO BACKENDS, ONE INTERFACE.** `XDG_CURRENT_DESKTOP` is a list, most specific
 first, and the front end reads the first configuration file it finds for any name in it. The
-console session sets `KDOS-Console:KDOS` and gets `kdos-console-portals.conf`; the compositor keeps
+console session sets `KDOS-Console:KDOS` and gets `kdos-console-portals.conf`; the compositor sets
 `KDOS` and gets the file above. The one line that differs is `ScreenCast`, which on the console is
 `kdos` — `xdg-desktop-portal-wlr` is a Wayland client and there is no compositor on that path, so it
 would start, fail to connect, and leave the interface with a backend that is not there.
+
+**EACH SESSION SETS THE NAME ITSELF, in the program that starts its display**: `kdos-con-start` and
+`kdos-desktop-start`, both before anything else runs and both over whatever a login shell left
+behind. `/etc/profile.d/10-wayland.sh` fills the variable in for a shell no session started, and it
+has only `WAYLAND_DISPLAY` to guess from — which is empty in the login shell a graphical session
+begins in. A session that lets that guess stand advertises itself as the console, and the front end
+then sends its `ScreenCast` to a backend that records a console session by `$KDOS_CON`, which a
+compositor session does not have: every recording is refused in twenty milliseconds with the wlr
+backend running and never asked.
 
 A semicolon-separated list would not do it. A backend that is D-Bus activatable is always
 "available", so `wlr;kdos` starts `wlr` and fails rather than falling through.
@@ -203,6 +212,14 @@ Three rules it exists to keep:
 `pipewiresrc` element does not exist and nothing can read a node from a pipeline. It goes through
 the portal rather than round it even though the backend is ours, because `Start` is what makes the
 view exist and the answer it gives is the one a boxed application would get.
+
+**AND `SelectSources` IS ANSWERED BY A PERSON.** On the compositor the ScreenCast backend is the
+wlr one, whose chooser is `slurp` — it covers the screen and waits for the pointer to pick an
+output. So the three calls do not share one deadline: `CreateSession` is a program on a local bus
+answering in milliseconds and gets five seconds, while `SelectSources` and `Start` are waiting for
+somebody to decide and get two minutes and thirty. A deadline of seconds on the middle call
+cancels every recording before the question on screen has been answered, and reports it as a
+portal that did not reply.
 
 **`kdos-record` AGAIN STOPS IT.** There is one screen and one portal session, so a second
 recording is not something to want, and a chord or a menu row that started one has to be able to
@@ -321,6 +338,12 @@ the GTK one is deliberately **not set at all**, because GTK on Wayland picks the
 itself when the variable is unset and setting it is how a working GTK application stops accepting
 input. Neither is ever set to the engine's own name — that is the X11-era route, where each
 toolkit talks to the engine directly, and inside a container that engine does not exist.
+
+**What the engine can be switched to is a shipped file**, `~/.config/fcitx5/profile`, and **which
+screen its candidates land on is a shipped decision**: one kimpanel owns `org.kde.impanel`, the two
+desktops share one session bus, and the graphical session takes the name from the console's panel
+while it runs. Both are in
+[the candidate window](../04-programs/kdos-shell.md#the-candidate-window).
 
 ## The environment a box receives
 

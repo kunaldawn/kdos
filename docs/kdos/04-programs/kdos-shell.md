@@ -1379,11 +1379,26 @@ can actually answer are declared, because the engine reads the introspection to 
 
 **Starting it IS selecting it.** fcitx5's kimpanel module has a UI priority above its own classic
 interface and becomes available the moment `org.kde.impanel` has an owner, so the session bring-up
-starting `kdos-ime` is the whole of the configuration. Nothing is written to a config file.
+starting `kdos-ime` is the whole of choosing this panel over the engine's own.
 
-**There can be only one, and the protocol cannot hand the name back.** A second `kdos-ime` therefore
-refuses to start and names the program that owns it, rather than taking the name and leaving
-whatever was drawing the candidates believing it is still the panel.
+**There can be only one, and the protocol cannot hand the name back.** A second `kdos-ime` refuses
+to start and names the program that owns it, rather than taking the name and leaving whatever was
+drawing the candidates believing it is still the panel.
+
+**AND THE TWO DESKTOPS SHARE ONE SESSION BUS**, so that rule decides which screen the candidates
+appear on. The console's panel starts at boot and holds the name; a graphical session is started
+from that console and is the one with the keyboard, so `kdos-desktop-start` ends the console's panel
+and starts its own, and kills it again when the compositor exits. The console's is a respawn loop
+for exactly that reason: it fails while the graphical session holds the name and has the window back
+within five seconds of it ending. Without the handover the engine converts perfectly and draws its
+candidates on a virtual terminal nobody is looking at.
+
+**The engines a key can reach are a shipped file**, `~/.config/fcitx5/profile` from `/etc/skel`,
+because the configuration tool upstream ships is built on a toolkit this host does not have. Its
+group names `keyboard-us` first — a login types Latin — then `pinyin`, `anthy` and `hangul`, which
+are the engines the image installs. fcitx5 started with no such file has a group holding nothing but
+the keyboard layout: `fcitx5-remote -s pinyin` then silently does nothing, every keystroke arrives
+as Latin, and no candidate window is ever asked for.
 
 **On the console the window is drawn and the engine is not running** — the limit and its reason are
 in [known-gaps](../06-reference/known-gaps.md), which is the one page that states it.

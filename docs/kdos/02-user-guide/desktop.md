@@ -415,14 +415,15 @@ needs the compositor, a browser, or a second machine. The photographs are `build
    the chord. Start a build in it, press the chord again, and the build's own `OSC 9` arrives as a
    toast while you are somewhere else.
 5. **`Super+Shift+m` marks a rectangle of the screen.** Arrows place one corner, `Shift+`arrows drag
-   the other, `Enter` copies. `Super+Ctrl+n` opens Notes, `Ctrl+D` edits, `Super+Shift+v` pastes.
+   the other, `Enter` copies — an error out of a build's output is a rectangle, not a line, and
+   that is why it is a rectangle. `Super+Ctrl+n` opens Notes, `Ctrl+D` edits.
 6. **`Super+Ctrl+q` is a calculator that reads units.** `3 in to mm` answers `76.2 mm`; `Enter`
    copies the answer, and `Super+Shift+v` puts it in the spreadsheet.
 7. **A photograph on the desktop opens in `kdos-pix`** as pixels rather than as blocks, if the
    terminal has a picture path. `Print` takes a screenshot, which is a picture like any other and
    opens in the same viewer.
-8. **`Super+F3` is the sound panel**; `Super+Shift+u` raises the music player, and what is playing
-   is in the taskbar.
+8. **`Super+F3` is the sound panel**; `Super+Shift+u` raises the music player. What is playing is
+   in the taskbar, and what the player shows is whatever the daemon it connects to has queued.
 9. **`Super+Shift+t` tiles the workspace**, `Super+r` rearranges from the keyboard, `Super+F2` lists
    every window — `Enter` raises, `Del` closes, `m` minimises — and `Super+Shift+d` shows the
    desktop and brings everything back.

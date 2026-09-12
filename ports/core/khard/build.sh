@@ -26,6 +26,11 @@ tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 pyb() { pip3 install --no-index --find-links=vendor --no-build-isolation "$@"; }
 pyb flit-core
 pyb packaging
+# BEFORE setuptools-scm, which imports it while its own metadata is generated:
+# setuptools-scm 10 is split in two and names vcs-versioning in its build-system
+# requires. `--no-build-isolation` installs none of those, so the order of these
+# lines IS the build environment.
+pyb vcs-versioning
 pyb setuptools-scm
 
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \

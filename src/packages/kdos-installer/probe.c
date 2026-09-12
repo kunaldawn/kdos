@@ -556,6 +556,7 @@ void probe_system(void)
 KiPack ki_pack[MAX_PACKS];
 int ki_npack;
 int ki_packs_present;
+int ki_packs_dropped;
 
 /*
  * `PACKAGES` is Alpine's shape — single-character keys, one stanza per pack,
@@ -576,6 +577,7 @@ void probe_packs(void)
 
 	ki_npack = 0;
 	ki_packs_present = 0;
+	ki_packs_dropped = 0;
 	if (!dir || !*dir)
 		dir = "/mnt/iso/packs";
 	snprintf(path, sizeof(path), "%.400s/PACKAGES", dir);
@@ -592,9 +594,16 @@ void probe_packs(void)
 			*nl = '\0';
 
 		if (!line[0]) {			/* stanza boundary */
-			if (have && !is_delta && cur.id[0] && cur.file[0] &&
-			    ki_npack < MAX_PACKS)
-				ki_pack[ki_npack++] = cur;
+			/* A pack the array has no room for is COUNTED, not
+			 * skipped in silence: it cannot be ticked, and an
+			 * answer file naming it falls the whole selection back
+			 * to the recommended set. */
+			if (have && !is_delta && cur.id[0] && cur.file[0]) {
+				if (ki_npack < MAX_PACKS)
+					ki_pack[ki_npack++] = cur;
+				else
+					ki_packs_dropped++;
+			}
 			memset(&cur, 0, sizeof(cur));
 			have = 0;
 			is_delta = 0;
@@ -622,9 +631,12 @@ void probe_packs(void)
 		default: break;
 		}
 	}
-	if (have && !is_delta && cur.id[0] && cur.file[0] &&
-	    ki_npack < MAX_PACKS)
-		ki_pack[ki_npack++] = cur;
+	if (have && !is_delta && cur.id[0] && cur.file[0]) {
+		if (ki_npack < MAX_PACKS)
+			ki_pack[ki_npack++] = cur;
+		else
+			ki_packs_dropped++;
+	}
 	free(text);
 
 	/*
