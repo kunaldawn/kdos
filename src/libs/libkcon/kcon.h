@@ -53,7 +53,7 @@
  * the file carries no version at all. Append, whatever group the new op
  * belongs to by meaning.
  */
-#define KCON_VERSION 16
+#define KCON_VERSION 18
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -66,6 +66,27 @@
 /* Sending more than this without the peer draining is a peer that has stopped
  * reading. The connection is dropped rather than the server blocking on it. */
 #define KCON_MAX_QUEUE (4u << 20)
+
+/*
+ * A DISPLAY THAT IS BEHIND IS SENT NOTHING, AND IS NEVER DROPPED FOR IT.
+ *
+ * A view is the one peer whose messages are a STREAM OF PICTURES: the newest
+ * frame makes every older one pointless, so the answer to a view that cannot
+ * keep up is to skip a frame, not to queue it. Above this mark the session
+ * stops sending that view cells and sprites; because a skipped frame also
+ * leaves the view's previous-frame copy alone, the next one it does take
+ * carries everything it missed.
+ *
+ * Far enough below KCON_MAX_QUEUE that one more whole frame on top of it
+ * cannot reach the cap — a 240x67 grid is under 130 kB and one embed block is
+ * 128 kB — so a display that reads at all never trips the peer-is-gone guard.
+ * Without it a guest repainting its whole window, or a full-screen animation
+ * in a terminal, kills the desktop's only display and with it the only source
+ * of input the session has.
+ */
+#define KCON_VIEW_HIGH (1u << 20)
+/* The same mark, read from the other end: a surface whose own queue is past
+ * it skips its frame rather than letting the queue reach the cap. */
 
 enum {
 	KCON_OP_NONE = 0,
@@ -442,8 +463,65 @@ enum {
 	 */
 	KCON_OP_VIEW_SETMODE,
 
+	/*
+	 * WHICH OF A SURFACE'S CELLS ANSWER THE POINTER, and the default is
+	 * all of them.
+	 *
+	 * A tooltip, a toast, the candidate window and the screen saver are
+	 * all drawn over the desktop and all take NOTHING: the thing under
+	 * them is what a click is aimed at. Without this the topmost surface
+	 * under the pointer wins every time, so a tooltip that opened over
+	 * the Start button swallowed the click on it — the pointer saw a
+	 * button, the session saw a tip, and the menu never opened.
+	 *
+	 * u16 count, then that many rectangles as four u16s each, in the
+	 * surface's OWN cells. A count of 0xffff is "all of me", which is
+	 * what a surface starts with and what wl_surface's NULL region means
+	 * on the other transport.
+	 *
+	 * MORE RECTANGLES THAN KCON_INPUT_RECTS ARE REFUSED WHOLE, back to
+	 * "all of me": a region silently cut short would leave part of a
+	 * surface answering clicks it said it would not, which is the failure
+	 * this op exists to prevent pointed the other way.
+	 */
+	KCON_OP_INPUT_REGION,
+
+	/*
+	 * WHETHER THE SESSION IS DRAWING THIS SURFACE'S FRAME. One u8, session
+	 * to client, sent when the answer changes and whenever a surface is
+	 * adopted.
+	 *
+	 * `kdisp_decorated()` means "somebody else drew my furniture, so I must
+	 * not" — three programs ask it (kdos-term, kdos-res and every
+	 * kdos-shell window through sh_frame()) and all three draw their own
+	 * box when the answer is no. libkcon answered a flat NO, so on the
+	 * console every one of them drew a second box inside the session's
+	 * frame, with the title written twice. A photograph of a terminal
+	 * running btop shows all three: the session's frame, the client's box,
+	 * and btop's own.
+	 *
+	 * THE SESSION ANSWERS IT AND THE CLIENT DOES NOT DERIVE IT. The window
+	 * model already decides this — a panel, a layer, a background and a
+	 * FULLSCREEN window are drawn without chrome — and a client that
+	 * re-derived it from its role alone would be wrong the moment a window
+	 * went fullscreen and right again when it came back. One fact, one
+	 * owner, one message.
+	 *
+	 * NOT A FIELD ON KCON_OP_CONFIGURE: a configure that does not change
+	 * the size is dropped by the client on purpose, and a decoration that
+	 * changed without the size changing would be dropped with it.
+	 */
+	KCON_OP_DECORATED,
+
 	KCON_OP_N
 };
+
+/*
+ * The most rectangles an input region may name. Every surface in this tree
+ * asks for all of itself or for none of itself; the list exists so a surface
+ * with a hole in it is expressible, not because one has been built.
+ */
+#define KCON_INPUT_RECTS 16
 
 /* What a peer says it is at hello. The management messages go only to a
  * surface that asked to be a shell, and only when the peer's credentials match
@@ -626,6 +704,9 @@ KconConn *kcon_conn_new(int fd);
 void kcon_conn_free(KconConn *c);
 int kcon_conn_fd(const KconConn *c);
 int kcon_conn_dead(const KconConn *c);
+/* Bytes queued and not yet written. What a caller with something optional to
+ * send asks before sending it. */
+size_t kcon_conn_pending(const KconConn *c);
 
 int kcon_send(KconConn *c, uint16_t op, const KconBuf *payload);
 /* Push whatever is queued. 0 when the queue is empty, 1 when more is waiting,
@@ -835,6 +916,32 @@ int kcon_surface_min_rows(const KconSurface *f);
  */
 int kcon_surface_want_cells(const KconSurface *f);
 int kcon_surface_exclusive(const KconSurface *f);
+/*
+ * WHETHER THIS SURFACE ASKED FOR THE KEYBOARD. A surface that predates the
+ * field is reported as wanting it, which is what every surface did then.
+ *
+ * A session focuses an overlay that says yes and never one that says no: a
+ * tooltip or a toast that took the focus would pull it off the window under
+ * it, and anything that closes when it loses the focus — every menu on this
+ * desktop — would close the moment a tip appeared beside it.
+ */
+int kcon_surface_keyboard(const KconSurface *f);
+/*
+ * TELL A SURFACE WHETHER THE SESSION DREW ITS FRAME. Sent on change only —
+ * the session decides, the client draws its own box when the answer is no.
+ * See KCON_OP_DECORATED.
+ */
+void kcon_surface_decorated(KconSurface *f, int on);
+/*
+ * THE CELLS OF THIS SURFACE THAT ANSWER THE POINTER.
+ *
+ * `kcon_surface_input_n()` is -1 for all of it (the default), 0 for none, or
+ * the count of rectangles `kcon_surface_input_at()` reports, in the surface's
+ * OWN cells — the caller adds the window's origin. A hit test that ignores
+ * this makes a tooltip swallow the click on the button it is describing.
+ */
+int kcon_surface_input_n(const KconSurface *f);
+int kcon_surface_input_at(const KconSurface *f, int i, KRect *out);
 /* True while the surface says it has nothing to show. A display draws it
  * nowhere and lists it nowhere; it is still a client and still attached. */
 int kcon_surface_hidden(const KconSurface *f);
@@ -904,6 +1011,17 @@ unsigned kcon_view_caps(const KconSurface *v);
  * server, so a view that changed its mind after the hello gets nothing
  * through. */
 int kcon_view_observing(const KconSurface *v);
+/*
+ * Bytes queued for this view, and a push of whatever is queued.
+ *
+ * A caller cutting a picture into pieces asks between them: the queue is what
+ * says whether the display is keeping up, and flushing between pieces is what
+ * lets it drain instead of the whole picture arriving as one lump. Above
+ * KCON_VIEW_HIGH the send calls below do nothing, which is the caller's cue to
+ * keep the piece and offer it again.
+ */
+size_t kcon_view_pending(const KconSurface *v);
+int kcon_view_flush(KconSurface *v);
 /*
  * How many views this session admits at once; 0 is no limit. The NUMBER is the
  * caller's — a desktop's configuration, not a library's opinion — and the
@@ -1293,10 +1411,16 @@ int kcon_surface_map_slot(const KconSurface *f, int client_slot);
  */
 int kcon_server_alloc_slot(KconServer *s);
 
-/* Forward a sprite's pixels to a view. The session holds no pixel code and
- * does not look at them; it moves the blob it was given. */
-void kcon_view_sprite(KconSurface *v, int slot, int w, int h,
-		      uint32_t fallback, const uint32_t *argb, int pw, int ph);
+/*
+ * Forward a sprite's pixels to a view. The session holds no pixel code and
+ * does not look at them; it moves the blob it was given.
+ *
+ * Answers 0 without sending when the view is already more than KCON_VIEW_HIGH
+ * bytes behind. A picture has no previous copy to diff against, so the caller
+ * must keep the piece and offer it again rather than treat it as delivered.
+ */
+int kcon_view_sprite(KconSurface *v, int slot, int w, int h,
+		     uint32_t fallback, const uint32_t *argb, int pw, int ph);
 
 /*
  * con.conf — /etc/kdos/con.conf, overridden by ~/.config/kdos-con/con.conf.

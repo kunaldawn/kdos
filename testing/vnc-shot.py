@@ -569,15 +569,32 @@ def main():
                  "-boot", "order=c" if (args.no_cdrom or args.boot_disk)
                           else "order=d"]
     if args.audio:
-        # AN HDA CONTROLLER WITH THE SAMPLES GOING NOWHERE. `-audiodev none`
-        # is a real backend as far as the guest is concerned: the kernel binds
-        # snd_hda_intel, ALSA opens the PCM, and anything that asks "is there
-        # a sound card" gets yes. Without it MikMod_Init fails, kdos-bb sets
-        # bbsound = 0, and every audio path in the guest is untestable — which
-        # is not the same as untested. The host in the rig container has no
-        # sound of its own, so a real backend is not on the table anyway.
-        qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
-                 "-device", "hda-output,audiodev=snd0"]
+        # AN HDA CONTROLLER, AND THE SAMPLES GO SOMEWHERE REAL WHERE THEY CAN.
+        # `-audiodev none` is a real backend as far as the guest is concerned:
+        # the kernel binds snd_hda_intel, ALSA opens the PCM, and anything that
+        # asks "is there a sound card" gets yes. Without it MikMod_Init fails,
+        # kdos-bb sets bbsound = 0, and every audio path in the guest is
+        # untestable — which is not the same as untested.
+        #
+        # A null sink consumes samples on a timer, though, and a host one
+        # consumes them as a device does: a guest whose pacing follows its own
+        # playback position runs to a different clock on the two, so the same
+        # probe every `make run*` uses is asked first and `none` is the answer
+        # when it finds nothing. The container needs the driver AND the
+        # socket — see testing/qemu-audio.sh.
+        probe = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "qemu-audio.sh")
+        real = ""
+        try:
+            real = subprocess.run(["bash", probe], capture_output=True,
+                                  text=True, timeout=20).stdout.strip()
+        except Exception:
+            real = ""
+        if real:
+            qemu += real.split()
+        else:
+            qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
+                     "-device", "hda-output,audiodev=snd0"]
     if args.scratch:
         # A RAW DISK THE GUEST WRITES A TAR ONTO, and the only path OUT of a
         # guest with no network. `--data-disk` carries files IN; nothing

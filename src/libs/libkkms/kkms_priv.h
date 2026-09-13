@@ -46,10 +46,6 @@ struct kkms_out {
 	 * says the desktop means by a screen layout.
 	 */
 	int col, cols, rows;
-	/* Where the slice is drawn inside this output's pixels. A screen
-	 * showing fewer rows than the grid has is CENTRED, never scaled: a
-	 * character grid stretched to fit is a grid of the wrong shape. */
-	int px, py;
 
 	/*
 	 * WHAT THIS SCREEN PUBLISHED, gathered at the probe and HELD. The

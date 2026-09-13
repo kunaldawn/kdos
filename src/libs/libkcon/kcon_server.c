@@ -44,7 +44,19 @@ struct KconSurface {
 	/* Asked to open unanchored, where the eye is. See
 	 * kcon_surface_floating(). */
 	int floating;
+	/* Whether this surface asked for the keyboard. See
+	 * kcon_surface_keyboard(): an overlay that did not must never be
+	 * focused, or it takes the focus off whatever it is drawn over. */
+	int keyboard;
 	int hidden;
+
+	/*
+	 * WHICH OF THIS SURFACE'S CELLS ANSWER THE POINTER, in its own cells.
+	 * `in_n < 0` is all of it, which is what every surface starts as; 0 is
+	 * none. See kcon_surface_input_n().
+	 */
+	KRect in_rect[KCON_INPUT_RECTS];
+	int in_n;
 
 	/* Where this surface says its caret is, in its own cells. A negative
 	 * x is none, which is what a surface with no text field reports and
@@ -536,8 +548,16 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 
 		f->view_cols = cols;
 		f->view_rows = rows;
-		f->cols = cols;
-		f->rows = rows;
+		/*
+		 * `cols`/`rows` ARE NOT TOUCHED. For a view those two say how
+		 * big the frame in `cells` IS, and nothing here allocates one
+		 * — so writing the requested size into them tells
+		 * kcon_view_send() that a buffer of the new size already
+		 * exists. The first frame at a larger grid is then copied into
+		 * the smaller allocation, which is a heap overflow of exactly
+		 * the difference and kills the session on the first window
+		 * that grows.
+		 */
 		/* Its previous frame is meaningless at a new size, so the next
 		 * send is a whole one. */
 		f->have_prev = 0;
@@ -567,14 +587,22 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 * that arrived after its message did. */
 		f->floating = kcon_rd_left(&r) >= 1 ?
 			(int)kcon_get_u8(&r) : 0;
+		/*
+		 * A PEER THAT DOES NOT SAY TAKES THE KEYBOARD, because that is
+		 * what every surface did before the field existed: the default
+		 * has to be the old behaviour or an unrebuilt client's menu
+		 * stops answering keys.
+		 */
+		f->keyboard = kcon_rd_left(&r) >= 1 ?
+			(int)kcon_get_u8(&r) : 1;
 
 		/*
 		 * A SIZE OF ZERO IS A QUESTION, AND ONLY WHERE THE SESSION
-		 * OWNS THE ANSWER. A saver covers the screen and a docked panel
-		 * spans its edge; neither can know how big the screen is, so
-		 * they ask for nothing — the panel naming only its thickness —
-		 * and the session answers with a CONFIGURE, which is what
-		 * allocates the cells.
+		 * OWNS THE ANSWER. A saver covers the screen, the icon layer
+		 * IS the screen, and a docked panel spans its edge; none of
+		 * them can know how big the screen is, so they ask for nothing
+		 * — the panel naming only its thickness — and the session
+		 * answers with a CONFIGURE, which is what allocates the cells.
 		 *
 		 * FROM ANY OTHER ROLE IT IS STILL FATAL. Nothing is going to
 		 * tell them a size, so a surface let through would wait for a
@@ -583,6 +611,7 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 */
 		int nosize = cols <= 0 || rows <= 0;
 		int asks = f->role == KDISP_ROLE_SAVER ||
+			   f->role == KDISP_ROLE_BACKGROUND ||
 			   (f->role == KDISP_ROLE_PANEL && f->want_cells > 0);
 
 		if (r.err || (nosize && !asks) ||
@@ -600,6 +629,35 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 
 		if (!r.err)
 			f->hidden = on != 0;
+		break;
+	}
+	case KCON_OP_INPUT_REGION: {
+		unsigned n = kcon_get_u16(&r);
+		KRect got[KCON_INPUT_RECTS];
+
+		if (r.err)
+			break;
+		/*
+		 * A REGION THAT DOES NOT FIT IS ALL OF THE SURFACE, never the
+		 * part that fitted: a list cut short leaves the rest of the
+		 * surface answering clicks the client said it would not, which
+		 * is the failure this op exists to prevent pointed backwards.
+		 */
+		if (n == 0xffff || n > KCON_INPUT_RECTS) {
+			f->in_n = -1;
+			break;
+		}
+		for (unsigned i = 0; i < n; i++) {
+			got[i].x = (int)kcon_get_u16(&r);
+			got[i].y = (int)kcon_get_u16(&r);
+			got[i].w = (int)kcon_get_u16(&r);
+			got[i].h = (int)kcon_get_u16(&r);
+		}
+		if (r.err)
+			break;
+		for (unsigned i = 0; i < n; i++)
+			f->in_rect[i] = got[i];
+		f->in_n = (int)n;
 		break;
 	}
 	case KCON_OP_COMMIT: {
@@ -1099,6 +1157,10 @@ int kcon_server_pump(KconServer *s)
 			 * surface that never says would otherwise park the
 			 * screen's cursor in its top-left corner. */
 			f->caret_x = f->caret_y = -1;
+			/* ALL OF IT UNTIL IT SAYS OTHERWISE, which is what
+			 * wl_surface's NULL input region means and what every
+			 * surface that never calls the op needs. */
+			f->in_n = -1;
 			for (int k = 0; k < KCON_MAX_SPRITE_MAP; k++)
 				f->slotmap[k] = -1;
 			/*
@@ -1313,12 +1375,21 @@ int kcon_server_alloc_slot(KconServer *s)
  * holding megabytes of pixels it is otherwise built never to touch. Those
  * cells draw the fallback codepoint until the surface sends the slot again.
  */
-void kcon_view_sprite(KconSurface *v, int slot, int w, int h,
-		      uint32_t fallback, const uint32_t *argb, int pw, int ph)
+int kcon_view_sprite(KconSurface *v, int slot, int w, int h,
+		     uint32_t fallback, const uint32_t *argb, int pw, int ph)
 {
 	if (!v || v->kind != KCON_KIND_VIEW || slot < 0 ||
 	    slot >= KCON_MAX_SPRITE_MAP)
-		return;
+		return 0;
+
+	/*
+	 * A DISPLAY THAT IS BEHIND IS OFFERED THE PICTURE AGAIN, NOT SENT IT
+	 * NOW. One block is over a hundred kilobytes and a window is dozens of
+	 * them; queued without asking, a single whole-window repaint reaches
+	 * KCON_MAX_QUEUE and the session drops the display it is drawing on.
+	 */
+	if (kcon_conn_pending(v->conn) > KCON_VIEW_HIGH)
+		return 0;
 
 	KconBuf b = { 0 };
 	size_t npx = (argb && pw > 0 && ph > 0)
@@ -1334,6 +1405,17 @@ void kcon_view_sprite(KconSurface *v, int slot, int w, int h,
 		kcon_put_bytes(&b, argb, npx * 4);
 	kcon_send(v->conn, KCON_OP_SPRITE, &b);
 	kcon_buf_free(&b);
+	return 1;
+}
+
+size_t kcon_view_pending(const KconSurface *v)
+{
+	return v && v->kind == KCON_KIND_VIEW ? kcon_conn_pending(v->conn) : 0;
+}
+
+int kcon_view_flush(KconSurface *v)
+{
+	return v && v->kind == KCON_KIND_VIEW ? kcon_flush(v->conn) : -1;
 }
 
 void kcon_server_resend_sprites(KconServer *s)
@@ -1345,6 +1427,18 @@ void kcon_server_resend_sprites(KconServer *s)
 			continue;
 		kcon_send(f->conn, KCON_OP_SPRITE_RESEND, NULL);
 	}
+}
+
+void kcon_surface_decorated(KconSurface *f, int on)
+{
+	if (!f || f->kind == KCON_KIND_VIEW)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u8(&b, (uint8_t)(on ? 1 : 0));
+	kcon_send(f->conn, KCON_OP_DECORATED, &b);
+	kcon_buf_free(&b);
 }
 
 void kcon_view_blank(KconSurface *v, int on)
@@ -1481,6 +1575,21 @@ void kcon_view_set_font(KconSurface *v, int index, int keep)
 void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 {
 	if (!v || v->kind != KCON_KIND_VIEW || !cells || w <= 0 || h <= 0)
+		return;
+
+	/*
+	 * A FRAME IS SKIPPED WHOLE WHERE THE DISPLAY IS BEHIND, and its copy
+	 * of the previous frame is left exactly as it was.
+	 *
+	 * That is what makes skipping safe: the diff below is taken against
+	 * that copy, so everything this frame would have carried is still
+	 * pending and goes out with the next frame the view can take. A
+	 * display is a stream of pictures and the newest one makes the others
+	 * pointless — queueing them instead is how a full-screen animation in
+	 * a terminal fills KCON_MAX_QUEUE and the session drops the only
+	 * display, and with it the only source of input it has.
+	 */
+	if (kcon_conn_pending(v->conn) > KCON_VIEW_HIGH)
 		return;
 
 	/*
@@ -1715,6 +1824,16 @@ int kcon_surface_hidden(const KconSurface *f)
 int kcon_surface_exclusive(const KconSurface *f) { return f ? f->exclusive : 0; }
 int kcon_surface_corner(const KconSurface *f) { return f ? f->corner : 0; }
 int kcon_surface_floating(const KconSurface *f) { return f ? f->floating : 0; }
+int kcon_surface_keyboard(const KconSurface *f) { return f ? f->keyboard : 1; }
+int kcon_surface_input_n(const KconSurface *f) { return f ? f->in_n : -1; }
+
+int kcon_surface_input_at(const KconSurface *f, int i, KRect *out)
+{
+	if (!f || !out || i < 0 || i >= f->in_n)
+		return 0;
+	*out = f->in_rect[i];
+	return 1;
+}
 
 int kcon_surface_caret(const KconSurface *f, int *x, int *y)
 {

@@ -390,6 +390,13 @@ struct KconConn {
 	 * buffer. It is dropped at the START of the next receive, which is what
 	 * keeps a returned payload valid while the caller reads it. */
 	size_t in_hold;
+	/* Bytes at the front of `in` already handed to the caller. Consumed
+	 * input is skipped by offset and moved down only when more has to be
+	 * read: moving it on every message makes draining a backlog of n
+	 * small messages cost n²/2 bytes, which is what a full-screen
+	 * animation from a client terminal is — and a drain that slows as the
+	 * backlog grows is a stall that feeds itself. */
+	size_t in_off;
 };
 
 KconConn *kcon_conn_new(int fd)
@@ -428,6 +435,11 @@ int kcon_conn_fd(const KconConn *c)
 int kcon_conn_dead(const KconConn *c)
 {
 	return !c || c->dead;
+}
+
+size_t kcon_conn_pending(const KconConn *c)
+{
+	return c && c->out_len > c->out_off ? c->out_len - c->out_off : 0;
 }
 
 static int out_reserve(KconConn *c, size_t n)
@@ -564,19 +576,21 @@ int kcon_recv(KconConn *c, KconMsg *out)
 		return -1;
 
 	/* Drop what the caller was shown last time, now that it cannot be
-	 * looking at it any more. */
+	 * looking at it any more — by offset; see `in_off`. */
 	if (c->in_hold) {
-		memmove(c->in, c->in + c->in_hold, c->in_len - c->in_hold);
-		c->in_len -= c->in_hold;
+		c->in_off += c->in_hold;
 		c->in_hold = 0;
 	}
 
 	for (;;) {
-		if (c->in_len >= HDR_BYTES) {
+		unsigned char *p = c->in + c->in_off;
+		size_t avail = c->in_len - c->in_off;
+
+		if (avail >= HDR_BYTES) {
 			uint32_t len = 0;
 
 			for (int i = 0; i < 4; i++)
-				len |= (uint32_t)c->in[i] << (i * 8);
+				len |= (uint32_t)p[i] << (i * 8);
 
 			/*
 			 * REFUSED AT THE HEADER, before a byte is reserved for
@@ -588,12 +602,11 @@ int kcon_recv(KconConn *c, KconMsg *out)
 				return -1;
 			}
 
-			if (c->in_len >= HDR_BYTES + len) {
-				out->op = (uint16_t)c->in[4] |
-					  ((uint16_t)c->in[5] << 8);
-				out->flags = (uint16_t)c->in[6] |
-					     ((uint16_t)c->in[7] << 8);
-				out->payload = c->in + HDR_BYTES;
+			if (avail >= HDR_BYTES + len) {
+				out->op = (uint16_t)p[4] | ((uint16_t)p[5] << 8);
+				out->flags = (uint16_t)p[6] |
+					     ((uint16_t)p[7] << 8);
+				out->payload = p + HDR_BYTES;
 				out->len = len;
 
 				/*
@@ -607,6 +620,13 @@ int kcon_recv(KconConn *c, KconMsg *out)
 			}
 		}
 
+		/* More has to be read, so the consumed front is moved down
+		 * now — once per read, whatever the backlog held. */
+		if (c->in_off) {
+			memmove(c->in, c->in + c->in_off, c->in_len - c->in_off);
+			c->in_len -= c->in_off;
+			c->in_off = 0;
+		}
 		if (in_reserve(c, 4096))
 			return -1;
 

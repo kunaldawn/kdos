@@ -67,6 +67,16 @@ static struct {
 	/* Close when the keyboard focus goes elsewhere — an overlay's own
 	 * choice, kept here because the surface made it. */
 	int dismiss_on_unfocus;
+	/* Whether this surface asked for the keyboard. An overlay that did not
+	 * is never focused, so it cannot take the focus off what it covers. */
+	int keyboard;
+	/*
+	 * Whether the SESSION drew this surface's frame — its answer, never
+	 * this side's guess. Starts 0, which is "nobody has drawn one", so a
+	 * surface that draws its own box has one from its first frame and
+	 * stops when the session says it is framing it. See KCON_OP_DECORATED.
+	 */
+	int decorated;
 	int focused;
 	char app_id[128], title[256], output[64];
 
@@ -459,6 +469,23 @@ tl_done:
 		C.lock_finished = (fl & KCON_LOCK_FINISHED) != 0;
 		break;
 	}
+	case KCON_OP_DECORATED: {
+		int on = kcon_get_u8(&r) != 0;
+
+		if (r.err || on == C.decorated)
+			break;
+		C.decorated = on;
+		/*
+		 * THE FRAME IS PART OF THE PICTURE, so the next frame has to
+		 * be a whole one: what changed is which cells are the
+		 * surface's to draw, and a diff against the last frame would
+		 * leave the box it just stopped drawing on the screen.
+		 */
+		ktui_draw_invalidate();
+		ev.type = KT_EVT_RESIZE;
+		push(&ev);
+		break;
+	}
 	case KCON_OP_FOCUS: {
 		int in = kcon_get_u8(&r) != 0;
 
@@ -547,6 +574,19 @@ static void cl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		     int force_full)
 {
 	if (!C.conn || kcon_conn_dead(C.conn))
+		return;
+
+	/*
+	 * A SURFACE THAT IS BEHIND SKIPS THE FRAME, the rule the session
+	 * keeps for a display: cells are a stream of pictures and the newest
+	 * makes the older ones pointless. `prev` is left exactly as it was, so
+	 * the next diff carries everything this frame would have — and a
+	 * queue that was allowed to grow instead reaches KCON_MAX_QUEUE, which
+	 * marks the connection dead, and the window is gone with no signal
+	 * and no line in any log. A full-screen animation in a terminal
+	 * window is what fills it.
+	 */
+	if (kcon_conn_pending(C.conn) > KCON_VIEW_HIGH)
 		return;
 
 	KconBuf buf = { 0 };
@@ -799,6 +839,14 @@ static void put_attach(KconBuf *b, int cols, int rows)
 	 * sends a shorter message, which is the shape every optional field
 	 * here already has. */
 	kcon_put_u8(b, (uint8_t)(C.floating ? 1 : 0));
+	/*
+	 * WHETHER THIS SURFACE WANTS THE KEYBOARD, appended behind `floating`
+	 * for the reason that field gives. A tooltip, a toast and the
+	 * candidate window all say no: an overlay that took the focus would
+	 * pull it off whatever it was drawn over, and a menu that closes when
+	 * it loses the focus would close the moment a tip appeared beside it.
+	 */
+	kcon_put_u8(b, (uint8_t)(C.keyboard ? 1 : 0));
 }
 
 static int kcon_init(const KDispConfig *cfg)
@@ -808,14 +856,19 @@ static int kcon_init(const KDispConfig *cfg)
 	memset(&C, 0, sizeof(C));
 	/*
 	 * A SURFACE WHOSE EXTENT THE SESSION OWNS ATTACHES WITH NO SIZE. A
-	 * saver covers the screen and a docked panel spans its edge, and
-	 * neither dimension is the client's to pick — a made-up 80x24 would be
-	 * a panel a tenth of the screen long, drawn where it was never asked
-	 * for. The configure that answers the attach sets both fields; until
-	 * it lands cl_size() reports the fallback grid, which is what the
-	 * first frame is drawn into and immediately resized out of.
+	 * saver covers the screen, the desktop's icon layer is the screen, and
+	 * a docked panel spans its edge; no dimension of any of them is the
+	 * client's to pick — a made-up 80x24 would be a panel a tenth of the
+	 * screen long, drawn where it was never asked for, and it WAS an icon
+	 * layer eighty columns wide placed by the window search, with the
+	 * desktop's own menu and its hint row stranded in the middle of the
+	 * screen and every click outside that rectangle reaching nothing. The
+	 * configure that answers the attach sets both fields; until it lands
+	 * cl_size() reports the fallback grid, which is what the first frame
+	 * is drawn into and immediately resized out of.
 	 */
 	int sized = !cfg || !(cfg->role == KDISP_ROLE_SAVER ||
+			      cfg->role == KDISP_ROLE_BACKGROUND ||
 			      (cfg->role == KDISP_ROLE_PANEL &&
 			       cfg->cells > 0));
 
@@ -848,6 +901,7 @@ static int kcon_init(const KDispConfig *cfg)
 	C.exclusive = cfg ? cfg->exclusive : 0;
 	C.corner = cfg ? cfg->corner : 0;
 	C.dismiss_on_unfocus = cfg ? cfg->dismiss_on_unfocus : 0;
+	C.keyboard = cfg ? cfg->keyboard : 0;
 	C.margin_x = cfg ? cfg->margin_x : 0;
 	C.margin_y = cfg ? cfg->margin_y : 0;
 	C.floating = cfg ? cfg->floating : 0;
@@ -948,8 +1002,16 @@ static int kcon_focused(void) { return C.focused; }
 static int kcon_cell_w(void) { return 1; }
 static int kcon_cell_h(void) { return 1; }
 static int kcon_scale(void) { return 1; }
-/* The server draws the furniture, as a compositor does. */
-static int kcon_decorated(void) { return 0; }
+/*
+ * WHETHER THE SESSION DREW THE FRAME, as the session last said.
+ *
+ * Not a constant and not derived from the role: a panel, a layer, a background
+ * and a FULLSCREEN window are all drawn without chrome, and only the window
+ * model knows which of those a surface is at this moment. A flat NO here made
+ * every console window draw a second box inside the session's — the title
+ * written twice, photographed on a terminal running btop.
+ */
+static int kcon_decorated(void) { return C.decorated; }
 
 /*
  * The password was accepted. Sent as its own message rather than inferred from
@@ -1030,6 +1092,59 @@ static int kcon_overlay_show(int cols, int rows)
 static void kcon_overlay_hide(void)
 {
 	kcon_hide(1);
+}
+
+/*
+ * WHICH OF THIS SURFACE'S CELLS ANSWER THE POINTER.
+ *
+ * `n < 0` is all of them, which is what a surface starts with; `n == 0` is
+ * none, which is what a tooltip, a toast, the candidate window and the saver
+ * all want — the thing UNDER them is what a click is aimed at. Sent in the
+ * surface's own cells, because that is the only coordinate system a client
+ * has; the session adds the origin.
+ *
+ * A LIST TOO LONG TO CARRY IS REFUSED HERE rather than cut short: a region
+ * missing its last rectangle is a surface swallowing clicks it said it would
+ * not, which is the whole failure this call exists to prevent.
+ */
+/*
+ * RENAME THIS WINDOW. The session draws the frame here, so the name it prints
+ * is the session's copy — and `C.title` is updated with it, or the next
+ * re-attach (a resize IS one) would put the attach name back.
+ */
+static void kcon_set_title(const char *title)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn || !title)
+		return;
+	if (!strcmp(title, C.title))
+		return;
+	snprintf(C.title, sizeof(C.title), "%s", title);
+	kcon_put_str(&b, C.title);
+	kcon_send(C.conn, KCON_OP_TITLE, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
+static void kcon_input_cells(const KRect *rects, int n)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	if (n > KCON_INPUT_RECTS || (n > 0 && !rects))
+		n = -1;
+	kcon_put_u16(&b, (uint16_t)(n < 0 ? 0xffff : n));
+	for (int i = 0; i < n; i++) {
+		kcon_put_u16(&b, (uint16_t)(rects[i].x > 0 ? rects[i].x : 0));
+		kcon_put_u16(&b, (uint16_t)(rects[i].y > 0 ? rects[i].y : 0));
+		kcon_put_u16(&b, (uint16_t)(rects[i].w > 0 ? rects[i].w : 0));
+		kcon_put_u16(&b, (uint16_t)(rects[i].h > 0 ? rects[i].h : 0));
+	}
+	kcon_send(C.conn, KCON_OP_INPUT_REGION, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
 }
 
 int kcon_toplevel_count(void)
@@ -1224,6 +1339,8 @@ const KDispImpl kcon_impl = {
 	.overlay_resize = kcon_overlay_resize,
 	.overlay_show = kcon_overlay_show,
 	.overlay_hide = kcon_overlay_hide,
+	.input_cells = kcon_input_cells,
+	.set_title = kcon_set_title,
 	.unlock = kcon_unlock,
 	.lock_engaged = kcon_lock_engaged,
 	.lock_finished = kcon_lock_finished,

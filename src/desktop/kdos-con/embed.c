@@ -51,7 +51,15 @@
 /* One sprite is sixteen cells square at most — the cell encoding's four bits
  * per axis — so a window is a grid of blocks that size. */
 #define EM_TILE 16
-#define EM_MAX_BLOCKS 256
+/*
+ * ENOUGH BLOCKS FOR A GUEST THE SIZE OF THE WORK AREA ON THE BIGGEST SCREEN
+ * THIS DRIVES. A 4K screen at an 8x15 cell is 480x144 cells, which is 30x9
+ * blocks; the ceiling is what `layout()` refuses above, and a refusal there is
+ * a resize the guest is never told about — a maximised window still drawing at
+ * the size it had. The slots come from a rotation of KCON_MAX_SPRITE_MAP, so
+ * the cost of the headroom is this array and nothing else.
+ */
+#define EM_MAX_BLOCKS 1024
 
 /*
  * A CELL SIZE FOR A SESSION THAT HAS NOT BEEN TOLD ONE. A view says how many
@@ -70,6 +78,27 @@
  * link that does nothing else.
  */
 #define EM_SLOW_MS 250
+
+/*
+ * AND HOW OFTEN WHEN SOMETHING CAN. A guest renders as fast as the machine
+ * lets it and the display paints at the screen's rate; publishing on every
+ * guest frame spends the difference re-cutting and re-sending blocks nothing
+ * will ever show.
+ */
+#define EM_FAST_MS 16
+
+/*
+ * HOW MUCH OF A WINDOW MAY GO OUT IN ONE CYCLE.
+ *
+ * A block is EM_TILE cells square — at an 8x15 cell, 128x240 pixels, a hundred
+ * and twenty kilobytes — and a maximised window is dozens of them. Sending a
+ * whole repaint at once puts megabytes into a display's queue before a single
+ * byte is written to the socket, which is over KCON_MAX_QUEUE and the session
+ * drops the display it is drawing on. The rest of the repaint stays dirty and
+ * goes in the cycles that follow, so a big frame arrives a few milliseconds
+ * late instead of killing the desktop.
+ */
+#define EM_BUDGET (512u << 10)
 
 struct Embed {
 	Win *win;
@@ -90,11 +119,27 @@ struct Embed {
 	uint32_t *scratch;		/* one block, contiguous */
 	size_t scratch_px;
 
-	int dx0, dy0, dx1, dy1;		/* pending damage, in pixels */
-	int have_damage;
+	/*
+	 * WHICH BLOCKS ARE OWED TO THE DISPLAY, and it is per block rather
+	 * than one rectangle because a cycle may only afford some of them: a
+	 * bounding box has no way to say "these four went and those six did
+	 * not", and a box that was partly sent is a window with stale squares
+	 * in it that nothing ever repaints.
+	 */
+	uint8_t dirty[EM_MAX_BLOCKS];
+	int ndirty;
+	int cursor;			/* where the next cycle starts */
 	unsigned long long last_ms;
 
 	int gone;			/* the guest exited */
+	/*
+	 * WHETHER A FRAME HAS EVER ARRIVED. The cage publishes nothing until a
+	 * client has mapped a window, so until this is set there is no picture
+	 * to show and the window says what it is doing instead of standing
+	 * black — which is what a container taking half a minute to come up
+	 * looks like otherwise, and is indistinguishable from a dead one.
+	 */
+	int drew;
 	int focused, asleep;
 };
 
@@ -170,35 +215,41 @@ static int recv_msg(struct Embed *e, KembedMsg *m, int *fd)
  * mapping arrived and when a view attaches: a view that has never been sent a
  * block draws the fallback mark where the picture should be.
  */
+static void mark(struct Embed *e, int bx, int by)
+{
+	int i = by * e->bw + bx;
+
+	if (bx < 0 || by < 0 || bx >= e->bw || by >= e->bh ||
+	    i >= EM_MAX_BLOCKS || e->dirty[i])
+		return;
+	e->dirty[i] = 1;
+	e->ndirty++;
+}
+
 static void damage_all(struct Embed *e)
 {
-	e->dx0 = 0;
-	e->dy0 = 0;
-	e->dx1 = e->pw;
-	e->dy1 = e->ph;
-	e->have_damage = 1;
+	for (int by = 0; by < e->bh; by++)
+		for (int bx = 0; bx < e->bw; bx++)
+			mark(e, bx, by);
 }
 
 static void damage_add(struct Embed *e, int x, int y, int w, int h)
 {
-	if (w <= 0 || h <= 0)
+	if (w <= 0 || h <= 0 || e->cell_w < 1 || e->cell_h < 1)
 		return;
-	if (!e->have_damage) {
-		e->dx0 = x;
-		e->dy0 = y;
-		e->dx1 = x + w;
-		e->dy1 = y + h;
-		e->have_damage = 1;
-		return;
-	}
-	if (x < e->dx0)
-		e->dx0 = x;
-	if (y < e->dy0)
-		e->dy0 = y;
-	if (x + w > e->dx1)
-		e->dx1 = x + w;
-	if (y + h > e->dy1)
-		e->dy1 = y + h;
+
+	int span_w = EM_TILE * e->cell_w, span_h = EM_TILE * e->cell_h;
+	int bx0 = x / span_w, by0 = y / span_h;
+	int bx1 = (x + w + span_w - 1) / span_w;
+	int by1 = (y + h + span_h - 1) / span_h;
+
+	if (bx0 < 0)
+		bx0 = 0;
+	if (by0 < 0)
+		by0 = 0;
+	for (int by = by0; by < by1; by++)
+		for (int bx = bx0; bx < bx1; bx++)
+			mark(e, bx, by);
 }
 
 /*
@@ -216,6 +267,18 @@ static int layout(struct Embed *e, int cols, int rows)
 
 	if (e->bw < 1 || e->bh < 1 || e->bw * e->bh > EM_MAX_BLOCKS)
 		return -1;
+
+	/*
+	 * WHAT WAS OWED WAS OWED ABOUT A DIFFERENT GRID. An index is
+	 * `by * bw + bx`, so a row count that changed makes every bit stale —
+	 * and a bit outside the new grid can never be cleared, which would
+	 * leave the count of owed blocks permanently above zero and the
+	 * publisher walking the window on every cycle for ever. Every caller
+	 * damages the whole window straight afterwards.
+	 */
+	memset(e->dirty, 0, sizeof(e->dirty));
+	e->ndirty = 0;
+	e->cursor = 0;
 
 	for (int i = 0; i < e->bw * e->bh; i++)
 		if (e->slots[i] < 0)
@@ -240,7 +303,8 @@ static int layout(struct Embed *e, int cols, int rows)
  * window's and a sprite's bytes have to be contiguous, and the half being read
  * is the one the child is not writing.
  */
-static void send_block(struct Embed *e, int bx, int by)
+/* Answers whether any display took it; one that did not leaves the block owed. */
+static int send_block(struct Embed *e, int bx, int by)
 {
 	int cx = bx * EM_TILE, cy = by * EM_TILE;
 	int cw = e->cols - cx, ch = e->rows - cy;
@@ -250,13 +314,13 @@ static void send_block(struct Embed *e, int bx, int by)
 	if (ch > EM_TILE)
 		ch = EM_TILE;
 	if (cw < 1 || ch < 1)
-		return;
+		return 0;
 
 	int px = cx * e->cell_w, py = cy * e->cell_h;
 	int pw = cw * e->cell_w, ph = ch * e->cell_h;
 
 	if (px + pw > e->pw || py + ph > e->ph)
-		return;
+		return 0;
 
 	const uint8_t *base = (const uint8_t *)e->map +
 			      (size_t)e->slot * e->slot_len;
@@ -269,7 +333,7 @@ static void send_block(struct Embed *e, int bx, int by)
 	int slot = e->slots[by * e->bw + bx];
 
 	if (slot < 0)
-		return;
+		return 0;
 
 	/*
 	 * WHAT A PICTURE LOOKS LIKE WHERE THERE ARE NO PIXELS. Something
@@ -277,10 +341,30 @@ static void send_block(struct Embed *e, int bx, int by)
 	 * indistinguishable from one that never drew.
 	 */
 	uint32_t fb = 0x2593u;
+	int sent = 0;
 
-	for (int i = 0; i < kcon_server_view_count(S.server); i++)
-		kcon_view_sprite(kcon_server_view_at(S.server, i), slot,
-				 cw, ch, fb, e->scratch, pw, ph);
+	/*
+	 * EVERY VIEW HAS TO TAKE IT, or the block stays owed.
+	 *
+	 * A display that is behind refuses the piece, and one that took it
+	 * while another refused must not be told the window is clean: the
+	 * block is offered again on the next cycle and the display that
+	 * already has it is sent it twice, which costs a resend and cannot
+	 * leave a stale square on either screen.
+	 *
+	 * Flushed here rather than once at the end of the loop, so the bytes
+	 * go to the socket between blocks instead of piling up in the queue
+	 * the watermark is measured against.
+	 */
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (!kcon_view_sprite(v, slot, cw, ch, fb, e->scratch, pw, ph))
+			continue;
+		kcon_view_flush(v);
+		sent = 1;
+	}
+	return sent;
 }
 
 /* Does anything attached turn a sprite's bytes into pixels? */
@@ -293,36 +377,48 @@ static int any_pixel_view(void)
 	return 0;
 }
 
+/*
+ * WHAT A CYCLE CAN AFFORD, AND WHERE IT STARTS.
+ *
+ * The budget is spent a block at a time and the cursor carries on where the
+ * last cycle stopped, so a window too big for one cycle is finished by the
+ * next few and no corner of it is starved by a guest that keeps damaging the
+ * same place. Blocks that were not sent stay dirty, which is the only record
+ * that they are owed.
+ */
 static void publish(struct Embed *e)
 {
-	if (!e->have_damage || !e->map || e->slot < 0 || e->asleep)
+	if (!e->ndirty || !e->map || e->slot < 0 || e->asleep)
 		return;
 
 	unsigned long long t = now_ms();
+	unsigned long long wait = any_pixel_view() ? EM_FAST_MS : EM_SLOW_MS;
 
-	if (!any_pixel_view() && t - e->last_ms < EM_SLOW_MS)
+	if (t - e->last_ms < wait)
 		return;
 	e->last_ms = t;
 
-	int bx0 = e->dx0 / (EM_TILE * e->cell_w);
-	int by0 = e->dy0 / (EM_TILE * e->cell_h);
-	int bx1 = (e->dx1 + EM_TILE * e->cell_w - 1) / (EM_TILE * e->cell_w);
-	int by1 = (e->dy1 + EM_TILE * e->cell_h - 1) / (EM_TILE * e->cell_h);
+	int nb = e->bw * e->bh;
+	size_t per = (size_t)EM_TILE * e->cell_w * EM_TILE * e->cell_h * 4;
+	size_t spent = 0;
 
-	if (bx0 < 0)
-		bx0 = 0;
-	if (by0 < 0)
-		by0 = 0;
-	if (bx1 > e->bw)
-		bx1 = e->bw;
-	if (by1 > e->bh)
-		by1 = e->bh;
+	if (nb < 1 || nb > EM_MAX_BLOCKS)
+		return;
+	if (e->cursor < 0 || e->cursor >= nb)
+		e->cursor = 0;
 
-	for (int by = by0; by < by1; by++)
-		for (int bx = bx0; bx < bx1; bx++)
-			send_block(e, bx, by);
+	for (int n = 0; n < nb && spent < EM_BUDGET; n++) {
+		int i = (e->cursor + n) % nb;
 
-	e->have_damage = 0;
+		if (!e->dirty[i])
+			continue;
+		if (!send_block(e, i % e->bw, i / e->bw))
+			break;		/* every display is behind: try later */
+		e->dirty[i] = 0;
+		e->ndirty--;
+		e->cursor = (i + 1) % nb;
+		spent += per;
+	}
 }
 
 /* ── which way a graphical application is shown ──────────────────────── */
@@ -645,6 +741,10 @@ static void drain(struct Embed *e)
 			if (m.a < 0 || m.a >= KEMBED_SLOTS || !e->map)
 				break;
 			e->slot = m.a;
+			if (!e->drew) {
+				e->drew = 1;
+				damage_all(e);
+			}
 			damage_add(e, m.b, m.c, m.d, (int)m.e);
 			break;
 		case KEMBED_GONE:
@@ -823,6 +923,24 @@ void embed_draw(const Win *w)
 
 	if (!e)
 		return;
+
+	/*
+	 * A WINDOW WITH NO FRAME YET SAYS SO. Sprite cells naming slots no
+	 * display has a picture for come out as the fallback mark, which is a
+	 * window full of shade blocks and reads as a broken application rather
+	 * than as one that has not started drawing.
+	 */
+	if (!e->drew) {
+		static const char *msg = "starting…";
+		int lw = ktui_utf8_width(msg);
+		int x = w->geom.x + (w->geom.w - lw) / 2;
+		int y = w->geom.y + w->geom.h / 2;
+
+		if (lw <= w->geom.w && w->geom.h > 0)
+			ktui_draw_text(x, y, lw, msg, KT_MID, KT_BG,
+				       KT_A_NONE);
+		return;
+	}
 
 	for (int y = 0; y < w->geom.h && y < e->rows; y++)
 		for (int x = 0; x < w->geom.w && x < e->cols; x++) {

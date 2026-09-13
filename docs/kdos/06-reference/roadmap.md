@@ -34,8 +34,8 @@ names, no large toolkit on the host — redesigned from nothing for a finger rat
 And the property only this arrangement can offer: **the same device driving an external monitor**
 with the desktop session, rather than a phone interface stretched across it.
 
-**Plan of record:** [`mobile.plan.md`](../../../mobile.plan.md) for the port,
-[`mobile.plan2.md`](../../../mobile.plan2.md) for the touchscreen desktop.
+**There is no plan of record for either.** What is written down is this page; the shape above is
+what the tree already supports, not a schedule anybody has committed to.
 
 ## Direction
 

@@ -198,6 +198,9 @@ void kwl_cursor_set(enum kdisp_cursor c);
  * icons switched off.
  */
 void kwl_input_cells(const KRect *rects, int n);
+/* Rename this window while it runs — the compositor draws its frame and its
+ * taskbar row. See KDispImpl.set_title. */
+void kwl_set_title(const char *title);
 
 /*
  * The connection and the seat, for a consumer that needs to bind protocols of

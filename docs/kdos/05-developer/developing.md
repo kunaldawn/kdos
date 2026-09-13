@@ -76,6 +76,28 @@ and the phosphor pass declines anything that is not the accelerated renderer, be
 post-process on software rendering is a slideshow. `make run-hw` runs a containerised emulator with
 accelerated graphics, which is the configuration where the shader is actually in the picture.
 
+**Every run target comes up at 1920x1080, and `KDOS_RES` is the one place that says so.**
+
+```sh
+make run KDOS_RES=2560x1440
+```
+
+Nothing in KDOS asks for a mode: the desktop takes the connector's **preferred** one, which for
+virtio-gpu is whatever `xres`/`yres` put in the EDID it synthesises. Left unset those default to
+QEMU's own 1280x800 — about 160x50 characters once the mode is divided by the font's cell, which is
+not enough to lay the Start menu out in the three columns it ships with, so a machine that looked
+small was a desktop being measured for a screen nobody chose. `testing/qemu-hw/run.sh` reads the
+same variable and the Makefile passes it through, so the accelerated path and the plain one cannot
+disagree. `testing/vnc-shot.py` takes its own `--size` and sets the same two properties.
+
+**The accelerated run asks its window to scale rather than to resize the guest**, which is what
+makes that setting a resolution rather than a request: QEMU's GTK window reports its own size to the
+guest, virtio-gpu rebuilds the EDID around it, and the desktop takes the connector's preferred mode
+— so a window that opened at whatever the firmware left on screen dragged the whole desktop down
+with it. `zoom-to-fit=on` scales the picture into the window instead.
+`KDOS_QEMU_DISPLAY=gtk,gl=es` gives back the behaviour where the guest follows the window, and
+`KDOS_QEMU_DISPLAY=egl-headless` takes the window out of it entirely.
+
 ## Where things land
 
 | Path | What | Notes |
@@ -135,6 +157,14 @@ kdosbuild --preview build 132x43 vt    # a build screen, offscreen
 kdos-res --fixture … --dump     # a monitor page, offscreen
 kinstall --dry-run              # the installer, executing nothing
 ```
+
+**And the console session itself, with no display at all.** `kdos-con` links no Wayland and no
+pixel library, so it builds with plain `gcc` on any host: run it with `--new -t t` under a short
+`XDG_RUNTIME_DIR` (a unix socket path has about a hundred bytes, and a scratch directory under
+`/tmp` is usually longer than that), attach throwaway clients through `kdisp_init`, and read the
+layout back with `kdos-con --capture --socket …`, which prints the composed grid as text. It is
+the fastest way to answer a window-model question — where a panel docked, what the work area is,
+where an overlay landed — and needs no container and no emulator.
 
 See [Testing](testing.md) for what each proves.
 

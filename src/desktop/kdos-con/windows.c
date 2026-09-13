@@ -117,6 +117,37 @@ void win_refit(void)
 	for (Win *w = S.wins; w; w = w->next) {
 		if (w->panel)
 			continue;
+		/*
+		 * THE DESKTOP IS WHATEVER THE BARS LEFT, and it is assigned
+		 * rather than fitted: `kwm_fit` moves a rectangle and clamps
+		 * it and never GROWS one, so an icon layer run through it
+		 * would keep the size it had when it attached for ever — and
+		 * the size it had when it attached is whatever the grid was
+		 * before the first view answered.
+		 */
+		if (w->background) {
+			w->geom = area;
+			win_resized(w);
+			continue;
+		}
+		/*
+		 * AN ANCHORED OVERLAY IS RE-ANCHORED, NOT FITTED. `kwm_fit`
+		 * moves a rectangle the least it can to get it inside the
+		 * area, which for a corner surface throws the corner away —
+		 * and a surface that attached before the first view was
+		 * anchored against the 80x24 fallback grid. That is what put
+		 * the welcome card in the top-left corner on top of the
+		 * desktop icons on every boot: centred, correctly, in a grid
+		 * a quarter of the size of the screen it ended up on.
+		 */
+		if (w->overlay && w->surf) {
+			win_place_corner(w, w->geom.w, w->geom.h,
+					 kcon_surface_corner(w->surf),
+					 kcon_surface_margin_x(w->surf),
+					 kcon_surface_margin_y(w->surf));
+			win_resized(w);
+			continue;
+		}
 		if (w->full) {
 			w->geom.x = 0;
 			w->geom.y = 0;
@@ -711,6 +742,42 @@ void win_scratch_mark(Win *w)
 	ktui_draw_invalidate();
 }
 
+/*
+ * WHETHER THIS POINT IS ONE OF THE CELLS THE SURFACE SAID IT ANSWERS.
+ *
+ * A surface declares an input region — `kdisp_input_cells()` — and four of
+ * them declare an EMPTY one: the tooltip, the toast stack, the candidate
+ * window and the screen saver are all drawn over the desktop and all take
+ * nothing, because the thing under them is what a click is aimed at. A hit
+ * test that ignored it gave the topmost rectangle every click, so a tooltip
+ * that opened over the Start button swallowed the click on it and the menu
+ * never opened.
+ *
+ * Everything that is not a libkcon surface — a terminal, a guest, the session's
+ * own chrome — answers everywhere, which is also what a surface that never
+ * called it reports.
+ */
+static int win_takes_point(const Win *w, int x, int y)
+{
+	int n;
+
+	if (w->kind != WIN_SURFACE || !w->surf)
+		return 1;
+	n = kcon_surface_input_n(w->surf);
+	if (n < 0)
+		return 1;
+	for (int i = 0; i < n; i++) {
+		KRect r;
+
+		if (!kcon_surface_input_at(w->surf, i, &r))
+			continue;
+		if (x >= w->geom.x + r.x && x < w->geom.x + r.x + r.w &&
+		    y >= w->geom.y + r.y && y < w->geom.y + r.y + r.h)
+			return 1;
+	}
+	return 0;
+}
+
 Win *win_at(int x, int y)
 {
 	for (Win *w = S.wins; w; w = w->next) {
@@ -749,7 +816,8 @@ Win *win_at(int x, int y)
 
 		KwmRect f = win_frame(w);
 
-		if (x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h)
+		if (x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h &&
+		    win_takes_point(w, x, y))
 			return w;
 	}
 	return NULL;

@@ -3895,6 +3895,18 @@ static void region_commit(void)
 	wl_display_flush(K.display);
 }
 
+/*
+ * RENAME THIS WINDOW. The compositor draws the frame and keeps the name — it
+ * is what the taskbar's row reads through foreign-toplevel — so the title a
+ * program sets while it runs has to reach xdg-toplevel, not only the string
+ * the surface was created with.
+ */
+void kwl_set_title(const char *title)
+{
+	if (K.xdg_toplevel && title)
+		xdg_toplevel_set_title(K.xdg_toplevel, title);
+}
+
 void kwl_input_cells(const KRect *rects, int n)
 {
 	if (!K.surface || !K.compositor)
@@ -4542,6 +4554,7 @@ const KDispImpl kwl_impl = {
 	.cursor_set = kwl_cursor_set,
 	.set_backdrop = kwl_set_backdrop,
 	.input_cells = kwl_input_cells,
+	.set_title = kwl_set_title,
 	.report_error = kwl_report_error,
 	.focused = kwl_focused,
 	.lock_engaged = kwl_lock_engaged,

@@ -14,6 +14,7 @@ machine rig that drives a real session.
 | Reference frames | That a surface's geometry and colours have not drifted | That it is usable | Included above |
 | Fixtures | That a reading or a decision is correct against recorded state | That the reading is correct live | Included above |
 | `testing/vnc-shot.py` | That a **real session** does a thing, photographed | Anything the renderer used cannot show | Minutes per boot |
+| `testing/usability.sh` | That the console desktop can be **driven by a hand** — hover, click, chord — photographed step by step | Nothing: it asserts nothing and is read by a person | Six minutes |
 | `testing/docscheck.sh` | That the book still links up and states the present | Anything a reader has to judge for themselves | Seconds |
 | `testing/packlane.sh` | The application lane end to end on a booted machine | | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | | Minutes |
@@ -708,6 +709,18 @@ Each is a rule with its consequence:
   keeps the pipe open.
 - **A static screen produces no frame events**, so anything about dropped frames needs something
   animating first.
+- **`--audio` gives the guest a REAL backend where the container has one**, and `-audiodev none`
+  only where it does not — the same `testing/qemu-audio.sh` probe every `make run*` uses. A null
+  sink consumes samples on a timer and a host one consumes them as a device does, so a guest whose
+  pacing follows its own playback position runs to a different clock on the two. The rig image
+  carries neither PipeWire nor PulseAudio, so it gets the null sink; the accelerated image
+  (`testing/qemu-hw`) carries both, and reproducing what `make run-hw` does means running there —
+  add `python3` to it and drive `vnc-shot.py` with `--gl` and `--entrypoint python3`.
+- **A step costs seconds, so anything with a timeout must be photographed with no sleep before it.**
+  Typing is one character at a time and a `--shot` is a full framebuffer over VNC: `date` either
+  side of four shots measured sixty-eight seconds. A five-second toast, a pulse, a tooltip's own
+  delay — a `--sleep` before the shot photographs the desktop the thing has already left, and the
+  picture looks exactly like the feature being broken.
 - **Surface goldens regenerate in `kdos-devdeps`, which carries what they need.** The image has
   the Wayland dependencies the front-end dumps want, a font, GNU `tar` and `fakeroot`:
 
@@ -771,6 +784,7 @@ Each is a rule with its consequence:
 | `prepare_base.py`, `test_runner.py` | Build a minimal root filesystem as a container image and build individual ports against it |
 | `qemu-audio.sh` | Probe for a working audio backend rather than hardcoding one, because the emulator aborts at startup on a backend its build lacks |
 | `qemu-hw/` | The containerised emulator with accelerated graphics |
+| `usability.sh` | Drives the console desktop the way a person does and leaves a numbered contact sheet; `testing/usability.md` is the checklist to read it against |
 
 ## What is not tested
 
@@ -788,6 +802,12 @@ Stated so nobody assumes otherwise:
   the surface only until the surface changes, and it reads to the next person as evidence that was
   checked. Every committed frame is driven by a call.
 - **The compositor and the shell are not compiled by the self-test on a bare host.**
+- **Nothing that runs on its own has ever hovered a button.** Every defect the usability sweep
+  exists to catch — a taskbar two rows above the bottom of the screen, a tooltip that swallowed the
+  click on the button it described, a Start button whose label vanished under the pointer, an icon
+  layer eighty columns wide on a hundred-and-sixty column screen — was green in `preflight.sh` and
+  green in `selftest.sh` on the day it shipped. `usability.sh` drives those paths and photographs
+  them; reading the result is still a person's job.
 - **Nothing here tests the build**, which takes hours and a container.
 
 ## See also

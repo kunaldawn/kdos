@@ -156,6 +156,24 @@ handle_output_frame(struct wl_listener *listener, void *data)
 
 	if (embed_active(output->server)) {
 		/*
+		 * NOTHING TO DRAW IS NOTHING TO DO, and the two branches must
+		 * agree about that. wlr_scene_output_commit() — the branch
+		 * below — returns early on !wlr_scene_output_needs_frame();
+		 * wlr_scene_output_build_state() has no such guard, so the
+		 * embed branch rendered, copied a whole framebuffer and
+		 * published it on every tick of the headless output whether
+		 * or not a client had committed anything. Frame-done still
+		 * goes out, or a client that is waiting for one stops drawing.
+		 */
+		if (!wlr_scene_output_needs_frame(output->scene_output)) {
+			struct timespec now = {0};
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			wlr_scene_output_send_frame_done(output->scene_output,
+							 &now);
+			return;
+		}
+
+		/*
 		 * The state is BUILT and then committed, rather than committed
 		 * in one call, because the buffer that was rendered into is
 		 * only reachable in between — and that buffer is the whole

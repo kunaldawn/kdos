@@ -108,11 +108,21 @@ keystroke and the same code path. The wrapper the launcher builds is not the pro
 hand, `kdos-term --title mc --app-id mc -e mc` opens the window and the taskbar names it. The
 chord route is unaffected, so `Super+Shift+e` still opens mail.
 
-**A graphical application launched from the console's Start menu ends the session.** Measured twice
-with `cups.desktop` (*Manage Printing*): `kdos-cage` starts on the headless backend with the pixman
-renderer, its log lands in the session's, an empty guest window appears — and the console desktop
-exits, leaving the login banner. Every *console* surface the same menu offers is unaffected, and
-`kdos-print` — the printer page this desktop has of its own — opens and lists its queues.
+**A terminal framed by the session loses its prompt marks.** `kdos-term` draws the `OSC 133` dots on
+the one column that is its own — the left border of the box it draws when nothing else drew one —
+and a window the session frames has no such column. It is the trade the compositor's side already
+makes, and it is the price of the frame not being drawn twice; carrying the marks would mean a
+per-row status run beside the cell commit, which nothing sends yet. The chords still jump.
+
+**An embedded graphical application is composited on the CPU, a block at a time, under a byte
+budget.** `kdos-con --run` gives a guest a window whose pixels cross a shared mapping as sprite
+blocks, and a block at an 8x15 cell is a hundred and twenty kilobytes: a maximised window is dozens
+of them, so what a display is sent is paced rather than handed over whole. A guest that repaints
+everything continuously therefore arrives a cycle or two behind, and a large one costs the session
+real processor time — this is software compositing of somebody else's pixels and there is no path
+where it is not. What it does not cost is the desktop: a display that is behind is skipped, never
+dropped. See [`kdos-cage`](../04-programs/kdos-cage.md) and
+[`kdos-con`](../04-programs/kdos-con.md).
 
 **No VT has ever been allocated.** Embedding is what a graphical application gets and it has been
 run end to end; `--vt` is the exception for something that needs acceleration, and that path — the

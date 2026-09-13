@@ -370,6 +370,14 @@ typedef struct {
 	void (*cursor_set)(enum kdisp_cursor c);
 	void (*set_backdrop)(KDispBackdropFn fn);
 	void (*input_cells)(const KRect *rects, int n);
+	/*
+	 * RENAME THIS WINDOW. A program names its own window while it runs —
+	 * a shell sets OSC 2 on every command — and the name is drawn by
+	 * whoever drew the frame. Answered by the console, where the session
+	 * draws it, and by Wayland, where the compositor does; a display that
+	 * cannot be told leaves the name the surface attached with.
+	 */
+	void (*set_title)(const char *title);
 	void (*report_error)(void);
 
 	int (*lock_engaged)(void);
@@ -522,6 +530,8 @@ int kdisp_edge_bottom(void);
 void kdisp_cursor_set(enum kdisp_cursor c);
 void kdisp_set_backdrop(KDispBackdropFn fn);
 void kdisp_input_cells(const KRect *rects, int n);
+/* Rename this window after it was created. See KDispImpl.set_title. */
+void kdisp_set_title(const char *title);
 void kdisp_report_error(void);
 int kdisp_lock_engaged(void);
 /* Does this surface have the keyboard? See KDispImpl.focused. */
