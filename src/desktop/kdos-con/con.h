@@ -365,6 +365,13 @@ typedef struct Win {
 	 */
 	int overlay;		/* above every window, out of the ring */
 	int background;		/* below every window, out of the ring */
+	/*
+	 * WHAT THIS SURFACE WAS LAST TOLD ABOUT ITS FRAME, or -1 before it has
+	 * been told anything. The session draws chrome round an ordinary
+	 * window and round nothing else, and a client that is not told draws a
+	 * second box inside the first. See publish_decor().
+	 */
+	int decor_told;
 
 	char title[128];
 	char app_id[64];

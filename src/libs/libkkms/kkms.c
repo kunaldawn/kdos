@@ -337,16 +337,13 @@ static void lay_out(void)
 	 * cell is the same size on every screen, which is the whole reason a
 	 * window dragged across the seam keeps its shape.
 	 *
-	 * The slice is CENTRED horizontally in whatever pixels are left over
-	 * when the mode is not a whole number of cells wide; a grid pinned to
-	 * the left edge leaves a bright strip down the right of every screen.
+	 * THE GRID STARTS AT THE TOP LEFT AND THE SLACK IS AT THE RIGHT AND
+	 * THE BOTTOM, where a mode is not a whole number of cells. It is
+	 * filled with KT_BG by kcell_paint()'s own padding, so it is the
+	 * desktop's colour rather than a strip of whatever the framebuffer
+	 * held — and the pointer's cell is `pixel / cell` with no origin to
+	 * subtract, which is what keeps input and paint agreeing.
 	 */
-	for (int i = 0; i < K.nout; i++) {
-		struct kkms_out *o = &K.out[i];
-
-		o->px = (o->width - o->cols * cw) / 2;
-		o->py = (o->height - o->rows * ch) / 2;
-	}
 	(void)rows;
 }
 
@@ -506,6 +503,16 @@ static int relight(void)
 {
 	lay_out();
 	for (int i = 0; i < K.nout; i++) {
+		/*
+		 * WHAT THIS OUTPUT ALREADY HAD GOES FIRST. make_fb() and
+		 * make_slice() overwrite every field they fill, so without
+		 * this each mode change leaks the previous mapping, its GEM
+		 * handle, its DRM framebuffer and its pixman image — a screen
+		 * whose mode is stepped a few times has leaked several
+		 * framebuffers' worth of a device the session cannot get back.
+		 * out_free() is written to take a half-built output.
+		 */
+		out_free(&K.out[i]);
 		if (make_fb(&K.out[i]) != 0 || make_slice(&K.out[i]) != 0) {
 			K.nout = i;
 			return -1;

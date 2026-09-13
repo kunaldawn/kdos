@@ -571,8 +571,23 @@ static void draw(const struct view *v)
 		uint8_t fg = KT_TEXT;
 		uint8_t bg = KT_SURFACE;
 
-		if (sel)
+		if (sel) {
 			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
+	/*
+	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
+	 * The plate is the whole highlight, so on the console and in a dump
+	 * the selected row was indistinguishable from every other row — a
+	 * menu with no visible cursor, on a display where the cursor is the
+	 * only thing saying what Enter will do. An accent fill with the slots
+	 * swapped is what a character grid has, and it is what the row's mark
+	 * is already coloured for.
+	 */
+			if (!kch_px_live()) {
+				fg = KT_SURFACE;
+				bg = KT_ACCENT;
+				ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
+			}
+		}
 
 		if (row <= -2) {			/* a group */
 			int g = -row - 2;
@@ -815,8 +830,16 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 		uint8_t fg = KT_TEXT;
 		uint8_t bg = KT_SURFACE;
 
-		if (is_sel)
+		if (is_sel) {
 			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
+			/* The cell form of the same fact — see the cascading
+			 * menu above. */
+			if (!kch_px_live()) {
+				fg = KT_SURFACE;
+				bg = KT_ACCENT;
+				ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
+			}
+		}
 		ktui_draw_text(2, 1 + r, w - 4, rows[idx].label, fg, bg,
 			       KT_A_NONE);
 	}

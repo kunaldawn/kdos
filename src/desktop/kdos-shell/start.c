@@ -1390,8 +1390,23 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	 * at. A raised plate with a two-pixel accent bar down its left edge
 	 * says the same thing and lets the row's own contents be read.
 	 */
-	if (selected)
+	if (selected) {
 		kch_px_row(x, y, w, KCH_T_ACTIVE);
+	/*
+	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
+	 * The plate is the whole highlight, so on the console and in a dump
+	 * the selected row was indistinguishable from every other row — a
+	 * menu with no visible cursor, on a display where the cursor is the
+	 * only thing saying what Enter will do. An accent fill with the slots
+	 * swapped is what a character grid has, and it is what the row's mark
+	 * is already coloured for.
+	 */
+		if (!kch_px_live()) {
+			fg = KT_SURFACE;
+			bg = KT_ACCENT;
+			ktui_draw_fill(krect(x, y, w, 1), bg);
+		}
+	}
 
 	/*
 	 * THE LABEL STARTS IN THE SAME COLUMN WHETHER OR NOT THERE IS A

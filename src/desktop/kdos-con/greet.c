@@ -320,7 +320,22 @@ static int greeter(void)
 		return 1;
 	}
 
+	/*
+	 * THE TERMINAL FIRST, AND THE TOOLKIT AFTER IT.
+	 *
+	 * `ktui_caps` is the backend's answer and NOTHING sets it until this
+	 * runs. A greeter that called only ktui_draw_init() therefore drew in
+	 * the ASCII tier — `+=====+` and `|` on a tty whose font carries the
+	 * box glyphs — in the terminal's own eight colours rather than this
+	 * desktop's palette, and read its keys a LINE at a time because the
+	 * tty was never put in raw mode. Photographed on an installed system.
+	 *
+	 * NO MOUSE. A Linux VT has none, and libktui declines to claim one
+	 * there anyway; asking would only be a second statement of that.
+	 */
+	ktui_term_init(0);
 	if (ktui_draw_init() != 0) {
+		ktui_term_shutdown();
 		fprintf(stderr, "kdos-con-login: cannot draw on this tty\n");
 		return 1;
 	}
@@ -383,9 +398,11 @@ static int greeter(void)
 		case 0:
 			/* Leave the tty as it was found: the session is about
 			 * to draw on it, and a greeter that kept the alternate
-			 * screen would hand over one it does not own. */
+			 * screen, the raw mode or its own palette would hand
+			 * over a terminal it does not own. */
 			ktui_draw_clear();
 			ktui_draw_flush();
+			ktui_term_shutdown();
 			become(&users[sel], ses);
 			return 1;	/* become() does not return */
 		case 1:
@@ -419,7 +436,9 @@ static int greeter(void)
  * comparison of text and the tier a dump renders in is the harness's, not the
  * screen's: on the real tty the same layout is drawn in the vt tier, because
  * kdos-getty has already loaded the 512-glyph console font by the time the
- * greeter runs.
+ * greeter runs AND greeter() initialises the terminal backend, which is what
+ * decides the tier. A greeter that skipped that drew this golden's own
+ * characters on the screen.
  */
 static void greet_fixture(const char *path)
 {

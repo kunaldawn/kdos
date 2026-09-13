@@ -25,7 +25,7 @@ The shipped set, in boot order:
 | `01_udev` | Device management, and the coldplug that loads drivers |
 | `02_modules` | Modules listed in `/etc/modules-load.d` |
 | `05_hostname` | The hostname |
-| `10_sysctl` | Kernel parameters |
+| `10_sysctl` | Kernel parameters, from `/etc/sysctl.conf` — an unprivileged `ping`, and **a fatal signal named in the kernel log**, without which a program that segfaults takes its window and its reason with it |
 | `12_zram` | Compressed swap in RAM |
 | `15_userdirs` | `/run/user/<uid>`, and a cgroup subtree per user |
 | `18_timers` | Periodic jobs, one supervised `snooze` per line of `/etc/kdos/timers.d` |

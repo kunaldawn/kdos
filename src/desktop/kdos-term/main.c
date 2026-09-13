@@ -123,9 +123,10 @@ static void on_hup(int sig)
 	g_reload = 1;
 }
 
-/* OSC 0 and OSC 2, which is how a program names its own window. Only the
- * undecorated frame can show it: an xdg-toplevel's title was set at
- * initialisation and libkdisp has no path to change it. */
+/* OSC 0 and OSC 2, which is how a program names its own window. It reaches the
+ * frame whoever drew it: `kdisp_set_title()` is the session's own title
+ * message on the console and `xdg_toplevel_set_title` under a compositor, and
+ * the box this program draws when nothing else did reads `g_title` directly. */
 /*
  * A CHILD PUT SOMETHING ON THE CLIPBOARD, through OSC 52. It goes wherever
  * this program's display server puts a selection — the compositor's data
@@ -144,8 +145,17 @@ static void on_osc(struct kvt_vte *vte, const char *u8, size_t len, void *data)
 	(void)vte;
 	(void)data;
 
-	if (len > 2 && (!strncmp(u8, "0;", 2) || !strncmp(u8, "2;", 2)))
+	if (len > 2 && (!strncmp(u8, "0;", 2) || !strncmp(u8, "2;", 2))) {
 		kb_strlcpy(g_title, u8 + 2, sizeof(g_title));
+		/*
+		 * AND WHOEVER DREW THE FRAME IS TOLD. The box below is drawn
+		 * only when nothing else drew one; where the session or the
+		 * compositor did, the name it prints is theirs and a title
+		 * kept here alone would leave every window called whatever it
+		 * was called when it opened.
+		 */
+		kdisp_set_title(g_title);
+	}
 }
 
 #ifdef HAVE_KIMG

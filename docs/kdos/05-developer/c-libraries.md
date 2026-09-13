@@ -637,6 +637,20 @@ It exists so that there is **one** implementation of each. Two button bars are t
 the one nobody is looking at is the one that drifts. The rules it enforces are in
 [the design language](../03-architecture/design-language.md#the-chrome-primitives).
 
+The pixel display list is recorded while a surface draws and replayed by the backdrop libkwl
+paints under its cells. **`kch_px_live()` is the one answer to whether a recorded op can reach a
+screen**: a backdrop has to be installed, and the surface must not be a console one, where the
+session composes character cells and there is no plane under them. Neither half can be dropped — a
+`--dump` installs no backdrop, and `$KDOS_CON` is the only thing separating the two displays, since
+the cell size is asked of libkwl either way and libkwl answers with a fallback rather than with
+nothing. A control whose only state cue is a plate has to draw the cell form of the same fact where
+this is false.
+
+**Consumed input is skipped by offset and moved down once per read, not once per message.** A
+peer's backlog of *n* small messages — one cell run each, which a speckled full-screen animation
+sends thousands of a frame — would otherwise cost *n²/2* bytes of copying to drain, and a drain
+that slows as the backlog grows is a stall that feeds itself until the peer's queue hits its cap.
+
 ## libkicon
 
 **One job: a name, or a file path, becomes a sprite slot — or −1.**

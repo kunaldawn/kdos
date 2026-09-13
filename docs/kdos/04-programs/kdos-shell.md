@@ -118,6 +118,16 @@ and a view no MIME type expresses. Everything its VFS cannot reach on this image
 intersection of what `ouch` reads and what shared-mime-info can name, and a row for a type the image
 cannot produce is one nobody can tell is dead.
 
+**The desktop's name editor is left by Escape and by a click, and its entrance is the pointer.**
+New Folder, New File and Rename put a line editor on the status row, and the menu that opens them is
+reached with the right button — so a state a pointer can enter must be one a pointer can leave. A
+click abandons the half-typed name rather than applying it, and the press is then handled like any
+other: a click that visibly did nothing is how a person concludes the desktop has stopped answering.
+Escape is the Cancel rung of the window contract's own ladder, so there is one cancel and not two.
+Without the click, an editor opened by the pointer swallowed every pointer event over the whole
+desktop — and on a display that gives this surface no keyboard, that is a state with no exit at
+all.
+
 **The desktop's menu is the same table with its own rows under it.** `kdos-desk` draws libkxdg's
 file verbs, a rule, then what only a desktop can answer — New Folder, Sort Icons, Change Wallpaper
 and the rest. On bare wallpaper it offers only the verbs that mean *here*: Terminal, Find, Add to
@@ -157,6 +167,67 @@ third of the window.
 
 Two rows, on the bottom edge by default. The **second row is not padding**: it carries the
 clock's date, a window button's own title under its application name, and the meters strip.
+
+### What the bar is drawn with, and what happens where there are no pixels
+
+Every affordance on this bar — the body, the edge against the desktop, a button's plate, the
+hairline between two segments, a meter's gradient — is **pixel chrome**, drawn by libkchrome into
+the backdrop one layer under the cell grid. It costs no columns and no rows, which is why the bar
+can be two rows and still look like chrome.
+
+**The console has no such layer.** `libkcon` carries cells and nothing else, so on that display
+every one of those is drawn nowhere. What was left was text on a body one shade off the desktop's
+own: no boundary, no separators, and a `Start` button whose label is drawn in the *plate's* colour
+and therefore vanished the moment the pointer touched it. `cells_only()` is the one question that
+decides, and three things answer it:
+
+- **the bar takes one more row** and spends it on its own edge, in the double horizontal every KDOS
+  window frame is drawn with, on the side the desktop is. A docked surface cannot change its
+  thickness after it attaches, so this is decided before `kdisp_init`;
+- **a segment boundary is the double vertical**, in `KT_MID`, in the column the layout already
+  reserves for it;
+- **the `Start` button's plate is a cell fill** — `KT_DIM` at rest, the accent under the pointer,
+  the warning slot while its menu is open — and the ink is read against whatever the plate turned
+  out to be.
+
+`applet_row`, `bar_y0` and `bar_h` are where the content lives inside those rows, decided once per
+frame and read by everything the frame calls. Two functions used to derive the row themselves from
+the height, which is exactly what an edge row would have broken.
+
+**And the pictures arrive.** On the console libkcon puts a sprite's BYTES on the wire through a
+callback the surface registers, and this one registered none — so every icon the bar drew reached
+the display as metadata with no pixels and became a blank cell that had still spent its columns.
+`sh_pic_backend()` is that callback and `sh_pic_cell_w()` is the nominal cell the wire is bounded by;
+rasterising at `kdisp_cell_w()`, which is **1** for a console surface, made each icon a picture a
+few pixels across, which is the same blank by another route. `icons_drawable()` is the one place
+that asks whether a picture can be drawn at all, so no control spends cells on one that cannot.
+
+### Nothing on this bar may move while it is being read
+
+Every field on the right wing is a **fixed** width, and none of them is the width of the value
+currently in it. The wing is laid out right to left, so an item that grew by a column carried the
+separator, the meters strip and the right edge of the window list sideways with it — the bar
+shifted under the eye whenever a percentage crossed 10 or 100, or a rate gained a unit.
+
+| Field | Reserved | The widest legitimate value |
+|---|---|---|
+| A meter's reading | `MET_VAL_W`, 4 (plus the arrow for a mirrored band) | `100%`, and `fmt_rate` never writes more than four |
+| The clock's segment | `clock_field()`, measured once over a synthetic year | whatever the person's own `strftime` format can produce |
+| The full-disk mark | one column, always | it is blank when the disk is not full |
+| An applet tile | `AP_TILE_W`, 3 — `AP_NET_W`, 4 for a rate | a rate is a number **and** a unit |
+| The one-row CPU applet | `AP_CPU_W`, 8 | `CPU 100%` |
+
+`applet()` is `applet_w()` sized to its own label, for a readout whose width cannot change; anything
+whose reading grows a column passes the field it reserves.
+
+`fmt_rate` is capped at four cells with the unit always present: it could write `1023k`, and a
+five-character value in a four-cell field lost its letter from the right, so `1.2M` reached the
+screen as `1.2` — one and a fifth bytes a second. The decimal is what gives way, and only below ten
+of a unit.
+
+The sparkline's zero is a **baseline**, not a space. `ramp_index(0)` is exact empty — right for a
+gauge, wrong for a chart — so an idle meter drew ten spaces between its label and its reading and
+the track vanished: the wing read as words with gaps rather than as charts.
 
 ### Autohide
 
@@ -242,6 +313,25 @@ icon-mode squares what it closed would have had no name on it and no confirmatio
 **A window button is a button.** An inactive chip is filled, so the row reads as controls rather
 than as floating words; hover is a step brighter, and focused brighter still, so hover cannot be
 misread as "this is the window you are in".
+
+**The shape is a pixel plate, or a cell fill where there is no pixel layer.** Under a compositor
+the cells stay `KT_SURFACE` and the plate is the button; a cell fill there would paint over it. A
+character grid has no plate, so the chip fills itself — `KT_DIM` at rest, `KT_MID` hovered,
+`KT_ACCENT` focused, each with its slots swapped — and without that the row is a line of floating
+words with no edges.
+
+**The state cue is a pixel underline, and a cell marker where there is no pixel layer.** Running,
+focused and minimised are a two-pixel accent line under the plate — one fact in one place, so a
+chip carrying its application's own picture is not also carrying a glyph saying the same thing. The
+console has no pixel layer, so a group that is entirely minimised marks the **column between the
+picture and the label**, which is the chip's one spare cell. Without it, a minimised window and a
+visible one are the same button there.
+
+**Icon mode needs the pixel layer, whatever `task_labels` says.** A dock button is a 40x40 square
+whose shape is a plate and whose state is an underline, and both are pixels: on a character grid
+the same button is a 2x2 picture on the bar's own background with nothing saying it is a button, is
+running, or is minimised — and an application the atlas has no artwork for arrives as one lowercase
+letter in four cells. The labelled chip is what the cell layer can draw, so the console gets it.
 
 **The label is the desktop entry's name**, resolved once when the identifier arrives rather than
 per frame: name, then title, then the raw identifier. An application identifier is chosen so it
@@ -394,8 +484,10 @@ A full StatusNotifierItem host: KDOS is the watcher and the host, because nothin
 That matters more here than elsewhere, since **a boxed application that minimises to a tray which
 does not exist has minimised to nowhere**.
 
-An item is **one cell**: the first letter of its identifier, coloured by its status — dim for
-passive, the text colour for active, the accent and reversed for needs-attention. The identifier
+An item is **one cell**: the first letter of its identifier, coloured by its status — `KT_MID` for
+passive, the text colour for active, the accent and reversed for needs-attention. `KT_MID` and not
+`KT_DIM`, because the fallback is a **letter** and `dim` is the palette's fill: at 1.17:1 against
+the bar, the cell reads as empty. The identifier
 rather than the icon name, because a letter from a name a human chose beats a letter from a theme
 lookup that will never happen on a character grid.
 
@@ -546,6 +638,14 @@ drawn only while there is something to clear.
 
 **With nothing typed, that row explains the selection** — every desktop entry carries a comment and
 this menu was throwing it away.
+
+**The selected row is a plate, and an accent fill where there is no pixel layer.** The plate with
+its accent left edge is the desktop's one selection, from the tone table the taskbar and the
+cascading menu share; `kch_px_live()` is what says whether a recorded pixel op can reach a screen
+at all — a backdrop installed, and not a console surface. On the console session and in every offscreen dump it cannot, so the row draws the accent
+fill with its slots swapped instead — which is what the row's mark is already coloured for. Without
+it a menu on the console has no visible cursor, on the one display where the cursor is the only
+thing saying what Enter will do.
 
 **Search reaches the fixed rows too.** Every one carries synonyms, so typing `wifi` finds the
 network manager; the hits are appended under a rule. A search over the application index alone

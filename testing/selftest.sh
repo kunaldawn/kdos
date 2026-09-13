@@ -1445,6 +1445,31 @@ else
 fi
 
 #
+# ONE WALK THAT FITS WINDOWS TO THE WORK AREA, AND IT SKIPS PANELS.
+#
+# A panel is placed against an EDGE and the work area is what it carved out, so
+# running one through `kwm_fit` moves it INTO its own exclusive zone — up by
+# exactly its own thickness. `win_refit()` skips panels for that reason; the
+# grid-resize path in main.c had a second copy of the same loop that did not,
+# and every session hit it on the first resize (the view attaching IS one).
+# What that cost: a taskbar two rows above the bottom of the screen with a dead
+# strip under it, clicks near the edge landing on nothing, and every menu and
+# tooltip — placed correctly against the work area — drawn on top of the bar.
+#
+# The property is that there is ONE such walk. A second one is a second place
+# to remember the skip.
+#
+_fit=$(grep -c 'kwm_fit(w->geom, area' src/desktop/kdos-con/windows.c \
+       src/desktop/kdos-con/main.c | awk -F: '{ n += $2 } END { print n }')
+if [ "$_fit" = 1 ]; then
+    echo "  one walk fits windows to the work area, and it leaves panels docked"
+else
+    echo "  $_fit PLACES FIT A WINDOW TO THE WORK AREA"
+    echo "  a second one is a bottom panel dragged out of its own zone"
+    exit 1
+fi
+
+#
 # A CHORD A REAL KEYPRESS CAN PRODUCE.
 #
 # `keys.conf` spells a chord with the plain letter — `Super+Shift+t` — and a

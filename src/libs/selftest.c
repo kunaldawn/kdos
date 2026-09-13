@@ -5254,7 +5254,7 @@ static void test_kcon(void)
 	 * client of the session is rebuilt from this tree, so the number costs
 	 * nothing to raise — and the enum it guards is positional, which is
 	 * what makes raising it the cheap half of an op that moved. */
-	eq_int(KCON_VERSION, 16, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 18, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -5739,6 +5739,51 @@ static void srv_attach(KconConn *c, unsigned role, unsigned edge,
 		       unsigned cells, unsigned cols, unsigned rows)
 {
 	srv_attach_at(c, role, edge, cells, cols, rows, 0, 0, 0);
+}
+
+/* The whole attach, `floating` and `keyboard` included — the long form, which
+ * is what a client built against this version sends. */
+static void srv_attach_kb(KconConn *c, unsigned role, unsigned cols,
+			  unsigned rows, int keyboard)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)role);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, (uint16_t)cols);
+	kcon_put_u16(&b, (uint16_t)rows);
+	kcon_put_u8(&b, 0);
+	kcon_put_str(&b, "probe");
+	kcon_put_str(&b, "probe");
+	kcon_put_str(&b, "");
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u8(&b, 0);			/* floating */
+	kcon_put_u8(&b, (uint8_t)(keyboard ? 1 : 0));
+	kcon_send(c, KCON_OP_ATTACH, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+/* The cells a surface says answer the pointer: `n < 0` for all of them. */
+static void srv_input_region(KconConn *c, const KRect *r, int n)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)(n < 0 ? 0xffff : n));
+	for (int i = 0; i < n; i++) {
+		kcon_put_u16(&b, (uint16_t)r[i].x);
+		kcon_put_u16(&b, (uint16_t)r[i].y);
+		kcon_put_u16(&b, (uint16_t)r[i].w);
+		kcon_put_u16(&b, (uint16_t)r[i].h);
+	}
+	kcon_send(c, KCON_OP_INPUT_REGION, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
 }
 
 static void srv_hello(KconConn *c, unsigned ver, unsigned kind)
@@ -6559,6 +6604,111 @@ static void test_kcon_server(void)
 			kcon_conn_free(grow);
 		}
 
+		/*
+		 * ── WHO WANTS THE KEYBOARD, AND WHO ANSWERS THE POINTER ──
+		 *
+		 * Two fields the console had no way to carry, and both cost a
+		 * menu. An overlay that did not ask for the keyboard was
+		 * focused anyway, so a tooltip unfocused the Start menu it
+		 * appeared beside and the menu — which closes when it loses
+		 * the focus — went with it. And an empty input region was not
+		 * carried at all, so the same tooltip took the click aimed at
+		 * the button underneath it.
+		 */
+		KconConn *tipc = srv_client(path);
+
+		if (tipc) {
+			srv_attached = NULL;
+			srv_hello(tipc, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach_kb(tipc, KDISP_ROLE_OVERLAY, 40, 2, 0);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			KconSurface *tf = srv_attached;
+
+			ok(tf != NULL, "a tooltip attaches");
+			if (tf) {
+				eq_int(kcon_surface_keyboard(tf), 0,
+				       "and says it does not want the keyboard");
+				eq_int(kcon_surface_input_n(tf), -1,
+				       "and answers the pointer everywhere "
+				       "until it says otherwise");
+			}
+			srv_input_region(tipc, NULL, 0);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			if (tf)
+				eq_int(kcon_surface_input_n(tf), 0,
+				       "and an empty region means it takes no "
+				       "click at all");
+
+			KRect two[2] = { { 0, 0, 4, 1 }, { 9, 1, 3, 1 } };
+
+			srv_input_region(tipc, two, 2);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			if (tf) {
+				KRect got = { 0, 0, 0, 0 };
+
+				eq_int(kcon_surface_input_n(tf), 2,
+				       "a region of two rectangles arrives whole");
+				ok(kcon_surface_input_at(tf, 1, &got) &&
+					   got.x == 9 && got.y == 1 &&
+					   got.w == 3 && got.h == 1,
+				   "and the second of them is the one that was sent");
+			}
+			/*
+			 * A LIST TOO LONG IS ALL OF THE SURFACE, never the
+			 * part that fitted: a region cut short leaves the rest
+			 * of it swallowing clicks the client said it would
+			 * not, which is this op's own failure backwards.
+			 */
+			KRect many[KCON_INPUT_RECTS + 1];
+
+			for (int i = 0; i <= KCON_INPUT_RECTS; i++)
+				many[i] = (KRect){ i, 0, 1, 1 };
+			srv_input_region(tipc, many, KCON_INPUT_RECTS + 1);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			if (tf)
+				eq_int(kcon_surface_input_n(tf), -1,
+				       "a region too long to carry is refused "
+				       "whole, back to all of the surface");
+			kcon_conn_free(tipc);
+		}
+
+		/*
+		 * A PEER THAT PREDATES THE FIELD TAKES THE KEYBOARD, because
+		 * that is what every surface did then: the default has to be
+		 * the old behaviour or an unrebuilt menu stops answering keys.
+		 * `srv_attach` stops before it, which is the short message.
+		 */
+		KconConn *oldpop = srv_client(path);
+
+		if (oldpop) {
+			srv_attached = NULL;
+			srv_hello(oldpop, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach(oldpop, KDISP_ROLE_OVERLAY, 0, 0, 20, 3);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			if (srv_attached)
+				eq_int(kcon_surface_keyboard(srv_attached), 1,
+				       "an attach that says nothing about the "
+				       "keyboard is taken to want it");
+			kcon_conn_free(oldpop);
+		}
+
 		/* An ordinary window has no such answer coming. */
 		KconConn *win0 = srv_client(path);
 
@@ -6850,6 +7000,142 @@ static void test_kcon_server(void)
 			   "the view that asked is sent the literals");
 			ok(got[1].cells && !got[1].colors,
 			   "and the view that did not is sent nothing extra");
+
+			/*
+			 * A DISPLAY THAT IS BEHIND IS SKIPPED, AND NOTHING IT
+			 * MISSED IS LOST.
+			 *
+			 * The frame is skipped whole and the view's copy of
+			 * the previous one is left alone, so the change is
+			 * still pending and goes out with the next frame the
+			 * display takes. Asserted rather than assumed because
+			 * it is what stops an ordinary repaint filling
+			 * KCON_MAX_QUEUE and the session dropping the only
+			 * display it has — and with it the only source of
+			 * input.
+			 *
+			 * The backlog is made by not reading `rich` while a
+			 * picture larger than the mark is sent to it.
+			 */
+			KconSurface *v0 = kcon_server_view_at(s, 0);
+			static uint32_t big[64 * 1024];
+			int hushed = 0;
+
+			for (int i = 0; i < 40 &&
+			     kcon_view_pending(v0) <= KCON_VIEW_HIGH; i++)
+				kcon_view_sprite(v0, 1, 1, 1, 0x2593,
+						 big, 256, 256);
+			ok(kcon_view_pending(v0) > KCON_VIEW_HIGH,
+			   "a display that does not read builds a backlog");
+
+			ok(kcon_view_sprite(v0, 2, 1, 1, 0x2593, big, 16, 16)
+			   == 0,
+			   "and is offered no further picture while it does");
+
+			for (int i = 0; i < 4; i++)
+				frame[i].ch = 'A' + i;
+			kcon_view_send(v0, frame, 4, 1);
+			for (int spin = 0; spin < 20 && !hushed; spin++) {
+				KconMsg m;
+
+				if (kcon_recv(rich, &m) != 1)
+					break;
+				if (m.op == KCON_OP_COMMIT)
+					hushed = 1;
+			}
+			ok(!hushed, "and no frame either");
+
+			/*
+			 * A VIEW THAT CHANGES SIZE IS GIVEN A FRAME BUFFER OF
+			 * THE NEW SIZE BEFORE IT IS GIVEN A FRAME.
+			 *
+			 * `cols`/`rows` on a view say how big the copy in
+			 * `cells` IS — `view_cols`/`view_rows` are what it
+			 * asked for — so a size message that wrote the request
+			 * into them would say a buffer of the new size already
+			 * existed, and the first frame at a bigger grid would
+			 * be copied into the smaller allocation. That is a
+			 * heap overflow of exactly the difference, and it ends
+			 * the session on the first window that grows.
+			 *
+			 * The allocation is what sends KCON_OP_CONFIGURE, so
+			 * the configure arriving IS the assertion.
+			 */
+			KconConn *grow = srv_client(path);
+
+			if (grow) {
+				srv_hello_caps(grow, 0);
+				for (int i = 0; i < 50; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+
+				KconSurface *gv = NULL;
+
+				for (int i = 0;
+				     i < kcon_server_view_count(s); i++) {
+					KconSurface *c =
+						kcon_server_view_at(s, i);
+
+					if (kcon_view_cols(c) == 0)
+						gv = c;
+				}
+				ok(gv != NULL, "the growing view is attached");
+
+				static KtuiCell small[8 * 2];
+				static KtuiCell big[64 * 8];
+
+				for (unsigned i = 0; i < 16; i++)
+					small[i].ch = 'a';
+				for (unsigned i = 0; i < 512; i++)
+					big[i].ch = 'b';
+
+				if (gv)
+					kcon_view_send(gv, small, 8, 2);
+
+				KconBuf sz = { 0 };
+
+				kcon_put_u16(&sz, 64);
+				kcon_put_u16(&sz, 8);
+				kcon_send(grow, KCON_OP_VIEW_SIZE, &sz);
+				kcon_buf_free(&sz);
+				kcon_flush(grow);
+				for (int i = 0; i < 50; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+				ok(gv && kcon_view_cols(gv) == 64,
+				   "and the session hears the new grid");
+
+				if (gv)
+					kcon_view_send(gv, big, 64, 8);
+
+				int cfg = 0;
+
+				for (int spin = 0; spin < 80 && !cfg; spin++) {
+					KconMsg m;
+
+					if (kcon_recv(grow, &m) != 1) {
+						kcon_server_pump(s);
+						usleep(1000);
+						continue;
+					}
+					if (m.op != KCON_OP_CONFIGURE ||
+					    m.len < 4)
+						continue;
+
+					KconRd rd;
+
+					kcon_rd_init(&rd, m.payload, m.len);
+					if (kcon_get_u16(&rd) == 64 &&
+					    kcon_get_u16(&rd) == 8)
+						cfg = 1;
+				}
+				ok(cfg,
+				   "a frame at a bigger grid allocates one first");
+				kcon_conn_free(grow);
+				kcon_server_pump(s);
+			}
 		}
 		if (rich)
 			kcon_conn_free(rich);

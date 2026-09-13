@@ -305,6 +305,40 @@ void embed_publish(struct cg_server *server, struct wlr_buffer *buffer,
 	if (!e->active || !e->map || !buffer)
 		return;
 
+	/*
+	 * NOTHING IS PUBLISHED UNTIL A CLIENT HAS MAPPED A WINDOW.
+	 *
+	 * The scene's background rectangle is created with the server, so the
+	 * first headless frame is a whole window of the scheme's darkest slot
+	 * and it goes out within milliseconds of the fork — long before a
+	 * container has finished coming up and the guest exists at all. The
+	 * parent cannot tell that black from a black an application drew, so
+	 * the window reads as a program that started and then did nothing. With
+	 * no frame at all the parent knows it is still waiting, and says so.
+	 */
+	if (wl_list_empty(&server->views))
+		return;
+
+	/*
+	 * AN EMPTY DAMAGE REGION IS NOTHING TO SEND, NOT EVERYTHING.
+	 *
+	 * wlr_scene_output_build_state() ALWAYS sets the damage field, and the
+	 * scene subtracts what it committed afterwards — so a frame with
+	 * nothing new in it arrives here as a region that is present and
+	 * empty. Reading that as "no damage information" and falling through
+	 * to the whole-window box below told the parent that every pixel had
+	 * changed, on every tick the headless output produced. The parent then
+	 * re-cut and re-sent every block of the window: about two megabytes a
+	 * frame for a half-screen guest, which overruns the view connection's
+	 * queue, and a view that stops reading is a view the session drops —
+	 * the screen freezes on whatever it last flipped.
+	 *
+	 * The slot is NOT advanced either: a flip with nothing behind it costs
+	 * the parent a whole-window resend the next time it does have damage.
+	 */
+	if (damage && !pixman_region32_not_empty(damage))
+		return;
+
 	if (buffer->width != e->width || buffer->height != e->height) {
 		/* The output resized and this is the first frame at the new
 		 * size: the mapping follows the buffer, not the request. */

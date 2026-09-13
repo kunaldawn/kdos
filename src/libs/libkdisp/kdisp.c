@@ -144,6 +144,13 @@ kdisp_input_cells(const KRect *rects, int n)
 		cur->input_cells(rects, n);
 }
 
+void
+kdisp_set_title(const char *title)
+{
+	if (cur && cur->set_title && title)
+		cur->set_title(title);
+}
+
 /*
  * SOMEBODY ELSE'S WINDOWS. The neutral answer is an empty list and a verb
  * that does nothing, so a surface written against these runs unchanged on a

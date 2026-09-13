@@ -34,6 +34,11 @@ clipboard — cells arrive and input leaves. Four things follow from that withou
   that fails silently is a desktop that is simply absent with no way to ask why. `kkms_reason()`
   names which of the eight steps failed, so the log says *no connector is connected* rather than
   repeating that there is no screen.
+- **The session's own death is written to its log, not only to the screen.** A restart clears the
+  screen within a second, so the line naming the exit status is otherwise unreadable by the time
+  anybody looks — and every window going away is then indistinguishable from a logout.
+  `$XDG_RUNTIME_DIR/kdos-con.log` is appended to across restarts, so it is the one place that says
+  whether the session ended or crashed, and a status of 139 is a segmentation fault.
 - **A desktop over ssh.** The view socket is forwardable and the view is trusted with nothing.
 - **Screenshots, as cells or as a picture.** `kdos-view --dump` is a view like any other and
   `--shot FILE.png` is the same frame rasterised. The rasterising is the **view's**, not
@@ -192,7 +197,7 @@ window. Five roles get a branch of their own:
 |---|---|---|---|---|---|
 | `TOPLEVEL` | with the windows | yes | yes | yes | on focus |
 | `PANEL` | docked, with an exclusive zone | no | no | no | never on attach |
-| `OVERLAY` | above every window | no | no | no | takes it |
+| `OVERLAY` | above every window | no | no | no | if it asked |
 | `BACKGROUND` | below every window | no | no | no | never |
 | `LOCK` / `SAVER` | instead of everything | no | no | no | lock only |
 
@@ -201,10 +206,58 @@ between them it is fixed and has to be — a menu a window could be raised above
 disappears behind the thing it was opened from, and desktop icons drawn last would cover every
 window on the screen.
 
-**An overlay takes the keyboard and a background does not.** The Start menu, the launcher and the
-run box are overlays and are answered by typing. The icon layer covers the whole grid and sits
-behind everything; focusing it would take the keyboard from the window a person is working in every
-time the desktop redrew.
+**An overlay takes the keyboard if it asked for it, and a background never does.** The Start menu,
+the launcher and the run box are overlays and are answered by typing, so one that did not focus
+would be a menu nobody could drive. The icon layer covers the whole grid and sits behind
+everything; focusing it would take the keyboard from the window a person is working in every time
+the desktop redrew.
+
+**And the ones that said no must not.** A tooltip, a toast and the candidate window set
+`KDispConfig.keyboard` to 0 — they are drawn over somebody's work and have no business taking the
+keys. The attach carries that bit, and a session that focused them anyway unfocused whatever they
+appeared beside: every menu on this desktop closes when it loses the focus, so hovering the `Start`
+button killed the menu that button had just opened. An attach that says nothing about the keyboard
+is taken to want it, which is what every surface did before the field existed.
+
+**The session says who drew the frame, and the client never guesses.** `kdisp_decorated()` means
+"somebody else drew my furniture, so I must not": `kdos-term`, `kdos-res` and every `kdos-shell`
+window ask it and draw their own box when the answer is no. libkcon answered a flat **no**, so on
+this desktop every one of them drew a second box inside the session's frame with the title written
+twice — a terminal running `btop` showed three nested borders. It is `KCON_OP_DECORATED` now, sent
+when the answer changes, because the window model is the only thing that knows it: a panel, a
+layer, a background and a **fullscreen** window are all drawn bare, and a client deriving it from
+its own role would be wrong the moment a window went fullscreen and right again when it came back.
+It is not a field on the configure — a configure that does not change the size is dropped on
+purpose, and a decoration that changed without one would be dropped with it.
+
+**And a window that renames itself is noticed by diff.** A shell writes `OSC 2` on every command.
+`kdisp_set_title()` carries it — the session's own `KCON_OP_TITLE` here, `xdg_toplevel_set_title`
+under the compositor — and the session compares each surface's title against the one it is drawing,
+in the same walk that publishes the decoration. Hooked at the message it would be a second place to
+be wrong; `mgmt.c` already republishes the taskbar from a diff for that reason.
+
+**A surface says which of its cells answer the pointer.** `kdisp_input_cells()` is
+`wl_surface.set_input_region` on the other transport and means the same thing here: all of the
+surface by default, and a count of zero for one that takes nothing at all. Four surfaces declare an
+empty region — the tooltip, the toast stack, the candidate window and the saver — because the thing
+*under* them is what a click is aimed at. A hit test that ignored it handed the topmost rectangle
+every click, so the tooltip describing the `Start` button swallowed the click on it. A region longer
+than sixteen rectangles is refused whole, back to all of the surface: a list cut short would leave
+the rest of it taking clicks the client said it would not.
+
+**The pointer leaving a surface is reported**, as the off-grid position `(-1, -1)` libkwl sends for
+`wl_pointer.leave`. Every consumer already maps a coordinate to "which control is this" and that is
+none of them. Without it the last thing the pointer crossed stayed hovered for the rest of the
+session — which left the `Start` button drawn in its opened colours, and on a display with no pixel
+plate that is a button with no label at all.
+
+**A background is the work area, and never a size its client named.** The icon layer *is* the
+desktop — everything the bars left — which is what a layer surface anchored on four edges with no
+exclusive zone of its own gets under the compositor. It attaches with no size, the way a saver
+does, and the configure answers. One that took the client's own number was placed by the
+minimal-overlap window search at the 80x24 a client fills in when it has nothing better to say:
+icons in a corner of the screen, the desktop's hint row and its context menu stranded in the middle
+of it, and every click outside that rectangle reaching nothing at all.
 
 **An overlay is placed where it asked to be, not where there was room.** A surface names a corner
 and its margins from that corner's two edges — the same `corner`, `margin_x` and `margin_y` a
@@ -217,6 +270,15 @@ a third of the way across the top of the screen, which for a menu is nowhere.
 
 Margins are clamped to the work area rather than honoured off it: a bottom-anchored menu taller
 than the space above the taskbar is drawn from the top of the work area, never from a negative row.
+
+**And a grid that changes size RE-ANCHORS every overlay rather than fitting it.** The session
+starts at a fallback 80x24 and becomes the view's size the moment a display attaches, so every
+session resizes once, at boot, before anybody looks. `kwm_fit` moves a rectangle the least it can
+to get it inside the new area, which for a corner surface throws the corner away — the welcome
+card, correctly centred in that fallback grid, stayed in the top-left corner of the real one on top
+of the desktop icons. The same walk leaves docked panels alone and assigns the background the work
+area, for the same reason in both cases: a rectangle that is derived from the grid has to be
+derived again, not nudged.
 
 **A layer belongs to no workspace.** A toast that belonged to the workspace it was raised on would
 be invisible to somebody who had just switched away from it.
@@ -475,6 +537,24 @@ kind of window.
 A picture is at most sixteen cells square, which is what the cell's sprite encoding carries, so a
 window is a grid of blocks that size and damage is rounded out to the blocks it touches.
 
+**A window with no frame yet says so.** The cage publishes nothing until a client has mapped a
+window, so until the first frame arrives there is no picture and the session draws `starting…` in
+the middle of the window. Sprite cells naming slots no display has a picture for come out as the
+fallback mark — a window full of shade blocks, which reads as a broken application rather than as
+one that has not started drawing, and a container takes the better part of a minute to come up.
+
+**Which blocks are owed is kept per block, and a cycle sends as many as its budget allows.** At an
+8x15 cell a block is a hundred and twenty kilobytes and a maximised guest is dozens of them; a
+bounding box cannot say *these four went and those six did not*, so a repaint too big for one cycle
+would leave stale squares nothing repaints. Blocks that did not go stay owed, the cursor carries on
+where the last cycle stopped so no corner is starved, and each block is flushed to the display as it
+goes rather than piling up in the queue the watermark is measured against. A display that refuses a
+block — because it is behind — leaves that block owed even if another display took it.
+
+**The rate limit applies whether or not a display can show pixels**: every 16 ms where one can, and
+every 250 ms where none can, because a window of pixels at a compositor's frame rate down an `ssh`
+link is a link that does nothing else.
+
 Everything else about it is an ordinary window: chrome from the same code, a title bar, a close
 button, `kwm_snap`, a taskbar entry, a workspace. Minimising tells the guest, which stops
 rendering — a guest drawing frames nobody composites is a guest spending a core on nothing. The
@@ -512,6 +592,50 @@ that is the display the person is looking at — and the second to decide how of
 frame: at the session's own redraw rate when something can show pixels, and once every 250 ms when
 nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link is a link
 that does nothing else.
+
+**A view's `cols`/`rows` say how big the frame it holds IS; `view_cols`/`view_rows` are what it
+asked for.** The size message a display sends changes the second pair only: nothing on that path
+allocates a frame, so writing the request into the first pair would tell the sender that a buffer of
+the new size already existed, and the first frame at a bigger grid would be copied into the smaller
+allocation — a heap overflow of exactly the difference, which ends the session on the first window
+that grows. The allocation is also what emits the configure naming the new grid, so a frame at a
+size the display has not been given a buffer for cannot happen quietly.
+
+**A frame is composed for a display, not for a program's output.** The loop turns as fast as the
+things it reads produce, and a full-screen animation in a terminal produces without pause — measured
+at **1380 turns a second** against a screen that shows sixty. Composing and serialising on every one
+of them spent two thirds of the session's core on frames nothing would ever see, and took that core
+away from reading the program's output, so the animation ran slower the harder the session worked at
+showing it. `CON_FRAME_MS` caps the picture at sixty a second; input is still read every turn, so
+the cap costs latency of at most one frame and nothing else.
+
+**A display that is behind is sent nothing, and is never dropped for it.** A view is the one peer
+whose messages are a stream of pictures — the newest frame makes every older one pointless — so
+above `KCON_VIEW_HIGH` (1 MiB queued) the session stops sending it cells and sprites until it
+drains. A skipped frame also leaves the view's own copy of the previous frame alone, and because the
+diff is taken against that copy, everything a skipped frame would have carried goes out with the
+next one the display can take. Without it the ordinary load of a desktop kills its own screen: one
+maximised guest repainting its window is over twenty megabytes of blocks, a full-screen animation in
+a terminal is most of a megabyte a frame, and either reaches `KCON_MAX_QUEUE`, which means *the peer
+stopped reading* and drops the connection — the only display and the only source of input the
+session has.
+
+**`KCON_MAX_QUEUE` therefore means only that a peer has stopped reading altogether.** The
+watermark is far enough below it that one more whole frame on top cannot reach the cap.
+
+**A surface that is behind skips its own frame, by the same rule read from the other end.** A
+terminal window running a full-screen animation produces several megabytes of output a second, and
+its cells are a stream of pictures exactly as a display's are. The client leaves its previous-frame
+copy alone when it skips, so the next diff carries everything the skipped frame would have; a queue
+allowed to grow instead reaches the cap, the connection is marked dead, and the window is gone with
+no signal, no exit status worth reading and no line in any log — which is what a terminal that
+"just closed" during an animation is.
+
+**A view that the session dropped exits non-zero.** A supervisor reads a clean exit as *a person
+asked for the screen back* and stops supervising, so a display that ended because its connection
+died and said so with a zero would never come back: the screen would keep the last frame it flipped
+for the rest of the login, with nothing able to type at it. Only `KCON_OP_BYE` — and, for a `--tty`
+view, its host terminal hanging up — ends the process successfully.
 
 **A third socket is the reader's**, beside the surface socket and the view socket in the same
 private directory. Its clients are displays that **cannot drive** — the socket decides that, not the
@@ -750,16 +874,51 @@ thing to get wrong, and a click that lands one entry off is worse than one that 
 | A pager cell | left | switches to that workspace |
 | The clock | left | opens `kdos-cal` |
 | `_` `■` `X` on a frame | left | minimise, maximise / restore, close |
-| A title row | left drag | moves the window |
+| A title row | left drag | moves the window — the **frame's** row, the one the box and the buttons are drawn on |
 | Anywhere in a window | Super + left drag | moves it, so a window that is all content is still movable |
 | Anywhere in a window | right drag | resizes it from the **nearest** edge or corner |
 | A desktop icon | left | selects it; a second press opens it |
 | A desktop icon | left drag | carries it — onto the trash, or into a window that takes a drop |
 
-**The icon layer is asked LAST and never first.** It covers the whole grid, so hit-testing it before
+**The icon layer is asked LAST and never first.** It covers the work area, so hit-testing it before
 the windows would take every click on the desktop; a press no window claimed is the one that belongs
 to it. That order is what a drop keeps too, and the background is neither raised nor focused by a
 press — it is under everything by definition.
+
+**A surface that declares an empty input region is asked at all.** A tooltip, a toast, the
+candidate window and the saver are drawn over the desktop and take nothing: the hit test walks past
+them to whatever is underneath. Without that the topmost rectangle wins every time, and the
+tooltip describing the `Start` button took the click aimed at it.
+
+**A grab owns the pointer before anything else is asked, and ends on anything that is not a drag.**
+Both halves are load-bearing and both were wrong. The bar's own row was hit-tested first, so a
+window dragged downwards and released over it had its button-up eaten; and the grab was cleared
+only by a release that reached the router. What was left was a grab nothing could end — every later
+event fell into it, a press is neither a drag nor a release, so it did nothing and returned, and the
+pointer was dead for the rest of the session. One lost button-up must cost a drag, never the
+pointer.
+
+**A press on the desktop gives it the keyboard, where the desktop asked for one.** The icon layer
+is a `BACKGROUND` and is never *raised* — it is under everything by definition — but it implements
+arrows, `Enter`, `Delete`-to-trash and an inline name editor, and a session that focused it never
+left all of them unreachable while the surface went on advertising them in its own hint row, and
+left anything the pointer opened there a state nothing could type into or leave. The next press on a
+real window takes the keyboard back.
+
+**A press latches the pointer to the window it landed on until the button comes back up.** Events
+are otherwise delivered by position, so a drag leaving the window takes the release with it and the
+window that heard the press never hears the end of it: an embedded application holds the button for
+the rest of its life and a terminal keeps extending a selection nothing will finish. While the
+latch holds, a position outside the window is **clamped to its nearest cell** rather than dropped —
+a negative position is this protocol's leave, and a surface told the pointer left never acts on the
+release meant for it. A window that closes under a held button releases the latch with it. The
+frame's own move and resize drag is a separate grab and is answered first.
+
+**A bare right button belongs to whatever owns the cells.** Resizing from anywhere inside is right
+for a window whose content the session interprets and wrong for one that is a program's: a right
+click inside a terminal or an embedded application armed a resize and the guest never saw the
+button, so a context menu was unreachable in every graphical application here. Those two ask for
+`Super`; the frame's own border still resizes either without it.
 
 **A minimised window keeps its taskbar row**, because the row is how it comes back: it is drawn
 nowhere, cycled past and not hit-testable on the desktop, so a bar that dropped it would leave

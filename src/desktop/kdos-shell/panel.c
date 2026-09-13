@@ -636,6 +636,50 @@ static int panel_opacity = 80;
  * when the bar has to stop being translucent.
  */
 
+/*
+ * IS THERE A PIXEL LAYER UNDER THE CELLS?
+ *
+ * On the console there is not: a cell IS a character, libkcon carries no
+ * backdrop, and every plate, hairline and gradient this bar is drawn with
+ * lands nowhere. The bar was left as text on a body one shade off the
+ * desktop's own — no edge, no separators, and a Start button whose label is
+ * drawn in the plate's colour and therefore vanished.
+ *
+ * $KDOS_CON AND NOT THE CHOSEN IMPLEMENTATION, because the answer is needed
+ * BEFORE kdisp_init as well as after it — the bar's thickness depends on it
+ * and a docked surface cannot change its thickness afterwards. It is the same
+ * one question libkcon's own probe asks, so there is still one rule.
+ */
+static int cells_only(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return con && *con;
+}
+
+/*
+ * How many of the bar's rows its own edge takes: one where there is no pixel
+ * layer, none where the backdrop draws it between the cells.
+ */
+static int bar_rule_rows(void)
+{
+	return cells_only() ? 1 : 0;
+}
+
+/*
+ * WHERE THE BAR'S CONTENT LIVES INSIDE ITS OWN ROWS, decided once per frame by
+ * draw_taskbar and read by everything it calls.
+ *
+ * `applet_row` is the row the wing, the window buttons and the Start button
+ * all sit on; `bar_y0` and `bar_h` are the rows that are content at all, which
+ * is every row except the one the bar's own edge takes where it takes one. Two
+ * functions used to derive the row themselves from the height, and a bar whose
+ * halves disagree about which row they are on is exactly what a rule row would
+ * produce.
+ */
+static int applet_row;
+static int bar_y0, bar_h;
+
 /* Set by draw_taskbar from the toplevel list: a window is touching the bar. */
 static int px_occluded;
 /*
@@ -707,16 +751,39 @@ static int meter_by_key(const char *name);
  * crowded row may fall back to pictures is exactly this question. */
 static int icons_on = 1;
 
+/*
+ * WHETHER A PICTURE CAN BE DRAWN AT ALL ON THIS DISPLAY.
+ *
+ * A picture costs CELLS whether or not it inks any: the Start button spent
+ * three of them on a logo that arrived blank, and its word sat four columns
+ * into its own plate — which is what "Start is not aligned" was. So the test
+ * has to be "can a picture be drawn at all here", asked in ONE place.
+ *
+ * sh_pic_cell_w() and not kdisp_cell_w(): a console surface has no pixel size
+ * of its own and answers 1, which is not "no pictures" but "ask the display".
+ */
+static int icons_drawable(void)
+{
+	return icons_on && sh_pic_cell_w() > 1;
+}
+
 static int icon_ok(void)
 {
 	/*
-	 * NOT WHERE A CELL IS A CHARACTER. Icon mode gives a chip four cells
-	 * and spends them on a picture, which the console has no way to draw
-	 * at that size — `kdisp_cell_w()` is 1 there, so a two-by-two icon is
-	 * two pixels by two. The chip then holds a label one letter wide and
-	 * no picture, which is a taskbar that names nothing.
+	 * AND ICON MODE NEEDS THE PIXEL LAYER. A dock button is a 40x40
+	 * square whose shape is a plate and whose state is an underline, and
+	 * both of those are pixels: on a character grid the same button is a
+	 * 2x2 picture floating on the bar's own background with nothing
+	 * saying it is a button, is running, or is minimised — and an
+	 * application the atlas has no artwork for comes out as one lowercase
+	 * letter in four cells. The labelled chip is what the cell layer can
+	 * actually draw: a fill for the shape, a name, and a □/■ for the
+	 * state.
+	 *
+	 * And a chip that must keep its label has no cells to spend on a
+	 * picture either.
 	 */
-	return icons_on && task_labels != TL_ALWAYS && kdisp_cell_w() > 1;
+	return icons_drawable() && px_live && task_labels != TL_ALWAYS;
 }
 
 /* ── the window list: one chip per APP, not per window ─────────────────── */
@@ -1158,7 +1225,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 {
 	int avail = limit - x;
 	int minw = marker ? CHIP_MINW_BOTTOM : CHIP_MINW_TOP;
-	int ry = (h - 1) / 2;
+	int ry = applet_row;
 	char pn[16];
 	int pw;
 
@@ -1348,22 +1415,38 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 			fav_end[c->fav] = x + per;
 		}
 
+		/*
+		 * THE FILL IS THE PLATE WHERE THERE IS NO PLATE.
+		 *
+		 * With a pixel layer the cells stay KT_SURFACE and the plate
+		 * recorded above is the shape — a cell fill there would paint
+		 * over it. A character grid has no plate, so without a fill of
+		 * its own the row is a line of floating words with no edges
+		 * and no state: three legible steps out of the palette's two
+		 * fills and its mid tone, rest dimmest and focused brightest,
+		 * so hover cannot be misread as "this is the window you are
+		 * in".
+		 */
+		int plated = px_live;
+
 		if (c->active) {
-			fg = KT_TEXT;
-			bg = KT_SURFACE;
+			fg = plated ? KT_TEXT : KT_SURFACE;
+			bg = plated ? KT_SURFACE : KT_ACCENT;
 		} else if (hovered) {
 			/* Brighter than at rest and dimmer than focused, so
 			 * hover cannot be misread as "this is the window you
 			 * are in": an affordance, not a state. */
-			fg = KT_TEXT;
-			bg = KT_SURFACE;
+			fg = plated ? KT_TEXT : KT_SURFACE;
+			bg = plated ? KT_SURFACE : KT_MID;
 		} else {
 			fg = c->allmin || c->count == 0 ? KT_MID : KT_TEXT;
-			bg = KT_SURFACE;
+			bg = plated ? KT_SURFACE : KT_DIM;
 		}
-		/* No fill: the plate recorded above IS the fill, and a cell
-		 * fill here would paint over it. KT_SURFACE is the slot the
-		 * backdrop owns. */
+		/* bar_y0/bar_h and not the surface's full height: the cells-only
+		 * bar spends its edge row on the rule, and a fill through it
+		 * would cut the top of the panel open. */
+		if (!plated)
+			ktui_draw_fill(krect(x, bar_y0, per - 1, bar_h), bg);
 
 		int icon = per >= 6 ? chip_icon(sh, c, 2, 1) : -1;
 		/* Where the label starts: after the picture, after the state
@@ -1442,6 +1525,19 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 
 		if (icon >= 0) {
 			ktui_draw_sprite(krect(x, ry, 2, 1), icon, fg, bg);
+			/*
+			 * THE STATE STILL HAS TO BE SAID WHERE THERE IS NO
+			 * PIXEL LAYER. The accent underline recorded above is
+			 * the state cue and it does not exist on the console,
+			 * so a minimised group and a visible one were the same
+			 * button there. The column between the picture and the
+			 * label is the chip's only spare cell and it is
+			 * exactly wide enough for the mark.
+			 */
+			if (!px_live && c->allmin)
+				ktui_draw_text(x + 2, ry, 1,
+					       ktui_glyph[KT_G_DOT], KT_MID,
+					       bg, KT_A_NONE);
 			ktui_draw_text(x + 3, ry, per - 4, c->label, fg, bg,
 				       KT_A_NONE);
 		} else if (marker) {
@@ -1742,23 +1838,37 @@ static void clear_hits(struct sh_state *sh)
  * map that outlives what it describes is how a narrow screen ends up muting
  * itself when somebody aims at the clock.
  */
-static int applet_row;		/* which row of the bar the wing sits on */
 
-static int applet(struct sh_state *sh, int id, int *right_x, int x_min,
-		  const char *label, int fg, int attr)
+static int applet_w(struct sh_state *sh, int id, int *right_x, int x_min,
+		    const char *label, int fg, int attr, int width)
 {
 	int lw = ktui_utf8_width(label);
 
 	sh->ap_x[id] = sh->ap_end[id] = 0;
-	if (!lw || *right_x - x_min < lw + 2)
+	if (!lw)
 		return 0;
-	*right_x -= lw + 1;
+	if (width < lw)
+		width = lw;
+	if (*right_x - x_min < width + 2)
+		return 0;
+	*right_x -= width + 1;
 	if (hover_ap == id)
-		kch_px_plate(*right_x, applet_row, lw, 1, KCH_T_HOVER, 1);
+		kch_px_plate(*right_x, applet_row, width, 1, KCH_T_HOVER, 1);
+	/* LEFT in the reserved field: everything on this wing is placed to the
+	 * left of it, so the field's own left edge is what must not move, and
+	 * the word is what the eye tracks. */
 	ktui_draw_text(*right_x, applet_row, lw, label, fg, KT_SURFACE, attr);
 	sh->ap_x[id] = *right_x;
-	sh->ap_end[id] = *right_x + lw;
+	sh->ap_end[id] = *right_x + width;
 	return 1;
+}
+
+/* The same, sized to the label — for a readout whose width cannot change. */
+static int applet(struct sh_state *sh, int id, int *right_x, int x_min,
+		  const char *label, int fg, int attr)
+{
+	return applet_w(sh, id, right_x, x_min, label, fg, attr,
+			ktui_utf8_width(label));
 }
 
 /*
@@ -1975,15 +2085,31 @@ static int applet2(struct sh_state *sh, int id, int *right_x, int x_min,
  */
 #define AP_TILE_W 3
 
-static int applet_tile(struct sh_state *sh, int id, int *right_x, int x_min,
-		       const char *icon, const char *val, int fg1, int fg2)
+/*
+ * AND FOUR FOR A RATE. A transfer rate is a number AND a unit, and fmt_rate
+ * writes up to four cells so the unit always survives — a three-cell field
+ * cut the letter off and `1.2M` reached the screen as `1.2`, which reads as
+ * one and a fifth bytes a second. Fixed, like every other field on this wing:
+ * what must not happen is the width following the reading.
+ */
+#define AP_NET_W 4
+
+/*
+ * AND EIGHT FOR THE ONE-ROW CPU APPLET — `CPU 100%`. The reading moves between
+ * six cells and eight over a session, and a field that followed it dragged the
+ * whole wing two columns sideways every time a core woke up.
+ */
+#define AP_CPU_W 8
+
+static int applet_tile_w(struct sh_state *sh, int id, int *right_x, int x_min,
+			 const char *icon, const char *val, int fg1, int fg2,
+			 int width)
 {
 	int vw = val && *val ? ktui_utf8_width(val) : 0;
 
 	if (ktui_h < 2 || applet_row + 1 >= ktui_h)
 		return applet(sh, id, right_x, x_min, val, fg1, KT_A_NONE);
 
-	int width = AP_TILE_W;
 	if (vw > width)
 		vw = width;		/* clipped, never wider than the tile */
 
@@ -1997,7 +2123,8 @@ static int applet_tile(struct sh_state *sh, int id, int *right_x, int x_min,
 	 * photographed. The value's row exists only while there is a value.
 	 */
 	int irows = vw ? 1 : 2;
-	int slot = icons_on && icon ? kicon_slot(icon, width, irows) : -1;
+	int slot = icons_drawable() && icon ? kicon_slot(icon, width, irows)
+					   : -1;
 	char idle[8];
 
 	/*
@@ -2045,6 +2172,19 @@ static int applet_tile(struct sh_state *sh, int id, int *right_x, int x_min,
 	return 1;
 }
 
+/*
+ * The ordinary tile: AP_TILE_W cells. A caller whose readout cannot be said in
+ * three — a transfer rate, which is a number AND a unit — asks for its own
+ * fixed width above rather than letting the value decide, because a field that
+ * sizes itself to its reading is the jitter this wing exists without.
+ */
+static int applet_tile(struct sh_state *sh, int id, int *right_x, int x_min,
+		       const char *icon, const char *val, int fg1, int fg2)
+{
+	return applet_tile_w(sh, id, right_x, x_min, icon, val, fg1, fg2,
+			     AP_TILE_W);
+}
+
 /* A bar of `cells` block glyphs, `pct` of them filled — the level under a
  * number, which is what makes `45%` read as a position rather than as a fact.
  * The rest is the shade glyph, so the track is visible at zero. */
@@ -2076,6 +2216,75 @@ static void level_bar(char *out, size_t n, int pct, int cells)
 
 /* Set by panel_main from `--clock`; strftime, guarded at the call site. */
 static const char *clock_fmt = "%H:%M";
+
+/*
+ * THE WIDEST THE CLOCK'S SEGMENT WILL EVER BE, measured once.
+ *
+ * Every other item on the right wing is placed to the LEFT of the clock, so
+ * the clock's width is the origin the whole wing hangs from: a segment that
+ * gained a column at 10:00, or on a Wednesday, or in September, would carry
+ * the separator, the meters strip and the right edge of the window list
+ * sideways with it. Measuring the string that was just formatted is measuring
+ * one sample of a value that changes.
+ *
+ * WALKED RATHER THAN REASONED ABOUT, because `clock_fmt` is a person's own
+ * strftime string from panel.conf and no argument about `%H` versus `%-I`
+ * survives contact with one. A synthetic year — every month, a day in each
+ * that lands on every weekday, and a handful of hours and minutes — is a few
+ * hundred strftime calls once, against a format that cannot change without
+ * this being asked again.
+ *
+ * The date line is `%a %d %b`, which is this function's other caller and is
+ * measured the same way.
+ */
+static int clock_field(const char *fmt, int with_date)
+{
+	static const char *cached_fmt;
+	static int cached_w, cached_date;
+
+	if (cached_fmt == fmt && cached_date == with_date && cached_w)
+		return cached_w;
+
+	int widest = 0;
+
+	/* 2024 is a leap year, so February has its 29th and every weekday is
+	 * reached inside any month. */
+	for (int mon = 0; mon < 12; mon++)
+		for (int mday = 1; mday <= 28; mday++)
+			for (int hour = 0; hour < 24; hour += 1) {
+				struct tm tm = { 0 };
+				char buf[96];
+
+				tm.tm_year = 124;
+				tm.tm_mon = mon;
+				tm.tm_mday = mday;
+				tm.tm_hour = hour;
+				tm.tm_min = 59;
+				tm.tm_isdst = -1;
+				/* mktime fills in tm_wday, which %a reads. */
+				mktime(&tm);
+				if (strftime(buf, sizeof(buf), fmt, &tm)) {
+					int wd = ktui_utf8_width(buf);
+
+					if (wd > widest)
+						widest = wd;
+				}
+				if (!with_date)
+					continue;
+				if (strftime(buf, sizeof(buf), "%a %d %b",
+					     &tm)) {
+					int wd = ktui_utf8_width(buf);
+
+					if (wd > widest)
+						widest = wd;
+				}
+			}
+
+	cached_fmt = fmt;
+	cached_date = with_date;
+	cached_w = widest > 0 ? widest : 5;
+	return cached_w;
+}
 
 /*
  * The ≡ mark, or the word it stands in for — the fallback shell.h promises and
@@ -3747,12 +3956,13 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * strip, the clock's date, a window button's title) rather than a
 	 * band of empty pixels under the text.
 	 */
-	int ry = (h - 1) / 2;
+	int ry = applet_row;
 	int mark_cells = 3;
-	int icon = icons_on ? kicon_slot_pad("kdos-launcher", mark_cells, h,
-					     h > 1 ? icon_air() : 0)
-			    : -1;
-	if (icon < 0 && icons_on)
+	int icon = icons_drawable()
+			   ? kicon_slot_pad("kdos-launcher", mark_cells, h,
+					    h > 1 ? icon_air() : 0)
+			   : -1;
+	if (icon < 0 && icons_drawable())
 		icon = kicon_slot("start-here", mark_cells, h);
 	int mark_w = icon >= 0 ? mark_cells : ktui_utf8_width(menu_mark());
 	/*
@@ -3773,8 +3983,18 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * THE INK FOLLOWS THE PLATE. On the accent it is the surface colour,
 	 * which is what reads on a bright fill; on the quiet rest plate that
 	 * same colour is dark ink on a dark plate and the word disappears.
+	 *
+	 * WHICH IS WHY THE PLATE HAS TO EXIST. Where there is no pixel layer
+	 * the plate is not drawn at all, so `lit` put KT_SURFACE ink on a
+	 * KT_SURFACE body and the Start button went blank the moment the
+	 * pointer touched it — and stayed blank, because the bar is lit for
+	 * as long as its menu is open. The cell fill below is that plate.
 	 */
 	int ink = lit ? KT_SURFACE : KT_TEXT;
+	int plate = !cells_only() ? KT_SURFACE
+		    : start_menu_open() ? KT_WARN
+		    : sh->hover_start  ? KT_ACCENT
+				       : KT_DIM;
 
 	if (w > ktui_w / 3) {
 		lw = 0;
@@ -3923,14 +4143,35 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * plating `per - 1` of its `per` cells.
 	 */
 	start_plate(0, w - 1, h, sh->hover_start, start_menu_open());
+	/* THE PLATE IN CELLS, on a display that has nowhere else to put it.
+	 * The content rows only: the bar's own edge row is not part of the
+	 * button. */
+	if (plate != KT_SURFACE)
+		ktui_draw_fill(krect(0, bar_y0, w - 1, bar_h), plate);
+	/*
+	 * CENTRED IN THE PLATE, and the slack is split rather than spent on
+	 * one side. `w` counts a trailing cell that is the gap before the next
+	 * control, so the plate is one narrower than the button and the
+	 * content would otherwise sit against its left edge with the air all
+	 * at the right.
+	 */
+	int content = mark_w + (lw ? 1 + lw : 0);
+	int lead = ((w - 1) - content) / 2;
+
+	if (lead < 0)
+		lead = 0;
+	/* And the ink is read against whatever the plate turned out to be:
+	 * KT_TEXT on the quiet fill, KT_SURFACE on a lit one. */
+	if (cells_only())
+		ink = plate == KT_DIM ? KT_TEXT : KT_SURFACE;
 	if (icon >= 0)
-		ktui_draw_sprite(krect(0, 0, mark_w, h), icon, KT_SURFACE,
-				 KT_SURFACE);
+		ktui_draw_sprite(krect(lead, 0, mark_w, h), icon, KT_SURFACE,
+				 plate);
 	else
-		ktui_draw_text(0, ry, mark_w, menu_mark(), ink, KT_SURFACE,
+		ktui_draw_text(lead, ry, mark_w, menu_mark(), ink, plate,
 			       KT_A_NONE);
 	if (lw)
-		ktui_draw_text(mark_w + 1, ry, lw, word, ink, KT_SURFACE,
+		ktui_draw_text(lead + mark_w + 1, ry, lw, word, ink, plate,
 			       KT_A_NONE);
 	sh->start_x = 0;
 	sh->start_end = w;
@@ -3974,6 +4215,20 @@ static void draw_sep(int x, int h)
 	 * thing more quietly — and it is drawn short of the bar's full height
 	 * so it reads as a divider rather than as a wall.
 	 */
+	if (cells_only()) {
+		/*
+		 * THE GLYPH WHERE THERE IS NOTHING TO DRAW A HAIRLINE IN. A
+		 * cell is a character on the console, so the boundary is the
+		 * DOUBLE vertical — the stroke every KDOS window frame is
+		 * drawn in — and it costs the column the layout has already
+		 * reserved for it. Without this the bar's segments had no
+		 * boundary at all there.
+		 */
+		for (int r = bar_y0; r < bar_y0 + bar_h && r < h; r++)
+			ktui_draw_text(x, r, 1, ktui_glyph[KT_G_DVL],
+				       KT_MID, KT_SURFACE, KT_A_NONE);
+		return;
+	}
 	kch_px_vrule(x, 0, h);
 }
 
@@ -4248,9 +4503,13 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 		int i = tray_map[k];
 		const struct sh_tray_item *it = sh_tray_get(sh, i);
 		char cell[8];
+		/* KT_MID and not KT_DIM for a passive item: the fallback below
+		 * draws the id's first LETTER with this slot, and `dim` is the
+		 * palette's fill — a letter in it measures 1.17:1 against the
+		 * bar and the cell reads as empty. */
 		int fg = it->status == SH_TRAY_ATTENTION ? KT_ACCENT
 			 : it->status == SH_TRAY_ACTIVE	  ? KT_TEXT
-							  : KT_DIM;
+							  : KT_MID;
 
 		/*
 		 * An item's own IconName, when the theme has a picture for it
@@ -4399,14 +4658,56 @@ static int meter_by_key(const char *name)
  */
 static double met_scale[MT_N];
 
+/*
+ * A RATE IN FOUR CELLS, AND THE UNIT IS THE PART THAT MUST SURVIVE.
+ *
+ * The old form could write five — `1023k` — and every field that holds a rate
+ * is a fixed one, so the fifth cell was cut off the RIGHT: `1.2M` arrived as
+ * `1.2`, which reads as 1.2 bytes a second. A digit of precision is worth less
+ * than the letter that says what the digits mean, so the decimal is spent
+ * first and only below ten of a unit.
+ */
 static void fmt_rate(char *out, size_t n, double bytes_per_s)
 {
-	if (bytes_per_s >= 1024.0 * 1024.0)
-		snprintf(out, n, "%.1fM", bytes_per_s / (1024.0 * 1024.0));
-	else if (bytes_per_s >= 1024.0)
-		snprintf(out, n, "%.0fk", bytes_per_s / 1024.0);
+	double k = bytes_per_s / 1024.0;
+	double m = k / 1024.0;
+	double g = m / 1024.0;
+
+	if (g >= 1.0)
+		snprintf(out, n, g < 10.0 ? "%.1fG" : "%.0fG", g);
+	else if (m >= 1.0)
+		snprintf(out, n, m < 10.0 ? "%.1fM" : "%.0fM", m);
+	else if (k >= 1.0)
+		snprintf(out, n, k < 10.0 ? "%.1fk" : "%.0fk", k);
 	else
 		snprintf(out, n, "%.0f", bytes_per_s);
+}
+
+/*
+ * HOW MANY CELLS A READING IS GIVEN, and it is NOT how many it currently
+ * needs.
+ *
+ * The strip is laid out right to left from a total measured over the readings
+ * themselves, so a percentage going 2% -> 11% -> 100%, or a rate going
+ * `\xe2\x86\x930` -> `\xe2\x86\x931.2M`, made the whole strip one or two columns
+ * wider and slid it — and the separator beside it, and the right edge of the
+ * window list — sideways while somebody was reading it. A bar that moves under
+ * the eye is the thing this panel may least afford.
+ *
+ * FOUR CELLS, FROM THE WIDEST LEGITIMATE VALUE AND NOT FROM A GUESS: a
+ * percentage tops out at `100%`, and `fmt_rate` never writes more than four
+ * either — `999` below a kibibyte, `%.0fk` up to `999k`, and `%.1fM` beyond,
+ * which is five from 10.0M. The arrow a mirrored band prefixes is the fifth,
+ * so a mirrored reading is given one more. The value is RIGHT-aligned in the
+ * field, because a number that grows a digit should grow leftwards into its
+ * own air rather than push its neighbour.
+ */
+#define MET_VAL_W 4
+
+static int met_val_w(int id)
+{
+	return MDESC[id].pct ? MET_VAL_W
+			     : MET_VAL_W + ktui_utf8_width(MDESC[id].up);
 }
 
 /* One meter's reading, as the two strings a band prints. */
@@ -4431,7 +4732,7 @@ static void met_text(int id, char *v1, size_t n1, char *v2, size_t n2)
 /* One meter: `CPU ▁▂▃▅█ 42%`. Returns the width it drew. */
 static int draw_meter(int x, int row, const char *label,
 		      const struct meter *m, int spark_w, double vmax,
-		      const char *value, int lit)
+		      const char *value, int vcells, int lit)
 {
 	int n = 0;
 	const double *series = meter_series(m, &n);
@@ -4450,9 +4751,20 @@ static int draw_meter(int x, int row, const char *label,
 	if (n > 0)
 		ktui_sparkline(krect(x + lw + 1, row, spark_w, 1), series, n,
 			       vmax, KT_SURFACE);
-	ktui_draw_text(x + lw + 1 + spark_w + 1, row, vw, value,
-		       lit ? KT_WARN : KT_TEXT, KT_SURFACE, KT_A_NONE);
-	return lw + 1 + spark_w + 1 + vw;
+	/*
+	 * RIGHT-ALIGNED IN A RESERVED FIELD. `vcells` is the same number the
+	 * layout above reserved — see met_val_w() — so the width this returns
+	 * does not move when the reading does, and a value narrower than its
+	 * field sits against the field's right edge rather than against the
+	 * chart.
+	 */
+	if (vw > vcells)
+		vw = vcells;
+	ktui_draw_fill(krect(x + lw + 1 + spark_w + 1, row, vcells, 1),
+		       KT_SURFACE);
+	ktui_draw_text(x + lw + 1 + spark_w + 1 + (vcells - vw), row, vw,
+		       value, lit ? KT_WARN : KT_TEXT, KT_SURFACE, KT_A_NONE);
+	return lw + 1 + spark_w + 1 + vcells;
 }
 
 /* ── the pixel tile ───────────────────────────────────────────────────── */
@@ -4997,18 +5309,23 @@ static int draw_meters(struct sh_state *sh, int wing_x, int row_x, int x_min,
 
 	/* Widest first, then narrower, then fewer meters — and never a partial
 	 * one, because half a chart is a chart that lies about its window. */
+	/*
+	 * THE LADDER IS FITTED AGAINST THE RESERVATIONS, NEVER THE READINGS.
+	 * Measured against the current values, one extra digit could cut the
+	 * sparkline by two columns or drop a whole meter — so the strip
+	 * changed SHAPE, not merely position, as the numbers moved. With the
+	 * value field fixed the total for a given (want, sw) is a constant and
+	 * the rung chosen depends only on the room there is.
+	 */
 	int spark_w = 0, use = 0;
 	for (int want = nmeters_sel; want >= 1 && !spark_w; want--) {
 		for (int sw = 10; sw >= 4; sw -= 2) {
 			int total = 0;
-			for (int i = 0; i < want; i++) {
-				char v1[24], v2[24];
-				met_text(meters_sel[i], v1, sizeof(v1), v2,
-					 sizeof(v2));
+			for (int i = 0; i < want; i++)
 				total += ktui_utf8_width(
 						 MDESC[meters_sel[i]].label) +
-					 1 + sw + 1 + ktui_utf8_width(v1) + 2;
-			}
+					 1 + sw + 1 +
+					 met_val_w(meters_sel[i]) + 2;
 			if (row_x - total >= x_min) {
 				spark_w = sw;
 				use = want;
@@ -5020,12 +5337,9 @@ static int draw_meters(struct sh_state *sh, int wing_x, int row_x, int x_min,
 		return wing_x;
 
 	int total = 0;
-	for (int i = 0; i < use; i++) {
-		char v1[24], v2[24];
-		met_text(meters_sel[i], v1, sizeof(v1), v2, sizeof(v2));
+	for (int i = 0; i < use; i++)
 		total += ktui_utf8_width(MDESC[meters_sel[i]].label) + 1 +
-			 spark_w + 1 + ktui_utf8_width(v1) + 2;
-	}
+			 spark_w + 1 + met_val_w(meters_sel[i]) + 2;
 	int x = row_x - total;
 
 	sh->meter_hit_x = x;
@@ -5039,6 +5353,7 @@ static int draw_meters(struct sh_state *sh, int wing_x, int row_x, int x_min,
 		cur += draw_meter(cur, row, MDESC[id].label, MDESC[id].a,
 				  spark_w,
 				  MDESC[id].pct ? 100.0 : met_scale[id], v1,
+				  met_val_w(id),
 				  MDESC[id].pct && MDESC[id].a->shown > 90) +
 		       2;
 	}
@@ -5443,7 +5758,18 @@ static void draw_taskbar(struct sh_state *sh)
 	if (strftime(date, sizeof(date), "%a %d %b", &tm) == 0)
 		date[0] = '\0';
 
-	applet_row = (h - 1) / 2;
+	/*
+	 * THE ROW THE BAR'S OWN EDGE TAKES IS ON THE DESKTOP SIDE, and the
+	 * content is centred in what is left — so a bottom bar's rule is its
+	 * top row and a top bar's is its bottom one, and neither is drawn
+	 * over. Where the backdrop draws the edge in pixels there is no such
+	 * row and this is the arithmetic the bar has always used.
+	 */
+	bar_h = h - bar_rule_rows();
+	if (bar_h < 1)
+		bar_h = h;
+	bar_y0 = (bar_h < h && !panel_top) ? h - bar_h : 0;
+	applet_row = bar_y0 + (bar_h - 1) / 2;
 
 	/*
 	 * Is something bright behind the bar? Any window maximized or
@@ -5535,9 +5861,14 @@ static void draw_taskbar(struct sh_state *sh)
 		sh->show_hit_end = w;
 		if (hover_show)
 			kch_px_plate(w - 1, 0, 1, h, KCH_T_HOVER, 1);
-		for (int r = 0; r < h; r++)
+		for (int r = bar_y0; r < bar_y0 + bar_h; r++)
 			ktui_draw_text(w - 1, r, 1, ktui_glyph[KT_G_SHADE],
-				       hover_show ? KT_ACCENT : KT_DIM,
+				       /* KT_MID, not KT_DIM: `dim` is a FILL
+					* and measures 1.17:1 against this
+					* bar's own body, so the one
+					* full-height control on the row was
+					* a column nobody could see. */
+				       hover_show ? KT_ACCENT : KT_MID,
 				       KT_SURFACE, KT_A_NONE);
 
 		char label[96];
@@ -5555,6 +5886,19 @@ static void draw_taskbar(struct sh_state *sh)
 				int dw = h > 1 ? ktui_utf8_width(date) : 0;
 				int clockw = cw > dw ? cw : dw;
 
+				/*
+				 * AND ITS WIDTH IS THE WIDEST IT WILL EVER BE,
+				 * not the width of the string just formatted.
+				 * Everything on this wing is placed to the
+				 * LEFT of the clock, so a clock that gained a
+				 * column at 10:00 or on a Wednesday would
+				 * carry the whole bar sideways with it. See
+				 * clock_field().
+				 */
+				int field = clock_field(clock_fmt, h > 1);
+
+				if (field > clockw)
+					clockw = field;
 				if (right_x - clockw <= floor_x)
 					break;
 				right_x -= clockw;
@@ -5583,16 +5927,25 @@ static void draw_taskbar(struct sh_state *sh)
 				 * to it. A letter and not a glyph slot:
 				 * nothing in the tiers is a warning sign, and
 				 * a missing one draws a box.
+				 *
+				 * THE COLUMN IS SPENT WHETHER OR NOT THERE IS
+				 * A WARNING. Taken only when the disk filled,
+				 * crossing the threshold moved every item left
+				 * of the clock by one — the landmark shifting
+				 * is exactly what it must not do. One column
+				 * of the bar's widest fixed segment is the
+				 * cheapest thing here to hold still.
 				 */
-				if (panel_disk_warn > 0
-				    && right_x - 1 > floor_x) {
+				if (right_x - 1 > floor_x) {
 					right_x -= 1;
-					ktui_draw_text(right_x, applet_row, 1,
-						       "!",
-						       panel_disk_warn > 1
-							       ? KT_ERR
-							       : KT_WARN,
-						       cbg, KT_A_NONE);
+					if (panel_disk_warn > 0)
+						ktui_draw_text(
+							right_x, applet_row, 1,
+							"!",
+							panel_disk_warn > 1
+								? KT_ERR
+								: KT_WARN,
+							cbg, KT_A_NONE);
 				}
 				right_x -= 1;
 				/* The clock is its own segment — it is the one
@@ -5678,24 +6031,23 @@ static void draw_taskbar(struct sh_state *sh)
 						 ktui_glyph[rx >= tx ? KT_G_DOWN
 								     : KT_G_UP],
 						 rate);
-					/* THE TILE IS THREE CELLS AND THE
-					 * READING COMES FIRST. `12k` fills it
-					 * on its own, so on a busy link the
-					 * arrow is what gives way — the
-					 * direction is still under it in the
-					 * strip's own two colours, and a
-					 * clipped number is a number nobody
-					 * can use. */
-					if (ktui_utf8_width(label) > AP_TILE_W)
+					/* THE READING COMES FIRST. `1.2M`
+					 * fills the field on its own, so on a
+					 * busy link the arrow is what gives
+					 * way — the direction is still under
+					 * it in the strip's own two colours,
+					 * and a clipped number is a number
+					 * nobody can use. */
+					if (ktui_utf8_width(label) > AP_NET_W)
 						snprintf(label, sizeof(label),
 							 "%s", rate);
 				}
-				applet_tile(sh, SH_AP_NET, &right_x, floor_x,
-					    up ? (wifi ? "network-wireless"
-						       : "network-wired")
-					       : "network-offline",
-					    label, up ? KT_TEXT : KT_MID,
-					    KT_MID);
+				applet_tile_w(sh, SH_AP_NET, &right_x, floor_x,
+					      up ? (wifi ? "network-wireless"
+							 : "network-wired")
+						 : "network-offline",
+					      label, up ? KT_TEXT : KT_MID,
+					      KT_MID, AP_NET_W);
 				break;
 			}
 			case W_CPU:
@@ -5708,9 +6060,12 @@ static void draw_taskbar(struct sh_state *sh)
 					break;
 				snprintf(label, sizeof(label), "CPU %d%%",
 					 panel_cpu);
-				applet(sh, SH_AP_CPU, &right_x, floor_x, label,
-				       panel_cpu > 90 ? KT_WARN : KT_DIM,
-				       KT_A_NONE);
+				applet_w(sh, SH_AP_CPU, &right_x, floor_x, label,
+					 /* KT_MID for the reason its two-row
+					  * twin carries a comment about: this
+					  * is TEXT, and `dim` is a fill. */
+					 panel_cpu > 90 ? KT_WARN : KT_MID,
+					 KT_A_NONE, AP_CPU_W);
 				break;
 			case W_MPRIS: {
 				int play;
@@ -5960,6 +6315,26 @@ static void draw_taskbar(struct sh_state *sh)
 		draw_chips(sh, x, x + avail, 1, h);
 		break;
 	}
+
+	/*
+	 * THE BAR'S OWN EDGE, IN CELLS, LAST.
+	 *
+	 * Under a compositor this is one pixel of the backdrop between the
+	 * grid and the desktop — see panel_backdrop(). On the console there
+	 * are no pixels to put it in and KT_SURFACE is one shade off KT_BG, so
+	 * the bar had no boundary at all: it read as a region of the desktop
+	 * with words on it rather than as a piece of chrome. A row, in the
+	 * DOUBLE horizontal every KDOS window frame is drawn with, on the side
+	 * the desktop is.
+	 *
+	 * Drawn after the layout rather than before it because the layout is
+	 * four passes and only the last one kept has drawn anything.
+	 */
+	if (bar_rule_rows() && bar_h < h)
+		for (int cx = 0; cx < w; cx++)
+			ktui_draw_text(cx, panel_top ? h - 1 : 0, 1,
+				       ktui_glyph[KT_G_DHL], KT_MID,
+				       KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_flush();
 }
@@ -6425,6 +6800,16 @@ static void tip_tick(struct sh_state *sh)
 	if (tip_pid > 0 && waitpid(tip_pid, NULL, WNOHANG) == tip_pid)
 		tip_pid = -1;
 	if (tip_shown || tip_kind == TT_NONE)
+		return;
+	/*
+	 * NOT WHILE THIS BAR'S OWN POPUP IS UP. A tip is raised above the bar
+	 * and the popup opens from the bar, so the tip lands ON it — and the
+	 * pointer is on the bar constantly while a menu is being driven,
+	 * because the button that opened it is there. What a person gets is
+	 * the menu they are reading with a caption dropped across its bottom
+	 * rows; what they asked for is the menu.
+	 */
+	if (popup_alive())
 		return;
 	if (panel_now_ms() - tip_since < TIP_DELAY_MS)
 		return;
@@ -7131,7 +7516,10 @@ int panel_main(int argc, char **argv)
 	KDispConfig cfg = {
 		.role = KDISP_ROLE_PANEL,
 		.edge = edge,
-		.cells = tb_rows,
+		/* ONE MORE ROW WHERE THE EDGE HAS TO BE A ROW — see
+		 * bar_rule_rows(). A docked surface cannot change its
+		 * thickness after it attaches, so this is decided here. */
+		.cells = tb_rows + bar_rule_rows(),
 		/* Must equal the .desktop id or the shell shows a second, unnamed
 		 * icon for itself — the bug `kdos appid` exists to catch, and the
 		 * one program with no excuse for it. */
@@ -7261,8 +7649,13 @@ int panel_main(int argc, char **argv)
 	 * frame goes out with a hole where the bar should be.
 	 */
 	kdisp_set_backdrop(panel_backdrop);
-	px_live = 1;
-	kcell_set_slot_alpha(KT_SURFACE, 0);
+	/* AND THERE IS NO BACKDROP WHERE THERE ARE NO PIXELS. A display that
+	 * ignored the call leaves KT_SURFACE as an ordinary opaque slot, and a
+	 * bar that believed otherwise would clear the one colour it is drawn
+	 * on. See cells_only(). */
+	px_live = !cells_only();
+	if (px_live)
+		kcell_set_slot_alpha(KT_SURFACE, 0);
 	if (sh_connect(&sh) != 0) {
 		fprintf(stderr, "kdos-shell: %s offers no window list; the "
 				"panel would be blank\n",
@@ -7272,13 +7665,37 @@ int panel_main(int argc, char **argv)
 		return 1;
 	}
 	/*
+	 * WHERE A SPRITE'S PIXELS COME FROM, and this bar had no answer.
+	 *
+	 * On the console libkcon puts a picture's BYTES on the wire through a
+	 * callback the surface registers; without one it sends the metadata
+	 * alone and the display maps a slot it was never sent to -1, so the
+	 * cell becomes a space. Every icon this bar drew on the console was
+	 * therefore a blank that had still spent its cells — the Start mark's
+	 * three of them, which is why the word sat four columns into its own
+	 * plate. `kdos-peek` and `kdos-pix` have always called this; the one
+	 * surface that is on the screen the whole time did not.
+	 *
+	 * AFTER kdisp_init, and that is not tidiness: the console backend
+	 * clears its client state when it connects, so a callback registered
+	 * before this point is erased. See picture.c.
+	 */
+	sh_pic_backend();
+
+	/*
 	 * The icon layer, AFTER kdisp_init because it needs the cell size and the
 	 * output scale, and BEFORE the favorites because those resolve an icon
 	 * name each. Failing is a desktop with no pictures, which is the one it
 	 * had last week — every draw path here falls back to its glyph tier.
+	 *
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE. `kdisp_cell_w()` is 1 on
+	 * the console — a surface there has no pixel size of its own — so
+	 * rasterising at it made every icon a picture a few pixels across,
+	 * which is a blank cell by another route. sh_pic_cell_w() is the size
+	 * the wire is bounded by, and the display rescales to its own font.
 	 */
 	if (icons_on)
-		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	/* Canvas text is the chrome's own family at whatever pixel size a tile
 	 * asks for — the size in `--font` is the CELL's and is replaced per
 	 * request. Off with the icons: a tile is a picture, and `icons = no`

@@ -255,6 +255,13 @@ wait "$_tail" 2>/dev/null
 # A clean exit is a logout.
 [ "$rc" -eq 0 ] && exit 0
 
+# INTO THE LOG AS WELL AS ONTO THE SCREEN. The restart below clears the screen
+# within a second, so the only place this line can still be read afterwards is
+# the file — and "every window went away" is otherwise indistinguishable from a
+# logout by the time anybody looks. A status of 139 is a segmentation fault,
+# 134 an abort; both mean the session and not the desktop.
+echo "kdos-con-start: kdos-con exited with status $rc at $(date -Is)" >> "$_log"
+
 echo "" >&2
 echo "kdos-con exited with status $rc — last 20 lines of $_log:" >&2
 [ -f "$_log" ] && tail -n 20 "$_log" >&2

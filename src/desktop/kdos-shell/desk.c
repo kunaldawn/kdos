@@ -1420,11 +1420,24 @@ int desk_main(int argc, char **argv)
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.mx < 0 || ev.my < 0)
 				continue;	/* the pointer left the surface */
-			/* The editor is keyboard-owned; a click must not
-			 * change what Rename is renaming under a half-typed
-			 * name. */
-			if (edit_mode)
-				continue;
+			/*
+			 * A CLICK LEAVES THE EDITOR RATHER THAN BEING EATEN BY
+			 * IT.
+			 *
+			 * It must not change what Rename is renaming under a
+			 * half-typed name, so the press abandons the name
+			 * instead of applying it — and the press itself is
+			 * then handled, because a click that visibly did
+			 * nothing is how a person concludes the desktop has
+			 * stopped answering. Swallowing it made the editor a
+			 * trap with a pointer entrance and, on a display that
+			 * gives this surface no keyboard, no exit at all.
+			 */
+			if (edit_mode) {
+				if (ev.press != KT_MP_PRESS)
+					continue;
+				edit_mode = ED_NONE;
+			}
 
 			/*
 			 * A press that leaves its cell is a drag, not a click.

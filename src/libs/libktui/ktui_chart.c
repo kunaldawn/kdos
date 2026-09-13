@@ -108,8 +108,24 @@ void ktui_sparkline(KRect r, const double *v, int n, double vmax, int bg)
 	int x0 = r.x + (r.w - cols);
 	for (int i = 0; i < cols; i++) {
 		double f = vmax > 0 ? v[from + i] / vmax : 0;
-		ktui_draw_text(x0 + i, r.y, 1, ktui_ramp_v(f), KT_ACCENT, bg,
-			       0);
+
+		/*
+		 * A SAMPLE OF ZERO IS A BASELINE, NOT A HOLE.
+		 *
+		 * `ramp_index(0)` is 0 and the ramp's zeroth entry is a SPACE
+		 * — exact empty, which is what a gauge needs and what a chart
+		 * must not have. An idle meter drew ten spaces between its
+		 * label and its reading, so the track vanished and the wing
+		 * read as three words with gaps rather than as charts: `NET`
+		 * then nothing then the rate. The lowest ramp step in the
+		 * muted text colour is the axis the samples sit on.
+		 */
+		if (f <= 0)
+			ktui_draw_text(x0 + i, r.y, 1, ramp_v[1], KT_MID, bg,
+				       0);
+		else
+			ktui_draw_text(x0 + i, r.y, 1, ktui_ramp_v(f),
+				       KT_ACCENT, bg, 0);
 	}
 }
 

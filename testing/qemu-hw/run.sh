@@ -16,6 +16,17 @@ QCOW="$REPO_ROOT/build/kdos.qcow2"
 MEM="4G"
 DISPLAY_NUM="${DISPLAY:-:0}"
 
+# The size the guest comes up at, and the same default and spelling the
+# Makefile's run targets use — it passes its own KDOS_RES in, so one setting
+# covers every way of starting a VM. QEMU's own virtio-gpu default is 1280x800,
+# which on a cell desktop is about 160x50 characters.
+KDOS_RES="${KDOS_RES:-1920x1080}"
+XRES="${KDOS_RES%%x*}"
+YRES="${KDOS_RES##*x}"
+case "$XRES$YRES" in
+    *[!0-9]*|"") echo "KDOS_RES must be WIDTHxHEIGHT, not '$KDOS_RES'"; exit 1 ;;
+esac
+
 [ -f "$ISO" ] || { echo "ISO not found: $ISO (run 'make build' first)"; exit 1; }
 
 # Build the QEMU-10 container image on first use.
@@ -67,6 +78,15 @@ fi
 # any one compositor, so assume it still applies. `egl-headless` is rock solid.
 # If the desktop freezes the VM, run headless:
 #   KDOS_QEMU_DISPLAY=egl-headless testing/qemu-hw/run.sh iso   (view via -vnc)
+#
+# zoom-to-fit=on is what makes KDOS_RES the resolution rather than a request.
+# QEMU's GTK window reports its own size to the guest, virtio-gpu rebuilds the
+# EDID around it, and the desktop takes the connector's preferred mode — so
+# without it the guest is whatever size the window happens to be, starting at
+# whatever the firmware left on screen. With it the window scales the picture
+# instead of resizing the guest, so the desktop is xres by yres however the
+# window is dragged. Set KDOS_QEMU_DISPLAY=gtk,gl=es to get the old behaviour
+# back, where the guest follows the window.
 GPU_ARGS=(
     -object memory-backend-memfd,id=mem,size="$MEM",share=on
     -machine pc,memory-backend=mem,accel=kvm
@@ -74,8 +94,8 @@ GPU_ARGS=(
     -cpu host
     -smp "$(nproc)"
     -vga none
-    -device virtio-vga-gl,blob=true,hostmem=4G,xres=1920,yres=1080
-    -display "${KDOS_QEMU_DISPLAY:-gtk,gl=es}"
+    -device virtio-vga-gl,blob=true,hostmem=4G,xres="$XRES",yres="$YRES"
+    -display "${KDOS_QEMU_DISPLAY:-gtk,gl=es,zoom-to-fit=on}"
 )
 
 # Audio. The container's QEMU is not the host's, so the backend is probed

@@ -23,6 +23,8 @@
  * ---------------------------------
  */
 
+#include <stdlib.h>
+
 #include "kchrome.h"
 #include "kcell.h"
 #include "kwl.h"
@@ -43,6 +45,9 @@ struct px_op {
 #define PX_MAX 256
 static struct px_op ops[PX_MAX];
 static int nops;
+
+/* Set by whichever backdrop this surface installed — see kch_px_live(). */
+static int backdrop_on;
 
 void kch_px_reset(void)
 {
@@ -99,6 +104,28 @@ void kch_px_plate(int cx, int cy, int cw, int ch, KchTone tone, int inset)
 	add(PXO_ROUND, cx * w + inset, cy * h + inset, cw * w - 2 * inset,
 	    ch * h - 2 * inset, KCH_PLATE_RADIUS, kch_tone(tone),
 	    kch_tone(tone), kch_tone_alpha(tone));
+}
+
+/*
+ * WHETHER A RECORDED OP CAN EVER REACH A SCREEN, asked in one place.
+ *
+ * The list is replayed by a backdrop, and a backdrop is painted by libkwl —
+ * so it reaches a screen only on a surface that has one installed AND is not
+ * a console surface, where the session composes character cells and there is
+ * no plane under them at all. Neither half can be dropped: a `--dump` installs
+ * no backdrop, and `$KDOS_CON` is the only thing that distinguishes the two
+ * displays, since the cell size is asked of libkwl either way and libkwl
+ * answers with its fallback rather than with nothing.
+ *
+ * A control whose only state cue is a plate is a control with no state at all
+ * where this is false, which is why every caller of `kch_px_row()` also draws
+ * the cell form of the same fact.
+ */
+int kch_px_live(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return backdrop_on && !(con && *con);
 }
 
 void kch_px_row(int cx, int cy, int cw, KchTone tone)
@@ -209,12 +236,14 @@ static void bare_backdrop(pixman_image_t *dst, int w, int h, int scale)
 
 void kch_px_bare(int body_slot)
 {
+	backdrop_on = 1;
 	kwl_set_backdrop(bare_backdrop);
 	kcell_set_slot_alpha(body_slot & 7, 0);
 }
 
 void kch_px_popup(int body_slot)
 {
+	backdrop_on = 1;
 	body_slot_v = body_slot & 7;
 	kwl_set_backdrop(popup_backdrop);
 	kcell_set_slot_alpha(body_slot_v, 0);

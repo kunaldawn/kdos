@@ -145,6 +145,7 @@ void kch_px_plate(int cx, int cy, int cw, int ch, KchTone tone, int inset);
  * the page's own slot by the caller, so the plate shows through under the
  * label.
  */
+int kch_px_live(void);
 void kch_px_row(int cx, int cy, int cw, KchTone tone);
 void kch_px_vrule(int cx, int y0, int rows);
 void kch_px_replay(pixman_image_t *dst, int scale);

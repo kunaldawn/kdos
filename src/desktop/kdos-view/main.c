@@ -866,12 +866,28 @@ static void redraw_slot(unsigned slot)
  * when the screen changed, 0 when nothing did, -1 when the session said
  * goodbye.
  */
+/*
+ * WHY THIS VIEW STOPPED, AND IT DECIDES THE EXIT CODE.
+ *
+ * A supervisor reads a clean exit as "a person asked for the screen back" and
+ * stops supervising; it reads a failure as "try again". Those are two
+ * different endings and the socket cannot tell them apart — a session that
+ * said goodbye and a session that dropped this view both leave a closed
+ * connection behind. Only KCON_OP_BYE means the first, so only KCON_OP_BYE
+ * ends the process successfully; anything else is a display that went away on
+ * its own and must come back, or the screen keeps the last frame it flipped
+ * for the rest of the login with nothing able to type at it.
+ */
+static int said_bye;
+
 static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 {
 	int got = 0;
 
-	if (op == KCON_OP_BYE)
+	if (op == KCON_OP_BYE) {
+		said_bye = 1;
 		return -1;
+	}
 
 	/*
 	 * WHAT THE SESSION COPIED, onto the clipboard of the desktop
@@ -2108,7 +2124,7 @@ int main(int argc, char **argv)
 
 		kkms_shutdown();
 		kcon_conn_free(conn);
-		return 0;
+		return said_bye ? 0 : 1;
 	}
 #endif
 
@@ -2175,8 +2191,13 @@ int main(int argc, char **argv)
 		 * change end every `--tty` view on the machine. The write
 		 * failing is the fact; the signal is ambiguous.
 		 */
-		if (ktui_term_hungup())
+		if (ktui_term_hungup()) {
+			/* The host terminal IS this view's screen, so there is
+			 * nothing to restart into: that ending is as clean as
+			 * a goodbye. */
+			said_bye = 1;
 			break;
+		}
 	}
 
 #ifdef KDOS_VIEW_TTYPIX
@@ -2185,5 +2206,5 @@ int main(int argc, char **argv)
 #endif
 	ktui_term_shutdown();
 	kcon_conn_free(conn);
-	return 0;
+	return said_bye ? 0 : 1;
 }
