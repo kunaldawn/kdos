@@ -589,11 +589,15 @@ is a directory, but a file manager opened on it shows the escaped names in `file
 and no deletion date — the record carrying both lives in `info/` beside it, and reading the pair is
 what the surface is for.
 
-Four things the shared implementation gets right that a second copy would have to re-learn:
+Five things the shared implementation gets right that a second copy would have to re-learn:
 
 - **The record is written before the rename**, because a file in the trash with no record cannot be
   restored by anything, while a stale record with no file is the state every implementation
   ignores.
+- **A name that cannot be made unique is a refusal, not an overwrite.** The suffix counter runs to
+  `name.999` and then to a clock-derived name; a call that still finds the slot occupied fails with
+  `EEXIST`, because renaming over an already-trashed file destroys that file and its only restore
+  record in one step and reports success.
 - **The recorded path is made absolute**, or trashing by relative name records something nothing
   can put back.
 - **The path is escaped both ways**, and an unescape hitting a truncated escape copies it through

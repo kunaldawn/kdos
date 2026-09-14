@@ -68,6 +68,72 @@ static int user_dirs_path(char *out, size_t n)
 	       (int)n;
 }
 
+/*
+ * One line of `user-dirs.dirs`, written into `out` when it carries the key
+ * wanted. Both readers below run it, so the quoting and the single expansion
+ * the format defines have one spelling. `line` is modified in place, and only
+ * after the key has matched, so a caller may try several keys against it.
+ */
+static int user_dirs_line(char *line, const char *want, char *out, size_t n)
+{
+	char *v = strchr(line, '=');
+	char *end;
+
+	if (!v || strncmp(line, want, strlen(want)))
+		return 0;
+	v++;
+	if (*v == '"')
+		v++;
+	line[strcspn(line, "\r\n")] = '\0';
+	end = strchr(v, '"');
+	if (end)
+		*end = '\0';
+	/* `$HOME` is the one expansion the format defines. Anything else is
+	 * taken as written, because a reader that guessed at shell expansion
+	 * would be a shell. */
+	if (!strncmp(v, "$HOME", 5))
+		snprintf(out, n, "%s%s", kb_home_dir(), v + 5);
+	else if (*v)
+		snprintf(out, n, "%s", v);
+	return 1;
+}
+
+/*
+ * Every user directory, in ONE pass over the file. The places column wants
+ * all six and asking for them one at a time opens, reads and closes the file
+ * once per key for an answer a single read already holds. Each slot carries
+ * its `$HOME` default before the file is opened, so a missing or unreadable
+ * file leaves six usable paths.
+ */
+static void user_dirs_read(char out[][512])
+{
+	const char *home = kb_home_dir();
+	char path[1024], line[512], want[NUSER_DIRS][64];
+	int got[NUSER_DIRS] = { 0 };
+	FILE *f;
+
+	for (int i = 0; i < NUSER_DIRS; i++) {
+		snprintf(out[i], 512, "%s/%s", home, USER_DIRS[i].fallback);
+		snprintf(want[i], sizeof(want[i]), "XDG_%s_DIR",
+			 USER_DIRS[i].key);
+	}
+	if (!user_dirs_path(path, sizeof(path)))
+		return;
+	f = fopen(path, "r");
+	if (!f)
+		return;			/* no file is not an error */
+	while (fgets(line, sizeof(line), f))
+		for (int i = 0; i < NUSER_DIRS; i++) {
+			if (got[i])
+				continue;
+			if (user_dirs_line(line, want[i], out[i], 512)) {
+				got[i] = 1;
+				break;
+			}
+		}
+	fclose(f);
+}
+
 int kxdg_user_dir(const char *key, char *out, size_t n)
 {
 	const char *home = kb_home_dir();
@@ -95,28 +161,9 @@ int kxdg_user_dir(const char *key, char *out, size_t n)
 	f = fopen(path, "r");
 	if (!f)
 		return 1;		/* no file is not an error */
-	while (fgets(line, sizeof(line), f)) {
-		char *v = strchr(line, '=');
-		char *end;
-
-		if (!v || strncmp(line, want, strlen(want)))
-			continue;
-		v++;
-		if (*v == '"')
-			v++;
-		line[strcspn(line, "\r\n")] = '\0';
-		end = strchr(v, '"');
-		if (end)
-			*end = '\0';
-		/* `$HOME` is the one expansion the format defines. Anything
-		 * else is taken as written, because a reader that guessed at
-		 * shell expansion would be a shell. */
-		if (!strncmp(v, "$HOME", 5))
-			snprintf(out, n, "%s%s", home, v + 5);
-		else if (*v)
-			snprintf(out, n, "%s", v);
-		break;
-	}
+	while (fgets(line, sizeof(line), f))
+		if (user_dirs_line(line, want, out, n))
+			break;
 	fclose(f);
 	return 1;
 }
@@ -153,11 +200,12 @@ int kxdg_places(KxdgPlace *out, int max)
 		return 0;
 
 	place_add(out, &n, max, "Home", kb_home_dir());
-	for (int i = 0; i < NUSER_DIRS; i++) {
-		char dir[512];
+	{
+		char dirs[NUSER_DIRS][512];
 
-		if (kxdg_user_dir(USER_DIRS[i].key, dir, sizeof(dir)))
-			place_add(out, &n, max, USER_DIRS[i].name, dir);
+		user_dirs_read(dirs);
+		for (int i = 0; i < NUSER_DIRS; i++)
+			place_add(out, &n, max, USER_DIRS[i].name, dirs[i]);
 	}
 
 	/*

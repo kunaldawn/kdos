@@ -166,6 +166,9 @@ int ktui_term_flush_dropped(void);
  * and never reaches the exit that would have put the terminal back.
  */
 int ktui_term_hungup(void);
+/* Record the same thing from the reading side: the input layer sees a
+ * terminal go as an end of file rather than as a failed write. */
+void ktui_term_mark_hungup(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
 /* OSC 52 clipboard write, base64 encoded by hand (this library links nothing
@@ -448,6 +451,19 @@ typedef struct {
 	 * own cursor, and ktui_term_caret() then writes the escape.
 	 */
 	void (*caret)(int x, int y);
+	/*
+	 * WHETHER THE LAST FLUSH ACTUALLY REACHED THE SCREEN, or NULL for a
+	 * backend that always presents what it is given.
+	 *
+	 * Two of them do not: the console client skips a frame while its
+	 * display is behind, and the Wayland one stashes a frame while the
+	 * compositor holds both buffers. A skipped frame leaves `prev`
+	 * describing a picture nobody saw, so a full repaint handed to that
+	 * flush would be forgotten — the flag is cleared before the backend
+	 * runs, by design, so that a backend may ask for one from inside it.
+	 * Answering no here is how the repaint survives to the next frame.
+	 */
+	int (*presented)(void);
 } KtuiBackend;
 
 /* NULL selects the built-in tty backend. A backend must outlive the library's
@@ -607,7 +623,12 @@ enum {
 /* KT_MOD_SUPER is the desktop's own modifier — the one every window-management
  * chord is on, so that none of them can collide with what a program inside a
  * window wants. A backend that cannot report it leaves it clear, and those
- * chords simply do not fire. */
+ * chords simply do not fire.
+ *
+ * A CTRL CHORD IS THE LETTER PLUS KT_MOD_CTRL, never the control code. Every
+ * backend delivers it that way: the terminal decoder unfolds the byte the
+ * tty sends, and the two xkb backends read the unmodified keysym. A chord
+ * table that tested for 0x16 would fire on one backend and not the others. */
 enum {
 	KT_MOD_SHIFT = 1,
 	KT_MOD_ALT = 2,
@@ -743,6 +764,7 @@ int ktui_input_mouse_visible(int *x, int *y);
 void ktui_frame_begin(KtuiEvent *ev);
 void ktui_frame_end(void);
 int ktui_id(void);		/* claim the next focus id                 */
+int ktui_id_base(void);		/* the next id; restarts outside a frame   */
 void ktui_hit(KRect r, int id);
 void ktui_hit_chrome(KRect r, int id);	/* id is caller-local, 0..N        */
 int ktui_chrome_clicked(int id);
@@ -815,7 +837,8 @@ const KtuiEvent *ktui_event(void);
 int ktui_consumed(void);
 void ktui_consume(void);
 int ktui_focus_get(void);
-int ktui_clicked(void);		/* id clicked this frame, -1 if none       */
+int ktui_clicked(void);
+int ktui_drag(void);	/* id holding the press capture, -1 if none */		/* id clicked this frame, -1 if none       */
 int ktui_mouse_x(void);
 int ktui_mouse_y(void);
 /* Wheel that no control claimed, if the pointer is inside r. Takes it. */

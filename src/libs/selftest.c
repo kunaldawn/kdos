@@ -82,6 +82,23 @@ static void eq_int(long long got, long long want, const char *what)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+
+/* The ustar header checksum: the sum of all 512 bytes with the checksum field
+ * itself read as spaces, six octal digits then NUL and a space. A reader that
+ * checks it refuses any header without one, so a fixture that wants a later
+ * field tested has to carry it. */
+static void tar_checksum(unsigned char *hdr)
+{
+	unsigned sum = 0;
+
+	memset(hdr + 148, ' ', 8);
+	for (int i = 0; i < 512; i++)
+		sum += hdr[i];
+	snprintf((char *)hdr + 148, 7, "%06o", sum & 0777777);
+	hdr[154] = 0;
+	hdr[155] = ' ';
+}
+
 static void test_colour(void)
 {
 	printf("libkcolor\n");
@@ -812,13 +829,14 @@ static void test_base(void)
 
 	/*
 	 * A size field that does not fit is a REFUSAL, not a number. GNU
-	 * base-256 puts the size in the low bytes of a 12-byte field, so
-	 * eleven shifts of 8 overflow a long long — undefined behaviour, and
-	 * the value it used to produce was negative. Everything downstream
-	 * read that as a length: the GNU-long-name branch computed
-	 * `(size_t)size` and asked read() for 2^63 bytes into a 512-byte
-	 * stack buffer, and the only thing that stopped it was the kernel
-	 * refusing an address range that large. Found by fuzzing kb_tar_next.
+	 * base-256 puts the size in the low bytes of a 12-byte field, and
+	 * eleven shifts of 8 overflow a long long — undefined behaviour whose
+	 * result is negative, which the GNU-long-name branch then hands to
+	 * read() as a length: 2^63 bytes into a 512-byte stack buffer.
+	 *
+	 * THE HEADER CARRIES A VALID CHECKSUM, or the reader refuses it for
+	 * that instead and the size is never parsed — the guard under test
+	 * would not run at all.
 	 */
 	char *badpath = kb_path_join(dir, "bad.tar");
 	unsigned char hdr[512] = {0};
@@ -827,6 +845,7 @@ static void test_base(void)
 	hdr[128] = 0x80;	/* lands in bit 63 after the shifts */
 	hdr[156] = 'L';		/* GNU long name: the payload is a length */
 	memcpy(hdr + 257, "ustar\0" "00", 8);
+	tar_checksum(hdr);
 	int bfd = open(badpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	ok(bfd >= 0, "create a corrupt tar");
 	ok(write(bfd, hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr), "write its header");
@@ -835,6 +854,18 @@ static void test_base(void)
 	KbTarEntry be;
 	ok(kb_tar_open(&bt, badpath) == 0, "open the corrupt tar");
 	ok(kb_tar_next(&bt, &be) == -1, "a size that overflows is refused, not read");
+	kb_tar_close(&bt);
+
+	/* And a header whose checksum does not add up is refused before any
+	 * field of it is believed. */
+	hdr[148] = '9';		/* corrupt the checksum itself */
+	bfd = open(badpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	ok(bfd >= 0 &&
+	   write(bfd, hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr),
+	   "write a header with a wrong checksum");
+	close(bfd);
+	ok(kb_tar_open(&bt, badpath) == 0, "open it");
+	ok(kb_tar_next(&bt, &be) == -1, "a header that does not add up is refused");
 	kb_tar_close(&bt);
 	free(badpath);
 
@@ -1507,18 +1538,41 @@ static void test_proc(void)
 	kpr_hist_push(&h, 100000.0);
 	ok(kpr_hist_scale(&h) == 256e3, "the axis grows the moment a sample does not fit");
 	/*
-	 * Hysteresis. A third of 256e3 is 85.3e3, so a series peaking at 100e3
-	 * is inside the band and must hold the axis still; one peaking at 1e3
-	 * is well under it and must let the axis down. One threshold in each
-	 * direction would oscillate between two rungs for a series sitting on
-	 * the boundary, which is the same flicker wearing a different hat.
+	 * Hysteresis. The rung below 256e3 is 64e3, so a series peaking at
+	 * 100e3 has no rung to step down to that it would still fit inside and
+	 * must hold the axis still; one peaking at 1e3 fits two rungs lower and
+	 * must let the axis down.
 	 */
 	for (int i = 0; i < KPR_HIST; i++)
 		kpr_hist_push(&h, 100e3);
-	ok(kpr_hist_scale(&h) == 256e3, "the axis holds above a third of itself");
+	ok(kpr_hist_scale(&h) == 256e3,
+	   "the axis holds where no lower rung would fit the peak");
 	for (int i = 0; i < KPR_HIST; i++)
 		kpr_hist_push(&h, 1000.0);
-	ok(kpr_hist_scale(&h) < 256e3, "and only comes down below it");
+	ok(kpr_hist_scale(&h) < 256e3, "and comes down when one would");
+
+	/*
+	 * AND IT SETTLES. A peak between the rung below and the scale is the
+	 * case that flipped between full scale and the bottom rung on
+	 * alternate ticks: the shrink found no rung between peak and scale and
+	 * fell through to the smallest one, which is under the peak, and the
+	 * next call grew straight back. Every rung has such a band, and a
+	 * fifth of all steady rates land in one.
+	 */
+	for (int i = 0; i < (int)(sizeof((double[]){ 16e3, 64e3, 256e3, 1e6,
+						     4e6, 16e6, 64e6, 256e6,
+						     1e9, 4e9 }) /
+				 sizeof(double));
+	     i++) {
+		const double rungs[] = { 16e3, 64e3, 256e3, 1e6, 4e6, 16e6,
+					 64e6, 256e6, 1e9, 4e9 };
+		double pk = rungs[i] * 0.3;
+		double a = kpr_scale_step(pk, rungs[i]);
+		double b = kpr_scale_step(pk, a);
+
+		ok(a >= pk && b == a,
+		   "the axis never drops below its own peak and settles");
+	}
 
 	KprHist pin;
 	kpr_hist_init(&pin, 1);
@@ -4244,6 +4298,88 @@ static void test_vt_graphics(void)
  * Silence is what it is not built to handle — it waits, times out, and draws
  * like a terminal from 1978.
  */
+/*
+ * The rules a terminal keeps that no golden can see: what DEL does in the
+ * ground state, where DECSTBM leaves the cursor, what a soft reset may and may
+ * not do to the alternate screen, and what a new palette does to the text
+ * already on the screen.
+ */
+static void test_vt_rules(void)
+{
+	printf("\n==> the state machine's rules that no frame shows\n");
+
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+	KtuiCell cells[40 * 4];
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0) {
+		ok(0, "a screen");
+		return;
+	}
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write_capture, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		ok(0, "a vte");
+		return;
+	}
+
+	/* DEL is not a character. */
+	static const char del[] = "\033[H\033[2Ja\177b";
+
+	kvt_vte_input(vte, del, sizeof(del) - 1);
+	kvt_grid_render(scr, cells, 40, 4);
+	eq_int(cells[0].ch, 'a', "DEL in the ground state prints nothing:");
+	eq_int(cells[1].ch, 'b', "the next character takes the next cell");
+
+	/* DECSTBM homes the cursor. */
+	static const char stbm[] = "\033[4;4H\033[2;3r";
+
+	kvt_vte_input(vte, stbm, sizeof(stbm) - 1);
+	eq_int(kvt_screen_get_cursor_x(scr), 0, "DECSTBM homes the column");
+	eq_int(kvt_screen_get_cursor_y(scr), 0, "and the row");
+	kvt_vte_input(vte, "\033[r", 3);
+
+	/* CPR names a column that exists, even with the wrap pending. */
+	static const char wrap[] = "\033[1;40Hx\033[6n";
+
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, wrap, sizeof(wrap) - 1);
+	eq_str(vt_reply, "\033[1;40R",
+	       "a pending wrap reports the last column, not one past it");
+
+	/* A soft reset does not leave the alternate screen. */
+	static const char soft[] = "\033[?1049h\033[!p";
+
+	kvt_vte_input(vte, soft, sizeof(soft) - 1);
+	ok((kvt_screen_get_flags(scr) & KVT_SCREEN_ALTERNATE) != 0,
+	   "DECSTR keeps the alternate screen the vte believes it is on");
+	kvt_vte_input(vte, "\033[?1049l", 8);
+
+	/* A hard reset clears the modes that do not live in `flags`. */
+	static const char ris[] = "\033[?2004h\033c\033[?2004$p";
+
+	vt_reply_n = 0;
+	vt_reply[0] = '\0';
+	kvt_vte_input(vte, ris, sizeof(ris) - 1);
+	eq_str(vt_reply, "\033[?2004;2$y", "RIS clears bracketed paste");
+
+	/* A palette is not an erase. */
+	static const char text[] = "\033[H\033[2Jkeep me";
+	uint8_t pal[KVT_COLOR_NUM][3];
+
+	kvt_vte_input(vte, text, sizeof(text) - 1);
+	for (int i = 0; i < KVT_COLOR_NUM; i++)
+		pal[i][0] = pal[i][1] = pal[i][2] = (uint8_t)(i * 7);
+	kvt_vte_set_custom_palette(vte, pal);
+	kvt_grid_render(scr, cells, 40, 4);
+	eq_int(cells[0].ch, 'k', "a new palette leaves the text on the screen");
+	eq_int(cells[6].ch, 'e', "every cell of it");
+
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
 static void test_vt_modes(void)
 {
 	printf("\n==> libkvt answers DECRQM, reports focus and brackets a frame\n");
@@ -5254,7 +5390,7 @@ static void test_kcon(void)
 	 * client of the session is rebuilt from this tree, so the number costs
 	 * nothing to raise — and the enum it guards is positional, which is
 	 * what makes raising it the cheap half of an op that moved. */
-	eq_int(KCON_VERSION, 18, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 19, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -8517,6 +8653,7 @@ int main(void)
 	test_menu();
 	test_vt_graphics();
 	test_vt_modes();
+	test_vt_rules();
 	test_ktui_announce();
 	test_vt_styles();
 	test_vt_links();

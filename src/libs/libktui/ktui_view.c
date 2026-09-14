@@ -377,21 +377,40 @@ void ktui_dropdown_draw(KRect r, const KtuiDrop *d, const char *const *opt,
 		       KT_A_NONE);
 }
 
+/*
+ * WHICH OPTIONS AN OPEN LIST IS SHOWING: its visible row count, and the index
+ * the first visible row carries.
+ *
+ * The draw and the hit test derive the window from the same inputs through
+ * this one function, because a hit test measures what is on the screen — a
+ * list scrolled to bring the highlight into view puts a different option on
+ * every row, and a hit test doing its own arithmetic would choose an option
+ * the person cannot see.
+ *
+ * Returns 0 when there is no room to draw the list at all.
+ */
+static int drop_view(KRect r, const KtuiDrop *d, int n, int *top)
+{
+	int h = n;
+
+	if (h > ktui_h - r.y - 1)
+		h = ktui_h - r.y - 1;
+	if (h < 1)
+		return 0;
+	*top = d->hi >= h ? d->hi - h + 1 : 0;
+	return h;
+}
+
 void ktui_dropdown_draw_open(KRect r, const KtuiDrop *d, const char *const *opt,
 			     int n)
 {
 	if (!d->open || n <= 0)
 		return;
 
-	int h = n;
-	if (h > ktui_h - r.y - 1)
-		h = ktui_h - r.y - 1;
+	int top, h = drop_view(r, d, n, &top);
+
 	if (h < 1)
 		return;
-
-	int top = 0;
-	if (d->hi >= h)
-		top = d->hi - h + 1;
 
 	KRect list = krect(r.x, r.y + 1, r.w, h);
 	ktui_draw_fill(list, KT_SURFACE);
@@ -457,16 +476,30 @@ int ktui_dropdown_hit(KRect r, KtuiDrop *d, int n, int mx, int my)
 	if (!d->open)
 		return 0;
 
+	int top, h = drop_view(r, d, n, &top);
+
+	if (h < 1) {
+		d->open = 0;
+		return 0;
+	}
+
 	int i = my - r.y - 1;
-	if (mx < r.x || mx >= r.x + r.w || i < 0 || i >= n) {
+
+	/* Bounded by the DRAWN row count, not by the option count: a list
+	 * clamped to the screen bottom has rows below it that belong to
+	 * whatever is underneath. */
+	if (mx < r.x || mx >= r.x + r.w || i < 0 || i >= h) {
 		/* A click anywhere else closes it WITHOUT choosing, which is
 		 * the only reading of a press outside a list that is over the
 		 * thing it would otherwise hit. */
 		d->open = 0;
 		return 0;
 	}
-	int changed = i != d->sel;
-	d->sel = i;
+
+	int pick = top + i;
+	int changed = pick != d->sel;
+
+	d->sel = d->hi = pick;
 	d->open = 0;
 	return changed;
 }

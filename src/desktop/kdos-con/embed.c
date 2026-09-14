@@ -668,6 +668,7 @@ Win *embed_open(const char *const argv[], const char *title)
 		unsetenv("WAYLAND_DISPLAY");
 		unsetenv("DISPLAY");
 
+		kb_child_reset_signals();
 		execvp(av[0], (char *const *)av);
 		_exit(127);
 	}
@@ -901,6 +902,18 @@ void embed_free(Win *w)
 		close(e->fd);
 	if (e->map)
 		munmap(e->map, e->map_len);
+	/*
+	 * THE SESSION'S SPRITE SLOTS GO BACK. They are a finite map, not a
+	 * counter that wraps: a guest opened and closed enough times without
+	 * this exhausts it and no window on the desktop can show a picture
+	 * again. The whole table is walked rather than bw*bh, because a guest
+	 * that was once larger still holds the slots above its current size.
+	 */
+	for (int i = 0; i < EM_MAX_BLOCKS; i++)
+		if (e->slots[i] >= 0) {
+			kcon_server_free_slot(S.server, e->slots[i]);
+			e->slots[i] = -1;
+		}
 	free(e->scratch);
 	free(e);
 }

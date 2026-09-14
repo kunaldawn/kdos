@@ -149,6 +149,12 @@ int kb_trash_put(const char *path)
 	 * The name is made unique before either half is written. Trashing two
 	 * files called `notes.txt` from different directories is the ordinary
 	 * case, and the second silently replacing the first is data loss.
+	 *
+	 * The counter runs out; the call must not. A name whose first thousand
+	 * suffixes are all taken falls back to the clock, and a name that even
+	 * then collides is EEXIST — writing the record and renaming over an
+	 * occupied slot destroys the earlier file AND its only restore record,
+	 * and reports success for it.
 	 */
 	kb_strlcpy(unique, name, sizeof(unique));
 	for (int n = 1; n < 1000; n++) {
@@ -158,6 +164,19 @@ int kb_trash_put(const char *path)
 		snprintf(unique, sizeof(unique), "%.180s.%d", name, n);
 	}
 	snprintf(dest, sizeof(dest), "%s/%s", files, unique);
+	for (int k = 0; k < 16 && access(dest, F_OK) == 0; k++) {
+		struct timespec ts;
+
+		clock_gettime(CLOCK_REALTIME, &ts);
+		snprintf(unique, sizeof(unique), "%.160s.%llx%x",
+			 name, (unsigned long long)ts.tv_sec,
+			 (unsigned)(ts.tv_nsec + k));
+		snprintf(dest, sizeof(dest), "%s/%s", files, unique);
+	}
+	if (access(dest, F_OK) == 0) {
+		errno = EEXIST;
+		return -1;
+	}
 	snprintf(meta, sizeof(meta), "%s/%s.trashinfo", info, unique);
 
 	/*
@@ -252,12 +271,19 @@ int kb_trash_list(KbTrashItem **out)
 		}
 
 		if (n == cap) {
+			KbTrashItem *nv;
+
 			cap = cap ? cap * 2 : 32;
-			v = realloc(v, (size_t)cap * sizeof(*v));
-			if (!v) {
+			/* Through a temporary: realloc leaves the old block
+			 * valid when it fails, and assigning over the only
+			 * pointer to it loses everything already gathered. */
+			nv = realloc(v, (size_t)cap * sizeof(*v));
+			if (!nv) {
+				free(v);
 				closedir(d);
 				return -1;
 			}
+			v = nv;
 		}
 		v[n++] = it;
 	}

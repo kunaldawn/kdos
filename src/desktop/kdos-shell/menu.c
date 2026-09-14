@@ -389,6 +389,7 @@ static int confirmed(const char *question)
 	if (pid < 0)
 		return 0;
 	if (pid == 0) {
+		kb_child_reset_signals();
 		execlp("kdos-prompt", "kdos-prompt", "--message", question,
 		       "--yes", "Yes", "--no", "No", (char *)NULL);
 		_exit(254);
@@ -437,6 +438,7 @@ static void launch(const struct item *it)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
@@ -886,6 +888,7 @@ static void spawn_argv(const char *const *argv)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
@@ -1673,7 +1676,8 @@ int menu_main(int argc, char **argv)
 			goto done;
 		}
 		default:
-			if (ev.key >= 0x20 && ev.key < 0x7f)
+			if (ev.key >= 0x20 && ev.key < 0x7f &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)))
 				typeahead(&v, ev.key);
 			break;
 		}
@@ -1710,6 +1714,7 @@ void sh_spawn_menu(int which, int x, int y)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execlp("kdos-menu", "kdos-menu", names[which], "--at",
 			       xs, ys, (char *)NULL);
 			_exit(127);

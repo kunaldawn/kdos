@@ -645,7 +645,20 @@ int main(int argc, char **argv)
 			break;
 		}
 
-		if (!kvt_term_sync_hold(T.t)) {
+		/*
+		 * A FRAME THE BACKEND WOULD ONLY STASH IS NOT DRAWN.
+		 *
+		 * The loop turns as fast as the child writes, and a child that
+		 * saturates the pty never lets the poll below block — so
+		 * without this the whole grid is re-rendered thousands of
+		 * times a second to commit the few dozen the display shows,
+		 * and the core that goes into the frames nobody sees is the
+		 * core the child wanted. The throttle opens on the frame
+		 * callback, which wakes this loop, so the next turn draws and
+		 * commits. On the console backend it is never closed and this
+		 * costs one comparison.
+		 */
+		if (!kvt_term_sync_hold(T.t) && !kwl_frame_throttled()) {
 			draw();
 			/* The paste guard's dialog, over the grid. This is the
 			 * only modal this program raises, and without it the
@@ -665,7 +678,12 @@ int main(int argc, char **argv)
 			n++;
 		}
 		p[n].fd = kvt_term_fd(T.t);
-		p[n].events = POLLIN;
+		/* POLLOUT WHILE THE CHILD HAS NOT TAKEN EVERYTHING: a full pty
+		 * accepts no more until it drains, and a child that is not
+		 * writing gives the loop no other reason to wake, so a paste
+		 * larger than the pty buffer would stall until it spoke. */
+		p[n].events = POLLIN |
+			      (kvt_term_pending_out(T.t) ? POLLOUT : 0);
 		p[n].revents = 0;
 		n++;
 

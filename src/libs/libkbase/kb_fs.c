@@ -36,18 +36,20 @@ char *kb_read_all(const char *path, size_t *len)
 	/* st_size is a HINT, not the length. Every file under /proc reports 0 —
 	 * reading to st_size returns an empty string for /proc/mounts and
 	 * /proc/self/mountinfo, which reads as "nothing is mounted". So the
-	 * size only sizes the first allocation; the loop runs to real EOF. */
-	size_t cap = st.st_size > 0 ? (size_t)st.st_size : 4096;
+	 * size only sizes the first allocation; the loop runs to real EOF.
+	 *
+	 * One byte OVER st_size, so a file of exactly that length leaves the
+	 * buffer short of full and the next read returns 0 without a growth.
+	 * Sized to st_size exactly, every regular-file read doubles once and
+	 * copies the whole file for nothing — three times the file's size in
+	 * anonymous memory on a pack that runs to hundreds of megabytes. */
+	size_t cap = st.st_size > 0 ? (size_t)st.st_size + 1 : 4096;
 	char *buf = kb_calloc(1, cap + 1);
 	size_t got = 0;
 	for (;;) {
 		if (got == cap) {
-			size_t ncap = cap * 2;
-			char *nb = kb_calloc(1, ncap + 1);
-			memcpy(nb, buf, got);
-			free(buf);
-			buf = nb;
-			cap = ncap;
+			cap *= 2;
+			buf = kb_realloc(buf, cap + 1);
 		}
 		ssize_t r = read(fd, buf + got, cap - got);
 		if (r < 0) {
@@ -231,16 +233,12 @@ void kb_buf_add(KbBuf *b, const void *s, size_t n)
 		size_t cap = b->cap ? b->cap : 4096;
 		while (cap < b->n + n + 1)
 			cap *= 2;
-		char *np = kb_calloc(1, cap);
-		/* memcpy's second argument is declared never-null, so copying
-		 * zero bytes from a NULL b->p — true on a KbBuf's first ever
-		 * growth, straight out of a {0} initializer — is undefined
-		 * behaviour even though every real implementation tolerates
-		 * it. UBSan catches it on the very first kb_buf_add call. */
-		if (b->n)
-			memcpy(np, b->p, b->n);
-		free(b->p);
-		b->p = np;
+		/* Extended, not copied: realloc usually grows in place, and
+		 * nothing here depends on the tail being zero — the terminator
+		 * below is written explicitly on every append. Accumulating a
+		 * megabyte through calloc-and-copy zeroes and copies several
+		 * megabytes that are then overwritten. */
+		b->p = kb_realloc(b->p, cap);
 		b->cap = cap;
 	}
 	memcpy(b->p + b->n, s, n);

@@ -241,6 +241,7 @@ static int pane_open(const char *title, const char *const argv[])
 		 * anything else and a Ctrl-C in whatever started this popup
 		 * cannot reach it. */
 		setsid();
+		kb_child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}
@@ -758,8 +759,19 @@ int status_main(int argc, char **argv)
 		fprintf(stderr, "kdos-status: no compositor or no layer-shell\n");
 		return 1;
 	}
+	/*
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
+	 * before it. A console surface has no pixel size of its own —
+	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * picture a pixel or two across, which is a blank cell by a longer
+	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
+	 * display rescales to its own font. sh_pic_backend() must come after
+	 * kdisp_init: the console backend clears its client state when it
+	 * connects, so a callback registered before that point is erased.
+	 */
+	sh_pic_backend();
 	if (icons_on)
-		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* Registered once, INNERMOST LAST. One rung here; the walk runs from
 	 * the end, so registration order is the order Esc unwinds. */

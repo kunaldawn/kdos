@@ -615,6 +615,7 @@ static void spawn_detached(const char **argv)
 	if (p == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
@@ -1102,6 +1103,7 @@ int doc_main(int argc, char **argv)
 				if (n)
 					query[n - 1] = '\0';
 			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 				   n + 1 < sizeof(query)) {
 				query[n] = (char)ev.key;
 				query[n + 1] = '\0';

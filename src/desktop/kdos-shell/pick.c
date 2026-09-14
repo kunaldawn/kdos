@@ -1541,6 +1541,7 @@ int pick_main(int argc, char **argv)
 				if (n)
 					edit_buf[n - 1] = '\0';
 			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+				   !(ev.mods & KT_MOD_CTRL) &&
 				   n + 1 < sizeof(edit_buf)) {
 				edit_buf[n] = (char)ev.key;
 				edit_buf[n + 1] = '\0';
@@ -1550,7 +1551,8 @@ int pick_main(int argc, char **argv)
 
 		if (ev.key == KT_K_UP) {
 			sel--;
-		} else if (ev.key == 0x10) {		/* Ctrl+P */
+		} else if ((ev.mods & KT_MOD_CTRL) &&
+			   (ev.key == 'p' || ev.key == 'P')) {	/* Ctrl+P */
 			/* READ AT THE OPEN, not once at start: a directory
 			 * added to the places file while this dialog is up is
 			 * on the list the next time it is asked for. */
@@ -1577,13 +1579,15 @@ int pick_main(int argc, char **argv)
 			sel = 0;
 		} else if (ev.key == KT_K_END) {
 			sel = nrows - 1;
-		} else if (ev.key == 8) {
-			/* Ctrl+H: xkb folds the modifier into the control code,
-			 * so this is the character, not a chord to decode.
-			 * BACKSPACE is 127 and is the save name's, not this. */
+		} else if ((ev.mods & KT_MOD_CTRL) &&
+			   (ev.key == 'h' || ev.key == 'H')) {
+			/* Ctrl+H: the letter plus the modifier, which is what
+			 * every backend delivers. BACKSPACE is its own key and
+			 * is the save name's, not this. */
 			show_hidden = !show_hidden;
 			reload_keep_marks();
-		} else if (ev.key == KT_K_F7 || ev.key == 14) {
+		} else if (ev.key == KT_K_F7 || ((ev.mods & KT_MOD_CTRL) &&
+			   (ev.key == 'n' || ev.key == 'N'))) {
 			/* Ctrl+N / F7: Create Folder, in save mode — the one
 			 * mode where the directory being missing is the
 			 * reason the dialog is open. */
@@ -1592,12 +1596,14 @@ int pick_main(int argc, char **argv)
 				edit_buf[0] = '\0';
 				note[0] = '\0';
 			}
-		} else if (ev.key == 12) {
+		} else if ((ev.mods & KT_MOD_CTRL) &&
+			   (ev.key == 'l' || ev.key == 'L')) {
 			/* Ctrl+L: type the path instead of walking it. */
 			edit_mode = ED_PATH;
 			snprintf(edit_buf, sizeof(edit_buf), "%s", cwd);
 			note[0] = '\0';
-		} else if (ev.key == 6) {
+		} else if ((ev.mods & KT_MOD_CTRL) &&
+			   (ev.key == 'f' || ev.key == 'F')) {
 			/* Ctrl+F: the portal's filter, or everything. */
 			if (npatterns) {
 				filter_off = !filter_off;
@@ -1621,6 +1627,7 @@ int pick_main(int argc, char **argv)
 				if (n)
 					save_name[n - 1] = '\0';
 			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+				   !(ev.mods & KT_MOD_CTRL) &&
 				   n + 1 < sizeof(save_name)) {
 				save_name[n] = (char)ev.key;
 				save_name[n + 1] = '\0';
@@ -1629,7 +1636,8 @@ int pick_main(int argc, char **argv)
 			 * that" is no longer about this file. */
 			overwrite_ok = false;
 			note[0] = '\0';
-		} else if (ev.key >= 0x20 && ev.key < 0x7f) {
+		} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+			   !(ev.mods & KT_MOD_CTRL)) {
 			/*
 			 * Type-ahead. A directory can hold four thousand
 			 * entries and this is the dialog every boxed

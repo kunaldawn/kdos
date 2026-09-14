@@ -293,6 +293,7 @@ int calc_main(int argc, char **argv)
 			 * keyboard and a control byte in one is a mistake, not
 			 * a character. */
 			if (ev.key >= 0x20 && ev.key < 0x7f &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 			    strlen(input) + 1 < sizeof(input)) {
 				memmove(input + caret + 1, input + caret,
 					strlen(input) - (size_t)caret + 1);

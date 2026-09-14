@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "kcon.h"
@@ -101,8 +102,40 @@ struct KconSurface {
 	int dirty;
 	int have_prev;
 
+	/*
+	 * THE CARET TRAVELS WITH THE FRAME IT BELONGS TO. Sent the moment the
+	 * session moves it, it arrives before the cells it sits on and the
+	 * display parks its cursor on the old picture for a frame — and where
+	 * frames are being skipped, for as many frames as are skipped.
+	 */
+	int cur_x, cur_y, cur_dirty, cur_seen;
+
+	/*
+	 * THE FRAME CONTRACT, both directions. A surface that sent cells or a
+	 * picture since the last composed frame is owed a KCON_OP_FRAME when
+	 * the next one is done — a picture counts because an animation
+	 * changes pixels and no cells, and a leg answered only for cells
+	 * would leave it paced by the stall timeout alone. A view that took a
+	 * frame owes one back, and `frame_at` is
+	 * when it was sent, so an answer that never comes is given up on
+	 * after KCON_FRAME_STALL_MS rather than waited for. See
+	 * kcon_view_ready().
+	 */
+	int committed;
+	int frame_owed;
+	unsigned long long frame_at;
+
 	int gone;
 };
+
+static unsigned long long now_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned long long)ts.tv_sec * 1000 +
+	       (unsigned long long)ts.tv_nsec / 1000000;
+}
 
 /*
  * A LISTENER, AND THE KIND OF CLIENT IT ADMITS. Which socket a peer reached is
@@ -122,6 +155,18 @@ struct KconServer {
 	KconListen l[KCON_MAX_LISTEN];
 	int nl;
 	unsigned next_slot;
+	/*
+	 * WHICH SESSION SLOTS ARE TAKEN, one bit each.
+	 *
+	 * The counter alone wrapped onto slots still in use: nothing ever gave
+	 * one back, so a session that opened and closed windows for long
+	 * enough handed a new surface a number another surface was already
+	 * drawing with, and one program's picture appeared inside another's
+	 * window. The counter stays as the starting point of the search, so
+	 * slots are still handed out in rotation rather than reused the
+	 * instant they are freed.
+	 */
+	unsigned char slot_used[(KCON_MAX_SPRITE_MAP + 7) / 8];
 	KconSurface *s[KCON_MAX_CLIENTS];
 	int n;
 	KconServerHooks hooks;
@@ -162,10 +207,19 @@ static int resize(KconSurface *f, int cols, int rows)
 	return 0;
 }
 
+static int slot_take(KconServer *s);
+static void slot_give(KconServer *s, int n);
+
 static void surface_free(KconSurface *f)
 {
 	if (!f)
 		return;
+	/* Every session slot this surface was given goes back, or the
+	 * numbering eventually wraps onto one somebody is still drawing. */
+	if (f->server)
+		for (int i = 0; i < KCON_MAX_SPRITE_MAP; i++)
+			if (f->slotmap[i] >= 0)
+				slot_give(f->server, f->slotmap[i]);
 	kcon_conn_free(f->conn);
 	free(f->cells);
 	free(f);
@@ -188,6 +242,43 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 	if (!f->hello && m->op != KCON_OP_HELLO) {
 		f->gone = 1;
 		return;
+	}
+
+	/*
+	 * A VIEW MAY SAY ONLY WHAT A DISPLAY HAS TO SAY, whatever rights it
+	 * asked for: its hello, the input it carries, the frame it painted,
+	 * what it was pasted, what it can show, and that it is leaving.
+	 *
+	 * The view socket is the one that may be FORWARDED, so the far end of
+	 * it is not this machine and may not be this person. The header's
+	 * promise is that a view is trusted with nothing, and that promise
+	 * held for keys, pointer and touch and for the shell verbs — but every
+	 * other client verb was reached by whoever was on the other end of an
+	 * ssh link: offering a clipboard, asking to READ one, starting a drag,
+	 * registering pictures in the session's own slot table. An observer,
+	 * which exists precisely to be shown a desktop without being given it,
+	 * could do all four.
+	 *
+	 * Stated as what is allowed rather than what is refused: a verb added
+	 * later is then refused until somebody decides it belongs, which is
+	 * the safe direction for a list whose whole job is to be complete.
+	 */
+	if (f->kind == KCON_KIND_VIEW) {
+		switch (m->op) {
+		case KCON_OP_HELLO:
+		case KCON_OP_DETACH:
+		case KCON_OP_FRAME:
+		case KCON_OP_KEY:
+		case KCON_OP_PTR:
+		case KCON_OP_TOUCH:
+		case KCON_OP_PASTE:
+		case KCON_OP_VIEW_SIZE:
+		case KCON_OP_VIEW_FONTS:
+		case KCON_OP_VIEW_OUTPUTS:
+			break;
+		default:
+			return;
+		}
 	}
 
 	switch (m->op) {
@@ -337,7 +428,13 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		break;
 
 	case KCON_OP_PASTE: {
-		const char *text = kcon_get_str(&r);
+		/*
+		 * AS A BLOB, NOT A STRING: the string reader's scratch holds a
+		 * kilobyte, and a paste is whatever a person had on the
+		 * clipboard. The copy is what terminates it.
+		 */
+		uint32_t n = kcon_get_u32(&r);
+		const char *p = kcon_get_blob(&r, n);
 
 		/*
 		 * ONLY FROM A DISPLAY, and only text. A surface with a paste
@@ -345,10 +442,18 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 * person touching a key, which is the one thing a client on
 		 * this socket must never be able to do.
 		 */
-		if (r.err || f->kind != KCON_KIND_VIEW || !*text)
+		if (r.err || !p || !n || f->kind != KCON_KIND_VIEW)
 			return;
-		if (s->hooks.paste)
+		if (s->hooks.paste) {
+			char *text = malloc((size_t)n + 1);
+
+			if (!text)
+				return;
+			memcpy(text, p, n);
+			text[n] = '\0';
 			s->hooks.paste(f, text, s->user);
+			free(text);
+		}
 		break;
 	}
 
@@ -673,6 +778,18 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 
 			if (n < 0)
 				break;
+			/*
+			 * THE BOUNDARY IS OWED FOR THE MESSAGE, NOT FOR THE
+			 * CELLS THAT SURVIVED THE CLIP. The client arms its
+			 * frame wait on the send; a commit whose every run
+			 * falls outside the surface — which is what a resize
+			 * in flight looks like — would otherwise be answered
+			 * by nothing, and the client would pay the whole
+			 * KCON_FRAME_STALL_MS before drawing again. `dirty`
+			 * stays where it is: it means cells moved, and none
+			 * did.
+			 */
+			f->committed = 1;
 			if ((int)y >= f->rows)
 				continue;
 			for (int i = 0; i < n; i++) {
@@ -686,6 +803,54 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		}
 		break;
 	}
+	case KCON_OP_COLOR: {
+		/*
+		 * THE LITERALS A SURFACE'S CELLS NAMED, patched over the
+		 * commit they follow: the slot run has already landed, so this
+		 * writes only the high attribute bits and the three colours,
+		 * and clips exactly as the commit did. Without it a terminal
+		 * on the console shows every colour outside the sixteen
+		 * reduced to eight slots while the same program in a session
+		 * window does not.
+		 */
+		if (f->kind == KCON_KIND_VIEW)
+			return;
+		while (r.pos < r.len && !r.err) {
+			uint16_t x, y;
+			KtuiCell run[4096];
+			int n = kcon_get_color_run(&r, &x, &y, run, 4096);
+
+			if (n < 0)
+				break;
+			/* Owed for the message, as the commit is: see the
+			 * KCON_OP_COMMIT case. */
+			f->committed = 1;
+			if ((int)y >= f->rows)
+				continue;
+			for (int i = 0; i < n; i++) {
+				int cx = (int)x + i;
+
+				if (cx >= f->cols)
+					break;
+
+				KtuiCell *c = &f->cells[(int)y * f->cols + cx];
+
+				c->attr = (uint16_t)((c->attr & 0xffu) |
+						     (run[i].attr & ~0xffu));
+				c->fgc = run[i].fgc;
+				c->bgc = run[i].bgc;
+				c->ulc = run[i].ulc;
+			}
+			f->dirty = 1;
+		}
+		break;
+	}
+	case KCON_OP_FRAME:
+		/* A view has painted the frame it was sent. From anything
+		 * else it means nothing and is dropped. */
+		if (f->kind == KCON_KIND_VIEW)
+			f->frame_owed = 0;
+		break;
 	case KCON_OP_KEY:
 		/* Only a view sends input. A surface doing so is talking the
 		 * wrong direction and is ignored rather than trusted.
@@ -793,6 +958,19 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		int ph = (int)kcon_get_u16(&r);
 		const uint32_t *argb = NULL;
 
+		/*
+		 * A PICTURE OWES ITS SENDER A BOUNDARY, exactly as a commit
+		 * does, and it is owed before the message is judged: the
+		 * client arms its frame wait on the send and not on
+		 * acceptance, so a sprite dropped below for a bad size or an
+		 * empty slot pool must still be answered. An animation
+		 * changes pixels and no cells, so a picture-only frame that
+		 * went unanswered here would wait out KCON_FRAME_STALL_MS on
+		 * every tick, and any text the surface committed within it
+		 * would wait behind the same stall.
+		 */
+		f->committed = 1;
+
 		if (r.err || cslot >= KCON_MAX_SPRITE_MAP || cw < 1 ||
 		    ch < 1 || cw > 16 || ch > 16)
 			break;
@@ -809,15 +987,34 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		}
 
 		/* Assign a session slot the first time this surface names one.
-		 * Sequential from the server's counter, so it is unique across
-		 * every client rather than only within one. */
+		 * Taken from the server's own free map, so it is unique across
+		 * every client rather than only within one — and given back
+		 * when the surface goes, so the numbering cannot wrap onto a
+		 * slot somebody is still drawing with. */
 		if (f->slotmap[cslot] < 0)
-			f->slotmap[cslot] = (int)(s->next_slot++ %
-						  KCON_MAX_SPRITE_MAP);
+			f->slotmap[cslot] = slot_take(s);
+		if (f->slotmap[cslot] < 0)
+			break;		/* none left: the fallback mark */
 
 		if (s->hooks.sprite)
 			s->hooks.sprite(f, f->slotmap[cslot], cw, ch,
 					fallback, argb, pw, ph, s->user);
+		break;
+	}
+	case KCON_OP_SPRITE_DROP: {
+		/*
+		 * A PICTURE THE CLIENT HAS FINISHED WITH. The slot goes back
+		 * to the session's rotation; without this nothing was ever
+		 * given back and the counter wrapped onto slots in use.
+		 */
+		int cslot = (int)kcon_get_u16(&r);
+
+		if (r.err || cslot < 0 || cslot >= KCON_MAX_SPRITE_MAP)
+			break;
+		if (f->slotmap[cslot] >= 0) {
+			slot_give(s, f->slotmap[cslot]);
+			f->slotmap[cslot] = -1;
+		}
 		break;
 	}
 	case KCON_OP_CLOSE:
@@ -1128,7 +1325,11 @@ int kcon_server_pump(KconServer *s)
 
 	for (int li = 0; li < s->nl; li++) {
 		for (;;) {
-			int fd = accept(s->l[li].fd, NULL, NULL);
+			/* Close-on-exec from birth: the session forks guests,
+			 * and a client socket inherited by one is a peer that
+			 * never hangs up. */
+			int fd = accept4(s->l[li].fd, NULL, NULL,
+					 SOCK_CLOEXEC | SOCK_NONBLOCK);
 
 			if (fd < 0)
 				break;
@@ -1225,8 +1426,12 @@ int kcon_server_pump(KconServer *s)
 			continue;
 		}
 
-		if (f->dirty)
+		/* Counted and cleared: the answer is what changed since the
+		 * last pump, or a surface that ever drew counts for ever. */
+		if (f->dirty) {
 			changed++;
+			f->dirty = 0;
+		}
 		i++;
 	}
 
@@ -1354,11 +1559,40 @@ int kcon_surface_map_slot(const KconSurface *f, int client_slot)
  * number a surface is already using, and a view keys its cache on nothing else
  * — so one window's frame would appear inside another's cell.
  */
+/* The lowest free slot at or after the rotation point, or -1 when every one is
+ * taken — the caller then draws the fallback mark, which is what a picture
+ * that could not be sent has always looked like. */
+static int slot_take(KconServer *s)
+{
+	for (unsigned i = 0; i < KCON_MAX_SPRITE_MAP; i++) {
+		unsigned n = (s->next_slot + i) % KCON_MAX_SPRITE_MAP;
+
+		if (!(s->slot_used[n / 8] & (1u << (n % 8)))) {
+			s->slot_used[n / 8] |= (unsigned char)(1u << (n % 8));
+			s->next_slot = n + 1;
+			return (int)n;
+		}
+	}
+	return -1;
+}
+
+static void slot_give(KconServer *s, int n)
+{
+	if (n >= 0 && n < KCON_MAX_SPRITE_MAP)
+		s->slot_used[n / 8] &= (unsigned char)~(1u << (n % 8));
+}
+
 int kcon_server_alloc_slot(KconServer *s)
 {
 	if (!s)
 		return -1;
-	return (int)(s->next_slot++ % KCON_MAX_SPRITE_MAP);
+	return slot_take(s);
+}
+
+void kcon_server_free_slot(KconServer *s, int slot)
+{
+	if (s)
+		slot_give(s, slot);
 }
 
 /*
@@ -1403,9 +1637,21 @@ int kcon_view_sprite(KconSurface *v, int slot, int w, int h,
 	kcon_put_u16(&b, (uint16_t)(npx ? ph : 0));
 	if (npx)
 		kcon_put_bytes(&b, argb, npx * 4);
-	kcon_send(v->conn, KCON_OP_SPRITE, &b);
+
+	/*
+	 * WHAT THE SEND DID, NOT WHAT IT WAS ASKED TO DO. A picture has no
+	 * previous copy to diff against, so a caller that took an unsent
+	 * block for a sent one would clear its dirty bit and never offer the
+	 * tile again — the cell shows the fallback mark for the life of the
+	 * window with nothing in any log. A block whose pixels pass
+	 * KCON_MAX_PAYLOAD fails here exactly as a full queue does, so the
+	 * side that CHOOSES the pixel size is the side that must keep a tile
+	 * inside the cap.
+	 */
+	int rc = kcon_send(v->conn, KCON_OP_SPRITE, &b);
+
 	kcon_buf_free(&b);
-	return 1;
+	return rc == 0;
 }
 
 size_t kcon_view_pending(const KconSurface *v)
@@ -1578,8 +1824,19 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 		return;
 
 	/*
-	 * A FRAME IS SKIPPED WHOLE WHERE THE DISPLAY IS BEHIND, and its copy
-	 * of the previous frame is left exactly as it was.
+	 * A READER IS NOT A DISPLAY. An accessibility listener is a view kind
+	 * so that it is counted, gated and detached like one, but it draws
+	 * nothing and reads only KCON_OP_ANNOUNCE. Handing it the frame would
+	 * push a full-screen animation's whole diff down a second socket to
+	 * be discarded, and would allocate it a copy of the grid to diff
+	 * against that nothing ever looks at.
+	 */
+	if (v->a11y)
+		return;
+
+	/*
+	 * A FRAME IS SKIPPED WHOLE WHERE THE DISPLAY IS NOT READY FOR ONE,
+	 * and its copy of the previous frame is left exactly as it was.
 	 *
 	 * That is what makes skipping safe: the diff below is taken against
 	 * that copy, so everything this frame would have carried is still
@@ -1588,8 +1845,17 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 	 * pointless — queueing them instead is how a full-screen animation in
 	 * a terminal fills KCON_MAX_QUEUE and the session drops the only
 	 * display, and with it the only source of input it has.
+	 *
+	 * Not ready covers the view that still owes the frame it was last
+	 * sent, and that is what makes the KCON_OP_FRAME contract pace EVERY
+	 * attached display rather than the quickest one: a session composes
+	 * as soon as any view answers, so a second display sent a frame on
+	 * each of those composites would have its answer reset before it
+	 * could give one and its queue would grow until whole frames were
+	 * lost. kcon_view_ready()'s stall clause keeps a display that never
+	 * answers from being starved instead.
 	 */
-	if (kcon_conn_pending(v->conn) > KCON_VIEW_HIGH)
+	if (!kcon_view_ready(v))
 		return;
 
 	/*
@@ -1629,14 +1895,47 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 	if (!v->have_prev)
 		full = 1;
 
-	KconBuf b = { 0 };
+	/*
+	 * ONE MESSAGE FOR THE CELLS AND ONE FOR THE COLOURS PER CHUNK,
+	 * however many runs the frame has. A run was a message and a message
+	 * is a socket write, so an animation whose every row changed cost a
+	 * syscall per row per frame at this hop and again at the display. A
+	 * run here is appended, and the buffers go out once the grid has been
+	 * walked — or sooner, when the next run would take one past
+	 * KCON_CHUNK_BYTES.
+	 *
+	 * THE CHUNK IS WHAT LETS A FRAME BE LARGER THAN A MESSAGE. A grid may
+	 * be up to 4096x4096 and a whole frame of one is tens of megabytes,
+	 * far past the KCON_MAX_PAYLOAD a length field is checked against; an
+	 * unchunked frame would simply fail to encode, silently, at every
+	 * size past about 131k cells.
+	 *
+	 * BOTH BUFFERS GO OUT TOGETHER AND CELLS GO FIRST. A colour record
+	 * patches a cell the commit already placed, so a COLOR message that
+	 * overtook the COMMIT carrying its cells would be undone by it.
+	 *
+	 * The previous-frame copy is updated run by run, not by copying the
+	 * whole grid afterwards: the runs are exactly the cells that differ.
+	 * A run is recorded only once it is IN a buffer, and the copy is
+	 * disowned outright if any send fails, because a copy claiming cells
+	 * the display never got is a screen that stays wrong until something
+	 * else happens to overwrite it.
+	 */
+	KconBuf b = { 0 }, cb = { 0 };
+	int want_color = (v->caps & KCON_VIEW_COLOR) != 0;
+	int any = 0;
 
 	for (int y = 0; y < h; y++) {
+		const KtuiCell *row = cells + (size_t)y * w;
+		KtuiCell *prow = v->cells + (size_t)y * w;
 		int x = 0;
 
+		/* A row that did not change is one memcmp, not w of them. */
+		if (!full && !memcmp(row, prow, sizeof(KtuiCell) * (size_t)w))
+			continue;
+
 		while (x < w) {
-			if (!full && !memcmp(&cells[y * w + x],
-					     &v->cells[y * w + x],
+			if (!full && !memcmp(&row[x], &prow[x],
 					     sizeof(KtuiCell))) {
 				x++;
 				continue;
@@ -1644,47 +1943,125 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 
 			int start = x;
 
-			while (x < w &&
-			       (full || memcmp(&cells[y * w + x],
-					       &v->cells[y * w + x],
-					       sizeof(KtuiCell))))
+			while (x < w && (full || memcmp(&row[x], &prow[x],
+							sizeof(KtuiCell))))
 				x++;
 
-			kcon_buf_reset(&b);
-			kcon_put_run(&b, (uint16_t)start, (uint16_t)y,
-				     &cells[y * w + start],
-				     (uint16_t)(x - start));
-			if (kcon_send(v->conn, KCON_OP_COMMIT, &b) != 0) {
-				kcon_buf_free(&b);
-				return;
-			}
+			uint16_t n = (uint16_t)(x - start);
 
+			if (b.len + 6 + (size_t)n * KCON_CELL_BYTES >
+				KCON_CHUNK_BYTES ||
+			    cb.len + 6 + (size_t)n * KCON_COLOR_BYTES >
+				KCON_CHUNK_BYTES) {
+				if (b.len && kcon_send(v->conn,
+						       KCON_OP_COMMIT,
+						       &b) != 0)
+					goto fail;
+				kcon_buf_reset(&b);
+				if (cb.len && kcon_send(v->conn,
+							KCON_OP_COLOR,
+							&cb) != 0)
+					goto fail;
+				kcon_buf_reset(&cb);
+			}
+			if (kcon_put_run(&b, (uint16_t)start, (uint16_t)y,
+					 &row[start], n) != 0)
+				goto fail;
 			/*
 			 * AND THE LITERALS, ONLY IF THIS VIEW ASKED AND ONLY
-			 * IF THIS RUN HAS ANY. It follows the run it belongs
-			 * to and repeats its position, so the view patches
-			 * cells it has already drawn; a view that declined has
-			 * the slots and is a frame behind nothing.
+			 * IF THIS RUN HAS ANY. It repeats the position of the
+			 * run it patches, so a view that declined has the
+			 * slots and is a frame behind nothing.
 			 */
-			if ((v->caps & KCON_VIEW_COLOR) &&
-			    kcon_run_has_color(&cells[y * w + start],
-					       (uint16_t)(x - start))) {
-				kcon_buf_reset(&b);
-				kcon_put_color_run(&b, (uint16_t)start,
-						   (uint16_t)y,
-						   &cells[y * w + start],
-						   (uint16_t)(x - start));
-				if (kcon_send(v->conn, KCON_OP_COLOR, &b) != 0) {
-					kcon_buf_free(&b);
-					return;
-				}
-			}
+			if (want_color && kcon_run_has_color(&row[start], n) &&
+			    kcon_put_color_run(&cb, (uint16_t)start,
+					       (uint16_t)y, &row[start],
+					       n) != 0)
+				goto fail;
+			memcpy(&prow[start], &row[start],
+			       sizeof(KtuiCell) * (size_t)n);
+			any = 1;
 		}
 	}
 
-	memcpy(v->cells, cells, sizeof(KtuiCell) * (size_t)w * h);
+	if (b.len && kcon_send(v->conn, KCON_OP_COMMIT, &b) != 0)
+		goto fail;
+	if (cb.len && kcon_send(v->conn, KCON_OP_COLOR, &cb) != 0)
+		goto fail;
 	v->have_prev = 1;
+
+	/* Behind the cells, so the caret is never on a picture that has not
+	 * arrived, and inside the same skip rule. */
+	if (v->cur_dirty) {
+		KconBuf pb = { 0 };
+
+		kcon_put_i32(&pb, v->cur_x);
+		kcon_put_i32(&pb, v->cur_y);
+		if (kcon_send(v->conn, KCON_OP_CURSOR, &pb) == 0)
+			v->cur_dirty = 0;
+		kcon_buf_free(&pb);
+	}
+
+	/*
+	 * THE BOUNDARY, ONLY BEHIND A FRAME THAT SENT SOMETHING: a view opens
+	 * a frame on the first run it receives and presents on this, so a
+	 * frame that changed nothing has nothing to close — and sending one
+	 * anyway would have an idle desktop and its display exchanging eight
+	 * bytes each way at the session's tick rate.
+	 */
+	if (any && (v->caps & KCON_VIEW_FRAME)) {
+		if (kcon_send(v->conn, KCON_OP_FRAME, NULL) != 0)
+			goto fail;
+		v->frame_owed = 1;
+		v->frame_at = now_ms();
+	}
+	goto out;
+fail:
+	/*
+	 * A FRAME THAT DID NOT GO WHOLE LEAVES NOTHING CLAIMED. The next
+	 * frame is then encoded full, against a copy the display is known not
+	 * to hold, rather than as a diff against cells it never received —
+	 * which would leave every cell of the failed frame wrong on screen
+	 * until something else happened to change it.
+	 */
+	v->have_prev = 0;
+out:
 	kcon_buf_free(&b);
+	kcon_buf_free(&cb);
+}
+
+int kcon_view_ready(const KconSurface *v)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !v->conn ||
+	    kcon_conn_dead(v->conn))
+		return 0;
+	/* A READER IS NEVER A REASON TO COMPOSE. kcon_view_send refuses it a
+	 * frame, so a session that counted it as ready would walk and diff a
+	 * whole grid at the loop's floor rate for a frame nobody is sent —
+	 * and the pacing this answer exists to give would be gone whenever a
+	 * screen reader is attached. */
+	if (v->a11y)
+		return 0;
+	if (kcon_conn_pending(v->conn) > KCON_VIEW_HIGH)
+		return 0;
+	if (!(v->caps & KCON_VIEW_FRAME) || !v->frame_owed)
+		return 1;
+	/* Still painting, unless it has been too long to believe that. */
+	return now_ms() - v->frame_at >= KCON_FRAME_STALL_MS;
+}
+
+void kcon_server_frame_done(KconServer *s)
+{
+	if (!s)
+		return;
+	for (int i = 0; i < s->n; i++) {
+		KconSurface *f = s->s[i];
+
+		if (f->kind == KCON_KIND_VIEW || !f->committed)
+			continue;
+		f->committed = 0;
+		kcon_send(f->conn, KCON_OP_FRAME, NULL);
+	}
 }
 
 /*
@@ -1797,12 +2174,13 @@ void kcon_view_cursor(KconSurface *v, int x, int y)
 	if (!v || v->kind != KCON_KIND_VIEW)
 		return;
 
-	KconBuf b = { 0 };
-
-	kcon_put_i32(&b, x);
-	kcon_put_i32(&b, y);
-	kcon_send(v->conn, KCON_OP_CURSOR, &b);
-	kcon_buf_free(&b);
+	/* A caret that did not move is not news. */
+	if (v->cur_seen && v->cur_x == x && v->cur_y == y)
+		return;
+	v->cur_seen = 1;
+	v->cur_x = x;
+	v->cur_y = y;
+	v->cur_dirty = 1;
 }
 
 unsigned kcon_surface_kind(const KconSurface *f)

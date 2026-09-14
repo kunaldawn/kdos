@@ -113,8 +113,10 @@ dropped, so it loses every comparison without the search needing a case for it.
 Working out what is visible needs the scene graph, so it stays with the caller.
 
 The moving edge sweeps a quadrilateral, and the test is against that
-quadrilateral's extent at the obstacle's own offset. It interpolates with
-doubles: plain arithmetic that calls nothing, so the no-maths-library rule holds.
+quadrilateral's extent at the obstacle's own offset, interpolated between the
+two ends of the move. That test lives in the compositor, next to the
+scene-graph walk that supplies the obstacle; `libkwm` holds the arithmetic both
+desktops share and not the sweep.
 
 ## Occupancy is an input
 

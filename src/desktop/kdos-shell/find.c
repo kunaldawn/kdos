@@ -549,6 +549,7 @@ int find_main(int argc, char **argv)
 			if (ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))
 				break;
 			if (ev.key >= 0x20 && ev.key < 0x7f &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 			    qlen < (int)sizeof(query) - 1) {
 				query[qlen++] = (char)ev.key;
 				query[qlen] = '\0';

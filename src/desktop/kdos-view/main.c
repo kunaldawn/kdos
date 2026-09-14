@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <signal.h>
@@ -880,6 +881,56 @@ static void redraw_slot(unsigned slot)
  */
 static int said_bye;
 
+/*
+ * THE FRAME CONTRACT, this end. A frame is open from its first cell run
+ * until the session's KCON_OP_FRAME closes it, and it is presented then and
+ * not at a message boundary inside it — a colour run patches the run before
+ * it, and a view that painted between the two showed a frame in eight slots
+ * and the next in the right colours. `frame_done` is the boundary having
+ * landed, and the answer the session is owed goes back after the paint, so
+ * the session's next frame is paced by this display and not by a timer.
+ *
+ * A frame left open longer than this is presented anyway: a session under
+ * load must not hold the screen, and what it sends later closes the next.
+ */
+#define VIEW_FRAME_HOLD_MS 50
+static int frame_open, frame_done;
+static unsigned long long frame_open_at;
+
+static unsigned long long mono_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned long long)ts.tv_sec * 1000 +
+	       (unsigned long long)ts.tv_nsec / 1000000;
+}
+
+static void frame_ack(void)
+{
+	if (!conn || kcon_conn_dead(conn) || !(cap_flags & KCON_VIEW_FRAME))
+		return;
+	kcon_send(conn, KCON_OP_FRAME, NULL);
+}
+
+/*
+ * Present what has arrived, unless a frame is still open and young: then the
+ * rest of it is a read away and the paint waits for the boundary. The answer
+ * goes back after the paint, which is the whole point of answering at all.
+ */
+static void view_present(void)
+{
+	if (frame_open && !frame_done &&
+	    mono_ms() - frame_open_at < VIEW_FRAME_HOLD_MS)
+		return;
+	ktui_draw_flush();
+	frame_open = 0;
+	if (frame_done) {
+		frame_done = 0;
+		frame_ack();
+	}
+}
+
 static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 {
 	int got = 0;
@@ -887,6 +938,14 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 	if (op == KCON_OP_BYE) {
 		said_bye = 1;
 		return -1;
+	}
+	if (op == KCON_OP_FRAME) {
+		frame_done = 1;
+		return 1;
+	}
+	if ((op == KCON_OP_COMMIT || op == KCON_OP_COLOR) && !frame_open) {
+		frame_open = 1;
+		frame_open_at = mono_ms();
 	}
 
 	/*
@@ -1554,6 +1613,19 @@ int main(int argc, char **argv)
 			"--cast\n");
 		return 2;
 	}
+	/*
+	 * ONE MODE. The blocks below are independent `if`s that each load a
+	 * font and set cap_cell_w/cap_flags, so a pair given together has the
+	 * second silently overwrite the first's setup and the first's output
+	 * never arrives.
+	 */
+	if ((shot != NULL) + (cast != 0) + (kms != 0) > 1) {
+		fprintf(stderr, "kdos-view: %s%s%sare more than one mode; "
+				"pick one\n",
+			shot ? "--shot " : "", cast ? "--cast " : "",
+			kms ? "--kms " : "");
+		return 2;
+	}
 
 	/*
 	 * A SHOT HAS PIXELS AND A DUMP DOES NOT, which is the whole difference
@@ -1649,7 +1721,7 @@ int main(int argc, char **argv)
 			/* THIS VIEW RASTERISES ITS OWN GLYPHS, so it is the
 			 * one kind that can be asked to change their size. */
 			cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_FONT |
-				    KCON_VIEW_COLOR;
+				    KCON_VIEW_COLOR | KCON_VIEW_FRAME;
 			cols = ktui_w;
 			rows = ktui_h;
 			own_screen = 1;
@@ -1719,6 +1791,8 @@ int main(int argc, char **argv)
 		 */
 		if (ktui_caps & KT_CAP_TRUECOLOR)
 			cap_flags |= KCON_VIEW_COLOR;
+		/* A display, so its paints pace the session's frames. */
+		cap_flags |= KCON_VIEW_FRAME;
 #ifdef KDOS_VIEW_TTYPIX
 		/*
 		 * ASKED AFTER ktui_draw_init AND BEFORE THE FIRST FRAME.
@@ -2001,7 +2075,7 @@ int main(int argc, char **argv)
 #ifdef KDOS_VIEW_KMS
 	if (kms) {
 		for (;;) {
-			struct pollfd p[4];
+			struct pollfd p[5];
 			int n = 0;
 
 			if (g_retint) {
@@ -2024,6 +2098,18 @@ int main(int argc, char **argv)
 			/* A SCREEN PLUGGED IN IS A DESCRIPTOR LIKE ANY OTHER.
 			 * -1 where there is no monitor, which poll ignores. */
 			p[n].fd = kkms_hotplug_fd();
+			p[n].events = POLLIN;
+			p[n].revents = 0;
+			n++;
+			/*
+			 * AND THE VBLANK. A page flip completes on the DRM
+			 * descriptor, so waiting on it is waiting for the
+			 * screen: the next frame is painted when the last one
+			 * is actually being shown, which is what makes an
+			 * animation's rate the monitor's refresh rate rather
+			 * than this loop's timeout.
+			 */
+			p[n].fd = kkms_drm_fd();
 			p[n].events = POLLIN;
 			p[n].revents = 0;
 			n++;
@@ -2068,10 +2154,15 @@ int main(int argc, char **argv)
 			if (take_frame(0) < 0)
 				break;
 
-			/* Nothing is drawn while switched away: the devices
-			 * are gone and the framebuffer is somebody else's. */
-			if (kkms_active())
-				ktui_draw_flush();
+			/*
+			 * Nothing is drawn while switched away: the devices
+			 * are gone and the framebuffer is somebody else's.
+			 * Nothing is drawn while a flip is outstanding
+			 * either — the buffer to paint is the one the screen
+			 * is about to show.
+			 */
+			if (kkms_active() && kkms_ready())
+				view_present();
 
 			KtuiEvent ev;
 
@@ -2136,7 +2227,7 @@ int main(int argc, char **argv)
 
 		if (take_frame(0) < 0)
 			break;		/* the session went away */
-		ktui_draw_flush();
+		view_present();
 
 		KtuiEvent ev;
 

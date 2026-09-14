@@ -53,7 +53,7 @@
  * expensive one — an fd/ readdir per process — and is off unless a GPU column
  * is on screen.
  */
-#define KPR_WANT_CMDLINE 0x01
+#define KPR_WANT_CMDLINE 0x01	/* the command line AND the exe path       */
 #define KPR_WANT_IO      0x02
 #define KPR_WANT_BOX     0x04
 #define KPR_WANT_GPU     0x08
@@ -68,10 +68,39 @@ void kpr_root_set(const char *proc, const char *sys);
 const char *kpr_proc(void);
 const char *kpr_sys(void);
 
+/*
+ * The generation of the root pair, bumped by every kpr_root_set().
+ *
+ * Anything this library caches as immutable — a CPU topology, a disk's model
+ * string — must hold the generation it was filled at and refill when it
+ * differs, or a fixture switch reports the host's hardware under a recorded
+ * machine.
+ */
+unsigned kpr_root_gen(void);
+
 /* Read a whole file under the proc or sys root. malloc'd, or NULL. /proc files
  * report st_size 0, so these read to real EOF rather than trusting stat. */
 char *kpr_slurp_proc(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 char *kpr_slurp_sys(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+/*
+ * The same read into a caller buffer, with no allocation: an open, a read
+ * loop and a close.
+ *
+ * These are the form to use for the small files read by the thousand — a
+ * process's `stat`, a sysfs attribute — where the fstat, the heap block and
+ * the EOF-confirming second read of a whole-file slurp are three syscalls and
+ * an allocation to carry two bytes, inside a draw loop.
+ *
+ * Return the byte count, NUL-terminating at that offset, or -1 when the file
+ * cannot be opened. A return of cap - 1 means the buffer filled and the
+ * content MAY be cut; a caller reading a file its buffer does not bound must
+ * treat that as truncation and fall back to kpr_slurp_*, because a silently
+ * cut value is a wrong reading rather than a missing one.
+ */
+int kpr_read_into_proc(char *buf, size_t cap, const char *fmt, ...)
+	__attribute__((format(printf, 3, 4)));
+int kpr_read_into_sys(char *buf, size_t cap, const char *fmt, ...)
+	__attribute__((format(printf, 3, 4)));
 /*
  * Seconds since boot, from /proc/uptime's first field, through the root above.
  *
@@ -109,6 +138,23 @@ typedef struct {
 	double crit;		/* the chip's own critical point, or -1    */
 } KprSensor;
 
+/*
+ * The chip indices present under a sysfs class, in NUMERIC order — e.g.
+ * ("class/hwmon", "hwmon") or ("class/thermal", "thermal_zone"). Fills up to
+ * cap and returns how many.
+ *
+ * THERE IS NO BOUND WORTH PROBING UP TO. The hwmon index comes from one
+ * system-wide ida, so a chip's number says nothing about how many chips
+ * exist: an index loop is a wasted open per absent number and a chip that
+ * cannot be seen above the bound. Every reader of these trees goes through
+ * here, or two surfaces report different sensors for the same die.
+ *
+ * Numeric, not the readdir sort, which puts hwmon10 before hwmon2 — the order
+ * decides both a sensor list's rows and which chip a preference walk meets
+ * first. Never cached: a chip appears when its module loads.
+ */
+int kpr_sysfs_indices(const char *cls, const char *prefix, int *out, int cap);
+
 int kpr_sensors_list(KprSensor **out);
 void kpr_sensors_free(KprSensor *v);
 /* The hottest temperature, or -1 when nothing answered — which a renderer
@@ -121,20 +167,33 @@ typedef struct {
 } KprCpuTimes;
 
 typedef struct {
-	int ncpu;			/* logical                         */
+	/*
+	 * The HIGHEST CPU NUMBER PLUS ONE, which is the length of the three
+	 * arrays below and not the count of CPUs that are running. /proc/stat
+	 * lists only online CPUs and keeps their real numbers, so a machine
+	 * with cpu1 offline has ncpu 4 and three online slots. A caller
+	 * drawing a per-core chart iterates ncpu and skips !online, so the
+	 * gap shows as a gap; one printing "how many CPUs" counts the online
+	 * flags.
+	 */
+	int ncpu;
 	int ncore, npkg;		/* from topology/, never counted   */
 	char model[96], arch[16];
 	int virt;			/* KPR_VIRT_*                      */
 	long khz_max;
 	KprCpuTimes total;
-	KprCpuTimes *per;		/* [ncpu]                          */
+	KprCpuTimes *per;		/* [ncpu], zeroed where offline    */
 	long *khz;			/* [ncpu], -1 where unreadable     */
+	unsigned char *online;		/* [ncpu], 0 where the CPU is down */
 	double temp_c;			/* -1 when no sensor answered      */
 	char governor[24];		/* empty when cpufreq has none     */
 } KprCpu;
 
 int  kpr_cpu_read(KprCpu *c);
 void kpr_cpu_free(KprCpu *c);
+/* How many CPUs are running. `ncpu` is the array length, not a count, so
+ * anything dividing by "the number of CPUs" divides by this. Never zero. */
+int  kpr_cpu_online(const KprCpu *c);
 /* Busy fraction 0..1 over the DELTA. Computed from the two samples and never
  * from an absolute, which would report the average since boot. */
 double kpr_cpu_busy(const KprCpuTimes *prev, const KprCpuTimes *cur);
@@ -167,7 +226,13 @@ typedef struct {
 	char state;			/* R S D Z T ...                   */
 	char comm[24];
 	char *cmdline;			/* space-joined, may be NULL        */
-	char *exe;			/* readlink of exe, may be NULL    */
+	/*
+	 * The executable path, filled with KPR_WANT_CMDLINE and NULL without
+	 * it. NULL too where the link cannot be followed: another user's
+	 * process, a kernel thread, or a fixture, which records files and not
+	 * symlinks. Never an empty string — a consumer tests the pointer.
+	 */
+	char *exe;
 	unsigned long long utime, stime, starttime;
 	unsigned long long rss, swap;
 	unsigned long long rd_bytes, wr_bytes;	/* KPR_UNREADABLE if denied */
@@ -180,6 +245,14 @@ typedef struct {
 	int n;
 	unsigned long long wall_ms;	/* monotonic, for the rate divisor */
 	int nkthread;			/* how many were kernel threads    */
+	/*
+	 * `p` in pid order, for kpr_find_pid. The array itself is in readdir
+	 * order, which is what a consumer sorting by its own column expects
+	 * to start from; a lookup over it is a linear scan, and the parent
+	 * walk asks for one per process per hop. Owned by the sample and
+	 * released with it; never read directly.
+	 */
+	int *by_pid;
 } KprSample;
 
 int  kpr_sample_take(KprSample *s, unsigned flags);
@@ -208,9 +281,18 @@ unsigned long long kpr_mono_ms(void);
 int kpr_box_of(const KprSample *s, int pid, char *out, size_t cap);
 /* The same answer with no sample in hand, reading /proc as it climbs. */
 int kpr_box_of_pid(int pid, char *out, size_t cap);
-/* conmon's own argv -> the box name, for a caller that has already climbed to
- * it. Both spellings, `-n` and `--name`. Returns 1 and fills out, or 0. */
+/*
+ * conmon's own argv -> the box name, for a caller that has already climbed to
+ * it. Both spellings, `-n` and `--name`. Returns 1 and fills out, or 0.
+ *
+ * THE ANSWER IS REMEMBERED FOR THE LENGTH OF ONE SAMPLE. One supervisor
+ * answers for every process in its box, so a walk over a process list arrives
+ * at the same pid dozens of times. kpr_sample_take() empties the memo at the
+ * start of its pass; a caller that climbs /proc on its own and wants the same
+ * guarantee calls kpr_conmon_forget() before it starts.
+ */
 int kpr_conmon_name(int pid, char *out, size_t cap);
+void kpr_conmon_forget(void);
 /* Is this comm podman's per-container supervisor — the boundary of a box? The
  * name is a fact about podman, not about any one consumer. */
 int kpr_is_box_boundary(const char *comm);
@@ -327,9 +409,11 @@ void   kpr_hist_push(KprHist *h, double v);
 double kpr_hist_at(const KprHist *h, int i);	/* 0 = oldest kept         */
 double kpr_hist_peak(const KprHist *h);
 /* Grow the moment a sample does not fit, because a clipped chart is a lie;
- * shrink only under a THIRD of the scale, because one threshold in each
- * direction oscillates between two rungs for a series sitting on the boundary.
- * A pinned ring stays 0..100 and never rescales. */
+ * shrink one rung, and only to a rung the peak still fits inside — under a
+ * QUARTER of the scale on this ladder. A peak between the rung below and the
+ * current one holds, because the only step down is beneath it and a clipped
+ * chart is the thing being avoided. A pinned ring stays 0..100 and never
+ * rescales. */
 double kpr_hist_scale(KprHist *h);
 /* The same step as a scalar, for a caller whose axis is shared by more than one
  * ring — a mirrored pair is two series on one axis. */

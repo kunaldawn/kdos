@@ -728,7 +728,8 @@ static void on_event(const KtuiEvent *ev)
 		 * password that can never be typed at all.
 		 */
 		if (ev->key >= 0x20 && ev->key != 0x7f &&
-		    ev->key < KT_K_SPECIAL) {
+		    ev->key < KT_K_SPECIAL &&
+		    !(ev->mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 			char u[4];
 			int k = ktui_utf8_encode((uint32_t)ev->key, u);
 			size_t have = strlen(pass);

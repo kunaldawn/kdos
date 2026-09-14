@@ -242,9 +242,10 @@ typedef struct {
 } KxdgVerb;
 
 int kxdg_verb_count(void);
-/* Fills `out` for row i. `present` is resolved on every call rather than
- * cached: a surface is long-lived, and a table resolved once would hide a verb
- * for the life of the desktop after its program was installed. */
+/* Fills `out` for row i. `present` is re-resolved at most once a second per
+ * verb: a surface is long-lived, so a program installed under it turns its
+ * verb on within a second, while a menu redrawing its rows several times a
+ * frame does not walk $PATH once per row. */
 int kxdg_verb_at(int i, KxdgVerb *out);
 /* Whether this verb belongs on this thing right now. */
 int kxdg_verb_shown(const KxdgVerb *v, const char *path, int isdir);
@@ -252,8 +253,10 @@ int kxdg_verb_shown(const KxdgVerb *v, const char *path, int isdir);
 /* The argument vector for a verb, never a command line. `term` is the
  * terminal a wrapped verb runs in — `kb_terminal()` — and `store` holds what
  * the vector points at, because an argv of pointers into a stack frame is a
- * vector that outlives what it names. Returns the count, or 0 when the verb
- * cannot be built. */
+ * vector that outlives what it names. `max` must be at least 6: the widest
+ * verb is five arguments and the vector is NULL-terminated, and a smaller
+ * vector is refused rather than overrun. Returns the count, or 0 when the
+ * verb cannot be built. */
 int kxdg_verb_argv(int id, const char *path, int isdir, const char *term,
 		   char *store, size_t cap, const char **argv, int max);
 

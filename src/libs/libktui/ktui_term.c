@@ -160,6 +160,17 @@ int ktui_term_hungup(void)
 	return hungup;
 }
 
+/*
+ * THE OTHER HALF OF THE SAME FACT, from the reading side. A terminal that has
+ * gone is usually discovered by a write that fails, but a program that only
+ * reads — a viewer waiting on a key — discovers it as an end of file on stdin
+ * and has the same one question to ask afterwards.
+ */
+void ktui_term_mark_hungup(void)
+{
+	hungup = 1;
+}
+
 int ktui_term_flush_dropped(void)
 {
 	int d = dropped;

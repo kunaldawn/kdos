@@ -65,24 +65,47 @@ static void free_bits(pixman_image_t *img, void *data)
 	free(data);
 }
 
-static pixman_image_t *from_rgba(const uint8_t *rgba, int w, int h)
+/*
+ * BYTE-ORDER RGBA BECOMES PREMULTIPLIED a8r8g8b8, IN PLACE.
+ *
+ * pixman's a8r8g8b8 is native-endian words with alpha in the high byte; the
+ * decoders all hand back byte-order RGBA. Built a word at a time rather than
+ * memcpy'd, so this is correct on either endianness instead of correct on the
+ * one it was written on.
+ *
+ * AND PREMULTIPLIED, which is what that format MEANS: the colour channels are
+ * already scaled by the alpha. A decoder's RGBA is straight alpha, and handing
+ * the channels over unscaled does not fail — it composites too bright, so a
+ * soft icon edge comes out with a pale halo and a half-transparent picture is
+ * washed out over whatever is behind it. The rounding is the usual
+ * `(c*a + 127) / 255` so that 255 stays 255 and 0 stays 0.
+ *
+ * IN PLACE BECAUSE THE PEAK IS THE BUDGET. A decoder buffer plus a second
+ * full-size word buffer is twice the declared maximum live at once, on a path
+ * whose whole point is to bound what a picture may cost; both are the same
+ * four bytes a pixel, and the word is written after its own bytes are read.
+ */
+static void premul_words(uint32_t *px, long npix)
 {
-	uint32_t *px = malloc((size_t)w * (size_t)h * 4);
+	for (long i = 0; i < npix; i++) {
+		const uint8_t *p = (const uint8_t *)&px[i];
+		uint32_t r = p[0], g = p[1], b = p[2], a = p[3];
 
-	if (!px)
-		return NULL;
-
-	/* pixman's a8r8g8b8 is native-endian words with alpha in the high
-	 * byte; the decoders all hand back byte-order RGBA. Built a word at a
-	 * time rather than memcpy'd, so this is correct on either endianness
-	 * instead of correct on the one it was written on. */
-	for (long i = 0; i < (long)w * h; i++) {
-		const uint8_t *p = rgba + i * 4;
-
-		px[i] = ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) |
-			((uint32_t)p[1] << 8) | (uint32_t)p[2];
+		if (a == 255) {
+			px[i] = 0xff000000u | (r << 16) | (g << 8) | b;
+			continue;
+		}
+		px[i] = (a << 24) | (((r * a + 127) / 255) << 16) |
+			(((g * a + 127) / 255) << 8) | ((b * a + 127) / 255);
 	}
+}
 
+/* Takes ownership of `px`, which must hold w*h premultiplied words, and frees
+ * it on failure. pixman does not own the buffer it is handed; the destroy
+ * function is what frees it when the last reference goes, and without it
+ * every picture on the screen is a leak the size of the picture. */
+static pixman_image_t *wrap_words(uint32_t *px, int w, int h)
+{
 	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h,
 						       px, w * 4);
 
@@ -90,12 +113,21 @@ static pixman_image_t *from_rgba(const uint8_t *rgba, int w, int h)
 		free(px);
 		return NULL;
 	}
-
-	/* pixman does not own the buffer it was handed; this is what frees it
-	 * when the last reference goes. Without it every picture on the screen
-	 * is a leak the size of the picture. */
 	pixman_image_set_destroy_function(img, free_bits, px);
 	return img;
+}
+
+/* For a decoder whose buffer is its own and cannot be written through — the
+ * GIF canvas, which libnsgif keeps across frames. */
+static pixman_image_t *from_rgba(const uint8_t *rgba, int w, int h)
+{
+	uint32_t *px = malloc((size_t)w * (size_t)h * 4);
+
+	if (!px)
+		return NULL;
+	memcpy(px, rgba, (size_t)w * (size_t)h * 4);
+	premul_words(px, (long)w * h);
+	return wrap_words(px, w, h);
 }
 
 /* ── sniffing ───────────────────────────────────────────────────────────── */
@@ -220,6 +252,10 @@ static pixman_image_t *decode_png(const uint8_t *p, size_t n,
 	    (long)png_get_image_height(png, info) != h)
 		png_error(png, "header disagrees");
 
+	/* STRAIGHT INTO THE BUFFER THE PICTURE KEEPS. libpng writes RGBA
+	 * bytes, which premul_words then turns into words where they lie — a
+	 * second full-size buffer would double the peak against a budget that
+	 * is stated in decoded bytes. */
 	rgba = malloc((size_t)w * (size_t)h * 4);
 	rows = malloc((size_t)h * sizeof(*rows));
 	if (!rgba || !rows)
@@ -233,15 +269,12 @@ static pixman_image_t *decode_png(const uint8_t *p, size_t n,
 	 * parsing for no picture. */
 	png_destroy_read_struct(&png, &info, NULL);
 
-	uint8_t *out = rgba;
+	uint32_t *out = (uint32_t *)rgba;
 	png_bytep *rowv = rows;
 
 	free(rowv);
-
-	pixman_image_t *img = from_rgba(out, (int)w, (int)h);
-
-	free(out);
-	return img;
+	premul_words(out, w * h);
+	return wrap_words(out, (int)w, (int)h);
 }
 #endif
 
@@ -365,31 +398,27 @@ static pixman_image_t *decode_jpeg(const uint8_t *p, size_t n,
 		return NULL;
 	}
 
+	/* THE WORD IS BUILT AT THE SCANLINE, not in a second pass over a
+	 * second buffer. A JPEG is opaque, so there is no premultiply to do
+	 * and no reason for the picture to exist twice. */
+	uint32_t *out = (uint32_t *)rgba;
+
 	while ((long)ci.output_scanline < h) {
 		long y = ci.output_scanline;
 		uint8_t *rowp = row;
 
 		jpeg_read_scanlines(&ci, &rowp, 1);
-		for (long x = 0; x < w; x++) {
-			uint8_t *o = rgba + (y * w + x) * 4;
-
-			o[0] = rowp[x * 3];
-			o[1] = rowp[x * 3 + 1];
-			o[2] = rowp[x * 3 + 2];
-			o[3] = 0xff;
-		}
+		for (long x = 0; x < w; x++)
+			out[y * w + x] = 0xff000000u |
+					 ((uint32_t)rowp[x * 3] << 16) |
+					 ((uint32_t)rowp[x * 3 + 1] << 8) |
+					 (uint32_t)rowp[x * 3 + 2];
 	}
 	jpeg_finish_decompress(&ci);
 	jpeg_destroy_decompress(&ci);
 
-	uint8_t *out = rgba;
-
 	free(row);
-
-	pixman_image_t *img = from_rgba(out, (int)w, (int)h);
-
-	free(out);
-	return img;
+	return wrap_words(out, (int)w, (int)h);
 }
 #endif
 
@@ -407,17 +436,21 @@ static pixman_image_t *decode_webp(const uint8_t *p, size_t n,
 	if (!WebPGetInfo(p, n, &w, &h) || !within(b, w, h))
 		return NULL;
 
-	uint8_t *rgba = WebPDecodeRGBA(p, n, &w, &h);
+	/* INTO A BUFFER OF OUR OWN, which then becomes the picture in place:
+	 * WebPDecodeRGBA would allocate a second one the same size and the
+	 * peak would be twice the budget. The size is already bounded above,
+	 * and a decode that disagrees with the container is refused. */
+	uint32_t *px = malloc((size_t)w * (size_t)h * 4);
 
-	if (!rgba)
+	if (!px)
 		return NULL;
-
-	/* Re-checked after the decode: WebPGetInfo reads the container's
-	 * dimensions and an animation's frames need not match them. */
-	pixman_image_t *img = within(b, w, h) ? from_rgba(rgba, w, h) : NULL;
-
-	WebPFree(rgba);
-	return img;
+	if (!WebPDecodeRGBAInto(p, n, (uint8_t *)px, (size_t)w * h * 4,
+				w * 4)) {
+		free(px);
+		return NULL;
+	}
+	premul_words(px, (long)w * h);
+	return wrap_words(px, w, h);
 }
 #endif
 
@@ -449,16 +482,26 @@ struct gifbm {
 	unsigned char *px;
 };
 
+/*
+ * THE BUDGET REACHES THIS CALLBACK, because libnsgif allocates through it
+ * before anything else can refuse. gif_initialise walks every frame header
+ * and grows the canvas to cover a frame that extends past the logical screen,
+ * calling this with the enlarged size: a 100x100 screen whose first image
+ * descriptor says 65535x65535 asks for 17 GB here, and the size test after
+ * gif_initialise returns is far too late. Set for the duration of one decode
+ * and cleared after, so no state outlives the call.
+ */
+static const KimgBudget *gif_budget;
+
 static void *gif_bm_create(int width, int height)
 {
 	struct gifbm *b;
 
 	if (width <= 0 || height <= 0)
 		return NULL;
-	/* The multiply is checked here as well as against the budget: this
-	 * callback is reached with the frame's own size, which need not be the
-	 * canvas's. */
-	if ((unsigned long)width > (unsigned long)-1 / 4 / (unsigned long)height)
+	/* within() covers the overflow as well as the budget: this callback is
+	 * reached with the frame's own size, which need not be the canvas's. */
+	if (!within(gif_budget, (long)width, (long)height))
 		return NULL;
 	b = calloc(1, sizeof(*b));
 	if (!b)
@@ -526,14 +569,17 @@ static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
 	if (!within(b, w, h))
 		return 0;
 
+	gif_budget = b;
 	gif_create(&gif, &vt);
 	/* libnsgif takes the buffer as non-const and does not write to it. */
 	if (gif_initialise(&gif, n, (unsigned char *)p) != GIF_OK) {
 		gif_finalise(&gif);
+		gif_budget = NULL;
 		return 0;
 	}
 	if (!within(b, (long)gif.width, (long)gif.height)) {
 		gif_finalise(&gif);
+		gif_budget = NULL;
 		return 0;
 	}
 
@@ -566,6 +612,7 @@ static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
 		got++;
 	}
 	gif_finalise(&gif);
+	gif_budget = NULL;
 	return got;
 }
 #endif
@@ -586,6 +633,7 @@ static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
 static void sixel_bound(const uint8_t *p, size_t n, long *w, long *h)
 {
 	long run = 0, maxrun = 0, bands = 1;
+	long ras_w = 0, ras_h = 0;
 	int in_raster = 0;
 	size_t start = 0;
 
@@ -602,9 +650,43 @@ static void sixel_bound(const uint8_t *p, size_t n, long *w, long *h)
 	for (size_t i = start; i < n; i++) {
 		uint8_t c = p[i];
 
-		/* A raster attribute or a colour introducer runs to the next
-		 * non-numeric; its digits are not pixels. */
-		if (c == '"' || c == '#') {
+		/*
+		 * A raster attribute or a colour introducer runs to the next
+		 * non-numeric, and its digits are not pixels — but a RASTER
+		 * attribute's third and fourth parameters ARE a size, and
+		 * libsixel acts on them before a single data character is
+		 * read: it grows the image to the declared width and height
+		 * the moment it parses them. A bound taken from the data
+		 * characters alone therefore missed exactly the field an
+		 * attacker would use, and `"1;1;40000;40000` with no pixels
+		 * after it is a six-gigabyte allocation this was meant to
+		 * refuse.
+		 */
+		if (c == '"') {
+			long par[4] = { 0, 0, 0, 0 };
+			int np = 0;
+
+			i++;
+			while (i < n && np < 4) {
+				if (p[i] >= '0' && p[i] <= '9') {
+					if (par[np] < (1L << 20))
+						par[np] = par[np] * 10 +
+							  (p[i] - '0');
+				} else if (p[i] == ';') {
+					np++;
+				} else {
+					break;
+				}
+				i++;
+			}
+			i--;	/* the loop's own step takes the terminator */
+			if (par[2] > ras_w)
+				ras_w = par[2];
+			if (par[3] > ras_h)
+				ras_h = par[3];
+			continue;
+		}
+		if (c == '#') {
 			in_raster = 1;
 			continue;
 		}
@@ -646,8 +728,11 @@ static void sixel_bound(const uint8_t *p, size_t n, long *w, long *h)
 	if (run > maxrun)
 		maxrun = run;
 
-	*w = maxrun;
-	*h = bands * 6;
+	/* The larger of what the data can draw and what the raster attribute
+	 * declared: libsixel sizes the image to whichever is bigger, so a
+	 * bound that took only one of them bounds nothing. */
+	*w = maxrun > ras_w ? maxrun : ras_w;
+	*h = bands * 6 > ras_h ? bands * 6 : ras_h;
 }
 
 /*
@@ -655,10 +740,10 @@ static void sixel_bound(const uint8_t *p, size_t n, long *w, long *h)
  *
  * libkvt delimits `ESC P … ST` and hands over what was between them, because
  * finding the end of an escape sequence is a parser's job and not a decoder's.
- * libsixel wants the frame back — it will not decode a bare body — so it is
- * put back here rather than at the twelve call sites that would otherwise each
- * have to know. Bytes that already carry the introducer are passed through, so
- * a caller reading a file off disk needs no special case.
+ * libsixel wants the whole frame back — introducer, `q` and terminator — so
+ * it is put back here rather than at the twelve call sites that would
+ * otherwise each have to know. Bytes that already carry the introducer are
+ * passed through, so a caller reading a file off disk needs no special case.
  */
 static pixman_image_t *decode_sixel(const uint8_t *p, size_t n,
 				    const KimgBudget *b)
@@ -673,18 +758,38 @@ static pixman_image_t *decode_sixel(const uint8_t *p, size_t n,
 		return NULL;
 
 	if (n < 2 || p[0] != 0x1b || p[1] != 'P') {
-		/* ESC P + body + ESC \ */
-		framed = malloc(n + 5);
+		/*
+		 * THE `q` IS PART OF THE FRAME, and a body handed over without
+		 * one decodes as a blank one-pixel image with no error:
+		 * libsixel's parser swallows every byte that is not a digit,
+		 * `;`, `q` or ESC while it is still looking for the final, so
+		 * the whole picture goes past and the 1x1 buffer it
+		 * initialised is what comes back.
+		 *
+		 * A body that already carries its parameters and the `q` —
+		 * digits and semicolons, then `q` — keeps them; anything else
+		 * is data and gets a bare `q`.
+		 */
+		size_t k = 0;
+
+		while (k < n && ((p[k] >= '0' && p[k] <= '9') || p[k] == ';'))
+			k++;
+		int has_q = k < n && p[k] == 'q';
+		size_t extra = has_q ? 0 : 1;
+
+		framed = malloc(n + 5 + extra);
 		if (!framed)
 			return NULL;
 		framed[0] = 0x1b;
 		framed[1] = 'P';
-		memcpy(framed + 2, p, n);
-		framed[n + 2] = 0x1b;
-		framed[n + 3] = '\\';
-		framed[n + 4] = '\0';
+		if (!has_q)
+			framed[2] = 'q';
+		memcpy(framed + 2 + extra, p, n);
+		framed[n + 2 + extra] = 0x1b;
+		framed[n + 3 + extra] = '\\';
+		framed[n + 4 + extra] = '\0';
 		seq = framed;
-		seqlen = n + 4;
+		seqlen = n + 4 + extra;
 	}
 
 	unsigned char *pixels = NULL, *palette = NULL;
@@ -706,16 +811,19 @@ static pixman_image_t *decode_sixel(const uint8_t *p, size_t n,
 		return NULL;
 	}
 
-	uint8_t *rgba = malloc((size_t)pw * (size_t)ph * 4);
+	/* The palette is looked up straight into the word the picture keeps:
+	 * libsixel's index buffer and its palette are already live, and a
+	 * fourth full-size buffer on top of them is the peak this budget is
+	 * meant to bound. A sixel is opaque, so there is no premultiply. */
+	uint32_t *px = malloc((size_t)pw * (size_t)ph * 4);
 
-	if (!rgba) {
+	if (!px) {
 		free(pixels);
 		free(palette);
 		return NULL;
 	}
 	for (long i = 0; i < (long)pw * ph; i++) {
 		int ix = pixels[i];
-		uint8_t *o = rgba + i * 4;
 
 		/* AN INDEX FROM THE PAYLOAD IS AN INDEX FROM AN ATTACKER.
 		 * libsixel writes indices its own palette covers, and the one
@@ -723,18 +831,14 @@ static pixman_image_t *decode_sixel(const uint8_t *p, size_t n,
 		 * nothing to prevent. */
 		if (ix < 0 || ix >= ncolors)
 			ix = 0;
-		o[0] = palette[ix * 3];
-		o[1] = palette[ix * 3 + 1];
-		o[2] = palette[ix * 3 + 2];
-		o[3] = 0xff;
+		px[i] = 0xff000000u | ((uint32_t)palette[ix * 3] << 16) |
+			((uint32_t)palette[ix * 3 + 1] << 8) |
+			(uint32_t)palette[ix * 3 + 2];
 	}
 	free(pixels);
 	free(palette);
 
-	pixman_image_t *img = from_rgba(rgba, pw, ph);
-
-	free(rgba);
-	return img;
+	return wrap_words(px, pw, ph);
 }
 #endif
 

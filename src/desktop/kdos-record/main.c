@@ -45,6 +45,37 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
+
+/*
+ * A CHILD STARTS WITH THE SIGNALS A PROCESS STARTS WITH.
+ *
+ * An ignored disposition survives execve and a blocked mask survives fork, so
+ * a program launched from here inherits whatever this process arranged for
+ * itself — an ignored SIGPIPE means the shell it runs never ends a pipeline.
+ * Everything is reset rather than SIGPIPE by name: what a process ignores is
+ * its own business and grows.
+ *
+ * Its own copy rather than libkbase's, because this port links no libk* and
+ * its recipe says so.
+ */
+static void child_reset_signals(void)
+{
+	sigset_t empty;
+
+	sigemptyset(&empty);
+	sigprocmask(SIG_SETMASK, &empty, NULL);
+	for (int i = 1; i < NSIG; i++) {
+		struct sigaction sa;
+
+		if (i == SIGKILL || i == SIGSTOP)
+			continue;
+		if (sigaction(i, NULL, &sa) != 0)
+			continue;
+		if (!(sa.sa_flags & SA_SIGINFO) && sa.sa_handler == SIG_IGN)
+			signal(i, SIG_DFL);
+	}
+}
+
 /* basu on the target; libsystemd's sd-bus is the same API and is what a
  * host-side syntax check finds. */
 #if __has_include(<basu/sd-bus.h>)
@@ -218,6 +249,7 @@ static int is_element(const char *name)
 			dup2(null, STDOUT_FILENO);
 			dup2(null, STDERR_FILENO);
 		}
+		child_reset_signals();
 		execlp("gst-inspect-1.0", "gst-inspect-1.0", name,
 		       (char *)NULL);
 		_exit(127);
@@ -365,6 +397,7 @@ static pid_t start_gst(uint32_t node, const char *out)
 
 	p = fork();
 	if (p == 0) {
+		child_reset_signals();
 		execvp(av[0], (char *const *)av);
 		_exit(127);
 	}

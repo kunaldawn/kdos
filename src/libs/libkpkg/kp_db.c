@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "kpkg.h"
 
@@ -22,15 +23,17 @@
  * `/dev/null/<name>` cannot be a regular file. Checking that the directory
  * exists first would answer "yes, it is a character device" and quietly break
  * `kpkg install -f`, the build system's phase resolution and mini_build.
+ *
+ * A stat, never a read: the manifest is the whole `tar -tf` listing and runs
+ * to megabytes, the solver asks this once per dependency edge, and the answer
+ * is one bit.
  */
 int kp_installed(const KpConf *c, const char *name)
 {
 	char *db = kp_db_dir(c);
 	char *p = kb_path_join(db, name);
-	size_t n = 0;
-	char *data = kb_read_all(p, &n);
-	int yes = data != NULL;
-	free(data);
+	struct stat st;
+	int yes = stat(p, &st) == 0 && S_ISREG(st.st_mode);
 	free(p);
 	free(db);
 	return yes;

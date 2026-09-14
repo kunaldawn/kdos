@@ -1010,6 +1010,7 @@ static void open_href(const char *href)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execlp("kdos-appbox", "kdos-appbox", "open", href,
 			       (char *)NULL);
 			_exit(127);

@@ -50,6 +50,10 @@ int kvt_shl_pty_get_fd(struct kvt_shl_pty *pty);
 pid_t kvt_shl_pty_get_child(struct kvt_shl_pty *pty);
 
 int kvt_shl_pty_dispatch(struct kvt_shl_pty *pty);
+/* Bytes written to the child that the pty has not accepted. Poll the
+ * descriptor for POLLOUT while this is non-zero, or they move only when the
+ * child next writes something of its own. */
+size_t kvt_shl_pty_pending(struct kvt_shl_pty *pty);
 int kvt_shl_pty_write(struct kvt_shl_pty *pty, const char *u8, size_t len);
 int kvt_shl_pty_signal(struct kvt_shl_pty *pty, int sig);
 int kvt_shl_pty_resize(struct kvt_shl_pty *pty,

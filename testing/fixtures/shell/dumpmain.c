@@ -183,6 +183,13 @@ void kcell_set_slot_alpha(int slot, uint8_t a) { (void)slot; (void)a; }
  * golden is the CHARACTER grid, and a layout that only lines up once
  * the paint arrives is a layout that is broken. */
 void kch_px_popup(int body_slot) { (void)body_slot; }
+/* THE PLATE IS DORMANT IN A DUMP, and every surface that asks is told so: a
+ * plate is pixels a backdrop replays and there is no surface here to install
+ * one on. A row highlighted by the plate falls back to the cell highlight,
+ * which is what the same surface draws on a tty. */
+int kch_px_live(void) { return 0; }
+/* No surface, so nothing is waiting to be told its pixels moved. */
+void kwl_pixels_dirty(void) {}
 /* No backdrop in a dump, so the page is the slot it always was. */
 int kch_body_slot(void) { return KT_BG; }
 

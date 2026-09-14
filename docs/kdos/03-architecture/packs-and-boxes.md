@@ -17,7 +17,7 @@ piece of it without installing anything".
 |  icon.png                  |  the application's own mark, untinted
 +----------------------------+
 |  signature block           |  signature lines, or empty
-+----------------------------+  sig_off + sig_len
++----------------------------+  sig_off + sig_len = start of the footer
 |  footer (512 bytes)        |  magic, offsets, payload hash
 +----------------------------+  end of file
 ```
@@ -33,13 +33,27 @@ to know nothing about the format.
 ### Three rules the format keeps
 
 - **A pack that does not parse whole is absent, never partial.** A short footer, a wrong magic
-  number, a version from the future, an offset past the end of the file — each answers "there is
-  no pack here" rather than handing back half a description.
+  number, a version from the future, an offset past the end of the file, a section that starts
+  before the one ahead of it ends — each answers "there is no pack here" rather than handing back
+  half a description. Three of the spans are bounded by what the section can honestly be as well
+  as by the file: **metadata 1 MiB, icon 4 MiB, signature block 64 KiB**. All three are read whole
+  into memory by a root daemon before anything about the pack is authenticated, so "it fits in the
+  file" would be an attacker's budget rather than a bound. **The signature block ends exactly
+  where the footer begins.** Slack there is what makes a later `kdos-pack sign` silently do
+  nothing: it appends its line at `sig_off + sig_len` and writes a new footer straight after,
+  landing in the middle of the file while the old footer at the end — still naming the old
+  `sig_len` — is the one a reader seeks to.
 - **The payload hash is checked before the signature means anything.** The signature is over a
   small subject containing the pack's id and its hash, so verification never holds a
   several-hundred-megabyte file in memory — and that binds the signature to the bytes *only*
   because the bytes were hashed first. The two are separate outcomes, because a caller told "bad
   signature" when the truth is "bad hash" goes looking for a key problem that does not exist.
+- **The hash covers the footer too**, with `payload_sha256` and `sig_len` zeroed. The footer is
+  what says where the filesystem, the metadata and the icon are; over a hash that stopped at
+  `sig_off` those offsets could be re-pointed — `meta_off` into the payload, say — and the
+  signature still verified, because it is over bytes nobody moved. The two zeroed fields are the
+  two written after the hash is taken: the digest itself, and the length that grows each time a
+  further key signs an already-signed pack.
 - **Nothing in the library mounts, executes or writes outside the file it was given.** A root
   daemon links it, so every line is code running as root.
 

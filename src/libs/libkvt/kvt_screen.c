@@ -131,6 +131,18 @@ void screen_cell_init(struct kvt_screen *con, struct cell *cell)
 	cell->attr.link = 0;
 }
 
+/*
+ * A ROW OF THE VIEW, which is a scrollback line while the view is scrolled
+ * back and a screen line below that.
+ *
+ * THE WALK IS REMEMBERED. Reaching row y means stepping y links from the
+ * scroll position, and the callers ask per CELL — a link under the pointer is
+ * looked up for every cell of every frame — so an O(rows) walk per lookup is
+ * O(rows x cells) a frame. Consecutive rows are the overwhelmingly common
+ * pattern, so the last answer is kept and a request for the row after it is
+ * one step. The scroll position and the scrollback's link/unlink generation
+ * are part of the key: a scroll or any change to the history moves every row.
+ */
 struct line *screen_line_at(struct kvt_screen *con, unsigned int y)
 {
 	struct line *line;
@@ -142,9 +154,20 @@ struct line *screen_line_at(struct kvt_screen *con, unsigned int y)
 	if (con->sb.pos_num + y >= con->sb.count)
 		return con->lines[y - (con->sb.count - con->sb.pos_num)];
 
-	line = con->sb.pos;
-	while (y--)
-		line = kvt_shl_dlist_next(line, &con->sb.list, list);
+	if (con->at_line && con->at_pos == con->sb.pos &&
+	    con->at_gen == con->sb.gen && con->at_y <= y) {
+		line = con->at_line;
+		for (unsigned int k = con->at_y; k < y; k++)
+			line = kvt_shl_dlist_next(line, &con->sb.list, list);
+	} else {
+		line = con->sb.pos;
+		for (unsigned int k = 0; k < y; k++)
+			line = kvt_shl_dlist_next(line, &con->sb.list, list);
+	}
+	con->at_line = line;
+	con->at_y = y;
+	con->at_pos = con->sb.pos;
+	con->at_gen = con->sb.gen;
 	return line;
 }
 
@@ -432,6 +455,38 @@ static int line_resize(struct kvt_screen *con, struct line *line,
 	return 0;
 }
 
+/*
+ * The same two, for a line of the MAIN screen: the cells are initialised from
+ * the main screen's saved defaults rather than whatever the alternate screen
+ * put in force. Off the alternate screen the two are the same array and this
+ * costs a copy of one attribute struct.
+ */
+static int new_main_line(struct kvt_screen *con, struct line **out,
+			 unsigned int width)
+{
+	struct kvt_screen_attr save;
+	int ret;
+
+	memcpy(&save, &con->def_attr, sizeof(save));
+	memcpy(&con->def_attr, &con->def_attr_main, sizeof(con->def_attr));
+	ret = line_new(con, out, width);
+	memcpy(&con->def_attr, &save, sizeof(con->def_attr));
+	return ret;
+}
+
+static int resize_main_line(struct kvt_screen *con, struct line *line,
+			    unsigned int width)
+{
+	struct kvt_screen_attr save;
+	int ret;
+
+	memcpy(&save, &con->def_attr, sizeof(save));
+	memcpy(&con->def_attr, &con->def_attr_main, sizeof(con->def_attr));
+	ret = line_resize(con, line, width);
+	memcpy(&con->def_attr, &save, sizeof(con->def_attr));
+	return ret;
+}
+
 static void clear_selection_on_line(struct kvt_screen *con, struct line *line)
 {
 	if (!con->sel_active)
@@ -444,11 +499,75 @@ static void clear_selection_on_line(struct kvt_screen *con, struct line *line)
 		con->sel_end.line = NULL;
 }
 
+/*
+ * TURN A LINE INTO A BLANK SCREEN ROW.
+ *
+ * A BLANK ROW CARRIES NOTHING OF THE ROW IT REPLACES. The storage is reused —
+ * from the scrollback's evicted line, from the row being scrolled off, or
+ * fresh — but the OSC 133 prompt mark, the exit status, the scrollback id and
+ * any selection anchored on the line all describe text that is no longer
+ * there. Left behind, a recycled row reports itself as a prompt line, the next
+ * exit status lands on it instead of the real prompt, and a selection follows
+ * the blank down the screen.
+ *
+ * THE WHOLE LINE IS BLANKED, not the width of the screen. A resize only ever
+ * widens a line, so a line can still be as wide as the terminal used to be —
+ * and the text past the right edge is readable by a selection copy, which
+ * bounds itself by the line rather than by the screen.
+ */
+static void line_blank(struct kvt_screen *con, struct line *line)
+{
+	unsigned int j;
+
+	for (j = 0; j < line->size; ++j)
+		screen_cell_init(con, &line->cells[j]);
+	clear_selection_on_line(con, line);
+	line->sb_id = 0;
+	line->mark = 0;
+	line->status = -1;
+	line->age = con->age_cnt;
+}
+
 /* This links the given line into the scrollback-buffer */
-static void link_to_scrollback(struct kvt_screen *con, struct line *line)
+/*
+ * MAKE ROOM IN THE SCROLLBACK, and hand back the line that was evicted.
+ *
+ * Separate from the link below because the caller wants the evicted line as
+ * the blank row that replaces the one being scrolled off: the two have the
+ * same storage, so in the steady state — a full scrollback, which is where a
+ * program printing a long file spends all its time — a scrolled row touches
+ * the allocator not at all, where freeing one line and allocating an
+ * identical one is two mallocs and two frees per printed row.
+ *
+ * Nothing is linked here, so a caller that cannot find a replacement line has
+ * changed nothing and can still put the row back on the screen.
+ */
+static struct line *sb_evict(struct kvt_screen *con)
 {
 	struct line *tmp;
 
+	if (con->sb.max == 0 || con->sb.count < con->sb.max)
+		return NULL;
+
+	tmp = kvt_shl_dlist_first(&con->sb.list, struct line, list);
+	kvt_shl_dlist_unlink(&tmp->list);
+	++con->sb.gen;
+	--con->sb.count;
+
+	/* Only consider sb.max > 1, so there is always another line in sb. */
+	if (con->sb.pos == tmp) {
+		con->sb.pos = kvt_shl_dlist_first(&con->sb.list, struct line,
+						  list);
+		con->sb.pos_num = 0;
+	} else {
+		con->sb.pos_num--;
+	}
+	clear_selection_on_line(con, tmp);
+	return tmp;
+}
+
+static void link_to_scrollback(struct kvt_screen *con, struct line *line)
+{
 	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
@@ -458,27 +577,18 @@ static void link_to_scrollback(struct kvt_screen *con, struct line *line)
 		return;
 	}
 
-	/* Remove a line from the scrollback buffer if it reaches its maximum.
-	 * We must take care to correctly keep the current position as the new
-	 * line is linked in after we remove the top-most line here. */
+	/* Room was made by sb_evict() where there was a caller to use the
+	 * evicted line; make it here for one that had none. */
 	if (con->sb.count >= con->sb.max) {
-		tmp = kvt_shl_dlist_first(&con->sb.list, struct line, list);
-		kvt_shl_dlist_unlink(&tmp->list);
-		--con->sb.count;
+		struct line *tmp = sb_evict(con);
 
-		/* Only consider sb.max > 1, so there is always another line in sb. */
-		if (con->sb.pos == tmp) {
-			con->sb.pos = kvt_shl_dlist_first(&con->sb.list, struct line, list);
-			con->sb.pos_num = 0;
-		} else {
-			con->sb.pos_num--;
-		}
-		clear_selection_on_line(con, tmp);
-		line_free(tmp);
+		if (tmp)
+			line_free(tmp);
 	}
 
 	line->sb_id = ++con->sb.last_id;
 	kvt_shl_dlist_link_tail(&con->sb.list, &line->list);
+	++con->sb.gen;
 	++con->sb.count;
 	if (con->sb.pos == NULL)
 		con->sb.pos_num = con->sb.count;
@@ -505,6 +615,7 @@ static void remove_from_sb(struct kvt_screen *con, unsigned int num)
 			if (line_resize(con, tmp, con->size_x) < 0)
 				goto end_sbpos;
 		kvt_shl_dlist_unlink(&tmp->list);
+		++con->sb.gen;
 		--con->sb.count;
 
 		if (con->sb.pos == tmp) {
@@ -524,7 +635,7 @@ end_sbpos:
 
 static void screen_scroll_up(struct kvt_screen *con, unsigned int num)
 {
-	unsigned int i, j, max, pos;
+	unsigned int i, max, pos;
 	int ret;
 
 	if (!num)
@@ -550,17 +661,47 @@ static void screen_scroll_up(struct kvt_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i) {
 		pos = con->margin_top + i;
-		if (!(con->flags & KVT_SCREEN_ALTERNATE))
-			ret = line_new(con, &cache[i], con->size_x);
-		else
+		/*
+		 * A ROW GOES TO THE SCROLLBACK ONLY IF THERE IS A HISTORY TO
+		 * TAKE IT. The alternate screen keeps none, and a terminal
+		 * configured without one discards the row — in both cases the
+		 * row's own storage is exactly what the blank that replaces it
+		 * needs, where handing it to the allocator and asking for an
+		 * identical line back is two mallocs and two frees for every
+		 * row a program prints.
+		 */
+		if ((con->flags & KVT_SCREEN_ALTERNATE) || !con->sb.max) {
 			ret = -EAGAIN;
+		} else {
+			/*
+			 * THE LINE THE SCROLLBACK IS ABOUT TO DROP IS THE ONE
+			 * THAT REPLACES THIS ROW. Taken BEFORE anything is
+			 * linked, so a failure here leaves the screen exactly
+			 * as it was.
+			 */
+			struct line *reuse = sb_evict(con);
+
+			if (reuse && reuse->size >= con->size_x) {
+				cache[i] = reuse;
+				cache[i]->size = con->size_x;
+				ret = 0;
+			} else {
+				if (reuse)
+					line_free(reuse);
+				ret = line_new(con, &cache[i], con->size_x);
+			}
+		}
 
 		if (!ret) {
+			line_blank(con, cache[i]);
 			link_to_scrollback(con, con->lines[pos]);
 		} else {
+			/* No line to put in its place, so the row stays on
+			 * the screen and is blanked where it is — also the
+			 * only answer that cannot lose a row to a failed
+			 * allocation. */
 			cache[i] = con->lines[pos];
-			for (j = 0; j < con->size_x; ++j)
-				screen_cell_init(con, &cache[i]->cells[j]);
+			line_blank(con, cache[i]);
 		}
 	}
 
@@ -633,6 +774,31 @@ static void screen_write(struct kvt_screen *con, unsigned int x,
 		line->age = con->age_cnt;
 		memmove(&line->cells[x + len], &line->cells[x],
 			sizeof(struct cell) * (con->size_x - len - x));
+	}
+
+	/*
+	 * A WIDE GLYPH WHOSE HALVES ARE SPLIT IS REPAIRED FROM BOTH SIDES.
+	 *
+	 * Landing on the SECOND half of a double-width character leaves the
+	 * first still claiming to be two cells wide, and the renderer places a
+	 * continuation marker over the very cell just written — the new
+	 * character is in the screen and nothing draws it. Landing on the
+	 * FIRST half leaves an orphaned continuation after it, which draws as
+	 * a blank the cursor can sit inside.
+	 *
+	 * Both halves become spaces, which is what every terminal shows when
+	 * half a wide character is overwritten.
+	 */
+	if (x > 0 && line->cells[x - 1].width > 1) {
+		line->cells[x - 1].age = con->age_cnt;
+		line->cells[x - 1].ch = ' ';
+		line->cells[x - 1].width = 1;
+	}
+	if (x + len < con->size_x && line->cells[x + len].width == 0 &&
+	    line->cells[x + len].ch == 0) {
+		line->cells[x + len].age = con->age_cnt;
+		line->cells[x + len].ch = ' ';
+		line->cells[x + len].width = 1;
 	}
 
 	line->cells[x].age = con->age_cnt;
@@ -787,7 +953,6 @@ void kvt_screen_unref(struct kvt_screen *con)
 	free(con->alt_lines);
 	free(con->tab_ruler);
 	kvt_symbol_table_unref(con->sym_table);
-	free(con->cells);
 	free(con);
 }
 
@@ -880,9 +1045,18 @@ int kvt_screen_resize(struct kvt_screen *con, unsigned int x,
 		else
 			width = con->size_x;
 
+		/*
+		 * A NEW MAIN-SCREEN CELL TAKES THE MAIN SCREEN'S DEFAULTS.
+		 * While the alternate screen is up the default attributes in
+		 * force are the alternate's; a full-screen program that sets
+		 * its own background and is then resized would otherwise leave
+		 * the main screen's new rows in that background, which is what
+		 * the shell scrolls back into when the program exits.
+		 */
 		while (con->line_num < y) {
-			ret = line_new(con, &con->main_lines[con->line_num],
-				       width);
+			ret = new_main_line(con,
+					    &con->main_lines[con->line_num],
+					    width);
 			if (ret)
 				return ret;
 
@@ -907,7 +1081,7 @@ int kvt_screen_resize(struct kvt_screen *con, unsigned int x,
 		con->tab_ruler = tab_ruler;
 
 		for (i = 0; i < con->line_num; ++i) {
-			ret = line_resize(con, con->main_lines[i], x);
+			ret = resize_main_line(con, con->main_lines[i], x);
 			if (ret)
 				return ret;
 			ret = line_resize(con, con->alt_lines[i], x);
@@ -1011,7 +1185,17 @@ int kvt_screen_set_margins(struct kvt_screen *con,
 	return 0;
 }
 
-/* set maximum scrollback buffer size in number of lines*/
+/*
+ * SET THE SCROLLBACK LIMIT. Lowering it discards the oldest lines
+ * immediately and drags the scroll position down with them.
+ *
+ * EVERY LINE THAT LEAVES THE HEAD MOVES sb.pos_num, which is the index of
+ * sb.pos within the scrollback and is what screen_line_at() subtracts from
+ * sb.count to reach the screen. Dropping a line without it leaves pos_num
+ * above count and that subtraction wraps, so a row lookup indexes the screen
+ * from far outside it. The fixup mirrors sb_evict()'s exactly, because two
+ * spellings of one rule drift.
+ */
 KVT_SHL_EXPORT
 void kvt_screen_set_max_sb(struct kvt_screen *con,
 			       unsigned int max)
@@ -1033,15 +1217,26 @@ void kvt_screen_set_max_sb(struct kvt_screen *con,
 	while (con->sb.count > max) {
 		line = kvt_shl_dlist_first(&con->sb.list, struct line, list);
 		kvt_shl_dlist_unlink(&line->list);
+		++con->sb.gen;
 		--con->sb.count;
 
-		/* We treat fixed/unfixed position the same here because we
-		 * remove lines from the TOP of the scrollback buffer. */
-		if (con->sb.pos == line)
-			con->sb.pos = kvt_shl_dlist_first(&con->sb.list, struct line, list);
+		if (con->sb.pos == line) {
+			con->sb.pos = kvt_shl_dlist_first(&con->sb.list,
+							  struct line, list);
+			con->sb.pos_num = 0;
+		} else if (con->sb.pos) {
+			--con->sb.pos_num;
+		}
 
 		clear_selection_on_line(con, line);
 		line_free(line);
+	}
+
+	/* An emptied list has no first line to hold the position, and
+	 * kvt_shl_dlist_first() on one returns the head read as a line. */
+	if (kvt_shl_dlist_empty(&con->sb.list)) {
+		con->sb.pos = NULL;
+		con->sb.pos_num = con->sb.count;
 	}
 	con->sb.max = max;
 }
@@ -1071,6 +1266,7 @@ void kvt_screen_clear_sb(struct kvt_screen *con)
 	kvt_shl_dlist_for_each_safe(iter, safe, &con->sb.list) {
 		tmp = kvt_shl_dlist_entry(iter, struct line, list);
 		kvt_shl_dlist_unlink(&tmp->list);
+		++con->sb.gen;
 		line_free(tmp);
 	}
 	con->sb.count = 0;
@@ -1205,10 +1401,20 @@ void kvt_screen_reset(struct kvt_screen *con)
 	screen_inc_age(con);
 	con->age = con->age_cnt;
 
-	con->flags = 0;
+	/*
+	 * THE ALTERNATE SCREEN IS NOT A MODE THIS RESET OWNS. DECSTR comes
+	 * through here, and a program that issues one while on the alternate
+	 * screen would otherwise have the display switched back to the main
+	 * buffer while the vte still believes it is on the alternate one —
+	 * the later DECRST 1049 then restores a cursor into a screen that was
+	 * never left. Only DECRST 47/1047/1049 and kvt_vte_reset_modes leave
+	 * it.
+	 */
+	con->flags &= KVT_SCREEN_ALTERNATE;
 	con->margin_top = 0;
 	con->margin_bottom = con->size_y - 1;
-	con->lines = con->main_lines;
+	if (!(con->flags & KVT_SCREEN_ALTERNATE))
+		con->lines = con->main_lines;
 
 	for (i = 0; i < con->size_x; ++i) {
 		if (i % 8 == 0)

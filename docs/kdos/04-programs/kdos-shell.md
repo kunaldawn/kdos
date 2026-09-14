@@ -197,9 +197,10 @@ the height, which is exactly what an edge row would have broken.
 **And the pictures arrive.** On the console libkcon puts a sprite's BYTES on the wire through a
 callback the surface registers, and this one registered none — so every icon the bar drew reached
 the display as metadata with no pixels and became a blank cell that had still spent its columns.
-`sh_pic_backend()` is that callback and `sh_pic_cell_w()` is the nominal cell the wire is bounded by;
-rasterising at `kdisp_cell_w()`, which is **1** for a console surface, made each icon a picture a
-few pixels across, which is the same blank by another route. `icons_drawable()` is the one place
+`sh_pic_backend()` is that callback and `sh_pic_cell_w()` is the nominal cell the wire is bounded by,
+and both are what a surface passes to `kicon_init()`. `kdisp_cell_w()` is **1** on a console surface
+— there are no pixels on that side of the socket — and libkicon refuses a cell under four pixels, so
+a surface that hands it the backend's cell gets no pictures at all. `icons_drawable()` is the one place
 that asks whether a picture can be drawn at all, so no control spends cells on one that cannot.
 
 ### Nothing on this bar may move while it is being read

@@ -244,31 +244,6 @@ struct kvt_screen_attr {
 	uint16_t link;
 };
 
-/* Attributes that alter the glyph shape */
-typedef union{
-	struct {
-		uint8_t bold      : 1;
-		uint8_t italic    : 1;
-		uint8_t underline : 1;
-		uint8_t blink     : 1;
-		uint8_t reserved  : 4;
-	};
-	uint8_t u8;
-} kvt_screen_attr2_t;
-
-struct kvt_screen_color {
-	uint8_t r; /* red */
-	uint8_t g; /* green */
-	uint8_t b; /* blue */
-};
-
-struct kvt_screen_cell {
-	uint32_t ch;                  /* character */
-	struct kvt_screen_color fg;   /* foreground color */
-	struct kvt_screen_color bg;   /* background color */
-	kvt_screen_attr2_t attr2;     /* glyph attributes */
-};
-
 enum kvt_screen_cursor_style {
 	KVT_SCREEN_CURSOR_DEFAULT		= 0,
 	KVT_SCREEN_CURSOR_BLOCK_BLINK		= 1,
@@ -397,6 +372,15 @@ struct kvt_term *kvt_term_open(const char *const argv[], int cols, int rows);
 void kvt_term_close(struct kvt_term *t);
 
 int kvt_term_fd(struct kvt_term *t);
+/*
+ * Bytes written to the child that the pty has not accepted yet. POLL THE
+ * DESCRIPTOR FOR POLLOUT WHILE THIS IS NON-ZERO: a pty that is full takes no
+ * more until it drains, nothing else wakes the loop for it, and a child that
+ * is not talking produces no readable byte to be that wakeup — so a paste
+ * larger than the pty buffer would move only when the child next says
+ * something of its own. kvt_term_pump() is what pushes the rest.
+ */
+size_t kvt_term_pending_out(struct kvt_term *t);
 int kvt_term_pump(struct kvt_term *t);		/* read the child, reap it */
 void kvt_term_write(struct kvt_term *t, const char *u8, size_t len);
 void kvt_term_scrollback(struct kvt_term *t, unsigned int lines);
@@ -408,6 +392,8 @@ void kvt_term_scrollback(struct kvt_term *t, unsigned int lines);
  * removal of nine.
  */
 void kvt_term_palette(struct kvt_term *t, uint8_t (*pal)[3]);
+/* The characters already on screen keep the colour they resolved to; see
+ * kvt_vte_set_custom_palette. */
 /*
  * `kdos theme`'s generated `term-colors.conf` into that array — eighteen
  * `name = #rrggbb` lines, the names being this enum's in lower case with
@@ -494,8 +480,6 @@ int kvt_term_scroll_to_mark(struct kvt_term *t, int dir);
 
 kvt_age_t kvt_screen_draw(struct kvt_screen *con, kvt_screen_draw_cb draw_cb,
 			  void *data);
-
-const struct kvt_screen_cell *kvt_screen_draw2(struct kvt_screen *con);
 
 enum kvt_screen_cursor_style kvt_screen_get_cursor_style(struct kvt_screen *con);
 void kvt_screen_set_cursor_style(struct kvt_screen *con, enum kvt_screen_cursor_style type);
@@ -747,6 +731,11 @@ void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user);
  * terminal with no callback set swallows it exactly as it did before.
  */
 void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user);
+/*
+ * Synchronized output went on or off. The terminal watches every transition
+ * itself — that is what arms kvt_term_sync_hold()'s watchdog — and calls this
+ * after its own, so asking for one costs the watchdog nothing.
+ */
 void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user);
 void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user);
 /* The focus moved. Sends CSI I / CSI O only while the child asked for them. */
@@ -798,8 +787,14 @@ int kvt_term_sync_output(struct kvt_term *t);
  * starts in the same window.
  */
 void kvt_term_reset_modes(struct kvt_term *t);
-/* True while this frame should be held back — synchronized output is on and
- * the child has not held it past the watchdog. */
+/*
+ * True while this frame should be held back — synchronized output is on and
+ * the child has not held it past the watchdog.
+ *
+ * THE WATCHDOG IS ARMED BY THE TRANSITION, not by the first frame that
+ * notices, so a program that brackets every frame gets the full allowance on
+ * each one. A renderer may call this as often or as rarely as it likes.
+ */
 int kvt_term_sync_hold(struct kvt_term *t);
 /* The same, for a terminal that owns its state machine (kvt_term.c). */
 void kvt_term_osc_cb(struct kvt_term *t, kvt_vte_osc_cb cb, void *user);
@@ -903,6 +898,13 @@ int kvt_vte_set_palette(struct kvt_vte *vte, const char *palette_name);
  * @endcode
  *
  * The palette array is copied into the vte object.
+ *
+ * A NEW PALETTE DOES NOT REPAINT WHAT IS ALREADY ON SCREEN. A cell stores the
+ * colour it resolved to when it was written, so the characters already drawn
+ * keep theirs and everything written after this call uses the new palette.
+ * The screen is marked changed so a consumer that gates a render on the age
+ * redraws once. Erasing instead would blank every open terminal the first
+ * time a theme signal re-applies term-colors.conf.
  *
  * @param vte The vte object to set on
  * @param palette The palette array, which should have shape `uint8_t palette[KVT_COLOR_NUM][3]`. Pass NULL to clear.

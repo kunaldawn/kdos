@@ -157,7 +157,7 @@ int kb_landlock_abi(void)
 	return v < 0 ? -errno : (int)v;
 }
 
-int kb_landlock_new(KbLandlock *ll, int net_off)
+int kb_landlock_new_scoped(KbLandlock *ll, int net_off, int ipc_off)
 {
 	memset(ll, 0, sizeof(*ll));
 	ll->abi = kb_landlock_abi();
@@ -175,12 +175,26 @@ int kb_landlock_new(KbLandlock *ll, int net_off)
 		attr.handled_access_net = LL_NET_BIND_TCP | LL_NET_CONNECT_TCP;
 	ll->net_handled = attr.handled_access_net != 0;
 
+	/* Scoping has no rule form: naming the two bits denies them outright,
+	 * so it is claimed only when the caller asks. It covers the abstract
+	 * AF_UNIX namespace and same-uid signals and nothing else — a
+	 * path-named socket is filesystem policy, and everything else IPC is
+	 * what a box profile is for. */
+	if (ipc_off && ll->abi >= 6)
+		attr.scoped = LL_SCOPE_ABSTRACT_UNIX | LL_SCOPE_SIGNAL;
+	ll->scope_handled = attr.scoped != 0;
+
 	long fd = syscall(__NR_landlock_create_ruleset, &attr,
 			  attr_size(ll->abi), 0UL);
 	if (fd < 0)
 		return -errno;
 	ll->fd = (int)fd;
 	return 0;
+}
+
+int kb_landlock_new(KbLandlock *ll, int net_off)
+{
+	return kb_landlock_new_scoped(ll, net_off, 0);
 }
 
 int kb_landlock_allow(KbLandlock *ll, const char *path, int write)

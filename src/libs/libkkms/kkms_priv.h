@@ -33,7 +33,7 @@
  * done and neither would redraw.
  */
 struct kkms_out {
-	uint32_t connector, crtc, fb, handle;
+	uint32_t connector, crtc;
 	uint32_t stride;
 	uint64_t size;
 	drmModeModeInfo mode;
@@ -60,14 +60,75 @@ struct kkms_out {
 	 * between two monitors. */
 	char name[32];
 
-	void *pixels;
-	pixman_image_t *image;
+	/*
+	 * TWO SCANOUT BUFFERS AND THE PAINTER'S OWN.
+	 *
+	 * `shadow` is system memory and is where every glyph is composited:
+	 * OP_OVER reads the destination back, and a dumb buffer is mapped
+	 * write-combined, so compositing into one costs an uncached read per
+	 * pixel of every glyph on the screen.
+	 *
+	 * `pixels[]` are the two dumb buffers. A frame is painted into the
+	 * shadow, the rows that changed are copied into the buffer NOT being
+	 * scanned out, and that buffer is flipped to at the next vblank — so
+	 * no pixel is ever rewritten while the raster is inside it. `back` is
+	 * the one being painted and `flip_pending` is a flip the kernel has
+	 * not yet reported.
+	 *
+	 * `owed[]` is per buffer because the two are a frame apart: a row
+	 * copied into one is still the previous frame's in the other, and a
+	 * flip that forgot that would show a screen half of two frames.
+	 * `pad_owed[]` is the same debt for the strip below the last whole
+	 * row, which no row of `owed[]` covers: it is written only on a full
+	 * paint, so a buffer that missed that frame keeps whatever it held and
+	 * the strip blinks at half the flip rate.
+	 *
+	 * `nbuf` is 1 where the driver cannot flip or must not be asked to,
+	 * and the buffer is then painted and marked dirty in place.
+	 *
+	 * `flip_gen` names the buffers a flip was issued against, and it is the
+	 * ONLY thing a completion is matched against — never the output count,
+	 * which says how many screens are lit and not which slots hold
+	 * buffers. A completion arrives after the framebuffer it named may
+	 * have been freed and the slot given to another connector, and one
+	 * taken for a later flip clears `flip_pending` a frame early — the
+	 * next paint then writes the buffer the raster is inside.
+	 */
+	void *pixels[2];
+	uint32_t handle[2], fb[2];
+	int nbuf, back, flip_pending;
+	unsigned flip_gen;
+	unsigned char *owed[2];
+	unsigned char pad_owed[2];
+
+	void *shadow_bits;
+	pixman_image_t *image;		/* over shadow_bits */
+	/*
+	 * WHICH SCREEN AND WHICH MODE THE BUFFERS ABOVE WERE MADE FOR.
+	 *
+	 * A re-probe rewrites this array from the connectors, so slot 2 may be
+	 * a different monitor than it was; the buffers are only still this
+	 * output's if all three agree. Tearing down a framebuffer that is
+	 * being scanned out disables its CRTC, so remaking one that did not
+	 * need it is every OTHER screen going black because one changed.
+	 *
+	 * `buf_mode` is the TIMING the CRTC was last programmed with, which
+	 * the pixel size does not determine: two modes of the same size at
+	 * different refresh rates keep the same buffers and still need the
+	 * modeset, or a chosen mode is reported in force and is not.
+	 */
+	uint32_t buf_conn;
+	int buf_w, buf_h;
+	drmModeModeInfo buf_mode;
+
 	/* This output's own slice of the shared grid, and the frame it last
 	 * painted. Its own, because the diff is what decides which rows are
 	 * repainted and a shared one would be right for at most one screen. */
 	KtuiCell *cur, *prev;
 	int ncell;
 	int force_full;
+	/* One byte per row, filled by the painter with the rows it drew. */
+	unsigned char *painted;
 };
 
 /* How many screens one session lights. Eight is the number of cards the device
@@ -78,15 +139,27 @@ struct kkms_out {
 struct kkms {
 	struct libseat *seat;
 	int active;
+	/* The screen is powered down: no painting, no page flip and no dirty
+	 * rectangle until kkms_blank(0), which owes every output a full
+	 * repaint. */
+	int blanked;
 
 	int drm_fd, drm_dev;
 	drmModeRes *res;
+	/* This driver shows the guest's buffer by copying it to the host at
+	 * the dirty rectangle it is given, rather than scanning it out. One
+	 * buffer is then tear-free and a page flip is a whole-plane upload,
+	 * so the pair is not made. Decided once: the card cannot change. */
+	int drm_transfers;
 
 	struct kkms_out out[KKMS_MAX_OUT];
 	int nout;
-	/* The whole desktop, in pixels: the widest row of outputs by the
-	 * tallest. `kkms_size()` divides this by the cell, so a window dragged
-	 * past the right edge of one screen is on the next. */
+	/* The whole desktop, in pixels, and always a WHOLE NUMBER OF CELLS:
+	 * the outputs' cell widths laid end to end by the tallest one's cell
+	 * height. `kkms_size()` divides this by the cell, so `pixel / cell` is
+	 * the same column the paint cut — a box sized in raw mode pixels
+	 * yields a column past the last slice whenever a mode is not a whole
+	 * number of cells. */
 	int vw, vh;
 
 	/* The DRM hotplug monitor. libinput's udev context watches `input`
@@ -96,6 +169,10 @@ struct kkms {
 	struct udev *hotplug_udev;
 	struct udev_monitor *hotplug;
 	int hotplug_fd;
+	/* A hotplug that arrived while the session was switched away. The
+	 * device could not be re-probed then and the event does not repeat, so
+	 * it is acted on at the next pump after the seat comes back. */
+	int hotplug_pending;
 
 	/* The font this screen is drawing with, kept so kkms_set_font() can
 	 * put it back when a new one will not load — a chord that made the
@@ -107,6 +184,30 @@ struct kkms {
 	struct xkb_context *xkb;
 	struct xkb_keymap *keymap;
 	struct xkb_state *state;
+
+	/*
+	 * THE KEY BEING HELD, and when it next repeats.
+	 *
+	 * libinput delivers one press and one release and no repeats at all —
+	 * autorepeat is the compositor's job, and this backend IS the
+	 * compositor. Without it a held Backspace on the console deleted one
+	 * character and an arrow key moved one row, which reads as a dropped
+	 * keyboard rather than as a missing feature. The figures are the
+	 * kernel's own defaults: 500 ms to the first repeat, then 25 a second.
+	 *
+	 * The KEY is latched and the modifiers are not: a repeat carries the
+	 * modifiers as they are held at the moment it fires, so taking Shift
+	 * while an arrow is held extends a selection, and re-resolving the
+	 * keysym as well would turn a repeating letter into its capital
+	 * mid-stream.
+	 */
+	uint32_t rep_code;
+	int rep_key;
+	unsigned long long rep_due_ms;
+
+	/* A touchpad's scroll, accumulated: one event carries a few units and
+	 * a tick is ten, so a tick taken per event is always zero. */
+	double scroll_acc;
 
 	/* The pointer, in cells, and the queue the backend drains. */
 	int ptr_x, ptr_y;

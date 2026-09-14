@@ -19,6 +19,21 @@
 /*
  * Streamed, because a pack is the size of an application and a verifier that
  * had to hold one in memory could not run on the machine that most needs it.
+ *
+ * AND THE FOOTER IS INSIDE IT. The footer is what says where the payload, the
+ * metadata and the icon are; over a hash that covered only [0, sig_off) it
+ * could be rewritten freely under a signature that still verified — point
+ * meta_off into the payload and the pack declares whatever the attacker put
+ * there while the signature is over bytes nobody disputes.
+ *
+ * TWO FIELDS ARE ZEROED BEFORE IT IS HASHED, and they are the two that are
+ * written after: `payload_sha256`, which is this answer, and `sig_len`, which
+ * grows each time a second key signs a pack that is already signed. Both are
+ * covered by other means — the digest is the subject the signature names, and
+ * the block it measures ends at the footer by kpk_footer_read's own rule.
+ *
+ * It is packed from the struct rather than read off the disk, because the
+ * writer calls this before the footer it is about exists.
  */
 int kpk_payload_hash(const char *path, const KpkFooter *f, char out[65])
 {
@@ -26,6 +41,8 @@ int kpk_payload_hash(const char *path, const KpkFooter *f, char out[65])
 	char buf[65536];
 	uint64_t left = f->sig_off;
 	FILE *fp = fopen(path, "rb");
+	KpkFooter bare = *f;
+	uint8_t fb[KPK_FOOTER_LEN];
 
 	if (!fp)
 		return -1;
@@ -41,6 +58,12 @@ int kpk_payload_hash(const char *path, const KpkFooter *f, char out[65])
 		left -= got;
 	}
 	fclose(fp);
+
+	memset(bare.payload_sha256, 0, sizeof(bare.payload_sha256));
+	bare.sig_len = 0;
+	kpk_footer_pack(&bare, fb);
+	kb_sha256_update(&s, fb, KPK_FOOTER_LEN);
+
 	kb_sha256_final(&s, out);
 	return 0;
 }
@@ -167,8 +190,9 @@ int kpk_sign(const char *path, const uint8_t seed[KSIG_SEED_LEN],
 	}
 	if (fclose(fp) != 0)
 		return -1;
-	/* The footer moved forward by the line, so the file is now longer than
-	 * it needs to be only if it was truncated — it never is; the write
-	 * above extended it. */
+	/* The block still abuts the footer, which is what kpk_footer_read
+	 * requires: the line went in where the old footer started and the new
+	 * footer went straight after it. Leaving a gap here would put the
+	 * footer the reader seeks to behind the line just written. */
 	return 0;
 }

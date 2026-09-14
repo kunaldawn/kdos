@@ -24,53 +24,69 @@
 #include "ktui.h"
 
 /*
- * xterm's 256, computed rather than tabulated: 0-15 are the standard ANSI
- * values, 16-231 a 6x6x6 cube on an uneven ramp, and 232-255 a grey run. The
- * ramp is not linear and guessing it wrong shifts every mid-tone.
- */
-static uint32_t xterm_rgb(int idx)
-{
-	static const uint32_t base[16] = {
-		0x000000, 0xaa0000, 0x00aa00, 0xaa5500,
-		0x0000aa, 0xaa00aa, 0x00aaaa, 0xaaaaaa,
-		0x555555, 0xff5555, 0x55ff55, 0xffff55,
-		0x5555ff, 0xff55ff, 0x55ffff, 0xffffff,
-	};
-	static const int step[6] = { 0, 95, 135, 175, 215, 255 };
-
-	if (idx < 0)
-		return 0;
-	if (idx < 16)
-		return base[idx];
-
-	if (idx < 232) {
-		int i = idx - 16;
-		int r = step[(i / 36) % 6];
-		int g = step[(i / 6) % 6];
-		int b = step[i % 6];
-
-		return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
-	}
-
-	if (idx < 256) {
-		uint32_t l = (uint32_t)(8 + (idx - 232) * 10);
-
-		return (l << 16) | (l << 8) | l;
-	}
-
-	return 0xffffff;
-}
-
-/*
  * ONE RULE FOR EVERY COLOUR: the nearest of the theme's eight slots. The rule
  * itself is libktui's, so a terminal's SGR and a picture's average tint reduce
  * to a slot the same way — two implementations would drift and `kdos theme
  * amber` would move one of them.
+ *
+ * AND IT IS ANSWERED ONCE PER COLOUR, not once per cell. The rule is an
+ * eight-way squared-distance search and it is otherwise run twice for every
+ * cell of every frame; a full-screen animation asks it tens of thousands of
+ * times a second for a few dozen distinct colours. They go in a direct-mapped
+ * cache, thrown away when the palette in force moves — which is what `kdos
+ * theme` and the night light do, and the only thing that can change an answer.
+ *
+ * THE PALETTE IS COMPARED BY VALUE, NOT BY ADDRESS. While the night light is
+ * on `ktui_theme` points at one reused struct that libktui refills in place,
+ * so the pointer does not move across a theme change and every cached answer
+ * would keep the previous scheme's slot. The comparison is eight RGB triples
+ * once a frame, against eight squared-distance searches per cell.
+ *
+ * EVERY COLOUR ARRIVES AS RGB. The vte resolves a palette index through the
+ * palette in force and a 24-bit request needs no resolving, so there is one
+ * kind of input here and one cache for it.
+ *
+ * THE BUCKET COMES OFF THE HIGH BITS of the multiplicative hash. The low bits
+ * of a product carry only the low bits of its inputs, so an index taken from
+ * the low end depends on nothing but the low bits of blue and drops the whole
+ * 216-colour xterm cube into six of the buckets — a miss on almost every
+ * lookup for exactly the content the cache exists for. LIT_BITS and LIT_CACHE
+ * are spelled as one pair so the shift cannot drift from the size.
  */
+#define LIT_BITS 6
+#define LIT_CACHE (1u << LIT_BITS)
+
+static KRgb slot_pal[KT_NCOLOR];
+static unsigned char slot_have;
+static uint32_t lit_key[LIT_CACHE];
+static uint8_t lit_slot[LIT_CACHE];
+static unsigned char lit_set[LIT_CACHE];
+
+static void slot_sync(void)
+{
+	if (slot_have && !memcmp(slot_pal, ktui_theme->slot, sizeof(slot_pal)))
+		return;
+	memcpy(slot_pal, ktui_theme->slot, sizeof(slot_pal));
+	slot_have = 1;
+	memset(lit_set, 0, sizeof(lit_set));
+}
+
 static uint8_t nearest_slot(uint32_t rgb)
 {
-	return (uint8_t)ktui_theme_nearest(rgb);
+	unsigned h = (unsigned)((rgb * 2654435761u) >> (32 - LIT_BITS));
+
+	if (lit_set[h] && lit_key[h] == rgb)
+		return lit_slot[h];
+
+	uint8_t v = (uint8_t)ktui_theme_nearest(rgb);
+
+	lit_key[h] = rgb;
+	lit_slot[h] = v;
+	lit_set[h] = 1;
+	return v;
 }
+
+
 
 /*
  * THE DEFAULT COLOURS ARE SLOTS, NOT LITERALS — the rule the whole tree is
@@ -92,9 +108,17 @@ static uint8_t attr_fg(const struct kvt_screen_attr *a)
 {
 	if (a->fccode == KVT_COLOR_FOREGROUND)
 		return KT_TEXT;
-	if (a->fccode >= 0)
-		return nearest_slot(xterm_rgb(a->fccode));
 
+	/*
+	 * THE COLOUR THE TERMINAL RESOLVED, whether it came from an index or
+	 * from a 24-bit request. The vte has already turned a palette index
+	 * into rgb through the palette in force — which on this desktop is the
+	 * eighteen colours `kdos theme` generated — so reducing the index
+	 * through a built-in VGA table instead threw that away: the file was
+	 * read, installed and then ignored for every one of the sixteen
+	 * colours it exists to set. It is also what applies bold's brightening,
+	 * which is resolved into the same fields.
+	 */
 	return nearest_slot(((uint32_t)a->fr << 16) |
 			    ((uint32_t)a->fg << 8) | (uint32_t)a->fb);
 }
@@ -103,8 +127,6 @@ static uint8_t attr_bg(const struct kvt_screen_attr *a)
 {
 	if (a->bccode == KVT_COLOR_BACKGROUND)
 		return KT_BG;
-	if (a->bccode >= 0)
-		return nearest_slot(xterm_rgb(a->bccode));
 
 	return nearest_slot(((uint32_t)a->br << 16) |
 			    ((uint32_t)a->bg << 8) | (uint32_t)a->bb);
@@ -113,6 +135,15 @@ static uint8_t attr_bg(const struct kvt_screen_attr *a)
 struct grid {
 	KtuiCell *cells;
 	int w, h;
+	/*
+	 * WHERE THE LAST WIDE GLYPH PUT ITS CONTINUATION, so the blank the
+	 * screen sends for that same cell is recognised without reading the
+	 * buffer back. Reading it meant the whole grid had to be filled with
+	 * blanks first — a second full pass over every cell of every frame,
+	 * immediately overwritten — because a marker left by the PREVIOUS
+	 * frame would otherwise swallow a real character.
+	 */
+	int cont_x, cont_y;
 };
 
 static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
@@ -132,19 +163,21 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
 
 	/*
 	 * THE SCREEN WALKS EVERY CELL, the one a wide glyph already owns
-	 * included — it arrives as a blank, immediately after the glyph. The
-	 * marker is placed when the glyph is written, so a blank landing on top
-	 * of one is that same cell coming round again and is dropped. The fill
-	 * below uses a space, so only a real marker matches.
+	 * included — it arrives as a blank, immediately after the glyph, and
+	 * is dropped because the glyph before it already covered that cell.
+	 * The position is remembered from writing it rather than read back out
+	 * of the grid, so this frame's marker is told from one the last frame
+	 * left in the same place.
 	 */
-	if (g->cells[posy * g->w + posx].ch == KTUI_WIDE_CONT)
+	if ((int)posx == g->cont_x && (int)posy == g->cont_y)
 		return 0;
 
 	/*
 	 * A combining sequence collapses to its BASE codepoint: a KtuiCell
-	 * holds one, and the marks are lost here rather than in the screen —
-	 * which is why the symbol table upstream keeps is worth keeping, for
-	 * the day the cell can carry them.
+	 * holds one. The mark is already gone by the time it reaches here —
+	 * kvt_screen_write drops a zero-width symbol before it ever reaches a
+	 * cell — so this reads the first codepoint of whatever the screen
+	 * stored and nothing downstream has to know about composed symbols.
 	 */
 	c.ch = len ? ch[0] : ' ';
 	if (!c.ch)
@@ -218,6 +251,8 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
 	if (width > 1 && (int)posx + 1 < g->w) {
 		c.ch = KTUI_WIDE_CONT;
 		g->cells[posy * g->w + posx + 1] = c;
+		g->cont_x = (int)posx + 1;
+		g->cont_y = (int)posy;
 	}
 
 	return 0;
@@ -233,19 +268,40 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
  */
 kvt_age_t kvt_grid_render(struct kvt_screen *con, KtuiCell *cells, int w, int h)
 {
-	struct grid g = { cells, w, h };
-	KtuiCell blank;
-
+	struct grid g = { cells, w, h, -1, -1 };
+	/*
+	 * Every field, the literals included: the cell is compared whole by
+	 * every consumer downstream — the wire diff, the painter's row diff,
+	 * the tty backend's style test — so a field left uninitialised is a
+	 * cell that differs from itself and a frame that is re-sent and
+	 * repainted for ever.
+	 */
+	KtuiCell blank = { .ch = ' ', .fg = KT_TEXT, .bg = KT_BG,
+			   .attr = KT_A_NONE, .fgc = 0, .bgc = 0, .ulc = 0 };
 	if (!con || !cells || w <= 0 || h <= 0)
 		return 0;
 
-	blank.ch = ' ';
-	blank.fg = KT_TEXT;
-	blank.bg = KT_BG;
-	blank.attr = KT_A_NONE;
+	/* The palette in force decides every reduction below, so it is asked
+	 * once a frame rather than once a cell. */
+	slot_sync();
 
-	for (int i = 0; i < w * h; i++)
-		cells[i] = blank;
+	unsigned sx = kvt_screen_get_width(con);
+	unsigned sy = kvt_screen_get_height(con);
+
+	/*
+	 * ONLY WHAT THE SCREEN WILL NOT WRITE. It writes every cell of its own
+	 * size_x by size_y, so filling those first was a full pass over the
+	 * grid that the draw immediately overwrote — the single most expensive
+	 * thing on this path after the conversion itself. What is left is the
+	 * margin a buffer larger than the screen has, and it is blanked rather
+	 * than left holding whatever was there before.
+	 */
+	for (int y = 0; y < h; y++) {
+		int x0 = y < (int)sy ? (int)sx : 0;
+
+		for (int x = x0; x < w; x++)
+			cells[y * w + x] = blank;
+	}
 
 	return kvt_screen_draw(con, draw_cb, &g);
 }

@@ -77,31 +77,36 @@ static int word_start(const char *hay, int at)
 #define FZ_PREFIX	25
 #define FZ_LATE_MAX	10
 
-int kb_fuzzy(const char *hay, const char *needle)
+/*
+ * One pass of the subsequence walk. With `prefer` set each needle character
+ * takes the first word start that carries it; with it clear each takes the
+ * leftmost occurrence. Returns 0 when the needle is not a subsequence of what
+ * this pass was willing to consume.
+ */
+static int scan(const char *hay, const char *needle, int prefer)
 {
 	int score = 0, first = -1, last = -2, all_word = 1;
 	int pos = 0;
 
-	if (!hay || !needle)
-		return 0;
-	/*
-	 * AN EMPTY QUERY MATCHES EVERYTHING, EQUALLY. A caller filtering a list
-	 * as somebody types starts with nothing typed, and a zero there would
-	 * empty the list before the first keystroke.
-	 */
-	if (!*needle)
-		return 1;
-
 	for (const char *n = needle; *n; n++) {
 		int want = lower((unsigned char)*n);
 		const char *h = hay + pos;
+		const char *any = NULL;
 		int at;
 
-		for (; *h; h++)
-			if (lower((unsigned char)*h) == want)
+		for (; *h; h++) {
+			if (lower((unsigned char)*h) != want)
+				continue;
+			if (!prefer || word_start(hay, (int)(h - hay)))
 				break;
-		if (!*h)
-			return 0;	/* not a subsequence: no match at all */
+			if (!any)
+				any = h;
+		}
+		if (!*h) {
+			if (!any)
+				return 0;	/* not a subsequence: no match */
+			h = any;
+		}
 
 		at = (int)(h - hay);
 		score += FZ_BASE;
@@ -132,6 +137,35 @@ int kb_fuzzy(const char *hay, const char *needle)
 
 	/* A match is never zero, because zero is the word for no match. */
 	return score > 0 ? score : 1;
+}
+
+/*
+ * A WORD START WINS OVER AN EARLIER OCCURRENCE INSIDE A WORD, BUT ONLY WHEN
+ * THE WHOLE NEEDLE STILL FITS. The leftmost match is not the one a person
+ * means: `sm` over `System Monitor` would take the `m` of `System` and the
+ * acronym bonus — the whole reason the ladder exists — could never fire. But
+ * the preference is greedy and commits, so reaching past an in-word character
+ * to a later word start can put the rest of the needle out of reach: `tex`
+ * over `Text Editor` would take the `E` of `Editor` and never find an `x`.
+ * A preferring pass that fails is therefore redone leftmost, which is a plain
+ * subsequence test — so anything that is a subsequence of the hay matches.
+ */
+int kb_fuzzy(const char *hay, const char *needle)
+{
+	int s;
+
+	if (!hay || !needle)
+		return 0;
+	/*
+	 * AN EMPTY QUERY MATCHES EVERYTHING, EQUALLY. A caller filtering a list
+	 * as somebody types starts with nothing typed, and a zero there would
+	 * empty the list before the first keystroke.
+	 */
+	if (!*needle)
+		return 1;
+
+	s = scan(hay, needle, 1);
+	return s ? s : scan(hay, needle, 0);
 }
 
 /*

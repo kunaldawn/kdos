@@ -506,6 +506,7 @@ int main(int argc, char **argv)
 			 * would store a password that cannot be retyped.
 			 */
 			if (ev.key >= 32 && ev.key < KT_K_SPECIAL &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 			    ev.key != KT_K_BACKSPACE) {
 				char seq[4];
 				int sl = utf8_encode((uint32_t)ev.key, seq);

@@ -313,6 +313,32 @@ check 'app\.bad .*bad payload hash' \
       "one flipped byte is a bad hash, never a bad signature"
 check 'app\.bad .*REFUSED.*bad payload hash' \
       "and a pack off the medium that fails it is never mounted"
+
+#
+# THE FOOTER IS INSIDE THE HASH. It is what says where the filesystem, the
+# metadata and the icon are, so a hash that stopped at the signature block
+# left every one of those offsets rewritable under a signature that still
+# verified. `flags` is at byte 12 of the 512-byte footer and passes every
+# structural check, so it is the field that proves the HASH is what catches
+# this and not footer_consistent.
+#
+cp "$PKS/app.good.kpack" "$OUT/moved.kpack"
+FSZ=$(stat -c%s "$OUT/moved.kpack")
+printf '\010' | dd of="$OUT/moved.kpack" bs=1 \
+    seek=$((FSZ - 512 + 12)) conv=notrunc status=none
+if KDOS_KEYS="$OUT/keys" "$OUT/kdos-pack" verify "$PKS/app.good.kpack" \
+       >/dev/null 2>&1; then
+    echo "  ok    the signed pack verifies"
+else
+    echo "  FAIL  the untouched signed pack does not verify"; exit 1
+fi
+if KDOS_KEYS="$OUT/keys" "$OUT/kdos-pack" verify "$OUT/moved.kpack" \
+       >/dev/null 2>&1; then
+    echo "  FAIL  a footer field rewritten under the signature still verified"
+    exit 1
+fi
+echo "  ok    and one footer field rewritten under it does not"
+rm -f "$OUT/moved.kpack"
 check 'data\.tiles' "the data pack is in the store"
 check 'graft    tiles -> /usr/share/kdos-tiles' \
       "a data pack grafts into /usr/share for host consumers"
@@ -6355,7 +6381,11 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # dumpmain.c declares every entry point WEAK, so a file that is not on the
     # tree yet is a name it declines rather than a link error.
     # libkchrome is the header band, group headings and button bar the device
-    # surfaces share; fav.c is the favourites store several of them write;
+    # surfaces share; kch_px.c is NOT here and must not be: dumpmain.c stubs
+    # the whole plate API, so compiling the real one in is a multiple
+    # definition. A plate symbol a surface calls belongs in that stub set, and
+    # one missing from it is a LINK failure that skips every golden below.
+    # fav.c is the favourites store several of them write;
     # mountd.c is the one kdos-mountd client kdos-devices and kdos-disks both
     # call. None is a front end, so all belong in the base set rather than in
     # the candidate loop — a surface that uses one would otherwise fail to

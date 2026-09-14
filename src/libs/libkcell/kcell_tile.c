@@ -40,10 +40,30 @@ void kcell_tile_free(uint64_t key, const void *pix, void *user)
 		pixman_image_unref((pixman_image_t *)pix);
 }
 
-/* The whole picture, scaled to the cell grid it was given. Held for the length
- * of one tiling and unreffed after: every tile is a copy of a piece of it. */
+/*
+ * The whole picture, scaled to the cell grid it was given; every tile is a
+ * copy of a piece of it.
+ *
+ * KEPT BETWEEN TILINGS rather than allocated and freed around each one. An
+ * animation re-tiles at the same size for every frame it plays, so the buffer
+ * it needs is the same buffer each time — allocating and zeroing a
+ * full-window picture per frame is the cost of the animation and not of the
+ * picture. It is dropped when the size changes and by kcell_tile_forget().
+ */
 static pixman_image_t *scaled;
+static uint32_t *scaled_bits;
+static int scaled_w, scaled_h;
 static int tile_cw, tile_ch;
+
+void kcell_tile_forget(void)
+{
+	if (scaled)
+		pixman_image_unref(scaled);
+	scaled = NULL;
+	free(scaled_bits);
+	scaled_bits = NULL;
+	scaled_w = scaled_h = 0;
+}
 
 static const void *tile_of(void *user, int cell_x, int cell_y, int tw, int th)
 {
@@ -77,20 +97,26 @@ int kcell_tile_picture(pixman_image_t *img, uint64_t key, int cw, int ch,
 	int sw = img ? pixman_image_get_width(img) : 0;
 	int sh = img ? pixman_image_get_height(img) : 0;
 	int dw = cw * cell_w, dh = ch * cell_h;
-	uint32_t *bits;
+	uint32_t *bits = NULL;
 	int r;
 
 	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
 		return -1;
 
-	bits = calloc((size_t)dw * (size_t)dh, 4);
-	if (!bits)
-		return -1;
-	scaled = pixman_image_create_bits(PIXMAN_a8r8g8b8, dw, dh, bits,
-					  dw * 4);
-	if (!scaled) {
-		free(bits);
-		return -1;
+	if (!scaled || scaled_w != dw || scaled_h != dh) {
+		kcell_tile_forget();
+		bits = calloc((size_t)dw * (size_t)dh, 4);
+		if (!bits)
+			return -1;
+		scaled = pixman_image_create_bits(PIXMAN_a8r8g8b8, dw, dh,
+						  bits, dw * 4);
+		if (!scaled) {
+			free(bits);
+			return -1;
+		}
+		scaled_bits = bits;
+		scaled_w = dw;
+		scaled_h = dh;
 	}
 
 	if (sw != dw || sh != dh) {
@@ -113,8 +139,5 @@ int kcell_tile_picture(pixman_image_t *img, uint64_t key, int cw, int ch,
 	tile_ch = cell_h;
 	r = ktui_sprite_put_tiled(key, cw, ch, fallback, tile_of, NULL);
 
-	pixman_image_unref(scaled);
-	scaled = NULL;
-	free(bits);
 	return r;
 }

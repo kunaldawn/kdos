@@ -44,6 +44,64 @@ static char *trim(char *s)
 	return s;
 }
 
+static int cmp_int(const void *a, const void *b)
+{
+	int x = *(const int *)a, y = *(const int *)b;
+	return x < y ? -1 : x > y;
+}
+
+/*
+ * The chip indices that exist under a sysfs class, in NUMERIC order.
+ *
+ * There is no bound worth probing up to. The hwmon core allocates the index
+ * from one system-wide ida, so a chip's number says nothing about how many
+ * chips there are: a laptop with acpitz, coretemp, a wireless card, two power
+ * supplies and a discrete GPU has the drive's chip at hwmon7 before anything
+ * unusual has happened, and an index loop is both a wasted open per absent
+ * number and a chip that cannot be seen at all above the bound. It must also
+ * be ONE answer — two readers with two different bounds are two surfaces
+ * reporting different sensors for the same die.
+ *
+ * Numeric order, not the readdir sort: strcmp puts hwmon10 before hwmon2, and
+ * the order decides both the row order of a sensor list and which chip a
+ * preference walk meets first.
+ *
+ * Never cached. A hwmon chip appears when its module loads — drivetemp, an
+ * NVMe hotplug — and the readdir is microseconds.
+ */
+int kpr_sysfs_indices(const char *cls, const char *prefix, int *out, int cap)
+{
+	char dir[768];
+	size_t plen = strlen(prefix);
+	int n = 0, got = 0;
+	char **v;
+
+	snprintf(dir, sizeof(dir), "%s/%s", kpr_sys(), cls);
+	v = kb_listdir(dir, &got);
+	if (!v)
+		return 0;
+	for (int i = 0; i < got && n < cap; i++) {
+		const char *d;
+		char *end = NULL;
+		long idx;
+
+		if (strncmp(v[i], prefix, plen) || strlen(v[i]) <= plen)
+			continue;
+		d = v[i] + plen;
+		idx = strtol(d, &end, 10);
+		if (!end || *end || idx < 0 || idx > 1000000)
+			continue;
+		out[n++] = (int)idx;
+	}
+	kb_strv_free(v);
+	qsort(out, (size_t)n, sizeof(*out), cmp_int);
+	return n;
+}
+
+/* `kind` is an enumeration, so a walk selecting kinds needs a bit per value
+ * rather than the values themselves. */
+#define SEN_BIT(k) (1u << (k))
+
 static void push(KprSensor **v, int *n, int *cap, const KprSensor *s)
 {
 	if (*n == *cap) {
@@ -62,10 +120,14 @@ static void push(KprSensor **v, int *n, int *cap, const KprSensor *s)
  * One hwmon channel. `pre` is `temp`, `fan`, `in` or `power`; the file layout
  * is identical across all four and only the unit differs, which is what makes
  * one function right rather than four.
+ *
+ * `named` off drops the label and the critical threshold, which are two more
+ * opens per channel that no caller computing a maximum can use: a channel's
+ * name cannot change which reading is the largest.
  */
 static void hwmon_channel(KprSensor **v, int *n, int *cap, int chip,
 			  const char *chipname, const char *pre, int idx,
-			  int kind)
+			  int kind, int named)
 {
 	long long raw = kpr_num_sys(-1, "class/hwmon/hwmon%d/%s%d_input", chip,
 				    pre, idx);
@@ -79,8 +141,9 @@ static void hwmon_channel(KprSensor **v, int *n, int *cap, int chip,
 	s.kind = kind;
 	snprintf(s.chip, sizeof(s.chip), "%s", chipname);
 
-	label = trim(kpr_slurp_sys("class/hwmon/hwmon%d/%s%d_label", chip, pre,
-				   idx));
+	label = named ? trim(kpr_slurp_sys("class/hwmon/hwmon%d/%s%d_label",
+					   chip, pre, idx))
+		      : NULL;
 	if (label && *label)
 		snprintf(s.label, sizeof(s.label), "%s", label);
 	else
@@ -106,7 +169,7 @@ static void hwmon_channel(KprSensor **v, int *n, int *cap, int chip,
 	 * the one worth drawing: `max` is often a design figure a busy machine
 	 * sits above all day, and colouring that red teaches people to ignore
 	 * the colour. */
-	if (kind == KPR_SENSOR_TEMP) {
+	if (kind == KPR_SENSOR_TEMP && named) {
 		long long c = kpr_num_sys(-1,
 					  "class/hwmon/hwmon%d/temp%d_crit",
 					  chip, idx);
@@ -118,14 +181,26 @@ static void hwmon_channel(KprSensor **v, int *n, int *cap, int chip,
 	push(v, n, cap, &s);
 }
 
-int kpr_sensors_list(KprSensor **out)
+/*
+ * The one walk, with the channel kinds the caller can actually use.
+ *
+ * A caller wanting the hottest temperature and a caller drawing the Sensors
+ * page must meet the same chips in the same order and dedup the same way, or
+ * the panel meter and the page report two numbers for one die. So there is
+ * one enumeration and a mask over it, never a second private scan.
+ */
+static int sensors_walk(KprSensor **out, unsigned kinds, int named)
 {
 	KprSensor *v = NULL;
 	int n = 0, cap = 0;
+	int idx[256];
+	int nchip = kpr_sysfs_indices("class/hwmon", "hwmon", idx,
+				      (int)(sizeof(idx) / sizeof(*idx)));
 
 	*out = NULL;
 
-	for (int i = 0; i < 64; i++) {
+	for (int c = 0; c < nchip; c++) {
+		int i = idx[c];
 		char *name = trim(kpr_slurp_sys("class/hwmon/hwmon%d/name", i));
 
 		if (!name)
@@ -134,15 +209,18 @@ int kpr_sensors_list(KprSensor **out)
 		 * a bound rather than a scan because a missing file is the
 		 * normal case here and stopping at the first gap would drop
 		 * `temp3` on a chip with no `temp2`. */
-		for (int k = 1; k <= 8; k++)
-			hwmon_channel(&v, &n, &cap, i, name, "temp", k,
-				      KPR_SENSOR_TEMP);
-		for (int k = 1; k <= 8; k++)
-			hwmon_channel(&v, &n, &cap, i, name, "fan", k,
-				      KPR_SENSOR_FAN);
-		for (int k = 1; k <= 8; k++)
-			hwmon_channel(&v, &n, &cap, i, name, "power", k,
-				      KPR_SENSOR_POWER);
+		if (kinds & SEN_BIT(KPR_SENSOR_TEMP))
+			for (int k = 1; k <= 8; k++)
+				hwmon_channel(&v, &n, &cap, i, name, "temp", k,
+					      KPR_SENSOR_TEMP, named);
+		if (kinds & SEN_BIT(KPR_SENSOR_FAN))
+			for (int k = 1; k <= 8; k++)
+				hwmon_channel(&v, &n, &cap, i, name, "fan", k,
+					      KPR_SENSOR_FAN, named);
+		if (kinds & SEN_BIT(KPR_SENSOR_POWER))
+			for (int k = 1; k <= 8; k++)
+				hwmon_channel(&v, &n, &cap, i, name, "power", k,
+					      KPR_SENSOR_POWER, named);
 		free(name);
 	}
 
@@ -150,9 +228,17 @@ int kpr_sensors_list(KprSensor **out)
 	 * `thermal_zone` LAST AND ONLY WHERE hwmon SAID NOTHING for that
 	 * name. The two trees overlap on most boards — the same die reported
 	 * twice under different names is a Sensors page that looks like it has
-	 * found twice as many sensors as the machine has.
+	 * found twice as many sensors as the machine has. The dedup is not
+	 * cosmetic even for a maximum: a zone and a chip of the same name can
+	 * read differently, so dropping it here and keeping it there is two
+	 * answers for one die.
 	 */
-	for (int i = 0; i < 32; i++) {
+	if (!(kinds & SEN_BIT(KPR_SENSOR_TEMP)))
+		goto done;
+	nchip = kpr_sysfs_indices("class/thermal", "thermal_zone", idx,
+				  (int)(sizeof(idx) / sizeof(*idx)));
+	for (int c = 0; c < nchip; c++) {
+		int i = idx[c];
 		char *type = trim(kpr_slurp_sys(
 			"class/thermal/thermal_zone%d/type", i));
 		long long mc;
@@ -184,8 +270,17 @@ int kpr_sensors_list(KprSensor **out)
 		push(&v, &n, &cap, &s);
 	}
 
+done:
 	*out = v;
 	return n;
+}
+
+int kpr_sensors_list(KprSensor **out)
+{
+	return sensors_walk(out, SEN_BIT(KPR_SENSOR_TEMP) |
+				 SEN_BIT(KPR_SENSOR_FAN) |
+				 SEN_BIT(KPR_SENSOR_VOLT) |
+				 SEN_BIT(KPR_SENSOR_POWER), 1);
 }
 
 void kpr_sensors_free(KprSensor *v)
@@ -202,7 +297,10 @@ void kpr_sensors_free(KprSensor *v)
 double kpr_sensors_hottest(void)
 {
 	KprSensor *v = NULL;
-	int n = kpr_sensors_list(&v);
+	/* Temperatures only, and unlabelled: a fan's RPM, a rail's voltage and
+	 * every channel name are files opened to be thrown away by a caller
+	 * with one cell to draw a maximum in. */
+	int n = sensors_walk(&v, SEN_BIT(KPR_SENSOR_TEMP), 0);
 	double hot = -1.0;
 
 	for (int i = 0; i < n; i++)

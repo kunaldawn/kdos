@@ -34,6 +34,7 @@ struct finger {
 	int x, y;		/* cell it is in now                       */
 	unsigned t0;
 	int moved;		/* has left its starting cell              */
+	int pressed;		/* holds the synthesised left press        */
 };
 
 static struct finger fingers[MAX_FINGERS];
@@ -41,6 +42,7 @@ static int nfingers;
 static int long_fired;
 static int two_finger;		/* a second finger arrived; no tap can follow */
 static int prev_span;		/* last centroid separation, for pinch     */
+static int scroll_row;		/* centroid row the last wheel click left it on */
 
 static struct finger *find(int slot, int make)
 {
@@ -79,6 +81,7 @@ void ktui_gesture_reset(void)
 	long_fired = 0;
 	two_finger = 0;
 	prev_span = 0;
+	scroll_row = 0;
 }
 
 static void emit_mouse(KtuiEvent *m, int *have, int x, int y, int btn, int press)
@@ -132,14 +135,38 @@ int ktui_gesture_feed(const KtuiEvent *ev, KtuiGesture *g,
 		f->sy = f->y = ev->my;
 		f->t0 = ev->ms;
 		f->moved = 0;
+		f->pressed = 0;
 		nfingers++;
 		long_fired = 0;
 		if (nfingers >= 2) {
 			two_finger = 1;
 			prev_span = span();
+			scroll_row = (fingers[0].y + fingers[1].y) / 2;
 		}
-		emit_mouse(mouse, have_mouse, ev->mx, ev->my,
-			   KT_MB_LEFT, KT_MP_PRESS);
+
+		/*
+		 * ONLY THE FIRST FINGER OF A SEQUENCE SYNTHESISES A PRESS, and
+		 * the second closes it. A press under every finger clicks
+		 * whatever the second one landed on — a scroll would select
+		 * two rows of a list and a pinch would activate a button —
+		 * because a press is what every widget written before touch
+		 * acts on. Presses and releases stay paired, so the release
+		 * goes out on the finger that opened the capture.
+		 */
+		if (nfingers == 1) {
+			f->pressed = 1;
+			emit_mouse(mouse, have_mouse, ev->mx, ev->my,
+				   KT_MB_LEFT, KT_MP_PRESS);
+			return 0;
+		}
+		for (int i = 0; i < MAX_FINGERS; i++) {
+			if (!fingers[i].pressed)
+				continue;
+			fingers[i].pressed = 0;
+			emit_mouse(mouse, have_mouse, fingers[i].x,
+				   fingers[i].y, KT_MB_LEFT, KT_MP_RELEASE);
+			break;
+		}
 		return 0;
 
 	case KT_TOUCH_MOVE:
@@ -190,11 +217,28 @@ int ktui_gesture_feed(const KtuiEvent *ev, KtuiGesture *g,
 			g->type = KT_GEST_SCROLL;
 			g->dx = dx;
 			g->dy = dy;
-			if (dy)
+
+			/*
+			 * THE WHEEL IS CLICKED FROM THE CENTROID, ONE ROW AT A
+			 * TIME. Touch arrives a finger at a time, so a click
+			 * per finger delta reports the same row of travel
+			 * twice and the page scrolls twice as far as the hand
+			 * moved. `g->dy` keeps the per-finger delta — a caller
+			 * that forwards the gesture needs it.
+			 *
+			 * One event carries one synthesised click, so a flick
+			 * that crosses several rows at once pays them out over
+			 * the following events rather than losing them.
+			 */
+			int cy = (fingers[0].y + fingers[1].y) / 2;
+
+			if (cy != scroll_row) {
 				emit_mouse(mouse, have_mouse, ev->mx, ev->my,
-					   dy < 0 ? KT_MB_WHEEL_UP
-						  : KT_MB_WHEEL_DOWN,
+					   cy < scroll_row ? KT_MB_WHEEL_UP
+							   : KT_MB_WHEEL_DOWN,
 					   KT_MP_PRESS);
+				scroll_row += cy > scroll_row ? 1 : -1;
+			}
 			return 1;
 		}
 
@@ -218,8 +262,13 @@ int ktui_gesture_feed(const KtuiEvent *ev, KtuiGesture *g,
 		if (!f)
 			return 0;
 
-		emit_mouse(mouse, have_mouse, f->x, f->y,
-			   KT_MB_LEFT, KT_MP_RELEASE);
+		/* Paired with the press: a finger that never opened one —
+		 * the second of a two-finger gesture — closes nothing. */
+		if (f->pressed) {
+			f->pressed = 0;
+			emit_mouse(mouse, have_mouse, f->x, f->y,
+				   KT_MB_LEFT, KT_MP_RELEASE);
+		}
 
 		int tap = !f->moved && !two_finger && !long_fired
 			&& (unsigned)(ev->ms - f->t0) < (unsigned)KT_TAP_MS;

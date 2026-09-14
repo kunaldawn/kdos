@@ -118,6 +118,7 @@ void sh_restart_begin(void)
 			if (null > STDERR_FILENO)
 				close(null);
 		}
+		kb_child_reset_signals();
 		execlp("kdos", "kdos", "restarts", "--quiet", (char *)NULL);
 		_exit(127);
 	}
@@ -939,6 +940,7 @@ void sh_spawn(const char *const argv[])
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}

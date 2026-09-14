@@ -28,7 +28,13 @@
 #include "kpkg.h"
 #include "portup.h"
 
-#define MAX_PORTS  512		/* kp_all_ports' own internal ceiling       */
+/*
+ * How many ports one run carries. It is this tool's own ceiling and nothing
+ * else's — kp_all_ports() grows its answer — so it is set well above the tree
+ * rather than at it: a run that silently stopped at the cut reported every
+ * port after it as absent, which reads as a repo that lost them.
+ */
+#define MAX_PORTS  4096
 #define GROUP_MAX  64		/* generous headroom over the 17-member max */
 #define CACHE_TTL  86400	/* 24h, per the design                      */
 
@@ -941,6 +947,9 @@ static int gather_names(const KpConf *conf, char **want, int nwant,
 		int n = 0;
 		for (int i = 0; i < count && n < MAX_PORTS; i++)
 			kb_strlcpy(names[n++], all[i], 64);
+		if (count > MAX_PORTS)
+			kb_warn("%d ports in the tree, %d carried: raise MAX_PORTS",
+				count, MAX_PORTS);
 		kb_strv_free(all);
 		return n;
 	}
@@ -1163,28 +1172,35 @@ static void selftest_cache(void)
 	if (fd >= 0)
 		close(fd);
 
-	Cache c = {0};
+	/* On the heap, for the reason main's is: one entry per port, each
+	 * carrying a URL, is megabytes. */
+	Cache *c = kb_calloc(1, sizeof(*c));
 	PuResult r = {0};
 	r.state = PU_NEWER;
 	kb_strlcpy(r.candidate, "8.21.0", sizeof(r.candidate));
 	kb_strlcpy(r.url, "https://example.invalid/curl-8.21.0.tar.xz",
 		   sizeof(r.url));
 	r.low_confidence = 1;
-	cache_upsert(&c, "curl", "8.17.0", &r, 1000);
+	cache_upsert(c, "curl", "8.17.0", &r, 1000);
 
 	PuResult weird = {0};
 	weird.state = PU_UNKNOWN;
 	kb_strlcpy(weird.reason, "a \"quoted\" host\\path\nwith control bytes",
 		   sizeof(weird.reason));
-	cache_upsert(&c, "weird\"name", "1.0", &weird, 1000);
+	cache_upsert(c, "weird\"name", "1.0", &weird, 1000);
 
-	cache_save(tmpl, &c);
+	cache_save(tmpl, c);
 
-	Cache back = {0};
-	cache_load(tmpl, &back);
-	st_ok(back.n == 2, "round trip preserves entry count");
+	/* On the heap: a Cache holds MAX_PORTS entries and is measured in
+	 * megabytes, which is more than a thread's stack. */
+	Cache *back = kb_calloc(1, sizeof(*back));
 
-	CacheEntry *ce = cache_find(&back, "curl");
+	if (!back)
+		return;
+	cache_load(tmpl, back);
+	st_ok(back->n == 2, "round trip preserves entry count");
+
+	CacheEntry *ce = cache_find(back, "curl");
 	st_ok(ce != NULL, "round trip preserves the name");
 	if (ce) {
 		st_ok(!strcmp(ce->version, "8.17.0"), "round trip preserves version");
@@ -1194,23 +1210,23 @@ static void selftest_cache(void)
 		st_ok(ce->checked == 1000, "round trip preserves the timestamp");
 	}
 
-	CacheEntry *cw = cache_find(&back, "weird\"name");
+	CacheEntry *cw = cache_find(back, "weird\"name");
 	st_ok(cw != NULL, "an escaped key round-trips");
 	if (cw)
 		st_ok(!strcmp(cw->reason, weird.reason),
 		      "quotes, backslashes and control bytes round-trip");
 
 	PuResult hit;
-	st_ok(try_cache(&c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
+	st_ok(try_cache(c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
 			0, 1000 + CACHE_TTL - 1, &hit) == 1,
 	      "a fresh, version-matched entry is a hit");
-	st_ok(try_cache(&c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
+	st_ok(try_cache(c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
 			0, 1000 + CACHE_TTL + 1, &hit) == 0,
 	      "an entry past its TTL is a miss");
-	st_ok(try_cache(&c, &(PuRecipe){ .name = "curl", .version = "8.18.0" },
+	st_ok(try_cache(c, &(PuRecipe){ .name = "curl", .version = "8.18.0" },
 			0, 1000, &hit) == 0,
 	      "a version mismatch (the recipe moved) is a miss");
-	st_ok(try_cache(&c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
+	st_ok(try_cache(c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
 			1, 1000, &hit) == 0,
 	      "--refresh always misses");
 
@@ -1224,10 +1240,14 @@ static void selftest_cache(void)
 		st_ok(junk_written == 9, "wrote the corrupt fixture");
 		close(fd2);
 	}
-	Cache corrupt = {0};
-	cache_load(tmpl2, &corrupt);
-	st_ok(corrupt.n == 0, "a cache that does not parse whole reads as absent");
+	Cache *corrupt = kb_calloc(1, sizeof(*corrupt));
+
+	cache_load(tmpl2, corrupt);
+	st_ok(corrupt->n == 0, "a cache that does not parse whole reads as absent");
 	unlink(tmpl2);
+	free(corrupt);
+	free(back);
+	free(c);
 }
 
 /*
@@ -1367,8 +1387,10 @@ int main(int argc, char **argv)
 	char cache_path[1536];
 	snprintf(cache_path, sizeof(cache_path), "%s/ports/.update-cache.json",
 		 repo_root);
-	Cache cache;
-	memset(&cache, 0, sizeof(cache));
+	/* On the heap: the table is one entry per port and an entry carries a
+	 * URL, so at the tree's size it is megabytes and a stack frame is not
+	 * where megabytes go. */
+	Cache *cache = kb_calloc(1, sizeof(*cache));
 	/* --fixture makes pu_http_head answer 200 for any URL that has a
 	 * recorded response, which is what lets the offline selftest exercise
 	 * the proof step at all — but that 200 was never real. Loading or
@@ -1378,16 +1400,16 @@ int main(int argc, char **argv)
 	 * checked against upstream. Fixture results are not evidence about
 	 * the real world, so they must never touch the file a real run trusts. */
 	if (!o.fixture)
-		cache_load(cache_path, &cache);
+		cache_load(cache_path, cache);
 
 	g_entries = kb_calloc(MAX_PORTS, sizeof(*g_entries));
 	int any_newer = 0;
-	g_nentries = discover(&conf, kpkg_bin, names, nnames, &cache, o.refresh,
+	g_nentries = discover(&conf, kpkg_bin, names, nnames, cache, o.refresh,
 			      &any_newer);
 
 
 	if (!o.fixture)
-		cache_save(cache_path, &cache);
+		cache_save(cache_path, cache);
 
 	compute_groups(g_entries, g_nentries);
 
@@ -1407,6 +1429,7 @@ int main(int argc, char **argv)
 		report_vulnerable(&conf, kpkg_bin, names, nnames);
 	free(names);
 	free(g_entries);
+	free(cache);
 
 	/* Exit status ranks the three outcomes a script needs to tell apart:
 	 * 2 means at least one port is now in the state this whole feature

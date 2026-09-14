@@ -164,6 +164,18 @@ static int key_of(xkb_keysym_t sym)
 	return cp ? (int)cp : 0;
 }
 
+#define KKMS_REP_DELAY_MS 500
+#define KKMS_REP_RATE_MS 40
+
+static unsigned long long rep_now_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned long long)ts.tv_sec * 1000 +
+	       (unsigned long long)ts.tv_nsec / 1000000;
+}
+
 static void on_key(struct libinput_event *ev)
 {
 	struct libinput_event_keyboard *k =
@@ -216,7 +228,23 @@ static void on_key(struct libinput_event *ev)
 			e.key = key;
 			e.mods = mods_now();
 			push(&e);
+
+			/* A key the keymap says does not repeat — a modifier,
+			 * a lock — is held without repeating. */
+			if (K.keymap &&
+			    xkb_keymap_key_repeats(K.keymap, code)) {
+				K.rep_code = code;
+				K.rep_key = key;
+				K.rep_due_ms = rep_now_ms() +
+					       KKMS_REP_DELAY_MS;
+			} else {
+				K.rep_code = 0;
+			}
 		}
+	} else if (K.rep_code == code) {
+		/* Only the key that is repeating stops it: releasing a
+		 * modifier while a letter is held must not. */
+		K.rep_code = 0;
 	}
 
 	xkb_state_update_key(K.state, code,
@@ -255,7 +283,8 @@ static void moved(void)
 	 * because there is no seam in the virtual box — the cut into screens
 	 * happens at the paint, below anything that knows where the arrow is.
 	 * Clamped against K.vw and K.vh for that reason and not against a
-	 * mode. */
+	 * mode, and the clamp lands on the last cell because that box is a
+	 * whole number of cells. */
 	if (K.ptr_px > K.vw - 1)
 		K.ptr_px = K.vw - 1;
 	if (K.ptr_py > K.vh - 1)
@@ -351,11 +380,45 @@ static void on_axis(struct libinput_event *ev)
 		if (ticks > 1)
 			ticks = 1;	/* one frame is one detent */
 	} else {
+		/*
+		 * ACCUMULATED, which is what makes a slow drag scroll at all.
+		 * A finger's deltas are a few units per event, so a tick taken
+		 * from one event alone is zero every time and the remainder
+		 * was thrown away — a touchpad that moved the page only when
+		 * somebody flicked it.
+		 */
 		v = libinput_event_pointer_get_axis_value(
 			p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL);
-		ticks = (int)((v < 0 ? -v : v) / 10.0);
-		if (ticks > 5)
+		/*
+		 * THE REMAINDER BELONGS TO THE GESTURE THAT MADE IT. libinput
+		 * ends a finger scroll with a zero-value event; carrying the
+		 * leftover fraction past it spends it on the next gesture, so
+		 * a flick down after a slow drag up moves one detent fewer
+		 * than the finger asked for — and a fraction left by a
+		 * gesture in one direction can fire a tick in the other.
+		 */
+		if (v == 0.0) {
+			K.scroll_acc = 0.0;
+			return;
+		}
+		/* A change of direction is a new gesture too: the two
+		 * fractions are not the same quantity. */
+		if ((v < 0.0) != (K.scroll_acc < 0.0))
+			K.scroll_acc = 0.0;
+		K.scroll_acc += v;
+		ticks = (int)((K.scroll_acc < 0 ? -K.scroll_acc
+						: K.scroll_acc) / 10.0);
+		if (ticks > 5) {
+			/* The cap discards the surplus rather than banking
+			 * it: a fling is one gesture, not a queue of them. */
 			ticks = 5;
+			v = K.scroll_acc;
+			K.scroll_acc = 0.0;
+		} else if (ticks) {
+			v = K.scroll_acc;
+			K.scroll_acc -= (K.scroll_acc < 0 ? -ticks : ticks) *
+					10.0;
+		}
 	}
 
 	for (int i = 0; i < ticks; i++) {
@@ -387,8 +450,21 @@ static void on_touch(struct libinput_event *ev, int phase)
 	e.ms = (unsigned)(libinput_event_touch_get_time(t));
 
 	if (phase != KT_TOUCH_UP && phase != KT_TOUCH_CANCEL) {
+		/* The transform's range is INCLUSIVE of the box, so a finger
+		 * on the far edge lands on K.vw itself — one cell past the
+		 * grid, which every hit test above here would miss. */
+		int gw = K.vw / cw, gh = K.vh / ch;
+
 		e.mx = (int)libinput_event_touch_get_x_transformed(t, K.vw) / cw;
 		e.my = (int)libinput_event_touch_get_y_transformed(t, K.vh) / ch;
+		if (e.mx > gw - 1)
+			e.mx = gw > 0 ? gw - 1 : 0;
+		if (e.my > gh - 1)
+			e.my = gh > 0 ? gh - 1 : 0;
+		if (e.mx < 0)
+			e.mx = 0;
+		if (e.my < 0)
+			e.my = 0;
 	}
 
 	KtuiGesture g;
@@ -492,6 +568,27 @@ void kkms_input_pump(void)
 		 * would otherwise arrive as if they had just happened.
 		 */
 		if (!K.active) {
+			/*
+			 * A KEY STILL MOVES THE XKB STATE. Ctrl+Alt+F<n> is
+			 * acted on at the press and the three releases arrive
+			 * after the seat has gone, so a state that never saw
+			 * them comes back with Ctrl and Alt held — and the
+			 * first key typed on return is a chord nobody pressed.
+			 */
+			if (libinput_event_get_type(ev) ==
+			    LIBINPUT_EVENT_KEYBOARD_KEY && K.state) {
+				struct libinput_event_keyboard *k =
+					libinput_event_get_keyboard_event(ev);
+				uint32_t code =
+					libinput_event_keyboard_get_key(k) + 8;
+
+				xkb_state_update_key(
+					K.state, code,
+					libinput_event_keyboard_get_key_state(k) ==
+							LIBINPUT_KEY_STATE_PRESSED
+						? XKB_KEY_DOWN
+						: XKB_KEY_UP);
+			}
 			libinput_event_destroy(ev);
 			continue;
 		}
@@ -541,6 +638,39 @@ void kkms_input_pump(void)
 	 * what the recogniser was fed, so that is what it is asked with: a
 	 * clock of a different base makes a deadline that never expires.
 	 */
+	/*
+	 * A REPEAT HAS NO EVENT TO ARRIVE ON either: the key is down and
+	 * libinput has said everything it is going to say. The deadline is
+	 * checked from the same idle wait the long press uses.
+	 *
+	 * THE KEY IS THE ONE THAT WAS PRESSED AND THE MODIFIERS ARE THE ONES
+	 * HELD NOW. Taking Shift while an arrow repeats extends a selection,
+	 * and letting go of Ctrl stops the chord — which is what every other
+	 * keyboard on the machine does, libkwl included. The KEYSYM is not
+	 * re-resolved with them: that would turn a repeating letter into its
+	 * capital mid-stream, and a function key into a VT switch.
+	 */
+	if (K.active && K.rep_code) {
+		unsigned long long now = rep_now_ms();
+
+		while (K.rep_code && now >= K.rep_due_ms) {
+			KtuiEvent e;
+
+			memset(&e, 0, sizeof(e));
+			e.type = KT_EVT_KEY;
+			e.key = K.rep_key;
+			e.mods = mods_now();
+			push(&e);
+			K.rep_due_ms += KKMS_REP_RATE_MS;
+			/* A wait longer than the interval must not deliver the
+			 * whole backlog: a key is held, not queued. */
+			if (now >= K.rep_due_ms)
+				K.rep_due_ms = now + KKMS_REP_RATE_MS;
+		}
+	}
+	if (!K.active)
+		K.rep_code = 0;
+
 	if (K.active) {
 		KtuiGesture g;
 		struct timespec ts;

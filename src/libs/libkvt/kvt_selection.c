@@ -80,11 +80,31 @@ static void word_select(struct kvt_screen *con,
 
 	line = con->sel_start.line;
 
-	if (!line || line->cells[posx].ch == ' ')
+	/*
+	 * A SCROLLBACK LINE IS AS WIDE AS IT WAS WRITTEN, not as wide as the
+	 * screen is now: a resize widens the live lines and leaves the history
+	 * alone, so a double-click past the end of an old line reads off the
+	 * end of its allocation. Nothing is selected there, which is what a
+	 * click on empty space means anyway.
+	 *
+	 * AN UNWRITTEN OR ERASED CELL IS EMPTY SPACE TOO. It holds no
+	 * character at all rather than a blank, so a click on one has no word
+	 * under it and must select nothing; walking out of it would run the
+	 * two searches in opposite directions and end the selection before it
+	 * starts.
+	 */
+	if (!line || posx >= line->size || line->cells[posx].ch == ' ' ||
+	    line->cells[posx].ch == '\n' || !line->cells[posx].ch)
 		return;
 
+	/*
+	 * THE SAME THREE CHARACTERS BOUND THE WORD AT BOTH ENDS, or a word
+	 * preceded by erased cells selects the empty run before it as well.
+	 */
 	for (start = posx; start >= 0; start--) {
-		if (line->cells[start].ch == ' ') {
+		if (line->cells[start].ch == ' ' ||
+		    line->cells[start].ch == '\n' ||
+		    line->cells[start].ch == '\0') {
 			start++;
 			break;
 		}
@@ -99,6 +119,24 @@ static void word_select(struct kvt_screen *con,
 			break;
 		}
 	}
+	/*
+	 * BOTH ENDS ARE INCLUSIVE CELL INDICES, AND BOTH BOUNDS ARE NEEDED. A
+	 * word that runs to the end of the line leaves the walk one past the
+	 * last cell, and a renderer turns the highlight off by reaching
+	 * sel_end.x — an index it never reaches inverts every row after it.
+	 * The line's own width is not enough: a line only ever grows, so it
+	 * keeps the widest the terminal has ever been and a shrunk screen
+	 * leaves the end off the right edge. The renderer walks size_x, so
+	 * that is the bound it can reach.
+	 *
+	 * The copy follows the same two bounds, so a word cut by a shrink
+	 * yields the cells that are highlighted and no more.
+	 */
+	if (end >= (int)line->size)
+		end = (int)line->size - 1;
+	if (end >= (int)con->size_x)
+		end = (int)con->size_x - 1;
+
 	con->sel_start.x = start;
 	con->sel_end.x = end;
 	con->sel_end.line = line;
@@ -284,27 +322,33 @@ static struct line *get_next_line(struct kvt_screen *con, struct line *line, uns
 	return NULL;
 }
 
-static int selection_count_lines(struct kvt_screen *con, struct selection_pos *start, struct selection_pos *end)
+/*
+ * THE BYTES THE COPY CAN NEED, measured over the lines it will actually
+ * visit — the same walk copy_lines() makes, so the two cannot disagree about
+ * which lines are in the selection.
+ *
+ * SIZED FROM EACH LINE, NEVER FROM THE SCREEN WIDTH. A line keeps the width
+ * it was written at and a resize only ever widens the live lines, so a
+ * scrollback line can be far wider than the screen is now and copy_line()
+ * will happily emit all of it. Its bound is calc_line_len() codepoints of at
+ * most four bytes each, plus the newline it writes after every line; one more
+ * byte carries the terminating NUL.
+ */
+static size_t selection_copy_size(struct kvt_screen *con,
+				  struct selection_pos *start,
+				  struct selection_pos *end)
 {
-	int count = 1;
 	unsigned int index = get_line_index(con, start->line);
-	struct line *iter;
+	struct line *iter = start->line;
+	size_t bytes = 0;
 
-	iter = start->line;
-	while (iter && iter != end->line) {
-		count++;
+	while (iter) {
+		bytes += (size_t)calc_line_len(iter) * 4 + 1;
+		if (iter == end->line)
+			break;
 		iter = get_next_line(con, iter, &index);
 	}
-	return count;
-}
-
-/*
- * Calculate the maximum needed space for the number of lines given
- */
-static unsigned int calc_line_copy_buffer(struct kvt_screen *con, unsigned int num_lines)
-{
-	// 4 is the max size of a Unicode character
-	return con->size_x * num_lines * 4 + 1;
+	return bytes + 1;
 }
 
 static int copy_lines(struct kvt_screen *con, struct selection_pos *start, struct selection_pos *end, char *buf, int pos)
@@ -327,9 +371,8 @@ int kvt_screen_selection_copy(struct kvt_screen *con, char **out)
 {
 	struct selection_pos *start = &con->sel_start;
 	struct selection_pos *end = &con->sel_end;
-	int buf_size = 0;
+	size_t buf_size;
 	int pos = 0;
-	int total_lines;
 
 	if (!con || !out) {
 		return -EINVAL;
@@ -353,8 +396,7 @@ int kvt_screen_selection_copy(struct kvt_screen *con, char **out)
 		start->x = 0;
 	}
 
-	total_lines =  selection_count_lines(con, start, end);
-	buf_size = calc_line_copy_buffer(con, total_lines);
+	buf_size = selection_copy_size(con, start, end);
 
 	*out = calloc(buf_size, 1);
 	if (!*out) {

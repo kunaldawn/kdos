@@ -9,14 +9,24 @@
  *
  * Placement, tiling, the neighbour-edge search, the focus stack, workspace
  * semantics and output ordering. Two desktops obey it: kdos-comp draws windows
- * in pixels and kdos-con draws them in cells, and a defect in any rule here is
- * therefore ONE fix rather than two that drift.
+ * in pixels and kdos-con draws them in cells.
+ *
+ * WHAT IS ONE IMPLEMENTATION AND WHAT IS TWO, because the difference decides
+ * whether a defect is one fix or two. Placement, tiling, the focus stack and
+ * the ring walks are here and nowhere else. Of the neighbour-edge search only
+ * the arithmetic is shared — kwm_clip_add, kwm_clip_sub, kwm_edge_best and
+ * kwm_edge_check are what kdos-comp calls — while the walks that FIND the
+ * candidate edges exist twice over, the compositor's across its scene graph
+ * and this library's across a region array. Change a walk here and the
+ * compositor is untouched; that is the cost of a model that has to serve a
+ * scene graph and a cell grid, and it is why the contract below is the
+ * arbiter rather than either copy.
  *
  * NOTHING BUT libkbase, AND NO MATHS LIBRARY. kdos-comp compiles libkbase and
  * libkcolor into a static archive and feeds it to meson; giving this library a
- * real `-l` moves that archive with it. The edge sweep interpolates with
- * doubles, which is plain arithmetic and calls nothing — do not reach for
- * anything that would need -lm.
+ * real `-l` moves that archive with it. The placement grid's interval search
+ * compares doubles, which is plain arithmetic and calls nothing — do not reach
+ * for anything that would need -lm.
  *
  * THIS LIBRARY KNOWS NOTHING ABOUT WINDOWS. It is handed rectangles and told
  * what is being asked; what a window IS, which output it is on, whether a
@@ -253,15 +263,6 @@ void kwm_edge_output(KwmBox *best, KwmBox cur, KwmBox tgt, KwmRect usable,
  */
 void kwm_edge_check(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
 		    KwmEdge align, int lesser, void *user);
-
-/*
- * Whether an edge sweeping from `cur` to `tgt` passes through `obstacle`.
- *
- * The moving segment sweeps a quadrilateral, so the test is against the
- * quadrilateral's extent at the obstacle's own offset, found by interpolation.
- * An integer midpoint is a different answer and a different window position.
- */
-int kwm_edge_sweeps(KwmEdge cur, KwmEdge tgt, KwmEdge obstacle);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Placement

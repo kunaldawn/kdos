@@ -7,7 +7,7 @@
  * ---------------------------------
  *   libkicon — name in, sprite slot out
  *
- * Four decisions, and each is a way an icon layer usually ruins a text-mode
+ * Five decisions, and each is a way an icon layer usually ruins a text-mode
  * desktop:
  *
  * - **A picture is a SQUARE centred in its cell box, never a stretch.** The
@@ -27,7 +27,16 @@
  *   drawing the same icon at the same size must produce byte-identical cells,
  *   or the row diff repaints the whole panel sixty times a second. The hot
  *   path is therefore a ktui_sprite_find() and nothing else — no stat, no
- *   decode, no allocation.
+ *   decode, no allocation. When the table has taken the slot back but this
+ *   file still holds the picture, the answer is a re-registration: a decode,
+ *   a tint of every pixel and a bilinear rescale to produce the picture that
+ *   is already in memory is the frame.
+ *
+ * - **A picture handed to the sprite table is REFERENCE-COUNTED and frees its
+ *   own pixels.** The table's evictor is one per process and shared by every
+ *   owner in it, so an unref arriving from somebody else's evictor has to be
+ *   a complete free — and this file has to keep a reference of its own, or
+ *   an eviction would leave the cache naming a freed image.
  *
  * - **Every failure is -1 and every -1 is a glyph.** No icon theme, no atlas,
  *   an unreadable PNG, a full sprite table, `icons = off`, a tty: one answer,
@@ -52,6 +61,23 @@
 #define KI_MAX_CACHE 192
 #define KI_NAME_MAX 128
 
+/*
+ * NAMES THAT RESOLVE TO NOTHING ARE REMEMBERED TOO.
+ *
+ * A name with no picture ran the whole search on EVERY draw: the atlas, then
+ * the data directories, then a stat of six sizes under each. A panel or a
+ * desktop draws the same names every frame, so a single missing icon was a
+ * few dozen failed stat() calls per frame for the life of the session, and a
+ * theme where several are missing is the frame time.
+ *
+ * The key is the same one the picture cache uses. The table lives as long as
+ * the library is initialised and is emptied only by kicon_init()/
+ * kicon_finish(), so a name that starts resolving mid-session — a package
+ * installed under a running desktop — is picked up at the program's next
+ * start.
+ */
+#define KI_MAX_MISS 256
+
 struct ki_pic {
 	uint64_t key;
 	pixman_image_t *img;
@@ -61,6 +87,79 @@ struct ki_pic {
 static struct ki_pic cache[KI_MAX_CACHE];
 static int ncache;
 static unsigned long ki_clock;
+
+/*
+ * AN APPLICATION ID TO AN ICON NAME, REMEMBERED.
+ *
+ * Answering it reads and parses a desktop entry from every data directory,
+ * and the panel asks twice per task chip on every redraw — so a bar with six
+ * windows on it re-read a dozen files a frame to draw icons that had not
+ * changed. The answer for an id with no entry is remembered too, which is the
+ * case that paid the full search every time.
+ */
+#define KI_APP_CACHE 64
+
+static struct {
+	uint64_t key;
+	char icon[KI_NAME_MAX];
+	int set;
+} app_cache[KI_APP_CACHE];
+static int napp, app_cursor;
+
+/*
+ * A FILE'S PATH TO THE SLOT ITS ICON IS IN.
+ *
+ * Answering it from scratch is a stat() and a walk of the MIME glob table —
+ * a thousand suffix comparisons — and the desktop asks it for every entry it
+ * draws on every frame. Thirty icons at the session's tick rate is thirty
+ * syscalls and thirty thousand string comparisons a frame to decide pictures
+ * that did not change.
+ *
+ * THE MEMO IS DROPPED BY kicon_forget_paths(), which the consumer calls when
+ * it re-reads its directory. A file replaced by one of another type is
+ * exactly that event, and the library cannot see it.
+ */
+#define KI_PATH_CACHE 256
+
+static struct {
+	uint64_t key;
+	int cw, ch;
+	int slot;
+	int set;
+} path_cache[KI_PATH_CACHE];
+static int npath, path_cursor;
+
+static uint64_t id_key(const char *id)
+{
+	uint64_t h = 1469598103934665603ULL;
+
+	for (const unsigned char *p = (const unsigned char *)id; *p; p++)
+		h = (h ^ *p) * 1099511628211ULL;
+	return h;
+}
+
+static uint64_t miss[KI_MAX_MISS];
+static int nmiss;
+
+static int miss_known(uint64_t key)
+{
+	for (int i = 0; i < nmiss; i++)
+		if (miss[i] == key)
+			return 1;
+	return 0;
+}
+
+static void miss_add(uint64_t key)
+{
+	/* A ring rather than a cap that stops recording: a table that filled
+	 * and then refused would put every later name back on the slow path,
+	 * which is the case this exists for. */
+	if (nmiss < KI_MAX_MISS) {
+		miss[nmiss++] = key;
+		return;
+	}
+	miss[(int)(key % KI_MAX_MISS)] = key;
+}
 
 static int ki_cw, ki_ch, ki_scale;
 static int ki_on = 1;
@@ -140,6 +239,14 @@ static uint64_t pic_key(const char *name, int cw, int ch, int pad)
 
 /* ── the pixel work ────────────────────────────────────────────────────── */
 
+/* pixman hands the image back to its destroy function and free() does not take
+ * one; a cast between the two signatures is undefined behaviour. */
+static void kicon_free_bits(pixman_image_t *img, void *data)
+{
+	(void)img;
+	free(data);
+}
+
 /*
  * RGBA8888 (straight) -> a premultiplied a8r8g8b8 pixman image, tinted on the
  * way if asked.
@@ -172,26 +279,27 @@ static pixman_image_t *to_pixman(const uint8_t *rgba, int w, int h, int tint)
 		px[i] = (a << 24) | (r << 16) | (g << 8) | b;
 	}
 
-	/* pixman_image_create_bits does NOT take ownership of the pixels — it
-	 * only frees them when it allocated them itself (data == NULL). Every
-	 * image built here is freed through free_bits(), which unrefs and then
-	 * frees the buffer it was handed. */
+	/* pixman_image_create_bits frees only a buffer it allocated itself, so
+	 * the destroy function is what releases this one. It must be the image
+	 * that owns the pixels: a picture registered as a sprite can be
+	 * unref'd by the table's evictor, which belongs to some other owner in
+	 * the process and knows nothing about this buffer. */
 	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h,
 						       px, w * 4);
 	if (!img) {
 		free(px);
 		return NULL;
 	}
+	pixman_image_set_destroy_function(img, kicon_free_bits, px);
 	return img;
 }
 
-static void free_bits(pixman_image_t *img)
+/* One reference back. The pixels go with the last one, through the destroy
+ * function the image was built with. */
+static void pic_unref(pixman_image_t *img)
 {
-	if (!img)
-		return;
-	uint32_t *data = pixman_image_get_data(img);
-	pixman_image_unref(img);
-	free(data);
+	if (img)
+		pixman_image_unref(img);
 }
 
 /*
@@ -212,9 +320,9 @@ static pixman_image_t *fit(pixman_image_t *src, int box_w, int box_h, int pad)
 	 * `pad` shrinks the SQUARE and not the box: the sprite still covers
 	 * the cells it was asked for, so the caller's hit map, its plate and
 	 * its layout are all unchanged and only the picture inside gets air.
-	 * Clamped rather than refused — a padding wider than the well is a
-	 * caller asking for something it cannot have, and an icon one pixel
-	 * across still says more than no icon.
+	 * A padding that would leave no square is IGNORED and the picture is
+	 * drawn at the full box size — the caller gets an icon rather than a
+	 * dot, and the well it asked for is unchanged either way.
 	 */
 	int side = box_w < box_h ? box_w : box_h;
 
@@ -233,6 +341,8 @@ static pixman_image_t *fit(pixman_image_t *src, int box_w, int box_h, int pad)
 		free(px);
 		return NULL;
 	}
+	/* The image owns its pixels — see to_pixman(). */
+	pixman_image_set_destroy_function(dst, kicon_free_bits, px);
 
 	pixman_transform_t t;
 	pixman_transform_init_scale(&t,
@@ -255,12 +365,27 @@ static pixman_image_t *fit(pixman_image_t *src, int box_w, int box_h, int pad)
 
 /* ── the cache ─────────────────────────────────────────────────────────── */
 
+/*
+ * Give the cached picture up, and the sprite slot naming it with it.
+ *
+ * TWO REFERENCES OR ONE, depending on whether the table still holds the
+ * picture: ktui_sprite_drop() forgets a slot without calling the evictor, so
+ * the reference taken when the picture was registered is this function's to
+ * return. A slot the table already evicted handed that reference back itself.
+ */
 static void cache_drop(int i)
 {
+	pixman_image_t *img = cache[i].img;
+	int slot = ktui_sprite_find(cache[i].key);
+	const KtuiSprite *s = slot >= 0 ? ktui_sprite_get(slot) : NULL;
+	int in_tbl = s && s->pix == img;
+
 	ktui_sprite_drop(cache[i].key);
-	free_bits(cache[i].img);
 	cache[i].img = NULL;
 	cache[i].key = 0;
+	if (in_tbl)
+		pic_unref(img);
+	pic_unref(img);
 }
 
 static void cache_evict_one(void)
@@ -277,7 +402,22 @@ static void cache_evict_one(void)
 static int cache_put(uint64_t key, pixman_image_t *img)
 {
 	int slot = -1;
+
+	/*
+	 * A KEY OCCUPIES ONE SLOT. Two entries under one key make the eviction
+	 * of either call ktui_sprite_drop() on the key the other is still
+	 * drawing with, so the live picture silently loses its sprite and is
+	 * decoded again from disk on the next frame. The entry being replaced
+	 * goes out through cache_drop(), which is safe here because the caller
+	 * registers the new picture under the same key before anything draws.
+	 */
 	for (int i = 0; i < ncache; i++)
+		if (cache[i].img && cache[i].key == key) {
+			cache_drop(i);
+			slot = i;
+			break;
+		}
+	for (int i = 0; slot < 0 && i < ncache; i++)
 		if (!cache[i].img) {
 			slot = i;
 			break;
@@ -406,8 +546,20 @@ int kicon_init(int cell_w, int cell_h, int scale)
 
 	kicon_finish();
 
-	ki_cw = cell_w > 0 ? cell_w : 8;
-	ki_ch = cell_h > 0 ? cell_h : 16;
+	/*
+	 * A CELL SMALLER THAN 4x4 PIXELS IS NOT A PIXEL BACKEND. The console
+	 * client answers one, because there are no pixels on its side of the
+	 * socket; rasterising at it decodes a PNG per name to produce a
+	 * picture a pixel or two across, which is a blank cell by a longer
+	 * route. Nothing is opened, kicon_enabled() stays false, and every
+	 * kicon_slot() answers -1 — the glyph tier, which every caller draws.
+	 * A consumer with a nominal cell of its own passes that instead.
+	 */
+	if (cell_w < 4 || cell_h < 4)
+		return -1;
+
+	ki_cw = cell_w;
+	ki_ch = cell_h;
 	ki_scale = scale > 0 ? scale : 1;
 	tint_reset(ktui_theme ? kcol_find(ktui_theme->name) : NULL);
 
@@ -439,6 +591,15 @@ void kicon_finish(void)
 		if (cache[i].img)
 			cache_drop(i);
 	ncache = 0;
+	/* The names that resolved to nothing go with them, and so do the
+	 * desktop entries that were read: both answer a question about what is
+	 * installed, and teardown is the only point at which this library can
+	 * know the answer has stopped being asked. */
+	nmiss = 0;
+	napp = 0;
+	app_cursor = 0;
+	memset(app_cache, 0, sizeof(app_cache));
+	kicon_forget_paths();
 	ki_atlas_close();
 	ki_have_atlas = 0;
 	ki_ready = 0;
@@ -450,6 +611,10 @@ void kicon_retint(void)
 		if (cache[i].img)
 			cache_drop(i);
 	ncache = 0;
+	/* The path memo names sprite slots, and every slot it can name has
+	 * just been handed back: a memo kept across this either draws nothing
+	 * or draws whichever picture reclaims the index next. */
+	kicon_forget_paths();
 	tint_reset(ktui_theme ? kcol_find(ktui_theme->name) : NULL);
 }
 
@@ -487,6 +652,30 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 		return slot;
 	}
 
+	/*
+	 * THE TABLE GAVE THE SLOT BACK BUT THE PICTURE IS STILL OURS. A slot
+	 * taken back under the byte budget is routine on a surface that also
+	 * draws photographs, and re-registering a picture already in memory is
+	 * a hash insert where decoding it again is a PNG, a tint of every
+	 * pixel and a bilinear rescale. The scan is linear over at most
+	 * KI_MAX_CACHE entries and runs only on this miss, never per frame.
+	 */
+	for (int i = 0; i < ncache; i++) {
+		if (!cache[i].img || cache[i].key != key)
+			continue;
+		slot = ktui_sprite_put(key, cache[i].img, cw, ch,
+				       fallback_cp());
+		if (slot < 0)
+			return -1;	/* a table with no room is the glyph */
+		pixman_image_ref(cache[i].img);
+		cache[i].used = ++ki_clock;
+		return slot;
+	}
+
+	/* Asked before any of the searching below, which is the whole point. */
+	if (miss_known(key))
+		return -1;
+
 	int box_w = cw * ki_cw * ki_scale;
 	int box_h = ch * ki_ch * ki_scale;
 	/* The size the picture will be DRAWN at, not the well's — asking the
@@ -494,6 +683,10 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 	 * and the atlas has a 32 to hand. */
 	int want = (box_w < box_h ? box_w : box_h) - 2 * pad;
 
+	/* A padding that would leave no square is ignored and the picture is
+	 * drawn at the full box size — the same rule fit() keeps, and the two
+	 * must agree or the atlas is asked for a blob of one size and the box
+	 * is filled at another. */
 	if (want < 1)
 		want = box_w < box_h ? box_w : box_h;
 
@@ -525,8 +718,10 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 	}
 	if (!rgba)
 		rgba = load_hicolor(name, want, &w, &h);
-	if (!rgba)
+	if (!rgba) {
+		miss_add(key);
 		return -1;
+	}
 
 	pixman_image_t *src = to_pixman(rgba, w, h, tint);
 	free(rgba);
@@ -534,13 +729,13 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 		return -1;
 
 	pixman_image_t *img = fit(src, box_w, box_h, pad);
-	free_bits(src);
+	pic_unref(src);
 	if (!img)
 		return -1;
 
 	int ci = cache_put(key, img);
 	if (ci < 0) {
-		free_bits(img);
+		pic_unref(img);
 		return -1;
 	}
 	slot = ktui_sprite_put(key, img, cw, ch, fallback_cp());
@@ -548,6 +743,10 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 		cache_drop(ci);
 		return -1;
 	}
+	/* The table's reference, taken only once it has accepted the picture:
+	 * a refused put leaves this file the sole owner, and a reference taken
+	 * before the put would never be given back. */
+	pixman_image_ref(img);
 	return slot;
 }
 
@@ -595,14 +794,13 @@ pixman_image_t *kicon_pixmap(const char *name, int box_w, int box_h)
 		return NULL;
 
 	pixman_image_t *img = fit(src, box_w, box_h, 0);
-	free_bits(src);
+	pic_unref(src);
 	return img;
 }
 
 void kicon_pixmap_free(pixman_image_t *img)
 {
-	if (img)
-		free_bits(img);
+	pic_unref(img);
 }
 
 int kicon_slot_for_path(const char *path, int is_dir, int cw, int ch)
@@ -615,14 +813,51 @@ int kicon_slot_for_path(const char *path, int is_dir, int cw, int ch)
 	if (is_dir)
 		return kicon_slot("folder", cw, ch);
 
+	uint64_t key = id_key(path);
+
+	for (int i = 0; i < npath; i++)
+		if (path_cache[i].set && path_cache[i].key == key &&
+		    path_cache[i].cw == cw && path_cache[i].ch == ch)
+			return path_cache[i].slot;
+
+	int slot = -1;
+
 	kxdg_mime_for_path(path, mime, sizeof(mime));
 	int n = kxdg_mime_icon_names(mime, names, 4);
 	for (int i = 0; i < n; i++) {
-		int s = kicon_slot(names[i], cw, ch);
-		if (s >= 0)
-			return s;
+		slot = kicon_slot(names[i], cw, ch);
+		if (slot >= 0)
+			break;
 	}
-	return -1;
+
+	int at;
+
+	if (npath < KI_PATH_CACHE) {
+		at = npath++;
+	} else {
+		at = path_cursor;
+		path_cursor = (path_cursor + 1) % KI_PATH_CACHE;
+	}
+	path_cache[at].key = key;
+	path_cache[at].cw = cw;
+	path_cache[at].ch = ch;
+	path_cache[at].slot = slot;
+	path_cache[at].set = 1;
+	return slot;
+}
+
+/*
+ * Forget every path this library has resolved. What is remembered is a sprite
+ * slot index, so the memo is only as good as the slot: the consumer calls
+ * this when it re-reads the directory it is drawing, or a path whose file was
+ * replaced by one of another type keeps its old icon. kicon_retint() calls it
+ * for the same reason — it frees every slot the memo could name.
+ */
+void kicon_forget_paths(void)
+{
+	npath = 0;
+	path_cursor = 0;
+	memset(path_cache, 0, sizeof(path_cache));
 }
 
 const char *kicon_app_icon(const char *id)
@@ -630,10 +865,18 @@ const char *kicon_app_icon(const char *id)
 	static char icon[KI_NAME_MAX];
 	char dirs[8][512];
 	char path[1024];
-	int nd = data_dirs(dirs, 8);
 
 	if (!id || !*id)
 		return NULL;
+
+	uint64_t key = id_key(id);
+
+	for (int i = 0; i < napp; i++)
+		if (app_cache[i].set && app_cache[i].key == key)
+			return app_cache[i].icon[0] ? app_cache[i].icon : NULL;
+
+	int nd = data_dirs(dirs, 8);
+
 	icon[0] = '\0';
 
 	for (int d = 0; d < nd; d++) {
@@ -647,7 +890,20 @@ const char *kicon_app_icon(const char *id)
 			snprintf(icon, sizeof(icon), "%s", v);
 		kxdg_free(&e);
 		if (icon[0])
-			return icon;
+			break;
 	}
-	return NULL;
+
+	int slot;
+
+	if (napp < KI_APP_CACHE) {
+		slot = napp++;
+	} else {
+		slot = app_cursor;
+		app_cursor = (app_cursor + 1) % KI_APP_CACHE;
+	}
+	app_cache[slot].key = key;
+	app_cache[slot].set = 1;
+	snprintf(app_cache[slot].icon, sizeof(app_cache[slot].icon), "%s",
+		 icon);
+	return icon[0] ? app_cache[slot].icon : NULL;
 }

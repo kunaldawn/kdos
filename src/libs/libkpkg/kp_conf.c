@@ -165,6 +165,13 @@ char *kp_port_dir(const KpConf *c, const char *name)
  * the same precedence kp_port_dir applies. NULL-terminated, kb_strv_free. */
 char **kp_all_ports(const KpConf *c, int *count)
 {
+	/*
+	 * THE ARRAY GROWS. A fixed ceiling here is not a cap on a pathological
+	 * input, it is a cap on the TREE: the core repo alone is past what any
+	 * round number would have been, and a scan that stopped early returned
+	 * a count that looked like an answer — every port alphabetically after
+	 * the cut simply did not exist, to every consumer, with nothing said.
+	 */
 	int cap = 512, n = 0;
 	char **out = kb_calloc((size_t)cap + 1, sizeof(*out));
 
@@ -172,7 +179,17 @@ char **kp_all_ports(const KpConf *c, int *count)
 		char **names = kb_listdir(c->repos[i], NULL);
 		if (!names)
 			continue;
-		for (char **e = names; *e && n < cap; e++) {
+		for (char **e = names; *e; e++) {
+			if (n == cap) {
+				int ncap = cap * 2;
+				char **grown = kb_calloc((size_t)ncap + 1,
+							 sizeof(*grown));
+
+				memcpy(grown, out, (size_t)n * sizeof(*out));
+				free(out);
+				out = grown;
+				cap = ncap;
+			}
 			char *dir = kb_path_join(c->repos[i], *e);
 			char *recipe = kb_path_join(dir, "kpkgbuild");
 			int ok = kb_path_exists(recipe) && !kb_is_dir(recipe);
@@ -232,6 +249,8 @@ KpOwned *kp_owned_load(const KpConf *c)
 
 	int cap = 4096;
 	OwnedPair *pair = kb_calloc((size_t)cap, sizeof(*pair));
+	int ocap = 64;
+	o->ownerv = kb_calloc((size_t)ocap, sizeof(*o->ownerv));
 	for (char **n = names; *n; n++) {
 		char *f = kb_path_join(db, *n);
 		size_t len = 0;
@@ -239,6 +258,22 @@ KpOwned *kp_owned_load(const KpConf *c)
 		free(f);
 		if (!data)
 			continue;
+
+		/* One copy of the package name per package, shared by every
+		 * path it claims: a quarter of a million paths come from under
+		 * a thousand names, and a copy each is megabytes of identical
+		 * strings. Taken only once the file has been read, so a name
+		 * never enters the pool without a package behind it. */
+		if (o->nowner == ocap) {
+			ocap *= 2;
+			char **nv = kb_calloc((size_t)ocap, sizeof(*nv));
+			memcpy(nv, o->ownerv,
+			       (size_t)o->nowner * sizeof(*nv));
+			free(o->ownerv);
+			o->ownerv = nv;
+		}
+		char *owner = kb_strdup(*n);
+		o->ownerv[o->nowner++] = owner;
 
 		int first = 1;
 		for (char *line = data, *next; line && *line; line = next) {
@@ -262,7 +297,7 @@ KpOwned *kp_owned_load(const KpConf *c)
 				pair = nv;
 			}
 			pair[o->n].path = kb_strdup(line);
-			pair[o->n].owner = kb_strdup(*n);
+			pair[o->n].owner = owner;
 			o->n++;
 		}
 		free(data);
@@ -281,15 +316,30 @@ KpOwned *kp_owned_load(const KpConf *c)
 	return o;
 }
 
+/* Order a stored `./usr/bin/tar` against a bare `usr/bin/tar`, byte for byte
+ * as strcmp would against the `./`-prefixed spelling, so the binary search
+ * below stays consistent with the sort. Comparing in place rather than
+ * building the prefixed key is what keeps a path of any length findable: a
+ * fixed key buffer silently truncates the long ones, and a truncated key
+ * matches nothing. */
+static int cmp_stored_rel(const char *stored, const char *rel)
+{
+	static const char pre[2] = { '.', '/' };
+	for (int i = 0; i < 2; i++) {
+		unsigned char a = (unsigned char)stored[i];
+		if (a != (unsigned char)pre[i])
+			return a < (unsigned char)pre[i] ? -1 : 1;
+	}
+	return strcmp(stored + 2, rel);
+}
+
 /* Binary search; -1 when nothing claims it. */
 static int owned_find(const KpOwned *o, const char *rel)
 {
-	char key[1024];
-	snprintf(key, sizeof(key), "./%s", rel);
 	int lo = 0, hi = o->n - 1;
 	while (lo <= hi) {
 		int mid = lo + (hi - lo) / 2;
-		int r = strcmp(o->path[mid], key);
+		int r = cmp_stored_rel(o->path[mid], rel);
 		if (!r)
 			return mid;
 		if (r < 0)
@@ -316,10 +366,13 @@ void kp_owned_free(KpOwned *o)
 {
 	if (!o)
 		return;
-	for (int i = 0; i < o->n; i++) {
+	for (int i = 0; i < o->n; i++)
 		free(o->path[i]);
-		free(o->owner[i]);
-	}
+	/* `owner[i]` points into the name pool and is never its own
+	 * allocation; the pool is what has to be freed. */
+	for (int i = 0; i < o->nowner; i++)
+		free(o->ownerv[i]);
+	free(o->ownerv);
 	free(o->path);
 	free(o->owner);
 	free(o);
@@ -354,12 +407,16 @@ int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 			*nl = 0;
 		int drop = 0;
 		if (!first) {
-			for (int i = 0; i < n && !drop; i++) {
-				char key[1024];
-				snprintf(key, sizeof(key), "./%s", paths[i]);
-				if (!strcmp(line, key))
+			/* `paths` is relative, the manifest is `./`-prefixed.
+			 * Compare past the prefix rather than formatting the
+			 * prefixed key: this runs once per (line x path) pair,
+			 * a manifest is tens of thousands of lines and a batch
+			 * hundreds of paths, and a fixed key buffer would also
+			 * truncate — leaving a long path in the old owner's
+			 * manifest, the double claim this function prevents. */
+			for (int i = 0; i < n && !drop; i++)
+				if (!cmp_stored_rel(line, paths[i]))
 					drop = 1;
-			}
 		}
 		first = 0;
 		if (drop)

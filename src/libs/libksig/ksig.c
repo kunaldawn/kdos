@@ -117,14 +117,12 @@ int ksig_keygen(uint8_t seed[KSIG_SEED_LEN], uint8_t pub[KSIG_PUB_LEN])
 void ksig_keyid(const uint8_t pub[KSIG_PUB_LEN], char out[KSIG_ID_HEX])
 {
 	KbSha256 s;
-	uint8_t digest[32];
 	char full[65];
 
 	kb_sha256_init(&s);
 	kb_sha256_update(&s, pub, KSIG_PUB_LEN);
 	kb_sha256_final(&s, full);
 	/* kb_sha256_final hands back hex; the id is its first 16 characters. */
-	(void)digest;
 	memcpy(out, full, 16);
 	out[16] = 0;
 }
@@ -207,7 +205,7 @@ int ksig_read_secret(const char *path, uint8_t seed[KSIG_SEED_LEN],
 	/* A signing key readable by anyone else is not a signing key. Refusing
 	 * is the only useful answer: continuing would sign with a key that has
 	 * to be assumed compromised. */
-	if (fstat(fileno(f), &st) == 0 && (st.st_mode & 077)) {
+	if (fstat(fileno(f), &st) != 0 || (st.st_mode & 077)) {
 		fclose(f);
 		return -2;
 	}
@@ -330,15 +328,16 @@ int ksig_verify_lines(const KsigRing *ring, const char *text, size_t tlen,
 					uint8_t sig[KSIG_SIG_LEN];
 					if (hex_decode(hex, sig, KSIG_SIG_LEN) == 0) {
 						/*
-						 * The id in the block picks WHICH
-						 * key to try. Every key in the ring
-						 * is still an acceptable answer, so
-						 * a block naming an unknown id is
-						 * not fatal — it just selects
-						 * nothing, and the signature is
-						 * tried against every trusted key.
-						 * What matters is that nothing
-						 * outside the ring is ever used.
+						 * The id in the block is
+						 * informational. The signature is
+						 * tried against every key in the
+						 * ring and against nothing outside
+						 * it, so a block naming an unknown
+						 * or wrong id still verifies if any
+						 * trusted key signed it, and `who`
+						 * names the key that actually
+						 * verified rather than the id the
+						 * block claimed.
 						 */
 						for (int i = 0; i < ring->n; i++) {
 							if (ksig_verify(ring->key[i].pub,

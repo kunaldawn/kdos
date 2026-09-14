@@ -44,6 +44,11 @@ int kb_read_file(const char *path, char *buf, size_t cap)
  *
  * Grown as it reads rather than sized by `stat`, so it is also correct for a
  * /proc file, which reports a size of zero.
+ *
+ * A file past 128 MiB is refused, not truncated: this reads configuration and
+ * transcripts, and handing back a prefix that looks complete is the very
+ * failure the function exists to prevent. A blob that large wants
+ * `kb_read_all`, which has no ceiling.
  */
 char *kb_read_whole(const char *path, size_t *len)
 {
@@ -74,8 +79,13 @@ char *kb_read_whole(const char *path, size_t *len)
 		if (n + 1 >= cap) {
 			char *bigger;
 
-			if (cap > (size_t)64 << 20)
-				break;	/* a config file, not a disk image */
+			if (cap > (size_t)64 << 20) {
+				/* A prefix must never pass for the file. */
+				free(buf);
+				close(fd);
+				errno = EFBIG;
+				return NULL;
+			}
 			cap *= 2;
 			bigger = realloc(buf, cap);
 			if (!bigger) {
@@ -112,13 +122,17 @@ int kb_write_file(const char *path, const char *data)
 	while (off < n) {
 		ssize_t w = write(fd, data + off, n - off);
 		if (w <= 0) {
+			if (w < 0 && errno == EINTR)
+				continue;
 			close(fd);
 			return -1;
 		}
 		off += (size_t)w;
 	}
-	close(fd);
-	return 0;
+	/* A deferred write error surfaces at close on a network or FUSE
+	 * filesystem and on an over-committed one; discarding it reports a
+	 * file that was never written. */
+	return close(fd) < 0 ? -1 : 0;
 }
 
 /*
@@ -267,7 +281,11 @@ int kb_mkdir_p(const char *path)
 
 int kb_lock_file(const char *path, int nonblock)
 {
-	int fd = open(path, O_WRONLY | O_CREAT, 0600);
+	/* O_CLOEXEC: an flock belongs to the open file description, so a
+	 * descriptor that survives execve keeps the lock alive in every child
+	 * after the taker has exited — and both holders fork and exec under
+	 * this lock. */
+	int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
 	if (fd < 0)
 		return -1;
 	if (flock(fd, LOCK_EX | (nonblock ? LOCK_NB : 0)) < 0) {

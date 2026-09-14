@@ -817,7 +817,8 @@ int palette_main(int argc, char **argv)
 			}
 			continue;
 		}
-		if (ev.key >= 0x20 && ev.key < 0x7f) {
+		if (ev.key >= 0x20 && ev.key < 0x7f &&
+		    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 			if (!apps_only && code_fire(ev.key))
 				continue;
 			if (qlen < (int)sizeof(query) - 1) {

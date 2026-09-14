@@ -285,8 +285,10 @@ int term_key(Win *w, const KtuiEvent *ev)
 	kvt_screen_sb_reset(kvt_term_screen(w->term));
 
 	/* Ctrl+V pastes the clipboard. The key still goes to the child, so a
-	 * program that means something else by it is unaffected. */
-	if (ev->key == 0x16)
+	 * program that means something else by it is unaffected. The chord is
+	 * the letter plus the modifier, which is what every backend delivers;
+	 * testing for 0x16 matched nothing on the console. */
+	if ((ev->mods & KT_MOD_CTRL) && (ev->key == 'v' || ev->key == 'V'))
 		term_paste(w, 0);
 
 	return kvt_term_key(w->term, ev->key, ev->mods);

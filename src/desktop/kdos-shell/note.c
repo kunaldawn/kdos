@@ -214,7 +214,8 @@ int note_main(int argc, char **argv)
 		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			goto done;
 
-		if (ev.key == 0x0f) {	/* Ctrl+O */
+		if ((ev.mods & KT_MOD_CTRL) &&
+		    (ev.key == 'o' || ev.key == 'O')) {
 			/*
 			 * THE EDITOR, ON THE SAME FILE. This surface is a scratch
 			 * pad and stops where an editor starts; the pad is saved
@@ -247,7 +248,11 @@ int note_main(int argc, char **argv)
 			goto done;
 		}
 
-		if (ktui_textarea_key(&ta, buf[0], &nlines, NOTE_LINES,
+		/* A Ctrl or Alt chord is a chord, not text: the key arrives as
+		 * its letter with the modifier, so an unhandled one would be
+		 * typed into the pad. */
+		if (!(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
+		    ktui_textarea_key(&ta, buf[0], &nlines, NOTE_LINES,
 				      sizeof(buf[0]), ev.key))
 			changed = 1;
 	}

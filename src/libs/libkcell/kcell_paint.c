@@ -113,6 +113,45 @@ static void rule(pixman_image_t *dst, int x, int y, int w, int t,
 }
 
 /*
+ * A BROKEN RULE IS ONE PIXMAN CALL, NOT ONE PER PIECE.
+ *
+ * pixman_image_fill_rectangles takes an array, and every fill_rectangles is a
+ * region init and an intersect against the destination clip before a pixel
+ * moves. A curl or a dotted line is dozens of disjoint pieces in a single
+ * colour, so batching them is pixel-identical and turns a per-column cost into
+ * a per-cell one — the difference between a row of undercurl costing a large
+ * fraction of a frame and costing nothing worth measuring.
+ *
+ * The array is fixed and flushed when it fills: the cell width comes from the
+ * font's widest advance times the scale, so there is no compile-time bound to
+ * size it from, and a flush every RULE_RECTS pieces keeps the worst case at
+ * one call per RULE_RECTS columns.
+ */
+#define RULE_RECTS 64
+
+static void rules_flush(pixman_image_t *dst, pixman_color_t c,
+			const pixman_rectangle16_t *r, int *n)
+{
+	if (*n) {
+		pixman_image_fill_rectangles(PIXMAN_OP_OVER, dst, &c, *n, r);
+		*n = 0;
+	}
+}
+
+static inline void rules_add(pixman_image_t *dst, pixman_color_t c,
+			     pixman_rectangle16_t *r, int *n,
+			     int x, int y, int w, int t)
+{
+	if (*n == RULE_RECTS)
+		rules_flush(dst, c, r, n);
+	r[*n].x = (int16_t)x;
+	r[*n].y = (int16_t)y;
+	r[*n].width = (uint16_t)w;
+	r[*n].height = (uint16_t)t;
+	(*n)++;
+}
+
+/*
  * THE UNDERLINE'S SHAPE.
  *
  * A wave is drawn as a column at a time from a fixed eight-step table rather
@@ -122,6 +161,11 @@ static void rule(pixman_image_t *dst, int x, int y, int w, int t,
  * row so the crest stays inside the cell — a curl that left the cell would be
  * clipped by the row below repainting, and would flicker.
  *
+ * Adjacent columns at the same crest height are coalesced into one rectangle
+ * before the batch is issued: the eight-step table holds each step for `scale`
+ * columns and repeats offsets within a period, so the run is where most of the
+ * saving is.
+ *
  * Every unknown style falls to the plain line. A shape nobody drew is worse
  * than the wrong shape: the attribute means "this word is marked".
  */
@@ -130,31 +174,40 @@ static void underline(pixman_image_t *dst, int x, int y, int cw, int ch,
 {
 	static const int wave[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
 	int base = y + ch - 2 * scale;
+	pixman_rectangle16_t r[RULE_RECTS];
+	int n = 0;
 
 	switch (style) {
 	case KT_UL_DOUBLE:
-		rule(dst, x, base - 2 * scale, cw, scale, c);
-		rule(dst, x, base, cw, scale, c);
-		return;
+		rules_add(dst, c, r, &n, x, base - 2 * scale, cw, scale);
+		rules_add(dst, c, r, &n, x, base, cw, scale);
+		break;
 	case KT_UL_CURLY:
-		for (int i = 0; i < cw; i++) {
+		for (int i = 0; i < cw;) {
 			int off = wave[(i / scale) % 8] * scale / 2;
+			int run = 1;
 
-			rule(dst, x + i, base - scale - off, 1, scale, c);
+			while (i + run < cw &&
+			       wave[((i + run) / scale) % 8] * scale / 2 == off)
+				run++;
+			rules_add(dst, c, r, &n, x + i, base - scale - off,
+				  run, scale);
+			i += run;
 		}
-		return;
+		break;
 	case KT_UL_DOTTED:
 		for (int i = 0; i < cw; i += 2 * scale)
-			rule(dst, x + i, base, scale, scale, c);
-		return;
+			rules_add(dst, c, r, &n, x + i, base, scale, scale);
+		break;
 	case KT_UL_DASHED:
 		for (int i = 0; i < cw; i += 6 * scale)
-			rule(dst, x + i, base, 3 * scale, scale, c);
-		return;
+			rules_add(dst, c, r, &n, x + i, base, 3 * scale, scale);
+		break;
 	default:
-		rule(dst, x, base, cw, scale, c);
-		return;
+		rules_add(dst, c, r, &n, x, base, cw, scale);
+		break;
 	}
+	rules_flush(dst, c, r, &n);
 }
 
 pixman_color_t kcell_slot_color(int slot)
@@ -214,6 +267,113 @@ static int same_bg(const KtuiCell *a, const KtuiCell *b)
 }
 
 /*
+ * THE FOREGROUND AS A PIXMAN SOURCE, CACHED.
+ *
+ * A glyph is composited through a solid-fill image, and creating one is a
+ * malloc and an image init. Every text cell of every repainted row wanted its
+ * own, which on a full-screen animation is tens of thousands of malloc/free
+ * pairs a second before a single pixel is touched.
+ *
+ * A solid fill is immutable, so one per colour is all anybody needs: the eight
+ * slots are kept by index and rebuilt when the palette moves, and the literals
+ * a terminal names go in a small direct-mapped table, which is enough because
+ * a frame draws a handful of distinct colours even when it draws thousands of
+ * cells.
+ *
+ * THE LITERAL TABLE IS INDEXED BY THE HIGH BITS OF THE HASH. A multiplicative
+ * hash puts its mixing at the top of the product — the low bits of `rgb * k`
+ * depend only on the low bits of `rgb`, so a modulo would key the table on the
+ * bottom of the BLUE channel alone and land the whole xterm colour cube in six
+ * buckets. Taking the top bits keeps red and green in the key, which is the
+ * difference between a hit rate near one and a malloc per cell per frame.
+ */
+#define SOLID_LIT_BITS 6
+#define SOLID_LIT (1 << SOLID_LIT_BITS)
+
+static pixman_image_t *solid_slot[8];
+static const KtuiTheme *solid_theme;
+static KRgb solid_rgb[KT_NCOLOR];
+static pixman_image_t *solid_lit[SOLID_LIT];
+static uint32_t solid_lit_key[SOLID_LIT];
+static bool solid_lit_set[SOLID_LIT];
+
+static void solid_drop(void)
+{
+	for (int i = 0; i < 8; i++)
+		if (solid_slot[i]) {
+			pixman_image_unref(solid_slot[i]);
+			solid_slot[i] = NULL;
+		}
+	for (int i = 0; i < SOLID_LIT; i++)
+		if (solid_lit[i]) {
+			pixman_image_unref(solid_lit[i]);
+			solid_lit[i] = NULL;
+			solid_lit_set[i] = false;
+		}
+}
+
+/*
+ * The palette in force changed, so every cached slot names a colour that is no
+ * longer the theme's. The literals are unaffected: a colour a program asked
+ * for exactly is not the theme's to move.
+ *
+ * KEYED ON THE COLOURS, NOT ON THE POINTER. libktui projects night light by
+ * rewriting one file-static theme IN PLACE and pointing `ktui_theme` at it
+ * again, so a scheme change under night light moves every slot without moving
+ * the address — and a cache keyed on identity would keep painting the old
+ * scheme's ink for the life of the session while backgrounds and rules, which
+ * read the table fresh, came up in the new one. This runs once per painted
+ * ROW, so the compare is eight RGB triples against a frame of pixel work.
+ */
+static void solid_sync(void)
+{
+	if (solid_theme == ktui_theme &&
+	    !memcmp(solid_rgb, ktui_theme->slot, sizeof(solid_rgb)))
+		return;
+	for (int i = 0; i < 8; i++)
+		if (solid_slot[i]) {
+			pixman_image_unref(solid_slot[i]);
+			solid_slot[i] = NULL;
+		}
+	solid_theme = ktui_theme;
+	memcpy(solid_rgb, ktui_theme->slot, sizeof(solid_rgb));
+}
+
+static pixman_image_t *solid_for_slot(uint8_t slot)
+{
+	slot &= 7;
+	if (!solid_slot[slot]) {
+		pixman_color_t c = to_pixman(ktui_theme->slot[slot]);
+
+		solid_slot[slot] = pixman_image_create_solid_fill(&c);
+	}
+	return solid_slot[slot];
+}
+
+static pixman_image_t *solid_for_rgb(uint32_t rgb)
+{
+	unsigned h = (rgb * 2654435761u) >> (32 - SOLID_LIT_BITS);
+
+	if (solid_lit_set[h] && solid_lit_key[h] == rgb && solid_lit[h])
+		return solid_lit[h];
+	if (solid_lit[h])
+		pixman_image_unref(solid_lit[h]);
+
+	pixman_color_t c = rgb_color(rgb);
+
+	solid_lit[h] = pixman_image_create_solid_fill(&c);
+	solid_lit_key[h] = rgb;
+	solid_lit_set[h] = solid_lit[h] != NULL;
+	return solid_lit[h];
+}
+
+void kcell_paint_forget(void)
+{
+	solid_drop();
+	solid_theme = NULL;
+}
+
+/*
  * Paint one row of cells.
  *
  * Row at a time rather than cell at a time so that runs of identical
@@ -221,17 +381,25 @@ static int same_bg(const KtuiCell *a, const KtuiCell *b)
  * window frame almost entirely one colour, and a per-cell rectangle fill is the
  * difference between a frame that fits in the deadline and one that does not.
  */
+/*
+ * `x0`/`x1` are the half-open span of CHANGED cells; the row outside it holds
+ * what the last frame left and is not touched. The caller widens the span by a
+ * cell on each side, which is what covers a wide glyph's continuation and the
+ * overhang a box-drawing character puts into its neighbour.
+ */
 static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
-		      int y_cell, int scale)
+		      int y_cell, int scale, int x0, int x1)
 {
 	const int cw = kcell_w() * scale, ch = kcell_h() * scale;
 	int y = y_cell * ch;
 
-	for (int x = 0; x < w;) {
+	solid_sync();
+
+	for (int x = x0; x < x1;) {
 		uint8_t bg = row[x].bg;
 		int lit = (row[x].attr & KT_A_BGRGB) != 0;
 		int run = 1;
-		while (x + run < w && same_bg(&row[x], &row[x + run]))
+		while (x + run < x1 && same_bg(&row[x], &row[x + run]))
 			run++;
 
 		/* Still an OP_SRC fill, so the run is CLEARED to zero rather
@@ -252,7 +420,7 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 
 	int covered = 0;	/* the cell before painted across this one */
 
-	for (int x = 0; x < w; x++) {
+	for (int x = x0; x < x1; x++) {
 		uint32_t cp = row[x].ch ? row[x].ch : ' ';
 		int was_covered = covered;
 		covered = 0;
@@ -286,6 +454,50 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 					&(pixman_rectangle16_t){
 						(int16_t)(x * cw), (int16_t)y,
 						(uint16_t)cw, (uint16_t)ch });
+			}
+			/*
+			 * AND THE RULES, WHICH A BLANK CELL CARRIES LIKE ANY
+			 * OTHER. An underline runs under the spaces between
+			 * words and to the end of a marked run; a strike goes
+			 * through them. A cell with nothing to draw that skips
+			 * them breaks every underline into one dash per word,
+			 * which is the one thing the attribute exists to avoid.
+			 *
+			 * THE RULE TAKES THE SWAPPED COLOUR UNDER REVERSE, and
+			 * the literal flag travels with the slot it belongs to.
+			 * The fill just above painted this cell in what reverse
+			 * made its background — the FOREGROUND colour — so a
+			 * rule drawn in the foreground would be a rule drawn in
+			 * the colour of the cell it sits on. That is a
+			 * selection or the console pointer crossing an
+			 * underlined space, where the line must stay visible.
+			 * KT_A_ULCOLOR is not part of the exchange: a colour a
+			 * program named for the underline is the underline's,
+			 * reversed or not.
+			 */
+			if (row[x].attr & (KT_A_UNDERLINE | KT_A_STRIKE |
+					   KT_A_OVERLINE)) {
+				unsigned bat = row[x].attr;
+				int rev = (bat & KT_A_REVERSE) != 0;
+				int rlit = rev ? (bat & KT_A_BGRGB)
+					       : (bat & KT_A_FGRGB);
+				uint32_t rl = rev ? row[x].bgc : row[x].fgc;
+				uint8_t rs = rev ? row[x].bg : row[x].fg;
+				pixman_color_t rc =
+					rlit ? rgb_color(rl)
+					     : to_pixman(ktui_theme->slot[rs & 7]);
+
+				if (bat & KT_A_UNDERLINE)
+					underline(dst, x * cw, y, cw, ch, scale,
+						  KT_UL_STYLE(bat),
+						  (bat & KT_A_ULCOLOR)
+							  ? rgb_color(row[x].ulc)
+							  : rc);
+				if (bat & KT_A_STRIKE)
+					rule(dst, x * cw, y + ch / 2, cw,
+					     scale, rc);
+				if (bat & KT_A_OVERLINE)
+					rule(dst, x * cw, y, cw, scale, rc);
 			}
 			continue;
 		}
@@ -355,8 +567,9 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		}
 
 		KCellGlyph g;
-		bool have = kcell_glyph_styled(cp, scale,
-					       row[x].attr & KT_A_ITALIC, &g);
+		int style = ((at & KT_A_ITALIC) ? KCELL_ST_ITALIC : 0) |
+			    ((at & KT_A_BOLD) ? KCELL_ST_BOLD : 0);
+		bool have = kcell_glyph_face(cp, scale, style, &g);
 
 		/*
 		 * A glyph wider than its cell may spill into the next one ONLY
@@ -364,7 +577,7 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		 * below cuts it at the cell edge.
 		 */
 		int cells = 1;
-		if (have && g.x + g.width > cw && x + 1 < w &&
+		if (have && g.x + g.width > cw && x + 1 < w && x + 1 < x1 &&
 		    row[x + 1].ch == KTUI_WIDE_CONT) {
 			cells = 2;
 			covered = 1;
@@ -389,12 +602,38 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		}
 
 glyph:
-		if (!have)
-			continue;
+		if (!have) {
+			/* No bitmap — a codepoint no font carries, or one
+			 * whose glyph is empty — and the rules are still the
+			 * cell's. Same reason a blank cell keeps them. */
+			pixman_color_t rc =
+				fg_lit ? rgb_color(fgl)
+				       : to_pixman(ktui_theme->slot[fg & 7]);
 
+			if (at & KT_A_UNDERLINE)
+				underline(dst, x * cw, y, cells * cw, ch, scale,
+					  KT_UL_STYLE(at),
+					  (at & KT_A_ULCOLOR)
+						  ? rgb_color(row[x].ulc)
+						  : rc);
+			if (at & KT_A_STRIKE)
+				rule(dst, x * cw, y + ch / 2, cells * cw, scale,
+				     rc);
+			if (at & KT_A_OVERLINE)
+				rule(dst, x * cw, y, cells * cw, scale, rc);
+			continue;
+		}
+
+		/*
+		 * The slot is masked here as it is everywhere else in this
+		 * file: `fg` is a byte off a socket by the time a console
+		 * surface's cells reach the painter, and the theme has eight
+		 * entries.
+		 */
 		pixman_color_t c = fg_lit ? rgb_color(fgl)
-					  : to_pixman(ktui_theme->slot[fg]);
-		pixman_image_t *src = pixman_image_create_solid_fill(&c);
+					  : to_pixman(ktui_theme->slot[fg & 7]);
+		pixman_image_t *src = fg_lit ? solid_for_rgb(fgl)
+					     : solid_for_slot(fg);
 		if (!src)
 			continue;
 
@@ -407,9 +646,16 @@ glyph:
 		 * neighbour, and libktui's box-drawing characters have to TILE
 		 * — one pixel of overhang turns a continuous border into a
 		 * dashed one.
+		 *
+		 * BOLD WITH NO BOLD FACE IS THE SAME MASK STRUCK TWICE, one
+		 * scaled pixel apart — a weight approximated rather than a
+		 * weight dropped, which is what the attribute is for. Both
+		 * strikes take the clip above, so a glyph already filling its
+		 * cell gains no overhang from the second.
 		 */
-		{
-			int dx = x * cw + g.x;
+		for (int k = 0, strikes = g.synth_bold ? 2 : 1; k < strikes;
+		     k++) {
+			int dx = x * cw + g.x + k * scale;
 			int dy = y + kcell_ascent() * scale - g.y;
 			int cx1 = x * cw + cells * cw, cy1 = y + ch;
 			int mx = dx < x * cw ? x * cw - dx : 0;
@@ -424,7 +670,6 @@ glyph:
 					0, 0, mx, my, px, py,
 					ex - px, ey - py);
 		}
-		pixman_image_unref(src);
 
 		/*
 		 * The rules go on AFTER the glyph, each at the height its
@@ -487,6 +732,16 @@ static void pad_remainder(pixman_image_t *dst, int used_w, int used_h,
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
 {
+	kcell_paint_damage(dst, cur, prev, cols, rows, full, scale, dst_w,
+			   dst_h, NULL);
+}
+
+int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
+		       KtuiCell *prev, int cols, int rows, int full, int scale,
+		       int dst_w, int dst_h, unsigned char *painted)
+{
+	int npainted = 0;
+
 	if (scale < 1)
 		scale = 1;
 	if (scale > KCELL_MAX_SCALE)
@@ -509,8 +764,8 @@ void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 	 * w pixels wide, on the assumption that the last cell is clipped. For
 	 * the glyphs it is. For the background fill it was not: measured against
 	 * pixman 0.46.4, a 16x673 strip filled at (0,672,16,32) writes 1984
-	 * bytes past the end of the allocation. That is the heap corruption that
-	 * crashed kdos-comp on the first real window, and it was invisible to
+	 * bytes past the end of the allocation. That is heap corruption that
+	 * crashes kdos-comp on the first real window, and it is invisible to
 	 * ASan because the store happens inside uninstrumented libpixman.
 	 *
 	 * One region here fixes every caller, which is why it is here and not in
@@ -520,6 +775,9 @@ void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 	pixman_region32_init_rect(&clip, 0, 0, (unsigned)dst_w, (unsigned)dst_h);
 	pixman_image_set_clip_region32(dst, &clip);
 	pixman_region32_fini(&clip);
+
+	if (painted)
+		memset(painted, 0, (size_t)rows);
 
 	/*
 	 * No `prev` means no history to diff against, which is the compositor's
@@ -532,18 +790,61 @@ void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 
 	for (int y = 0; y < rows; y++) {
 		const KtuiCell *crow = cur + (size_t)y * cols;
-		if (!full && prev) {
+		int x0 = 0, x1 = cols;
+
+		if (!full) {
 			KtuiCell *prow = prev + (size_t)y * cols;
+
 			if (!memcmp(crow, prow, (size_t)cols * sizeof(*crow)))
 				continue;
-			paint_row(dst, crow, cols, y, scale);
-			memcpy(prow, crow, (size_t)cols * sizeof(*crow));
-			continue;
-		}
-		paint_row(dst, crow, cols, y, scale);
-		if (prev)
+
+			/*
+			 * THE CHANGED SPAN, NOT THE WHOLE ROW. A caret, a
+			 * clock digit or one typed character costs the cells
+			 * it touched rather than every glyph beside them —
+			 * and a row of a full-screen animation usually
+			 * changes end to end, where this costs one extra
+			 * comparison from each side and finds it.
+			 *
+			 * WIDENED BY A CELL EACH WAY, because libktui's box
+			 * characters are allowed to overhang and a changed
+			 * cell's neighbour may hold pixels this paint has to
+			 * put back.
+			 *
+			 * AND THEN ONTO THE LEAD OF A CONTINUATION. A
+			 * double-width glyph is painted entirely by its lead
+			 * cell; the KTUI_WIDE_CONT marker beside it draws
+			 * nothing of its own. A span that starts on the marker
+			 * fills the marker's pixels — erasing the right half of
+			 * the glyph — and then finds nothing to redraw there,
+			 * so the character stays half-gone until something
+			 * touches the lead. One step is enough: libktui
+			 * reserves at most one continuation per lead.
+			 */
+			while (x0 < cols &&
+			       !memcmp(&crow[x0], &prow[x0], sizeof(*crow)))
+				x0++;
+			while (x1 > x0 &&
+			       !memcmp(&crow[x1 - 1], &prow[x1 - 1],
+				       sizeof(*crow)))
+				x1--;
+			if (x0 > 0)
+				x0--;
+			if (x0 > 0 && crow[x0].ch == KTUI_WIDE_CONT)
+				x0--;
+			if (x1 < cols)
+				x1++;
+			memcpy(prow + x0, crow + x0,
+			       (size_t)(x1 - x0) * sizeof(*crow));
+		} else if (prev) {
 			memcpy(prev + (size_t)y * cols, crow,
 			       (size_t)cols * sizeof(*crow));
+		}
+
+		paint_row(dst, crow, cols, y, scale, x0, x1);
+		if (painted)
+			painted[y] = 1;
+		npainted++;
 	}
 
 	/* Only on a full paint: the remainder cannot change without the
@@ -552,4 +853,5 @@ void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 	if (full)
 		pad_remainder(dst, cols * kcell_w() * scale,
 			      rows * kcell_h() * scale, dst_w, dst_h);
+	return npainted;
 }

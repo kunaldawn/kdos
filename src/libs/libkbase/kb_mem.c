@@ -77,6 +77,26 @@ void *kb_calloc(size_t n, size_t sz)
 	return p;
 }
 
+/*
+ * Growth with the same OOM policy as kb_calloc, and therefore the same
+ * promise: it never returns NULL, so a grow loop needs no failure branch.
+ * The new tail is NOT zeroed — the callers here are buffers that write over
+ * it immediately and terminate it themselves, and zeroing a region about to
+ * be read into is the whole cost this replaces.
+ */
+void *kb_realloc(void *p, size_t n)
+{
+	void *np = realloc(p, n);
+
+	if (!np && n) {
+		if (oom_hook)
+			oom_hook();
+		fprintf(stderr, "%s: out of memory\n", prog);
+		_exit(1);
+	}
+	return np;
+}
+
 char *kb_strdup(const char *s)
 {
 	size_t n = strlen(s) + 1;

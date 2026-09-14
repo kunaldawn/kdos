@@ -247,7 +247,7 @@ would disagree twice.
 | Tap | `KT_GEST_TAP` | a left press and release |
 | Long press | `KT_GEST_LONG` | nothing — a surface that wants a context menu reads the gesture |
 | Drag | `KT_GEST_DRAG` | motion with the button held |
-| Two-finger scroll | `KT_GEST_SCROLL` | a wheel tick |
+| Two-finger scroll | `KT_GEST_SCROLL` | one wheel tick per row the pair's centroid crosses |
 | Pinch | `KT_GEST_PINCH` | nothing |
 | Edge swipe | `KT_GEST_SWIPE_EDGE` | motion, and it says which edge it came from |
 
@@ -263,6 +263,15 @@ Two rules that are each a defect if missed:
 - **One finger of two says nothing.** Moving away from a stationary finger is a pinch and a scroll
   at the same time; the answer arrives when the second finger agrees or disagrees. Guessing makes
   the two flip back and forth mid-gesture, which is unusable.
+- **Only the FIRST finger of a sequence synthesises a pointer press, and the second closes it.**
+  A press under every finger clicks whatever that finger landed on, so putting two down to scroll
+  would select two rows of a list and a pinch over a button would activate it. Presses and
+  releases stay paired: the release goes out on the finger that opened the capture, and a finger
+  that never opened one closes nothing when it lifts.
+- **The synthesised wheel is counted at the CENTROID, one click per row.** Touch arrives a finger
+  at a time, so a click per finger delta reports the same row of travel twice and the page scrolls
+  twice as far as the hand moved. The gesture's own `dy` keeps the per-finger delta, which is what
+  a surface forwarding the gesture needs.
 
 Long press has no event to arrive on — the finger is down and nothing is moving — so it is polled
 with `ktui_gesture_tick` from the backend's idle wait, and reported **once**. **Both backends poll
@@ -350,9 +359,10 @@ that only ever runs under the compositor's font renderer. Check the font's chara
 using a glyph that is not on the list above.
 
 **A wide glyph is measured, not assumed.** The toolkit computes display width and reserves a
-continuation cell, so double-width text does not corrupt row layout — but the console font carries
-none of those characters, so what renders on `tty1` is nothing at all. Chrome that must read on
-both surfaces stays in the small set.
+continuation cell, so double-width text does not corrupt row layout. The console font carries none
+of those characters and every one of its cells is one column wide, so on `tty1` a wide codepoint is
+written as `?` in a single cell and its continuation as a space: the row keeps its columns and the
+character is what is lost. Chrome that must read on both surfaces stays in the small set.
 
 ## Pictures are an enhancement layer
 
