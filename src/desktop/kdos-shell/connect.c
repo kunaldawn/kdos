@@ -300,7 +300,8 @@ static int form_key(const KtuiEvent *ev)
 		caret = n;
 		return 1;
 	}
-	if (ev->key >= 0x20 && ev->key < 0x7f && n + 1 < CN_FIELD) {
+	if (ev->key >= 0x20 && ev->key < 0x7f &&
+	    !(ev->mods & (KT_MOD_CTRL | KT_MOD_ALT)) && n + 1 < CN_FIELD) {
 		memmove(f + caret + 1, f + caret, (size_t)(n - caret) + 1);
 		f[caret++] = (char)ev->key;
 		return 1;

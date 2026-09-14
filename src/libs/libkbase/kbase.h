@@ -42,6 +42,9 @@ void kb_die(const char *fmt, ...)
 void kb_warn(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 void *kb_calloc(size_t n, size_t sz);
+/* Grow an allocation. Same OOM policy as kb_calloc — never returns NULL — so
+ * a growth loop has no failure branch. The added tail is uninitialised. */
+void *kb_realloc(void *p, size_t n);
 char *kb_strdup(const char *s);
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -90,7 +93,8 @@ int kb_read_file(const char *path, char *buf, size_t cap);
 /* The whole file, NUL-terminated, on the heap; the caller frees it. `len` may
  * be NULL. Returns NULL if the file cannot be read. For anything whose length
  * is not bounded — a configuration file grows, and a fixed buffer stops seeing
- * the end of one without saying so. */
+ * the end of one without saying so. Past 128 MiB the read fails with EFBIG
+ * rather than returning a prefix; a blob that size wants kb_read_all. */
 char *kb_read_whole(const char *path, size_t *len);
 
 /* First line, newline stripped. Returns its length, or -1. */
@@ -196,6 +200,8 @@ typedef struct {
 } KbTrashItem;
 
 int kb_trash_dirs(char *files, size_t fn, char *info, size_t in);
+/* EEXIST when no unique name is free for this basename: the alternative is
+ * renaming over an already-trashed file and its record. */
 int kb_trash_put(const char *path);
 int kb_trash_list(KbTrashItem **out);	/* count; caller free()s *out       */
 int kb_trash_restore(const char *name, char *to, size_t tn);
@@ -205,9 +211,15 @@ int kb_trash_empty(void);		/* items removed, or -1             */
 /* ────────────────────────────────────────────────────────────────────────
  * tar
  *
- * Enough ustar to take the appbox image apart and put it back together. The
- * only archives this sees are `podman save` output — regular files, short
- * names, no devices, no hard links.
+ * A minimal ustar stream reader and writer: regular files, short names, no
+ * devices, no hard links, no sparse members. The appbox image path does NOT
+ * come through here — kdos-appbox drives podman over the overlay and podman
+ * owns the image bytes — so the library selftest is the only caller in the
+ * tree.
+ *
+ * A member whose header checksum does not match, and a GNU long name that
+ * does not fit KbTarEntry, are both -1 from kb_tar_next rather than a member
+ * the caller then acts on.
  * ──────────────────────────────────────────────────────────────────────── */
 
 typedef struct {
@@ -395,6 +407,19 @@ int kb_run_to_file(const KbArgv *a, const char *path);
  * collect a zombie. gdbus's default reply timeout is 25 seconds and a
  * notification must never be able to gate an app launch behind that. */
 void kb_run_detach(const KbArgv *a);
+/*
+ * Put a child's signals back to what a process starts with: an empty mask and
+ * no inherited SIG_IGN.
+ *
+ * CALL IT BETWEEN FORK AND EXEC WHEREVER THE PARENT MAY BE IGNORING A SIGNAL,
+ * which every program with a display backend does: libktui's tty backend and
+ * libkwl both set SIGPIPE to SIG_IGN so that a peer declining their clipboard
+ * cannot kill them. An ignored disposition survives execve, so without this a
+ * shell launched from such a program never ends a pipeline and `yes | head`
+ * runs until something else stops it. A program that ignores nothing loses
+ * nothing by calling it either.
+ */
+void kb_child_reset_signals(void);
 
 /* Membership of a group in /etc/group, counting the group's own gid as well as
  * its member list. The authorisation both root daemons here are built on, in
@@ -520,6 +545,7 @@ typedef struct {
 	int abi;		/* what the RUNNING kernel supports        */
 	int nrules;
 	int net_handled;	/* TCP is being policed at all             */
+	int scope_handled;	/* abstract sockets and signals scoped     */
 } KbLandlock;
 
 /* ABI version the kernel reports, or -errno. -ENOSYS: no Landlock in this
@@ -529,8 +555,13 @@ typedef struct {
 int kb_landlock_abi(void);
 
 /* Build a ruleset covering everything this ABI can police. net_off also
- * denies TCP bind and connect (needs ABI >= 4; silently not applied below
- * that, which kb_landlock_explain must report as unenforced). */
+ * denies TCP bind and connect (needs ABI >= 4); ipc_off additionally scopes
+ * the abstract AF_UNIX namespace and same-uid signals to the sandbox (needs
+ * ABI >= 6). Either is silently not applied below its ABI, so a caller that
+ * must not run without one tests kb_landlock_abi() first and refuses; the
+ * struct's net_handled and scope_handled say which were actually claimed.
+ * kb_landlock_new is the ipc_off = 0 case. */
+int kb_landlock_new_scoped(KbLandlock *ll, int net_off, int ipc_off);
 int kb_landlock_new(KbLandlock *ll, int net_off);
 
 /* Allow one subtree, read-only or read-write. A missing path is -ENOENT and

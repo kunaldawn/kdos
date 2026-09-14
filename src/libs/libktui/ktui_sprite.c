@@ -46,6 +46,60 @@ static unsigned long clock_;
 /* Every put gets a number. See KtuiSprite.gen — a pointer is not enough. */
 static unsigned long put_gen;
 
+/*
+ * KEY TO SLOT, as a chained hash.
+ *
+ * The lookup is per CELL for a consumer drawing a picture — a tiled photograph
+ * asks once for every cell it covers, on every frame — and a scan of four
+ * thousand slots per cell is the picture, not the drawing. The chain is exact
+ * rather than a cache: an entry is linked when a slot takes a key and unlinked
+ * when it gives one up, so a miss costs a bucket and a hit costs a bucket and
+ * a comparison.
+ */
+#define SPR_BUCKETS 8192
+
+static int spr_head[SPR_BUCKETS];
+static int spr_next[KTUI_MAX_SPRITES];
+static int spr_linked;
+
+static unsigned spr_bucket(uint64_t key)
+{
+	return (unsigned)((key * 0x9e3779b97f4a7c15ULL) >> 51) % SPR_BUCKETS;
+}
+
+static void spr_index_init(void)
+{
+	if (spr_linked)
+		return;
+	for (int i = 0; i < SPR_BUCKETS; i++)
+		spr_head[i] = -1;
+	for (int i = 0; i < KTUI_MAX_SPRITES; i++)
+		spr_next[i] = -1;
+	spr_linked = 1;
+}
+
+static void spr_link(int slot)
+{
+	unsigned b = spr_bucket(sprites[slot].key);
+
+	spr_index_init();
+	spr_next[slot] = spr_head[b];
+	spr_head[b] = slot;
+}
+
+static void spr_unlink(int slot)
+{
+	unsigned b = spr_bucket(sprites[slot].key);
+
+	spr_index_init();
+	for (int *pp = &spr_head[b]; *pp >= 0; pp = &spr_next[*pp])
+		if (*pp == slot) {
+			*pp = spr_next[slot];
+			spr_next[slot] = -1;
+			return;
+		}
+}
+
 static KtuiSpriteFree evict_fn;
 static void *evict_user;
 static size_t byte_cap;
@@ -80,30 +134,52 @@ static size_t sprite_bytes(int cw, int ch)
 }
 
 /*
- * IS ANYTHING STILL DRAWING THIS? The cell buffer is this library's, so the
- * question is answerable here and nowhere else — which is the whole reason
+ * WHICH SLOTS ANYTHING IS STILL DRAWING. The cell buffer is this library's, so
+ * the question is answerable here and nowhere else — which is the whole reason
  * eviction lives in the sprite table rather than in the program that decodes
  * pictures.
+ *
+ * ONE PASS FOR EVERY SLOT, not one pass per slot. Asked per candidate it was
+ * a walk of the whole grid each time, and a budget that has to free several
+ * pictures asks about every occupied slot for each of them: four thousand
+ * slots against sixteen thousand cells is sixty-six million comparisons to
+ * free one picture.
+ *
+ * BOTH BUFFERS. `ktui_cells()` is what a backend last presented and
+ * `ktui_draw_cells()` is the frame being composed — a picture registered and
+ * drawn in the same frame is in the second and not yet in the first, and a
+ * backend that maintains no previous buffer at all leaves the first empty for
+ * the life of the process.
  */
-static int on_screen(int slot)
-{
-	int w = 0, h = 0;
-	const KtuiCell *cells = ktui_cells(&w, &h);
-	long n = (long)w * h;
+static unsigned char referenced[KTUI_MAX_SPRITES];
 
-	if (!cells)
-		return 1;	/* no buffer to check: assume the worst */
-	for (long i = 0; i < n; i++)
-		if (KTUI_IS_SPRITE(cells[i].ch) &&
-		    (int)KTUI_SPRITE_SLOT(cells[i].ch) == slot)
-			return 1;
-	return 0;
+static void mark_referenced(void)
+{
+	memset(referenced, 0, sizeof(referenced));
+	for (int pass = 0; pass < 2; pass++) {
+		int w = 0, h = 0;
+		const KtuiCell *cells = pass ? ktui_draw_cells(&w, &h)
+					     : ktui_cells(&w, &h);
+		long n = (long)w * h;
+
+		if (!cells)
+			continue;
+		for (long i = 0; i < n; i++)
+			if (KTUI_IS_SPRITE(cells[i].ch)) {
+				unsigned slot = KTUI_SPRITE_SLOT(cells[i].ch);
+
+				if (slot < KTUI_MAX_SPRITES)
+					referenced[slot] = 1;
+			}
+	}
 }
 
 static void release(int slot)
 {
 	if (sprites[slot].pix && evict_fn)
 		evict_fn(sprites[slot].key, sprites[slot].pix, evict_user);
+	if (sprites[slot].pix)
+		spr_unlink(slot);
 	byte_used -= sprite_bytes(sprites[slot].w, sprites[slot].h);
 	memset(&sprites[slot], 0, sizeof(sprites[slot]));
 	used[slot] = 0;
@@ -115,14 +191,15 @@ static void release(int slot)
  * to hand the picture back to — in which case the caller answers -1 and the
  * consumer draws its glyph, which is what it does for a tty anyway.
  */
-static int evict_one(void)
+static int evict_one(int keep)
 {
 	int best = -1;
 
 	if (!evict_fn)
 		return -1;
+	mark_referenced();
 	for (int i = 0; i < nsprites; i++) {
-		if (!sprites[i].pix || on_screen(i))
+		if (i == keep || !sprites[i].pix || referenced[i])
 			continue;
 		if (best < 0 || used[i] < used[best])
 			best = i;
@@ -147,7 +224,8 @@ const KtuiSprite *ktui_sprite_get(int slot)
 
 int ktui_sprite_find(uint64_t key)
 {
-	for (int i = 0; i < nsprites; i++)
+	spr_index_init();
+	for (int i = spr_head[spr_bucket(key)]; i >= 0; i = spr_next[i])
 		if (sprites[i].pix && sprites[i].key == key) {
 			used[i] = ++clock_;
 			return i;
@@ -172,27 +250,46 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 				break;
 			}
 	}
+	/* Whether this slot was taken from the end of the table just now. Only
+	 * such a slot may be given back when the put is refused: one that was
+	 * found by key, or reused after a free, still holds a picture and
+	 * shrinking the table past it would strand the entry inside it. */
+	int fresh = 0;
+
 	if (slot < 0) {
 		if (nsprites >= KTUI_MAX_SPRITES) {
-			slot = evict_one();
+			slot = evict_one(-1);
 			if (slot < 0)
 				return -1;	/* the caller draws its glyph */
 		} else {
 			slot = nsprites++;
+			fresh = 1;
 		}
 	}
 
-	/* The byte budget is made room for BEFORE the slot is written, and a
+	/*
+	 * The byte budget is made room for BEFORE the slot is written, and a
 	 * picture that cannot be made room for is refused rather than allowed
-	 * to push the total past the cap. */
+	 * to push the total past the cap.
+	 *
+	 * WHAT THIS SLOT ALREADY HOLDS IS NOT COUNTED TWICE. An animation
+	 * re-registers under the same key and therefore into the same slot, so
+	 * the old frame's bytes are about to be given back — demanding room
+	 * for both at once refuses any picture larger than half the budget and
+	 * evicts other people's pictures to make room for bytes that were
+	 * never going to be held.
+	 */
 	size_t want = sprite_bytes(cw, ch);
+	size_t have = sprites[slot].pix ? sprite_bytes(sprites[slot].w,
+						      sprites[slot].h)
+					: 0;
 
 	if (byte_cap && want) {
-		while (byte_used + want > byte_cap) {
-			int freed = evict_one();
+		while (byte_used - have + want > byte_cap) {
+			int freed = evict_one(slot);
 
 			if (freed < 0) {
-				if (slot == nsprites - 1)
+				if (fresh)
 					nsprites--;
 				return -1;
 			}
@@ -210,6 +307,8 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 		evict_fn(sprites[slot].key, sprites[slot].pix, evict_user);
 
 	byte_used -= sprite_bytes(sprites[slot].w, sprites[slot].h);
+	if (sprites[slot].pix)
+		spr_unlink(slot);
 	sprites[slot].key = key;
 	sprites[slot].pix = pix;
 	sprites[slot].w = cw;
@@ -218,6 +317,7 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 	byte_used += want;
 	sprites[slot].gen = ++put_gen;
 	used[slot] = ++clock_;
+	spr_link(slot);
 	return slot;
 }
 
@@ -238,6 +338,7 @@ void ktui_sprite_drop(uint64_t key)
 
 	if (slot >= 0) {
 		byte_used -= sprite_bytes(sprites[slot].w, sprites[slot].h);
+		spr_unlink(slot);
 		memset(&sprites[slot], 0, sizeof(sprites[slot]));
 		used[slot] = 0;
 	}
@@ -254,6 +355,8 @@ void ktui_sprite_clear(void)
 					 evict_user);
 	memset(sprites, 0, sizeof(sprites));
 	memset(used, 0, sizeof(used));
+	spr_linked = 0;
+	spr_index_init();
 	nsprites = 0;
 	byte_used = 0;
 }

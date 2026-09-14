@@ -372,6 +372,7 @@ int contacts_main(int argc, char **argv)
 		} else if (ev.key == KT_K_END) {
 			caret = qn;
 		} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+		    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 			   qn + 1 < CT_QUERY) {
 			memmove(query + caret + 1, query + caret,
 				(size_t)(qn - caret) + 1);

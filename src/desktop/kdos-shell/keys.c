@@ -1295,7 +1295,8 @@ int keys_main(int argc, char **argv)
 			top = 0;
 			continue;
 		}
-		if (ev.key >= 0x20 && ev.key < 0x7f) {
+		if (ev.key >= 0x20 && ev.key < 0x7f &&
+		    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 			if (qlen < (int)sizeof(query) - 1) {
 				query[qlen++] = (char)ev.key;
 				query[qlen] = '\0';

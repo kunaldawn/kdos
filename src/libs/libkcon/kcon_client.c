@@ -115,6 +115,11 @@ static struct {
 	 * the first, and the animation plays everywhere except over the wire.
 	 */
 	unsigned long sent_gen[KTUI_MAX_SPRITES];
+	/* One past the highest slot ever sent. The scan for pictures the
+	 * program has dropped is bounded by this and not by the toolkit's
+	 * slot count, which a ktui_sprite_clear() takes back to zero while
+	 * the session still holds every slot it was given. */
+	int sent_hi;
 	KconSpriteBits bits_fn;
 	void *bits_user;
 
@@ -122,7 +127,62 @@ static struct {
 	 * time and a single read can carry many. */
 	KtuiEvent q[64];
 	int qhead, qtail;
+
+	/*
+	 * THE FRAME CONTRACT, this end. `frame_wait` is set when a commit or
+	 * a picture goes out and cleared by the session's KCON_OP_FRAME;
+	 * while it is set and not yet KCON_FRAME_STALL_MS old, a flush is
+	 * stashed in `pend` instead of sent, and the newest stash goes out
+	 * when the answer lands. One commit per composed frame, carrying the
+	 * newest cells, is what a program that draws faster than the desktop
+	 * shows then costs — the contract libkwl keeps with a frame callback.
+	 *
+	 * A FRAME THE DISPLAY IS TOO FAR BEHIND TO TAKE GOES INTO THE SAME
+	 * STASH, and is retried by every drain until the backlog falls back
+	 * under KCON_VIEW_HIGH. Dropping it instead leaves nothing to resend
+	 * it: the toolkit clears its dirty flag the moment it hands a frame
+	 * over, so a surface that paints once and waits — a toast, a menu
+	 * after its last paint, a dialog — would keep the stale frame on
+	 * screen until somebody pressed a key.
+	 */
+	int frame_wait;
+	int64_t frame_at;
+	/* Whether the last flush reached the session. A stashed frame is not
+	 * on a screen, and the only thing the toolkit still owes one is the
+	 * repaint bit — the cells themselves are held here. */
+	int presented;
+	KtuiCell *pend;
+	/*
+	 * WHICH ROWS OF THE STASH HOLD ANYTHING. A stash copies only the rows
+	 * that differ from what the display has, so an unmarked row of `pend`
+	 * is uninitialised memory and must never be read. The mark is
+	 * cumulative and a marked row is re-copied by every later stash: a row
+	 * that changed in one stash and changed back in the next would
+	 * otherwise release the older cells and poison the toolkit's
+	 * last-presented buffer with them.
+	 */
+	unsigned char *pend_row;
+	int pend_w, pend_h, pend_full, pend_valid;
+	/*
+	 * THE NEXT FRAME MUST BE SENT WHOLE. Set when a frame could not be
+	 * encoded or could not be sent whole: the toolkit's last-presented
+	 * buffer then describes cells the session never received, and a diff
+	 * against it would leave them wrong on screen until something else
+	 * happened to change them. Read by cl_flush() and not by cl_present(),
+	 * because only a flush covers the whole grid — a stash release is
+	 * given the rows the stash marked, and the rows it did not mark are
+	 * exactly the ones a diff would skip.
+	 */
+	int need_full;
+	/* Bumped by every configure, equal size or not: a resize waits for
+	 * an ANSWER, and an answer that repeats the old size is one. */
+	unsigned configure_seq;
 } C;
+
+static int64_t now_ms(void);
+static int cl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		      int force_full, const unsigned char *rows);
+static void release_stash(void);
 
 static int connect_to(const char *path)
 {
@@ -209,6 +269,7 @@ static void handle(const KconMsg *m)
 
 		if (r.err || cols <= 0 || rows <= 0)
 			return;
+		C.configure_seq++;
 		if (cols == C.cols && rows == C.rows)
 			return;
 		C.cols = cols;
@@ -395,6 +456,7 @@ static void handle(const KconMsg *m)
 		 * every picture as new, and sends them all before any cell.
 		 */
 		memset(C.sent_gen, 0, sizeof(C.sent_gen));
+		C.sent_hi = 0;
 		ktui_draw_invalidate();
 		break;
 	case KCON_OP_TOPLEVEL_ADD: {
@@ -508,6 +570,14 @@ tl_done:
 			C.should_close = 1;
 		break;
 	}
+	case KCON_OP_FRAME:
+		/*
+		 * THE SESSION HAS COMPOSED THE LAST COMMIT. Whatever was
+		 * stashed meanwhile is the newest frame and goes out now.
+		 */
+		C.frame_wait = 0;
+		release_stash();
+		break;
 	case KCON_OP_CLOSE:
 	case KCON_OP_BYE:
 		C.should_close = 1;
@@ -530,9 +600,11 @@ tl_done:
  */
 /*
  * A picture whose pixels the display has not got. Sent BEFORE any cells, so a
- * cell referencing a slot is never ahead of the picture behind it.
+ * cell referencing a slot is never ahead of the picture behind it. Returns 0
+ * when it reached the queue; a send that failed must not be recorded as sent,
+ * or the slot keeps the fallback mark for the life of the picture.
  */
-static void send_sprite(int slot, const KtuiSprite *sp)
+static int send_sprite(int slot, const KtuiSprite *sp)
 {
 	KconBuf sb = { 0 };
 	const uint32_t *argb = NULL;
@@ -566,30 +638,97 @@ static void send_sprite(int slot, const KtuiSprite *sp)
 		kcon_put_u16(&sb, 0);
 	}
 
-	kcon_send(C.conn, KCON_OP_SPRITE, &sb);
+	int r = kcon_send(C.conn, KCON_OP_SPRITE, &sb);
+
+	kcon_buf_free(&sb);
+
+	return r;
+}
+
+/*
+ * A PICTURE THE PROGRAM HAS FINISHED WITH, so the session's slot goes back to
+ * its rotation. The pool is session-wide and finite, and a slot never given
+ * back is one the whole desktop has lost — a pane that closes, an icon the
+ * cache evicts and a picture replaced by another all reach here.
+ *
+ * Sent AFTER the cells of the same flush. Between a drop and the commit that
+ * stops naming the slot, the session's cells still reference a number it has
+ * already handed back, and the next surface to ask for one is given it: one
+ * program's picture inside another's window.
+ */
+static void send_sprite_drop(int slot)
+{
+	KconBuf sb = { 0 };
+
+	kcon_put_u16(&sb, (uint16_t)slot);
+	kcon_send(C.conn, KCON_OP_SPRITE_DROP, &sb);
 	kcon_buf_free(&sb);
 }
 
-static void cl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
-		     int force_full)
+/*
+ * THE LITERAL COLOURS OF A RUN, ONE RECORD PER SPAN THAT CARRIES ANY. The
+ * colour record is ten bytes a cell against the commit's eight, and a screen
+ * is cells in slots with a handful of literals among them: mirroring the
+ * commit's span would put nine zero bytes on the wire for every cell beside
+ * the one that named a colour, and a force_full frame, whose runs are whole
+ * rows, would pay that for the entire grid.
+ *
+ * Returns 0 when every span went into the buffer, and -1 when one did not:
+ * the caller must not record a cell as delivered that no message carries.
+ */
+static int put_color_spans(KconBuf *b, uint16_t x, uint16_t y,
+			   const KtuiCell *cells, uint16_t n)
 {
-	if (!C.conn || kcon_conn_dead(C.conn))
-		return;
+	const unsigned lit = KT_A_FGRGB | KT_A_BGRGB | KT_A_ULCOLOR |
+			     KT_A_ULSTYLE;
+	uint16_t i = 0;
 
+	while (i < n) {
+		if (!(cells[i].attr & lit)) {
+			i++;
+			continue;
+		}
+
+		uint16_t start = i;
+
+		while (i < n && (cells[i].attr & lit))
+			i++;
+		if (kcon_put_color_run(b, (uint16_t)(x + start), y,
+				       &cells[start],
+				       (uint16_t)(i - start)) != 0)
+			return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Sends one frame. `rows`, when given, marks which rows of `cur` hold cells
+ * at all — a stash copies only what changed — and an unmarked row is left
+ * alone entirely, both in the diff and in `prev`.
+ *
+ * Returns 1 when the frame went out and 0 when the display was too far behind
+ * to take it, in which case `prev` is untouched and the caller still owns the
+ * cells: the toolkit has already forgotten them.
+ */
+static int cl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		      int force_full, const unsigned char *rows)
+{
 	/*
 	 * A SURFACE THAT IS BEHIND SKIPS THE FRAME, the rule the session
 	 * keeps for a display: cells are a stream of pictures and the newest
-	 * makes the older ones pointless. `prev` is left exactly as it was, so
-	 * the next diff carries everything this frame would have — and a
-	 * queue that was allowed to grow instead reaches KCON_MAX_QUEUE, which
-	 * marks the connection dead, and the window is gone with no signal
-	 * and no line in any log. A full-screen animation in a terminal
-	 * window is what fills it.
+	 * makes the older ones pointless. A queue allowed to grow instead
+	 * reaches KCON_MAX_QUEUE, which marks the connection dead, and the
+	 * window is gone with no signal and no line in any log — a
+	 * full-screen animation in a terminal window is what fills it.
+	 *
+	 * The backlog is pushed out first, so the decision is made on what is
+	 * still queued rather than on what was queued last turn.
 	 */
+	kcon_flush(C.conn);
 	if (kcon_conn_pending(C.conn) > KCON_VIEW_HIGH)
-		return;
-
-	KconBuf buf = { 0 };
+		return 0;
+	C.presented = 1;
 
 	/*
 	 * EVERY PICTURE ON THE SCREEN WHOSE PIXELS CHANGED, whether or not a
@@ -603,40 +742,98 @@ static void cl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	 * diff below already costs.
 	 */
 	static unsigned char used[KTUI_MAX_SPRITES];
+	int any = 0;
 
 	memset(used, 0, sizeof(used));
-	for (long i = 0, n = (long)w * h; i < n; i++) {
-		uint32_t ch = cur[i].ch;
+	for (int y = 0; y < h; y++) {
+		/*
+		 * A ROW THE STASH DID NOT COPY IS READ OUT OF `prev`. It holds
+		 * nothing in `cur`, and `prev` is its content by construction
+		 * — and this scan must see it, because a picture whose cells
+		 * never change is exactly the case an animation is.
+		 */
+		const KtuiCell *row = rows && !rows[y] ? &prev[(size_t)y * w]
+						       : &cur[(size_t)y * w];
 
-		if (KTUI_IS_SPRITE(ch)) {
-			unsigned slot = KTUI_SPRITE_SLOT(ch);
+		for (int x = 0; x < w; x++) {
+			uint32_t ch = row[x].ch;
 
-			if (slot < KTUI_MAX_SPRITES)
-				used[slot] = 1;
+			if (KTUI_IS_SPRITE(ch)) {
+				unsigned slot = KTUI_SPRITE_SLOT(ch);
+
+				if (slot < KTUI_MAX_SPRITES)
+					used[slot] = 1;
+			}
 		}
 	}
 
 	for (int slot = 0; slot < ktui_sprite_slots(); slot++) {
 		const KtuiSprite *sp = ktui_sprite_get(slot);
 
-		if (!sp) {
-			C.sent_gen[slot] = 0;
+		if (!sp || !used[slot] || sp->gen == C.sent_gen[slot])
 			continue;
-		}
-		if (!used[slot] || sp->gen == C.sent_gen[slot])
+		if (send_sprite(slot, sp) < 0)
 			continue;
-		send_sprite(slot, sp);
 		C.sent_gen[slot] = sp->gen;
+		if (slot >= C.sent_hi)
+			C.sent_hi = slot + 1;
+		/*
+		 * A PICTURE ARMS THE FRAME CONTRACT TOO, and the session
+		 * answers one as it answers a commit — KCON_OP_SPRITE marks
+		 * the surface as owing a boundary there. An animation changes
+		 * no cells by design, so a leg paced only by commits is a leg
+		 * with no pacing at all: every tick of a full-screen GIF would
+		 * go out whether or not the session had composed the last one,
+		 * and the surface's own text updates would starve behind it.
+		 */
+		any = 1;
 	}
 
+	/*
+	 * ONE MESSAGE FOR THE CELLS AND ONE FOR THE COLOURS PER CHUNK,
+	 * however many runs the frame has: a message is a socket write, and
+	 * an animation whose every row changed is a syscall per row per
+	 * frame otherwise. The literals a terminal named ride the second
+	 * message, which the session patches over the first — without it
+	 * every colour outside the sixteen reaches the screen reduced to a
+	 * slot.
+	 *
+	 * THE CHUNK IS WHAT LETS A FRAME BE LARGER THAN A MESSAGE. A buffer
+	 * refuses the run that would take it past KCON_MAX_PAYLOAD and
+	 * latches the refusal, so a frame built whole and sent at the end
+	 * fails to encode, silently and for good, at every size past about
+	 * 131k cells — the buffers go out whenever the next run would cross
+	 * KCON_CHUNK_BYTES instead. Cells first: a colour record patches a
+	 * cell the commit placed, so a COLOR that overtook its COMMIT would
+	 * be undone by it.
+	 *
+	 * The colour estimate is the run's, while a run split into spans
+	 * pays a six-byte header per span; the chunk sits far enough under
+	 * KCON_MAX_PAYLOAD to absorb that overshoot, which is bounded by one
+	 * run and so by one row.
+	 *
+	 * A run is copied into `prev` only once it is IN a buffer, and a
+	 * frame that did not go whole arms `need_full`: a copy claiming cells
+	 * the session never got is a screen that stays wrong until something
+	 * else happens to overwrite it, and this end has no next diff that
+	 * would find them.
+	 */
+	KconBuf buf = { 0 }, cbuf = { 0 };
+
 	for (int y = 0; y < h; y++) {
+		const KtuiCell *row = &cur[(size_t)y * w];
+		KtuiCell *prow = &prev[(size_t)y * w];
 		int x = 0;
 
-		while (x < w) {
-			const KtuiCell *c = &cur[y * w + x];
+		if (rows && !rows[y])
+			continue;
+		if (!force_full &&
+		    !memcmp(row, prow, sizeof(KtuiCell) * (size_t)w))
+			continue;
 
-			if (!force_full && !memcmp(c, &prev[y * w + x],
-						   sizeof(*c))) {
+		while (x < w) {
+			if (!force_full && !memcmp(&row[x], &prow[x],
+						   sizeof(KtuiCell))) {
 				x++;
 				continue;
 			}
@@ -644,34 +841,269 @@ static void cl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			int start = x;
 
 			while (x < w &&
-			       (force_full || memcmp(&cur[y * w + x],
-						     &prev[y * w + x],
+			       (force_full || memcmp(&row[x], &prow[x],
 						     sizeof(KtuiCell))))
 				x++;
 
-			kcon_buf_reset(&buf);
-			kcon_put_run(&buf, (uint16_t)start, (uint16_t)y,
-				     &cur[y * w + start], (uint16_t)(x - start));
-			kcon_send(C.conn, KCON_OP_COMMIT, &buf);
+			uint16_t n = (uint16_t)(x - start);
 
-			memcpy(&prev[y * w + start], &cur[y * w + start],
-			       sizeof(KtuiCell) * (size_t)(x - start));
+			if (buf.len + 6 + (size_t)n * KCON_CELL_BYTES >
+				KCON_CHUNK_BYTES ||
+			    cbuf.len + 6 + (size_t)n * KCON_COLOR_BYTES >
+				KCON_CHUNK_BYTES) {
+				if (buf.len && kcon_send(C.conn,
+							 KCON_OP_COMMIT,
+							 &buf) != 0)
+					goto fail;
+				kcon_buf_reset(&buf);
+				if (cbuf.len && kcon_send(C.conn,
+							  KCON_OP_COLOR,
+							  &cbuf) != 0)
+					goto fail;
+				kcon_buf_reset(&cbuf);
+			}
+			if (kcon_put_run(&buf, (uint16_t)start, (uint16_t)y,
+					 &row[start], n) != 0)
+				goto fail;
+			if (put_color_spans(&cbuf, (uint16_t)start,
+					    (uint16_t)y, &row[start], n) != 0)
+				goto fail;
+			memcpy(&prow[start], &row[start],
+			       sizeof(KtuiCell) * (size_t)n);
+			any = 1;
 		}
 	}
 
+	if (buf.len && kcon_send(C.conn, KCON_OP_COMMIT, &buf) != 0)
+		goto fail;
+	if (cbuf.len && kcon_send(C.conn, KCON_OP_COLOR, &cbuf) != 0)
+		goto fail;
+	goto done;
+fail:
+	/*
+	 * A FRAME THAT DID NOT GO WHOLE LEAVES NOTHING CLAIMED. The next
+	 * flush is encoded full, and the toolkit is told the frame never
+	 * reached a screen so a repaint it was carrying is asked for again.
+	 * The tail below still runs: part of the frame is on the wire, so
+	 * the session will answer it, and a wait that was not armed would
+	 * let the next flush overtake the answer.
+	 */
+	C.need_full = 1;
+	C.presented = 0;
+done:
 	kcon_buf_free(&buf);
+	kcon_buf_free(&cbuf);
+
+	/* The drops go last, after the commit that stopped naming the slot.
+	 * See send_sprite_drop. */
+	for (int slot = 0; slot < C.sent_hi; slot++) {
+		if (!C.sent_gen[slot] || ktui_sprite_get(slot))
+			continue;
+		send_sprite_drop(slot);
+		C.sent_gen[slot] = 0;
+	}
+
 	kcon_flush(C.conn);
+
+	/* The session answers a commit with a frame; nothing was sent, so
+	 * nothing is waited for. A surface with no view attached gets no
+	 * answer at all and is paced instead by KCON_FRAME_STALL_MS. */
+	if (any) {
+		C.frame_wait = 1;
+		C.frame_at = now_ms();
+	}
+
+	return 1;
 }
 
-static int cl_poll(KtuiEvent *ev, int timeout_ms)
+/*
+ * THE STASHED FRAME GOES OUT. Diffed against the toolkit's own last-presented
+ * buffer — fetched here rather than remembered, because a resize since the
+ * stash has replaced it, and a stash of the old size is a frame nobody wants.
+ *
+ * A display still too far behind keeps the frame stashed rather than losing
+ * it. The pictures a stashed frame names are read at this moment and not at
+ * the stash, which is what makes ktui_sprite_drop() before freeing a
+ * registered picture load-bearing rather than tidy.
+ */
+static void release_stash(void)
 {
-	if (pop(ev))
-		return 1;
+	int w, h;
+	KtuiCell *prev;
 
+	if (!C.pend_valid)
+		return;
+
+	prev = (KtuiCell *)ktui_cells(&w, &h);
+	if (prev && w == C.pend_w && h == C.pend_h &&
+	    !cl_present(C.pend, prev, w, h, C.pend_full, C.pend_row))
+		return;		/* still behind: the frame stays stashed */
+
+	C.pend_valid = 0;
+	C.pend_full = 0;
+	if (C.pend_row)
+		memset(C.pend_row, 0, (size_t)C.pend_h);
+}
+
+static void cl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		     int force_full)
+{
+	if (!C.conn || kcon_conn_dead(C.conn))
+		return;
+
+	C.presented = 0;
+
+	/*
+	 * A FRAME THE ENCODER COULD NOT FINISH IS MADE GOOD HERE AND NOWHERE
+	 * ELSE. Joined in before the stash decision so either path carries
+	 * it: a stash marks every row once `pend_full` is set, and a direct
+	 * present walks the whole grid. Applying it inside cl_present()
+	 * instead would apply it to a stash release too, whose unmarked rows
+	 * cannot be sent — and those are exactly the rows the failed frame
+	 * may have left wrong.
+	 */
+	force_full |= C.need_full;
+	C.need_full = 0;
+
+	/*
+	 * FRAME THROTTLING, the shape libkwl gives a compositor's callback:
+	 * while the session has not yet composed the last commit, or while
+	 * the display is too far behind to take another frame, the newest
+	 * cells are stashed instead of sent and go out when the session
+	 * answers or the backlog drains. A program that redraws on every pty
+	 * read then puts one commit per composed frame on the wire instead of
+	 * one per read — and the commit it does send carries the newest
+	 * frame, not the oldest.
+	 *
+	 * The stash is a copy: `cur` is the toolkit's back buffer and is
+	 * redrawn the moment this returns.
+	 */
+	kcon_flush(C.conn);
+
+	int behind = kcon_conn_pending(C.conn) > KCON_VIEW_HIGH;
+
+	if (behind ||
+	    (C.frame_wait && now_ms() - C.frame_at < KCON_FRAME_STALL_MS)) {
+		if (!C.pend || C.pend_w != w || C.pend_h != h) {
+			free(C.pend);
+			free(C.pend_row);
+			C.pend = malloc((size_t)w * h * sizeof(KtuiCell));
+			C.pend_row = calloc((size_t)h, 1);
+			if (!C.pend || !C.pend_row) {
+				free(C.pend);
+				free(C.pend_row);
+				C.pend = NULL;
+				C.pend_row = NULL;
+				C.pend_w = C.pend_h = 0;
+				C.pend_valid = C.pend_full = 0;
+				/* The frame is gone with the stash, so the
+				 * next one carries the whole grid rather
+				 * than a diff against cells nothing sent. */
+				C.need_full = 1;
+				return;
+			}
+			C.pend_w = w;
+			C.pend_h = h;
+			C.pend_full = 1;
+		}
+
+		/*
+		 * ONLY THE ROWS THAT DIFFER FROM WHAT THE DISPLAY HAS, plus
+		 * every row an earlier stash marked. A surface redrawing
+		 * several times per composed frame copies its whole grid on
+		 * each one otherwise, and a panel whose cells did not change
+		 * pays that for a stash the release then finds nothing in.
+		 *
+		 * The mark is sticky because the stash is a frame and not a
+		 * delta: a row that changed in one stash and changed back in
+		 * the next must carry its current cells, not the older ones.
+		 */
+		int marked = 0;
+
+		C.pend_full |= force_full;
+		for (int y = 0; y < h; y++) {
+			size_t off = (size_t)y * w;
+			size_t len = sizeof(KtuiCell) * (size_t)w;
+
+			if (C.pend_full ||
+			    memcmp(&cur[off], &prev[off], len))
+				C.pend_row[y] = 1;
+			if (!C.pend_row[y])
+				continue;
+			memcpy(&C.pend[off], &cur[off], len);
+			marked = 1;
+		}
+		if (marked)
+			C.pend_valid = 1;
+		return;
+	}
+	/*
+	 * The stash is superseded by `cur`, which is newer by construction,
+	 * and its `full` is joined into this commit: ktui_draw_flush() clears
+	 * force_full after ANY flush, stashed ones included, so dropping it
+	 * here would lose a repaint the consumer has already forgotten about.
+	 */
+	if (C.pend_valid) {
+		force_full |= C.pend_full;
+		C.pend_valid = 0;
+		C.pend_full = 0;
+		if (C.pend_row)
+			memset(C.pend_row, 0, (size_t)C.pend_h);
+	}
+	/* A present the display was too far behind to take sent nothing, so
+	 * the repaint this flush was carrying is still owed. */
+	if (!cl_present(cur, prev, w, h, force_full, NULL))
+		C.need_full |= force_full;
+}
+
+/*
+ * READ THE SOCKET INTO THE QUEUE, and nothing more. The poll below pops from
+ * the queue; a pump that went through the poll instead popped an event into
+ * a local and dropped it, which is a keystroke lost by every overlay loop on
+ * this desktop once per turn.
+ *
+ * Reading stops while the queue has fewer than a few free slots: what is not
+ * read stays in the socket for the next turn, where dropping it would have
+ * lost the oldest event — a keystroke under a burst of pointer motion.
+ */
+static int queue_room(void)
+{
+	int n = (int)(sizeof(C.q) / sizeof(C.q[0]));
+
+	return (C.qhead - C.qtail - 1 + n) % n;
+}
+
+static void cl_drain(int timeout_ms)
+{
 	if (!C.conn || kcon_conn_dead(C.conn)) {
 		C.should_close = 1;
-		ev->type = KT_EVT_TICK;
-		return 0;
+		return;
+	}
+
+	/*
+	 * A STASH THE FRAME CONTRACT IS NOT HOLDING GOES OUT BEFORE THE WAIT,
+	 * and before the poll is built, so what it queues is what decides
+	 * whether writability is interesting. What held such a stash was the
+	 * display being behind, and a surface that painted once and waits —
+	 * a toast, a menu, a dialog — has no later flush to carry the cells
+	 * instead.
+	 */
+	if (!C.frame_wait)
+		release_stash();
+
+	/*
+	 * A STASHED FRAME HAS A DEADLINE: the session's answer normally
+	 * releases it, but one that never comes — the surface is not on any
+	 * view, the session is busy — must not hold the frame past the
+	 * stall, so the wait is shortened to it.
+	 */
+	if (C.pend_valid && C.frame_wait) {
+		int64_t rem = KCON_FRAME_STALL_MS - (now_ms() - C.frame_at);
+
+		if (rem < 0)
+			rem = 0;
+		if (timeout_ms < 0 || rem < timeout_ms)
+			timeout_ms = (int)rem;
 	}
 
 	struct pollfd p = { .fd = kcon_conn_fd(C.conn), .events = POLLIN };
@@ -681,16 +1113,33 @@ static int cl_poll(KtuiEvent *ev, int timeout_ms)
 	if (kcon_flush(C.conn) > 0)
 		p.events |= POLLOUT;
 
-	poll(&p, 1, timeout_ms);
+	if (timeout_ms != 0 || queue_room() > 4)
+		poll(&p, 1, timeout_ms);
 
 	KconMsg m;
-	int r;
+	int r = 0;
 
-	while ((r = kcon_recv(C.conn, &m)) == 1)
+	while (queue_room() > 4 && (r = kcon_recv(C.conn, &m)) == 1)
 		handle(&m);
 
 	if (r < 0)
 		C.should_close = 1;
+
+	/* The answer arrived and was handled above, or the stall passed with
+	 * none: either way the stash goes out on this side's own clock, and
+	 * no stash outlives KCON_FRAME_STALL_MS whatever is holding it. */
+	if (!C.frame_wait || now_ms() - C.frame_at >= KCON_FRAME_STALL_MS) {
+		C.frame_wait = 0;
+		release_stash();
+	}
+}
+
+static int cl_poll(KtuiEvent *ev, int timeout_ms)
+{
+	if (pop(ev))
+		return 1;
+
+	cl_drain(timeout_ms);
 
 	if (pop(ev))
 		return 1;
@@ -703,6 +1152,14 @@ static void cl_size(int *w, int *h)
 {
 	*w = C.cols > 0 ? C.cols : 80;
 	*h = C.rows > 0 ? C.rows : 24;
+}
+
+/* See KtuiBackend.presented: a stashed frame is not on a screen. libkcon
+ * holds the cells itself and sends them when the display is ready, so the
+ * only thing a stash still owes the toolkit is the repaint bit. */
+static int cl_presented(void)
+{
+	return C.presented;
 }
 
 static int cl_caps(void)
@@ -800,6 +1257,7 @@ static const KtuiBackend kcon_backend = {
 	.size = cl_size,
 	.caps = cl_caps,
 	.caret = cl_caret,
+	.presented = cl_presented,
 };
 
 /* ── the display implementation ──────────────────────────────────────── */
@@ -852,8 +1310,17 @@ static void put_attach(KconBuf *b, int cols, int rows)
 static int kcon_init(const KDispConfig *cfg)
 {
 	const char *path = getenv("KDOS_CON");
+	/* Registered before or after this, a consumer's choice: the pixel
+	 * reader survives the reset, or a picture registered by a program
+	 * that called kcon_set_sprite_bits() first is a blank pane. */
+	KconSpriteBits bits_fn = C.bits_fn;
+	void *bits_user = C.bits_user;
 
+	free(C.pend);
+	free(C.pend_row);
 	memset(&C, 0, sizeof(C));
+	C.bits_fn = bits_fn;
+	C.bits_user = bits_user;
 	/*
 	 * A SURFACE WHOSE EXTENT THE SESSION OWNS ATTACHES WITH NO SIZE. A
 	 * saver covers the screen, the desktop's icon layer is the screen, and
@@ -881,8 +1348,10 @@ static int kcon_init(const KDispConfig *cfg)
 		return -1;
 
 	C.conn = kcon_conn_new(fd);
-	if (!C.conn)
+	if (!C.conn) {
+		close(fd);
 		return -1;
+	}
 
 	KconBuf b = { 0 };
 
@@ -956,9 +1425,7 @@ static int kcon_fd(void)
 
 static void kcon_pump(void)
 {
-	KtuiEvent ev;
-
-	(void)cl_poll(&ev, 0);
+	cl_drain(0);
 }
 
 static int kcon_copy(const char *text, size_t len, int primary)
@@ -1034,7 +1501,7 @@ static void kcon_unlock(void)
 static int kcon_overlay_resize(int cols, int rows)
 {
 	KconBuf b = { 0 };
-	int was_cols = C.cols, was_rows = C.rows;
+	unsigned seq = C.configure_seq;
 
 	if (!C.conn || cols < 1 || rows < 1)
 		return -1;
@@ -1057,17 +1524,12 @@ static int kcon_overlay_resize(int cols, int rows)
 	 * this returns, and a draw against the old size is a frame at the wrong
 	 * size that nothing ever repaints. The session may answer with a size
 	 * that is not the one asked for — it places windows and it has an edge
-	 * to fit them inside — so the wait ends on ANY answer.
+	 * to fit them inside — so the wait ends on ANY answer, the size it
+	 * had included: the configure counter moves on every one, where the
+	 * size fields move only on a change.
 	 */
-	for (int spin = 0; spin < 200; spin++) {
-		struct pollfd p = { .fd = kcon_conn_fd(C.conn),
-				    .events = POLLIN, .revents = 0 };
-
-		if (C.cols != was_cols || C.rows != was_rows)
-			break;
-		poll(&p, 1, 5);
-		kcon_pump();
-	}
+	for (int spin = 0; spin < 200 && C.configure_seq == seq; spin++)
+		cl_drain(5);
 	return 0;
 }
 
@@ -1597,7 +2059,6 @@ int kcon_clip_offer(const char *sock, const char *text, size_t len)
 	/* 0: the CLIPBOARD, not the primary selection. A copy somebody asked
 	 * for is not a selection they happened to drag over. */
 	kcon_put_u8(&b, 0);
-	kcon_put_u32(&b, (uint32_t)len);
 	kcon_put_blob(&b, text, len);
 	kcon_send(c, KCON_OP_CLIP_OFFER, &b);
 	kcon_buf_free(&b);
@@ -1618,11 +2079,12 @@ int kcon_clip_offer(const char *sock, const char *text, size_t len)
  */
 int kcon_clip_take(const char *sock, char **out)
 {
-	int fd = connect_to(sock);
-
 	if (!out)
 		return -1;
 	*out = NULL;
+
+	int fd = connect_to(sock);
+
 	if (fd < 0)
 		return -1;
 
@@ -1768,11 +2230,12 @@ int kcon_quit_session(const char *sock)
  */
 int kcon_capture(const char *sock, int window, char **out)
 {
-	int fd = connect_to(sock);
-
 	if (!out)
 		return -1;
 	*out = NULL;
+
+	int fd = connect_to(sock);
+
 	if (fd < 0)
 		return -1;
 
@@ -1814,10 +2277,17 @@ int kcon_capture(const char *sock, int window, char **out)
 
 				kcon_rd_init(&rd, m.payload, m.len);
 
-				const char *t = kcon_get_str(&rd);
+				/* A blob, not a string: the string reader's
+				 * scratch is a kilobyte and a screen is not. */
+				uint32_t n = kcon_get_u32(&rd);
+				const char *t = kcon_get_blob(&rd, n);
 
 				if (!rd.err && t) {
-					*out = strdup(t);
+					*out = malloc((size_t)n + 1);
+					if (*out) {
+						memcpy(*out, t, n);
+						(*out)[n] = '\0';
+					}
 					rc = *out ? 0 : -1;
 				}
 				break;

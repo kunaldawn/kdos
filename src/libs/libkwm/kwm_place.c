@@ -172,6 +172,11 @@ static void build_overlap(struct bitmap *b, const KwmBox *ex, int n)
  * Total overlap of a region of the given size starting at interval (i, j) and
  * extending in the prescribed directions. A region that would run off the grid
  * scores INT_MAX, which no candidate ever beats.
+ *
+ * `*single` says the region lay inside interval (i, j) alone — the case where
+ * the score cannot depend on the directions, because only one cell was read.
+ * A region that ran off the grid is never single however few cells it read:
+ * whether it runs off is exactly what the direction decides.
  */
 static int compute_overlap(struct bitmap *b, int i, int j, int w, int h,
 			   int right, int down, int *single)
@@ -215,7 +220,7 @@ static int compute_overlap(struct bitmap *b, int i, int j, int w, int h,
 		overlap = INT_MAX;
 
 	if (single)
-		*single = count == 1;
+		*single = count == 1 && overlap != INT_MAX;
 
 	return overlap;
 }
@@ -259,8 +264,11 @@ kwm_place(KwmRect usable, int gap, KwmBorder margin,
 			 * A region wider or taller than the interval it starts
 			 * in can extend either way, and the four possibilities
 			 * overlap differently. A region that fits inside its
-			 * interval has one answer, so the other three are
-			 * skipped.
+			 * interval scores the same in all four, so the other
+			 * three are skipped. The skip must not hang off this
+			 * candidate having beaten the running best, or every
+			 * cell examined after the first improvement pays four
+			 * calls for the one answer they all return.
 			 */
 			for (int d = 0; d < 4; d++) {
 				int right = (d & 1) == 0;
@@ -269,17 +277,18 @@ kwm_place(KwmRect usable, int gap, KwmBorder margin,
 				int ov = compute_overlap(&b, i, j, w, h,
 							 right, down, &single);
 
-				if (ov >= best)
-					continue;
+				if (ov < best) {
+					best = ov;
+					out.x = right
+						? b.cols[j] + offx
+						: b.cols[j + 1] - w + offx;
+					out.y = down
+						? b.rows[i] + offy
+						: b.rows[i + 1] - h + offy;
 
-				best = ov;
-				out.x = right ? b.cols[j] + offx
-					      : b.cols[j + 1] - w + offx;
-				out.y = down ? b.rows[i] + offy
-					     : b.rows[i + 1] - h + offy;
-
-				if (best <= 0)
-					goto done;
+					if (best <= 0)
+						goto done;
+				}
 				if (single)
 					break;
 			}

@@ -211,8 +211,15 @@ int kcol_xterm256(uint32_t rgb);
 
 int kcol_family(uint32_t rgb);
 
-/* Remap one source colour into `sc`, keeping its own lightness and
- * saturation. This is the operation every generator performs. */
+/*
+ * Remap one source colour into `sc`, keeping its own lightness and
+ * saturation. This is the operation every generator performs.
+ *
+ * The scheme's four target hues are derived once and held until a different
+ * scheme arrives: the caller is a loop over every pixel of a picture, and
+ * they are the same four numbers for every one of them. A scheme rebuilt in
+ * place is noticed — the four source colours are the key, not the pointer.
+ */
 uint32_t kcol_remap(const KcolScheme *sc, uint32_t rgb);
 
 /* Rewrite every `#rrggbb` / `#rgb` token in a blob through kcol_remap, and

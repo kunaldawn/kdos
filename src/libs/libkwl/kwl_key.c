@@ -11,7 +11,7 @@
  * or one of a couple of dozen KT_K_* specials that an escape sequence decodes
  * to. Here the source is xkb, and the job is to arrive at exactly the same
  * values so that every widget written against the tty behaves identically —
- * a Tab is 9 in both, and Ctrl+C arrives as 3 in both.
+ * a Tab is 9 in both, and Ctrl+C is the letter `c` with KT_MOD_CTRL in both.
  */
 
 #include <xkbcommon/xkbcommon.h>
@@ -72,15 +72,40 @@ int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 	default:		break;
 	}
 
+	/*
+	 * A COMPOSED KEYSYM IS TRANSLATED BY KEYSYM, not by keycode.
+	 *
+	 * The compose machine replaces `sym` with what the sequence produced —
+	 * `'` then `e` becomes XKB_KEY_eacute — and the key that was actually
+	 * pressed is still `e`. Asking xkb what the KEYCODE means answers `e`,
+	 * so every accented character typed through a dead key came out as its
+	 * base letter and the compose table did nothing at all.
+	 */
+	if (sym != xkb_state_key_get_one_sym(state, code)) {
+		uint32_t composed = xkb_keysym_to_utf32(sym);
+
+		return composed ? (int)composed : 0;
+	}
+
 	uint32_t cp = xkb_state_key_get_utf32(state, code);
 	if (!cp)
 		return 0;	/* a bare modifier, or a key with no text */
 
 	/*
-	 * xkb already folds Ctrl into the control codes — Ctrl+C arrives as
-	 * U+0003, exactly what a terminal delivers — so there is deliberately
-	 * no Ctrl handling here. Adding some would produce 3 twice and turn
-	 * Ctrl+C into two events.
+	 * ONE VOCABULARY FOR A CTRL CHORD: the letter, with KT_MOD_CTRL in
+	 * `mods`. xkb folds Ctrl into a control code here and neither of the
+	 * other two backends does — libktui's terminal decoder unfolds 0x03
+	 * back to `c`, and libkkms reads the keysym, which xkb never folds —
+	 * so a chord written against either of those misses every Ctrl chord
+	 * under Wayland. The fold is undone rather than propagated, because
+	 * the event already carries the modifier.
 	 */
+	if (cp < 0x20) {
+		uint32_t plain = xkb_keysym_to_utf32(sym);
+
+		if (plain)
+			return (int)plain;
+	}
+
 	return (int)cp;
 }

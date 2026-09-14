@@ -195,9 +195,11 @@ a stick with no index beside it.
 
 Rules the scheme keeps, each of which is a way signing usually rots:
 
-- **A key id is not a key.** The id inside a signature selects which trusted key to try;
-  verification always uses a key from the trusted directory. A signature that could supply its own
-  key verifies nothing.
+- **A key id is not a key.** The id on a signature line is a label, not a selector: every line is
+  tried against every key in the trusted directory and against nothing outside it, so what a tool
+  reports is the key that verified rather than the id the line claimed, and a line naming an
+  unknown id still verifies if a trusted key signed it. A signature that could supply its own key
+  verifies nothing.
 - **A bad signature is not a missing one.** Installing a package whose sidecar *fails* is refused;
   one with no sidecar is allowed, because locally built packages are the majority and are never
   signed. `KPKG_REQUIRE_SIG=1` is the stricter policy for a machine that only installs from a

@@ -358,6 +358,35 @@ int kcol_family(uint32_t rgb)
 	return KCOL_FAM_ACCENT;
 }
 
+/*
+ * THE FOUR HUES A SCHEME REMAPS ONTO, cached against the scheme.
+ *
+ * Every call of kcol_remap picks one of them and each is a full HLS
+ * conversion of a colour that does not change between calls — and the caller
+ * is a per-pixel loop over an icon. One entry is enough: a remap runs over a
+ * whole picture under one scheme, so a second scheme means the picture is
+ * finished. The key is the four source colours rather than the pointer,
+ * because a caller may hand over a scheme it rebuilds in place.
+ */
+static uint32_t hue_key[4];
+static double hue_of[4];
+static int hue_set;
+
+static void hues_sync(const KcolScheme *sc)
+{
+	const uint32_t k[4] = { sc->variant, sc->urgent, sc->secondary,
+				sc->primary };
+	double dummy;
+
+	if (hue_set && !memcmp(hue_key, k, sizeof k))
+		return;
+	for (int i = 0; i < 4; i++) {
+		kcol_to_hls(k[i], &hue_of[i], &dummy, &dummy);
+		hue_key[i] = k[i];
+	}
+	hue_set = 1;
+}
+
 uint32_t kcol_remap(const KcolScheme *sc, uint32_t rgb)
 {
 	double h, l, s;
@@ -369,25 +398,27 @@ uint32_t kcol_remap(const KcolScheme *sc, uint32_t rgb)
 	if (l <= 0.01 || l >= 0.99)
 		return rgb;
 
-	double dummy, nh, ns = s;
+	double nh, ns = s;
 	double deg = h * 360.0;
 
+	hues_sync(sc);
+
 	if (s < 0.08) {
-		kcol_to_hls(sc->variant, &nh, &dummy, &dummy);
+		nh = hue_of[0];			/* variant   */
 		ns = s * 1.4 + 0.05;
 		if (ns > 0.18)
 			ns = 0.18;
 	} else if (deg < 20.0 || deg >= 330.0) {
-		kcol_to_hls(sc->urgent, &nh, &dummy, &dummy);
+		nh = hue_of[1];			/* urgent    */
 	} else if (deg < 70.0) {
-		kcol_to_hls(sc->secondary, &nh, &dummy, &dummy);
+		nh = hue_of[2];			/* secondary */
 	} else if (deg < 180.0 || (deg >= 200.0 && deg < 340.0)) {
-		kcol_to_hls(sc->primary, &nh, &dummy, &dummy);
+		nh = hue_of[3];			/* primary   */
 	} else {
 		/* 180..200 is cyan, the one band that lands on the accent at
 		 * full saturation and reads as a second accent rather than a
 		 * shade of it. */
-		kcol_to_hls(sc->primary, &nh, &dummy, &dummy);
+		nh = hue_of[3];
 		ns = s * 0.75;
 	}
 

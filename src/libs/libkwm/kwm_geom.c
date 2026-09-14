@@ -103,37 +103,6 @@ kwm_edge_between(int cur, int tgt, int other)
 	return 0;
 }
 
-/*
- * Where the line from (x1,y1) to (x2,y2) sits at x. A vertical run has no
- * single answer, so it takes the midpoint — which is what makes a zero-length
- * move miss every obstacle rather than hitting all of them.
- */
-static double
-interpolate(int x, int x1, double y1, int x2, double y2)
-{
-	int run = x2 - x1;
-	if (run == 0)
-		return 0.5 * (y1 + y2);
-
-	return y1 + (x - x1) * ((y2 - y1) / (double)run);
-}
-
-int
-kwm_edge_sweeps(KwmEdge cur, KwmEdge tgt, KwmEdge obstacle)
-{
-	double lo = interpolate(obstacle.offset,
-		cur.offset, cur.min, tgt.offset, tgt.min);
-	double hi = interpolate(obstacle.offset,
-		cur.offset, cur.max, tgt.offset, tgt.max);
-
-	if (obstacle.max <= lo)
-		return 0;
-	if (obstacle.min >= hi)
-		return 0;
-
-	return kwm_edge_between(cur.offset, tgt.offset, obstacle.offset);
-}
-
 KwmRect
 kwm_fit(KwmRect want, KwmRect work, int min_w, int min_h)
 {

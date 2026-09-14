@@ -63,12 +63,14 @@ const char *kb_human_size(unsigned long long bytes)
 /*
  * ── base64 ───────────────────────────────────────────────────────────────
  *
- * Here rather than in a state machine or a terminal: OSC 52 carries a base64
- * selection and the clipboard is not the only thing that will ever want this.
+ * Here rather than in a state machine or a terminal, because both halves have
+ * a caller outside either: OSC 52 carries a base64 selection, so libkvt's
+ * escape parser decodes one, and kdos-view's recorder encodes a protocol
+ * message into a transcript.
  *
- * DECODE ONLY. The encode side has one caller — `ktui_clip_copy` writes the
- * sequence as it goes, without a buffer — and a second implementation of the
- * same table would be a second thing to keep in step.
+ * libktui keeps a third table of its own. That library links nothing but
+ * libc, and pulling libkbase in for a single OSC 52 write would cost it the
+ * property every other file there depends on.
  */
 
 static int b64_val(unsigned char c)

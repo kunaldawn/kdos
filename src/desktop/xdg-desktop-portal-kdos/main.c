@@ -72,6 +72,37 @@
  * -I flag to keep in step. */
 #include "../../libs/libkcolor/kcolor.h"
 
+
+/*
+ * A CHILD STARTS WITH THE SIGNALS A PROCESS STARTS WITH.
+ *
+ * An ignored disposition survives execve and a blocked mask survives fork, so
+ * a program launched from here inherits whatever this process arranged for
+ * itself — an ignored SIGPIPE means the shell it runs never ends a pipeline.
+ * Everything is reset rather than SIGPIPE by name: what a process ignores is
+ * its own business and grows.
+ *
+ * Its own copy rather than libkbase's, because this port links no libk* and
+ * its recipe says so.
+ */
+static void child_reset_signals(void)
+{
+	sigset_t empty;
+
+	sigemptyset(&empty);
+	sigprocmask(SIG_SETMASK, &empty, NULL);
+	for (int i = 1; i < NSIG; i++) {
+		struct sigaction sa;
+
+		if (i == SIGKILL || i == SIGSTOP)
+			continue;
+		if (sigaction(i, NULL, &sa) != 0)
+			continue;
+		if (!(sa.sa_flags & SA_SIGINFO) && sa.sa_handler == SIG_IGN)
+			signal(i, SIG_DFL);
+	}
+}
+
 #define PORTAL_BUS "org.freedesktop.impl.portal.desktop.kdos"
 #define PORTAL_PATH "/org/freedesktop/portal/desktop"
 
@@ -147,6 +178,7 @@ static int start_picker(const char *const argv[], sd_bus_message *call,
 		close(fds[0]);
 		dup2(fds[1], STDOUT_FILENO);
 		close(fds[1]);
+		child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}
@@ -525,6 +557,7 @@ static void open_detached(const char *const argv[])
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
@@ -1207,6 +1240,7 @@ static int method_cast_start(sd_bus_message *m, void *userdata,
 		close(fds[0]);
 		dup2(fds[1], STDOUT_FILENO);
 		close(fds[1]);
+		child_reset_signals();
 		execlp("kdos-view", "kdos-view", "--cast", "--socket", view,
 		       (char *)NULL);
 		_exit(127);

@@ -195,8 +195,17 @@ void *kpk_icon_read(const KpkPack *p, size_t *len);
 
 /* ── hashing, signing, verifying ───────────────────────────────────────── */
 
-/* SHA-256 over bytes [0, sig_off) — the filesystem, the metadata and the icon,
- * which is everything a signature is meant to cover. Streamed. */
+/*
+ * SHA-256 over bytes [0, sig_off) — the filesystem, the metadata and the
+ * icon — AND over the footer, with `payload_sha256` and `sig_len` zeroed.
+ *
+ * The footer is what says where those three spans are, so a hash that stopped
+ * at sig_off left every offset in it rewritable under a signature that still
+ * verified. The two zeroed fields are the two written after this is computed:
+ * the digest itself, and the length that grows when a second key signs.
+ * Streamed; the footer is packed from the struct, because the writer calls
+ * this before the footer exists on disk.
+ */
 int kpk_payload_hash(const char *path, const KpkFooter *f, char out[65]);
 
 /*
@@ -338,7 +347,15 @@ typedef struct {
  * read. A stanza missing P: or C: is dropped, not half-recorded. */
 int kpk_index_load(KpkIndex *ix, const char *path);
 
-/* Verify PACKAGES against PACKAGES.sig beside it. Same three states. */
+/*
+ * Verify PACKAGES against PACKAGES.sig beside it.
+ *
+ * KPK_SIG_GOOD, KPK_SIG_BAD and KPK_SIG_NOKEY carry the meanings kpk_verify
+ * gives them. KPK_SIG_NONE is an index with no `.sig` beside it. An index
+ * that cannot be read at all is KPK_SIG_HASH, never NONE: NONE is a state a
+ * caller may accept, and a missing catalogue must not read as an acceptable
+ * unsigned one.
+ */
 KpkSigState kpk_index_verify(const char *path, const KsigRing *ring,
 			     char who[KSIG_ID_HEX]);
 

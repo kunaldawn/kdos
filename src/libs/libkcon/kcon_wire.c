@@ -232,17 +232,38 @@ const char *kcon_get_str(KconRd *r)
 int kcon_put_run(KconBuf *b, uint16_t x, uint16_t y, const KtuiCell *cells,
 		 uint16_t n)
 {
-	if (kcon_put_u16(b, x) || kcon_put_u16(b, y) || kcon_put_u16(b, n))
+	/*
+	 * ONE RESERVE FOR THE WHOLE RUN, then direct stores: a cell is eight
+	 * bytes and a frame is thousands of them, so a bounds check per field
+	 * is five function calls per cell on the one path every animation
+	 * frame takes.
+	 */
+	if (reserve(b, 6 + (size_t)n * KCON_CELL_BYTES))
 		return -1;
 
-	for (uint16_t i = 0; i < n; i++) {
-		if (kcon_put_u32(b, cells[i].ch) ||
-		    kcon_put_u8(b, cells[i].fg) ||
-		    kcon_put_u8(b, cells[i].bg) ||
-		    kcon_put_u8(b, (uint8_t)(cells[i].attr & 0xffu)) ||
-		    kcon_put_u8(b, 0))		/* reserved, keeps it 8 bytes */
-			return -1;
+	unsigned char *p = b->b + b->len;
+
+	p[0] = (unsigned char)(x & 0xff);
+	p[1] = (unsigned char)(x >> 8);
+	p[2] = (unsigned char)(y & 0xff);
+	p[3] = (unsigned char)(y >> 8);
+	p[4] = (unsigned char)(n & 0xff);
+	p[5] = (unsigned char)(n >> 8);
+	p += 6;
+
+	for (uint16_t i = 0; i < n; i++, p += KCON_CELL_BYTES) {
+		uint32_t ch = cells[i].ch;
+
+		p[0] = (unsigned char)(ch & 0xff);
+		p[1] = (unsigned char)((ch >> 8) & 0xff);
+		p[2] = (unsigned char)((ch >> 16) & 0xff);
+		p[3] = (unsigned char)(ch >> 24);
+		p[4] = cells[i].fg;
+		p[5] = cells[i].bg;
+		p[6] = (unsigned char)(cells[i].attr & 0xffu);
+		p[7] = 0;		/* reserved, keeps it 8 bytes */
 	}
+	b->len += 6 + (size_t)n * KCON_CELL_BYTES;
 
 	return 0;
 }
@@ -264,20 +285,25 @@ int kcon_get_run(KconRd *r, uint16_t *x, uint16_t *y, KtuiCell *out,
 		return -1;
 	}
 
-	for (uint16_t i = 0; i < n; i++) {
-		out[i].ch = kcon_get_u32(r);
-		out[i].fg = kcon_get_u8(r);
-		out[i].bg = kcon_get_u8(r);
+	/* The check above covers every byte read below, so the cells are
+	 * decoded with direct loads rather than a bounds check per field. */
+	const unsigned char *p = r->b + r->pos;
+
+	for (uint16_t i = 0; i < n; i++, p += KCON_CELL_BYTES) {
+		out[i].ch = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+			    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+		out[i].fg = p[4];
+		out[i].bg = p[5];
 		/* THE WIRE'S BYTE IS THE LOW BYTE AND NOTHING ELSE. The bits
 		 * above it name colours that travel in their own run, so a
 		 * cell arriving here can never claim a literal that was not
 		 * sent — the reader cannot be talked into drawing one. */
-		out[i].attr = kcon_get_u8(r);
+		out[i].attr = p[6];
 		out[i].fgc = out[i].bgc = out[i].ulc = 0;
-		(void)kcon_get_u8(r);
 	}
+	r->pos += (size_t)n * KCON_CELL_BYTES;
 
-	return r->err ? -1 : (int)n;
+	return (int)n;
 }
 
 /* ── the colours a cell named itself ─────────────────────────────────── */
@@ -298,13 +324,6 @@ int kcon_run_has_color(const KtuiCell *cells, uint16_t n)
 	return 0;
 }
 
-static int put_rgb(KconBuf *b, uint32_t c)
-{
-	return kcon_put_u8(b, (uint8_t)(c >> 16)) ||
-	       kcon_put_u8(b, (uint8_t)(c >> 8)) ||
-	       kcon_put_u8(b, (uint8_t)c);
-}
-
 static uint32_t get_rgb(KconRd *r)
 {
 	uint32_t v = (uint32_t)kcon_get_u8(r) << 16;
@@ -316,10 +335,20 @@ static uint32_t get_rgb(KconRd *r)
 int kcon_put_color_run(KconBuf *b, uint16_t x, uint16_t y,
 		       const KtuiCell *cells, uint16_t n)
 {
-	if (kcon_put_u16(b, x) || kcon_put_u16(b, y) || kcon_put_u16(b, n))
+	if (reserve(b, 6 + (size_t)n * KCON_COLOR_BYTES))
 		return -1;
 
-	for (uint16_t i = 0; i < n; i++) {
+	unsigned char *p = b->b + b->len;
+
+	p[0] = (unsigned char)(x & 0xff);
+	p[1] = (unsigned char)(x >> 8);
+	p[2] = (unsigned char)(y & 0xff);
+	p[3] = (unsigned char)(y >> 8);
+	p[4] = (unsigned char)(n & 0xff);
+	p[5] = (unsigned char)(n >> 8);
+	p += 6;
+
+	for (uint16_t i = 0; i < n; i++, p += KCON_COLOR_BYTES) {
 		unsigned a = cells[i].attr;
 		unsigned f = 0;
 
@@ -331,10 +360,18 @@ int kcon_put_color_run(KconBuf *b, uint16_t x, uint16_t y,
 			f |= COL_UL;
 		f |= KT_UL_STYLE(a) << COL_STYLE_SHIFT;
 
-		if (put_rgb(b, cells[i].fgc) || put_rgb(b, cells[i].bgc) ||
-		    put_rgb(b, cells[i].ulc) || kcon_put_u8(b, (uint8_t)f))
-			return -1;
+		p[0] = (unsigned char)(cells[i].fgc >> 16);
+		p[1] = (unsigned char)(cells[i].fgc >> 8);
+		p[2] = (unsigned char)cells[i].fgc;
+		p[3] = (unsigned char)(cells[i].bgc >> 16);
+		p[4] = (unsigned char)(cells[i].bgc >> 8);
+		p[5] = (unsigned char)cells[i].bgc;
+		p[6] = (unsigned char)(cells[i].ulc >> 16);
+		p[7] = (unsigned char)(cells[i].ulc >> 8);
+		p[8] = (unsigned char)cells[i].ulc;
+		p[9] = (unsigned char)f;
 	}
+	b->len += 6 + (size_t)n * KCON_COLOR_BYTES;
 
 	return 0;
 }
@@ -413,6 +450,10 @@ KconConn *kcon_conn_new(int fd)
 
 	if (fl >= 0)
 		fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+	/* And close-on-exec, whichever call produced the descriptor: the
+	 * session forks guests, and a connection inherited by one is a peer
+	 * that never hangs up and a socket the guest can write frames into. */
+	fcntl(fd, F_SETFD, FD_CLOEXEC);
 	return c;
 }
 

@@ -85,6 +85,7 @@ static int check_password(const Account *a, const char *pass)
 		if (setuid(0) == 0)
 			_exit(2);	/* the drop did not take */
 
+		kb_child_reset_signals();
 		execl("/usr/bin/kdos-checkpass", "kdos-checkpass",
 		      (char *)NULL);
 		_exit(2);
@@ -184,6 +185,7 @@ static void become(const Account *a, int ses)
 	if (chdir(a->home) != 0 && chdir("/") != 0)
 		_exit(1);
 
+	kb_child_reset_signals();
 	execl(prog, prog, (char *)NULL);
 	fprintf(stderr, "kdos-con-login: cannot start the session\n");
 	_exit(127);
@@ -387,7 +389,8 @@ static int greeter(void)
 		case KT_K_ENTER:
 			break;
 		default:
-			if (ev.key >= 32 && ev.key < 127 && n + 1 < sizeof(pass)) {
+			if (ev.key >= 32 && ev.key < 127 && n + 1 < sizeof(pass) &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 				pass[n] = (char)ev.key;
 				pass[n + 1] = '\0';
 			}
@@ -511,6 +514,7 @@ int con_login(const char *tty)
 	if (!kcon_conf_bool("greet", 0)) {
 		const char *who = kcon_conf_str("autologin", "kdos");
 
+		kb_child_reset_signals();
 		execl("/sbin/agetty", "agetty", "--autologin", who,
 		      "--noclear", tty, "38400", "linux", (char *)NULL);
 		fprintf(stderr, "kdos-con-login: no agetty (%s)\n",

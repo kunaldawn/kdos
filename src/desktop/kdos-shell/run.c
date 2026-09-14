@@ -287,6 +287,7 @@ static void launch(const char *cmd, bool in_term)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execvp(argv[0], argv);
 			_exit(127);
 		}
@@ -551,13 +552,15 @@ int run_main(int argc, char **argv)
 			cur = len;
 			continue;
 		}
-		if (ev.key == 21) {		/* Ctrl+U: clear the line */
+		if ((ev.mods & KT_MOD_CTRL) &&
+		    (ev.key == 'u' || ev.key == 'U')) {	/* Ctrl+U: clear the line */
 			cmd[0] = '\0';
 			len = 0;
 			cur = 0;
 			continue;
 		}
-		if (ev.key == 23) {		/* Ctrl+W: the word before the caret */
+		if ((ev.mods & KT_MOD_CTRL) &&
+		    (ev.key == 'w' || ev.key == 'W')) {	/* Ctrl+W: the word before the caret */
 			size_t p = cur;
 			while (p && cmd[p - 1] == ' ')
 				p--;
@@ -571,7 +574,8 @@ int run_main(int argc, char **argv)
 		/* Printable ASCII only: the command is split into argv by
 		 * bytes, and accepting multi-byte input here would let half a
 		 * codepoint end an argument. */
-		if (ev.key >= 0x20 && ev.key < 0x7f && len + 1 < sizeof(cmd)) {
+		if (ev.key >= 0x20 && ev.key < 0x7f &&
+		    !(ev.mods & KT_MOD_CTRL) && len + 1 < sizeof(cmd)) {
 			memmove(cmd + cur + 1, cmd + cur, len - cur + 1);
 			cmd[cur++] = (char)ev.key;
 			len++;

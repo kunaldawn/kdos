@@ -75,6 +75,7 @@ int kvt_utf8_mach_new(struct kvt_utf8_mach **out);
 void kvt_utf8_mach_free(struct kvt_utf8_mach *mach);
 
 int kvt_utf8_mach_feed(struct kvt_utf8_mach *mach, char c);
+int kvt_utf8_mach_idle(const struct kvt_utf8_mach *mach);
 uint32_t kvt_utf8_mach_get(struct kvt_utf8_mach *mach);
 void kvt_utf8_mach_reset(struct kvt_utf8_mach *mach);
 
@@ -120,6 +121,9 @@ struct kvt_scrollback {
 	struct line *pos;		/* current position in sb or NULL */
 	unsigned int pos_num;	/* current numeric position in sb */
 	uint64_t last_id;		/* last id given to sb-line */
+	/* Bumped by every link and unlink, so a cached walk can tell that the
+	 * list it walked is still the list it is being asked about. */
+	uint64_t gen;
 };
 
 struct kvt_screen {
@@ -133,9 +137,13 @@ struct kvt_screen {
 	/* default attributes for new cells */
 	struct kvt_screen_attr def_attr;
 
-	/* save default attributes of main screen here when we switch to alt screen
-	 * on resize of the alt screen we need to init the new cells of the main
-	 * screen with these attributes and not the ones of the alt screen */
+	/*
+	 * The main screen's defaults, kept while the alternate screen is up.
+	 * A resize allocates and widens the main screen's lines too, and its
+	 * new cells must carry these rather than the attributes a full-screen
+	 * program set for the alternate screen — they are what the shell
+	 * scrolls back into when that program exits.
+	 */
 	struct kvt_screen_attr def_attr_main;
 
 	/* ageing */
@@ -143,6 +151,18 @@ struct kvt_screen {
 	unsigned int age_reset : 1;		/* age-overflow flag */
 
 	/* current buffer */
+	/*
+	 * WHERE THE LAST ROW LOOKUP LANDED, so the next one does not walk the
+	 * history again. Valid only while `at_pos` is still the scroll
+	 * position and `at_gen` still matches sb.gen — a scroll moves the
+	 * position, and any link or unlink in the scrollback bumps the
+	 * generation. See screen_line_at().
+	 */
+	struct line *at_line;
+	struct line *at_pos;
+	uint64_t at_gen;
+	unsigned int at_y;
+
 	unsigned int size_x;			/* width of screen */
 	unsigned int size_y;			/* height of screen */
 	unsigned int margin_top;		/* top-margin index */
@@ -171,9 +191,6 @@ struct kvt_screen {
 	struct selection_pos sel_start;		/* First cell to copy in terminal order */
 	struct selection_pos sel_end;		/* Last cell to copy */
 
-	/* draw2 interface */
-	struct kvt_screen_cell *cells;
-	unsigned int cells_count;
 };
 
 void screen_cell_init(struct kvt_screen *con, struct cell *cell);
@@ -198,6 +215,14 @@ static inline void screen_inc_age(struct kvt_screen *con)
 		con->age_reset = 1;
 		++con->age_cnt;
 	}
+}
+
+/* Mark the whole screen changed at the current age: a consumer that gates a
+ * render on the age reported by the last one redraws once. */
+static inline void kvt_screen_touch(struct kvt_screen *con)
+{
+	screen_inc_age(con);
+	con->age = con->age_cnt;
 }
 
 static inline bool is_in_scrollback(struct selection_pos *sel) {

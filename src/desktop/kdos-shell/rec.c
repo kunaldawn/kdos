@@ -548,6 +548,7 @@ static int kid_start(const char *const argv[])
 		if (err[1] > STDERR_FILENO)
 			close(err[1]);
 		setsid();
+		kb_child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}
@@ -720,6 +721,7 @@ static void transcribe(void)
 			close(null);
 		}
 		setsid();
+		kb_child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}
@@ -779,6 +781,7 @@ static void play_sel(void)
 			close(null);
 		}
 		setsid();
+		kb_child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}

@@ -47,7 +47,14 @@ struct kvt_term {
 	/* When synchronized output went on, for the watchdog. Zero when it is
 	 * off. See kvt_term_sync_hold(). */
 	unsigned long long sync_since;
+	/* The consumer's own sync callback, if it asked for one. The vte's is
+	 * this object's, because the watchdog has to see every transition. */
+	kvt_vte_sync_cb user_sync;
+	void *user_sync_data;
 };
+
+static void reap(struct kvt_term *t);
+static void on_sync(struct kvt_vte *vte, bool on, void *data);
 
 /* The child's output. Straight into the state machine; the screen is what
  * changed by the time this returns. */
@@ -91,6 +98,10 @@ kvt_term_open(const char *const argv[], int cols, int rows)
 		goto fail;
 	if (kvt_vte_new(&t->vte, t->screen, on_reply, t, NULL, NULL) != 0)
 		goto fail;
+	/* The watchdog has to see every synchronized-output transition, so
+	 * the vte's callback is this object's for the life of the terminal.
+	 * See on_sync(). */
+	kvt_vte_set_sync_cb(t->vte, on_sync, t);
 
 	pid_t pid = kvt_shl_pty_open(&t->pty, on_output, t,
 				     (unsigned short)cols, (unsigned short)rows);
@@ -153,15 +164,49 @@ fail:
 	return NULL;
 }
 
+/*
+ * THE CHILD DIES WITH THE WINDOW, AND IS COLLECTED HERE. reap() runs only from
+ * kvt_term_pump and there is no pump after this, so a child left behind is a
+ * zombie for the life of the session and a child that ignores SIGHUP is a
+ * program still running with no terminal.
+ *
+ * Closing the master hangs up the pty's foreground group, which is what ends a
+ * well-behaved child; the explicit SIGHUP reaches the one the kernel's hangup
+ * does not, and it goes to the pid rather than its group because kvt_shl_pty
+ * gives the child a session of its own. SIGKILL after the grace cannot be
+ * caught, ignored or slept through, so the blocking wait that follows it
+ * terminates. The grace is bounded at 100 ms because this runs on the
+ * surface's own thread.
+ */
 void
 kvt_term_close(struct kvt_term *t)
 {
 	if (!t)
 		return;
 
+	reap(t);
+
 	if (t->pty) {
 		kvt_shl_pty_close(t->pty);
 		kvt_shl_pty_unref(t->pty);
+		t->pty = NULL;
+	}
+
+	if (t->alive && t->child > 0) {
+		int tries;
+
+		kill(t->child, SIGHUP);
+		for (tries = 0; tries < 20; ++tries) {
+			if (waitpid(t->child, NULL, WNOHANG) != 0)
+				break;	/* collected, or already gone */
+			nanosleep(&(struct timespec){ 0, 5000000 }, NULL);
+		}
+		if (tries == 20) {
+			kill(t->child, SIGKILL);
+			while (waitpid(t->child, NULL, 0) < 0 && errno == EINTR)
+				;
+		}
+		t->alive = 0;
 	}
 	if (t->vte)
 		kvt_vte_unref(t->vte);
@@ -174,6 +219,12 @@ int
 kvt_term_fd(struct kvt_term *t)
 {
 	return t && t->pty ? kvt_shl_pty_get_fd(t->pty) : -1;
+}
+
+size_t
+kvt_term_pending_out(struct kvt_term *t)
+{
+	return t && t->pty ? kvt_shl_pty_pending(t->pty) : 0;
 }
 
 /*
@@ -448,8 +499,10 @@ void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user)
 
 void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user)
 {
-	if (t)
-		kvt_vte_set_sync_cb(t->vte, cb, user);
+	if (!t)
+		return;
+	t->user_sync = cb;
+	t->user_sync_data = user;
 }
 
 void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user)
@@ -524,6 +577,31 @@ int kvt_term_sync_hold(struct kvt_term *t)
 }
 
 /*
+ * THE WATCHDOG IS ARMED BY THE TRANSITION, not by the first frame that
+ * notices the mode is on.
+ *
+ * A program that brackets every frame closes and reopens the mode faster than
+ * the renderer asks, so a renderer that only ever looks while a bracket is
+ * open never sees it off — and a `sync_since` that is cleared by an
+ * observation instead of by the change keeps the timestamp of the FIRST
+ * bracket. 150 ms later the watchdog is permanently expired and every frame
+ * of that program is presented half-drawn, which is the tearing the mode
+ * exists to prevent.
+ *
+ * This is the vte's callback for the life of the terminal; a consumer's own
+ * is kept beside it and called after, so asking for one does not disarm the
+ * watchdog.
+ */
+static void on_sync(struct kvt_vte *vte, bool on, void *data)
+{
+	struct kvt_term *t = data;
+
+	t->sync_since = on ? kvt_mono_ms() : 0;
+	if (t->user_sync)
+		t->user_sync(vte, on, t->user_sync_data);
+}
+
+/*
  * The three image protocols, switched on for this terminal. Off is the
  * default and stays the default: a consumer that links no decoder must parse
  * exactly what it parsed before, or a sixel dump would stop being ignored and
@@ -567,7 +645,7 @@ kvt_term_place(struct kvt_term *t, uint64_t key, int cw, int ch)
 {
 	struct kvt_screen_attr a;
 
-	if (!t || !t->screen || cw < 1 || ch < 1)
+	if (!t || !t->screen || !t->vte || cw < 1 || ch < 1)
 		return -1;
 
 	unsigned int width = kvt_screen_get_width(t->screen);
@@ -577,13 +655,15 @@ kvt_term_place(struct kvt_term *t, uint64_t key, int cw, int ch)
 
 	/*
 	 * The picture's own colours are in its pixels; these are what a text
-	 * backend paints where it cannot draw one, so they are the ordinary
-	 * text on the ordinary background rather than anything of the
-	 * picture's.
+	 * backend paints where it cannot draw one. THE VTE'S DEFAULT ATTRIBUTE
+	 * IS THE ONLY ONE THAT IS BOTH VISIBLE AND CURRENT: it carries the
+	 * foreground and background codes the render boundary maps to the
+	 * theme's text and background slots, and it follows OSC 10/11 and the
+	 * installed palette. A literal colour index here reduces to whatever
+	 * slot is nearest its RGB, which for an index and its background can
+	 * be the same slot — a blank drawn on itself.
 	 */
-	memset(&a, 0, sizeof(a));
-	a.fccode = 7;
-	a.bccode = 0;
+	kvt_vte_get_def_attr(t->vte, &a);
 
 	unsigned int x0 = kvt_screen_get_cursor_x(t->screen);
 

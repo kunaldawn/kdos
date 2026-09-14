@@ -67,6 +67,7 @@ static void panel_spawn(const char *const argv[])
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			kb_child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
@@ -94,6 +95,7 @@ static pid_t panel_spawn_pid(const char *const argv[])
 
 	if (pid == 0) {
 		setsid();
+		kb_child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}
@@ -4013,7 +4015,15 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * and a full sprite table are all unaffected.
 	 */
 	if (h > 1 && !compact && lw) {
-		int cell_w = kdisp_cell_w(), cell_h = kdisp_cell_h();
+		/*
+		 * THE NOMINAL CELL, the same pair the tile layer and the icon
+		 * layer are sized with. kdisp_cell_w() is 1 on the console —
+		 * a surface there has no pixel size of its own — and every
+		 * pixel figure below is derived from it, so the real cell
+		 * would put a one-pixel mark beside a one-pixel word on a
+		 * canvas the display then upscales.
+		 */
+		int cell_w = sh_pic_cell_w(), cell_h = sh_pic_cell_h();
 		int scale = kdisp_scale();
 		/* The word at ~62% of the button's height, which is the
 		 * proportion a label has to a button on every desktop this

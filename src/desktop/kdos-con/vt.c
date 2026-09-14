@@ -257,6 +257,7 @@ Win *vt_open(const char *const argv[], const char *title, int cage)
 		 * there, not a cell surface here. */
 		unsetenv("KDOS_CON");
 
+		kb_child_reset_signals();
 		execvp(av[0], (char *const *)av);
 		_exit(127);
 	}

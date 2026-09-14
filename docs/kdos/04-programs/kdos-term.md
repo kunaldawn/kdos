@@ -40,9 +40,13 @@ sixteen-colour entry `TERM` names is an understatement — `libktui`'s own capab
 so without it a KDOS surface running inside a KDOS terminal detected 256 colours and drew the theme
 approximately.
 
-**The modes a program probes are answered.** `DECRQM` (`CSI ? <mode> $ p`) reports whether a DEC
-private mode is on, for application cursor keys, auto wrap, the cursor, every mouse mode, focus
-reporting, the alternate screen, bracketed paste and synchronized output. **A mode nothing
+**The modes a program probes are answered, in the form it asked.** `DECRQM` has two spellings and
+the reply carries the marker of the request: `CSI ? <mode> $ p` asks after a DEC private mode and is
+answered `CSI ? <mode> ; <value> $ y`, for application cursor keys, auto wrap, the cursor, every
+mouse mode, focus reporting, the alternate screen, bracketed paste and synchronized output; `CSI
+<mode> $ p` asks after an ANSI mode and is answered without the `?`, for the four that exist — `2`
+KAM, `4` IRM, `12` SRM, `20` LNM. Mode `4` means two different things in the two spellings, so an
+unmarked reply to the second would be read as an answer about the first. **A mode nothing
 implements is answered `0`** — "not recognised", which is what a probing program is built to handle.
 Silence is what it is not built to handle: it waits, times out, and draws like a terminal from 1978.
 Answering is what makes every later mode safe to add.
@@ -120,9 +124,11 @@ nobody drew is worse than the wrong shape. **They are emitted onward only where 
 `4:3` is a sub-parameter, and a terminal old enough to want indexed colour is old enough to drop the
 colon and read the pair as `SGR 43` — a green background where a program asked for a wavy line.
 
-**Five styles are drawn and two are dropped.** Bold, underline, inverse, italic (`SGR 3`),
+**Six styles are drawn and two are dropped.** Bold (`SGR 1`), underline, inverse, italic (`SGR 3`),
 strikethrough (`SGR 9`) and overline (`SGR 53`) each ride a bit of the cell's attribute byte, so
-they cost nothing on the wire between a session and a view. `blink` and `dim` are parsed and reach
+they cost nothing on the wire between a session and a view. Bold is drawn from a bold companion
+face where the loaded font has one whose cell matches, and by striking the mask twice where it does
+not. `blink` and `dim` are parsed and reach
 no bit at all — a blink drawn as bold is a lie about the text, and a terminal that lies about which
 words are emphasised is worse than one that shows them plainly.
 
@@ -179,7 +185,7 @@ into a program that never enables bracketing will want.
 | Gesture | What it does |
 |---|---|
 | Left drag | Selects, and puts the selection on the **primary** clipboard on release |
-| Double click | Selects the word under the pointer |
+| Double click | Selects the word under the pointer, and nothing at all on blank or unwritten space |
 | Middle click | Pastes the primary selection |
 | `Ctrl+Shift+C` | Copies the selection to the **clipboard** |
 | `Ctrl+Shift+V` | Pastes the clipboard |
@@ -285,8 +291,9 @@ reimplement against a screen already doing all three.
 **A sixel is handed to the decoder with its introducer put back on.** `libkvt` consumes the DCS
 final `q` as a state transition and passes the parameters separately, and a sixel decoder leaves its
 own DCS state on `q` and on nothing else — so a body passed on alone is skipped to the terminator
-and decodes as a one-pixel image with no error anywhere. The frame is rebuilt here rather than in
-`libkimg`, whose fixtures carry their own introducer and would get two.
+and decodes as a one-pixel image with no error anywhere. The frame is rebuilt **here** because this
+is where the parameters are: `libkimg` never sees them. It frames a body that reaches it without an
+introducer the same way, so a caller that has only the body is not required to know this.
 
 Nothing here parses an image format. Base64 and the `key=value` control blocks are transport and
 are bounded here; the moment a byte could be part of a picture it goes to `libkimg`.

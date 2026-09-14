@@ -110,8 +110,15 @@ int kwl_overlay_show(int cols, int rows);
  * justified it, and a compositor refuses one it has never issued. That is the
  * protocol saying a background client may not take the clipboard, not a bug.
  *
- * The text is copied; the caller keeps its own. Sends are drained from
- * kwl_pump and never block the frame.
+ * The text is copied; the caller keeps its own. The two selections are
+ * separate stores, so copying into one never disturbs the other. A send
+ * already in flight keeps the payload it started with, so replacing a
+ * selection mid-send cannot splice or truncate what its receiver gets.
+ *
+ * Sends never block the frame: they are drained from kwl_pump, and the event
+ * wait wakes on a receiver becoming writable. A send is abandoned only after
+ * KWL_COPY_TIMEOUT_MS with no byte moving at all — a receiver that keeps
+ * reading is never cut off, however large the selection.
  */
 int kwl_copy(const char *text, size_t len, int primary);
 
@@ -164,6 +171,46 @@ void kwl_report_error(void);
  * NULL removes it.
  */
 void kwl_set_backdrop(KDispBackdropFn fn);
+/*
+ * SOMETHING BELOW THE GRID CHANGED ITS PIXELS, so the next flush must commit
+ * even though no cell moved.
+ *
+ * The frame diff tracks cells, which is what the grid IS — but a surface with
+ * a backdrop draws part of its picture underneath them, and a menu row
+ * highlighted by a plate rather than by a cell attribute changes no text at
+ * all. Without this the highlight stays where it is until something else
+ * causes a frame.
+ */
+void kwl_pixels_dirty(void);
+/*
+ * THE SAME QUESTION, ASKED AT FLUSH TIME instead of announced.
+ *
+ * A backdrop that describes its picture as it draws cannot tell a change from
+ * a redescription, and calling kwl_pixels_dirty() for each piece makes every
+ * frame a commit — which is the "nothing changed: no commit at all" gate gone
+ * for every surface that has a backdrop. A callback is asked once per flush,
+ * after the picture is complete: it answers non-zero only when what the
+ * backdrop would draw now differs from what it last drew, and a non-zero
+ * answer costs a full repaint of the surface. NULL removes it.
+ */
+void kwl_set_pixels_dirty_fn(int (*fn)(void));
+/*
+ * Whether a frame drawn NOW would only be stashed.
+ *
+ * The backend throttles to the compositor's frame callback: a flush while the
+ * last commit is unanswered snapshots the cells and the callback commits the
+ * newest snapshot, so every draw between two callbacks is thrown away. A
+ * consumer whose draw is expensive — a terminal re-rendering a whole grid for
+ * a program that writes as fast as it can be read — asks this first and skips
+ * the draw entirely, which is the difference between drawing ten thousand
+ * frames a second and drawing the sixty that are shown.
+ *
+ * Skipping is safe: the throttle opens on the frame callback or on its stall
+ * timeout, and both wake the caller's loop. Do NOT gate a draw on
+ * kwl_presented() instead — that stays true after a successful commit, and a
+ * surface that stopped drawing then would never draw again.
+ */
+int kwl_frame_throttled(void);
 /*
  * 1 when the COMPOSITOR is drawing this window's frame, so the program must
  * not draw a second one round the outside of its own content. False on a

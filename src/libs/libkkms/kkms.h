@@ -145,9 +145,23 @@ int kkms_hotplug_pump(void);
  */
 const char *kkms_reason(void);
 
-/* Descriptors a caller polls beside its own: the seat and libinput. */
+/* Descriptors a caller polls beside its own: the seat, libinput, and the DRM
+ * device — a page flip completes on the last of those, and a caller that does
+ * not poll it waits a whole frame for the next timeout instead. */
 int kkms_seat_fd(void);
 int kkms_input_fd(void);
+int kkms_drm_fd(void);
+
+/*
+ * Whether a frame may be painted now: false while a flip this backend asked
+ * for has not completed. A caller that paints anyway would be writing into
+ * the buffer the screen is about to show.
+ *
+ * Reading it is how the console's view paces itself to the refresh rate: the
+ * DRM descriptor becomes readable at the vblank, kkms_pump() reaps the flip,
+ * and the next frame goes out then rather than on a timer.
+ */
+int kkms_ready(void);
 
 /* Service both. Call whenever either is readable, and on a timeout — a seat
  * event can arrive with no input and a VT switch must not wait for a keypress
@@ -161,7 +175,13 @@ void kkms_pump(void);
 int kkms_active(void);
 
 /* Power the screen down (1) or back up (0). The mode is re-set on the way
- * back: a CRTC that was turned off has no mode to return to. */
+ * back: a CRTC that was turned off has no mode to return to. Nothing is
+ * painted while it is down, and waking repaints every screen whole.
+ *
+ * The state is remembered even when the call lands while the session is
+ * switched away, where the device cannot be programmed: coming back puts the
+ * screen in whichever state the last call named. So one call per transition
+ * is enough and the caller never has to re-send. */
 void kkms_blank(int on);
 
 /*

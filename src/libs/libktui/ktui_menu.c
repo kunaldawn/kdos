@@ -187,19 +187,6 @@ static int pickable(const KtuiMenu *m, int i)
 	return shown(m, i) && !is_rule(&p->item[i]) && p->item[i].enabled;
 }
 
-static int rows_shown(const KtuiMenu *m)
-{
-	const KtuiMenuPane *p = pane_of(m);
-	int n = 0;
-
-	if (!p)
-		return 0;
-	for (int i = 0; i < p->n; i++)
-		if (shown(m, i))
-			n++;
-	return n;
-}
-
 static void step(KtuiMenu *m, int dir)
 {
 	const KtuiMenuPane *p = pane_of(m);
@@ -252,25 +239,39 @@ int ktui_menu_active(const KtuiMenu *m)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
-static int pane_width(const KtuiMenu *m)
+/*
+ * THE PANE'S HEIGHT AND WIDTH COME OUT OF ONE WALK. `show` is the caller's
+ * callback and it is not cheap — a desktop's builds a path and asks the verb
+ * table about it — so a redraw that asked it once per item per number would
+ * pay for the pane twice on every pointer motion while it is down. Asking
+ * once also means the two cannot answer differently: a row count taken from
+ * one walk and a layout from another puts the hit test on rows the drawing
+ * never placed.
+ */
+static void pane_metrics(const KtuiMenu *m, int *rows, int *w)
 {
 	const KtuiMenuPane *p = pane_of(m);
-	int w = MENU_W_MIN;
 
+	*rows = 0;
+	*w = MENU_W_MIN;
 	if (!p)
-		return w;
+		return;
 	for (int i = 0; i < p->n; i++) {
 		int c;
 
-		if (!shown(m, i) || is_rule(&p->item[i]))
+		if (!shown(m, i))
+			continue;
+		(*rows)++;
+		if (is_rule(&p->item[i]))
 			continue;
 		c = label_cells(p->item[i].label) + 4;
 		if (p->item[i].accel)
 			c += ktui_utf8_width(p->item[i].accel) + 2;
-		if (c > w)
-			w = c;
+		if (c > *w)
+			*w = c;
 	}
-	return w > MENU_W_MAX ? MENU_W_MAX : w;
+	if (*w > MENU_W_MAX)
+		*w = MENU_W_MAX;
 }
 
 void ktui_menu_draw(KtuiMenu *m)
@@ -316,8 +317,11 @@ void ktui_menu_draw(KtuiMenu *m)
 		return;
 	}
 
-	int rows = rows_shown(m);
-	KRect r = krect(m->x, m->y, pane_width(m), rows + 2);
+	int rows, pw;
+
+	pane_metrics(m, &rows, &pw);
+
+	KRect r = krect(m->x, m->y, pw, rows + 2);
 
 	if (r.x + r.w > ktui_w)
 		r.x = ktui_w - r.w;

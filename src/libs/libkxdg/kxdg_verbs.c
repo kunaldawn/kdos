@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/stat.h>
 
 #include "kbase.h"
@@ -60,6 +61,11 @@ static const struct {
 };
 #define NVERBS ((int)(sizeof(VERBS) / sizeof(VERBS[0])))
 
+/* The smallest `argv` kxdg_verb_argv will fill: the widest verb is five
+ * arguments and the vector is NULL-terminated. A caller with less room is
+ * refused outright rather than served a vector that runs past its array. */
+#define VERB_ARGV_MIN 6
+
 int kxdg_verb_count(void)
 {
 	return NVERBS;
@@ -67,17 +73,39 @@ int kxdg_verb_count(void)
 
 int kxdg_verb_at(int i, KxdgVerb *out)
 {
+	/*
+	 * RE-RESOLVED ONCE A SECOND — not once per call, and not once ever. A
+	 * surface is long-lived and a program can be installed under it, so a
+	 * table resolved at start would hide a verb for the life of the
+	 * desktop; a verb here turns on within a second of its program
+	 * appearing, which is what a surface's `show` callback can promise.
+	 * Resolving on every call cannot be: a menu widget runs that callback
+	 * over the whole row list three times per drawn frame, and each miss
+	 * walks $PATH with an access() per row, so a pointer moving over an
+	 * open menu would spend tens of syscalls a frame re-answering
+	 * "is lazygit installed". The memo lives here and not in the surfaces
+	 * because three of them ask, and one fixed leaves the other two.
+	 */
+	static struct {
+		time_t at;
+		short present;
+		short done;
+	} memo[NVERBS];
+	struct timespec now;
+
 	if (i < 0 || i >= NVERBS || !out)
 		return 0;
 	out->id = VERBS[i].id;
 	out->label = VERBS[i].label;
 	out->flags = VERBS[i].flags;
-	/*
-	 * ASKED EVERY TIME rather than cached. A surface is long-lived and a
-	 * program can be installed under it; a table resolved once at start
-	 * would hide a verb for the life of the desktop.
-	 */
-	out->present = !VERBS[i].prog || kb_have_prog(VERBS[i].prog);
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (!memo[i].done || memo[i].at != now.tv_sec) {
+		memo[i].present = (short)(!VERBS[i].prog ||
+					  kb_have_prog(VERBS[i].prog));
+		memo[i].at = now.tv_sec;
+		memo[i].done = 1;
+	}
+	out->present = memo[i].present;
 	return 1;
 }
 
@@ -99,6 +127,12 @@ int kxdg_verb_shown(const KxdgVerb *v, const char *path, int isdir)
  * the directory a verb acts in — because an argv of pointers into a stack
  * frame is a vector that outlives what it names. The caller keeps both until
  * the spawn.
+ *
+ * `max` must be at least VERB_ARGV_MIN: the widest verb is five arguments and
+ * the vector is NULL-terminated. The bound is checked on entry and again
+ * before the terminator, and nowhere in between — a bail-out part way through
+ * the switch would return 0 with `store` already written, and the caller has
+ * no way to tell that half-state from an untouched one.
  */
 int kxdg_verb_argv(int id, const char *path, int isdir, const char *term,
 		   char *store, size_t cap, const char **argv, int max)
@@ -106,7 +140,7 @@ int kxdg_verb_argv(int id, const char *path, int isdir, const char *term,
 	char dir[1024];
 	int n = 0;
 
-	if (!path || !*path || !argv || max < 4)
+	if (!path || !*path || !argv || max < VERB_ARGV_MIN)
 		return 0;
 
 	/* The directory a verb acts in: the path itself for a folder, the one

@@ -42,6 +42,10 @@ typedef struct {
 static Mouse mice[MAX_MICE];
 static int nmice;
 
+/* stdin hung up: see the read below. Sticky, because a terminal that has gone
+ * does not come back. */
+static int stdin_gone;
+
 static unsigned char ibuf[IBUF];
 static int ilen;
 
@@ -219,11 +223,48 @@ int ktui_input_mouse_visible(int *x, int *y)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * A DEVICE THAT WENT AWAY IS CLOSED AND FORGOTTEN.
+ *
+ * An unplugged evdev node answers POLLHUP for ever and every read of it fails,
+ * so a descriptor left in the poll set makes poll() return immediately every
+ * time it is called: the consumer's loop stops waiting and spins a whole core
+ * on a desktop where nothing is happening at all.
+ */
+static void mouse_drop(int i)
+{
+	close(mice[i].fd);
+	mice[i] = mice[--nmice];
+	if (!nmice)
+		ktui_caps &= ~KT_CAP_MOUSE;
+}
+
+/*
+ * THE POINTER IS CLAMPED BEFORE IT IS REPORTED, not after the read loop. A
+ * button or a wheel returns from inside that loop, and an absolute tablet at
+ * its right edge or relative motion accumulated past a corner would otherwise
+ * name a cell off the screen — which every consumer then indexes with.
+ */
+static void ptr_clamp(void)
+{
+	if (ptr_fx < 0)
+		ptr_fx = 0;
+	if (ptr_fy < 0)
+		ptr_fy = 0;
+	if (ptr_fx > ktui_w - 1)
+		ptr_fx = ktui_w - 1;
+	if (ptr_fy > ktui_h - 1)
+		ptr_fy = ktui_h - 1;
+}
+
 static int evdev_read(KtuiEvent *ev)
 {
 	struct input_event ie;
 	for (int i = 0; i < nmice; i++) {
-		while (read(mice[i].fd, &ie, sizeof(ie)) == (ssize_t)sizeof(ie)) {
+		ssize_t r;
+
+		while ((r = read(mice[i].fd, &ie, sizeof(ie))) ==
+		       (ssize_t)sizeof(ie)) {
 			if (ie.type == EV_REL) {
 				if (ie.code == REL_X) {
 					ptr_fx += (double)ie.value / cell_w * 2.0;
@@ -234,6 +275,7 @@ static int evdev_read(KtuiEvent *ev)
 					ev->btn = ie.value > 0 ? KT_MB_WHEEL_UP
 							       : KT_MB_WHEEL_DOWN;
 					ev->press = KT_MP_PRESS;
+					ptr_clamp();
 					ev->mx = (int)ptr_fx;
 					ev->my = (int)ptr_fy;
 					ptr_seen = kb_now_s();
@@ -273,21 +315,25 @@ static int evdev_read(KtuiEvent *ev)
 				ev->type = KT_EVT_MOUSE;
 				ev->btn = b;
 				ev->press = ie.value ? KT_MP_PRESS : KT_MP_RELEASE;
+				ptr_clamp();
 				ev->mx = (int)ptr_fx;
 				ev->my = (int)ptr_fy;
 				return 1;
 			}
 		}
+		/*
+		 * WHAT ENDED THE LOOP SAYS WHETHER THE DEVICE IS STILL THERE.
+		 * EAGAIN is a device with nothing to say; an end of file or a
+		 * hard error — ENODEV, EIO — is one that has gone.
+		 */
+		if (r == 0 || (r < 0 && errno != EAGAIN &&
+			       errno != EWOULDBLOCK && errno != EINTR)) {
+			mouse_drop(i);
+			i--;
+		}
 	}
 
-	if (ptr_fx < 0)
-		ptr_fx = 0;
-	if (ptr_fy < 0)
-		ptr_fy = 0;
-	if (ptr_fx > ktui_w - 1)
-		ptr_fx = ktui_w - 1;
-	if (ptr_fy > ktui_h - 1)
-		ptr_fy = ktui_h - 1;
+	ptr_clamp();
 	return 0;
 }
 
@@ -428,7 +474,16 @@ static int decode(KtuiEvent *ev)
 		}
 		ev->type = KT_EVT_KEY;
 		ev->mods = 0;
-		if (c < 0x20 && c != KT_K_ENTER && c != KT_K_TAB && c != 10) {
+		/*
+		 * 0x08 IS BACKSPACE, not Ctrl+H. A terminal set up with `stty
+		 * erase ^H` sends it for the key, and so does PuTTY by
+		 * default; folding it in with the control characters maps it
+		 * to Ctrl+H, which deletes nothing and makes the backspace
+		 * mapping below unreachable. Ctrl+H still arrives through the
+		 * kitty `u` form, which carries its modifier explicitly.
+		 */
+		if (c < 0x20 && c != KT_K_ENTER && c != KT_K_TAB && c != 10 &&
+		    c != 8) {
 			ev->key = c + 'a' - 1;
 			ev->mods = KT_MOD_CTRL;
 			ibuf_drop(1);
@@ -462,8 +517,15 @@ static int decode(KtuiEvent *ev)
 
 	/* ESC O x — application cursor / F1..F4 */
 	if (ibuf[1] == 'O') {
+		/*
+		 * TWO BYTES ARE ALSO A CHORD. `ESC O` on its own is Alt+O and
+		 * `ESC [` is Alt+[; waiting for a third byte that never comes
+		 * leaves them in the buffer until the next key, which is then
+		 * decoded together with them and both are lost. -1 hands the
+		 * pair to the same timer that promotes a lone ESC.
+		 */
 		if (ilen < 3)
-			return 0;
+			return ilen == 2 ? -1 : 0;
 		ev->type = KT_EVT_KEY;
 		ev->mods = 0;
 		switch (ibuf[2]) {
@@ -541,7 +603,7 @@ static int decode(KtuiEvent *ev)
 	if (in_sub && np == 1)
 		ev_type = sub;
 	if (i >= ilen)
-		return 0;
+		return ilen == 2 ? -1 : 0;
 	if (seen)
 		np++;
 	unsigned char fin = ibuf[i];
@@ -561,6 +623,24 @@ static int decode(KtuiEvent *ev)
 			ev->mods |= KT_MOD_CTRL;
 		int motion = b & 32;
 		int code = b & 3;
+		/*
+		 * BUTTONS 8-11 AND THE HORIZONTAL WHEEL HAVE NO NAME HERE, so
+		 * they are dropped rather than reported as something else.
+		 * xterm puts buttons 8-11 (back, forward) at 128 and above,
+		 * where the low two bits are zero — read as an ordinary button
+		 * that is a left click, and a thumb button on a mouse then
+		 * activates whatever is under the pointer. Wheel left and
+		 * right are codes 2 and 3 in the wheel bank and were read as
+		 * wheel down.
+		 */
+		if (b & 128) {
+			ibuf_drop(seqlen);
+			return 0;
+		}
+		if ((b & 64) && code > 1) {
+			ibuf_drop(seqlen);
+			return 0;
+		}
 		if (b & 64) {
 			ev->btn = code == 0 ? KT_MB_WHEEL_UP : KT_MB_WHEEL_DOWN;
 			ev->press = KT_MP_PRESS;
@@ -673,15 +753,24 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 		return 1;
 	if (r == -1) {
 		/* A lone ESC only becomes the Escape key once nothing follows
-		 * it for a beat — otherwise every arrow key would fire it. */
+		 * it for a beat — otherwise every arrow key would fire it.
+		 * Two bytes that could still have grown into a sequence are
+		 * Alt+<byte> once the beat passes. */
 		if (!esc_pending) {
 			esc_pending = 1;
 			esc_at = kb_now_s();
 		} else if (kb_now_s() - esc_at > 0.04) {
 			esc_pending = 0;
-			ibuf_drop(1);
 			ev->type = KT_EVT_KEY;
-			ev->key = KT_K_ESC;
+			if (ilen >= 2) {
+				ev->key = (unsigned char)ibuf[1];
+				ev->mods = KT_MOD_ALT;
+				ibuf_drop(2);
+			} else {
+				ev->key = KT_K_ESC;
+				ev->mods = 0;
+				ibuf_drop(1);
+			}
 			return 1;
 		}
 		if (timeout_ms < 0 || timeout_ms > 20)
@@ -693,7 +782,10 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 
 	struct pollfd pfd[1 + MAX_MICE];
 	int n = 0;
-	pfd[n].fd = 0;
+	/* A descriptor that hung up is left out of the set rather than polled:
+	 * poll answers it immediately for ever, and the wait this call owes
+	 * its caller would never happen again. */
+	pfd[n].fd = stdin_gone ? -1 : 0;
 	pfd[n].events = POLLIN;
 	n++;
 	for (int i = 0; i < nmice; i++) {
@@ -716,11 +808,48 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 		return 0;
 	}
 
-	if (pfd[0].revents & POLLIN) {
-		ssize_t got = read(0, ibuf + ilen, (size_t)(IBUF - ilen));
-		if (got > 0) {
-			ilen += (int)got;
-			esc_pending = 0;
+	if (pfd[0].revents & (POLLIN | POLLHUP | POLLERR)) {
+		int room = IBUF - ilen;
+
+		if (room == 0) {
+			/*
+			 * A FULL BUFFER IS NEVER READ. read() with a count of
+			 * zero returns zero without touching the descriptor,
+			 * and zero is how the terminal going away is told
+			 * apart below — a full buffer would declare a hangup
+			 * on a live terminal and blind the poll set for the
+			 * rest of the process. The buffer can only be full
+			 * because decode() consumed nothing, which means the
+			 * whole of it is one unterminated sequence; dropping
+			 * the leading byte walks that prefix off and lets the
+			 * next real sequence decode. Drop one, not the
+			 * buffer: a sequence straddling the tail would
+			 * otherwise be lost.
+			 */
+			ibuf_drop(1);
+		} else {
+			ssize_t got = read(0, ibuf + ilen, (size_t)room);
+
+			if (got > 0) {
+				ilen += (int)got;
+				esc_pending = 0;
+			} else if (got == 0 ||
+				   (errno != EAGAIN && errno != EWOULDBLOCK &&
+				    errno != EINTR)) {
+				/*
+				 * THE TERMINAL WENT AWAY. A closed pty answers
+				 * POLLIN for ever and reads zero every time,
+				 * so a loop that kept asking would never wait
+				 * again — a dropped ssh leaves the program
+				 * spinning a core with nothing on the other
+				 * end and no reason to leave. The consumer
+				 * learns through ktui_term_hungup(), which is
+				 * what it already asks about a write that
+				 * failed.
+				 */
+				ktui_term_mark_hungup();
+				stdin_gone = 1;
+			}
 		}
 		if (decode(ev) == 1)
 			return 1;

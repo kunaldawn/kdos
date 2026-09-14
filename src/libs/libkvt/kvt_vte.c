@@ -187,6 +187,15 @@ struct kvt_vte {
 	bool backspace_sends_delete;
 
 	struct kvt_utf8_mach *mach;
+	/*
+	 * A SHADOW OF THE UTF-8 MACHINE'S IDLE STATE, true when the machine
+	 * holds no partial sequence. The printable fast path below consults it
+	 * once per byte; asking the machine itself is a call across a
+	 * translation unit that no consumer links with -flto. It has to be
+	 * written wherever the machine's state is, or an ASCII byte arriving
+	 * mid-sequence is taken for a letter.
+	 */
+	int u8idle;
 	unsigned long parse_cnt;
 
 	unsigned int state;
@@ -289,6 +298,16 @@ struct kvt_vte {
 
 	uint8_t (*custom_palette_storage)[3];
 	uint8_t (*palette)[3];
+	/*
+	 * WHAT to_rgb() LAST RESOLVED, so a printed character does not resolve
+	 * it again. The answer depends on the two colour codes, the bold bit
+	 * and the palette in force, and nothing else — and those change at an
+	 * SGR, which is once in a run of text rather than once per character.
+	 */
+	int8_t rgb_fc, rgb_bc;
+	unsigned rgb_bold;
+	const void *rgb_palette;
+	int rgb_valid;
 	struct kvt_screen_attr def_attr;
 	struct kvt_screen_attr cattr;
 	unsigned int flags;
@@ -296,7 +315,6 @@ struct kvt_vte {
 	kvt_vte_charset **gl;
 	kvt_vte_charset **gr;
 	kvt_vte_charset **glt;
-	kvt_vte_charset **grt;
 	kvt_vte_charset *g0;
 	kvt_vte_charset *g1;
 	kvt_vte_charset *g2;
@@ -618,6 +636,7 @@ int kvt_vte_new(struct kvt_vte **out, struct kvt_screen *con,
 	vte->mouse_data = NULL;
 	vte->custom_palette_storage = NULL;
 	vte->palette = get_palette(vte);
+	vte->rgb_valid = 0;
 	vte->def_attr.fccode = KVT_COLOR_FOREGROUND;
 	vte->def_attr.bccode = KVT_COLOR_BACKGROUND;
 	to_rgb(vte, &vte->def_attr);
@@ -625,6 +644,7 @@ int kvt_vte_new(struct kvt_vte **out, struct kvt_screen *con,
 	ret = kvt_utf8_mach_new(&vte->mach);
 	if (ret)
 		goto err_free;
+	vte->u8idle = 1;
 
 	kvt_vte_reset(vte);
 	kvt_screen_erase_screen(vte->con, false);
@@ -896,6 +916,7 @@ void kvt_vte_set_led_cb(struct kvt_vte *vte, kvt_vte_led_cb led_cb, void *led_da
 static int vte_update_palette(struct kvt_vte *vte)
 {
 	vte->palette = get_palette(vte);
+	vte->rgb_valid = 0;
 	vte->def_attr.fccode = KVT_COLOR_FOREGROUND;
 	vte->def_attr.bccode = KVT_COLOR_BACKGROUND;
 
@@ -903,7 +924,15 @@ static int vte_update_palette(struct kvt_vte *vte)
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
 
 	kvt_screen_set_def_attr(vte->con, &vte->def_attr);
-	kvt_screen_erase_screen(vte->con, false);
+	/*
+	 * A PALETTE IS NOT AN ERASE. Cells hold the colour they resolved to
+	 * when they were written, so the ones already on screen keep it; the
+	 * age is bumped so the next frame redraws them and everything written
+	 * after this point uses the new palette. Erasing here would blank
+	 * every open terminal the first time a theme signal re-applies
+	 * term-colors.conf.
+	 */
+	kvt_screen_touch(vte->con);
 
 	return 0;
 }
@@ -1066,7 +1095,17 @@ static void vte_write_debug(struct kvt_vte *vte, const char *u8, size_t len,
 /* write to console */
 static void write_console(struct kvt_vte *vte, kvt_symbol_t sym)
 {
-	to_rgb(vte, &vte->cattr);
+	if (!vte->rgb_valid || vte->rgb_fc != vte->cattr.fccode ||
+	    vte->rgb_bc != vte->cattr.bccode ||
+	    vte->rgb_bold != vte->cattr.bold ||
+	    vte->rgb_palette != (const void *)vte->palette) {
+		to_rgb(vte, &vte->cattr);
+		vte->rgb_fc = vte->cattr.fccode;
+		vte->rgb_bc = vte->cattr.bccode;
+		vte->rgb_bold = vte->cattr.bold;
+		vte->rgb_palette = vte->palette;
+		vte->rgb_valid = 1;
+	}
 	kvt_screen_write(vte->con, sym, &vte->cattr);
 }
 
@@ -1158,11 +1197,11 @@ void kvt_vte_reset(struct kvt_vte *vte)
 	kvt_screen_set_flags(vte->con, KVT_SCREEN_AUTO_WRAP);
 
 	kvt_utf8_mach_reset(vte->mach);
+	vte->u8idle = 1;
 	vte->state = STATE_GROUND;
 	vte->gl = &vte->g0;
 	vte->gr = &vte->g1;
 	vte->glt = NULL;
-	vte->grt = NULL;
 	vte->g0 = &kvt_vte_unicode_lower;
 	vte->g1 = &kvt_vte_unicode_upper;
 	vte->g2 = &kvt_vte_unicode_lower;
@@ -1228,6 +1267,16 @@ void kvt_vte_hard_reset(struct kvt_vte *vte)
 	if (!vte)
 		return;
 
+	/*
+	 * RIS CLEARS EVERY MODE, and three of them do not live in
+	 * `flags`: bracketed paste, focus reporting and synchronized
+	 * output. A program that dies mid-sequence leaves them set, and
+	 * the next program's plain text then arrives wrapped in paste
+	 * brackets or is never presented at all.
+	 */
+	if (vte->sync_output && vte->sync_cb)
+		vte->sync_cb(vte, false, vte->sync_data);
+	kvt_vte_reset_modes(vte);
 	kvt_vte_reset(vte);
 	kvt_screen_erase_screen(vte->con, false);
 	kvt_screen_clear_sb(vte->con);
@@ -1339,7 +1388,7 @@ static void do_execute(struct kvt_vte *vte, uint32_t ctrl)
 		/* Invokes an escape sequence */
 		/* nothing to do here */
 		break;
-	case 0x1f: /* DEL */
+	case 0x1f: /* US */
 		/* Ignored */
 		break;
 	case 0x84: /* IND */
@@ -1379,9 +1428,20 @@ static void do_execute(struct kvt_vte *vte, uint32_t ctrl)
 	}
 }
 
+/*
+ * DROP THE PARAMETER STATE COLLECTED SO FAR. ESC and CSI_ENTRY are both entered
+ * with this action, so ESC '[' clears twice for every CSI sequence; the guard
+ * makes the second one free. It is exact rather than an approximation: csi_argv
+ * past csi_argc cannot be dirty because do_param never writes past it, and
+ * osc_arg[0] is only ever read together with osc_len.
+ */
 static void do_clear(struct kvt_vte *vte)
 {
 	int i;
+
+	if (!vte->csi_argc && vte->csi_argv[0] == -1 && !vte->csi_flags &&
+	    !vte->osc_len)
+		return;
 
 	vte->csi_argc = 0;
 	for (i = 0; i < CSI_ARG_MAX; ++i) {
@@ -2269,11 +2329,15 @@ static void csi_mode(struct kvt_vte *vte, bool set)
 			continue;
 		case KVT_VTE_MOUSE_EVENT_BTN:
 		case KVT_VTE_MOUSE_EVENT_ANY:
-			if (vte->mouse_mode == KVT_VTE_MOUSE_MODE_X10 || vte->mouse_mode == KVT_VTE_MOUSE_MODE_VT200) {
-			    vte->mouse_event = KVT_VTE_MOUSE_EVENT_BTN;
-			} else {
-			    vte->mouse_event = set ? vte->csi_argv[i] : 0;
-			}
+			/*
+			 * THE EVENT SET IS INDEPENDENT OF THE ENCODING. 1002
+			 * and 1003 extend the VT200 tracking that 1000 turns
+			 * on, and a program enables them in that order —
+			 * `CSI ?1000h CSI ?1003h` is what tmux sends. Deriving
+			 * the event set from mouse_mode would pin every such
+			 * program to 1002 and it would never see a hover.
+			 */
+			vte->mouse_event = set ? vte->csi_argv[i] : 0;
 
 			if (vte->mouse_cb && vte->mouse_mode) {
 			    vte->mouse_cb(vte, vte->mouse_event, vte->mouse_mode == KVT_VTE_MOUSE_MODE_PIXEL, vte->mouse_data);
@@ -2325,8 +2389,16 @@ static void csi_mode(struct kvt_vte *vte, bool set)
 /*
  * ── DECRQM: WHAT A PROBE IS TOLD ────────────────────────────────────────
  *
- * `CSI ? <mode> $ p` asks whether a DEC private mode is on, and the answer is
- * `CSI ? <mode> ; <value> $ y`. The values are the standard's:
+ * There are two requests, and the reply must carry the same marker as the
+ * request or a program cannot tell which mode it was told about. `CSI ? <mode>
+ * $ p` asks after a DEC private mode and is answered `CSI ? <mode> ; <value>
+ * $ y`; `CSI <mode> $ p` asks after an ANSI mode and is answered `CSI <mode> ;
+ * <value> $ y`, with no `?`. Mode 4 is DECSCLM in the first and IRM in the
+ * second; an unmarked reply to the second is read as an answer about the
+ * first. The ANSI modes this terminal implements are the four csi_mode
+ * handles: 2 KAM, 4 IRM, 12 SRM, 20 LNM.
+ *
+ * The values are the standard's:
  *
  *   0  the mode is not recognised
  *   1  set
@@ -2345,8 +2417,34 @@ static void csi_report_mode(struct kvt_vte *vte)
 	char reply[32];
 	unsigned mode = vte->csi_argc > 0 && vte->csi_argv[0] > 0 ?
 			(unsigned)vte->csi_argv[0] : 0;
+	bool priv = (vte->csi_flags & CSI_WHAT) != 0;
 	int value = 0;
-	int known = 1;
+
+	if (!priv) {
+		switch (mode) {
+		case 2:		/* KAM, the keyboard is locked */
+			value = (vte->flags &
+				 KVT_VTE_FLAG_KEYBOARD_ACTION_MODE) ? 1 : 2;
+			break;
+		case 4:		/* IRM, insert replaces */
+			value = (vte->flags &
+				 KVT_VTE_FLAG_INSERT_REPLACE_MODE) ? 1 : 2;
+			break;
+		case 12:	/* SRM, local echo off */
+			value = (vte->flags &
+				 KVT_VTE_FLAG_SEND_RECEIVE_MODE) ? 1 : 2;
+			break;
+		case 20:	/* LNM, a line feed also returns */
+			value = (vte->flags &
+				 KVT_VTE_FLAG_LINE_FEED_NEW_LINE_MODE) ? 1 : 2;
+			break;
+		default:
+			break;
+		}
+		snprintf(reply, sizeof(reply), "\e[%u;%d$y", mode, value);
+		vte_write(vte, reply, strlen(reply));
+		return;
+	}
 
 	switch (mode) {
 	case 1:		/* DECCKM, application cursor keys */
@@ -2381,10 +2479,8 @@ static void csi_report_mode(struct kvt_vte *vte)
 		value = vte->sync_output ? 1 : 2;
 		break;
 	default:
-		known = 0;
 		break;
 	}
-	(void)known;
 	snprintf(reply, sizeof(reply), "\e[?%u;%d$y", mode, value);
 	vte_write(vte, reply, strlen(reply));
 }
@@ -2468,8 +2564,23 @@ static void csi_dsr(struct kvt_vte *vte)
 	if (vte->csi_argv[0] == 5) {
 		vte_write(vte, "\e[0n", 4);
 	} else if (vte->csi_argv[0] == 6) {
+		unsigned int w = kvt_screen_get_width(vte->con);
+
 		x = kvt_screen_get_cursor_x(vte->con);
 		y = kvt_screen_get_cursor_y(vte->con);
+		/*
+		 * THE REPORT IS A COLUMN ON THE SCREEN. After a character is
+		 * written in the last column the cursor sits one past it with
+		 * the wrap pending; reporting that position names a column
+		 * that does not exist and a program that saves and restores it
+		 * lands off the screen.
+		 */
+		if (w && x >= w)
+			x = w - 1;
+		/* In origin mode the report is relative to the region. */
+		if (vte->flags & KVT_VTE_FLAG_ORIGIN_MODE)
+			y = y > vte->con->margin_top ?
+				y - vte->con->margin_top : 0;
 		len = snprintf(buf, sizeof(buf), "\e[%u;%uR", y + 1, x + 1);
 		if (len >= sizeof(buf))
 			vte_write(vte, "\e[0;0R", 6);
@@ -2677,6 +2788,16 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 		csi_mode(vte, false);
 		break;
 	case 'r': /* DECSTBM */
+		/*
+		 * DECSTBM CARRIES NO PRIVATE MARKER AND NO INTERMEDIATE. `CSI
+		 * ? Pm r` is XTRESTORE and `CSI Pt;Pl;Pb;Pr;Ps $ r` is
+		 * DECCARA; handled here they would rewrite the scroll region
+		 * and home the cursor, so a program that restores its saved
+		 * modes finds everything it writes next over its own top-left
+		 * corner.
+		 */
+		if (vte->csi_flags)
+			break;
 		/* set margin size */
 		upper = vte->csi_argv[0];
 		if (upper < 0)
@@ -2685,6 +2806,11 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 		if (lower < 0)
 			lower = 0;
 		kvt_screen_set_margins(vte->con, upper, lower);
+		/* DECSTBM homes the cursor. A program that sets a region and
+		 * then writes without addressing first expects the first line
+		 * of the page, not wherever the cursor happened to be; move_to
+		 * applies the origin-mode offset. */
+		kvt_screen_move_to(vte->con, 0, 0);
 		break;
 	case 'c': /* DA */
 		/* device attributes */
@@ -2779,8 +2905,15 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 			llog_debug(vte, "unhandled CSI t sequence %d", vte->csi_argv[0]);
 		break;
 	case 'b': /* Repeat last char */
+		/* An omitted parameter is one, the rule every other sequence
+		 * here keeps. Passed through, it is -1, which the screen reads
+		 * as unsigned and clamps to the rest of the line — so `CSI b`
+		 * filled the row with the last character instead of repeating
+		 * it once. */
 		num = vte->csi_argv[0];
-		kvt_screen_repeat_char(vte->con, num);
+		if (num <= 0)
+			num = 1;
+		kvt_screen_repeat_char(vte->con, (unsigned int)num);
 		break;
 	case 'q': /* DECLL - Load LEDs / DECSCUSR - Set Cursor Style */
 		if (vte->csi_flags & CSI_SPACE) {
@@ -2824,12 +2957,9 @@ static uint32_t vte_map(struct kvt_vte *vte, uint32_t val)
 		}
 		break;
 	case 161 ... 254:
-		if (vte->grt) {
-			val = (**vte->grt)[val - 160];
-			vte->grt = NULL;
-		} else {
-			val = (**vte->gr)[val - 160];
-		}
+		/* A single shift maps G2/G3 into GL only, so GR has no
+		 * temporary slot to consult. */
+		val = (**vte->gr)[val - 160];
 		break;
 	}
 
@@ -3200,6 +3330,14 @@ static void do_osc_end(struct kvt_vte *vte, uint32_t val) {
 		return;
 	}
 
+	/* An OSC that carried no payload has no buffer: it is allocated by the
+	 * first byte collected, so `ESC ] BEL` as a terminal's first OSC would
+	 * terminate a string that was never started. */
+	if (!vte->osc_arg) {
+		if (vte->osc_cb)
+			vte->osc_cb(vte, "", 0, vte->osc_data);
+		return;
+	}
 	vte->osc_arg[vte->osc_len] = 0;
 
 	if (do_osc_internal(vte, end_seq)) {
@@ -3353,12 +3491,25 @@ static void do_trans(struct kvt_vte *vte, uint32_t data, int state, int act)
 		 * transition-action and entry-action. Even when performing a
 		 * transition to the same state as the current state we do this.
 		 * Use STATE_NONE if this is not the desired behavior.
+		 *
+		 * ACTION_NONE is the tables' default and its handler returns
+		 * immediately, so the test IS the dispatch: only three states
+		 * carry an exit action and six an entry one, and do_action is
+		 * an out-of-line switch over eighteen cases. Calling it
+		 * unconditionally costs two calls per transition and six per
+		 * SGR sequence.
 		 */
-		do_action(vte, data, exit_action[vte->state]);
-		do_action(vte, data, act);
-		do_action(vte, data, entry_action[state]);
+		int ea = exit_action[vte->state];
+		int na = entry_action[state];
+
+		if (ea != ACTION_NONE)
+			do_action(vte, data, ea);
+		if (act != ACTION_NONE)
+			do_action(vte, data, act);
+		if (na != ACTION_NONE)
+			do_action(vte, data, na);
 		vte->state = state;
-	} else {
+	} else if (act != ACTION_NONE) {
 		do_action(vte, data, act);
 	}
 }
@@ -3417,8 +3568,14 @@ static void parse_data(struct kvt_vte *vte, uint32_t raw)
 		case 0x9c:
 			do_trans(vte, raw, STATE_NONE, ACTION_EXECUTE);
 			return;
-		case 0x20 ... 0x7f:
+		case 0x20 ... 0x7e:
 			do_trans(vte, raw, STATE_NONE, ACTION_PRINT);
+			return;
+		case 0x7f:
+			/* DEL is not a character. Printing it puts a tofu box
+			 * on the screen for a byte the parser this file
+			 * follows discards in the ground state. */
+			do_trans(vte, raw, STATE_NONE, ACTION_IGNORE);
 			return;
 		}
 		do_trans(vte, raw, STATE_NONE, ACTION_PRINT);
@@ -3762,6 +3919,36 @@ void kvt_vte_input(struct kvt_vte *vte, const char *u8, size_t len)
 
 	++vte->parse_cnt;
 	for (i = 0; i < len; ++i) {
+		/*
+		 * PRINTABLE ASCII IN THE GROUND STATE, which is what a
+		 * terminal spends its life receiving and what a full-screen
+		 * animation is almost entirely made of.
+		 *
+		 * The long way round is the UTF-8 machine, the parser's state
+		 * switch, a transition and an action dispatch, for a byte that
+		 * can only ever mean one thing. Everything that decides the
+		 * meaning is checked here rather than assumed: the parser is
+		 * in the ground state, the machine holds no partial sequence,
+		 * neither of the bit-mode flags is set, and no GL single-shift
+		 * charset is pending — a pending one is consumed by the very
+		 * next character and must go through vte_map's own path, which
+		 * is where it is cleared.
+		 *
+		 * What is done instead is exactly what ACTION_PRINT does, so
+		 * the charset mapping, the wrap and the attributes are the
+		 * same code they always were.
+		 */
+		unsigned char c = (unsigned char)u8[i];
+
+		if (c >= 0x20 && c < 0x7f && vte->state == STATE_GROUND &&
+		    !vte->glt &&
+		    !(vte->flags & (KVT_VTE_FLAG_7BIT_MODE |
+				    KVT_VTE_FLAG_8BIT_MODE)) &&
+		    vte->u8idle) {
+			write_console(vte, kvt_symbol_make(vte_map(vte, c)));
+			continue;
+		}
+
 		if (vte->flags & KVT_VTE_FLAG_7BIT_MODE) {
 			if (u8[i] & 0x80)
 				llog_debug(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
@@ -3769,8 +3956,20 @@ void kvt_vte_input(struct kvt_vte *vte, const char *u8, size_t len)
 			parse_data(vte, u8[i] & 0x7f);
 		} else if (vte->flags & KVT_VTE_FLAG_8BIT_MODE) {
 			parse_data(vte, u8[i]);
+		} else if (!(c & 0x80) && vte->u8idle) {
+			/*
+			 * A 7-BIT BYTE ON AN IDLE MACHINE DECODES TO ITSELF,
+			 * and this is the whole of every escape sequence — the
+			 * ESC, the bracket, the digits, the semicolons, the
+			 * final. Running it through the machine is two calls
+			 * across a translation unit for an identity mapping,
+			 * and the machine ends in the same state it started.
+			 */
+			parse_data(vte, c);
 		} else {
 			state = kvt_utf8_mach_feed(vte->mach, u8[i]);
+			vte->u8idle = (state == KVT_UTF8_START ||
+				       state == KVT_UTF8_ACCEPT);
 			if (state == KVT_UTF8_ACCEPT ||
 			    state == KVT_UTF8_REJECT) {
 				ucs4 = kvt_utf8_mach_get(vte->mach);
@@ -4421,11 +4620,16 @@ bool kvt_vte_handle_mouse(struct kvt_vte *vte, unsigned int cell_x,
 	unsigned char reply_flags = 0;
 	bool pressed = event & KVT_MOUSE_EVENT_PRESSED;
 
-	/* drop move event if we don't wait for move events */
-	/* In mode 1002 (BTN), accept MOVED with button pressed (drag, button >= 32) */
-	/* In mode 1003 (ANY), accept all MOVED events */
+	/*
+	 * WHETHER MOTION IS REPORTED IS THE EVENT SET'S DECISION, NOT THE
+	 * ENCODING'S. 1002 accepts a drag (the caller marks one by passing a
+	 * button of 32..34), 1003 accepts every motion, and anything else
+	 * reports none. The one encoding that overrides that is X10, which has
+	 * no motion report to send; every other encoding can carry one, so a
+	 * program that asked for 1003 with the legacy encoding gets it.
+	 */
 	bool is_drag = (button >= 32 && button <= 34);
-	if ((vte->mouse_mode == KVT_VTE_MOUSE_MODE_X10 || vte->mouse_mode == KVT_VTE_MOUSE_MODE_VT200 ||
+	if ((vte->mouse_mode == KVT_VTE_MOUSE_MODE_X10 ||
 	     (vte->mouse_event == KVT_VTE_MOUSE_EVENT_BTN && !is_drag) ||
 	     (vte->mouse_event != KVT_VTE_MOUSE_EVENT_BTN && vte->mouse_event != KVT_VTE_MOUSE_EVENT_ANY)) &&
 	    (event & KVT_MOUSE_EVENT_MOVED)) {
@@ -4472,6 +4676,12 @@ bool kvt_vte_handle_mouse(struct kvt_vte *vte, unsigned int cell_x,
 
 		if (vte->mouse_mode == KVT_VTE_MOUSE_MODE_X10)
 			modifiers = 0;
+
+		/* Motion carries the 32 bit, and 35 is "moved with no button
+		 * held": a hover reported as button 0 is read as a left
+		 * click. A drag arrives with that bit already in `button`. */
+		if ((event & KVT_MOUSE_EVENT_MOVED) && button < 32)
+			button = 35;
 
 		reply_flags = (button | modifiers) + 0x20;
 		snprintf((char*) &buffer, sizeof(buffer), "\e[M%c%c%c", reply_flags, cell_x, cell_y);

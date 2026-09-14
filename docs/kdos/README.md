@@ -76,7 +76,7 @@ How the system is put together, and the models a change has to respect.
 | [Packs and boxes](03-architecture/packs-and-boxes.md) | The pack format, mounting, composition, grafts, the catalogue, one box per application |
 | [Security model](03-architecture/security-model.md) | Signing, setuid, daemon authorisation, sandboxing, containers — and what is not protected |
 | [Design language](03-architecture/design-language.md) | The character grid as a specification: frame, chrome, colour, pointer, glyph tiers |
-| [The window model](03-architecture/window-model.md) | Placement, tiling, the edge search and the ring walks — one implementation, obeyed by both desktops |
+| [The window model](03-architecture/window-model.md) | Placement, tiling, the edge search and the ring walks — the model both desktops obey |
 
 ### IV — Programs and applications
 

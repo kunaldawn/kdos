@@ -325,8 +325,9 @@ different policies. A pack-signing key placed in the host directory would silent
 trusted publisher of *host packages* too — a widening nobody asked for.
 
 **The directory is the policy.** There is no revocation list and no online check: adding a key is
-copying a file in, removing trust is deleting one. A key id is not a credential — it selects which
-trusted key to try, and verification always uses a key from the directory.
+copying a file in, removing trust is deleting one. A key id is not a credential — it is a label on
+the signature line, and verification tries every key in the directory and nothing outside it, so
+what a tool reports is the key that verified, not the id the line claimed.
 
 The rest of the signing design is in [Packaging](packaging.md).
 

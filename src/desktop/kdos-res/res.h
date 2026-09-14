@@ -125,7 +125,8 @@ typedef struct {
 	unsigned sample_flags;	/* what the visible page needs           */
 
 	KprHist h_cpu, h_mem, h_swap;
-	KprHist *h_core;	/* [cpu.ncpu]                            */
+	KprHist *h_core;	/* [n_hcore], which is >= cpu.ncpu       */
+	int n_hcore;		/* what h_core was allocated for         */
 
 	unsigned long long tick;	/* how many samples so far       */
 	unsigned long long started_ms;

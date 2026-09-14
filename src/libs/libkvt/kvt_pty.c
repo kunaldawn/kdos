@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/uio.h>
@@ -316,21 +317,57 @@ pid_t kvt_shl_pty_get_child(struct kvt_shl_pty *pty)
 	return pty->child > 0 ? pty->child : -ECHILD;
 }
 
+/*
+ * HOW MUCH EITHER DIRECTION MOVES IN ONE DISPATCH. A transfer with no ceiling
+ * hands the loop to whichever side of the pty is faster; past the budget it
+ * stops with the descriptor still ready, so the caller's poll returns at once
+ * and the next turn continues — one more frame, not one more byte.
+ */
+#define KVT_SHL_PTY_BUDGET (1u << 20)
+
+/*
+ * AND THE READ SIDE IS BOUNDED IN TIME, NOT IN BYTES, because every byte read
+ * is parsed before the next one is: the ceiling that matters is how long the
+ * caller is kept out of its own loop, and that is the parse rate times the
+ * bytes — a number this library does not know. A megabyte of a truecolour
+ * stream is some ten milliseconds inside one dispatch, and a caller that
+ * checks a sixteen-millisecond frame deadline between turns then misses it,
+ * so a program writing as fast as the terminal reads costs frames rather than
+ * saving them. Two milliseconds keeps the coalescing the greedy drain exists
+ * for — one render per dispatch instead of thirty — and still returns in time
+ * for the deadline.
+ */
+#define KVT_SHL_PTY_SLICE_NS 2000000ull
+
+static unsigned long long pty_mono_ns(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return (unsigned long long)t.tv_sec * 1000000000ull +
+	       (unsigned long long)t.tv_nsec;
+}
+
+/*
+ * DRAIN THE QUEUE, up to that budget.
+ *
+ * The descriptor is edge-triggered: a write that stopped while the queue still
+ * held data and the pty still had room is woken by nothing, so the remainder
+ * waits for whatever else wakes the caller's loop. A child that echoes
+ * nothing — an editor in insert mode, a password prompt, `cat > file` —
+ * produces no readable byte to be that wakeup, so a fixed number of writev
+ * calls per dispatch turns a paste into a trickle paced by the loop's timeout.
+ * The loop therefore stops only on an empty queue, on a full pty, on an error
+ * or on the budget.
+ */
 static int pty_write(struct kvt_shl_pty *pty)
 {
 	struct iovec vec[2];
-	unsigned int i;
 	size_t num;
 	ssize_t r;
+	size_t sent = 0;
 
-	/*
-	 * Same as pty_read(), we're edge-triggered so we need to call write()
-	 * until either all data is written or it return EAGAIN. We call it
-	 * twice and if it still writes successfully, we return EAGAIN. If we
-	 * bail out early, we also return EAGAIN if there's still data.
-	 */
-
-	for (i = 0; i < 2; ++i) {
+	for (;;) {
 		num = kvt_shl_ring_peek(&pty->out_buf, vec);
 		if (!num)
 			return 0;
@@ -338,56 +375,64 @@ static int pty_write(struct kvt_shl_pty *pty)
 		r = writev(pty->fd, vec, (int)num);
 		if (r < 0) {
 			if (errno == EAGAIN)
-				return 0;
+				return -EAGAIN;	/* the pty will take no more */
 			if (errno == EINTR)
 				return -EAGAIN;
 
 			return -errno;
 		} else if (!r) {
 			return -EPIPE;
-		} else {
-			kvt_shl_ring_pull(&pty->out_buf, (size_t)r);
 		}
-	}
 
-	return kvt_shl_ring_get_size(&pty->out_buf) > 0 ? -EAGAIN : 0;
+		kvt_shl_ring_pull(&pty->out_buf, (size_t)r);
+		sent += (size_t)r;
+		if (sent >= KVT_SHL_PTY_BUDGET)
+			return kvt_shl_ring_get_size(&pty->out_buf) > 0 ?
+			       -EAGAIN : 0;
+	}
 }
 
+/*
+ * DRAIN THE DESCRIPTOR, up to a budget.
+ *
+ * A dispatch that stopped after two reads handed the caller 32 KiB of a
+ * producer that had far more waiting, and every caller renders a whole frame
+ * per dispatch — so a program writing a megabyte a second was rendered,
+ * diffed, serialised and painted thirty times for one of its own frames, and
+ * the desktop worked hardest at showing the frames nobody would see.
+ *
+ * The budget is what keeps that from becoming the opposite problem: a child
+ * writing without pause must not hold this loop for ever while input goes
+ * unread.
+ */
 static int pty_read(struct kvt_shl_pty *pty)
 {
-	unsigned int i;
-	ssize_t len;
+	unsigned long long t0 = pty_mono_ns();
 
-	/*
-	 * We're edge-triggered, means we need to read the whole queue. This,
-	 * however, might cause us to stall if the writer is faster than we
-	 * are. Therefore, we read twice and if the second read still returned
-	 * data, we return -EAGAIN and let the caller deal with rescheduling the
-	 * dispatcher.
-	 */
+	for (;;) {
+		ssize_t len = read(pty->fd, pty->in_buf,
+				   sizeof(pty->in_buf) - 1);
 
-	for (i = 0; i < 2; ++i) {
-		len = read(pty->fd, pty->in_buf, sizeof(pty->in_buf) - 1);
 		if (len < 0) {
 			if (errno == EAGAIN)
-				return 0;
+				return 0;	/* the child has written all it has */
 			if (errno == EINTR)
 				return -EAGAIN;
 
 			return -errno;
 		} else if (!len) {
 			return -EPIPE;
-		} else if (len > 0 && pty->fn_input) {
+		}
+
+		if (pty->fn_input) {
 			/* set terminating zero for debugging safety */
 			pty->in_buf[len] = 0;
-			pty->fn_input(pty,
-				      pty->fn_input_data,
-				      pty->in_buf,
-				      len);
+			pty->fn_input(pty, pty->fn_input_data, pty->in_buf,
+				      (size_t)len);
 		}
+		if (pty_mono_ns() - t0 >= KVT_SHL_PTY_SLICE_NS)
+			return -EAGAIN;
 	}
-
-	return -EAGAIN;
 }
 
 int kvt_shl_pty_dispatch(struct kvt_shl_pty *pty)
@@ -400,6 +445,23 @@ int kvt_shl_pty_dispatch(struct kvt_shl_pty *pty)
 	r = pty_read(pty);
 	pty_write(pty);
 	return r;
+}
+
+/*
+ * HOW MUCH THE CHILD HAS NOT TAKEN YET.
+ *
+ * A write that the pty would not accept stays in the ring, and nothing else
+ * wakes the loop to retry it: the descriptor is polled for POLLIN, and a
+ * child that is not writing produces no readable byte to be that wakeup. A
+ * paste larger than the pty buffer then moves only when the child happens to
+ * say something. The caller asks this and polls for POLLOUT while it is
+ * non-zero.
+ */
+size_t kvt_shl_pty_pending(struct kvt_shl_pty *pty)
+{
+	if (!kvt_shl_pty_is_open(pty))
+		return 0;
+	return kvt_shl_ring_get_size(&pty->out_buf);
 }
 
 int kvt_shl_pty_write(struct kvt_shl_pty *pty, const char *u8, size_t len)

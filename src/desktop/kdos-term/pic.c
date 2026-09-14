@@ -1287,10 +1287,9 @@ static void on_image(struct kvt_vte *vte, enum kvt_img_kind kind,
 		 * and hands the parameters over separately, and libsixel's
 		 * parser leaves its DCS state on `q` and on nothing else — so
 		 * a body passed on alone is skipped to the terminator and
-		 * decodes as a one-pixel image with no error. The frame is
-		 * built here rather than in libkimg because the fixtures that
-		 * exercise libkimg carry their own introducer and would get
-		 * two.
+		 * decodes as a one-pixel image with no error. It is built
+		 * here because this is where the parameters are — libkimg is
+		 * handed the body alone and cannot put them back.
 		 */
 		KimgBudget b = budget();
 		size_t plen = params ? strlen(params) : 0;

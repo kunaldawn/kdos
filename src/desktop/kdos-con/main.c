@@ -253,7 +253,11 @@ static void settle(void)
 			if (kvt_term_alive(w->term))
 				live = 1;
 			p[n].fd = kvt_term_fd(w->term);
-			p[n].events = POLLIN;
+			/* POLLOUT while the child has not taken everything:
+			 * nothing else wakes the loop for a full pty. */
+			p[n].events = POLLIN |
+				      (kvt_term_pending_out(w->term) ? POLLOUT
+								     : 0);
 			p[n].revents = 0;
 			n++;
 		}
@@ -732,6 +736,7 @@ void con_spawn(const char *cmd)
 				if (null > STDERR_FILENO)
 					close(null);
 			}
+			kb_child_reset_signals();
 			execvp(av[0], (char *const *)av);
 			_exit(127);
 		}
@@ -3264,13 +3269,20 @@ static int sprites_owed;
  */
 #define CON_FRAME_MS 16
 
-/* Whether any display could take a frame right now. None attached is none that
- * could, and composing for nobody is the same waste at a different rate. */
+/*
+ * Whether any display could take a frame right now. None attached is none that
+ * could, and composing for nobody is the same waste at a different rate.
+ *
+ * A display that answers frames says so itself: it is ready when it has
+ * painted the last one. CON_FRAME_MS is then a FLOOR and not the rate — a
+ * screen showing sixty a second is asked for sixty, and one still painting is
+ * not asked at all, which is what makes an animation's frame rate the
+ * display's rather than this loop's.
+ */
 static int any_view_ready(void)
 {
 	for (int i = 0; i < kcon_server_view_count(S.server); i++)
-		if (kcon_view_pending(kcon_server_view_at(S.server, i)) <=
-		    KCON_VIEW_HIGH)
+		if (kcon_view_ready(kcon_server_view_at(S.server, i)))
 			return 1;
 	return 0;
 }
@@ -3735,7 +3747,14 @@ static int serve(const char *sock, const char *view)
 		for (Win *w = S.wins; w && n < pcap; w = w->next)
 			if (w->kind == WIN_TERM && w->term) {
 				p[n].fd = kvt_term_fd(w->term);
-				p[n].events = POLLIN;
+				/* POLLOUT while the child has not taken
+				 * everything: nothing else wakes the loop for
+				 * a full pty. */
+				p[n].events =
+					POLLIN |
+					(kvt_term_pending_out(w->term)
+						 ? POLLOUT
+						 : 0);
 				p[n].revents = 0;
 				n++;
 			}
@@ -3750,7 +3769,28 @@ static int serve(const char *sock, const char *view)
 			n++;
 		}
 
-		poll(p, (nfds_t)n, 20);
+		/*
+		 * THE WAIT ENDS WHEN THE NEXT FRAME IS DUE, never after it.
+		 * A display answers a frame in a few milliseconds and the
+		 * answer wakes this poll; sleeping a fixed twenty from there
+		 * would put the next composite past its deadline and hold an
+		 * animation to a third of the rate the screen can show.
+		 */
+		{
+			unsigned long long since = mono_ms() - last_frame;
+			int wait = 20;
+
+			/*
+			 * Shortened only while a display is WAITING for the
+			 * frame: one that is still painting answers on its own
+			 * descriptor, which is in this set, so the full wait is
+			 * safe there and a zero one would spin a core until the
+			 * answer arrived.
+			 */
+			if (since < CON_FRAME_MS && any_view_ready())
+				wait = (int)(CON_FRAME_MS - since);
+			poll(p, (nfds_t)n, wait);
+		}
 
 		/*
 		 * A FLASH ENDS ON A FRAME, so there has to be one. Nothing
@@ -3944,6 +3984,14 @@ static int serve(const char *sock, const char *view)
 			ktui_draw_resize();
 			composite();
 			ktui_draw_flush();
+			/*
+			 * AND EVERY SURFACE WHOSE COMMIT THIS FRAME CARRIED IS
+			 * TOLD. A surface holds its next commit until then, so
+			 * a program drawing faster than the desktop shows puts
+			 * one commit per composed frame on the wire instead of
+			 * one per redraw — and the one it sends is the newest.
+			 */
+			kcon_server_frame_done(S.server);
 		}
 	}
 
@@ -4020,6 +4068,7 @@ static int grid(const char *const *terms, int nterms)
 		 * stderr which of the two it chose. A grid that always took
 		 * the terminal was a grid that could not use the screen it
 		 * was started from, and nothing said so. */
+		kb_child_reset_signals();
 		execlp("kdos-view", "kdos-view", "--kms", "--socket", view,
 		       (char *)NULL);
 		_exit(127);
@@ -4447,6 +4496,7 @@ int main(int argc, char **argv)
 			 * view probes and says which mode it took. An attach
 			 * from a terminal on a machine with a free screen was
 			 * pinned to that terminal by this argument alone. */
+			kb_child_reset_signals();
 			if (do_observe)
 				execlp("kdos-view", "kdos-view", "--kms",
 				       "--observe", "--socket", sview,

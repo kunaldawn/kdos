@@ -39,7 +39,12 @@ clipboard — cells arrive and input leaves. Four things follow from that withou
   anybody looks — and every window going away is then indistinguishable from a logout.
   `$XDG_RUNTIME_DIR/kdos-con.log` is appended to across restarts, so it is the one place that says
   whether the session ended or crashed, and a status of 139 is a segmentation fault.
-- **A desktop over ssh.** The view socket is forwardable and the view is trusted with nothing.
+- **A desktop over ssh.** The view socket is forwardable and the view is trusted with nothing. The
+  server accepts from a view only what a display has to say — its hello, the input it carries, the
+  frame it painted, what it was pasted, what it can show, and that it is leaving — and drops every
+  other client verb on arrival, the clipboard, drags and the session's picture slots included. It is
+  a list of what is allowed rather than of what is refused, so a verb added later does not reach the
+  far end of an ssh link by default.
 - **Screenshots, as cells or as a picture.** `kdos-view --dump` is a view like any other and
   `--shot FILE.png` is the same frame rasterised. The rasterising is the **view's**, not
   `kdos-shot`'s: turning cells into pixels needs a font, fcft and pixman, and `kdos-tools` is on
@@ -593,6 +598,29 @@ frame: at the session's own redraw rate when something can show pixels, and once
 nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link is a link
 that does nothing else.
 
+**A view that says it answers frames is what paces the session.** It reports `KCON_VIEW_FRAME` in
+its hello, the session closes every frame it sends with `KCON_OP_FRAME`, and the view answers with
+one of its own once it has painted. The session composes the next frame when a display says it is
+ready rather than when a timer expires — so an animation runs at the refresh rate of the screen
+showing it, and a display that is still painting is never sent a frame it would throw away. The
+sixteen-millisecond floor stays as a cap; the answer is the gate under it. A view built without
+the capability, or one that stops answering, is paced by that clock alone after 100 ms.
+
+**Every attached display paces itself, not just the quickest.** A view that still owes the frame it
+was last sent is sent none, exactly as a view over the backlog mark is. Without that rule a session
+with two displays composes as soon as the faster one answers and pushes another frame at the slower
+one on each of those composites, resetting the answer it was waiting for and growing its queue
+until whole frames are lost — so the contract would pace a single-display session and nothing
+else.
+
+**And a surface holds its next commit until the frame carrying its last one is composed.** The
+session sends `KCON_OP_FRAME` to every surface whose cells or pictures went into the frame it just
+drew — a picture counts, because an animation changes pixels and no cells and a leg answered only
+for cells would run at the 100 ms stall timeout instead. A program drawing faster than the desktop
+can show — a terminal running a full-screen animation — then puts one commit on the wire per
+composed frame, carrying the newest cells rather than every intermediate one, which is the contract
+a Wayland frame callback gives a client.
+
 **A view's `cols`/`rows` say how big the frame it holds IS; `view_cols`/`view_rows` are what it
 asked for.** The size message a display sends changes the second pair only: nothing on that path
 allocates a frame, so writing the request into the first pair would tell the sender that a buffer of
@@ -623,6 +651,14 @@ session has.
 **`KCON_MAX_QUEUE` therefore means only that a peer has stopped reading altogether.** The
 watermark is far enough below it that one more whole frame on top cannot reach the cap.
 
+**A frame goes whole or the view's copy is disowned.** A frame is cut into messages of a quarter of
+a megabyte — the grid may be far larger than the megabyte a single message is capped at — and the
+previous-frame copy the diff is taken against is updated run by run as the runs are encoded. If any
+of those messages fails to encode or fails to send, the copy is dropped and the next frame is sent
+whole: a copy claiming cells the display never received would make the next diff skip exactly the
+cells that are wrong, and the failed frame would stay on screen until something else happened to
+overwrite it.
+
 **A surface that is behind skips its own frame, by the same rule read from the other end.** A
 terminal window running a full-screen animation produces several megabytes of output a second, and
 its cells are a stream of pictures exactly as a display's are. The client leaves its previous-frame
@@ -642,7 +678,10 @@ private directory. Its clients are displays that **cannot drive** — the socket
 client — and they are the only ones sent `KCON_OP_ANNOUNCE`: the role, name, value and position of
 whatever the focused widget just said, plus the focused window when it changes. A reader that
 attaches late is told the window again, for the same reason a view that attaches is sent the whole
-frame. `speak = yes` starts `kdos-a11y` with the session; see
+frame. **A reader is sent no cells at all** — it is a view kind so that it is counted, gated and
+detached like one, but it draws nothing, so handing it the frame's runs would push a full-screen
+animation's whole diff down a second socket to be discarded, and it does not count towards whether
+a display is ready for the next frame. `speak = yes` starts `kdos-a11y` with the session; see
 [Accessibility](../02-user-guide/accessibility.md).
 
 **A finger crosses as `KCON_OP_TOUCH`, carrying the verdict and not the geometry.** There is one
@@ -672,10 +711,27 @@ here without being changed.
 
 **Every connected screen is lit, and the grid is all of them.** A KMS view takes every connector
 that reports itself connected with a mode and a CRTC it can have, in DRM connector order, and lays
-their modes end to end into one virtual box — one dumb buffer per screen, each with its own row
-diff, because two screens comparing against one previous frame would each find the other's paint
-already done and neither would redraw. `--card PATH` names a device for a machine with more than
-one; without it the first card with a connected output wins.
+their modes end to end into one virtual box — each screen with its own row diff, because two
+screens comparing against one previous frame would each find the other's paint already done and
+neither would redraw.
+
+**A screen is a pair of scanout buffers and a third the painter owns.** The cells are composited
+into the painter's own buffer in ordinary memory, the rows that changed are copied into whichever
+scanout buffer is not being shown, and the CRTC is pointed at that one at the next vblank. Two
+things follow, and both were defects before the pair existed: no pixel is rewritten while the
+raster is inside it, so an animation does not tear; and no glyph is composited into a
+write-combined mapping, where every `OVER` reads the destination back at a few bytes a cycle.
+
+**A transfer-model driver gets one buffer, and gets it on purpose.** `virtio_gpu`, `qxl` and
+`vmwgfx` keep the displayed image on the host and read the guest's buffer only at the copy
+`drmModeDirtyFB` asks for, so painting in place cannot tear and a legacy page flip — which carries
+no damage rectangle — would upload the whole plane, 8 MB a frame at 1080p to deliver the few
+kilobytes a clock tick changed. Every other driver keeps the pair, virtual ones that scan guest
+memory continuously included. A driver that refuses a flip outright falls back to the single
+buffer, with the frame copied across before the CRTC is pointed at it; a refusal that is about the
+moment rather than the driver — a CRTC detached by the screen blank, a VT switch still settling —
+costs one repainted frame and keeps the pair. `--card PATH` names a device for a machine with more
+than one; without it the first card with a connected output wins.
 
 **A screen plugged in after login is a resize.** The view holds a `udev` monitor of its own for the
 `drm` subsystem — libinput's context watches `input` and nothing else — and a hotplug re-probes the

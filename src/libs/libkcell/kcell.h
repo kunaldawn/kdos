@@ -54,8 +54,21 @@
  */
 enum { KCELL_MAX_SCALE = 4 };
 
-/* fontconfig name; NULL takes the default. Returns -1 if fcft cannot be
- * initialised or the name resolves to nothing usable. */
+/*
+ * fontconfig name; NULL takes the default. Returns -1 if fcft cannot be
+ * initialised or the name resolves to nothing usable.
+ *
+ * CALLABLE REPEATEDLY, AND A LOAD REPLACES EVERYTHING. It tears the previous
+ * faces down first — the glyph cache, the ascii candidate table and the tiling
+ * scratch with them — so every KCellGlyph handed out before it, and every
+ * kcell_w()/kcell_h()/kcell_ascent() a caller cached, is invalid once it
+ * returns. A failed load leaves no font at all and the metrics at zero.
+ *
+ * kcell_font_free() is the same teardown plus fcft's own. It is not a
+ * prerequisite of a reload and must not be used as one on a live grid: fcft's
+ * teardown is not refcounted, so a free is a shutdown of the library and not a
+ * step in a font change.
+ */
 int kcell_font_load(const char *name);
 void kcell_font_free(void);
 
@@ -64,17 +77,24 @@ int kcell_w(void);
 int kcell_h(void);
 int kcell_ascent(void);
 
-/* The raw fcft glyph, cached, misses cached too. NULL means the font has no
- * such codepoint. */
+/* The raw fcft glyph, cached, misses cached too. NULL is a rasterisation
+ * failure and NOT an absence — a codepoint no font carries comes back as the
+ * face's .notdef. Ask kcell_has() about absence. */
 const struct fcft_glyph *kcell_glyph(uint32_t cp);
 
 /*
  * Whether the loaded font actually carries a codepoint.
  *
- * This exists because a missing glyph is a BLANK CELL, not a visible error, and
- * a titlebar that silently loses its close box is the kind of defect that ships.
- * The chrome's glyph budget is checked through this at startup rather than
- * discovered on somebody's screen.
+ * This exists because a missing glyph is a BLANK CELL or a tofu box, not a
+ * visible error, and a titlebar that silently loses its close box is the kind
+ * of defect that ships. The chrome's glyph budget is checked through this at
+ * startup rather than discovered on somebody's screen.
+ *
+ * The test is against a SENTINEL: fcft answers an absent codepoint with the
+ * primary face's glyph index 0, so the load rasterises a permanent Unicode
+ * noncharacter — which nothing can carry — and anything that comes back as the
+ * same picture at the same metrics is that same .notdef and is reported
+ * missing.
  */
 bool kcell_has(uint32_t cp);
 
@@ -145,25 +165,45 @@ typedef struct {
 	pixman_image_t *pix;
 	int x, y;		/* bearing, scaled */
 	int width, height;	/* pixels, scaled */
+	/* Bold was asked for and no bold face answered. The caller draws the
+	 * mask a second time one scaled pixel to the right; the cache never
+	 * holds a pre-emboldened copy, because the weight belongs to the blit
+	 * and not to the rasterisation. */
+	bool synth_bold;
 } KCellGlyph;
 
+/*
+ * The style bits kcell_glyph_face() takes. A companion face is optional — see
+ * kcell_font_load() — so a request always resolves to a face that exists: the
+ * slant survives in preference to the weight, and `synth_bold` says when the
+ * weight has to be drawn rather than rasterised. A caller therefore never has
+ * to ask which faces the font has.
+ */
+enum {
+	KCELL_ST_ITALIC = 1 << 0,
+	KCELL_ST_BOLD   = 1 << 1,
+	KCELL_NSTYLE    = 4
+};
+
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out);
-/* The same, from the italic face where the loaded font has a companion whose
- * cell is the same size. Where it has none the upright glyph comes back, so a
- * caller never has to ask whether italic exists — the style is lost, the
- * layout is not. */
+/* The upright or italic face; equivalent to kcell_glyph_face() with
+ * KCELL_ST_ITALIC. */
 bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out);
+bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
 
 /*
  * Paint the grid.
  *
  * `prev` is the last-presented buffer and is updated as we go, so the next
- * frame only repaints rows that changed — row granularity rather than cell,
- * because the background fill runs already amortise a row and per-cell damage
- * would cost more bookkeeping than it saves at this size. Pass NULL for `prev`
- * to paint unconditionally, which is what a compositor-side frame strip wants:
- * it is a handful of cells and it is rendered into a buffer that was just
- * allocated.
+ * frame repaints only the CHANGED SPAN of each changed row. The span is
+ * widened by one cell each way, for the overhang libktui's box characters are
+ * allowed, and then back onto the LEAD of a double-width glyph if it starts on
+ * that glyph's continuation cell — the lead paints both halves, so a span that
+ * began on the continuation would clear the right half and redraw nothing. A
+ * caret or a clock digit therefore costs the cells it touched and not every
+ * glyph beside them. Pass NULL for `prev` to paint unconditionally, which is
+ * what a compositor-side frame strip wants: it is a handful of cells and it is
+ * rendered into a buffer that was just allocated.
  *
  * `dst_w`/`dst_h` are the destination's real pixel size. Anything past
  * `cols * cell_w * scale` or `rows * cell_h * scale` is filled with KT_BG —
@@ -173,6 +213,37 @@ bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out);
  */
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
+
+/*
+ * The same paint, saying WHICH ROWS it touched: `painted` is one byte per row,
+ * cleared first and set for every row this call drew. Returns how many.
+ *
+ * It exists because the two things downstream of a paint both need the answer
+ * and neither can derive it: a KMS view copies the painted rows into the
+ * buffer it is about to flip to, and a Wayland surface turns them into damage
+ * rectangles. A caller that needs neither passes NULL and pays nothing.
+ */
+int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
+		       KtuiCell *prev, int cols, int rows, int full, int scale,
+		       int dst_w, int dst_h, unsigned char *painted);
+
+/*
+ * Drop the cached colour sources. A glyph is composited through a solid-fill
+ * image and those are kept per slot and per literal; nothing but a shutdown
+ * needs to ask. A palette change needs no announcement: the slot cache is
+ * keyed on the eight COLOURS in force, not on the identity of the table
+ * holding them, because libktui projects night light by rewriting one table in
+ * place.
+ */
+void kcell_paint_forget(void);
+
+/*
+ * Drop the scratch a picture is scaled through before it is cut into tiles.
+ * It is kept between tilings because an animation re-tiles at one size for
+ * every frame it plays; nothing but a shutdown or a grid that changed shape
+ * needs to ask.
+ */
+void kcell_tile_forget(void);
 
 /* ── a pixel canvas that lands in the cell grid (kcell_canvas.c) ─────────
  *
@@ -257,6 +328,10 @@ void kcell_tile_free(uint64_t key, const void *pix, void *user);
  * survived — a candidate the font does not carry is dropped, because a glyph
  * that rasterises to nothing would win every dark cell. Idempotent. */
 int kcell_ascii_init(void);
+/* Throw the measurement away, so the next kcell_ascii_init() takes it again.
+ * The table is a measurement of one face at one cell size; kcell_font_load()
+ * calls this, and nothing else has to. */
+void kcell_ascii_forget(void);
 int kcell_ascii_count(void);
 uint32_t kcell_ascii_glyph(int i);
 const float *kcell_ascii_vector(int i);

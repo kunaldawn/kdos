@@ -162,7 +162,14 @@ int kvt_symbol_table_new(struct kvt_symbol_table **out)
 		return -ENOMEM;
 	memset(tbl, 0, sizeof(*tbl));
 	tbl->ref = 1;
-	tbl->next_id = KVT_UCS4_MAX + 2;
+	/*
+	 * THE FIRST ID HANDED OUT MUST LAND ON INDEX 1. kvt_symbol_append
+	 * returns next_id + 1 and pushes it at the next free slot, and
+	 * kvt_symbol_get reads index `sym - (KVT_UCS4_MAX + 1)`; index 0 is
+	 * the dummy below. One higher here and every composed symbol reads
+	 * back as the default character.
+	 */
+	tbl->next_id = KVT_UCS4_MAX + 1;
 	kvt_shl_htable_init(&tbl->symbols, cmp_ucs4, hash_ucs4, NULL);
 
 	ret = kvt_shl_array_new(&tbl->index, sizeof(uint32_t*), 4);
@@ -501,6 +508,17 @@ void kvt_utf8_mach_free(struct kvt_utf8_mach *mach)
 	free(mach);
 }
 
+/*
+ * Whether the machine holds no partial sequence, so the next byte stands on
+ * its own. START and ACCEPT both mean that; every other state is the middle
+ * of a multi-byte character, where an ASCII byte is a REJECT and not a letter.
+ */
+int kvt_utf8_mach_idle(const struct kvt_utf8_mach *mach)
+{
+	return !mach || mach->state == KVT_UTF8_START ||
+	       mach->state == KVT_UTF8_ACCEPT;
+}
+
 int kvt_utf8_mach_feed(struct kvt_utf8_mach *mach, char ci)
 {
 	uint32_t c;
@@ -508,7 +526,15 @@ int kvt_utf8_mach_feed(struct kvt_utf8_mach *mach, char ci)
 	if (!mach)
 		return KVT_UTF8_START;
 
-	c = ci;
+	/*
+	 * UNSIGNED, or the lead-byte guards below never fire. `char` is signed
+	 * here, so 0xC0 arrives as 0xFFFFFFC0 and the overlong test compares
+	 * against a value no byte can take: `C0 9B` then assembles to U+001B
+	 * through the masked arithmetic and is handed to the parser as a real
+	 * escape — an overlong encoding smuggling a control character past a
+	 * filter that only looked at the bytes.
+	 */
+	c = (unsigned char)ci;
 
 	switch (mach->state) {
 	case KVT_UTF8_START:

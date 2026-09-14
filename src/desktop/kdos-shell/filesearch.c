@@ -100,6 +100,7 @@ static int kid_start(const char *const argv[], int tag, sh_fsearch_line cb,
 		if (fds[1] > STDERR_FILENO)
 			close(fds[1]);
 		setsid();
+		kb_child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}

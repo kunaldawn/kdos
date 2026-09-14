@@ -1997,8 +1997,19 @@ int net_main(int argc, char **argv)
 	}
 	/* AFTER kdisp_init: the icon layer needs the cell size and the output
 	 * scale, neither of which exists until the surface does. */
+	/*
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
+	 * before it. A console surface has no pixel size of its own —
+	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * picture a pixel or two across, which is a blank cell by a longer
+	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
+	 * display rescales to its own font. sh_pic_backend() must come after
+	 * kdisp_init: the console backend clears its client state when it
+	 * connects, so a callback registered before that point is erased.
+	 */
+	sh_pic_backend();
 	if (icons_on)
-		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -2134,7 +2145,8 @@ int net_main(int argc, char **argv)
 				size_t n = strlen(pass);
 				if (n)
 					pass[n - 1] = '\0';
-			} else if (ev.key >= 0x20 && ev.key < 0x7f) {
+			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 				size_t n = strlen(pass);
 				if (n + 1 < sizeof(pass)) {
 					pass[n] = (char)ev.key;

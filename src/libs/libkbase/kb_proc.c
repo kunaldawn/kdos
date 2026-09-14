@@ -25,8 +25,6 @@
 
 #include "kbase.h"
 
-#define ARGF_MAX 4096
-
 int kb_proc_verbose;
 
 void kb_argv_add(KbArgv *a, const char *s)
@@ -36,12 +34,35 @@ void kb_argv_add(KbArgv *a, const char *s)
 	a->v[a->n++] = s;
 }
 
+/*
+ * MEASURED, NOT GUESSED. The vector holds the pointer for the life of the
+ * call and nothing in KbArgv owns it, so every byte over what was formatted
+ * is resident until the process exits — a panel that formats a page number
+ * per preview pays it for the whole session. Measuring first also turns a
+ * too-long argument into a refusal: a silently truncated one execs a child
+ * with a wrong value, which reads as the child misbehaving.
+ */
 void kb_argv_addf(KbArgv *a, const char *fmt, ...)
 {
-	char *buf = kb_calloc(1, ARGF_MAX);
-	va_list ap;
+	va_list ap, ap2;
+	char *buf;
+	int n;
+
+	/* Prove the format non-null before either pass. Measuring and then
+	 * formatting reads `fmt` twice, and a fortified build treats a format
+	 * that may be null on the second read as a null format string and
+	 * refuses to compile. */
+	if (!fmt)
+		kb_die("argument format missing");
+
 	va_start(ap, fmt);
-	vsnprintf(buf, ARGF_MAX, fmt, ap);
+	va_copy(ap2, ap);
+	n = vsnprintf(NULL, 0, fmt, ap2);
+	va_end(ap2);
+	if (n < 0)
+		kb_die("argument format failed");
+	buf = kb_calloc(1, (size_t)n + 1);
+	vsnprintf(buf, (size_t)n + 1, fmt, ap);
 	va_end(ap);
 	kb_argv_add(a, buf);
 }
@@ -73,6 +94,7 @@ static pid_t spawn(const KbArgv *a, int outfd)
 			dup2(outfd, STDOUT_FILENO);
 			close(outfd);
 		}
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
@@ -123,8 +145,8 @@ int kb_run_to_file(const KbArgv *a, const char *path)
  * kill the CALLER, which for a lock screen means the lock client dying and the
  * session staying locked forever.
  */
-static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
-		bool keep_stdout)
+static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
+			bool keep_stdout)
 {
 	int fd[2];
 	pid_t pid;
@@ -156,6 +178,7 @@ static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
 			dup2(outfd, STDOUT_FILENO);
 			close(outfd);
 		}
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
@@ -174,7 +197,16 @@ static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
 	}
 	close(fd[1]);
 	signal(SIGPIPE, old);
-	return reap(pid);
+	return pid;
+}
+
+/* Feeding and reaping are separate calls because a caller that also captures
+ * the child's stdout has to drain that pipe BEFORE it waits: a child blocked
+ * writing to a full pipe never exits. */
+static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
+		bool keep_stdout)
+{
+	return reap(feed_start(a, in, n, outfd, keep_stdout));
 }
 
 int kb_run_feed(const KbArgv *a, const char *in, size_t n)
@@ -197,6 +229,7 @@ int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
 			size_t cap)
 {
 	int fd[2];
+	pid_t pid;
 	int rc;
 	size_t o = 0;
 
@@ -205,8 +238,13 @@ int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
 	buf[0] = '\0';
 	if (pipe(fd) < 0)
 		kb_die("pipe: %s", strerror(errno));
+	/* The read end must NOT survive into the child: its own copy keeps the
+	 * pipe readable forever, so once the buffer fills and this end closes,
+	 * the child blocks in write() rather than taking EPIPE and nothing
+	 * ever reaps it. */
+	fcntl(fd[0], F_SETFD, FD_CLOEXEC);
 
-	rc = feed(a, in, n, fd[1], false);
+	pid = feed_start(a, in, n, fd[1], false);
 	close(fd[1]);
 	for (;;) {
 		ssize_t r = read(fd[0], buf + o, cap - 1 - o);
@@ -221,6 +259,7 @@ int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
 	}
 	buf[o] = '\0';
 	close(fd[0]);
+	rc = reap(pid);
 	return rc;
 }
 
@@ -291,6 +330,7 @@ int kb_run_feed_env(const KbArgv *a, const char *const *env, int nenv,
 			name[len] = '\0';
 			setenv(name, eq + 1, 1);
 		}
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
@@ -355,6 +395,7 @@ int kb_run_tty(const KbArgv *a)
 	if (pid < 0)
 		kb_die("fork: %s", strerror(errno));
 	if (pid == 0) {
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
@@ -418,6 +459,7 @@ void kb_notify(const char *app, const char *summary, const char *body)
 			 */
 			av[n++] = "5000";
 			av[n] = NULL;
+			kb_child_reset_signals();
 			execvp(av[0], (char *const *)av);
 			_exit(127);
 		}
@@ -488,6 +530,41 @@ int kb_run_capture_buf(const KbArgv *a, KbBuf *out)
 	return reap(pid);
 }
 
+/*
+ * A CHILD STARTS WITH THE SIGNALS A PROCESS STARTS WITH.
+ *
+ * An ignored disposition survives execve and a blocked mask survives fork, so
+ * a program launched from a surface inherits whatever that surface arranged
+ * for itself. A display backend ignores SIGPIPE so that a peer which declines
+ * its clipboard cannot kill it; a shell started under that never dies on a
+ * closed pipe, and `yes | head` runs until something else stops it.
+ *
+ * Everything is reset rather than SIGPIPE by name: the list of what a caller
+ * ignores is the caller's business and grows, and a child that inherits any
+ * of it is the same defect wearing another number. SIGKILL and SIGSTOP cannot
+ * be handled and are skipped; a handler the parent installed is already gone
+ * across the exec, so only SIG_IGN has to be undone.
+ *
+ * CALL IT IN THE CHILD, after fork and before exec.
+ */
+void kb_child_reset_signals(void)
+{
+	sigset_t empty;
+
+	sigemptyset(&empty);
+	sigprocmask(SIG_SETMASK, &empty, NULL);
+	for (int i = 1; i < NSIG; i++) {
+		struct sigaction sa;
+
+		if (i == SIGKILL || i == SIGSTOP)
+			continue;
+		if (sigaction(i, NULL, &sa) != 0)
+			continue;
+		if (!(sa.sa_flags & SA_SIGINFO) && sa.sa_handler == SIG_IGN)
+			signal(i, SIG_DFL);
+	}
+}
+
 void kb_run_detach(const KbArgv *a)
 {
 	pid_t pid = fork();
@@ -503,7 +580,9 @@ void kb_run_detach(const KbArgv *a)
 				if (null > STDERR_FILENO)
 					close(null);
 			}
+			kb_child_reset_signals();
 			setsid();
+			kb_child_reset_signals();
 			execvp(a->v[0], (char *const *)a->v);
 		}
 		_exit(0);
@@ -519,36 +598,49 @@ void kb_run_detach(const KbArgv *a)
  * a request — loading a name-service module to answer a question one file read
  * can is more code running as root, not less.
  *
+ * THE FILE IS READ WHOLE. A group line has no length limit — a shared group
+ * reaches several kilobytes at a few hundred members — and a fixed buffer
+ * splits it, dropping every member past the cut and handing the remainder to
+ * the next iteration as a line whose first field is a member name. The answer
+ * is then "not a member" for an account that is one, and a root daemon refuses
+ * a request it should obey with no way to tell that from a correct refusal.
+ *
+ * Three separate saveptrs. One reused across the line, field and member walks
+ * works only while members is the last field; with an outer walk over lines it
+ * is clobbered by the first group that has any, and the scan stops there.
+ *
  * The group's OWN gid counts as well as its member list. A user whose primary
  * group IS wheel never appears in that list, and a check that missed it would
  * refuse exactly the accounts an installer creates.
  */
 int kb_user_in_group(const char *user, gid_t primary, const char *group)
 {
-	FILE *f = fopen("/etc/group", "r");
-	if (!f)
+	char *txt = kb_read_all("/etc/group", NULL);
+	char *ls = NULL;
+	int ok = 0;
+
+	if (!txt)
 		return 0;
 
-	int ok = 0;
-	char line[4096];
-	while (!ok && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\n")] = '\0';
-		char *save = NULL;
-		char *gname = strtok_r(line, ":", &save);
+	for (char *line = strtok_r(txt, "\n", &ls); line && !ok;
+	     line = strtok_r(NULL, "\n", &ls)) {
+		char *fs = NULL, *ms = NULL;
+		char *gname = strtok_r(line, ":", &fs);
+
 		if (!gname || strcmp(gname, group))
 			continue;
-		strtok_r(NULL, ":", &save);		/* the password field */
-		char *gid_s = strtok_r(NULL, ":", &save);
-		char *members = strtok_r(NULL, ":", &save);
+		strtok_r(NULL, ":", &fs);		/* the password field */
+		char *gid_s = strtok_r(NULL, ":", &fs);
+		char *members = strtok_r(NULL, ":", &fs);
 
 		if (gid_s && (gid_t)strtoul(gid_s, NULL, 10) == primary)
 			ok = 1;
 
-		for (char *m = members ? strtok_r(members, ",", &save) : NULL;
-		     m && !ok; m = strtok_r(NULL, ",", &save))
+		for (char *m = members ? strtok_r(members, ",", &ms) : NULL;
+		     m && !ok; m = strtok_r(NULL, ",", &ms))
 			ok = !strcmp(m, user);
 	}
-	fclose(f);
+	free(txt);
 	return ok;
 }
 

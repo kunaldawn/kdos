@@ -54,11 +54,19 @@
 typedef union pixman_image pixman_image_t;
 
 /*
- * `cell_w`/`cell_h` are the backend's cell size in pixels and `scale` its
+ * `cell_w`/`cell_h` are the backend's cell size in PIXELS and `scale` its
  * integer output scale — an icon is chosen and rasterised at cell*scale, or a
  * HiDPI panel gets a blurred one. Returns 0 when at least one source answered,
  * -1 when there is no artwork at all (which is a working desktop, not an
  * error). Safe to call twice; the second call is a re-scan.
+ *
+ * BOTH MUST BE AT LEAST 4. A backend with no pixels of its own answers one —
+ * the console client does, because there are no pixels on its side of the
+ * socket — and an icon rasterised into a cell that small is a blank cell that
+ * cost a PNG decode. Anything under the floor is refused with -1 and leaves
+ * kicon_enabled() false, so every lookup answers -1 and every caller draws
+ * its glyph tier. A consumer that has a nominal cell size of its own — one it
+ * sends pictures over a wire at — passes that instead of the backend's.
  */
 int kicon_init(int cell_w, int cell_h, int scale);
 void kicon_finish(void);
@@ -90,6 +98,10 @@ int kicon_slot(const char *name, int cw, int ch);
  * in a 40 and that four pixels is the whole difference between a row of
  * buttons and a row of pictures. `pad` is in unscaled pixels; a HiDPI
  * output's scale is applied here so a caller states one number.
+ *
+ * A `pad` that would leave no square at all is IGNORED and the picture is
+ * drawn at the full box size — an icon rather than a dot — and the well is
+ * `cw` x `ch` cells either way.
  */
 int kicon_slot_pad(const char *name, int cw, int ch, int pad);
 
@@ -98,14 +110,24 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad);
  * the decompressor's icon). `is_dir` short-circuits to the folder icon. */
 int kicon_slot_for_path(const char *path, int is_dir, int cw, int ch);
 
+/*
+ * Forget the paths kicon_slot_for_path() has resolved. What is remembered is
+ * the sprite slot — the lookup is a stat and a walk of the glob table, asked
+ * once per drawn row per frame otherwise — so a consumer that re-reads its
+ * directory calls this, or a file replaced by one of another type keeps its
+ * old icon. kicon_retint() clears it too, since it frees the slots.
+ */
+void kicon_forget_paths(void);
+
 /* The `Icon=` of a desktop entry id or an app_id, resolved through the XDG
  * data dirs. Returns NULL when there is no entry or it names no icon. The
  * buffer is static and valid until the next call. */
 const char *kicon_app_icon(const char *id);
 
-/* The accent changed: drop every tinted picture and every sprite slot. The
- * next kicon_slot() re-tints from the atlas. App icons are not recoloured, so
- * they survive — this is a re-TINT, not a re-scan. */
+/* The accent changed: drop every tinted picture, every sprite slot and the
+ * path→slot memo that names them. The next kicon_slot() re-tints from the
+ * atlas. The name-miss and app-id tables are not dropped — neither answer
+ * depends on the accent, so this is a re-TINT, not a re-scan. */
 void kicon_retint(void);
 
 /* How many pictures are cached, for `--dump` and the selftest. */
