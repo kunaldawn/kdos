@@ -25,6 +25,10 @@
  * implementation of that is a new way to produce exactly the wrong-font bug
  * this wrapper exists to prevent. What DID move into C is the polling — the
  * kernel ring is read with klogctl() instead of forking dmesg fifty times.
+ *
+ * It is also the last root process on either login path, so the two things that
+ * must be done as root and then inherited -- the delegated cgroup and the
+ * real-time resource limits -- are done here as well.
  * ---------------------------------
  */
 
@@ -39,6 +43,7 @@
 #include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/klog.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 
 #include "kdos-tools.h"
@@ -196,6 +201,78 @@ static const char *autologin_user(void)
 	return "kdos";
 }
 
+/*
+ * THE REAL-TIME BUDGET FOR EVERY PROCESS BELOW THIS ONE.
+ *
+ * rlimits survive setuid() and execve(), so raising them in the last root
+ * process is the one place that covers both console login paths -- `greet = no`
+ * through agetty and login, and the greeter's own setuid-and-exec, which never
+ * runs login at all. Nothing downstream lowers them again: shadow is built
+ * --without-libpam, so /etc/security/limits.d is read by nobody, and the
+ * /etc/limits reader login does have returns without touching a limit when no
+ * line names the account.
+ *
+ * WITHOUT THIS THE WHOLE AUDIO PATH IS SCHED_OTHER AND NOTHING SAYS SO.
+ * pcm.!default is the PipeWire ioplug, which puts a data-loop thread inside
+ * every ALSA client, and in a VM pipewire.conf forces
+ * default.clock.min-quantum = 1024 -- a 21.3 ms deadline at 48 kHz on that
+ * thread. PipeWire's module-rt is loaded `nofail` in both pipewire.conf and
+ * client.conf, so a thread it cannot promote simply stays at nice 0, and
+ * RTKit is not shipped for its fallback to reach. A missed cycle is mixed as
+ * silence, heard as a gap, and the buffer is delivered a cycle late for the
+ * rest of the run -- a drift no player corrects.
+ *
+ * The numbers are the ones the shipped 25-pw-rlimits.conf asks for, so the
+ * image grants what its own configuration says it wants: 95 clears module-rt's
+ * server priority of 88 and its client priority of 83. RLIMIT_NICE is the
+ * 20-minus-ceiling encoding, so 39 is nice -19, below module-rt's -11.
+ * RLIMIT_MEMLOCK is BYTES here where that file's number is kB: 4 MiB covers
+ * PipeWire's mlocked buffer pool, which the kernel's 64 KiB default does not,
+ * while the 4 GiB a kB reading would mean is a ceiling that lets an
+ * unprivileged session pin every page of a small machine.
+ *
+ * A LIMIT THE KERNEL REFUSES IS REPORTED, NEVER FATAL. A tty that will not
+ * come up is far worse than one without real-time audio.
+ */
+static void raise_rt_limits(void)
+{
+	static const struct {
+		const char	*name;
+		int		 res;
+		rlim_t		 val;
+	} want[] = {
+		{ "rtprio",  RLIMIT_RTPRIO,  95 },
+		{ "nice",    RLIMIT_NICE,    39 },
+		{ "memlock", RLIMIT_MEMLOCK, 4194304 },
+	};
+
+	for (size_t i = 0; i < sizeof(want) / sizeof(want[0]); i++) {
+		struct rlimit rl;
+
+		/* RAISE ONLY, AND BOTH HALVES. A hard limit cannot be put back
+		 * up once it is lowered, so whatever already grants more than
+		 * this keeps what it grants; and the soft limit is the one the
+		 * kernel checks, so a high hard limit on its own grants
+		 * nothing. Raising the hard half is what needs the root this
+		 * process still has. */
+		if (getrlimit(want[i].res, &rl) != 0)
+			rl.rlim_cur = rl.rlim_max = 0;
+		if (rl.rlim_cur >= want[i].val && rl.rlim_max >= want[i].val)
+			continue;
+		if (rl.rlim_cur < want[i].val)
+			rl.rlim_cur = want[i].val;
+		if (rl.rlim_max < want[i].val)
+			rl.rlim_max = want[i].val;
+
+		if (setrlimit(want[i].res, &rl) != 0)
+			fprintf(stderr,
+				"kdos-getty: %s limit not raised to %llu: %s\n",
+				want[i].name,
+				(unsigned long long)want[i].val,
+				strerror(errno));
+	}
+}
+
 int getty_main(int argc, char **argv)
 {
 	if (argc < 3) {
@@ -327,6 +404,8 @@ int getty_main(int argc, char **argv)
 			close(fd);
 		break;
 	}
+
+	raise_rt_limits();
 
 	execvp(argv[2], argv + 2);
 

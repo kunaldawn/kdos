@@ -192,21 +192,54 @@ out:
  * "nobody has chosen" and an empty one would then be indistinguishable from a
  * choice to have nothing.
  */
-int sh_bg_path(char *out, size_t n)
+/*
+ * THE EXTENSIONS, IN THE ORDER THEY ARE TRIED, AND `.txt` IS FIRST.
+ *
+ * Character art draws on EVERY display and a picture draws only where there
+ * are pixels, so a person who has both files takes the one that always works.
+ * The rest are what libkimg is built to decode here; a name that reaches this
+ * list and is not in it is a file this desktop cannot show.
+ */
+static const struct {
+	const char *ext;
+	int	    image;
+} bg_kinds[] = {
+	{ "txt",  0 },
+	{ "png",  1 },
+	{ "jpg",  1 },
+	{ "jpeg", 1 },
+	{ "webp", 1 },
+	{ "gif",  1 },
+};
+
+/* `<stem>.<ext>` for each kind in turn, and the first that can be read wins. */
+static int bg_try(char *out, size_t n, const char *stem, int *is_image)
+{
+	for (size_t i = 0; i < sizeof(bg_kinds) / sizeof(bg_kinds[0]); i++) {
+		snprintf(out, n, "%s.%s", stem, bg_kinds[i].ext);
+		if (access(out, R_OK) == 0) {
+			*is_image = bg_kinds[i].image;
+			return 1;
+		}
+	}
+	out[0] = '\0';
+	return 0;
+}
+
+int sh_bg_path(char *out, size_t n, int *is_image)
 {
 	char name[64] = "";
 	const char *cfg = getenv("XDG_CONFIG_HOME");
-	char own[512], sf[512];
+	char stem[512], sf[512];
 
+	*is_image = 0;
 	if (cfg && *cfg)
-		snprintf(own, sizeof(own), "%s/kdos/background.txt", cfg);
+		snprintf(stem, sizeof(stem), "%s/kdos/background", cfg);
 	else
-		snprintf(own, sizeof(own), "%s/.config/kdos/background.txt",
+		snprintf(stem, sizeof(stem), "%s/.config/kdos/background",
 			 kb_home_dir());
-	if (access(own, R_OK) == 0) {
-		snprintf(out, n, "%s", own);
+	if (bg_try(out, n, stem, is_image))
 		return 1;
-	}
 
 	if (!kb_state_path("kdos/background", sf, sizeof(sf)))
 		return 0;
@@ -215,10 +248,11 @@ int sh_bg_path(char *out, size_t n)
 	if (!strcmp(name, "none"))
 		return 0;
 	/* ONE NAME, AND ONLY A NAME. It becomes a path, so a separator in it
-	 * is a path somebody chose. */
+	 * is a path somebody chose — and a dot is how an extension would be
+	 * smuggled past the list above. */
 	for (const char *p = name; *p; p++)
 		if (*p == '/' || *p == '.')
 			return 0;
-	snprintf(out, n, "%s/%s.txt", KB_BACKGROUND_DIR, name);
-	return access(out, R_OK) == 0;
+	snprintf(stem, sizeof(stem), "%s/%s", KB_BACKGROUND_DIR, name);
+	return bg_try(out, n, stem, is_image);
 }

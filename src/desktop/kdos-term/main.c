@@ -45,6 +45,17 @@
 #ifdef KDOS_TERM_CONSOLE_ONLY
 const KDispImpl *const kdos_disp[] = { &kcon_impl };
 const int kdos_disp_n = 1;
+
+/*
+ * AND THE FRAME THROTTLE ANSWERS "NOT HELD" WITH NO WAYLAND TO ASK.
+ *
+ * The draw loop tests it on every turn, on both backends, because a console
+ * surface is never throttled and the test is one comparison there — so the
+ * answer has to exist in a build that has no compositor half to give it, or
+ * this build does not compile and the self-test stops on the file it is
+ * checking.
+ */
+static int kwl_frame_throttled(void) { return 0; }
 #else
 const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
 const int kdos_disp_n = 2;

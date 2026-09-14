@@ -139,6 +139,14 @@ void sh_alsa_quiet(void)
 	snd_lib_error_set_handler(alsa_quiet_handler);
 }
 
+/*
+ * `default` HERE IS THE CONTROL DEVICE, NOT THE PCM, and on this image the two
+ * point at different things: /etc/alsa/conf.d/99-kdos-pipewire.conf sets
+ * `pcm.!default` to PipeWire and leaves `ctl.default` on the card. Adopting
+ * pipewire's `ctl.!default` alongside its pcm would make this attach fail
+ * whenever the daemon is down, so the volume applet would disappear exactly
+ * when the sound server is the thing that needs fixing.
+ */
 static snd_mixer_t *mixer_open_raw(void)
 {
 	snd_mixer_t *h = NULL;
