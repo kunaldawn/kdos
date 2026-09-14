@@ -69,7 +69,19 @@ struct entry {
 
 static struct entry entries[MAX_ENTRIES];
 static int nentries;
-static int sel;
+
+/*
+ * WHICH ICON IS SELECTED, AND THE STATE WHERE NONE IS.
+ *
+ * SEL_NONE is what the desktop opens in and what Esc and a press on bare
+ * wallpaper return it to. It is not an out-of-range index to be clamped away:
+ * a selection that cannot be put down leaves `Enter open` and `Del trash`
+ * standing in the hint row for the whole session, naming keys that act on a
+ * file nobody chose, and leaves the desktop's own menu acting on the folder
+ * while an unrelated icon is lit.
+ */
+#define SEL_NONE (-1)
+static int sel = SEL_NONE;
 /* comp.conf's `icons`, through --no-icons. */
 static int icons_on = 1;
 
@@ -552,6 +564,39 @@ static int drawn_count(void)
 }
 
 /*
+ * MOVE THE HIGHLIGHT, OR PUT ONE ON THE GRID WHERE THERE IS NONE.
+ *
+ * AN ARROW ON A DESKTOP WITH NOTHING SELECTED SELECTS THE FIRST ICON AND MOVES
+ * NO FURTHER. The keystroke that reaches for the grid must not also step inside
+ * it, or the icon a hand aimed at is never the one the key lands on.
+ *
+ * Off either end stops at the end. A grid is a surface and not a ring: wrapping
+ * from the last icon to the first is a jump across the whole screen for a key
+ * that means one cell.
+ *
+ * Clamped to the DRAWN count, so a step can never park the highlight on an
+ * entry the overflow marker replaced.
+ */
+static void sel_move(int by)
+{
+	int drawn = drawn_count();
+
+	if (drawn < 1) {
+		sel = SEL_NONE;
+		return;
+	}
+	if (sel == SEL_NONE) {
+		sel = 0;
+		return;
+	}
+	sel += by;
+	if (sel < 0)
+		sel = 0;
+	if (sel >= drawn)
+		sel = drawn - 1;
+}
+
+/*
  * DRAWN entries only: the cells past the overflow marker belong to nothing.
  * The row BELOW an icon and the gap column beside it are wallpaper, and a menu
  * or a drop that landed on the icon above would act on something the pointer is
@@ -741,13 +786,13 @@ static void ctx_popup(int for_entry, int x, int y)
 static int sel_up(void *user)
 {
 	(void)user;
-	return sel > 0;
+	return sel != SEL_NONE;
 }
 
 static void sel_clear(void *user)
 {
 	(void)user;
-	sel = 0;
+	sel = SEL_NONE;
 }
 
 /* The name editor is the inner rung. It owns every printable key while it is
@@ -803,18 +848,86 @@ static int ctx_at(int *x, int *y, void *user)
 static KtuiCell *bg;
 static int bg_w, bg_h;
 
+/*
+ * AND THE SAME BACKGROUND AS A PICTURE, WHERE THE DISPLAY HAS PIXELS.
+ *
+ * One or the other and never both: sh_bg_path() answers with the kind it
+ * found. The picture is the whole desktop and the character art is centred in
+ * it, which is the difference between a photograph and a piece of art drawn
+ * for a screen of its own size.
+ */
+static ShPic bg_pic;
+static int bg_pic_w, bg_pic_h;		/* what it is currently cut for */
+
 static void bg_reload(void)
 {
 	char path[600];
 	const char *con = getenv("KDOS_CON");
+	int image = 0;
 
 	free(bg);
 	bg = NULL;
 	bg_w = bg_h = 0;
+	/* The tiles go with it: a retint is why this runs, and the slots it
+	 * registered are the table's to hand out again. */
+	sh_pic_free(&bg_pic);
+	bg_pic_w = bg_pic_h = 0;
+	/*
+	 * THE CONSOLE'S ONLY. Under the compositor the WALLPAPER IS THE
+	 * COMPOSITOR'S and this surface is transparent over it — see the note
+	 * in draw() — so a background drawn here would be a second one on top
+	 * of the first.
+	 */
 	if (!con || !*con)
 		return;
-	if (sh_bg_path(path, sizeof(path)))
+	if (!sh_bg_path(path, sizeof(path), &image))
+		return;
+	if (!image) {
 		bg = sh_bg_load(path, &bg_w, &bg_h);
+		return;
+	}
+	if (sh_pic_load(&bg_pic, path) != 0)
+		sh_pic_free(&bg_pic);
+}
+
+/*
+ * CUT TO COVER THE DESKTOP, CENTRED, AND NEVER STRETCHED.
+ *
+ * The crop is the largest centred rectangle of the file that has the screen's
+ * own shape, and it is that rectangle which is scaled to every cell — so a
+ * picture of any proportion fills the desktop with its middle rather than
+ * being squashed into it. THE SHAPE IS IN PIXELS AND NOT IN CELLS: a cell is
+ * about twice as tall as it is wide, so a ratio taken from the grid would
+ * stretch every wallpaper by that factor.
+ *
+ * sh_pic_view() is a no-op while the crop and the cell size are unchanged, so
+ * this runs on every frame and costs a comparison until the grid actually
+ * moves — which is what a font step or a resized display is.
+ */
+static void bg_pic_fit(int w, int h)
+{
+	int pw = w * sh_pic_cell_w(), ph = h * sh_pic_cell_h();
+	int sw = bg_pic.w, sh = bg_pic.h, sx, sy;
+
+	if (!bg_pic.img || w < 1 || h < 1 || pw < 1 || ph < 1)
+		return;
+	if ((long)sw * ph > (long)sh * pw)
+		sw = (int)((long)sh * pw / ph);
+	else
+		sh = (int)((long)sw * ph / pw);
+	if (sw < 1 || sh < 1)
+		return;
+	sx = (bg_pic.w - sw) / 2;
+	sy = (bg_pic.h - sh) / 2;
+	if (sh_pic_view(&bg_pic, sx, sy, sw, sh, w, h) != 0) {
+		/* No pixel path, or no room in the table. A tty and a view
+		 * over ssh both look like this, and there is nothing to draw
+		 * there but the theme's ground. */
+		bg_pic_w = bg_pic_h = 0;
+		return;
+	}
+	bg_pic_w = w;
+	bg_pic_h = h;
 }
 
 /*
@@ -832,6 +945,12 @@ static void bg_draw(int w, int h)
 {
 	int ox, oy;
 
+	if (bg_pic.img) {
+		bg_pic_fit(w, h);
+		if (bg_pic_w == w && bg_pic_h == h)
+			sh_pic_draw(&bg_pic, 0, 0);
+		return;
+	}
 	if (!bg || bg_w < 1 || bg_h < 1)
 		return;
 	ox = (w - bg_w) / 2;
@@ -933,18 +1052,43 @@ static void draw(const char *status)
 		}
 	}
 
-	ktui_hint_if(edit_mode != ED_NONE, "Enter", "rename");
-	ktui_hint_if(!edit_mode && sel >= 0 && sel < nentries, "Enter", "open");
-	ktui_hint_if(!edit_mode && sel >= 0 && sel < nentries &&
-			     !entries[sel].pinned,
+	/*
+	 * THE ROW IS THE KEYBOARD'S, AND THIS SURFACE ONLY HAS THE KEYBOARD
+	 * ONCE IT HAS BEEN CLICKED INTO.
+	 *
+	 * A BACKGROUND layer asks for the keyboard on demand: the arrows,
+	 * Enter, Delete and Shift+F10 are answered only while the display has
+	 * handed it the focus, and the console hands it over on a press on the
+	 * icon layer and takes it back on the next press on a window. A row
+	 * drawn the rest of the time names four keys that do nothing, along the
+	 * bottom of the wallpaper, for the whole session.
+	 *
+	 * THE MENU COUNTS AS HOLDING IT, because ktui_menu_draw() pushes the
+	 * pane's own hints into the same pool.
+	 */
+	int owns = kdisp_focused() || ktui_menu_active(&menu);
+	/* Only what the selection makes true. With nothing selected `Enter`
+	 * opens nothing and `Del` trashes nothing, and naming either is naming
+	 * a key that acts on a file the person never picked. */
+	int has_sel = sel >= 0 && sel < nentries;
+
+	ktui_hint_if(owns && edit_mode != ED_NONE, "Enter", "rename");
+	ktui_hint_if(owns && !edit_mode && has_sel, "Enter", "open");
+	ktui_hint_if(owns && !edit_mode && has_sel && !entries[sel].pinned,
 		     "Del", "trash");
-	ktui_hint_if(!edit_mode && !ktui_menu_active(&menu), "Shift+F10",
-		     "menu");
+	/* The way ONTO the grid, named only where there is a grid to get onto:
+	 * a desktop with nothing selected otherwise says nothing about how to
+	 * select anything. */
+	ktui_hint_if(owns && !edit_mode && !has_sel && drawn_count(), "Arrows",
+		     "select");
+	ktui_hint_if(owns && !edit_mode && !ktui_menu_active(&menu),
+		     "Shift+F10", "menu");
 	/* Only where Esc DOES something: the desktop never closes, so an
 	 * unconditional hint here would read "Esc Close" on the one surface
 	 * that has no close. */
-	ktui_hint_if(edit_mode || ktui_menu_active(&menu) || sel > 0, "Esc",
-		     ktui_esc_verb(&keys));
+	ktui_hint_if(owns && (edit_mode || ktui_menu_active(&menu) ||
+			      sel != SEL_NONE),
+		     "Esc", ktui_esc_verb(&keys));
 
 	if (edit_mode) {
 		/* pick.c's line editor, on the status row. */
@@ -969,7 +1113,13 @@ static void draw(const char *status)
 	/* The status row is shared. The hints have it only while nothing else
 	 * is saying anything — a message about a failed rename outranks a
 	 * reminder of which key opens a file. */
-	if (!edit_mode && !(status && *status))
+	/*
+	 * AND THE ROW IS ONLY PAINTED WHILE THE DESKTOP OWNS THE KEYBOARD.
+	 * ktui_hint_row() fills its rectangle before it writes a word, so a
+	 * call with an empty pool is a bar of KT_BG across the bottom row of
+	 * the console's character art in exchange for no hints at all.
+	 */
+	if (owns && !edit_mode && !(status && *status))
 		ktui_hint_row(&keys, krect(1, h - 1, w - 2, 1), KT_BG);
 	ktui_draw_flush();
 }
@@ -1296,7 +1446,6 @@ int desk_main(int argc, char **argv)
 	ktui_keys_layer(&keys, "Cancel", edit_up, edit_cancel, NULL);
 
 	sh_theme_from_cache();
-	bg_reload();
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-desk: no compositor or no layer-shell\n");
 		return 1;
@@ -1312,6 +1461,10 @@ int desk_main(int argc, char **argv)
 	 * connects, so a callback registered before that point is erased.
 	 */
 	sh_pic_backend();
+	/* AFTER the sprite backend, because a picture background registers
+	 * tiles through it and the theme it is drawn in has to be loaded
+	 * first. */
+	bg_reload();
 	if (icons_on)
 		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
@@ -1358,11 +1511,16 @@ int desk_main(int argc, char **argv)
 		 * reloads (Trash, Empty) `continue`s from the middle of the
 		 * mouse and key paths alike and would skip a clamp at the
 		 * bottom — leaving the highlight on nothing at all. */
+		/*
+		 * SEL_NONE IS NOT CLAMPED ONTO THE GRID. It is the state the
+		 * desktop opens in and the one Esc returns it to, and a clamp
+		 * that read it as an out-of-range index and answered with icon
+		 * zero is a selection nothing can put down -- every frame after
+		 * the first would advertise `Enter open` over the wallpaper.
+		 */
 		int drawn = drawn_count();
-		if (sel < 0)
-			sel = 0;
 		if (sel >= drawn)
-			sel = drawn ? drawn - 1 : 0;
+			sel = drawn ? drawn - 1 : SEL_NONE;
 
 		input_region();
 		draw(status);
@@ -1473,17 +1631,27 @@ int desk_main(int argc, char **argv)
 				continue;
 			}
 			int i = icon_at(ev.mx, ev.my);
-			if (ev.btn == KT_MB_RIGHT && i < 0) {
-				/* Bare wallpaper. This used to fall through to
-				 * the compositor's root menu, which is a
-				 * compositor's menu rather than a desktop's —
-				 * and the desktop's own New Folder was then
-				 * reachable only by right-clicking an icon. */
-				ctx_popup(-1, ev.mx, ev.my);
+			/*
+			 * BARE WALLPAPER PUTS THE SELECTION DOWN, and the
+			 * menu that opens there is the DESKTOP's: every row
+			 * on it acts on the folder, so a highlight left on an
+			 * icon while it is up names a file that none of them
+			 * touches. The desktop answers its own wallpaper --
+			 * New Folder and Sort Icons are here and not on a
+			 * compositor's root menu -- so this press has to mean
+			 * something rather than fall through.
+			 *
+			 * THE TWO REAL BUTTONS ONLY. A wheel tick arrives as
+			 * a button press and must neither select nor clear.
+			 */
+			if (i < 0) {
+				if (ev.btn == KT_MB_LEFT ||
+				    ev.btn == KT_MB_RIGHT)
+					sel = SEL_NONE;
+				if (ev.btn == KT_MB_RIGHT)
+					ctx_popup(-1, ev.mx, ev.my);
 				continue;
 			}
-			if (i < 0)
-				continue;
 			if (ev.btn == KT_MB_RIGHT) {
 				/* The menu belongs to the icon under the
 				 * pointer, so aiming at one selects it too —
@@ -1538,14 +1706,28 @@ int desk_main(int argc, char **argv)
 		}
 
 		switch (ev.key) {
-		case KT_K_LEFT:  sel -= 1; break;
-		case KT_K_RIGHT: sel += 1; break;
-		case KT_K_UP:    sel -= cols; break;
-		case KT_K_DOWN:  sel += cols; break;
-		case KT_K_HOME:  sel = 0; break;
+		/*
+		 * EVERY STEP GOES THROUGH sel_move(), which owns the two rules
+		 * these keys must not each carry a copy of: a desktop with
+		 * nothing selected gains a selection rather than a jump, and
+		 * the ends of the grid stop rather than wrap. Shift+Tab arrives
+		 * as KT_K_BTAB and never as Tab with a modifier, so it is a
+		 * case of its own.
+		 */
+		case KT_K_LEFT:  sel_move(-1); break;
+		case KT_K_RIGHT: sel_move(1); break;
+		case KT_K_TAB:   sel_move(1); break;
+		case KT_K_BTAB:  sel_move(-1); break;
+		case KT_K_UP:    sel_move(-cols); break;
+		case KT_K_DOWN:  sel_move(cols); break;
+		/* Home and End name a CELL rather than a step, so they do not go
+		 * through sel_move(): End with nothing selected means the LAST
+		 * icon and not the first. An empty grid leaves SEL_NONE, which
+		 * is what `drawn_count() - 1` already is. */
+		case KT_K_HOME:  sel = drawn_count() ? 0 : SEL_NONE; break;
 		case KT_K_END:   sel = drawn_count() - 1; break;
-		case KT_K_PGUP:  sel -= per_page; break;
-		case KT_K_PGDN:  sel += per_page; break;
+		case KT_K_PGUP:  sel_move(-per_page); break;
+		case KT_K_PGDN:  sel_move(per_page); break;
 		case KT_K_ENTER:
 			if (sel >= 0 && sel < nentries)
 				open_entry(&entries[sel]);

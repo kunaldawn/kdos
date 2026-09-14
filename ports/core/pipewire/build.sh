@@ -27,6 +27,15 @@
 # Vendor media-session subproject for offline build (wrap-git → directory)
 ln -sf "$SRC_ROOT/media-session-master" subprojects/media-session
 
+# THE LIMITS FILE IS NOT INSTALLED -- see -Drlimits-install below. Nothing on
+# this image could read it and nobody could match it: limits.d is PAM's and
+# shadow is built --without-libpam, so `login` links libc alone, while the match
+# rule pipewire generates is `@pipewire`, a group that is not in /etc/group. A
+# shipped grant that cannot fire is a claim the image does not honour, and it
+# hides the one that does -- kdos-getty raises RLIMIT_RTPRIO, RLIMIT_NICE and
+# RLIMIT_MEMLOCK as the last root process on either login path, and rlimits are
+# inherited through setuid and execve to the session, to pipewire and to every
+# ALSA client under them.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Dbuildtype=release \
@@ -62,6 +71,7 @@ meson setup build \
 	-Dflatpak=disabled \
 	-Dgsettings=disabled \
 	-Dsnap=disabled \
+	-Drlimits-install=false \
 	"-Dsession-managers=['media-session']"
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

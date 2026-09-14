@@ -885,7 +885,13 @@ static void au_set_default(struct au_dev *d, char *msg, size_t n)
 	if (d->card >= 0) {
 		if (au_write_default_card(d->card) == 0) {
 			au_default_card = d->card;
-			snprintf(msg, n, "default is hw:%d — new streams only",
+			/* `defaults.pcm.card` steers the CARD chain and
+			 * nothing else, and on this image `default` is the
+			 * sound server unless $KDOS_ALSA_DEFAULT names the
+			 * card — so this is what the card route will open,
+			 * not what this session is playing through. The sink
+			 * rows are what moves a running stream. */
+			snprintf(msg, n, "card route is hw:%d — sink rows move this session",
 				 d->card);
 		} else {
 			snprintf(msg, n, "could not write ~/.asoundrc");

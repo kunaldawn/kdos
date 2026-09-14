@@ -107,9 +107,30 @@ Three details in that startup are each load-bearing:
 
 ## Audio
 
-PipeWire runs on the **host**, started by `kdos-desktop-start`: the daemon, a session manager and
-the PulseAudio compatibility layer. Boxed applications reach it through the shared
-`$XDG_RUNTIME_DIR`.
+PipeWire runs on the **host**, started by `kdos-desktop-start` *and* `kdos-con-start`: the daemon,
+a session manager and the PulseAudio compatibility layer. Boxed applications reach it through the
+shared `$XDG_RUNTIME_DIR`.
+
+**And plain ALSA programs reach it too, which takes one file to arrange.** `alsa.conf`'s `@hooks`
+list reads `/var/lib/alsa/conf.d`, `/usr/etc/alsa/conf.d`, `/etc/alsa/conf.d`, `/etc/asound.conf`
+and `~/.asoundrc` — and **not** `/usr/share/alsa/alsa.conf.d`, which is where PipeWire installs its
+own drop-in. Without a file in a directory that is actually read, `default` falls through to
+alsa-lib's built-in card chain, `plug → softvol → dmix`: every ALSA program talks to the card
+directly, the first one to open it owns it, and the daemon runs with no device at all. A dmix
+client's underrun is raised in **userspace**, so the stutter that follows shows no xrun on the card
+and nothing in `dmesg` — which is what makes it hard to see.
+
+`fs/etc/alsa/conf.d/99-kdos-pipewire.conf` is that file. It names two routes — `kdos_pipewire` and
+`kdos_card`, the card chain — and points `pcm.!default` at whichever `$KDOS_ALSA_DEFAULT` names,
+PipeWire when it names nothing. **The variable exists because a login that runs no session script
+has no daemon**: `kdos_session_audio()` is called from the two session starts only, so a `tty2`
+getty, a serial console and an `ssh` login have none, and `KDOS_ALSA_DEFAULT=kdos_card` is how a
+program plays there. **`ctl.default` is deliberately left on the hardware**, so the panel's volume
+applet keeps working when PipeWire is the thing that went wrong.
+
+Every redefinition in that file carries its `!`. The hooks run after the rest of `alsa.conf` is
+parsed, so a plain `pcm.default { … }` does not lose a race — it aborts the whole config load and
+every ALSA program on the machine is left with no configuration at all. `aplay -L` is the check.
 
 That is also the route screen-capture audio takes. Capture goes portal → ScreenCast → PipeWire,
 with the sockets crossing into the box the same way.

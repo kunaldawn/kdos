@@ -117,8 +117,11 @@ static pixman_image_t *wrap_words(uint32_t *px, int w, int h)
 	return img;
 }
 
+#ifdef KIMG_HAVE_GIF
 /* For a decoder whose buffer is its own and cannot be written through — the
- * GIF canvas, which libnsgif keeps across frames. */
+ * GIF canvas, which libnsgif keeps across frames, which is the only caller
+ * there is. Guarded with it: a build without libnsgif leaves this with no
+ * caller at all, and an unused static is an error under -Werror. */
 static pixman_image_t *from_rgba(const uint8_t *rgba, int w, int h)
 {
 	uint32_t *px = malloc((size_t)w * (size_t)h * 4);
@@ -129,6 +132,7 @@ static pixman_image_t *from_rgba(const uint8_t *rgba, int w, int h)
 	premul_words(px, (long)w * h);
 	return wrap_words(px, w, h);
 }
+#endif
 
 /* ── sniffing ───────────────────────────────────────────────────────────── */
 

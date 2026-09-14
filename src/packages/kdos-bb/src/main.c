@@ -29,6 +29,9 @@
 #ifdef HAVE_LIBMIKMOD
 #include <mikmod.h>
 #include <pthread.h>
+#include <sched.h>
+#include <sys/resource.h>
+#include <time.h>
 MODULE *module;
 int bbsound;
 void stop();
@@ -38,8 +41,9 @@ static int freqs[14] = {
 };
 
 /*
- * THE MIXER IS FED FROM ITS OWN THREAD, AND THAT IS THE WHOLE OF THE AUDIO
- * FIX.
+ * THE MIXER IS FED FROM ITS OWN THREAD, ON A CLOCK THE RENDER LOOP CANNOT
+ * REACH. A clock is half of it and the thread's scheduling policy is the
+ * other half -- see sound_rt_promote().
  *
  * MikMod_Update is a PULL api: it hands the card as much as the card will
  * take, and it must be called often enough to keep the ring full. Upstream
@@ -53,8 +57,8 @@ static int freqs[14] = {
  * of cells, uploading a texture, and here also a fullscreen shader pass -- so
  * the pty backs up, aa_flush sits in write(), no timer runs, the ring empties
  * and the music stutters. Minimise that same window and the terminal stops
- * rendering, drains instantly, and the sound is perfect: the tell that it was
- * never a mixer problem or a buffer-size problem.
+ * rendering, drains instantly, and the sound is perfect: the tell that the
+ * freeze is the coupling and not the mixer.
  *
  * So the mixer gets a thread with its own clock and the render loop cannot
  * reach it. libmikmod is built -pthread -D_REENTRANT, so MikMod_InitThreads()
@@ -63,6 +67,45 @@ static int freqs[14] = {
  * call — see the note in sound_thread().
  */
 #define SOUND_TICK_NS 10000000L		/* 10ms — upstream's timer interval */
+
+/*
+ * THE MIXER THREAD ASKS FOR REAL TIME, AND PLAYS ON WITHOUT IT.
+ *
+ * A thread with its own clock is only as good as the clock. At SCHED_OTHER it
+ * runs when the scheduler thinks it is due, and what else is due in this
+ * process is a render thread drawing aalib and writing a megabyte a second of
+ * escape sequences at a terminal. Every wake this thread loses past what the
+ * ring holds is an underrun, and libmikmod sets no sw params, so the stream
+ * stops on one: the default stop threshold is the buffer, an empty ring is
+ * -EPIPE, and the driver's recovery re-prepares the stream and throws the
+ * queue away. What a listener hears is a short pause, over and over, with the
+ * music resuming cleanly each time. SCHED_FIFO takes the scheduler out of it.
+ *
+ * TEN, BECAUSE THE FEEDER MUST LOSE TO ITS OWN CONSUMER. Whatever drains this
+ * ring -- dmix's slave, or the audio server where one is in the path -- has to
+ * preempt the thread filling it, and a feeder that outranks its consumer
+ * starves it. 10 is below every priority an audio server takes, below the 50 a
+ * threaded interrupt takes on a preemptible kernel, and above every
+ * SCHED_OTHER thread on the box.
+ *
+ * AND IT IS A REQUEST, NEVER A REQUIREMENT. kdos-getty raises RLIMIT_RTPRIO
+ * and the session inherits it, so the grant succeeds here; in a container or
+ * on a system that hands its users no real time, pthread_setschedparam answers
+ * EPERM and this thread keeps running exactly as it did. A demo that would not
+ * start because it could not have a scheduling policy is worse than one that
+ * stutters.
+ */
+#define SOUND_RT_PRIO 10
+
+/*
+ * WHAT IS LEFT WHEN THE POLICY IS REFUSED, and a fallback rather than a
+ * companion. A real-time mixer already preempts the render thread absolutely,
+ * so nicing the render thread as well would only slow the picture for nothing.
+ * It is also the half that cannot itself be refused -- lowering a thread's own
+ * priority needs no privilege -- so the degraded path always has something to
+ * do.
+ */
+#define SOUND_RENDER_NICE 5
 
 /*
  * KDOS_BB_DEBUG=1 reports which way the mixer is being fed. Silent otherwise:
@@ -90,12 +133,89 @@ update_sound (void *data)
     Player_SetPosition (0);
 }
 
+/*
+ * HOW LATE THE MIXER IS ALLOWED TO BE, AND WHY THAT IS THE ONLY NUMBER WORTH
+ * HAVING. What the ring holds is the whole of the budget: a gap longer than it
+ * is silence and a restart from empty, and a gap shorter than it costs nothing
+ * at all. The two sound completely different and look identical from the
+ * render loop, and no library below reports either -- under dmix the kernel
+ * counts no xrun, because the underrun is raised to the client in userspace.
+ * So the gap itself is the instrument.
+ */
+static void
+sound_gap_mark (void)
+{
+  static struct timespec prev, since;
+  static long worst;
+  static int on = -1, started;
+  struct timespec now;
+  long gap;
+
+  if (on < 0)
+    on = getenv ("KDOS_BB_DEBUG") ? 1 : 0;
+  if (!on)
+    return;
+  clock_gettime (CLOCK_MONOTONIC, &now);
+  if (!started)
+    {
+      started = 1;
+      prev = since = now;
+      return;
+    }
+  gap = (long) (now.tv_sec - prev.tv_sec) * 1000000L
+    + (now.tv_nsec - prev.tv_nsec) / 1000;
+  prev = now;
+  if (gap > worst)
+    worst = gap;
+  if ((long) (now.tv_sec - since.tv_sec) < 5)
+    return;
+  fprintf (stderr, "kdos-bb: mixer worst gap %ld us\n", worst);
+  worst = 0;
+  since = now;
+}
+
+/*
+ * PROMOTED FROM INSIDE THE THREAD, NOT THROUGH THE CREATE ATTRIBUTES.
+ * PTHREAD_EXPLICIT_SCHED makes the policy a CONDITION of pthread_create, and
+ * this file's answer to a failed create is the 10ms timer in play() -- the
+ * very feeder the thread exists to replace. Asking here makes a refusal a
+ * no-op.
+ *
+ * setpriority's PRIO_PROCESS takes a TID on Linux and the initial thread's TID
+ * is the PID, so getpid() names the render thread. A 0 would name this one,
+ * which is the opposite of what the fallback is for.
+ */
+static void
+sound_rt_promote (void)
+{
+  struct sched_param sp = { 0 };
+  int prio = SOUND_RT_PRIO;
+  int lo = sched_get_priority_min (SCHED_FIFO);
+  int hi = sched_get_priority_max (SCHED_FIFO);
+
+  if (lo >= 0 && prio < lo)
+    prio = lo;
+  if (hi >= 0 && prio > hi)
+    prio = hi;
+  sp.sched_priority = prio;
+  if (pthread_setschedparam (pthread_self (), SCHED_FIFO, &sp) == 0)
+    {
+      sound_debug ("mixer thread is SCHED_FIFO");
+      return;
+    }
+  if (setpriority (PRIO_PROCESS, getpid (), SOUND_RENDER_NICE) == 0)
+    sound_debug ("no real time - render thread niced instead");
+  else
+    sound_debug ("no real time and no nice - mixer is SCHED_OTHER");
+}
+
 static void *
 sound_thread (void *unused)
 {
   struct timespec tick = { 0, SOUND_TICK_NS };
 
   (void) unused;
+  sound_rt_promote ();
   while (sound_running)
     {
       /*
@@ -121,6 +241,14 @@ sound_thread (void *unused)
 	MikMod_Update ();
       else if (module)
 	Player_SetPosition (0);
+      sound_gap_mark ();
+      /*
+       * THE SLEEP IS UNCONDITIONAL, AND AT SCHED_FIFO THAT IS THE WHOLE SAFETY
+       * ARGUMENT. Every path through the body above falls into it. Nothing
+       * here may grow an early `continue` and nothing may make the sleep
+       * conditional: either is a real-time thread spinning, which on one core
+       * is a box that stops answering.
+       */
       nanosleep (&tick, NULL);
     }
   return NULL;
@@ -194,11 +322,74 @@ load_song (char *name)
 #endif
 }
 
+/*
+ * WHERE THE DEMO IS AGAINST WHERE THE TRACK IS.
+ *
+ * THE ANIMATION IS TUNED TO THE MUSIC AND NOTHING COUPLES THEM AT RUNTIME.
+ * The scenes run on the wall clock and the mixer runs on the sound card's,
+ * and they agree for exactly as long as the card's clock is the one the
+ * module was measured against. Measured at a 50x19 terminal: stage one and
+ * two are 287.74s against bb.s3m's 287.70s, and the credits with the beat
+ * that follows them are 111.50s against bb2.s3m's 111.50s. That is a demo
+ * tuned to the frame -- and a card playing one per cent fast is three
+ * seconds out by the credits with nothing on the screen to say so.
+ *
+ * This says so. Under KDOS_BB_DEBUG it reports, every five seconds, how far
+ * the demo is into the current track and how far the PLAYER is. Both are the
+ * same fraction of the same module, so they diverge only when the audio
+ * clock and the wall clock disagree -- which is the one thing that can put
+ * this demo out of step and the one thing a listener cannot attribute.
+ */
+static int songstart;
+
+void
+sound_sync (void)
+{
+#ifdef HAVE_LIBMIKMOD
+  static int last, on = -1;
+  int prog;
+  double demo;
+
+  /* Read once: this is called from bbupdate(), which runs every turn of
+   * every scene's loop. */
+  if (on < 0)
+    on = getenv ("KDOS_BB_DEBUG") ? 1 : 0;
+  if (!on || !bbsound)
+    return;
+  if (TIME - last < 5000000 && TIME >= last)
+    return;
+  last = TIME;
+  prog = song_progress ();
+  if (prog < 0)
+    return;
+
+  /*
+   * TWO NUMBERS AND NO ARITHMETIC, because the arithmetic would be wrong.
+   *
+   * The obvious third number -- the track length these two imply -- is not
+   * honest: song_progress()'s rows-per-pattern is NOMINAL, so its reading is
+   * skewed by an amount that is the MODULE's and not a constant. Measured
+   * against an offline render: bb.s3m reads 1 to 14 thousandths HIGH and
+   * bb3.s3m reads 13 LOW, both shrinking to nothing by the end, while
+   * bb2.s3m reads up to 63 LOW and never converges at all. An implied length
+   * therefore drifts across a track that is playing perfectly, and a reader
+   * would chase it.
+   *
+   * So the two raw numbers go out and the book carries what the player
+   * SHOULD read at each of them, measured per track. See kdos-bb.md.
+   */
+  demo = (TIME - songstart) / 1000000.0;
+  fprintf (stderr, "kdos-bb: sync  demo %7.2fs, player %4d/1000\n",
+	   demo, prog);
+#endif
+}
+
 void
 play ()
 {
 #ifdef HAVE_LIBMIKMOD
   sound_debug (module ? "play: starting" : "play: no module");
+  songstart = TIME;
   if (module != NULL)
     {
       Player_Start (module);
@@ -332,6 +523,12 @@ main (int argc, char *argv[])
     {
       MikMod_RegisterAllDrivers ();
       MikMod_RegisterLoader (&load_s3m);
+      /* MIXED AT THE RATE THE SINK RUNS AT. The library's own default is
+       * 44100 and every sink on this image is 48000, so the default puts a
+       * rate converter in the path -- run by whichever thread calls the
+       * update, which is the one thread here with a deadline. `-mixer` may
+       * still change it; this only moves the starting point. */
+      md_mixfreq = 48000;
       /*md_mode |= DMODE_SOFT_MUSIC; */
       while (bbmixer)
 	{

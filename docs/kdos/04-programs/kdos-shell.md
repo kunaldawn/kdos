@@ -88,6 +88,24 @@ writes to one — and the colours reduce to the theme's eight slots, so `kdos th
 It is reloaded on the same signal the accent is, which is also what `kdos background` sends. The
 piece is **centred and clipped**, never scaled, and its blank cells are not painted: the art is
 behind the icons, and drawing its spaces would put a second ground over the desktop's.
+
+**A real picture is the second tier, where the display has pixels.** The same setting takes an
+image as well as character art — `sh_bg_path()` answers with the kind it found, decided by the
+extension alone because `background.c` links no pixel code at all. A picture goes through
+`picture.c`, the same decode-crop-scale-and-cut every other picture on this desktop uses, and is
+registered as a grid of sprite tiles behind the icons.
+
+It is **cut to cover the desktop, centred, and never stretched**: the crop is the largest centred
+rectangle of the file that has the screen's own shape, and *that* is what is scaled to every cell.
+The shape is taken in **pixels and not in cells** — a cell is about twice as tall as it is wide, so
+a ratio taken from the grid would stretch every wallpaper by that factor. The cut is redone only
+when the grid moves, which is what a font step or a resized display is.
+
+**Where there are no pixels there is no picture**: a `tty1` at the 512-glyph console font, and a
+view over `ssh`, have none, and `sh_pic_view()` says so by failing — the desktop falls back to the
+theme's ground. Character art is the tier that draws everywhere, which is why `.txt` is tried first
+when both exist. Icon labels stay readable over a photograph because they paint their own `KT_BG`
+rather than letting the ground show through.
 | `kdos-pick` | `Ctrl+P` opens the column over the file list, with a **Recent directories** group under it |
 
 **Recent** is the same shape: `kdos-appbox open` is the one function every open passes through, so
@@ -189,6 +207,18 @@ decides, and three things answer it:
 - **the `Start` button's plate is a cell fill** — `KT_DIM` at rest, the accent under the pointer,
   the warning slot while its menu is open — and the ink is read against whatever the plate turned
   out to be.
+
+**Every picture on the bar is registered for, and drawn into, the content rows**, never the
+surface's full height. The edge row is stamped across every column *after* the layout, so a sprite
+that claimed the whole surface loses its top row of tiles to the double horizontal and what is left
+of the picture then sits high in the rows that remain.
+
+**The Start button pads by a whole column at each end, in both renderings** — `START_PAD`. The tile
+pads by one cell and the character fallback by one column, so the mark starts a column in whichever
+tier drew it and the plate keeps the same air at both ends whatever the mark and the word measure.
+It takes **no height parameter**: it is laid out in `bar_y0`/`bar_h` like everything else on the
+bar, because it is the one control anchored in the screen's corner and a mark drawn into the edge
+row, or into column 0, is unmissable there.
 
 `applet_row`, `bar_y0` and `bar_h` are where the content lives inside those rows, decided once per
 frame and read by everything the frame calls. Two functions used to derive the row themselves from
@@ -775,6 +805,23 @@ wrong for the row sitting beside `Delete` on this surface.
 The context menu is drawn **into its own grid**, since this surface owns the screen and a popup
 here is not a second surface. Its local rows carry a **scope** — icon, wallpaper, or both — because
 two menus would be two places for New Folder to drift.
+
+**Nothing is selected until something selects it.** The desktop opens with no highlight, `Escape`
+puts the highlight down from any icon — that is what the `Deselect` rung on the Esc ladder means —
+and a press on bare wallpaper does the same, because the menu that opens there acts on the folder
+and a highlight left on a file names something none of its rows touches. An arrow, `Tab` or
+`Shift+Tab` on a desktop with nothing selected selects the first icon and steps no further: a
+keystroke that reached for the grid and stepped inside it lands on an icon nobody aimed at. The
+ends of the grid stop rather than wrap — a grid is a surface, and a jump from the last icon to the
+first is the width of the screen for a key that means one cell. `Home` and `End` name a cell rather
+than a step, so `End` with nothing selected means the last icon.
+
+**The hint row is drawn only while the desktop holds the keyboard.** This is a background layer
+with on-demand keyboard: the console gives it the focus on a press on the icon layer and takes it
+back on the next press on a window, so between boot and the first click the arrows, `Enter`, `Del`
+and `Shift+F10` are not answered and are therefore not named. `Enter open` and `Del trash` are
+named only where there is a selection to act on, and `Arrows select` takes their place where there
+is not.
 
 `~/Desktop` is created if it is missing.
 

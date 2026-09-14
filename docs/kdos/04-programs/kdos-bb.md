@@ -30,7 +30,7 @@ states those answers and the build script calls the compiler.
 **The rebranding is deliberate rather than incidental.** The demo is the AA-group's, and the
 credits scroll, the greetings and the history stay exactly as they are.
 
-## Three defects fixed in place
+## Four defects fixed in place
 
 Two were found with sanitizers rather than by reading:
 
@@ -42,7 +42,86 @@ Two were found with sanitizers rather than by reading:
 - **A calling-convention attribute that is 32-bit-x86 only** was expanded on every declaration,
   warning on each.
 
-The third fix is the audio arrangement, below.
+The third is the frame rate and the fourth is the audio arrangement, both below.
+
+## The demo caps its own frame rate
+
+**A scene states a rate for its control and never for its picture.** One draw cost twenty-five
+milliseconds on the hardware this was written for, so the loop paced itself and nothing in it had
+to; on anything modern it draws as fast as the machine turns it. Measured in a fifty-column window,
+**five to fifteen thousand frames a second**; measured in a session terminal, **seventeen megabytes
+a second of escape sequences** — for a display that can show sixty frames, and with the demo and the
+session each spending a core on it.
+
+Past that point **the pseudo-terminal never empties**. Every write comes apart mid-frame, the
+terminal composes its window from a screen it has only half received, and what reaches the person
+is the top of one frame over the bottom of the one before it: an animation that updates in
+horizontal bands and looks like it is lagging.
+
+So the animation loop draws at most once every **fifteen milliseconds** — not sixteen and two
+thirds, because a scene whose control runs at exactly sixty would land a hair inside an exact
+sixty-frame budget every other turn and be halved to thirty. **The control keeps its own rate**: a
+control handler is told how many intervals it covers, so a dropped frame moves nothing in the
+animation, every scene still ends on the microsecond it always did, and the beats stay in step with
+the music.
+
+Measured across the same window of the same run, at a session grid of 192x54:
+
+| | Before | After |
+|---|---|---|
+| Demo writes | 17 MiB/s | 0.09 MiB/s |
+| Session reads | 17 MiB/s | 0.09 MiB/s |
+| Session CPU | 44% of a core | 1.6% |
+| Demo CPU | 100% of a core | 0.7% |
+| Frames the display is sent | 62/s | 62/s |
+| Cells the display is sent | 33,000/s | 33,000/s |
+
+**The picture is identical and everything spent on it is gone.** That is the shape of the whole
+class: a producer faster than the screen is not a faster animation, it is the same animation with a
+torn frame.
+
+## The animation is tuned to the music, and nothing couples them
+
+The scenes run on the **wall clock** — `timestuff()` computes its end as
+`start + duration` and chains the starts, so a beat that runs late is *skipped* and never
+stretched. The mixer runs on the **sound card's** clock. They agree because the demo was
+composed that way, and measured at a 50x19 terminal they agree to the frame:
+
+| Block | Animation | Its track |
+|---|---|---|
+| Stage 1 and 2 | 287.74 s | `bb.s3m` 287.70 s |
+| The credits and the beat after them | 111.50 s | `bb2.s3m` 111.50 s |
+| The extro | paced by the player | `bb3.s3m` 278.60 s |
+
+**The schedule does not depend on the terminal's size.** Every sweep that crosses the screen
+divides a fixed budget by however many steps that width needs, so the same beats land on the same
+millisecond at 50 columns and at 106.
+
+**So a drift is the audio clock, and only the audio clock.** Nothing corrects one: a card playing
+one per cent fast is three seconds out by the credits, and there is nothing on the screen to say
+so. `KDOS_BB_DEBUG` is what says so — see Debugging.
+
+## The closing text turns a page at a time
+
+The extro places the document where the **player** is, not where a clock is, so it lands on its
+last page as the track lands on its last pattern — at any mixer rate and on any terminal.
+
+**It moves a screen at a time and never a line.** Each step of the position costs a **morph**, a
+whole second of cross-fade between the old page and the new one. The document is some fifteen
+screens against a track of four and a half minutes, so a line at a time asks for a line every
+three quarters of a second: the next step begins before the last has landed, the page is
+permanently in motion, and nothing on it can be read.
+
+A screen at a time is one morph and then a **still page**. Measured at 106x33 — 24 visible rows of
+a 365-line document — that is 16 turns over the track, **16.4 seconds a page** of which one second
+is the morph. Silent, it is 150 seconds over the same 16 turns, and a capture shows the screen
+unchanged for 122 of 159 seconds.
+
+**The turns get one slot more than they need**, so the last page arrives early and is still there
+while the track finishes. It is the page with the most to say and the only one nothing follows.
+
+A shorter screen is more turns of less text, so the hold shrinks exactly as fast as the reading
+does and no minimum has to be stated.
 
 ## The mixer runs on its own thread
 
@@ -85,7 +164,7 @@ delay nobody can point at for a crackle everybody can hear.
 There is no runtime lever either — the audio driver hardcodes the buffer time and its
 command-line hook is an empty function.
 
-## Two library facts that outlive this program
+## Three library facts that outlive this program
 
 State these as rules for anything else built on the same libraries.
 
@@ -98,6 +177,10 @@ console one.**
 **Register all the module loaders, not just one format.** The public-domain music available online
 is spread across several tracker formats; with a single loader registered, a track fails inside the
 load call and the program plays silence.
+
+**And the library does no pacing of its own.** Its flush writes whatever is in the text buffer,
+every time it is called; nothing in it knows what a screen refresh is. **Anything on this library
+owns its own frame cap**, or it writes at the rate its own arithmetic happens to run at.
 
 ## Audio on a bare console
 
@@ -112,8 +195,16 @@ Two stacked requirements, both in init scripts, and neither is about this progra
   initialise call returns a distinct status when it matched a generic rule, which is a success
   here, so its status is deliberately ignored.
 
-There is no sound server on a console and none is wanted — the desktop user is already in the audio
-group.
+**The console has a sound server, and reaching it is a configuration file rather than a given.**
+`kdos-con-start` starts PipeWire exactly as the graphical session does, but ALSA only routes
+`default` to it because `/etc/alsa/conf.d/99-kdos-pipewire.conf` says so — the directory PipeWire
+installs its own drop-in into is not one alsa-lib reads. See [the session](../03-architecture/session.md#audio).
+
+That matters to this demo more than to most: libmikmod opens the literal PCM name `default` and
+parses no options, so it goes wherever that name points. On the card chain it holds the device
+exclusively, which locks every other program and the daemon out of it for as long as the demo runs.
+On a login with no session and therefore no daemon, `KDOS_ALSA_DEFAULT=kdos_card kdos-bb` is the
+way to play at all.
 
 ## Debugging
 
@@ -126,6 +217,33 @@ Silent otherwise, because the demo's error output is the terminal it is drawing 
 
 That trace is what caught the self-deadlock above: the log stopped at the line before playback
 started.
+
+**And every five seconds it reports the demo's clock against the player's position**:
+
+```
+kdos-bb: sync  demo   80.01s, player  278/1000
+```
+
+The demo's error output is the terminal it is drawing on, so redirect it:
+
+```sh
+KDOS_BB_DEBUG=1 kdos-bb 2>/tmp/sync.log
+```
+
+**What the player should read.** Not a formula — `song_progress()`'s rows-per-pattern is nominal,
+so its reading is skewed by an amount that belongs to the *module*: `bb.s3m` reads high, `bb3.s3m`
+reads low and shrinking, `bb2.s3m` reads low and growing. These are what an offline render of each
+track reports at the same point, so they are what a correctly playing one reports too:
+
+| Demo seconds into the track | 20 | 40 | 60 | 80 | 100 | 140 | 180 | 220 | 260 |
+|---|---|---|---|---|---|---|---|---|---|
+| `bb.s3m` — stage 1 and 2 | 83 | 151 | 218 | 292 | 353 | 495 | 636 | 771 | 906 |
+| `bb2.s3m` — the credits | 166 | 333 | 500 | 666 | 834 | — | — | — | — |
+| `bb3.s3m` — the extro | 59 | 132 | 205 | 278 | 350 | 496 | 641 | 787 | 932 |
+
+**A player reading above its row is ahead of the animation; one reading below is behind it.**
+Measured on the shipped image with sound, the extro reported 60 at 20 s and 278 at 80 s against
+59 and 278 — in step to the thousandth.
 
 ## There is no KDOS demoscene
 

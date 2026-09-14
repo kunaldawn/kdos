@@ -1494,35 +1494,47 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		}
 
 		/*
-		 * THE SECOND ROW IS THE SUB-LINE.
+		 * THE SECOND ROW IS THE SUB-LINE, AND A RUNNING WINDOW'S BUTTON
+		 * ALWAYS FILLS IT.
 		 *
-		 * On a two-row bar the button used to be a two-row block of
-		 * colour with a single row of text at the top of it, and that
-		 * is most of why this bar read as unaligned. It carries the
-		 * window's own TITLE under the application's name now —
-		 * `Firefox` over `KDOS — Mozilla Firefox` — which is precisely
-		 * the half a one-row taskbar has to throw away, and for a
-		 * group it says how many windows are behind the button.
+		 * It carries the window's own TITLE under the application's
+		 * name — `Firefox` over `KDOS — Mozilla Firefox` — which is
+		 * precisely the half a one-row taskbar has to throw away.
+		 *
+		 * WHERE THE TITLE ONLY REPEATS THE NAME THE LINE IS THE COUNT,
+		 * and that is not filler. The fill above covers every content
+		 * row, so a button with one row of text in it puts its label a
+		 * row above the centre of its own colour — which is what reads
+		 * as a bar out of line — and a line that came and went as a
+		 * program set its title would change the button's shape while
+		 * it was being used. A terminal called `Terminal` is the case
+		 * that occurs on every login.
+		 *
+		 * A SECOND CONTENT ROW, not a second row of the surface: the
+		 * cells-only bar spends one of its rows on its own edge, so a
+		 * one-row bar there is two rows tall and `h > 1` would aim this
+		 * line at the rule.
+		 *
+		 * Case-INSENSITIVE: foot's toplevel is titled `foot` and its
+		 * entry is named `Foot`, so a plain strcmp draws the same word
+		 * twice, once under the other.
 		 */
-		if (h > 1 && per - label_x > 3 && c->count > 0) {
+		if (ry + 1 < bar_y0 + bar_h && per - label_x > 3 &&
+		    c->count > 0) {
 			const struct sh_task *t0 = &sh->tasks[c->first];
 			char sub[96];
-			if (c->count > 1)
-				snprintf(sub, sizeof(sub), "%d windows",
-					 c->count);
-			else
+			if (c->count == 1 && t0->title[0] &&
+			    strcasecmp(t0->title, c->label))
 				snprintf(sub, sizeof(sub), "%s", t0->title);
-			/* Case-INSENSITIVE: foot's toplevel is titled `foot`
-			 * and its entry is named `Foot`, so a plain strcmp
-			 * drew the same word twice, once under the other. */
-			if (sub[0] && strcasecmp(sub, c->label))
-				/* KT_MID, not KT_DIM: the button IS KT_DIM
-				 * now, and a sub-line in the same colour as
-				 * the thing it is drawn on is invisible. */
-				ktui_draw_text(x + label_x, ry + 1,
-					       per - 1 - label_x, sub,
-					       c->active ? fg : KT_MID, bg,
-					       KT_A_NONE);
+			else
+				snprintf(sub, sizeof(sub), "%d window%s",
+					 c->count, c->count == 1 ? "" : "s");
+			/* KT_MID, not KT_DIM: the button IS KT_DIM at rest,
+			 * and a sub-line in the same colour as the thing it is
+			 * drawn on is invisible. */
+			ktui_draw_text(x + label_x, ry + 1, per - 1 - label_x,
+				       sub, c->active ? fg : KT_MID, bg,
+				       KT_A_NONE);
 		}
 
 		if (icon >= 0) {
@@ -3934,7 +3946,24 @@ static void start_plate(int cx, int cells, int h, int hovered, int open)
 		    kch_slot_rgb(KT_MID), 0xFF);
 }
 
-static int draw_start(struct sh_state *sh, int h, int compact)
+/*
+ * THE AIR AT EACH END OF THE BUTTON'S PLATE, IN COLUMNS.
+ *
+ * One column, which is the smallest unit of air a character grid has, and the
+ * pixel tile below pads by the same one cell. The tile and the glyph fallback
+ * are two renderings of one button: a mark that starts a column further in the
+ * moment the pictures load is a button laid out twice.
+ */
+#define START_PAD 1
+
+/*
+ * NO HEIGHT PARAMETER. The button is laid out in `bar_y0`/`bar_h` -- the rows
+ * draw_taskbar decided are content at all, and the same pair the separator, the
+ * window buttons and the wing read. A height handed down here is a second
+ * answer to that question, and the two disagree on exactly the display where
+ * the bar spends a row on its own edge.
+ */
+static int draw_start(struct sh_state *sh, int compact)
 {
 	const char *word = "Start";
 	if (!start_label)
@@ -3945,27 +3974,28 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * the ≡ glyph — which is what a tty and an install with no artwork
 	 * draw, and is not a placeholder. */
 	/*
-	 * TWO CELLS WIDE AND ONE TALL, which on a 16x32 cell is exactly 32x32
-	 * — a square, on the same row as the word beside it.
+	 * THE MARK IS SIZED AND DRAWN IN THE BAR'S CONTENT ROWS, NEVER IN THE
+	 * SURFACE'S FULL HEIGHT.
 	 *
-	 * It used to ask for `2 x h`, and on the two-row bar that is a 32x64
-	 * box in which libkicon centres a 32x32 picture: the icon landed
-	 * straddling the boundary between the rows while every label sat in
-	 * the top one. Nothing was wrong with either half on its own, and the
-	 * bar read as though none of it lined up — which is exactly what it
-	 * was reported as. Every sprite on this bar is drawn at the content
-	 * row now, and the second row is a deliberate detail line (the meters
-	 * strip, the clock's date, a window button's title) rather than a
-	 * band of empty pixels under the text.
+	 * Where there is no pixel layer the row against the desktop belongs to
+	 * the bar's own edge, and that rule is stamped across every column
+	 * AFTER the layout — so a picture registered for the whole surface
+	 * loses its top row of tiles to the double horizontal, and what is
+	 * left of it then sits high in the rows that remain. `bar_h` is the
+	 * rows that are content at all and `bar_y0` the first of them.
+	 *
+	 * The second row is a deliberate detail line — the meters strip, the
+	 * clock's date, a window button's title — and not a band of empty
+	 * pixels under the text.
 	 */
 	int ry = applet_row;
 	int mark_cells = 3;
 	int icon = icons_drawable()
-			   ? kicon_slot_pad("kdos-launcher", mark_cells, h,
-					    h > 1 ? icon_air() : 0)
+			   ? kicon_slot_pad("kdos-launcher", mark_cells, bar_h,
+					    bar_h > 1 ? icon_air() : 0)
 			   : -1;
 	if (icon < 0 && icons_drawable())
-		icon = kicon_slot("start-here", mark_cells, h);
+		icon = kicon_slot("start-here", mark_cells, bar_h);
 	int mark_w = icon >= 0 ? mark_cells : ktui_utf8_width(menu_mark());
 	/*
 	 * A WORDMARK AND A LABEL SAY THE SAME THING TWICE. With no artwork the
@@ -3976,7 +4006,18 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	if (icon < 0 && !strcmp(menu_mark(), "KDOS"))
 		compact = 1;
 	int lw = compact ? 0 : ktui_utf8_width(word);
-	int w = mark_w + (lw ? 1 + lw : 0) + 1;
+	/*
+	 * A COLUMN OF AIR AT EACH END OF THE PLATE, AND ONE MORE OUTSIDE IT.
+	 *
+	 * `w` is the button's whole span and the plate is `w - 1` of it: the
+	 * last column is the gap before the separator, the same one a window
+	 * button leaves by plating `per - 1` of its `per`. The two START_PAD
+	 * columns are the slack `lead` below has to split. Without them the
+	 * content fills the plate exactly, that split is zero at every width,
+	 * and the mark is drawn in column 0 -- which on the one control
+	 * anchored in the screen's corner is the edge of the display itself.
+	 */
+	int w = mark_w + (lw ? 1 + lw : 0) + 2 * START_PAD + 1;
 	/* Lit while the menu is up, not only under the pointer: a Start button
 	 * that looks untouched with its own menu open is the one control on
 	 * the bar whose state the user cannot see. */
@@ -4000,7 +4041,7 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 
 	if (w > ktui_w / 3) {
 		lw = 0;
-		w = mark_w + 1;
+		w = mark_w + 2 * START_PAD + 1;
 	}
 
 	/*
@@ -4014,7 +4055,7 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * layout the bar has always drawn, so a tty, `--dump`, `icons = no`
 	 * and a full sprite table are all unaffected.
 	 */
-	if (h > 1 && !compact && lw) {
+	if (bar_h > 1 && !compact && lw) {
 		/*
 		 * THE NOMINAL CELL, the same pair the tile layer and the icon
 		 * layer are sized with. kdisp_cell_w() is 1 on the console —
@@ -4036,7 +4077,7 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 		 * collapse at FOUR windows — measured. Half the height is
 		 * still twice the cell font and lands at nine.
 		 */
-		int px_h = h * cell_h * scale;
+		int px_h = bar_h * cell_h * scale;
 		int fsz = px_h * 50 / 100;
 		/*
 		 * THE MARK IS THE BRAND AND IT WAS THE SMALLEST THING ON THE
@@ -4063,7 +4104,7 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 		 * can see.
 		 */
 		int gap = cell_w * scale / 2;
-		int pad = cell_w * scale * 3 / 4;
+		int pad = START_PAD * cell_w * scale;
 		int tw = kcell_canvas_text_width(fsz, word);
 		int content_px = mark_px + gap + tw;
 		int need_px = pad + content_px + pad;
@@ -4075,9 +4116,10 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 			 * kch_tile_reset() on a retint rather than here. */
 			uint64_t content = (uint64_t)lit << 40 |
 					   (uint64_t)tw_cells << 24 |
-					   (uint64_t)fsz << 8 | (uint64_t)h;
+					   (uint64_t)fsz << 8 |
+					   (uint64_t)bar_h;
 			KCellCanvas *cv =
-				kch_tile_begin(SH_TILE_START, tw_cells, h,
+				kch_tile_begin(SH_TILE_START, tw_cells, bar_h,
 					      content);
 			if (cv) {
 				int cw_px = kcell_canvas_w(cv);
@@ -4126,10 +4168,18 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 			}
 			int slot = kch_tile_slot(SH_TILE_START);
 			if (slot >= 0) {
-				start_plate(0, tw_cells, h, sh->hover_start,
+				/* The cell count the sprite is REGISTERED
+				 * with and the rect it is DRAWN into are one
+				 * pair: a sprite cell carries its own
+				 * sub-cell coordinate, so a picture cut into
+				 * one grid and placed in another is cut
+				 * somewhere other than where it was cropped. */
+				start_plate(0, tw_cells, bar_h,
+					    sh->hover_start,
 					    start_menu_open());
-				ktui_draw_sprite(krect(0, 0, tw_cells, h), slot,
-						 KT_SURFACE, KT_SURFACE);
+				ktui_draw_sprite(krect(0, bar_y0, tw_cells,
+						       bar_h),
+						 slot, KT_SURFACE, KT_SURFACE);
 				sh->start_x = 0;
 				sh->start_end = tw_cells;
 				return tw_cells;
@@ -4142,17 +4192,16 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * plate on this row, so the two are centred on each other by
 	 * construction rather than by arithmetic that has to be kept in step.
 	 *
-	 * Drawn from x=1 to half a cell short of the button's right edge while
-	 * the mark was centred in the cells before that, they were two boxes
-	 * with different centres: measured on the shipped bar, the plate ran
-	 * 1..33 and the penguin's ink 8..21, so the mark sat 2.5px left of the
-	 * middle of its own button.
+	 * The plate spans `w - 1` cells from column 0 and the content is
+	 * centred in that same span, so a mark and a word that grow or shrink
+	 * stay in the middle of their own button rather than drifting off one
+	 * edge of it.
 	 *
 	 * The trailing cell that `w` counts does not draw. It is the gap
 	 * before the next control — the same one a window button leaves by
 	 * plating `per - 1` of its `per` cells.
 	 */
-	start_plate(0, w - 1, h, sh->hover_start, start_menu_open());
+	start_plate(0, w - 1, bar_h, sh->hover_start, start_menu_open());
 	/* THE PLATE IN CELLS, on a display that has nowhere else to put it.
 	 * The content rows only: the bar's own edge row is not part of the
 	 * button. */
@@ -4175,8 +4224,8 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	if (cells_only())
 		ink = plate == KT_DIM ? KT_TEXT : KT_SURFACE;
 	if (icon >= 0)
-		ktui_draw_sprite(krect(lead, 0, mark_w, h), icon, KT_SURFACE,
-				 plate);
+		ktui_draw_sprite(krect(lead, bar_y0, mark_w, bar_h), icon,
+				 KT_SURFACE, plate);
 	else
 		ktui_draw_text(lead, ry, mark_w, menu_mark(), ink, plate,
 			       KT_A_NONE);
@@ -5825,7 +5874,7 @@ static void draw_taskbar(struct sh_state *sh)
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 
 		/* ── the left wing ── */
-		int x = draw_start(sh, h, compact);
+		int x = draw_start(sh, compact);
 		draw_sep(x, h);
 		x += 2;
 

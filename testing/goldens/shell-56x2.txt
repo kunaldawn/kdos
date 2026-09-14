@@ -1,2 +1,2 @@
-KDOS                          ^  .   90     00:00      .
-          CPU        .  11%                 Wed 01 Jan .
+ KDOS                         ^  .   90     00:00      .
+            CPU      .  11%                 Wed 01 Jan .

@@ -264,6 +264,13 @@ if it is missing.
 The file half is the same table `kdos-pick` and `mc`'s `F2` read, so a verb arrives on all three at
 once — and a verb whose program is not installed is not offered anywhere.
 
+**No icon is selected until you select one.** Arrow keys, `Tab` or a click pick one out; `Esc`, or a
+click on bare wallpaper, puts it back down. The bottom row of the desktop says what the keys do
+**while the desktop has the keyboard** — it takes the keyboard when you click it and gives it back
+the moment you click a window — so the row is not a strip of text lying along the wallpaper for the
+rest of the session. With nothing selected it offers the arrows and `Shift+F10`, which opens the
+wallpaper's own menu; with an icon selected, `Enter` opens it and `Delete` moves it to the trash.
+
 ### The console desktop's ground is a picture made of characters
 
 Under the compositor the wallpaper is a PNG, set on Settings' Appearance page. **On the console
@@ -271,6 +278,13 @@ there is no wallpaper and no compositor**, so the ground is character art: `Supe
 the shipped pieces and `none`, `kdos background list` names them, and
 `~/.config/kdos/background.txt` is your own and outranks all of them. The chord and the `kdos`
 verb are the same thing, and `style.background` is the route.
+
+**Or a real picture, if your display has pixels.** Drop a `background.png` — or `.jpg`, `.jpeg`,
+`.webp`, `.gif` — next to that file in `~/.config/kdos/` and the console desktop shows the
+photograph itself, cut to cover the screen from its middle and never stretched. It is a picture on
+the framebuffer, so it needs a display with pixels: on `tty1` at the console font, or over `ssh`,
+there are none and you get the theme's ground instead. Character art works on all of them, which is
+why a `background.txt` beside a `background.png` wins.
 
 **A piece is what a program would have written to a terminal** — UTF-8 text with SGR colour — and
 it is read by the parser that reads a terminal, through the same render boundary. So there is one
