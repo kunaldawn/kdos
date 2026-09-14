@@ -27,6 +27,13 @@
 # and took `make run-hw` with it. Each backend is therefore checked for the
 # runtime files it actually needs, not just for its presence in the build.
 
+# THE MIXER'S RATE IS SAID OUT LOUD, because QEMU's own default is 44100 and
+# the guest is not. PipeWire in the guest drives the emulated codec at 48000
+# and allows nothing else, so an unqualified -audiodev converts 48000 -> 44100
+# on QEMU's main loop and the host's daemon converts it back. That main loop is
+# also where the accelerated display's GL work runs, so the conversion is paid
+# for at exactly the moment a frame is already late.
+
 set -u
 
 QEMU="${QEMU_BIN:-qemu-system-x86_64}"
@@ -59,4 +66,4 @@ fi
 
 [ -n "$backend" ] || exit 0
 
-echo "-audiodev $backend,id=snd0 -device intel-hda -device hda-output,audiodev=snd0"
+echo "-audiodev $backend,id=snd0,out.frequency=48000 -device intel-hda -device hda-output,audiodev=snd0"

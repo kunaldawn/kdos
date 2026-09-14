@@ -138,6 +138,17 @@ int bbupdate()
  * control runs at exactly sixty would land a hair inside an exact sixty-frame
  * budget every other turn and be halved to thirty; the margin is what lets a
  * scene keep the rate it asked for.
+ *
+ * IT IS MEASURED FROM THE END OF A DRAW AND NOT FROM ITS START, WHICH IS
+ * WHAT MAKES IT A CAP AT EVERY SCREEN SIZE. Start to start, a draw costing
+ * longer than the cap has already used it up by the time it returns: the
+ * next one is due immediately, the loop never sleeps, and the render thread
+ * owns a core for as long as the demo runs. On a cell desktop the draw grows
+ * with the screen -- a 3840x2160 console is some sixty-five thousand cells
+ * against a tenth of that at 50x19 -- so the size at which the cap stops
+ * capping is a size people have. End to start, the loop is idle for this
+ * long between every pair of frames whatever one costs: 66fps when a draw is
+ * cheap, and fewer but with the machine still answering when it is not.
  */
 #define BB_FRAME_US 15000
 
@@ -199,8 +210,12 @@ void timestuff(int rate, void (*control) (int), void (*draw) (void), int maxtime
 	     * would never start again.
 	     */
 	    if (draw != NULL && (due <= 0 || since < 0)) {
-		lastdraw = TIME;
 		draw();
+		/* The clock is stale by however long that took, and what is
+		 * being timed is the gap AFTER it -- see the note above. */
+		tl_update_time();
+		TIME = tl_lookup_timer(scenetimer);
+		lastdraw = TIME;
 		continue;
 	    }
 

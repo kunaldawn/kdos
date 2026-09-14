@@ -21,6 +21,7 @@
  * 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -142,11 +143,37 @@ update_sound (void *data)
  * counts no xrun, because the underrun is raised to the client in userspace.
  * So the gap itself is the instrument.
  */
+/* One tick on, carrying the nanoseconds. */
+static void
+sound_tick_add (struct timespec *t)
+{
+  t->tv_nsec += SOUND_TICK_NS;
+  if (t->tv_nsec >= 1000000000L)
+    {
+      t->tv_nsec -= 1000000000L;
+      t->tv_sec++;
+    }
+}
+
+static volatile long sound_worst_gap;
+
+/*
+ * IT RECORDS AND IT DOES NOT REPORT, and that is the whole point of the
+ * split. This runs on the real-time mixer thread, and stderr here is the
+ * pseudo-terminal the demo is drawing on: a terminal that is behind makes
+ * fprintf block in write(), which parks the highest-priority thread in the
+ * process behind the lowest and produces exactly the stall the instrument
+ * exists to find. So the mixer keeps a number and the render thread prints
+ * it -- see sound_sync().
+ *
+ * The number is one long written by one thread and read by another with no
+ * lock. A word is not torn, a reading one tick stale says the same thing,
+ * and a lock here would be the same inversion by another road.
+ */
 static void
 sound_gap_mark (void)
 {
-  static struct timespec prev, since;
-  static long worst;
+  static struct timespec prev;
   static int on = -1, started;
   struct timespec now;
   long gap;
@@ -159,19 +186,14 @@ sound_gap_mark (void)
   if (!started)
     {
       started = 1;
-      prev = since = now;
+      prev = now;
       return;
     }
   gap = (long) (now.tv_sec - prev.tv_sec) * 1000000L
     + (now.tv_nsec - prev.tv_nsec) / 1000;
   prev = now;
-  if (gap > worst)
-    worst = gap;
-  if ((long) (now.tv_sec - since.tv_sec) < 5)
-    return;
-  fprintf (stderr, "kdos-bb: mixer worst gap %ld us\n", worst);
-  worst = 0;
-  since = now;
+  if (gap > sound_worst_gap)
+    sound_worst_gap = gap;
 }
 
 /*
@@ -212,9 +234,10 @@ sound_rt_promote (void)
 static void *
 sound_thread (void *unused)
 {
-  struct timespec tick = { 0, SOUND_TICK_NS };
+  struct timespec next, now;
 
   (void) unused;
+  clock_gettime (CLOCK_MONOTONIC, &next);
   sound_rt_promote ();
   while (sound_running)
     {
@@ -248,8 +271,26 @@ sound_thread (void *unused)
        * here may grow an early `continue` and nothing may make the sleep
        * conditional: either is a real-time thread spinning, which on one core
        * is a box that stops answering.
+       *
+       * IT IS A DEADLINE AND NOT A DELAY, so the work above is inside the
+       * period rather than added to it: a relative sleep placed here makes
+       * the period `tick + however long the update took` and the feed slower
+       * than the tick it was sized against. A deadline already past is moved
+       * to one tick from now rather than chased -- catching up would be this
+       * thread running without sleeping, which is the case the paragraph
+       * above forbids.
        */
-      nanosleep (&tick, NULL);
+      sound_tick_add (&next);
+      clock_gettime (CLOCK_MONOTONIC, &now);
+      if (next.tv_sec < now.tv_sec
+	  || (next.tv_sec == now.tv_sec && next.tv_nsec <= now.tv_nsec))
+	{
+	  next = now;
+	  sound_tick_add (&next);
+	}
+      while (clock_nanosleep (CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL)
+	     == EINTR)
+	;
     }
   return NULL;
 }
@@ -323,65 +364,189 @@ load_song (char *name)
 }
 
 /*
- * WHERE THE DEMO IS AGAINST WHERE THE TRACK IS.
+ * THE SCENE CLOCK FOLLOWS THE PLAYER, BECAUSE A LOST MOMENT NEVER COMES BACK.
  *
- * THE ANIMATION IS TUNED TO THE MUSIC AND NOTHING COUPLES THEM AT RUNTIME.
- * The scenes run on the wall clock and the mixer runs on the sound card's,
- * and they agree for exactly as long as the card's clock is the one the
- * module was measured against. Measured at a 50x19 terminal: stage one and
- * two are 287.74s against bb.s3m's 287.70s, and the credits with the beat
- * that follows them are 111.50s against bb2.s3m's 111.50s. That is a demo
- * tuned to the frame -- and a card playing one per cent fast is three
- * seconds out by the credits with nothing on the screen to say so.
+ * A scene runs to an absolute deadline -- timestuff() computes `endtime` as
+ * `starttime + maxtime` and chains the starts from one peg at the top of the
+ * track -- so time the machine loses is paid for in FRAMES: the picture skips
+ * and arrives at the same beat. The music cannot pay that way. The module
+ * advances one tick per tick inside the mixer, every sample it renders is
+ * written, and nothing in this program ever seeks the player forward. So a
+ * moment the card spends not playing -- silence injected after a late wake,
+ * a stream re-prepared from empty after an underrun -- is a moment the
+ * picture took and the music did not, and the two are further apart
+ * afterwards than before. It never closes again on its own.
  *
- * This says so. Under KDOS_BB_DEBUG it reports, every five seconds, how far
- * the demo is into the current track and how far the PLAYER is. Both are the
- * same fraction of the same module, so they diverge only when the audio
- * clock and the wall clock disagree -- which is the one thing that can put
- * this demo out of step and the one thing a listener cannot attribute.
+ * THE CORRECTION IS A SLEW AND NEVER A JUMP. The error goes into
+ * tl_slowdown_timer(), which is subtracted from every later reading of the
+ * scene clock, at most BB_SYNC_PPM of the interval between corrections.
+ * Applied whole it would be a jump, and a jump on this clock skips or
+ * repeats a scene outright.
+ *
+ * FIVE PER CENT, AND THE FLOOR UNDER THAT NUMBER IS A MEASUREMENT. The limit
+ * has to exceed the STEADY rate the two clocks disagree at, or the servo
+ * saturates and the gap resumes growing at whatever is left over: what is
+ * rendered and what is played are not the same second, and the difference is
+ * 1.2% on the emulated card this is tested against. Below that floor the
+ * number is free, because an eye reads no tempo in a scene that runs a
+ * twentieth fast while it catches up -- there is no pitch to give it away --
+ * and the debug line's `err` is what says whether the budget was enough.
+ *
+ * THE PHASE THE TRACK STARTED WITH IS KEPT, not corrected to zero. What is
+ * HEARD is behind what is RENDERED by whatever the rings below hold, and
+ * this program cannot see that number; correcting the error to zero would
+ * put the picture ahead of the sound by exactly the buffer it cannot
+ * measure. The offset the machine began with is left alone and only its
+ * growth is taken out.
+ *
+ * `sngtime` IS THE ONLY HONEST POSITION HERE. It is the player's own
+ * timeline, advanced a tick at a time as the mixer renders, in 2^-10 of a
+ * second and at whatever tempo the module asks for. song_progress() is the
+ * wrong one: its rows-per-pattern is nominal, so its reading carries a skew
+ * that is the MODULE's -- up to 63 thousandths on bb2.s3m, which at a track
+ * length is seconds of phase that are not there. Read without the library's
+ * lock on purpose: it is one aligned word, a reading one tick stale is
+ * twenty milliseconds inside a servo that moves by two, and taking
+ * MikMod_Lock here would park the render thread behind the real-time mixer.
  */
+#define BB_SYNC_US   200000	/* how often the error is looked at   */
+#define BB_SYNC_PPM   50000	/* and the most of it taken each time */
+
+/*
+ * The player's timeline in microseconds, or -1 when there is no music to
+ * follow. Bounded by the scene clock's own wrap: both are microseconds in an
+ * int and a track outlasting thirty-five minutes has already wrapped one.
+ */
+static int
+sound_clock (void)
+{
+#ifdef HAVE_LIBMIKMOD
+  /*
+   * NOT Player_Active(), AND THAT IS THE WHOLE REASON THIS READS A FIELD.
+   * This runs on every turn of the render loop, and every Player_* call
+   * opens with MUTEX_LOCK(vars) -- the mutex MikMod_Update() holds on the
+   * real-time mixer thread, a plain one with no priority inheritance. Asking
+   * here would put the mixer behind the render thread whenever the render
+   * thread holds it, which is the inversion this program's whole shape
+   * exists to avoid. A player that has fallen inactive simply stops
+   * advancing sngtime, and the caller re-pegs on a reading that went
+   * backwards, so nothing needs to be asked.
+   */
+  if (!bbsound || module == NULL)
+    return -1;
+  return (int) (((long long) module->sngtime * 1000000) >> 10);
+#else
+  return -1;
+#endif
+}
+
 static int songstart;
 
 void
 sound_sync (void)
 {
-#ifdef HAVE_LIBMIKMOD
-  static int last, on = -1;
-  int prog;
-  double demo;
+  static int base, last, held, said, kept, on = -1;
+  static int prev = -1;
+  int music = sound_clock ();
+  int want, step, err;
 
   /* Read once: this is called from bbupdate(), which runs every turn of
    * every scene's loop. */
   if (on < 0)
     on = getenv ("KDOS_BB_DEBUG") ? 1 : 0;
-  if (!on || !bbsound)
-    return;
-  if (TIME - last < 5000000 && TIME >= last)
-    return;
-  last = TIME;
-  prog = song_progress ();
-  if (prog < 0)
-    return;
 
   /*
-   * TWO NUMBERS AND NO ARITHMETIC, because the arithmetic would be wrong.
-   *
-   * The obvious third number -- the track length these two imply -- is not
-   * honest: song_progress()'s rows-per-pattern is NOMINAL, so its reading is
-   * skewed by an amount that is the MODULE's and not a constant. Measured
-   * against an offline render: bb.s3m reads 1 to 14 thousandths HIGH and
-   * bb3.s3m reads 13 LOW, both shrinking to nothing by the end, while
-   * bb2.s3m reads up to 63 LOW and never converges at all. An implied length
-   * therefore drifts across a track that is playing perfectly, and a reader
-   * would chase it.
-   *
-   * So the two raw numbers go out and the book carries what the player
-   * SHOULD read at each of them, measured per track. See kdos-bb.md.
+   * A TRACK THAT HAS NOT STARTED, OR HAS RESTARTED, IS A NEW PHASE AND NOT
+   * AN ERROR. Each module is loaded fresh and begins at zero, and bb3.s3m is
+   * rewound in place when it falls inactive -- so a reading that went
+   * backwards re-pegs rather than asking the servo to take out a whole
+   * track. The correction already made is KEPT: it is time the machine lost
+   * and the next track inherits the machine.
    */
-  demo = (TIME - songstart) / 1000000.0;
-  fprintf (stderr, "kdos-bb: sync  demo %7.2fs, player %4d/1000\n",
-	   demo, prog);
-#endif
+  if (music < 0 || prev < 0 || music < prev)
+    {
+      base = TIME - (music < 0 ? 0 : music);
+      last = TIME;
+      prev = music;
+      return;
+    }
+  prev = music;
+
+  /*
+   * A CLOCK THAT WENT BACKWARDS IS A WRAP AND NOT AN ERROR. The scene clock
+   * is an int of microseconds and turns over after some thirty-five minutes,
+   * which `-loop` reaches; the phase either side of that is not comparable,
+   * so it is taken again rather than handed to the servo as an hour of
+   * error.
+   */
+  if (TIME < last)
+    {
+      base = TIME - music;
+      last = TIME;
+      return;
+    }
+  if (TIME - last < BB_SYNC_US)
+    return;
+  step = (int) ((long long) (TIME - last) * BB_SYNC_PPM / 1000000);
+  last = TIME;
+
+  /*
+   * POSITIVE MEANS THE PICTURE IS AHEAD, and tl_slowdown_timer() is
+   * subtracted from the clock, so the sign carries straight through.
+   */
+  err = TIME - (base + music);
+  if (err > kept || -err > kept)
+    kept = err > 0 ? err : -err;
+  want = err;
+  if (want > step)
+    want = step;
+  else if (want < -step)
+    want = -step;
+  if (want)
+    {
+      tl_slowdown_timer (scenetimer, want);
+      held += want;
+    }
+
+  if (on && (TIME - said >= 5000000 || TIME < said))
+    {
+      int prog = song_progress ();
+
+      said = TIME;
+
+      /*
+       * NO ARITHMETIC ON THE FIRST TWO, because the arithmetic would be
+       * wrong. The track length they imply is not honest:
+       * song_progress()'s rows-per-pattern is NOMINAL, so its reading is
+       * skewed by an amount that is the MODULE's -- bb.s3m reads 1 to 14
+       * thousandths high and bb2.s3m up to 63 low, and neither is a
+       * constant. So the two raw numbers go out and the book carries what
+       * the player should read at each of them, measured per track.
+       *
+       * `held` IS the arithmetic and it is exact: the whole of what the
+       * servo has taken out since the demo began, which is the audio time
+       * this machine has lost. A smooth climb is a clock running at the
+       * wrong rate; a staircase is a stream that stopped and restarted.
+       *
+       * `err` is the phase the servo has NOT taken out yet, at its worst
+       * since the last line, and it is the one number that says whether the
+       * correction is keeping up: bounded means it is, and a figure that
+       * climbs line after line means BB_SYNC_PPM is smaller than the rate
+       * the two clocks disagree at and the demo is coming apart anyway.
+       *
+       * `worst gap` is the longest the mixer thread went unscheduled since
+       * the last line. Longer than the ring below is silence; shorter costs
+       * nothing, and the two look identical from here, which is why the
+       * number is printed rather than a verdict.
+       */
+      fprintf (stderr,
+	       "kdos-bb: sync  demo %7.2fs, player %4d/1000,"
+	       " held %+8d us, err %6d us, worst gap %5ld us\n",
+	       (TIME - songstart) / 1000000.0, prog, held, kept,
+	       sound_worst_gap);
+      kept = 0;
+      sound_worst_gap = 0;
+    }
 }
 
 void

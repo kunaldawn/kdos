@@ -132,6 +132,18 @@ Every redefinition in that file carries its `!`. The hooks run after the rest of
 parsed, so a plain `pcm.default { … }` does not lose a race — it aborts the whole config load and
 every ALSA program on the machine is left with no configuration at all. `aplay -L` is the check.
 
+**Under a hypervisor the card is given a deeper buffer, because an emulated card has no clock of
+its own.** The emulated codec advances its DMA position from the emulator's main loop — the same
+loop that uploads the display — so the position moves in bursts rather than at a steady rate.
+PipeWire computes its own wakeups from that position and keeps about one quantum in the device, so
+a wakeup later than the quantum is silence, and the underrun is the *player's* rather than the
+card's: nothing appears in `dmesg`. `fs/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf` raises the
+quantum floor to 4096 frames — 85 ms at 48 kHz — for a machine whose `cpu.vm.name` is set, which
+measures as 85 ms held at worst and 127 ms typically against 42 ms and 64 ms at PipeWire's own
+1024-frame floor. **A machine booted off metal keeps that floor** and the 21 ms of latency with it.
+`pw-metadata -n settings` says which one is in force, and `pw-top`'s `ERR` column counts the
+underruns.
+
 That is also the route screen-capture audio takes. Capture goes portal → ScreenCast → PipeWire,
 with the sockets crossing into the box the same way.
 
