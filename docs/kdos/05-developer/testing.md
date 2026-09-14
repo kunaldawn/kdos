@@ -714,8 +714,12 @@ Each is a rule with its consequence:
   sink consumes samples on a timer and a host one consumes them as a device does, so a guest whose
   pacing follows its own playback position runs to a different clock on the two. The rig image
   carries neither PipeWire nor PulseAudio, so it gets the null sink; the accelerated image
-  (`testing/qemu-hw`) carries both, and reproducing what `make run-hw` does means running there —
-  add `python3` to it and drive `vnc-shot.py` with `--gl` and `--entrypoint python3`.
+  (`testing/qemu-hw`) carries both, and reproducing what `make run-hw` does means running there.
+  **It needs no Python of its own.** Start that container's emulator with its serial and monitor
+  chardevs on unix sockets in a bind-mounted directory, `chmod 666` them from inside once QEMU has
+  made them — the container is root and the driver is not — and drive it from the host by importing
+  `vnc-shot.py`'s own `Serial` and `Monitor`. `Super+Return` opens a terminal on the console
+  desktop, so `Monitor.type()` is enough to start a program and no pointer is needed.
 - **A step costs seconds, so anything with a timeout must be photographed with no sleep before it.**
   Typing is one character at a time and a `--shot` is a full framebuffer over VNC: `date` either
   side of four shots measured sixty-eight seconds. A five-second toast, a pulse, a tooltip's own
@@ -782,7 +786,7 @@ Each is a rule with its consequence:
 | `appsweep.sh`, `appreport.sh` | Launch every catalogue application and render the results as a table and a contact sheet |
 | `bootcheck` | Boot verification |
 | `prepare_base.py`, `test_runner.py` | Build a minimal root filesystem as a container image and build individual ports against it |
-| `qemu-audio.sh` | Probe for a working audio backend rather than hardcoding one, because the emulator aborts at startup on a backend its build lacks |
+| `qemu-audio.sh` | Probe for a working audio backend rather than hardcoding one, because the emulator aborts at startup on a backend its build lacks — and name the mixer's rate, because QEMU's own default is 44100 and the guest drives the codec at 48000 |
 | `qemu-hw/` | The containerised emulator with accelerated graphics |
 | `usability.sh` | Drives the console desktop the way a person does and leaves a numbered contact sheet; `testing/usability.md` is the checklist to read it against |
 
