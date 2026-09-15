@@ -131,6 +131,15 @@ struct kkms_out {
 	unsigned char *painted;
 };
 
+/*
+ * How many raw input events are held between drains. Two hundred and fifty-six
+ * is four seconds of a hand at human speed and a tenth of a second of a
+ * thousand-hertz mouse whose motion did not coalesce; a queue that fills is a
+ * view that has stopped draining, and the OLDEST entry goes then, because the
+ * newest carries the release a key held down depends on.
+ */
+#define KKMS_RAWQ 256
+
 /* How many screens one session lights. Eight is the number of cards the device
  * sweep already tries; a machine with more connectors than this lights the
  * first eight, which is a shorter desktop and not a broken one. */
@@ -218,6 +227,43 @@ struct kkms {
 	int ptr_seen;
 	KtuiEvent q[64];
 	int qhead, qtail;
+	/*
+	 * HOW MANY COOKED EVENTS A CALLER WILL HAVE TAKEN by the time both
+	 * queues are empty — what was queued, less whatever a full queue
+	 * dropped. Every raw event carries it as KtuiRaw.after, which is the
+	 * only ordering between the two queues.
+	 */
+	unsigned long long cooked_n;
+
+	/*
+	 * AND THE SAME INPUT UNRESOLVED, in a queue of its own. See
+	 * KtuiBackend.poll_raw: a pixel guest wants the switch and the pixel,
+	 * and nothing drawn in cells reads either.
+	 *
+	 * IT CANNOT SHARE THE QUEUE ABOVE. That one drops its OLDEST entry when
+	 * it fills, which is right for a hand that has moved on and wrong here:
+	 * a mouse reporting a thousand positions a second would evict the click
+	 * and the keystroke that came before them. Consecutive motions merge
+	 * into one here instead, and nothing else merges at all — a dropped
+	 * press is a letter that never arrives and a dropped release is a key
+	 * held down for ever.
+	 */
+	KtuiRaw rq[KKMS_RAWQ];
+	int rqhead, rqtail;
+	/* How many entries at the tail were queued since the last cooked event
+	 * and so may still belong to it — see raw_bump() in kkms_input.c. */
+	int rq_pend;
+
+	/*
+	 * THE COMPILED KEYMAP AS TEXT, made on demand and held. xkbcommon
+	 * allocates a fresh copy per call and a guest is handed the layout
+	 * whenever it takes the focus, so asking each time is tens of
+	 * kilobytes of malloc on the focus path. `keymap_gen` is bumped
+	 * whenever the text changes, which is what lets a caller forward it
+	 * again without comparing it.
+	 */
+	char *keymap_text;
+	unsigned keymap_gen;
 };
 
 extern struct kkms K;
@@ -227,5 +273,7 @@ void kkms_input_shutdown(void);
 void kkms_input_pump(void);
 int kkms_input_fd(void);
 int kkms_poll_event(KtuiEvent *ev, int timeout_ms);
+int kkms_poll_raw(KtuiRaw *ev);
+const char *kkms_keymap_text(unsigned *gen);
 
 #endif /* KKMS_PRIV_H */

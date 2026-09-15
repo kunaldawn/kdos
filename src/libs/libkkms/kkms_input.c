@@ -72,16 +72,148 @@ static const struct libinput_interface li_iface = {
 	.close_restricted = li_close,
 };
 
+/*
+ * THE RAW EVENTS QUEUED SINCE THE LAST COOKED ONE BELONG TO IT.
+ *
+ * A handler may queue the switch before the character it resolves to — a
+ * button's evdev code travels whether or not the cells have a name for it — so
+ * the count a raw event was stamped with is provisional until the input it
+ * came from is finished with. Anything still pending when a cooked event is
+ * queued takes that event's number, and a caller then sends the cooked event
+ * first. Without it a guest receives the key and the desktop also acts on it.
+ *
+ * THE WINDOW IS CLOSED WHERE ONE INPUT ENDS, in kkms_input_pump(), and nowhere
+ * else: a raw event still pending when the NEXT input's cooked event is queued
+ * would be paired with the verdict on the key after it.
+ *
+ * ONLY EVER RAISED. A raw event held one cooked event longer than it had to be
+ * is delivered in the same turn; one delivered early is a chord the session
+ * swallowed and the guest saw.
+ */
+static void raw_bump(void)
+{
+	int i = K.rqtail;
+
+	while (K.rq_pend > 0 && i != K.rqhead) {
+		i = (i + KKMS_RAWQ - 1) % KKMS_RAWQ;
+		K.rq[i].after = K.cooked_n;
+		K.rq_pend--;
+	}
+	K.rq_pend = 0;
+}
+
 static void push(const KtuiEvent *e)
 {
 	int next = (K.qtail + 1) % (int)(sizeof(K.q) / sizeof(K.q[0]));
 
 	/* Full means the session is behind. The OLDEST goes, because the
-	 * newest is the one describing where the hand is now. */
-	if (next == K.qhead)
+	 * newest is the one describing where the hand is now. A dropped event
+	 * is one no caller will ever pop, so it leaves the count as well —
+	 * a count that included it would hold every later raw event back for
+	 * a cooked partner that is gone. */
+	if (next == K.qhead) {
 		K.qhead = (K.qhead + 1) % (int)(sizeof(K.q) / sizeof(K.q[0]));
+		K.cooked_n--;
+	}
 	K.q[K.qtail] = *e;
 	K.qtail = next;
+	K.cooked_n++;
+	raw_bump();
+}
+
+/*
+ * A RAW EVENT INTO THE QUEUE A PIXEL GUEST IS DRIVEN FROM. See
+ * KtuiBackend.poll_raw and `rq` in kkms_priv.h.
+ *
+ * A BARE MOTION MERGES INTO THE PENDING NEWEST ONE and its deltas are SUMMED,
+ * not replaced: only the newest position is true, but a delta is a distance,
+ * and dropping one shortens the movement a guest that grabbed the pointer
+ * sees.
+ *
+ * NOTHING ELSE MERGES, and a message carrying a button, a key or an axis is
+ * the boundary. A click coalesced away is a click that never happened, and a
+ * click merged into a later position is a click on the wrong thing.
+ *
+ * AND EVERY ENTRY TAKES THE COOKED COUNT, stamped here and raised by
+ * raw_bump() above, which is the whole of the ordering between the two queues.
+ * A merge takes the later count with the later position, because it is also
+ * the later event.
+ */
+static void rpush(const KtuiRaw *e)
+{
+	int last = (K.rqtail + KKMS_RAWQ - 1) % KKMS_RAWQ;
+
+	if (e->type == KT_RAW_PTR && !e->code && K.rqhead != K.rqtail &&
+	    K.rq[last].type == KT_RAW_PTR && !K.rq[last].code) {
+		int dx = K.rq[last].dx + e->dx;
+		int dy = K.rq[last].dy + e->dy;
+		int ux = K.rq[last].dx_un + e->dx_un;
+		int uy = K.rq[last].dy_un + e->dy_un;
+
+		K.rq[last] = *e;
+		K.rq[last].dx = dx;
+		K.rq[last].dy = dy;
+		K.rq[last].dx_un = ux;
+		K.rq[last].dy_un = uy;
+		K.rq[last].after = K.cooked_n;
+		if (!K.rq_pend)
+			K.rq_pend = 1;
+		return;
+	}
+
+	int next = (K.rqtail + 1) % KKMS_RAWQ;
+
+	if (next == K.rqhead)
+		K.rqhead = (K.rqhead + 1) % KKMS_RAWQ;
+	K.rq[K.rqtail] = *e;
+	K.rq[K.rqtail].after = K.cooked_n;
+	K.rqtail = next;
+	if (K.rq_pend < KKMS_RAWQ)
+		K.rq_pend++;
+}
+
+/* Pixels to the 1/256ths every raw distance is carried in, rounded away from
+ * zero: a slow drag whose every step truncated to nothing is a pointer that
+ * does not move at all. */
+static int fx(double px)
+{
+	return (int)(px * 256.0 + (px < 0.0 ? -0.5 : 0.5));
+}
+
+/*
+ * THE XKB STATE AS IT STANDS, for a guest to resync against. It is not what
+ * drives the guest's modifiers — the key stream is, because xkb's own rule is
+ * that a state driven by keys must not also be set by mask — so this carries
+ * only what no key can establish: a lock, and the layout group.
+ */
+static void raw_xkb(KtuiRaw *e)
+{
+	if (!K.state)
+		return;
+	e->depressed = xkb_state_serialize_mods(K.state,
+					       XKB_STATE_MODS_DEPRESSED);
+	e->latched = xkb_state_serialize_mods(K.state, XKB_STATE_MODS_LATCHED);
+	e->locked = xkb_state_serialize_mods(K.state, XKB_STATE_MODS_LOCKED);
+	e->group = xkb_state_serialize_layout(K.state,
+					     XKB_STATE_LAYOUT_EFFECTIVE);
+}
+
+/*
+ * A KEY AS THE SWITCH IT IS, beside the character above. The code is EVDEV'S
+ * and not xkb's: the eight xkb adds is added again by whoever compiles a
+ * keymap at the far end, and adding it twice is a keyboard one row out.
+ */
+static void raw_key(uint32_t evcode, int down, unsigned ms)
+{
+	KtuiRaw r;
+
+	memset(&r, 0, sizeof(r));
+	r.type = KT_RAW_KEY;
+	r.code = (int)evcode;
+	r.state = down;
+	r.ms = ms;
+	raw_xkb(&r);
+	rpush(&r);
 }
 
 static int mods_now(void)
@@ -249,6 +381,20 @@ static void on_key(struct libinput_event *ev)
 
 	xkb_state_update_key(K.state, code,
 			     down ? XKB_KEY_DOWN : XKB_KEY_UP);
+
+	/*
+	 * AND THE SWITCH, AFTER THE STATE HAS MOVED, so the mask a guest
+	 * resyncs from describes the keyboard including this key. Every key
+	 * travels here, the ones that produce no character included: a guest
+	 * that never saw Ctrl go down cannot read Ctrl+click, and one that
+	 * never saw a release holds the key for ever.
+	 *
+	 * The VT switch above returns before this. It is TAKEN and not
+	 * forwarded — the keysym exists nowhere else — so no guest is handed a
+	 * chord that moved the machine to another terminal.
+	 */
+	raw_key(code - 8, down,
+		(unsigned)libinput_event_keyboard_get_time(k));
 }
 
 /*
@@ -314,21 +460,78 @@ static void moved(void)
 	push(&e);
 }
 
+/*
+ * WHERE THE POINTER IS IN PIXELS, AND HOW FAR THE DEVICE MOVED. Emitted for
+ * EVERY motion, unlike the cell above it: a scrollbar two pixels wide and a
+ * gizmo in a three-dimensional editor are aimed at inside one character cell,
+ * and a stream sampled at cell crossings cannot reach either.
+ *
+ * Called after moved(), which is what clamps the position into the desktop —
+ * a raw event carrying a position outside it would put a guest's pointer where
+ * the arrow on the screen is not.
+ */
+static void raw_motion(double dx, double dy, double ux, double uy, unsigned ms)
+{
+	int cw = kcell_w(), ch = kcell_h();
+	KtuiRaw r;
+
+	/* THE CELL IS A DIVISOR at whatever derives a cell from this, so a
+	 * backend that has none yet reports nothing — and the position would
+	 * be an unclamped one in any case, because moved() left early too. */
+	if (cw <= 0 || ch <= 0)
+		return;
+
+	memset(&r, 0, sizeof(r));
+	r.type = KT_RAW_PTR;
+	r.x = (int)K.ptr_px;
+	r.y = (int)K.ptr_py;
+	r.cell_w = cw;
+	r.cell_h = ch;
+	r.dx = fx(dx);
+	r.dy = fx(dy);
+	r.dx_un = fx(ux);
+	r.dy_un = fx(uy);
+	r.mods = mods_now();
+	r.ms = ms;
+	rpush(&r);
+}
+
 static void on_motion(struct libinput_event *ev, int absolute)
 {
 	struct libinput_event_pointer *p = libinput_event_get_pointer_event(ev);
+	double dx, dy, ux, uy;
 
 	if (absolute) {
+		double ox = K.ptr_px, oy = K.ptr_py;
+		/* READ BEFORE moved() SETS IT: the first sample from an
+		 * absolute device is a place and not a step, because the
+		 * pointer was never where the seed put it. Reporting the seed
+		 * as a distance moves a guest that reads deltas half the
+		 * desktop on the first touch of a tablet. */
+		int seen = K.ptr_seen;
+
 		K.ptr_px = libinput_event_pointer_get_absolute_x_transformed(
 			p, K.vw);
 		K.ptr_py = libinput_event_pointer_get_absolute_y_transformed(
 			p, K.vh);
+		/* AN ABSOLUTE DEVICE REPORTS A PLACE AND NOT A DISTANCE. The
+		 * step between two places is the only delta there is, and it
+		 * is the same number accelerated and not, because nothing
+		 * accelerated it. */
+		dx = ux = seen ? K.ptr_px - ox : 0.0;
+		dy = uy = seen ? K.ptr_py - oy : 0.0;
 	} else {
-		K.ptr_px += libinput_event_pointer_get_dx(p);
-		K.ptr_py += libinput_event_pointer_get_dy(p);
+		dx = libinput_event_pointer_get_dx(p);
+		dy = libinput_event_pointer_get_dy(p);
+		ux = libinput_event_pointer_get_dx_unaccelerated(p);
+		uy = libinput_event_pointer_get_dy_unaccelerated(p);
+		K.ptr_px += dx;
+		K.ptr_py += dy;
 	}
 
 	moved();
+	raw_motion(dx, dy, ux, uy,
+		   (unsigned)libinput_event_pointer_get_time(p));
 }
 
 static void on_button(struct libinput_event *ev)
@@ -337,13 +540,39 @@ static void on_button(struct libinput_event *ev)
 	uint32_t b = libinput_event_pointer_get_button(p);
 	int down = libinput_event_pointer_get_button_state(p) ==
 		   LIBINPUT_BUTTON_STATE_PRESSED;
+	int cw = kcell_w(), ch = kcell_h();
 	KtuiEvent e;
+
+	/*
+	 * EVERY BUTTON THE DEVICE HAS, and the evdev code it sent. The switch
+	 * below names three; a mouse with side buttons drives Back and Forward
+	 * in a browser, and narrowing here is where those stop existing.
+	 */
+	if (cw > 0 && ch > 0) {
+		KtuiRaw r;
+
+		memset(&r, 0, sizeof(r));
+		r.type = KT_RAW_PTR;
+		r.code = (int)b;
+		r.state = down;
+		r.x = (int)K.ptr_px;
+		r.y = (int)K.ptr_py;
+		r.cell_w = cw;
+		r.cell_h = ch;
+		r.mods = mods_now();
+		r.ms = (unsigned)libinput_event_pointer_get_time(p);
+		rpush(&r);
+	}
 
 	memset(&e, 0, sizeof(e));
 	e.type = KT_EVT_MOUSE;
 	e.mx = K.ptr_x;
 	e.my = K.ptr_y;
 	sub_of(&e);
+	/* The modifiers held with the click, which the other two backends
+	 * already carry — a chord on a pointer is Super and a drag, and a
+	 * backend that reports the button without them cannot express one. */
+	e.mods = mods_now();
 	e.press = down ? KT_MP_PRESS : KT_MP_RELEASE;
 
 	switch (b) {
@@ -356,9 +585,85 @@ static void on_button(struct libinput_event *ev)
 	push(&e);
 }
 
+/*
+ * WHAT ONE DETENT IS WORTH IN PIXELS, on the raw arm. The cell path spends no
+ * pixels at all — it counts one detent per frame and names it KT_MB_WHEEL_UP
+ * or _DOWN — so this is the one place a notch is turned into a distance.
+ */
+#define KKMS_WHEEL_STEP_PX 10.0
+
+static int axis_src_of(struct libinput_event_pointer *p)
+{
+	switch (libinput_event_pointer_get_axis_source(p)) {
+	case LIBINPUT_POINTER_AXIS_SOURCE_FINGER:
+		return KT_RAW_SRC_FINGER;
+	case LIBINPUT_POINTER_AXIS_SOURCE_CONTINUOUS:
+		return KT_RAW_SRC_CONTINUOUS;
+	case LIBINPUT_POINTER_AXIS_SOURCE_WHEEL_TILT:
+		return KT_RAW_SRC_WHEEL_TILT;
+	default:
+		return KT_RAW_SRC_WHEEL;
+	}
+}
+
+/*
+ * A SCROLL ALONG ONE AXIS, WITH ITS REAL VALUE AND WHAT MADE IT.
+ *
+ * BOTH AXES REACH HERE and only the vertical one reaches the cells: the cell
+ * path's whole scroll vocabulary is KT_MB_WHEEL_UP and _DOWN, so a horizontal
+ * scroll has nowhere to go there and reaches nothing drawn in cells.
+ *
+ * NOT QUANTISED TO A TICK EITHER. The accumulator below exists to make a whole
+ * row out of a finger's stream, which is what a grid moves by; a pixel guest
+ * wants the stream, and a page that jumps a screen per detent is the tick
+ * arriving somewhere that could have used the distance.
+ */
+static void raw_axis(struct libinput_event_pointer *p,
+		     enum libinput_pointer_axis li, int axis, unsigned ms)
+{
+	KtuiRaw r;
+
+	if (!libinput_event_pointer_has_axis(p, li))
+		return;
+
+	memset(&r, 0, sizeof(r));
+	r.type = KT_RAW_AXIS;
+	r.axis = axis;
+	r.source = axis_src_of(p);
+	r.mods = mods_now();
+	r.ms = ms;
+
+	if (r.source == KT_RAW_SRC_WHEEL ||
+	    r.source == KT_RAW_SRC_WHEEL_TILT) {
+		/*
+		 * A DETENT IS COUNTED, NOT MEASURED. libinput reports a
+		 * wheel's value in DEGREES, which nothing scrolls by; the
+		 * count is what the device measured, 120 to a detent is what a
+		 * high-resolution client steps by, and the distance is that
+		 * count times the step above.
+		 */
+		double d = libinput_event_pointer_get_axis_value_discrete(p,
+									 li);
+
+		r.value120 = (int)(d * 120.0);
+		r.value = fx(d * KKMS_WHEEL_STEP_PX);
+	} else {
+		/* A finger's value IS pixels, and a zero of it is libinput
+		 * saying the finger left the pad — which is the end of the
+		 * gesture, and is why a zero is a message rather than
+		 * nothing. */
+		r.value = fx(libinput_event_pointer_get_axis_value(p, li));
+	}
+	rpush(&r);
+}
+
 static void on_axis(struct libinput_event *ev)
 {
 	struct libinput_event_pointer *p = libinput_event_get_pointer_event(ev);
+	unsigned ms = (unsigned)libinput_event_pointer_get_time(p);
+
+	raw_axis(p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL, KT_RAW_VERT, ms);
+	raw_axis(p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL, KT_RAW_HORIZ, ms);
 
 	if (!libinput_event_pointer_has_axis(
 		    p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL))
@@ -524,6 +829,11 @@ int kkms_input_init(void)
 
 void kkms_input_shutdown(void)
 {
+	if (K.keymap_text) {
+		free(K.keymap_text);
+		K.keymap_text = NULL;
+	}
+	K.rqhead = K.rqtail = 0;
 	if (K.state) {
 		xkb_state_unref(K.state);
 		K.state = NULL;
@@ -563,6 +873,15 @@ void kkms_input_pump(void)
 
 	while ((ev = libinput_get_event(K.li))) {
 		/*
+		 * A NEW PHYSICAL INPUT CLOSES THE LAST ONE'S WINDOW. Anything
+		 * raw_bump() could still raise belongs to the event just
+		 * handled, and raising it for THIS event's cooked message
+		 * would pair a key's switch with the verdict on the key after
+		 * it. See raw_bump().
+		 */
+		K.rq_pend = 0;
+
+		/*
 		 * NOTHING IS ACTED ON WHILE THE SESSION IS SWITCHED AWAY. The
 		 * devices are suspended, but events queued before the switch
 		 * would otherwise arrive as if they had just happened.
@@ -581,13 +900,27 @@ void kkms_input_pump(void)
 					libinput_event_get_keyboard_event(ev);
 				uint32_t code =
 					libinput_event_keyboard_get_key(k) + 8;
-
-				xkb_state_update_key(
-					K.state, code,
+				int down =
 					libinput_event_keyboard_get_key_state(k) ==
-							LIBINPUT_KEY_STATE_PRESSED
-						? XKB_KEY_DOWN
-						: XKB_KEY_UP);
+					LIBINPUT_KEY_STATE_PRESSED;
+
+				xkb_state_update_key(K.state, code,
+						     down ? XKB_KEY_DOWN
+							  : XKB_KEY_UP);
+				/*
+				 * AND A RELEASE STILL TRAVELS RAW, though a
+				 * press does not. The switch away is acted on
+				 * at the press and the releases arrive after
+				 * the seat has gone, so a guest that was
+				 * handed the presses holds those keys for the
+				 * rest of its life. A release for a key the
+				 * guest never saw pressed is the harmless
+				 * direction; the other one is a keyboard that
+				 * types nothing but a chord.
+				 */
+				if (!down)
+					raw_key(code - 8, 0,
+						(unsigned)libinput_event_keyboard_get_time(k));
 			}
 			libinput_event_destroy(ev);
 			continue;
@@ -650,6 +983,11 @@ void kkms_input_pump(void)
 	 * re-resolved with them: that would turn a repeating letter into its
 	 * capital mid-stream, and a function key into a VT switch.
 	 */
+	/* AND THE LAST DISPATCHED EVENT'S WINDOW IS CLOSED TOO, so that a
+	 * repeat or a long press below does not pull a raw event that already
+	 * has its answer along behind it. */
+	K.rq_pend = 0;
+
 	if (K.active && K.rep_code) {
 		unsigned long long now = rep_now_ms();
 
@@ -689,6 +1027,39 @@ void kkms_input_pump(void)
 			push(&e);
 		}
 	}
+}
+
+/*
+ * THE LAYOUT THIS KEYBOARD IS RUNNING, as xkb's text. Made once and held: a
+ * guest is handed it whenever it takes the focus, and xkbcommon allocates a
+ * fresh copy of tens of kilobytes per call.
+ *
+ * `gen` is what a caller compares instead of the text. It is bumped when the
+ * text is made, so a caller holding zero always forwards the first one.
+ */
+const char *kkms_keymap_text(unsigned *gen)
+{
+	if (!K.keymap)
+		return NULL;
+	if (!K.keymap_text) {
+		K.keymap_text = xkb_keymap_get_as_string(
+			K.keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
+		if (!K.keymap_text)
+			return NULL;
+		K.keymap_gen++;
+	}
+	if (gen)
+		*gen = K.keymap_gen;
+	return K.keymap_text;
+}
+
+int kkms_poll_raw(KtuiRaw *ev)
+{
+	if (K.rqhead == K.rqtail)
+		return 0;
+	*ev = K.rq[K.rqhead];
+	K.rqhead = (K.rqhead + 1) % KKMS_RAWQ;
+	return 1;
 }
 
 int kkms_poll_event(KtuiEvent *ev, int timeout_ms)

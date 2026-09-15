@@ -271,10 +271,15 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		case KCON_OP_KEY:
 		case KCON_OP_PTR:
 		case KCON_OP_TOUCH:
+		case KCON_OP_KEY_RAW:
+		case KCON_OP_PTR_RAW:
+		case KCON_OP_AXIS_RAW:
+		case KCON_OP_KEYMAP:
 		case KCON_OP_PASTE:
 		case KCON_OP_VIEW_SIZE:
 		case KCON_OP_VIEW_FONTS:
 		case KCON_OP_VIEW_OUTPUTS:
+		case KCON_OP_SPRITE_LOST:
 			break;
 		default:
 			return;
@@ -917,6 +922,140 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 						    gest, s->user);
 		}
 		break;
+	case KCON_OP_KEY_RAW: {
+		/*
+		 * THE SWITCH BESIDE THE CHARACTER, for the one thing on this
+		 * desktop that is not cells. The cooked KCON_OP_KEY for the
+		 * same physical key has already been delivered, so the session
+		 * has decided whether a chord ate it before this arrives.
+		 *
+		 * The same guard KCON_OP_KEY keeps: a display only, and never
+		 * one that attached to watch. AND ONLY FROM A VIEW THAT SAID
+		 * IT HAS THE DEVICE — a view without KCON_VIEW_RAW is never
+		 * asked for any of this, so one that sends it is reporting a
+		 * keyboard it told the session it does not have. The three
+		 * arms below keep the same gate.
+		 */
+		KconKeyRaw k = { 0 };
+		unsigned code;
+
+		if (f->kind != KCON_KIND_VIEW || f->observe ||
+		    !(f->caps & KCON_VIEW_RAW) || !s->hooks.view_key_raw)
+			break;
+		code = kcon_get_u16(&r);
+		k.state = kcon_get_u8(&r) ? 1 : 0;
+		k.depressed = kcon_get_u32(&r);
+		k.latched = kcon_get_u32(&r);
+		k.locked = kcon_get_u32(&r);
+		k.group = kcon_get_u32(&r);
+		k.ms = kcon_get_u32(&r);
+		/*
+		 * A KEYCODE FROM A PEER IS AN INDEX. What holds a bit per key
+		 * — the presses a window is owed a release for — is sized from
+		 * KCON_KEYCODE_MAX, so a higher code is a write outside it.
+		 */
+		if (r.err || code > KCON_KEYCODE_MAX)
+			break;
+		k.code = (int)code;
+		s->hooks.view_key_raw(f, &k, s->user);
+		break;
+	}
+	case KCON_OP_PTR_RAW: {
+		KconPtrRaw p = { 0 };
+		unsigned cw, ch, btn;
+
+		if (f->kind != KCON_KIND_VIEW || f->observe ||
+		    !(f->caps & KCON_VIEW_RAW) || !s->hooks.view_ptr_raw)
+			break;
+		p.x = kcon_get_i32(&r);
+		p.y = kcon_get_i32(&r);
+		cw = kcon_get_u16(&r);
+		ch = kcon_get_u16(&r);
+		p.dx = kcon_get_i32(&r);
+		p.dy = kcon_get_i32(&r);
+		p.dx_un = kcon_get_i32(&r);
+		p.dy_un = kcon_get_i32(&r);
+		btn = kcon_get_u16(&r);
+		p.state = kcon_get_u8(&r) ? 1 : 0;
+		p.mods = (int)kcon_get_u8(&r);
+		p.ms = kcon_get_u32(&r);
+		/*
+		 * A CELL SIZE IS A DIVISOR and a button is an index. The
+		 * session divides by the cell to derive the same cell the view
+		 * would have, so a zero is refused here rather than faulting
+		 * one caller later; a button shares the key number space and
+		 * is bounded with it.
+		 */
+		if (r.err || !cw || !ch || btn > KCON_KEYCODE_MAX)
+			break;
+		p.cell_w = (int)cw;
+		p.cell_h = (int)ch;
+		p.button = (int)btn;
+		s->hooks.view_ptr_raw(f, &p, s->user);
+		break;
+	}
+	case KCON_OP_AXIS_RAW: {
+		KconAxisRaw a = { 0 };
+		unsigned axis, src;
+
+		if (f->kind != KCON_KIND_VIEW || f->observe ||
+		    !(f->caps & KCON_VIEW_RAW) || !s->hooks.view_axis_raw)
+			break;
+		a.value = kcon_get_i32(&r);
+		a.value120 = kcon_get_i32(&r);
+		axis = kcon_get_u8(&r);
+		src = kcon_get_u8(&r);
+		a.flags = (int)(kcon_get_u8(&r) & KCON_AXIS_INVERTED);
+		a.mods = (int)kcon_get_u8(&r);
+		a.ms = kcon_get_u32(&r);
+		/*
+		 * AN AXIS OR A SOURCE OUTSIDE ITS ENUM IS REFUSED. The far end
+		 * maps both in a switch, and a scroll whose direction it had
+		 * to guess is a page that moves the wrong way.
+		 */
+		if (r.err || axis > KCON_AXIS_HORIZ || src >= KCON_AXIS_SRC_N)
+			break;
+		a.axis = (int)axis;
+		a.source = (int)src;
+		s->hooks.view_axis_raw(f, &a, s->user);
+		break;
+	}
+	case KCON_OP_KEYMAP: {
+		/*
+		 * WHAT THIS VIEW'S KEYBOARD IS RUNNING, as bytes. No
+		 * descriptor crosses this socket — that is what lets a view be
+		 * forwarded — so the text itself travels and the session seals
+		 * its own copy of it.
+		 */
+		int fmt;
+		uint32_t n;
+		const char *text;
+
+		if (f->kind != KCON_KIND_VIEW || f->observe ||
+		    !(f->caps & KCON_VIEW_RAW) || !s->hooks.view_keymap)
+			break;
+		fmt = (int)kcon_get_u8(&r);
+		n = kcon_get_u32(&r);
+		/*
+		 * A LENGTH FROM A PEER IS AN ALLOCATION REQUEST, and this peer
+		 * may be a machine at the other end of an ssh link. A format
+		 * neither end compiles is refused with it: the bytes would be
+		 * handed to an xkb compiler that reads only this one.
+		 */
+		if (r.err || fmt != KCON_KEYMAP_XKB_V1 || !n ||
+		    n > KCON_KEYMAP_MAX)
+			break;
+		text = kcon_get_blob(&r, n);
+		/*
+		 * AND A COMPILER READS TO A NUL. `n` counts the terminator, so
+		 * a text that does not end in one is a text the consumer would
+		 * read past the end of.
+		 */
+		if (r.err || !text || text[n - 1] != '\0')
+			break;
+		s->hooks.view_keymap(f, fmt, text, n, s->user);
+		break;
+	}
 	case KCON_OP_TITLE:
 		snprintf(f->title, sizeof(f->title), "%s", kcon_get_str(&r));
 		break;
@@ -1014,6 +1153,42 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		if (f->slotmap[cslot] >= 0) {
 			slot_give(s, f->slotmap[cslot]);
 			f->slotmap[cslot] = -1;
+		}
+		break;
+	}
+	case KCON_OP_SPRITE_LOST: {
+		/*
+		 * PICTURES A DISPLAY COULD NOT KEEP, so whatever owns them can
+		 * owe them again. One message carries the whole set the view
+		 * refused since it last presented; see KCON_OP_SPRITE_LOST.
+		 */
+		unsigned n = kcon_get_u16(&r);
+
+		if (r.err || f->kind != KCON_KIND_VIEW)
+			return;
+		/*
+		 * A COUNT FROM A PEER IS A LOOP BOUND. No display can lose
+		 * more slots than the map holds, so a larger claim is a peer
+		 * spending this loop rather than reporting a loss.
+		 */
+		if (n > KCON_MAX_SPRITE_MAP)
+			n = KCON_MAX_SPRITE_MAP;
+
+		for (unsigned i = 0; i < n; i++) {
+			unsigned slot = kcon_get_u16(&r);
+
+			if (r.err)
+				break;
+			/*
+			 * AND A SLOT FROM A PEER IS AN INDEX. The hook hands
+			 * it straight to a table of the session's own; one
+			 * past the map is a write outside it.
+			 */
+			if (slot >= KCON_MAX_SPRITE_MAP)
+				continue;
+			if (s->hooks.view_sprite_lost)
+				s->hooks.view_sprite_lost(f, (int)slot,
+							  s->user);
 		}
 		break;
 	}
@@ -1696,6 +1871,28 @@ void kcon_view_blank(KconSurface *v, int on)
 
 	kcon_put_u16(&b, (uint16_t)(on ? 1 : 0));
 	kcon_send(v->conn, KCON_OP_BLANK, &b);
+	kcon_buf_free(&b);
+}
+
+/*
+ * ASK THIS VIEW FOR RAW INPUT, or stop. Silently nothing on a view that did
+ * not claim KCON_VIEW_RAW, the rule every other capability-gated call keeps —
+ * a display inside somebody's terminal has no device to report and is never
+ * asked.
+ *
+ * ASKED ONLY WHILE SOMETHING READS IT: the stream is one message per device
+ * event, so a session that left it on with no pixel guest focused would spend
+ * a display's link on input nothing consumes.
+ */
+void kcon_view_raw(KconSurface *v, int on)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !(v->caps & KCON_VIEW_RAW))
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u8(&b, (uint8_t)(on ? 1 : 0));
+	kcon_send(v->conn, KCON_OP_VIEW_RAW, &b);
 	kcon_buf_free(&b);
 }
 

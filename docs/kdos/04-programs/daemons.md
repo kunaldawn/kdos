@@ -436,7 +436,16 @@ that appears not to exist — and two different runtime directories can land on 
 
 ## kdos-boxsock
 
-Not a `/run` daemon: **one tagged Wayland socket per box**.
+Not a `/run` daemon: **one tagged Wayland socket per box, per compositor**.
+
+**The path carries the display's name as well as the box's**, because the listener belongs to the
+compositor this process connected to — and the console desktop runs a `kdos-cage` per launched
+*application*, so several compositors are alive at once with a display name each. A path keyed on
+the box alone is the first launch's compositor for ever after: a later launch finds the file
+already there and connects through a compositor that is not the one it will run under, and may
+already be gone, so it is tagged by a listener its own compositor never bound. `kdos-appbox`
+derives the same component from the same variable, which is what keeps the two in step with nothing
+passed between them.
 
 It binds a socket for one box, hands it to the compositor tagged with the box's name and instance,
 and then **stays alive holding the descriptor that keeps the tag valid**. Every client connecting

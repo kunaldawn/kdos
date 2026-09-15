@@ -575,16 +575,29 @@ static void write_launchers(const char *dir)
 		if (a->cmdonly)
 			continue;
 		KbBuf b = {0};
+		char box[128] = "";
+
+		/*
+		 * THE LAUNCHER CARRIES THE BOX. `-b <pack>` is the pack id, and
+		 * the pack id is what a box profile is filed under
+		 * (~/.config/kdos/boxes/<pack>.conf) — so `run` skips the
+		 * exec→pack table entirely and kdos-con reads a guest's policy
+		 * key straight off the argv instead of reversing the box layout
+		 * out of an absolute Exec. A row with no pack keeps the bare
+		 * verb, and both sides fall back to the program's own name.
+		 */
+		if (a->pack[0])
+			snprintf(box, sizeof(box), "-b %s ", a->pack);
 		kb_buf_printf(&b,
 			      "[Desktop Entry]\n"
 			      "Type=Application\n"
 			      "Name=%s\n"
 			      "Comment=%s (alien app, kdos-apps box)\n"
-			      "Exec=kdos-appbox run %s\n"
+			      "Exec=kdos-appbox %srun %s\n"
 			      "Icon=%s\n"
 			      "Terminal=%s\n"
 			      "Categories=%s\n",
-			      a->name, a->name, a->exec, a->icon,
+			      a->name, a->name, box, a->exec, a->icon,
 			      a->terminal ? "true" : "false", a->cats);
 		if (a->generic[0])
 			kb_buf_printf(&b, "GenericName=%s\n", a->generic);

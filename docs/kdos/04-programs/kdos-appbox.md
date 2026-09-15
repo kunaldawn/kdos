@@ -43,10 +43,13 @@ It links four of our libraries and nothing else.
 
 In order, because the order is the design:
 
-1. **Resolve the pack from the command.** `run <exec>` is the form every desktop entry uses, and
-   the pack is looked up by **matching the command column whole and then by basename**. Without
-   this, only the shim path found a pack and the Start menu launched every application into a
-   default box the pack system never had — while the same application worked from a prompt.
+1. **Resolve the box.** A generated launcher for an application that belongs to a pack writes
+   `Exec=kdos-appbox -b <pack> run <exec>`, so the box is named outright and no lookup happens —
+   `-b` is parsed before the verb, and `<pack>` is the same string the box profile is filed under.
+   A command with no `-b` — a prompt, a shim, an entry naming no box — resolves the pack from the
+   command instead, by **matching the command column whole and then by basename**. An exec no
+   installed pack carries is **refused by name**: composing a box out of a name no pack answers to
+   fails a step later, with a sentence about a box nobody asked for.
 2. **Choose the storage driver, once.** See [Storage drivers](#storage-drivers).
 3. **Compose the pack stack**, if it is not composed. This is idempotent, and it is required
    because the overlay lives on a temporary filesystem — a box created before a reboot has a root
@@ -137,6 +140,13 @@ tree, and a run as anyone else fails rather than reporting a launcher set it did
 
 ### Naming rules
 
+- **The launcher carries its box.** An application that belongs to a pack gets
+  `Exec=kdos-appbox -b <pack> run <exec>`; one with no pack keeps the bare `Exec=kdos-appbox run
+  <exec>`. `<pack>` is the pack identifier, which is also the box name and the stem of the box
+  profile — so the console reads a guest's policy key straight off the argument vector instead of
+  reversing the box layout out of an absolute `Exec`, and `run` skips the command table entirely.
+  A guest launched without `-b` resolves to the program's basename, which names a window but no
+  profile.
 - **The launcher filename is upstream's own desktop identifier**, not a KDOS-prefixed name and not
   the window-class field. A dock matches a running window to an entry by the entry's **file
   identifier**, so a mismatch shows a second generic icon beside the pinned one.
@@ -302,6 +312,15 @@ Three properties this list is written to keep:
   is **no flag that grants a box a speaker and denies it a camera**.
 - **An unknown key is reported by name.**
 
+**Two keys in the same file are the console session's and not the container's.** `display = vt`
+pins a box's applications to a virtual terminal of their own instead of the windows they otherwise
+become, and `render = gpu` composites those windows on the card rather than in the software
+renderer — a different question from `gpu`, which every box carries and which grants nothing on its
+own: like `audio` it rides on `devices`, and the render node is in the box because the whole of
+`/dev` is. `kdos-con` reads both straight out of the profile file, and `kdos-box profile` carries them through
+a rewrite without interpreting them — a profile writer that knows only its own keys deletes
+everybody else's, which is a setting that disappears the next time an unrelated one is changed.
+
 **`memory` is enforced by the memory daemon**, and that is what makes the key honest: rootless
 containers on a machine with no cgroup delegation accept a memory limit and ignore it. So the
 daemon reads the profiles and **prefers a box that is over its own declared budget** as a victim,
@@ -359,9 +378,10 @@ a window to an entry by file identifier, and the panel now has a better key than
 ## Warmup and collection
 
 **Warmup is the pinned set.** One box per application means a single login warmup covers nothing,
-so the warmup reads the favourites file — which holds desktop identifiers — resolves each through
-its entry's command to the shim the table is keyed by, and composes and starts that pack's box at
-low priority.
+so the warmup reads the favourites file — which holds desktop identifiers — takes the pack from
+each entry's `Exec` (`-b <pack>` where it is named, otherwise the command resolved through the
+table), and composes and starts that pack's box at low priority. The first word of a generated
+entry is this binary and never a shim, so reading a shim out of it warms nothing and exits 0.
 
 **The collector runs every ten minutes from the session**, and **asks the compositor first**: a box
 with a mapped window is not idle whatever its clock says, and the command socket is the one question

@@ -480,10 +480,23 @@ void panel_draw(void)
 		if (w->overlay || w->background)
 			continue;
 		/*
+		 * AND ONE APPLICATION IS ONE ROW. A dialog, a tool palette and
+		 * a splash belong to a window that already has one, so an
+		 * editor with four docks and a file chooser open is one entry
+		 * here and not six — which is the whole difference between a
+		 * bar a person aims at and a bar that grows a button every
+		 * time a question is asked.
+		 */
+		if (w->no_task)
+			continue;
+		/*
 		 * A MINIMISED WINDOW KEEPS ITS ROW. The row is the way back:
 		 * it is drawn nowhere else, cycled past and not hit-testable
 		 * on the desktop, so dropping it from the bar as well would
-		 * leave the chord as the only route to it.
+		 * leave the chord as the only route to it. A window the test
+		 * above drops is not stranded by that: it cannot be minimised
+		 * on its own, and when its owner is put away it goes with it
+		 * and comes back on that owner's row.
 		 *
 		 * A HIDDEN ONE DOES NOT, and that is the difference between
 		 * the two states: the scratchpad's chord is its way back, so a

@@ -266,7 +266,8 @@ root. Ownership grants nothing either way, since packs are mounted `nosuid`.
 
 **`kdos-boxinit` is the container's init**, in place of a general-purpose container-init program:
 it creates a user and group matching the host's, sets the search path including the games
-directory, announces readiness where the launcher looks for it, and then stays alive reaping. It
+directory, writes `/usr/local/bin/xdg-open` and `/etc/asound.conf`, announces readiness where the
+launcher looks for it, and then stays alive reaping. It
 is **statically linked**, because it is bind-mounted into a container whose libraries are Debian's
 and a host-linked binary would look for its loader there.
 

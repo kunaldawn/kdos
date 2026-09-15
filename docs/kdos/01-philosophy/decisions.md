@@ -41,9 +41,9 @@ pixels. A graphical application launched there needs *something* holding a displ
 output in memory it renders into, or a VT of its own. `kdos-comp` is already a compositor this
 project owns — give it a kiosk mode, or take a second one?
 
-**Chosen: a hard fork of cage 0.3.1**, MIT, in `src/desktop/kdos-cage`. Seven `.c` files, built on
-`wlroots-0.20` — the branch this tree already pins for the labwc fork, so there is one wlroots to
-keep current and not two.
+**Chosen: a hard fork of cage 0.3.1**, MIT, in `src/desktop/kdos-cage`, built on `wlroots-0.20` —
+the branch this tree already pins for the labwc fork, so there is one wlroots to keep current and
+not two.
 
 **Rejected: a `--kiosk` flag on `kdos-comp`.** The compositor is a *desktop*: window management,
 workspaces, tiling, the panel's foreign-toplevel feed, the phosphor pass, per-box identity, the
@@ -56,11 +56,12 @@ because the job is smaller: a kiosk compositor is roughly three thousand lines o
 tested XWayland integration, output layout, seat handling and idle inhibition.
 
 **And the compositing happens in a SEPARATE PROCESS, which is what makes the whole thing safe to
-have.** One `kdos-cage --embed` per embedded window renders into a shared mapping and the session
-puts the bytes in its cells. So `kdos-con` links no wlroots, no mesa and no pixel library at all: a
-machine whose GPU driver is broken still boots into its desktop, and a graphical toolkit that
-crashes takes one window with it rather than the session. A compositor built into the session would
-have traded exactly that away for one fewer process.
+have.** One `kdos-cage --embed` per embedded APPLICATION renders each toplevel that application maps
+into a mapping of its own, and the session puts the bytes in its cells. So `kdos-con` links no
+wlroots, no mesa and no pixel library at all: a machine whose GPU driver is broken still boots into
+its desktop, and a graphical toolkit that crashes takes that application's windows with it rather
+than the session. A compositor built into the session would have traded exactly that away for one
+fewer process.
 
 **What the fork changed.** The name, in what a person sees. `security-context-v1`, so
 `kdos-boxsock` can tag a box's socket exactly as it does under the compositor — one launch path for

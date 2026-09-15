@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <libgen.h>
+#include <linux/input-event-codes.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -283,14 +284,43 @@ static void settle(void)
  * screen here and never will be.
  * ──────────────────────────────────────────────────────────────────────── */
 
-static KtuiEvent evq[128];
+/*
+ * THE COOKED EVENT, AND WHETHER THE VIEW THAT SENT IT ALSO SENDS THE RAW ONE.
+ *
+ * A view that reports a real keyboard and a real pointing device sends both
+ * streams for one physical input: the character and cell everything drawn in
+ * cells reads, and the evdev code and pixel an embedded guest needs. The guest
+ * must be fed from ONE of them or every click doubles, so the source travels
+ * with the event — per view, because a second display with no device of its
+ * own is still driving the same desktop through the cooked arm alone.
+ */
+static struct EvSlot {
+	KtuiEvent ev;
+	int raw_src;
+} evq[128];
 static int evhead, evtail;
+/*
+ * HOW MANY COOKED EVENTS HAVE BEEN PUSHED AND HOW MANY HAVE BEEN TAKEN OFF.
+ *
+ * ORDERING IS THE PROTOCOL: for one physical input the view sends the cooked
+ * message first, and a raw event may not be delivered until that one has been
+ * ROUTED. Only then has the session decided whether a chord ate the key and
+ * which window the pointer is over — which is what lets the raw arm deliver
+ * and nothing else. A raw event records the first number when it arrives and
+ * waits for the second to reach it.
+ */
+static unsigned long long ev_in, ev_out;
+/* The source of the event poll_event() has just returned, read by the routing
+ * that follows it in the same turn. */
+static int ev_src_raw;
 
-/* Every view's input arrives through ev_push, which is why the idle timer is
- * reset there and in exactly one other place: nowhere. */
+/* Every view's input arrives through ev_push or raw_push, which is why the
+ * idle timer is reset in those two places and nowhere else. A raw motion
+ * inside one cell has no cooked partner, so a session whose only activity was
+ * a guest being aimed at would otherwise blank the screen under the hand. */
 static void idle_poke(void);
 
-static void ev_push(const KtuiEvent *e)
+static void ev_push(const KtuiEvent *e, int raw_src)
 {
 	int next = (evtail + 1) % (int)(sizeof(evq) / sizeof(evq[0]));
 
@@ -298,30 +328,53 @@ static void ev_push(const KtuiEvent *e)
 
 	if (next == evhead)
 		return;		/* full: the session is behind, drop the newest */
-	evq[evtail] = *e;
+	evq[evtail].ev = *e;
+	evq[evtail].raw_src = raw_src;
 	evtail = next;
+	/* COUNTED ONLY WHEN IT WAS TAKEN. A dropped event is one nothing will
+	 * ever pop, and a raw event waiting on it would wait for ever. */
+	ev_in++;
 }
 
 static int ev_pop(KtuiEvent *e)
 {
 	if (evhead == evtail)
 		return 0;
-	*e = evq[evhead];
+	*e = evq[evhead].ev;
+	ev_src_raw = evq[evhead].raw_src;
 	evhead = (evhead + 1) % (int)(sizeof(evq) / sizeof(evq[0]));
+	ev_out++;
 	return 1;
+}
+
+/*
+ * IS THIS VIEW SENDING THE RAW STREAM.
+ *
+ * THE ANSWER IS THE ASK AND NOT THE ARRIVAL. The session asks a view for raw
+ * input when an embedded window takes the keyboard, and from that moment stops
+ * feeding that view's cooked input to a guest; the view's first raw message is
+ * one round trip later. The window has just been focused and nobody has typed
+ * into it yet, which is why the trip is free — and the alternative, waiting
+ * for the first raw message to arrive, is a session that cannot tell a view
+ * which has stopped sending from one that has not started.
+ */
+static int raw_asked;
+
+static int view_is_raw(KconSurface *v)
+{
+	return raw_asked && v && (kcon_view_caps(v) & KCON_VIEW_RAW);
 }
 
 static void on_view_key(KconSurface *v, int key, int mods, void *user)
 {
 	KtuiEvent e;
 
-	(void)v;
 	(void)user;
 	memset(&e, 0, sizeof(e));
 	e.type = KT_EVT_KEY;
 	e.key = key;
 	e.mods = mods;
-	ev_push(&e);
+	ev_push(&e, view_is_raw(v));
 }
 
 static void on_view_ptr(KconSurface *v, int x, int y, int subx, int suby,
@@ -329,7 +382,6 @@ static void on_view_ptr(KconSurface *v, int x, int y, int subx, int suby,
 {
 	KtuiEvent e;
 
-	(void)v;
 	(void)user;
 	memset(&e, 0, sizeof(e));
 	e.type = KT_EVT_MOUSE;
@@ -342,7 +394,142 @@ static void on_view_ptr(KconSurface *v, int x, int y, int subx, int suby,
 	e.suby = suby - 128;
 	e.btn = btn;
 	e.press = press;
-	ev_push(&e);
+	ev_push(&e, view_is_raw(v));
+}
+
+/* ── the raw stream ──────────────────────────────────────────────────────
+ *
+ * IT RUNS BESIDE THE COOKED ONE AND NEVER THROUGH IT. Cell surfaces, the
+ * panel, the terminal and every session chord read the cooked hooks and
+ * nothing here. This arm routes nothing, chords nothing and moves no cursor —
+ * it delivers what the cooked arm has already decided the destination of, in
+ * the pixels a guest is drawn in.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { RAW_KEY = 0, RAW_PTR, RAW_AXIS };
+
+/*
+ * A RAW EVENT AND THE COOKED COUNT IT MUST FOLLOW.
+ *
+ * A UNION IS SAFE HERE because the tag is this session's own: the hook that
+ * fired sets it one line above the push. The rule it would break is about a
+ * tag a PEER chose, which is a union whose active member a peer chose.
+ */
+static struct RawEv {
+	int kind;
+	unsigned long long after;
+	union {
+		KconKeyRaw k;
+		KconPtrRaw p;
+		KconAxisRaw a;
+	} u;
+} rawq[256];
+static int rawhead, rawtail;
+
+#define RAWQ_N ((int)(sizeof(rawq) / sizeof(rawq[0])))
+
+static void raw_push(const struct RawEv *r)
+{
+	int next = (rawtail + 1) % RAWQ_N;
+
+	idle_poke();
+
+	/*
+	 * A MOTION COALESCES INTO THE ONE BEHIND IT.
+	 *
+	 * A pointing device reports up to a thousand times a second and this
+	 * ring also carries the keys and the buttons; a burst of motion that
+	 * filled it would push a click out of it. Two motions with nothing
+	 * between them are one motion to the place the second names, and their
+	 * deltas add — which is exactly what a guest reading deltas is owed
+	 * and what one reading a position does not notice. The merged event
+	 * takes the LATER cooked count, because it is also the later event.
+	 */
+	if (r->kind == RAW_PTR && !r->u.p.button && rawtail != rawhead) {
+		int last = (rawtail + RAWQ_N - 1) % RAWQ_N;
+		struct RawEv *o = &rawq[last];
+
+		if (o->kind == RAW_PTR && !o->u.p.button) {
+			int dx = o->u.p.dx + r->u.p.dx;
+			int dy = o->u.p.dy + r->u.p.dy;
+			int ux = o->u.p.dx_un + r->u.p.dx_un;
+			int uy = o->u.p.dy_un + r->u.p.dy_un;
+
+			o->u.p = r->u.p;
+			o->u.p.dx = dx;
+			o->u.p.dy = dy;
+			o->u.p.dx_un = ux;
+			o->u.p.dy_un = uy;
+			o->after = r->after;
+			return;
+		}
+	}
+
+	/*
+	 * FULL: THE OLDEST GOES, NEVER THE NEWEST. The newest carries the
+	 * release a key held down depends on, and an event dropped here is
+	 * dropped in silence — so losing it leaves the guest holding that key
+	 * for the life of the application, while losing a stale motion or an
+	 * old press costs one frame of aim. libkkms' own queue drops the same
+	 * end for the same reason.
+	 */
+	if (next == rawhead)
+		rawhead = (rawhead + 1) % RAWQ_N;
+	rawq[rawtail] = *r;
+	rawtail = next;
+}
+
+static void on_view_key_raw(KconSurface *v, const KconKeyRaw *k, void *user)
+{
+	struct RawEv r;
+
+	(void)v;
+	(void)user;
+	memset(&r, 0, sizeof(r));
+	r.kind = RAW_KEY;
+	r.after = ev_in;
+	r.u.k = *k;
+	raw_push(&r);
+}
+
+static void on_view_ptr_raw(KconSurface *v, const KconPtrRaw *p, void *user)
+{
+	struct RawEv r;
+
+	(void)v;
+	(void)user;
+	memset(&r, 0, sizeof(r));
+	r.kind = RAW_PTR;
+	r.after = ev_in;
+	r.u.p = *p;
+	raw_push(&r);
+}
+
+static void on_view_axis_raw(KconSurface *v, const KconAxisRaw *a, void *user)
+{
+	struct RawEv r;
+
+	(void)v;
+	(void)user;
+	memset(&r, 0, sizeof(r));
+	r.kind = RAW_AXIS;
+	r.after = ev_in;
+	r.u.a = *a;
+	raw_push(&r);
+}
+
+/*
+ * A VIEW SAID WHAT ITS KEYBOARD IS RUNNING. Straight through rather than onto
+ * the queue: a layout is not an input event and has no place in the order the
+ * queue exists to keep. One session is one keyboard, so the last view to speak
+ * wins and every live guest is handed the same one.
+ */
+static void on_view_keymap(KconSurface *v, int format, const char *text,
+			   size_t len, void *user)
+{
+	(void)v;
+	(void)user;
+	embed_keymap(format, text, len);
 }
 
 /*
@@ -373,7 +560,19 @@ static void on_view_touch(KconSurface *v, int x, int y, int slot, int phase,
 	e.phase = phase;
 	e.ms = ms;
 	e.gesture = gesture;
-	ev_push(&e);
+	ev_push(&e, 0);
+}
+
+/*
+ * A DISPLAY COULD NOT KEEP A PICTURE IT WAS SENT. Whoever owns the slot owes
+ * it to that display again; embedded windows are the only owner whose pictures
+ * nothing else resends, because a surface's are held by the server and go out
+ * again on kcon_server_resend_sprites().
+ */
+static void on_view_sprite_lost(KconSurface *v, int slot, void *user)
+{
+	(void)user;
+	embed_sprite_lost(v, slot);
 }
 
 /*
@@ -1223,6 +1422,29 @@ static int pick_key(const KtuiEvent *ev)
 }
 
 /*
+ * A WHEEL DETENT IS NOT A BUTTON. Every backend reports a tick as
+ * `KT_MB_WHEEL_UP`/`KT_MB_WHEEL_DOWN` carrying `press = KT_MP_PRESS`, and
+ * sends no release to match it, so any pointer site that dispatches on
+ * `press` before `btn` fires on a scroll: over the frame's `_ ■ X` row a
+ * detent closes the window, over the panel it opens the menu, and under a
+ * mark or the picker it re-anchors them. Ask this first.
+ *
+ * AN EXPLICIT LIST, not `btn <= KT_MB_RIGHT`, so the order the enum happens
+ * to be written in is not load-bearing.
+ */
+static int ptr_is_button(const KtuiEvent *ev)
+{
+	switch (ev->btn) {
+	case KT_MB_LEFT:
+	case KT_MB_MIDDLE:
+	case KT_MB_RIGHT:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+/*
  * THE POINTER DRAWS THE SAME RECTANGLE the arrows do. The mark owns the
  * pointer while it is on, for the reason it owns the keyboard: a press that
  * fell through would raise a window over the region being marked, and a
@@ -1241,7 +1463,7 @@ static void mark_ptr(const KtuiEvent *ev)
 	if (y >= S.rows)
 		y = S.rows - 1;
 
-	if (ev->press == KT_MP_PRESS) {
+	if (ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 		mark.ax = mark.cx = x;
 		mark.ay = mark.cy = y;
 		mark.dragging = 1;
@@ -1578,13 +1800,19 @@ static int session_key(const KtuiEvent *ev)
 
 		if (t) {
 			/*
-			 * THE WORKSPACE FIRST AND THE RAISE AFTER, never the
+			 * THE WORKSPACE FIRST AND THE RESTORE AFTER, never the
 			 * other way round: win_workspace() clears the focus and
 			 * cycles to whatever the ring lands on, so a raise
-			 * before it is undone. And a minimised window is
-			 * un-minimised WHERE IT IS — win_restore() moves the
-			 * window to the current workspace, which is the
-			 * opposite of going to it.
+			 * before it is undone. It is also what puts the window
+			 * back WHERE IT IS — win_restore() brings a family onto
+			 * the workspace being looked at, and by this line that
+			 * is the one the match is already on.
+			 *
+			 * AND THE WHOLE FAMILY COMES BACK, through the one path
+			 * that carries it: a minimise took the window's dialogs
+			 * and docks down with it, so un-minimising the window
+			 * alone would leave a guest's question put away where
+			 * nothing on the desktop reaches it.
 			 *
 			 * A STICKY WINDOW IS ALREADY HERE, so its `workspace`
 			 * is not asked: the scratchpad can be running the very
@@ -1596,10 +1824,13 @@ static int session_key(const KtuiEvent *ev)
 			 */
 			if (!t->sticky && t->workspace != S.workspace)
 				win_workspace(t->workspace);
-			t->minimised = 0;
 			t->hidden = 0;
+			if (t->minimised)
+				win_restore(t);
+			/* The focus is win_raise's to set, and it is not always
+			 * this window: a raise of one a modal is standing over
+			 * lands on the modal. */
 			win_raise(t->id);
-			S.focus = t->id;
 			ktui_draw_invalidate();
 			return 1;
 		}
@@ -1759,7 +1990,23 @@ static int session_key(const KtuiEvent *ev)
 	return 0;
 }
 
-static void route_key(const KtuiEvent *ev)
+/*
+ * WHETHER THE VIEW THAT SENT THE KEY BEING ROUTED IS ALSO SENDING THE RAW ONE.
+ *
+ * Read and cleared by con_key_to_window(), which is also called by a script
+ * replaying keys — a script types CHARACTERS and has no raw stream, so
+ * clearing on read is what makes a replayed key reach a guest through the
+ * synthesised path while a person's key reaches it through the raw one.
+ */
+static int key_src_raw;
+
+/*
+ * DID THE SESSION KEEP THE KEY. 1 when a chord, a mode or the lock consumed it
+ * and no window saw it; 0 when it was routed on. The raw arm reads this for
+ * the same physical key, which is how a chord is swallowed exactly once — and
+ * why the cooked message must be routed first.
+ */
+static int route_key(const KtuiEvent *ev)
 {
 	/*
 	 * WHILE LOCKED, NOTHING ELSE HEARS A KEY — not a window, and not the
@@ -1769,7 +2016,7 @@ static void route_key(const KtuiEvent *ev)
 	if (S.locked) {
 		if (S.lock && S.lock->surf)
 			kcon_surface_key(S.lock->surf, ev->key, ev->mods);
-		return;
+		return 1;
 	}
 
 	/*
@@ -1779,7 +2026,7 @@ static void route_key(const KtuiEvent *ev)
 	 * same press.
 	 */
 	if ((scr_prompt_active() || scr_play_armed()) && scr_prompt_key(ev))
-		return;
+		return 1;
 
 	/*
 	 * AND ESCAPE STOPS A REPLAY. A script types into a window at its own
@@ -1788,7 +2035,7 @@ static void route_key(const KtuiEvent *ev)
 	 */
 	if (scr_playing() && ev->key == KT_K_ESC && !ev->mods) {
 		scr_stop();
-		return;
+		return 1;
 	}
 
 	/*
@@ -1798,7 +2045,7 @@ static void route_key(const KtuiEvent *ev)
 	 * one keystroke.
 	 */
 	if (con_rearranging() && rearrange_key(ev))
-		return;
+		return 1;
 
 	/*
 	 * AND SO DOES THE MARK. Its arrows place a corner, and a chord firing
@@ -1811,12 +2058,12 @@ static void route_key(const KtuiEvent *ev)
 	if (con_dragging() && ev->key == KT_K_ESC) {
 		drag_end();
 		ktui_draw_invalidate();
-		return;
+		return 1;
 	}
 	if (picking && pick_key(ev))
-		return;
+		return 1;
 	if (con_marking() && mark_key(ev))
-		return;
+		return 1;
 
 	/*
 	 * THE WINDOW LIST OWNS THE KEYBOARD WHILE IT IS UP, for the same
@@ -1824,7 +2071,7 @@ static void route_key(const KtuiEvent *ev)
 	 * would snap a window while somebody was choosing one.
 	 */
 	if (win_list_active() && win_list_key(ev->key))
-		return;
+		return 1;
 
 	if (leader_armed) {
 		int arg;
@@ -1849,10 +2096,10 @@ static void route_key(const KtuiEvent *ev)
 			 */
 			e.mods |= KT_MOD_SUPER;
 			session_key(&e);
-			return;
+			return 1;
 		}
 	} else if (session_key(ev)) {
-		return;
+		return 1;
 	}
 
 	/*
@@ -1862,19 +2109,33 @@ static void route_key(const KtuiEvent *ev)
 	 */
 	scr_note(ev);
 	con_key_to_window(ev);
+	return 0;
 }
 
 void con_key_to_window(const KtuiEvent *ev)
 {
 	Win *w = win_focused();
+	int raw = key_src_raw;
 
+	key_src_raw = 0;
 	if (!w)
 		return;
 	if (w->kind == WIN_TERM)
 		term_key(w, ev);
-	else if (w->kind == WIN_EMBED)
-		embed_key(w, ev);
-	else if (w->surf)
+	else if (w->kind == WIN_EMBED) {
+		/*
+		 * NOT TWICE. A view that reports a real keyboard is driving
+		 * this guest through the raw arm, where a press and a release
+		 * are two events and the key is the one the person actually
+		 * struck; the character this call carries is the same keystroke
+		 * resolved, and sending it as well would type every letter
+		 * twice and turn every held key into a tap. A view with no
+		 * keyboard of its own has no raw arm, and this is the only
+		 * input a guest ever gets from it.
+		 */
+		if (!raw)
+			embed_key(w, ev);
+	} else if (w->surf)
 		kcon_surface_key(w->surf, ev->key, ev->mods);
 }
 
@@ -2008,6 +2269,49 @@ static int ptr_in_id;
 static int ptr_hold_id;
 
 /*
+ * WHERE THE LAST COOKED POINTER EVENT WAS ROUTED, and the raw arm's whole
+ * answer to which window a delta belongs to.
+ *
+ * A RAW MOTION INSIDE ONE CELL HAS NO COOKED PARTNER, by construction — the
+ * cell has not changed, so the view sends no KCON_OP_PTR — and that is exactly
+ * what makes sub-cell aiming work: the route has not changed either, so the
+ * raw event goes where the last cooked one went. Zero while a session mode
+ * owns the pointer, which is what stops a guest being aimed at during a
+ * window drag, a mark or a lock.
+ */
+static int ptr_route_id;
+
+/*
+ * WHETHER THE POINTER IS BEING DRIVEN BY A FINGER.
+ *
+ * A TOUCH HAS NO RAW PARTNER, and that is the whole of why this exists. A
+ * pointing device reports every motion twice — the cell the desktop reads and
+ * the pixel a guest is aimed at — so the cooked event is dropped for a guest
+ * and the raw one delivered. Nothing reports a finger twice: the recogniser
+ * synthesises the press, the drag and the release from the touch stream, no
+ * device event stands behind them, and a guest given only raw partners could
+ * not be touched at all. A finger therefore reaches a guest the way everything
+ * else on this desktop is pointed at, a cell at a time.
+ *
+ * THE RECOGNISER PUSHES WHAT IT SYNTHESISED IMMEDIATELY BEHIND THE TOUCH IT
+ * READ, so a mouse event standing behind a touch is always in the same turn —
+ * and `ptr_synth` is therefore cleared at the end of every turn whether or not
+ * anything spent it. The recogniser does not always synthesise: an undecided
+ * two-finger move and a scroll whose centroid has not crossed a row both push
+ * a touch with no mouse behind it, and a flag left standing would be spent by
+ * a real device event an arbitrary time later — which a guest receives twice,
+ * once cooked and once raw. `touch_btn` carries the middle of a gesture, where
+ * there is no touch
+ * event to read: a move crosses only when it means a gesture, and the
+ * synthesised drag beside it is all the session sees. It is armed by a
+ * synthesised press and disarmed by ANY release, so a release the session
+ * never sees costs one click of a real mouse rather than the rest of the
+ * session.
+ */
+static int touch_btn;
+static int ptr_synth;
+
+/*
  * Tell whoever the pointer has just left, which is nobody when it has not.
  *
  * OFF-GRID IS THE REPORT, which is libkwl's: every consumer already maps a
@@ -2022,12 +2326,34 @@ static void ptr_leave(const Win *now)
 		return;
 	was = win_find(ptr_in_id);
 	ptr_in_id = 0;
-	if (was && was->kind == WIN_SURFACE && was->surf)
+	if (!was)
+		return;
+	if (was->kind == WIN_SURFACE && was->surf)
 		kcon_surface_ptr(was->surf, -1, -1, KT_MB_MOVE, KT_MP_DRAG);
+	/* A GUEST IS TOLD IN ITS OWN VERB. Its protocol has a leave of its
+	 * own, and a motion to a position outside the window would be clamped
+	 * back onto an edge by the cage and delivered as an arrival. */
+	else if (was->kind == WIN_EMBED)
+		embed_leave(was);
 }
 
-static void route_ptr(const KtuiEvent *ev)
+static void route_ptr(const KtuiEvent *ev, int raw_src)
 {
+	int finger = ptr_synth || touch_btn;
+
+	ptr_synth = 0;
+	if (ptr_is_button(ev)) {
+		if (ev->press == KT_MP_RELEASE)
+			touch_btn = 0;
+		else if (ev->press == KT_MP_PRESS)
+			touch_btn = finger;
+	}
+
+	/* Set again below wherever this event reaches a window; cleared here
+	 * so a mode that owns the pointer leaves the raw arm with nowhere to
+	 * deliver rather than with a stale window. */
+	ptr_route_id = 0;
+
 	/* While locked the pointer reaches the lock surface and nothing else,
 	 * for the same reason the keyboard does. */
 	if (S.locked) {
@@ -2052,7 +2378,7 @@ static void route_ptr(const KtuiEvent *ev)
 	/* And so does the picker, for the reason the mark does: a press that
 	 * fell through would raise a window over the cell being read. */
 	if (picking) {
-		if (ev->press == KT_MP_PRESS)
+		if (ptr_is_button(ev) && ev->press == KT_MP_PRESS)
 			pick_at(ev->mx, ev->my);
 		return;
 	}
@@ -2087,6 +2413,45 @@ static void route_ptr(const KtuiEvent *ev)
 	}
 
 	/*
+	 * AND SO DOES A GUEST THAT HAS TAKEN THE POINTER, once the session's
+	 * own drag has had its answer — a window being moved is this process's
+	 * mode and must not be stranded by a guest asking for the pointer
+	 * mid-gesture.
+	 *
+	 * A game and a three-dimensional editor ask for the pointer and read
+	 * motion as a delta. While one holds it the cooked event is spent
+	 * here: nothing is hovered, nothing is raised, no frame button answers
+	 * and the window under the pointer does not change — because a pointer
+	 * that is not moving cannot mean any of those. The raw arm delivers
+	 * the delta, and KEYBOARD FOCUS IS THE WAY OUT: the constraint the
+	 * cage created is active only for the surface that has the keyboard,
+	 * so every chord that moves focus drops the grab. There is
+	 * deliberately no chord of its own, because a pointer that can be
+	 * captured with no way out is the failure this avoids.
+	 *
+	 * THE SESSION'S OWN POINTER STATE IS SPENT BEFORE THIS RETURNS. A
+	 * guest takes the pointer on a button PRESS — a game, a modelling
+	 * tool — and that press armed the implicit grab on its way through.
+	 * The release lands here instead, so the grab has to be dropped here
+	 * or every later motion is captured by a window nobody is pointing
+	 * at: no hover anywhere else, no frame button, no panel row, and the
+	 * surface that was lit when the lock began stays lit. The guest is
+	 * where the pointer is for as long as it holds it, which is what
+	 * stops the hover wandering across windows the person cannot reach.
+	 */
+	{
+		Win *gw = embed_grab_win();
+
+		if (gw) {
+			ptr_leave(gw);
+			ptr_in_id = gw->id;
+			ptr_hold_id = 0;
+			ptr_route_id = gw->id;
+			return;
+		}
+	}
+
+	/*
 	 * THE PANEL ROW IS ASKED FIRST, because it is not a window and
 	 * `win_at()` cannot see it. Without this the bar is painted and
 	 * nothing more: Start, every window row and the clock are drawn, look
@@ -2101,12 +2466,12 @@ static void route_ptr(const KtuiEvent *ev)
 
 		switch (panel_hit(ev->mx, ev->my, &arg)) {
 		case PANEL_HIT_START:
-			if (ev->press == KT_MP_PRESS)
+			if (ptr_is_button(ev) && ev->press == KT_MP_PRESS)
 				con_spawn_at(con_command(CON_CMD_MENU),
 					     panel_span_x0(PANEL_HIT_START));
 			return;
 		case PANEL_HIT_WIN:
-			if (ev->press == KT_MP_PRESS) {
+			if (ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 				Win *t = win_find(arg);
 
 				/* One row, two meanings, and the window's own
@@ -2120,12 +2485,12 @@ static void route_ptr(const KtuiEvent *ev)
 			}
 			return;
 		case PANEL_HIT_CLOCK:
-			if (ev->press == KT_MP_PRESS)
+			if (ptr_is_button(ev) && ev->press == KT_MP_PRESS)
 				con_spawn_at("kdos-cal",
 					     panel_span_x0(PANEL_HIT_CLOCK));
 			return;
 		case PANEL_HIT_WS:
-			if (ev->press == KT_MP_PRESS)
+			if (ptr_is_button(ev) && ev->press == KT_MP_PRESS)
 				win_workspace(arg);
 			return;
 		case PANEL_HIT_FKEY:
@@ -2136,7 +2501,7 @@ static void route_ptr(const KtuiEvent *ev)
 			 * exists to teach the chord — so the day the two
 			 * disagreed, the row would be teaching the wrong one.
 			 */
-			if (ev->press == KT_MP_PRESS) {
+			if (ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 				KtuiEvent k = { 0 };
 
 				k.type = KT_EVT_KEY;
@@ -2156,7 +2521,7 @@ static void route_ptr(const KtuiEvent *ev)
 	 * `win_at()` answers for both and a click would raise the window and
 	 * do nothing else.
 	 */
-	if (ev->press == KT_MP_PRESS) {
+	if (ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 		int id;
 
 		switch (win_button_at(ev->mx, ev->my, &id)) {
@@ -2215,7 +2580,8 @@ static void route_ptr(const KtuiEvent *ev)
 	 * without changing which window has the keyboard. A background is
 	 * never RAISED — it is under everything by definition, and raising it
 	 * would put the icons over the work. */
-	if (w && !w->background && ev->press == KT_MP_PRESS)
+	if (w && !w->background && ptr_is_button(ev) &&
+	    ev->press == KT_MP_PRESS)
 		win_raise(w->id);
 	/*
 	 * BUT A DESKTOP THAT ASKED FOR THE KEYBOARD IS GIVEN IT WHEN IT IS
@@ -2228,8 +2594,8 @@ static void route_ptr(const KtuiEvent *ev)
 	 * editor above all, a state nothing could type into or leave. The
 	 * next press on a real window takes the keyboard back.
 	 */
-	else if (w && w->background && w->surf && ev->press == KT_MP_PRESS &&
-		 kcon_surface_keyboard(w->surf))
+	else if (w && w->background && w->surf && ptr_is_button(ev) &&
+		 ev->press == KT_MP_PRESS && kcon_surface_keyboard(w->surf))
 		S.focus = w->id;
 
 	/*
@@ -2244,7 +2610,7 @@ static void route_ptr(const KtuiEvent *ev)
 	 * other window.
 	 */
 	if (w && !w->panel && !w->full && !w->background &&
-	    ev->press == KT_MP_PRESS) {
+	    ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 		/*
 		 * THE TITLE ROW IS THE FRAME'S, one row above the content.
 		 * `win_frame()` inflates the rectangle by CON_FRAME and the
@@ -2289,8 +2655,20 @@ static void route_ptr(const KtuiEvent *ev)
 
 	if (!w)
 		return;
-	if (ev->press == KT_MP_PRESS)
+	/*
+	 * A DETENT IS NOT A BUTTON. A wheel tick is reported as a press and
+	 * there is no release to match it, so a tick that armed the implicit
+	 * grab would own the pointer until some later click released it —
+	 * every motion after a scroll goes to the window that was scrolled
+	 * over, wherever the pointer actually is, and hover then disagrees
+	 * with where a click lands.
+	 */
+	if (ptr_is_button(ev) && ev->press == KT_MP_PRESS)
 		ptr_hold_id = w->id;
+	/* AND THIS IS WHERE THE RAW ARM WILL DELIVER. Recorded for every
+	 * window, not only for a guest: a pointer that has moved onto a
+	 * terminal must stop feeding the guest it left. */
+	ptr_route_id = w->id;
 	if (w->kind == WIN_TERM) {
 		/*
 		 * THE TERMINAL'S OWN GRID, like every other consumer here. A
@@ -2332,7 +2710,22 @@ static void route_ptr(const KtuiEvent *ev)
 		return;
 	}
 	if (w->kind == WIN_EMBED) {
-		embed_ptr(w, ev);
+		/*
+		 * NOT TWICE, for the reason con_key_to_window() keeps: a view
+		 * that reports a real pointing device is driving this guest
+		 * through the raw arm, in pixels and with the button the
+		 * device actually reported, and the cooked event is the same
+		 * press aimed at the middle of a cell.
+		 *
+		 * A FINGER IS THE CASE WITH NOTHING IN THE RAW ARM. What the
+		 * test is about is whether a raw partner exists, not whether
+		 * the view is sending raw input at all — the same view sends
+		 * both, and dropping the one the recogniser synthesised is a
+		 * touchscreen that cannot reach a guest.
+		 */
+		ptr_in_id = w->id;
+		if (!raw_src || finger)
+			embed_ptr(w, ev);
 		return;
 	}
 	if (!w->surf)
@@ -2358,6 +2751,180 @@ static void route_ptr(const KtuiEvent *ev)
 }
 
 /*
+ * THE SESSION'S VERDICT ON THE COOKED KEY IT HAS JUST ROUTED, spent by the raw
+ * message for the same key: 1 kept, 0 delivered, -1 nothing pending.
+ *
+ * AND WHICH COOKED EVENT IT BELONGS TO. A view sends the cooked message for
+ * one physical input immediately before that input's raw partner, and a raw
+ * event records the cooked count it must follow — so the verdict for key A is
+ * the one whose count the raw event names, and a verdict left standing by a
+ * cooked key with no raw partner at all (a repeat) is spent by nobody. Without
+ * the number, two cooked keys in one turn hand A's verdict to B and the
+ * session swallows the wrong key.
+ */
+static int cooked_verdict = -1;
+static unsigned long long verdict_at;
+
+/*
+ * EVERY KEY WHOSE PRESS A CHORD ATE, so its release is eaten too.
+ *
+ * A SUPPRESSED PRESS WHOSE RELEASE REACHED THE GUEST IS A KEY HELD FOR EVER —
+ * the guest never saw it go down and has no reason to believe it came up, and
+ * the next thing it resolves is resolved under a modifier nobody is holding.
+ * Sized from evdev's whole range because keys and pointer buttons share it.
+ */
+static uint32_t key_eaten[(KCON_KEYCODE_MAX + 32) / 32];
+
+/*
+ * A KEY THAT CAN HAVE NO COOKED PARTNER AT ALL.
+ *
+ * A MODIFIER OR A LOCK PRODUCES NO CHARACTER, so a view queues no cooked
+ * message for it and no chord verdict can ever belong to it — the raw arm
+ * knows one by its evdev code rather than by what came before it. The verdict
+ * below belongs to a key that DID produce a character, and a cooked key repeat
+ * leaves one standing with no raw partner of its own; letting a modifier spend
+ * it drops the modifier and hands the chord key to the guest, which is the
+ * session firing the chord and the guest receiving it as well.
+ */
+static int key_is_mod(int code)
+{
+	switch (code) {
+	case KEY_LEFTCTRL:
+	case KEY_RIGHTCTRL:
+	case KEY_LEFTSHIFT:
+	case KEY_RIGHTSHIFT:
+	case KEY_LEFTALT:
+	case KEY_RIGHTALT:
+	case KEY_LEFTMETA:
+	case KEY_RIGHTMETA:
+	case KEY_CAPSLOCK:
+	case KEY_NUMLOCK:
+	case KEY_SCROLLLOCK:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+/*
+ * ONE RAW EVENT, TO THE GUEST THE COOKED ARM ALREADY CHOSE.
+ *
+ * MODIFIERS ARE ALWAYS DELIVERED, and that is what makes the chord split work:
+ * a modifier produces no character, so the view sends no cooked message for
+ * it, so no chord can have eaten it. Ctrl+A therefore reaches the session as a
+ * chord AND Ctrl itself reaches the guest as a held key — the guest sees a
+ * modifier go down and no letter follow, which is the same thing it sees when
+ * somebody presses Ctrl and changes their mind.
+ */
+static void raw_route(const struct RawEv *r)
+{
+	Win *w;
+
+	if (S.locked || S.saver)
+		return;
+
+	switch (r->kind) {
+	case RAW_KEY: {
+		const KconKeyRaw *k = &r->u.k;
+		int word, bit;
+
+		/* THE MODIFIER STATE TRAVELS WHATEVER BECOMES OF THE KEY. It
+		 * is the resync a window is handed when it takes the keyboard,
+		 * and a lock set while no guest was focused is in no key
+		 * stream any guest will ever receive. */
+		embed_mods_note(k);
+
+		if (k->code < 0 || k->code > KCON_KEYCODE_MAX)
+			return;
+		word = k->code / 32;
+		bit = (int)(1u << (k->code % 32));
+
+		if (k->state && !key_is_mod(k->code)) {
+			int eaten = cooked_verdict > 0 &&
+				    r->after == verdict_at;
+
+			cooked_verdict = -1;
+			if (eaten) {
+				key_eaten[word] |= (uint32_t)bit;
+				return;
+			}
+		} else if (!k->state && (key_eaten[word] & (uint32_t)bit)) {
+			key_eaten[word] &= ~(uint32_t)bit;
+			return;
+		}
+
+		w = win_focused();
+		if (w && w->kind == WIN_EMBED)
+			embed_key_raw(w, k);
+		return;
+	}
+	case RAW_PTR:
+		w = win_find(ptr_route_id);
+		if (w && w->kind == WIN_EMBED)
+			embed_ptr_raw(w, &r->u.p);
+		return;
+	case RAW_AXIS:
+		w = win_find(ptr_route_id);
+		if (w && w->kind == WIN_EMBED)
+			embed_axis_raw(w, &r->u.a);
+		return;
+	}
+}
+
+/* Everything the cooked arm has caught up with. */
+static void raw_drain(void)
+{
+	while (rawhead != rawtail && rawq[rawhead].after <= ev_out) {
+		struct RawEv r = rawq[rawhead];
+
+		rawhead = (rawhead + 1) % RAWQ_N;
+		raw_route(&r);
+	}
+}
+
+/*
+ * ASK FOR THE RAW STREAM, OR STOP.
+ *
+ * ONLY WHILE SOMETHING CAN USE IT. Raw input is one message per device event —
+ * a thousand a second from an ordinary mouse — and everything on this desktop
+ * but an embedded guest is drawn in cells. A view that is never asked sends
+ * nothing, which is exactly how a view inside somebody else's terminal is
+ * driven: off is where every view starts.
+ *
+ * THE VIEW COUNT IS PART OF THE COMPARISON, so a view that has just attached
+ * is asked without anything having to notice that it did.
+ */
+static void raw_gate(void)
+{
+	Win *w = win_focused();
+	int want = !S.locked && !S.saver && w && w->kind == WIN_EMBED;
+	int n = kcon_server_view_count(S.server);
+	static int asked_views = -1;
+
+	if (want == raw_asked && n == asked_views)
+		return;
+	/*
+	 * AND NOTHING IS HELD ACROSS AN EDGE OF THE GATE.
+	 *
+	 * A RELEASE TRAVELS ON THE RAW STREAM AND ON NOTHING ELSE. Every way
+	 * of losing the stream — a chord that moved the focus off the guest,
+	 * the lock, the saver, a view that went away, the guest itself
+	 * exiting — happens while the person is still holding the key that
+	 * caused it, and the release they make a moment later is sent by
+	 * nobody. `key_eaten` left set swallows that key's next press for the
+	 * rest of the session; a key left down in the guest is held for the
+	 * life of the application. This is the one place that knows the
+	 * stream started or stopped, so it is the one place both are undone.
+	 */
+	memset(key_eaten, 0, sizeof(key_eaten));
+	embed_raw_reset();
+	raw_asked = want;
+	asked_views = n;
+	for (int i = 0; i < n; i++)
+		kcon_view_raw(kcon_server_view_at(S.server, i), want);
+}
+
+/*
  * A FINGER, TO WHATEVER IT IS ON.
  *
  * THE SAME HIT TEST THE POINTER USES, and the icon layer last, for the reason
@@ -2373,6 +2940,11 @@ static void route_ptr(const KtuiEvent *ev)
 static void route_touch(const KtuiEvent *ev)
 {
 	Win *w;
+
+	/* AHEAD OF EVERY RETURN. The pointer event behind this one is routed
+	 * whether or not this one reaches anything, and this is the only thing
+	 * that tells a synthesised one apart from a device's. */
+	ptr_synth = 1;
 
 	if (S.locked || S.saver)
 		return;
@@ -3070,16 +3642,10 @@ unsigned long long con_now_ms(void)
 	return mono_ms();
 }
 
-/*
- * 120ms: long enough to be seen and short enough that a program ringing in a
- * loop is a flicker rather than a window that stays lit.
- */
-#define BELL_MS 120
-
 void con_bell(Win *w)
 {
 	if (w)
-		w->bell_until = mono_ms() + BELL_MS;
+		w->bell_until = mono_ms() + CON_FLASH_MS;
 	kcon_view_bell(S.server);
 	ktui_draw_invalidate();
 }
@@ -3125,14 +3691,19 @@ static void idle_poke(void)
 }
 
 /*
- * IS THE MACHINE ALLOWED TO GO IDLE? The `stay-awake` toggle says no while it
- * is on. `kb_toggle_on` is the one reader of these in the tree — a second copy
- * of the path is a second place for the toggle a person set to be looked for
- * where nothing wrote it.
+ * IS THE MACHINE ALLOWED TO GO IDLE?
+ *
+ * TWO THINGS SAY NO. The `stay-awake` toggle is the person's own, held until
+ * they clear it; `kb_toggle_on` is the one reader of these in the tree, so a
+ * second copy of the path is a second place for a toggle somebody set to be
+ * looked for where nothing wrote it. An embedded guest playing something is
+ * the other — a film that blanked the screen halfway through is what the
+ * inhibitor exists for — and it counts only while its window is one somebody
+ * can see.
  */
 static int stay_awake(void)
 {
-	return kb_toggle_on("stay-awake");
+	return kb_toggle_on("stay-awake") || embed_inhibited();
 }
 
 static void idle_tick(void)
@@ -3622,6 +4193,10 @@ static int serve(const char *sock, const char *view)
 
 	h.view_key = on_view_key;
 	h.view_ptr = on_view_ptr;
+	h.view_key_raw = on_view_key_raw;
+	h.view_ptr_raw = on_view_ptr_raw;
+	h.view_axis_raw = on_view_axis_raw;
+	h.view_keymap = on_view_keymap;
 	h.unlock = on_unlock;
 	h.sprite = on_sprite;
 	h.run = on_run;
@@ -3637,6 +4212,7 @@ static int serve(const char *sock, const char *view)
 	h.pick = on_pick;
 	h.drag_start = on_drag_start;
 	h.view_touch = on_view_touch;
+	h.view_sprite_lost = on_view_sprite_lost;
 	h.view_outputs = on_view_outputs;
 	h.outputs_ask = on_outputs_ask;
 	h.mode_set = on_mode_set;
@@ -3730,6 +4306,18 @@ static int serve(const char *sock, const char *view)
 		 * not one — a client with no socket yet — is SKIPPED rather
 		 * than pushed as -1: poll ignores those, so they would spend
 		 * the budget below and the loop would wake on nothing.
+		 *
+		 * AND POLLOUT WHERE THERE IS A BACKLOG, so a display that has
+		 * drained wakes the turn that refills it. An embedded guest's
+		 * blocks are offered only up to that display's watermark, and
+		 * with nothing watching the socket empty the room it freed
+		 * goes unused until the wait below expires — most of every
+		 * window, for a display that drains in well under a
+		 * millisecond. ONLY where there is a backlog: a descriptor
+		 * with nothing to send is writable at once and asking for it
+		 * turns the wait into a spin. kcon_view_pending() answers 0
+		 * for a peer that is not a display, so the one test is right
+		 * for every peer here.
 		 */
 		for (int i = 0; i < kcon_server_count(S.server) && n < pcap;
 		     i++) {
@@ -3739,7 +4327,8 @@ static int serve(const char *sock, const char *view)
 			if (fd < 0)
 				continue;
 			p[n].fd = fd;
-			p[n].events = POLLIN;
+			p[n].events = POLLIN |
+				      (kcon_view_pending(f) ? POLLOUT : 0);
 			p[n].revents = 0;
 			n++;
 		}
@@ -3958,14 +4547,52 @@ static int serve(const char *sock, const char *view)
 
 		KtuiEvent ev;
 
-		while (ktui_backend()->poll_event(&ev, 0)) {
-			if (ev.type == KT_EVT_KEY)
-				route_key(&ev);
-			else if (ev.type == KT_EVT_MOUSE)
-				route_ptr(&ev);
-			else if (ev.type == KT_EVT_TOUCH)
+		/*
+		 * THE COOKED EVENT, THEN THE RAW ONE FOR THE SAME INPUT.
+		 *
+		 * A raw event carries the cooked count it arrived behind and
+		 * is held until that many have been ROUTED, which is what puts
+		 * the session's decisions — did a chord eat this key, which
+		 * window is the pointer over — in front of the delivery that
+		 * depends on them. The drain below the loop is for the raw
+		 * events that followed the last cooked one, and for the motion
+		 * inside a single cell that has no cooked partner at all.
+		 */
+		for (;;) {
+			raw_drain();
+			if (!ktui_backend()->poll_event(&ev, 0))
+				break;
+			if (ev.type == KT_EVT_KEY) {
+				key_src_raw = ev_src_raw;
+				/* THE COUNT THIS EVENT WAS POPPED AT, which is
+				 * the one its raw partner recorded when it was
+				 * pushed: ev_pop has already advanced it. */
+				verdict_at = ev_out;
+				cooked_verdict = route_key(&ev) ? 1 : 0;
+			} else if (ev.type == KT_EVT_MOUSE) {
+				cooked_verdict = -1;
+				route_ptr(&ev, ev_src_raw);
+			} else if (ev.type == KT_EVT_TOUCH) {
+				cooked_verdict = -1;
 				route_touch(&ev);
+			} else {
+				cooked_verdict = -1;
+			}
 		}
+		raw_drain();
+		/* SPENT WITHIN THE TURN IT WAS REACHED IN. A verdict left
+		 * standing would be read by whatever raw key came next — a
+		 * modifier, most likely, which has no cooked partner and must
+		 * never be suppressed — and a touch's synthesised-pointer flag
+		 * left standing would be spent by a real device event, which
+		 * is one press delivered to a guest twice. */
+		cooked_verdict = -1;
+		ptr_synth = 0;
+
+		/* WHETHER THE RAW STREAM IS WANTED AT ALL, which is a question
+		 * about the focused window and is therefore asked here rather
+		 * than wherever focus happens to move. */
+		raw_gate();
 
 		/* THE PICTURES BEFORE THE CELLS THAT NAME THEM. A commit
 		 * referring to a sprite a view has not been sent draws the

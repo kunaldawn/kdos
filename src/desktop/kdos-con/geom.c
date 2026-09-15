@@ -11,12 +11,13 @@
  * the same program next appears, so an application does not open in the middle
  * of the screen at the size its author picked every single time.
  *
- * THE KEY IS `prog`, NOT `app_id`. Every WIN_TERM's app id is `terminal` and
- * every caged guest's is `kdos-cage` — an app id says what KIND of window this
- * is — so a table keyed on one would give every terminal on the desk a single
- * shared rectangle. `prog` is the program the window was opened for, written
- * once and never rewritten by the guest, and for a native surface it is the
- * client's own name. An empty one is remembered for nothing.
+ * THE KEY IS `prog`, NOT `app_id`. Every WIN_TERM's app id is `terminal`, and
+ * a guest on a terminal of its own is `kdos-cage` — so a table keyed on one
+ * would give every terminal on the desk a single shared rectangle. `prog` is
+ * the program the window was opened for, written once and never rewritten by
+ * the guest — for an embedded guest the program it execs and not its box, for
+ * a native surface the client's own name. An empty one is remembered for
+ * nothing.
  *
  * THE RECORD IS PER PROGRAM AND PER WORKSPACE. The same editor on workspace 1
  * and on workspace 3 is two windows a person arranged separately, and one line

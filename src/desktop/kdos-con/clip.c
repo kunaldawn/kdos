@@ -10,12 +10,21 @@
  * program, which is what a person means by copying. The cost is that the
  * selection is text and only text — a picture on the clipboard would be a
  * payload this desktop has nowhere to put.
+ *
+ * AN EMBEDDED GUEST IS A COMPOSITOR OF ITS OWN AND HOLDS A COPY. Every
+ * kdos-cage has a seat of its own, so a selection left where a guest put it
+ * would be one clipboard per application — a copy in the browser the terminal
+ * beside it cannot paste. embed.c mirrors what is held here onto every live
+ * channel whenever `clip_gen()` moves, and installs what a guest offers by
+ * calling clip_put(): this file holds the bytes and knows nothing about the
+ * channel, and embed.c carries them and knows nothing about the arbitration.
  */
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "con.h"
+#include "kembed.h"
 
 /*
  * CAPPED, AND WELL UNDER THE WIRE'S OWN LIMITS. libkcon refuses a payload
@@ -23,13 +32,25 @@
  * that reached either would be a copy that killed the window it came from.
  * Sixty-four kilobytes is a very long file name, a screenful of a terminal,
  * and a paragraph of prose several times over.
+ *
+ * IT IS THE SAME NUMBER AS THE PRIVATE CHANNEL'S, and it is that number rather
+ * than a copy of it: a cap raised on one side alone is a selection cut a
+ * second time, in the process that did not hear about the change, with nothing
+ * anywhere saying where the bytes went.
  */
-#define CLIP_MAX (64u * 1024u)
+#define CLIP_MAX KEMBED_CLIP_MAX
 
 static struct {
 	char *text;
 	size_t len;
 } sel[2];			/* [0] clipboard, [1] primary */
+
+/*
+ * HOW MANY TIMES THE SELECTION HAS CHANGED, the clipboard and the primary
+ * counted together. It is what tells a copy of the selection apart from the
+ * selection itself without comparing up to CLIP_MAX bytes to find out.
+ */
+static unsigned long clip_generation;
 
 static void clip_set(int primary, const char *text, size_t len)
 {
@@ -51,6 +72,7 @@ static void clip_set(int primary, const char *text, size_t len)
 	free(sel[i].text);
 	sel[i].text = copy;
 	sel[i].len = copy ? len : 0;
+	clip_generation++;
 }
 
 /*
@@ -100,6 +122,11 @@ void clip_put(const char *text, size_t len, int primary)
 {
 	clip_set(primary, text, len);
 	clip_out(primary);
+}
+
+unsigned long clip_gen(void)
+{
+	return clip_generation;
 }
 
 const char *clip_get(int primary, size_t *len)

@@ -15,7 +15,8 @@ Where something is deliberately absent rather than merely missing, the reason is
 offered and accepted; there is no MIME negotiation, no deferred transfer and no image payload.
 Only the trash accepts a drop on the desktop — dropping onto a folder would be a move, and a move
 that half-succeeds across filesystems is worse than not offering it. Both directions work between
-a KDOS surface and a boxed application, and on the console the session carries the drag itself.
+a KDOS surface and a boxed application under `kdos-comp`; on the console the session carries a drag
+between its own windows, and an embedded graphical application is not one of them — see below.
 See [Status](status.md) for what that rests on.
 
 **A drag on the console has no picture under the pointer.** The pointer is a reversed cell, which is
@@ -114,15 +115,56 @@ and a window the session frames has no such column. It is the trade the composit
 makes, and it is the price of the frame not being drawn twice; carrying the marks would mean a
 per-row status run beside the cell commit, which nothing sends yet. The chords still jump.
 
-**An embedded graphical application is composited on the CPU, a block at a time, under a byte
-budget.** `kdos-con --run` gives a guest a window whose pixels cross a shared mapping as sprite
-blocks, and a block at an 8x15 cell is a hundred and twenty kilobytes: a maximised window is dozens
-of them, so what a display is sent is paced rather than handed over whole. A guest that repaints
-everything continuously therefore arrives a cycle or two behind, and a large one costs the session
-real processor time — this is software compositing of somebody else's pixels and there is no path
-where it is not. What it does not cost is the desktop: a display that is behind is skipped, never
-dropped. See [`kdos-cage`](../04-programs/kdos-cage.md) and
-[`kdos-con`](../04-programs/kdos-con.md).
+**An embedded graphical application is composited on the CPU, a block at a time, paced by the
+display's own queue.** `kdos-con --run` gives a guest a window whose pixels cross a shared mapping
+as sprite blocks, and a block at an 8x15 cell is a hundred and twenty kilobytes: a maximised window
+is dozens of them. A turn offers a display blocks until its queue reaches half of `KCON_VIEW_HIGH`,
+which is the room that display drained since the last turn, so a guest that repaints everything
+continuously arrives a turn or two behind rather than at the rate a constant would allow. A large
+one costs the session real processor time — this is software compositing of somebody else's pixels
+and there is no path where it is not. What it does not cost is the desktop: the mark is under the
+one where a display stops counting as ready, so the panel, the pointer and every other window are
+still composed while a guest draws, and a display that is behind is skipped, never dropped.
+
+Unless its box profile says `render = gpu`, in which case the guest renders on the card and the
+compositing in the cage does too — but the frame still reaches the screen as blocks over the same
+socket, because the console's own display path is a CPU-mapped dumb buffer with no GPU in it.
+**So an embedded window cannot carry a game or 1080p60 video**, whichever renderer drew it: every
+frame is read back, cut into sprite blocks, sent over a socket and written into a dumb buffer, and
+that crossing is the ceiling rather than the drawing. `display = vt` is the path that can, and it
+has never been run on real hardware — see below. See
+[`kdos-cage`](../04-programs/kdos-cage.md) and [`kdos-con`](../04-programs/kdos-con.md).
+
+**A drag onto an embedded graphical application reads as cancelled.** `KEMBED_DRAG_OFFER`,
+`KEMBED_DRAG_ENTER`, `KEMBED_DRAG_MOTION`, `KEMBED_DRAG_LEAVE` and `KEMBED_DROP` are declared in
+`kembed.h` and implemented by neither `kdos-cage` nor `kdos-con`, so a drag released over an
+embedded window is one the guest never hears of and the session ends as cancelled, and a drag begun
+inside one never leaves it. The clipboard is the way across and it is built: `KEMBED_CLIP_OFFER`
+puts a guest's copy on the session's own clipboard and `KEMBED_CLIP_SET` mirrors that clipboard and
+the primary onto every cage's seat, both over a sealed `memfd`. What the clipboard cannot carry is
+what a drag would have: it is text of at most `KEMBED_CLIP_MAX`, so a copied image leaves the
+selection as it was, and a file goes across as a path and not as its contents.
+
+**No real boxed application has pasted across the cage boundary.** Both ends of `KEMBED_CLIP_*` are
+built and the crossing is proved on a host with stand-in cages — one guest's offer reaching another
+guest, and a copy made in the session reaching both — but the guest in that proof is a stub that
+writes a fixed string, not a toolkit negotiating mime types on a real `wl_data_device`. What is
+untested is the negotiation against a real client, not the carrier.
+
+**A guest given the keyboard while Caps Lock is on resolves one key before it is told.** The
+modifier mask travels on the raw stream and nowhere else, and that stream runs only while an
+embedded window holds the keyboard — so a lock toggled while a terminal had the focus reaches the
+session as nothing, and the session refuses to assert a state it does not know. The first raw key
+carries the mask behind it, which is the only key that guest resolves under the wrong lock. The
+alternative is sending a guess at focus-in, which puts every letter of a whole application in the
+wrong case whenever the guess is wrong.
+
+**No multi-window guest has been photographed.** One cage is as many KDOS windows as its guest maps
+toplevels — a headless output, a scene output and a mapping each, with the roles that decide
+placement, stacking and the taskbar row. What stands behind that is the compile gate and host runs
+against a stand-in cage; no real multi-window application has been seen on a screen on the shipped
+image. The same is true of a guest holding a key, reading its own layout or locking the pointer:
+the mechanism is here and the picture of it is not.
 
 **No VT has ever been allocated.** Embedding is what a graphical application gets and it has been
 run end to end; `--vt` is the exception for something that needs acceleration, and that path — the
@@ -132,16 +174,11 @@ carrying `kdos-cage` and a machine with real terminals. What exists is the mecha
 reasoning behind its ordering; what is missing is the evidence that a guest ever appeared on a
 screen that way.
 
-**An embedded application is pointed at a cell at a time.** A press and a release carry where in the
-cell they landed, so a small button is clickable; a drag that stays inside one cell moves the
-guest's pointer nowhere, because a view reports a move when the cell changes. Nothing on this
-desktop that is drawn in cells needs finer, and the one thing that is not is the thing that has to
-live with it.
-
-**An embedded application is typed at through a US keymap.** A view resolves the person's own layout
-to a character before the session sees it, and the session maps that character back to the key that
-produces it on a US keyboard — which is the keymap the guest is given. An application reading raw
-scancodes therefore sees US positions.
+**A touch screen points at an embedded application a cell at a time.** A view with a real pointer
+or keyboard carries the raw device stream beside the cell one, so a guest is aimed in pixels and
+typed at through the person's own layout; a touch event is synthesised from the gesture recogniser
+and has no raw partner, so it arrives at the grid's resolution. A finger is wider than a cell, which
+is why this has not been worth a second synthesis path.
 
 **A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
 code by design, so a terminal window it opens itself shows the fallback shade where a picture is.

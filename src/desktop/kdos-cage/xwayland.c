@@ -61,6 +61,20 @@ is_primary(struct cg_view *view)
 	return parent == NULL;
 }
 
+static struct cg_view *
+get_parent(struct cg_view *view)
+{
+	struct cg_xwayland_view *xwayland_view = xwayland_view_from_view(view);
+	struct wlr_xwayland_surface *parent = xwayland_view->xwayland_surface->parent;
+
+	/* A parent with no surface has not mapped, so it is no owner: there is
+	 * no window of its own for this one to sit on. */
+	if (!parent || !parent->surface) {
+		return NULL;
+	}
+	return view_from_wlr_surface(parent->surface);
+}
+
 static bool
 is_transient_for(struct cg_view *child, struct cg_view *parent)
 {
@@ -94,6 +108,13 @@ maximize(struct cg_view *view, int output_width, int output_height)
 	wlr_xwayland_surface_configure(xwayland_view->xwayland_surface, view->lx, view->ly, output_width,
 				       output_height);
 	wlr_xwayland_surface_set_maximized(xwayland_view->xwayland_surface, true, true);
+}
+
+static void
+set_size(struct cg_view *view, int width, int height)
+{
+	struct cg_xwayland_view *xwayland_view = xwayland_view_from_view(view);
+	wlr_xwayland_surface_configure(xwayland_view->xwayland_surface, view->lx, view->ly, width, height);
 }
 
 static void
@@ -137,6 +158,13 @@ handle_xwayland_surface_map(struct wl_listener *listener, void *data)
 	struct cg_xwayland_view *xwayland_view = wl_container_of(listener, xwayland_view, map);
 	struct cg_view *view = &xwayland_view->view;
 
+	/*
+	 * AN OVERRIDE-REDIRECT SURFACE IS NOT A WINDOW. A menu, a tooltip, a
+	 * splash and a drag icon name their own place in X root coordinates,
+	 * which ARE the output layout — so one lands inside the box of the
+	 * window that raised it and renders in that window's frames, with no
+	 * output, no `win` and no taskbar entry of its own.
+	 */
 	if (!xwayland_view_should_manage(view)) {
 		view->lx = xwayland_view->xwayland_surface->x;
 		view->ly = xwayland_view->xwayland_surface->y;
@@ -173,9 +201,11 @@ static const struct cg_view_impl xwayland_view_impl = {
 	.get_title = get_title,
 	.get_geometry = get_geometry,
 	.is_primary = is_primary,
+	.get_parent = get_parent,
 	.is_transient_for = is_transient_for,
 	.activate = activate,
 	.maximize = maximize,
+	.set_size = set_size,
 	.destroy = destroy,
 	.close = close,
 };

@@ -27,6 +27,9 @@
  *   - writes /usr/local/bin/xdg-open, so a boxed program that opens a link
  *     or a file reaches the HOST through the OpenURI portal — the box's own
  *     xdg-open would look for a browser inside the container and find none;
+ *   - writes /etc/asound.conf, so ALSA's `default` in the box is the host's
+ *     PipeWire and not the card: a box that opens the card directly holds it
+ *     exclusively and silences the rest of the machine;
  *   - prints `container_setup_done` on stdout, where podman logs keep it, and
  *     `box_setup_done()` looks for it;
  *   - then stays alive as pid 1, reaping whatever the box's processes orphan.
@@ -203,6 +206,53 @@ static void install_xdg_open(void)
 	}
 }
 
+/*
+ * ALSA'S `default` INSIDE THE BOX, and the one file that chooses it.
+ * alsa.conf's @hooks read /etc/asound.conf; a box that has none resolves
+ * `default` to alsa-lib's built-in plug -> softvol -> dmix card chain, and
+ * because /dev is shared and the host `audio` group survives the keep-id user
+ * namespace that open SUCCEEDS — it takes the card exclusively, so the box
+ * gets sound and everything else on the machine, the host's PipeWire
+ * included, goes silent until the box stops.
+ *
+ * THE `!` IS NOT STYLE. The hooks run after the rest of alsa.conf is parsed,
+ * so `pcm.default` already exists there as a string. A plain `pcm.default
+ * { ... }` does not lose a race, it aborts the whole config load, and every
+ * program in the box then has no ALSA configuration at all rather than no
+ * override.
+ *
+ * ONLY WHERE THE PLUGIN EXISTS. `type pulse` is libasound2-plugins', which
+ * the Debian base pack carries; a base that does not — alpine — would get a
+ * `default` naming a plugin it cannot load, which is louder than the card
+ * chain but no more useful. The failure the guard buys is silence, not an
+ * aborted configuration.
+ *
+ * It moves `default` and nothing else: `hw:0` and `sysdefault` still name the
+ * card, which the shared /dev still reaches.
+ */
+static const char ASOUND_CONF[] =
+"# KDOS: a box plays through the host's PipeWire, not through the card.\n"
+"pcm.!default {\n"
+"\ttype pulse\n"
+"\thint {\n"
+"\t\tshow on\n"
+"\t\tdescription \"Default Audio Device (host PipeWire)\"\n"
+"\t}\n"
+"}\n"
+"\n"
+"ctl.!default {\n"
+"\ttype pulse\n"
+"}\n";
+
+static void install_asound_conf(void)
+{
+	if (!kb_path_exists("/usr/lib/x86_64-linux-gnu/alsa-lib/"
+			    "libasound_module_pcm_pulse.so"))
+		return;
+	if (kb_write_file_atomic("/etc/asound.conf", ASOUND_CONF) != 0)
+		kb_warn("could not write /etc/asound.conf");
+}
+
 static void reap(int sig)
 {
 	(void)sig;
@@ -254,6 +304,7 @@ int main(int argc, char **argv)
 	 * that does not exist yet. */
 	kb_mkdir_p(home);
 	install_xdg_open();
+	install_asound_conf();
 
 	setenv("PATH", BOXINIT_PATH, 1);
 	setenv("HOME", home, 1);

@@ -343,6 +343,13 @@ Without an evictor a full table simply answers -1, which every consumer already 
 its glyph. That is right for icons, which are owned for the life of the session, and wrong for
 photographs, which are megabytes each.
 
+**A refused put is a hole, and only the owner can see it.** `ktui_sprite_put` answers -1 when the
+budget cannot be made to fit: eviction skips every slot the cell grids still reference, so a table
+whose pictures are all on screen has nothing it may take. A caller that stores that -1 as a slot
+draws the background where a picture belongs, and the table can never repair it because it never
+learned the picture existed. A consumer holding pictures that are not its own — a view showing a
+session's — has to tell the side that owns them; see `KCON_OP_SPRITE_LOST` under libkcon.
+
 **There is one evictor per process, and every owner in it shares that one.** A program that draws
 photographs and icons has a single function handing back pictures built by two different libraries,
 so no owner may assume the evictor is its own free. A picture given to the table must **free its own
@@ -415,8 +422,34 @@ a frame copy whole cells.
 
 **A pointer event carries where in the cell it landed**, as an offset from the cell's centre in
 1/256ths, and zero — what a backend with no pixel geometry leaves behind — means the centre.
-Nothing drawn in cells reads it. It exists for the one thing on this desktop that is not cells: a
-pixel guest embedded in a window, whose buttons are smaller than the grid pointing at them.
+Nothing drawn in cells reads it. It is what aims a pixel guest embedded in a window when the event
+has no raw partner beside it: a view that reports no pixels at all, which is every view inside
+somebody else's terminal, and a touch gesture's synthesised pointer on a view that does. Where
+there is a partner the guest is aimed from it instead — see [libkcon](#libkcon).
+
+**The same physical input travels twice, in two queues.** `poll_event` answers a character and a
+cell; `KtuiBackend.poll_raw` answers a `KtuiRaw` — an evdev keycode with a separate press and
+release, the xkb mask and group, a pointer in the backend's own pixels with the cell those pixels
+were measured in and both deltas the device reported, and a scroll with a second axis, a `value120`
+and what made it — and `KtuiBackend.keymap` hands over the backend's compiled layout as xkb text
+with a generation counter. A backend with no device of its own leaves both NULL, which is how a
+consumer knows not to claim the capability at all.
+
+**A second queue because motion coalesces and a key must not.** A thousand-hertz mouse in the
+cooked queue evicts the click that came before it, which is the oldest entry there; in the raw
+queue consecutive bare motions merge into one at the newest position with their deltas **summed** —
+a delta is a distance, and dropping one shortens the movement a grabbed guest sees — and nothing
+else merges at all.
+
+**The cooked event for one physical input is sent before its raw partner, and `KtuiRaw.after` is how
+a caller knows which.** It counts the cooked events that must be taken before that raw one goes, so
+a caller sends cooked events up to that number and only then sends the raw one — the field carries
+the order, not the order the two queues were filled in. Draining one queue to empty and then the other loses it: two keys inside one poll arrive as
+two cooked messages and then two raw ones, and a session that swallowed the first key's chord has
+no way left to say which press it swallowed. A handler may queue the switch before the character it
+resolves to, so a raw event's number is raised by any cooked event queued before the caller drains
+it — the stamp is only ever raised, because one delivered early is a chord the session ate and the
+guest saw.
 
 Three rules the extraction from its original single consumer exists to keep:
 
@@ -556,6 +589,56 @@ before it reads the next, or every pointer it kept names the last one.
 predates them from a truncated message. A view's pixel geometry and a pointer's position inside its
 cell arrived that way.
 
+**A view reports its input twice, and the two streams are different things.** `KCON_OP_KEY` and
+`KCON_OP_PTR` are cooked: a character the view resolved through the person's own layout, and a cell
+with an offset inside it. That is everything a cell desktop needs and nothing a pixel guest can use
+— a guest holds a key down, repeats from its own keymap, reads a modifier that produces no character
+at all, and is aimed at things smaller than a cell. So a view that holds a real keyboard and a real
+pointing device claims `KCON_VIEW_RAW` and reports the same physical events again, unresolved:
+`KCON_OP_KEY_RAW` (an evdev code, a separate press and release, the xkb mask and group),
+`KCON_OP_PTR_RAW` (the view's own pixels, the cell size those pixels were measured in, libinput's
+accelerated and unaccelerated deltas and the full evdev button code), `KCON_OP_AXIS_RAW` (a
+continuous value, a `value120`, a horizontal axis and which device made the scroll) and
+`KCON_OP_KEYMAP`. They reach the session on `view_key_raw`, `view_ptr_raw`, `view_axis_raw` and
+`view_keymap`, beside the cooked hooks and never instead of them. All four are refused from a view
+that did not claim the capability and from one that attached to observe, the same guard the cooked
+input keeps.
+
+**The cooked message for one physical event goes first, and that ordering is protocol.** It buys
+three things: the session has already decided whether a chord ate the key, has already decided which
+window the pointer is over, and has already moved its own cursor cell — so the raw arm never routes,
+never chords and never touches the cursor. It only delivers, which is what keeps one answer to
+"where did this click land".
+
+**A view sends none of it until it is asked.** `kcon_view_raw()` turns the stream on and is silently
+nothing on a view that did not claim the capability; the session asks only while an embedded pixel
+guest holds the focus, because the raw stream is one message per device event and a pointer at a
+thousand hertz on a socket that also carries a window of pixels is a socket that carries no pixels.
+
+**Motion coalesces to the newest; a key, a button and an axis never do.** A view merges a motion into
+the pending one when no button, key or axis sits between them, and sums the deltas it merges, because
+a delta is a distance and a dropped one shortens the movement a grabbed guest sees. A dropped press
+is a letter that never arrives, a dropped release is a key held down for ever, and a scroll of zero
+is the end of a gesture — so those are sent whole however far behind the link is.
+
+**The keymap crosses as bytes, not as a descriptor**, which is the rule this whole protocol is built
+on: a layout sent as a `memfd` would make a view unforwardable for the sake of tens of kilobytes
+sent once. It is xkb's text format, refused above `KCON_KEYMAP_MAX` and refused unless its last byte
+is the terminator the length counts, because the consumer hands it to a compiler that reads to a NUL.
+One session is one keyboard, so the last view to speak wins.
+
+**Every raw field is bounded before a hook sees it.** A keycode and a button share evdev's number
+space and are refused above `KCON_KEYCODE_MAX`, which is what sizes the set of presses a window is
+owed a release for; a cell size of zero is refused because the session derives its cell by dividing
+by it; an axis or a source outside its enum is refused because the far end maps both in a switch and
+a scroll whose direction it guessed is a page that moves the wrong way.
+
+**A view that claims no capability is driven by the cooked stream alone.** It is never asked for raw
+input, sends no keymap, and its keys and clicks arrive cooked — which is what a view inside somebody
+else's terminal, at the far end of an `ssh` link, can produce at all. The session drives a pixel
+guest from that stream the way it drives a cell window: a character turned back into a keycode, a
+press and a release together, no modifier on a click, no horizontal axis and no pointer lock.
+
 **A surface's slot numbers are its own.** Two surfaces both using slot 0 is the normal case, so the
 server assigns a session slot on first sight and a compositing session rewrites the slot in every
 sprite cell it copies out. A session that owns a picture itself — an embedded application's frame —
@@ -577,6 +660,29 @@ so a pointer comparison calls every frame after the first a repeat. **A picture 
 contract at both ends** — the sender waits for a boundary after it, and the session marks the
 surface as owing one the moment a `KCON_OP_SPRITE` arrives, accepted or not, because a leg answered
 only for cells leaves an animation paced by the 100 ms stall timeout.
+
+**A picture that reached the wire has not reached a screen.** `kcon_view_sprite` answers for the
+send: 1 means the bytes were queued, and the view's own sprite table — which has a byte budget of its
+own — may still refuse to keep them. `KCON_OP_SPRITE_LOST` is how it says so, carrying the slots it
+dropped, and the session hears them one at a time through the `view_sprite_lost` hook. It is the only
+way the sender can learn of the loss: it cleared what it owed on the send's own answer, so without
+this the cells naming that slot are drawn over a picture that is not there. **The count and every
+slot in that message are bounded against `KCON_MAX_SPRITE_MAP` before either indexes anything**: a
+slot number is an untrusted peer's index into a table of the session's own. **The view sends one
+message per frame it presents, not one per loss** — a display short of budget loses a picture per
+block per frame, and
+a message each would spend the queue the pictures need — and the side that re-owes the slots has to
+bound how often it pays them, because a table too small for the window refuses the replacement too.
+
+**The backlog is the pacing signal, and it is truthful.** `kcon_conn_pending` is bytes owed to the
+kernel and nothing else: `kcon_view_ready` reads it against `KCON_VIEW_HIGH`, and the send buffer is
+marked dead above `KCON_MAX_QUEUE`, so a figure that meant anything other than "not yet written"
+would break the peer-is-gone guard. `kcon_send` ends in a flush, so the backlog is zero until the
+socket's own buffer fills; a caller cutting a picture into pieces asks between them and flushes
+between them, which makes `kcon_view_pending` a WATERMARK on a queue that re-clears rather than a
+budget for one turn. A caller pacing against it must also poll the view for writability —
+`kcon_server_view_at` plus `kcon_surface_fd` and `kcon_view_pending` are the three calls that shape
+the poll — or the room the display frees goes unused until the caller's next tick.
 
 **And a display that attached late is told to start again.** `KCON_OP_SPRITE_RESEND` asks every
 surface to forget what the display has: cells that name a slot do not change, so a view that arrived
@@ -931,7 +1037,15 @@ nothing.
 **A VT switch suspends libinput and resumes it.** The seat revokes every evdev descriptor when it
 deactivates a session and hands none back by itself. Keys that arrive while switched away still
 move the xkb state, or the modifiers held down when the switch fired are still held when the
-session returns.
+session returns. A release still travels raw while switched away, because a switch that swallowed
+one leaves the chord's modifier held down in a guest for ever.
+
+**This is the backend that fills the raw queue completely.** libinput reports the unaccelerated
+distance, the discrete detent count and every button's evdev code, and xkb compiles the layout the
+session's own environment names — so `poll_raw` and `keymap` are both real here and a view on this
+backend is the one that claims `KCON_VIEW_RAW`. The exception is touch: the gesture recogniser
+synthesises a cooked pointer event and no raw partner, so a finger reaches an embedded guest at the
+grid's resolution, which is the resolution a finger has.
 
 ## libkwl
 
@@ -995,6 +1109,16 @@ failure:
   written into a descriptor the receiver owns and the default disposition kills the surface when
   that receiver closes early. `SIG_IGN` survives `execve`, so any consumer that forks and execs
   must reset dispositions in the child or the whole launched tree inherits it.
+- **The raw queue is filled, with one number this protocol cannot carry.** `wl_pointer` reports a
+  position and no distance, and this client binds no relative-pointer protocol, so the delta is the
+  step between two surface positions — already accelerated, already clamped to the surface, and the
+  same number in both the accelerated and the unaccelerated pair. Everything else is real: evdev
+  codes, the four xkb components the compositor sends, `value120` and the axis source, and the
+  keymap the compositor handed over.
+- **A key held when the surface loses the keyboard is released into the raw stream here.** The
+  compositor sends no release for it, and the raw arm carries a switch rather than a character, so
+  a press with no release is a key a pixel guest holds down for ever. Only codes this client
+  reported down are released, which is what keeps the two halves symmetrical.
 
 ## Adding a library
 

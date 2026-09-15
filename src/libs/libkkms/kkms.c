@@ -1236,6 +1236,46 @@ static void owe_all(struct kkms_out *o)
  * there would upload the entire plane. Which model a card is, is settled once
  * at open; see driver_transfers().
  */
+/*
+ * CELLS THAT OWE A REPAINT THOUGH THEIR BYTES DID NOT CHANGE, spoiled in THIS
+ * BACKEND'S OWN previous frame — the one the diff below actually reads.
+ *
+ * A sprite cell names a slot rather than carrying a picture, so a new picture
+ * in the same slot writes an identical cell and the row compare finds nothing;
+ * without this an embedded application would hold its first frame for ever
+ * while every other part of the path worked. Spoiling libktui's copy cannot
+ * serve: it is per session where this is per screen, and the flush below
+ * overwrites it from `cur` before the diff runs.
+ *
+ * The rectangle is in the shared grid's columns, so each screen takes the part
+ * that falls in its own slice — `o->col` is where that slice starts.
+ */
+static void kkms_owe(int x, int y, int w, int h)
+{
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+
+		if (!o->prev || o->cols < 1 || o->rows < 1)
+			continue;
+
+		int x0 = x - o->col, x1 = x + w - o->col;
+		int y0 = y, y1 = y + h;
+
+		if (x0 < 0)
+			x0 = 0;
+		if (y0 < 0)
+			y0 = 0;
+		if (x1 > o->cols)
+			x1 = o->cols;
+		if (y1 > o->rows)
+			y1 = o->rows;
+
+		for (int r = y0; r < y1; r++)
+			for (int c = x0; c < x1; c++)
+				o->prev[(size_t)r * o->cols + c].ch = 0xffffffffu;
+	}
+}
+
 static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		       int force_full)
 {
@@ -1489,9 +1529,15 @@ static int kkms_caps(void)
 static const KtuiBackend kkms_backend = {
 	.name = "kms",
 	.flush = kkms_flush,
+	.dirty = kkms_owe,
 	.poll_event = kkms_poll_event,
 	.size = kkms_size,
 	.caps = kkms_caps,
+	/* THIS BACKEND HOLDS REAL DEVICES, so it answers the raw half too: an
+	 * evdev keycode, libinput's own deltas and the compiled layout. A
+	 * backend reading a terminal has none of that and leaves both NULL. */
+	.poll_raw = kkms_poll_raw,
+	.keymap = kkms_keymap_text,
 };
 
 int kkms_active(void)

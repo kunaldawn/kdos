@@ -35,10 +35,14 @@ static unsigned prev_occ;
  * layer, a guest's placeholder and a surface that says it has nothing to show
  * are not things a person switches between, and a panel that listed them would
  * offer rows that do nothing.
+ *
+ * ONE APPLICATION IS ONE ROW. A dialog, a tool palette and a splash belong to
+ * a window that already has one — `no_task` is that rule — so an editor with
+ * four docks and a file chooser open is one entry and not six.
  */
 static int listed(const Win *w)
 {
-	if (w->panel || w->overlay || w->background)
+	if (w->panel || w->overlay || w->background || w->no_task)
 		return 0;
 	if (w == S.saver || w == S.lock)
 		return 0;

@@ -108,8 +108,15 @@ Three details in that startup are each load-bearing:
 ## Audio
 
 PipeWire runs on the **host**, started by `kdos-desktop-start` *and* `kdos-con-start`: the daemon,
-a session manager and the PulseAudio compatibility layer. Boxed applications reach it through the
-shared `$XDG_RUNTIME_DIR`.
+a session manager and the PulseAudio compatibility layer. **A box reaches it because the base pack
+carries an audio client and its init writes the ALSA default.** `libpulse0` is what a program that
+opens PulseAudio finds on the shared `$XDG_RUNTIME_DIR`; `libasound2-plugins` plus the
+`/etc/asound.conf` `kdos-boxinit` writes (`pcm.!default { type pulse }`) is what a plain ALSA
+program in a box follows to the same place. Without both, `default` falls through to alsa-lib's
+built-in `plug → softvol → dmix` card chain — and since `/dev` is shared and the host `audio` group
+survives the keep-id user namespace, that open **succeeds and takes the card**, so the box has
+sound and the rest of the machine has none until it stops. It moves `default` only: `hw:0` and
+`sysdefault` still name the hardware, which the shared `/dev` still reaches.
 
 **And plain ALSA programs reach it too, which takes one file to arrange.** `alsa.conf`'s `@hooks`
 list reads `/var/lib/alsa/conf.d`, `/usr/etc/alsa/conf.d`, `/etc/alsa/conf.d`, `/etc/asound.conf`
@@ -350,6 +357,51 @@ the host and asks you which output to share.
 **A screenshot of a phosphor desktop looks like the desktop.** Output capture copies the output's
 committed buffer, which under the CRT pass is the processed one. Per-window capture renders the
 window's own contents and is untinted. Both are the honest answer to what was asked.
+
+### A boxed application's clipboard on the console
+
+**The console runs one compositor per embedded APPLICATION.** A boxed application there is a guest
+inside a `kdos-cage` of its own, so the seat it copies onto is that cage's and nobody else's: one
+clipboard for every window that application maps, invisible to the terminal beside it and to the
+next box. A copy in a GIMP dock therefore pastes into its image window with nothing crossing this
+channel at all — the two windows are one client on one `wl_display`. The session is the only
+clipboard the console and a box can both see, which is why the cage mirrors the selection rather
+than arbitrating it — `kdos-con` owns the bytes exactly as `kdos-comp` owns them in the other
+session.
+
+**Both halves are descriptors on the cage's event loop.** A guest's copy is read out of a pipe as
+the guest writes it, and a paste inside the guest is answered from the copy the cage is already
+holding. A transfer that waited for a client, in either direction, would stop the loop that also
+pumps frames — the window would freeze because somebody pressed Ctrl+C in it.
+
+**Text, and at most sixty-four kilobytes of it.** What crosses is the first of
+`text/plain;charset=utf-8` and `text/plain` the guest offers, which is also what XWayland maps
+`UTF8_STRING` and `STRING` to; a guest offering only an image has copied something this desktop
+has nowhere to put, and the selection is left as it was rather than emptied by a copy nobody could
+paste. The bound is `KEMBED_CLIP_MAX`, which **is** the constant the session's own clipboard
+truncates at rather than a copy of it, so a selection is cut once or not at all. It travels in a
+sealed descriptor, and one that is not a file of the length it claims, or that can still be shrunk
+under the mapping, is dropped rather than mapped.
+
+**The session's end reads the offer and pushes the mirror.** `take_clip()` answers a
+`KEMBED_CLIP_OFFER` by measuring the descriptor and handing the bytes to the session's own
+clipboard — the same store the console terminal's selection writes. `send_clip()` goes the other
+way: it seals the clipboard and the primary once per change and sends both as `KEMBED_CLIP_SET` to
+every cage that is behind, once per channel per pump and after the drain, so a copy one guest made
+this turn reaches the others in the same turn. A cage is brought level again when a window is
+adopted, because a guest advertises what it can paste the moment its first window takes the
+keyboard and a cage that has not been told is an application whose Paste item is grey.
+
+**The comparison is the selection's generation and not its bytes.** A guest that has just offered
+its own copy is one generation behind by construction, so the mirror hands that copy straight back
+and the cage recognises what it last offered and does nothing with it — which is what keeps a copy
+from cancelling itself a moment after it was made. Comparing bytes instead would cost a full
+compare per channel per pump to answer the same question.
+
+**A drag does not cross, and that is the gap beside it.** `KEMBED_DRAG_*` and `KEMBED_DROP` are
+declared in `kembed.h` and implemented by neither end, so a drag released over a boxed window is
+one the guest never hears of and the session ends as cancelled. A copy is the way across;
+[known-gaps](../06-reference/known-gaps.md) is where the drag is recorded.
 
 ## Input methods
 

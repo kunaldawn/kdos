@@ -432,6 +432,7 @@ extern const char *ktui_glyph[KT_G_N];
 /* Tagged and forward-declared because the backend vtable above needs the name
  * before the input layer below defines the fields. */
 typedef struct KtuiEvent KtuiEvent;
+typedef struct KtuiRaw KtuiRaw;
 
 typedef struct {
 	const char *name;
@@ -439,6 +440,24 @@ typedef struct {
 	 * presents. `force_full` means ignore it and repaint everything. */
 	void (*flush)(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		      int force_full);
+	/*
+	 * THESE CELLS OWE A REPAINT THOUGH THEIR BYTES DID NOT CHANGE, for the
+	 * one thing a cell names rather than carries: a sprite cell holds a
+	 * SLOT, so a new picture in the same slot writes an identical cell.
+	 *
+	 * A BACKEND THAT KEEPS ITS OWN PREVIOUS FRAME MUST IMPLEMENT THIS, AND
+	 * SPOIL EVERY COPY IT KEEPS. `prev` above is libktui's, and a backend
+	 * is free to diff against copies of its own instead — libkkms keeps
+	 * one per screen where libktui's is per session, and libkwl keeps one
+	 * per buffer plus the cells the compositor is showing. Spoiling
+	 * libktui's changes nothing such a backend reads; spoiling some but
+	 * not all of its own repaints pixels into a buffer nothing is told to
+	 * re-read, or damages rows the paint left alone. Either way the screen
+	 * holds the first frame of every animation for ever, with every other
+	 * part of the path reporting success. NULL means the backend diffs
+	 * against `prev`, and libktui spoils that instead.
+	 */
+	void (*dirty)(int x, int y, int w, int h);
 	int (*poll_event)(KtuiEvent *ev, int timeout_ms);
 	void (*size)(int *w, int *h);
 	int (*caps)(void);
@@ -464,6 +483,43 @@ typedef struct {
 	 * Answering no here is how the repaint survives to the next frame.
 	 */
 	int (*presented)(void);
+	/*
+	 * THE SAME PHYSICAL INPUT, UNRESOLVED, or NULL for a backend with no
+	 * device of its own.
+	 *
+	 * poll_event above answers a CHARACTER and a CELL, which is everything
+	 * a cell desktop wants and nothing a pixel guest embedded in a window
+	 * can use: a guest holds a key down, repeats from its own keymap,
+	 * reads a modifier that produces no character, and aims at a scrollbar
+	 * two pixels wide. So the switch and the pixel travel too, in a queue
+	 * of their own.
+	 *
+	 * A QUEUE OF ITS OWN BECAUSE MOTION COALESCES AND A KEY MUST NOT. A
+	 * thousand-hertz mouse in the cooked queue evicts the click that came
+	 * before it, which is the oldest entry there; here consecutive motions
+	 * merge into one and nothing else merges at all.
+	 *
+	 * THE COOKED EVENT FOR ONE PHYSICAL INPUT IS SENT BEFORE ITS RAW
+	 * PARTNER, which is what lets a session decide whether a chord ate a
+	 * key before the guest is handed it. The order is carried by
+	 * `KtuiRaw.after` and not by the order the two queues were filled in:
+	 * a caller drains them TOGETHER against that number, rather than one
+	 * queue and then the other. Returns 1 and fills `ev`, or 0 when the
+	 * queue is empty.
+	 */
+	int (*poll_raw)(KtuiRaw *ev);
+	/*
+	 * THE LAYOUT THIS BACKEND'S KEYBOARD IS RUNNING, in xkb's text format,
+	 * NUL-terminated, owned by the backend and valid until the next call.
+	 * NULL for a backend with no keyboard of its own.
+	 *
+	 * A KEYCODE MEANS NOTHING WITHOUT IT: a guest handed codes alone reads
+	 * US positions, and a French keyboard types the wrong letters. `*gen`
+	 * is set to a counter the backend bumps whenever the text changes, so
+	 * a caller forwards the layout again without comparing tens of
+	 * kilobytes.
+	 */
+	const char *(*keymap)(unsigned *gen);
 } KtuiBackend;
 
 /* NULL selects the built-in tty backend. A backend must outlive the library's
@@ -488,6 +544,14 @@ void ktui_draw_resize(void);
 void ktui_draw_clear(void);
 void ktui_draw_flush(void);
 void ktui_draw_invalidate(void);	/* force a full repaint next flush */
+/*
+ * REPAINT THESE CELLS NEXT FLUSH EVEN IF THEY DID NOT CHANGE, by spoiling the
+ * previous-frame copy for them. For the one thing a cell names rather than
+ * carries: a sprite cell holds a SLOT, so a new picture in the same slot
+ * writes identical cells and the flush's diff would find nothing to send.
+ * Costs the rectangle; ktui_draw_invalidate() costs the screen.
+ */
+void ktui_draw_dirty(int x, int y, int w, int h);
 
 void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr);
 /*
@@ -674,6 +738,142 @@ struct KtuiEvent {
 	 * whichever backend fed ktui_gesture_feed, so a surface that wants the
 	 * gesture reads it here instead of running a second recogniser. */
 	int gesture;
+};
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Raw input
+ *
+ * THE SAME PHYSICAL INPUT AS ABOVE, BEFORE IT WAS RESOLVED. A key as a switch
+ * with the evdev code the device sent, a pointer in pixels with the distance
+ * the device actually moved, and a scroll with a second axis and a real value.
+ *
+ * NOTHING DRAWN IN CELLS READS ANY OF IT, and no widget in this toolkit does.
+ * It exists for the one thing on this desktop that is not cells: a pixel guest
+ * embedded in a window, which holds keys down, resolves the layout itself and
+ * aims at controls smaller than the grid pointing at them. A backend fills it
+ * beside the KtuiEvent for the same event and a caller drains it through
+ * KtuiBackend.poll_raw.
+ *
+ * THE FIELDS ARE FLAT AND NAMED PER TYPE, the shape KtuiEvent already keeps. A
+ * union would save a dozen words per queue slot and cost every reader a switch
+ * before it may look at anything.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KT_RAW_NONE = 0, KT_RAW_KEY, KT_RAW_PTR, KT_RAW_AXIS };
+
+/*
+ * Which way a scroll went, and what made it. A wheel is already quantised and
+ * a finger is not, and a toolkit that is told which behaves like every other
+ * desktop — so the distinction travels rather than being flattened to a tick.
+ *
+ * THESE NUMBERS ARE THIS TOOLKIT'S OWN. They are not wl_pointer's and not
+ * libinput's: a value that happened to equal an upstream enum would be a
+ * coupling neither end could see, so whatever forwards them maps them in a
+ * switch.
+ */
+enum { KT_RAW_VERT = 0, KT_RAW_HORIZ };
+enum {
+	KT_RAW_SRC_WHEEL = 0,
+	KT_RAW_SRC_FINGER,
+	KT_RAW_SRC_CONTINUOUS,
+	KT_RAW_SRC_WHEEL_TILT
+};
+/* The device reverses the direction itself — natural scrolling. It is the
+ * guest's to know, because the guest draws the scrollbar. */
+#define KT_RAW_INVERTED 0x1
+
+struct KtuiRaw {
+	int type;		/* KT_RAW_*                                */
+	/*
+	 * KT_RAW_KEY: the evdev keycode, NOT +8 — xkb's offset is added by
+	 * whoever compiles a keymap, and adding it twice is a keyboard one row
+	 * out. KT_RAW_PTR: the evdev button, BTN_LEFT and up, and 0 for a
+	 * motion that pressed nothing.
+	 *
+	 * THE FULL CODE AND NOT A NARROWED ONE. A mouse with side buttons
+	 * drives Back and Forward in a browser, and KT_MB_* has three names in
+	 * it.
+	 */
+	int code;
+	int state;		/* 1 pressed, 0 released                   */
+	/*
+	 * KT_RAW_KEY: the xkb modifier state as this backend holds it, which
+	 * is a RESYNC and not a per-key event. A guest drives its own xkb
+	 * state from the key stream, and xkb's rule is that a state driven by
+	 * keys must not also be set by mask; these are what no key can
+	 * establish — a lock, or a layout group set before the guest existed.
+	 */
+	unsigned depressed, latched, locked, group;
+	/*
+	 * KT_RAW_PTR: where the pointer is in THIS BACKEND'S pixels, and the
+	 * cell those pixels were measured in.
+	 *
+	 * THE CELL TRAVELS WITH THE POSITION so that whoever derives a cell
+	 * from it derives the one this backend would, with no rounding of its
+	 * own and no disagreement across a font step it has not been told
+	 * about yet. Never zero while `type` is KT_RAW_PTR: it is a divisor.
+	 */
+	int x, y;
+	int cell_w, cell_h;
+	/*
+	 * HOW FAR THE DEVICE MOVED, in 1/256 pixel, accelerated and — where
+	 * the backend's own protocol carries a distance — as the device
+	 * reported it. A position cannot say this: a guest that grabbed the
+	 * pointer reads deltas and nothing else, and deltas reconstructed from
+	 * two positions are the pointer's speed after acceleration, clamping
+	 * and rounding to the desktop's own grid.
+	 *
+	 * A BACKEND WHOSE PROTOCOL CARRIES ONLY A POSITION puts that
+	 * reconstruction in both pairs, because it is the only distance it
+	 * has. A guest reading the unaccelerated pair on such a backend is
+	 * reading the accelerated one, which is coarse and never absent.
+	 */
+	int dx, dy;
+	int dx_un, dy_un;
+	/*
+	 * KT_RAW_AXIS: the distance scrolled in 1/256 pixel, and the
+	 * high-resolution detent count where the device measured one — 120 to
+	 * a detent, 0 where nothing counted them.
+	 *
+	 * BOTH NUMBERS, because a client reads one or the other and never
+	 * both. A value of zero on both is the end of a gesture, which is what
+	 * lets a client stop its kinetic scrolling.
+	 */
+	int value, value120;
+	int axis;		/* KT_RAW_VERT or KT_RAW_HORIZ             */
+	int source;		/* KT_RAW_SRC_*                            */
+	int flags;		/* KT_RAW_INVERTED                         */
+	/*
+	 * KT_RAW_PTR and KT_RAW_AXIS: KT_MOD_*, for whoever ROUTES this —
+	 * Super+drag is a chord on a pointer. A guest reads its own modifiers
+	 * from the key stream instead, because a mask and a key stream that
+	 * both drive one xkb state disagree about which keys are down.
+	 */
+	int mods;
+	/* The BACKEND'S own clock, milliseconds, the rule KtuiEvent.ms
+	 * keeps. */
+	unsigned ms;
+	/*
+	 * HOW MANY COOKED EVENTS MUST BE TAKEN BEFORE THIS ONE IS SENT,
+	 * counting from the first this backend produced. It is the whole of
+	 * the ordering between two queues that cannot be interleaved by
+	 * looking at them: the cooked partner of a raw event is the LAST event
+	 * this number counts, so a caller sends the cooked queue up to `after`
+	 * and only then sends this. A backend that queues the switch before
+	 * the character it resolves to raises the number when that character
+	 * is queued, so the field is the answer and the fill order is not.
+	 *
+	 * DRAINING ONE QUEUE TO EMPTY AND THEN THE OTHER LOSES IT. Two keys
+	 * inside one poll arrive as two cooked messages and then two raw ones,
+	 * and a session that swallowed the first key's chord has no way left
+	 * to say which raw press it swallowed.
+	 *
+	 * A MERGED MOTION TAKES THE LATER NUMBER, because it is also the later
+	 * event. A backend that queues no cooked event for an input — a raw
+	 * motion inside one cell — leaves this at the count it already had,
+	 * which sends it as soon as everything before it has gone.
+	 */
+	unsigned long long after;
 };
 
 /* ────────────────────────────────────────────────────────────────────────

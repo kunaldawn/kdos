@@ -53,11 +53,51 @@ const char *g_box = DEFAULT_BOX;
  * tagged one is the honest failure: the alternative is an app that does not
  * start at all because its sandbox could not be labelled.
  */
+/*
+ * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
+ *
+ * A tagged socket is a listener on ONE compositor, and the console desktop
+ * runs one per WINDOW — a kdos-cage for each embedded guest. Keyed on the box
+ * alone the path is therefore the FIRST launch's compositor for ever after:
+ * the second launch of the same application finds the file already there,
+ * connects to it, and its window opens inside the first launch's window.
+ * kdos-boxsock derives the same component from the same variable, which is
+ * what keeps the two in step with nothing passed between them.
+ *
+ * Twelve characters, because the whole path has to fit a sockaddr_un's 108 and
+ * a box name may be sixty-four of them. Every display name a compositor hands
+ * out is "wayland-<n>". Anything a path may not carry is dropped rather than
+ * escaped: the component only has to be the same on both sides and different
+ * between compositors.
+ */
+static void display_tag(char *out, size_t cap)
+{
+	const char *d = getenv("WAYLAND_DISPLAY");
+	const char *slash;
+	size_t n = 0;
+
+	if (cap > 13)
+		cap = 13;
+	if (d && (slash = strrchr(d, '/')) != NULL)
+		d = slash + 1;
+	for (; d && *d && n + 1 < cap; d++) {
+		char c = *d;
+
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		    (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_')
+			out[n++] = c;
+	}
+	out[n] = '\0';
+	if (!n)
+		snprintf(out, cap, "session");
+}
+
 static const char *box_wayland_socket(void)
 {
 	static char path[512];
 	const char *rundir = getenv("XDG_RUNTIME_DIR");
 	KbArgv a = {0};
+	char tag[16];
 
 	if (!rundir || !*rundir)
 		return NULL;
@@ -67,7 +107,9 @@ static const char *box_wayland_socket(void)
 	if (!kb_path_exists(KDOS_BOXSOCK))
 		return NULL;
 
-	snprintf(path, sizeof(path), "%s/kdos-box-%s.sock", rundir, g_box);
+	display_tag(tag, sizeof(tag));
+	snprintf(path, sizeof(path), "%s/kdos-box-%s@%s.sock", rundir, g_box,
+		 tag);
 
 	kb_argv_add(&a, KDOS_BOXSOCK);
 	kb_argv_add(&a, (char *)g_box);
@@ -471,10 +513,13 @@ int cmd_run(int argc, char **argv)
 	const char *app = argv[0];
 	int i;
 
-	/* The desktop entry's form: resolve the pack from the exec. An exec no
-	 * installed pack carries is refused by name — composing a box called
-	 * "kdos-apps" out of a pack of that name fails a step later with a
-	 * sentence about a box nobody asked for. */
+	/* NO `-b`, SO THE EXEC HAS TO NAME THE PACK. A generated launcher for an
+	 * app that belongs to a pack passes `-b <pack>` and never reaches here;
+	 * a prompt, a shim and an entry naming no box do, and the pack is
+	 * looked up from the exec. An exec no installed pack carries is refused
+	 * by name — composing a box called "kdos-apps" out of a pack of that
+	 * name fails a step later with a sentence about a box nobody asked
+	 * for. */
 	if (!strcmp(g_box, DEFAULT_BOX)) {
 		char pack[128] = "", joined[1024] = "";
 		/* The whole argv, so `sh -c "…"` and `env X=y prog` resolve
@@ -591,14 +636,14 @@ int cmd_warmup(void)
 		 * both names meet, so it is read rather than guessed at.
 		 */
 		/*
-		 * A GENERATED LAUNCHER'S EXEC IS `kdos-appbox run <exec>`, and
-		 * the pack is resolved from that <exec> exactly as `run` does
+		 * A GENERATED LAUNCHER'S EXEC IS `kdos-appbox [-b <pack>] run
+		 * <exec>`, so the FIRST word of such an entry is this binary
+		 * and never a shim — reading the shim out of it warms nothing
+		 * and exits 0. `-b` names the pack outright; without one the
+		 * pack is resolved from <exec> exactly as `run` does
 		 * (app_pack_by_exec: the table's command column, whole then by
-		 * basename). Taking the first word as the shim answered
-		 * 'kdos-appbox' for every entry genlaunchers writes, and the
-		 * warmup skipped the whole pinned set while exiting 0. An entry
-		 * somebody wrote by hand naming the shim itself still resolves
-		 * through the table by name.
+		 * basename). An entry somebody wrote by hand naming the shim
+		 * itself still resolves through the table by name.
 		 */
 		char shim[128] = "";
 		{
@@ -616,20 +661,38 @@ int cmd_warmup(void)
 				 * never NULL. Said out loud because the
 				 * compiler cannot see through the allocator,
 				 * and the alternative to saying it is a
-				 * strrchr on NULL if that ever changes. */
+				 * read through NULL if that ever changes. */
 				const char *ex = kxdg_get(&e, "Exec", "");
 				const char *b;
 
 				if (!ex)
 					ex = "";
-				b = strrchr(ex, '/');
-				b = b ? b + 1 : ex;
+				/* THE FIRST WORD, THEN ITS BASENAME, in that
+				 * order: basenaming the whole line lands on
+				 * the last slash of the boxed program's own
+				 * path and never sees this binary. */
 				snprintf(shim, sizeof(shim), "%.*s",
-					 (int)strcspn(b, " \t"), b);
+					 (int)strcspn(ex, " \t"), ex);
+				b = strrchr(shim, '/');
+				if (b)
+					memmove(shim, b + 1, strlen(b + 1) + 1);
 				if (!strcmp(shim, "kdos-appbox")) {
-					const char *r = strstr(ex, " run ");
-					if (r)
-						app_pack_by_exec(r + 5, pack,
+					/* `-b` IS AN OPTION, SO IT PRECEDES
+					 * THE VERB. Past `run` the words are
+					 * the boxed program's own argv, where
+					 * a `-b` means whatever that program
+					 * says it does. */
+					const char *rn = strstr(ex, " run ");
+					const char *r = strstr(ex, " -b ");
+
+					if (r && (!rn || r < rn))
+						snprintf(pack, sizeof(pack),
+							 "%.*s",
+							 (int)strcspn(r + 4,
+								      " \t"),
+							 r + 4);
+					else if (rn)
+						app_pack_by_exec(rn + 5, pack,
 								 sizeof(pack));
 					shim[0] = 0;
 				}

@@ -1,0 +1,26 @@
+# KDOS — /dev/udmabuf, for a boxed application that renders on the card.
+#
+# WHAT IT IS FOR. kdos-cage --embed hands its parent bytes and nothing else, so
+# every frame has to be memory this process can read. With a hardware renderer
+# the usual allocator is gbm, whose buffers can be neither mapped nor turned
+# into a shared-memory handle — a udmabuf buffer is a DMA-BUF the card can draw
+# into AND a file the kernel backs with ordinary memory, which is the only
+# allocation that serves both ends. Without this rule the device is root-only,
+# the cage cannot open it, and a box profile asking for `render = gpu` silently
+# gets the software renderer instead.
+#
+# `render = gpu` IS THE KEY, and the profile's own `gpu` key is a different
+# question. That one grants nothing by itself — it rides on `devices`, and the
+# render node is in the box because the whole of /dev is. A tester who sets
+# `gpu = yes` and waits for the card is waiting on a key that was already yes.
+#
+# GROUP "render", NOT "video". The same group owns /dev/dri/renderD*, which is
+# the other half of the same permission: a process allowed to render on the
+# card and not allowed to allocate memory for it can do nothing with either.
+# "video" is the modesetting group and gives the holder the screen, which this
+# does not need and must not hand out for it.
+#
+# THE KERNEL BUILDS IT IN. CONFIG_UDMABUF=y, so there is no module to load and
+# no ordering to arrange: the device is there when udev starts.
+
+SUBSYSTEM=="misc", KERNEL=="udmabuf", GROUP="render", MODE="0660"

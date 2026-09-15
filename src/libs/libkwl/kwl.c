@@ -62,6 +62,21 @@
  */
 #define KWL_EVQ 16
 
+/*
+ * And how many RAW events are held. Far deeper than the queue above because
+ * the two are drained for different things: that one carries one message per
+ * cell the pointer crosses, this one carries one per device sample. A queue
+ * that fills is a consumer that has stopped draining, and the OLDEST goes
+ * then, because the newest carries the release a key held down depends on.
+ */
+#define KWL_RAWQ 256
+/*
+ * THE HIGHEST EVDEV CODE A KEYBOARD REPORTS, evdev's own KEY_MAX written out
+ * rather than included: this is a Wayland client and links no Linux input
+ * header. It sizes the held-key set, so a code past it would write past it.
+ */
+#define KWL_KEYCODE_MAX 767
+
 /* Key repeat, when the compositor sends no repeat_info (or an older one). */
 #define KWL_REPEAT_DELAY_MS 400
 #define KWL_REPEAT_RATE_HZ  25
@@ -307,6 +322,67 @@ static struct {
 	/* The last cell a MOTION was reported for — see pt_motion. Seeded off
 	 * the grid so an enter and the first motion after one always report. */
 	int move_cx, move_cy;
+
+	/*
+	 * AND THE SAME INPUT UNRESOLVED, in a queue of its own. See
+	 * KtuiBackend.poll_raw: nothing drawn in cells reads any of it, and a
+	 * pixel guest embedded in a window reads nothing else.
+	 *
+	 * IT CANNOT SHARE THE QUEUE ABOVE, which is sixteen deep and drops its
+	 * oldest entry when it fills. One device sample per motion would evict
+	 * the click and the keystroke that came before it inside a single
+	 * batch.
+	 */
+	KtuiRaw rq[KWL_RAWQ];
+	int rqhead, rqtail;
+	/*
+	 * HOW MANY COOKED EVENTS A CALLER WILL HAVE TAKEN by the time both
+	 * queues are empty — what was queued, less whatever a full queue
+	 * dropped and whatever a motion collapsed onto, plus the repeats
+	 * handed over without being queued at all. Every raw event carries it
+	 * as KtuiRaw.after, which is the only ordering between the two queues;
+	 * `rq_pend` counts the tail entries that may still belong to a cooked
+	 * event not yet queued. See raw_bump().
+	 */
+	unsigned long long cooked_n;
+	int rq_pend;
+	/*
+	 * The last pointer position reported raw, in this surface's pixels
+	 * with the rule taken off — the same origin the cell above is measured
+	 * from, so whoever derives a cell from a raw position derives the one
+	 * this backend reported.
+	 *
+	 * A DELTA HERE IS THE STEP BETWEEN TWO POSITIONS and nothing better.
+	 * wl_pointer carries no distance and this client binds no
+	 * relative-pointer protocol, so the number is already accelerated,
+	 * already clamped to the surface and the same accelerated and not.
+	 * `raw_seen` is cleared by a leave: the step across a gap the pointer
+	 * was not in the surface for is not a movement.
+	 */
+	int raw_px, raw_py, raw_seen;
+	/* The xkb mask the compositor last sent, kept for the raw key stream —
+	 * xkb_state above folds it into one effective set, and a guest resyncs
+	 * from the four components. */
+	uint32_t mods_dep, mods_lat, mods_lock, mods_group;
+	/*
+	 * ONE BIT PER EVDEV CODE THIS CLIENT HAS REPORTED DOWN AND NOT UP.
+	 *
+	 * The compositor sends no release for a key held when the surface
+	 * loses the keyboard, so a guest driven by this stream would hold it
+	 * for ever. Sized by KWL_KEYCODE_MAX, which is evdev's own KEY_MAX.
+	 */
+	uint32_t keys_down[(KWL_KEYCODE_MAX + 32) / 32];
+	/*
+	 * The keymap the compositor handed over, as text, and a counter bumped
+	 * whenever it changes. Held because a guest is handed the layout every
+	 * time it takes the focus, and this is tens of kilobytes.
+	 */
+	char *keymap_text;
+	unsigned keymap_gen;
+	/* The horizontal detent count of the frame being assembled.
+	 * `axis_disc` below is the vertical one, which the cell path spends;
+	 * the horizontal axis has no cell path at all. */
+	int axis_disc_h;
 
 	/*
 	 * The wheel, accumulated rather than forwarded event for event.
@@ -583,6 +659,37 @@ static int ev_is_motion(const KtuiEvent *ev)
 	return ev->type == KT_EVT_MOUSE && ev->press == KT_MP_DRAG;
 }
 
+/*
+ * THE RAW EVENTS QUEUED SINCE THE LAST COOKED ONE BELONG TO IT.
+ *
+ * A handler here queues the switch BEFORE the character it resolves to, so
+ * that a release whose resolution returns early still travels — so the count a
+ * raw event was stamped with is provisional until the input it came from is
+ * finished with. Anything still pending when a cooked event is queued takes
+ * that event's number, and a caller then sends the cooked event first. Without
+ * it a guest receives the key and the desktop also acts on it.
+ *
+ * THE WINDOW IS CLOSED WHERE ONE INPUT ENDS — pt_frame() for the pointer, the
+ * top of kb_key() for a key — and nowhere else: a raw event still pending when
+ * the NEXT input's cooked event is queued would be paired with the verdict on
+ * the key after it.
+ *
+ * ONLY EVER RAISED. A raw event held one cooked event longer than it had to be
+ * is delivered in the same turn; one delivered early is a chord the session
+ * swallowed and the guest saw.
+ */
+static void raw_bump(void)
+{
+	int i = K.rqtail;
+
+	while (K.rq_pend > 0 && i != K.rqhead) {
+		i = (i + KWL_RAWQ - 1) % KWL_RAWQ;
+		K.rq[i].after = K.cooked_n;
+		K.rq_pend--;
+	}
+	K.rq_pend = 0;
+}
+
 static void push_event(const KtuiEvent *ev)
 {
 	int next = (K.qtail + 1) % KWL_EVQ;
@@ -591,21 +698,31 @@ static void push_event(const KtuiEvent *ev)
 	 * Motion collapses onto motion: a drag produces one event per pointer
 	 * sample and only the newest position means anything. A button or a key
 	 * NEVER overwrites anything — that was the bug this queue exists for.
+	 *
+	 * A COLLAPSE ADDS NO EVENT, so the count does not move and the raw
+	 * events pending behind it still belong to the motion already queued.
 	 */
 	if (ev_is_motion(ev) && K.qtail != K.qhead) {
 		int last = (K.qtail + KWL_EVQ - 1) % KWL_EVQ;
 		if (ev_is_motion(&K.q[last])) {
 			K.q[last] = *ev;
+			raw_bump();
 			return;
 		}
 	}
 	if (next == K.qhead) {
 		/* Full: drop the OLDEST. A consumer that has fallen this far
-		 * behind wants the newest click, not a click from a frame ago. */
+		 * behind wants the newest click, not a click from a frame ago.
+		 * A dropped event is one no caller will ever pop, so it leaves
+		 * the count as well — a count that included it would hold
+		 * every later raw event back for a partner that is gone. */
 		K.qhead = (K.qhead + 1) % KWL_EVQ;
+		K.cooked_n--;
 	}
 	K.q[K.qtail] = *ev;
 	K.qtail = next;
+	K.cooked_n++;
+	raw_bump();
 }
 
 static int pop_event(KtuiEvent *ev)
@@ -615,6 +732,58 @@ static int pop_event(KtuiEvent *ev)
 	*ev = K.q[K.qhead];
 	K.qhead = (K.qhead + 1) % KWL_EVQ;
 	return 1;
+}
+
+/*
+ * A RAW EVENT INTO THE QUEUE A PIXEL GUEST IS DRIVEN FROM.
+ *
+ * A BARE MOTION MERGES INTO THE PENDING NEWEST ONE and its deltas are SUMMED,
+ * not replaced: only the newest position is true, but a delta is a distance,
+ * and dropping one shortens the movement a guest that grabbed the pointer
+ * sees. NOTHING ELSE MERGES — a click coalesced away is a click that never
+ * happened, and a click merged into a later position is a click on the wrong
+ * thing.
+ *
+ * AND EVERY ENTRY TAKES THE COOKED COUNT, stamped here and raised by
+ * raw_bump() above, which is the whole of the ordering between the two queues.
+ * A merge takes the later count with the later position, because it is also
+ * the later event.
+ */
+static void push_raw(const KtuiRaw *ev)
+{
+	int last = (K.rqtail + KWL_RAWQ - 1) % KWL_RAWQ;
+
+	if (ev->type == KT_RAW_PTR && !ev->code && K.rqhead != K.rqtail &&
+	    K.rq[last].type == KT_RAW_PTR && !K.rq[last].code) {
+		int dx = K.rq[last].dx + ev->dx;
+		int dy = K.rq[last].dy + ev->dy;
+
+		K.rq[last] = *ev;
+		K.rq[last].dx = K.rq[last].dx_un = dx;
+		K.rq[last].dy = K.rq[last].dy_un = dy;
+		K.rq[last].after = K.cooked_n;
+		if (!K.rq_pend)
+			K.rq_pend = 1;
+		return;
+	}
+
+	int next = (K.rqtail + 1) % KWL_RAWQ;
+
+	if (next == K.rqhead)
+		K.rqhead = (K.rqhead + 1) % KWL_RAWQ;
+	K.rq[K.rqtail] = *ev;
+	K.rq[K.rqtail].after = K.cooked_n;
+	K.rqtail = next;
+	if (K.rq_pend < KWL_RAWQ)
+		K.rq_pend++;
+}
+
+/* Pixels to the 1/256ths every raw distance is carried in, rounded away from
+ * zero: a slow drag whose every step truncated to nothing is a pointer that
+ * does not move at all. */
+static int raw_fx(double px)
+{
+	return (int)(px * 256.0 + (px < 0.0 ? -0.5 : 0.5));
 }
 
 /*
@@ -640,6 +809,127 @@ static int mods_now(void)
 	return m;
 }
 
+/*
+ * A KEY AS THE SWITCH IT IS, beside the character the handlers below resolve.
+ * The code is EVDEV'S and not xkb's: the eight xkb adds is added again by
+ * whoever compiles a keymap at the far end, and adding it twice is a keyboard
+ * one row out.
+ *
+ * The mask is the compositor's four components as they last arrived, not
+ * xkb_state's effective set: a guest drives its own modifiers from this key
+ * stream and resyncs the locks and the layout group from these, which no key
+ * can establish.
+ */
+static void raw_key(uint32_t evcode, int down, unsigned ms)
+{
+	KtuiRaw r;
+
+	/* A CODE THIS SET CANNOT HOLD IS NOT REPORTED. The release that ends
+	 * it would have nowhere to be remembered, and a key the far end thinks
+	 * is still down is a key held for ever. */
+	if (evcode > KWL_KEYCODE_MAX)
+		return;
+	if (down)
+		K.keys_down[evcode / 32] |= 1u << (evcode % 32);
+	else
+		K.keys_down[evcode / 32] &= ~(1u << (evcode % 32));
+
+	memset(&r, 0, sizeof(r));
+	r.type = KT_RAW_KEY;
+	r.code = (int)evcode;
+	r.state = down;
+	r.depressed = K.mods_dep;
+	r.latched = K.mods_lat;
+	r.locked = K.mods_lock;
+	r.group = K.mods_group;
+	r.ms = ms;
+	push_raw(&r);
+}
+
+/*
+ * WHERE THE POINTER IS IN PIXELS, and the button it pressed or none.
+ *
+ * Emitted for EVERY motion, unlike the cell the handlers below report: a
+ * scrollbar two pixels wide is aimed at inside one character cell, and a
+ * stream sampled at cell crossings cannot reach it.
+ *
+ * `px`,`py` are surface pixels with the rule already taken off, which is the
+ * origin the cell is measured from — so a cell derived from a raw position is
+ * the cell this backend reported for it.
+ */
+static void raw_ptr(int px, int py, int code, int state, unsigned ms)
+{
+	int cw = kcell_w(), ch = kcell_h();
+	KtuiRaw r;
+
+	/* THE CELL IS A DIVISOR at whatever derives a cell from this, so a
+	 * backend that has none yet reports nothing. */
+	if (cw <= 0 || ch <= 0)
+		return;
+
+	memset(&r, 0, sizeof(r));
+	r.type = KT_RAW_PTR;
+	r.code = code;
+	r.state = state;
+	r.x = px;
+	r.y = py;
+	r.cell_w = cw;
+	r.cell_h = ch;
+	if (K.raw_seen && !code) {
+		r.dx = r.dx_un = raw_fx(px - K.raw_px);
+		r.dy = r.dy_un = raw_fx(py - K.raw_py);
+	}
+	r.mods = mods_now();
+	r.ms = ms;
+	K.raw_px = px;
+	K.raw_py = py;
+	K.raw_seen = 1;
+	push_raw(&r);
+}
+
+/*
+ * A SCROLL ALONG ONE AXIS, WITH ITS REAL VALUE AND WHAT MADE IT.
+ *
+ * BOTH AXES REACH HERE and only the vertical one reaches the cells: the cell
+ * path's whole scroll vocabulary is KT_MB_WHEEL_UP and _DOWN, so a horizontal
+ * scroll has nowhere to go there.
+ *
+ * NOT QUANTISED TO A TICK EITHER. The accumulator the frame handler runs makes
+ * a whole row out of a finger's stream, which is what a grid moves by; a pixel
+ * guest wants the stream. A DETENT IS COUNTED AND NOT MEASURED — 120 to a
+ * detent is what a high-resolution client steps by — and `value` carries the
+ * same distance for a client that predates the count. Zero on both is the end
+ * of the gesture, which is a message and never coalesced away.
+ */
+static void raw_axis(int axis, double value, int discrete, unsigned ms)
+{
+	KtuiRaw r;
+
+	memset(&r, 0, sizeof(r));
+	r.type = KT_RAW_AXIS;
+	r.axis = axis;
+	r.value = raw_fx(value);
+	r.value120 = discrete * 120;
+	r.mods = mods_now();
+	r.ms = ms;
+
+	switch (K.axis_src_seen ? K.axis_src : WL_POINTER_AXIS_SOURCE_WHEEL) {
+	case WL_POINTER_AXIS_SOURCE_FINGER:
+		r.source = KT_RAW_SRC_FINGER;
+		break;
+	case WL_POINTER_AXIS_SOURCE_CONTINUOUS:
+		r.source = KT_RAW_SRC_CONTINUOUS;
+		break;
+	case WL_POINTER_AXIS_SOURCE_WHEEL_TILT:
+		r.source = KT_RAW_SRC_WHEEL_TILT;
+		break;
+	default:
+		r.source = KT_RAW_SRC_WHEEL;
+		break;
+	}
+	push_raw(&r);
+}
+
 /* The held key's next repeat, if it is due. */
 static int repeat_due(KtuiEvent *ev)
 {
@@ -651,6 +941,11 @@ static int repeat_due(KtuiEvent *ev)
 	/* The modifiers as held NOW, not as they were at the press: a Shift
 	 * released mid-repeat must stop extending the selection. */
 	ev->mods = mods_now();
+	/* HANDED OVER WITHOUT BEING QUEUED, so the count is moved here: it
+	 * counts what a caller receives, and a cooked event it never heard of
+	 * puts every raw event one ahead of its partner for good. */
+	K.cooked_n++;
+	raw_bump();
 	return 1;
 }
 
@@ -1832,6 +2127,51 @@ static int kwl_presented(void)
 	return K.committed || K.pend_valid;
 }
 
+/*
+ * CELLS THAT OWE A REPAINT THOUGH THEIR BYTES DID NOT CHANGE. A sprite cell
+ * names a SLOT rather than carrying a picture, so a new picture in the same
+ * slot writes a byte-identical cell and every diff below finds nothing.
+ *
+ * EVERY BASELINE THIS BACKEND KEEPS, AND IT KEEPS THREE. `K.screen` is what
+ * the compositor is showing and is what the damage rectangles are cut from, so
+ * a cell missing from it is a cell painted and then never damaged — new pixels
+ * in a buffer the compositor is never told to re-read. Each buffer's `shadow`
+ * is that buffer's own paint baseline, and commits alternate buffers, so one
+ * left unspoiled shows the old picture again on its next turn. Spoiling some
+ * but not all of them is the same silent freeze as spoiling none.
+ */
+static void kwl_owe(int x, int y, int w, int h)
+{
+	KtuiCell *grids[3];
+	int gw[3], gh[3], n = 0;
+
+	if (K.screen) {
+		grids[n] = K.screen;
+		gw[n] = K.screen_w;
+		gh[n++] = K.screen_h;
+	}
+	for (int i = 0; i < 2; i++) {
+		if (!K.buf[i].shadow)
+			continue;
+		grids[n] = K.buf[i].shadow;
+		gw[n] = K.buf[i].scols;
+		gh[n++] = K.buf[i].srows;
+	}
+
+	for (int g = 0; g < n; g++) {
+		int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+		int x1 = x + w, y1 = y + h;
+
+		if (x1 > gw[g])
+			x1 = gw[g];
+		if (y1 > gh[g])
+			y1 = gh[g];
+		for (int r = y0; r < y1; r++)
+			for (int c = x0; c < x1; c++)
+				grids[g][(size_t)r * gw[g] + c].ch = 0xffffffffu;
+	}
+}
+
 static void kwl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			int full)
 {
@@ -2012,13 +2352,41 @@ static int kwl_caps(void)
 	return KT_CAP_TRUECOLOR | KT_CAP_UTF8 | KT_CAP_MOUSE;
 }
 
+/*
+ * THE RAW HALF. See KtuiBackend.poll_raw: the same physical input, before it
+ * was resolved to a character and a cell, for a pixel guest embedded in a
+ * window. Drained only after poll_event has run dry, which is what keeps the
+ * resolved message for one event ahead of its raw partner.
+ */
+static int kwl_poll_raw(KtuiRaw *ev)
+{
+	if (K.rqhead == K.rqtail)
+		return 0;
+	*ev = K.rq[K.rqhead];
+	K.rqhead = (K.rqhead + 1) % KWL_RAWQ;
+	return 1;
+}
+
+static const char *kwl_keymap_text(unsigned *gen)
+{
+	if (gen)
+		*gen = K.keymap_gen;
+	return K.keymap_text;
+}
+
 static const KtuiBackend kwl_backend = {
 	.name = "wayland",
 	.flush = kwl_present,
+	.dirty = kwl_owe,
 	.poll_event = kwl_poll_event,
 	.size = kwl_size,
 	.caps = kwl_caps,
 	.presented = kwl_presented,
+	/* A compositor hands this client a real keyboard and a real pointer,
+	 * so it answers the raw half too. A backend reading a terminal has
+	 * neither and leaves both NULL. */
+	.poll_raw = kwl_poll_raw,
+	.keymap = kwl_keymap_text,
 };
 
 /* ── input ─────────────────────────────────────────────────────────────── */
@@ -2044,10 +2412,32 @@ static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int fd,
 	struct xkb_keymap *km = xkb_keymap_new_from_string(
 		K.xkb_ctx, map, XKB_KEYMAP_FORMAT_TEXT_V1,
 		XKB_KEYMAP_COMPILE_NO_FLAGS);
-	munmap(map, size);
-	if (!km)
-		return;
+	/*
+	 * A COPY OF THE TEXT, TAKEN BEFORE THE MAPPING GOES. A pixel guest
+	 * embedded in a window compiles this same text and then reads the
+	 * person's own letters instead of the ones printed on an American
+	 * keyboard; asking xkbcommon to write it out again per focus change is
+	 * tens of kilobytes of malloc on that path. Failing to copy it costs
+	 * the guest its layout and nothing else, so it is not a reason to
+	 * refuse the keymap.
+	 */
+	char *text = malloc((size_t)size + 1);
 
+	if (text) {
+		memcpy(text, map, size);
+		text[size] = 0;
+	}
+	munmap(map, size);
+	if (!km) {
+		free(text);
+		return;
+	}
+
+	if (text) {
+		free(K.keymap_text);
+		K.keymap_text = text;
+		K.keymap_gen++;
+	}
 	if (K.xkb_state)
 		xkb_state_unref(K.xkb_state);
 	if (K.keymap)
@@ -2139,7 +2529,19 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 {
 	(void)d;
 	(void)k;
-	(void)time;
+	/* A KEY IS ONE PHYSICAL INPUT ON ITS OWN — the keyboard has no frame
+	 * event — so the last input's raw_bump() window is closed here, before
+	 * this key's switch joins the queue. */
+	K.rq_pend = 0;
+	/*
+	 * THE SWITCH FIRST, AND FOR THE RELEASE TOO. Everything below resolves
+	 * a character and drops what produces none, which is the whole of what
+	 * a cell desktop wants and none of what a pixel guest needs: it holds
+	 * the key down, repeats from its own keymap and reads a modifier that
+	 * types nothing. A press whose release never travelled is a key held
+	 * for ever, so this sits above every early return under it.
+	 */
+	raw_key(key, state == WL_KEYBOARD_KEY_STATE_PRESSED, time);
 	if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* The held key was let go: stop repeating it. Any OTHER key's
 		 * release is not ours to act on — a chord ends when the key
@@ -2203,6 +2605,13 @@ static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
 	(void)d;
 	(void)k;
 	(void)serial;
+	/* HELD AS FOUR COMPONENTS AS WELL AS FOLDED INTO xkb_state. A guest
+	 * resyncs from the components: the effective set xkb_state answers
+	 * with cannot say which of them a lock produced. */
+	K.mods_dep = dep;
+	K.mods_lat = lat;
+	K.mods_lock = lock;
+	K.mods_group = group;
 	if (K.xkb_state)
 		xkb_state_update_mask(K.xkb_state, dep, lat, lock, 0, 0, group);
 }
@@ -2241,6 +2650,17 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
 	 * see released — repeating it would run until something else stopped
 	 * it. */
 	K.rep_code = 0;
+	/*
+	 * AND THE RAW STREAM IS TOLD THE SAME THING, key by key. It carries a
+	 * switch and not a character, so a press with no release is a key a
+	 * pixel guest holds down for ever; the compositor sends none for a
+	 * surface that has lost the keyboard, so they are made here. Only keys
+	 * this client reported down are released, which is what keeps the two
+	 * halves symmetrical.
+	 */
+	for (unsigned c = 0; c <= KWL_KEYCODE_MAX; c++)
+		if (K.keys_down[c / 32] & (1u << (c % 32)))
+			raw_key(c, 0, 0);
 	K.kb_here = 0;
 	if (K.kb_entered && K.cfg.role == KDISP_ROLE_OVERLAY &&
 	    K.cfg.dismiss_on_unfocus)
@@ -2291,15 +2711,20 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 {
 	(void)d;
 	(void)p;
-	(void)time;
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw <= 0 || ch <= 0)
 		return;
-	int cx = wl_fixed_to_int(sx) / cw;
+	int px = wl_fixed_to_int(sx);
+	int cx = px / cw;
 	/* Below the rule when the rule is on top: the grid starts there, so a
 	 * pointer on the rule itself is row -1 and hits nothing, which is what
 	 * a border is. */
-	int cy = (wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule)) / ch;
+	int py = wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule);
+	int cy = py / ch;
+
+	/* THE PIXEL ALWAYS, THE CELL ONLY WHEN IT CHANGED. The early return
+	 * below is what a hover wants and what a guest cannot use. */
+	raw_ptr(px, py, 0, 0, time);
 
 	K.ptr_cx = cx;
 	K.ptr_cy = cy;
@@ -2329,10 +2754,14 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
 {
 	(void)d;
 	(void)p;
-	(void)time;
 	K.input_serial = serial;
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED)
 		ptr_grab_serial = serial;
+	/* EVERY BUTTON, AND THE EVDEV CODE IT CAME WITH. The switch below
+	 * names three; a mouse with side buttons drives Back and Forward in a
+	 * browser, and narrowing here is where those stop existing. */
+	raw_ptr(K.raw_px, K.raw_py, (int)button,
+		state == WL_POINTER_BUTTON_STATE_PRESSED, time);
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy,
 			 .mods = mods_now() };
 	/* linux/input-event-codes.h, not repeated as an include: libkwl is a
@@ -2465,7 +2894,14 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 {
 	(void)d;
 	(void)p;
-	(void)time;
+	/* BOTH AXES TRAVEL RAW. Only the vertical one has a cell to move, so
+	 * only it reaches the accumulator below. */
+	if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+		raw_axis(KT_RAW_HORIZ, wl_fixed_to_double(value),
+			 K.axis_disc_h, time);
+	else if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+		raw_axis(KT_RAW_VERT, wl_fixed_to_double(value), K.axis_disc,
+			 time);
 	if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL)
 		return;
 	K.axis_acc += wl_fixed_to_double(value);
@@ -2497,9 +2933,17 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 	 */
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw > 0 && ch > 0) {
-		K.ptr_cx = wl_fixed_to_int(x) / cw;
-		K.ptr_cy = (wl_fixed_to_int(y) -
-			    (K.rule_bottom ? 0 : K.rule)) / ch;
+		int px = wl_fixed_to_int(x);
+		int py = wl_fixed_to_int(y) - (K.rule_bottom ? 0 : K.rule);
+
+		K.ptr_cx = px / cw;
+		K.ptr_cy = py / ch;
+		/* AN ENTER IS A PLACE AND NOT A MOVEMENT, so the raw report
+		 * carries no distance: the pointer was outside this surface,
+		 * and the step across that gap is not something the hand did
+		 * here. */
+		K.raw_seen = 0;
+		raw_ptr(px, py, 0, 0, 0);
 	}
 	/* This IS the motion for that cell, so the dedup starts from here — an
 	 * enter followed by a real move to the same cell is not two moves. */
@@ -2559,6 +3003,10 @@ static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 	K.move_cy = -1;
 	K.axis_acc = 0;
 	K.axis_disc = 0;
+	K.axis_disc_h = 0;
+	/* The next enter is a place, not a step from wherever the pointer was
+	 * when it left. */
+	K.raw_seen = 0;
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE, .mx = -1,
 			 .my = -1, .press = KT_MP_DRAG, .mods = mods_now() };
 	push_event(&ev);
@@ -2572,10 +3020,11 @@ static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
  * for a wheel detent, so a mouse still moves a list one row per click while a
  * touchpad's small deltas accumulate instead of each becoming a full tick.
  */
-static void pt_frame(void *d, struct wl_pointer *p)
+static void pt_frame_cooked(void)
 {
-	(void)d;
-	(void)p;
+	/* This frame's horizontal detents have been spent by the raw arm; the
+	 * cell path has no horizontal axis to spend them on. */
+	K.axis_disc_h = 0;
 	if (wheel_dbg() && (K.axis_disc || K.axis_acc != 0))
 		fprintf(stderr, "kwl: frame disc=%d acc=%+.2f\n", K.axis_disc,
 			K.axis_acc);
@@ -2647,6 +3096,23 @@ static void pt_frame(void *d, struct wl_pointer *p)
 	wheel_emit(up, n);
 }
 
+/*
+ * A POINTER FRAME IS ONE PHYSICAL INPUT, and this is where it ends — which is
+ * why raw_bump()'s window is closed here and not in each of the callbacks
+ * above. The motion, the button and the axis of one gesture arrive as separate
+ * callbacks and their cooked event may be queued by any of them, this one
+ * included; a window closed before the last of them would deliver the switch
+ * with no answer to it, and one left open past the frame would answer it with
+ * the NEXT input's.
+ */
+static void pt_frame(void *d, struct wl_pointer *p)
+{
+	(void)d;
+	(void)p;
+	pt_frame_cooked();
+	K.rq_pend = 0;
+}
+
 static void pt_axis_src(void *d, struct wl_pointer *p, uint32_t s)
 {
 	K.axis_src = s;
@@ -2656,7 +3122,12 @@ static void pt_axis_src(void *d, struct wl_pointer *p, uint32_t s)
  * next gesture. */
 static void pt_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t a)
 {
-	(void)d; (void)p; (void)t; (void)a;
+	(void)d; (void)p;
+	/* A ZERO IS A MESSAGE. The finger left the pad, and a guest stops its
+	 * kinetic scrolling on exactly this. */
+	raw_axis(a == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? KT_RAW_HORIZ
+							: KT_RAW_VERT,
+		 0.0, 0, t);
 	K.axis_acc = 0;
 }
 
@@ -2666,6 +3137,8 @@ static void pt_axis_disc(void *d, struct wl_pointer *p, uint32_t a, int32_t v)
 	(void)p;
 	if (a == WL_POINTER_AXIS_VERTICAL_SCROLL)
 		K.axis_disc += v;
+	else if (a == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+		K.axis_disc_h += v;
 	if (wheel_dbg())
 		fprintf(stderr, "kwl: discrete axis=%u v=%d (disc %d)\n", a, v,
 			K.axis_disc);
@@ -4687,6 +5160,7 @@ void kwl_shutdown(void)
 		xkb_state_unref(K.xkb_state);
 	if (K.keymap)
 		xkb_keymap_unref(K.keymap);
+	free(K.keymap_text);
 	if (K.xkb_ctx)
 		xkb_context_unref(K.xkb_ctx);
 	if (K.display) {

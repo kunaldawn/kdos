@@ -714,9 +714,12 @@ as a window there — instead of `foot`, and a **Desktop** row appears that star
 session on a terminal of its own. The Desktop row is not built at all under the compositor: you are
 already in it.
 
-The same rule runs one level down. **Launching a graphical application from the console asks the
-session for a terminal**, which wraps it in `kdos-cage`; a `Terminal=true` entry becomes a
-`kdos-term` window instead.
+The same rule runs one level down. **Launching a graphical application from the console hands the
+argv to the session and the session decides how it is held.** By default it starts one `kdos-cage
+--embed` for the application and every toplevel that application maps becomes a window on the grid;
+a box profile carrying `display = vt` gets a terminal of its own instead, and `kcon_run` answers
+with which of the two happened. A `Terminal=true` entry takes neither: it becomes a `kdos-term`
+window.
 
 **Nothing here names a terminal emulator.** `sh_term()` answers with `kdos-term` when `$KDOS_CON` is
 set and `foot` otherwise, and every place that opens one — the root menu's rows, Places, Open
@@ -964,8 +967,10 @@ means the dot, and a pattern that swallowed it would match `reportxc`.
 
 **A result opens through `kdos-appbox open`**, the one resolution the desktop, the chooser and `mc`
 all use. An application row is resolved to its entry again at the moment it is chosen and started
-from its `Exec` line, because a boxed app's `Exec` reads `kdos-appbox run <command>` and its id is
-not that command — handing the id to `run` starts nothing at all.
+from its `Exec` line, because a boxed app's `Exec` reads `kdos-appbox -b <pack> run <command>` —
+`kdos-appbox run <command>` for an app belonging to no pack — and its id is not that command:
+handing the id to `run` starts nothing at all. A consumer that recognises the line by a fixed
+prefix sees only the packless half; the binary and the verb are what identify it.
 
 **The root is the directory the verb named, else home.** A search with no root is a search of the
 filesystem, which is not what *Find Here* means and not what a chord with no context should start.

@@ -225,6 +225,13 @@ is the whole of the contract:
   nothing to draw, and the fill pass has already painted each in its background slot — so a painter
   that skips them loses the swap, and the pointer becomes visible only where it happens to sit over
   text. `kcell_paint` fills those cells with the foreground slot instead.
+- **A cell holding a picture is set aside for the flush, not reversed.** Reverse under a sprite is
+  a fill the picture is then composited over, and an opaque sprite — every frame of an embedded
+  application is one — hides it completely, so the pointer would vanish for as long as it was over
+  the window. `ktui_draw_flush()` swaps that cell's character for a blank alongside the XOR and
+  puts the sprite back afterwards, which costs one cell of the picture and is what a pointer costs
+  over a glyph too. Inverting the sprite's own pixels instead would be wrong: `KT_A_REVERSE` is
+  also how a selected row is drawn, and a panel icon on a hovered row would come out in negative.
 - **Motion is a change even when no cell's content is**, so the framebuffer is marked dirty for it.
   Otherwise the pointer moves only when something else on the screen happens to.
 
@@ -384,6 +391,23 @@ Two rules for pixel tiles:
   slots on every content change repaints exactly the rows it covers.
 - **The geometry is decided before the tile is claimed.** Bailing out after claiming it leaves the
   tile believing it drew that content, and the next frame presents a stale slot.
+
+**A NEW PICTURE IN THE SAME SLOT CHANGES NO CELL**, and that is what `ktui_draw_dirty()` exists for.
+A sprite cell encodes the *slot*, not the picture, so an animation's next frame writes bytes
+identical to the last one and the flush's row diff finds nothing to send — the screen would hold the
+first frame of every embedded application for ever. Marking the rectangle the slot covers costs that
+rectangle; the alternative, a whole-screen repaint per arriving tile, costs every glyph on the
+desktop and a full framebuffer upload dozens of times a second.
+
+**A backend that keeps its own previous frame has to implement `dirty` — and mark every copy it
+keeps.** `libkkms` keeps one per *screen* where libktui's is per *session*, and it overwrites
+libktui's from the new frame before diffing. `libkwl` keeps three: the cells the compositor is
+showing, which is what the damage rectangles are cut from, and one shadow per shm buffer, which is
+what the paint diffs against — mark only the shadows and the pixels land in a buffer nobody is told
+to re-read; mark only the screen copy and the damage names rows nothing repainted. Spoiling only
+libktui's copy changes nothing such a backend reads at all. Every one of these failures is silent
+and looks exactly like a guest that stopped drawing. A backend with no `dirty` is one that diffs
+against the `prev` it is handed, and needs nothing more.
 
 **A picture from a terminal is the same sprite**, which is why nothing new was invented to draw
 one. A picture wider or taller than sixteen cells becomes a grid of sprites sharing a key prefix,

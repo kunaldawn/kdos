@@ -297,7 +297,8 @@ and the profile printer names which.
 | `autostop` | Idle timeout for the collector | |
 | `grant` | Compositor globals the sandbox allowlist otherwise refuses | on reload |
 | `image` | The reference, for a registry base | **create time** |
-| `display` | `vt` pins its applications to a virtual terminal of their own on the console desktop, instead of the window they otherwise become | next launch |
+| `display` | `vt` pins its applications to a virtual terminal of their own on the console desktop, instead of the windows they otherwise become. It is also the only path on that desktop that can carry a game or full-rate video, because an embedded frame crosses the CPU whichever renderer drew it | next launch |
+| `render` | `gpu` composites an embedded guest's windows with the graphics card instead of the software renderer, and offers its applications `linux-dmabuf`. A request, not a promise: the cage falls back to software when there is no render node, no driver for it, or no `/dev/udmabuf`. Its own key and not `gpu`, which every box carries — answering the renderer question with that one would composite the whole catalogue on the card | next launch |
 
 **A namespace key applies at create time** and cannot be re-flagged on a live container, so
 changing one says to recreate the box rather than silently doing nothing.
@@ -459,7 +460,8 @@ The same rule holds for `keys.conf`.
 | `media_next` | `kdos-mpctl next` | What the next-track key runs |
 | `media_prev` | `kdos-mpctl prev` | What the previous-track key runs |
 | `paste_guard` | `yes` | Refuse an unbracketed paste carrying a newline once, and take it on the second try |
-| `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
+| `embed` | `yes` | Whether a graphical application's windows become windows here. One `kdos-cage --embed` holds the application and every toplevel it maps is a window on the grid, with one taskbar row between them. `no` gives every application a terminal of its own instead |
+| `embed_stat` | `no` | Once a second, what every embedded window achieved: guest frames arrived, blocks handed to a display, blocks a display refused. `refused` is what names which of the three rates — guest, session, screen — is the constraint. Here as well as in `KDOS_EMBED_STAT`, because the session is started by init and has no shell to export a variable in |
 | `remember` | `yes` | Whether a window opens where that program's window last was. The rectangle is kept per program **and per workspace** in `~/.local/state/kdos/con/geometry` and written when a window goes. Chrome is never remembered — a menu, a toast, the icon layer, a docked panel, the lock, the saver and the scratchpad are placed by their role — and a restored session wins, because where the last session had a window is a stronger statement than where its program usually sits. `no` turns off the reading and the writing. The graphical desktop keeps the same idea in `comp.conf`'s `window_memory`, in its own file: those rectangles are pixels and these are cells |
 
 **The surface keys exist so a chord and the program it runs are written in one place.**

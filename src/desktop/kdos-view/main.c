@@ -105,6 +105,25 @@ static KconConn *conn;
 static KtuiCell *shadow;
 static int shadow_w, shadow_h;
 
+/*
+ * WHERE EACH SESSION SLOT'S CELLS ARE, as a box into the shadow above.
+ *
+ * A PICTURE REPAINTS ONLY THE CELLS THAT NAME IT, and an embedded application
+ * publishes one 16x16-cell block at a time — so searching the grid for those
+ * cells costs the whole desktop per block, and a maximised guest lands dozens
+ * of blocks per frame on the display's own thread. The box grows wherever a
+ * sprite cell lands in the shadow and shrinks to what each repaint finds, so
+ * a block whose window moves is covered by the union of both places until the
+ * repaint that tightens it onto the new one.
+ *
+ * x1 < 0 IS A SLOT WITH NO CELLS ON THIS GRID, which is also what a picture
+ * arriving before the cells that name it looks like: there is nothing drawn
+ * to repaint, and the commit that names the slot draws it itself. The boxes
+ * index the shadow, so they are emptied with it.
+ */
+static short slot_x0[KCON_MAX_SPRITE_MAP], slot_y0[KCON_MAX_SPRITE_MAP];
+static short slot_x1[KCON_MAX_SPRITE_MAP], slot_y1[KCON_MAX_SPRITE_MAP];
+
 #ifdef KDOS_VIEW_PIXELS
 /* Defined below, once the substitutions it draws through exist. A build with no
  * pixel library is never sent a picture, so it has nothing to repaint. */
@@ -119,6 +138,37 @@ static void shadow_fit(int w, int h)
 	shadow = calloc((size_t)w * (size_t)h, sizeof(*shadow));
 	shadow_w = shadow ? w : 0;
 	shadow_h = shadow ? h : 0;
+	for (int i = 0; i < KCON_MAX_SPRITE_MAP; i++)
+		slot_x1[i] = -1;
+}
+
+/*
+ * A CELL GOING INTO THE SHADOW, TAKEN NOTE OF. The box only grows here: a
+ * slot leaving a cell is not seen, so this is an upper bound on where the
+ * slot is, and redraw_slot() replaces it with the slot's real extent.
+ */
+static void slot_box_note(int x, int y, const KtuiCell *c)
+{
+	unsigned s;
+
+	if (!KTUI_IS_SPRITE(c->ch))
+		return;
+	s = KTUI_SPRITE_SLOT(c->ch);
+	if (s >= KCON_MAX_SPRITE_MAP)
+		return;
+	if (slot_x1[s] < 0) {
+		slot_x0[s] = slot_x1[s] = (short)x;
+		slot_y0[s] = slot_y1[s] = (short)y;
+		return;
+	}
+	if (x < slot_x0[s])
+		slot_x0[s] = (short)x;
+	if (x > slot_x1[s])
+		slot_x1[s] = (short)x;
+	if (y < slot_y0[s])
+		slot_y0[s] = (short)y;
+	if (y > slot_y1[s])
+		slot_y1[s] = (short)y;
 }
 
 static void usage(FILE *f)
@@ -170,6 +220,19 @@ static int cap_cell_w, cap_cell_h;
 static int observe;
 static unsigned cap_flags;
 
+/*
+ * WHETHER THE SESSION HAS ASKED FOR THE RAW STREAM, and which keymap it has
+ * already been told about.
+ *
+ * OFF IS WHERE EVERY VIEW STARTS. The raw stream is one message per device
+ * event where the cell stream is one per cell crossed, so it is sent only
+ * while the session says something can use it — an embedded pixel guest holds
+ * the focus — and a view that is never asked sends none of it, which is the
+ * whole of what an unasked view does.
+ */
+static int raw_on;
+static unsigned raw_keymap_gen;
+
 #ifdef KDOS_VIEW_KMS
 /* The font this view was STARTED with — its flag, its environment, or the
  * built-in default as an empty string. A reset goes back to this rather than
@@ -204,6 +267,19 @@ static int attach(const char *path, int cols, int rows)
 		return -1;
 
 	KconBuf b = { 0 };
+
+	/*
+	 * A REAL KEYBOARD AND A REAL POINTING DEVICE, claimed only by a
+	 * backend that holds one. A view drawing in somebody's terminal is
+	 * handed characters and a cell — there is no evdev code and no keymap
+	 * behind them — so it never claims this and the session never asks.
+	 *
+	 * AN OBSERVER NEVER CLAIMS IT EITHER. It sends no input at all, and a
+	 * capability it would be refused on is a capability it should not have
+	 * announced.
+	 */
+	if (!observe && ktui_backend() && ktui_backend()->poll_raw)
+		cap_flags |= KCON_VIEW_RAW;
 
 	kcon_put_u16(&b, KCON_VERSION);
 	kcon_put_u16(&b, KCON_KIND_VIEW);
@@ -287,6 +363,10 @@ static int wait_for_grid(int *cols, int *rows)
  * decodes the same pictures into the same table, so it is compiled in wherever
  * libkcell is. */
 #if defined(KDOS_VIEW_KMS) || defined(KDOS_VIEW_SHOT)
+/* The loss set is declared below the table it reports on, and the table's
+ * eviction hook is above it. */
+static void sprite_lost_mark(int slot);
+
 /* pixman hands the image back to its destroy function and free() does not take
  * one; a cast between the two signatures is undefined behaviour. */
 static void free_bits(pixman_image_t *img, void *data)
@@ -337,6 +417,15 @@ static void sprite_free(uint64_t key, const void *pix, void *user)
 		view_ttypix_forget(view_slot[key]);
 #endif
 		view_slot[key] = -1;
+		/*
+		 * AN EVICTION IS A LOSS LIKE A REFUSAL IS. The cells naming
+		 * this key are drawn and the session has already cleared what
+		 * it owed, so the block is a hole until the session is told.
+		 * A put that replaces this key's own picture marks it here and
+		 * clears it on the way out, so only a key left with nothing
+		 * behind it stays in the set.
+		 */
+		sprite_lost_mark((int)key);
 	}
 	pixman_image_unref((pixman_image_t *)pix);
 }
@@ -366,6 +455,65 @@ static void sprite_free(uint64_t key, const void *pix, void *user)
  * already a cell in the frame the session sent.
  */
 static int own_screen;
+
+#ifdef KDOS_VIEW_PIXELS
+/*
+ * WHAT THE SPRITE TABLE MAY HOLD, DERIVED FROM THE SCREEN.
+ *
+ * AN EMBEDDED GUEST IS A GRID OF SPRITES, one per block, and a put the table
+ * refuses is a hole: `kcon_view_sprite()` already answered 1, so the session
+ * has cleared its owed bit and will never send that block again. A cap below
+ * one screenful of pixels therefore damages the largest window on the screen
+ * permanently, and any fixed number is right for one screen size and wrong
+ * for every other.
+ *
+ * FOUR SCREENS, because a maximised guest being resized holds blocks cut for
+ * two grids at once and a second window is the normal case. The icons are
+ * small, numerous and owned for the life of the session, so they get a fixed
+ * allowance rather than a share. The floor keeps a grid that has not been
+ * sized yet — a shot or a cast, asked before the backend is up — from getting
+ * a budget measured against nothing.
+ */
+enum {
+	VIEW_SPRITE_SCREENS = 4,
+	VIEW_SPRITE_ICONS = 4u << 20,
+	VIEW_SPRITE_FLOOR = 16u << 20,
+};
+
+static size_t view_sprite_budget(int cell_w, int cell_h)
+{
+	size_t px;
+
+	if (ktui_w < 1 || ktui_h < 1 || cell_w < 1 || cell_h < 1)
+		return VIEW_SPRITE_FLOOR;
+
+	px = (size_t)ktui_w * (size_t)ktui_h *
+	     (size_t)cell_w * (size_t)cell_h;
+
+	px = px * 4 * VIEW_SPRITE_SCREENS + VIEW_SPRITE_ICONS;
+	return px < VIEW_SPRITE_FLOOR ? VIEW_SPRITE_FLOOR : px;
+}
+#endif
+
+/*
+ * A SHOT'S CAP IS TAKEN AGAIN ONCE THE OFFSCREEN GRID EXISTS. ktui_draw_init()
+ * is what sets ktui_w and ktui_h, and view_sprite_budget() measures nothing
+ * else, so the cap taken where the shot sink was chosen is the floor: a
+ * photograph of a large session with a maximised guest in it would refuse
+ * blocks of that window, and a refused block is a hole the session will never
+ * fill again. A `--dump` reaches the same call sites and holds no pixels at
+ * all, so only a shot recomputes.
+ */
+static void view_shot_budget(const char *shot)
+{
+#ifdef KDOS_VIEW_SHOT
+	if (shot)
+		ktui_sprite_budget(view_sprite_budget(kcell_w(), kcell_h()),
+				   kcell_w(), kcell_h());
+#else
+	(void)shot;
+#endif
+}
 
 #ifdef KDOS_VIEW_KMS
 /*
@@ -409,7 +557,8 @@ static void font_apply(KconConn *conn, const char *want, int how)
 
 	ktui_draw_resize();
 	ktui_sprite_clear();
-	ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+	ktui_sprite_budget(view_sprite_budget(kcell_w(), kcell_h()),
+			   kcell_w(), kcell_h());
 	ktui_draw_invalidate();
 
 	cap_cell_w = kcell_w();
@@ -597,6 +746,73 @@ static int ascii_cell(uint32_t *ch, int *fg)
 }
 #endif
 
+#ifdef KDOS_VIEW_PIXELS
+/*
+ * PICTURES THAT ARRIVED AND COULD NOT BE KEPT, one bit per session slot.
+ *
+ * kcon_view_sprite() ANSWERS FOR THE WIRE AND NOT FOR THE SCREEN: the cells
+ * naming a refused slot are already drawn and the session has already cleared
+ * what it owed, so a refusal at this end is a hole in the window for the life
+ * of the window unless this view says so. KCON_OP_SPRITE_LOST is how it says
+ * so, and the session owes those blocks again.
+ *
+ * A SET PER PRESENTED FRAME, NEVER A MESSAGE PER LOSS. A table short of
+ * budget refuses a picture per block per frame, and a message each would
+ * spend the queue the pictures themselves need — the coalescing here is the
+ * flood bound, and the protocol makes it the sender's. A slot stored
+ * successfully leaves the set, or the view asks for a picture it is holding.
+ *
+ * ONLY A VIEW THAT KEEPS PIXELS REPORTS. A build with no pixel library draws
+ * a sprite cell's fallback mark by design, which is not a loss, and reporting
+ * it would ask the session to re-send for ever.
+ */
+static uint32_t sprite_lost[KCON_MAX_SPRITE_MAP / 32];
+static int sprite_nlost;
+
+static void sprite_lost_mark(int slot)
+{
+	uint32_t bit = 1u << (slot & 31);
+
+	if (sprite_lost[slot >> 5] & bit)
+		return;
+	sprite_lost[slot >> 5] |= bit;
+	sprite_nlost++;
+}
+
+static void sprite_lost_drop(int slot)
+{
+	uint32_t bit = 1u << (slot & 31);
+
+	if (!(sprite_lost[slot >> 5] & bit))
+		return;
+	sprite_lost[slot >> 5] &= ~bit;
+	sprite_nlost--;
+}
+
+static void sprite_lost_flush(void)
+{
+	KconBuf b = { 0 };
+
+	if (!sprite_nlost)
+		return;
+	if (conn && !kcon_conn_dead(conn)) {
+		kcon_put_u16(&b, (uint16_t)sprite_nlost);
+		for (int w = 0; w < KCON_MAX_SPRITE_MAP / 32; w++) {
+			if (!sprite_lost[w])
+				continue;
+			for (int i = 0; i < 32; i++)
+				if (sprite_lost[w] & (1u << i))
+					kcon_put_u16(&b,
+						(uint16_t)(w * 32 + i));
+		}
+		kcon_send(conn, KCON_OP_SPRITE_LOST, &b);
+		kcon_buf_free(&b);
+	}
+	memset(sprite_lost, 0, sizeof(sprite_lost));
+	sprite_nlost = 0;
+}
+#endif
+
 static void take_sprite(const unsigned char *payload, size_t len)
 {
 	KconRd r;
@@ -612,6 +828,13 @@ static void take_sprite(const unsigned char *payload, size_t len)
 	pw = (int)kcon_get_u16(&r);
 	ph = (int)kcon_get_u16(&r);
 	if (r.err || cw < 1 || ch < 1)
+		return;
+
+	/* THE SLOT INDEXES THREE TABLES IN HERE, so it is bounded once at the
+	 * top rather than at each of them: the far end of a view socket is
+	 * not always this machine or even this build, and a slot the session
+	 * could never hand out is exactly what a forwarded link delivers. */
+	if (slot < 0 || slot >= KCON_MAX_SPRITE_MAP)
 		return;
 
 	/* The declared size is an allocation request from the session, which
@@ -632,8 +855,7 @@ static void take_sprite(const unsigned char *payload, size_t len)
 		return;
 	}
 
-	if (slot >= 0 && slot < KCON_MAX_SPRITE_MAP)
-		sess_fb[slot] = fallback;
+	sess_fb[slot] = fallback;
 
 	if (sink == SINK_ASCII) {
 		ascii_take(slot, cw, ch, argb, pw, ph);
@@ -652,19 +874,24 @@ static void take_sprite(const unsigned char *payload, size_t len)
 	int dw = cw * sink_cell_w();
 	int dh = ch * sink_cell_h();
 
-	if (dw <= 0 || dh <= 0)
+	if (dw <= 0 || dh <= 0) {
+		sprite_lost_mark(slot);
 		return;
+	}
 
 	uint32_t *bits = calloc((size_t)dw * (size_t)dh, 4);
 
-	if (!bits)
+	if (!bits) {
+		sprite_lost_mark(slot);
 		return;
+	}
 
 	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, dw, dh,
 						       bits, dw * 4);
 
 	if (!img) {
 		free(bits);
+		sprite_lost_mark(slot);
 		return;
 	}
 	pixman_image_set_destroy_function(img, free_bits, bits);
@@ -675,6 +902,7 @@ static void take_sprite(const unsigned char *payload, size_t len)
 
 	if (!src) {
 		pixman_image_unref(img);
+		sprite_lost_mark(slot);
 		return;
 	}
 
@@ -706,8 +934,20 @@ static void take_sprite(const unsigned char *payload, size_t len)
 
 	int vs = ktui_sprite_put((uint64_t)slot, img, cw, ch, fallback);
 
-	if (vs < 0)
+	/*
+	 * A REFUSAL IS NOT A SLOT AND IT DOES NOT CLEAR THE ONE HELD. The
+	 * table makes room before it writes, so a refused put leaves whatever
+	 * this key already holds in place — storing the answer would blank a
+	 * block that still has its last frame behind it. The picture the table
+	 * turns away is this view's to free, and the session is told so the
+	 * block is owed again.
+	 */
+	if (vs < 0) {
 		pixman_image_unref(img);
+		sprite_lost_mark(slot);
+		return;
+	}
+	sprite_lost_drop(slot);
 	view_slot[slot] = vs;
 	redraw_slot((unsigned)slot);
 #else
@@ -826,35 +1066,61 @@ static void draw_one(int x, int y, const KtuiCell *c)
  * A PICTURE ARRIVED FOR CELLS THAT ARE ALREADY DRAWN. Only those cells are
  * repainted, out of the copy of what the session sent.
  *
- * AND THE FRAME IS FORCED WHERE THE CELLS ARE THE PICTURE. A sprite cell
- * encodes the SLOT, not the picture — so an animation's next frame writes
- * byte-identical cells, the flush's diff finds nothing to send, and the screen
- * holds the first frame for ever. A forced paint is what says otherwise. It
- * costs a full repaint per animation frame, and only while something is
- * animating.
+ * AND THOSE CELLS ARE MARKED FOR REPAINT THOUGH NOTHING IN THEM CHANGED. A
+ * sprite cell encodes the SLOT, not the picture — so an animation's next frame
+ * writes byte-identical cells, the flush's diff finds nothing to send, and the
+ * screen holds the first frame for ever.
  *
- * NOT FOR A PIXEL EMITTER, which compares `KtuiSprite.gen` and needs no help:
- * there, one arriving 16x16 tile would force a whole-screen repaint, and a
- * window-sized guest is a tile per 256 cells per frame.
+ * THE RECTANGLE THE SLOT COVERS, NEVER THE SCREEN — neither to search for its
+ * cells nor to repaint them. A slot is one 16x16-cell block of one window and
+ * an embedded application publishes a block at a time, so a whole-screen
+ * repaint here costs every glyph on the desktop and a whole framebuffer
+ * upload dozens of times per guest frame, and a whole-screen SEARCH costs the
+ * cell count of the desktop as many times again. The slot's box is kept where
+ * the cells are written, and what this walk finds replaces it — so a block
+ * that moved costs the union of both places once and its own size thereafter.
+ *
+ * NOT FOR A PIXEL EMITTER, which compares `KtuiSprite.gen` and needs no help.
  */
 static void redraw_slot(unsigned slot)
 {
-	int hit = 0;
+	int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
+	int bx0, by0, bx1, by1;
 
-	if (!shadow)
+	if (!shadow || slot >= KCON_MAX_SPRITE_MAP || slot_x1[slot] < 0)
 		return;
-	for (int y = 0; y < shadow_h; y++)
-		for (int x = 0; x < shadow_w; x++) {
+	bx0 = slot_x0[slot];
+	by0 = slot_y0[slot];
+	bx1 = slot_x1[slot];
+	by1 = slot_y1[slot];
+	for (int y = by0; y <= by1; y++)
+		for (int x = bx0; x <= bx1; x++) {
 			const KtuiCell *c = &shadow[y * shadow_w + x];
 
 			if (!KTUI_IS_SPRITE(c->ch) ||
 			    KTUI_SPRITE_SLOT(c->ch) != slot)
 				continue;
 			draw_one(x, y, c);
-			hit = 1;
+			if (x1 < 0) {
+				x0 = x1 = x;
+				y0 = y1 = y;
+				continue;
+			}
+			if (x < x0)
+				x0 = x;
+			if (x > x1)
+				x1 = x;
+			if (y < y0)
+				y0 = y;
+			if (y > y1)
+				y1 = y;
 		}
-	if (hit && sink != SINK_TTYPIX)
-		ktui_draw_invalidate();
+	slot_x0[slot] = (short)x0;
+	slot_y0[slot] = (short)y0;
+	slot_x1[slot] = (short)x1;
+	slot_y1[slot] = (short)y1;
+	if (x1 >= 0 && sink != SINK_TTYPIX)
+		ktui_draw_dirty(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
 }
 #endif
 
@@ -917,6 +1183,11 @@ static void frame_ack(void)
  * Present what has arrived, unless a frame is still open and young: then the
  * rest of it is a read away and the paint waits for the boundary. The answer
  * goes back after the paint, which is the whole point of answering at all.
+ *
+ * AND THIS IS WHERE THE PICTURES THAT COULD NOT BE KEPT GO BACK, one message
+ * for the whole frame's set. A view with no frame contract still presents, so
+ * the report rides the paint rather than the acknowledgement — a display that
+ * never answers a boundary would otherwise never report a loss at all.
  */
 static void view_present(void)
 {
@@ -924,11 +1195,212 @@ static void view_present(void)
 	    mono_ms() - frame_open_at < VIEW_FRAME_HOLD_MS)
 		return;
 	ktui_draw_flush();
+#ifdef KDOS_VIEW_PIXELS
+	sprite_lost_flush();
+#endif
 	frame_open = 0;
 	if (frame_done) {
 		frame_done = 0;
 		frame_ack();
 	}
+}
+
+/*
+ * ── the raw stream ──────────────────────────────────────────────────────
+ *
+ * THE SAME PHYSICAL INPUT AS send_key() AND send_ptr(), UNRESOLVED. Those two
+ * carry a character and a cell, which is the whole of what a cell desktop
+ * wants and none of what a pixel guest embedded in a window can use: it holds
+ * a key down, repeats from its own keymap, reads a modifier that produces no
+ * character, and aims at controls smaller than the grid pointing at them.
+ *
+ * THE COOKED MESSAGE FOR ONE PHYSICAL INPUT ALWAYS GOES FIRST, and its raw
+ * partner follows it rather than following the whole batch: that is what lets
+ * the session decide whether a chord ate THAT key, and which window the
+ * pointer is over, before the guest is handed it. Two keys drained as two
+ * cooked messages and then two raw ones leave the session no way to say which
+ * press its chord swallowed, so the two queues are drained TOGETHER, against
+ * the cooked count each raw event carries in KtuiRaw.after.
+ *
+ * THE VIEW DOES NOT ROUTE, and nothing here reads a window. It reports what
+ * the device did; where it lands is the session's single answer to give.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* libktui's numbers are its own and so are libkcon's; neither is the other's,
+ * so the two are joined by a switch rather than by an equality nobody can
+ * see. */
+static int wire_axis_of(int axis)
+{
+	return axis == KT_RAW_HORIZ ? KCON_AXIS_HORIZ : KCON_AXIS_VERT;
+}
+
+static int wire_src_of(int src)
+{
+	switch (src) {
+	case KT_RAW_SRC_FINGER:
+		return KCON_AXIS_SRC_FINGER;
+	case KT_RAW_SRC_CONTINUOUS:
+		return KCON_AXIS_SRC_CONTINUOUS;
+	case KT_RAW_SRC_WHEEL_TILT:
+		return KCON_AXIS_SRC_WHEEL_TILT;
+	default:
+		return KCON_AXIS_SRC_WHEEL;
+	}
+}
+
+/*
+ * THE LAYOUT THIS VIEW'S KEYBOARD IS RUNNING. A keycode means nothing without
+ * it: a guest handed codes alone reads US positions, and a French keyboard
+ * types the wrong letters.
+ *
+ * SENT WHEN THE RAW STREAM IS FIRST ASKED FOR AND WHENEVER IT CHANGES, never
+ * at hello — a session that opens no guest would have paid tens of kilobytes
+ * on a link that may be ssh for nothing. As BYTES and never a descriptor,
+ * which is what keeps this socket forwardable.
+ */
+static void send_keymap(void)
+{
+	const KtuiBackend *b = ktui_backend();
+	const char *text;
+	unsigned gen = 0;
+	size_t n;
+
+	if (!b || !b->keymap)
+		return;
+	text = b->keymap(&gen);
+	if (!text || gen == raw_keymap_gen)
+		return;
+
+	n = strlen(text) + 1;		/* the terminator travels with it */
+	if (n > KCON_KEYMAP_MAX)
+		return;
+
+	KconBuf buf = { 0 };
+
+	kcon_put_u8(&buf, KCON_KEYMAP_XKB_V1);
+	kcon_put_u32(&buf, (uint32_t)n);
+	kcon_put_bytes(&buf, text, n);
+	kcon_send(conn, KCON_OP_KEYMAP, &buf);
+	kcon_buf_free(&buf);
+	raw_keymap_gen = gen;
+}
+
+/*
+ * HOW MANY COOKED EVENTS THIS VIEW HAS TAKEN FROM THE BACKEND, and the one
+ * raw event taken from the queue whose turn has not come.
+ *
+ * The backend counts the same events, so the two numbers name the same event:
+ * a raw event is sent once this view has sent every cooked event its `after`
+ * counts. The peek is what makes that decidable — poll_raw pops, so an event
+ * whose turn has not come is held here until it has.
+ */
+static unsigned long long cooked_taken;
+static KtuiRaw raw_held;
+static int raw_have;
+
+static void raw_send(const KtuiRaw *rp, int forward)
+{
+	KconBuf buf = { 0 };
+	KtuiRaw r = *rp;
+
+	if (!forward)
+		return;
+
+	if (r.type == KT_RAW_KEY) {
+		/* A KEYCODE IS AN INDEX at the far end — what holds a bit per
+		 * key is sized from this bound — and the server refuses one
+		 * past it, so a device reporting a code nothing can hold is
+		 * dropped here rather than silently at the socket. */
+		if (r.code < 0 || r.code > KCON_KEYCODE_MAX)
+			return;
+		kcon_put_u16(&buf, (uint16_t)r.code);
+		kcon_put_u8(&buf, (uint8_t)(r.state ? 1 : 0));
+		kcon_put_u32(&buf, r.depressed);
+		kcon_put_u32(&buf, r.latched);
+		kcon_put_u32(&buf, r.locked);
+		kcon_put_u32(&buf, r.group);
+		kcon_put_u32(&buf, r.ms);
+		kcon_send(conn, KCON_OP_KEY_RAW, &buf);
+	} else if (r.type == KT_RAW_PTR) {
+		/* THE CELL IS A DIVISOR at the session, which derives the same
+		 * cell this view would from the position and these two
+		 * numbers. A zero is refused there, so it is never sent. */
+		if (r.cell_w <= 0 || r.cell_h <= 0 ||
+		    r.cell_w > 0xffff || r.cell_h > 0xffff ||
+		    r.code < 0 || r.code > KCON_KEYCODE_MAX)
+			return;
+		kcon_put_i32(&buf, r.x);
+		kcon_put_i32(&buf, r.y);
+		kcon_put_u16(&buf, (uint16_t)r.cell_w);
+		kcon_put_u16(&buf, (uint16_t)r.cell_h);
+		kcon_put_i32(&buf, r.dx);
+		kcon_put_i32(&buf, r.dy);
+		kcon_put_i32(&buf, r.dx_un);
+		kcon_put_i32(&buf, r.dy_un);
+		kcon_put_u16(&buf, (uint16_t)r.code);
+		kcon_put_u8(&buf, (uint8_t)(r.state ? 1 : 0));
+		kcon_put_u8(&buf, (uint8_t)r.mods);
+		kcon_put_u32(&buf, r.ms);
+		kcon_send(conn, KCON_OP_PTR_RAW, &buf);
+	} else if (r.type == KT_RAW_AXIS) {
+		kcon_put_i32(&buf, r.value);
+		kcon_put_i32(&buf, r.value120);
+		kcon_put_u8(&buf, (uint8_t)wire_axis_of(r.axis));
+		kcon_put_u8(&buf, (uint8_t)wire_src_of(r.source));
+		kcon_put_u8(&buf, (uint8_t)(r.flags & KT_RAW_INVERTED
+						    ? KCON_AXIS_INVERTED
+						    : 0));
+		kcon_put_u8(&buf, (uint8_t)r.mods);
+		kcon_put_u32(&buf, r.ms);
+		kcon_send(conn, KCON_OP_AXIS_RAW, &buf);
+	}
+	kcon_buf_free(&buf);
+}
+
+/*
+ * SEND THE RAW EVENTS THIS VIEW HAS ALREADY SENT THE COOKED EVENTS FOR, and
+ * with `all` set the rest of the queue behind them.
+ *
+ * IT IS DRAINED EVEN WHEN NOTHING IS LISTENING. The queue is deep and the
+ * backend evicts its oldest entry when it fills, so a view that left it alone
+ * would hand the session a burst of motion from before the guest had the focus
+ * the moment it was asked.
+ */
+static void raw_drain_to(int forward, int all)
+{
+	const KtuiBackend *b = ktui_backend();
+
+	if (!b || !b->poll_raw)
+		return;
+	if (observe || !conn || kcon_conn_dead(conn))
+		forward = 0;
+	if (forward)
+		send_keymap();
+
+	for (;;) {
+		if (!raw_have) {
+			if (!b->poll_raw(&raw_held))
+				return;
+			raw_have = 1;
+		}
+		/* A raw event whose cooked partner this view has not sent yet
+		 * WAITS, and waits in hand: poll_raw pops, so putting it back
+		 * is not available and holding it is how the order is kept. */
+		if (!all && raw_held.after > cooked_taken)
+			return;
+		raw_have = 0;
+		raw_send(&raw_held, forward);
+	}
+}
+
+/*
+ * EVERYTHING STILL QUEUED, wherever the cooked count has reached. The end of a
+ * pump: what is left has no cooked partner coming, and a raw event held for
+ * one that never arrives is a guest that stops moving.
+ */
+static void raw_drain(int forward)
+{
+	raw_drain_to(forward, 1);
 }
 
 static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
@@ -1005,6 +1477,22 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 
 			(void)r;
 		}
+		return got;
+	}
+
+	/*
+	 * START, OR STOP, SENDING RAW INPUT. The session asks only while
+	 * something can use it, and anything already captured is dropped on
+	 * the transition: a queue filled before a guest had the focus is a
+	 * burst of stale motion delivered the moment it gets it.
+	 */
+	if (op == KCON_OP_VIEW_RAW) {
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+		raw_on = kcon_get_u8(&b) ? 1 : 0;
+		if (!b.err)
+			raw_drain(0);
 		return got;
 	}
 
@@ -1171,7 +1659,8 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 		 * font step and a hotplug make. */
 		ktui_draw_resize();
 		ktui_sprite_clear();
-		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+		ktui_sprite_budget(view_sprite_budget(kcell_w(), kcell_h()),
+				   kcell_w(), kcell_h());
 		ktui_draw_invalidate();
 
 		cap_cell_w = kcell_w();
@@ -1286,8 +1775,10 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 		for (int i = 0; i < n; i++) {
 			int cx = (int)x + i, cy = (int)y;
 
-			if (shadow && cx < shadow_w && cy < shadow_h)
+			if (shadow && cx < shadow_w && cy < shadow_h) {
 				shadow[cy * shadow_w + cx] = run[i];
+				slot_box_note(cx, cy, &run[i]);
+			}
 			draw_one(cx, cy, &run[i]);
 		}
 		got = 1;
@@ -1647,7 +2138,8 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		ktui_sprite_evictor(sprite_free, NULL);
-		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+		ktui_sprite_budget(view_sprite_budget(kcell_w(), kcell_h()),
+				   kcell_w(), kcell_h());
 		cap_cell_w = kcell_w();
 		cap_cell_h = kcell_h();
 		cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_COLOR;
@@ -1667,7 +2159,8 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		ktui_sprite_evictor(sprite_free, NULL);
-		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+		ktui_sprite_budget(view_sprite_budget(kcell_w(), kcell_h()),
+				   kcell_w(), kcell_h());
 		cap_cell_w = kcell_w();
 		cap_cell_h = kcell_h();
 		cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_COLOR;
@@ -1711,11 +2204,14 @@ int main(int argc, char **argv)
 			 * PICTURES ARE EVICTABLE HERE and nowhere else on this
 			 * path: this is the only build that turns a blob into
 			 * real pixels, so it is the only one holding memory
-			 * worth capping. Sixteen megabytes is several
-			 * full-screen photographs and no more.
+			 * worth capping. The cap is taken from the grid the
+			 * backend just sized, so it has to be set after
+			 * ktui_draw_init() and again wherever the grid moves.
 			 */
 			ktui_sprite_evictor(sprite_free, NULL);
-			ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+			ktui_sprite_budget(view_sprite_budget(kcell_w(),
+							      kcell_h()),
+					   kcell_w(), kcell_h());
 			cap_cell_w = kcell_w();
 			cap_cell_h = kcell_h();
 			/* THIS VIEW RASTERISES ITS OWN GLYPHS, so it is the
@@ -1815,7 +2311,8 @@ int main(int argc, char **argv)
 			tty_pix = 1;
 			ktui_backend_set(view_ttypix_install(ktui_backend()));
 			ktui_sprite_evictor(sprite_free, NULL);
-			ktui_sprite_budget(16u << 20, pix_cw, pix_ch);
+			ktui_sprite_budget(view_sprite_budget(pix_cw, pix_ch),
+					   pix_cw, pix_ch);
 		}
 #endif
 		cols = ktui_w;
@@ -1838,6 +2335,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		ktui_draw_init();
+		view_shot_budget(shot);
 	}
 
 #ifdef KDOS_VIEW_PIXELS
@@ -1904,6 +2402,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		ktui_draw_init();
+		view_shot_budget(shot);
 	}
 
 #if defined(KDOS_VIEW_CAST) && defined(KDOS_VIEW_KMS)
@@ -1947,6 +2446,14 @@ int main(int argc, char **argv)
 			fprintf(stderr, "kdos-view: cannot start the cast\n");
 			return 1;
 		}
+
+		/* THE BUDGET IS MEASURED FROM ktui_w BY ktui_h, which
+		 * ktui_draw_init() sets and nothing before it does: a cap
+		 * computed earlier on this path is the floor, and a cast of a
+		 * large session would refuse blocks of the biggest window in
+		 * the recording. */
+		ktui_sprite_budget(view_sprite_budget(kcell_w(), kcell_h()),
+				   kcell_w(), kcell_h());
 
 		if (kcast_init(cast_pw, cast_ph, KDOS_VIEW_CAST_FPS) != 0)
 			return 1;
@@ -2001,6 +2508,7 @@ int main(int argc, char **argv)
 			}
 			if (r)
 				ktui_draw_flush();
+			sprite_lost_flush();
 
 			if (kcon_conn_dead(conn))
 				break;
@@ -2133,8 +2641,10 @@ int main(int argc, char **argv)
 			if (kkms_hotplug_pump()) {
 				ktui_draw_resize();
 				ktui_sprite_clear();
-				ktui_sprite_budget(16u << 20, kcell_w(),
-						   kcell_h());
+				ktui_sprite_budget(
+					view_sprite_budget(kcell_w(),
+							   kcell_h()),
+					kcell_w(), kcell_h());
 				ktui_draw_invalidate();
 
 				cap_cell_w = kcell_w();
@@ -2167,6 +2677,16 @@ int main(int argc, char **argv)
 			KtuiEvent ev;
 
 			while (ktui_backend()->poll_event(&ev, 0)) {
+				/*
+				 * EVERY RAW EVENT ITS COOKED PARTNER HAS
+				 * ALREADY GONE FOR, BEFORE THIS ONE DOES.
+				 * The two queues are drained together rather
+				 * than one after the other, so the session
+				 * still holds the verdict for the key whose
+				 * switch it is about to be handed.
+				 */
+				raw_drain_to(raw_on, 0);
+				cooked_taken++;
 				if (ev.type == KT_EVT_KEY) {
 					/*
 					 * Ctrl+Alt+F<n> NEVER ARRIVES HERE.
@@ -2208,6 +2728,16 @@ int main(int argc, char **argv)
 					send_touch(&ev);
 				}
 			}
+
+			/*
+			 * AND WHAT IS LEFT OF THE RAW STREAM. The cooked queue
+			 * is empty, so nothing still held is waiting for a
+			 * message that is coming: an input that crossed no
+			 * cell, or a button the cells have no name for, has no
+			 * cooked partner at all and would otherwise sit here
+			 * until one happened along.
+			 */
+			raw_drain(raw_on);
 
 			if (kcon_conn_dead(conn))
 				break;
@@ -2263,6 +2793,12 @@ int main(int argc, char **argv)
 			else if (ev.type == KT_EVT_RESIZE)
 				break;	/* the grid is the session's to remake */
 		}
+		/* AND THE RAW STREAM, AFTER THE COOKED ONE. A terminal's
+		 * backend has no device behind it and offers none of this, so
+		 * here the call finds nothing — the order is kept in one place
+		 * rather than in whichever loop happens to have a screen. */
+		raw_drain(raw_on);
+
 		/* A paste produces no event of its own — the backend queues
 		 * it and whoever wants it takes it. */
 		send_paste();

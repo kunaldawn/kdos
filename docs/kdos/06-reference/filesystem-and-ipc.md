@@ -315,9 +315,9 @@ peer-credential check; what differs is what reaching it grants. Its clients are 
 drive, and they alone are sent the announcements a widget makes — so a screen reader is a client
 with the text of the screen and what the desktop says about it, and nothing else.
 
-**One descriptor crosses one channel, and it is neither of these.** An embedded application's
-compositor is a child of the session, and the frames come back over a `socketpair` created before
-the fork — never a path anything can connect to. That is what keeps both published protocols
+**Descriptors cross one channel, and it is neither of these.** An embedded application's
+compositor is a child of the session, and a mapping for each window its guest maps comes back over
+a `socketpair` created before the fork — never a path anything can connect to. That is what keeps both published protocols
 descriptor-free, and descriptor-free is what lets the view socket be forwarded.
 
 **There is no TCP listener.** A remote desktop is a forwarded unix socket and inherits ssh's
@@ -396,6 +396,8 @@ constants are omitted.
 | `KDOS_CRT_DUMP=<prefix>` | Write the phosphor pass's input and output once |
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before dumping |
 | `KDOS_PACKD_VERBOSE=1` | The pack daemon explains itself |
+| `KDOS_EMBED_STAT=1` | Once a second, what every embedded window achieved: guest frames arrived, blocks handed to a display and their size, and blocks a display refused. The guest renders at one rate, the session publishes at another and the screen paints at a third; `refused` is the count that says which of the three is the constraint |
+| `KDOS_EMBED_GPU=1` | Composite an embedded guest with the graphics card. Set by the session from the box profile's `render` key, whose value is `gpu` — set by hand it applies to whatever cage inherits it |
 | `KDOS_WHISPER_MODEL=<file>` | One speech model, named exactly. When set, no directory is searched behind it |
 
 ### Testing seams

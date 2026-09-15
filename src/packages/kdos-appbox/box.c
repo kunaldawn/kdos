@@ -168,6 +168,10 @@ int profile_set(Profile *p, const char *kv)
 		p->gpu = truthy(eq) || !strcmp(eq, "shared");
 	else if (!strcmp(key, "export"))
 		p->autoexport = !strcmp(eq, "auto");
+	else if (!strcmp(key, "display"))
+		snprintf(p->display, sizeof(p->display), "%s", eq);
+	else if (!strcmp(key, "render"))
+		snprintf(p->render, sizeof(p->render), "%s", eq);
 	else if (!strcmp(key, "memory"))
 		snprintf(p->memory, sizeof(p->memory), "%s", eq);
 	else if (!strcmp(key, "cpus"))
@@ -294,6 +298,8 @@ int profile_save(const Profile *p)
 		 "wayland=%s\n"
 		 "audio=%s\n"
 		 "gpu=%s\n"
+		 "display=%s\n"
+		 "render=%s\n"
 		 "export=%s\n"
 		 "memory=%s\n"
 		 "cpus=%s\n"
@@ -312,6 +318,8 @@ int profile_save(const Profile *p)
 		 p->wayland ? "yes" : "no",
 		 p->audio ? "yes" : "no",
 		 p->gpu ? "yes" : "no",
+		 p->display[0] ? p->display : "window",
+		 p->render[0] ? p->render : "software",
 		 p->autoexport ? "auto" : "manual",
 		 p->memory, p->cpus, p->pids, p->autostop_s);
 	/* ATOMIC: a profile that comes back empty has lost `base`, and a box
