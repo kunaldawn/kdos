@@ -384,10 +384,11 @@ static int cmd_sign(int argc, char **argv)
 }
 
 /*
- * A pack carrying a digest over a span this build no longer hashes is a pack
- * nothing can mount: kdos-packd refuses KPK_SIG_HASH, so every box composed
- * from it fails and every application in it stops opening. Re-stamping is the
- * repair, and it costs the signature — the block names the digest it replaced.
+ * Brings a pack to KPK_FORMAT: the format number is raised, the digest retaken
+ * over that format's span, and the signature block dropped with it — the block
+ * names the digest it replaced. An older format still verifies and still
+ * mounts, so this is an upgrade and not a rescue; what it buys is the stronger
+ * property the newer span has, and the pack pays for it with its signature.
  * Sign and re-index afterwards, or the packs are unsigned and the index names
  * file hashes that have changed.
  */
@@ -412,7 +413,7 @@ static int cmd_restamp(int argc, char **argv)
 		printf("%s re-stamped — sign it again\n", argv[i]);
 	}
 	if (kept)
-		printf("%d pack%s already agreed and %s untouched\n", kept,
+		printf("%d pack%s already at this format and %s untouched\n", kept,
 		       kept == 1 ? "" : "s", kept == 1 ? "was" : "were");
 	return done || kept ? 0 : 1;
 }

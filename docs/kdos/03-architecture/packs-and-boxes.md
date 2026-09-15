@@ -48,21 +48,26 @@ to know nothing about the format.
   several-hundred-megabyte file in memory — and that binds the signature to the bytes *only*
   because the bytes were hashed first. The two are separate outcomes, because a caller told "bad
   signature" when the truth is "bad hash" goes looking for a key problem that does not exist.
-- **The hash covers the footer too**, with `payload_sha256` and `sig_len` zeroed. The footer is
-  what says where the filesystem, the metadata and the icon are; over a hash that stopped at
-  `sig_off` those offsets could be re-pointed — `meta_off` into the payload, say — and the
-  signature still verified, because it is over bytes nobody moved. The two zeroed fields are the
-  two written after the hash is taken: the digest itself, and the length that grows each time a
-  further key signs an already-signed pack.
-- **A pack's stored digest is a claim about the span this build hashes**, and a pack whose digest
-  was taken over a different span answers `HASH` — so `kdos-packd` mounts nothing, no box
-  composes, and every application in it stops opening. It is not a property the format version
-  distinguishes: `KPK_FORMAT` says what the footer's *fields* mean, not what the digest covers.
-  **`kdos-pack restamp <pack>` is the repair**: it rewrites the footer to the digest this build
-  measures and drops the signature block with it — the block names the digest it replaced — so the
-  pack is signed and the directory indexed again afterwards. It leaves a pack whose digest already
-  agrees, and its signature, untouched. The bake re-stamps every pack it *keeps* for this reason;
-  a rebuild alone does not, because an unchanged pack is kept byte for byte.
+- **From format 2 the hash covers the footer too**, with `payload_sha256` and `sig_len` zeroed. The
+  footer is what says where the filesystem, the metadata and the icon are; over a hash that stops
+  at `sig_off` — which is all a format 1 pack's digest is — those offsets can be re-pointed
+  (`meta_off` into the payload, say) and the signature still verifies, because it is over bytes
+  nobody moved. A format 1 pack therefore leans on the medium's signed index, whose `C:` hash is
+  over the whole file, to cover its footer. The two zeroed fields are the two written after the
+  hash is taken: the digest itself, and the length that grows each time a further key signs an
+  already-signed pack.
+- **The format number is what says which span the digest covers**, and it is read from the pack, not
+  assumed from the build: format 1 is `[0, sig_off)`, format 2 that plus the footer. Every format
+  from `KPK_FORMAT_MIN` up is verified the way it declares, which is what lets a pack published
+  under an older rule still mount; `KPK_FORMAT` is only what a pack written *here* declares.
+  Widening the span without moving the number is the failure this prevents — every pack already
+  baked answers `HASH`, `kdos-packd` mounts nothing, no box composes, and every application in it
+  stops opening, indistinguishably from corruption. **`kdos-pack restamp <pack>` is the repair and
+  the upgrade**: it raises the footer to `KPK_FORMAT`, takes the digest under that format's span,
+  and drops the signature block with it — the block names the digest it replaced — so the pack is
+  signed and the directory indexed again afterwards. It leaves a pack already at this format with
+  an agreeing digest, and its signature, untouched. The bake re-stamps every pack it *keeps* for
+  this reason; a rebuild alone does not, because an unchanged pack is kept byte for byte.
 - **Nothing in the library mounts, executes or writes outside the file it was given.** A root
   daemon links it, so every line is code running as root.
 
