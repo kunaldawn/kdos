@@ -52,6 +52,11 @@
 #include "kxdg.h"
 #include "shell.h"
 
+/* apps.c's, and the only copy: the box-launcher test the Start menu marks its
+ * rows with is the test this chooser marks its rows with, or the two surfaces
+ * disagree about which application costs a container start. */
+int sh_exec_is_boxed(const char *exec);
+
 #define OW_MAX_CANDS 64
 #define OW_MIME_MAX 128
 
@@ -230,9 +235,9 @@ static void cand_add(const char *id, int is_default)
 	snprintf(c->exec, sizeof(c->exec), "%s", exec);
 	c->terminal = kxdg_bool(&e, "Terminal", 0);
 	/* The launcher's rule: an entry whose Exec IS the box launcher is a box
-	 * app whatever the alien-apps table is keyed by. */
-	c->alien = !strncmp(c->exec, "kdos-appbox run ", 16) ||
-		   strstr(c->exec, "/kdos-appbox run ") != NULL;
+	 * app whatever the alien-apps table is keyed by, and the box may be
+	 * named between the binary and the verb. */
+	c->alien = sh_exec_is_boxed(c->exec);
 	c->is_default = is_default;
 	kxdg_free(&e);
 }

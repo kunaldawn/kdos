@@ -334,6 +334,12 @@ a brightness, and this desktop's colours are eight palette slots with no brightn
 a "dimmed" grid would be a different picture rather than a darker one. The saver is not a dim under
 another name — it is a picture, which a grid draws exactly.
 
+**Two things suppress all three steps.** The `stay-awake` toggle is the person's own, set by
+`Super+Ctrl+i` and held until they clear it. An embedded guest playing something is the other: it
+sends `KEMBED_INHIBIT` and the session suppresses the saver, the lock and the blank for as long as
+it holds — but only while the guest's window is one somebody can see, because an inhibitor honoured
+for a minimised window is a battery spent on bookkeeping.
+
 The lock happens before the blank and never the other way, or a screen would come back on showing
 what was on it, and the saver goes when the lock arrives rather than animating underneath it.
 Blanking is `drmModeSetCrtc` with no framebuffer on the view's device — **not** a DPMS property
@@ -526,12 +532,96 @@ The guest's **stdin and stdout go to `/dev/null` and its stderr is kept**, so a 
 failed to start says why in the session's own log. A log on a terminal nobody switched to is a log
 nobody reads.
 
-### A graphical application is a window
+### A graphical application is windows
 
 `kdos-cage --embed` composites it in a **process of its own** and hands the frames back over a
 private descriptor channel; the session cuts each frame into sprites and writes the sprite
 codepoints into the window's cells. `kdos-con` still links no wlroots, no mesa and no pixel library
 — it moves bytes it never looks at.
+
+**One cage is one application, and an application is as many windows as it maps.** A toolbox, an
+image window, two docks and a modal file chooser are five windows on this desktop: five rectangles,
+five titles, five places in the stack, five mappings. They cannot be one window — five toplevels
+composited into one framebuffer are five pictures nothing downstream can separate — and they cannot
+be one cage each, because the toplevels belong to one client on one display and a mapped surface
+cannot be moved to another compositor. So every message on the channel names the window it is about,
+the cage gives each toplevel an output and a mapping of its own, and the only thing a fork still
+means here is a new application.
+
+**A window is created without a fork and retired without one.** `KEMBED_OPEN` carries the toplevel's
+natural size, its owner, what kind of window it is and its name; the session builds a window around
+it, places it and tells it what size it actually got. `KEMBED_CLOSE_WIN` takes one out — and touches
+the process not at all, because an application whose last window closed is an application with no
+window, which is what a shared session bus is for.
+
+**A launch puts a placeholder on the desktop and the first ordinary toplevel claims it.** That is
+what says `starting…` while a container comes up, and it is the rectangle the geometry memory
+already chose for this program — so a one-window application allocates nothing new, comes up exactly
+where it was left, is told no size at all and is the ordinary window it would be if it were the only
+kind there were. Not the first toplevel of *any* kind: an application whose splash maps first would give the splash the rectangle the person
+keeps the document at. An owned window never claims it either, because a dialog is a question about
+a window that has to exist first.
+
+**What kind of window it is decides where it goes, and only a dialog crosses from Wayland.**
+xdg-shell has no way to say modal, utility or splash — a Wayland toplevel is a dialog when it names
+an owner and nothing when it does not — so those three reach the session from an Xwayland guest
+alone and every rule below degrades to *owned or not* without them.
+
+| Kind | Where it opens | Taskbar | Ring | Frame | Stacking |
+|---|---|---|---|---|---|
+| Ordinary | the minimal-overlap search, or where it was left | a row | yes | yes | its own |
+| Dialog (names an owner) | centred on its owner, at its own size | none | yes | yes | above its owner |
+| Modal dialog | centred on its owner, at its own size | none | yes | yes | above its owner, which is blocked |
+| Utility (a dock, a toolbox) | where the eye is, at its own size | none | yes | yes | its own |
+| Splash | centred on the work area | none | no | none | above everything |
+| Any of them while a modal is over it | — | unchanged | **no** | yes | under its modal |
+
+**One application is one row.** A dialog, a dock and a splash belong to a window that already has
+one, so an editor with four docks and a file chooser open is one entry in the taskbar and not six —
+which is what every other desktop does and the whole difference between a bar a person aims at and a
+bar that grows a button every time a question is asked. They are all in the Alt-Tab ring except the
+splash, because a dialog is exactly what a person is switching to and a splash is something they
+could get stuck on. **A window with no row of its own cannot be minimised on its own**, and its
+frame carries no minimise button: the row is the way back from a minimise, so putting one away by
+itself would leave it drawn nowhere, cycled past and in no bar. A question is answered or closed.
+Minimise the OWNER and they go with it, and the owner's row brings the whole family back.
+
+**A window that belongs to another rides its raises, travels with it and is remembered nowhere.** A
+raise starts at the head of the family whichever member was named, so raising the owner brings its
+dialogs up on top of it and raising a dialog brings its owner up underneath — a dialog on either
+side of the window it is asking about is an application that looks frozen. Sending a window to
+another workspace sends what it owns, and minimising one minimises them; naming a dialog resolves up
+to its owner and moves that. And neither a dialog nor a dock writes the geometry table: every window
+of one guest carries the same program name, so a file chooser that was remembered would write *its*
+rectangle as the one the document window opens at next time, to disk, for every session after this
+one.
+
+**A modal blocks its owner and nothing else.** While it is up the owner cannot be raised, cannot
+take the keyboard and cannot be closed; a raise aimed at it — from the directional search, from a
+number chord, from a click — lands on the modal and flashes it, which is the honest answer to a
+click on a window whose application has stopped answering about it. **The blocked owner is out of
+the Alt-Tab ring for as long as the modal is up**, and so out of `Super+Alt+`*n* and the window
+list: a ring entry whose every step is redirected back to the question is one the ring can never
+advance past, so it would be Alt-Tab itself that stopped working rather than one window. The modal
+is in the ring in its place. A modal that is minimised, or off its owner's desk, blocks nothing: a
+question the person cannot see blocking a window they can is a window that has stopped answering
+with nothing on the screen to say why, and the flash would land where they are not looking.
+Everything else on the desktop carries on, because a modal is modal to its application and not to
+the machine: a dialog that stopped the session is a dialog a crashed application takes the machine
+down with.
+
+**An owner that closes leaves one window carrying its row.** The orphan nearest the front takes the
+owner's place — its taskbar row, its place in the ring — and the rest are re-parented onto it,
+so an application that outlives the window a person opened is still one entry and not one per dock.
+Nothing stays modal, because there is nothing left for it to block.
+
+**Closing one window is not closing the application.** `KEMBED_CLOSE` names that toplevel, the
+application decides what it means — a save prompt is a window being used, not a close ignored — and
+the window goes when the guest actually unmaps it. The deadline that escalates to a signal belongs
+to the PROCESS and is armed only when the ask covers the last window a person can reach: a guest
+signalled because one dialog of five ignored a close is every other window's unsaved work gone. A
+guest that answers — by retiring the window, or by opening a question on it — is on no deadline at
+all.
 
 **Sprites, not a pixel rectangle painted beside the grid.** A sprite lives *in a cell*, so a window
 in front of an embedded one simply overwrites those cells and the occlusion is the z-ordered copy
@@ -540,7 +630,17 @@ every window-model question — stacking, snapping, workspaces — would need a 
 kind of window.
 
 A picture is at most sixteen cells square, which is what the cell's sprite encoding carries, so a
-window is a grid of blocks that size and damage is rounded out to the blocks it touches.
+window is a grid of blocks of at most that size and damage is rounded out to the blocks it touches.
+
+**The block is cut smaller wherever sixteen cells would not fit one message.** A block is
+`tile × tile × cell_w × cell_h × 4` bytes and a message caps at `KCON_MAX_PAYLOAD`, so the window's
+tile is the largest that still fits: a 32-pixel cell is cut fifteen cells square and a 64-pixel one
+seven. The side that chooses the pixel size is the side that has to keep inside the cap — a block
+above it is declined by the encoder exactly as a block to a full queue is, so it stays owed for the
+life of the window and is a permanent hole in it, re-cut and re-refused on every turn. A
+smaller tile is more blocks and nothing else, and the ceiling on how many blocks a window may have
+still holds — the cell that forces the smallest tile is also the cell that makes the grid
+smallest.
 
 **A window with no frame yet says so.** The cage publishes nothing until a client has mapped a
 window, so until the first frame arrives there is no picture and the session draws `starting…` in
@@ -548,47 +648,320 @@ the middle of the window. Sprite cells naming slots no display has a picture for
 fallback mark — a window full of shade blocks, which reads as a broken application rather than as
 one that has not started drawing, and a container takes the better part of a minute to come up.
 
-**A window that goes without ever having drawn says why.** The window exists from the moment the
-cage is forked, before anything is known about whether the program behind it can start — so a pack
-that will not mount, a box that will not compose or a binary that is not there all present as a
-window that opened and then closed itself, with the sentence explaining it nowhere the person was
-looking. The cage's standard error is therefore a pipe rather than the session's own descriptor:
-every line still reaches `$XDG_RUNTIME_DIR/kdos-con.log`, and the last one is kept beside the
-window. When the cage exits having published no frame, that line is raised as a notification named
-after the program, falling back to the exit status — which at least tells a program that is not on
-the machine (127) from one that ran and refused. A guest that drew and then exited is a program
-that closed, and says nothing.
+**Closing the placeholder cancels the launch.** While it is the only handle the guest has put on the
+desktop, its close is asked of every toplevel the guest has and escalates like any other last
+window — and that includes a guest showing nothing but a splash, which carries no frame, no taskbar
+row and no place in the ring, so there is nothing else on the desktop to close it by. Once the guest
+has a window of its own that a person can close, the placeholder is a leftover no toplevel claimed
+and dismissing it takes only the placeholder: asking the application to quit because somebody
+dismissed it would take the windows it did open with it.
 
-**Which blocks are owed is kept per block, and a cycle sends as many as its budget allows.** At an
-8x15 cell a block is a hundred and twenty kilobytes and a maximised guest is dozens of them; a
-bounding box cannot say *these four went and those six did not*, so a repaint too big for one cycle
-would leave stale squares nothing repaints. Blocks that did not go stay owed, the cursor carries on
-where the last cycle stopped so no corner is starved, and each block is flushed to the display as it
-goes rather than piling up in the queue the watermark is measured against. A display that refuses a
-block — because it is behind — leaves that block owed even if another display took it.
+**A guest that goes without ever having opened a window says why — unless it exited cleanly.** The
+placeholder exists from the moment the cage is forked, before anything is known about whether the
+program behind it can start, so a pack that will not mount, a box that will not compose or a binary
+that is not there all present as a window that opened and then closed itself, with the sentence
+explaining it nowhere the person was looking. The cage's standard error is therefore a pipe rather
+than the session's own descriptor: every line still reaches `$XDG_RUNTIME_DIR/kdos-con.log`, and the
+last one is kept beside the process. When the cage exits having opened no window, that line is
+raised as a notification named after the program, falling back to the exit status — which at least
+tells a program that is not on the machine (127) from one that ran and refused.
 
-**The rate limit applies whether or not a display can show pixels**: every 16 ms where one can, and
-every 250 ms where none can, because a window of pixels at a compositor's frame rate down an `ssh`
-link is a link that does nothing else.
+**A clean exit with no window is the bus handoff, and it is silent.** Every boxed application shares
+one session bus address, which is exactly what makes a second launch of an editor open a second
+document in the cage that is already running. That second cage maps nothing and exits 0; its
+placeholder goes without a word, and the window the person asked for arrives in the first cage as
+another `KEMBED_OPEN`. A notification there would fire every time somebody opened a second file.
+
+**Which blocks are owed is kept per block and per display.** At an 8x15 cell a block is a hundred
+and twenty kilobytes and a maximised guest is dozens of them; a bounding box cannot say *these four
+went and those six did not*, so a repaint that did not finish would leave stale squares nothing
+repaints. Blocks that did not go stay owed, the cursor carries on where the last turn stopped so no
+corner is starved, and each block is flushed to the display as it goes rather than piling up in the
+queue the watermark is measured against.
+
+**Each display's own queue is that display's pace, and no display's is anybody else's.** A turn
+offers every display blocks until *its* queue reaches half of `KCON_VIEW_HIGH` and then leaves that
+display out of the rest of the turn; the others carry on. A refusal is never a reason to stop the
+walk — a recorder attached at a tenth of the rate, or a terminal view over `ssh`, would otherwise
+hold the local screen to its rate, and the block it refused would have been cut, copied and thrown
+away on every turn until it caught up. A turn ends early in exactly one case: no display has room at
+all.
+
+**The queue test sits above the copy.** A block is cut into the scratch buffer only for displays
+that have room, so a display that fills up costs nothing for the rest of the turn instead of one
+wasted full-block copy per remaining block.
+
+**It stops below the refusal mark rather than at it.** `KCON_VIEW_HIGH` is where a display declines
+a sprite, and it is also where a display stops counting as *ready*; a session whose displays are
+none of them ready composes no frame of its own. A turn that filled a queue to the refusal mark
+would therefore buy one window's pixels with the panel, the clock, the pointer and every other
+window on the screen. Nothing else paces it: the queue is the whole of the answer, and a constant
+on top of it would be a second and blinder one.
+
+**A display that drains wakes the turn that refills it.** The session polls every client's socket
+for writability whenever there is a backlog on it, so room a display frees is used in the turn that
+notices it rather than at the next tick — a display that empties its socket buffer in well under a
+millisecond would otherwise leave most of every twenty-millisecond window unused. Writability is
+asked for only where there is a backlog: a socket with nothing to send is writable at once, and
+polling it would turn the wait into a spin.
+
+**One walk of the window is one guest frame.** The cage publishes into two halves of a shared
+mapping and flips between them as it renders; a walk pins the half it reads from its first block to
+its last, however many turns that takes, so what a display assembles is one moment rather than a
+band of squares from several. Damage that arrives mid-walk is held and owed when the walk wraps,
+which is also when the newer half is adopted — and holding it is what lets the owed count reach zero
+under continuous damage instead of standing at the whole grid for ever.
+
+**Two halves narrow the tear; they do not close it.** The cage flips per rendered frame with nothing
+to ask permission of, so a guest that renders twice during one walk overwrites the half being read.
+A walk that finishes inside one turn is coherent; a walk across several turns of a fast guest is
+coherent only as far as the guest's own rate allows. Closing it needs a third half and a
+parent-to-child release the cage waits on.
+
+**A block with no pixels is not a refusal.** A block past the edge of the guest's current buffer —
+which is every block on the far side of a resize the guest has not caught up with — stops being owed
+rather than being read as a display falling behind; reading it as one would stop the whole window
+publishing until the new buffer arrived, which is a window frozen mid-resize rather than one whose
+edge arrives late. The mapping that gives those blocks pixels damages the whole window when it
+arrives, so forgetting them costs nothing.
+
+**A display that cannot show pixels is rate-limited on its own, not by holding the turn back**:
+every 250 ms for that display, because a window of pixels at a compositor's frame rate down an `ssh`
+link is a link that does nothing else — while the screen beside it keeps the session's own rate.
+
+**A display's sprite table has a byte budget of its own, so pixels that crossed the wire are not
+necessarily on the screen.** The session cleared what it owed when the block reached the socket: a
+display that could not keep the picture reports the slots it dropped, once per painted frame as one
+message, and the session owes those blocks to that display again. **The repair is bounded by the
+window.** A display whose table is simply too small for the window refuses the replacement exactly as
+it refused the picture, so one window's worth of blocks per display is paid between one guest damage
+and the next — a display that lost a few pictures has them all back on the next walk, and one that
+can keep none of them stops being paid until the guest draws again, by which time the ordinary
+damage path is sending those blocks anyway.
+
+**A window nobody can see is asleep, and *nobody can see* is more than minimised.** Another
+workspace, hidden, behind the lock, under the saver: each is a window the draw loop paints nowhere,
+and a guest kept rendering for one of them spends the display queue the window being looked at is
+waiting for. The session has one answer to the question and both the draw loop and the guests read
+it, because two answers drift.
+
+**The window with the focus is served first, and the rotation is over WINDOWS.** A turn's room is
+finite and the window served first takes it, so a fixed order would let an older window lock out the
+one being looked at for as long as both are drawing — and a rotation over processes would let one
+application with five windows spend the whole turn before the application beside it was reached even
+once. With no embedded window focused the start of the turn rotates, so every window reaches the
+front within as many turns as there are windows.
+
+**And a window nobody is looking at produces no frames at all.** Each toplevel has an output of its
+own, so a dock that is not animating is asleep on its own while the image window beside it draws —
+which is most of the bandwidth an application with four docks would otherwise spend.
+
+**The sprite slots are the session's and every window draws from them.** There are 4096 for the
+whole desktop and a window claims one per block, so a maximised window on a 240×67 grid takes 75 and
+a dialog takes a couple of dozen: about fifty maximised windows before the rotation is empty, shared
+with every `libkcon` surface's own pictures. A window takes what it can get — a block with no slot
+is drawn as the fallback shade and owed to no display, so a shortfall is a shaded patch in the
+newest window rather than a hole onto the window underneath. Slots above a window's grid go back
+when it shrinks, not when it closes. One guest may put at most sixteen windows on the desktop; a
+toplevel past that is dropped with a line in the log, because an application mapping without bound
+would take the pictures away from every other window.
+
+**A resize is an output resize, and the guest is told at most one a frame.** The window's cells
+*are* the guest's output, so dragging an edge changes its mode: the cage reallocates its swapchain,
+both processes map a new buffer and the application relayouts — far heavier than the configure a
+toolkit answers on any other compositor. The session moves its own grid at once, so the drag stays
+live, and holds the size for the guest until the last one it was told has come back as a mapping,
+and to at most one every `CON_FRAME_MS`. A size held back by either gate goes out on the next turn.
+One that has gone unanswered for a second stops holding the next back, or a guest whose mapping
+never reaches what it was told would be stuck at the size it has.
+
+**A font step is a resize for the guest even when the window keeps its rectangle**, because that
+output is measured in pixels. The cell size is read on every resize and a change in it alone
+re-lays the grid and tells the guest; a window left at the old pixels-per-cell would render at the
+wrong resolution for the rest of its life, with no error anywhere, because the blocks are cut from
+the same stale cell they are drawn with.
 
 Everything else about it is an ordinary window: chrome from the same code, a title bar, a close
-button, `kwm_snap`, a taskbar entry, a workspace. Minimising tells the guest, which stops
-rendering — a guest drawing frames nobody composites is a guest spending a core on nothing. The
-guest exiting closes the window; closing the window asks the guest to go and leaves the entry until
-it actually has, the same rule a terminal window follows.
+button, `kwm_snap`, a workspace, and a taskbar entry for whatever is not a dialog, a dock or a
+splash. Going off a screen tells the guest, which stops rendering — a guest drawing frames nobody
+composites is a guest spending a core on nothing. The guest exiting closes every window it had, in
+one pass, because a window with no process behind it has no pixels, no input and no way to be
+closed; closing a window asks that toplevel to go and leaves the entry until it actually has, the
+same rule a terminal window follows.
 
-**Input arrives as a cell and a position inside it.** A view that knows its own pixel geometry says
-where in the cell the pointer was, in 1/256ths; one that does not means the centre of the cell. A
-key arrives as a *character*, because that is what a view resolved the person's layout to, and the
-session maps it back to the key that produces that character on a **US keymap** — which is the
-keymap the guest is started with. An application reading raw scancodes therefore sees US positions.
+**And the ask has a deadline, which a guest that answers never meets.** Closing asks the
+application, which is what gives it the chance to offer a save dialog. Mapping a child of the asked
+window is that answer and it stops the clocks, because only the guest's own event loop can put one
+there — a frame is no evidence, since the cage composites its scene whether or not its client is
+still reading the socket. So a person may read "Save changes?" for as long as they like: nothing is
+signalled while the question stands, and the next click asks again.
+
+**Silence is what the deadline measures.** A window still on the desktop ten seconds after its ask
+leaves it, because the toplevel behind it answers nothing and there is nobody left to hold it for.
+The PROCESS is signalled when the ask covered the last window a person can reach — or when the last
+of them had to be taken from it, which is what stops a guest that ignored two closes at once from
+running on with nothing on screen and no taskbar chip to reach it by. Ten seconds after that it is
+sent `SIGTERM`, once, and eight seconds later `SIGKILL`. The clock starts at the FIRST ask: clicking
+close again does not restart it, or a window that is never going to answer could be kept alive by
+the clicking.
+
+**The name on the frame is the guest's, and it is that WINDOW'S.** An embedded window opens under
+the name its launcher was started for and takes the application's own the moment it sets one, which
+arrives as `KEMBED_TITLE` — the bytes after the message, since the channel is a datagram socket and
+its boundary is the string's end. The toplevel that spoke names itself in the message, so an export
+dialog cannot rename the image window it opened over. The session re-announces the window to the
+panel on a change, so the taskbar entry and the Alt-Tab ring follow without asking.
+
+**And it may ask for the screen.** A guest's own fullscreen request arrives as `KEMBED_FULLSCREEN`
+naming one toplevel and puts THAT window fullscreen, because the toplevel's output *is* that window and a request honoured
+inside the cage alone would hand a video player back the rectangle it already had. The traffic runs
+both ways: `Super+f` and the frame's own button make a window fullscreen without the guest having
+asked, and `KEMBED_FULLSCREEN_SET` tells it so — a guest never told draws the chrome of a windowed
+application across a screen that has none.
+
+**And it may ask for the screen to stay on.** A guest playing something sends `KEMBED_INHIBIT`, and
+while it holds, the session's three idle steps are all suppressed — the same effect the `stay-awake`
+toggle has, from a different source. An inhibitor is honoured only while its window is one somebody
+can see: minimised, on another workspace or under the lock it counts for nothing, because a machine
+kept awake by bookkeeping is one whose battery goes while it sits closed. It is cleared with the
+window as well as by the guest, so a guest that exits without clearing it holds nothing.
+
+### What a guest is typed at and pointed at with
+
+**There are two input streams and a guest is fed by exactly one of them.** Everything drawn in cells
+reads the cooked one — a resolved character and a cell — and that is the whole vocabulary a view
+inside somebody else's terminal has, because a character and a cell is all its terminal gave it. A
+view with a real keyboard and a real pointing device sends the raw stream **beside** it: the evdev
+code with its press and its release as two separate events, the full xkb modifier mask, the position
+in the view's own pixels with the deltas the device reported, the full evdev button code, a scroll
+with a real value and a second axis, and the compiled keymap the person is actually typing on. The
+session asks for that stream with `KCON_OP_VIEW_RAW` and asks **only while an embedded window has
+the focus**, because it is one message per device event and everything else here is cells.
+
+**The cooked message for one physical input is routed first, and that ordering is the protocol.**
+By the time the raw message is delivered the session has already decided whether a chord ate the
+key, which window the pointer is over and where its own cursor is — so the raw arm routes nothing,
+chords nothing and moves no cursor. It delivers. There is one answer to where a click landed and it
+is not made on the raw path.
+
+**A key is a switch.** `KEMBED_KEY` carries an evdev code and a press or a release, so a guest holds
+W until the release arrives and repeats from its own keymap. A press whose release was delivered
+somewhere else is a key held for the life of the application, so **the session releases every key a
+window is holding before the keyboard leaves it** — the cage's own sweep on `KEMBED_FOCUS a=0` then
+finds nothing left and no key is released twice.
+
+**A release travels on the raw stream and on nothing else, so losing the stream releases
+everything.** The chord that moved the focus off the guest, the lock, the saver, a view that went
+away and the guest's own exit all happen while the person is still holding the key that caused them,
+and the release they make a moment later is sent by nobody. The gate that asks a view for raw input
+is the one place either edge exists, so it is where every guest is released and where the session
+forgets which presses a chord ate: a suppressed press remembered past the stream that would have
+matched its release swallows that key's next press for the rest of the session.
+
+**A chord that the session kept takes the release with it.** A press the guest never saw must not be
+followed by a release it did. A modifier is never kept, because a modifier produces no character and
+so has no cooked message any chord could consume — the raw arm knows one by its evdev code rather
+than by what came before it. A view delivers the cooked message for one physical input immediately
+before that input's raw partner, and every raw event carries the count of cooked events that must be
+taken first, so a verdict belongs to the one cooked key it was reached on and to no other. `Ctrl+A` reaches the session as the leader *and* `Ctrl` itself reaches the guest as a
+held key. What a guest never receives is
+[the chord table](#the-chords-and-the-leader-that-reaches-them) and nothing else.
+
+**The keymap is the person's.** A view that reports a real keyboard sends the compiled xkb text of
+the layout it is running as `KCON_OP_KEYMAP` — bytes, never a descriptor, which is what keeps the
+view socket forwardable. The session holds one (the last view to speak wins, because one session is
+one keyboard), seals it into a memfd once and hands it to every guest with `KEMBED_KEYMAP`.
+`KEMBED_MODS` carries the locks and the layout group, which no key stream can establish, and xkb's
+own rule is that a state driven by keys must not also be set by mask — so it goes at focus-in, on a
+keymap change, and behind a key that left the locks or the group somewhere other than where that
+window was last told they were. It goes **behind** such a key and never ahead of one, or the guest
+applies the key on top of the mask and toggles the lock straight back off.
+
+**The session knows the mask only while the raw stream runs.** It arrives on that stream and nowhere
+else, so Caps Lock pressed into a terminal while no guest held the keyboard reaches the session as
+nothing at all. The session sends no mask it does not hold — `KEMBED_MODS` is acted on, and a
+session asserting the locks are clear when it does not know puts every letter in the wrong case — so
+a guest given the keyboard under a lock nobody told it about is told by the first key it receives,
+and that key is the only one it resolves without the lock.
+
+**The pointer is in pixels, and the delta travels with it.** `KEMBED_MOTION` carries the position
+inside the window, converted from the view's pixels and the cell size those pixels were measured in
+— exact at both window edges and across a font step the session has not seen yet. `KEMBED_REL`
+carries how far the device actually moved, accelerated and unaccelerated, which is the only thing a
+guest that grabbed the pointer can read. `KEMBED_BUTTON` carries the evdev button, so a mouse with
+side buttons drives Back and Forward. `KEMBED_AXIS` carries a continuous value, a `value120` and
+**which axis**, so a guest scrolls sideways as well as up, and reads a detent at the resolution the
+device reported it at rather than as one whole step.
+
+**A guest may take the pointer.** A game or a three-dimensional editor asks the cage for a pointer
+constraint, which arrives as `KEMBED_GRAB`. While one is held the session routes every pointer event
+to that window and to nothing else: nothing is hovered, nothing is raised, no frame button answers,
+and the delta goes out with no position behind it. **Moving the keyboard focus is the way out** —
+the constraint is active only for the surface that has the keyboard, so every chord that moves focus
+drops it. There is deliberately no chord and no break message of its own, because a pointer that can
+be captured with no way out is the failure this avoids. **The session's own pointer stops where the
+guest is** for as long as the constraint is held: the hovered window is that window and the implicit
+grab a button press armed is dropped as the constraint takes over, because a guest normally asks for
+the pointer *on* a press and the release that would have ended the grab is spent on the constraint
+instead. The reversed pointer cell is drawn by the view from its own cooked stream, so it goes on
+following the device across a screen where nothing else answers it.
+
+**A finger reaches a guest a cell at a time.** A pointing device reports every motion twice — the
+cell the desktop reads and the pixel a guest is aimed at — so a guest is given the pixel and the
+cooked event is dropped for it. Nothing reports a finger twice: the recogniser synthesises the
+press, the drag and the release from the touch stream and no device event stands behind them. The
+session tells them apart by where they arrive — the recogniser pushes what it synthesised
+immediately behind the touch it read, and the button it opened stands for the drag in between — and
+delivers them to a guest as the cooked events they are, at the grid's resolution, aimed at the centre
+of the cell — a synthesised pointer carries no sub-cell offset, and zero is the centre. The gesture
+itself reaches only a window drawn in cells.
+
+**A view with no device is driven the one way it can be**, and that is every view inside somebody
+else's terminal, which is what a session reached over `ssh` is driven by. Such a view never claims
+`KCON_VIEW_RAW`, is never asked for raw input and never sends a keymap; its input reaches a guest as
+the character mapped back to the key that produces it on a **US keymap**, which is the keymap such a
+guest is started with, pressed and released in the same breath, aimed at the middle of a cell with
+the 1/256th offset the view supplied. Such a view loses held keys, the person's own layout inside a
+guest, sub-cell aiming, a modifier on a click, a horizontal axis and pointer lock; it keeps every key
+and click it could send, the cell pointer, the picture, the clipboard and the drop.
 
 ### The guest on a terminal of its own
 
-`--vt` remains for an application that needs acceleration a software renderer cannot give it: an
-embedded guest is composited by pixman on the CPU, which is fine for an editor and is not a way to
-play a game. It is selected per application by `display = vt` in its box profile, and
-`embed = false` in `con.conf` turns embedding off for everything.
+`--vt` is for an application the card cannot be given to through a window: one that sets its own
+full-screen mode, one whose driver will not run against a headless output, and one that needs the
+frame rate the window path cannot reach. An embedded guest is composited by the software renderer
+unless its box profile says `render = gpu`, which asks the cage for the hardware renderer and is a
+request rather than a promise — a machine with no render node, no driver for it or no mappable
+DMA-BUF gets the software one anyway. `render` is its own key and not the profile's `gpu`, which
+says the render node is bound into the box and which every box has by default; answering the
+renderer question with that one would composite the whole catalogue on the card. `--vt` is selected
+per application by `display = vt` in the same profile, and `embed = false` in `con.conf` turns
+embedding off for everything.
+
+**Either renderer, an embedded frame crosses the CPU and a guest on its own terminal does not.**
+The window path publishes into shared memory this session reads, cuts it into blocks and sends them
+to every display, so the cost is the guest's whole picture copied several times per frame — which is
+what puts a ceiling on it well under a card's own rate, and which the hardware renderer moves rather
+than removes, because the card's output is read back before anything is sent. On its own terminal
+the cage holds the card directly: the guest's buffer reaches a scanout plane with no readback, no
+blocks and no socket, at whatever rate the screen runs. What that costs is exclusivity — a terminal
+switch is the whole screen, so the desktop, the panel and every other window are gone for the
+duration, and a view over `ssh`, a cast and a recording see nothing of it.
+
+**The profile is the box's, and the launcher names the box.** A generated launcher for an
+application that belongs to a pack runs `kdos-appbox -b <pack> run <exec>`, and `<pack>` is the
+string `~/.config/kdos/boxes/<pack>.conf` is filed under — so the session reads the same file
+`kdos-box profile` writes and the settings surface edits, without repeating appbox's
+command-to-pack matching. That matching is not a basename: it skips `env` and `VAR=value` prefixes
+and matches the whole command, so a second copy of it here would answer differently for exactly the
+applications that need it. `--box` is the same option, and `kdos box export` writes the other
+generated shape — `kdos-box run <box> <app>` — which the session reads the same way. An entry with
+none of them names no box and therefore no profile: it is embedded on the software renderer, which is what
+an application with no profile gets either way.
+
+**`render` and `display` are the session's keys, not the container's.** The session reads them
+straight out of the profile file, and `kdos-box profile` carries them through a rewrite without
+interpreting them — a profile writer that knows only its own keys deletes everybody else's.
 
 Such a guest is a window with **no cells**: in the list so that it is in the taskbar and the
 Alt-Tab ring, drawn nowhere, and **selecting it is a VT switch** rather than a raise. The taskbar
@@ -605,9 +978,9 @@ A view says in its hello how many pixels one of its cells is, whether it can put
 a screen, whether it rasterises its own glyphs, and **whether it can draw a colour outside the
 theme's eight slots**. The session uses the first for sizing an embedded guest — the primary view's, because
 that is the display the person is looking at — and the second to decide how often it may send a
-frame: at the session's own redraw rate when something can show pixels, and once every 250 ms when
-nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link is a link
-that does nothing else.
+frame: as fast as the display's own queue drains when something can show pixels, and once every
+250 ms when nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link
+is a link that does nothing else.
 
 **A view that says it answers frames is what paces the session.** It reports `KCON_VIEW_FRAME` in
 its hello, the session closes every frame it sends with `KCON_OP_FRAME`, and the view answers with
@@ -934,6 +1307,13 @@ as they were drawn** — never re-derived from geometry afterwards. A title is t
 and the clock is right-aligned, so a second calculation of where an element ended up is a second
 thing to get wrong, and a click that lands one entry off is worse than one that lands nowhere.
 
+**Routing dispatches on the button, never on the press kind.** A wheel detent is delivered as a
+press carrying `KT_MB_WHEEL_UP` or `KT_MB_WHEEL_DOWN` and no release ever follows it, so a test on
+`press` alone answers a scroll: over `_ ■ X` a tick would close the window, over the panel row it
+would open the menu or switch workspace, over a title row it would arm a move, and under a mark or
+the colour picker it would re-anchor them. A scroll reaches the window under the pointer and does
+nothing else to it — it does not raise it, does not take the keyboard and does not arm a drag.
+
 | Where | Press | Does |
 |---|---|---|
 | `Start` | left | opens `con.conf`'s `menu` |
@@ -978,8 +1358,10 @@ window that heard the press never hears the end of it: an embedded application h
 the rest of its life and a terminal keeps extending a selection nothing will finish. While the
 latch holds, a position outside the window is **clamped to its nearest cell** rather than dropped —
 a negative position is this protocol's leave, and a surface told the pointer left never acts on the
-release meant for it. A window that closes under a held button releases the latch with it. The
-frame's own move and resize drag is a separate grab and is answered first.
+release meant for it. A window that closes under a held button releases the latch with it, and so
+does a guest that takes the pointer under one — the release that would have ended the latch is spent
+on the constraint instead, and a latch nothing can end is a pointer that answers one window and no
+other. The frame's own move and resize drag is a separate grab and is answered first.
 
 **A bare right button belongs to whatever owns the cells.** Resizing from anywhere inside is right
 for a window whose content the session interprets and wrong for one that is a program's: a right
@@ -989,7 +1371,9 @@ button, so a context menu was unreachable in every graphical application here. T
 
 **A minimised window keeps its taskbar row**, because the row is how it comes back: it is drawn
 nowhere, cycled past and not hit-testable on the desktop, so a bar that dropped it would leave
-`Super+Shift+n` as the only route to it.
+`Super+Shift+n` as the only route to it. That is also why a window with no row of its own — a
+dialog, a dock, a splash — cannot be minimised by itself, and why its frame is drawn without the
+minimise button: it goes away with the window it belongs to and comes back on that window's row.
 
 **The keyboard reaches a window by pointing at it.** `Super+Shift+`arrow moves the focus to the
 nearest window that starts past the focused one and shares rows or columns with it, and
@@ -1017,6 +1401,22 @@ exclusive zone, so moving it would move the work area out from under every other
 
 Every window-management chord is on Super, so none of them can collide with what a program inside a
 window wants. A view with a screen of its own reads Super from `libinput` and they all work.
+
+**The table is the whole of what a window never receives, and the rest reaches it untouched.** That
+is true of a terminal, a cell surface and a boxed graphical application alike: `Ctrl+W` closes a
+browser tab, `Ctrl+T` opens one, `Ctrl+C` interrupts and `Alt+F4` reaches the application, because
+none of them is bound here. **Three chords are not on Super and are the only three**: `Alt+Tab` and
+`Alt+Shift+Tab` switch windows, which a lifetime of muscle memory earns and which an application
+wanting Tab-with-Alt therefore does not get; `Ctrl+A` is the leader, and pressing it twice sends the
+literal, which is what gives a shell back its start-of-line; and `Print` with its two shifted forms
+captures, on a view with a real keyboard only. The media keys are bound bare because that is where a
+keyboard puts them and nothing competes for them.
+
+**A modifier is never taken from anything.** A modifier produces no character, so a view sends no
+cooked message for one and no chord can consume it — an embedded guest sees `Ctrl`, `Alt`, `Shift`
+and `Super` go down and come up whatever the session does with the letter that follows. The key a
+chord *did* consume has its release swallowed with it, because a press the guest never saw must not
+be followed by a release it did.
 
 **A chord means the same thing on both desktops, and the suite is what keeps it true.** The defaults
 are written twice in two syntaxes — `Super+Shift+t` in `keys.conf`, `W-S-t` in `rc.xml` — so a chord
@@ -1094,10 +1494,14 @@ these rows — the program — and that is what the card reads; the session prin
 because hiding one there would make the table disagree with the chords.
 
 **Matching is on a field the guest cannot rewrite.** A window's `title` follows whatever the program
-emits, and its `app_id` says what *kind* of window it is — every terminal window is `terminal` and
-every caged guest is `kdos-cage` — so the session records the program a window was opened for once,
-at open, and matches on that. A terminal entry started from the menu declares it through
-`kdos-term --app-id`.
+emits, and its `app_id` groups windows of a kind — every terminal window is `terminal`, and a guest
+on a terminal of its own is `kdos-cage`, while an embedded guest carries the application's own name
+— the basename of the program its generated launcher runs. The panel resolves an entry from that:
+by file stem where the two agree, and by `StartupWMClass` where they do not, which is how GIMP's
+`gimp.desktop` is found from `gimp-3.0`. A family of entries sharing one program — the LibreOffice
+rows all run `libreoffice` — resolves to neither and keeps its own title. So the session records the
+program a window was opened for once, at open, and matches on that. A terminal entry started from
+the menu declares it through `kdos-term --app-id`.
 
 **The workspace switch comes before the raise, never after.** Going to a workspace clears the focus
 and cycles to whatever the ring lands on, so a raise before it is undone; and a minimised match is
@@ -1315,9 +1719,12 @@ top of that: a docked panel, a layer, the lock, the saver, a guest on another te
 scratchpad are all put where they are by something other than a person.
 
 **A tiled window is remembered by what an untile returns to**, never by the half of the screen it
-is currently filling, and the tile itself comes back from the last field. **A remembered rectangle
-is fitted, not trusted**: it goes through `kwm_fit()` into the work area, so one kept on a wide
-screen still comes back onto a narrow one. And **a second window of the same program does not land
+is currently filling, and the tile itself comes back from the last field. **Fullscreen is orthogonal
+to the tile**: it leaves the tile flag alone and writes that rectangle only from an untiled window,
+and leaving fullscreen re-derives the tile from the flag rather than replaying a rectangle — so a
+window fullscreened while tiled comes back to the tile the grid has, and its pre-tile rectangle
+survives to the geometry table. **A remembered rectangle is fitted, not trusted**: it goes through
+`kwm_fit()` into the work area, so one kept on a wide screen still comes back onto a narrow one. And **a second window of the same program does not land
 on the first** — one record per program means every instance would take the same corner, so a
 record whose origin is already occupied is declined and the placement search does its job.
 
@@ -1624,9 +2031,10 @@ repaints in full.
   tells every surface to start again: each forgets what it has sent, and its next flush puts every
   picture back on the wire before any cell. A reattached display therefore fills in, at the cost of
   re-sending — which is the same cost an animation already pays per frame.
-- **The pointer moves a cell at a time.** A press and a release carry where in the cell they landed,
-  so a small button is clickable; a drag that stays inside one cell moves the guest's pointer
-  nowhere, because the input stream reports a move when the cell changes.
+- **A touch pointer moves a cell at a time.** A real pointer reaches a guest in pixels over the raw
+  stream, and a real keyboard reaches it through the person's own layout; a touch event is
+  synthesised from the gesture recogniser with no raw partner and so arrives at the grid's
+  resolution.
 - **No VT has ever been allocated.** The `--vt` path compiles and links and has never been run: it
   needs an ISO with `kdos-cage` in it and a machine with real terminals. Embedding, which is the
   default, has been run end to end.

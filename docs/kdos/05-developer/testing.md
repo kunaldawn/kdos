@@ -276,6 +276,12 @@ Two assertions, and neither is the obvious one:
   observe about input having arrived — and it is enough, because nothing else moves in a still
   terminal.
 
+**It observes one window's frames.** The channel carries a `win` id and a mapping per toplevel;
+`embedcheck` receives into a buffer the size of the struct, so the kernel discards the tail of an
+op it does not know and the op falls through the arms it does not have. That is what a
+single-toplevel guest has, and it is all this harness sees — a multi-window guest is driven from a
+session, not from here.
+
 Running it needs a linked `kdos-cage` and a guest to render. The suite compiles it, which is what
 stops it rotting.
 
@@ -588,6 +594,31 @@ Five rules, each with the consequence of getting it wrong:
   `kdos-con` and `kdos-con-start` alongside the shell.
 - **`greet` cannot be tested on the live medium by editing `/etc`**: the setting is read at login,
   and the overlay resets on reboot, so a boot-time test of the greeter needs an installed system.
+
+### What the rig cannot show about an embedded application
+
+The rig boots the ISO and photographs the cell grid, which is exactly the wrong end of the embed
+path for most of what it carries. Four limits, each with what to do instead:
+
+- **The ISO carries no boxed graphical application**, so photographing one means a disk image with
+  a pack installed on it — not `testing/quick.sh`, which cannot carry a new port or anything under
+  `fs/`, and not the ISO. Everything below a real guest is `embedcheck` and the host lab.
+- **A multi-window guest has never been photographed.** One cage is as many KDOS windows as its
+  guest maps toplevels, and what stands behind that is the compile gate plus a stand-in cage driven
+  against `kdos-con` on a host. A picture of five real windows over one compositor is the evidence
+  that is missing; see [Known gaps](../06-reference/known-gaps.md).
+- **Raw input does not appear in a photograph at all.** A held key, the person's own layout inside a
+  guest, sub-cell aiming, a modifier on a click, a horizontal wheel and pointer lock are all
+  answered by the guest and not by the grid, so a shot shows a window either way. Drive the wire
+  instead: `kdos-con --new -t t` under a short `XDG_RUNTIME_DIR` with a stub cage on the other end,
+  and read what was sent.
+- **The clipboard across the cage boundary photographs as a working one either way.** Both ends are
+  built and the mirror is continuous, so a paste inside a guest puts text on the screen whether it
+  came from the session or from that guest's own seat — the picture cannot tell them apart. Drive
+  the wire instead, the same lab as above: a stub cage that sends `KEMBED_CLIP_OFFER` with a sealed
+  `memfd`, a second one that logs every `KEMBED_CLIP_SET` it is sent, and `kdos-con --clip-text` on
+  the session socket for the other direction. The second stub logging the first stub's bytes, and
+  then the session's, is the whole of the proof; neither a photograph nor `embedcheck` reaches it.
 
 **The graphical session is started on a VT and never down the serial line**: a compositor launched
 from a serial console gets no seat and dies asking for one. Its entry point from the console desktop

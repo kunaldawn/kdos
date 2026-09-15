@@ -29,6 +29,14 @@ Win *win_focused(void)
  * pressing a chord repeatedly walks a program's windows front to back and then
  * round, which is the order the eye already has for them.
  *
+ * ONLY THE HEAD OF A FAMILY ANSWERS, and `after` is resolved up to one. Every
+ * window of one guest carries the same program name, so a dialog, a dock and a
+ * splash all match the chord — and the dialog is the one in front, so a search
+ * that took the topmost match would hand the chord a question instead of the
+ * document it is about, and a second press would never move. A raise carries
+ * the whole family up anyway, so the head is the member that reaches all of
+ * them.
+ *
  * MINIMISED WINDOWS AND OTHER WORKSPACES COUNT. `reachable()` below is the
  * CYCLE's rule and would be wrong here: a run-or-raise that skipped a
  * minimised editor would start a second one, and the whole point of the chord
@@ -40,20 +48,28 @@ Win *win_focused(void)
  */
 Win *win_find_prog(const char *prog, int after)
 {
-	Win *first = NULL;
-	int seen = after == 0;
+	Win *first = NULL, *a = win_find(after);
+	int depth = 0, seen;
 
 	if (!prog || !*prog)
 		return NULL;
+	while (a && a->owner && depth++ < 4) {
+		Win *own = win_find(a->owner);
+
+		if (!own)
+			break;
+		a = own;
+	}
+	seen = a == NULL;
 	for (Win *w = S.wins; w; w = w->next) {
-		if (w->panel || w->background || w->overlay ||
+		if (w->panel || w->background || w->overlay || w->owner ||
 		    strcmp(w->prog, prog))
 			continue;
 		if (!first)
 			first = w;
 		if (seen)
 			return w;
-		if (w->id == after)
+		if (w == a)
 			seen = 1;
 	}
 	/* Past the end is back to the top — and when `after` named a window
@@ -62,25 +78,186 @@ Win *win_find_prog(const char *prog, int after)
 }
 
 /*
- * The list IS the stack, front first. Raising is a move to the front rather
- * than a z-index, so there is one answer to what is on top and no way for two
- * windows to claim the same depth.
+ * THE MODAL QUESTION STANDING OVER THIS WINDOW, or NULL.
+ *
+ * A MODAL IS MODAL TO ITS APPLICATION AND NOT TO THE MACHINE. It blocks the
+ * one window it belongs to — that window cannot be raised, focused or closed
+ * while it is up — and nothing else on the desktop: the terminal beside it,
+ * the panel and every other application carry on, because a dialog that stops
+ * the whole session is a dialog a crashed application takes the machine down
+ * with.
+ *
+ * A MINIMISED MODAL BLOCKS NOTHING. Somebody put it out of the way on purpose
+ * and a window that could not then be used would be a window with no way back
+ * to it at all.
+ *
+ * AND NEITHER DOES ONE OFF ITS OWNER'S DESK. A question the person cannot see
+ * blocking a window they are looking at is a window that has stopped answering
+ * with nothing on the screen to say why, and the flash would land where they
+ * are not looking. Every path that moves one of the pair moves the other, so
+ * the test is the rule the rest of this file keeps, written where the block is
+ * decided rather than in each of them.
  */
-void win_raise(int id)
+Win *win_modal_for(int id)
+{
+	Win *o = win_find(id);
+
+	if (!id || !o)
+		return NULL;
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->modal && w->owner == id && !w->minimised && !w->hidden &&
+		    (w->sticky || o->sticky || w->workspace == o->workspace))
+			return w;
+	return NULL;
+}
+
+/* Move one window to the front of the list, which is the top of the stack. */
+static Win *list_front(int id)
 {
 	Win **pp = &S.wins;
 
 	while (*pp && (*pp)->id != id)
 		pp = &(*pp)->next;
 	if (!*pp)
-		return;
+		return NULL;
 
 	Win *w = *pp;
 
 	*pp = w->next;
 	w->next = S.wins;
 	S.wins = w;
-	S.focus = id;
+	return w;
+}
+
+/*
+ * AND WHATEVER THIS WINDOW OWNS COMES WITH IT.
+ *
+ * A dialog left behind the window it is asking about is a dialog a person
+ * cannot see and an application that looks frozen. The list is the stack, so
+ * moving each child to the front AFTER its owner puts it above the owner, and
+ * a child's own children above it.
+ *
+ * THE DEPTH IS BOUNDED BECAUSE OWNERSHIP NEED NOT BE. A guest names the owner
+ * and nothing this side can promise the chain has no cycle in it; a bound is
+ * the one answer that cannot become a session that stops drawing.
+ */
+static void raise_owned(int id, int depth)
+{
+	int kids[16];
+	int n = 0;
+
+	if (depth > 4)
+		return;
+	/*
+	 * COLLECTED IN THE ORDER THEY ARE TO END IN AND MOVED IN REVERSE. The
+	 * list is the stack and each move is to the front, so the last one
+	 * moved is the one on top: fronting them in the order they were found
+	 * would turn the family over on every raise, and four docks would swap
+	 * places each time their image window came up. The modal is collected
+	 * first so it ends above its siblings — a question a person has to
+	 * answer must not open behind the dialog beside it — and the rest keep
+	 * the order they already had.
+	 */
+	for (int pass = 0; pass < 2; pass++)
+		for (Win *o = S.wins; o && n < 16; o = o->next)
+			if (o->owner == id && (o->modal == 0) == pass)
+				kids[n++] = o->id;
+	for (int i = n - 1; i >= 0; i--) {
+		if (!list_front(kids[i]))
+			continue;
+		raise_owned(kids[i], depth + 1);
+	}
+}
+
+/*
+ * A DIALOG GOES WHERE THE WINDOW IT BELONGS TO GOES, AND IS PUT AWAY WITH IT.
+ *
+ * A question left on a workspace its owner has left is a frame belonging to
+ * nothing: an owned window carries no taskbar row of its own, so there is
+ * nothing on that desk to reach it by — and a modal stranded there goes on
+ * blocking an owner the person is looking at somewhere else. The same walk
+ * answers both verbs: `ws` is the workspace to move the family to or -1 to
+ * leave it where it is, and `min` the minimised flag to apply or -1.
+ *
+ * A STICKY CHILD IS NOT MOVED. It is on every workspace already, so there is
+ * nowhere to send it and no desk it can be stranded on.
+ *
+ * THE DEPTH IS BOUNDED for raise_owned()'s reason: the chain is a guest's to
+ * name and not this side's to trust.
+ */
+static void owned_apply(int id, int ws, int min, int depth)
+{
+	if (depth > 4)
+		return;
+	for (Win *o = S.wins; o; o = o->next) {
+		if (o->owner != id)
+			continue;
+		if (ws >= 0 && !o->sticky)
+			o->workspace = ws;
+		if (min >= 0)
+			o->minimised = min;
+		owned_apply(o->id, ws, min, depth + 1);
+	}
+}
+
+/*
+ * The list IS the stack, front first. Raising is a move to the front rather
+ * than a z-index, so there is one answer to what is on top and no way for two
+ * windows to claim the same depth.
+ *
+ * A RAISE AIMED AT THE OWNER OF A MODAL LANDS ON THE MODAL, and flashes it.
+ * The ring, the directional search, a number chord and a click on the window
+ * all end here, so this is the one place the rule has to be written — and the
+ * flash is the answer, because a click that did nothing at all reads as a
+ * desktop that has stopped rather than as an application waiting to be
+ * answered.
+ */
+void win_raise(int id)
+{
+	Win *w = win_find(id);
+	Win *m = win_modal_for(id);
+	int root = id, depth = 0;
+
+	if (!w)
+		return;
+	/*
+	 * FROM THE HEAD OF THE FAMILY DOWN, whichever member was named. The
+	 * whole family comes up together and the modal ends on top of it, so a
+	 * dialog raised on its own brings the window it is asking about up
+	 * under it rather than leaving it behind whatever the person was
+	 * looking at before. The walk up is bounded for raise_owned()'s
+	 * reason: the chain is a guest's to name and not this side's to trust.
+	 */
+	for (Win *o = w; o->owner && depth++ < 4;) {
+		Win *own = win_find(o->owner);
+
+		if (!own)
+			break;
+		root = own->id;
+		o = own;
+	}
+	list_front(root);
+	raise_owned(root, 0);
+	/*
+	 * AND THE WINDOW THAT WAS NAMED ENDS ON TOP OF THE FAMILY. The walk
+	 * above brings the family up in its own order, which says nothing
+	 * about which member was asked for: fronting the named window last,
+	 * with its own children over it again, is what makes a click on one of
+	 * four docks bring that dock out rather than the one that happened to
+	 * be in front of it.
+	 */
+	if (id != root) {
+		list_front(id);
+		raise_owned(id, 0);
+	}
+	/* The focus stays on the window that was named, or on the question
+	 * standing over it. */
+	if (m) {
+		m->bell_until = con_now_ms() + CON_FLASH_MS;
+		S.focus = m->id;
+	} else {
+		S.focus = id;
+	}
 
 	/*
 	 * RAISING A GUEST IS A VT SWITCH. It has no cells to bring to the front
@@ -259,11 +436,13 @@ void win_place(Win *w, int want_w, int want_h)
 
 	/*
 	 * WHERE THIS PROGRAM'S WINDOW WAS, IF IT IS REMEMBERED. Here and not at
-	 * the call sites: this is the placement every ORDINARY window goes
-	 * through, while an overlay is placed by win_place_corner() and a
-	 * restored session by win_place_at(), so a menu cannot inherit a
-	 * terminal's rectangle and the session record still wins over the
-	 * memory. Roles, decided by which function a caller reaches for.
+	 * the call sites: the lookup sits behind the `floating` test below, so
+	 * the only windows that reach it are the ones that open by the overlap
+	 * search — a layer is placed by win_place_corner() and a restored
+	 * session by win_place_at(), and the one overlay that arrives here is
+	 * a guest's splash, which is floating and so is centred and looked up
+	 * for nothing. That is what keeps a menu or a splash from inheriting
+	 * the rectangle a person keeps their document at.
 	 */
 	/*
 	 * A FLOAT OPENS WHERE THE EYE IS AND IS NOT LOOKED UP. Being placed in
@@ -273,6 +452,7 @@ void win_place(Win *w, int want_w, int want_h)
 	 */
 	if (w->floating) {
 		KwmRect a = win_workarea();
+		Win *own = w->owner ? win_find(w->owner) : NULL;
 		int cw = want_w > 0 ? want_w : a.w;
 		int ch = want_h > 0 ? want_h : a.h;
 
@@ -280,8 +460,34 @@ void win_place(Win *w, int want_w, int want_h)
 			cw = a.w;
 		if (ch > a.h)
 			ch = a.h;
-		w->geom.x = a.x + (a.w - cw) / 2;
-		w->geom.y = a.y + (a.h - ch) / 2;
+		/*
+		 * A WINDOW THAT BELONGS TO ANOTHER OPENS CENTRED ON THAT ONE,
+		 * not in the middle of the screen: a dialog belongs to the
+		 * window that raised it, and a person whose eye is on a
+		 * document at the left of a wide screen should not have to
+		 * find the question about it in the middle.
+		 *
+		 * CLAMPED INTO THE WORK AREA AFTERWARDS, because the owner may
+		 * be at an edge or larger than the area itself — a dialog half
+		 * off the screen is one whose buttons cannot be clicked.
+		 */
+		if (own) {
+			KwmRect f = win_frame(own);
+
+			w->geom.x = f.x + (f.w - cw) / 2;
+			w->geom.y = f.y + (f.h - ch) / 2;
+			if (w->geom.x < a.x + CON_FRAME)
+				w->geom.x = a.x + CON_FRAME;
+			if (w->geom.y < a.y + CON_FRAME)
+				w->geom.y = a.y + CON_FRAME;
+			if (w->geom.x + cw > a.x + a.w - CON_FRAME)
+				w->geom.x = a.x + a.w - CON_FRAME - cw;
+			if (w->geom.y + ch > a.y + a.h - CON_FRAME)
+				w->geom.y = a.y + a.h - CON_FRAME - ch;
+		} else {
+			w->geom.x = a.x + (a.w - cw) / 2;
+			w->geom.y = a.y + (a.h - ch) / 2;
+		}
 		w->geom.w = cw;
 		w->geom.h = ch;
 		win_resized(w);
@@ -521,6 +727,16 @@ void win_maximise(Win *w)
  * one case where a window is allowed over a docked panel's exclusive zone,
  * because a program that asked for the screen and got the screen minus a row
  * has been told a size that is not the one it is showing.
+ *
+ * FULLSCREEN IS ORTHOGONAL TO THE TILE, which is why the tile flag is left
+ * alone across it and `restore` is written only from an untiled rectangle:
+ * `restore` is what an untile returns to, so a fullscreen that put a tile
+ * rect in it would leave the later untile returning the window to the tile it
+ * is already in — and close writes that to the geometry table, so the
+ * original rectangle is gone from the next session too. Leaving fullscreen
+ * RE-DERIVES the tile instead of replaying a rectangle, so a grid that
+ * changed underneath — a panel docked, the output resized — still lands the
+ * window in its tile.
  */
 void win_fullscreen(Win *w)
 {
@@ -528,11 +744,12 @@ void win_fullscreen(Win *w)
 		return;
 	if (w->full) {
 		w->full = 0;
-		w->geom = w->restore;
+		w->geom = w->tiled ? win_tile_rect(w->tiled) : w->restore;
 		win_resized(w);
 		return;
 	}
-	w->restore = w->geom;
+	if (!w->tiled)
+		w->restore = w->geom;
 	w->full = 1;
 	w->geom.x = 0;
 	w->geom.y = 0;
@@ -545,8 +762,26 @@ void win_minimise(Win *w)
 {
 	if (!w || w->panel)
 		return;
+	/*
+	 * A WINDOW WITH NO ROW OF ITS OWN IS NOT MINIMISABLE. The taskbar row
+	 * is the way back from a minimise, and a dialog, a dock and a splash
+	 * are listed under the window they belong to rather than carrying one
+	 * — so putting one away would leave it drawn nowhere, cycled past and
+	 * in no bar, reachable by nothing on the desktop. A question is
+	 * answered or closed, not put away.
+	 */
+	if (w->no_task)
+		return;
 	w->minimised = 1;
-	if (S.focus == w->id)
+	/* AND WHAT IT OWNS GOES WITH IT, or the dialogs stay drawn with the
+	 * window they are asking about gone from under them. */
+	owned_apply(w->id, -1, 1, 0);
+
+	Win *f = win_focused();
+
+	/* The focus cannot stay on a window that is drawn nowhere — it may be
+	 * one of the dialogs that went with this one. */
+	if (f && f->minimised)
 		S.focus = 0;
 	win_cycle(1);
 }
@@ -562,12 +797,32 @@ void win_minimise(Win *w)
  */
 void win_restore(Win *w)
 {
-	if (!w || !w->minimised)
+	int depth = 0;
+
+	if (!w)
+		return;
+	/* FROM THE HEAD OF THE FAMILY, as the minimise was: a dialog has no
+	 * row of its own and went away under the window it belongs to, so
+	 * that window's row is the way back for both of them. Bounded for
+	 * raise_owned()'s reason. */
+	while (w->owner && depth++ < 4) {
+		Win *own = win_find(w->owner);
+
+		if (!own)
+			break;
+		w = own;
+	}
+	if (!w->minimised)
 		return;
 	w->minimised = 0;
 	w->workspace = S.workspace;
+	/* What went away with it comes back with it, onto the same workspace:
+	 * a dialog left minimised has no row of its own to be restored by. */
+	owned_apply(w->id, S.workspace, 0, 0);
+	/* The focus is win_raise's to set, and it is not always this window:
+	 * a restore of a window a modal is standing over lands on the modal,
+	 * which is the whole of what a modal means. */
 	win_raise(w->id);
-	S.focus = w->id;
 	ktui_draw_invalidate();
 }
 
@@ -624,8 +879,30 @@ void win_send(Win *w, int ws)
 	 * drop the focus from a window still on the screen. */
 	if (!w || w->panel || w->sticky || ws < 0 || ws >= S.nworkspace)
 		return;
+	/*
+	 * THE FAMILY MOVES AS ONE, FROM ITS HEAD. A dialog sent on its own is
+	 * a frame on a desk with no row to reach it by, and a modal sent on
+	 * its own goes on blocking an owner the person can still see — so the
+	 * window named is resolved up to the one it belongs to and that is
+	 * what moves. Bounded for raise_owned()'s reason.
+	 */
+	int depth = 0;
+
+	while (w->owner && depth++ < 4) {
+		Win *own = win_find(w->owner);
+
+		if (!own || own->panel || own->sticky)
+			break;
+		w = own;
+	}
 	w->workspace = ws;
-	if (S.focus == w->id)
+	owned_apply(w->id, ws, -1, 0);
+
+	Win *f = win_focused();
+
+	/* The focus cannot stay on a window that has left the workspace being
+	 * looked at — it may be a dialog that went with the window named. */
+	if (f && !f->sticky && f->workspace != S.workspace)
 		S.focus = 0;
 }
 
@@ -698,8 +975,10 @@ void win_scratch_show(Win *w)
 	w->minimised = 0;
 	w->sticky = 1;
 	scratch_shape(w);
+	/* The focus is win_raise's to set, and it is not always this window: a
+	 * show of a window a modal is standing over lands on the modal, which
+	 * is the whole of what a modal means. */
 	win_raise(w->id);
-	S.focus = w->id;
 	ktui_draw_invalidate();
 }
 
@@ -824,16 +1103,15 @@ Win *win_at(int x, int y)
 }
 
 /*
- * A WINDOW A PERSON CAN MOVE THE FOCUS TO. The ring, the directional search
- * and the swap all mean the same set, and three copies of the rule is three
- * chances for one of them to stop on a tooltip.
+ * A WINDOW ON THE DESK IN FRONT OF THE PERSON. What an arrangement moves and
+ * what show-desktop puts away, and the first half of what the focus can reach.
  *
  * A saver is never in it: one that could be given the focus is one that can be
  * left on screen with a window behind it taking the keyboard. Nor is a layer —
  * a toast, a menu and the icon layer are not things a person has open — and
  * nor is a panel, which is docked rather than placed.
  */
-static int reachable(const Win *w)
+static int on_this_desk(const Win *w)
 {
 	if (!w || w->minimised || w->hidden)
 		return 0;
@@ -845,6 +1123,29 @@ static int reachable(const Win *w)
 	if (!w->sticky && w->workspace != S.workspace)
 		return 0;
 	if (w == S.saver || w->overlay || w->background || w->panel)
+		return 0;
+	return 1;
+}
+
+/*
+ * A WINDOW A PERSON CAN MOVE THE FOCUS TO. The ring, the number chord, the
+ * window list, the directional search and the swap all mean the same set, and
+ * five copies of the rule is five chances for one of them to stop on a
+ * tooltip.
+ *
+ * IT IS ONE RULE NARROWER THAN THE DESK. A window a modal is standing over is
+ * not one a raise can land on: the raise is redirected to the question, so a
+ * ring entry for it is one the ring never advances past — every step lands on
+ * the modal again and the window after it is never reached. An ARRANGEMENT
+ * still moves it, because a window left out of a tile because somebody has a
+ * save dialog open is a window sitting across the grid everything else was
+ * folded into.
+ */
+static int reachable(const Win *w)
+{
+	if (!on_this_desk(w))
+		return 0;
+	if (win_modal_for(w->id))
 		return 0;
 	return 1;
 }
@@ -863,10 +1164,25 @@ void win_cycle(int dir)
 		ids[n++] = w->id;
 	}
 
+	if (n < 1)
+		return;
+	/*
+	 * AN EMPTY FOCUS LANDS ON THE FRONT WINDOW RATHER THAN STEPPING FROM
+	 * IT. This is also the call a minimise, a workspace switch and a
+	 * scratchpad hide hand the keyboard on with, so it has to answer with
+	 * nothing focused — and a step taken from a ring position that does
+	 * not exist hands the keyboard to the window BEHIND the one the person
+	 * is looking straight at. A focus on something the ring does not reach
+	 * is the same case: the front window is where a fresh one starts.
+	 */
+	if (cur < 0) {
+		win_raise(ids[0]);
+		return;
+	}
+	/* Alt-Tab on a single window is a no-op, and the ring has nowhere to
+	 * step to. */
 	if (n < 2)
 		return;
-	if (cur < 0)
-		cur = 0;
 
 	int next = kwm_ring_next(n, cur, dir);
 
@@ -942,7 +1258,7 @@ static int arrange_set(Win **out, int max)
 	int n = 0;
 
 	for (Win *w = S.wins; w && n < max; w = w->next)
-		if (reachable(w) && !w->full && !w->sticky)
+		if (on_this_desk(w) && !w->full && !w->sticky)
 			out[n++] = w;
 	return n;
 }
@@ -1061,7 +1377,11 @@ void win_show_desktop(void)
 
 	nhidden = 0;
 	for (Win *w = S.wins; w && nhidden < 64; w = w->next) {
-		if (!reachable(w))
+		/* EVERY WINDOW ON THE DESK, not only the ones the ring
+		 * reaches: one a modal is standing over is a window the person
+		 * can see, and a show-desktop that left it there would clear
+		 * the desk around it. */
+		if (!on_this_desk(w))
 			continue;
 		hidden[nhidden++] = w->id;
 		w->minimised = 1;
@@ -1253,6 +1573,36 @@ void win_drop(Win *w)
 	if (*pp)
 		*pp = w->next;
 
+	/*
+	 * AND WHAT BELONGED TO IT KEEPS ONE ROW BETWEEN THEM. An application
+	 * that outlives the window a person opened is still one application,
+	 * so the orphan nearest the front takes the owner's place and the rest
+	 * are re-parented onto it: giving every dock and dialog its own row
+	 * would turn one entry into six the moment an image window closed,
+	 * which is the bar this whole rule exists to stop growing. An owner id
+	 * naming nothing is what must not be left behind — that is a window
+	 * listed nowhere and blocked by nothing, which a person can see and
+	 * cannot reach.
+	 *
+	 * MODALITY DOES NOT SURVIVE: there is no window left for it to block.
+	 * A splash never becomes the heir — it is drawn over everything, is in
+	 * no ring and has no frame to close it by.
+	 */
+	Win *heir = NULL;
+
+	for (Win *o = S.wins; o; o = o->next) {
+		if (o->owner != w->id)
+			continue;
+		o->modal = 0;
+		if (!heir && !o->overlay) {
+			heir = o;
+			o->owner = 0;
+			o->no_task = 0;
+		} else {
+			o->owner = heir ? heir->id : 0;
+		}
+	}
+
 	if (S.focus == w->id)
 		S.focus = S.wins ? S.wins->id : 0;
 	free(w);
@@ -1262,6 +1612,22 @@ void win_close(Win *w)
 {
 	if (!w)
 		return;
+
+	/*
+	 * A WINDOW WITH A MODAL QUESTION OVER IT CANNOT BE CLOSED, and the
+	 * flash is what says so. The application has stopped answering about
+	 * that window until the dialog is answered, so a close routed to it is
+	 * a request nothing ever replies to and a frame button that does
+	 * nothing at all — and for a terminal or a surface it would be worse
+	 * than nothing, because those close immediately and would take the
+	 * question with them.
+	 */
+	Win *m = win_modal_for(w->id);
+
+	if (m) {
+		win_raise(w->id);
+		return;
+	}
 
 	if (w->kind == WIN_TERM && w->term) {
 		kvt_term_close(w->term);
@@ -1277,9 +1643,15 @@ void win_close(Win *w)
 		vt_close(w);
 		return;
 	} else if (w->kind == WIN_EMBED && embed_alive(w)) {
-		/* The same rule a guest on a terminal follows: asked to go, not
-		 * removed. embed_reap takes the entry out once the compositor
-		 * holding the application is actually gone. */
+		/*
+		 * ASKED TO GO, NOT REMOVED, AND THE ASK NAMES THIS TOPLEVEL
+		 * ALONE. The guest decides what a close means — a save prompt
+		 * is a window being used — so the entry stays until the cage
+		 * says the toplevel actually unmapped. The process behind it is
+		 * untouched: an application whose last window closed is an
+		 * application with no window, which is what the shared session
+		 * bus is for.
+		 */
 		embed_close(w);
 		return;
 	} else if (w->kind == WIN_SURFACE && w->surf) {
@@ -1503,14 +1875,21 @@ static void draw_buttons(Win *w, KRect r, int focused)
 		{ ktui_glyph[KT_G_SQUARE], WIN_BTN_MAX },
 		{ "X", WIN_BTN_CLOSE }
 	};
-	int x = r.x + r.w - 7;
+	/*
+	 * NO MINIMISE ON A WINDOW WITH NO TASKBAR ROW. The row is the way back
+	 * from a minimise and a dialog, a dock or a splash is listed under the
+	 * window it belongs to, so the button would be one that puts a window
+	 * where nothing on the desktop can reach it.
+	 */
+	int first = w->no_task ? 1 : 0;
+	int x = r.x + r.w - 1 - (3 - first) * 2;
 
-	/* A frame too narrow for its title and three buttons gets the title:
+	/* A frame too narrow for its title and its buttons gets the title:
 	 * a button nobody can read is not a button. */
 	if (r.w < 16 || nbtn_hits + 3 > 96)
 		return;
 
-	for (int i = 0; i < 3; i++) {
+	for (int i = first; i < 3; i++) {
 		ktui_draw_text(x, r.y, 2, b[i].g,
 			       focused ? KT_ACCENT : KT_DIM, KT_SURFACE,
 			       KT_A_NONE);
@@ -1522,6 +1901,55 @@ static void draw_buttons(Win *w, KRect r, int focused)
 		nbtn_hits++;
 		x += 2;
 	}
+}
+
+/*
+ * IS ANYBODY LOOKING AT THIS WINDOW.
+ *
+ * THE ONE PLACE THE LIST IS WRITTEN, because two answers to it drift: the
+ * draw loop below skips what it may not paint, and embed_pump() decides from
+ * the same question whether a guest keeps rendering and keeps spending the
+ * display queue. A guest left awake for a window on another workspace, behind
+ * the lock or under the saver costs the window being looked at exactly the
+ * bandwidth it takes.
+ *
+ * The lock and the saver are drawn INSTEAD OF the desktop rather than over it,
+ * so while either is up nothing else is on a screen at all.
+ */
+int win_is_on_screen(const Win *w)
+{
+	if (!w)
+		return 0;
+	if (S.locked)
+		return w == S.lock && !w->minimised;
+	if (S.saver && !S.saver->minimised)
+		return w == S.saver;
+	/* A guest is on another terminal entirely; the taskbar is the only
+	 * place it appears on this one. */
+	if (w->kind == WIN_VT)
+		return 0;
+	/*
+	 * A SURFACE THAT SAYS IT HAS NOTHING TO SHOW IS DRAWN NOWHERE. An
+	 * overlay — a candidate window, a stack of toasts — is up for a
+	 * fraction of the time its program is running, and one that could not
+	 * say so would leave an empty box on the desktop for the rest of the
+	 * session.
+	 */
+	if (w->kind == WIN_SURFACE && w->surf && kcon_surface_hidden(w->surf))
+		return 0;
+	/*
+	 * A panel is on a workspace of its own — every one of them, and so is
+	 * a layer: a toast that belonged to the workspace it was raised on
+	 * would be invisible to somebody who had just switched away from it. A
+	 * sticky window is on every one for the same reason and by the same
+	 * test, and a hidden one on none.
+	 */
+	if (w->minimised || w->hidden)
+		return 0;
+	if (!w->panel && !w->overlay && !w->background && !w->sticky &&
+	    w->workspace != S.workspace)
+		return 0;
+	return 1;
 }
 
 void win_draw_all(void)
@@ -1583,31 +2011,10 @@ void win_draw_all(void)
 			if (wl != layer)
 				continue;
 
-			/* A guest is on another terminal entirely; the taskbar
-			 * is the only place it appears on this one. */
-			if (w->kind == WIN_VT)
-				continue;
-			/*
-			 * A SURFACE THAT SAYS IT HAS NOTHING TO SHOW IS DRAWN
-			 * NOWHERE. An overlay — a candidate window, a stack of
-			 * toasts — is up for a fraction of the time its program
-			 * is running, and one that could not say so would leave
-			 * an empty box on the desktop for the rest of the
-			 * session.
-			 */
-			if (w->kind == WIN_SURFACE && w->surf &&
-			    kcon_surface_hidden(w->surf))
-				continue;
-			/* A panel is on a workspace of its own — every one of
-			 * them, and so is a layer: a toast that belonged to the
-			 * workspace it was raised on would be invisible to
-			 * somebody who had just switched away from it. A sticky
-			 * window is on every one for the same reason and by the
-			 * same test, and a hidden one on none: it is drawn
-			 * here or it is drawn nowhere. */
-			if (w->minimised || w->hidden ||
-			    (!w->panel && !w->overlay && !w->background &&
-			     !w->sticky && w->workspace != S.workspace))
+			/* It is drawn here or it is drawn nowhere, and what
+			 * counts as nowhere is win_is_on_screen's — the same
+			 * answer the embedded guests are put to sleep by. */
+			if (!win_is_on_screen(w))
 				continue;
 
 			/*

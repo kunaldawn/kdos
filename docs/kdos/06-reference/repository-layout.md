@@ -75,7 +75,7 @@ kdos/
 │   │   ├── kdos-con/          the console session: windows, terminals, surfaces
 │   │   ├── kdos-view/         the display half: cells arrive, input leaves
 │   │   ├── kdos-term/         the terminal, on both desktops
-│   │   ├── kdos-boxsock/      one tagged compositor socket per box
+│   │   ├── kdos-boxsock/      one tagged compositor socket per box, per compositor
 │   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser
 │   │
 │   ├── packages/          ports that are OURS — a port repository

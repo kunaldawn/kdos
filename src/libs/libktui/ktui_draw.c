@@ -462,6 +462,53 @@ void ktui_draw_invalidate(void)
 	force_full = 1;
 }
 
+/*
+ * A RECTANGLE OWES A REPAINT EVEN THOUGH ITS CELLS DID NOT CHANGE.
+ *
+ * The flush repaints what differs between the frame being drawn and the one on
+ * screen, which is right for everything a cell describes by value and wrong
+ * for the one thing it describes by reference: a sprite cell names a SLOT, so
+ * an animation's next frame writes byte-identical cells and the diff finds
+ * nothing. Spoiling the previous-frame copy is what says otherwise, and it is
+ * the same mechanism the pointer's XOR already relies on.
+ *
+ * A RECTANGLE RATHER THAN THE SCREEN, because the alternative — a full repaint
+ * per arriving picture — makes an embedded application cost the whole grid and
+ * the whole framebuffer upload on every tile it sends, which is dozens of
+ * times per frame. Nothing is a real cell here: 0xffffffff is above Unicode's
+ * last codepoint and is not KTUI_SPRITE_BASE, so it can never equal one.
+ *
+ * AND THE BACKEND IS TOLD AS WELL, because a backend may diff against a copy
+ * of its own rather than this one — libkkms keeps a previous frame per SCREEN,
+ * where this is per session. Spoiling only this copy leaves such a backend
+ * seeing no difference at all, which is an animation frozen on its first
+ * frame. A backend with no `dirty` reads `prev` and needs nothing more.
+ */
+void ktui_draw_dirty(int x, int y, int w, int h)
+{
+	if (!front || w < 1 || h < 1)
+		return;
+	if (x < 0) {
+		w += x;
+		x = 0;
+	}
+	if (y < 0) {
+		h += y;
+		y = 0;
+	}
+	if (x + w > bw)
+		w = bw - x;
+	if (y + h > bh)
+		h = bh - y;
+	if (w < 1 || h < 1)
+		return;
+	for (int r = y; r < y + h; r++)
+		for (int c = x; c < x + w; c++)
+			front[(size_t)r * bw + c].ch = 0xffffffffu;
+	if (cur_backend()->dirty)
+		cur_backend()->dirty(x, y, w, h);
+}
+
 void ktui_draw_clear(void)
 {
 	/*
@@ -1190,11 +1237,25 @@ void ktui_draw_flush(void)
 	 * reversed cell, `back` does not, so the cell differs and repaints
 	 * when the pointer leaves. The same XOR does both jobs.
 	 */
+	/*
+	 * AND OVER A PICTURE THE CELL ITSELF IS SET ASIDE, because reverse on
+	 * a sprite cell is a fill the picture is then composited over: an
+	 * opaque sprite — which is every frame of an embedded application —
+	 * hides it completely and the pointer vanishes for as long as it is
+	 * over the window. Swapping the cell for a blank makes the reverse
+	 * the whole cell, at the cost of one cell of the picture, which is
+	 * what a pointer costs everywhere else.
+	 */
 	int pt = -1;
+	uint32_t ptch = 0;
 
 	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh) {
 		pt = ptr_y * bw + ptr_x;
 		back[pt].attr ^= KT_A_REVERSE;
+		if (KTUI_IS_SPRITE(back[pt].ch)) {
+			ptch = back[pt].ch;
+			back[pt].ch = ' ';
+		}
 	}
 
 	/*
@@ -1219,6 +1280,9 @@ void ktui_draw_flush(void)
 	    !cur_backend()->presented())
 		force_full = 1;
 
-	if (pt >= 0)
+	if (pt >= 0) {
 		back[pt].attr ^= KT_A_REVERSE;
+		if (ptch)
+			back[pt].ch = ptch;
+	}
 }

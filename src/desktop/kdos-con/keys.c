@@ -9,6 +9,39 @@
  * ~/.config/kdos-con/keys.conf overrides the table below, one `chord = action`
  * per line. A file that names no chord for an action leaves that action on its
  * default, so a user rebinds one key without restating forty.
+ *
+ * WHAT A WINDOW NEVER RECEIVES IS THIS TABLE AND NOTHING ELSE, and that is the
+ * point of keeping the whole vocabulary in one array a person can read and
+ * rebind. Every row here is taken from whatever has the focus — a terminal, a
+ * cell surface or an embedded graphical application alike — and every chord
+ * that is NOT here reaches it untouched. Ctrl+W closes a browser tab, Ctrl+T
+ * opens one, Ctrl+C interrupts, Alt+F4 reaches the application: none of them
+ * is bound and none is intercepted.
+ *
+ * SUPER IS THE DESKTOP'S MODIFIER and is the whole of why the table can be
+ * this large without costing an application anything. The three exceptions are
+ * deliberate, are the only ones, and each is a chord a hand already knows:
+ *
+ *   Alt+Tab and Alt+Shift+Tab   switch windows, which a lifetime of muscle
+ *                               memory earns. An application that wants Tab
+ *                               with Alt does not get it.
+ *   Ctrl+A                      the leader, for the views where Super never
+ *                               arrives. PRESS IT TWICE to send the literal,
+ *                               which is what gives a shell back its
+ *                               start-of-line.
+ *   Print and its two forms     capture, and only on a view with a real
+ *                               keyboard — a terminal reports no Print at all.
+ *
+ * The media keys are bound on no modifier because that is where a keyboard
+ * puts them, and no application competes for them.
+ *
+ * A MODIFIER ITSELF IS NEVER TAKEN. A view that reports a real keyboard sends
+ * the key as a switch beside the character, and a modifier produces no
+ * character — so no chord can consume one and every guest sees Ctrl, Alt,
+ * Shift and Super go down and come up. That is what lets Super+q close a
+ * window while the guest still knows Super is held, and it is why the key a
+ * chord DID consume has its release swallowed too: a press the guest never saw
+ * must not be followed by a release it did.
  */
 
 #include <stdio.h>

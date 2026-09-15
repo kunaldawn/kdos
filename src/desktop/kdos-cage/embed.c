@@ -12,6 +12,15 @@
  * buffering would tear on every commit, and on a photograph that reads as the
  * compositor being broken rather than as the timing artefact it is.
  *
+ * ONE OUTPUT, ONE MAPPING AND ONE `win` PER MAPPED TOPLEVEL. A scene output
+ * renders only what is inside its own layout box, so toplevels placed in
+ * disjoint boxes reach the parent as separate pictures — which is what lets an
+ * application that maps five windows be five windows. Sharing one output
+ * composites them into one framebuffer before the parent ever sees them, and
+ * nothing downstream can take them apart again. It is also where the work goes:
+ * a window nobody is looking at has its own scene output and produces no frames
+ * at all.
+ *
  * THE DESCRIPTOR IS THE ONE THING THIS CHANNEL HAS THAT THE PUBLISHED ONES
  * MUST NOT. It is passed once per size, from child to parent, over a socketpair
  * inherited across the fork — never over a path anything can connect to. That
@@ -26,21 +35,128 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/dma-buf.h>
 #include <linux/input-event-codes.h>
+#include <poll.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <wlr/backend/headless.h>
+#include <wlr/render/allocator.h>
+#include <wlr/render/dmabuf.h>
+#include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/log.h>
 
+#include "clipboard.h"
 #include "embed.h"
 #include "kembed.h"
 #include "output.h"
 #include "seat.h"
 #include "server.h"
+#include "view.h"
+#if CAGE_HAS_XWAYLAND
+#include "xwayland.h"
+#endif
+
+/*
+ * HOW MANY BOXES ONE FRAME'S DAMAGE MAY BE CUT INTO before its bounding box is
+ * the cheaper answer. The parent rounds every box out to the blocks it
+ * touches — at most sixteen cells square, and smaller where one that size
+ * would not fit a message — so pieces beyond a handful land in blocks another
+ * piece already named — and each one still costs a message. Sixteen is the
+ * same order as the rectangle list a KMS dirty-rectangle commit carries.
+ */
+#define EMBED_MAX_DAMAGE 16
+
+/*
+ * HOW LONG A PUBLISH WAITS FOR THE GPU to have finished the frame it is about
+ * to read, in milliseconds.
+ *
+ * Bounded and never infinite: the wait happens inside the cage's event loop, so
+ * a card that never signals would otherwise stop the guest's input and every
+ * message to the parent for as long as it stays wedged. Longer than this and
+ * that stall is longer; shorter and a frame a loaded card legitimately spent
+ * this long on is dropped — and the scene has already subtracted its damage, so
+ * the parent keeps the stale block until the client draws over it again. Well
+ * past any single frame a working card takes and short enough that a broken one
+ * costs a window that crawls rather than a session that hangs.
+ */
+#define EMBED_FENCE_MS 100
+
+/*
+ * THE LARGEST KEYMAP THE PARENT MAY HAND OVER, bytes. Far above any real xkb
+ * text layout, which is tens of kilobytes, and a bound rather than a trust:
+ * the length arrives in the message and is what this process maps.
+ */
+#define EMBED_KEYMAP_MAX (256u << 10)
+
+/*
+ * DECLARED HERE BECAUSE WLROOTS DOES NOT INSTALL IT. The symbol is exported
+ * from the library; only the header is private, so the alternative to this
+ * line is a patch against wlroots that has to be rewritten every release.
+ * See embed_allocator() for why nothing else will do.
+ */
+struct wlr_allocator *wlr_udmabuf_allocator_create(void);
+
+/*
+ * THE ONE ALLOCATOR WHOSE BUFFERS A GPU CAN DRAW INTO AND THIS PROCESS CAN
+ * STILL READ.
+ *
+ * An embedded cage's whole output is bytes it hands to its parent, so a buffer
+ * it cannot read is a black window. With the software renderer that is free:
+ * `wlr_allocator_autocreate()` picks shm, whose buffers give a pointer
+ * directly. With a hardware renderer it is not — autocreate sees the
+ * renderer's DRM descriptor and picks gbm, and a gbm buffer offers neither a
+ * pointer nor an shm handle, so every frame would be rendered and none could
+ * be published. Its own udmabuf branch is unreachable here, because it is
+ * guarded on there being no DRM descriptor at all.
+ *
+ * A udmabuf buffer is both: a DMA-BUF the renderer can bind and a file the
+ * kernel backs with ordinary memory, which is what makes one mapping serve
+ * both ends. It needs /dev/udmabuf, so this can fail on a kernel or a
+ * permission that does not have it — and the caller then has the software
+ * renderer to fall back to, which is why this returns NULL rather than dying.
+ */
+struct wlr_allocator *embed_allocator(struct wlr_backend *backend,
+				      struct wlr_renderer *renderer)
+{
+	struct wlr_allocator *a;
+
+	if (!(renderer->render_buffer_caps & WLR_BUFFER_CAP_DATA_PTR)) {
+		a = wlr_udmabuf_allocator_create();
+		if (a)
+			return a;
+		wlr_log(WLR_ERROR, "embed: no udmabuf allocator — a hardware "
+				   "renderer's frames would be unreadable");
+		return NULL;
+	}
+	return wlr_allocator_autocreate(backend, renderer);
+}
+
+/*
+ * THE KERNEL'S CPU-ACCESS BRACKET AROUND A DMA-BUF MAPPING.
+ *
+ * A START without its matching END leaves the buffer marked as being read by
+ * the CPU, and the next START is then unbalanced — so every path out of the
+ * read runs the END. EINTR is retried: a signal arriving between the two halves
+ * would otherwise drop one of them.
+ */
+static bool dmabuf_sync(int fd, uint64_t flags)
+{
+	struct dma_buf_sync s = { .flags = flags };
+	int r;
+
+	do {
+		r = ioctl(fd, DMA_BUF_IOCTL_SYNC, &s);
+	} while (r == -1 && errno == EINTR);
+
+	return r == 0;
+}
 
 static bool send_msg(struct cg_embed *e, const KembedMsg *m, int fd)
 {
@@ -73,18 +189,129 @@ static bool send_msg(struct cg_embed *e, const KembedMsg *m, int fd)
 }
 
 /*
- * A new mapping, because the size changed. The OLD one is unmapped only after
- * the parent has been told about the new one: the parent may still be reading
- * the frame it was last told about, and pulling the memory out from under it is
- * a fault in a process that did nothing wrong.
+ * ONE DATAGRAM, ITS TAIL AND ANY DESCRIPTOR IT CARRIED.
+ *
+ * The buffer is the struct PLUS KEMBED_TAIL_MAX, because a message may be
+ * longer than the struct — a MIME type follows a drag the way a name follows
+ * a title — and a datagram that does not fit the buffer is truncated by the
+ * kernel with no error anywhere. A receive of exactly the struct would take a
+ * truncated tail for a whole message and would drop every descriptor the
+ * kernel attached, one leak per keymap. The tail, where an op has one, is at
+ * `buf + sizeof(KembedMsg)` and is as long as the return value says.
+ *
+ * `*fd` is -1 unless the message carried one, and it is the CALLER's to
+ * close — including on an op that does not want it, because a descriptor the
+ * kernel queued and nobody closed is a descriptor leaked.
  */
-static bool remap(struct cg_embed *e, int w, int h)
+static ssize_t recv_msg(struct cg_embed *e, void *buf, size_t cap, int *fd)
 {
+	struct iovec iov = { .iov_base = buf, .iov_len = cap };
+	union {
+		char buf[CMSG_SPACE(sizeof(int))];
+		struct cmsghdr align;
+	} u;
+	struct msghdr hdr = {
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+		.msg_control = u.buf,
+		.msg_controllen = sizeof(u.buf),
+	};
+	ssize_t n;
+
+	*fd = -1;
+	memset(&u, 0, sizeof(u));
+
+	n = recvmsg(e->fd, &hdr, MSG_DONTWAIT | MSG_CMSG_CLOEXEC);
+	if (n < 0)
+		return n;
+
+	/* THE FIRST HEADER AND ONLY IT. No op on this channel carries more than
+	 * one descriptor, so a second would be a peer speaking something else —
+	 * and there is exactly one peer, our parent. */
+	struct cmsghdr *c = CMSG_FIRSTHDR(&hdr);
+
+	if (c && c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS &&
+	    c->cmsg_len == CMSG_LEN(sizeof(int)))
+		memcpy(fd, CMSG_DATA(c), sizeof(int));
+
+	return n;
+}
+
+/*
+ * HOW MUCH OF A NAME FITS WITHOUT SPLITTING A CHARACTER. A byte cut is a lead
+ * byte with no continuation, which the parent's grid can only draw as a
+ * replacement mark — so the cut lands on a sequence boundary or the name loses
+ * the whole last character.
+ */
+static size_t utf8_trim(const char *s, size_t cap)
+{
+	size_t i = 0, whole = 0;
+
+	while (s[i]) {
+		unsigned char c = (unsigned char)s[i];
+		size_t n = c < 0x80		? 1
+			   : (c & 0xe0) == 0xc0 ? 2
+			   : (c & 0xf0) == 0xe0 ? 3
+			   : (c & 0xf8) == 0xf0 ? 4
+						: 1;
+
+		if (i + n > cap)
+			break;
+		i += n;
+		whole = i;
+	}
+	return whole;
+}
+
+/*
+ * A MESSAGE WITH A STRING AFTER IT, in one datagram.
+ *
+ * The socket is SOCK_SEQPACKET, so the kernel frames the whole send and the
+ * receiver's own buffer decides where the string stops: there is no length
+ * field to keep in step with the bytes and no codec to keep in step with the
+ * struct. Cut to KEMBED_TITLE_MAX here because that is what the parent takes —
+ * a longer name would be cut there instead, one copy later.
+ */
+static bool send_text(struct cg_embed *e, const KembedMsg *m, const char *text)
+{
+	char tail[KEMBED_TITLE_MAX];
+	size_t len = text ? utf8_trim(text, sizeof(tail) - 1) : 0;
+	struct iovec iov[2] = {
+		{ .iov_base = (void *)m, .iov_len = sizeof(*m) },
+		{ .iov_base = tail, .iov_len = len + 1 },
+	};
+	struct msghdr hdr = { .msg_iov = iov, .msg_iovlen = 2 };
+
+	if (len)
+		memcpy(tail, text, len);
+	tail[len] = '\0';
+
+	while (sendmsg(e->fd, &hdr, MSG_NOSIGNAL) < 0) {
+		if (errno == EINTR)
+			continue;
+		return false;
+	}
+	return true;
+}
+
+/*
+ * A new mapping for one window, because its size changed. The OLD one is
+ * unmapped only after the parent has been told about the new one: the parent
+ * may still be reading the frame it was last told about, and pulling the memory
+ * out from under it is a fault in a process that did nothing wrong.
+ *
+ * ANNOUNCED UNDER THE WINDOW IT BELONGS TO, so a flip of it names that window
+ * and a window that did not redraw costs no message at all.
+ */
+static bool remap(struct cg_view *view, int w, int h)
+{
+	struct cg_embed *e = &view->server->embed;
+	struct cg_win *win = &view->win;
 	size_t stride = (size_t)w * 4;
 	size_t slot = stride * (size_t)h;
 	size_t total = slot * KEMBED_SLOTS;
 
-	if (w <= 0 || h <= 0 || total == 0)
+	if (w <= 0 || h <= 0 || total == 0 || !win->win)
 		return false;
 
 	int fd = memfd_create("kdos-embed", MFD_CLOEXEC);
@@ -114,6 +341,7 @@ static bool remap(struct cg_embed *e, int w, int h)
 		.b = h,
 		.c = (int32_t)stride,
 		.d = (int32_t)slot,
+		.win = win->win,
 	};
 
 	if (!send_msg(e, &m, fd)) {
@@ -123,36 +351,252 @@ static bool remap(struct cg_embed *e, int w, int h)
 	}
 	close(fd);
 
-	if (e->map)
-		munmap(e->map, e->map_len);
-	e->map = map;
-	e->map_len = total;
-	e->slot_len = slot;
-	e->stride = stride;
-	e->width = w;
-	e->height = h;
-	e->slot = 0;
+	if (win->map)
+		munmap(win->map, win->map_len);
+	win->map = map;
+	win->map_len = total;
+	win->slot_len = slot;
+	win->stride = stride;
+	win->width = w;
+	win->height = h;
+	win->slot = 0;
+	win->map_blank = true;
 	return true;
 }
 
-/*
- * The output, at the size the parent asked for. A window resize IS an output
- * resize, so the guest reconfigures exactly the way it would on any compositor
- * — there is no second notion of "the window is smaller than the output".
- */
-static void set_size(struct cg_server *server, int w, int h)
+void embed_set_size(struct cg_view *view, int w, int h)
 {
-	struct cg_output *output;
+	struct wlr_output_state state;
 
-	wl_list_for_each (output, &server->outputs, link) {
-		struct wlr_output_state state;
+	/* A SIZE PAST THE SPAN IS REFUSED AND NOT CLAMPED. Clamping would tell
+	 * the guest it is one size while the parent scales its frames as
+	 * another; refusing leaves the window at the size it has, which the
+	 * parent's own resize gate already knows how to wait out. */
+	if (!view->win.out || w < 1 || h < 1 || w > CG_EMBED_SPAN ||
+	    h > CG_EMBED_SPAN)
+		return;
 
-		wlr_output_state_init(&state);
-		wlr_output_state_set_custom_mode(&state, w, h, 0);
-		wlr_output_commit_state(output->wlr_output, &state);
-		wlr_output_state_finish(&state);
-		break;	/* embedded is one window and therefore one output */
+	wlr_output_state_init(&state);
+	wlr_output_state_set_custom_mode(&state, w, h, 0);
+	wlr_output_commit_state(view->win.out->wlr_output, &state);
+	wlr_output_state_finish(&state);
+}
+
+/*
+ * THE LAYOUT THE PERSON IS TYPING ON, out of the descriptor it arrived in.
+ *
+ * Mapped rather than read: the descriptor is sealed and the length is in the
+ * message, so it is one call with no copy and no partial read to loop over. A
+ * text a compiler is handed must end in a terminator, so one that does not is
+ * refused rather than compiled — and the guest keeps the layout it has, which
+ * is a wrong layout and not a dead keyboard.
+ */
+static void take_keymap(struct cg_server *server, const KembedMsg *m, int fd)
+{
+	if (m->b != KEMBED_KEYMAP_XKB_V1 || m->a <= 0 ||
+	    (size_t)m->a > EMBED_KEYMAP_MAX)
+		return;
+
+	size_t len = (size_t)m->a;
+	char *text = mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
+
+	if (text == MAP_FAILED) {
+		wlr_log_errno(WLR_ERROR, "kembed: keymap mmap");
+		return;
 	}
+	if (text[len - 1] == '\0')
+		seat_embed_keymap(server->seat, text, len);
+	else
+		wlr_log(WLR_ERROR, "kembed: a keymap with no terminator");
+	munmap(text, len);
+}
+
+/*
+ * THAT WINDOW IS FULLSCREEN NOW, OR IT IS NOT.
+ *
+ * The parent owns the window model, so Super+f is decided there and the
+ * output follows the window — but a guest that is never told keeps the
+ * layout it drew for a window, which is Firefox keeping its toolbars over a
+ * full screen and a player that was put back drawing fullscreen chrome inside
+ * a small one. The toplevel `win` names is the one told, so a fullscreen asked
+ * of the image window does not reshape the dialog in front of it.
+ */
+static void set_fullscreen_state(struct cg_view *view, bool fullscreen)
+{
+	if (!view->wlr_surface)
+		return;
+
+	struct wlr_xdg_toplevel *top =
+		wlr_xdg_toplevel_try_from_wlr_surface(view->wlr_surface);
+
+	if (top) {
+		wlr_xdg_toplevel_set_fullscreen(top, fullscreen);
+		return;
+	}
+#if CAGE_HAS_XWAYLAND
+	struct wlr_xwayland_surface *xs =
+		wlr_xwayland_surface_try_from_wlr_surface(view->wlr_surface);
+
+	if (xs)
+		wlr_xwayland_surface_set_fullscreen(xs, fullscreen);
+#endif
+}
+
+struct cg_view *embed_view_from_win(struct cg_server *server, uint32_t win)
+{
+	struct cg_view *view;
+
+	if (!win) {
+		wl_list_for_each (view, &server->views, link)
+			if (view->win.win)
+				return view;
+		return NULL;
+	}
+	wl_list_for_each (view, &server->views, link)
+		if (view->win.win == win)
+			return view;
+	return NULL;
+}
+
+void embed_natural_size(struct cg_view *view, int *width, int *height)
+{
+	int w = 0, h = 0;
+
+	view->impl->get_geometry(view, &w, &h);
+	if ((w <= 0 || h <= 0) && view->wlr_surface) {
+		w = view->wlr_surface->current.width;
+		h = view->wlr_surface->current.height;
+	}
+
+	/*
+	 * A SIZE THIS END CANNOT MAKE AN OUTPUT AT IS NO ANSWER AT ALL. Zero is
+	 * "none" on the wire and the parent has a rule for it; a number the
+	 * parent would place a window at and then be refused when it asked for
+	 * it is a window at one size being drawn at another.
+	 */
+	if (w < 1 || h < 1 || w > CG_EMBED_SPAN || h > CG_EMBED_SPAN) {
+		w = 0;
+		h = 0;
+	}
+	*width = w;
+	*height = h;
+}
+
+/*
+ * WHAT KIND OF WINDOW THIS IS, in KEMBED_OPEN's `d`.
+ *
+ * DIALOG is the only one a Wayland toplevel can report, because xdg-shell has
+ * no modal, no utility and no splash to read — so it comes from naming an
+ * owner. X11 carries all three and an Xwayland guest is where they arrive; see
+ * kembed.h.
+ */
+static uint32_t win_roles(struct cg_view *view)
+{
+	uint32_t role = 0;
+
+	if (view_get_parent(view))
+		role |= KEMBED_ROLE_DIALOG;
+
+#if CAGE_HAS_XWAYLAND
+	if (view->type == CAGE_XWAYLAND_VIEW) {
+		const struct wlr_xwayland_surface *xs =
+			xwayland_view_from_view(view)->xwayland_surface;
+
+		if (xs->modal)
+			role |= KEMBED_ROLE_MODAL;
+		if (wlr_xwayland_surface_has_window_type(
+			    xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DIALOG))
+			role |= KEMBED_ROLE_DIALOG;
+		if (wlr_xwayland_surface_has_window_type(
+			    xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_UTILITY) ||
+		    wlr_xwayland_surface_has_window_type(
+			    xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_TOOLBAR))
+			role |= KEMBED_ROLE_UTILITY;
+		if (wlr_xwayland_surface_has_window_type(
+			    xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_SPLASH))
+			role |= KEMBED_ROLE_SPLASH;
+	}
+#endif
+	return role;
+}
+
+bool embed_win_is_ordinary(struct cg_view *view)
+{
+	return win_roles(view) == 0;
+}
+
+void embed_open_window(struct cg_view *view)
+{
+	struct cg_embed *e = &view->server->embed;
+	struct cg_view *parent;
+	int w = 0, h = 0;
+
+	/*
+	 * A TOPLEVEL WITH NO OUTPUT IS NOT ANNOUNCED. The grid holds
+	 * CG_EMBED_WINS windows and output_claim() refuses past that, and a
+	 * window the parent was told about but that can never carry a frame is
+	 * a taskbar row and a frame on the desktop with nothing behind it.
+	 */
+	if (!e->active || view->win.win || !view->win.out)
+		return;
+
+	embed_natural_size(view, &w, &h);
+	parent = view_get_parent(view);
+
+	/*
+	 * NEVER REUSED, EVER. The parent keys a window on (channel, win) and
+	 * drops an op naming one it does not have; an id handed out twice is a
+	 * frame drawn into whichever window claimed it first.
+	 */
+	view->win.win = ++e->next_win;
+	view->win.owner = parent ? parent->win.win : 0;
+
+	KembedMsg m = {
+		.magic = KEMBED_MAGIC,
+		.op = KEMBED_OPEN,
+		.a = w,
+		.b = h,
+		.c = (int32_t)view->win.owner,
+		.d = (int32_t)win_roles(view),
+		.win = view->win.win,
+	};
+
+	send_text(e, &m, view->impl->get_title(view));
+
+	/* AND WHAT IT ASKED FOR BEFORE IT HAD A NAME. A client may request
+	 * fullscreen at its initial commit, where there is no `win` to carry
+	 * it; the request is held on the window and goes out the moment there
+	 * is one. */
+	if (view->win.want_fullscreen) {
+		view->win.want_fullscreen = false;
+		embed_set_fullscreen(view, true);
+	}
+}
+
+void embed_close_window(struct cg_view *view)
+{
+	struct cg_embed *e = &view->server->embed;
+
+	if (e->kbd == view)
+		e->kbd = NULL;
+
+	if (view->win.map) {
+		munmap(view->win.map, view->win.map_len);
+		view->win.map = NULL;
+		view->win.map_len = 0;
+	}
+	if (!view->win.win)
+		return;
+
+	if (e->active) {
+		KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_CLOSE_WIN,
+				.win = view->win.win };
+
+		send_msg(e, &m, -1);
+	}
+	view->win.win = 0;
+	view->win.owner = 0;
+	view->win.asleep = false;
 }
 
 static int handle_readable(int fd, uint32_t mask, void *data)
@@ -170,8 +614,10 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 	}
 
 	for (;;) {
+		char buf[sizeof(KembedMsg) + KEMBED_TAIL_MAX];
 		KembedMsg m;
-		ssize_t n = recv(e->fd, &m, sizeof(m), MSG_DONTWAIT);
+		int msgfd = -1;
+		ssize_t n = recv_msg(e, buf, sizeof(buf), &msgfd);
 
 		if (n < 0) {
 			if (errno == EINTR)
@@ -182,75 +628,209 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 			server_terminate(server);
 			return 0;
 		}
-		/* A short or mistyped message is a peer speaking something
-		 * else. There is exactly one peer and it is our parent, so
-		 * this is a bug rather than an attack — and either way the
-		 * answer is to stop rather than to guess. */
-		if (n != (ssize_t)sizeof(m) || m.magic != KEMBED_MAGIC) {
+		/* A message shorter than the struct, or mistyped, is a peer
+		 * speaking something else. There is exactly one peer and it is
+		 * our parent, so this is a bug rather than an attack — and
+		 * either way the answer is to stop rather than to guess. A
+		 * LONGER one is ordinary: the tail is where a name and a MIME
+		 * type travel. */
+		if (n >= (ssize_t)sizeof(m))
+			memcpy(&m, buf, sizeof(m));
+		if (n < (ssize_t)sizeof(m) || m.magic != KEMBED_MAGIC) {
+			if (msgfd >= 0)
+				close(msgfd);
 			wlr_log(WLR_ERROR, "kembed: malformed message");
 			server_terminate(server);
 			return 0;
 		}
 
+		/*
+		 * THE WINDOW THE OP IS ABOUT, resolved once. Every op below
+		 * that names a window drops silently when it names one this
+		 * end does not have: a toplevel can go while a message about it
+		 * is still in flight, and guessing at another window is a key
+		 * typed into the wrong one. The descriptor such a message
+		 * carried is still closed, by the sweep at the end of the loop.
+		 */
+		struct cg_view *w = embed_view_from_win(server, m.win);
+
 		switch (m.op) {
 		case KEMBED_SIZE:
-			if (m.a > 0 && m.b > 0 &&
-			    (m.a != e->width || m.b != e->height))
-				set_size(server, m.a, m.b);
+			if (w && w->win.out &&
+			    (m.a != w->win.out->wlr_output->width ||
+			     m.b != w->win.out->wlr_output->height))
+				embed_set_size(w, m.a, m.b);
+			break;
+		case KEMBED_KEYMAP:
+			if (msgfd >= 0)
+				take_keymap(server, &m, msgfd);
+			break;
+		case KEMBED_CLIP_SET:
+			clipboard_take(server, &m, msgfd);
+			break;
+		case KEMBED_MODS:
+			seat_embed_mods(server->seat, (uint32_t)m.a,
+					(uint32_t)m.b, (uint32_t)m.c,
+					(uint32_t)m.d);
 			break;
 		case KEMBED_KEY:
-			seat_embed_key(server->seat, (uint32_t)m.a, m.b != 0);
+			/*
+			 * A KEY GOES WHERE THE KEYBOARD IS, which is the window
+			 * the parent named in the last KEMBED_FOCUS. There is
+			 * one keyboard focus per seat and the parent owns it,
+			 * so a key needs no routing of its own — and a key
+			 * routed by `win` instead would reach a window the seat
+			 * has not entered, where wlroots drops it.
+			 */
+			seat_embed_key(server->seat, (uint32_t)m.a, m.b != 0,
+				       m.e);
 			break;
 		case KEMBED_MOTION:
-			seat_embed_motion(server->seat, m.a, m.b, m.e);
+			if (w)
+				seat_embed_motion(server->seat, w, m.a, m.b,
+						  m.e);
+			break;
+		case KEMBED_REL:
+			/*
+			 * 1/256 OF A PIXEL, which is what the fraction in the
+			 * message is: a device delta small enough to be lost
+			 * to a whole number is exactly the slow, precise
+			 * motion a three-dimensional editor is aimed with.
+			 */
+			seat_embed_rel(server->seat, m.a / 256.0, m.b / 256.0,
+				       m.c / 256.0, m.d / 256.0, m.e);
 			break;
 		case KEMBED_BUTTON:
-			seat_embed_motion(server->seat, m.a, m.b, m.e);
-			seat_embed_button(server->seat, (uint32_t)m.c,
-					  m.d != 0, m.e);
+			if (w) {
+				seat_embed_motion(server->seat, w, m.a, m.b,
+						  m.e);
+				seat_embed_button(server->seat, (uint32_t)m.c,
+						  m.d != 0, m.e);
+			}
 			break;
 		case KEMBED_AXIS:
-			seat_embed_motion(server->seat, m.a, m.b, m.e);
-			seat_embed_axis(server->seat, m.c, m.e);
+			/*
+			 * NO POSITION HERE, and none is wanted: a scroll is
+			 * not a place. The parent sends the motion first
+			 * whenever the pointer moved, so a detent over a
+			 * frame button is a scroll and not a click on it.
+			 */
+			seat_embed_axis(server->seat, m.a / 256.0, m.b, m.c,
+					m.d & 0xff,
+					(m.d & (int32_t)KEMBED_AXIS_INVERTED) != 0,
+					m.e);
+			break;
+		case KEMBED_LEAVE:
+			seat_embed_leave(server->seat);
 			break;
 		case KEMBED_FOCUS:
-			e->focused = m.a != 0;
+			/*
+			 * THE FIELD IS SET BEFORE THE SEAT IS TOLD. A pointer
+			 * grab may activate only while the window it belongs to
+			 * has the keyboard, and that test reads this field.
+			 *
+			 * A FOCUS NAMING A WINDOW THIS END DOES NOT HAVE IS
+			 * DROPPED, like any other op that names one: the two
+			 * ends are out of step, and the keyboard is left where
+			 * it is rather than taken from a window that still has
+			 * keys down.
+			 */
+			if (!m.a) {
+				e->kbd = NULL;
+				seat_embed_focus(server->seat, NULL);
+			} else if (w) {
+				e->kbd = w;
+				seat_embed_focus(server->seat, w);
+			}
+			break;
+		case KEMBED_FULLSCREEN_SET:
+			/*
+			 * NAMING A WINDOW, ALWAYS. The parent re-offers this
+			 * state every turn until the window it is for has an
+			 * id, so a box launched into a window the console
+			 * already has fullscreen is told the moment its first
+			 * toplevel maps and nothing has to be held here.
+			 */
+			if (w)
+				set_fullscreen_state(w, m.a != 0);
 			break;
 		case KEMBED_SLEEP:
 			/*
-			 * MINIMISED MEANS STOP RENDERING. A guest drawing
+			 * A WINDOW NOBODY CAN SEE STOPS RENDERING —
+			 * minimised, hidden, on another workspace, behind the
+			 * lock or under the saver. A guest drawing
 			 * frames nobody is composited into is a guest spending
 			 * a core on nothing — which on a battery is the whole
 			 * difference between a window and a wasted process.
+			 * Per window: a dock behind another workspace stops
+			 * while the image window in front of the person does
+			 * not.
 			 */
-			e->asleep = m.a != 0;
+			if (w)
+				w->win.asleep = m.a != 0;
 			break;
 		case KEMBED_CLOSE:
-			server_terminate(server);
-			return 0;
+			/*
+			 * THE GUEST IS ASKED, NOT SHOT. Terminating the
+			 * display takes the application down with it, and an
+			 * application that was never told to quit never got to
+			 * offer the dialog that saves the work in it. The
+			 * deadline and the escalation are the parent's, because
+			 * the parent owns the process and this end owns only
+			 * the protocol.
+			 *
+			 * A NAMED WINDOW IS THE ONE ASKED, and only it: a
+			 * person clicking the X on an export dialog has not
+			 * asked the application to quit. Zero is every
+			 * toplevel, and with nothing mapped there is nobody to
+			 * ask — that case is the immediate one.
+			 */
+			if (m.win) {
+				if (w)
+					w->impl->close(w);
+				break;
+			}
+			if (wl_list_empty(&server->views)) {
+				server_terminate(server);
+				return 0;
+			}
+			{
+				struct cg_view *view, *tmp;
+
+				wl_list_for_each_safe (view, tmp,
+						       &server->views, link)
+					view->impl->close(view);
+			}
+			break;
 		default:
 			break;
 		}
+
+		/*
+		 * WHATEVER THE OP DID WITH IT, THE DESCRIPTOR IS CLOSED HERE.
+		 * An op that wanted one has finished with it by now — the
+		 * keymap is compiled inside the call — and an op that did not
+		 * want one still had it queued by the kernel. One left open
+		 * per message is a cage that runs out of descriptors.
+		 */
+		if (msgfd >= 0)
+			close(msgfd);
 	}
 }
 
-bool embed_init(struct cg_server *server, int fd, int width, int height)
+bool embed_init(struct cg_server *server, int fd)
 {
 	struct cg_embed *e = &server->embed;
 
-	e->fd = fd;
-	e->slot = 0;
-
 	/*
-	 * THE SIZE IS ASSERTED HERE, not assumed. The output was created at it,
-	 * so this is normally a no-op — but "the output is the size the parent
-	 * asked for" is the invariant every frame below depends on, and it
-	 * costs one commit to make it true however the output came to exist.
+	 * NO MAPPING AND NO SIZE ARE SET HERE, because there is no window yet.
+	 * Every mapping belongs to a toplevel and is announced under its `win`,
+	 * and one made before any toplevel exists would be a mapping the parent
+	 * could not attach to anything. The anchor output already carries the
+	 * size --embed named.
 	 */
-	set_size(server, width, height);
-
-	if (!remap(e, width, height))
-		return false;
+	e->fd = fd;
+	e->next_win = 0;
 
 	e->source = wl_event_loop_add_fd(wl_display_get_event_loop(server->wl_display),
 					 fd, WL_EVENT_READABLE, handle_readable,
@@ -261,13 +841,13 @@ bool embed_init(struct cg_server *server, int fd, int width, int height)
 	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_HELLO };
 
 	e->active = true;
-	e->focused = true;
 	return send_msg(e, &m, -1);
 }
 
 void embed_finish(struct cg_server *server)
 {
 	struct cg_embed *e = &server->embed;
+	struct cg_view *view;
 
 	if (!e->active)
 		return;
@@ -277,11 +857,102 @@ void embed_finish(struct cg_server *server)
 	send_msg(e, &m, -1);
 	if (e->source)
 		wl_event_source_remove(e->source);
-	if (e->map)
-		munmap(e->map, e->map_len);
-	e->map = NULL;
+
+	/*
+	 * EVERY WINDOW'S MAPPING, not one. The channel ends here and the parent
+	 * retires every window of it on the message above; a mapping left
+	 * behind is this process's own memory and nobody else's.
+	 */
+	wl_list_for_each (view, &server->views, link) {
+		if (view->win.map) {
+			munmap(view->win.map, view->win.map_len);
+			view->win.map = NULL;
+			view->win.map_len = 0;
+		}
+		view->win.win = 0;
+	}
+
+	e->kbd = NULL;
 	e->source = NULL;
 	e->active = false;
+}
+
+void embed_set_title(struct cg_view *view, const char *title)
+{
+	struct cg_embed *e = &view->server->embed;
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_TITLE,
+			.win = view->win.win };
+
+	if (!e->active || !view->win.win || !title || !*title)
+		return;
+	send_text(e, &m, title);
+}
+
+void embed_set_fullscreen(struct cg_view *view, bool fullscreen)
+{
+	struct cg_embed *e = &view->server->embed;
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_FULLSCREEN,
+			.a = fullscreen ? 1 : 0, .win = view->win.win };
+
+	if (!e->active)
+		return;
+	if (!view->win.win) {
+		view->win.want_fullscreen = fullscreen;
+		return;
+	}
+	send_msg(e, &m, -1);
+}
+
+/*
+ * SOMETHING IN HERE IS PLAYING, so the screen must not blank.
+ *
+ * The guest's idle inhibitor reaches this process' own idle notifier, which
+ * this process never reads because it has no idle policy: the saver, the lock
+ * and the DPMS clock are all the parent's. Without this message a video in a
+ * boxed player is watched for five minutes and then covered by the saver,
+ * with nothing the application can do about it — and the graphical session
+ * honours the identical protocol.
+ */
+void embed_set_inhibit(struct cg_view *view, bool inhibited)
+{
+	struct cg_embed *e;
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_INHIBIT,
+			.a = inhibited ? 1 : 0 };
+
+	if (!view)
+		return;
+	e = &view->server->embed;
+	if (!e->active || !view->win.win)
+		return;
+	m.win = view->win.win;
+	send_msg(e, &m, -1);
+}
+
+/*
+ * THE GUEST TOOK THE POINTER, or gave it back.
+ *
+ * A game and a three-dimensional editor lock or confine the pointer and read
+ * motion as a delta. The parent draws the arrow and decides which window is
+ * hovered, so it is the parent that has to stop doing both — a console that
+ * went on moving its own pointer over a locked guest would hover and raise
+ * windows behind the person's back. The hint is where the guest asked the
+ * pointer to be left when the grab ends.
+ */
+void embed_set_grab(struct cg_view *view, int grab, bool have_hint,
+		    int hint_x, int hint_y)
+{
+	struct cg_embed *e;
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_GRAB, .a = grab,
+			.b = hint_x, .c = hint_y,
+			.d = have_hint ? (int32_t)KEMBED_GRAB_HINT : 0 };
+
+	if (!view)
+		return;
+	e = &view->server->embed;
+	if (!e->active || !view->win.win)
+		return;
+	m.win = view->win.win;
+	send_msg(e, &m, -1);
 }
 
 bool embed_active(struct cg_server *server)
@@ -289,24 +960,28 @@ bool embed_active(struct cg_server *server)
 	return server->embed.active;
 }
 
-bool embed_asleep(struct cg_server *server)
+bool embed_asleep(const struct cg_view *view)
 {
-	return server->embed.active && server->embed.asleep;
+	return view->server->embed.active && view->win.asleep;
 }
 
-void embed_publish(struct cg_server *server, struct wlr_buffer *buffer,
+void embed_publish(struct cg_view *view, struct wlr_buffer *buffer,
 		   const pixman_region32_t *damage)
 {
-	struct cg_embed *e = &server->embed;
+	struct cg_embed *e;
+	struct cg_win *win;
 	void *data = NULL;
 	uint32_t format = 0;
 	size_t stride = 0;
 
-	if (!e->active || !e->map || !buffer)
+	if (!view || !buffer)
 		return;
 
+	e = &view->server->embed;
+	win = &view->win;
+
 	/*
-	 * NOTHING IS PUBLISHED UNTIL A CLIENT HAS MAPPED A WINDOW.
+	 * NOTHING IS PUBLISHED UNTIL THE WINDOW HAS BEEN OPENED.
 	 *
 	 * The scene's background rectangle is created with the server, so the
 	 * first headless frame is a whole window of the scheme's darkest slot
@@ -315,8 +990,11 @@ void embed_publish(struct cg_server *server, struct wlr_buffer *buffer,
 	 * parent cannot tell that black from a black an application drew, so
 	 * the window reads as a program that started and then did nothing. With
 	 * no frame at all the parent knows it is still waiting, and says so.
+	 * KEMBED_OPEN is also what the parent needs before it can attach a
+	 * frame to anything: a frame for a window that has not opened is
+	 * dropped there rather than guessed at.
 	 */
-	if (wl_list_empty(&server->views))
+	if (!e->active || !win->win)
 		return;
 
 	/*
@@ -339,16 +1017,114 @@ void embed_publish(struct cg_server *server, struct wlr_buffer *buffer,
 	if (damage && !pixman_region32_not_empty(damage))
 		return;
 
-	if (buffer->width != e->width || buffer->height != e->height) {
-		/* The output resized and this is the first frame at the new
-		 * size: the mapping follows the buffer, not the request. */
-		if (!remap(e, buffer->width, buffer->height))
+	if (!win->map || buffer->width != win->width ||
+	    buffer->height != win->height) {
+		/* THE MAPPING FOLLOWS THE BUFFER AND NOT THE REQUEST. This is
+		 * the first frame of a window, or the first at a new size after
+		 * the output was resized. */
+		if (!remap(view, buffer->width, buffer->height))
 			return;
 	}
 
-	if (!wlr_buffer_begin_data_ptr_access(buffer, WLR_BUFFER_DATA_PTR_ACCESS_READ,
-					      &data, &format, &stride))
-		return;
+	/*
+	 * THE RENDERED BYTES, BY WHICHEVER ROAD THE ALLOCATOR LEFT OPEN.
+	 *
+	 * A direct pointer is what the shm allocator offers and it is free, so
+	 * it is asked for first. A udmabuf buffer — which is what an allocator
+	 * has to hand out for a GPU renderer to draw into memory this process
+	 * can still read — implements `get_shm` and `get_dmabuf` and NOT
+	 * data-ptr access, so a cage that knew only the first road would
+	 * publish nothing at all the moment the renderer stopped being the
+	 * software one. The window would be permanently black, with every
+	 * other part of the mechanism working.
+	 *
+	 * Mapped per frame on that road rather than cached, because the
+	 * swapchain owns the buffer and may free it between frames; the cost
+	 * is two syscalls and the page table for one frame, against a readback
+	 * through the GPU, which is the only other way to reach those bytes.
+	 */
+	struct wlr_shm_attributes shm = { .fd = -1 };
+	struct wlr_dmabuf_attributes dma = { .n_planes = 0 };
+	void *mapped = MAP_FAILED;
+	size_t maplen = 0;
+	int dmafd = -1;
+	bool synced = false;
+
+	if (!wlr_buffer_begin_data_ptr_access(buffer,
+					      WLR_BUFFER_DATA_PTR_ACCESS_READ,
+					      &data, &format, &stride)) {
+		if (!wlr_buffer_get_shm(buffer, &shm) || shm.fd < 0)
+			return;
+		/* Signed in the attributes and used as sizes here, so the
+		 * negatives are refused before the arithmetic rather than
+		 * after it, where they are enormous. */
+		if (shm.stride < 0 || shm.offset < 0 ||
+		    (size_t)shm.stride < (size_t)buffer->width * 4)
+			return;
+		maplen = (size_t)shm.offset +
+			 (size_t)shm.stride * (size_t)buffer->height;
+		mapped = mmap(NULL, maplen, PROT_READ, MAP_SHARED, shm.fd, 0);
+		if (mapped == MAP_FAILED)
+			return;
+		data = (uint8_t *)mapped + shm.offset;
+		stride = (size_t)shm.stride;
+
+		/*
+		 * THE CARD MAY STILL BE WRITING THESE PAGES.
+		 *
+		 * A udmabuf buffer hands out two descriptors onto one piece of
+		 * memory: the memfd mapped above and a DMA-BUF beside it, and
+		 * the DMA-BUF is the only one the kernel will synchronise on.
+		 * A gles2 pass on a headless output ends in a bare glFlush()
+		 * — wlroots allocates a signal timeline only for a backend
+		 * with a DRM descriptor and the headless backend has none — so
+		 * with nothing waited here the copy races the renderer and a
+		 * busy card tears inside a block, worst exactly when it is
+		 * busiest.
+		 *
+		 * POLLIN on a DMA-BUF is its implicit write fence; the ioctl
+		 * bracket is the cache maintenance a CPU mapping of memory a
+		 * device wrote needs, and it is what makes the bytes read back
+		 * the ones the GPU put there. A buffer with no DMA-BUF handle
+		 * has no GPU writer and needs neither.
+		 *
+		 * A fence that does not signal within the deadline SKIPS the
+		 * frame rather than publishing half of it, BUT ONLY WHERE
+		 * THERE IS A WHOLE FRAME TO KEEP: the slot is not flipped, so
+		 * the parent goes on showing the one before it. Into a mapping
+		 * that has never carried a frame there is nothing to keep —
+		 * the parent is holding zeroed pages and showing none of them
+		 * — so the copy runs unwaited instead. A torn first frame is
+		 * corrected by the next one the guest draws; a skipped one is
+		 * not corrected at all, because the scene has already
+		 * subtracted its damage and a guest with nothing to redraw
+		 * never asks for another frame. The window would stay blank
+		 * for as long as it is open.
+		 *
+		 * A poll that fails outright is not a deadline and the frame
+		 * is copied unwaited for the same reason.
+		 */
+		if (wlr_buffer_get_dmabuf(buffer, &dma) && dma.n_planes > 0)
+			dmafd = dma.fd[0];
+		if (dmafd >= 0) {
+			struct pollfd pfd = { .fd = dmafd, .events = POLLIN };
+			int r;
+
+			do {
+				r = poll(&pfd, 1, EMBED_FENCE_MS);
+			} while (r == -1 && errno == EINTR);
+
+			if (r == 0 && !win->map_blank) {
+				munmap(mapped, maplen);
+				return;
+			}
+			synced = dmabuf_sync(dmafd, DMA_BUF_SYNC_START |
+						    DMA_BUF_SYNC_READ);
+		}
+	}
+
+	int next = (win->slot + 1) % KEMBED_SLOTS;
+	bool copied = false;
 
 	/*
 	 * 32 BITS PER PIXEL AND NOTHING ELSE. The pixman renderer on a headless
@@ -356,50 +1132,93 @@ void embed_publish(struct cg_server *server, struct wlr_buffer *buffer,
 	 * chose a format this was not written for, and copying it as if it were
 	 * one of those would put garbage on a screen rather than fail.
 	 */
-	if (stride < (size_t)e->width * 4) {
-		wlr_buffer_end_data_ptr_access(buffer);
-		return;
-	}
+	if (stride >= (size_t)win->width * 4) {
+		uint8_t *dst = (uint8_t *)win->map + (size_t)next * win->slot_len;
+		const uint8_t *src = data;
 
-	int next = (e->slot + 1) % KEMBED_SLOTS;
-	uint8_t *dst = (uint8_t *)e->map + (size_t)next * e->slot_len;
-	const uint8_t *src = data;
+		/*
+		 * ROW BY ROW, because the renderer's stride need not equal the
+		 * width — copying it as one block would put the padding on the
+		 * screen as a diagonal smear, which reads as a decoder fault
+		 * and is not one.
+		 *
+		 * The WHOLE frame is copied even when the damage is one row:
+		 * the two slots alternate, so the half being written is a
+		 * frame behind and the undamaged part of it is stale. Damage
+		 * bounds what the PARENT has to re-send, which is where it
+		 * costs something.
+		 */
+		for (int y = 0; y < win->height; y++)
+			memcpy(dst + (size_t)y * win->stride,
+			       src + (size_t)y * stride,
+			       (size_t)win->width * 4);
+		copied = true;
+	}
 
 	/*
-	 * ROW BY ROW, because the renderer's stride need not equal the width —
-	 * copying it as one block would put the padding on the screen as a
-	 * diagonal smear, which reads as a decoder fault and is not one.
-	 *
-	 * The WHOLE frame is copied even when the damage is one row: the two
-	 * slots alternate, so the half being written is a frame behind and the
-	 * undamaged part of it is stale. Damage bounds what the PARENT has to
-	 * re-send, which is where it costs something.
+	 * ONE WAY OUT OF THE READ, so the kernel's bracket is closed and the
+	 * mapping released whatever the frame turned out to be. A refused
+	 * frame leaves the slot where it was rather than flipping to a
+	 * half-written one.
 	 */
-	for (int y = 0; y < e->height; y++)
-		memcpy(dst + (size_t)y * e->stride, src + (size_t)y * stride,
-		       (size_t)e->width * 4);
+	if (synced)
+		dmabuf_sync(dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ);
+	if (mapped != MAP_FAILED)
+		munmap(mapped, maplen);
+	else
+		wlr_buffer_end_data_ptr_access(buffer);
 
-	wlr_buffer_end_data_ptr_access(buffer);
+	if (!copied)
+		return;
 
-	e->slot = next;
+	win->slot = next;
+	win->map_blank = false;
 
-	pixman_box32_t box = { 0, 0, e->width, e->height };
+	/*
+	 * THE REGION'S OWN BOXES, NOT THE ONE THAT CONTAINS THEM.
+	 *
+	 * The parent rounds each box out to the blocks it touches and re-cuts
+	 * every one, so the difference between the boxes and their bounding
+	 * box is the difference between sending what changed and sending the
+	 * window. A page scrolled with a clock ticking in the title bar is two
+	 * small rectangles at opposite corners whose extents are everything.
+	 *
+	 * CAPPED, and past the cap the extents are the honest answer: a region
+	 * cut into more pieces than this costs more in messages than it saves
+	 * in blocks, because a block is at most sixteen cells square and most
+	 * of the pieces land in the same ones.
+	 */
+	pixman_box32_t whole = { 0, 0, win->width, win->height };
+	const pixman_box32_t *boxes = &whole;
+	int nbox = 1;
 
-	if (damage && pixman_region32_not_empty(damage)) {
-		pixman_box32_t *ext = pixman_region32_extents((pixman_region32_t *)damage);
+	if (damage) {
+		int n = 0;
+		const pixman_box32_t *b =
+			pixman_region32_rectangles((pixman_region32_t *)damage,
+						   &n);
 
-		box = *ext;
+		if (n > 0 && n <= EMBED_MAX_DAMAGE) {
+			boxes = b;
+			nbox = n;
+		} else if (n > EMBED_MAX_DAMAGE) {
+			whole = *pixman_region32_extents(
+				(pixman_region32_t *)damage);
+		}
 	}
 
-	KembedMsg m = {
-		.magic = KEMBED_MAGIC,
-		.op = KEMBED_FRAME,
-		.a = next,
-		.b = box.x1,
-		.c = box.y1,
-		.d = box.x2 - box.x1,
-		.e = (uint32_t)(box.y2 - box.y1),
-	};
+	for (int i = 0; i < nbox; i++) {
+		KembedMsg m = {
+			.magic = KEMBED_MAGIC,
+			.op = i ? KEMBED_DAMAGE : KEMBED_FRAME,
+			.a = next,
+			.b = boxes[i].x1,
+			.c = boxes[i].y1,
+			.d = boxes[i].x2 - boxes[i].x1,
+			.e = (uint32_t)(boxes[i].y2 - boxes[i].y1),
+			.win = win->win,
+		};
 
-	send_msg(e, &m, -1);
+		send_msg(e, &m, -1);
+	}
 }

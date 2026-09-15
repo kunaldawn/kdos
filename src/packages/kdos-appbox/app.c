@@ -88,15 +88,14 @@ static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
 }
 
 /*
- * THE PACK BEHIND A COMMAND, for the launch form a desktop entry uses.
+ * THE PACK BEHIND A COMMAND, for a launch that does not name its box.
  * `run_as_shim` is keyed by the shim NAME — `gimp` — and finds its pack in the
- * table's third field. A `.desktop` entry runs `kdos-appbox run <exec>` with
- * the application's own path, `/usr/lib/firefox-esr/firefox-esr`, and that
- * form found no pack at all: it launched into the default box, `kdos-apps`,
- * which the pack lane never had — "click Firefox in the Start menu, nothing
- * opens", while the shim from a prompt worked. The command column's first
- * token is the exec; it is matched whole, then by basename, so
- * `firefox-esr` and `/usr/lib/firefox-esr/firefox-esr` both resolve.
+ * table's third field. A generated launcher for a packed app passes
+ * `-b <pack>` and never arrives here; a shim invoked by name, a command typed
+ * at a prompt and a hand-written entry do, and they carry the application's
+ * own path, `/usr/lib/firefox-esr/firefox-esr`. The command column's first
+ * token is the exec; it is matched whole, then by basename, so `firefox-esr`
+ * and the absolute path both resolve.
  */
 /*
  * THE PROGRAM A COMMAND LINE RUNS IS NOT ALWAYS ITS FIRST WORD. Debian ships

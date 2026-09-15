@@ -58,12 +58,10 @@ the ISO: log in, open a terminal, run `htop`, open `kdos-res` as a window, tile 
 workspace, lock and unlock, come back from `tty2`, and start a boxed graphical application as a
 window.
 
-**Two specifics about a graphical application on the cell grid.** It is an ordinary window there —
-`kdos-cage --embed` composites it in a process of its own and the session cuts the frames into
-sprites — and two things about pointing at one are worth doing. A drag inside a single cell moves
-its pointer nowhere, because a view reports a move when the cell changes; and an application that
-needs acceleration a software renderer cannot give it has to be pinned to a terminal by hand,
-rather than being detected.
+**One specific about a graphical application on the cell grid.** Its windows are ordinary windows
+there — one `kdos-cage --embed` composites every toplevel the application maps and the session cuts
+the frames into sprites — and an application that needs acceleration a software renderer cannot
+give it has to be pinned to a terminal by hand, rather than being detected.
 
 **A second screen on the console.** `libkkms` takes the first card with a connected output and its
 preferred mode. Multi-output means a view per output or a view that spans them, and the session

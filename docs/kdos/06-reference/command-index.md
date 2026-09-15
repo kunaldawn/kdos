@@ -20,7 +20,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-backup` | What is in the restic repository, and one key to add to it | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-box` | Manage boxes | [kdos-appbox](../04-programs/kdos-appbox.md) |
 | `kdos-boxinit` | Process 1 inside a box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
-| `kdos-boxsock` | One tagged compositor socket per box | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
+| `kdos-boxsock` | One tagged compositor socket per box, per compositor | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
 | `kdos-bt` | Bluetooth | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-cal` | The calendar | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-checkpass` | Check the caller's own password. **setuid** | [The security model](../03-architecture/security-model.md#kdos-checkpass) |

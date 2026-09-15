@@ -79,6 +79,18 @@ caller: it keeps the four-edge mask as its own *state* — so one restore
 rectangle serves every tile — and computes the rectangle from the work area
 itself.
 
+**One rectangle, two states, and fullscreen is orthogonal to the tile.** A
+window carries a single restore rectangle and it means exactly one thing: what
+an untile returns to. So it is written only from an *untiled* rectangle — by a
+snap, by maximise and by fullscreen alike — and leaving fullscreen re-derives
+the tile rectangle from the tiled state instead of replaying a stored one. A
+fullscreen that overwrote the restore rectangle would send the later untile to
+the tile the window is already in, and the console writes that rectangle to its
+geometry table when the window closes, so the loss would outlive the session.
+Re-deriving is also what lands a window that was fullscreen across a panel dock
+or an output resize in the tile the grid has now, rather than the one it had
+then.
+
 ## Placement is a search, not a cascade
 
 A new window is placed by **minimising overlap**: an irregular grid is built by
@@ -89,6 +101,81 @@ search.
 
 With nothing else on the output the grid is empty and the window lands in the
 upper-left corner, inset by both the decoration margin and the configured gap.
+
+## A window that belongs to another window
+
+**One process is not one window, and a window is not one application.** A `libkcon` client may hold
+several surfaces and one `kdos-cage` speaks for as many toplevels as its guest maps — an editor's
+toolbox, its image window, two docks and a modal file chooser are five windows over one channel. So
+the model has a word for the relation between them: a window may name an **owner**, and one that
+does may additionally be **modal**. Both are plain facts about a window, not about what is inside
+it, and every rule below is about the relation alone.
+
+**An owned window opens centred on its owner, at the size it asked for.** Not by the overlap search:
+a dialog belongs to the window that raised it, and a search that put it wherever there happened to
+be room is a question a person has to hunt for. It is clamped into the work area afterwards, because
+an owner may be at an edge or larger than the area itself.
+
+**It rides its owner's raises and ends on top of them.** The stack is a list and raising is a move
+to the front, so a raise starts at the head of the family whichever member was named, and moves the
+family in front of it. **The members keep the order they were already in**, the modal above its
+siblings: each move is to the front, so moving them in the order they were found would turn the
+family over on every raise and four docks would swap places each time their image window came up —
+and a question a person has to answer must not open behind the dialog beside it. **The window that
+was named ends on top of the family**, which is what makes a click on one of four docks bring that
+dock out rather than whichever of them was in front. A dialog left behind the window it is asking
+about is an application that looks frozen, and a dialog raised on its own that left its owner buried
+is the same picture from the other side. The keyboard still goes to the window that was named. The
+chain is followed a few levels and no further: a guest names the owner and nothing this side can
+promise the chain has no cycle in it.
+
+**It is remembered nowhere.** An owned window is a *float*, which already means "opens where the eye
+is, at its own size, and is recorded in no geometry table". Every window of one guest carries the
+same program name, so a file chooser that was remembered would write its rectangle as the one the
+document window opens at next time — to disk, for every session after this one.
+
+**It goes where its owner goes, and is put away with it.** Sending a window to another workspace
+sends what it owns, and minimising one minimises them; naming a dialog instead resolves up to the
+window it belongs to and moves that. A question left on a desk its owner has left is a frame
+belonging to nothing — it has no row of its own to reach it by — and a stranded modal goes on
+blocking an owner the person is looking at somewhere else. The chain is followed a few levels here
+too, and a sticky child is not moved, being on every workspace already.
+
+**A run-or-raise chord means the family too.** The chord matches on the program name and every
+window of one guest carries the same one, so the search answers with the head of a family and never
+with the dialog in front of it — a chord that landed on the question would leave the document it is
+about behind, and a second press, which steps to the program's next window, would have nowhere to
+step from. What the chord brings back from a minimise is the whole family, the way the minimise took
+it away.
+
+**It carries no taskbar row of its own.** One application is one row; a dialog, a dock and a splash
+belong to a window that already has one. They stay in the cycle ring, because a dialog is exactly
+what a person is switching to — and none of them can be minimised on its own, because the row is
+the way back from a minimise and these have none. Their frames are drawn without the minimise
+button for that reason: a question is answered or closed, not put away. Put the OWNER away and they
+go with it, and they come back on the owner's row.
+
+**A modal blocks its owner and blocks nothing else.** While one is up its owner cannot be raised,
+cannot take the keyboard and cannot be closed, and a raise aimed at the owner — from the
+directional search, from a number chord, from a click — lands on the modal and flashes it. That
+flash is the answer: a click that did nothing at all reads as a desktop that has stopped rather than
+as an application waiting to be answered. **A window a raise cannot land on is out of the ring**,
+so Alt-Tab, `Super+Alt+`*n* and the window list skip the blocked owner and reach the modal instead:
+a ring entry whose every step is redirected back to the question is one the ring can never advance
+past. Everything else on the desktop carries on, because a modal is modal to its application and not
+to the machine. A minimised modal blocks nothing, or a window somebody put out of the way would be a
+window with no way back to it. Neither does one off its owner's desk: a question the person cannot
+see blocking a window they can is a window that has stopped answering with nothing on the screen to
+say why. Every path that moves one of the pair moves the other, so the rule is written once where
+the block is decided rather than in each of them.
+
+**An owner that goes leaves ONE window carrying the row.** The orphan nearest the front takes the
+owner's place — its row, its place in the ring, no owner of its own — and the rest are
+re-parented onto it, so an application that outlives the window a person opened is still one entry.
+Giving each of them a row would turn one entry into six the moment an image window closed, which is
+the bar this whole relation exists to stop growing. Modality does not survive: there is nothing left
+for it to block. A splash is never the heir, having no frame to close it by and no place in the
+ring.
 
 ## The edge search is one question
 
@@ -160,6 +247,16 @@ of it, and the other axis is left alone — a nudge is one direction, and snappi
 both would put the window somewhere the arrow was not pointing. A second nudge
 crosses. One screen has no seam, so the search is skipped entirely and a move is
 the plain one.
+
+**Which pointer event does what is not in the model.** `libkwm` is asked for a
+rectangle and never for what asked. The rule the console's router keeps, and
+the one any other caller has to keep, is that pointer routing dispatches on the
+**button** and not on the press kind: a wheel detent is delivered as a press
+carrying `KT_MB_WHEEL_UP` or `KT_MB_WHEEL_DOWN`, and no release ever follows
+it, so a router that tested the press kind alone would raise, focus, move,
+minimise, maximise or close a window on a scroll. A scroll reaches the window
+under the pointer and does nothing else to it — it does not raise it, does not
+take the keyboard, and does not arm a move or a resize.
 
 **Pointer resistance is not in the model.** How a drag feels as it crosses an
 edge — the resist and attract zones — is interaction, and it stays in the

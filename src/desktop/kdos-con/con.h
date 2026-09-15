@@ -38,15 +38,24 @@
  * them into sprites so they occupy cells like any other picture. Chrome,
  * snapping, workspaces and the taskbar are then the ordinary ones.
  *
- * WIN_VT is a window with NO CELLS, kept for an application that needs
- * acceleration a software renderer cannot give it: the guest is full screen on
- * a terminal of its own, it is in the window list to be in the taskbar and the
+ * A WINDOW IS NOT A PROCESS. One kdos-cage speaks for as many toplevels as its
+ * guest maps — a toolbox, an image window, two docks and a modal file dialog
+ * are five WIN_EMBED windows over one channel — so a window is created without
+ * a fork and retired without one, and only the last window of a guest going
+ * says anything about the process behind it.
+ *
+ * WIN_VT is a window with NO CELLS, kept for an application the card cannot be
+ * given to through a window — one that sets its own full-screen mode, or whose
+ * driver will not run against a headless output. The guest is full screen on a
+ * terminal of its own, it is in the window list to be in the taskbar and the
  * Alt-Tab ring, and selecting it is a VT switch rather than a raise.
  */
 enum { WIN_TERM = 0, WIN_SURFACE, WIN_VT, WIN_EMBED };
 
-/* embed.c owns every byte of it; con.h needs only the pointer. */
-struct Embed;
+/* embed.c owns every byte of it; con.h needs only the pointer. One per
+ * WINDOW, never one per guest: the channel the window speaks over is behind
+ * it and is shared with the guest's other windows. */
+struct EmbedWin;
 
 /* What a chord does. `arg` is a KWM_EDGE_* for a snap and a workspace index
  * for the two workspace actions; it is unused by the rest. */
@@ -299,6 +308,15 @@ void con_spawn_at(const char *cmd, int x);
  */
 #define CON_FRAME 1
 
+/*
+ * HOW LONG A WINDOW IS SHOWN FLASHING, in milliseconds. 120 is long enough to
+ * be seen and short enough that a program ringing in a loop is a flicker
+ * rather than a window that stays lit. The bell and the answer to a click on a
+ * window a modal has blocked are the same flash, because they are the same
+ * sentence: this window wants you.
+ */
+#define CON_FLASH_MS 120
+
 typedef struct Win {
 	struct Win *next;
 	int id;
@@ -334,6 +352,35 @@ typedef struct Win {
 	 * whether that is remembered differ.
 	 */
 	int floating;
+
+	/*
+	 * THE WINDOW THIS ONE BELONGS TO, a window id, 0 for a window of its
+	 * own — and whether the owner may be used while it is open.
+	 *
+	 * A DIALOG IS NOT A SECOND APPLICATION. It opens over the window that
+	 * raised it, rides that window's raises, carries no taskbar row of its
+	 * own and is remembered nowhere, because what a person opened is the
+	 * owner and the dialog is a question about it. `modal` adds that the
+	 * owner cannot be raised, focused or closed while the question stands:
+	 * a raise aimed at the owner lands on the modal and flashes it, which
+	 * is the only honest answer a desktop can give to a click on a window
+	 * its own application has stopped answering.
+	 *
+	 * PLAIN FIELDS, read by the window model and written by whoever built
+	 * the window. Every kind of window can have an owner — the rules are
+	 * about the relation and not about what is inside either window.
+	 */
+	int owner;
+	int modal;
+
+	/*
+	 * A ROW IN THE TASKBAR IS FOR SOMETHING A PERSON OPENED. A tool
+	 * palette and a splash are not, and neither is a dialog: one
+	 * application is one row, and a row per dialog is a bar that grows a
+	 * button every time a file chooser opens.
+	 */
+	int no_task;
+
 	/* Its child has gone and the modes it set have been put back. A
 	 * terminal window OUTLIVES its program here — it stays showing how the
 	 * program finished — so the reset happens once, when the death is
@@ -379,11 +426,19 @@ typedef struct Win {
 	/*
 	 * THE PROGRAM THIS WINDOW WAS OPENED FOR, written once and never
 	 * again. Neither field above can answer that question: `title` is the
-	 * guest's to rewrite the moment it emits an OSC, and `app_id` says
-	 * what KIND of window this is — every WIN_TERM is "terminal" and every
-	 * caged guest is "kdos-cage" — so a run-or-raise matching on either
-	 * would find the wrong window or none. Empty when nothing named a
-	 * program, and an empty `prog` matches nothing.
+	 * guest's to rewrite the moment it emits an OSC, and `app_id` groups
+	 * windows of a kind — every WIN_TERM is "terminal", and a guest on a
+	 * terminal of its own is "kdos-cage" — so a run-or-raise matching on
+	 * either would find the wrong window or none. An EMBEDDED guest's app
+	 * id is the application's own name, which is what the taskbar groups
+	 * its chips by and what the box collector reads.
+	 *
+	 * AN EMBEDDED GUEST'S `prog` IS THE PROGRAM IT EXECS, NOT ITS BOX —
+	 * `gimp` and not `app.gimp`. It is the desktop entry's own stem, so a
+	 * configured taskbar row, a run-or-raise chord and the geometry table
+	 * all match the name a person would write; the box name is the
+	 * launcher's and names no window. Empty when nothing named a program,
+	 * and an empty `prog` matches nothing.
 	 */
 	char prog[64];
 
@@ -397,7 +452,7 @@ typedef struct Win {
 
 	struct kvt_term *term;	/* WIN_TERM */
 	KconSurface *surf;	/* WIN_SURFACE */
-	struct Embed *em;	/* WIN_EMBED */
+	struct EmbedWin *em;	/* WIN_EMBED */
 
 	/* WIN_VT: the terminal it was given, the terminal to come back to, and
 	 * the compositor holding it. */
@@ -505,9 +560,25 @@ Win *win_find(int id);
  */
 Win *win_find_prog(const char *prog, int after);
 Win *win_focused(void);
+/*
+ * TO THE FRONT, WITH WHATEVER IT OWNS IN FRONT OF IT — and a raise aimed at
+ * the owner of a modal lands on the modal instead. Both rules live here and
+ * nowhere else: the ring, the directional search, a number chord and a click
+ * all end in this call, and a rule repeated at four of them is four chances
+ * for a dialog to be left behind the window it is asking about.
+ */
 void win_raise(int id);
+/* The window a modal question is being asked in, for this window id, or NULL.
+ * A window with one may not be raised, focused or closed. */
+Win *win_modal_for(int id);
 void win_close(Win *w);				/* ask */
 void win_drop(Win *w);				/* and take it out */
+/*
+ * WHERE A NEW WINDOW GOES. A window that names an owner opens CENTRED ON IT at
+ * the size it asked for, because a dialog belongs to the window that raised it
+ * and the minimal-overlap search would put it wherever there happened to be
+ * room. Everything else goes through the search. See windows.c.
+ */
 void win_place(Win *w, int want_w, int want_h);
 void win_place_corner(Win *w, int want_w, int want_h, int corner, int mx,
 		      int my);
@@ -580,6 +651,11 @@ Win *win_nth(int n);
 /* Its position in that ring, 1-based, or 0 when it is not in it. */
 int win_index(const Win *w);
 void win_cycle(int dir);
+/*
+ * IS ANYBODY LOOKING AT IT — the one answer, so the draw loop and the embedded
+ * guests cannot disagree about which windows are worth rendering.
+ */
+int win_is_on_screen(const Win *w);
 void win_draw_all(void);
 /* The window list: Turbo Vision's Alt+0, drawn by the session until Task
  * 6.4 lets kdos-teams read the list over libkdisp. */
@@ -600,11 +676,33 @@ void win_lock_draw(void);
 enum { CON_DISPLAY_EMBED = 0, CON_DISPLAY_VT };
 int con_display_mode(const char *const argv[], const char **why);
 
+/*
+ * FORK A CAGE AND PUT ITS FIRST WINDOW ON THE DESKTOP.
+ *
+ * The window it answers with is a PLACEHOLDER: it says "starting…" and it is
+ * what the guest's first ordinary toplevel claims when it maps, so a one-window
+ * application is on screen from the moment it is launched and is never a second
+ * window that replaces the first. Every further toplevel the guest maps becomes
+ * a window of its own with no fork behind it, and a guest that hands its
+ * document off to an instance that is already running maps nothing here at all
+ * — its placeholder goes quietly and the window opens in the other cage.
+ */
 Win *embed_open(const char *const argv[], const char *title);
 void embed_pump(void);
 void embed_reap(void);
 void embed_resized(Win *w);
 void embed_view_attached(void);
+/* A display could not keep the picture in `slot`: the block is owed to that
+ * display again, bounded — see the definition. */
+void embed_sprite_lost(KconSurface *v, int slot);
+/*
+ * ASK THIS WINDOW TO GO, and this window alone. The guest decides what that
+ * means, and a guest that answers is on no clock: a save prompt opened on the
+ * asked window is a window being used, and the deadlines stop there. Only an
+ * ask covering the last window a person can reach starts the clock that
+ * escalates to a signal, because a process signalled over one dialog is
+ * unsaved work in every other window it had open.
+ */
 void embed_close(Win *w);
 void embed_close_all(void);
 void embed_free(Win *w);
@@ -613,6 +711,37 @@ int embed_fds(int *fds, int max);
 void embed_draw(const Win *w);
 int embed_key(Win *w, const KtuiEvent *ev);
 int embed_ptr(Win *w, const KtuiEvent *ev);
+/*
+ * THE SAME PHYSICAL INPUT, AS THE DEVICE REPORTED IT. The two calls above are
+ * a character and a cell, which is what a view inside somebody else's terminal
+ * can send and all a cell desktop wants; an embedded guest is the one thing
+ * here that holds a key down, aims below a cell and scrolls sideways. The
+ * COOKED event for the same input has already been routed when any of these
+ * runs — see the input section of embed.c.
+ */
+int embed_key_raw(Win *w, const KconKeyRaw *k);
+int embed_ptr_raw(Win *w, const KconPtrRaw *p);
+int embed_axis_raw(Win *w, const KconAxisRaw *a);
+/* The modifier state the keyboard is in, kept for the resync a window is sent
+ * when it takes the keyboard and whenever a lock or a group changes under
+ * it. */
+void embed_mods_note(const KconKeyRaw *k);
+/*
+ * THE RAW STREAM STARTED OR STOPPED. A release and the modifier mask travel on
+ * it and on nothing else, so every guest is released here and the mask the
+ * session holds stops counting as known: called from the gate that asks for
+ * the stream, which is the one place either edge exists.
+ */
+void embed_raw_reset(void);
+/* The layout every guest is given; `text` is xkb's text format and is copied
+ * here. The last view to say what its keyboard is wins. */
+void embed_keymap(int format, const char *text, size_t len);
+/* The pointer is no longer over this window. */
+void embed_leave(Win *w);
+/* The window whose guest has taken the pointer, or NULL for none. */
+Win *embed_grab_win(void);
+/* Is a guest anybody can see asking for the screen to stay on. */
+int embed_inhibited(void);
 
 /* vt.c */
 Win *vt_open(const char *const argv[], const char *title, int cage);
@@ -767,6 +896,14 @@ void clip_offer(KconSurface *f, const char *text, size_t len, int primary,
 void clip_request(KconSurface *f, int primary, void *user);
 void clip_put(const char *text, size_t len, int primary);
 const char *clip_get(int primary, size_t *len);
+/*
+ * HOW MANY TIMES THE SELECTION HAS CHANGED, the clipboard and the primary
+ * counted together. A reader that mirrors the selection somewhere else keeps
+ * the count it last mirrored and compares that, rather than comparing up to
+ * KEMBED_CLIP_MAX bytes to find out whether it has anything to send —
+ * embed.c's channel mirror is the one that does.
+ */
+unsigned long clip_gen(void);
 void clip_free(void);
 
 /*

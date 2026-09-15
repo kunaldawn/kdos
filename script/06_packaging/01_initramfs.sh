@@ -341,7 +341,7 @@ done
 # exists once the container is open. kinstall writes both.
 #
 # The prompt goes through the SPLASH, not to /dev/console. console= is ttyS0 on
-# this kernel command line (the last one wins), so a plain `read -p` prompts a
+# this kernel command line (the last one wins), so a plain \`read -p\` prompts a
 # serial port nobody is looking at while the screen shows a boot splash that
 # appears to have frozen. The keystrokes are read from /dev/tty1, which is where
 # the keyboard actually is.
@@ -352,9 +352,9 @@ done
 #
 # Two knobs, both defaulted to the real thing. The keyboard is on tty1 because
 # console= is the serial port, and the mapper directory is where the kernel puts
-# an opened container. They are variables so `testing/selftest.sh` can exercise
+# an opened container. They are variables so \`testing/selftest.sh\` can exercise
 # this function without a LUKS volume and without root — the same trick
-# `kdos stutter --fixture` uses for /proc.
+# \`kdos stutter --fixture\` uses for /proc.
 : "\${PASS_TTY:=/dev/tty1}"
 : "\${CRYPT_MAPPER_DIR:=/dev/mapper}"
 
@@ -414,10 +414,10 @@ unlock_root() {
 #
 # A/B slots: the boot state lives on the ESP because it must be readable and
 # WRITABLE before any root filesystem is mounted — including the one that turns
-# out not to work. `select` prints the UUID to boot and spends an attempt in the
+# out not to work. \`select\` prints the UUID to boot and spends an attempt in the
 # same breath, so a kernel that hangs after this point has still been counted.
 #
-# Failing to read it is not fatal: `root=` on the command line is what a machine
+# Failing to read it is not fatal: \`root=\` on the command line is what a machine
 # without A/B uses anyway, and it stays the fallback.
 #
 if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then

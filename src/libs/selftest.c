@@ -5444,7 +5444,7 @@ static void test_kcon(void)
 	 * client of the session is rebuilt from this tree, so the number costs
 	 * nothing to raise — and the enum it guards is positional, which is
 	 * what makes raising it the cheap half of an op that moved. */
-	eq_int(KCON_VERSION, 19, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 21, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

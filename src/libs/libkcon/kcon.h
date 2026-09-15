@@ -53,7 +53,7 @@
  * the file carries no version at all. Append, whatever group the new op
  * belongs to by meaning.
  */
-#define KCON_VERSION 19
+#define KCON_VERSION 21
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -91,12 +91,20 @@
  * leaves the view's previous-frame copy alone, the next one it does take
  * carries everything it missed.
  *
- * Far enough below KCON_MAX_QUEUE that one more whole frame on top of it
- * cannot reach the cap — a 240x67 grid is under 130 kB and one embed block is
- * 128 kB — so a display that reads at all never trips the peer-is-gone guard.
- * Without it a guest repainting its whole window, or a full-screen animation
- * in a terminal, kills the desktop's only display and with it the only source
- * of input the session has.
+ * Far enough below KCON_MAX_QUEUE that one more whole message on top of it
+ * cannot reach the cap — a message is bounded by KCON_MAX_PAYLOAD and a grid
+ * is cut into KCON_CHUNK_BYTES pieces — so a display that reads at all never
+ * trips the peer-is-gone guard. Without it a guest repainting its whole
+ * window, or a full-screen animation in a terminal, kills the desktop's only
+ * display and with it the only source of input the session has.
+ *
+ * AND IT IS ALSO WHERE A DISPLAY STOPS BEING READY, which is what makes it
+ * the wrong mark to fill a queue up to. kcon_view_ready() returns 0 above it,
+ * and a session whose displays are none of them ready composes no frame at
+ * all — so a publisher that filled a queue to this mark would buy one
+ * window's pixels with the panel, the pointer and the clock. An embedded
+ * window is paced against a softer mark of its own for that reason; see
+ * EM_VIEW_SOFT in kdos-con's embed.c.
  */
 #define KCON_VIEW_HIGH (1u << 20)
 /* The same mark, read from the other end: a surface whose own queue is past
@@ -550,8 +558,176 @@ enum {
 	 * carrying the newest cells, instead of every intermediate one. A
 	 * picture counts: an animation changes pixels and no cells, so a leg
 	 * answered only for cells would leave it unpaced.
+	 *
+	 * IT IS THE CELL PATH'S BOUNDARY AND NOT THE PICTURE PATH'S: the
+	 * session -> view message is emitted by kcon_view_send() and only when
+	 * that frame carried runs, so pictures forwarded with
+	 * kcon_view_sprite() fall outside it. A window whose pixels change and
+	 * whose cells do not is published with no boundary at all, and a view
+	 * that presents on each picture shows part of one window frame beside
+	 * part of the last.
 	 */
 	KCON_OP_FRAME,
+
+	/*
+	 * VIEW -> SESSION: PICTURES THAT ARRIVED AND COULD NOT BE KEPT.
+	 *
+	 * A view's sprite table has a byte budget of its own, so pixels that
+	 * crossed the wire may still be refused at the far end. The cells
+	 * naming that slot are already drawn and the sender has already
+	 * cleared what it owed — kcon_view_sprite() answers for the WIRE —
+	 * so without this the block is a hole in the window for as long as the
+	 * window lives: nothing re-sends a picture nobody knows was lost.
+	 *
+	 * A SET PER PAINTED FRAME, NOT A MESSAGE PER LOSS. A view short of
+	 * budget loses one picture per block per frame, and a message for each
+	 * would spend the queue the pictures themselves need. The sender
+	 * gathers the slots it refused, drops the repeats and sends one
+	 * message when it presents: u16 count, then that many u16 slots.
+	 *
+	 * The owner of those slots owes them again, and must bound how often
+	 * it pays: a table too small for the window refuses every re-send, and
+	 * a repair with no limit is the same bytes for ever.
+	 */
+	KCON_OP_SPRITE_LOST,
+
+	/*
+	 * VIEW -> SESSION: THE KEY AS A SWITCH, BESIDE THE CHARACTER.
+	 *
+	 * KCON_OP_KEY is a resolved character and a cell desktop wants nothing
+	 * else: a text field is typed into with characters, and a view that
+	 * resolved the person's own layout is the only thing that can. A PIXEL
+	 * GUEST IS NOT A TEXT FIELD. It holds keys down, repeats from its own
+	 * keymap, reads a modifier that produces no character at all, and
+	 * resolves the layout itself — none of which survives a round trip
+	 * through a codepoint. So the switch travels too, and the two streams
+	 * are both true: the session routes chords and cells from the cooked
+	 * one and hands the raw one to whichever window is a guest.
+	 *
+	 * ONLY WHILE IT IS ASKED FOR, and a view that was never asked sends
+	 * nothing. See KCON_OP_VIEW_RAW. All four raw verbs are refused from
+	 * a view that did not claim KCON_VIEW_RAW and from one that attached
+	 * to observe, the same guard KCON_OP_KEY keeps.
+	 *
+	 * u16 keycode — evdev, NOT +8, refused above KCON_KEYCODE_MAX;
+	 * u8 state, 1 pressed 0 released; u32 depressed; u32 latched;
+	 * u32 locked; u32 group; u32 time (the backend's own clock,
+	 * milliseconds).
+	 *
+	 * THE COOKED MESSAGE FOR THE SAME PHYSICAL KEY GOES FIRST. The session
+	 * decides from the cooked one whether a chord ate the key, and a raw
+	 * key that arrived before that decision would be one the guest
+	 * receives and the desktop also acts on.
+	 *
+	 * AND A KEY IS NEVER COALESCED, however far behind the link is. A
+	 * dropped press is a letter that never arrives; a dropped release is a
+	 * key held down for ever. Only motion compresses — see
+	 * KCON_OP_PTR_RAW.
+	 */
+	KCON_OP_KEY_RAW,
+
+	/*
+	 * VIEW -> SESSION: WHERE THE POINTER IS IN PIXELS, AND HOW FAR IT
+	 * MOVED.
+	 *
+	 * KCON_OP_PTR is a cell and an offset inside it, reported when the
+	 * cell changes, which is everything a grid needs and nothing a
+	 * scrollbar two pixels wide can use. This carries the view's own pixel
+	 * position, the cell size those pixels were measured in — so the
+	 * session derives the same cell the view would, with no rounding and
+	 * no disagreement across a font step — and the deltas the device
+	 * actually reported, which are the only thing a guest that grabbed the
+	 * pointer can read.
+	 *
+	 * i32 x; i32 y — absolute, this view's pixels;
+	 * u16 cell_w; u16 cell_h — what x and y were measured in, and never
+	 *   zero: the session derives its cell by DIVIDING by them, so a zero
+	 *   is refused here rather than at the consumer;
+	 * i32 dx; i32 dy — 1/256 pixel, accelerated;
+	 * i32 dx_unaccel; i32 dy_unaccel — 1/256 pixel, as the device said;
+	 * u16 button — evdev BTN_*, 0 for a motion that pressed nothing,
+	 *   refused above KCON_KEYCODE_MAX;
+	 * u8 state — 1 pressed 0 released, meaningless when button is 0;
+	 * u8 mods — KT_MOD_*, which is the session's and not the guest's:
+	 *   a guest reads its modifiers from its own keyboard, and the session
+	 *   reads them from here because Super+drag is a chord on a pointer;
+	 * u32 time.
+	 *
+	 * THE FULL BUTTON CODE AND NOT A NARROWED ONE. A mouse with side
+	 * buttons drives Back and Forward in a browser, and KT_MB_* has three
+	 * names in it.
+	 *
+	 * MOTION COALESCES TO THE NEWEST; NOTHING ELSE COALESCES. A device at
+	 * a thousand hertz on a socket that also carries a window of pixels is
+	 * a socket that carries no pixels, and only the newest position is
+	 * true — so a view merges a motion into the pending one when no
+	 * button, key or axis message sits between them, and SUMS the deltas
+	 * it merges, because a delta is a distance and dropping one shortens
+	 * the movement a grabbed guest sees. A message carrying a button is
+	 * the boundary and is sent whole: a click coalesced away is a click
+	 * that never happened, and a click merged into a later position is a
+	 * click on the wrong thing.
+	 */
+	KCON_OP_PTR_RAW,
+
+	/*
+	 * VIEW -> SESSION: A SCROLL WITH A SECOND AXIS AND A REAL VALUE.
+	 *
+	 * The cell path has no horizontal axis at all — KT_MB_WHEEL_UP and
+	 * _DOWN are the whole vocabulary — and a detent quantised to one step
+	 * is a page that jumps. A guest wants the continuous value, the
+	 * high-resolution count and which device made it, because a wheel and
+	 * a finger scroll differently and a toolkit that is told which will
+	 * behave like every other desktop.
+	 *
+	 * i32 value — 1/256 pixel; i32 value120; u8 axis — KCON_AXIS_*;
+	 * u8 source — KCON_AXIS_SRC_*; u8 flags — KCON_AXIS_INVERTED;
+	 * u8 mods — KT_MOD_*; u32 time.
+	 *
+	 * BOTH NUMBERS, because a client reads one or the other and never
+	 * both: value120 is what a modern toolkit steps by and `value` is what
+	 * one that predates it scrolls by. A value of zero ends the gesture,
+	 * which is what lets a guest stop its kinetic scrolling — so a zero is
+	 * a message like any other and is never coalesced away.
+	 *
+	 * AN AXIS OR A SOURCE OUTSIDE ITS ENUM IS REFUSED. The far end maps
+	 * these in a switch, and a scroll it had to guess the direction of is
+	 * a page that moves the wrong way.
+	 */
+	KCON_OP_AXIS_RAW,
+
+	/*
+	 * VIEW -> SESSION: THE LAYOUT THIS VIEW'S KEYBOARD IS RUNNING.
+	 *
+	 * A keycode means nothing without one. The session holds it, hands it
+	 * to every embedded guest, and a guest then reads the person's own
+	 * letters instead of the ones printed on an American keyboard.
+	 *
+	 * u8 format — KCON_KEYMAP_XKB_V1, xkb's text format and the only one
+	 * either end speaks; u32 length including the terminator, refused
+	 * above KCON_KEYMAP_MAX and refused when the last byte is not one;
+	 * then that many bytes.
+	 *
+	 * IT TRAVELS AS BYTES AND NOT AS A DESCRIPTOR, which is what keeps
+	 * this socket forwardable: a view may be at the far end of an ssh
+	 * link, where a descriptor cannot cross at all. It is sent when raw
+	 * input is first asked for and again whenever the layout changes — not
+	 * at hello, because a session that never opens a guest would have paid
+	 * for it on the link for nothing.
+	 */
+	KCON_OP_KEYMAP,
+
+	/*
+	 * SESSION -> VIEW: START, OR STOP, SENDING RAW INPUT.
+	 *
+	 * u8, 1 on and 0 off. Off is where every view starts, so a view that
+	 * never hears this sends nothing.
+	 *
+	 * THE SESSION ASKS ONLY WHEN SOMETHING CAN USE IT — an embedded pixel
+	 * guest has the focus — because the raw stream is one message per
+	 * device event and everything else on this desktop is drawn in cells.
+	 */
+	KCON_OP_VIEW_RAW,
 
 	KCON_OP_N
 };
@@ -563,6 +739,11 @@ enum {
  * callback.
  */
 #define KCON_FRAME_STALL_MS 100
+
+/* What KCON_OP_KEYMAP's bytes are written in. One value, because xkb's text
+ * format is the one thing both a view's keyboard and a guest's compiler
+ * speak. */
+enum { KCON_KEYMAP_XKB_V1 = 1 };
 
 /*
  * The most rectangles an input region may name. Every surface in this tree
@@ -623,9 +804,67 @@ enum {
  * has painted it. The session then sends the next frame when this view is
  * ready for it, which is what makes an animation arrive at the display's own
  * rate rather than at a timer's. A view without it is paced by the session's
- * clock and its queue depth, as before the op existed.
+ * clock and its queue depth.
  */
 #define KCON_VIEW_FRAME 0x8u
+
+/*
+ * KCON_VIEW_RAW says the view holds a real keyboard and a real pointing
+ * device — evdev codes, an xkb keymap and libinput's own deltas — and can
+ * report them BESIDE the cells it already reports. A view inside somebody's
+ * terminal has none of that and never claims it: what reaches that terminal
+ * is characters and a cell, so a character and a cell is all it can forward.
+ *
+ * IT IS NOT A PROMISE TO SEND. The session asks, with KCON_OP_VIEW_RAW, and
+ * asks only while an embedded window has the focus — raw motion is one
+ * message per device event, and a view that sent it unasked would put a
+ * thousand messages a second down a link that may be ssh.
+ *
+ * A VIEW THAT NEVER CLAIMS IT IS DRIVEN ENTIRELY BY THE COOKED STREAM. It is
+ * never asked, so it sends no raw message and no keymap; its input arrives as
+ * KCON_OP_KEY and KCON_OP_PTR and the session drives a pixel guest from those
+ * exactly as it drives a cell window. Every capability here is asked for and
+ * none is assumed, which is what makes a view that claims nothing a view the
+ * session can still drive.
+ */
+#define KCON_VIEW_RAW 0x10u
+
+/*
+ * The most keymap a view may send. Far above any real layout — a full xkb
+ * text keymap is tens of kilobytes — and far below KCON_MAX_PAYLOAD, because
+ * a length field is an allocation request from a peer that may be remote.
+ */
+#define KCON_KEYMAP_MAX (256u << 10)
+
+/*
+ * THE HIGHEST EVDEV CODE THAT CROSSES, keys and pointer buttons alike: they
+ * share one number space and BTN_LEFT is a key code like any other. It is
+ * evdev's own KEY_MAX, written out rather than included, because libkcon
+ * links no Linux input header and the view that sends it may be another
+ * machine.
+ *
+ * A higher code is refused at the server. Whatever holds a bit per key — the
+ * set of presses a window is owed a release for — is sized from this, so a
+ * code the wire admitted and that table cannot hold is a write outside it.
+ */
+#define KCON_KEYCODE_MAX 767
+
+/*
+ * Which way a scroll went, and what made it. The session forwards these to a
+ * pixel guest; nothing drawn in cells reads them, because a cell scrolls by
+ * whole lines and has no second axis to scroll along.
+ */
+enum { KCON_AXIS_VERT = 0, KCON_AXIS_HORIZ = 1 };
+enum {
+	KCON_AXIS_SRC_WHEEL = 0,
+	KCON_AXIS_SRC_FINGER,
+	KCON_AXIS_SRC_CONTINUOUS,
+	KCON_AXIS_SRC_WHEEL_TILT,
+	KCON_AXIS_SRC_N
+};
+/* The device reverses the direction itself — natural scrolling. It is the
+ * guest's to know, because the guest draws the scrollbar. */
+#define KCON_AXIS_INVERTED 0x1u
 
 /*
  * WHAT A VIEW MAY DO, sent after its capabilities and separate from them: a
@@ -872,6 +1111,43 @@ typedef struct {
 } KconOut;
 
 /*
+ * A KEY, A POINTER AND A SCROLL AS THE DEVICE REPORTED THEM. Structs rather
+ * than fourteen arguments, and prefixed because they are exported.
+ *
+ * Every field is already bounded when a hook sees one: the server refuses a
+ * keycode or a button above KCON_KEYCODE_MAX, a cell size of zero and an axis
+ * or a source outside its enum, so the session may divide by a cell size and
+ * index by a code without checking either again.
+ */
+typedef struct {
+	int code;		/* evdev, NOT +8                          */
+	int state;		/* 1 pressed, 0 released                  */
+	unsigned depressed, latched, locked, group;
+	unsigned ms;
+} KconKeyRaw;
+
+typedef struct {
+	int x, y;		/* the view's own pixels, absolute        */
+	int cell_w, cell_h;	/* the cell those pixels were measured in */
+	int dx, dy;		/* 1/256 pixel, accelerated               */
+	int dx_un, dy_un;	/* 1/256 pixel, as the device reported    */
+	int button;		/* evdev BTN_*, 0 for motion alone        */
+	int state;		/* 1 pressed, 0 released                  */
+	int mods;		/* KT_MOD_*, for the SESSION's routing    */
+	unsigned ms;
+} KconPtrRaw;
+
+typedef struct {
+	int value;		/* 1/256 pixel                            */
+	int value120;
+	int axis;		/* KCON_AXIS_*                            */
+	int source;		/* KCON_AXIS_SRC_*                        */
+	int flags;		/* KCON_AXIS_INVERTED                     */
+	int mods;
+	unsigned ms;
+} KconAxisRaw;
+
+/*
  * The longest argument vector KCON_OP_RUN carries. A desktop entry's Exec with
  * its file arguments is a handful of words; the cap is here because the count
  * on the wire is an allocation request from a peer.
@@ -891,9 +1167,10 @@ typedef struct {
 
 /*
  * KCON_RUN_VT pins the guest to a terminal of its own even though embedding is
- * what everything else gets. It is for an application that needs acceleration a
- * software renderer cannot give it: an embedded guest is composited by pixman
- * on the CPU, which is fine for a text editor and is not a way to play a game.
+ * what everything else gets. It is for an application the card cannot be given
+ * to through a window — one that sets its own full-screen mode, or whose driver
+ * will not run against a headless output. An embedded guest is composited by
+ * the software renderer unless its box profile says `render = gpu`.
  *
  * The session decides this from the guest's box profile as well, so a caller
  * that knows nothing about the policy sends 0 and still gets the right answer.
@@ -1165,6 +1442,17 @@ void kcon_view_cursor(KconSurface *v, int x, int y);
 void kcon_view_blank(KconSurface *v, int on);
 
 /*
+ * ASK THIS VIEW FOR RAW INPUT, or stop. Silently nothing on a view that did
+ * not claim KCON_VIEW_RAW, the rule every other capability-gated call keeps.
+ *
+ * ASK ONLY WHILE SOMETHING READS IT. The stream is one message per device
+ * event — a pointer at a thousand hertz is a thousand messages a second — so
+ * a session that left it on after the last pixel guest lost the focus spends
+ * a display's link on input nothing consumes.
+ */
+void kcon_view_raw(KconSurface *v, int on);
+
+/*
  * Ask a view to step its font: +1 bigger, -1 smaller, 0 back to the one it
  * started with. Silently nothing on a view that did not claim KCON_VIEW_FONT,
  * so a caller that checked the flag and one that did not behave alike.
@@ -1248,6 +1536,30 @@ typedef struct {
 			 int btn, int press, void *user);
 
 	/*
+	 * THE SAME PHYSICAL INPUT, UNRESOLVED. A cell desktop reads the hooks
+	 * above and nothing else; these exist for the one thing on it that is
+	 * not cells. The cooked hook for the same event has already run, so
+	 * the session has decided which window the pointer is over and whether
+	 * a chord swallowed the key before either of these is called.
+	 *
+	 * They are called only for a view that claimed KCON_VIEW_RAW and was
+	 * asked with kcon_view_raw(); a display that claimed neither reaches
+	 * the session through the cooked hooks alone.
+	 */
+	void (*view_key_raw)(KconSurface *v, const KconKeyRaw *k, void *user);
+	void (*view_ptr_raw)(KconSurface *v, const KconPtrRaw *p, void *user);
+	void (*view_axis_raw)(KconSurface *v, const KconAxisRaw *a,
+			      void *user);
+	/*
+	 * A VIEW SAID WHAT ITS KEYBOARD IS. `text` is borrowed for the length
+	 * of the call, is NUL-terminated and is xkb's text format; `len`
+	 * counts the terminator. One session is one keyboard, so the last view
+	 * to say wins.
+	 */
+	void (*view_keymap)(KconSurface *v, int format, const char *text,
+			    size_t len, void *user);
+
+	/*
 	 * A surface sent a picture. `slot` is the SESSION's, already mapped;
 	 * `argb` is borrowed and is `pw` by `ph` pixels. A session with no
 	 * pixel code forwards it to its views and looks at nothing.
@@ -1323,6 +1635,18 @@ typedef struct {
 	 */
 	void (*view_touch)(KconSurface *v, int x, int y, int slot, int phase,
 			   unsigned ms, int gesture, void *user);
+
+	/*
+	 * A DISPLAY COULD NOT KEEP A PICTURE IT WAS SENT. `slot` is the
+	 * session's, already bounded against KCON_MAX_SPRITE_MAP, and the hook
+	 * is called once per slot however many one message carried.
+	 *
+	 * Whatever owns that slot owes it to this view again. See
+	 * KCON_OP_SPRITE_LOST for why the repair needs a limit of its own: the
+	 * view that lost one picture because its table is too small for the
+	 * window loses the replacement as well.
+	 */
+	void (*view_sprite_lost)(KconSurface *v, int slot, void *user);
 
 	/*
 	 * A VIEW LISTED THE FACES IT CAN RENDER. `names` is borrowed and is
@@ -1543,6 +1867,12 @@ void kcon_server_free_slot(KconServer *s, int slot);
  * delivered; a caller that chooses the pixel size must also keep a picture
  * inside KCON_MAX_PAYLOAD, because a block too large to encode is refused
  * every time it is offered.
+ *
+ * AND 1 IS THE WIRE, NOT THE SCREEN. The view has a byte budget for its own
+ * sprite table and may refuse a picture whose bytes it took; it says so with
+ * KCON_OP_SPRITE_LOST, which reaches the caller as the `view_sprite_lost`
+ * hook. A caller that treats 1 as final leaves that block blank for the life
+ * of the window.
  */
 int kcon_view_sprite(KconSurface *v, int slot, int w, int h,
 		     uint32_t fallback, const uint32_t *argb, int pw, int ph);

@@ -147,6 +147,45 @@ static int listen_socket(const char *path)
 	return fd;
 }
 
+/*
+ * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
+ *
+ * A tagged socket is a listener on ONE compositor, and the console desktop
+ * runs one per WINDOW — a kdos-cage for each embedded guest. Keyed on the box
+ * alone the path is therefore the FIRST launch's compositor for ever after:
+ * the second launch of the same application finds the file already there,
+ * connects to it, and its window opens inside the first launch's window.
+ * kdos-boxsock derives the same component from the same variable, which is
+ * what keeps the two in step with nothing passed between them.
+ *
+ * Twelve characters, because the whole path has to fit a sockaddr_un's 108 and
+ * a box name may be sixty-four of them. Every display name a compositor hands
+ * out is "wayland-<n>". Anything a path may not carry is dropped rather than
+ * escaped: the component only has to be the same on both sides and different
+ * between compositors.
+ */
+static void display_tag(char *out, size_t cap)
+{
+	const char *d = getenv("WAYLAND_DISPLAY");
+	const char *slash;
+	size_t n = 0;
+
+	if (cap > 13)
+		cap = 13;
+	if (d && (slash = strrchr(d, '/')) != NULL)
+		d = slash + 1;
+	for (; d && *d && n + 1 < cap; d++) {
+		char c = *d;
+
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		    (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_')
+			out[n++] = c;
+	}
+	out[n] = '\0';
+	if (!n)
+		snprintf(out, cap, "session");
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2 || argc > 3) {
@@ -167,11 +206,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	char lockpath[256], sockpath[256];
-	if (snprintf(lockpath, sizeof(lockpath), "%s/kdos-box-%s.lock", rundir,
-		     box) >= (int)sizeof(lockpath) ||
-	    snprintf(sockpath, sizeof(sockpath), "%s/kdos-box-%s.sock", rundir,
-		     box) >= (int)sizeof(sockpath)) {
+	char lockpath[256], sockpath[256], tag[16];
+
+	display_tag(tag, sizeof(tag));
+	if (snprintf(lockpath, sizeof(lockpath), "%s/kdos-box-%s@%s.lock",
+		     rundir, box, tag) >= (int)sizeof(lockpath) ||
+	    snprintf(sockpath, sizeof(sockpath), "%s/kdos-box-%s@%s.sock",
+		     rundir, box, tag) >= (int)sizeof(sockpath)) {
 		fprintf(stderr, "kdos-boxsock: path too long\n");
 		return 1;
 	}

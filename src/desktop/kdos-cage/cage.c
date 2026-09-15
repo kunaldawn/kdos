@@ -35,12 +35,14 @@
 
 #include "config.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
@@ -56,6 +58,9 @@
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
+#include <wlr/types/wlr_drm.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
+#include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -83,6 +88,7 @@
 
 #include "kcolor.h"
 
+#include "clipboard.h"
 #include "embed.h"
 #include "idle_inhibit_v1.h"
 #include "kembed.h"
@@ -207,13 +213,55 @@ spawn_primary_client(struct cg_server *server, char *argv[], pid_t *pid_out, str
 	return true;
 }
 
+/*
+ * HOW LONG THE GUEST HAS TO GO, and then how long it has after being told.
+ *
+ * The first window is the ordinary quit: the display has terminated, the
+ * client's connection is gone and an application notices and exits. The second
+ * is what a container runtime with children of its own takes to unwind.
+ */
+#define CAGE_CLEANUP_TERM_MS 3000
+#define CAGE_CLEANUP_KILL_MS 2000
+
+/*
+ * BOUNDED, AND IT ESCALATES.
+ *
+ * A guest that does not exit would otherwise hold this process in waitpid()
+ * for ever — and the signals that would interrupt it cannot arrive, because
+ * the event loop's signal sources are signalfds and the loop blocked SIGINT
+ * and SIGTERM to create them. A cage stuck here is a window on the parent's
+ * desktop that nothing can close and a box that nothing can collect.
+ */
 static int
 cleanup_primary_client(pid_t pid)
 {
-	int status;
+	int status = 0;
 
-	waitpid(pid, &status, 0);
+	for (int ms = 0; ms < CAGE_CLEANUP_TERM_MS; ms += 20) {
+		pid_t r = waitpid(pid, &status, WNOHANG);
 
+		if (r == pid || (r < 0 && errno != EINTR)) {
+			goto reaped;
+		}
+		nanosleep(&(struct timespec){ .tv_nsec = 20 * 1000 * 1000 },
+			  NULL);
+	}
+	kill(pid, SIGTERM);
+	for (int ms = 0; ms < CAGE_CLEANUP_KILL_MS; ms += 20) {
+		pid_t r = waitpid(pid, &status, WNOHANG);
+
+		if (r == pid || (r < 0 && errno != EINTR)) {
+			goto reaped;
+		}
+		nanosleep(&(struct timespec){ .tv_nsec = 20 * 1000 * 1000 },
+			  NULL);
+	}
+	kill(pid, SIGKILL);
+	while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+		;
+	}
+
+reaped:
 	if (WIFEXITED(status)) {
 		wlr_log(WLR_DEBUG, "Child exited normally with exit status %d", WEXITSTATUS(status));
 		return WEXITSTATUS(status);
@@ -266,13 +314,6 @@ handle_signal(int signal, void *data)
 		return 0;
 	}
 }
-
-/*
- * Whether --embed was asked for. A flag beside the server rather than in it,
- * because `active` in the server means "the channel is up" and parse_args runs
- * long before it can be.
- */
-static bool embed_want;
 
 /*
  * The headless backend inside whatever autocreate built. It wraps a single
@@ -384,16 +425,18 @@ parse_args(struct cg_server *server, int argc, char *argv[])
 			int w = 0, h = 0;
 
 			if (sscanf(optarg, "%dx%d", &w, &h) != 2 || w < 1 ||
-			    h < 1 || w > 16384 || h > 16384) {
+			    h < 1 || w > CG_EMBED_SPAN || h > CG_EMBED_SPAN) {
 				fprintf(stderr, "kdos-cage: --embed wants WxH\n");
 				return false;
 			}
-			server->embed.width = w;
-			server->embed.height = h;
+			server->embed.first_w = w;
+			server->embed.first_h = h;
 			server->embed.fd = KEMBED_FD;
 			/* Not `active` yet: that is embed_init's to set, once
-			 * the mapping exists and the parent has been told. */
-			embed_want = true;
+			 * the event source is armed and the parent has been
+			 * told. `embedded` is what the layout and the focus
+			 * rules read, and it has to be true from here. */
+			server->embed.embedded = true;
 			break;
 		}
 		case 's':
@@ -462,9 +505,20 @@ main(int argc, char *argv[])
 	 * are set only if the environment has not already: a person debugging
 	 * with WLR_BACKENDS set means it.
 	 */
-	if (embed_want) {
+	if (server.embed.embedded) {
 		setenv("WLR_BACKENDS", "headless", 0);
-		setenv("WLR_RENDERER", "pixman", 0);
+		/*
+		 * THE SOFTWARE RENDERER UNLESS THE APPLICATION ASKED FOR THE
+		 * CARD. Pixman draws into memory this process can read with no
+		 * device, no driver and nothing to negotiate, which is the
+		 * right trade for an editor and the wrong one for a game: a
+		 * guest under it has no hardware GL, no hardware video decode
+		 * and no dmabuf to offer. `render = gpu` in the box profile is
+		 * what asks for the other one, and it reaches this process as
+		 * KDOS_EMBED_GPU; see embed_gpu_setup().
+		 */
+		setenv("WLR_RENDERER",
+		       getenv("KDOS_EMBED_GPU") ? "gles2" : "pixman", 0);
 		/*
 		 * NONE OF ITS OWN. autocreate adds headless outputs at a size
 		 * of its choosing, and a second output beside the one this mode
@@ -473,6 +527,20 @@ main(int argc, char *argv[])
 		 * therefore one output.
 		 */
 		setenv("WLR_HEADLESS_OUTPUTS", "0", 0);
+		/*
+		 * THE CURSOR HAS TO BE IN THE PICTURE, because the picture is
+		 * all the parent gets. A headless output answers set_cursor
+		 * and move_cursor with `true` and stores nothing, so wlroots
+		 * believes a hardware plane carries the cursor and leaves it
+		 * out of the render pass — and the parent, which reads the
+		 * rendered bytes and nothing else, has no plane to composite.
+		 * The guest's pointer would be invisible and its shape, which
+		 * is how an application says what is under it, would never
+		 * arrive. Overridden rather than defaulted: there is no
+		 * headless cursor plane to prefer, so a person who set this to
+		 * 0 set it for some other compositor.
+		 */
+		setenv("WLR_NO_HARDWARE_CURSORS", "1", 1);
 	}
 
 	server.backend = wlr_backend_autocreate(event_loop, &server.session);
@@ -482,14 +550,26 @@ main(int argc, char *argv[])
 		goto end;
 	}
 
-	/* A headless backend has no outputs of its own — one is added at the
-	 * size the parent asked for, and a window resize resizes it. */
-	if (embed_want) {
-		struct wlr_backend *hl = find_headless(server.backend);
+	/*
+	 * A headless backend has no outputs of its own — one is added at the
+	 * size the parent asked for, and a window resize resizes it.
+	 *
+	 * THIS IS THE ANCHOR AND IT IS NEVER DESTROYED. The first toplevel
+	 * claims it, so a guest that shows one window allocates nothing and is
+	 * configured at the size this cage was forked with; outputs for the
+	 * second and further windows are added at the map. A cage that made its
+	 * first output lazily would sit with none at all for as long as the
+	 * guest takes to start — and a client that waits for a wl_output before
+	 * mapping never maps, while Xwayland's root screen stays 0x0 where no X
+	 * client can map either.
+	 */
+	if (server.embed.embedded) {
+		server.headless = find_headless(server.backend);
 
-		if (!hl || !wlr_headless_add_output(hl,
-						    (unsigned int)server.embed.width,
-						    (unsigned int)server.embed.height)) {
+		if (!server.headless ||
+		    !wlr_headless_add_output(server.headless,
+					     (unsigned int)server.embed.first_w,
+					     (unsigned int)server.embed.first_h)) {
 			wlr_log(WLR_ERROR, "Unable to create the embedded output");
 			ret = 1;
 			goto end;
@@ -502,13 +582,40 @@ main(int argc, char *argv[])
 	}
 
 	server.renderer = wlr_renderer_autocreate(server.backend);
+	if (!server.renderer && server.embed.embedded && getenv("KDOS_EMBED_GPU")) {
+		wlr_log(WLR_INFO, "embed: no hardware renderer, using pixman");
+		unsetenv("KDOS_EMBED_GPU");
+		setenv("WLR_RENDERER", "pixman", 1);
+		server.renderer = wlr_renderer_autocreate(server.backend);
+	}
 	if (!server.renderer) {
 		wlr_log(WLR_ERROR, "Unable to create the wlroots renderer");
 		ret = 1;
 		goto end;
 	}
 
-	server.allocator = wlr_allocator_autocreate(server.backend, server.renderer);
+	server.allocator = server.embed.embedded
+				   ? embed_allocator(server.backend,
+						     server.renderer)
+				   : wlr_allocator_autocreate(server.backend,
+							      server.renderer);
+	/*
+	 * A HARDWARE RENDERER WITH NO READABLE BUFFER IS WORSE THAN NO
+	 * HARDWARE RENDERER, because what it produces is a window that is
+	 * black for ever while every other part of the mechanism reports
+	 * success. Falling back costs this guest the card and nothing else.
+	 */
+	if (!server.allocator && server.embed.embedded && getenv("KDOS_EMBED_GPU")) {
+		wlr_log(WLR_INFO, "embed: no readable buffer for the hardware "
+				  "renderer, using pixman");
+		unsetenv("KDOS_EMBED_GPU");
+		setenv("WLR_RENDERER", "pixman", 1);
+		wlr_renderer_destroy(server.renderer);
+		server.renderer = wlr_renderer_autocreate(server.backend);
+		if (server.renderer)
+			server.allocator = embed_allocator(server.backend,
+							   server.renderer);
+	}
 	if (!server.allocator) {
 		wlr_log(WLR_ERROR, "Unable to create the wlroots allocator");
 		ret = 1;
@@ -516,6 +623,34 @@ main(int argc, char *argv[])
 	}
 
 	wlr_renderer_init_wl_display(server.renderer, server.wl_display);
+
+	/*
+	 * WHAT LETS A CLIENT HAND OVER A BUFFER THE CARD ALREADY HOLDS.
+	 *
+	 * Without linux-dmabuf a client has one way to give this compositor a
+	 * frame — shared memory — so a game renders on the GPU, reads the
+	 * result back to the CPU and posts it, and a video is decoded in
+	 * hardware only to be copied out of it. Advertised from what the
+	 * renderer can actually sample, so a software renderer advertises
+	 * nothing and a client keeps the road that works.
+	 *
+	 * The timeline manager goes with it: explicit synchronisation is how a
+	 * client says a buffer is finished without the driver guessing, and a
+	 * guess costs either a stall or a torn frame.
+	 */
+	if (wlr_renderer_get_texture_formats(server.renderer,
+					     WLR_BUFFER_CAP_DMABUF)) {
+		if (wlr_renderer_get_drm_fd(server.renderer) >= 0)
+			wlr_drm_create(server.wl_display, server.renderer);
+		wlr_linux_dmabuf_v1_create_with_renderer(server.wl_display, 5,
+							 server.renderer);
+	}
+	if (wlr_renderer_get_drm_fd(server.renderer) >= 0 &&
+	    server.renderer->features.timeline &&
+	    server.backend->features.timeline)
+		wlr_linux_drm_syncobj_manager_v1_create(
+			server.wl_display, 1,
+			wlr_renderer_get_drm_fd(server.renderer));
 
 	wl_list_init(&server.views);
 	wl_list_init(&server.outputs);
@@ -822,19 +957,26 @@ main(int argc, char *argv[])
 	 * first thing the parent hears is HELLO, and a parent that heard it
 	 * before there was anything to draw would open an empty window.
 	 */
-	if (embed_want) {
+	if (server.embed.embedded) {
 		seat_embed_enable(server.seat);
-		if (!embed_init(&server, server.embed.fd, server.embed.width,
-				server.embed.height)) {
+		if (!embed_init(&server, server.embed.fd)) {
 			wlr_log(WLR_ERROR, "Unable to open the embed channel");
 			ret = 1;
 			goto end;
 		}
+		/*
+		 * THE SELECTION BRIDGE COMES UP WITH THE CHANNEL, because a
+		 * copy this cage makes before it is listening is a copy the
+		 * session never hears about — and it is the session that owns
+		 * the clipboard every other window pastes from.
+		 */
+		clipboard_init(&server);
 	}
 
 	seat_center_cursor(server.seat);
 	wl_display_run(server.wl_display);
 
+	clipboard_finish(&server);
 	embed_finish(&server);
 
 #if CAGE_HAS_XWAYLAND

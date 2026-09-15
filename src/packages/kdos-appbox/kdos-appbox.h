@@ -74,6 +74,16 @@ typedef struct {
 	int  autoexport; /* 1 = its apps become host launchers on install    */
 	int  pids;       /* --pids-limit, 0 for unlimited                    */
 	int  autostop_s; /* idle seconds before `kdos-box gc` stops it, 0 off*/
+	/*
+	 * THE SESSION'S TWO KEYS, CARRIED AND NOT INTERPRETED. `display`
+	 * chooses between a window and a terminal of the guest's own and
+	 * `render` chooses the cage's renderer; both are read by kdos-con and
+	 * mean nothing to a container flag. They are held here so that a
+	 * rewrite of this file keeps them — a profile writer that knows only
+	 * its own keys silently deletes everybody else's.
+	 */
+	char display[16];
+	char render[16];
 	char memory[32]; /* --memory                                          */
 	char cpus[16];   /* --cpus                                            */
 	/* What `profile_print` reports it could NOT enforce. A setting that

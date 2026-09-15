@@ -36,6 +36,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/vt.h>
 #include <signal.h>
@@ -121,6 +122,57 @@ static int vt_alloc(void)
 	return n;
 }
 
+/*
+ * A TERMINAL WHOSE GUEST HAS GONE AND WHICH THE KERNEL STILL CALLS BUSY.
+ *
+ * VT_DISALLOCATE fails while anything still holds the console open, and the
+ * descriptors are seatd's rather than ours: it closes them on its own schedule
+ * once the guest's session ends, which is after the session has already reaped
+ * the child. A number dropped at that point is a terminal leaked for the life
+ * of the login, and a desktop that launches enough guests then refuses one
+ * with "every virtual terminal is in use" on a machine with nothing on any of
+ * them — so the number is kept and tried again on the next pass.
+ */
+static int freeing[16];
+static int nfreeing;
+
+static void free_later(int vt)
+{
+	for (int i = 0; i < nfreeing; i++)
+		if (freeing[i] == vt)
+			return;
+	if (nfreeing < (int)(sizeof(freeing) / sizeof(freeing[0])))
+		freeing[nfreeing++] = vt;
+}
+
+/* A NUMBER THAT CAME BACK OUT OF VT_OPENQRY IS A LIVE GUEST'S, and
+ * disallocating that one takes the screen from an application nobody asked to
+ * close. The window list is what says so, and it is the only authority. */
+static int vt_in_use(int vt)
+{
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->kind == WIN_VT && w->vt == vt)
+			return 1;
+	return 0;
+}
+
+static void free_pending(void)
+{
+	int fd = console_fd();
+	int keep = 0;
+
+	if (fd < 0)
+		return;
+	for (int i = 0; i < nfreeing; i++) {
+		if (vt_in_use(freeing[i]))
+			continue;	/* handed back out; not ours to take */
+		if (ioctl(fd, VT_DISALLOCATE, freeing[i]) == 0)
+			continue;
+		freeing[keep++] = freeing[i];
+	}
+	nfreeing = keep;
+}
+
 int vt_show(Win *w)
 {
 	int fd = console_fd();
@@ -134,9 +186,12 @@ int vt_show(Win *w)
 
 /*
  * Back to the terminal the desktop is on, and let the kernel have the guest's
- * back. A VT that is still busy stays allocated, which is the kernel saying it
- * is not ours to take back — best effort, and the query above steps over it
- * either way.
+ * back.
+ *
+ * THE SCREEN ONLY COMES HOME IF THIS GUEST HAD IT. A second guest may be the
+ * one being looked at, and switching to the desktop because some OTHER
+ * application exited takes the screen out from under an application nobody
+ * touched.
  */
 static void vt_release(Win *w)
 {
@@ -144,9 +199,10 @@ static void vt_release(Win *w)
 
 	if (fd < 0 || w->vt <= 0)
 		return;
-	if (w->vt_home > 0)
+	if (w->vt_home > 0 && vt_console() == w->vt)
 		ioctl(fd, VT_ACTIVATE, w->vt_home);
-	ioctl(fd, VT_DISALLOCATE, w->vt);
+	if (ioctl(fd, VT_DISALLOCATE, w->vt) != 0)
+		free_later(w->vt);
 	w->vt = 0;
 }
 
@@ -222,6 +278,16 @@ Win *vt_open(const char *const argv[], const char *title, int cage)
 	pid_t pid = fork();
 
 	if (pid < 0) {
+		/*
+		 * THE SCREEN IS ALREADY ON THE NEW TERMINAL and nothing is
+		 * going to draw there. Bring it back and give the number up, or
+		 * a launch that failed leaves a blank console the person has to
+		 * find a chord to leave.
+		 */
+		if (home > 0)
+			ioctl(fd, VT_ACTIVATE, home);
+		if (ioctl(fd, VT_DISALLOCATE, vt) != 0)
+			free_later(vt);
 		free(w);
 		return NULL;
 	}
@@ -239,7 +305,11 @@ Win *vt_open(const char *const argv[], const char *title, int cage)
 		 */
 		int null = open("/dev/null", O_RDWR);
 
-		ioctl(fd, VT_WAITACTIVE, vt);
+		/* A WAIT CUT SHORT IS A GUEST ON THE WRONG TERMINAL: seatd
+		 * binds it to whatever is active when it asks, so an interrupted
+		 * wait hands it the console's own VT and seatd refuses it. */
+		while (ioctl(fd, VT_WAITACTIVE, vt) != 0 && errno == EINTR)
+			;
 		setsid();
 		if (null >= 0) {
 			dup2(null, 0);
@@ -256,6 +326,19 @@ Win *vt_open(const char *const argv[], const char *title, int cage)
 		 * be one: kdos-term started inside it is a Wayland window
 		 * there, not a cell surface here. */
 		unsetenv("KDOS_CON");
+		/*
+		 * AND IT IS A CLIENT OF NO OTHER DISPLAY EITHER, which is the
+		 * whole point of the terminal it was given. wlroots picks its
+		 * backend from the environment before it looks at a card:
+		 * `WAYLAND_DISPLAY` or `WAYLAND_SOCKET` makes the cage a window
+		 * inside another compositor and `DISPLAY` makes it an X11
+		 * window, so either one left standing gives this guest a
+		 * headless-grade path on the very terminal that exists to hand
+		 * it the card.
+		 */
+		unsetenv("WAYLAND_DISPLAY");
+		unsetenv("WAYLAND_SOCKET");
+		unsetenv("DISPLAY");
 
 		kb_child_reset_signals();
 		execvp(av[0], (char *const *)av);
@@ -289,6 +372,7 @@ void vt_reap(void)
 		vt_release(w);
 		win_close(w);
 	}
+	free_pending();
 }
 
 /*
@@ -305,11 +389,25 @@ void vt_close(Win *w)
 		kill(w->vt_pid, SIGTERM);
 }
 
-/* Every guest, at shutdown: the desktop is going and a compositor holding a
- * terminal it opened is a terminal nobody can get back. */
+/*
+ * Every guest, at shutdown: the desktop is going and a compositor holding a
+ * terminal it opened is a terminal nobody can get back.
+ *
+ * AND THE SCREEN COMES BACK WITH THE SESSION. A desktop that went away while a
+ * guest held the display leaves it on a terminal whose compositor is being
+ * killed — a blank console, with the login the getty draws on another one the
+ * person has no reason to look for.
+ */
 void vt_close_all(void)
 {
-	for (Win *w = S.wins; w; w = w->next)
-		if (w->kind == WIN_VT && w->vt_pid > 0)
-			kill(w->vt_pid, SIGTERM);
+	int fd = console_fd();
+	int active = vt_console();
+
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w->kind != WIN_VT || w->vt_pid <= 0)
+			continue;
+		kill(w->vt_pid, SIGTERM);
+		if (fd >= 0 && w->vt == active && w->vt_home > 0)
+			ioctl(fd, VT_ACTIVATE, w->vt_home);
+	}
 }

@@ -436,18 +436,20 @@ minimalism: it is what lets the view socket be forwarded over `ssh`, so a deskto
 another machine is the same desktop rather than a second implementation. A sprite travels as its
 pixels and is cached by key; nothing on either socket is a handle to anything.
 
-**One descriptor exists, on a third channel that is neither.** An embedded application's compositor
-is a child of the session, and its frames come back over a `socketpair` created *before* the fork
-and inherited — never a path anything can connect to, never a name in a directory, never reachable
-by a process that is not that child. The shared mapping it passes is what a frame is; passing it any
-other way would mean copying every frame through the session, which is the process whose whole
-purpose is to hold no pixels.
+**Descriptors cross on one channel, and it is neither of those.** An embedded application's
+compositor is a child of the session, and its frames come back over a `socketpair` created *before*
+the fork and inherited — never a path anything can connect to, never a name in a directory, never
+reachable by a process that is not that child. What crosses it is a shared mapping for each window
+the guest maps, the keymap, and a sealed `memfd` for a selection. The mapping **is** the frame:
+passing it any other way would mean copying every frame through the session, which is the process
+whose whole purpose is to hold no pixels.
 
 So the rule is stated as a boundary rather than as a habit: **a descriptor may cross a channel with
 exactly one peer that this process forked.** Anything a stranger can connect to carries bytes.
 
 **`testing/selftest.sh` holds the boundary.** It greps `libkcon`, `kdos-con` and `kdos-view` for
-`SCM_RIGHTS` and allows exactly one file — the session's end of that private pair. A descriptor
+`SCM_RIGHTS` and allows exactly one file — `kdos-con`'s `embed.c`, the session's end of that
+private pair. A descriptor
 added to either published protocol is a broken build rather than a property somebody has to
 remember, which is the only form a rule like this survives in.
 

@@ -116,6 +116,64 @@ int sh_app_group_for(const char *categories)
 	return 0;				/* Accessories */
 }
 
+/* The next whitespace-delimited token of an Exec line: `*len` is its length,
+ * `*p` is advanced past it, and NULL comes back at the end of the line. */
+static const char *exec_token(const char **p, size_t *len)
+{
+	const char *s = *p, *t;
+
+	while (*s == ' ' || *s == '\t')
+		s++;
+	if (!*s)
+		return NULL;
+	t = s;
+	while (*s && *s != ' ' && *s != '\t')
+		s++;
+	*p = s;
+	*len = (size_t)(s - t);
+	return t;
+}
+
+/*
+ * IS THIS EXEC LINE THE BOX LAUNCHER — matched as a BINARY and a VERB, never
+ * as a fixed prefix. A generated launcher names the app's pack box between
+ * the two (`kdos-appbox -b app.gimp run gimp-3.0`) and one for an app with no
+ * pack does not, so a test on a literal head tags only the second kind and
+ * the whole packed set silently loses its mark. The option walk is
+ * kdos-appbox's own: `-b`/`--box` takes a name, every other switch takes
+ * none, and both spellings are accepted or a hand-edited entry goes unmarked.
+ */
+int sh_exec_is_boxed(const char *exec)
+{
+	const char *p = exec, *tok;
+	size_t n;
+
+	if (!exec)
+		return 0;
+	tok = exec_token(&p, &n);
+	if (!tok)
+		return 0;
+	/* An absolute path is the same launcher: compare the basename. */
+	for (size_t i = n; i > 0; i--)
+		if (tok[i - 1] == '/') {
+			tok += i;
+			n -= i;
+			break;
+		}
+	if (n != 11 || strncmp(tok, "kdos-appbox", 11))
+		return 0;
+	while ((tok = exec_token(&p, &n))) {
+		if (n == 3 && !strncmp(tok, "run", 3))
+			return 1;
+		if (*tok != '-')
+			return 0;
+		if ((n == 2 && !strncmp(tok, "-b", 2)) ||
+		    (n == 5 && !strncmp(tok, "--box", 5)))
+			exec_token(&p, &n);	/* the box name */
+	}
+	return 0;
+}
+
 /* ── the usage file ────────────────────────────────────────────────────── */
 
 static int usage_path(char *buf, size_t n)
@@ -290,12 +348,11 @@ static void add_desktop_file(const char *path)
 	 * alien-apps table is keyed by — that table's first column is the SHIM
 	 * name (`calibre`, `mousepad`) while a desktop id is upstream's own
 	 * (`calibre-gui`, `org.xfce.mousepad`), so matching on the id alone
-	 * tagged the minority where the two happen to coincide. The launcher
-	 * learned this the hard way; the shared index knows it now, so the
-	 * Start menu and kdos-menu cannot disagree with it.
+	 * tags only the minority where the two happen to coincide. The shared
+	 * index answers instead, so the Start menu and kdos-menu cannot
+	 * disagree with it.
 	 */
-	a->alien = !strncmp(a->exec, "kdos-appbox run ", 16) ||
-		   strstr(a->exec, "/kdos-appbox run ") != NULL;
+	a->alien = sh_exec_is_boxed(a->exec);
 	if (*a->exec)
 		napps++;
 	kxdg_free(&e);

@@ -15,6 +15,8 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "embed.h"
+#include "output.h"
 #include "server.h"
 #include "view.h"
 #include "xdg_shell.h"
@@ -97,9 +99,22 @@ popup_unconstrain(struct wlr_xdg_popup *popup)
 	struct wlr_box *popup_box = &popup->current.geometry;
 
 	struct wlr_output_layout *output_layout = server->output_layout;
+	/*
+	 * THE OUTPUT ITS TOPLEVEL IS ON, AND NEVER THE ONE UNDER A POINT. A
+	 * popup whose origin falls outside every output resolves to NULL, and
+	 * wlr_output_layout_get_box(NULL) is the WHOLE layout — so a menu would
+	 * be unconstrained across every window this guest has and composited
+	 * into the framebuffer of the one next to it.
+	 */
 	struct wlr_output *wlr_output =
-		wlr_output_layout_output_at(output_layout, view->lx + popup_box->x, view->ly + popup_box->y);
+		view->win.out ? view->win.out->wlr_output
+			      : wlr_output_layout_output_at(output_layout, view->lx + popup_box->x,
+							    view->ly + popup_box->y);
 	struct wlr_box output_box;
+
+	if (!wlr_output && server->embed.anchor) {
+		wlr_output = server->embed.anchor->wlr_output;
+	}
 	wlr_output_layout_get_box(output_layout, wlr_output, &output_box);
 
 	struct wlr_box output_toplevel_box = {
@@ -144,6 +159,17 @@ is_primary(struct cg_view *view)
 	return parent == NULL;
 }
 
+static struct cg_view *
+get_parent(struct cg_view *view)
+{
+	struct cg_xdg_shell_view *xdg_shell_view = xdg_shell_view_from_view(view);
+	struct wlr_xdg_toplevel *parent = xdg_shell_view->xdg_toplevel->parent;
+
+	/* `base->data` is the cg_xdg_shell_view, whose first member IS the
+	 * cg_view — the same road popup_get_view() takes. */
+	return parent ? parent->base->data : NULL;
+}
+
 static bool
 is_transient_for(struct cg_view *child, struct cg_view *parent)
 {
@@ -178,6 +204,13 @@ maximize(struct cg_view *view, int output_width, int output_height)
 }
 
 static void
+set_size(struct cg_view *view, int width, int height)
+{
+	struct cg_xdg_shell_view *xdg_shell_view = xdg_shell_view_from_view(view);
+	wlr_xdg_toplevel_set_size(xdg_shell_view->xdg_toplevel, width, height);
+}
+
+static void
 destroy(struct cg_view *view)
 {
 	struct cg_xdg_shell_view *xdg_shell_view = xdg_shell_view_from_view(view);
@@ -197,13 +230,29 @@ set_fullscreen(struct cg_xdg_shell_view *xdg_shell_view, bool fullscreen)
 	/**
 	 * Certain clients do not like figuring out their own window geometry if they
 	 * display in fullscreen mode, so we set it here.
+	 *
+	 * ITS OWN OUTPUT AND NOT THE UNION. The union spans every window this
+	 * guest has open, so a fullscreen sized from it hands the client a
+	 * surface several screens wide.
 	 */
+	struct cg_view *view = &xdg_shell_view->view;
+	struct cg_output *output = view->win.out ? view->win.out : view->server->embed.anchor;
 	struct wlr_box layout_box;
-	wlr_output_layout_get_box(xdg_shell_view->view.server->output_layout, NULL, &layout_box);
+
+	wlr_output_layout_get_box(view->server->output_layout, output ? output->wlr_output : NULL,
+				  &layout_box);
 	wlr_xdg_toplevel_set_size(xdg_shell_view->xdg_toplevel, layout_box.width, layout_box.height);
 	wlr_xdg_toplevel_set_fullscreen(xdg_shell_view->xdg_toplevel, fullscreen);
 }
 
+/*
+ * THE REQUEST GOES OUT BEFORE IT IS ANSWERED, when this cage is a window.
+ * set_fullscreen() below sizes the toplevel to the output layout — which in
+ * embedded mode is the parent's window and not the screen — so a request
+ * answered only here gives a video player the same rectangle it already had.
+ * The parent resizes the window, the output follows it, and the client is
+ * configured again at the size it asked for.
+ */
 static void
 handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data)
 {
@@ -214,7 +263,28 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data)
 		return;
 	}
 
+	embed_set_fullscreen(&xdg_shell_view->view, fullscreen);
 	set_fullscreen(xdg_shell_view, fullscreen);
+}
+
+/*
+ * The name a person reads is drawn by whoever owns the frame, and in embedded
+ * mode that is the parent: a title kept only in this process is a window
+ * called whatever its launcher was called for as long as it is open.
+ */
+static void
+handle_xdg_toplevel_set_title(struct wl_listener *listener, void *data)
+{
+	struct cg_xdg_shell_view *xdg_shell_view = wl_container_of(listener, xdg_shell_view, set_title);
+	const char *title = xdg_shell_view->xdg_toplevel->title;
+
+	if (!title) {
+		return;
+	}
+	if (xdg_shell_view->view.foreign_toplevel_handle) {
+		wlr_foreign_toplevel_handle_v1_set_title(xdg_shell_view->view.foreign_toplevel_handle, title);
+	}
+	embed_set_title(&xdg_shell_view->view, title);
 }
 
 static void
@@ -232,11 +302,14 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 	struct cg_xdg_shell_view *xdg_shell_view = wl_container_of(listener, xdg_shell_view, map);
 	struct cg_view *view = &xdg_shell_view->view;
 
+	/* THE NAME TRAVELS WITH KEMBED_OPEN, which view_map() sends: a title set
+	 * before the window exists is one the parent has nowhere to put. */
 	view_map(view, xdg_shell_view->xdg_toplevel->base->surface);
 
-	if (xdg_shell_view->xdg_toplevel->title)
+	if (xdg_shell_view->xdg_toplevel->title) {
 		wlr_foreign_toplevel_handle_v1_set_title(view->foreign_toplevel_handle,
 							 xdg_shell_view->xdg_toplevel->title);
+	}
 	if (xdg_shell_view->xdg_toplevel->app_id)
 		wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_toplevel_handle,
 							  xdg_shell_view->xdg_toplevel->app_id);
@@ -259,12 +332,34 @@ handle_xdg_toplevel_commit(struct wl_listener *listener, void *data)
 
 	wlr_xdg_toplevel_set_wm_capabilities(xdg_shell_view->xdg_toplevel, XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
 
+	struct cg_view *view = &xdg_shell_view->view;
+
+	/*
+	 * THE FIRST ORDINARY TOPLEVEL TAKES THE OUTPUT THIS CAGE STARTED WITH,
+	 * at the initial commit and not at the map: a guest that shows one
+	 * window is then configured at the size the parent forked it with,
+	 * allocates no output and comes up exactly as a single-window cage does.
+	 */
+	if (view->server->embed.embedded) {
+		output_claim_anchor(view);
+	}
+
 	if (xdg_shell_view->xdg_toplevel->requested.fullscreen) {
+		embed_set_fullscreen(view, true);
 		set_fullscreen(xdg_shell_view, true);
+	} else if (view->server->embed.embedded && !view->win.out) {
+		/*
+		 * A SECOND TOPLEVEL IS CONFIGURED 0x0 — "you choose". It has no
+		 * output yet, and a size named here is a size the client would
+		 * take for the parent's; the size it picks instead is the
+		 * natural size KEMBED_OPEN reports at the map, which is what
+		 * lets the console place a dialog at dialog size.
+		 */
+		wlr_xdg_surface_schedule_configure(xdg_shell_view->xdg_toplevel->base);
 	} else {
 		/* When an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
-		view_position(&xdg_shell_view->view);
+		view_position(view);
 	}
 }
 
@@ -278,6 +373,7 @@ handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&xdg_shell_view->map.link);
 	wl_list_remove(&xdg_shell_view->unmap.link);
 	wl_list_remove(&xdg_shell_view->destroy.link);
+	wl_list_remove(&xdg_shell_view->set_title.link);
 	wl_list_remove(&xdg_shell_view->request_fullscreen.link);
 	xdg_shell_view->xdg_toplevel = NULL;
 
@@ -288,9 +384,11 @@ static const struct cg_view_impl xdg_shell_view_impl = {
 	.get_title = get_title,
 	.get_geometry = get_geometry,
 	.is_primary = is_primary,
+	.get_parent = get_parent,
 	.is_transient_for = is_transient_for,
 	.activate = activate,
 	.maximize = maximize,
+	.set_size = set_size,
 	.destroy = destroy,
 	.close = close,
 };
@@ -318,6 +416,8 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 	wl_signal_add(&toplevel->base->surface->events.unmap, &xdg_shell_view->unmap);
 	xdg_shell_view->destroy.notify = handle_xdg_toplevel_destroy;
 	wl_signal_add(&toplevel->events.destroy, &xdg_shell_view->destroy);
+	xdg_shell_view->set_title.notify = handle_xdg_toplevel_set_title;
+	wl_signal_add(&toplevel->events.set_title, &xdg_shell_view->set_title);
 	xdg_shell_view->request_fullscreen.notify = handle_xdg_toplevel_request_fullscreen;
 	wl_signal_add(&toplevel->events.request_fullscreen, &xdg_shell_view->request_fullscreen);
 

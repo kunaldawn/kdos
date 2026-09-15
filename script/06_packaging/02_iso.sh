@@ -63,7 +63,7 @@ mksquashfs / $ISO_ROOT/system.sfs \
 #
 # THE STORE IS NOT EXCLUDED FROM THE SQUASHFS, AND MUST NOT BE. `pack_mode()`
 # is `/var/lib/kdos/packs/base.kpack` existing, so a live session whose store
-# was empty falls back to the monolithic image lane with 135 packs sitting on
+# was empty falls back to the monolithic image lane with 194 packs sitting on
 # the medium beside it. What 01_packs.sh put there is the base plus the
 # runtimes the recommended set needs — 314 MB, which is exactly what an install
 # carries — and those three files are the only ones that ride twice. Every
@@ -79,10 +79,9 @@ if [ -d /ports/appbox/packs ] && \
         cp -a /ports/appbox/packs/PACKAGES* $ISO_ROOT/packs/
     echo "Packs: $(ls $ISO_ROOT/packs/*.kpack | wc -l), $(du -sh $ISO_ROOT/packs | cut -f1)"
 else
-    # SINGLE QUOTES: backticks inside a double-quoted string are command
-    # substitution, so this line RAN `make fetch-packs` during packaging — in a
-    # chroot with no Makefile, which reported `No rule to make target
-    # 'fetch-packs'` from the middle of an ISO build that was otherwise fine.
+    # SINGLE QUOTES: backticks in a double-quoted string are command
+    # substitution, and this line would run make fetch-packs inside a chroot
+    # that has no Makefile.
     echo 'Packs: none baked — `make fetch-packs` builds them (needs a network)'
 fi
 
