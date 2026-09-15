@@ -55,7 +55,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-openwith` | Choose a handler for a file | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-osd` | Volume and brightness | [kdos-shell](../04-programs/kdos-shell.md#kdos-osd) |
 | `kdos-mpctl toggle\|stop\|next\|prev\|now\|watch` | The music, over mpd's unix socket. `watch` writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle` | [kdos-con](../04-programs/kdos-con.md#the-media-keys) |
-| `kdos-pack` | Build, sign, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
+| `kdos-pack` | Build, sign, re-stamp, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-packd` | The pack daemon | [The daemons](../04-programs/daemons.md#kdos-packd) |
 | `kdos-pick` | The file chooser and browser | [kdos-shell](../04-programs/kdos-shell.md#kdos-pick) |
 | `kdos-power` | Client for the power daemon | [The daemons](../04-programs/daemons.md#kdos-powerd) |

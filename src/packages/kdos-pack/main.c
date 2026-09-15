@@ -383,6 +383,40 @@ static int cmd_sign(int argc, char **argv)
 	return 0;
 }
 
+/*
+ * A pack carrying a digest over a span this build no longer hashes is a pack
+ * nothing can mount: kdos-packd refuses KPK_SIG_HASH, so every box composed
+ * from it fails and every application in it stops opening. Re-stamping is the
+ * repair, and it costs the signature — the block names the digest it replaced.
+ * Sign and re-index afterwards, or the packs are unsigned and the index names
+ * file hashes that have changed.
+ */
+static int cmd_restamp(int argc, char **argv)
+{
+	int done = 0, kept = 0;
+
+	if (argc < 1) {
+		fprintf(stderr, "usage: kdos-pack restamp <pack>...\n");
+		return 2;
+	}
+	for (int i = 0; i < argc; i++) {
+		int rc = kpk_restamp(argv[i]);
+
+		if (rc < 0)
+			kb_die("cannot re-stamp %s", argv[i]);
+		if (rc == 1) {
+			kept++;
+			continue;
+		}
+		done++;
+		printf("%s re-stamped — sign it again\n", argv[i]);
+	}
+	if (kept)
+		printf("%d pack%s already agreed and %s untouched\n", kept,
+		       kept == 1 ? "" : "s", kept == 1 ? "was" : "were");
+	return done || kept ? 0 : 1;
+}
+
 /* ── index ─────────────────────────────────────────────────────────────── */
 
 static int has_suffix(const char *s, const char *suf)
@@ -731,6 +765,7 @@ static int usage(void)
 		"       kdos-pack extract-meta <pack> [--icon]\n"
 		"       kdos-pack verify <pack> [--keys DIR]\n"
 		"       kdos-pack sign <pack> <key.sec>\n"
+"       kdos-pack restamp <pack>...\n"
 		"       kdos-pack index <dir> [--sign key.sec]\n"
 		"       kdos-pack delta <old> <new> [out.kdelta]\n"
 		"       kdos-pack apply <old> <delta> <out.kpack>\n"
@@ -821,6 +856,7 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "extract-meta"))	return cmd_extract_meta(n, a);
 	if (!strcmp(cmd, "verify"))		return cmd_verify(n, a);
 	if (!strcmp(cmd, "sign"))		return cmd_sign(n, a);
+	if (!strcmp(cmd, "restamp"))		return cmd_restamp(n, a);
 	if (!strcmp(cmd, "index"))		return cmd_index(n, a);
 	if (!strcmp(cmd, "delta"))		return cmd_delta(n, a);
 	if (!strcmp(cmd, "apply"))		return cmd_apply(n, a);

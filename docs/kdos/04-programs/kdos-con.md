@@ -548,6 +548,17 @@ the middle of the window. Sprite cells naming slots no display has a picture for
 fallback mark — a window full of shade blocks, which reads as a broken application rather than as
 one that has not started drawing, and a container takes the better part of a minute to come up.
 
+**A window that goes without ever having drawn says why.** The window exists from the moment the
+cage is forked, before anything is known about whether the program behind it can start — so a pack
+that will not mount, a box that will not compose or a binary that is not there all present as a
+window that opened and then closed itself, with the sentence explaining it nowhere the person was
+looking. The cage's standard error is therefore a pipe rather than the session's own descriptor:
+every line still reaches `$XDG_RUNTIME_DIR/kdos-con.log`, and the last one is kept beside the
+window. When the cage exits having published no frame, that line is raised as a notification named
+after the program, falling back to the exit status — which at least tells a program that is not on
+the machine (127) from one that ran and refused. A guest that drew and then exited is a program
+that closed, and says nothing.
+
 **Which blocks are owed is kept per block, and a cycle sends as many as its budget allows.** At an
 8x15 cell a block is a hundred and twenty kilobytes and a maximised guest is dozens of them; a
 bounding box cannot say *these four went and those six did not*, so a repaint too big for one cycle

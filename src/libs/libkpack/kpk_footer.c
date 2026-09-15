@@ -82,8 +82,11 @@ int kpk_footer_unpack(const uint8_t in[KPK_FOOTER_LEN], KpkFooter *f)
 	f->sig_off = get64(in + 56);
 	f->sig_len = get64(in + 64);
 	memcpy(f->payload_sha256, in + 72, 32);
-	/* A format this build does not know is not a pack it may guess at. */
-	if (f->format != KPK_FORMAT)
+	/* A format this build does not know is not a pack it may guess at — but
+	 * every format it does know is read, because a number that only ever
+	 * accepted the newest would make each bump reject every pack already
+	 * published. What the older ones cost is in KPK_FORMAT's comment. */
+	if (f->format < KPK_FORMAT_MIN || f->format > KPK_FORMAT)
 		return -1;
 	return 0;
 }
