@@ -3759,10 +3759,15 @@ static int serve(const char *sock, const char *view)
 				n++;
 			}
 
-		int efd[16];
-		int en = n < pcap ? embed_fds(efd, pcap - n) : 0;
+		/* Two descriptors per embedded guest — the channel and the
+		 * stderr the window reports from — and embed_fds fills as many
+		 * as it is given, so the room here is what bounds it and not
+		 * the poll array's. */
+		int efd[64];
+		int cap = pcap - n;
+		int en = n < pcap ? embed_fds(efd, cap > 64 ? 64 : cap) : 0;
 
-		for (int i = 0; i < en && i < 16; i++) {
+		for (int i = 0; i < en; i++) {
 			p[n].fd = efd[i];
 			p[n].events = POLLIN;
 			p[n].revents = 0;

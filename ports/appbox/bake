@@ -501,6 +501,18 @@ EOF
 	fi
 	if [ "$keep" = 1 ]; then
 		rm -f "$new"
+		# A KEPT PACK IS STILL SUBJECT TO THIS BUILD'S DIGEST RULE.
+		# `restamp` rewrites the footer only when the stored digest
+		# disagrees with what kpk_payload_hash measures now, and it
+		# drops the signature when it does — the block names the digest
+		# it replaced — so a re-stamped pack is signed again here.
+		# Without this, widening what the digest covers ships a medium
+		# nothing can mount: kdos-packd refuses KPK_SIG_HASH, no box
+		# composes, and every application stops opening.
+		if "$KPACK" restamp "$OUT/$id.kpack" | grep -q 're-stamped'; then
+			echo "    re-stamped $id.kpack for the current digest rule"
+			[ -n "$SIGN" ] && "$KPACK" sign "$OUT/$id.kpack" "$SIGN"
+		fi
 		echo "    unchanged — keeping $id.kpack $(kpk_ver "$OUT/$id.kpack")"
 		unchanged=$((unchanged + 1))
 	else

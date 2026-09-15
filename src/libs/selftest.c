@@ -2544,6 +2544,60 @@ static void test_pack(void)
 		free(t);
 	}
 
+	/*
+	 * A PACK FROM AN EARLIER FORMAT STILL VERIFIES, and `restamp` is what
+	 * raises it. Widening the digest's span without moving the format
+	 * number made every pack already published answer HASH — kdos-packd
+	 * mounts none of them, no box composes, and each application opens a
+	 * window that closes itself. The span is the pack's to declare.
+	 */
+	{
+		char *old = kb_path_join(dir, "fmt1.kpack");
+		char *img = kb_path_join(dir, "img.bin");
+		uint8_t buf[KPK_FOOTER_LEN];
+		KpkFooter o;
+		KpkPack op;
+		KpkMeta m;
+		char h1[65];
+
+		kpk_meta_parse("id = old\nkind = app\nversion = 1\n", 31, &m);
+		kb_write_file(img, "payload");
+		kpk_write(old, img, &m, NULL, 0);
+
+		/* Back to format 1: the number, and the digest over the
+		 * payload alone that a format 1 writer would have left. */
+		kpk_footer_read(old, &o, NULL);
+		o.format = 1;
+		ok(kpk_payload_hash(old, &o, h1) == 0,
+		   "a format 1 digest is taken over the payload alone");
+		for (int i = 0; i < 32; i++) {
+			unsigned v;
+			sscanf(h1 + i * 2, "%2x", &v);
+			o.payload_sha256[i] = (uint8_t)v;
+		}
+		kpk_footer_pack(&o, buf);
+		FILE *fp = fopen(old, "r+b");
+		fseeko(fp, -(off_t)KPK_FOOTER_LEN, SEEK_END);
+		fwrite(buf, 1, sizeof(buf), fp);
+		fclose(fp);
+
+		ok(kpk_open(old, &op) == 0, "a format 1 pack still opens");
+		eq_int((int)kpk_verify(&op, NULL, NULL), (int)KPK_SIG_NONE,
+		       "and verifies — an older format is read, not refused");
+
+		eq_int(kpk_restamp(old), 0, "restamp raises it to this format");
+		ok(kpk_footer_read(old, &o, NULL) == 0 &&
+		   o.format == KPK_FORMAT,
+		   "and the footer declares the format it was hashed under");
+		ok(kpk_open(old, &op) == 0, "the raised pack opens");
+		eq_int((int)kpk_verify(&op, NULL, NULL), (int)KPK_SIG_NONE,
+		       "and verifies under the wider span");
+		eq_int(kpk_restamp(old), 1, "a second restamp leaves it alone");
+
+		free(img);
+		free(old);
+	}
+
 	/* a format from the future */
 	{
 		char *fut = kb_path_join(dir, "future.kpack");

@@ -104,6 +104,20 @@ struct Embed {
 	Win *win;
 	pid_t pid;
 	int fd;
+	/*
+	 * THE GUEST'S STDERR, AND THE LAST LINE OF IT.
+	 *
+	 * A window is on screen from the moment the cage is forked, long before
+	 * anything is known about whether the program behind it can start. When
+	 * it cannot — a pack that will not mount, a box that will not compose,
+	 * a binary that is not there — the cage's client exits, the cage exits
+	 * with it and the window goes: a window that opened and closed itself,
+	 * with the sentence explaining it in a log nobody is looking at. Every
+	 * line still reaches the session's log; the last one is kept here so
+	 * the person watching the window is told what happened to it.
+	 */
+	int errfd;
+	char last[192];
 
 	void *map;
 	size_t map_len, slot_len;
@@ -132,6 +146,7 @@ struct Embed {
 	unsigned long long last_ms;
 
 	int gone;			/* the guest exited */
+	int status;			/* and what waitpid said about it */
 	/*
 	 * WHETHER A FRAME HAS EVER ARRIVED. The cage publishes nothing until a
 	 * client has mapped a window, so until this is set there is no picture
@@ -558,6 +573,7 @@ Win *embed_open(const char *const argv[], const char *title)
 		e->slots[i] = -1;
 	e->slot = -1;
 	e->fd = -1;
+	e->errfd = -1;
 	e->focused = 1;
 
 	cell_size(&e->cell_w, &e->cell_h);
@@ -601,6 +617,20 @@ Win *embed_open(const char *const argv[], const char *title)
 		return NULL;
 	}
 
+	/* A pipe rather than the session's own descriptor 2, so what the guest
+	 * says can be read by the window it belongs to. A failure to make one
+	 * is not a failure to launch: the child falls back to the session's
+	 * stderr, which is where every line went before. */
+	int ep[2] = { -1, -1 };
+
+	if (pipe(ep) != 0)
+		ep[0] = ep[1] = -1;
+	else {
+		fcntl(ep[0], F_SETFD, FD_CLOEXEC);
+		fcntl(ep[0], F_SETFL, O_NONBLOCK);
+		fcntl(ep[1], F_SETFD, FD_CLOEXEC);
+	}
+
 	char geom[32];
 
 	snprintf(geom, sizeof(geom), "%dx%d", e->cols * e->cell_w,
@@ -622,6 +652,10 @@ Win *embed_open(const char *const argv[], const char *title)
 	if (pid < 0) {
 		close(sv[0]);
 		close(sv[1]);
+		if (ep[0] >= 0) {
+			close(ep[0]);
+			close(ep[1]);
+		}
 		free(e->scratch);
 		free(w);
 		free(e);
@@ -631,6 +665,31 @@ Win *embed_open(const char *const argv[], const char *title)
 	if (pid == 0) {
 		int null = open("/dev/null", O_RDWR);
 
+		/*
+		 * EVERY OTHER DESCRIPTOR IS PLACED AND CLOSED BEFORE THE
+		 * CHANNEL IS INSTALLED, and the order is the whole of it.
+		 *
+		 * /dev/null and the pipe land on the lowest numbers the session
+		 * is not using, either of which can be KEMBED_FD. A channel put
+		 * there first is a channel the close that follows takes away —
+		 * and the guest then has the socket on its standard streams,
+		 * where the first thing it writes is a malformed message to its
+		 * own parent.
+		 */
+		if (null >= 0) {
+			dup2(null, 0);
+			dup2(null, 1);
+		}
+		if (ep[1] >= 0)
+			dup2(ep[1], 2);
+		if (null > 2)
+			close(null);
+		if (ep[0] >= 0)
+			close(ep[0]);
+		if (ep[1] > 2)
+			close(ep[1]);
+		close(sv[0]);
+
 		/* The inherited descriptor, at the number both halves name.
 		 * dup2 clears close-on-exec, which is what makes it survive. */
 		if (sv[1] != KEMBED_FD) {
@@ -638,14 +697,6 @@ Win *embed_open(const char *const argv[], const char *title)
 			close(sv[1]);
 		} else {
 			fcntl(sv[1], F_SETFD, 0);
-		}
-		close(sv[0]);
-
-		if (null >= 0) {
-			dup2(null, 0);
-			dup2(null, 1);
-			if (null > 2)
-				close(null);
 		}
 
 		/*
@@ -674,8 +725,11 @@ Win *embed_open(const char *const argv[], const char *title)
 	}
 
 	close(sv[1]);
+	if (ep[1] >= 0)
+		close(ep[1]);
 	e->pid = pid;
 	e->fd = sv[0];
+	e->errfd = ep[0];
 
 	w->next = S.wins;
 	S.wins = w;
@@ -761,15 +815,72 @@ static void drain(struct Embed *e)
 	}
 }
 
+/* ── what the guest said ─────────────────────────────────────────────── */
+
+/*
+ * EVERY LINE TO THE SESSION'S LOG, THE LAST ONE KEPT.
+ *
+ * The log is where a whole failure is read afterwards; `last` is one sentence,
+ * and it is the one shown to somebody whose window has just closed itself. A
+ * chunk may carry several lines or half of one, so what is kept is the last
+ * run of text in it that is not blank.
+ */
+static void drain_err(struct Embed *e)
+{
+	char buf[513];
+	ssize_t n;
+
+	if (e->errfd < 0)
+		return;
+
+	for (;;) {
+		n = read(e->errfd, buf, sizeof(buf) - 1);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				close(e->errfd);
+				e->errfd = -1;
+			}
+			return;
+		}
+		if (n == 0) {
+			close(e->errfd);
+			e->errfd = -1;
+			return;
+		}
+
+		buf[n] = '\0';
+		fputs(buf, stderr);
+
+		for (ssize_t i = 0; i < n; i++)
+			if (buf[i] == '\n' || buf[i] == '\r' || buf[i] == '\t')
+				buf[i] = '\0';
+		for (ssize_t i = n - 1; i >= 0; i--) {
+			ssize_t s = i;
+
+			if (!buf[i])
+				continue;
+			while (s > 0 && buf[s - 1])
+				s--;
+			snprintf(e->last, sizeof(e->last), "%s", buf + s);
+			break;
+		}
+	}
+}
+
 /* ── the session's side of the loop ──────────────────────────────────── */
 
 int embed_fds(int *fds, int max)
 {
 	int n = 0;
 
-	for (int i = 0; i < nembeds && n < max; i++)
-		if (embeds[i]->fd >= 0)
+	for (int i = 0; i < nembeds && n < max; i++) {
+		if (embeds[i]->fd >= 0 && n < max)
 			fds[n++] = embeds[i]->fd;
+		if (embeds[i]->errfd >= 0 && n < max)
+			fds[n++] = embeds[i]->errfd;
+	}
 	return n;
 }
 
@@ -781,6 +892,7 @@ void embed_pump(void)
 
 		if (e->fd >= 0)
 			drain(e);
+		drain_err(e);
 
 		if (!w)
 			continue;
@@ -867,6 +979,36 @@ void embed_close_all(void)
 }
 
 /*
+ * WHAT IS SAID WHEN A WINDOW GOES WITHOUT EVER HAVING SHOWN ANYTHING.
+ *
+ * The guest's own last line first: it names the step that failed, which is the
+ * only thing that tells a pack that will not mount apart from a box that will
+ * not compose. Failing that, the exit status, which at least separates a
+ * program that is not on the machine (127) from one that ran and refused.
+ */
+static void say_stillborn(const struct Embed *e)
+{
+	const char *name = e->win && e->win->prog[0]	 ? e->win->prog
+			   : e->win && e->win->title[0]	 ? e->win->title
+							 : "the application";
+	char body[256];
+
+	if (e->last[0])
+		snprintf(body, sizeof(body), "%s", e->last);
+	else if (WIFSIGNALED(e->status))
+		snprintf(body, sizeof(body),
+			 "killed by signal %d before it drew anything",
+			 WTERMSIG(e->status));
+	else
+		snprintf(body, sizeof(body),
+			 "exited with status %d before it drew anything",
+			 WEXITSTATUS(e->status));
+
+	fprintf(stderr, "kdos-con: '%s' did not start: %s\n", name, body);
+	kb_notify(name, "Did not start", body);
+}
+
+/*
  * A guest that exited closes its window. Polled rather than driven by SIGCHLD,
  * for the reason vt_reap is: the session already wakes on a timer, and a
  * handler would be a signal racing the window list.
@@ -875,11 +1017,29 @@ void embed_reap(void)
 {
 	for (int i = 0; i < nembeds; i++) {
 		struct Embed *e = embeds[i];
+		int status = 0;
 
-		if (e->pid > 0 && waitpid(e->pid, NULL, WNOHANG) == e->pid)
-			e->pid = 0, e->gone = 1;
-		if (e->gone && e->pid == 0 && e->win)
+		if (e->pid > 0 && waitpid(e->pid, &status, WNOHANG) == e->pid) {
+			e->pid = 0;
+			e->gone = 1;
+			e->status = status;
+		}
+		if (e->gone && e->pid == 0 && e->win) {
+			/*
+			 * A GUEST THAT NEVER DREW DID NOT CLOSE ITSELF — it
+			 * failed to start, and the window standing on the
+			 * desktop for as long as it took to find that out is
+			 * about to disappear with no account of why. Said once,
+			 * here, because this is the one place that knows both
+			 * that no frame ever arrived and what the program wrote
+			 * on its way out.
+			 */
+			if (!e->drew) {
+				drain_err(e);
+				say_stillborn(e);
+			}
 			win_close(e->win);
+		}
 	}
 }
 
@@ -900,6 +1060,8 @@ void embed_free(Win *w)
 
 	if (e->fd >= 0)
 		close(e->fd);
+	if (e->errfd >= 0)
+		close(e->errfd);
 	if (e->map)
 		munmap(e->map, e->map_len);
 	/*
