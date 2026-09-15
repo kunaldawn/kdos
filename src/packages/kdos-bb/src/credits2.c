@@ -214,23 +214,67 @@ static void displaytext(int p)
 
 static int scrollbase, scrollprev, scrolldone;
 
+/*
+ * HOW MUCH OF THE DOCUMENT ONE SCREEN HOLDS. The same arithmetic `end` is
+ * measured with, and it has to be, or the last step lands short of the last
+ * page or past it.
+ */
+static int scroll_page(void)
+{
+    int page = (aa_scrheight(context) - YSTART) * (dual + 1);
+
+    return page > 0 ? page : 1;
+}
+
+/*
+ * AND THE SCROLL MOVES A SCREEN AT A TIME, NEVER A LINE.
+ *
+ * Every step of `p` costs a morph -- MTIME, a whole second of cross-fade --
+ * and this document is some fifteen screens against a track of four and a
+ * half minutes. A line at a time is therefore a line every three quarters of
+ * a second against a morph that takes one: the next step starts before the
+ * last has landed, the page is permanently in motion, and nothing on it can
+ * be read. A screen at a time is one morph and then fifteen still seconds,
+ * which is what a closing document is for.
+ *
+ * THE SLOTS ARE ONE MORE THAN THE TURNS, so the last page arrives a slot
+ * early and is still on the screen while the track finishes. It is the page
+ * with the most to say and the only one nothing follows.
+ *
+ * A shorter screen is more turns of less text, so the hold shrinks exactly as
+ * fast as the reading does and no minimum has to be stated.
+ */
 static int scroll_target(int end)
 {
+    int page = scroll_page();
+    int turns = (end + page - 1) / page;
     int prog = song_progress();
+    int idx;
+
     if (scrolldone)
 	return end;
     if (prog < 0) {
 	int el = TIME - scrollbase;
+
 	if (el >= SCROLL_NOSOUND)
 	    return scrolldone = 1, end;
-	return (int) ((double) end * el / SCROLL_NOSOUND);
+	idx = (int) ((double) (turns + 1) * el / SCROLL_NOSOUND);
     }
-    if (scrollprev >= 0 && prog + 50 < scrollprev)
-	return scrolldone = 1, end;
-    scrollprev = prog;
-    if (prog >= SCROLL_ENDS_AT)
-	return scrolldone = 1, end;
-    return (int) ((double) end * prog / SCROLL_ENDS_AT);
+    else {
+	if (scrollprev >= 0 && prog + 50 < scrollprev)
+	    return scrolldone = 1, end;
+	scrollprev = prog;
+	if (prog >= SCROLL_ENDS_AT)
+	    return scrolldone = 1, end;
+	idx = (int) ((double) (turns + 1) * prog / SCROLL_ENDS_AT);
+    }
+    /* A document that fits on one screen has nothing to turn; the song still
+     * decides when the scene is over. */
+    if (turns < 1)
+	return end;
+    if (idx > turns)
+	idx = turns;
+    return (int) ((double) end * idx / turns);
 }
 
 static void decbright(void)

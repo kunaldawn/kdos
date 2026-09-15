@@ -56,13 +56,29 @@ unsigned res_wanted_flags(void)
 	}
 }
 
+/*
+ * ONE HISTORY PER CPU SLOT, AND IT GROWS. `ncpu` is the highest CPU number
+ * plus one, so bringing a CPU online can raise it — and every page that draws
+ * the per-core grid indexes h_core by the slot number up to ncpu. An array
+ * allocated once at the first sample is then indexed past its end.
+ * It never shrinks: a CPU taken offline keeps its history for when it returns.
+ */
 static void hist_alloc(void)
 {
-	if (R.h_core || R.cpu.ncpu <= 0)
+	if (R.cpu.ncpu <= R.n_hcore || R.cpu.ncpu <= 0)
 		return;
-	R.h_core = kb_calloc((size_t)R.cpu.ncpu, sizeof(*R.h_core));
-	for (int i = 0; i < R.cpu.ncpu; i++)
+
+	KprHist *grown = kb_realloc(R.h_core,
+				    (size_t)R.cpu.ncpu * sizeof(*grown));
+
+	if (!grown)
+		return;
+	R.h_core = grown;
+	for (int i = R.n_hcore; i < R.cpu.ncpu; i++) {
+		memset(&R.h_core[i], 0, sizeof(R.h_core[i]));
 		kpr_hist_init(&R.h_core[i], 1);
+	}
+	R.n_hcore = R.cpu.ncpu;
 }
 
 void res_sample(void)
@@ -78,8 +94,12 @@ void res_sample(void)
 	/* CPU: keep the previous times, because busy is over the delta. */
 	if (R.cpu.ncpu) {
 		R.cpu_prev = R.cpu;
-		R.cpu_prev.per = NULL;	/* the arrays belong to R.cpu   */
+		/* EVERY ARRAY BELONGS TO R.cpu, which is freed below: a
+		 * pointer left here is one into freed memory the moment the
+		 * next sample lands. Only the scalars are wanted. */
+		R.cpu_prev.per = NULL;
 		R.cpu_prev.khz = NULL;
+		R.cpu_prev.online = NULL;
 		R.cpu_have_prev = 1;
 	}
 	KprCpu fresh;

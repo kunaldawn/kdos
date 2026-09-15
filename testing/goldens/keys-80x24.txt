@@ -1,10 +1,13 @@
 +=  keys  =====================================================================+
+| # type to filter                                                             |
 | launch                                                                       |
 |   Super+Enter    foot                                                        |
 |   Super+d        kdos-launcher                                               |
 |   Super+Shift+q  sh -c "a && b"                                              |
+|   Super+e        sh, or raise it                                             |
 | window                                                                       |
 |   Super+q        close the window                                            |
+|   Super+`        the drop-down terminal, over every window                   |
 |   Alt+Tab        next window                                                 |
 | workspace                                                                    |
 |   Super+1        workspace 1                                                 |
@@ -17,8 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-|                                                                              |
-|                                                                              |
-|                                                                              |
-| any key closes                                                               |
+| Esc Close                                                                    |
 +==============================================================================+

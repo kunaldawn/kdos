@@ -23,3 +23,18 @@ install -Dm755 target/release/numbat $PKG/usr/bin/numbat
 # looks like a broken install rather than a missing directory.
 install -dm755 $PKG/usr/share/numbat
 cp -a numbat/modules $PKG/usr/share/numbat/modules
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/numbat.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Calculator
+GenericName=Unit Calculator
+Comment=Arithmetic that knows its units
+Exec=numbat
+Icon=system-run
+Terminal=true
+Categories=Utility;Calculator;
+Keywords=calculator;units;convert;maths;numbat;
+EOF
+chmod 644 "$PKG/usr/share/applications/numbat.desktop"

@@ -13,8 +13,11 @@ bottom of this page.
 | Command | What it is | Page |
 |---|---|---|
 | `kdos-comp` | The compositor: a frozen fork of labwc with KDOS additions | [kdos-comp](kdos-comp.md) |
-| `kdos-shell` | The panel, and twenty-seven other surfaces under other names | [kdos-shell](kdos-shell.md) |
+| `kdos-con` | The console desktop: the default session, and no Wayland on its path | [kdos-con](kdos-con.md) |
+| `kdos-shell` | The panel, and thirty-five other surfaces under other names | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor | [kdos-res](kdos-res.md) |
+| `kdos-term` | The terminal: one binary, both desktops, and the three image protocols | [kdos-term](kdos-term.md) |
+| `kdos-cage` | One application, embedded in the cell desktop or full screen on a VT — a hard fork of cage | [kdos-cage](kdos-cage.md) |
 | `kdos-lock` | The lock screen | [The daemons](daemons.md) |
 | `kdos-desktop` | Starts a session. A shell script | [The session](../03-architecture/session.md) |
 | `kdos-desktop-start` | Brings up audio and portals, then the compositor. A shell script | [The session](../03-architecture/session.md) |
@@ -75,7 +78,7 @@ Both are setuid root, and both are deliberately tiny. See
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-shot` | Screenshots | [The desktop](../02-user-guide/desktop.md) |
-| `kdos-theme` | Generates the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md) |
+| `kdos-theme` | Generates the GTK, icon and cursor themes — the tool, not the picker, which is `kdos-style` | [Theming](../02-user-guide/theming.md) |
 | `kdos-sfx`, `kdos-fetch-app`, `kdos-fetch-static` | Small helpers | [The kdos command](kdos-command.md) |
 
 ## Build and development tools
@@ -97,7 +100,7 @@ These run on a build host and **never ship on the target**.
 Three binaries provide most of the commands on the system. If you find a command on your `PATH`
 and want its documentation, find it here.
 
-### `kdos-shell` — 28 names
+### `kdos-shell` — 45 names
 
 The panel plus every surface that pops up from it. One binary, dispatched on its own name; the
 authoritative list is the name table in its own `main.c`.
@@ -108,11 +111,28 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-desk` | `kdos-pick` | `kdos-ascii` | `kdos-run` |
 | `kdos-prompt` | `kdos-notifyd` | `kdos-notify` | `kdos-osd` |
 | `kdos-cal` | `kdos-display` | `kdos-keys` | `kdos-teams` |
-| `kdos-saver` | `kdos-slit` | `kdos-doc` | `kdos-settings` |
+| `kdos-saver` | `kdos-about` | `kdos-calc` | `kdos-note` |
+| `kdos-chars` | `kdos-slit` | `kdos-doc` | `kdos-settings` |
+| `kdos-contacts` | `kdos-connect` | | |
 | `kdos-openwith` | `kdos-audio` | `kdos-net` | `kdos-bt` |
 | `kdos-devices` | `kdos-clip` | `kdos-status` | `kdos-tip` |
+| `kdos-ime` | `kdos-trash` | `kdos-peek` | `kdos-find` |
+| `kdos-pix` | `kdos-rec` | `kdos-mediad` | `kdos-disks` |
+| `kdos-print` | `kdos-time` | `kdos-users` | `kdos-update` |
+| `kdos-firewall` | | | |
 
 All are documented in [kdos-shell](kdos-shell.md).
+
+### `kdos-con` — 3 names
+
+The console session, plus the two ways in. `kdos-view` is a **separate binary**, because it links
+the display libraries the session must not.
+
+| | | |
+|---|---|---|
+| `kdos-con` | `kdos-grid` | `kdos-con-login` |
+
+Documented in [kdos-con](kdos-con.md).
 
 ### `ksvc` — 9 names
 
@@ -140,12 +160,13 @@ The supervisor, and the tools that ride on the same binary.
 | `kpkgdel` | Remove a package |
 | `kpkgdepends` | Print the resolved install order |
 
-### `kdos-appbox` — 2 names
+### `kdos-appbox` — 3 names
 
 | Name | Is |
 |---|---|
 | `kdos-appbox` | Launching boxed applications, and generating their launchers |
 | `kdos-box` | The box manager |
+| `xdg-open` | Opening a file or a link with whatever this machine opens it with. `/usr/local/bin` comes first on `PATH`, so this answers before xdg-utils' script — which is still installed and is still where an unclaimed type ends up |
 
 It is also invoked through a **shim named after each installed application**, so `gimp` on your
 `PATH` is this binary dispatching on that name.

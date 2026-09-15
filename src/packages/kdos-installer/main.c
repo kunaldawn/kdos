@@ -402,7 +402,7 @@ static void usage(void)
 	       "  --dump probe      what the installer sees on this machine\n"
 	       "  --dump plan       the steps these answers would run\n"
 	       "  --json            render --dump as JSON instead of text\n"
-	       "  --theme NAME      phosphor | amber | ice | bone\n"
+	       "  --theme NAME      phosphor | amber | ice | bone | norton | borland | perfect\n"
 	       "  --no-mouse        keyboard only\n"
 	       "  --ascii           box drawing with - | +, for odd terminals\n"
 	       "  --version\n"

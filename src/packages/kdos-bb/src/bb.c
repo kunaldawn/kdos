@@ -105,6 +105,7 @@ int bbupdate()
     int ch;
     tl_update_time();
     TIME = tl_lookup_timer(scenetimer);
+    sound_sync();
     tl_process_group (syncgroup, NULL);
     ch = aa_getkey(context, 0);
     switch (ch) {
@@ -120,9 +121,46 @@ int bbupdate()
     return (ch);
 }
 
+/*
+ * HOW OFTEN THE ANIMATION LOOP MAY DRAW.
+ *
+ * A scene states a rate for its CONTROL and never for its picture: one draw
+ * cost twenty-five milliseconds on the hardware this was written for, so the
+ * loop paced itself and nothing here had to. It does not pace itself now.
+ * Without this cap the loop draws as fast as the machine turns it -- measured
+ * at five to fifteen thousand frames a second on a fifty-column window, and
+ * seventeen megabytes a second of escape sequences for a terminal that can
+ * show sixty frames. A terminal that cannot drain that keeps the pty full,
+ * every write comes apart mid-frame, and what reaches the screen is the top
+ * of one frame over the bottom of the one before it.
+ *
+ * FIFTEEN MILLISECONDS RATHER THAN SIXTEEN AND TWO THIRDS. A scene whose
+ * control runs at exactly sixty would land a hair inside an exact sixty-frame
+ * budget every other turn and be halved to thirty; the margin is what lets a
+ * scene keep the rate it asked for.
+ *
+ * IT IS MEASURED FROM THE END OF A DRAW AND NOT FROM ITS START, WHICH IS
+ * WHAT MAKES IT A CAP AT EVERY SCREEN SIZE. Start to start, a draw costing
+ * longer than the cap has already used it up by the time it returns: the
+ * next one is due immediately, the loop never sleeps, and the render thread
+ * owns a core for as long as the demo runs. On a cell desktop the draw grows
+ * with the screen -- a 3840x2160 console is some sixty-five thousand cells
+ * against a tenth of that at 50x19 -- so the size at which the cap stops
+ * capping is a size people have. End to start, the loop is idle for this
+ * long between every pair of frames whatever one costs: 66fps when a draw is
+ * cheap, and fewer but with the machine still answering when it is not.
+ */
+#define BB_FRAME_US 15000
+
 void timestuff(int rate, void (*control) (int), void (*draw) (void), int maxtime)
 {
     int waitmode = 0, t;
+    /*
+     * ON THE SCENE CLOCK, which never restarts, so the cap carries across
+     * consecutive calls: a scene split into five of these must not be handed
+     * a free frame at each seam.
+     */
+    static int lastdraw;
     tl_timer *timer;
     bbupdate();
     /*starttime = TIME; */
@@ -150,11 +188,61 @@ void timestuff(int rate, void (*control) (int), void (*draw) (void), int maxtime
 	t = tl_process_group(syncgroup, NULL);
 	if (TIME > endtime)
 	    break;
-	if (!called && waitmode)
+	if (!called && waitmode) {
 	    tl_sleep(t);
-	else {
-	    if (draw != NULL)
+	    continue;
+	}
+
+	/*
+	 * THE CONTROL KEEPS ITS RATE AND ONLY THE PICTURE IS CAPPED. A
+	 * control handler is told how many intervals it covers, so a dropped
+	 * frame moves nothing in the animation and the scene still ends on
+	 * `endtime` -- which is what keeps every beat in step with the music.
+	 */
+	{
+	    int since = TIME - lastdraw;
+	    int due = BB_FRAME_US - since;
+
+	    /*
+	     * A CLOCK THAT WENT BACKWARDS IS A FRAME THAT IS DUE. The scene
+	     * clock is an int of microseconds and wraps after some thirty-five
+	     * minutes, which `-loop` reaches; a picture that stopped there
+	     * would never start again.
+	     */
+	    if (draw != NULL && (due <= 0 || since < 0)) {
 		draw();
+		/* The clock is stale by however long that took, and what is
+		 * being timed is the gap AFTER it -- see the note above. */
+		tl_update_time();
+		TIME = tl_lookup_timer(scenetimer);
+		lastdraw = TIME;
+		continue;
+	    }
+
+	    /*
+	     * A WAITMODE LOOP IS WOKEN BY ITS OWN CONTROL TIMER on the next
+	     * turn and must not sleep past it. This one has no such timer to
+	     * wake it, so it sleeps to whichever comes first -- without that
+	     * it spins a core waiting for a frame it is not yet allowed to
+	     * draw.
+	     *
+	     * AND NEVER PAST THE END OF THE SCENE, which is bbwait()'s rule
+	     * and is here for its reason: the beat a scene ends on is the
+	     * beat the music is on, and a loop that overslept its own last
+	     * frame would hand the next scene a late start.
+	     */
+	    if (!waitmode) {
+		/* tl_process_group() answers -1 for a group with no live
+		 * timer, and tl_sleep() refuses that outright -- so the
+		 * frame's own deadline is the bound whenever the group has
+		 * nothing to offer, or this loop spins. */
+		int wait = t < 0 ? due : (due > 0 && due < t ? due : t);
+
+		if (wait > endtime - TIME)
+		    wait = endtime - TIME;
+		if (wait > 0)
+		    tl_sleep(wait);
+	    }
 	}
     }
     starttime = endtime;
@@ -177,9 +265,12 @@ bbwait (int maxtime)
       bbupdate ();
       t = tl_process_group (syncgroup, NULL);
       wait = endtime - TIME;
-      if (wait < t)
+      if (t < 0 || t > BB_WAIT_SLICE_US)
+	t = BB_WAIT_SLICE_US;
+      if (t > wait)
 	t = wait;
-      tl_sleep (t);
+      if (t > 0)
+	tl_sleep (t);
     }
   starttime = endtime;
 }

@@ -93,7 +93,14 @@ void probe_disks(void);
  * `kdos app` cannot disagree about what KDOS suggests.
  * ──────────────────────────────────────────────────────────────────────── */
 
-#define MAX_PACKS 128
+/*
+ * BIG ENOUGH FOR THE WHOLE INDEX, with room for it to grow. A pack past this
+ * is not on the list, cannot be ticked, and — worse — an answer file naming
+ * one misses and falls the whole selection back to the recommended set, which
+ * is how an unattended install quietly puts four applications on a disk that
+ * asked for one. `ki_packs_dropped` is what says so when it ever happens.
+ */
+#define MAX_PACKS 512
 
 typedef struct {
 	char id[64];
@@ -110,6 +117,7 @@ typedef struct {
 extern KiPack ki_pack[MAX_PACKS];
 extern int ki_npack;
 extern int ki_packs_present;	/* a medium with an index on it            */
+extern int ki_packs_dropped;	/* stanzas the array had no room for       */
 
 void probe_packs(void);
 /* Tick everything the ticked packs need, transitively. Called after any change
@@ -137,6 +145,11 @@ enum { SWAP_NONE = 0, SWAP_FILE, SWAP_PART };
 
 typedef struct {
 	char keymap[64];
+
+	/* Whether the installed system asks who you are at tty1. Default on for
+	 * an install and off on the live medium: a machine with one account and
+	 * no password has nothing to ask, and one somebody installed does. */
+	int greet;
 	char tz[80];
 	char tz_label[64];
 

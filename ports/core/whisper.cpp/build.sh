@@ -14,7 +14,9 @@ mkdir -p build && cd build
 # accelerator has, and each of the others is a dependency this host lacks.
 # The MODELS ARE NOT SHIPPED — they are hundreds of megabytes each and picking
 # one is picking a language and an accuracy; `models/download-ggml-model.sh`
-# is the fetch and it needs a network.
+# is the fetch and it needs a network. kdos-rec searches
+# /usr/share/whisper.cpp/models, which is where an install here would land, so
+# a later change that packages one has a single answer rather than two.
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_SHARED_LIBS=ON -DWHISPER_BUILD_TESTS=OFF \

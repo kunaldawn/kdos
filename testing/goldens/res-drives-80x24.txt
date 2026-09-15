@@ -11,9 +11,8 @@
 | Net  |                                                                       |
 | Bat  |                                                                       |
 | Ene  |                                                                       |
+| Sen  |                                                                       |
 | Box  |                                                                       |
-|      |                                                                       |
-|      |                                                                       |
 |      |                                                                       |
 |      |sda  read / written                                           20M  9.8M|
 |      |                                                                       |
@@ -21,4 +20,5 @@
 |      |                                                                       |
 |      |                                                                      .|
 |      |1 virtual hidden  .  whole disks only  .  Enter for details            |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                            |
 +==============================================================================+

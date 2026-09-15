@@ -164,6 +164,15 @@ static const struct {
 	{ A_CONFIG, "gtk-4.0/gtk.css",          "GTK4 palette"       },
 	{ A_CONFIG, "kdos-comp/themerc-override", "window frames"    },
 	{ A_CONFIG, "foot/themes/kdos",         "foot"               },
+	{ A_CONFIG, "kdos/term-colors.conf",    "terminal colours"   },
+	{ A_CONFIG, "bat/themes/kdos.tmTheme",  "bat"                },
+	{ A_CONFIG, "micro/colorschemes/kdos.micro", "micro"         },
+	{ A_CONFIG, "helix/themes/kdos.toml",   "helix"              },
+	{ A_CONFIG, "nvim/colors/kdos.vim",     "neovim"             },
+	{ A_CONFIG, "git/kdos-delta",           "delta"              },
+	{ A_CONFIG, "newsboat/kdos-colors",     "newsboat"           },
+	{ A_CONFIG, "aerc/stylesets/kdos",      "aerc"               },
+	{ A_CONFIG, "kdos/fzf-colors",          "fzf"                },
 	{ A_CONFIG, "tmux/themes/kdos.conf",    "tmux"               },
 	{ A_CONFIG, "btop/themes/kdos.theme",   "btop"               },
 	{ A_CONFIG, "starship.toml",            "starship palette"   },
@@ -171,6 +180,7 @@ static const struct {
 	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
 	{ A_CONFIG, "mc/ini",                   "mc skin selection"  },
 	{ A_DATA,   "mc/skins/kdos.ini",        "mc skin"            },
+	{ A_CONFIG, "yazi/theme.toml",          "yazi"               },
 	{ A_DATA,   "color-schemes/KDOS.colors", "KDE colour scheme" },
 };
 #define NARTEFACTS ((int)(sizeof(ARTEFACTS) / sizeof(ARTEFACTS[0])))

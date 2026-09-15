@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-| Enter open   ^H hidden   Esc cancel                      [ Cancel ] [ Open ] |
+| Ctrl+P places  Enter open  Esc Close                     [ Cancel ] [ Open ] |
 +------------------------------------------------------------------------------+

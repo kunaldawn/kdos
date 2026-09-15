@@ -111,6 +111,9 @@ avahi
 dhcpcd
 openssh
 alsa-utils
+# PipeWire is the audio stack and alsamixer cannot see it: this is the mixer
+# that shows the graph — every stream, its device and where it is routed.
+wiremix
 bluez
 cups
 
@@ -128,6 +131,11 @@ powertop
 git
 nano
 less
+file
+lesspipe
+docx2txt
+doxx
+epy
 procps-ng
 psmisc
 pciutils
@@ -160,11 +168,21 @@ noto-cjk
 # ---------------------------------
 ripgrep
 fd
+# The same question `fd` answers, asked of an INDEX instead of the disk: `fd`
+# walks the tree every time and is right where the tree is small, and a
+# whole-disk "where is that file called…" is the case it is slow at. The index
+# is built PER USER and the binary carries no setgid bit — the decision, and
+# what upstream does instead, is in docs/kdos/03-architecture/security-model.md.
+plocate
 fzf
 bat
 eza
 jq
 yq
+# jq answers a question; this BROWSES the document — fold, search, and a JS
+# expression when the shape is not known yet. Go, so no X clipboard crate
+# follows it in.
+fx
 delta
 lazygit
 gh
@@ -219,6 +237,13 @@ ddrescue
 partclone
 testdisk
 pv
+# Writing an image OUT to a stick, which is the other direction and the one a
+# person does with a mistyped `dd` and a lost disk. caligula picks the target
+# from the removable devices only, shows a progress bar and verifies what it
+# wrote. Its privilege path is `sudo`, `doas`, `run0` or `su` in that order —
+# never pkexec, which matters here because this system has no authentication
+# agent and a pkexec path would be a control that could never succeed.
+caligula
 # unzip has been a port since the beginning and zip had not, so this system
 # could open an archive it could not make.
 zip
@@ -252,6 +277,28 @@ kiwix-tools
 # over each, readable with `gpg -d` if pass itself vanished. `tree` is a hard
 # dependency — `pass` with no argument lists the store by running it.
 pass
+# A ONE-TIME PASSWORD OUT OF THE SAME STORE. `pass otp` is a file in the
+# extension directory pass already reads with no opt-in, and it shells out to
+# `oathtool` — which is all that is kept of oath-toolkit: the PAM module is a
+# second way to log in that nobody asked for, and PSKC is an XML container for
+# provisioning tokens in bulk.
+oath-toolkit
+pass-otp
+# THE TOKEN A PROVIDER WANTS INSTEAD OF A PASSWORD. aerc and msmtp can both
+# present one; mbsync cannot, and no minter changes that — see
+# ports/core/isync/build.sh. Rust, and its HTTP client is rustls, so nothing
+# links openssl for it.
+pizauth
+# MATRIX, WITH vim'S KEYS. SQLite is bundled because every rust port here is a
+# static-pie binary and none of them can reach the shared libsqlite3 the image
+# carries; TLS is rustls for the same reason pizauth's is.
+iamb
+# SLIDES FROM A MARKDOWN FILE, drawn in the terminal — the pictures go through
+# the sixel and kitty protocols kdos-term speaks.
+presenterm
+# WHAT visidata OPENS AN xlsx WITH. sc-im reads the format in C and needs none
+# of this; visidata asks for openpyxl by name and refuses without it.
+python3-openpyxl
 # A container format is one enormous file that changes on every write, so
 # syncing it resends the whole thing and two writers corrupt it. gocryptfs
 # keeps a ciphertext file per plaintext file, which is why it is the one that
@@ -345,9 +392,17 @@ lrzsz
 # ---------------------------------
 # Buses — I2C, CAN and MQTT
 # ---------------------------------
-# The dialout group and the 70-kdos-*.rules grant these device classes; without
-# the tools the permission opens nothing.
+# i2cdetect and i2cget on a bus a person is deliberately poking at. The I2C
+# permission is `video` and 70-kdos-i2c.rules, NOT dialout: the rule is scoped
+# to the adapters that hang off a display controller, because the same /dev
+# node class also carries the chipset SMBus and every DIMM's SPD EEPROM.
 i2c-tools
+# The monitor on the other end of that DDC/CI line: brightness, contrast and
+# input source on a desktop screen, which has no /sys/class/backlight at all.
+# Built --disable-x11 — the switch defaults ON and its pkg-config check has no
+# fallback, so configure terminates on a tree with no xrandr.pc, which this one
+# is. --enable-drm reads the same EDID off the connector instead.
+ddcutil
 # SocketCAN is in the kernel and these are the commands that use it. A vehicle
 # or a machine bus is otherwise a device node with nothing to point at it.
 can-utils
@@ -444,14 +499,21 @@ libopusenc
 opusfile
 opus-tools
 # The player and the playback are separate processes: the music survives the
-# terminal closing, the session locking and the client dying, and any client
-# can attach — including one over ssh from another machine on the LAN.
+# terminal closing, the session locking and the client dying, and a client can
+# attach from anywhere that reaches the socket — including over ssh from another
+# machine on the LAN. mpd is the daemon half and ships no configuration, so it
+# has a library only once somebody writes one.
 # mpd reaches for an fmt SUBPROJECT WRAP when the system one is absent, which
 # is a download in a build that has no network.
 fmt
 mpd
-# The other half of the pair: mpd is the daemon, termusic is a full player with
-# its own. ratatui rather than ncurses, which this tree deliberately removed.
+# The client half, and the reason the sentence above is true: rmpc speaks mpd's
+# line protocol, so it attaches to a daemon that is already playing rather than
+# starting one.
+rmpc
+# A whole player rather than a client — termusic drives a playback daemon of its
+# own over gRPC and knows nothing about mpd, so the two stacks do not meet.
+# ratatui rather than ncurses, which this tree deliberately removed.
 termusic
 
 # ---------------------------------
@@ -483,6 +545,11 @@ timewarrior
 python3-jinja2
 # mpv 0.41 has a bare dependency() on it — no port, no mpv, and its fallback
 # is a subproject wrap, which is a download.
+#
+# It names vulkan-headers AND vulkan-loader itself: the loader sits far later
+# in this file, so on a FRESH build libplacebo configured with no graphics API
+# at all — meson says so and carries on — and mpv lost its Vulkan output. An
+# incremental build had the loader already and did not.
 libplacebo
 mpv
 # 40 000 photos on a stick are 40 000 files named DSC_* until something reads
@@ -492,8 +559,19 @@ exiv2
 # remove a password you own, repair an xref so something else can open it.
 qpdf
 
+# THE OTHER HALF OF THE PICTURE PATH. kdos-term decodes sixel, kitty and
+# iTerm2 pictures and nothing in this tree emitted one, so an image on the
+# console desktop was a filename. chafa converts anything to whichever of those
+# the terminal admits to; timg adds video frames and is the entry the file
+# managers' previewers call. Neither renders a PDF: that wants poppler's glib
+# binding, which the poppler port does not build. Both are also reached from a
+# message: a photograph in one is drawn by the same program that draws one in a
+# file manager, which is why neither is in the Mail block.
+chafa
+timg
+
 # ---------------------------------
-# Mail — indexed once, read by anything
+# Mail — fetched, indexed once, read by anything
 # ---------------------------------
 # Here for its m4 MACRO, not its documentation: a GNOME-lineage configure.ac
 # calls GTK_DOC_CHECK, and a missing m4 macro survives into the generated
@@ -502,12 +580,24 @@ gtk-doc
 # MIME parsing that verifies a signature and decrypts a part correctly, which
 # is the whole value over a hand-rolled parser.
 gmime
-# notmuch does not fetch, send or store mail: it INDEXES a Maildir something
-# else put there. That split is what lets aerc, mutt and a shell script see the
-# same tags — and it rides the xapian the kiwix and recoll stacks already need.
+# THE WRITER notmuch's comment below refers to. mbsync makes an IMAP mailbox
+# and ~/Mail equal in both directions and indexes nothing, which is why
+# `notmuch new` runs it from a pre-new hook and then indexes what it left: one
+# command fetches and files, and nothing has to remember the order. XOAUTH2 is
+# out of reach — that path is cyrus-sasl, which this tree does not build.
+isync
+# The transport. `sendmail` on this image is a symlink to msmtp, so aerc, cron
+# and a shell script hand a message to one program instead of three settings.
+msmtp
+# notmuch does not fetch, send or store mail: it INDEXES the Maildir isync
+# above put there. That split is what lets aerc, mutt and a shell script see
+# the same tags — and it rides the xapian the kiwix and recoll stacks already
+# need.
 notmuch
 # The client. Its notmuch binding is cgo, which is why this is the one Go port
-# built with CGO_ENABLED=1.
+# built with CGO_ENABLED=1. /etc/skel's aerc.conf names the filter chain the
+# console reads mail with, and this recipe installs the one filter that is
+# ours; the rest are aerc's own.
 aerc
 
 # It renders TABLES, which is why it is here and not lynx: technical HTML is
@@ -516,12 +606,31 @@ aerc
 # without gc.h.
 bdwgc
 w3m
+# The forms library newsboat draws through. Upstream died in 2015; this is
+# newsboat's own fork, which is the copy that still compiles. libintl is the
+# gettext runtime: musl has no gettext in libc and the gettext port is built
+# --disable-nls, so newsboat's libintl_gettext resolves nowhere without it.
+stfl
+libintl
+newsboat
 # Its database is two plain text files — greppable, diffable, syncable with
 # the rest of $HOME, and a backup is a copy.
 # A missing AX_* macro does not fail at aclocal time — it survives into the
 # generated configure as a literal word. calcurse needs AX_WITH_CURSES.
 autoconf-archive
 calcurse
+# A CALENDAR AND AN ADDRESS BOOK OVER A vdir — one directory of .ics or .vcf
+# files, which is greppable, diffable and backed up by copying it, and which
+# `kdos-cal` reads without asking khal anything at draw time. Each vendors its
+# own runtime closure: `pypackages` names it and ports/fetch crawls the build
+# backends from there, so two bundles carry what nineteen recipes would.
+khal
+khard
+# WHAT MAKES A REMOTE COLLECTION AND THE LOCAL vdir EQUAL, the way mbsync does
+# it for mail. Six of its dependencies carry C and three build through a PEP
+# 517 backend that lives inside their own sdists, which is why it is a port of
+# its own rather than another bundle inside khal's.
+vdirsyncer
 # The ledger IS a text file and the program only reads it. The data survives
 # the tool, which is not true of any accounting app with a database.
 ledger
@@ -1024,10 +1133,20 @@ lnav
 # zsh is here for Completion/ — embedded knowledge of a thousand commands'
 # arguments, worth more offline than on. bash remains the system shell.
 zsh
+# The container layer is podman and distrobox, and nothing on the console shows
+# a container. lazydocker speaks the Docker API, which `podman system service`
+# serves over a socket — that service has to be running and $DOCKER_HOST has to
+# name it, and neither is the entry's job.
+lazydocker
+# Nothing here reaches the Fediverse: iamb is Matrix and profanity is XMPP.
+# `toot tui` is the screen and `toot post` is the command, in one port.
+toot
 # A QR code is a data path off this machine that needs no network: a device id
 # or a WiFi credential leaves through a phone camera. qrencode -t ANSI draws it
 # in block characters on the cell grid.
 qrencode
+# The other direction: zbarimg reads a QR out of a screenshot, so a code
+# on the screen becomes text on the clipboard without a phone.
 zbar
 
 # ---------------------------------
@@ -1114,8 +1233,9 @@ dav1d
 # ---------------------------------
 imagemagick
 ffmpeg
-# A still out of a video, which is what a file manager shows for one, and what
-# kdos-pick's preview asks for.
+# A still out of a video, which is what a file manager shows for one. It is the
+# video backend `kdos thumb` forks; the chooser's preview asks that command for
+# a P6 rather than decoding anything itself.
 ffmpegthumbnailer
 # Pictures in a terminal, on the one graphics protocol a VT understands. It is
 # the honest answer to "show me this image" on tty1, where no compositor is.
@@ -1157,6 +1277,36 @@ printrun
 # On a keyboard-driven desktop typing speed is throughput. ttyper rather than
 # gtypist, whose last release was 2011.
 ttyper
+
+# ── Something to play ────────────────────────────────────────────────────
+#
+# A machine with nothing to play on it is a machine nobody stays at, and text
+# games are this desktop's own medium: they are cells already, so they cost a
+# terminal window and no toolkit at all. Four ports against one boxed game.
+#
+# THEY LAND AFTER coreutils ON PURPOSE. Every one of these installs with GNU
+# `install`, and toybox as this image configures it has no install applet — a
+# game listed before coreutils dies on "install: not found" at the very last
+# step of its build, hours in.
+
+# The dungeon of Doom, 3.6.7. No setgid playground and no shared score file:
+# the wrapper points $NETHACKDIR at the player's own data directory, which is
+# the only way a compile-time HACKDIR can become per-player.
+nethack
+
+# Interactive fiction, with one MIT-licensed story shipped beside it so the
+# program opens something. It also installs the z-machine MIME type, which
+# shared-mime-info does not define — without it a story file resolves to
+# nothing and the entry's MimeType line is decoration.
+frotz
+
+# Three of the BSD games — Colossal Cave, tetris and worm. Not hangman: it
+# calls err(1) when it cannot open /usr/share/dict/words, and no wordlist
+# exists anywhere on this image.
+bsd-games
+
+# The arcade end of it. A 2006 program that needs -std=gnu17 and no patch.
+moon-buggy
 # The one manufacturer-independent engine diagnostic there is, over a serial
 # adapter the dialout group and the CH341/CP210x udev rules already reach.
 python3-obd

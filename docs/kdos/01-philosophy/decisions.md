@@ -34,6 +34,48 @@ with no patch application step between the two.
 applied by hand. That is accepted deliberately: the alternative was maintaining a compositor
 outright.
 
+## A second fork for the kiosk, not a mode of the first
+
+**The question.** The console desktop composites character cells, and a Wayland client's surface is
+pixels. A graphical application launched there needs *something* holding a display for it — an
+output in memory it renders into, or a VT of its own. `kdos-comp` is already a compositor this
+project owns — give it a kiosk mode, or take a second one?
+
+**Chosen: a hard fork of cage 0.3.1**, MIT, in `src/desktop/kdos-cage`. Seven `.c` files, built on
+`wlroots-0.20` — the branch this tree already pins for the labwc fork, so there is one wlroots to
+keep current and not two.
+
+**Rejected: a `--kiosk` flag on `kdos-comp`.** The compositor is a *desktop*: window management,
+workspaces, tiling, the panel's foreign-toplevel feed, the phosphor pass, per-box identity, the
+session lock. A kiosk is the negation of nearly all of it, and a flag that turns most of a program
+off is a second program sharing a binary — with every code path in it now answering "and what does
+this do in kiosk mode?". The parts a guest on a VT actually needs are the parts cage already is.
+
+**Rejected: writing one.** It is the same argument the labwc fork made and it holds harder here,
+because the job is smaller: a kiosk compositor is roughly three thousand lines of somebody else's
+tested XWayland integration, output layout, seat handling and idle inhibition.
+
+**And the compositing happens in a SEPARATE PROCESS, which is what makes the whole thing safe to
+have.** One `kdos-cage --embed` per embedded window renders into a shared mapping and the session
+puts the bytes in its cells. So `kdos-con` links no wlroots, no mesa and no pixel library at all: a
+machine whose GPU driver is broken still boots into its desktop, and a graphical toolkit that
+crashes takes one window with it rather than the session. A compositor built into the session would
+have traded exactly that away for one fewer process.
+
+**What the fork changed.** The name, in what a person sees. `security-context-v1`, so
+`kdos-boxsock` can tag a box's socket exactly as it does under the compositor — one launch path for
+a boxed application rather than two. And a background in the palette's deep colour, because a guest
+that has not painted yet is otherwise a black rectangle in the middle of a phosphor screen.
+
+**Upstream's internal names are left alone**, which is the one place this fork differs in style
+from the labwc one: `cg_server` and `CAGE_HAS_XWAYLAND` still say cage. A fork whose identifiers
+stop matching upstream's is a fork nobody can read a security fix against, and this one is small
+enough that reading upstream's diffs by hand is the maintenance plan.
+
+**What it costs.** A second wlroots consumer to move whenever wlroots breaks API, which it does
+every release. The self-test compiles all seven files wherever wlroots exists, so that breakage is
+a failed check rather than a four-hour build that ends in an error.
+
 ## One pack per application, not one image
 
 **The question.** Roughly 180 graphical applications have to reach the medium. Ship them as one
@@ -221,6 +263,81 @@ fixed in place, including a heap corruption that only appears on 64-bit.
 
 **Rejected: a demo of our own.** One was written and then removed at the maintainer's request.
 It is not coming back, and a stale reference to one is a leftover rather than a plan.
+
+## Forking libtsm rather than writing a terminal
+
+`libkvt` is a hard fork of libtsm 4.7.1, kmscon's VT100–VT520 state machine, rebranded `tsm_` →
+`kvt_`. A terminal emulator is a decade of edge cases — charsets, the alternate screen, DEC private
+modes, wrapping rules that differ between terminals that both claim VT100 — and none of that is a
+place to be original. What is original here is the boundary, not the parser.
+
+**Upstream's cell stays.** `kcell.h` refuses a second cell type, and that refusal is about two
+libraries of the *toolkit* disagreeing — not about a terminal's private screen buffer, which nothing
+outside the library ever sees. Upstream's cell earns its place: it carries 24-bit colour, a per-cell
+age that drives damage tracking, and a symbol-table handle that is what makes combining characters
+possible at all. Reducing it to `KtuiCell` at the boundary loses none of that until the moment the
+screen is drawn.
+
+**The conversion happens in one file.** `kvt_grid.c` is the render boundary and is where a terminal
+cell becomes a `KtuiCell`. Three other files touch the toolkit and each for one narrow reason:
+`kvt_term.c` maps `KT_K_*` key codes into the escape bytes a child expects, `kvt_unicode.c` asks
+`ktui_wcwidth` so the library and the grid agree how wide a codepoint is, and `kvt_selection.c`
+holds `kvt_ui_mouse` — what a drag over a terminal means — because both desktops need that decision
+and two copies would drift.
+
+**`kvt_htable.c` and `kvt_grid.c` are the two files carrying no upstream copyright.** Every other
+file in the library carries libtsm's; the grid is this tree's render boundary, and the hash table
+was written here rather than carried.
+
+**Colour reduces to the palette's eight slots by nearest distance** — one rule for the ANSI sixteen,
+the 256 and truecolour alike. A table saying "red means the error slot" would be a second set of
+colour decisions sitting beside the palette, and `kdos theme` would move one of them. The two
+*default* colours are the exception and are slots outright: a terminal's default foreground is a
+light grey and its background black, and reducing both by distance against eight phosphor greens
+lands them on the same slot — which draws every character in the colour of the screen behind it.
+
+## Twin as prior art, not as a dependency
+
+Twin — the text-mode window manager that has drawn overlapping windows in a terminal since the
+nineties — was read closely and forked from not at all. It was mined for four questions this design
+had to answer, and answering them is what the two-socket split is:
+
+- **What happens when the last display detaches?** The session keeps every window and goes on
+  running. That is why the session holds all state and the display holds none.
+- **How does a display of a different size attach?** It says what grid it can show, and the session
+  composites to that. A view imposes a size or takes the session's own.
+- **How does input from several displays reach one session?** Through the same queue, because a view
+  decides nothing — it forwards keys and pointers and is not consulted about them.
+- **What does the wire carry when a client is remote?** Cells and input, and nothing else. No
+  window state crosses, which is what makes a forwarded display trustworthy with nothing.
+
+**Forking it was refused** for the reason the compositor is not forked either: Twin is its own window
+model, its own widget set and its own protocol, and taking it would mean two window models in one
+tree. `libkwm` exists so that a window lands in the same place on both desktops, and a second model
+would make that false by construction.
+
+## One file chooser at one width, not a wider one for the portal
+
+The chooser a boxed application reaches through the FileChooser portal and the chooser this
+desktop's own programs open are **one program at one size** — 64 columns by 22 rows — and the
+portal does not get a wider one to hold a sidebar column.
+
+**The width is not a free parameter.** The smallest screen this desktop is drawn for is 80 columns
+by 24 rows, which is what the console's reference frames are cut at. A 64-column dialog leaves eight
+cells of ground either side of it and one row of taskbar under it. A sidebar wide enough to read a
+place name is about sixteen more, and a chooser that needed 80 columns would be a chooser with no
+frame, no ground and nowhere for the bar — on the one screen every machine has.
+
+**And the third column is what it would cost.** The chooser already spends its right-hand column on
+a preview pane, so a sidebar takes its width from the names: about thirty cells for a filename, in
+the window whose entire purpose is showing filenames.
+
+**So the places are a rung and not a column.** `Ctrl+P` opens them over the file list as a declared
+`Esc` rung, reaching the same list `kxdg_places()` gives the Start menu — every place, at full
+width, and nothing taken from the names while it is closed. A boxed application's Open and Save get
+exactly what a native one gets, which is the other half of the decision: two dialogs of two widths
+would be two layouts to keep, two sets of reference frames, and two answers to how wide a chooser
+is.
 
 ## See also
 

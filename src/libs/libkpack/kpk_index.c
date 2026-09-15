@@ -61,8 +61,18 @@ int kpk_index_load(KpkIndex *ix, const char *path)
 		while (end < len && text[end] != '\n')
 			end++;
 		n = end - off;
-		if (n >= sizeof(line))
-			n = 0;			/* an over-long line is noise */
+		if (n >= sizeof(line)) {
+			/* An over-long line is SKIPPED, not blanked. A blank
+			 * line ends the stanza, so blanking one would split a
+			 * pack's fields across two entries and drop whichever
+			 * half then lacks P: or C: — the pack vanishing from
+			 * the catalogue entirely when the loss falls before
+			 * C:. No field of a stanza is ever this long. */
+			if (end >= len)
+				break;
+			off = end + 1;
+			continue;
+		}
 		memcpy(line, text + off, n);
 		line[n] = 0;
 		line[strcspn(line, "\r")] = 0;
@@ -209,13 +219,24 @@ KpkSigState kpk_index_verify(const char *path, const KsigRing *ring,
 	if (who)
 		who[0] = 0;
 	text = kb_read_all(path, &len);
+	/* An unreadable index is reported as KPK_SIG_HASH — NOT as
+	 * KPK_SIG_NONE, which is a state a caller may accept and would turn a
+	 * vanished catalogue into an acceptable unsigned one. That the index
+	 * exists is the caller's precondition; only a race gets here. */
 	if (!text)
-		return KPK_SIG_HASH;	/* no index at all is not "unsigned" */
+		return KPK_SIG_HASH;
 
 	snprintf(sig, sizeof(sig), "%s.sig", path);
 	if (!kb_path_exists(sig)) {
 		free(text);
 		return KPK_SIG_NONE;
+	}
+	/* An empty ring is a question about this machine, not about the
+	 * index: calling a correctly signed catalogue BAD sends the reader to
+	 * inspect the artefact instead of the key drawer. */
+	if (!ring || ring->n == 0) {
+		free(text);
+		return KPK_SIG_NOKEY;
 	}
 	rc = ksig_verify_file(ring, sig, text, len, who);
 	free(text);

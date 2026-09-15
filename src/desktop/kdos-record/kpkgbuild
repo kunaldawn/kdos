@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-record
+version     = 0.1.0
+release     = 1
+source      =
+description = Screen recorder: the ScreenCast portal into a GStreamer pipeline
+homepage    = https://github.com/kunaldawn/kdos
+depends     = basu xdg-desktop-portal pipewire gstreamer gst-plugins-base gst-plugins-good gst-plugins-ugly

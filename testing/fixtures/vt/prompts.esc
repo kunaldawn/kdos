@@ -1,0 +1,6 @@
+[2J[H]133;A\$ make all
+building one
+building two
+]133;D;0\]133;A\$ make broken
+error: no rule to make target
+]133;D;2\]133;A\$ sleep 30

@@ -47,21 +47,78 @@
 struct glyph_slot {
 	struct glyph_slot *next;
 	uint32_t cp;
+	uint8_t style;			/* which face this was rasterized from */
 	const struct fcft_glyph *g;	/* NULL = known-missing, cached too */
 	/*
 	 * Upscaled masks, indexed by scale. [0] and [1] are never allocated:
 	 * scale 1 is g->pix, which fcft owns. Everything above it is ours and is
-	 * unref'd in kcell_font_free().
+	 * unref'd when the cache is flushed.
 	 */
 	pixman_image_t *up[KCELL_MAX_SCALE + 1];
 };
 
-static struct fcft_font *font;
+/*
+ * THE FOUR FACES, INDEXED BY THE STYLE BITS. `face[0]` is the upright one and
+ * is the only one that must exist: the cell geometry is its, and the whole
+ * toolkit divides by that.
+ *
+ * A COMPANION IS ONLY TAKEN IF IT FITS THE CELL. fontconfig never fails a
+ * match, so asking for a bold or an italic Terminus returns SOMETHING — and on
+ * this image that something can be a different family at a different size. A
+ * companion whose advance or height differs would draw a row out of step with
+ * the one above it, so it is refused. Italic then falls back to upright, which
+ * is a style lost rather than a grid broken; bold falls back to striking the
+ * upright mask twice, which is a style approximated.
+ */
+static struct fcft_font *face[KCELL_NSTYLE];
 static struct glyph_slot *cache[CACHE_BUCKETS];
 static unsigned cache_count;
 static size_t cache_bytes;	/* the upscaled masks only; fcft owns the rest */
 static unsigned evict_cursor;
 static int cell_w, cell_h, ascent;
+
+/*
+ * fcft_fini() IS NOT REFCOUNTED: it destroys FreeType's handle, fontconfig's
+ * state and its own mutexes whether or not anything still wants them. So the
+ * init happens at most once and the teardown at most once — a load that
+ * follows a free is a fresh init, and a load that follows a load reuses the
+ * one already standing.
+ */
+static bool fcft_up;
+
+/*
+ * THE MISSING-GLYPH SENTINEL.
+ *
+ * fcft cannot report a codepoint as absent. Its fallback search ends by
+ * rasterising glyph index 0 out of the primary face, so a codepoint no
+ * installed font carries comes back as a perfectly valid glyph — a tofu box
+ * for a TrueType face, the default character for a PCF — and NULL means only
+ * that FreeType failed to load something.
+ *
+ * The only way to recognise that answer is to hold one of them for comparison:
+ * a permanent Unicode noncharacter can never be in any font, so whatever the
+ * face renders for it IS its .notdef, and anything that rasterises to the same
+ * picture at the same metrics is the same .notdef. Measured once per load,
+ * against the face finally chosen.
+ */
+#define NOTDEF_PROBE 0xfdd0u
+
+static bool notdef_known;
+static int notdef_x, notdef_y, notdef_w, notdef_h, notdef_adv;
+static bool notdef_haspix;
+static pixman_format_code_t notdef_fmt;
+static int notdef_stride, notdef_rows, notdef_pw;
+static uint8_t *notdef_bits;
+
+/* The meaningful bytes of one row. A pixman image's stride is rounded up to a
+ * four-byte boundary and fcft writes only the row's own bytes into a plain
+ * malloc, so the padding beyond this length is uninitialised and comparing it
+ * makes two identical pictures differ. */
+static size_t row_bytes(pixman_image_t *img)
+{
+	return ((size_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(img)) *
+		(size_t)pixman_image_get_width(img) + 7) / 8;
+}
 
 /* What an upscaled mask costs, from the image itself so that the accounting
  * cannot drift from the allocation. */
@@ -130,57 +187,89 @@ static bool looks_monospaced(struct fcft_font *f)
 	return m->advance.x == i->advance.x;
 }
 
-int kcell_font_load(const char *name)
+static void notdef_forget(void)
 {
-	/*
-	 * The desktop asks for Terminus by name — see docs/KDOS-TEXTMODE.md —
-	 * because it is the same rasterisation tty1 and the boot splash use.
-	 * The choice is load-bearing either way: libktui's rich tier uses
-	 * eighth blocks and the full box-drawing set, and a font missing them
-	 * renders a chart as blanks. The console's ter-kdos32n has neither,
-	 * which is exactly why the vt tier exists — see ktui_ramp_init().
-	 */
-	const char *names[1] = { name && *name ? name : "monospace:size=11" };
-
-	if (!fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_ERROR))
-		return -1;
-	font = fcft_from_name(1, names, NULL);
-	if (!font)
-		return -1;
-
-	if (!looks_monospaced(font)) {
-		/*
-		 * Retry at the same pixel size through `monospace`, which
-		 * fontconfig is obliged to resolve to something fixed-width.
-		 * Keeping the size means the layout the caller planned for
-		 * still holds; only the shape of the glyphs changes.
-		 */
-		int px = font->height > 0 ? font->height : 16;
-		char alt[64];
-		snprintf(alt, sizeof(alt), "monospace:pixelsize=%d", px);
-		const char *fallback[1] = { alt };
-
-		struct fcft_font *mono = fcft_from_name(1, fallback, NULL);
-		if (mono) {
-			fcft_destroy(font);
-			font = mono;
-		}
-		/* If even that is proportional there is nothing further to try,
-		 * and a wrong-shaped grid is still better than no desktop. */
-	}
-
-	cell_w = font->max_advance.x;
-	cell_h = font->height;
-	ascent = font->ascent;
-	if (cell_w <= 0 || cell_h <= 0) {
-		fcft_destroy(font);
-		font = NULL;
-		return -1;
-	}
-	return 0;
+	free(notdef_bits);
+	notdef_bits = NULL;
+	notdef_haspix = false;
+	notdef_known = false;
 }
 
-void kcell_font_free(void)
+/* Rasterise the probe straight off the face rather than through the cache:
+ * the sentinel is what the cache's own misses are recognised BY, and a
+ * codepoint that cannot exist has no business occupying a slot. */
+static void notdef_measure(void)
+{
+	const struct fcft_glyph *g;
+
+	notdef_forget();
+	g = fcft_rasterize_char_utf32(face[0], NOTDEF_PROBE,
+				      FCFT_SUBPIXEL_NONE);
+	if (!g)
+		return;			/* the face refuses it; nothing to match */
+
+	notdef_x = g->x;
+	notdef_y = g->y;
+	notdef_w = g->width;
+	notdef_h = g->height;
+	notdef_adv = g->advance.x;
+	if (g->pix) {
+		const uint8_t *src = (const uint8_t *)pixman_image_get_data(g->pix);
+		size_t rb;
+		int r;
+
+		notdef_fmt = pixman_image_get_format(g->pix);
+		notdef_stride = pixman_image_get_stride(g->pix);
+		notdef_rows = pixman_image_get_height(g->pix);
+		notdef_pw = pixman_image_get_width(g->pix);
+		if (notdef_stride <= 0 || notdef_rows <= 0)
+			return;
+		rb = row_bytes(g->pix);
+		/* calloc, and row-wise: the padding of the stored copy stays
+		 * zero so the probe itself never holds an uninitialised byte. */
+		notdef_bits = calloc((size_t)notdef_stride,
+				     (size_t)notdef_rows);
+		if (!notdef_bits)
+			return;		/* unmeasured is better than mismeasured */
+		for (r = 0; r < notdef_rows; r++)
+			memcpy(notdef_bits + (size_t)r * (size_t)notdef_stride,
+			       src + (size_t)r * (size_t)notdef_stride, rb);
+		notdef_haspix = true;
+	}
+	notdef_known = true;
+}
+
+/*
+ * A COMPANION FACE, OR NOTHING. The pattern is the caller's own name with the
+ * style appended, so a companion is always the same family at the same size —
+ * and it is refused outright unless its cell matches the upright face's, since
+ * a row drawn on a different advance steps out of line with the row above it.
+ */
+static struct fcft_font *companion(const char *base, const char *attrs)
+{
+	char spec[224];
+	const char *names[1] = { spec };
+	struct fcft_font *f;
+
+	snprintf(spec, sizeof(spec), "%s%s", base, attrs);
+	f = fcft_from_name(1, names, NULL);
+	if (f && (f->max_advance.x != cell_w || f->height != cell_h)) {
+		fcft_destroy(f);
+		f = NULL;
+	}
+	return f;
+}
+
+/*
+ * Every face, and everything measured against one.
+ *
+ * A glyph slot holds an fcft glyph pointer and masks sized for the current
+ * cell; kcell_ascii's candidate table is a measurement of these faces at this
+ * cell size; the tiling scratch is sized in cells. All of it names faces that
+ * are about to stop existing, so all of it goes together — keeping any of it
+ * would hand the next frame a pointer into a destroyed font.
+ */
+static void drop_faces(void)
 {
 	for (int i = 0; i < CACHE_BUCKETS; i++) {
 		struct glyph_slot *s = cache[i];
@@ -194,25 +283,128 @@ void kcell_font_free(void)
 	cache_count = 0;
 	cache_bytes = 0;
 	evict_cursor = 0;
-	if (font) {
-		fcft_destroy(font);
-		font = NULL;
+	notdef_forget();
+	for (int i = 0; i < KCELL_NSTYLE; i++)
+		if (face[i]) {
+			fcft_destroy(face[i]);
+			face[i] = NULL;
+		}
+	cell_w = cell_h = ascent = 0;
+	kcell_ascii_forget();
+	kcell_tile_forget();
+}
+
+int kcell_font_load(const char *name)
+{
+	/*
+	 * The desktop asks for Terminus by name — see docs/KDOS-TEXTMODE.md —
+	 * because it is the same rasterisation tty1 and the boot splash use.
+	 * The choice is load-bearing either way: libktui's rich tier uses
+	 * eighth blocks and the full box-drawing set, and a font missing them
+	 * renders a chart as blanks. The console's ter-kdos32n has neither,
+	 * which is exactly why the vt tier exists — see ktui_ramp_init().
+	 */
+	const char *names[1] = { name && *name ? name : "monospace:size=11" };
+
+	/* A load REPLACES whatever stood before it, and replacing it is the
+	 * first thing it does: every cached glyph and every measurement names
+	 * the outgoing faces. */
+	drop_faces();
+
+	if (!fcft_up) {
+		if (!fcft_init(FCFT_LOG_COLORIZE_AUTO, false,
+			       FCFT_LOG_CLASS_ERROR))
+			return -1;
+		fcft_up = true;
 	}
-	fcft_fini();
+	face[0] = fcft_from_name(1, names, NULL);
+	if (!face[0])
+		return -1;
+
+	if (!looks_monospaced(face[0])) {
+		/*
+		 * Retry at the same pixel size through `monospace`, which
+		 * fontconfig is obliged to resolve to something fixed-width.
+		 * Keeping the size means the layout the caller planned for
+		 * still holds; only the shape of the glyphs changes.
+		 */
+		int px = face[0]->height > 0 ? face[0]->height : 16;
+		char alt[64];
+		snprintf(alt, sizeof(alt), "monospace:pixelsize=%d", px);
+		const char *fallback[1] = { alt };
+
+		struct fcft_font *mono = fcft_from_name(1, fallback, NULL);
+		if (mono) {
+			fcft_destroy(face[0]);
+			face[0] = mono;
+		}
+		/* If even that is proportional there is nothing further to try,
+		 * and a wrong-shaped grid is still better than no desktop. */
+	}
+
+	cell_w = face[0]->max_advance.x;
+	cell_h = face[0]->height;
+	ascent = face[0]->ascent;
+	if (cell_w <= 0 || cell_h <= 0) {
+		fcft_destroy(face[0]);
+		face[0] = NULL;
+		cell_w = cell_h = ascent = 0;
+		return -1;
+	}
+
+	face[KCELL_ST_ITALIC] = companion(names[0], ":slant=italic");
+	face[KCELL_ST_BOLD] = companion(names[0], ":weight=bold");
+	face[KCELL_ST_BOLD | KCELL_ST_ITALIC] =
+		companion(names[0], ":weight=bold:slant=italic");
+
+	notdef_measure();
+	return 0;
+}
+
+void kcell_font_free(void)
+{
+	drop_faces();
+	if (fcft_up) {
+		fcft_fini();
+		fcft_up = false;
+	}
 }
 
 int kcell_w(void) { return cell_w; }
 int kcell_h(void) { return cell_h; }
 int kcell_ascent(void) { return ascent; }
 
-static struct glyph_slot *slot_for(uint32_t cp)
+/*
+ * WHICH FACE ACTUALLY ANSWERS A STYLE. A companion the load refused leaves its
+ * slot empty and the request falls back to one that exists — the slant is kept
+ * in preference to the weight, because a missing bold is recovered by striking
+ * the mask twice and a missing slant is not recoverable at all.
+ */
+static int face_style(int style)
 {
-	if (!font)
+	style &= KCELL_ST_ITALIC | KCELL_ST_BOLD;
+	if (face[style])
+		return style;
+	if ((style & KCELL_ST_ITALIC) && face[KCELL_ST_ITALIC])
+		return KCELL_ST_ITALIC;
+	if ((style & KCELL_ST_BOLD) && face[KCELL_ST_BOLD])
+		return KCELL_ST_BOLD;
+	return 0;
+}
+
+static struct glyph_slot *slot_for(uint32_t cp, int style)
+{
+	style = face_style(style);
+	if (!face[style])
 		return NULL;
 
-	unsigned h = (cp * 2654435761u) % CACHE_BUCKETS;
+	/* The face is part of the KEY, not of the answer: the same codepoint
+	 * rasterized from two faces is two glyphs, and a cache that held only
+	 * one of them would draw whichever a frame asked for first. */
+	unsigned h = ((cp + (unsigned)style * 0x9e3779b9u) * 2654435761u) %
+		     CACHE_BUCKETS;
 	for (struct glyph_slot *s = cache[h]; s; s = s->next)
-		if (s->cp == cp)
+		if (s->cp == cp && s->style == (uint8_t)style)
 			return s;
 
 	/* Here and nowhere else: the slot about to be inserted is not in the
@@ -223,7 +415,8 @@ static struct glyph_slot *slot_for(uint32_t cp)
 		cache_evict_one();
 
 	const struct fcft_glyph *g =
-		fcft_rasterize_char_utf32(font, cp, FCFT_SUBPIXEL_NONE);
+		fcft_rasterize_char_utf32(face[style], cp,
+					  FCFT_SUBPIXEL_NONE);
 
 	/*
 	 * A miss is cached as NULL. Without that, every frame re-runs the whole
@@ -235,6 +428,7 @@ static struct glyph_slot *slot_for(uint32_t cp)
 	if (!s)
 		return NULL;
 	s->cp = cp;
+	s->style = (uint8_t)style;
 	s->g = g;
 	s->next = cache[h];
 	cache[h] = s;
@@ -244,20 +438,55 @@ static struct glyph_slot *slot_for(uint32_t cp)
 
 const struct fcft_glyph *kcell_glyph(uint32_t cp)
 {
-	struct glyph_slot *s = slot_for(cp);
+	struct glyph_slot *s = slot_for(cp, 0);
 	return s ? s->g : NULL;
 }
 
 bool kcell_has(uint32_t cp)
 {
 	const struct fcft_glyph *g = kcell_glyph(cp);
+	const uint8_t *bits;
+	size_t rb;
+	int r;
+
 	/*
-	 * A glyph with no pixels is a real answer for a space and a wrong one
-	 * for anything else, so emptiness alone cannot be the test — but a font
-	 * that has no such codepoint returns NULL, and that is what is being
-	 * asked about.
+	 * NULL is a rasterisation failure, not an absence — see the sentinel
+	 * above. A codepoint is missing when what came back is the face's own
+	 * .notdef, and that is recognised by being the same picture at the same
+	 * metrics as the probe. Emptiness cannot be the test on its own: a
+	 * glyph with no pixels is the right answer for a space.
+	 *
+	 * With no sentinel measured — a face that refuses even the probe —
+	 * every rasterised glyph counts as present, which errs towards drawing
+	 * a tofu box rather than towards dropping a character the font has.
 	 */
-	return g != NULL;
+	if (!g)
+		return false;
+	if (!notdef_known)
+		return true;
+	if (g->x != notdef_x || g->y != notdef_y || g->width != notdef_w ||
+	    g->height != notdef_h || g->advance.x != notdef_adv)
+		return true;
+	if (!g->pix)
+		return notdef_haspix;
+	if (!notdef_haspix)
+		return true;
+	if (pixman_image_get_format(g->pix) != notdef_fmt ||
+	    pixman_image_get_stride(g->pix) != notdef_stride ||
+	    pixman_image_get_height(g->pix) != notdef_rows ||
+	    pixman_image_get_width(g->pix) != notdef_pw)
+		return true;
+	bits = (const uint8_t *)pixman_image_get_data(g->pix);
+	rb = row_bytes(g->pix);
+	/* Row by row over the meaningful bytes only: the stride padding is
+	 * never written, so a whole-buffer compare reads uninitialised heap
+	 * and reports two copies of the same .notdef as different pictures. */
+	for (r = 0; r < notdef_rows; r++)
+		if (memcmp(bits + (size_t)r * (size_t)notdef_stride,
+			   notdef_bits + (size_t)r * (size_t)notdef_stride,
+			   rb) != 0)
+			return true;
+	return false;
 }
 
 static void free_bits(pixman_image_t *img, void *data)
@@ -335,12 +564,22 @@ static pixman_image_t *upscale(pixman_image_t *src, int scale)
 
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out)
 {
+	return kcell_glyph_face(cp, scale, 0, out);
+}
+
+bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out)
+{
+	return kcell_glyph_face(cp, scale, italic ? KCELL_ST_ITALIC : 0, out);
+}
+
+bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out)
+{
 	if (scale < 1)
 		scale = 1;
 	if (scale > KCELL_MAX_SCALE)
 		scale = KCELL_MAX_SCALE;
 
-	struct glyph_slot *s = slot_for(cp);
+	struct glyph_slot *s = slot_for(cp, style);
 	if (!s || !s->g || !s->g->pix)
 		return false;
 
@@ -360,5 +599,9 @@ bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out)
 	out->y = s->g->y * scale;
 	out->width = s->g->width * scale;
 	out->height = s->g->height * scale;
+	/* Bold that no face answered is the caller's to strike twice; the
+	 * cache holds one mask per face, never a pre-emboldened copy. */
+	out->synth_bold = (style & KCELL_ST_BOLD) &&
+			  !(face_style(style) & KCELL_ST_BOLD);
 	return true;
 }

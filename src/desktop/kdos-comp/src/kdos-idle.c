@@ -33,6 +33,7 @@
 #include <wlr/util/log.h>
 
 #include "common/spawn.h"
+#include "kbase.h"
 #include "kdos.h"
 #include "labwc.h"
 #include "output.h"
@@ -327,21 +328,11 @@ in_a_vm(void)
 #else
 	return true;
 #endif
-	char vendor[128] = { 0 };
-	FILE *f = fopen("/sys/class/dmi/id/sys_vendor", "r");
-	if (f) {
-		if (!fgets(vendor, sizeof(vendor), f)) {
-			vendor[0] = '\0';
-		}
-		fclose(f);
-	}
-	return strstr(vendor, "QEMU") || strstr(vendor, "Bochs")
-		|| strstr(vendor, "VirtualBox") || strstr(vendor, "VMware")
-		|| strstr(vendor, "innotek")
-		|| strstr(vendor, "Microsoft Corporation")	/* Hyper-V */
-		|| strstr(vendor, "Parallels")
-		|| strstr(vendor, "Amazon EC2")
-		|| strstr(vendor, "Google");			/* GCE */
+	/* The vendor list is libkbase's, so the compositor and the console
+	 * desktop answer this the same way — they share the reason, and a
+	 * hypervisor added to one list but not the other would give one
+	 * desktop working idle timers and the other none. */
+	return kb_in_vm();
 }
 
 bool

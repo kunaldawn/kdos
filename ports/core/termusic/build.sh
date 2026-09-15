@@ -25,3 +25,18 @@ cargo build --release --frozen --offline
 # that starts and cannot play.
 install -Dm755 target/release/termusic        $PKG/usr/bin/termusic
 install -Dm755 target/release/termusic-server $PKG/usr/bin/termusic-server
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/termusic.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Music
+GenericName=Music Player
+Comment=Play a music library
+Exec=termusic
+Icon=folder-music
+Terminal=true
+Categories=AudioVideo;Player;
+Keywords=music;audio;player;library;termusic;
+EOF
+chmod 644 "$PKG/usr/share/applications/termusic.desktop"

@@ -1,0 +1,3 @@
+# `kdos theme` writes the colours beside this file.
+# INDICES, NOT HEX: `#` is a comment here.
+include "~/.config/newsboat/kdos-colors"

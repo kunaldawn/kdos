@@ -13,6 +13,9 @@ to each other.
 | `packd.conf` | The pack daemon's retention | no |
 | `pack-sources` | Where application updates are looked for | no |
 | `zram.conf` | Compressed-swap size and algorithm | no |
+| `con.conf` | The console session: which program is each thing, and the idle steps | no |
+| `menu.conf` | The routes — a name a script can hold for every place in the system | no |
+| `timers.d/` | The per-user timers the session arms | no |
 | `mountd.conf` | Removable-media options. **Not shipped** — create it | no |
 | `keys/` | Trusted keys for **host packages** | no |
 | `keys/packs/` | Trusted keys for **application packs** | no |
@@ -43,6 +46,7 @@ Every key is documented in [Configuration](configuration.md).
 | `reasons` | The explanations `kdos why` prints |
 | `doc/` | Shipped documentation |
 | `logo.txt` | The banner logo, generated from the mascot |
+| `screensaver.txt` | The grid the screensaver's `art` and `bounce` effects move; the other six draw without a file. **A person's to replace**, at `~/.config/kdos/screensaver.txt`; separate from `logo.txt` so changing the screensaver does not change the picture the machine boots with |
 | `splash.psf` | The splash font |
 | `boot/` | Boot artwork |
 | `memtest86plus/` | The memory tester on the medium |
@@ -65,9 +69,22 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.local/share/applications/` | Launchers for applications you installed |
 | `~/.local/bin/` | Shims for applications you installed |
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
+| `~/.local/state/kdos/con-font` | The console screen's font name, once a font chord has stepped it. An **override**: written by `kdos-view` only after the font has loaded, removed by `font-reset`, and beaten by `--font` and `$KDOS_CON_FONT` |
+| `~/.local/state/kdos/toggles/` | One empty file per switch that is on — `stay-awake`, `night-light`, `dnd` |
+| `~/.local/state/kdos/con/<name>.session` | What a console session had open: one readable row per window — kind, workspace, rectangle, the **name** to reopen it by, a flag column and the title. Written when the session ends and read when one of that name starts, with `restore = yes`. **Never a command line**: a row names `con.conf`'s `terminal`, a role key such as `files`, one of this desktop's own surface keys, or an app id for the pack store, and something else resolves it |
+| `~/.config/kdos-con/layouts/<name>` | An arrangement with a name: the same rows as the file above, written by `kdos con layout save` and opened by `kdos con layout load`. A load opens what is not already open and closes nothing |
+| `/usr/share/kdos/layouts/<name>` | The three shipped arrangements — `work`, `write`, `talk` — read when the user has no file of that name. A person's own copy replaces one rather than merging with it |
+| `~/.local/state/kdos/winpos` | Where the **compositor** last saw each application: `app_id x y w h workspace shaded`, in **pixels**, most recent first and capped at 200. Read at map and written at unmap, with `comp.conf`'s `window_memory` |
+| `~/.local/state/kdos/con/geometry` | The same idea for the **console**: `prog<TAB>workspace<TAB>x y w h<TAB>tiled`, in **cells**, one line per program and workspace. A separate file from the one above and it has to be — those rectangles are pixels and these are cells, so a shared row would put every window back at a size taken from the other desktop's units. With `con.conf`'s `remember` |
+| `~/.local/state/kdos/con/<name>.<n>.text` | That session's terminal output, one file per restored terminal, with `restore_scrollback = yes`. Put back above the fresh prompt under a line saying whose it is |
+| `~/.config/kdos-con/scripts/<letter>` | A recorded script: one line per key — the chord's name, its modifiers, its key number and the gap in milliseconds before it. Directory 0700, files 0600. **Keys into a window and never a command**: there is no field that could name a program |
+| `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
 | `~/.cache/kdos/theme` | **One word**: the accent name. The entire theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The retinted wallpaper the compositor prefers |
 | `~/.local/share/Trash/` | The freedesktop trash |
+| `~/Mail/` | The machine's Maildir. Named by `~/.mbsyncrc` and by notmuch's `mail_root`, and created by `script/06_packaging/00_user.sh` — both programs report an error on a directory that is not there rather than making one |
+| `~/Recordings/` | What `kdos-rec` wrote, `YYYY-MM-DD-HHMMSS.wav`, made on demand. **Not an XDG user directory** — `RECORDINGS` is not in the freedesktop set and `user-dirs.dirs` must not grow an invented key |
+| `~/.local/share/whisper.cpp/models/` | Speech models, `ggml-*.bin`. Searched, never written by the desktop |
 
 ### `$XDG_RUNTIME_DIR` — per session
 
@@ -83,7 +100,13 @@ Every key is documented in [Configuration](configuration.md).
 | `kdos-panel.overflow` | What the panel has hidden behind the chevron |
 | `kdos-comp.log` | The compositor's output |
 | `kdos-appbox.trace` | Stage timings for the last launches |
-| `kdos-dnd` | Do-not-disturb state |
+| `kdos/` | The console desktop's sockets, mode **0700** |
+| `kdos/<name>.sock` | A console session's **surface** socket |
+| `kdos/<name>.view` | The same session's **view** socket |
+| `kdos/<name>.windows` | What has a window there, one app id per line |
+| `kdos/nowplaying` | One line naming what is playing, written by `kdos-mpctl watch` |
+| `kdos/screencast.pid` | The pid of the running `kdos-record`, while one is running |
+| `kdos-con.log` | The console session's output |
 
 ## Sockets
 
@@ -138,10 +161,43 @@ Root and `wheel`.
 | `list` | — | The eligible devices, **with an index each** |
 | `mount` | An index | The mountpoint |
 | `unmount` | An index | |
+| `eject` | An index | |
+| `close` | An index | Closes a mapper an `unlock` opened |
+| `smart` | An index | The drive's own health line |
+| `unlock` | An index and a byte count | The mapper's name; the passphrase is a second frame |
+| `format` | An index, a filesystem and a byte count | The device's own name typed back, as a second frame |
+| `cifs` | A server, a share, a username, a domain and a byte count | The mountpoint; the password is a second frame |
+| `shares` | — | The network shares that are mounted, **with an index each** |
+| `disconnect` | A share index | Unmounts one |
+| `subscribe` | — | Keeps the socket and writes a line per block uevent |
 | `ping` | — | Liveness |
 
 **The client asks for an index out of a list the daemon published**, and the daemon decides the
 device, the mountpoint and the options. The list is rescanned on every request.
+
+**A share's index counts a different list.** `shares` is built from `/proc/mounts` on every
+request and a `disconnect` index is checked against that list, never against the device list — an
+index is true only of the list it came with, and the two lists have nothing to do with each other.
+
+**A secret is a FRAME and never a token.** `unlock`, `format` and `cifs` declare a byte count on the
+request line and send exactly that many bytes after the newline, because the request line is
+tokenised on whitespace and a passphrase may contain some. The daemon holds one buffer for it and
+wipes it on every path out of the request.
+
+**`cifs`'s four names are checked against a character allowlist each, and what is not on the list
+is refused rather than quoted.** `mount.cifs` assembles its option string by concatenation and
+escapes nothing but the password, so a comma in the server, the share, the username or the domain
+is a new mount option handed to the kernel's cifs parser; a `/` or a `\` in a server re-aims the
+mount, because the helper's own `parse_unc()` splits on exactly those. Quoting them would be a
+second implementation of that parser, and two parsers of one string eventually disagree.
+
+**The password reaches `mount.cifs` on a file descriptor.** `PASSWD_FD=0` and the bytes on the
+child's stdin: an option string is argv, an environment value is `/proc/<pid>/environ`, and a
+password file is a file somebody has to delete.
+
+**The token count is fixed per verb, and a longer line is refused rather than truncated.** The
+argument allowlist is what makes an index mean an index: `mount 0 rm -rf /` is not a well-formed
+`mount 0`, it is an unknown command.
 
 ### `/run/kdos-packd.sock`
 
@@ -205,6 +261,70 @@ that. The frame loop is what this must never slow.
 | `forget` | Drops one entry |
 | `clear` | Empties the history |
 | `dnd` | Toggles do not disturb |
+| `dismiss` | Puts the newest toast away — **reason 2**, dismissed by the user, so a client waiting on `NotificationClosed` is told the truth |
+| `dismiss all` | The same for every toast on the screen |
+| `raise` | The last one dismissed, back on the screen — **taken out of the history**, so a notification is on screen or in the centre and never both. It comes back without its buttons: the notification it came from is closed and its actions belong to the program that sent it |
+
+### `$XDG_RUNTIME_DIR/kdos/<name>.sock` and `.view` — a console session
+
+Not a line protocol: this pair is the console desktop's own framed protocol, and the two sockets
+exist so that **only one of them is safe to forward**.
+
+| Socket | Admits | May leave the machine |
+|---|---|---|
+| `<name>.sock` | Surfaces — programs that place windows | **never** |
+| `<name>.view` | Views — a display, which holds no window state | over ssh, with `kdos con forward` |
+
+**Which socket a client reached decides what it is allowed to be.** The kind in its handshake is a
+claim and is overridden; a forwarded socket that admitted surfaces would give the far end the right
+to place windows in your session, which is a different thing entirely from showing you yours.
+
+`$KDOS_CON` names the **surface** socket, so a program started inside the session inherits an
+address that opens a window. A view is told its socket on the command line.
+
+**Three kinds of client, and what each is told.** A *surface* places a window and hears about its
+own. A *view* is a display and is sent frames. A *shell* is the panel and its family, and it alone
+is sent the **window list** — `TOPLEVEL_ADD`, `TOPLEVEL_STATE`, `TOPLEVEL_REMOVE` and `WORKSPACE`,
+which carry on the console what `wlr-foreign-toplevel-management` and `ext-workspace-v1` carry on
+Wayland. A program with a window in the session has no business knowing what else is open, and
+because the surface socket never leaves the machine a forwarded display cannot ask either.
+
+The two requests back — `ACTIVATE` and `CLOSE_REQUEST` — are **requests**. The session owns the
+stack and every window's lifetime, so a panel says which window it means and reads the answer out
+of the list it is then sent; a panel that raised a window itself would be a second implementation of
+raising.
+
+**There is no "send me the list" message, deliberately.** A client that could ask could ask
+repeatedly. The session notices a shell attaching and sends the list again, which is the same shape
+as the sprite resend a newly attached view gets.
+
+**A shell may also ask the session to run a graphical application** — the one message on this socket
+that is not about a window. The answer is `0` when it became an ordinary window, the terminal's
+number when it was pinned to one, and a refusal when it could not be started at all. It is
+restricted to shell-kind clients the way "detach every view" is, and for the same reason: not because it is a privilege boundary — a client that reached this socket is
+already the session's own user and can fork and exec whatever it likes — but so the message has one
+caller and one meaning.
+
+The directory is created `0700` by the session server, and one that already exists with the wrong
+mode or owner is **a refusal to start, not a `chmod`** — if it is not ours, quietly taking it over
+puts the socket in a path another account chose, after which the peer-credential check is guarding
+the wrong door.
+
+**A third socket, `<name>.a11y`, is the reader's.** Same directory, same mode, same
+peer-credential check; what differs is what reaching it grants. Its clients are views that may not
+drive, and they alone are sent the announcements a widget makes — so a screen reader is a client
+with the text of the screen and what the desktop says about it, and nothing else.
+
+**One descriptor crosses one channel, and it is neither of these.** An embedded application's
+compositor is a child of the session, and the frames come back over a `socketpair` created before
+the fork — never a path anything can connect to. That is what keeps both published protocols
+descriptor-free, and descriptor-free is what lets the view socket be forwarded.
+
+**There is no TCP listener.** A remote desktop is a forwarded unix socket and inherits ssh's
+authentication, which is why it needs none of its own; the self-test asserts the absence by
+grepping these sources for `AF_INET`. `remote = no` in `con.conf` is enforced by `kdos con forward`
+refusing to build the tunnel — a complete refusal rather than a check something could connect
+around.
 
 ### `$XDG_RUNTIME_DIR/kdos-clip.sock` — the clipboard
 
@@ -213,6 +333,21 @@ The daemon owns the history and the front end draws it — the same split notifi
 **A socket path that does not fit the address structure is refused, not truncated.** Truncation
 binds a socket nobody asked for and answers the next start with an address-in-use error for a file
 that appears not to exist — and two different runtime directories can land on one socket.
+
+### `$XDG_RUNTIME_DIR/kdos/<name>.windows`
+
+One application id per line, for every mapped, non-minimised window in that console session.
+Rewritten only when the set changes — a desktop that rewrote a file every frame would be doing IO
+for as long as it is switched on.
+
+It exists for `kdos-box gc`, which must know whether a box still has something on screen before it
+stops it. On Wayland that is a question for the compositor's command socket; here it is a file,
+because teaching `kdos-appbox` this session's protocol would pull `libkcon` and the whole cell model
+into a binary that is on every image.
+
+**"Cannot tell" is not "no window".** `box_has_window` answers 1, 0 or **-1**, and the collector
+leaves a box alone on -1. A collector that read the third as the second would stop every warmed box
+on a desktop it did not know how to question.
 
 ## Files used as an interface
 
@@ -228,6 +363,7 @@ Not configuration, and not storage: these are how one program tells another some
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once per window | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
 | `$XDG_RUNTIME_DIR/kdos-appbox.trace` | The launcher | You |
+| `$XDG_RUNTIME_DIR/kdos/screencast.pid` | `kdos-record`, while its pipeline runs | The next `kdos-record`, which stops that one, and the console bar, which draws its lamp. **Both check the pid is alive** — a marker left by a crash is not a recording |
 
 ## Protocol conventions
 
@@ -239,6 +375,10 @@ Shared by every daemon here:
   and not the socket's mode.
 - **No verb takes a path.** Identifiers come from a list the daemon published.
 - **A fixture mode** on every daemon prints what it *would* do and does nothing.
+
+The console session's protocol shares only the third of these: authorisation is the peer's real
+user id. It is framed rather than line-based, it is stateful, and **it passes no file
+descriptors** — which is what lets the whole of it survive being forwarded down an ssh channel.
 
 ## Environment variables
 
@@ -256,6 +396,7 @@ constants are omitted.
 | `KDOS_CRT_DUMP=<prefix>` | Write the phosphor pass's input and output once |
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before dumping |
 | `KDOS_PACKD_VERBOSE=1` | The pack daemon explains itself |
+| `KDOS_WHISPER_MODEL=<file>` | One speech model, named exactly. When set, no directory is searched behind it |
 
 ### Testing seams
 

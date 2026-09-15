@@ -16,6 +16,20 @@ all: build
 #   make build BUILD_ARGS=--no-snapshot
 BUILD_ARGS ?=
 
+# WHAT SIZE A VM COMES UP AT, for every run target and for testing/qemu-hw.
+#
+# 1920x1080 rather than QEMU's own 1280x800 default for virtio-gpu: the cell
+# grid is the mode divided by the font's cell, so the default is a desktop of
+# about 160x50 characters — enough to look like the screen is small and not
+# enough to lay a three-column menu out the way it ships. It is the preferred
+# mode the guest is told about through EDID, so the desktop picks it without
+# being configured.
+#
+#   make run KDOS_RES=2560x1440
+KDOS_RES ?= 1920x1080
+KDOS_XRES = $(word 1,$(subst x, ,$(KDOS_RES)))
+KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
+
 fetch:
 	bash ports/fetch
 	@test -d ports/appbox/packs || echo "hint: 'make fetch-packs' bakes the application packs (needs network + docker/podman)"
@@ -116,13 +130,13 @@ run:
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd — install ovmf (debian: ovmf, arch: edk2-ovmf)"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
-	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 rundisk:
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || { echo "ERROR: disk image not found at build/kdos.qcow2 — run 'make run' first to create it"; exit 1; }
-	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 debug-boot:
 	test -f build/fs/boot/vmlinuz-kdos || { echo "ERROR: kernel not found at build/fs/boot/vmlinuz-kdos — run 'make build' first"; exit 1; }
@@ -139,10 +153,10 @@ debug-boot:
 # display flags (including gl=es — gl=on blanks the window) live in
 # testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
 run-hw: check-hw
-	testing/qemu-hw/run.sh iso
+	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh iso
 
 rundisk-hw: check-hw
-	testing/qemu-hw/run.sh disk
+	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh disk
 
 check-hw:
 	command -v docker >/dev/null || { echo "ERROR: docker not found — run-hw needs Docker + NVIDIA Container Toolkit"; exit 1; }

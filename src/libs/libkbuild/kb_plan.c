@@ -451,6 +451,27 @@ int kbuild_plan_from_cli(KbuildPlan *pl, const char *phases_arg,
 	static char raw[KBUILD_MAX_REBUILD][64];
 	int nrb = split_tokens(rebuild_arg, raw, KBUILD_MAX_REBUILD);
 	for (int i = 0; i < nrb; i++) {
+		/*
+		 * REBUILD IS THE ONLY FREE-FORM FIELD. Phases and steps are
+		 * resolved against real directories above; a rebuild token is
+		 * whatever was typed, and it is written into the plan file
+		 * between bare quotes. A quote or a backslash in it produces a
+		 * file that neither this loader nor any JSON reader can parse,
+		 * so the next build silently narrows to something other than
+		 * what was asked. A package name has none of those characters,
+		 * so refusing here costs nothing and catches the nonsense name
+		 * before the build starts.
+		 */
+		for (const char *c = raw[i]; *c; c++) {
+			if (isalnum((unsigned char)*c) || *c == '.' ||
+			    *c == '_' || *c == '+' || *c == '-')
+				continue;
+			snprintf(err, errcap,
+				 "--rebuild wants a package name, got '%s'",
+				 raw[i]);
+			return -1;
+		}
+
 		int dup = 0;
 		for (int k = 0; k < pl->nrebuild && !dup; k++)
 			dup = !strcmp(pl->rebuild[k], raw[i]);
@@ -517,17 +538,27 @@ int kbuild_plan_save(const KbuildPlan *pl, const char *build_dir)
 		kb_buf_free(&b);
 		return -1;
 	}
+	/* Replaced, never truncated in place. A save killed part-way through
+	 * an open-and-write leaves a file the loader can only read as "no
+	 * plan", which turns the next build into a full one with no warning;
+	 * a temp-and-rename leaves the previous plan intact instead. */
 	char *path = kb_path_join(build_dir, KBUILD_PLAN_FILE);
-	int rc = kb_write_all(path, b.p, b.n);
+	int rc = kb_write_file_atomic(path, b.p ? b.p : "");
 	free(path);
 	kb_buf_free(&b);
 	return rc;
 }
 
 /* A scanner, not a JSON parser: the file has three known keys holding a null,
- * an object of string arrays, and two string arrays. Anything else in it is
- * ignored, and a malformed file reads as "no plan" rather than as a partial
- * one — a half-read plan would silently skip phases. */
+ * an object of string arrays, and two string arrays.
+ *
+ * IT CONSUMES THE WHOLE DOCUMENT. Every value is scanned to its own end, the
+ * steps object must close, and the last value must be followed by the
+ * document's closing brace as the last non-space byte. A truncated file —
+ * which a kill or a full disk during kbuild_plan_save leaves behind — would
+ * otherwise read as a valid narrowing plan, and the next build would skip
+ * phases without a word. Anything that does not scan clean to the end is "no
+ * plan", which runs everything. */
 static const char *skip_ws(const char *s)
 {
 	while (*s && isspace((unsigned char)*s))
@@ -608,11 +639,16 @@ int kbuild_plan_load(KbuildPlan *pl, const char *build_dir)
 	if (*head != '{' || tail <= head || tail[-1] != '}')
 		goto out;
 
+	/* The end of the last value scanned. The document's closing brace has
+	 * to follow it, or a file cut off mid-object reads as a whole plan. */
+	const char *last = head + 1;
+
 	const char *v = json_key(data, "phases");
 	if (v && !strncmp(v, "null", 4)) {
 		pl->has_phases = 0;
+		last = v + 4;
 	} else if (v) {
-		int n = json_strings(v, pl->phase, KBUILD_MAX_PHASES, NULL);
+		int n = json_strings(v, pl->phase, KBUILD_MAX_PHASES, &last);
 		if (n < 0)
 			goto out;
 		pl->has_phases = 1;
@@ -650,15 +686,26 @@ int kbuild_plan_load(KbuildPlan *pl, const char *build_dir)
 			if (*s == ',')
 				s = skip_ws(s + 1);
 		}
+		if (*s != '}')
+			goto out;
+		last = s + 1;
 	}
 
 	v = json_key(data, "rebuild");
 	if (v) {
-		int n = json_strings(v, pl->rebuild, KBUILD_MAX_REBUILD, NULL);
+		int n = json_strings(v, pl->rebuild, KBUILD_MAX_REBUILD, &last);
 		if (n < 0)
 			goto out;
 		pl->nrebuild = n;
 	}
+
+	/* The closing brace must be the last non-space byte, and must come
+	 * straight after the last value scanned: a file cut off mid-object
+	 * otherwise reads as a whole plan, because the inner object's brace
+	 * satisfies a test that only looks at the document's ends. */
+	last = skip_ws(last);
+	if (last != tail - 1 || *last != '}')
+		goto out;
 	rc = 0;
 out:
 	free(data);

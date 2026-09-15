@@ -112,6 +112,9 @@ static int au_icons_on = 1;
  */
 static int au_out_y = 3, au_out_rows, au_bt_y, au_bt_rows;
 
+/* No layers: nothing in this window is a raised state, so Esc closes it. */
+static KtuiKeys keys;
+
 /* ── ALSA ────────────────────────────────────────────────────────────────
  *
  * osd.c owns the mixer for the `default` PCM, which is the one the media keys
@@ -882,7 +885,13 @@ static void au_set_default(struct au_dev *d, char *msg, size_t n)
 	if (d->card >= 0) {
 		if (au_write_default_card(d->card) == 0) {
 			au_default_card = d->card;
-			snprintf(msg, n, "default is hw:%d — new streams only",
+			/* `defaults.pcm.card` steers the CARD chain and
+			 * nothing else, and on this image `default` is the
+			 * sound server unless $KDOS_ALSA_DEFAULT names the
+			 * card — so this is what the card route will open,
+			 * not what this session is playing through. The sink
+			 * rows are what moves a running stream. */
+			snprintf(msg, n, "card route is hw:%d — sink rows move this session",
 				 d->card);
 		} else {
 			snprintf(msg, n, "could not write ~/.asoundrc");
@@ -1147,13 +1156,41 @@ static void au_draw(struct au_ui *u)
 	 * pair in net.c. The hint row is the message row: an action's answer
 	 * belongs where the user's eyes already are, not in a toast they may
 	 * not have on. */
-	static const char HINT[] = "Tab pane   <> volume   Enter switch   Esc";
 	int bx = au_buttons(u, w, h - 2);
 	int room = bx - 3;
-	if (u->msg[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT))
-		ktui_draw_text(2, h - 2, room, u->msg[0] ? u->msg : HINT,
-			       u->msg[0] ? KT_WARN : KT_DIM, KT_SURFACE,
-			       KT_A_NONE);
+
+	/*
+	 * THE ROW IS NARROW HERE and that decides the hint set. Five buttons
+	 * leave about twenty cells at this window's own width, and a hint is
+	 * drawn whole or not at all — so anything long pushed before Esc costs
+	 * Esc entirely. The buttons already name Mute, Set Default, Scan and
+	 * Pair on the screen; what is pushed is what only the KEYBOARD does.
+	 */
+	const struct au_dev *sd = u->pane == AU_PANE_OUT &&
+				  u->sel[AU_PANE_OUT] < au_ndev
+					  ? &au_dev[u->sel[AU_PANE_OUT]]
+					  : NULL;
+	const struct au_bt *sb = u->pane == AU_PANE_BT &&
+				 u->sel[AU_PANE_BT] < au_nbt
+					 ? &au_bt[u->sel[AU_PANE_BT]]
+					 : NULL;
+
+	if (u->msg[0]) {
+		/* The message outranks the row and shares its cells; the row
+		 * is still called, with an empty rect, because it is what
+		 * clears the pool. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
+		if (room >= 8)
+			ktui_draw_text(2, h - 2, room, u->msg, KT_WARN,
+				       KT_SURFACE, KT_A_NONE);
+	} else if (room > 0) {
+		ktui_hint("Tab", "pane");
+		ktui_hint_if(sb != NULL, "Enter",
+			     sb && sb->connected ? "disconnect" : "connect");
+		ktui_hint_if(sd && sd->vol >= 0, "Left/Right", "volume");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_SURFACE);
+	}
 	ktui_draw_flush();
 }
 
@@ -1237,7 +1274,7 @@ int audio_main(int argc, char **argv)
 	/* Anchored means popup, centred means window — see the same block in
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -1248,18 +1285,24 @@ int audio_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : AU_COLS,
 		.rows = popup ? 18 : AU_ROWS,
 		/* Above the applet that opened it, or centred when nobody
 		 * said where. */
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
 		 * empty titlebar, which is a frame that says nothing. */
 		.title = "Sound",
 		.app_id = "kdos-audio",
+		/* The numbers this surface's own too-small check uses: one
+		 * answer to the smallest grid it can compose on, told to the
+		 * session that decides the size rather than only found out
+		 * after it has decided. */
+		.min_cols = 40,
+		.min_rows = 12,
 		.font = font,
 		.keyboard = 1,
 		/* The window stays: people click back to whatever is playing
@@ -1267,7 +1310,7 @@ int audio_main(int argc, char **argv)
 		 * like every other panel popup. */
 		.dismiss_on_unfocus = popup,
 	};
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-audio: no compositor or no layer-shell\n");
 		if (au_bus)
 			sd_bus_unref(au_bus);
@@ -1275,9 +1318,20 @@ int audio_main(int argc, char **argv)
 		au_mixer_close_all();
 		return 1;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the scale. */
+	/* AFTER kdisp_init: the icon layer needs the cell size and the scale. */
+	/*
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
+	 * before it. A console surface has no pixel size of its own —
+	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * picture a pixel or two across, which is a blank cell by a longer
+	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
+	 * display rescales to its own font. sh_pic_backend() must come after
+	 * kdisp_init: the console backend clears its client state when it
+	 * connects, so a callback registered before that point is erased.
+	 */
+	sh_pic_backend();
 	if (au_icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -1285,7 +1339,7 @@ int audio_main(int argc, char **argv)
 
 	time_t last_bt = time(NULL), last_dev = last_bt;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		/* The geometry the LAST frame drew. On the very first turn the
@@ -1436,9 +1490,10 @@ int audio_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
-		switch (ev.key) {
-		case KT_K_ESC:
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			goto done;
+
+		switch (ev.key) {
 		case KT_K_TAB:
 			u.pane = u.pane == AU_PANE_OUT ? AU_PANE_BT
 						       : AU_PANE_OUT;
@@ -1503,7 +1558,7 @@ int audio_main(int argc, char **argv)
 	}
 
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	if (au_bus)
 		sd_bus_unref(au_bus);
 	au_pw_free();

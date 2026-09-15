@@ -25,6 +25,7 @@
 #include "show-desktop.h"
 #include "theme.h"
 #include "view.h"
+#include "kwm.h"
 
 #define EXT_WORKSPACES_VERSION 1
 
@@ -293,47 +294,56 @@ workspace_has_views(struct workspace *workspace)
 	return false;
 }
 
+/*
+ * The ring walk is libkwm's, so the console desktop cannot disagree about it —
+ * and the rule that matters is subtle: WRAPPING HAPPENS AT MOST ONCE, or a set
+ * of workspaces that are all empty is circled forever.
+ *
+ * Occupancy stays here. This compositor counts views that are not omnipresent;
+ * the panel counts windows that are not minimised, because the workspace
+ * protocol reports active, urgent and hidden but never "there is something
+ * here". Two rules with two right answers, so libkwm is TOLD, not asked.
+ */
+#define WS_MAX 64
+
 static struct workspace *
 get_adjacent_occupied(struct workspace *current, struct wl_list *workspaces,
 		bool wrap, bool reverse)
 {
-	struct wl_list *start = &current->link;
-	struct wl_list *link = reverse ? start->prev : start->next;
-	bool has_wrapped = false;
+	unsigned char occupied[WS_MAX];
+	int n = 0;
+	int cur = -1;
+	struct workspace *ws;
 
-	while (true) {
-		/* Handle list boundaries */
-		if (link == workspaces) {
-			if (!wrap) {
-				break;  /* No wrapping allowed - stop searching */
-			}
-			if (has_wrapped) {
-				break;  /* Already wrapped once - stop to prevent infinite loop */
-			}
-			/* Wrap around */
-			link = reverse ? workspaces->prev : workspaces->next;
-			has_wrapped = true;
-			continue;
-		}
-
-		/* Get the workspace */
-		struct workspace *target = wl_container_of(link, target, link);
-
-		/* Check if we've come full circle */
-		if (link == start) {
+	wl_list_for_each(ws, workspaces, link) {
+		if (n >= WS_MAX) {
 			break;
 		}
-
-		/* Check if it's occupied (and not current) */
-		if (target != current && workspace_has_views(target)) {
-			return target;
+		occupied[n] = workspace_has_views(ws) ? 1 : 0;
+		if (ws == current) {
+			cur = n;
 		}
-
-		/* Move to next/prev */
-		link = reverse ? link->prev : link->next;
+		n++;
 	}
 
-	return NULL;  /* No occupied workspace found */
+	if (cur < 0) {
+		return NULL;
+	}
+
+	int idx = kwm_ws_adjacent(occupied, n, cur, reverse, wrap);
+
+	if (idx < 0) {
+		return NULL;
+	}
+
+	int i = 0;
+	wl_list_for_each(ws, workspaces, link) {
+		if (i++ == idx) {
+			return ws;
+		}
+	}
+
+	return NULL;
 }
 
 static struct workspace *

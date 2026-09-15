@@ -12,12 +12,29 @@ calls the compiler; and ChangeLog, NEWS, INSTALL, bb.lsm, README.LZO.
 
 KDOS changes, all applied in place because this is our source now:
 
+  bb.c      timestuff() caps the DRAW rate at one frame per 15ms. A scene
+            states a rate for its control and never for its picture, and one
+            draw was 25ms on the hardware this was written for, so the loop
+            paced itself; here it draws as fast as the machine turns it --
+            5000 to 15000 frames a second in a fifty-column window, 17 MB/s
+            of escape sequences for a display that shows sixty. The pty then
+            never empties, every write comes apart mid-frame, and the
+            terminal composes a window from a screen it has half received.
+            THE CONTROL KEEPS ITS OWN RATE -- a handler is told how many
+            intervals it covers -- so no scene is a microsecond longer and
+            the music stays in step.
   main.c    the mixer runs on its own thread. Upstream pumped MikMod_Update
             from a 10ms timer in the same group bbwait() pumps, and bbwait()'s
             caller has just blocked in aa_flush() writing the frame to the
             terminal — so under a compositor the audio starved whenever the
             window was actually being drawn, and was perfect when it was
-            minimised.
+            minimised. The thread sleeps to an ABSOLUTE deadline, so the
+            update is inside the 10ms period rather than added to it, and a
+            deadline already past is moved rather than chased -- catching up
+            is a SCHED_FIFO thread that does not sleep. It records its worst
+            unscheduled gap and never prints one: stderr here is the terminal
+            the demo draws on, and a real-time thread blocked in write() is
+            the very stall the instrument is looking for.
   tex.c     clear_zbuff() cleared sizeof(long) per cell against a sizeof(int)
             allocation. The same size in 1997, double on x86_64: the heap
             corrupts and stage 2 aborts on "malloc(): corrupted top size".
@@ -49,14 +66,40 @@ own mark in the two beats that already spend time on a logo.
             the four slots after the last contributor, and the pointer that
             named README now names this file, which is the one that exists.
   credits2.c the mascot in the extro's logo beat, and THE CLOSING TEXT
-            SCROLLS ITSELF. It was a pager that waited on a keypress, so the
-            demo ended by sitting still until somebody noticed. It now asks
-            the player where it is and places the text at the same fraction
-            of its own length, landing on the last page just before bb3.s3m
-            ends. Any key hands control back for good -- a scroll that pulled
-            the page out from under a reader would be worse than none.
-            The module LOOPS (update_sound restarts it), so a fraction that
-            went backwards is read as "the song is over".
+            SCROLLS ITSELF, A SCREEN AT A TIME. It was a pager that waited on
+            a keypress, so the demo ended by sitting still until somebody
+            noticed. It now asks the player where it is and turns to the page
+            that fraction of the way through, landing on the last page just
+            before bb3.s3m ends. Any key hands control back for good -- a
+            scroll that pulled the page out from under a reader would be
+            worse than none. The module LOOPS (update_sound restarts it), so
+            a fraction that went backwards is read as "the song is over".
+            A SCREEN AND NEVER A LINE: every step of `p` costs a morph, a
+            whole second of cross-fade, and the document is some fifteen
+            screens against four and a half minutes -- a line at a time asks
+            for one every three quarters of a second, the morph never lands,
+            and nothing on the page can be read. Measured at 106x33: 16
+            turns, 16.4s a page, 1s of it the morph.
+  main.c    sound_sync() is a SERVO and not only a report: the scene clock
+            follows the player. A scene runs to an absolute deadline, so time
+            the machine loses is paid in skipped frames -- but the module
+            advances one tick per tick inside the mixer, every rendered
+            sample is written and the player is never seeked forward, so a
+            moment the card spends not playing is a moment the picture took
+            and the music did not, and the gap only ever grows. The error
+            against module->sngtime goes into tl_slowdown_timer() every
+            200ms, at most 5% of the interval, so the picture is never
+            jumped -- and the limit has a floor, because what is rendered and
+            what is played are not the same second and the emulated card this
+            is tested against disagrees by 1.2% steadily; the phase each track started with is KEPT, because what
+            is heard trails what is rendered by rings this program cannot
+            measure. song_progress() is the wrong position for it -- its
+            rows-per-pattern is nominal and its skew is the MODULE's: bb.s3m
+            reads up to 14 thousandths high, bb3.s3m 13 low and shrinking,
+            bb2.s3m 63 low and growing, and a measured table per track is in
+            kdos-bb.md. Under KDOS_BB_DEBUG the line also carries `held`,
+            the whole correction so far and therefore the audio time this
+            machine has lost, and the mixer's worst unscheduled gap.
   textform.c the closing document gains what KDOS is and what this fork
             changed, and loses the claims that were no longer true.
   kdostux.c kdos.png as an LZO-compressed greyscale image in the format

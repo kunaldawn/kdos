@@ -1,0 +1,14 @@
+The window model, as kdos-comp implements it today.
+
+This is the contract libkwm is written against. Every row here was derived by
+reading a named line of compositor source, never by taste: adoption of libkwm is
+a behaviour change only where a row says the old behaviour was wrong.
+
+Three sections, because the compositor keeps them in three places:
+
+  tile   the tiled-state transition   src/view.c view_snap_to_edge()
+  geom   a tiled state becomes a rect src/view.c view_get_edge_snap_box()
+  place  where a new window lands     src/placement.c placement_find_best()
+
+Read geometry.txt with it. A row that cannot be traced to a line does not belong
+in the file.

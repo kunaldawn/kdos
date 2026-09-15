@@ -180,6 +180,99 @@ that precedence for flags, because a makefile's own definitions are its **config
 them as arguments discards those, and the build then fails somewhere else entirely, on an
 undeclared constant that reads as a missing header.
 
+## A desktop entry belongs to the port, not to `fs/`
+
+A program that draws in a terminal is an application on this desktop, and almost none of them ship
+a `.desktop` file — upstream writes one for a GUI or writes none at all. **Write it in `build.sh`,
+into `$PKG/usr/share/applications/`.** A package owns its entry, so installing the port adds the
+menu row and removing the port takes it away; the same file under `fs/` is owned by nothing and
+outlives the program it names.
+
+```bash
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/btop.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=System Monitor
+GenericName=Resource Monitor
+Comment=Processes, CPU, memory, disks and network
+Exec=btop
+Icon=speedometer
+Terminal=true
+Categories=System;Monitor;
+Keywords=process;cpu;memory;task;monitor;btop;
+EOF
+chmod 644 "$PKG/usr/share/applications/btop.desktop"
+```
+
+Four rules, each with a consequence:
+
+- **`Terminal=true` and a bare `Exec`.** Naming an emulator in `Exec` pins the entry to one
+  desktop: `foot` is a Wayland client and cannot run on the console. The launcher picks the
+  emulator and supplies the identity — see [`kdos-shell`](../04-programs/kdos-shell.md).
+- **`X-KDOS-Float=true` and `X-KDOS-Size=COLSxROWS` say how the window should open.** A float is an
+  unanchored window at the size the entry asks for rather than one the session places among the
+  rest; the size is **cells**, and a terminal smaller than 4x2 is refused. `kdos app tui` writes
+  both, and a recipe writes them for the same reason it writes any other key — see
+  [the kdos command](../04-programs/kdos-command.md#app).
+- **`X-KDOS-TUI=true` is `kdos app tui`'s own marker and a recipe must not write it.** It says "this
+  command wrote this file", which is what makes `kdos app tui rm` safe; a recipe's entry carrying it
+  would be a shipped application that verb could delete.
+- **`X-KDOS-Term=kdos-term` only where the program draws pictures.** It names the emulator the
+  entry needs rather than the one the session runs, and the launcher honours it on either desktop:
+  `kdos-term` links the decoders and speaks sixel and the kitty protocol, so `yazi`'s previews are
+  pictures rather than a filename. **A name and never a program** — only an emulator this image
+  ships is accepted, and an unknown value falls back to the session's own, because an entry is a
+  file anything can write and a key that named a program would be a second `Exec` line with none of
+  the field-code rules. Without the key the session's terminal is used, which is lighter.
+- **Check `Icon=` against the shipped atlas**, `src/packages/kdos-icons/art`. The set is
+  Papirus-derived and does not carry the freedesktop names you would guess: there is `file-manager`
+  but no `system-file-manager`, `help-contents` but no `help-browser`. A name that misses still
+  draws — the glyph tier is underneath — so this is polish, not correctness.
+- **`MimeType=` only where nothing else claims the type.** Two entries claiming one type is how a
+  machine opens folders in whichever of them sorted first, which is not a decision anybody made.
+  `mimeapps.list` is where a default is chosen.
+- **And only where the type EXISTS.** `MimeType=` names a type in the shared MIME database, and a
+  name with nothing behind it resolves to nothing and reports that nowhere: the opener chain keys
+  off `/usr/share/mime/globs`, which is generated from `/usr/share/mime/packages`. A port
+  introducing a type installs its own XML there **and** carries a `postinstall.sh` running
+  `update-mime-database /usr/share/mime` — the database is compiled on the target, so `build.sh`
+  cannot do it. `frotz` is the worked example: `shared-mime-info` 1.10 defines no z-machine type,
+  so the port defines it.
+- **`selftest.sh` reads these entries out of the heredoc**, so a missing `Terminal=true`, a
+  `Categories=` with no `Game` token, or an `Exec=` naming a path rather than a command fails at
+  the recipe rather than after a packaging run.
+- **`Keywords=` is what the menu searches.** A row nobody can find by the word they know it by is
+  a row that is not there.
+
+## A script the port ships goes in `build.sh`, in a `KDOS_SH` heredoc
+
+**For a port that names a `source =`**, the recipe hash covers `kpkgbuild`, `build.sh`,
+`postinstall.sh` and `*.patch` and nothing else in the port's directory. A helper script kept in a
+file beside the recipe is therefore **invisible to the hash**: the port reports itself current
+after every later edit and the image keeps the copy it already had. Nothing fails; the machine just
+runs the old script. (A **source-less** port is the other case — its whole directory is hashed,
+because its own files *are* its recipe. See
+[the packaging architecture](../03-architecture/packaging.md).)
+
+Write it into `build.sh` instead, in a quoted heredoc whose delimiter is `KDOS_SH`:
+
+```bash
+install -d "$PKG/usr/libexec/aerc/filters"
+cat > "$PKG/usr/libexec/aerc/filters/kdos-part" <<'KDOS_SH'
+#!/bin/sh
+...
+KDOS_SH
+chmod 755 "$PKG/usr/libexec/aerc/filters/kdos-part"
+```
+
+The delimiter is what `testing/preflight.sh` looks for: it extracts each `KDOS_SH` body into a file
+of its own and parses it with `bash -n` — `bash -n` on the recipe reads a heredoc as one word and
+sees nothing — and, when there is a build tree, checks that every program the script names **as the
+first word of a line**, after `if `, or after `set -- ` is on the image. A name inside a command
+substitution or a `trap` string is not seen. Quote the delimiter, or `$1` and `$PATH` are expanded
+while the recipe runs rather than while the script does.
+
 ## postinstall.sh
 
 The install-time hook, becoming a marker inside the package. Six ports have one.
@@ -260,6 +353,13 @@ later. The only reliable test is compiling.
 - **Nothing may reach the network.** A subproject fallback, a download call, or a build backend
   resolving a system tool from a package index are all the same bug. See
   [Build troubleshooting](build-troubleshooting.md).
+- **A port's shipped configuration draws nothing outside the console font's set.** The font is
+  512 glyphs — a kernel limit, not a choice — and a Nerd Font icon is a private-use codepoint it
+  cannot carry, so on `tty1` it is a **blank cell**: a name arrives with a hole punched in front of
+  it and the listing reads as broken. Turn them off where the program has a switch (`yazi`'s
+  `[icon]`, `starship`'s `format`, `eza --icons=never`), check the default before writing anything
+  (`lazygit` 0.61's is already off), and if a program draws them with no way to be told, name it in
+  [known gaps](../06-reference/known-gaps.md). The answer is never a patched console font.
 
 ## Adding a port end to end
 
@@ -359,7 +459,12 @@ make publish-sources
 ```
 
 Archives are **release assets, sharded by first letter**, with git holding only the checksums that
-identify them. Two guarantees:
+identify them. Three guarantees:
+
+- **Nothing is published that does not match its recipe.** The packer hashes every archive before
+  it goes in and refuses the run naming the file. A packfile is immutable, so an archive published
+  wrong is wrong for ever — it cannot be corrected in place, only superseded by a recipe naming a
+  different file — and every clone made afterwards carries it.
 
 - **Append-only.** An asset is never deleted and never replaced, because replacing one silently
   changes what an old commit builds. The publisher skips one that is already there rather than

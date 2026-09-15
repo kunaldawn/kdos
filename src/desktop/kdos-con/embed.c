@@ -1,0 +1,1310 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kdos-con — a graphical application as a WINDOW
+ *
+ * A Wayland client's surface is pixels and this desktop composites characters.
+ * The compositing that reconciles the two happens in a SEPARATE PROCESS —
+ * kdos-cage --embed, one per window — and this file is the parent half of the
+ * private channel to it. kdos-con still links no wlroots, no mesa and no pixel
+ * library at all: it moves a blob of bytes it never looks at.
+ *
+ * THE FRAME BECOMES SPRITES, not a rectangle of pixels drawn over the grid.
+ * A sprite lives IN A CELL, so a window on top of an embedded one simply
+ * overwrites those cells and the occlusion is the z-ordered copy that was
+ * already there. A pixel region painted alongside the grid would cover
+ * whatever was above it, and every window-model question — stacking, snapping,
+ * workspaces — would need a second answer for one kind of window.
+ *
+ * A PICTURE IS SIXTEEN CELLS SQUARE AT MOST, because that is what the cell's
+ * sprite encoding carries, so a window is a grid of blocks and damage is
+ * rounded out to the blocks it touches.
+ *
+ * THE DESCRIPTOR IS THE ONE PLACE ONE APPEARS. It is a socketpair created
+ * before the fork and inherited — never a path anything can connect to — which
+ * is what keeps the surface and view protocols descriptor-free and therefore
+ * forwardable over ssh.
+ * ---------------------------------
+ */
+
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/input-event-codes.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
+#include "con.h"
+#include "kbase.h"
+#include "kembed.h"
+
+/* One sprite is sixteen cells square at most — the cell encoding's four bits
+ * per axis — so a window is a grid of blocks that size. */
+#define EM_TILE 16
+/*
+ * ENOUGH BLOCKS FOR A GUEST THE SIZE OF THE WORK AREA ON THE BIGGEST SCREEN
+ * THIS DRIVES. A 4K screen at an 8x15 cell is 480x144 cells, which is 30x9
+ * blocks; the ceiling is what `layout()` refuses above, and a refusal there is
+ * a resize the guest is never told about — a maximised window still drawing at
+ * the size it had. The slots come from a rotation of KCON_MAX_SPRITE_MAP, so
+ * the cost of the headroom is this array and nothing else.
+ */
+#define EM_MAX_BLOCKS 1024
+
+/*
+ * A CELL SIZE FOR A SESSION THAT HAS NOT BEEN TOLD ONE. A view says how many
+ * pixels its cells are; a terminal view has no answer, and a guest still has
+ * to be given a size. Eight by sixteen is the console font's, so an embedded
+ * application rendered for a terminal view has the aspect ratio the characters
+ * that will represent it do.
+ */
+#define EM_CELL_W 8
+#define EM_CELL_H 16
+
+/*
+ * HOW OFTEN A FRAME MAY BE SENT WHEN NOTHING CAN SHOW PIXELS. Every attached
+ * view still receives the picture — a terminal view matches it to characters —
+ * but a window of pixels at a compositor's frame rate down an ssh link is a
+ * link that does nothing else.
+ */
+#define EM_SLOW_MS 250
+
+/*
+ * AND HOW OFTEN WHEN SOMETHING CAN. A guest renders as fast as the machine
+ * lets it and the display paints at the screen's rate; publishing on every
+ * guest frame spends the difference re-cutting and re-sending blocks nothing
+ * will ever show.
+ */
+#define EM_FAST_MS 16
+
+/*
+ * HOW MUCH OF A WINDOW MAY GO OUT IN ONE CYCLE.
+ *
+ * A block is EM_TILE cells square — at an 8x15 cell, 128x240 pixels, a hundred
+ * and twenty kilobytes — and a maximised window is dozens of them. Sending a
+ * whole repaint at once puts megabytes into a display's queue before a single
+ * byte is written to the socket, which is over KCON_MAX_QUEUE and the session
+ * drops the display it is drawing on. The rest of the repaint stays dirty and
+ * goes in the cycles that follow, so a big frame arrives a few milliseconds
+ * late instead of killing the desktop.
+ */
+#define EM_BUDGET (512u << 10)
+
+struct Embed {
+	Win *win;
+	pid_t pid;
+	int fd;
+	/*
+	 * THE GUEST'S STDERR, AND THE LAST LINE OF IT.
+	 *
+	 * A window is on screen from the moment the cage is forked, long before
+	 * anything is known about whether the program behind it can start. When
+	 * it cannot — a pack that will not mount, a box that will not compose,
+	 * a binary that is not there — the cage's client exits, the cage exits
+	 * with it and the window goes: a window that opened and closed itself,
+	 * with the sentence explaining it in a log nobody is looking at. Every
+	 * line still reaches the session's log; the last one is kept here so
+	 * the person watching the window is told what happened to it.
+	 */
+	int errfd;
+	char last[192];
+
+	void *map;
+	size_t map_len, slot_len;
+	int pw, ph;			/* the mapping, in pixels */
+	size_t stride;
+	int slot;			/* the half holding the current frame */
+
+	int cell_w, cell_h;
+	int cols, rows;			/* the size the guest was asked for */
+	int bw, bh;			/* blocks across and down */
+	int slots[EM_MAX_BLOCKS];	/* session sprite slots, -1 unassigned */
+
+	uint32_t *scratch;		/* one block, contiguous */
+	size_t scratch_px;
+
+	/*
+	 * WHICH BLOCKS ARE OWED TO THE DISPLAY, and it is per block rather
+	 * than one rectangle because a cycle may only afford some of them: a
+	 * bounding box has no way to say "these four went and those six did
+	 * not", and a box that was partly sent is a window with stale squares
+	 * in it that nothing ever repaints.
+	 */
+	uint8_t dirty[EM_MAX_BLOCKS];
+	int ndirty;
+	int cursor;			/* where the next cycle starts */
+	unsigned long long last_ms;
+
+	int gone;			/* the guest exited */
+	int status;			/* and what waitpid said about it */
+	/*
+	 * WHETHER A FRAME HAS EVER ARRIVED. The cage publishes nothing until a
+	 * client has mapped a window, so until this is set there is no picture
+	 * to show and the window says what it is doing instead of standing
+	 * black — which is what a container taking half a minute to come up
+	 * looks like otherwise, and is indistinguishable from a dead one.
+	 */
+	int drew;
+	int focused, asleep;
+};
+
+static unsigned long long now_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned long long)ts.tv_sec * 1000ull +
+	       (unsigned long long)(ts.tv_nsec / 1000000);
+}
+
+/* ── the wire ────────────────────────────────────────────────────────── */
+
+static int send_msg(struct Embed *e, unsigned op, int a, int b, int c, int d,
+		    unsigned f)
+{
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = op, .a = a, .b = b,
+			.c = c, .d = d, .e = f };
+
+	if (e->fd < 0)
+		return -1;
+	while (send(e->fd, &m, sizeof(m), MSG_NOSIGNAL) < 0) {
+		if (errno == EINTR)
+			continue;
+		return -1;
+	}
+	return 0;
+}
+
+/*
+ * One message, and the descriptor it may carry. A short read is a peer
+ * speaking something else; there is exactly one peer and it is our own child,
+ * so the answer is to stop talking to it rather than to guess.
+ */
+static int recv_msg(struct Embed *e, KembedMsg *m, int *fd)
+{
+	struct iovec iov = { .iov_base = m, .iov_len = sizeof(*m) };
+	struct msghdr hdr = { .msg_iov = &iov, .msg_iovlen = 1 };
+	union {
+		char buf[CMSG_SPACE(sizeof(int))];
+		struct cmsghdr align;
+	} u;
+	ssize_t n;
+
+	*fd = -1;
+	memset(&u, 0, sizeof(u));
+	hdr.msg_control = u.buf;
+	hdr.msg_controllen = sizeof(u.buf);
+
+	do {
+		n = recvmsg(e->fd, &hdr, MSG_DONTWAIT);
+	} while (n < 0 && errno == EINTR);
+
+	if (n < 0)
+		return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
+	if (n == 0)
+		return -1;
+	if (n != (ssize_t)sizeof(*m) || m->magic != KEMBED_MAGIC)
+		return -1;
+
+	for (struct cmsghdr *c = CMSG_FIRSTHDR(&hdr); c; c = CMSG_NXTHDR(&hdr, c))
+		if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS)
+			memcpy(fd, CMSG_DATA(c), sizeof(int));
+
+	return 1;
+}
+
+/* ── blocks ──────────────────────────────────────────────────────────── */
+
+/*
+ * The whole window is damaged. Used when the geometry changed, when a new
+ * mapping arrived and when a view attaches: a view that has never been sent a
+ * block draws the fallback mark where the picture should be.
+ */
+static void mark(struct Embed *e, int bx, int by)
+{
+	int i = by * e->bw + bx;
+
+	if (bx < 0 || by < 0 || bx >= e->bw || by >= e->bh ||
+	    i >= EM_MAX_BLOCKS || e->dirty[i])
+		return;
+	e->dirty[i] = 1;
+	e->ndirty++;
+}
+
+static void damage_all(struct Embed *e)
+{
+	for (int by = 0; by < e->bh; by++)
+		for (int bx = 0; bx < e->bw; bx++)
+			mark(e, bx, by);
+}
+
+static void damage_add(struct Embed *e, int x, int y, int w, int h)
+{
+	if (w <= 0 || h <= 0 || e->cell_w < 1 || e->cell_h < 1)
+		return;
+
+	int span_w = EM_TILE * e->cell_w, span_h = EM_TILE * e->cell_h;
+	int bx0 = x / span_w, by0 = y / span_h;
+	int bx1 = (x + w + span_w - 1) / span_w;
+	int by1 = (y + h + span_h - 1) / span_h;
+
+	if (bx0 < 0)
+		bx0 = 0;
+	if (by0 < 0)
+		by0 = 0;
+	for (int by = by0; by < by1; by++)
+		for (int bx = bx0; bx < bx1; bx++)
+			mark(e, bx, by);
+}
+
+/*
+ * The blocks a window is cut into, and a session sprite slot for each. The
+ * slots come from the server's own rotation, the same one surfaces draw from:
+ * a session numbering its own pictures separately would eventually hand a view
+ * a number a surface is already using.
+ */
+static int layout(struct Embed *e, int cols, int rows)
+{
+	e->cols = cols;
+	e->rows = rows;
+	e->bw = (cols + EM_TILE - 1) / EM_TILE;
+	e->bh = (rows + EM_TILE - 1) / EM_TILE;
+
+	if (e->bw < 1 || e->bh < 1 || e->bw * e->bh > EM_MAX_BLOCKS)
+		return -1;
+
+	/*
+	 * WHAT WAS OWED WAS OWED ABOUT A DIFFERENT GRID. An index is
+	 * `by * bw + bx`, so a row count that changed makes every bit stale —
+	 * and a bit outside the new grid can never be cleared, which would
+	 * leave the count of owed blocks permanently above zero and the
+	 * publisher walking the window on every cycle for ever. Every caller
+	 * damages the whole window straight afterwards.
+	 */
+	memset(e->dirty, 0, sizeof(e->dirty));
+	e->ndirty = 0;
+	e->cursor = 0;
+
+	for (int i = 0; i < e->bw * e->bh; i++)
+		if (e->slots[i] < 0)
+			e->slots[i] = kcon_server_alloc_slot(S.server);
+
+	size_t px = (size_t)EM_TILE * e->cell_w * EM_TILE * e->cell_h;
+
+	if (px > e->scratch_px) {
+		uint32_t *p = realloc(e->scratch, px * 4);
+
+		if (!p)
+			return -1;
+		e->scratch = p;
+		e->scratch_px = px;
+	}
+	return 0;
+}
+
+/*
+ * Cut one block out of the mapping and hand it to every attached view. The
+ * rows are copied rather than pointed at: the mapping's stride is the whole
+ * window's and a sprite's bytes have to be contiguous, and the half being read
+ * is the one the child is not writing.
+ */
+/* Answers whether any display took it; one that did not leaves the block owed. */
+static int send_block(struct Embed *e, int bx, int by)
+{
+	int cx = bx * EM_TILE, cy = by * EM_TILE;
+	int cw = e->cols - cx, ch = e->rows - cy;
+
+	if (cw > EM_TILE)
+		cw = EM_TILE;
+	if (ch > EM_TILE)
+		ch = EM_TILE;
+	if (cw < 1 || ch < 1)
+		return 0;
+
+	int px = cx * e->cell_w, py = cy * e->cell_h;
+	int pw = cw * e->cell_w, ph = ch * e->cell_h;
+
+	if (px + pw > e->pw || py + ph > e->ph)
+		return 0;
+
+	const uint8_t *base = (const uint8_t *)e->map +
+			      (size_t)e->slot * e->slot_len;
+
+	for (int y = 0; y < ph; y++)
+		memcpy(e->scratch + (size_t)y * pw,
+		       base + (size_t)(py + y) * e->stride + (size_t)px * 4,
+		       (size_t)pw * 4);
+
+	int slot = e->slots[by * e->bw + bx];
+
+	if (slot < 0)
+		return 0;
+
+	/*
+	 * WHAT A PICTURE LOOKS LIKE WHERE THERE ARE NO PIXELS. Something
+	 * rather than nothing: a window that rendered as blank cells is
+	 * indistinguishable from one that never drew.
+	 */
+	uint32_t fb = 0x2593u;
+	int sent = 0;
+
+	/*
+	 * EVERY VIEW HAS TO TAKE IT, or the block stays owed.
+	 *
+	 * A display that is behind refuses the piece, and one that took it
+	 * while another refused must not be told the window is clean: the
+	 * block is offered again on the next cycle and the display that
+	 * already has it is sent it twice, which costs a resend and cannot
+	 * leave a stale square on either screen.
+	 *
+	 * Flushed here rather than once at the end of the loop, so the bytes
+	 * go to the socket between blocks instead of piling up in the queue
+	 * the watermark is measured against.
+	 */
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (!kcon_view_sprite(v, slot, cw, ch, fb, e->scratch, pw, ph))
+			continue;
+		kcon_view_flush(v);
+		sent = 1;
+	}
+	return sent;
+}
+
+/* Does anything attached turn a sprite's bytes into pixels? */
+static int any_pixel_view(void)
+{
+	for (int i = 0; i < kcon_server_view_count(S.server); i++)
+		if (kcon_view_caps(kcon_server_view_at(S.server, i)) &
+		    KCON_VIEW_PIXELS)
+			return 1;
+	return 0;
+}
+
+/*
+ * WHAT A CYCLE CAN AFFORD, AND WHERE IT STARTS.
+ *
+ * The budget is spent a block at a time and the cursor carries on where the
+ * last cycle stopped, so a window too big for one cycle is finished by the
+ * next few and no corner of it is starved by a guest that keeps damaging the
+ * same place. Blocks that were not sent stay dirty, which is the only record
+ * that they are owed.
+ */
+static void publish(struct Embed *e)
+{
+	if (!e->ndirty || !e->map || e->slot < 0 || e->asleep)
+		return;
+
+	unsigned long long t = now_ms();
+	unsigned long long wait = any_pixel_view() ? EM_FAST_MS : EM_SLOW_MS;
+
+	if (t - e->last_ms < wait)
+		return;
+	e->last_ms = t;
+
+	int nb = e->bw * e->bh;
+	size_t per = (size_t)EM_TILE * e->cell_w * EM_TILE * e->cell_h * 4;
+	size_t spent = 0;
+
+	if (nb < 1 || nb > EM_MAX_BLOCKS)
+		return;
+	if (e->cursor < 0 || e->cursor >= nb)
+		e->cursor = 0;
+
+	for (int n = 0; n < nb && spent < EM_BUDGET; n++) {
+		int i = (e->cursor + n) % nb;
+
+		if (!e->dirty[i])
+			continue;
+		if (!send_block(e, i % e->bw, i / e->bw))
+			break;		/* every display is behind: try later */
+		e->dirty[i] = 0;
+		e->ndirty--;
+		e->cursor = (i + 1) % nb;
+		spent += per;
+	}
+}
+
+/* ── which way a graphical application is shown ──────────────────────── */
+
+/*
+ * THE NAME A POLICY IS KEYED ON. A generated launcher runs `kdos-appbox run
+ * <app>`, so the interesting word is the third one; anything else is named by
+ * its own program.
+ */
+static const char *guest_name(const char *const argv[])
+{
+	if (argv[0] && argv[1] && argv[2] && !strcmp(argv[1], "run") &&
+	    strstr(argv[0], "kdos-appbox"))
+		return argv[2];
+
+	const char *base = strrchr(argv[0], '/');
+
+	return base ? base + 1 : argv[0];
+}
+
+/* `display` out of a box profile, or "". The same file `kdos-box profile`
+ * writes and the settings surface edits — a second store for one key would be
+ * a second place to look when an application comes up on the wrong thing. */
+static void profile_display(const char *name, char *out, size_t cap)
+{
+	char path[512];
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+	char *data;
+
+	out[0] = '\0';
+	if (!name || !*name || strchr(name, '/'))
+		return;
+
+	if (cfg && *cfg)
+		snprintf(path, sizeof(path), "%.400s/kdos/boxes/%.63s.conf",
+			 cfg, name);
+	else
+		snprintf(path, sizeof(path), "%.400s/.config/kdos/boxes/%.63s.conf",
+			 kb_home_dir(), name);
+
+	data = kb_read_all(path, NULL);
+	if (!data)
+		return;
+
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+
+		next = nl ? nl + 1 : line + strlen(line);
+		if (nl)
+			*nl = '\0';
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (strncmp(line, "display", 7))
+			continue;
+
+		char *eq = strchr(line, '=');
+
+		if (!eq)
+			continue;
+		eq++;
+		while (*eq == ' ' || *eq == '\t')
+			eq++;
+		snprintf(out, cap, "%s", eq);
+		break;
+	}
+	free(data);
+}
+
+/*
+ * EMBEDDING IS THE DEFAULT and a terminal of its own is the exception, because
+ * an embedded guest is composited by pixman on the CPU: fine for an editor, not
+ * a way to play a game. Every rule that overrides it says so, so that `kdos
+ * doctor` and a person reading a log get the same sentence.
+ */
+int con_display_mode(const char *const argv[], const char **why)
+{
+	static char reason[160];
+	char disp[64];
+
+	*why = reason;
+
+	if (!argv || !argv[0]) {
+		snprintf(reason, sizeof(reason), "there is nothing to run");
+		return CON_DISPLAY_VT;
+	}
+
+	profile_display(guest_name(argv), disp, sizeof(disp));
+
+	if (!strcmp(disp, "vt")) {
+		snprintf(reason, sizeof(reason),
+			 "its box profile says display = vt");
+		return CON_DISPLAY_VT;
+	}
+	if (!kcon_conf_bool("embed", 1)) {
+		snprintf(reason, sizeof(reason),
+			 "con.conf says embed = false");
+		return CON_DISPLAY_VT;
+	}
+
+	snprintf(reason, sizeof(reason),
+		 "embedding is what a graphical application gets");
+	return CON_DISPLAY_EMBED;
+}
+
+/* ── the child ───────────────────────────────────────────────────────── */
+
+static struct Embed *embeds[32];
+static int nembeds;
+
+/* The cell size a guest is rendered at: the primary view's, because that is
+ * the display the person is looking at. A second view of a different font
+ * rescales the sprite, which is what it already does for every other picture. */
+static void cell_size(int *w, int *h)
+{
+	KconSurface *v = S.server ? kcon_server_view_at(S.server, 0) : NULL;
+
+	*w = v ? kcon_view_cell_w(v) : 0;
+	*h = v ? kcon_view_cell_h(v) : 0;
+	if (*w < 2 || *h < 2 || *w > 64 || *h > 64) {
+		*w = EM_CELL_W;
+		*h = EM_CELL_H;
+	}
+}
+
+Win *embed_open(const char *const argv[], const char *title)
+{
+	int sv[2];
+
+	if (!argv || !argv[0] || nembeds >= (int)(sizeof(embeds) / sizeof(embeds[0])))
+		return NULL;
+
+	struct Embed *e = calloc(1, sizeof(*e));
+
+	if (!e)
+		return NULL;
+	for (int i = 0; i < EM_MAX_BLOCKS; i++)
+		e->slots[i] = -1;
+	e->slot = -1;
+	e->fd = -1;
+	e->errfd = -1;
+	e->focused = 1;
+
+	cell_size(&e->cell_w, &e->cell_h);
+
+	Win *w = calloc(1, sizeof(*w));
+
+	if (!w) {
+		free(e);
+		return NULL;
+	}
+
+	w->kind = WIN_EMBED;
+	w->id = ++S.next_id;
+	w->workspace = S.workspace;
+	w->em = e;
+	e->win = w;
+	snprintf(w->title, sizeof(w->title), "%s",
+		 title && *title ? title : argv[0]);
+	snprintf(w->app_id, sizeof(w->app_id), "%s", argv[0]);
+	/* THE ENTRY ID FOR A GENERATED LAUNCHER, which `argv[0]` is not: it is
+	 * `kdos-appbox` for every boxed application, so run-or-raise keyed on
+	 * it would answer one chord with somebody else's window. */
+	snprintf(w->prog, sizeof(w->prog), "%s", guest_name(argv));
+
+	/* Half the workarea, placed by the window model like anything else —
+	 * an embedded application is a window and is given a window's size. */
+	KwmRect area = win_workarea();
+
+	win_place(w, area.w / 2, area.h / 2);
+
+	if (layout(e, w->geom.w, w->geom.h) != 0) {
+		free(w);
+		free(e);
+		return NULL;
+	}
+
+	if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv) != 0) {
+		free(e->scratch);
+		free(w);
+		free(e);
+		return NULL;
+	}
+
+	/* A pipe rather than the session's own descriptor 2, so what the guest
+	 * says can be read by the window it belongs to. A failure to make one
+	 * is not a failure to launch: the child falls back to the session's
+	 * stderr, which is where every line went before. */
+	int ep[2] = { -1, -1 };
+
+	if (pipe(ep) != 0)
+		ep[0] = ep[1] = -1;
+	else {
+		fcntl(ep[0], F_SETFD, FD_CLOEXEC);
+		fcntl(ep[0], F_SETFL, O_NONBLOCK);
+		fcntl(ep[1], F_SETFD, FD_CLOEXEC);
+	}
+
+	char geom[32];
+
+	snprintf(geom, sizeof(geom), "%dx%d", e->cols * e->cell_w,
+		 e->rows * e->cell_h);
+
+	const char *av[KCON_MAX_ARGV + 4];
+	int n = 0;
+
+	av[n++] = "kdos-cage";
+	av[n++] = "--embed";
+	av[n++] = geom;
+	av[n++] = "--";
+	for (int i = 0; argv[i] && n < (int)(sizeof(av) / sizeof(av[0])) - 1; i++)
+		av[n++] = argv[i];
+	av[n] = NULL;
+
+	pid_t pid = fork();
+
+	if (pid < 0) {
+		close(sv[0]);
+		close(sv[1]);
+		if (ep[0] >= 0) {
+			close(ep[0]);
+			close(ep[1]);
+		}
+		free(e->scratch);
+		free(w);
+		free(e);
+		return NULL;
+	}
+
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDWR);
+
+		/*
+		 * EVERY OTHER DESCRIPTOR IS PLACED AND CLOSED BEFORE THE
+		 * CHANNEL IS INSTALLED, and the order is the whole of it.
+		 *
+		 * /dev/null and the pipe land on the lowest numbers the session
+		 * is not using, either of which can be KEMBED_FD. A channel put
+		 * there first is a channel the close that follows takes away —
+		 * and the guest then has the socket on its standard streams,
+		 * where the first thing it writes is a malformed message to its
+		 * own parent.
+		 */
+		if (null >= 0) {
+			dup2(null, 0);
+			dup2(null, 1);
+		}
+		if (ep[1] >= 0)
+			dup2(ep[1], 2);
+		if (null > 2)
+			close(null);
+		if (ep[0] >= 0)
+			close(ep[0]);
+		if (ep[1] > 2)
+			close(ep[1]);
+		close(sv[0]);
+
+		/* The inherited descriptor, at the number both halves name.
+		 * dup2 clears close-on-exec, which is what makes it survive. */
+		if (sv[1] != KEMBED_FD) {
+			dup2(sv[1], KEMBED_FD);
+			close(sv[1]);
+		} else {
+			fcntl(sv[1], F_SETFD, 0);
+		}
+
+		/*
+		 * A US KEYMAP, AND THE REASON IS THE PATH A KEY TAKES. The view
+		 * resolved the person's own layout to a character before the
+		 * session ever saw it; what goes to the guest is the key that
+		 * produces that character on a US keyboard, so the guest has to
+		 * be reading one. An application that reads raw scancodes sees
+		 * US positions.
+		 */
+		setenv("XKB_DEFAULT_RULES", "evdev", 1);
+		setenv("XKB_DEFAULT_MODEL", "pc105", 1);
+		setenv("XKB_DEFAULT_LAYOUT", "us", 1);
+		setenv("XKB_DEFAULT_VARIANT", "", 1);
+		setenv("XKB_DEFAULT_OPTIONS", "", 1);
+
+		/* The guest is a client of the compositor we are starting, not
+		 * of this session and not of anything outside it. */
+		unsetenv("KDOS_CON");
+		unsetenv("WAYLAND_DISPLAY");
+		unsetenv("DISPLAY");
+
+		kb_child_reset_signals();
+		execvp(av[0], (char *const *)av);
+		_exit(127);
+	}
+
+	close(sv[1]);
+	if (ep[1] >= 0)
+		close(ep[1]);
+	e->pid = pid;
+	e->fd = sv[0];
+	e->errfd = ep[0];
+
+	w->next = S.wins;
+	S.wins = w;
+	S.focus = w->id;
+	embeds[nembeds++] = e;
+	return w;
+}
+
+/* ── messages from the child ─────────────────────────────────────────── */
+
+static void take_buf(struct Embed *e, int fd, int w, int h, size_t stride,
+		     size_t slot_len)
+{
+	if (fd < 0)
+		return;
+	if (w <= 0 || h <= 0 || stride < (size_t)w * 4 ||
+	    slot_len < stride * (size_t)h) {
+		close(fd);
+		return;
+	}
+
+	size_t total = slot_len * KEMBED_SLOTS;
+	void *map = mmap(NULL, total, PROT_READ, MAP_SHARED, fd, 0);
+
+	close(fd);
+	if (map == MAP_FAILED)
+		return;
+
+	if (e->map)
+		munmap(e->map, e->map_len);
+	e->map = map;
+	e->map_len = total;
+	e->slot_len = slot_len;
+	e->stride = stride;
+	e->pw = w;
+	e->ph = h;
+	e->slot = -1;
+	damage_all(e);
+}
+
+static void drain(struct Embed *e)
+{
+	for (;;) {
+		KembedMsg m;
+		int fd = -1;
+		int r = recv_msg(e, &m, &fd);
+
+		if (r == 0)
+			return;
+		if (r < 0) {
+			e->gone = 1;
+			return;
+		}
+
+		switch (m.op) {
+		case KEMBED_HELLO:
+			break;
+		case KEMBED_BUF:
+			take_buf(e, fd, m.a, m.b, (size_t)m.c, (size_t)m.d);
+			break;
+		case KEMBED_FRAME:
+			if (fd >= 0)
+				close(fd);
+			if (m.a < 0 || m.a >= KEMBED_SLOTS || !e->map)
+				break;
+			e->slot = m.a;
+			if (!e->drew) {
+				e->drew = 1;
+				damage_all(e);
+			}
+			damage_add(e, m.b, m.c, m.d, (int)m.e);
+			break;
+		case KEMBED_GONE:
+			if (fd >= 0)
+				close(fd);
+			e->gone = 1;
+			break;
+		default:
+			if (fd >= 0)
+				close(fd);
+			break;
+		}
+	}
+}
+
+/* ── what the guest said ─────────────────────────────────────────────── */
+
+/*
+ * EVERY LINE TO THE SESSION'S LOG, THE LAST ONE KEPT.
+ *
+ * The log is where a whole failure is read afterwards; `last` is one sentence,
+ * and it is the one shown to somebody whose window has just closed itself. A
+ * chunk may carry several lines or half of one, so what is kept is the last
+ * run of text in it that is not blank.
+ */
+static void drain_err(struct Embed *e)
+{
+	char buf[513];
+	ssize_t n;
+
+	if (e->errfd < 0)
+		return;
+
+	for (;;) {
+		n = read(e->errfd, buf, sizeof(buf) - 1);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				close(e->errfd);
+				e->errfd = -1;
+			}
+			return;
+		}
+		if (n == 0) {
+			close(e->errfd);
+			e->errfd = -1;
+			return;
+		}
+
+		buf[n] = '\0';
+		fputs(buf, stderr);
+
+		for (ssize_t i = 0; i < n; i++)
+			if (buf[i] == '\n' || buf[i] == '\r' || buf[i] == '\t')
+				buf[i] = '\0';
+		for (ssize_t i = n - 1; i >= 0; i--) {
+			ssize_t s = i;
+
+			if (!buf[i])
+				continue;
+			while (s > 0 && buf[s - 1])
+				s--;
+			snprintf(e->last, sizeof(e->last), "%s", buf + s);
+			break;
+		}
+	}
+}
+
+/* ── the session's side of the loop ──────────────────────────────────── */
+
+int embed_fds(int *fds, int max)
+{
+	int n = 0;
+
+	for (int i = 0; i < nembeds && n < max; i++) {
+		if (embeds[i]->fd >= 0 && n < max)
+			fds[n++] = embeds[i]->fd;
+		if (embeds[i]->errfd >= 0 && n < max)
+			fds[n++] = embeds[i]->errfd;
+	}
+	return n;
+}
+
+void embed_pump(void)
+{
+	for (int i = 0; i < nembeds; i++) {
+		struct Embed *e = embeds[i];
+		Win *w = e->win;
+
+		if (e->fd >= 0)
+			drain(e);
+		drain_err(e);
+
+		if (!w)
+			continue;
+
+		/*
+		 * THE GUEST IS TOLD WHAT THE WINDOW MODEL DECIDED. Focus so it
+		 * knows whether the keyboard is its own; sleep so a minimised
+		 * application stops rendering frames nobody composites, which
+		 * on a battery is the whole difference between a window and a
+		 * wasted process.
+		 */
+		int want_focus = w->id == S.focus && !S.locked;
+
+		if (want_focus != e->focused) {
+			e->focused = want_focus;
+			send_msg(e, KEMBED_FOCUS, want_focus, 0, 0, 0, 0);
+		}
+		if (w->minimised != e->asleep) {
+			e->asleep = w->minimised;
+			send_msg(e, KEMBED_SLEEP, e->asleep, 0, 0, 0, 0);
+			if (!e->asleep)
+				damage_all(e);
+		}
+
+		publish(e);
+	}
+}
+
+/*
+ * The window's cells changed size, so the guest's output does. A resize IS an
+ * output resize there, which is how the application reconfigures the way it
+ * would on any compositor.
+ */
+void embed_resized(Win *w)
+{
+	struct Embed *e = w ? w->em : NULL;
+
+	if (!e)
+		return;
+	if (w->geom.w == e->cols && w->geom.h == e->rows)
+		return;
+
+	int cw = e->cell_w, chh = e->cell_h;
+
+	cell_size(&cw, &chh);
+	e->cell_w = cw;
+	e->cell_h = chh;
+
+	if (layout(e, w->geom.w, w->geom.h) != 0)
+		return;
+	send_msg(e, KEMBED_SIZE, e->cols * e->cell_w, e->rows * e->cell_h,
+		 0, 0, 0);
+	damage_all(e);
+}
+
+/*
+ * A VIEW ATTACHED, so every block has to go out again: a view holds the
+ * pictures it was sent and a new one was sent none.
+ */
+void embed_view_attached(void)
+{
+	for (int i = 0; i < nembeds; i++) {
+		damage_all(embeds[i]);
+		embeds[i]->last_ms = 0;
+	}
+}
+
+void embed_close(Win *w)
+{
+	struct Embed *e = w ? w->em : NULL;
+
+	if (!e)
+		return;
+	send_msg(e, KEMBED_CLOSE, 0, 0, 0, 0, 0);
+	if (e->pid > 0)
+		kill(e->pid, SIGTERM);
+}
+
+void embed_close_all(void)
+{
+	for (int i = 0; i < nembeds; i++)
+		if (embeds[i]->pid > 0)
+			kill(embeds[i]->pid, SIGTERM);
+}
+
+/*
+ * WHAT IS SAID WHEN A WINDOW GOES WITHOUT EVER HAVING SHOWN ANYTHING.
+ *
+ * The guest's own last line first: it names the step that failed, which is the
+ * only thing that tells a pack that will not mount apart from a box that will
+ * not compose. Failing that, the exit status, which at least separates a
+ * program that is not on the machine (127) from one that ran and refused.
+ */
+static void say_stillborn(const struct Embed *e)
+{
+	const char *name = e->win && e->win->prog[0]	 ? e->win->prog
+			   : e->win && e->win->title[0]	 ? e->win->title
+							 : "the application";
+	char body[256];
+
+	if (e->last[0])
+		snprintf(body, sizeof(body), "%s", e->last);
+	else if (WIFSIGNALED(e->status))
+		snprintf(body, sizeof(body),
+			 "killed by signal %d before it drew anything",
+			 WTERMSIG(e->status));
+	else
+		snprintf(body, sizeof(body),
+			 "exited with status %d before it drew anything",
+			 WEXITSTATUS(e->status));
+
+	fprintf(stderr, "kdos-con: '%s' did not start: %s\n", name, body);
+	kb_notify(name, "Did not start", body);
+}
+
+/*
+ * A guest that exited closes its window. Polled rather than driven by SIGCHLD,
+ * for the reason vt_reap is: the session already wakes on a timer, and a
+ * handler would be a signal racing the window list.
+ */
+void embed_reap(void)
+{
+	for (int i = 0; i < nembeds; i++) {
+		struct Embed *e = embeds[i];
+		int status = 0;
+
+		if (e->pid > 0 && waitpid(e->pid, &status, WNOHANG) == e->pid) {
+			e->pid = 0;
+			e->gone = 1;
+			e->status = status;
+		}
+		if (e->gone && e->pid == 0 && e->win) {
+			/*
+			 * A GUEST THAT NEVER DREW DID NOT CLOSE ITSELF — it
+			 * failed to start, and the window standing on the
+			 * desktop for as long as it took to find that out is
+			 * about to disappear with no account of why. Said once,
+			 * here, because this is the one place that knows both
+			 * that no frame ever arrived and what the program wrote
+			 * on its way out.
+			 */
+			if (!e->drew) {
+				drain_err(e);
+				say_stillborn(e);
+			}
+			win_close(e->win);
+		}
+	}
+}
+
+/* Called from win_close once the window is going for good. */
+void embed_free(Win *w)
+{
+	struct Embed *e = w ? w->em : NULL;
+
+	if (!e)
+		return;
+	w->em = NULL;
+
+	for (int i = 0; i < nembeds; i++)
+		if (embeds[i] == e) {
+			embeds[i] = embeds[--nembeds];
+			break;
+		}
+
+	if (e->fd >= 0)
+		close(e->fd);
+	if (e->errfd >= 0)
+		close(e->errfd);
+	if (e->map)
+		munmap(e->map, e->map_len);
+	/*
+	 * THE SESSION'S SPRITE SLOTS GO BACK. They are a finite map, not a
+	 * counter that wraps: a guest opened and closed enough times without
+	 * this exhausts it and no window on the desktop can show a picture
+	 * again. The whole table is walked rather than bw*bh, because a guest
+	 * that was once larger still holds the slots above its current size.
+	 */
+	for (int i = 0; i < EM_MAX_BLOCKS; i++)
+		if (e->slots[i] >= 0) {
+			kcon_server_free_slot(S.server, e->slots[i]);
+			e->slots[i] = -1;
+		}
+	free(e->scratch);
+	free(e);
+}
+
+int embed_alive(const Win *w)
+{
+	return w && w->em && w->em->pid > 0 && !w->em->gone;
+}
+
+/* ── drawing ─────────────────────────────────────────────────────────── */
+
+/*
+ * The window's cells ARE the picture: each one names the block covering it and
+ * which cell of that block it is. Nothing here touches a pixel — the bytes
+ * went to the views as sprites and this is the reference to them.
+ */
+void embed_draw(const Win *w)
+{
+	const struct Embed *e = w ? w->em : NULL;
+
+	if (!e)
+		return;
+
+	/*
+	 * A WINDOW WITH NO FRAME YET SAYS SO. Sprite cells naming slots no
+	 * display has a picture for come out as the fallback mark, which is a
+	 * window full of shade blocks and reads as a broken application rather
+	 * than as one that has not started drawing.
+	 */
+	if (!e->drew) {
+		static const char *msg = "starting…";
+		int lw = ktui_utf8_width(msg);
+		int x = w->geom.x + (w->geom.w - lw) / 2;
+		int y = w->geom.y + w->geom.h / 2;
+
+		if (lw <= w->geom.w && w->geom.h > 0)
+			ktui_draw_text(x, y, lw, msg, KT_MID, KT_BG,
+				       KT_A_NONE);
+		return;
+	}
+
+	for (int y = 0; y < w->geom.h && y < e->rows; y++)
+		for (int x = 0; x < w->geom.w && x < e->cols; x++) {
+			int slot = e->slots[(y / EM_TILE) * e->bw +
+					    (x / EM_TILE)];
+			uint32_t ch;
+
+			if (slot < 0)
+				continue;
+			ch = KTUI_SPRITE_BASE |
+			     ((uint32_t)slot << 8) |
+			     ((uint32_t)(y % EM_TILE) << 4) |
+			     (uint32_t)(x % EM_TILE);
+			ktui_draw_cell(w->geom.x + x, w->geom.y + y, ch,
+				       KT_TEXT, KT_BG, 0);
+		}
+}
+
+/* ── input ───────────────────────────────────────────────────────────── */
+
+/*
+ * A CHARACTER BACK TO THE KEY THAT PRODUCES IT, on the US keymap the guest is
+ * started with. The view resolved the person's own layout to a character
+ * already; this is the other half of that trip, and it is a table rather than
+ * a keymap because the session links no xkb and must not.
+ */
+struct KeyCode {
+	int key;
+	uint16_t code;
+	uint8_t shift;
+};
+
+static const struct KeyCode keymap[] = {
+	{ 'a', KEY_A, 0 }, { 'b', KEY_B, 0 }, { 'c', KEY_C, 0 },
+	{ 'd', KEY_D, 0 }, { 'e', KEY_E, 0 }, { 'f', KEY_F, 0 },
+	{ 'g', KEY_G, 0 }, { 'h', KEY_H, 0 }, { 'i', KEY_I, 0 },
+	{ 'j', KEY_J, 0 }, { 'k', KEY_K, 0 }, { 'l', KEY_L, 0 },
+	{ 'm', KEY_M, 0 }, { 'n', KEY_N, 0 }, { 'o', KEY_O, 0 },
+	{ 'p', KEY_P, 0 }, { 'q', KEY_Q, 0 }, { 'r', KEY_R, 0 },
+	{ 's', KEY_S, 0 }, { 't', KEY_T, 0 }, { 'u', KEY_U, 0 },
+	{ 'v', KEY_V, 0 }, { 'w', KEY_W, 0 }, { 'x', KEY_X, 0 },
+	{ 'y', KEY_Y, 0 }, { 'z', KEY_Z, 0 },
+	{ 'A', KEY_A, 1 }, { 'B', KEY_B, 1 }, { 'C', KEY_C, 1 },
+	{ 'D', KEY_D, 1 }, { 'E', KEY_E, 1 }, { 'F', KEY_F, 1 },
+	{ 'G', KEY_G, 1 }, { 'H', KEY_H, 1 }, { 'I', KEY_I, 1 },
+	{ 'J', KEY_J, 1 }, { 'K', KEY_K, 1 }, { 'L', KEY_L, 1 },
+	{ 'M', KEY_M, 1 }, { 'N', KEY_N, 1 }, { 'O', KEY_O, 1 },
+	{ 'P', KEY_P, 1 }, { 'Q', KEY_Q, 1 }, { 'R', KEY_R, 1 },
+	{ 'S', KEY_S, 1 }, { 'T', KEY_T, 1 }, { 'U', KEY_U, 1 },
+	{ 'V', KEY_V, 1 }, { 'W', KEY_W, 1 }, { 'X', KEY_X, 1 },
+	{ 'Y', KEY_Y, 1 }, { 'Z', KEY_Z, 1 },
+	{ '1', KEY_1, 0 }, { '2', KEY_2, 0 }, { '3', KEY_3, 0 },
+	{ '4', KEY_4, 0 }, { '5', KEY_5, 0 }, { '6', KEY_6, 0 },
+	{ '7', KEY_7, 0 }, { '8', KEY_8, 0 }, { '9', KEY_9, 0 },
+	{ '0', KEY_0, 0 },
+	{ '!', KEY_1, 1 }, { '@', KEY_2, 1 }, { '#', KEY_3, 1 },
+	{ '$', KEY_4, 1 }, { '%', KEY_5, 1 }, { '^', KEY_6, 1 },
+	{ '&', KEY_7, 1 }, { '*', KEY_8, 1 }, { '(', KEY_9, 1 },
+	{ ')', KEY_0, 1 },
+	{ ' ', KEY_SPACE, 0 },
+	{ '-', KEY_MINUS, 0 }, { '_', KEY_MINUS, 1 },
+	{ '=', KEY_EQUAL, 0 }, { '+', KEY_EQUAL, 1 },
+	{ '[', KEY_LEFTBRACE, 0 }, { '{', KEY_LEFTBRACE, 1 },
+	{ ']', KEY_RIGHTBRACE, 0 }, { '}', KEY_RIGHTBRACE, 1 },
+	{ ';', KEY_SEMICOLON, 0 }, { ':', KEY_SEMICOLON, 1 },
+	{ '\'', KEY_APOSTROPHE, 0 }, { '"', KEY_APOSTROPHE, 1 },
+	{ '`', KEY_GRAVE, 0 }, { '~', KEY_GRAVE, 1 },
+	{ '\\', KEY_BACKSLASH, 0 }, { '|', KEY_BACKSLASH, 1 },
+	{ ',', KEY_COMMA, 0 }, { '<', KEY_COMMA, 1 },
+	{ '.', KEY_DOT, 0 }, { '>', KEY_DOT, 1 },
+	{ '/', KEY_SLASH, 0 }, { '?', KEY_SLASH, 1 },
+	{ KT_K_ESC, KEY_ESC, 0 },
+	{ KT_K_ENTER, KEY_ENTER, 0 },
+	{ KT_K_TAB, KEY_TAB, 0 },
+	{ KT_K_BTAB, KEY_TAB, 1 },
+	{ KT_K_BACKSPACE, KEY_BACKSPACE, 0 },
+	{ KT_K_UP, KEY_UP, 0 }, { KT_K_DOWN, KEY_DOWN, 0 },
+	{ KT_K_LEFT, KEY_LEFT, 0 }, { KT_K_RIGHT, KEY_RIGHT, 0 },
+	{ KT_K_HOME, KEY_HOME, 0 }, { KT_K_END, KEY_END, 0 },
+	{ KT_K_PGUP, KEY_PAGEUP, 0 }, { KT_K_PGDN, KEY_PAGEDOWN, 0 },
+	{ KT_K_INS, KEY_INSERT, 0 }, { KT_K_DEL, KEY_DELETE, 0 },
+	{ KT_K_F1, KEY_F1, 0 }, { KT_K_F2, KEY_F2, 0 },
+	{ KT_K_F3, KEY_F3, 0 }, { KT_K_F4, KEY_F4, 0 },
+	{ KT_K_F5, KEY_F5, 0 }, { KT_K_F6, KEY_F6, 0 },
+	{ KT_K_F7, KEY_F7, 0 }, { KT_K_F8, KEY_F8, 0 },
+	{ KT_K_F9, KEY_F9, 0 }, { KT_K_F10, KEY_F10, 0 },
+	{ KT_K_F11, KEY_F11, 0 }, { KT_K_F12, KEY_F12, 0 },
+};
+
+static void tap(struct Embed *e, uint16_t code, int down)
+{
+	send_msg(e, KEMBED_KEY, code, down, 0, 0, 0);
+}
+
+int embed_key(Win *w, const KtuiEvent *ev)
+{
+	struct Embed *e = w ? w->em : NULL;
+
+	if (!e || e->fd < 0)
+		return 0;
+
+	const struct KeyCode *k = NULL;
+
+	for (size_t i = 0; i < sizeof(keymap) / sizeof(keymap[0]); i++)
+		if (keymap[i].key == ev->key) {
+			k = &keymap[i];
+			break;
+		}
+	if (!k)
+		return 0;
+
+	/*
+	 * PRESS AND RELEASE, both here. The view reports a key as one event —
+	 * it is a character, not a switch — so a guest that was sent only the
+	 * press would hold every key it was ever given down.
+	 */
+	int shift = k->shift || (ev->mods & KT_MOD_SHIFT);
+
+	if (shift)
+		tap(e, KEY_LEFTSHIFT, 1);
+	if (ev->mods & KT_MOD_CTRL)
+		tap(e, KEY_LEFTCTRL, 1);
+	if (ev->mods & KT_MOD_ALT)
+		tap(e, KEY_LEFTALT, 1);
+
+	tap(e, k->code, 1);
+	tap(e, k->code, 0);
+
+	if (ev->mods & KT_MOD_ALT)
+		tap(e, KEY_LEFTALT, 0);
+	if (ev->mods & KT_MOD_CTRL)
+		tap(e, KEY_LEFTCTRL, 0);
+	if (shift)
+		tap(e, KEY_LEFTSHIFT, 0);
+	return 1;
+}
+
+int embed_ptr(Win *w, const KtuiEvent *ev)
+{
+	struct Embed *e = w ? w->em : NULL;
+
+	if (!e || e->fd < 0)
+		return 0;
+
+	/*
+	 * THE CELL, PLUS WHERE IN IT. A cell is several pixels wide and a
+	 * guest's buttons are smaller than one, so a view that knows its own
+	 * pixel geometry says where inside the cell the pointer was; one that
+	 * does not means its centre.
+	 */
+	int cx = ev->mx - w->geom.x, cy = ev->my - w->geom.y;
+	int px = cx * e->cell_w + e->cell_w / 2 +
+		 ev->subx * e->cell_w / 256;
+	int py = cy * e->cell_h + e->cell_h / 2 +
+		 ev->suby * e->cell_h / 256;
+
+	if (px < 0)
+		px = 0;
+	if (py < 0)
+		py = 0;
+	if (px >= e->pw && e->pw > 0)
+		px = e->pw - 1;
+	if (py >= e->ph && e->ph > 0)
+		py = e->ph - 1;
+
+	unsigned ms = (unsigned)now_ms();
+
+	switch (ev->btn) {
+	case KT_MB_LEFT:
+	case KT_MB_MIDDLE:
+	case KT_MB_RIGHT: {
+		static const int btn[] = { BTN_LEFT, BTN_MIDDLE, BTN_RIGHT };
+
+		if (ev->press == KT_MP_DRAG)
+			send_msg(e, KEMBED_MOTION, px, py, 0, 0, ms);
+		else
+			send_msg(e, KEMBED_BUTTON, px, py, btn[ev->btn],
+				 ev->press == KT_MP_PRESS, ms);
+		break;
+	}
+	case KT_MB_WHEEL_UP:
+		send_msg(e, KEMBED_AXIS, px, py, -1, 0, ms);
+		break;
+	case KT_MB_WHEEL_DOWN:
+		send_msg(e, KEMBED_AXIS, px, py, 1, 0, ms);
+		break;
+	default:
+		send_msg(e, KEMBED_MOTION, px, py, 0, 0, ms);
+		break;
+	}
+	return 1;
+}

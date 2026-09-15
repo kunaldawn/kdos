@@ -1,0 +1,29 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# TAGGING, AND NOTHING ELSE. notmuch runs this after it has indexed and after
+# new.tags has been applied, so a query here sees exactly the messages this run
+# added and can file them before you look at the inbox.
+#
+# IT DOES NOT RUN `notmuch new`. This hook is invoked BY that command; one that
+# called it again would recurse until the machine stopped.
+#
+# THE LAST LINE IS LOAD-BEARING. `new` is a transient tag that config's
+# new.tags adds and this removes, and every rule above it is written against
+# `tag:new`. Move the removal above a rule and that rule matches nothing.
+
+# Nothing is enabled: a rule that filed somebody's mail without being asked is
+# worse than a file of examples.
+#notmuch tag +lists -inbox -- tag:new and to:/.*-list@/
+#notmuch tag +sent -inbox -unread -- tag:new and from:you@example.org
+#notmuch tag +spam -inbox -- tag:new and folder:/Junk/
+
+notmuch tag -new -- tag:new

@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vdirsyncer
+version     = 0.21.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/v/vdirsyncer/vdirsyncer-$version.tar.gz
+sha256      = b6ac040b880da6758f65c17a369572f62e7323be8d21cd330c26fa134d1b1373  vdirsyncer-0.21.0.tar.gz
+sha256      = a216ac40dc2cb43563002c588d65fb38a25ec2bd7af1ee71c3fe9527c673d77d  vdirsyncer-vendor-0.21.0.tar.xz
+description = Makes a CalDAV or CardDAV collection and a local vdir equal
+homepage    = https://github.com/pimutils/vdirsyncer
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = aiohappyeyeballs aiohttp aiosignal aiostream attrs certifi charset-normalizer click click-log frozenlist idna multidict propcache requests tenacity typing-extensions urllib3 yarl expandvars pkgconfig flit-core poetry-core packaging pathspec calver tomlkit trove-classifiers vcs-versioning setuptools-scm pluggy hatchling hatch-vcs hatch-fancy-pypi-readme

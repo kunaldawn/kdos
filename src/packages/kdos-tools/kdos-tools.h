@@ -64,6 +64,23 @@ int banner_main(int argc, char **argv);		/* kdos-banner              */
 int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */
 int fetch_static_main(int argc, char **argv);	/* kdos-fetch-static        */
 int sandbox_main(int argc, char **argv);	/* kdos sandbox             */
+/*
+ * The switches a desktop needs at hand, as flag files under
+ * ~/.local/state/kdos/toggles/. Present means on; see toggle.c for why they
+ * are state rather than configuration keys.
+ */
+int cmd_toggle(int argc, char **argv);
+/* A toast is `kb_notify()` in libkbase — one sender for the whole tree, so a
+ * terminal's OSC 9 and `kdos notify` cannot drift apart. `kdos-notify` is the
+ * notification CENTRE, a viewer, and is not the sender. */
+/*
+ * SIGHUP to every long-lived surface: the live retint. `kdos theme` sends it
+ * after writing the accent, and a toggle whose consumer reads it on that
+ * signal rather than on a tick has to send it too — otherwise the flag file is
+ * written and nothing on screen changes until the next one.
+ */
+void kdt_reload_session(void);
+
 int why_main(int argc, char **argv);		/* kdos why                 */
 int explain_main(int argc, char **argv);		/* kdos explain             */
 int appid_main(int argc, char **argv);		/* kdos appid               */
@@ -80,6 +97,10 @@ int hey_app_ids(char ***out);
 /* kdos-sfx (sfx.c): four synthesized noises. Its own basename, because the
  * things that play them are init scripts and keybinds, not `kdos` users. */
 int sfx_main(int argc, char **argv);
+/* A basename of its own rather than a `kdos` subcommand, for the reason
+ * kdos-sfx has one: a media key runs it out of con.conf and rc.xml, and those
+ * name a program. */
+int mpctl_main(int argc, char **argv);		/* kdos-mpctl               */
 
 /*
  * The reasons corpus, shared by `kdos why`, `kdos explain` and `kdos oracle`.
@@ -133,5 +154,29 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
  */
 int kdt_app(int argc, char **argv);
 int kdt_trash(int argc, char **argv);
+int kdt_places(int argc, char **argv);
+int kdt_thumb(int argc, char **argv);
+
+/* $XDG_CACHE_HOME/<rest>, and the parent of a path. Shared because `kdos
+ * theme` and `kdos thumb` write into the same cache root, and two answers to
+ * where that is would put one program's files where nothing else looks. */
+/*
+ * THE CLIPBOARD, on whichever desktop this is (clip.c). The console is asked
+ * first, because a console session running inside a graphical one has both and
+ * the near one is right. Neither direction puts the text in an argument
+ * vector. `kdt_clip_take` answers 0 for an empty clipboard as well as for no
+ * clipboard at all: a caller with nothing to send cannot use the difference.
+ */
+int kdt_clip_put(const char *text);
+int kdt_clip_take(char *buf, size_t n);
+
+/* `kdos share` / `kdos-share` (share.c). */
+int share_main(int argc, char **argv);
+
+/* `kdos remind` (remind.c) — a toast, later, over J.13's per-user table. */
+int remind_main(int argc, char **argv);
+
+char *kdt_cache_home(const char *rest);
+void kdt_mkparent(const char *path);
 
 #endif /* KDOS_TOOLS_H */

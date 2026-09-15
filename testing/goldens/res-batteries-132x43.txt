@@ -11,6 +11,7 @@
 | Network          | technology  Li-ion                                                                                            |
 | Batteries        |                                                                                                               |
 | Energy           | AC0          not connected                                                                                    |
+| Sensors          |                                                                                                               |
 | Boxes            |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
@@ -38,6 +39,5 @@
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
-|                  |                                                                                                               |
-|                  |                                                                                                               |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                                                                                |
 +==================================================================================================================================+

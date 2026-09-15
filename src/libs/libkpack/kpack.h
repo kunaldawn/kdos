@@ -56,7 +56,25 @@
 #define KPK_MAGIC        "KDOSPACK"
 #define KPK_MAGIC_LEN    8
 #define KPK_FOOTER_LEN   512
-#define KPK_FORMAT       1
+
+/*
+ * THE FORMAT NUMBER SAYS WHAT THE DIGEST COVERS, and that is the only reason
+ * it has ever had to move.
+ *
+ *   1  the digest is over `[0, sig_off)` — the payload alone
+ *   2  it is over `[0, sig_off)` AND the footer, `payload_sha256` and
+ *      `sig_len` zeroed
+ *
+ * Both are read; `KPK_FORMAT` is what a pack written here declares. Widening
+ * the span without moving this number is what makes every pack already baked
+ * unmountable and indistinguishable from a corrupt one: `kpk_verify` answers
+ * HASH, kdos-packd refuses the mount, and no box composes. A format 1 pack
+ * therefore keeps the weaker property it was signed under — its footer's
+ * offsets are outside its own digest — and the medium's signed index, whose
+ * `C:` hash is over the whole file, is what covers those bytes instead.
+ */
+#define KPK_FORMAT       2
+#define KPK_FORMAT_MIN   1
 
 #define KPK_ID_MAX       64
 #define KPK_LIST_MAX     32	/* desktop/mime/command/provides/needs entries */
@@ -195,8 +213,21 @@ void *kpk_icon_read(const KpkPack *p, size_t *len);
 
 /* ── hashing, signing, verifying ───────────────────────────────────────── */
 
-/* SHA-256 over bytes [0, sig_off) — the filesystem, the metadata and the icon,
- * which is everything a signature is meant to cover. Streamed. */
+/*
+ * SHA-256 over bytes [0, sig_off) — the filesystem, the metadata and the icon
+ * — and, from format 2, over the footer as well, with `payload_sha256` and
+ * `sig_len` zeroed.
+ *
+ * The span is chosen by `f->format`, not by this build: a pack is hashed the
+ * way the pack says it was, or every artefact baked under an earlier format
+ * answers HASH and nothing mounts it. The footer is what says where those
+ * three spans are, so a hash stopping at sig_off leaves every offset in it
+ * rewritable under a signature that still verifies — which is what format 2
+ * closes and what a format 1 pack still costs. The two zeroed fields are the
+ * two written after this is computed: the digest itself, and the length that
+ * grows when a second key signs. Streamed; the footer is packed from the
+ * struct, because the writer calls this before the footer exists on disk.
+ */
 int kpk_payload_hash(const char *path, const KpkFooter *f, char out[65]);
 
 /*
@@ -246,6 +277,26 @@ const char *kpk_sig_state_name(KpkSigState s);
 /* Append a signature line to an existing pack, rewriting its footer. */
 int kpk_sign(const char *path, const uint8_t seed[KSIG_SEED_LEN],
 	     const uint8_t pub[KSIG_PUB_LEN]);
+
+/*
+ * Bring a pack to KPK_FORMAT: raise the format number, take the digest under
+ * that format's span, and drop the signature block with it.
+ *
+ * An older pack still verifies and still mounts — that is what the format
+ * number is for — so this is an UPGRADE rather than a repair, and what it buys
+ * is the stronger span. The signature cannot survive it: the block names the
+ * digest it replaced. The caller signs again afterwards, and re-indexes the
+ * directory, because the index's hash is over the whole file.
+ *
+ * A BUILDER'S CALL. It rewrites the one field a verifier checks, so on a pack
+ * from anywhere but this tree it makes the pack agree with whatever bytes it
+ * now holds — which says nothing about the bytes it was built from.
+ *
+ * Returns 0 when it rewrote the footer, 1 when the pack was already at this
+ * format with a digest that agreed and was left alone (its signature with it),
+ * -1 on error.
+ */
+int kpk_restamp(const char *path);
 
 /* ── writing one ───────────────────────────────────────────────────────── */
 
@@ -338,7 +389,15 @@ typedef struct {
  * read. A stanza missing P: or C: is dropped, not half-recorded. */
 int kpk_index_load(KpkIndex *ix, const char *path);
 
-/* Verify PACKAGES against PACKAGES.sig beside it. Same three states. */
+/*
+ * Verify PACKAGES against PACKAGES.sig beside it.
+ *
+ * KPK_SIG_GOOD, KPK_SIG_BAD and KPK_SIG_NOKEY carry the meanings kpk_verify
+ * gives them. KPK_SIG_NONE is an index with no `.sig` beside it. An index
+ * that cannot be read at all is KPK_SIG_HASH, never NONE: NONE is a state a
+ * caller may accept, and a missing catalogue must not read as an acceptable
+ * unsigned one.
+ */
 KpkSigState kpk_index_verify(const char *path, const KsigRing *ring,
 			     char who[KSIG_ID_HEX]);
 

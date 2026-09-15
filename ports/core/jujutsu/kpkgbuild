@@ -16,5 +16,5 @@ sha256      = cd72ac1040c93d474dcafd8dd7f8d91d7407f9358bc9ffd4a6b72f4017112eab  
 sha256      = 373720facb39a418dfaa12d6d9d536e327db3e2beb5911dc4596ca25c080fb79  jujutsu-vendor-0.44.0.tar.xz
 description = Git-backed VCS whose operation log makes local recovery trivial
 homepage    = https://jj-vcs.github.io/jj/
-depends     = rust pkgconf openssl zstd
+depends     = rust pkgconf openssl zstd protobuf
 vendoring   = rust

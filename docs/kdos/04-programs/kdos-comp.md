@@ -51,6 +51,15 @@ Two conventions make the additions greppable:
 | `kdos-layerfocus.c` | Click-away for on-demand layer surfaces |
 | `kdos-winpos.c` | Window placement decisions |
 
+**The compositor owns no window-model arithmetic.** Where a new window lands, what a tiled state
+becomes and what rectangle it occupies, which edge a moving edge stops against, and how workspace
+stepping skips empty workspaces all come from `libkwm`, which `kdos-con` calls too — so a defect in
+any of them is one fix rather than two that drift. What stays here is everything only a compositor
+can do: walking its own view list, asking the decoration how thick it is, working out which edges
+are actually visible, and how a drag *feels* as it crosses one.
+
+See [The window model](../03-architecture/window-model.md).
+
 ## Configuration
 
 The split matters: **`comp.conf` holds only the KDOS keys**, and everything else is `rc.xml`.
@@ -77,6 +86,7 @@ this.
 | `lid_close` | `suspend` | `suspend`, `off`, or ignore |
 | `icons` | `yes` | Whether chrome draws pictures at all |
 | `panel_opacity`, `panel_margin` | | Panel appearance |
+| `window_memory` | `yes` | Whether an application opens where its window last was |
 
 ### Startup-only keys
 
@@ -96,7 +106,6 @@ with the running chrome is how a later reader concludes the setting works.
 | `clipboard` | | The clipboard history daemon |
 | `chrome_font` | `Terminus:pixelsize=32` | The font every KDOS surface draws with |
 | `clock_format` | `%H:%M` | |
-| `window_memory` | | Remember window positions |
 
 ### Files whose existence is the setting
 
@@ -127,6 +136,13 @@ a compile, to the recipe parser and to XML validation.
 Overrides go **after** it, because the later of a duplicate pair wins.
 
 `testing/preflight.sh` fails a shipped `rc.xml` that gets this wrong.
+
+**And `--` may not appear inside an XML comment.** This file documents itself in prose, and prose
+about a desktop names command arguments: one `--app-id` inside a `<!-- -->` makes the whole
+document ill-formed, and a compositor that cannot parse its configuration loads **none** of the
+bindings in it. Nothing about the running system says so — the chords are simply not there, one
+by one, in whatever order a person happens to try them. `testing/preflight.sh` parses the shipped
+file with a real XML parser for exactly this.
 
 The shipped bindings are listed in [The desktop](../02-user-guide/desktop.md).
 

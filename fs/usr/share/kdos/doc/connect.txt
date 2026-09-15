@@ -1,0 +1,38 @@
+KDOS CONNECT
+
+A folder on another machine, over SMB.
+
+  Enter     on the list opens the form; on the form, connects.
+  Tab       moves between the five fields.
+  d         disconnects the selected share.
+  r         asks the daemon again.
+  Escape    on the form cancels it; on the list closes the window.
+
+The five fields
+
+  Server    a DNS name or an IP address. A workgroup name will not work:
+            this system resolves names through /etc/hosts and /etc/resolv.conf
+            and has no NetBIOS and no mDNS, so a name that only a workgroup
+            broadcast could answer fails with a message nobody can act on.
+  Share     the folder's name on that server, without slashes.
+  User      the account on the server, not the one on this machine.
+  Domain    empty where there is none.
+  Password  typed here, sent as its own frame, and never written down.
+
+  A comma, a slash or a backslash in any of the first four is refused. The
+  mount helper builds its option string by joining these together and escapes
+  nothing but the password, so one of those characters is a new mount option
+  rather than part of a name.
+
+What this window does not do
+
+  It does not mount anything. It fills in five fields and hands them to
+  kdos-mountd, which runs as root and owns every privileged path here. The
+  password reaches the mount helper on a file descriptor, so it is in no
+  argument list and in no file.
+
+  Kerberos is not available on this system: the upcall helper is not built and
+  there is no krb5 port, so a server that will only take a ticket cannot be
+  reached from here at all.
+
+  [[doc:index]]

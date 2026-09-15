@@ -501,6 +501,18 @@ EOF
 	fi
 	if [ "$keep" = 1 ]; then
 		rm -f "$new"
+		# A KEPT PACK IS STILL BROUGHT TO THIS BUILD'S PACK FORMAT.
+		# `restamp` rewrites the footer only when the pack is behind
+		# KPK_FORMAT or its digest disagrees, and it drops the signature
+		# when it does — the block names the digest it replaced — so a
+		# re-stamped pack is signed again here. Without this a medium
+		# ships packs at whatever format they were first baked under,
+		# because an unchanged pack is kept byte for byte and a rebuild
+		# alone never touches it.
+		if "$KPACK" restamp "$OUT/$id.kpack" | grep -q 're-stamped'; then
+			echo "    re-stamped $id.kpack to the current pack format"
+			[ -n "$SIGN" ] && "$KPACK" sign "$OUT/$id.kpack" "$SIGN"
+		fi
 		echo "    unchanged — keeping $id.kpack $(kpk_ver "$OUT/$id.kpack")"
 		unchanged=$((unchanged + 1))
 	else

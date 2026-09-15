@@ -17,7 +17,7 @@ piece of it without installing anything".
 |  icon.png                  |  the application's own mark, untinted
 +----------------------------+
 |  signature block           |  signature lines, or empty
-+----------------------------+  sig_off + sig_len
++----------------------------+  sig_off + sig_len = start of the footer
 |  footer (512 bytes)        |  magic, offsets, payload hash
 +----------------------------+  end of file
 ```
@@ -33,13 +33,41 @@ to know nothing about the format.
 ### Three rules the format keeps
 
 - **A pack that does not parse whole is absent, never partial.** A short footer, a wrong magic
-  number, a version from the future, an offset past the end of the file — each answers "there is
-  no pack here" rather than handing back half a description.
+  number, a version from the future, an offset past the end of the file, a section that starts
+  before the one ahead of it ends — each answers "there is no pack here" rather than handing back
+  half a description. Three of the spans are bounded by what the section can honestly be as well
+  as by the file: **metadata 1 MiB, icon 4 MiB, signature block 64 KiB**. All three are read whole
+  into memory by a root daemon before anything about the pack is authenticated, so "it fits in the
+  file" would be an attacker's budget rather than a bound. **The signature block ends exactly
+  where the footer begins.** Slack there is what makes a later `kdos-pack sign` silently do
+  nothing: it appends its line at `sig_off + sig_len` and writes a new footer straight after,
+  landing in the middle of the file while the old footer at the end — still naming the old
+  `sig_len` — is the one a reader seeks to.
 - **The payload hash is checked before the signature means anything.** The signature is over a
   small subject containing the pack's id and its hash, so verification never holds a
   several-hundred-megabyte file in memory — and that binds the signature to the bytes *only*
   because the bytes were hashed first. The two are separate outcomes, because a caller told "bad
   signature" when the truth is "bad hash" goes looking for a key problem that does not exist.
+- **From format 2 the hash covers the footer too**, with `payload_sha256` and `sig_len` zeroed. The
+  footer is what says where the filesystem, the metadata and the icon are; over a hash that stops
+  at `sig_off` — which is all a format 1 pack's digest is — those offsets can be re-pointed
+  (`meta_off` into the payload, say) and the signature still verifies, because it is over bytes
+  nobody moved. A format 1 pack therefore leans on the medium's signed index, whose `C:` hash is
+  over the whole file, to cover its footer. The two zeroed fields are the two written after the
+  hash is taken: the digest itself, and the length that grows each time a further key signs an
+  already-signed pack.
+- **The format number is what says which span the digest covers**, and it is read from the pack, not
+  assumed from the build: format 1 is `[0, sig_off)`, format 2 that plus the footer. Every format
+  from `KPK_FORMAT_MIN` up is verified the way it declares, which is what lets a pack published
+  under an older rule still mount; `KPK_FORMAT` is only what a pack written *here* declares.
+  Widening the span without moving the number is the failure this prevents — every pack already
+  baked answers `HASH`, `kdos-packd` mounts nothing, no box composes, and every application in it
+  stops opening, indistinguishably from corruption. **`kdos-pack restamp <pack>` is the repair and
+  the upgrade**: it raises the footer to `KPK_FORMAT`, takes the digest under that format's span,
+  and drops the signature block with it — the block names the digest it replaced — so the pack is
+  signed and the directory indexed again afterwards. It leaves a pack already at this format with
+  an agreeing digest, and its signature, untouched. The bake re-stamps every pack it *keeps* for
+  this reason; a rebuild alone does not, because an unchanged pack is kept byte for byte.
 - **Nothing in the library mounts, executes or writes outside the file it was given.** A root
   daemon links it, so every line is code running as root.
 

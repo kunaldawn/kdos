@@ -202,13 +202,67 @@ kdos-appbox open --choose report.pdf
 ```
 
 This is here rather than in a generic opener because this is already the program that knows what
-"open with GIMP" means on this machine.
+"open with GIMP" means on this machine — and `/usr/local/bin/xdg-open` **is this program**, a third
+name on the binary beside `kdos-box`. Everything that opens a link says that word and means
+"whatever this machine opens it with": a mail client's `:open-link`, a portal, anything reading
+`$BROWSER`. `/usr/local/bin` comes first on the shipped `PATH`, so this answers before xdg-utils'
+script — which stays installed and is still where an unclaimed type ends up, reached **by absolute
+path** because naming it otherwise would find this binary again and recurse.
 
-The resolution is the standard one and nothing clever: the glob table for the type — **longest
-matching suffix wins**, or every compound extension opens in a decompressor — then the default
-applications, the added associations, and each MIME cache. That last file is the one the generator
+**A URL is not a file name, and one function decides which it is.** `kxdg_mime_for_arg()` types an
+argument with a scheme as `x-scheme-handler/<scheme>` and unwraps `file:` to the path it names;
+anything else is a path. Without it the basename decided, so `mailto:a@b.c` matched the
+`*.C` glob and a mail address resolved to C++ source. The chooser asks the same function, so both
+sides mean the same thing by the same word.
+
+The resolution is otherwise the standard one and nothing clever: the glob table for the type —
+**longest matching suffix wins**, or every compound extension opens in a decompressor — then the
+default applications, the added associations, and each MIME cache. That last file is the one the generator
 already writes beside a box's launchers, so **a boxed application is found by exactly the same
 lookup as a host one**.
+
+**Each of those levels is searched twice, the running desktop's list first.**
+`<desktop>-mimeapps.list` — the first name in `XDG_CURRENT_DESKTOP`, lowercased, so
+`kdos-console-mimeapps.list` on the console — comes before the plain `mimeapps.list` beside it.
+That is what lets one picture open in `timg` inside a terminal on the console and in a boxed viewer
+under the compositor **without either desktop editing the other's choices**, which one list for one
+user cannot express.
+
+**Every shipped table is at `/etc/xdg` and a home starts with none.** Three files:
+`kdos-mimeapps.list` for the compositor, `kdos-console-mimeapps.list` for the console, and the
+plain `mimeapps.list` for what both desktops answer the same way. A person's own choice is searched
+before all three wherever they made it, so *Open With* can always change what is in force — a
+default shipped into `~/.config` would have outranked it and the chooser would have appeared to do
+nothing. *Open With* consults these in the opener's order and writes to the plain user list, so
+what it shows as current is what the opener would actually run.
+
+**A `Terminal=true` entry is wrapped in the desktop's own terminal.** `foot` under the compositor,
+`kdos-term` inside a console session — one rule in `kb_terminal()`, because the console resolving a
+handler correctly and then wrapping it in a Wayland client would look like the handler being wrong
+rather than the terminal being unreachable.
+
+**And on a bare virtual terminal it is not wrapped at all.** `Ctrl+Alt+F2`, a serial console and an
+ssh login are shells no session started: neither emulator can open there, and the caller is already
+sitting at a terminal. `kb_terminal()` answers NULL and the entry runs in place. The desktop name
+follows the same fact — a login with no display of any kind is given the **console's**, so a link
+resolves through `kdos-console-mimeapps.list` to `w3m` rather than through the compositor's list to
+a Wayland client with nothing to connect to.
+
+**Unless the entry asked for one by name.** `X-KDOS-Term` names the emulator a program needs — the
+one that draws pictures in the cell grid — and is honoured on either desktop. It is **a name and
+never a program**: only an emulator this image ships is accepted and anything else is the session's
+own, because an entry is a file anything can write and a key naming a program would be a second
+`Exec` line with none of the field-code rules.
+
+**And inside a console session it is preferred.** There is no compositor there, so a windowed
+handler at the head of the chain opens nothing anybody can see. The reordering is stable and it
+happens **only where nobody has decided**: a `[Default Applications]` row is somebody's answer and
+keeps its place, so this can never overrule a choice. *Open With* applies the same rule, because
+its first row has to be the handler the opener would use.
+
+**A type goes in exactly one of them.** One both desktops open the same way belongs in the plain
+file; writing it in each desktop's is the same decision recorded twice, which is a decision that
+drifts.
 
 Field codes are **substituted** rather than stripped: the code *is* the file, and dropping it
 opens the application with an empty document.

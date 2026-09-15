@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include "common/edge.h"
 #include "common/macros.h"
+#include "kwm.h"
 
 struct border;
 struct output;
@@ -13,45 +14,27 @@ struct server;
 struct view;
 struct wlr_box;
 
+/*
+ * Saturating arithmetic and the choice between two candidate edges are
+ * libkwm's, so this compositor and kdos-con cannot drift on them. These stay as
+ * thin inlines because every call site here is on the pointer's motion path.
+ */
 static inline int
 clipped_add(int a, int b)
 {
-	if (b > 0) {
-		return a >= (INT_MAX - b) ? INT_MAX : (a + b);
-	} else if (b < 0) {
-		return a <= (INT_MIN - b) ? INT_MIN : (a + b);
-	}
-
-	return a;
+	return kwm_clip_add(a, b);
 }
 
 static inline int
 clipped_sub(int a, int b)
 {
-	if (b > 0) {
-		return a <= (INT_MIN + b) ? INT_MIN : (a - b);
-	} else if (b < 0) {
-		return a >= (INT_MAX + b) ? INT_MAX : (a - b);
-	}
-
-	return a;
+	return kwm_clip_sub(a, b);
 }
 
 static inline int
 edge_get_best(int next, int edge, bool decreasing)
 {
-	if (!BOUNDED_INT(next)) {
-		/* Any bounded edge beats an unbounded next */
-		return BOUNDED_INT(edge) ? edge : next;
-	}
-
-	/* No unbounded edge ever beats next */
-	if (!BOUNDED_INT(edge)) {
-		return next;
-	}
-
-	/* Max edge wins for decreasing moves, min edge for increasing */
-	return decreasing ? MAX(next, edge) : MIN(next, edge);
+	return kwm_edge_best(next, edge, decreasing);
 }
 
 struct edge {

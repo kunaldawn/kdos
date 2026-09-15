@@ -18,7 +18,11 @@ Every root daemon in this system is built the same way. A new one that is not is
   connecting process's real user id from the kernel and answers `err not permitted` to anyone who
   is not root or in `wheel`. A mode that *looked* like the authorisation is a mode somebody
   eventually loosens.
-- **One line per connection.** A short request, a short answer, no session state.
+- **One line per connection.** A short request, a short answer, no session state. The one exception
+  is a **subscription**, which keeps its socket and is written to when something changes; it still
+  holds no state — the daemon remembers a file descriptor and nothing else — and it is why a daemon
+  with one polls rather than blocking in `accept()`, since otherwise a subscriber would leave every
+  other client queued behind it forever.
 - **The client never names a path.** Every verb takes an identifier out of a list the daemon
   itself published.
 - **A fixture seam.** Each daemon can be pointed at a recorded system state and made to print what
@@ -45,10 +49,58 @@ Suspend, poweroff and reboot for a desktop that is not root.
 | `suspend` | Suspend to RAM |
 | `poweroff` | Power off |
 | `reboot` | Reboot |
+| `timezone <Area/City>` | Point `/etc/localtime` and `TZ` at a zone |
+| `autologin <user>\|off` | Which account tty1 logs in without asking |
+| `firewall list\|<service> on\|off` | Which named services answer the network |
 | `ping` | Liveness |
 
-One word per connection, and **nothing in the protocol takes an argument** — there is nothing to
-forge and nothing to aim.
+One line per connection. Four verbs are a bare word; `timezone` is **the only one that takes an
+argument**, and it is the only place in this protocol where anything has to be validated.
+
+**The timezone is here rather than in a second daemon** because it is the same question: writing
+`/etc/localtime` and `/etc/profile.d/20-timezone.sh` is root's, the person doing it is the one
+administering the machine, and `wheel` is already the answer to who that is. A second socket with
+a second authorisation rule would be a second answer to one question.
+
+**A zone name is validated as a character set first and as a file second.** A zone is `Area/City`
+or `Area/Sub/City`, so a slash is legal — which makes `../../etc/shadow` legal-looking, and the
+character rule is what stops it: letters, digits, `+`, `-`, `_` and `/`, no dot at all, no leading
+or doubled slash. Then the file must exist under `/usr/share/zoneinfo`, so a name that passes the
+first check and names nothing is refused rather than symlinked to.
+
+**Both halves are written or neither is.** `/etc/localtime` is what a program reading the zoneinfo
+tree follows; `TZ` is what musl reads, and it **wins where it is set** — which it is, on every KDOS
+login. Writing only the symlink leaves `date` reporting the old zone in every shell that had
+already sourced the profile, which reads as the setting having done nothing. `TZ` is written as
+`:/etc/localtime`, the colon form that points musl at the same file, because that is the only value
+that cannot name different rules from the symlink beside it.
+
+**`autologin` is here for the same reason the timezone is**: `/etc/kdos/con.conf` is root's and the
+choice is an administrator's, which is what `wheel` already answers. **The account must be one a
+greeter would offer** — `kb_users()` is the one place that decides who may log in, and pointing
+autologin at a name it would not list is a machine that boots to a login nobody can complete.
+**Both keys are rewritten together**, because `greet` and `autologin` are one setting seen twice:
+`greet = no` with no autologin logs in whatever the default happens to be, and an autologin under
+`greet = yes` is a line that does nothing and reads as though it does. A file that would not fit
+the rewrite buffer is refused rather than truncated — half a config is a machine whose login
+settings are whatever survived.
+
+**`firewall` names SERVICES and never ports, and the table is the daemon's.** A client that could
+name a port could open any port; a client that can only name `ssh` opens exactly what the daemon's
+table says `ssh` is. `kdos-firewall` asks for the list rather than carrying a copy, so there is one
+answer to what a name means. The file is **rewritten whole** from the names that are on — merging
+would mean parsing nftables syntax to find what to remove, and a parser that got it wrong would
+leave a port open that the surface showed as closed. Anything hand-written belongs in another file
+under `/etc/nftables.d`, which the daemon never reads or touches.
+
+**The ruleset is checked before it is applied.** `/etc/nftables.conf` begins with `flush ruleset`,
+so a bad file half-applied is a machine with no firewall at all; `nft --check` first means a bad
+ruleset is refused and the previous one stays in the kernel.
+
+**`--set-timezone`, `--set-autologin` and `--firewall` exist for the same reason `--explain` does.** The gate is
+SO_PEERCRED on a connection and cannot be exercised without two uids, so each verb's own rules
+would otherwise be asserted by nothing. None of them grants anything: it is the binary writing to
+an `/etc` the caller could already write to, which on the real path is root's.
 
 Poweroff and reboot **signal process 1 first** and only then call the kernel directly, so the init
 system gets its chance to run its shutdown entries.
@@ -173,11 +225,117 @@ no general-purpose disk service here, mounting is root's, and the desktop is not
 | `list` | The eligible devices, with an index each |
 | `mount` | Mount the device at an index |
 | `unmount` | Unmount it |
+| `eject` | Power the medium down. Optical media eject their own node; a stick ejects the **parent disk**, because a start-stop on one partition means nothing to the hardware |
+| `unlock` | Open a LUKS volume. The passphrase is a second frame, never a token |
+| `close` | Close the mapping `unlock` made |
+| `format` | Write a filesystem. **Off unless `format = yes`** |
+| `smart` | The drive's model, serial and health, tab-separated |
+| `cifs` | Mount an SMB share. The password is a second frame, never a token |
+| `shares` | The network shares that are mounted, with an index each |
+| `disconnect` | Unmount the share at a share index |
 | `ping` | Liveness |
 
 **The client asks for an index out of a list the daemon published**, and the daemon decides the
 device, the mountpoint and the options. Every "just take a path and a mountpoint" design ends at
 mounting a stick over `/etc` from any shell in `wheel`.
+
+**A request is one line, and two frames where a secret is involved.** Frame one is a verb and up to
+five tokens; frame two is the exact byte count frame one declared. A passphrase is a **frame and
+not a token** because a tokeniser splits on spaces and a passphrase may contain them. The line's
+ceiling is `cifs`'s and nothing else's: a DNS name may be 253 bytes, a share 80, a username 104 and
+an NT domain 255, so a legal corporate share spells a request of about seven hundred.
+
+**Every token is checked before it means anything, and the token COUNT is fixed per verb.** An
+index is one to three digits and inside the published list. A trailing token nobody named makes the
+request unknown rather than ignored — a dispatch that read an index and discarded the rest of the
+line accepted `mount 0 rm -rf /` as a well-formed mount.
+
+**The passphrase reaches `cryptsetup` on standard input**, through `--key-file=-`, and never in an
+argument vector: `/proc/<pid>/cmdline` is world-readable for the life of the process. One buffer
+holds it and every exit from the request wipes it.
+
+**The mapper name is the daemon's**: `kdos-<kname>`, derived from the row. A client cannot ask for a
+mapping named anything else, and `close` finds the same name from the same row without being told
+it.
+
+**The mapper an `unlock` opened is listed beside the container it came from**, found by the name
+the daemon itself chose rather than by walking `/sys/block/dm-*`. Without it an unlock is a dead
+end: the container's row goes on saying `crypto_LUKS`, nothing on the list can be mounted, and the
+filesystem inside — the only reason anybody unlocked it — is reachable from no verb at all. A
+mapper this daemon did not open is not this daemon's to offer, which is the right answer for
+somebody's own `cryptsetup open` of a root volume. The row carries the CONTAINER'S disk, so every
+destructive verb is still refused by the physical drive.
+
+**`smart` answers for the DISK and not the partition.** SMART is a property of the drive, so a row
+per partition would print the same answer four times and would point a raw-device tool at an offset
+nothing owns. `smartctl` needs the raw block device, which nothing in a session may open — the
+alternative to a verb is a setuid binary or a sudo rule, and both are a wider hole than one daemon
+answering one question. Its output is **captured and filtered, never forwarded whole**: `smartctl
+-a` is two hundred lines of vendor attributes, and what a person opening a disks window wants is
+whether the drive says it is failing and which drive that is. Its **exit status is a bitfield and
+not a failure** — bits 3 to 7 mean the drive is unwell, which is frequently the answer rather than
+the absence of one — so only an empty capture is treated as nothing learnt.
+
+### A share on another machine
+
+**`mount(2)` cannot raise a cifs session**, so `cifs` is the second verb that spawns a child: the
+dialect negotiation, the authentication and the tree connect all happen inside `mount.cifs` before
+the syscall it eventually makes.
+
+**Each of the four names is checked against a character allowlist of its own.** `mount.cifs`
+assembles its option string by concatenation and escapes nothing but the password, so a comma in
+the server, the share, the username or the domain is a **new mount option** handed to the kernel's
+cifs parser, and a `/` or a `\` in a server silently re-aims the mount — the helper's own
+`parse_unc()` splits on exactly those. What is not on the list is refused rather than quoted:
+quoting is a second implementation of that parser.
+
+**The password reaches the helper on a descriptor.** `PASSWD_FD=0`, with the bytes on the child's
+stdin. `mount.cifs` will also take one from `$PASSWD`, from a file named by `$PASSWD_FILE` or from
+`pass=` in the option string — an option string is argv, an environment value is
+`/proc/<pid>/environ`, and a file is a file somebody has to delete.
+
+**The module is loaded before the question is asked.** `cifs` is a module here and nothing else on
+the image loads it, and `/proc/filesystems` lists only what is already in the kernel — a support
+check in front of `modprobe` would refuse every first connection on a machine that can do this
+perfectly well.
+
+**The mount is the caller's.** `uid=`, `gid=`, `file_mode=` and `dir_mode=` are always given,
+because a server that speaks no unix extensions reports every file as owned by root and a share
+only root can read has not mounted as far as the person who asked is concerned. `nosuid` and
+`nodev` always, and `noexec` unless `exec = yes` — the same argument the removable rules keep.
+
+**What is connected is what `/proc/mounts` says is connected.** No list is held between requests:
+a server that went away, or a share a second session mounted, must not be answered for out of this
+daemon's memory.
+
+### What a destructive verb refuses
+
+**The boot medium is refused by the DISK, not by the partition.** A live USB carries an iso9660
+partition *and* a vfat ESP beside it. Every per-partition rule offers the ESP — it is removable, it
+probes as vfat, it is unmounted and no fstab claims it — so a format there destroys the running
+session, and a typed confirmation does not help because the person genuinely typed the name of the
+row they meant. Any disk carrying an iso9660 partition is the boot disk, whole, in a live session.
+
+**`format` demands the device's own kernel name, typed.** Not a flag, not a hash, not the word yes:
+the daemon compares what it was sent against the string it put in the list itself, by exact length
+and `memcmp`. A client cannot send a confirmation it was not shown.
+
+**`format` is opt-in**, `format = yes` in `/etc/kdos/mountd.conf`, the same argument `noexec` won.
+The filesystem is one of four — ext4, btrfs, vfat, exfat — checked against a table and nothing else.
+
+**The node is re-derived at the moment of use.** Between the scan that built the row and the syscall
+that acts on it, a path can become a symlink or a different device: the daemon opens it `O_NOFOLLOW`
+and requires a block device whose `st_rdev` matches the one `/sys` recorded.
+
+**Every child this daemon spawns** — `eject`, `cryptsetup`, `mkfs`, `modprobe`, `mount.cifs` — is
+named by an **absolute path**,
+because `execvp` would otherwise resolve a program through an inherited `PATH` in a process running
+as root, and every one goes through a single function.
+
+**The path overrides are gated on fixture mode.** `KDOS_MOUNTD_SYS`, `_DEV`, `_MOUNTS`, `_FSTAB`,
+`_MEDIA` and `_CONF` are read only when `--fixture` or `--fixture-serve` set it. A daemon started by the service
+script reads none of them — an environment variable that moved its idea of `/dev` would be a way to
+point a format at any node on the machine.
 
 **The list is rescanned on every request** rather than cached — a stick pulled out between two
 requests must not still be offered.
@@ -203,7 +361,10 @@ else's computer.
 superblock directly, for the handful of formats a stick is actually formatted with. A seventh
 format would be a library.
 
-`--fixture <sys> [dev]` prints what it **would** offer and mounts nothing. The committed fixture is
+`--fixture <sys> [dev]` prints what it **would** offer and mounts nothing. `--fixture-serve` runs
+the real dispatch over a real socket with the fixture's roots and **prints each argument vector
+instead of running it**, which is how a `format` aimed at the boot medium is proved to be refused
+without a disk to lose. The committed fixture is
 a recorded block-device tree plus two hand-built superblocks — a removable one that must be
 offered, and an **internal** one that must not. The internal disk carries a real superblock
 precisely so a broken removable check shows up as an extra row rather than as nothing.
@@ -211,6 +372,22 @@ precisely so a broken removable check shows up as an extra row rather than as no
 **The front end is `kdos-devices`, not the panel.** A short connection per request from a surface
 that is already waiting for a keystroke is fine; a socket round trip per panel tick is exactly what
 "nothing blocks the frame" is about.
+
+**`subscribe` is the daemon's only long-lived verb, and it names nothing.** It writes `changed` when
+the device list moves and never exits. It cannot say *which* device, because an index is only true
+of the list it came with and `scan()` rebuilds that on every request — so a subscriber asks again
+with `list` and diffs. The events come from the kernel's own `NETLINK_KOBJECT_UEVENT` broadcast
+rather than from a udev rule, so hotplug works with no rule file and no dependency on udev running;
+`ACTION=change` is in the filter because that is what a drive reports when a disc goes into a tray
+that was already there.
+
+**`kdos-mediad` is the subscriber, and it is the session's.** The daemon is root, starts before
+anybody logs in, and has no session bus — `Notify` lives at `$XDG_RUNTIME_DIR/bus`, which belongs to
+a login that may not exist yet. So the daemon says only that something moved, and `kdos-mediad`,
+which runs in the session beside `kdos-notifyd`, decides what it means and raises the toast with its
+**Open** and **Eject** buttons. It re-reads the list at the click rather than trusting the row the
+toast was built with: a button pressed a minute later would otherwise act on whatever had arrived
+since.
 
 ## kdos-packd
 

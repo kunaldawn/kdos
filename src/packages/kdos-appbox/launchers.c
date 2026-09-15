@@ -63,9 +63,10 @@
 static const char *RESERVED[] = {
 	"sh", "bash", "env", "ls", "cp", "mv", "rm", "cat", "sed", "awk", "grep",
 	"find", "tar", "gzip", "python3", "perl", "make", "gcc", "kdos", "foot",
-	"kdos-appbox", "kdos-box", "kdos-banner", "kdos-desktop",
+	"kdos-appbox", "kdos-box", "xdg-open", "kdos-banner", "kdos-desktop",
 	"kdos-desktop-start",
 	"kdos-shot", "kdos-fetch-app", "kdos-fetch-static", "kdos-getty",
+	"kdos-pix", "kdos-rec", "rec", "play", "sox", "soxi",
 	"kdos-theme", "kdos-theme-helper", "kinstall", "kpkg", "kpkgadd",
 	"kpkgbuild", "kpkgdel", "kpkgdepends", "ksvc", "service", NULL
 };

@@ -22,10 +22,15 @@ static struct {
 	char yes[24], no[24];
 	void (*on_yes)(void);
 	int saved_focus;
+	int sel;		/* 0 the affirmative button, 1 the other   */
 } md;
 
-/* A modal takes the focus ring over completely and hands it back on close,
- * so dismissing a dialog does not silently move the caret on the page. */
+/* A modal takes the focus ring over completely and hands it back on close, so
+ * dismissing a dialog does not silently move the caret on the page. `sel` is
+ * the single truth for which button is chosen: the highlight is pointed at it
+ * in ktui_modal_draw(), never held as a fixed focus id, because a surface
+ * that runs no immediate-mode frame never resets the id counter and a fixed
+ * id would match nothing after the first repaint. */
 static void modal_open(void)
 {
 	md.saved_focus = ktui_focus_get();
@@ -112,10 +117,18 @@ void ktui_modal_draw(void)
 		p = nl + 1;
 	}
 
-	/* Buttons stay inside the dialog rect at every width: the old fixed
-	 * x + w - 40 walked off the left edge below 46 columns. */
+	/* Buttons stay inside the dialog rect at every width: a fixed
+	 * x + w - 40 walks off the left edge below 46 columns. */
 	int by = y + h - 2;
 	int bw = 18;
+
+	/* The highlight is pointed at `sel` here, at draw time, rather than
+	 * held as a fixed focus id: the two buttons claim the next two ids
+	 * back to back, and a surface that runs no immediate-mode frame never
+	 * resets the id counter, so a fixed id would match nothing after the
+	 * first repaint and Tab would move the selection with no feedback. */
+	ktui_focus_set(ktui_id_base() + (md.confirm ? md.sel : 0));
+
 	if (md.confirm) {
 		int bx1 = x + w - 40, bx2 = x + w - 21;
 		if (w < 42) {
@@ -142,13 +155,51 @@ void ktui_modal_draw(void)
 	}
 }
 
+/*
+ * THE DIALOG ANSWERS THE WHOLE KEYBOARD HERE, not through the buttons. The
+ * buttons' own Enter path lives inside ktui_frame_begin/ktui_frame_end, so a
+ * surface that raises a modal without running the immediate-mode frame — a
+ * terminal, a viewer, anything whose main loop is its own — would otherwise
+ * have Esc as the only answer and could never confirm the thing it asked.
+ *
+ * Returns 1 for every key it took and consumes it, so a caller that DOES run
+ * the frame does not also walk the focus ring on the same Tab.
+ */
 int ktui_modal_event(KtuiEvent *ev)
 {
-	if (!md.active)
+	if (!md.active || !ev || ev->type != KT_EVT_KEY)
 		return 0;
-	if (ev->type == KT_EVT_KEY && ev->key == KT_K_ESC) {
+
+	switch (ev->key) {
+	case KT_K_ESC:
 		modal_close();
+		ktui_consume();
+		return 1;
+	case KT_K_ENTER:
+	case ' ': {
+		/* Read before the close: closing hands the focus ring back
+		 * and the callback is free to raise the next dialog. */
+		void (*fn)(void) = md.sel == 0 ? md.on_yes : NULL;
+
+		modal_close();
+		ktui_consume();
+		if (fn)
+			fn();
 		return 1;
 	}
-	return 0;
+	case KT_K_LEFT:
+		md.sel = 0;
+		break;
+	case KT_K_RIGHT:
+		md.sel = md.confirm ? 1 : 0;
+		break;
+	case KT_K_TAB:
+	case KT_K_BTAB:
+		md.sel = md.confirm ? !md.sel : 0;
+		break;
+	default:
+		return 0;
+	}
+	ktui_consume();
+	return 1;
 }

@@ -15,10 +15,10 @@
 | cpu                                                                       0% |
 |                                                                              |
 |                                                                              |
-|                                                                              |
 | memory                                                                    0B |
 |                                                                              |
 |                                                                              |
 |                                                                              |
 |Esc  back to the list     [ End ] [ Kill ] [ Nice - ] [ Nice + ] [ Close ]    |
+|F1 help  Enter End  Esc Back                                                  |
 +==============================================================================+

@@ -42,6 +42,10 @@ typedef struct {
 static Mouse mice[MAX_MICE];
 static int nmice;
 
+/* stdin hung up: see the read below. Sticky, because a terminal that has gone
+ * does not come back. */
+static int stdin_gone;
+
 static unsigned char ibuf[IBUF];
 static int ilen;
 
@@ -219,11 +223,48 @@ int ktui_input_mouse_visible(int *x, int *y)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * A DEVICE THAT WENT AWAY IS CLOSED AND FORGOTTEN.
+ *
+ * An unplugged evdev node answers POLLHUP for ever and every read of it fails,
+ * so a descriptor left in the poll set makes poll() return immediately every
+ * time it is called: the consumer's loop stops waiting and spins a whole core
+ * on a desktop where nothing is happening at all.
+ */
+static void mouse_drop(int i)
+{
+	close(mice[i].fd);
+	mice[i] = mice[--nmice];
+	if (!nmice)
+		ktui_caps &= ~KT_CAP_MOUSE;
+}
+
+/*
+ * THE POINTER IS CLAMPED BEFORE IT IS REPORTED, not after the read loop. A
+ * button or a wheel returns from inside that loop, and an absolute tablet at
+ * its right edge or relative motion accumulated past a corner would otherwise
+ * name a cell off the screen — which every consumer then indexes with.
+ */
+static void ptr_clamp(void)
+{
+	if (ptr_fx < 0)
+		ptr_fx = 0;
+	if (ptr_fy < 0)
+		ptr_fy = 0;
+	if (ptr_fx > ktui_w - 1)
+		ptr_fx = ktui_w - 1;
+	if (ptr_fy > ktui_h - 1)
+		ptr_fy = ktui_h - 1;
+}
+
 static int evdev_read(KtuiEvent *ev)
 {
 	struct input_event ie;
 	for (int i = 0; i < nmice; i++) {
-		while (read(mice[i].fd, &ie, sizeof(ie)) == (ssize_t)sizeof(ie)) {
+		ssize_t r;
+
+		while ((r = read(mice[i].fd, &ie, sizeof(ie))) ==
+		       (ssize_t)sizeof(ie)) {
 			if (ie.type == EV_REL) {
 				if (ie.code == REL_X) {
 					ptr_fx += (double)ie.value / cell_w * 2.0;
@@ -234,6 +275,7 @@ static int evdev_read(KtuiEvent *ev)
 					ev->btn = ie.value > 0 ? KT_MB_WHEEL_UP
 							       : KT_MB_WHEEL_DOWN;
 					ev->press = KT_MP_PRESS;
+					ptr_clamp();
 					ev->mx = (int)ptr_fx;
 					ev->my = (int)ptr_fy;
 					ptr_seen = kb_now_s();
@@ -273,21 +315,25 @@ static int evdev_read(KtuiEvent *ev)
 				ev->type = KT_EVT_MOUSE;
 				ev->btn = b;
 				ev->press = ie.value ? KT_MP_PRESS : KT_MP_RELEASE;
+				ptr_clamp();
 				ev->mx = (int)ptr_fx;
 				ev->my = (int)ptr_fy;
 				return 1;
 			}
 		}
+		/*
+		 * WHAT ENDED THE LOOP SAYS WHETHER THE DEVICE IS STILL THERE.
+		 * EAGAIN is a device with nothing to say; an end of file or a
+		 * hard error — ENODEV, EIO — is one that has gone.
+		 */
+		if (r == 0 || (r < 0 && errno != EAGAIN &&
+			       errno != EWOULDBLOCK && errno != EINTR)) {
+			mouse_drop(i);
+			i--;
+		}
 	}
 
-	if (ptr_fx < 0)
-		ptr_fx = 0;
-	if (ptr_fy < 0)
-		ptr_fy = 0;
-	if (ptr_fx > ktui_w - 1)
-		ptr_fx = ktui_w - 1;
-	if (ptr_fy > ktui_h - 1)
-		ptr_fy = ktui_h - 1;
+	ptr_clamp();
 	return 0;
 }
 
@@ -303,16 +349,107 @@ static void ibuf_drop(int n)
 	ilen -= n;
 }
 
+/*
+ * BRACKETED PASTE.
+ *
+ * Between `CSI 200~` and `CSI 201~` the bytes are TEXT, not keys. Decoding
+ * them as keys is what makes a pasted line run: a leader chord in the first
+ * column, a tab that completes something, an escape that leaves the mode. The
+ * host terminal is the only thing that knows a paste happened, and these two
+ * sequences are how it says so.
+ *
+ * The text is accumulated rather than scanned in place because a paste is not
+ * one read: it arrives in whatever pieces the tty gives, and the terminator
+ * can be split across two of them.
+ */
+#define PASTE_END	"\033[201~"
+#define PASTE_END_LEN	6
+
+static int paste_on;
+static char pbuf[4096];
+static size_t plen;
+
+static void paste_feed(void)
+{
+	while (ilen > 0) {
+		int end = -1;
+
+		for (int i = 0; i + PASTE_END_LEN <= ilen; i++)
+			if (!memcmp(ibuf + i, PASTE_END, PASTE_END_LEN)) {
+				end = i;
+				break;
+			}
+
+		int take = end >= 0 ? end : ilen;
+
+		/*
+		 * A PARTIAL TERMINATOR AT THE TAIL IS NOT TEXT YET. Taking it
+		 * would put `\033[20` into the paste and leave a `1~` that
+		 * ends nothing, so the paste would run to the end of the
+		 * session.
+		 */
+		if (end < 0)
+			for (int k = PASTE_END_LEN - 1; k > 0; k--)
+				if (take >= k &&
+				    !memcmp(ibuf + take - k, PASTE_END,
+					    (size_t)k)) {
+					take -= k;
+					break;
+				}
+
+		if (take > 0) {
+			size_t room = sizeof(pbuf) - plen;
+			size_t n = (size_t)take < room ? (size_t)take : room;
+
+			/* Past the cap the rest is dropped rather than
+			 * wrapped: half a paste in the wrong order is worse
+			 * than a short one. */
+			memcpy(pbuf + plen, ibuf, n);
+			plen += n;
+			ibuf_drop(take);
+		}
+		if (end >= 0) {
+			ibuf_drop(PASTE_END_LEN);
+			paste_on = 0;
+			ktui_paste_push(pbuf, plen);
+			plen = 0;
+			return;
+		}
+		if (take == 0)
+			return;		/* only a partial terminator left */
+	}
+}
+
+/*
+ * THE TRANSMITTED MODIFIER VALUE IS THE MASK PLUS ONE, which is why a bare
+ * `1` means no modifier at all and why the subtraction comes first.
+ *
+ * BIT 8 IS SUPER in the kitty keyboard protocol and META under xterm's
+ * modifyOtherKeys. Both are mapped to KT_MOD_SUPER: a terminal calling the key
+ * beside Alt "meta" is describing the same physical key this desktop's chords
+ * are bound to, and refusing it would leave the chords unreachable on the
+ * terminals that use the older name.
+ *
+ * 16 AND ABOVE ARE DROPPED — hyper, meta-as-a-fifth-modifier, caps lock and
+ * num lock. The chord table has no name for any of them, so letting their
+ * state reach it would mean a chord that fires with caps lock off and not with
+ * it on.
+ */
 static int csi_mods(int p)
 {
 	int m = 0;
+
 	p -= 1;
+	if (p < 0)
+		return 0;
 	if (p & 1)
 		m |= KT_MOD_SHIFT;
 	if (p & 2)
 		m |= KT_MOD_ALT;
 	if (p & 4)
 		m |= KT_MOD_CTRL;
+	if (p & 8)
+		m |= KT_MOD_SUPER;
 	return m;
 }
 
@@ -320,6 +457,11 @@ static int csi_mods(int p)
  * -1 if the buffer holds a lone ESC that is not (yet) a sequence. */
 static int decode(KtuiEvent *ev)
 {
+	if (paste_on) {
+		paste_feed();
+		if (paste_on || !ilen)
+			return 0;
+	}
 	if (!ilen)
 		return 0;
 
@@ -332,7 +474,16 @@ static int decode(KtuiEvent *ev)
 		}
 		ev->type = KT_EVT_KEY;
 		ev->mods = 0;
-		if (c < 0x20 && c != KT_K_ENTER && c != KT_K_TAB && c != 10) {
+		/*
+		 * 0x08 IS BACKSPACE, not Ctrl+H. A terminal set up with `stty
+		 * erase ^H` sends it for the key, and so does PuTTY by
+		 * default; folding it in with the control characters maps it
+		 * to Ctrl+H, which deletes nothing and makes the backspace
+		 * mapping below unreachable. Ctrl+H still arrives through the
+		 * kitty `u` form, which carries its modifier explicitly.
+		 */
+		if (c < 0x20 && c != KT_K_ENTER && c != KT_K_TAB && c != 10 &&
+		    c != 8) {
 			ev->key = c + 'a' - 1;
 			ev->mods = KT_MOD_CTRL;
 			ibuf_drop(1);
@@ -366,8 +517,15 @@ static int decode(KtuiEvent *ev)
 
 	/* ESC O x — application cursor / F1..F4 */
 	if (ibuf[1] == 'O') {
+		/*
+		 * TWO BYTES ARE ALSO A CHORD. `ESC O` on its own is Alt+O and
+		 * `ESC [` is Alt+[; waiting for a third byte that never comes
+		 * leaves them in the buffer until the next key, which is then
+		 * decoded together with them and both are lost. -1 hands the
+		 * pair to the same timer that promotes a lone ESC.
+		 */
 		if (ilen < 3)
-			return 0;
+			return ilen == 2 ? -1 : 0;
 		ev->type = KT_EVT_KEY;
 		ev->mods = 0;
 		switch (ibuf[2]) {
@@ -403,20 +561,49 @@ static int decode(KtuiEvent *ev)
 		sgr_mouse = 1;
 		i++;
 	}
+	/*
+	 * SUB-PARAMETERS ARE READ AND ALL BUT ONE DISCARDED.
+	 *
+	 * A parameter may carry `:`-separated parts — `CSI 13;9:3u` is Return
+	 * with Super, release. A loop that accepts digits and `;` only stops at
+	 * the colon, so the rest of the sequence is left in the buffer and
+	 * decoded as garbage: every key repeat and every release turns into
+	 * stray characters typed into whatever has the focus.
+	 *
+	 * The one sub-parameter that is kept is the event type on the second
+	 * parameter, because a release must not reach the chord table — every
+	 * chord would fire twice, once on the way down and once on the way up.
+	 * 1 is press, 2 repeat, 3 release; absent means press.
+	 */
 	int par[6] = { 0, 0, 0, 0, 0, 0 }, np = 0, seen = 0;
-	while (i < ilen && ((ibuf[i] >= '0' && ibuf[i] <= '9') || ibuf[i] == ';')) {
+	int sub = 0, in_sub = 0, ev_type = 1;
+
+	while (i < ilen && ((ibuf[i] >= '0' && ibuf[i] <= '9') ||
+			    ibuf[i] == ';' || ibuf[i] == ':')) {
 		if (ibuf[i] == ';') {
+			if (in_sub && np == 1)
+				ev_type = sub;
+			in_sub = 0;
+			sub = 0;
 			if (np < 5)
 				np++;
 			seen = 1;
+		} else if (ibuf[i] == ':') {
+			in_sub = 1;
+			sub = 0;
+			seen = 1;
+		} else if (in_sub) {
+			sub = sub * 10 + (ibuf[i] - '0');
 		} else {
 			par[np] = par[np] * 10 + (ibuf[i] - '0');
 			seen = 1;
 		}
 		i++;
 	}
+	if (in_sub && np == 1)
+		ev_type = sub;
 	if (i >= ilen)
-		return 0;
+		return ilen == 2 ? -1 : 0;
 	if (seen)
 		np++;
 	unsigned char fin = ibuf[i];
@@ -436,6 +623,24 @@ static int decode(KtuiEvent *ev)
 			ev->mods |= KT_MOD_CTRL;
 		int motion = b & 32;
 		int code = b & 3;
+		/*
+		 * BUTTONS 8-11 AND THE HORIZONTAL WHEEL HAVE NO NAME HERE, so
+		 * they are dropped rather than reported as something else.
+		 * xterm puts buttons 8-11 (back, forward) at 128 and above,
+		 * where the low two bits are zero — read as an ordinary button
+		 * that is a left click, and a thumb button on a mouse then
+		 * activates whatever is under the pointer. Wheel left and
+		 * right are codes 2 and 3 in the wheel bank and were read as
+		 * wheel down.
+		 */
+		if (b & 128) {
+			ibuf_drop(seqlen);
+			return 0;
+		}
+		if ((b & 64) && code > 1) {
+			ibuf_drop(seqlen);
+			return 0;
+		}
 		if (b & 64) {
 			ev->btn = code == 0 ? KT_MB_WHEEL_UP : KT_MB_WHEEL_DOWN;
 			ev->press = KT_MP_PRESS;
@@ -457,6 +662,33 @@ static int decode(KtuiEvent *ev)
 	ev->mods = np >= 2 ? csi_mods(par[1]) : 0;
 
 	switch (fin) {
+	/*
+	 * `CSI <codepoint> ; <modifiers>[:<event>] u` — the kitty form, and the
+	 * only one that carries Super with an ordinary letter. Without it
+	 * Super+q and Super+Return arrive as nothing at all, which is fifteen
+	 * of this desktop's seventeen chords on any view that is a terminal.
+	 */
+	case 'u': {
+		int cp = par[0];
+
+		if (ev_type == 3) {
+			/* A release. The desktop acts on the press. */
+			ibuf_drop(seqlen);
+			return 0;
+		}
+		if (cp <= 0 || cp > 0x10ffff) {
+			ibuf_drop(seqlen);
+			return 0;
+		}
+		/*
+		 * The codepoint is the key WITHOUT its modifiers applied, so
+		 * Super+Q arrives as 'q' plus shift and the chord table sees
+		 * the letter it was written with.
+		 */
+		ev->key = cp;
+		ibuf_drop(seqlen);
+		return 1;
+	}
 	case 'A': ev->key = KT_K_UP; break;
 	case 'B': ev->key = KT_K_DOWN; break;
 	case 'C': ev->key = KT_K_RIGHT; break;
@@ -484,6 +716,14 @@ static int decode(KtuiEvent *ev)
 		case 21: ev->key = KT_K_F10; break;
 		case 23: ev->key = KT_K_F11; break;
 		case 24: ev->key = KT_K_F12; break;
+		case 200:
+			paste_on = 1;
+			plen = 0;
+			ibuf_drop(seqlen);
+			return 0;
+		/* A close with no open: the text is gone and dropping the
+		 * marker is all that is left to do about it. */
+		case 201: ibuf_drop(seqlen); return 0;
 		default: ibuf_drop(seqlen); return 0;
 		}
 		break;
@@ -513,15 +753,24 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 		return 1;
 	if (r == -1) {
 		/* A lone ESC only becomes the Escape key once nothing follows
-		 * it for a beat — otherwise every arrow key would fire it. */
+		 * it for a beat — otherwise every arrow key would fire it.
+		 * Two bytes that could still have grown into a sequence are
+		 * Alt+<byte> once the beat passes. */
 		if (!esc_pending) {
 			esc_pending = 1;
 			esc_at = kb_now_s();
 		} else if (kb_now_s() - esc_at > 0.04) {
 			esc_pending = 0;
-			ibuf_drop(1);
 			ev->type = KT_EVT_KEY;
-			ev->key = KT_K_ESC;
+			if (ilen >= 2) {
+				ev->key = (unsigned char)ibuf[1];
+				ev->mods = KT_MOD_ALT;
+				ibuf_drop(2);
+			} else {
+				ev->key = KT_K_ESC;
+				ev->mods = 0;
+				ibuf_drop(1);
+			}
 			return 1;
 		}
 		if (timeout_ms < 0 || timeout_ms > 20)
@@ -533,7 +782,10 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 
 	struct pollfd pfd[1 + MAX_MICE];
 	int n = 0;
-	pfd[n].fd = 0;
+	/* A descriptor that hung up is left out of the set rather than polled:
+	 * poll answers it immediately for ever, and the wait this call owes
+	 * its caller would never happen again. */
+	pfd[n].fd = stdin_gone ? -1 : 0;
 	pfd[n].events = POLLIN;
 	n++;
 	for (int i = 0; i < nmice; i++) {
@@ -556,11 +808,48 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 		return 0;
 	}
 
-	if (pfd[0].revents & POLLIN) {
-		ssize_t got = read(0, ibuf + ilen, (size_t)(IBUF - ilen));
-		if (got > 0) {
-			ilen += (int)got;
-			esc_pending = 0;
+	if (pfd[0].revents & (POLLIN | POLLHUP | POLLERR)) {
+		int room = IBUF - ilen;
+
+		if (room == 0) {
+			/*
+			 * A FULL BUFFER IS NEVER READ. read() with a count of
+			 * zero returns zero without touching the descriptor,
+			 * and zero is how the terminal going away is told
+			 * apart below — a full buffer would declare a hangup
+			 * on a live terminal and blind the poll set for the
+			 * rest of the process. The buffer can only be full
+			 * because decode() consumed nothing, which means the
+			 * whole of it is one unterminated sequence; dropping
+			 * the leading byte walks that prefix off and lets the
+			 * next real sequence decode. Drop one, not the
+			 * buffer: a sequence straddling the tail would
+			 * otherwise be lost.
+			 */
+			ibuf_drop(1);
+		} else {
+			ssize_t got = read(0, ibuf + ilen, (size_t)room);
+
+			if (got > 0) {
+				ilen += (int)got;
+				esc_pending = 0;
+			} else if (got == 0 ||
+				   (errno != EAGAIN && errno != EWOULDBLOCK &&
+				    errno != EINTR)) {
+				/*
+				 * THE TERMINAL WENT AWAY. A closed pty answers
+				 * POLLIN for ever and reads zero every time,
+				 * so a loop that kept asking would never wait
+				 * again — a dropped ssh leaves the program
+				 * spinning a core with nothing on the other
+				 * end and no reason to leave. The consumer
+				 * learns through ktui_term_hungup(), which is
+				 * what it already asks about a write that
+				 * failed.
+				 */
+				ktui_term_mark_hungup();
+				stdin_gone = 1;
+			}
 		}
 		if (decode(ev) == 1)
 			return 1;
@@ -571,4 +860,49 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 
 	ev->type = KT_EVT_TICK;
 	return 0;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Drops
+ *
+ * Held rather than delivered in the event, because a drop is a position AND a
+ * payload. The event carries the position; this carries the payload, once.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+static char *drop_buf;
+static size_t drop_len;
+
+void ktui_drop_push(const char *utf8, size_t len)
+{
+	free(drop_buf);
+	drop_buf = NULL;
+	drop_len = 0;
+
+	if (!utf8 || !len)
+		return;
+
+	drop_buf = malloc(len + 1);
+	if (!drop_buf)
+		return;
+
+	memcpy(drop_buf, utf8, len);
+	drop_buf[len] = '\0';
+	drop_len = len;
+}
+
+const char *ktui_drop_take(size_t *len)
+{
+	static char *held;
+
+	/* The previous take's buffer is freed HERE rather than by the caller:
+	 * a surface that acts on a drop and returns to its loop has no other
+	 * moment to do it, and freeing on the next take is that moment. */
+	free(held);
+	held = drop_buf;
+	drop_buf = NULL;
+
+	if (len)
+		*len = drop_len;
+	drop_len = 0;
+	return held;
 }

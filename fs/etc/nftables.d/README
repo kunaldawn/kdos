@@ -1,0 +1,21 @@
+Included at the bottom of /etc/nftables.conf, as `*.nft`.
+
+A file here adds rules to the ruleset the main file builds. To add to a chain
+that already exists, name the table and chain WITHOUT a `type`/`hook` line —
+that re-opens the chain; repeating the hook declares a second one and nft
+refuses the load.
+
+    table inet filter {
+        chain input {
+            tcp dport 8080 accept
+        }
+    }
+
+50-kdos-services.nft is `kdos-firewall`'s and is rewritten whole on every
+toggle. Anything you write by hand belongs in a file of your own, which the
+surface never touches.
+
+The load is checked before it is applied — see /etc/init.d/25_nftables.sh —
+so a file with a syntax error refuses the whole ruleset rather than leaving
+half of it applied. The previous ruleset stays in the kernel until a good one
+replaces it.

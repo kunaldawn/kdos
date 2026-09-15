@@ -1,0 +1,52 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What opens a file on EITHER desktop.
+#
+# Only the types where both desktops want the same program. Anything a
+# graphical session and a terminal session would answer differently belongs in
+# `kdos-mimeapps.list` or `kdos-console-mimeapps.list` beside this file, which
+# are searched first for the desktop that is actually running.
+#
+# A person's own choices live in their config directory and outrank every row
+# here, which is what makes this a default rather than a policy.
+# ---------------------------------
+
+[Default Applications]
+inode/directory=mc.desktop
+# THE ARCHIVES mc CANNOT BROWSE. Its VFS mounts a tar, a cpio, a zip or an `ar`
+# as a directory, which is the right answer when you want one file out of one —
+# and there is no helper on this image for 7z or rar, so Enter on those would
+# open an empty panel. `kdos-openarchive` extracts them instead. Only these two
+# families are listed: they are what `ouch` reads AND what shared-mime-info can
+# name, and a row for a type the image cannot produce is one nobody can tell is
+# dead.
+application/x-7z-compressed=kdos-openarchive.desktop
+application/vnd.rar=kdos-openarchive.desktop
+application/x-cb7=kdos-openarchive.desktop
+application/vnd.comicbook-rar=kdos-openarchive.desktop
+
+# THE PAGES NOTHING ELSE ON THIS IMAGE RENDERS. `kdos-peek` draws one through
+# `mutool`, and it is the same surface on both desktops — a viewer that draws
+# into a cell grid needs no compositor, so these rows belong here rather than
+# being written twice.
+application/pdf=kdos-peek.desktop
+application/vnd.comicbook+zip=kdos-peek.desktop
+application/oxps=kdos-peek.desktop
+
+# A BOOK IS READ, NOT LOOKED AT, so it goes to the reader and not to the page
+# viewer — `epy` keeps a position, a table of contents and a search, which is
+# the difference between reading one and glancing at a page of it. `kdos-peek`
+# still SHOWS any of them through the Peek verb, which asks no table at all.
+application/epub+zip=epy.desktop
+application/x-mobipocket-ebook=epy.desktop
+application/x-fictionbook+xml=epy.desktop
+
+# A MAIL ADDRESS, ON EITHER DESKTOP. `aerc` is the only mail client on this
+# image and it is a terminal program on both, so the opener wraps it in
+# whichever emulator the desktop uses and the answer is the same one twice.
+x-scheme-handler/mailto=aerc.desktop

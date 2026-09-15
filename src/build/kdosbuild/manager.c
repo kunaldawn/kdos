@@ -525,6 +525,7 @@ static void start_step(Manager *m, BStep *s)
 			close(devnull);
 		}
 		setenv("KDOS_REPLAY", explicitly_selected(m, s) ? "1" : "0", 1);
+		kb_child_reset_signals();
 		execvp(a.v[0], (char *const *)a.v);
 		_exit(127);
 	}
@@ -689,6 +690,7 @@ static int run_capture2(const KbArgv *a, KbBuf *out, KbBuf *err)
 		dup2(ep[1], STDERR_FILENO);
 		close(op[1]);
 		close(ep[1]);
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}

@@ -121,6 +121,63 @@ cp -r $WORKSPACE/fs/* $SYSROOT/
     fi
 done
 
+# THE FILES 644 IS WRONG FOR, AND GIT CANNOT SAY SO.
+#
+# git records one permission bit — executable or not — so a file in fs/ has no
+# way to carry a mode narrower than 644, and the replay above hands every
+# non-executable file exactly that. For nearly everything under fs/ that is
+# correct. For a password database it is not: /etc/shadow at 644 is every
+# hash on the machine readable by every account on it.
+#
+# THIS IS WHAT `kdos-checkpass` EXISTS FOR. It is setuid root so that the
+# greeter never opens the shadow file itself; a world-readable shadow makes
+# that setuid bit decoration and hands the hashes out anyway.
+#
+# OWNERSHIP TOO, AND FOR THE SAME REASON. git records no owner at all, so a
+# file that must belong to root belongs to whoever ran the build until
+# something says otherwise. `/etc/polkit-1/rules.d` is the sharp case: polkitd
+# reads every rule it finds there with no ownership or mode check, so a
+# directory writable by the desktop user is that user granting themselves
+# whatever they like — and the whole point of the rules file is that it is a
+# short, reviewed list.
+#
+# udevd IS THE SHARPER CASE OF THE SAME THING, because it needs no service to
+# be up: it reads every file in /etc/udev/rules.d with no ownership check and
+# runs every RUN+= as root, so a rules directory the desktop user can write is
+# that user executing arbitrary code as root on the next uevent.
+#
+# A PATH ENDING IN `/` MEANS THE DIRECTORY AND EVERYTHING UNDER IT, which is
+# what rules.d needs and a file list cannot give: ports install rules there in
+# phase 4, long after this runs, and naming them here would be a list that goes
+# stale the next time a port is added.
+#
+# A path here that fs/ does not carry is a mistake worth hearing about, not a
+# line to skip in silence — the whole point is that these modes cannot be
+# expressed where the file lives.
+while read -r rel mode owner; do
+    [ -n "$rel" ] || continue
+    if [ ! -e "$SYSROOT/${rel%/}" ]; then
+        echo "fs modes: $rel is not on the image" >&2
+        continue
+    fi
+    case "$rel" in
+    */)
+        find "$SYSROOT/${rel%/}" -type d -exec chmod 755 {} +
+        find "$SYSROOT/${rel%/}" -type f -exec chmod "$mode" {} +
+        [ -n "$owner" ] && chown -R "$owner" "$SYSROOT/${rel%/}"
+        ;;
+    *)
+        chmod "$mode" "$SYSROOT/$rel"
+        [ -n "$owner" ] && chown "$owner" "$SYSROOT/$rel"
+        ;;
+    esac
+done <<'FSMODES'
+etc/shadow 600 0:0
+etc/polkit-1/rules.d 755 0:0
+etc/polkit-1/rules.d/50-kdos.rules 644 0:0
+etc/udev/rules.d/ 644 0:0
+FSMODES
+
 mkdir -p "$(dirname "$MANIFEST")"
 # -printf is a GNU extension and the build image's find is busybox's, which
 # silently wrote an EMPTY manifest — and an empty manifest protects nothing.
