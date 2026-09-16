@@ -291,14 +291,15 @@ and the profile printer names which.
 | `network` | Network namespace | **create time** |
 | `ipc` | IPC namespace | **create time** |
 | `devices` | Whether `/dev` and the runtime directory are shared | **create time** |
-| `gpu`, `audio` | Ride on `devices` | |
+| `audio` | Rides on `devices` | |
+| `gpu` | The card's device nodes. Subtracts nothing from a shared `/dev`; with `devices = private` it is the `--volume /dev/dri` that binds the card back | **create time** |
 | `memory` | Budget, enforced by **the memory daemon**, not the engine | immediate |
 | `accent` | The box's colour, which draws a title-bar chip | on reload |
 | `autostop` | Idle timeout for the collector | |
 | `grant` | Compositor globals the sandbox allowlist otherwise refuses | on reload |
 | `image` | The reference, for a registry base | **create time** |
 | `display` | `vt` pins its applications to a virtual terminal of their own on the console desktop, instead of the windows they otherwise become. It is also the only path on that desktop that can carry a game or full-rate video, because an embedded frame crosses the CPU whichever renderer drew it | next launch |
-| `render` | `gpu` composites an embedded guest's windows with the graphics card instead of the software renderer, and offers its applications `linux-dmabuf`. A request, not a promise: the cage falls back to software when there is no render node, no driver for it, or no `/dev/udmabuf`. Its own key and not `gpu`, which every box carries — answering the renderer question with that one would composite the whole catalogue on the card | next launch |
+| `render` | Which graphics this box's applications get. `auto` (the default, and what an absent key means) resolves by **opening** a `/dev/dri/renderD*` node: hardware where one opens, software where none does. `gpu` asks for the same thing and `software` refuses the card whatever is plugged in. The resolved answer reaches the guest's own Mesa and nothing else: `LIBGL_ALWAYS_SOFTWARE=1` in a software box's launch environment, and nothing at all for the hardware one, because Mesa asks the machine the same question by itself. It is **advisory** — an application may unset the variable. It **also picks the embedded cage's renderer**: `kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where `software` pins pixman and every other spelling leaves the cage's `wlr_renderer_autocreate` call alone — so a `software` box on the console draws into `wl_shm` and is composited out of that same memory, with no upload and no readback. The resolve refuses the card without opening anything for a box that can see no node — `devices = private` with `gpu = no` — because this process's `/dev` is not that box's. Its own key and not `gpu`, which is about device nodes rather than about who draws | next launch |
 
 **A namespace key applies at create time** and cannot be re-flagged on a live container, so
 changing one says to recreate the box rather than silently doing nothing.

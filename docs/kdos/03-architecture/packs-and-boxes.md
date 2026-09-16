@@ -179,6 +179,16 @@ instead of a second bake. The two go together with a second rule: everything the
 file emits below the image line is package management, so a base whose value is the image as it
 stands declares **no packages** and the image *is* the pack.
 
+**The graphics stack is a base row and not a runtime one.** A pack's parent chain is a single
+line — the browser sits on the GTK runtime, the video editor on the media one — so a driver set
+placed on either reaches half the catalogue and no more. The DRI drivers, the GL and EGL loaders
+and the VA-API drivers are therefore carried in the base, where they are stored once and every box
+has them. What that buys is the difference between a box that draws and decodes on the card and one
+that does both on the CPU: the render nodes are bound into every box and the compositor offers
+`linux-dmabuf` wherever there is a card, and the piece that decides whether a video is decoded in
+silicon is `libva` plus a `*_drv_video.so` beside it. A browser whose runtime has neither reports
+no hardware decoder and decodes every frame on the CPU.
+
 ### Exclusions must be probed, not trusted
 
 Two rules about excluding paths from an image, both of which cost real disk when broken:
@@ -276,6 +286,16 @@ account whose home directory is the filesystem root gives every application `HOM
 them reads any configuration in the real home — and a boxed application comes up in its toolkit's
 own light theme on a phosphor desktop, with the palette sitting correctly in a home it never
 looked at.
+
+**The card reaches a box as device nodes, and the box profile's two keys are about different
+halves of it.** `gpu` is the nodes: a box that shares the host's `/dev` has them and nothing can be
+subtracted from that, and a box with a private `/dev` gets `/dev/dri` bound back by this key alone.
+`render` is who draws, and it answers for both ends of a console guest: it resolves against the
+machine by opening a render node and puts `LIBGL_ALWAYS_SOFTWARE` into a launch that asked for
+software, and the session hands its value to the embedded cage unread as `KDOS_EMBED_GPU`, where
+`software` pins pixman and every other spelling leaves the renderer to `wlr_renderer_autocreate`.
+Both keys default to the card, because the nodes, the drivers and both renderers are already there
+and a box drawing with llvmpipe on such a machine is paying for nothing.
 
 **Every shared directory is formatted into the argument vector directly, never through one reused
 buffer.** The argument builder stores the pointer rather than copying, so several shares built in

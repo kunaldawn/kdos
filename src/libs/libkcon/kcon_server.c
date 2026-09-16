@@ -96,6 +96,35 @@ struct KconSurface {
 	 * sprite cell it copies out and two pictures never become one.
 	 */
 	int slotmap[KCON_MAX_SPRITE_MAP];
+	/*
+	 * THE FILL BUFFERS FOR EVERYTHING THIS SURFACE IS SENT, kept between
+	 * messages rather than allocated per message. See KCON_BUF_KEEP: a
+	 * sprite block is over a hundred kilobytes and a fullscreen guest is
+	 * dozens of them a frame, so a per-message buffer is an mmap and an
+	 * munmap per block and the kernel faults in and zeroes every page of
+	 * every one of them on every frame.
+	 *
+	 * PER SURFACE, NEVER FILE-SCOPE. Two surfaces are sent frames in the
+	 * same loop and a shared buffer would put one's pixels in the other's
+	 * message. They are safe to refill the instant a send returns because
+	 * kcon_send copies the payload into the connection's own out queue —
+	 * nothing downstream holds a pointer in here.
+	 *
+	 * THREE, BECAUSE THREE ARE FILLED AT ONCE. `bcells` carries the cells
+	 * of a frame and `bcolor` the colour records patching them; the
+	 * pictures those cells reference are sent from `bsprite` while the
+	 * same frame is being composed. Any two of them sharing one allocation
+	 * would have the second filler send the first one's bytes, and the
+	 * coupling would be invisible until somebody reordered the walk.
+	 *
+	 * WHAT THIS COSTS: at most three buffers of KCON_BUF_KEEP per surface,
+	 * held until that surface goes, so the ceiling scales with the number
+	 * of live surfaces rather than with how much any one of them sends.
+	 * `bcells` and `bcolor` only reach what a grid needs, and `bsprite`
+	 * only grows for a surface carrying pictures at all.
+	 */
+	KconBuf bcells, bcolor, bsprite;
+
 	/* A surface's committed grid. For a VIEW this is its PREVIOUS frame
 	 * instead — the thing the next send is diffed against. */
 	KtuiCell *cells;
@@ -221,6 +250,9 @@ static void surface_free(KconSurface *f)
 			if (f->slotmap[i] >= 0)
 				slot_give(f->server, f->slotmap[i]);
 	kcon_conn_free(f->conn);
+	kcon_buf_free(&f->bcells);
+	kcon_buf_free(&f->bcolor);
+	kcon_buf_free(&f->bsprite);
 	free(f->cells);
 	free(f);
 }
@@ -1800,18 +1832,27 @@ int kcon_view_sprite(KconSurface *v, int slot, int w, int h,
 	if (kcon_conn_pending(v->conn) > KCON_VIEW_HIGH)
 		return 0;
 
-	KconBuf b = { 0 };
+	/*
+	 * THE SURFACE'S OWN BUFFER, EMPTIED FIRST AND NEVER COPIED OUT OF IT.
+	 * See KconSurface::bsprite: the pixels of a block are the one payload
+	 * on this wire large enough that allocating for it is an mmap, and
+	 * this is the path a fullscreen guest takes dozens of times a frame.
+	 * Held by pointer so that no exit from here can leave a second owner
+	 * of the same allocation behind.
+	 */
+	KconBuf *b = &v->bsprite;
 	size_t npx = (argb && pw > 0 && ph > 0)
 		     ? (size_t)pw * (size_t)ph : 0;
 
-	kcon_put_u16(&b, (uint16_t)slot);
-	kcon_put_u16(&b, (uint16_t)w);
-	kcon_put_u16(&b, (uint16_t)h);
-	kcon_put_u32(&b, fallback);
-	kcon_put_u16(&b, (uint16_t)(npx ? pw : 0));
-	kcon_put_u16(&b, (uint16_t)(npx ? ph : 0));
+	kcon_buf_reset(b);
+	kcon_put_u16(b, (uint16_t)slot);
+	kcon_put_u16(b, (uint16_t)w);
+	kcon_put_u16(b, (uint16_t)h);
+	kcon_put_u32(b, fallback);
+	kcon_put_u16(b, (uint16_t)(npx ? pw : 0));
+	kcon_put_u16(b, (uint16_t)(npx ? ph : 0));
 	if (npx)
-		kcon_put_bytes(&b, argb, npx * 4);
+		kcon_put_bytes(b, argb, npx * 4);
 
 	/*
 	 * WHAT THE SEND DID, NOT WHAT IT WAS ASKED TO DO. A picture has no
@@ -1823,9 +1864,9 @@ int kcon_view_sprite(KconSurface *v, int slot, int w, int h,
 	 * side that CHOOSES the pixel size is the side that must keep a tile
 	 * inside the cap.
 	 */
-	int rc = kcon_send(v->conn, KCON_OP_SPRITE, &b);
+	int rc = kcon_send(v->conn, KCON_OP_SPRITE, b);
 
-	kcon_buf_free(&b);
+	kcon_buf_retire(b, KCON_BUF_KEEP);
 	return rc == 0;
 }
 
@@ -2117,10 +2158,19 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 	 * disowned outright if any send fails, because a copy claiming cells
 	 * the display never got is a screen that stays wrong until something
 	 * else happens to overwrite it.
+	 *
+	 * THE BUFFERS ARE THE SURFACE'S OWN AND ARE EMPTIED, NOT ALLOCATED.
+	 * See KconSurface::bcells: a chunk is a quarter of a megabyte, so a
+	 * pair allocated per frame is two mmaps and two munmaps at the
+	 * session's tick rate. They are held by pointer so that no exit from
+	 * this function can leave a second owner of either allocation behind.
 	 */
-	KconBuf b = { 0 }, cb = { 0 };
+	KconBuf *b = &v->bcells, *cb = &v->bcolor;
 	int want_color = (v->caps & KCON_VIEW_COLOR) != 0;
 	int any = 0;
+
+	kcon_buf_reset(b);
+	kcon_buf_reset(cb);
 
 	for (int y = 0; y < h; y++) {
 		const KtuiCell *row = cells + (size_t)y * w;
@@ -2146,22 +2196,22 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 
 			uint16_t n = (uint16_t)(x - start);
 
-			if (b.len + 6 + (size_t)n * KCON_CELL_BYTES >
+			if (b->len + 6 + (size_t)n * KCON_CELL_BYTES >
 				KCON_CHUNK_BYTES ||
-			    cb.len + 6 + (size_t)n * KCON_COLOR_BYTES >
+			    cb->len + 6 + (size_t)n * KCON_COLOR_BYTES >
 				KCON_CHUNK_BYTES) {
-				if (b.len && kcon_send(v->conn,
-						       KCON_OP_COMMIT,
-						       &b) != 0)
+				if (b->len && kcon_send(v->conn,
+							KCON_OP_COMMIT,
+							b) != 0)
 					goto fail;
-				kcon_buf_reset(&b);
-				if (cb.len && kcon_send(v->conn,
-							KCON_OP_COLOR,
-							&cb) != 0)
+				kcon_buf_reset(b);
+				if (cb->len && kcon_send(v->conn,
+							 KCON_OP_COLOR,
+							 cb) != 0)
 					goto fail;
-				kcon_buf_reset(&cb);
+				kcon_buf_reset(cb);
 			}
-			if (kcon_put_run(&b, (uint16_t)start, (uint16_t)y,
+			if (kcon_put_run(b, (uint16_t)start, (uint16_t)y,
 					 &row[start], n) != 0)
 				goto fail;
 			/*
@@ -2171,7 +2221,7 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 			 * slots and is a frame behind nothing.
 			 */
 			if (want_color && kcon_run_has_color(&row[start], n) &&
-			    kcon_put_color_run(&cb, (uint16_t)start,
+			    kcon_put_color_run(cb, (uint16_t)start,
 					       (uint16_t)y, &row[start],
 					       n) != 0)
 				goto fail;
@@ -2181,9 +2231,9 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 		}
 	}
 
-	if (b.len && kcon_send(v->conn, KCON_OP_COMMIT, &b) != 0)
+	if (b->len && kcon_send(v->conn, KCON_OP_COMMIT, b) != 0)
 		goto fail;
-	if (cb.len && kcon_send(v->conn, KCON_OP_COLOR, &cb) != 0)
+	if (cb->len && kcon_send(v->conn, KCON_OP_COLOR, cb) != 0)
 		goto fail;
 	v->have_prev = 1;
 
@@ -2223,8 +2273,10 @@ fail:
 	 */
 	v->have_prev = 0;
 out:
-	kcon_buf_free(&b);
-	kcon_buf_free(&cb);
+	/* Kept for the next frame unless one of them grew past the mark; see
+	 * KCON_BUF_KEEP. */
+	kcon_buf_retire(&v->bcells, KCON_BUF_KEEP);
+	kcon_buf_retire(&v->bcolor, KCON_BUF_KEEP);
 }
 
 int kcon_view_ready(const KconSurface *v)

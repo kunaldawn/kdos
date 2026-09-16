@@ -49,17 +49,33 @@ how. The mechanism is two wlroots choices and nothing else:
 - the **headless backend**, whose outputs are buffers in memory rather than screens, and
 - a **renderer whose frames this process can read**, because bytes are all the parent gets.
 
-**Which renderer that is, is the box profile's `render` key**, read by the session and carried to
-this process as `KDOS_EMBED_GPU`; the cage reads the variable and never a profile. It is its own key
-and not the profile's `gpu`, which says the render node is bound into the box and which every box
-carries by default. The default is **pixman**, the software
-one: it draws into memory a pointer reaches directly, needs no device, no driver and nothing
-negotiated, and works on a machine whose graphics stack is broken. A guest under it has no hardware
-GL, no hardware video decode and nothing to offer through `linux-dmabuf`, which is fine for an
-editor and is not a way to play a game.
+**Which renderer that is, the machine decides.** `WLR_RENDERER` is left unset, so
+`wlr_renderer_autocreate()` tries **gles2**, then **vulkan**, then **pixman**, and skips each
+hardware attempt where no DRM render node can be opened — which is exactly the "is there a usable
+card" question, asked by the code that has to answer it anyway. virtio-gpu publishes a render node
+only where the host offered virgl, so the plain `make run` lands on pixman with nothing decided
+here and nothing to fail.
 
-`render = gpu` asks for **gles2** instead, and the allocator is what makes that possible rather than
-merely faster. `wlr_allocator_autocreate()` picks gbm the moment the renderer has a DRM descriptor,
+**The renderer is the guest's graphics stack, which is why the card is the default.** A pixman cage
+advertises neither `linux-dmabuf` nor `wl_drm`; Mesa inside the box then finds `wl_shm` and nothing
+else, and answers that by loading llvmpipe — no hardware GL, no hardware video decode and every
+frame drawn on the CPU, on a machine whose render nodes, DRI drivers and `libva` are all present.
+Software is the right answer only where the hardware road is not there: it draws into memory a
+pointer reaches directly, needs no device, no driver and nothing negotiated, and works on a machine
+whose graphics stack is broken.
+
+**`KDOS_EMBED_GPU` overrides in both directions**, carried in by the session from the box profile's
+`render` key; the cage reads the variable and never a profile, and the session forwards the key's
+value unread so that both directions cross — see
+[kdos-con](kdos-con.md#the-guest-on-a-terminal-of-its-own). `software` —
+and `pixman`, `no`, `off`, `0`, `false` — pins the software renderer for a guest that should not
+touch the card; `gpu`, `auto` and an absent key are the default above. **A value nobody recognises
+means the default and not the software renderer**, because a typo that silently costs a guest its
+hardware GL is a fault nothing reports. It is its own key and not the profile's `gpu`, which says
+the render nodes are bound into the box and which every box carries.
+
+**The hardware renderer needs an allocator of its own**, and that is what makes it possible rather
+than merely faster. `wlr_allocator_autocreate()` picks gbm the moment the renderer has a DRM descriptor,
 and a gbm buffer can be neither mapped nor turned into a shared-memory handle — every frame would
 render and none could be published, leaving a permanently black window with each part reporting
 success. So `embed_allocator()` takes **udmabuf**: a buffer that is a DMA-BUF the card draws into
@@ -68,7 +84,7 @@ ends. wlroots' own udmabuf branch cannot be reached here, because it is guarded 
 DRM descriptor at all.
 
 **Every step of that falls back to software rather than failing**, because a half-succeeding
-hardware path is a black window and a software path is a working one. A missing renderer, a missing
+hardware path is a black window and a software path is a working one. No render node, a missing
 `/dev/udmabuf` — its rule is `fs/etc/udev/rules.d/70-kdos-udmabuf.rules`, group `render`, the same
 group that owns the render node — or an allocator that cannot produce a readable buffer each cost
 the guest the card and nothing else.
@@ -105,8 +121,8 @@ the window would stay blank for as long as it is open.
 What the wait costs is latency: on the hardware road a publish is as late as the card is slow, and
 the frame reaches the parent after the readback rather than before it.
 
-The backend and the renderer are both chosen through the environment wlroots already reads, so the
-code path is upstream's own. `WLR_HEADLESS_OUTPUTS=0` goes with them: autocreate adds headless
+The backend is chosen through the environment wlroots already reads, and the renderer by leaving
+that environment alone unless a profile overrides it, so the code path is upstream's own. `WLR_HEADLESS_OUTPUTS=0` goes with them: autocreate adds headless
 outputs of its own accord and at a size of its choosing, and this mode makes every output it wants
 by hand. The allocator is the exception and is built by hand for the reason above.
 
@@ -187,14 +203,88 @@ and every GTK-under-X tooltip becomes a taskbar entry.
 so a guest whose docks are on another workspace stops drawing them and goes on drawing the one in
 front of the person. One shared output draws every toplevel whenever any one of them draws.
 
-**A resize is an output resize**, so the guest reconfigures the way it would on any compositor; there
-is no second notion of "the window is smaller than the output". **The parent gates that channel**: a
-guest is told at most one size per window per frame period, and only once a new mapping for that
-window has come back — whatever size that mapping carries, because a size the cage folded into an
-earlier one is a size no mapping will ever report. A mode change here is a swapchain, a fresh
-`memfd` and a relayout inside the application, and a drag would otherwise emit one per pointer
-motion. A wait that reaches a second stops holding the next size back as well; a guest that never
-remaps at all would otherwise hold the channel shut for the life of the window.
+**A resize is an output resize**, so the guest reconfigures the way it would on any compositor.
+**The parent gates that channel**: a guest is told at most one size per window per frame period, and
+only once a new mapping for that window has come back — whatever size that mapping carries, because
+a size the cage folded into an earlier one is a size no mapping will ever report. A mode change here
+is a swapchain, a fresh `memfd` and a relayout inside the application, and a drag would otherwise
+emit one per pointer motion. A wait that reaches a second stops holding the next size back as well;
+a guest that never remaps at all would otherwise hold the channel shut for the life of the window.
+
+**The output is negotiated and the surface is reported, and they are two different sizes.** A Wayland
+client is free to commit a window smaller than the output it was given — a dialog that will not be
+stretched — or larger — a window with a minimum of its own. The first is composited at the output's
+top left over this process's background, so the parent is handed a frame the size it asked for with
+a band of the scheme's darkest slot down two sides of it; the second is cut off at the output's
+edge. The framebuffer is the output's either way, so `KEMBED_BUF` can only echo the size the parent
+chose and no correction derived from a frame can ever see the gap. `KEMBED_SURFACE` is what closes
+it: the guest's own window geometry, which the parent rounds **up** to whole cells, gives to the
+window and asserts back as a `KEMBED_SIZE` — so the two ends agree to within the cell the rounding
+added, and for a Wayland guest neither the band nor the crop outlives one round trip.
+
+**The output carries a scale, and it is the only number on this channel that is not pixels.**
+`KEMBED_SCALE` names how many real pixels the desktop spends on one of the guest's logical ones, per
+window because a window is an output. It is committed with `wlr_output_state_set_scale()` and the
+MODE is left alone, so the framebuffer, the `memfd`, the blocks the parent cuts and the cell
+rectangle the window sits in are all exactly what they were — what changes is the logical size
+wlroots derives from the mode, which is what the toolkit lays its window out in and multiplies its
+own drawing by. At 2 a guest draws everything twice as large into the frame it was already filling.
+Without the number every boxed application would render at 1 on a console whose own text is twice
+that, which is unreadable chrome beside legible text.
+
+**So every size that crosses the channel is converted here, and a place is a size.** The natural
+size in `KEMBED_OPEN`, the report in `KEMBED_SURFACE` and the pointer hint in `KEMBED_GRAB` are
+multiplied out of logical units on the way to the parent; `KEMBED_MOTION`, `KEMBED_BUTTON`,
+`KEMBED_REL` and `KEMBED_AXIS` are divided into them on the way in. `KEMBED_SIZE` is the exception
+and is *not* converted: it names the output's mode, which is pixels on both sides. A position left
+unconverted at scale 2 lands at half the distance from the window's corner that the person pointed
+at, and a size left unconverted is a window the session makes half the size the guest asked for.
+
+**The scale is a whole number that divides the console's cell.** wlroots divides the mode by the
+scale and TRUNCATES, so an output whose pixel width is not a whole multiple leaves the guest
+rendering a column short of its own output — a stripe of the cage's background down the edge of the
+window for as long as the window lives. The session picks the number (see
+[kdos-con](kdos-con.md)) and steps it down until it divides; this end refuses anything below 1 or
+above `EMBED_SCALE_MAX`, which is 4. **A fractional density is therefore never asked for**: a
+console one and a half times the reference steps down to 1.
+
+**On the shipped console the number IS 1, and every conversion here is an identity.** The session
+measures its view's cell against a reference of eight by sixteen, and `con.conf`'s
+`font = monospace:size=12` is that reference cell; 2 wants a cell thirty-two pixels tall whose width
+is even as well, which text stepped far up with `Super+=` or a much larger `font =` produces and no
+shipped configuration does. Both ends are built and the multiplications above run on every message;
+what is missing is a font that crosses the mark — see
+[known-gaps](../06-reference/known-gaps.md).
+
+**An X11 guest is upscaled rather than re-laid-out.** X has no scale factor: an Xwayland client
+draws in logical pixels at one pixel each, and the scene magnifies its buffer onto the output. Its
+chrome comes out the right SIZE and soft at the edges, which is legible where scale 1 is not.
+
+**An X11 guest can neither band nor crop, and cannot be measured off a frame at all.** The cage is
+the window manager, so a managed toplevel's geometry is whatever `wlr_xwayland_surface_configure()`
+last set on it and Xwayland attaches a buffer of exactly that geometry: the committed surface is the
+parent's own number coming back, on every frame the client will ever publish. What an X11 client has
+instead is the `ConfigureRequest`, which wlroots delivers as the surface's `request_configure` signal
+and drops if nothing is listening. The cage listens, and does two things with it. It answers the
+request the way ICCCM 4.1.5 requires — `wlr_xwayland_surface_configure()` with the geometry the
+window already has, which emits the synthetic `ConfigureNotify` that a redirected request never gets
+from the X server, because a client left waiting on a notify that is not coming sits unresized and
+unpainted for good. And it reports the size that was asked for as `KEMBED_SURFACE`, which is the
+only way a dialog with a size of its own gets that size from the session.
+
+**It is sent on a change, not on a frame.** Because the parent rounds up, a window whose pixels do
+not land on a cell boundary is permanently a few pixels short of its output — reporting per frame
+would be a message per frame for the life of nearly every window — so the cage records what it has
+said and repeats itself only when the guest picks a different size or the parent moves the output.
+
+**A Wayland report waits for the guest to have answered the last size it was given; an X11 one has
+nothing to wait for.** A guest rendered between being told a size and answering it still measures the
+size it is about to stop being, and honouring that would put the window back where it was for the
+length of a drag. xdg-shell answers by acknowledging a configure, so an empty configure list — with
+no configure still waiting on the idle that sends it — is the client having caught up, and its
+committed geometry is then a size it chose. A `ConfigureRequest` has nothing in flight behind it, so
+it is reported as it arrives; it is also reported straight out of the signal rather than at the next
+frame, because a client asking to shrink has nothing new to draw and that frame is never coming.
 
 **A guest sees as many `wl_output`s as it has windows open**, and a toolkit that enumerates them
 reads them as monitors. That is the cost of the mechanism and there is no way to hide it from a
@@ -213,13 +303,19 @@ being broken rather than as the timing artefact it is.
 nothing rather than everything.** The two branches of the frame handler are not symmetrical and
 both halves of that cost a screen. `wlr_scene_output_commit()` — what the non-embed branch calls —
 returns early on `!wlr_scene_output_needs_frame()`; `wlr_scene_output_build_state()`, which the
-embed branch calls to reach the buffer, has no such guard, so this mode rendered, copied a whole
-framebuffer and published on every tick of the headless output whether or not a client had
-committed anything. And `wlr_scene_output_build_state()` ALWAYS sets the damage field, with the
-scene subtracting afterwards what it committed — so an idle frame arrives as a region that is
-present and empty. Reading either as "no damage information" and falling through to the whole-window
-box tells the parent that every pixel has changed, fifty times a second, and the parent then re-cuts
-and re-sends every block — about two megabytes a frame for a half-screen guest.
+embed branch calls to reach the buffer, has no such guard, so the embed branch tests it itself or
+renders, copies a whole framebuffer and publishes on every tick of the headless output whether or
+not a client has committed anything. And `wlr_scene_output_build_state()` ALWAYS sets the damage
+field, with the scene subtracting afterwards what it committed — so an idle frame arrives as a
+region that is present and empty. Reading either as "no damage information" and falling through to
+the whole-window box tells the parent that every pixel has changed, fifty times a second, and the
+parent then re-cuts and re-sends every block — about two megabytes a frame for a half-screen guest.
+
+**And that gate is what makes a published frame mean the guest is alive.** The parent clears its
+close deadline on one, because an application that answers "save your work?" inside the window it
+was asked to close maps nothing else the parent can see. A cage that published on its own tick
+would clear that deadline for a guest whose event loop has stopped, and the window nothing can
+close is back.
 
 **The damage that is sent is the region's own boxes, not the one box that contains them.**
 `KEMBED_FRAME` announces the flip and the first box; every further box follows immediately in a
@@ -268,6 +364,10 @@ to report — so a Wayland toplevel is a `DIALOG` when it names an owner and not
 X11 has all three, in `_NET_WM_STATE` and `_NET_WM_WINDOW_TYPE`, so `MODAL`, `UTILITY` and `SPLASH`
 arrive from an Xwayland guest alone and the parent's rules degrade to "owned or not" without them.
 
+**`KEMBED_SURFACE` is the guest's own idea of how large its window is**, in pixels, sent only when
+that is not the size of its output. Nothing else on this channel can carry it — see the resize rule
+above — and the parent answers it with a `KEMBED_SIZE` of the cell rectangle it rounded up to.
+
 **`KEMBED_CLOSE` naming a window asks that toplevel and only it.** A person clicking the X on an
 export dialog has not asked the application to quit. Zero asks every toplevel the guest has.
 
@@ -287,6 +387,25 @@ shown. With nothing mapped there is nobody to ask and the display ends at once. 
 escalation are the parent's, because the parent owns the process and this end owns only the
 protocol — and they are per *process*, so a dialog that ignores a close is never what signals the
 application.
+
+**What the guest does with the ask is visible to the parent in three ways, and drawing is one of
+them.** The toplevel unmaps and `KEMBED_CLOSE_WIN` goes out; or a question opens in a toplevel of
+its own and `KEMBED_OPEN` does; or the guest draws the question inside the window it was asked
+about and only a `KEMBED_FRAME` does. The third is what a libadwaita `AdwDialog` is, and what every
+Electron application does, and it maps nothing at all — so a parent that watched for new toplevels
+alone would signal such a guest while the person was still reading the question. What is left when
+none of the three arrives is a guest whose event loop is not running, and that is what the deadline
+reaps.
+
+**So an application that goes on drawing and never honours a close keeps its window through the
+ask.** It is alive and it is being asked, and a desktop that took a live program's unsaved work away
+to satisfy a click would lose more than it saved. **What ends such a window is the person asking a
+second time**: ten seconds after an ask the parent offers the force on its bar, and a close taken up
+on that offer drops the window and signals this process — `SIGTERM`, so this end unwinds its own
+client the way it does for any other shutdown, and `SIGKILL` after it. A guest that answered once
+and wedged afterwards is reached by the next click, which arms a fresh ask against a guest that has
+stopped answering. The ladder is the parent's and is written out in
+[kdos-con](kdos-con.md#a-graphical-application-is-windows).
 
 **A guest whose last window closes does not end.** A `GApplication` holding the session bus name with
 no window open is exactly what the shared bus is for: the next launch hands off into it and opens a
@@ -381,6 +500,15 @@ hand over a link are how an application says what is under the pointer, and both
 pixels in the frame. This is the one of the four environment variables that is set rather than
 defaulted — there is no headless cursor plane to prefer, so a person who set it to `0` set it for
 some other compositor.
+
+**And because this cursor is in the frame, it is the ONLY pointer inside the window.** The parent's
+cell pointer is the cell under it reversed, and a reversed cell over an opaque guest frame is a
+second pointer a cell from the first; the view therefore draws none over a cell whose picture keeps
+being rewritten under it, which is what a cursor composited into every frame makes of the block it
+is on — see the pointer contract in
+[design-language](../03-architecture/design-language.md). A guest that hides its cursor is honoured
+rather than overridden, which is what a full-screen player and a game ask for, and the cell pointer
+comes back on the frame, one cell out, which is where the window is grabbed and resized anyway.
 
 **Two things follow from a software cursor, and neither is a cost worth trading back.**
 `wlr_output_is_direct_scanout_allowed()` returns false on this output for the life of the process,

@@ -64,10 +64,13 @@ enum { KCELL_MAX_SCALE = 4 };
  * kcell_w()/kcell_h()/kcell_ascent() a caller cached, is invalid once it
  * returns. A failed load leaves no font at all and the metrics at zero.
  *
- * kcell_font_free() is the same teardown plus fcft's own. It is not a
- * prerequisite of a reload and must not be used as one on a live grid: fcft's
- * teardown is not refcounted, so a free is a shutdown of the library and not a
- * step in a font change.
+ * kcell_font_free() is the same teardown plus the cell font's REFERENCE on
+ * fcft, which this library counts: fcft goes down on the last holder's
+ * release and not on this call, so a canvas still drawing keeps its faces and
+ * a process that only ever drew canvases never needed a cell font at all. It
+ * is still not a prerequisite of a reload — a load replaces the faces by
+ * itself — and every KCellGlyph and every cached metric is invalid after it,
+ * exactly as after a load.
  */
 int kcell_font_load(const char *name);
 void kcell_font_free(void);

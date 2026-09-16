@@ -176,8 +176,10 @@ static int a11y_wanted(void)
  *                              image's labels and the pack lane asks the pack
  *                              stack's own `env =` lines.
  *   GTK_THEME=KDOS             belt and braces next to gtk-3.0/settings.ini
+ *   LIBGL_ALWAYS_SOFTWARE      only where the box's graphics are the CPU's,
+ *                              see the `render` block below
  */
-static void box_env(KbArgv *a, const char *image, const char *pack)
+static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 {
 	const char *display;
 	const char *sock;
@@ -342,13 +344,46 @@ static void box_env(KbArgv *a, const char *image, const char *pack)
 				kb_argv_add(a, kb_strdup(env[i]));
 			}
 		}
-	} else if (image_has_label(image, "kdos.qt-kde-theme")) {
+	} else if (image_has_label(prof->image, "kdos.qt-kde-theme")) {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=kde");
 	} else {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
-		if (image_has_label(image, "kdos.qt-gtk-theme"))
+		if (image_has_label(prof->image, "kdos.qt-gtk-theme"))
 			kb_argv_add(a, "QT_STYLE_OVERRIDE=Fusion");
 	}
+
+	/*
+	 * WHICH GRAPHICS THE GUEST'S MESA MAY LOAD, out of the profile's
+	 * `render` key resolved against this machine — see
+	 * profile_render_gpu().
+	 *
+	 * NOTHING IS EXPORTED FOR THE HARDWARE ANSWER, because Mesa already
+	 * asks the right question: it loads a driver for the render node it
+	 * finds and falls back to llvmpipe on its own when the compositor
+	 * offers neither linux-dmabuf nor wl_drm. A variable that pinned
+	 * hardware would only take that fallback away.
+	 *
+	 * The software answer is the one that has to be stated. The render
+	 * node is bound into the box and the drivers are in the base pack, so
+	 * a box told `render = software` would otherwise load a hardware
+	 * driver and draw with it. It governs GL and EGL and nothing else:
+	 * VA-API and Vulkan find the render node by their own route, and
+	 * denying those is the `gpu` key's job.
+	 *
+	 * BOTH ENDS OF A CONSOLE GUEST ANSWER TO THE ONE KEY, so the saving is
+	 * real there: kdos-con reads the same profile and hands the value to
+	 * the cage as KDOS_EMBED_GPU, which pins the cage on pixman for
+	 * exactly the spellings resolved to software here. A `software` guest
+	 * on the console therefore draws with llvmpipe into wl_shm and is
+	 * composited out of that same memory, with no upload and no readback
+	 * for pixels the CPU already had.
+	 *
+	 * ADVISORY AND PRINTED AS SUCH: it is an environment variable an
+	 * application may unset, and `kdos-box profile` names it on the render
+	 * line rather than claiming confinement this cannot enforce.
+	 */
+	if (!profile_render_gpu(prof))
+		kb_argv_add(a, "LIBGL_ALWAYS_SOFTWARE=1");
 
 	/*
 	 * Cost a debug cycle: a few apps are X11-only and their own .desktop
@@ -495,7 +530,7 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	/* box_env writes `env NAME=value …` in front of the command, so the
 	 * environment reaches the app the same way in both lanes and there is
 	 * one place where GTK_USE_PORTAL and the rest are decided. */
-	box_env(&a, p.image, id);
+	box_env(&a, &p, id);
 	for (i = 0; i < argc; i++)
 		kb_argv_add(&a, argv[i]);
 	kb_argv_end(&a);

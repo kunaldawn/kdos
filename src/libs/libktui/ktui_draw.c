@@ -108,6 +108,32 @@ static int force_full;
 static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
 
+/*
+ * WHETHER THE PICTURE UNDER THE POINTER IS DRAWING ITS OWN — see the flush.
+ *
+ * ONE SLOT AND NOT A TABLE. Only the slot the pointer is standing on can be
+ * watched, because only that one is being looked at; `pic_carry` is what
+ * bridges the gap while a newly crossed block proves itself, and a table of
+ * four thousand verdicts would be 68 KB of BSS in a library `kinstall` links
+ * in phase 1.
+ *
+ * THE VERDICT IS EVIDENCE AND EVIDENCE GOES STALE. `pic_n` counts fresh puts
+ * and `pic_still` counts the flushes since the last one, because a count that
+ * only ever rose would make the verdict permanent: a guest that stopped
+ * producing frames would go on holding the pointer, and the pointer would be
+ * missing over exactly the window a person needs it on — a frozen one.
+ */
+#define KTUI_PIC_MOVING 4	/* fresh puts that make a picture an animation */
+#define KTUI_PIC_STILL 15	/* flushes with no put that end the verdict    */
+#define KTUI_PIC_CARRY 30	/* flushes the verdict survives a block edge   */
+
+static int pic_slot = -1;
+static uint64_t pic_key;
+static unsigned long pic_gen;
+static int pic_n;
+static int pic_still;
+static int pic_carry;
+
 /* A clip krect so a page can be drawn shifted and simply run off the top and
  * bottom of its pane. The console KDOS actually ships is 25 rows tall
  * (1280x800 with the 16x32 font); without this every long page would have to
@@ -1238,24 +1264,121 @@ void ktui_draw_flush(void)
 	 * when the pointer leaves. The same XOR does both jobs.
 	 */
 	/*
-	 * AND OVER A PICTURE THE CELL ITSELF IS SET ASIDE, because reverse on
-	 * a sprite cell is a fill the picture is then composited over: an
-	 * opaque sprite — which is every frame of an embedded application —
-	 * hides it completely and the pointer vanishes for as long as it is
-	 * over the window. Swapping the cell for a blank makes the reverse
-	 * the whole cell, at the cost of one cell of the picture, which is
-	 * what a pointer costs everywhere else.
+	 * AND OVER A MOVING PICTURE NOTHING IS DRAWN AT ALL — ONE POINTER AT
+	 * A TIME.
+	 *
+	 * A moving picture is a pixel surface somebody is compositing, and
+	 * that is the only thing on this desktop able to draw a pointer at
+	 * the resolution it is drawn in. An embedded guest does: its
+	 * compositor renders the cursor into every output frame, whether or
+	 * not the application redrew, so the block under the hand is being
+	 * rewritten for as long as the hand is on it. A reversed cell on top
+	 * of that is a SECOND pointer a cell from the first, and the one a
+	 * person aims a two-pixel scrollbar with is the guest's.
+	 *
+	 * A STILL PICTURE IS NOT ONE, AND THAT DISTINCTION IS THE WHOLE RULE.
+	 * A desktop icon, a panel icon and an image in a terminal are sprites
+	 * with pixels exactly as a guest's block is, and nothing is drawing a
+	 * cursor on any of them — holding over those would take the pointer
+	 * off the icon grid, which is where it is needed most. `gen` is what
+	 * separates them: the sprite table bumps it on every put, so a slot
+	 * whose pixels keep arriving while the pointer sits on it is being
+	 * animated and one that was registered once is not. Four consecutive
+	 * fresh puts is the test — a fifteenth of a second at sixty frames —
+	 * and an icon is re-registered by a theme change and by a sprite
+	 * resend, neither of which happens four times in that span.
+	 *
+	 * AND THE VERDICT ENDS WHEN THE PUTS DO. Fifteen flushes with the
+	 * slot's `gen` unmoved retire the count and the carry with it, so the
+	 * pointer is back on the sixteenth — a quarter of a second at sixty —
+	 * and the test is the pixels ARRIVING rather than the kind of window
+	 * they arrived from. Without that a guest that froze, crashed its
+	 * renderer or simply stopped drawing would hold the pointer for as
+	 * long as the hand stayed on it, and the one window a person most
+	 * needs to point at — to reach its frame, its close chip, its border
+	 * — would be the one window with no pointer on it. A guest slower
+	 * than four frames a second is judged still, which is the correct
+	 * answer: a cursor redrawn that rarely does not track a hand.
+	 *
+	 * THE VERDICT CARRIES ACROSS A BLOCK EDGE. A window is cut into
+	 * blocks of at most 16x16 cells and each is its own slot, so the
+	 * count starts again every time the pointer crosses one; without the
+	 * carry the cell pointer would blink back on at every block boundary
+	 * the hand crossed. It runs out over anything that does not start
+	 * animating, which is what puts the pointer back when a guest's
+	 * chrome is left for a panel icon that overlapped it.
+	 *
+	 * A SPRITE WITH NO PIXELS IS NOT A PICTURE AT ALL. A tty, a view with
+	 * no pixel library and a dump all carry the sprite's fallback MARK;
+	 * `ktui_sprite_get` answers NULL for a slot with no picture, and the
+	 * mark is then set aside for the reverse exactly as a glyph is —
+	 * the flush swaps the cell's character for a blank alongside the XOR
+	 * and puts it back afterwards, because reverse under a sprite is a
+	 * fill the painter composites over and an opaque one hides it
+	 * completely. It costs one cell of the picture, which is what a
+	 * pointer costs over a glyph too.
+	 *
+	 * The chrome round an embedded window is drawn in CELLS, so the
+	 * pointer comes back the moment it reaches the border — which is
+	 * where a window is grabbed, moved and resized. It is never more than
+	 * one cell from visible, and that is also the answer for a guest that
+	 * has hidden its own cursor, which a player and a game do on purpose.
 	 */
 	int pt = -1;
 	uint32_t ptch = 0;
 
 	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh) {
-		pt = ptr_y * bw + ptr_x;
-		back[pt].attr ^= KT_A_REVERSE;
-		if (KTUI_IS_SPRITE(back[pt].ch)) {
-			ptch = back[pt].ch;
-			back[pt].ch = ' ';
+		int i = ptr_y * bw + ptr_x;
+		int slot = KTUI_IS_SPRITE(back[i].ch)
+				   ? (int)KTUI_SPRITE_SLOT(back[i].ch)
+				   : -1;
+		const KtuiSprite *ps = slot >= 0 ? ktui_sprite_get(slot) : NULL;
+		int hold = 0;
+
+		if (ps) {
+			if (slot != pic_slot || ps->key != pic_key) {
+				pic_slot = slot;
+				pic_key = ps->key;
+				pic_gen = ps->gen;
+				pic_n = 0;
+				pic_still = 0;
+			} else if (ps->gen != pic_gen) {
+				pic_gen = ps->gen;
+				pic_still = 0;
+				if (pic_n < KTUI_PIC_MOVING)
+					pic_n++;
+			} else if (pic_still++ >= KTUI_PIC_STILL) {
+				pic_still = KTUI_PIC_STILL;
+				pic_n = 0;
+				pic_carry = 0;
+			}
+			if (pic_n >= KTUI_PIC_MOVING) {
+				hold = 1;
+				pic_carry = KTUI_PIC_CARRY;
+			} else if (pic_carry > 0) {
+				hold = 1;
+				pic_carry--;
+			}
+		} else {
+			pic_slot = -1;
+			pic_carry = 0;
 		}
+
+		if (!hold) {
+			pt = i;
+			back[pt].attr ^= KT_A_REVERSE;
+			if (KTUI_IS_SPRITE(back[pt].ch)) {
+				ptch = back[pt].ch;
+				back[pt].ch = ' ';
+			}
+		}
+	} else {
+		/* NO POINTER IS NO VERDICT. A view that hides its pointer, and
+		 * one whose grid shrank under it, must not come back holding a
+		 * carry taken from a picture that is no longer under anything.
+		 */
+		pic_slot = -1;
+		pic_carry = 0;
 	}
 
 	/*

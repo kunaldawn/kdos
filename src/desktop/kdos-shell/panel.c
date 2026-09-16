@@ -4027,13 +4027,21 @@ static int draw_start(struct sh_state *sh, int compact)
 	 * which is what reads on a bright fill; on the quiet rest plate that
 	 * same colour is dark ink on a dark plate and the word disappears.
 	 *
-	 * WHICH IS WHY THE PLATE HAS TO EXIST. Where there is no pixel layer
-	 * the plate is not drawn at all, so `lit` put KT_SURFACE ink on a
-	 * KT_SURFACE body and the Start button went blank the moment the
-	 * pointer touched it — and stayed blank, because the bar is lit for
-	 * as long as its menu is open. The cell fill below is that plate.
+	 * WHICH IS WHY THE PLATE HAS TO EXIST WHEREVER `lit` IS READ. Lit ink
+	 * is KT_SURFACE, so a button lit on a body that is itself KT_SURFACE
+	 * is a blank button — for as long as the pointer is on it, and for as
+	 * long as its menu is open. `plate` is that body, and it is the slot
+	 * BOTH renderings hand to the cells they draw: the tile's sprite
+	 * background above and the cell fill below.
 	 */
 	int ink = lit ? KT_SURFACE : KT_TEXT;
+	/*
+	 * KT_SURFACE under a pixel layer is not "no plate": it is the slot the
+	 * backdrop OWNS, so the plate start_plate() records shows through the
+	 * cells instead of being filled over. On a character grid there is
+	 * nothing to record into and the slot itself has to carry the three
+	 * states — the same ladder, in fills.
+	 */
 	int plate = !cells_only() ? KT_SURFACE
 		    : start_menu_open() ? KT_WARN
 		    : sh->hover_start  ? KT_ACCENT
@@ -4080,15 +4088,28 @@ static int draw_start(struct sh_state *sh, int compact)
 		int px_h = bar_h * cell_h * scale;
 		int fsz = px_h * 50 / 100;
 		/*
-		 * THE MARK IS THE BRAND AND IT WAS THE SMALLEST THING ON THE
-		 * BUTTON. At 56% of a 64-pixel bar it is 35 pixels — smaller
-		 * than the 40-pixel word beside it, on the one control whose
-		 * job is to be recognised from across the room rather than
-		 * read. Three quarters of the height puts it at 47, which is
-		 * the proportion the mark has to the word on every desktop
-		 * this shape came from, and the button grows by one column.
+		 * THE MARK IS THE BRAND AND IT TAKES THE BUTTON'S WHOLE
+		 * HEIGHT LESS THE AIR EVERY OTHER PICTURE ON THIS ROW LEAVES.
+		 *
+		 * A fifth of a cell at each end, which is exactly what
+		 * `icon_air()` pads a chip's artwork with and what the glyph
+		 * layout above hands `kicon_slot_pad()` — a mascot sized to a
+		 * flat fraction of the band comes out smaller than the chips
+		 * beside it, on the one control whose job is to be recognised
+		 * from across the room rather than read. The air is equally
+		 * load-bearing in the other direction: a picture touching the
+		 * top and bottom of its own plate reads as a strip of artwork
+		 * and not as a button.
+		 *
+		 * `cell_h` here is sh_pic_cell_h() and not kdisp_cell_h(): a
+		 * console surface has no pixel size of its own and answers 1,
+		 * which would leave no air at all.
 		 */
-		int mark_px = px_h * 74 / 100;
+		int air = cell_h * scale / 5;
+
+		if (air < 1)
+			air = 1;
+		int mark_px = px_h - 2 * air;
 		/*
 		 * THREE GAPS, AND THE TWO OUTER ONES ARE EQUAL BY
 		 * CONSTRUCTION.
@@ -4177,9 +4198,35 @@ static int draw_start(struct sh_state *sh, int compact)
 				start_plate(0, tw_cells, bar_h,
 					    sh->hover_start,
 					    start_menu_open());
+				/*
+				 * THE SPRITE'S BACKGROUND IS THE BUTTON'S
+				 * PLATE WHERE THERE IS NO PIXEL LAYER.
+				 *
+				 * A sprite cell carries a slot pair like any
+				 * other cell and the backend fills under the
+				 * picture before compositing it, so the
+				 * background these cells are drawn with IS the
+				 * body of the button on a character grid. Left
+				 * at KT_SURFACE it is the bar's own body: no
+				 * fill, no edges, and the hover and menu-open
+				 * states this function has already computed
+				 * are painted over by the one thing that draws
+				 * the button — a Start button that cannot be
+				 * seen to be under the pointer or to have its
+				 * own menu up.
+				 *
+				 * `plate` is KT_SURFACE wherever the pixel
+				 * layer draws the plate, so the picture still
+				 * sits on the recorded plate there and nothing
+				 * fills over it; on the console it is the same
+				 * three-state ladder start_plate() draws in
+				 * pixels — quiet, accent under the pointer,
+				 * warn while the menu is up — and the button's
+				 * two renderings agree about its state.
+				 */
 				ktui_draw_sprite(krect(0, bar_y0, tw_cells,
 						       bar_h),
-						 slot, KT_SURFACE, KT_SURFACE);
+						 slot, ink, plate);
 				sh->start_x = 0;
 				sh->start_end = tw_cells;
 				return tw_cells;

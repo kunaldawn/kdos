@@ -82,6 +82,55 @@
 #define KCON_MAX_QUEUE (4u << 20)
 
 /*
+ * HOW LARGE A FILL BUFFER IS KEPT BETWEEN MESSAGES. See kcon_buf_retire().
+ *
+ * A message is encoded into a KconBuf and the buffer is then kept for the next
+ * one, because a fresh allocation the size of a sprite block is an mmap under
+ * a size-class allocator and the matching free is an munmap: every page of
+ * every block is faulted in and zeroed by the kernel on every frame, which on
+ * a fullscreen guest is three quarters of the session's frame time spent in
+ * the allocator rather than on pixels.
+ *
+ * Above this mark the buffer is released instead of kept, so one outsized
+ * message does not pin its memory for the life of the connection. It sits
+ * above both shapes that repeat: a 1080p sprite block is about 120 KiB, and a
+ * frame chunk is KCON_CHUNK_BYTES plus at most the one run that overshot it.
+ * Lower it below either and the allocation comes back every frame.
+ *
+ * IT MUST STAY AT OR ABOVE TWICE KCON_CHUNK_BYTES, because the buffer grows by
+ * DOUBLING: a chunk one byte over a power of two rounds the capacity up to the
+ * next one, and a capacity above this mark is released. Without the margin the
+ * frame buffers fall out of retention silently — the allocator cost returns in
+ * full and nothing says why — so the relation is asserted rather than trusted.
+ */
+#define KCON_BUF_KEEP (512u << 10)
+
+_Static_assert(KCON_BUF_KEEP >= 2u * KCON_CHUNK_BYTES,
+	       "KCON_BUF_KEEP must cover a doubled frame chunk or the frame "
+	       "buffers are freed and remapped every frame");
+
+/*
+ * WHAT THE SOCKET IS ASKED FOR, both directions, on every connection.
+ *
+ * A frame the sender cannot place in one turn of its loop is presented
+ * partially: the display shows what arrived and the window fills in
+ * horizontal bands over several frames. A fullscreen guest is dozens of
+ * sprite blocks of over a hundred kilobytes each, so the default socket
+ * buffer holds only a handful of them and a whole window takes a dozen turns
+ * to appear.
+ *
+ * THE KERNEL DOUBLES THE REQUEST AND CLAMPS IT to net.core.wmem_max /
+ * net.core.rmem_max, so what is granted is not what is asked for and must be
+ * read back rather than assumed. A clamp is not an error: a smaller buffer is
+ * a slower desktop, not a broken one, and the request never fails a
+ * connection.
+ *
+ * SIGNED, unlike the caps above it: setsockopt reads an int through a void
+ * pointer and takes whatever bit pattern is there.
+ */
+#define KCON_SOCK_BUF (2 << 20)
+
+/*
  * A DISPLAY THAT IS BEHIND IS SENT NOTHING, AND IS NEVER DROPPED FOR IT.
  *
  * A view is the one peer whose messages are a STREAM OF PICTURES: the newest
@@ -910,6 +959,21 @@ typedef struct {
 
 void kcon_buf_free(KconBuf *b);
 void kcon_buf_reset(KconBuf *b);
+/*
+ * DONE WITH A MESSAGE, AND THE BUFFER IS KEPT FOR THE NEXT ONE. Empties it as
+ * kcon_buf_reset does and releases its memory only if it grew past `keep`.
+ *
+ * What a sender calls where it would otherwise free: kcon_send COPIES the
+ * payload into the connection's own queue, so nothing holds a pointer into a
+ * KconBuf once the send returns and the same buffer may be refilled at once.
+ * A buffer retired instead of freed BELONGS TO ONE CONNECTION: on the server
+ * it is a field of the KconSurface, and in a client it is a field of the one
+ * connection that process holds. What breaks the rule is a buffer SHARED
+ * between two connections, or between two senders filling at once — the
+ * second filler would send the first one's bytes — not the storage class it
+ * happens to have.
+ */
+void kcon_buf_retire(KconBuf *b, size_t keep);
 int kcon_put_u8(KconBuf *b, uint8_t v);
 int kcon_put_u16(KconBuf *b, uint16_t v);
 int kcon_put_u32(KconBuf *b, uint32_t v);
@@ -1008,6 +1072,10 @@ KconConn *kcon_conn_new(int fd);
 void kcon_conn_free(KconConn *c);
 int kcon_conn_fd(const KconConn *c);
 int kcon_conn_dead(const KconConn *c);
+/* The socket send buffer the kernel GRANTED, in bytes, or 0 if it could not
+ * be read. Not KCON_SOCK_BUF: the kernel doubles the request and clamps it to
+ * net.core.wmem_max, so the only honest source for the number is the socket. */
+int kcon_conn_sndbuf(const KconConn *c);
 /* Bytes queued and not yet written. What a caller with something optional to
  * send asks before sending it. */
 size_t kcon_conn_pending(const KconConn *c);

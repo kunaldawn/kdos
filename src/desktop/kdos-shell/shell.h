@@ -560,7 +560,17 @@ int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n);
 struct sh_app {
 	char id[SH_APP_ID];		/* desktop-entry id, no .desktop     */
 	char name[96];
-	char exec[SH_APP_EXEC];		/* field codes already stripped      */
+	/*
+	 * The entry's `Exec` line VERBATIM, field codes and all. `sh_launch`
+	 * spends `%f`/`%F`/`%u`/`%U` on the documents a launch carries and
+	 * reads the same codes to decide that a line carrying none takes its
+	 * documents appended, so an index holding a stripped line makes every
+	 * entry look like `Exec=xterm` and opens a file in the wrong argument.
+	 * A reader that cannot spend a code — a surface splitting the line for
+	 * itself, or a haystack a query is matched against — strips a COPY
+	 * with sh_strip_field_codes().
+	 */
+	char exec[SH_APP_EXEC];
 	char icon[96];			/* the entry's own Icon=             */
 	char comment[128];
 	char keywords[192];		/* Keywords + GenericName, for search */
@@ -592,7 +602,8 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max);
  * line goes through kxdg_exec_split, not a whitespace split: quoting is part
  * of the format and getting it wrong is an app that silently does not start. */
 void sh_apps_launch(const struct sh_app *a);
-/* The same, opening files with it. */
+/* The same, opening files with it: the entry's field codes take the paths
+ * where the entry put them, and an entry with none takes them appended. */
 void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 			 int nfiles);
 int sh_app_ngroups(void);
@@ -724,7 +735,13 @@ int sh_restart_poll(void);
  * Strip desktop-entry field codes from an Exec line, in place: `%%` becomes a
  * literal percent, every other `%X` is removed, and the whitespace a dropped
  * code leaves behind is collapsed so the line still splits into clean argv.
- * One copy, here, because three diverged copies shipped three behaviours.
+ *
+ * FOR A READER THAT CANNOT SPEND A CODE, and for nothing on the launch path:
+ * a surface that splits the line itself and can carry no document (`panel.c`'s
+ * quick-launch row, `kdos-menu`), and a haystack a search is matched against.
+ * `sh_launch` needs the codes — it substitutes them, and decides from them
+ * whether to append instead — so it is handed the line the entry wrote.
+ * One copy, here: two would be two answers to what a `%` means.
  */
 void sh_strip_field_codes(char *exec);
 

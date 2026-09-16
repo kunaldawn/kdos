@@ -303,10 +303,69 @@ void con_mark_draw(void);
 void con_spawn_at(const char *cmd, int x);
 
 /*
- * The frame is one cell on every side, and the title sits in the top one —
- * which is why the content rect and the frame rect differ by exactly that.
+ * THE FRAME'S THICKNESS, PER AXIS, in cells — and the two are different
+ * numbers because a cell is.
+ *
+ * A CELL IS TWICE AS TALL AS IT IS WIDE: 8x16 in the console font, and near
+ * enough the same proportion in every monospace face the desktop view loads. A
+ * border of the same CELL count on all four sides is therefore a border twice
+ * as thick in PIXELS at the top and bottom as it is at the sides — heavier to
+ * look at than the sides it dwarfs, and no easier to aim at than they are. TWO
+ * COLUMNS AND ONE ROW is the square border: sixteen pixels of edge to take
+ * hold of on every side of the window, which is the thickness a hand can find
+ * without hunting for it.
+ *
+ * AND ROWS ARE THE SCARCE AXIS. The shipped grid is 240x67 — 1920x1080 over
+ * an 8x16 cell — so a row is three and a half times the share of its own axis
+ * that a column is of its: a second row top and bottom takes 3% of every
+ * window's height, where a second column each side takes 0.8% of its width.
+ * The vertical tolerance is bought with CON_GRAB_CORNER instead, which costs
+ * no cells at all.
+ *
+ * WHICH SIDE OF THE BORDER PAYS FOR IT IS DECIDED BY WHICH RECTANGLE IS FIXED,
+ * and both directions are in this desktop.
+ *
+ * A WINDOW WHOSE CONTENT IS CHOSEN KEEPS EVERY CELL OF IT. `geom` is the
+ * content and win_frame() inflates it, so a window landed by the placement
+ * search, dragged, or put at a rectangle a layout or a saved session names
+ * takes these two numbers MORE of the desk on each side and its program is
+ * told the size it asked for.
+ *
+ * A WINDOW WHOSE OUTER RECTANGLE IS FIXED PAYS OUT OF ITS CONTENT. Maximised,
+ * snapped, tiled and the scratchpad's drop-down all come from win_tile_rect():
+ * the work area, or a division of it, is the FRAME, and what the program gets
+ * is 2 * CON_FRAME_X columns and 2 * CON_FRAME_Y rows less than that. A window
+ * too big for the grid is the same case — win_fit_area() deflates the grid by
+ * the border, because there the frame is the thing that has to stay on it.
+ * Raising either number takes cells from every one of those at once.
+ *
+ * THE TITLE SITS IN THE TOP ROW, which is why the content rect and the frame
+ * rect differ by exactly these two numbers.
  */
-#define CON_FRAME 1
+#define CON_FRAME_X 2
+#define CON_FRAME_Y 1
+
+
+/*
+ * HOW FAR ALONG A SIDE IS STILL THE CORNER, in cells.
+ *
+ * A corner resizes both axes, and the block where the two bands actually cross
+ * is CON_FRAME_X by CON_FRAME_Y — two cells, which is a target a mouse has to
+ * be aimed at and a finger cannot hit at all. The ends of every side take both
+ * axes instead, for this many cells.
+ *
+ * FOUR AND NOT TWO, BECAUSE THE ARMS ARE THE VERTICAL TOLERANCE. The top and
+ * bottom bands are one row each and cannot be more without costing every
+ * window a row, so the four rows of arm running up each side column are where
+ * a hand that wants to drag a bottom corner finds one. Along the top and
+ * bottom rows the same four cells are pure surplus and cost nothing.
+ *
+ * Clamped to a third of the side in corner_arm(): a frame twelve cells wide
+ * with four cells of corner at each end has four cells of side left to drag,
+ * and a shorter one would have none at all — every press on it would take both
+ * axes and the window could not be resized in one.
+ */
+#define CON_GRAB_CORNER 4
 
 /*
  * HOW LONG A WINDOW IS SHOWN FLASHING, in milliseconds. 120 is long enough to
@@ -587,8 +646,10 @@ KwmRect win_workarea(void);
 Win *win_at(int x, int y);
 void win_snap(Win *w, unsigned edge, int combine);
 void win_resized(Win *w);
-/* A window exactly where it was, clamped to the screen it comes back on. What
- * a restored session uses; `win_place` is for a window that has no place yet. */
+/* A window exactly where it was, with its FRAME clamped onto the grid it comes
+ * back on — the rectangle named here is the content, and a border off the grid
+ * is a window with no edge to grab. What a restored session and a named layout
+ * use; `win_place` is for a window that has no place yet. */
 void win_place_at(Win *w, int x, int y, int cw, int ch);
 void win_maximise(Win *w);
 void win_fullscreen(Win *w);
@@ -656,6 +717,21 @@ void win_cycle(int dir);
  * guests cannot disagree about which windows are worth rendering.
  */
 int win_is_on_screen(const Win *w);
+/*
+ * IS THIS CELL OF THIS WINDOW UNDER SOMETHING DRAWN AFTER IT.
+ *
+ * ANYTHING PAINTED ONTO A WINDOW AFTER THE WALK HAS TO ASK. win_draw_all()
+ * lays the desktop down back to front and whatever it drew last owns the
+ * cell, so a later pass that writes a window's own rectangle unasked puts its
+ * marks over whatever is in FRONT of that window there — and a window is
+ * topmost only where the pointer is, never along the whole of its border.
+ *
+ * THE DRAW ORDER AND NOT THE HIT ORDER. win_at() answers which window a press
+ * belongs to and therefore skips a surface that takes no input — a tooltip, a
+ * toast, the candidate list — and every one of those is drawn and does cover
+ * cells.
+ */
+int win_covered_at(const Win *w, int x, int y);
 void win_draw_all(void);
 /* The window list: Turbo Vision's Alt+0, drawn by the session until Task
  * 6.4 lets kdos-teams read the list over libkdisp. */
@@ -697,11 +773,21 @@ void embed_view_attached(void);
 void embed_sprite_lost(KconSurface *v, int slot);
 /*
  * ASK THIS WINDOW TO GO, and this window alone. The guest decides what that
- * means, and a guest that answers is on no clock: a save prompt opened on the
- * asked window is a window being used, and the deadlines stop there. Only an
- * ask covering the last window a person can reach starts the clock that
- * escalates to a signal, because a process signalled over one dialog is
- * unsaved work in every other window it had open.
+ * means, and A GUEST THAT ANSWERS IS TAKEN BY NO TIMER AFTERWARDS: a save
+ * prompt opened on the asked window is a window being used, and calling this
+ * again before the force is offered re-sends the question and takes nothing,
+ * because the dialog is already drawn and has nothing new to commit. Only an
+ * ask covering the last window a person can reach, and only while that window
+ * has answered nothing, starts the clock that escalates to a signal, because a
+ * process signalled over one dialog is unsaved work in every other window it
+ * had open.
+ *
+ * AND CALLING IT AGAIN ON A WINDOW THAT WAS OFFERED THE FORCE TAKES IT. Ten
+ * seconds after the latest ask the bar tells the person that closing again
+ * quits the application, which is the only route to a guest that answers and
+ * will not go. From there the window goes at once and the process is signalled
+ * and killed on a schedule no frame can clear — see the rungs above
+ * embed_close() in embed.c.
  */
 void embed_close(Win *w);
 void embed_close_all(void);
@@ -885,6 +971,34 @@ enum {
 };
 
 int win_button_at(int x, int y, int *id);
+
+/*
+ * WHERE THE POINTER IS, in cells, or off the grid for nowhere.
+ *
+ * CHROME UNDER THE POINTER SAYS SO. A frame button that looked the same
+ * whether or not it was about to be pressed is one a person tests by pressing
+ * it, and on `X` that is a window they did not mean to close. The router hands
+ * the position over on every pointer event including the leave, which libkwl
+ * reports as an off-grid position — a highlight nothing retracted would stay
+ * lit for the rest of the session.
+ */
+void win_ptr_at(int x, int y);
+
+/*
+ * WHAT A PRESS ON A WINDOW ARMS, and which edges a resize is to move.
+ *
+ * THE ONE PLACE THE ANSWER IS WORKED OUT. The router owns the grab and this
+ * owns the geometry: a second reading of where the border is would be a second
+ * thing to get wrong, on the frames nobody tests.
+ */
+enum {
+	WIN_GRAB_NONE = 0,
+	WIN_GRAB_MOVE,
+	WIN_GRAB_RESIZE
+};
+
+int win_grab_at(const Win *w, int x, int y, int btn, int mods,
+		unsigned *edges);
 
 /*
  * THE SELECTION, held by the session because nothing else can hold it: a

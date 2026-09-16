@@ -215,6 +215,11 @@ static void publish_decor(void)
 	}
 }
 
+/* What a drag on the frame under the pointer would take. Defined with the
+ * pointer routing that decides it; drawn here, because this is the pass that
+ * has just laid down the frame it is lit on. */
+static void grip_draw(void);
+
 static void composite(void)
 {
 	KRect all = krect(0, 0, S.cols, S.rows);
@@ -224,6 +229,10 @@ static void composite(void)
 	ktui_draw_fill(all, KT_BG);
 
 	win_draw_all();
+	/* AFTER THE WINDOWS AND BEFORE THE BAR: the grip belongs to the frame
+	 * it is drawn on, and a panel that overlaps that frame is in front of
+	 * both. */
+	grip_draw();
 
 	/* NOT WHILE LOCKED, AND NOT UNDER A SAVER. win_draw_all() draws one of
 	 * those and nothing else, and a taskbar painted after it would list the
@@ -2157,35 +2166,6 @@ static struct {
 	unsigned edges;		/* which edges a resize moves              */
 } grab;
 
-/*
- * WHICH EDGES A RESIZE TAKES, from where in the window the press landed. The
- * nearest edge in each axis, so a press near a corner takes both and a press
- * in the middle of one side takes only that side.
- */
-static unsigned grab_edges(const Win *w, int x, int y)
-{
-	unsigned e = 0;
-	int third_w = w->geom.w / 3, third_h = w->geom.h / 3;
-
-	if (third_w < 1)
-		third_w = 1;
-	if (third_h < 1)
-		third_h = 1;
-
-	if (x < w->geom.x + third_w)
-		e |= KWM_EDGE_LEFT;
-	else if (x >= w->geom.x + w->geom.w - third_w)
-		e |= KWM_EDGE_RIGHT;
-	if (y < w->geom.y + third_h)
-		e |= KWM_EDGE_TOP;
-	else if (y >= w->geom.y + w->geom.h - third_h)
-		e |= KWM_EDGE_BOTTOM;
-
-	/* A press in the exact middle still resizes: the bottom-right corner
-	 * is what a hand expects when nothing else is nearer. */
-	return e ? e : (KWM_EDGE_RIGHT | KWM_EDGE_BOTTOM);
-}
-
 static void grab_apply(const KtuiEvent *ev)
 {
 	Win *w = win_find(grab.id);
@@ -2245,6 +2225,214 @@ static Win *bg_win(void)
 		if (w->background && !w->hidden && w->surf)
 			return w;
 	return NULL;
+}
+
+/*
+ * ── THE GRIP ────────────────────────────────────────────────────────────
+ *
+ * WHAT A DRAG WOULD TAKE, LIT ON THE WINDOW ITSELF.
+ *
+ * A POINTER MADE OF ONE CELL CANNOT BE A SHAPE. Every other desktop answers
+ * "what happens if I press here" by changing the arrow into a double arrow, and
+ * a cell has no room for one: the view draws the pointer as the cell under it
+ * reversed, in a font this process does not own, and a shape published per
+ * motion would be a commit per motion — the round trip the pointer is drawn by
+ * the view to avoid.
+ *
+ * SO THE WINDOW ANSWERS INSTEAD. The edges a drag would move are lit along
+ * their whole length with the direction they travel, and a move lights the four
+ * corners as studs. It says MORE than a pointer shape can — a corner grab shows
+ * both edges light at once, so the window states the rectangle it is about to
+ * become — and it changes only when the pointer crosses a zone, which is a
+ * commit every few seconds rather than one every few milliseconds.
+ *
+ * THE GLYPHS ARE `ktui_glyph`, so both tiers are covered by the table that
+ * already chooses them: arrows on a font that has them, `<`, `>`, `^`, `v` and
+ * `#` where UTF-8 does not reach. THE COLOUR IS A SLOT — KT_ACCENT on the
+ * frame's own background, and KT_SURFACE on a window flashing for attention,
+ * which is filled in KT_ACCENT and would swallow an accent grip whole.
+ */
+static struct {
+	int id;			/* the window, 0 for nothing lit  */
+	unsigned edges;		/* KWM_EDGE_* a resize would move */
+	int move;		/* the whole window travels       */
+} grip;
+
+static void grip_set(int id, unsigned edges, int move)
+{
+	if (grip.id == id && grip.edges == edges && grip.move == move)
+		return;
+	grip.id = id;
+	grip.edges = edges;
+	grip.move = move;
+	/* THE ONLY THING THAT MOVED IS THE POINTER, and nothing else on the
+	 * screen has changed — so without this the grip appears when some
+	 * other window happens to redraw, which on a still desktop is never. */
+	ktui_draw_invalidate();
+}
+
+/*
+ * WHERE THE CHROME UNDER THE POINTER IS TOLD THE POINTER IS.
+ *
+ * ASKED FOR EVERY COOKED POINTER EVENT, BEFORE ANY MODE HAS CLAIMED IT, and
+ * including the leave libkwl reports as an off-grid position: a frame chip
+ * lit under a hand that has left the screen stays lit for the rest of the
+ * session, and a lit chip nobody is pointing at is a lie about where the next
+ * press will land.
+ *
+ * OFF THE GRID WHENEVER A MODE OWNS THE POINTER, which is the rule the grip
+ * below is lit by and is here for that rule's reason: under a lock, a saver, a
+ * mark, a pick, a payload drag, a window drag or a guest that has taken the
+ * pointer, no press reaches a frame at all, and a chip lit under the hand
+ * promises a click that lands somewhere else entirely.
+ */
+static void ptr_track(const KtuiEvent *ev)
+{
+	int off = grab.id || S.locked || S.saver || mark.on || picking ||
+		  con_dragging() || embed_grab_win() != NULL;
+
+	win_ptr_at(off ? -1 : ev->mx, off ? -1 : ev->my);
+}
+
+/*
+ * ASKED FOR EVERY COOKED POINTER EVENT, BEFORE ANY MODE HAS CLAIMED IT.
+ *
+ * A DRAG IN PROGRESS OUTRANKS THE POINTER. The window follows the hand, so the
+ * pointer is off the border from the first cell of the drag — an affordance
+ * that tracked the pointer would go out at the instant it began to mean
+ * something. While `grab` is set it is the grab that is drawn.
+ *
+ * AND EVERY MODE THAT OWNS THE POINTER OWNS THE FRAME WITH IT. Under a lock, a
+ * saver, a mark, a pick or a guest that has taken the pointer, no press reaches
+ * a frame at all, and a lit edge would promise a drag that cannot start.
+ */
+static void grip_track(const KtuiEvent *ev)
+{
+	unsigned edges = KWM_EDGE_NONE;
+	Win *w;
+	int g, id;
+
+	if (grab.id) {
+		w = win_find(grab.id);
+		grip_set(w ? w->id : 0, grab.resizing ? grab.edges : 0,
+			 w && !grab.resizing);
+		return;
+	}
+	if (S.locked || S.saver || mark.on || picking || embed_grab_win()) {
+		grip_set(0, 0, 0);
+		return;
+	}
+	/*
+	 * A FRAME CHIP IS NOT A GRAB, and it is asked first for the reason the
+	 * router asks it first: `_`, `■` and `X` sit ON the title row's right
+	 * end, which is a corner arm, so a grip taken from the geometry alone
+	 * would promise a resize over the cell that closes the window.
+	 */
+	if (win_button_at(ev->mx, ev->my, &id)) {
+		grip_set(0, 0, 0);
+		return;
+	}
+	/*
+	 * ASKED OF THE FUNCTION THE PRESS ASKS, with the left button standing
+	 * in for the press that has not happened: the light and the drag
+	 * cannot disagree if there is one answer between them, and a window
+	 * with no frame — a panel, a fullscreen window, a layer, the desktop —
+	 * refuses there rather than being listed again here. The modifiers
+	 * travel with a motion, so holding Super lights the move studs from
+	 * anywhere inside the window, which is where that grab is.
+	 */
+	w = win_at(ev->mx, ev->my);
+	g = w ? win_grab_at(w, ev->mx, ev->my, KT_MB_LEFT, ev->mods, &edges)
+	      : WIN_GRAB_NONE;
+	if (g == WIN_GRAB_MOVE)
+		grip_set(w->id, 0, 1);
+	else if (g == WIN_GRAB_RESIZE)
+		grip_set(w->id, edges, 0);
+	else
+		grip_set(0, 0, 0);
+}
+
+/*
+ * ONE CELL OF GRIP, KEEPING THE FRAME'S OWN BACKGROUND.
+ *
+ * Read back from the composed frame rather than assumed: a window rung for
+ * attention is filled in KT_ACCENT, and a grip drawn in that same slot on top
+ * of it is an invisible grip on the one window most in need of being seen.
+ *
+ * AND NOT ONE CELL OF A WINDOW IN FRONT OF IT. This pass runs after the whole
+ * back-to-front walk, so nothing about the stacking is left in the frame it
+ * writes into: the gripped window is the one under the POINTER, which makes
+ * it topmost THERE and says nothing about the rest of its border — a border
+ * that runs under the window beside it, under a menu, under a toast. Painted
+ * unasked, the grip is accent arrows scattered across somebody else's window,
+ * pointing at an edge that is not on the screen.
+ */
+static void grip_cell(const Win *w, int x, int y, const char *g)
+{
+	int cw = 0, chh = 0;
+	const KtuiCell *cells = ktui_draw_cells(&cw, &chh);
+	int bg;
+
+	if (!cells || x < 0 || y < 0 || x >= cw || y >= chh)
+		return;
+	if (win_covered_at(w, x, y))
+		return;
+	bg = cells[y * cw + x].bg;
+	ktui_draw_text(x, y, 1, g, bg == KT_ACCENT ? KT_SURFACE : KT_ACCENT,
+		       bg, KT_A_NONE);
+}
+
+/*
+ * Drawn after every window and before the bar, so the grip is over the frame
+ * it belongs to and under a panel that overlaps it.
+ *
+ * THE TOP BORDER LIGHTS AT ITS ENDS AND NOWHERE ELSE. The title lives in that
+ * row, and a run of arrows drawn along it takes the window's name off the
+ * screen — the two corner cells carry the same sentence and cost no letters.
+ */
+static void grip_draw(void)
+{
+	Win *w = grip.id ? win_find(grip.id) : NULL;
+	KwmRect f;
+
+	/*
+	 * AND ONLY WHILE THE WINDOW IS ON THE SCREEN. Nothing sends a pointer
+	 * event when a chord locks the session, minimises the window under the
+	 * hand, raises the window list over it or switches the workspace out
+	 * from under it, so the last state the pointer left behind is still
+	 * set — and a grip drawn from it is accent-coloured arrows at a
+	 * rectangle that is no longer there, over the lock screen, over the
+	 * switcher or over somebody else's desk.
+	 */
+	if (!w || S.locked || S.saver || win_list_active() || w->minimised ||
+	    w->hidden || (!w->sticky && w->workspace != S.workspace))
+		return;
+	f = win_frame(w);
+
+	if (grip.move) {
+		grip_cell(w, f.x, f.y, ktui_glyph[KT_G_SQUARE]);
+		grip_cell(w, f.x + f.w - 1, f.y, ktui_glyph[KT_G_SQUARE]);
+		grip_cell(w, f.x, f.y + f.h - 1, ktui_glyph[KT_G_SQUARE]);
+		grip_cell(w, f.x + f.w - 1, f.y + f.h - 1,
+			  ktui_glyph[KT_G_SQUARE]);
+		return;
+	}
+	if (grip.edges & KWM_EDGE_LEFT)
+		for (int y = f.y + 1; y < f.y + f.h - 1; y++)
+			grip_cell(w, f.x, y, ktui_glyph[KT_G_LEFT]);
+	if (grip.edges & KWM_EDGE_RIGHT)
+		for (int y = f.y + 1; y < f.y + f.h - 1; y++)
+			grip_cell(w, f.x + f.w - 1, y, ktui_glyph[KT_G_RIGHT]);
+	if (grip.edges & KWM_EDGE_BOTTOM)
+		for (int x = f.x; x < f.x + f.w; x++)
+			grip_cell(w, x, f.y + f.h - 1, ktui_glyph[KT_G_DOWN]);
+	if (grip.edges & KWM_EDGE_TOP) {
+		grip_cell(w, f.x, f.y, ktui_glyph[KT_G_UP]);
+		grip_cell(w, f.x + f.w - 1, f.y, ktui_glyph[KT_G_UP]);
+	}
+	/* THE CORNER CELL BELONGS TO BOTH RUNS and is written twice above; the
+	 * second write wins and either glyph says the same thing, so nothing
+	 * arbitrates. */
 }
 
 /*
@@ -2349,6 +2537,12 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 			touch_btn = finger;
 	}
 
+	/* BEFORE ANY MODE HAS CLAIMED THE EVENT, because every one of them
+	 * below returns early and each would otherwise leave a chip or an edge
+	 * lit promising a press that mode has already taken. */
+	ptr_track(ev);
+	grip_track(ev);
+
 	/* Set again below wherever this event reaches a window; cleared here
 	 * so a mode that owns the pointer leaves the raw arm with nowhere to
 	 * deliver rather than with a stale window. */
@@ -2393,13 +2587,13 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	 * A GRAB OWNS THE POINTER UNTIL THE BUTTON COMES UP, WHEREVER IT GOES,
 	 * and that has to be asked BEFORE anything else can answer.
 	 *
-	 * It used to be asked after the panel row, so a window dragged down
-	 * and released over the bar had its button-up eaten by the bar's hit
-	 * test — and a grab is only ever cleared by a release that reaches
-	 * here. What was left was a grab nothing could end: every later event
-	 * fell into this branch, a PRESS is neither a drag nor a release, so
-	 * it did nothing and returned, and the pointer was dead for the rest
-	 * of the session. "No window will move" is what that looks like.
+	 * BEFORE THE PANEL ROW IN PARTICULAR. The bar's hit test would
+	 * otherwise eat the button-up of a window dragged down and released
+	 * over it, and a grab is cleared only by a release that reaches here:
+	 * what is left is a grab nothing can end, because every later event
+	 * falls into this branch and a PRESS is neither a drag nor a release,
+	 * so it does nothing and returns. That costs the pointer for the rest
+	 * of the session — "no window will move" is what it looks like.
 	 *
 	 * ENDED BY ANYTHING THAT IS NOT A CONTINUING DRAG, for the same
 	 * reason: one lost button-up must cost a drag, never the pointer.
@@ -2407,8 +2601,15 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	if (grab.id) {
 		if (ev->press == KT_MP_DRAG)
 			grab_apply(ev);
-		else
+		else {
 			grab.id = 0;
+			/* THE CHROME WAS THE GRAB'S AND THE GRAB IS OVER: both
+			 * asked again with none held, so what is lit is the
+			 * border and the chip under the hand rather than the
+			 * drag that has just finished under it. */
+			ptr_track(ev);
+			grip_track(ev);
+		}
 		return;
 	}
 
@@ -2599,56 +2800,32 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 		S.focus = w->id;
 
 	/*
-	 * WHERE A DRAG STARTS. The title row moves the window and the right
-	 * button resizes it, and Super with either does the same from anywhere
-	 * inside — which is what makes a window that is all content, a
-	 * terminal or an embedded application, still movable without hunting
-	 * for its one draggable row.
+	 * WHERE A DRAG STARTS, AND THE ONLY THING THIS ROUTER DECIDES ABOUT
+	 * ONE: that a press happened and which window it landed on.
 	 *
-	 * A panel is neither: it is docked, its rectangle is its exclusive
-	 * zone, and dragging it would move the work area out from under every
-	 * other window.
+	 * EVERYTHING ELSE IS win_grab_at()'S. Which windows have a frame to
+	 * take hold of, where the border and its corner arms are, which button
+	 * means move and which means resize, and which edges the resize is to
+	 * carry — all of it is geometry, and the window model owns the
+	 * geometry. A second reading of any of it here is a second thing to get
+	 * wrong on the frames nobody tests, and the two answers only have to
+	 * disagree once for a border to light for a drag that never starts.
+	 *
+	 * The frame buttons are asked before this and have already returned, so
+	 * the title row is free to mean "move me".
 	 */
-	if (w && !w->panel && !w->full && !w->background &&
-	    ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
-		/*
-		 * THE TITLE ROW IS THE FRAME'S, one row above the content.
-		 * `win_frame()` inflates the rectangle by CON_FRAME and the
-		 * box is drawn on that perimeter, so `geom.y` is the
-		 * program's FIRST LINE OF TEXT — testing it meant the visible
-		 * title bar did not move the window and the terminal's top
-		 * line did. The frame buttons are asked before this and have
-		 * already returned, so the row is free to mean "move me".
-		 */
-		int on_title = ev->my == win_frame(w).y;
-		int super = (ev->mods & KT_MOD_SUPER) != 0;
-		/*
-		 * A BARE RIGHT BUTTON BELONGS TO WHATEVER OWNS THE CELLS.
-		 *
-		 * Resizing from anywhere inside is right for a window whose
-		 * content is the session's to interpret, and wrong for one
-		 * that is a program's: a right click inside a terminal or an
-		 * embedded application armed a resize and the guest never saw
-		 * the button at all, so a context menu was unreachable in
-		 * every graphical application on this desktop. Those two ask
-		 * for the session modifier; the frame's own border still
-		 * resizes either of them without it.
-		 */
-		int owns_content = w->kind == WIN_TERM || w->kind == WIN_EMBED;
-		int right = ev->btn == KT_MB_RIGHT &&
-			    (super || !owns_content ||
-			     ev->mx == win_frame(w).x ||
-			     ev->mx == win_frame(w).x + win_frame(w).w - 1 ||
-			     on_title ||
-			     ev->my == win_frame(w).y + win_frame(w).h - 1);
+	if (w && ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
+		unsigned edges = KWM_EDGE_NONE;
+		int g = win_grab_at(w, ev->mx, ev->my, ev->btn, ev->mods,
+				    &edges);
 
-		if (on_title || super || right) {
+		if (g != WIN_GRAB_NONE) {
 			grab.id = w->id;
-			grab.resizing = right || (super && ev->btn == KT_MB_MIDDLE);
+			grab.resizing = g == WIN_GRAB_RESIZE;
 			grab.ox = ev->mx;
 			grab.oy = ev->my;
 			grab.og = w->geom;
-			grab.edges = grab_edges(w, ev->mx, ev->my);
+			grab.edges = edges;
 			return;
 		}
 	}
@@ -2710,6 +2887,47 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 		return;
 	}
 	if (w->kind == WIN_EMBED) {
+		/*
+		 * THE GUEST IS THE CONTENT AND NOT THE FRAME.
+		 *
+		 * `win_at()` finds a window by its FRAME rect, which is the
+		 * content inflated by CON_FRAME_X and CON_FRAME_Y, so without
+		 * this test the band of border round an embedded window is
+		 * aimed at the guest — `embed_ptr()` clamps the position back
+		 * into the
+		 * content, so the cage goes on drawing its arrow against the
+		 * inside edge while the hand is on the border, a cell from the
+		 * session's own pointer. The border is where a window is
+		 * grabbed, moved and resized: it belongs to the session, and
+		 * the cell pointer is the only one that may be on it.
+		 *
+		 * A HELD POINTER IS CLAMPED, NOT DROPPED, which is what
+		 * `embed_ptr()` does with a position outside the content and
+		 * is the rule the terminal above keeps: the press is what put
+		 * the button here and the release is the only thing that ends
+		 * what the guest started.
+		 */
+		if (!held && (ev->mx < w->geom.x || ev->my < w->geom.y ||
+			      ev->mx >= w->geom.x + w->geom.w ||
+			      ev->my >= w->geom.y + w->geom.h)) {
+			/*
+			 * AND THE RAW ARM IS POINTED AT NOTHING WHILE THE
+			 * POINTER IS ON THE FRAME. `ptr_route_id` is what a
+			 * sub-cell motion is delivered against, so leaving it
+			 * naming this window would go on aiming the guest in
+			 * pixels from the border the session is about to be
+			 * asked to drag.
+			 */
+			ptr_route_id = 0;
+			/* TOLD IT LEFT, IN ITS OWN VERB. `ptr_leave()` was
+			 * asked about this window at the top of the route and
+			 * declined, because the frame and the content are the
+			 * same window; passing no window is how the pointer
+			 * leaves a window it is still inside. */
+			ptr_leave(NULL);
+			return;
+		}
+
 		/*
 		 * NOT TWICE, for the reason con_key_to_window() keeps: a view
 		 * that reports a real pointing device is driving this guest

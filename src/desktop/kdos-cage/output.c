@@ -166,11 +166,21 @@ handle_output_frame(struct wl_listener *listener, void *data)
 		 * NOTHING TO DRAW IS NOTHING TO DO, and the two branches must
 		 * agree about that. wlr_scene_output_commit() — the branch
 		 * below — returns early on !wlr_scene_output_needs_frame();
-		 * wlr_scene_output_build_state() has no such guard, so the
-		 * embed branch rendered, copied a whole framebuffer and
-		 * published it on every tick of the headless output whether
-		 * or not a client had committed anything. Frame-done still
-		 * goes out, or a client that is waiting for one stops drawing.
+		 * wlr_scene_output_build_state() has no such guard, so without
+		 * this one the embed branch renders, copies a whole
+		 * framebuffer and publishes it on every tick of the headless
+		 * output whether or not a client has committed anything.
+		 *
+		 * AND THE PARENT READS A PUBLISHED FRAME AS PROOF THE GUEST IS
+		 * ALIVE. Its close deadline is cleared by a frame, because a
+		 * toolkit that draws "save your work?" inside the window it was
+		 * asked to close maps nothing the parent can see. A frame
+		 * published for a client that committed nothing would clear
+		 * that deadline for a wedged guest and leave a window on the
+		 * desktop that nothing can ever remove.
+		 *
+		 * Frame-done still goes out, or a client that is waiting for
+		 * one stops drawing.
 		 */
 		if (!wlr_scene_output_needs_frame(output->scene_output)) {
 			struct timespec now = {0};

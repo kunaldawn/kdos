@@ -439,9 +439,21 @@ static void moved(void)
 	int x = (int)K.ptr_px / cw;
 	int y = (int)K.ptr_py / ch;
 
-	/* Reported in CELLS, and only when the cell changes: a mouse moving
+	/*
+	 * REPORTED IN CELLS, AND ONLY WHEN THE CELL CHANGES: a mouse moving
 	 * inside one cell has not moved as far as anything above here is
-	 * concerned. */
+	 * concerned, and the cell pointer the view draws is the cell under it
+	 * reversed — it has nowhere finer to be drawn.
+	 *
+	 * THE SUB-CELL MOTION IS NOT LOST HERE, AND MUST NOT BE SENT HERE
+	 * EITHER. raw_motion() runs after this function on EVERY device event,
+	 * carrying the pixel and the delta an embedded guest is aimed with, so
+	 * a motion this test drops has already been forwarded whole. Emitting a
+	 * cooked event for it as well would deliver the same movement twice to
+	 * every guest — once as a pixel and once as the middle of a cell it is
+	 * already inside — and make the pointer inside an application jump
+	 * backwards on every sample.
+	 */
 	if (x == K.ptr_x && y == K.ptr_y)
 		return;
 

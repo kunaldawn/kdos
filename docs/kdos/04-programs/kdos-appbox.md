@@ -297,7 +297,9 @@ lanes honest rather than a wrapper over two systems.
 | `export` | Whether its applications get host launchers |
 | `network`, `ipc` | Namespace flags — **create-time** |
 | `devices` | Whether `/dev` and the runtime directory are shared |
-| `gpu`, `audio` | Ride on `devices`; see below |
+| `audio` | Rides on `devices`; see below |
+| `gpu` | The card's device nodes. Subtracts nothing from a shared `/dev`; **binds `/dev/dri` back into a box whose devices are private** |
+| `render` | `auto` (the default), `gpu` or `software` — which graphics this box's applications get; see below |
 | `memory` | Enforced by the **memory daemon**, not the container engine |
 | `accent` | The box's colour, which is what draws a title-bar chip |
 | `autostop` | Idle timeout for the collector |
@@ -308,18 +310,59 @@ Three properties this list is written to keep:
 
 - **Every key maps 1:1 onto a container-engine flag or onto something KDOS enforces itself**, and
   the profile printer names the mechanism behind each line.
-- **It says out loud what it could not enforce.** `gpu` and `audio` ride on `devices`, and there
-  is **no flag that grants a box a speaker and denies it a camera**.
+- **It says out loud what it could not enforce.** A shared `/dev` cannot have a hole cut in it, so
+  with `devices = shared` both `gpu` and `audio` ride on that key and there is **no flag that
+  grants a box a speaker and denies it a camera**. `gpu` is enforceable in the other direction
+  only: with `devices = private` the box has no `/dev` at all, and `gpu = yes` is the
+  `--volume /dev/dri` that binds the card back.
 - **An unknown key is reported by name.**
 
-**Two keys in the same file are the console session's and not the container's.** `display = vt`
-pins a box's applications to a virtual terminal of their own instead of the windows they otherwise
-become, and `render = gpu` composites those windows on the card rather than in the software
-renderer — a different question from `gpu`, which every box carries and which grants nothing on its
-own: like `audio` it rides on `devices`, and the render node is in the box because the whole of
-`/dev` is. `kdos-con` reads both straight out of the profile file, and `kdos-box profile` carries them through
-a rewrite without interpreting them — a profile writer that knows only its own keys deletes
-everybody else's, which is a setting that disappears the next time an unrelated one is changed.
+**`display` is the console session's key and not the container's.** `display = vt` pins a box's
+applications to a virtual terminal of their own instead of the windows they otherwise become.
+`kdos-con` reads it straight out of the profile file, and `kdos-box profile` carries it through a
+rewrite without interpreting it — a profile writer that knows only its own keys deletes everybody
+else's, which is a setting that disappears the next time an unrelated one is changed.
+
+**`render` reaches the guest's own Mesa, and it defaults to the card.** The render nodes are bound
+into every box, the DRI drivers and `libva` are in the base pack and both renderers are built, so a
+box that draws with llvmpipe on a machine that has all three is paying for nothing. `auto` — the
+default, and what an absent key means — asks the machine: `profile_render_gpu()` resolves it by
+**opening** a `/dev/dri/renderD*` node, because a node owned by the `render` group that this
+session cannot open is the same dead end as a machine with no card. `gpu` is a request for the
+same thing and `software` is the one value that refuses it whatever is plugged in.
+
+The resolved answer becomes `LIBGL_ALWAYS_SOFTWARE=1` in the launch environment, and only for the
+software answer: for the hardware one Mesa already asks the right question and falls back by
+itself, and a variable that pinned hardware would take that fallback away. It is **advisory** — an
+application may unset it — and `kdos-box profile` prints it as the renderer line rather than as
+confinement.
+
+**It chooses the embedded cage's renderer too, and this program is not the end that does it.**
+`kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where
+`software` pins pixman and every other spelling leaves the cage on its own
+`wlr_renderer_autocreate` call; see
+[`kdos-cage`](kdos-cage.md#--embed-the-guests-pixels-without-a-screen). So a `render = software`
+box on a console desktop with a card draws with llvmpipe into `wl_shm` and is composited out of
+that same memory — no upload and no readback for pixels the CPU already had — and the key saves a
+crossing rather than costing one. **A profile rewrite that dropped the key would change what
+composites the window**, which is why every writer of this file carries keys that mean nothing to a
+container flag.
+
+`kdos-box profile` prints the key **and what it resolves to on this machine**, because a profile
+states a wish and the hardware answers it. The hardware answer is the node it opened; the software
+answer names the variable and calls it advisory. **A box that can see no node is refused without
+opening anything** — `devices = private` with `gpu = no` leaves `/dev/dri` out of the box, and this
+process's own `/dev` is not that box's, so the host path it could open is one that does not exist
+inside:
+
+```
+render      = auto        /dev/dri/renderD128
+render      = software    LIBGL_ALWAYS_SOFTWARE=1 (advisory) — the profile refuses the card
+render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no render node on this machine
+render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no /dev/dri inside this box
+```
+
+It is a different question from `gpu`, which is about device nodes rather than about who draws.
 
 **`memory` is enforced by the memory daemon**, and that is what makes the key honest: rootless
 containers on a machine with no cgroup delegation accept a memory limit and ignore it. So the

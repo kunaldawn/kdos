@@ -374,6 +374,35 @@ void kcell_paint_forget(void)
 }
 
 /*
+ * WHETHER THE CELL `k` PLACES AFTER A SPRITE CELL IS THE SAME PICTURE'S NEXT
+ * ONE ALONG, so that a row of a block can be composited in a single call.
+ *
+ * pixman charges most of a small composite to its SETUP — choosing a combiner,
+ * building the iterators, walking the clip — and an 8x16 cell is small enough
+ * that the setup is the whole cost. A full 16x16-cell block copied cell by cell
+ * is 256 of those; copied a row at a time it is 16, and the identical pixels
+ * land more than three times cheaper. An embedded guest publishes a screenful
+ * of blocks per frame, so that difference is most of the view's frame budget.
+ *
+ * The test is deliberately narrow and everything outside it FLUSHES THE RUN
+ * AND FALLS BACK TO ONE CALL PER CELL, because a run is only the same pixels
+ * when the cells are the same picture, the same sprite row, and adjacent
+ * columns of it — and when nothing else is drawn into them. KT_A_REVERSE is
+ * the one attribute a sprite cell honours: it fills under the picture first,
+ * which is how the pointer marks the cell it is over, so a reversed cell can
+ * never join a run.
+ */
+static inline int sprite_run_next(uint32_t cp0, int k, const KtuiCell *c)
+{
+	uint32_t cp = c->ch;
+
+	return KTUI_IS_SPRITE(cp) && !(c->attr & KT_A_REVERSE) &&
+	       KTUI_SPRITE_SLOT(cp) == KTUI_SPRITE_SLOT(cp0) &&
+	       KTUI_SPRITE_SY(cp) == KTUI_SPRITE_SY(cp0) &&
+	       KTUI_SPRITE_SX(cp) == KTUI_SPRITE_SX(cp0) + (uint32_t)k;
+}
+
+/*
  * Paint one row of cells.
  *
  * Row at a time rather than cell at a time so that runs of identical
@@ -556,13 +585,41 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 						(int16_t)(x * cw), (int16_t)y,
 						(uint16_t)cw, (uint16_t)ch });
 			}
-			if (s && s->pix)
+			if (s && s->pix) {
+				/*
+				 * THE RUN STOPS AT `x1` LIKE EVERY OTHER PASS
+				 * IN THIS FUNCTION. Past it the row holds what
+				 * the last frame left and the diff says it is
+				 * still right, so a run that reached beyond
+				 * would repaint cells the caller excluded.
+				 *
+				 * A reversed cell has already had its fill put
+				 * down for this one cell only, so it takes its
+				 * own call and starts no run.
+				 */
+				int run = 1;
+
+				if (!(at & KT_A_REVERSE))
+					while (x + run < x1 &&
+					       sprite_run_next(cp, run,
+							       &row[x + run]))
+						run++;
+
 				pixman_image_composite32(
 					PIXMAN_OP_OVER,
 					(pixman_image_t *)s->pix, NULL, dst,
 					(int)KTUI_SPRITE_SX(cp) * cw,
 					(int)KTUI_SPRITE_SY(cp) * ch,
-					0, 0, x * cw, y, cw, ch);
+					0, 0, x * cw, y, run * cw, ch);
+				/*
+				 * The loop's own step takes the last cell of
+				 * the run; `covered` is already clear and the
+				 * cells skipped would each have cleared it
+				 * again, so a run leaves the same state behind
+				 * as the calls it replaced.
+				 */
+				x += run - 1;
+			}
 			continue;
 		}
 

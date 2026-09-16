@@ -52,6 +52,8 @@
 #include "kxdg.h"
 #include "shell.h"
 
+#include "launch.h"
+
 /* apps.c's, and the only copy: the box-launcher test the Start menu marks its
  * rows with is the test this chooser marks its rows with, or the two surfaces
  * disagree about which application costs a container start. */
@@ -538,102 +540,47 @@ static int write_default(const char *mime, const char *id)
 /* ── launching ─────────────────────────────────────────────────────────── */
 
 /*
- * The Exec line, with the field codes SUBSTITUTED — open.c's rule, and the
- * difference between a chooser and a launcher. %f/%u take the path, %F/%U the
- * same one path (this chooser opens one thing), %% is a literal percent, and
- * %i/%c/%k are dropped: an icon, a name and the entry's own path, none of
- * which a caller has to supply.
+ * THE CHOOSER LAUNCHES THE WAY THE LAUNCHER DOES, through `sh_launch` — the
+ * difference between a chooser and a launcher is which entry is picked and
+ * nothing else. That path reads the line's quoting, SUBSTITUTES the field
+ * codes with the file this chooser was given, and on the console hands a
+ * graphical handler to the session, which is what gives a boxed viewer a
+ * display. A vector built and forked here would open nothing and say nothing.
+ * See launch.h.
+ *
+ * Returns 0 when something was launched.
  */
-static int build_argv(const char *exec, int terminal, const char *file,
-		      char *buf, size_t bufsz, const char **argv, int max)
-{
-	/* argv points into it: static, because the vector outlives this call
-	 * and is exec'd by the one caller before another is built. */
-	static char id[160];
-	int n = 0;
-
-	kb_strlcpy(buf, exec, bufsz);
-	if (terminal)
-		n = sh_term_argv(argv, n, max, exec, id, sizeof(id));
-	for (char *w = strtok(buf, " \t"); w && n < max - 1;
-	     w = strtok(NULL, " \t")) {
-		if (w[0] != '%' || !w[1] || w[2]) {
-			argv[n++] = w;
-			continue;
-		}
-		switch (w[1]) {
-		case 'f':
-		case 'u':
-		case 'F':
-		case 'U':
-			if (file && *file)
-				argv[n++] = file;
-			break;
-		case '%':
-			argv[n++] = "%";
-			break;
-		default:
-			break;
-		}
-	}
-	argv[n] = NULL;
-	return n;
-}
-
-/*
- * Double fork: the opened program is init's child, not ours — this process is
- * about to exit and would otherwise orphan it into whatever reaps the chooser.
- */
-static void spawn_argv(const char **argv)
-{
-	pid_t p = fork();
-
-	if (p == 0) {
-		if (fork() == 0) {
-			setsid();
-			kb_child_reset_signals();
-			execvp(argv[0], (char *const *)argv);
-			_exit(127);
-		}
-		_exit(0);
-	}
-	if (p > 0) {
-		int st;
-		waitpid(p, &st, 0);
-	}
-}
-
-/* Returns 0 when something was launched. */
 static int open_with(const struct ow_cand *c)
 {
-	char buf[512];
-	const char *argv[64];
+	const char *files[1] = { ow_path };
+	struct sh_launch l = {
+		.exec = c->exec,
+		.title = c->name,
+		.terminal = c->terminal,
+	};
 
-	if (!build_argv(c->exec, c->terminal, ow_path[0] ? ow_path : NULL, buf,
-			sizeof(buf), argv, 64)) {
-		snprintf(note, sizeof(note), "%.60s has an empty Exec line",
-			 c->name);
-		return -1;
-	}
 	if (set_default && write_default(ow_mime, c->id) != 0)
 		snprintf(note, sizeof(note), "could not write mimeapps.list");
-	spawn_argv(argv);
+	if (sh_launch(&l, files, ow_path[0] ? 1 : 0) != 0) {
+		snprintf(note, sizeof(note), "%.60s did not start", c->name);
+		return -1;
+	}
 	return 0;
 }
 
-/* The "Other command…" row: what was typed, plus the path. No shell — the
- * words are split here and exec'd, so a command with a `;` in it is one
- * program with a funny argument rather than two programs. */
+/*
+ * The "Other command…" row: what was typed, plus the path. NO SHELL — the
+ * words become an argument vector, so a command with a `;` in it is one
+ * program with a funny argument rather than two programs. A typed line keeps
+ * its `%` and takes the path as a trailing argument, which is what `verbatim`
+ * means.
+ */
 static int open_command(const char *cmd)
 {
-	char buf[512];
-	const char *argv[64];
-	int n = 0;
+	const char *files[1] = { ow_path };
+	struct sh_launch l = { .exec = cmd, .verbatim = 1 };
 
-	kb_strlcpy(buf, cmd, sizeof(buf));
-	for (char *w = strtok(buf, " \t"); w && n < 62; w = strtok(NULL, " \t"))
-		argv[n++] = w;
-	if (!n) {
+	if (!cmd || !*cmd) {
 		snprintf(note, sizeof(note), "nothing to run");
 		return -1;
 	}
@@ -644,10 +591,10 @@ static int open_command(const char *cmd)
 		fprintf(stderr, "kdos-openwith: a plain command cannot be made "
 				"the default for %s — write a .desktop entry\n",
 			ow_mime);
-	if (ow_path[0])
-		argv[n++] = ow_path;
-	argv[n] = NULL;
-	spawn_argv(argv);
+	if (sh_launch(&l, files, ow_path[0] ? 1 : 0) != 0) {
+		snprintf(note, sizeof(note), "nothing to run");
+		return -1;
+	}
 	return 0;
 }
 

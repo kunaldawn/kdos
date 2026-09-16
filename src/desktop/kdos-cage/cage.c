@@ -316,6 +316,31 @@ handle_signal(int signal, void *data)
 }
 
 /*
+ * IS THE SOFTWARE RENDERER BEING DEMANDED FOR THIS GUEST?
+ *
+ * KDOS_EMBED_GPU carries the box profile's `render` key into this process and
+ * it answers in both directions: a false value pins pixman, and every other
+ * value — including no variable at all — leaves the choice to
+ * wlr_renderer_autocreate, which is the default and which ends on pixman by
+ * itself where no render node can be opened.
+ *
+ * The false spellings are the ones a configuration file uses, because the key
+ * a person writes is `render = software` and the session hands the value
+ * through unread. A value nobody recognises must mean the DEFAULT and not the
+ * software renderer: a typo that silently costs a guest its hardware GL is a
+ * fault nothing reports.
+ */
+static bool
+embed_software_forced(void)
+{
+	const char *v = getenv("KDOS_EMBED_GPU");
+
+	return v && (strcmp(v, "0") == 0 || strcmp(v, "no") == 0 ||
+		     strcmp(v, "off") == 0 || strcmp(v, "false") == 0 ||
+		     strcmp(v, "software") == 0 || strcmp(v, "pixman") == 0);
+}
+
+/*
  * The headless backend inside whatever autocreate built. It wraps a single
  * backend in a MULTI one, and an output has to be added to the real thing —
  * the wrapper asserts rather than forwarding.
@@ -508,17 +533,31 @@ main(int argc, char *argv[])
 	if (server.embed.embedded) {
 		setenv("WLR_BACKENDS", "headless", 0);
 		/*
-		 * THE SOFTWARE RENDERER UNLESS THE APPLICATION ASKED FOR THE
-		 * CARD. Pixman draws into memory this process can read with no
-		 * device, no driver and nothing to negotiate, which is the
-		 * right trade for an editor and the wrong one for a game: a
-		 * guest under it has no hardware GL, no hardware video decode
-		 * and no dmabuf to offer. `render = gpu` in the box profile is
-		 * what asks for the other one, and it reaches this process as
-		 * KDOS_EMBED_GPU; see embed_gpu_setup().
+		 * THE CARD WHEREVER THERE IS ONE, AND THE FALL BACK IS
+		 * UPSTREAM'S OWN. A renderer left unnamed is what makes
+		 * wlr_renderer_autocreate try GLES2, then Vulkan, then pixman,
+		 * and it skips each hardware attempt when no DRM render node
+		 * can be opened — which is exactly the "is there a usable
+		 * card" question, asked by the code that has to answer it
+		 * anyway. virtio-gpu with no virgl exposes no render node at
+		 * all, so the plain `make run` lands on pixman with nothing
+		 * here to decide and nothing to fail.
+		 *
+		 * IT MUST BE TRIED, because this renderer IS the guest's
+		 * graphics stack. A pixman cage advertises neither
+		 * linux-dmabuf nor wl_drm, Mesa inside the box then finds
+		 * wl_shm and nothing else, and it answers that by loading
+		 * llvmpipe: no hardware GL, no hardware video decode and every
+		 * frame drawn on the CPU, on a machine whose drivers and
+		 * render nodes are all present. Software is the right answer
+		 * only where the hardware road is not there.
+		 *
+		 * KDOS_EMBED_GPU overrides in both directions — see
+		 * embed_software_forced() — and WLR_RENDERER is set rather
+		 * than overwritten: a person debugging with it set means it.
 		 */
-		setenv("WLR_RENDERER",
-		       getenv("KDOS_EMBED_GPU") ? "gles2" : "pixman", 0);
+		if (embed_software_forced())
+			setenv("WLR_RENDERER", "pixman", 0);
 		/*
 		 * NONE OF ITS OWN. autocreate adds headless outputs at a size
 		 * of its choosing, and a second output beside the one this mode
@@ -582,9 +621,15 @@ main(int argc, char *argv[])
 	}
 
 	server.renderer = wlr_renderer_autocreate(server.backend);
-	if (!server.renderer && server.embed.embedded && getenv("KDOS_EMBED_GPU")) {
-		wlr_log(WLR_INFO, "embed: no hardware renderer, using pixman");
-		unsetenv("KDOS_EMBED_GPU");
+	/*
+	 * AUTOCREATE'S OWN ORDER ALREADY ENDS ON PIXMAN, so nothing here is
+	 * reached unless a renderer was NAMED — WLR_RENDERER in the
+	 * environment, or `render = software` above — and that one could not
+	 * be built. An embedded cage takes the software renderer over no
+	 * window at all.
+	 */
+	if (!server.renderer && server.embed.embedded) {
+		wlr_log(WLR_INFO, "embed: no renderer from autocreate, using pixman");
 		setenv("WLR_RENDERER", "pixman", 1);
 		server.renderer = wlr_renderer_autocreate(server.backend);
 	}
@@ -605,10 +650,10 @@ main(int argc, char *argv[])
 	 * black for ever while every other part of the mechanism reports
 	 * success. Falling back costs this guest the card and nothing else.
 	 */
-	if (!server.allocator && server.embed.embedded && getenv("KDOS_EMBED_GPU")) {
+	if (!server.allocator && server.embed.embedded &&
+	    !(server.renderer->render_buffer_caps & WLR_BUFFER_CAP_DATA_PTR)) {
 		wlr_log(WLR_INFO, "embed: no readable buffer for the hardware "
 				  "renderer, using pixman");
-		unsetenv("KDOS_EMBED_GPU");
 		setenv("WLR_RENDERER", "pixman", 1);
 		wlr_renderer_destroy(server.renderer);
 		server.renderer = wlr_renderer_autocreate(server.backend);

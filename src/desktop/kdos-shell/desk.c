@@ -47,6 +47,8 @@
 #include "kwm.h"
 #include "shell.h"
 
+#include "launch.h"
+
 #define MAX_ENTRIES 256
 #define CELL_W 18		/* cells per icon column, name included */
 #define CELL_H 2		/* the glyph row and the name row */
@@ -54,7 +56,11 @@
 struct entry {
 	char name[256];		/* what is drawn — a .desktop's Name, not its file name */
 	char path[1400];
-	char exec[256];		/* a .desktop's Exec, field codes stripped */
+	/* A .desktop's Exec as the entry wrote it, field codes and all: the
+	 * launch spends them on the documents it carries and reads them to
+	 * decide whether to append instead, so a copy with them deleted is an
+	 * icon that opens a file in the wrong argument. See launch.h. */
+	char exec[256];
 	bool dir;
 	bool is_trash;
 	bool pinned;		/* Home and Trash: places, not files */
@@ -345,9 +351,6 @@ static int load_desktop_entry(struct entry *it)
 	snprintf(it->icon, sizeof(it->icon), "%s", kxdg_get(&e, "Icon", ""));
 	kxdg_free(&e);
 
-	/* The field codes are placeholders for documents this launch has none
-	 * of; one shared stripper (shell.c) — three diverged copies was F17. */
-	sh_strip_field_codes(it->exec);
 	return 1;
 }
 
@@ -494,24 +497,25 @@ static void open_entry(const struct entry *it)
 	 * A shortcut runs; it is not opened. argv, never a shell — an Exec line
 	 * comes from a file anything can write, which is the rule everywhere in
 	 * this tree.
+	 *
+	 * THE SAME LAUNCH THE START MENU MAKES, down to the call: the line's
+	 * quoting is read, its field codes are spent, and a graphical program
+	 * is handed to the session rather than forked here — which is what
+	 * gives a boxed application the display it draws on. An icon that
+	 * started programs its own way would be one entry with two answers.
+	 * See launch.h.
 	 */
 	if (it->is_app) {
-		char buf[288];
-		char id[160];		/* argv points into it until the exec */
-		const char *argv[34];
-		int n = 0;
-		if (it->terminal)
-			n = sh_term_argv_in(it->term, it->floating, it->size,
-					    argv, n, 34, it->exec,
-					    id, sizeof(id));
-		snprintf(buf, sizeof(buf), "%s", it->exec);
-		char *save = NULL;
-		for (char *tok = strtok_r(buf, " \t", &save);
-		     tok && n < 32; tok = strtok_r(NULL, " \t", &save))
-			argv[n++] = tok;
-		argv[n] = NULL;
-		if (n)
-			spawn(argv);
+		struct sh_launch l = {
+			.exec = it->exec,
+			.title = it->name,
+			.term = it->term,
+			.size = it->size,
+			.terminal = it->terminal,
+			.floating = it->floating,
+		};
+
+		sh_launch(&l, NULL, 0);
 		return;
 	}
 	/*

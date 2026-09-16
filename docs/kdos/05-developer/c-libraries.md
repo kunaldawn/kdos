@@ -575,6 +575,30 @@ whole frame and discovering it cannot be encoded. The threshold is well under th
 buffer grows by doubling, so one allowed to approach the cap reallocs to exactly the ceiling and
 then refuses the run that follows.
 
+**A fill buffer is kept, not allocated.** Every message is encoded into a `KconBuf` that belongs to
+the connection — three of them, for the cells of a frame, the colour records that patch them, and
+the pictures those cells reference — and `kcon_buf_retire` empties one instead of freeing it. A
+sprite block at an 8x15 cell is a hundred and twenty kilobytes and a fullscreen guest is dozens of
+them a frame; under a size-class allocator like musl's an allocation that large is an `mmap` and the
+matching free an `munmap`, so a buffer allocated per message has the kernel fault in and zero every
+page of every block on every frame. Measured on musl 1.2.5 at 1080p with a 75-block frame, a
+per-message buffer costs 2400 minor faults a frame; keeping it costs under one, and with the socket
+buffer below it the frame goes from 8.0 ms to 2.0 ms. **Measure this on musl, not on glibc** — glibc
+keeps a 120 KiB block on its own free list, reports zero faults either way, and says the change is
+worth nothing. A buffer that grew past `KCON_BUF_KEEP` (512 KiB, above both a block
+and a frame chunk) is released rather than kept, so one outsized message cannot pin its memory for
+the life of the connection. `KCON_BUF_KEEP` must stay at or above **twice** `KCON_CHUNK_BYTES`,
+because a buffer grows by doubling and a chunk a byte over a power of two rounds its capacity up to
+the next one; below that margin the frame buffers fall out of retention silently and the allocator
+cost returns in full, so the relation is a `_Static_assert` rather than a convention. The cost of
+keeping them is at most three buffers of `KCON_BUF_KEEP` per surface, held until that surface goes,
+so the ceiling scales with the number of live surfaces rather than with how much any one sends. **The buffers belong to one connection** — on the server a field of the
+`KconSurface`, in a client a field of the one connection that process holds. What breaks the rule is
+a buffer *shared* between two connections, or between two senders filling at once, not the storage
+class it happens to have: two surfaces are sent frames in the same loop and a shared buffer would
+put one's pixels in the other's message. they are safe to refill the instant a send returns, because `kcon_send` copies the payload
+into the connection's own out queue and nothing downstream holds a pointer into a `KconBuf`.
+
 **Two ways to put bytes, and the difference is what a reader has to know.** `kcon_put_blob` writes a
 length first, for a payload whose size the message does not otherwise give. `kcon_put_bytes` writes
 none, for one it does — a sprite's pixels are `pw * ph * 4` and nothing else. A second length is a
@@ -674,8 +698,28 @@ block per frame, and
 a message each would spend the queue the pictures need — and the side that re-owes the slots has to
 bound how often it pays them, because a table too small for the window refuses the replacement too.
 
+**Every connection asks the kernel for a large socket buffer.** `kcon_conn_new` requests
+`KCON_SOCK_BUF` (2 MiB) for `SO_SNDBUF` and `SO_RCVBUF` on both ends. **An AF_UNIX stream write is
+gated by the *sender's* own send buffer and by nothing else** — the receiver's `SO_RCVBUF` is never
+consulted, measured — so the other direction is covered because the peer sets its own send buffer in
+the same constructor, not because this end asked for a receive buffer. The receive request is made
+so the pair is right on a transport whose flow control does read it; it is not what does the work
+here. A frame that cannot be placed in one turn of the sender's loop is presented
+partially: the display shows what arrived and the window fills in horizontal bands over several
+frames. With the default 208 KiB buffer a 75-block 1080p frame places 11 blocks a turn and
+needs seven turns; with a 4 MiB grant it places 43 and needs two. A session pacing against half
+`KCON_VIEW_HIGH` rather than against the refusal mark sees the same shape one step down: 7 blocks a
+turn and eleven turns, against 38 and two. **The kernel doubles the request and
+clamps it to `net.core.wmem_max`** — measured, the grant is `min(2 × request, 2 × wmem_max)` — so
+what is granted is never what was asked for and `kcon_conn_sndbuf` reads it back off the socket
+rather than reporting the constant. On the 7.0 kernel this system ships, `net.core.wmem_max`
+defaults to 4 MiB and nothing in `fs/etc/sysctl.conf` changes it, so the 2 MiB request is granted
+whole as 4 MiB; on a host that lowered the ceiling the same request gets less and the desktop is
+correspondingly slower. A clamp is not an error and the request never fails a
+connection: a smaller buffer is a slower desktop, not a broken one.
+
 **The backlog is the pacing signal, and it is truthful.** `kcon_conn_pending` is bytes owed to the
-kernel and nothing else: `kcon_view_ready` reads it against `KCON_VIEW_HIGH`, and the send buffer is
+kernel and nothing else: `kcon_view_ready` reads it against `KCON_VIEW_HIGH`, and the connection is
 marked dead above `KCON_MAX_QUEUE`, so a figure that meant anything other than "not yet written"
 would break the peer-is-gone guard. `kcon_send` ends in a flush, so the backlog is zero until the
 socket's own buffer fills; a caller cutting a picture into pieces asks between them and flushes
@@ -970,6 +1014,18 @@ its lead, so a span that began on the `KTUI_WIDE_CONT` marker beside it would fi
 pixels — erasing the right half of the character — and then find nothing to redraw there. The span
 therefore takes one more step left when it starts on a continuation cell.
 
+**A run of one picture's cells composites in one call.** A sprite cell names a block and a sub-cell
+coordinate inside it, so cells that are consecutive columns of the same block on the same row are
+one contiguous rectangle of one image and go out as a single `pixman_image_composite32`. pixman
+charges most of a small composite to its setup — choosing a combiner, building the iterators,
+walking the clip — and an 8x16 cell is small enough that the setup is the whole cost: a 1080p
+window of blocks is 16,080 cell-sized calls painted one at a time and 1,005 row-sized ones painted
+in runs, measured at 4.90 ms and 1.72 ms a frame against pixman 0.46.4 under musl. **The run breaks
+on anything unusual and the per-cell path draws it**: a different block, a sprite row that does not
+advance a column at a time, a glyph, the end of the changed span, and `KT_A_REVERSE` — which is the
+fill the pointer puts under the cell it is over, and is therefore a cell that has to be drawn on
+its own.
+
 **The cached foreground sources are keyed on the colours, not on the theme's address.** A glyph is
 composited through a solid-fill image and those are kept per slot and per literal colour; libktui
 projects night light by rewriting one table in place, so a cache keyed on the table's identity
@@ -981,6 +1037,21 @@ the whole xterm colour cube in six buckets.
 **The canvas is what makes a pixel tile possible** without a second renderer — a pixel image exactly
 some number of cells across, with fills and text at an arbitrary pixel size, handed to the toolkit
 as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button).
+
+**fcft is reference-counted inside libkcell, so the two entry points are free of each other and of
+any ordering.** `fcft_from_name()` answers `NULL` for every request until `fcft_init()` has run, so
+a consumer that draws canvases and never calls `kcell_font_load()` — a console surface, whose cells
+are characters on a wire — would measure every string as zero and draw none of them, with the
+library's own complaint going to a stderr nothing reads. And neither of fcft's own calls is
+idempotent: a second `fcft_init()` replaces FreeType's handle and orphans every face resolved
+through the old one, and `fcft_fini()` destroys FreeType whether or not anything still wants it.
+So `kcell_font.c` owns fcft for the whole library and counts its holders, declaring the pair in
+`kcell_priv.h`; the cell font takes one reference and the canvas takes one of its own, the library
+comes up on the first and goes down on the last, and **either may be used first, in either order,
+and neither tears fcft down under the other.** A canvas drawing through a `kcell_font_free()` keeps
+its faces, and a failed `kcell_font_load()` gives its reference back before it returns `-1` — a
+caller reading that as "no cell font" has nothing left to free. The pair is private: a reference
+taken outside libkcell matches no face inside it, so nothing could ever release it.
 
 ## libkkms
 

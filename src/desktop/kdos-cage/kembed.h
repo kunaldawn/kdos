@@ -161,6 +161,9 @@ enum {
 				 * copied                                    */
 	KEMBED_DRAG_OFFER,	/* child -> parent, WITH a memfd: the guest
 				 * began dragging something out              */
+	KEMBED_SURFACE,		/* child -> parent: how large the guest's
+				 * window actually is, which is not how
+				 * large its output is                       */
 
 	KEMBED_SIZE = 64,	/* parent -> child: the window is this many
 				 * pixels now                                */
@@ -192,6 +195,9 @@ enum {
 	KEMBED_DRAG_LEAVE,
 	KEMBED_DROP,		/* parent -> child, WITH a memfd: it was
 				 * dropped here                              */
+	KEMBED_SCALE,		/* parent -> child: how many pixels the
+				 * desktop spends on one of the guest's
+				 * logical ones                              */
 };
 
 /*
@@ -215,6 +221,8 @@ enum {
  *                  c=the owner's win, 0 for a window of its own
  *                  d=KEMBED_ROLE_* ; the UTF-8 title follows the struct
  *   KEMBED_CLOSE_WIN  — the window named by `win` is gone
+ *   KEMBED_SURFACE a=width b=height (pixels) — the guest's own window
+ *                  geometry, when it is not the size of its output
  *   KEMBED_BUF     a=width b=height c=stride(bytes) d=slot size(bytes)
  *   KEMBED_FRAME   a=slot  b,c,d,e = damage x,y,w,h (pixels)
  *   KEMBED_DAMAGE          b,c,d,e = damage x,y,w,h (pixels)
@@ -224,6 +232,64 @@ enum {
  * invent a window to hold a frame — and a frame for a window that has not
  * opened is a message from a cage that is out of step, dropped rather than
  * guessed at.
+ *
+ * THE OUTPUT IS NEGOTIATED AND THE SURFACE IS REPORTED, and KEMBED_SURFACE is
+ * the only message that can carry the second. KEMBED_SIZE names the output the
+ * guest renders onto and the parent alone chooses it; a guest that then commits
+ * a window SMALLER than that output is composited at the output's top left over
+ * the cage's own background, and one that commits a LARGER window is cut off at
+ * the output's edge. The framebuffer that reaches the parent is the output's
+ * either way, so KEMBED_BUF can only ever echo the size the parent itself asked
+ * for and no correction derived from a frame can close the gap. What closes it
+ * is the guest's own idea of how large its window is, which the parent rounds
+ * up to whole cells, gives to the window, and asserts back as a KEMBED_SIZE —
+ * so the two ends agree and nothing is left showing the cage's background or
+ * cropped at its edge.
+ *
+ * IT IS SENT ON A CHANGE AND NOT ON A FRAME, AND WHAT COUNTS AS A SIZE IS THE
+ * SHELL'S. The parent rounds up to a cell boundary, so a window whose pixels do
+ * not land on one is permanently a few pixels short of its output — a report
+ * per frame for the life of every such window. A WAYLAND guest is reported only
+ * once it has answered the last size it was given, because one rendered between
+ * being told a size and answering it is reporting the size it is about to stop
+ * being, which the parent would honour by putting the window back. An X11 guest
+ * is reported off its ConfigureRequest, which is the only size such a client
+ * can state and has nothing in flight behind it: settling it would test this
+ * end's own number against itself. So the cage reports a size once, reports
+ * again only when the guest names a different one or the parent moves the
+ * output — and the parent refuses a report its window already answers, and caps
+ * a run of fits nothing but the guest drove. Between them a guest that answers
+ * every size with a new demand costs a handful of resizes and not a window that
+ * grows for ever.
+ *
+ * EVERY SIZE ON THIS CHANNEL IS IN PIXELS AND KEMBED_SCALE CHANGES NONE OF
+ * THEM. The output stays the pixel size KEMBED_SIZE named, the framebuffer
+ * stays that size, and the blocks the parent cuts out of it stay the cells it
+ * chose — so a scale is the one thing here that can be raised without a single
+ * number on either side moving. What it changes is the guest's own idea of how
+ * big a pixel is: at 2 a toolkit lays its window out in half as many logical
+ * pixels and draws each of them twice as large, which is the whole of HiDPI.
+ * Without it every boxed application renders at 1 on a console whose own text
+ * is twice that, and the person gets unreadable chrome beside legible text.
+ *
+ * IT IS THE CONSOLE'S OWN DENSITY AND NOT THE SCREEN'S. The parent derives it
+ * from the cell it is rendering the guest into — a desktop whose characters
+ * are twice the reference cell is a desktop whose windows should be too,
+ * whether that came from a dense panel or from a person who wanted larger
+ * text. It is a WHOLE number and one that divides the cell: a logical size is
+ * the pixel size divided and truncated, so an output whose width is not a
+ * whole multiple leaves a column of the cage's background down the edge of the
+ * window for as long as the window lives.
+ *
+ * A WINDOW AT A TIME, because a window is an output and a scale belongs to an
+ * output. The parent names the same number for all of them; `win` is what says
+ * which output takes it, and a window whose scale arrives after it mapped
+ * reconfigures once, at the map, and never again.
+ *
+ * AND AN X11 GUEST IS UPSCALED RATHER THAN RE-LAID-OUT. X has no scale factor:
+ * an Xwayland client draws in logical pixels at one pixel each and the scene
+ * magnifies its buffer to the output. Its chrome is the right SIZE and is soft
+ * at the edges, which is legible where scale 1 is not.
  *
  * A FRAME'S DAMAGE IS AS MANY BOXES AS IT TAKES, and that is why the second op
  * exists. A guest that scrolled its page and ticked a clock in its title bar
@@ -257,6 +323,7 @@ enum {
  * rename the image window it opened over.
  *
  *   KEMBED_SIZE    a=width b=height
+ *   KEMBED_SCALE   a=whole pixels per logical pixel, 1 or more
  *   KEMBED_KEYMAP  a=bytes b=KEMBED_KEYMAP_* , WITH a sealed memfd
  *   KEMBED_MODS    a=depressed b=latched c=locked d=group
  *   KEMBED_KEY     a=keycode (evdev, NOT +8) b=1 pressed 0 released

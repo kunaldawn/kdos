@@ -177,6 +177,29 @@ static struct {
 	/* Bumped by every configure, equal size or not: a resize waits for
 	 * an ANSWER, and an answer that repeats the old size is one. */
 	unsigned configure_seq;
+
+	/*
+	 * THE FILL BUFFERS FOR EVERYTHING THIS SURFACE SENDS, kept between
+	 * messages rather than allocated per message. See KCON_BUF_KEEP: a
+	 * picture's pixels are over a hundred kilobytes and a frame chunk is
+	 * a quarter of a megabyte, so a per-message buffer is an mmap and an
+	 * munmap whose every page the kernel faults in and zeroes on every
+	 * frame.
+	 *
+	 * THEY BELONG TO THE CONNECTION, which is what `C` is: one process
+	 * holds one session connection, and these die with it in
+	 * kcon_shutdown. They are safe to refill the instant a send returns
+	 * because kcon_send copies the payload into the connection's own out
+	 * queue — nothing downstream holds a pointer in here.
+	 *
+	 * THREE, BECAUSE THREE ARE FILLED AT ONCE. `bcells` carries the cells
+	 * of a frame and `bcolor` the colour records patching them; the
+	 * pictures those cells reference are sent from `bsprite` during the
+	 * same walk. Any two of them sharing one allocation would have the
+	 * second filler send the first one's bytes, and the coupling would be
+	 * invisible until somebody reordered the walk.
+	 */
+	KconBuf bcells, bcolor, bsprite;
 } C;
 
 static int64_t now_ms(void);
@@ -606,14 +629,19 @@ tl_done:
  */
 static int send_sprite(int slot, const KtuiSprite *sp)
 {
-	KconBuf sb = { 0 };
+	/* THE CONNECTION'S OWN BUFFER, EMPTIED FIRST AND NEVER COPIED OUT OF
+	 * IT. See C.bsprite: a picture's pixels are the one payload on this
+	 * wire large enough that allocating for it is an mmap, and an
+	 * animating surface sends one every frame. */
+	KconBuf *sb = &C.bsprite;
 	const uint32_t *argb = NULL;
 	int pw = 0, ph = 0, stride = 0;
 
-	kcon_put_u16(&sb, (uint16_t)slot);
-	kcon_put_u16(&sb, (uint16_t)sp->w);
-	kcon_put_u16(&sb, (uint16_t)sp->h);
-	kcon_put_u32(&sb, sp->fallback);
+	kcon_buf_reset(sb);
+	kcon_put_u16(sb, (uint16_t)slot);
+	kcon_put_u16(sb, (uint16_t)sp->w);
+	kcon_put_u16(sb, (uint16_t)sp->h);
+	kcon_put_u32(sb, sp->fallback);
 
 	/*
 	 * THE PIXELS, if this consumer has a pixel library and said so.
@@ -625,22 +653,22 @@ static int send_sprite(int slot, const KtuiSprite *sp)
 	if (C.bits_fn &&
 	    C.bits_fn(sp->pix, &argb, &pw, &ph, &stride, C.bits_user) == 0 &&
 	    argb && pw > 0 && ph > 0) {
-		kcon_put_u16(&sb, (uint16_t)pw);
-		kcon_put_u16(&sb, (uint16_t)ph);
+		kcon_put_u16(sb, (uint16_t)pw);
+		kcon_put_u16(sb, (uint16_t)ph);
 		/* RAW ROWS, no length before any of them. The reader knows the
 		 * size from pw and ph, and a length per row would put four
 		 * bytes between every row of every picture. */
 		for (int ry = 0; ry < ph; ry++)
-			kcon_put_bytes(&sb, argb + (size_t)ry * stride,
+			kcon_put_bytes(sb, argb + (size_t)ry * stride,
 				       (size_t)pw * 4);
 	} else {
-		kcon_put_u16(&sb, 0);
-		kcon_put_u16(&sb, 0);
+		kcon_put_u16(sb, 0);
+		kcon_put_u16(sb, 0);
 	}
 
-	int r = kcon_send(C.conn, KCON_OP_SPRITE, &sb);
+	int r = kcon_send(C.conn, KCON_OP_SPRITE, sb);
 
-	kcon_buf_free(&sb);
+	kcon_buf_retire(sb, KCON_BUF_KEEP);
 
 	return r;
 }
@@ -817,8 +845,17 @@ static int cl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	 * the session never got is a screen that stays wrong until something
 	 * else happens to overwrite it, and this end has no next diff that
 	 * would find them.
+	 *
+	 * THE BUFFERS ARE THE CONNECTION'S OWN AND ARE EMPTIED, NOT
+	 * ALLOCATED. See C.bcells: a chunk is a quarter of a megabyte, so a
+	 * pair allocated per frame is two mmaps and two munmaps at the
+	 * surface's frame rate. They are held by pointer so that no exit from
+	 * this function can leave a second owner of either allocation behind.
 	 */
-	KconBuf buf = { 0 }, cbuf = { 0 };
+	KconBuf *buf = &C.bcells, *cbuf = &C.bcolor;
+
+	kcon_buf_reset(buf);
+	kcon_buf_reset(cbuf);
 
 	for (int y = 0; y < h; y++) {
 		const KtuiCell *row = &cur[(size_t)y * w];
@@ -847,25 +884,25 @@ static int cl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 
 			uint16_t n = (uint16_t)(x - start);
 
-			if (buf.len + 6 + (size_t)n * KCON_CELL_BYTES >
+			if (buf->len + 6 + (size_t)n * KCON_CELL_BYTES >
 				KCON_CHUNK_BYTES ||
-			    cbuf.len + 6 + (size_t)n * KCON_COLOR_BYTES >
+			    cbuf->len + 6 + (size_t)n * KCON_COLOR_BYTES >
 				KCON_CHUNK_BYTES) {
-				if (buf.len && kcon_send(C.conn,
-							 KCON_OP_COMMIT,
-							 &buf) != 0)
+				if (buf->len && kcon_send(C.conn,
+							  KCON_OP_COMMIT,
+							  buf) != 0)
 					goto fail;
-				kcon_buf_reset(&buf);
-				if (cbuf.len && kcon_send(C.conn,
-							  KCON_OP_COLOR,
-							  &cbuf) != 0)
+				kcon_buf_reset(buf);
+				if (cbuf->len && kcon_send(C.conn,
+							   KCON_OP_COLOR,
+							   cbuf) != 0)
 					goto fail;
-				kcon_buf_reset(&cbuf);
+				kcon_buf_reset(cbuf);
 			}
-			if (kcon_put_run(&buf, (uint16_t)start, (uint16_t)y,
+			if (kcon_put_run(buf, (uint16_t)start, (uint16_t)y,
 					 &row[start], n) != 0)
 				goto fail;
-			if (put_color_spans(&cbuf, (uint16_t)start,
+			if (put_color_spans(cbuf, (uint16_t)start,
 					    (uint16_t)y, &row[start], n) != 0)
 				goto fail;
 			memcpy(&prow[start], &row[start],
@@ -874,9 +911,9 @@ static int cl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		}
 	}
 
-	if (buf.len && kcon_send(C.conn, KCON_OP_COMMIT, &buf) != 0)
+	if (buf->len && kcon_send(C.conn, KCON_OP_COMMIT, buf) != 0)
 		goto fail;
-	if (cbuf.len && kcon_send(C.conn, KCON_OP_COLOR, &cbuf) != 0)
+	if (cbuf->len && kcon_send(C.conn, KCON_OP_COLOR, cbuf) != 0)
 		goto fail;
 	goto done;
 fail:
@@ -891,8 +928,10 @@ fail:
 	C.need_full = 1;
 	C.presented = 0;
 done:
-	kcon_buf_free(&buf);
-	kcon_buf_free(&cbuf);
+	/* Kept for the next frame unless one of them grew past the mark; see
+	 * KCON_BUF_KEEP. */
+	kcon_buf_retire(&C.bcells, KCON_BUF_KEEP);
+	kcon_buf_retire(&C.bcolor, KCON_BUF_KEEP);
 
 	/* The drops go last, after the commit that stopped naming the slot.
 	 * See send_sprite_drop. */
@@ -1410,6 +1449,9 @@ static void kcon_shutdown(void)
 		kcon_conn_free(C.conn);
 		C.conn = NULL;
 	}
+	kcon_buf_free(&C.bcells);
+	kcon_buf_free(&C.bcolor);
+	kcon_buf_free(&C.bsprite);
 	ktui_backend_set(NULL);
 }
 
