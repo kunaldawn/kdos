@@ -107,6 +107,11 @@ reimplemented against the metadata.
 available, and mounting one to read its entries is what makes it *installed* — so an unfiltered
 pass turns the whole catalogue into mounted packs.
 
+**And only a pack that carries desktop entries of its own.** A pack with no
+`/usr/share/applications` in it has nothing for the parse to read and contributes nothing to the
+set, which is the case for a pack whose value is a command: `kdos-appbox -b <pack> run <command>`
+is how those are reached, and `kdos app show <pack>` names them from the metadata.
+
 ### Four outputs, and dropping any one breaks something visible
 
 | Output | Without it |
@@ -168,7 +173,7 @@ tree, and a run as anyone else fails rather than reporting a launcher set it did
 
 | Table | Does |
 |---|---|
-| `COMMANDS` | Packs whose value is a **command**, not an application: a table row and a shim, deliberately **no** desktop entry, because a launcher for a shell tool with no arguments opens nothing. Emitted only when the image really carries the binary |
+| `COMMANDS` | Program names whose value is a **command**, not an application: a table row and a shim, deliberately **no** desktop entry, because a launcher for a shell tool with no arguments opens nothing. Emitted only when the source really carries the binary, so a set baked before the segment existed gets no shim that dies on "not found" |
 | `RENAME` | Upstream's program name is not the one people know |
 | `RESERVED` | Names the sweep must not delete — see below |
 | `EXEC_EXTRA` | Arguments an application needs **only because it is containerised**: one sandboxing toolkit wants a privileged helper it cannot have and exits rather than falling back |

@@ -85,7 +85,7 @@ static void morphdraw()
 	*c = (source[i] * mul1 + target[i] * mul) >> 8;
     }
     aa_fastrender(context, 0, YSTART, aa_scrwidth(context), aa_scrheight(context));
-    aa_flush(context);
+    bbflush();
 }
 
 static void morph()
@@ -386,7 +386,7 @@ void credits2(void)
 	    gettarget();
 	    morph();
 	    displaytext(p);
-	    aa_flush(context);
+	    bbflush();
 	    plast = p;
 	}
 	/*
@@ -463,7 +463,7 @@ void credits2(void)
 	    timestuff(0, NULL, draw, 1000000);
 	    textclrscr();
 	    drawptr = NULL;
-	    aa_flush(context);
+	    bbflush();
 	    free(source);
 	    free(target);
 	    return;
@@ -483,7 +483,7 @@ void credits2(void)
     timestuff(0, NULL, draw, 1000000);
     textclrscr();
     drawptr = NULL;
-    aa_flush(context);
+    bbflush();
     free(source);
     free(target);
 }

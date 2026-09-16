@@ -1940,6 +1940,12 @@ void embed_close(Win *w) { (void)w; }
 void embed_free(Win *w) { (void)w; }
 int embed_alive(const Win *w) { (void)w; return 0; }
 void embed_draw(const Win *w) { (void)w; }
+/* A terminal's cells, and the frame a synchronized-output hold is composed
+ * from, are term.c's; this driver links no terminal and draws nothing, so the
+ * scratch buffer comes straight back. */
+const KtuiCell *term_cells(Win *w, KtuiCell *b, int c, int r)
+{ (void)w; (void)c; (void)r; return b; }
+void term_free(Win *w) { (void)w; }
 int vt_show(Win *w) { (void)w; return 0; }
 void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
@@ -2075,6 +2081,12 @@ void embed_close(Win *w) { (void)w; }
 void embed_free(Win *w) { (void)w; }
 int embed_alive(const Win *w) { (void)w; return 0; }
 void embed_draw(const Win *w) { (void)w; }
+/* A terminal's cells, and the frame a synchronized-output hold is composed
+ * from, are term.c's; this driver links no terminal and draws nothing, so the
+ * scratch buffer comes straight back. */
+const KtuiCell *term_cells(Win *w, KtuiCell *b, int c, int r)
+{ (void)w; (void)c; (void)r; return b; }
+void term_free(Win *w) { (void)w; }
 int vt_show(Win *w) { (void)w; return 0; }
 void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
@@ -2274,6 +2286,12 @@ void embed_close(Win *w) { (void)w; }
 void embed_free(Win *w) { (void)w; }
 int embed_alive(const Win *w) { (void)w; return 0; }
 void embed_draw(const Win *w) { (void)w; }
+/* A terminal's cells, and the frame a synchronized-output hold is composed
+ * from, are term.c's; this driver links no terminal and draws nothing, so the
+ * scratch buffer comes straight back. */
+const KtuiCell *term_cells(Win *w, KtuiCell *b, int c, int r)
+{ (void)w; (void)c; (void)r; return b; }
+void term_free(Win *w) { (void)w; }
 int vt_show(Win *w) { (void)w; return 0; }
 void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
@@ -2547,6 +2565,12 @@ void embed_close(Win *w) { (void)w; }
 void embed_free(Win *w) { (void)w; }
 int embed_alive(const Win *w) { (void)w; return 0; }
 void embed_draw(const Win *w) { (void)w; }
+/* A terminal's cells, and the frame a synchronized-output hold is composed
+ * from, are term.c's; this driver links no terminal and draws nothing, so the
+ * scratch buffer comes straight back. */
+const KtuiCell *term_cells(Win *w, KtuiCell *b, int c, int r)
+{ (void)w; (void)c; (void)r; return b; }
+void term_free(Win *w) { (void)w; }
 int vt_show(Win *w) { (void)w; return 0; }
 void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }

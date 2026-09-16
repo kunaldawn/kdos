@@ -148,7 +148,7 @@ static void toblack1()
     if (minpos > aa_imgheight(context))
 	minpos = aa_imgheight(context);
     aa_render(context, params, 0, 0, aa_imgwidth(context), minpos);
-    aa_flush(context);
+    bbflush();
 }
 
 void devezen1()

@@ -388,7 +388,7 @@ void credits(void)
     windspeed = 0, tospeed = 0;
     windangle = 0, toangle = 0;
     textclrscr();
-    aa_flush(context);
+    bbflush();
     load_song("bb2.s3m");
     precalculate();
     bbupdate();

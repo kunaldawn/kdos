@@ -147,6 +147,30 @@
 #define EM_SLOW_MS 250
 
 /*
+ * HOW OFTEN A DISPLAY'S REPAIR ALLOWANCE COMES BACK.
+ *
+ * The allowance bounds a flood: a display whose sprite table cannot hold this
+ * window refuses every replacement exactly as it refused the picture, and an
+ * unbounded re-owe is the same megabytes for ever — the hole, plus the queue
+ * the rest of the desktop needs. But a bound that is only ever restored by the
+ * guest drawing is no bound at all, it is an expiry date: a guest that has
+ * finished drawing never restores it, and every picture the display loses
+ * after that is a hole nothing fills for the life of the window. So the
+ * allowance is a RATE. One window's worth of blocks per display per interval
+ * is the ceiling whatever the guest is doing, which for a settled window is a
+ * window's worth of bytes a second and for a drawing one is less than the
+ * damage path is already sending.
+ *
+ * AND THAT RATE IS A FLOOR TOO, on a display whose table can keep none of this
+ * window: nothing here decays, so a display that has never once kept a repair
+ * is offered a window's worth again at the next interval and every interval
+ * after it, with the guest completely idle, for as long as the window is open.
+ * This number is the only lever on that cost — a longer interval buys a
+ * cheaper floor with a slower repair for the display that can be repaired.
+ */
+#define EM_REPAIR_MS 1000
+
+/*
  * HOW OFTEN A GUEST MAY BE TOLD A NEW SIZE, AND HOW LONG ONE MAY GO
  * UNANSWERED BEFORE THE NEXT IS SENT.
  *
@@ -645,12 +669,18 @@ struct EmbedWin {
 	int walk_n;			/* blocks this walk has visited */
 
 	/*
-	 * HOW MUCH REPAIR EACH DISPLAY HAS BEEN PAID SINCE THE GUEST LAST
-	 * DAMAGED THE WINDOW, in blocks, and when each was last offered a
-	 * picture it cannot use as pixels. Both are indexed by the view's
-	 * position in the server's list, the same bit position `dirty` uses.
+	 * HOW MUCH REPAIR EACH DISPLAY HAS BEEN PAID IN THE CURRENT INTERVAL,
+	 * in blocks, and when that interval started. A third array records
+	 * when each display was last offered a picture it cannot use as
+	 * pixels. All three are indexed by the view's position in the server's
+	 * list, the same bit position `dirty` uses.
+	 *
+	 * ZERO IS WHAT MAKES THE FIRST LOSS PAY. The interval is measured as
+	 * `now - repair_ms`, so a window that has never repaired anything is
+	 * already past one and refills before its first test.
 	 */
 	int repair[32];
+	unsigned long long repair_ms[32];
 	unsigned long long slow_ms[32];
 
 	/*
@@ -742,6 +772,15 @@ struct EmbedWin {
  * refuses blocks, and blocks refused per second is the distance between what
  * the session had to send and what the screen could take.
  *
+ * `refused` IS THIS END'S AND `lost` IS THE FAR END'S, and the pair is the
+ * only thing that tells a blank block from a slow one. A block refused here
+ * never left; a block lost there crossed the wire and the display could not
+ * keep it, which is a hole this end cannot otherwise see at all. `repaired` is
+ * how many of those were owed again — a `lost` that stands well above it is a
+ * window living at the ceiling of its repair allowance, which is a display
+ * whose sprite table is too small for that window. Both count blocks of
+ * embedded windows only, so they are about the same thing the other four are.
+ *
  * Counted always and printed only when asked, because a counter that is
  * compiled out is a counter nobody can ask for on the machine that has the
  * problem, and four increments per block are not measurable beside the copy
@@ -751,6 +790,8 @@ static struct {
 	unsigned long frames;	/* KEMBED_FRAME from any cage            */
 	unsigned long blocks;	/* blocks handed to at least one display */
 	unsigned long refused;	/* blocks a display would not take       */
+	unsigned long lost;	/* pictures a display could not keep     */
+	unsigned long repaired;	/* those the allowance owed again        */
 	unsigned long long bytes;
 	unsigned long long when;
 } em_stat;
@@ -1054,14 +1095,21 @@ static void mark(struct EmbedWin *e, int bx, int by)
 }
 
 /*
- * THE GUEST DREW, SO EVERY DISPLAY IS WORTH PAYING AGAIN. The repair budget
- * exists for a display that lost a picture nothing else will resend; a window
- * the guest is still drawing resends those blocks by the ordinary path, so the
- * budget is restored here rather than spent on damage it duplicates.
+ * THE GUEST DREW, SO EVERY DISPLAY IS WORTH PAYING AGAIN, WITHOUT WAITING OUT
+ * THE INTERVAL. The repair allowance exists for a display that lost a picture
+ * nothing else will resend; a window the guest is still drawing resends those
+ * blocks by the ordinary path, so a loss reported now is about a block already
+ * on its way and the allowance it would have cost is not owed.
+ *
+ * THE INTERVAL RESTARTS AT ZERO AND NOT AT `now`. A window that has just been
+ * damaged must be able to repair immediately — the guest's own resend covers
+ * this frame, and the picture the display loses on the NEXT one has nothing
+ * behind it.
  */
 static void repair_reset(struct EmbedWin *e)
 {
 	memset(e->repair, 0, sizeof(e->repair));
+	memset(e->repair_ms, 0, sizeof(e->repair_ms));
 }
 
 static void damage_all(struct EmbedWin *e)
@@ -3148,11 +3196,13 @@ static void stat_tick(void)
 
 	fprintf(stderr,
 		"embed-stat: %lu guest frames, %lu blocks (%llu kB), "
-		"%lu refused, over %llu ms, %d window(s) in %d guest(s)\n",
+		"%lu refused, %lu lost, %lu repaired, over %llu ms, "
+		"%d window(s) in %d guest(s)\n",
 		em_stat.frames, em_stat.blocks, em_stat.bytes >> 10,
-		em_stat.refused, t - em_stat.when,
-		all_wins(ws, EM_WIN_CAP), nprocs);
+		em_stat.refused, em_stat.lost, em_stat.repaired,
+		t - em_stat.when, all_wins(ws, EM_WIN_CAP), nprocs);
 	em_stat.frames = em_stat.blocks = em_stat.refused = 0;
+	em_stat.lost = em_stat.repaired = 0;
 	em_stat.bytes = 0;
 	em_stat.when = t;
 }
@@ -3399,14 +3449,20 @@ void embed_resized(Win *w)
  * as long as the window lives because nothing re-sends a picture nobody knows
  * was lost.
  *
- * THE REPAIR IS BOUNDED BY THE WINDOW, NOT BY TIME. A display whose sprite
- * table is simply too small for this window refuses the replacement exactly as
- * it refused the picture, and an unbounded re-owe is then the same bytes for
- * ever — the hole, plus the queue the rest of the desktop needs. One window's
- * worth of blocks per display is paid between one guest damage and the next:
- * a display that lost a few pictures has them all back on the next walk, and
- * one that can keep none of them stops being paid until the guest draws again,
- * by which time the ordinary damage path is sending those blocks anyway.
+ * THE REPAIR IS BOUNDED BY A RATE, AND THE RATE IS WHAT MAKES IT A BOUND. A
+ * display whose sprite table is simply too small for this window refuses the
+ * replacement exactly as it refused the picture, and an unbounded re-owe is
+ * then the same bytes for ever — the hole, plus the queue the rest of the
+ * desktop needs. So one window's worth of blocks per display is paid per
+ * EM_REPAIR_MS: a display that lost a few pictures has them all back on the
+ * next walk, and one that can keep none of them costs a window's worth of
+ * bytes a second and no more.
+ *
+ * AN ALLOWANCE RESTORED ONLY BY GUEST DAMAGE WOULD BE AN EXPIRY DATE. A
+ * toolbox, a dialog and an idle browser draw once and then never again; their
+ * blocks are re-sent by nothing else, so a display that loses one after such a
+ * window has settled would show the background there for as long as the window
+ * lived. The interval is what a settled window has instead of damage.
  *
  * THE VIEW'S POSITION IS ONLY THIS PUMP'S. It is the bit position `dirty`
  * uses, and a list that changes length owes the whole window again — which is
@@ -3429,6 +3485,7 @@ void embed_sprite_lost(KconSurface *v, int slot)
 
 	struct EmbedWin *ws[EM_WIN_CAP];
 	int nw = all_wins(ws, EM_WIN_CAP);
+	unsigned long long t = now_ms();
 
 	for (int k = 0; k < nw; k++) {
 		struct EmbedWin *e = ws[k];
@@ -3439,12 +3496,33 @@ void embed_sprite_lost(KconSurface *v, int slot)
 		for (int i = 0; i < nb; i++) {
 			if (e->slots[i] != slot)
 				continue;
+			/*
+			 * COUNTED ONLY ONCE THE SLOT IS KNOWN TO BE A BLOCK OF
+			 * AN EMBEDDED WINDOW. Every picture in the session
+			 * comes through this hook, a terminal's included, and
+			 * a count that mixed them in would read as a guest's
+			 * blocks being lost on a desktop where none were.
+			 */
+			em_stat.lost++;
+			/*
+			 * THE INTERVAL IS REFILLED BEFORE IT IS SPENT, so the
+			 * first loss after one has passed pays whatever the
+			 * window has been doing in between. Restarting it from
+			 * the loss rather than on a tick is what keeps a
+			 * display that loses one picture an hour from waiting
+			 * for a boundary that has nothing to do with it.
+			 */
+			if (t - e->repair_ms[vi] >= EM_REPAIR_MS) {
+				e->repair[vi] = 0;
+				e->repair_ms[vi] = t;
+			}
 			if (e->repair[vi] >= nb)
 				return;
 			e->repair[vi]++;
 			if (!e->dirty[i])
 				e->ndirty++;
 			e->dirty[i] |= 1u << vi;
+			em_stat.repaired++;
 			return;
 		}
 	}

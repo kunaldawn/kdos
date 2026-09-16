@@ -248,15 +248,6 @@ session's own messages — cell frames, sprites, window chrome — so no asciine
 and a view that draws cells is already the player. An `asciinema` port to replay a format this tree
 writes would be weight with no user on it.
 
-**A window in the console session is never held while the program in it draws.** Synchronized
-output (`DECSET 2026`) is answered by `libkvt`, so both terminals report the mode and a program's
-brackets are parsed rather than misread — but only `kdos-term` acts on them, because it owns one
-grid per window. The session composes **one** grid for every window it shows, so holding a frame
-for one window would either freeze the whole desktop or need a per-window cache of the last render.
-A KDOS surface running in a session window brackets its frames like any other terminal and gets
-nothing for it; the frames are shown as they arrive, which is what every terminal did before the
-mode existed.
-
 **A terminal view's cell size is a guess unless the terminal names one.** `kdos-view --tty` asks
 `CSI 16t`, which `kdos-term` answers and most terminals do not; without an answer it uses 8x16 and
 `KDOS_VIEW_CELL=WxH` is the override. A wrong cell is a correctly encoded picture at the wrong
@@ -278,7 +269,8 @@ disabled on the console rather than hidden, so the surface is the same surface i
 
 **A mode chosen on the console does not survive the session.** `kdos-display`'s keep sends the
 mode with its `keep` flag set and the view acts on the mode and drops the flag: there is nowhere on
-this desktop a mode is written down, so the next login comes up at the preferred mode again. The
+this desktop a mode is written down, so the next login comes up at whichever mode `con.conf`'s
+`refresh` names — the monitor's preferred one, or the fastest at that size. The
 flag is on the wire because the countdown is the only thing that distinguishes an applied mode from
 a kept one, and a keep that could not be expressed would make the countdown a lie.
 

@@ -242,8 +242,12 @@ static void
 handle_output_frame(struct wl_listener *listener, void *data)
 {
 	/*
-	 * This function is called every time an output is ready to display a
-	 * frame - which is typically at 60 Hz.
+	 * Called every time the backend says an output is ready to display
+	 * a frame, so the rate is the output's own mode and nothing here
+	 * throttles it. A frame with nothing to draw takes the scene's
+	 * early-out rather than a sleep: this desktop renders sparsely,
+	 * and a fixed period would be both a floor on idle cost and a
+	 * ceiling on a high-refresh panel.
 	 */
 	struct output *output = wl_container_of(listener, output, frame);
 	if (!output_is_usable(output)) {
@@ -431,6 +435,31 @@ add_output_to_layout(struct output *output)
 	}
 }
 
+/*
+ * The highest refresh rate offered at one resolution, strictly below a
+ * ceiling; 0 means no ceiling. Stepping the ceiling down to the rate
+ * just returned walks the rates in descending order, one per call.
+ */
+static struct wlr_output_mode *
+highest_refresh_at(struct wlr_output *wlr_output, int32_t width,
+		int32_t height, int32_t ceiling)
+{
+	struct wlr_output_mode *best = NULL;
+	struct wlr_output_mode *mode;
+	wl_list_for_each(mode, &wlr_output->modes, link) {
+		if (mode->width != width || mode->height != height) {
+			continue;
+		}
+		if (ceiling > 0 && mode->refresh >= ceiling) {
+			continue;
+		}
+		if (!best || mode->refresh > best->refresh) {
+			best = mode;
+		}
+	}
+	return best;
+}
+
 static bool
 output_test_auto(struct wlr_output *wlr_output, struct wlr_output_state *state,
 		bool is_client_request)
@@ -465,7 +494,7 @@ output_test_auto(struct wlr_output *wlr_output, struct wlr_output_state *state,
 
 	/*
 	 * Try to re-use the existing mode if configured to do so.
-	 * Failing that, try to set the preferred mode.
+	 * Failing that, pick a mode from the preferred one's resolution.
 	 */
 	if (rc.reuse_output_mode && wlr_output->current_mode) {
 		wlr_log(WLR_DEBUG, "testing current mode %dx%d@%d",
@@ -477,9 +506,33 @@ output_test_auto(struct wlr_output *wlr_output, struct wlr_output_state *state,
 		}
 	}
 
+	/*
+	 * The preferred mode fixes the resolution, and the rate is then
+	 * the highest that resolution will commit. Taking the preferred
+	 * mode's own rate pins a panel whose EDID-preferred timing is
+	 * 60 Hz to 60 Hz for the session however many higher rates it
+	 * advertises, and nothing in the desktop presents that as a
+	 * choice. Descending order is what keeps it safe: a rate the link
+	 * cannot carry fails its test and the next one down is tried, so
+	 * the preferred mode is always still reachable.
+	 */
 	struct wlr_output_mode *preferred_mode =
 		wlr_output_preferred_mode(wlr_output);
 	if (preferred_mode) {
+		int32_t ceiling = 0;
+		struct wlr_output_mode *mode;
+		while ((mode = highest_refresh_at(wlr_output,
+					preferred_mode->width,
+					preferred_mode->height, ceiling))
+				&& mode->refresh > preferred_mode->refresh) {
+			wlr_log(WLR_DEBUG, "testing mode %dx%d@%d",
+				mode->width, mode->height, mode->refresh);
+			wlr_output_state_set_mode(state, mode);
+			if (wlr_output_test_state(wlr_output, state)) {
+				return true;
+			}
+			ceiling = mode->refresh;
+		}
 		wlr_log(WLR_DEBUG, "testing preferred mode %dx%d@%d",
 			preferred_mode->width, preferred_mode->height,
 			preferred_mode->refresh);

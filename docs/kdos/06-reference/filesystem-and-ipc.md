@@ -396,7 +396,7 @@ constants are omitted.
 | `KDOS_CRT_DUMP=<prefix>` | Write the phosphor pass's input and output once |
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before dumping |
 | `KDOS_PACKD_VERBOSE=1` | The pack daemon explains itself |
-| `KDOS_EMBED_STAT=1` | Once a second, what every embedded window achieved: guest frames arrived, blocks handed to a display and their size, and blocks a display refused. The guest renders at one rate, the session publishes at another and the screen paints at a third; `refused` is the count that says which of the three is the constraint |
+| `KDOS_EMBED_STAT=1` | Once a second, what every embedded window achieved: guest frames arrived, blocks handed to a display and their size, blocks a display refused, pictures a display could not keep and how many of those were owed again. The guest renders at one rate, the session publishes at another and the screen paints at a third; `refused` is the count that says which of the three is the constraint, and `lost` against `repaired` is whether a window is sitting at the ceiling of its repair allowance |
 | `KDOS_EMBED_GPU=<value>` | Which renderer composites an embedded guest, overriding the cage's own choice in both directions. `software` — and `pixman`, `no`, `off`, `0`, `false` — pins the software renderer; every other value, and no variable at all, leaves the choice to `wlr_renderer_autocreate`, which takes the card wherever a render node opens. Set by the session from the box profile's `render` key wherever that profile carries one, the value forwarded unread so that both directions cross; set by hand it applies to whatever cage inherits it |
 | `KDOS_WHISPER_MODEL=<file>` | One speech model, named exactly. When set, no directory is searched behind it |
 

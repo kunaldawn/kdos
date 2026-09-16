@@ -1860,6 +1860,7 @@ void win_drop(Win *w)
 		S.scratch = 0;
 
 	embed_free(w);
+	term_free(w);
 
 	Win **pp = &S.wins;
 
@@ -2000,7 +2001,10 @@ void win_gc(void)
 
 /* ── drawing ─────────────────────────────────────────────────────────── */
 
-static void draw_content(const Win *w)
+/* NOT `const Win *`. A terminal holding a frame open is composed from a buffer
+ * the window itself keeps, and keeping it current is a write — see
+ * term_cells(). */
+static void draw_content(Win *w)
 {
 	const KtuiCell *src = NULL;
 	int sw = 0, sh = 0;
@@ -2012,8 +2016,10 @@ static void draw_content(const Win *w)
 		sh = w->geom.h;
 		if (sw * sh > (int)(sizeof(buf) / sizeof(buf[0])))
 			return;
-		kvt_term_render(w->term, buf, sw, sh);
-		src = buf;
+		/* The live grid, or the last whole frame while the program
+		 * inside is holding one open with DECSET 2026. A terminal that
+		 * never brackets anything answers with `buf` every time. */
+		src = term_cells(w, buf, sw, sh);
 	} else if (w->kind == WIN_SURFACE && w->surf) {
 		src = kcon_surface_cells(w->surf);
 		sw = kcon_surface_cols(w->surf);
@@ -2240,6 +2246,19 @@ static int btn_run(const Win *w, KRect r, int *first)
  * scheme, and it is the only step that is unmistakable on a chip that is
  * already red: what the button does is taught by its resting colour, and the
  * highlight has one job, which is to say the press will land here.
+ *
+ * THE INK IS DARK ON EVERY BRIGHT FILL, and it has to be: KT_TEXT measures
+ * 1.10:1 against KT_ACCENT and 2.17:1 against KT_ERR, so a bright glyph on a
+ * lit or a red chip is a chip with nothing drawn on it. KT_SURFACE clears 3.4:1
+ * on the mid fill, 5.2:1 on the red one and 10.4:1 under the pointer.
+ *
+ * WHICH MAKES THE CHIP'S MARK A SHAPE AND NOT A CONTRAST. The dark slots of
+ * this palette are one colour to the eye — KT_BG measures 1.00:1 to 1.20:1
+ * against KT_SURFACE across the seven schemes — so dark ink cannot be told
+ * from the window body below the title row by its colour, whichever of them it
+ * is drawn in. What tells them apart is the plate AROUND the mark, so a chip
+ * glyph has to be one the fill encloses on all four sides: `draw_buttons`
+ * holds that rule with the glyphs that satisfy it.
  */
 static void btn_slots(int kind, int focused, int hot, int *fg, int *bg)
 {
@@ -2253,26 +2272,6 @@ static void btn_slots(int kind, int focused, int hot, int *fg, int *bg)
 		*bg = KT_ERR;
 	else
 		*bg = KT_MID;
-}
-
-/*
- * THE CHIP'S SECOND CELL, REPAINTED AND NOT REWRITTEN.
- *
- * The cell already holds whatever the frame put on that column — the rule
- * `ktui_draw_box` drew along the title row — and the chip wants its colours,
- * not its character. Reading the frame back is what keeps those apart: a pad
- * that wrote a glyph of its own would be a button deciding what the border is
- * made of, and would move every committed golden on a change that is colour
- * alone.
- */
-static void btn_pad(int x, int y, int fg, int bg)
-{
-	int cw = 0, ch = 0;
-	const KtuiCell *cells = ktui_draw_cells(&cw, &ch);
-
-	if (!cells || x < 0 || y < 0 || x >= cw || y >= ch)
-		return;
-	ktui_draw_cell(x, y, cells[(size_t)y * cw + x].ch, fg, bg, KT_A_NONE);
 }
 
 /*
@@ -2316,11 +2315,31 @@ static void title_cut(char *s, int cols)
 }
 
 /*
- * `_ ■ X` at the right of the title row, each one a two-cell chip.
+ * `↓ ■ X` at the right of the title row, each one a two-cell chip: the mark on
+ * the first cell and the chip's own fill on the second.
  *
  * INSIDE THE VT TIER. The console font is 512 glyphs and renders anything it
  * does not carry as a blank, so a hollow square would be an invisible button
- * on `tty1` — `■` is on the font's list and `_` and `X` are ASCII.
+ * on `tty1`. `↓` and `■` are both on the font's list and both come from the
+ * glyph table, which hands a terminal with no UTF-8 `v` and `#`; `X` is ASCII.
+ *
+ * EVERY MARK IS INK THE FILL ENCLOSES — a shape with plate above it, below it
+ * and either side, and that plate is the whole of the boundary. On a focused
+ * frame `btn_slots` draws the mark in KT_SURFACE, which is the slot the frame
+ * body under the title row is filled with, so the strip of plate between the
+ * ink and the cell's floor is the only thing dividing the two; an unfocused
+ * chip carries KT_TEXT on KT_DIM, which clears 8.3:1 against both and needs
+ * no such margin. It is a threshold, not an absolute: measured in the
+ * console's ter-kdos32n, `↓`, `■` and `X` are 68, 108 and 80 lit pixels of
+ * 512 on rows 6-25, 10-21 and 6-25 of 32, keeping six clear rows or more
+ * above and below; `_` is 24 pixels on rows 27 and 28, three rows off the
+ * floor, and it is the one shape this fill cannot hold — at that clearance
+ * the chip reads as the plate ending early rather than as a glyph.
+ *
+ * AND THE MARK SAYS WHAT THE BUTTON DOES: the window goes DOWN to the taskbar
+ * row, fills the screen as a block, or is struck out. Down is this desktop's
+ * direction mark — the same `↓` the bottom border lights with when a press
+ * there would drag that edge down.
  *
  * Drawn here rather than by `ktui_draw_box`: that function has thirty-two call
  * sites across twenty-five files, including the installer and the build tool,
@@ -2337,15 +2356,16 @@ static void title_cut(char *s, int cols)
 static void draw_buttons(Win *w, KRect r, int focused)
 {
 	/*
-	 * THE SQUARE COMES FROM THE GLYPH TABLE, not written literally: the
-	 * table picks per tier, so the console font's square is used where it
-	 * exists and a terminal without UTF-8 gets the tier's own stand-in
-	 * rather than the '?' every unmapped codepoint becomes.
+	 * THE ARROW AND THE SQUARE COME FROM THE GLYPH TABLE, not written
+	 * literally: the table picks per tier, so the console font's own
+	 * glyphs are used where they exist and a terminal without UTF-8 gets
+	 * the tier's stand-in rather than the '?' every unmapped codepoint
+	 * becomes.
 	 *
-	 * `_` and `X` are ASCII and need no such care.
+	 * `X` is ASCII and needs no such care.
 	 */
 	const struct { const char *g; int kind; } b[] = {
-		{ "_", WIN_BTN_MIN },
+		{ ktui_glyph[KT_G_DOWN], WIN_BTN_MIN },
 		{ ktui_glyph[KT_G_SQUARE], WIN_BTN_MAX },
 		{ "X", WIN_BTN_CLOSE }
 	};
@@ -2369,7 +2389,16 @@ static void draw_buttons(Win *w, KRect r, int focused)
 
 		btn_slots(b[i].kind, focused, hot, &fg, &bg);
 		ktui_draw_text(x, r.y, 1, b[i].g, fg, bg, KT_A_NONE);
-		btn_pad(x + 1, r.y, fg, bg);
+		/*
+		 * AND THE SECOND CELL IS PLATE, written and not read back. The
+		 * cell holds the rule `ktui_draw_box` ran along the title row,
+		 * and a chip that kept that character puts a length of border
+		 * inside a button: on a focused frame it is the double rule,
+		 * which is most of the ink the chip carries and is drawn in
+		 * the same slot as the mark beside it. A space in the chip's
+		 * fill is what makes the pair one plate with one mark on it.
+		 */
+		ktui_draw_cell(x + 1, r.y, ' ', fg, bg, KT_A_NONE);
 		btn_hits[nbtn_hits].x0 = x;
 		btn_hits[nbtn_hits].x1 = x + 1;
 		btn_hits[nbtn_hits].y = r.y;

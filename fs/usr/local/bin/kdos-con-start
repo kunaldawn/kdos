@@ -98,6 +98,28 @@ _speak=$(kdos-con --conf speak 2>/dev/null)
 # reason above. Empty is the rasteriser's own default; a `--tty` view is given
 # nothing, because the terminal it runs in owns its font.
 _font=$(kdos-con --conf font 2>/dev/null)
+# AND HOW THE SCREEN IS DRIVEN: how many scanout buffers a screen may hold,
+# which of the modes at its own size it wears, and whether a frame is presented
+# at the vblank or as it is composed. Every one of them is a trade a person
+# makes and none is something the view may pick for them, so each reaches it as
+# a flag and its absence is the built-in answer.
+#
+# VALIDATED HERE, because the value is a word from a file a person edits: the
+# view is given a flag only for an answer this recognises, so a typo is the
+# default and never an argument the view has to make sense of.
+_bufs=$(kdos-con --conf buffers 2>/dev/null)
+_refresh=$(kdos-con --conf refresh 2>/dev/null)
+_tearing=$(kdos-con --conf tearing 2>/dev/null)
+_vopt=
+case "$_bufs" in
+1|2|3) _vopt="$_vopt --buffers $_bufs" ;;
+esac
+if [ "$_refresh" = "fastest" ]; then
+	_vopt="$_vopt --fastest-mode"
+fi
+if [ "$_tearing" = "yes" ]; then
+	_vopt="$_vopt --tearing"
+fi
 
 (
 	_wait_con || exit 0
@@ -126,11 +148,17 @@ _font=$(kdos-con --conf font 2>/dev/null)
 		# because that IS the screen on this path.
 		if [ "$_a11y" = "yes" ]; then
 			kdos-view --tty --socket "$_view" 2>>"$_vlog"
+		# $_vopt IS SPLIT ON PURPOSE. It is a list of flags this script
+		# built itself from answers it recognised, not a value a person
+		# typed, so there is nothing in it for the shell to mangle —
+		# and quoting it would hand the view one argument spelled
+		# "--buffers 3".
 		elif [ -n "$_font" ]; then
-			kdos-view --kms-only --font "$_font" \
+			kdos-view --kms-only --font "$_font" $_vopt \
 				--socket "$_view" >/dev/null 2>>"$_vlog"
 		else
-			kdos-view --kms-only --socket "$_view" >/dev/null 2>>"$_vlog"
+			kdos-view --kms-only $_vopt \
+				--socket "$_view" >/dev/null 2>>"$_vlog"
 		fi
 		_rc=$?
 		_now=$(date +%s)

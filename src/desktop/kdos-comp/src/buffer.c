@@ -225,9 +225,10 @@ buffer_resize(struct lab_data_buffer *src_buffer, int width, int height,
  *
  * So the factor is `min(w/src_w, h/src_h)` — a WHOLE number, or one stroke of
  * an `X` gets two pixels and the next three — and the filter is NEAREST, which
- * is what makes `_`, `[]` and `X` read as the same drawing set as the box round
- * the window. A source too big for its container falls back to the shrinking
- * path, which is the only case `buffer_resize` was written for.
+ * is what keeps the bar, the framed box and the cross hard-edged cells, the
+ * same drawing as the border round the window. A source too big for its
+ * container falls back to the shrinking path, which is the only case
+ * `buffer_resize` was written for.
  *
  * Only the XBM path asks for this. An application ICON is a photograph of
  * somebody else's mark and keeps its own resampling.

@@ -66,11 +66,18 @@ otherwise freeze its window forever and the terminal cannot tell that from a pro
 time. The rule lives in `libkvt` rather than in each renderer, because two copies of a timeout is
 two timeouts.
 
+**Both terminals honour it, and they honour it the same way**, so a program need not know which one
+it is talking to. This one owns a grid per window and holds a frame by not drawing it; the console
+session composes one grid for every window on a 16 ms tick, so it holds a window by composing that
+window from **its last whole frame** while the rest of the desktop composes normally — see
+[kdos-con](kdos-con.md#terminals). The difference is invisible to the program: the bracket it wrote
+is what decides, and the same 150 ms watchdog releases both.
+
 **Every KDOS surface brackets its own frames the same way**, when the terminal it is running in
 answers the probe — `libktui` asks with DECRQM and emits nothing where the answer is "not
 recognised". Inside this terminal the answer is yes, so a surface's frame is held here by the path
-above; a surface in a window of the console session is bracketed and shown as it arrives, because
-that session composes one grid for every window and cannot hold one of them.
+above, and a surface drawing into a terminal window of the console session is held there by that
+session's — the same bracket, answered by both.
 
 **The primary device attributes report sixel.** `chafa`, `img2sixel`, `lsix`, `timg` and
 `mpv --vo=sixel` all send `CSI c` and read parameter `4` as sixel support, so a reply without it

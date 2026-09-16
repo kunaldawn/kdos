@@ -151,6 +151,20 @@ measures as 85 ms held at worst and 127 ms typically against 42 ms and 64 ms at 
 `pw-metadata -n settings` says which one is in force, and `pw-top`'s `ERR` column counts the
 underruns.
 
+**The quantum is also the granularity of every music clock on the machine.** libmikmod's ALSA
+driver asks for 50 ms periods — upstream's own request; the port's two patches guard a `NULL`
+close and keep the stream non-blocking, and neither touches it — and renders exactly one period
+per `VC_WriteBytes()` call, which is the same call that advances the player's song position.
+`pcm_pipewire` grants that period verbatim instead of rounding it to a card's, and the plugin's
+`hw_ptr` then moves once per graph cycle: 4096 frames, 85.3 ms. So the driver hands over about two
+periods at a time and a song position is a **staircase** — a 90.0 ms riser on a 97.7 ms tread,
+with 88.3 % of a 10 ms poll seeing no advance at all. **A program that reads a song position must
+tolerate one quantum of tread rather than chase it:** a loop that steers its own clock at every
+disagreement with the music steers on quantisation and not on drift, and a step sized for the
+whole disagreement lands inside a single frame. Shrinking the period does not smooth it — the
+sub-steps still all land in the one call the quantum wakes, so the tread is unchanged and the only
+thing bought is a wakeup per period on the machine where wakeups are already late.
+
 That is also the route screen-capture audio takes. Capture goes portal → ScreenCast → PipeWire,
 with the sockets crossing into the box the same way.
 

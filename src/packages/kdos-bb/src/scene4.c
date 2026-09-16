@@ -103,7 +103,7 @@ static void drawfire(int n)
 static void mydraw()
 {
     aa_render(context, params, 0, 0, aa_scrwidth(context), aa_scrheight(context));
-    aa_flush(context);
+    bbflush();
 }
 
 #define MIN(x,y) ((x)<(y)?(x):(y))

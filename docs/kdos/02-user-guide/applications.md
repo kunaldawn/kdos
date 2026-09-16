@@ -26,11 +26,11 @@ The catalogue is defined by `ports/appbox/packs.conf`:
 
 | | |
 |---|---|
-| Applications | 181 |
+| Applications | 182 |
 | Shared runtimes | 7 |
 | Base packs | 2 |
 | Data packs | 2 |
-| Boxed commands with no graphical launcher | 33 |
+| Boxed commands with no graphical launcher | 36, across 25 packs |
 
 The runtimes are `rt-gtk`, `rt-qt`, `rt-kde`, `rt-media`, `rt-sci`, `rt-electron` and `rt-wine`.
 An application pack is a difference over one of them, and each runtime is a difference over the
@@ -168,17 +168,26 @@ the print service was running does not have it — `kdos-appbox recreate <box>` 
 
 ## Commands that live in boxes
 
-Not all boxed software is an application. Thirty-three packs carry a **command** instead of, or
-as well as, a launcher — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls` and the rest.
-These are solvers and tools driven from a prompt, so they get a shim on your PATH and
-deliberately no menu entry: a launcher for `wine` with no arguments opens nothing.
+Not all boxed software is an application. Twenty-five packs declare a **command** instead of, or as
+well as, a launcher — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls`, `glxgears` and
+the rest. These are solvers, benchmarks and tools driven from a prompt, and they deliberately get
+no menu entry: a launcher for `wine` with no arguments opens nothing.
+
+`kdos app show <pack>` prints the commands a pack declares, and the box manager runs one by name:
 
 ```sh
-wine setup.exe
+kdos app show app.wine
+kdos-appbox -b app.wine run wine setup.exe
 ```
 
-A pack with neither a launcher nor a command is a pack nothing on the host can reach, which is a
-packaging bug rather than a feature.
+**A shim on your PATH is the shorter route, and it is written from what a pack's own desktop
+entries name.** A pack that carries no entry at all — which is most of the command-only ones — is
+reached through `kdos-appbox -b` as above. A shim that took its name from a program the host also
+carries would shadow the host's copy, which is why a pack whose binaries duplicate a host port's
+names declares no command.
+
+A pack with neither a launcher nor a declared command is a pack nothing on the host can reach,
+which is a packaging bug rather than a feature.
 
 ## Updating and rolling back
 
