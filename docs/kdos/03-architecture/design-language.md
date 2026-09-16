@@ -187,6 +187,29 @@ correct for every name that happens to have no space in it.
 
 Fill the rectangle, swap the foreground and background slots, then draw the text.
 
+### A mark on a fill is a shape, not a contrast
+
+A glyph on a filled plate is read by the plate **around** it. The dark slots of this palette are
+one colour to the eye — `KT_BG` measures **1.00–1.20:1** against `KT_SURFACE` in every scheme — so
+dark ink on a bright fill cannot be told from the chrome behind the fill by its colour, whichever
+of the two it is drawn in. What separates them is the fill enclosing the mark.
+
+**So a mark sitting on a fill is a glyph its cell holds clear of every edge, and the clearance is
+the whole of the boundary.** The mark is drawn in the slot that fills the body below the plate — on
+a focused frame chip, `KT_SURFACE` both times — so the strip of plate between ink and cell floor
+is the only thing dividing the mark from the body, and a thin strip reads as the plate ending early
+rather than as carrying a mark. It is a threshold, not an absolute: in the console's `ter-kdos32n`,
+`_`
+is 24 lit pixels of 512 on rows 27–28 of 32, which leaves **three** rows of plate at the floor, and
+it is the one shape a fill cannot hold. `■` is 108 pixels on rows 10–21, `X` is 80 on rows 6–25 and
+`↓` is 68 on rows 6–25: centred masses keeping **six or more** rows clear above and below, which is
+why those three are the window frame's chips. Six of thirty-two holds; three does not.
+
+The same measurement is why the ink on a bright fill is dark at all: `KT_TEXT` is **1.10:1** on
+`KT_ACCENT` and **2.17:1** on `KT_ERR`, so a bright glyph on a lit or urgent plate is a plate with
+nothing drawn on it. `KT_SURFACE` clears **3.4:1** on `KT_MID`, **5.2:1** on `KT_ERR` and
+**10.4:1** on `KT_ACCENT`.
+
 ## The pointer contract
 
 Every surface answers the pointer, and answers it the same way. A surface with rows and no motion
@@ -299,8 +322,16 @@ what it answers is lit on the frame:
 | Nothing — a frame chip, a panel, a fullscreen window, the desktop | nothing | |
 
 One answer between the light and the drag is what stops them disagreeing, and it is what keeps the
-frame chips dark: `_`, `■` and `X` sit on the title row's right end, which is a corner arm, so a
+frame chips dark: `↓`, `■` and `X` sit on the title row's right end, which is a corner arm, so a
 grip taken from the geometry alone would promise a resize over the cell that closes the window.
+A chip is lit by the pointer, not by the grip. The two sets collide on **two** glyphs and both
+readings agree: `↓` on a chip is the window going down to the taskbar and `↓` along the bottom row
+is that edge about to be dragged down; `■` on a chip is the window filling the screen as a block
+and `■` on the frame's four corners is the move grip. The studs are still unambiguous — they are
+`KT_ACCENT` on the frame's own background rather than dark ink on a fill, they are drawn only while
+a grab is armed under the pointer, and they sit on the corner cells, which the chip run never
+reaches: `btn_run` stops one column short of the frame's right edge, so a frame being moved reads
+`↓ ■ X ■` across the title row with only the last mark lit.
 
 It says more than a pointer shape can — a corner grab lights *both* edges at once, so the window
 states the rectangle it is about to become — and it changes only when the pointer crosses a zone,
@@ -527,7 +558,15 @@ themed to match rather than left as the upstream compositor's:
 - **A title bar carrying the same double rule the grid draws with**, broken by the title and by
   each button — so it reads as `════ Title ════[_][=][X]`.
 - **Buttons are small bitmaps enlarged by a whole number with nearest-neighbour filtering**, so
-  they are hard-edged cells rather than smeared glyphs.
+  they are hard-edged cells rather than smeared glyphs. **The marks are the compositor's own, not
+  the grid's** — a bar, a framed box, a cross and a rule stack, against the console's `↓ ■ X` — and
+  the grounds are what part them. A button image is one colour on a titlebar of another
+  (`window.active.button.unpressed.image.color` is the accent; the titlebar behind it is not), so
+  the minimise bar is a bar against its ground with the single row of eight it keeps clear beneath
+  it. A chip's mark is `KT_SURFACE`, which is the slot the frame body under it is filled with —
+  1.00:1, the same slot — so its only boundary is the plate inside the cell, and `_` leaves three
+  rows of thirty-two there, which reads as the plate ending early. Hence `↓` on the grid and a bar
+  here.
 - **The hover plate carries an alpha.** An opaque colour laid over the button image paints the
   symbol out, leaving every button blank under the pointer — the one moment a button most needs to
   say what it is.

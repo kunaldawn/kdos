@@ -78,6 +78,127 @@ static void term_notify(struct kvt_vte *vte, const char *summary,
 	kb_notify(w && w->title[0] ? w->title : "terminal", summary, body);
 }
 
+/* ── synchronized output ─────────────────────────────────────────────────
+ *
+ * A FRAME IS COMPOSED WHOLE OR NOT AT ALL, when the program asks for it.
+ *
+ * A curses program writes one screen row per write() and a pty holds 12 KiB,
+ * so a full-screen frame does not cross in one piece: a compose landing
+ * between two of those writes puts the top of the new frame over the bottom of
+ * the old one, and at 236x63 that is one compose in thirteen. A program that
+ * brackets a frame with `CSI ? 2026 h` … `CSI ? 2026 l` is asking the terminal
+ * to wait, and this is the waiting — the same answer `kdos-term` gives, so a
+ * program need not know which of the two it is talking to.
+ *
+ * THE HELD WINDOW IS DRAWN FROM ITS LAST WHOLE FRAME, NEVER SKIPPED, and the
+ * hold reaches no further than the one window. Both follow from the compose:
+ * the session clears the grid and repaints every window on one 16 ms tick, so
+ * a window that drew nothing would be a hole showing the backdrop and a
+ * window that delayed the tick would freeze the desktop for one program's
+ * frame.
+ *
+ * THE WATCHDOG IS libkvt's AND IS NOT DUPLICATED HERE. kvt_term_sync_hold()
+ * stops answering yes 150 ms after the bracket opened, so a program that sets
+ * the mode and then dies, blocks or is stopped is composed live again on the
+ * next tick. Nothing in this file may keep a window held.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * KEEP THIS FRAME AS THE ONE A HOLD WILL SHOW.
+ *
+ * NO SNAPSHOT IS A TORN FRAME AND NOTHING WORSE: a failed allocation drops the
+ * buffer and the compose falls back to the live grid, which is what every
+ * terminal draws when no program ever brackets anything.
+ */
+static void sync_keep(Win *w, const KtuiCell *src, int cols, int rows)
+{
+	size_t n = (size_t)cols * (size_t)rows;
+
+	if (cols <= 0 || rows <= 0)
+		return;
+	if (w->sync_w != cols || w->sync_h != rows) {
+		KtuiCell *p = realloc(w->sync_cells, n * sizeof(*p));
+
+		if (!p) {
+			free(w->sync_cells);
+			w->sync_cells = NULL;
+			w->sync_w = w->sync_h = 0;
+			return;
+		}
+		w->sync_cells = p;
+		w->sync_w = cols;
+		w->sync_h = rows;
+	}
+	memcpy(w->sync_cells, src, n * sizeof(*w->sync_cells));
+}
+
+/*
+ * A PROGRAM OPENED OR CLOSED A FRAME BRACKET.
+ *
+ * The first open is where the buffer comes from, and the moment is what makes
+ * it right: the bracket has only just opened, so the grid still holds the last
+ * whole frame. Without this the FIRST bracketed frame of every program would
+ * be the one composed torn, because the compose has nothing kept to draw
+ * instead. Every later open finds a buffer the compose has been keeping
+ * current and costs a test.
+ *
+ * libkvt arms its watchdog on this same transition and before calling here, so
+ * asking for the callback does not lengthen a hold.
+ */
+static void term_sync(struct kvt_vte *vte, bool on, void *data)
+{
+	Win *w = data;
+
+	(void)vte;
+	if (!on || !w || !w->term || w->sync_cells)
+		return;
+	if (w->geom.w <= 0 || w->geom.h <= 0)
+		return;
+
+	size_t n = (size_t)w->geom.w * (size_t)w->geom.h;
+	KtuiCell *p = calloc(n, sizeof(*p));
+
+	if (!p)
+		return;
+	kvt_term_render(w->term, p, w->geom.w, w->geom.h);
+	w->sync_cells = p;
+	w->sync_w = w->geom.w;
+	w->sync_h = w->geom.h;
+}
+
+const KtuiCell *term_cells(Win *w, KtuiCell *buf, int cols, int rows)
+{
+	if (!w || !w->term || !buf || cols <= 0 || rows <= 0)
+		return NULL;
+
+	/*
+	 * THE SIZE HAS TO MATCH. A window resized while a bracket was open
+	 * holds a frame of a grid that is not this one, and rows of it laid
+	 * into the new shape are the tear this exists to stop — so a mismatch
+	 * composes live and the next un-held tick replaces the frame.
+	 */
+	if (w->sync_cells && w->sync_w == cols && w->sync_h == rows &&
+	    kvt_term_sync_hold(w->term))
+		return w->sync_cells;
+
+	kvt_term_render(w->term, buf, cols, rows);
+	/* AND WHAT WAS JUST COMPOSED BECOMES WHAT THE NEXT HOLD SHOWS — only
+	 * for a terminal that has already opened a bracket, so a program that
+	 * never asks pays one pointer test and no copy. */
+	if (w->sync_cells)
+		sync_keep(w, buf, cols, rows);
+	return buf;
+}
+
+void term_free(Win *w)
+{
+	if (!w)
+		return;
+	free(w->sync_cells);
+	w->sync_cells = NULL;
+	w->sync_w = w->sync_h = 0;
+}
+
 Win *term_open(const char *const argv[])
 {
 	Win *w = calloc(1, sizeof(*w));
@@ -123,6 +244,10 @@ Win *term_open(const char *const argv[])
 		kvt_term_clip_cb(w->term, term_clip, w);
 		kvt_term_bell_cb(w->term, term_bell, w);
 		kvt_term_notify_cb(w->term, term_notify, w);
+		/* A frame bracket has to be seen opening, not only asked
+		 * about: the buffer a hold is drawn from is taken at the
+		 * transition, while the grid still holds a whole frame. */
+		kvt_term_sync_cb(w->term, term_sync, w);
 	}
 	if (!w->term) {
 		win_close(w);

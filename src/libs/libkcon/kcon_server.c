@@ -239,6 +239,49 @@ static int resize(KconSurface *f, int cols, int rows)
 static int slot_take(KconServer *s);
 static void slot_give(KconServer *s, int n);
 
+/*
+ * EVERY DISPLAY FORGETS A PICTURE WHOSE NUMBER IS GOING BACK.
+ *
+ * A number given back is a number the rotation will hand out again, but not at
+ * once: slot_take() takes every free number at or after the rotation point
+ * first, so a number freed behind that point waits until the scan wraps onto
+ * it. A caller gives back its highest numbers first — the blocks above a grid
+ * that shrank — and those are exactly the ones the scan reaches last, a lap of
+ * the whole map later.
+ *
+ * Until it comes round nobody owns the number, so nothing sends a picture
+ * under it and nothing replaces what a display is holding under it — and a
+ * view keys its sprite table on that number alone. A display that is never
+ * told keeps those pixels in its own byte budget until something evicts them;
+ * by then the number is the next owner's, and the loss is reported against a
+ * slot that owner never lost, spending its repair allowance on somebody else's
+ * picture.
+ *
+ * BEST EFFORT, AND THAT IS ENOUGH. A drop that cannot be queued leaves the
+ * display holding a stale picture until the slot's next owner sends its own,
+ * which replaces it under the same key — the same state the wire has always
+ * had for a display that attached late.
+ *
+ * NOT CALLED WHILE THE SERVER IS BEING TORN DOWN: the surfaces are freed in
+ * one pass there and this walks the very list that pass is emptying.
+ */
+static void view_forget(KconServer *s, int slot)
+{
+	KconBuf b = { 0 };
+
+	if (!s || slot < 0 || slot >= KCON_MAX_SPRITE_MAP)
+		return;
+	kcon_put_u16(&b, (uint16_t)slot);
+	for (int i = 0; i < s->n; i++) {
+		KconSurface *v = s->s[i];
+
+		if (v->kind != KCON_KIND_VIEW || !v->hello)
+			continue;
+		kcon_send(v->conn, KCON_OP_SPRITE_DROP, &b);
+	}
+	kcon_buf_free(&b);
+}
+
 static void surface_free(KconSurface *f)
 {
 	if (!f)
@@ -1183,6 +1226,7 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		if (r.err || cslot < 0 || cslot >= KCON_MAX_SPRITE_MAP)
 			break;
 		if (f->slotmap[cslot] >= 0) {
+			view_forget(s, f->slotmap[cslot]);
 			slot_give(s, f->slotmap[cslot]);
 			f->slotmap[cslot] = -1;
 		}
@@ -1521,6 +1565,14 @@ static void drop(KconServer *s, int i)
 
 	if (s->hooks.gone && f->attached)
 		s->hooks.gone(f, s->user);
+	/*
+	 * THE DISPLAYS FORGET THIS SURFACE'S PICTURES BEFORE ITS NUMBERS GO
+	 * BACK. surface_free() returns them to the rotation, and a number back
+	 * in the rotation is a number the next surface is given.
+	 */
+	for (int k = 0; k < KCON_MAX_SPRITE_MAP; k++)
+		if (f->slotmap[k] >= 0)
+			view_forget(s, f->slotmap[k]);
 	surface_free(f);
 	s->s[i] = s->s[--s->n];
 }
@@ -1798,8 +1850,10 @@ int kcon_server_alloc_slot(KconServer *s)
 
 void kcon_server_free_slot(KconServer *s, int slot)
 {
-	if (s)
-		slot_give(s, slot);
+	if (!s)
+		return;
+	view_forget(s, slot);
+	slot_give(s, slot);
 }
 
 /*

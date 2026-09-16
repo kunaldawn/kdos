@@ -808,6 +808,122 @@ Each is a rule with its consequence:
   as broken. Raise a toast with `--type`, which goes over the keyboard and is quick, or ask for a
   timeout longer than the rest of the run.
 
+## Measuring frame rate
+
+**Three different numbers are called "fps", and a measurement that does not say which one it took
+answers a question nobody asked.**
+
+| Number | Counts | Decided by |
+|---|---|---|
+| **Render rate** | Frames the application finished drawing | The driver and the GPU, and whether the swap waits for a refresh |
+| **Compose rate** | Frames `kdos-comp` built out of its clients | The compositor, which paces off the output's own frame events |
+| **Present rate** | Frames that turned into light | The mode, and the presentation path under it |
+
+**Under `make run-hw` the virtio-gpu virtual display is 60 Hz.** A number above 60 there is a
+render rate: those frames were drawn and thrown away, and nothing measured in the emulator can show
+more than sixty frames a second reaching a screen. Raising a software cap raises the first number
+and cannot raise the third. What a cap costs on a 144 Hz panel is a claim about real hardware and
+has to be measured on it.
+
+The present rate is the one the machine reports on its own. The compositor writes a line to
+[`kdos-frames.sock`](../06-reference/filesystem-and-ipc.md) for every frame that **missed**, with
+the output's refresh interval, the lateness, its own render cost, and whether the gap was measured
+from a presentation event or from the frame clock — `kdos stutter` is the front end. A static
+screen produces no frame events, so something has to be animating before that socket says anything
+at all.
+
+### The overlay, which is already on every machine
+
+mesa here is built `-D gallium-extra-hud=true`, so a Gallium driver draws its own overlay over any
+GL or GLES client with no extra software installed and no change to the program:
+
+```sh
+GALLIUM_HUD=fps es2gears_wayland
+GALLIUM_HUD=fps+frametime glmark2-es2-wayland     # both curves in one pane
+GALLIUM_HUD=simple,fps es2gears_wayland           # text, no graph
+GALLIUM_HUD=csv+fps+frametime vkgears             # values to stdout, for a script
+GALLIUM_HUD=help es2gears_wayland                 # every name THIS driver can draw
+```
+
+The syntax comes from the driver: `+` shares a pane, `,` opens a pane below, `;` opens a column,
+and `.w`/`.h`/`.x`/`.y` size and place one. `GALLIUM_HUD_PERIOD` is the update interval in seconds
+and `0` means every frame.
+
+**It is a GL instrument.** The frame sources are in every Gallium build; `gallium-extra-hud` adds
+the disk, network and CPU-frequency ones beside them. A Vulkan program draws no HUD — `vkgears`
+prints its own rate instead, and `vkcube --c <n>` runs a fixed number of frames so an external
+clock can do the arithmetic.
+
+### Taking the cap off
+
+A GL client that waits for a refresh is measuring the display, not the machine. `vblank_mode` is a
+driconf option, and an environment variable of the same name **overrides both the default and any
+`drirc`** — so it needs no cooperation from the program:
+
+```sh
+vblank_mode=0 es2gears_wayland          # never synchronise, ignore the application's choice
+MESA_VK_WSI_PRESENT_MODE=immediate vkgears
+```
+
+`glmark2` asks for swap interval 0 itself unless `--swap-mode fifo` is given, so its score is a
+render rate by construction and is comparable between machines rather than between panels.
+
+### Which tool answers which question
+
+| Question | Tool |
+|---|---|
+| How fast can this machine draw a trivial scene | `es2gears_wayland`, printing `N frames in X seconds` every five seconds |
+| How fast can it draw real ones, as one comparable score | `glmark2-es2-wayland`, or `glmark2-wayland` for desktop GL |
+| The same for Vulkan | `vkgears`, or `vkcube` for a swapchain that can be told its present mode |
+| Does this machine have a Vulkan driver at all, and which | `vulkaninfo --summary` |
+| Which EGL renderer, extensions and configs a client gets | `eglinfo` |
+| What an **X11** client sees through Xwayland | `glxinfo` and `glxgears`, which exist only in a box |
+
+### Why glxgears is not on the host
+
+mesa here is built `-D glx=disabled -D platforms=wayland`. There is no GLX and no X11 EGL platform,
+so `glxgears` and `glxinfo` cannot be linked against this host at all, and an instruction to run
+one is an instruction to a different distribution. Xwayland is the single X carve-out, and the two
+programs live in a box:
+
+```sh
+kdos app install app.mesa-utils
+kdos-appbox -b app.mesa-utils run glxgears
+kdos-appbox -b app.mesa-utils run glxinfo
+```
+
+That pack is also the host-versus-box measurement: its `es2gears_x11` runs the same test as the
+host's own `es2gears_wayland`, through Xwayland and a container, and the difference between the two
+numbers is what that path costs.
+
+### Where the ceilings are
+
+Four of them are in this tree, so a number that stops at a round figure has somewhere to be looked
+up before it is called a driver problem.
+
+- **`libkkms` presents with at most three buffers**, `con.conf`'s `buffers` and the driver's memory
+  deciding between 3, 2 and 1. Below three the painter has nothing to compose into while a flip is
+  in flight, which behind a vsync-locked flip is the classic 60-to-30 cliff: miss one deadline and
+  the whole refresh period is lost. A transfer-model driver is held at 1 on purpose — there the
+  dirty rectangle is the presentation.
+- **`libkkms` presents with the legacy `drmModePageFlip`**, vsync-locked unless `tearing = yes`
+  passes `DRM_MODE_PAGE_FLIP_ASYNC` to the same call; atomic is not required for it, and a device
+  that does not publish `DRM_CAP_ASYNC_PAGE_FLIP` stays locked whatever the key says.
+- **`libkkms` takes the connector's `DRM_MODE_TYPE_PREFERRED` mode** unless `refresh = fastest`,
+  which takes the highest refresh **at that same size** and never a different resolution. So a
+  144 Hz panel whose preferred mode is 60 Hz gives 60 by default and 144 with the key. A mode the
+  screen was **already** set to outranks both and must keep doing so: it is somebody's decision and
+  not a default.
+- **The console session redraws on a fixed interval compiled into `kdos-con`**, so a cell surface
+  cannot exceed it however fast the machine is. `kdos-comp` has no such constant — it paces off
+  wlroots output frame events and therefore follows whatever mode is set.
+
+**None of these is the shadow buffer.** `libkkms` paints into ordinary memory and flushes only the
+rows that changed into the mapped dumb buffer, because a dumb buffer is mapped write-combined:
+reads from it run at a few bytes a cycle, and every glyph composite would be a read-modify-write.
+There is no full-frame copy per frame, and removing the shadow makes the path slower rather than
+faster.
+
 ## The other harnesses
 
 | Harness | Does |

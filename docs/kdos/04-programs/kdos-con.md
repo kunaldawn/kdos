@@ -397,6 +397,23 @@ on the terminal's own cell, hover underlines the whole run and `Ctrl`+click open
 on which desktop a person is sitting at. Four schemes and printable ASCII only; the refusals are in
 [the security model](../03-architecture/security-model.md#a-uri-a-terminal-was-told-about).
 
+**A frame a program brackets is composed whole, in a session window as in `kdos-term`.** A curses
+program writes one screen row per `write()` and a pty holds 12 KiB, so a full-screen frame does not
+cross in one piece: at 236x63 one compose in thirteen would otherwise show the top of the new frame
+over the bottom of the old. Synchronized output (`DECSET 2026`) is the program saying where its
+frame begins and ends, and the session honours it — **one implementation of the rule in `libkvt`**,
+so a program need not know which of the two terminals it is talking to.
+
+**A held window is composed from its last whole frame, not skipped, and the hold reaches no other
+window.** Both follow from the compose: the session clears the grid and repaints every window on one
+16 ms tick, so a window that drew nothing would be a hole showing the backdrop and a window that
+delayed the tick would stop the desktop for one program's frame. Every other window composes on that
+same tick while one is held. **Under `libkvt`'s 150 ms watchdog** — a child that sets the mode and
+then dies, blocks or is stopped is composed live again on the next tick, which is what makes a hold
+safe to honour at all. The buffer is taken when the first bracket opens, while the grid still holds
+a whole frame, and only a terminal that has opened one carries it: a program that never brackets
+anything composes exactly as it would with none of this here.
+
 **A view can write what it is sent to a file, and a view can draw one back.**
 `kdos-view --record FILE` records while it draws; `--replay FILE` draws a recording and attaches to
 no session at all — a player that connected would be a second view on somebody's desktop, resizing
@@ -790,12 +807,32 @@ link is a link that does nothing else — while the screen beside it keeps the s
 **A display's sprite table has a byte budget of its own, so pixels that crossed the wire are not
 necessarily on the screen.** The session cleared what it owed when the block reached the socket: a
 display that could not keep the picture reports the slots it dropped, once per painted frame as one
-message, and the session owes those blocks to that display again. **The repair is bounded by the
-window.** A display whose table is simply too small for the window refuses the replacement exactly as
-it refused the picture, so one window's worth of blocks per display is paid between one guest damage
-and the next — a display that lost a few pictures has them all back on the next walk, and one that
-can keep none of them stops being paid until the guest draws again, by which time the ordinary
-damage path is sending those blocks anyway.
+message, and the session owes those blocks to that display again. **The repair is bounded by a
+rate — one window's worth of blocks per display per second.** A display whose table is simply too
+small for the window refuses the replacement exactly as it refused the picture, so an unbounded
+re-owe would be the same megabytes for ever: the hole, plus the queue the rest of the desktop needs.
+A display that lost a few pictures has them all back on the next walk; one that can keep none of
+them costs a window's worth of bytes a second and no more.
+
+**The interval is what a settled window has instead of damage, and that is why it is an interval.**
+A toolbox, a dialog and a browser with nothing animating draw once and then never again. An
+allowance restored only when the guest next damages the window is not a bound on such a window but
+an expiry date: once it is spent, the next picture the display loses is a hole nothing fills for as
+long as the window is open, which is a boxed application that comes up blank or half drawn and stays
+that way. Guest damage still restores it early — a window the guest is redrawing is resending those
+blocks by the ordinary path, so a loss reported then costs nothing.
+
+**A session slot that goes back to the rotation is a slot every display is told to forget.** The
+rotation hands the number out again when its search comes round to it, and until it does nobody owns
+the number and nothing sends a picture under it — while a display keys its sprite table on that
+number alone. A display that was never told holds those pixels in its own byte budget with nothing
+that will ever replace them, and the eviction that eventually takes them is reported as a loss of a
+slot that by then belongs to a live window, which spends that window's repair allowance on a picture
+it never lost. A window whose grid *shrinks* hands back every slot above the new grid in one go, so
+every resize downward is a batch of numbers the displays have to be told about — and because those
+are the highest numbers the window held, they are the ones the rotation reaches last: freeing the
+top three of eight allocated slots hands the next caller slot 8, and the first of the three does not
+come round again for 4088 more allocations.
 
 **A window nobody can see is asleep, and *nobody can see* is more than minimised.** Another
 workspace, hidden, behind the lock, under the saver: each is a window the draw loop paints nowhere,
@@ -1140,8 +1177,11 @@ things it reads produce, and a full-screen animation in a terminal produces with
 at **1380 turns a second** against a screen that shows sixty. Composing and serialising on every one
 of them spent two thirds of the session's core on frames nothing would ever see, and took that core
 away from reading the program's output, so the animation ran slower the harder the session worked at
-showing it. `CON_FRAME_MS` caps the picture at sixty a second; input is still read every turn, so
-the cap costs latency of at most one frame and nothing else.
+showing it. `frame_floor_ms()` paces the picture to the attached screens — the period of the
+fastest current mode, in millihertz, with `CON_FRAME_MS` as the floor where no display reports a
+refresh; input is still read every turn, so the pacing costs latency of at most one frame and
+nothing else. A slower screen beside a faster one still takes its own rate, because a display that
+has not painted the last frame is not asked for another.
 
 **A display that is behind is sent nothing, and is never dropped for it.** A view is the one peer
 whose messages are a stream of pictures — the newest frame makes every older one pointless — so
@@ -1221,22 +1261,39 @@ their modes end to end into one virtual box — each screen with its own row dif
 screens comparing against one previous frame would each find the other's paint already done and
 neither would redraw.
 
-**A screen is a pair of scanout buffers and a third the painter owns.** The cells are composited
-into the painter's own buffer in ordinary memory, the rows that changed are copied into whichever
-scanout buffer is not being shown, and the CRTC is pointed at that one at the next vblank. Two
-things follow, and both were defects before the pair existed: no pixel is rewritten while the
-raster is inside it, so an animation does not tear; and no glyph is composited into a
-write-combined mapping, where every `OVER` reads the destination back at a few bytes a cycle.
+**A screen is up to three scanout buffers and one more the painter owns.** The cells are composited
+into the painter's own buffer in ordinary memory, the rows that changed are copied into a scanout
+buffer that is neither being shown nor waiting on a flip, and the CRTC is pointed at that one at
+the next vblank. Two things follow: no pixel is rewritten while the raster is inside it, so an
+animation does not tear; and no glyph is composited into a write-combined mapping, where every
+`OVER` reads the destination back at a few bytes a cycle.
+
+**The third buffer is what stops the painter waiting for the vblank.** With two, the only buffer it
+may touch is the one the flip is waiting on, so a compose that overruns a refresh period costs a
+whole further period — 60 frames a second becomes 30 at the first overrun. With three the next
+frame is composed while the flip is in flight and the completion presents it, and exactly one frame
+waits, which is what keeps the presentation order the paint order. `con.conf`'s `buffers` is the
+ceiling, 1 to 3, and a driver with no memory for the third gets two — 8 MB a screen at 1080p is a
+real cost on a machine driving several.
+
+**Which mode a screen wears, and when a frame reaches it, are both `con.conf`'s.** `refresh =
+fastest` takes the highest refresh at the size the monitor asked for — 144 rather than 60 on a
+panel that publishes both at its native size — and never a different resolution; `preferred` is the
+default and takes the monitor's own EDID choice, because a higher refresh is a different link rate
+and a screen is the one thing a person cannot work around from somewhere else. `tearing = yes`
+points the CRTC at the finished frame immediately instead of at the vblank, which removes up to a
+refresh period of latency and cuts a moving edge across the screen; it is silently off on a device
+that does not publish `DRM_CAP_ASYNC_PAGE_FLIP`.
 
 **A transfer-model driver gets one buffer, and gets it on purpose.** `virtio_gpu`, `qxl` and
 `vmwgfx` keep the displayed image on the host and read the guest's buffer only at the copy
 `drmModeDirtyFB` asks for, so painting in place cannot tear and a legacy page flip — which carries
 no damage rectangle — would upload the whole plane, 8 MB a frame at 1080p to deliver the few
-kilobytes a clock tick changed. Every other driver keeps the pair, virtual ones that scan guest
-memory continuously included. A driver that refuses a flip outright falls back to the single
+kilobytes a clock tick changed. Every other driver keeps the extra buffers, virtual ones that scan
+guest memory continuously included. A driver that refuses a flip outright falls back to the single
 buffer, with the frame copied across before the CRTC is pointed at it; a refusal that is about the
 moment rather than the driver — a CRTC detached by the screen blank, a VT switch still settling —
-costs one repainted frame and keeps the pair. `--card PATH` names a device for a machine with more
+costs one repainted frame and changes nothing. `--card PATH` names a device for a machine with more
 than one; without it the first card with a connected output wins.
 
 **A screen plugged in after login is a resize.** The view holds a `udev` monitor of its own for the
@@ -1431,7 +1488,7 @@ thing to get wrong, and a click that lands one entry off is worse than one that 
 
 **Routing dispatches on the button, never on the press kind.** A wheel detent is delivered as a
 press carrying `KT_MB_WHEEL_UP` or `KT_MB_WHEEL_DOWN` and no release ever follows it, so a test on
-`press` alone answers a scroll: over `_ ■ X` a tick would close the window, over the panel row it
+`press` alone answers a scroll: over `↓ ■ X` a tick would close the window, over the panel row it
 would open the menu or switch workspace, over a title row it would arm a move, and under a mark or
 the colour picker it would re-anchor them. A scroll reaches the window under the pointer and does
 nothing else to it — it does not raise it, does not take the keyboard and does not arm a drag.
@@ -1442,7 +1499,7 @@ nothing else to it — it does not raise it, does not take the keyboard and does
 | A taskbar row | left | raises it, or **restores it** when it is minimised — the row is the way back |
 | A pager cell | left | switches to that workspace |
 | The clock | left | opens `kdos-cal` |
-| `_` `■` `X` on a frame | left | minimise, maximise / restore, close — each is a **two-cell chip** and both of its cells answer |
+| `↓` `■` `X` on a frame | left | minimise, maximise / restore, close — each is a **two-cell chip**, the mark on the first cell and the chip's fill on the second, and both cells answer |
 | A title row, clear of its ends | left drag | moves the window — the **frame's** row, the one the box and the buttons are drawn on |
 | A title row, clear of its ends | right drag | resizes it from the top edge |
 | Any other border cell — the band is two columns at the sides, one row top and bottom | left **or** right drag | resizes it from that side |
@@ -1592,15 +1649,36 @@ never sees, and a right press is what opens a context menu in every graphical ap
 A terminal and an embedded window therefore ask for `Super` before a press inside them is a resize;
 every border, theirs included, resizes under either button without it.
 
-**A frame button is a chip, and its fill says what it does.** Give the three the slot
-`ktui_draw_box` is handed in the same call and the group reads as a run of border rather than as
-three things to press — the border's rule shows through the gap between each pair and joins them —
-and on an unfocused frame that slot is `KT_DIM`, which measures **1.45:1** against `KT_SURFACE`
-across the seven schemes. A chip carries its meaning in its fill instead: `KT_ERR` under the one
-that destroys the window, `KT_MID` under the two that do not, `KT_DIM` with `KT_TEXT` on it while
-the frame is unfocused, and `KT_ACCENT` under the pointer — 10:1 or better in every scheme, and the
-one step that is unmistakable on a chip that is already red. What a button does is taught by its
-resting colour; the highlight has one job, which is to say the press will land here.
+**A frame button is a chip: two cells the chip paints itself, a mark on the first and its own fill
+on the second.** Nothing of the border survives inside one. Give the three the slot `ktui_draw_box`
+is handed in the same call and the group reads as a run of border rather than as three things to
+press — the border's rule shows through the gap between each pair and joins them — and on an
+unfocused frame that slot is `KT_DIM`, which measures **1.45:1** against `KT_SURFACE` across the
+seven schemes. The second cell goes the same way: a chip that kept the character under it carries a
+length of the title row's rule, which on a focused frame is the double rule and is most of the ink
+the chip has. A space in the chip's own fill is what makes the pair one plate with one mark on it.
+
+**A chip carries its meaning in its fill**: `KT_ERR` under the one that destroys the window,
+`KT_MID` under the two that do not, `KT_DIM` with `KT_TEXT` on it while the frame is unfocused, and
+`KT_ACCENT` under the pointer — 10:1 or better in every scheme, and the one step that is
+unmistakable on a chip that is already red. What a button does is taught by its resting colour; the
+highlight has one job, which is to say the press will land here.
+
+**And the mark is a shape the fill encloses.** `↓` for minimise, `■` for maximise and restore, `X`
+for close, drawn dark on every bright fill because `KT_TEXT` is 1.10:1 on `KT_ACCENT` and 2.17:1 on
+`KT_ERR`. Dark ink is the window body's own colour to the eye — the palette's dark slots are within
+1.20:1 of each other, and on a focused chip `btn_slots` hands the mark `KT_SURFACE`, the very slot
+`win_draw_all`
+fills the frame with. So the only thing telling a mark from the ground below the title row is the
+strip of plate between its ink and the cell's floor, and a thin strip reads as the chip ending
+early. It is a threshold, not an absolute: `_` is 24 lit pixels of 512 on rows 27 and 28 of 32 in
+the console's `ter-kdos32n`, leaving three rows at the floor, and it is the one shape this fill
+cannot
+hold. The three that ship are 68, 108 and 80 pixels on rows 6–25, 10–21 and 6–25, six clear rows
+or more above and below each. `↓` and `■` come from `ktui_glyph`, so a terminal without UTF-8 gets
+`v` and `#` rather than the blank a 512-glyph
+console font draws for a codepoint it does not carry; `X` is ASCII. Minimise is the down arrow
+because down is where the window goes — the taskbar row, which is the way back from it.
 
 **The chip lights by the rule the grip lights by.** The router hands the window model the pointer's
 cell on every cooked pointer event, the leave included — libkwl reports a leave as an off-grid
@@ -2308,7 +2386,9 @@ repaints in full.
   reference cell. The mechanism is built at both ends and engages at a cell thirty-two pixels tall
   with an even width — `Super+=` stepped that far, or a `font =` written that large. Stated once, in
   [known-gaps](../06-reference/known-gaps.md).
-- **Single output.** `libkkms` takes the first card with a connected output and its preferred mode.
+- **One card.** `libkkms` takes the first `/dev/dri/card0..7` with a connected output and lights
+  every connected connector on it; a second card's screens are not reachable, and `--card PATH`
+  chooses which card that is.
 
 ## See also
 

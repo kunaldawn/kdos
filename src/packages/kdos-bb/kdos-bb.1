@@ -150,7 +150,10 @@ The soundtrack. Without libmikmod the demo runs silent.
 KDOS ships a frozen fork of bb 1.3rc1; see
 .I /usr/share/licenses/kdos-bb/
 for the upstream authors and the licence. The mixer runs on its own thread
-here, so the music does not stutter while the terminal is drawing.
+here, so the music does not stutter while the terminal is drawing, and the
+scene clock follows the player's own position, so a moment the sound card
+spends not playing is taken back out of the animation rather than left as a
+picture that has run away from the track.
 .SH SEE ALSO
 .BR aafire (1)
 .SH AUTHORS

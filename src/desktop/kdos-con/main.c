@@ -1434,7 +1434,7 @@ static int pick_key(const KtuiEvent *ev)
  * A WHEEL DETENT IS NOT A BUTTON. Every backend reports a tick as
  * `KT_MB_WHEEL_UP`/`KT_MB_WHEEL_DOWN` carrying `press = KT_MP_PRESS`, and
  * sends no release to match it, so any pointer site that dispatches on
- * `press` before `btn` fires on a scroll: over the frame's `_ ■ X` row a
+ * `press` before `btn` fires on a scroll: over the frame's `↓ ■ X` row a
  * detent closes the window, over the panel it opens the menu, and under a
  * mark or the picker it re-anchors them. Ask this first.
  *
@@ -2324,7 +2324,7 @@ static void grip_track(const KtuiEvent *ev)
 	}
 	/*
 	 * A FRAME CHIP IS NOT A GRAB, and it is asked first for the reason the
-	 * router asks it first: `_`, `■` and `X` sit ON the title row's right
+	 * router asks it first: `↓`, `■` and `X` sit ON the title row's right
 	 * end, which is a corner arm, so a grip taken from the geometry alone
 	 * would promise a resize over the cell that closes the window.
 	 */
@@ -4059,14 +4059,57 @@ static int sprites_owed;
 #define CON_FRAME_MS 16
 
 /*
+ * THE FLOOR THE ATTACHED SCREENS SET, and CON_FRAME_MS only where they say
+ * nothing.
+ *
+ * A constant floor is a frame rate ceiling: sixteen milliseconds is sixty-two
+ * a second, which is under every mode above 60 Hz, so a 144 Hz panel is paced
+ * by this loop rather than by itself. The mode carries its refresh in
+ * millihertz, so the period is a division and the screen decides it.
+ *
+ * THE FASTEST SCREEN SETS IT, because the floor is shared and a slower one
+ * paces itself on its own `ready`: a screen that has not painted the last
+ * frame is not asked for another, so a 60 Hz monitor beside a 144 Hz one
+ * still takes sixty. Taking the slowest instead would hold the fast screen at
+ * the slow one's rate, which is the cap this removes.
+ *
+ * NEVER SLOWER THAN CON_FRAME_MS. A mode below 60 Hz would otherwise widen the
+ * floor and compose less often than a display that is ready — the `ready` gate
+ * is what paces a slow screen, and this is only the floor beneath it.
+ */
+static int frame_floor_ms(void)
+{
+	int best = 0;
+
+	for (int i = 0; i < S.nouts; i++) {
+		const KconOut *o = &S.outs[i];
+		int m = o->cur_mode;
+
+		if (m < 0 || m >= o->nmodes || m >= KCON_MAX_MODES)
+			continue;
+		if (o->mode[m].refresh > best)
+			best = o->mode[m].refresh;
+	}
+	if (best <= 0)
+		return CON_FRAME_MS;
+
+	/* Millihertz to a period in milliseconds: 1000 ms/s * 1000 mHz/Hz. */
+	int ms = 1000000 / best;
+
+	if (ms < 1)
+		ms = 1;
+	return ms < CON_FRAME_MS ? ms : CON_FRAME_MS;
+}
+
+/*
  * Whether any display could take a frame right now. None attached is none that
  * could, and composing for nobody is the same waste at a different rate.
  *
  * A display that answers frames says so itself: it is ready when it has
- * painted the last one. CON_FRAME_MS is then a FLOOR and not the rate — a
- * screen showing sixty a second is asked for sixty, and one still painting is
- * not asked at all, which is what makes an animation's frame rate the
- * display's rather than this loop's.
+ * painted the last one. frame_floor_ms() is then a FLOOR and not the rate — a
+ * screen showing a hundred and forty-four a second is asked for that many, and
+ * one still painting is not asked at all, which is what makes an animation's
+ * frame rate the display's rather than this loop's.
  */
 static int any_view_ready(void)
 {
@@ -4599,8 +4642,11 @@ static int serve(const char *sock, const char *view)
 			 * safe there and a zero one would spin a core until the
 			 * answer arrived.
 			 */
-			if (since < CON_FRAME_MS && any_view_ready())
-				wait = (int)(CON_FRAME_MS - since);
+			unsigned long long floor_ms =
+				(unsigned long long)frame_floor_ms();
+
+			if (since < floor_ms && any_view_ready())
+				wait = (int)(floor_ms - since);
 			poll(p, (nfds_t)n, wait);
 		}
 
@@ -4821,14 +4867,15 @@ static int serve(const char *sock, const char *view)
 		 * previous frame is what decides how much it is sent. */
 		/*
 		 * A FRAME IS COMPOSED FOR A DISPLAY, NOT FOR A PROGRAM'S
-		 * OUTPUT — see CON_FRAME_MS. The rate is the cap and the
-		 * watermark is the floor under it: a display slower than sixty
-		 * a second is skipped until it has drained, and what it missed
-		 * is still in the next frame it takes.
+		 * OUTPUT — see frame_floor_ms(). The attached screens set the
+		 * floor and the watermark sits under it: a display that has not
+		 * drained is skipped, and what it missed is still in the next
+		 * frame it takes.
 		 */
 		unsigned long long fnow = mono_ms();
 
-		if (fnow - last_frame >= CON_FRAME_MS && any_view_ready()) {
+		if (fnow - last_frame >= (unsigned long long)frame_floor_ms() &&
+		    any_view_ready()) {
 			last_frame = fnow;
 			focus_publish();
 			ktui_draw_resize();

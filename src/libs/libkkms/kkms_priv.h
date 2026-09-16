@@ -26,6 +26,22 @@
 #define KKMS_MAX_MODES 64
 
 /*
+ * HOW MANY SCANOUT BUFFERS A SCREEN MAY HOLD.
+ *
+ * Three is the ceiling and the default: one on the screen, one a flip is
+ * waiting on, and one the painter may compose the next frame into while that
+ * flip is still in flight. Two buffers leave the painter nothing to touch
+ * until the vblank, which behind a vsync-locked flip is the 60-to-30 cliff —
+ * a frame that misses its deadline costs a whole refresh period.
+ *
+ * FOUR WOULD NEED A QUEUE. Exactly one composed frame waits for the flip here,
+ * so the presentation order is the paint order by construction; a second
+ * waiting frame would need to be ordered against the first, and a frame
+ * presented out of order is an animation that walks backwards.
+ */
+#define KKMS_NBUF 3
+
+/*
  * ONE SCREEN. Everything here is per-connector and nothing is shared: a second
  * monitor is a second dumb buffer, a second CRTC and a second row diff, and the
  * one thing that would break if they were shared is the diff — two screens
@@ -61,45 +77,63 @@ struct kkms_out {
 	char name[32];
 
 	/*
-	 * TWO SCANOUT BUFFERS AND THE PAINTER'S OWN.
+	 * UP TO THREE SCANOUT BUFFERS AND THE PAINTER'S OWN.
 	 *
 	 * `shadow` is system memory and is where every glyph is composited:
 	 * OP_OVER reads the destination back, and a dumb buffer is mapped
 	 * write-combined, so compositing into one costs an uncached read per
 	 * pixel of every glyph on the screen.
 	 *
-	 * `pixels[]` are the two dumb buffers. A frame is painted into the
-	 * shadow, the rows that changed are copied into the buffer NOT being
-	 * scanned out, and that buffer is flipped to at the next vblank — so
-	 * no pixel is ever rewritten while the raster is inside it. `back` is
-	 * the one being painted and `flip_pending` is a flip the kernel has
-	 * not yet reported.
+	 * `pixels[]` are the dumb buffers, `nbuf` of them. A frame is painted
+	 * into the shadow, the rows that changed are copied into a buffer the
+	 * CRTC is not reading, and that buffer is flipped to at the next
+	 * vblank — so no pixel is ever rewritten while the raster is inside
+	 * it.
 	 *
-	 * `owed[]` is per buffer because the two are a frame apart: a row
-	 * copied into one is still the previous frame's in the other, and a
-	 * flip that forgot that would show a screen half of two frames.
+	 * EVERY BUFFER IS IN EXACTLY ONE ROLE, and the roles are what make
+	 * that guarantee, not arithmetic on an index:
+	 *
+	 *   `front`   the CRTC is scanning it out.
+	 *   `queued`  a flip names it; the kernel has not yet reported the
+	 *             completion. -1 when no flip is outstanding, and
+	 *             `flip_pending` is the same fact as a flag, because every
+	 *             other path in this library reads it as one.
+	 *   `ready`   a whole frame is composed in it and it is waiting for
+	 *             the queue to clear. -1 when there is none. At most one,
+	 *             which is what makes presentation order the paint order.
+	 *   `back`    the painter's, and any buffer in none of the roles
+	 *             above. -1 when every buffer is spoken for, and the
+	 *             flush then skips this screen rather than painting into
+	 *             one the kernel can see.
+	 *
+	 * `owed[]` is per buffer because the buffers are frames apart: a row
+	 * copied into one is still an older frame's in the others, and a flip
+	 * that forgot that would show a screen made of two frames. A row
+	 * painted is owed to EVERY buffer and cleared only in the one it is
+	 * copied into, so with three buffers it stays owed to two.
 	 * `pad_owed[]` is the same debt for the strip below the last whole
 	 * row, which no row of `owed[]` covers: it is written only on a full
 	 * paint, so a buffer that missed that frame keeps whatever it held and
-	 * the strip blinks at half the flip rate.
+	 * the strip blinks at a fraction of the flip rate.
 	 *
 	 * `nbuf` is 1 where the driver cannot flip or must not be asked to,
-	 * and the buffer is then painted and marked dirty in place.
+	 * and the buffer is then painted and marked dirty in place: `front`
+	 * and `back` are both 0 there, deliberately.
 	 *
 	 * `flip_gen` names the buffers a flip was issued against, and it is the
 	 * ONLY thing a completion is matched against — never the output count,
 	 * which says how many screens are lit and not which slots hold
 	 * buffers. A completion arrives after the framebuffer it named may
 	 * have been freed and the slot given to another connector, and one
-	 * taken for a later flip clears `flip_pending` a frame early — the
-	 * next paint then writes the buffer the raster is inside.
+	 * taken for a later flip retires `queued` a frame early — the next
+	 * paint then writes the buffer the raster is inside.
 	 */
-	void *pixels[2];
-	uint32_t handle[2], fb[2];
-	int nbuf, back, flip_pending;
+	void *pixels[KKMS_NBUF];
+	uint32_t handle[KKMS_NBUF], fb[KKMS_NBUF];
+	int nbuf, front, back, queued, ready, flip_pending;
 	unsigned flip_gen;
-	unsigned char *owed[2];
-	unsigned char pad_owed[2];
+	unsigned char *owed[KKMS_NBUF];
+	unsigned char pad_owed[KKMS_NBUF];
 
 	void *shadow_bits;
 	pixman_image_t *image;		/* over shadow_bits */
@@ -158,8 +192,31 @@ struct kkms {
 	/* This driver shows the guest's buffer by copying it to the host at
 	 * the dirty rectangle it is given, rather than scanning it out. One
 	 * buffer is then tear-free and a page flip is a whole-plane upload,
-	 * so the pair is not made. Decided once: the card cannot change. */
+	 * so no second buffer is made. Decided once: the card cannot change. */
 	int drm_transfers;
+
+	/*
+	 * HOW THE CALLER ASKED FOR THE SCREEN TO BE DRIVEN — see KkmsTune.
+	 * Copied out of the caller's struct by kkms_init(), which memsets this
+	 * one first, and read again by every later re-probe and mode change:
+	 * a hotplug that went back to the built-in answers would undo the
+	 * caller's on the first monitor that woke up.
+	 *
+	 * `want_bufs` is a CEILING, not a promise. A driver with no memory for
+	 * a third buffer gets two, and one with none for a second gets one.
+	 *
+	 * `flip_flags` is what actually reaches drmModePageFlip, which is
+	 * DRM_MODE_PAGE_FLIP_ASYNC only when the caller asked for tearing AND
+	 * the device published DRM_CAP_ASYNC_PAGE_FLIP. It is cleared for the
+	 * rest of the session if a driver that published the capability then
+	 * refuses a flip carrying the flag, because the alternative is reading
+	 * that refusal as "this driver cannot flip at all" and giving up every
+	 * buffer but one.
+	 */
+	int want_bufs;
+	int mode_policy;
+	int async_flip, can_async;
+	uint32_t flip_flags;
 
 	struct kkms_out out[KKMS_MAX_OUT];
 	int nout;

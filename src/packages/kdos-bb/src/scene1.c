@@ -49,7 +49,7 @@ void (*drawptr) ();
 static void drawwait()
 {
     aa_puts(context, (aa_scrwidth(context) - strlen(text)) / 2, aa_scrheight(context) / 2, AA_SPECIAL, text);
-    aa_flush(context);
+    bbflush();
 }
 
 static int bright = 255;
@@ -88,7 +88,7 @@ void draw(void)
 	drawptr();
     aa_render(context, params, 0, 0, aa_imgwidth(context), aa_imgheight(context));
     aa_puts(context, (aa_scrwidth(context) - strlen(text)) / 2, aa_scrheight(context) / 2, AA_SPECIAL, text);
-    aa_flush(context);
+    bbflush();
 }
 
 static void calculateslow(int n)
@@ -138,7 +138,7 @@ static void drawwait3()
 	drawline(y);
     }
     aa_puts(context, (aa_scrwidth(context) - strlen(text)) / 2, aa_scrheight(context) / 2, AA_SPECIAL, text);
-    aa_flush(context);
+    bbflush();
 }
 
 static void calculatefast(int n)

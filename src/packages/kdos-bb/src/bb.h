@@ -57,6 +57,14 @@ extern int bbmixer;			/* -mixer:   show the settings menu */
 int song_progress(void);
 void sound_sync(void);
 
+/*
+ * Writes the frame bracketed in synchronized output, so a terminal shows it
+ * whole or not at all. EVERY frame goes through here and none calls aa_flush()
+ * directly: a flush outside the bracket is a screen the consumer may compose
+ * halfway through, which is the tearing this exists to stop.
+ */
+void bbflush(void);
+
 
 void dvojprujezd(int, char *, char *);
 void timestuff(int rate, void (*control) (int), void (*draw) (void), int maxtime);

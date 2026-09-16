@@ -58,12 +58,63 @@ terminal composes its window from a screen it has only half received, and what r
 is the top of one frame over the bottom of the one before it: an animation that updates in
 horizontal bands and looks like it is lagging.
 
-So the animation loop draws at most once every **fifteen milliseconds** — not sixteen and two
-thirds, because a scene whose control runs at exactly sixty would land a hair inside an exact
-sixty-frame budget every other turn and be halved to thirty. **The control keeps its own rate**: a
-control handler is told how many intervals it covers, so a dropped frame moves nothing in the
-animation, every scene still ends on the microsecond it always did, and the beats stay in step with
-the music.
+So the animation loop draws at most once every **sixteen milliseconds** — and the cap is a
+**deadline** and not a delay, which is the whole of what makes it a cap rather than a brake.
+
+**Timed from the end of one draw to the start of the next, the period is sixteen milliseconds plus
+the draw**, and the draw grows with the screen: 0.46 ms at 80x25 against 1.35 ms at 240x67. So the
+period grows with the screen too, and it grows past the one thing it has to stay under —
+`1000000 / 60`, the interval fourteen scenes state for their control. A scene in *waitmode* draws
+only on a turn its control fired, so a period longer than the control's **refuses every other tick
+outright**, and the next chance is a whole interval later. Measured over forty seconds of the same
+scene in a session terminal:
+
+| Session grid | End of draw to start of next | Deadline to deadline |
+|---|---|---|
+| 80x25 | 59.1 fps, 0.2% of frames held ≥25 ms | **60.6 fps**, 0.1% |
+| 106x33 | 49.1 fps, **23.5%** | **60.6 fps**, 0.1% |
+| 240x67 | 31.0 fps, **93.9%** | **60.6 fps**, 0.1% |
+
+**The judder is bimodal, and its size-dependence is the tell.** At 106x33 there is nothing at all
+between 18 ms and 30 ms: every frame is either 16.7 ms or 33.3 ms. Nor is it a shortage — one draw
+is 1.35 ms against a 16 ms budget and the whole loop is under three per cent of one core. It is a
+**gate**, not a cost.
+
+**Sixteen, because it must stay under the control grid and at or under every consumer's floor.**
+The 666 µs it leaves below `1000000 / 60` is the margin, and what the margin buys is that the
+deadline is never *ahead* of the control tick it is checked against: a grid shorter than the
+control's falls 666 µs further behind the tick every frame, and is never re-pegged closer than
+666 µs behind. A tick is refused only after a stall, never for the jitter of noticing one.
+
+The consumers, meanwhile, do not agree with each other. The console session composes on
+`frame_floor_ms()`, the period of the fastest attached screen's current mode — 16 on a sixty-hertz
+display and shorter on a faster one — and will not compose two frames inside it; `kdos-term` on
+Wayland is gated on the compositor's frame callback, so its floor is the output's — 16.667 at sixty
+hertz. A frame produced faster than the floor is bytes the consumer must
+read and parse for a picture nobody sees.
+
+**Producing faster than the consumer is a beat, not extra smoothness** — the surplus does not drop
+one frame in sixteen quietly, it beats at the difference, and a beat is what an eye reads as
+judder. A scene in waitmode is paced by its control and runs at sixty, which beats against neither
+consumer. A scene stating a *positive* rate is not gated by its control at all — it draws on every
+turn — so its picture runs at exactly the cap: 62.5, which leaves no beat against the console's 16
+and two and a half a second against a sixty-hertz output. **Further under is more surplus, further
+over is the halved rate**, which is why the number is not free in either direction.
+
+**A deadline more than a whole period behind is moved rather than chased.** A stall leaves the grid
+arbitrarily far behind, and catching up would draw every missed frame back to back: the
+pseudo-terminal fills, the frames tear, and what the stall cost is paid twice. One frame is drawn
+late and the grid restarts from the deadline that was met.
+
+**Nothing tests the gap for going backwards.** The scene clock is an `int` of microseconds that
+turns over at some thirty-five minutes, which `-loop` reaches, and the difference of two readings
+either side of the turnover is modular — it comes out as the small number it really is. Driven
+across the turnover the frame rate is unbroken at 61.8 fps with no gap over 18 ms. A test for a
+negative gap would catch nothing but the servo below, which cannot produce one either.
+
+**The control keeps its own rate**: a control handler is told how many intervals it covers, so a
+dropped frame moves nothing in the animation, every scene still ends on the microsecond it always
+did, and the beats stay in step with the music.
 
 Measured across the same window of the same run, at a session grid of 192x54:
 
@@ -79,6 +130,43 @@ Measured across the same window of the same run, at a session grid of 192x54:
 **The picture is identical and everything spent on it is gone.** That is the shape of the whole
 class: a producer faster than the screen is not a faster animation, it is the same animation with a
 torn frame.
+
+## Every frame is bracketed in synchronized output
+
+**A frame cannot be made atomic, which is exactly why the bracket is the fix.** The ASCII-art
+library hands the picture to the curses library's refresh, and refresh writes **one write per
+screen row** — 21 writes and 2.0 KB at 75x19, 69 writes and 17.2 KB at 236x63. A pseudo-terminal
+holds 12288 bytes, so at a full screen **the frame is larger than the pipe it crosses** and cannot
+cross in one piece however the program is written. A consumer composing on its own clock therefore
+reads a screen that is half this frame and half the last one: modelled against the console
+session's compose, 7.5% of composes show a torn frame and between eighteen and twenty-four per cent
+of frames are never shown whole.
+
+**So the demo says where a frame begins and ends.** Each frame is written between `CSI ? 2026 h`
+and `CSI ? 2026 l` — synchronized output. Between the set and the reset a terminal keeps showing
+the screen it already had and composes nothing it receives, so the rows arrive in as many writes as
+they like and the picture changes **once, whole**.
+
+**This is a contract with two ends and one end alone changes nothing.** The producer brackets its
+frames; the consumer honours the mode. `kdos-term` honours it through `libkvt`'s
+`kvt_term_sync_hold()`, and the console session honours it in its VT layer the same way — both
+under a **150 ms watchdog**, because a producer that sets the hold and then dies must not freeze
+the window.
+
+**It degrades safely in both directions.** A terminal that never sets a hold composes exactly as it
+does now; a hold that outlives the watchdog composes anyway; and a terminal that has never heard of
+the mode ignores a private mode it does not know.
+
+**The escape goes out on the same stream as the frame**, which is why it is standard output and why
+both ends are flushed: the library's curses driver is initialised on standard output, so the
+refresh writes to that very stream. An escape sent down any other descriptor arrives in an order
+nothing defines, and a hold that lands *after* the rows it was meant to cover is worse than none. A
+standard output that is not a terminal is not bracketed at all.
+
+Measured on a captured pseudo-terminal at 236x63 — frames that exceed the 12288-byte pipe — over
+twelve seconds: 741 frames, **100.00% of the bytes inside a bracket**, zero nesting errors, biggest
+bracketed frame 20178 bytes. Every frame goes through one wrapper and nothing calls the library's
+flush directly.
 
 ## The animation is tuned to the music, and the scene clock follows the player
 
@@ -106,9 +194,31 @@ module was rendered at — is a moment the picture took and the music did not. L
 only ever grows, and a listener hears the demo running away from the track.
 
 **So the scene clock follows the player.** `sound_sync()` compares the two every 200 ms and puts
-the error into `tl_slowdown_timer()`, which is subtracted from every later reading of the clock —
-**at most 5% of the interval**, so the picture runs a touch slow or a touch fast and never jumps.
-A jump would skip or repeat a scene outright.
+the error into `tl_slowdown_timer()`, which is subtracted from every later reading of the clock.
+
+**The correction is a rate and never a lump, because the frame loop is paced off the same clock.**
+A correction handed over in one piece lands inside *one* frame interval, and that frame is as long
+as the piece: ten milliseconds against a sixteen-millisecond budget is a frame taking twenty-seven.
+So the error is **looked at** every 200 ms and **paid out continuously** — every call takes the
+slice of it that the time since the previous call is worth, clamped to 5% of that same time. The
+clamp is what makes it a slew rather than a jump; a jump on this clock skips or repeats a scene
+outright.
+
+**The player's position is a staircase and not a clock**, and a servo fed the raw reading works
+flat out on the quantisation rather than on the disagreement. `sngtime` moves one whole mixer
+buffer at a time — measured at the shipped quantum, a **90.0 ms riser every 97.7 ms**, with 88.3%
+of the mixer's ten-millisecond ticks advancing it by nothing at all. Fed that raw, a replica
+applied 5.37 corrections a second of 7.74 ms each against two clocks whose true disagreement was
+**0.12%**. So the reading is carried forward from the last step actually seen, and **at most one
+riser**: past that the player has not paused between buffers, it has stopped, and an estimate that
+kept climbing would hide the very stall the servo exists to pay for. What is left is smoothed with
+an exponential average — 10% of the error per look, about two seconds of memory — before any of it
+is paid.
+
+**There is no deadband and one would not be free.** Forgiving small errors is forgiving the drift,
+which is the whole of what this function exists to fix. The average is what does the smoothing, and
+it does it without giving anything up; a 2 ms deadband on top of it buys no drift at all and costs
+peak-to-peak in the picture — the numbers are in the table below.
 
 **The limit has a measured floor.** It must exceed the rate the two clocks *steadily* disagree at,
 or the servo saturates and the gap resumes growing at whatever is left over. What the player
@@ -122,10 +232,70 @@ what is *rendered* by whatever the rings below hold, and the demo cannot see tha
 correcting to zero would put the picture ahead of the sound by exactly the buffer it cannot
 measure. Only the growth is taken out.
 
+**It removes accumulated phase and not only rate, and that turns on one variable.** The rate is set
+so that an error standing still would be gone in one 200 ms interval, but the clamp refuses to pay
+more than 5% of any stretch of time — so whenever the error is larger than that, the rest is left
+standing, and it is `base`, the peg the error is measured from, that carries the unpaid remainder.
+Exactly two things may move it, each a phase that is genuinely new rather than an error:
+
+- **a track that has started or restarted**, which is the `music < prev` reading — `bb3.s3m` is
+  rewound in place when it falls inactive;
+- **the scene clock's integer turnover**, which `__lookup_timer()` reaches at some thirty-five
+  minutes because it builds its answer as `1000000 ×` whole seconds in an `int`. `-loop` reaches
+  it, and the phase either side is not comparable.
+
+**Anything else that re-pegs it is a bug however good its reason looks**, and it does not present
+as a bad frame — it presents as the demo finishing seconds away from its music. Two shapes are
+easy to write and both do exactly that:
+
+- **Measuring anything on `TIME`.** The interval, the average's time constant and the turnover test
+  are all on the **raw** reading — `TIME` plus everything the servo has handed
+  `tl_slowdown_timer()`, which is what `__lookup_timer()` answered and goes backwards on nothing but
+  the turnover. A clock the servo is bending is a ruler the servo is stretching: the trim is a rate,
+  and measured against a ruler running 4% slow it under-pays by exactly the rate it is correcting.
+  The turnover test is worse on the bent clock, because each spurious firing re-pegs `base`, throws
+  away the error not yet paid and forgives a stall for good — after which the drift is bounded by
+  nothing, since it is the **single largest** stall that sets it.
+- **Letting a loaded module answer zero.** `Player_Load()` leaves `sngtime` at zero and so does the
+  first tick of a track, so `sound_clock()` carries a flag of its own and answers **no music**
+  until `play()` has started the player. The window is not small: `bb.s3m` is loaded at the top of
+  stage 1 and `scene1()` reaches `play()` twenty-four seconds of scene clock later, and a standing
+  zero across it reads as a player twenty-four seconds behind — which the servo then slews the
+  whole picture to catch.
+
+**Both matter, and a design that smooths the picture by forgiving error reinstates the drift.**
+Measured on a replica over 280 s of scene clock losing 85 ms of audio every 3 s, with a draw cost
+of 1.35 ms:
+
+| `sound_sync()` | fps | Frame interval, s.d. | Peak to peak | Doubled frames | Corrections | Drift |
+|---|---|---|---|---|---|---|
+| One clamped lump every 200 ms | 56.4 | 1.802 ms | 11.385 ms | 1.81/s | 4.9/s of 9883 µs | **+0.100 s** |
+| Looked at every 200 ms, paid continuously | **60.0** | **0.377 ms** | **5.773 ms** | **0.00/s** | 258.0/s of 162 µs | **+0.100 s** |
+| …the same, but with a 2 ms deadband | 60.0 | 0.402 ms | **18.941 ms** | 0.00/s | 258.8/s of 161 µs | +0.101 s |
+| …the same, but measured on `TIME` | 62.7 | 0.571 ms | 5.384 ms | 0.00/s | 187.6/s of 159 µs | **+11.980 s** |
+
+**The drift is identical and the picture is four to five times steadier** — which is the only shape
+of the answer worth having. The deadband buys nothing and loses peak-to-peak; the bent clock loses
+twelve seconds.
+
+**And the drift is bounded rather than merely small.** The same run at 1200 s: one lump every
+200 ms, +0.030 s at 56.4 fps with s.d. 1.809 ms; looked at and paid continuously, **+0.030 s at
+60.0 fps with s.d. 0.379 ms**; with a 2 ms deadband, +0.030 s with peak-to-peak 10.028 ms against
+7.462 ms. What varies between runs is the phase the track started at, which is one quantum and is
+kept on purpose.
+
+The correction is also robust to what it is fed: across a **quantum sweep from 0 to 170 ms** the
+frame interval's s.d. stays between 0.371 ms and 0.405 ms, and a **500 ms stall every 30 s** gives
+0.481 ms with the same drift.
+
 The position it follows is the player's own `sngtime`, which advances a tick at a time at whatever
 tempo the module asks for. `song_progress()` is the wrong clock for this: its rows-per-pattern is
 nominal, so its reading carries a skew that belongs to the module — up to 63 thousandths on
 `bb2.s3m`, which at a track length is seconds of phase that are not there.
+
+**The animation's own schedule is untouched by any of it.** Measured under a pseudo-terminal with
+the mixer off, stage 1 and 2 reach the credits at 311.740156 s against 311.740147 s — nine
+microseconds over five minutes.
 
 ## The closing text turns a page at a time
 

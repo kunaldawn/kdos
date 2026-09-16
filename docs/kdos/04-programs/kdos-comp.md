@@ -190,6 +190,35 @@ Upstream's own prompt program is not built here, so the facility existed with no
 other end of it. `kdos-prompt` is `kdos-shell` under another name and answers with those codes.
 It is what lets ending the session, restarting and shutting down ask before they act.
 
+## Frame pacing and the output mode
+
+**Nothing here sets a frame rate.** The only thing that draws is the output's frame event, raised
+by the backend when that output is ready for another frame; the handler composites once and
+returns. There is no timer, no sleep and no period anywhere on the path, so the rate *is* the
+mode's rate — a 144 Hz panel gets 144 frames a second for the same reason a 60 Hz one gets 60. An
+output with nothing to redraw takes the scene's early-out instead of a frame, which is why an idle
+desktop costs nothing. A fixed period would be a floor on that idle cost in one direction and a
+ceiling on a fast panel in the other.
+
+Two rate limits do exist and neither binds: the interactive-resize path emits at most one configure
+per refresh interval, **read from the output's own mode**, and the shutdown collapse steps at 16 ms
+while the event loop is pumped by hand after the display has already stopped.
+
+**The mode is chosen resolution first, then the highest rate that will commit.** The preferred mode
+— the panel's EDID-preferred timing — fixes the resolution only; every mode at that resolution is
+then tried in descending order of refresh rate, and the first that passes its test is the one that
+commits. Taking the preferred mode's own rate is the trap, because panels routinely advertise 60 Hz
+as the preferred timing and 120 or 144 elsewhere in the same mode list, and the session would then
+sit at 60 with nothing in the desktop presenting it as a choice. Descending order is what makes
+this safe: a rate the link cannot carry fails its test and the next one down is tried, so the
+preferred mode is always still reachable, and the fallback to a *lower resolution* when none of
+them commits is untouched.
+
+Two things outrank it, both deliberately. A mode a client asks for through the output-management
+protocol is tested exactly as asked — that is how a user pins a rate. And `reuseOutputMode` in
+`rc.xml` keeps a mode that is already set ahead of any of this, which is what stops a handover from
+re-modesetting a working screen.
+
 ## The phosphor pass
 
 The compositor renders the desktop through a shader: scanlines every third **physical** row, a
@@ -217,9 +246,10 @@ Four things it must get right:
   output buffer and a scene that stops rendering.
 - **Two fallbacks, and neither can produce a black screen.** A renderer that is not the GL one
   gets no pass at all — software rendering with a fullscreen post-process is a slideshow — and it
-  is reported at startup. Anything that fails at run time marks that *output* broken and returns
-  to the ordinary commit for good, because sixty identical error lines a second is worse than
-  missing scanlines.
+  is reported at startup. Anything that fails at run time puts that *output* on the ordinary commit
+  for a cooldown: five seconds, doubling per consecutive failure to a minute, reset by a pass that
+  completes. Sixty identical error lines a second is worse than missing scanlines, and a permanent
+  give-up would untheme a screen for the whole session over one hotplug renegotiation.
 - **The magnifier takes the frame instead, whole.** The magnified inset is drawn inside the call
   the pass replaces, so with the pass on a magnified frame lost the inset whenever the scene
   redrew and kept it whenever the scene was static — a flicker between two different pictures. The
@@ -227,6 +257,13 @@ Four things it must get right:
   accessibility zoom read through scanlines is harder to read, not easier.
 
 The curvature is normalised by the corner displacement so no value crops the desktop.
+
+**The pass is not what bounds the frame rate.** Timed off-screen at the shipped defaults on a
+GeForce RTX 4060, one pass costs 0.033 ms at 1920×1080, 0.060 ms at 2560×1440 and 0.138 ms at
+3840×2160 — against 0.018, 0.033 and 0.070 ms for a plain blit of the same buffer, so the effect
+itself is roughly the cost of moving the pixels again. Even the 4K figure is two per cent of a
+144 Hz frame budget. The lever the pass gives back is `crt_fullscreen = off`, which is one render
+instead of two for video and games; it is a battery setting, not a frame-rate one.
 
 Colours come from the shared palette, and the accent is re-read on reload, so a theme change
 retints the running shader in the same signal that repaints the panel.

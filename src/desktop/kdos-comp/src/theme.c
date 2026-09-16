@@ -283,12 +283,22 @@ load_button(struct theme *theme, struct button *b, enum ssd_active_state active)
  * as a dash and a dot no theme setting could grow. Two things fix that
  * together: `buffer_resize_pixelated` enlarges an XBM by a whole number with
  * a NEAREST filter, and the source is eight pixels rather than six so that
- * number is 4 rather than 5⅓. Eight is also what lets `[]` have a titlebar of
- * its own and `X` have clean diagonals.
+ * number is 4 rather than 5⅓. Eight is also what lets the framed box have a
+ * titlebar of its own and the cross have clean diagonals.
  *
  * XBM bit order is LSB-first, so bit 0 is the LEFTMOST column of the row.
- * They are drawn as the character-grid marks they stand in for: `_` `[]` `X`
- * `=`.
+ *
+ * THEY ARE NOT A COPY OF THE CHARACTER GRID'S MARKS. What is drawn here is a
+ * bar, a framed box, a cross and a rule stack; `kdos-con` draws `↓ ■ X` on its
+ * chips (`draw_buttons`, src/desktop/kdos-con/windows.c). The two sets diverge
+ * because the grounds do. A button image is a colour of its own on a titlebar
+ * of another (`window.active.button.unpressed.image.color` against
+ * `window.active.title.bg.color`), so a bar that hugs the button's floor is
+ * still a bar against its ground. A chip's mark is KT_SURFACE, which is the
+ * slot the frame body under it is filled with, so its only boundary is the
+ * strip of plate inside the cell and a floor-hugging mark there reads as the
+ * plate ending early. Changing one set does not oblige the other; see
+ * docs/kdos/03-architecture/design-language.md for both measurements.
  */
 #define KDOS_BTN_ICONIFY  (const char[]){ 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x7e, 0x00 }
 #define KDOS_BTN_MAX      (const char[]){ 0x00, 0x7e, 0x7e, 0x42, 0x42, 0x42, 0x7e, 0x00 }

@@ -337,11 +337,14 @@ selection steps over never lights.
 
 **A sprite table entry is a borrowed pointer, so eviction is what the owner told it to do.** The
 table does no pixel work and cannot free a picture; an owner registers an evictor and the table
-calls it whenever it stops naming a picture — a slot taken back under the byte budget, a slot
-reused for a *different* picture under the same key, or a tile refused part-way through a tiled put.
-Without an evictor a full table simply answers -1, which every consumer already handles by drawing
-its glyph. That is right for icons, which are owned for the life of the session, and wrong for
-photographs, which are megabytes each.
+calls it whenever the table itself stops naming a picture — a slot taken back under the byte budget,
+a slot reused for a *different* picture under the same key, or a tile refused part-way through a
+tiled put. **`ktui_sprite_drop` is the one way a picture stops being named without the evictor**:
+dropping by key is the owner's own call, and a callback there would be a free from inside that call,
+so the table hands nothing back and the owner unrefs what it dropped and clears whatever it keeps
+beside the slot. Without an evictor a full table simply answers -1, which every consumer already
+handles by drawing its glyph. That is right for icons, which are owned for the life of the session,
+and wrong for photographs, which are megabytes each.
 
 **A refused put is a hole, and only the owner can see it.** `ktui_sprite_put` answers -1 when the
 budget cannot be made to fit: eviction skips every slot the cell grids still reference, so a table
@@ -669,11 +672,23 @@ sprite cell it copies out. A session that owns a picture itself — an embedded 
 takes slots from the same rotation, because a second numbering would eventually hand a view a number
 a surface is already using.
 
-**And the session's slots are a free map, not a counter.** A slot goes back when its surface goes
-or when the client drops the picture, and the rotation point is only where the search for a free one
-starts. A counter alone wrapped onto numbers still being drawn with, so one program's picture
-appeared inside another's window on a session that had been open long enough. A session with every
-slot taken hands back −1 and the caller draws the fallback mark.
+**And the session's slots are a free map, not a counter.** A slot goes back when its surface goes,
+when the client drops the picture, or when a session that cuts its own pictures calls
+`kcon_server_free_slot`; the rotation point is only where the search for a free one starts. A
+counter alone wrapped onto numbers still being drawn with, so one program's picture appeared inside
+another's window on a session that had been open long enough. A session with every slot taken hands
+back −1 and the caller draws the fallback mark.
+
+**Giving a slot back tells every attached display to forget it**, as a `KCON_OP_SPRITE_DROP` in the
+session→view direction — the same verb a client uses to give up one of its own numbers. A number
+back in the rotation is a number the rotation will hand out again when the search comes round to it,
+and until it does nobody owns the number and nothing sends a picture under it, while a display keys
+its sprite table on that number alone: one that was never told holds those pixels in its own byte
+budget with nothing that will ever replace them, and the eviction that eventually takes them is
+reported as a loss of a slot that by then belongs to somebody else, spending that owner's repair
+allowance on a picture it never lost. Best effort — a drop that cannot be queued leaves the display
+holding a stale picture until the slot's next owner sends its own, which replaces it under the same
+key.
 
 **A picture is sent when its PIXELS change, not once per slot.** An animation registers a new frame
 under the same key and therefore in the same slot, without touching a single cell — so a client that
@@ -696,7 +711,10 @@ slot number is an untrusted peer's index into a table of the session's own. **Th
 message per frame it presents, not one per loss** — a display short of budget loses a picture per
 block per frame, and
 a message each would spend the queue the pictures need — and the side that re-owes the slots has to
-bound how often it pays them, because a table too small for the window refuses the replacement too.
+bound how often it pays them **per unit of time**, because a table too small for the window refuses
+the replacement too. A total restored only when the owner next draws is not a bound but an expiry:
+an owner that has finished drawing never restores it, and the first picture the display loses after
+that is a hole nothing fills.
 
 **Every connection asks the kernel for a large socket buffer.** `kcon_conn_new` requests
 `KCON_SOCK_BUF` (2 MiB) for `SO_SNDBUF` and `SO_RCVBUF` on both ends. **An AF_UNIX stream write is
@@ -1065,24 +1083,61 @@ calls `ktui_draw_resize()` and tells whoever is composing for it — this librar
 nothing about the session on top of them. **The old font comes back if the new one will not load**,
 because a screen is the one thing a person cannot work around from somewhere else.
 
-**Three buffers a screen, and the painter never touches the two the kernel can see.** The cells are
-composited into a system-memory image, the rows that changed are copied into the scanout buffer
-that is not being shown, and a page flip points the CRTC at it. Painting into the buffer being
-scanned out is what tearing is, and compositing into it is worse than slow: a dumb buffer is mapped
-write-combined and every `OVER` reads the destination back. `kkms_ready()` is false while a flip is
-outstanding and `kkms_drm_fd()` is the descriptor it completes on, which together are how a view
-draws at the refresh rate instead of on a timer.
+**Up to three scanout buffers a screen, plus the painter's own, and the painter never touches one
+the kernel can see.** The cells are composited into a system-memory image, the rows that changed
+are copied into a buffer that is neither on the screen nor named by a flip, and a page flip points
+the CRTC at it. Painting into the buffer being scanned out is what tearing is, and compositing into
+it is worse than slow: a dumb buffer is mapped write-combined and every `OVER` reads the
+destination back.
 
-**The pair is for hardware and for host-scanned virtual framebuffers; a transfer-model driver
-stays single-buffered.** `virtio_gpu`, `qxl` and `vmwgfx` copy the guest's buffer to the host at
-the rectangle `drmModeDirtyFB` names and read it at no other time, so one buffer there is already
-tear-free and a legacy page flip — no damage rectangle, so the driver takes the whole plane — turns
-a few changed rows into an 8 MB upload. The decision is the driver's name, read once at open, not
-"is this virtual": QEMU's stdvga is scanned continuously and tears exactly like hardware. **A
-refusal is only permanent when it is about the driver.** `EINVAL`, `ENOSYS` and `EOPNOTSUPP` give
-up the pair, and the frame is copied into the surviving buffer before the CRTC is pointed at it —
-anything else (`EBUSY` from a CRTC the screen blank detached, `EACCES` on the way back from another
-VT) costs one repainted frame and changes nothing.
+**Every buffer is in exactly one role, and the roles are the safety argument — not arithmetic on an
+index.** `front` is under the raster, `queued` is named by a flip the kernel has not reported,
+`ready` holds a composed frame waiting for the queue to clear, and anything left is the painter's.
+`kkms_ready()` is false when no buffer is left, `kkms_drm_fd()` is the descriptor a flip completes
+on, and together they are how a view draws at the refresh rate instead of on a timer. **The third
+buffer is what stops the painter waiting for the vblank**: with two, the only buffer it may touch
+is the one the flip is waiting on, so a compose that overruns a refresh period costs a whole
+further period — the 60-to-30 cliff. With three the next frame is composed during the flight and
+the flip's own completion presents it, so the latency lost is that frame's and not the next one's.
+**At most one frame waits**, which is what makes the presentation order the paint order without a
+queue to keep in step. `KkmsTune.buffers` is a ceiling of 1 to 3 and a driver with no memory for
+the third gets two; `front` moves only when a completion arrives, because every relight and every
+wake points the CRTC at it.
+
+**More than one buffer is for hardware and for host-scanned virtual framebuffers; a transfer-model
+driver stays single-buffered.** `virtio_gpu`, `qxl` and `vmwgfx` copy the guest's buffer to the
+host at the rectangle `drmModeDirtyFB` names and read it at no other time, so one buffer there is
+already tear-free and a legacy page flip — no damage rectangle, so the driver takes the whole plane
+— turns a few changed rows into an 8 MB upload. The decision is the driver's name, read once at
+open, not "is this virtual": QEMU's stdvga is scanned continuously and tears exactly like hardware.
+**A refusal is only permanent when it is about the driver.** `EINVAL`, `ENOSYS` and `EOPNOTSUPP`
+give up every buffer but one, and the frame is copied into the survivor before the CRTC is pointed
+at it — anything else (`EBUSY` from a CRTC the screen blank detached, `EACCES` on the way back from
+another VT) costs one repainted frame and changes nothing.
+
+**A row painted is owed to every buffer and cleared only in the one it is copied into.** The
+buffers are frames apart, so a row given to one is still an older frame's in the others; with three
+it stays owed to two. The strip below the last whole cell row, where the mode is not a multiple of
+the cell, carries the same debt separately because no row covers it and the painter fills it only
+on a full repaint — given to one buffer alone it blinks at a fraction of the flip rate.
+
+**The mode policy and the present are the caller's, passed to `kkms_init()` as `KkmsTune`.**
+`KKMS_MODE_PREFERRED` takes the monitor's EDID choice and is the default; `KKMS_MODE_FASTEST` takes
+the highest refresh **at the size the monitor chose** and never another resolution, because a
+scaled desktop is a blur nobody asked for. A mode already in force still outranks both, so a hotplug
+for an unrelated connector does not undo a choice somebody made. `tearing` passes
+`DRM_MODE_PAGE_FLIP_ASYNC` to the same legacy flip, which presents immediately and cuts a moving
+edge across the screen; it is off unless asked for, silently off where `DRM_CAP_ASYNC_PAGE_FLIP` is
+absent, and **dropped for the rest of the session on its first `EINVAL`** — a driver refusing the
+flag would otherwise be read as a driver that cannot flip at all, which costs every buffer but one.
+
+**The refresh is published so a session can pace itself to the screen.** `KkmsOutput.refresh` is
+the timing in force per screen and `kkms_refresh_mhz()` is the highest among the lit ones, both in
+millihertz and both computed from the clock and the totals rather than read from the kernel's
+rounded `vrefresh` — 59.94 reported as 59 is two modes a picker cannot tell apart. The fastest
+screen is the right one to pace to because one grid is cut across all of them: a frame slow enough
+for the 60 Hz panel is a frame the 144 Hz one shows twice. It moves with a hotplug and a mode
+change, so it is read again wherever those are announced.
 
 **Nothing is painted while the screen is blanked**, and going dark retires any flip in flight,
 because a detached CRTC never presents the frame a flip is waiting for and a flush skips an output

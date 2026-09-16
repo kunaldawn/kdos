@@ -183,6 +183,15 @@ static void usage(FILE *f)
 "  --card PATH        which DRM device to take, for a machine with more\n"
 "                     than one; without it the first with a connected\n"
 "                     output wins\n"
+"  --buffers N        scanout buffers a screen may hold, 1 to 3. Three\n"
+"                     lets the next frame be composed while a flip is\n"
+"                     still in flight; a driver with no memory for it\n"
+"                     gets fewer\n"
+"  --fastest-mode     take the highest refresh at the size the monitor\n"
+"                     asked for, instead of the monitor's own choice\n"
+"  --tearing          present each frame as it is composed instead of at\n"
+"                     the vblank: less latency, and a moving edge is cut\n"
+"                     across the screen\n"
 "  --tty              draw in this terminal\n"
 "  --shot FILE.png    take one frame and write it as a picture\n"
 "  --crop X,Y,W,H     the part of the grid a shot covers, in cells\n"
@@ -1030,6 +1039,60 @@ static void take_sprite(const unsigned char *payload, size_t len)
 #endif
 }
 
+/*
+ * A SESSION SLOT WENT BACK TO THE ROTATION, SO THE PICTURE BEHIND IT GOES NOW.
+ *
+ * The rotation will hand the number to another window's block when the search
+ * comes round to it, and until it does nobody owns the number and nothing
+ * sends a picture under it. Pixels still held here would sit in this view's
+ * byte budget with nothing that could ever replace them, they would be the
+ * next owner's picture until it published its own, and the eviction that
+ * eventually took them would be reported as a loss of a slot that owner never
+ * lost — spending the repair allowance of a window with nothing wrong with it.
+ *
+ * DROPPED, NOT EVICTED. ktui_sprite_drop() does not call the evictor, because
+ * the owner of the pixels is the caller and a callback into it would be a free
+ * from inside its own call — so the unref is this function's, and so is every
+ * table entry sprite_free() would have cleared.
+ *
+ * AND IT IS NOT A LOSS. A loss asks the session for the picture again; nothing
+ * owns this number any more, and asking would be asking for ever.
+ */
+static void drop_sprite(const unsigned char *payload, size_t len)
+{
+	KconRd r;
+	int slot;
+
+	kcon_rd_init(&r, payload, len);
+	slot = (int)kcon_get_u16(&r);
+	if (r.err || slot < 0 || slot >= KCON_MAX_SPRITE_MAP)
+		return;
+
+#ifdef KDOS_VIEW_PIXELS
+	view_slot_init();
+	ascii_drop(slot);
+	sess_fb[slot] = 0;
+#if defined(KDOS_VIEW_TTYPIX)
+	view_ttypix_forget(view_slot[slot]);
+#endif
+	ktui_sprite_drop((uint64_t)slot);
+	if (view_pix[slot])
+		pixman_image_unref(view_pix[slot]);
+	view_pix[slot] = NULL;
+	view_pix_w[slot] = 0;
+	view_pix_h[slot] = 0;
+	view_slot[slot] = -1;
+	sprite_lost_drop(slot);
+	/*
+	 * THE CELLS NAMING IT ARE REPAINTED HERE. They are still on the screen
+	 * over pixels that have just been freed, and the frame that replaces
+	 * them is a message away — a display that waited for it would show a
+	 * picture whose memory is gone.
+	 */
+	redraw_slot((unsigned)slot);
+#endif
+}
+
 #ifdef KDOS_VIEW_PIXELS
 /*
  * The session's slot in the cell, rewritten to this view's.
@@ -1784,6 +1847,11 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 		return got;
 	}
 
+	if (op == KCON_OP_SPRITE_DROP) {
+		drop_sprite(payload, len);
+		return got;
+	}
+
 	/*
 	 * THE LITERALS OF THE RUN THAT CAME BEFORE. The shadow already
 	 * holds those cells, so this patches them there and redraws
@@ -2045,6 +2113,19 @@ int main(int argc, char **argv)
 	int cols = 0, rows = 0, tty = 0, kms = 0, dump = 0, cast = 0;
 	int kms_only = 0;
 	const char *card = NULL;
+	/*
+	 * HOW THE SCREEN IS DRIVEN — see KkmsTune, which these three become in
+	 * the KMS block below. Zero is every default: three buffers, the
+	 * monitor's preferred mode and presentation locked to the vblank. Each
+	 * is an opt-in that trades something a person can see for something
+	 * else a person can see, so none of them is a default this program
+	 * picks on their behalf.
+	 *
+	 * READ IN EVERY BUILD, acted on only in the one that takes a screen —
+	 * the rule `--font` already keeps, so a script that passes them need
+	 * not know which build it is talking to.
+	 */
+	int want_bufs = 0, want_fastest = 0, want_tearing = 0;
 #ifdef KDOS_VIEW_PIXELS
 	/* Only a build that can hold pixels can have a terminal sink. */
 	int tty_pix = 0;
@@ -2076,6 +2157,30 @@ int main(int argc, char **argv)
 			 * emulated one every time — and that is what made a
 			 * second screen impossible to test. */
 			card = argv[++i];
+			continue;
+		}
+		if (!strcmp(argv[i], "--buffers") && i + 1 < argc) {
+			/* A CEILING AND NOT A PROMISE: a driver with no memory
+			 * for the third gives two and the desktop comes up
+			 * either way. Out of range is the default, because a
+			 * typo here must not be a machine with no display. */
+			want_bufs = atoi(argv[++i]);
+			continue;
+		}
+		if (!strcmp(argv[i], "--fastest-mode")) {
+			/* THE HIGHEST REFRESH AT THE SIZE THE MONITOR CHOSE,
+			 * never a different size: a scaled desktop is a blur
+			 * nobody asked for. */
+			want_fastest = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--tearing")) {
+			/* PRESENT WITHOUT WAITING FOR THE VBLANK. It costs up
+			 * to a refresh period of latency and it TEARS: a
+			 * moving edge is cut across the screen, because the
+			 * raster is inside the buffer when the CRTC is
+			 * pointed at the next one. */
+			want_tearing = 1;
 			continue;
 		}
 		if (!strcmp(argv[i], "--kms")) {
@@ -2164,9 +2269,13 @@ int main(int argc, char **argv)
 		return 2;
 	}
 
-	/* The font is the KMS mode's; a build without it still accepts --font
-	 * so a script need not know which build it is talking to. */
+	/* The font and the three screen-driving flags are the KMS mode's; a
+	 * build without it still accepts them so a script need not know which
+	 * build it is talking to. */
 	(void)font;
+	(void)want_bufs;
+	(void)want_fastest;
+	(void)want_tearing;
 
 	/* `--record` is not a mode: it rides whichever one is drawing, because
 	 * a recording is what a view was sent and the view still has to be
@@ -2270,7 +2379,14 @@ int main(int argc, char **argv)
 				font = fs_name;
 		}
 
-		if (kkms_init(NULL, card, font) == 0) {
+		KkmsTune tune = {
+			.buffers = want_bufs,
+			.mode = want_fastest ? KKMS_MODE_FASTEST
+					     : KKMS_MODE_PREFERRED,
+			.tearing = want_tearing,
+		};
+
+		if (kkms_init(NULL, card, font, &tune) == 0) {
 			ktui_draw_init();
 
 			/*

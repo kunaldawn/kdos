@@ -34,6 +34,12 @@
 #include <sys/resource.h>
 #include <time.h>
 MODULE *module;
+/*
+ * Set by play() and cleared by stop(), which is also how load_song() clears
+ * it. It says the player has been STARTED on `module`, which is the one thing
+ * sngtime cannot say for itself -- see sound_clock().
+ */
+static int playing;
 int bbsound;
 void stop();
 static int freqs[14] = {
@@ -355,7 +361,7 @@ load_song (char *name)
 	  aa_printf (context, 0, 0, AA_SPECIAL,
 		     "Failed to load module:%s",
 		     MikMod_strerror (MikMod_errno));
-	  aa_flush (context);
+	  bbflush ();
 	  sleep (1);
 	}
     }
@@ -377,11 +383,31 @@ load_song (char *name)
  * picture took and the music did not, and the two are further apart
  * afterwards than before. It never closes again on its own.
  *
- * THE CORRECTION IS A SLEW AND NEVER A JUMP. The error goes into
- * tl_slowdown_timer(), which is subtracted from every later reading of the
- * scene clock, at most BB_SYNC_PPM of the interval between corrections.
- * Applied whole it would be a jump, and a jump on this clock skips or
- * repeats a scene outright.
+ * THE CORRECTION IS A RATE AND NEVER A LUMP. tl_slowdown_timer() is
+ * subtracted from every later reading of the scene clock, and bb.c paces the
+ * next frame off that same clock -- so a correction handed over in one piece
+ * lands inside ONE frame interval, and that frame is as long as the piece.
+ * Ten milliseconds of it against a sixteen millisecond budget is a frame
+ * taking twenty-seven, and a few of those a second are the whole of what an
+ * eye reads as judder: measured, the corrections accounted for 99.6% of the
+ * variance in the frame interval, 3.660ms of it against a 16.000ms budget.
+ * So the error is LOOKED AT every BB_SYNC_US and PAID OUT CONTINUOUSLY --
+ * every call takes the slice of it that the time since the previous call is
+ * worth, clamped to BB_SYNC_PPM of that same time. The clamp is what makes
+ * it a slew rather than a jump, and a jump on this clock skips or repeats a
+ * scene outright.
+ *
+ * WHICH MAKES `base` THE ONE THING THAT MUST NOT MOVE. A slew takes out at
+ * most five per cent and leaves the rest standing as error for the next look
+ * to carry, so the servo only ever closes a gap ACROSS calls: it is
+ * `base` that remembers the part not yet paid. Anything that re-pegs it
+ * discards that remainder, and a servo that can only trim RATE and never
+ * remove accumulated PHASE does not converge at all -- the picture and the
+ * music settle a whole stall apart and stay there. Exactly two things may
+ * re-peg it, and each is a phase that is genuinely new rather than an error:
+ * a track that has started or restarted, and the scene clock's int turnover.
+ * A THIRD ONE IS A BUG however good its reason looks, and it will not show as
+ * a bad frame -- it shows as the demo finishing seconds away from its music.
  *
  * FIVE PER CENT, AND THE FLOOR UNDER THAT NUMBER IS A MEASUREMENT. The limit
  * has to exceed the STEADY rate the two clocks disagree at, or the servo
@@ -408,9 +434,29 @@ load_song (char *name)
  * lock on purpose: it is one aligned word, a reading one tick stale is
  * twenty milliseconds inside a servo that moves by two, and taking
  * MikMod_Lock here would park the render thread behind the real-time mixer.
+ *
+ * AND IT IS A STAIRCASE RATHER THAN A CLOCK, WHICH IS WHAT THE SERVO WOULD
+ * OTHERWISE SATURATE ON. sngtime moves one whole mixer buffer at a time --
+ * measured at the shipped quantum, a 90.0ms riser every 97.7ms, with 88.3% of
+ * the mixer's ten-millisecond ticks advancing it by nothing at all. Read raw
+ * it is therefore up to a whole riser of error that does not exist, and a
+ * servo fed the raw reading works flat out on the QUANTISATION: measured,
+ * 5.37 corrections a second of 7.74ms each against two clocks whose true
+ * disagreement was 0.12%. So the reading is CARRIED FORWARD from the last
+ * step actually seen, and AT MOST ONE RISER -- past that the player has not
+ * merely paused between buffers, it has stopped, and an estimate that kept
+ * climbing would hide the very stall the servo exists to pay for. What is
+ * left is smoothed with an exponential average before any of it is paid.
+ *
+ * THE AVERAGE IS WHY THERE IS NO DEADBAND, and a deadband would not be free:
+ * measured against the same jitter, a 2ms one buys no drift at all -- +0.030s
+ * against +0.030s over 1200s -- and widens the frame interval peak to peak
+ * from 7.462ms to 10.028ms. Forgiving a small error is forgiving the drift,
+ * which is the bug this whole function exists to fix.
  */
-#define BB_SYNC_US   200000	/* how often the error is looked at   */
-#define BB_SYNC_PPM   50000	/* and the most of it taken each time */
+#define BB_SYNC_US   200000	/* how often the error is looked at        */
+#define BB_SYNC_PPM   50000	/* the most of any interval the trim bends */
+#define BB_SYNC_ALPHA     10	/* hundredths of the error the average takes */
 
 /*
  * The player's timeline in microseconds, or -1 when there is no music to
@@ -431,8 +477,17 @@ sound_clock (void)
    * exists to avoid. A player that has fallen inactive simply stops
    * advancing sngtime, and the caller re-pegs on a reading that went
    * backwards, so nothing needs to be asked.
+   *
+   * A MODULE THAT IS LOADED BUT NOT STARTED HAS NO POSITION, AND ITS ZERO IS
+   * NOT ONE. `playing` is the difference, and it has to be a flag of ours
+   * because sngtime cannot tell the two apart: Player_Load() leaves it at
+   * zero and so does the first tick of the track. The window between them is
+   * not small -- bb() loads bb.s3m at the top of stage 1 and scene1() reaches
+   * play() twenty-four seconds of scene clock later -- and a standing zero
+   * across it reads to the servo as a player that has fallen twenty-four
+   * seconds behind, which it then slews the whole picture to catch.
    */
-  if (!bbsound || module == NULL)
+  if (!bbsound || module == NULL || !playing)
     return -1;
   return (int) (((long long) module->sngtime * 1000000) >> 10);
 #else
@@ -447,8 +502,10 @@ sound_sync (void)
 {
   static int base, last, held, said, kept, on = -1;
   static int prev = -1;
+  static int edge, edgeat, riser;	/* where sngtime last stepped, when, by */
+  static int avg, trimmed;		/* the smoothed error, and the last trim */
   int music = sound_clock ();
-  int want, step, err;
+  int now, est, want, cap, err, dt;
 
   /* Read once: this is called from bbupdate(), which runs every turn of
    * every scene's loop. */
@@ -456,63 +513,170 @@ sound_sync (void)
     on = getenv ("KDOS_BB_DEBUG") ? 1 : 0;
 
   /*
+   * THE SERVO IS TIMED ON THE CLOCK IT HAS NOT YET BENT. `held` is the whole
+   * of what this function has handed tl_slowdown_timer(), and nothing else in
+   * the demo ever slows or resets scenetimer, so TIME + held is exactly what
+   * __lookup_timer() answered -- the raw elapsed reading, which only ever
+   * goes backwards on the int turnover below.
+   *
+   * TIME ITSELF WILL NOT DO, for the interval, for the average or for the
+   * turnover. A clock the servo is bending runs up to BB_SYNC_PPM slow, so
+   * BB_SYNC_US of it is not a fifth of a second, the average's time constant
+   * is not the two seconds its cadence was chosen for, and the trim below is
+   * a rate against a ruler that the trim itself is stretching. The turnover
+   * test is worse: on the bent clock it fires on the servo's own output, and
+   * each firing re-pegs `base`, throws away the error not yet paid and
+   * forgives a stall for good -- after which the drift is bounded by nothing,
+   * because it is the SINGLE largest stall that sets it.
+   *
+   * THIS AND sound_clock()'s STANDING ZERO ARE ONE TEST, measured on a
+   * replica of this function over 280s of scene clock losing 85ms of audio
+   * every 3s. With the raw reading here and the no-music flag there, +0.100s
+   * of drift; timed on TIME instead, +11.980s. The turnover re-pegs exactly
+   * once in a run that reaches it, driven across it at speed.
+   */
+  now = TIME + held;
+
+  /*
+   * HOW LONG THE TRIM BELOW IS PAYING FOR. It is the gap since the PREVIOUS
+   * CALL and not since the last look, because the trim runs on every call:
+   * the clamp is a rate, so what it is a rate of has to be the time that has
+   * actually gone by since it last moved the clock.
+   */
+  dt = now - trimmed;
+  trimmed = now;
+
+  /*
    * A TRACK THAT HAS NOT STARTED, OR HAS RESTARTED, IS A NEW PHASE AND NOT
    * AN ERROR. Each module is loaded fresh and begins at zero, and bb3.s3m is
    * rewound in place when it falls inactive -- so a reading that went
    * backwards re-pegs rather than asking the servo to take out a whole
-   * track. The correction already made is KEPT: it is time the machine lost
-   * and the next track inherits the machine.
+   * track. It is the RAW reading that decides, never the estimate below:
+   * the estimate only ever climbs, so a rewind read through it is a track
+   * running away rather than a track starting again. The correction already
+   * made is KEPT: it is time the machine lost and the next track inherits
+   * the machine.
    */
   if (music < 0 || prev < 0 || music < prev)
     {
       base = TIME - (music < 0 ? 0 : music);
-      last = TIME;
+      edge = music < 0 ? 0 : music;
+      edgeat = now;
+      riser = 0;
+      avg = 0;
+      last = now;
       prev = music;
       return;
     }
   prev = music;
 
   /*
-   * A CLOCK THAT WENT BACKWARDS IS A WRAP AND NOT AN ERROR. The scene clock
-   * is an int of microseconds and turns over after some thirty-five minutes,
-   * which `-loop` reaches; the phase either side of that is not comparable,
-   * so it is taken again rather than handed to the servo as an hour of
-   * error.
+   * A RAW CLOCK THAT WENT BACKWARDS IS A WRAP AND NOT AN ERROR. __lookup_timer()
+   * builds its answer as 1000000 * whole seconds in an int, which turns over
+   * at some thirty-five minutes -- a length `-loop` reaches -- and lands about
+   * 4295 seconds behind. The phase either side of that is not comparable, so
+   * it is taken again rather than handed to the servo as an hour of error.
+   *
+   * IT IS THE RAW READING THAT IS TESTED, so the only thing that can trip
+   * this is the turnover: the servo's own trim is already in `held` and
+   * cancels out of `now`.
    */
-  if (TIME < last)
+  if (now < last)
     {
       base = TIME - music;
-      last = TIME;
+      edge = music;
+      edgeat = now;
+      avg = 0;
+      last = now;
       return;
     }
-  if (TIME - last < BB_SYNC_US)
-    return;
-  step = (int) ((long long) (TIME - last) * BB_SYNC_PPM / 1000000);
-  last = TIME;
 
   /*
+   * WHERE THE PLAYER WOULD BE IF IT MOVED SMOOTHLY, which is the position
+   * the error has to be measured against -- see the staircase above. The
+   * last step that was actually seen is carried forward at real time, and
+   * NEVER PAST ONE RISER: the cap is what keeps a stall visible.
+   *
+   * THE RISER IS TAKEN FROM THE PLAYER AND NOT STATED HERE, because it is
+   * the mixer's buffer and the buffer is the card's: it moves with the
+   * quantum, and a number written down here would be right on one machine.
+   * A first riser has not been seen yet, so the estimate is the raw reading
+   * until the player has stepped twice.
+   */
+  if (music != edge)
+    {
+      int r = music - edge;
+
+      if (r > 0 && r < BB_SYNC_US)
+	riser = r;
+      edge = music;
+      edgeat = now;
+    }
+  est = now - edgeat;
+  if (est > riser)
+    est = riser;
+  est += edge;
+
+  /*
+   * THE ERROR IS LOOKED AT ON THE INTERVAL AND PAID OUT BETWEEN THE LOOKS.
+   * The interval is what gives the AVERAGE a fixed cadence to have a time
+   * constant in: the loop's own cadence is anything from two milliseconds to
+   * a scene change, and an average stepped once per call would have a memory
+   * that changed with the screen size. BB_SYNC_ALPHA of a fifth of a second
+   * is about two seconds of it -- longer than any riser, shorter than any
+   * scene.
+   *
    * POSITIVE MEANS THE PICTURE IS AHEAD, and tl_slowdown_timer() is
    * subtracted from the clock, so the sign carries straight through.
    */
-  err = TIME - (base + music);
-  if (err > kept || -err > kept)
-    kept = err > 0 ? err : -err;
-  want = err;
-  if (want > step)
-    want = step;
-  else if (want < -step)
-    want = -step;
+  if (now - last >= BB_SYNC_US)
+    {
+      err = TIME - (base + est);
+      if (err > kept || -err > kept)
+	kept = err > 0 ? err : -err;
+      avg += (err - avg) * BB_SYNC_ALPHA / 100;
+      last = now;
+    }
+
+  /*
+   * AND THE WHOLE OF THE AVERAGE OVER ONE INTERVAL, WHICH IS WHY THIS STILL
+   * REMOVES PHASE. The rate is set so that an error standing still would be
+   * gone in BB_SYNC_US; anything the clamp refuses to pay now is still
+   * standing in `base` for the next look to find. A gentler rate leaves a
+   * standing phase offset in proportion to it, and a servo that cannot
+   * remove phase does not converge at all.
+   *
+   * THE CLAMP IS A RATE LIMIT AT BOTH ENDS, so no single step is more than
+   * BB_SYNC_PPM of the time it is paying for: at a two-millisecond cadence
+   * that is a hundred microseconds against a sixteen-millisecond frame, and
+   * it cannot be seen. It is also what keeps TIME monotone, which bb.c's
+   * frame gate depends on -- ninety-five per cent of a positive gap is still
+   * a positive gap.
+   */
+  want = (int) ((long long) avg * dt / BB_SYNC_US);
+  cap = (int) ((long long) dt * BB_SYNC_PPM / 1000000);
+  if (want > cap)
+    want = cap;
+  else if (want < -cap)
+    want = -cap;
   if (want)
     {
       tl_slowdown_timer (scenetimer, want);
       held += want;
     }
 
-  if (on && (TIME - said >= 5000000 || TIME < said))
+  /*
+   * THE THROTTLE IS ON THE RAW READING TOO, for the reason the servo is: TIME
+   * is the clock the trim is bending, so five seconds of it is not five
+   * seconds and the line would come out at whatever rate the servo happens to
+   * be running at. `now` goes backwards on the turnover and on nothing else,
+   * so the second half of this test means what it says.
+   */
+  if (on && (now - said >= 5000000 || now < said))
     {
       int prog = song_progress ();
 
-      said = TIME;
+      said = now;
 
       /*
        * NO ARITHMETIC ON THE FIRST TWO, because the arithmetic would be
@@ -558,6 +722,10 @@ play ()
   if (module != NULL)
     {
       Player_Start (module);
+      /* SET WITH THE START AND NEVER BEFORE IT. Until this line sound_clock()
+       * answers "no music", so the servo holds its correction where it is
+       * instead of chasing a position the player has not begun to advance. */
+      playing = 1;
       update_sound (NULL);
       if (!sound_thread_start () && !update_timer)
 	{
@@ -575,6 +743,11 @@ void
 stop ()
 {
 #ifdef HAVE_LIBMIKMOD
+  /* CLEARED OUTSIDE THE GUARD, because it must be false whenever `module` is
+   * not a started player -- including the `-nosound` path, where nothing
+   * below runs at all. load_song() clears it through here before it loads the
+   * next track. */
+  playing = 0;
   if (bbsound)
     {
       /* The join comes FIRST. The mixer thread dereferences `module` every
@@ -700,7 +873,7 @@ main (int argc, char *argv[])
 	  int k;
           aa_resize(context);
 	  ptable ();
-	  aa_flush (context);
+	  bbflush ();
 	  k = aa_getkey (context, 1);
 	  if (k >= '0' && k <= '0' + cont)
 	    {
@@ -731,7 +904,7 @@ main (int argc, char *argv[])
 	  aa_printf (context, 0, p++, AA_SPECIAL,
 		     "Sound initialization failed:%s",
 		     MikMod_strerror (MikMod_errno));
-	  aa_flush (context);
+	  bbflush ();
 	  bbsound = 0;
 	  sleep (1);
 	}

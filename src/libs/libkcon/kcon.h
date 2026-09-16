@@ -167,7 +167,25 @@ enum {
 	KCON_OP_ATTACH,
 	KCON_OP_COMMIT,		/* cell runs                               */
 	KCON_OP_SPRITE,		/* key, w, h, argb — sent once             */
-	KCON_OP_SPRITE_DROP,
+	/*
+	 * A PICTURE'S NUMBER GOES BACK, AND IT TRAVELS IN BOTH DIRECTIONS
+	 * BECAUSE BOTH ENDS HOLD PIXELS UNDER IT.
+	 *
+	 * Client -> session: the client has finished with one of its own slot
+	 * numbers and the session slot behind it returns to the rotation.
+	 * Session -> view: that session number has gone back to the rotation,
+	 * which will hand it out again when the search comes round to it, so
+	 * the display must forget the picture it is holding under it. Until
+	 * the number comes round nobody owns it and nothing will send a
+	 * picture under it, so a display that is never told keeps those pixels
+	 * in its own byte budget with nothing that will ever replace them, and
+	 * the eviction that eventually takes them is reported as a loss of a
+	 * slot that by then belongs to a live window, which spends that
+	 * window's repair allowance on a picture it never lost.
+	 *
+	 * The payload is one u16 slot either way: the sender's own numbering.
+	 */
+	KCON_OP_SPRITE_DROP,	/* both ways: slot                         */
 	KCON_OP_TITLE,
 	KCON_OP_CLOSE,
 	KCON_OP_CLIP_OFFER,
@@ -635,8 +653,12 @@ enum {
 	 * message when it presents: u16 count, then that many u16 slots.
 	 *
 	 * The owner of those slots owes them again, and must bound how often
-	 * it pays: a table too small for the window refuses every re-send, and
-	 * a repair with no limit is the same bytes for ever.
+	 * it pays PER UNIT OF TIME: a table too small for the window refuses
+	 * every re-send, and a repair with no limit is the same bytes for
+	 * ever. A total, restored only when the owner next draws, is not a
+	 * bound but an expiry — an owner that has finished drawing never
+	 * restores it, and the first picture the display loses after that is a
+	 * hole nothing fills.
 	 */
 	KCON_OP_SPRITE_LOST,
 
@@ -1709,10 +1731,13 @@ typedef struct {
 	 * session's, already bounded against KCON_MAX_SPRITE_MAP, and the hook
 	 * is called once per slot however many one message carried.
 	 *
-	 * Whatever owns that slot owes it to this view again. See
-	 * KCON_OP_SPRITE_LOST for why the repair needs a limit of its own: the
-	 * view that lost one picture because its table is too small for the
-	 * window loses the replacement as well.
+	 * Whatever owns that slot owes it to this view again, and must bound
+	 * how often it pays BY TIME. See KCON_OP_SPRITE_LOST: a view whose
+	 * table is too small for the picture loses the replacement as well, so
+	 * a repair with no limit is the same bytes for ever — while a limit
+	 * restored only by the owner drawing again is not a limit but an
+	 * expiry, and a picture lost after a window has settled is then a hole
+	 * for the life of that window.
 	 */
 	void (*view_sprite_lost)(KconSurface *v, int slot, void *user);
 
@@ -1921,6 +1946,16 @@ int kcon_server_alloc_slot(KconServer *s);
  * counter wrapped onto numbers still being drawn with, and one program's
  * picture then appeared inside another's window. A surface's slots go back
  * when it goes; a session that cuts its own pictures gives them back here.
+ *
+ * AND EVERY ATTACHED DISPLAY IS TOLD, because a number back in the rotation is
+ * a number the rotation will hand out again — when the search comes round to
+ * it, not when it is freed. A display keys its sprite table on the session
+ * slot alone, and until the number comes round nothing will send a picture
+ * under it, so a display that was never told holds those pixels in its own
+ * byte budget with nothing that will ever replace them — and the eviction that
+ * eventually takes them is reported as a loss of a slot that by then belongs
+ * to somebody else, which spends that owner's repair allowance on a picture it
+ * never lost.
  */
 void kcon_server_free_slot(KconServer *s, int slot);
 

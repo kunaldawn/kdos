@@ -66,10 +66,14 @@ const char *kkms_reason(void)
  * whatever had the screen left it in an unknown state.
  * ──────────────────────────────────────────────────────────────────────── */
 
-/* The buffer the CRTC is showing: the one that is not being painted. */
+/* The buffer the CRTC is showing. */
 static uint32_t front_fb(const struct kkms_out *o);
-/* Every row of this output is a frame behind in both buffers. */
+/* Every row of this output is a frame behind in every buffer it holds. */
 static void owe_all(struct kkms_out *o);
+/* Nothing is in flight and nothing is waiting: every buffer but the front one
+ * is the painter's again. Used wherever a flip is ABANDONED rather than
+ * completed — a VT switch, a modeset, a screen going dark. */
+static void flip_reset(struct kkms_out *o);
 
 static void on_enable(struct libseat *seat, void *data)
 {
@@ -106,9 +110,15 @@ static void on_enable(struct libseat *seat, void *data)
 		else if (K.drm_fd >= 0 && o->crtc && front_fb(o))
 			drmModeSetCrtc(K.drm_fd, o->crtc, front_fb(o), 0, 0,
 				       &o->connector, 1, &o->mode);
-		/* A flip the kernel will never report now: the device was
-		 * somebody else's while we were away. */
-		o->flip_pending = 0;
+		/*
+		 * A FLIP THE KERNEL WILL NEVER REPORT, and a frame composed
+		 * for a screen that is now somebody else's: the device was
+		 * not ours while we were away. The generation moves inside
+		 * flip_reset(), or a completion that does arrive names the
+		 * buffer it flipped as the front one and the next paint goes
+		 * into the buffer the raster is inside.
+		 */
+		flip_reset(o);
 		o->force_full = 1;
 		/* And the toolkit is told, because it is what decides whether
 		 * a flush happens at all: a screen coming back has nothing
@@ -150,7 +160,7 @@ static struct libseat_seat_listener seat_listener = {
  *
  * The other virtual drivers are NOT in this list. QEMU's stdvga (bochs) and a
  * handed-over simpledrm framebuffer are scanned continuously, so a single
- * buffer there tears exactly like hardware and the pair is what removes it.
+ * buffer there tears exactly like hardware and a flip is what removes it.
  */
 static int driver_transfers(int fd)
 {
@@ -235,10 +245,29 @@ static int open_drm(const char *card)
 		}
 
 		if (lit) {
+			uint64_t cap = 0;
+
 			K.drm_fd = fd;
 			K.drm_dev = id;
 			K.res = res;
 			K.drm_transfers = driver_transfers(fd);
+			/*
+			 * CAN THIS DEVICE PRESENT WITHOUT WAITING FOR THE
+			 * VBLANK? DRM_CAP_ASYNC_PAGE_FLIP is exactly the
+			 * legacy drmModePageFlip's answer, which is the call
+			 * this library makes; the atomic capability is a
+			 * different number and says nothing about it.
+			 *
+			 * ASKED ONCE, HERE, because the device cannot change
+			 * — and because a flag passed to a driver that does
+			 * not take it is refused with EINVAL, which is the
+			 * one errno the flush reads as "this driver cannot
+			 * flip" and answers by giving up every buffer but one.
+			 */
+			K.can_async = drmGetCap(fd, DRM_CAP_ASYNC_PAGE_FLIP,
+						&cap) == 0 && cap;
+			K.flip_flags = K.async_flip && K.can_async
+				       ? DRM_MODE_PAGE_FLIP_ASYNC : 0;
 			return 0;
 		}
 
@@ -296,6 +325,37 @@ static const char *conn_type_name(uint32_t t)
 	}
 }
 
+/*
+ * A MODE'S REFRESH IN MILLIHERTZ, FROM ITS TIMINGS.
+ *
+ * `vrefresh` is a rounded integer the kernel fills in for convenience, and
+ * 59.94 Hz reported as 59 is two modes a picker cannot tell apart and a
+ * session pacing itself to the wrong period. The clock and the totals ARE the
+ * mode, so they are what this reads; `vrefresh` is the fallback for a mode
+ * that publishes no totals at all.
+ *
+ * THE TIMINGS ARE NOT THE FRAME RATE ON THEIR OWN. Interlace sends two fields
+ * per frame, doublescan sends each line twice and vscan sends each line n
+ * times; the same three corrections the kernel applies in drm_mode_vrefresh,
+ * in the same order, or 1080i is offered as 30 Hz beside the 60 Hz every other
+ * tool reports.
+ */
+static int mode_refresh_mhz(const drmModeModeInfo *d)
+{
+	int r = d->htotal && d->vtotal
+		? (int)(((uint64_t)d->clock * 1000000ull) /
+			((uint64_t)d->htotal * d->vtotal))
+		: (int)(d->vrefresh * 1000);
+
+	if (d->flags & DRM_MODE_FLAG_INTERLACE)
+		r *= 2;
+	if (d->flags & DRM_MODE_FLAG_DBLSCAN)
+		r /= 2;
+	if (d->vscan > 1)
+		r /= d->vscan;
+	return r;
+}
+
 static int pick_outputs(void)
 {
 	uint32_t taken[KKMS_MAX_OUT];
@@ -340,6 +400,39 @@ static int pick_outputs(void)
 				chosen = &c->modes[m];
 				break;
 			}
+
+		/*
+		 * AND, WHERE THE CALLER ASKED FOR IT, THE FASTEST MODE AT THE
+		 * SIZE THE MONITOR CHOSE.
+		 *
+		 * THE RESOLUTION IS THE MONITOR'S AND ONLY THE REFRESH IS
+		 * OURS: a panel's preferred mode is its native size, and a
+		 * scaled one is a blurred desktop nobody asked for. So the
+		 * search is bounded to modes of the same hdisplay and
+		 * vdisplay, and a connector that publishes one refresh at its
+		 * native size keeps exactly the mode it published.
+		 *
+		 * The refresh is computed from the timings, because `vrefresh`
+		 * rounds 59.94 and 60 to the same integer and this comparison
+		 * is the one place that difference decides which mode a
+		 * screen wears.
+		 */
+		if (K.mode_policy == KKMS_MODE_FASTEST) {
+			int best = mode_refresh_mhz(chosen);
+
+			for (int m = 0; m < c->count_modes; m++) {
+				int r;
+
+				if (c->modes[m].hdisplay != chosen->hdisplay ||
+				    c->modes[m].vdisplay != chosen->vdisplay)
+					continue;
+				r = mode_refresh_mhz(&c->modes[m]);
+				if (r > best) {
+					best = r;
+					chosen = &c->modes[m];
+				}
+			}
+		}
 
 		/* Unless this screen was already set to one it still
 		 * publishes, which is a decision and outranks the default. */
@@ -497,15 +590,19 @@ static void lay_out(void)
 }
 
 /*
- * A SCANOUT BUFFER. One of a pair, plus the painter's own in system memory.
+ * A SCANOUT BUFFER. One of up to three, plus the painter's own in system
+ * memory.
  *
- * The pair is what makes a flip possible, and a flip is what makes an
+ * A SECOND BUFFER is what makes a flip possible, and a flip is what makes an
  * animation tear-free: a single buffer is rewritten row by row while the
  * raster is inside it, and a row caught mid-paint shows the old glyph above
- * the new one. The cost of the pair is a copy of the rows that changed, which
- * on a cell grid is what changed and nothing more.
+ * the new one. A THIRD is what stops the painter waiting for the vblank: with
+ * two, the only buffer it may touch is the one a flip is waiting on, so a
+ * compose that overruns a refresh period costs a whole further period. The
+ * cost of each is a copy of the rows that changed, which on a cell grid is
+ * what changed and nothing more.
  *
- * The painter never touches either of them. A dumb buffer is mapped
+ * The painter never touches any of them. A dumb buffer is mapped
  * write-combined: reads from it go to memory at a few bytes a cycle, and
  * every glyph composite is a read-modify-write of its own rectangle. So the
  * cells are painted into `shadow_bits`, which is ordinary memory, and reach
@@ -551,13 +648,13 @@ static int make_buf(struct kkms_out *o, int i)
  * ONE SCANOUT BUFFER, GIVEN BACK.
  *
  * Written once and used by both the teardown and the fallback that abandons a
- * second buffer: make_buf() fills the handle and the framebuffer id before it
- * can fail at the mapping, and a slot merely zeroed leaves a whole screen of
- * GPU memory that nothing can reach again, because the fields are the only
- * record of it.
+ * buffer it could not finish: make_buf() fills the handle and the framebuffer
+ * id before it can fail at the mapping, and a slot merely zeroed leaves a
+ * whole screen of GPU memory that nothing can reach again, because the fields
+ * are the only record of it.
  *
- * `stride` and `size` describe BOTH slots and are left alone: the other
- * buffer is still mapped with them.
+ * `stride` and `size` describe EVERY slot and are left alone: the other
+ * buffers are still mapped with them.
  */
 static void buf_free(struct kkms_out *o, int i)
 {
@@ -577,30 +674,89 @@ static void buf_free(struct kkms_out *o, int i)
 	}
 }
 
+/*
+ * A BUFFER NOTHING IS READING AND NOTHING IS WAITING FOR, or -1.
+ *
+ * The roles are the whole of the safety argument: `front` is under the raster,
+ * `queued` is the one the kernel will show next, `ready` already holds a
+ * composed frame. Anything else is the painter's. -1 means every buffer is
+ * spoken for and this screen takes no frame this time round.
+ *
+ * ONE BUFFER IS THE EXCEPTION AND ANSWERS 0. That path paints in place, into
+ * the buffer the CRTC is reading, and is taken only where that cannot tear —
+ * a driver that uploads at a dirty rectangle — or where there was no second
+ * buffer to be had and a torn screen beats no screen.
+ */
+static int pick_free(const struct kkms_out *o)
+{
+	if (o->nbuf < 2)
+		return o->nbuf == 1 ? 0 : -1;
+	for (int i = 0; i < o->nbuf; i++)
+		if (i != o->front && i != o->queued && i != o->ready)
+			return i;
+	return -1;
+}
+
+static void flip_reset(struct kkms_out *o)
+{
+	o->queued = -1;
+	o->ready = -1;
+	o->flip_pending = 0;
+	o->back = pick_free(o);
+	/*
+	 * THE GENERATION MOVES WITH EVERY ABANDONMENT. A flip the kernel still
+	 * has queued reports later, and a completion taken for a live one
+	 * names its buffer as the front one — so the next paint goes into the
+	 * buffer the raster is inside.
+	 */
+	o->flip_gen++;
+}
+
 static int make_fb(struct kkms_out *o)
 {
+	int want = K.want_bufs;
+
 	if (make_buf(o, 0) != 0)
 		return -1;
 	/*
-	 * A SECOND BUFFER IS WANTED, NOT REQUIRED, AND NOT ALWAYS WANTED.
+	 * MORE THAN ONE BUFFER IS WANTED, NOT REQUIRED, AND NOT ALWAYS WANTED.
 	 *
-	 * A driver with no memory for one, and a machine with several large
-	 * screens, still get a desktop: `nbuf` says which of the two presents
-	 * is in force. A transfer-model driver is not even asked — there a
-	 * flip costs the whole plane and buys nothing, because the host never
-	 * reads the buffer except at the copy the dirty rectangle triggers.
+	 * A driver with no memory for another, and a machine with several
+	 * large screens, still get a desktop: `nbuf` says which present is in
+	 * force. A transfer-model driver is not even asked — there a flip
+	 * costs the whole plane and buys nothing, because the host never reads
+	 * the buffer except at the copy the dirty rectangle triggers.
+	 *
+	 * EACH EXTRA BUFFER IS ASKED FOR IN TURN AND THE FIRST REFUSAL ENDS
+	 * IT. A card that gave a second and refused a third is a card with two
+	 * buffers, not a failure: 8 MB a screen at 1080p is a real ceiling on
+	 * a machine driving several of them, and a desktop that will not come
+	 * up because a third buffer would not fit is the worst of the answers
+	 * available.
 	 */
-	o->nbuf = !K.drm_transfers && make_buf(o, 1) == 0 ? 2 : 1;
-	if (o->nbuf == 1) {
-		reason[0] = '\0';	/* not a failure, and not reported as one */
-		buf_free(o, 1);
-	}
-	o->back = o->nbuf - 1;
+	if (want < 1 || want > KKMS_NBUF)
+		want = KKMS_NBUF;
+	o->nbuf = 1;
+	if (!K.drm_transfers)
+		while (o->nbuf < want) {
+			if (make_buf(o, o->nbuf) != 0) {
+				buf_free(o, o->nbuf);
+				/* Not a failure, and not reported as one. */
+				reason[0] = '\0';
+				break;
+			}
+			o->nbuf++;
+		}
+	o->front = 0;
+	o->queued = -1;
+	o->ready = -1;
 	o->flip_pending = 0;
+	o->back = pick_free(o);
 	/* New buffers are a new flip identity: a completion still in the
-	 * kernel's queue names the pair that is gone. */
+	 * kernel's queue names the buffers that are gone. */
 	o->flip_gen++;
-	o->pad_owed[0] = o->pad_owed[1] = 0;
+	for (int i = 0; i < KKMS_NBUF; i++)
+		o->pad_owed[i] = 0;
 	o->buf_conn = o->connector;
 	o->buf_w = o->width;
 	o->buf_h = o->height;
@@ -622,9 +778,14 @@ static int make_fb(struct kkms_out *o)
 	return 0;
 }
 
+/*
+ * THE BUFFER THE CRTC IS SCANNING OUT, which is a ROLE and not arithmetic on
+ * the painter's index: with three buffers there is no "the other one", and a
+ * modeset pointed at the wrong buffer shows a frame that was never painted.
+ */
 static uint32_t front_fb(const struct kkms_out *o)
 {
-	return o->fb[o->nbuf > 1 ? !o->back : 0];
+	return o->front >= 0 && o->front < o->nbuf ? o->fb[o->front] : 0;
 }
 
 /*
@@ -646,9 +807,81 @@ static void *flip_cookie(const struct kkms_out *o)
 }
 
 /*
- * THE FLIP COMPLETED. Nothing is done with the frame it showed: the buffer it
- * replaced is now the one to paint into, and `owed` already says which of its
- * rows are a frame behind.
+ * ONE FLIP, ISSUED. Returns 0, or the errno that refused it.
+ *
+ * THE TEARING FLAG IS DROPPED ON ITS FIRST REFUSAL AND FOR THE REST OF THE
+ * SESSION. A driver that publishes DRM_CAP_ASYNC_PAGE_FLIP and then answers
+ * EINVAL for a flip carrying DRM_MODE_PAGE_FLIP_ASYNC — a mode it cannot tear
+ * in, a plane configuration it will not — is refusing the FLAG and not the
+ * flip, and EINVAL is the one errno the caller reads as "this driver cannot
+ * flip" and answers by giving up every buffer but one. So the flip is issued
+ * again without it before any verdict is reached, and a screen loses its
+ * latency rather than its buffers.
+ *
+ * libdrm's ioctl wrapper returns -errno on some paths and -1 on others, so the
+ * sign is not relied on.
+ */
+static int do_flip(struct kkms_out *o, int buf)
+{
+	int rc = drmModePageFlip(K.drm_fd, o->crtc, o->fb[buf],
+				 DRM_MODE_PAGE_FLIP_EVENT | K.flip_flags,
+				 flip_cookie(o));
+	int e;
+
+	if (rc == 0)
+		return 0;
+	e = rc < 0 && rc != -1 ? -rc : errno;
+	if (K.flip_flags && e == EINVAL) {
+		K.flip_flags = 0;
+		rc = drmModePageFlip(K.drm_fd, o->crtc, o->fb[buf],
+				     DRM_MODE_PAGE_FLIP_EVENT,
+				     flip_cookie(o));
+		if (rc == 0)
+			return 0;
+		e = rc < 0 && rc != -1 ? -rc : errno;
+	}
+	return e ? e : EIO;
+}
+
+/*
+ * THE FRAME COMPOSED WHILE THE LAST FLIP WAS IN FLIGHT, PUT ON THE SCREEN.
+ *
+ * ISSUED FROM THE COMPLETION AND NOT FROM THE NEXT FLUSH. The flush runs on
+ * the caller's cadence and the vblank does not, so a frame held until the
+ * caller next visits is a frame presented a refresh period late — and that
+ * period is the whole of what the third buffer buys.
+ *
+ * NOTHING IS PRESENTED WHILE THE SCREEN IS DARK OR THE SESSION IS AWAY. The
+ * CRTC is detached or somebody else's, and a flip issued against it either
+ * relights a screen the session believes is asleep or is refused; the composed
+ * frame is kept either way, and the repaint those paths already owe replaces
+ * it.
+ */
+static void present_ready(struct kkms_out *o)
+{
+	if (o->ready < 0 || o->queued >= 0 || o->nbuf < 2)
+		return;
+	if (!K.active || K.blanked || K.drm_fd < 0)
+		return;
+	/*
+	 * A REFUSAL HERE LEAVES THE FRAME WHERE IT IS. It is the transient
+	 * kind — a CRTC another VT holds, one a blank detached — because a
+	 * driver's own refusal has already taken this output off the flip path
+	 * at the flush, and `ready` is only ever set on an output that flipped.
+	 */
+	if (do_flip(o, o->ready) != 0)
+		return;
+	o->queued = o->ready;
+	o->ready = -1;
+	o->flip_pending = 1;
+	if (o->back < 0)
+		o->back = pick_free(o);
+}
+
+/*
+ * THE FLIP COMPLETED. The buffer it named is what the CRTC is scanning out
+ * now, the one it replaced is the painter's again, and `owed` already says
+ * which of that buffer's rows are frames behind.
  */
 static void on_flip(int fd, unsigned seq, unsigned sec, unsigned usec,
 		    void *data)
@@ -675,7 +908,19 @@ static void on_flip(int fd, unsigned seq, unsigned sec, unsigned usec,
 	o = &K.out[slot];
 	if ((o->flip_gen & 0xffff) != (tag & 0xffff))
 		return;
+	/*
+	 * THE FRONT MOVES HERE AND NOWHERE ELSE on the flip path. Moving it
+	 * when the flip was ISSUED would name a buffer the raster has not
+	 * reached yet, and every relight and every wake points the CRTC at
+	 * front_fb().
+	 */
+	if (o->queued >= 0)
+		o->front = o->queued;
+	o->queued = -1;
 	o->flip_pending = 0;
+	if (o->back < 0)
+		o->back = pick_free(o);
+	present_ready(o);
 }
 
 /*
@@ -691,7 +936,7 @@ static void slice_free(struct kkms_out *o)
 {
 	free(o->painted);
 	o->painted = NULL;
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < KKMS_NBUF; i++) {
 		free(o->owed[i]);
 		o->owed[i] = NULL;
 		o->pad_owed[i] = 0;
@@ -733,19 +978,30 @@ static int make_slice(struct kkms_out *o)
 		}
 	}
 	free(o->painted);
-	free(o->owed[0]);
-	free(o->owed[1]);
 	o->painted = calloc((size_t)o->rows, 1);
-	o->owed[0] = calloc((size_t)o->rows, 1);
-	o->owed[1] = calloc((size_t)o->rows, 1);
-	if (!o->painted || !o->owed[0] || !o->owed[1]) {
+	if (!o->painted) {
 		slice_free(o);
 		return fail_with("the output's grid", "out of memory");
 	}
+	/*
+	 * A ROW DEBT PER BUFFER, FOR EVERY SLOT AND NOT FOR `nbuf` OF THEM.
+	 * make_fb() may raise nbuf — a re-probe that could not spare a third
+	 * buffer and a later one that could — and a buffer that came back with
+	 * no `owed` array is a screen the flush skips for the rest of the
+	 * session, because its guard is the array and not the count.
+	 */
+	for (int i = 0; i < KKMS_NBUF; i++) {
+		free(o->owed[i]);
+		o->owed[i] = calloc((size_t)o->rows, 1);
+		if (!o->owed[i]) {
+			slice_free(o);
+			return fail_with("the output's grid", "out of memory");
+		}
+		/* A different number of rows puts the strip below them
+		 * somewhere else, so every buffer owes it. */
+		o->pad_owed[i] = 1;
+	}
 	o->force_full = 1;
-	/* A different number of rows puts the strip below them somewhere
-	 * else, so both buffers owe it wherever they are in the pair. */
-	o->pad_owed[0] = o->pad_owed[1] = 1;
 	return 0;
 }
 
@@ -798,11 +1054,14 @@ static void out_free(struct kkms_out *o)
 	}
 	free(o->shadow_bits);
 	o->shadow_bits = NULL;
-	for (int i = 0; i < 2; i++)
+	for (int i = 0; i < KKMS_NBUF; i++)
 		buf_free(o, i);
 	slice_free(o);
 	o->nbuf = 0;
+	o->front = 0;
 	o->back = 0;
+	o->queued = -1;
+	o->ready = -1;
 	o->flip_pending = 0;
 	/* The buffers a flip in flight named are gone; its completion must
 	 * not clear the flag belonging to whatever this slot becomes. */
@@ -895,14 +1154,16 @@ static int relight(void)
 			o->force_full = 1;
 			/*
 			 * A MODESET CANCELS A FLIP THE KERNEL HAS NOT YET
-			 * REPORTED. kkms_flush() skips an output with a flip
-			 * outstanding, so a flag left set here freezes this
+			 * REPORTED, and the modeset itself put `front` on the
+			 * screen. kkms_flush() skips an output with no free
+			 * buffer, so a queue left standing here freezes this
 			 * screen for the rest of the session — and the
-			 * generation moves with it, or the cancelled flip's
-			 * completion clears the NEXT one a frame early.
+			 * generation moves with it inside flip_reset(), or
+			 * the cancelled flip's completion names its buffer as
+			 * the front one and the next paint goes into the one
+			 * the raster is inside.
 			 */
-			o->flip_pending = 0;
-			o->flip_gen++;
+			flip_reset(o);
 			continue;
 		}
 
@@ -990,6 +1251,10 @@ int kkms_output(int i, KkmsOutput *out)
 		return 0;
 	out->width = K.out[i].width;
 	out->height = K.out[i].height;
+	/* THE TIMING IN FORCE, not the one a picker listed: a mode change and
+	 * a hotplug both move it, and a session pacing itself to a number it
+	 * read once paces to a screen that is no longer there. */
+	out->refresh = mode_refresh_mhz(&K.out[i].mode);
 	out->col = K.out[i].col;
 	out->cols = K.out[i].cols;
 	out->rows = K.out[i].rows;
@@ -1016,29 +1281,10 @@ int kkms_mode(int out, int i, KkmsMode *m)
 
 	m->width = d->hdisplay;
 	m->height = d->vdisplay;
-	/*
-	 * MILLIHERTZ, AND COMPUTED RATHER THAN READ. `vrefresh` is a rounded
-	 * integer the kernel fills in for convenience; the clock and the
-	 * totals are the mode, and 59.94 Hz reported as 59 is two modes a
-	 * picker cannot tell apart.
-	 */
-	m->refresh = d->htotal && d->vtotal
-		     ? (int)(((uint64_t)d->clock * 1000000ull) /
-			     ((uint64_t)d->htotal * d->vtotal))
-		     : (int)(d->vrefresh * 1000);
-	/*
-	 * THE TIMINGS ARE NOT THE FRAME RATE ON THEIR OWN. Interlace sends two
-	 * fields per frame, doublescan sends each line twice and vscan sends
-	 * each line n times; the same three corrections the kernel applies in
-	 * drm_mode_vrefresh, in the same order, or 1080i is offered as 30 Hz
-	 * beside the 60 Hz every other tool reports.
-	 */
-	if (d->flags & DRM_MODE_FLAG_INTERLACE)
-		m->refresh *= 2;
-	if (d->flags & DRM_MODE_FLAG_DBLSCAN)
-		m->refresh /= 2;
-	if (d->vscan > 1)
-		m->refresh /= d->vscan;
+	/* MILLIHERTZ, AND COMPUTED RATHER THAN READ — one arithmetic, shared
+	 * with the picker, so a mode a person chooses from this list is the
+	 * one the picker would have ranked. */
+	m->refresh = mode_refresh_mhz(d);
 	m->preferred = (d->type & DRM_MODE_TYPE_PREFERRED) != 0;
 	return 1;
 }
@@ -1046,6 +1292,27 @@ int kkms_mode(int out, int i, KkmsMode *m)
 int kkms_mode_current(int out)
 {
 	return out >= 0 && out < K.nout ? K.out[out].cur_mode : -1;
+}
+
+/*
+ * THE RATE TO PACE A SESSION AT: the fastest screen that is lit.
+ *
+ * The fastest and not an average, because one grid is cut across every screen.
+ * A frame slow enough for the 60 Hz panel is a frame the 144 Hz one shows
+ * twice; the other direction costs a frame the slower screen never scans out,
+ * which is a frame and not a stall.
+ */
+int kkms_refresh_mhz(void)
+{
+	int best = 0;
+
+	for (int i = 0; i < K.nout; i++) {
+		int r = mode_refresh_mhz(&K.out[i].mode);
+
+		if (r > best)
+			best = r;
+	}
+	return best;
 }
 
 int kkms_set_mode(int out, int i)
@@ -1199,8 +1466,8 @@ static void kkms_dirty(const struct kkms_out *o, uint32_t fb, int ch)
 		drmModeDirtyFB(K.drm_fd, fb, clips, n);
 }
 
-/* Every row of this output is a frame behind in both buffers: a full repaint,
- * a mode change, or coming back from another VT. */
+/* Every row of this output is a frame behind in every buffer it holds: a full
+ * repaint, a mode change, or coming back from another VT. */
 static void owe_all(struct kkms_out *o)
 {
 	for (int i = 0; i < o->nbuf; i++)
@@ -1224,11 +1491,18 @@ static void owe_all(struct kkms_out *o)
  * the wrong shape and nothing downstream would notice.
  *
  * THE FRAME IS ASSEMBLED IN SYSTEM MEMORY AND PRESENTED AS A FLIP. Nothing
- * writes into the buffer the screen is reading: the painter draws into the
- * shadow, the rows it touched are copied into the back buffer, and the CRTC
- * is pointed at that buffer at the next vblank. A row caught by the raster
- * mid-paint is what tearing IS, and there is no longer a moment when one
- * could be.
+ * writes into a buffer the kernel can see: the painter draws into the shadow,
+ * the rows it touched are copied into a buffer that is neither on the screen
+ * nor named by a flip, and the CRTC is pointed at that buffer at the next
+ * vblank. A row caught by the raster mid-paint is what tearing IS, and there
+ * is no moment when one could be — unless the caller asked for tearing, which
+ * changes when the CRTC is re-pointed and nothing else.
+ *
+ * A THIRD BUFFER IS WHAT LETS THIS RUN WHILE A FLIP IS STILL IN FLIGHT. The
+ * composed frame is held in `ready` and the flip's own completion issues its
+ * flip, so a compose that overruns a refresh period costs that frame's latency
+ * and not the next frame's whole period. With two buffers there is nothing to
+ * paint into and the screen is skipped until the flip retires.
  *
  * A TRANSFER-MODEL DRIVER GETS THE SINGLE BUFFER INSTEAD, and gets it without
  * tearing: nothing reads that buffer until drmModeDirtyFB names the rows to
@@ -1300,9 +1574,16 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 
 		if (!o->image || !o->cur || !o->prev || !o->painted)
 			continue;
-		/* A flip this backend asked for has not completed: the back
-		 * buffer is still the one on the screen. */
-		if (o->flip_pending)
+		/*
+		 * EVERY BUFFER IS SPOKEN FOR: one under the raster, one a
+		 * flip is waiting on, one already composed and waiting for
+		 * the queue. Painting anyway writes into a buffer the kernel
+		 * is reading or is about to read. The frame is not lost — the
+		 * grid is the session's and the diff below is against what
+		 * this screen last painted, so the next visit paints whatever
+		 * has accumulated.
+		 */
+		if (o->back < 0 || o->back >= o->nbuf)
 			continue;
 
 		/*
@@ -1344,8 +1625,9 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			owe_all(o);
 			/* The strip below the last row is written by the
 			 * painter only on a full paint, so this is the one
-			 * frame either buffer can be given it from. */
-			o->pad_owed[0] = o->pad_owed[1] = 1;
+			 * frame any buffer can be given it from. */
+			for (int b = 0; b < o->nbuf; b++)
+				o->pad_owed[b] = 1;
 		} else
 			for (int b = 0; b < o->nbuf; b++) {
 				if (!o->owed[b])
@@ -1357,11 +1639,11 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 
 		/*
 		 * THE ROWS THIS BUFFER HAS NOT BEEN GIVEN, which is not the
-		 * same as the rows this frame painted: the two buffers are a
-		 * frame apart, so one that was painted last time is still the
-		 * older frame's here. Copying only what it owes is what keeps
-		 * a pair as cheap as a single buffer for a desktop that
-		 * changes a corner at a time.
+		 * same as the rows this frame painted: the buffers are frames
+		 * apart, so a row painted last time is still the older frame's
+		 * in the two that did not receive it. Copying only what a
+		 * buffer owes is what keeps three of them as cheap as one for
+		 * a desktop that changes a corner at a time.
 		 */
 		unsigned char *owed = o->owed[o->back];
 		void *bits = o->pixels[o->back];
@@ -1404,8 +1686,10 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		 * multiple of the cell. No row of `owed` covers it and the
 		 * painter fills it only on a full paint, so it carries its own
 		 * debt per buffer: given to one buffer alone, it alternates
-		 * with whatever the other holds on every flip — a band across
-		 * the bottom of the screen blinking at half the flip rate.
+		 * with whatever the others hold as they come round — a band
+		 * across the bottom of the screen blinking at a fraction of
+		 * the flip rate, and a slower blink with three buffers than
+		 * with two.
 		 */
 		if (o->pad_owed[o->back]) {
 			size_t off = (size_t)o->rows * ch * o->stride;
@@ -1418,12 +1702,25 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		}
 
 		if (o->nbuf > 1) {
-			int rc = drmModePageFlip(K.drm_fd, o->crtc,
-						 o->fb[o->back],
-						 DRM_MODE_PAGE_FLIP_EVENT,
-						 flip_cookie(o));
+			int e;
 
-			if (rc == 0) {
+			/*
+			 * A FLIP IS ALREADY IN FLIGHT, so this frame waits for
+			 * the completion to issue its own — see
+			 * present_ready(). There is at most one waiting
+			 * because `back` goes to -1 the moment there is one on
+			 * a three-buffer screen, and presentation order is the
+			 * paint order for exactly that reason.
+			 */
+			if (o->queued >= 0) {
+				o->ready = o->back;
+				o->back = pick_free(o);
+				continue;
+			}
+
+			e = do_flip(o, o->back);
+
+			if (e == 0) {
 				/*
 				 * NO DIRTY RECTANGLE BEHIND A FLIP. A flip
 				 * presents the whole buffer, so the rectangle
@@ -1439,8 +1736,9 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 				 * rectangle to present at all is held to the
 				 * single-buffer path by driver_transfers().
 				 */
+				o->queued = o->back;
 				o->flip_pending = 1;
-				o->back = !o->back;
+				o->back = pick_free(o);
 				continue;
 			}
 
@@ -1451,15 +1749,10 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			 * not ours this instant — a screen coming back from
 			 * blank or from another VT — and neither says the
 			 * driver cannot flip. Treating them as proof gives up
-			 * the pair for the rest of the session, so the first
-			 * screensaver would leave the console painting into
-			 * the buffer being scanned out.
-			 *
-			 * libdrm's ioctl wrapper returns -errno on some paths
-			 * and -1 on others, so the sign is not relied on.
+			 * every buffer but one for the rest of the session, so
+			 * the first screensaver would leave the console
+			 * painting into the buffer being scanned out.
 			 */
-			int e = rc < 0 && rc != -1 ? -rc : errno;
-
 			if (e != EINVAL && e != ENOSYS && e != EOPNOTSUPP) {
 				/* The frame stays in the back buffer and the
 				 * next one repaints it whole: the CRTC is not
@@ -1471,17 +1764,27 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			}
 
 			/*
-			 * NO FLIP ON THIS DRIVER, AND THE FRAME IS IN THE
-			 * BUFFER BEING GIVEN UP. `back` is the buffer nothing
-			 * is scanning out, so the surviving one holds an
-			 * older frame or the zeroes it was made with: the
-			 * whole shadow is copied across before the CRTC is
-			 * pointed at it, or the modeset shows a frame that
-			 * was never painted and a static screen — a greeter,
-			 * a prompt — stays that way until a key is pressed.
+			 * NO FLIP ON THIS DRIVER, AND THE FRAME IS IN A
+			 * BUFFER BEING GIVEN UP. `back` is a buffer nothing is
+			 * scanning out, so buffer 0 — the one the single
+			 * path keeps — holds an older frame or the zeroes it
+			 * was made with: the whole shadow is copied across
+			 * before the CRTC is pointed at it, or the modeset
+			 * shows a frame that was never painted and a static
+			 * screen — a greeter, a prompt — stays that way until
+			 * a key is pressed.
+			 *
+			 * The other buffers are left mapped and unreferenced
+			 * rather than freed: out_free() gives every slot back,
+			 * and tearing one down here while the CRTC is being
+			 * re-pointed is how a screen goes dark for good.
 			 */
 			o->nbuf = 1;
+			o->front = 0;
 			o->back = 0;
+			o->queued = -1;
+			o->ready = -1;
+			o->flip_pending = 0;
 			if (o->pixels[0] && o->shadow_bits)
 				memcpy(o->pixels[0], o->shadow_bits, lim);
 			if (o->owed[0])
@@ -1559,8 +1862,19 @@ int kkms_ready(void)
 {
 	if (!K.active)
 		return 0;
+	/*
+	 * A FREE BUFFER AND NOT AN IDLE FLIP. With three buffers the painter
+	 * has one to compose into while a flip is still in flight, which is
+	 * the whole of what the third one buys; with two there is none, so
+	 * this reduces to "no flip outstanding" exactly as before.
+	 *
+	 * AN OUTPUT WITH NO BUFFERS AT ALL IS NOT SOMETHING TO WAIT FOR. A
+	 * half-built slot answers -1 to pick_free() for the rest of the
+	 * session, and a caller that took that for "not yet" would never draw
+	 * again on any screen.
+	 */
 	for (int i = 0; i < K.nout; i++)
-		if (K.out[i].flip_pending)
+		if (K.out[i].nbuf > 0 && K.out[i].back < 0)
 			return 0;
 	return 1;
 }
@@ -1589,12 +1903,31 @@ void kkms_pump(void)
 	kkms_input_pump();
 }
 
-int kkms_init(const char *seat_name, const char *card, const char *font)
+int kkms_init(const char *seat_name, const char *card, const char *font,
+	      const KkmsTune *tune)
 {
 	memset(&K, 0, sizeof(K));
 	K.drm_fd = -1;
 	K.drm_dev = -1;
 	reason[0] = '\0';
+
+	/*
+	 * THE CALLER'S POLICY, COPIED IN BEFORE ANYTHING IS OPENED. It is read
+	 * again by every re-probe and every mode change, so it lives in `K`
+	 * rather than in the caller's struct — which may be a local that is
+	 * gone by the first hotplug — and it is copied AFTER the memset above,
+	 * which would otherwise erase it.
+	 *
+	 * NULL IS EVERY DEFAULT: three buffers, the monitor's preferred mode,
+	 * and presentation locked to the vblank. Each of those is the answer
+	 * that cannot cost a display.
+	 */
+	K.want_bufs = tune && tune->buffers ? tune->buffers : KKMS_NBUF;
+	if (K.want_bufs < 1 || K.want_bufs > KKMS_NBUF)
+		K.want_bufs = KKMS_NBUF;
+	K.mode_policy = tune && tune->mode == KKMS_MODE_FASTEST
+			? KKMS_MODE_FASTEST : KKMS_MODE_PREFERRED;
+	K.async_flip = tune && tune->tearing ? 1 : 0;
 
 	/*
 	 * A NAMED SEAT REACHES BOTH HALVES OR NEITHER. libseat reads the
@@ -1679,11 +2012,24 @@ int kkms_init(const char *seat_name, const char *card, const char *font)
 	for (int i = 0; i < K.nout; i++) {
 		const struct kkms_out *o = &K.out[i];
 
+		/*
+		 * THE REFRESH, THE BUFFER COUNT AND THE PRESENT, PER SCREEN.
+		 * A machine that is slow, that tears, or that came up at 60 on
+		 * a 144 Hz panel is a black box otherwise: each of those is a
+		 * different answer and the line is the only place they can be
+		 * told apart without attaching a debugger to a session that
+		 * owns the screen.
+		 */
 		fprintf(stderr,
-			"kdos-view:   output %d: %ux%u, crtc %u, "
-			"connector %u, columns %d..%d\n",
-			i, o->mode.hdisplay, o->mode.vdisplay, o->crtc,
-			o->connector, o->col, o->col + o->cols - 1);
+			"kdos-view:   output %d: %ux%u@%d.%03dHz, crtc %u, "
+			"connector %u, columns %d..%d, %d buffer(s), %s\n",
+			i, o->mode.hdisplay, o->mode.vdisplay,
+			mode_refresh_mhz(&o->mode) / 1000,
+			mode_refresh_mhz(&o->mode) % 1000, o->crtc,
+			o->connector, o->col, o->col + o->cols - 1, o->nbuf,
+			o->nbuf < 2 ? "dirty rectangle"
+			: K.flip_flags ? "unlocked flip (tears)"
+			: "flip at vblank");
 	}
 	return 0;
 
@@ -1833,12 +2179,15 @@ static void retire_flips(void)
 			pending += K.out[i].flip_pending != 0;
 	}
 	for (int i = 0; i < K.nout; i++)
-		if (K.out[i].flip_pending) {
-			K.out[i].flip_pending = 0;
-			/* Abandoned, not completed: its event must not clear
-			 * the flag belonging to the next flip. */
-			K.out[i].flip_gen++;
-		}
+		if (K.out[i].flip_pending || K.out[i].ready >= 0)
+			/*
+			 * Abandoned, not completed: its event must not name a
+			 * buffer as the front one, and the frame composed
+			 * behind it is for a screen that is about to go dark.
+			 * flip_reset() moves the generation, which is what
+			 * makes the completion a stale one.
+			 */
+			flip_reset(&K.out[i]);
 }
 
 /*

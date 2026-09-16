@@ -22,8 +22,10 @@
  */
 
 #include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <unistd.h>
 #include <aalib.h>
 #include "bb.h"
 
@@ -122,6 +124,57 @@ int bbupdate()
 }
 
 /*
+ * ONE FRAME IS ONE UNIT, WHICH THE FRAME ITSELF CANNOT SAY.
+ *
+ * aa_flush() hands the picture to ncurses' refresh(), and refresh() writes
+ * ONE write() PER SCREEN ROW -- 21 writes and 2.0 KB at 75x19, 69 writes and
+ * 17.2 KB at 236x63. A pseudo-terminal holds 12288 bytes, so at a full screen
+ * the frame is larger than the pipe it crosses and CANNOT cross in one piece
+ * however this program is written. A consumer composing on its own clock
+ * therefore reads a screen that is half this frame and half the last one:
+ * modelled against the console session's compose, 7.5% of composes show a
+ * torn frame and between eighteen and twenty-four per cent of frames are
+ * never shown whole.
+ *
+ * DECSET 2026 IS HOW A PRODUCER SAYS SO, and the bracket rather than the
+ * write is the fix precisely because the write cannot be made atomic.
+ * Between the set and the reset the terminal keeps showing the screen it
+ * already had and composes nothing it receives, so the rows arrive in as many
+ * writes as they like and the picture changes once, whole. kdos-term honours
+ * it through libkvt's kvt_term_sync_hold() and the console session honours it
+ * in its VT layer, both under a watchdog: a producer that sets the hold and
+ * dies must not freeze the window. A terminal that honours neither ignores a
+ * private mode it does not know and gets exactly the stream it gets today.
+ *
+ * ON THE SAME STREAM AS THE FRAME, WHICH IS WHY IT IS stdout AND WHY BOTH
+ * ENDS ARE FLUSHED. aalib's curses driver is initscr() on stdout, so
+ * refresh() writes to this very FILE; an escape sent down any other fd
+ * arrives in an order nothing defines, and a hold that lands after the rows
+ * it was meant to cover is worse than none. A stdout that is not a terminal
+ * is not bracketed at all -- there is nothing there to hold, and the two
+ * sequences would be bytes in somebody's capture.
+ */
+#define BB_SYNC_BEGIN "\033[?2026h"
+#define BB_SYNC_END   "\033[?2026l"
+
+void bbflush(void)
+{
+    static int tty = -1;
+
+    if (tty < 0)
+	tty = isatty(1);
+    if (tty) {
+	fputs(BB_SYNC_BEGIN, stdout);
+	fflush(stdout);
+    }
+    aa_flush(context);
+    if (tty) {
+	fputs(BB_SYNC_END, stdout);
+	fflush(stdout);
+    }
+}
+
+/*
  * HOW OFTEN THE ANIMATION LOOP MAY DRAW.
  *
  * A scene states a rate for its CONTROL and never for its picture: one draw
@@ -134,33 +187,57 @@ int bbupdate()
  * every write comes apart mid-frame, and what reaches the screen is the top
  * of one frame over the bottom of the one before it.
  *
- * FIFTEEN MILLISECONDS RATHER THAN SIXTEEN AND TWO THIRDS. A scene whose
- * control runs at exactly sixty would land a hair inside an exact sixty-frame
- * budget every other turn and be halved to thirty; the margin is what lets a
- * scene keep the rate it asked for.
+ * IT IS A DEADLINE AND NOT A DELAY, AND THAT IS THE WHOLE OF WHAT MAKES IT
+ * A CAP RATHER THAN A BRAKE. Timed from the END of a draw, the period is
+ * this number PLUS whatever the draw cost, and the draw grows with the
+ * screen: 0.46ms at 80x25 against 1.35ms at 240x67. So the period grows with
+ * the screen too, and it grows past the one thing it must stay under --
+ * 1000000 / 60, the interval fourteen scenes state for their control. In
+ * waitmode the picture is drawn only on a turn the control fired, so a
+ * period longer than the control's refuses every other tick outright and the
+ * next chance is a whole interval later. Measured at 106x33, end-to-end
+ * timing: 49fps with a quarter of the frames held for 33ms and NOTHING
+ * between 18 and 30 -- the bimodal 16.7/33.3 alternation that an eye reads as
+ * judder, and the reason it is worse on a bigger screen. Deadline to
+ * deadline the draw is inside the period instead of added to it, and the
+ * rate is the same at every size.
  *
- * IT IS MEASURED FROM THE END OF A DRAW AND NOT FROM ITS START, WHICH IS
- * WHAT MAKES IT A CAP AT EVERY SCREEN SIZE. Start to start, a draw costing
- * longer than the cap has already used it up by the time it returns: the
- * next one is due immediately, the loop never sleeps, and the render thread
- * owns a core for as long as the demo runs. On a cell desktop the draw grows
- * with the screen -- a 3840x2160 console is some sixty-five thousand cells
- * against a tenth of that at 50x19 -- so the size at which the cap stops
- * capping is a size people have. End to start, the loop is idle for this
- * long between every pair of frames whatever one costs: 66fps when a draw is
- * cheap, and fewer but with the machine still answering when it is not.
+ * SIXTEEN, WHICH IS UNDER THE CONTROL GRID AND AT OR UNDER EVERY CONSUMER'S
+ * FLOOR. The 666us it leaves below 1000000 / 60 is the margin, and what the
+ * margin buys is that the deadline is never AHEAD of the control tick it is
+ * checked against: a grid shorter than the control's falls 666us further
+ * behind the tick every frame, and the re-peg below puts it back no closer
+ * than 666us behind. A tick is therefore refused only after a stall, never
+ * for the jitter of noticing one. The consumers do not agree with each
+ * other: the console session composes on CON_FRAME_MS, which is
+ * 16, and will not compose two frames inside it; kdos-term on Wayland has no
+ * such constant at all, because its draw is gated on the compositor's frame
+ * callback, so its floor is the output's -- 16.667 at sixty hertz. A frame
+ * produced faster than the floor is not a frame anybody sees: it is bytes
+ * the consumer must still read and parse. Nor is the surplus dropped quietly
+ * -- a producer beats against its consumer at the difference, and a beat is
+ * what an eye reads as judder. 16000 leaves none against the console's 16
+ * and two and a half a second against sixty hertz, which is the price of the
+ * margin above.
+ *
+ * FURTHER UNDER IS SURPLUS AND FURTHER OVER IS JUDDER, which is the whole of
+ * why the number is not free either way. A scene stating a POSITIVE rate is
+ * not gated by its control at all -- it draws on every turn -- so its picture
+ * runs at exactly this rate, and every frame of it past the consumer's is
+ * bytes nobody composes and a beat against what does. Over 1000000 / 60 the
+ * margin above is gone and the rate halves.
  */
-#define BB_FRAME_US 15000
+#define BB_FRAME_US 16000
 
 void timestuff(int rate, void (*control) (int), void (*draw) (void), int maxtime)
 {
     int waitmode = 0, t;
     /*
-     * ON THE SCENE CLOCK, which never restarts, so the cap carries across
-     * consecutive calls: a scene split into five of these must not be handed
-     * a free frame at each seam.
+     * THE DEADLINE FOR THE NEXT FRAME, ON THE SCENE CLOCK, which never
+     * restarts -- so the cap carries across consecutive calls and a scene
+     * split into five of these is not handed a free frame at each seam.
      */
-    static int lastdraw;
+    static int nextdraw;
     tl_timer *timer;
     bbupdate();
     /*starttime = TIME; */
@@ -200,22 +277,49 @@ void timestuff(int rate, void (*control) (int), void (*draw) (void), int maxtime
 	 * `endtime` -- which is what keeps every beat in step with the music.
 	 */
 	{
-	    int since = TIME - lastdraw;
-	    int due = BB_FRAME_US - since;
-
 	    /*
-	     * A CLOCK THAT WENT BACKWARDS IS A FRAME THAT IS DUE. The scene
-	     * clock is an int of microseconds and wraps after some thirty-five
-	     * minutes, which `-loop` reaches; a picture that stopped there
-	     * would never start again.
+	     * THE INT SUBTRACTION IS THE WRAP HANDLING AND NOTHING ELSE IS
+	     * NEEDED. The scene clock is an int of microseconds and turns over
+	     * after some thirty-five minutes, which `-loop` reaches; the
+	     * difference of two readings either side of that is modular and
+	     * comes out as the small number it really is, so a test for a
+	     * negative gap would catch nothing but the servo -- which cannot
+	     * produce one either, because its trim is capped at a fraction of
+	     * the time that has actually passed.
 	     */
-	    if (draw != NULL && (due <= 0 || since < 0)) {
+	    int due = nextdraw - TIME;
+
+	    if (draw != NULL && due <= 0) {
+		/*
+		 * THE READING THE DEADLINE WAS MET ON, KEPT ACROSS THE DRAW.
+		 * Every line below measures from here and none of them from
+		 * the clock afterwards: a reading taken after the draw is
+		 * later by the cost of the draw, and anything paced off it
+		 * has that cost added to the period. Measured at 240x67, a
+		 * 1.35ms draw against a 16000 period and a 16666 control
+		 * grid is the difference between sixty frames a second and
+		 * thirty-one.
+		 */
+		int at = TIME;
+
 		draw();
-		/* The clock is stale by however long that took, and what is
-		 * being timed is the gap AFTER it -- see the note above. */
 		tl_update_time();
 		TIME = tl_lookup_timer(scenetimer);
-		lastdraw = TIME;
+		nextdraw += BB_FRAME_US;
+
+		/*
+		 * A DEADLINE MORE THAN A WHOLE PERIOD BEHIND IS MOVED RATHER
+		 * THAN CHASED. The grid walks slowly behind the clock by
+		 * design -- the period is shorter than the control interval
+		 * it has to stay under -- and it is let walk, because every
+		 * one of those frames is drawn. What must not be chased is a
+		 * STALL: catching up would draw every missed frame back to
+		 * back, the pty fills, the frames tear, and what the stall
+		 * cost is paid twice. One frame is drawn late and the grid
+		 * restarts from the deadline that was met.
+		 */
+		if (nextdraw - at <= 0)
+		    nextdraw = at + BB_FRAME_US;
 		continue;
 	    }
 
@@ -283,7 +387,7 @@ void bbflushwait(int maxtime)
     bbupdate();
     wait = maxtime + starttime - TIME;
     if (wait > 0) {
-	aa_flush(context);
+	bbflush();
     }
     bbwait(maxtime);
 }

@@ -1225,6 +1225,18 @@ slurp
 wl-clipboard
 imv
 vulkan-loader
+# THE GRAPHICS TOOLS ARE THE WAYLAND AND EGL ONES, because mesa here is built
+# `-D glx=disabled -D platforms=wayland`: there is no GLX and no X11 EGL
+# platform on this host, so glxgears and glxinfo cannot run on it at all and
+# reach a person only boxed under Xwayland, from app.mesa-utils. What answers
+# the same questions natively is here — es2gears_wayland and eglinfo from
+# mesa-demos, glmark2-es2-wayland, and vkcube/vulkaninfo from vulkan-tools,
+# which are also what says whether the machine has a Vulkan driver at all.
+# mesa-demos' Vulkan Wayland surface needs libdecor and nothing else in this
+# file does, so its `depends` is what puts that port in the install order.
+mesa-demos
+glmark2
+vulkan-tools
 
 dav1d
 

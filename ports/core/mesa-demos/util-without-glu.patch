@@ -1,0 +1,19 @@
+Keep GLU out of libutil, which every EGL and Vulkan demo links.
+
+readtex.c and showbuffer.c are the only members that include gl_wrap.h,
+and gl_wrap.h includes <GL/glu.h>; readtex.c also calls gluBuild2DMipmaps.
+Their callers are all in the GLUT and GLX trees. Leaving them in the
+library makes a GLU-less system fail to compile eglinfo, es2gears and
+vkgears over a header none of them use.
+
+--- a/src/util/meson.build
++++ b/src/util/meson.build
+@@ -22,8 +22,6 @@
+ 
+ files_libutil = files(
+   'glinfo_common.c',
+-  'readtex.c',
+-  'showbuffer.c',
+   'trackball.c',
+   'matrix.c',
+ )

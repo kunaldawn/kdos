@@ -63,9 +63,10 @@ there — one `kdos-cage --embed` composites every toplevel the application maps
 the frames into sprites — and an application that needs acceleration a software renderer cannot
 give it has to be pinned to a terminal by hand, rather than being detected.
 
-**A second screen on the console.** `libkkms` takes the first card with a connected output and its
-preferred mode. Multi-output means a view per output or a view that spans them, and the session
-already treats the grid as one rectangle — which is the decision, not the code.
+**A second CARD on the console.** `libkkms` takes the first `/dev/dri/card0..7` with a connected
+output and lights every connector on that one, laid edge to edge into a single grid; a screen on a
+second card is unreachable. Reaching it means a second device, a second seat lease and a grid that
+stops being one rectangle — which is the decision, not the code.
 
 **A still screenshot of the console as a picture.** `kdos-view --cast` records the session into a
 PipeWire stream — a view rasterises, so a recording is a view nobody looks at — and `kdos-shot`

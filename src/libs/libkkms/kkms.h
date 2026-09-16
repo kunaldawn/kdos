@@ -29,8 +29,47 @@
 #include "ktui.h"
 
 /*
+ * ── how the screen is driven ─────────────────────────────────────────────
+ *
+ * The three answers that are a POLICY rather than a fact about the device, so
+ * the machine standing in front of a person decides them and this library does
+ * not. Passed to kkms_init() rather than set afterwards: every one of them is
+ * read again at a hotplug and a mode change, and a setter would have an
+ * ordering rule that a caller can get wrong exactly once.
+ *
+ * `buffers` is a CEILING of 1 to 3 on the scanout buffers per screen, 0 for
+ * the default of 3. Three is one on the screen, one a flip is waiting on and
+ * one the painter may compose into meanwhile; two stalls the painter at the
+ * vblank, which behind a vsync-locked flip is the 60-to-30 cliff. A driver
+ * with no memory for the third gets two and one with none for the second gets
+ * one, so this never costs a display.
+ *
+ * `mode` is KKMS_MODE_PREFERRED or KKMS_MODE_FASTEST — the monitor's own
+ * choice, or the highest refresh among the modes at the size the monitor
+ * chose. PREFERRED is the default because the EDID's preferred mode is the one
+ * the panel certifies; a 144 Hz mode at the same size is a different link rate
+ * and this library is the one component whose mistake leaves no screen to fix
+ * it from. FASTEST never changes the RESOLUTION, only the refresh at it.
+ *
+ * `tearing` presents each frame the moment it is composed instead of at the
+ * vblank, which removes up to a refresh period of latency and TEARS — the
+ * raster is inside the buffer when the CRTC is pointed at the next one, so a
+ * moving edge is cut across the screen. Off by default, and silently off on a
+ * device that does not publish DRM_CAP_ASYNC_PAGE_FLIP.
+ */
+#define KKMS_MODE_PREFERRED 0
+#define KKMS_MODE_FASTEST   1
+
+typedef struct {
+	int buffers;		/* 1..3, 0 for the default                 */
+	int mode;		/* KKMS_MODE_*                             */
+	int tearing;		/* present unlocked; costs a torn frame    */
+} KkmsTune;
+
+/*
  * Take a screen. `font` is a fontconfig name or NULL for the default; `seat`
- * is a seat name or NULL for $XDG_SEAT and then seat0.
+ * is a seat name or NULL for $XDG_SEAT and then seat0; `tune` is the policy
+ * above or NULL for all of its defaults.
  *
  * Returns 0 and installs itself as libktui's backend, or -1 having installed
  * nothing — a caller that cannot draw should say so and fall back, not run
@@ -43,7 +82,8 @@
  * screen and wrong on one with a card that has none — and it is what makes a
  * virtual device untestable, because the rig's emulated card is always card0.
  */
-int kkms_init(const char *seat, const char *card, const char *font);
+int kkms_init(const char *seat, const char *card, const char *font,
+	      const KkmsTune *tune);
 void kkms_shutdown(void);
 
 /*
@@ -74,6 +114,14 @@ const char *kkms_font(void);
  */
 typedef struct {
 	int width, height;	/* this output's mode, in pixels           */
+	/*
+	 * WHAT THIS SCREEN IS ACTUALLY REFRESHING AT, in millihertz, computed
+	 * from the timings in force and not read from the rounded `vrefresh`.
+	 * It is what a session paces itself to: a frame budget compiled in as
+	 * a constant is right on one panel and wrong on every other, and the
+	 * number is here because this is the only place the mode is.
+	 */
+	int refresh;		/* mHz, 0 where the timings do not give one */
 	int col, cols, rows;	/* its slice of the shared grid, in cells  */
 	unsigned connector;	/* the DRM connector id                    */
 	/* WHAT A PERSON CALLS THIS SCREEN — `HDMI-A-1`, `eDP-1`. A connector
@@ -103,6 +151,23 @@ int kkms_output(int i, KkmsOutput *out);
 int kkms_modes(int out);
 int kkms_mode(int out, int i, KkmsMode *m);
 int kkms_mode_current(int out);
+
+/*
+ * THE RATE A SESSION SHOULD PACE ITSELF AT, in millihertz: the HIGHEST refresh
+ * among the screens that are lit, and 0 when none is.
+ *
+ * The highest and not an average, because one grid is cut across every screen:
+ * a frame slow enough for the 60 Hz panel is a frame the 144 Hz one shows
+ * twice, and the cost of the other direction is a frame the slower screen
+ * never scans out. A caller divides it into its own budget — 1000000000 /
+ * refresh is the period in microseconds — rather than compiling a constant in,
+ * which is right on one panel and wrong on every other.
+ *
+ * It moves when a monitor is plugged in or a mode is chosen, so it is read
+ * again wherever kkms_hotplug_pump() or kkms_set_mode() reports a change, not
+ * once at startup.
+ */
+int kkms_refresh_mhz(void);
 
 /*
  * WEAR THE NTH MODE ON THE NTH SCREEN. 0 and it is lit; -1 and the old mode is
@@ -153,9 +218,16 @@ int kkms_input_fd(void);
 int kkms_drm_fd(void);
 
 /*
- * Whether a frame may be painted now: false while a flip this backend asked
- * for has not completed. A caller that paints anyway would be writing into
- * the buffer the screen is about to show.
+ * Whether a frame may be painted now: false while any screen has no buffer the
+ * kernel is not reading. A caller that paints anyway would be writing into the
+ * buffer the screen is showing or is about to show.
+ *
+ * WITH A THIRD BUFFER THIS IS TRUE WHILE A FLIP IS STILL IN FLIGHT, which is
+ * the whole of what the third buffer buys: the next frame is composed during
+ * the wait for the vblank instead of after it, and it is presented by the
+ * completion itself rather than by the caller's next visit. With two buffers
+ * it is false until the flip retires, and a compose longer than a refresh
+ * period then costs a whole further period.
  *
  * Reading it is how the console's view paces itself to the refresh rate: the
  * DRM descriptor becomes readable at the vblank, kkms_pump() reaps the flip,

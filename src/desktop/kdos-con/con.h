@@ -456,6 +456,21 @@ typedef struct Win {
 	 * window, because the pointer is over one of them and the others must
 	 * not light up. */
 	unsigned int hover;
+
+	/*
+	 * THE LAST WHOLE FRAME THIS TERMINAL WAS COMPOSED FROM, and the grid
+	 * it was taken at. For WIN_TERM only, and NULL until the program
+	 * inside opens a synchronized-output bracket — see term_cells().
+	 *
+	 * IT IS WHAT A HELD WINDOW IS DRAWN WITH. The session clears the grid
+	 * and repaints every window on one tick, so a held window that drew
+	 * nothing would be a hole showing the backdrop, and a held window that
+	 * delayed the tick would stop the whole desktop for one program's
+	 * frame. A terminal that never opens a bracket pays one pointer test
+	 * per compose for the whole mechanism and not a byte of memory.
+	 */
+	KtuiCell *sync_cells;
+	int sync_w, sync_h;
 	int full;
 	int workspace;
 
@@ -932,6 +947,17 @@ void term_mouse(Win *w, const KtuiEvent *ev);
 void term_paste(Win *w, int primary);
 void term_pump_all(void);
 int term_key(Win *w, const KtuiEvent *ev);
+/*
+ * THE CELLS THIS TERMINAL IS COMPOSED FROM THIS TICK — the live grid, or the
+ * last whole frame while the program inside is holding one open with DECSET
+ * 2026. `buf` is the caller's scratch, at least `cols * rows` cells, and the
+ * answer is either it or a buffer the window owns; neither outlives the
+ * compose that asked. NULL when there is nothing to draw.
+ */
+const KtuiCell *term_cells(Win *w, KtuiCell *buf, int cols, int rows);
+/* The frame kept for a hold, released with the window. The terminal itself is
+ * win_close()'s, which runs first and can run without this. */
+void term_free(Win *w);
 
 /* panel.c */
 /*
