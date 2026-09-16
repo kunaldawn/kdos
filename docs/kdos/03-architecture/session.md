@@ -403,6 +403,38 @@ declared in `kembed.h` and implemented by neither end, so a drag released over a
 one the guest never hears of and the session ends as cancelled. A copy is the way across;
 [known-gaps](../06-reference/known-gaps.md) is where the drag is recorded.
 
+### A boxed application's scale on the console
+
+**The console tells a boxed application how dense it is, and the number is the cell.** The cage
+gives each window a headless output and `KEMBED_SCALE` gives that output a scale factor, so a
+toolkit told 2 lays its window out in half as many logical pixels and draws each of them twice as
+large. Nothing else moves: the output mode, the shared framebuffer and the cell rectangle the window
+occupies are all the same numbers at any scale, which is why the scale can be raised on a live
+window at all.
+
+**The cell is where the density is written**, because it is the only place that is true of every
+display a session can have. A text grid has no physical size to ask about; what it has is the font
+the view picked for the screen it is on. So the session divides the primary view's cell height by
+the reference cell — eight by sixteen — and a console whose characters are twice that asks its
+guests for 2, which is also what makes a person who chose larger text get larger windows.
+
+**It is a whole number, and one that divides BOTH halves of the cell.** A logical size is the
+output's pixel size divided and truncated, so a scale that does not divide the cell leaves the guest
+a column short of its own output — the cage's background down the edge of the window for as long as
+it lives. The session steps the number down until it divides, so a cell one and a half reference
+cells tall is a console at 1 and so is a thirty-two-pixel cell of odd width. **Fractional scale is
+never offered to a guest.**
+
+**On every shipped configuration that number is 1.** `con.conf` names `font = monospace:size=12`,
+whose cell is the reference cell itself, and 2 wants a cell thirty-two pixels tall and even in
+width — text stepped up with `Super+=` until the characters are twice their shipped size, or a
+`font =` written that large. Both ends of the mechanism are built and every size that crosses the
+channel is converted for it; on the shipped font that conversion is an identity, and no shipped font
+crosses the mark. [known-gaps](../06-reference/known-gaps.md) records it.
+
+`GTK_THEME` and the rest of the box environment carry nothing about this: the scale reaches the
+application through its compositor, which is what every toolkit already reads it from.
+
 ## Input methods
 
 Three parties that never speak to each other directly. The compositor is the wire between them:
@@ -451,6 +483,7 @@ environment, not the caller's. So every variable a launch needs is stated explic
 | `CUPS_SERVER` | The host's print socket, when it exists |
 | `NO_AT_BRIDGE`, `GTK_A11Y` | A default, not a policy — see below |
 | `DISPLAY` | Added when Xwayland is running, for X11-only applications |
+| `LIBGL_ALWAYS_SOFTWARE=1` | Added only where the box profile's `render` key resolves to software — a profile that refuses the card, a machine with no render node, or a box with no `/dev/dri` in it because `devices = private` meets `gpu = no`. The hardware answer exports nothing: Mesa asks the right question already and falls back on its own |
 
 Measured across the catalogue when this was incomplete: most graphical applications failed to map
 a window, only a few of them saying why, every game died on a missing executable, and applications

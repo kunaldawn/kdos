@@ -75,12 +75,27 @@ typedef struct {
 	int  pids;       /* --pids-limit, 0 for unlimited                    */
 	int  autostop_s; /* idle seconds before `kdos-box gc` stops it, 0 off*/
 	/*
-	 * THE SESSION'S TWO KEYS, CARRIED AND NOT INTERPRETED. `display`
-	 * chooses between a window and a terminal of the guest's own and
-	 * `render` chooses the cage's renderer; both are read by kdos-con and
-	 * mean nothing to a container flag. They are held here so that a
-	 * rewrite of this file keeps them — a profile writer that knows only
-	 * its own keys silently deletes everybody else's.
+	 * `display` chooses between a window and a terminal of the guest's
+	 * own. It is the SESSION's key, carried and not interpreted: kdos-con
+	 * reads it and it means nothing to a container flag. It is held here
+	 * so that a rewrite of this file keeps it — a profile writer that
+	 * knows only its own keys silently deletes everybody else's.
+	 *
+	 * `render` IS WHO DRAWS. `auto` (the default) means the machine
+	 * decides, `gpu` asks for the card and `software` refuses it; see
+	 * profile_render_gpu(), which is the resolved form and the only one
+	 * worth acting on here. The software answer sets
+	 * LIBGL_ALWAYS_SOFTWARE=1 in the launch environment; the hardware one
+	 * sets nothing at all, because Mesa asks the machine the same question
+	 * by itself.
+	 *
+	 * THE SAME KEY PICKS THE EMBEDDED CAGE'S RENDERER, and this file is
+	 * not the end that does it: kdos-con reads the profile itself and
+	 * hands the value to the cage as KDOS_EMBED_GPU, where `software` pins
+	 * pixman and every other spelling leaves wlr_renderer_autocreate its
+	 * choice. The rewrite this file performs therefore governs a console
+	 * guest's compositor as well as its Mesa — drop the key on a rewrite
+	 * and a box that refuses the card is composited on it.
 	 */
 	char display[16];
 	char render[16];
@@ -101,6 +116,14 @@ void  profile_print(const Profile *p);
 const char *persist_name(Persistence p);
 char *profile_path(const char *box);
 char *profile_home(const char *box);
+
+/* A DRM render node this user can open, and its path when `out` is not NULL.
+ * The question both a `render` decision and a `gpu` grant come down to, and
+ * the reason it is an open() and not a stat() is in box.c. */
+int  box_render_node(char *out, size_t n);
+/* The `render` key resolved against this machine: 1 when the box's graphics
+ * are the card's, 0 when they are the CPU's. */
+int  profile_render_gpu(const Profile *p);
 
 int  box_exists(const char *box);
 int  box_state(const char *box, char *buf, size_t n);

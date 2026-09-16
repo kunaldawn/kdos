@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "kcell.h"
+#include "kcell_priv.h"
 
 #define CACHE_BUCKETS 512
 /*
@@ -78,13 +79,60 @@ static unsigned evict_cursor;
 static int cell_w, cell_h, ascent;
 
 /*
- * fcft_fini() IS NOT REFCOUNTED: it destroys FreeType's handle, fontconfig's
- * state and its own mutexes whether or not anything still wants them. So the
- * init happens at most once and the teardown at most once — a load that
- * follows a free is a fresh init, and a load that follows a load reuses the
- * one already standing.
+ * THE ONE OWNER OF FCFT INSIDE libkcell, AND IT COUNTS ITS HOLDERS. The pair
+ * is declared in kcell_priv.h, which both holders include.
+ *
+ * fcft_init() is not idempotent and fcft_fini() is not refcounted: the init
+ * builds a fresh FreeType handle over whatever one is already standing, and
+ * the fini destroys FreeType, fontconfig's state and fcft's own mutexes
+ * whether or not anything still wants them. Two files here need the library
+ * up and they start and stop independently — this one for the cell faces,
+ * kcell_canvas.c for text at an arbitrary pixel size — so a flag saying only
+ * whether fcft is up cannot express the case the count exists for: ONE HOLDER
+ * RELEASING WHILE THE OTHER IS STILL DRAWING. Under a single flag that
+ * release tears FreeType down beneath the other's live faces and the next
+ * frame composites out of freed glyph images; under a flag per file, neither
+ * of which reads the other, whichever initialises second leaks the first FT
+ * handle and orphans every face resolved through it.
+ *
+ * So each holder takes ONE reference and releases it once: the library comes
+ * up on the first reference and goes down on the last, either entry point may
+ * come first, and a reference asked for while it is already up costs nothing.
+ *
+ * A refused init is latched by the CALLER and not here — a bar drawing sixty
+ * times a second must not retry the whole library init on every frame.
  */
-static bool fcft_up;
+static unsigned fcft_refs;
+
+int kcell_fcft_ref(void)
+{
+	if (fcft_refs > 0) {
+		fcft_refs++;
+		return 1;
+	}
+	if (!fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_ERROR))
+		return 0;
+	fcft_refs = 1;
+	return 1;
+}
+
+void kcell_fcft_unref(void)
+{
+	/* An unmatched release is dropped rather than obeyed: taking the count
+	 * past zero would fini the library under the holder that still has it. */
+	if (fcft_refs == 0)
+		return;
+	if (--fcft_refs == 0)
+		fcft_fini();
+}
+
+/*
+ * AND THIS FILE HOLDS AT MOST ONE OF THOSE REFERENCES, EVER. A load is
+ * repeatable and a free is not paired with any particular load, so counting
+ * one per load would leave a count that never reaches zero and an fcft that
+ * is never torn down.
+ */
+static bool fcft_held;
 
 /*
  * THE MISSING-GLYPH SENTINEL.
@@ -311,15 +359,25 @@ int kcell_font_load(const char *name)
 	 * the outgoing faces. */
 	drop_faces();
 
-	if (!fcft_up) {
-		if (!fcft_init(FCFT_LOG_COLORIZE_AUTO, false,
-			       FCFT_LOG_CLASS_ERROR))
+	if (!fcft_held) {
+		if (!kcell_fcft_ref())
 			return -1;
-		fcft_up = true;
+		fcft_held = true;
 	}
 	face[0] = fcft_from_name(1, names, NULL);
-	if (!face[0])
+	if (!face[0]) {
+		/*
+		 * THE REFERENCE GOES BACK ON THE WAY OUT. A caller reading -1
+		 * as "there is no cell font" has nothing left to call
+		 * kcell_font_free() on, so a reference still held here is one
+		 * nothing will ever release and FreeType stands for the life
+		 * of the process — and on a machine where no name resolves,
+		 * that is every process that tried.
+		 */
+		kcell_fcft_unref();
+		fcft_held = false;
 		return -1;
+	}
 
 	if (!looks_monospaced(face[0])) {
 		/*
@@ -346,9 +404,17 @@ int kcell_font_load(const char *name)
 	cell_h = face[0]->height;
 	ascent = face[0]->ascent;
 	if (cell_w <= 0 || cell_h <= 0) {
+		/*
+		 * AND BACK ON THIS WAY OUT TOO. Every path that answers -1
+		 * answers it to a caller holding no font to free, so a
+		 * reference kept on any one of them is a reference nothing
+		 * will ever release.
+		 */
 		fcft_destroy(face[0]);
 		face[0] = NULL;
 		cell_w = cell_h = ascent = 0;
+		kcell_fcft_unref();
+		fcft_held = false;
 		return -1;
 	}
 
@@ -364,9 +430,9 @@ int kcell_font_load(const char *name)
 void kcell_font_free(void)
 {
 	drop_faces();
-	if (fcft_up) {
-		fcft_fini();
-		fcft_up = false;
+	if (fcft_held) {
+		kcell_fcft_unref();
+		fcft_held = false;
 	}
 }
 

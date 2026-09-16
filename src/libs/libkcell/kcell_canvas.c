@@ -45,6 +45,14 @@
  * carry with the nearest it has, which is fcft's business and not ours — the
  * text simply comes out at the size that exists, which is the honest result
  * and is why nothing here tries to scale a glyph by hand.
+ *
+ * AND FCFT IS BROUGHT UP HERE WHEN NOTHING ELSE HAS. A consumer that draws
+ * canvases and no cells never loads a cell font, and an uninitialised fcft
+ * answers every request with NULL — so the text silently measures zero and
+ * draws nothing. The canvas therefore takes a REFERENCE on libkcell's one
+ * fcft owner, which lives in kcell_font.c, and holds it for as long as it has
+ * a face cached. Either entry point may be used first and in either order,
+ * and neither tears the library down under the other; see cv_fcft_ready().
  * ---------------------------------
  */
 
@@ -55,6 +63,7 @@
 #include <fcft/fcft.h>
 
 #include "kcell.h"
+#include "kcell_priv.h"
 
 /* ── fonts, by pixel size ──────────────────────────────────────────────── */
 
@@ -73,17 +82,69 @@ static struct {
 static int cv_nfonts;
 static char cv_name[192];
 
+/*
+ * FCFT HAS TO BE UP BEFORE A FACE CAN BE ASKED FOR, AND THE CANVAS CANNOT
+ * ASSUME SOMEONE ELSE DID IT.
+ *
+ * `fcft_from_name()` answers NULL with `fcft_init() not called` on the log
+ * when FreeType's handle is NULL, and a consumer that draws only canvases
+ * never loads a CELL font — libkcon's console surfaces never call
+ * kcell_font_load(). The failure is silent twice over: every measurement then
+ * answers zero and every string draws nothing, which reads as a layout that
+ * chose to leave the text out.
+ *
+ * SO THE CANVAS TAKES ONE REFERENCE OF ITS OWN and holds it for exactly as
+ * long as cv_fonts[] names a face. kcell_font.c owns fcft's lifetime for the
+ * whole library and counts its holders — read the rule there. The count is
+ * what frees the two entry points from each other: a cell font loaded after a
+ * canvas has drawn finds the library already standing and leaves it alone,
+ * and a kcell_font_free() with a canvas still drawing counts down to this
+ * reference and not to zero. Take the reference away and that free destroys
+ * FreeType under every face in cv_fonts[], and the next frame composites out
+ * of freed glyph images.
+ *
+ * -1 is a machine with no usable FreeType, latched so a bar drawing sixty
+ * times a second does not retry the whole library init on every frame.
+ */
+static int cv_fcft;		/* 0 none held, 1 held, -1 refused */
+
+static int cv_fcft_ready(void)
+{
+	if (cv_fcft > 0)
+		return 1;
+	if (cv_fcft < 0)
+		return 0;
+	if (!kcell_fcft_ref()) {
+		cv_fcft = -1;
+		return 0;
+	}
+	cv_fcft = 1;
+	return 1;
+}
+
 void kcell_canvas_font(const char *name)
 {
 	/* A change of family drops every size: they were all resolved from
-	 * the old one. */
-	if (name && !strcmp(name, cv_name))
+	 * the old one. The fcft reference goes with them — it is held for the
+	 * faces and nothing else, so a process that never draws another canvas
+	 * leaves the library free to shut down — and the next cv_font() takes a
+	 * fresh one.
+	 *
+	 * WHICH IS WHY THE SAME NAME AGAIN MUST DO NOTHING, NULL INCLUDED: a
+	 * caller that re-states the family per frame would otherwise tear fcft
+	 * down and stand it back up on every one of them whenever no cell font
+	 * is loaded beside it. */
+	if (!strcmp(name ? name : "", cv_name))
 		return;
 	for (int i = 0; i < cv_nfonts; i++)
 		if (cv_fonts[i].font)
 			fcft_destroy(cv_fonts[i].font);
 	memset(cv_fonts, 0, sizeof(cv_fonts));
 	cv_nfonts = 0;
+	if (cv_fcft > 0) {
+		kcell_fcft_unref();
+		cv_fcft = 0;
+	}
 	snprintf(cv_name, sizeof(cv_name), "%s", name ? name : "");
 }
 
@@ -92,6 +153,8 @@ static struct fcft_font *cv_font(int px)
 	char spec[256];
 	const char *names[1];
 
+	if (!cv_fcft_ready())
+		return NULL;
 	if (px < 4)
 		px = 4;
 	if (px > 400)

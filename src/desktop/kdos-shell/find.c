@@ -280,29 +280,19 @@ static void open_sel(void)
 		 * than kept in the row: the entry's `Exec` already reads
 		 * `kdos-appbox run <command>` for a boxed app, and its ID is
 		 * not that command — handing the ID to `run` asks the box for
-		 * a program of that name and starts nothing at all. The
-		 * launcher runs it the same way, and `Terminal=true` is a
-		 * program with no window of its own.
+		 * a program of that name and starts nothing at all.
+		 *
+		 * `sh_apps_launch` AND NOT A SPLIT OF ITS OWN. The launcher's
+		 * path reads the line's quoting, spends its field codes and
+		 * hands a graphical program to the session, which is what
+		 * gives a boxed application a display to draw on; a vector
+		 * forked from this surface would have none and the row would
+		 * open nothing. See launch.h.
 		 */
 		const struct sh_app *a = sh_apps_find(rows[sel].path);
-		const char *argv[32];
-		char id[160], buf[SH_APP_EXEC], *save = NULL;
-		int n = 0;
 
-		if (!a)
-			return;
-		if (a->terminal)
-			n = sh_term_argv_in(a->term, a->floating, a->size,
-					    argv, n, 32, a->exec, id,
-					    sizeof(id));
-		snprintf(buf, sizeof(buf), "%s", a->exec);
-		for (char *tok = strtok_r(buf, " \t", &save);
-		     tok && n < 30; tok = strtok_r(NULL, " \t", &save))
-			argv[n++] = tok;
-		if (!n)
-			return;
-		argv[n] = NULL;
-		sh_spawn(argv);
+		if (a)
+			sh_apps_launch(a);
 		return;
 	}
 	{

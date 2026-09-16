@@ -208,10 +208,10 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 screen, so a pointer the session drew would cost a round trip for every motion event and trail the
 hand moving it. The view already holds the device and already knows where it is.
 
-**The pointer is the cell under it, reversed** — on a screen of its own, in a terminal, and over
-`ssh` alike. It is the pointer every text mode has drawn. It needs no artwork, no pixel layer and
-no second code path, and a person looking at the same session through two displays sees the same
-picture in both.
+**The pointer is the cell under it, reversed, everywhere but over a moving picture** — on a screen
+of its own, in a terminal, and over `ssh` alike. It is the pointer every text mode has drawn. It needs
+no artwork, no pixel layer and no second code path, and a person looking at the same session
+through two displays sees the same picture in both.
 
 `ktui_draw_cursor(x, y)` names the cell; `ktui_draw_flush()` does the drawing, and how it does it
 is the whole of the contract:
@@ -225,22 +225,98 @@ is the whole of the contract:
   nothing to draw, and the fill pass has already painted each in its background slot — so a painter
   that skips them loses the swap, and the pointer becomes visible only where it happens to sit over
   text. `kcell_paint` fills those cells with the foreground slot instead.
-- **A cell holding a picture is set aside for the flush, not reversed.** Reverse under a sprite is
-  a fill the picture is then composited over, and an opaque sprite — every frame of an embedded
-  application is one — hides it completely, so the pointer would vanish for as long as it was over
-  the window. `ktui_draw_flush()` swaps that cell's character for a blank alongside the XOR and
-  puts the sprite back afterwards, which costs one cell of the picture and is what a pointer costs
-  over a glyph too. Inverting the sprite's own pixels instead would be wrong: `KT_A_REVERSE` is
-  also how a selected row is drawn, and a panel icon on a hovered row would come out in negative.
+- **Over a cell holding a MOVING picture nothing is drawn at all — one pointer at a time.** A moving
+  picture is a pixel surface somebody is compositing, and that is the only thing on this desktop
+  able to draw a pointer at the resolution it is drawn in. An embedded guest does: `kdos-cage`
+  renders the cursor into every output frame, whether or not the application redrew, so the block
+  under the hand is being rewritten for as long as the hand is on it. A reversed cell on top of that
+  is a *second* pointer a cell from the first, and the one a person aims a two-pixel scrollbar with
+  is the guest's. `ktui_draw_flush()` leaves that cell alone: no XOR, no blank, the picture intact.
+- **A STILL picture keeps the pointer, and `gen` is the whole distinction.** A desktop icon, a panel
+  icon and an image in a terminal are sprites with pixels exactly as a guest's block is, and nothing
+  draws a cursor on any of them — holding over those would take the pointer off the icon grid, which
+  is where it is needed most. The sprite table bumps `KtuiSprite.gen` on every put, so a slot whose
+  pixels keep arriving while the pointer sits on it is being animated and one registered once is
+  not. **Four consecutive fresh puts** is the test — a fifteenth of a second at sixty frames — and an
+  icon is re-registered by a theme change and by a sprite resend, neither of which happens four
+  times in that span. **The verdict carries across a block edge** for thirty flushes, because a
+  window is cut into blocks of at most 16x16 cells and each is its own slot: without the carry the
+  cell pointer would blink back on at every boundary the hand crossed, and with it the pointer
+  returns half a second after the hand leaves a guest for something that is not animating.
+- **And the verdict ends when the puts do.** Fifteen flushes with the slot's `gen` unmoved retire
+  the count and the carry with it, so the pointer is back on the sixteenth — a quarter of a second
+  at sixty. A count that only ever rose would make the verdict permanent, and a guest that froze,
+  lost its renderer or simply stopped drawing would go on holding the pointer for as long as the
+  hand stayed on it: the one window a person most needs to point at would be the one window with no
+  pointer on it. A guest slower than four frames a second is judged still, which is the right answer
+  — a cursor redrawn that rarely does not track a hand.
+- **A sprite with no pixels is not a picture at all, and keeps the pointer.** A tty, a view with no
+  pixel library and a dump all carry the sprite's fallback *mark*, and nothing there is drawing a
+  cursor. `ktui_sprite_get()` answers `NULL` for a slot with no picture.
+  The mark is then set aside exactly as a glyph is: the flush swaps the cell's character for a
+  blank alongside the XOR and puts it back afterwards, because reverse under a sprite is a fill the
+  painter composites over. Inverting a picture's own pixels instead would be wrong — `KT_A_REVERSE`
+  is also how a selected row is drawn, and a panel icon on a hovered row would come out in negative.
 - **Motion is a change even when no cell's content is**, so the framebuffer is marked dirty for it.
   Otherwise the pointer moves only when something else on the screen happens to.
 
 Nothing is drawn before the first motion — the named cell starts at no cell at all — so a machine
 with no pointing device does not wear a pointer in its corner for the life of the session.
 
+**A guest that draws no cursor shows none, and that is the application speaking.** A full-screen
+player and a game hide the pointer on purpose. A guest that stops producing frames stops holding the
+pointer too, because the test is the pixels arriving and not what kind of window it is. The chrome
+round an embedded window is cells, so the cell pointer returns the moment the hand reaches the
+border — which is where a window is grabbed, moved
+and resized. It is never more than one cell from visible.
+
 The sub-cell offsets in the wire format, biased so that zero is the centre of a cell, are not for
 this. They are for the one thing on the desktop that can be pointed at more finely than a cell: an
-embedded pixel guest, which is told where inside the cell the press landed.
+embedded pixel guest, which is told where inside the cell the press landed. **Motion finer than a
+cell is carried by the raw stream and by nothing else.** `libkkms` reports a cooked event only when
+the cell changes — a cell pointer has nowhere finer to be drawn — and emits the pixel and the delta
+for *every* device sample beside it, so a guest is aimed at the pixel while the drawn pointer steps
+whole cells. Sending the dropped motion as a cooked event too would deliver one movement twice to
+every guest, once as a pixel and once as the middle of a cell it is already inside.
+
+### Pointer state: the window answers, not the pointer
+
+**A pointer made of one cell cannot be a shape.** Every other desktop answers "what happens if I
+press here" by turning the arrow into a double arrow; a cell has no room for one, and the view
+draws the pointer in a font the session does not own. A shape published per motion would also be a
+commit per motion — the round trip the pointer is drawn by the view to avoid.
+
+**So the window answers instead.** The same hit test the press asks — `win_grab_at()` in
+`kdos-con` — is asked with the left button standing in for the press that has not happened, and
+what it answers is lit on the frame:
+
+| What a press would arm | What lights | Unicode / ASCII tier |
+|---|---|---|
+| A move — the title row, or Super anywhere inside | the frame's four corners, as studs | `■` / `#` |
+| A resize taking the left or right edge | that whole border, along its length | `◀` `▶` / `<` `>` |
+| A resize taking the bottom edge | the bottom row | `↓` / `v` |
+| A resize taking the top edge | the two top corners, so the title keeps its row | `↑` / `^` |
+| Nothing — a frame chip, a panel, a fullscreen window, the desktop | nothing | |
+
+One answer between the light and the drag is what stops them disagreeing, and it is what keeps the
+frame chips dark: `_`, `■` and `X` sit on the title row's right end, which is a corner arm, so a
+grip taken from the geometry alone would promise a resize over the cell that closes the window.
+
+It says more than a pointer shape can — a corner grab lights *both* edges at once, so the window
+states the rectangle it is about to become — and it changes only when the pointer crosses a zone,
+which is a commit every few seconds rather than one every few milliseconds. The glyphs come from
+`ktui_glyph`, so both tiers are covered by the table that already chooses them, and the ink is
+`KT_ACCENT` on the frame's own background — `KT_SURFACE` on a window rung for attention, which is
+filled in `KT_ACCENT` and would otherwise swallow the grip whole.
+
+**A drag in progress outranks the pointer.** The window follows the hand, so the pointer is off the
+border from the first cell of the drag; the grip follows the *grab* while one is held, or it would
+go out at the instant it began to mean something. Under a lock, a saver, a mark, a pick or a guest
+that has taken the pointer nothing is lit, because no press reaches a frame in those modes and a
+lit edge would promise a drag that cannot start.
+
+**Over text the reversed cell is already the text pointer**, and over a terminal it is what marks a
+selection out, so neither carries a shape of its own.
 
 ## Touch
 
@@ -423,6 +499,17 @@ photograph on the screen. Each backend does what it can:
 **A picture that renders as nothing is worse than one that renders as a mark.** Blank cells are
 indistinguishable from output that never arrived, which is why the tiled path carries a fallback
 codepoint rather than a space.
+
+**A tile that IS a control carries the control's state in its sprite cells' background slot.** The
+backend fills a cell's background before compositing the picture over it, so that slot is the body
+of the button wherever there is no pixel layer to record a plate into. `KT_SURFACE` is the right
+answer only where there is one — it is the slot the backdrop owns, so the recorded plate shows
+through — and on a character grid it is the bar's own body: no fill, no edges, and a hover or an
+open-menu state the surface has already computed painted out by the very draw that should show it.
+The slot then takes the same ladder the pixel plate draws: quiet fill at rest, accent under the
+pointer, warning while the control's own menu is up, with the ink following the fill. The Start
+button is the case, and the rule is the tile's — an icon sitting *inside* a wider field says its
+state with the field.
 
 **A sprite is two cells wide and one tall** wherever it sits beside text. A cell is twice as tall
 as it is wide, so two cells across one row is a square on the same optical line as the text. Asking

@@ -307,13 +307,24 @@ whose two renderings disagree about its own state is worse than either.
   At full strength it is the loudest object on screen, on the one control that is never the thing
   being looked at.
 - **It carries the word**, because a button that is a picture the same size as the application
-  icons beside it does not read as the way in.
+  icons beside it does not read as the way in. The word is measured through the canvas, so a
+  process that draws canvases and never loads a cell font has to have brought `fcft` up — see
+  [libkcell](../05-developer/c-libraries.md#libkcell). A measurement of zero there is a button
+  that silently sizes itself to its mark alone and drops both the word and the plate.
 - The tile lays out padding, mark, gap, word, padding — where padding and gap are **different**
   numbers — and the content is then **centred** in the tile, because a tile is a whole number of
   cells and the content is not. The rounding slack split between both ends is invisible; pushed to
   one end it is an asymmetry you can see.
 - **Where the mark falls back to the literal word, the label is dropped**, since the brand printed
   beside itself says it twice.
+- **The mark takes the button's whole height less a fifth of a cell at each end** — the same air
+  every other picture on the row leaves, so the mascot is not the smallest thing on a bar of
+  application icons, and it still does not touch the top and bottom of its own plate.
+- **On a character grid the plate is the tile's own background slot.** There is no pixel layer to
+  record a plate into there, and the backend fills a sprite cell's background before compositing
+  the picture over it — so the three states travel as `KT_DIM`, `KT_ACCENT` and `KT_WARN` in that
+  slot, with the word inked to read against whichever of them was drawn. Left at `KT_SURFACE` the
+  button is a mascot floating on the bar with no plate, no word behind it and no visible hover.
 
 ### Quick launch
 
@@ -721,6 +732,42 @@ a box profile carrying `display = vt` gets a terminal of its own instead, and `k
 with which of the two happened. A `Terminal=true` entry takes neither: it becomes a `kdos-term`
 window.
 
+**Six launch surfaces call `sh_launch()`** — the Start menu, the palette, the desktop's icons,
+`kdos-find`, *Open With* and the run box — and the one path is what makes them agree about three
+things a surface splitting the line for itself gets wrong:
+
+| The shared path | A surface that splits its own line |
+|---|---|
+| `kxdg_exec_split()` reads the line's quoting | `Exec=foot --title="Install KDOS" -- sudo kinstall` reaches `foot` as `--title="Install` and a stray `KDOS"`, so the installer's own icon opens a terminal that exits |
+| Field codes are spent on the documents the launch carries, wherever they sit inside a word | `--open=%f` is handed to the program with the `%f` still in it, and the program reports a missing file |
+| `kcon_run()` gives a graphical program to the console session | The child has no display and nothing holding it, so a boxed application exits at once with nothing on the screen to say why |
+
+`sh_launch()` lives in `apps.c`; `launch.h` carries the rule and is the header a new surface
+includes.
+
+**The line that reaches it is the line the entry wrote, field codes and all.** The application
+index and the desktop's icons keep `Exec=` verbatim, because the shared path reads those codes
+twice: it **spends** them on the documents the launch carries, and it takes a line with **none** as
+the kind that wants its documents appended — which is the only way `Exec=xterm` can be handed a
+file. A surface that deleted the codes as it read the entry makes every line look like that second
+kind, so `--open=%f` runs as `--open=` with the path as a word of its own and `%u` takes four
+documents where the entry asked for one. Deleting them — `sh_strip_field_codes()` — belongs to a
+reader that cannot spend one: the three surfaces that split their own line, and the haystack a
+search is matched against, where a `%U` is two more letters for a subsequence matcher to travel
+through. With nothing to open, `kxdg_exec_split()` drops every code and leaves no empty argument
+behind, which is why nothing has to be deleted first.
+
+**A `verbatim` launch is a typed command line** — the run box, and *Open With*'s *Other
+command…* row. A `%` somebody typed is a character the program must see, so no field code is spent
+and a file travels as a trailing argument; the quoting is read either way, so `mpv "my film.mkv"`
+is two arguments from the run box as much as from an entry.
+
+**Three surfaces in this binary still split their own line** and are the gap a seventh must not
+join: the panel's quick-launch row and the taskbar chip's *New window* (`panel.c`), and
+`kdos-menu`'s application rows. An entry whose `Exec` carries a quoted argument starts wrong from
+those three, and a graphical one started from the panel while it is docked on the console is forked
+beside the session rather than given to it. See [known gaps](../06-reference/known-gaps.md).
+
 **Nothing here names a terminal emulator.** `sh_term()` answers with `kdos-term` when `$KDOS_CON` is
 set and `foot` otherwise, and every place that opens one — the root menu's rows, Places, Open
 Terminal Here, the manual-page link, the CPU tile, Open With, the run box's *In Terminal*, the
@@ -801,7 +848,12 @@ and there is none — a Move to Trash on the wallpaper would act on `~/Desktop` 
 **Two shared rows keep a local action, and the row stays the table's.** *Open* goes through the
 desktop's own opener, because a `.desktop` icon is an application to run rather than a file to open
 and the Trash icon is a place; handing either to the MIME chain would make the menu row mean
-something different from `Enter` on the same icon. *Move to Trash* asks first and refuses the two
+something different from `Enter` on the same icon. **An icon that is a `.desktop` file runs through
+`sh_launch()`** with the `Terminal`, `X-KDOS-Term`, `X-KDOS-Float` and `X-KDOS-Size` keys this
+surface parsed — the same call the Start menu makes, so an icon and a menu row for one entry cannot
+open two different windows, and a boxed application dropped on the desktop reaches the session
+rather than being forked beside it. Everything that is not a `.desktop` icon goes to
+`kdos-appbox open`. *Move to Trash* asks first and refuses the two
 pinned places — `kdos trash <file>` confirms nothing, which is right for a prompt and for `mc` and
 wrong for the row sitting beside `Delete` on this surface.
 
@@ -966,11 +1018,13 @@ that never stops working. Once asked for, it follows every later question.
 means the dot, and a pattern that swallowed it would match `reportxc`.
 
 **A result opens through `kdos-appbox open`**, the one resolution the desktop, the chooser and `mc`
-all use. An application row is resolved to its entry again at the moment it is chosen and started
-from its `Exec` line, because a boxed app's `Exec` reads `kdos-appbox -b <pack> run <command>` —
-`kdos-appbox run <command>` for an app belonging to no pack — and its id is not that command:
-handing the id to `run` starts nothing at all. A consumer that recognises the line by a fixed
-prefix sees only the packless half; the binary and the verb are what identify it.
+all use. An application row is resolved to its entry again at the moment it is chosen, because a
+boxed app's `Exec` reads `kdos-appbox -b <pack> run <command>` — `kdos-appbox run <command>` for an
+app belonging to no pack — and its id is not that command: handing the id to `run` starts nothing at
+all. A consumer that recognises the line by a fixed prefix sees only the packless half; the binary
+and the verb are what identify it. **The entry is then handed to `sh_apps_launch()`**, the
+launcher's own call, so a row found here and the same row in the Start menu open the same window —
+and so that a boxed application reaches the session that gives it a display.
 
 **The root is the directory the verb named, else home.** A search with no root is a search of the
 filesystem, which is not what *Find Here* means and not what a chord with no context should start.
@@ -1427,8 +1481,8 @@ keeps a client on the surface socket from learning what somebody has recorded. *
 decides whether the welcome is due**, from `~/.config/kdos/first-run`, so a session that asks at every login still shows it once |
 | `kdos-style` | How the screen looks, `Super+Ctrl+Shift+Space`, on two pages — the accent and the font — because they are one question and a second window would be a second thing to find. **`kdos-theme` is a different program**: the artwork generator `kdos theme` runs, and one name for both left the picker unreachable. **The font page's list is the DISPLAY'S**: a surface never loads a font, so the faces come from the display through `libkdisp` and what goes back is an INDEX into that list and never a name — the display may be at the far end of an ssh link with its own machine's fonts. **The sample row is the screen**: a cell grid has one font at a time, so the arrows put the highlighted face on live and every cell in the window is then a sample of it; only `Enter` writes the state file, because a step that persisted would make the last face a highlight passed over the one the next login wears. On a view inside somebody else's terminal the list is empty and the page says **the terminal this view runs in owns the font — change it there**, which is the sentence the font chords put on the bar. The accent page: `Super+Ctrl+Shift+Space`. One row per scheme, **each drawn in its own colours**, the desktop repainting live as the highlight moves; `Enter` keeps and `Esc` puts back the one it opened on. **The swatches are the only literal colours on this desktop** — everything else draws in named slots so one word repaints all of it, and a swatch that took the accent in force would show seven identical rows; `preflight.sh` names this file as the exception rather than dropping the check. The blocks come from the glyph table like every other picture-character here, so the swatch is still a swatch on a terminal with no UTF-8. **A preview is half a theme**: `kdos theme --preview` writes the accent state file and signals the session, and generates none of the GTK, icon, cursor or foreign-configuration artefacts, which take seconds and are read by programs that are not running — so the desktop moves and a boxed application does not, and `Enter` runs the real switch. Leaving any other way, including a `SIGTERM`, puts the original back, because a picker killed halfway would otherwise leave the desktop wearing an accent nothing else had been regenerated for. **The window sizes itself from the scheme table**, so an accent added to `kcolor.h` needs no edit here |
 | `kdos-doc` | The documentation viewer |
-| `kdos-openwith` | Choose a handler, and optionally always use it |
-| `kdos-run` | The run box. It takes a click to place its caret, and grew a button bar because its one feature beyond a prompt was a **modifier** that nothing announced |
+| `kdos-openwith` | Choose a handler, and optionally always use it. **The chosen entry is launched through `sh_launch()`** with the file as its document — the difference between a chooser and a launcher is which entry is picked and nothing else, so `%f` lands where the entry put it, a quoted argument survives, and a graphical handler on the console reaches the session. The *Other command…* row is a `verbatim` launch: the typed words become an argument vector, so a `;` in the box is an argument rather than a second program, and the path follows as a trailing argument. A plain command cannot be made the default — `mimeapps.list` records an ENTRY, and inventing one would leave a file in the user's applications directory nobody asked for |
+| `kdos-run` | The run box. A click places the caret, and the button bar is on the surface because *In Terminal* is a **modifier**: a modifier nothing draws is a feature nobody finds. It is a `verbatim` `sh_launch()`: quoting is read, so `mpv "my film.mkv"` is two arguments, and a `%` reaches the program as typed. *In Terminal* wraps it in this desktop's emulator; without it, a graphical program is handed to the console session, which is what gives it a display |
 | `kdos-prompt` | Yes or no, answering by **exit status** — which is what the compositor reads. `--input` is a second shape: one row with a text box, the typed line on **stdout**, 0 for an answer and 254 for Escape or an empty box. A mode and not a third button, because the yes/no shape's status is `kdos-comp`'s contract and must not gain a second meaning. It is a loop of its own — the widget is immediate-mode and wants the event inside `ktui_frame_begin()`, which is the opposite of the yes/no loop's hand-written key switch |
 | `kdos-status` | The overflow popup; see below |
 | `kdos-slit` | The dockapp column. Off by default: a slit nobody configured is a column of marks |

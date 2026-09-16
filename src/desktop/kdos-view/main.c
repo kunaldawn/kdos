@@ -400,6 +400,29 @@ static void view_slot_init(void)
 }
 
 /*
+ * THE PIXELS BEHIND A SESSION SLOT, KEPT BETWEEN FRAMES, AND BORROWED.
+ *
+ * An embedded guest republishes every block of its window on every frame, and
+ * a block at the shipped cell is 128 KiB. An allocation that size is a fresh
+ * mapping: the kernel faults in and zeroes all of its pages the first time the
+ * scale writes them, and hands them straight back at the unref — so a fresh
+ * image per block per frame spends most of a 1080p frame in the fault handler
+ * and nothing else. The buffer is therefore kept and overwritten in place,
+ * which is sound because the resample is OP_SRC and covers every pixel of it.
+ *
+ * REALLOCATED THE MOMENT THE PIXEL SIZE MOVES, which is what a resized block,
+ * a font step and a mode change all look like from here: `view_pix_w`/`_h` are
+ * the size the kept image really is, never the size that was asked for.
+ *
+ * THE POINTER IS THE SPRITE TABLE'S, NOT THIS TABLE'S. Exactly one reference
+ * exists and ktui_sprite_put() takes it; sprite_free() is the only place it is
+ * dropped, and clearing the entry there is what keeps this from naming freed
+ * pixels after an eviction, a ktui_sprite_clear() or a refused put.
+ */
+static pixman_image_t *view_pix[KCON_MAX_SPRITE_MAP];
+static int view_pix_w[KCON_MAX_SPRITE_MAP], view_pix_h[KCON_MAX_SPRITE_MAP];
+
+/*
  * How the sprite table hands a picture back when it takes a slot. Registered
  * so the table may evict — without it a full table refuses, and a terminal
  * showing a second picture would show the first one's fallback forever.
@@ -417,6 +440,12 @@ static void sprite_free(uint64_t key, const void *pix, void *user)
 		view_ttypix_forget(view_slot[key]);
 #endif
 		view_slot[key] = -1;
+		/*
+		 * AND THE KEPT BUFFER GOES WITH IT. The unref below is the
+		 * last reference; a slot still naming these pixels would
+		 * resample the next frame into freed memory.
+		 */
+		view_pix[key] = NULL;
 		/*
 		 * AN EVICTION IS A LOSS LIKE A REFUSAL IS. The cells naming
 		 * this key are drawn and the session has already cleared what
@@ -879,29 +908,49 @@ static void take_sprite(const unsigned char *payload, size_t len)
 		return;
 	}
 
-	uint32_t *bits = calloc((size_t)dw * (size_t)dh, 4);
-
-	if (!bits) {
-		sprite_lost_mark(slot);
-		return;
-	}
-
-	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, dw, dh,
-						       bits, dw * 4);
+	/*
+	 * THE BUFFER THIS SLOT ALREADY HAS IS WRITTEN AGAIN, and a new one is
+	 * taken only when the pixel size has moved. The resample below is
+	 * OP_SRC over the whole image, so every pixel of it is replaced and
+	 * nothing of the last frame can show through — which is the entire
+	 * licence for reusing it. A guest at 60 fps publishing a screenful of
+	 * 128 KiB blocks otherwise maps, faults, zeroes and unmaps every one
+	 * of them on every frame, and that churn is the frame budget.
+	 *
+	 * `reused` also says WHO OWNS `img` on the way out: a kept image is
+	 * the sprite table's and must never be unref'd here, a fresh one is
+	 * this function's until the put takes it.
+	 */
+	int reused = view_pix[slot] && view_pix_w[slot] == dw &&
+		     view_pix_h[slot] == dh;
+	pixman_image_t *img = reused ? view_pix[slot] : NULL;
 
 	if (!img) {
-		free(bits);
-		sprite_lost_mark(slot);
-		return;
+		uint32_t *bits = calloc((size_t)dw * (size_t)dh, 4);
+
+		if (!bits) {
+			sprite_lost_mark(slot);
+			return;
+		}
+
+		img = pixman_image_create_bits(PIXMAN_a8r8g8b8, dw, dh, bits,
+					       dw * 4);
+
+		if (!img) {
+			free(bits);
+			sprite_lost_mark(slot);
+			return;
+		}
+		pixman_image_set_destroy_function(img, free_bits, bits);
 	}
-	pixman_image_set_destroy_function(img, free_bits, bits);
 
 	pixman_image_t *src = pixman_image_create_bits(PIXMAN_a8r8g8b8, pw, ph,
 						       (uint32_t *)argb,
 						       pw * 4);
 
 	if (!src) {
-		pixman_image_unref(img);
+		if (!reused)
+			pixman_image_unref(img);
 		sprite_lost_mark(slot);
 		return;
 	}
@@ -932,6 +981,19 @@ static void take_sprite(const unsigned char *payload, size_t len)
 	 */
 	view_slot_init();
 
+	/*
+	 * A TERMINAL'S PLACEMENTS GO BACK WHENEVER THE PIXELS UNDER THEM DO.
+	 * The emitter keeps, per table slot, what it has already drawn and
+	 * where; a picture rewritten in place is a placement whose contents no
+	 * longer match it. The sprite table announces a picture it REPLACED
+	 * through its evictor, and one rewritten in the buffer it already
+	 * holds is the single case the table cannot see — so it is said here.
+	 */
+#if defined(KDOS_VIEW_TTYPIX)
+	if (reused)
+		view_ttypix_forget(view_slot[slot]);
+#endif
+
 	int vs = ktui_sprite_put((uint64_t)slot, img, cw, ch, fallback);
 
 	/*
@@ -940,15 +1002,26 @@ static void take_sprite(const unsigned char *payload, size_t len)
 	 * this key already holds in place — storing the answer would blank a
 	 * block that still has its last frame behind it. The picture the table
 	 * turns away is this view's to free, and the session is told so the
-	 * block is owed again.
+	 * block is owed again — unless the picture the table turned away is
+	 * the one it is already holding for this key, which is still its own
+	 * and whose last frame is still on the screen.
 	 */
 	if (vs < 0) {
-		pixman_image_unref(img);
+		if (!reused)
+			pixman_image_unref(img);
 		sprite_lost_mark(slot);
 		return;
 	}
 	sprite_lost_drop(slot);
 	view_slot[slot] = vs;
+	/*
+	 * RECORDED ONLY ONCE THE TABLE HAS TAKEN IT. A put that replaced a
+	 * differently sized picture has already cleared this entry through
+	 * sprite_free(), so the write has to come after it and not before.
+	 */
+	view_pix[slot] = img;
+	view_pix_w[slot] = dw;
+	view_pix_h[slot] = dh;
 	redraw_slot((unsigned)slot);
 #else
 	(void)slot;
@@ -2784,9 +2857,6 @@ int main(int argc, char **argv)
 					ktui_draw_hide_cursor();
 				} else {
 					ktui_draw_cursor(ev.mx, ev.my);
-#ifdef KDOS_VIEW_TTYPIX
-					view_ttypix_pointer(ev.mx, ev.my);
-#endif
 				}
 				send_ptr(&ev);
 			}

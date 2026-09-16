@@ -109,6 +109,17 @@
 #define EM_MAX_WINS 16
 
 /*
+ * THE DENSEST A BOXED APPLICATION IS EVER ASKED TO RENDER AT.
+ *
+ * A scale is the guest's whole frame redrawn that many times larger into the
+ * same framebuffer, so a number the console did not mean is an application
+ * whose window shows one corner of itself. Four covers every console font a
+ * screen has ever wanted — sixty-four pixels to a character — and the cap is
+ * what a cell size arriving broken from a display cannot get past.
+ */
+#define EM_SCALE_MAX 4
+
+/*
  * A CELL SIZE FOR A SESSION THAT HAS NOT BEEN TOLD ONE. A view says how many
  * pixels its cells are; a terminal view has no answer, and a guest still has
  * to be given a size. Eight by sixteen is the console font's, so an embedded
@@ -156,31 +167,98 @@
 #define EM_SIZE_LATE_MS 1000
 
 /*
- * HOW LONG A GUEST HAS TO CLOSE ITSELF, and how long it has after being told
- * with a signal.
+ * HOW MANY TIMES RUNNING A GUEST MAY MOVE ITS OWN WINDOW, AND HOW LONG A RUN
+ * IS.
  *
- * Closing a window ASKS the application, which is what gives it the chance to
- * offer a save dialog — and a person answering that dialog is using the
- * window, not ignoring the close. Ten seconds is long enough for a container's
- * toolkit to draw one and short enough that a guest which is never going to
- * answer does not leave a window nothing can close.
+ * A guest reports the size its window actually is and the desktop answers by
+ * giving the window that size — which the guest may answer with a different
+ * one, for ever. Nothing in the arithmetic can tell a toolkit that is settling
+ * from one that is chasing, because both look like a report that disagrees
+ * with the last, so the bound is on the RUN: past this many fits with nothing
+ * but the guest driving them, the window keeps the rectangle it has and the
+ * guest keeps whatever it renders.
  *
- * THE FIRST IS TWO DEADLINES ON THE SAME CLOCK, AND NEITHER RUNS AGAINST A
- * GUEST THAT ANSWERED. A WINDOW that has been asked and is still here is
- * dropped from the desktop, because the toplevel behind it answers nothing and
- * there is nobody left to ask; the PROCESS is signalled only when the ask
- * covered every window a person could reach, because a signal takes every
- * other window's unsaved work with it. An answer — the window retired, or a
- * question opened on it — stops both, since the failure they are measuring is
- * silence and neither one is silent.
+ * FOUR, because a toolkit that reflows more than once — a size it takes, then
+ * a scrollbar it no longer needs, then the width that frees — is ordinary, and
+ * a fifth step is a program that is not converging. THE RUN IS CONSECUTIVE and
+ * the second number is what ends one: a chasing guest answers inside a frame
+ * or two of every resize, so a report that arrives a second after the last fit
+ * is a window changing its mind about something new rather than the same
+ * argument still going. A guest that resizes itself once an hour is never
+ * refused; one that does it sixty times a second is refused after four.
+ */
+#define EM_FIT_RUN 4
+#define EM_FIT_SETTLE_MS 1000
+
+/*
+ * THE LADDER A CLOSE CLIMBS, AND HOW LONG THE PERSON SPENDS ON EACH RUNG.
  *
- * THE SECOND MUST EXCEED THE CAGE'S OWN ESCALATION, which is five: the signal
- * reaches the cage, and the cage then asks, signals and kills its guest before
- * exiting. Killing the cage inside that window leaves the application running
- * with nothing to draw on and nobody to reap it.
+ * THE FIRST RUNG MEASURES SILENCE AND NOT DISOBEDIENCE. Closing a window ASKS
+ * the application, and every way an application has of answering that ask
+ * takes its own event loop: retiring the toplevel, opening a question in a
+ * toplevel of its own, or DRAWING the question inside the window that was
+ * asked — which is what a libadwaita dialog and every Electron application do,
+ * and which maps no new toplevel at all. A guest that has done any of those is
+ * alive and is being used; a deadline that fired on it would take the answer
+ * to "save your work?" down with the process that was about to act on it. What
+ * is left after all three is a guest whose loop is not running, and ten
+ * seconds of a window that has drawn nothing at all is that guest.
+ *
+ * EM_CLOSE_MS IS ONE MARK AFTER THE LATEST ASK AND TWO ROADS FROM IT. A WINDOW
+ * whose guest has answered NOTHING is dropped from the desktop, because the
+ * toplevel behind it answers nothing and there is nobody left to ask; the
+ * PROCESS is signalled only when the ask covered every window a person could
+ * reach, because a signal takes every other window's unsaved work with it.
+ *
+ * AND A WINDOW WHOSE GUEST ANSWERED TAKES THE OTHER ROAD: the bar offers the
+ * second rung and nothing is dropped or signalled. A guest that answers every
+ * ask and honours none — a video player, an animating toolkit, a question
+ * redrawn for ever — is never reaped, so the person asking again is the only
+ * thing left that can end it, and a route nobody is told about is a route that
+ * does not exist. NOTHING FORCES BEFORE THE OFFER IS MADE, which is what keeps
+ * an impatient double-click on a healthy save prompt from quitting the
+ * application.
+ *
+ * EM_FORCE_MS IS HOW LONG THAT OFFER STANDS. A person who read the question,
+ * cancelled it and went back to work must not find that their next close half
+ * a minute later is taken for the second half of a force; past it the ask
+ * starts again at the first rung and the offer is made again ten seconds
+ * after that.
+ *
+ * EM_KILL_MS IS THE LAST RUNG AND MUST EXCEED THE CAGE'S OWN ESCALATION, which
+ * is five: the signal reaches the cage, and the cage then asks, signals and
+ * kills its guest before exiting. Killing the cage inside that window leaves
+ * the application running with nothing to draw on and nobody to reap it. What
+ * comes after it is SIGKILL, which nothing catches and nothing can clear —
+ * that is what makes the ladder terminate.
  */
 #define EM_CLOSE_MS 10000
+#define EM_FORCE_MS 30000
 #define EM_KILL_MS 8000
+
+/*
+ * HOW MUCH OF A NAME THE BAR'S CLOSE NOTICE WILL SPEND. The line's job is to
+ * publish the only route to a forced close, so a name long enough to crowd the
+ * instruction out is cut instead: a bar reading "<half a document path> has not
+ * closed — close it aga" tells the person nothing they can act on.
+ */
+#define EM_NOTICE_NAME 96
+
+/*
+ * HOW LATE A FRAME MUST BE TO COUNT AS AN ANSWER TO THE ASK.
+ *
+ * A FRAME ALREADY IN FLIGHT IS NOT ONE. The cage publishes whether or not it
+ * has read the close yet, so a frame the guest committed before being asked
+ * can still be in the socket when the ask goes out — and taking that for an
+ * answer hands a wedged guest a free pass on every ask it is ever sent.
+ *
+ * THE CHANNEL IS DRAINED EVERY TURN, so everything published before the ask is
+ * read within a turn of it and this needs only to clear a turn the session
+ * spent composing. Fifteen of them, which no stale frame survives — and a
+ * toolkit drawing a question goes on drawing it, so its frames past this mark
+ * arrive long before the deadline does.
+ */
+#define EM_CLOSE_ACK_MS 250
 
 /*
  * WHERE A TURN STOPS FILLING A DISPLAY, AND IT IS BELOW WHERE THE DISPLAY
@@ -226,29 +304,44 @@ struct EmbedProc {
 
 	/*
 	 * WHEN THE GUEST WAS ASKED TO GO AND HAS NOTHING LEFT TO ANSWER FOR, 0
-	 * for never. The deadline that escalates to a signal is measured from
-	 * it, and a second ask does not restart it: a window that is never
-	 * going to answer would otherwise be kept alive by the clicking.
+	 * for never. The signal schedule is measured from it, and a repeated
+	 * ask does not restart it: a window that is never going to answer would
+	 * otherwise be kept alive by the clicking.
 	 *
-	 * IT IS THE PROCESS'S AND ONLY THE LAST WINDOW A PERSON CAN REACH ARMS
-	 * IT. A guest signalled because one dialog of five ignored a close is
-	 * every other window's unsaved work gone.
+	 * IT IS THE PROCESS'S AND ONLY AN ASK ON THE LAST WINDOW A PERSON CAN
+	 * REACH ARMS IT, AND ONLY WHILE THAT WINDOW HAS ANSWERED NOTHING. A
+	 * guest signalled because one dialog of five ignored a close is every
+	 * other window's unsaved work gone, and one signalled for the silence
+	 * that follows a second click on a question already drawn is the same
+	 * loss by the shortest road there is.
 	 *
-	 * AND IT IS DISARMED BY THE GUEST ANSWERING — retiring the window, or
-	 * putting a question on it. It measures a guest that was asked and did
-	 * nothing, and a signal delivered to one that is asking the person
-	 * about the very same window loses exactly the work the ask exists to
-	 * save.
+	 * AND WHILE THE CLOSE IS AN ASK IT IS DISARMED BY ANY SIGN THE GUEST'S
+	 * OWN EVENT LOOP IS RUNNING — the window retired, a question opened in
+	 * a toplevel of its own, or a frame drawn after the ask. It measures a
+	 * guest that cannot answer at all, and a signal delivered to one that is
+	 * asking the person about the very same window loses exactly the work
+	 * the ask exists to save. A FORCED close is not an ask and `forced`
+	 * below is what nails the clock down.
 	 */
 	unsigned long long closing_ms;
+
+	/*
+	 * THE CLOSE WAS FORCED AND NOTHING THE GUEST DOES ANSWERS IT. The
+	 * second rung is taken against a guest that answers by drawing, so a
+	 * schedule any frame could clear is a schedule that guest clears for
+	 * ever — the whole reason the rung exists. Once this is set the only
+	 * thing left running is SIGTERM and then SIGKILL, and SIGKILL cannot be
+	 * caught, so the window is gone and the process with it.
+	 */
+	int forced;
 
 	/*
 	 * THE LAST SIGNAL SENT ON THAT CLOCK, so each one is sent once. The
 	 * reap runs on every pump, and a kill() repeated at that rate is
 	 * thousands of signals inside one close — a guest whose handler is
 	 * re-entered that fast never reaches the end of its own shutdown. It
-	 * goes back to 0 with the clock, because the next ask is a new
-	 * escalation.
+	 * goes back to 0 with the clock, because a clock that has been re-armed
+	 * is a fresh escalation and the cage is owed its SIGTERM first.
 	 */
 	int sigsent;
 
@@ -338,10 +431,22 @@ struct EmbedWin {
 	uint32_t id;
 
 	/*
-	 * WHEN THIS WINDOW WAS ASKED TO GO, 0 for never. A second ask does not
-	 * restart it, or a person's impatience would be the reason the
-	 * deadline never fires; the GUEST clears it, by retiring the window or
-	 * by opening a question about it.
+	 * WHEN THIS WINDOW WAS LAST ASKED TO GO, 0 when it is not on the clock,
+	 * and what it measures is the silence since. EVERY ASK RESTARTS IT,
+	 * because every ask is a question the guest is owed the whole of
+	 * EM_CLOSE_MS to answer and a clock left standing would judge this ask
+	 * on time spent answering the last one; the GUEST clears it, by
+	 * retiring the window, by opening a question about it, or by drawing
+	 * one inside it.
+	 *
+	 * IT IS NOT WHAT CHOOSES THE ROAD AT THE MARK. `answered` below is,
+	 * because this clock is armed again by a click and a guest holding a
+	 * question on the screen has nothing new to draw for the second one.
+	 *
+	 * IT ALSO KEEPS THE WINDOW AWAKE. The answer this deadline waits for is
+	 * a frame, and a window told to stop rendering because nobody can see
+	 * it cannot give one — an application closed from the taskbar would
+	 * then be silent by the session's own instruction and reaped for it.
 	 *
 	 * A WINDOW HAS ITS OWN DEADLINE BECAUSE A SIGNAL IS THE PROCESS'S. A
 	 * guest holding five toplevels that answers none of them never lets
@@ -351,6 +456,47 @@ struct EmbedWin {
 	 * guest at all.
 	 */
 	unsigned long long close_ms;
+
+	/*
+	 * WHEN THE PERSON LAST ASKED, WHICH IS NOT WHEN THE GUEST LAST WENT
+	 * QUIET. `close_ms` above is cleared by every sign of the guest's event
+	 * loop; this one is the person's and only a new ask moves it, so it is
+	 * the mark the offer is counted to however much the guest draws. A
+	 * guest able to move it by drawing would be a guest able to make its
+	 * own window permanent.
+	 *
+	 * IT LAPSES AFTER EM_FORCE_MS, so a close that far after the last one
+	 * is a fresh first rung rather than the second half of a force.
+	 */
+	unsigned long long asked_ms;
+
+	/*
+	 * THE GUEST HAS ANSWERED AN ASK ABOUT THIS WINDOW SINCE THE LADDER
+	 * BEGAN, and it is what picks the road at the mark: an answer is a
+	 * question standing on the screen, so the window is never dropped and
+	 * the person is offered the second rung instead, while a window that
+	 * has answered nothing is dropped because the toplevel behind it can no
+	 * longer be asked anything.
+	 *
+	 * IT OUTLIVES `close_ms`, WHICH THE NEXT ASK RE-ARMS. A dialog already
+	 * on the screen answers the second click with silence — it has nothing
+	 * new to draw — and reading that silence as a wedged event loop takes
+	 * the window and every unsaved keystroke the question was asking about.
+	 *
+	 * IT LAPSES WITH THE ASK IT BELONGS TO, so a close half a minute later
+	 * is judged on what the guest does about THAT one.
+	 */
+	int answered;
+
+	/*
+	 * THE SECOND RUNG HAS BEEN OFFERED ON THE BAR FOR THIS ASK, and until
+	 * it has, no close forces anything. The offer is the only thing on the
+	 * screen that says how to get rid of a window whose guest answers every
+	 * ask and honours none, and a force the person was never shown is a
+	 * force that arrives as an application quitting for no reason they can
+	 * name.
+	 */
+	int force_ready;
 
 	void *map;
 	size_t map_len, slot_len;
@@ -414,6 +560,47 @@ struct EmbedWin {
 	 * frame for the life of the window.
 	 */
 	int corr_pw, corr_ph;
+	/*
+	 * WHAT THE LAST FIT TO A KEMBED_SURFACE DID: the rectangle it left the
+	 * window at, the report it was answering, when it happened, and how
+	 * many fits running have been the guest's own doing.
+	 *
+	 * KEMBED_SURFACE says how large the guest's window actually is and the
+	 * answer is to give the window that size — but the guest may answer
+	 * THAT with another demand, and a desktop that honoured every one would
+	 * resize a window for as long as the two disagreed. Three rules bound
+	 * it and each answers a different failure:
+	 *
+	 * THE SAME REPORT AT THE SAME RECTANGLE IS ALREADY ANSWERED. The cage
+	 * repeats a report whenever the output moves, and rounding up to whole
+	 * cells leaves nearly every guest permanently a few pixels short of its
+	 * own output — so without this the settled state is a resize per frame.
+	 *
+	 * ANYTHING ELSE MOVING THE WINDOW STARTS THE RUN AGAIN. `fit_pw` is the
+	 * rectangle this window was left at, so a window no longer at it was
+	 * moved by a drag, a tile or a font step — a rectangle the guest has
+	 * not answered yet, and a guest that has a minimum of its own must be
+	 * able to say so again.
+	 *
+	 * AND A RUN IS CAPPED. See EM_FIT_RUN: a guest that answers every size
+	 * with a different one is not converging, and past the cap it keeps
+	 * what it renders and the window keeps what it has.
+	 */
+	int fit_pw, fit_ph;
+	int fit_rw, fit_rh;
+	int fit_run;
+	unsigned long long fit_ms;
+	/*
+	 * THE RECTANGLE THE PLACEHOLDER WAS GUESSED AT, in cells, 0 once a
+	 * toplevel has claimed it. embed_open() asks for half the work area
+	 * because it knows nothing about the window yet, and win_place() may
+	 * answer with the rectangle the person last left this program at — a
+	 * remembered rectangle is an answer already, and replacing it with the
+	 * toolkit's own default is the window forgetting where it was kept. So
+	 * the natural size KEMBED_OPEN carries is taken only while the window
+	 * still holds the guess.
+	 */
+	int ask_w, ask_h;
 	unsigned long long size_ms;	/* when the last one went */
 	int slots[EM_MAX_BLOCKS];	/* session sprite slots, -1 unassigned */
 
@@ -493,6 +680,16 @@ struct EmbedWin {
 	 * windowed application across a screen that has none.
 	 */
 	int full_sent;
+	/*
+	 * THE SCALE THIS WINDOW HAS BEEN TOLD, 0 for none yet.
+	 *
+	 * ZERO IS WHAT MAKES A NEW WINDOW GET ONE. A scale is never zero, so a
+	 * window that has just opened disagrees with whatever the session is at
+	 * and is told on its first turn — which is where a guest that mapped
+	 * before the desktop said anything picks up the density the rest of the
+	 * desktop is already at, for the cost of one reconfigure at the map.
+	 */
+	int scale_sent;
 	/*
 	 * THE GUEST SAYS THE SCREEN MUST STAY ON. It holds until the guest
 	 * clears it or the window goes; a window nobody can see does not hold
@@ -1448,10 +1645,10 @@ static void profile_display(const char *name, char *out, size_t cap)
 
 /*
  * EMBEDDING IS THE DEFAULT and a terminal of its own is the exception. An
- * embedded guest is composited by the software renderer unless its box profile
- * says `render = gpu`, and a terminal of its own is what remains for an
- * application that needs the card on its own terms — a full-screen mode set,
- * or a driver that will not run against a headless output. Every rule that
+ * embedded guest is composited on the card wherever one opens, unless its box
+ * profile says `render = software`, and a terminal of its own is what remains
+ * for an application that needs the card on its own terms — a full-screen mode
+ * set, or a driver that will not run against a headless output. Every rule that
  * overrides the default says so, so that `kdos doctor` and a person reading a
  * log get the same sentence.
  */
@@ -1592,6 +1789,46 @@ static struct EmbedWin *only_asked(struct EmbedProc *p)
 	return one;
 }
 
+/*
+ * THE GUEST HAS ANSWERED THE ASK, so neither deadline is running any more.
+ *
+ * ONE PLACE, BECAUSE THERE ARE THREE ANSWERS AND THEY MUST ALL COST THE SAME.
+ * A toplevel retired, a question mapped on the window, a frame drawn in the
+ * window after it was asked: each is the guest's own event loop having run
+ * since the close went out, which is the only thing either deadline is looking
+ * for. A road that cleared the window's clock and left the process's would
+ * signal the whole application ten seconds after one of its windows answered.
+ *
+ * THE ESCALATION IS RESET WITH THEM, so a later ask is a fresh one rather than
+ * a SIGKILL where a SIGTERM was owed.
+ *
+ * WHAT IS NOT CLEARED IS THE PERSON'S LADDER. `asked_ms` and `force_ready`
+ * belong to whoever pressed close, and a guest that answers by drawing answers
+ * on every frame — clearing them here is exactly the defect that makes a video
+ * player, a game or an animating toolkit impossible to remove from the
+ * desktop.
+ *
+ * AND THE ANSWER IS REMEMBERED IN `answered`, because the next ask re-arms the
+ * silence clock and the guest has nothing new to draw for a question it has
+ * already put on the screen. It buys the road and not the window: the mark
+ * still arrives, and what it does there is offer the person the second rung.
+ *
+ * AND A FORCED CLOSE IS NOT ANSWERABLE AT ALL. The second rung is taken
+ * against a guest whose frames are worth nothing as evidence, so from there
+ * only the signal schedule runs and it runs to SIGKILL.
+ */
+static void close_answered(struct EmbedWin *e)
+{
+	if (!e || (e->proc && e->proc->forced))
+		return;
+	e->close_ms = 0;
+	e->answered = 1;
+	if (e->proc) {
+		e->proc->closing_ms = 0;
+		e->proc->sigsent = 0;
+	}
+}
+
 /* The cell size a guest is rendered at: the primary view's, because that is
  * the display the person is looking at. A second view of a different font
  * rescales the sprite, which is what it already does for every other picture. */
@@ -1605,6 +1842,75 @@ static void cell_size(int *w, int *h)
 		*w = EM_CELL_W;
 		*h = EM_CELL_H;
 	}
+}
+
+/*
+ * HOW MANY PIXELS A BOXED APPLICATION SPENDS ON ONE OF ITS OWN.
+ *
+ * THE CELL IS WHERE THIS DESKTOP'S DENSITY IS WRITTEN, and it is the only place
+ * that is true of every display this session can have. A console picks a font
+ * for the screen it is on, so a cell twice the reference cell is a desktop
+ * whose text is twice the size — whether that came from a dense panel or from a
+ * person who wanted larger letters — and a guest left at 1 beside it renders
+ * chrome nothing can read next to text that is perfectly legible. There is no
+ * DPI here to ask instead: a text grid has no physical size of its own.
+ *
+ * A WHOLE NUMBER, AND ONE THAT DIVIDES THE CELL. The output the guest is given
+ * is a whole number of cells wide, and the logical size the cage derives from
+ * it is that divided by this and truncated — so a scale that does not divide
+ * the cell leaves the guest rendering a column short of its own output, which
+ * is a stripe of the cage's background down the edge of the window for as long
+ * as the window lives. Stepping down until it divides is what keeps that
+ * impossible on a font of any width.
+ *
+ * AND IT IS THE SESSION'S, NOT THE WINDOW'S. Every window of every guest gets
+ * the same number, because they are all being drawn into the same cells.
+ */
+static int em_scale(void)
+{
+	int cw, ch, s;
+
+	cell_size(&cw, &ch);
+	s = ch / EM_CELL_H;
+	if (s > EM_SCALE_MAX)
+		s = EM_SCALE_MAX;
+	while (s > 1 && (cw % s || ch % s))
+		s--;
+	return s < 1 ? 1 : s;
+}
+
+/*
+ * THE CELL RECTANGLE A GUEST'S PIXELS ASK FOR.
+ *
+ * ROUNDED UP: a window one cell short of the pixels a dialog asked for is a
+ * dialog with its last row of buttons cut off, and the cage composites a guest
+ * at its output's top left — so the cell that is short is always the last one.
+ *
+ * CLAMPED INTO THE WORK AREA, because a window larger than the desktop is one
+ * whose frame a person cannot reach. The clamp is this end's and is not the
+ * cage's refusal: a size past CG_EMBED_SPAN is refused there rather than
+ * clamped, and every rectangle that leaves here is far below it.
+ */
+static void want_cells(int pw, int ph, int *cols, int *rows)
+{
+	KwmRect area = win_workarea();
+	int cw, ch;
+
+	cell_size(&cw, &ch);
+	*cols = (pw + cw - 1) / cw;
+	*rows = (ph + ch - 1) / ch;
+	/* EACH AXIS GIVES UP ITS OWN BORDER. The band is not square — a cell is
+	 * taller than it is wide, so the frame spends more columns than rows —
+	 * and clamping both axes by the thicker number hands a guest asking for
+	 * the whole work area fewer rows than it can have. */
+	if (*cols > area.w - 2 * CON_FRAME_X)
+		*cols = area.w - 2 * CON_FRAME_X;
+	if (*rows > area.h - 2 * CON_FRAME_Y)
+		*rows = area.h - 2 * CON_FRAME_Y;
+	if (*cols < 1)
+		*cols = 1;
+	if (*rows < 1)
+		*rows = 1;
 }
 
 /*
@@ -1716,11 +2022,20 @@ Win *embed_open(const char *const argv[], const char *title)
 	 * geometry table match on — `title` is the guest's to change. */
 	snprintf(w->prog, sizeof(w->prog), "%s", p->prog);
 
-	/* Half the workarea, placed by the window model like anything else —
-	 * an embedded application is a window and is given a window's size. */
+	/*
+	 * Half the workarea, placed by the window model like anything else —
+	 * an embedded application is a window and is given a window's size.
+	 *
+	 * IT IS A GUESS AND IT IS RECORDED AS ONE. Nothing about this window is
+	 * known until its first toplevel maps, and what maps then carries a
+	 * size of its own; `ask` is what lets embed_adopt() tell the guess it
+	 * may replace from a rectangle the person chose, which it may not.
+	 */
 	KwmRect area = win_workarea();
 
-	win_place(w, area.w / 2, area.h / 2);
+	e->ask_w = area.w / 2;
+	e->ask_h = area.h / 2;
+	win_place(w, e->ask_w, e->ask_h);
 
 	if (layout(e, w->geom.w, w->geom.h) != 0) {
 		free(w);
@@ -1856,26 +2171,34 @@ Win *embed_open(const char *const argv[], const char *title)
 
 		/*
 		 * WHICH RENDERER COMPOSITES THIS GUEST, out of its box profile's
-		 * `render` key, where `gpu` asks for the card and anything else
-		 * — including an absent key — is the software renderer. A key of
-		 * its own and not the profile's `gpu`: that one says the render
-		 * node is bound into the box, which every box gets by default,
-		 * and answering the renderer question with it would composite
-		 * the whole catalogue on the card. Opting in per application is
-		 * the point, because the two renderers are not interchangeable:
-		 * the software one draws into memory this process can read
-		 * directly and works on any machine, and the hardware one needs
-		 * a render node, a driver for it and a buffer that is both a
-		 * DMA-BUF and mappable — which is worth it for a game and is a
-		 * larger surface to fail on for a text editor. The cage falls
-		 * back to software when any of that is missing, so the key is a
-		 * request and not a promise.
+		 * `render` key. THE VALUE IS FORWARDED UNREAD AND NOT A
+		 * DIRECTION DISTILLED FROM IT, because the cage answers in both
+		 * directions: `software` — and `pixman`, `no`, `off`, `0`,
+		 * `false` — pins pixman there, every other spelling and an
+		 * absent key leave the choice to wlr_renderer_autocreate, which
+		 * takes the card wherever a render node opens and lands on
+		 * pixman by itself where none does. Forward only one direction
+		 * and the other silently becomes the default: a box that asked
+		 * for software is then composited on the card, which is the
+		 * crossing the key exists to refuse.
+		 *
+		 * A key of its own and not the profile's `gpu`: that one says
+		 * the render node is bound into the box, which every box gets by
+		 * default, and answering the renderer question with it would
+		 * composite the whole catalogue on the card. The two renderers
+		 * are not interchangeable — the software one draws into memory
+		 * this process can read directly and works on any machine, and
+		 * the hardware one needs a render node, a driver for it and a
+		 * buffer that is both a DMA-BUF and mappable, which is worth it
+		 * for a game and is a larger surface to fail on for a text
+		 * editor. Neither direction is a promise: the cage falls back to
+		 * software when any of that is missing.
 		 */
 		char render[32];
 
 		profile_key(guest_name(argv), "render", render, sizeof(render));
-		if (!strcmp(render, "gpu"))
-			setenv("KDOS_EMBED_GPU", "1", 1);
+		if (render[0])
+			setenv("KDOS_EMBED_GPU", render, 1);
 
 		kb_child_reset_signals();
 		execvp(av[0], (char *const *)av);
@@ -1936,7 +2259,6 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 	struct EmbedWin *e = NULL;
 	Win *owner = owner_win(p, (uint32_t)m->c);
 	unsigned role = (unsigned)m->d;
-	int cw, ch;
 
 	p->opened = 1;
 
@@ -1944,11 +2266,11 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 	 * A QUESTION OPENED ON AN ASKED WINDOW IS THE ANSWER TO THE ASK, and
 	 * both deadlines for it stop here. Mapping a child of the window that
 	 * was asked is something only the guest's own event loop can do, which
-	 * is what separates a guest thinking from a guest ignoring; without
-	 * this the person reads "Save changes?" while the countdown to SIGTERM
-	 * runs and the document goes with the process that was about to save
-	 * it. The window is asked again by the next click, which is what a
-	 * person whose dialog led nowhere does.
+	 * is what separates a guest thinking from a guest ignoring. It is one
+	 * of three roads to close_answered() and the only one a toolkit that
+	 * puts its question in a toplevel of its own takes; the window is asked
+	 * again by the next click, which is what a person whose dialog led
+	 * nowhere does.
 	 *
 	 * AND A QUESTION THAT NAMED NO PARENT STILL ANSWERS, as long as there
 	 * is one ask for it to be about. An Xwayland guest may mark a dialog by
@@ -1965,11 +2287,8 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 	if (!asked && !m->c &&
 	    (role & (KEMBED_ROLE_DIALOG | KEMBED_ROLE_MODAL)))
 		asked = only_asked(p);
-	if (asked) {
-		asked->close_ms = 0;
-		p->closing_ms = 0;
-		p->sigsent = 0;
-	}
+	if (asked)
+		close_answered(asked);
 
 	/*
 	 * The placeholder is the only window that can have no id, and it is
@@ -1986,18 +2305,46 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 				e = q;
 
 	if (e) {
+		int aw = e->ask_w, ah = e->ask_h;
+
 		e->id = (uint32_t)m->win;
+		e->ask_w = e->ask_h = 0;
 		if (title && title[0])
 			snprintf(e->win->title, sizeof(e->win->title), "%s",
 				 title);
 		/*
-		 * THE SIZE IS SETTLED BY THE MAPPING AND NOT HERE. The cage
-		 * gives its first output to the first toplevel that maps and
-		 * this end gives the placeholder to the first ORDINARY one, so
-		 * the two may name different toplevels; take_buf() compares
-		 * what arrived against the rectangle the window model gave
-		 * this window and asks for the difference.
+		 * AND THE SIZE THE TOPLEVEL CAME UP AT IS THE SIZE OF THE
+		 * WINDOW, WHERE NOBODY HAS CHOSEN ONE.
+		 *
+		 * The placeholder is a rectangle guessed before there was
+		 * anything to measure — half the work area — and a guest whose
+		 * first window is a welcome card or a small tool then renders
+		 * that window at its own size inside a frame twice as wide,
+		 * over the cage's own background. Nothing later closes that:
+		 * the mapping the cage publishes is always the OUTPUT, so it
+		 * agrees with this end by construction and take_buf() sees
+		 * nothing to correct.
+		 *
+		 * A GUESS IS REPLACED AND A CHOICE IS NOT. `ask` is what
+		 * win_place() was asked for, so a window still holding it was
+		 * placed by the guess; a window holding anything else was
+		 * placed from the geometry table, at the rectangle the person
+		 * last left this program at, and that is an answer already.
+		 *
+		 * A GUEST THAT REPORTS NO SIZE KEEPS THE GUESS, which is what
+		 * a window with nothing to say about itself gets anywhere on
+		 * this desktop.
 		 */
+		if (m->a > 0 && m->b > 0 && aw > 0 &&
+		    e->win->geom.w == aw && e->win->geom.h == ah &&
+		    !e->win->tiled && !e->win->full) {
+			int cols, rows;
+
+			want_cells(m->a, m->b, &cols, &rows);
+			if (cols != e->win->geom.w || rows != e->win->geom.h)
+				win_place_at(e->win, e->win->geom.x,
+					     e->win->geom.y, cols, rows);
+		}
 		return;
 	}
 
@@ -2068,25 +2415,19 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 		w->overlay = 1;
 
 	/*
-	 * THE SIZE THE GUEST CHOSE, IN CELLS, ROUNDED UP: a window one cell
-	 * short of the pixels a dialog asked for is a dialog with its last row
-	 * of buttons cut off. A guest that named no size gets half the work
-	 * area, which is what a window with nothing to say about itself gets
-	 * anywhere on this desktop.
+	 * THE SIZE THE GUEST CHOSE, IN CELLS. A guest that named no size gets
+	 * half the work area, which is what a window with nothing to say about
+	 * itself gets anywhere on this desktop.
 	 */
-	cell_size(&cw, &ch);
 	KwmRect area = win_workarea();
-	int want_w = m->a > 0 ? (m->a + cw - 1) / cw : area.w / 2;
-	int want_h = m->b > 0 ? (m->b + ch - 1) / ch : area.h / 2;
+	int want_w, want_h;
 
-	if (want_w > area.w - 2 * CON_FRAME)
-		want_w = area.w - 2 * CON_FRAME;
-	if (want_h > area.h - 2 * CON_FRAME)
-		want_h = area.h - 2 * CON_FRAME;
-	if (want_w < 1)
-		want_w = 1;
-	if (want_h < 1)
-		want_h = 1;
+	if (m->a > 0 && m->b > 0) {
+		want_cells(m->a, m->b, &want_w, &want_h);
+	} else {
+		want_w = area.w / 2;
+		want_h = area.h / 2;
+	}
 
 	win_place(w, want_w, want_h);
 
@@ -2394,6 +2735,71 @@ static void take_buf(struct EmbedWin *e, int fd, int w, int h, size_t stride,
 }
 
 /*
+ * THE GUEST'S WINDOW IS NOT THE SIZE OF THE FRAME ROUND IT, SO THE FRAME
+ * MOVES.
+ *
+ * ONLY KEMBED_SURFACE CARRIES THIS AND NOTHING ELSE CAN. A window's pixels
+ * arrive in a mapping the size of the guest's OUTPUT, which is the size this
+ * end asked for — so a guest that renders a smaller window inside that output
+ * publishes a frame that agrees with this end perfectly, with the cage's own
+ * background down two sides of it, and a guest that renders a larger one
+ * publishes a frame cut off at the output's edge. Both read as a broken
+ * compositor and neither is visible in any number this end already has.
+ *
+ * ROUNDED UP TO WHOLE CELLS AND ASSERTED BACK. win_place_at() runs the window
+ * model's own resize, which ends in embed_resized() and a KEMBED_SIZE of the
+ * rounded rectangle — so the guest's output becomes the rectangle the window
+ * is drawn at, and the two agree to within the cell the rounding added.
+ *
+ * WHAT STOPS THE LOOP is the three-part bound on `fit_*` above: the same
+ * report at the same rectangle is already answered, a rectangle chosen by
+ * anything but this path starts the run again, and a run is capped at
+ * EM_FIT_RUN fits that arrive inside EM_FIT_SETTLE_MS of each other. A guest
+ * that reflows a few times as its content loads is followed; one that answers
+ * every size with a different size is followed four times and then left alone.
+ *
+ * A TILED OR FULLSCREEN RECTANGLE IS THE WINDOW MODEL'S AND IS NOT THE
+ * GUEST'S. A tile a guest could shrink is a hole in the layout, and a
+ * fullscreen window that is not full screen is the one thing that state means.
+ */
+static void fit_surface(struct EmbedWin *e, int pw, int ph)
+{
+	Win *w = e->win;
+	unsigned long long t = now_ms();
+	int cols, rows;
+
+	if (!w || pw < 1 || ph < 1)
+		return;
+	if (w->tiled || w->full)
+		return;
+
+	if (e->cols * e->cell_w != e->fit_pw ||
+	    e->rows * e->cell_h != e->fit_ph ||
+	    t - e->fit_ms > EM_FIT_SETTLE_MS) {
+		e->fit_run = 0;
+	} else {
+		if (pw == e->fit_rw && ph == e->fit_rh)
+			return;
+		if (e->fit_run >= EM_FIT_RUN)
+			return;
+	}
+
+	want_cells(pw, ph, &cols, &rows);
+	/* A REPORT THE WINDOW ALREADY SATISFIES IS STILL A REPORT ANSWERED,
+	 * and is recorded as one: the guest is a whole cell or less away from
+	 * the rectangle it asked for, which is as close as a cell grid goes. */
+	if (cols != w->geom.w || rows != w->geom.h)
+		win_place_at(w, w->geom.x, w->geom.y, cols, rows);
+
+	e->fit_pw = e->cols * e->cell_w;
+	e->fit_ph = e->rows * e->cell_h;
+	e->fit_rw = pw;
+	e->fit_rh = ph;
+	e->fit_ms = t;
+	e->fit_run++;
+}
+
+/*
  * EVERYTHING THE CAGE HAS TO SAY, ROUTED BY WHICH WINDOW IT IS ABOUT.
  *
  * TWO KINDS OF MESSAGE AND THE FIELD SAYS WHICH. `win` 0 is the channel —
@@ -2495,10 +2901,14 @@ static void drain(struct EmbedProc *p)
 			 * precisely the shared-instance case the handoff
 			 * depends on.
 			 */
-			p->closing_ms = 0;
-			p->sigsent = 0;
+			close_answered(e);
 			if (e->win)
 				win_drop(e->win);
+			break;
+		case KEMBED_SURFACE:
+			if (fd >= 0)
+				close(fd);
+			fit_surface(e, m.a, m.b);
 			break;
 		case KEMBED_BUF:
 			take_buf(e, fd, m.a, m.b, (size_t)m.c, (size_t)m.d);
@@ -2506,6 +2916,34 @@ static void drain(struct EmbedProc *p)
 		case KEMBED_FRAME:
 			if (fd >= 0)
 				close(fd);
+			/*
+			 * A GUEST THAT IS STILL DRAWING HAS NOT IGNORED THE
+			 * CLOSE. The cage renders only what its client
+			 * committed — an output with nothing new on it
+			 * publishes nothing at all — so a frame is the guest's
+			 * own event loop having run since the ask, and the
+			 * question it was asked may be drawn INSIDE the window
+			 * rather than in a toplevel of its own. That is what a
+			 * libadwaita dialog is and what every Electron
+			 * application does; killing such a guest is killing it
+			 * mid-question, with the answer never given.
+			 *
+			 * MEASURED BEFORE THE SLOT IS CHECKED, so a frame that
+			 * names a slot this end cannot use still counts: it is
+			 * a cage out of step with the parent, not a guest that
+			 * has stopped running.
+			 *
+			 * IT BUYS THE GUEST THE DEADLINE AND NOT THE WINDOW.
+			 * close_answered() leaves `asked_ms` and `force_ready`
+			 * standing, so a guest that draws through every close
+			 * it is sent is never signalled on a timer and is
+			 * still taken by the person's second ask — a frame
+			 * that cleared the person's ladder as well would make
+			 * every animating application immortal.
+			 */
+			if (e->close_ms &&
+			    now_ms() - e->close_ms > EM_CLOSE_ACK_MS)
+				close_answered(e);
 			if (m.a < 0 || m.a >= KEMBED_SLOTS || !e->map)
 				break;
 			e->latest = m.a;
@@ -2835,6 +3273,11 @@ void embed_pump(void)
 	focus_pass(ws, n);
 	start = pump_start(ws, n);
 
+	/* ONE NUMBER FOR THE WHOLE TURN. It is the session's, so reading it per
+	 * window would be the same answer measured as many times as there are
+	 * windows. */
+	int scale = em_scale();
+
 	for (int k = 0; k < n; k++) {
 		struct EmbedWin *e = ws[(start + k) % n];
 		Win *w = e->win;
@@ -2855,7 +3298,15 @@ void embed_pump(void)
 		 * down the same queue the window being looked at is waiting
 		 * for.
 		 */
-		int asleep = !win_is_on_screen(w);
+		/*
+		 * AND A WINDOW UNDER AN ASK IS NEVER PUT TO SLEEP. The answer
+		 * this desktop waits for is a frame; a guest told to stop
+		 * rendering cannot draw one, so an application closed from the
+		 * taskbar while it sits on another workspace would be silent
+		 * by this session's own instruction and dropped and signalled
+		 * for it. It sleeps again the moment it answers.
+		 */
+		int asleep = !win_is_on_screen(w) && !e->close_ms;
 		int full = w->full != 0;
 
 		/*
@@ -2869,6 +3320,17 @@ void embed_pump(void)
 		if (full != e->full_sent &&
 		    send_msg(e, KEMBED_FULLSCREEN_SET, full, 0, 0, 0, 0) == 0)
 			e->full_sent = full;
+		/*
+		 * AND HOW DENSE THIS DESKTOP IS. Re-offered every turn until it
+		 * crosses, like every other window state here: a window has no
+		 * name on the wire until its toplevel exists, and a scale
+		 * latched as sent when nothing was sent is a guest left
+		 * rendering at 1 for the life of the window. A font step moves
+		 * it, and the guest lays its window out again for the new one.
+		 */
+		if (scale != e->scale_sent &&
+		    send_msg(e, KEMBED_SCALE, scale, 0, 0, 0, 0) == 0)
+			e->scale_sent = scale;
 		if (asleep != e->asleep) {
 			e->asleep = asleep;
 			if (!asleep)
@@ -3006,9 +3468,35 @@ void embed_view_attached(void)
  * document is lost to the close button with no dialog and no way back —
  * whereas an ask is the request the application already handles, and the
  * window stays until it has actually gone. The escalation exists because an
- * ask alone leaves a window nothing can close when the guest ignores it, and
- * it is measured from the first ask: clicking close again does not restart the
- * clock, which would make a person's impatience the reason it never fires.
+ * ask alone leaves a window nothing can close when the guest ignores it.
+ *
+ * THE LADDER HAS THREE RUNGS AND THE LAST ONE CANNOT BE SURVIVED:
+ *
+ *   1. CLOSE ASKS. The guest may answer — retire the toplevel, map a question,
+ *      draw one inside the window — and an answer stops both deadlines, so
+ *      "Save changes?" can stand on the screen for as long as the person
+ *      wants. A window that answers NOTHING for EM_CLOSE_MS after the LATEST
+ *      ask is dropped here, because the toplevel behind it can no longer be
+ *      asked anything.
+ *   2. EM_CLOSE_MS AFTER THE LATEST ASK THE BAR OFFERS THE FORCE, for a window
+ *      whose guest answered — which is every guest that answers by drawing.
+ *      CLOSE AGAIN, within EM_FORCE_MS, and the window is taken and the guest
+ *      put on the signal schedule with no grace left.
+ *   3. SIGTERM, so the cage unwinds its own client, and SIGKILL EM_KILL_MS
+ *      later. Nothing catches SIGKILL and `forced` lets nothing clear the
+ *      clock, so rung 3 always ends the process. THAT is what guarantees a
+ *      person can be rid of any window, and rung 2 is what guarantees they
+ *      can find out how.
+ *
+ * REPEATED ASKS BEFORE THE OFFER RE-SEND THE ASK AND START ITS CLOCK AGAIN,
+ * AND THEY TAKE NOTHING. A force before the bar has offered it is an
+ * application quitting for a reason nobody was given, and an impatient
+ * double-click on a healthy save prompt is the commonest close there is: the
+ * dialog is already up, so the second ask is met with silence, and a design
+ * that read that silence as a wedged event loop would lose the very window
+ * the question was about. THE ROAD IS CHOSEN BY WHETHER THE GUEST ANSWERED,
+ * never by whether a clock is running, and what ends the ladder is the offer
+ * — EM_CLOSE_MS after the last ask — and the ask that follows it.
  *
  * THE ASK NAMES ONE WINDOW AND THE SIGNAL NAMES THE PROCESS, which is why the
  * process clock is armed only when the ask covers the last window a person can
@@ -3017,12 +3505,35 @@ void embed_view_attached(void)
  * window's unsaved work.
  *
  * AND A GUEST THAT ANSWERS IS ON NO CLOCK AT ALL. Both deadlines measure
- * silence, and a guest that maps a question on the window it was asked about
- * has broken it: embed_adopt() stops them there. The evidence has to be
- * something only the guest's own event loop can produce — a frame is not,
- * since the cage composites its scene whether or not its client is still
- * reading the socket — or the countdown runs while the person reads "Save
- * changes?" and the answer they give is delivered to a process already killed.
+ * silence, and three things break it, each one the guest's own event loop
+ * having run since the ask: the toplevel retired, a question mapped on the
+ * window, or a frame published for the window itself. THE THIRD IS THE ONE
+ * MOST APPLICATIONS USE — a libadwaita dialog and every Electron prompt are
+ * drawn inside the toplevel that was asked and map nothing — and without it
+ * the countdown runs while the person reads "Save changes?" and the answer
+ * they give is delivered to a process already killed.
+ *
+ * A FRAME IS EVIDENCE BECAUSE THE CAGE PUBLISHES NOTHING OF ITS OWN. Its
+ * render is gated on the scene needing one, so an output whose client has
+ * committed nothing produces no frame however long the cage itself keeps
+ * running; a cage that published on its own tick would make this measurement
+ * meaningless and the countdown unfireable.
+ *
+ * WHAT THE DEADLINE REAPS IS A GUEST THAT CANNOT DRAW — a wedged event loop,
+ * a deadlocked toolkit, a client that has stopped reading its own socket. It
+ * publishes nothing, so it answers nothing: the window is dropped and the
+ * process is signalled and then killed. A GUEST THAT ANSWERED ONCE IS NEVER
+ * REAPED AFTERWARDS, however wedged it then goes, because an answer is a
+ * question standing on the screen and a deadline cannot tell a person reading
+ * it from a toolkit that has stopped. That guest is reached by rung 2: the
+ * offer arrives EM_CLOSE_MS after the last ask and the next close takes it.
+ *
+ * WHAT THE DEADLINE CANNOT REAP IS A GUEST THAT DRAWS AND WILL NOT GO, and
+ * that is what rung 2 is for. A video player, a game and an animating toolkit
+ * all clear the clock on every frame, so a design with only a deadline in it
+ * either kills the application in the middle of its own save dialog or hands
+ * it the desktop for ever. The person asking a second time is the one signal
+ * that cannot be forged by rendering.
  *
  * SO EVERY WINDOW CARRIES A DEADLINE OF ITS OWN as well, and it is the only
  * thing that can remove one from the desktop when the guest answers nothing:
@@ -3064,11 +3575,82 @@ void embed_close(Win *w)
 				return;
 			}
 	}
+	/*
+	 * THE OFFER LAPSES WITH THE ASK IT BELONGS TO. A close arriving more
+	 * than EM_FORCE_MS after the last one is a fresh intention — the person
+	 * read the question, cancelled it and went back to work — and reading
+	 * it as the second half of a force would quit an application that had
+	 * answered perfectly.
+	 *
+	 * `answered` DOES NOT LAPSE WITH IT. It is what this end knows about
+	 * the GUEST, not about one ask: a program that has ever answered a
+	 * close is a program whose window holds a question somebody may still
+	 * need. A guest answers a re-ask with SILENCE for the most ordinary
+	 * reason there is — the dialog is already on the screen and there is
+	 * nothing new to draw — so clearing it here would judge that guest as
+	 * having answered nothing and take the window, and the work in it, at
+	 * the next mark. A guest that answered once and has since wedged is
+	 * still reachable: the mark offers the second rung, and the person
+	 * asking again forces it.
+	 */
+	unsigned long long now = now_ms();
+
+	if (e->asked_ms && now - e->asked_ms > EM_FORCE_MS) {
+		e->asked_ms = 0;
+		e->force_ready = 0;
+	}
+
+	/*
+	 * THE SECOND RUNG, AND THE BAR HAS ALREADY SAID IT IS HERE. Asking
+	 * twice is the person's answer to a guest that keeps answering and
+	 * never goes, so this end takes the window: nothing else on the desktop
+	 * can, because the guest clears the silence deadline with every frame
+	 * it draws.
+	 *
+	 * THE PROCESS IS SIGNALLED ONLY WHEN THAT LEAVES NOTHING A PERSON CAN
+	 * REACH, the same rule the ask keeps — a signal takes every other
+	 * window's unsaved work with it. `forced` nails the schedule down so no
+	 * later frame can clear it, `sigsent` goes back to 0 so the cage is
+	 * still owed the SIGTERM it unwinds on, and SIGKILL follows
+	 * EM_KILL_MS later whatever the guest is doing.
+	 */
+	if (e->force_ready) {
+		struct EmbedProc *p = e->proc;
+
+		win_drop(w);
+		if (p && p->pid > 0 && !nreachable(p)) {
+			p->forced = 1;
+			p->closing_ms = now;
+			p->sigsent = 0;
+		}
+		return;
+	}
+
+	/*
+	 * THE ASK IS SENT AGAIN AND BOTH THE WINDOW'S CLOCKS START AGAIN. The
+	 * guest has just been handed a fresh question and is owed the whole of
+	 * EM_CLOSE_MS to answer it; a silence clock left at an earlier ask
+	 * judges this one on time the guest spent answering that one, and an
+	 * offer counted from an earlier ask is published before the guest has
+	 * been given what the first ask gave it.
+	 *
+	 * AND THE PROCESS CLOCK IS NOT ARMED AGAINST A GUEST THAT HAS ANSWERED.
+	 * A signal takes every window's unsaved work with it, and a guest
+	 * holding a question on the screen answers the second click with
+	 * silence because the question is already drawn — a schedule armed
+	 * there kills the application in the middle of its own save dialog. The
+	 * route to a guest that answers and will not go is the second rung,
+	 * which sets the schedule with `forced` and no grace at all.
+	 *
+	 * IT IS ALSO ARMED ONCE AND NOT RESTARTED. Held keys repeat, and a
+	 * guest that has answered nothing at all must not be kept running by a
+	 * close chord somebody is leaning on.
+	 */
 	proc_send(e->proc, KEMBED_CLOSE, 0, 0, 0, 0, 0, e->id);
-	if (!e->close_ms)
-		e->close_ms = now_ms();
-	if (nreachable(e->proc) <= 1 && !e->proc->closing_ms)
-		e->proc->closing_ms = now_ms();
+	e->asked_ms = now;
+	e->close_ms = now;
+	if (!e->answered && nreachable(e->proc) <= 1 && !e->proc->closing_ms)
+		e->proc->closing_ms = now;
 }
 
 /*
@@ -3150,13 +3732,26 @@ static void proc_gc(void)
 void embed_reap(void)
 {
 	/*
-	 * THE DEADLINE ON A WINDOW THAT WAS ASKED TO GO, before any process is
-	 * looked at. A window whose ask went out EM_CLOSE_MS ago and is still
-	 * here is a window nothing can close, which is the failure the deadline
-	 * exists for; it is taken out locally, because the toplevel behind it
-	 * answers nothing and there is nobody left to ask.
+	 * WHAT EM_CLOSE_MS AFTER THE LATEST ASK MEANS, before any process is
+	 * looked at, AND IT IS TWO DIFFERENT THINGS. A window that has answered
+	 * nothing at all is a window nothing can close, which is the failure
+	 * the deadline exists for: it is taken out locally, because the
+	 * toplevel behind it answers nothing and there is nobody left to ask. A
+	 * window whose guest ANSWERED and kept it is not reaped at any point
+	 * ever, so the same mark is where the bar offers the person the second
+	 * rung instead.
 	 *
-	 * AND THE DROP OF THE LAST ONE ARMS THE PROCESS CLOCK HERE. The ask
+	 * ONE MARK, TWO ROADS, AND `answered` IS WHICH. Not the silence clock:
+	 * the next ask re-arms that, and a guest holding a question on the
+	 * screen has nothing new to draw for a second click, so a road picked
+	 * off a running clock drops the window of every application that did
+	 * the one thing the ask exists to let it do.
+	 *
+	 * AND THE MARK MOVES WITH THE ASK, so a fresh ask buys the guest the
+	 * whole of EM_CLOSE_MS to answer it and the offer is published that
+	 * long after the last click and not the first.
+	 *
+	 * AND THE DROP OF THE LAST WINDOW ARMS THE PROCESS CLOCK HERE. The ask
 	 * arms it only when it already covers every window a person can reach,
 	 * so a guest asked to close two windows at once is armed by neither
 	 * ask: both windows leave the desktop on their own deadlines and the
@@ -3170,12 +3765,51 @@ void embed_reap(void)
 	unsigned long long t = now_ms();
 
 	for (int k = 0; k < nw; k++) {
-		struct EmbedProc *p;
+		struct EmbedProc *p = ws[k]->proc;
 
-		if (!ws[k]->close_ms || !ws[k]->win ||
-		    t - ws[k]->close_ms <= EM_CLOSE_MS)
+		if (!ws[k]->win || !ws[k]->asked_ms ||
+		    t - ws[k]->asked_ms <= EM_CLOSE_MS)
 			continue;
-		p = ws[k]->proc;
+
+		/*
+		 * A GUEST THAT ANSWERED KEEPS ITS WINDOW, AND THE PERSON IS
+		 * TOLD HOW TO BE RID OF IT ANYWAY. The drop below never comes
+		 * for this window however long it stands there and however
+		 * silent it goes: an application that redraws a question it
+		 * will not act on, one that renders through every close it is
+		 * sent, and one whose dialog is already up and has nothing to
+		 * draw for the second click are the same window to a clock, and
+		 * only one of them is a guest anything can be taken from. The
+		 * bar is where the second rung is published, ONCE PER ASK — a
+		 * line repeated every turn is a taskbar that has stopped being
+		 * one.
+		 */
+		if (ws[k]->answered) {
+			char say[160];
+
+			if (ws[k]->force_ready)
+				continue;
+
+			ws[k]->force_ready = 1;
+
+			/*
+			 * THE INSTRUCTION IS WHAT THE LINE IS FOR, so the NAME
+			 * is what gives way. A title is arbitrarily long — a
+			 * browser tab, a document path — and formatting it
+			 * whole pushes the only published route to a forced
+			 * close off the end of the bar.
+			 */
+			const char *who = p->title[0] ? p->title
+				        : p->prog[0]  ? p->prog
+						      : "the application";
+
+			snprintf(say, sizeof(say),
+				 "%.*s has not closed — close it again to quit it",
+				 EM_NOTICE_NAME, who);
+			con_notice(say);
+			continue;
+		}
+
 		win_drop(ws[k]->win);
 		if (!nreachable(p) && p->pid > 0 && !p->closing_ms)
 			p->closing_ms = t;
@@ -3194,6 +3828,14 @@ void embed_reap(void)
 		 */
 		if (p->pid > 0 && p->closing_ms) {
 			unsigned long long waited = t - p->closing_ms;
+			/*
+			 * A FORCED CLOSE HAS NO GRACE, because the grace was
+			 * the first rung and the person has already spent it
+			 * watching the window refuse to go. An ask keeps its
+			 * ten seconds, which is what a guest still writing a
+			 * file out needs.
+			 */
+			unsigned long long grace = p->forced ? 0 : EM_CLOSE_MS;
 
 			/*
 			 * EACH SIGNAL GOES ONCE, which is what `sigsent`
@@ -3203,12 +3845,12 @@ void embed_reap(void)
 			 * that rate never reaches the end of the shutdown it
 			 * was asked for.
 			 */
-			if (waited > EM_CLOSE_MS + EM_KILL_MS) {
+			if (waited > grace + EM_KILL_MS) {
 				if (p->sigsent != SIGKILL) {
 					kill(p->pid, SIGKILL);
 					p->sigsent = SIGKILL;
 				}
-			} else if (waited > EM_CLOSE_MS && !p->sigsent) {
+			} else if (waited >= grace && !p->sigsent) {
 				kill(p->pid, SIGTERM);
 				p->sigsent = SIGTERM;
 			}

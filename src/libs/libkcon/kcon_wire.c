@@ -61,6 +61,25 @@ void kcon_buf_reset(KconBuf *b)
 	b->err = 0;
 }
 
+void kcon_buf_retire(KconBuf *b, size_t keep)
+{
+	/* A BUFFER PAST THE MARK IS RELEASED, NOT KEPT. Retention is there to
+	 * stop the shapes that repeat costing an mmap each; a buffer grown to
+	 * one outsized message would otherwise pin that memory for the life of
+	 * the connection to serve messages a fraction of its size. */
+	if (b->cap > keep) {
+		kcon_buf_free(b);
+		return;
+	}
+
+	/* AND THE LATCHED ERROR IS CLEARED WITH THE LENGTH. A kept buffer
+	 * outlives the message that failed in it, and an `err` left set makes
+	 * every later put on it a no-op — one refused block would silently
+	 * empty every message after it. */
+	b->len = 0;
+	b->err = 0;
+}
+
 int kcon_put_u8(KconBuf *b, uint8_t v)
 {
 	if (reserve(b, 1))
@@ -417,6 +436,10 @@ int kcon_get_color_run(KconRd *r, uint16_t *x, uint16_t *y, KtuiCell *out,
 struct KconConn {
 	int fd;
 	int dead;
+	/* WHAT THE KERNEL GRANTED, not what was asked for: it doubles the
+	 * request and clamps to net.core.wmem_max. Read back rather than
+	 * assumed, because the two differ on every machine. */
+	int sndbuf;
 
 	unsigned char *out;
 	size_t out_len, out_cap, out_off;
@@ -444,6 +467,32 @@ KconConn *kcon_conn_new(int fd)
 		return NULL;
 
 	c->fd = fd;
+	/*
+	 * AS LARGE A SOCKET BUFFER AS THE KERNEL WILL GIVE, and whatever it
+	 * gives is fine. See KCON_SOCK_BUF: a frame that cannot be placed in
+	 * one turn of the sender's loop is presented partially and the window
+	 * fills in horizontal bands.
+	 *
+	 * AN AF_UNIX STREAM WRITE IS GATED BY THE SENDER'S OWN SO_SNDBUF AND BY
+	 * NOTHING ELSE: the receiver's SO_RCVBUF is never consulted, so the
+	 * other direction is covered because the PEER sets its own sending
+	 * buffer in this same constructor — not because this end asks for a
+	 * receive buffer. The receive request is made anyway so the pair is
+	 * right on a transport whose flow control does read it; it is not what
+	 * does the work here. Failure is ignored on purpose: this is an
+	 * optimisation, and a connection refused because a buffer could not be
+	 * enlarged would turn a slow desktop into no desktop.
+	 */
+	int want = KCON_SOCK_BUF;
+
+	(void)setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &want, sizeof(want));
+	(void)setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &want, sizeof(want));
+
+	socklen_t sl = sizeof(c->sndbuf);
+
+	if (getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &c->sndbuf, &sl) != 0)
+		c->sndbuf = 0;
+
 	/* Non-blocking both ways: nothing holding a display may ever wait on a
 	 * peer, and a client that blocks writing to a wedged server hangs. */
 	int fl = fcntl(fd, F_GETFL, 0);
@@ -476,6 +525,11 @@ int kcon_conn_fd(const KconConn *c)
 int kcon_conn_dead(const KconConn *c)
 {
 	return !c || c->dead;
+}
+
+int kcon_conn_sndbuf(const KconConn *c)
+{
+	return c ? c->sndbuf : 0;
 }
 
 size_t kcon_conn_pending(const KconConn *c)

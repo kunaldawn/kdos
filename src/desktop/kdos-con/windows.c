@@ -413,15 +413,108 @@ void win_dock(Win *w)
 	}
 }
 
+/*
+ * THE FRAME AROUND A CONTENT RECT, and this is the direction the cost runs for
+ * a FREELY PLACED window: `geom` is the content, and the border is added
+ * OUTSIDE it. A window landed by win_place(), dragged, or put at a named
+ * rectangle by win_place_at() therefore answers a thicker border by taking
+ * more of the desk, and its program keeps every cell of its content.
+ *
+ * win_tile_rect() runs the same margin the other way for a window whose OUTER
+ * rectangle is fixed, and there the thickness comes out of the program. The
+ * two together are the whole rule; there is no third direction.
+ *
+ * AND THE OUTER RECTANGLE IS WHAT THE GRID HOLDS. win_fit_area() deflates the
+ * grid by these same numbers, so a freely placed window keeps its content
+ * until it no longer fits and is then shrunk like any other — this is the
+ * rectangle that has to be on the screen, and `geom` is not it.
+ */
 KwmRect win_frame(const Win *w)
 {
 	KwmRect r = w->geom;
 
-	r.x -= CON_FRAME;
-	r.y -= CON_FRAME;
-	r.w += CON_FRAME * 2;
-	r.h += CON_FRAME * 2;
+	r.x -= CON_FRAME_X;
+	r.y -= CON_FRAME_Y;
+	r.w += CON_FRAME_X * 2;
+	r.h += CON_FRAME_Y * 2;
 	return r;
+}
+
+/*
+ * IS THE SESSION DRAWING THIS ONE'S BORDER.
+ *
+ * ONE EXPRESSION, because four answers to it drift: the fit below keeps the
+ * border on the grid, win_covered_at() counts the cells it occludes, the draw
+ * loop paints it and win_grab_at() hands a press inside it to the resize. A
+ * window that is framed for one of them and bare for another is a band drawn
+ * where nothing is grabbed, or grabbed where nothing is drawn.
+ *
+ * A panel is docked, a layer is a menu or a toast, the icon layer IS the
+ * desktop, and a fullscreen window asked for the screen — the lock and the
+ * saver by the same flag. Each is part of the desktop rather than something
+ * sitting on it, and none of them gets chrome.
+ */
+static int win_framed(const Win *w)
+{
+	return !(w->panel || w->full || w->overlay || w->background);
+}
+
+/*
+ * THE AREA A WINDOW'S GEOMETRY IS FITTED INTO, and for a framed window it is
+ * the grid MINUS the border.
+ *
+ * `geom` IS THE CONTENT AND WHAT MUST STAY ON THE GRID IS THE FRAME. A content
+ * rect fitted to the grid's own edge puts everything win_frame() adds outside
+ * it: the left rule, both corners on that side and the band win_grab_at()
+ * answers all land on a negative column, and what is drawn is a window with no
+ * edge to take hold of. Deflating by exactly what win_frame() inflates by is
+ * the one place the two cannot drift apart.
+ *
+ * THE WHOLE GRID AND NOT THE WORK AREA. A fullscreen window is deliberately
+ * over a panel's exclusive zone, and it is also the one class with no border
+ * to keep; fitting it to the work area here would take the panel's rows back
+ * off it.
+ *
+ * AN AXIS TOO SHORT TO HOLD A BORDER AND A CELL IS LEFT WHOLE, and ONLY that
+ * axis. Deflating a four-column grid by two columns each side leaves an area of
+ * negative width, and kwm_fit() answers one with a window of negative width —
+ * drawn nowhere at all, which is worse than a border off the edge. The other
+ * axis is not in that bargain: a grid narrow enough to refuse a border across
+ * can still hold one down, and refusing both would put a border off an edge
+ * that had room for it.
+ */
+static KwmRect win_fit_area(const Win *w)
+{
+	KwmRect a = { 0, 0, S.cols, S.rows };
+
+	if (!win_framed(w))
+		return a;
+	if (S.cols >= 2 * CON_FRAME_X + 1) {
+		a.x = CON_FRAME_X;
+		a.w = S.cols - 2 * CON_FRAME_X;
+	}
+	if (S.rows >= 2 * CON_FRAME_Y + 1) {
+		a.y = CON_FRAME_Y;
+		a.h = S.rows - 2 * CON_FRAME_Y;
+	}
+	return a;
+}
+
+/*
+ * EVERY PLACEMENT ENDS HERE. A named layout, a restored session, the overlap
+ * search, a remembered rectangle, a drag, a snap, a tile, the drop-down and a
+ * refit after the grid changed all set `geom` and then run it through this —
+ * so the minimum a surface asked for and the border it has to keep are applied
+ * in one place rather than at nine call sites.
+ *
+ * A session that has not been given a size yet has no area to fit to, and
+ * fitting to a zero one would set every window to zero cells.
+ */
+static void win_fit(Win *w)
+{
+	if (S.cols > 0 && S.rows > 0)
+		w->geom = kwm_fit(w->geom, win_fit_area(w), w->min_w,
+				  w->min_h);
 }
 
 /*
@@ -476,14 +569,14 @@ void win_place(Win *w, int want_w, int want_h)
 
 			w->geom.x = f.x + (f.w - cw) / 2;
 			w->geom.y = f.y + (f.h - ch) / 2;
-			if (w->geom.x < a.x + CON_FRAME)
-				w->geom.x = a.x + CON_FRAME;
-			if (w->geom.y < a.y + CON_FRAME)
-				w->geom.y = a.y + CON_FRAME;
-			if (w->geom.x + cw > a.x + a.w - CON_FRAME)
-				w->geom.x = a.x + a.w - CON_FRAME - cw;
-			if (w->geom.y + ch > a.y + a.h - CON_FRAME)
-				w->geom.y = a.y + a.h - CON_FRAME - ch;
+			if (w->geom.x < a.x + CON_FRAME_X)
+				w->geom.x = a.x + CON_FRAME_X;
+			if (w->geom.y < a.y + CON_FRAME_Y)
+				w->geom.y = a.y + CON_FRAME_Y;
+			if (w->geom.x + cw > a.x + a.w - CON_FRAME_X)
+				w->geom.x = a.x + a.w - CON_FRAME_X - cw;
+			if (w->geom.y + ch > a.y + a.h - CON_FRAME_Y)
+				w->geom.y = a.y + a.h - CON_FRAME_Y - ch;
 		} else {
 			w->geom.x = a.x + (a.w - cw) / 2;
 			w->geom.y = a.y + (a.h - ch) / 2;
@@ -494,8 +587,15 @@ void win_place(Win *w, int want_w, int want_h)
 		return;
 	}
 
-	if (geo_recall(w))
+	/* A REMEMBERED RECTANGLE IS STILL FITTED. geo_recall() fits what it
+	 * read into the WORK AREA, which is a rectangle for the content and
+	 * says nothing about the border standing outside it; and this road
+	 * returns to a caller that reads `geom` and opens a pty at it, with no
+	 * win_resized() between. */
+	if (geo_recall(w)) {
+		win_fit(w);
 		return;
+	}
 
 	for (Win *o = S.wins; o && n < 64; o = o->next) {
 		if (o == w || o->minimised || o->hidden)
@@ -516,7 +616,10 @@ void win_place(Win *w, int want_w, int want_h)
 		n++;
 	}
 
-	KwmBorder m = { CON_FRAME, CON_FRAME, CON_FRAME, CON_FRAME };
+	/* top, right, bottom, left — the struct's own order, and the frame is
+	 * thicker across than down, so four copies of one number would hand
+	 * libkwm a margin the frame does not have on either axis. */
+	KwmBorder m = { CON_FRAME_Y, CON_FRAME_X, CON_FRAME_Y, CON_FRAME_X };
 	KwmRect area = win_workarea();
 	KwmRect g = kwm_place(area, S.gap, m, want_w, want_h, ex, n);
 
@@ -524,6 +627,11 @@ void win_place(Win *w, int want_w, int want_h)
 	w->geom.y = g.y;
 	w->geom.w = want_w;
 	w->geom.h = want_h;
+	/* THE SEARCH IS ASKED, NOT OBEYED. kwm_place() carries the margin into
+	 * where it looks and still answers the least-overlapping rectangle it
+	 * found, which on a grid with no room left is one whose margin hangs
+	 * off an edge — and the margin is this window's border. */
+	win_fit(w);
 }
 
 /*
@@ -606,19 +714,29 @@ void win_place_corner(Win *w, int want_w, int want_h, int corner, int mx,
  * contract fixture has no row for one and libkwm is right to answer as it
  * does. Maximise is this program's own state, and the work area is what it
  * means.
+ *
+ * AND HERE THE BORDER'S THICKNESS COMES OUT OF THE PROGRAM. The outer
+ * rectangle is the work area or a division of it, so the margin is SUBTRACTED
+ * from a rectangle that is already fixed and the content this returns is
+ * 2 * CON_FRAME_X columns and 2 * CON_FRAME_Y rows smaller than the space the
+ * window fills. Every maximised, snapped and tiled window is on this path, as
+ * is the scratchpad's drop-down through scratch_shape(), so raising either
+ * number takes cells from all of them at once — only a freely placed window
+ * pays for its border outside its content.
  */
 KwmRect win_tile_rect(unsigned tiled)
 {
 	KwmRect a = win_workarea();
-	KwmBorder m = { CON_FRAME, CON_FRAME, CON_FRAME, CON_FRAME };
+	/* top, right, bottom, left. */
+	KwmBorder m = { CON_FRAME_Y, CON_FRAME_X, CON_FRAME_Y, CON_FRAME_X };
 
 	if (tiled != KWM_EDGES_CARDINAL)
 		return kwm_tile_geom(a, S.gap, m, tiled);
 
-	a.x += CON_FRAME;
-	a.y += CON_FRAME;
-	a.w -= CON_FRAME * 2;
-	a.h -= CON_FRAME * 2;
+	a.x += CON_FRAME_X;
+	a.y += CON_FRAME_Y;
+	a.w -= CON_FRAME_X * 2;
+	a.h -= CON_FRAME_Y * 2;
 	if (a.w < 1)
 		a.w = 1;
 	if (a.h < 1)
@@ -677,20 +795,9 @@ void win_place_at(Win *w, int x, int y, int cw, int ch)
  */
 void win_resized(Win *w)
 {
-	/*
-	 * THROUGH kwm_fit, so the surface's own minimum is applied in the one
-	 * place that knows it — every caller below sets `geom` and then calls
-	 * this, and a minimum enforced at each of them would be six copies of
-	 * one rule. The area is the WHOLE grid rather than the work area: a
-	 * fullscreen window is deliberately over the panel's exclusive zone,
-	 * and fitting to the work area here would take it back off.
-	 */
-	KwmRect all = { 0, 0, S.cols, S.rows };
-
-	/* A session that has not been given a size yet has no area to fit to,
-	 * and fitting to a zero one would set every window to zero cells. */
-	if (S.cols > 0 && S.rows > 0)
-		w->geom = kwm_fit(w->geom, all, w->min_w, w->min_h);
+	/* THROUGH win_fit, which is where the surface's minimum and the
+	 * border's claim on the grid are both applied. */
+	win_fit(w);
 
 	if (w->kind == WIN_TERM && w->term)
 		kvt_term_resize(w->term, w->geom.w, w->geom.h);
@@ -947,23 +1054,24 @@ static void scratch_shape(Win *w)
 	/* A work area too short to halve gives the whole of it: half of three
 	 * rows is a window with no content row at all once the frame is
 	 * taken. */
-	if (h < 2 * CON_FRAME + 1)
+	if (h < 2 * CON_FRAME_Y + 1)
 		h = a.h;
 	/* A SHOW ALWAYS PRODUCES A SHAPE. win_place_at refuses a content
 	 * rectangle under one cell, which on a work area three cells across
 	 * would leave the scratchpad wherever it happened to be — visible, and
 	 * in the one place the chord did not put it. */
-	if (a.w < 2 * CON_FRAME + 1 || h < 2 * CON_FRAME + 1) {
+	if (a.w < 2 * CON_FRAME_X + 1 || h < 2 * CON_FRAME_Y + 1) {
 		w->geom = a;
 		win_resized(w);
 		return;
 	}
 	w->tiled = KWM_EDGE_NONE;
 	w->full = 0;
-	/* `geom` is the CONTENT and the frame is one cell on every side, so
-	 * the frame is what spans the width. */
-	win_place_at(w, a.x + CON_FRAME, a.y + CON_FRAME,
-		     a.w - 2 * CON_FRAME, h - 2 * CON_FRAME);
+	/* `geom` is the CONTENT and the frame stands outside it, so it is the
+	 * FRAME that spans the width and the content is inset by the border's
+	 * thickness on each axis. */
+	win_place_at(w, a.x + CON_FRAME_X, a.y + CON_FRAME_Y,
+		     a.w - 2 * CON_FRAME_X, h - 2 * CON_FRAME_Y);
 	w->restore = w->geom;
 }
 
@@ -1100,6 +1208,192 @@ Win *win_at(int x, int y)
 			return w;
 	}
 	return NULL;
+}
+
+/*
+ * HOW FAR ALONG A SIDE THIS LONG IS STILL ITS CORNER. `thick` is the border's
+ * thickness ACROSS this arm — CON_FRAME_X for an arm running along the top or
+ * bottom row, CON_FRAME_Y for one running down a side column.
+ *
+ * Clamped to a third of the side as well as to CON_GRAB_CORNER: a frame twelve
+ * cells wide with four cells of corner at each end has four cells of side left
+ * to drag, and one eight cells wide would have none at all — every press on it
+ * would take both axes and the window could not be resized in one.
+ *
+ * AND NEVER SHORTER THAN THE BAND IT CROSSES. The corner is the block where
+ * the two bands meet, so an arm shorter than `thick` leaves cells inside that
+ * block taking a single axis: on a two-column border, a press one cell in from
+ * the corner that changes the width and not the height. The floor outranks the
+ * third, because a frame too small to hold both arms is one whose title row is
+ * a handful of cells — and Super+left drag moves a window from anywhere inside
+ * it.
+ */
+static int corner_arm(int side, int thick)
+{
+	int a = side / 3;
+
+	if (a > CON_GRAB_CORNER)
+		a = CON_GRAB_CORNER;
+	if (a < thick)
+		a = thick;
+	return a < 1 ? 1 : a;
+}
+
+/*
+ * WHICH EDGES A RESIZE FROM INSIDE THE WINDOW TAKES: the nearest in each axis,
+ * so a press near a corner takes both and one in the middle of a side takes
+ * that side alone. A press in the exact middle takes the bottom-right corner,
+ * which is what a hand expects when nothing else is nearer.
+ */
+static unsigned near_edges(const Win *w, int x, int y)
+{
+	unsigned e = KWM_EDGE_NONE;
+	int third_w = w->geom.w / 3, third_h = w->geom.h / 3;
+
+	if (third_w < 1)
+		third_w = 1;
+	if (third_h < 1)
+		third_h = 1;
+
+	if (x < w->geom.x + third_w)
+		e |= KWM_EDGE_LEFT;
+	else if (x >= w->geom.x + w->geom.w - third_w)
+		e |= KWM_EDGE_RIGHT;
+	if (y < w->geom.y + third_h)
+		e |= KWM_EDGE_TOP;
+	else if (y >= w->geom.y + w->geom.h - third_h)
+		e |= KWM_EDGE_BOTTOM;
+
+	return e ? e : (KWM_EDGE_RIGHT | KWM_EDGE_BOTTOM);
+}
+
+/*
+ * WHAT A PRESS ON THIS WINDOW ARMS, and which edges a resize is to move.
+ *
+ * EITHER BUTTON RESIZES FROM THE BORDER. The right button is not the one a
+ * hand reaches for on a border, and a left drag along a frame's own rule that
+ * did nothing reads as a window that cannot be resized at all. Inside the
+ * border there is nothing else for a left press to mean: every cell of it
+ * belongs to the window manager, not to whatever is in the window.
+ *
+ * THE WHOLE BAND ANSWERS, NOT ITS OUTERMOST CELL. The border is CON_FRAME_X
+ * columns and CON_FRAME_Y rows thick and a press anywhere in it is a resize
+ * from that side — a thickness a hand can find that only the outer cell acted
+ * on would be a wider picture of the same unhittable target.
+ *
+ * THE ENDS OF EVERY SIDE ARE A CORNER and take both axes, for CON_GRAB_CORNER
+ * cells. The block where the two bands actually cross is two cells, and a
+ * corner nobody can land on means every resize is one axis at a time — so the
+ * arms down the side columns are also where the vertical tolerance lives, the
+ * top and bottom bands being one row each.
+ *
+ * THE TITLE ROW MOVES AND ITS ENDS DO NOT. Left on the row is the move, right
+ * on it takes the top edge, and the corner arms at either end resize under
+ * either button — which is what makes the top two corners reachable at all on
+ * a row that is otherwise the one handle the window has.
+ *
+ * SUPER IS THE WAY IN FROM ANYWHERE: left moves and middle resizes, so a
+ * window that is all content is movable without hunting for its one draggable
+ * row.
+ *
+ * AND A BARE RIGHT PRESS INSIDE BELONGS TO WHATEVER OWNS THE CELLS. Resizing
+ * from anywhere inside is right for a window whose content is the session's to
+ * interpret and wrong for one that is a program's: a right click inside a
+ * terminal or an embedded application that armed a resize is a context menu
+ * unreachable in every graphical application on this desktop.
+ */
+int win_grab_at(const Win *w, int x, int y, int btn, int mods, unsigned *edges)
+{
+	KwmRect f;
+	unsigned e = KWM_EDGE_NONE;
+	int l, r, t, b, ax, ay;
+	int super = (mods & KT_MOD_SUPER) != 0;
+
+	*edges = KWM_EDGE_NONE;
+	/*
+	 * A WINDOW WITH NO FRAME HAS NO FRAME TO TAKE HOLD OF, and the list is
+	 * `win_draw_all`'s own: a panel is docked and dragging it would move
+	 * the work area out from under every other window; a fullscreen window
+	 * has no border; a layer — a menu, a toast — and the icon layer are
+	 * part of the desktop rather than things sitting on it. Their frame
+	 * rectangle is still inflated by the border, so a grab that did not
+	 * refuse them would resize a popup menu from a border nobody can see.
+	 */
+	if (!w || !win_framed(w))
+		return WIN_GRAB_NONE;
+	/*
+	 * A DETENT IS NOT A DRAG. A wheel tick is delivered as a press with no
+	 * release to match it, so a grab armed by one would own the pointer
+	 * until some later click let go of it — every motion after a scroll
+	 * over a border would resize the window that was scrolled over.
+	 */
+	if (btn != KT_MB_LEFT && btn != KT_MB_MIDDLE && btn != KT_MB_RIGHT)
+		return WIN_GRAB_NONE;
+
+	f = win_frame(w);
+	if (x < f.x || x >= f.x + f.w || y < f.y || y >= f.y + f.h)
+		return WIN_GRAB_NONE;
+
+	/*
+	 * A BAND AND NOT A CELL. The border is CON_FRAME_X columns across and
+	 * CON_FRAME_Y rows down, and every cell of it is the window manager's;
+	 * a test that named only the outermost one would leave the rest of a
+	 * thick border doing nothing, which is the same window a hand cannot
+	 * get hold of with a thicker rule drawn round it.
+	 *
+	 * THE TWO CANNOT OVERLAP. win_place_at refuses a content rectangle
+	 * under one cell, so the narrowest frame is 2 * CON_FRAME_X + 1 across
+	 * and 2 * CON_FRAME_Y + 1 down, and a cell is never both sides at once.
+	 */
+	l = x < f.x + CON_FRAME_X;
+	r = x >= f.x + f.w - CON_FRAME_X;
+	t = y < f.y + CON_FRAME_Y;
+	b = y >= f.y + f.h - CON_FRAME_Y;
+	/*
+	 * AN ARM IS MEASURED ALONG ITS OWN SIDE AND FLOORED BY THE OTHER BAND'S
+	 * THICKNESS: the run along the top and bottom rows is as long as the
+	 * side columns are wide, and the run down the side columns is at least
+	 * as deep as the top and bottom rows are tall. Anything less is a
+	 * corner block with a cell in it that takes one axis.
+	 */
+	ax = corner_arm(f.w, CON_FRAME_X);
+	ay = corner_arm(f.h, CON_FRAME_Y);
+
+	if (l || r) {
+		e |= l ? KWM_EDGE_LEFT : KWM_EDGE_RIGHT;
+		if (y < f.y + ay)
+			e |= KWM_EDGE_TOP;
+		else if (y >= f.y + f.h - ay)
+			e |= KWM_EDGE_BOTTOM;
+	}
+	if (t || b) {
+		e |= t ? KWM_EDGE_TOP : KWM_EDGE_BOTTOM;
+		if (x < f.x + ax)
+			e |= KWM_EDGE_LEFT;
+		else if (x >= f.x + f.w - ax)
+			e |= KWM_EDGE_RIGHT;
+	}
+
+	if (super) {
+		if (btn == KT_MB_LEFT)
+			return WIN_GRAB_MOVE;
+		*edges = e ? e : near_edges(w, x, y);
+		return WIN_GRAB_RESIZE;
+	}
+
+	if (e) {
+		if (t && !b && !(e & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT)) &&
+		    btn == KT_MB_LEFT)
+			return WIN_GRAB_MOVE;
+		*edges = e;
+		return WIN_GRAB_RESIZE;
+	}
+
+	if (btn == KT_MB_RIGHT && w->kind != WIN_TERM && w->kind != WIN_EMBED) {
+		*edges = near_edges(w, x, y);
+		return WIN_GRAB_RESIZE;
+	}
+	return WIN_GRAB_NONE;
 }
 
 /*
@@ -1280,7 +1574,7 @@ void win_tile_all(void)
 	int rows = (n + cols - 1) / cols;
 	int cw = a.w / cols, ch = a.h / rows;
 
-	if (cw < 2 * CON_FRAME + 5 || ch < 2 * CON_FRAME + 4)
+	if (cw < 2 * CON_FRAME_X + 5 || ch < 2 * CON_FRAME_Y + 4)
 		return;		/* a grid nothing could be read in */
 
 	for (int i = 0; i < n; i++) {
@@ -1299,10 +1593,11 @@ void win_tile_all(void)
 		 * neighbour's TITLE BAR — a grid whose titles cannot be read,
 		 * which is most of what a tiled grid is for.
 		 */
-		g.x = (r == rows - 1 ? a.x + c * lw : a.x + c * cw) + CON_FRAME;
-		g.y = a.y + r * ch + CON_FRAME;
-		g.w = (r == rows - 1 ? lw : cw) - 2 * CON_FRAME - 1;
-		g.h = ch - 2 * CON_FRAME - 1;
+		g.x = (r == rows - 1 ? a.x + c * lw : a.x + c * cw) +
+		      CON_FRAME_X;
+		g.y = a.y + r * ch + CON_FRAME_Y;
+		g.w = (r == rows - 1 ? lw : cw) - 2 * CON_FRAME_X - 1;
+		g.h = ch - 2 * CON_FRAME_Y - 1;
 
 		set[i]->tiled = 0;
 		set[i]->restore = set[i]->geom;
@@ -1334,8 +1629,8 @@ void win_cascade(void)
 		int steps = (a.h - ch) / 2;
 		int k = steps > 0 ? i % steps : 0;
 
-		g.x = a.x + CON_FRAME + k * 2;
-		g.y = a.y + CON_FRAME + k;
+		g.x = a.x + CON_FRAME_X + k * 2;
+		g.y = a.y + CON_FRAME_Y + k;
 		g.w = cw;
 		g.h = ch;
 		set[i]->tiled = 0;
@@ -1819,7 +2114,209 @@ int win_button_at(int x, int y, int *id)
 }
 
 /*
- * `_ ■ X` at the right of the title row.
+ * WHERE THE POINTER IS, in cells, or off the grid for nowhere. Recorded on
+ * every pointer event the router sees, including the leave libkwl reports as
+ * an off-grid position: a highlight nothing retracts stays lit for the rest of
+ * the session, and a lit button nobody is pointing at is a lie about where the
+ * next press will land.
+ */
+static int ptr_cx = -1, ptr_cy = -1;
+
+void win_ptr_at(int x, int y)
+{
+	int was_id = 0, now_id = 0;
+	int was = win_button_at(ptr_cx, ptr_cy, &was_id);
+	int now = win_button_at(x, y, &now_id);
+
+	ptr_cx = x;
+	ptr_cy = y;
+	/*
+	 * THE ONLY THING THAT MOVED IS THE POINTER, so the repaint is asked
+	 * for here or the chip lights when some other window happens to
+	 * redraw — which on a still desktop is never.
+	 *
+	 * AND ONLY WHEN THE CHIP UNDER IT CHANGED. Nothing else on the screen
+	 * reads this position, so a repaint per cell of motion would be the
+	 * whole grid re-sent for every centimetre of a hand crossing an empty
+	 * desktop.
+	 */
+	if (was != now || was_id != now_id)
+		ktui_draw_invalidate();
+}
+
+/*
+ * OSC 133'S PROMPT MARKS, ON THE FRAME'S LEFT BORDER.
+ *
+ * A terminal has no gutter — every column belongs to the child — so this is
+ * drawn on a column of the frame, which is the window manager's. A window with
+ * no frame gets nothing rather than a character of the shell's overwritten.
+ *
+ * The colour carries the meaning: a bullet in the error slot is a command that
+ * failed, in the accent one that did not, and a dot where nothing has finished
+ * at that prompt yet.
+ */
+static void draw_marks(Win *w)
+{
+	if (w->kind != WIN_TERM || !w->term)
+		return;
+	for (int i = 0; i < w->geom.h; i++) {
+		int status = -1;
+
+		if (!kvt_term_mark_at(w->term, (unsigned int)i, &status))
+			continue;
+		/*
+		 * ON THE BORDER CELL BESIDE THE TEXT, which is the innermost
+		 * column of the left band — `r.x` is the outermost, and a mark
+		 * there sits CON_FRAME_X cells from the line it marks and
+		 * breaks the frame's own rule to do it. A border one column
+		 * thick makes the two the same cell.
+		 */
+		ktui_draw_text(w->geom.x - 1, w->geom.y + i, 1,
+			       status < 0 ? ktui_glyph[KT_G_DOT]
+					  : ktui_glyph[KT_G_BULLET],
+			       status < 0 ? KT_DIM
+					  : status ? KT_ERR : KT_ACCENT,
+			       KT_SURFACE, KT_A_NONE);
+	}
+}
+
+/*
+ * WHERE THE BUTTON RUN STARTS on a frame this wide, and which of the three are
+ * on it — the index of the first, so `3 - *first` is how many.
+ *
+ * THE ONE PLACE EITHER IS WORKED OUT. The title is cut to end before the run
+ * and the chips are painted from it, so two answers to "where do the buttons
+ * go" is a title cut to the wrong column on exactly the frames nobody looks
+ * at.
+ *
+ * A CHIP IS TWO CELLS, so the run is two per button, and it may not reach the
+ * frame's own left corner or the cell beside it: a frame with no rule left of
+ * its buttons has nowhere to put a title at all.
+ *
+ * WHAT GOES WHEN THERE IS NOT ROOM FOR THREE. Close is the one a window cannot
+ * be got rid of without, so it is the last to go; minimise is the first,
+ * because the taskbar row does the same job and is always there. A frame that
+ * kept its title and dropped every button instead leaves the smallest window
+ * the desktop can make — the one a resize can always reach — with no way to
+ * close it but the keyboard.
+ */
+static int btn_run(const Win *w, KRect r, int *first)
+{
+	/*
+	 * NO MINIMISE ON A WINDOW WITH NO TASKBAR ROW. The row is the way back
+	 * from a minimise and a dialog, a dock or a splash is listed under the
+	 * window it belongs to, so the button would be one that puts a window
+	 * where nothing on the desktop can reach it.
+	 */
+	int lo = w->no_task ? 1 : 0;
+	int n = (r.w - 3) / 2;
+
+	if (n > 3 - lo)
+		n = 3 - lo;
+	if (n < 0)
+		n = 0;
+	*first = 3 - n;
+	return r.x + r.w - 1 - n * 2;
+}
+
+/*
+ * THE COLOURS OF ONE CHIP, and every one of them a slot.
+ *
+ * A BUTTON DRAWN IN THE BORDER'S OWN SLOT IS NOT A BUTTON. Give the three the
+ * colour `ktui_draw_box` is handed in the same call and the group reads as a
+ * run of border rather than as three things to press — the border's rule shows
+ * through the gap between each pair and joins them — and on an unfocused frame
+ * that slot is KT_DIM, which measures 1.45:1 against KT_SURFACE across the
+ * seven schemes, under any threshold at which a glyph can be read at all.
+ *
+ * A CHIP CARRIES ITS MEANING IN ITS FILL. The urgent slot for the one that
+ * destroys the window and the mid fill for the two that do not, so close is
+ * told apart from its neighbours before it is read; the dim fill on an
+ * unfocused frame, which is the quietest ground a chip can have and still put
+ * KT_TEXT on it at better than 8:1.
+ *
+ * AND THE ACCENT UNDER THE POINTER, for all three. It is this desktop's slot
+ * for the thing that is live, it clears 10:1 against the glyph in every
+ * scheme, and it is the only step that is unmistakable on a chip that is
+ * already red: what the button does is taught by its resting colour, and the
+ * highlight has one job, which is to say the press will land here.
+ */
+static void btn_slots(int kind, int focused, int hot, int *fg, int *bg)
+{
+	*fg = KT_SURFACE;
+	if (hot)
+		*bg = KT_ACCENT;
+	else if (!focused) {
+		*bg = KT_DIM;
+		*fg = KT_TEXT;
+	} else if (kind == WIN_BTN_CLOSE)
+		*bg = KT_ERR;
+	else
+		*bg = KT_MID;
+}
+
+/*
+ * THE CHIP'S SECOND CELL, REPAINTED AND NOT REWRITTEN.
+ *
+ * The cell already holds whatever the frame put on that column — the rule
+ * `ktui_draw_box` drew along the title row — and the chip wants its colours,
+ * not its character. Reading the frame back is what keeps those apart: a pad
+ * that wrote a glyph of its own would be a button deciding what the border is
+ * made of, and would move every committed golden on a change that is colour
+ * alone.
+ */
+static void btn_pad(int x, int y, int fg, int bg)
+{
+	int cw = 0, ch = 0;
+	const KtuiCell *cells = ktui_draw_cells(&cw, &ch);
+
+	if (!cells || x < 0 || y < 0 || x >= cw || y >= ch)
+		return;
+	ktui_draw_cell(x, y, cells[(size_t)y * cw + x].ch, fg, bg, KT_A_NONE);
+}
+
+/*
+ * A TITLE CUT TO THE COLUMNS IT MAY HAVE, in place.
+ *
+ * `ktui_draw_box` lays a title out from the frame's third column and closes it
+ * with a space, and the buttons are painted over that same row afterwards: a
+ * title long enough to reach them ends inside a chip, in the chip's colours
+ * and mid-word. The cut is made before the box sees the title, so what is on
+ * the row is a whole title or a shortened one — never a button with a letter
+ * of somebody's window name in it.
+ *
+ * COLUMNS AND NOT BYTES. A title is whatever the program set, so it is UTF-8
+ * and a byte count cuts a character in half; half a character is the `?` every
+ * unmapped codepoint becomes.
+ */
+static void title_cut(char *s, int cols)
+{
+	const char *p = s;
+	int used = 0;
+
+	if (cols < 0)
+		cols = 0;
+	for (;;) {
+		uint32_t cp = 0;
+		const char *next;
+		int cw;
+
+		if (!*p)
+			return;
+		next = ktui_utf8_next(p, &cp);
+		cw = ktui_wcwidth(cp);
+		if (cw < 0)
+			cw = 0;
+		if (used + cw > cols)
+			break;
+		used += cw;
+		p = next;
+	}
+	s[p - s] = '\0';
+}
+
+/*
+ * `_ ■ X` at the right of the title row, each one a two-cell chip.
  *
  * INSIDE THE VT TIER. The console font is 512 glyphs and renders anything it
  * does not carry as a blank, so a hollow square would be an invisible button
@@ -1830,36 +2327,13 @@ int win_button_at(int x, int y, int *id)
  * and giving it buttons would put them on every box in the tree and move
  * goldens that have nothing to do with this desktop. Buttons are a property of
  * a managed window, so the window manager draws them.
- */
-/*
- * OSC 133'S PROMPT MARKS, ON THE FRAME'S LEFT BORDER.
  *
- * A terminal has no gutter — every column belongs to the child — so this is
- * drawn on the one column that is the window manager's. A window with no frame
- * gets nothing rather than a character of the shell's overwritten.
- *
- * The colour carries the meaning: a bullet in the error slot is a command that
- * failed, in the accent one that did not, and a dot where nothing has finished
- * at that prompt yet.
+ * THE HIT BOX IS THE WHOLE CHIP. A one-cell target is the failure a person
+ * feels: a mouse has to be aimed at it and a finger cannot land on it at all,
+ * and the miss goes to the title row underneath, which arms a move. What is
+ * painted and what answers a press are the same two columns, so a chip is
+ * hit wherever it can be seen.
  */
-static void draw_marks(Win *w, KRect r)
-{
-	if (w->kind != WIN_TERM || !w->term)
-		return;
-	for (int i = 0; i < w->geom.h; i++) {
-		int status = -1;
-
-		if (!kvt_term_mark_at(w->term, (unsigned int)i, &status))
-			continue;
-		ktui_draw_text(r.x, w->geom.y + i, 1,
-			       status < 0 ? ktui_glyph[KT_G_DOT]
-					  : ktui_glyph[KT_G_BULLET],
-			       status < 0 ? KT_DIM
-					  : status ? KT_ERR : KT_ACCENT,
-			       KT_SURFACE, KT_A_NONE);
-	}
-}
-
 static void draw_buttons(Win *w, KRect r, int focused)
 {
 	/*
@@ -1875,26 +2349,29 @@ static void draw_buttons(Win *w, KRect r, int focused)
 		{ ktui_glyph[KT_G_SQUARE], WIN_BTN_MAX },
 		{ "X", WIN_BTN_CLOSE }
 	};
+	int first, x = btn_run(w, r, &first);
 	/*
-	 * NO MINIMISE ON A WINDOW WITH NO TASKBAR ROW. The row is the way back
-	 * from a minimise and a dialog, a dock or a splash is listed under the
-	 * window it belongs to, so the button would be one that puts a window
-	 * where nothing on the desktop can reach it.
+	 * A CHIP LIGHTS ONLY ON THE FRAME THE POINTER CAN ACTUALLY REACH.
+	 * Frames are painted back to front, so one under another window is
+	 * painted and then covered anyway; one lit on a frame the pointer is
+	 * not over would be a highlight promising a press that lands
+	 * somewhere else.
 	 */
-	int first = w->no_task ? 1 : 0;
-	int x = r.x + r.w - 1 - (3 - first) * 2;
+	int lit = win_at(ptr_cx, ptr_cy) == w && ptr_cy == r.y;
 
-	/* A frame too narrow for its title and its buttons gets the title:
-	 * a button nobody can read is not a button. */
-	if (r.w < 16 || nbtn_hits + 3 > 96)
+	if (first >= 3 ||
+	    nbtn_hits + (3 - first) > (int)(sizeof btn_hits / sizeof *btn_hits))
 		return;
 
 	for (int i = first; i < 3; i++) {
-		ktui_draw_text(x, r.y, 2, b[i].g,
-			       focused ? KT_ACCENT : KT_DIM, KT_SURFACE,
-			       KT_A_NONE);
+		int hot = lit && (ptr_cx == x || ptr_cx == x + 1);
+		int fg, bg;
+
+		btn_slots(b[i].kind, focused, hot, &fg, &bg);
+		ktui_draw_text(x, r.y, 1, b[i].g, fg, bg, KT_A_NONE);
+		btn_pad(x + 1, r.y, fg, bg);
 		btn_hits[nbtn_hits].x0 = x;
-		btn_hits[nbtn_hits].x1 = x;
+		btn_hits[nbtn_hits].x1 = x + 1;
 		btn_hits[nbtn_hits].y = r.y;
 		btn_hits[nbtn_hits].kind = b[i].kind;
 		btn_hits[nbtn_hits].id = w->id;
@@ -1952,6 +2429,51 @@ int win_is_on_screen(const Win *w)
 	return 1;
 }
 
+/*
+ * WHICH OF THE THREE LAYERS A WINDOW IS DRAWN IN — see the draw loop, whose
+ * three passes this names. One expression and not two: a second reading of it
+ * would decide occlusion by an order the walk does not paint in, which is a
+ * mark laid over a menu on exactly the frames nobody looks at.
+ */
+static int win_layer(const Win *w)
+{
+	return w->background ? 0 : w->overlay ? 2 : 1;
+}
+
+int win_covered_at(const Win *w, int x, int y)
+{
+	int wl;
+	/* The list is front-first, so everything walked before `w` is drawn
+	 * after it and everything after it is drawn before. A higher layer is
+	 * in front wherever it sits in the list, because the layers are three
+	 * passes and not a stacking order. */
+	int above = 1;
+
+	if (!w)
+		return 0;
+	wl = win_layer(w);
+	for (const Win *v = S.wins; v; v = v->next) {
+		KwmRect r;
+
+		if (v == w) {
+			above = 0;
+			continue;
+		}
+		if (win_layer(v) < wl || (win_layer(v) == wl && !above))
+			continue;
+		if (!win_is_on_screen(v))
+			continue;
+		/* THE RECTANGLE THE WALK ACTUALLY PAINTS. A panel, a layer, a
+		 * fullscreen window and the icon layer are drawn with no frame
+		 * at all, so counting a frame's cell round them would refuse a
+		 * cell nothing was ever drawn on. */
+		r = win_framed(v) ? win_frame(v) : v->geom;
+		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+			return 1;
+	}
+	return 0;
+}
+
 void win_draw_all(void)
 {
 	nbtn_hits = 0;
@@ -2006,9 +2528,8 @@ void win_draw_all(void)
 	for (int layer = 0; layer < 3; layer++) {
 		for (int i = n - 1; i >= 0; i--) {
 			Win *w = order[i];
-			int wl = w->background ? 0 : w->overlay ? 2 : 1;
 
-			if (wl != layer)
+			if (win_layer(w) != layer)
 				continue;
 
 			/* It is drawn here or it is drawn nowhere, and what
@@ -2024,8 +2545,7 @@ void win_draw_all(void)
 			 * toast is the clearest case: it would arrive with a
 			 * title bar and a close button nobody asked for.
 			 */
-			if (w->panel || w->full || w->overlay ||
-			    w->background) {
+			if (!win_framed(w)) {
 				draw_content(w);
 				continue;
 			}
@@ -2053,6 +2573,7 @@ void win_draw_all(void)
 			 */
 			char titled[160];
 			int idx = win_index(w);
+			int bfirst;
 
 			if (idx > 0 && idx < 10)
 				snprintf(titled, sizeof(titled), "%d:%s", idx,
@@ -2060,6 +2581,15 @@ void win_draw_all(void)
 			else
 				snprintf(titled, sizeof(titled), "%s",
 					 w->title);
+			/*
+			 * AND CUT TO WHERE THE BUTTONS BEGIN. `ktui_draw_box`
+			 * writes the title from the third column and closes it
+			 * with a space, so the space has to land left of the
+			 * run: `btn_run` is asked rather than the width
+			 * guessed, because it is the same call that puts the
+			 * chips there.
+			 */
+			title_cut(titled, btn_run(w, r, &bfirst) - r.x - 4);
 
 			ktui_draw_shadow(r);
 			ktui_draw_fill(r, rung ? KT_ACCENT : KT_SURFACE);
@@ -2069,7 +2599,7 @@ void win_draw_all(void)
 				      rung ? KT_ACCENT : KT_SURFACE,
 				      /* dbl */ focused || rung);
 			draw_buttons(w, r, focused);
-			draw_marks(w, r);
+			draw_marks(w);
 			draw_content(w);
 		}
 	}

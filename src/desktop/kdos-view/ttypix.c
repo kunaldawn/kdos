@@ -102,7 +102,6 @@ static KtuiBackend wrap;
 static int proto;
 static int pix_w = 8, pix_h = 16;
 static int gate_ms = 50;
-static int ptr_x = -1, ptr_y = -1;
 static int caret_x = -1, caret_y = -1;
 static int full_next;
 static sixel_output_t *sx_out;
@@ -602,6 +601,13 @@ static int merge_runs(Pic *pc)
  * The LAST ROW IS NEVER PICTURE. A sixel at the bottom margin scrolls in every
  * terminal, and a scroll silently invalidates the whole diff — nothing could
  * detect it afterwards. Those cells keep their fallback mark.
+ *
+ * THE POINTER CELL IS NOT THIS PASS'S BUSINESS. ktui_draw_flush() decides it:
+ * where it draws the cell pointer it hands this pass a blank and not a sprite,
+ * and where it holds the pointer back — over a picture whose pixels keep
+ * arriving, so that the compositor's own cursor is the only one — it hands over
+ * the sprite untouched. Cutting that cell out of the runs here would put a
+ * fallback mark through a moving picture exactly where the hand is.
  */
 static void scan(const KtuiCell *cur, const KtuiCell *prev, int w, int h,
 		 int full)
@@ -631,8 +637,6 @@ static void scan(const KtuiCell *cur, const KtuiCell *prev, int w, int h,
 			s = ktui_sprite_get(vs);
 			if (!s || !s->pix)
 				continue;	/* a mark, not a picture */
-			if (x == ptr_x && y == ptr_y)
-				continue;	/* the pointer owns the cell */
 
 			pc = &st[vs];
 			pc->live = 1;
@@ -786,12 +790,6 @@ const KtuiBackend *view_ttypix_install(const KtuiBackend *b)
 	wrap.caret = b->caret;
 	full_next = 1;
 	return &wrap;
-}
-
-void view_ttypix_pointer(int x, int y)
-{
-	ptr_x = x;
-	ptr_y = y;
 }
 
 void view_ttypix_caret(int x, int y)

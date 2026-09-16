@@ -90,6 +90,25 @@ wired up.
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
 
+**The panel's own launch rows and `kdos-menu` split an `Exec` line on whitespace.** The
+quick-launch row, the taskbar chip's *New window* and every application row in `kdos-menu` build
+their argv with `strtok(" ")`, so an entry whose `Exec` carries a quoted argument starts wrong:
+`Exec=foot --title="Install KDOS" -- sudo kinstall` reaches `foot` as `--title="Install` with a
+stray `KDOS"` after it. They also fork the child themselves, so a graphical application started
+from the panel while it is docked on the console session gets no cage and no display. The six
+surfaces that go through `sh_launch()` — the Start menu, the palette, the desktop's icons,
+`kdos-find`, *Open With* and the run box — have neither fault; these three are what a `sh_launch()`
+call would close.
+
+**`kdos-appbox open` starts a graphical handler outside the console session.** `open` resolves a
+file's handler and `execvp`s it in the process it was given, so on the console a handler that is not
+a terminal program gets no cage and no display and exits at once, with nothing on the screen to say
+why. `terminal_first()` hides this wherever a terminal handler exists — it is put at the head of the
+chain — so what is left exposed is a type whose only handler is graphical. The same function splits
+the handler's `Exec` line on whitespace, so a quoted argument reaches the program in pieces. The
+launch surfaces in `kdos-shell` do neither: they go through `sh_launch()`, which reads the quoting
+and hands a graphical program to the session.
+
 **A recording of a screen that does not change is an empty file.** `wlr-screencopy` hands over a
 frame when the output is damaged and at no other time, so a session left alone produces no buffers,
 the muxer writes no header, and `~/Videos/<name>.mkv` ends at zero bytes with nothing in the
@@ -102,12 +121,17 @@ on the screen while it runs.
 drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
 not running.
 
-**A terminal application opens nothing from the palette.** `Super+space`, `ma`, `Enter` on
-**Mail** leaves the desktop as it was, and so does any other row whose desktop entry says
-`Terminal=true`; a row that does not — *Resources* — opens its window from the same list, the same
-keystroke and the same code path. The wrapper the launcher builds is not the problem: typed by
-hand, `kdos-term --title mc --app-id mc -e mc` opens the window and the taskbar names it. The
-chord route is unaffected, so `Super+Shift+e` still opens mail.
+**A terminal application opens nothing from a launch surface on the console.** `Super+space`, `ma`,
+`Enter` on **Mail** leaves the desktop as it was, and so does any other row whose desktop entry says
+`Terminal=true` — from the palette, the Start menu, a desktop icon or `kdos-find` alike, because all
+four make the same call. The wrapper is not the problem: typed by hand, `kdos-term --title mc
+--app-id mc -e mc` opens the window and the taskbar names it.
+
+**The two kinds of row do not end up in the same place**, which is where to look. On the console a
+row that is *not* a terminal entry is handed to the session through `kcon_run()`, and the session
+owns what it started; a `Terminal=true` row is double-forked by the surface, which then closes.
+*Resources* opens because it is the first kind. The chord route is unaffected, so `Super+Shift+e`
+still opens mail.
 
 **A terminal framed by the session loses its prompt marks.** `kdos-term` draws the `OSC 133` dots on
 the one column that is its own — the left border of the box it draws when nothing else drew one —
@@ -126,13 +150,27 @@ and there is no path where it is not. What it does not cost is the desktop: the 
 one where a display stops counting as ready, so the panel, the pointer and every other window are
 still composed while a guest draws, and a display that is behind is skipped, never dropped.
 
-Unless its box profile says `render = gpu`, in which case the guest renders on the card and the
-compositing in the cage does too — but the frame still reaches the screen as blocks over the same
-socket, because the console's own display path is a CPU-mapped dumb buffer with no GPU in it.
+That is the *session's* half of the crossing and not the guest's: on a machine with a render node
+the cage composites on the card and the guest renders on it too, because a profile that names no
+`render` key leaves both of them to ask the machine and the machine answers with the card. The
+frame still reaches the screen as blocks over the same socket, because the console's own display
+path is a CPU-mapped dumb buffer with no GPU in it.
 **So an embedded window cannot carry a game or 1080p60 video**, whichever renderer drew it: every
 frame is read back, cut into sprite blocks, sent over a socket and written into a dumb buffer, and
 that crossing is the ceiling rather than the drawing. `display = vt` is the path that can, and it
 has never been run on real hardware — see below. See
+[`kdos-cage`](../04-programs/kdos-cage.md) and [`kdos-con`](../04-programs/kdos-con.md).
+
+**A boxed application on the console renders at scale 1 on every shipped font.** The session offers
+a guest `KEMBED_SCALE`, the cage commits it to that window's output and every position and size that
+crosses the channel is converted for it. The number is the primary view's cell height divided by a
+reference cell of eight by sixteen, stepped down until it divides the cell's width as well — and
+`con.conf` ships `font = monospace:size=12`, whose cell is that reference cell, so the division
+gives 1 and the mechanism never engages. A 2 wants a cell thirty-two pixels tall with an even width,
+which text stepped far up with `Super+=` or a `font =` written that large produces and nothing
+shipped does. **Fractional scale is never offered to a guest**: a cell one and a half reference
+cells tall gets 1, because a number that does not divide the cell leaves the guest rendering a
+stripe short of its own output. What is missing is a font that crosses the mark, not the code — see
 [`kdos-cage`](../04-programs/kdos-cage.md) and [`kdos-con`](../04-programs/kdos-con.md).
 
 **A drag onto an embedded graphical application reads as cancelled.** `KEMBED_DRAG_OFFER`,
@@ -261,6 +299,13 @@ console-font patching.
 **No per-box protocol grants beyond the profile's list.** The compositor's sandbox filter is a
 fixed allowlist: a client is sandboxed or it is not. A profile can open named globals; teaching the
 filter to consult a box's profile for anything finer is deliberate work that is not done.
+
+**Hardware video decode reaches a box only after the packs are re-baked.** `ports/appbox/packs.conf`
+carries `libva` and the VA-API driver set in the base row, but a pack is a built artefact: the
+`.kpack` files on the medium are whatever the last `make fetch-packs` produced, and a row edited
+since then changes nothing a running system can see. A boxed browser on packs baked before that
+row reports no hardware decoder and decodes every frame on the CPU. The bake needs network and
+about an hour.
 
 **Applications that need raw block devices are not in the catalogue** and get no launcher —
 partitioners, drive-health tools, recovery tools. A rootless container cannot do anything useful

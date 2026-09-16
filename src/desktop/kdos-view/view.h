@@ -93,7 +93,6 @@ int view_shot_png(const char *path, int scale, int cx, int cy, int cw, int ch);
 #ifdef KDOS_VIEW_TTYPIX
 int view_ttypix_probe(int *cell_w, int *cell_h);
 const KtuiBackend *view_ttypix_install(const KtuiBackend *base);
-void view_ttypix_pointer(int x, int y);
 void view_ttypix_caret(int x, int y);
 void view_ttypix_forget(int view_slot);
 void view_ttypix_shutdown(void);

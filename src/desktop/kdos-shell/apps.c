@@ -38,6 +38,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <dirent.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +50,8 @@
 #include "kcon.h"
 #include "kxdg.h"
 #include "shell.h"
+
+#include "launch.h"
 
 static struct sh_app apps[SH_MAX_APPS];
 static int napps;
@@ -310,6 +313,16 @@ static void add_desktop_file(const char *path)
 	memset(a, 0, sizeof(*a));
 	snprintf(a->id, sizeof(a->id), "%s", id);
 	snprintf(a->name, sizeof(a->name), "%s", name);
+	/*
+	 * THE LINE THE ENTRY WROTE, FIELD CODES AND ALL. `sh_launch` spends
+	 * `%f`/`%F`/`%u`/`%U` on the documents a launch carries and decides
+	 * from those same codes that a line carrying none takes its documents
+	 * APPENDED — so an index that deleted them here would make every entry
+	 * look like the second kind, and `--open=%f` would run as `--open=`
+	 * with the path as a word of its own. With no document to open,
+	 * `kxdg_exec_split` drops every code and leaves no empty argument
+	 * behind, which is the whole reason nothing has to be deleted first.
+	 */
 	snprintf(a->exec, sizeof(a->exec), "%s", exec);
 	snprintf(a->icon, sizeof(a->icon), "%s",
 		 kxdg_get(&e, "Icon", ""));
@@ -319,7 +332,6 @@ static void add_desktop_file(const char *path)
 	 * find Firefox — the entry says so and nothing here has to know. */
 	snprintf(a->keywords, sizeof(a->keywords), "%s %s",
 		 kxdg_get(&e, "Keywords", ""), kxdg_get(&e, "GenericName", ""));
-	sh_strip_field_codes(a->exec);
 	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
 	a->terminal = kxdg_bool(&e, "Terminal", 0);
 	/*
@@ -555,12 +567,24 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 		 */
 		static const int DISCOUNT[4] = { 0, 4, 8, 8 };
 		const char *field[4];
+		char cmd[SH_APP_EXEC];
 		int best = 0;
+
+		/*
+		 * THE COMMAND IS SEARCHED WITHOUT ITS FIELD CODES, and the
+		 * index keeps them: a `%U` in the haystack is two more letters
+		 * for a subsequence matcher to travel through, so `fu` would
+		 * find every entry whose Exec ends in one. Stripped into
+		 * scratch and never in place — the launch reads the same
+		 * buffer and needs the codes.
+		 */
+		snprintf(cmd, sizeof(cmd), "%s", a->exec);
+		sh_strip_field_codes(cmd);
 
 		field[0] = a->name;
 		field[1] = a->id;
 		field[2] = a->keywords;
-		field[3] = a->exec;
+		field[3] = cmd;
 		for (int k = 0; k < 4; k++) {
 			int sc = kb_fuzzy(field[k], needle);
 
@@ -590,18 +614,130 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 /* ── launching ─────────────────────────────────────────────────────────── */
 
 /*
+ * THE ONE PATH A LAUNCH SURFACE TAKES. The rule, and what breaks when a
+ * surface writes its own, is in `launch.h`; this is where it lives because the
+ * launcher runs the most things and because the application index and the
+ * launch must not disagree about what an entry means.
+ */
+int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
+{
+	/*
+	 * The split's scratch: the line itself plus a path for every document
+	 * substituted into it. A store that will not hold the result yields no
+	 * arguments at all, which is a launch that silently does nothing — so
+	 * it is sized for the worst line this can be handed.
+	 */
+	char store[SH_APP_EXEC * 2 + SH_LAUNCH_FILES * PATH_MAX];
+	char id[160];			/* argv points into it until the exec */
+	const char *argv[48];
+	const int max = (int)(sizeof(argv) / sizeof(*argv));
+	int n = 0;
+
+	if (!l || !l->exec || !l->exec[0])
+		return -1;
+	if (!files || nfiles < 0)
+		nfiles = 0;
+	if (nfiles > SH_LAUNCH_FILES)
+		nfiles = SH_LAUNCH_FILES;
+
+	/*
+	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
+	 * socket, set by the session for everything started inside it, and it
+	 * decides how a NON-terminal program is started below. A terminal one
+	 * needs no branch here: sh_term_argv_in() names the emulator, from the
+	 * entry's own X-KDOS-Term when it asked for one.
+	 */
+	const char *con = getenv("KDOS_CON");
+
+	if (l->terminal)
+		n = sh_term_argv_in(l->term, l->floating, l->size, argv, n,
+				    max, l->exec, id, sizeof(id));
+
+	/*
+	 * A TYPED LINE KEEPS ITS FIELD CODES AND A DESKTOP ENTRY SPENDS THEM.
+	 * `nfiles < 0` is what kxdg_exec_split reads as "expand nothing", so
+	 * the `%` somebody typed into the run box reaches the program.
+	 */
+	int got = kxdg_exec_split(l->exec, files, l->verbatim ? -1 : nfiles,
+				  store, sizeof(store), argv + n,
+				  max - n - 1 - nfiles);
+
+	if (got <= 0)
+		return -1;
+	n += got;
+
+	/*
+	 * AN ENTRY WITH NO FIELD CODE STILL OPENS THE FILE. Every other
+	 * launcher appends the paths in that case, and it is the only way
+	 * `Exec=xterm` can be handed one.
+	 *
+	 * THE DECISION IS READ OFF THE LINE, so the line must be the one the
+	 * entry wrote: a caller that hands a pre-stripped Exec looks exactly
+	 * like `Exec=xterm` from here and gets its documents appended where
+	 * the entry asked for them SUBSTITUTED — `--open=%f` running as
+	 * `--open=` with the path as a word of its own. Every surface's copy
+	 * of the line keeps its codes for this reason; see launch.h.
+	 *
+	 * The scan steps TWO bytes past a `%` so that `%%` — a literal percent
+	 * — is not read as a code, and stops on a trailing one: `p + 2` there
+	 * is a byte past the terminator and not an address this may read.
+	 */
+	int append = l->verbatim;
+
+	if (!append) {
+		append = 1;
+		for (const char *p = strchr(l->exec, '%'); p && p[1];
+		     p = strchr(p + 2, '%'))
+			if (p[1] == 'f' || p[1] == 'F' || p[1] == 'u' ||
+			    p[1] == 'U')
+				append = 0;
+	}
+	if (append)
+		for (int i = 0; i < nfiles && n < max - 1; i++)
+			argv[n++] = files[i];
+	argv[n] = NULL;
+
+	/*
+	 * A GRAPHICAL APPLICATION ON THE CONSOLE IS THE SESSION'S TO START.
+	 * This desktop composites character cells and a Wayland client's
+	 * surface is pixels; the session gives the guest a cage — embedded in
+	 * a window, or full screen on a terminal of its own — and with it the
+	 * display the guest connects to. Forked from here it would have
+	 * neither, and a boxed application would exit at once with nothing on
+	 * the screen to say why.
+	 *
+	 * A terminal program is not one of these: it becomes a kdos-term
+	 * window above and belongs on this grid.
+	 */
+	if (con && *con && !l->terminal) {
+		const char *what = l->title && l->title[0] ? l->title : argv[0];
+
+		if (kcon_run(con, argv, what, 0) < 0) {
+			fprintf(stderr,
+				"kdos-shell: cannot start '%s' — the session "
+				"has no free terminal to give it\n", what);
+			return -1;
+		}
+		return 0;
+	}
+
+	sh_spawn(argv);
+	return 0;
+}
+
+/*
  * NO SHELL, ever. The Exec line is split by kxdg_exec_split and exec'd
- * directly — every other launch path in this tree keeps that rule and this is
- * the one that runs the most things.
+ * directly — every launch surface in this tree keeps that rule and this is the
+ * one that runs the most things.
  *
- * IT IS NOT A `strtok(" ")`, and that was a bug rather than a simplification.
- * An Exec line carries quoting and it carries FIELD CODES, and a whitespace
- * split gets both wrong in a way that reads to a person as "the app does not
- * launch": `mpv --player-operation-mode=pseudo-gui -- %U` was handed a literal
- * `%U` to play and exited at once, `gimp-3.0 %U` opened an error dialog
- * instead of an image, and `"/usr/bin/gsmartcontrol-root"` was exec'd with the
- * quotes still on the path. Measured against the shipped appbox: nine of its
- * ninety-two entries were affected. See kxdg.h.
+ * IT IS NOT A `strtok(" ")`. An Exec line carries quoting and it carries FIELD
+ * CODES, and a whitespace split gets both wrong in a way that reads to a
+ * person as "the app does not launch": `mpv --player-operation-mode=pseudo-gui
+ * -- %U` is handed a literal `%U` to play and exits at once, `gimp-3.0 %U`
+ * opens an error dialog instead of an image, and
+ * `"/usr/bin/gsmartcontrol-root"` is exec'd with the quotes still on the path.
+ * Measured against the shipped appbox: nine of its ninety-two entries carry
+ * one of the two. See kxdg.h.
  */
 void sh_apps_launch(const struct sh_app *a)
 {
@@ -617,70 +753,28 @@ void sh_apps_launch(const struct sh_app *a)
 void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 			 int nfiles)
 {
-	char store[SH_APP_EXEC * 2];
-	char id[160];			/* argv points into it until the exec */
-	const char *argv[48];
-	int n = 0;
-
 	if (!a || !a->exec[0])
 		return;
 
-	/* Record BEFORE the fork: the count is what the next menu open reads,
-	 * and a launch that failed still tells you what was asked for. */
+	/* Record BEFORE the launch: the count is what the next menu open
+	 * reads, and a launch that failed still tells you what was asked
+	 * for. */
 	struct sh_app *m = find_id(a->id);
+
 	if (m) {
 		m->uses++;
 		m->last = time(NULL);
 		usage_save();
 	}
 
-	/*
-	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
-	 * socket, set by the session for everything started inside it, and it
-	 * decides how a NON-terminal entry is started below. A terminal entry
-	 * needs no branch here: sh_term_argv_in() names the emulator, from the
-	 * entry's own X-KDOS-Term when it asked for one.
-	 */
-	const char *con = getenv("KDOS_CON");
+	struct sh_launch l = {
+		.exec = a->exec,
+		.title = a->name,
+		.term = a->term,
+		.size = a->size,
+		.terminal = a->terminal,
+		.floating = a->floating,
+	};
 
-	if (a->terminal)
-		n = sh_term_argv_in(a->term, a->floating, a->size, argv, n,
-				    (int)(sizeof(argv) / sizeof(*argv)),
-				    a->exec, id, sizeof(id));
-	int got = kxdg_exec_split(a->exec, files, nfiles, store, sizeof(store),
-				  argv + n, (int)(sizeof(argv) / sizeof(*argv))
-						    - n - 1 - nfiles);
-	if (got <= 0)
-		return;
-	n += got;
-	int has_code = 0;
-	for (const char *p = strchr(a->exec, '%'); p; p = strchr(p + 2, '%'))
-		if (p[1] == 'f' || p[1] == 'F' || p[1] == 'u' || p[1] == 'U')
-			has_code = 1;
-	if (nfiles > 0 && !has_code)
-		for (int i = 0; i < nfiles && n < 47; i++)
-			argv[n++] = files[i];
-	argv[n] = NULL;
-
-	/*
-	 * A GRAPHICAL APPLICATION ON THE CONSOLE GETS A TERMINAL OF ITS OWN.
-	 * This desktop composites character cells and a Wayland client's
-	 * surface is pixels; the session allocates a VT, kdos-cage holds it,
-	 * and the guest is full screen there. Everything else about the launch
-	 * — the desktop entry, kdos-appbox, the box's tagged socket — is the
-	 * same path the graphical desktop uses, which is the point.
-	 *
-	 * A terminal entry is not one of these: it became a kdos-term window
-	 * above and belongs on this grid.
-	 */
-	if (con && *con && !a->terminal) {
-		if (kcon_run(con, argv, a->name[0] ? a->name : argv[0], 0) < 0)
-			fprintf(stderr,
-				"kdos-shell: cannot start '%s' — the session "
-				"has no free terminal to give it\n",
-				a->name[0] ? a->name : argv[0]);
-		return;
-	}
-
-	sh_spawn(argv);
+	sh_launch(&l, files, nfiles);
 }

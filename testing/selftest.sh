@@ -892,6 +892,77 @@ golden_fail=0
 # RECORDS a failure instead of ending the run — an `exit 1` here took the whole
 # suite with it, so a golden that drifted hid every check below it, including
 # the one that says every chord is on the key card.
+#
+# EVERY FRAME A SESSION DRAWS HAS ITS WHOLE BORDER ON THE GRID.
+#
+# `geom` is a window's CONTENT and win_frame() adds the border OUTSIDE it, so a
+# rectangle that is itself on the grid can still put its own left rule, its
+# corners and the band a hand grabs at a negative column. What comes out is a
+# window with a side nobody can take hold of — the exact opposite of what the
+# thickness is for — and it is a PICTURE, so a golden regenerated over it
+# blesses it and the suite never asks again.
+#
+# READ OFF THE COMPOSED FRAME AND NOT THE COMMITTED FILE, and run in the update
+# mode too: a check the regenerate path skips is a check that cannot survive
+# the next regenerate.
+#
+# THE GRID'S OUTER RING IS WHAT SAYS IT, in four questions with no cell
+# arithmetic in them — the frames overlap and occlude each other, and a column
+# count over a composed desktop would be reading whichever window won:
+#
+#   A HORIZONTAL RULE IN THE FIRST OR LAST COLUMN is a top or bottom border
+#   running off that side, because a border that ends on the grid ends in a
+#   CORNER. It is what a frame pushed off the left edge draws.
+#
+#   A VERTICAL RULE IN THE FIRST OR LAST ROW is a side border with no corner
+#   above or below it on the grid, which is a title row or a bottom rule that
+#   fell off the top or the bottom.
+#
+# BOTH GLYPH TIERS, because the same frame is drawn in ASCII on a dump and in
+# box-drawing characters on the tty — see `glyph_utf8` and `glyph_ascii` in
+# ktui_draw.c. Alternation and not a bracket class: a multibyte glyph inside
+# `[...]` is a set of BYTES, and the check would then fire on any character
+# sharing one of them.
+#
+con_ring() {
+    _rname=$1
+    _rfile=$2
+    _rbad=""
+    if grep -qE '^(-|=|─|═)' "$_rfile"; then
+        _rbad="$_rbad a rule crosses the LEFT edge;"
+    fi
+    if grep -qE '(-|=|─|═)$' "$_rfile"; then
+        _rbad="$_rbad a rule crosses the RIGHT edge;"
+    fi
+    if head -n 1 "$_rfile" | grep -qE '\||│|║'; then
+        _rbad="$_rbad a rule crosses the TOP edge;"
+    fi
+    if tail -n 1 "$_rfile" | grep -qE '\||│|║'; then
+        _rbad="$_rbad a rule crosses the BOTTOM edge;"
+    fi
+    if [ -n "$_rbad" ]; then
+        echo "  $_rname has a border off the grid:$_rbad"
+        golden_fail=1
+    fi
+}
+
+#
+# A GOLDEN FRAME IS THE SESSION'S OWN OUTPUT AND NOTHING ELSE'S.
+#
+# kb_notify() raises a toast by detaching a `gdbus` that inherits the stdout it
+# was called with, so a frame composed while the session says anything — the
+# taskbar going away is one — has that call's reply id printed into the bottom
+# of the picture, and only sometimes: the grandchild races the dump's exit and
+# it speaks at all only where a notification daemon is listening. A golden that
+# passes or fails by whether the HOST has one is not a golden.
+#
+# A PATH WITH NO `gdbus` ON IT is what a harness can say: kb_notify() raises
+# nothing when kb_have_prog() cannot find the program. The directory is empty
+# and every program these frames run is named by an absolute path, which
+# kb_have_prog() answers with access() and never a search.
+#
+mkdir -p "$OUT/nogdbus"
+
 con_golden() {
     _name=$1; shift
     # A STATE DIRECTORY OF ITS OWN, PER FRAME. kdos-con remembers where each
@@ -902,10 +973,11 @@ con_golden() {
     # left behind.
     rm -rf "$OUT/constate"
     mkdir -p "$OUT/constate"
-    XDG_STATE_HOME="$OUT/constate" \
+    PATH="$OUT/nogdbus" XDG_STATE_HOME="$OUT/constate" \
         XDG_CONFIG_HOME="${_conhome:-$OUT/constate}" \
         KDOS_GREET_FIXTURE="${_greetfix:-/nonexistent-kdos-greet}" \
         "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
+    con_ring "$_name" "$OUT/$_name.txt"
     # AND `_conhome` IS SPENT HERE. An assignment written before a shell
     # FUNCTION persists after that function returns, so a frame that wanted
     # its own configuration would silently hand it to every frame after it —
@@ -944,6 +1016,40 @@ con_golden con-desktop-80x24 --dump 80x24
 con_golden con-desktop-132x43 --dump 132x43
 con_golden con-window-80x24 --dump 80x24 --term "/bin/echo hello"
 con_golden con-window-132x43 --dump 132x43 --term "/bin/echo hello"
+#
+# AND THE BORDER IN THE COMPOSED FRAME IS THE BORDER IN THE HEADER.
+#
+# CON_FRAME_X and CON_FRAME_Y are three things at once: what win_frame()
+# inflates a content rect by, what win_grab_at() answers a press inside, and
+# what a person can see and take hold of. A change to the header that does not
+# reach the picture is a band that grabs cells nothing is drawn on; a change to
+# the drawing that does not reach the header is a drawn band that refuses the
+# press. Either one reads as correct in a diff of one file, and the frame is
+# where the two have to agree.
+#
+# MEASURED FROM THE FRAME'S OWN CORNER and not from the grid's, so the check
+# says nothing about WHERE the window was placed — the first non-blank row is
+# the title row and the first non-space column in it is the left rule.
+#
+_fx=$(sed -n 's/^#define CON_FRAME_X \([0-9][0-9]*\).*/\1/p' \
+    src/desktop/kdos-con/con.h)
+_fy=$(sed -n 's/^#define CON_FRAME_Y \([0-9][0-9]*\).*/\1/p' \
+    src/desktop/kdos-con/con.h)
+_g=testing/goldens/con-window-80x24.txt
+_ftop=$(awk 'NF { print NR - 1; exit }' "$_g")
+_fleft=$(awk 'NF { match($0, /[^ ]/); print RSTART - 1; exit }' "$_g")
+_ctop=$(awk '/hello/ { print NR - 1; exit }' "$_g")
+_cleft=$(awk '/hello/ { print index($0, "hello") - 1; exit }' "$_g")
+if [ -n "$_fx" ] && [ -n "$_fy" ] && [ -n "$_ctop" ] &&
+   [ "$((_ctop - _ftop))" = "$_fy" ] &&
+   [ "$((_cleft - _fleft))" = "$_fx" ]; then
+    echo "  the frame's border is CON_FRAME_X=$_fx by" \
+         "CON_FRAME_Y=$_fy, as drawn"
+else
+    echo "  con-window-80x24 insets its content by" \
+         "$((_cleft - _fleft)),$((_ctop - _ftop)) and the header says $_fx,$_fy"
+    golden_fail=1
+fi
 #
 # THE SNAP IS DRIVEN THROUGH THE CHORDS, so what the frame shows is what the
 # keys do. `Super+Tab` between the two snaps is the assertion that the second
@@ -1030,19 +1136,119 @@ _conhome="$OUT/fkeys-home" \
 # deterministic: `/bin/echo` and `/bin/true` are on every host, and the title
 # bars are where the resolution shows.
 #
+# AND EVERY ROW NAMES A RECTANGLE A SAVE COULD HAVE WRITTEN.
+#
+# `x` and `y` are the CONTENT's and the border stands outside it, so a row is
+# placeable exactly when its frame is on the grid: x at CON_FRAME_X or more, y
+# at CON_FRAME_Y or more, and the far edges inside the grid by the same two
+# numbers. `con_layout_save` writes the rectangles of windows that were on a
+# grid and can write no other kind, so a row outside that range is a row this
+# file's own producer cannot emit.
+#
+# THAT IS WHY THE COORDINATES ARE NOT THE CLAMP'S. A row the placement has to
+# move is a frame that says nothing about whether the row was honoured — a
+# placement that dropped `x` on the floor would draw the same picture — so the
+# rows here are placeable as written and what the golden shows is the layout,
+# down to the cell. The clamp is asserted on a layout of its own, below.
+#
+# THE TWO LEFT ROWS AND THE RIGHT ONE ARE A COLUMN APART: frames at 0..37 and
+# 39..79, so a frame that grew would be drawn over its neighbour instead of
+# beside it and the picture would say so.
+#
 mkdir -p "$OUT/layout-home/kdos-con/layouts"
 printf 'terminal = /bin/echo hello\nwriting = /bin/true\nchat = kdos-no-such-program\n' \
     > "$OUT/layout-home/kdos-con/con.conf"
 {
     printf '# kind\tworkspace\tx\ty\tw\th\tapp\tflags\ttitle\n'
-    printf 'term\t0\t1\t1\t36\t9\tterminal\t-\tone\n'
-    printf 'app\t0\t1\t12\t36\t9\twriting\t-\ttwo\n'
-    printf 'app\t0\t40\t1\t38\t20\tchat\t-\tnot installed\n'
+    printf 'term\t0\t2\t1\t34\t9\tterminal\t-\tone\n'
+    printf 'app\t0\t2\t12\t34\t9\twriting\t-\ttwo\n'
+    printf 'app\t0\t41\t1\t37\t20\tchat\t-\tnot installed\n'
     printf 'app\t0\t20\t5\t20\t5\twriting\t-\talready open\n'
-    printf 'term\t0\t40\t1\t38\t20\tterminal\t-\tthree\n'
+    printf 'term\t0\t41\t1\t37\t20\tterminal\t-\tthree\n'
 } > "$OUT/layout-home/kdos-con/layouts/five"
 _conhome="$OUT/layout-home" \
     con_golden con-layout-80x24 --dump 80x24 --layout five
+
+#
+# AND A ROW THAT NAMES A RECTANGLE NOBODY CAN DRAW IS MOVED ONTO THE GRID.
+#
+# A layout file is a file: it is edited by hand, it is carried between machines
+# and it is written by a session on a screen of another size, so a row whose
+# frame is off the grid is a thing that arrives. What must never arrive is the
+# WINDOW — a border at a negative column is drawn nowhere, and a window with no
+# border on the screen has no edge to grab, no corner to resize from and no
+# title bar to drag.
+#
+# TWO ROWS, ONE PICTURE, NO GOLDEN. `0 0 80 24` is off every edge at once and
+# `2 1 76 22` is the rectangle the clamp owes it — the whole grid, less the
+# border. The frames they compose must be the SAME frame, which says the clamp
+# put the window exactly where the placement puts a legal row rather than
+# merely somewhere nearer. Neither frame is committed, so there is no picture
+# here for a regenerate to bless.
+#
+# THE RING IS ASKED OF IT TOO, because "the same as the legal row" is only
+# worth something while the legal row itself draws four rules and four corners.
+#
+mkdir -p "$OUT/clamp-off/kdos-con/layouts" "$OUT/clamp-on/kdos-con/layouts"
+printf 'terminal = /bin/echo hello\n' > "$OUT/clamp-off/kdos-con/con.conf"
+printf 'terminal = /bin/echo hello\n' > "$OUT/clamp-on/kdos-con/con.conf"
+printf '# kind\tworkspace\tx\ty\tw\th\tapp\tflags\ttitle\n' \
+    > "$OUT/clamp-off/kdos-con/layouts/edge"
+printf 'term\t0\t0\t0\t80\t24\tterminal\t-\toff the grid\n' \
+    >> "$OUT/clamp-off/kdos-con/layouts/edge"
+printf '# kind\tworkspace\tx\ty\tw\th\tapp\tflags\ttitle\n' \
+    > "$OUT/clamp-on/kdos-con/layouts/edge"
+printf 'term\t0\t2\t1\t76\t22\tterminal\t-\ton the grid\n' \
+    >> "$OUT/clamp-on/kdos-con/layouts/edge"
+for _cl in off on; do
+    rm -rf "$OUT/constate"
+    mkdir -p "$OUT/constate"
+    PATH="$OUT/nogdbus" XDG_STATE_HOME="$OUT/constate" \
+        XDG_CONFIG_HOME="$OUT/clamp-$_cl" \
+        KDOS_GREET_FIXTURE=/nonexistent-kdos-greet \
+        "$OUT/kdos-con" --dump 80x24 --layout edge > "$OUT/clamp-$_cl.txt"
+done
+con_ring "con-clamp (the legal row)" "$OUT/clamp-on.txt"
+if diff -u "$OUT/clamp-on.txt" "$OUT/clamp-off.txt" > "$OUT/clamp.diff"; then
+    echo "  a layout row off every edge is placed where the legal one is"
+else
+    echo "  a layout row off every edge composed a DIFFERENT frame:"
+    head -20 "$OUT/clamp.diff" | sed 's/^/    /'
+    golden_fail=1
+fi
+
+#
+# AND SO IS A REMEMBERED ONE, WHICH IS A DIFFERENT ROAD.
+#
+# `geo_recall()` reads `~/.local/state/kdos/con/geometry` and fits what it
+# finds into the WORK AREA — a rectangle for the CONTENT, which says nothing
+# about the border standing outside it. It is also the one road that returns to
+# a caller that opens a pty from `geom` with no win_resized() in between, so a
+# rectangle it answered wrongly is the size the program is told.
+#
+# THE SAME RECTANGLE AND THE SAME ANSWER as the clamp pair above: the file
+# names the whole grid and the frame that comes back must be the legal row's,
+# to the cell. The file is written by hand because that is the case that
+# matters — a state file carried from a bigger screen.
+#
+rm -rf "$OUT/constate" "$OUT/geohome"
+mkdir -p "$OUT/constate/kdos/con" "$OUT/geohome"
+{
+    printf '# prog\tworkspace\tx y w h\ttiled\n'
+    printf 'echo\t0\t0 0 80 24\t0\n'
+} > "$OUT/constate/kdos/con/geometry"
+PATH="$OUT/nogdbus" XDG_STATE_HOME="$OUT/constate" \
+    XDG_CONFIG_HOME="$OUT/geohome" \
+    KDOS_GREET_FIXTURE=/nonexistent-kdos-greet \
+    "$OUT/kdos-con" --dump 80x24 --term "/bin/echo hello" > "$OUT/geo-edge.txt"
+con_ring con-geo-edge "$OUT/geo-edge.txt"
+if diff -u "$OUT/clamp-on.txt" "$OUT/geo-edge.txt" > "$OUT/geo-edge.diff"; then
+    echo "  a remembered rectangle off every edge comes back on the grid"
+else
+    echo "  a remembered rectangle off every edge composed a DIFFERENT frame:"
+    head -20 "$OUT/geo-edge.diff" | sed 's/^/    /'
+    golden_fail=1
+fi
 
 #
 # THE LOGIN SURFACE, WHICH IS THE ONE FRAME NOBODY ELSE DRAWS.
@@ -3528,6 +3734,10 @@ for _ in $(seq 1 100); do [ -S "$VSOCK/s" ] && break; sleep 0.05; done
 kill $VPID 2>/dev/null || true
 wait $VPID 2>/dev/null || true
 rm -rf "$VSOCK"
+# THE BOX-DRAWING TIER GOES THROUGH THE SAME RING. This is the one con frame
+# drawn in the vt glyphs, so it is the one that says the check reads a border
+# and not a punctuation mark.
+con_ring con-view-80x24 "$OUT/con-view-80x24.txt"
 if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
     cp "$OUT/con-view-80x24.txt" testing/goldens/con-view-80x24.txt
     echo "  wrote con-view-80x24"

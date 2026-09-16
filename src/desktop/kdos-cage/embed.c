@@ -295,6 +295,32 @@ static bool send_text(struct cg_embed *e, const KembedMsg *m, const char *text)
 }
 
 /*
+ * HOW MANY PIXELS THIS WINDOW SPENDS ON ONE OF THE GUEST'S LOGICAL ONES.
+ *
+ * THE OUTPUT IS WHERE IT IS KEPT AND THERE IS NO SECOND COPY. wlroots already
+ * stores a scale per output, every wlroots call that converts between the two
+ * coordinate systems reads it from there, and a copy on this side would be the
+ * one the conversions below disagreed with.
+ *
+ * EVERY NUMBER ON THE CHANNEL IS IN PIXELS AND EVERY NUMBER INSIDE THE CAGE IS
+ * LOGICAL. The framebuffer, the output mode and the blocks the parent cuts are
+ * pixels; the layout, the cursor, the scene hit test and a client's own
+ * geometry are logical. So a coordinate crossing this boundary is multiplied
+ * coming out of the cage and divided going in — and one that is not is a
+ * pointer that lands at half the distance it was aimed at, or a window the
+ * parent sizes to half of what the guest asked for.
+ *
+ * A WINDOW WITH NO OUTPUT YET IS AT 1, which is what the parent's own arithmetic
+ * assumes until it has said otherwise.
+ */
+static double win_scale(const struct cg_view *view)
+{
+	double s = view && view->win.out ? view->win.out->wlr_output->scale : 1.0;
+
+	return s >= 1.0 ? s : 1.0;
+}
+
+/*
  * A new mapping for one window, because its size changed. The OLD one is
  * unmapped only after the parent has been told about the new one: the parent
  * may still be reading the frame it was last told about, and pulling the memory
@@ -364,6 +390,332 @@ static bool remap(struct cg_view *view, int w, int h)
 	return true;
 }
 
+/*
+ * WHAT EACH WINDOW'S SURFACE WAS LAST REPORTED AS, in pixels, with 0 in `win`
+ * for a free row.
+ *
+ * KEPT BY THE CHANNEL AND NOT DERIVED FROM A FRAME, because a report is about
+ * what has been SAID and no pixel can say it: the framebuffer published for a
+ * window is always that window's OUTPUT, whatever the guest committed inside
+ * it. The parent rounds a report up to whole cells, which leaves nearly every
+ * window a few pixels short of its own output for good — so without the record
+ * a disagreement that is already settled costs a message on every frame, for
+ * the life of every such window.
+ *
+ * AS MANY ROWS AS THE GRID HAS SPANS, which is the most windows this process
+ * can have at once, and a row is released with its window. An id is never
+ * reused, so a row that outlived its window could not be mistaken for another
+ * window's — releasing it is what keeps the table from filling up instead.
+ */
+static struct {
+	uint32_t win;
+	int w, h;
+} surf_told[CG_EMBED_WINS];
+
+static void surface_forget(uint32_t win)
+{
+	if (!win)
+		return;
+	for (int i = 0; i < CG_EMBED_WINS; i++)
+		if (surf_told[i].win == win)
+			surf_told[i].win = 0;
+}
+
+/* The row this window's last report is in, claiming a free one if it has
+ * none. -1 when every row is taken, which is a window that goes on reporting
+ * rather than one that reports wrongly. */
+static int surface_row(uint32_t win)
+{
+	int free_row = -1;
+
+	for (int i = 0; i < CG_EMBED_WINS; i++) {
+		if (surf_told[i].win == win)
+			return i;
+		if (!surf_told[i].win && free_row < 0)
+			free_row = i;
+	}
+	if (free_row >= 0) {
+		surf_told[free_row].win = win;
+		surf_told[free_row].w = 0;
+		surf_told[free_row].h = 0;
+	}
+	return free_row;
+}
+
+/*
+ * WHAT AN X11 GUEST HAS ASKED ITS WINDOW TO BE, in pixels, with NULL in `view`
+ * for a free row.
+ *
+ * A MANAGED X11 TOPLEVEL CANNOT DISAGREE WITH ITS OUTPUT, so nothing in a frame
+ * can carry this. The window manager is the X server's redirection target: the
+ * geometry of a managed window is whatever wlr_xwayland_surface_configure()
+ * last set on it, Xwayland attaches a buffer of exactly that geometry, and the
+ * committed surface is therefore this end's own number coming back on every
+ * frame the client will ever publish. A client states a size of its own exactly
+ * once, as a ConfigureRequest, and wlroots drops it on the floor unless
+ * something listens — so this row IS the X11 half of the report, and a report
+ * derived from an X11 surface instead would be one that can never fire.
+ *
+ * AS MANY ROWS AS THE GRID HAS SPANS, which is the most windows this process
+ * can have at once. The row is taken when the window opens and released when it
+ * closes, which is what keeps the listener from outliving the surface it is
+ * hung on — a signal emitted into a freed row is this process gone.
+ */
+#if CAGE_HAS_XWAYLAND
+/*
+ * THE TWO BITS OF A ConfigureRequest THAT NAME A SIZE, spelled here rather
+ * than taken from xcb: the cage links no xcb and these are X protocol
+ * constants that cannot move. wlroots hands the mask through as
+ * xcb_config_window_t on wlr_xwayland_surface_configure_event.
+ */
+#define CG_X11_CFG_WIDTH  (1u << 2)
+#define CG_X11_CFG_HEIGHT (1u << 3)
+
+struct cg_x11_ask {
+	struct wl_listener request_configure;
+	struct cg_view *view;
+	int w, h;
+};
+
+static struct cg_x11_ask x11_ask[CG_EMBED_WINS];
+
+static struct cg_x11_ask *x11_ask_of(const struct cg_view *view)
+{
+	for (int i = 0; i < CG_EMBED_WINS; i++)
+		if (x11_ask[i].view == view)
+			return &x11_ask[i];
+	return NULL;
+}
+#endif
+
+/*
+ * THE SIZE THIS GUEST WANTS ITS WINDOW TO BE, or false for "it is not saying".
+ *
+ * A window rendered between being told a size and answering it still measures
+ * the size it is about to stop being, and a report of that is one the parent
+ * honours by putting the window back where it was — a drag that fights the
+ * pointer for its whole length. Only a settled answer leaves here.
+ *
+ * TWO SHELLS AND TWO SOURCES. xdg-shell acknowledges a configure, so an empty
+ * configure list — and no configure still waiting on the idle that sends it —
+ * is the client having answered every size it was given, and its committed
+ * geometry is then a size it chose. X11 neither acknowledges nor disagrees: the
+ * X server resizes a managed window to whatever the window manager configured
+ * and Xwayland commits a buffer of exactly that, so the only size an X11 client
+ * can ever state is the ConfigureRequest x11_ask holds. A request has nothing
+ * in flight behind it and so needs no settling — testing an X11 surface for one
+ * is testing this end's own number against itself, which is true when there is
+ * nothing to report and false when there is.
+ */
+static bool surface_wanted(struct cg_view *view, int *width, int *height)
+{
+	if (!view->wlr_surface)
+		return false;
+
+#if CAGE_HAS_XWAYLAND
+	if (view->type == CAGE_XWAYLAND_VIEW) {
+		const struct cg_x11_ask *ask = x11_ask_of(view);
+
+		if (!ask || ask->w < 1 || ask->h < 1)
+			return false;
+		/*
+		 * AN X11 WISH IS IN LOGICAL PIXELS TOO. X has no scale factor,
+		 * so an Xwayland client's ConfigureRequest names the layout's
+		 * own units; the parent asks in real ones, and a request
+		 * forwarded unconverted asks it for half the window.
+		 */
+		*width = (int)(ask->w * win_scale(view) + 0.5);
+		*height = (int)(ask->h * win_scale(view) + 0.5);
+		return true;
+	}
+#endif
+
+	struct wlr_xdg_toplevel *top =
+		wlr_xdg_toplevel_try_from_wlr_surface(view->wlr_surface);
+
+	if (top && (top->base->configure_idle ||
+		    !wl_list_empty(&top->base->configure_list)))
+		return false;
+
+	embed_natural_size(view, width, height);
+	return *width >= 1 && *height >= 1;
+}
+
+/*
+ * THE GUEST'S WINDOW IS NOT THE SIZE OF ITS OUTPUT, SO THE PARENT IS TOLD.
+ *
+ * NOTHING ELSE CAN TELL IT. The output is the parent's own choice and the
+ * framebuffer is the output, so a guest that commits a smaller window is
+ * composited at the output's top left over this process's background — the
+ * parent sees a frame of exactly the size it asked for with a band of the
+ * scheme's darkest slot down two sides of it — and a guest that commits a
+ * larger one is cut off at the output's edge with no error anywhere. A dialog
+ * that will not be stretched and a window with a minimum of its own are both
+ * ordinary, so both would be permanent.
+ *
+ * A SIZE OF NONE IS NOT A DISAGREEMENT. surface_wanted() answers false for a
+ * guest that has stated no size and for a geometry this end could not make an
+ * output at, and a window placed at a size no output can carry is a window
+ * drawn at one size and rendered at another.
+ *
+ * AND AGREEMENT CLEARS THE RECORD, so the next disagreement is news again —
+ * which is what lets a parent that ignored a report (the window is tiled, the
+ * work area has no room) hear it once more the next time it moves the window.
+ */
+static void surface_report(struct cg_view *view)
+{
+	struct cg_win *win = &view->win;
+	struct wlr_output *out;
+	int w = 0, h = 0, row;
+
+	if (!win->win || !win->out)
+		return;
+	out = win->out->wlr_output;
+	if (!surface_wanted(view, &w, &h))
+		return;
+	if (w == out->width && h == out->height) {
+		surface_forget(win->win);
+		return;
+	}
+
+	row = surface_row(win->win);
+	if (row >= 0 && surf_told[row].w == w && surf_told[row].h == h)
+		return;
+
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_SURFACE, .a = w,
+			.b = h, .win = win->win };
+
+	if (!send_msg(&view->server->embed, &m, -1) || row < 0)
+		return;
+	surf_told[row].w = w;
+	surf_told[row].h = h;
+}
+
+#if CAGE_HAS_XWAYLAND
+/*
+ * AN X11 GUEST HAS ASKED FOR A SIZE, WHICH IS THE ONLY SIZE IT WILL EVER STATE.
+ *
+ * THE REQUEST IS RECORDED AND REPORTED, NEVER HONOURED HERE. The parent owns
+ * every window rectangle: a cage that resized its own output on a client's word
+ * would draw the guest at a size the session's frame is not, and the session's
+ * cap on a run of guest-driven resizes — a toolkit that answers every size with
+ * another demand — would have nothing left to cap.
+ *
+ * AND THE REPORT IS PUSHED, NOT LEFT FOR A FRAME. A client that asks to shrink
+ * has nothing new to draw, so the frame that would carry the report past
+ * embed_publish() is a frame that is never coming.
+ *
+ * ICCCM WANTS AN ANSWER EVEN WHEN THE ANSWER IS NO. A redirected
+ * ConfigureRequest never reaches the X server, so a client whose request is
+ * neither granted nor acknowledged waits on a ConfigureNotify that nothing will
+ * send and sits unresized and unpainted for good. Re-asserting the geometry the
+ * window already has IS that acknowledgement: wlr_xwayland_surface_configure()
+ * emits the synthetic notify ICCCM 4.1.5 asks for whenever the size it is given
+ * is the size already set.
+ *
+ * A SIZE THIS END COULD NOT MAKE AN OUTPUT AT IS NOT RECORDED, so the window
+ * keeps the last size the guest asked for that the parent could actually grant.
+ */
+static void handle_x11_request_configure(struct wl_listener *listener,
+					 void *data)
+{
+	struct cg_x11_ask *ask =
+		wl_container_of(listener, ask, request_configure);
+	struct wlr_xwayland_surface_configure_event *ev = data;
+	struct wlr_xwayland_surface *xs = ev->surface;
+
+	/*
+	 * A REQUEST THAT NAMES NO SIZE IS NOT A SIZE. The event carries the
+	 * window's current geometry in the fields the mask does not select, so
+	 * a client asking only to MOVE would otherwise store this end's own
+	 * output size as the guest's wish and the parent would be told the
+	 * guest wants exactly what it already has.
+	 */
+	if ((ev->mask & (CG_X11_CFG_WIDTH | CG_X11_CFG_HEIGHT)) &&
+	    ev->width >= 1 && ev->height >= 1 && ev->width <= CG_EMBED_SPAN &&
+	    ev->height <= CG_EMBED_SPAN) {
+		ask->w = ev->width;
+		ask->h = ev->height;
+	}
+
+	wlr_xwayland_surface_configure(xs, xs->x, xs->y, xs->width, xs->height);
+
+	if (ask->view)
+		surface_report(ask->view);
+}
+#endif
+
+/*
+ * THIS WINDOW'S X11 GUEST IS LISTENED TO, from the open until the close.
+ *
+ * THE ROW IS THE LISTENER, so taking one and dropping one are the only two
+ * places the signal is joined and left: a listener still on a destroyed
+ * surface's signal list is a wl_list_remove() through freed memory, and one
+ * dropped while the window is still open is a guest whose every size request
+ * goes nowhere. Both calls are safe for a view that is not an X11 one and for a
+ * window that was never opened, which is what lets the open and close paths
+ * carry them unconditionally.
+ */
+static void x11_ask_watch(struct cg_view *view)
+{
+#if CAGE_HAS_XWAYLAND
+	struct wlr_xwayland_surface *xs;
+	struct cg_x11_ask *ask;
+
+	if (view->type != CAGE_XWAYLAND_VIEW || x11_ask_of(view))
+		return;
+	xs = xwayland_view_from_view(view)->xwayland_surface;
+	if (!xs)
+		return;
+	ask = x11_ask_of(NULL);		/* a free row carries no view */
+	if (!ask)
+		return;
+
+	ask->view = view;
+	ask->w = 0;
+	ask->h = 0;
+	ask->request_configure.notify = handle_x11_request_configure;
+	wl_signal_add(&xs->events.request_configure, &ask->request_configure);
+#else
+	(void)view;
+#endif
+}
+
+/*
+ * THIS GUEST'S WISH IS SPENT. The row keeps the listener and the view — only
+ * the size is dropped — because the window is still open and its next request
+ * must still be heard.
+ */
+static void x11_ask_clear(struct cg_view *view)
+{
+#if CAGE_HAS_XWAYLAND
+	struct cg_x11_ask *ask = x11_ask_of(view);
+
+	if (!ask)
+		return;
+	ask->w = 0;
+	ask->h = 0;
+#else
+	(void)view;
+#endif
+}
+
+static void x11_ask_drop(struct cg_view *view)
+{
+#if CAGE_HAS_XWAYLAND
+	struct cg_x11_ask *ask = x11_ask_of(view);
+
+	if (!ask)
+		return;
+	wl_list_remove(&ask->request_configure.link);
+	ask->view = NULL;
+	ask->w = 0;
+	ask->h = 0;
+#else
+	(void)view;
+#endif
+}
+
 void embed_set_size(struct cg_view *view, int w, int h)
 {
 	struct wlr_output_state state;
@@ -380,6 +732,67 @@ void embed_set_size(struct cg_view *view, int w, int h)
 	wlr_output_state_set_custom_mode(&state, w, h, 0);
 	wlr_output_commit_state(view->win.out->wlr_output, &state);
 	wlr_output_state_finish(&state);
+
+	/* A NEW OUTPUT IS A NEW QUESTION. What the guest last reported was
+	 * about the output it had; the next frame measures the guest against
+	 * this one, and a report the parent could not act on then is one it
+	 * can act on now. */
+	surface_forget(view->win.win);
+
+	/*
+	 * AND THE PARENT SETTING THE SIZE IS WHAT ANSWERS AN X11 ASK. A
+	 * ConfigureRequest is a one-shot wish, not a standing state: an X11
+	 * guest is measured off the row rather than off its buffer, so a row
+	 * left filled is re-reported on the very next frame and the parent
+	 * undoes its own resize for as long as the window lives. Dropping it
+	 * here leaves the window where the parent put it, and a guest that
+	 * still wants another size has a fresh request to say so with.
+	 */
+	x11_ask_clear(view);
+}
+
+/*
+ * HOW MANY PIXELS THE DESKTOP SPENDS ON ONE OF THE GUEST'S LOGICAL ONES.
+ *
+ * NOTHING ABOUT THE FRAME MOVES. The mode is untouched, so the output stays the
+ * pixel size the parent asked for, the swapchain is the same shape, no new
+ * mapping is announced and the blocks the parent cuts out of the framebuffer
+ * are the cells it already chose. What changes is the LOGICAL size wlroots
+ * derives from the mode, which is what the toolkit lays its window out in and
+ * what it multiplies its own drawing by — so a scale of 2 is a guest that draws
+ * everything twice as large into exactly the frame it was already filling. This
+ * is the whole reason the scale can be raised on a live window at all.
+ *
+ * A WHOLE NUMBER AND A SMALL ONE. wlroots divides the mode by the scale and
+ * TRUNCATES, so a fraction leaves a strip of this process's background down the
+ * edge of the window for as long as the window lives; the parent only ever
+ * names a scale that divides its own cell, and this refuses anything outside
+ * the range a console can plausibly be at rather than trusting it.
+ *
+ * THE VIEW IS RE-PLACED BY THE LAYOUT AND NOT FROM HERE. Committing the scale
+ * changes the output's logical box, which the output layout answers with its
+ * own change event, which is where every view is sized to the box it sits in —
+ * a resize from here would be the second one and they would disagree.
+ */
+#define EMBED_SCALE_MAX 4
+
+static void embed_set_scale(struct cg_view *view, int scale)
+{
+	struct wlr_output_state state;
+
+	if (!view || !view->win.out || scale < 1 || scale > EMBED_SCALE_MAX)
+		return;
+	if (view->win.out->wlr_output->scale == (float)scale)
+		return;
+
+	wlr_output_state_init(&state);
+	wlr_output_state_set_scale(&state, (float)scale);
+	wlr_output_commit_state(view->win.out->wlr_output, &state);
+	wlr_output_state_finish(&state);
+
+	/* A NEW SCALE IS A NEW QUESTION, exactly as a new mode is: what the
+	 * guest last reported was measured against the logical box it had. */
+	surface_forget(view->win.win);
 }
 
 /*
@@ -469,10 +882,25 @@ void embed_natural_size(struct cg_view *view, int *width, int *height)
 	}
 
 	/*
-	 * A SIZE THIS END CANNOT MAKE AN OUTPUT AT IS NO ANSWER AT ALL. Zero is
-	 * "none" on the wire and the parent has a rule for it; a number the
-	 * parent would place a window at and then be refused when it asked for
-	 * it is a window at one size being drawn at another.
+	 * Zero is "none" on the wire and the parent has a rule for it; a number
+	 * the parent would place a window at and then be refused when it asked
+	 * for it is a window at one size being drawn at another.
+	 *
+	 * AND IT LEAVES HERE IN PIXELS. A client states its geometry in logical
+	 * pixels, the parent places windows and cuts blocks in real ones, and
+	 * this is the one place a guest's own idea of its size crosses over —
+	 * both the natural size in KEMBED_OPEN and the report in KEMBED_SURFACE
+	 * are taken from here, so a window at scale 2 reported unconverted is a
+	 * window the parent sizes to half of what the guest asked for.
+	 */
+	double sc = win_scale(view);
+
+	w = (int)(w * sc + 0.5);
+	h = (int)(h * sc + 0.5);
+
+	/*
+	 * A SIZE THIS END CANNOT MAKE AN OUTPUT AT IS NO ANSWER AT ALL, and the
+	 * test is on the pixels because the output is made of those.
 	 */
 	if (w < 1 || h < 1 || w > CG_EMBED_SPAN || h > CG_EMBED_SPAN) {
 		w = 0;
@@ -550,6 +978,7 @@ void embed_open_window(struct cg_view *view)
 	 */
 	view->win.win = ++e->next_win;
 	view->win.owner = parent ? parent->win.win : 0;
+	x11_ask_watch(view);
 
 	KembedMsg m = {
 		.magic = KEMBED_MAGIC,
@@ -579,6 +1008,9 @@ void embed_close_window(struct cg_view *view)
 
 	if (e->kbd == view)
 		e->kbd = NULL;
+
+	x11_ask_drop(view);
+	surface_forget(view->win.win);
 
 	if (view->win.map) {
 		munmap(view->win.map, view->win.map_len);
@@ -654,7 +1086,20 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 		 */
 		struct cg_view *w = embed_view_from_win(server, m.win);
 
+		/*
+		 * PIXELS COME IN AND LOGICAL UNITS GO TO THE SEAT. The parent
+		 * aims at the framebuffer, wlroots aims at the layout, and the
+		 * two differ by exactly this whenever the console is dense —
+		 * an unconverted position at scale 2 lands at half the distance
+		 * from the window's corner that the person pointed at.
+		 */
+		double sc = win_scale(w);
+
 		switch (m.op) {
+		case KEMBED_SCALE:
+			if (w)
+				embed_set_scale(w, m.a);
+			break;
 		case KEMBED_SIZE:
 			if (w && w->win.out &&
 			    (m.a != w->win.out->wlr_output->width ||
@@ -687,8 +1132,8 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 			break;
 		case KEMBED_MOTION:
 			if (w)
-				seat_embed_motion(server->seat, w, m.a, m.b,
-						  m.e);
+				seat_embed_motion(server->seat, w, m.a / sc,
+						  m.b / sc, m.e);
 			break;
 		case KEMBED_REL:
 			/*
@@ -697,13 +1142,14 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 			 * to a whole number is exactly the slow, precise
 			 * motion a three-dimensional editor is aimed with.
 			 */
-			seat_embed_rel(server->seat, m.a / 256.0, m.b / 256.0,
-				       m.c / 256.0, m.d / 256.0, m.e);
+			seat_embed_rel(server->seat, m.a / 256.0 / sc,
+				       m.b / 256.0 / sc, m.c / 256.0 / sc,
+				       m.d / 256.0 / sc, m.e);
 			break;
 		case KEMBED_BUTTON:
 			if (w) {
-				seat_embed_motion(server->seat, w, m.a, m.b,
-						  m.e);
+				seat_embed_motion(server->seat, w, m.a / sc,
+						  m.b / sc, m.e);
 				seat_embed_button(server->seat, (uint32_t)m.c,
 						  m.d != 0, m.e);
 			}
@@ -715,7 +1161,7 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 			 * whenever the pointer moved, so a detent over a
 			 * frame button is a scroll and not a click on it.
 			 */
-			seat_embed_axis(server->seat, m.a / 256.0, m.b, m.c,
+			seat_embed_axis(server->seat, m.a / 256.0 / sc, m.b, m.c,
 					m.d & 0xff,
 					(m.d & (int32_t)KEMBED_AXIS_INVERTED) != 0,
 					m.e);
@@ -943,11 +1389,15 @@ void embed_set_grab(struct cg_view *view, int grab, bool have_hint,
 {
 	struct cg_embed *e;
 	KembedMsg m = { .magic = KEMBED_MAGIC, .op = KEMBED_GRAB, .a = grab,
-			.b = hint_x, .c = hint_y,
 			.d = have_hint ? (int32_t)KEMBED_GRAB_HINT : 0 };
 
 	if (!view)
 		return;
+	/* THE HINT IS A PLACE AND LEAVES IN PIXELS, like every other place on
+	 * this channel: the guest asked in its own logical units and the parent
+	 * puts the arrow down in the framebuffer's. */
+	m.b = (int32_t)(hint_x * win_scale(view) + 0.5);
+	m.c = (int32_t)(hint_y * win_scale(view) + 0.5);
 	e = &view->server->embed;
 	if (!e->active || !view->win.win)
 		return;
@@ -996,6 +1446,15 @@ void embed_publish(struct cg_view *view, struct wlr_buffer *buffer,
 	 */
 	if (!e->active || !win->win)
 		return;
+
+	/*
+	 * AND THE SIZE THE GUEST CHOSE FOR ITSELF IS CHECKED AHEAD OF THE
+	 * DAMAGE GATE. A guest that has finished resizing has nothing more to
+	 * draw, so the frame that carries its last pixels may also be the last
+	 * frame it ever publishes — a check behind a gate that drops a frame
+	 * with nothing new in it would wait for a frame that is not coming.
+	 */
+	surface_report(view);
 
 	/*
 	 * AN EMPTY DAMAGE REGION IS NOTHING TO SEND, NOT EVERYTHING.

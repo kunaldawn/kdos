@@ -102,6 +102,50 @@ search.
 With nothing else on the output the grid is empty and the window lands in the
 upper-left corner, inset by both the decoration margin and the configured gap.
 
+**The decoration margin has four sides and they are not one number.** `KwmBorder`
+is `top, right, bottom, left` and every caller fills all four, because a session
+whose units are not square does not have a square border. `kdos-comp` measures in
+pixels and hands in its title bar's height and its border's width. `kdos-con`
+measures in **cells**, and a cell is twice as tall as it is wide: its border is
+`CON_FRAME_X` = 2 columns at the sides and `CON_FRAME_Y` = 1 row top and bottom,
+which is the same sixteen pixels of grabbable edge on all four and costs the
+scarce axis nothing. A caller that passed one number four times would hand the
+model a margin its own frames do not have, and every placed window would sit a
+cell out on one axis.
+
+**Which side of the margin the cost falls on depends on which rectangle is
+fixed.** A **freely placed** window — landed by the overlap search, dragged,
+restored from a saved session, or opened at the rectangle a named layout gives
+it — holds its *content* rectangle, and the margin is added outside it: a
+thicker border reaches further across the desk and the program keeps every cell
+of its content. A window whose **outer** rectangle is the work area or a
+division of it — maximised, snapped, tiled, and `kdos-con`'s scratchpad
+drop-down — has the same margin subtracted from that fixed rectangle instead,
+so its content is twice the margin smaller than the space it fills. On
+`kdos-con`'s 80x24 test grid a half-screen snap is 40 columns of frame around 36
+columns of terminal, and a maximised window over a hidden taskbar is 80 columns
+around 76. **A margin raised on either axis therefore takes cells from every
+window in the second class and from none in the first**, which is where the
+question "what does a thicker border cost?" has to be asked window by window.
+
+**What a placement has to keep on the grid is the frame, not the content.** A
+content rectangle wholly on the grid still puts everything the margin adds
+outside it — the outer rules, all four corners, and the band a press is read as
+a resize in — at a negative row or column, and a border drawn nowhere is a
+window with no edge to take hold of, no corner to pull and nothing to drag it
+by. So every placement road in `kdos-con` ends at one fit, and the area that fit
+is given is the **grid deflated by the margin** for a window the session draws
+chrome round — and the whole grid, undeflated, for one it does not: a panel, a
+layer, the icon layer, a fullscreen window, the lock and the saver. A window too
+large for what is left is shrunk to it, which is the second-class cost again.
+
+**A named rectangle is fitted like any other.** The rows of a layout file and
+the rectangles in a saved session are edited by hand, carried between machines
+and written by a session on a screen of another size, so they are asked for and
+not obeyed: a row naming a column inside the border lands against that edge
+instead of over it. `kdos-con --layout-save` writes only rectangles that were on
+a grid, so a layout a session wrote reopens to the cell.
+
 ## A window that belongs to another window
 
 **One process is not one window, and a window is not one application.** A `libkcon` client may hold
@@ -264,9 +308,23 @@ compositor with its own validator. The two desktops share where an edge *is*,
 not how it feels to cross one.
 
 **Effective geometry after a refused resize is not in the model either.** A
-Wayland client may ignore the size it is configured with, and remembering what
-was asked for is a Wayland problem; a terminal window on the console always
-accepts the size it is given.
+client may ignore the size it is configured with; the library hands back the
+rectangle that was asked for and has no word for the one that was taken. Each
+desktop answers that itself. A terminal window on the console always accepts
+what it is given, so the question never arises for one — but an embedded guest
+is a compositor of its own, and its frames are always the size of the output the
+session chose. A Wayland guest's refusal therefore shows as the cage's
+background inside the frame or as content cut off at its edge rather than as any
+number the session holds, and an X11 guest's cannot show at all: the cage is
+that client's window manager, so its window is the size the cage set it to and
+its buffer is that window. The console is told the size the guest asked for on
+`KEMBED_SURFACE` — a Wayland guest's own window geometry, an X11 guest's
+`ConfigureRequest` — and gives the window *that*, rounded up to whole cells —
+under a bound that refuses a report the window already satisfies and caps a run
+of resizes the guest alone drove, so one that answers every size with another
+demand is followed a few times and then left alone. Which is a policy about
+programs, not arithmetic about rectangles, and is why it lives in the session
+and not here.
 
 **Where a window was last time is not in the model either.** The library places a rectangle from
 the space available and the obstacles present; remembering one across a close and an open is a

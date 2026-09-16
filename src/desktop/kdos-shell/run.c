@@ -40,6 +40,8 @@
 #include "kwl.h"
 #include "shell.h"
 
+#include "launch.h"
+
 #define MAX_CMD 512
 #define MAX_HIST 50
 
@@ -262,39 +264,23 @@ static size_t cur_at_col(const char *s, int want)
 	return (size_t)(p - s);
 }
 
+/*
+ * WHAT IS TYPED IS A COMMAND LINE AND NOT A DESKTOP ENTRY, so `verbatim`: its
+ * quoting is read — `mpv "my film.mkv"` is two arguments — and its `%` is a
+ * character somebody typed and reaches the program untouched. No shell: a `;`
+ * in the box is an argument, never a second command.
+ *
+ * THE SESSION STARTS IT, through the one path every launch surface here takes.
+ * On the console a graphical program forked from this box would have no
+ * display and nothing holding it, and the run box would be a prompt that
+ * swallows what is typed into it. See launch.h.
+ */
 static void launch(const char *cmd, bool in_term)
 {
-	char buf[MAX_CMD + SH_TERM_PREFIX_MAX];
-	char *argv[32];
-	int n = 0;
+	struct sh_launch l = { .exec = cmd, .terminal = in_term,
+			       .verbatim = 1 };
 
-	if (!*cmd)
-		return;
-	if (in_term)
-		sh_term_cmd(buf, sizeof(buf), cmd);
-	else
-		snprintf(buf, sizeof(buf), "%s", cmd);
-
-	for (char *p = strtok(buf, " \t"); p && n < 31; p = strtok(NULL, " \t"))
-		argv[n++] = p;
-	argv[n] = NULL;
-	if (!n)
-		return;
-
-	/* Double fork: the run box is about to exit, and a single fork would
-	 * take the program with it. */
-	pid_t pid = fork();
-	if (pid == 0) {
-		if (fork() == 0) {
-			setsid();
-			kb_child_reset_signals();
-			execvp(argv[0], argv);
-			_exit(127);
-		}
-		_exit(0);
-	} else if (pid > 0) {
-		waitpid(pid, NULL, 0);
-	}
+	sh_launch(&l, NULL, 0);
 }
 
 int run_main(int argc, char **argv)
