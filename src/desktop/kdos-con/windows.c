@@ -955,6 +955,52 @@ Win *win_last_minimised(void)
 	return any;
 }
 
+/* What the window list holds — declared here because the chord below brings
+ * back exactly the rows that list marks as away, and one predicate is what
+ * makes that sentence true. Defined with the list it draws. */
+static int listable(const Win *w);
+
+/*
+ * EVERY WINDOW PUT AWAY ON THIS WORKSPACE, BACK IN ONE PRESS. The chord above
+ * walks the stack one window per press, which is the right answer for "bring
+ * back the one I just put away" and the wrong one for a desk cleared window by
+ * window: the screen is blank while you walk it and nothing on it says how many
+ * presses are left.
+ *
+ * THE SET IS `listable()`, MINIMISED — the window list's own rows, so what this
+ * brings back is what a person counts on that list. A second rule spelling out
+ * "put away, on this workspace, with a row of its own" would be a second thing
+ * to keep in agreement with the list. It is also what holds the sweep to this
+ * workspace: a restore moves a window to the workspace it is restored onto, so
+ * one that took the other workspaces too would empty them onto this one, which
+ * is a rearrangement nobody asked for and no chord undoes.
+ *
+ * ONE AT A TIME FROM THE BACK, RE-READING THE STACK, because each restore
+ * raises and a raise reorders the very list this walks. The backmost first
+ * leaves the one that went away last on top, which is where the single-window
+ * chord would have left it. Nothing is collected into an array on the way: a
+ * fixed one is a desk with more windows put away than it holds, restored to
+ * that many and silent about the rest.
+ *
+ * IT ENDS BECAUSE EVERY CANDIDATE IS THE HEAD OF ITS FAMILY. win_restore()
+ * climbs to the head and returns where the head is already back; an owned
+ * window carries `no_task` and `listable()` drops it. So each pass clears one
+ * window's `minimised` and the set is one shorter.
+ */
+void win_restore_all(void)
+{
+	for (;;) {
+		Win *back = NULL;
+
+		for (Win *w = S.wins; w; w = w->next)
+			if (w->minimised && listable(w))
+				back = w;
+		if (!back)
+			break;
+		win_restore(back);
+	}
+}
+
 /*
  * SWITCH TO A WORKSPACE, and it is the one place that does.
  *
@@ -1423,9 +1469,12 @@ static int on_this_desk(const Win *w)
 
 /*
  * A WINDOW A PERSON CAN MOVE THE FOCUS TO. The ring, the number chord, the
- * window list, the directional search and the swap all mean the same set, and
- * five copies of the rule is five chances for one of them to stop on a
- * tooltip.
+ * directional search and the swap all mean the same set, and four copies of
+ * the rule is four chances for one of them to stop on a tooltip.
+ *
+ * THE WINDOW LIST IS THE ONE CALLER THAT MEANS A WIDER SET, because it is a
+ * taskbar rather than a step — `listable()` holds the minimised windows this
+ * rule drops, and a row for one is the way back to it.
  *
  * IT IS ONE RULE NARROWER THAN THE DESK. A window a modal is standing over is
  * not one a raise can land on: the raise is redirected to the question, so a
@@ -1649,28 +1698,33 @@ void win_cascade(void)
  * "unminimise everything": a window that was already minimised before the
  * chord was pressed was minimised on purpose, and bringing it back would be
  * the desktop undoing something a person asked for.
+ *
+ * WHETHER THE DESKTOP IS SHOWING IS ASKED OF THE WINDOWS, NOT LATCHED. Every
+ * other way back — the restore chords, a window list row, a taskbar row —
+ * empties the remembered set without this function running, so a flag saying
+ * "showing" would survive a desk that is full again and spend the next press
+ * restoring nothing. The set is cleared by the pass that walks it either way,
+ * so a chord that found nothing to bring back goes on to hide.
  */
 void win_show_desktop(void)
 {
 	static int hidden[64];
 	static int nhidden;
-	static int shown;
+	int back = 0;
 
-	if (shown) {
-		for (int i = 0; i < nhidden; i++) {
-			Win *w = win_find(hidden[i]);
+	for (int i = 0; i < nhidden; i++) {
+		Win *w = win_find(hidden[i]);
 
-			if (w && w->minimised) {
-				w->minimised = 0;
-				win_raise(w->id);
-			}
+		if (w && w->minimised) {
+			w->minimised = 0;
+			win_raise(w->id);
+			back++;
 		}
-		nhidden = 0;
-		shown = 0;
-		return;
 	}
-
 	nhidden = 0;
+	if (back)
+		return;
+
 	for (Win *w = S.wins; w && nhidden < 64; w = w->next) {
 		/* EVERY WINDOW ON THE DESK, not only the ones the ring
 		 * reaches: one a modal is standing over is a window the person
@@ -1681,8 +1735,7 @@ void win_show_desktop(void)
 		hidden[nhidden++] = w->id;
 		w->minimised = 1;
 	}
-	shown = nhidden > 0;
-	if (shown) {
+	if (nhidden > 0) {
 		S.focus = 0;
 		ktui_draw_invalidate();
 	}
@@ -2215,7 +2268,14 @@ static int btn_run(const Win *w, KRect r, int *first)
 	 * where nothing on the desktop can reach it.
 	 */
 	int lo = w->no_task ? 1 : 0;
-	int n = (r.w - 3) / 2;
+	/*
+	 * ONE COLUMN MORE THAN THE CHIPS, because the group is separated from
+	 * the title rule by a gap: a chip whose plate begins where the rule
+	 * ends reads as the rule thickening, not as a button starting. The
+	 * gap is drawn by draw_buttons() in the frame's own colours, so it is
+	 * the border that gives the column up and not the title.
+	 */
+	int n = (r.w - 4) / 2;
 
 	if (n > 3 - lo)
 		n = 3 - lo;
@@ -2382,6 +2442,27 @@ static void draw_buttons(Win *w, KRect r, int focused)
 	if (first >= 3 ||
 	    nbtn_hits + (3 - first) > (int)(sizeof btn_hits / sizeof *btn_hits))
 		return;
+
+	/*
+	 * THE GAP BEFORE THE GROUP, in the frame's own colours and not a
+	 * chip's, so the run reads as border, space, then three buttons. A
+	 * rule running into the first plate is what makes the group look like
+	 * more border.
+	 *
+	 * THE COLOURS ARE READ BACK AND THE CHARACTER ALONE IS REPLACED: this
+	 * cell IS frame, and the frame is drawn in slots this function is not
+	 * handed — the bell rings a window by swapping its fill and its rule,
+	 * so a gap that picked its own pair would be the one cell of the title
+	 * row that did not ring.
+	 */
+	int cw = 0, chh = 0;
+	const KtuiCell *cells = ktui_draw_cells(&cw, &chh);
+
+	if (cells && x - 1 >= 0 && r.y >= 0 && x - 1 < cw && r.y < chh) {
+		const KtuiCell *c = &cells[(size_t)r.y * cw + (x - 1)];
+
+		ktui_draw_cell(x - 1, r.y, ' ', c->fg, c->bg, KT_A_NONE);
+	}
 
 	for (int i = first; i < 3; i++) {
 		int hot = lit && (ptr_cx == x || ptr_cx == x + 1);
@@ -2643,8 +2724,19 @@ void win_draw_all(void)
 /*
  * ── THE WINDOW LIST ─────────────────────────────────────────────────────
  *
- * Turbo Vision's Alt+0. Every window on this workspace with its ring number,
- * `Enter` to raise, `Delete` to close, `m` to minimise, `Escape` to leave.
+ * Turbo Vision's Alt+0. Every window on this workspace the taskbar would hold,
+ * numbered, `Enter` to raise or restore, `Delete` to close, `m` to put away or
+ * bring back, `Escape` to leave.
+ *
+ * THE NUMBER ON A ROW IS THE ROW'S OWN, AND IT IS NOT THE RING NUMBER. The
+ * digit that picks a row is the digit printed beside it — the one promise a
+ * numbered list has to keep — and the ring cannot supply it: `reachable()`
+ * holds no minimised window, so win_index() answers 0 for every row this list
+ * exists to offer, and a minimised taskbar row carries no number for the same
+ * reason. `Super+Alt+N` and the title bars mean the ring's number instead, and
+ * the two run apart wherever the two sets do: a minimised window and a window
+ * a modal stands over are rows the ring does not step to, and a dialog is a
+ * ring entry with no row.
  *
  * DRAWN BY THE SESSION AND NOT BY A SURFACE, for now. `kdos-teams` is the
  * program that shows a window list, and it reads the list over the management
@@ -2654,6 +2746,68 @@ void win_draw_all(void)
  * than staying as a second window list nobody maintains.
  */
 static int list_open, list_sel;
+
+/*
+ * WHAT THE LIST HOLDS, AND IT IS NOT THE RING'S SET. `reachable()` is the
+ * right rule for a ring — a step onto a window drawn nowhere lands on a blank
+ * screen — and the wrong one here: this list is the taskbar in a box, and the
+ * bar's rule is that A MINIMISED WINDOW KEEPS ITS ROW, because the row is the
+ * way back. The list is what a session with no shell has instead of a bar, so
+ * a list built from the ring's predicate would answer "no windows" to a person
+ * whose windows are every one of them put away, leaving the chord as the only
+ * route back.
+ *
+ * Otherwise it is the bar's set exactly: one application is one row, a layer
+ * and a docked panel are not things a person switches between, and a hidden
+ * window's chord is its way back rather than a row.
+ *
+ * A WINDOW A MODAL STANDS OVER IS IN IT, which is where this parts from the
+ * ring. The ring must skip one — every step lands back on the question and the
+ * window after it is never reached — but a row is not a step: `Enter` on it
+ * goes through `win_raise()`, which redirects to the question and flashes it,
+ * exactly as a click on the taskbar row does. The question itself carries no
+ * row of its own, so a list that dropped the owner as well would answer "no
+ * windows" to an application with a save dialog open.
+ */
+static int listable(const Win *w)
+{
+	if (!w || w->panel || w->overlay || w->background || w->no_task)
+		return 0;
+	if (w == S.saver || w == S.lock || w->hidden)
+		return 0;
+	if (w->kind == WIN_SURFACE && w->surf && kcon_surface_hidden(w->surf))
+		return 0;
+	if (!w->sticky && w->workspace != S.workspace)
+		return 0;
+	return 1;
+}
+
+/* Both halves of the list work from one set, in stacking order: a draw and a
+ * key that built theirs separately would number the rows differently the first
+ * time one of them grew a test the other did not. */
+static int list_set(Win **set, int max)
+{
+	int n = 0;
+
+	for (Win *w = S.wins; w && n < max; w = w->next)
+		if (listable(w))
+			set[n++] = w;
+	return n;
+}
+
+/*
+ * WHAT A ROW DOES IS THE WINDOW'S STATE TO DECIDE, which is the taskbar row's
+ * rule as well: a window that is away comes back, and one that is here comes to
+ * the front. Two keys for the two halves would make a person read the mark
+ * before they could press anything.
+ */
+static void list_pick(Win *w)
+{
+	if (w->minimised)
+		win_restore(w);
+	else
+		win_raise(w->id);
+}
 
 void win_list_toggle(void)
 {
@@ -2674,12 +2828,13 @@ void win_list_draw(void)
 
 	if (!list_open)
 		return;
-	for (Win *w = S.wins; w && n < 32; w = w->next)
-		if (reachable(w))
-			set[n++] = w;
+	n = list_set(set, 32);
 
 	int rows = (n ? n : 1) + 4;
-	int cols = 44;
+	/* Wide enough for the footer below, which is the widest thing in the
+	 * box: a box sized to the rows would cut the line that says what the
+	 * keys do. */
+	int cols = 60;
 	KwmRect a = win_workarea();
 
 	if (cols > a.w)
@@ -2702,22 +2857,31 @@ void win_list_draw(void)
 			       KT_MID, KT_SURFACE, KT_A_NONE);
 	} else {
 		for (int i = 0; i < n && 2 + i < rows - 2; i++) {
-			char row[64];
+			char row[80];
 			int on = i == list_sel;
+			int away = set[i]->minimised;
 
-			snprintf(row, sizeof(row), " %d  %.34s", i + 1,
+			/*
+			 * A WINDOW THAT IS AWAY SAYS SO IN ITS FIRST COLUMN,
+			 * with the mark its own minimise chip carries and in
+			 * the fill a taskbar row uses for it. Rows that all
+			 * looked alike would make `Enter` mean two things with
+			 * nothing on screen saying which.
+			 */
+			snprintf(row, sizeof(row), " %s %2d  %.46s",
+				 away ? ktui_glyph[KT_G_DOWN] : " ", i + 1,
 				 set[i]->title);
 			if (on)
 				ktui_draw_fill(krect(r.x + 1, r.y + 1 + i,
 						     cols - 2, 1), KT_ACCENT);
 			ktui_draw_text(r.x + 1, r.y + 1 + i, cols - 2, row,
-				       on ? KT_BG : KT_TEXT,
+				       on ? KT_BG : away ? KT_DIM : KT_TEXT,
 				       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
 		}
 	}
 	ktui_draw_text(r.x + 2, r.y + rows - 2, cols - 4,
-		       "Enter raise  Del close  m minimise  Esc", KT_MID,
-		       KT_SURFACE, KT_A_NONE);
+		       "Enter raise/restore  Del close  m minimise/restore  Esc",
+		       KT_MID, KT_SURFACE, KT_A_NONE);
 }
 
 /* True when the key was the list's. It owns the keyboard while it is up. */
@@ -2728,9 +2892,7 @@ int win_list_key(int key)
 
 	if (!list_open)
 		return 0;
-	for (Win *w = S.wins; w && n < 32; w = w->next)
-		if (reachable(w))
-			set[n++] = w;
+	n = list_set(set, 32);
 	if (list_sel >= n)
 		list_sel = n ? n - 1 : 0;
 
@@ -2748,7 +2910,7 @@ int win_list_key(int key)
 		break;
 	case KT_K_ENTER:
 		if (n)
-			win_raise(set[list_sel]->id);
+			list_pick(set[list_sel]);
 		list_open = 0;
 		break;
 	case KT_K_DEL:
@@ -2756,14 +2918,21 @@ int win_list_key(int key)
 			win_close(set[list_sel]);
 		break;
 	case 'm':
-		if (n)
+		/* THE KEY THAT PUTS A WINDOW AWAY BRINGS IT BACK. A list that
+		 * could do only the first half is the one-way door this list
+		 * exists to be the way out of. */
+		if (!n)
+			break;
+		if (set[list_sel]->minimised)
+			win_restore(set[list_sel]);
+		else
 			win_minimise(set[list_sel]);
 		break;
 	default:
 		/* A digit picks directly, which is the whole point of a
 		 * numbered list. */
 		if (key >= '1' && key <= '9' && key - '1' < n) {
-			win_raise(set[key - '1']->id);
+			list_pick(set[key - '1']);
 			list_open = 0;
 		}
 		break;

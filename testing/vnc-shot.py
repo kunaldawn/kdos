@@ -24,7 +24,13 @@ surfaces instead of one:
 an egl-headless display, so wlroots gets its GLES2 renderer instead of pixman.
 It needs /dev/dri, and the host may have no qemu at all — both are reasons to
 run this inside testing/qemu-hw's image, which carries QEMU 10 and its own
-firmware.
+firmware. That image reaches the host GPU through the container toolkit, so it
+wants --gpus all the way testing/qemu-hw/run.sh passes it; run without that and
+the only device inside the container is llvmpipe, which the guest never sees and
+cannot be told apart from a slow one. `--gl` gives the guest GL and no Vulkan:
+`--venus` adds the Vulkan capset, and WITHOUT IT every Vulkan tool in the guest
+measures lavapipe on the CPU without saying so. On an NVIDIA host `--venus`
+itself is measured dead at both ends — the flag's own help says how.
 
 Three things it has to get right, each recorded in CLAUDE.md's VM debug rig
 section before this file existed:
@@ -456,6 +462,15 @@ def main():
                     help="virtio-vga-gl on an egl-headless display, so wlroots "
                          "gets GLES2 and the CRT pass RUNS. Needs /dev/dri; "
                          "without it the shot is of the cell grid underneath")
+    ap.add_argument("--venus", action="store_true",
+                    help="with --gl, publish a Vulkan capset (venus + blob "
+                         "resources over a memfd), the only way a guest Vulkan "
+                         "tool can reach a host GPU. Measured on an NVIDIA "
+                         "host it works at neither end: QEMU aborts with the "
+                         "container toolkit attached, and the virtio ICD kills "
+                         "vkCreateInstance without it. Without --venus the "
+                         "tools measure lavapipe on the CPU and say nothing, "
+                         "so check vulkaninfo before trusting a number")
     ap.add_argument("--session-env", default=None,
                     help="prefix the session command, e.g. 'KDOS_PANEL_DEBUG=1 '"
                          " — the compositor supervises the panel, so a panel"
@@ -537,9 +552,33 @@ def main():
     video += ",xres=%d,yres=%d" % (sw, sh)
     display = "egl-headless" if args.gl else "none"
 
+    # Vulkan reaches a GPU only through venus, and venus needs the device to
+    # publish a Vulkan capset: without venus=true it publishes none, the guest's
+    # virtio ICD opens nothing, and every Vulkan tool silently lands on lavapipe.
+    # A number taken without --venus is a CPU rasteriser's, whatever it says.
+    #
+    # OPT-IN, and it has to stay opt-in, because BOTH ends of it are measured to
+    # fail on an NVIDIA host: with the container toolkit attached (--gpus all,
+    # the only way the container has a host Vulkan device to proxy to) QEMU
+    # aborts during guest boot, exit 134; without it the guest keeps booting but
+    # the virtio ICD now loads and takes instance creation down with it, so
+    # vulkaninfo answers ERROR_OUT_OF_HOST_MEMORY and even lavapipe is gone.
+    # Measuring lavapipe and saying so beats both, which is why the default
+    # device must not change.
+    mem = ["-m", "4G"]
+    if args.venus:
+        if not args.gl:
+            raise SystemExit("--venus needs --gl: venus rides on virtio-vga-gl")
+        print("--venus: check vulkaninfo names a GPU before trusting any "
+              "number — a dead emulator and a dead ICD both look like a slow "
+              "boot from here", flush=True)
+        video += ",venus=true,blob=true,hostmem=4G"
+        mem = ["-object", "memory-backend-memfd,id=mem,size=4G,share=on",
+               "-machine", "memory-backend=mem", "-m", "4G"]
+
     qemu = [
         "qemu-system-x86_64", "-enable-kvm", "-cpu", "host",
-        "-smp", str(min(8, os.cpu_count() or 4)), "-m", "4G",
+        "-smp", str(min(8, os.cpu_count() or 4)), *mem,
         "-bios", ovmf,
         "-vga", "none", "-device", video,
         "-display", display,

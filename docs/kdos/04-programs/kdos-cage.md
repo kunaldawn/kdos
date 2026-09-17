@@ -49,12 +49,13 @@ how. The mechanism is two wlroots choices and nothing else:
 - the **headless backend**, whose outputs are buffers in memory rather than screens, and
 - a **renderer whose frames this process can read**, because bytes are all the parent gets.
 
-**Which renderer that is, the machine decides.** `WLR_RENDERER` is left unset, so
-`wlr_renderer_autocreate()` tries **gles2**, then **vulkan**, then **pixman**, and skips each
-hardware attempt where no DRM render node can be opened — which is exactly the "is there a usable
-card" question, asked by the code that has to answer it anyway. virtio-gpu publishes a render node
+**Which renderer that is, the machine decides, and it is asked twice.** `WLR_RENDERER` is left
+unset, so `wlr_renderer_autocreate()` tries **gles2**, then **vulkan**, then **pixman**, and skips
+each hardware attempt where no DRM render node can be opened. virtio-gpu publishes a render node
 only where the host offered virgl, so the plain `make run` lands on pixman with nothing decided
-here and nothing to fail.
+here and nothing to fail. **An opened render node is not a working path**, though, so that answer
+is then put through one real frame and thrown out where the frame fails, which is
+`embed_render_path_works()` below.
 
 **The renderer is the guest's graphics stack, which is why the card is the default.** A pixman cage
 advertises neither `linux-dmabuf` nor `wl_drm`; Mesa inside the box then finds `wl_shm` and nothing
@@ -89,6 +90,71 @@ hardware path is a black window and a software path is a working one. No render 
 group that owns the render node — or an allocator that cannot produce a readable buffer each cost
 the guest the card and nothing else.
 
+**And the triple is proved by using it, because an allocator that was built is not an allocator that
+works.** Whether a driver will import a udmabuf buffer is answered by the driver, at bind time:
+virtio-gpu's EGL on a software virgl refuses, answering `eglCreateImageKHR` with `EGL_BAD_ALLOC`.
+Nothing below notices — the backend, the renderer and the allocator are all
+created successfully — and the refusal surfaces first inside the anchor output's commit, whose
+failure leaves the output out of the layout, the layout with no `wl_output` global, and the guest
+waiting for a screen: Firefox loops on `gdk_monitor_get_workarea`, foot exits with *no monitors
+available*, and the console window says *starting…* for ever with no frame and no error anywhere.
+So before the session is built on them, `embed_render_path_works()` adds a throwaway headless
+output, calls `wlr_output_init_render()` and `wlr_output_test_state()` on it and destroys it again —
+so the anchor never carries a swapchain belonging to a renderer that is about to be thrown away.
+`wlr_output_test_state()` on an output being lit allocates a swapchain buffer and submits a render
+pass into it and applies nothing, and **that render pass is where the import happens**: it is the
+whole of what the driver gets to refuse, and none of what the anchor's own commit would go on to do.
+
+**And then the pixels, because an import the driver accepts is not a frame this process can read.**
+An accepted import is the case on a real card: `make run-hw` on an NVIDIA host puts virgl in the
+guest, the udmabuf buffer binds, every GL call against it succeeds and the result goes into memory
+of the host driver's own. The commit succeeds, the publish succeeds, the parent is sent a full frame
+of blocks on every tick — and every one of them is the zeroed page the buffer was allocated as, so
+the window shows the desk behind it for the life of the guest while `embed_stat` reports hundreds of
+blocks a second. Nothing in wlroots checks, and nothing can: the buffer is written, only not here.
+
+So `embed_readback_works()` paints one buffer of its own — the whole of it in one colour and a
+quadrant in a second — and reads it back through `frame_map()`, the same road, the same fence and
+the same `DMA_BUF_IOCTL_SYNC` bracket `embed_publish()` takes. Four corners are compared: three of
+the first colour and one of the second, in whichever corner it lands, because a readback that came
+back mirrored is still a readback that works and failing it would cost a working card its hardware
+path. A corner that is neither colour is the zeroed page of a buffer the card never wrote. **Its own
+buffer and not an output's**, because an output's swapchain belongs to a renderer the caller may be
+about to throw away, and because the buffer has to be held open across the read — which a committed
+output will not allow. The read is retried `EMBED_PROBE_TRIES` times: a gles2 pass ends in `glFlush`
+and not `glFinish`, and the poll in `frame_map()` waits only for a fence the driver attached — a
+udmabuf with none polls readable at once — so the pixels may arrive a moment after the submit
+returns. A try that fails outright spends a try and not the probe, because the fence deadline inside
+`frame_map()` is reached by a card that was merely slow on its first frame, and reading that as the
+answer would cost it the hardware path for the life of the cage. The whole probe is bounded by
+`EMBED_PROBE_TRIES` × (`EMBED_FENCE_MS` + `EMBED_PROBE_GAP_MS`), under a second, paid once at
+startup by a card that is never going to write them.
+
+**This finds the machine; it does not repair it.** Nothing here makes an unreadable driver's frames
+reachable, and no road in this tree does: the choice is between a renderer whose frames can be read
+and a window that stays the colour of the desk, and the cage takes the picture. **What that costs is
+llvmpipe for the whole cage, the guest's Mesa included** — no hardware GL, no hardware video decode
+and every frame drawn on the CPU, which for a browser is the difference between a video that plays
+and one that stutters. It is paid only where the readback fails; a card whose frames come back keeps
+the hardware path.
+
+**A failed probe drops the card in the order it was built** — the allocator came from the renderer
+and goes first, then the renderer, and only then is pixman built — because the failed GLES2 context
+holds the render node open until it is destroyed and a second context on the same device would be a
+second failure on top of the first. Pixman is built by calling `wlr_pixman_renderer_create()` and
+never by naming it in `WLR_RENDERER`, which holds what autocreate was asked for and not what it was
+replaced by. A second failure is fatal, because nothing past this point can recover and a cage that can
+publish nothing is better stopped than left saying *starting…*. The fallback is driven by the failed
+probe and never by the presence of a render node, so a machine whose hardware path works keeps it.
+
+**An output that will not commit is named and then taken back down.** `handle_new_output()` logs
+the name, destroys the scene output and frees the `cg_output` — which clears the `wlr_output->data`
+back-pointer `output_claim()` reads, so the next toplevel is refused a screen rather than bound to a
+dark one and framed on the parent's desktop for ever with nothing in it. The probe above is what
+keeps that line from ever being the anchor's, but an output added any other way — a card appearing
+under a running cage — reaches it, and silence there is a whole boxed application with no
+explanation anywhere.
+
 **And the frame is read by whichever road the allocator left open.** A direct pointer is asked for
 first because it is free; a udmabuf buffer implements `get_shm` and `get_dmabuf` and *not* data-ptr
 access, so the shm handle is mapped for the frame instead. A cage that knew only the first road
@@ -98,11 +164,21 @@ would publish nothing at all the moment the renderer stopped being the software 
 ends in a bare `glFlush()` — wlroots allocates a signal timeline only for a backend that has a DRM
 descriptor and the headless backend has none — so the copy has nothing of its own to wait on. The
 DMA-BUF descriptor beside the memfd is the same memory and the only handle the kernel synchronises
-on: the publish polls it for `POLLIN`, which is its implicit write fence, and brackets the copy with
-`DMA_BUF_IOCTL_SYNC` START/END, the cache maintenance a CPU mapping of memory a device wrote needs.
-Without the pair, a block tears against the frame still being drawn, worst exactly when the card is
-busiest, and the fault reads as a flaky compositor rather than as a race. An shm buffer has no
-DMA-BUF handle and no GPU writer, and takes neither step.
+on: the publish polls it for `POLLIN`, which waits for the write fence the driver attached, and
+brackets the copy with `DMA_BUF_IOCTL_SYNC` START/END, the cache maintenance a CPU mapping of memory
+a device wrote needs. **A driver need not attach a fence**, and a udmabuf buffer whose reservation is
+empty polls readable the moment it is asked — so the poll bounds the wait rather than promising the
+write is done, and it is worth taking because the drivers that do attach one are the drivers whose
+frame tears without it. Without the pair, a block tears against the frame still being drawn, worst
+exactly when the card is busiest, and the fault reads as a flaky compositor rather than as a race. An
+shm buffer has no DMA-BUF handle and no GPU writer, and takes neither step.
+
+**The copy takes a 32-bit pixel and refuses anything else.** Both renderers reach it — pixman on a
+headless output, and gles2 wherever the readback kept the card — and on the buffers `embed_allocator()`
+hands out both give `XRGB8888` or `ARGB8888`, which is the pixel the parent reads a sprite block as
+and has no field to be told otherwise. A buffer in any other format is not published at all: the
+window holds the frame before it, which is a stall somebody can see and say so about, where a copy
+at the wrong depth is a smear that reads as a decoder fault and is not one.
 
 **The fence wait is bounded at 100 ms and never infinite**, because it happens inside the cage's
 event loop: a card that never signals would otherwise stop the guest's input and every message to
@@ -125,6 +201,13 @@ The backend is chosen through the environment wlroots already reads, and the ren
 that environment alone unless a profile overrides it, so the code path is upstream's own. `WLR_HEADLESS_OUTPUTS=0` goes with them: autocreate adds headless
 outputs of its own accord and at a size of its choosing, and this mode makes every output it wants
 by hand. The allocator is the exception and is built by hand for the reason above.
+
+**None of that environment crosses the fork.** `execvp()` hands the guest everything this process
+holds, and a guest that is itself wlroots-based would come up headless, one output wide and on the
+software renderer — this cage's screen arrangement applied to a program that has a window. So
+`embed_setenv()` records each name it actually wrote and the child clears exactly those before
+`execvp()`, which leaves a value a person exported for the session reaching the guest still meaning
+what they meant.
 
 ## One window, one output, one mapping
 

@@ -1559,9 +1559,18 @@ static void do_boot(void)
 	}
 	emit('P', "0.7");
 
+	/*
+	 * Every second of countdown is a second of the boot spent before the
+	 * kernel exists, with nothing else running, so it is the shortest
+	 * interval that keeps the menu usable: one second still draws it and
+	 * any keypress still cancels the countdown. The menu has to stay
+	 * reachable — the verbose and single-user submenus and memtest86+ are
+	 * reachable from nowhere else. rEFInd reads `timeout 0` as "wait
+	 * forever", not "boot at once"; it would hang every unattended boot.
+	 */
 	wr("/boot/efi/EFI/refind/refind.conf",
 	   "# Written by the KDOS installer.\n"
-	   "timeout 5\n"
+	   "timeout 1\n"
 	   "banner /EFI/refind/kdos-banner.png\n"
 	   "banner_scale noscale\n"
 	   "hideui hints,badges\n"

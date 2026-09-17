@@ -48,6 +48,7 @@ Left to right:
 | **Volume** | A slider you can drag | Mute | — |
 | **Network** | The network manager | — | — |
 | **Clock and battery** | The calendar | — | — |
+| **Show desktop** (the last column) | Minimises every window, or brings every minimised one back when nothing is on screen | — | — |
 
 Dragging an icon along the quick-launch row reorders it, and the order is written to
 `~/.config/kdos/favorites`. Dropping it off the row does nothing.
@@ -438,9 +439,12 @@ needs the compositor, a browser, or a second machine. The photographs are `build
    opens in the same viewer.
 8. **`Super+F3` is the sound panel**; `Super+Shift+u` raises the music player. What is playing is
    in the taskbar, and what the player shows is whatever the daemon it connects to has queued.
-9. **`Super+Shift+t` tiles the workspace**, `Super+r` rearranges from the keyboard, `Super+F2` lists
-   every window — `Enter` raises, `Del` closes, `m` minimises — and `Super+Shift+d` shows the
-   desktop and brings everything back.
+9. **`Super+Shift+t` tiles the workspace**, `Super+r` rearranges from the keyboard, and `Super+F2`
+   lists every window the taskbar would hold — the ones you have put away among them, marked `↓` —
+   where `Enter` raises a window or brings back one that is away, a digit picks the row beside it,
+   `Del` closes and `m` does both halves of minimise. The other ways back are `Super+Shift+n`, one
+   window a press, `Super+Alt+Shift+n` for everything put away on the workspace at once, and
+   `Super+Shift+d`, which shows the desktop and brings back exactly what it hid.
 10. **`Super+Ctrl+Shift+space` changes the accent** with a live preview, and every program follows:
     the panel, the terminal, the editor, the pager, the file manager.
 11. **`Super+Ctrl+r` sets a reminder**, and it fires once, whatever the machine did in between.

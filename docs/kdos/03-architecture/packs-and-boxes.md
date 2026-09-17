@@ -293,9 +293,15 @@ subtracted from that, and a box with a private `/dev` gets `/dev/dri` bound back
 `render` is who draws, and it answers for both ends of a console guest: it resolves against the
 machine by opening a render node and puts `LIBGL_ALWAYS_SOFTWARE` into a launch that asked for
 software, and the session hands its value to the embedded cage unread as `KDOS_EMBED_GPU`, where
-`software` pins pixman and every other spelling leaves the renderer to `wlr_renderer_autocreate`.
+`software` pins pixman and every other spelling leaves the renderer to `wlr_renderer_autocreate` —
+which the cage then proves against a real buffer and a real output before it builds on it, falling
+back to pixman where the driver will not import what an embedded cage has to be able to read, or
+will not put the pixels it rendered into memory the cage can read them back from. That second
+fallback takes the whole cage down to llvmpipe, the guest's own Mesa with it — no hardware GL and
+no hardware video decode in that box — and it is the only way such a machine gets a picture rather
+than a window the colour of the desk.
 Both keys default to the card, because the nodes, the drivers and both renderers are already there
-and a box drawing with llvmpipe on such a machine is paying for nothing.
+and a box drawing with llvmpipe on a machine whose card the cage can read is paying for nothing.
 
 **Every shared directory is formatted into the argument vector directly, never through one reused
 buffer.** The argument builder stores the pointer rather than copying, so several shares built in

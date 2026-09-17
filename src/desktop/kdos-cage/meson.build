@@ -35,6 +35,10 @@ xkbcommon      = dependency('xkbcommon')
 # NAMED, not inherited: embed.c reads the damage region wlroots hands back, and
 # a symbol used directly is a library linked directly.
 pixman         = dependency('pixman-1')
+# HEADERS ONLY. wlroots asks for libdrm privately, so its include directory is
+# not on this build's command line — and embed.c names a DRM format for the
+# buffer it proves the render path with.
+drm            = dependency('libdrm')
 math           = cc.find_library('m')
 
 have_xwayland = wlroots.get_variable(pkgconfig: 'have_xwayland', internal: 'have_xwayland') == 'true'
@@ -72,6 +76,7 @@ executable(
     wlroots,
     xkbcommon,
     pixman,
+    drm,
     math,
   ],
   install: true,

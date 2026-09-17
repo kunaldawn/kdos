@@ -36,11 +36,13 @@
  */
 
 #include <dirent.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <wayland-client.h>
@@ -684,9 +686,10 @@ static void typeahead(struct view *v, int ch)
 /* ── --windows: one app's windows, from the panel's grouped chip ────────── */
 
 /*
- * `kdos-menu --windows <app_id>` lists the titles of that app's toplevels
- * plus "Close all" and "Minimize all", and the panel spawns it when a grouped
- * task chip with more than one window is clicked.
+ * `kdos-menu --windows <app_id>` lists the titles of that app's toplevels plus
+ * the verbs that act on the whole group — "Minimize all", "Restore all" where
+ * some of them are minimised, and "Close all" — and the panel spawns it when a
+ * grouped task chip with more than one window is clicked.
  *
  * THE LIST COMES FROM libkdisp, so this menu is the same menu on both
  * desktops: the console answers it from the session's management messages and
@@ -736,14 +739,101 @@ static void win_refresh(void)
 	}
 }
 
+/* Has this app a window in the list yet? The same test windows_rows makes, so
+ * the wait below ends exactly when the menu has rows to draw. */
+static int win_have(const char *app)
+{
+	for (int i = 0; i < nwins; i++)
+		if (!strcmp(wins[i].app_id, app))
+			return 1;
+	return 0;
+}
+
+/*
+ * How long to wait for a list that arrives after the connect rather than
+ * inside it. Long enough for a local socket to answer under a cold app's
+ * load, short enough that a server which sends none still feels like a click
+ * that missed rather than a menu that hangs.
+ */
+#define WIN_WAIT_MS 500
+/*
+ * And how long to keep reading after this app's first row. The STATE carrying
+ * the minimised marks is a message of its own and need not arrive in the same
+ * read as the ADD, so the marks — and the Restore all row that depends on them
+ * — land in the first frame instead of changing the menu's shape under the
+ * pointer a frame later.
+ */
+#define WIN_SETTLE_MS 20
+/*
+ * A BOUND ON THE TURNS AS WELL AS ON THE CLOCK. libkcon stops reading the
+ * socket while its event queue has fewer than a few slots free, and only this
+ * program's own loop empties that queue — so a deadline alone would poll a
+ * socket that is readable every time and spin until it expired, with whatever
+ * was typed at the menu sitting unread behind it. Sixty-four turns is far more
+ * than a session's window list takes and is over in microseconds when nothing
+ * can be read.
+ */
+#define WIN_WAIT_TURNS 64
+
+static long win_since(const struct timespec *t0)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (now.tv_sec - t0->tv_sec) * 1000 +
+	       (now.tv_nsec - t0->tv_nsec) / 1000000;
+}
+
+/*
+ * WAIT FOR THIS APP'S WINDOWS BEFORE DECIDING THERE ARE NONE.
+ *
+ * A compositor binds the manager and announces its toplevels inside
+ * kdisp_init's own roundtrip, so its list is complete the moment that call
+ * returns. The console sends HELLO and ATTACH and returns without reading a
+ * byte (see kcon_init), so the session's window ADDs are still on the wire —
+ * a list read there is empty every time, whatever is on screen.
+ *
+ * The wait is for a window of THIS app and not for any window at all: the
+ * menu has nothing to draw until the chip's own windows are in the list, and
+ * returning on somebody else's ADD leaves it exactly where it started. The
+ * wait always ends — at the deadline, at the turn count, or on a backend with
+ * no socket, which has already said whatever it is going to say.
+ */
+static void win_wait(const char *app)
+{
+	struct timespec t0;
+	long deadline = WIN_WAIT_MS;
+
+	clock_gettime(CLOCK_MONOTONIC, &t0);
+	for (int turn = 0; turn < WIN_WAIT_TURNS; turn++) {
+		int fd;
+		long el;
+
+		kdisp_pump();
+		win_refresh();
+		el = win_since(&t0);
+		if (win_have(app) && deadline > el + WIN_SETTLE_MS)
+			deadline = el + WIN_SETTLE_MS;
+		if (el >= deadline)
+			return;
+
+		fd = kdisp_fd();
+		if (fd < 0)
+			return;
+
+		struct pollfd p = { .fd = fd, .events = POLLIN, .revents = 0 };
+
+		poll(&p, 1, (int)(deadline - el));
+	}
+}
+
 /* ── the rows ──────────────────────────────────────────────────────────────
  *
  * TWO MENUS, ONE ROW MODEL. `--windows` lists an app's toplevels and is what a
  * left click on a grouped task button opens; `--winmenu` is the WINDOW CONTROL
  * menu a right click opens, which is what every taskbar has offered since
- * Windows 95 and this one did not — a right click simply minimised the button
- * and there was no way to maximise, restore or close a window from the bar at
- * all.
+ * Windows 95 and the only route from the bar to maximise, restore or close a
+ * window.
  *
  * Building a row LIST rather than indexing 0..n-1/n+1/n+2 is the difference
  * between adding an entry and re-deriving three pieces of arithmetic. A rule
@@ -756,7 +846,7 @@ static void win_refresh(void)
  * compositor's own titlebar drag and `A-` drag are the move.
  */
 enum { WR_WIN = 0, WR_RULE, WR_RESTORE, WR_MIN, WR_MAX, WR_FULL, WR_CLOSE,
-       WR_MIN_ALL, WR_CLOSE_ALL, WR_PIN,
+       WR_MIN_ALL, WR_RESTORE_ALL, WR_CLOSE_ALL, WR_PIN,
        /* The jump list: a new instance, and the files this application was
         * last used with. */
        WR_NEW, WR_RECENT };
@@ -901,7 +991,7 @@ static void spawn_argv(const char *const *argv)
 static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 			int *ord, int *nwin_out, int *target)
 {
-	int n = 0, nrows = 0, tgt = -1;
+	int n = 0, nrows = 0, tgt = -1, nmin = 0;
 
 	/* The one the controls act on: the focused window if the app has one,
 	 * its first otherwise. */
@@ -910,6 +1000,8 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 			continue;
 		if (tgt < 0 || (wins[i].activated && !wins[tgt].activated))
 			tgt = i;
+		if (wins[i].minimized)
+			nmin++;
 		ord[n++] = i;
 	}
 	*nwin_out = n;
@@ -1005,6 +1097,21 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
 				 "Minimize all (%d)", n);
 			nrows++;
+			/*
+			 * THE WAY BACK FROM SEVERAL AT ONCE, and it is offered
+			 * only when there is something to bring back: a row
+			 * that is always there and does nothing most of the
+			 * time teaches people to stop reading the menu. The
+			 * count is of the minimised ones, which is what the
+			 * row acts on.
+			 */
+			if (nmin > 0) {
+				rows[nrows].kind = WR_RESTORE_ALL;
+				snprintf(rows[nrows].label,
+					 sizeof(rows[nrows].label),
+					 "Restore all (%d)", nmin);
+				nrows++;
+			}
 			rows[nrows].kind = WR_CLOSE_ALL;
 			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
 				 "Close all (%d)", n);
@@ -1040,6 +1147,13 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 		snprintf(rows[nrows].label, sizeof(rows[nrows].label),
 			 "Minimize all");
 		nrows++;
+		if (nmin > 0) {
+			rows[nrows].kind = WR_RESTORE_ALL;
+			snprintf(rows[nrows].label,
+				 sizeof(rows[nrows].label),
+				 "Restore all (%d)", nmin);
+			nrows++;
+		}
 	}
 	return nrows;
 }
@@ -1108,19 +1222,30 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 	}
 
 	/*
-	 * THE FIRST CALL IS WHAT BINDS. Under a compositor the manager is
-	 * bound and its windows announced inside this call, so a count taken
-	 * before it is always zero; on the console the list arrived with the
-	 * attach. Either way there is nothing to ask a display server for
-	 * here, which is why neither protocol appears in this file.
+	 * WHETHER THE SERVER HAS A LIST IS ASKED OF THE SERVER, not of the
+	 * count. A count of zero is an ordinary empty desktop (see kdisp.h),
+	 * and on the console it is also what a list still on the wire looks
+	 * like; only the vtable says whether anything can be enumerated at
+	 * all. There is still nothing to ask a display server for here
+	 * directly, which is why neither protocol appears in this file.
 	 */
-	win_refresh();
-	if (nwins == 0 && kdisp_win_count() == 0) {
-		/* No window list at all is a display server that cannot
-		 * enumerate one — not a desktop with nothing open, which
-		 * cannot happen when a panel chip was just clicked. */
+	if (!kdisp_win_supported()) {
 		fprintf(stderr, "kdos-menu: this display server does not "
 				"offer a window list\n");
+		kdisp_shutdown();
+		return 1;
+	}
+	/*
+	 * THE FIRST CALL IS WHAT BINDS, and on one of the two backends the
+	 * rows land after it rather than inside it — see win_wait(). An app
+	 * with no window after the wait is a window that closed while the
+	 * menu was starting, or a session that sent this client no list: an
+	 * empty menu either way, and a different thing from a server that
+	 * cannot enumerate windows.
+	 */
+	win_wait(app);
+	if (!win_have(app)) {
+		fprintf(stderr, "kdos-menu: no windows for %s\n", app);
 		kdisp_shutdown();
 		return 1;
 	}
@@ -1374,6 +1499,15 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 		case WR_MIN_ALL:
 			for (int i = 0; i < n; i++)
 				kdisp_win_minimise(wins[ord[i]].id, 1);
+			break;
+		case WR_RESTORE_ALL:
+			/* No activate afterwards: raising every one of them in
+			 * turn would leave the focus on whichever happened to
+			 * be last in the list rather than on the window the
+			 * person was in. They come back where they were. */
+			for (int i = 0; i < n; i++)
+				if (wins[ord[i]].minimized)
+					kdisp_win_minimise(wins[ord[i]].id, 0);
 			break;
 		default:
 			break;

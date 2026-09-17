@@ -65,6 +65,7 @@ enum {
 	CON_ACT_MAX, CON_ACT_FULL, CON_ACT_MIN, CON_ACT_EXEC,
 	CON_ACT_NEXT, CON_ACT_PREV,
 	CON_ACT_SNAP, CON_ACT_WS, CON_ACT_SEND, CON_ACT_RESTORE,
+	CON_ACT_RESTORE_ALL,	/* every window put away on this workspace   */
 	CON_ACT_FOCUS_DIR, CON_ACT_SWAP_DIR, CON_ACT_WS_STEP,
 	/*
 	 * THE KEYBOARD'S OWN WINDOW MANAGEMENT, and the reason it is worth
@@ -616,6 +617,22 @@ typedef struct {
 	 */
 	KconOut outs[KCON_MAX_OUTS];
 	int nouts;
+	/*
+	 * THE FASTEST MODE ANY ATTACHED DISPLAY IS WEARING, in millihertz,
+	 * and 0 where none has said.
+	 *
+	 * SEPARATE FROM `outs` BECAUSE THEY ANSWER DIFFERENT QUESTIONS. A
+	 * picker lists ONE display's monitors and the seam snap measures ONE
+	 * display's columns, so `outs` is whichever view answered last;
+	 * frame_floor_ms() paces a session that has several, so it needs the
+	 * MAXIMUM over all of them. Held in one field, the session's compose
+	 * rate would be decided by reply order.
+	 *
+	 * Dropped to 0 whenever the screens are asked for and raised by each
+	 * answer, so it is a union over one round of asking — see
+	 * outs_ask_views().
+	 */
+	int pace_mhz;
 	/* The shell waiting for a list a view has not answered with yet. */
 	KconSurface *outs_for;
 	/* The shell waiting for a list a view has not answered with yet, or
@@ -671,6 +688,7 @@ void win_fullscreen(Win *w);
 void win_minimise(Win *w);
 void win_restore(Win *w);
 Win *win_last_minimised(void);
+void win_restore_all(void);
 void win_send(Win *w, int ws);
 void win_workspace(int ws);
 /*

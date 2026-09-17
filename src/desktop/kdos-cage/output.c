@@ -455,10 +455,40 @@ handle_new_output(struct wl_listener *listener, void *data)
 		} else {
 			output_layout_add_auto(output);
 		}
+	} else {
+		/*
+		 * AN OUTPUT THAT WOULD NOT LIGHT IS NAMED AND THEN TAKEN BACK
+		 * DOWN. It never entered the layout, wlroots builds a
+		 * wl_output global only from the layout, and a client that
+		 * waits for one never maps — so the only thing a person sees
+		 * is a window that says it is starting and never changes.
+		 * Silence here is a whole boxed application with no
+		 * explanation anywhere.
+		 *
+		 * The cg_output goes with the line, because it is the
+		 * back-pointer on wlr_output->data that output_claim() reads
+		 * to bind a window: left in place, the next toplevel would be
+		 * given this output and would render, copy a whole framebuffer
+		 * and publish for the life of the process into a window the
+		 * parent frames and nothing ever draws. Gone, output_claim()
+		 * finds no back-pointer, destroys the wlr_output and refuses
+		 * the window — which is what a window with no screen is.
+		 *
+		 * `output` is freed here, so everything after this uses
+		 * `server`.
+		 */
+		wlr_log(WLR_ERROR, "Output %s would not commit; it is dropped and carries no window",
+			wlr_output->name);
+		/* The scene output is destroyed by hand here and nowhere else:
+		 * everywhere else the wlr_output is going away and takes it,
+		 * and here the wlr_output outlives this cg_output. */
+		wlr_scene_output_destroy(output->scene_output);
+		output->scene_output = NULL;
+		output_destroy(output);
 	}
 
-	view_position_all(output->server);
-	update_output_manager_config(output->server);
+	view_position_all(server);
+	update_output_manager_config(server);
 }
 
 /*

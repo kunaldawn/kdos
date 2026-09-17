@@ -37,6 +37,23 @@ kernel and initramfs **onto the ESP** rather than leaving them on the root files
 read ext4 only through a filesystem driver, and a boot that depends on a driver load is a boot
 that fails silently after a kernel update.
 
+**Two programs write that configuration and nothing else does.** `script/06_packaging/02_iso.sh`
+writes the live ISO's `EFI/BOOT/refind.conf` beside `vmlinuz` and `initramfs.cpio.gz` on the ESP
+image; `kinstall` writes the installed machine's `EFI/refind/refind.conf`, pointing at the
+`EFI/kdos/` copies it made, plus an `EFI/BOOT/refind.conf` that only `include`s it. rEFInd reads
+its configuration from its own ESP directory, so **a `refind.conf` anywhere in the root filesystem
+is read by nobody** and its entries are not the machine's boot menu.
+
+**The menu counts down for one second**, on the live ISO and on an installed system alike. The
+countdown is wall time spent before the kernel exists, with nothing else running, so it is kept to
+the shortest interval that still leaves the menu usable. At `timeout 1` the graphical menu is
+drawn in full — banner, every entry, the tool row — and a single keypress stops the countdown and
+leaves it up indefinitely: photographed under OVMF against the ISO's own ESP payload, menu on
+screen 4.2 s after power-on, and still on screen with the countdown line gone 43 s after power-on
+when Down was tapped during the first seconds. The recovery entries — the verbose boot, single
+user, memtest86+ — are reachable from nowhere else, so that has to hold. **`timeout 0` is not
+"boot at once"; it is "wait forever"**, and setting it hangs every unattended boot.
+
 Parameters KDOS itself reads:
 
 | Parameter | Read by | Meaning |
@@ -104,6 +121,22 @@ that reason. **Every filesystem the installer offers must be in this list.**
 `cryptsetup` and its libraries are carried only when they are installed, and the build says so
 when they are not. A half-carried `cryptsetup` fails at the passphrase prompt rather than at build
 time, which is the wrong place to find out.
+
+**Both paths that look for a device poll, and both give up after ten seconds.** The disk path
+asks `blkid` for the root UUID once a second; the live path rescans `/dev/sr* /dev/sd* /dev/vd*
+/dev/nvme*` every 100 ms and mounts the first one holding `system.sfs`. Neither waits before its
+first attempt — udev has already settled by then, so on a machine whose medium is enumerated the
+first pass succeeds and costs nothing. The bound is what covers the slow cases, a USB stick or a
+device behind a bridge, and **every pass walks every device class again**: the first node to
+answer is not always the one holding the medium, and a class that has not appeared yet must still
+get its chance. **A device that mounts is inspected once**, though: a filesystem without
+`system.sfs` on it will not grow one, so it is remembered and skipped, and only nodes that have
+not mounted yet are tried again — one mount/umount pair for a wrong disk across the whole scan
+rather than one per pass. `/mnt/iso` is the only mount point the scan has, so **the umount is
+checked**: a mount point left busy would take a second filesystem stacked on top of it and every
+later test would read the wrong one, so a failed umount stops the scan and says so. Only the first
+pass narrates each device it tried; a hundred repetitions of the same two lines would bury the
+message that explains a failed boot.
 
 ## The splash
 

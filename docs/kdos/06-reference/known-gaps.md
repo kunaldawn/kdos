@@ -150,11 +150,20 @@ and there is no path where it is not. What it does not cost is the desktop: the 
 one where a display stops counting as ready, so the panel, the pointer and every other window are
 still composed while a guest draws, and a display that is behind is skipped, never dropped.
 
-That is the *session's* half of the crossing and not the guest's: on a machine with a render node
-the cage composites on the card and the guest renders on it too, because a profile that names no
-`render` key leaves both of them to ask the machine and the machine answers with the card. The
-frame still reaches the screen as blocks over the same socket, because the console's own display
-path is a CPU-mapped dumb buffer with no GPU in it.
+That is the *session's* half of the crossing, and the guest's half is the card's only where the
+card's frames can be read back. A profile that names no `render` key leaves both ends to ask the
+machine and the machine answers with the card — but the cage keeps that answer only if a frame it
+painted comes back out of the buffer it drew into, and on a host whose driver imports the buffer,
+satisfies every call against it and then writes the pixels into memory of its own, it does not.
+**A machine on that path gets llvmpipe for the whole cage, the guest's Mesa included**: no hardware
+GL and no hardware video decode in any box, which for a browser is a video that stutters rather
+than plays. **The gap is the readback and not the renderer** — nothing in this tree makes those
+frames reachable, so the choice is between a software picture and a window that stays the colour
+of the desk, and the cage takes the picture. It is measured on an NVIDIA host under `make run-hw`
+and is invisible under `make run`, which lands on pixman with no render node to keep or fails the
+import half of the probe before the readback half is asked. The frame reaches the screen as blocks
+over the same socket either way, because the console's own display path is a CPU-mapped dumb buffer
+with no GPU in it.
 **So an embedded window cannot carry a game or 1080p60 video**, whichever renderer drew it: every
 frame is read back, cut into sprite blocks, sent over a socket and written into a dumb buffer, and
 that crossing is the ceiling rather than the drawing. `display = vt` is the path that can, and it

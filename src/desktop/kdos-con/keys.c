@@ -72,8 +72,15 @@ static Bind binds[] = {
 	{ "fullscreen",	CON_ACT_FULL,	 0, 'f',	KT_MOD_SUPER },
 	{ "minimise",	CON_ACT_MIN,	 0, 'n',	KT_MOD_SUPER },
 	/* The way back. A minimise with no restore is a one-way door, and the
-	 * shifted form of the chord that closed it is where a hand looks. */
+	 * shifted form of the chord that closed it is where a hand looks. Alt
+	 * on top of it is the same door for a desk cleared window by window: the
+	 * shifted chord alone takes one press per window, with a blank screen
+	 * and no count while you walk it. NOT `Super+Alt+n`, which
+	 * a reader would take for the window-by-number chord the title bars and
+	 * the taskbar rows name. */
 	{ "restore",	CON_ACT_RESTORE, 0, 'n',	KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "restore-all", CON_ACT_RESTORE_ALL, 0, 'n',
+	  KT_MOD_SUPER | KT_MOD_ALT | KT_MOD_SHIFT },
 	/*
 	 * THE SCRATCHPAD, ON THE KEY THE DROP-DOWN TERMINALS HAVE ALWAYS USED.
 	 * The grave key is the one key above the keyboard that no program

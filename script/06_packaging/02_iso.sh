@@ -165,8 +165,15 @@ else
     echo "Warning: KDOS mascot icon not found — using rEFInd's tux"
 fi
 
+# Every second of countdown is a second of the boot spent before the kernel
+# exists, with nothing else running, so it is the shortest interval that keeps
+# the menu usable: one second still draws it and any keypress still cancels the
+# countdown. The menu has to stay reachable — the verbose entry and memtest86+
+# are reachable from nowhere else, and a machine that will not boot needs the
+# verbose one. `timeout 0` is NOT an immediate boot; rEFInd reads it as "wait
+# forever", which hangs every unattended boot.
 cat > $ISO_ROOT/EFI/BOOT/refind.conf <<EOF
-timeout 5
+timeout 1
 banner /EFI/BOOT/kdos-banner.png
 banner_scale noscale
 hideui hints,badges

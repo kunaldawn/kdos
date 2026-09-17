@@ -1125,7 +1125,9 @@ on a full repaint — given to one buffer alone it blinks at a fraction of the f
 `KKMS_MODE_PREFERRED` takes the monitor's EDID choice and is the default; `KKMS_MODE_FASTEST` takes
 the highest refresh **at the size the monitor chose** and never another resolution, because a
 scaled desktop is a blur nobody asked for. A mode already in force still outranks both, so a hotplug
-for an unrelated connector does not undo a choice somebody made. `tearing` passes
+for an unrelated connector does not undo a choice somebody made; that match is on the size and the
+**computed** refresh, because 59.94 and 60 share a rounded `vrefresh` and a connector listing the
+59.94 mode first would otherwise hand it back on every re-probe. `tearing` passes
 `DRM_MODE_PAGE_FLIP_ASYNC` to the same legacy flip, which presents immediately and cuts a moving
 edge across the screen; it is off unless asked for, silently off where `DRM_CAP_ASYNC_PAGE_FLIP` is
 absent, and **dropped for the rest of the session on its first `EINVAL`** — a driver refusing the

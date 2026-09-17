@@ -406,9 +406,10 @@ so a program need not know which of the two terminals it is talking to.
 
 **A held window is composed from its last whole frame, not skipped, and the hold reaches no other
 window.** Both follow from the compose: the session clears the grid and repaints every window on one
-16 ms tick, so a window that drew nothing would be a hole showing the backdrop and a window that
-delayed the tick would stop the desktop for one program's frame. Every other window composes on that
-same tick while one is held. **Under `libkvt`'s 150 ms watchdog** — a child that sets the mode and
+composed frame — paced by the attached screens, with 16 ms as the widest that period gets — so a
+window that drew nothing would be a hole showing the backdrop and a window that delayed the frame
+would stop the desktop for one program's frame. Every other window composes on that same frame while
+one is held. **Under `libkvt`'s 150 ms watchdog** — a child that sets the mode and
 then dies, blocks or is stopped is composed live again on the next tick, which is what makes a hold
 safe to honour at all. The buffer is taken when the first bracket opens, while the grid still holds
 a whole frame, and only a terminal that has opened one carries it: a program that never brackets
@@ -640,10 +641,12 @@ one.
 take the keyboard and cannot be closed; a raise aimed at it — from the directional search, from a
 number chord, from a click — lands on the modal and flashes it, which is the honest answer to a
 click on a window whose application has stopped answering about it. **The blocked owner is out of
-the Alt-Tab ring for as long as the modal is up**, and so out of `Super+Alt+`*n* and the window
-list: a ring entry whose every step is redirected back to the question is one the ring can never
-advance past, so it would be Alt-Tab itself that stopped working rather than one window. The modal
-is in the ring in its place. A modal that is minimised, or off its owner's desk, blocks nothing: a
+the Alt-Tab ring for as long as the modal is up**, and so out of `Super+Alt+`*n*: a ring entry whose
+every step is redirected back to the question is one the ring can never advance past, so it would be
+Alt-Tab itself that stopped working rather than one window. The modal is in the ring in its place.
+**The window list keeps the owner's row**, because a row is not a step — `Enter` on it is redirected
+like any other raise — and the modal, being a dialog, has no row of its own to take its place. A
+modal that is minimised, or off its owner's desk, blocks nothing: a
 question the person cannot see blocking a window they can is a window that has stopped answering
 with nothing on the screen to say why, and the flash would land where they are not looking.
 Everything else on the desktop carries on, because a modal is modal to its application and not to
@@ -1083,11 +1086,23 @@ and click it could send, the cell pointer, the picture, the clipboard and the dr
 
 `--vt` is for an application the card cannot be given to through a window: one that sets its own
 full-screen mode, one whose driver will not run against a headless output, and one that needs the
-frame rate the window path cannot reach. An embedded guest is composited **on the card wherever
-there is one**: the cage leaves the renderer to `wlr_renderer_autocreate`, which takes gles2 or
-vulkan where a DRM render node opens and pixman where none does — so a machine with no render node,
-no driver for it or no mappable DMA-BUF gets the software renderer and a working window rather than
-a failure. The session forwards the box profile's `render` key to the cage as `KDOS_EMBED_GPU`,
+frame rate the window path cannot reach. An embedded guest is composited **on the card wherever one
+works**, and working is measured rather than inferred: the cage leaves the renderer to
+`wlr_renderer_autocreate`, which takes gles2 or vulkan where a DRM render node opens and pixman
+where none does, and **then renders one frame through that answer** — the renderer, the allocator
+and a throwaway output — before anything is built on it. The node opening is not the question that
+decides it. On virtio-gpu a render node opens and gles2 is chosen; on a software virgl the driver
+then refuses to import the udmabuf buffers an embedded cage has to allocate to be able to read its
+own frames back, answering `eglCreateImageKHR` with `EGL_BAD_ALLOC`, and on a virgl backed by a real
+host card it accepts the import, satisfies every call and puts the pixels in memory of its own.
+Every layer below reports success either way: the refusal surfaces as a failed output commit, which
+is a guest waiting for a `wl_output` that never appears, and the acceptance surfaces as nothing at
+all — a full frame of blocks a second, every one of them the zeroed page the buffer was allocated
+as. So the cage paints a second frame of known pixels and reads it back the way it publishes one,
+and drops the card for pixman where the pixels do not come back. A machine with no render node, no
+driver for it, no `/dev/udmabuf`, no importable buffer or no readable frame gets the software
+renderer and a working window rather than a blank one — at the cost of llvmpipe inside the box. The
+session forwards the box profile's `render` key to the cage as `KDOS_EMBED_GPU`,
 **the value unread and in both directions**: `software` pins the cage on pixman as well, so a box
 that refuses the card is neither drawn nor composited on it, and every other spelling leaves the
 cage's own choice alone. The same key reaches the box's own Mesa as `LIBGL_ALWAYS_SOFTWARE` in the
@@ -1146,8 +1161,9 @@ its hello, the session closes every frame it sends with `KCON_OP_FRAME`, and the
 one of its own once it has painted. The session composes the next frame when a display says it is
 ready rather than when a timer expires — so an animation runs at the refresh rate of the screen
 showing it, and a display that is still painting is never sent a frame it would throw away. The
-sixteen-millisecond floor stays as a cap; the answer is the gate under it. A view built without
-the capability, or one that stops answering, is paced by that clock alone after 100 ms.
+compose floor stays as a cap — the fastest attached screen's period, 16 ms where none reports one;
+the answer is the gate under it. A view built without the capability, or one that stops answering,
+is paced by that clock alone after 100 ms.
 
 **Every attached display paces itself, not just the quickest.** A view that still owes the frame it
 was last sent is sent none, exactly as a view over the backlog mark is. Without that rule a session
@@ -1178,10 +1194,48 @@ at **1380 turns a second** against a screen that shows sixty. Composing and seri
 of them spent two thirds of the session's core on frames nothing would ever see, and took that core
 away from reading the program's output, so the animation ran slower the harder the session worked at
 showing it. `frame_floor_ms()` paces the picture to the attached screens — the period of the
-fastest current mode, in millihertz, with `CON_FRAME_MS` as the floor where no display reports a
-refresh; input is still read every turn, so the pacing costs latency of at most one frame and
-nothing else. A slower screen beside a faster one still takes its own rate, because a display that
-has not painted the last frame is not asked for another.
+fastest mode any attached display is wearing, taken from the millihertz it reports and **rounded up
+to the millisecond the loop measures in**, with `CON_FRAME_MS` as the floor where no display
+reports a refresh; input is still read every turn, so the pacing costs latency of at most one frame
+and nothing else.
+
+**Rounded up, so the floor is never shorter than the screen's period.** 144 Hz is 6.944 ms:
+rounding down asks 166.7 composes a second from a screen that shows 144 — measured at 166.2 against
+a 144 Hz view, one compose in seven serialised for a frame nothing can display, which is the waste
+this floor exists to prevent. Rounding up asks 142.9 and measures 142.3. The cost of rounding up
+grows as the rate does, because a millisecond is a larger share of a shorter period: at
+`CON_RATE_MAX_MHZ` it is 5 ms for 4.167, 198.9 composes measured against 240 shown.
+
+**The rate is the maximum across every attached display, not whichever answered last.** A display
+answers `KCON_OP_VIEW_OUTPUTS` with its own monitors, and that list is one display's — it is what
+the Display picker lists and what the seam snap measures, so it is REPLACED by each answer and
+never merged. The pacing number is a different question and is kept in a different field: it is
+dropped to zero whenever the screens are asked for and RAISED by every answer to that round, so
+reply order decides nothing. Without that separation, a 144 Hz view and a 59.94 Hz view attached
+together and started the same way three times measured 144.2, 144.1 and 76.2 frames a second at the
+144 Hz one — the rate is whichever display answered last, and nothing decides that. Kept apart, the
+same three runs measure 142.1, 141.7 and 141.9, with the 59.94 Hz view taking 60.1 throughout: a
+slower screen beside a faster one takes its own rate, because a display that has not painted the
+last frame is not asked for another.
+
+**The screens are asked for at every attach, at every detach, at every mode this session sets, and
+where a grid resize says a monitor moved; the Display picker's request is a fifth caller.** Nothing
+else publishes a mode, so a session that waited to be asked by the picker would pace itself at
+`CON_FRAME_MS` for its whole life — 62.5 frames a second against a 1920x1080@74.998 screen that
+takes 71.4 and against a 144 Hz panel that takes 142.9. The resize keys on the **cell grid changing
+size** and on nothing else, so it catches a monitor whose arrival, departure or new resolution
+re-cut the grid and misses one that stepped between two modes of the same size in cells: the
+session asks where it sets a mode itself, and a hotplug that leaves the grid alone is paced at the
+old screen's period until something else asks. Asking on the compose path instead would put a round
+trip per view on every frame.
+
+**A refresh a view reports is bounded at both ends before it paces anything.** The view socket is
+the one that may be forwarded, so the far end of it is not this machine and may not be this person,
+and the number is a claim rather than a measurement: unbounded, a peer answering 4 000 Hz has the
+session composing 957.6 frames a second, spending on them the core the terminals are read with.
+`CON_RATE_MAX_MHZ` caps the rate at 240 Hz — 197.0 frames a second measured against that same peer
+— and `CON_FRAME_MS` caps the period at 16 ms, because a mode below 60 Hz would widen the floor and
+compose less often than a display that is ready.
 
 **A display that is behind is sent nothing, and is never dropped for it.** A view is the one peer
 whose messages are a stream of pictures — the newest frame makes every older one pointless — so
@@ -1710,10 +1764,13 @@ made in columns and not in bytes: a title is whatever the program set, so it is 
 character is the `?` every unmapped codepoint becomes.
 
 **A minimised window keeps its taskbar row**, because the row is how it comes back: it is drawn
-nowhere, cycled past and not hit-testable on the desktop, so a bar that dropped it would leave
-`Super+Shift+n` as the only route to it. That is also why a window with no row of its own — a
-dialog, a dock, a splash — cannot be minimised by itself, and why its frame is drawn without the
-minimise button: it goes away with the window it belongs to and comes back on that window's row.
+nowhere, cycled past and not hit-testable on the desktop. **Three routes back exist without it** —
+the window list on `Super+F2`, which holds it and marks it `↓`; `Super+Shift+n`, which brings back
+the window that went away last and takes one press per window after that; and `Super+Alt+Shift+n`,
+which brings back everything put away on this workspace at once. That is also why a window with no
+row of its own — a dialog, a dock, a splash — cannot be minimised by itself, and why its frame is
+drawn without the minimise button: it goes away with the window it belongs to and comes back on
+that window's row.
 
 **The keyboard reaches a window by pointing at it.** `Super+Shift+`arrow moves the focus to the
 nearest window that starts past the focused one and shares rows or columns with it, and
@@ -2330,12 +2387,32 @@ mark is the session's, and a third copy chord would be a third thing to explain.
 
 **Show desktop remembers the set it hid.** A window already minimised when the chord was pressed was
 minimised on purpose and is not brought back, and a window opened while the desktop is showing is
-left alone.
+left alone. **Whether the desktop is showing is asked of that set and not latched**: every other
+way back — `Super+Shift+n`, `Super+Alt+Shift+n`, a window list row, a taskbar row — empties it
+without the chord running, so a flag would answer "showing" to a full desk and spend the next press
+bringing back nothing. A press that finds none of its set still away hides instead.
 
 **The session's own window list is the fallback, not the desktop's.** Arrows and digits pick,
-`Enter` raises, `Delete` closes, `m` minimises, `Escape` leaves. It is what a session with no shell
-running has, and it is drawn from the list the session already holds. `kdos-teams` shows the same
-windows through `libkdisp`, which is the list every other surface reads.
+`Enter` raises the window or restores it when it is away, `Delete` closes, `m` puts one away and
+brings it back, `Escape` leaves. It is what a session with no shell running has, and it is drawn
+from the list the session already holds. `kdos-teams` shows the same windows through `libkdisp`,
+which is the list every other surface reads.
+
+**It holds what the taskbar holds, not what the ring steps through.** A minimised window is in it,
+marked `↓` in its first column and drawn in `KT_DIM`, exactly as its taskbar row is — the list is
+the bar for a session that has none, and a bar that dropped the rows a person is looking for is not
+a fallback. One application is one row, a layer and a docked panel are out, and a hidden window's
+chord is its way back rather than a row. **A window a modal stands over keeps its row**, which is
+the second place the list parts from the ring: a row is not a step, so `Enter` on it lands on the
+question and flashes it exactly as a click on its taskbar row does, and the question carries no row
+of its own — a list that dropped the owner as well would answer "no windows" to an application with
+a save dialog open.
+
+**The number on a row is the row's own, and it is the digit that picks it.** It is not the ring
+number the title bars and `Super+Alt+`*n* mean: the ring holds no minimised window, so every row
+this list exists to offer would be numbered 0 — which is why a minimised taskbar row carries no
+number either. The two run apart wherever the two sets do: a minimised window and a window a modal
+stands over are rows the ring does not step to, and a dialog is a ring entry with no row.
 
 **Tile, cascade and rearrange are the console's alone.** labwc has no tile-all or cascade action and
 its `MoveResize` is not the same interaction, so binding the nearest thing there would make one

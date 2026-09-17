@@ -247,6 +247,10 @@ The kernel and initramfs are copied **onto the ESP**, and the generated rEFInd c
 points at those FAT paths. rEFInd can read an ext4 root only through a filesystem driver, and a
 boot that depends on a driver load is a boot that fails silently after a kernel update.
 
+The generated menu counts down for **one second** before booting the normal entry. Press any key
+during it to stop the countdown and keep the menu: the verbose and single-user submenus and the
+memory test are reachable only from there.
+
 ## See also
 
 - [Getting started](getting-started.md) — building the image you are installing from
