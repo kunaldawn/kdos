@@ -344,6 +344,15 @@ console-font patching.
 
 ## Applications and boxes
 
+**An accent switch reaches a running GTK3 application and not a running libadwaita or Qt one.**
+GTK rebuilds its style cascade when `gtk-theme-name` moves, so the settings portal's change signal
+plus a stylesheet directory named after the accent is enough for GTK3 — which is most of the
+catalogue. libadwaita ignores GTK themes entirely and reads `~/.config/gtk-4.0/gtk.css`, which GTK
+loads once at startup; Qt under the KDE platform theme reads `~/.config/kdeglobals`, which KDE
+re-reads only on its own global-settings signal and there is no KDE daemon here to raise it. Both
+wear the new accent when they are next started. libadwaita 1.6 follows the portal's `accent-color`
+on its own, which moves the accent and not the rest of the palette.
+
 **No per-box protocol grants beyond the profile's list.** The compositor's sandbox filter is a
 fixed allowlist: a client is sandboxed or it is not. A profile can open named globals; teaching the
 filter to consult a box's profile for anything finer is deliberate work that is not done.

@@ -211,6 +211,18 @@ between them it is fixed and has to be — a menu a window could be raised above
 disappears behind the thing it was opened from, and desktop icons drawn last would cover every
 window on the screen.
 
+**A drop shadow is clipped to the work area.** It hangs one cell below and one right of the frame,
+so a window sitting against a docked edge casts it onto the panel there — and a panel is a window
+in the same layer, drawn before whatever is above it, so nothing repaints those cells afterwards.
+The work area is exactly the rectangle a window may cover, which makes it the clip.
+
+**And a window can be seen through.** `window_opacity` and `panel_opacity` in `con.conf` are per
+cent; below 100 the rectangle is drawn opaque and then mixed back towards whatever it covered, so a
+terminal shows the desktop or the window under it. The ink is never mixed — text, rules, chips and
+widget fills keep the colour they were drawn in — and an embedded application's pixels are its own
+and are never touched. A display that cannot carry a colour outside the eight slots shows every
+window opaque, which is the honest answer where there is nothing to mix with.
+
 **An overlay takes the keyboard if it asked for it, and a background never does.** The Start menu,
 the launcher and the run box are overlays and are answered by typing, so one that did not focus
 would be a menu nobody could drive. The icon layer covers the whole grid and sits behind

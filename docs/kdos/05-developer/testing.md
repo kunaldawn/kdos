@@ -1035,6 +1035,14 @@ Stated so nobody assumes otherwise:
   layer eighty columns wide on a hundred-and-sixty column screen — was green in `preflight.sh` and
   green in `selftest.sh` on the day it shipped. `usability.sh` drives those paths and photographs
   them; reading the result is still a person's job.
+- **A console golden cannot see a translucent window.** `window_opacity` writes the blend as the
+  cell's literal colour and leaves the slot exactly as the window was drawn in, which is what makes
+  a `--tty` view and a braille reader show an opaque window — and a golden is that same slot dump.
+  So a frame at 70 per cent and a frame at 100 are byte-identical goldens. The pixel path is the
+  only place it can be looked at, which means the rig.
+- **The pointer's own pixels are in no test.** `libkkms` draws the arrow at the device's position
+  and erases it by spoiling the cell rows it covered; a missed spoil is a trail of arrows across the
+  screen and shows up nowhere but a photograph of a moving pointer.
 - **Nothing here tests the build**, which takes hours and a container.
 
 ## See also

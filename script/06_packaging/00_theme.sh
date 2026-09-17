@@ -38,9 +38,14 @@ HOME=/etc/skel XDG_CONFIG_HOME=/etc/skel/.config XDG_CACHE_HOME=/etc/skel/.cache
     XDG_DATA_HOME=/etc/skel/.local/share \
     /usr/local/bin/kdos theme phosphor
 test -s /etc/skel/.cache/kdos/theme
-test -s /etc/skel/.config/gtk-3.0/gtk.css
+test -s /etc/skel/.config/gtk-3.0/settings.ini
 test -s /etc/skel/.config/gtk-4.0/gtk.css
-test -s /etc/skel/.themes/KDOS/gtk-3.0/gtk.css
+# The stylesheet's directory carries the accent, because GTK reloads a theme
+# when its NAME moves and never when one file under a fixed name is rewritten.
+# `KDOS` is a link to it, which is what every seeded settings.ini, XCURSOR path
+# and shipped package copy still names.
+test -s /etc/skel/.themes/KDOS-phosphor/gtk-3.0/gtk.css
+test -L /etc/skel/.themes/KDOS
 test -s /etc/skel/.icons/KDOS/index.theme
 # The window frames. This file used to ship from fs/ as a fixed neutral grey
 # and was the one artefact an accent switch could not reach; it is generated

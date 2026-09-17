@@ -51,6 +51,18 @@ typedef struct {
 	 * day will want it off.
 	 */
 	int paste_guard;
+	/*
+	 * How much of the window's own background it keeps, in PER CENT,
+	 * 20..100. Below 100 the cells this terminal has not drawn on show the
+	 * desktop behind them; the ink is never mixed, so the text is as
+	 * legible as it is at 100.
+	 *
+	 * ONLY WHERE THERE IS A COMPOSITOR UNDER IT. On the console desktop the
+	 * session composes the grid and `window_opacity` in con.conf is the
+	 * knob for the same thing; on a tty there is nothing behind the window
+	 * at all.
+	 */
+	int opacity;
 } TermConf;
 
 extern TermConf TC;

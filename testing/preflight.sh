@@ -1542,27 +1542,32 @@ fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
-# `kdos theme`, so the bits that say it has one may be SET in exactly four
+# `kdos theme`, so the bits that say it has one may be SET in exactly five
 # places: the render boundary where a terminal's own colour arrives
 # (kvt_grid.c), the wire that carries it to a view that asked (kcon_wire.c),
-# the header that defines them, and the accent picker — whose swatches ARE the
+# the header that defines them, the accent picker — whose swatches ARE the
 # schemes it is offering, so drawing them in slots would show one palette seven
-# times. A surface that set one anywhere else would be a piece of chrome
-# wearing a colour a retint cannot move — and it would look right on the
-# machine it was written on.
+# times — and the translucency pass in ktui_draw.c, which MIXES TWO SLOTS of
+# the palette in force and does it again on every frame, so a retint moves it
+# like everything else (it sets the FOREGROUND bit too, on a reversed cell,
+# because that is the half of such a cell the painter shows as a background).
+# A surface that set one anywhere else would be a piece
+# of chrome wearing a colour a retint cannot move — and it would look right on
+# the machine it was written on.
 _lit=0
 for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|attr *= *KT_A_(FGRGB|BGRGB|ULCOLOR)' \
         src/ 2>/dev/null); do
     case "$_f" in
     src/libs/libkvt/kvt_grid.c|src/libs/libkcon/kcon_wire.c) continue ;;
     src/libs/libktui/ktui.h|src/libs/selftest.c) continue ;;
+    src/libs/libktui/ktui_draw.c) continue ;;
     src/desktop/kdos-shell/theme.c) continue ;;
     esac
     bad "$_f" "sets a literal colour bit — chrome draws in slots"
     _lit=$((_lit + 1))
 done
 [ "$_lit" = 0 ] &&
-    note "colour" "at the boundary, on the wire, and in the picker's swatches"
+    note "colour" "at the boundary, on the wire, in the blend, and in the picker"
 
 echo "==> the generated aerc styleset is one aerc will load"
 # A KEY IS object[.selected].attribute, and aerc refuses the WHOLE FILE on one

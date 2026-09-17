@@ -1618,12 +1618,21 @@ static const char ptr_mask[KKMS_PTR_H][KKMS_PTR_W + 1] = {
 	".......XXX.",
 };
 
-/* Where the session says the pointer is, in the SHARED grid's cells, and where
- * each screen last put it. A negative x is no pointer at all. Per screen
- * because a screen that was skipped — no free buffer, a flip in flight — still
- * holds the arrow it was last given, and a single record would tell it the
- * arrow it is still showing had already been taken off. */
-static int ptr_cx = -1, ptr_cy = -1;
+/*
+ * WHERE THE ARROW'S TIP IS, IN THE SHARED GRID'S PIXELS, and where each screen
+ * last put it. A negative x is no pointer at all.
+ *
+ * PIXELS AND NOT CELLS. The session names a cell because a cell is the whole
+ * of what it routes on, but this library reads the device itself and the arrow
+ * is its own pixels: an arrow that stepped a character at a time is a pointer
+ * that cannot be put on a scrollbar two pixels wide, and it reads as a stutter
+ * against a hand that is moving smoothly.
+ *
+ * Per screen because a screen that was skipped — no free buffer, a flip in
+ * flight — still holds the arrow it was last given, and a single record would
+ * tell it the arrow it is still showing had already been taken off.
+ */
+static int ptr_x = -1, ptr_y = -1;
 static int ptr_last_x[KKMS_MAX_OUT], ptr_last_y[KKMS_MAX_OUT];
 static unsigned char ptr_last_on[KKMS_MAX_OUT];
 
@@ -1662,25 +1671,24 @@ static int ptr_edge(int x, int y)
  * THE PIXELS THE ARROW COVERS ON ONE SCREEN, in that screen's own pixels and
  * already clipped to it, or 0 for a pointer that is not on this screen at all.
  *
- * The tip is the cell's TOP-LEFT PIXEL — the corner the reversed cell starts
- * at — so the two pointers name the same place. The outline puts one scaled
- * pixel outside the mask on every side, which is why the box starts a scale
- * step above and to the left of the tip.
+ * The tip is the pixel the device is at. The outline puts one scaled pixel
+ * outside the mask on every side, which is why the box starts a scale step
+ * above and to the left of the tip.
  *
  * CLIPPED TO THE WHOLE CELLS, not to the mode. The strip below the last row
  * and the one right of the last column are written by the painter only on a
  * full repaint and no row of `owed` covers them, so an arrow drawn there would
  * reach the shadow and no buffer.
  */
-static int ptr_box(const struct kkms_out *o, int cx, int cy,
+static int ptr_box(const struct kkms_out *o, int px, int py,
 		   int *x0, int *y0, int *x1, int *y1)
 {
 	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
 
-	if (cx < 0 || cy < 0 || cw < 1 || ch < 1)
+	if (px < 0 || py < 0 || cw < 1 || ch < 1)
 		return 0;
-	*x0 = (cx - o->col) * cw - s;
-	*y0 = cy * ch - s;
+	*x0 = px - o->col * cw - s;
+	*y0 = py - s;
 	*x1 = *x0 + (KKMS_PTR_W + 2) * s;
 	*y1 = *y0 + (KKMS_PTR_H + 2) * s;
 	if (*x0 < 0)
@@ -1737,10 +1745,10 @@ static uint32_t ptr_pixel(int slot)
  * like everything else: a light theme draws a dark arrow with a light outline
  * without a second decision being made anywhere.
  */
-static void ptr_draw(struct kkms_out *o, int cx, int cy)
+static void ptr_draw(struct kkms_out *o, int px, int py)
 {
 	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
-	int ox = (cx - o->col) * cw, oy = cy * ch;
+	int ox = px - o->col * cw, oy = py;
 	int maxx = o->cols * cw, maxy = o->rows * ch;
 	uint32_t body = ptr_pixel(KT_TEXT), edge = ptr_pixel(KT_BG);
 
@@ -1787,8 +1795,30 @@ static void ptr_draw(struct kkms_out *o, int cx, int cy)
  */
 static int kkms_pointer(int x, int y)
 {
-	ptr_cx = x;
-	ptr_cy = y;
+	int cw = kcell_w(), ch = kcell_h();
+
+	if (x < 0 || y < 0 || cw < 1 || ch < 1) {
+		ptr_x = ptr_y = -1;
+		return 1;
+	}
+
+	/*
+	 * THE DEVICE'S OWN PIXEL WHERE IT AGREES WITH THE NAMED CELL, and the
+	 * cell's corner where it does not.
+	 *
+	 * The two agree for a mouse: the cell the session routed on was derived
+	 * from this very position. They disagree for a pointer this library did
+	 * not move — a finger, whose cell comes from the touch recogniser and
+	 * leaves the device position where the mouse last was — and there the
+	 * cell is the only true answer, so the arrow snaps to it.
+	 */
+	if (K.ptr_seen && (int)K.ptr_px / cw == x && (int)K.ptr_py / ch == y) {
+		ptr_x = (int)K.ptr_px;
+		ptr_y = (int)K.ptr_py;
+	} else {
+		ptr_x = x * cw;
+		ptr_y = y * ch;
+	}
 	return 1;
 }
 
@@ -1873,11 +1903,11 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		 * spoil and nothing owed from the old position.
 		 */
 		int nx0, ny0, nx1, ny1, ox0, oy0, ox1, oy1;
-		int has = ptr_box(o, ptr_cx, ptr_cy, &nx0, &ny0, &nx1, &ny1);
+		int has = ptr_box(o, ptr_x, ptr_y, &nx0, &ny0, &nx1, &ny1);
 		int had = full ? 0 : ptr_last_on[i];
 		int moved = has != ptr_last_on[i] ||
-			    (has && (ptr_cx != ptr_last_x[i] ||
-				     ptr_cy != ptr_last_y[i]));
+			    (has && (ptr_x != ptr_last_x[i] ||
+				     ptr_y != ptr_last_y[i]));
 
 		if (had && moved &&
 		    ptr_box(o, ptr_last_x[i], ptr_last_y[i], &ox0, &oy0, &ox1,
@@ -1891,7 +1921,7 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			continue;	/* nothing on this screen moved */
 
 		if (has) {
-			ptr_draw(o, ptr_cx, ptr_cy);
+			ptr_draw(o, ptr_x, ptr_y);
 			/*
 			 * THE ROWS IT COVERS ARE OWED ONLY WHEN IT MOVED. A
 			 * row the paint above touched is already in `painted`
@@ -1909,8 +1939,8 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 					o->painted[r] = 1;
 		}
 		ptr_last_on[i] = (unsigned char)has;
-		ptr_last_x[i] = ptr_cx;
-		ptr_last_y[i] = ptr_cy;
+		ptr_last_x[i] = ptr_x;
+		ptr_last_y[i] = ptr_y;
 
 		if (full) {
 			owe_all(o);

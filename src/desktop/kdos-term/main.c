@@ -650,6 +650,11 @@ int main(int argc, char **argv)
 			.cols = want_cols > 0 ? want_cols : TC.cols,
 			.rows = want_rows > 0 ? want_rows : TC.rows,
 			.floating = floating,
+			/*
+			 * 100 says nothing to the display, which is what
+			 * every surface that has never asked for this says.
+			 */
+			.opacity = TC.opacity < 100 ? TC.opacity : 0,
 		};
 
 		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {

@@ -302,6 +302,22 @@ alternative to holding the connection, it is a different thing entirely.
 cast view does not exit — it *is* the stream — so the reply is built when its first line arrives and
 the process is left running until the session is closed.
 
+**Settings answers two namespaces, and a boxed application needs both.**
+`org.freedesktop.appearance` carries `color-scheme` — always "prefer dark", because KDOS has no
+light palette and a toolkit told "no preference" picks its own light theme — and `accent-color`,
+which libadwaita reads. `org.gnome.desktop.interface` carries `gtk-theme-name`, `icon-theme-name`
+and `cursor-theme`, and it is the **only thing that retints a GTK3 application already running**:
+the user stylesheet is loaded once at startup, so a palette written into it reaches the next launch
+and never this one, while a theme name that moves makes GTK rebuild the whole cascade.
+
+**And the backend watches the accent file and emits `SettingChanged`.** A toolkit reads the
+settings once and then waits for that signal; without it the portal is a lookup nobody repeats, and
+an accent switched while a boxed editor is open reaches its next launch. The watch is on the
+directory, because the file is replaced rather than edited, and the signal is withheld until
+`~/.themes/KDOS-<accent>` actually exists — `kdos theme --preview` writes the file and generates
+nothing, and an application sent the name of a theme that is not there falls back to its own
+default.
+
 **And the bus loop does not block on the dialog.** The fork happens in the handler, the request
 message is retained, the handler returns "handled" *without* replying, the pipe joins the main
 loop, and the reply is built when the chooser exits. A portal backend is a server, and a server
@@ -446,8 +462,8 @@ width — text stepped up with `Super+=` until the characters are twice their sh
 channel is converted for it; on the shipped font that conversion is an identity, and no shipped font
 crosses the mark. [known-gaps](../06-reference/known-gaps.md) records it.
 
-`GTK_THEME` and the rest of the box environment carry nothing about this: the scale reaches the
-application through its compositor, which is what every toolkit already reads it from.
+The box environment carries nothing about this: the scale reaches the application through its
+compositor, which is what every toolkit already reads it from.
 
 ## Input methods
 
@@ -491,7 +507,7 @@ environment, not the caller's. So every variable a launch needs is stated explic
 | `DBUS_SESSION_BUS_ADDRESS` | Or a single-instance application blocks with no window |
 | `XDG_CURRENT_DESKTOP=KDOS` | Portal and theme selection |
 | `GTK_USE_PORTAL=1` | See below |
-| `GTK_THEME=KDOS` | The recoloured theme in `$HOME` |
+| *(no `GTK_THEME`)* | Deliberately absent: that variable overrides the theme setting for the life of the process, so an accent switch could never reach a running GTK application. The name arrives through the settings portal and through the seeded `gtk-3.0/settings.ini` instead |
 | `GSETTINGS_BACKEND=keyfile` | No settings daemon is reachable |
 | `QT_IM_MODULE=wayland` | Input methods through the compositor |
 | `CUPS_SERVER` | The host's print socket, when it exists |

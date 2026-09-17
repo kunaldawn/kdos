@@ -346,6 +346,7 @@ reported by name rather than ignored.
 | `images` | `yes` | Decode pictures. `no` turns the three image protocols off in the parser, not merely in the drawing |
 | `image_max` | 1024 | The cap on one image payload, in kilobytes |
 | `image_cells` | 200 | The widest and tallest a picture may be, in cells |
+| `opacity` | 100 | How much of the window's own background it keeps, per cent, 20–100. Below 100 the desktop shows through the cells the terminal has not drawn on; the ink is never mixed. **Only where a compositor is under it** — on the console desktop the session composes the grid and `con.conf`'s `window_opacity` is the same request |
 
 Re-read on `SIGHUP`, which is what `kdos theme` sends.
 
@@ -397,6 +398,8 @@ The same rule holds for `keys.conf`.
 | `tearing` | `no` | Present each frame the moment it is composed rather than at the vblank. Removes up to a refresh period of latency and **tears**: the raster is part way down the screen when the buffer changes under it, so a moving edge is sliced across. Silently `no` on a device that does not publish `DRM_CAP_ASYNC_PAGE_FLIP`. Reaches the view as `--tearing` |
 | `sessions` | `4` | How many workspaces, 1 to 9 |
 | `taskbar` | `windows` | What the session's own bottom row shows. `fkeys` puts Norton Commander's `F1`–`F10` row there instead; each cell fires `Super+F<n>` and does not bind the bare key |
+| `window_opacity` | `100` | How much of a window's own background it keeps, per cent, 20–100. Below 100 the cells it fills are mixed back towards whatever they covered, so a window shows the desktop or the window under it. **The ink is never mixed** — text, rules, chips and widget fills keep the colour they were drawn in — and an embedded application's pixels are its own and are never touched. A `--tty` view, a braille reader and a `--dump` show it opaque |
+| `panel_opacity` | `80` | The same, for a docked bar. `80` because the compositor desktop's bar is `80`: one desktop, one answer |
 | `scrollback` | `2000` | Lines a terminal window keeps, **per window** |
 | `a11y` | `no` | Bring the desktop up on a `--tty` view, which leaves the kernel's text plane intact so `brltty` reads it over `/dev/vcsa`. Costs the pixel half: no pictures and no font chords |
 | `speak` | `no` | Start `kdos-a11y` with the session. It says what each widget announces, through `espeak-ng` |
@@ -883,9 +886,11 @@ All are rewritten by `kdos theme`:
 
 | Path | Read by |
 |---|---|
-| `~/.themes/KDOS/` | GTK applications in boxes |
+| `~/.themes/KDOS-<accent>/` | GTK applications in boxes. The accent is in the NAME because GTK rebuilds its style cascade when the theme name moves and never when one file under a fixed name is rewritten |
+| `~/.themes/KDOS` | A symlink to the above, for everything written against the fixed spelling |
 | `~/.icons/KDOS/`, `~/.icons/KDOS-cursors/` | Every toolkit, host and box |
-| `~/.config/gtk-3.0/gtk.css`, `~/.config/gtk-4.0/gtk.css` | Applications that ignore themes |
+| `~/.config/gtk-3.0/settings.ini`, `~/.config/gtk-4.0/settings.ini` | The theme name, where a toolkit cannot reach the portal |
+| `~/.config/gtk-4.0/gtk.css` | libadwaita, which ignores GTK themes entirely. **There is no GTK3 copy**: GTK loads that file once at startup and never again, so a palette pinned there outranks the theme for the life of the process and would stop every GTK3 application following an accent switch |
 | `~/.config/kdeglobals` | Qt applications — **merged**, so your own settings survive |
 | `~/.config/foot/themes/kdos` | The terminal |
 | `~/.config/btop/themes/kdos.theme` | The system monitor |

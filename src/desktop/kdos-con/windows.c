@@ -2955,6 +2955,95 @@ static void title_cut(char *s, int cols)
 }
 
 /*
+ * ── TRANSLUCENCY ────────────────────────────────────────────────────
+ *
+ * `window_opacity` and `panel_opacity` in con.conf, per cent, 20..100. A
+ * window is drawn opaque and then mixed back towards whatever it covered, so
+ * the cost is one pass over the rectangle and nothing before it changes.
+ *
+ * THE BACKDROP IS NOT INCLUDED. Making the desktop itself translucent would
+ * mix it with the blank it is composed over, which is the same colour — what
+ * a person sees through a window is the windows and the ground behind it, and
+ * both are already in the frame by the time this runs.
+ *
+ * A PANEL IS A WINDOW HERE. It keeps its own key because a bar that reads as
+ * part of the screen and a window that floats over one want different amounts
+ * of it, and because the compositor desktop already spells it this way.
+ */
+#define WIN_OPACITY_MIN 20
+
+static int win_opacity_pct(const Win *w)
+{
+	static int win_pct = -1, panel_pct = -1;
+
+	if (win_pct < 0) {
+		win_pct = kcon_conf_int("window_opacity", 100);
+		panel_pct = kcon_conf_int("panel_opacity", 80);
+		if (win_pct < WIN_OPACITY_MIN)
+			win_pct = WIN_OPACITY_MIN;
+		if (panel_pct < WIN_OPACITY_MIN)
+			panel_pct = WIN_OPACITY_MIN;
+		if (win_pct > 100)
+			win_pct = 100;
+		if (panel_pct > 100)
+			panel_pct = 100;
+	}
+	/*
+	 * A BACKGROUND AND A FULLSCREEN WINDOW ARE THE SCREEN AND NOT ON IT.
+	 * There is nothing behind either to show, so a blend would mix them
+	 * with the blank and dim them for nothing. A lock and a saver never
+	 * reach here at all — win_draw_all() draws one of those INSTEAD of the
+	 * grid, for the same reason.
+	 */
+	if (!w || w->background || w->full)
+		return 100;
+	return w->panel ? panel_pct : win_pct;
+}
+
+/*
+ * WHAT THE RECTANGLE COVERED, kept while the window is drawn over it. One
+ * buffer for the whole walk: the blend is finished before the next window
+ * starts, so no two rectangles are ever held at once.
+ */
+static uint32_t *veil;
+static size_t veil_n;
+
+static uint32_t *veil_take(KRect r)
+{
+	size_t need = (size_t)r.w * (size_t)r.h;
+
+	if (r.w <= 0 || r.h <= 0)
+		return NULL;
+	if (need > veil_n) {
+		uint32_t *p = realloc(veil, need * sizeof(*p));
+
+		if (!p)
+			return NULL;
+		veil = p;
+		veil_n = need;
+	}
+	ktui_draw_bg_take(r, veil);
+	return veil;
+}
+
+/*
+ * A WINDOW'S DROP SHADOW, KEPT INSIDE THE WORK AREA.
+ *
+ * The shadow hangs one cell below and one right of the frame, so a window
+ * sitting against a docked edge casts it onto the panel there — and a panel
+ * is drawn before the windows above it, so nothing paints those cells back.
+ * The clip is what the strip belongs to: everything a window may cover.
+ */
+static void win_shadow(KRect r)
+{
+	KwmRect a = win_workarea();
+
+	ktui_draw_clip(krect(a.x, a.y, a.w, a.h));
+	ktui_draw_shadow(r);
+	ktui_draw_clip_none();
+}
+
+/*
  * `↓ ■ X` at the right of the title row, each one a three-cell chip: the
  * chip's own fill, the mark, the fill again.
  *
@@ -3331,7 +3420,16 @@ void win_draw_all(void)
 			 * title bar and a close button nobody asked for.
 			 */
 			if (!win_framed(w)) {
+				KRect b = krect(w->geom.x, w->geom.y,
+						w->geom.w, w->geom.h);
+				int bp = win_opacity_pct(w);
+				const uint32_t *bu =
+					bp < 100 ? veil_take(b) : NULL;
+
 				draw_content(w);
+				if (bu)
+					ktui_draw_blend(b, bu,
+							bp * 255 / 100);
 				continue;
 			}
 
@@ -3385,7 +3483,11 @@ void win_draw_all(void)
 			 */
 			title_cut(titled, btn_run(w, r, &bfirst) - r.x - 4);
 
-			ktui_draw_shadow(r);
+			int pct = win_opacity_pct(w);
+			const uint32_t *under =
+				pct < 100 ? veil_take(r) : NULL;
+
+			win_shadow(r);
 			ktui_draw_fill(r, rung ? KT_ACCENT : KT_SURFACE);
 			ktui_draw_box(r, titled,
 				      rung ? KT_SURFACE :
@@ -3396,6 +3498,8 @@ void win_draw_all(void)
 			draw_tabs(w, r);
 			draw_marks(w);
 			draw_content(w);
+			if (under)
+				ktui_draw_blend(r, under, pct * 255 / 100);
 		}
 	}
 
@@ -3537,7 +3641,7 @@ void win_list_draw(void)
 	if (list_sel >= n)
 		list_sel = n ? n - 1 : 0;
 
-	ktui_draw_shadow(r);
+	win_shadow(r);
 	ktui_draw_fill(r, KT_SURFACE);
 	ktui_draw_box(r, "Windows", KT_ACCENT, KT_SURFACE, 1);
 

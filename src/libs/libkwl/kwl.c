@@ -4672,16 +4672,21 @@ int kwl_init(const KDispConfig *cfg)
 	 * libkcell, and a surface that comes back opaque must not inherit the
 	 * last one's holes.
 	 *
-	 * The desktop clears KT_BG so the compositor's wallpaper shows. The
-	 * panel dims KT_SURFACE — its own background — so the desktop shows
-	 * through the bar. Nothing else clears anything, and the foreground is
-	 * never touched in either case.
+	 * The desktop clears KT_BG so the compositor's wallpaper shows. A
+	 * surface that asked for an opacity dims the slot ITS OWN BODY IS DRAWN
+	 * IN — KT_BG for a window, whose content sits on the backdrop slot, and
+	 * KT_SURFACE for a bar, a menu or a toast, which draw their body on the
+	 * chrome slot. Dimming the other one would clear a colour that surface
+	 * never puts down, so nothing would show through and every reversed cell
+	 * would be a hole. Nothing else clears anything, and the foreground is
+	 * never touched in any case.
 	 */
 	kcell_reset_slot_alpha();
 	if (cfg->role == KDISP_ROLE_BACKGROUND)
 		kcell_set_slot_alpha(KT_BG, 0);
 	else if (cfg->opacity > 0 && cfg->opacity < 100)
-		kcell_set_slot_alpha(KT_SURFACE,
+		kcell_set_slot_alpha(cfg->role == KDISP_ROLE_TOPLEVEL ? KT_BG
+								      : KT_SURFACE,
 				     (uint8_t)(cfg->opacity * 255 / 100));
 	/*
 	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the

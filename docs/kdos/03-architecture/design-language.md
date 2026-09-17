@@ -158,6 +158,20 @@ slots, always** — a piece of chrome holding a literal is a piece of chrome tha
 `kdos theme`, and the ANSI sixteen stay slots for the same reason: they are colours this desktop's
 palette names.
 
+**The second exception is translucency, and it is a mix of two slots rather than a colour of its
+own.** A grid holds one colour per cell and nothing behind it, so seeing through a window is a pass
+over the rectangle after it is drawn: `ktui_draw_bg_take()` copies the background colours that were
+there, and `ktui_draw_blend()` mixes what has since been drawn back towards them. The result is
+written as the cell's literal and the slot is left exactly as the caller drew it, so a display that
+declined the colour run — a `--tty` view, a golden, a braille reader — shows an opaque window, which
+is the honest answer where there is nothing to mix with. **Both ends of the mix come out of the
+palette in force and it is recomputed every frame**, so a retint moves it like everything drawn in
+slots; that is why this is not the rule above being broken. **Backgrounds only** — a translucent
+glyph is a glyph nobody can read — and a sprite cell is skipped, because a picture's pixels are not
+a background. `window_opacity` and `panel_opacity` in `con.conf` are where a person asks for it; on
+a compositor a surface asks through `KDispConfig.opacity`, which dims one slot in `libkcell` and
+takes an alpha buffer instead.
+
 Two rules on top of that, both of which have shipped as defects:
 
 ### `KT_DIM` is a fill, not a label colour
@@ -231,10 +245,11 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 screen, so a pointer the session drew would cost a round trip for every motion event and trail the
 hand moving it. The view already holds the device and already knows where it is.
 
-**The pointer is an arrow where there are pixels and the reversed cell everywhere else, and it is
-in the same cell either way.** `libkkms` composites an arrow into the framebuffer it already owns;
-a `--tty` view, a `--dump`, a view forwarded over `ssh` and `tty1` reverse the cell under it, which
-is the pointer every text mode has drawn. **The reversed cell is not a fallback anything may drop**
+**The pointer is an arrow where there are pixels and the reversed cell everywhere else.** `libkkms`
+composites an arrow into the framebuffer it already owns and puts it at the DEVICE'S OWN PIXEL, so
+it moves as smoothly as the hand holding it; a `--tty` view, a `--dump`, a view forwarded over `ssh`
+and `tty1` reverse the cell under it, which is the pointer every text mode has drawn and is as fine
+as a grid of characters goes. **The reversed cell is not a fallback anything may drop**
 — `a11y = yes` runs this desktop on a `--tty` view precisely so `brltty` can read `/dev/vcsa`, and
 a session looked at through two views at once is pointed at through both.
 
@@ -249,10 +264,17 @@ how it does it is the whole of the contract:
 - **The hook is called on every flush, including the ones with no pointer to report.** A negative
   `x` is no pointer at all, and it is the only thing that tells a backend to take the last arrow
   off the screen — one told nothing leaves an arrow at the last place the hand was.
-- **The cells are the unit, not the pixels.** `libkkms` reports a cooked motion only when the
-  *cell* changes, so a hook handed pixels would be handed the same pixel until it did. The arrow's
-  tip sits on the cell's top-left pixel, which is the corner the reversed cell starts at: the two
-  pointers name the same place and step the same way.
+- **The hook carries cells, and a backend that owns the device draws finer than that.** `libkkms`
+  reports a cooked motion only when the *cell* changes, so a hook handed pixels would be handed the
+  same pixel until it did — what the hook says is that there IS a pointer and which cell the session
+  believes it is on, which is what decides whose it is to draw. `libkkms` then draws at its own
+  `ptr_px`/`ptr_py`, the position it read off the device, and its flush repaints on a move of one
+  pixel. The cell is still the truth for a pointer this library did not move: a finger's cell comes
+  from the touch recogniser and leaves the device position where the mouse last was, so the arrow
+  snaps to the named cell whenever the two disagree about which cell they are in.
+- **The view presents AFTER it drains its input, not before.** The cell the session is told about
+  and the pixel the arrow is drawn at come out of the same queue, so a frame flushed first is a
+  frame drawn one cell behind the hand.
 
 And where the reverse is what gets drawn:
 
@@ -331,11 +353,12 @@ The sub-cell offsets in the wire format, biased so that zero is the centre of a 
 this. They are for the one thing on the desktop that can be pointed at more finely than a cell: an
 embedded pixel guest, which is told where inside the cell the press landed. **Motion finer than a
 cell is carried by the raw stream and by nothing else.** `libkkms` reports a cooked event only when
-the cell changes — a pointer this desktop draws has nowhere finer to be put, arrow or reverse, and
-what would move it is the cooked event it did not send — and emits the pixel and the delta for
-*every* device sample beside it, so a guest is aimed at the pixel while the drawn pointer steps
-whole cells. Sending the dropped motion as a cooked event too would deliver one movement twice to
-every guest, once as a pixel and once as the middle of a cell it is already inside.
+the cell changes — nothing this desktop ROUTES on is finer than a cell — and emits the pixel and
+the delta for *every* device sample beside it, so a guest is aimed at the pixel. Sending the dropped
+motion as a cooked event too would deliver one movement twice to every guest, once as a pixel and
+once as the middle of a cell it is already inside. The ARROW is not routing: it is drawn by the
+backend that owns the device, out of the same `ptr_px` the raw stream carries, so it moves a pixel
+at a time while the cooked stream steps cells.
 
 ### Pointer state: the window answers, not the pointer
 

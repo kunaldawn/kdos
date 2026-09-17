@@ -1154,7 +1154,34 @@ seat_embed_leave(struct cg_seat *seat)
 	 */
 	wlr_seat_pointer_clear_focus(seat->seat);
 	wlr_seat_pointer_notify_frame(seat->seat);
+	/*
+	 * AND THE ARROW ITSELF COMES OFF. This compositor's cursor is drawn
+	 * into the buffer the parent composites, so one left behind is a second
+	 * pointer on the desktop at the place the real one left the window. The
+	 * parent draws its own from here on, and seat_embed_show_pointer() puts
+	 * this one back at the position that brings the pointer in.
+	 */
+	if (!seat->ptr_hidden) {
+		seat->ptr_hidden = true;
+		wlr_cursor_unset_image(seat->cursor);
+	}
 	constraint_update(seat);
+}
+
+/*
+ * THE ARROW IS BACK, at the default shape. A client sets its own cursor from
+ * the enter event that the motion below raises, so the shape it wants replaces
+ * this one within the same frame group; a guest that sets none keeps the
+ * arrow every compositor draws.
+ */
+static void
+seat_embed_show_pointer(struct cg_seat *seat)
+{
+	if (!seat->ptr_hidden) {
+		return;
+	}
+	seat->ptr_hidden = false;
+	wlr_cursor_set_xcursor(seat->cursor, seat->xcursor_manager, DEFAULT_XCURSOR);
 }
 
 void
@@ -1204,6 +1231,7 @@ seat_embed_motion(struct cg_seat *seat, struct cg_view *view, double x, double y
 		seat->rel_pending = false;
 	}
 
+	seat_embed_show_pointer(seat);
 	wlr_cursor_warp_closest(seat->cursor, NULL, lx, ly);
 	process_cursor_motion(seat, embed_when(time_msec), dx, dy, dx_unaccel, dy_unaccel);
 	/*
