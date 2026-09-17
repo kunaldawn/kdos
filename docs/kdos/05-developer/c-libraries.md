@@ -45,7 +45,7 @@ painter is not made to link a Wayland client library to get it.
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
 | `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, the pixel canvas, and the one scale-and-cut of a decoded picture into sprite tiles | A font renderer, a pixel library |
-| `libkwl` | `kwl_` | The toolkit's **Wayland backend**: surface roles, buffers, scale, input, clipboard, compose, cursors, frame throttling | `libkcell`, plus Wayland client libraries |
+| `libkwl` | `kwl_` | The toolkit's **Wayland backend**: surface roles, buffers, scale, the font in force, input, clipboard, compose, cursors, frame throttling | `libkcell`, plus Wayland client libraries |
 
 ## Dependency direction
 
@@ -312,6 +312,19 @@ claims the answer. The console client claims it: a surface drawn through a displ
 a terminal, its stdout is not the screen it appears on, and the position it knows is in its own
 cells — which only the server can place on a screen. A backend that leaves the entry NULL keeps the
 escape, which is what the Wayland one does, because a compositor's surfaces draw their own.
+
+**The pointer goes the same way, and for the same reason.** `KtuiBackend.pointer` is handed the
+cell the pointer is on and answers whether it drew one itself; `libkkms` is the only backend that
+does, compositing an arrow into the framebuffer it already owns. Everything else leaves the entry
+NULL and `ktui_draw_flush()` reverses the cell under the pointer, which is the pointer a `--tty`
+view, a `--dump`, an `ssh` forward and `tty1` can show — and the one `a11y = yes` depends on, since
+that setting runs the desktop on a `--tty` view so `brltty` can read `/dev/vcsa`. **An arrow cannot
+be drawn in this library**: it links nothing but musl and has to keep doing so, and an arrow needs
+a pixel buffer and a colour in it. **The hook is called on every flush**, with a negative `x` for
+no pointer at all, because that call is the only thing that tells a backend to take the last arrow
+off the screen. Over a cell marked `KT_A_GUEST` the flush reports no pointer to either path: the
+guest's own compositor draws a cursor into those pixels and a second one a cell away is the one
+nobody is aiming with.
 
 **Offscreen rendering** takes a fixed size and writes the cell buffer out as plain text, with no
 terminal at all. Every geometry defect this toolkit has shipped was invisible to the compiler and
@@ -990,6 +1003,36 @@ The test harness stubs it to exactly that, so a committed reference frame is the
 The glyph cache and the cell painter: a grid of cells into a pixel buffer, the character ramp built
 from it, and the pixel canvas a block of cells can be drawn as.
 
+**The frame characters are drawn, not rasterised.** U+2500's single and double box sets and the
+whole of `U+2580`–`U+259F` — the full block, the eighths, the halves, the quadrants and the three
+shades — are painted as pixman rectangles derived from the cell, in the cell's own foreground, and
+the face is never asked for them. Rasterising them is exact only while the face's box glyphs are
+drawn to precisely the advance the cell was measured from: a face whose full block spans a hair
+more than its advance leaves a hairline between two cells at some pixel sizes, and a face drawing
+its box glyphs to another metric dashes a border outright. **Nothing selects the synthesis** — not
+an attribute, not a caller, not a tier — so the same character is the same picture in the panel,
+the terminal, the installer and the build screen, under every face and at every size. The rule is
+`max(1, cell_h / 16)` thick, capped at a third of the shorter side, and a double rule is that
+stroke twice with one stroke of gap; the single rule sits exactly between the double's pair, which
+is what makes `├` meet `─` and `╪` meet `║` with no step. **Every block edge is
+`floor(span * k / 8)` from the cell's top or left**, so an eighth, a half and a quadrant in
+neighbouring cells share a pixel row and a pixel column — rounding each shape from its own fraction
+is what puts a seam down a bar chart. **A synthesised character is one cell wide and puts no ink
+outside its own cell**, which is what the damage report and the wide-glyph clip both assume; every
+rectangle is clamped to the cell after it is computed, so a cell too small to hold three strokes
+draws a thinner line rather than one that leaves the cell. **They are not cached as masks**: a
+cached mask is composited OVER, per pixel, through a solid source, where a fill of at most eight
+rectangles issued in one call is cheaper than the composite it replaces — a cache would spend
+memory to make the draw slower. The three shades are the exception, because a quarter-tone dither
+at a 16x32 cell is 128 disjoint pixels: they are one repeating `a8` tile per tone per scale, four
+by two cell pixels across, **offset by the cell's absolute position** so one pattern runs
+unbroken across a whole shaded area instead of changing phase at every cell boundary.
+
+**The synthesised set is exactly what the VT tier's font carries**, so a box character is the same
+picture on a screen of its own as it is on `tty1` and the two tiers cannot drift apart. That
+includes the two mixed single/double junctions `╪` and `╬`, which the console font has. The heavy,
+dashed and rounded variants are not in it and still reach whatever face carries them.
+
 **A cell's style is drawn here, and two of them need a second face.** Underline, strike and
 overline are one horizontal rule each, differing only in the row they land on and drawn after the
 glyph so a descender crossing a strike is cut by it; a broken rule — curly, dotted, dashed — is
@@ -1026,8 +1069,8 @@ that same teardown plus fcft's own, and **is not a step in a font change**: fcft
 refcounted, so a free is a shutdown of the library.
 
 **The changed-span repaint steps back onto a wide glyph's lead.** A row is repainted only between
-its first and last changed cell, widened one cell each way for the overhang libktui's box
-characters are allowed. That is not enough on its own: a double-width glyph is painted entirely by
+its first and last changed cell, widened one cell each way because a cell's pixels are not always
+its own. That is not enough on its own: a double-width glyph is painted entirely by
 its lead, so a span that began on the `KTUI_WIDE_CONT` marker beside it would fill the marker's
 pixels — erasing the right half of the character — and then find nothing to redraw there. The span
 therefore takes one more step left when it starts on a continuation cell.
@@ -1156,6 +1199,20 @@ are held now, not as they were latched at the press** — taking Shift while an 
 a selection — while the keysym stays the one that was pressed, exactly as `libkwl` does it, because
 re-resolving it would turn a repeating letter into its capital mid-stream.
 
+**The pointer is an arrow composited into the shadow after the cells, and erasing it is the harder
+half.** Nothing in the cell model knows the arrow is there, so the cells it covered are unchanged
+and the row diff finds nothing to repaint: this library puts those cells back into its own previous
+frame, which is what makes the next paint rewrite the pixels under the old arrow. A move is also
+carried past the nothing-changed exit, or the first arrow is never drawn and every later one is
+drawn where it was. Getting either wrong is a trail of arrows down the screen, one per place the
+hand stopped. The rows the arrow covers are marked owed **only when it moved** — a row the paint
+touched is already owed, a row it did not holds the same pixels it held last frame, and `owed` is
+per buffer and sticky. **The mask is drawn in code**, 11x18 scaled by a whole number of pixels to
+about one cell tall, with the outline computed from the mask's own eight-neighbourhood; the body is
+`KT_TEXT` and the outline `KT_BG`, so the arrow follows `kdos theme` and night light like
+everything else. **Not a hardware cursor plane** — see
+[known-gaps](../06-reference/known-gaps.md).
+
 **The virtual box is a whole number of cells.** Each screen contributes its own cell width and the
 trailing partial cell of its mode is padding no pointer can enter. Summing raw mode widths instead
 invents a column that belongs to no screen's slice, because `floor(sum(w)/cw)` can exceed
@@ -1217,6 +1274,11 @@ failure:
 - **The cell painter leaves a clip on the image it was handed**, so anything drawn into that same
   image afterwards — the panel's frame rule — must drop the clip first or pixman writes nothing.
 - **A compose table that fails to build is absent, never partial.**
+- **A font reload spoils every paint baseline, because it rewrites no cell.** `kwl_font_step()`
+  changes what a cell LOOKS like and not what it says, so the damage diff, both buffer shadows and
+  the unchanged-frame gate would all find nothing to do while every glyph on the screen is drawn at
+  the old size. It also owns its own copy of the name: `KDispConfig.font` is the caller's pointer
+  and the surface outlives whatever the caller built it in.
 - **A lock surface must not receive the pre-configure commit**, which is a protocol error there.
 - **A Ctrl chord is the letter plus `KT_MOD_CTRL`**, never the control code xkb folds it into —
   the tty decoder and libkkms both deliver the letter, and a chord table has one vocabulary.

@@ -12,11 +12,14 @@
  * one also holds the ALPHA SPAN we actually blit, which is the part that costs —
  * and now the UPSCALED span as well.
  *
- * The grid is monospaced by construction, not by hope: the cell is the font's
- * widest advance, and a glyph wider than one cell is drawn clipped rather than
- * allowed to run into its neighbour. That matters more here than in a terminal
- * emulator, because libktui's box-drawing and block characters must tile
- * exactly — a half-pixel of overhang turns a border into a dashed line.
+ * The grid is monospaced by construction, not by hope: the cell is the advance
+ * of one CHARACTER — see cell_advance() for why that is not the face's maximum
+ * — and a glyph wider than one cell is drawn clipped rather than allowed to
+ * run into its neighbour. A fallback face answers with whatever metric it has,
+ * and a bitmap exceeding the cell would otherwise overwrite the character
+ * beside it, which that character has no reason to repaint. The box-drawing
+ * and block characters do not depend on the clip: kcell_paint synthesises
+ * them, so their tiling is arithmetic rather than a property of the face.
  * ---------------------------------
  */
 
@@ -235,6 +238,29 @@ static bool looks_monospaced(struct fcft_font *f)
 	return m->advance.x == i->advance.x;
 }
 
+/*
+ * HOW WIDE ONE CHARACTER IS, which is NOT the face's maximum advance.
+ *
+ * FreeType's max advance is the widest glyph in the FACE, and a monospaced
+ * face may still carry glyphs two and three cells wide: Noto Sans Mono has 243
+ * at two and nine at three, so its maximum is three times the width of a
+ * letter. A grid cut to that is a grid with two blank columns after every
+ * character and a box-drawing rule reaching a third of the way across its
+ * cell, which is a dashed border on every window in the desktop.
+ *
+ * `M` IS THE MEASURE, and looks_monospaced() has already established that it
+ * is the same advance as `i`. A face that will not rasterise it falls back to
+ * the maximum, which is the same number on a charcell bitmap font and on any
+ * face whose advances are uniform.
+ */
+static int cell_advance(struct fcft_font *f)
+{
+	const struct fcft_glyph *m = fcft_rasterize_char_utf32(f, 'M',
+							       FCFT_SUBPIXEL_NONE);
+
+	return m && m->advance.x > 0 ? m->advance.x : f->max_advance.x;
+}
+
 static void notdef_forget(void)
 {
 	free(notdef_bits);
@@ -301,7 +327,7 @@ static struct fcft_font *companion(const char *base, const char *attrs)
 
 	snprintf(spec, sizeof(spec), "%s%s", base, attrs);
 	f = fcft_from_name(1, names, NULL);
-	if (f && (f->max_advance.x != cell_w || f->height != cell_h)) {
+	if (f && (cell_advance(f) != cell_w || f->height != cell_h)) {
 		fcft_destroy(f);
 		f = NULL;
 	}
@@ -400,7 +426,7 @@ int kcell_font_load(const char *name)
 		 * and a wrong-shaped grid is still better than no desktop. */
 	}
 
-	cell_w = face[0]->max_advance.x;
+	cell_w = cell_advance(face[0]);
 	cell_h = face[0]->height;
 	ascent = face[0]->ascent;
 	if (cell_w <= 0 || cell_h <= 0) {

@@ -19,11 +19,27 @@ a KDOS surface and a boxed application under `kdos-comp`; on the console the ses
 between its own windows, and an embedded graphical application is not one of them — see below.
 See [Status](status.md) for what that rests on.
 
-**A drag on the console has no picture under the pointer.** The pointer is a reversed cell, which is
-the whole of what it is on every tier this desktop draws on, so there is nothing to hang a carried
-icon from — the bar says what is being carried instead. A target does not highlight either: the
-session sends `ENTER` and `LEAVE`, and `kdos-desk` keeps them rather than drawing on them, which is
-what `libkwl` does with the compositor's own.
+**A drag on the console has no picture under the pointer.** The view draws the pointer and the
+session owns the drag, so nothing that knows what is being carried is in a position to hang a
+picture off it — the bar says what is being carried instead. A target does not highlight either:
+the session sends `ENTER` and `LEAVE`, and `kdos-desk` keeps them rather than drawing on them,
+which is what `libkwl` does with the compositor's own.
+
+**The pointer does not change shape, and it steps a cell at a time.** On a screen of its own it is
+an arrow in pixels and everywhere else it is the cell under it reversed, but it is one picture
+either way: there is no resize double-arrow, no I-beam and no busy pointer, and the window says
+what a press would arm instead — see the pointer contract in
+[design-language](../03-architecture/design-language.md). It also moves in whole cells, because
+`libkkms` reports a cooked motion only when the cell changes and that event is what moves the
+drawn pointer; the pixel and the delta beside it go to an embedded guest, which is the one thing
+aimed more finely than a cell.
+
+**The console pointer is composited, not a hardware cursor plane.** `libkkms` draws the arrow into
+the same framebuffer as the cells, so moving it costs the rows it covers and the rows it left.
+`drmModeSetCursor2` on a plane would cost nothing per move and `kkms_drm_fd()` is public, but a
+plane has its own size limits, its own format and a per-driver set of refusals, and the
+transfer-model drivers the console runs on in a virtual machine have no usable plane at all — so
+there would still have to be the composited path underneath it.
 
 **No multi-seat.** `seat0` only. The session and view split makes a second seat
 reachable — a second session with a second view — and nothing implements it, so
@@ -47,13 +63,17 @@ session's, and is off by default because old output that is not marked reads as 
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
 scale is not negotiated.
 
-**One font for every output, size and face alike.** The font every KDOS surface draws with is a
-single setting, so it is right on a machine with one screen and wrong on two of different densities.
-The console's font chords step every view that has a screen of its own and the font picker sets the
-face on all of them, which keeps the two screens agreeing rather than letting each be right: a
-per-output font is a different design, not a missing call. The picker also shows one list where two
-displays are attached — the FIRST to answer — because two lists would be one question with two
-answers and nothing to say which screen a person meant.
+**One font for every output, size and face alike — everywhere but a terminal window.** The font
+every KDOS surface draws with is a single setting, so it is right on a machine with one screen and
+wrong on two of different densities. The console's font chords step every view that has a screen of
+its own and the font picker sets the face on all of them, which keeps the two screens agreeing
+rather than letting each be right: a per-output font is a different design, not a missing call. The
+one window with a size of its own is `kdos-term` under `kdos-comp`, and only because it is one
+process per window and the face is a process-global: `Ctrl+=`, `Ctrl+-` and `Ctrl+0` move that
+process and nothing else. The same chords in a console window have nowhere to go — the cell there
+is the view's — and say so. The picker also shows one list where two displays are attached — the
+FIRST to answer — because two lists would be one question with two answers and nothing to say
+which screen a person meant.
 
 **No console font is loadable from `/usr/share/consolefonts`.** Every one of those is a PSF, and
 the cell painter loads a face through fontconfig, which cannot scan a PSF at all: FreeType has no
@@ -182,6 +202,14 @@ cells tall gets 1, because a number that does not divide the cell leaves the gue
 stripe short of its own output. What is missing is a font that crosses the mark, not the code — see
 [`kdos-cage`](../04-programs/kdos-cage.md) and [`kdos-con`](../04-programs/kdos-con.md).
 
+**A menu bigger than the window it opens in is cut off at that window's edge.** A popup is not a
+window: it renders into its toplevel's framebuffer and cannot leave it. The cage keeps the head of
+such a menu on screen rather than let wlroots shrink it to a band, and the scene clips the tail at
+the edge — so the items past the edge cannot be reached. There is no scroll, and the toolkit is told
+it was given the size it asked for, so it does not paginate either. Make the console window big
+enough for the menu and the whole of it appears. See
+[`kdos-cage`](../04-programs/kdos-cage.md).
+
 **A drag onto an embedded graphical application reads as cancelled.** `KEMBED_DRAG_OFFER`,
 `KEMBED_DRAG_ENTER`, `KEMBED_DRAG_MOTION`, `KEMBED_DRAG_LEAVE` and `KEMBED_DROP` are declared in
 `kembed.h` and implemented by neither `kdos-cage` nor `kdos-con`, so a drag released over an
@@ -226,6 +254,25 @@ or keyboard carries the raw device stream beside the cell one, so a guest is aim
 typed at through the person's own layout; a touch event is synthesised from the gesture recogniser
 and has no raw partner, so it arrives at the grid's resolution. A finger is wider than a cell, which
 is why this has not been worth a second synthesis path.
+
+**The console's tabbed windows stack and do not tile.** `Super+Shift+s` folds one window into
+another as a tab and that is the whole of it: there are no **tile groups** — two windows put side
+by side that move, size and minimise together — because nothing in the window model can hold one.
+`tiled` is a per-window bitmask resolved against the work area and never against a neighbour, and
+the arrangements clear it afterwards precisely so that an arrangement is not a state, so a group
+would reuse none of the machinery a stack reuses and is a much larger change.
+
+**A stack is made by a chord and never by a drag.** A title-bar drag on the console is a pure
+translation with no drop target and no hit test against another window, and the tab strip answers no
+press at all — so there is no dropping one window onto another's title bar and no clicking a tab to
+bring it up. The four chords are what exist.
+
+**Tabs cannot be reordered, and a stack does not survive a session restore.** The strip is ordered
+by window id, which is the only order that does not reshuffle when a tab is brought up; there is no
+verb that moves one along it. And the saved-session record is a rectangle and a flags column per
+window, with no word for a relation between two of them, so a session saved with a stack open comes
+back as that many ordinary windows. Both are in
+[kdos-con](../04-programs/kdos-con.md#tabbed-windows).
 
 **A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
 code by design, so a terminal window it opens itself shows the fallback shade where a picture is.

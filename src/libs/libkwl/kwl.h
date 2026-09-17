@@ -126,6 +126,36 @@ int kwl_copy(const char *text, size_t len, int primary);
  * recent input event: the compositor checks the serial a drag starts from. */
 int kwl_drag_start(const char *mime, const char *data, size_t len);
 
+/*
+ * A DIFFERENT FONT ON THIS SURFACE, and on every surface in this process:
+ * the face and its size are a process-global in libkcell. A program with one
+ * window per process — kdos-term is the one — gets a per-window size out of
+ * that; a program drawing several surfaces moves all of them at once.
+ *
+ * `step` moves the size in the name by that many units of whichever key
+ * carries it, `:pixelsize=N` or `:size=N`, clamped at both ends. A step of 0
+ * puts back the name kwl_init() was given, which is what the console's own
+ * font chords mean by a reset. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE
+ * IT CARRIES, so a step that lands between two of them reloads a face of the
+ * same size and the cell does not move at all. kwl_cell_w()/kwl_cell_h() are
+ * how a caller tells: everything it cut for the old cell is still right when
+ * they have not changed.
+ *
+ * The grid is derived from the cell and not stored, so a different cell is a
+ * different number of columns and rows: this reloads, recuts the grid from the
+ * pixels the surface already has, spoils every paint baseline and raises
+ * `ktui_resized`. The CALLER calls ktui_draw_resize() and re-states everything
+ * else it cut for the old cell — a sprite scaled to it is still scaled to it,
+ * and nothing here knows what those are.
+ *
+ * 0 when the font in force is the one asked for. -1 with NOTHING MOVED when
+ * the name does not fit or will not load: the old font is put back, because a
+ * window with no glyphs at all is not a state a person can type their way out
+ * of. -1 with the restore having failed too leaves nothing drawable, and a
+ * caller that sees it should say so and exit.
+ */
+int kwl_font_step(int step);
+
 /* Cell metrics, once the font is loaded. A panel's pixel height is
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);

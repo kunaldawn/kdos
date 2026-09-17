@@ -355,6 +355,15 @@ static int con_section(const char *act, const char **desc)
 		{ "restore",	"bring back the last minimised",	SEC_WINDOW },
 		{ "restore-all", "bring back every minimised window",
 							SEC_WINDOW },
+		{ "lower",	"send the window to the back",	SEC_WINDOW },
+		{ "window-menu", "every verb for this window, in a list",
+							SEC_WINDOW },
+		{ "stack",	"fold the next window in as a tab",
+							SEC_WINDOW },
+		{ "stack-next",	"the next tab of this stack",	SEC_WINDOW },
+		{ "stack-prev",	"the previous tab",	SEC_WINDOW },
+		{ "unstack",	"put every tab back on the desk",
+							SEC_WINDOW },
 		/* THE SAME WORDS THE COMPOSITOR'S ROW USES. One key, two
 		 * desktops: a card that called it a scratchpad here and a
 		 * drop-down there would read as two features. */

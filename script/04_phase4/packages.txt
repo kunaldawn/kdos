@@ -162,6 +162,13 @@ ttf-dejavu
 # face, fontconfig has nothing to fall back to and every CJK codepoint renders
 # as a box — in foot, in an alien app, and in any filename that carries one.
 noto-cjk
+# Noto Sans and Noto Sans Mono, and the preference file that puts them at the
+# head of `sans-serif` and `monospace`. This is the face the cell grid is drawn
+# in, so it decides what every console surface looks like. It is installed
+# BESIDE DejaVu and not instead of it: Noto Sans Mono carries the full box and
+# block sets but no diagonal arrows, four dingbats and three misc symbols, and
+# the preference file is numbered so fontconfig reaches DejaVu for those next.
+noto-fonts
 
 # ---------------------------------
 # Modern CLI tools (Rust / Go)

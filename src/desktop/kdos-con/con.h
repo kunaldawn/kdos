@@ -161,7 +161,27 @@ enum {
 	/* Put the bar away, and bring it back. An ACTION and not a command:
 	 * it is this session's own layout and nothing outside the process can
 	 * do it. APPENDED, like every value here. */
-	CON_ACT_BAR
+	CON_ACT_BAR,
+	/*
+	 * TO THE BACK. The inverse of the raise every other verb here ends in,
+	 * and the only thing that reaches the window under one of the same
+	 * size: the ring raises, so it brings the same window forward however
+	 * many times it is pressed.
+	 */
+	CON_ACT_LOWER,
+	/* The window menu, over the focused window. Every frame verb in one
+	 * list with its chord beside it, which is how the ones with no chip
+	 * are found at all. */
+	CON_ACT_WINMENU,
+	/*
+	 * TABS ON A WINDOW FRAME, and stacking is the whole of what they are:
+	 * `stack` folds the next window of the ring into the focused one, the
+	 * two steps walk the strip, and `unstack` takes the group apart again.
+	 * Nothing here moves a window beside another — see win_stack_join().
+	 * APPENDED, like every value here.
+	 */
+	CON_ACT_STACK, CON_ACT_STACK_NEXT, CON_ACT_STACK_PREV,
+	CON_ACT_UNSTACK
 };
 
 /*
@@ -346,6 +366,39 @@ void con_spawn_at(const char *cmd, int x);
 #define CON_FRAME_X 2
 #define CON_FRAME_Y 1
 
+/*
+ * HOW MANY COLUMNS ONE TITLE-ROW CHIP OWNS: plate, mark, plate.
+ *
+ * THE MARK NEEDS PLATE ON ALL FOUR SIDES. The palette's dark slots are one
+ * colour to the eye — KT_BG measures 1.00:1 to 1.20:1 against KT_SURFACE
+ * across the seven schemes — so a chip's ink cannot be told from the window
+ * body below the title row by its colour. What tells them apart is the plate
+ * AROUND the mark, and an odd width is the only one that can centre it.
+ *
+ * AND A ONE-CELL TARGET IS THE FAILURE A PERSON FEELS: a mouse has to be aimed
+ * at it and a finger cannot land on it at all, and the miss goes to the title
+ * row underneath, which arms a move.
+ *
+ * READ BY btn_run() AND draw_buttons() AND NOTHING ELSE. The stride living in
+ * two places is the bug the one-place rule above btn_run() exists to prevent.
+ */
+#define CON_CHIP_W 3
+
+/*
+ * THE NARROWEST A TAB MAY BE DRAWN, in cells: a space, four columns of title,
+ * a space.
+ *
+ * A TAB IS READ BY THE PLATE AROUND ITS TEXT, exactly as a chip is — the
+ * palette's dark slots are one colour to the eye, so the fill either side is
+ * the whole of what separates one tab from its neighbour. Four columns of
+ * title is the shortest run that tells two programs apart at a glance; below
+ * it the strip stops being names and becomes a row of initials.
+ *
+ * A STRIP THAT CANNOT GIVE EVERY TAB THIS MUCH COLLAPSES TO A COUNTER instead
+ * of shrinking further. See draw_tabs().
+ */
+#define CON_TAB_MIN 6
+
 
 /*
  * HOW FAR ALONG A SIDE IS STILL THE CORNER, in cells.
@@ -376,6 +429,31 @@ void con_spawn_at(const char *cmd, int x);
  * sentence: this window wants you.
  */
 #define CON_FLASH_MS 120
+
+/*
+ * THE STARTUP CARD A BOXED APPLICATION OPENS AS, in cells of content.
+ *
+ * A launch is a window on the desktop from the moment the cage is forked,
+ * seconds before the application behind it can draw anything — and the
+ * rectangle that window is going to BE is the rectangle the cage was forked
+ * with, which is half the work area or whatever the person last left this
+ * program at. Standing that rectangle up empty is a large blank frame that is
+ * then repainted by an application laying itself out inside it; standing a
+ * card up instead says the same thing in a shape that is obviously not the
+ * application yet.
+ *
+ * IT IS THE WINDOW'S RECTANGLE AND NEVER THE GUEST'S OUTPUT. The output stays
+ * cut at the full rectangle for the whole of the launch, so nothing is
+ * reallocated and nothing is reconfigured when the card opens out — see
+ * `Win.starting`. Shrink the output to the card and the application comes up
+ * the size of the card, which is the failure this exists to avoid.
+ *
+ * Three rows: the name, the bar, the stage. Clamped to the rectangle it opens
+ * out to, so a launch remembered at a tiny rectangle gets a card that fits
+ * inside it rather than one larger than the window it precedes.
+ */
+#define CON_CARD_W 30
+#define CON_CARD_H 3
 
 typedef struct Win {
 	struct Win *next;
@@ -414,6 +492,25 @@ typedef struct Win {
 	int floating;
 
 	/*
+	 * THIS WINDOW IS A STARTUP CARD AND NOT THE APPLICATION YET, which is
+	 * a boxed guest between the fork and its first frame.
+	 *
+	 * WHILE IT IS SET, `geom` AND THE GUEST'S OUTPUT ARE TWO DIFFERENT
+	 * RECTANGLES. `geom` is the card — CON_CARD_W by CON_CARD_H, centred
+	 * on the rectangle the window will open out to — and the output is
+	 * that larger rectangle, already allocated and already named in the
+	 * cage's `--embed`. embed_resized() reads the larger one for as long
+	 * as this stands, because reflowing the guest to the card is the
+	 * application coming up the size of the card.
+	 *
+	 * AND NOTHING REMEMBERS A CARD'S RECTANGLE. geo_worth() refuses it for
+	 * the reason it refuses a splash: a launch that dies before it draws
+	 * would otherwise write the card as the size this program opens at
+	 * next time, to disk, for every session after this one.
+	 */
+	int starting;
+
+	/*
 	 * THE WINDOW THIS ONE BELONGS TO, a window id, 0 for a window of its
 	 * own — and whether the owner may be used while it is open.
 	 *
@@ -432,6 +529,33 @@ typedef struct Win {
 	 */
 	int owner;
 	int modal;
+
+	/*
+	 * THE STACK THIS WINDOW IS A TAB OF — the window id of the tab that is
+	 * ON SCREEN, and 0 for a window in no stack. THE SESSION'S SECOND
+	 * INTER-WINDOW RELATION, and the only other one there is.
+	 *
+	 * THE HEAD IS THE VISIBLE MEMBER AND IT NAMES THE STACK. Every member
+	 * carries the same value, the head's included — `w->stack == w->id` is
+	 * what makes a window the one on screen — so the id changes each time
+	 * a different tab is brought up, and a set with one member left is not
+	 * a stack at all. The head holds the geometry, the tile state and the
+	 * workspace; every other member is HIDDEN, which is what buys one
+	 * taskbar row, one ring entry, one hit rectangle, one window-list row
+	 * and a sleeping guest with no code of its own.
+	 *
+	 * THE STRIP IS ORDERED BY ID AND NOT BY THE LIST. S.wins is the
+	 * z-order and a tab switch moves the incoming member to the front of
+	 * it, so a strip drawn in list order would reshuffle every time
+	 * somebody changed tab. Ids only ever go up, so id order is the one
+	 * order a person can point at twice.
+	 *
+	 * IT IS SESSION STATE AND NOT A libkwm CONCEPT: libkwm computes
+	 * rectangles and knows nothing about a neighbour, so nothing about a
+	 * stack is shared with kdos-comp and nothing here is written to the
+	 * session record.
+	 */
+	int stack;
 
 	/*
 	 * A ROW IN THE TASKBAR IS FOR SOMETHING A PERSON OPENED. A tool
@@ -659,6 +783,20 @@ Win *win_focused(void);
  * for a dialog to be left behind the window it is asking about.
  */
 void win_raise(int id);
+/*
+ * AND THE INVERSE: TO THE BACK, WITH WHATEVER IT OWNS STILL OVER IT.
+ *
+ * The list is the stack, so this is a move to the tail — the family lowered
+ * together and the owner last of all, or a dialog would end up under the
+ * window it is asking about. Two windows of the same size fully overlapped
+ * have nothing else to swap them with: the ring raises, so it can only ever
+ * bring the same one forward.
+ *
+ * THE FOCUS GOES WITH THE FRONT when the lowered window had it. A keyboard
+ * left on a window now behind another is one whose keys land where nobody is
+ * looking.
+ */
+void win_lower(Win *w);
 /* The window a modal question is being asked in, for this window id, or NULL.
  * A window with one may not be raised, focused or closed. */
 Win *win_modal_for(int id);
@@ -707,6 +845,37 @@ void win_scratch_hide(Win *w);
  * window left sticky and hidden with no chord naming it is a window nothing
  * can reach. */
 void win_scratch_mark(Win *w);
+
+/*
+ * ── THE STACK ──────────────────────────────────────────────────────────
+ *
+ * Tabs on a window frame, and stacking only: two windows in a stack are ONE
+ * rectangle showing one of them at a time. Nothing here tiles a group, drags
+ * one window onto another or reorders a strip — see `Win.stack`.
+ */
+/* How many tabs this window's stack has, and where this one sits in the strip
+ * (1-based). Both answer 0 for a window in no stack, which is what the frame
+ * tests before it draws a strip at all. */
+int win_stack_n(const Win *w);
+int win_stack_index(const Win *w);
+/*
+ * `a` JOINS `b`'S STACK, and `b` is the tab left on screen. `a` — with every
+ * tab it was already carrying — takes the head's rectangle through
+ * win_place_at() and is hidden: a member configured to its old size draws the
+ * old size into the new rectangle the moment it is brought up.
+ */
+void win_stack_join(Win *a, Win *b);
+/* Bring this member up and put the one on screen away. The rectangle, the tile
+ * state and the workspace go with the head, so a stack is one window wherever
+ * it is put. */
+void win_stack_show(Win *m);
+/* One tab along the strip, forward or back, wrapping. */
+void win_stack_step(Win *w, int dir);
+/* Fold the ring's next window into this one as a tab. */
+void win_stack_with_next(Win *w);
+/* Take the group apart: every member un-hidden and placed by the ordinary
+ * search, the one on screen left where it is. */
+void win_stack_unstack(Win *w);
 /* The session's monotonic clock, in milliseconds. */
 unsigned long long con_now_ms(void);
 /*
@@ -772,6 +941,30 @@ void win_list_toggle(void);
 int win_list_active(void);
 void win_list_draw(void);
 int win_list_key(int key);
+/*
+ * THE WINDOW MENU — every frame verb, named, with the chord beside it.
+ *
+ * WHAT A POINTER CAN REACH IS OTHERWISE WHAT THE FRAME DRAWS: three chips and
+ * a row to drag. Fullscreen, lower, the scratchpad mark and send-to-workspace
+ * are chords and nothing else, and the shipped `taskbar = windows` does not
+ * draw the function-key row that names any of them — so a person who has not
+ * read the book cannot find them at all.
+ *
+ * EVERY ROW PRINTS ITS OWN CHORD, read out of the bind table rather than
+ * written here, so the menu teaches the keyboard and cannot teach a chord
+ * `keys.conf` has moved.
+ *
+ * `win_menu_ptr` and `win_menu_key` answer 1 when the event was the menu's; it
+ * owns both while it is up, for the window list's reason.
+ */
+void win_menu_open(Win *w, int x, int y);
+int win_menu_active(void);
+void win_menu_draw(void);
+int win_menu_key(const KtuiEvent *ev);
+int win_menu_ptr(const KtuiEvent *ev);
+/* Is this cell the window's TITLE ROW — the top band of its frame, chips
+ * included? What the right and middle buttons are answered from. */
+int win_on_title(const Win *w, int x, int y);
 void win_gc(void);
 void win_dock(Win *w);
 void win_lock_draw(void);
@@ -1017,6 +1210,20 @@ enum {
 int win_button_at(int x, int y, int *id);
 
 /*
+ * WHICH CHIP IS HELD DOWN, so that a press can be taken back.
+ *
+ * A PRESS IS NOT A CLICK. A chip that fired on the press gave a person no way
+ * to change their mind, and the one that destroys the window is the one they
+ * most need to: arming on the press and acting on a release over the same chip
+ * makes a slip recoverable by moving the hand off before letting go.
+ *
+ * `win_button_armed` answers WIN_BTN_NONE when nothing is held.
+ */
+void win_button_arm(int id, int kind);
+int win_button_armed(int *id);
+void win_button_disarm(void);
+
+/*
  * WHERE THE POINTER IS, in cells, or off the grid for nowhere.
  *
  * CHROME UNDER THE POINTER SAYS SO. A frame button that looked the same
@@ -1043,6 +1250,10 @@ enum {
 
 int win_grab_at(const Win *w, int x, int y, int btn, int mods,
 		unsigned *edges);
+
+/* See the definition: the corner arms `win_grab_at` measures a press against,
+ * for the one caller that has to light exactly what a press would arm. */
+void win_grab_arms(const Win *w, int *ax, int *ay);
 
 /*
  * THE SELECTION, held by the session because nothing else can hold it: a
@@ -1134,9 +1345,18 @@ void keys_chord_name(int key, int mods, char *out, size_t n);
  * naming no key, which is how a typo in that file leaves the default standing
  * rather than unbinding the action. */
 int keys_chord_parse(const char *s, int *key, int *mods);
+/* The chord bound to an action NAME, after the keys.conf overlay — empty for
+ * an action no row names. What the window menu prints beside each verb: a
+ * string written at the menu instead would teach a chord a rebinding has
+ * moved. */
+void keys_chord_for(const char *action, char *out, size_t n);
 
 /* main.c */
 void con_quit(void);
+/* Begin the keyboard's move-and-size mode on this window. The chord and the
+ * window menu's row both end here, so what can be rearranged is decided once;
+ * see con_rearranging(). */
+void con_rearrange(Win *w);
 /* One key into whatever holds the focus, past the chord table. A replay uses
  * it so a recorded chord cannot fire the session's own actions. */
 void con_key_to_window(const KtuiEvent *ev);

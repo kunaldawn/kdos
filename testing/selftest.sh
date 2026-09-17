@@ -1066,6 +1066,20 @@ con_golden con-snap-132x43 --dump 132x43 \
 con_golden con-two-132x43 --dump 132x43 --term "/bin/echo first" --term "/bin/echo second"
 
 #
+# A STACK, WHICH IS THE ONLY FRAME THAT DRAWS A TAB STRIP.
+#
+# The strip is drawn only above one tab, so every other con-* golden is the
+# assertion that a stack costs an ordinary frame nothing: those files must stay
+# byte-identical. These two are the other half — the strip itself, at both
+# widths, because the narrow one is where a tab falls under CON_TAB_MIN and the
+# run collapses to a counter.
+#
+con_golden con-stack-80x24 --dump 80x24 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
+con_golden con-stack-132x43 --dump 132x43 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
+
+#
 # THE SCRATCHPAD, BOTH WAYS ROUND, AND THROUGH THE CHORDS THEMSELVES.
 #
 # `--press` reaches the same handler a keyboard does, so what these two frames
@@ -1972,6 +1986,16 @@ int panel_have_shell(void) { return 0; }
  * windows.c's alone, so the recall is stubbed out rather than pointed at a
  * home directory this driver does not have. */
 int geo_recall(Win *w) { (void)w; return 0; }
+/* The window menu reads its accelerators out of the bind table and its verbs
+ * out of main.c. Neither is under test here and neither is linked, so the
+ * chord strings come back empty and the verbs do nothing — a menu row that
+ * prints no chord is still a menu row. */
+void keys_chord_name(int key, int mods, char *out, size_t n)
+{ (void)key; (void)mods; if (out && n) *out = 0; }
+void keys_chord_for(const char *action, char *out, size_t n)
+{ (void)action; if (out && n) *out = 0; }
+void con_rearrange(Win *w) { (void)w; }
+void con_notice(const char *text) { (void)text; }
 void geo_record(const Win *w) { (void)w; }
 
 static int bad;
@@ -2110,6 +2134,16 @@ void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
 int panel_have_shell(void) { return 1; }
 int geo_recall(Win *w) { (void)w; return 0; }
+/* The window menu reads its accelerators out of the bind table and its verbs
+ * out of main.c. Neither is under test here and neither is linked, so the
+ * chord strings come back empty and the verbs do nothing — a menu row that
+ * prints no chord is still a menu row. */
+void keys_chord_name(int key, int mods, char *out, size_t n)
+{ (void)key; (void)mods; if (out && n) *out = 0; }
+void keys_chord_for(const char *action, char *out, size_t n)
+{ (void)action; if (out && n) *out = 0; }
+void con_rearrange(Win *w) { (void)w; }
+void con_notice(const char *text) { (void)text; }
 void geo_record(const Win *w) { (void)w; }
 
 static int bad;
@@ -2314,6 +2348,15 @@ int vt_show(Win *w) { (void)w; return 0; }
 void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
 int panel_have_shell(void) { return 1; }
+/* The window menu reads its accelerators out of the bind table and its verbs
+ * out of main.c. Neither is under test here and neither is linked, so the
+ * chord strings come back empty and the verbs do nothing. */
+void keys_chord_name(int key, int mods, char *out, size_t n)
+{ (void)key; (void)mods; if (out && n) *out = 0; }
+void keys_chord_for(const char *action, char *out, size_t n)
+{ (void)action; if (out && n) *out = 0; }
+void con_rearrange(Win *w) { (void)w; }
+void con_notice(const char *text) { (void)text; }
 
 static int bad;
 
@@ -2594,6 +2637,16 @@ void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
 int panel_have_shell(void) { return 1; }
 int geo_recall(Win *w) { (void)w; return 0; }
+/* The window menu reads its accelerators out of the bind table and its verbs
+ * out of main.c. Neither is under test here and neither is linked, so the
+ * chord strings come back empty and the verbs do nothing — a menu row that
+ * prints no chord is still a menu row. */
+void keys_chord_name(int key, int mods, char *out, size_t n)
+{ (void)key; (void)mods; if (out && n) *out = 0; }
+void keys_chord_for(const char *action, char *out, size_t n)
+{ (void)action; if (out && n) *out = 0; }
+void con_rearrange(Win *w) { (void)w; }
+void con_notice(const char *text) { (void)text; }
 void geo_record(const Win *w) { (void)w; }
 Win *term_open(const char *const argv[]) { (void)argv; return NULL; }
 void con_spawn_at(const char *cmd, int x) { (void)cmd; (void)x; }
@@ -3469,6 +3522,11 @@ con	Super+Ctrl+0	font-reset: the screen font is the console's
 con	Super+Shift+r	learn: a script is keys into a window, which only the session sees
 con	Super+Alt+r	play: the other half of learn
 con	Super+Alt+Shift+n	restore-all: labwc has no un-iconify action, let alone one that takes every iconified window at once
+con	Super+b	lower: labwc has a Lower action and rc.xml binds nothing to it, and the console needs one because every step of its ring raises
+con	Super+Shift+s	stack: a stack is one rectangle showing one of several windows, which labwc has no state for — its closest is ToggleShade, which hides a window's own content rather than sharing its frame
+con	Super+Alt+s	unstack: the other half of stack
+con	Super+]	stack-next: walks a tab strip the compositor has no strip for
+con	Super+[	stack-prev: the other half of stack-next
 comp	Super+Ctrl+Left	GrowToEdge: the console has no grow action, and nothing there may take this family
 comp	Super+Ctrl+Right	GrowToEdge
 comp	Super+Ctrl+Up	GrowToEdge
@@ -3476,7 +3534,6 @@ comp	Super+Ctrl+Down	GrowToEdge
 comp	Super+t	ToggleAlwaysOnTop: the console has no always-on-top state
 comp	Super+s	ToggleShade: the console has no shaded state
 comp	Super+o	ToggleOmnipresent: the console's sticky window is the scratchpad and has its own chord
-comp	Alt+space	the client menu: the console draws no per-window menu
 comp	Alt+F2	kdos-run: the console's run box is the palette, on Super+space
 comp	Alt+F4	Close: labwc's own default, kept for the hands that know it; the console has Super+q and one close chord is enough there
 comp	Ctrl+Shift+Escape	kdos-res: the console has Super+Ctrl+t and the three-finger form is a Windows habit a cell desktop does not inherit

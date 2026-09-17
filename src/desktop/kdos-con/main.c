@@ -1170,6 +1170,21 @@ int con_rearranging(void)
 }
 
 /*
+ * START THE MODE ON A NAMED WINDOW. The chord and the window menu's own row
+ * both end here, so the one rule about what can be rearranged — a fullscreen
+ * window has no rectangle to nudge — is written once. A second copy at the
+ * menu would be the row that moves a fullscreen window off its own screen.
+ */
+void con_rearrange(Win *w)
+{
+	if (!w || w->full)
+		return;
+	rear.id = w->id;
+	rear.from = w->geom;
+	ktui_draw_invalidate();
+}
+
+/*
  * ── MARK AND TRANSFER ───────────────────────────────────────────────────
  *
  * DESQview's, and it is cheaper here than it was there or anywhere since: the
@@ -1813,6 +1828,8 @@ static int font_step(int step)
 	return 1;
 }
 
+void con_grab_cancel(void);
+
 static int session_key(const KtuiEvent *ev)
 {
 	Win *w = win_focused();
@@ -2009,11 +2026,7 @@ static int session_key(const KtuiEvent *ev)
 		ktui_draw_invalidate();
 		return 1;
 	case CON_ACT_REARRANGE:
-		if (w && !w->full) {
-			rear.id = w->id;
-			rear.from = w->geom;
-			ktui_draw_invalidate();
-		}
+		con_rearrange(w);
 		return 1;
 	case CON_ACT_SHOW_DESKTOP:
 		win_show_desktop();
@@ -2028,6 +2041,53 @@ static int session_key(const KtuiEvent *ev)
 	}
 	case CON_ACT_WINLIST:
 		win_list_toggle();
+		return 1;
+	case CON_ACT_LOWER:
+		win_lower(w);
+		return 1;
+	/*
+	 * THE TABS, AND THE WINDOW MODEL DOES THE ARITHMETIC. What "the next
+	 * window" is, which member is on screen and where a tab lands are
+	 * windows.c's, for the reason stated at the top of con.h: a second
+	 * reading of any of them here would be a second thing to get wrong.
+	 */
+	case CON_ACT_STACK:
+		win_stack_with_next(w);
+		return 1;
+	case CON_ACT_STACK_NEXT:
+		win_stack_step(w, 1);
+		return 1;
+	case CON_ACT_STACK_PREV:
+		win_stack_step(w, -1);
+		return 1;
+	case CON_ACT_UNSTACK:
+		win_stack_unstack(w);
+		return 1;
+	case CON_ACT_WINMENU:
+		/*
+		 * OVER THE WINDOW'S OWN TITLE ROW, which is where a right
+		 * press opens it: a menu that appeared at the pointer would
+		 * land wherever the hand was last left, and a chord is pressed
+		 * by somebody whose hand is not on the mouse. One cell in and
+		 * one row down is the first cell of the window's own body, so
+		 * the pane hangs off the frame it belongs to rather than
+		 * covering the name of it.
+		 */
+		if (w) {
+			KwmRect f = win_frame(w);
+
+			/*
+			 * AND ANY DRAG UNDER THE HAND ENDS HERE. The menu
+			 * answers every pointer event while it is up, so a
+			 * grab still live when a chord opens one never sees
+			 * the release that would have ended it — and the
+			 * stale grab then eats the first pointer event after
+			 * the menu closes. A press the chips are holding goes
+			 * the same way, for the same reason.
+			 */
+			con_grab_cancel();
+			win_menu_open(w, f.x + 1, f.y + 1);
+		}
 		return 1;
 	case CON_ACT_MARK:
 		mark_begin(0);
@@ -2153,6 +2213,13 @@ static int route_key(const KtuiEvent *ev)
 	if (win_list_active() && win_list_key(ev->key))
 		return 1;
 
+	/* AND SO DOES THE WINDOW MENU, for the same reason and ahead of the
+	 * window under it: its arrows move the caret, its letters pick a row,
+	 * and a key that fell through would reach a window a person is holding
+	 * a menu open over. */
+	if (win_menu_key(ev))
+		return 1;
+
 	if (leader_armed) {
 		int arg;
 
@@ -2237,6 +2304,23 @@ static struct {
 	unsigned edges;		/* which edges a resize moves              */
 } grab;
 
+/*
+ * DROP ANY DRAG AND ANY HELD CHIP, for a caller that is about to take the
+ * pointer away from both. A grab is ended by the release that reaches
+ * `route_ptr`, so anything that swallows pointer events while one is live —
+ * the window menu — leaves a grab nothing can end, and the stale grab then
+ * eats the first event after it closes.
+ *
+ * Declared before `session_key` rather than reached from it directly, because
+ * the grab itself is below that function and a chord is the one path that
+ * opens the menu without a press.
+ */
+void con_grab_cancel(void)
+{
+	grab.id = 0;
+	win_button_disarm();
+}
+
 static void grab_apply(const KtuiEvent *ev)
 {
 	Win *w = win_find(grab.id);
@@ -2310,12 +2394,18 @@ static Win *bg_win(void)
  * motion would be a commit per motion — the round trip the pointer is drawn by
  * the view to avoid.
  *
- * SO THE WINDOW ANSWERS INSTEAD. The edges a drag would move are lit along
- * their whole length with the direction they travel, and a move lights the four
- * corners as studs. It says MORE than a pointer shape can — a corner grab shows
- * both edges light at once, so the window states the rectangle it is about to
- * become — and it changes only when the pointer crosses a zone, which is a
- * commit every few seconds rather than one every few milliseconds.
+ * SO THE WINDOW ANSWERS INSTEAD. The edge a drag would move is lit with the
+ * direction it travels, a corner grab lights the two arms that take both axes
+ * with a stud on the cell they share, and a move lights the four corners as
+ * studs. It says MORE than a pointer shape can — the window states the
+ * rectangle it is about to become — and it changes only when the pointer
+ * crosses a zone, which is a commit every few seconds rather than one every
+ * few milliseconds.
+ *
+ * WHAT LIGHTS IS WHAT A PRESS ARMS, cell for cell. `win_grab_arms` gives the
+ * same two numbers `win_grab_at` measures a press against, so a single-axis
+ * run stops where the corner arms begin; a run that lit a whole side would
+ * promise a one-axis resize over cells that take two.
  *
  * THE GLYPHS ARE `ktui_glyph`, so both tiers are covered by the table that
  * already chooses them: arrows on a font that has them, `<`, `>`, `^`, `v` and
@@ -2353,14 +2443,15 @@ static void grip_set(int id, unsigned edges, int move)
  *
  * OFF THE GRID WHENEVER A MODE OWNS THE POINTER, which is the rule the grip
  * below is lit by and is here for that rule's reason: under a lock, a saver, a
- * mark, a pick, a payload drag, a window drag or a guest that has taken the
- * pointer, no press reaches a frame at all, and a chip lit under the hand
- * promises a click that lands somewhere else entirely.
+ * mark, a pick, a payload drag, a window drag, a window menu or a guest that
+ * has taken the pointer, no press reaches a frame at all, and a chip lit under
+ * the hand promises a click that lands somewhere else entirely.
  */
 static void ptr_track(const KtuiEvent *ev)
 {
 	int off = grab.id || S.locked || S.saver || mark.on || picking ||
-		  con_dragging() || embed_grab_win() != NULL;
+		  con_dragging() || win_menu_active() ||
+		  embed_grab_win() != NULL;
 
 	win_ptr_at(off ? -1 : ev->mx, off ? -1 : ev->my);
 }
@@ -2374,8 +2465,9 @@ static void ptr_track(const KtuiEvent *ev)
  * something. While `grab` is set it is the grab that is drawn.
  *
  * AND EVERY MODE THAT OWNS THE POINTER OWNS THE FRAME WITH IT. Under a lock, a
- * saver, a mark, a pick or a guest that has taken the pointer, no press reaches
- * a frame at all, and a lit edge would promise a drag that cannot start.
+ * saver, a mark, a pick, a window menu or a guest that has taken the pointer,
+ * no press reaches a frame at all, and a lit edge would promise a drag that
+ * cannot start.
  */
 static void grip_track(const KtuiEvent *ev)
 {
@@ -2389,7 +2481,8 @@ static void grip_track(const KtuiEvent *ev)
 			 w && !grab.resizing);
 		return;
 	}
-	if (S.locked || S.saver || mark.on || picking || embed_grab_win()) {
+	if (S.locked || S.saver || mark.on || picking || win_menu_active() ||
+	    embed_grab_win()) {
 		grip_set(0, 0, 0);
 		return;
 	}
@@ -2469,14 +2562,16 @@ static void grip_draw(void)
 	/*
 	 * AND ONLY WHILE THE WINDOW IS ON THE SCREEN. Nothing sends a pointer
 	 * event when a chord locks the session, minimises the window under the
-	 * hand, raises the window list over it or switches the workspace out
+	 * hand, raises the window list or a window menu over it, or switches
+	 * the workspace out
 	 * from under it, so the last state the pointer left behind is still
 	 * set — and a grip drawn from it is accent-coloured arrows at a
 	 * rectangle that is no longer there, over the lock screen, over the
 	 * switcher or over somebody else's desk.
 	 */
-	if (!w || S.locked || S.saver || win_list_active() || w->minimised ||
-	    w->hidden || (!w->sticky && w->workspace != S.workspace))
+	if (!w || S.locked || S.saver || win_list_active() ||
+	    win_menu_active() || w->minimised || w->hidden ||
+	    (!w->sticky && w->workspace != S.workspace))
 		return;
 	f = win_frame(w);
 
@@ -2488,22 +2583,77 @@ static void grip_draw(void)
 			  ktui_glyph[KT_G_SQUARE]);
 		return;
 	}
+	/*
+	 * THE CELLS THAT LIGHT ARE EXACTLY THE CELLS WHOSE PRESS TAKES THIS
+	 * GRAB. `win_grab_at` gives both axes to a press within `ax` of a
+	 * side's end and within `ay` of a column's, so a run that ran the
+	 * whole side would promise a one-axis resize over cells that take two
+	 * — and a hand that trusted it would find the window changing width as
+	 * well as height. The runs stop where the arms begin, and the arms are
+	 * asked for rather than recomputed.
+	 */
+	int ax, ay;
+
+	win_grab_arms(w, &ax, &ay);
 	if (grip.edges & KWM_EDGE_LEFT)
-		for (int y = f.y + 1; y < f.y + f.h - 1; y++)
+		for (int y = f.y + ay; y < f.y + f.h - ay; y++)
 			grip_cell(w, f.x, y, ktui_glyph[KT_G_LEFT]);
 	if (grip.edges & KWM_EDGE_RIGHT)
-		for (int y = f.y + 1; y < f.y + f.h - 1; y++)
+		for (int y = f.y + ay; y < f.y + f.h - ay; y++)
 			grip_cell(w, f.x + f.w - 1, y, ktui_glyph[KT_G_RIGHT]);
 	if (grip.edges & KWM_EDGE_BOTTOM)
-		for (int x = f.x; x < f.x + f.w; x++)
+		for (int x = f.x + ax; x < f.x + f.w - ax; x++)
 			grip_cell(w, x, f.y + f.h - 1, ktui_glyph[KT_G_DOWN]);
-	if (grip.edges & KWM_EDGE_TOP) {
+	/*
+	 * A CORNER GRAB IS AN L AND NOT TWO SIDES. The arm along the row is
+	 * the edge that moves vertically and carries that edge's own arrow;
+	 * the arm down the column carries the horizontal one; and the cell
+	 * they share carries neither, because at that cell a press takes BOTH
+	 * axes and an arrow there promises one.
+	 *
+	 * `■` FOR THE SHARED CELL, and it is not the move stud even though it
+	 * is the same glyph: the console font carries no diagonal at all — no
+	 * `↘`, no quadrant, no diagonal rule — so a corner cannot be marked
+	 * with the direction it takes. A move lights four studs and no runs, a
+	 * corner resize lights one stud and two arms, and the arms are what
+	 * tell them apart.
+	 *
+	 * WRITTEN AFTER THE RUNS so the stud is the last write at that cell.
+	 */
+	static const struct { unsigned h, v; int dx, dy; } corner[] = {
+		{ KWM_EDGE_LEFT, KWM_EDGE_TOP, 0, 0 },
+		{ KWM_EDGE_RIGHT, KWM_EDGE_TOP, 1, 0 },
+		{ KWM_EDGE_LEFT, KWM_EDGE_BOTTOM, 0, 1 },
+		{ KWM_EDGE_RIGHT, KWM_EDGE_BOTTOM, 1, 1 }
+	};
+
+	for (size_t i = 0; i < sizeof corner / sizeof *corner; i++) {
+		int cx = corner[i].dx ? f.x + f.w - 1 : f.x;
+		int cy = corner[i].dy ? f.y + f.h - 1 : f.y;
+
+		if (!(grip.edges & corner[i].h) || !(grip.edges & corner[i].v))
+			continue;
+		if (corner[i].dy)
+			for (int x = 0; x < ax; x++)
+				grip_cell(w, cx + (corner[i].dx ? -x : x), cy,
+					  ktui_glyph[KT_G_DOWN]);
+		for (int y = 1; y < ay; y++)
+			grip_cell(w, cx, cy + (corner[i].dy ? -y : y),
+				  corner[i].dx ? ktui_glyph[KT_G_RIGHT]
+					       : ktui_glyph[KT_G_LEFT]);
+		grip_cell(w, cx, cy, ktui_glyph[KT_G_SQUARE]);
+	}
+	/*
+	 * THE TOP EDGE ALONE STILL LIGHTS ONLY ITS TWO CORNER CELLS. The rest
+	 * of that row is the title and the chips, and a row of arrows across
+	 * it would cost a person the window's name to say something the two
+	 * cells already say.
+	 */
+	if ((grip.edges & KWM_EDGE_TOP) && !(grip.edges & KWM_EDGE_LEFT) &&
+	    !(grip.edges & KWM_EDGE_RIGHT)) {
 		grip_cell(w, f.x, f.y, ktui_glyph[KT_G_UP]);
 		grip_cell(w, f.x + f.w - 1, f.y, ktui_glyph[KT_G_UP]);
 	}
-	/* THE CORNER CELL BELONGS TO BOTH RUNS and is written twice above; the
-	 * second write wins and either glyph says the same thing, so nothing
-	 * arbitrates. */
 }
 
 /*
@@ -2655,6 +2805,17 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	}
 
 	/*
+	 * AND SO DOES A WINDOW MENU, which is why it is asked before the panel
+	 * row and before any frame: it is drawn over both, and a press that
+	 * fell through would raise the window the pane is covering while the
+	 * pane was still on the screen. It answers the release of its own pick
+	 * as well, so a button-up is never handed to a window that heard no
+	 * press.
+	 */
+	if (win_menu_ptr(ev))
+		return;
+
+	/*
 	 * A GRAB OWNS THE POINTER UNTIL THE BUTTON COMES UP, WHEREVER IT GOES,
 	 * and that has to be asked BEFORE anything else can answer.
 	 *
@@ -2792,22 +2953,68 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	 * on the frame, which is inside the window's own rectangle, so
 	 * `win_at()` answers for both and a click would raise the window and
 	 * do nothing else.
+	 *
+	 * AND THE PRESS ONLY ARMS IT. A chip that acted on the press gave a
+	 * person no way to change their mind, and the one that destroys the
+	 * window is the one they most need to: the release decides, and a hand
+	 * moved off the chip before letting go takes the press back. The chip
+	 * stops showing itself held the moment the pointer leaves it, so what
+	 * is on the screen says whether letting go will do anything.
+	 *
+	 * THE LEFT BUTTON ALONE ARMS. Middle and right are not a click on a
+	 * control anywhere else on this desktop, and a chip that answered all
+	 * three put the window's close on the button a person reaches for a
+	 * context menu with.
+	 *
+	 * AND THE OTHER TWO FALL THROUGH RATHER THAN BEING SWALLOWED. The
+	 * chips sit ON the title row, whose right button opens the window menu
+	 * and whose middle button lowers the window; a chip that consumed them
+	 * would be three cells of that row where those two do nothing, which
+	 * is a row a person has to aim at to find out what it does.
 	 */
 	if (ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 		int id;
+		int kind = win_button_at(ev->mx, ev->my, &id);
 
-		switch (win_button_at(ev->mx, ev->my, &id)) {
-		case WIN_BTN_MIN:
-			win_minimise(win_find(id));
+		if (kind != WIN_BTN_NONE && ev->btn == KT_MB_LEFT) {
+			win_button_arm(id, kind);
 			return;
-		case WIN_BTN_MAX:
-			win_maximise(win_find(id));
+		}
+		if (kind == WIN_BTN_NONE)
+			win_button_disarm();
+	}
+
+	/*
+	 * AND THE RELEASE IS WHAT ACTS, on the chip the press armed and only
+	 * where the pointer is still on it. The arm is dropped either way: a
+	 * release anywhere ends the press, and a chip left armed would fire on
+	 * somebody else's later click.
+	 */
+	if (ptr_is_button(ev) && ev->press == KT_MP_RELEASE) {
+		int armed_id;
+		int armed = win_button_armed(&armed_id);
+
+		if (armed != WIN_BTN_NONE) {
+			int id;
+			int kind = win_button_at(ev->mx, ev->my, &id);
+
+			win_button_disarm();
+			if (kind == armed && id == armed_id) {
+				switch (kind) {
+				case WIN_BTN_MIN:
+					win_minimise(win_find(id));
+					return;
+				case WIN_BTN_MAX:
+					win_maximise(win_find(id));
+					return;
+				case WIN_BTN_CLOSE:
+					win_close(win_find(id));
+					return;
+				default:
+					break;
+				}
+			}
 			return;
-		case WIN_BTN_CLOSE:
-			win_close(win_find(id));
-			return;
-		default:
-			break;
 		}
 	}
 
@@ -2899,6 +3106,46 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 			grab.edges = edges;
 			return;
 		}
+	}
+
+	/*
+	 * THE TWO BUTTONS THE TITLE ROW HAS LEFT, and they are asked AFTER the
+	 * grab above rather than before it: Super is the way in from anywhere
+	 * and Super+right resizes from the nearest edge, so a menu asked first
+	 * would take that chord away from the one row a hand is most likely to
+	 * be holding Super over.
+	 *
+	 * `win_grab_at` gives the title row to the left button alone, so a
+	 * plain right or middle press there arms nothing and reaches here —
+	 * which is what makes the grip honest about the row: it is lit with
+	 * the left button standing in for the press that has not happened, and
+	 * neither of these two starts a drag for it to have promised.
+	 *
+	 * A RIGHT PRESS RAISES BEFORE IT OPENS, which happened above: a menu
+	 * over a window still behind another one names verbs for a frame the
+	 * person cannot see.
+	 */
+	if (w && !held && ptr_is_button(ev) && win_on_title(w, ev->mx, ev->my) &&
+	    (ev->btn == KT_MB_RIGHT || ev->btn == KT_MB_MIDDLE)) {
+		if (ev->press == KT_MP_PRESS) {
+			if (ev->btn == KT_MB_RIGHT)
+				win_menu_open(w, ev->mx, ev->my);
+			else
+				win_lower(w);
+		}
+		/*
+		 * AND THE RELEASE IS SPENT HERE TOO. The row is outside the
+		 * window's CONTENT, so a button-up let through arrives at the
+		 * surface underneath as a negative position — which is this
+		 * protocol's leave — and at a terminal as a button-up it never
+		 * heard go down.
+		 *
+		 * UNLESS THE POINTER IS LATCHED, which is what `held` says: a
+		 * middle press that landed in the content and was dragged up
+		 * onto this row belongs to the window it started in, and the
+		 * release is the only thing that ends what that press began.
+		 */
+		return;
 	}
 
 	if (!w)
@@ -3238,7 +3485,44 @@ static void route_touch(const KtuiEvent *ev)
 	if (S.locked || S.saver)
 		return;
 	w = drag_target(ev->mx, ev->my);
-	if (!w || !w->surf)
+	if (!w)
+		return;
+
+	/*
+	 * A LONG PRESS ON FRAME CHROME IS THE WINDOW MENU, and it is answered
+	 * ABOVE the surface test below because a frame belongs to the session
+	 * whatever is inside it: a terminal and an embedded guest carry no
+	 * `surf` at all, so the only long press that reached anything was one
+	 * on a cell surface's own content — and the frame is the half of the
+	 * window a finger has no other way into.
+	 *
+	 * ASKED OF THE FUNCTION THE PRESS ASKS. `win_grab_at` answers NONE
+	 * everywhere but the border band, so the points it takes hold of are
+	 * exactly the chrome; a second reading of where the frame is would be
+	 * a menu opening off it.
+	 *
+	 * THE FINGER'S OWN PRESS IS TAKEN BACK FIRST. The recogniser
+	 * synthesises a left press the moment the finger lands, so by the time
+	 * the long press fires the title row has already armed a move or a
+	 * chip — and the release that would have ended either of them is spent
+	 * by the menu that is now up. A grab nothing can end costs the pointer
+	 * for the rest of the session; an armed chip fires on somebody else's
+	 * later click.
+	 */
+	if (ev->gesture == KT_GEST_LONG) {
+		unsigned edges = KWM_EDGE_NONE;
+
+		if (win_grab_at(w, ev->mx, ev->my, KT_MB_LEFT, 0, &edges) !=
+		    WIN_GRAB_NONE) {
+			grab.id = 0;
+			win_button_disarm();
+			win_raise(w->id);
+			win_menu_open(w, ev->mx, ev->my);
+			return;
+		}
+	}
+
+	if (!w->surf)
 		return;
 	kcon_surface_touch(w->surf, ev->mx - w->geom.x, ev->my - w->geom.y,
 			   ev->slot, ev->phase, ev->ms, ev->gesture);
@@ -5657,6 +5941,12 @@ int main(int argc, char **argv)
 		 * golden most needs to show.
 		 */
 		if (win_list_active() && win_list_key(ev.key))
+			continue;
+		/* AND SO DOES THE WINDOW MENU, for the same reason: its
+		 * arrows, its letters and its Enter are the menu's own keys
+		 * and are not chords, so a press that went to the chord table
+		 * could open a menu and never pick out of it. */
+		if (win_menu_key(&ev))
 			continue;
 		session_key(&ev);
 	}

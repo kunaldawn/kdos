@@ -2887,13 +2887,15 @@ int main(int argc, char **argv)
 					send_key(&ev);
 				} else if (ev.type == KT_EVT_MOUSE) {
 					/*
-					 * THE POINTER IS A REVERSED CELL, on
-					 * this screen exactly as on a terminal
-					 * and over ssh. It is the pointer every
-					 * text mode has drawn, it needs no
-					 * artwork and no pixels, and it is the
-					 * same picture wherever the desktop is
-					 * looked at.
+					 * THE POINTER IS AN ARROW HERE, drawn
+					 * in pixels by libkkms: it answers
+					 * KtuiBackend.pointer and claims the
+					 * job, so the flush leaves the cell
+					 * alone. The same call on a view with
+					 * no screen of its own reverses the
+					 * cell instead, and this arm says
+					 * nothing about which — the named cell
+					 * is the whole of what a view decides.
 					 */
 					/* AN OBSERVER DRAWS NO POINTER. The
 					 * cell is a promise that clicking
@@ -2964,7 +2966,9 @@ int main(int argc, char **argv)
 				 * characters, so the cell under the pointer is
 				 * reversed — which is the pointer every text
 				 * mode has ever drawn, and the only one a
-				 * terminal on the far end of ssh can show.
+				 * terminal on the far end of ssh, a --dump or
+				 * a braille display reading /dev/vcsa can
+				 * show.
 				 */
 				/* An observer draws none, for the reason the
 				 * screen path gives: a pointer that cannot

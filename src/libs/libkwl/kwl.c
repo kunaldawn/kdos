@@ -283,6 +283,16 @@ static struct {
 	int on_output;		/* index of the output last entered, or -1 */
 
 	KDispConfig cfg;
+	/*
+	 * THE FONT NAME THIS SURFACE OWNS, and the one it opened with.
+	 *
+	 * `cfg.font` is the CALLER'S pointer — K.cfg is a copy of the struct
+	 * and not of what it points at — so a reload spelled from it would
+	 * load whatever is at that address by then, which for a caller that
+	 * built the name on its stack is nothing at all. `font_init` is what
+	 * a step of 0 goes back to; see kwl_font_step().
+	 */
+	char font[192], font_init[192];
 	int px_w, px_h;		/* surface size in LOGICAL pixels          */
 	/*
 	 * The frame rule, in logical pixels, 0 for none. It sits on the edge
@@ -3515,6 +3525,41 @@ int kwl_drag_start(const char *mime, const char *data, size_t len)
 
 /* ── surface roles ─────────────────────────────────────────────────────── */
 
+/*
+ * THE GRID THE CURRENT PIXELS AND THE CURRENT CELL MAKE.
+ *
+ * Split out of resize_cells() because the two halves of a grid move
+ * independently: a configure moves the pixels, and a font change moves the
+ * cell while the surface stays exactly the size it was. Both end here.
+ */
+static void grid_from_px(void)
+{
+	/*
+	 * STAGED CONTENT IS CONTENT FOR THE OLD GRID. The buffer is sized from
+	 * K.px_w/K.px_h, so publishing the stash would paint the previous
+	 * layout into the new geometry — one visibly wrong frame after every
+	 * configure, plus a reallocation of K.screen at the old size that the
+	 * next real flush undoes. Nothing is lost by dropping it: `ktui_resized`
+	 * at the end of this function makes the consumer redraw.
+	 */
+	K.pend_valid = 0;
+	K.pend_full = 0;
+
+	int cw = kcell_w(), ch = kcell_h();
+	int grid_h = K.px_h - K.rule;
+
+	if (grid_h < 0)
+		grid_h = 0;
+	/* The grid is the same size either way; only its ORIGIN moves. */
+	K.cols = cw > 0 ? K.px_w / cw : 0;
+	K.rows = ch > 0 ? grid_h / ch : 0;
+	if (K.cols < 1)
+		K.cols = 1;
+	if (K.rows < 1)
+		K.rows = 1;
+	ktui_resized = 1;
+}
+
 static void resize_cells(int px_w, int px_h)
 {
 	/*
@@ -3529,30 +3574,9 @@ static void resize_cells(int px_w, int px_h)
 	 */
 	if (px_w == K.px_w && px_h == K.px_h)
 		return;
-	/*
-	 * STAGED CONTENT IS CONTENT FOR THE OLD GRID. The buffer is sized from
-	 * K.px_w/K.px_h below, so publishing the stash would paint the previous
-	 * layout into the new geometry — one visibly wrong frame after every
-	 * configure, plus a reallocation of K.screen at the old size that the
-	 * next real flush undoes. Nothing is lost by dropping it: `ktui_resized`
-	 * at the end of this function makes the consumer redraw.
-	 */
-	K.pend_valid = 0;
-	K.pend_full = 0;
 	K.px_w = px_w;
 	K.px_h = px_h;
-	int cw = kcell_w(), ch = kcell_h();
-	int grid_h = px_h - K.rule;
-	if (grid_h < 0)
-		grid_h = 0;
-	/* The grid is the same size either way; only its ORIGIN moves. */
-	K.cols = cw > 0 ? px_w / cw : 0;
-	K.rows = ch > 0 ? grid_h / ch : 0;
-	if (K.cols < 1)
-		K.cols = 1;
-	if (K.rows < 1)
-		K.rows = 1;
-	ktui_resized = 1;
+	grid_from_px();
 }
 
 static void layer_configure(void *d, struct zwlr_layer_surface_v1 *ls,
@@ -4669,8 +4693,10 @@ int kwl_init(const KDispConfig *cfg)
 	 * launcher, notifyd, osd, lock. foot is CONTENT, not chrome, and keeps
 	 * its own 16px config.
 	 */
-	if (kcell_font_load(cfg->font && *cfg->font ? cfg->font
-						    : "Terminus:pixelsize=32") != 0)
+	snprintf(K.font, sizeof(K.font), "%s",
+		 cfg->font && *cfg->font ? cfg->font : "Terminus:pixelsize=32");
+	snprintf(K.font_init, sizeof(K.font_init), "%s", K.font);
+	if (kcell_font_load(K.font) != 0)
 		return -1;
 	/*
 	 * The rule, once there is a cell to measure it against. Only a
@@ -5514,6 +5540,120 @@ static void kwl_win_set_state(unsigned id, unsigned flag, int on)
 		break;
 	}
 	wl_display_flush(K.display);
+}
+
+/* ── the font ──────────────────────────────────────────────────────────── */
+
+/*
+ * THE SIZE IN A FONTCONFIG NAME, MOVED BY `step`.
+ *
+ * The size rides in the name as `:pixelsize=N` pixels or `:size=N` points, and
+ * a name carrying neither is the loader's own default said out loud so that a
+ * step from it lands somewhere a person recognises. Whatever follows the size
+ * is kept: a name carrying a style or a fallback after it is a name somebody
+ * wrote. CLAMPED at both ends, because fontconfig will return a two-pixel face
+ * and a window of unreadable specks is not a step a chord can undo. 0 when the
+ * result does not fit, and the caller then leaves the font where it is.
+ */
+static int font_stepped(const char *base, int step, char *out, size_t n)
+{
+	const char *key = ":pixelsize=";
+	const char *at = base ? strstr(base, key) : NULL;
+	int lo = 8, hi = 72, size;
+
+	if (!out || !n)
+		return 0;
+	if (!at) {
+		key = ":size=";
+		at = base ? strstr(base, key) : NULL;
+		lo = 5;
+		hi = 48;
+	}
+	if (at) {
+		size = atoi(at + strlen(key));
+		if (size <= 0)
+			return 0;
+	} else {
+		/*
+		 * A NAME THAT CARRIES NO SIZE KEEPS ITS FACE. `base` is what
+		 * term.conf asked for, and replacing it here would make the
+		 * first step change the typeface as well as the size — a
+		 * person who set `font = JetBrains Mono` and pressed Ctrl+=
+		 * would be looking at a different font, with nothing on screen
+		 * to say why. The size fontconfig would have resolved is not
+		 * knowable from the name, so the default is appended and the
+		 * step counts from there.
+		 */
+		key = ":size=";
+		size = 11;
+		/* A caller with no name at all still needs one to step. */
+		if (!base || !*base)
+			base = "monospace";
+	}
+
+	size += step;
+	if (size < lo)
+		size = lo;
+	if (size > hi)
+		size = hi;
+
+	if (at) {
+		const char *rest = strchr(at + 1, ':');
+		int head = (int)(at - base);
+
+		return snprintf(out, n, "%.*s%s%d%s", head, base, key, size,
+				rest ? rest : "") < (int)n;
+	}
+	return snprintf(out, n, "%s%s%d", base, key, size) < (int)n;
+}
+
+int kwl_font_step(int step)
+{
+	char want[sizeof(K.font)], prev[sizeof(K.font)];
+
+	if (!K.surface)
+		return -1;
+	snprintf(prev, sizeof(prev), "%s", K.font);
+	if (step == 0)
+		snprintf(want, sizeof(want), "%s", K.font_init);
+	else if (!font_stepped(prev, step, want, sizeof(want)))
+		return -1;
+	if (!strcmp(want, prev))
+		return 0;	/* the clamp, or a reset already in force */
+
+	/*
+	 * A LOAD IS THE FONT CHANGE, WHOLE: it replaces the faces, the glyph
+	 * cache, the ascii candidate table and the tiling scratch. Do not free
+	 * the font first — kcell_font_free() drops this library's reference on
+	 * fcft and tears it down under a grid that is still being drawn.
+	 *
+	 * THE OLD NAME COMES BACK IF THE NEW ONE WILL NOT LOAD. A failed load
+	 * leaves no font at all, and a window with no glyphs is not a state a
+	 * person can type their way out of.
+	 */
+	if (kcell_font_load(want) != 0) {
+		/* Either way this is -1 with nothing moved. A restore that
+		 * fails too leaves the process with no font at all, and the
+		 * caller's next draw is what says so. */
+		kcell_font_load(prev);
+		return -1;
+	}
+	snprintf(K.font, sizeof(K.font), "%s", want);
+
+	/* The surface keeps its pixels and gets a different cell, so the grid
+	 * is recut from the size it already has. */
+	grid_from_px();
+	/*
+	 * EVERY BASELINE IS SPOILED, because a font change rewrites no cell. A
+	 * step that leaves the grid the same size — a cell one pixel wider in
+	 * a window with slack, or a bitmap face answering with the strike it
+	 * already had — writes byte-identical cells, and all three diffs would
+	 * then find nothing to paint while every glyph on the screen is drawn
+	 * at the old size. A cell is at least one pixel, so the surface's own
+	 * pixel size covers whatever each of those grids is.
+	 */
+	kwl_owe(0, 0, K.px_w, K.px_h);
+	return 0;
 }
 
 const KDispImpl kwl_impl = {

@@ -171,7 +171,7 @@ mechanics:
 releases, so naming the bitmap console font resolves and then silently falls back to a generic
 sans for every title bar and every menu. The shipped `rc.xml` names the TrueType Terminus at 24
 points — 32 pixels at 96 dpi — so a title bar is exactly one cell tall. A machine without that
-font falls back to DejaVu Sans.
+font falls back to Noto Sans, which `56-noto-preferred.conf` puts at the head of `sans-serif`.
 
 Telling those two apart takes a measurement rather than an eye: count luminance levels in a
 screenshot. Bitmap text has three and no midtones; an antialiased face has well over a hundred.

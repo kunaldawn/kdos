@@ -585,23 +585,47 @@ it, places it and tells it what size it actually got. `KEMBED_CLOSE_WIN` takes o
 the process not at all, because an application whose last window closed is an application with no
 window, which is what a shared session bus is for.
 
-**A launch puts a placeholder on the desktop and the first ordinary toplevel claims it.** That is
-what says `starting…` while a container comes up, and it is the rectangle the geometry memory
-already chose for this program — so a one-window application allocates nothing new, comes up exactly
-where it was left, is told no size at all and is the ordinary window it would be if it were the only
-kind there were. Not the first toplevel of *any* kind: an application whose splash maps first would give the splash the rectangle the person
-keeps the document at. An owned window never claims it either, because a dialog is a question about
-a window that has to exist first.
+**A launch puts a startup card on the desktop and the first ordinary toplevel claims it.** The card
+is a small window — thirty cells by three, `CON_CARD_W` and `CON_CARD_H` — carrying the
+application's name, a progress bar and the stage the launch is on, and it stands from the fork until
+the first frame. Not the first toplevel of *any* kind: an application whose splash maps first would
+give the splash the rectangle the person keeps the document at. An owned window never claims it
+either, because a dialog is a question about a window that has to exist first.
 
-**A guess is replaced by the toplevel's natural size and a remembered rectangle is not.** The
-placeholder is forked before there is anything to measure, so when nothing is remembered it is half
-the work area — and a guest whose first window is a welcome card or a small tool then renders that
+**The card and the guest's output are two rectangles, and that is the whole of the design.** The
+output is the rectangle the window is going to *be* — what the geometry memory chose for this
+program, or half the work area when nothing is remembered — and it is cut, allocated and named in
+the cage's `--embed` at the fork, because it is also the size the toolkit lays itself out at. The
+card is only what the *window* is. So the card opens out at the first frame into an output that is
+already the right size: nothing is reallocated, no `KEMBED_SIZE` goes out and the application is
+never laid out twice. Shrink the output to the card instead and the application comes up the size of
+the card, which is the failure the split exists to avoid. `Win.starting` is the flag, and everything
+that reflows a guest — `embed_resized()`, a size report — reads the output's rectangle while it is
+set.
+
+**A card's rectangle is remembered nowhere.** `geo_worth()` refuses it exactly as it refuses a
+splash: a launch that dies before its first frame would otherwise write thirty by three to the
+geometry table as the size this program opens at next time, and every launch after that would open
+as a card and record one.
+
+**The claim is provisional until the toplevel draws.** xdg-shell has no splash role, so a Wayland
+startup window arrives naming no owner and no kind — indistinguishable here from the document window
+— and the one thing that separates the two is that a startup window paints nothing and retires. A
+claim retired before the first frame therefore gives the card back, and the next ordinary toplevel
+takes it, at the same rectangle, over the same output. Without that, the document window is a
+*second* toplevel with a window and an output of its own, and the person watches a large window open
+and be replaced by a smaller one.
+
+**A guess is replaced by the toplevel's natural size and a remembered rectangle is not.** The launch
+is forked before there is anything to measure, so when nothing is remembered the output is half the
+work area — and a guest whose first window is a welcome card or a small tool then renders that
 window at its own size inside a frame twice as wide, over the cage's background. The natural size
-`KEMBED_OPEN` carries is therefore taken as the window's the moment it arrives, rounded up to whole
-cells and clamped into the work area, but **only while the window still holds the guess**: a
-rectangle out of the geometry memory is the one the person last left this program at, and replacing
-it with the toolkit's default is the window forgetting where it was kept. A guest that reports no
-size keeps the guess.
+`KEMBED_OPEN` carries is therefore taken as the output's the moment it arrives, rounded up to whole
+cells, but **only while the placement was the guess**: a rectangle out of the geometry memory is the
+one the person last left this program at, and replacing it with the toolkit's default is the window
+forgetting where it was kept. Measured once, at the placement, because a card that is claimed,
+released and claimed again would otherwise refuse the second claimer the size the first was granted.
+A guest that reports no size keeps the guess.
 
 **What kind of window it is decides where it goes, and only a dialog crosses from Wayland.**
 xdg-shell has no way to say modal, utility or splash — a Wayland toplevel is a dialog when it names
@@ -720,22 +744,43 @@ session can act on, the band of the cage's background down its sides or the crop
 edge stays. Nothing in a frame can close that gap instead: the framebuffer is the output the
 session chose, so `KEMBED_BUF` can only echo the size the session already knows.
 
-**A window with no frame yet says so.** The cage publishes nothing until a client has mapped a
-window, so until the first frame arrives there is no picture and the session draws `starting…` in
-the middle of the window. Sprite cells naming slots no display has a picture for come out as the
-fallback mark — a window full of shade blocks, which reads as a broken application rather than as
-one that has not started drawing, and a container takes the better part of a minute to come up.
+**A window with no frame yet says what it is doing.** The cage publishes nothing until a client has
+mapped a window, so until the first frame arrives there is no picture and the session draws the
+card: the application's name, a bar, and the stage below it. Sprite cells naming slots no display
+has a picture for come out as the fallback mark — a window full of shade blocks, which reads as a
+broken application rather than as one that has not started drawing, and a container takes the better
+part of a minute to come up. A rectangle too small for three rows falls back to `starting…` on its
+middle row.
 
-**Closing the placeholder cancels the launch.** While it is the only handle the guest has put on the
+**The bar counts stages that happened and never a clock.** There are four this end can see, and
+`EM_CARD_STAGES` is them:
+
+| Stage | What it is | What the card says |
+|---|---|---|
+| 1 | the cage is forked | `starting the box` |
+| 2 | `KEMBED_HELLO` — backend, sockets and Xwayland up, guest forked | `starting the application` |
+| 3 | `KEMBED_OPEN` — an ordinary toplevel claimed the card | `opening its window` |
+| 4 | the first frame | — the card is gone |
+
+So the bar stands at three quarters when the window it precedes appears and is never seen full. A
+bar driven by a timer instead would run to the end while a container was still unpacking and stand
+still while the application was drawing, and a person reads a full bar that is not finished as a
+launch that has failed. A fifth stage would cost a protocol op and is not worth one: kembed carries
+no version, only `KEMBED_MAGIC`, so a new child-to-parent op takes a free number in 15..63 and an
+older cage answers it with a silence nothing can tell from a slow launch — and what it could add,
+the box composed and the container started, happens in `kdos-appbox` below the cage, which does not
+read its own child's stages either.
+
+**Closing the card cancels the launch.** While it is the only handle the guest has put on the
 desktop, its close is asked of every toplevel the guest has and escalates like any other last
 window — and that includes a guest showing nothing but a splash, which carries no frame, no taskbar
 row and no place in the ring, so there is nothing else on the desktop to close it by. Once the guest
-has a window of its own that a person can close, the placeholder is a leftover no toplevel claimed
-and dismissing it takes only the placeholder: asking the application to quit because somebody
+has a window of its own that a person can close, the card is a leftover no toplevel claimed
+and dismissing it takes only the card: asking the application to quit because somebody
 dismissed it would take the windows it did open with it.
 
 **A guest that goes without ever having opened a window says why — unless it exited cleanly.** The
-placeholder exists from the moment the cage is forked, before anything is known about whether the
+card exists from the moment the cage is forked, before anything is known about whether the
 program behind it can start, so a pack that will not mount, a box that will not compose or a binary
 that is not there all present as a window that opened and then closed itself, with the sentence
 explaining it nowhere the person was looking. The cage's standard error is therefore a pipe rather
@@ -747,7 +792,7 @@ tells a program that is not on the machine (127) from one that ran and refused.
 **A clean exit with no window is the bus handoff, and it is silent.** Every boxed application shares
 one session bus address, which is exactly what makes a second launch of an editor open a second
 document in the cage that is already running. That second cage maps nothing and exits 0; its
-placeholder goes without a word, and the window the person asked for arrives in the first cage as
+card goes without a word, and the window the person asked for arrives in the first cage as
 another `KEMBED_OPEN`. A notification there would fire every time somebody opened a second file.
 
 **Which blocks are owed is kept per block and per display.** At an 8x15 cell a block is a hundred
@@ -1033,20 +1078,21 @@ is the content inflated by `CON_FRAME_X` and `CON_FRAME_Y`, so a cooked event on
 round an embedded window arrives naming that window. It is not delivered: the position would be clamped back
 into the content, and the cage would go on drawing its arrow against the inside edge a cell from the
 session's own pointer while the hand is on the border. The border is where a window is grabbed,
-moved and resized, and the cell pointer is the only one that may be on it. The guest is told it
+moved and resized, and the session's own pointer is the only one that may be on it. The guest is told it
 **left** — its protocol has a leave and a motion to somewhere outside would be clamped into an
 arrival — and `ptr_route_id` is cleared with it, so the raw arm stops aiming the guest in pixels
 from a border the session is about to be asked to drag. **A held pointer is clamped, not dropped**:
 the press is what put the button here and the release is the only thing that ends what the guest
 started.
 
-**And inside the content the guest's cursor is the only one.** `kdos-cage` renders its own cursor
-into every output frame, so the block under the hand keeps being rewritten and the view holds its
-cell pointer there — see the pointer contract in
+**And inside the content the guest's cursor is the only one.** `kdos-cage` composites its own cursor
+into the frames this session pastes in, so the session marks a guest's content cells `KT_A_GUEST`
+and the view draws no pointer of its own on them — see the pointer contract in
 [design-language](../03-architecture/design-language.md). Two pointers a cell apart is what the two
 halves would otherwise look like, and the one a person aims a two-pixel scrollbar with is the
-guest's. A still picture — an icon, an image in a terminal — is not a moving one and keeps the cell
-pointer.
+guest's. The mark goes on content cells alone: a block with no picture yet is a shade mark without
+it, the chrome round the window is cells and carries none, and an icon or an image in a terminal is
+nobody's guest and keeps the pointer.
 
 **A guest may take the pointer.** A game or a three-dimensional editor asks the cage for a pointer
 constraint, which arrives as `KEMBED_GRAB`. While one is held the session routes every pointer event
@@ -1058,7 +1104,7 @@ be captured with no way out is the failure this avoids. **The session's own poin
 guest is** for as long as the constraint is held: the hovered window is that window and the implicit
 grab a button press armed is dropped as the constraint takes over, because a guest normally asks for
 the pointer *on* a press and the release that would have ended the grab is spent on the constraint
-instead. The reversed pointer cell is drawn by the view from its own cooked stream, so it goes on
+instead. The desktop's own pointer is drawn by the view from its own cooked stream, so it goes on
 following the device across a screen where nothing else answers it — and is held wherever that
 lands on a block the guest is still rewriting, which under a constraint is wherever the guest has
 put its cursor.
@@ -1080,7 +1126,7 @@ the character mapped back to the key that produces it on a **US keymap**, which 
 guest is started with, pressed and released in the same breath, aimed at the middle of a cell with
 the 1/256th offset the view supplied. Such a view loses held keys, the person's own layout inside a
 guest, sub-cell aiming, a modifier on a click, a horizontal axis and pointer lock; it keeps every key
-and click it could send, the cell pointer, the picture, the clipboard and the drop.
+and click it could send, the drawn pointer, the picture, the clipboard and the drop.
 
 ### The guest on a terminal of its own
 
@@ -1553,11 +1599,14 @@ nothing else to it — it does not raise it, does not take the keyboard and does
 | A taskbar row | left | raises it, or **restores it** when it is minimised — the row is the way back |
 | A pager cell | left | switches to that workspace |
 | The clock | left | opens `kdos-cal` |
-| `↓` `■` `X` on a frame | left | minimise, maximise / restore, close — each is a **two-cell chip**, the mark on the first cell and the chip's fill on the second, and both cells answer |
-| A title row, clear of its ends | left drag | moves the window — the **frame's** row, the one the box and the buttons are drawn on |
-| A title row, clear of its ends | right drag | resizes it from the top edge |
-| Any other border cell — the band is two columns at the sides, one row top and bottom | left **or** right drag | resizes it from that side |
-| The last `CON_GRAB_CORNER` cells of any border | left **or** right drag | resizes it from that **corner**, both axes at once |
+| `↓` `■` `X` on a frame | left press, then release on the same chip | minimise, maximise / restore, close — each is a **three-cell chip**, the mark centred with the chip's own fill either side, and all three cells answer. The press only **arms** it and the release decides, so moving off the chip before letting go takes the press back |
+| A title row, clear of its ends | left drag | moves the window — the **frame's** row, the one the box and the buttons are drawn on. A **tab strip** is drawn on that row and answers no press: the tabs are on chords, and the drag is what the row has always meant |
+| A title row, chips included | right | opens the **window menu** at the pointer, raising the window first |
+| A title row, chips included | middle | **lowers** the window |
+| Any part of a frame | long press | opens the window menu there — a finger's way to the verbs, and the only one it has |
+| Any border cell that is not the title row — the band is two columns at the sides, one row top and bottom | left **or** right drag | resizes it from that side |
+| The last `CON_GRAB_CORNER` cells of the side and bottom borders | left **or** right drag | resizes it from that **corner**, both axes at once |
+| The last `CON_GRAB_CORNER` cells of the title row | left drag | resizes it from that top corner, both axes at once |
 | Anywhere in a window | Super + left drag | moves it, so a window that is all content is still movable |
 | Anywhere in a window | Super + middle or right drag | resizes it from the **nearest** edge or corner |
 | Inside a window whose content the session draws | right drag | resizes it from the **nearest** edge or corner |
@@ -1570,9 +1619,46 @@ window model owns the geometry. A second reading of where a border is, of which 
 frame at all, or of which button means what on each would be a second thing to get wrong on the
 frames nobody tests.
 
-**And the window says what a drag would take before the button goes down.** A pointer made of one
-cell cannot be a shape — the view draws it as the cell under it reversed, and a shape published per
-motion would be a commit per motion — so the *window* carries the state instead. `win_grab_at()` is
+**The title row is the left button's alone, and that is what keeps the grip honest.** Left on the
+row moves the window and left on its corner arms resizes from that corner; the right button opens
+the window menu and the middle button lowers the window, and neither of them arms a drag anywhere on
+the row. The grip below is lit by asking `win_grab_at()` *with the left button standing in for a
+press that has not happened*, so a right press that resized from the top edge would be a resize the
+window never said was there — one answer between the light and the press is the rule the frame
+keeps. `Super` is still the way in from anywhere and is asked first: `Super`+right resizes from the
+nearest edge wherever the pointer is, the title row included.
+
+**The window menu is every frame verb in one list, each row printing the chord that does it.**
+It is the FRAME's menu and is per window; the taskbar row's menu in
+[`kdos-shell`](kdos-shell.md) is per application and carries the verbs for a whole group. What
+a pointer otherwise reaches on the frame itself is three chips and a row to drag: lower, the
+scratchpad mark and send-to-workspace are reachable there by chord alone, and the shipped
+`taskbar = windows` draws the window rows rather than the function-key row that names any of them.
+Fullscreen a taskbar row's own menu already offers; this is the frame's. It opens on a right press
+on a title row, on `Alt+Space` over the focused window, and on a long press anywhere on a frame —
+which is the only way a finger reaches those verbs at all, and is answered above the surface test
+because a terminal and an embedded guest have no surface to deliver a touch to. **The chords come
+out of the bind table**, never written at the menu, so a `keys.conf` that moves one moves what the
+menu teaches; a row that does not apply to this window is **greyed rather than hidden**, because a
+menu whose rows moved with the window's state would put `Close` where `Fullscreen` was between one
+press and the next. Send-to-workspace opens a second pane of numbered rows at the same cell, since
+`win_send()` needs a number and a row cannot ask for one. It is drawn with `KtuiMenu` — the same
+widget every surface pops with `Shift+F10` — as a popup with no bar, because a bar across the top of
+the desktop would be a menu belonging to no window.
+
+**The menu owns the keyboard and the pointer while it is up**, ahead of the chord table, the panel
+row and every frame, for the window list's reason: its arrows move the caret and a chord firing
+underneath would snap a window while somebody was choosing a verb for it. A row runs on the **press**
+and the menu answers that press's **release** as well, or a button-up would land on whatever the pane
+was covering as the end of a press that window never heard. Every button but the left one puts the
+menu away rather than picking — a wheel detent is a press with no release, and a widget that picked
+on the press kind would run whichever row a scroll passed over. A window that closes under its own
+menu takes the menu with it.
+
+**And the window says what a drag would take before the button goes down.** The pointer does not
+change shape — the view draws it as an arrow where it has pixels and as the cell under it reversed
+everywhere else, and a shape published per motion would be a commit per motion — so the *window*
+carries the state instead. `win_grab_at()` is
 asked the same question with the left button standing in for the press that has not happened, and
 what it answers is lit on the frame:
 
@@ -1580,12 +1666,18 @@ what it answers is lit on the frame:
 |---|---|---|
 | A move | the frame's four corners, as studs — the whole window travels | `■` / `#` |
 | A resize taking the left or right edge | that border's **outermost column**, along its length — the band behind it grabs just the same | `◀` `▶` / `<` `>` |
-| A resize taking the bottom edge | the bottom row | `↓` / `v` |
-| A resize taking the top edge | the two top corners, so the title keeps its row | `↑` / `^` |
+| A resize taking the bottom edge | the bottom row, between the corner arms | `↓` / `v` |
+| A resize taking the top edge alone | the two top corners, so the title keeps its row — and only the left button takes it | `↑` / `^` |
+| A resize taking a corner | the two arms that take both axes, and the cell they share | `↓`/`◀`/`▶` on the arms, `■` / `#` on the shared cell |
 | Nothing | nothing | |
 
-A corner grab lights **both** edges at once, so the window states the rectangle it is about to
-become — which is more than a pointer shape can say. The glyphs come from `ktui_glyph`, so both
+**What lights is what a press arms, cell for cell.** `win_grab_arms()` hands the grip the same arm
+lengths `win_grab_at()` measures a press against, so a single-axis run stops where the corner arms
+begin rather than promising a one-axis resize over cells that take two. The shared corner cell
+carries `■` and not an arrow, because at that cell a press takes both axes and an arrow there names
+one; the console font carries no diagonal at all, so the corner cannot be marked with the direction
+it takes. A move lights four studs and no runs, a corner resize lights one stud and two arms, and
+the arms are what tell them apart. The glyphs come from `ktui_glyph`, so both
 tiers are covered by the table that already chooses them, and the ink is `KT_ACCENT` read against
 the frame's own background, or `KT_SURFACE` on a window rung for attention, which is filled in
 `KT_ACCENT` and would otherwise swallow the grip whole. The modifiers travel with a motion, so
@@ -1594,8 +1686,8 @@ holding Super lights the move studs from anywhere inside a window, which is wher
 **A drag in progress outranks the pointer.** The window follows the hand, so the pointer is off the
 border from the first cell of the drag; while a grab is held it is the *grab* that is lit, or the
 affordance would go out at the instant it began to mean something. Under a lock, a saver, a mark, a
-pick or a guest that has taken the pointer nothing is lit, because no press reaches a frame in those
-modes and a lit edge would promise a drag that cannot start. It is recomputed for every cooked
+pick, a window menu or a guest that has taken the pointer nothing is lit, because no press reaches a
+frame in those modes and a lit edge would promise a drag that cannot start. It is recomputed for every cooked
 pointer event and repaints the screen only when it *changes*, which on a still desktop is the only
 thing that would.
 
@@ -1703,20 +1795,34 @@ never sees, and a right press is what opens a context menu in every graphical ap
 A terminal and an embedded window therefore ask for `Super` before a press inside them is a resize;
 every border, theirs included, resizes under either button without it.
 
-**A frame button is a chip: two cells the chip paints itself, a mark on the first and its own fill
-on the second.** Nothing of the border survives inside one. Give the three the slot `ktui_draw_box`
+**A frame button is a chip: three cells the chip paints itself, the mark centred and its own fill
+either side.** Nothing of the border survives inside one. Give the three the slot `ktui_draw_box`
 is handed in the same call and the group reads as a run of border rather than as three things to
 press — the border's rule shows through the gap between each pair and joins them — and on an
 unfocused frame that slot is `KT_DIM`, which measures **1.45:1** against `KT_SURFACE` across the
-seven schemes. The second cell goes the same way: a chip that kept the character under it carries a
+seven schemes. The plate cells go the same way: a chip that kept the characters under it carries a
 length of the title row's rule, which on a focused frame is the double rule and is most of the ink
-the chip has. A space in the chip's own fill is what makes the pair one plate with one mark on it.
+the chip has. Spaces in the chip's own fill are what make the three cells one plate with one mark
+on it.
 
 **A chip carries its meaning in its fill**: `KT_ERR` under the one that destroys the window,
 `KT_MID` under the two that do not, `KT_DIM` with `KT_TEXT` on it while the frame is unfocused, and
 `KT_ACCENT` under the pointer — 10:1 or better in every scheme, and the one step that is
 unmistakable on a chip that is already red. What a button does is taught by its resting colour; the
 highlight has one job, which is to say the press will land here.
+
+**Three resting fills are not available in this palette, and the mark carries the difference
+instead.** Fill against fill, worst case across the seven schemes, `KT_ERR`/`KT_MID` measures
+1.11:1 and `KT_ERR`/`KT_WARN` 1.28:1 — in two schemes a third bright fill would be the same plate
+as the one beside it — and `KT_ACCENT` against `KT_WARN` measures 1.19:1, which would cost the
+hover step on that chip the one job it has. So minimise and maximise share `KT_MID` and are told
+apart by `↓` against `■`.
+
+**Held down is the hover pair the other way up**: the plate goes to `KT_SURFACE` and the mark takes
+`KT_ACCENT`, so a chip under a finger reads as pushed in rather than as lit brighter, at the same
+10.49:1 the hover pair measures because it is the same pair. It shows only while the pointer is
+still on the chip, so a hand moved off shows a chip that will not fire — which is the answer to
+"how do I take this back".
 
 **And the mark is a shape the fill encloses.** `↓` for minimise, `■` for maximise and restore, `X`
 for close, drawn dark on every bright fill because `KT_TEXT` is 1.10:1 on `KT_ACCENT` and 2.17:1 on
@@ -1745,14 +1851,20 @@ frame. The screen is repainted when the chip under the pointer **changes** and n
 moves: nothing else on the desktop reads that position, and a repaint per cell would re-send the
 whole grid for a hand crossing an empty desk.
 
-**A chip is two cells and its glyph is one.** The second cell keeps whatever codepoint the frame
-put on that column and is repainted in the chip's colours only — a button that wrote a glyph of its
-own would be a button deciding what the border is made of. **Both cells answer a press**: a one-cell
-target is the failure a person feels, and the miss lands on the title row underneath and arms a
-move.
+**A chip is three cells and its glyph is one**, centred, with the chip's own fill either side. The
+mark is read by the plate AROUND it — the palette's dark slots are one colour to the eye, so the
+ink cannot be told from the window body by its colour — and an odd width is the only one that can
+put plate on both sides of it. **All three cells answer a press**: a one-cell target is the failure
+a person feels, and the miss lands on the title row underneath and arms a move.
 
-**A narrow frame drops buttons from the left, and never all of them.** Two cells each plus a rule to
-their left is the whole of what a frame has to spend, so minimise goes first — the taskbar row does
+**A press arms a chip; the release fires it.** A chip that acted on the press gave a person no way
+to change their mind, and the one that destroys the window is the one they most need to. Only the
+left button arms: middle and right are not a click on a control anywhere else on this desktop, and
+a chip that answered all three put the window's close on the button a hand reaches for a context
+menu with.
+
+**A narrow frame drops buttons from the left, and never all of them.** Three cells each plus a rule
+to their left is the whole of what a frame has to spend, so minimise goes first — the taskbar row does
 the same job and is always there — and close goes last. A frame that kept its title and dropped
 every button instead leaves the smallest window the desktop can make with no way to close it but the
 keyboard.
@@ -1954,6 +2066,11 @@ over state the session already holds.
 | `Super+grave` | show the scratchpad over everything; the same key hides it |
 | `Super+Alt+grave` | make the focused window the scratchpad |
 | `Super+Alt+1`…`9` | raise the window that number names |
+| `Super+b` | send the focused window to the **back**, and give the keyboard to what comes forward |
+| `Super+Shift+s` | fold the **next** window of the ring into this one as a tab |
+| `Super+]`, `Super+[` | the next tab, and the one before it |
+| `Super+Alt+s` | take the stack apart; every tab back on the desk as a window |
+| `Alt+Space` | the window menu, over the focused window |
 | `Super+F2` | the window list |
 | `Super+Shift+t`, `Super+F8` | tile this workspace |
 | `Super+Alt+t` | cascade this workspace |
@@ -2090,6 +2207,63 @@ view belongs to no workspace, so it is on the one you are looking at — and pre
 takes it off, which puts the view back on the workspace it was opened on. The compositor has no
 state for a window that is drawn nowhere without a taskbar row, so that half of the console's rule
 has no equivalent there and the flag is where the two desktops meet.
+
+### Tabbed windows
+
+**Two windows in one rectangle, showing one of them at a time.** `Super+Shift+s` folds the next
+window of the ring into the focused one; `Super+]` and `Super+[` walk the strip; `Super+Alt+s` takes
+the group apart. It is Haiku's stack, and **stacking is the whole of it** — nothing here puts two
+windows side by side and moves them together.
+
+**The tab on screen is an ordinary window and every other tab is hidden**, by the same flag the
+scratchpad is put away with. That is what makes a stack one window to everything that counts
+windows: **one taskbar row, one step of the cycle ring, one hit rectangle, one window-list row**,
+and a guest behind a tab that is not showing sleeps exactly as one on another workspace does. None
+of that is code the stack added.
+
+**The strip replaces the title, not a row.** It runs from the frame's third column to the gap before
+the `↓ ■ X` chips, which is the run the name occupies, so a stacked frame costs no cells at all —
+and a window in no stack draws no strip, which is why every frame in this book looks the way it
+always has. The window's number and its name go into the live tab, which is the only tab the ring
+can reach.
+
+**A tab is read by the plate around its name, exactly as a chip is.** The live one is `KT_SURFACE`
+on `KT_ACCENT` — the pair a chip takes under the pointer — and a resting one is `KT_TEXT` on
+`KT_DIM`, at 8.3:1. There is no third pair and none dims with the frame: **the strip says which tab
+is up and the frame says which window has the keyboard**, and a strip that went flat on an unfocused
+frame would leave a person unable to read what a stack will show when they click on it.
+
+**When the tabs outnumber the columns the strip collapses to a counter.** Below `CON_TAB_MIN` columns
+per tab the names are initials and the strip has stopped saying anything, so ` 3/8 ` is drawn
+instead — which tab of how many, the one thing still worth a cell — and the rest of the run is left
+as the rule the box drew.
+
+**The strip is ordered by window id and never by the z-order.** Bringing a tab up moves it to the
+front of the stacking list, so a strip drawn in list order would reshuffle on every switch; ids only
+ever go up, so id order is the one order a person can point at twice. **Tabs cannot be reordered.**
+
+**A tab takes the stack's rectangle before it hides**, through the same call an ordinary resize goes
+through — a terminal reflows and a guest is configured — because a tab carrying some other size
+draws that size into the frame the moment it comes up. The tile state travels
+with it, so a `Super+`arrow after a switch snaps from what the stack is in.
+
+**The keyboard moves only when the tab that went away held it.** Stepping a stack while somebody is
+typing in another window leaves the keyboard where it is.
+
+**Closing the tab on screen promotes an heir**, the way an owner that goes does: the frontmost
+survivor takes the rectangle and the rest re-point at it, and a stack with one tab left is not a
+stack. A tab nothing pointed at would be a hidden window with no row, no ring step and no rectangle
+— reachable by nothing on the desktop.
+
+**Chrome, a guest on a terminal of its own and the scratchpad cannot be tabs.** The first two are
+not things a person switches between; the scratchpad is put away with the very flag a stack hides
+its members with, so folding it in would make two mechanisms disagree about whether it is on the
+screen.
+
+**It is this desktop's alone.** `kdos-comp` has no stacking, so `rc.xml` binds nothing for these
+four chords — and it binds nothing *else* to them either, so the day the compositor grows tabs the
+chords are still free to mean the same thing. A stack is session state and is written to no saved
+session; see [Known gaps](../06-reference/known-gaps.md).
 
 ### Where a window opens
 
@@ -2419,6 +2593,23 @@ its `MoveResize` is not the same interaction, so binding the nearest thing there
 chord mean two different things on the two desktops — which is the one rule `keys.conf` and
 `rc.xml` exist to keep.
 
+**And so is `lower`, because the ring cannot stand in for it.** Every step of `Super+Tab` and
+`Alt+Tab` *raises* what it lands on, so two windows of the same size fully overlapped stay in the
+order they are in however many times they are stepped — the one underneath is unreachable. `Super+b`
+moves the focused window to the tail of the stack, deepest-first so that a dialog goes down with the
+window it belongs to and stays above it, and the keyboard goes to whatever comes forward: a focus
+left on a window now covered by another is one whose keys land where nobody is looking. Lowering a
+window a person is *not* typing in leaves their focus alone, which is the rule a minimise keeps for
+the same reason. `Super+b` is free on both desktops unmodified, and labwc's own `Lower` action is
+bound to nothing in `rc.xml`.
+
+**`Alt+Space` is the window menu, and one of the few chords this session takes that is not on
+`Super`.** It cannot be one: `Super+space` is the palette and `Super+Shift+space` the taskbar, so a
+third form of that key would be three unrelated things a modifier apart — and `rc.xml` already opens
+labwc's client menu with `Alt+Space`, so the two desktops answer it alike. The menu itself, what it
+holds and how it is reached with a pointer or a finger, is in
+[What the pointer does](#what-the-pointer-does).
+
 ## Reaching another terminal
 
 **Ctrl+Alt+F1 to F12 switch virtual terminals, and `libkkms` acts on them.** `libseat` putting this
@@ -2448,6 +2639,11 @@ repaints in full.
   tells every surface to start again: each forgets what it has sent, and its next flush puts every
   picture back on the wire before any cell. A reattached display therefore fills in, at the cost of
   re-sending — which is the same cost an animation already pays per frame.
+- **The window menu names no workspace by letter.** Its `Send to workspace` pane is picked with the
+  arrows, `Enter` or the pointer: `ktui_menu_accel_of()` reads a *letter* after the `&` and answers
+  nothing for anything else, so a marked digit would be an underline advertising a key the menu does
+  not answer. Each row still prints `Super+Shift+`N, which is the chord that does it, and every other
+  row in the menu carries a letter.
 - **A touch pointer moves a cell at a time.** A real pointer reaches a guest in pixels over the raw
   stream, and a real keyboard reaches it through the person's own layout; a touch event is
   synthesised from the gesture recogniser with no raw partner and so arrives at the grid's

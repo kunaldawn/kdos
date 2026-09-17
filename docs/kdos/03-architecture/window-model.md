@@ -173,6 +173,14 @@ is the same picture from the other side. The keyboard still goes to the window t
 chain is followed a few levels and no further: a guest names the owner and nothing this side can
 promise the chain has no cycle in it.
 
+**And it rides its owner's lowers the same way round.** A lower is that move read backwards: every
+member goes to the **tail**, deepest-first, so a grandchild is moved before its parent and the owner
+is moved last of all — a parent moved first would be buried under its own children, which is the
+dialog on the wrong side of the window it is asking about seen from below. The modal moves first and
+therefore ends highest of its siblings, for the reason it is collected first on the way up. A lower
+names the head of the family whichever member was given, as a raise does. The console desktop's
+`Super+b` is the only caller: the compositor has labwc's own `Lower`, bound to nothing.
+
 **It is remembered nowhere.** An owned window is a *float*, which already means "opens where the eye
 is, at its own size, and is recorded in no geometry table". Every window of one guest carries the
 same program name, so a file chooser that was remembered would write its rectangle as the one the
@@ -221,6 +229,50 @@ Giving each of them a row would turn one entry into six the moment an image wind
 the bar this whole relation exists to stop growing. Modality does not survive: there is nothing left
 for it to block. A splash is never the heir, having no frame to close it by and no place in the
 ring.
+
+## A window that is a tab of another window
+
+**The second inter-window relation, and the last one there is.** A window may name a **stack**: the
+id of the tab that is on screen. It is the console session's, not the library's — see [What cannot
+be expressed](#what-cannot-be-expressed) — and it is stacking and nothing else. Two windows in a
+stack are one rectangle showing one of them at a time, with a strip of tabs along the title row.
+
+**The tab on screen is an ordinary window and every other member is hidden.** The head holds the
+geometry, the tile state and the workspace; a member is put away with the same `hidden` flag the
+[scratchpad](../04-programs/kdos-con.md#the-scratchpad) uses, which is what buys the whole of the
+behaviour with no code of its own: its guest sleeps, it keeps no taskbar row, the cycle ring steps
+past it, it claims no cells for a hit test and it carries no window-list row. **A stack is one
+window to everything that counts windows.**
+
+**Every member carries the same value, the head's included.** `stack == id` is what makes a window
+the one on screen, so the id changes each time a different tab is brought up and a set with one
+member left is not a stack at all. **The strip is ordered by id and not by the z-order**: bringing a
+tab up moves it to the front of the list, so a strip drawn in list order would reshuffle on every
+switch, and ids only ever go up.
+
+**Joining takes the head's rectangle before it hides.** A member is placed through the same call an
+ordinary resize goes through — which reflows a terminal and configures a guest — because a member
+still configured to its old size would draw the old size into the new rectangle the moment it came
+up. The tile state travels with it too, so a snap after a tab switch is measured from what the
+stack is in rather than from what the incoming tab was in before it joined.
+
+**The keyboard moves only when the outgoing tab held it.** A stack stepped while somebody is typing
+in another window leaves the keyboard where it is; a focus left on the tab that went away would
+send the next keystroke to a window drawn nowhere.
+
+**And a stack that loses the tab on screen promotes an heir**, exactly as an owner that goes does.
+The frontmost survivor takes the head's rectangle and its place at the head and the rest re-point at
+it — a member still naming a head that has gone is a hidden window with no row, no ring step and no
+rectangle, which is a window a person can reach by nothing at all.
+
+**What is not built:** chrome, a guest on a terminal of its own and the scratchpad cannot be tabs —
+the scratchpad because its own chord shows and hides it through the same flag, so it would be a
+window two mechanisms disagreed about. There are no **tile groups**: `tiled` is a per-window bitmask
+resolved against the work area and never against a neighbour, and the arrangements clear it
+afterwards precisely so that an arrangement is not a state, so a group of windows that move and size
+together would reuse none of this. And a stack is not made by **dragging**: a title-bar drag is a
+translation with no drop target and no hit test against another window. Both are in
+[Known gaps](../06-reference/known-gaps.md).
 
 ## The edge search is one question
 
@@ -333,6 +385,12 @@ question about a *program*, which is a thing the library has no word for. Both d
 themselves — `comp.conf`'s `window_memory` and `con.conf`'s `remember` — and each keeps its own
 file, because one is in pixels and the other in cells. `kwm_fit()` is the shared half: whatever
 either of them remembers is fitted back into the area that exists now.
+
+**Nor is a stack.** The console's tabbed windows are a relation between two windows, and `libkwm`
+computes rectangles from the space available and the obstacles present — it has no word for a
+neighbour, which is the same reason there are no tile groups. A stack is a field on a session's own
+window record: nothing about it is shared with `kdos-comp`, which has no tabs, and nothing about it
+is written to a saved session.
 
 **Which workspace a window is on is not in the model.** The library places and
 fits rectangles; a workspace is a set the session keeps, and "on every one of

@@ -68,12 +68,13 @@ Both bootstraps are pinned by version and sha256 like every other source, so the
 still holds. Everything the bootstraps then produce — the shipped `rustc`, `cargo` and `go`, and
 every Rust and Go program in the tree — is compiled here.
 
-### Two prebuilt font sets
+### Four prebuilt font sets
 
-`ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as `.ttf` because upstream publishes them
-that way. The console font is a different port and *is* built from source: `terminus-font`
-(4.49.1) goes from BDF through `configure` and `make` into the PSF that
-[`kdos-getty`](../03-architecture/boot-and-init.md) loads.
+`noto-fonts` (2.015), `noto-cjk` (2.004), `ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as
+built faces because upstream publishes them that way — a font is drawn, not compiled, and
+rebuilding one from its sources would produce different outlines. The console font is a different
+port and *is* built from source: `terminus-font` (4.49.1) goes from BDF through `configure` and
+`make` into the PSF that [`kdos-getty`](../03-architecture/boot-and-init.md) loads.
 
 ### Vendored artwork, remade rather than redrawn
 

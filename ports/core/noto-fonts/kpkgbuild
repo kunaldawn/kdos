@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = noto-fonts
+version     = 2.015
+release     = 1
+_mono       = 2.014
+source      = $name-$version.zip::https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSans-v$version/NotoSans-v$version.zip
+source      = $name-mono-$_mono.zip::https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSansMono-v$_mono/NotoSansMono-v$_mono.zip
+sha256      = 0c34df072a3fa7efbb7cbf34950e1f971a4447cffe365d3a359e2d4089b958f5  noto-fonts-2.015.zip
+sha256      = 090cf6c5e03f337a755630ca888b1fef463e64ae7b33ee134e9309c05f978732  noto-fonts-mono-2.014.zip
+description = Noto Sans and Noto Sans Mono — the desktop's proportional and fixed faces
+homepage    = https://notofonts.github.io/
+depends     = unzip fontconfig

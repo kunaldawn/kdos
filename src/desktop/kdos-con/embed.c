@@ -269,6 +269,32 @@
 #define EM_NOTICE_NAME 96
 
 /*
+ * HOW MANY STAGES OF A LAUNCH THIS END CAN SEE, which is what the startup
+ * card's bar is fractions of and the only thing it is fractions of.
+ *
+ * FOUR THINGS ACTUALLY HAPPEN AND THE CARD COUNTS THOSE FOUR: the cage is
+ * forked, KEMBED_HELLO says its backend, its sockets and its Xwayland are up
+ * and the guest is running, a toplevel claims the card, and a frame arrives.
+ * The fourth is what takes the card away, so the bar stands at three quarters
+ * when the window it precedes appears and the person never sees it full.
+ *
+ * A TIMER DRESSED AS A PERCENTAGE IS WHAT THIS MUST NOT BE. There is no
+ * per-stage signal on the channel beyond those three, so a bar driven by a
+ * clock would run to the end while a container was still unpacking and stand
+ * still while the application was drawing — which is worse than no bar,
+ * because a person reads a full bar as a launch that has failed.
+ *
+ * A FIFTH STAGE WOULD COST A PROTOCOL OP AND IS NOT WORTH ONE. kembed carries
+ * no version, only KEMBED_MAGIC, so a new child -> parent op takes a free
+ * number in 15..63 and an old cage paired with a new session answers it with
+ * silence that nothing can tell from a slow launch. What such an op could add
+ * — the box composed, the container started — is kdos-appbox's, several
+ * processes below the cage, and it would have to be relayed through one that
+ * does not read its child's stages either.
+ */
+#define EM_CARD_STAGES 4
+
+/*
  * HOW LATE A FRAME MUST BE TO COUNT AS AN ANSWER TO THE ASK.
  *
  * A FRAME ALREADY IN FLIGHT IS NOT ONE. The cage publishes whether or not it
@@ -380,6 +406,17 @@ struct EmbedProc {
 	 * exit status can tell.
 	 */
 	int opened;
+
+	/*
+	 * THE CAGE ANSWERED KEMBED_HELLO, which it sends once its backend, its
+	 * sockets and its Xwayland are up and the guest has been forked. It is
+	 * the only thing between the fork and the first KEMBED_OPEN that says
+	 * anything at all about how a launch is getting on, and the startup
+	 * card's bar is fractions of it — see EM_CARD_STAGES. Nothing else
+	 * reads it, and a launch that never sends it is a launch whose card
+	 * stays on its first stage, which is the truth.
+	 */
+	int hello;
 
 	/*
 	 * THE LAUNCH IDENTITY EVERY WINDOW OF THIS GUEST INHERITS. It comes
@@ -615,16 +652,42 @@ struct EmbedWin {
 	int fit_run;
 	unsigned long long fit_ms;
 	/*
-	 * THE RECTANGLE THE PLACEHOLDER WAS GUESSED AT, in cells, 0 once a
-	 * toplevel has claimed it. embed_open() asks for half the work area
-	 * because it knows nothing about the window yet, and win_place() may
-	 * answer with the rectangle the person last left this program at — a
-	 * remembered rectangle is an answer already, and replacing it with the
-	 * toolkit's own default is the window forgetting where it was kept. So
-	 * the natural size KEMBED_OPEN carries is taken only while the window
-	 * still holds the guess.
+	 * THE RECTANGLE THIS LAUNCH WAS PLACED AT IS A GUESS AND NOT A CHOICE.
+	 *
+	 * embed_open() asks win_place() for half the work area because it knows
+	 * nothing about the window yet, and win_place() may answer with the
+	 * rectangle the person last left this program at instead. A remembered
+	 * rectangle is an answer already, and replacing it with the toolkit's
+	 * own default is the window forgetting where it was kept — so a
+	 * toplevel's natural size is taken only while this is set.
+	 *
+	 * MEASURED ONCE, AT THE PLACEMENT, AND NEVER AGAIN. A card may be
+	 * claimed, released and claimed again, and `home` below then carries
+	 * what the claim before last said about itself — so the same test made
+	 * against `home` would refuse the second claimer the size the first one
+	 * was granted.
 	 */
-	int ask_w, ask_h;
+	int guessed;
+	/*
+	 * THE RECTANGLE THE OUTPUT IS CUT AT, in cells, AND THE ONE THE WINDOW
+	 * OPENS OUT TO. It is exactly `cols` by `rows` — layout() may clamp
+	 * what it was asked for and this follows it — plus the origin the
+	 * window model placed the launch at.
+	 *
+	 * IT EXISTS BECAUSE THE WINDOW AND THE OUTPUT ARE TWO RECTANGLES WHILE
+	 * A LAUNCH IS A CARD. `win->geom` is CON_CARD_W by CON_CARD_H and this
+	 * is the size the cage was forked with and the size the toolkit lays
+	 * itself out at, so everything that reflows the guest reads this and
+	 * not the window — see embed_resized(). Reading the window instead
+	 * hands the guest a card-sized output and the application comes up the
+	 * size of the card.
+	 *
+	 * ONCE `win->starting` IS CLEAR THE TWO ARE THE SAME RECTANGLE and
+	 * this is not read again: the window model owns the size from the
+	 * first frame on, and a second copy of it that anything still consulted
+	 * would be a rectangle that stops following a drag.
+	 */
+	KwmRect home;
 	unsigned long long size_ms;	/* when the last one went */
 	int slots[EM_MAX_BLOCKS];	/* session sprite slots, -1 unassigned */
 
@@ -2011,6 +2074,198 @@ static void win_free_partial(struct EmbedWin *e)
 	free(e);
 }
 
+/* ── the startup card ────────────────────────────────────────────────── */
+
+/*
+ * WHICH OF THE STAGES A LAUNCH IS ON, counted from 1 and never reaching
+ * EM_CARD_STAGES: the stage that would be the last is the first frame, and
+ * the first frame is what takes the card off the desktop.
+ */
+static int card_stage(const struct EmbedWin *e)
+{
+	if (e->id)
+		return 3;
+	return e->proc && e->proc->hello ? 2 : 1;
+}
+
+/*
+ * THE CARD, CENTRED ON THE RECTANGLE IT WILL OPEN OUT TO — not on the work
+ * area, because a launch remembered at the far edge of a wide screen should
+ * put its card where its window is about to be and not in the middle of a
+ * screen the person is not looking at.
+ *
+ * win_place_at() ENDS IN embed_resized(), WHICH READS `home` WHILE THE WINDOW
+ * IS STARTING. That is the whole of what keeps the card from reflowing the
+ * guest: the grid is already cut at `home`, so the comparison there matches
+ * and no KEMBED_SIZE goes out.
+ */
+static void card_place(struct EmbedWin *e)
+{
+	Win *w = e->win;
+	int cw = CON_CARD_W, ch = CON_CARD_H;
+
+	if (!w || !w->starting)
+		return;
+	if (cw > e->home.w)
+		cw = e->home.w;
+	if (ch > e->home.h)
+		ch = e->home.h;
+	win_place_at(w, e->home.x + (e->home.w - cw) / 2,
+		     e->home.y + (e->home.h - ch) / 2, cw, ch);
+}
+
+/*
+ * THE RECTANGLE THE CARD WILL OPEN OUT TO, CHANGED — in cells, and only while
+ * the window is still a card.
+ *
+ * EVERYTHING THE GUEST RENDERS INTO FOLLOWS IT and the card does not: the grid
+ * is re-cut, the slots are re-taken, the cage is told, and the card is
+ * re-centred at the size it already was. A launch whose first toplevel comes up
+ * at a size of its own therefore opens out at THAT size, having been told it
+ * once, with no second reflow when the card retires.
+ *
+ * A GRID layout() REFUSES LEAVES `home` WHERE IT WAS. The two must name the
+ * same rectangle or embed_resized() reflows the guest on every call that
+ * reaches it for the rest of the launch.
+ */
+static void card_home(struct EmbedWin *e, int cols, int rows)
+{
+	Win *w = e->win;
+
+	if (!w || !w->starting || cols < 1 || rows < 1)
+		return;
+	if (cols == e->cols && rows == e->rows)
+		return;
+	if (layout(e, cols, rows) != 0)
+		return;
+	e->home.w = e->cols;
+	e->home.h = e->rows;
+	e->want_pw = e->cols * e->cell_w;
+	e->want_ph = e->rows * e->cell_h;
+	size_flush(e);
+	damage_all(e);
+	card_place(e);
+}
+
+/*
+ * WHAT A LAUNCH IS UNTIL ITS FIRST FRAME: the application's name, a bar over
+ * the stages EM_CARD_STAGES counts, and the stage it is on.
+ *
+ * A WINDOW WITH NO FRAME YET HAS TO SAY SO. Sprite cells naming slots no
+ * display has a picture for come out as the fallback mark, which is a window
+ * full of shade blocks and reads as a broken application rather than as one
+ * that has not started drawing — and a boxed application takes the better part
+ * of a minute to come up cold.
+ *
+ * BOUNDED BY THE WINDOW AND NOT BY THE GRID. While the card is up the guest's
+ * grid is the larger of the two rectangles, so everything here is measured
+ * against `w->geom` — which is also why the sentence is what a rectangle too
+ * small for the card falls back to rather than a clipped card.
+ */
+static void card_draw(const Win *w, const struct EmbedWin *e)
+{
+	static const char *const stage[] = {
+		"starting the box",
+		"starting the application",
+		"opening its window",
+	};
+	int n = card_stage(e);
+	int x = w->geom.x;
+	int y = w->geom.y;
+
+	if (w->geom.h < CON_CARD_H || w->geom.w < 8) {
+		static const char *msg = "starting…";
+		int lw = ktui_utf8_width(msg);
+
+		if (lw <= w->geom.w && w->geom.h > 0)
+			ktui_draw_text(x + (w->geom.w - lw) / 2,
+				       y + w->geom.h / 2, lw, msg, KT_MID,
+				       KT_BG, KT_A_NONE);
+		return;
+	}
+
+	y += (w->geom.h - CON_CARD_H) / 2;
+
+	int nw = ktui_utf8_width(w->title);
+
+	if (nw > w->geom.w)
+		nw = w->geom.w;
+	ktui_draw_text(x + (w->geom.w - nw) / 2, y, nw, w->title, KT_TEXT,
+		       KT_BG, KT_A_NONE);
+
+	/*
+	 * THE BAR IS FRACTIONS OF STAGES THAT HAVE HAPPENED AND OF NOTHING
+	 * ELSE — see EM_CARD_STAGES. ktui_progress() is pinned to what
+	 * kinstall draws, so a new caller takes the _ex form and states its
+	 * style and its background.
+	 */
+	ktui_progress_ex(krect(x, y + 1, w->geom.w, 1),
+			 (double)n / EM_CARD_STAGES, NULL, KT_BAR_SOLID,
+			 KT_BG);
+
+	int sw = ktui_utf8_width(stage[n - 1]);
+
+	if (sw > w->geom.w)
+		sw = w->geom.w;
+	ktui_draw_text(x + (w->geom.w - sw) / 2, y + 2, sw, stage[n - 1],
+		       KT_MID, KT_BG, KT_A_NONE);
+}
+
+/*
+ * THE RECTANGLE A CARD OPENS OUT TO, CENTRED ON THE CARD ITSELF — because a
+ * person who dragged the card somewhere chose where to watch this launch, and
+ * a window that jumped back to where it was placed would undo that. win_fit()
+ * clamps whatever this lands on into the work area.
+ */
+static KwmRect card_out(KwmRect card, KwmRect home)
+{
+	KwmRect r = home;
+
+	r.x = card.x + (card.w - home.w) / 2;
+	r.y = card.y + (card.h - home.h) / 2;
+	return r;
+}
+
+/*
+ * THE CARD OPENS OUT INTO THE WINDOW, and the window is the rectangle the
+ * guest has been rendering into since the fork — so nothing is allocated,
+ * nothing is reflowed and no size is sent.
+ *
+ * BEFORE `drew` IS SET AND NOWHERE ELSE. embed_draw() bounds the sprite walk
+ * by the WINDOW's rectangle, so a grid wider than the window paints its
+ * top-left corner into it — harmless only for as long as the card is what is
+ * drawn instead.
+ */
+static void card_open(struct EmbedWin *e)
+{
+	Win *w = e->win;
+
+	if (!w || !w->starting)
+		return;
+	w->starting = 0;
+	if (w->tiled || w->full) {
+		/*
+		 * A CARD THE PERSON TILED OR PUT ON THE WHOLE SCREEN IS ALREADY
+		 * AT THE RECTANGLE THAT STATE MEANS, and the window model owns
+		 * it: the guest is re-cut to that rectangle here rather than
+		 * dragged back, or the window would be marked tiled and not be
+		 * the shape of its tile.
+		 *
+		 * WHAT IT COMES BACK TO IS STILL THE APPLICATION'S RECTANGLE.
+		 * `restore` was taken while the window was a card, so leaving
+		 * it there is an untile that answers with a window thirty
+		 * cells by three.
+		 */
+		w->restore = card_out(w->restore, e->home);
+		embed_resized(w);
+		return;
+	}
+
+	KwmRect r = card_out(w->geom, e->home);
+
+	win_place_at(w, r.x, r.y, r.w, r.h);
+}
+
 Win *embed_open(const char *const argv[], const char *title)
 {
 	int sv[2];
@@ -2076,14 +2331,20 @@ Win *embed_open(const char *const argv[], const char *title)
 	 *
 	 * IT IS A GUESS AND IT IS RECORDED AS ONE. Nothing about this window is
 	 * known until its first toplevel maps, and what maps then carries a
-	 * size of its own; `ask` is what lets embed_adopt() tell the guess it
-	 * may replace from a rectangle the person chose, which it may not.
+	 * size of its own; `guessed` is what lets embed_adopt() tell the guess
+	 * it may replace from a rectangle the person chose, which it may not.
+	 *
+	 * THE PLACEMENT IS THE OUTPUT'S AND THE CARD IS THE WINDOW'S. What
+	 * win_place() answers here is `home` — the rectangle the grid is cut
+	 * at, the rectangle `--embed` names and therefore the rectangle the
+	 * toolkit lays itself out at — and the window is shrunk to a card over
+	 * it afterwards. The two are one rectangle again at the first frame.
 	 */
 	KwmRect area = win_workarea();
+	int aw = area.w / 2, ah = area.h / 2;
 
-	e->ask_w = area.w / 2;
-	e->ask_h = area.h / 2;
-	win_place(w, e->ask_w, e->ask_h);
+	win_place(w, aw, ah);
+	e->guessed = w->geom.w == aw && w->geom.h == ah;
 
 	if (layout(e, w->geom.w, w->geom.h) != 0) {
 		free(w);
@@ -2091,6 +2352,16 @@ Win *embed_open(const char *const argv[], const char *title)
 		free(p);
 		return NULL;
 	}
+
+	/* THE GRID IS WHAT `home` IS TAKEN FROM, not what layout() was asked
+	 * for: the two must name one rectangle or embed_resized() re-cuts the
+	 * guest on the first call that reaches it. The card is placed over it
+	 * afterwards, and only then is the window smaller than its output. */
+	e->home = w->geom;
+	e->home.w = e->cols;
+	e->home.h = e->rows;
+	w->starting = 1;
+	card_place(e);
 
 	/*
 	 * THE SIZE IT IS FORKED WITH IS A SIZE IT HAS BEEN TOLD, and it is the
@@ -2289,13 +2560,23 @@ Win *embed_open(const char *const argv[], const char *title)
 /*
  * A TOPLEVEL MAPPED, SO A WINDOW OPENS — AND NOTHING FORKS.
  *
- * THE FIRST ORDINARY TOPLEVEL CLAIMS THE PLACEHOLDER, which is the window this
- * launch already put on the desktop and the rectangle the geometry memory
+ * THE FIRST ORDINARY TOPLEVEL CLAIMS THE STARTUP CARD, which is the window
+ * this launch already put on the desktop and the rectangle the geometry memory
  * already chose for it. Not the first toplevel of ANY kind: an application
  * whose splash maps first would give the splash the rectangle the person keeps
  * the document window at, and would then have nowhere to put the document.
  * Owned windows never claim it either — a dialog is a question about a window
  * that has to exist first.
+ *
+ * AND THE CLAIM IS PROVISIONAL UNTIL THE TOPLEVEL DRAWS. xdg-shell has no
+ * splash role, so a Wayland startup window arrives naming no owner and no kind
+ * — indistinguishable here from the document window — and the one thing that
+ * separates the two is that a startup window paints nothing and retires. A
+ * claim retired before the first frame therefore gives the card back and the
+ * next ordinary toplevel takes it; see KEMBED_CLOSE_WIN in drain(). Without
+ * that, the document window is a SECOND toplevel, gets a window of its own at
+ * its own size, and the person watches a large window open and then be
+ * replaced by a smaller one.
  *
  * EVERY OTHER TOPLEVEL IS A WINDOW OF ITS OWN, carrying the launch's name and
  * its owner's workspace: a dialog that opened on the desk the person has
@@ -2339,13 +2620,13 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 		close_answered(asked);
 
 	/*
-	 * The placeholder is the only window that can have no id, and it is
-	 * this process's first. ANY ROLE BIT AT ALL MEANS THIS IS NOT AN
-	 * ORDINARY TOPLEVEL — a splash, a tool palette, a dock, a dialog that
-	 * named no parent — and the placeholder carries the application's
-	 * remembered rectangle, a full frame and a taskbar row. Handing those
-	 * to a dock writes the dock's rectangle back to the geometry table as
-	 * the rectangle the document window opens at next time.
+	 * The card is the only window that can have no id, and it is this
+	 * process's first. ANY ROLE BIT AT ALL MEANS THIS IS NOT AN ORDINARY
+	 * TOPLEVEL — a splash, a tool palette, a dock, a dialog that named no
+	 * parent — and the card carries the application's remembered rectangle,
+	 * a full frame and a taskbar row. Handing those to a dock writes the
+	 * dock's rectangle back to the geometry table as the rectangle the
+	 * document window opens at next time.
 	 */
 	if (!m->c && !role)
 		for (struct EmbedWin *q = p->wins; q; q = q->next)
@@ -2353,46 +2634,45 @@ static void embed_adopt(struct EmbedProc *p, const KembedMsg *m,
 				e = q;
 
 	if (e) {
-		int aw = e->ask_w, ah = e->ask_h;
-
 		e->id = (uint32_t)m->win;
-		e->ask_w = e->ask_h = 0;
 		if (title && title[0])
 			snprintf(e->win->title, sizeof(e->win->title), "%s",
 				 title);
 		/*
-		 * AND THE SIZE THE TOPLEVEL CAME UP AT IS THE SIZE OF THE
-		 * WINDOW, WHERE NOBODY HAS CHOSEN ONE.
+		 * AND THE SIZE THE TOPLEVEL CAME UP AT IS THE SIZE THE CARD
+		 * OPENS OUT TO, WHERE NOBODY HAS CHOSEN ONE.
 		 *
-		 * The placeholder is a rectangle guessed before there was
-		 * anything to measure — half the work area — and a guest whose
-		 * first window is a welcome card or a small tool then renders
-		 * that window at its own size inside a frame twice as wide,
-		 * over the cage's own background. Nothing later closes that:
-		 * the mapping the cage publishes is always the OUTPUT, so it
-		 * agrees with this end by construction and take_buf() sees
-		 * nothing to correct.
+		 * `home` is a rectangle guessed before there was anything to
+		 * measure — half the work area — and a guest whose first window
+		 * is a welcome card or a small tool then renders that window at
+		 * its own size inside a frame twice as wide, over the cage's
+		 * own background. Nothing later closes that: the mapping the
+		 * cage publishes is always the OUTPUT, so it agrees with this
+		 * end by construction and take_buf() sees nothing to correct.
 		 *
-		 * A GUESS IS REPLACED AND A CHOICE IS NOT. `ask` is what
-		 * win_place() was asked for, so a window still holding it was
-		 * placed by the guess; a window holding anything else was
-		 * placed from the geometry table, at the rectangle the person
-		 * last left this program at, and that is an answer already.
+		 * A GUESS IS REPLACED AND A CHOICE IS NOT, which `guessed`
+		 * is: a launch placed from the geometry table is at the
+		 * rectangle the person last left this program at, and that is
+		 * an answer already.
 		 *
 		 * A GUEST THAT REPORTS NO SIZE KEEPS THE GUESS, which is what
 		 * a window with nothing to say about itself gets anywhere on
 		 * this desktop.
 		 */
-		if (m->a > 0 && m->b > 0 && aw > 0 &&
-		    e->win->geom.w == aw && e->win->geom.h == ah &&
+		if (m->a > 0 && m->b > 0 && e->guessed &&
 		    !e->win->tiled && !e->win->full) {
 			int cols, rows;
 
 			want_cells(m->a, m->b, &cols, &rows);
-			if (cols != e->win->geom.w || rows != e->win->geom.h)
-				win_place_at(e->win, e->win->geom.x,
-					     e->win->geom.y, cols, rows);
+			card_home(e, cols, rows);
 		}
+		/*
+		 * AND THE CARD IS ON ITS LAST STAGE. The claim is the third of
+		 * the four things this end can see; the fourth is the frame
+		 * that takes the card away. Nothing else repaints a window
+		 * whose picture has not started arriving.
+		 */
+		ktui_draw_invalidate();
 		return;
 	}
 
@@ -2833,10 +3113,21 @@ static void fit_surface(struct EmbedWin *e, int pw, int ph)
 	}
 
 	want_cells(pw, ph, &cols, &rows);
-	/* A REPORT THE WINDOW ALREADY SATISFIES IS STILL A REPORT ANSWERED,
+	/*
+	 * A REPORT THE WINDOW ALREADY SATISFIES IS STILL A REPORT ANSWERED,
 	 * and is recorded as one: the guest is a whole cell or less away from
-	 * the rectangle it asked for, which is as close as a cell grid goes. */
-	if (cols != w->geom.w || rows != w->geom.h)
+	 * the rectangle it asked for, which is as close as a cell grid goes.
+	 *
+	 * AND A LAUNCH STILL SHOWING ITS CARD ANSWERS IT WITH THE RECTANGLE THE
+	 * CARD OPENS OUT TO. The card is CON_CARD_W by CON_CARD_H and says
+	 * nothing about how large the application wants to be; moving it to the
+	 * reported size would be a startup card the size of the application,
+	 * and leaving the report unanswered would open the window out at a size
+	 * the guest has already said it cannot use.
+	 */
+	if (w->starting)
+		card_home(e, cols, rows);
+	else if (cols != w->geom.w || rows != w->geom.h)
 		win_place_at(w, w->geom.x, w->geom.y, cols, rows);
 
 	e->fit_pw = e->cols * e->cell_w;
@@ -2882,6 +3173,18 @@ static void drain(struct EmbedProc *p)
 		if (m.op == KEMBED_HELLO) {
 			if (fd >= 0)
 				close(fd);
+			/*
+			 * THE CAGE IS UP AND THE GUEST IS FORKED, which is the
+			 * second of the four stages a startup card counts and
+			 * the only thing on this channel that says anything at
+			 * all between the fork and the first toplevel. Nothing
+			 * else repaints a window whose picture has not started
+			 * arriving, so the frame is asked for here.
+			 */
+			if (!p->hello) {
+				p->hello = 1;
+				ktui_draw_invalidate();
+			}
 			continue;
 		}
 		if (m.op == KEMBED_GONE) {
@@ -2948,8 +3251,24 @@ static void drain(struct EmbedProc *p)
 			 * ten seconds after honouring a close, which is
 			 * precisely the shared-instance case the handoff
 			 * depends on.
+			 *
+			 * A CLAIM ON A CARD IS PROVISIONAL UNTIL THE TOPLEVEL
+			 * DRAWS, so one that retires without ever having drawn
+			 * gives the card back instead of taking it with it.
+			 * xdg-shell has no splash role — a Wayland startup
+			 * window arrives naming no owner and no kind, exactly
+			 * as the document window does — so the only thing that
+			 * tells them apart is that one of them never paints
+			 * anything and goes. The card is then waiting for the
+			 * next ordinary toplevel, at the rectangle the launch
+			 * was placed at, with its output already allocated.
 			 */
 			close_answered(e);
+			if (e->win && e->win->starting) {
+				e->id = 0;
+				ktui_draw_invalidate();
+				break;
+			}
 			if (e->win)
 				win_drop(e->win);
 			break;
@@ -2997,6 +3316,16 @@ static void drain(struct EmbedProc *p)
 			e->latest = m.a;
 			em_stat.frames++;
 			if (!e->drew) {
+				/*
+				 * THE CARD OPENS OUT BEFORE `drew` IS SET AND
+				 * NOT AFTER. embed_draw() paints the card
+				 * while this is clear and walks the sprite
+				 * grid once it is set, and that walk is
+				 * bounded by the WINDOW — so a frame taken
+				 * against a card-sized window would be the
+				 * guest's top-left corner and nothing else.
+				 */
+				card_open(e);
 				e->drew = 1;
 				damage_all(e);
 			}
@@ -3422,15 +3751,27 @@ void embed_resized(Win *w)
 	if (!e)
 		return;
 
+	/*
+	 * THE OUTPUT IS THE RECTANGLE THE WINDOW WILL BE, NOT THE CARD IT IS.
+	 * While a launch is a card the two are different rectangles, and
+	 * reflowing the guest to the card hands the toolkit a card-sized output
+	 * — the application then comes up the size of the card, which is
+	 * exactly the failure the card exists to avoid. A font step still
+	 * reaches the guest, because the cell size below is compared either
+	 * way.
+	 */
+	int want_w = w->starting ? e->home.w : w->geom.w;
+	int want_h = w->starting ? e->home.h : w->geom.h;
+
 	cell_size(&cw, &chh);
-	if (w->geom.w == e->cols && w->geom.h == e->rows &&
+	if (want_w == e->cols && want_h == e->rows &&
 	    cw == e->cell_w && chh == e->cell_h)
 		return;
 
 	e->cell_w = cw;
 	e->cell_h = chh;
 
-	if (layout(e, w->geom.w, w->geom.h) != 0)
+	if (layout(e, want_w, want_h) != 0)
 		return;
 	e->want_pw = e->cols * e->cell_w;
 	e->want_ph = e->rows * e->cell_h;
@@ -4037,21 +4378,8 @@ void embed_draw(const Win *w)
 	if (!e)
 		return;
 
-	/*
-	 * A WINDOW WITH NO FRAME YET SAYS SO. Sprite cells naming slots no
-	 * display has a picture for come out as the fallback mark, which is a
-	 * window full of shade blocks and reads as a broken application rather
-	 * than as one that has not started drawing.
-	 */
 	if (!e->drew) {
-		static const char *msg = "starting…";
-		int lw = ktui_utf8_width(msg);
-		int x = w->geom.x + (w->geom.w - lw) / 2;
-		int y = w->geom.y + w->geom.h / 2;
-
-		if (lw <= w->geom.w && w->geom.h > 0)
-			ktui_draw_text(x, y, lw, msg, KT_MID, KT_BG,
-				       KT_A_NONE);
+		card_draw(w, e);
 		return;
 	}
 
@@ -4081,7 +4409,7 @@ void embed_draw(const Win *w)
 			     ((uint32_t)(y % e->tile) << 4) |
 			     (uint32_t)(x % e->tile);
 			ktui_draw_cell(w->geom.x + x, w->geom.y + y, ch,
-				       KT_TEXT, KT_BG, 0);
+				       KT_TEXT, KT_BG, KT_A_GUEST);
 		}
 }
 

@@ -181,7 +181,14 @@ else.
 | `Super+Alt+←` `→` `↑` `↓` | Move to that edge |
 | `Super+Ctrl+←` `→` `↑` `↓` | Grow to that edge |
 | `Super+Shift+D` | Show the desktop |
-| `Super+Space` / `Alt+Space` | Root menu |
+| `Super+Space` | The palette |
+| `Alt+Space` | The window menu — every verb for this window, each row printing its own chord |
+| `Super+B` | Send the window to the back |
+| `Super+Shift+S` / `Super+Alt+S` | Fold the next window in as a tab / put every tab back |
+| `Super+]` / `Super+[` | Next / previous tab |
+
+The last four are the console desktop's alone: the compositor has no stacking, and the graphical
+desktop's own `Alt+Space` opens labwc's client menu, which is the same idea on a different frame.
 
 ### Workspaces
 
