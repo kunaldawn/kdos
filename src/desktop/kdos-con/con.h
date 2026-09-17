@@ -181,7 +181,17 @@ enum {
 	 * APPENDED, like every value here.
 	 */
 	CON_ACT_STACK, CON_ACT_STACK_NEXT, CON_ACT_STACK_PREV,
-	CON_ACT_UNSTACK
+	CON_ACT_UNSTACK,
+	/*
+	 * HOW MUCH OF THIS ONE WINDOW'S BACKGROUND SURVIVES. `con.conf` says
+	 * what a window starts at; these three are the same question asked of
+	 * the window in front of you, because which window wants to be seen
+	 * through is a thing a person decides while looking at it — a
+	 * reference under a text editor, a terminal over a picture. Reset
+	 * gives the window back to the configured answer, so a step is never
+	 * a one-way door. APPENDED, like every value here.
+	 */
+	CON_ACT_OPACITY_UP, CON_ACT_OPACITY_DOWN, CON_ACT_OPACITY_RESET
 };
 
 /*
@@ -317,6 +327,14 @@ int con_paste_armed(void);
  * expires on its own; a message that stayed would be a bar that had stopped
  * being a taskbar.
  */
+/*
+ * THE WINDOW AN INTERACTIVE RESIZE IS HOLDING, or 0 — a pointer drag on an
+ * edge, or the keyboard rearrange mode. What is being sized changes shape once
+ * per motion, and anything whose cost is per RECTANGLE rather than per frame
+ * waits for the gesture to end.
+ */
+int con_sizing_id(void);
+
 void con_notice(const char *text);
 const char *con_notice_text(void);
 /* Draw the mark over the composed grid. Called last, after every window. */
@@ -464,6 +482,14 @@ typedef struct Win {
 	KwmRect restore;	/* what an untile returns to */
 	unsigned tiled;
 	int minimised;
+
+	/*
+	 * HOW MUCH OF THIS WINDOW'S OWN BACKGROUND SURVIVES, per cent, or 0
+	 * for "whatever con.conf says". Zero is a real answer here and 100 is
+	 * a different one: a window set to 100 by hand stays opaque through a
+	 * configuration that made every other window see-through.
+	 */
+	int opacity;
 
 	/*
 	 * THE SCRATCHPAD'S TWO FLAGS, and neither is a shade of `minimised`.
@@ -797,6 +823,21 @@ void win_raise(int id);
  * looking.
  */
 void win_lower(Win *w);
+/* The rectangle moved and kept its size: fitted like any other placement, and
+ * nobody is told a size they already have. */
+void win_moved(Win *w);
+/*
+ * STEP THIS WINDOW'S OWN TRANSPARENCY. `step` is in per cent and 0 gives the
+ * window back to `con.conf`. Clamped at both ends: a window at zero is one
+ * nobody can find again, and there is no chord to bring back a window that
+ * cannot be seen.
+ */
+void win_opacity_step(Win *w, int step);
+/* And straight to a rung of the ladder, which is what the menu's pane picks.
+ * Clamped at both ends like a step. */
+void win_opacity_set(Win *w, int pct);
+/* What it is drawing at, per cent — its own or the configured default. */
+int win_opacity_pct(const Win *w);
 /* The window a modal question is being asked in, for this window id, or NULL.
  * A window with one may not be raised, focused or closed. */
 Win *win_modal_for(int id);
@@ -1350,6 +1391,16 @@ int keys_chord_parse(const char *s, int *key, int *mods);
  * string written at the menu instead would teach a chord a rebinding has
  * moved. */
 void keys_chord_for(const char *action, char *out, size_t n);
+/*
+ * THE CHORD A VERB IS BOUND TO, by the verb's own name. 0 when the bind table
+ * has no such name — which is what a surface asking for a verb this build does
+ * not have must get.
+ *
+ * A NAME REACHES AN ACTION THROUGH ITS CHORD and not through a second table:
+ * the chord is fed to the one key handler, so a verb asked for by a menu and
+ * one pressed on a keyboard cannot take different paths.
+ */
+int keys_chord_of(const char *action, int *key, int *mods);
 
 /* main.c */
 void con_quit(void);

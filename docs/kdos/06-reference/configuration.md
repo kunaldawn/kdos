@@ -400,6 +400,11 @@ The same rule holds for `keys.conf`.
 | `taskbar` | `windows` | What the session's own bottom row shows. `fkeys` puts Norton Commander's `F1`–`F10` row there instead; each cell fires `Super+F<n>` and does not bind the bare key |
 | `window_opacity` | `100` | How much of a window's own background it keeps, per cent, 20–100. Below 100 the cells it fills are mixed back towards whatever they covered, so a window shows the desktop or the window under it. **The ink is never mixed** — text, rules, chips and widget fills keep the colour they were drawn in — and an embedded application's pixels are its own and are never touched. A `--tty` view, a braille reader and a `--dump` show it opaque |
 | `panel_opacity` | `80` | The same, for a docked bar. `80` because the compositor desktop's bar is `80`: one desktop, one answer |
+
+`window_opacity` is where every window **starts**. `Super+Ctrl+=`, `Super+Ctrl+-` and
+`Super+Ctrl+Alt+0` step the focused window's own transparency and give it back to the file — which
+window should be seen through is decided while looking at it. A window's own answer is not written
+down and does not survive the session.
 | `scrollback` | `2000` | Lines a terminal window keeps, **per window** |
 | `a11y` | `no` | Bring the desktop up on a `--tty` view, which leaves the kernel's text plane intact so `brltty` reads it over `/dev/vcsa`. Costs the pixel half: no pictures and no font chords |
 | `speak` | `no` | Start `kdos-a11y` with the session. It says what each widget announces, through `espeak-ng` |
@@ -558,6 +563,8 @@ Changing a default in one file changes it in the other.
 | `media-prev` | `XF86AudioPrev` | | |
 | `font-up` | `Super+equal` | `font-down` | `Super+minus` |
 | `font-reset` | `Super+Ctrl+0` | | |
+| `opacity-up` | `Super+Ctrl+equal` | `opacity-down` | `Super+Ctrl+minus` |
+| `opacity-reset` | `Super+Ctrl+Alt+0` | | |
 | `learn` | `Super+Shift+r` | `play` | `Super+Alt+r` |
 | `theme` | `Super+Ctrl+Shift+space` | `background` | `Super+Ctrl+space` |
 | `palette` | `Super+space` | `menu-fkey` | `Super+F10` |
@@ -625,6 +632,14 @@ by naming these three rather than by resizing anything. They are written by `rc.
 chord reads the same in both files; plus is not bound and cannot be, because `+` is the character a
 chord is split on and it is a shifted equals in any case. The stepped size is remembered in `~/.local/state/kdos/con-font`, and `font-reset` removes that file
 rather than writing a size, so the answer goes back to being the configuration's.
+
+**The three opacity chords are the font family with Ctrl added**, and they step the FOCUSED WINDOW
+rather than the screen: `con.conf`'s `window_opacity` says what every window starts at, and which
+one should be seen through is decided while looking at it. A step starts from what is on the screen,
+so the first press moves one notch from what you are looking at; it stops at 20 per cent, because
+there is no chord that brings back a window nobody can find. Reset carries Alt as well because it
+throws away where you had got to — and because `Super+Ctrl+0` is already the font's. A window's own
+answer is not written down and does not survive the session.
 
 **`learn` and `play` are the console desktop's alone.** They record the keys reaching the focused
 window and type them back; `rc.xml` binds nothing to either, because the compositor has no session

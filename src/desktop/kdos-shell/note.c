@@ -207,6 +207,42 @@ int note_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER PLACES THE CARET AND SCROLLS. A scratch pad that
+		 * dropped every pointer event was a text area a person could
+		 * only walk with the arrows — so putting a word in the middle of
+		 * a paragraph meant arrowing there from wherever the caret was.
+		 *
+		 * The caret is set in LINES AND COLUMNS of the area's own
+		 * rectangle, which is what `KtuiTextArea` holds; the widget's
+		 * draw clamps both against the text on the next frame.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			KRect ar = krect(2, 1, ktui_w - 4, ktui_h - 3);
+
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				ta.cy += ev.btn == KT_MB_WHEEL_UP ? -3 : 3;
+				if (ta.cy < 0)
+					ta.cy = 0;
+				if (ta.cy >= nlines)
+					ta.cy = nlines ? nlines - 1 : 0;
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS || ev.btn != KT_MB_LEFT)
+				continue;
+			if (!krect_hit(ar, ev.mx, ev.my))
+				continue;
+			ta.cy = ta.top + (ev.my - ar.y);
+			if (ta.cy < 0)
+				ta.cy = 0;
+			if (ta.cy >= nlines)
+				ta.cy = nlines ? nlines - 1 : 0;
+			ta.cx = ev.mx - ar.x;
+			if (ta.cx < 0)
+				ta.cx = 0;
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

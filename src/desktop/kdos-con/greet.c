@@ -204,6 +204,19 @@ static void become(const Account *a, int ses)
  */
 static KtuiKeys gkeys;
 
+/*
+ * WHERE THE CARD AND ITS TWO LISTS LANDED. The draw is the only thing that
+ * works the layout out — the card is centred on a screen whose size it asks
+ * for — so it records the three rectangles the pointer needs rather than
+ * having the hit test measure the screen a second time and disagree.
+ *
+ * `g_user_y` is the first account row and `g_ses_y` the session row; either is
+ * -1 when that list is not drawn, which is what one account or one session
+ * looks like.
+ */
+static KRect g_card;
+static int g_user_y = -1, g_ses_y = -1;
+
 static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 {
 	int w, h;
@@ -225,6 +238,13 @@ static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 		cy = 0;
 
 	KRect card = krect(cx, cy, cw, ch);
+
+	/* WHERE THE CARD LANDED, for the pointer. The layout above is the
+	 * only thing that knows it, and a hit test that measured the screen a
+	 * second time would be a second layout to keep in step. */
+	g_card = card;
+	g_user_y = nusers > 1 ? cy + 2 : -1;
+	g_ses_y = -1;
 
 	ktui_draw_shadow(card);
 	ktui_draw_fill(card, KT_SURFACE);
@@ -271,6 +291,7 @@ static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 	 * question, and a row offering the only answer is a row that teaches
 	 * the arrows do nothing. */
 	if (nsessions > 1) {
+		g_ses_y = y;
 		ktui_draw_text(cx + 3, y, 10, "Session:", KT_MID, KT_SURFACE, 0);
 		ktui_draw_textf(cx + 13, y, cw - 16, KT_TEXT, KT_SURFACE, 0,
 				"< %s >", SESSIONS[sessions[ses]].name);
@@ -348,6 +369,50 @@ static int greeter(void)
 		greet_draw(sel, ses, pass, msg);
 		if (ktui_backend()->poll_event(&ev, 1000) <= 0)
 			continue;
+		/*
+		 * THE POINTER PICKS AN ACCOUNT AND A SESSION. The login
+		 * surface answered no pointer event at all: on a machine with
+		 * three accounts, choosing which one to log in as was an
+		 * arrow key and nothing else — on the one screen a person
+		 * reaches before they know anything about this desktop.
+		 *
+		 * THE PASSWORD IS STILL TYPED, and that is not a gap: there is
+		 * no on-screen keyboard here and a field that could be filled
+		 * with a pointer would be a field filled by whatever else can
+		 * reach the pointer.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (g_user_y >= 0 && ev.my >= g_user_y &&
+			    ev.my < g_user_y + nusers &&
+			    krect_hit(g_card, ev.mx, ev.my)) {
+				int i = ev.my - g_user_y;
+
+				if (i != sel) {
+					sel = i;
+					/* The same clearing the arrows do: a
+					 * password typed for one account must
+					 * not be offered for another. */
+					pass[0] = '\0';
+					msg = "";
+				}
+				continue;
+			}
+			if (g_ses_y >= 0 && ev.my == g_ses_y &&
+			    krect_hit(g_card, ev.mx, ev.my)) {
+				/* Left of the name steps back and right of it
+				 * steps on, which is what the `< name >` the
+				 * row is drawn as already says. */
+				int mid = g_card.x + 13 + (g_card.w - 16) / 2;
+
+				ses = ev.mx < mid
+				      ? (ses + nsessions - 1) % nsessions
+				      : (ses + 1) % nsessions;
+				continue;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

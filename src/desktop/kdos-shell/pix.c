@@ -432,6 +432,25 @@ int pix_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER TURNS THE PAGE AND CLOSES THE VIEWER. A picture
+		 * viewer that answered no pointer event was a slideshow whose
+		 * only control was a keyboard — the one surface a person is most
+		 * likely to be sitting back from.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.btn == KT_MB_WHEEL_DOWN)
+				step(1);
+			else if (ev.btn == KT_MB_WHEEL_UP)
+				step(-1);
+			else if (ev.press == KT_MP_PRESS &&
+				 ev.btn == KT_MB_LEFT)
+				step(1);
+			else if (ev.press == KT_MP_PRESS &&
+				 ev.btn == KT_MB_RIGHT)
+				break;
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

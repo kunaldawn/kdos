@@ -446,6 +446,25 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		}
 		break;
 
+	case KCON_OP_ACTION: {
+		/*
+		 * A SHELL SURFACE ONLY, the rule every management verb keeps.
+		 * The payload is the WHOLE message and carries no terminator,
+		 * so it is copied into a bounded buffer rather than read as a
+		 * string — a name longer than the buffer is a name no bind
+		 * table has, and is dropped.
+		 */
+		char verb[64];
+		size_t n = m->len;
+
+		if (f->kind != KCON_KIND_SHELL || n < 1 || n >= sizeof(verb))
+			break;
+		memcpy(verb, m->payload, n);
+		verb[n] = '\0';
+		if (s->hooks.action)
+			s->hooks.action(f, verb, s->user);
+		break;
+	}
 	case KCON_OP_ACTIVATE: {
 		unsigned id = kcon_get_u32(&r);
 

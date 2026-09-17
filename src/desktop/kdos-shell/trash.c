@@ -292,6 +292,37 @@ int trash_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER WALKS THE LIST AND PUTS A ROW BACK. This
+		 * surface answered no pointer event at all, so a deleted file
+		 * could be restored with a keyboard and by no other means.
+		 * `ktui_rows_event` is the rule every list here keeps: a press
+		 * moves the caret, a press on the row it is already on picks,
+		 * the wheel walks and the right button is Back.
+		 *
+		 * NOT WHILE A QUESTION IS UP. The confirm owns the keyboard
+		 * for a reason \u2014 a list that scrolled under it would answer it
+		 * about a different row \u2014 and a pointer that could scroll it is
+		 * the same defect through the other hand.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int rows = ktui_h - 4;
+			KRect lr = krect(1, 1, ktui_w - 2,
+					 rows > 0 ? rows : 1);
+
+			if (asking)
+				continue;
+			switch (ktui_rows_event(lr, &sel, &top, nitems, &ev)) {
+			case KTUI_ROWS_PICKED:
+				put_back();
+				break;
+			case KTUI_ROWS_CLOSE:
+				goto done;
+			default:
+				break;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

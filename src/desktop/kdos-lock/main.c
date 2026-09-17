@@ -458,6 +458,28 @@ int main(int argc, char **argv)
 		 * is not a second late for a suspend that is waiting on it. */
 		if (!ktui_backend()->poll_event(&ev, announced ? 1000 : 100))
 			continue;
+		/*
+		 * A PRESS CLEARS THE FIELD, and that is the whole of what a
+		 * pointer can honestly do here.
+		 *
+		 * THERE IS NOTHING ELSE TO CLICK ON A LOCK SCREEN, and a
+		 * control that let one in would be the defect: the single
+		 * action is typing a secret, and a button that unlocked, or a
+		 * field a pointer could fill, would be a lock with a way past
+		 * it that is not the password. What a press IS good for is the
+		 * half-typed attempt somebody wants to start again — the same
+		 * thing Escape does, on the hand that is already on the mouse.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_PRESS &&
+			    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_RIGHT) &&
+			    kdisp_lock_engaged()) {
+				pass_clear();
+				failed = 0;
+				status = NULL;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

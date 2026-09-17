@@ -243,6 +243,17 @@ and a table take their rows from **your** callback, so they state "3 of 9" and l
 you. If your rows have text a reader should hear, call `ktui_announce()` from the row callback for
 the selected row; the queue is cleared every frame, so what you say is only ever about this one.
 
+**Use the control for the shape, and never a printed value.** `libktui` carries one of each — see
+[design-language](../03-architecture/design-language.md#the-chrome-primitives) for the table — and
+they are the reason a surface is usable with a mouse without your writing any pointer code: a number
+is `ktui_slider`, a choice is `ktui_dropdown_*`, a line of text is `ktui_input`. A value the surface
+prints and changes with `Left` and `Right` is a value nobody with a pointer can set at all, which is
+the failure `kdos-settings` shipped with on every knob it had.
+
+**Each control is a `draw`/`key`/`hit` trio with a frame call on top.** If your surface runs
+`ktui_frame_begin()`, call the one-liner; if it runs its own event loop, call the three and route the
+press and the key yourself. Both reach the same code, so neither is a second implementation.
+
 ## Chrome
 
 Use `libkchrome`. Two implementations of a button bar are two button bars.

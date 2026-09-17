@@ -609,6 +609,21 @@ struct EmbedWin {
 	int want_pw, want_ph;
 	int sent_pw, sent_ph;
 	/*
+	 * THE SIZE THE WINDOW IS, BEFORE THE BLOCK GRID HAS BEEN CUT FOR IT.
+	 * Zero when the cut is up to date.
+	 *
+	 * A RE-CUT IS NOT CHEAP AND MUST NOT RUN PER POINTER MOTION. layout()
+	 * hands session sprite slots back, takes new ones, wipes the owed set
+	 * and is followed by damaging the whole window — so a drag that re-cut
+	 * on every motion re-sent every block of a guest that had not repainted
+	 * one pixel, put the view over its watermark (which stops the SESSION
+	 * composing, so the drag itself stutters), and churned the slot
+	 * rotation until numbers came round to windows still showing the old
+	 * picture. It is gated by the same two rules as the message, so there
+	 * is ONE cut per reconfigure the guest actually performs.
+	 */
+	int pend_cols, pend_rows, pend_cw, pend_ch;
+	/*
 	 * AND THE RECTANGLE THIS WINDOW HAS ALREADY BEEN CORRECTED TO.
 	 *
 	 * The cage gives its first output to the first toplevel that MAPS and
@@ -978,29 +993,88 @@ static int proc_send_fd(struct EmbedProc *p, unsigned op, int a, int b, int c,
  * what covers a guest that never remaps at all — either bound missing holds
  * the channel shut for the life of the window.
  */
+static int size_due(const struct EmbedWin *e)
+{
+	unsigned long long t = now_ms();
+
+	if (t - e->size_ms < EM_SIZE_MS)
+		return 0;
+	if (e->map && (e->pw != e->sent_pw || e->ph != e->sent_ph) &&
+	    t - e->size_ms < EM_SIZE_LATE_MS)
+		return 0;
+	return 1;
+}
+
 static void size_flush(struct EmbedWin *e)
 {
-	unsigned long long t;
-
 	if (e->want_pw < 1 || e->want_ph < 1)
 		return;
 	if (e->want_pw == e->sent_pw && e->want_ph == e->sent_ph) {
 		e->want_pw = e->want_ph = 0;	/* it is already that size */
 		return;
 	}
-
-	t = now_ms();
-	if (t - e->size_ms < EM_SIZE_MS)
-		return;
-	if (e->map && (e->pw != e->sent_pw || e->ph != e->sent_ph) &&
-	    t - e->size_ms < EM_SIZE_LATE_MS)
+	if (!size_due(e))
 		return;
 	if (send_msg(e, KEMBED_SIZE, e->want_pw, e->want_ph, 0, 0, 0) != 0)
 		return;
 	e->sent_pw = e->want_pw;
 	e->sent_ph = e->want_ph;
 	e->want_pw = e->want_ph = 0;
-	e->size_ms = t;
+	e->size_ms = now_ms();
+}
+
+/* The cut and the damage that follows it. Declared here because they belong
+ * with the block grid below and are reached only from the size gates above. */
+static int layout(struct EmbedWin *e, int cols, int rows);
+static void damage_all(struct EmbedWin *e);
+
+/*
+ * CUT THE BLOCK GRID FOR THE SIZE THE WINDOW HAS REACHED, when that may be
+ * done — and then tell the guest.
+ *
+ * The window model moves the rectangle as fast as the hand does; this is the
+ * half that costs, so it runs at the rate the guest can answer. Between the
+ * two the frame is the size the pointer says and the guest's pixels are the
+ * size it last rendered, which is a window whose content arrives a moment
+ * after its edge rather than one that blinks on every motion.
+ */
+static void size_apply(struct EmbedWin *e)
+{
+	if (e->pend_cols < 1 || e->pend_rows < 1) {
+		size_flush(e);
+		return;
+	}
+	/*
+	 * NOT WHILE THE HAND IS STILL MOVING. A cut takes a session sprite
+	 * slot per block and a slot taken here names a picture no display has
+	 * ever been sent, so the cells naming it are drawn as flat backdrop
+	 * until the pixels arrive — a hole along the edge being dragged, filled
+	 * in a frame later and punched again by the next motion. See
+	 * con_sizing_id(): the gesture's own end is what asks.
+	 */
+	if (e->win && e->win->id == con_sizing_id())
+		return;
+	if (e->pend_cols == e->cols && e->pend_rows == e->rows &&
+	    e->pend_cw == e->cell_w && e->pend_ch == e->cell_h) {
+		e->pend_cols = e->pend_rows = 0;
+		size_flush(e);
+		return;
+	}
+	if (!size_due(e))
+		return;
+
+	e->cell_w = e->pend_cw;
+	e->cell_h = e->pend_ch;
+	/* A REFUSAL LEAVES THE ASK STANDING. layout() writes nothing when it
+	 * cannot do all of it, so the next turn tries the same cut again — and
+	 * a window left at the size it has is the caller's answer to one. */
+	if (layout(e, e->pend_cols, e->pend_rows) != 0)
+		return;
+	e->pend_cols = e->pend_rows = 0;
+	e->want_pw = e->cols * e->cell_w;
+	e->want_ph = e->rows * e->cell_h;
+	size_flush(e);
+	damage_all(e);
 }
 
 /*
@@ -3719,10 +3793,12 @@ void embed_pump(void)
 		    send_msg(e, KEMBED_SLEEP, e->asleep, 0, 0, 0, 0) == 0)
 			e->sleep_told = e->asleep;
 
-		/* A SIZE HELD BACK BY EITHER GATE GOES FROM HERE. The gesture
-		 * that asked for it may have stopped, and a size nothing
-		 * flushes is a guest left at the size before the last one. */
-		size_flush(e);
+		/* A CUT OR A SIZE HELD BACK BY EITHER GATE GOES FROM HERE. The
+		 * gesture that asked for it may have stopped, and a size
+		 * nothing flushes is a guest left at the size before the last
+		 * one — with a block grid cut for a rectangle the window no
+		 * longer has. */
+		size_apply(e);
 		publish(e);
 	}
 }
@@ -3765,18 +3841,18 @@ void embed_resized(Win *w)
 
 	cell_size(&cw, &chh);
 	if (want_w == e->cols && want_h == e->rows &&
-	    cw == e->cell_w && chh == e->cell_h)
+	    cw == e->cell_w && chh == e->cell_h) {
+		/* Back where the cut already is: an ask recorded on the way
+		 * out and back is an ask nothing owes any more. */
+		e->pend_cols = e->pend_rows = 0;
 		return;
+	}
 
-	e->cell_w = cw;
-	e->cell_h = chh;
-
-	if (layout(e, want_w, want_h) != 0)
-		return;
-	e->want_pw = e->cols * e->cell_w;
-	e->want_ph = e->rows * e->cell_h;
-	size_flush(e);
-	damage_all(e);
+	e->pend_cols = want_w;
+	e->pend_rows = want_h;
+	e->pend_cw = cw;
+	e->pend_ch = chh;
+	size_apply(e);
 }
 
 /*

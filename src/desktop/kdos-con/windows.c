@@ -908,15 +908,59 @@ void win_place_at(Win *w, int x, int y, int cw, int ch)
  * skipped, because a program that was not told draws the old size into the new
  * rectangle and the difference is never repainted.
  */
+/*
+ * A MOVE IS NOT A RESIZE, AND STILL ENDS IN THE ONE FIT.
+ *
+ * The rectangle goes through win_fit() like every other placement, so the
+ * surface's minimum and the border's claim on the grid are applied in the same
+ * single place. What it does NOT do is hand the client a size it already has:
+ * that reflows a terminal, configures a surface and re-cuts an embedded
+ * guest's block grid — work thrown away once per pointer motion for the whole
+ * length of a drag.
+ */
+void win_moved(Win *w)
+{
+	if (w)
+		win_fit(w);
+}
+
 void win_resized(Win *w)
 {
 	/* THROUGH win_fit, which is where the surface's minimum and the
 	 * border's claim on the grid are both applied. */
 	win_fit(w);
 
-	if (w->kind == WIN_TERM && w->term)
+	/*
+	 * A TERMINAL THE SESSION RENDERS ITSELF FOLLOWS THE POINTER EXACTLY.
+	 * Its cells are drawn at the window's size on every composed frame, so
+	 * a reflow costs one call and there is never a rectangle of the window
+	 * without content in it.
+	 */
+	if (w->kind == WIN_TERM && w->term) {
 		kvt_term_resize(w->term, w->geom.w, w->geom.h);
-	else if (w->kind == WIN_SURFACE && w->surf)
+		return;
+	}
+
+	/*
+	 * EVERYTHING ELSE IS ACROSS A SOCKET, AND IS NOT TOLD WHILE THE HAND
+	 * IS MOVING.
+	 *
+	 * A client answers a size with a whole frame and cannot answer at the
+	 * rate a pointer moves, so a window told one per motion is a window
+	 * permanently one answer behind: the strip between the size it has
+	 * drawn and the size the frame is showing is the window's own fill,
+	 * and it jitters along the edge for the whole gesture. An embedded
+	 * guest is worse still — see con_sizing_id().
+	 *
+	 * So the frame follows the pointer and the content follows the
+	 * release. Every path that ends a gesture asserts the size once more
+	 * on the way out; a size that reached nothing is the resize that "did
+	 * not take".
+	 */
+	if (w->id == con_sizing_id())
+		return;
+
+	if (w->kind == WIN_SURFACE && w->surf)
 		kcon_surface_configure(w->surf, w->geom.w, w->geom.h);
 	else if (w->kind == WIN_EMBED)
 		embed_resized(w);
@@ -2969,10 +3013,15 @@ static void title_cut(char *s, int cols)
  * A PANEL IS A WINDOW HERE. It keeps its own key because a bar that reads as
  * part of the screen and a window that floats over one want different amounts
  * of it, and because the compositor desktop already spells it this way.
+ *
+ * AND ONE WINDOW MAY DISAGREE WITH THE FILE. `Win.opacity` is what a person
+ * set on THAT window and it wins wherever it is not zero — which window
+ * should be seen through is decided while looking at it, and a configuration
+ * key cannot know that a reference is under the editor today.
  */
 #define WIN_OPACITY_MIN 20
 
-static int win_opacity_pct(const Win *w)
+int win_opacity_pct(const Win *w)
 {
 	static int win_pct = -1, panel_pct = -1;
 
@@ -2997,7 +3046,50 @@ static int win_opacity_pct(const Win *w)
 	 */
 	if (!w || w->background || w->full)
 		return 100;
+	if (w->opacity)
+		return w->opacity;
 	return w->panel ? panel_pct : win_pct;
+}
+
+void win_opacity_set(Win *w, int pct)
+{
+	char msg[32];
+
+	if (!w)
+		return;
+	if (pct < WIN_OPACITY_MIN)
+		pct = WIN_OPACITY_MIN;
+	if (pct > 100)
+		pct = 100;
+	w->opacity = pct;
+	snprintf(msg, sizeof(msg), "opacity %d%%", pct);
+	con_notice(msg);
+	ktui_draw_invalidate();
+}
+
+void win_opacity_step(Win *w, int step)
+{
+	int now;
+
+	if (!w)
+		return;
+	if (!step) {
+		w->opacity = 0;		/* back to the file's answer */
+		ktui_draw_invalidate();
+		return;
+	}
+	/*
+	 * A STEP STARTS FROM WHAT IS ON THE SCREEN, which for a window that
+	 * has never been stepped is the configured default — so the first
+	 * press moves by one notch from what a person is looking at rather
+	 * than jumping to some fixed number.
+	 */
+	now = win_opacity_pct(w) + step;
+	if (now < WIN_OPACITY_MIN)
+		now = WIN_OPACITY_MIN;
+	if (now > 100)
+		now = 100;
+	win_opacity_set(w, now);
 }
 
 /*
@@ -3763,13 +3855,32 @@ int win_list_key(int key)
  */
 enum {
 	WM_RESTORE = 1, WM_REARRANGE, WM_MIN, WM_MAX, WM_FULL, WM_LOWER,
-	WM_SCRATCH, WM_SEND, WM_CLOSE,
-	/* A workspace by number: the id CARRIES the workspace, so nine rows
-	 * are one row's worth of code. Above every verb above it. */
-	WM_WS = 100
+	WM_SNAP, WM_TABS, WM_OPACITY, WM_SCRATCH, WM_SEND, WM_CLOSE,
+	/* The rows of the three panes that hang off the verbs above. A pane's
+	 * rows are its own ids and never the main pane's: `wm_act` is reached
+	 * with one number and must not have to ask which list it came from. */
+	WM_SNAP_L, WM_SNAP_R, WM_SNAP_U, WM_SNAP_D,
+	WM_SWAP_L, WM_SWAP_R, WM_SWAP_U, WM_SWAP_D,
+	WM_TAB_STACK, WM_TAB_NEXT, WM_TAB_PREV, WM_TAB_OUT,
+	/* A workspace by number, and a percentage by value: the id CARRIES the
+	 * argument, so nine rows are one row's worth of code. Above every verb
+	 * above them, and far enough apart that neither can reach the other. */
+	WM_WS = 100,
+	WM_OP = 200
 };
 
-enum { WM_PANE_MAIN = 0, WM_PANE_WS = 1 };
+enum {
+	WM_PANE_MAIN = 0, WM_PANE_WS, WM_PANE_SNAP, WM_PANE_TABS,
+	WM_PANE_OPACITY, WM_PANE_N
+};
+
+/*
+ * THE TRANSPARENCY LADDER, and it stops where win_opacity_step stops: a window
+ * a person cannot find again is a window with no way back, and there is no
+ * pointer gesture that brings one back.
+ */
+static const int WM_OPACITY_PCT[] = { 100, 90, 80, 70, 60, 50, 40, 30, 20 };
+#define WM_NOPACITY ((int)(sizeof WM_OPACITY_PCT / sizeof WM_OPACITY_PCT[0]))
 
 static KtuiMenu wmenu;
 /* THE WINDOW THE ROWS NAME, by id: a window can close while its menu is up,
@@ -3784,10 +3895,22 @@ static int wmenu_eat;
  * frame, so a chord formatted onto the stack of whatever opened the menu would
  * be a row printing whatever is on that stack now.
  */
-static char wm_chord[10][32];
+static char wm_chord[13][32];
 static char wm_ws_label[9][24];
 static char wm_ws_chord[9][32];
+static char wm_op_label[WM_NOPACITY][16];
+static char wm_snap_chord[8][32];
+static char wm_tab_chord[4][32];
 
+/*
+ * EVERY VERB THAT ACTS ON ONE WINDOW, IN ONE LIST. A chord that has no row
+ * here is a thing this desktop can do and a pointer cannot ask for — and the
+ * window this menu belongs to may be a boxed application, whose own menus are
+ * inside its pixels and know nothing about snapping, tabs or transparency.
+ *
+ * The four that open a pane are marked with the rule the widget draws for a
+ * submenu; everything else runs on the press.
+ */
 static KtuiMenuItem wm_item[] = {
 	{ "&Restore",		WM_RESTORE,	NULL, 1 },
 	{ "&Move or size",	WM_REARRANGE,	NULL, 1 },
@@ -3795,6 +3918,10 @@ static KtuiMenuItem wm_item[] = {
 	{ "Ma&ximise",		WM_MAX,		NULL, 1 },
 	{ "&Fullscreen",	WM_FULL,	NULL, 1 },
 	{ "&Lower",		WM_LOWER,	NULL, 1 },
+	{ NULL,			0,		NULL, 0 },
+	{ "S&nap",		WM_SNAP,	NULL, 1 },
+	{ "Ta&bs",		WM_TABS,	NULL, 1 },
+	{ "Transparenc&y",	WM_OPACITY,	NULL, 1 },
 	{ "&Scratchpad",	WM_SCRATCH,	NULL, 1 },
 	{ "Send &to workspace",	WM_SEND,	NULL, 1 },
 	{ NULL,			0,		NULL, 0 },
@@ -3802,10 +3929,45 @@ static KtuiMenuItem wm_item[] = {
 };
 
 static KtuiMenuItem wm_ws_item[9];
+static KtuiMenuItem wm_op_item[WM_NOPACITY];
 
-static KtuiMenuPane wm_pane[] = {
-	{ NULL, wm_item, (int)(sizeof wm_item / sizeof wm_item[0]) },
-	{ NULL, wm_ws_item, 0 }
+/*
+ * SNAPPING AND SWAPPING IN ONE PANE, with a rule between them. They are
+ * different verbs — a snap tiles this window against an edge, a swap exchanges
+ * it with the neighbour that way — and both are "what about the window in that
+ * direction", so a person looking for one finds the other beside it rather
+ * than in a third level of menu.
+ */
+static KtuiMenuItem wm_snap_item[] = {
+	{ "&Left half",		WM_SNAP_L,	NULL, 1 },
+	{ "&Right half",	WM_SNAP_R,	NULL, 1 },
+	{ "&Top half",		WM_SNAP_U,	NULL, 1 },
+	{ "&Bottom half",	WM_SNAP_D,	NULL, 1 },
+	{ NULL,			0,		NULL, 0 },
+	{ "Swap l&eft",		WM_SWAP_L,	NULL, 1 },
+	{ "Swap ri&ght",	WM_SWAP_R,	NULL, 1 },
+	{ "Swap &up",		WM_SWAP_U,	NULL, 1 },
+	{ "Swap &down",		WM_SWAP_D,	NULL, 1 }
+};
+
+static KtuiMenuItem wm_tab_item[] = {
+	{ "&Stack with next",	WM_TAB_STACK,	NULL, 1 },
+	{ "&Next tab",		WM_TAB_NEXT,	NULL, 1 },
+	{ "&Previous tab",	WM_TAB_PREV,	NULL, 1 },
+	{ "&Take out",		WM_TAB_OUT,	NULL, 1 }
+};
+
+static KtuiMenuPane wm_pane[WM_PANE_N] = {
+	[WM_PANE_MAIN] = { NULL, wm_item,
+			   (int)(sizeof wm_item / sizeof wm_item[0]) },
+	[WM_PANE_WS] = { NULL, wm_ws_item, 0 },
+	[WM_PANE_SNAP] = { NULL, wm_snap_item,
+			   (int)(sizeof wm_snap_item /
+				 sizeof wm_snap_item[0]) },
+	[WM_PANE_TABS] = { NULL, wm_tab_item,
+			   (int)(sizeof wm_tab_item /
+				 sizeof wm_tab_item[0]) },
+	[WM_PANE_OPACITY] = { NULL, wm_op_item, WM_NOPACITY }
 };
 
 /*
@@ -3817,7 +3979,7 @@ static KtuiMenuPane wm_pane[] = {
  */
 static const char *wm_by[] = {
 	"", "rearrange", "minimise", "maximise", "fullscreen", "lower",
-	"scratchpad-mark", "", NULL, "close"
+	NULL, "", "", "", "scratchpad-mark", "", NULL, "close"
 };
 
 /*
@@ -3864,11 +4026,81 @@ static void wm_arm(Win *w)
 	wm_item[3].enabled = !w->full;
 	wm_item[4].enabled = 1;
 	wm_item[5].enabled = 1;
+	/* A snap is a rectangle on the work area, which a fullscreen window
+	 * does not have one of. */
+	wm_item[7].enabled = !w->full;
+	/* A tab strip needs a second window to fold in, or this one already to
+	 * be in a strip. */
+	wm_item[8].enabled = !w->full && !w->panel;
+	/* Transparency is the one row that is always answerable: there is no
+	 * state a window can be in that has no background of its own. */
+	wm_item[9].enabled = 1;
 	/* The scratchpad and a stack both own `hidden`, so a tab may not be
 	 * offered the mark win_scratch_mark() would refuse it. */
-	wm_item[6].enabled = !w->panel && win_stack_n(w) < 2;
-	wm_item[7].enabled = !w->sticky && !w->panel && S.nworkspace > 1;
-	wm_item[9].enabled = 1;
+	wm_item[10].enabled = !w->panel && win_stack_n(w) < 2;
+	wm_item[11].enabled = !w->sticky && !w->panel && S.nworkspace > 1;
+	wm_item[13].enabled = 1;
+
+	/*
+	 * THE PANES THAT HANG OFF THREE OF THOSE ROWS. Their chords come from
+	 * the same one formatter the main pane's do, so a row here reads
+	 * exactly as the key card prints it — and a verb this desktop binds no
+	 * chord to prints nothing rather than inventing one.
+	 */
+	{
+		/* The rule between the two halves has no verb and no chord;
+		 * the row index and the name index therefore part company, so
+		 * the names carry the empty string where the rule is. */
+		static const char *const snap_by[9] = {
+			"snap-left", "snap-right", "snap-up", "snap-down",
+			NULL,
+			"swap-left", "swap-right", "swap-up", "swap-down"
+		};
+		static const char *const tab_by[4] = {
+			"stack", "stack-next", "stack-prev", "unstack"
+		};
+
+		for (int i = 0; i < 9; i++) {
+			if (!snap_by[i]) {
+				wm_snap_item[i].accel = NULL;
+				continue;
+			}
+			keys_chord_for(snap_by[i], wm_snap_chord[i > 4 ? i - 1
+								       : i],
+				       sizeof wm_snap_chord[0]);
+			wm_snap_item[i].accel =
+				wm_snap_chord[i > 4 ? i - 1 : i][0]
+				? wm_snap_chord[i > 4 ? i - 1 : i] : NULL;
+		}
+		for (int i = 0; i < 4; i++) {
+			keys_chord_for(tab_by[i], wm_tab_chord[i],
+				       sizeof wm_tab_chord[i]);
+			wm_tab_item[i].accel = wm_tab_chord[i][0]
+					       ? wm_tab_chord[i] : NULL;
+		}
+		wm_tab_item[0].enabled = win_stack_n(w) < 2;
+		wm_tab_item[1].enabled = win_stack_n(w) > 1;
+		wm_tab_item[2].enabled = win_stack_n(w) > 1;
+		wm_tab_item[3].enabled = win_stack_n(w) > 1;
+	}
+
+	/*
+	 * AND THE LADDER SAYS WHICH RUNG THE WINDOW IS ON. A list of
+	 * percentages with nothing marking the current one is a list a person
+	 * has to guess their way down; the row that is already in force is the
+	 * one that is disabled, which is how every other menu here says "you
+	 * are here" without a second kind of mark.
+	 */
+	for (int i = 0; i < WM_NOPACITY; i++) {
+		snprintf(wm_op_label[i], sizeof wm_op_label[i], "%d%%%s",
+			 WM_OPACITY_PCT[i],
+			 WM_OPACITY_PCT[i] == 100 ? " (opaque)" : "");
+		wm_op_item[i].label = wm_op_label[i];
+		wm_op_item[i].id = WM_OP + WM_OPACITY_PCT[i];
+		wm_op_item[i].accel = NULL;
+		wm_op_item[i].enabled =
+			WM_OPACITY_PCT[i] != win_opacity_pct(w);
+	}
 
 	wm_pane[WM_PANE_WS].n = S.nworkspace > 9 ? 9 : S.nworkspace;
 	for (int i = 0; i < wm_pane[WM_PANE_WS].n; i++) {
@@ -3958,11 +4190,56 @@ void win_menu_draw(void)
 
 static void wm_act(Win *w, int id)
 {
+	if (id >= WM_OP) {
+		win_opacity_set(w, id - WM_OP);
+		return;
+	}
 	if (id >= WM_WS) {
 		win_send(w, id - WM_WS);
 		return;
 	}
 	switch (id) {
+	case WM_SNAP_L:
+		win_snap(w, KWM_EDGE_LEFT, 0);
+		break;
+	case WM_SNAP_R:
+		win_snap(w, KWM_EDGE_RIGHT, 0);
+		break;
+	case WM_SNAP_U:
+		win_snap(w, KWM_EDGE_TOP, 0);
+		break;
+	case WM_SNAP_D:
+		win_snap(w, KWM_EDGE_BOTTOM, 0);
+		break;
+	/*
+	 * SWAP EXCHANGES THIS WINDOW WITH THE NEIGHBOUR IN THAT DIRECTION,
+	 * which is a different verb from snapping to that edge — the
+	 * arithmetic is the window model's, as every row here is.
+	 */
+	case WM_SWAP_L:
+		win_swap(w, win_dir(KWM_EDGE_LEFT));
+		break;
+	case WM_SWAP_R:
+		win_swap(w, win_dir(KWM_EDGE_RIGHT));
+		break;
+	case WM_SWAP_U:
+		win_swap(w, win_dir(KWM_EDGE_TOP));
+		break;
+	case WM_SWAP_D:
+		win_swap(w, win_dir(KWM_EDGE_BOTTOM));
+		break;
+	case WM_TAB_STACK:
+		win_stack_with_next(w);
+		break;
+	case WM_TAB_NEXT:
+		win_stack_step(w, 1);
+		break;
+	case WM_TAB_PREV:
+		win_stack_step(w, -1);
+		break;
+	case WM_TAB_OUT:
+		win_stack_unstack(w);
+		break;
 	case WM_RESTORE:
 		/* THE ONE THE ROW WAS ENABLED FOR, in the order wm_arm() reads
 		 * the state in: a window that is fullscreen AND tiled is out
@@ -4005,16 +4282,24 @@ static void wm_act(Win *w, int id)
 static void wm_pick(int id)
 {
 	Win *w = win_find(wmenu_id);
+	int pane = -1;
 
 	if (!w)
 		return;
-	if (id == WM_SEND) {
-		/* THE SECOND PANE OPENS WHERE THE FIRST ONE WAS. `wmenu.x` and
+	switch (id) {
+	case WM_SEND:	 pane = WM_PANE_WS;	 break;
+	case WM_SNAP:	 pane = WM_PANE_SNAP;	 break;
+	case WM_TABS:	 pane = WM_PANE_TABS;	 break;
+	case WM_OPACITY: pane = WM_PANE_OPACITY; break;
+	default:					 break;
+	}
+	if (pane >= 0) {
+		/* A PANE OPENS WHERE THE ONE BEFORE IT WAS. `wmenu.x` and
 		 * `wmenu.y` are the origin the DRAW clamped onto the grid, so
 		 * the list lands on the rows the hand is already over rather
 		 * than at the cell the menu was asked for. */
 		wm_arm(w);
-		ktui_menu_open(&wmenu, WM_PANE_WS, wmenu.x, wmenu.y);
+		ktui_menu_open(&wmenu, pane, wmenu.x, wmenu.y);
 		return;
 	}
 	wm_act(w, id);

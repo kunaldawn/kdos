@@ -1996,6 +1996,10 @@ void keys_chord_for(const char *action, char *out, size_t n)
 { (void)action; if (out && n) *out = 0; }
 void con_rearrange(Win *w) { (void)w; }
 void con_notice(const char *text) { (void)text; }
+/* No gesture is ever live in a driver: win_resized() asks this before it tells
+ * a client anything, and a driver that answered a window id would have the
+ * placement it just made reach nothing. */
+int con_sizing_id(void) { return 0; }
 void geo_record(const Win *w) { (void)w; }
 
 static int bad;
@@ -2144,6 +2148,10 @@ void keys_chord_for(const char *action, char *out, size_t n)
 { (void)action; if (out && n) *out = 0; }
 void con_rearrange(Win *w) { (void)w; }
 void con_notice(const char *text) { (void)text; }
+/* No gesture is ever live in a driver: win_resized() asks this before it tells
+ * a client anything, and a driver that answered a window id would have the
+ * placement it just made reach nothing. */
+int con_sizing_id(void) { return 0; }
 void geo_record(const Win *w) { (void)w; }
 
 static int bad;
@@ -2357,6 +2365,10 @@ void keys_chord_for(const char *action, char *out, size_t n)
 { (void)action; if (out && n) *out = 0; }
 void con_rearrange(Win *w) { (void)w; }
 void con_notice(const char *text) { (void)text; }
+/* No gesture is ever live in a driver: win_resized() asks this before it tells
+ * a client anything, and a driver that answered a window id would have the
+ * placement it just made reach nothing. */
+int con_sizing_id(void) { return 0; }
 
 static int bad;
 
@@ -2647,6 +2659,10 @@ void keys_chord_for(const char *action, char *out, size_t n)
 { (void)action; if (out && n) *out = 0; }
 void con_rearrange(Win *w) { (void)w; }
 void con_notice(const char *text) { (void)text; }
+/* No gesture is ever live in a driver: win_resized() asks this before it tells
+ * a client anything, and a driver that answered a window id would have the
+ * placement it just made reach nothing. */
+int con_sizing_id(void) { return 0; }
 void geo_record(const Win *w) { (void)w; }
 Win *term_open(const char *const argv[]) { (void)argv; return NULL; }
 void con_spawn_at(const char *cmd, int x) { (void)cmd; (void)x; }
@@ -3519,6 +3535,9 @@ con	Super+F9	rearrange-fkey: the F-key twin of rearrange
 con	Super+equal	font-up: the screen font is the console's; under the compositor the font is the client's
 con	Super+minus	font-down: the screen font is the console's
 con	Super+Ctrl+0	font-reset: the screen font is the console's
+con	Super+Ctrl+equal	opacity-up: the session composes every window into one grid, so per-window transparency is its own arithmetic
+con	Super+Ctrl+minus	opacity-down: the other half of opacity-up
+con	Super+Ctrl+Alt+0	opacity-reset: gives the window back to con.conf's window_opacity
 con	Super+Shift+r	learn: a script is keys into a window, which only the session sees
 con	Super+Alt+r	play: the other half of learn
 con	Super+Alt+Shift+n	restore-all: labwc has no un-iconify action, let alone one that takes every iconified window at once

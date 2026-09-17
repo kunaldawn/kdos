@@ -229,6 +229,24 @@ static void au_card_volume(struct au_dev *d)
 	}
 }
 
+/*
+ * WHERE A ROW'S VOLUME SLIDER IS. One function, read by the draw and by the
+ * pointer: a control the hit test misses by a cell is a control that does not
+ * exist, and the two measuring the row separately is how that happens.
+ */
+#define AU_PCT_W 5
+
+/* The device whose track a press was captured by, or -1. Cleared by the
+ * release, like any other pointer capture. */
+static int au_drag = -1;
+
+static KRect au_vol_rect(int y, int w)
+{
+	int bar_w = 16;
+
+	return krect(w - 2 - AU_PCT_W - bar_w, y, bar_w, 1);
+}
+
 static void au_card_set_volume(struct au_dev *d, int pct)
 {
 	snd_mixer_elem_t *e = NULL;
@@ -972,30 +990,37 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 
 		/* The bar takes the right of the row; the name gets what is
 		 * left, and is clipped rather than allowed to run under it. */
-		int bar_w = 16, pct_w = 5;
-		int name_w = w - 10 - bar_w - pct_w - 3;
+		KRect br = au_vol_rect(y, w);
+		int name_w = w - 10 - br.w - AU_PCT_W - 3;
 		if (name_w < 8) {
 			/* Too narrow for a bar: the name gets the row rather
 			 * than being squeezed under one. */
 			name_w = w - 12;
-			bar_w = 0;
+			br.w = 0;
 		}
 		ktui_draw_text(10, y, name_w, label,
 			       on ? KT_TEXT : KT_MID, KT_SURFACE, KT_A_NONE);
 
-		if (bar_w > 0 && d->vol >= 0) {
-			int bx = w - 2 - pct_w - bar_w;
-			char pct[8];
-			ktui_progress_ex(krect(bx, y, bar_w, 1),
-					 d->muted ? 0.0 : d->vol / 100.0, NULL,
-					 KT_BAR_SOLID, KT_SURFACE);
+		if (br.w > 0 && d->vol >= 0) {
+			/*
+			 * A SLIDER AND NOT A BAR, because this is a value
+			 * somebody sets. A progress bar drawn where a control
+			 * belongs is a control the pointer cannot find: the
+			 * volume was `Left` and `Right` and nothing else, on
+			 * the one surface a person opens BECAUSE they want to
+			 * change it.
+			 *
+			 * A MUTED DEVICE DRAWS AT ZERO AND SAYS SO. Its real
+			 * level is still there and comes back with the mute;
+			 * a track showing it while the machine is silent would
+			 * be the control disagreeing with the speaker.
+			 */
+			ktui_slider_draw(br, d->muted ? 0 : d->vol, 0, 100, on,
+					 KT_SURFACE);
 			if (d->muted)
-				snprintf(pct, sizeof(pct), "mute");
-			else
-				snprintf(pct, sizeof(pct), "%d%%", d->vol);
-			ktui_draw_text_right(0, y, w - 2, pct,
-					     d->muted ? KT_DIM : KT_ACCENT,
-					     KT_SURFACE, KT_A_NONE);
+				ktui_draw_text_right(0, y, w - 2, "mute",
+						     KT_DIM, KT_SURFACE,
+						     KT_A_NONE);
 		} else if (d->card < 0) {
 			ktui_draw_text_right(0, y, w - 2, "[pipewire]", KT_MID,
 					     KT_SURFACE, KT_A_NONE);
@@ -1401,6 +1426,27 @@ int audio_main(int argc, char **argv)
 			 * spelling, the same contract every other front end
 			 * keeps. */
 			if (ev.press == KT_MP_DRAG) {
+				/*
+				 * A DRAG THAT BEGAN ON A TRACK GOES ON SETTING
+				 * IT, wherever the pointer has since gone — a
+				 * slider that stopped at its own edge would
+				 * need the hand to stay inside sixteen cells.
+				 */
+				if (au_drag >= 0 && au_drag < au_ndev &&
+				    au_dev[au_drag].vol >= 0) {
+					int v = au_dev[au_drag].vol;
+
+					if (ktui_slider_hit(
+						    au_vol_rect(out_y +
+								au_drag -
+								u.top[AU_PANE_OUT],
+								ktui_w),
+						    &v, 0, 100, 5, ev.mx,
+						    ev.my, 0))
+						au_card_set_volume(
+							&au_dev[au_drag], v);
+					continue;
+				}
 				if (row >= 0) {
 					u.pane = pane;
 					u.sel[pane] = row;
@@ -1410,20 +1456,57 @@ int audio_main(int argc, char **argv)
 				kch_hover(ev.mx, ev.my);
 				continue;
 			}
-			if (ev.press != KT_MP_PRESS)
-				continue;
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				u.sel[u.pane]--;
+			if (ev.press == KT_MP_RELEASE) {
+				au_drag = -1;
 				continue;
 			}
-			if (ev.btn == KT_MB_WHEEL_DOWN) {
-				u.sel[u.pane]++;
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				int up = ev.btn == KT_MB_WHEEL_UP;
+
+				/* A DETENT OVER A TRACK TURNS IT and anywhere
+				 * else walks the list. */
+				if (pane == AU_PANE_OUT && row >= 0 &&
+				    row < au_ndev && au_dev[row].vol >= 0 &&
+				    krect_hit(au_vol_rect(ev.my, ktui_w),
+					      ev.mx, ev.my)) {
+					u.pane = pane;
+					u.sel[pane] = row;
+					au_card_set_volume(&au_dev[row],
+							   au_dev[row].vol +
+							   (up ? 5 : -5));
+				} else {
+					u.sel[u.pane] += up ? -1 : 1;
+				}
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
+			/*
+			 * THE TRACK ANSWERS THE FIRST PRESS, before the row
+			 * selection: one gesture picks the device and sets its
+			 * volume, and a slider that needed the row selecting
+			 * first would be two movements for one.
+			 */
+			if (pane == AU_PANE_OUT && row >= 0 &&
+			    row < au_ndev && au_dev[row].vol >= 0 &&
+			    krect_hit(au_vol_rect(ev.my, ktui_w), ev.mx,
+				      ev.my)) {
+				int v = au_dev[row].vol;
+
+				u.pane = pane;
+				u.sel[pane] = row;
+				au_drag = row;
+				if (ktui_slider_hit(au_vol_rect(ev.my, ktui_w),
+						    &v, 0, 100, 5, ev.mx,
+						    ev.my, 1))
+					au_card_set_volume(&au_dev[row], v);
+				continue;
+			}
 			int bi = kch_button_at(ev.mx, ev.my);
 			if (bi >= 0) {
 				switch (bi) {

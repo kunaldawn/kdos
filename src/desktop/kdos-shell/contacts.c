@@ -326,6 +326,42 @@ int contacts_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER PICKS A CONTACT AND COPIES IT. This surface drew
+		 * a `ktui_table`, which has had a hit test all along, and then
+		 * dropped every pointer event before it could be asked — so a
+		 * row could be copied with Enter and by no other means.
+		 *
+		 * The table's own pick moves the caret; a press on the row it
+		 * is already on copies, which is the rule every list here keeps.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			KRect tr = krect(2, 3, ktui_w - 4, ktui_h - 6);
+			int i;
+
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				ktui_table_key(&tbl, nrows, ktui_h - 6,
+					       ev.btn == KT_MB_WHEEL_UP
+					       ? KT_K_UP : KT_K_DOWN, NULL, NULL);
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_RIGHT)
+				break;
+			if (ev.btn != KT_MB_LEFT)
+				continue;
+			i = ktui_table_hit(tr, &tbl, nrows, CT_NCOL, CT_COL,
+					   ev.mx, ev.my);
+			if (i < 0)
+				continue;
+			if (i == tbl.sel)
+				copy_selected();
+			else
+				ktui_table_pick(&tbl, nrows, i, NULL, NULL);
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

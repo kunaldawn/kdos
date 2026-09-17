@@ -1693,6 +1693,21 @@ static void mgmt_ask(uint16_t op, unsigned id)
 	kcon_flush(C.conn);
 }
 
+void kcon_session_action(const char *verb)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn || !verb || !*verb)
+		return;
+	/* THE NAME AND NOTHING ELSE. It is matched against the session's bind
+	 * table, so a length is what bounds it rather than a terminator this
+	 * end promises. */
+	kcon_put_bytes(&b, verb, strlen(verb));
+	kcon_send(C.conn, KCON_OP_ACTION, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
 void kcon_toplevel_activate(unsigned id)
 {
 	mgmt_ask(KCON_OP_ACTIVATE, id);
@@ -1851,6 +1866,7 @@ const KDispImpl kcon_impl = {
 	.win_count = kcon_win_count,
 	.win_at = kcon_win_at,
 	.win_activate = kcon_win_activate,
+	.session_action = kcon_session_action,
 	.win_close = kcon_win_close,
 	.win_set_state = kcon_win_set_state,
 	.out_ask = kcon_out_ask,

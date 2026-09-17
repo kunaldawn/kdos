@@ -321,6 +321,40 @@ int chars_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER PICKS A CHARACTER AND COPIES IT. A character map
+		 * is the surface somebody opens BECAUSE they do not know how to
+		 * type the thing they want, and it answered no pointer event at
+		 * all: the one glyph they came for could be taken with Enter and
+		 * by no other means.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			KRect tr = krect(2, 3, ktui_w - 4, ktui_h - 6);
+			int i;
+
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				ktui_table_key(&tbl, nhits, ktui_h - 6,
+					       ev.btn == KT_MB_WHEEL_UP
+					       ? KT_K_UP : KT_K_DOWN, NULL, NULL);
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_RIGHT)
+				break;
+			if (ev.btn != KT_MB_LEFT)
+				continue;
+			i = ktui_table_hit(tr, &tbl, nhits, CH_NCOL, CH_COL,
+					   ev.mx, ev.my);
+			if (i < 0)
+				continue;
+			if (i == tbl.sel)
+				copy_selected();
+			else
+				ktui_table_pick(&tbl, nhits, i, NULL, NULL);
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

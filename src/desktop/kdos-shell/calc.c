@@ -236,6 +236,60 @@ int calc_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER PLACES THE CARET AND RECALLS A SUM. This
+		 * surface dropped every pointer event, so an expression could
+		 * be corrected only by arrowing along it and a past answer
+		 * could be brought back only with Up.
+		 *
+		 * A press on a history row recalls it, which is what Up does;
+		 * a press on the row already recalled puts it in the input,
+		 * which is the list rule everywhere else here.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int w = ktui_w, h = ktui_h;
+
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN)
+				continue;
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_RIGHT)
+				goto done;
+			if (ev.btn != KT_MB_LEFT)
+				continue;
+			if (ev.my == 1) {
+				/* The sum being typed. Bytes, because an
+				 * expression is printable ASCII and nothing
+				 * else reaches `input` — see the default arm
+				 * of the key switch. */
+				int c = ev.mx - 2;
+
+				if (c < 0)
+					c = 0;
+				if (c > (int)strlen(input))
+					c = (int)strlen(input);
+				caret = c;
+				continue;
+			}
+			if (ev.my >= 4 && ev.my < h - 2) {
+				int i = ev.my - 4;
+				int r = nhist - 1 - i;
+
+				if (r < 0 || r >= nhist)
+					continue;
+				if (recall == r) {
+					input_set(hist[r].expr);
+					recall = -1;
+				} else {
+					recall = r;
+					input_set(hist[r].expr);
+				}
+				continue;
+			}
+			(void)w;
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

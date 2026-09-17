@@ -246,6 +246,13 @@ kdisp_font_set(int index, int keep)
 }
 
 void
+kdisp_session_action(const char *verb)
+{
+	if (cur && cur->session_action && verb && *verb)
+		cur->session_action(verb);
+}
+
+void
 kdisp_win_activate(unsigned id)
 {
 	if (cur && cur->win_activate)

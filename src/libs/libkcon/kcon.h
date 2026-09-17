@@ -800,6 +800,26 @@ enum {
 	 */
 	KCON_OP_VIEW_RAW,
 
+	/*
+	 * SHELL -> SESSION: RUN A NAMED VERB OF THE SESSION'S OWN.
+	 *
+	 * The payload is the verb's name as it appears in `keys.conf`: `tile`,
+	 * `cascade`, `show-desktop`, `windows`, `lock`. Not a window's — those
+	 * are KCON_OP_ACTIVATE, KCON_OP_CLOSE_REQUEST and KCON_OP_WIN_STATE,
+	 * which name one toplevel — but the ones that act on the desktop, and
+	 * which until now a pointer could not ask for at all: they were bound
+	 * to chords and to nothing else, so a person using a mouse had no way
+	 * to tile their windows.
+	 *
+	 * A NAME AND NOT A CHORD. A surface that could send a chord could send
+	 * ANY chord, including whichever one the machine's `keys.conf` happens
+	 * to have put a shell command on; a name is looked up in the bind table
+	 * and anything the session does not recognise is dropped.
+	 *
+	 * A SHELL SURFACE ONLY, the gate every management verb keeps.
+	 */
+	KCON_OP_ACTION,
+
 	KCON_OP_N
 };
 
@@ -1659,6 +1679,14 @@ typedef struct {
 		       void *user);
 
 	/*
+	 * A MANAGING SURFACE ASKED FOR ONE OF THE SESSION'S OWN VERBS, by the
+	 * name `keys.conf` gives it. `verb` is borrowed for the length of the
+	 * call. A session with no such verb does nothing, which is what a
+	 * surface built against a newer bind table must get.
+	 */
+	void (*action)(KconSurface *f, const char *verb, void *user);
+
+	/*
 	 * Run `argv` as a graphical application. Returns the terminal it was
 	 * given, 0 when it became an ordinary window, or -1 when it could not
 	 * be started at all — which the server sends back, because the
@@ -1831,6 +1859,11 @@ int kcon_workspace_count(void);
 unsigned kcon_workspace_occupied(void);
 
 /* Raise it, or ask it to close. Both are requests: the session decides. */
+/* Ask the session to run one of ITS OWN verbs, by the name `keys.conf` gives
+ * it — `tile`, `cascade`, `show-desktop`, `windows`, `lock`. A name and never
+ * a chord: see KCON_OP_ACTION. Silently nothing off a shell connection. */
+void kcon_session_action(const char *verb);
+
 void kcon_toplevel_activate(unsigned id);
 void kcon_toplevel_close(unsigned id);
 

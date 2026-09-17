@@ -477,6 +477,40 @@ int find_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER WALKS THE RESULTS AND OPENS ONE. This surface
+		 * dropped every pointer event, so a search could be typed with
+		 * a keyboard and its answer opened with nothing else.
+		 *
+		 * A HEADING IS NOT A ROW. `ktui_rows_event` counts lines and
+		 * knows nothing about which of them are section titles, so a
+		 * caret that landed on one is stepped off it — the same thing
+		 * the arrows do.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int list_top = 3;
+			int lr_h = ktui_h - list_top - 3;
+			KRect lr = krect(1, list_top, ktui_w - 2,
+					 lr_h > 0 ? lr_h : 1);
+
+			switch (ktui_rows_event(lr, &sel, &top, nrows, &ev)) {
+			case KTUI_ROWS_MOVED:
+				while (sel < nrows && rows[sel].heading)
+					sel++;
+				if (sel >= nrows)
+					sel = nrows ? nrows - 1 : 0;
+				break;
+			case KTUI_ROWS_PICKED:
+				if (sel < nrows && !rows[sel].heading)
+					open_sel();
+				break;
+			case KTUI_ROWS_CLOSE:
+				goto done;
+			default:
+				break;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
@@ -550,6 +584,7 @@ int find_main(int argc, char **argv)
 		}
 	}
 
+done:
 	sh_fsearch_stop();
 	kdisp_shutdown();
 	return 0;

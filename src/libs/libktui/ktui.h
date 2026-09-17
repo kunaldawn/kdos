@@ -629,6 +629,15 @@ int ktui_draw_text_right(int x, int y, int w, const char *s, int fg, int bg,
 void ktui_draw_hline(int x, int y, int w, int g, int fg, int bg);
 void ktui_draw_vline(int x, int y, int h, int g, int fg, int bg);
 void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl);
+/*
+ * A ONE-CELL DROP SHADOW hanging a column right of `r` and a row below it.
+ *
+ * IT DARKENS AND DOES NOT ERASE: every cell keeps its glyph and both halves
+ * are mixed towards KT_BG, so the window underneath stays legible and an
+ * embedded application's picture is left alone entirely. The background slot
+ * goes to KT_BG beside the literal, which is the whole of the shadow on a
+ * display that declined the colour run.
+ */
 void ktui_draw_shadow(KRect r);
 /*
  * SEE THROUGH A RECTANGLE OF THE COMPOSED FRAME.
@@ -1077,7 +1086,11 @@ enum {
 	/* Not a widget: the window a session has just focused. The toolkit
 	 * never sets it — a surface does not know it is in a window — and it
 	 * is here so that a reader has one vocabulary rather than two. */
-	KT_A11Y_WINDOW
+	KT_A11Y_WINDOW,
+	/* APPENDED, and every value above keeps its number: these cross the
+	 * session wire, so an insertion would rename every role a reader on
+	 * the other end already knows. */
+	KT_A11Y_SLIDER
 };
 
 /*
@@ -1132,6 +1145,63 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user,
 int ktui_button(KRect r, const char *label, int enabled, int primary);
 int ktui_check(int x, int y, int w, const char *label, int *val);
 int ktui_radio(int x, int y, int w, const char *label, int *val, int on);
+/* ── A VALUE ON A TRACK ──────────────────────────────────────────────
+ *
+ *     ◀ ███████░░░░░░  55 ▶
+ *
+ * DRAW / KEY / HIT, AND ONE FRAME CONTROL ON TOP OF THEM — the shape
+ * ktui_dropdown_* has, and for its reason: a surface that runs an event loop
+ * of its own must be able to use the same control as one written inside
+ * ktui_frame_begin(), or it writes the control a second time.
+ *
+ * Below KT_SLIDER_MIN_W the end caps are dropped, and below ten cells the
+ * number goes too: a slider with no track cannot be pointed at, and one with
+ * no number can still be read off the fill.
+ *
+ * `ktui_slider_hit` takes `press` because the caps answer a press and never a
+ * drag: a drag that crossed one would step the value on top of the position it
+ * is already setting, and the thumb would fight the pointer.
+ */
+#define KT_SLIDER_MIN_W 14
+
+/* `bg` is the row's own background, as ktui_progress_ex takes one: a slider
+ * sits in a rectangle somebody else filled, and ink picked without asking is
+ * the colour that rectangle is already painted in. */
+void ktui_slider_draw(KRect r, int val, int min, int max, int focus, int bg);
+int ktui_slider_key(int *val, int min, int max, int step, int k);
+int ktui_slider_hit(KRect r, int *val, int min, int max, int step, int mx,
+		    int my, int press);
+/* Focus, keys, click, drag and wheel in one call. 1 when the value moved. */
+int ktui_slider(KRect r, int *val, int min, int max, int step,
+		const char *label);
+
+/* ── A LIST OF ROWS, POINTED AT ───────────────────────────────────────
+ *
+ * FOR A SURFACE THAT RUNS ITS OWN EVENT LOOP AND DRAWS ITS OWN ROWS — a glyph
+ * grid, a colour swatch, a file size. What such a surface is missing is not a
+ * widget to draw but an answer to "which row is that, and what did they mean
+ * by it", and eleven of them answered it by dropping every pointer event.
+ *
+ * ONE RULE, AND IT IS `kdos-pick`'S: a press MOVES the caret, a press on the
+ * row the caret is already on PICKS, the wheel walks, and the right button is
+ * Back. One hand learns one thing.
+ *
+ * `r` is the rectangle the ROWS are drawn in — not the window — and `top` is
+ * the index its first line carries.
+ */
+enum {
+	KTUI_ROWS_NONE = 0,	/* not this list's, or nothing changed      */
+	KTUI_ROWS_MOVED,	/* the caret moved; redraw                  */
+	KTUI_ROWS_PICKED,	/* act on *sel                              */
+	KTUI_ROWS_CLOSE		/* the right button: go back               */
+};
+
+int ktui_rows_hit(KRect r, int top, int count, int mx, int my);
+int ktui_rows_event(KRect r, int *sel, int *top, int count,
+		    const KtuiEvent *ev);
+/* Scroll `top` so `sel` is on screen, which a keyboard caret needs too. */
+void ktui_rows_follow(KRect r, int sel, int *top, int count);
+
 int ktui_input(KRect r, char *buf, size_t cap, int secret,
 	       const char *placeholder);
 /* Queue pasted text; the focused ktui_input inserts it at the caret on its
