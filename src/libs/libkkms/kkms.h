@@ -67,6 +67,54 @@ typedef struct {
 } KkmsTune;
 
 /*
+ * ── how a pointing device behaves ────────────────────────────────────────
+ *
+ * libinput ships a default per device class and every one of these overrides
+ * it for every device that accepts it. A device that does not — a mouse asked
+ * about tap-to-click — is left alone rather than treated as a failure: the
+ * policy is one answer for the seat, and the seat is a mixture.
+ *
+ * KKMS_IN_KEEP in any field is "whatever the device came with", which is NOT
+ * the same as 0: tap-to-click off and tap-to-click unset differ on a touchpad
+ * whose driver enables it.
+ *
+ * `speed` is libinput's acceleration, -10 to 10, where 0 is the middle of the
+ * device's own range and not "no acceleration". The scale is a tenth of
+ * libinput's -1.0..1.0 so that a configuration file and a slider can both be
+ * whole numbers.
+ *
+ * `natural` scrolls the content with the fingers instead of the view.
+ * `tap` is tap-to-click and `tap_drag` is the drag that a second tap begins.
+ * `dwt` suppresses the touchpad while the keyboard is being typed on.
+ * `left_handed` swaps the two main buttons.
+ * `middle_emulate` makes both buttons pressed together the middle one, which
+ * is the only middle button a two-button trackpad has.
+ */
+#define KKMS_IN_KEEP (-128)
+
+typedef struct {
+	int speed;		/* -10..10, or KKMS_IN_KEEP                */
+	int natural;		/* 0, 1, or KKMS_IN_KEEP                   */
+	int tap;		/* 0, 1, or KKMS_IN_KEEP                   */
+	int tap_drag;		/* 0, 1, or KKMS_IN_KEEP                   */
+	int dwt;		/* 0, 1, or KKMS_IN_KEEP                   */
+	int left_handed;	/* 0, 1, or KKMS_IN_KEEP                   */
+	int middle_emulate;	/* 0, 1, or KKMS_IN_KEEP                   */
+} KkmsInput;
+
+/*
+ * Set the policy above and apply it to every device already open. Devices
+ * that arrive later are configured as they arrive, so this is called once
+ * with the session's answer and never polled.
+ *
+ * `in` NULL restores KKMS_IN_KEEP everywhere, which stops this library
+ * touching device configuration at all; it does not put back a value a
+ * previous call overrode, because libinput has no record of what the device
+ * came with once it has been set.
+ */
+void kkms_set_input(const KkmsInput *in);
+
+/*
  * Take a screen. `font` is a fontconfig name or NULL for the default; `seat`
  * is a seat name or NULL for $XDG_SEAT and then seat0; `tune` is the policy
  * above or NULL for all of its defaults.

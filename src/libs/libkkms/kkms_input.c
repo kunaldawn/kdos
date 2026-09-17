@@ -73,6 +73,122 @@ static const struct libinput_interface li_iface = {
 };
 
 /*
+ * THE SEAT'S POINTING POLICY, and every device that will accept a field gets
+ * it. A device that will not — a mouse asked about tap-to-click, a touchpad
+ * asked for a button it has not got — is skipped, because the policy is one
+ * answer for a seat made of different devices and a refusal there is not an
+ * error anybody can act on.
+ *
+ * APPLIED AT DEVICE_ADDED AND NOT ONLY AT STARTUP. libinput announces every
+ * device it already has through the event queue, so the first pump configures
+ * the ones that were there and a USB mouse plugged in later is configured on
+ * arrival by the same line.
+ */
+static KkmsInput in_pol = {
+	KKMS_IN_KEEP, KKMS_IN_KEEP, KKMS_IN_KEEP, KKMS_IN_KEEP,
+	KKMS_IN_KEEP, KKMS_IN_KEEP, KKMS_IN_KEEP
+};
+
+static void dev_config(struct libinput_device *d)
+{
+	if (!d)
+		return;
+
+	if (in_pol.speed != KKMS_IN_KEEP &&
+	    libinput_device_config_accel_is_available(d)) {
+		double v = in_pol.speed / 10.0;
+
+		if (v < -1.0)
+			v = -1.0;
+		if (v > 1.0)
+			v = 1.0;
+		libinput_device_config_accel_set_speed(d, v);
+	}
+	if (in_pol.natural != KKMS_IN_KEEP &&
+	    libinput_device_config_scroll_has_natural_scroll(d))
+		libinput_device_config_scroll_set_natural_scroll_enabled(
+			d, in_pol.natural ? 1 : 0);
+	if (in_pol.tap != KKMS_IN_KEEP &&
+	    libinput_device_config_tap_get_finger_count(d) > 0)
+		libinput_device_config_tap_set_enabled(
+			d, in_pol.tap ? LIBINPUT_CONFIG_TAP_ENABLED
+				      : LIBINPUT_CONFIG_TAP_DISABLED);
+	if (in_pol.tap_drag != KKMS_IN_KEEP &&
+	    libinput_device_config_tap_get_finger_count(d) > 0)
+		libinput_device_config_tap_set_drag_enabled(
+			d, in_pol.tap_drag ? LIBINPUT_CONFIG_DRAG_ENABLED
+					   : LIBINPUT_CONFIG_DRAG_DISABLED);
+	if (in_pol.dwt != KKMS_IN_KEEP &&
+	    libinput_device_config_dwt_is_available(d))
+		libinput_device_config_dwt_set_enabled(
+			d, in_pol.dwt ? LIBINPUT_CONFIG_DWT_ENABLED
+				      : LIBINPUT_CONFIG_DWT_DISABLED);
+	if (in_pol.left_handed != KKMS_IN_KEEP &&
+	    libinput_device_config_left_handed_is_available(d))
+		libinput_device_config_left_handed_set(d,
+						       in_pol.left_handed ? 1 : 0);
+	if (in_pol.middle_emulate != KKMS_IN_KEEP &&
+	    libinput_device_config_middle_emulation_is_available(d))
+		libinput_device_config_middle_emulation_set_enabled(
+			d, in_pol.middle_emulate
+				   ? LIBINPUT_CONFIG_MIDDLE_EMULATION_ENABLED
+				   : LIBINPUT_CONFIG_MIDDLE_EMULATION_DISABLED);
+}
+
+/*
+ * THE OPEN DEVICES, REFERENCED. libinput owns the objects and frees one when
+ * it is removed, so a bare pointer kept here would outlive the device; a
+ * reference of our own is what makes re-applying the policy to everything
+ * already open safe. Dropped at DEVICE_REMOVED and at shutdown.
+ */
+static struct libinput_device *in_devs[MAX_DEV];
+
+static void dev_track(struct libinput_device *d, int added)
+{
+	if (!d)
+		return;
+	if (added) {
+		for (int i = 0; i < MAX_DEV; i++)
+			if (!in_devs[i]) {
+				in_devs[i] = libinput_device_ref(d);
+				break;
+			}
+		dev_config(d);
+		return;
+	}
+	for (int i = 0; i < MAX_DEV; i++)
+		if (in_devs[i] == d) {
+			libinput_device_unref(in_devs[i]);
+			in_devs[i] = NULL;
+			return;
+		}
+}
+
+static void dev_forget_all(void)
+{
+	for (int i = 0; i < MAX_DEV; i++)
+		if (in_devs[i]) {
+			libinput_device_unref(in_devs[i]);
+			in_devs[i] = NULL;
+		}
+}
+
+void kkms_set_input(const KkmsInput *in)
+{
+	static const KkmsInput keep = { KKMS_IN_KEEP, KKMS_IN_KEEP,
+					KKMS_IN_KEEP, KKMS_IN_KEEP,
+					KKMS_IN_KEEP, KKMS_IN_KEEP,
+					KKMS_IN_KEEP };
+
+	in_pol = in ? *in : keep;
+	if (!in)
+		return;
+	for (int i = 0; i < MAX_DEV; i++)
+		if (in_devs[i])
+			dev_config(in_devs[i]);
+}
+
+/*
  * THE RAW EVENTS QUEUED SINCE THE LAST COOKED ONE BELONG TO IT.
  *
  * A handler may queue the switch before the character it resolves to — a
@@ -841,6 +957,7 @@ int kkms_input_init(void)
 
 void kkms_input_shutdown(void)
 {
+	dev_forget_all();
 	if (K.keymap_text) {
 		free(K.keymap_text);
 		K.keymap_text = NULL;
@@ -900,6 +1017,20 @@ void kkms_input_pump(void)
 		 */
 		if (!K.active) {
 			/*
+			 * A DEVICE STILL ARRIVES AND STILL GOES. The seat is
+			 * switched away, not unplugged: a mouse added while
+			 * another session has the terminal is one this
+			 * library must know about, or it comes back
+			 * unconfigured and untracked for the rest of the
+			 * session.
+			 */
+			if (libinput_event_get_type(ev) ==
+			    LIBINPUT_EVENT_DEVICE_ADDED)
+				dev_track(libinput_event_get_device(ev), 1);
+			else if (libinput_event_get_type(ev) ==
+				 LIBINPUT_EVENT_DEVICE_REMOVED)
+				dev_track(libinput_event_get_device(ev), 0);
+			/*
 			 * A KEY STILL MOVES THE XKB STATE. Ctrl+Alt+F<n> is
 			 * acted on at the press and the three releases arrive
 			 * after the seat has gone, so a state that never saw
@@ -939,6 +1070,12 @@ void kkms_input_pump(void)
 		}
 
 		switch (libinput_event_get_type(ev)) {
+		case LIBINPUT_EVENT_DEVICE_ADDED:
+			dev_track(libinput_event_get_device(ev), 1);
+			break;
+		case LIBINPUT_EVENT_DEVICE_REMOVED:
+			dev_track(libinput_event_get_device(ev), 0);
+			break;
 		case LIBINPUT_EVENT_KEYBOARD_KEY:
 			on_key(ev);
 			break;

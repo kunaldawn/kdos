@@ -1192,6 +1192,24 @@ still takes effect, and coming back from the other VT puts every CRTC in whichev
 call named — so one call per transition is enough and a caller that tracks its own idea of awake
 never has to re-send.
 
+**The pointing devices are configured by policy, not per device.** `kkms_set_input()` takes a
+`KkmsInput` — speed, natural scroll, tap-to-click, tap-drag, disable-while-typing, left-handed,
+middle emulation — and applies each field to every device on the seat that **accepts** it. A device
+that will not, a mouse asked about tap-to-click, is skipped rather than treated as a failure: one
+answer covers a seat made of different hardware, and a refusal there is not something a caller can
+act on. `KKMS_IN_KEEP` in a field leaves libinput's own default for that device class standing,
+which is not the same as `0` — tap-to-click off and tap-to-click unset differ on a touchpad whose
+driver enables it. `speed` is a tenth of libinput's `-1.0..1.0` so a configuration file and a
+slider can both be whole numbers, and `0` is the middle of the device's range rather than an
+unaccelerated pointer.
+
+**The open devices are held by reference.** libinput frees a device object when it is removed, so
+a bare pointer kept here would outlive it; a reference of our own is what lets the policy be
+re-applied to everything already open. They are tracked at `DEVICE_ADDED` and `DEVICE_REMOVED`,
+**including while the seat is switched away** — the devices are suspended, not unplugged, and one
+added during another session's turn would otherwise come back unconfigured and untracked for the
+rest of this one.
+
 **Key repeat is this backend's, because libinput has none.** One press and one release is all a
 device reports; a compositor owns the rest, and here that is this library. The deadline is checked
 from the same idle pump the long-press recogniser uses. **A repeat carries the modifiers as they

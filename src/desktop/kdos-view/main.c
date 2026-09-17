@@ -2106,6 +2106,21 @@ static void retint(void)
 	ktui_draw_invalidate();
 }
 
+#ifdef KDOS_VIEW_KMS
+/*
+ * A CONFIGURED BOOLEAN AND AN UNCONFIGURED ONE ARE DIFFERENT ANSWERS. Every
+ * pointing key is a policy libinput already has a default for, and `no` is a
+ * statement while a missing line is not: tap-to-click is on by default on a
+ * touchpad, so reading an absent key as 0 would turn it off on every machine
+ * that never asked.
+ */
+static int conf_tri(const char *key)
+{
+	return kcon_conf_str(key, NULL) ? kcon_conf_bool(key, 0)
+					: KKMS_IN_KEEP;
+}
+#endif
+
 int main(int argc, char **argv)
 {
 	const char *sock = getenv("KDOS_CON");
@@ -2301,6 +2316,35 @@ int main(int argc, char **argv)
 	}
 
 	/*
+	 * con.conf IS THE ANSWER FOR EVERY KEY NOTHING ELSE GAVE ONE.
+	 *
+	 * A FLAG AND THE ENVIRONMENT STILL BEAT IT: `kdos-con-start` reads the
+	 * same four keys through the session's own parser and passes them as
+	 * flags, and a script that passes one is saying something about this
+	 * run rather than about the machine. This is for every view nobody
+	 * passed them to — `kdos-grid`, `kdos con attach`, a view started by
+	 * hand — which would otherwise draw at the built-in defaults on a
+	 * machine whose console font and scanout policy are configured.
+	 *
+	 * Read on every path and not only the KMS one, for the reason the
+	 * flags are: a cast and a shot rasterise with the same font, so a
+	 * photograph taken of a machine whose font is configured must use it.
+	 */
+	if (!font || !*font) {
+		const char *cf = kcon_conf_str("font", NULL);
+
+		if (cf && *cf)
+			font = cf;
+	}
+	if (want_bufs <= 0)
+		want_bufs = kcon_conf_int("buffers", 0);
+	if (!want_fastest)
+		want_fastest = !strcmp(kcon_conf_str("refresh", "preferred"),
+				       "fastest");
+	if (!want_tearing)
+		want_tearing = kcon_conf_bool("tearing", 0);
+
+	/*
 	 * A SHOT HAS PIXELS AND A DUMP DOES NOT, which is the whole difference
 	 * between them on the wire: the session sends a view with pixels the
 	 * pictures a program drew, and a view that claimed none would take a
@@ -2387,6 +2431,25 @@ int main(int argc, char **argv)
 		};
 
 		if (kkms_init(NULL, card, font, &tune) == 0) {
+			/*
+			 * THE POINTING DEVICES, BEFORE THE FIRST PUMP. Every
+			 * key is KKMS_IN_KEEP unless con.conf names it, so a
+			 * machine that configures nothing keeps libinput's
+			 * own defaults — which for a touchpad means
+			 * tap-to-click is already on.
+			 */
+			KkmsInput in = {
+				.speed = kcon_conf_int("pointer_speed",
+						       KKMS_IN_KEEP),
+				.natural = conf_tri("natural_scroll"),
+				.tap = conf_tri("tap_to_click"),
+				.tap_drag = conf_tri("tap_drag"),
+				.dwt = conf_tri("disable_while_typing"),
+				.left_handed = conf_tri("left_handed"),
+				.middle_emulate = conf_tri("middle_emulation"),
+			};
+
+			kkms_set_input(&in);
 			ktui_draw_init();
 
 			/*

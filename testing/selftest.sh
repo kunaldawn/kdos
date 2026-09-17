@@ -7578,6 +7578,18 @@ if "$DUMPCK" --have settings; then
     golden settings 80x24  settings --dump
     golden settings   56x24  settings --dump
     golden settings 132x43 settings --dump
+    # AND TWO PAGES, because the grid is the one frame the front door draws and
+    # every control this program has is behind it. These pin what the FRONT
+    # DOOR cannot: the section rules that cut a page into the files it writes,
+    # a slider where a number is, a dropdown where a choice is, and the row
+    # order — a row inserted in the wrong block lands under the wrong heading,
+    # which is a lie the compiler cannot see.
+    #
+    # Input is every pointing-device key and every window gesture; Desktop is
+    # four stores on one page, which is the case the rules exist for.
+    golden settings-input 80x24  settings --page input --dump
+    golden settings-input 132x43 settings --page input --dump
+    golden settings-desktop 132x43 settings --page desktop --dump
 fi
 # THE ACCENT PICKER. A dump carries characters and no colour, so what this
 # asserts is the LAYOUT — a row per scheme, the two name columns lined up, and

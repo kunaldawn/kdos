@@ -2333,7 +2333,181 @@ static struct {
 	int cw, ch;		/* the cell it was measured in             */
 	KwmRect og;		/* its rectangle then                      */
 	unsigned edges;		/* which edges a resize moves              */
+	/* WHETHER THE HAND ACTUALLY TRAVELLED. A press and a release with no
+	 * motion between them is a CLICK, and the edge gesture must not fire
+	 * for one: a window whose title row is already against the top of the
+	 * work area would otherwise maximise itself the first time anybody
+	 * clicked its title. */
+	int moved;
 } grab;
+
+/*
+ * ── WHAT THE POINTER MAY DO, FROM con.conf ──────────────────────────────
+ *
+ * Read on the first call and kept, which is the rule the rest of the session
+ * reads that file by: half the answers from before an edit and half from after
+ * is the one state nobody can reason about.
+ */
+static int ptr_dbl_ms(void)
+{
+	static int ms = -1;
+
+	if (ms < 0) {
+		ms = kcon_conf_int("dblclick_ms", 400);
+		if (ms < 100)
+			ms = 100;
+		if (ms > 1000)
+			ms = 1000;
+	}
+	return ms;
+}
+
+/* What a double click on a title row means: 1 maximises, 2 lowers, 0 nothing.
+ * A name this does not know is `none`, because a gesture that did something
+ * unasked-for on a typo is worse than one that does nothing. */
+static int ptr_title_dbl(void)
+{
+	static int act = -1;
+
+	if (act < 0) {
+		const char *v = kcon_conf_str("title_dblclick", "maximise");
+
+		act = !strcmp(v, "maximise") ? 1 : !strcmp(v, "lower") ? 2 : 0;
+	}
+	return act;
+}
+
+static int ptr_edge_snap(void)
+{
+	static int on = -1;
+
+	if (on < 0)
+		on = kcon_conf_bool("edge_snap", 1);
+	return on;
+}
+
+static int ptr_snap_zone(void)
+{
+	static int z = -1;
+
+	if (z < 0) {
+		z = kcon_conf_int("snap_zone", 1);
+		if (z < 1)
+			z = 1;
+		if (z > 8)
+			z = 8;
+	}
+	return z;
+}
+
+static int ptr_panel_wheel(void)
+{
+	static int on = -1;
+
+	if (on < 0)
+		on = kcon_conf_bool("panel_wheel", 1);
+	return on;
+}
+
+/*
+ * TWO CLICKS ON THE SAME TITLE ROW.
+ *
+ * The window id is part of the pair, so a click on one title and a click on
+ * the next within the interval is two single clicks and not a double: a
+ * gesture that fired across windows would maximise whichever one the hand
+ * landed on second.
+ *
+ * THE PAIR IS SPENT WHEN IT FIRES. Without that a third click inside the
+ * interval is a second double click, so a hand resting on the button turns the
+ * window into a flicker between maximised and not.
+ */
+static int title_dbl_hit(const Win *w)
+{
+	static unsigned long long last_ms;
+	static int last_id;
+	unsigned long long now = con_now_ms();
+
+	if (last_id == w->id && now - last_ms < (unsigned long long)ptr_dbl_ms()) {
+		last_id = 0;
+		last_ms = 0;
+		return 1;
+	}
+	last_id = w->id;
+	last_ms = now;
+	return 0;
+}
+
+/*
+ * WHERE A MOVED WINDOW WAS LET GO, as an edge of the work area or nothing.
+ *
+ * The POINTER decides and not the window's rectangle: a window dragged by its
+ * title row has its own left edge wherever the grab began, so a rectangle test
+ * would snap a wide window the moment it was picked up. The hand against an
+ * edge of the screen is the gesture people mean by it.
+ *
+ * A corner is both of its edges, which `win_snap` composes into the quarter.
+ */
+static unsigned snap_edge_at(int x, int y)
+{
+	KwmRect a = win_workarea();
+	int z = ptr_snap_zone();
+	unsigned e = KWM_EDGE_NONE;
+
+	if (a.w < z * 4 || a.h < z * 4)
+		return KWM_EDGE_NONE;
+	if (x <= a.x + z - 1)
+		e |= KWM_EDGE_LEFT;
+	else if (x >= a.x + a.w - z)
+		e |= KWM_EDGE_RIGHT;
+	if (y <= a.y + z - 1)
+		e |= KWM_EDGE_TOP;
+	else if (y >= a.y + a.h - z)
+		e |= KWM_EDGE_BOTTOM;
+	return e;
+}
+
+/*
+ * THE SNAP A RELEASED MOVE EARNED.
+ *
+ * The TOP edge alone maximises, because "fill the screen" is what dragging a
+ * window to the top of it means everywhere else and a half the height of the
+ * work area is not a tile anybody asks for by that gesture. Every other edge
+ * and every corner is the tile the matching Super+arrow gives, so the pointer
+ * and the keyboard produce the same window.
+ *
+ * NOTHING HAPPENS AWAY FROM AN EDGE. A window let go in the middle of the
+ * screen stays exactly where the hand left it — this gesture may only ever add
+ * to a drag, never take the drag's own result away.
+ */
+static void snap_on_release(Win *w, const KtuiEvent *ev)
+{
+	if (!w || !ptr_edge_snap() || w->full || w->background)
+		return;
+
+	unsigned e = snap_edge_at(ev->mx, ev->my);
+
+	if (e == KWM_EDGE_NONE)
+		return;
+	if (e == KWM_EDGE_TOP) {
+		if (w->tiled != KWM_EDGES_CARDINAL)
+			win_maximise(w);
+		return;
+	}
+	/*
+	 * A TILE IS BUILT FROM NOTHING, not from whatever the window already
+	 * had: `win_snap` composes an edge onto the current state, so a
+	 * left-half window dragged to the right edge would become a half of a
+	 * half rather than the right half the hand asked for.
+	 */
+	w->tiled = KWM_EDGE_NONE;
+	win_snap(w, e & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT)
+			     ? e & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT)
+			     : e,
+		 0);
+	if ((e & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT)) &&
+	    (e & (KWM_EDGE_TOP | KWM_EDGE_BOTTOM)))
+		win_snap(w, e & (KWM_EDGE_TOP | KWM_EDGE_BOTTOM), 1);
+}
 
 /*
  * THE POINTER IN PIXELS, AND A DRAG IS MEASURED IN THEM.
@@ -2391,6 +2565,7 @@ void con_grab_cancel(void)
 	Win *w = grab.id && grab.resizing ? win_find(grab.id) : NULL;
 
 	grab.id = 0;
+	grab.moved = 0;
 	win_button_disarm();
 	if (w)
 		win_resized(w);
@@ -2429,6 +2604,7 @@ static void grab_apply(const KtuiEvent *ev)
 	int px, py, dx, dy;
 	KwmRect g = grab.og;
 
+	grab.moved = 1;
 	if (!w)
 		return;
 
@@ -2970,6 +3146,15 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 			 */
 			if (gw && grab.resizing)
 				win_resized(gw);
+			/* AND A MOVE THAT ENDED AGAINST AN EDGE OF THE WORK
+			 * AREA IS A SNAP. Only on the release: a tile applied
+			 * mid-drag would resize the window under the hand and
+			 * leave the grab measuring against a rectangle that no
+			 * longer exists. */
+			else if (gw && grab.moved &&
+				 ev->press == KT_MP_RELEASE)
+				snap_on_release(gw, ev);
+			grab.moved = 0;
 			/* THE CHROME WAS THE GRAB'S AND THE GRAB IS OVER: both
 			 * asked again with none held, so what is lit is the
 			 * border and the chip under the hand rather than the
@@ -3031,6 +3216,24 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	 */
 	if (!panel_have_shell()) {
 		int arg;
+		int on_bar = ev->my == S.rows - 1;
+
+		/*
+		 * THE WHEEL OVER THE BAR CHANGES WORKSPACE, wherever on the
+		 * bar it is: the pager's numbers live there, and a gesture
+		 * that worked only over those few cells is one nobody finds.
+		 * Asked before the hit map so a tick over Start or over a
+		 * window row means this too — neither of them has a use for a
+		 * detent, and a wheel that does one thing on part of a bar and
+		 * nothing on the rest reads as broken.
+		 */
+		if (on_bar && ptr_panel_wheel() &&
+		    (ev->btn == KT_MB_WHEEL_UP ||
+		     ev->btn == KT_MB_WHEEL_DOWN)) {
+			if (ev->press == KT_MP_PRESS)
+				win_workspace_step(ev->btn == KT_MB_WHEEL_UP);
+			return;
+		}
 
 		switch (panel_hit(ev->mx, ev->my, &arg)) {
 		case PANEL_HIT_START:
@@ -3053,6 +3256,21 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 				 */
 				if (t && ev->btn == KT_MB_RIGHT) {
 					win_menu_open(t, ev->mx, ev->my);
+					return;
+				}
+				/*
+				 * AND A MIDDLE PRESS PUTS IT AWAY. The row is
+				 * where a minimised window comes back from, so
+				 * it is where one goes: minimising from the
+				 * bar was a chord and the frame's own chip,
+				 * and neither is reachable while the window is
+				 * behind whatever the person is reading.
+				 */
+				if (t && ev->btn == KT_MB_MIDDLE) {
+					if (t->minimised)
+						win_restore(t);
+					else
+						win_minimise(t);
 					return;
 				}
 				/* One row, two meanings, and the window's own
@@ -3240,6 +3458,48 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	 * The frame buttons are asked before this and have already returned, so
 	 * the title row is free to mean "move me".
 	 */
+	/*
+	 * SUPER AND THE WHEEL STEP THE WINDOW'S OWN TRANSPARENCY, by the same
+	 * ten points `Super+Ctrl+=` and `Super+Ctrl+-` do — one effect, one
+	 * step size, so the two ways of asking cannot drift apart.
+	 *
+	 * BEFORE THE WINDOW IS TOLD ANYTHING. `Super` is this session's
+	 * modifier and a detent carrying it is never the guest's: a terminal
+	 * would scroll its history and a boxed application would zoom, under a
+	 * chord the person meant for the frame.
+	 *
+	 * A BACKGROUND IS NEVER MIXED, because there is nothing behind it: the
+	 * icon layer blended with itself is a layer that fades to its own
+	 * colours and says nothing about what is under it.
+	 */
+	if (w && !w->background && (ev->mods & KT_MOD_SUPER) &&
+	    ev->press == KT_MP_PRESS &&
+	    (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN)) {
+		win_opacity_step(w, ev->btn == KT_MB_WHEEL_UP ? 10 : -10);
+		return;
+	}
+
+	/*
+	 * TWO CLICKS ON THE TITLE ROW, BEFORE THE GRAB THEY WOULD OTHERWISE
+	 * ARM. The first click armed a move and its release ended one; this is
+	 * the second, and it must not arm a third — a grab left holding a
+	 * window that has just been resized under it measures every later
+	 * motion against a rectangle that is gone.
+	 *
+	 * THE LEFT BUTTON ONLY. The other two already mean the menu and the
+	 * lower on this row, and a double click is two of whatever the button
+	 * means rather than a third meaning.
+	 */
+	if (w && !w->background && ev->btn == KT_MB_LEFT &&
+	    ev->press == KT_MP_PRESS && ptr_title_dbl() &&
+	    win_on_title(w, ev->mx, ev->my) && title_dbl_hit(w)) {
+		if (ptr_title_dbl() == 1)
+			win_maximise(w);
+		else
+			win_lower(w);
+		return;
+	}
+
 	if (w && ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 		unsigned edges = KWM_EDGE_NONE;
 		int g = win_grab_at(w, ev->mx, ev->my, ev->btn, ev->mods,
@@ -3252,6 +3512,7 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 			grab_px(ev, grab.cw, grab.ch, &grab.ox, &grab.oy);
 			grab.og = w->geom;
 			grab.edges = edges;
+			grab.moved = 0;
 			return;
 		}
 	}
