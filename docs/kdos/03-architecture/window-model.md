@@ -79,6 +79,15 @@ caller: it keeps the four-edge mask as its own *state* — so one restore
 rectangle serves every tile — and computes the rectangle from the work area
 itself.
 
+**A pointer drag that ends against an edge builds its tile from nothing.** The console session
+clears the tiled state before it asks for the edge the hand landed on, because `kwm_tile_next()`
+*composes* — a left-half window dragged to the right edge would otherwise become a half of a half
+rather than the right half the gesture asked for. The TOP edge alone is the exception and maximises:
+"fill the screen" is what dragging a window to the top of it means everywhere else, and a half the
+height of the work area is not a tile anybody asks for by that gesture. Every other edge and every
+corner is the rectangle the matching `Super`+arrow gives, so the pointer and the keyboard produce
+the same window.
+
 **One rectangle, two states, and fullscreen is orthogonal to the tile.** A
 window carries a single restore rectangle and it means exactly one thing: what
 an untile returns to. So it is written only from an *untiled* rectangle — by a

@@ -35,6 +35,9 @@ accounts created afterwards.
 |---|---|---|
 | `files` | `no` | Also list files whose name matches, from this user's index |
 
+Written by **`kdos-settings`**, on its Desktop page. No signal is sent: the launcher is started by
+its chord and reads this as it comes up, so there is no long-lived process holding a stale answer.
+
 **Off by default, and not for speed.** A launcher that searched the disk unasked puts a person's
 filenames on screen the moment they press a key — in front of whoever is standing behind them, on
 a machine they may have opened to start a browser. Turning it on is a decision about who can see
@@ -244,7 +247,7 @@ first word of its own value, and `preflight.sh` skips `@` lines for exactly that
 
 | Setting | Default | What it does |
 |---|---|---|
-| `@toplevel` | `Network Sound Displays Terminal` | Which system rows `kdos-start` keeps outside the fold when it is too narrow for three columns. Labels as the menu draws them, separated by spaces or commas, whole entries and case-insensitive. |
+| `@toplevel` | `Network Sound Displays Terminal` | Which system rows `kdos-start` keeps outside the fold when it is too narrow for three columns. Labels as the menu draws them, separated by spaces or commas, whole entries and case-insensitive. Written by **`kdos-settings`**, on its Panel page, into the **user's** copy: every other line — every route — is copied through byte for byte, which is what makes writing one `@` key into a route table safe. |
 
 Below a hundred columns the Start menu's system group folds behind one `Settings ▸` row; the labels
 named here stay listed beside it. A label that names no row promotes nothing and reports nothing —
@@ -315,26 +318,32 @@ writing the file itself.
 ## `~/.config/kdos/res.conf`
 
 The resource monitor. Sort keys use the page identifiers from its own registry, so there is one
-spelling.
+spelling. An unknown key is reported by name rather than ignored. **`kdos-settings` writes all of
+these but `columns`**, on its Hardware page, and signals `kdos-res` exactly — `kdos-resctl` is a
+longer name with this one as its prefix and is setuid, so a substring match would kill a privileged
+helper that handles no signals.
 
-| Key | Means |
-|---|---|
-| `sort` | Sort key per page |
-| `columns` | Which columns to show |
-| `interval` | Sampling interval |
-| `units` | Unit style |
-| `icons` | Whether to draw pictures |
-| `cpu_percent` | Per-core or aggregate |
-| `kernel_threads` | Include kernel threads |
-| `pss` | Use proportional memory accounting |
-| `temperature` | Show temperatures |
-| `virtual_drives`, `virtual_net` | Include virtual devices |
-| `machine` | Machine identification |
+| Key | Default | Means |
+|---|---|---|
+| `interval` | `1000` | Sampling interval in milliseconds. Floored at 200: a monitor sampling faster than that is mostly measuring itself |
+| `units` | `1024` | `1024` gives KiB/MiB/GiB; `1000` gives kB/MB/GB |
+| `temperature` | `c` | `c` or `f`, everywhere a sensor is shown |
+| `cpu_percent` | `core` | `core` — eight busy threads read 800%, which is `top`'s convention — or `machine`, where the same load reads 100% |
+| `memory` | `rss` | `rss` counts a shared page against every process holding it; `pss` divides it between them, which is the number that adds up |
+| `kernel_threads` | `no` | Show kernel threads in the process table. The footer says how many are hidden either way |
+| `virtual_drives` | `no` | Show loop, zram and device-mapper devices on the Drives page |
+| `virtual_net` | `no` | Show loopback, bridges and container interfaces on the Network page |
+| `icons` | `yes` | Draw pictures beside the rows; `no` is the glyph tier |
+| `sort` | `cpu` | Which column each page sorts on, by that page's own identifier. A name a page has no column for leaves that page on its own default |
+| `columns` | all | Which columns to show |
 
 ## `~/.config/kdos/term.conf`
 
 The terminal. Every key has a working default and the file need not exist; an unknown key is
-reported by name rather than ignored.
+reported by name rather than ignored. **`kdos-settings` writes all of it**, on its Desktop page,
+and signals `kdos-term` — so a change reaches every terminal already open. A window that has
+stepped its own font or its own transparency keeps what it stepped: this file is where a window
+STARTS.
 
 | Key | Default | Means |
 |---|---|---|
@@ -346,6 +355,7 @@ reported by name rather than ignored.
 | `images` | `yes` | Decode pictures. `no` turns the three image protocols off in the parser, not merely in the drawing |
 | `image_max` | 1024 | The cap on one image payload, in kilobytes |
 | `image_cells` | 200 | The widest and tallest a picture may be, in cells |
+| `paste_guard` | `yes` | Ask before an **unbracketed** paste carrying a newline. With bracketed paste on the child sees the text as text and decides for itself; with it off the bytes go straight to the pty and a newline **executes** — at a shell, at an `ssh` password prompt, inside `read`. A second attempt within five seconds means it |
 | `opacity` | 100 | How much of the window's own background it keeps, per cent, 20–100. Below 100 the desktop shows through the cells the terminal has not drawn on; the ink is never mixed. **Only where a compositor is under it** — on the console desktop the session composes the grid and `con.conf`'s `window_opacity` is the same request |
 
 Re-read on `SIGHUP`, which is what `kdos theme` sends.
@@ -378,10 +388,18 @@ generated block and win.
 
 ## `/etc/kdos/con.conf`
 
-The console desktop, and **`kdos-settings` writes a handful of these** — `window_opacity`,
-`panel_opacity`, `taskbar`, `sessions`, `restore`, `remember`, `embed` and `scrollback` — into
-`~/.config/kdos-con/con.conf`. Every one of them is `login` and cannot be anything else: this file
-is read once, on the first lookup, and the answer is held for the life of the session.
+The console desktop. **`kdos-settings` writes most of this file** into
+`~/.config/kdos-con/con.conf`: the appearance keys, the session keys, the login keys, the idle
+trio, the seven role programs, the pointing-device block and the window-gesture block. It reads
+`/etc/kdos/con.conf` first and the home file over it, which is the order the session itself reads
+them in, so a page on a machine nobody has edited shows what the machine is actually doing rather
+than the program's own defaults. What it WRITES is still the home file; `/etc` stays the
+administrator's.
+
+Every row is `login` and cannot be anything else: this file is read once, on the first lookup, and
+the answer is held for the life of the session. The keys it does not offer are the ones that name a
+program the session starts — `menu`, `launcher`, `lock`, `saver` and the notice verbs — because a
+row that edits a command line is a row that can leave a chord opening nothing.
 
 `~/.config/kdos-con/con.conf` overrides it key by key, and a key in neither
 file takes the built-in default — a machine with no file at all boots a working desktop.
@@ -406,9 +424,45 @@ The same rule holds for `keys.conf`.
 | `window_opacity` | `100` | How much of a window's own background it keeps, per cent, 20–100. Below 100 the cells it fills are mixed back towards whatever they covered, so a window shows the desktop or the window under it. **The ink is never mixed** — text, rules, chips and widget fills keep the colour they were drawn in — and an embedded application's pixels are its own and are never touched. A `--tty` view, a braille reader and a `--dump` show it opaque |
 | `panel_opacity` | `80` | The same, for a docked bar. `80` because the compositor desktop's bar is `80`: one desktop, one answer |
 
+### The pointing devices
+
+Read by **`kdos-view`**, which is the process that opens them: the session holds no device and no
+pixels. Each key is applied to every device on the seat that accepts it and skipped on every device
+that does not — a mouse is not asked about tap-to-click — so one answer covers a seat made of
+different hardware.
+
+**A key left out is not the same as a key set to `no`.** Left out, libinput's own default for that
+device class stands; written, this file's answer does. The defaults below are libinput's, so a file
+that says nothing describes what the machine is already doing.
+
+The graphical desktop configures the same devices through `rc.xml`'s `<libinput>` block, in its own
+file, because those are wlroots' knobs and these are libinput's directly.
+
+| Key | Default | Means |
+|---|---|---|
+| `pointer_speed` | libinput's | Acceleration, `-10` to `10`. `0` is the **middle** of the device's own range and not an unaccelerated pointer: libinput maps the whole range onto each device's profile, so the same number feels different on a trackpad and on a gaming mouse. Out of range is clamped |
+| `natural_scroll` | `no` | The content follows the fingers rather than the view |
+| `tap_to_click` | `no` | A tap on a touchpad is a click. Off in libinput — a touchpad has a button — so this is the line a laptop usually wants; a mouse ignores it |
+| `tap_drag` | `yes` | A tap straight after a tap begins a drag that lasts while the finger stays down. Only matters once tapping is on |
+| `disable_while_typing` | `yes` | Suppress the touchpad while the keyboard is being used, which is what stops a palm moving the cursor mid-sentence |
+| `left_handed` | `no` | Swap the two main buttons |
+| `middle_emulation` | `no` | Both buttons pressed together are the middle one — the only middle button a two-button trackpad has, and what pastes the primary selection |
+
+### What the pointer does to a window
+
+| Key | Default | Means |
+|---|---|---|
+| `edge_snap` | `yes` | Dragging a window against an edge of the work area snaps it there when the button comes up. The left and right edges give that half, the **top maximises**, and a corner gives the quarter — the same rectangles `Super+arrow` reaches, so the pointer and the keyboard produce the same window. A drag released away from an edge leaves the window exactly where it was let go, and a **click** on a title row never snaps: the gesture needs the hand to have travelled |
+| `snap_zone` | `1` | How far into the screen, in cells, counts as an edge. Clamped to 1–8: too small and the gesture cannot be hit, too large and a window cannot be parked near an edge at all |
+| `title_dblclick` | `maximise` | What two clicks on a title bar do — `maximise` (a second pair puts the window back), `lower`, or `none`. A name it does not know is `none`, because a gesture that did something unasked-for on a typo is worse than one that does nothing. The left button only: the other two already mean the window menu and the lower on that row |
+| `dblclick_ms` | `400` | How long two clicks may be apart and still be a double click **on a title bar**. The session's own gesture and nothing else: a list, a grid and a file manager each run in a process of their own and carry libktui's own interval, which this file cannot reach. Clamped to 100–1000. The pair is **spent when it fires**, so a hand resting on the button does not flicker the window between states |
+| `panel_wheel` | `yes` | The wheel over the session's own bottom row steps workspace: up is `workspace-prev` and down is `workspace-next`, the same step `Super+PageUp` and `Super+PageDown` take, so both land on the next **occupied** workspace. Anywhere on the bar, because a gesture that worked only over the pager's few cells is one nobody finds |
+
 `window_opacity` is where every window **starts**. `Super+Ctrl+=`, `Super+Ctrl+-` and
 `Super+Ctrl+Alt+0` step the focused window's own transparency and give it back to the file — which
-window should be seen through is decided while looking at it. A window's own answer is not written
+window should be seen through is decided while looking at it, and **`Super`+wheel over a window is
+the same ten points** for the window under the pointer rather than the focused one. The window
+menu's Transparency pane is the third way to the same value. A window's own answer is not written
 down and does not survive the session.
 | `scrollback` | `2000` | Lines a terminal window keeps, **per window** |
 | `a11y` | `no` | Bring the desktop up on a `--tty` view, which leaves the kernel's text plane intact so `brltty` reads it over `/dev/vcsa`. Costs the pixel half: no pictures and no font chords |

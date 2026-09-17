@@ -1397,14 +1397,41 @@ beneath it and a press tested against those rows would pick whatever the list is
 draws every scheme in its own colours and previews it live; a row of names beside it would be a
 second way to choose one and the worse of the two.
 
-**It writes four files, and the console session's is one of them.** `con.conf` was reachable from
-this window by nothing at all — on the desktop that is the DEFAULT one: how many workspaces, what
-the session's own bar shows, whether a boxed application becomes a window, and both transparency
-keys were a text file and a manual page. Those rows say **login** and cannot say anything else:
-`kcon_conf_*` reads that file once, on the first lookup, and holds the answer for the life of the
-session, so no signal is sent for them — one that did nothing would be the program pretending
-otherwise. They are shown on both desktops and apply to one, which every such row says in its own
-help rather than leaving the category to imply it.
+**Every page is cut into sections.** A page of forty knobs read as one undifferentiated list, and
+the store a row writes — the console's file, the compositor's, the panel's, the monitor's — is
+exactly what a person needs to know before they change one. A section rule says it once for the
+rows under it instead of every row's help line saying it again, and the caret **steps over** a rule
+in whichever direction it was travelling: a heading that could be selected is a row where Enter,
+Left and Right all do nothing, which is the shape of a control that is broken.
+
+**It writes nine files, and the console session's is one of them.** `con.conf` was reachable from
+this window by nothing at all — on the desktop that is the DEFAULT one. Most of that file is here
+now: the appearance keys, the login keys, the idle trio and the saver, the seven role programs and
+the terminal, the pointing-device block and the window-gesture block. The keys it does **not**
+offer are the ones naming a program the session starts — `menu`, `launcher`, `lock`, `saver`, the
+notice verbs — because a row that edits a command line is a row that can leave a chord opening
+nothing.
+
+Those rows say **login** and cannot say anything else: `kcon_conf_*` reads that file once, on the
+first lookup, and holds the answer for the life of the session, so no signal is sent for them — one
+that did nothing would be the program pretending otherwise. They are shown on both desktops and
+apply to one, which every such row says in its own help rather than leaving the category to imply
+it.
+
+**It reads `/etc/kdos/con.conf` first and the home file over it**, which is the order the session
+itself reads them in. `/etc/skel` ships no `~/.config/kdos-con/con.conf`, so a page loaded from the
+home file alone showed this program's own defaults as though they were the machine's, and every row
+read `*` the moment it was touched. What is written is still the home file; `/etc` stays the
+administrator's.
+
+**The Input page has controls.** It was two read-only notes. `kdos-view` opens the pointing devices
+and applies `con.conf`'s pointer block to every device on the seat that accepts each key — speed,
+natural scroll, tap-to-click, tap-drag, disable-while-typing, left-handed, middle emulation — so
+these rows change what the hand feels. A key left out is not the same as a key set to `no`: left
+out, libinput's own default stands. The **keyboard** is still notes at the end of the page, for the
+reason this whole surface exists: the layout comes from `/etc/keymap` by way of `kdos-desktop` and
+every keyboard knob the compositor has is `rc.xml`'s, and a row that wrote a file no program opens
+is exactly the "change a thing, see nothing" this window promised not to be.
 
 **The pending counter and the quit guard count every store.** Both asked `comp.conf` alone, so a
 change to the panel's file, the monitor's or the console session's showed `0 pending` on the Apply
@@ -1412,11 +1439,12 @@ button and was discarded by a single Escape with the guard saying nothing — wh
 that guard exists to stop.
 
 **Nine categories:** Appearance, Panel, Desktop, Hardware, Session, Input, Apps, Boxes and
-**System** — the machine itself, where the resource monitor and the power page live. Most of what
-belongs in System is not written; the category ships with a row saying which commands do that work
-today, because a control centre whose front door has no door for the machine teaches that the
-machine is not reachable from here, and that is the harder thing to unteach. A row that opened
-nothing would be worse than no row.
+**System** — the machine itself. System opens the resource monitor, the power page, disks,
+printers, accounts, the clock, the sync configuration, the firewall, updates and the backup
+repository: ten surfaces this binary already is, which were reachable from their own chords and
+from nowhere a person looking for a control centre would go. Only the service list is still
+unwritten, and the category says so in a row rather than implying that the machine is not reachable
+from here.
 
 **`kdos settings [page]`** opens it from a prompt, and the page word is passed through without being
 checked here: `kdos-settings` owns the list of page names, and a second copy of it in the command
@@ -1447,7 +1475,14 @@ though somebody chose them.
 The name is editable only while creating, since renaming is an operation with no verb. And the
 network warning for a registry base is **a row, not a footnote**.
 
-`kdos-settings` also writes `panel.conf`, which the panel re-reads on signal.
+`kdos-settings` also writes `panel.conf`, which the panel re-reads on signal, `res.conf` and
+`term.conf`, which `kdos-res` and `kdos-term` re-read on one — so a terminal already open changes
+under the hand — and `launcher.conf` and the user's `menu.conf`, which get no signal because the
+launcher and the Start menu are opened by their chords and read those files as they come up. In
+`menu.conf` this page owns one `@` setting and no route at all: every other line is copied through
+byte for byte, which is what makes writing into a route table safe. Each signal is sent with an **exact** name match:
+`kdos-res` is a prefix of the setuid `kdos-resctl`, which handles no signals, and `kdos-comp` is a
+prefix of the shell script that owns the whole graphical session.
 
 ## The device managers
 

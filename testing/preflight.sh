@@ -1587,6 +1587,85 @@ done
     note "aerc styleset" "$(printf '%s\n' $_akeys | grep -c .) key(s), each one aerc's grammar"
 
 echo
+echo "==> the control centre's row table is consistent with the files it writes"
+# THREE FAULTS THIS TABLE CAN CARRY AND NOTHING ELSE WOULD REPORT.
+#
+# A DUPLICATE ROW draws twice on its page and edits one value from two places;
+# the Panel page carried `task_labels` and `right` twice for a release.
+#
+# A CHOICE WHOSE DEFAULT IS NOT IN ITS OWN LIST cannot be cycled back to what
+# the file says: the cycler searches the list, misses, and starts from the
+# first entry — so opening the page and pressing Right once silently changes a
+# key nobody touched.
+#
+# A ST_CON KEY THAT IS NOT IN con.conf is a control the session never reads.
+# That file is this program's whole contract with the console desktop, and a
+# row writing a key the session has no lookup for is the "change a thing, see
+# nothing" the surface exists not to be.
+_srows=$(python3 - <<'PYEOF'
+import re
+
+src = open('src/desktop/kdos-shell/settings.c').read()
+i = src.index('static struct row rows[] = {')
+body = src[i:src.index('\n};', i)]
+
+lists = dict(re.findall(r'static const char \*const (\w+)\[\] = \{([^}]*)\};', src))
+conf = open('fs/etc/kdos/con.conf').read()
+
+# One row is a brace at the start of a line down to the `}` that closes it,
+# and its VALUE is the last string literal in it: help, val and orig are all
+# concatenated literals, so a fixed field count cannot find them.
+starts = [m.start() for m in re.finditer(r'^\t\{ CAT_', body, re.M)]
+starts.append(len(body))
+seen, bad = set(), []
+n = 0
+for a, b in zip(starts, starts[1:]):
+    row = body[a:b]
+    head = re.match(r'\t\{\s*(CAT_\w+),\s*(FT_\w+),\s*(ST_\w+),\s*SC_\w+,'
+                    r'\s*(NULL|"[^"]*"),\s*"[^"]*",\s*(NULL|\w+),\s*(-?\d+),',
+                    row)
+    if not head:
+        bad.append('a row does not parse: ' + row.split('\n')[0].strip())
+        continue
+    n += 1
+    cat, ft, st, key, choices, nch = head.groups()
+    lits = re.findall(r'"((?:[^"\\]|\\.)*)"', row)
+    val = lits[-2] if len(lits) >= 2 else ''
+    if key == 'NULL':
+        continue
+    k = key.strip('"')
+    if (cat, st, k) in seen:
+        bad.append('%s %s %s is in the table twice' % (cat, st, k))
+    seen.add((cat, st, k))
+    if ft == 'FT_CHOICE' and choices != 'NULL':
+        items = [x.strip().strip('"') for x in lists.get(choices, '').split(',')
+                 if x.strip()]
+        if items and val not in items:
+            bad.append('%s %s default "%s" is not in %s' % (cat, k, val,
+                                                            choices))
+        if items and int(nch) != len(items):
+            bad.append('%s %s says %s choices, %s has %d'
+                       % (cat, k, nch, choices, len(items)))
+    if st == 'ST_CON' and not re.search(r'^#?\s*%s\s*=' % re.escape(k), conf,
+                                        re.M):
+        bad.append('ST_CON %s is not a key in fs/etc/kdos/con.conf' % k)
+
+for x in bad:
+    print('BAD ' + x)
+print('N %d' % n)
+PYEOF
+)
+_sbad=$(printf '%s\n' "$_srows" | grep '^BAD ' | sed 's/^BAD //')
+if [ -n "$_sbad" ]; then
+    while IFS= read -r _l; do bad "settings rows" "$_l"; done <<EOF
+$_sbad
+EOF
+else
+    note "settings rows" "$(printf '%s\n' "$_srows" | sed -n 's/^N //p') row(s), \
+each one key, one list, one con.conf line"
+fi
+
+echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"
 else

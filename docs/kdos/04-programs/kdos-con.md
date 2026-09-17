@@ -1663,19 +1663,24 @@ thing to get wrong, and a click that lands one entry off is worse than one that 
 
 **Routing dispatches on the button, never on the press kind.** A wheel detent is delivered as a
 press carrying `KT_MB_WHEEL_UP` or `KT_MB_WHEEL_DOWN` and no release ever follows it, so a test on
-`press` alone answers a scroll: over `↓ ■ X` a tick would close the window, over the panel row it
-would open the menu or switch workspace, over a title row it would arm a move, and under a mark or
-the colour picker it would re-anchor them. A scroll reaches the window under the pointer and does
+`press` alone answers a scroll: over `↓ ■ X` a tick would close the window, over `Start` it would
+open the menu, over a title row it would arm a move, and under a mark or the colour picker it would
+re-anchor them. Everything that means a detent tests for one **by name**, which is the session
+bar's workspace step and nothing else. A scroll reaches the window under the pointer and does
 nothing else to it — it does not raise it, does not take the keyboard and does not arm a drag.
 
 | Where | Press | Does |
 |---|---|---|
 | `Start` | left | opens `con.conf`'s `menu` |
 | A taskbar row | left | raises it, or **restores it** when it is minimised — the row is the way back |
+| A taskbar row | middle | **minimises it**, or restores it when it is already away. The row is where a minimised window comes back from, so it is where one goes: putting a window away was a chord and the frame's own chip, and neither is reachable while the window is behind whatever is being read |
 | A pager cell | left | switches to that workspace |
+| Anywhere on the session's own bar | wheel | steps workspace — up is `workspace-prev`, down is `workspace-next`, both landing on the next **occupied** one. `con.conf`'s `panel_wheel`. Asked before the bar's hit map, so a tick over `Start` or over a window row means this too: neither has a use for a detent, and a wheel that did one thing on part of a bar and nothing on the rest reads as broken |
 | The clock | left | opens `kdos-cal` |
 | `↓` `■` `X` on a frame | left press, then release on the same chip | minimise, maximise / restore, close — each is a **three-cell chip**, the mark centred with the chip's own fill either side, and all three cells answer. The press only **arms** it and the release decides, so moving off the chip before letting go takes the press back |
 | A title row, clear of its ends | left drag | moves the window — the **frame's** row, the one the box and the buttons are drawn on. A **tab strip** is drawn on that row and answers no press: the tabs are on chords, and the drag is what the row has always meant |
+| A title row, chips included | left, twice inside `dblclick_ms` | `con.conf`'s `title_dblclick` — **maximise** and back by default, or `lower`, or nothing. The pair is spent when it fires, so a hand resting on the button does not flicker the window between states, and no third grab is armed: one holding a window that has just been resized under it would measure every later motion against a rectangle that is gone |
+| A title row or a border | left drag **ending against an edge of the work area** | snaps the window there when the button comes up — left and right give that half, the **top maximises**, a corner gives the quarter. `con.conf`'s `edge_snap` and `snap_zone`. A click that never travelled does not snap, or a window whose title row already sits at the top of the work area would maximise itself the first time anybody clicked it |
 | A title row, chips included | right | opens the **window menu** at the pointer, raising the window first |
 | A title row, chips included | middle | **lowers** the window |
 | Any part of a frame | long press | opens the window menu there — a finger's way to the verbs, and the only one it has |
@@ -1683,6 +1688,7 @@ nothing else to it — it does not raise it, does not take the keyboard and does
 | The last `CON_GRAB_CORNER` cells of the side and bottom borders | left **or** right drag | resizes it from that **corner**, both axes at once |
 | The last `CON_GRAB_CORNER` cells of the title row | left drag | resizes it from that top corner, both axes at once |
 | Anywhere in a window | Super + left drag | moves it, so a window that is all content is still movable |
+| Anywhere in a window | Super + wheel | steps that window's own **transparency**, by the same ten points `Super+Ctrl+=` and `Super+Ctrl+-` do. Taken before the window is told anything, because `Super` is the session's modifier and a detent carrying it is never the guest's — a terminal would scroll its history and a boxed application would zoom, under a chord meant for the frame. A background layer is never mixed: there is nothing behind it |
 | Anywhere in a window | Super + middle or right drag | resizes it from the **nearest** edge or corner |
 | Inside a window whose content the session draws | right drag | resizes it from the **nearest** edge or corner |
 | A desktop icon | left | selects it; a second press opens it |
