@@ -1306,9 +1306,33 @@ int rec_main(int argc, char **argv)
 					 fl_rows > 0 ? fl_rows : 1);
 			int bi;
 
+			/*
+			 * AND THE BAR IS A CONTROL, which is the whole of why
+			 * kch_scrollbar takes an id. This surface drew one
+			 * beside the file list and answered neither its press
+			 * nor its drag — a bar people try to drag once and
+			 * then stop trusting.
+			 */
 			if (ev.press == KT_MP_DRAG) {
-				kch_hover(ev.mx, ev.my);
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0)
+					file_top = bt;
+				else
+					kch_hover(ev.mx, ev.my);
 				continue;
+			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
+			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx, ev.my);
+
+				if (bt >= 0) {
+					file_top = bt;
+					continue;
+				}
 			}
 			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT &&
 			    (bi = kch_button_at(ev.mx, ev.my)) >= 0) {

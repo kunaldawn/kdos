@@ -250,6 +250,12 @@ is `ktui_slider`, a choice is `ktui_dropdown_*`, a line of text is `ktui_input`.
 prints and changes with `Left` and `Right` is a value nobody with a pointer can set at all, which is
 the failure `kdos-settings` shipped with on every knob it had.
 
+**A surface that draws its own rows still uses the toolkit's pointer rule.** `ktui_rows_event` for a
+list and `ktui_table_event` for a table answer the same four things — the wheel walks, a press moves
+the caret, a press on the row it is already on picks, the right button is Back — and both are the
+rule `kdos-pick` has always kept. Writing that answer yourself is how twenty-one surfaces came to
+have twenty-one of them, several of which were "drop the event".
+
 **Each control is a `draw`/`key`/`hit` trio with a frame call on top.** If your surface runs
 `ktui_frame_begin()`, call the one-liner; if it runs its own event loop, call the three and route the
 press and the key yourself. Both reach the same code, so neither is a second implementation.

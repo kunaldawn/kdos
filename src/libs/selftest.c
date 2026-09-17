@@ -2170,6 +2170,99 @@ static void test_slider(void)
 	}
 }
 
+/*
+ * THE TWO POINTER RULES EVERY LIST AND EVERY TABLE ON THIS DESKTOP KEEPS.
+ *
+ * They exist because twenty-one surfaces had written their own answer to
+ * "what does a press on a row mean" or had written none at all, and the point
+ * of one implementation is that it can be stated once and checked once. A
+ * press MOVES the caret, a press on the row it is already on PICKS, the wheel
+ * walks, and the right button is Back.
+ */
+static void test_rows(void)
+{
+	printf("libktui row and table pointers\n");
+
+	KRect r = krect(2, 3, 30, 5);	/* five drawn rows, from index `top` */
+	KtuiEvent ev = { 0 };
+	int sel = 0, top = 0;
+
+	ev.type = KT_EVT_MOUSE;
+	ev.press = KT_MP_PRESS;
+	ev.btn = KT_MB_LEFT;
+
+	/* ── a press moves, a second press on the same row picks ────── */
+	ev.mx = 5;
+	ev.my = r.y + 2;
+	eq_int(ktui_rows_event(r, &sel, &top, 20, &ev), KTUI_ROWS_MOVED,
+	       "a press on another row moves the caret");
+	eq_int(sel, 2, "to the row under the pointer");
+	eq_int(ktui_rows_event(r, &sel, &top, 20, &ev), KTUI_ROWS_PICKED,
+	       "and a press on the row it is already on picks");
+	eq_int(sel, 2, "leaving it where it was");
+
+	/* ── the row is measured from `top`, not from the rectangle ─── */
+	top = 10;
+	sel = 0;
+	ktui_rows_event(r, &sel, &top, 20, &ev);
+	eq_int(sel, 12, "a scrolled list names the row it is SHOWING");
+
+	/* ── outside, and past the end ───────────────────────────── */
+	ev.my = r.y + r.h + 1;
+	eq_int(ktui_rows_event(r, &sel, &top, 20, &ev), KTUI_ROWS_NONE,
+	       "a press below the rows is not the list's");
+	top = 0;
+	ev.my = r.y + 4;
+	eq_int(ktui_rows_event(r, &sel, &top, 3, &ev), KTUI_ROWS_NONE,
+	       "nor is one on a drawn line past the last row");
+
+	/* ── the wheel walks and stops at the ends ───────────────── */
+	sel = 0;
+	ev.btn = KT_MB_WHEEL_DOWN;
+	eq_int(ktui_rows_event(r, &sel, &top, 20, &ev), KTUI_ROWS_MOVED,
+	       "a detent walks the caret");
+	eq_int(sel, 1, "by one");
+	ev.btn = KT_MB_WHEEL_UP;
+	ktui_rows_event(r, &sel, &top, 20, &ev);
+	eq_int(ktui_rows_event(r, &sel, &top, 20, &ev), KTUI_ROWS_NONE,
+	       "and a detent at the end moves nothing, so it reports nothing");
+
+	/* ── the right button is Back ─────────────────────────── */
+	ev.btn = KT_MB_RIGHT;
+	ev.my = r.y;
+	eq_int(ktui_rows_event(r, &sel, &top, 20, &ev), KTUI_ROWS_CLOSE,
+	       "the right button is Back, wherever it lands");
+
+	/* ── and `follow` brings the caret back on screen ─────────── */
+	top = 0;
+	ktui_rows_follow(r, 12, &top, 20);
+	ok(12 >= top && 12 < top + r.h,
+	   "follow scrolls until the caret is one of the drawn rows");
+	ktui_rows_follow(r, 0, &top, 20);
+	eq_int(top, 0, "and back to the start for the first row");
+
+	/* ── the table takes the same four answers ───────────────── */
+	{
+		static const KtuiCol col[] = { { "Name", 10 } };
+		KtuiTable tbl = { 0 };
+		KRect tr = krect(2, 3, 20, 6);
+
+		ev.type = KT_EVT_MOUSE;
+		ev.press = KT_MP_PRESS;
+		ev.btn = KT_MB_WHEEL_DOWN;
+		eq_int(ktui_table_event(tr, &tbl, 20, 5, 1, col, &ev, NULL,
+					NULL),
+		       KTUI_TABLE_MOVED,
+		       "a detent scrolls a table — which ten surfaces drew and "
+		       "none answered");
+		eq_int(tbl.sel, 1, "by one row");
+		ev.btn = KT_MB_RIGHT;
+		eq_int(ktui_table_event(tr, &tbl, 20, 5, 1, col, &ev, NULL,
+					NULL),
+		       KTUI_TABLE_CLOSE, "and its right button is Back too");
+	}
+}
+
 static void test_grid(void)
 {
 	printf("libktui grid\n");
@@ -9003,6 +9096,7 @@ int main(void)
 	test_grid();
 	test_shade();
 	test_slider();
+	test_rows();
 	test_pack();
 	test_portup();
 	test_wm();

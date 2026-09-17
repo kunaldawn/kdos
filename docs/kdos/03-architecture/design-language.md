@@ -83,6 +83,7 @@ drifts:
 | `ktui_input` | A line of text with a caret |
 | `ktui_list`, `ktui_table` | Rows, and rows with columns |
 | `ktui_rows_*` | Which row a pointer is on, for a surface that draws its own |
+| `ktui_table_event` | The same, for a table: wheel, press, pick, Back |
 | `ktui_tabs_*` | A strip of pages |
 | `KtuiMenu`, `ktui_modal` | A pane of verbs, and a question |
 | `ktui_progress`, `ktui_gauge`, `ktui_sparkline`, `ktui_heat` | What is happening, in four shapes |

@@ -453,6 +453,20 @@ int update_main(int argc, char **argv)
 			continue;
 		}
 		if (ev.type == KT_EVT_MOUSE) {
+			/*
+			 * A DETENT SCROLLS THE TABLE. It is answered before
+			 * anything below, because a wheel tick arrives as a
+			 * press with no release and would otherwise fall into
+			 * the button arm and run whichever row it passed over.
+			 */
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				ktui_table_key(cur_table(), cur_count(), ktui_h - 9,
+					       ev.btn == KT_MB_WHEEL_UP ? KT_K_UP
+									: KT_K_DOWN,
+					       NULL, NULL);
+				continue;
+			}
 			if (ev.press == KT_MP_DRAG) {
 				kch_hover(ev.mx, ev.my);
 				continue;

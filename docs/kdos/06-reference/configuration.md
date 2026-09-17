@@ -378,7 +378,12 @@ generated block and win.
 
 ## `/etc/kdos/con.conf`
 
-The console desktop. `~/.config/kdos-con/con.conf` overrides it key by key, and a key in neither
+The console desktop, and **`kdos-settings` writes a handful of these** — `window_opacity`,
+`panel_opacity`, `taskbar`, `sessions`, `restore`, `remember`, `embed` and `scrollback` — into
+`~/.config/kdos-con/con.conf`. Every one of them is `login` and cannot be anything else: this file
+is read once, on the first lookup, and the answer is held for the life of the session.
+
+`~/.config/kdos-con/con.conf` overrides it key by key, and a key in neither
 file takes the built-in default — a machine with no file at all boots a working desktop.
 
 **Both files are read whole**, and that is load-bearing rather than obvious. A key that cannot be

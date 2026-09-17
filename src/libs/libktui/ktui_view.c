@@ -326,6 +326,54 @@ int ktui_table_key(KtuiTable *st, int count, int rows, int k,
 	return st->sel != prev;
 }
 
+/*
+ * ONE POINTER RULE FOR EVERY TABLE, and it is the same rule the lists keep.
+ *
+ * TEN SURFACES DREW A TABLE AND SCROLLED IT WITH THE KEYBOARD ALONE — backup,
+ * connect, disks, firewall, print, timezone, update, users, contacts, chars.
+ * Each answered a press and none answered the WHEEL, which is the first thing
+ * a hand reaches for on a list longer than the window; a person on the eleventh
+ * row of forty could see thirty of them and reach none.
+ *
+ * Ten copies of this would be ten answers to what a press means, so it lives
+ * here beside `ktui_table_key`, which is the same walk from the other hand.
+ * `span` and `user` are the caller's row classifier, exactly as the key path
+ * takes them: a heading is not a row a caret may rest on.
+ */
+int ktui_table_event(KRect r, KtuiTable *st, int count, int rows, int ncol,
+		     const KtuiCol *col, const KtuiEvent *ev,
+		     KtuiTableSpan span, void *user)
+{
+	int i;
+
+	if (!ev || ev->type != KT_EVT_MOUSE)
+		return KTUI_TABLE_NONE;
+
+	/* A detent is a press with no release, so it is answered before the
+	 * button arm below and never falls into it. */
+	if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN)
+		return ktui_table_key(st, count, rows,
+				      ev->btn == KT_MB_WHEEL_UP ? KT_K_UP
+								: KT_K_DOWN,
+				      span, user)
+		       ? KTUI_TABLE_MOVED : KTUI_TABLE_NONE;
+
+	if (ev->press != KT_MP_PRESS)
+		return KTUI_TABLE_NONE;
+	if (ev->btn == KT_MB_RIGHT)
+		return KTUI_TABLE_CLOSE;
+	if (ev->btn != KT_MB_LEFT)
+		return KTUI_TABLE_NONE;
+
+	i = ktui_table_hit(r, st, count, ncol, col, ev->mx, ev->my);
+	if (i < 0)
+		return KTUI_TABLE_NONE;
+	if (i == st->sel)
+		return KTUI_TABLE_PICKED;
+	return ktui_table_pick(st, count, i, span, user) ? KTUI_TABLE_MOVED
+							 : KTUI_TABLE_NONE;
+}
+
 /* The row a click lands on, refused when it is a skipped heading. */
 int ktui_table_pick(KtuiTable *st, int count, int idx, KtuiTableSpan span,
 		    void *user)
