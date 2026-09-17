@@ -87,8 +87,9 @@ control's falls 666 µs further behind the tick every frame, and is never re-peg
 666 µs behind. A tick is refused only after a stall, never for the jitter of noticing one.
 
 The consumers, meanwhile, do not agree with each other. The console session composes on
-`frame_floor_ms()`, the period of the fastest attached screen's current mode — 16 on a sixty-hertz
-display and shorter on a faster one — and will not compose two frames inside it; `kdos-term` on
+`frame_floor_ms()`, the period of the fastest mode any attached display is wearing, rounded up to
+the millisecond — 16 on a sixty-hertz display, 7 at 144 Hz — and will not compose two frames inside
+it; `kdos-term` on
 Wayland is gated on the compositor's frame callback, so its floor is the output's — 16.667 at sixty
 hertz. A frame produced faster than the floor is bytes the consumer must
 read and parse for a picture nobody sees.

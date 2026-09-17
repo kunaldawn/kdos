@@ -36,6 +36,16 @@ struct wlr_allocator *embed_allocator(struct wlr_backend *backend,
 				      struct wlr_renderer *renderer);
 
 /*
+ * ONE FRAME PAINTED AND READ BACK THE WAY embed_publish() READS ONE, before a
+ * session is built on the renderer that painted it. A driver may import the
+ * buffers embed_allocator() hands out, satisfy every call against them and
+ * write the result somewhere this process cannot see — which no layer reports
+ * and only these pixels answer. Needs the server's renderer and allocator and
+ * nothing else; called from embed_render_path_works() in cage.c.
+ */
+bool embed_readback_works(struct cg_server *server);
+
+/*
  * THE SIZE THIS TOPLEVEL CHOSE FOR ITSELF, in pixels, or 0 for neither. Its own
  * geometry first, the surface's committed size where the client set no window
  * geometry, and nothing where it has neither — the protocol says 0 means "none"

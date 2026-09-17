@@ -345,10 +345,19 @@ confinement.
 **It chooses the embedded cage's renderer too, and this program is not the end that does it.**
 `kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where
 `software` pins pixman and every other spelling leaves the cage on its own
-`wlr_renderer_autocreate` call; see
-[`kdos-cage`](kdos-cage.md#--embed-the-guests-pixels-without-a-screen). So a `render = software`
-box on a console desktop with a card draws with llvmpipe into `wl_shm` and is composited out of
-that same memory — no upload and no readback for pixels the CPU already had — and the key saves a
+`wlr_renderer_autocreate` call — **whose answer the cage then proves and may overrule**. An
+embedded cage can publish only frames it can read back, so with a hardware renderer it allocates
+udmabuf buffers, and a driver is free to refuse to import them — or to accept the import and write
+the result where this process cannot see it. The cage renders one frame through the renderer, the
+allocator and a throwaway output before building anything on them, and then paints a second frame of
+known pixels and reads it back the way a published frame is read; where either fails it drops the
+card and rebuilds on pixman. So a box that asked for `auto` or `gpu` on a machine whose card fails
+either test is composited by pixman and draws with llvmpipe, and nothing in the profile says so — see
+[`kdos-cage`](kdos-cage.md#--embed-the-guests-pixels-without-a-screen). What the key decides is
+whether the card is *asked for*, and that is the half this file owns.
+
+So a `render = software` box on a console desktop with a card draws with llvmpipe into `wl_shm` and
+is composited out of that same memory — no upload and no readback for pixels the CPU already had — and the key saves a
 crossing rather than costing one. **A profile rewrite that dropped the key would change what
 composites the window**, which is why every writer of this file carries keys that mean nothing to a
 container flag.

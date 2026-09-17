@@ -462,9 +462,12 @@ void sh_activate_task(struct sh_state *sh, int i);
 void sh_toggle_task(struct sh_state *sh, int i);
 /* Middle click: the protocol's polite close, so an editor still gets to ask. */
 void sh_close_task(struct sh_state *sh, int i);
-/* What show-desktop is made of. Already-minimised windows are left alone, so
- * pressing it twice does not un-minimise half the screen. */
+/* The two halves of show-desktop. Each is a no-op on a window already the way
+ * it asks for, so a caller walks a list without first working out which
+ * windows are already the way it wants them. Which half the column runs is
+ * decided once, from the state of the whole list. */
 void sh_minimize_task(struct sh_state *sh, int i);
+void sh_restore_task(struct sh_state *sh, int i);
 void sh_activate_workspace(struct sh_state *sh, int i);
 
 /*

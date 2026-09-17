@@ -50,6 +50,7 @@
 #include <wlr/backend/multi.h>
 #include <wlr/config.h>
 #include <wlr/render/allocator.h>
+#include <wlr/render/pixman.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
@@ -61,6 +62,7 @@
 #include <wlr/types/wlr_drm.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
+#include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -170,6 +172,48 @@ set_cloexec(int fd)
 	return true;
 }
 
+/*
+ * THE WLROOTS KNOBS THIS PROCESS SETS FOR ITSELF, so that they can be taken
+ * back off before the guest is executed.
+ *
+ * An embedded cage configures wlroots through the environment, because that is
+ * upstream's own road to those choices and a wlroots that changes how a backend
+ * or a renderer is made changes it here too. execvp() then hands the whole
+ * environment to the guest, and a guest that is itself wlroots-based would come
+ * up headless, one output wide and on the software renderer — this cage's
+ * screen arrangement applied to a program that has a window. Only what THIS
+ * process wrote is taken back, so a value a person exported for the session
+ * still reaches the guest and still means what they meant.
+ *
+ * The table is sized to the four names main() sets. A fifth would not fit, so
+ * it would not be recorded and would cross the fork: a knob added there grows
+ * the table here.
+ */
+static const char *env_own[4];
+static size_t env_own_len;
+
+static void
+embed_setenv(const char *name, const char *value, bool overwrite)
+{
+	if (!overwrite && getenv(name)) {
+		return;
+	}
+	if (setenv(name, value, 1) != 0) {
+		return;
+	}
+	if (env_own_len < sizeof(env_own) / sizeof(env_own[0])) {
+		env_own[env_own_len++] = name;
+	}
+}
+
+static void
+embed_unsetenv_own(void)
+{
+	for (size_t i = 0; i < env_own_len; i++) {
+		unsetenv(env_own[i]);
+	}
+}
+
 static bool
 spawn_primary_client(struct cg_server *server, char *argv[], pid_t *pid_out, struct wl_event_source **sigchld_source)
 {
@@ -186,6 +230,7 @@ spawn_primary_client(struct cg_server *server, char *argv[], pid_t *pid_out, str
 		sigprocmask(SIG_SETMASK, &set, NULL);
 		/* Close read, we only need write in the primary client process. */
 		close(fd[0]);
+		embed_unsetenv_own();
 		execvp(argv[0], argv);
 		/* execvp() returns only on failure */
 		wlr_log_errno(WLR_ERROR, "Failed to spawn client");
@@ -367,6 +412,79 @@ find_headless(struct wlr_backend *backend)
 	return found;
 }
 
+/*
+ * ONE REAL BUFFER THROUGH THE WHOLE TRIPLE, BEFORE ANYTHING IS BUILT ON IT.
+ *
+ * A backend, a renderer and an allocator can each be created successfully and
+ * still not fit together. An embedded cage needs buffers a GPU can draw into
+ * and this process can read, so with a hardware renderer it allocates udmabuf
+ * ones — and a driver is free to refuse to import them, which some do
+ * (virtio-gpu's EGL answers eglCreateImageKHR with EGL_BAD_ALLOC). The refusal
+ * arrives only when wlroots binds a buffer, which first happens inside the
+ * anchor output's commit, and a failed commit leaves that output out of the
+ * layout, the layout with no wl_output global, and the guest waiting for a
+ * screen that never appears: no window, no frame, no error anybody sees. Every
+ * layer beneath reports success, so this is the only place the mismatch is
+ * visible, and only by trying it.
+ *
+ * DRIVEN BY THE TEST AND NEVER BY THE PRESENCE OF A CARD. A machine whose
+ * hardware path works keeps it.
+ *
+ * The probe output is created and destroyed here so the anchor never carries a
+ * swapchain belonging to a renderer the caller may throw away. It makes no
+ * cg_output and no window: the headless backend emits new_output only once it
+ * has been started, and this runs before wlr_backend_start().
+ * wlr_output_test_state() on an output being lit allocates a swapchain buffer
+ * and submits a render pass into it and applies nothing — and that render pass
+ * is where the import happens, so it is the whole of what the driver gets to
+ * refuse and none of what the anchor's own commit would go on to do.
+ *
+ * AND THEN THE PIXELS, because an import the driver accepts is not a frame
+ * this process can read. A card may bind a udmabuf buffer, satisfy every call
+ * against it and put the result in memory of its own — the commit succeeds,
+ * every counter reports success, and the parent is sent a full frame of
+ * nothing on every tick for the life of the guest. embed_readback_works()
+ * paints a frame whose every pixel is known and reads it back through the road
+ * embed_publish() takes, which is the only thing that can tell those two cards
+ * apart.
+ */
+static bool
+embed_render_path_works(struct cg_server *server)
+{
+	struct wlr_output *probe =
+		wlr_headless_add_output(server->headless,
+					(unsigned int)server->embed.first_w,
+					(unsigned int)server->embed.first_h);
+	if (!probe) {
+		wlr_log(WLR_ERROR, "embed: no probe output to test the renderer");
+		return false;
+	}
+
+	bool ok = wlr_output_init_render(probe, server->allocator,
+					 server->renderer);
+	if (ok) {
+		struct wlr_output_state state;
+
+		wlr_output_state_init(&state);
+		wlr_output_state_set_enabled(&state, true);
+		ok = wlr_output_test_state(probe, &state);
+		wlr_output_state_finish(&state);
+		if (!ok)
+			wlr_log(WLR_INFO, "embed: the renderer cannot bind "
+					  "this cage's buffers");
+	}
+
+	wlr_output_destroy(probe);
+
+	if (ok) {
+		ok = embed_readback_works(server);
+		if (!ok)
+			wlr_log(WLR_INFO, "embed: the renderer's frames do not "
+					  "reach memory this cage can read");
+	}
+	return ok;
+}
+
 static void
 usage(FILE *file, const char *cage)
 {
@@ -519,19 +637,23 @@ main(int argc, char *argv[])
 	struct wl_event_source *sigterm_source = wl_event_loop_add_signal(event_loop, SIGTERM, handle_signal, &server);
 
 	/*
-	 * EMBEDDED IS HEADLESS PLUS PIXMAN, and both are chosen the way wlroots
-	 * already lets anyone choose them. A headless output is backed by a
-	 * buffer in memory rather than by a screen, and the software renderer
-	 * is the one that can hand back a pointer to those bytes — that pair is
-	 * the entire mechanism.
+	 * EMBEDDED IS HEADLESS, AND THE RENDERER IS PROVED RATHER THAN
+	 * ASSUMED. A headless output is backed by a buffer in memory rather
+	 * than by a screen, and an embedded cage's whole output is the bytes
+	 * of that buffer handed to its parent — so the renderer has to be one
+	 * whose frames this process can read. Pixman always is; a card is only
+	 * where its driver will import the buffers embed_allocator() hands out,
+	 * which no layer reports and which only one real frame answers. So the
+	 * card is taken wherever autocreate offers it and kept only where that
+	 * frame works — see embed_render_path_works().
 	 *
-	 * Set rather than hand-built, so the code path is upstream's own and a
-	 * wlroots that changes how a backend is made changes it here too. They
-	 * are set only if the environment has not already: a person debugging
-	 * with WLR_BACKENDS set means it.
+	 * The backend is chosen by setting what wlroots already reads, so the
+	 * code path is upstream's own and a wlroots that changes how a backend
+	 * is made changes it here too. What this process writes there it takes
+	 * back before the guest runs: see embed_setenv().
 	 */
 	if (server.embed.embedded) {
-		setenv("WLR_BACKENDS", "headless", 0);
+		embed_setenv("WLR_BACKENDS", "headless", false);
 		/*
 		 * THE CARD WHEREVER THERE IS ONE, AND THE FALL BACK IS
 		 * UPSTREAM'S OWN. A renderer left unnamed is what makes
@@ -555,9 +677,12 @@ main(int argc, char *argv[])
 		 * KDOS_EMBED_GPU overrides in both directions — see
 		 * embed_software_forced() — and WLR_RENDERER is set rather
 		 * than overwritten: a person debugging with it set means it.
+		 * The fallbacks below do not touch it at all; they build the
+		 * software renderer directly, so a named renderer says what
+		 * autocreate is asked for and never what it is replaced with.
 		 */
 		if (embed_software_forced())
-			setenv("WLR_RENDERER", "pixman", 0);
+			embed_setenv("WLR_RENDERER", "pixman", false);
 		/*
 		 * NONE OF ITS OWN. autocreate adds headless outputs at a size
 		 * of its choosing, and a second output beside the one this mode
@@ -565,7 +690,7 @@ main(int argc, char *argv[])
 		 * exactly what the frames then are. Embedded is one window and
 		 * therefore one output.
 		 */
-		setenv("WLR_HEADLESS_OUTPUTS", "0", 0);
+		embed_setenv("WLR_HEADLESS_OUTPUTS", "0", false);
 		/*
 		 * THE CURSOR HAS TO BE IN THE PICTURE, because the picture is
 		 * all the parent gets. A headless output answers set_cursor
@@ -579,7 +704,7 @@ main(int argc, char *argv[])
 		 * headless cursor plane to prefer, so a person who set this to
 		 * 0 set it for some other compositor.
 		 */
-		setenv("WLR_NO_HARDWARE_CURSORS", "1", 1);
+		embed_setenv("WLR_NO_HARDWARE_CURSORS", "1", true);
 	}
 
 	server.backend = wlr_backend_autocreate(event_loop, &server.session);
@@ -627,11 +752,15 @@ main(int argc, char *argv[])
 	 * environment, or `render = software` above — and that one could not
 	 * be built. An embedded cage takes the software renderer over no
 	 * window at all.
+	 *
+	 * BUILT DIRECTLY AND NEVER NAMED IN THE ENVIRONMENT. WLR_RENDERER says
+	 * what autocreate was asked for; overwriting it with what autocreate
+	 * was replaced by destroys the one record of the question, and a person
+	 * who named a renderer named it.
 	 */
 	if (!server.renderer && server.embed.embedded) {
 		wlr_log(WLR_INFO, "embed: no renderer from autocreate, using pixman");
-		setenv("WLR_RENDERER", "pixman", 1);
-		server.renderer = wlr_renderer_autocreate(server.backend);
+		server.renderer = wlr_pixman_renderer_create();
 	}
 	if (!server.renderer) {
 		wlr_log(WLR_ERROR, "Unable to create the wlroots renderer");
@@ -654,9 +783,8 @@ main(int argc, char *argv[])
 	    !(server.renderer->render_buffer_caps & WLR_BUFFER_CAP_DATA_PTR)) {
 		wlr_log(WLR_INFO, "embed: no readable buffer for the hardware "
 				  "renderer, using pixman");
-		setenv("WLR_RENDERER", "pixman", 1);
 		wlr_renderer_destroy(server.renderer);
-		server.renderer = wlr_renderer_autocreate(server.backend);
+		server.renderer = wlr_pixman_renderer_create();
 		if (server.renderer)
 			server.allocator = embed_allocator(server.backend,
 							   server.renderer);
@@ -665,6 +793,43 @@ main(int argc, char *argv[])
 		wlr_log(WLR_ERROR, "Unable to create the wlroots allocator");
 		ret = 1;
 		goto end;
+	}
+
+	/*
+	 * AN ALLOCATOR THAT WAS BUILT IS NOT AN ALLOCATOR THAT WORKS, so the
+	 * triple is proved before the session is built on it — see
+	 * embed_render_path_works(). Nothing after this point can recover: the
+	 * scene, the dmabuf globals and the outputs all hold the renderer, and
+	 * the guest is already waiting.
+	 *
+	 * The card is dropped whole, and in the order it was built: the
+	 * allocator came from the renderer and goes first, then the renderer,
+	 * and only then is the software one built — the failed GLES2 context
+	 * holds the render node open until it is destroyed, and a second
+	 * context on the same device would be a second failure on top of the
+	 * first. The software renderer is built directly rather than named in
+	 * WLR_RENDERER, which holds what autocreate was asked for and not what
+	 * it was replaced by.
+	 */
+	if (server.embed.embedded && !embed_render_path_works(&server)) {
+		wlr_log(WLR_INFO, "embed: this renderer cannot produce a frame "
+				  "this cage can publish, using pixman");
+		wlr_allocator_destroy(server.allocator);
+		server.allocator = NULL;
+		wlr_renderer_destroy(server.renderer);
+		server.renderer = NULL;
+
+		server.renderer = wlr_pixman_renderer_create();
+		if (server.renderer)
+			server.allocator = embed_allocator(server.backend,
+							   server.renderer);
+		if (!server.renderer || !server.allocator ||
+		    !embed_render_path_works(&server)) {
+			wlr_log(WLR_ERROR, "Unable to create a renderer whose "
+					   "frames this cage can publish");
+			ret = 1;
+			goto end;
+		}
 	}
 
 	wlr_renderer_init_wl_display(server.renderer, server.wl_display);

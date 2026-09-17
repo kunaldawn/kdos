@@ -277,7 +277,16 @@ $(printf '%s' "$flat" \
     # port that documented the fix. `install -Dm644` is not a meson option
     # either, and `option(` may be followed by a NEWLINE before its name, which
     # fcft does, so the option file is flattened before it is read.
-    cmdlines=$(grep -v '^[[:space:]]*#' "$d/build.sh" | grep -v 'install ')
+    #
+    # A COMPILER FLAG IS NOT A MESON OPTION EITHER. `-D` names a preprocessor
+    # macro in a CFLAGS assignment and a project option on a meson line, and
+    # meson never sees the first: mesa-demos exports `-D_GNU_SOURCE` for a
+    # header its sources need, which no meson_options.txt can define. A line
+    # that assigns one of the toolchain flag variables is therefore dropped
+    # before the -D's are read, or this reports a defect in a recipe that
+    # builds.
+    cmdlines=$(grep -v '^[[:space:]]*#' "$d/build.sh" | grep -v 'install ' \
+               | grep -vE '^[[:space:]]*(export[[:space:]]+)?(C|CXX|CPP|LD|OBJC|OBJCXX|F|FC)FLAGS\+?=')
     passed=$(printf '%s\n' "$cmdlines" \
              | grep -oE '[-]D[a-zA-Z0-9_-]+[a-zA-Z0-9_:-]*' \
              | sed 's/^-D//' | grep -v ':' | sort -u)

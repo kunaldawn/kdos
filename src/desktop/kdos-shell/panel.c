@@ -1629,11 +1629,12 @@ static void chips_wheel(struct sh_state *sh, int up)
 }
 
 /*
- * The member list for a grouped chip: kdos-menu binds foreign-toplevel itself
- * and lists the titles (plus Close all / Minimize all). Anchored under the
- * chip on the top panel; the bottom panel omits the anchor — layer-shell
- * margins are measured from the top-left and this process does not know the
- * output's pixel height, so centred is the honest fallback.
+ * The member list for a grouped chip: kdos-menu asks libkdisp for the list
+ * itself and draws the titles, plus the verbs that act on the whole group —
+ * Minimize all, Restore all where some of them are minimised, and Close all.
+ * Anchored under the chip on the top panel; the bottom panel omits the anchor
+ * — layer-shell margins are measured from the top-left and this process does
+ * not know the output's pixel height, so centred is the honest fallback.
  */
 static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 {
@@ -1672,11 +1673,11 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
  * and opens the member list for a group. MIDDLE closes politely, so an editor
  * with unsaved work still gets to ask.
  *
- * RIGHT OPENS THE WINDOW MENU, and that is the change. It used to MINIMISE —
- * which is a second way to do what left-click already does, on the button
- * every other desktop reserves for Restore/Maximize/Close. There was no way at
- * all to maximise or restore a window from this bar, and on a system where
- * most windows belong to boxed applications that is the bar you are holding.
+ * RIGHT OPENS THE WINDOW MENU, and nothing else may be bound there: a right
+ * button that minimised would be a second way to do what left already does, on
+ * the one button every other desktop reserves for Restore/Maximize/Close — and
+ * that menu is the only route to those verbs from the bar, which on a system
+ * where most windows belong to boxed applications is the bar you are holding.
  * See kdos-menu's `--winmenu`.
  */
 /*
@@ -6730,7 +6731,8 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 		return 1;
 	case TT_SHOW:
 		snprintf(t1, n1, "%s", "Show desktop");
-		snprintf(t2, n2, "%s", "minimise everything");
+		snprintf(t2, n2, "%s", "minimise everything · again puts back "
+				       "what it hid");
 		return 1;
 	case TT_TRAY: {
 		if (idx < 0 || idx >= tray_nvis)
@@ -7407,14 +7409,14 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 
 	if (in_span(cx, plusn_x, plusn_end)) {
 		/*
-		 * THE HIDDEN WINDOWS, AS A LIST. `+3` used to STEP the row by
-		 * one on every click — so reaching the third hidden window
-		 * meant clicking three times and watching the whole bar
-		 * reflow, and there was no way to see what was in there at
-		 * all. kdos-teams is the window list this desktop already has;
-		 * anchored to the cell that was clicked, it is the overflow
-		 * menu every taskbar of this shape opens. The wheel over the
-		 * row still steps, which is the gesture that wanted stepping.
+		 * THE HIDDEN WINDOWS, AS A LIST. A `+3` that STEPPED the row
+		 * on every click would mean three clicks and three reflows of
+		 * the whole bar to reach the third hidden window, and no way
+		 * to see what is in there at all. kdos-teams is the window
+		 * list this desktop already has; anchored to the cell that was
+		 * clicked, it is the overflow menu every taskbar of this shape
+		 * opens. The wheel over the row steps, which is the gesture
+		 * that wants stepping.
 		 */
 		char xs[16], ys[16];
 		snprintf(xs, sizeof(xs), "%d", plusn_x * kdisp_cell_w());
@@ -7430,15 +7432,51 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 	 * session. */
 	if (in_span(cx, sh->show_hit_x, sh->show_hit_end)) {
 		/*
-		 * Show desktop = minimise everything. There is no "restore
-		 * them all" here, and that is honest rather than lazy:
-		 * kdos-comp has no iconified state of its own, so the panel
-		 * would have to remember what it hid, and a memory that goes
-		 * stale the moment a window closes is worse than a button that
-		 * does one thing.
+		 * Show desktop, BOTH WAYS: anything on screen and the column
+		 * clears it; nothing on screen and the column puts back what
+		 * it cleared.
+		 *
+		 * THE WAY BACK IS THE REMEMBERED SET AND NOT THE LIVE LIST.
+		 * kdos-comp re-reports a window on another workspace as
+		 * MINIMISED — the pager's occupancy above is read off that —
+		 * so un-minimising everything the bar calls minimised would
+		 * haul every other workspace's windows onto this one. It would
+		 * also undo a minimise somebody made on purpose before the
+		 * press.
+		 *
+		 * The memory is IDS, matched against the live list on the way
+		 * back, so a window that has closed or that something else
+		 * restored is simply not found. It is this process's alone: a
+		 * panel started against an already-cleared desk has hidden
+		 * nothing and the column does nothing until there is something
+		 * on screen to hide, which is the same answer it gives for a
+		 * desk somebody else cleared. The session's own `show-desktop`
+		 * chord keeps its own memory the same way; see kdos-con.
 		 */
+		static unsigned hidden[SH_MAX_TASKS];
+		static int nhidden;
+		int showing = 0;
+
 		for (int i = 0; i < sh->ntasks; i++)
-			sh_minimize_task(sh, i);
+			if (!sh->tasks[i].minimized)
+				showing = 1;
+		if (showing) {
+			nhidden = 0;
+			for (int i = 0; i < sh->ntasks; i++) {
+				if (sh->tasks[i].minimized)
+					continue;
+				hidden[nhidden++] = sh->tasks[i].id;
+				sh_minimize_task(sh, i);
+			}
+			return;
+		}
+		for (int i = 0; i < sh->ntasks; i++)
+			for (int j = 0; j < nhidden; j++)
+				if (sh->tasks[i].id == hidden[j]) {
+					sh_restore_task(sh, i);
+					break;
+				}
+		nhidden = 0;
 		return;
 	}
 	int ws = ws_at(sh, cx);

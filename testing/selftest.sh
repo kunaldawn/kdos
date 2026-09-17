@@ -1100,6 +1100,24 @@ con_golden con-scratch-80x24 --dump 80x24 --term "/bin/echo hello" \
 con_golden con-nobar-80x24 --dump 80x24 --term "/bin/echo hello" \
     --press Super+m --press Super+Shift+space
 
+#
+# THE WAY BACK FROM A MINIMISE WITH NO BAR TO CLICK.
+#
+# The window list is what a session with no shell has instead of a taskbar, so
+# it must hold the windows the taskbar would hold and not the ones the cycle
+# ring steps through: both windows here are put away, the bar is hidden, and a
+# list built from the ring's rule would say "no windows" with two open.
+#
+# THE MARK IS THE TEST. A row for a window that is away carries the same `v`
+# its minimise chip does, because `Enter` restores a row that is away and raises
+# one that is not, and rows that all looked alike would not say which it will
+# be.
+#
+con_golden con-minimised-80x24 --dump 80x24 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" \
+    --press Super+n --press Super+n --press Super+Shift+space \
+    --press Super+F2
+
 # THE FUNCTION-KEY ROW, which is a con.conf mode rather than a flag — so the
 # golden is driven by pointing XDG_CONFIG_HOME at a config that asks for it.
 # The row names ten chords and every one must be bound, or the bar teaches a
@@ -3450,6 +3468,7 @@ con	Super+minus	font-down: the screen font is the console's
 con	Super+Ctrl+0	font-reset: the screen font is the console's
 con	Super+Shift+r	learn: a script is keys into a window, which only the session sees
 con	Super+Alt+r	play: the other half of learn
+con	Super+Alt+Shift+n	restore-all: labwc has no un-iconify action, let alone one that takes every iconified window at once
 comp	Super+Ctrl+Left	GrowToEdge: the console has no grow action, and nothing there may take this family
 comp	Super+Ctrl+Right	GrowToEdge
 comp	Super+Ctrl+Up	GrowToEdge

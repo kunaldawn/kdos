@@ -520,26 +520,64 @@ fi
 mkdir -p /mnt/iso
 echo "Searching for KDOS boot media..."
 
-# Announce the stage BEFORE the settle wait: with only the two common steps
-# closed the bar would otherwise sit on "done" through the whole scan.
+# Announce the stage BEFORE the scan: with only the two common steps closed
+# the bar would otherwise sit on "done" through the whole scan.
 sp_total 4
 sp_step "BOOT MEDIA"
 
-# Try to mount CDROM/ISO
-# Wait a bit for devices to settle
-sleep 2
+# Find the medium by polling, never by waiting a fixed interval first: udev has
+# already settled above, so on every machine whose media is enumerated the first
+# pass succeeds and costs nothing. The 10-second bound is what covers the slow
+# ones — a USB stick, or a device behind a bridge — and it matches the bound the
+# disk-boot path gives its root device. Every retry walks EVERY device class
+# again: the first node to answer is not always the one holding the medium, and
+# a class that has not appeared yet must still get its chance.
+SCAN_UNTIL=\$(( \$(cut -d. -f1 /proc/uptime) + 10 ))
 FOUND=0
-for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
-    [ -e "\$dev" ] || continue
-    echo "Checking \$dev..."
-    if mount -t iso9660 "\$dev" /mnt/iso; then
+PASS=0
+STUCK=0
+CHECKED=" "
+while :; do
+    PASS=\$(( PASS + 1 ))
+    for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
+        [ -e "\$dev" ] || continue
+        # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
+        # system.sfs on it will not grow one, so repeating the mount/umount
+        # pair for it every 100 ms is churn on a device the scan has already
+        # answered. Only a device that has not mounted yet is retried, which
+        # is the case the bound exists for.
+        case "\$CHECKED" in *" \$dev "*) continue ;; esac
+        # Only the first pass narrates. A hundred retries of the same two
+        # lines would bury the one message that explains a failed boot, and
+        # this log is the only thing left to read when one happens.
+        if [ "\$PASS" == "1" ]; then
+            echo "Checking \$dev..."
+            mount -t iso9660 "\$dev" /mnt/iso || continue
+        else
+            mount -t iso9660 "\$dev" /mnt/iso 2>/dev/null || continue
+        fi
+        CHECKED="\$CHECKED\$dev "
         if [ -f /mnt/iso/system.sfs ]; then
             echo "Found KDOS media on \$dev"
             FOUND=1
             break
         fi
-        umount /mnt/iso
-    fi
+        # THE UMOUNT IS CHECKED because /mnt/iso is the only mount point the
+        # scan has: if it stays busy, the next mount stacks a second
+        # filesystem on the same path and every later test reads the wrong
+        # one. Nothing further can be inspected, so the scan stops here and
+        # the boot goes to the shell with a reason on the console.
+        if ! umount /mnt/iso; then
+            echo "Cannot release /mnt/iso after \$dev — stopping the scan"
+            STUCK=1
+            break
+        fi
+    done
+    [ "\$FOUND" == "1" ] && break
+    [ "\$STUCK" == "1" ] && break
+    [ "\$(cut -d. -f1 /proc/uptime)" -lt "\$SCAN_UNTIL" ] || break
+    [ "\$PASS" == "1" ] && echo "No KDOS media yet; retrying until the 10s bound..."
+    sleep 0.1
 done
 
 if [ "\$FOUND" == "1" ]; then

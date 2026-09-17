@@ -833,18 +833,31 @@ void sh_disconnect(struct sh_state *sh)
 }
 
 /*
- * Minimise, which is what show-desktop is made of.
+ * Minimise, one half of what show-desktop is made of.
  *
  * No seat argument, and none is wanted: minimising is not a focus grab, so the
  * compositor has nothing to protect against here. A window that is already
- * minimised is left alone rather than toggled — show-desktop pressed twice must
- * not un-minimise half the screen.
+ * minimised is left alone rather than toggled, so a caller may walk the whole
+ * list without first working out which windows are already gone.
  */
 void sh_minimize_task(struct sh_state *sh, int i)
 {
 	if (i < 0 || i >= sh->ntasks || sh->tasks[i].minimized)
 		return;
 	kdisp_win_minimise(sh->tasks[i].id, 1);
+}
+
+/*
+ * Restore, the other half, and no activate with it: a walk of the list that
+ * raised each window in turn would leave the focus on whatever happened to be
+ * last rather than on the window the person was in. They come back where they
+ * were, stacked as they were.
+ */
+void sh_restore_task(struct sh_state *sh, int i)
+{
+	if (i < 0 || i >= sh->ntasks || !sh->tasks[i].minimized)
+		return;
+	kdisp_win_minimise(sh->tasks[i].id, 0);
 }
 
 /*

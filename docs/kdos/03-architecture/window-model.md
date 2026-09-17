@@ -204,9 +204,10 @@ cannot take the keyboard and cannot be closed, and a raise aimed at the owner �
 directional search, from a number chord, from a click — lands on the modal and flashes it. That
 flash is the answer: a click that did nothing at all reads as a desktop that has stopped rather than
 as an application waiting to be answered. **A window a raise cannot land on is out of the ring**,
-so Alt-Tab, `Super+Alt+`*n* and the window list skip the blocked owner and reach the modal instead:
-a ring entry whose every step is redirected back to the question is one the ring can never advance
-past. Everything else on the desktop carries on, because a modal is modal to its application and not
+so Alt-Tab and `Super+Alt+`*n* skip the blocked owner and reach the modal instead: a ring entry
+whose every step is redirected back to the question is one the ring can never advance past. The
+window list keeps the owner's row, because a row is not a step — `Enter` on it is redirected and
+flashes the question like any other raise — and a dialog has no row of its own to take its place. Everything else on the desktop carries on, because a modal is modal to its application and not
 to the machine. A minimised modal blocks nothing, or a window somebody put out of the way would be a
 window with no way back to it. Neither does one off its owner's desk: a question the person cannot
 see blocking a window they can is a window that has stopped answering with nothing on the screen to

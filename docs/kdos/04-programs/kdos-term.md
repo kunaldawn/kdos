@@ -68,8 +68,9 @@ two timeouts.
 
 **Both terminals honour it, and they honour it the same way**, so a program need not know which one
 it is talking to. This one owns a grid per window and holds a frame by not drawing it; the console
-session composes one grid for every window on a 16 ms tick, so it holds a window by composing that
-window from **its last whole frame** while the rest of the desktop composes normally — see
+session composes one grid for every window on a frame paced by the screens attached to it, with
+16 ms as the widest that period gets, so it holds a window by composing that window from
+**its last whole frame** while the rest of the desktop composes normally — see
 [kdos-con](kdos-con.md#terminals). The difference is invisible to the program: the bracket it wrote
 is what decides, and the same 150 ms watchdog releases both.
 

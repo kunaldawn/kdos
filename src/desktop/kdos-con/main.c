@@ -1609,6 +1609,15 @@ static int outs_ask_views(void)
 {
 	int asked = 0;
 
+	/*
+	 * THE PACING MAXIMUM IS DROPPED HERE AND REBUILT BY THE ANSWERS, so
+	 * one round of asking is one union over the displays that answer it
+	 * and reply order decides nothing. A screen that detached, or that
+	 * stepped to a slower mode, leaves nothing behind in it. Until the
+	 * answers land the floor is CON_FRAME_MS, which is slower than the
+	 * truth and never faster.
+	 */
+	S.pace_mhz = 0;
 	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
 		KconSurface *v = kcon_server_view_at(S.server, i);
 
@@ -1618,6 +1627,31 @@ static int outs_ask_views(void)
 		}
 	}
 	return asked;
+}
+
+/*
+ * THE DISPLAYS CHANGED, SO THE SCREENS ARE ASKED FOR AGAIN.
+ *
+ * frame_floor_ms() paces the whole session off what comes back, so a session
+ * nobody opened the Display picker in would compose at CON_FRAME_MS for its
+ * whole life — 62.5 a second against a screen publishing 75. The Display
+ * picker's request asks as well, through the same outs_ask_views(), and it is
+ * not the one that must arrive first.
+ *
+ * `S.outs` IS CLEARED HERE AND REPLACED BY AN ANSWER, NEVER MERGED, because
+ * it is ONE display's monitors: it is what a picker lists and what the seam
+ * snap measures, and a view that detached took its monitors with it. The
+ * pacing maximum is the other question and is a union across every display
+ * that answers — see outs_ask_views().
+ *
+ * ONLY WHERE A DISPLAY ARRIVES, LEAVES, IS SET TO ANOTHER MODE OR RE-CUTS
+ * THE GRID. This is a round trip per attached view; on the compose path it
+ * would be one per frame.
+ */
+static void outs_probe(void)
+{
+	S.nouts = 0;
+	outs_ask_views();
 }
 
 static void on_view_outputs(KconSurface *v, const KconOut *outs, int n,
@@ -1632,6 +1666,30 @@ static void on_view_outputs(KconSurface *v, const KconOut *outs, int n,
 	for (int i = 0; i < n; i++)
 		S.outs[i] = outs[i];
 	S.nouts = n;
+
+	/*
+	 * AND THE PACING MAXIMUM IS RAISED, NEVER REPLACED. Which view sent
+	 * this is not asked, because raising is the same in any order: the
+	 * round of asking is what scopes the answer, and every display in
+	 * that round has already dropped the field to zero. Replacing it
+	 * instead would hand the session's compose rate to whichever display
+	 * happened to reply last: a 144 Hz view beside a 59.94 Hz one then
+	 * measures 144.2, 144.1 and 76.2 frames a second across three
+	 * identical runs, and nothing in the session decides which.
+	 *
+	 * The mode index is bounded here rather than trusted: it arrives on
+	 * the view socket as a signed 16-bit field and nothing below it is
+	 * checked again.
+	 */
+	for (int i = 0; i < n; i++) {
+		const KconOut *o = &outs[i];
+		int m = o->cur_mode;
+
+		if (m < 0 || m >= o->nmodes || m >= KCON_MAX_MODES)
+			continue;
+		if (o->mode[m].refresh > S.pace_mhz)
+			S.pace_mhz = o->mode[m].refresh;
+	}
 
 	if (!S.outs_for)
 		return;
@@ -1690,7 +1748,17 @@ static void on_mode_set(KconSurface *f, int out, int mode, int keep,
 		if (kcon_view_caps(v) & KCON_VIEW_FONT)
 			kcon_view_set_mode(v, out, mode, keep);
 	}
-	S.outs[out].cur_mode = mode;
+
+	/*
+	 * AND THE SCREENS ARE ASKED FOR AGAIN, BECAUSE THE PERIOD CHANGED AND
+	 * THE GRID NEED NOT HAVE. A step between two modes of the same size
+	 * in cells — 60 Hz to 144 at one resolution — moves no grid, so the
+	 * resize the loop watches never fires and the floor would keep the
+	 * old mode's period. Asked rather than assumed: the display is what
+	 * decides whether it took the mode, and what it answers with is the
+	 * mode it is wearing.
+	 */
+	outs_probe();
 }
 
 static void on_fonts_ask(KconSurface *f, void *user)
@@ -1783,6 +1851,9 @@ static int session_key(const KtuiEvent *ev)
 		return 1;
 	case CON_ACT_RESTORE:
 		win_restore(win_last_minimised());
+		return 1;
+	case CON_ACT_RESTORE_ALL:
+		win_restore_all();
 		return 1;
 	case CON_ACT_MIN:
 		win_minimise(w);
@@ -4059,45 +4130,67 @@ static int sprites_owed;
 #define CON_FRAME_MS 16
 
 /*
+ * THE FASTEST RATE THIS SESSION WILL PACE ITSELF TO, in millihertz.
+ *
+ * A BOUND ON AN UNTRUSTED NUMBER, not a statement about hardware: the refresh
+ * comes off the view socket and a peer is free to answer anything. A view
+ * claiming 4000 Hz has this session composing 957 frames a second without
+ * this and 197 with it. A real screen faster than 240 Hz is paced at 200
+ * composes a second, which costs that screen frames and costs the session
+ * nothing.
+ */
+#define CON_RATE_MAX_MHZ 240000
+
+/*
  * THE FLOOR THE ATTACHED SCREENS SET, and CON_FRAME_MS only where they say
  * nothing.
  *
- * A constant floor is a frame rate ceiling: sixteen milliseconds is sixty-two
- * a second, which is under every mode above 60 Hz, so a 144 Hz panel is paced
+ * A constant floor is a frame rate ceiling: sixteen milliseconds is 62.5 a
+ * second, which is under every mode above 60 Hz, so a 144 Hz panel is paced
  * by this loop rather than by itself. The mode carries its refresh in
  * millihertz, so the period is a division and the screen decides it.
  *
- * THE FASTEST SCREEN SETS IT, because the floor is shared and a slower one
- * paces itself on its own `ready`: a screen that has not painted the last
- * frame is not asked for another, so a 60 Hz monitor beside a 144 Hz one
- * still takes sixty. Taking the slowest instead would hold the fast screen at
- * the slow one's rate, which is the cap this removes.
+ * THE FASTEST SCREEN ON ANY ATTACHED DISPLAY SETS IT, which is what
+ * `S.pace_mhz` holds and why it is not read out of `S.outs` — that list is
+ * one display's monitors and a session may have several attached. The floor
+ * is shared and a slower display paces itself on its own `ready`: a screen
+ * that has not painted the last frame is not asked for another, so a 60 Hz
+ * monitor beside a 144 Hz one still takes sixty. Taking the slowest instead
+ * would hold the fast screen at the slow one's rate, which is the cap this
+ * removes.
  *
- * NEVER SLOWER THAN CON_FRAME_MS. A mode below 60 Hz would otherwise widen the
- * floor and compose less often than a display that is ready — the `ready` gate
- * is what paces a slow screen, and this is only the floor beneath it.
+ * ROUNDED UP, SO THE FLOOR IS NEVER SHORTER THAN THE SCREEN'S PERIOD.
+ * `mono_ms()` is the clock, so the period is a whole number of milliseconds
+ * whichever way it goes and only one direction keeps the invariant this
+ * exists for: 144 Hz is 6.944 ms, and rounding down asks 166.7 composes a
+ * second from a screen that shows 144 — one compose in seven serialised for a
+ * frame nothing can display, which is the waste CON_FRAME_MS exists to
+ * prevent. Rounding up asks 142.9 and gives up one frame a second. The cost
+ * of rounding up grows as the rate does, because a millisecond is a larger
+ * share of a shorter period: at CON_RATE_MAX_MHZ it is 5 ms for 4.167, which
+ * is 200 composes against 240 shown.
+ *
+ * BOUNDED AT BOTH ENDS BECAUSE THE NUMBER IS A VIEW'S. The view socket is the
+ * one that may be forwarded, so the far end of it is not this machine and may
+ * not be this person; a peer answering millions of millihertz would otherwise
+ * set this session's compose rate and spend on frames the core the terminals
+ * are read with. CON_RATE_MAX_MHZ caps the rate and CON_FRAME_MS the period:
+ * a mode below 60 Hz would widen the floor and compose less often than a
+ * display that is ready, and the `ready` gate is what paces a slow screen.
  */
 static int frame_floor_ms(void)
 {
-	int best = 0;
+	int mhz = S.pace_mhz;
+	int ms;
 
-	for (int i = 0; i < S.nouts; i++) {
-		const KconOut *o = &S.outs[i];
-		int m = o->cur_mode;
-
-		if (m < 0 || m >= o->nmodes || m >= KCON_MAX_MODES)
-			continue;
-		if (o->mode[m].refresh > best)
-			best = o->mode[m].refresh;
-	}
-	if (best <= 0)
+	if (mhz <= 0)
 		return CON_FRAME_MS;
+	if (mhz > CON_RATE_MAX_MHZ)
+		mhz = CON_RATE_MAX_MHZ;
 
-	/* Millihertz to a period in milliseconds: 1000 ms/s * 1000 mHz/Hz. */
-	int ms = 1000000 / best;
-
-	if (ms < 1)
-		ms = 1;
+	/* Millihertz to a period in milliseconds, rounded up: 1000 ms/s *
+	 * 1000 mHz/Hz. */
+	ms = (1000000 + mhz - 1) / mhz;
 	return ms < CON_FRAME_MS ? ms : CON_FRAME_MS;
 }
 
@@ -4737,6 +4830,11 @@ static int serve(const char *sock, const char *view)
 					"the session is composing frames "
 					"nothing will show and can take no "
 					"input\n");
+		/* AND THE SCREENS ARE ASKED FOR AT EVERY CHANGE, IN BOTH
+		 * DIRECTIONS: an attach brings monitors the floor must pace to
+		 * and a detach takes them away. */
+		if (views != last_views)
+			outs_probe();
 		last_views = views;
 
 		/* Fully drained, not merely under the mark: asking again while
@@ -4771,6 +4869,21 @@ static int serve(const char *sock, const char *view)
 			 */
 			embed_view_attached();
 			kcon_server_resend_sprites(S.server);
+
+			/*
+			 * AND A GRID THAT MOVED MAY BE A SCREEN THAT MOVED.
+			 *
+			 * THIS KEYS ON THE CELL GRID CHANGING SIZE, which is
+			 * the only thing the loop is told: a monitor plugged
+			 * in or unplugged re-cuts the grid and lands here, and
+			 * so does a mode step to another resolution. A step
+			 * between two modes of the same size in cells does not
+			 * — the session sets those itself and asks there, in
+			 * on_mode_set(), and a hotplug that leaves the grid
+			 * alone is paced at the old screen's period until
+			 * something else asks.
+			 */
+			outs_probe();
 
 			/*
 			 * PANELS ARE RE-DOCKED BEFORE THE WORK AREA IS TAKEN.
@@ -5535,6 +5648,16 @@ int main(int argc, char **argv)
 		ev.type = KT_EVT_KEY;
 		ev.key = key;
 		ev.mods = mods;
+		/*
+		 * AND THE WINDOW LIST TAKES IT FIRST, exactly as `route_key()`
+		 * gives it the keyboard while it is up. Its `Enter` and its
+		 * digits are not chords — they are the list's own keys — so a
+		 * press that went straight to the chord table could open the
+		 * list and never choose out of it, which is the half of it a
+		 * golden most needs to show.
+		 */
+		if (win_list_active() && win_list_key(ev.key))
+			continue;
 		session_key(&ev);
 	}
 

@@ -298,6 +298,22 @@ of it is not.
 floor, and the acceptance test measures against the same figure. Two statements of the same rule
 is how a pass throws away the layout it was measured for.
 
+**The last column of the bar is show desktop, and it goes both ways.** Anything on screen and a
+click minimises it; nothing on screen and the same click puts back what that column hid.
+
+**The way back is the remembered set and not the live list.** kdos-comp re-reports a window on
+another workspace as minimised — the pager's occupancy is derived from exactly that — so a column
+that un-minimised everything the bar calls minimised would haul every other workspace's windows
+onto the one in front of you, and would undo a minimise somebody made on purpose before the press
+as well. The memory is window **ids**, matched against the live list on the way back, so a window
+that has closed or that something else restored is simply not found. It is the panel's own: a panel
+started against an already-cleared desk has hidden nothing, and the column then does nothing until
+there is something on screen to hide — the same answer it gives for a desk somebody else cleared.
+The console session's `show-desktop` chord (`Super+Shift+d`, see [kdos-con](kdos-con.md)) keeps its
+own memory the same way and is limited to the current desk; the two are separate controls over the
+same windows, so pressing one and then the other can leave the other's direction inverted for a
+press.
+
 ### The Start button
 
 Three states, one function drawing both the pixel tile and the character fallback — a control
@@ -811,10 +827,30 @@ compositor's menu rather than a desktop's, and an application menu built at comp
 would be the one that went stale. Applications, Places and System are this program, reading the
 same entries the launcher and the panel do.
 
-The **window menu** carries Restore, Minimize, Maximize/Restore Down, Fullscreen and Close, plus
-Minimize all and Close all for a group, over the window titles. It reads the window's own state, so
-Maximize says *Restore Down* when the window is maximised rather than being a toggle whose
-direction nobody can see.
+The **window menu** carries Restore, Minimize, Maximize/Restore Down, Fullscreen and Close, and
+under them the verbs for the whole group — Minimize all, **Restore all (n)**, Close all — over the
+window titles. It reads the window's own state, so Maximize says *Restore Down* when the window is
+maximised rather than being a toggle whose direction nobody can see, and **Restore all** is drawn
+only when some of the group is minimised, counting those: a row that is always there and does
+nothing most of the time teaches people to stop reading the menu.
+
+**Both window menus wait for the app's own windows before deciding they have none.** A compositor
+announces its toplevels inside the connect call; the console returns from it without reading a
+byte, so a list read the instant the connect returns is empty there whatever is on screen. The menu
+reads until a window carrying the app_id it was given arrives, or half a second passes — waiting
+for *any* window would end the wait on somebody else's row and leave the menu with nothing to draw.
+Without the wait every window menu the taskbar opens on the console exits before it draws, which
+takes away every route back from a minimise that lets a person pick the window.
+
+**The wait works because the session re-sends the list to a shell that attaches**, and that is the
+condition it depends on: `kdos-menu` connects with `manage` set, so the session counts it as a
+shell surface, and [kdos-con](kdos-con.md) re-sends every window when that count *rises*. A menu
+that starts in the same turn another shell surface goes away sees no rise, so no re-send: it waits
+its half second, prints `kdos-menu: no windows for <app_id>` and exits without drawing, and the
+next click on the chip — a rise again — opens normally. That message and *this display server does
+not offer a window list* are different answers on purpose: the second is a server with no window
+list at all, asked of the display backend rather than of a count, because a count of zero is also
+an ordinary empty desktop.
 
 **Move and Size are deliberately absent**: the protocol the panel uses has no request for either,
 and a menu row that did nothing would be worse than the title-bar drag that is the move.

@@ -434,18 +434,30 @@ static int pick_outputs(void)
 			}
 		}
 
-		/* Unless this screen was already set to one it still
-		 * publishes, which is a decision and outranks the default. */
+		/*
+		 * Unless this screen was already set to one it still
+		 * publishes, which is a decision and outranks the default.
+		 *
+		 * MATCHED ON THE COMPUTED REFRESH, for the reason the search
+		 * above uses it: `vrefresh` rounds 59.94 and 60 to the same
+		 * integer, and a connector that lists the 59.94 mode first
+		 * would hand back that one every re-probe — a screen set to
+		 * 60.00 dropping to 59.94 on any hotplug. The size is still
+		 * part of the match, or a remembered mode is restored at a
+		 * different resolution that happens to share its refresh.
+		 */
 		for (int k = 0; k < nwas; k++) {
+			int was_r;
+
 			if (!was[k].have || was[k].conn != c->connector_id)
 				continue;
+			was_r = mode_refresh_mhz(&was[k].mode);
 			for (int m = 0; m < c->count_modes; m++)
 				if (c->modes[m].hdisplay ==
 					    was[k].mode.hdisplay &&
 				    c->modes[m].vdisplay ==
 					    was[k].mode.vdisplay &&
-				    c->modes[m].vrefresh ==
-					    was[k].mode.vrefresh) {
+				    mode_refresh_mhz(&c->modes[m]) == was_r) {
 					chosen = &c->modes[m];
 					break;
 				}

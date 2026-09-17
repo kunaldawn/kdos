@@ -353,6 +353,8 @@ static int con_section(const char *act, const char **desc)
 		{ "fullscreen",	"fullscreen",		SEC_WINDOW },
 		{ "minimise",	"minimise",		SEC_WINDOW },
 		{ "restore",	"bring back the last minimised",	SEC_WINDOW },
+		{ "restore-all", "bring back every minimised window",
+							SEC_WINDOW },
 		/* THE SAME WORDS THE COMPOSITOR'S ROW USES. One key, two
 		 * desktops: a card that called it a scratchpad here and a
 		 * drop-down there would read as two features. */

@@ -106,7 +106,10 @@ the copy by re-reading it with the page cache dropped. See
 ## Boot
 
 KDOS boots **UEFI only**. There is no BIOS boot path and no bootable-CD El Torito entry for one.
-Select the stick in your firmware's boot menu; rEFInd appears, then the kernel starts.
+Select the stick in your firmware's boot menu; rEFInd appears, then the kernel starts. **rEFInd
+counts down for one second**, so the normal entry boots without you doing anything; press any key
+during that second to stop the countdown and pick the verbose entry or the memory test, which are
+reachable only from the menu.
 
 The screen you see during boot is [the splash](../03-architecture/boot-and-init.md), which draws
 a CRT power-on directly to the framebuffer and names each stage as it completes. The stages tell
@@ -118,7 +121,7 @@ you where a failed boot stopped:
 | `FILESYSTEM MODULES` | the initramfs lacks the module for your root filesystem |
 | `BOOT SLOT` | the A/B state file is unreadable |
 | `UNLOCKING` | the encrypted root passphrase was refused three times |
-| `ROOT DEVICE` / `BOOT MEDIA` | the root or the medium was not found |
+| `ROOT DEVICE` / `BOOT MEDIA` | the root or the medium did not appear within ten seconds |
 | `MOUNTING ROOT` / `OVERLAY ROOT` | the root filesystem or the live overlay would not mount |
 | `SWITCHING ROOT` | the handover to the real root failed |
 | `MOUNTING FILESYSTEMS` onward | you are in `rcS`, and the failing service names itself |

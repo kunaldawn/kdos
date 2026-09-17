@@ -299,7 +299,7 @@ and the profile printer names which.
 | `grant` | Compositor globals the sandbox allowlist otherwise refuses | on reload |
 | `image` | The reference, for a registry base | **create time** |
 | `display` | `vt` pins its applications to a virtual terminal of their own on the console desktop, instead of the windows they otherwise become. It is also the only path on that desktop that can carry a game or full-rate video, because an embedded frame crosses the CPU whichever renderer drew it | next launch |
-| `render` | Which graphics this box's applications get. `auto` (the default, and what an absent key means) resolves by **opening** a `/dev/dri/renderD*` node: hardware where one opens, software where none does. `gpu` asks for the same thing and `software` refuses the card whatever is plugged in. The resolved answer reaches the guest's own Mesa and nothing else: `LIBGL_ALWAYS_SOFTWARE=1` in a software box's launch environment, and nothing at all for the hardware one, because Mesa asks the machine the same question by itself. It is **advisory** — an application may unset the variable. It **also picks the embedded cage's renderer**: `kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where `software` pins pixman and every other spelling leaves the cage's `wlr_renderer_autocreate` call alone — so a `software` box on the console draws into `wl_shm` and is composited out of that same memory, with no upload and no readback. The resolve refuses the card without opening anything for a box that can see no node — `devices = private` with `gpu = no` — because this process's `/dev` is not that box's. Its own key and not `gpu`, which is about device nodes rather than about who draws | next launch |
+| `render` | Which graphics this box's applications get. `auto` (the default, and what an absent key means) resolves by **opening** a `/dev/dri/renderD*` node: hardware where one opens, software where none does. `gpu` asks for the same thing and `software` refuses the card whatever is plugged in. The resolved answer reaches the guest's own Mesa and nothing else: `LIBGL_ALWAYS_SOFTWARE=1` in a software box's launch environment, and nothing at all for the hardware one, because Mesa asks the machine the same question by itself. It is **advisory** — an application may unset the variable. It **also picks the embedded cage's renderer**: `kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where `software` pins pixman and every other spelling leaves the cage's `wlr_renderer_autocreate` call alone — so a `software` box on the console draws into `wl_shm` and is composited out of that same memory, with no upload and no readback. The card is **asked for and not assumed**: the cage proves the renderer it got by allocating one buffer, testing one output and then painting a frame of known pixels and reading it back, and falls back to pixman where the driver refuses to import what an embedded cage has to be able to read or writes the frame where the cage cannot read it back, so this key can win the argument and still leave the guest on software. The resolve refuses the card without opening anything for a box that can see no node — `devices = private` with `gpu = no` — because this process's `/dev` is not that box's. Its own key and not `gpu`, which is about device nodes rather than about who draws | next launch |
 
 **A namespace key applies at create time** and cannot be re-flagged on a live container, so
 changing one says to recreate the box rather than silently doing nothing.
@@ -517,6 +517,7 @@ Changing a default in one file changes it in the other.
 | `fullscreen` | `Super+f` | `prev-alt` | `Alt+Shift+Tab` |
 | `minimise` | `Super+n` | `snap-left` … `snap-down` | `Super+`arrow |
 | `restore` | `Super+Shift+n` | `focus-left` … `focus-down` | `Super+Shift+`arrow |
+| `restore-all` | `Super+Alt+Shift+n` | | |
 | `scratchpad` | `Super+grave` | `scratchpad-mark` | `Super+Alt+grave` |
 | `workspace-prev` | `Super+PageUp` | `swap-left` … `swap-down` | `Super+Alt+`arrow |
 | `workspace-next` | `Super+PageDown` | | |
@@ -610,6 +611,13 @@ table, and a person who moves `Super` wants all nine to follow.
 **`tile`, `cascade` and `rearrange` are the console's alone.** labwc has no tile-all or cascade
 action and its `MoveResize` is a different interaction, so `rc.xml` binds none of the three rather
 than binding the nearest thing and making one chord mean two things.
+
+**`restore-all` is too.** labwc has no un-iconify action, let alone one that takes every iconified
+window at once. It brings back everything put away on the workspace you are looking at, and reaches
+no other one, because a restore moves a window to the workspace it is restored onto — `restore`,
+beside it, brings back the window that went away last and takes one press per window after that.
+The chord is `Super+Alt+Shift+n` and not `Super+Alt+n`, which reads as the window-by-number chord
+the title bars and taskbar rows name.
 
 **Workspaces by number are not in the file.** `Super+1..9` switches and `Super+Shift+1..9` sends the
 focused window; eighteen lines saying one thing is not a configuration format. `workspace-prev` and

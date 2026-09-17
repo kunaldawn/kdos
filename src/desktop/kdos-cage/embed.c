@@ -33,6 +33,7 @@
 #define _GNU_SOURCE
 #endif
 
+#include <drm_fourcc.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/dma-buf.h>
@@ -42,11 +43,14 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <wlr/backend/headless.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/dmabuf.h>
+#include <wlr/render/drm_format_set.h>
+#include <wlr/render/pass.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_output.h>
@@ -121,6 +125,11 @@ struct wlr_allocator *wlr_udmabuf_allocator_create(void);
  * both ends. It needs /dev/udmabuf, so this can fail on a kernel or a
  * permission that does not have it — and the caller then has the software
  * renderer to fall back to, which is why this returns NULL rather than dying.
+ *
+ * AN ALLOCATOR RETURNED HERE IS NOT A PATH THAT WORKS. Whether a driver will
+ * import one of these buffers is answered by the driver, at bind time, and
+ * some refuse; the caller proves the renderer, the allocator and an output
+ * together before building on them. See embed_render_path_works() in cage.c.
  */
 struct wlr_allocator *embed_allocator(struct wlr_backend *backend,
 				      struct wlr_renderer *renderer)
@@ -1415,14 +1424,146 @@ bool embed_asleep(const struct cg_view *view)
 	return view->server->embed.active && view->win.asleep;
 }
 
+/* Where one buffer's pixels are, and what has to be undone to let go of them.
+ * `mapped` is MAP_FAILED unless the shm road was taken, and that is what
+ * frame_unmap() reads to tell the two roads apart. */
+struct frame_map {
+	void *data;
+	uint32_t format;
+	size_t stride;
+	void *mapped;
+	size_t maplen;
+	int dmafd;
+	bool synced;
+};
+
+/*
+ * THE ONLY TWO PIXEL FORMATS THIS CAGE COPIES. The parent reads a sprite block
+ * as four bytes a pixel in this channel order and has no field to be told
+ * otherwise, so a buffer in anything else is copied by nobody: the frame is
+ * dropped and the window keeps the one before it, which is a stall a person
+ * can see and report, where a copy at the wrong depth is a smear that reads as
+ * a decoder fault.
+ */
+static bool frame_is_argb32(const struct frame_map *fm)
+{
+	return fm->format == DRM_FORMAT_XRGB8888 ||
+	       fm->format == DRM_FORMAT_ARGB8888;
+}
+
+/*
+ * A RENDERED BUFFER, OPEN FOR READING, BY WHICHEVER ROAD THE ALLOCATOR LEFT.
+ *
+ * A direct pointer is what the shm allocator offers and it is free, so it is
+ * asked for first. A udmabuf buffer — which is what an allocator has to hand
+ * out for a GPU renderer to draw into memory this process can still read —
+ * implements `get_shm` and `get_dmabuf` and NOT data-ptr access, so a cage
+ * that knew only the first road would publish nothing at all the moment the
+ * renderer stopped being the software one. The window would be permanently
+ * black, with every other part of the mechanism working.
+ *
+ * Mapped per frame on that road rather than cached, because the swapchain owns
+ * the buffer and may free it between frames; the cost is two syscalls and the
+ * page table for one frame, against a readback through the GPU, which is the
+ * only other way to reach those bytes.
+ *
+ * THE CARD MAY STILL BE WRITING THESE PAGES. A udmabuf buffer hands out two
+ * descriptors onto one piece of memory: the memfd mapped here and a DMA-BUF
+ * beside it, and the DMA-BUF is the only one the kernel will synchronise on. A
+ * gles2 pass on a headless output ends in a bare glFlush() — wlroots allocates
+ * a signal timeline only for a backend with a DRM descriptor and the headless
+ * backend has none — so with nothing waited here the copy races the renderer
+ * and a busy card tears inside a block, worst exactly when it is busiest.
+ *
+ * POLLIN ON A DMA-BUF WAITS FOR THE WRITE FENCE THE DRIVER ATTACHED, AND A
+ * DRIVER NEED NOT ATTACH ONE. A udmabuf buffer whose reservation is empty
+ * polls readable the moment it is asked, so a readable poll bounds the wait
+ * rather than promising the write is done; it is worth taking because the
+ * drivers that do attach a fence are the ones whose frame tears without it.
+ * The ioctl bracket is the cache maintenance a CPU mapping of memory a device
+ * wrote needs, and it is what makes the bytes read back the ones the GPU put
+ * there. A buffer with no DMA-BUF handle has no GPU writer and needs neither.
+ *
+ * `skip_on_stall` says a fence that has not signalled within the deadline is a
+ * reason to give up on this buffer; without it the read runs unwaited, which
+ * is what a caller with nothing to lose by a torn read wants. A poll that
+ * fails outright is not a deadline and never stalls the caller.
+ *
+ * FALSE MEANS NOTHING WAS OPENED and frame_unmap() must not be called: there
+ * is no bracket to close and no data-ptr access to end.
+ */
+static bool frame_map(struct wlr_buffer *buffer, bool skip_on_stall,
+		      struct frame_map *fm)
+{
+	struct wlr_shm_attributes shm = { .fd = -1 };
+	struct wlr_dmabuf_attributes dma = { .n_planes = 0 };
+
+	*fm = (struct frame_map){ .mapped = MAP_FAILED, .dmafd = -1 };
+
+	if (wlr_buffer_begin_data_ptr_access(buffer,
+					     WLR_BUFFER_DATA_PTR_ACCESS_READ,
+					     &fm->data, &fm->format,
+					     &fm->stride))
+		return true;
+
+	if (!wlr_buffer_get_shm(buffer, &shm) || shm.fd < 0)
+		return false;
+	/* Signed in the attributes and used as sizes here, so the negatives
+	 * are refused before the arithmetic rather than after it, where they
+	 * are enormous. */
+	if (shm.stride < 0 || shm.offset < 0 ||
+	    (size_t)shm.stride < (size_t)buffer->width * 4)
+		return false;
+	fm->maplen = (size_t)shm.offset +
+		     (size_t)shm.stride * (size_t)buffer->height;
+	fm->mapped = mmap(NULL, fm->maplen, PROT_READ, MAP_SHARED, shm.fd, 0);
+	if (fm->mapped == MAP_FAILED)
+		return false;
+	fm->data = (uint8_t *)fm->mapped + shm.offset;
+	fm->stride = (size_t)shm.stride;
+	fm->format = shm.format;
+
+	if (wlr_buffer_get_dmabuf(buffer, &dma) && dma.n_planes > 0)
+		fm->dmafd = dma.fd[0];
+	if (fm->dmafd >= 0) {
+		struct pollfd pfd = { .fd = fm->dmafd, .events = POLLIN };
+		int r;
+
+		do {
+			r = poll(&pfd, 1, EMBED_FENCE_MS);
+		} while (r == -1 && errno == EINTR);
+
+		if (r == 0 && skip_on_stall) {
+			munmap(fm->mapped, fm->maplen);
+			fm->mapped = MAP_FAILED;
+			return false;
+		}
+		fm->synced = dmabuf_sync(fm->dmafd, DMA_BUF_SYNC_START |
+						    DMA_BUF_SYNC_READ);
+	}
+	return true;
+}
+
+/*
+ * ONE WAY OUT OF THE READ, so the kernel's bracket is closed and the mapping
+ * released whatever the frame turned out to be. Only ever after a frame_map()
+ * that returned true.
+ */
+static void frame_unmap(struct wlr_buffer *buffer, struct frame_map *fm)
+{
+	if (fm->synced)
+		dmabuf_sync(fm->dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ);
+	if (fm->mapped != MAP_FAILED)
+		munmap(fm->mapped, fm->maplen);
+	else
+		wlr_buffer_end_data_ptr_access(buffer);
+}
+
 void embed_publish(struct cg_view *view, struct wlr_buffer *buffer,
 		   const pixman_region32_t *damage)
 {
 	struct cg_embed *e;
 	struct cg_win *win;
-	void *data = NULL;
-	uint32_t format = 0;
-	size_t stride = 0;
 
 	if (!view || !buffer)
 		return;
@@ -1486,114 +1627,36 @@ void embed_publish(struct cg_view *view, struct wlr_buffer *buffer,
 	}
 
 	/*
-	 * THE RENDERED BYTES, BY WHICHEVER ROAD THE ALLOCATOR LEFT OPEN.
-	 *
-	 * A direct pointer is what the shm allocator offers and it is free, so
-	 * it is asked for first. A udmabuf buffer — which is what an allocator
-	 * has to hand out for a GPU renderer to draw into memory this process
-	 * can still read — implements `get_shm` and `get_dmabuf` and NOT
-	 * data-ptr access, so a cage that knew only the first road would
-	 * publish nothing at all the moment the renderer stopped being the
-	 * software one. The window would be permanently black, with every
-	 * other part of the mechanism working.
-	 *
-	 * Mapped per frame on that road rather than cached, because the
-	 * swapchain owns the buffer and may free it between frames; the cost
-	 * is two syscalls and the page table for one frame, against a readback
-	 * through the GPU, which is the only other way to reach those bytes.
+	 * A FENCE THAT DOES NOT SIGNAL SKIPS THE FRAME, BUT ONLY WHERE THERE
+	 * IS A WHOLE FRAME TO KEEP: the slot is not flipped, so the parent
+	 * goes on showing the one before it. Into a mapping that has never
+	 * carried a frame there is nothing to keep — the parent is holding
+	 * zeroed pages and showing none of them — so the copy runs unwaited
+	 * instead. A torn first frame is corrected by the next one the guest
+	 * draws; a skipped one is not corrected at all, because the scene has
+	 * already subtracted its damage and a guest with nothing to redraw
+	 * never asks for another frame. The window would stay blank for as
+	 * long as it is open.
 	 */
-	struct wlr_shm_attributes shm = { .fd = -1 };
-	struct wlr_dmabuf_attributes dma = { .n_planes = 0 };
-	void *mapped = MAP_FAILED;
-	size_t maplen = 0;
-	int dmafd = -1;
-	bool synced = false;
+	struct frame_map fm;
 
-	if (!wlr_buffer_begin_data_ptr_access(buffer,
-					      WLR_BUFFER_DATA_PTR_ACCESS_READ,
-					      &data, &format, &stride)) {
-		if (!wlr_buffer_get_shm(buffer, &shm) || shm.fd < 0)
-			return;
-		/* Signed in the attributes and used as sizes here, so the
-		 * negatives are refused before the arithmetic rather than
-		 * after it, where they are enormous. */
-		if (shm.stride < 0 || shm.offset < 0 ||
-		    (size_t)shm.stride < (size_t)buffer->width * 4)
-			return;
-		maplen = (size_t)shm.offset +
-			 (size_t)shm.stride * (size_t)buffer->height;
-		mapped = mmap(NULL, maplen, PROT_READ, MAP_SHARED, shm.fd, 0);
-		if (mapped == MAP_FAILED)
-			return;
-		data = (uint8_t *)mapped + shm.offset;
-		stride = (size_t)shm.stride;
-
-		/*
-		 * THE CARD MAY STILL BE WRITING THESE PAGES.
-		 *
-		 * A udmabuf buffer hands out two descriptors onto one piece of
-		 * memory: the memfd mapped above and a DMA-BUF beside it, and
-		 * the DMA-BUF is the only one the kernel will synchronise on.
-		 * A gles2 pass on a headless output ends in a bare glFlush()
-		 * — wlroots allocates a signal timeline only for a backend
-		 * with a DRM descriptor and the headless backend has none — so
-		 * with nothing waited here the copy races the renderer and a
-		 * busy card tears inside a block, worst exactly when it is
-		 * busiest.
-		 *
-		 * POLLIN on a DMA-BUF is its implicit write fence; the ioctl
-		 * bracket is the cache maintenance a CPU mapping of memory a
-		 * device wrote needs, and it is what makes the bytes read back
-		 * the ones the GPU put there. A buffer with no DMA-BUF handle
-		 * has no GPU writer and needs neither.
-		 *
-		 * A fence that does not signal within the deadline SKIPS the
-		 * frame rather than publishing half of it, BUT ONLY WHERE
-		 * THERE IS A WHOLE FRAME TO KEEP: the slot is not flipped, so
-		 * the parent goes on showing the one before it. Into a mapping
-		 * that has never carried a frame there is nothing to keep —
-		 * the parent is holding zeroed pages and showing none of them
-		 * — so the copy runs unwaited instead. A torn first frame is
-		 * corrected by the next one the guest draws; a skipped one is
-		 * not corrected at all, because the scene has already
-		 * subtracted its damage and a guest with nothing to redraw
-		 * never asks for another frame. The window would stay blank
-		 * for as long as it is open.
-		 *
-		 * A poll that fails outright is not a deadline and the frame
-		 * is copied unwaited for the same reason.
-		 */
-		if (wlr_buffer_get_dmabuf(buffer, &dma) && dma.n_planes > 0)
-			dmafd = dma.fd[0];
-		if (dmafd >= 0) {
-			struct pollfd pfd = { .fd = dmafd, .events = POLLIN };
-			int r;
-
-			do {
-				r = poll(&pfd, 1, EMBED_FENCE_MS);
-			} while (r == -1 && errno == EINTR);
-
-			if (r == 0 && !win->map_blank) {
-				munmap(mapped, maplen);
-				return;
-			}
-			synced = dmabuf_sync(dmafd, DMA_BUF_SYNC_START |
-						    DMA_BUF_SYNC_READ);
-		}
-	}
+	if (!frame_map(buffer, !win->map_blank, &fm))
+		return;
 
 	int next = (win->slot + 1) % KEMBED_SLOTS;
 	bool copied = false;
 
 	/*
-	 * 32 BITS PER PIXEL AND NOTHING ELSE. The pixman renderer on a headless
-	 * output gives XRGB8888 or ARGB8888; anything else is a wlroots that
-	 * chose a format this was not written for, and copying it as if it were
-	 * one of those would put garbage on a screen rather than fail.
+	 * 32 BITS PER PIXEL AND NOTHING ELSE. Both renderers reach this copy —
+	 * pixman on a headless output, and gles2 wherever the readback probe
+	 * kept the card — and both give XRGB8888 or ARGB8888 on the buffers
+	 * embed_allocator() hands out. Anything else is a renderer that chose a
+	 * format this was not written for, and copying it as if it were one of
+	 * those would put garbage on a screen rather than fail.
 	 */
-	if (stride >= (size_t)win->width * 4) {
+	if (frame_is_argb32(&fm) && fm.stride >= (size_t)win->width * 4) {
 		uint8_t *dst = (uint8_t *)win->map + (size_t)next * win->slot_len;
-		const uint8_t *src = data;
+		const uint8_t *src = fm.data;
 
 		/*
 		 * ROW BY ROW, because the renderer's stride need not equal the
@@ -1609,23 +1672,12 @@ void embed_publish(struct cg_view *view, struct wlr_buffer *buffer,
 		 */
 		for (int y = 0; y < win->height; y++)
 			memcpy(dst + (size_t)y * win->stride,
-			       src + (size_t)y * stride,
+			       src + (size_t)y * fm.stride,
 			       (size_t)win->width * 4);
 		copied = true;
 	}
 
-	/*
-	 * ONE WAY OUT OF THE READ, so the kernel's bracket is closed and the
-	 * mapping released whatever the frame turned out to be. A refused
-	 * frame leaves the slot where it was rather than flipping to a
-	 * half-written one.
-	 */
-	if (synced)
-		dmabuf_sync(dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ);
-	if (mapped != MAP_FAILED)
-		munmap(mapped, maplen);
-	else
-		wlr_buffer_end_data_ptr_access(buffer);
+	frame_unmap(buffer, &fm);
 
 	if (!copied)
 		return;
@@ -1680,4 +1732,169 @@ void embed_publish(struct cg_view *view, struct wlr_buffer *buffer,
 
 		send_msg(e, &m, -1);
 	}
+}
+
+/*
+ * WHAT THE PROBE'S FRAME IS PAINTED WITH, and how long the readback is given.
+ *
+ * Fully saturated channels and nothing between them: every renderer path this
+ * cage can be handed leaves 0.0 at 0 and 1.0 at 0xff whatever transfer curve
+ * it applies, so an exact comparison stays exact and a colour with a middle
+ * component would not.
+ *
+ * A gles2 pass into a udmabuf buffer ends in glFlush and not glFinish, and the
+ * poll in frame_map() waits only for a fence the driver attached — a udmabuf
+ * with none polls readable at once — so the pixels may arrive a moment after
+ * the submit returns. The read is retried rather than taken once, and a try
+ * that fails outright spends a try and not the probe. The whole probe is
+ * therefore bounded by TRIES × (EMBED_FENCE_MS + GAP), under a second, paid
+ * once at the start of one cage by a card that is never going to write them.
+ */
+#define EMBED_PROBE_RED   0x00ff0000u
+#define EMBED_PROBE_GREEN 0x0000ff00u
+#define EMBED_PROBE_TRIES 8
+#define EMBED_PROBE_GAP_MS 5
+
+static uint32_t probe_px(const struct frame_map *fm, int x, int y)
+{
+	const uint8_t *row = (const uint8_t *)fm->data + (size_t)y * fm->stride;
+	uint32_t px;
+
+	memcpy(&px, row + (size_t)x * 4, sizeof(px));
+	/* The X byte of an XRGB8888 pixel is whatever the renderer left in
+	 * it, so only the colour is compared. */
+	return px & 0x00ffffffu;
+}
+
+/*
+ * THE FOUR CORNERS OF THE PROBE FRAME, against what was painted into it.
+ *
+ * Three red and one green, in whichever corner the green lands: a renderer's
+ * buffer coordinates run from the top left, but a readback that came back
+ * mirrored would still be a readback that works, and failing it would cost a
+ * working card its hardware path. What no arrangement survives is a corner
+ * that is neither colour — the zeroed page of a buffer the GPU never wrote,
+ * or a row read at the wrong stride.
+ *
+ * The format is checked here and not assumed from the allocation: the two
+ * constants above are laid out for the pixel embed_publish() copies, so a
+ * buffer the renderer handed back in anything else is a path this cage could
+ * not publish from even if the pixels did arrive.
+ */
+static bool probe_frame_painted(const struct frame_map *fm, int w, int h)
+{
+	static const int corner[4][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } };
+	int greens = 0;
+
+	if (!frame_is_argb32(fm) || fm->stride < (size_t)w * 4)
+		return false;
+
+	for (int i = 0; i < 4; i++) {
+		uint32_t px = probe_px(fm, corner[i][0] ? w - 1 : 0,
+				       corner[i][1] ? h - 1 : 0);
+
+		if (px == EMBED_PROBE_GREEN)
+			greens++;
+		else if (px != EMBED_PROBE_RED)
+			return false;
+	}
+	return greens == 1;
+}
+
+/*
+ * ONE RENDERED FRAME, READ BACK THE WAY A PUBLISHED ONE IS.
+ *
+ * A render pass that reports success is not a render pass whose pixels this
+ * process can reach. The buffers an embedded cage draws into are udmabuf ones
+ * — memory the kernel backs and the card imports — and a driver is free to
+ * accept the import, satisfy every GL call against it and put the result
+ * somewhere else entirely. Nothing in wlroots checks; the allocator, the
+ * renderer, the output and the publish all report success, the parent receives
+ * a full frame of blocks every tick, and the window shows the desk behind it
+ * for the life of the process.
+ *
+ * So the probe paints a frame whose every pixel is known and reads it back
+ * through frame_map() — the same road, the same fence and the same bracket
+ * embed_publish() uses. Pixels that come back are a card kept; pixels that do
+ * not are a card dropped for the software renderer, which gives this guest a
+ * picture and costs it hardware GL and hardware video decode — the guest's own
+ * Mesa included, because the cage that advertises no dmabuf leaves it wl_shm.
+ * THIS FINDS THE MACHINE, IT DOES NOT REPAIR IT: nothing here makes a driver's
+ * frames reachable, and the choice is only between a renderer whose frames can
+ * be read and a window that stays the colour of the desk.
+ *
+ * ITS OWN BUFFER AND NOT AN OUTPUT'S, because an output's swapchain belongs to
+ * a renderer the caller may be about to throw away, and because the buffer has
+ * to be held open across the readback — which is exactly what a committed
+ * output will not allow.
+ */
+bool embed_readback_works(struct cg_server *server)
+{
+	struct wlr_drm_format fmt = { .format = DRM_FORMAT_XRGB8888 };
+	int w = server->embed.first_w, h = server->embed.first_h;
+	struct wlr_buffer *buf;
+	struct wlr_render_pass *pass;
+	bool painted = false;
+
+	if (w < 2 || h < 2)
+		return false;
+
+	buf = wlr_allocator_create_buffer(server->allocator, w, h, &fmt);
+	if (!buf) {
+		wlr_log(WLR_ERROR, "embed: the allocator cannot make a "
+				   "%dx%d XRGB8888 buffer", w, h);
+		return false;
+	}
+
+	pass = wlr_renderer_begin_buffer_pass(server->renderer, buf, NULL);
+	if (!pass) {
+		wlr_log(WLR_ERROR, "embed: the renderer cannot bind a buffer "
+				   "the allocator made");
+		wlr_buffer_drop(buf);
+		return false;
+	}
+
+	/* The whole buffer, then one quadrant of it: a fill alone cannot tell
+	 * a frame that arrived from a frame the card happened to clear. */
+	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+		.box = { .x = 0, .y = 0, .width = w, .height = h },
+		.color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+		.box = { .x = w / 2, .y = h / 2,
+			 .width = w - w / 2, .height = h - h / 2 },
+		.color = { .r = 0.0f, .g = 1.0f, .b = 0.0f, .a = 1.0f },
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+
+	if (!wlr_render_pass_submit(pass)) {
+		wlr_log(WLR_ERROR, "embed: the renderer refused a render pass "
+				   "into a buffer this cage can read");
+		wlr_buffer_drop(buf);
+		return false;
+	}
+
+	for (int attempt = 0; attempt < EMBED_PROBE_TRIES && !painted;
+	     attempt++) {
+		struct frame_map fm;
+		struct timespec gap = {
+			.tv_nsec = EMBED_PROBE_GAP_MS * 1000L * 1000L,
+		};
+
+		if (attempt)
+			nanosleep(&gap, NULL);
+		/* A MAP THAT FAILED SPENDS ONE ATTEMPT AND NOT THE PROBE. The
+		 * skip_on_stall road is taken here, so an unsignalled fence
+		 * returns false — and treating that as the answer would hand a
+		 * card that was merely slow on its first frame to llvmpipe for
+		 * the life of the cage. */
+		if (!frame_map(buf, true, &fm))
+			continue;
+		painted = probe_frame_painted(&fm, w, h);
+		frame_unmap(buf, &fm);
+	}
+
+	wlr_buffer_drop(buf);
+	return painted;
 }

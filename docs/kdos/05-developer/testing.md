@@ -640,9 +640,11 @@ is the Start-menu row that allocates a free terminal and switches to it.
 | `--console-cmd` | Type on the first terminal **instead of** starting a session |
 | `--audio` | Give the guest a sound controller with a null backend |
 | `--data-disk <file>` | Carry one file's bytes into a guest with no network |
-| `--scratch`, `--usb`, `--keep`, `--serial-log`, `--size`, `--gl`, `--vnc-port`, `--session-env`, `--script-timeout` | The rest |
+| `--gl` | A GPU for **GL** — and no Vulkan, so a Vulkan tool run beside it measures lavapipe |
+| `--venus` | Ask for Vulkan on the GPU as well. **Measured broken on an NVIDIA host at both ends** — see below |
+| `--scratch`, `--usb`, `--keep`, `--serial-log`, `--size`, `--vnc-port`, `--session-env`, `--script-timeout` | The rest |
 
-Four of those answer questions a screenshot alone cannot:
+Five of those answer questions a screenshot alone cannot:
 
 - **`--audio`** gives a real device as far as the guest is concerned, with the samples going
   nowhere. Without it the sound library fails to initialise and every audio path in the guest is
@@ -654,6 +656,18 @@ Four of those answer questions a screenshot alone cannot:
   read in. A window under a compositor is a different renderer answering a different question.
 - **`--soak`** lets the session run between launch and measurement, because a monitor's own cost
   over a few seconds is its startup, and startup is exactly what is not being measured.
+- **`--venus`** is the only way to ask for Vulkan on a GPU, **and on an NVIDIA host neither end of
+  it works yet.** `--gl` alone starts `virtio-vga-gl` with no Vulkan capset, so the guest's virtio
+  ICD opens nothing and every Vulkan tool lands on **lavapipe, the CPU rasteriser, without saying
+  so** — `vulkaninfo --summary` naming `llvmpipe` with `PHYSICAL_DEVICE_TYPE_CPU` is the tell, and
+  a `vkcube` or `vkgears` rate taken that way is a number about the host's cores. `--venus` adds
+  `venus=true` and blob resources, which needs the guest's RAM out of a shared `memfd`, so it also
+  changes the machine's memory backing. Measured on this machine: with `--gpus all`, which is the
+  only way the container has a host Vulkan device to proxy to, **QEMU aborts during guest boot,
+  exit 134**; without it the guest boots, the virtio ICD loads, and instance creation dies with it
+  — `vulkaninfo` answers `ERROR_OUT_OF_HOST_MEMORY` and even lavapipe is gone. So it stays
+  **opt-in**, the default device does not change, and a Vulkan number from this rig is labelled
+  lavapipe until `vulkaninfo` names a GPU.
 - **`--root-script`** is the form for a check too long to be one command. It travels **encoded, in
   short lines** — a terminal in canonical mode drops everything past its line limit, silently, and
   an encoded payload contains nothing the shell acts on before it is decoded — and the rig waits for
@@ -875,11 +889,48 @@ render rate by construction and is comparable between machines rather than betwe
 | How fast can this machine draw a trivial scene | `es2gears_wayland`, printing `N frames in X seconds` every five seconds |
 | How fast can it draw real ones, as one comparable score | `glmark2-es2-wayland`, or `glmark2-wayland` for desktop GL |
 | The same for Vulkan | `vkgears`, or `vkcube` for a swapchain that can be told its present mode |
-| Does this machine have a Vulkan driver at all, and which | `vulkaninfo --summary` |
+| Does this machine have a Vulkan driver at all, and which | `vulkaninfo --summary` — **run it first under an emulator**, because a Vulkan tool falls back to lavapipe on the CPU without saying so |
 | Which EGL renderer, extensions and configs a client gets | `eglinfo` |
 | What an **X11** client sees through Xwayland | `glxinfo` and `glxgears`, which exist only in a box |
 
-### Why glxgears is not on the host
+### Desktop GL on the host, and why glxgears is not
+
+Desktop GL is reached through **EGL**, never GLX. `glmark2-wayland` binds `EGL_OPENGL_API` and then
+dlopens the entrypoint library by a legacy name — `libGL.so` first, `libGL.so.1` second — and prints
+`Error loading GL library` if neither answers. `libglvnd` is built `glx=disabled`, so it builds no
+`libGL`; its recipe adds **`libGL.so` as a filename alias of `libOpenGL.so.0`**, which carries the
+same dispatch table and every `gl*` entrypoint.
+
+Three facts about that alias, each measurable:
+
+- **It is a filename, not a SONAME.** `libOpenGL.so.0.0.0` says `SONAME libOpenGL.so.0` and nothing
+  else does; `libGL.so` is a directory entry in no `DT_NEEDED` anywhere. `-lGL` therefore *links* —
+  `ld` searches `libGL.so`, finds the alias, and records `DT_NEEDED libOpenGL.so.0`, which is a
+  program that runs. A link that wanted `glX*` fails naming the symbol, which is the honest answer.
+- **`libGL.so.1` is the spelling that must not exist.** libepoxy treats a `libGL.so.1` it can open
+  as the GLX provider and then resolves `glXGetCurrentContext` from that handle with
+  abort-on-missing. Point the `.1` name at a glvnd `libOpenGL` and the second bootstrap entrypoint
+  a client resolves kills the process: `glXGetCurrentContext() not found: … undefined symbol`,
+  `SIGABRT`, exit 134. On this image `Xwayland` is what links libepoxy. It reproduces on any
+  machine with libepoxy and EGL, no guest needed: make a desktop-GL context current, call
+  `glGetString` and then `glGetIntegerv` through epoxy's dispatch, and run it once with
+  `LD_LIBRARY_PATH` pointing at a directory holding `libGL.so.1 -> libOpenGL.so.0`.
+- **Two programs on the image ask for the unsuffixed name**, and both are served by it:
+  `glmark2-wayland`, which wants exactly this, and `eglinfo`, whose bundled glad loader lists
+  `libGL.so.1` then `libGL.so` but is never reached — `eglinfo` loads through
+  `gladLoadGLLoader(eglGetProcAddress)`. `libgstgl` and libepoxy name only `libGL.so.1`, so they
+  see no desktop GL library on this host and there is nothing for them to mis-resolve.
+
+**The alias is not a GLX provider, and there is no GLX provider on this host.**
+
+**An image carries the alias only if it was packed after a `libglvnd` rebuild** — the recipe change
+reaches nothing on its own, and `glmark2-wayland` fails at `Error loading GL library` on any image
+without it. What an image actually has is one command:
+
+```sh
+unsquashfs -ll build/iso_root/system.sfs | grep -E 'libGL|libOpenGL'
+ls build/fs/usr/lib/libGL.so                 # the same question of the build tree
+```
 
 mesa here is built `-D glx=disabled -D platforms=wayland`. There is no GLX and no X11 EGL platform,
 so `glxgears` and `glxinfo` cannot be linked against this host at all, and an instruction to run
