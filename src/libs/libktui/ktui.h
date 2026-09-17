@@ -1356,6 +1356,26 @@ int ktui_table_pick(KtuiTable *st, int count, int idx, KtuiTableSpan span,
 int ktui_table_hit(KRect r, const KtuiTable *st, int count, int ncol,
 		   const KtuiCol *col, int mx, int my);
 
+/*
+ * ONE POINTER RULE FOR EVERY TABLE, the same one the lists keep: the wheel
+ * scrolls, a press MOVES the caret, a press on the row it is already on PICKS,
+ * and the right button is Back. `rows` is the visible row count the key path
+ * is given, and `span`/`user` are the caller's row classifier.
+ *
+ * Ten surfaces drew a table and answered a press but not the WHEEL, which is
+ * the first thing a hand reaches for on a list longer than its window.
+ */
+enum {
+	KTUI_TABLE_NONE = 0,
+	KTUI_TABLE_MOVED,
+	KTUI_TABLE_PICKED,
+	KTUI_TABLE_CLOSE
+};
+
+int ktui_table_event(KRect r, KtuiTable *st, int count, int rows, int ncol,
+		     const KtuiCol *col, const KtuiEvent *ev,
+		     KtuiTableSpan span, void *user);
+
 typedef struct {
 	int sel;
 	int open;

@@ -1338,6 +1338,17 @@ making you pick it again would be a link that does half its job.
 The tile icon names are checked against the **shipped icon set**, not taken from the naming
 specification, and the blurbs are cut to what a tile holds at eighty columns.
 
+**And the recorder's scrollbar is a control.** `kch_scrollbar` takes an id precisely so the bar that
+was DRAWN is the thing a press is measured against; that surface drew one beside its file list and
+answered neither its press nor its drag — a bar people try to drag once and then stop trusting.
+
+**The wheel scrolls every table.** Ten surfaces drew a `ktui_table`, answered a press on a row and
+answered no detent — backup, connect, disks, firewall, print, timezone, update, users, contacts and
+chars — so a person on the eleventh row of forty could see thirty of them and reach none. It is
+`ktui_table_event` now: the wheel scrolls, a press moves the caret, a press on the row it is already
+on picks, the right button is Back. The same rule `ktui_rows_event` gives a list, because ten copies
+of it would be ten answers to what a press means.
+
 **The volume is a slider, not a bar.** A progress bar drawn where a control belongs is a control the
 pointer cannot find, and this is the one surface a person opens *because* they want to change the
 number: press the track, drag it — the drag belongs to the press, so the pointer may leave the row —
@@ -1385,6 +1396,20 @@ beneath it and a press tested against those rows would pick whatever the list is
 **The Appearance page does not list the accents.** Its `Accent…` row opens `kdos-style`, which
 draws every scheme in its own colours and previews it live; a row of names beside it would be a
 second way to choose one and the worse of the two.
+
+**It writes four files, and the console session's is one of them.** `con.conf` was reachable from
+this window by nothing at all — on the desktop that is the DEFAULT one: how many workspaces, what
+the session's own bar shows, whether a boxed application becomes a window, and both transparency
+keys were a text file and a manual page. Those rows say **login** and cannot say anything else:
+`kcon_conf_*` reads that file once, on the first lookup, and holds the answer for the life of the
+session, so no signal is sent for them — one that did nothing would be the program pretending
+otherwise. They are shown on both desktops and apply to one, which every such row says in its own
+help rather than leaving the category to imply it.
+
+**The pending counter and the quit guard count every store.** Both asked `comp.conf` alone, so a
+change to the panel's file, the monitor's or the console session's showed `0 pending` on the Apply
+button and was discarded by a single Escape with the guard saying nothing — which is the one thing
+that guard exists to stop.
 
 **Nine categories:** Appearance, Panel, Desktop, Hardware, Session, Input, Apps, Boxes and
 **System** — the machine itself, where the resource monitor and the power page live. Most of what

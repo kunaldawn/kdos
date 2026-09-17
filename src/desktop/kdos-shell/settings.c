@@ -148,7 +148,7 @@ int sh_settings_pages(const char *const **labels, const char *const **names)
 /* Where a row's value is stored. Every one of these is a configuration file
  * this program reads and writes; a row that runs a program instead stores
  * nothing and is ST_NONE. */
-enum { ST_NONE = 0, ST_COMP, ST_PANEL, ST_RES, ST_BOX };
+enum { ST_NONE = 0, ST_COMP, ST_PANEL, ST_RES, ST_BOX, ST_CON };
 
 /* When a change takes effect. */
 enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
@@ -178,6 +178,7 @@ struct row {
 };
 
 static const char *const YESNO[] = { "yes", "no" };
+static const char *const TASKBAR[] = { "windows", "fkeys" };
 static const char *const ONOFF[] = { "on", "off" };
 static const char *const LIDS[] = { "off", "lock", "suspend" };
 static const char *const PANELS[] = { "bottom", "top", "off" };
@@ -236,8 +237,46 @@ static struct row rows[] = {
 	  "the panel clock as a strftime format; it reaches the panel on its "
 	  "command line",
 	  "%H:%M", "%H:%M" },
+	/*
+	 * ── THE CONSOLE SESSION'S OWN KEYS ───────────────────────────
+	 *
+	 * `con.conf` was reachable from this window by nothing at all, on the
+	 * desktop that is the DEFAULT one: how many workspaces, what the bar
+	 * shows, whether a boxed application becomes a window, and both
+	 * transparency keys were a text file and a manual page.
+	 *
+	 * They are shown on both desktops and apply to one, which the help
+	 * says on every row rather than the category implying it — a person
+	 * on the compositor who changes one and sees nothing has been lied to
+	 * by omission.
+	 */
+	{ CAT_APPEARANCE, FT_INT, ST_CON, SC_LOGIN, "window_opacity",
+	  "window_opacity", NULL, 0, 20, 100, 5,
+	  "THE CONSOLE DESKTOP: how much of a window's own background it "
+	  "keeps. Below 100 it is mixed with whatever it covers; the ink is "
+	  "never mixed",
+	  "100", "100" },
+	{ CAT_APPEARANCE, FT_INT, ST_CON, SC_LOGIN, "panel_opacity",
+	  "panel_opacity", NULL, 0, 20, 100, 5,
+	  "THE CONSOLE DESKTOP: the same, for a docked bar",
+	  "80", "80" },
 
 	/* ── Session ────────────────────────────────────────────────── */
+	{ CAT_SESSION, FT_INT, ST_CON, SC_LOGIN, "sessions", "sessions",
+	  NULL, 0, 1, 9, 1,
+	  "THE CONSOLE DESKTOP: how many workspaces. Nine is the ceiling "
+	  "because nine is the last digit Super can reach",
+	  "4", "4" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "restore", "restore",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: bring back the windows that were open when "
+	  "the session last ended cleanly",
+	  "no", "no" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "remember", "remember",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: open each program where its window was last "
+	  "time",
+	  "yes", "yes" },
 	{ CAT_SESSION, FT_INT, ST_COMP, SC_LIVE, "idle_dim", "idle_dim",
 	  NULL, 0, 0, 86400, 60,
 	  "seconds to the dim; 0 never. In a VM all three default to 0 — "
@@ -257,6 +296,12 @@ static struct row rows[] = {
 	  "what closing the laptop lid does; in a VM the default is off",
 	  "suspend", "suspend" },
 	/* ── Panel ──────────────────────────────────────────────────── */
+	{ CAT_PANEL, FT_CHOICE, ST_CON, SC_LOGIN, "taskbar", "taskbar",
+	  TASKBAR, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: what the session's own bottom row shows when "
+	  "the shell's panel is not up — the window rows, or Norton "
+	  "Commander's F1–F10",
+	  "windows", "windows" },
 	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel", "panel",
 	  PANELS, 3, 0, 0, 0,
 	  "which edge the one taskbar is on, or off entirely. There were two "
@@ -357,6 +402,17 @@ static struct row rows[] = {
 	  "", "" },
 
 	/* ── Desktop ────────────────────────────────────────────────── */
+	{ CAT_DESKTOP, FT_CHOICE, ST_CON, SC_LOGIN, "embed", "embed",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: whether a graphical application's windows "
+	  "become windows here. `no` gives each one a terminal of its own, "
+	  "full screen",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_INT, ST_CON, SC_LOGIN, "scrollback", "scrollback",
+	  NULL, 0, 0, 100000, 500,
+	  "THE CONSOLE DESKTOP: lines a terminal window keeps above the "
+	  "screen, per window",
+	  "2000", "2000" },
 	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "desktop_icons",
 	  "desktop_icons", YESNO, 2, 0, 0, 0,
 	  "~/Desktop drawn on the background layer, with Home and Trash pinned "
@@ -701,6 +757,28 @@ static void edit_cancel(void *user)
 }
 
 /* ── the files ─────────────────────────────────────────────────────────── */
+
+/*
+ * `con.conf` IS NOT IN `~/.config/kdos`. The console session keeps its own
+ * directory — `kdos-con/` — beside its `keys.conf` and its layouts, so the
+ * leaf helper below cannot reach it and a second one says where it is rather
+ * than growing a special case into the first.
+ *
+ * EVERY CONSOLE KEY IS `login` AND NOT `live`. `kcon_conf_*` reads the file
+ * once, on the first lookup, and holds the answer for the life of the session:
+ * a SIGHUP retints the desktop and re-reads nothing here, so a row that
+ * promised `live` would be a row that lies about what it just did.
+ */
+static void con_path(char *out, size_t n)
+{
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+
+	if (cfg && *cfg)
+		snprintf(out, n, "%.400s/kdos-con/con.conf", cfg);
+	else
+		snprintf(out, n, "%.400s/.config/kdos-con/con.conf",
+			 kb_home_dir());
+}
 
 static void cfg_path(const char *leaf, char *out, size_t n)
 {
@@ -1070,6 +1148,8 @@ static void load_all(void)
 	load_kv(path, ST_PANEL);
 	cfg_path("res.conf", path, sizeof(path));
 	load_kv(path, ST_RES);
+	con_path(path, sizeof(path));
+	load_kv(path, ST_CON);
 	load_boxes();
 	load_apps();
 }
@@ -1207,11 +1287,31 @@ static int dirty_count(int store)
 	return n;
 }
 
+/*
+ * EVERY STORE, WHICH IS WHAT THE COUNTER AND THE QUIT GUARD MEAN.
+ *
+ * Both asked ST_COMP alone. A change to the panel's file, the monitor's or the
+ * console session's therefore showed `0 pending` on the Apply button and was
+ * discarded by a single Escape without the guard saying anything — which is
+ * the one thing that guard exists to stop.
+ */
+static int dirty_any(void)
+{
+	int n = 0;
+
+	for (int i = 0; i < NROWS; i++)
+		if (rows[i].store != ST_NONE &&
+		    strcmp(rows[i].val, rows[i].orig))
+			n++;
+	return n;
+}
+
 static void apply(void)
 {
 	char path[700];
 	int comp = dirty_count(ST_COMP);
 	int panel = dirty_count(ST_PANEL), res = dirty_count(ST_RES);
+	int con = dirty_count(ST_CON);
 	int live = 0, login = 0, failed = 0;
 	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
 	 * substring of `kdos-desktop-start`, which is a /bin/sh script that
@@ -1257,6 +1357,18 @@ static void apply(void)
 		else
 			sighup("kdos-res");
 	}
+	if (con) {
+		/*
+		 * NO SIGNAL. The console session reads con.conf once and keeps
+		 * the answer; a SIGHUP is its retint and re-reads nothing
+		 * here. Every row of this store therefore says `login`, and
+		 * sending a signal that did nothing would be the program
+		 * pretending otherwise.
+		 */
+		con_path(path, sizeof(path));
+		if (write_kv(path, ST_CON) != 0)
+			failed++;
+	}
 	if (failed) {
 		snprintf(note, sizeof(note),
 			 "could not write %d file(s) — nothing else changed",
@@ -1284,7 +1396,7 @@ static void apply(void)
  */
 static int try_quit(void)
 {
-	if (!dirty_count(ST_COMP))
+	if (!dirty_any())
 		return 1;
 	if (quit_armed)
 		return 1;
@@ -1864,7 +1976,7 @@ static void draw_page(void)
 			       KT_MID, KT_SURFACE, KT_A_NONE);
 	}
 
-	int pending = dirty_count(ST_COMP);
+	int pending = dirty_any();
 	if (cat == CAT_BOXES)
 		pending = box_mode == BOX_LIST ? 0 : box_dirty();
 	/*
