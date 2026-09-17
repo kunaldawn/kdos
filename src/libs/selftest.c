@@ -1955,6 +1955,221 @@ static void check_modal(int sw, int sh)
 	free(text);
 }
 
+/*
+ * THE DROP SHADOW DARKENS AND DOES NOT ERASE, and the translucency pass mixes
+ * towards what was under it.
+ *
+ * NEITHER IS VISIBLE IN A GOLDEN. Both write the cell's LITERAL colour and
+ * leave the slot alone — which is what makes a --tty view and a braille
+ * reader show an opaque window — and a golden is that same slot dump, so a
+ * frame at 70 per cent and a frame at 100 are byte-identical there. This is
+ * the only gate either has.
+ */
+static void test_shade(void)
+{
+	printf("libktui shadow and blend\n");
+
+	int w = 0, h = 0;
+	const KtuiCell *cells;
+
+	ktui_offscreen_init(24, 8);
+	ktui_draw_init();
+	ktui_draw_fill(krect(0, 0, 24, 8), KT_BG);
+	ktui_draw_fill(krect(2, 3, 12, 3), KT_SURFACE);
+	ktui_draw_text(2, 3, 12, "HELLO", KT_TEXT, KT_SURFACE, KT_A_NONE);
+
+	/* A window above and left of it, so the strip lands on the first
+	 * window's top row rather than on bare desktop. */
+	ktui_draw_shadow(krect(1, 2, 12, 1));
+
+	cells = ktui_draw_cells(&w, &h);
+
+	const KtuiCell *lit = &cells[3 * w + 2];
+	const KtuiCell *off = &cells[3 * w + 20];
+
+	eq_int((int)lit->ch, 'H',
+	       "the shadow keeps the glyph of the window it falls on");
+	ok((lit->attr & KT_A_BGRGB) && (lit->attr & KT_A_FGRGB),
+	   "and writes both halves as literals, which is what a mix is");
+	ok(((lit->bgc >> 16) & 0xff) <= ktui_theme->slot[KT_SURFACE].r &&
+	   (lit->bgc & 0xff) <= ktui_theme->slot[KT_SURFACE].b,
+	   "darker than the surface underneath, in every channel");
+	eq_int(lit->bg, KT_BG,
+	       "and the SLOT is the backdrop, which is the shadow a --tty shows");
+	ok(!(off->attr & KT_A_BGRGB),
+	   "a cell outside the one-cell strip is untouched");
+
+	/* ── the blend: a rectangle mixed back towards what it covered ── */
+	uint32_t under[12 * 3];
+
+	ktui_offscreen_init(24, 8);
+	ktui_draw_init();
+	ktui_draw_fill(krect(0, 0, 24, 8), KT_BG);
+	ktui_draw_bg_take(krect(2, 3, 12, 3), under);
+	ktui_draw_fill(krect(2, 3, 12, 3), KT_SURFACE);
+	ktui_draw_blend(krect(2, 3, 12, 3), under, 128);
+
+	cells = ktui_draw_cells(&w, &h);
+	lit = &cells[3 * w + 3];
+
+	ok(lit->attr & KT_A_BGRGB, "a blended cell carries a literal background");
+	eq_int(lit->bg, KT_SURFACE,
+	       "and the slot is still what the window was drawn in");
+	{
+		unsigned got = (lit->bgc >> 16) & 0xff;
+		unsigned want = ((unsigned)ktui_theme->slot[KT_SURFACE].r +
+				 (unsigned)ktui_theme->slot[KT_BG].r) / 2;
+
+		/* Half of each, within the rounding one integer divide costs. */
+		ok(got + 2 >= want && want + 2 >= got,
+		   "half of the window's colour and half of the desktop's");
+	}
+
+	/* AND NOT A PICTURE. A sprite cell is somebody else's pixels edge to
+	 * edge; there is no background of ours behind them to mix. */
+	ktui_draw_cell(4, 4, KTUI_SPRITE_BASE | (7u << 8), KT_TEXT, KT_BG, 0);
+	ktui_draw_blend(krect(2, 3, 12, 3), under, 128);
+	cells = ktui_draw_cells(&w, &h);
+	ok(!(cells[4 * w + 4].attr & KT_A_BGRGB),
+	   "a sprite cell is left out of the blend");
+}
+
+/*
+ * THE SLIDER, WHICH IS THE ONE CONTROL A NUMBER DID NOT HAVE.
+ *
+ * Every knob in kdos-settings was an integer stepped with Left and Right and
+ * with nothing else, so a mouse could not turn one at all. The value a cell
+ * stands for and the cell a value lands on are the same arithmetic in opposite
+ * directions; computed twice they drift, and the symptom is a thumb that does
+ * not sit under the pointer that dragged it. These check the round trip.
+ */
+/* Defined with the a11y block below; the slider is the first caller. */
+static const KtuiA11y *a11y_find(int role);
+
+/*
+ * WHERE THE THUMB IS, READ OFF THE FRAME THAT WAS DRAWN — never recomputed.
+ * A test that worked the cell out for itself would be a second copy of the
+ * arithmetic under test, and the two would agree with each other while
+ * disagreeing with the screen.
+ */
+static int thumb_cell(KRect r, int val)
+{
+	int gw = 0, gh = 0;
+	const KtuiCell *g;
+	uint32_t mark = 0;
+	int cell = -1;
+
+	ktui_offscreen_init(40, 4);
+	ktui_draw_init();
+	ktui_slider_draw(r, val, 0, 100, 0, KT_SURFACE);
+	g = ktui_draw_cells(&gw, &gh);
+	ktui_utf8_next(ktui_glyph[KT_G_SQUARE], &mark);
+	for (int x = r.x; x < r.x + r.w && x < gw; x++)
+		if (g[(size_t)r.y * gw + x].ch == mark)
+			cell = x;
+	return cell;
+}
+
+static void test_slider(void)
+{
+	printf("libktui slider\n");
+
+	KRect r = krect(2, 1, 20, 1);
+	int v = 50;
+
+	/* ── keys ──────────────────────────────────────────── */
+	eq_int(ktui_slider_key(&v, 0, 100, 5, KT_K_RIGHT), 1, "Right steps up");
+	eq_int(v, 55, "by one step");
+	ktui_slider_key(&v, 0, 100, 5, KT_K_LEFT);
+	eq_int(v, 50, "and Left steps back");
+	ktui_slider_key(&v, 0, 100, 5, KT_K_HOME);
+	eq_int(v, 0, "Home is the minimum");
+	eq_int(ktui_slider_key(&v, 0, 100, 5, KT_K_LEFT), 0,
+	       "and a step past an end moves nothing, so it reports nothing");
+	ktui_slider_key(&v, 0, 100, 5, KT_K_END);
+	eq_int(v, 100, "End is the maximum");
+	eq_int(ktui_slider_key(&v, 0, 100, 5, 'x'), 0,
+	       "a key the control has no use for is left for the surface");
+
+	/* ── the pointer, and the round trip ─────────────────────── */
+	v = 0;
+	eq_int(ktui_slider_hit(r, &v, 0, 100, 5, r.x, r.y + 1, 1), 0,
+	       "a press on another row is not this control's");
+
+	/*
+	 * GRABBING THE THUMB DOES NOT MOVE IT. A hundred values on sixteen
+	 * cells cannot round-trip through the VALUES — a press snaps to the
+	 * cell it landed on, which is what a track is — but it must round-trip
+	 * through the CELLS, or the thumb jumps out from under the hand that
+	 * took hold of it.
+	 */
+	{
+		int bad_round = 0, bad_grab = 0;
+
+		for (int want = 0; want <= 100; want += 4) {
+			int got = want, cell = thumb_cell(r, want);
+			int after;
+
+			if (cell < 0) {
+				bad_grab = 1;
+				continue;
+			}
+			ktui_slider_hit(r, &got, 0, 100, 5, cell, r.y, 1);
+			after = thumb_cell(r, got);
+			if (after != cell)
+				bad_grab = 1;
+		}
+		ok(!bad_grab,
+		   "a press on the cell the thumb is drawn on leaves it there");
+
+		/*
+		 * AND THE TRACK RUNS THE RIGHT WAY. Measured from the ends,
+		 * where the neighbouring cell is known to be track and not the
+		 * gap beside an end cap: a slider drawn with the fill one way
+		 * and read the other passes every round trip above and still
+		 * runs backwards under the hand.
+		 */
+		int lo = 0, hi = 100;
+
+		ktui_slider_hit(r, &lo, 0, 100, 5, thumb_cell(r, 0) + 1, r.y, 1);
+		ktui_slider_hit(r, &hi, 0, 100, 5, thumb_cell(r, 100) - 1, r.y, 1);
+		ok(lo > 0, "one cell right of the minimum is a larger value");
+		ok(hi < 100, "and one cell left of the maximum is a smaller one");
+		(void)bad_round;
+	}
+
+	/* ── the end caps step, and only on a press ──────────────── */
+	v = 50;
+	eq_int(ktui_slider_hit(r, &v, 0, 100, 5, r.x, r.y, 1), 1,
+	       "a press on the left cap");
+	eq_int(v, 45, "steps down by one");
+	eq_int(ktui_slider_hit(r, &v, 0, 100, 5, r.x, r.y, 0), 0,
+	       "and a DRAG across it steps nothing — it would fight the "
+	       "position the same drag is setting");
+
+	/* ── as a frame control ───────────────────────────────── */
+	{
+		KtuiEvent ev = { 0 };
+		const KtuiA11y *a;
+
+		ktui_offscreen_init(40, 4);
+		ktui_draw_init();
+		v = 40;
+		ev.type = KT_EVT_KEY;
+		ev.key = KT_K_RIGHT;
+		ktui_frame_begin(&ev);
+		eq_int(ktui_slider(r, &v, 0, 100, 5, "crt"), 1,
+		       "the frame control takes the key of the focused slider");
+		eq_int(v, 45, "and steps it");
+		a = a11y_find(KT_A11Y_SLIDER);
+		ok(a && !strcmp(a->label, "crt") && !strcmp(a->value, "45"),
+		   "a focused slider says its name and its number");
+		eq_int(ktui_consumed(), 1,
+		       "and the key is spent, so the surface does not act on it too");
+		ktui_frame_end();
+	}
+}
+
 static void test_grid(void)
 {
 	printf("libktui grid\n");
@@ -4173,7 +4388,58 @@ static void test_menu(void)
 	eq_int(id, MI_QUIT,
 	       "the item that was DRAWN there, not the one at that index");
 
+	/*
+	 * ── THE CHORD COLUMN IS INSIDE THE PANE ─────────────────────
+	 *
+	 * ktui_draw_text_right() takes a WIDTH and ends the text at `x + w - 1`,
+	 * so a caller that handed it the column to end on instead printed every
+	 * chord the pane's own x to the RIGHT of the box — over the desktop,
+	 * past every clamp the pane's rectangle went through, and with the hit
+	 * test still measuring the box that was drawn.
+	 *
+	 * Opened well right of the origin, because a pane at x = 2 hides the
+	 * defect: two cells of drift still land inside a twenty-cell box.
+	 */
+	{
+		int gw = 0, gh = 0;
+		const KtuiCell *g;
+		int row, inside = 0, outside = 0;
+
+		ktui_offscreen_init(80, 12);
+		ktui_draw_init();
+		ktui_menu_open(&m, 0, 30, 1);
+		ktui_menu_draw(&m);
+
+		g = ktui_draw_cells(&gw, &gh);
+		row = m.y + 1;		/* &New, whose chord is Ctrl+N */
+		for (int x = 0; x < gw; x++) {
+			uint32_t ch = g[(size_t)row * gw + x].ch;
+
+			if (ch != 'C')
+				continue;
+			if (x >= m.x && x < m.x + m.w)
+				inside = 1;
+			else
+				outside = 1;
+		}
+		ok(inside, "a row's chord is drawn inside the pane");
+		ok(!outside, "and nowhere else");
+
+		for (int x = 0; x < gw; x++) {
+			uint32_t ch = g[(size_t)row * gw + x].ch;
+
+			if (x >= m.x && x < m.x + m.w)
+				continue;
+			if (ch && ch != ' ')
+				outside = 1;
+		}
+		ok(!outside, "and the row outside the box is untouched");
+		ktui_menu_close(&m);
+	}
+
 	/* ── a click away closes rather than picking ─────────────────── */
+	ktui_offscreen_init(40, 12);
+	ktui_draw_init();
 	ktui_menu_open(&m, 0, 2, 1);
 	ev.mx = 39;
 	ev.my = 11;
@@ -6447,6 +6713,7 @@ static int clip_asked = -1;
 
 /* What a shell asked the session to do, for the management block below. */
 static unsigned srv_activated, srv_closed;
+static char srv_verb[64];
 
 /* How many times a colour pick was asked for. */
 static unsigned srv_picked;
@@ -6531,6 +6798,13 @@ static void srv_on_close_req(KconSurface *f, unsigned id, void *user)
 	(void)f;
 	(void)user;
 	srv_closed = id;
+}
+
+static void srv_on_action(KconSurface *f, const char *verb, void *user)
+{
+	(void)f;
+	(void)user;
+	snprintf(srv_verb, sizeof(srv_verb), "%s", verb ? verb : "");
 }
 
 static void srv_on_clip_offer(KconSurface *f, const char *text, size_t len,
@@ -8247,9 +8521,11 @@ static void test_kcon_server(void)
 			KconServerHooks h = { 0 };
 
 			h.activate = srv_on_activate;
+			h.action = srv_on_action;
 			h.close_request = srv_on_close_req;
 			kcon_server_hooks(s, &h, NULL);
 			srv_activated = srv_closed = 0;
+			srv_verb[0] = '\0';
 
 			KconConn *shell = srv_client(path);
 			KconConn *plain = srv_client(path);
@@ -8323,7 +8599,6 @@ static void test_kcon_server(void)
 				kcon_put_u32(&b, 43);
 				kcon_send(shell, KCON_OP_CLOSE_REQUEST, &b);
 				kcon_flush(shell);
-				kcon_buf_free(&b);
 				for (int i = 0; i < 60 &&
 				     (!srv_activated || !srv_closed); i++) {
 					kcon_server_pump(s);
@@ -8333,6 +8608,36 @@ static void test_kcon_server(void)
 				   "and a shell's raise names the window");
 				eq_int((int)srv_closed, 43,
 				   "as does its close request");
+
+				/*
+				 * AND THE SESSION'S OWN VERBS, WHICH ARE THE
+				 * SAME PRIVILEGE. A desktop's root menu asks
+				 * for `tile` by name so that a pointer can
+				 * reach what was bound to a chord and to
+				 * nothing else — and a program with a window
+				 * in the session must not be able to
+				 * rearrange everybody else's.
+				 */
+				kcon_buf_reset(&b);
+				kcon_put_bytes(&b, "tile", 4);
+				kcon_send(plain, KCON_OP_ACTION, &b);
+				kcon_flush(plain);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_str(srv_verb, "",
+				   "a window asking the session to tile is ignored");
+
+				kcon_send(shell, KCON_OP_ACTION, &b);
+				kcon_flush(shell);
+				for (int i = 0; i < 60 && !srv_verb[0]; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_str(srv_verb, "tile",
+				   "and a shell's reaches the session by NAME");
+				kcon_buf_free(&b);
 			}
 			if (shell)
 				kcon_conn_free(shell);
@@ -8696,6 +9001,8 @@ int main(void)
 	test_proc();
 	test_chart();
 	test_grid();
+	test_shade();
+	test_slider();
 	test_pack();
 	test_portup();
 	test_wm();

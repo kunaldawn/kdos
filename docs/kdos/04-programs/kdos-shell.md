@@ -878,6 +878,25 @@ Applications, Change Wallpaper, Display Settings and Settings — everything the
 menu offered, because dropping the claim without replacing what it fed would have been the
 regression. `Super+Space` still opens the compositor's own menu.
 
+**And the verbs that act on the whole desktop**: Tile Windows, Cascade Windows, Show Desktop, Window
+List, Restore All, Screenshot and Lock Screen. Those were bound to chords and to nothing else, so somebody using a mouse had
+no way to tile their windows at all — and the desktop's own right press is where a root menu has
+always been. The rows do not DO any of it: they ask the session by NAME through
+`kdisp_session_action()`, because the windows are the session's and a surface that arranged them
+itself would be a second window model. The name is `keys.conf`'s own, so the row and the chord reach
+the same code. **It is a management request** and this surface therefore asks for `manage` — it is
+the session's own chrome, started beside the panel by the session script, which is the line that
+privilege is drawn on.
+
+**Under the compositor the same rows take a different road, and four of them are not drawn at all.**
+Show Desktop goes to `ToggleShowDesktop` on the command socket; Lock Screen and Screenshot are
+programs there and are spawned, using the command `rc.xml` binds to `Print` so the row and the key
+take one screenshot in one way. Tiling, cascading, the window list and restore-all are the console
+session's own arithmetic — labwc has no action for any of them and no chord runs them either, which
+`selftest.sh`'s one-sided chord table already records — so those rows are **hidden** there rather
+than drawn and inert. A menu row that does nothing is a lie about what the machine can do, which is
+the one thing this menu exists not to be.
+
 **The menu is two halves.** The file verbs come from `libkxdg`'s table — the same one `kdos-pick`
 and `mc`'s `F2` read, so a verb appears on all three at once — then a rule, then the rows above,
 which are the ones only a desktop can answer. The rule is drawn only when both halves have
@@ -1318,6 +1337,50 @@ making you pick it again would be a link that does half its job.
 
 The tile icon names are checked against the **shipped icon set**, not taken from the naming
 specification, and the blurbs are cut to what a tile holds at eighty columns.
+
+**The volume is a slider, not a bar.** A progress bar drawn where a control belongs is a control the
+pointer cannot find, and this is the one surface a person opens *because* they want to change the
+number: press the track, drag it — the drag belongs to the press, so the pointer may leave the row —
+or roll the wheel over it. A muted device draws at zero and says `mute` beside it; its real level is
+still there and comes back with the mute, because a track showing a level while the machine is
+silent would be the control disagreeing with the speaker.
+
+**The greeter and the lock screen were the last two with no pointer at all.** On a machine with
+three accounts, choosing which one to log in as was an arrow key and nothing else — on the one
+screen a person reaches before they know anything about this desktop. A press picks an account and
+steps the session, and the password is still typed, which is not a gap: there is no on-screen
+keyboard here, and a field a pointer could fill would be a field filled by whatever else can reach
+the pointer. **On the lock screen a press clears the field and that is all it may do**: the single
+action there is typing a secret, and a button that unlocked would be a lock with a way past it that
+is not the password.
+
+**Eleven of these surfaces answered no pointer event at all**, and now all of them do: `kdos-style`,
+`kdos-chars`, `kdos-calc`, `kdos-palette`, `kdos-trash`, `kdos-find`, `kdos-contacts`, `kdos-notes`,
+`kdos-rec` and both viewers each ended their event loop with `if (ev.type != KT_EVT_KEY) continue;`.
+The accent picker is the plainest case: it is what Settings' `Accent…` row opens, and somebody who
+arrived there with a mouse could look at seven schemes and choose none of them. The rule is one
+function's — `ktui_rows_event` — so a press means the same thing on all of them: move the caret,
+pick the row it is already on, wheel to walk, right button for Back.
+
+**Every value is a control, and the mouse alone can set all of them.** A number is a
+`ktui_slider` — press the track, drag it, roll the wheel over it, or click an end cap for one step
+— and a choice is a `ktui_dropdown`, which opens under the row and picks on a click. Both answer
+the keyboard exactly as before. This was the surface's own worst failure and it was not a small
+one: every knob on the machine was a printed string changed with `Left` and `Right`, so somebody
+who arrived here with a pointer could select a row and do nothing else with it.
+
+**A text value is `ktui_input`, the toolkit's own field.** It was a hand-rolled buffer that took
+backspace and printable bytes and nothing else — no caret to move, no paste, and one backspace could
+cut a UTF-8 character in half. The control is a frame control, so the key is handed to the DRAW
+rather than spent in the loop; clicking inside the field places the caret and clicking away KEEPS
+what was typed, because clicking away from a field is not how anybody means to discard it.
+
+**The control answers the FIRST press, not the second.** A row is selected and its slider is set by
+one gesture; a slider that needed the row selecting first would be two movements for one. The drag
+belongs to the press that began it, so the pointer may leave the column and go on setting the
+value, and the wheel turns the control it is over and scrolls the page everywhere else. **An open
+dropdown owns the pointer and the keyboard while it is down**, because it is drawn over the rows
+beneath it and a press tested against those rows would pick whatever the list is covering.
 
 **The Appearance page does not list the accents.** Its `Accent…` row opens `kdos-style`, which
 draws every scheme in its own colours and previews it live; a row of names beside it would be a

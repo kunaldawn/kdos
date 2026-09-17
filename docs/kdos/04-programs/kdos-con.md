@@ -110,6 +110,20 @@ raised afterwards. Everything a surface may do to another program's window is ga
 sent the window list at all, and `ACTIVATE`, `CLOSE_REQUEST` and `MINIMISE`. A launcher or a
 calculator never asks, so neither can close somebody's editor.
 
+**And `ACTION`, which names one of the SESSION's own verbs rather than a window.** `tile`,
+`cascade`, `show-desktop`, `windows`, `lock` — the things that act on the whole desktop, which were
+bound to chords and to nothing else, so a pointer could not ask for any of them. The desktop's root
+menu is where they belong and `kdos-desk` is the surface that draws it, which is why the icon layer
+asks for `manage`: it is the session's own chrome, started beside the panel by the session script,
+and that is the line the privilege is drawn on.
+
+**A NAME AND NEVER A CHORD.** A surface that could send a chord could send *any* chord, including
+whichever one the machine's `keys.conf` has a shell command on. The name is looked up in the bind
+table and **turned into its chord**, which is then fed to the one key handler — a second dispatcher
+keyed on names would be a second copy of the mapping from verb to effect, and the day the two
+disagreed the menu row would do something other than the chord printed beside it. A name this build
+does not have is dropped, which is what a surface newer than the session it is talking to must get.
+
 **The list is pushed and the surface re-reads it.** The session sends `TOPLEVEL_ADD`,
 `TOPLEVEL_STATE`, `TOPLEVEL_REMOVE` and `WORKSPACE` when its own state changes, and sends the whole
 list to a shell that has just attached. A surface re-reads the list on each turn rather than being
@@ -222,6 +236,21 @@ terminal shows the desktop or the window under it. The ink is never mixed — te
 widget fills keep the colour they were drawn in — and an embedded application's pixels are its own
 and are never touched. A display that cannot carry a colour outside the eight slots shows every
 window opaque, which is the honest answer where there is nothing to mix with.
+
+**One window may disagree with the file.** `Super+Ctrl+=`, `Super+Ctrl+-` and `Super+Ctrl+Alt+0`
+step the FOCUSED window's own transparency and give it back — the font family with Ctrl added,
+because both step something about what is in front of you. Which window should be seen through is
+decided while looking at it: a reference under an editor, a terminal over a picture. The step starts
+from what is on the screen, so the first press moves one notch from what you are looking at rather
+than jumping to a fixed number, and it stops at 20 per cent, because there is no chord that brings
+back a window nobody can find.
+
+**The shadow darkens and does not erase.** It hangs a column right of the frame and a row below it,
+and every cell it covers keeps its glyph while both halves are mixed towards `KT_BG`. A shadow that
+wrote a blank cut a rectangular bite out of the window underneath — and out of an embedded
+application's picture, where it read as a compositing defect rather than as depth. A picture is not
+shadowed at all: a sprite cell is somebody else's pixels edge to edge, with no background of ours
+behind them to darken.
 
 **An overlay takes the keyboard if it asked for it, and a background never does.** The Start menu,
 the launcher and the run box are overlays and are answered by typing, so one that did not focus
@@ -921,14 +950,48 @@ when it shrinks, not when it closes. One guest may put at most sixteen windows o
 toplevel past that is dropped with a line in the log, because an application mapping without bound
 would take the pictures away from every other window.
 
-**A resize is an output resize, and the guest is told at most one a frame.** The window's cells
-*are* the guest's output, so dragging an edge changes its mode: the cage reallocates its swapchain,
-both processes map a new buffer and the application relayouts — far heavier than the configure a
-toolkit answers on any other compositor. The session moves its own grid at once, so the drag stays
-live, and holds the size for the guest until the last one it was told has come back as a mapping,
-and to at most one every `CON_FRAME_MS`. A size held back by either gate goes out on the next turn.
-One that has gone unanswered for a second stops holding the next back, or a guest whose mapping
-never reaches what it was told would be stuck at the size it has.
+**A resize is an output resize, and NOTHING ACROSS A SOCKET IS TOLD WHILE THE HAND IS MOVING.**
+The window's cells *are* the guest's output, so dragging an edge changes its mode: the cage
+reallocates its swapchain, both processes map a new buffer and the application relayouts — far
+heavier than the configure a toolkit answers on any other compositor. No client can answer at the
+rate a pointer moves, so one told per motion is one permanently an answer behind, and the strip
+between the size it has drawn and the size the frame shows jitters along the edge for the whole
+gesture.
+
+**An embedded guest is worse, and no rate fixes it.** The block grid is cut for one rectangle and
+the cut takes a session sprite slot per block; a slot taken mid-drag names a picture no display has
+ever been sent, and a sprite cell whose slot a display does not hold is painted as flat backdrop. So
+every re-cut punches holes along the edge being dragged and fills them in a frame later. `layout()`
+also hands the slots above the old grid back, wipes the owed set and is followed by damaging the
+whole window — which re-sent every block of a guest that had not repainted one pixel, put the view
+over the watermark that stops the SESSION composing, and churned the slot rotation until numbers
+came round to windows still showing the old picture.
+
+**So the cut stands still for the length of the gesture.** `con_sizing_id()` names the window a
+pointer drag on an edge or the keyboard `rearrange` mode is holding; while it does, the size is not
+sent and the grid is not re-cut. The frame is the size the pointer says and the guest's pixels are
+the size it last rendered; `embed_draw()` clamps to both, so a window that has grown shows its own
+fill where the guest has not reached and one that has shrunk draws what fits.
+
+**A terminal the session renders itself is the exception and follows the pointer exactly.** Its
+cells are drawn at the window's size on every composed frame, so a reflow costs one call and there
+is never a rectangle of the window with nothing in it. The line is whether the content crosses a
+socket, not what kind of window it is.
+
+**Every path that ends a gesture asserts the size once more**: the release, `rearrange`'s Return and
+Escape, and the cancel a chord does when it takes the pointer away. A size that reached nothing is
+the resize that "did not take".
+
+**And a move is not a resize.** A drag that only moved the window tells nobody a size they already
+have: the rectangle still goes through the one fit every placement ends in, and the reflow, the
+configure and the re-cut are all skipped. The pointer drag and the keyboard `rearrange` keep the
+same rule.
+
+**A drag is measured in PIXELS and lands on cells.** A window sits on cell boundaries because it is
+made of cells, but the distance the hand travelled is not a whole number of them: measured in cells
+alone, a drag begun near the right-hand edge of a cell jumps a whole character on the first pixel of
+movement and then runs ahead of the hand for the rest of the gesture. The sub-cell offsets the view
+already sends are what make the window move exactly as far as the pointer did.
 
 **A font step is a resize for the guest even when the window keeps its rectangle**, because that
 output is measured in pixels. The cell size is read on every resize and a change in it alone
@@ -1640,21 +1703,33 @@ window never said was there — one answer between the light and the press is th
 keeps. `Super` is still the way in from anywhere and is asked first: `Super`+right resizes from the
 nearest edge wherever the pointer is, the title row included.
 
-**The window menu is every frame verb in one list, each row printing the chord that does it.**
+**The window menu is every verb that acts on one window, in one list, each row printing the chord
+that does it — and that is the whole of why it exists.** A chord with no row here is something this
+desktop can do and a pointer cannot ask for, and the window in question is very often a BOXED
+APPLICATION, whose own menus live inside its pixels and know nothing about snapping, tabs or
+transparency. The rows are Restore, Move or size, Minimise, Maximise, Fullscreen, Lower, then Snap,
+Tabs and Transparency — which open panes of their own — then Scratchpad, Send to workspace and
+Close. Snap's pane carries the four half-screen tiles and, under a rule, the four SWAPS: a snap
+tiles this window against an edge and a swap exchanges it with the neighbour that way, and both are
+"what about the window in that direction", so one is found beside the other rather than in a third
+level of menu.
+
 It is the FRAME's menu and is per window; the taskbar row's menu in
-[`kdos-shell`](kdos-shell.md) is per application and carries the verbs for a whole group. What
-a pointer otherwise reaches on the frame itself is three chips and a row to drag: lower, the
-scratchpad mark and send-to-workspace are reachable there by chord alone, and the shipped
-`taskbar = windows` draws the window rows rather than the function-key row that names any of them.
-Fullscreen a taskbar row's own menu already offers; this is the frame's. It opens on a right press
-on a title row, on `Alt+Space` over the focused window, and on a long press anywhere on a frame —
-which is the only way a finger reaches those verbs at all, and is answered above the surface test
-because a terminal and an embedded guest have no surface to deliver a touch to. **The chords come
+[`kdos-shell`](kdos-shell.md) is per application and carries the verbs for a whole group. It opens
+on a right press on a title row, on a right press on the session bar's **window row** — which is the
+only thing a MINIMISED window has on the screen, so without it that window's verbs are reachable by
+the keyboard and by nothing else — on `Alt+Space` over the focused window, and on a long press
+anywhere on a frame, which is the only way a finger reaches those verbs at all and is answered above
+the surface test because a terminal and an embedded guest have no surface to deliver a touch to. **The chords come
 out of the bind table**, never written at the menu, so a `keys.conf` that moves one moves what the
 menu teaches; a row that does not apply to this window is **greyed rather than hidden**, because a
 menu whose rows moved with the window's state would put `Close` where `Fullscreen` was between one
-press and the next. Send-to-workspace opens a second pane of numbered rows at the same cell, since
-`win_send()` needs a number and a row cannot ask for one. It is drawn with `KtuiMenu` — the same
+press and the next. Four rows open a **pane of their own** at the same cell, because each needs an argument a row cannot
+ask for: Send to workspace a number, Snap an edge or a neighbour to swap with, Tabs one of four
+steps, and Transparency a rung of the ladder — 100 down to 20 per cent, with the rung the window is already on greyed, which is how
+every other menu here says "you are here" without inventing a second kind of mark. It stops at 20
+for `win_opacity_step`'s reason: there is no pointer gesture that brings back a window nobody can
+find. It is drawn with `KtuiMenu` — the same
 widget every surface pops with `Shift+F10` — as a popup with no bar, because a bar across the top of
 the desktop would be a menu belonging to no window.
 

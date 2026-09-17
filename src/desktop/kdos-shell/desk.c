@@ -102,7 +102,10 @@ static int icons_on = 1;
 /* Rows carry an ID and the run switch dispatches on it, so a row that is
  * hidden for this entry can never be run by its position. */
 enum { CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_EMPTY, CT_REFRESH, CT_SORT,
-       CT_APPS, CT_WALL, CT_DISPLAY, CT_SETTINGS, CT_RULE };
+       CT_APPS, CT_WALL, CT_DISPLAY, CT_SETTINGS, CT_RULE,
+       /* The SESSION's own verbs, asked for by name. See CT_VERB below. */
+       CT_TILE, CT_CASCADE, CT_SHOWDESK, CT_WINDOWS, CT_RESTORE_ALL,
+       CT_CAPTURE, CT_LOCK };
 
 /*
  * THE TWO ID SPACES MUST NOT COLLIDE. The shared verbs are `KXDG_VERB_*` and
@@ -164,8 +167,96 @@ static const struct {
 	{ "&Change Wallpaper",   CT_WALL,     SC_DESK, 0, 0, 0 },
 	{ "&Display Settings",   CT_DISPLAY,  SC_DESK, 0, 0, 0 },
 	{ "&Settings",           CT_SETTINGS, SC_DESK, 0, 0, 0 },
+	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
+	/*
+	 * THE VERBS THAT ACT ON THE WHOLE DESKTOP, which were bound to chords
+	 * and to nothing else — a person using a mouse had no way to tile
+	 * their windows at all. The desktop's own right press is where a root
+	 * menu has always been, and this is the surface that owns it.
+	 *
+	 * ASKED FOR BY NAME through kdisp_session_action(), never run here:
+	 * the windows are the session's and a surface that tiled them itself
+	 * would be a second window model. The name is `keys.conf`'s, so the
+	 * row and the chord reach the same code.
+	 */
+	{ "&Tile Windows",       CT_TILE,     SC_DESK, 0, 0, 0 },
+	{ "Casca&de Windows",    CT_CASCADE,  SC_DESK, 0, 0, 0 },
+	{ "Sho&w Desktop",       CT_SHOWDESK, SC_DESK, 0, 0, 0 },
+	{ "Window &List",        CT_WINDOWS,  SC_DESK, 0, 0, 0 },
+	{ "Restore &All",        CT_RESTORE_ALL, SC_DESK, 0, 0, 0 },
+	{ "Scree&nshot",         CT_CAPTURE,  SC_DESK, 0, 0, 0 },
+	{ "Loc&k Screen",        CT_LOCK,     SC_DESK, 0, 0, 0 },
 };
 #define NCTX ((int)(sizeof(CTX) / sizeof(CTX[0])))
+
+/*
+ * ── THE DESKTOP'S OWN VERBS, ON TWO DIFFERENT SESSIONS ──────────────────
+ *
+ * The same row means the same thing on both desktops and gets there by
+ * different roads, and this is the only place that knows which:
+ *
+ *   console     kdisp_session_action() — the name reaches kdos-con's bind
+ *               table, which has every one of these.
+ *   compositor  the command socket for the one labwc has an action for, and
+ *               the PROGRAM for the two that are programs there.
+ *
+ * AND FOUR OF THEM DO NOT EXIST UNDER THE COMPOSITOR AT ALL. Tiling, cascading,
+ * the window list and restore-all are the console session's own arithmetic;
+ * labwc has no action for any of them and no chord runs them either — which
+ * `selftest.sh`'s one-sided chord table already records. A row for one is
+ * HIDDEN there rather than drawn and inert: a menu row that does nothing is a
+ * lie about what the machine can do, which is the one thing this menu exists
+ * not to be.
+ */
+/* Defined with the rest of the process plumbing below; the verb road is the
+ * first caller. */
+static void spawn(const char *const argv[]);
+
+static int desk_on_console(void)
+{
+	const KDispImpl *d = kdisp_current();
+
+	return d && d->name && !strcmp(d->name, "console");
+}
+
+/* Which of the session rows this display can actually answer. */
+static int desk_verb_ok(const char *verb)
+{
+	if (desk_on_console())
+		return 1;
+	return !strcmp(verb, "show-desktop") || !strcmp(verb, "lock") ||
+	       !strcmp(verb, "capture-screen");
+}
+
+static void desk_verb(const char *verb)
+{
+	char out[256], err[128];
+
+	if (desk_on_console()) {
+		kdisp_session_action(verb);
+		return;
+	}
+	if (!strcmp(verb, "show-desktop")) {
+		sh_cmd_call("{\"cmd\":\"run\",\"action\":"
+			    "\"ToggleShowDesktop\"}", out, sizeof(out), err,
+			    sizeof(err));
+		return;
+	}
+	if (!strcmp(verb, "lock")) {
+		const char *argv[] = { "kdos-lock", NULL };
+
+		spawn(argv);
+		return;
+	}
+	if (!strcmp(verb, "capture-screen")) {
+		/* The same command `rc.xml` binds to Print, so the row and the
+		 * key take one screenshot in one way. */
+		const char *argv[] = { "kdos-shot", "screen", NULL };
+
+		spawn(argv);
+		return;
+	}
+}
 
 /*
  * THE MENU IS libktui's, and the geometry, the caret, the arrows, the hit test
@@ -746,8 +837,28 @@ static int ctx_show(int i, void *user)
 	i -= nverb + 1;
 	if (i < 0 || i >= NCTX)
 		return 0;
-	if (ctx_for < 0)
-		return (CTX[i].scope & SC_DESK) != 0;
+	if (ctx_for < 0) {
+		if (!(CTX[i].scope & SC_DESK))
+			return 0;
+		/*
+		 * AND A SESSION VERB THIS DISPLAY DOES NOT HAVE IS HIDDEN.
+		 * Tiling, cascading, the window list and restore-all are the
+		 * console session's own; a row for one under the compositor
+		 * would be a row that does nothing, which is exactly what a
+		 * menu must not contain.
+		 */
+		switch (CTX[i].id) {
+		case CT_TILE:		return desk_verb_ok("tile");
+		case CT_CASCADE:	return desk_verb_ok("cascade");
+		case CT_SHOWDESK:	return desk_verb_ok("show-desktop");
+		case CT_WINDOWS:	return desk_verb_ok("windows");
+		case CT_RESTORE_ALL:	return desk_verb_ok("restore-all");
+		case CT_CAPTURE:	return desk_verb_ok("capture-screen");
+		case CT_LOCK:		return desk_verb_ok("lock");
+		default:		break;
+		}
+		return 1;
+	}
 	if (ctx_for >= nentries)
 		return 0;
 	if (!(CTX[i].scope & SC_ITEM))
@@ -1327,6 +1438,29 @@ static void ctx_run(int id, char *status, size_t n)
 			spawn(argv);
 			break;
 		}
+		/* THE SESSION'S — see desk_verb(), which is the one place that
+		 * knows how each display answers one. */
+		case CT_TILE:
+			desk_verb("tile");
+			break;
+		case CT_CASCADE:
+			desk_verb("cascade");
+			break;
+		case CT_SHOWDESK:
+			desk_verb("show-desktop");
+			break;
+		case CT_WINDOWS:
+			desk_verb("windows");
+			break;
+		case CT_RESTORE_ALL:
+			desk_verb("restore-all");
+			break;
+		case CT_CAPTURE:
+			desk_verb("capture-screen");
+			break;
+		case CT_LOCK:
+			desk_verb("lock");
+			break;
 		default:
 			break;
 		}
@@ -1415,6 +1549,16 @@ int desk_main(int argc, char **argv)
 		 * a confirmed audit finding. ON_DEMAND, so it only holds the
 		 * keyboard while the user is actually on the desktop. */
 		.keyboard = 1,
+		/*
+		 * THE DESKTOP MENU CARRIES THE DESKTOP'S OWN VERBS — tile,
+		 * cascade, show desktop, the window list, lock — and asking
+		 * the session for one is a management request, on the socket
+		 * that gates them. This surface is the session's own chrome,
+		 * started beside the panel by the session script; it is not a
+		 * program a person launched, which is the distinction the
+		 * privilege is drawn on.
+		 */
+		.manage = 1,
 	};
 
 	/*

@@ -329,6 +329,25 @@ static Bind binds[] = {
 	  KT_MOD_SUPER | KT_MOD_CTRL },
 
 	/*
+	 * AND THE FOCUSED WINDOW'S TRANSPARENCY, WHICH IS THE FONT FAMILY WITH
+	 * CTRL ADDED. Two families that step something about what is in front
+	 * of you deserve one shape of chord between them, and the extra
+	 * modifier says which of the two is the rarer.
+	 *
+	 * Equals and minus for the reason the font family gives: `+` is the
+	 * character a chord is split on and cannot be written in `keys.conf`
+	 * at all. Reset carries Alt as well, because it is the one of the
+	 * three that throws away where the person had got to — and because
+	 * `Super+Ctrl+0` is already the font's.
+	 */
+	{ "opacity-up",	   CON_ACT_OPACITY_UP,	  0, '=',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "opacity-down",  CON_ACT_OPACITY_DOWN,  0, '-',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "opacity-reset", CON_ACT_OPACITY_RESET, 0, '0',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_ALT },
+
+	/*
 	 * THE SURFACES, ON THE CHORDS `rc.xml` ALREADY BINDS THEM TO.
 	 *
 	 * Every one of these programs runs on this desktop today and none of
@@ -715,6 +734,20 @@ void keys_chord_for(const char *action, char *out, size_t n)
 			keys_chord_name(binds[i].key, binds[i].mods, out, n);
 			return;
 		}
+}
+
+int keys_chord_of(const char *action, int *key, int *mods)
+{
+	if (!action)
+		return 0;
+	keys_load();
+	for (int i = 0; i < NBINDS; i++)
+		if (!strcmp(binds[i].name, action)) {
+			*key = binds[i].key;
+			*mods = binds[i].mods;
+			return 1;
+		}
+	return 0;
 }
 
 void keys_print(void)

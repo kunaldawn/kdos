@@ -60,6 +60,7 @@ static const char *role_word(int role)
 	case KT_A11Y_CHOICE:	return "choice";
 	case KT_A11Y_TEXT:	return "line";
 	case KT_A11Y_WINDOW:	return "window";
+	case KT_A11Y_SLIDER:	return "slider";
 	default:		return "";
 	}
 }

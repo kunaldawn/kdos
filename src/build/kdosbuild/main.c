@@ -393,7 +393,16 @@ static void bail(const char *msg)
 
 	KtuiEvent ev;
 	for (;;) {
-		if (ktui_input_next(&ev, 1000) && ev.type == KT_EVT_KEY)
+		/* A CLICK IS A KEY HERE. Mouse reporting is on for this
+		 * program's own picker, so a press on the failure screen was
+		 * swallowed and the build appeared to have hung on its last
+		 * message — the one screen where that reading is worst. */
+		if (!ktui_input_next(&ev, 1000))
+			continue;
+		if (ev.type == KT_EVT_KEY)
+			break;
+		if (ev.type == KT_EVT_MOUSE && ev.press == KT_MP_PRESS &&
+		    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_RIGHT))
 			break;
 	}
 }

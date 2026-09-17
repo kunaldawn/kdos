@@ -786,6 +786,39 @@ int palette_main(int argc, char **argv)
 		}
 		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			break;
+		/*
+		 * THE POINTER WALKS THE HITS AND FIRES ONE. `Super+space` is
+		 * the one search over windows, applications, routes, settings
+		 * pages, files and chords — and it answered no pointer event,
+		 * so every one of those was reachable by typing and by nothing
+		 * else.
+		 *
+		 * A HEADING IS NOT A ROW, the same rule the arrows keep below:
+		 * one opens nothing, so a caret that lands on it is stepped off.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int list_y = 3, list_h = ktui_h - list_y - 2;
+			KRect lr = krect(1, list_y, ktui_w - 2,
+					 list_h > 0 ? list_h : 1);
+
+			switch (ktui_rows_event(lr, &sel, &top, nrows, &ev)) {
+			case KTUI_ROWS_MOVED:
+				while (sel < nrows && rows[sel].heading)
+					sel++;
+				if (sel >= nrows)
+					sel = nrows ? nrows - 1 : 0;
+				break;
+			case KTUI_ROWS_PICKED:
+				if (sel < nrows && !rows[sel].heading)
+					fire(sel);
+				break;
+			case KTUI_ROWS_CLOSE:
+				goto done;
+			default:
+				break;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
@@ -829,6 +862,7 @@ int palette_main(int argc, char **argv)
 		}
 	}
 
+done:
 	sh_fsearch_stop();
 	if (!dump)
 		kdisp_shutdown();

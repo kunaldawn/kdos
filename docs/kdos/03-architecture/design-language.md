@@ -71,6 +71,42 @@ are two button bars, and the one nobody is looking at is the one that drifts.
 | `kch_tile_*` | A block of cells drawn as pixels |
 | `kch_tone`, `kch_slot_rgb` | Palette-derived shading |
 
+**The controls are `libktui`'s and there is one of each.** A surface that drew its own is a second
+answer to a shape this desktop has already settled, and the one nobody is looking at is the one that
+drifts:
+
+| Control | Is |
+|---|---|
+| `ktui_button`, `ktui_check`, `ktui_radio` | A verb, a flag, one of a set |
+| `ktui_slider` | **A number on a track** — press, drag, wheel, or an end cap for one step |
+| `ktui_dropdown_*` | A choice, as a list that opens under its row |
+| `ktui_input` | A line of text with a caret |
+| `ktui_list`, `ktui_table` | Rows, and rows with columns |
+| `ktui_rows_*` | Which row a pointer is on, for a surface that draws its own |
+| `ktui_tabs_*` | A strip of pages |
+| `KtuiMenu`, `ktui_modal` | A pane of verbs, and a question |
+| `ktui_progress`, `ktui_gauge`, `ktui_sparkline`, `ktui_heat` | What is happening, in four shapes |
+
+**Each is a `draw`/`key`/`hit` trio with one frame control on top of it**, which is what lets a
+surface that runs its own event loop — `kdos-settings`, `kdos-display` — use the same control as one
+written inside `ktui_frame_begin()`. A control that existed only inside the frame is a control those
+surfaces write a second time.
+
+**EVERYTHING THE KEYBOARD CAN DO, THE POINTER CAN DO.** Not "most things": a verb reachable by a
+chord and by nothing else is a verb that does not exist for somebody using a mouse, and the shipped
+key card is not a thing anybody reads first. The rule binds both ways — every control here answers
+arrows and `Enter` as well as a press — and it is why the window menu carries every per-window verb
+rather than the memorable half of them, and why a number in a settings form is a track and not a
+printed string.
+
+**`if (ev.type != KT_EVT_KEY) continue;` is how that rule is broken, and eleven surfaces had it.**
+The accent picker, the character map, the calculator, the command palette, the trash, the file
+search, the contacts list, the notes pad, the recorder and both viewers each dropped every pointer
+event before anything could be asked of it — so a person could look at seven colour schemes and
+choose none of them. A surface that draws its own rows uses `ktui_rows_event` rather than inventing
+an answer: a press MOVES the caret, a press on the row the caret is already on PICKS, the wheel
+walks, the right button is Back. One implementation, because eleven would be eleven desktops.
+
 **A button bar drops buttons; it does not vanish.** Buttons are ordered most-useful-first and
 dropped from the **right** when the surface is too narrow, never half-drawn. A bar that
 disappeared entirely would fall back to a row of key hints — which is what the buttons exist to
@@ -168,9 +204,17 @@ is the honest answer where there is nothing to mix with. **Both ends of the mix 
 palette in force and it is recomputed every frame**, so a retint moves it like everything drawn in
 slots; that is why this is not the rule above being broken. **Backgrounds only** — a translucent
 glyph is a glyph nobody can read — and a sprite cell is skipped, because a picture's pixels are not
-a background. `window_opacity` and `panel_opacity` in `con.conf` are where a person asks for it; on
-a compositor a surface asks through `KDispConfig.opacity`, which dims one slot in `libkcell` and
-takes an alpha buffer instead.
+a background. `window_opacity` and `panel_opacity` in `con.conf` are where a person asks for it, and
+`Super+Ctrl+=` / `Super+Ctrl+-` / `Super+Ctrl+Alt+0` are where one window disagrees; on a compositor
+a surface asks through `KDispConfig.opacity`, which dims one slot in `libkcell` and takes an alpha
+buffer instead.
+
+**The drop shadow is the same mechanism.** It darkens rather than erases: every cell under the
+one-cell strip keeps its glyph and both halves are mixed towards `KT_BG`, so the window underneath
+stays legible and an embedded application's picture is left alone entirely. The background slot goes
+to `KT_BG` beside the literal, and that is the whole of the shadow where the colour run was
+declined. A shadow that wrote a blank cut a rectangular bite out of whatever it fell on, which reads
+as a compositing defect rather than as depth.
 
 Two rules on top of that, both of which have shipped as defects:
 

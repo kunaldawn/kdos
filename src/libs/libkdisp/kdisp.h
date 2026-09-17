@@ -265,8 +265,11 @@ typedef struct {
 
 	/*
 	 * THIS SURFACE MANAGES THE SESSION'S WINDOWS: a panel, a task
-	 * switcher, a window menu. It asks to be sent the window list and to
-	 * be allowed to raise, close and minimise what is on it.
+	 * switcher, a window menu, the desktop's own root menu. It asks to be
+	 * sent the window list, to be allowed to raise, close and minimise
+	 * what is on it, and to ask the session for one of ITS OWN verbs —
+	 * `kdisp_session_action`, which is how a pointer reaches tiling and
+	 * everything else that was bound to a chord and to nothing else.
 	 *
 	 * IT IS A PRIVILEGE AND IT IS ASKED FOR EXPLICITLY. A surface that
 	 * did not ask cannot act on another program's window, which is what
@@ -437,6 +440,15 @@ typedef struct {
 	int (*win_count)(void);
 	int (*win_at)(int i, KDispWin *out);
 	void (*win_activate)(unsigned id);
+	/*
+	 * RUN ONE OF THE SESSION'S OWN VERBS, by the name `keys.conf` gives it
+	 * — `tile`, `cascade`, `show-desktop`, `windows`, `lock`. NULL on a
+	 * display that has no such thing: the compositor desktop's verbs are
+	 * the compositor's own actions and are reached through its
+	 * configuration, so a surface asking here gets nothing there and must
+	 * be built to accept that.
+	 */
+	void (*session_action)(const char *verb);
 	void (*win_close)(unsigned id);
 	/* One KDISP_WIN_ bit, and the value wanted. Minimise, maximise and
 	 * fullscreen are one request with a different bit; the named callers
@@ -566,6 +578,9 @@ void kdisp_out_set_mode(int i, int m, int keep);
 int kdisp_win_count(void);
 int kdisp_win_at(int i, KDispWin *out);
 void kdisp_win_activate(unsigned id);
+/* Ask the session for one of its own verbs. Silently nothing where the display
+ * has none — see KDispBackend.session_action. */
+void kdisp_session_action(const char *verb);
 void kdisp_win_close(unsigned id);
 void kdisp_win_minimise(unsigned id, int on);
 void kdisp_win_maximise(unsigned id, int on);

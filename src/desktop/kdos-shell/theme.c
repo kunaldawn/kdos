@@ -484,6 +484,66 @@ int theme_main(int argc, char **argv)
 		}
 		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			break;
+
+		/*
+		 * THE POINTER, ON THE SAME TWO LISTS THE ARROWS WALK.
+		 *
+		 * This window is what the Appearance page's `Accent…` row
+		 * opens, and it answered no pointer event at all: a person who
+		 * arrived here with a mouse could look at seven schemes and
+		 * choose none of them. A press previews like an arrow does and
+		 * a press on the row already under the caret keeps it, which
+		 * is `ktui_rows_event`'s rule and every other list's here.
+		 *
+		 * The strip is asked first, because a tab is not a row.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int rows = h - 4;
+			KRect lr = krect(1, 2, w - 2, rows > 0 ? rows : 1);
+			int n = page == PG_FONT ? kdisp_font_count()
+					        : kcol_nscheme;
+			int *at = page == PG_FONT ? &fsel : &sel;
+			int top = 0;
+
+			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT &&
+			    ktui_tabs_hit(krect(2, 1, w - 4, 1), PAGES, PG_N,
+					  0, ev.mx, ev.my) >= 0) {
+				page = ktui_tabs_hit(krect(2, 1, w - 4, 1),
+						     PAGES, PG_N, 0, ev.mx,
+						     ev.my);
+				continue;
+			}
+			switch (ktui_rows_event(lr, at, &top, n, &ev)) {
+			case KTUI_ROWS_MOVED:
+				if (page == PG_FONT)
+					font_preview(fsel);
+				else
+					preview(sel);
+				break;
+			case KTUI_ROWS_PICKED:
+				/* KEPT, exactly as Enter keeps — see the key
+				 * arm below for why neither the preview nor
+				 * the font step persists without it. */
+				if (page == PG_FONT) {
+					if (n > 0) {
+						kdisp_font_set(fsel, 1);
+						fopen_idx = fapplied = fsel;
+						goto done;
+					}
+				} else {
+					run_theme(kcol_schemes[sel].name, NULL);
+					opened_on[0] = '\0';
+					goto done;
+				}
+				break;
+			case KTUI_ROWS_CLOSE:
+				goto done;
+			default:
+				break;
+			}
+			continue;
+		}
+
 		if (ev.type != KT_EVT_KEY)
 			continue;
 		/*
@@ -557,6 +617,7 @@ int theme_main(int argc, char **argv)
 		}
 	} while (!stop && !kdisp_should_close());
 
+done:
 	restore();
 	font_restore();
 	if (!dump)

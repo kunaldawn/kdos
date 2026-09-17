@@ -9,18 +9,32 @@
  *
  *   ╔═ Settings ═══════════════════════════════════════════════╗
  *   ║ Appearance │ accent           phosphor            live   ║
- *   ║ Session    │▸crt              55                  live   ║
- *   ║ Input      │ crt_scanlines    60                  live   ║
+ *   ║ Session    │▸crt              ◀ █████░░░░  55 ▶    live   ║
+ *   ║ Input      │ crt_fullscreen   on               ▼  live   ║
  *   ║ Apps       │ chrome_font      Terminus:pixel…     login  ║
  *   ╟────────────┴─────────────────────────────────────────────╢
  *   ║ the phosphor shader's strength; 0 is an honest off        ║
- *   ║ ←→ change  Enter edit  a apply  Esc close      [ Apply ]  ║
+ *   ║ ◀▶ change  Enter edit  a apply  Esc close      [ Apply ]  ║
  *   ╚══════════════════════════════════════════════════════════╝
  *
  * Every knob on this desktop was a text file and nothing else — which is the
  * right storage and the wrong interface for somebody who does not already know
  * the file exists. This is the OS/2-setup lineage: a category list, a form, and
  * no mode the mouse cannot reach.
+ *
+ * AND EVERY VALUE IS A CONTROL. A number is a `ktui_slider` — press its track,
+ * drag it, roll the wheel over it, click an end cap for one step — and a
+ * choice is a `ktui_dropdown` that opens under its row. Both were printed
+ * strings changed with Left and Right, which made this a settings window
+ * somebody holding a mouse could select a row in and do nothing else with.
+ *
+ * THE CONTROL ANSWERS THE FIRST PRESS. One gesture selects the row and sets
+ * the value; a slider that needed the row selecting first would be two
+ * movements for one. The drag belongs to the press that began it, so the
+ * pointer may leave the column and go on setting the value, and an open
+ * dropdown owns the pointer and the keyboard while it is down — it is drawn
+ * over the rows beneath it, and a press tested against those rows would pick
+ * whatever the list is covering.
  *
  * IT WRITES THE SAME TEXT FILES, AND PRESERVES THEM. comp.conf ships as a
  * commented essay about each key; a settings app that rewrote it would delete
@@ -609,6 +623,25 @@ static int cat, sel, top, pane;		/* pane 0 = categories, 1 = fields */
 static int sel_follow = 1;
 static char note[192];
 static int editing, quit_armed;
+/* A press that landed on a slider's track owns every drag behind it, so the
+ * pointer may leave the column and go on setting the value. Cleared by the
+ * release, like any other capture. */
+static int drag_slider;
+
+/*
+ * THE EVENT THE EDITING FIELD WILL SEE.
+ *
+ * `ktui_input` is a frame control: it reads the event `ktui_frame_begin` was
+ * given, so a key meant for the field has to reach the DRAW rather than be
+ * spent in the loop. This surface hand-rolled a buffer instead — backspace and
+ * printable bytes, no caret to move, no paste, and a UTF-8 value cut in half by
+ * one backspace. Handing the event across is what lets the one field in the
+ * toolkit be the field here too.
+ *
+ * Cleared by the draw that spends it: an event left standing would be applied
+ * again on the next repaint, which is one keystroke typed twice.
+ */
+static KtuiEvent field_ev;
 static char edit_buf[256];
 
 /*
@@ -1315,6 +1348,22 @@ static struct row *sel_row(void)
 	return ri >= 0 ? &rows[ri] : NULL;
 }
 
+/* The same lookup for a row the POINTER is on rather than the caret. */
+static struct row *row_at(int n)
+{
+	int ri;
+
+	if (cat == CAT_BOXES) {
+		if (box_mode == BOX_LIST || n < 0 || n >= NBOXROWS)
+			return NULL;
+		if (box_mode != BOX_NEW && !strcmp(boxrows[n].key, "name"))
+			return NULL;
+		return &boxrows[n];
+	}
+	ri = cat_row(n);
+	return ri >= 0 ? &rows[ri] : NULL;
+}
+
 static void cycle(struct row *r, int dir)
 {
 	if (r->type == FT_CHOICE && r->nchoices) {
@@ -1337,6 +1386,88 @@ static void cycle(struct row *r, int dir)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 #define CATW 13
+
+/*
+ * ── THE VALUE COLUMN IS A CONTROL ────────────────────────────────
+ *
+ * Every knob here was a printed string changed with Left and Right, which is a
+ * settings window a mouse cannot use: a person who came to this surface with a
+ * pointer could select a row and nothing else. A number is a slider, a choice
+ * is a dropdown, and both answer a press, a drag and a wheel.
+ *
+ * ONE RECTANGLE FUNCTION, READ BY THE DRAW AND BY THE HIT TEST. A control the
+ * pointer misses by a cell is a control that does not exist.
+ */
+static KRect val_rect(int y, int fx, int fw)
+{
+	int vw = fw - 20 - 7;
+
+	if (vw < 4)
+		vw = 4;
+	return krect(fx + 19, y, vw, 1);
+}
+
+/* The same rectangle from a SCREEN row, which is what a pointer reports. The
+ * two columns are the page's and not the caller's, so both halves derive them
+ * here rather than each measuring the window for itself. */
+static KRect val_rect_at(int screen_y)
+{
+	int fx = CATW + 3;
+	int fw = ktui_w - fx - 1;
+
+	if (fw < 8)
+		fw = 8;
+	return val_rect(screen_y, fx, fw);
+}
+
+/*
+ * ONE DROPDOWN, BELONGING TO WHICHEVER ROW IS SELECTED. Only one list can be
+ * open at a time — it is drawn over the rows under it — so a `KtuiDrop` per
+ * row would be fifty copies of one piece of state, forty-nine of them stale.
+ * `drop_row` is which row it is currently describing; a selection that moves
+ * closes it, because a list hanging under a row nobody is on is a list that
+ * answers for the wrong key.
+ */
+static KtuiDrop drop;
+static int drop_row = -1;
+
+static int choice_at(const struct row *r)
+{
+	for (int i = 0; i < r->nchoices; i++)
+		if (!strcmp(r->val, r->choices[i]))
+			return i;
+	return 0;
+}
+
+static void drop_close(void)
+{
+	drop.open = 0;
+	drop_row = -1;
+}
+
+/*
+ * WHAT WAS TYPED, INTO THE ROW. One place, because Enter and a click away from
+ * the field are the same answer — two copies of the clamp would be two
+ * different ideas of what a number out of range becomes.
+ */
+static void commit_edit(void)
+{
+	struct row *er = sel_row();
+
+	if (!er)
+		return;
+	if (er->type == FT_INT) {
+		int v = atoi(edit_buf);
+
+		if (v < er->min)
+			v = er->min;
+		if (v > er->max)
+			v = er->max;
+		snprintf(er->val, sizeof(er->val), "%d", v);
+	} else {
+		kb_strlcpy(er->val, edit_buf, sizeof(er->val));
+	}
+}
 
 /*
  * A value too wide for its column, marked as such — libktui clips silently,
@@ -1594,19 +1725,66 @@ static void draw_page(void)
 		 * `live` and `login` are the two answers to "did that do
 		 * anything", and they belong on the row that raises it. */
 		const char *tag = r->scope == SC_LIVE ? "live" : "login";
-		int vw = fw - 20 - 7;
-		if (vw < 4)
-			vw = 4;
+		KRect vr = val_rect(y, fx, fw);
 		char shown[256];
-		ktui_draw_text(fx + 19, y, vw,
-			       elide(r->val[0] ? r->val : "(unset)", vw,
-				     shown, sizeof(shown)),
-			       on ? fg : (r->val[0] ? KT_MID : KT_DIM), bg,
-			       KT_A_NONE);
+
+		/*
+		 * A NUMBER IS A SLIDER AND A CHOICE IS A DROPDOWN, and the
+		 * row being EDITED is neither: while a person is typing an
+		 * exact value, what belongs in that column is what they have
+		 * typed.
+		 */
+		if (r->type == FT_INT && !(on && editing)) {
+			ktui_slider_draw(vr, atoi(r->val), r->min, r->max, on,
+					 bg);
+		} else if (r->type == FT_CHOICE && !(on && editing)) {
+			KtuiDrop d = { choice_at(r), 0, 0 };
+
+			if (on && drop_row == idx)
+				d = drop;
+			ktui_dropdown_draw(vr, &d, r->choices, r->nchoices, on);
+		} else if (on && editing) {
+			/*
+			 * THE ONE FIELD IN THE TOOLKIT, with the caret, the
+			 * arrows, Home and End, a click to place it and the
+			 * paste queue — and with UTF-8 handled in columns, so
+			 * a backspace cannot cut a character in half.
+			 *
+			 * The frame is opened and closed around this one
+			 * control because the surface has an event loop of its
+			 * own; with a single control claimed the focus is
+			 * always it.
+			 */
+			ktui_draw_fill(vr, bg);
+			ktui_frame_begin(&field_ev);
+			ktui_input(vr, edit_buf, sizeof(edit_buf), 0, NULL);
+			ktui_frame_end();
+			memset(&field_ev, 0, sizeof(field_ev));
+		} else {
+			ktui_draw_text(vr.x, y, vr.w,
+				       elide(r->val[0] ? r->val : "(unset)",
+					     vr.w, shown, sizeof(shown)),
+				       on ? fg : (r->val[0] ? KT_MID : KT_DIM),
+				       bg, KT_A_NONE);
+		}
 		ktui_draw_text_right(0, y, w - 2, tag,
 				     on ? fg : (r->scope == SC_LIVE ? KT_MID
 							            : KT_DIM),
 				     bg, KT_A_NONE);
+	}
+
+	/*
+	 * AND THE OPEN LIST LAST, OVER THE ROWS IT COVERS. A dropdown drawn in
+	 * its own row's turn would be painted over by every row below it.
+	 */
+	if (drop.open && drop_row >= top && drop_row < top + pane_rows) {
+		struct row *dr = sel_row();
+
+		if (dr && dr->type == FT_CHOICE)
+			ktui_dropdown_draw_open(val_rect(1 + drop_row - top, fx,
+							 fw),
+						&drop, dr->choices,
+						dr->nchoices);
 	}
 
 	/*
@@ -2191,6 +2369,33 @@ int settings_main(int argc, char **argv)
 					continue;
 				}
 				if (in_fields && !editing) {
+					/*
+					 * A DRAG ON A SLIDER SETS IT, and on
+					 * anything else moves the caret. The
+					 * row is the one the press began on,
+					 * which is what lets the pointer leave
+					 * the column and go on setting the
+					 * value.
+					 */
+					struct row *dr = row_at(sel);
+
+					if (dr && dr->type == FT_INT &&
+					    drag_slider) {
+						int v = atoi(dr->val);
+
+						if (ktui_slider_hit(
+							    val_rect_at(1 + sel -
+									top),
+							    &v, dr->min,
+							    dr->max,
+							    dr->step ? dr->step
+								     : 1,
+							    ev.mx, ev.my, 0))
+							snprintf(dr->val,
+								 sizeof(dr->val),
+								 "%d", v);
+						continue;
+					}
 					pane = 1;
 					sel = row;
 					sel_follow = 1;
@@ -2199,10 +2404,35 @@ int settings_main(int argc, char **argv)
 			}
 			if (ev.press == KT_MP_RELEASE) {
 				kch_scrollbar_release();
+				drag_slider = 0;
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			/*
+			 * AN OPEN LIST IS OVER THE ROWS AND ANSWERS FIRST.
+			 * It was drawn last, so a press tested against the
+			 * rows would pick whatever the list is covering — and
+			 * a press outside it closes without choosing, which is
+			 * the only reading of a click on the thing a list is
+			 * standing in front of.
+			 */
+			if (drop.open && ev.btn == KT_MB_LEFT) {
+				struct row *dr = row_at(drop_row);
+
+				if (dr && dr->type == FT_CHOICE &&
+				    ktui_dropdown_hit(val_rect_at(1 + drop_row -
+								  top),
+						      &drop, dr->nchoices,
+						      ev.mx, ev.my) &&
+				    drop.sel >= 0 && drop.sel < dr->nchoices)
+					kb_strlcpy(dr->val,
+						   dr->choices[drop.sel],
+						   sizeof(dr->val));
+				if (!drop.open)
+					drop_close();
+				continue;
+			}
 			if (ev.btn == KT_MB_LEFT) {
 				int bt = kch_scrollbar_press(0, ev.mx, ev.my);
 
@@ -2212,12 +2442,29 @@ int settings_main(int argc, char **argv)
 					continue;
 				}
 			}
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				sel--;
-				sel_follow = 1;
-			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
-				sel++;
-				sel_follow = 1;
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				/*
+				 * A DETENT OVER A CONTROL TURNS IT and
+				 * anywhere else scrolls the page. A wheel that
+				 * always scrolled would leave the pointer
+				 * unable to nudge a value at all.
+				 */
+				int up = ev.btn == KT_MB_WHEEL_UP;
+				struct row *wr = in_fields && !editing
+						 ? row_at(row) : NULL;
+
+				if (wr && (wr->type == FT_INT ||
+					   wr->type == FT_CHOICE) &&
+				    krect_hit(val_rect_at(ev.my), ev.mx,
+					      ev.my)) {
+					pane = 1;
+					sel = row;
+					cycle(wr, up ? 1 : -1);
+				} else {
+					sel += up ? -1 : 1;
+					sel_follow = 1;
+				}
 			} else if (ev.btn == KT_MB_RIGHT) {
 				/* Back one level, the same as Escape. */
 				mode = SM_HOME;
@@ -2247,13 +2494,59 @@ int settings_main(int argc, char **argv)
 					}
 					pane = 0;
 				} else if (in_fields && !editing) {
+					struct row *cr = row_at(row);
+					KRect vr = val_rect_at(ev.my);
+					int on_val = krect_hit(vr, ev.mx,
+							       ev.my);
+					/* Where the caret WAS: a click on the
+					 * row it is already on is the one that
+					 * activates, and moving it first would
+					 * make every first click an activate. */
+					int sel_was = sel, pane_was = pane;
+
+					pane = 1;
+					sel = row;
+
+					/*
+					 * THE CONTROL IN THE VALUE COLUMN
+					 * ANSWERS FIRST, and it answers on the
+					 * FIRST press rather than the second:
+					 * a slider that needed the row
+					 * selecting before it could be dragged
+					 * would be two gestures for one
+					 * movement.
+					 */
+					if (cr && on_val &&
+					    cr->type == FT_INT) {
+						int v = atoi(cr->val);
+
+						drag_slider = 1;
+						if (ktui_slider_hit(
+							    vr, &v, cr->min,
+							    cr->max,
+							    cr->step ? cr->step
+								     : 1,
+							    ev.mx, ev.my, 1))
+							snprintf(cr->val,
+								 sizeof(cr->val),
+								 "%d", v);
+						continue;
+					}
+					if (cr && on_val &&
+					    cr->type == FT_CHOICE) {
+						drop.sel = choice_at(cr);
+						drop.hi = drop.sel;
+						drop.open = !drop.open ||
+							    drop_row != row;
+						drop_row = drop.open ? row
+								     : -1;
+						continue;
+					}
 					/* A click on the row that is already
 					 * selected activates it — pick.c's
 					 * rule, so one hand learns one thing. */
-					if (row == sel && pane == 1)
+					if (row == sel_was && pane_was == 1)
 						activate();
-					pane = 1;
-					sel = row;
 				}
 			}
 			continue;
@@ -2263,34 +2556,40 @@ int settings_main(int argc, char **argv)
 
 		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
+		/*
+		 * AN OPEN LIST OWNS THE KEYBOARD WHILE IT IS DOWN, exactly as
+		 * it owns the pointer: a caret that walked the rows underneath
+		 * would leave the list describing a key nobody is on.
+		 */
+		if (drop.open) {
+			struct row *dr = row_at(drop_row);
+
+			if (!dr || dr->type != FT_CHOICE) {
+				drop_close();
+			} else if (ktui_dropdown_key(&drop, dr->nchoices,
+						     ev.key) &&
+				   drop.sel >= 0 && drop.sel < dr->nchoices) {
+				kb_strlcpy(dr->val, dr->choices[drop.sel],
+					   sizeof(dr->val));
+			}
+			if (!drop.open)
+				drop_close();
+			continue;
+		}
+
 		if (editing) {
-			struct row *er = sel_row();
-			size_t len = strlen(edit_buf);
 			if (ev.key == KT_K_ENTER) {
-				if (er) {
-					if (er->type == FT_INT) {
-						int v = atoi(edit_buf);
-						if (v < er->min)
-							v = er->min;
-						if (v > er->max)
-							v = er->max;
-						snprintf(er->val,
-							 sizeof(er->val),
-							 "%d", v);
-					} else {
-						kb_strlcpy(er->val, edit_buf,
-							   sizeof(er->val));
-					}
-				}
+				commit_edit();
 				editing = 0;
-			} else if (ev.key == KT_K_BACKSPACE) {
-				if (len)
-					edit_buf[len - 1] = '\0';
-			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
-			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
-				   len + 1 < sizeof(edit_buf)) {
-				edit_buf[len] = (char)ev.key;
-				edit_buf[len + 1] = '\0';
+			} else {
+				/*
+				 * EVERYTHING ELSE IS THE FIELD'S, and it is
+				 * handed across rather than acted on here —
+				 * the control reads the event the frame was
+				 * given. Escape is not excepted: `ktui_keys`
+				 * above has already taken it.
+				 */
+				field_ev = ev;
 			}
 			continue;
 		}

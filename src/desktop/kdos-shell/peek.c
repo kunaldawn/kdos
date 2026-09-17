@@ -537,6 +537,25 @@ int peek_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER WALKS AN ARCHIVE'S ENTRIES AND CLOSES THE PANE.
+		 * A preview that answered no pointer event could be scrolled
+		 * with a keyboard and dismissed with one, which is not how
+		 * anybody uses a preview.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				if (kind == PK_ARCHIVE && sel > 0)
+					sel--;
+			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
+				if (kind == PK_ARCHIVE && sel + 1 < nents)
+					sel++;
+			} else if (ev.press == KT_MP_PRESS &&
+				   ev.btn == KT_MB_RIGHT) {
+				break;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

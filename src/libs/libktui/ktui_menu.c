@@ -359,8 +359,15 @@ void ktui_menu_draw(KtuiMenu *m)
 		fg = !it->enabled ? KT_DIM : on ? KT_SURFACE : KT_TEXT;
 		ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1), bg);
 		ktui_menu_label(r.x + 2, y, r.w - 4, it->label, fg, bg);
+		/*
+		 * A WIDTH, NOT THE COLUMN IT ENDS ON. ktui_draw_text_right()
+		 * ends the text at `x + w - 1`, so a `w` that already carried
+		 * the pane's own x put the chord that many cells to the right
+		 * of the pane — outside the box, over the desktop, and past
+		 * every clamp the pane's rectangle went through.
+		 */
 		if (it->accel)
-			ktui_draw_text_right(r.x, y, r.x + r.w - 2, it->accel,
+			ktui_draw_text_right(r.x, y, r.w - 2, it->accel,
 					     on ? KT_SURFACE : KT_MID, bg,
 					     KT_A_NONE);
 		y++;

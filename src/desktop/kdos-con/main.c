@@ -1020,11 +1020,18 @@ static void rearrange_end(int keep)
 {
 	Win *w = win_find(rear.id);
 
-	if (w && !keep) {
+	if (w && !keep)
 		w->geom = rear.from;
-		win_resized(w);
-	}
+	/*
+	 * THE MODE IS OVER BEFORE THE SIZE GOES OUT. An interactive resize
+	 * holds a guest's block grid still for the length of the gesture (see
+	 * con_sizing_id), so a win_resized() called while this still named the
+	 * window would be held back exactly like every step before it — and
+	 * the rectangle the person settled on would reach nothing.
+	 */
 	rear.id = 0;
+	if (w)
+		win_resized(w);
 	ktui_draw_invalidate();
 }
 
@@ -1133,8 +1140,16 @@ static int rearrange_key(const KtuiEvent *ev)
 	w->tiled = 0;
 	if (!size)
 		g = snap_to_screen(w->geom, g);
+
+	KwmRect was = w->geom;
+
 	w->geom = kwm_fit(g, win_workarea(), w->min_w, w->min_h);
-	win_resized(w);
+	/* The same rule the pointer drag keeps: an arrow that only moved the
+	 * window tells nobody a size they already have. */
+	if (w->geom.w != was.w || w->geom.h != was.h)
+		win_resized(w);
+	else
+		win_moved(w);
 	ktui_draw_invalidate();
 	return 1;
 }
@@ -2063,6 +2078,20 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_UNSTACK:
 		win_stack_unstack(w);
 		return 1;
+	/*
+	 * THE WINDOW IN FRONT, AND NOT THE DESKTOP. `con.conf` says what a
+	 * window starts at; these say what THIS one is, because the window
+	 * worth seeing through is chosen while looking at it.
+	 */
+	case CON_ACT_OPACITY_UP:
+		win_opacity_step(w, 10);
+		return 1;
+	case CON_ACT_OPACITY_DOWN:
+		win_opacity_step(w, -10);
+		return 1;
+	case CON_ACT_OPACITY_RESET:
+		win_opacity_step(w, 0);
+		return 1;
 	case CON_ACT_WINMENU:
 		/*
 		 * OVER THE WINDOW'S OWN TITLE ROW, which is where a right
@@ -2299,10 +2328,45 @@ void con_key_to_window(const KtuiEvent *ev)
 static struct {
 	int id;			/* the window, or 0 for no grab            */
 	int resizing;		/* 0 moves the window, 1 resizes it        */
-	int ox, oy;		/* the pointer when the button went down   */
+	int ox, oy;		/* the pointer when the button went down,  */
+				/* in PIXELS — see grab_px()               */
+	int cw, ch;		/* the cell it was measured in             */
 	KwmRect og;		/* its rectangle then                      */
 	unsigned edges;		/* which edges a resize moves              */
 } grab;
+
+/*
+ * THE POINTER IN PIXELS, AND A DRAG IS MEASURED IN THEM.
+ *
+ * A window lands on cell boundaries because it is made of cells, but the
+ * DISTANCE the hand has travelled is not a whole number of them: a drag begun
+ * near the right-hand edge of a cell and measured in cells alone jumps a whole
+ * character on the first pixel of movement, and then again on every crossing,
+ * so the window runs ahead of the hand by up to a cell and never settles under
+ * it. Measured in pixels and divided at the end, the window moves exactly as
+ * far as the pointer did, to the nearest cell it can sit on.
+ *
+ * The view says what a cell is; a view that has not — one inside somebody
+ * else's terminal, which has no pixels to report — gets one-pixel cells, and
+ * the arithmetic below is then the cell arithmetic it always was.
+ */
+static void grab_cell(int *cw, int *ch)
+{
+	KconSurface *v = S.server ? kcon_server_view_at(S.server, 0) : NULL;
+
+	*cw = v ? kcon_view_cell_w(v) : 0;
+	*ch = v ? kcon_view_cell_h(v) : 0;
+	if (*cw < 2 || *ch < 2 || *cw > 64 || *ch > 64)
+		*cw = *ch = 1;
+}
+
+static void grab_px(const KtuiEvent *ev, int cw, int ch, int *px, int *py)
+{
+	/* `subx` is the offset from the cell's CENTRE in 1/256ths, so the
+	 * cell's own origin is half a cell back from it. */
+	*px = ev->mx * cw + (ev->subx + 128) * cw / 256;
+	*py = ev->my * ch + (ev->suby + 128) * ch / 256;
+}
 
 /*
  * DROP ANY DRAG AND ANY HELD CHIP, for a caller that is about to take the
@@ -2317,18 +2381,63 @@ static struct {
  */
 void con_grab_cancel(void)
 {
+	/*
+	 * AND THE SIZE THE GESTURE REACHED STILL GOES OUT. An interactive
+	 * resize holds the client's size back for its whole length, so a drag
+	 * ended from here rather than by a release would leave the window at
+	 * the rectangle the pointer drew and the client at the one it started
+	 * in, with nothing left to tell it.
+	 */
+	Win *w = grab.id && grab.resizing ? win_find(grab.id) : NULL;
+
 	grab.id = 0;
 	win_button_disarm();
+	if (w)
+		win_resized(w);
+}
+
+/*
+ * THE WINDOW AN INTERACTIVE RESIZE IS HOLDING, or 0.
+ *
+ * A GESTURE IS NOT A SEQUENCE OF RESIZES. An embedded guest's block grid is cut
+ * for one rectangle and the cut allocates a session sprite slot per block; a
+ * slot taken mid-drag names a picture no display has ever been sent, so the
+ * cells that name it are drawn as flat backdrop until the pixels arrive. Every
+ * re-cut therefore punches holes along the edge being dragged and fills them in
+ * again a frame later, which is the flicker — and no rate makes it smooth,
+ * because the hole is in the mechanism and not in how often it runs.
+ *
+ * So the cut stands still for as long as the hand is moving. The frame is the
+ * size the pointer says, the guest's pixels are the size it last rendered, and
+ * `embed_draw` clamps to both: a window that has grown shows its own fill where
+ * the guest has not reached, and one that has shrunk draws what fits. The
+ * release is what asks for the new size, once.
+ *
+ * BOTH GESTURES, because both step a rectangle a cell at a time: the pointer
+ * drag and the keyboard `rearrange` mode.
+ */
+int con_sizing_id(void)
+{
+	if (grab.id && grab.resizing)
+		return grab.id;
+	return rear.id;
 }
 
 static void grab_apply(const KtuiEvent *ev)
 {
 	Win *w = win_find(grab.id);
-	int dx = ev->mx - grab.ox, dy = ev->my - grab.oy;
+	int px, py, dx, dy;
 	KwmRect g = grab.og;
 
 	if (!w)
 		return;
+
+	grab_px(ev, grab.cw, grab.ch, &px, &py);
+	/* Integer division truncates towards zero, which is the rounding this
+	 * wants at both ends: a hand that has moved less than a cell has moved
+	 * the window by none of one, whichever way it went. */
+	dx = (px - grab.ox) / grab.cw;
+	dy = (py - grab.oy) / grab.ch;
 
 	if (!grab.resizing) {
 		g.x += dx;
@@ -2359,10 +2468,24 @@ static void grab_apply(const KtuiEvent *ev)
 	 * snapped one obeying different work-area rules is two answers to one
 	 * question, and the panel's exclusive zone is in that answer.
 	 */
+	KwmRect was = w->geom;
+
 	w->geom = kwm_fit(g, win_workarea(), w->min_w, w->min_h);
 	/* A dragged window is no longer where a tile put it. */
 	w->tiled = 0;
-	win_resized(w);
+	/*
+	 * A MOVE IS NOT A RESIZE, AND ONLY A RESIZE TELLS ANYBODY.
+	 *
+	 * win_resized() reflows a terminal, configures a surface and re-cuts a
+	 * guest's block grid; a window whose rectangle only moved has the same
+	 * size in every one of those and the work is thrown away. The size CAN
+	 * still change on a move — kwm_fit shrinks a window larger than the
+	 * work area — so the test is the rectangle and not the gesture.
+	 */
+	if (w->geom.w != was.w || w->geom.h != was.h)
+		win_resized(w);
+	else
+		win_moved(w);
 	ktui_draw_invalidate();
 }
 
@@ -2834,7 +2957,19 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 		if (ev->press == KT_MP_DRAG)
 			grab_apply(ev);
 		else {
+			Win *gw = win_find(grab.id);
+
 			grab.id = 0;
+			/*
+			 * AND THE SIZE THE GESTURE ENDED ON IS ASSERTED ONCE
+			 * MORE. Everything win_resized() reaches is rate-gated
+			 * against what the client can answer, so the last
+			 * rectangle of a fast drag can be one nothing has been
+			 * told about — and a window left at the size before
+			 * the release is the resize that "did not take".
+			 */
+			if (gw && grab.resizing)
+				win_resized(gw);
 			/* THE CHROME WAS THE GRAB'S AND THE GRAB IS OVER: both
 			 * asked again with none held, so what is lit is the
 			 * border and the chip under the hand rather than the
@@ -2907,6 +3042,19 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 			if (ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
 				Win *t = win_find(arg);
 
+				/*
+				 * AND A RIGHT PRESS OPENS THAT WINDOW'S MENU,
+				 * over the row rather than over the window.
+				 * The row is the only thing on the screen a
+				 * MINIMISED window has, so without this its
+				 * verbs — close, send to a workspace, its
+				 * transparency — are reachable by the keyboard
+				 * and by nothing else.
+				 */
+				if (t && ev->btn == KT_MB_RIGHT) {
+					win_menu_open(t, ev->mx, ev->my);
+					return;
+				}
 				/* One row, two meanings, and the window's own
 				 * state picks: a row is how a minimised window
 				 * comes back, and how a visible one is
@@ -3100,8 +3248,8 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 		if (g != WIN_GRAB_NONE) {
 			grab.id = w->id;
 			grab.resizing = g == WIN_GRAB_RESIZE;
-			grab.ox = ev->mx;
-			grab.oy = ev->my;
+			grab_cell(&grab.cw, &grab.ch);
+			grab_px(ev, grab.cw, grab.ch, &grab.ox, &grab.oy);
 			grab.og = w->geom;
 			grab.edges = edges;
 			return;
@@ -3514,8 +3662,7 @@ static void route_touch(const KtuiEvent *ev)
 
 		if (win_grab_at(w, ev->mx, ev->my, KT_MB_LEFT, 0, &edges) !=
 		    WIN_GRAB_NONE) {
-			grab.id = 0;
-			win_button_disarm();
+			con_grab_cancel();
 			win_raise(w->id);
 			win_menu_open(w, ev->mx, ev->my);
 			return;
@@ -4113,6 +4260,32 @@ static void on_activate(KconSurface *f, unsigned id, void *user)
 		win_restore(w);
 	else
 		win_raise(w->id);
+}
+
+/*
+ * A MANAGING SURFACE ASKED FOR ONE OF THE SESSION'S OWN VERBS.
+ *
+ * THE NAME IS TURNED INTO ITS CHORD AND FED TO THE KEY HANDLER, which is the
+ * same road a keyboard takes. A second dispatcher keyed on names would be a
+ * second copy of the mapping from verb to effect, and the day the two
+ * disagreed the desktop menu would do something other than the chord printed
+ * beside it.
+ *
+ * A NAME THE BIND TABLE DOES NOT HAVE IS DROPPED. `keys.conf` is the user's
+ * file and a surface may be newer than the session it is talking to; a row
+ * that does nothing is what that has to look like, and it is why every such
+ * row prints its chord.
+ */
+static void on_action(KconSurface *f, const char *verb, void *user)
+{
+	KtuiEvent k = { 0 };
+
+	(void)f;
+	(void)user;
+	if (!keys_chord_of(verb, &k.key, &k.mods))
+		return;
+	k.type = KT_EVT_KEY;
+	session_key(&k);
 }
 
 static void on_close_request(KconSurface *f, unsigned id, void *user)
@@ -4843,6 +5016,7 @@ static int serve(const char *sock, const char *view)
 	h.clip_offer = clip_offer;
 	h.clip_request = clip_request;
 	h.activate = on_activate;
+	h.action = on_action;
 	h.close_request = on_close_request;
 	h.win_state = on_win_state;
 	h.capture = on_capture;

@@ -831,6 +831,37 @@ static int rec_buttons(int w, int row)
 	return kch_buttons(w, row, b, RB_N, -1);
 }
 
+/*
+ * WHAT A BUTTON DOES, in one place the pointer and the keys both reach. The
+ * key arms below run these same calls; a bar that dispatched its own copy
+ * would be a second answer to what `Record` means.
+ */
+static void rec_button(int b)
+{
+	switch (b) {
+	case RB_REC:
+		if (kid > 0)
+			rec_finish();
+		else if (nin > 0)
+			rec_start();
+		break;
+	case RB_TRANS:
+		if (*model && nfile > 0 && kid < 0)
+			transcribe();
+		break;
+	case RB_PLAY:
+		if (nfile > 0 && kid < 0)
+			play_sel();
+		break;
+	case RB_DEL:
+		if (nfile > 0 && kid < 0)
+			delete_sel();
+		break;
+	default:
+		break;
+	}
+}
+
 static void draw_inputs(int y, int rows, int w)
 {
 	int muted = sh_mic_muted();
@@ -1260,6 +1291,45 @@ int rec_main(int argc, char **argv)
 			}
 			continue;
 		}
+		/*
+		 * THE POINTER WALKS THE RECORDINGS AND WORKS THE BUTTON BAR.
+		 * This surface dropped every pointer event, so a recording
+		 * could be started, stopped, played and transcribed with a
+		 * keyboard and with nothing else — on a window whose whole
+		 * subject is a device somebody is holding.
+		 *
+		 * The bar is `libkchrome`'s and answers `kch_button_at`; the
+		 * file list is rows, on the rule every list here keeps.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			KRect lr = krect(2, fl_y, ktui_w - 4,
+					 fl_rows > 0 ? fl_rows : 1);
+			int bi;
+
+			if (ev.press == KT_MP_DRAG) {
+				kch_hover(ev.mx, ev.my);
+				continue;
+			}
+			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT &&
+			    (bi = kch_button_at(ev.mx, ev.my)) >= 0) {
+				if (bi == RB_CLOSE)
+					goto done;
+				rec_button(bi);
+				continue;
+			}
+			switch (ktui_rows_event(lr, &sel_file, &file_top, nfile,
+						&ev)) {
+			case KTUI_ROWS_PICKED:
+				if (kid < 0)
+					play_sel();
+				break;
+			case KTUI_ROWS_CLOSE:
+				goto done;
+			default:
+				break;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
@@ -1336,6 +1406,7 @@ int rec_main(int argc, char **argv)
 		}
 	}
 
+done:
 	rec_finish();
 	kdisp_shutdown();
 	return 0;

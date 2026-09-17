@@ -728,30 +728,6 @@ void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl)
 	}
 }
 
-/*
- * A one-cell offset drop shadow. Cheap depth cue that survives eight colours:
- * the shadow is not a tint, it is the backdrop colour re-asserted.
- *
- * It goes through ktui_draw_cell like every other primitive, so the clip
- * holds and the literal colour fields are cleared — a cell is compared WHOLE
- * downstream, and a shadow left holding the literals of whatever it covered
- * differs from an identical shadow elsewhere and is re-encoded and re-sent
- * every frame.
- *
- * The extent is put back afterwards: a shadow is decoration hanging one cell
- * outside the rect, and letting it grow the page's reported height would add
- * a phantom row to every scroll range measured around a shadowed box.
- */
-void ktui_draw_shadow(KRect r)
-{
-	int keep = extent;
-
-	for (int y = r.y + 1; y < r.y + r.h + 1; y++)
-		ktui_draw_cell(r.x + r.w, y, ' ', KT_DIM, KT_BG, 0);
-	for (int x = r.x + 1; x < r.x + r.w + 1; x++)
-		ktui_draw_cell(x, r.y + r.h, ' ', KT_DIM, KT_BG, 0);
-	extent = keep;
-}
 
 /*
  * XOR the reverse attribute over a rectangle of the frame being composed.
@@ -799,6 +775,44 @@ void ktui_draw_reverse(KRect r)
  * the foreground stays exactly the colour it was drawn in.
  */
 
+static uint32_t slot_rgb(int slot)
+{
+	KRgb k = ktui_theme->slot[slot & 7];
+
+	return (uint32_t)k.r << 16 | (uint32_t)k.g << 8 | k.b;
+}
+
+/* The two halves of a cell as colours, each its literal where one was named
+ * and its slot otherwise. Neither follows KT_A_REVERSE: this is what was
+ * WRITTEN, and the swap is the painter's. */
+static uint32_t cell_fg_rgb(const KtuiCell *c)
+{
+	return (c->attr & KT_A_FGRGB) ? c->fgc & 0xffffffu : slot_rgb(c->fg);
+}
+
+static uint32_t cell_bg_rgb(const KtuiCell *c)
+{
+	return (c->attr & KT_A_BGRGB) ? c->bgc & 0xffffffu : slot_rgb(c->bg);
+}
+
+/* `a` at `alpha`/255 over `b`, channel by channel. */
+static uint32_t rgb_mix(uint32_t a, uint32_t b, int alpha)
+{
+	uint32_t out = 0;
+
+	if (alpha < 0)
+		alpha = 0;
+	if (alpha > 255)
+		alpha = 255;
+	for (int sh = 0; sh <= 16; sh += 8) {
+		unsigned x = (a >> sh) & 0xffu, y = (b >> sh) & 0xffu;
+
+		out |= ((x * (unsigned)alpha + y * (255u - (unsigned)alpha)) /
+			255u) << sh;
+	}
+	return out;
+}
+
 /*
  * The colour a composed cell's background is ACTUALLY PAINTED IN, and under
  * KT_A_REVERSE that is the foreground's: reverse is an exchange of what is
@@ -810,12 +824,8 @@ void ktui_draw_reverse(KRect r)
 static uint32_t bg_rgb_at(const KtuiCell *c)
 {
 	int rev = (c->attr & KT_A_REVERSE) != 0;
-	KRgb k;
 
-	if (c->attr & (rev ? KT_A_FGRGB : KT_A_BGRGB))
-		return (rev ? c->fgc : c->bgc) & 0xffffffu;
-	k = ktui_theme->slot[(rev ? c->fg : c->bg) & 7];
-	return (uint32_t)k.r << 16 | (uint32_t)k.g << 8 | k.b;
+	return rev ? cell_fg_rgb(c) : cell_bg_rgb(c);
 }
 
 void ktui_draw_bg_take(KRect r, uint32_t *out)
@@ -859,14 +869,7 @@ void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
 				continue;
 			o = bg_rgb_at(c);
 			u = under[(size_t)y * r.w + x];
-			for (int sh = 0; sh <= 16; sh += 8) {
-				unsigned a = (o >> sh) & 0xffu;
-				unsigned b = (u >> sh) & 0xffu;
-
-				mix |= ((a * (unsigned)alpha +
-					 b * (255u - (unsigned)alpha)) / 255u)
-				       << sh;
-			}
+			mix = rgb_mix(o, u, alpha);
 			if (c->attr & KT_A_REVERSE) {
 				c->fgc = mix;
 				c->attr |= KT_A_FGRGB;
@@ -876,6 +879,66 @@ void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
 			}
 		}
 	}
+}
+
+/*
+ * A ONE-CELL OFFSET DROP SHADOW, WHICH DARKENS AND DOES NOT ERASE.
+ *
+ * The strip hangs a column right of the rect and a row below it. It is not a
+ * cell of backdrop written over what was there: a shadow that replaced its
+ * cells cut a rectangular bite out of the window underneath — and out of an
+ * embedded application's picture — which reads as a compositing defect rather
+ * than as depth. Every cell keeps its glyph and both halves are mixed towards
+ * KT_BG instead, so what is under the shadow is still legible and still there.
+ *
+ * THE BACKGROUND SLOT GOES TO KT_BG ALONGSIDE THE LITERAL, and that is the
+ * whole of the shadow on a display that declined the colour run — a --tty
+ * view, a dump, a braille reader. A mix is a colour the palette does not hold,
+ * so the slot is the nearest thing to it eight colours can say.
+ *
+ * A REVERSED CELL KEEPS ITS SLOTS. The painter shows such a cell's FOREGROUND
+ * as its background, so writing KT_BG into `bg` would recolour the ink rather
+ * than the ground. The literal covers it on any display that has one.
+ *
+ * A PICTURE IS NOT SHADOWED. A sprite cell is somebody else's pixels edge to
+ * edge and there is no background of ours behind them to darken.
+ *
+ * The extent is put back afterwards: a shadow is decoration hanging one cell
+ * outside the rect, and letting it grow the page's reported height would add
+ * a phantom row to every scroll range measured around a shadowed box.
+ */
+#define KT_SHADOW_KEEP 110	/* how much of the cell survives, of 255 */
+
+static void shade_cell(int x, int y)
+{
+	KtuiCell *c;
+	uint32_t ground;
+
+	if (!krect_hit(clipr, x, y))
+		return;
+	if (x < 0 || y < 0 || x >= bw || y >= bh)
+		return;
+	c = &back[y * bw + x];
+	if (KTUI_IS_SPRITE(c->ch))
+		return;
+
+	ground = slot_rgb(KT_BG);
+	c->fgc = rgb_mix(cell_fg_rgb(c), ground, KT_SHADOW_KEEP);
+	c->bgc = rgb_mix(cell_bg_rgb(c), ground, KT_SHADOW_KEEP);
+	c->attr |= KT_A_FGRGB | KT_A_BGRGB;
+	if (!(c->attr & KT_A_REVERSE))
+		c->bg = KT_BG;
+}
+
+void ktui_draw_shadow(KRect r)
+{
+	int keep = extent;
+
+	for (int y = r.y + 1; y < r.y + r.h + 1; y++)
+		shade_cell(r.x + r.w, y);
+	for (int x = r.x + 1; x < r.x + r.w + 1; x++)
+		shade_cell(x, r.y + r.h);
+	extent = keep;
 }
 
 void ktui_draw_cursor(int x, int y)
