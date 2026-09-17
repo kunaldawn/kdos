@@ -511,12 +511,13 @@ typedef struct {
 	 * cursor in those pixels and a second one a cell away is the one
 	 * nobody is aiming with.
 	 *
-	 * CELLS AND NOT PIXELS, because that is the whole of what the session
-	 * decided: `libkkms` reports a cooked motion only when the cell
-	 * changes, so a backend given pixels here would be given the same
-	 * pixel until it did. A pointer that steps whole cells and an arrow
-	 * drawn at the cell's own top-left corner are the same pointer at the
-	 * same place, one with a shape and one without.
+	 * CELLS AND NOT PIXELS, because a cell is the whole of what the session
+	 * decided: it reports a cooked motion only when the cell changes, so a
+	 * backend given pixels here would be given the same pixel until it did.
+	 * A BACKEND THAT OWNS THE DEVICE MAY DRAW FINER THAN THIS, and one that
+	 * does reads its own position rather than these coordinates — what it
+	 * takes from here is that there is a pointer and which cell the session
+	 * believes it is on, which is what says whose it is to draw.
 	 */
 	int (*pointer)(int x, int y);
 	/*
@@ -629,6 +630,26 @@ void ktui_draw_hline(int x, int y, int w, int g, int fg, int bg);
 void ktui_draw_vline(int x, int y, int h, int g, int fg, int bg);
 void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl);
 void ktui_draw_shadow(KRect r);
+/*
+ * SEE THROUGH A RECTANGLE OF THE COMPOSED FRAME.
+ *
+ * A grid holds one colour per cell and nothing behind it, so translucency is
+ * two calls around the drawing: ktui_draw_bg_take() copies the background
+ * colours of `r` into `out`, which the caller sizes r.w * r.h, and
+ * ktui_draw_blend() mixes what has since been drawn there back towards them.
+ * `alpha` is the weight of the new content, 0..255; 255 does nothing.
+ *
+ * THE BLEND IS WRITTEN AS THE CELL'S LITERAL and the slot is left alone, so a
+ * display that declined the colour run shows an opaque rectangle. Backgrounds
+ * only — the ink keeps the colour it was drawn in — and a sprite cell is
+ * skipped, because a picture's pixels are not a background.
+ *
+ * UNDER KT_A_REVERSE THE FOREGROUND IS THE BACKGROUND, and both calls follow
+ * the swap the painter makes: reading or writing `bg` through a reversed cell
+ * would leave it opaque and make its ink translucent instead.
+ */
+void ktui_draw_bg_take(KRect r, uint32_t *out);
+void ktui_draw_blend(KRect r, const uint32_t *under, int alpha);
 void ktui_draw_cursor(int x, int y);	/* pointer overlay, evdev backend  */
 void ktui_draw_hide_cursor(void);
 void ktui_draw_clip(KRect r);		/* confine drawing to a pane       */

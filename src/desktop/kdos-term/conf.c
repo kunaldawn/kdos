@@ -42,6 +42,10 @@ TermConf TC = {
 	/* On: an unbracketed paste carrying a newline executes, and a person
 	 * who meant it is one keystroke away from agreeing. */
 	.paste_guard = 1,
+	/* Opaque: a terminal is read for hours and a background that is not
+	 * one colour is a background that argues with every glyph on it.
+	 * Somebody who wants the desktop through it writes the key. */
+	.opacity = 100,
 };
 
 const char *term_conf_path(void)
@@ -117,6 +121,8 @@ void term_conf_load(void)
 			TC.cols = clamp(atoi(v), 20, 1000);
 		} else if (!strcmp(k, "rows")) {
 			TC.rows = clamp(atoi(v), 4, 1000);
+		} else if (!strcmp(k, "opacity")) {
+			TC.opacity = clamp(atoi(v), 20, 100);
 		} else if (!strcmp(k, "scrollback")) {
 			TC.scrollback = clamp(atoi(v), 0, 200000);
 		} else if (!strcmp(k, "images")) {

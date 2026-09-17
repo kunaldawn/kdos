@@ -8580,13 +8580,13 @@ else
     exit 1
 fi
 
-sed -i 's/#39ff14/#ff00ff/' "$AH/.config/gtk-3.0/gtk.css"
+sed -i 's/#39ff14/#ff00ff/' "$AH/.config/gtk-4.0/gtk.css"
 rm -f "$AH/.icons/KDOS/16x16/places/folder.svg"
 echo stray > "$AH/.icons/KDOS/16x16/places/not-ours.svg"
 rm -f "$AH/.icons/KDOS-cursors/cursors/left_ptr"
 ln -s wait "$AH/.icons/KDOS-cursors/cursors/left_ptr"
 OUT_TXT=$(audit --audit || true)
-echo "$OUT_TXT" | grep -q "GTK3 palette.*DRIFTED" || { echo "  an edited stylesheet was not caught"; exit 1; }
+echo "$OUT_TXT" | grep -q "GTK4 palette.*DRIFTED" || { echo "  an edited stylesheet was not caught"; exit 1; }
 echo "$OUT_TXT" | grep -q "icon theme.*1 missing 1 not ours" || { echo "  a deleted and a stray icon were not caught"; exit 1; }
 echo "$OUT_TXT" | grep -q "cursor theme.*DRIFTED" || { echo "  a re-pointed cursor alias was not caught"; exit 1; }
 audit --audit >/dev/null 2>&1 && { echo "  drift did not fail the exit code"; exit 1; }

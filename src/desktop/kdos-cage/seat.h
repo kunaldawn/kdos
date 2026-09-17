@@ -87,6 +87,17 @@ struct cg_seat {
 	double rel_dx, rel_dy, rel_dx_un, rel_dy_un;
 	bool rel_pending;
 
+	/*
+	 * WHETHER THE ARROW IS ON THIS GUEST'S PIXELS AT ALL.
+	 *
+	 * The guest's cursor is composited into the buffer the parent shows, so
+	 * a cursor left drawn after the pointer has gone elsewhere is a second
+	 * arrow on the desktop, parked wherever the pointer last was inside the
+	 * window. It comes off with the pointer focus and goes back on with the
+	 * next position the parent sends.
+	 */
+	bool ptr_hidden;
+
 	struct wl_listener request_set_cursor;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;

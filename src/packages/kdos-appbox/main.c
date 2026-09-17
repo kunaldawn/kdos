@@ -175,7 +175,12 @@ static int a11y_wanted(void)
  *                              theme package, so the image lane asks the
  *                              image's labels and the pack lane asks the pack
  *                              stack's own `env =` lines.
- *   GTK_THEME=KDOS             belt and braces next to gtk-3.0/settings.ini
+ *   NO GTK_THEME               deliberately: that variable OVERRIDES the
+ *                              theme setting for the life of the process, so
+ *                              an accent switch could never reach a running
+ *                              GTK application. The name reaches the box
+ *                              through the settings portal and through the
+ *                              seeded gtk-3.0/settings.ini instead
  *   LIBGL_ALWAYS_SOFTWARE      only where the box's graphics are the CPU's,
  *                              see the `render` block below
  */
@@ -244,8 +249,6 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 		kb_argv_add(a, "NO_AT_BRIDGE=1");
 		kb_argv_add(a, "GTK_A11Y=none");
 	}
-	kb_argv_add(a, "GTK_THEME=KDOS");
-
 	/*
 	 * THE PORTAL, AND WHY THE ENV IS WHAT SWITCHES IT ON.
 	 *

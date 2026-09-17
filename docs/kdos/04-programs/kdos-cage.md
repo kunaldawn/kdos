@@ -650,11 +650,18 @@ Under a grab of either kind the parent sends no position at all, so the delta is
 received — a delta stashed there would wait for a motion that never comes, and the next one would
 overwrite it.
 
-**`KEMBED_LEAVE` is how the guest learns the pointer left**, and it is a cleared pointer focus and a
-frame — never a motion to somewhere outside. The cursor warp clamps to the layout and the view
-covers it, so an out-of-range position lands on a view edge and is delivered as an *enter*. A guest
-never told keeps the link it last crossed lit and a button looking pressed for as long as it is
-open.
+**`KEMBED_LEAVE` is how the guest learns the pointer left**, and it is a cleared pointer focus, a
+frame and **the arrow itself coming off** — never a motion to somewhere outside. The cursor warp
+clamps to the layout and the view covers it, so an out-of-range position lands on a view edge and is
+delivered as an *enter*. A guest never told keeps the link it last crossed lit and a button looking
+pressed for as long as it is open.
+
+**Unsetting the cursor image is half of that message and not a refinement of it.** This
+compositor's cursor is composited into the buffer the parent shows, so one left drawn after the
+pointer has gone elsewhere is a second arrow on the desktop, parked at the place the real one left
+the window — the parent draws its own from the moment the pointer is outside, and the two are then
+both on the screen at once. The next position the parent sends puts the default arrow back, and a
+client that wants its own shape sets one from the enter event in the same frame group.
 
 ### The keyboard, and the pointer the guest takes
 

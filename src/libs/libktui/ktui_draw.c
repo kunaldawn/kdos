@@ -780,6 +780,104 @@ void ktui_draw_reverse(KRect r)
 	}
 }
 
+/*
+ * ── TRANSLUCENCY ────────────────────────────────────────────────────
+ *
+ * A COMPOSED GRID HAS NOTHING UNDERNEATH IT. One cell is one place, so a
+ * caller that wants to see through a window has to keep what was there before
+ * it drew: ktui_draw_bg_take() copies the rectangle's background colours out,
+ * the caller draws its window, and ktui_draw_blend() mixes the result back
+ * towards them.
+ *
+ * THE LITERAL ONLY, NEVER THE SLOT. The blend is a colour the palette does not
+ * hold, so it is written as the cell's own `bgc` and the slot is left as the
+ * caller drew it: a display that declined the colour run — a --tty view, a
+ * golden, a braille reader — shows an opaque window, which is the honest
+ * answer where there is no colour to mix with.
+ *
+ * BACKGROUNDS AND NOT INK. A translucent glyph is a glyph nobody can read, so
+ * the foreground stays exactly the colour it was drawn in.
+ */
+
+/*
+ * The colour a composed cell's background is ACTUALLY PAINTED IN, and under
+ * KT_A_REVERSE that is the foreground's: reverse is an exchange of what is
+ * drawn and what is behind it, and the painter swaps the slot and its literal
+ * together. A blend that read `bg` through a reversed cell would make the INK
+ * translucent and leave the background opaque, which is the two defects this
+ * pass exists to avoid, at once.
+ */
+static uint32_t bg_rgb_at(const KtuiCell *c)
+{
+	int rev = (c->attr & KT_A_REVERSE) != 0;
+	KRgb k;
+
+	if (c->attr & (rev ? KT_A_FGRGB : KT_A_BGRGB))
+		return (rev ? c->fgc : c->bgc) & 0xffffffu;
+	k = ktui_theme->slot[(rev ? c->fg : c->bg) & 7];
+	return (uint32_t)k.r << 16 | (uint32_t)k.g << 8 | k.b;
+}
+
+void ktui_draw_bg_take(KRect r, uint32_t *out)
+{
+	for (int y = 0; y < r.h; y++) {
+		for (int x = 0; x < r.w; x++) {
+			int cx = r.x + x, cy = r.y + y;
+
+			out[(size_t)y * r.w + x] =
+				cx >= 0 && cy >= 0 && cx < bw && cy < bh
+					? bg_rgb_at(&back[cy * bw + cx])
+					: 0;
+		}
+	}
+}
+
+void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
+{
+	if (alpha >= 255)
+		return;
+	if (alpha < 0)
+		alpha = 0;
+	for (int y = 0; y < r.h; y++) {
+		for (int x = 0; x < r.w; x++) {
+			int cx = r.x + x, cy = r.y + y;
+			KtuiCell *c;
+			uint32_t o, u, mix = 0;
+
+			if (cx < 0 || cy < 0 || cx >= bw || cy >= bh)
+				continue;
+			if (!krect_hit(clipr, cx, cy))
+				continue;
+			c = &back[cy * bw + cx];
+			/*
+			 * A PICTURE IS NOT A BACKGROUND. A sprite cell's
+			 * pixels are somebody else's whole image, and the
+			 * colour behind them is never shown — mixing it
+			 * would cost the work and change nothing.
+			 */
+			if (KTUI_IS_SPRITE(c->ch))
+				continue;
+			o = bg_rgb_at(c);
+			u = under[(size_t)y * r.w + x];
+			for (int sh = 0; sh <= 16; sh += 8) {
+				unsigned a = (o >> sh) & 0xffu;
+				unsigned b = (u >> sh) & 0xffu;
+
+				mix |= ((a * (unsigned)alpha +
+					 b * (255u - (unsigned)alpha)) / 255u)
+				       << sh;
+			}
+			if (c->attr & KT_A_REVERSE) {
+				c->fgc = mix;
+				c->attr |= KT_A_FGRGB;
+			} else {
+				c->bgc = mix;
+				c->attr |= KT_A_BGRGB;
+			}
+		}
+	}
+}
+
 void ktui_draw_cursor(int x, int y)
 {
 	ptr_x = x;

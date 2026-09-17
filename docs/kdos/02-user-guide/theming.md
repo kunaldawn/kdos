@@ -97,14 +97,21 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | `~/.config/newsboat/kdos-colors` | newsboat, `include`d from its config | On the next start |
 | `~/.config/aerc/stylesets/kdos` | aerc | On the next start |
 | The `mc` skin and `LS_COLORS` | mc, ls | On the next start |
-| `~/.themes/KDOS/` | GTK3 applications in boxes | On the application's next launch |
-| `~/.config/gtk-3.0/gtk.css`, `gtk-4.0/gtk.css` | libadwaita applications | On the application's next launch |
+| `~/.themes/KDOS-<accent>/` | GTK3 applications in boxes | **At once, in the window already open** |
+| `~/.config/gtk-4.0/gtk.css` | libadwaita applications | On the application's next launch |
 | `~/.icons/KDOS/` | Every toolkit, host and box | On the application's next launch |
 | `~/.config/kdeglobals` | Qt applications under the KDE platform theme | On the application's next launch |
 | `~/.icons/KDOS-cursors/` | Cursor lookup inside boxes | On the application's next launch |
 
-GTK re-reads neither its theme nor its icons when the files change, so boxed applications pick up
-an accent switch when you next start them. There is no way around that from outside the toolkit.
+**A GTK3 application restyles while it is open, and the accent in the directory name is what does
+it.** GTK rebuilds its whole style cascade when the `gtk-theme-name` setting moves and at no other
+time, so a stylesheet rewritten under one fixed name reached the next launch and never the window
+on the screen. `kdos theme` writes `~/.themes/KDOS-<accent>`, deletes the copies for every accent
+you are not wearing, and points `~/.themes/KDOS` at it; the settings portal answers with that name
+and signals the change, and every boxed GTK3 application repaints.
+
+Everything else picks the switch up when you next start it. GTK re-reads neither its icons nor the
+user stylesheet when those files change, and no toolkit offers a way around that from outside.
 
 **A generated file is never a file you edit.** Each of the above is written whole on every accent
 switch, and each is *selected* by something that ships once and is then yours: `settings.json` for
@@ -193,8 +200,9 @@ therefore written into `$HOME`:
 
 | Path | Read by |
 |---|---|
-| `~/.themes/KDOS/` | GTK3 and non-libadwaita GTK4 |
-| `~/.config/gtk-3.0/gtk.css`, `~/.config/gtk-4.0/gtk.css` | libadwaita, which ignores themes entirely |
+| `~/.themes/KDOS-<accent>/` | GTK3 and non-libadwaita GTK4. `~/.themes/KDOS` is a symlink to it |
+| `~/.config/gtk-{3,4}.0/settings.ini` | The theme name, where the portal cannot be reached |
+| `~/.config/gtk-4.0/gtk.css` | libadwaita, which ignores themes entirely. **GTK3 gets no such file**: it is loaded once at startup and would outrank the theme for the life of the process |
 | `~/.icons/KDOS/` | Every toolkit |
 | `~/.icons/KDOS-cursors/` | Cursor lookup |
 | `~/.config/kdeglobals` | Qt, under the KDE platform theme |

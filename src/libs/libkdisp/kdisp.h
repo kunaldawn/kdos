@@ -245,16 +245,21 @@ typedef struct {
 	int rule_slot;
 
 	/*
-	 * The panel's body opacity, in PERCENT. 0 means unset and is treated
-	 * as 100 — a surface that said nothing gets the opaque behaviour it
-	 * has always had, and every consumer but the panel says nothing.
+	 * This surface's body opacity, in PERCENT. 0 means unset and is
+	 * treated as 100 — a surface that said nothing gets the opaque
+	 * behaviour it has always had.
 	 *
-	 * Below 100 this clears KT_SURFACE's alpha in libkcell and forces an
+	 * Below 100 this dims the slot the surface's own body is drawn in —
+	 * KT_BG for a toplevel, KT_SURFACE for everything else — and forces an
 	 * alpha-capable buffer format, so the wallpaper and the windows show
-	 * through the bar's own background while its text and its fills stay
-	 * ink. It is the BACKGROUND slot only: a translucent glyph is a glyph
-	 * nobody can read, which is the whole reason this is per-slot rather
-	 * than a multiplier on the surface.
+	 * through while the text and the fills stay ink. It is the BACKGROUND
+	 * slot only: a translucent glyph is a glyph nobody can read, which is
+	 * the whole reason this is per-slot rather than a multiplier on the
+	 * surface.
+	 *
+	 * IT REACHES A COMPOSITOR AND NOTHING ELSE. On the console the session
+	 * composes every window into one grid, and `window_opacity` in
+	 * con.conf is where the same request is made.
 	 */
 	int opacity;
 

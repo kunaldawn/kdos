@@ -370,16 +370,25 @@ static int copy_assets(const char *src, const char *out, const char *sub)
 	return n;
 }
 
-static const char INDEX[] =
+/*
+ * THE THEME NAMES ITSELF AFTER THE DIRECTORY IT IS WRITTEN INTO, and the
+ * caller puts the accent in that name.
+ *
+ * A NAME THAT DOES NOT CHANGE IS A THEME GTK DOES NOT RELOAD: the cascade is
+ * rebuilt when the `gtk-theme-name` setting moves and at no other time, so an
+ * accent switch that rewrote one fixed directory reached the next launch of an
+ * application and never the one already on the screen.
+ */
+static const char INDEX_FMT[] =
 	"[Desktop Entry]\n"
 	"Type=X-GNOME-Metatheme\n"
-	"Name=KDOS\n"
-	"Comment=KDOS phosphor theme (adw-gtk3, recoloured)\n"
+	"Name=%s\n"
+	"Comment=KDOS %s theme (adw-gtk3, recoloured)\n"
 	"Encoding=UTF-8\n"
 	"\n"
 	"[X-GNOME-Metatheme]\n"
-	"GtkTheme=KDOS\n"
-	"MetacityTheme=KDOS\n"
+	"GtkTheme=%s\n"
+	"MetacityTheme=%s\n"
 	"IconTheme=KDOS\n"
 	"CursorTheme=KDOS-cursors\n"
 	"ButtonLayout=:close\n";
@@ -443,8 +452,18 @@ int gen_gtk(const char *src, const char *out, const KcolScheme *sc)
 		free(s3);
 	}
 
+	const char *base = strrchr(out, '/');
+	char index[512];
+	int ilen;
+
+	base = base ? base + 1 : out;
+	ilen = snprintf(index, sizeof(index), INDEX_FMT, base, sc->name, base,
+			base);
+	if (ilen < 0 || (size_t)ilen >= sizeof(index))
+		kb_die("theme name too long for an index: %s", base);
+
 	char *idx = kb_path_join(out, "index.theme");
-	kb_write_all(idx, INDEX, sizeof(INDEX) - 1);
+	kb_write_all(idx, index, (size_t)ilen);
 	free(idx);
 
 	printf("kdos-gtk-theme: %d stylesheets -> %s\n", written, out);

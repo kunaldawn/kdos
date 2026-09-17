@@ -2853,16 +2853,6 @@ int main(int argc, char **argv)
 			if (take_frame(0) < 0)
 				break;
 
-			/*
-			 * Nothing is drawn while switched away: the devices
-			 * are gone and the framebuffer is somebody else's.
-			 * Nothing is drawn while a flip is outstanding
-			 * either — the buffer to paint is the one the screen
-			 * is about to show.
-			 */
-			if (kkms_active() && kkms_ready())
-				view_present();
-
 			KtuiEvent ev;
 
 			while (ktui_backend()->poll_event(&ev, 0)) {
@@ -2929,6 +2919,23 @@ int main(int argc, char **argv)
 			 * until one happened along.
 			 */
 			raw_drain(raw_on);
+
+			/*
+			 * AND THE SCREEN, AFTER THE INPUT AND NOT BEFORE IT.
+			 * The arrow is drawn at the device's own pixel and the
+			 * cell the session is told about comes out of the same
+			 * queue that was just drained, so presenting first
+			 * would paint every frame one cell behind the hand
+			 * holding the mouse.
+			 *
+			 * Nothing is drawn while switched away: the devices
+			 * are gone and the framebuffer is somebody else's.
+			 * Nothing is drawn while a flip is outstanding
+			 * either — the buffer to paint is the one the screen
+			 * is about to show.
+			 */
+			if (kkms_active() && kkms_ready())
+				view_present();
 
 			if (kcon_conn_dead(conn))
 				break;

@@ -431,6 +431,7 @@ name. Every key has a working default and the file need not exist.
 | `images` | `yes` | Decode pictures at all |
 | `image_max` | 1024 | The cap on one image payload, in kilobytes |
 | `image_cells` | 200 | The widest and tallest a picture may be, in cells |
+| `opacity` | 100 | How much of the window's own background it keeps, per cent, 20–100. Below 100 the desktop shows through the cells the terminal has not drawn on, and the ink is never mixed. **Only under a compositor**: on the console the session composes every window into one grid, and `con.conf`'s `window_opacity` is where the same request is made; on a `--tty` there is nothing behind the window at all |
 
 `SIGHUP` re-reads the file and the accent, which is how `kdos theme` retints a running window —
 something `foot` cannot do at all.
