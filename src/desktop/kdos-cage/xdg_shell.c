@@ -87,6 +87,42 @@ popup_get_view(struct wlr_xdg_popup *popup)
 	}
 }
 
+/*
+ * THE RESIZE PASS CLIPS, AND A CLIPPED MENU IS A BAND WITH NOTHING IN IT.
+ * wlr_xdg_positioner_rules_unconstrain_box() tries flip, then slide, then
+ * resize, and the resize pass keeps any rectangle that is not empty: a menu
+ * taller than the console window it is anchored in comes back as the gap
+ * between its anchor and the window's edge — tens of pixels, no items, and the
+ * client cannot tell that it was not what it asked for.
+ *
+ * Take the resize back once it has removed more than half of the asked-for
+ * extent. A client that means to shrink asks for a size close to the one it is
+ * given, so a cut past half is this window being smaller than the menu, and
+ * what survives such a cut is whichever end the anchor happened to fall near
+ * rather than the first item. Restore the asked-for extent, pull the popup back
+ * to the near edge of the box, and let the scene clip the tail at the output
+ * edge: a menu whose head is on screen is usable, a band is not. A smaller cut
+ * is left alone — undoing it would move a menu that genuinely fits off the
+ * anchor it was placed against.
+ */
+static void
+popup_keep_extent(int *pos, int *extent, int requested, int box_pos, int box_extent)
+{
+	/* Halve the request rather than double the result: a client is free to
+	 * ask for a size near INT32_MAX, and the doubling would overflow. */
+	if (requested <= 0 || *extent >= requested / 2) {
+		return;
+	}
+
+	*extent = requested;
+
+	if (*pos < box_pos || requested >= box_extent) {
+		*pos = box_pos;
+	} else if (*pos + requested > box_pos + box_extent) {
+		*pos = box_pos + box_extent - requested;
+	}
+}
+
 static void
 popup_unconstrain(struct wlr_xdg_popup *popup)
 {
@@ -117,14 +153,52 @@ popup_unconstrain(struct wlr_xdg_popup *popup)
 	}
 	wlr_output_layout_get_box(output_layout, wlr_output, &output_box);
 
+	/*
+	 * THE BOX IS IN THE TOPLEVEL'S SURFACE SPACE, and the scene node sits
+	 * at the layout position less the window-geometry origin — so the
+	 * output's corner is `origin` pixels into the surface, not at its
+	 * corner. wlr_xdg_popup_unconstrain_from_box() then takes the
+	 * toplevel's own geometry origin back off again to reach the space a
+	 * positioner is written in. Drop the term and every menu is placed one
+	 * shadow margin from where the client asked for it.
+	 */
+	int gx, gy;
+
+	view_origin(view, &gx, &gy);
+
 	struct wlr_box output_toplevel_box = {
-		.x = output_box.x - view->lx,
-		.y = output_box.y - view->ly,
+		.x = output_box.x - view->lx + gx,
+		.y = output_box.y - view->ly + gy,
 		.width = output_box.width,
 		.height = output_box.height,
 	};
 
 	wlr_xdg_popup_unconstrain_from_box(popup, &output_toplevel_box);
+
+	/*
+	 * THE SAME CONSTRAINT THAT PASS USED, and not the window box itself:
+	 * scheduled.geometry is written relative to the popup's own parent, so
+	 * unconstrain_from_box() takes the popup's offset from its root toplevel
+	 * off the box first. A submenu clamped against anything else lands a
+	 * whole parent-menu's distance out of its window's span, in the
+	 * framebuffer of the window beside it.
+	 */
+	int tx, ty;
+
+	wlr_xdg_popup_get_toplevel_coords(popup, 0, 0, &tx, &ty);
+
+	struct wlr_box constraint = {
+		.x = output_toplevel_box.x - tx,
+		.y = output_toplevel_box.y - ty,
+		.width = output_toplevel_box.width,
+		.height = output_toplevel_box.height,
+	};
+	struct wlr_box *geometry = &popup->scheduled.geometry;
+
+	popup_keep_extent(&geometry->x, &geometry->width, popup->scheduled.rules.size.width, constraint.x,
+			  constraint.width);
+	popup_keep_extent(&geometry->y, &geometry->height, popup->scheduled.rules.size.height, constraint.y,
+			  constraint.height);
 }
 
 static struct cg_xdg_shell_view *
@@ -148,6 +222,20 @@ get_geometry(struct cg_view *view, int *width_out, int *height_out)
 
 	*width_out = xdg_surface->geometry.width;
 	*height_out = xdg_surface->geometry.height;
+}
+
+/*
+ * A CLIENT DRAWING ITS OWN DECORATIONS PUTS ITS WINDOW INSIDE A LARGER BUFFER,
+ * and this is where. See cg_view_impl::get_origin.
+ */
+static void
+get_origin(struct cg_view *view, int *x_out, int *y_out)
+{
+	struct cg_xdg_shell_view *xdg_shell_view = xdg_shell_view_from_view(view);
+	struct wlr_xdg_surface *xdg_surface = xdg_shell_view->xdg_toplevel->base;
+
+	*x_out = xdg_surface->geometry.x;
+	*y_out = xdg_surface->geometry.y;
 }
 
 static bool
@@ -324,6 +412,16 @@ handle_xdg_toplevel_commit(struct wl_listener *listener, void *data)
 	if (xdg_shell_view->xdg_toplevel->base->surface->mapped) {
 		wlr_foreign_toplevel_handle_v1_set_fullscreen(xdg_shell_view->view.foreign_toplevel_handle,
 							      xdg_shell_view->xdg_toplevel->current.fullscreen);
+		/*
+		 * AND THE WINDOW'S PLACE INSIDE ITS BUFFER IS RE-READ HERE. A
+		 * client drops its shadow margins when it is maximised and
+		 * takes them back when it is not, so the origin moves with the
+		 * state; a node left where the previous state put it shows
+		 * margin on two sides and clips the window on the other two.
+		 * wlr_scene_node_set_position() returns on an unchanged
+		 * position, so a commit that moved nothing costs a compare.
+		 */
+		view_place_node(&xdg_shell_view->view);
 	}
 
 	if (!xdg_shell_view->xdg_toplevel->base->initial_commit) {
@@ -383,6 +481,7 @@ handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 static const struct cg_view_impl xdg_shell_view_impl = {
 	.get_title = get_title,
 	.get_geometry = get_geometry,
+	.get_origin = get_origin,
 	.is_primary = is_primary,
 	.get_parent = get_parent,
 	.is_transient_for = is_transient_for,

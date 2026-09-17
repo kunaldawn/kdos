@@ -1562,6 +1562,236 @@ static void kkms_owe(int x, int y, int w, int h)
 	}
 }
 
+/* ── the pointer ──────────────────────────────────────────────────────────
+ *
+ * AN ARROW IN PIXELS, COMPOSITED INTO THE SHADOW AFTER THE CELLS.
+ *
+ * It is not a cell and cannot be one: `libktui` draws the pointer as the cell
+ * under it reversed, which is the only pointer a terminal, a dump and a
+ * braille display can show, and a screen with a framebuffer under it can do
+ * better. This library answers `KtuiBackend.pointer` and takes the job; every
+ * other backend leaves the entry NULL and keeps the reversed cell.
+ *
+ * NOT A HARDWARE CURSOR PLANE. `drmModeSetCursor2` would move the arrow
+ * without repainting anything, and it is a separate plane with its own size
+ * limits, its own format and a per-driver set of refusals — see
+ * known-gaps.md. The software arrow costs the rows it covers and works on
+ * every driver, including the transfer-model ones that have no plane at all.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * THE ARROW, DRAWN IN CODE AND NOT LOADED FROM ANYWHERE. This library opens a
+ * GPU device and nothing else; a cursor read from a file would be a path, a
+ * failure mode and a theme this library has no business having.
+ *
+ * `X` is the body. The OUTLINE IS NOT IN THE TABLE — it is every blank cell
+ * of the eight-neighbourhood of a body pixel, computed below, because an
+ * outline drawn by hand is an outline with a hole in it the first time the
+ * shape is edited, and a hole is exactly where the arrow disappears into
+ * same-coloured content.
+ *
+ * The tip is (0,0) and the shape is the one every system draws: a vertical
+ * left edge, a 45-degree upper-right edge, and a tail leaving the notch at
+ * the bottom.
+ */
+#define KKMS_PTR_W 11
+#define KKMS_PTR_H 18
+
+static const char ptr_mask[KKMS_PTR_H][KKMS_PTR_W + 1] = {
+	"X..........",
+	"XX.........",
+	"XXX........",
+	"XXXX.......",
+	"XXXXX......",
+	"XXXXXX.....",
+	"XXXXXXX....",
+	"XXXXXXXX...",
+	"XXXXXXXXX..",
+	"XXXXXXXXXX.",
+	"XXXXXXXXXXX",
+	"XXXXXXX....",
+	"XXXXXXX....",
+	"XXXX.XXX...",
+	"XXX..XXX...",
+	"XX....XXX..",
+	"X.....XXX..",
+	".......XXX.",
+};
+
+/* Where the session says the pointer is, in the SHARED grid's cells, and where
+ * each screen last put it. A negative x is no pointer at all. Per screen
+ * because a screen that was skipped — no free buffer, a flip in flight — still
+ * holds the arrow it was last given, and a single record would tell it the
+ * arrow it is still showing had already been taken off. */
+static int ptr_cx = -1, ptr_cy = -1;
+static int ptr_last_x[KKMS_MAX_OUT], ptr_last_y[KKMS_MAX_OUT];
+static unsigned char ptr_last_on[KKMS_MAX_OUT];
+
+/*
+ * WHOLE PIXELS PER MASK PIXEL, so the arrow is about a cell tall at every font
+ * size — the same footprint the reversed cell has, which is what keeps the
+ * pointer the same size when a session is looked at through two views at once.
+ *
+ * INTEGER, never a resample. An 11-pixel-wide arrow scaled by a fraction loses
+ * its one-pixel outline on whichever rows round the same way twice, and an
+ * outline with a gap in it is the whole of what the outline is for.
+ */
+static int ptr_scale(void)
+{
+	int s = (kcell_h() + KKMS_PTR_H / 2) / KKMS_PTR_H;
+
+	return s < 1 ? 1 : s;
+}
+
+static int ptr_body(int x, int y)
+{
+	return x >= 0 && x < KKMS_PTR_W && y >= 0 && y < KKMS_PTR_H &&
+	       ptr_mask[y][x] == 'X';
+}
+
+static int ptr_edge(int x, int y)
+{
+	for (int dy = -1; dy <= 1; dy++)
+		for (int dx = -1; dx <= 1; dx++)
+			if (ptr_body(x + dx, y + dy))
+				return 1;
+	return 0;
+}
+
+/*
+ * THE PIXELS THE ARROW COVERS ON ONE SCREEN, in that screen's own pixels and
+ * already clipped to it, or 0 for a pointer that is not on this screen at all.
+ *
+ * The tip is the cell's TOP-LEFT PIXEL — the corner the reversed cell starts
+ * at — so the two pointers name the same place. The outline puts one scaled
+ * pixel outside the mask on every side, which is why the box starts a scale
+ * step above and to the left of the tip.
+ *
+ * CLIPPED TO THE WHOLE CELLS, not to the mode. The strip below the last row
+ * and the one right of the last column are written by the painter only on a
+ * full repaint and no row of `owed` covers them, so an arrow drawn there would
+ * reach the shadow and no buffer.
+ */
+static int ptr_box(const struct kkms_out *o, int cx, int cy,
+		   int *x0, int *y0, int *x1, int *y1)
+{
+	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
+
+	if (cx < 0 || cy < 0 || cw < 1 || ch < 1)
+		return 0;
+	*x0 = (cx - o->col) * cw - s;
+	*y0 = cy * ch - s;
+	*x1 = *x0 + (KKMS_PTR_W + 2) * s;
+	*y1 = *y0 + (KKMS_PTR_H + 2) * s;
+	if (*x0 < 0)
+		*x0 = 0;
+	if (*y0 < 0)
+		*y0 = 0;
+	if (*x1 > o->cols * cw)
+		*x1 = o->cols * cw;
+	if (*y1 > o->rows * ch)
+		*y1 = o->rows * ch;
+	return *x1 > *x0 && *y1 > *y0;
+}
+
+/*
+ * PUT THE CELLS UNDER A BOX BACK IN THE DIFF, which is how the arrow is
+ * ERASED. Nothing in the cell model knows the arrow is there: the cells it
+ * covers are unchanged, so the row compare finds nothing and the painter
+ * leaves the arrow's pixels where they are. Spoiling this screen's own
+ * previous frame is what makes the paint below repaint them — without it the
+ * pointer leaves a trail of arrows behind it, one per place it stopped.
+ */
+static void ptr_spoil(struct kkms_out *o, int x0, int y0, int x1, int y1)
+{
+	int cw = kcell_w(), ch = kcell_h();
+
+	for (int r = y0 / ch; r < o->rows && r <= (y1 - 1) / ch; r++)
+		for (int c = x0 / cw; c < o->cols && c <= (x1 - 1) / cw; c++)
+			o->prev[(size_t)r * o->cols + c].ch = 0xffffffffu;
+}
+
+/* A slot as this framebuffer's pixel. The shadow is PIXMAN_x8r8g8b8 and the
+ * arrow is two opaque colours, so the eight-bit channels go straight in —
+ * there is nothing to composite and no alpha to carry. */
+static uint32_t ptr_pixel(int slot)
+{
+	pixman_color_t c = kcell_slot_color(slot);
+
+	return ((uint32_t)(c.red >> 8) << 16) |
+	       ((uint32_t)(c.green >> 8) << 8) | (uint32_t)(c.blue >> 8);
+}
+
+/*
+ * THE BODY IS KT_TEXT AND THE OUTLINE KT_BG, not the other way round.
+ *
+ * Most of any screen is the background slot, and the body is the whole area of
+ * the arrow: filled in the foreground it is legible over all of that without
+ * relying on one pixel of anything. The outline is what rescues it over the
+ * minority that is foreground-coloured — a reversed selection, a filled title
+ * band, a bright chart bar. Filling the body in KT_BG instead would leave the
+ * arrow invisible over most of the desktop with a one-pixel line standing for
+ * it, and a one-pixel line is what a scaled-down screenshot loses first.
+ *
+ * SLOTS AND NOT LITERALS, so `kdos theme` and night light reach the pointer
+ * like everything else: a light theme draws a dark arrow with a light outline
+ * without a second decision being made anywhere.
+ */
+static void ptr_draw(struct kkms_out *o, int cx, int cy)
+{
+	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
+	int ox = (cx - o->col) * cw, oy = cy * ch;
+	int maxx = o->cols * cw, maxy = o->rows * ch;
+	uint32_t body = ptr_pixel(KT_TEXT), edge = ptr_pixel(KT_BG);
+
+	for (int my = -1; my <= KKMS_PTR_H; my++) {
+		for (int mx = -1; mx <= KKMS_PTR_W; mx++) {
+			uint32_t v;
+
+			if (ptr_body(mx, my))
+				v = body;
+			else if (ptr_edge(mx, my))
+				v = edge;
+			else
+				continue;
+
+			for (int dy = 0; dy < s; dy++) {
+				int y = oy + my * s + dy;
+				uint32_t *row;
+
+				if (y < 0 || y >= maxy)
+					continue;
+				row = (uint32_t *)((unsigned char *)
+						   o->shadow_bits +
+						   (size_t)y * o->stride);
+				for (int dx = 0; dx < s; dx++) {
+					int x = ox + mx * s + dx;
+
+					if (x >= 0 && x < maxx)
+						row[x] = v;
+				}
+			}
+		}
+	}
+}
+
+/*
+ * THIS BACKEND CLAIMS THE POINTER. See KtuiBackend.pointer: answering 1 is a
+ * promise that the cells reach the screen exactly as the session composed them
+ * and the arrow is in the pixels under them, which kkms_flush() below keeps.
+ *
+ * IT CLAIMS IT EVEN WHEN NO SCREEN IS BEING PAINTED — switched away, blanked,
+ * every buffer spoken for. Declining there would put a reversed cell into the
+ * frame the session is accumulating, and that frame is what comes back when
+ * the screen does: the repaint is whole, so the arrow arrives with it.
+ */
+static int kkms_pointer(int x, int y)
+{
+	ptr_cx = x;
+	ptr_cy = y;
+	return 1;
+}
+
 static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		       int force_full)
 {
@@ -1627,11 +1857,60 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 				       (size_t)(o->cols - keep) * sizeof(*dst));
 		}
 
+		/*
+		 * THE ARROW COMES OFF BEFORE THE PAINT AND GOES BACK ON AFTER
+		 * IT, and the two halves are not symmetrical: the cells under
+		 * it are repainted to erase it, and the pixels over them are
+		 * rewritten to draw it.
+		 *
+		 * A MOVE IS A CHANGE THIS SCREEN MUST PRESENT even when not
+		 * one cell of it differs — a hand crossing a still desktop is
+		 * exactly that — so `moved` carries the frame past the
+		 * nothing-changed exit below. Without it the first arrow is
+		 * never drawn and every later one is drawn where it was.
+		 *
+		 * A FULL REPAINT ERASES IT BY ITSELF, so there is nothing to
+		 * spoil and nothing owed from the old position.
+		 */
+		int nx0, ny0, nx1, ny1, ox0, oy0, ox1, oy1;
+		int has = ptr_box(o, ptr_cx, ptr_cy, &nx0, &ny0, &nx1, &ny1);
+		int had = full ? 0 : ptr_last_on[i];
+		int moved = has != ptr_last_on[i] ||
+			    (has && (ptr_cx != ptr_last_x[i] ||
+				     ptr_cy != ptr_last_y[i]));
+
+		if (had && moved &&
+		    ptr_box(o, ptr_last_x[i], ptr_last_y[i], &ox0, &oy0, &ox1,
+			    &oy1))
+			ptr_spoil(o, ox0, oy0, ox1, oy1);
+
 		o->force_full = 0;
 		if (!kcell_paint_damage(o->image, o->cur, o->prev, o->cols,
 					o->rows, full, 1, o->width, o->height,
-					o->painted) && !full)
+					o->painted) && !full && !moved)
 			continue;	/* nothing on this screen moved */
+
+		if (has) {
+			ptr_draw(o, ptr_cx, ptr_cy);
+			/*
+			 * THE ROWS IT COVERS ARE OWED ONLY WHEN IT MOVED. A
+			 * row the paint above touched is already in `painted`
+			 * and the arrow was redrawn into it; a row it did not
+			 * touch holds the same arrow pixels it held last
+			 * frame, and `owed` is per buffer and sticky, so every
+			 * buffer that has not been given them still owes them
+			 * from the frame they were drawn in. Marking them on
+			 * every painting frame instead would copy two cell
+			 * rows of the mode per frame for nothing.
+			 */
+			if (moved)
+				for (int r = ny0 / ch;
+				     r < o->rows && r <= (ny1 - 1) / ch; r++)
+					o->painted[r] = 1;
+		}
+		ptr_last_on[i] = (unsigned char)has;
+		ptr_last_x[i] = ptr_cx;
+		ptr_last_y[i] = ptr_cy;
 
 		if (full) {
 			owe_all(o);
@@ -1848,6 +2127,9 @@ static const KtuiBackend kkms_backend = {
 	.poll_event = kkms_poll_event,
 	.size = kkms_size,
 	.caps = kkms_caps,
+	/* THE ONE BACKEND WITH A FRAMEBUFFER OF ITS OWN, so it is the one that
+	 * draws a real arrow; everything else keeps libktui's reversed cell. */
+	.pointer = kkms_pointer,
 	/* THIS BACKEND HOLDS REAL DEVICES, so it answers the raw half too: an
 	 * evdev keycode, libinput's own deltas and the compiled layout. A
 	 * backend reading a terminal has none of that and leaves both NULL. */

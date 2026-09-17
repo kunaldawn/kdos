@@ -214,8 +214,44 @@ A paste arrives with **newlines already turned into spaces**, by the same filter
 pressing Enter in a text field. In a shell that is the same protection, and it is why a multi-line
 paste runs as one line rather than as a sequence of commands.
 
-Six chords are claimed and no more, all of them behind `Shift` or `Ctrl+Shift`. Every chord a
-terminal eats is a chord no program running inside it can use.
+Nine chords are claimed and no more: these six behind `Shift` or `Ctrl+Shift`, and the three font
+chords below behind a bare `Ctrl`. Every chord a terminal eats is a chord no program running inside
+it can use, which is what `Ctrl+Shift` is for — and why the three that do use a bare `Ctrl` are
+`=`, `-` and `0`. The state machine has no `Ctrl` rule for any of the three, so a child was handed
+the plain character and cannot tell the chord from the key; `Ctrl+Shift` is left alone, so `Ctrl+_`
+still reaches the child.
+
+## The font, per window
+
+`kdos-term` is **one process per window** and the face is a process-global in the cell painter, so
+the size is this window's own: two terminals side by side under `kdos-comp` sit at two sizes.
+
+| Chord | What it does |
+|---|---|
+| `Ctrl+=` | One step larger |
+| `Ctrl+-` | One step smaller |
+| `Ctrl+0` | Back to the size `term.conf` asked for |
+
+A step moves the size in the fontconfig name — `:pixelsize=N` or `:size=N`, whichever the name
+carries — and is **clamped at both ends**, because fontconfig will return a two-pixel face and a
+window of unreadable specks is not a step a chord can undo. A scalable face moves on every step;
+**a bitmap face answers with the nearest strike it carries**, so a step that lands between two of
+them leaves the cell exactly where it was and nothing on the screen changes until a step crosses
+into a size the file holds.
+
+A different cell is a different number of columns and rows, so the grid is recut and the child is
+resized exactly as it is when the window is. **A picture already on the screen goes blank until the
+program sends it again** — every tile was scaled to the old cell, and only the program that
+transmitted it can say what it should look like at the new one.
+
+**Under `kdos-con` the chord says where the control is instead.** A console window has no pixels of
+its own: the cell belongs to the view, the protocol carries no per-surface font, and the session
+refuses a font from anything but the shell surface precisely so that one window cannot resize every
+other window on the desktop. The chord opens a message naming `Super+=`, `Super+-` and `Super+0`,
+which are [the console's own font chords](kdos-con.md) and do reach the screen. It is neither eaten
+in silence nor passed down, because a child acting on it would be acting on a size nothing in this
+window can change. In a `--tty` run the key is left alone and reaches the child: there the font
+belongs to the terminal this one is running inside.
 
 ## Hyperlinks
 
@@ -389,7 +425,7 @@ name. Every key has a working default and the file need not exist.
 | Key | Default | What it does |
 |---|---|---|
 | `shell` | `$SHELL`, then `/bin/sh` | What an argument-less `kdos-term` runs |
-| `font` | the toolkit's | fontconfig name |
+| `font` | the toolkit's | fontconfig name. The size the window opens at, which `Ctrl+=` steps from and `Ctrl+0` returns to |
 | `columns`, `rows` | 80, 24 | The size asked for on the first configure |
 | `scrollback` | 2000 | Lines kept above the screen |
 | `images` | `yes` | Decode pictures at all |

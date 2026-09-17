@@ -204,6 +204,12 @@ static void geo_save(void)
  *   A GUEST ON ANOTHER TERMINAL OWNS NO CELLS on this one, so it has no
  *   rectangle to keep.
  *
+ *   A STARTUP CARD IS NOT THE APPLICATION'S RECTANGLE. It is CON_CARD_W by
+ *   CON_CARD_H whatever the window it precedes will be, so a launch that dies
+ *   before its first frame would write the card as the size this program
+ *   opens at next time — and every launch after that would open as a card and
+ *   record one.
+ *
  *   THE SCRATCHPAD HAS A SHAPE OF ITS OWN, applied on every show. A remembered
  *   rectangle would be overwritten by it on the way in and would overwrite the
  *   next ordinary window of the same program on the way out.
@@ -214,7 +220,8 @@ static void geo_save(void)
  */
 static int geo_worth(const Win *w)
 {
-	if (!w || w->panel || w->overlay || w->background || w->sticky)
+	if (!w || w->panel || w->overlay || w->background || w->sticky ||
+	    w->starting)
 		return 0;
 	/* A FLOAT ASKED TO OPEN IN THE MIDDLE AT A SIZE OF ITS OWN, and
 	 * remembering where it happened to be moved to would answer a

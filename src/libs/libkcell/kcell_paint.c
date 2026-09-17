@@ -9,7 +9,9 @@
  *
  * One KtuiCell becomes one (cell_w x cell_h) * scale rectangle: the background
  * filled, the glyph composited over it as an alpha mask in the foreground
- * colour.
+ * colour — except the box-drawing and block sets, which are DRAWN as
+ * rectangles from their codepoint rather than asked of any face, so that a
+ * border is one unbroken line at every size.
  *
  * The colours are libkcolor's, reached through libktui's eight slots — the
  * same eight the tty gets. That is the point of the whole exercise and not a
@@ -20,6 +22,7 @@
  * ---------------------------------
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "kcell.h"
@@ -123,7 +126,7 @@ static void rule(pixman_image_t *dst, int x, int y, int w, int t,
  * fraction of a frame and costing nothing worth measuring.
  *
  * The array is fixed and flushed when it fills: the cell width comes from the
- * font's widest advance times the scale, so there is no compile-time bound to
+ * font's character advance times the scale, so there is no compile-time bound to
  * size it from, and a flush every RULE_RECTS pieces keeps the worst case at
  * one call per RULE_RECTS columns.
  */
@@ -367,9 +370,433 @@ static pixman_image_t *solid_for_rgb(uint32_t rgb)
 	return solid_lit[h];
 }
 
+/*
+ * ────────────────────────────────────────────────────────────────────────
+ * FRAME CHARACTERS ARE DRAWN HERE, NOT RASTERISED.
+ *
+ * A border is a row of box-drawing cells and it has to read as one unbroken
+ * line. Rasterised from a face, that holds only while the face's box glyphs
+ * are drawn to exactly the advance the cell was measured from: a face whose
+ * full block spans a hair more than its advance leaves a hairline between two
+ * cells at some pixel sizes, and a face that draws its box glyphs to a
+ * different metric dashes the border outright. Nothing in a font's contract
+ * promises either way, so the whole box-drawing and block set is drawn as
+ * pixman rectangles in the cell's own foreground instead.
+ *
+ * BY CODEPOINT ALONE. No attribute selects this and no caller opts in, so the
+ * same character is the same picture in the panel, the terminal, the installer
+ * and the build screen, under any face and at any size. A cell holding one of
+ * these never reaches the glyph cache at all.
+ *
+ * NOT CACHED AS A MASK. A cached mask is composited OVER, per pixel, through a
+ * solid source; these are a fill, and one fill of at most eight rectangles is
+ * cheaper than the composite it replaces — so a cache here would spend memory
+ * to make the draw slower. The three shades are the exception and say why
+ * where their tile is built.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+
+/*
+ * The six positions along either axis that every box character is built from.
+ * `t` is the stroke: a single rule occupies D1..D2 and a double rule's pair
+ * occupies D0..D1 and D2..D3, so the single one lands exactly between the
+ * pair. That is what makes ├ meet ─ and ╪ meet ║ with no step — the junction
+ * and the arm are the same two numbers.
+ */
+enum { S_LO, S_D0, S_D1, S_D2, S_D3, S_HI };
+
+static inline int seg_pos(int code, int base, int span, int t)
+{
+	int d0 = base + (span - 3 * t) / 2;
+
+	switch (code) {
+	case S_LO:
+		return base;
+	case S_D0:
+		return d0;
+	case S_D1:
+		return d0 + t;
+	case S_D2:
+		return d0 + 2 * t;
+	case S_D3:
+		return d0 + 3 * t;
+	default:
+		return base + span;
+	}
+}
+
+/*
+ * The stroke, from the cell and nothing else, so a line thickens with the font
+ * exactly as the face's own would have. Capped at a third of the SHORTER side:
+ * a double rule is three strokes across, and a cell too small to hold three
+ * draws a thinner line rather than a line that leaves its cell.
+ */
+static inline int stroke_width(int cw, int ch)
+{
+	int t = ch / 16;
+	int cap = (cw < ch ? cw : ch) / 3;
+
+	if (t > cap)
+		t = cap;
+	return t < 1 ? 1 : t;
+}
+
+/*
+ * One rectangle of a synthesised character, CLAMPED TO ITS OWN CELL.
+ *
+ * Nothing drawn here may put ink in a neighbour. The repaint walks dirty ROWS
+ * and hands the caller the list, and the wide-glyph clip assumes a cell owns
+ * its own pixels — a character reaching past its cell leaves pixels in a row
+ * nobody flushed and erases half of the glyph beside it. The clamp is the
+ * guarantee, not the arithmetic that feeds it.
+ */
+static inline void synth_add(pixman_rectangle16_t *r, int *n,
+			     int x0, int x1, int y0, int y1,
+			     int X, int Y, int cw, int ch)
+{
+	if (x0 < X)
+		x0 = X;
+	if (y0 < Y)
+		y0 = Y;
+	if (x1 > X + cw)
+		x1 = X + cw;
+	if (y1 > Y + ch)
+		y1 = Y + ch;
+	if (x1 <= x0 || y1 <= y0)
+		return;
+	r[*n].x = (int16_t)x0;
+	r[*n].y = (int16_t)y0;
+	r[*n].width = (uint16_t)(x1 - x0);
+	r[*n].height = (uint16_t)(y1 - y0);
+	(*n)++;
+}
+
+/*
+ * Every box character as segments, each `x0 x1 y0 y1` in S_* positions.
+ *
+ * A double corner is four segments and not two: the outer line turns at the
+ * outer corner and the inner line at the inner one, which is what makes ╔ a
+ * corner rather than two crossed pairs. ╬ is eight, the four arms stopping at
+ * the square hole in the middle. ASCENDING BY CODEPOINT — the lookup is a
+ * binary search and a row out of order makes a character disappear.
+ */
+struct box_shape {
+	uint16_t cp;
+	uint8_t n;
+	uint8_t seg[8][4];	/* x0, x1, y0, y1, as S_* positions */
+};
+
+static const struct box_shape box_shape[] = {
+	{ 0x2500, 1, { { S_LO, S_HI, S_D1, S_D2 } } },
+	{ 0x2502, 1, { { S_D1, S_D2, S_LO, S_HI } } },
+	{ 0x250C, 2, { { S_D1, S_HI, S_D1, S_D2 },
+		       { S_D1, S_D2, S_D1, S_HI } } },
+	{ 0x2510, 2, { { S_LO, S_D2, S_D1, S_D2 },
+		       { S_D1, S_D2, S_D1, S_HI } } },
+	{ 0x2514, 2, { { S_D1, S_HI, S_D1, S_D2 },
+		       { S_D1, S_D2, S_LO, S_D2 } } },
+	{ 0x2518, 2, { { S_LO, S_D2, S_D1, S_D2 },
+		       { S_D1, S_D2, S_LO, S_D2 } } },
+	{ 0x251C, 2, { { S_D1, S_D2, S_LO, S_HI },
+		       { S_D1, S_HI, S_D1, S_D2 } } },
+	{ 0x2524, 2, { { S_D1, S_D2, S_LO, S_HI },
+		       { S_LO, S_D2, S_D1, S_D2 } } },
+	{ 0x252C, 2, { { S_LO, S_HI, S_D1, S_D2 },
+		       { S_D1, S_D2, S_D1, S_HI } } },
+	{ 0x2534, 2, { { S_LO, S_HI, S_D1, S_D2 },
+		       { S_D1, S_D2, S_LO, S_D2 } } },
+	{ 0x253C, 2, { { S_LO, S_HI, S_D1, S_D2 },
+		       { S_D1, S_D2, S_LO, S_HI } } },
+	{ 0x2550, 2, { { S_LO, S_HI, S_D0, S_D1 },
+		       { S_LO, S_HI, S_D2, S_D3 } } },
+	{ 0x2551, 2, { { S_D0, S_D1, S_LO, S_HI },
+		       { S_D2, S_D3, S_LO, S_HI } } },
+	{ 0x2554, 4, { { S_D0, S_HI, S_D0, S_D1 },
+		       { S_D2, S_HI, S_D2, S_D3 },
+		       { S_D0, S_D1, S_D0, S_HI },
+		       { S_D2, S_D3, S_D2, S_HI } } },
+	{ 0x2557, 4, { { S_LO, S_D3, S_D0, S_D1 },
+		       { S_LO, S_D1, S_D2, S_D3 },
+		       { S_D2, S_D3, S_D0, S_HI },
+		       { S_D0, S_D1, S_D2, S_HI } } },
+	{ 0x255A, 4, { { S_D2, S_HI, S_D0, S_D1 },
+		       { S_D0, S_HI, S_D2, S_D3 },
+		       { S_D0, S_D1, S_LO, S_D3 },
+		       { S_D2, S_D3, S_LO, S_D1 } } },
+	{ 0x255D, 4, { { S_LO, S_D1, S_D0, S_D1 },
+		       { S_LO, S_D3, S_D2, S_D3 },
+		       { S_D0, S_D1, S_LO, S_D1 },
+		       { S_D2, S_D3, S_LO, S_D3 } } },
+	{ 0x256A, 3, { { S_LO, S_HI, S_D0, S_D1 },
+		       { S_LO, S_HI, S_D2, S_D3 },
+		       { S_D1, S_D2, S_LO, S_HI } } },
+	{ 0x256C, 8, { { S_LO, S_D1, S_D0, S_D1 },
+		       { S_D2, S_HI, S_D0, S_D1 },
+		       { S_LO, S_D1, S_D2, S_D3 },
+		       { S_D2, S_HI, S_D2, S_D3 },
+		       { S_D0, S_D1, S_LO, S_D1 },
+		       { S_D2, S_D3, S_LO, S_D1 },
+		       { S_D0, S_D1, S_D2, S_HI },
+		       { S_D2, S_D3, S_D2, S_HI } } },
+};
+
+static const struct box_shape *box_lookup(uint32_t cp)
+{
+	int lo = 0, hi = (int)(sizeof box_shape / sizeof box_shape[0]) - 1;
+
+	while (lo <= hi) {
+		int mid = (lo + hi) / 2;
+
+		if (box_shape[mid].cp == cp)
+			return &box_shape[mid];
+		if (box_shape[mid].cp < cp)
+			lo = mid + 1;
+		else
+			hi = mid - 1;
+	}
+	return NULL;
+}
+
+/*
+ * An eighth of the cell, measured from its top or its left edge — and ONE
+ * PIXEL when that rounds away to nothing. A block that vanishes is worse than
+ * a block a fraction too wide: the rich tier's ramp is these characters, and
+ * its lowest step going blank reads as no data rather than as a small number.
+ * The clamp can only bite on a cell under eight pixels across, so nothing at a
+ * real cell size moves.
+ */
+static inline int eighth(int span, int k)
+{
+	int v = span * k / 8;
+
+	return v < 1 ? 1 : v;
+}
+
+/*
+ * THE BLOCK SET, AND EVERY EDGE OF IT ON THE SAME EIGHTH.
+ *
+ * Every edge is `span * k / 8` from the cell's top or left, so an eighth
+ * block, a half block and a quadrant in neighbouring cells meet on the same
+ * pixel row and the same pixel column, and a block and its complement cover
+ * the cell exactly. Rounding each shape from its own fraction — a half from
+ * ch/2 and a three-eighth from 3*ch/8 — is what puts a one-pixel seam across a
+ * bar chart.
+ *
+ * `eighth()` FLOORS THAT AT ONE PIXEL and the edges measured from the far side
+ * do not, because the two guarantees are different. A shape measured from the
+ * near edge has a thickness the floor keeps visible at a small cell; one
+ * measured from the far edge has a thickness that grows as the fraction
+ * shrinks, so it can never round away, and flooring it would move the edge off
+ * the eighth and break the seam guarantee above.
+ */
+static void block_rects(uint32_t cp, int X, int Y, int cw, int ch,
+			pixman_rectangle16_t *r, int *n)
+{
+	/* U+2596..U+259F as a quadrant mask: bit 0 upper left, 1 upper right,
+	 * 2 lower left, 3 lower right. */
+	static const uint8_t quad[10] = { 0x4, 0x8, 0x1, 0xD, 0x9,
+					  0x7, 0xB, 0x2, 0x6, 0xE };
+
+	if (cp >= 0x2588 && cp <= 0x258F) {
+		/* The full block and the left eighths: one right edge, on the
+		 * eighth its codepoint counts down to. */
+		synth_add(r, n, X, X + eighth(cw, (int)(0x2590 - cp)),
+			  Y, Y + ch, X, Y, cw, ch);
+		return;
+	}
+	if (cp >= 0x2581 && cp <= 0x2587) {
+		/* The lower eighths, placed by their TOP edge, so an n-eighth
+		 * block and the (8-n)-eighth one above it share a row. */
+		synth_add(r, n, X, X + cw,
+			  Y + ch * (int)(0x2588 - cp) / 8, Y + ch,
+			  X, Y, cw, ch);
+		return;
+	}
+	switch (cp) {
+	case 0x2580:		/* ▀ */
+		synth_add(r, n, X, X + cw, Y, Y + eighth(ch, 4), X, Y, cw, ch);
+		return;
+	case 0x2594:		/* ▔ */
+		synth_add(r, n, X, X + cw, Y, Y + eighth(ch, 1), X, Y, cw, ch);
+		return;
+	case 0x2590:		/* ▐ */
+		synth_add(r, n, X + cw * 4 / 8, X + cw, Y, Y + ch,
+			  X, Y, cw, ch);
+		return;
+	case 0x2595:		/* ▕ */
+		synth_add(r, n, X + cw * 7 / 8, X + cw, Y, Y + ch,
+			  X, Y, cw, ch);
+		return;
+	default:
+		break;
+	}
+	if (cp >= 0x2596 && cp <= 0x259F) {
+		unsigned m = quad[cp - 0x2596];
+		int mx = X + cw * 4 / 8, my = Y + ch * 4 / 8;
+
+		/* Two quadrants side by side are one rectangle, which is what
+		 * makes the half blocks and the full block fall out of the
+		 * same table as a single fill. */
+		if ((m & 0x3) == 0x3)
+			synth_add(r, n, X, X + cw, Y, my, X, Y, cw, ch);
+		else if (m & 0x1)
+			synth_add(r, n, X, mx, Y, my, X, Y, cw, ch);
+		else if (m & 0x2)
+			synth_add(r, n, mx, X + cw, Y, my, X, Y, cw, ch);
+		if ((m & 0xC) == 0xC)
+			synth_add(r, n, X, X + cw, my, Y + ch, X, Y, cw, ch);
+		else if (m & 0x4)
+			synth_add(r, n, X, mx, my, Y + ch, X, Y, cw, ch);
+		else if (m & 0x8)
+			synth_add(r, n, mx, X + cw, my, Y + ch, X, Y, cw, ch);
+	}
+}
+
+/*
+ * THE THREE SHADES ARE THE ONE THING HERE THAT IS NOT A RECTANGLE.
+ *
+ * A quarter-tone dither at a 16x32 cell is 128 disjoint pixels, and issuing
+ * those as rectangles would cost far more per cell than the glyph it replaced.
+ * So the pattern is an a8 mask ONE PERIOD ACROSS — four by two cell pixels per
+ * scale step — set to repeat, and the foreground is composited through it, one
+ * call per cell exactly like a glyph.
+ *
+ * THE MASK IS READ FROM THE DESTINATION'S OWN COORDINATES, not from zero. A
+ * repeating mask offset by the cell's absolute position is one continuous
+ * pattern across a whole shaded area; a mask anchored at each cell's origin
+ * changes phase at every boundary whose cell width is not a multiple of the
+ * period, and that shows as a grid drawn over the fill.
+ *
+ * One tile per tone per scale — at most twelve images of a few dozen bytes —
+ * and they survive a font change, because the period is the scale and nothing
+ * the face decides. kcell_paint_forget() drops them with the colour sources.
+ */
+#define SHADE_W 4
+#define SHADE_H 2
+
+static pixman_image_t *shade_tile[3][KCELL_MAX_SCALE + 1];
+
+/* pixman hands the image back to its destroy function and free() does not take
+ * one; a cast between the two signatures is undefined behaviour. */
+static void shade_free_bits(pixman_image_t *img, void *data)
+{
+	(void)img;
+	free(data);
+}
+
+static pixman_image_t *shade_for(int tone, int scale)
+{
+	if (shade_tile[tone][scale])
+		return shade_tile[tone][scale];
+
+	int w = SHADE_W * scale, h = SHADE_H * scale;
+	/* pixman wants a 32-bit-aligned stride whatever the format says. */
+	int stride = (w + 3) & ~3;
+	uint8_t *bits = calloc(1, (size_t)stride * (size_t)h);
+
+	if (!bits)
+		return NULL;
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			int cx = x / scale, cy = y / scale;
+			/*
+			 * A quarter is one pixel of each four-by-two period,
+			 * staggered so no two set pixels share a column — an
+			 * unstaggered quarter reads as vertical stripes. A
+			 * half is the checkerboard, and three quarters is the
+			 * quarter inverted, so the three tones step evenly.
+			 */
+			int on = tone == 1 ? ((cx + cy) & 1) == 0
+					   : (cx % 4 == (cy % 2) * 2);
+
+			if (tone == 2)
+				on = !on;
+			bits[y * stride + x] = on ? 0xff : 0;
+		}
+
+	pixman_image_t *t = pixman_image_create_bits(PIXMAN_a8, w, h,
+						     (uint32_t *)bits, stride);
+	if (!t) {
+		free(bits);
+		return NULL;
+	}
+	pixman_image_set_destroy_function(t, shade_free_bits, bits);
+	pixman_image_set_repeat(t, PIXMAN_REPEAT_NORMAL);
+	shade_tile[tone][scale] = t;
+	return t;
+}
+
+static void shade_drop(void)
+{
+	for (int i = 0; i < 3; i++)
+		for (int s = 0; s <= KCELL_MAX_SCALE; s++)
+			if (shade_tile[i][s]) {
+				pixman_image_unref(shade_tile[i][s]);
+				shade_tile[i][s] = NULL;
+			}
+}
+
+/*
+ * Whether this codepoint is drawn rather than rasterised. Asked for every
+ * non-blank cell, so the whole block range answers on a range test and only
+ * the box range pays the search — and the box range is sparse, because the
+ * heavy, dashed and rounded characters are not in this set and must still
+ * reach the face that carries them.
+ */
+static bool synth_has(uint32_t cp)
+{
+	if (cp >= 0x2580 && cp <= 0x259F)
+		return true;
+	return cp >= 0x2500 && cp <= 0x256C && box_lookup(cp) != NULL;
+}
+
+/* `c` and `src` are the same foreground twice: a fill takes the colour, the
+ * shade tile takes an image to composite through. */
+static void synth_draw(pixman_image_t *dst, uint32_t cp, int X, int Y,
+		       int cw, int ch, int scale, pixman_color_t c,
+		       pixman_image_t *src)
+{
+	pixman_rectangle16_t r[8];
+	int n = 0;
+
+	if (cp >= 0x2591 && cp <= 0x2593) {
+		pixman_image_t *tile = shade_for((int)(cp - 0x2591), scale);
+
+		if (tile && src)
+			pixman_image_composite32(PIXMAN_OP_OVER, src, tile,
+						 dst, 0, 0, X, Y, X, Y,
+						 cw, ch);
+		return;
+	}
+
+	if (cp >= 0x2580 && cp <= 0x259F) {
+		block_rects(cp, X, Y, cw, ch, r, &n);
+	} else {
+		const struct box_shape *b = box_lookup(cp);
+		int t = stroke_width(cw, ch);
+
+		if (!b)
+			return;
+		for (int i = 0; i < b->n; i++)
+			synth_add(r, &n,
+				  seg_pos(b->seg[i][0], X, cw, t),
+				  seg_pos(b->seg[i][1], X, cw, t),
+				  seg_pos(b->seg[i][2], Y, ch, t),
+				  seg_pos(b->seg[i][3], Y, ch, t),
+				  X, Y, cw, ch);
+	}
+
+	/* One call for the whole character: a fill is a region intersect
+	 * against the destination clip before a pixel moves, and ╬ is eight
+	 * pieces of one colour. */
+	if (n)
+		pixman_image_fill_rectangles(PIXMAN_OP_OVER, dst, &c, n, r);
+}
+
 void kcell_paint_forget(void)
 {
 	solid_drop();
+	shade_drop();
 	solid_theme = NULL;
 }
 
@@ -413,8 +840,7 @@ static inline int sprite_run_next(uint32_t cp0, int k, const KtuiCell *c)
 /*
  * `x0`/`x1` are the half-open span of CHANGED cells; the row outside it holds
  * what the last frame left and is not touched. The caller widens the span by a
- * cell on each side, which is what covers a wide glyph's continuation and the
- * overhang a box-drawing character puts into its neighbour.
+ * cell on each side, which is what covers a wide glyph's continuation.
  */
 static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		      int y_cell, int scale, int x0, int x1)
@@ -623,10 +1049,20 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			continue;
 		}
 
+		/*
+		 * A FRAME CHARACTER NEVER REACHES THE FACE. The box-drawing
+		 * and block sets are drawn from their codepoint — see the
+		 * synthesis above — so the face is not asked for one, and a
+		 * border is the same unbroken line whatever font is loaded.
+		 * Such a character is always ONE cell wide, so the wide-glyph
+		 * pairing below cannot select it.
+		 */
+		bool synth = synth_has(cp);
+
 		KCellGlyph g;
 		int style = ((at & KT_A_ITALIC) ? KCELL_ST_ITALIC : 0) |
 			    ((at & KT_A_BOLD) ? KCELL_ST_BOLD : 0);
-		bool have = kcell_glyph_face(cp, scale, style, &g);
+		bool have = !synth && kcell_glyph_face(cp, scale, style, &g);
 
 		/*
 		 * A glyph wider than its cell may spill into the next one ONLY
@@ -659,10 +1095,18 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		}
 
 glyph:
+		if (synth)
+			synth_draw(dst, cp, x * cw, y, cw, ch, scale,
+				   fg_lit ? rgb_color(fgl)
+					  : to_pixman(ktui_theme->slot[fg & 7]),
+				   fg_lit ? solid_for_rgb(fgl)
+					  : solid_for_slot(fg));
+
 		if (!have) {
-			/* No bitmap — a codepoint no font carries, or one
-			 * whose glyph is empty — and the rules are still the
-			 * cell's. Same reason a blank cell keeps them. */
+			/* No mask to composite — a frame character just drawn,
+			 * a codepoint no font carries, or one whose glyph is
+			 * empty — and the rules are still the cell's. Same
+			 * reason a blank cell keeps them. */
 			pixman_color_t rc =
 				fg_lit ? rgb_color(fgl)
 				       : to_pixman(ktui_theme->slot[fg & 7]);
@@ -698,11 +1142,11 @@ glyph:
 		 * Clipped to the cell (or the two cells of a wide pair) by
 		 * arithmetic on the composite rectangle rather than a pixman
 		 * clip region — swapping the destination's region per glyph
-		 * would also clip the row's background fills. A fallback glyph
-		 * whose bitmap exceeds the cell would otherwise bleed into its
-		 * neighbour, and libktui's box-drawing characters have to TILE
-		 * — one pixel of overhang turns a continuous border into a
-		 * dashed one.
+		 * would also clip the row's background fills. A fallback face
+		 * answers with whatever metric it has, and a bitmap exceeding
+		 * the cell would otherwise overwrite the character beside it —
+		 * which the neighbour has no reason to repaint, so the damage
+		 * outlives the frame that caused it.
 		 *
 		 * BOLD WITH NO BOLD FACE IS THE SAME MASK STRUCK TWICE, one
 		 * scaled pixel apart — a weight approximated rather than a
@@ -863,10 +1307,11 @@ int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
 			 * changes end to end, where this costs one extra
 			 * comparison from each side and finds it.
 			 *
-			 * WIDENED BY A CELL EACH WAY, because libktui's box
-			 * characters are allowed to overhang and a changed
-			 * cell's neighbour may hold pixels this paint has to
-			 * put back.
+			 * WIDENED BY A CELL EACH WAY, because a changed cell's
+			 * neighbour may hold pixels this paint has to put
+			 * back: a face's glyph is clipped to its own cell, but
+			 * the PAIR a double-width character occupies is
+			 * painted as one rectangle by its lead.
 			 *
 			 * AND THEN ONTO THE LEAD OF A CONTINUATION. A
 			 * double-width glyph is painted entirely by its lead

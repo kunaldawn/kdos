@@ -199,8 +199,8 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
  *
  * `prev` is the last-presented buffer and is updated as we go, so the next
  * frame repaints only the CHANGED SPAN of each changed row. The span is
- * widened by one cell each way, for the overhang libktui's box characters are
- * allowed, and then back onto the LEAD of a double-width glyph if it starts on
+ * widened by one cell each way, because a cell's pixels are not always its
+ * own, and then back onto the LEAD of a double-width glyph if it starts on
  * that glyph's continuation cell — the lead paints both halves, so a span that
  * began on the continuation would clear the right half and redraw nothing. A
  * caret or a clock digit therefore costs the cells it touched and not every
@@ -213,6 +213,16 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
  * a cell grid whose surface height is not a multiple of the cell height would
  * otherwise leave an UNPAINTED STRIP, which is a live defect at the bottom of
  * the lock screen at 1280x800 and is fixed here for every consumer at once.
+ *
+ * THE FRAME CHARACTERS ARE NOT RASTERISED. U+2500's single and double box
+ * sets and the whole of U+2580..U+259F — blocks, eighths, quadrants and the
+ * three shades — are drawn as rectangles derived from the cell, in the cell's
+ * foreground, by codepoint alone. Nothing selects it and no face can change
+ * it, so a border joins at every size and every face; a face is still asked
+ * for every other character, the heavy, dashed and rounded box variants
+ * included. A synthesised character is one cell wide and puts no ink outside
+ * its own cell, which is what the damage report and the wide-glyph clip both
+ * assume.
  */
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
@@ -231,8 +241,9 @@ int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
 		       int dst_w, int dst_h, unsigned char *painted);
 
 /*
- * Drop the cached colour sources. A glyph is composited through a solid-fill
- * image and those are kept per slot and per literal; nothing but a shutdown
+ * Drop the cached colour sources and the shade tiles. A glyph is composited
+ * through a solid-fill image and those are kept per slot and per literal, and
+ * the three shades are one repeating a8 tile per scale; nothing but a shutdown
  * needs to ask. A palette change needs no announcement: the slot cache is
  * keyed on the eight COLOURS in force, not on the identity of the table
  * holding them, because libktui projects night light by rewriting one table in

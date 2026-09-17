@@ -56,9 +56,21 @@ const int kdos_disp_n = 1;
  * checking.
  */
 static int kwl_frame_throttled(void) { return 0; }
+/*
+ * AND THE FONT CHORD HAS NO SURFACE TO ASK EITHER. The chord is tested on
+ * every backend — a console surface answers it with a message rather than with
+ * a resize — so both halves of the question have to exist in a build with no
+ * compositor half to answer them, or this build does not compile.
+ */
+static int kwl_surface(void) { return 0; }
+static int kwl_font_step(int step) { (void)step; return -1; }
 #else
 const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
 const int kdos_disp_n = 2;
+
+/* Naming kwl_impl is what links Wayland in; comparing against it is how this
+ * program knows the window it drew is one with pixels in it. */
+static int kwl_surface(void) { return kdisp_current() == &kwl_impl; }
 #endif
 
 /* Zeroed: `selecting` is what says whether a drag is in progress, so the
@@ -320,14 +332,38 @@ static void draw(void)
 	}
 }
 
+/*
+ * THE GRID THE FRAME MAKES, and the pty told about it. Above the chords
+ * because a font chord ends here: a different cell is a different number of
+ * columns, which is the same event as the window having been resized.
+ */
+static void resize_to_frame(void)
+{
+	int x, y, w, h;
+
+	ktui_draw_resize();
+	ktui_draw_invalidate();
+	inner(&x, &y, &w, &h);
+	if (w < 1 || h < 1 || (w == T.cols && h == T.rows))
+		return;
+	T.cols = w;
+	T.rows = h;
+	kvt_term_resize(T.t, w, h);
+	/* Half the picture bound is the grid, so the geometry a program is
+	 * told has to move with it. */
+	term_pic_geom();
+}
+
 /* ── the terminal's own chords ─────────────────────────────────────────── */
 
 /*
- * FOUR, AND NO MORE THAN FOUR. Every chord this program claims is a chord no
- * program running inside it can ever use, and a terminal that ate Ctrl+Shift+K
- * is a terminal somebody's editor is broken in.
+ * NINE, AND NO MORE THAN NINE — two here, four on the scrollback and three on
+ * the font. Every chord this program claims is a chord no program running
+ * inside it can ever use, and a terminal that ate Ctrl+Shift+K is a terminal
+ * somebody's editor is broken in.
  *
- * Ctrl+Shift is the prefix because a bare Ctrl chord belongs to the child.
+ * Ctrl+Shift is the prefix for all but the font, because a bare Ctrl chord
+ * belongs to the child wherever the child can tell it from the plain key.
  */
 static int chord(const KtuiEvent *ev)
 {
@@ -359,6 +395,88 @@ static int chord(const KtuiEvent *ev)
 	return 0;
 }
 
+/*
+ * THE FONT, AND IT IS THIS WINDOW'S ALONE. kdos-term is one process per window
+ * and the face is a process-global in the cell painter, so per process is per
+ * window here and nowhere else in this desktop.
+ *
+ * BARE CTRL, which every other chord in this file refuses. The three keys
+ * carry no control code at all — the state machine has no Ctrl rule for `=`,
+ * `-` or `0`, so what a child received for Ctrl+= was a bare `=` and no
+ * program running inside can tell the chord from the key. Shift must be UP:
+ * the shifted spelling of `=` is `+`, a different character on every layout,
+ * and leaving Ctrl+Shift free keeps `Ctrl+_` reaching the child.
+ */
+static int font_chord(const KtuiEvent *ev)
+{
+	int step;
+
+	if (!(ev->mods & KT_MOD_CTRL) || (ev->mods & KT_MOD_SHIFT))
+		return 0;
+	if (ev->key == '=')
+		step = 1;
+	else if (ev->key == '-')
+		step = -1;
+	else if (ev->key == '0')
+		step = 0;
+	else
+		return 0;
+
+	/*
+	 * A CONSOLE SURFACE HAS NO PIXELS TO GIVE. A kcon client draws in a
+	 * cell the protocol reports as one unit square, carries no per-surface
+	 * font, and the session refuses a font from anything but the shell
+	 * surface — precisely so that one window cannot resize every other
+	 * window on the desktop. Forwarding the key instead would be a child
+	 * acting on a size nothing here can change, so the person is told
+	 * where the control actually is.
+	 */
+	if (kdisp_current() == &kcon_impl) {
+		ktui_modal_alert("Font",
+				 "The font here belongs to the whole view.\n"
+				 "Super+= and Super+- step it, Super+0 puts it back.");
+		ktui_draw_invalidate();
+		return 1;
+	}
+	/* A --tty or --dump run draws through somebody else's terminal, which
+	 * owns its own font: the key is the child's, exactly as it was. */
+	if (!kwl_surface())
+		return 0;
+
+	int cw = kdisp_cell_w(), ch = kdisp_cell_h();
+
+	if (kwl_font_step(step) != 0)
+		return 1;
+	/*
+	 * THE CELL IS WHAT EVERYTHING ELSE WAS CUT TO, so a step a bitmap face
+	 * answered with the strike it already had costs nothing here: the
+	 * grid, the pty and every cached tile are still right for it, and the
+	 * backend has already spoiled its paint baselines so the glyphs redraw
+	 * whether the size moved or not.
+	 */
+	if (kdisp_cell_w() == cw && kdisp_cell_h() == ch)
+		return 1;
+
+	/*
+	 * THE CELL MOVED, so everything measured in it is restated HERE and
+	 * not left to the resize. resize_to_frame() re-states the picture
+	 * geometry only when the grid really changed, and a step that happens
+	 * to keep the same number of columns would leave `kvt_term_cell_px`
+	 * and every cached tile cut for the cell before it.
+	 *
+	 * A PICTURE ALREADY ON THE SCREEN GOES BLANK until the program that
+	 * sent it sends it again. Every tile was scaled to the old cell, and
+	 * blitting one into a cell of another size draws the picture in
+	 * fragments; only the program that transmitted it can say what it
+	 * should look like at the new one.
+	 */
+	resize_to_frame();
+	ktui_sprite_clear();
+	term_pic_init();
+	ktui_draw_invalidate();
+	return 1;
+}
+
 static int scroll_chord(const KtuiEvent *ev)
 {
 	if (!(ev->mods & KT_MOD_SHIFT))
@@ -388,23 +506,6 @@ static int scroll_chord(const KtuiEvent *ev)
 }
 
 /* ── the loop ──────────────────────────────────────────────────────────── */
-
-static void resize_to_frame(void)
-{
-	int x, y, w, h;
-
-	ktui_draw_resize();
-	ktui_draw_invalidate();
-	inner(&x, &y, &w, &h);
-	if (w < 1 || h < 1 || (w == T.cols && h == T.rows))
-		return;
-	T.cols = w;
-	T.rows = h;
-	kvt_term_resize(T.t, w, h);
-	/* Half the picture bound is the grid, so the geometry a program is
-	 * told has to move with it. */
-	term_pic_geom();
-}
 
 /*
  * Run the child to completion and consume everything it wrote, then draw one
@@ -744,7 +845,8 @@ int main(int argc, char **argv)
 			}
 			if (ev.type != KT_EVT_KEY)
 				continue;
-			if (chord(&ev) || scroll_chord(&ev))
+			if (chord(&ev) || font_chord(&ev) ||
+			    scroll_chord(&ev))
 				continue;
 			term_key(&ev);
 		}

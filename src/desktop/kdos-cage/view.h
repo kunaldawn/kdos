@@ -76,7 +76,18 @@ struct cg_view {
 	struct cg_server *server;
 	struct wl_list link; // server::views
 	struct wlr_surface *wlr_surface;
+	/*
+	 * THE NODE THE COMPOSITOR POSITIONS, whose origin IS the window
+	 * geometry's — which is what an xdg_popup's position is measured from,
+	 * so a popup parented here lands where its positioner asked.
+	 */
 	struct wlr_scene_tree *scene_tree;
+	/*
+	 * THE CLIENT'S BUFFER INSIDE IT, offset by minus the window-geometry
+	 * origin so a client drawing its own decorations puts its window, and
+	 * not its shadow, at the output's corner.
+	 */
+	struct wlr_scene_tree *surface_tree;
 
 	/* The view has a position in layout coordinates. */
 	int lx, ly;
@@ -114,6 +125,22 @@ struct cg_view_impl {
 	 * adds a restore button to something no desktop shows one on.
 	 */
 	void (*set_size)(struct cg_view *view, int width, int height);
+	/*
+	 * WHERE THE WINDOW STARTS INSIDE THE BUFFER, in surface pixels, or no
+	 * entry for a surface whose buffer IS its window.
+	 *
+	 * A client drawing its own decorations commits a buffer of
+	 * `margin + window + margin` and names the inner rectangle as its
+	 * window geometry; the parent sized this view's output to that inner
+	 * rectangle, so a scene node placed at the BUFFER's origin puts the
+	 * margin on screen and pushes the last `origin` pixels of the window
+	 * off the far edge of the framebuffer, where nothing can report them.
+	 * Subtracting the origin is what makes the output and the window the
+	 * same rectangle.
+	 *
+	 * An X11 surface has no window geometry and needs no entry.
+	 */
+	void (*get_origin)(struct cg_view *view, int *x_out, int *y_out);
 	void (*close)(struct cg_view *view);
 	void (*destroy)(struct cg_view *view);
 };
@@ -138,6 +165,19 @@ bool view_is_transient_for(struct cg_view *child, struct cg_view *parent);
 void view_activate(struct cg_view *view, bool activate);
 void view_position(struct cg_view *view);
 void view_position_all(struct cg_server *server);
+
+/* See cg_view_impl::get_origin. Zero for a view whose impl names none. */
+void view_origin(struct cg_view *view, int *x_out, int *y_out);
+
+/*
+ * PUT THE WINDOW ON THE OUTPUT: the tree at the view's layout position, and the
+ * client's buffer inside it at minus the window-geometry origin.
+ *
+ * THE ONE PLACE THAT ARITHMETIC IS DONE. The origin moves when a client is
+ * maximised or unmaximised, so a caller that positioned either node itself
+ * would be a second answer that goes stale on the next state change.
+ */
+void view_place_node(struct cg_view *view);
 void view_unmap(struct cg_view *view);
 void view_map(struct cg_view *view, struct wlr_surface *surface);
 void view_destroy(struct cg_view *view);

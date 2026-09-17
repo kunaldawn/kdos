@@ -97,7 +97,8 @@ Nothing below notices — the backend, the renderer and the allocator are all
 created successfully — and the refusal surfaces first inside the anchor output's commit, whose
 failure leaves the output out of the layout, the layout with no `wl_output` global, and the guest
 waiting for a screen: Firefox loops on `gdk_monitor_get_workarea`, foot exits with *no monitors
-available*, and the console window says *starting…* for ever with no frame and no error anywhere.
+available*, and the session's startup card stands for ever on *starting the application* — the
+channel came up, so `KEMBED_HELLO` arrived, and no toplevel ever maps behind it.
 So before the session is built on them, `embed_render_path_works()` adds a throwaway headless
 output, calls `wlr_output_init_render()` and `wlr_output_test_state()` on it and destroys it again —
 so the anchor never carries a swapchain belonging to a renderer that is about to be thrown away.
@@ -144,7 +145,7 @@ holds the render node open until it is destroyed and a second context on the sam
 second failure on top of the first. Pixman is built by calling `wlr_pixman_renderer_create()` and
 never by naming it in `WLR_RENDERER`, which holds what autocreate was asked for and not what it was
 replaced by. A second failure is fatal, because nothing past this point can recover and a cage that can
-publish nothing is better stopped than left saying *starting…*. The fallback is driven by the failed
+publish nothing is better stopped than left holding a startup card that never opens out. The fallback is driven by the failed
 probe and never by the presence of a render node, so a machine whose hardware path works keeps it.
 
 **An output that will not commit is named and then taken back down.** `handle_new_output()` logs
@@ -271,12 +272,41 @@ that a toplevel naming an **owner** is sized and not maximised: maximised is wha
 shadow and rounded corners from a window that fills its frame, and on a dialog it adds a restore
 button to something no desktop shows one on.
 
+**A window sits inside its buffer, and a view is two scene nodes so that both corners land.** A
+client drawing its own decorations commits a buffer of `margin + window + margin` and names the
+inner rectangle as its window geometry. The output was sized to that inner rectangle, so a node
+placed at the buffer's origin puts the margin on screen and pushes the last `origin` pixels of the
+window past the far edge of the framebuffer, where no report can reach them. But an `xdg_popup`'s
+position is measured from its parent's **window geometry**, and `wlr_scene_xdg_surface_create()`
+applies it inside the tree the popup is parented to — so that tree must carry the window geometry's
+origin. One tree holding the buffer directly can satisfy one of the two and never both.
+
+So `view->scene_tree` is an empty tree at the view's layout position, carrying the window geometry's
+origin and the `data` pointer the hit test walks up to, and `view->surface_tree` holds the client's
+buffer inside it at minus `cg_view_impl::get_origin`. `view_place_node()` is the one place either is
+positioned. The origin moves with the state — a client drops its margins when it is maximised and
+takes them back when it is not — so it is re-read on every commit. An X11 surface has no window
+geometry and names no origin.
+
 **Popups, tooltips and override-redirect surfaces are not windows.** An `xdg_popup` is built into
 its toplevel's scene tree, so it moves with it, renders into that window's framebuffer and is
-published inside its frames — no `win`, no output, no taskbar entry. Its unconstrain box is **its
-toplevel's own output** and never the output under a point: a popup whose origin falls outside every
+published inside its frames — no `win`, no output, no taskbar entry. Its unconstrain box is given in
+the toplevel's **surface** space, which the origin above has moved: the output's corner is `origin`
+pixels into the surface, and `wlr_xdg_popup_unconstrain_from_box()` takes the toplevel's geometry
+origin off again to reach the space a positioner is written in. Drop the term and every menu is
+placed one shadow margin from where the client asked for it. The box is **its toplevel's own
+output** and never the output under a point: a popup whose origin falls outside every
 output resolves to `NULL`, and `wlr_output_layout_get_box(NULL)` is the *whole* layout, so a menu
-would be unconstrained across every window this guest has and composited into the one beside it. An
+would be unconstrained across every window this guest has and composited into the one beside it. A
+popup taller or wider than that box is **placed, not shrunk**: wlroots unconstrains by flip, then
+slide, then resize, and its resize pass keeps any rectangle that is not empty, so a menu anchored
+low in a short console window would be configured at the height of the gap below its anchor — a band
+of tens of pixels holding no items, and nothing in the protocol tells the client that is not the
+menu it asked for. The cage undoes that resize on an axis once it has taken more than half of the
+size the positioner asked for, restores the asked-for extent and pulls the popup to the near edge of
+the box; the scene clips whatever runs past the framebuffer, because a menu whose head is on screen
+is usable and a band is not. A smaller cut is the client's own — one that means to shrink asks for a
+size close to the one it gets — and stands. An
 X11 override-redirect surface — a menu, a tooltip, a splash, a drag icon — names its own place in
 root coordinates, which **are** the output layout, so honouring them lands it inside the box of the
 window that raised it; it gets no output and no `win` either. Get that wrong and every Java splash
@@ -585,13 +615,13 @@ defaulted — there is no headless cursor plane to prefer, so a person who set i
 some other compositor.
 
 **And because this cursor is in the frame, it is the ONLY pointer inside the window.** The parent's
-cell pointer is the cell under it reversed, and a reversed cell over an opaque guest frame is a
-second pointer a cell from the first; the view therefore draws none over a cell whose picture keeps
-being rewritten under it, which is what a cursor composited into every frame makes of the block it
-is on — see the pointer contract in
+own pointer over an opaque guest frame is a second pointer beside the first; the parent therefore
+marks a guest's content cells
+`KT_A_GUEST` and the view draws none on them — see the pointer contract in
 [design-language](../03-architecture/design-language.md). A guest that hides its cursor is honoured
-rather than overridden, which is what a full-screen player and a game ask for, and the cell pointer
-comes back on the frame, one cell out, which is where the window is grabbed and resized anyway.
+rather than overridden, which is what a full-screen player and a game ask for, and this desktop's
+pointer comes back on the frame, one cell out, which is where the window is grabbed and resized
+anyway.
 
 **Two things follow from a software cursor, and neither is a cost worth trading back.**
 `wlr_output_is_direct_scanout_allowed()` returns false on this output for the life of the process,

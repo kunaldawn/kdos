@@ -19,12 +19,16 @@
  * is bound and none is intercepted.
  *
  * SUPER IS THE DESKTOP'S MODIFIER and is the whole of why the table can be
- * this large without costing an application anything. The three exceptions are
+ * this large without costing an application anything. The four exceptions are
  * deliberate, are the only ones, and each is a chord a hand already knows:
  *
  *   Alt+Tab and Alt+Shift+Tab   switch windows, which a lifetime of muscle
  *                               memory earns. An application that wants Tab
  *                               with Alt does not get it.
+ *   Alt+Space                   the window menu, which is where the system
+ *                               menu has been since windows had one — and
+ *                               `rc.xml` binds it to the client menu, so the
+ *                               two desktops answer it alike.
  *   Ctrl+A                      the leader, for the views where Super never
  *                               arrives. PRESS IT TWICE to send the literal,
  *                               which is what gives a shell back its
@@ -81,6 +85,46 @@ static Bind binds[] = {
 	{ "restore",	CON_ACT_RESTORE, 0, 'n',	KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "restore-all", CON_ACT_RESTORE_ALL, 0, 'n',
 	  KT_MOD_SUPER | KT_MOD_ALT | KT_MOD_SHIFT },
+	/*
+	 * TO THE BACK, ON THE LETTER THAT SAYS SO. `b` is free on both
+	 * desktops unmodified — the browser, the address book and the battery
+	 * are its shifted and control forms — and the ring cannot do this job:
+	 * every step of it raises, so two windows of the same size fully
+	 * overlapped stay in the order they are in.
+	 */
+	{ "lower",	CON_ACT_LOWER,	 0, 'b',	KT_MOD_SUPER },
+	/*
+	 * TABS ON A FRAME — THE ONE FAMILY THIS FILE BINDS THAT `rc.xml` HAS
+	 * NO ANSWER FOR. The compositor has no stacking, so there is nothing
+	 * to bind the same chords TO over there; what the rule about the two
+	 * files asks for here is that these four are left FREE on the
+	 * compositor, so the day it grows tabs the chords are still available
+	 * to mean the same thing.
+	 *
+	 * `s` FOR STACK, AND NOT PLAIN `Super+s`, which `rc.xml` gives
+	 * ToggleShade. Shift folds the next window in and Alt takes the group
+	 * apart, which is the same shape `Super+Shift+t` and `Super+Alt+t`
+	 * already have for the two arrangements.
+	 *
+	 * AND THE BRACKETS STEP THE STRIP, because they are the pair a
+	 * keyboard has for "one back, one on" and neither file binds either.
+	 * NOT a form of Tab: a shifted Tab arrives as KT_K_BTAB and a chord
+	 * spelled `Shift+Tab` parses to KT_K_TAB, so half the family would be
+	 * a chord no keys.conf line and no `--press` could name.
+	 */
+	{ "stack",	CON_ACT_STACK,	 0, 's', KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "unstack",	CON_ACT_UNSTACK, 0, 's', KT_MOD_SUPER | KT_MOD_ALT },
+	{ "stack-next",	CON_ACT_STACK_NEXT, 0, ']', KT_MOD_SUPER },
+	{ "stack-prev",	CON_ACT_STACK_PREV, 0, '[', KT_MOD_SUPER },
+	/*
+	 * THE WINDOW MENU, ON THE CHORD `rc.xml` ALREADY OPENS THE CLIENT MENU
+	 * WITH. It is one of the few chords in this table not on Super, and
+	 * it cannot be: Super+space is the palette, its shifted form is the
+	 * taskbar, and a window menu on a third form of the same key would be
+	 * three things one key away from each other. Alt+Space has been the
+	 * system menu since windows had one.
+	 */
+	{ "window-menu", CON_ACT_WINMENU, 0, ' ',	KT_MOD_ALT },
 	/*
 	 * THE SCRATCHPAD, ON THE KEY THE DROP-DOWN TERMINALS HAVE ALWAYS USED.
 	 * The grave key is the one key above the keyboard that no program
@@ -653,6 +697,26 @@ void keys_chord_name(int key, int mods, char *out, size_t n)
  * — the chord is still bound. Deciding what a person is shown belongs to the
  * reader; see sh_chords_load().
  */
+/*
+ * THE CHORD AN ACTION IS ON, AFTER keys.conf. The window menu prints one
+ * beside every verb it offers, and it reads them from here for the reason the
+ * key card does: the table that binds a chord is the table that names it, so a
+ * rebinding moves what the menu teaches with it. An action no row names leaves
+ * the string empty rather than printing a chord nothing answers.
+ */
+void keys_chord_for(const char *action, char *out, size_t n)
+{
+	out[0] = '\0';
+	if (!action)
+		return;
+	keys_load();
+	for (int i = 0; i < NBINDS; i++)
+		if (!strcmp(binds[i].name, action)) {
+			keys_chord_name(binds[i].key, binds[i].mods, out, n);
+			return;
+		}
+}
+
 void keys_print(void)
 {
 	char chord[64];

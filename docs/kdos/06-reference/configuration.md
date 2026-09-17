@@ -339,7 +339,7 @@ reported by name rather than ignored.
 | Key | Default | Means |
 |---|---|---|
 | `shell` | `$SHELL`, then `/bin/sh` | What an argument-less `kdos-term` runs. Split as a desktop entry's `Exec` is — there is no shell |
-| `font` | the toolkit's | fontconfig name |
+| `font` | the toolkit's | fontconfig name. The size a window opens at: `Ctrl+=` and `Ctrl+-` step it for that window alone and `Ctrl+0` comes back here |
 | `columns` | 80 | Columns asked for on the first configure |
 | `rows` | 24 | Rows asked for on the first configure |
 | `scrollback` | 2000 | Lines kept above the screen |
@@ -517,7 +517,10 @@ Changing a default in one file changes it in the other.
 | `fullscreen` | `Super+f` | `prev-alt` | `Alt+Shift+Tab` |
 | `minimise` | `Super+n` | `snap-left` … `snap-down` | `Super+`arrow |
 | `restore` | `Super+Shift+n` | `focus-left` … `focus-down` | `Super+Shift+`arrow |
-| `restore-all` | `Super+Alt+Shift+n` | | |
+| `restore-all` | `Super+Alt+Shift+n` | `lower` | `Super+b` |
+| `window-menu` | `Alt+Space` | | |
+| `stack` | `Super+Shift+s` | `unstack` | `Super+Alt+s` |
+| `stack-next` | `Super+]` | `stack-prev` | `Super+[` |
 | `scratchpad` | `Super+grave` | `scratchpad-mark` | `Super+Alt+grave` |
 | `workspace-prev` | `Super+PageUp` | `swap-left` … `swap-down` | `Super+Alt+`arrow |
 | `workspace-next` | `Super+PageDown` | | |
@@ -580,6 +583,32 @@ running `ToggleOmnipresent`, which is labwc's word for the same flag — so the 
 names a **marker** rather than a program, and the key card gates a `<query identifier>` on the
 program being installed only when the container begins with `Focus`.
 
+**`lower` sends the focused window to the back and hands the keyboard to whatever comes forward.**
+It is the console desktop's alone — labwc has a `Lower` action and `rc.xml` binds nothing to it —
+and the ring cannot stand in for it: every step of `next` and `prev` *raises*, so two windows of the
+same size fully overlapped stay in the order they are in however many times they are stepped. A
+dialog goes down with the window it belongs to and stays above it. `Super+b` is free on both
+desktops unmodified; the browser, the address book and the battery are that letter's shifted and
+control forms.
+
+**The four `stack` rows are the tabbed windows, and this desktop's alone.** `stack` folds the
+ring's next window into the focused one as a tab, the two brackets walk the strip and `unstack`
+takes the group apart; two windows in a stack are one rectangle showing one of them at a time.
+`kdos-comp` has no stacking, so `rc.xml` binds nothing to these four — and nothing else to those
+keys either, so the day it grows tabs the chords are still free to mean the same thing. Not plain
+`Super+s`, which `rc.xml` gives `ToggleShade`; `Shift` folds in and `Alt` takes apart, the shape
+`tile` and `cascade` already have. **Not a form of `Tab`**: a shifted `Tab` arrives as back-tab and
+a chord spelled `Shift+Tab` parses to `Tab`, so half the family would be a chord no line in this
+file could name.
+
+**`window-menu` is the frame's own menu, and one of the few chords in this file not on `Super`.**
+It cannot be one: `Super+space` is the palette and `Super+Shift+space` the taskbar, so a third form
+of that key would be three unrelated things one modifier apart. `Alt+Space` is what `rc.xml` opens
+labwc's client menu with, so the two desktops answer it alike. The menu holds restore, move-or-size,
+minimise, maximise, fullscreen, lower, the scratchpad mark, send-to-workspace and close; **each row
+prints the chord that does it**, read out of this table after the overlay, so a rebinding moves what
+the menu teaches with it. A row that does not apply to the window is greyed rather than hidden.
+
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
 itself or by `rc.xml`'s name for it — `slash`, `comma`, `period`, `grave`, `minus`, `equal` — so a
@@ -587,10 +616,11 @@ chord reads the same in both files and neither has to be translated by hand.
 
 **The three font chords reach a screen and nothing else.** They step the font of every view that
 rasterises its own glyphs; a view running inside somebody else's terminal says so when it attaches
-and the session answers on the bar that the terminal owns the font. They are written by `rc.xml`'s
-names so a chord reads the same in both files; plus is not bound and cannot be, because `+` is the
-character a chord is split on and it is a shifted equals in any case. The
-stepped size is remembered in `~/.local/state/kdos/con-font`, and `font-reset` removes that file
+and the session answers on the bar that the terminal owns the font. A console WINDOW cannot have a
+size of its own — the cell is the view's — which is why `kdos-term` answers its own `Ctrl+=` here
+by naming these three rather than by resizing anything. They are written by `rc.xml`'s names so a
+chord reads the same in both files; plus is not bound and cannot be, because `+` is the character a
+chord is split on and it is a shifted equals in any case. The stepped size is remembered in `~/.local/state/kdos/con-font`, and `font-reset` removes that file
 rather than writing a size, so the answer goes back to being the configuration's.
 
 **`learn` and `play` are the console desktop's alone.** They record the keys reaching the focused

@@ -82,15 +82,40 @@ view_extends_output_layout(struct cg_view *view, struct wlr_box *layout_box)
 	return (layout_box->height < height || layout_box->width < width);
 }
 
+void
+view_origin(struct cg_view *view, int *x_out, int *y_out)
+{
+	*x_out = 0;
+	*y_out = 0;
+	if (view->impl->get_origin) {
+		view->impl->get_origin(view, x_out, y_out);
+	}
+}
+
+void
+view_place_node(struct cg_view *view)
+{
+	int gx, gy;
+
+	if (!view->scene_tree) {
+		return;
+	}
+	wlr_scene_node_set_position(&view->scene_tree->node, view->lx, view->ly);
+
+	if (!view->surface_tree) {
+		return;
+	}
+	view_origin(view, &gx, &gy);
+	wlr_scene_node_set_position(&view->surface_tree->node, -gx, -gy);
+}
+
 static void
 view_maximize(struct cg_view *view, struct wlr_box *layout_box)
 {
 	view->lx = layout_box->x;
 	view->ly = layout_box->y;
 
-	if (view->scene_tree) {
-		wlr_scene_node_set_position(&view->scene_tree->node, view->lx, view->ly);
-	}
+	view_place_node(view);
 
 	/*
 	 * A TOPLEVEL THAT NAMES AN OWNER IS SIZED AND NOT MAXIMISED, when it is
@@ -116,9 +141,7 @@ view_center(struct cg_view *view, struct wlr_box *layout_box)
 	view->lx = (layout_box->width - width) / 2;
 	view->ly = (layout_box->height - height) / 2;
 
-	if (view->scene_tree) {
-		wlr_scene_node_set_position(&view->scene_tree->node, view->lx, view->ly);
-	}
+	view_place_node(view);
 }
 
 void
@@ -196,6 +219,8 @@ view_unmap(struct cg_view *view)
 	view->foreign_toplevel_handle = NULL;
 
 	wlr_scene_node_destroy(&view->scene_tree->node);
+	view->scene_tree = NULL;
+	view->surface_tree = NULL;
 
 	view->wlr_surface->data = NULL;
 	view->wlr_surface = NULL;
@@ -231,10 +256,26 @@ handle_surface_request_close(struct wl_listener *listener, void *data)
 void
 view_map(struct cg_view *view, struct wlr_surface *surface)
 {
-	view->scene_tree = wlr_scene_subsurface_tree_create(&view->server->scene->tree, surface);
+	/*
+	 * TWO NODES AND NOT ONE. `wlr_scene_xdg_surface_create` positions a
+	 * popup inside its parent's tree by the offset the positioner named,
+	 * and that offset is measured from the parent's WINDOW GEOMETRY — so
+	 * the tree a popup is parented to has to have the window geometry's
+	 * origin, and the buffer is pushed back inside it instead. One tree
+	 * carrying the buffer directly can satisfy one of the two and puts
+	 * every menu a shadow margin from where it was asked for.
+	 */
+	view->scene_tree = wlr_scene_tree_create(&view->server->scene->tree);
 	if (!view->scene_tree)
 		goto fail;
 	view->scene_tree->node.data = view;
+
+	view->surface_tree = wlr_scene_subsurface_tree_create(view->scene_tree, surface);
+	if (!view->surface_tree) {
+		wlr_scene_node_destroy(&view->scene_tree->node);
+		view->scene_tree = NULL;
+		goto fail;
+	}
 
 	view->wlr_surface = surface;
 	surface->data = view;
@@ -273,7 +314,7 @@ view_map(struct cg_view *view, struct wlr_surface *surface)
 		 * it; a scene node left at the layout origin renders in the
 		 * first window's frames whichever window opened the menu.
 		 */
-		wlr_scene_node_set_position(&view->scene_tree->node, view->lx, view->ly);
+		view_place_node(view);
 	}
 
 	wl_list_insert(&view->server->views, &view->link);

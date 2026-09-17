@@ -192,6 +192,24 @@ evidence about the chord: a flag per behaviour would be a second path into the c
 reaches, and it could pass while the key did nothing. A chord this session does not bind is a
 silent no-op, for the same reason a typo in `keys.conf` is one.
 
+**A frame that must NOT move is goldened by the frames that already exist.** The console's tab
+strip is drawn only on a window with more than one tab, so `con-window-80x24` and
+`con-window-132x43` stay byte-identical and are the assertion that a stack costs an ordinary frame
+nothing. `con-stack-80x24` and `con-stack-132x43` are the pair that shows one:
+
+```sh
+con_golden con-stack-80x24 --dump 80x24 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
+con_golden con-stack-132x43 --dump 132x43 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
+```
+
+What they assert is everything a stack claims to cost nothing: **two tabs on one title row**, the
+live one carrying the ring number and the resting one carrying none — `win_index()` answers 0 for a
+hidden window, so a number on both would mean a member the ring can still step to — and **one
+taskbar row for the two of them**, which is the half a reader would not think to look at and the
+half that breaks first.
+
 **Two sizes minimum for anything with a layout**, because a geometry defect is usually a defect at
 one width. The monitor's pages carry three, including a narrow one that forces its sidebar to
 degrade.
@@ -992,6 +1010,13 @@ faster.
 
 Stated so nobody assumes otherwise:
 
+- **`kdos-cage` is compiled by nothing under `testing/`.** `selftest.sh` skips the compositor block
+  for want of wlroots and has no cage block at all, and `preflight.sh` compiles nothing — so
+  `xdg_shell.c`, `view.c`, `output.c` and `embed.c` are outside every automated gate here. The check
+  that closes it takes about forty seconds and needs no new image, because `build/fs` is already a
+  complete musl root carrying the target's gcc, wlroots and every `.pc` file: chroot into it from a
+  throwaway container with `/tmp` mounted exec, and run the port's own `build.sh` flags. Write
+  nothing into `build/fs` while you do — a stray object there is a file the next phase ships.
 - **The memory daemon has never fired for real.** Its victim selection is exercised against recorded
   state; a genuine pressure stall is the test that matters.
 - **Six shell surfaces have no dump and no reference frame.**

@@ -129,6 +129,52 @@ static Win *list_front(int id)
 	return w;
 }
 
+/* The same move to the TAIL, which is the bottom of the stack. A lower is a
+ * raise read backwards and the list is the one place either of them writes. */
+static void list_back(int id)
+{
+	Win **pp = &S.wins;
+	Win *w;
+
+	while (*pp && (*pp)->id != id)
+		pp = &(*pp)->next;
+	if (!*pp)
+		return;
+
+	w = *pp;
+	*pp = w->next;
+	w->next = NULL;
+	for (pp = &S.wins; *pp; pp = &(*pp)->next)
+		;
+	*pp = w;
+}
+
+/*
+ * THE WINDOW AT THE TOP OF AN OWNERSHIP CHAIN.
+ *
+ * A raise and a lower both act on the whole family and therefore on its head,
+ * whichever member was named: a dialog dragged through the stack on its own
+ * ends up on the wrong side of the window it is asking about, which is an
+ * application that looks frozen either way round.
+ *
+ * THE DEPTH IS BOUNDED BECAUSE OWNERSHIP NEED NOT BE. A guest names the owner
+ * and nothing this side can promise the chain has no cycle in it; a bound is
+ * the one answer that cannot become a session that stops drawing.
+ */
+static Win *family_head(Win *w)
+{
+	int depth = 0;
+
+	while (w && w->owner && depth++ < 4) {
+		Win *own = win_find(w->owner);
+
+		if (!own)
+			break;
+		w = own;
+	}
+	return w;
+}
+
 /*
  * AND WHATEVER THIS WINDOW OWNS COMES WITH IT.
  *
@@ -216,7 +262,7 @@ void win_raise(int id)
 {
 	Win *w = win_find(id);
 	Win *m = win_modal_for(id);
-	int root = id, depth = 0;
+	int root;
 
 	if (!w)
 		return;
@@ -225,17 +271,9 @@ void win_raise(int id)
 	 * whole family comes up together and the modal ends on top of it, so a
 	 * dialog raised on its own brings the window it is asking about up
 	 * under it rather than leaving it behind whatever the person was
-	 * looking at before. The walk up is bounded for raise_owned()'s
-	 * reason: the chain is a guest's to name and not this side's to trust.
+	 * looking at before.
 	 */
-	for (Win *o = w; o->owner && depth++ < 4;) {
-		Win *own = win_find(o->owner);
-
-		if (!own)
-			break;
-		root = own->id;
-		o = own;
-	}
+	root = family_head(w)->id;
 	list_front(root);
 	raise_owned(root, 0);
 	/*
@@ -266,6 +304,83 @@ void win_raise(int id)
 	 */
 	if (w->kind == WIN_VT)
 		vt_show(w);
+}
+
+/* What the ring can step to — declared here because a lower hands the focus to
+ * the frontmost window the ring would reach, and one predicate is what makes
+ * that sentence true. Defined with the ring below. */
+static int reachable(const Win *w);
+
+/*
+ * AND THE FAMILY GOES DOWN DEEPEST-FIRST.
+ *
+ * Every move is to the TAIL, so the LAST window moved is the bottom one: the
+ * order is a grandchild, then its parent, then the owner, which is
+ * raise_owned()'s order read backwards. Moving a parent before its children
+ * would bury the children under it — the dialog on the wrong side of the
+ * window it is asking about, which is the one thing a family move exists to
+ * prevent.
+ *
+ * THE MODAL MOVES FIRST so it ends highest of its siblings, for the reason
+ * raise_owned() collects it first: a question a person has to answer must not
+ * end up behind the dialog beside it.
+ *
+ * THE DEPTH IS BOUNDED for raise_owned()'s reason: the chain is a guest's to
+ * name and not this side's to trust.
+ */
+static void lower_owned(int id, int depth)
+{
+	int kids[16];
+	int n = 0;
+
+	if (depth > 4)
+		return;
+	for (int pass = 0; pass < 2; pass++)
+		for (Win *o = S.wins; o && n < 16; o = o->next)
+			if (o->owner == id && (o->modal == 0) == pass)
+				kids[n++] = o->id;
+	for (int i = 0; i < n; i++) {
+		lower_owned(kids[i], depth + 1);
+		list_back(kids[i]);
+	}
+}
+
+/*
+ * TO THE BACK. The inverse of win_raise, and the only verb that reaches the
+ * window underneath one of the same size: every step of the ring RAISES, so a
+ * pair of windows fully overlapped stays in the order it is in however many
+ * times it is stepped.
+ *
+ * FROM THE HEAD OF THE FAMILY, as a raise is: a dialog sent to the back on its
+ * own would be a question behind the window asking it.
+ *
+ * THE FOCUS FOLLOWS THE FRONT, AND ONLY WHEN IT WAS ON THE FAMILY THAT MOVED.
+ * A keyboard left on a window now covered by another is one whose keys land
+ * where nobody is looking — and lowering a window a person is NOT typing in
+ * must not take the keyboard off the one they are, which is the rule
+ * win_minimise() keeps for the same reason. Nothing is raised to arrange it:
+ * the frontmost window the ring can reach is already in front of the one that
+ * has just gone to the back.
+ */
+void win_lower(Win *w)
+{
+	Win *f;
+
+	if (!w)
+		return;
+	w = family_head(w);
+	lower_owned(w->id, 0);
+	list_back(w->id);
+
+	f = win_find(S.focus);
+	if (f && family_head(f) == w) {
+		for (Win *o = S.wins; o; o = o->next)
+			if (reachable(o)) {
+				S.focus = o->id;
+				break;
+			}
+	}
+	ktui_draw_invalidate();
 }
 
 /*
@@ -812,14 +927,26 @@ void win_resized(Win *w)
  * from any other tile does and there is no second restore rectangle to keep in
  * step with the first.
  */
+/*
+ * OUT OF EVERY TILE, BACK TO THE RECTANGLE THE FIRST ONE WAS TAKEN FROM.
+ *
+ * Maximise is the four-edge tile and a snap is one of the others, so there is
+ * ONE restore rectangle and one way out of it — a second untile written
+ * somewhere else would be a second thing to keep in step with `restore`.
+ */
+static void win_untile(Win *w)
+{
+	w->tiled = KWM_EDGE_NONE;
+	w->geom = w->restore;
+	win_resized(w);
+}
+
 void win_maximise(Win *w)
 {
 	if (!w)
 		return;
 	if (w->tiled == KWM_EDGES_CARDINAL) {
-		w->tiled = KWM_EDGE_NONE;
-		w->geom = w->restore;
-		win_resized(w);
+		win_untile(w);
 		return;
 	}
 	if (!w->tiled)
@@ -886,11 +1013,21 @@ void win_minimise(Win *w)
 
 	Win *f = win_focused();
 
-	/* The focus cannot stay on a window that is drawn nowhere — it may be
-	 * one of the dialogs that went with this one. */
-	if (f && f->minimised)
+	/*
+	 * THE FOCUS CANNOT STAY ON A WINDOW THAT IS DRAWN NOWHERE — it may be
+	 * one of the dialogs that went with this one.
+	 *
+	 * AND NOTHING ELSE MOVES IT. Minimising a window a person is not
+	 * typing in must not take the keyboard off the one they are: the chip,
+	 * `Super+n` on a window that is not in front, and the window list's
+	 * `m` all reach this with somebody else focused, and a cycle run
+	 * unconditionally would hand the keyboard to whatever the ring offers
+	 * next.
+	 */
+	if (f && f->minimised) {
 		S.focus = 0;
-	win_cycle(1);
+		win_cycle(1);
+	}
 }
 
 /*
@@ -1143,10 +1280,14 @@ void win_scratch_hide(Win *w)
 	w->hidden = 1;
 	/* The focus cannot stay on a window that is drawn nowhere: the next
 	 * keystroke would go somewhere invisible. The cycle picks whatever is
-	 * on the workspace being looked at, and nothing when it is empty. */
-	if (S.focus == w->id)
+	 * on the workspace being looked at, and nothing when it is empty.
+	 *
+	 * AND ONLY WHEN THIS WINDOW HELD IT. Putting the scratchpad away while
+	 * typing in something else must leave the keyboard where it is. */
+	if (S.focus == w->id) {
 		S.focus = 0;
-	win_cycle(1);
+		win_cycle(1);
+	}
 	ktui_draw_invalidate();
 }
 
@@ -1158,6 +1299,16 @@ void win_scratch_mark(Win *w)
 	 * they can hand this role to either. */
 	if (!w || w->panel || w->overlay || w->background || w == S.lock ||
 	    w == S.saver)
+		return;
+	/*
+	 * NOR A TAB OF A STACK, and it is the same rule stackable() holds from
+	 * the other side. The scratchpad's chord shows and hides its window
+	 * through the very `hidden` flag a stack puts its other tabs away
+	 * with, so a window both mechanisms own is one they disagree about:
+	 * the scratchpad un-hides it while the stack believes another tab is
+	 * up, and two tabs of one rectangle are on screen at once.
+	 */
+	if (win_stack_n(w) > 1)
 		return;
 	if (old && old != w) {
 		/* BACK ONTO THE WORKSPACE BEING LOOKED AT, not the one it was
@@ -1172,6 +1323,301 @@ void win_scratch_mark(Win *w)
 	S.scratch = w->id;
 	w->sticky = 1;
 	w->hidden = 0;
+	ktui_draw_invalidate();
+}
+
+/*
+ * ── THE STACK ──────────────────────────────────────────────────────────
+ *
+ * TWO WINDOWS IN ONE RECTANGLE, one of them on screen. The head is an ordinary
+ * entry in S.wins holding the geometry and every other member is `hidden`,
+ * which is the whole of the mechanism: a hidden window sleeps its guest, keeps
+ * no taskbar row, is stepped past by the ring, claims no cells for a hit test
+ * and carries no window-list row. Five behaviours, no new code for any of them.
+ *
+ * STACKING AND NOT TILING. A tile GROUP — two windows side by side that move
+ * and size together — reuses none of this: `tiled` is a per-window bitmask
+ * resolved against the WORK AREA rather than against a neighbour, and
+ * win_tile_all() clears it afterwards precisely so that an arrangement is not
+ * a state. There is nowhere for a group to live and nothing for it to be made
+ * out of, so it is not built here.
+ *
+ * AND THE POINTER DOES NOT MAKE ONE. A title-bar drag is a translation with no
+ * drop target and no hit test against another window, so a stack made by
+ * dragging could be proved only by a rig photograph; the chords can be proved
+ * by a golden, which is why the chords are what exist.
+ */
+#define STACK_MAX 32
+
+/*
+ * CAN THIS WINDOW BE A TAB.
+ *
+ * Chrome cannot: a panel, a layer, the lock and the saver are not things a
+ * person switches between, so they are not things a person can fold into one
+ * frame either — and a window with no taskbar row of its own is a dialog or a
+ * dock, which belongs to the window that raised it rather than beside it.
+ *
+ * NOR THE SCRATCHPAD, and that one is load-bearing: its chord shows and hides
+ * it through the same `hidden` flag the stack puts its members away with, so a
+ * scratchpad folded into a stack would be a window two mechanisms disagree
+ * about the visibility of.
+ *
+ * A GUEST ON A TERMINAL OF ITS OWN OWNS NO CELLS HERE, so a tab naming one
+ * would promise a frame that is not on this screen.
+ */
+static int stackable(const Win *w)
+{
+	if (!w || w->panel || w->overlay || w->background || w->no_task)
+		return 0;
+	if (w == S.lock || w == S.saver || w->kind == WIN_VT)
+		return 0;
+	if (S.scratch && w->id == S.scratch)
+		return 0;
+	return 1;
+}
+
+/*
+ * EVERY TAB OF THIS WINDOW'S STACK, IN ID ORDER — which is the strip's order.
+ *
+ * NOT S.wins' ORDER. That list is the z-order and win_stack_show() brings the
+ * incoming member to the front of it, so a strip drawn by walking the list
+ * would put the tabs in a different sequence after every switch. An id only
+ * ever goes up, so id order is the one order a person can point at twice.
+ *
+ * Answers 0 for a window in no stack, which is what the frame tests before it
+ * draws a strip at all.
+ */
+static int stack_set(const Win *w, Win **set, int max)
+{
+	int n = 0;
+
+	if (!w || !w->stack)
+		return 0;
+	for (Win *o = S.wins; o && n < max; o = o->next) {
+		int i;
+
+		if (o->stack != w->stack)
+			continue;
+		for (i = n; i > 0 && set[i - 1]->id > o->id; i--)
+			set[i] = set[i - 1];
+		set[i] = o;
+		n++;
+	}
+	return n;
+}
+
+int win_stack_n(const Win *w)
+{
+	Win *set[STACK_MAX];
+
+	return stack_set(w, set, STACK_MAX);
+}
+
+int win_stack_index(const Win *w)
+{
+	Win *set[STACK_MAX];
+	int n = stack_set(w, set, STACK_MAX);
+
+	for (int i = 0; i < n; i++)
+		if (set[i] == w)
+			return i + 1;
+	return 0;
+}
+
+/*
+ * A MEMBER ONTO THE HEAD'S RECTANGLE AND THE HEAD'S STATE.
+ *
+ * win_place_at() IS NOT OPTIONAL EVEN FOR A MEMBER NOBODY CAN SEE: it routes
+ * through win_resized(), which reflows a terminal and configures a guest, and
+ * a member still configured to its old size draws the old size into the new
+ * rectangle the moment it is brought up. The tile state travels with it for
+ * the same reason `restore` does — a Super+arrow after a tab switch is
+ * measured from what the stack is in, not from what the incoming tab was in
+ * before it joined.
+ */
+static void stack_place_as(Win *m, const Win *hd)
+{
+	m->workspace = hd->workspace;
+	m->sticky = hd->sticky;
+	m->tiled = hd->tiled;
+	m->full = hd->full;
+	m->restore = hd->restore;
+	win_place_at(m, hd->geom.x, hd->geom.y, hd->geom.w, hd->geom.h);
+}
+
+void win_stack_join(Win *a, Win *b)
+{
+	Win *hd;
+	int old;
+
+	if (!a || !b || a == b || !stackable(a) || !stackable(b))
+		return;
+	/* Already the same stack: there is nothing to join, and a second pass
+	 * would re-point the members at a head that is not on screen. */
+	if (a->stack && a->stack == b->stack)
+		return;
+
+	/* B KEEPS OR TAKES THE HEAD, because b is the window left on screen
+	 * and the head is what names the stack. */
+	hd = b->stack ? win_find(b->stack) : b;
+	if (!hd)
+		hd = b;
+	hd->stack = hd->id;
+	old = a->stack;
+
+	/* AND WHAT `a` WAS ALREADY CARRYING COMES WITH IT. Joining a stack to
+	 * a stack is one frame with every tab of both, not a tab whose own
+	 * members are left pointing at a window that is now hidden — that is
+	 * the same stranding win_drop() below exists to prevent. */
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w == hd)
+			continue;
+		if (w != a && (!old || w->stack != old))
+			continue;
+		w->stack = hd->id;
+		stack_place_as(w, hd);
+		w->hidden = 1;
+	}
+	/* The head takes the keyboard: the window that has just been hidden
+	 * cannot keep it, and it is the tab the chord left on screen. */
+	win_raise(hd->id);
+	ktui_draw_invalidate();
+}
+
+void win_stack_show(Win *m)
+{
+	Win *hd;
+	int old, took, keep;
+
+	if (!m || !m->stack)
+		return;
+	hd = win_find(m->stack);
+	if (!hd || hd == m)
+		return;
+
+	old = hd->id;
+	took = S.focus == old;
+	keep = S.focus;
+
+	hd->hidden = 1;
+	m->hidden = 0;
+	stack_place_as(m, hd);
+	/* THE STACK IS NAMED BY WHICHEVER TAB IS ON SCREEN, so every member is
+	 * re-pointed — the head's own entry included, which is what makes
+	 * `m->stack == m->id` true of the new one. */
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->stack == old)
+			w->stack = m->id;
+
+	/*
+	 * THE INCOMING TAB COMES TO THE FRONT, AND TAKES THE KEYBOARD ONLY IF
+	 * THE OUTGOING ONE HELD IT. A stack stepped while somebody is typing
+	 * in another window must leave the keyboard where it is, and a focus
+	 * left on the tab that went away would send the next keystroke to a
+	 * window drawn nowhere. It is win_scratch_hide's rule with the answer
+	 * that hide cannot give: there the window going away leaves nothing on
+	 * screen to hand the focus to, so the ring is asked; here the tab
+	 * coming up is exactly what the chord asked for.
+	 */
+	win_raise(m->id);
+	if (!took)
+		S.focus = keep;
+	ktui_draw_invalidate();
+}
+
+void win_stack_step(Win *w, int dir)
+{
+	Win *set[STACK_MAX];
+	int n, cur = -1;
+
+	if (!w || !w->stack)
+		return;
+	n = stack_set(w, set, STACK_MAX);
+	if (n < 2)
+		return;
+	for (int i = 0; i < n; i++)
+		if (set[i]->id == w->stack)
+			cur = i;
+	if (cur < 0)
+		return;
+	win_stack_show(set[(cur + (dir < 0 ? n - 1 : 1)) % n]);
+}
+
+void win_stack_with_next(Win *w)
+{
+	int i, n = 0;
+	Win *o;
+
+	if (!w)
+		return;
+	if (!stackable(w)) {
+		con_notice("this window cannot be a tab");
+		return;
+	}
+	/* THE RING AND NOT THE LIST, because the ring is the order the title
+	 * bars and the taskbar rows number windows in: "the next window" has
+	 * to mean the same thing to the chord as it does to the number a
+	 * person can see. */
+	for (Win *x = S.wins; x; x = x->next)
+		if (reachable(x))
+			n++;
+	i = win_index(w);
+	if (i < 1 || n < 2) {
+		con_notice("no other window to stack this one with");
+		return;
+	}
+	/* PAST THE ONES THAT CANNOT BE A TAB. The scratchpad and a guest on a
+	 * terminal of its own are in the ring and are not stackable, so a
+	 * chord that took the very next entry would be a chord that did
+	 * nothing with two windows open and the scratchpad between them. */
+	for (int k = 1; k < n; k++) {
+		o = win_nth((i + k - 1) % n + 1);
+		if (o && o != w && stackable(o)) {
+			win_stack_join(o, w);
+			return;
+		}
+	}
+	con_notice("no other window to stack this one with");
+}
+
+void win_stack_unstack(Win *w)
+{
+	Win *set[STACK_MAX];
+	int n = stack_set(w, set, STACK_MAX);
+	Win *hd = n ? win_find(w->stack) : NULL;
+
+	if (n < 2)
+		return;
+	for (int i = 0; i < n; i++) {
+		Win *m = set[i];
+
+		m->stack = 0;
+		/* The tab on screen is already where the person put it. */
+		if (m == hd)
+			continue;
+		/*
+		 * AND IT COMES BACK ONTO THE DESK THE STACK IS ON. A hidden
+		 * tab keeps whatever workspace it had when it was folded in,
+		 * and win_send() moves the OWNER family and not the stack — so
+		 * a stack sent to another workspace leaves its tabs behind,
+		 * and unstacking there would put a window on a desk nobody is
+		 * looking at with nothing on screen to say where it went.
+		 */
+		if (hd) {
+			m->workspace = hd->workspace;
+			m->sticky = hd->sticky;
+		}
+		/*
+		 * ONE AT A TIME, UN-HIDDEN BEFORE IT IS PLACED. win_place()
+		 * excludes the windows already on the desk and geo_recall()
+		 * declines an origin one of them is sitting on, so a member
+		 * placed after its siblings lands somewhere they are not —
+		 * un-hiding the lot first would show the search none of them
+		 * and pile every tab onto one rectangle.
+		 */
+		m->hidden = 0;
+		win_place(m, m->geom.w, m->geom.h);
+	}
 	ktui_draw_invalidate();
 }
 
@@ -1286,6 +1732,47 @@ static int corner_arm(int side, int thick)
 }
 
 /*
+ * HOW FAR FROM EACH END OF A SIDE A PRESS TAKES BOTH AXES, for the frame `w`
+ * is drawn at.
+ *
+ * ASKED RATHER THAN RECOMPUTED. `win_grab_at` decides what a press arms from
+ * these two numbers, and the grip lights what a press would arm — so a second
+ * copy of the arithmetic is a light that promises a grab the router will not
+ * give. Exported for that one caller.
+ */
+void win_grab_arms(const Win *w, int *ax, int *ay)
+{
+	KwmRect f = win_frame((Win *)w);
+
+	*ax = corner_arm(f.w, CON_FRAME_X);
+	*ay = corner_arm(f.h, CON_FRAME_Y);
+}
+
+/*
+ * THE TITLE ROW, END TO END, CHIPS INCLUDED.
+ *
+ * WHAT THE RIGHT AND THE MIDDLE BUTTON ARE ANSWERED FROM, and it is the whole
+ * band rather than the span between the chips: a row where two of the three
+ * buttons meant one thing over the name and nothing over `↓ ■ X` is a row a
+ * person has to aim at to find out what it does. The chips answer the LEFT
+ * button and only that one, so nothing is taken from them.
+ *
+ * A WINDOW WITH NO FRAME HAS NO TITLE ROW — win_grab_at()'s list and for its
+ * reason: the frame rectangle of a panel, a fullscreen window or a layer is
+ * still the content inflated by the border, so a test that did not refuse them
+ * would find a title row on a popup menu.
+ */
+int win_on_title(const Win *w, int x, int y)
+{
+	KwmRect f;
+
+	if (!w || !win_framed(w))
+		return 0;
+	f = win_frame((Win *)w);
+	return x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + CON_FRAME_Y;
+}
+
+/*
  * WHICH EDGES A RESIZE FROM INSIDE THE WINDOW TAKES: the nearest in each axis,
  * so a press near a corner takes both and one in the middle of a side takes
  * that side alone. A press in the exact middle takes the bottom-right corner,
@@ -1316,11 +1803,11 @@ static unsigned near_edges(const Win *w, int x, int y)
 /*
  * WHAT A PRESS ON THIS WINDOW ARMS, and which edges a resize is to move.
  *
- * EITHER BUTTON RESIZES FROM THE BORDER. The right button is not the one a
- * hand reaches for on a border, and a left drag along a frame's own rule that
- * did nothing reads as a window that cannot be resized at all. Inside the
- * border there is nothing else for a left press to mean: every cell of it
- * belongs to the window manager, not to whatever is in the window.
+ * EITHER BUTTON RESIZES FROM THE SIDE AND BOTTOM BORDERS. The right button is
+ * not the one a hand reaches for on a border, and a left drag along a frame's
+ * own rule that did nothing reads as a window that cannot be resized at all.
+ * Inside the border there is nothing else for a left press to mean: every cell
+ * of it belongs to the window manager, not to whatever is in the window.
  *
  * THE WHOLE BAND ANSWERS, NOT ITS OUTERMOST CELL. The border is CON_FRAME_X
  * columns and CON_FRAME_Y rows thick and a press anywhere in it is a resize
@@ -1333,10 +1820,16 @@ static unsigned near_edges(const Win *w, int x, int y)
  * arms down the side columns are also where the vertical tolerance lives, the
  * top and bottom bands being one row each.
  *
- * THE TITLE ROW MOVES AND ITS ENDS DO NOT. Left on the row is the move, right
- * on it takes the top edge, and the corner arms at either end resize under
- * either button — which is what makes the top two corners reachable at all on
- * a row that is otherwise the one handle the window has.
+ * THE TITLE ROW IS THE LEFT BUTTON'S ALONE. Left on the row moves the window
+ * and left on the corner arms at either end resizes from that corner, which is
+ * what makes the top two corners reachable at all on a row that is otherwise
+ * the one handle the window has. THE OTHER TWO BUTTONS ARM NOTHING THERE: the
+ * right one opens the window menu and the middle one lowers the window, and a
+ * button that also armed a drag would start one on the way to the menu. It is
+ * the grip that makes that a rule rather than a preference — it is lit by
+ * asking this function with the left button standing in for the press that has
+ * not happened, so a right press that resized from the top edge would be a
+ * resize the window never said was there.
  *
  * SUPER IS THE WAY IN FROM ANYWHERE: left moves and middle resizes, so a
  * window that is all content is movable without hunting for its one draggable
@@ -1428,9 +1921,14 @@ int win_grab_at(const Win *w, int x, int y, int btn, int mods, unsigned *edges)
 	}
 
 	if (e) {
-		if (t && !b && !(e & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT)) &&
-		    btn == KT_MB_LEFT)
-			return WIN_GRAB_MOVE;
+		/* The title row, its corner arms included: see above. Nothing
+		 * but the left button takes hold of it. */
+		if (t && !b) {
+			if (btn != KT_MB_LEFT)
+				return WIN_GRAB_NONE;
+			if (!(e & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT)))
+				return WIN_GRAB_MOVE;
+		}
 		*edges = e;
 		return WIN_GRAB_RESIZE;
 	}
@@ -1952,6 +2450,41 @@ void win_drop(Win *w)
 		}
 	}
 
+	/*
+	 * AND A STACK THAT LOSES THE TAB ON SCREEN LOSES EVERY OTHER TAB WITH
+	 * IT. The members are `hidden`: no taskbar row, no ring step, no hit
+	 * rectangle and no window-list row, so a member still pointing at a
+	 * head that has gone is a window a person can reach by nothing at all.
+	 * The frontmost survivor takes the head's rectangle and its place at
+	 * the head, and the rest re-point at it — the owner loop above,
+	 * applied to the other relation.
+	 *
+	 * A STACK OF ONE IS NOT A STACK, whichever member left: the survivor's
+	 * field is cleared, so the frame stops drawing a strip and the window
+	 * is an ordinary one again.
+	 */
+	if (w->stack) {
+		int old = w->stack;
+		Win *first = NULL;
+		int n = 0;
+
+		for (Win *o = S.wins; o; o = o->next)
+			if (o->stack == old) {
+				if (!first)
+					first = o;
+				n++;
+			}
+		if (first && old == w->id) {
+			first->hidden = 0;
+			stack_place_as(first, w);
+			for (Win *o = S.wins; o; o = o->next)
+				if (o->stack == old)
+					o->stack = n > 1 ? first->id : 0;
+		} else if (first && n < 2) {
+			first->stack = 0;
+		}
+	}
+
 	if (S.focus == w->id)
 		S.focus = S.wins ? S.wins->id : 0;
 	free(w);
@@ -2160,6 +2693,41 @@ typedef struct {
 static WinBtnHit btn_hits[96];
 static int nbtn_hits;
 
+/*
+ * THE CHIP A PRESS IS HELD ON. Zero is none; the kind is meaningless then.
+ *
+ * KEPT ACROSS THE DRAG so that a hand which slips off a chip and comes back
+ * still acts on the release. What is not kept is the LIGHT: `draw_buttons`
+ * shows the armed state only while the pointer is also over the chip, so a
+ * hand moved away shows a chip that will not fire, which is the answer to
+ * "how do I take this back".
+ */
+static int btn_armed_id, btn_armed_kind;
+
+void win_button_arm(int id, int kind)
+{
+	if (btn_armed_id == id && btn_armed_kind == kind)
+		return;
+	btn_armed_id = id;
+	btn_armed_kind = kind;
+	ktui_draw_invalidate();
+}
+
+int win_button_armed(int *id)
+{
+	*id = btn_armed_id;
+	return btn_armed_id ? btn_armed_kind : WIN_BTN_NONE;
+}
+
+void win_button_disarm(void)
+{
+	if (!btn_armed_id)
+		return;
+	btn_armed_id = 0;
+	btn_armed_kind = WIN_BTN_NONE;
+	ktui_draw_invalidate();
+}
+
 int win_button_at(int x, int y, int *id)
 {
 	*id = 0;
@@ -2275,14 +2843,14 @@ static int btn_run(const Win *w, KRect r, int *first)
 	 * gap is drawn by draw_buttons() in the frame's own colours, so it is
 	 * the border that gives the column up and not the title.
 	 */
-	int n = (r.w - 4) / 2;
+	int n = (r.w - 4) / CON_CHIP_W;
 
 	if (n > 3 - lo)
 		n = 3 - lo;
 	if (n < 0)
 		n = 0;
 	*first = 3 - n;
-	return r.x + r.w - 1 - n * 2;
+	return r.x + r.w - 1 - n * CON_CHIP_W;
 }
 
 /*
@@ -2320,10 +2888,22 @@ static int btn_run(const Win *w, KRect r, int *first)
  * glyph has to be one the fill encloses on all four sides: `draw_buttons`
  * holds that rule with the glyphs that satisfy it.
  */
-static void btn_slots(int kind, int focused, int hot, int *fg, int *bg)
+static void btn_slots(int kind, int focused, int hot, int armed, int *fg,
+		      int *bg)
 {
 	*fg = KT_SURFACE;
-	if (hot)
+	if (armed) {
+		/*
+		 * HELD DOWN IS THE HOVER PAIR THE OTHER WAY UP. The plate goes
+		 * to the body's own slot and the mark takes the lit one, so the
+		 * chip reads as pushed IN rather than as lit brighter — and it
+		 * needs no ninth colour to do it. KT_ACCENT on KT_SURFACE
+		 * measures the same 10.49:1 the hover pair does, because it is
+		 * the same pair.
+		 */
+		*bg = KT_SURFACE;
+		*fg = KT_ACCENT;
+	} else if (hot)
 		*bg = KT_ACCENT;
 	else if (!focused) {
 		*bg = KT_DIM;
@@ -2375,8 +2955,14 @@ static void title_cut(char *s, int cols)
 }
 
 /*
- * `↓ ■ X` at the right of the title row, each one a two-cell chip: the mark on
- * the first cell and the chip's own fill on the second.
+ * `↓ ■ X` at the right of the title row, each one a three-cell chip: the
+ * chip's own fill, the mark, the fill again.
+ *
+ * THREE AND NOT TWO. See CON_CHIP_W: the mark is read by the plate AROUND it,
+ * because the palette's dark slots are one colour to the eye, and only an odd
+ * width can put plate on both sides of it. The extra cell is also the
+ * difference between a target a mouse must be aimed at and one a finger can
+ * land on.
  *
  * INSIDE THE VT TIER. The console font is 512 glyphs and renders anything it
  * does not carry as a blank, so a hollow square would be an invisible button
@@ -2465,28 +3051,117 @@ static void draw_buttons(Win *w, KRect r, int focused)
 	}
 
 	for (int i = first; i < 3; i++) {
-		int hot = lit && (ptr_cx == x || ptr_cx == x + 1);
+		int hot = lit && ptr_cx >= x && ptr_cx <= x + CON_CHIP_W - 1;
+		int armed = hot && btn_armed_id == w->id &&
+			    btn_armed_kind == b[i].kind;
 		int fg, bg;
 
-		btn_slots(b[i].kind, focused, hot, &fg, &bg);
-		ktui_draw_text(x, r.y, 1, b[i].g, fg, bg, KT_A_NONE);
+		btn_slots(b[i].kind, focused, hot, armed, &fg, &bg);
+		ktui_draw_cell(x, r.y, ' ', fg, bg, KT_A_NONE);
+		ktui_draw_text(x + 1, r.y, 1, b[i].g, fg, bg, KT_A_NONE);
 		/*
-		 * AND THE SECOND CELL IS PLATE, written and not read back. The
-		 * cell holds the rule `ktui_draw_box` ran along the title row,
+		 * THE PLATE EITHER SIDE IS WRITTEN AND NOT READ BACK. Those
+		 * cells hold the rule `ktui_draw_box` ran along the title row,
 		 * and a chip that kept that character puts a length of border
 		 * inside a button: on a focused frame it is the double rule,
-		 * which is most of the ink the chip carries and is drawn in
-		 * the same slot as the mark beside it. A space in the chip's
-		 * fill is what makes the pair one plate with one mark on it.
+		 * which is most of the ink the chip would carry and is drawn
+		 * in the same slot as the mark between them. Spaces in the
+		 * chip's own fill are what make the three cells one plate with
+		 * one mark on it.
 		 */
-		ktui_draw_cell(x + 1, r.y, ' ', fg, bg, KT_A_NONE);
+		ktui_draw_cell(x + 2, r.y, ' ', fg, bg, KT_A_NONE);
 		btn_hits[nbtn_hits].x0 = x;
-		btn_hits[nbtn_hits].x1 = x + 1;
+		btn_hits[nbtn_hits].x1 = x + CON_CHIP_W - 1;
 		btn_hits[nbtn_hits].y = r.y;
 		btn_hits[nbtn_hits].kind = b[i].kind;
 		btn_hits[nbtn_hits].id = w->id;
 		nbtn_hits++;
-		x += 2;
+		x += CON_CHIP_W;
+	}
+}
+
+/*
+ * THE TAB STRIP, ALONG THE TITLE ROW, AND ONLY ON A WINDOW WITH MORE THAN ONE
+ * TAB.
+ *
+ * A WINDOW IN NO STACK DRAWS NOTHING HERE, which is not merely an economy: a
+ * strip on an ordinary frame would move every committed frame golden in the
+ * tree, and the whole of what a stack adds has to be visible only where a
+ * person made one.
+ *
+ * IT IS THE TITLE ROW'S TEXT AND NOT AN EXTRA ROW. The strip runs from the
+ * frame's third column to the gap draw_buttons() leaves before the chips —
+ * `[r.x + 2, btn_run() - 1)` — which is the same run the title occupies, so a
+ * stacked frame costs no cells at all. win_draw_all() drops the title for that
+ * reason; the ring number goes into the live tab, which is the only member of
+ * a stack the ring can reach, because every other one is hidden.
+ *
+ * TWO SLOT PAIRS AND NO THIRD. The live tab is KT_SURFACE on KT_ACCENT — the
+ * pair a chip takes under the pointer — and a resting one is KT_TEXT on
+ * KT_DIM, which clears 8.3:1. The pair does NOT dim with the frame: the strip
+ * answers which tab is up and the frame answers which window has the keyboard,
+ * and a strip that went flat on an unfocused frame would leave a person unable
+ * to read what a stack will show when they click on it.
+ *
+ * THE PLATE AROUND THE TEXT IS WHAT SEPARATES ONE TAB FROM THE NEXT, exactly
+ * as it is on a chip: the palette's dark slots are one colour to the eye, so a
+ * tab is read by its fill and not by its ink. Each tab is filled whole and the
+ * name is written one column in, which leaves a column of plate on each side
+ * of it.
+ *
+ * THE REMAINDER GOES TO THE TABS ON THE LEFT, so the strip fills its run
+ * exactly. A run divided with a gap left over is a strip with a length of
+ * border in the middle of it, which reads as two strips.
+ *
+ * AND WHEN THE TABS OUTNUMBER THE COLUMNS IT COLLAPSES TO A COUNTER. Below
+ * CON_TAB_MIN per tab the names are initials and the strip has stopped saying
+ * anything; ` 2/4 ` says which tab of how many, which is the one thing still
+ * worth a cell. The rest of the run is left as the rule the box drew, so the
+ * counter reads as one plate on a title row rather than as a shrunken strip.
+ */
+static void draw_tabs(Win *w, KRect r)
+{
+	Win *set[STACK_MAX];
+	int n = stack_set(w, set, STACK_MAX);
+	int first, x0 = r.x + 2, x1 = btn_run(w, r, &first) - 1;
+	int avail = x1 - x0;
+
+	if (n < 2 || avail < 4)
+		return;
+
+	if (avail / n < CON_TAB_MIN) {
+		char c[16];
+		int len;
+
+		snprintf(c, sizeof(c), " %d/%d ", win_stack_index(w), n);
+		len = ktui_utf8_width(c);
+		if (len > avail)
+			len = avail;
+		ktui_draw_text(x0, r.y, len, c, KT_SURFACE, KT_ACCENT,
+			       KT_A_NONE);
+		return;
+	}
+
+	for (int i = 0, x = x0; i < n; i++) {
+		Win *m = set[i];
+		int tw = avail / n + (i < avail % n);
+		int live = m->id == w->stack;
+		int fg = live ? KT_SURFACE : KT_TEXT;
+		int bg = live ? KT_ACCENT : KT_DIM;
+		/* THE RING NUMBER ON THE LIVE TAB ALONE, and it falls out
+		 * rather than being decided here: win_index() answers 0 for a
+		 * hidden window, and every tab but the live one is hidden. */
+		int idx = win_index(m);
+		char t[160];
+
+		if (idx > 0 && idx < 10)
+			snprintf(t, sizeof(t), "%d:%s", idx, m->title);
+		else
+			snprintf(t, sizeof(t), "%s", m->title);
+		for (int c = 0; c < tw; c++)
+			ktui_draw_cell(x + c, r.y, ' ', fg, bg, KT_A_NONE);
+		ktui_draw_text(x + 1, r.y, tw - 2, t, fg, bg, KT_A_NONE);
+		x += tw;
 	}
 }
 
@@ -2685,7 +3360,16 @@ void win_draw_all(void)
 			int idx = win_index(w);
 			int bfirst;
 
-			if (idx > 0 && idx < 10)
+			/*
+			 * A STACKED FRAME CARRIES A STRIP INSTEAD OF A NAME.
+			 * Both want the same run of cells, and a name beside
+			 * four tabs is a name cut to nothing — the live tab
+			 * carries this window's title and its ring number, so
+			 * nothing is lost but the duplicate.
+			 */
+			if (win_stack_n(w) > 1)
+				titled[0] = '\0';
+			else if (idx > 0 && idx < 10)
 				snprintf(titled, sizeof(titled), "%d:%s", idx,
 					 w->title);
 			else
@@ -2709,12 +3393,17 @@ void win_draw_all(void)
 				      rung ? KT_ACCENT : KT_SURFACE,
 				      /* dbl */ focused || rung);
 			draw_buttons(w, r, focused);
+			draw_tabs(w, r);
 			draw_marks(w);
 			draw_content(w);
 		}
 	}
 
 	win_list_draw();
+	/* AND THE WINDOW MENU OVER BOTH. It is a popup a person opened a
+	 * moment ago and is holding the pointer over; anything drawn on top of
+	 * it is a row they cannot read and cannot aim at. */
+	win_menu_draw();
 	/* The mark is drawn over everything, including the list: it is a
 	 * selection of what is on the screen, and the screen is what has just
 	 * been composed. */
@@ -2938,5 +3627,361 @@ int win_list_key(int key)
 		break;
 	}
 	ktui_draw_invalidate();
+	return 1;
+}
+
+/*
+ * ── THE WINDOW MENU ─────────────────────────────────────────────────────
+ *
+ * EVERY FRAME VERB IN ONE LIST, WITH THE CHORD BESIDE IT.
+ *
+ * WHAT A POINTER CAN OTHERWISE REACH IS THE THREE CHIPS AND A ROW TO DRAG.
+ * Fullscreen, lower, the scratchpad mark and send-to-workspace are chords and
+ * nothing else, and the shipped `taskbar = windows` draws the window rows
+ * instead of the function-key row that names any of them — so a person who has
+ * not read the book cannot find one of them at all.
+ *
+ * THE CHORD ON EACH ROW IS READ OUT OF THE BIND TABLE, never written here.
+ * The menu exists to teach the keyboard, and a menu teaching a chord
+ * `keys.conf` has moved would be worse than no menu: the pointer verb would
+ * still work and the key it named would do something else.
+ *
+ * DRAWN WITH THE TOOLKIT'S OWN MENU and not a second one. `KtuiMenu` already
+ * holds a column of labels with a caret, an accelerator letter per row, a
+ * disabled slot and a hit test that walks the same rows the draw walks; a
+ * session that grew its own would be the third copy of that widget in the
+ * tree. It is a POPUP with no bar — a bar across the top of the desktop would
+ * be a menu belonging to no window.
+ *
+ * THE SECOND PANE IS THE WORKSPACE LIST. `win_send` needs a number and a row
+ * cannot ask for one, so the row opens the pane that names them at the same
+ * cell the first pane was at.
+ */
+enum {
+	WM_RESTORE = 1, WM_REARRANGE, WM_MIN, WM_MAX, WM_FULL, WM_LOWER,
+	WM_SCRATCH, WM_SEND, WM_CLOSE,
+	/* A workspace by number: the id CARRIES the workspace, so nine rows
+	 * are one row's worth of code. Above every verb above it. */
+	WM_WS = 100
+};
+
+enum { WM_PANE_MAIN = 0, WM_PANE_WS = 1 };
+
+static KtuiMenu wmenu;
+/* THE WINDOW THE ROWS NAME, by id: a window can close while its menu is up,
+ * and a pointer held here would be a verb run on freed memory. */
+static int wmenu_id;
+/* The release of the press that picked a row. See win_menu_ptr(). */
+static int wmenu_eat;
+
+/*
+ * THE STRINGS THE ROWS PRINT, HELD FOR AS LONG AS THE MENU IS UP. A
+ * `KtuiMenuItem` keeps the pointer it is given and the draw reads it every
+ * frame, so a chord formatted onto the stack of whatever opened the menu would
+ * be a row printing whatever is on that stack now.
+ */
+static char wm_chord[10][32];
+static char wm_ws_label[9][24];
+static char wm_ws_chord[9][32];
+
+static KtuiMenuItem wm_item[] = {
+	{ "&Restore",		WM_RESTORE,	NULL, 1 },
+	{ "&Move or size",	WM_REARRANGE,	NULL, 1 },
+	{ "Mi&nimise",		WM_MIN,		NULL, 1 },
+	{ "Ma&ximise",		WM_MAX,		NULL, 1 },
+	{ "&Fullscreen",	WM_FULL,	NULL, 1 },
+	{ "&Lower",		WM_LOWER,	NULL, 1 },
+	{ "&Scratchpad",	WM_SCRATCH,	NULL, 1 },
+	{ "Send &to workspace",	WM_SEND,	NULL, 1 },
+	{ NULL,			0,		NULL, 0 },
+	{ "&Close",		WM_CLOSE,	NULL, 1 }
+};
+
+static KtuiMenuItem wm_ws_item[9];
+
+static KtuiMenuPane wm_pane[] = {
+	{ NULL, wm_item, (int)(sizeof wm_item / sizeof wm_item[0]) },
+	{ NULL, wm_ws_item, 0 }
+};
+
+/*
+ * WHICH ROW PRINTS WHICH ACTION'S CHORD. Parallel to `wm_item` because the two
+ * are read in one walk: a lookup keyed on the id would be a second table to
+ * keep in step with the first. NULL is the rule, which prints nothing; the
+ * empty string is a verb this desktop binds no chord to, and prints nothing
+ * either rather than inventing one.
+ */
+static const char *wm_by[] = {
+	"", "rearrange", "minimise", "maximise", "fullscreen", "lower",
+	"scratchpad-mark", "", NULL, "close"
+};
+
+/*
+ * WHAT THIS WINDOW CAN AND CANNOT BE ASKED, AND WHAT EACH ROW COSTS TO SAY.
+ *
+ * Read once per open rather than per draw: the chords come out of a file and
+ * the rows are a walk of the window list, and neither changes while a menu is
+ * down under somebody's hand.
+ *
+ * A ROW THAT DOES NOTHING IS GREYED AND NOT HIDDEN. A menu whose rows moved
+ * with the window's state would put Close where Fullscreen was between one
+ * press and the next, and the whole reason a menu is worth having over a chord
+ * is that its rows stay where a hand left them.
+ */
+static void wm_arm(Win *w)
+{
+	int n = (int)(sizeof wm_item / sizeof wm_item[0]);
+	/*
+	 * RESTORE IS WHATEVER THIS WINDOW'S STATE MAKES IT, and it prints the
+	 * chord that does THAT — the fullscreen toggle on a fullscreen window
+	 * and the maximise toggle on a maximised one. A row naming one chord
+	 * for all three states would name a chord that does something else in
+	 * two of them.
+	 */
+	const char *by = w->full		     ? "fullscreen" :
+			 w->tiled == KWM_EDGES_CARDINAL ? "maximise" : "";
+
+	for (int i = 0; i < n; i++) {
+		const char *act = i == 0 ? by : wm_by[i];
+
+		if (!act) {
+			wm_item[i].accel = NULL;
+			continue;
+		}
+		keys_chord_for(act, wm_chord[i], sizeof wm_chord[i]);
+		wm_item[i].accel = wm_chord[i][0] ? wm_chord[i] : NULL;
+	}
+
+	wm_item[0].enabled = w->full || w->tiled || w->minimised;
+	wm_item[1].enabled = !w->full;
+	/* The taskbar row is the way back from a minimise, so a window with no
+	 * row of its own cannot be put away — win_minimise()'s rule. */
+	wm_item[2].enabled = !w->no_task && !w->panel && !w->minimised;
+	wm_item[3].enabled = !w->full;
+	wm_item[4].enabled = 1;
+	wm_item[5].enabled = 1;
+	/* The scratchpad and a stack both own `hidden`, so a tab may not be
+	 * offered the mark win_scratch_mark() would refuse it. */
+	wm_item[6].enabled = !w->panel && win_stack_n(w) < 2;
+	wm_item[7].enabled = !w->sticky && !w->panel && S.nworkspace > 1;
+	wm_item[9].enabled = 1;
+
+	wm_pane[WM_PANE_WS].n = S.nworkspace > 9 ? 9 : S.nworkspace;
+	for (int i = 0; i < wm_pane[WM_PANE_WS].n; i++) {
+		/*
+		 * NO ACCELERATOR MARK ON A DIGIT. `ktui_menu_accel_of` reads
+		 * a LETTER after the `&` and answers 0 for anything else, so
+		 * a marked digit would be an underline advertising a key the
+		 * menu does not answer. The rows are picked with the arrows,
+		 * with Enter and with the pointer, and the chord beside each
+		 * one is what the keyboard reaches them by.
+		 */
+		snprintf(wm_ws_label[i], sizeof wm_ws_label[i],
+			 "Workspace %d", i + 1);
+		/*
+		 * THE DIGIT CHORDS ARE NOT IN THE BIND TABLE and cannot be:
+		 * nine digits and nine shifted digits would be eighteen rows
+		 * saying one thing, so `keys_action` answers them in a branch
+		 * of its own. The NAME still comes from the one formatter, so
+		 * a row here reads exactly as the key card prints it.
+		 */
+		keys_chord_name('1' + i, KT_MOD_SUPER | KT_MOD_SHIFT,
+				wm_ws_chord[i], sizeof wm_ws_chord[i]);
+		wm_ws_item[i].label = wm_ws_label[i];
+		wm_ws_item[i].id = WM_WS + i;
+		wm_ws_item[i].accel = wm_ws_chord[i];
+		wm_ws_item[i].enabled = i != w->workspace;
+	}
+}
+
+void win_menu_open(Win *w, int x, int y)
+{
+	/*
+	 * CLEAR OF THE BAR, WHICH THE WIDGET CANNOT KNOW ABOUT. `ktui_menu_draw`
+	 * clamps the pane onto the GRID, and the taskbar is drawn after every
+	 * window — so a menu opened on a window whose title row is near the
+	 * bottom would have its last rows painted over by the bar. The work
+	 * area is what the bar left, and the pane is as tall as its rows plus
+	 * its box.
+	 */
+	KwmRect a = win_workarea();
+	int h = (int)(sizeof wm_item / sizeof wm_item[0]) + 2;
+
+	/*
+	 * A MENU IS FOR A WINDOW A PERSON HAS OPEN. A docked panel and a layer
+	 * — a toast, a popup, the icon layer — are parts of the desktop rather
+	 * than things sitting on it, and every row here would name something
+	 * that must not happen to one.
+	 *
+	 * A FULLSCREEN WINDOW IS NOT IN THAT LIST AND MUST NOT BE, which is
+	 * where this parts from `win_framed`: a window with no frame left to
+	 * point at is exactly the one whose menu is the way out.
+	 */
+	if (!w || w->panel || w->overlay || w->background)
+		return;
+	if (y + h > a.y + a.h)
+		y = a.y + a.h - h;
+	if (y < a.y)
+		y = a.y;
+	wmenu.pane = wm_pane;
+	wmenu.npane = (int)(sizeof wm_pane / sizeof wm_pane[0]);
+	wmenu_id = w->id;
+	wm_arm(w);
+	ktui_menu_open(&wmenu, WM_PANE_MAIN, x, y);
+	ktui_draw_invalidate();
+}
+
+/*
+ * A WINDOW THAT WENT AWAY TAKES ITS MENU WITH IT. The rows name one window and
+ * nothing else, so a menu left standing over a rectangle that is gone is a
+ * list of verbs with nothing to run them on. Asked at the instant the question
+ * matters and never cached, which is the rule every other liveness test in
+ * this tree keeps.
+ */
+int win_menu_active(void)
+{
+	if (ktui_menu_active(&wmenu) && !win_find(wmenu_id))
+		ktui_menu_close(&wmenu);
+	return ktui_menu_active(&wmenu);
+}
+
+void win_menu_draw(void)
+{
+	if (!win_menu_active())
+		return;
+	ktui_menu_draw(&wmenu);
+}
+
+static void wm_act(Win *w, int id)
+{
+	if (id >= WM_WS) {
+		win_send(w, id - WM_WS);
+		return;
+	}
+	switch (id) {
+	case WM_RESTORE:
+		/* THE ONE THE ROW WAS ENABLED FOR, in the order wm_arm() reads
+		 * the state in: a window that is fullscreen AND tiled is out
+		 * of fullscreen first, because that is the state it is
+		 * showing. */
+		if (w->full)
+			win_fullscreen(w);
+		else if (w->minimised)
+			win_restore(w);
+		else if (w->tiled)
+			win_untile(w);
+		break;
+	case WM_REARRANGE:
+		con_rearrange(w);
+		break;
+	case WM_MIN:
+		win_minimise(w);
+		break;
+	case WM_MAX:
+		win_maximise(w);
+		break;
+	case WM_FULL:
+		win_fullscreen(w);
+		break;
+	case WM_LOWER:
+		win_lower(w);
+		break;
+	case WM_SCRATCH:
+		win_scratch_mark(w);
+		break;
+	case WM_CLOSE:
+		win_close(w);
+		break;
+	default:
+		break;
+	}
+	ktui_draw_invalidate();
+}
+
+static void wm_pick(int id)
+{
+	Win *w = win_find(wmenu_id);
+
+	if (!w)
+		return;
+	if (id == WM_SEND) {
+		/* THE SECOND PANE OPENS WHERE THE FIRST ONE WAS. `wmenu.x` and
+		 * `wmenu.y` are the origin the DRAW clamped onto the grid, so
+		 * the list lands on the rows the hand is already over rather
+		 * than at the cell the menu was asked for. */
+		wm_arm(w);
+		ktui_menu_open(&wmenu, WM_PANE_WS, wmenu.x, wmenu.y);
+		return;
+	}
+	wm_act(w, id);
+}
+
+/* True when the key was the menu's. It owns the keyboard while it is up, for
+ * the window list's reason: its arrows move the caret, and a chord firing
+ * underneath would snap a window while somebody was choosing a verb for it. */
+int win_menu_key(const KtuiEvent *ev)
+{
+	int id = 0;
+
+	if (!win_menu_active())
+		return 0;
+	if (ktui_menu_event(&wmenu, ev, &id) == KTUI_MENU_PICKED)
+		wm_pick(id);
+	ktui_draw_invalidate();
+	return 1;
+}
+
+/* True when the pointer event was the menu's. */
+int win_menu_ptr(const KtuiEvent *ev)
+{
+	int id = 0, sel, open, r;
+
+	/*
+	 * THE RELEASE OF THE PRESS THAT PICKED IS SWALLOWED. A row runs on the
+	 * PRESS, as every menu in this tree does, so the menu is already down
+	 * when the button comes up — and a release let through lands on
+	 * whatever the menu was covering as a button-up that window never
+	 * heard go down.
+	 */
+	if (wmenu_eat && ev->btn == KT_MB_LEFT) {
+		if (ev->press == KT_MP_RELEASE) {
+			wmenu_eat = 0;
+			return 1;
+		}
+		/* AND A NEW PRESS SPENDS IT UNUSED. A release can go missing —
+		 * the pointer leaves the screen, a mode takes it — and a debt
+		 * left standing would swallow the release of somebody else's
+		 * later click, which is a chip armed and never fired. */
+		if (ev->press == KT_MP_PRESS)
+			wmenu_eat = 0;
+	}
+	if (!win_menu_active())
+		return 0;
+	/*
+	 * DISPATCHED ON THE BUTTON AND NEVER ON THE PRESS KIND. A wheel detent
+	 * is delivered as a press with no release to match it, and the widget
+	 * picks a row on a press — so a tick over the menu would run whichever
+	 * row it happened to be under. The left button picks; every other
+	 * press puts the menu away, which is what a press outside it does in
+	 * any case.
+	 */
+	if (ev->press == KT_MP_PRESS && ev->btn != KT_MB_LEFT) {
+		ktui_menu_close(&wmenu);
+		ktui_draw_invalidate();
+		return 1;
+	}
+	sel = wmenu.sel;
+	open = wmenu.open;
+	r = ktui_menu_event(&wmenu, ev, &id);
+	if (r == KTUI_MENU_PICKED) {
+		wmenu_eat = 1;
+		wm_pick(id);
+	}
+	/* A REDRAW ONLY WHERE SOMETHING MOVED. The pointer sends an event per
+	 * cell crossed and the caret follows it, so an unconditional
+	 * invalidate here is a commit per motion for a menu that has not
+	 * changed. */
+	if (r == KTUI_MENU_PICKED || wmenu.sel != sel || wmenu.open != open)
+		ktui_draw_invalidate();
 	return 1;
 }

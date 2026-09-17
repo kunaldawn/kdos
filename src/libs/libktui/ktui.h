@@ -196,6 +196,28 @@ enum {
 	KT_A_OVERLINE = 1 << 5,
 
 	/*
+	 * THIS CELL IS AN EMBEDDED GUEST'S PIXELS, and the guest's own
+	 * compositor has already drawn a cursor into them.
+	 *
+	 * NOT A STYLE — a fact about where the cell came from, and the flush is
+	 * its only reader: it is what says the pointer must not be drawn here,
+	 * because one drawn over a composited cursor is a SECOND pointer a cell
+	 * from the first and the one a person aims with is the guest's.
+	 *
+	 * IN THE LOW BYTE BECAUSE IT HAS TO TRAVEL. The per-cell run is eight
+	 * bytes and carries this byte unconditionally; a bit above the eighth
+	 * reaches only a view that asked for the colour run, and a view that
+	 * declined it would draw two pointers.
+	 *
+	 * Set on a guest's CONTENT cells alone. The chrome around the window is
+	 * drawn in cells and carries none, so the pointer comes back the moment
+	 * it reaches the border — which is where a window is grabbed, moved and
+	 * resized — and a block whose picture has not arrived is a shade mark
+	 * with no bit, so a window that has not drawn keeps its pointer.
+	 */
+	KT_A_GUEST = 1 << 6,
+
+	/*
 	 * ABOVE THE EIGHTH BIT NOTHING TRAVELS IN THE WIRE'S ATTRIBUTE BYTE.
 	 *
 	 * The per-cell run is eight bytes and stays eight bytes; a literal
@@ -470,6 +492,33 @@ typedef struct {
 	 * own cursor, and ktui_term_caret() then writes the escape.
 	 */
 	void (*caret)(int x, int y);
+	/*
+	 * WHERE THE POINTER IS, in this surface's cells, for a backend that
+	 * draws one ITSELF. NULL is a backend with no pixels of its own, and
+	 * ktui_draw_flush() then reverses the cell under it.
+	 *
+	 * RETURNS 1 TO CLAIM THE POINTER, and the flush leaves the cells
+	 * exactly as the session composed them; 0 declines this frame and the
+	 * reversed cell is drawn as if there were no hook at all. A backend
+	 * that cannot draw yet — no font, no screen lit — declines rather than
+	 * claiming a pointer nobody can see.
+	 *
+	 * A NEGATIVE x IS NO POINTER, and the call still has to be made: it is
+	 * the only thing that tells a backend to take the last one off the
+	 * screen. The flush sends it for a hidden pointer and for one over an
+	 * embedded guest's own cells alike, because over a guest nothing of
+	 * this desktop's is drawn at all — the guest's compositor puts a
+	 * cursor in those pixels and a second one a cell away is the one
+	 * nobody is aiming with.
+	 *
+	 * CELLS AND NOT PIXELS, because that is the whole of what the session
+	 * decided: `libkkms` reports a cooked motion only when the cell
+	 * changes, so a backend given pixels here would be given the same
+	 * pixel until it did. A pointer that steps whole cells and an arrow
+	 * drawn at the cell's own top-left corner are the same pointer at the
+	 * same place, one with a shape and one without.
+	 */
+	int (*pointer)(int x, int y);
 	/*
 	 * WHETHER THE LAST FLUSH ACTUALLY REACHED THE SCREEN, or NULL for a
 	 * backend that always presents what it is given.

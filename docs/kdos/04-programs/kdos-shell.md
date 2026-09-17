@@ -827,12 +827,18 @@ compositor's menu rather than a desktop's, and an application menu built at comp
 would be the one that went stale. Applications, Places and System are this program, reading the
 same entries the launcher and the panel do.
 
-The **window menu** carries Restore, Minimize, Maximize/Restore Down, Fullscreen and Close, and
-under them the verbs for the whole group — Minimize all, **Restore all (n)**, Close all — over the
+The **taskbar's window menu** carries Restore, Minimize, Maximize/Restore Down, Fullscreen and
+Close, and under them the verbs for the whole group — Minimize all, **Restore all (n)**, Close all — over the
 window titles. It reads the window's own state, so Maximize says *Restore Down* when the window is
 maximised rather than being a toggle whose direction nobody can see, and **Restore all** is drawn
 only when some of the group is minimised, counting those: a row that is always there and does
 nothing most of the time teaches people to stop reading the menu.
+
+**It is a taskbar row's menu, not a frame's, and the two are different lists.** This one is per
+application and carries the verbs for a whole group of windows; the console frame's own menu —
+[`kdos-con`](kdos-con.md), on `Alt+Space` or a right press on a title row — is per window and
+carries every verb that frame has, including lower, the scratchpad mark and send-to-workspace,
+which no taskbar row offers.
 
 **Both window menus wait for the app's own windows before deciding they have none.** A compositor
 announces its toplevels inside the connect call; the console returns from it without reading a

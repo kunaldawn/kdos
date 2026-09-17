@@ -73,6 +73,13 @@ In order, because the order is the design:
 Stage timings are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace`. Measured on the reference
 machine: **18.3 s** cold with no container at all, **0.3 s** warm, **0.55 s** for a second window.
 
+**None of those stages is visible to the desktop.** What the person watches for those eighteen
+seconds is the session's [startup card](kdos-con.md#a-graphical-application-is-windows), whose bar counts
+the four things `kdos-con` can see from outside — the cage forked, the channel answered, a toplevel
+opened, the first frame — and this whole path happens inside the second of them. Relaying the stages
+above would cost a new `kembed` op and a cage that read its own child's trace, and it would still be
+a bar that stalls on the one step that actually takes the time.
+
 ## The environment a box gets
 
 Executing inside a container inherits **nothing** — not the container's init environment, not the
