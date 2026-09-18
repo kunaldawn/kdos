@@ -353,8 +353,9 @@ static void draw(void)
 	for (int i = 0; i < list_rows && top + i < nrows; i++) {
 		const struct row *r = &rows[top + i];
 		int y = list_top + i, on = top + i == sel && !r->heading;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
-		int fg = on ? KT_SURFACE : KT_TEXT;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
 		if (r->heading)

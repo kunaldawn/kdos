@@ -71,7 +71,7 @@ static const struct {
 	{ "Configure",   "fstab, hostname, keymap, services" },
 	{ "Accounts",    "users, passwords, autologin" },
 	{ "Theme",       "regenerate the accent for the new home" },
-	{ "Bootloader",  "rEFInd on the ESP" },
+	{ "Bootloader",  "Limine on the ESP, BIOS and UEFI" },
 	{ "Finish",      "flush and unmount" },
 };
 
@@ -83,7 +83,7 @@ static int step_skipped(int i)
 {
 	if (i == S_PARTITION && cfg.plan != PLAN_WIPE)
 		return 1;
-	if (i == S_THEME && !strcmp(cfg.theme, "phosphor"))
+	if (i == S_THEME && !strcmp(cfg.theme, KCOL_DEFAULT_NAME))
 		return 1;
 	/* Nothing chosen, or a medium with no catalogue on it — the step says
 	 * SKIPPED rather than running and doing nothing, because a step that
@@ -1542,103 +1542,153 @@ static void do_boot(void)
 		logf_("LUKS UUID %s", lp.uuid);
 	}
 
-	const char *refind = "/usr/share/refind";
-	if (!kb_path_exists(refind))
-		refind = TARGET "/usr/share/refind";
-	if (!kb_path_exists(refind))
-		fail("rEFInd is not installed — no bootloader to place");
+	const char *lim = "/usr/share/limine";
+	if (!kb_path_exists(lim))
+		lim = TARGET "/usr/share/limine";
+	if (!kb_path_exists(lim))
+		fail("Limine is not installed — no bootloader to place");
 
-	emit('N', "placing rEFInd on the ESP");
-	mkpath(TARGET "/boot/efi/EFI/refind");
+	emit('N', "placing Limine on the ESP");
 	mkpath(TARGET "/boot/efi/EFI/BOOT");
 	mkpath(TARGET "/boot/efi/EFI/kdos");
 
-	/*
-	 * `-r`, NOT `-a`, AND THE DESTINATION IS WHY. The ESP is vfat, which
-	 * has no ownership to preserve: `cp -a` calls chown on every file it
-	 * writes there, the kernel answers EPERM for each one, and cp exits 1
-	 * with a page of `Operation not permitted` naming the SOURCE paths —
-	 * which reads as a permissions problem with rEFInd rather than as a
-	 * filesystem that cannot hold what was asked of it. Nothing on an ESP
-	 * has a meaningful mode or owner anyway; the mount options decide.
-	 */
 	char src[320];
-	snprintf(src, sizeof(src), "%s/.", refind);
-	char *cp[] = { "cp", "-r", src, TARGET "/boot/efi/EFI/refind/", NULL };
-	must(cp);
 
-	snprintf(src, sizeof(src), "%s/refind_x64.efi", refind);
-	copy_file(src, TARGET "/boot/efi/EFI/BOOT/bootx64.efi");
+	/*
+	 * EVERYTHING THE BOOTLOADER READS LIVES ON THE ESP, AND THAT IS WHAT
+	 * MAKES ONE DISK BOOT ON BOTH FIRMWARES. The ESP is vfat, which Limine
+	 * reads from BIOS and from UEFI alike and which a UEFI firmware can
+	 * also read by itself. A kernel on the root filesystem would need a
+	 * filesystem driver, and the installer offers roots — xfs, f2fs, LUKS —
+	 * that no bootloader reads before the kernel exists.
+	 */
+	snprintf(src, sizeof(src), "%s/BOOTX64.EFI", lim);
+	copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTX64.EFI");
+
+	/*
+	 * limine-bios.sys IS THE BIOS SECOND STAGE and it is found by NAME, not
+	 * by configuration: the MBR code written below searches the root,
+	 * /boot, /limine and /boot/limine of each volume for exactly this file.
+	 * Placed anywhere else the machine gets as far as the boot code and
+	 * stops with "limine-bios.sys not found", which is the only message a
+	 * BIOS boot has room to give.
+	 */
+	snprintf(src, sizeof(src), "%s/limine-bios.sys", lim);
+	copy_file(src, TARGET "/boot/efi/limine-bios.sys");
 	emit('P', "0.4");
 
-	/* Kernel and initramfs go ON the ESP. rEFInd can read ext4 only via
-	 * its filesystem driver, and a boot that depends on a driver load is a
-	 * boot that fails silently after a kernel update. FAT it can always
-	 * read, so the menu entry points at paths it is guaranteed to see. */
 	emit('N', "kernel and initramfs onto the ESP");
 	copy_file(TARGET "/boot/vmlinuz-kdos", TARGET "/boot/efi/EFI/kdos/vmlinuz");
 	copy_file(TARGET "/boot/initramfs.cpio.gz",
 		  TARGET "/boot/efi/EFI/kdos/initramfs.cpio.gz");
 
-	if (kb_path_exists("/usr/share/kdos/boot/kdos-banner.png"))
-		copy_file("/usr/share/kdos/boot/kdos-banner.png",
-			  TARGET "/boot/efi/EFI/refind/kdos-banner.png");
-	const char *icon = "";
-	if (kb_path_exists("/usr/share/kdos/boot/os_kdos.png")) {
-		copy_file("/usr/share/kdos/boot/os_kdos.png",
-			  TARGET "/boot/efi/EFI/refind/icons/os_kdos.png");
-		icon = "    icon /EFI/refind/icons/os_kdos.png\n";
+	/* The menu's face and wallpaper, so an installed machine looks like the
+	 * medium it came from. Both are optional: absent, Limine draws its own
+	 * font on a plain backdrop and the entries are unchanged. */
+	/*
+	 * THE PATH ONLY. The scale, the style and every colour come out of
+	 * kcol_limine_conf below, so a machine themed later moves its layout
+	 * with its palette rather than keeping whichever arrangement it was
+	 * installed under.
+	 */
+	const char *fontline = "";
+	if (kb_path_exists("/boot/limine/font.bin")) {
+		copy_file("/boot/limine/font.bin",
+			  TARGET "/boot/efi/EFI/kdos/font.bin");
+		fontline = "term_font: boot():/EFI/kdos/font.bin\n"
+			   "term_font_size: 8x16\n";
 	}
+	/* Same rule. The artwork is dimmed IN THE FILE — Limine has no
+	 * wallpaper opacity — so how dark it is belongs to the generator that
+	 * made it and not to this step. */
+	const char *paper = "";
+	if (kb_path_exists("/boot/limine/wallpaper.png")) {
+		copy_file("/boot/limine/wallpaper.png",
+			  TARGET "/boot/efi/EFI/kdos/wallpaper.png");
+		paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
+	}
+
+	/*
+	 * THE COLOURS ARE THE INSTALLED SYSTEM'S ACCENT, out of libkcolor, and
+	 * they are emitted by the same function the medium's own menu was
+	 * written with. Two hand-copied sets of nine literals is how a stick
+	 * and the machine installed from it end up different colours.
+	 */
+	char theme[1024];
+	const KcolScheme *boot_sc = kcol_find(cfg.theme);
+	if (kcol_limine_conf(boot_sc, theme, sizeof(theme)) >= (int)sizeof(theme))
+		kb_die("limine theme block does not fit");
 
 	/* memtest86+ is a payload rather than a program: bad RAM is the one
 	 * fault no tool running under an OS can honestly diagnose, because the
 	 * OS is in the memory being tested. It has to be BOOTABLE from the
 	 * installed machine, not just from the medium — the fault it finds is
 	 * usually reported as "this install is unstable" months later. Absent
-	 * is a skipped menu entry and not an error. */
+	 * is a skipped menu entry and not an error; the payload is an EFI
+	 * binary, so `if_fw_type` keeps it off a BIOS menu that could not start
+	 * it. */
 	const char *memtest = "";
 	if (kb_path_exists("/usr/share/kdos/memtest86plus/memtest.efi")) {
 		copy_file("/usr/share/kdos/memtest86plus/memtest.efi",
 			  TARGET "/boot/efi/EFI/kdos/memtest.efi");
-		memtest = "\nmenuentry \"Memory Test (memtest86+)\" {\n"
-			  "    loader /EFI/kdos/memtest.efi\n"
-			  "}\n";
+		memtest = "\n/Memory Test (memtest86+)\n"
+			  "    comment: Test this machine's RAM — UEFI only\n"
+			  "    protocol: efi\n"
+			  "    if_fw_type: UEFI\n"
+			  "    path: boot():/EFI/kdos/memtest.efi\n";
 	}
 	emit('P', "0.7");
 
 	/*
-	 * Every second of countdown is a second of the boot spent before the
-	 * kernel exists, with nothing else running, so it is the shortest
-	 * interval that keeps the menu usable: one second still draws it and
-	 * any keypress still cancels the countdown. The menu has to stay
-	 * reachable — the verbose and single-user submenus and memtest86+ are
-	 * reachable from nowhere else. rEFInd reads `timeout 0` as "wait
-	 * forever", not "boot at once"; it would hang every unattended boot.
+	 * ONE CONFIG AT THE ROOT OF THE ESP, FOUND BY BOTH FIRMWARES. Limine
+	 * looks beside its own EFI binary first and then at /boot/limine/,
+	 * /boot/, /limine/ and / on each volume; only that last set is searched
+	 * on BIOS. The root of the ESP is therefore the one path both find, and
+	 * a second copy beside BOOTX64.EFI would be the copy that goes stale.
+	 *
+	 * TEN SECONDS IS A COUNTDOWN SOMEBODY CAN ACT ON, and it matches the
+	 * medium's. Every second of it is boot time spent before the kernel
+	 * exists, with nothing else running — but the menu is the only way to
+	 * reach the verbose and single-user entries and memtest86+, and a
+	 * machine that will not boot needs one of those. A countdown short
+	 * enough to miss makes them unreachable on exactly the machine that
+	 * needs them. Any keypress cancels it and leaves the menu up.
+	 *
+	 * `timeout: 0` does not mean "boot at once with a menu"; it boots the
+	 * default entry without drawing one, and those entries go with it.
 	 */
-	wr("/boot/efi/EFI/refind/refind.conf",
+	wr("/boot/efi/limine.conf",
 	   "# Written by the KDOS installer.\n"
-	   "timeout 1\n"
-	   "banner /EFI/refind/kdos-banner.png\n"
-	   "banner_scale noscale\n"
-	   "hideui hints,badges\n"
-	   "showtools reboot, shutdown, firmware\n"
-	   "use_graphics_for linux\n"
-	   "scanfor manual,internal,external,optical\n"
+	   "timeout: 10\n"
+	   "default_entry: 1\n"
 	   "\n"
-	   "menuentry \"KDOS\" {\n"
-	   "    loader /EFI/kdos/vmlinuz\n"
-	   "    initrd /EFI/kdos/initramfs.cpio.gz\n"
-	   "    options \"%s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\"\n"
 	   "%s"
-	   "    submenuentry \"Verbose boot\" {\n"
-	   "        options \"%s%sroot=UUID=%s rw console=tty0 loglevel=7\"\n"
-	   "    }\n"
-	   "    submenuentry \"Single user\" {\n"
-	   "        options \"%s%sroot=UUID=%s rw console=tty0 loglevel=7 single\"\n"
-	   "    }\n"
-	   "}\n"
+	   "%s%s"
+	   "\n"
+	   "/KDOS\n"
+	   "    comment: Start this machine\n"
+	   "    protocol: linux\n"
+	   "    path: boot():/EFI/kdos/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
+	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\n"
+	   "\n"
+	   "/KDOS (verbose)\n"
+	   "    comment: Every kernel message on the console\n"
+	   "    protocol: linux\n"
+	   "    path: boot():/EFI/kdos/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
+	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
+	   "\n"
+	   "/KDOS (single user)\n"
+	   "    comment: A root shell, no session\n"
+	   "    protocol: linux\n"
+	   "    path: boot():/EFI/kdos/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
+	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s",
-	   slot_opt, crypt_opt, root_uuid, icon, slot_opt, crypt_opt, root_uuid,
+	   theme, paper, fontline,
+	   slot_opt, crypt_opt, root_uuid,
+	   slot_opt, crypt_opt, root_uuid,
 	   slot_opt, crypt_opt, root_uuid, memtest);
 
 	/*
@@ -1665,23 +1715,35 @@ static void do_boot(void)
 		   root_uuid);
 	}
 
-	/* Fallback path for firmware that ignores everything but BOOTX64. */
-	wr("/boot/efi/EFI/BOOT/refind.conf",
-	   "include /EFI/refind/refind.conf\n");
-
-	/* And the auto-detection file, for anyone who later drops a kernel in
-	 * /boot and expects rEFInd to find it the usual way. */
-	wr("/boot/refind_linux.conf",
-	   "\"KDOS\"          \"%sroot=UUID=%s rw quiet loglevel=3 initrd=boot/initramfs.cpio.gz\"\n"
-	   "\"KDOS verbose\"  \"%sroot=UUID=%s rw loglevel=7 initrd=boot/initramfs.cpio.gz\"\n",
-	   crypt_opt, root_uuid, crypt_opt, root_uuid);
+	/*
+	 * THE BIOS BOOT CODE IS WRITTEN WHATEVER THIS MACHINE BOOTED AS, and
+	 * that is deliberate: it costs one sector and it makes the installed
+	 * disk start on firmware that is not the firmware it was installed
+	 * from. A disk imaged on a UEFI machine and moved to a legacy one is
+	 * the case that would otherwise install perfectly and never boot.
+	 *
+	 * Failure is reported and not fatal. On a UEFI machine the EFI path
+	 * above is already complete and refusing the install here would throw
+	 * away a working system over a legacy fallback.
+	 */
+	if (kb_have_prog("limine")) {
+		emit('N', "BIOS boot code onto %s", cfg.disk);
+		char disk[64];
+		kb_strlcpy(disk, cfg.disk, sizeof(disk));
+		char *bi[] = { "limine", "bios-install", disk, NULL };
+		if (run(bi) != 0)
+			emit('W', "limine bios-install failed — this disk will "
+				  "boot on UEFI but not on legacy BIOS");
+	} else {
+		emit('W', "limine not on PATH — no BIOS boot code written");
+	}
 
 	if (kb_have_prog("efibootmgr") && ki_sys.uefi) {
 		char disk[64];
 		kb_strlcpy(disk, cfg.disk, sizeof(disk));
 		char *eb[] = { "efibootmgr", "--create", "--disk", disk,
 			       "--part", "1", "--loader",
-			       "\\EFI\\refind\\refind_x64.efi", "--label",
+			       "\\EFI\\BOOT\\BOOTX64.EFI", "--label",
 			       "KDOS", NULL };
 		try_(eb);
 	}

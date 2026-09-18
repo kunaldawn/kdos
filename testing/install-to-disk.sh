@@ -130,7 +130,7 @@ esp=$(ls "${DISK}"* 2>/dev/null | grep -v "^${DISK}\$" | head -1)
 echo "esp partition guess: $esp"
 mount "$esp" /mnt/esp 2>&1 && {
 	echo "--- the ESP ---"; find /mnt/esp -maxdepth 3 | head -20
-	echo "--- refind.conf ---"; cat /mnt/esp/EFI/*/refind.conf 2>/dev/null | grep -v '^#' | head -20
+	echo "--- limine.conf ---"; cat /mnt/esp/limine.conf /mnt/esp/boot/limine/limine.conf 2>/dev/null | grep -v '^#' | head -20
 	umount /mnt/esp
 }
 

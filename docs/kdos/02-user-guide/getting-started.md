@@ -78,7 +78,16 @@ configuration where the phosphor shader is actually on. See [Theming](theming.md
 
 ## Write the medium
 
-The ISO is a hybrid image: write it to a USB stick as a raw byte stream.
+The ISO is a hybrid image: write it to a USB stick as a raw byte stream. It boots four ways and
+`dd` carries all of them — BIOS and UEFI, from an optical drive and from a stick. The two El
+Torito records serve the optical cases; the partition table serves the written ones, because a
+firmware reading a stick never looks in a boot catalogue. The image carries an EFI System
+Partition for UEFI and boot code in its first sector for BIOS, so there is nothing to add
+afterwards and no separate "make it bootable" step.
+
+The ISO9660 filesystem starts at the first sector, so the stick is also the boot medium the
+initramfs looks for: it mounts each whole-disk node as iso9660 and takes the first one carrying
+`system.sfs`, which on a written stick is the device itself rather than a partition on it.
 
 ```sh
 sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
@@ -96,13 +105,37 @@ device, refuses the medium it booted from and anything mounted or named in `fsta
 the copy by re-reading it with the page cache dropped. See
 [Administration](administration.md#copying-and-rebuilding-the-medium).
 
+## Keep what you change
+
+A live session's writes land in RAM and go when the machine is powered off. To keep them, make a
+**persistence store** — one ext4 filesystem labelled `KDOS_PERSIST`, which the initramfs uses as
+the overlay's upper layer in place of the tmpfs:
+
+```sh
+sudo kdos persist create
+```
+
+With no device named it uses the free space **after** the image on the medium you booted from, and
+nothing already there is moved or rewritten. `kdos persist` on its own reports whether a store
+exists and whether this session is writing to it.
+
+The store is found by its label and not by a path, so it can equally live on a second stick or on
+an internal disk — `kdos persist create /dev/sdb` puts it there. Only the label matters, which is
+what keeps it working when USB enumerates in a different order.
+
+Two things follow from it being an overlay upper. A store is used from the **next** boot, not the
+one that created it. And if a change ever stops the desktop coming up, the **KDOS Live (clean
+session)** entry in the boot menu ignores the store for one boot without deleting it.
+
 ## Boot
 
-KDOS boots **UEFI only**. There is no BIOS boot path and no bootable-CD El Torito entry for one.
-Select the stick in your firmware's boot menu; rEFInd appears, then the kernel starts. **rEFInd
-counts down for one second**, so the normal entry boots without you doing anything; press any key
-during that second to stop the countdown and pick the verbose entry or the memory test, which are
-reachable only from the menu.
+KDOS boots on **BIOS and UEFI alike**, through [Limine](https://limine-bootloader.org/) — one
+bootloader with one menu, so the machine looks the same either way. Select the stick in your
+firmware's boot menu and the menu appears, then the kernel starts. **It counts down for ten
+seconds**, so the normal entry boots without you doing anything; press any key during that time
+to stop the countdown and pick the verbose entry, the clean session, or the memory test, which
+are reachable only from the menu. The memory test is a UEFI payload and is not offered on a BIOS
+boot.
 
 The screen you see during boot is [the splash](../03-architecture/boot-and-init.md), which draws
 a CRT power-on directly to the framebuffer and names each stage as it completes. The stages tell

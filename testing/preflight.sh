@@ -995,6 +995,93 @@ else
     note "installer filesystems" "skipped — conf.c or 01_initramfs.sh not found"
 fi
 
+# A WRITTEN STICK BOOTS BY ITS PARTITION TABLE AND BY NOTHING ELSE. `dd` copies
+# bytes, so an El Torito record — which lives in the ISO9660 boot catalogue and
+# is read only by an optical drive — carries nothing to a USB stick. UEFI wants
+# a partition of type EFI System; BIOS wants boot code in the first sector. The
+# image has to answer all four combinations of firmware and medium, and each
+# one is a separate flag that xorriso accepts in silence when it does nothing.
+# 02_iso.sh verifies the finished image too, but that costs a full packaging
+# run to learn; this costs a second.
+echo
+echo "==> the ISO boots BIOS and UEFI, from a disc and from a written stick"
+iso_sh=script/06_packaging/02_iso.sh
+if [ -f "$iso_sh" ]; then
+    iso_missing=""
+    for f in "limine-bios-cd.bin" "--efi-boot" "-efi-boot-part" \
+             "--efi-boot-image" "--protective-msdos-label" \
+             "limine bios-install"; do
+        grep -qF -- "$f" "$iso_sh" || iso_missing="$iso_missing '$f'"
+    done
+    if [ -n "$iso_missing" ]; then
+        bad "02_iso.sh" "a boot path is missing from the image —$iso_missing"
+    else
+        note "iso boot structure" "BIOS + UEFI, El Torito + partition table"
+    fi
+else
+    note "iso boot structure" "skipped — 02_iso.sh not found"
+fi
+
+# A BINARY BUILT BY A PHASE STEP IS NOT REBUILT BY `--rebuild <port>`, because
+# it is not a port. kinstall comes out of script/01_phase1/13_kinstall.sh, which
+# ALSO exits early when its marker exists — so editing the installer's sources,
+# rebuilding, and packaging produces an ISO carrying the binary from whenever
+# that marker was first written. Nothing fails: the build is green and the image
+# boots, and only the installed system is wrong.
+#
+# The check is against a STRING THE SOURCE OWNS. Comparing timestamps cannot
+# work — build/fs is stamped to a fixed epoch for reproducibility — and
+# comparing hashes would need a reference build. `limine`, which the rewritten
+# installer must mention and the old one cannot, answers it in one grep.
+echo
+echo "==> the built kinstall is the installer in this tree"
+ki_src=src/packages/kdos-installer/install.c
+ki_bin=build/fs/usr/bin/kinstall
+if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
+    ki_want=$(grep -oE '"[a-z/]*share/limine"' "$ki_src" | head -1 | tr -d '"')
+    if [ -z "$ki_want" ]; then
+        note "kinstall freshness" "skipped — install.c names no limine path"
+    elif strings "$ki_bin" 2>/dev/null | grep -qF "$ki_want"; then
+        note "kinstall freshness" "built binary carries $ki_want"
+    else
+        bad "13_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/phase1/kinstall and rebuild phase 1"
+    fi
+else
+    note "kinstall freshness" "skipped — no built kinstall to compare"
+fi
+
+# A PORT IS ITS RECIPE AND ITS TARBALL, AND THE TARBALL IS THE HALF THAT GOES
+# MISSING. `make build` runs with no network, so a source that is on the disk of
+# whoever added the port and not in the tree builds perfectly for them and fails
+# for everybody else — on a clone, at the unpack, with a message about a corrupt
+# archive rather than about a missing commit.
+#
+# THE SECOND CHECK IS NOT THE SAME AS THE FIRST. A tarball can be tracked and
+# still be wrong: if .gitattributes has no pattern covering its extension, git
+# stores the bytes themselves instead of an LFS pointer, and the repository
+# grows by the size of the source. `git check-attr` answers what git WILL do
+# with a path, which is the only thing that settles it before a commit.
+echo
+echo "==> every port's source archive is in the tree, through LFS"
+if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
+    pa_disk=$(find ports/core -type f \
+              \( -name '*.tar.*' -o -name '*.tgz' -o -name '*.zip' \
+                 -o -name '*.tar' -o -name '*.7z' \) | LC_ALL=C sort)
+    pa_trk=$(git ls-files ports/core | LC_ALL=C sort)
+    pa_missing=$(comm -23 <(printf '%s\n' "$pa_disk") <(printf '%s\n' "$pa_trk"))
+    pa_raw=$(printf '%s\n' "$pa_disk" | git check-attr --stdin filter 2>/dev/null \
+             | grep -v ": filter: lfs$" | cut -d: -f1)
+    if [ -n "$pa_missing" ]; then
+        bad "ports/core" "source archives not in git: $(printf '%s' "$pa_missing" | tr '\n' ' ')"
+    elif [ -n "$pa_raw" ]; then
+        bad ".gitattributes" "no LFS pattern covers: $(printf '%s' "$pa_raw" | tr '\n' ' ')"
+    else
+        note "port sources" "$(printf '%s\n' "$pa_disk" | grep -c . ) archives, all tracked through LFS"
+    fi
+else
+    note "port sources" "skipped — not a git checkout"
+fi
+
 # KDOS shipped exactly that file for a release. The symptom on a booted ISO is
 # "the mouse does not work" and it is invisible to every other check here: the
 # XML is valid, the recipe parses, the build succeeds.
@@ -1516,6 +1603,125 @@ for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/packages 2>/de
         bad "help page $_d" "no fs/usr/share/kdos/doc/$_d.txt"
 done
 note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
+
+echo
+echo "==> every icon name a surface asks for is one the image can resolve"
+# A NAME kicon_slot CANNOT RESOLVE RETURNS -1 AND DRAWS A FALLBACK GLYPH, and
+# nothing anywhere says so. The surface renders, the flush succeeds, and a row
+# that was meant to carry a picture carries a dot. The Start button asked for
+# `start-here` that way — the most visible icon on the desktop, silently not an
+# icon, because the logo mark was installed into the theme tree and libkicon
+# searches the atlas and `icons/hicolor` and not `~/.icons/<theme>`.
+#
+# Both sources are checked, because both are real lookup paths. Checked against
+# what is BUILT rather than a list, for the reason the console-font check is:
+# the list is the thing that goes stale.
+_atlas=build/fs/usr/share/kdos/icons/atlas.kia
+if [ -f "$_atlas" ]; then
+    _iconbad=$(python3 - "$_atlas" <<'PYEOF'
+import glob, os, re, struct, subprocess, sys
+
+d = open(sys.argv[1], 'rb').read()
+if d[:4] != b'KIA1':
+    sys.exit(0)
+n, = struct.unpack('<I', d[4:8])
+names, off = set(), 8
+for _ in range(n):
+    nlen, size, noff, boff, blen = struct.unpack('<HHIII', d[off:off + 16])
+    off += 16
+    names.add(d[noff:noff + nlen].decode())
+
+# The other lookup path: hicolor, wherever the build put one.
+for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
+    names.add(os.path.basename(p)[:-4])
+
+# Every literal name a surface hands to the icon layer. Three spellings,
+# because the name reaches it as an argument, as a row field, or as a table
+# column, and a check that knew only one would pass the other two.
+pats = (r'kicon_slot(?:_pad)?\("([a-z0-9._-]+)"',
+        r'kicon_pixmap\("([a-z0-9._-]+)"',
+        r'(?:->|\.)icon = "([a-z0-9._-]+)"')
+used = set()
+out = subprocess.run(['grep', '-rhoE', '|'.join(pats), 'src/', '--include=*.c'],
+                     capture_output=True, text=True).stdout
+for line in out.splitlines():
+    for pat in pats:
+        m = re.search(pat, line)
+        if m:
+            used.add(m.group(1))
+            break
+
+for name in sorted(used - names):
+    print(name)
+PYEOF
+)
+    if [ -n "$_iconbad" ]; then
+        for _n in $_iconbad; do
+            bad "icon $_n" "resolves in neither the atlas nor hicolor"
+        done
+    else
+        note "icon names" "every name resolves in the atlas or in hicolor"
+    fi
+else
+    note "icon names" "no built atlas — skipped"
+fi
+
+echo
+echo "==> every chrome glyph is one the console font can actually draw"
+# A GLYPH THE CONSOLE FONT DOES NOT CARRY RENDERS AS A BLANK ON tty1, and
+# nothing anywhere says so: the cell is written, the flush succeeds, and the
+# console desktop is missing a piece of its own chrome.
+#
+# `ter-kdos32n` is 512 glyphs. The toolkit picks `glyph_utf8` whenever the
+# backend reports UTF-8 — which the Linux console does — so EVERY entry in that
+# table has to be in the font, not merely in Unicode. `▓`, the half blocks and
+# the double tees all look reasonable in an editor and are all absent from the
+# font; a slider built on `▓` draws its filled run as nothing at all.
+#
+# Checked against the SHIPPED font rather than a list, because the list is the
+# thing that goes stale.
+_font=build/fs/usr/share/consolefonts/ter-kdos32n.psf.gz
+if [ -f "$_font" ]; then
+    _glyphbad=$(python3 - "$_font" <<'PYEOF'
+import gzip, re, struct, sys
+
+d = gzip.open(sys.argv[1], 'rb').read()
+if d[:4] != b'\x72\xb5\x4a\x86':
+    sys.exit(0)                     # not PSF2: nothing to check against
+ver, hdr, flags, length, charsize, h, w = struct.unpack('<IIIIIII', d[4:32])
+if not flags & 1:
+    sys.exit(0)                     # no unicode table: the question is unanswerable
+cps, cur = set(), b''
+for b in d[hdr + length * charsize:]:
+    if b in (0xFF, 0xFE):
+        cur = b''
+    else:
+        cur += bytes([b])
+        try:
+            cps.add(ord(cur.decode('utf8')[0]))
+            cur = b''
+        except UnicodeDecodeError:
+            pass
+
+src = open('src/libs/libktui/ktui_draw.c').read()
+tbl = src.split('static const char *glyph_utf8')[1].split('};')[0]
+for name, glyph in re.findall(r'\[(KT_G_\w+)\]\s*=\s*"([^"]+)"', tbl):
+    for ch in glyph:
+        if ord(ch) > 0x7f and ord(ch) not in cps:
+            print(f"{name} {ch} U+{ord(ch):04X}")
+PYEOF
+)
+    if [ -n "$_glyphbad" ]; then
+        while read -r _n _g _u; do
+            bad "glyph $_n" "$_g $_u is not in ter-kdos32n — blank on tty1"
+        done <<< "$_glyphbad"
+    else
+        _ng=$(grep -c '\[KT_G_' src/libs/libktui/ktui_draw.c)
+        note "chrome glyphs" "every glyph_utf8 entry is in the console font"
+    fi
+else
+    note "chrome glyphs" "no built console font — skipped"
+fi
 
 echo
 echo "==> a desktop toggle has exactly one flag, and libkbase spells the path"

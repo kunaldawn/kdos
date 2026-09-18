@@ -991,13 +991,15 @@ static void draw(void)
 			 TRANSFORMS[(uint32_t)hd->transform < NTRANSFORMS
 					    ? hd->transform
 					    : 0]);
-		ktui_draw_fill(krect(1, 1 + k, w - 2, 1),
-			       on ? KT_ACCENT : KT_SURFACE);
-		ktui_draw_text(2, 1 + k, w - 4, line,
-			       on ? KT_SURFACE
-				  : (hd->enabled && head_live(hd) ? KT_TEXT
-								  : KT_DIM),
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+		int hfg, hbg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &hfg, &hbg);
+		/* A screen that is off or not reporting is secondary — off
+		 * the fill only, where KT_DIM on KT_DIM is one colour. */
+		if (!on && !(hd->enabled && head_live(hd)))
+			hfg = KT_DIM;
+		ktui_draw_fill(krect(1, 1 + k, w - 2, 1), hbg);
+		ktui_draw_text(2, 1 + k, w - 4, line, hfg, hbg, KT_A_NONE);
 	}
 	if (!nheads)
 		ktui_draw_text(2, 1, w - 4, "no screens reported", KT_MID,

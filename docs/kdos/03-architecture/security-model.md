@@ -154,8 +154,11 @@ authorisation is a mode somebody eventually loosens, and there is nothing in the
 can forge.
 
 **The client never names a path.** Every verb takes an identifier out of a list the daemon itself
-published a moment earlier. There is nothing to aim: the design where a daemon takes a device and
-a mount point ends at mounting a stick over `/etc` from any shell in `wheel`.
+published a moment earlier, or out of a list compiled into it. There is nothing to aim: the design
+where a daemon takes a device and a mount point ends at mounting a stick over `/etc` from any shell
+in `wheel`. `kdos-powerd accent` is the tightest case — the argument must be one of the seven
+scheme names in `libkcolor`, so the daemon links the palette rather than copying a character class
+out of it.
 
 The one deliberate exception is installing a pack, which names a **filename in a staging directory
 the daemon owns** — the single place an unprivileged write is allowed, and the daemon publishes
@@ -169,7 +172,7 @@ Per-daemon refusals:
 | `kdos-packd` | Paths as arguments; a pack whose hash or signature fails; removing a pack that is in use |
 | `kdos-oomd` | Any argument at all — killing is its own decision or it does not happen |
 | `kdos-energyd` | Republishing the raw counter; a client-chosen sampling interval |
-| `kdos-powerd` | Anything but four fixed words and two that take one validated argument |
+| `kdos-powerd` | Anything but four fixed words and three that take one validated argument; an `accent` that is not one of the seven scheme names compiled into `libkcolor` |
 
 **`kdos-energyd` deserves its own note.** The CPU energy counter has been root-only since a
 side-channel attack showed that fine-grained unprivileged reads can recover cryptographic keys.

@@ -1,4 +1,4 @@
-+=  kdos-doc * index  =========================================================+
++=[ kdos-doc * index ]=========================================================+
 | KDOS DOC                                                                     |
 |                                                                              |
 | Everything on this machine that can explain itself, in one place. A link     |
@@ -20,5 +20,5 @@
 |   /nonexistent-kdos-data/kdos/doc                                            |
 | or in /usr/share/kdos/doc and it is listed above.                            |
 |                                                                              |
-| Tab link  Enter follow  / search  Esc Close                                  |
+| Tab link | Enter follow | / search | Esc Close                               |
 +==============================================================================+

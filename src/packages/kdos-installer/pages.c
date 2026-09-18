@@ -91,7 +91,8 @@ static void welcome_draw(KRect b)
 
 	snprintf(v, sizeof(v), "%s%s", ki_sys.uefi ? "UEFI" : "legacy BIOS",
 		 ki_sys.secure_boot ? "  (Secure Boot enabled)" : "");
-	ktui_kv(b.x, y++, b.w, "firmware", v, ki_sys.uefi ? KT_TEXT : KT_ERR);
+	/* Both firmwares install, so neither is an error colour. */
+	ktui_kv(b.x, y++, b.w, "firmware", v, KT_TEXT);
 	y++;
 
 	ktui_section(b.x, y, b.w, "PREFLIGHT");
@@ -102,12 +103,11 @@ static void welcome_draw(KRect b)
 		const char *msg;
 	} checks[] = {
 		{ geteuid() == 0, "running as root" },
-		{ ki_sys.uefi, "booted in UEFI mode" },
 		{ ki_ndisk > 0, "at least one writable disk" },
 		{ kb_have_prog("rsync"), "rsync present" },
 		{ kb_have_prog("mkfs.ext4") && kb_have_prog("mkfs.vfat"),
 		  "mkfs.ext4 and mkfs.vfat present" },
-		{ kb_path_exists("/usr/share/refind"), "rEFInd payload present" },
+		{ kb_path_exists("/usr/share/limine"), "Limine payload present" },
 	};
 
 	for (size_t i = 0; i < sizeof(checks) / sizeof(checks[0]); i++) {
@@ -118,13 +118,17 @@ static void welcome_draw(KRect b)
 		y++;
 	}
 
+	/* A LEGACY BOOT IS A NOTE AND NOT A REFUSAL. Limine writes both paths
+	 * onto the disk whichever way this machine started, so what changes is
+	 * which one the firmware will use — not whether the install works. */
 	if (!ki_sys.uefi) {
 		y++;
 		ktui_para(b.x, y, b.w,
-		     "KDOS ships a UEFI bootloader only. This machine booted in "
-		     "legacy mode, so an installed system would not start. Boot "
-		     "the medium in UEFI mode and run the installer again.",
-		     KT_WARN);
+		     "This machine booted in legacy BIOS mode. Limine is "
+		     "written for both firmwares, so the installed system will "
+		     "start here and on a UEFI machine — but the firmware's own "
+		     "boot entry cannot be created in legacy mode.",
+		     KT_MID);
 	}
 }
 
@@ -136,11 +140,6 @@ static int welcome_validate(char *err, size_t n)
 	}
 	if (!ki_ndisk) {
 		snprintf(err, n, "no disks found — nothing can be installed to");
-		return 1;
-	}
-	if (!ki_sys.uefi) {
-		snprintf(err, n,
-			 "not booted via UEFI — the installed system would not boot");
 		return 1;
 	}
 	return 0;
@@ -263,13 +262,19 @@ static void keymap_apply(const char *name)
 static void keymap_row(int idx, int x, int y, int w, int selected, int focus,
 		       void *u)
 {
-	(void)focus;
 	(void)u;
 	const char *name = keymaps[kmfilter_idx[idx]];
 	int cur = !strcmp(name, cfg.keymap);
-	int fg = selected ? KT_BG : cur ? KT_ACCENT : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
-	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ", fg, bg, 0);
+	int fg, bg;
+
+	/* THE SAME SLOTS ktui_list FILLED THE ROW WITH. A row painter that
+	 * picks its own background paints over the list's, so the two disagree
+	 * the moment either changes. The bullet keeps the accent whatever the
+	 * row is doing: it is the chosen ITEM, which is not the same question
+	 * as where the caret is. */
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ",
+		       KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 3, y, w - 3, name, fg, bg, 0);
 }
 
@@ -435,13 +440,14 @@ static void tz_filter(void)
 
 static void tz_row(int idx, int x, int y, int w, int selected, int focus, void *u)
 {
-	(void)focus;
 	(void)u;
 	int z = tzidx[idx];
 	int cur = !strcmp(zones[z].label, cfg.tz_label);
-	int fg = selected ? KT_BG : cur ? KT_ACCENT : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
-	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ", fg, bg, 0);
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ",
+		       KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 3, y, w - 3, zones[z].label, fg, bg, 0);
 }
 
@@ -540,10 +546,18 @@ static void disk_row(int idx, int x, int y, int w, int selected, int focus,
 	Disk *d = &ki_disk[idx];
 	int cur = !strcmp(d->path, cfg.disk);
 	int warn = d->is_boot_media || d->readonly;
-	int fg = selected ? KT_BG : warn ? KT_WARN : cur ? KT_ACCENT : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg, bg;
 
-	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ", fg, bg, 0);
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	/* A DISK THE INSTALLER WILL REFUSE STAYS URGENT EVEN ON THE FILL.
+	 * KT_WARN on KT_DIM is the one pairing here worth keeping: this is the
+	 * row that says "not this one", and it is read precisely when somebody
+	 * has moved the caret onto it. */
+	if (warn)
+		fg = KT_WARN;
+
+	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ",
+		       KT_ACCENT, bg, 0);
 	ktui_draw_textf(x + 3, y, w - 3, fg, bg, 0, "%-10s %8s  %-6s %s",
 		   d->name,
 		   kb_human_size(d->sectors * (unsigned long long)d->sector_size),
@@ -726,11 +740,11 @@ static char swapbuf[16];
 static void part_row_generic(int idx, int x, int y, int w, int selected,
 			     int focus, void *u)
 {
-	(void)focus;
 	Disk *d = (Disk *)u;
 	Part *p = &d->part[idx];
-	int fg = selected ? KT_BG : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
 	ktui_draw_textf(x + 1, y, w - 1, fg, bg, 0, "%-12s %8s  %-8s %s", p->name,
 		   kb_human_size(p->sectors * 512ULL),
 		   p->is_esp ? "ESP" : p->fstype[0] ? p->fstype : "-",
@@ -1317,11 +1331,11 @@ static void apps_collect(void)
 static void app_row(int idx, int x, int y, int w, int selected, int focus,
 		    void *u)
 {
-	(void)focus;
 	(void)u;
 	const KiGroup *g = &ki_group[idx];
-	int fg = selected ? KT_BG : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
 	char size[16], n[16];
 	int szw = 10, nw = 7;
 	int descw = w - 4 - szw - nw;

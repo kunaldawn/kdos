@@ -16,7 +16,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-audio` | Audio devices | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
 | `kdos-bb` | The ASCII-art demo | [kdos-bb](../04-programs/kdos-bb.md) |
-| `kdos-bootctl` | A/B slot selection and confirmation | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
+| `kdos-bootctl` | A/B slot selection and confirmation, and the boot menu's colours (`theme [--print] <accent>`) | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
 | `kdos-backup` | What is in the restic repository, and one key to add to it | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-box` | Manage boxes | [kdos-appbox](../04-programs/kdos-appbox.md) |
 | `kdos-boxinit` | Process 1 inside a box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
@@ -128,6 +128,8 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos march` | Measure per-machine optimisation, and the ledger |
 | `kdos rebuild` | Rebuild the image from the sources on the medium |
 | `kdos clone` | Copy this medium to another device |
+| `kdos persist` | Report the live session's persistence store |
+| `kdos persist create [<dev>]` | Make one in the free space after the image |
 | `kdos cve` | Which pins carry known vulnerabilities, offline |
 | `kdos trash` | The freedesktop trash |
 | `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |

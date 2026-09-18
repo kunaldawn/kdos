@@ -106,7 +106,7 @@ static const struct {
 	{ "system-shutdown",   "idle, lock and power" },
 	{ "input-keyboard",    "keyboard and pointer" },
 	{ "preferences-other", "which app opens what" },
-	{ "package-x-generic",  "environments and packs" },
+	{ "package",            "environments and packs" },
 	/*
 	 * SYSTEM is the machine itself — disks, printing, backup, the services
 	 * that run without being asked. Most of it is not written yet, and the
@@ -998,8 +998,20 @@ static const char *const PERSISTS[] = { "persistent", "ephemeral", "frozen" };
 static const char *const NETS[] = { "host", "private", "none" };
 static const char *const SHARED[] = { "shared", "private" };
 static const char *const EXPORTS[] = { "manual", "auto" };
-static const char *const ACCENTS_OR_SESSION[] = { "session", "phosphor",
-						  "amber", "ice", "bone" };
+/*
+ * EVERY SCHEME libkcolor CARRIES, EXPANDED RATHER THAN LISTED. A hand-written
+ * list is a list that stops at whichever accents existed when somebody typed
+ * it — this one named four of the seven, so a box could not be told to wear
+ * norton, borland or perfect at all, and nothing said so. `session` is first
+ * because it is not a scheme: it means "whatever the session is wearing".
+ */
+#define SH_ACCENT_NAME(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd) \
+	#id,
+static const char *const ACCENTS_OR_SESSION[] = {
+	"session", KCOL_SCHEMES(SH_ACCENT_NAME)
+};
+#define N_ACCENTS_OR_SESSION \
+	((int)(sizeof(ACCENTS_OR_SESSION) / sizeof(ACCENTS_OR_SESSION[0])))
 
 /*
  * The keys, in the order `profile_save` writes them, so reading this page and
@@ -1019,7 +1031,7 @@ static struct row boxrows[] = {
 	  "CONTENT from somebody else's registry",
 	  "", "" },
 	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LIVE, "accent", "accent",
-	  ACCENTS_OR_SESSION, 5, 0, 0, 0,
+	  ACCENTS_OR_SESSION, N_ACCENTS_OR_SESSION, 0, 0, 0,
 	  "the terminal `kdos-box enter` opens wears it, and the window frame "
 	  "carries a chip of it when it is not the session's",
 	  "", "" },
@@ -2215,8 +2227,9 @@ static void draw_home(void)
 		int cx = 1 + (i % cols) * tw;
 		int cy = 1 + (i / cols) * TILE_H;
 		int on = i == home_sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 
 		tile_hit[i] = krect(0, 0, 0, 0);
 		if (cy + 1 >= h - 3)
@@ -2242,7 +2255,7 @@ static void draw_home(void)
 		tile_hit[i] = krect(cx, cy, tw - 1, 2);
 	}
 
-	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
+	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_MID, KT_SURFACE);
 	/* WORDS, not arrows. The ascii tier has no ← →, and the console font
 	 * has no left/right arrow either — which is why ktui_glyph carries
 	 * ◀ ▶ — so a literal `↑↓←→` here would come out as `????` in a golden
@@ -2271,12 +2284,15 @@ static void draw_page(void)
 
 	for (int i = 0; i < NCAT && i < pane_rows; i++) {
 		int on = i == cat;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? (pane == 0 ? KT_ACCENT : KT_DIM) : KT_SURFACE;
-		if (on)
-			ktui_draw_fill(krect(1, 1 + i, CATW, 1), bg);
-		ktui_draw_text(2, 1 + i, CATW - 1, CAT_NAMES[i],
-			       on ? fg : KT_TEXT, bg, KT_A_NONE);
+		int fg, bg;
+
+		/* `pane == 0` IS THIS COLUMN'S FOCUS, and it is what decides
+		 * between a filled row and a marked one. Both panes carry a
+		 * caret; only the one taking keys carries a plate. */
+		ktui_sel_row(krect(1, 1 + i, CATW, 1), on, pane == 0,
+			     KT_SURFACE, &fg, &bg);
+		ktui_draw_text(2, 1 + i, CATW - 1, CAT_NAMES[i], fg, bg,
+			       KT_A_NONE);
 	}
 
 	int fx = CATW + 3;
@@ -2290,11 +2306,10 @@ static void draw_page(void)
 			break;
 		int y = 1 + i;
 		int on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? (pane == 1 ? KT_ACCENT : KT_DIM) : KT_SURFACE;
+		int fg, bg;
 
-		if (on)
-			ktui_draw_fill(krect(fx - 1, y, w - fx, 1), bg);
+		ktui_sel_row(krect(fx - 1, y, w - fx, 1), on, pane == 1,
+			     KT_SURFACE, &fg, &bg);
 
 		if (cat == CAT_APPS) {
 			if (!napps) {
@@ -2307,7 +2322,8 @@ static void draw_page(void)
 			ktui_draw_text(fx, y, fw / 2, apps[idx].mime, fg, bg,
 				       KT_A_NONE);
 			ktui_draw_text(fx + fw / 2, y, fw - fw / 2 - 1,
-				       apps[idx].id, on ? fg : KT_MID, bg,
+				       apps[idx].id,
+				       ktui_sel_dim(on, pane == 1), bg,
 				       KT_A_NONE);
 			continue;
 		}
@@ -2372,9 +2388,14 @@ static void draw_page(void)
 			ktui_draw_fill(krect(fx, y, fw, 1), bg);
 			ktui_draw_text(fx, y, lw, r->label, KT_ACCENT, bg,
 				       KT_A_BOLD);
+			/* KT_MID, NOT KT_DIM — the rule `kch_group` keeps and
+			 * for the reason it states: `dim` is a FILL at about
+			 * 1.6:1 against the page, so a rule drawn in it is a
+			 * rule nobody can see, and the heading then reads as a
+			 * lone word rather than as the start of a section. */
 			if (fw - lw - 2 > 0)
 				ktui_draw_hline(fx + lw + 1, y, fw - lw - 2,
-						KT_G_HL, KT_DIM, bg);
+						KT_G_HL, KT_MID, bg);
 			continue;
 		}
 		if (r->type == FT_NOTE) {
@@ -2388,8 +2409,8 @@ static void draw_page(void)
 			ktui_draw_text(fx, y, fw - 2, r->label,
 				       on ? fg : KT_ACCENT, bg, KT_A_NONE);
 			ktui_draw_text(fx + fw - 2, y, 1,
-				       ktui_glyph[KT_G_RIGHT],
-				       on ? fg : KT_DIM, bg, KT_A_NONE);
+				       ktui_glyph[KT_G_ARROW_R],
+				       on ? fg : KT_MID, bg, KT_A_NONE);
 			continue;
 		}
 
@@ -2438,16 +2459,30 @@ static void draw_page(void)
 			ktui_frame_end();
 			memset(&field_ev, 0, sizeof(field_ev));
 		} else {
+			/* AN UNSET VALUE IS THE ONE THING KT_DIM STILL SAYS
+			 * HERE, and only off the fill: KT_DIM on KT_DIM is one
+			 * colour, so a selected row would lose the distinction
+			 * between "(unset)" and a value entirely. */
+			int vfg = ktui_sel_dim(on, pane == 1);
+
+			if (!r->val[0] && !(on && pane == 1))
+				vfg = KT_DIM;
 			ktui_draw_text(vr.x, y, vr.w,
 				       elide(r->val[0] ? r->val : "(unset)",
 					     vr.w, shown, sizeof(shown)),
-				       on ? fg : (r->val[0] ? KT_MID : KT_DIM),
-				       bg, KT_A_NONE);
+				       vfg, bg, KT_A_NONE);
 		}
-		ktui_draw_text_right(0, y, w - 2, tag,
-				     on ? fg : (r->scope == SC_LIVE ? KT_MID
-							            : KT_DIM),
-				     bg, KT_A_NONE);
+		/* Same rule for the scope tag. `live` and `login` are the
+		 * answer to "did that do anything", so a selected row is
+		 * exactly when they have to be readable. */
+		{
+			int tfg = ktui_sel_dim(on, pane == 1);
+
+			if (r->scope != SC_LIVE && !(on && pane == 1))
+				tfg = KT_DIM;
+			ktui_draw_text_right(0, y, w - 2, tag, tfg, bg,
+					     KT_A_NONE);
+		}
 	}
 
 	/*

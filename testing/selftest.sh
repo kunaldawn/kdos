@@ -204,9 +204,14 @@ $CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/packages/kdos-kpkg \
     src/libs/libksig/*.c src/libs/libksig/monocypher/*.c
 echo "  kdos-kpkg"
 # kdos-powerd is a root daemon and kdos-checkpass is the one setuid binary in
-# the tree; both link libkbase-or-less on purpose, so both compile here.
-$CC $STD $WARN $INC -o "$OUT/kdos-powerd" \
-    src/desktop/kdos-powerd/main.c src/libs/libkbase/*.c
+# the tree; both link a deliberately short list, so both compile here.
+#
+# libkcolor IS ON kdos-powerd's LIST and that is the point of the `accent`
+# verb's safety argument: the scheme name is matched against the palette's own
+# closed table rather than sanitised by a character class copied into the
+# daemon. Linking it here keeps this check the same link as the recipe's.
+$CC $STD $WARN $INC -Isrc/libs/libkcolor -o "$OUT/kdos-powerd" \
+    src/desktop/kdos-powerd/main.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 ln -sf kdos-powerd "$OUT/kdos-power"
 echo "  kdos-powerd"
 
@@ -5616,6 +5621,40 @@ else
 fi
 
 echo
+echo "==> the scrollbar you can see is the scrollbar you can grab"
+# ASSERTED AGAINST EACH OTHER, not against numbers: the frame is rendered
+# offscreen and the thumb is found in the CELLS, so the draw and the hit test
+# are compared rather than both compared to somebody's arithmetic. Its own
+# binary because selftest.c links no libkchrome.
+$CC $STD $WARN $INC -Isrc/libs/libkchrome -Isrc/libs/libkicon \
+    -Isrc/libs/libkcell -Isrc/libs/libkwl -o "$OUT/barcheck" \
+    testing/barcheck.c src/libs/libkchrome/kch_chrome.c \
+    src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkbase/*.c
+"$OUT/barcheck"
+
+echo
+echo "==> a launcher names a box, and the menu asks whether it is there"
+# THE ASYMMETRY IS WHAT THIS PROTECTS. `sh_box_missing` answers 1 only where
+# absence is PROVED and every unknown counts as present, because hiding an
+# application somebody installed is a worse failure than showing one whose pack
+# has gone. That reads like an incomplete check and is not one.
+#
+# ITS OWN BINARY, for the reason decocheck has one: these two functions live in
+# kdos-shell, and linking the shell into selftest.c to reach them would drag a
+# Wayland client and a font renderer in behind them. Four stubs — the launch
+# path, which none of this calls — are the whole cost of not doing that.
+rm -rf "$OUT/boxfix"
+mkdir -p "$OUT/boxfix/store" "$OUT/boxfix/home/.config/kdos/boxes"
+: > "$OUT/boxfix/store/app.here.kpack"
+: > "$OUT/boxfix/home/.config/kdos/boxes/app.built.conf"
+$CC $STD $WARN -Isrc/desktop/kdos-shell $INC -Isrc/libs/libkchrome \
+    -Isrc/libs/libkicon -Isrc/libs/libkcell -Isrc/libs/libkwl \
+    -Isrc/libs/libkimg -o "$OUT/boxcheck" testing/boxcheck.c \
+    src/desktop/kdos-shell/apps.c src/libs/libkbase/*.c src/libs/libkxdg/*.c
+BOXCHECK_STORE="$OUT/boxfix/store" BOXCHECK_HOME="$OUT/boxfix/home" \
+    "$OUT/boxcheck"
+
+echo
 echo "==> kdos-powerd only lets root and wheel near the power"
 # The gate is SO_PEERCRED on the connection, which cannot be tested without two
 # uids. `--explain` reads exactly the same two files the gate does and is the
@@ -8212,10 +8251,26 @@ cells_golden() {		# <name> <argv…>
         golden_fail=1
     fi
 }
-cells_golden start       start --dump-cells
-cells_golden menu-system menu system --dump-cells
-cells_golden keys        keys --dump-cells
-cells_golden doc         doc --dump-cells
+#
+# THE SURFACES THAT CARRY A SELECTION ARE THE ONES THAT NEED THIS MOST, and
+# they were the ones without it. A selected row is the only chrome on this
+# desktop whose whole job is a COLOUR — the glyphs either side of it are
+# identical — so a text dump of a list is byte-identical whether the caret is
+# drawn as an accent plate, as a quiet fill, or not at all. Four surfaces had
+# cells and twenty-six did not.
+#
+# `settings` is here twice on purpose: the home grid and a PAGE are different
+# selection shapes — a tile and a two-pane row — and the page is the one with a
+# cold pane in it, which is the state that reads as "no caret" when it breaks.
+cells_golden start          start --dump-cells
+cells_golden menu-system    menu system --dump-cells
+cells_golden keys           keys --dump-cells
+cells_golden doc            doc --dump-cells
+cells_golden settings       settings --dump-cells
+cells_golden settings-input settings --page input --dump-cells
+cells_golden pick           pick --dir tree --dump-cells
+cells_golden find           find --dump-cells /tmp
+cells_golden openwith       openwith --dump-cells "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
 
 # THE CELL VERDICT IS ITS OWN CHECK, because the frame check above has already
 # run: a `golden_fail` raised by a cells_golden after it would be recorded and

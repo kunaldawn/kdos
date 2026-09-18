@@ -1,4 +1,4 @@
-+= Style ======================================================================+
++=[ Style ]====================================================================+
 |  Accent  Font                                                                |
 |                                                                              |
 | the terminal this view runs in owns the font ? change it there               |
@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-| ^v preview  Enter keep  Esc back  <> page                                    |
+| ^v preview | Enter keep | Esc back | <> page                                 |
 +==============================================================================+

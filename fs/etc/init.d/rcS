@@ -30,6 +30,21 @@ done
 splash total "$_n"
 unset _s _n
 
+# THE ACCENT, AS SOON AS /etc CAN BE READ. The splash was started by the
+# initramfs, where no root filesystem existed, so it came up in the accent
+# compiled into it. This is the first point at which the machine's own choice
+# is readable, and the splash is still the only thing on the screen — so it
+# repaints into the right scheme before anybody sees a frame in the wrong one.
+#
+# `/etc/kdos/accent` is written by kdos-powerd when `kdos theme` runs. Absent
+# means nothing has ever changed it, which is the compiled-in default the
+# splash is already wearing: nothing to send, and not a failure.
+if [ -r /etc/kdos/accent ]; then
+    read -r _accent < /etc/kdos/accent || _accent=""
+    [ -n "$_accent" ] && splash accent "$_accent"
+    unset _accent
+fi
+
 # Mount all filesystems in fstab
 splash step "MOUNTING FILESYSTEMS"
 mount -a

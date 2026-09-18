@@ -12,12 +12,14 @@
  *   kdos-bootctl try <slot> [n]        boot that slot n times, then give up
  *   kdos-bootctl select                DECIDE and count down (the initramfs)
  *   kdos-bootctl mark-good             this boot worked (the end of rcS)
+ *   kdos-bootctl theme <accent>        repaint the boot menu in that scheme
+ *   kdos-bootctl theme --print <name>  the theme block, to stdout
  *
  * The shape is RAUC's state machine and none of its dependencies: a file with
  * `active`, `try` and `attempts` in it, one decision, and one place that
- * decrements. What it replaces is the thing rEFInd does not have — **boot
+ * decrements. What it replaces is the thing Limine does not have — **boot
  * counting**. systemd-boot counts by renaming files with `+N-M` suffixes;
- * rEFInd has nothing of the sort, so the counting is ours, and it belongs in the
+ * Limine has nothing of the sort, so the counting is ours, and it belongs in the
  * INITRAMFS rather than in `rcS`: a kernel that boots into a wedged userland
  * must still be caught, and `rcS` in that userland never runs to say so.
  *
@@ -34,6 +36,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -207,6 +210,185 @@ out:
 	return rc;
 }
 
+/* ── the bootloader's colours ──────────────────────────────────────────── */
+
+#define LIMINE_CONF_DEFAULT "/boot/efi/limine.conf"
+
+static const char *limine_path(void)
+{
+	/* Overridable for the same reason `KDOS_BOOTSTATE` is: the restamp has
+	 * to be exercisable against a fixture on a machine with no ESP. */
+	const char *e = getenv("KDOS_LIMINE_CONF");
+	return (e && *e) ? e : LIMINE_CONF_DEFAULT;
+}
+
+/*
+ * THE KEYS THE THEME OWNS, and nothing else in the file is this function's to
+ * touch. `cmdline`, `path`, `module_path`, `default_entry`, `timeout` and
+ * every entry are written by the installer and maintained by the updater; a
+ * restamp that rewrote the file from a template would discard an A/B slot
+ * somebody is mid-rollback on.
+ *
+ * `wallpaper` and `term_font` are NOT here, and they are the only two that are
+ * not: they name paths on the ESP, and which artwork and which face are
+ * installed is not a question an accent answers. `wallpaper_style` and
+ * `term_font_scale` ARE here, because they are layout — a restamp that moved
+ * only the colours would leave a machine installed earlier drawing its menu at
+ * `2x2` over a `centered` backdrop, which is the unreadable arrangement in
+ * every scheme.
+ */
+static const char *const THEME_KEYS[] = {
+	"interface_branding",
+	"interface_branding_colour",	"interface_branding_color",
+	"interface_help_hidden",
+	"interface_help_colour",	"interface_help_color",
+	"interface_help_colour_bright",	"interface_help_color_bright",
+	"backdrop",
+	"term_background",		"term_foreground",
+	"term_background_bright",	"term_foreground_bright",
+	"term_palette",			"term_palette_bright",
+	"term_margin",			"term_margin_gradient",
+	"wallpaper_style",		"term_font_scale",
+	NULL
+};
+
+/* The key of a `key: value` line, or -1 for a blank, a comment, an entry
+ * heading or an indented entry setting. Limine's entries are indented and its
+ * globals are not, so leading whitespace alone separates the two. */
+static int theme_key_line(const char *line, size_t n)
+{
+	size_t k = 0;
+
+	if (!n || line[0] == '#' || line[0] == '/' || line[0] == ' ' ||
+	    line[0] == '\t')
+		return -1;
+	while (k < n && line[k] != ':')
+		k++;
+	if (k == n)
+		return -1;
+	for (int i = 0; THEME_KEYS[i]; i++)
+		if (strlen(THEME_KEYS[i]) == k &&
+		    !strncmp(line, THEME_KEYS[i], k))
+			return i;
+	return -1;
+}
+
+/*
+ * Rewrite the theme block of a limine.conf in place.
+ *
+ * The new block lands where the FIRST owned line was, so a file keeps the
+ * shape whoever wrote it gave it; every other owned line is dropped. A file
+ * with no owned line at all takes the block immediately before its first
+ * entry, which is the only position both firmwares' parsers accept it in — a
+ * global written after an entry heading belongs to that entry.
+ */
+static int limine_restamp(const char *path, const KcolScheme *sc)
+{
+	char theme[1024];
+	size_t len = 0;
+	char *data = kb_read_all(path, &len);
+
+	if (!data)
+		return -1;
+	if (kcol_limine_conf(sc, theme, sizeof(theme)) >= (int)sizeof(theme)) {
+		free(data);
+		return -1;
+	}
+
+	KbBuf out = {0};
+	int placed = 0;
+	for (char *line = data; line && *line;) {
+		char *nl = strchr(line, '\n');
+		size_t n = nl ? (size_t)(nl - line) : strlen(line);
+		size_t t = n;
+
+		while (t && (line[t - 1] == '\r' || line[t - 1] == ' '))
+			t--;
+
+		if (theme_key_line(line, t) >= 0) {
+			if (!placed) {
+				kb_buf_str(&out, theme);
+				placed = 1;
+			}
+		} else {
+			/* An entry heading, and the block has nowhere else to
+			 * go: everything after this belongs to an entry. */
+			if (!placed && t && line[0] == '/') {
+				/* And a blank line: a global butted straight
+				 * against an entry heading parses, but reads
+				 * as part of the entry to anyone editing it. */
+				kb_buf_str(&out, theme);
+				kb_buf_str(&out, "\n");
+				placed = 1;
+			}
+			kb_buf_add(&out, line, n);
+			kb_buf_str(&out, "\n");
+		}
+		line = nl ? nl + 1 : NULL;
+	}
+	if (!placed)
+		kb_buf_str(&out, theme);
+	free(data);
+
+	/* The ESP is FAT and has no journal, so this is the same
+	 * temp/fsync/rename/fsync-the-directory the boot state gets: a
+	 * zero-length limine.conf is a machine that shows no menu. */
+	int rc = kb_write_file_atomic(path, out.p);
+	kb_buf_free(&out);
+	return rc;
+}
+
+static int cmd_theme(int argc, char **argv)
+{
+	int print = argc > 2 && !strcmp(argv[2], "--print");
+	const char *name = print ? (argc > 3 ? argv[3] : NULL)
+				 : (argc > 2 ? argv[2] : NULL);
+	const KcolScheme *sc;
+
+	/*
+	 * THE NAME IS ONE OF SEVEN COMPILED-IN STRINGS. That is the whole of
+	 * the validation and the whole of the safety argument for reaching
+	 * this from an unprivileged session: there is no path here to aim, and
+	 * a name that is not a scheme names nothing at all.
+	 */
+	sc = name ? kcol_find(name) : kcol_default();
+	if (!sc) {
+		fprintf(stderr, "bootctl: no accent named '%s'\n", name);
+		return 2;
+	}
+
+	if (print) {
+		char theme[1024];
+		if (kcol_limine_conf(sc, theme, sizeof(theme)) >=
+		    (int)sizeof(theme)) {
+			fprintf(stderr, "bootctl: theme block does not fit\n");
+			return 1;
+		}
+		fputs(theme, stdout);
+		return 0;
+	}
+
+	/*
+	 * A MACHINE WITH NO WRITABLE ESP IS NOT A FAILURE. The live medium is
+	 * read-only and a machine installed without one has no limine.conf at
+	 * all; refusing here would make `kdos theme` fail on the ISO, where
+	 * every other surface retints perfectly. Reported and exit 0.
+	 */
+	const char *path = limine_path();
+	if (!kb_path_exists(path)) {
+		printf("no bootloader configuration at %s — boot menu "
+		       "unchanged\n", path);
+		return 0;
+	}
+	if (limine_restamp(path, sc) != 0) {
+		fprintf(stderr, "bootctl: cannot rewrite %s: %s\n", path,
+			strerror(errno));
+		return 1;
+	}
+	printf("boot menu is now %s\n", sc->name);
+	return 0;
+}
+
 /* ── the commands ──────────────────────────────────────────────────────── */
 
 static int cmd_status(const BootState *st, int have, int json)
@@ -326,6 +508,11 @@ int bootctl_main(int argc, char **argv)
 		return cmd_select(&st, have);
 	if (!strcmp(cmd, "mark-good"))
 		return cmd_mark_good(&st, have);
+	/* No boot state needed and none consulted: the colours of the menu are
+	 * not the A/B machine's business, and a machine with no bootstate must
+	 * still be able to repaint its bootloader. */
+	if (!strcmp(cmd, "theme"))
+		return cmd_theme(argc, argv);
 
 	if (!strcmp(cmd, "set-slot")) {
 		if (argc < 4) {
@@ -391,6 +578,7 @@ int bootctl_main(int argc, char **argv)
 
 	fprintf(stderr,
 		"usage: kdos-bootctl {status [--json]|select|mark-good|\n"
-		"                     set-slot <a|b> <uuid>|try <a|b> [n]}\n");
+		"                     set-slot <a|b> <uuid>|try <a|b> [n]|\n"
+		"                     theme [--print] <accent>}\n");
 	return 2;
 }

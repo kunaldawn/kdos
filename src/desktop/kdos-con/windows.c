@@ -3759,9 +3759,18 @@ void win_list_draw(void)
 			if (on)
 				ktui_draw_fill(krect(r.x + 1, r.y + 1 + i,
 						     cols - 2, 1), KT_ACCENT);
-			ktui_draw_text(r.x + 1, r.y + 1 + i, cols - 2, row,
-				       on ? KT_BG : away ? KT_DIM : KT_TEXT,
-				       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			{
+				int rfg, rbg;
+
+				ktui_sel_slots(on, 1, KT_SURFACE, &rfg, &rbg);
+				/* A window on another workspace stays muted
+				 * off the fill and takes the label colour on
+				 * it — KT_DIM on KT_DIM is one colour. */
+				if (away && !on)
+					rfg = KT_DIM;
+				ktui_draw_text(r.x + 1, r.y + 1 + i, cols - 2,
+					       row, rfg, rbg, KT_A_NONE);
+			}
 		}
 	}
 	ktui_draw_text(r.x + 2, r.y + rows - 2, cols - 4,

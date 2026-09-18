@@ -36,6 +36,100 @@ const KcolScheme *kcol_find(const char *name)
 	return NULL;
 }
 
+uint32_t kcol_over(uint32_t fg, uint32_t bg, uint8_t alpha)
+{
+	uint32_t out = 0;
+
+	for (int sh = 16; sh >= 0; sh -= 8) {
+		uint32_t f = (fg >> sh) & 0xff, b = (bg >> sh) & 0xff;
+
+		out |= ((f * alpha + b * (255 - alpha)) / 255) << sh;
+	}
+	return out;
+}
+
+const KcolScheme *kcol_default(void)
+{
+	return &kcol_schemes[KCOL_DEFAULT_INDEX];
+}
+
+/*
+ * The ANSI eight, twice, projected onto the scheme — the same mapping
+ * ktui_theme.c makes onto its own slots, in the order Limine reads:
+ *
+ *   black red green yellow blue magenta cyan white
+ *
+ * This palette has no magenta and no true blue, so those two take the accent
+ * and the text colour rather than a literal: the boot menu draws with the
+ * first four and the last, and a colour invented for the two it never uses
+ * would be the one value here that follows no scheme.
+ */
+int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
+{
+	char primary[7], secondary[7], urgent[7], deep[7], text[7];
+	char dim[7], pdark[7], backdrop[7];
+
+	if (!sc)
+		sc = kcol_default();
+
+	kcol_format(sc->primary, primary);
+	kcol_format(sc->secondary, secondary);
+	kcol_format(sc->urgent, urgent);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->pdark, pdark);
+	kcol_format(sc->backdrop, backdrop);
+
+	return snprintf(buf, cap,
+		/* The wordmark, and it is the ONLY branding left: the four-line
+		 * help block Limine draws above the menu names five keys, three
+		 * of which do nothing a person booting this medium wants, and it
+		 * pushed the entry list into the artwork. `interface_help_hidden`
+		 * removes it; the entries say what they are. */
+		"interface_branding: KDOS\n"
+		"interface_branding_colour: %s\n"
+		"interface_help_hidden: yes\n"
+		/*
+		 * AND THE HELP COLOUR IS STILL SET THOUGH THE HELP IS HIDDEN.
+		 * `interface_help_hidden` removes the key list at the top; the
+		 * COUNTDOWN — "Booting automatically in N…" — keeps drawing in
+		 * the help colour, so leaving the key out does not mean the
+		 * line is gone, it means the line is Limine's default GREEN on
+		 * a menu wearing some other accent. Photographed.
+		 */
+		"interface_help_colour: %s\n"
+		"interface_help_colour_bright: %s\n"
+		"backdrop: %s\n"
+		/* `00` — OPAQUE. See the header: Limine's own default with a
+		 * wallpaper set is `80`, and that is the unreadable menu. */
+		"term_background: 00%s\n"
+		"term_foreground: %s\n"
+		"term_palette: %s;%s;%s;%s;%s;%s;%s;%s\n"
+		"term_palette_bright: %s;%s;%s;%s;%s;ffffff;%s;ffffff\n"
+		/* The gap that makes the plate read as a plate rather than as
+		 * text lying on a picture. The gradient softens the edge so the
+		 * backdrop does not stop dead at the margin. */
+		"term_margin: 48\n"
+		"term_margin_gradient: 8\n"
+		/* `stretched`, NEVER `centered`. A centred backdrop is drawn at
+		 * its own size in the middle of the screen — which is where the
+		 * menu is — so its shapes land behind the entry text. Stretched,
+		 * the artwork is the whole screen and the opaque plate above
+		 * sits on it. Inert where no wallpaper is set. */
+		"wallpaper_style: stretched\n"
+		/* `1x2` AND NOT `2x2`. Doubling both axes of an 8x16 face gives
+		 * a 16x32 cell, and at that size four entries and a branding
+		 * line fill a 1080-row screen: the list stops reading as a
+		 * list. Doubling only the height keeps the row pitch legible on
+		 * a dense panel and leaves the menu width to say what an entry
+		 * is. */
+		"term_font_scale: 1x2\n",
+		primary, pdark, primary, backdrop, deep, text,
+		deep, urgent, primary, secondary, pdark, text, primary, text,
+		dim, urgent, primary, secondary, pdark, primary);
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static int hexval(char c)

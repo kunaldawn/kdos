@@ -36,14 +36,25 @@
  * scheme. A scheme is not a set of colours somebody liked, it is a set that
  * clears those two floors.
  *
- * EVERY SCHEME HERE IS DARK, and that is a limit of the chrome rather than a
- * preference. `libkchrome` solves the focused plate along `dim`-to-`pdark` and
- * writes `text` on it — one label colour for every plate — so on a light ground
- * the plate darkens away from a dark label and no mix clears both the
- * separation floor and the legibility one: the best light candidate reaches
- * 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off the
- * bar where the label reads at 6.58:1. A light scheme needs the ladder to
- * choose its label per plate first, and `selftest.c` refuses one until then.
+ * A SCHEME'S GROUND MAY BE EITHER END, and what decides whether one is usable
+ * is the PLATE LADDER rather than the ground. `libkchrome` solves the focused
+ * plate along `dim`-to-`pdark` and writes `text` on it, and that plate has to
+ * do two things that pull against each other: stand off the bar, and carry its
+ * own label. A palette whose `dim`, `pdark` and `variant` leave no mix doing
+ * both is unusable whichever end its ground is; one that leaves a mix doing
+ * both is usable whichever end its ground is.
+ *
+ * `paper` is the light one and it is what proved the distinction: at 30% its
+ * plate separates at the hover floor and carries `text` at 7.51:1. The refusal
+ * that used to sit in `selftest.c` measured the GROUND, which is a proxy — it
+ * would have refused this palette and accepted a dark one that failed. The
+ * assertion measures the plates now.
+ *
+ * THE SOLVER AIMS AT 7:1 ON THE LABEL AND DOES NOT ALWAYS REACH IT. `bone`
+ * lands at 6.21:1 and no `pdark` fixes it — the separation floor binds first,
+ * and the best any mix reaches is 6.69:1. The floor asserted is therefore WCAG
+ * AA at 4.5:1, which is what every scheme can hold; 7:1 is the target the walk
+ * stops early on, not a promise.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KCOL_SCHEMES(X)                                                       \
@@ -60,9 +71,41 @@
 	X(borland, "BORLAND", "KDOS-Borland",                                 \
 	  5fd7d7, 24494d, ffd75f, ff5f5f, 020e12, f0fcfc, 07181c, 2f8f8f, 010c0f) \
 	X(perfect, "PERFECT", "KDOS-Perfect",                                 \
-	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38)
+	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38) \
+	X(paper, "PAPER", "KDOS-Paper",                                       \
+	  1a5fb4, c9c6bd, 9c6500, a51d2d, fbfaf6, 1a1a17, f2f0e9, 5b5750, eceae2)
 
 #define KCOL_HEX(x) ((uint32_t)0x##x)
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The default scheme, named once
+ *
+ * A consumer with nothing configured falls back to a row of the table above.
+ * Reaching for index 0 — `kcol_schemes[0]`, `ktui_themes[0]` — makes the
+ * default a property of WHERE A ROW SITS, so reordering the accent picker
+ * silently changes what an unconfigured machine boots in, and the compositor,
+ * the console, the cage and the chrome each end up holding their own copy of
+ * the assumption.
+ *
+ * The index is derived from the NAME instead, at compile time, so the table
+ * can be reordered freely and there is one line to edit to move the default.
+ * `KCOL_DEFAULT_ID` is the bare identifier as the X-macro spells it.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define KCOL_DEFAULT_ID bone
+
+#define KCOL_IDX_ENUM(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd)   \
+	KCOL_IDX_##id,
+
+enum { KCOL_SCHEMES(KCOL_IDX_ENUM) KCOL_IDX_COUNT };
+
+#define KCOL_CAT2(a, b) a##b
+#define KCOL_CAT(a, b) KCOL_CAT2(a, b)
+#define KCOL_STR2(x) #x
+#define KCOL_STR(x) KCOL_STR2(x)
+
+#define KCOL_DEFAULT_INDEX KCOL_CAT(KCOL_IDX_, KCOL_DEFAULT_ID)
+#define KCOL_DEFAULT_NAME  KCOL_STR(KCOL_DEFAULT_ID)
 
 typedef struct {
 	uint8_t r, g, b;
@@ -88,6 +131,42 @@ extern const int kcol_nscheme;
 
 /* NULL when the name is not one of ours. */
 const KcolScheme *kcol_find(const char *name);
+
+/* The scheme a machine with nothing configured is in. Never NULL. */
+const KcolScheme *kcol_default(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The bootloader's colours
+ *
+ * THE BOOT MENU IS THE FIRST SCREEN OF KDOS AND IT WEARS THE SAME PALETTE AS
+ * THE LAST ONE. The nine numbers reached it as literals, written out twice —
+ * once in the ISO step and once in the installer — so the medium and the
+ * machine installed from it could disagree about the colour of the menu, and
+ * the one that was wrong was the one nobody was booting that day.
+ *
+ * Emits the whole LOOK of a `limine.conf` — the `interface_*` lines, the
+ * backdrop, the palettes, the margins, the wallpaper STYLE and the font SCALE
+ * — newline-terminated.
+ *
+ * WHAT IT DOES NOT EMIT IS EXACTLY THE TWO LINES THAT NAME PATHS: `wallpaper`
+ * and `term_font`. Which artwork and which face are installed is not a
+ * question an accent answers, and this library names no paths. Everything
+ * else about how the menu looks is here, so re-theming an installed machine
+ * moves the layout as well as the colours — a restamp that changed only the
+ * palette would leave a menu drawn at `2x2` over a `centered` backdrop, which
+ * is unreadable in any scheme.
+ *
+ * `term_background` CARRIES A LEADING TRANSPARENCY BYTE and it is `00`.
+ * Limine's own default is `80` whenever a wallpaper is set — half-transparent
+ * — so a config that sets a wallpaper and says nothing about the background
+ * prints the artwork THROUGH the menu text. That is not a theme choice to be
+ * retuned; it is the difference between a menu that can be read and one that
+ * cannot.
+ *
+ * Returns the number of bytes that would have been written, snprintf-style, so
+ * a truncated buffer is detectable rather than silent.
+ * ──────────────────────────────────────────────────────────────────────── */
+int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Conversions
@@ -115,6 +194,18 @@ uint32_t kcol_from_hls(double h, double l, double s);
 /* Linear blend, pct 0..100 of `b` over `a`. Integer maths, matching the
  * `mix_hex` the shell version used, so generated files do not shift by one. */
 uint32_t kcol_mix(uint32_t a, uint32_t b, int pct);
+
+/*
+ * STRAIGHT (not premultiplied) COMPOSITE of `fg` at `alpha` over `bg` — what a
+ * translucent plate LOOKS like, so a contrast can be measured against what
+ * reaches a screen rather than against the colour before it is laid down.
+ *
+ * The difference is not cosmetic: the focused plate measures about 0.8 lower
+ * raw than composited, which is the gap between a ladder that reads as working
+ * and one that reads as broken. The painting itself is pixman's and
+ * premultiplied; this is only ever for measuring.
+ */
+uint32_t kcol_over(uint32_t fg, uint32_t bg, uint8_t alpha);
 
 /* The float form the stylesheet generator uses: x + (y - x) * t, rounded the
  * way python rounds. NOT interchangeable with kcol_mix — they disagree by a

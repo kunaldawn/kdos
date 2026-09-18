@@ -4,24 +4,30 @@ Changing how KDOS looks: the seven accents, the phosphor shader, the wallpaper, 
 applications inside boxes get the same palette. One command does almost all of it, and most of
 the result appears without restarting anything.
 
-## The seven accents
+## The eight accents
 
 | Accent | Character |
 |---|---|
-| `phosphor` | Green on near-black. The default, and the project's own colour |
+| `phosphor` | Green on near-black. The project's own colour |
 | `amber` | Amber on warm black |
 | `ice` | Cyan and blue on deep blue-black |
-| `bone` | Warm off-white on near-black — the least saturated of them |
+| `bone` | Warm off-white on near-black — the least saturated of them. **The default** |
 | `norton` | Yellow and cyan on deep blue. The two-pane file manager's own colours |
 | `borland` | Cyan and yellow on dark teal. The blue-box IDEs of the late eighties |
 | `perfect` | White on blue, and almost nothing else. The word processor that showed a blank screen |
+| `paper` | Ink on paper — **the light one**, and the only one whose ground is the light end |
 
-**Every accent is dark, and that is the chrome rather than a preference.** The focused plate is
-solved along one axis and carries one label colour, so on a light ground the plate darkens away
-from its own label and no mix clears both the separation floor and the legibility one: the best
-light candidate reaches 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off
-the bar where the label reads at 6.58:1. A light accent needs the plate ladder to choose its label
-per plate first; until then the self-test refuses a scheme whose ground is the light end.
+**Seven are dark and one is light, and what decides whether a palette works is its PLATES rather
+than its ground.** The focused plate has to stand off the bar it sits on and carry its own label,
+and mixing toward the brighter end buys the first at the second's expense. A palette that leaves no
+mix doing both is unusable whichever end its ground is, which is why the self-test measures the
+plates themselves: whether white beats black against the background is a proxy that refuses a good
+light palette and accepts a bad dark one.
+
+`paper`'s plate separates at the hover floor and carries its label at **7.51:1**. For comparison
+`bone`'s reaches **6.21:1** and cannot do better: its separation floor binds first, and the best
+any mix of its own colours reaches is 6.69:1. The solver aims at 7:1 and stops early when it gets
+there; 4.5:1 is what every accent is held to.
 
 An accent is not a colour, it is a small palette: a primary, a dim variant of it, a secondary, an
 urgent colour, a background, a text colour, a surface, and two more derived shades. Everything
@@ -102,6 +108,8 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | `~/.icons/KDOS/` | Every toolkit, host and box | On the application's next launch |
 | `~/.config/kdeglobals` | Qt applications under the KDE platform theme | On the application's next launch |
 | `~/.icons/KDOS-cursors/` | Cursor lookup inside boxes | On the application's next launch |
+| `/etc/kdos/accent` | `rcS`, which retints the running splash | On the next boot |
+| `/boot/efi/limine.conf` | The bootloader | On the next boot |
 
 **A GTK3 application restyles while it is open, and the accent in the directory name is what does
 it.** GTK rebuilds its whole style cascade when the `gtk-theme-name` setting moves and at no other
@@ -126,6 +134,28 @@ are therefore the nearest of the 256 terminal indices rather than the scheme's e
 **lazygit** has no include, no import and no separate theme file: its colours live inside the one
 `config.yml` you edit, so `kdos theme` does not write them at all. Writing them would mean owning
 that file and discarding whatever else you had put in it.
+
+## The boot menu and the splash
+
+**These two are root's, and `kdos theme` reaches them through `kdos-powerd`.** The boot menu lives
+in `limine.conf` on the ESP and the splash reads `/etc/kdos/accent`; neither is a file your account
+can write, and both are administration of the machine rather than of your session — which is the
+same argument that puts the timezone and the autologin account on that daemon.
+
+**Both apply on the next boot**, and the splash applies *partway* through it. The splash is started
+by the initramfs, before any root filesystem is mounted, so it comes up in the accent compiled into
+it and `rcS` tells it the machine's real one as soon as `/etc` can be read. On a machine whose
+accent has never been changed those are the same scheme and nothing is visible at all.
+
+**A machine with no writable ESP skips the boot menu and says so.** The live medium is read-only,
+and a machine may have no `/boot/efi` at all. `kdos theme` reports `boot menu and splash unchanged`
+and applies everything else — refusing the whole change over a bootloader would be the wrong trade,
+since the desktop is the thing you are looking at.
+
+**What the bootloader cannot follow is the artwork.** Limine cannot retint a picture and a theme
+change must not write a PNG to a FAT filesystem that may be half-done when the power goes, so the
+backdrop behind the boot menu is achromatic by construction: one dimmed, hueless image that sits
+under every accent.
 
 ## The CRT pass
 

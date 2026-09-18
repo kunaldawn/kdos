@@ -661,8 +661,9 @@ static void draw_frame(void)
 		const struct btdev *d = &devs[top + i];
 		int y = body_y + i;
 		int on = top + i == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
 		/* bluez's own Icon where the theme has a picture for it, the

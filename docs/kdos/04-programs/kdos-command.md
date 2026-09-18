@@ -23,7 +23,7 @@ reader learns that those are **three different questions**, rather than three to
 ## theme
 
 ```sh
-kdos theme <phosphor|amber|ice|bone|norton|borland|perfect>
+kdos theme <phosphor|amber|ice|bone|norton|borland|perfect|paper>   # bone is the default
 kdos theme list | next | prev
 kdos theme style <file>
 kdos theme --audit [accent]
@@ -385,6 +385,50 @@ has too little space or a build tool is missing.
 Everything after the checks is the same orchestrator the normal build runs, compiled on demand out
 of the tree being built, so the build is driven by the sources on the machine rather than by a
 binary from somewhere else.
+
+## persist
+
+```sh
+$ kdos persist
+no persistence store
+
+  This session's writes are in RAM and go when it is
+  powered off. `kdos persist create` makes a store in
+  the free space after the image on the boot medium.
+
+$ sudo kdos persist create
+  disk       /dev/sda  (32G)
+  partitions 3 now; the store becomes number 4
+  filesystem ext4, labelled KDOS_PERSIST
+```
+
+**A live session's writes land in the overlay's upper layer, which is a tmpfs.** This makes that
+upper a real filesystem instead — one partition, labelled `KDOS_PERSIST`, in the free space after
+the image.
+
+**The label is the whole interface.** The initramfs asks `blkid` for it by name and uses whatever
+answers, so the store can be on the boot stick, on a second stick or on an internal disk, and none
+of them are recorded anywhere. Nothing writes a path into a configuration file, because a path is
+a promise about enumeration order that USB does not keep.
+
+**It has to be a filesystem that carries xattrs, hardlinks and a `d_type`**, which is why `create`
+makes ext4 and why the initramfs refuses vfat, exfat and ntfs by name. overlayfs rejects such an
+upper with `EINVAL` — the same answer it gives for every other bad mount — so a boot that simply
+tried it would fall back to a tmpfs having said nothing anyone could act on.
+
+Two consequences of it being an overlay upper, both of which surprise people:
+
+- **A store is used from the *next* boot**, not the one that created it. `kdos persist` reports
+  `present, NOT in use by this session` for exactly this case, because saying "store: yes" would
+  tell somebody their work was being saved when it was not.
+- **A change that stops the desktop coming up is still there at the next boot.** The
+  **KDOS Live (clean session)** entry passes `nopersist` on the kernel command line, which ignores
+  the store for one boot without deleting it.
+
+`create` appends a partition and never rewrites the table: the entries already on a written stick
+describe the image the machine is running from. The new partition is registered with `partx -a`
+rather than by re-reading the table, because a re-read is refused while a partition on that disk is
+mounted — and on the boot medium, one always is.
 
 ## clone
 

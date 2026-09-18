@@ -406,7 +406,7 @@ kdos_crt_init(void)
 	kcol_format(sc ? sc->primary : 0x39ff14, hex);
 	wlr_log(WLR_INFO, "crt: on — intensity %d, scanlines %d, curve %d, "
 		"phosphor #%s (%s)", kdos_conf.crt, kdos_conf.crt_scanlines,
-		kdos_conf.crt_curve, hex, sc ? sc->name : "phosphor");
+		kdos_conf.crt_curve, hex, sc ? sc->name : kcol_default()->name);
 }
 
 /*
@@ -437,7 +437,7 @@ kdos_crt_reload(void)
 	char hex[7];
 	kcol_format(sc ? sc->primary : 0x39ff14, hex);
 	wlr_log(WLR_INFO, "crt: phosphor is now #%s (%s)", hex,
-		sc ? sc->name : "phosphor");
+		sc ? sc->name : kcol_default()->name);
 
 	/* D7.3: the retint IS the degauss moment */
 	gl->degauss_start_ns = kdos_frames_now();

@@ -158,40 +158,69 @@ static void test_colour(void)
 		   : kcol_schemes[accent_bad < 0 ? 0 : accent_bad].name);
 
 		/*
-		 * AND EVERY GROUND IS THE DARK END, which is a limit of the
-		 * chrome rather than a preference. `libkchrome` solves the
-		 * focused plate along one axis and writes one label colour on
-		 * every plate, so on a light ground the plate darkens away
-		 * from its own label: the best light candidate reaches 7.63:1
-		 * on the label where it stands off the bar at 1.94:1, and
-		 * 2.25:1 off the bar where the label reads at 6.58:1. Nothing
-		 * in the range clears both.
+		 * AND EVERY SCHEME'S FOCUSED PLATE DOES BOTH OF ITS JOBS.
 		 *
-		 * Asserted rather than written down, because the two floors
-		 * above would PASS for a light scheme — they measure the text
-		 * against the ground and say nothing about the plates. A light
-		 * scheme lands when the ladder chooses a label per plate, and
-		 * this line is what has to be removed to add one.
+		 * This replaces a test on the GROUND — that white never beat
+		 * black against `deep` — which was a proxy for the real
+		 * question and wrong in both directions: it refused a light
+		 * palette whose plates are fine, and it would have passed a
+		 * dark one whose plates are not. The two floors above measure
+		 * text against the ground and say nothing about the plates at
+		 * all.
 		 *
-		 * White against the ground beating black against it is the
-		 * whole test: it needs no luminance accessor libkcolor does
-		 * not already export.
+		 * The plate has to STAND OFF THE BAR and CARRY ITS OWN LABEL,
+		 * and mixing toward `pdark` buys the first at the second's
+		 * expense. Both are measured as composited, because that is
+		 * what reaches a screen: a raw plate reads about 0.8 lower and
+		 * judging by it is how a working ladder looks broken.
+		 *
+		 * THE LABEL FLOOR IS 4.5:1 AND NOT 7:1. The solver aims at 7
+		 * and stops early when it gets there, but `bone` cannot reach
+		 * it — its separation floor binds first and the best any mix
+		 * reaches is 6.69:1. Asserting 7 here would assert a fiction;
+		 * 4.5 is WCAG AA for normal text and is what every scheme
+		 * actually holds.
 		 */
-		int light = -1;
+		int plate_bad = -1, sep_bad = -1;
 
 		for (int i = 0; i < kcol_nscheme; i++) {
 			const KcolScheme *sc = &kcol_schemes[i];
+			uint32_t body = kcol_over(
+				kcol_mix(sc->deep, sc->variant, 60),
+				sc->backdrop, 0xCC);
+			uint32_t hov = kcol_over(
+				kcol_mix(sc->dim, sc->pdark, 40), body, 0xCC);
+			int floor = kcol_contrast(hov, body);
+			int best_lab = 0, best_sep = 0;
 
-			if (light < 0 &&
-			    kcol_contrast(0xffffff, sc->deep) <=
-				    kcol_contrast(0x000000, sc->deep))
-				light = i;
+			if (floor < 200)
+				floor = 200;
+			for (int x = 68; x >= 10; x--) {
+				uint32_t seen = kcol_over(
+					kcol_mix(sc->dim, sc->pdark, x), body,
+					0xEB);
+				int sep = kcol_contrast(seen, body);
+
+				if (sep < floor)
+					continue;
+				best_lab = kcol_contrast(sc->text, seen);
+				best_sep = sep;
+				if (best_lab >= 700)
+					break;
+			}
+			if (plate_bad < 0 && best_lab < 450)
+				plate_bad = i;
+			if (sep_bad < 0 && best_sep < floor)
+				sep_bad = i;
 		}
-		ok(light < 0, light < 0
-		   ? "and every ground is the dark end, which the plate ladder requires"
-		   : kcol_schemes[light < 0 ? 0 : light].name);
+		ok(plate_bad < 0, plate_bad < 0
+		   ? "and every focused plate carries its label at 4.5:1 or better"
+		   : kcol_schemes[plate_bad < 0 ? 0 : plate_bad].name);
+		ok(sep_bad < 0, sep_bad < 0
+		   ? "and every focused plate stands off the bar it sits on"
+		   : kcol_schemes[sep_bad < 0 ? 0 : sep_bad].name);
 	}
-	eq_int(kcol_nscheme, 7, "and there are seven of them");
+	eq_int(kcol_nscheme, 8, "and there are eight of them");
 
 	/* Measured against CPython over 8476 colours: black and white are
 	 * STRUCTURE and must come back untouched, or a recoloured icon set
@@ -1028,7 +1057,7 @@ static void test_trash(void)
 	{
 		KtuiTheme cold;
 
-		ktui_theme_set(ktui_themes[0].name);
+		ktui_theme_set(ktui_themes[KCOL_DEFAULT_INDEX].name);
 		cold = *ktui_theme;
 
 		ok(ktui_theme_night(1) == 1, "night light says it changed");
@@ -1998,6 +2027,39 @@ static void test_shade(void)
 	       "and the SLOT is the backdrop, which is the shadow a --tty shows");
 	ok(!(off->attr & KT_A_BGRGB),
 	   "a cell outside the one-cell strip is untouched");
+
+	/*
+	 * AND IT DARKENS IN EVERY SCHEME, not only in the one that happens to
+	 * be the default. The strip is mixed towards KT_BG, and KT_BG is NOT
+	 * the darker of the two in every accent — `bone`'s backdrop is lighter
+	 * than its surface in red and green, `ice`'s in blue — so an
+	 * unclamped mix makes those two glow along the shadowed edges instead.
+	 * Asserted per scheme and per channel, because it is a property of the
+	 * palette and the default moves.
+	 */
+	for (int t = 0; t < ktui_ntheme; t++) {
+		ktui_theme_set(ktui_themes[t].name);
+		ktui_offscreen_init(24, 8);
+		ktui_draw_init();
+		ktui_draw_fill(krect(0, 0, 24, 8), KT_BG);
+		ktui_draw_fill(krect(2, 3, 12, 3), KT_SURFACE);
+		ktui_draw_text(2, 3, 12, "HELLO", KT_TEXT, KT_SURFACE,
+			       KT_A_NONE);
+		ktui_draw_shadow(krect(1, 2, 12, 1));
+
+		cells = ktui_draw_cells(&w, &h);
+		const KtuiCell *sh = &cells[3 * w + 2];
+		KRgb surf = ktui_theme->slot[KT_SURFACE];
+		char why[96];
+
+		snprintf(why, sizeof(why),
+			 "%s: the shadow is darker than the surface, in all "
+			 "three channels", ktui_themes[t].name);
+		ok(((sh->bgc >> 16) & 0xff) <= surf.r &&
+		   ((sh->bgc >> 8) & 0xff) <= surf.g &&
+		   (sh->bgc & 0xff) <= surf.b, why);
+	}
+	ktui_theme_set(ktui_themes[KCOL_DEFAULT_INDEX].name);
 
 	/* ── the blend: a rectangle mixed back towards what it covered ── */
 	uint32_t under[12 * 3];

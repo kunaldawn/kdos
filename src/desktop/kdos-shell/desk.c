@@ -1112,8 +1112,9 @@ static void draw(const char *status)
 			break;
 
 		bool on = i == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		/*
 		 * The PICTURE where there is one and the glyph where there is

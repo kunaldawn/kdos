@@ -20,6 +20,15 @@ export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc
 
 export CHROOT=1
 
+# ── the accent the medium ships in ────────────────────────────────────────
+#
+# THE NAME IS SPELLED ONCE FOR THE SHELL AND CHECKED AGAINST THE COMPILED ONE.
+# libkcolor's `KCOL_DEFAULT_ID` is what every C consumer falls back to and a
+# shell script cannot read it, so `00_theme.sh` proves the two agree rather
+# than trusting this line — a build whose seeded theme differs from the one an
+# unconfigured program picks is a desktop that changes colour on first login.
+export KDOS_ACCENT=bone
+
 # THE COMPILER IS NAMED, NOT DISCOVERED. autoconf's AC_PROG_CC walks a
 # preference list, and some of them put clang FIRST — potrace's does. clang is
 # a port now, so the moment it is installed those recipes silently change

@@ -1630,8 +1630,9 @@ static void draw_frame(void)
 			break;
 		const struct row *r = &rows[idx];
 		int on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		if (r->kind == ROW_DEV) {
 			const struct net_dev *d = &devs[r->dev];

@@ -18,6 +18,7 @@ machine rig that drives a real session.
 | `testing/docscheck.sh` | That the book still links up and states the present | Anything a reader has to judge for themselves | Seconds |
 | `testing/packlane.sh` | The application lane end to end on a booted machine | | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | | Minutes |
+| `testing/bios-boot.sh` | That the image boots on a machine with **no UEFI firmware at all** | Anything about the UEFI path | ~2 minutes |
 
 **None of them proves the build works.** A package manager can only really be tested by building
 the distribution with it.
@@ -35,8 +36,9 @@ Everything a full build would catch, minus the build. Thirty-six checks, in seco
 | Shipped configuration | The shipped compositor configuration keeps the default bindings; every command it, the menu and `menu.conf`'s routes name exists; every filesystem the installer offers, the initramfs can mount |
 | Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script **names a command inside double quotes and runs it**; every helper the makefile runs is on disk and none shadows its own output |
 | Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree; a desktop toggle has one flag and only libkbase builds its path; a frame that opens the synchronized bracket closes it on the dropped write and on the way out |
+| Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw |
 
-Three of those deserve singling out, because each is a whole class of failure that never reaches a
+Four of those deserve singling out, because each is a whole class of failure that never reaches a
 compiler:
 
 - **Every source file in one of our ports is compiled by its recipe.** A file the build script
@@ -46,6 +48,14 @@ compiler:
 - **Every meson option is one the port defines.** meson fails at **setup** on an unknown option,
   before a line is compiled, and there is no universal spelling. Several were found the slow way
   before this check existed, each an hour-long round trip.
+- **Every chrome glyph is one `ter-kdos32n` carries.** The toolkit picks its UTF-8 table whenever
+  the backend reports UTF-8, which the Linux console does — and the console font is 512 glyphs, so
+  an entry that font lacks renders on `tty1` as a **blank**. Not a fallback and not an error: the
+  cell is written, the flush succeeds, and a piece of the console desktop's own chrome is simply
+  missing. `▓`, the half blocks `▀ ▄` and the double tees `╠ ╣ ╦ ╩` all look perfectly reasonable in
+  an editor and are none of them in the font. The check reads the **shipped font**, because a list
+  of what it carries is the thing that goes stale. Goldens cannot catch this: they are slot dumps at
+  the ASCII tier, where every one of those glyphs resolves to something.
 - **Every flag one shell tool passes another is one it accepts.** These tools spawn each other by
   name, and an unknown argument prints a usage line to an error stream nobody reads and exits
   **before a surface exists**. The result is a control that silently does nothing, invisible to a
@@ -1010,6 +1020,7 @@ faster.
 |---|---|
 | `packlane.sh` | The application lane end to end on a booted machine: the daemon, the keyring, an install from the medium, the launchers, a box, and the telemetry — reporting pass, fail or **skip with a reason** |
 | `install-to-disk.sh` | Runs the installer into a disk image, on its own terminal, with a heartbeat |
+| `bios-boot.sh` | Boots the ISO as a USB stick under SeaBIOS, with no OVMF anywhere |
 | `appsweep.sh`, `appreport.sh` | Launch every catalogue application and render the results as a table and a contact sheet |
 | `bootcheck` | Boot verification |
 | `prepare_base.py`, `test_runner.py` | Build a minimal root filesystem as a container image and build individual ports against it |

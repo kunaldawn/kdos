@@ -176,10 +176,14 @@ static void ime_draw(void)
 
 			x += ktui_draw_text(x, y, right - x, S.label[i],
 					    KT_DIM, KT_SURFACE, 0);
-			x += ktui_draw_text(x, y, right - x, S.cand[i],
-					    sel ? KT_BG : KT_TEXT,
-					    sel ? KT_ACCENT : KT_SURFACE,
-					    sel ? KT_A_BOLD : 0);
+			{
+				int cfg, cbg;
+
+				ktui_sel_slots(sel, 1, KT_SURFACE, &cfg, &cbg);
+				x += ktui_draw_text(x, y, right - x,
+						    S.cand[i], cfg, cbg,
+						    sel ? KT_A_BOLD : 0);
+			}
 			x += ktui_draw_text(x, y, right - x, " ", KT_TEXT,
 					    KT_SURFACE, 0);
 		}

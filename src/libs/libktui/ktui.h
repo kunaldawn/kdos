@@ -426,8 +426,18 @@ enum {
 	KT_G_HL, KT_G_VL, KT_G_TL, KT_G_TR, KT_G_BL, KT_G_BR,	/* single box */
 	KT_G_TEE_L, KT_G_TEE_R, KT_G_TEE_T, KT_G_TEE_B, KT_G_CROSS,
 	KT_G_DHL, KT_G_DVL, KT_G_DTL, KT_G_DTR, KT_G_DBL, KT_G_DBR, /* double */
-	KT_G_FULL, KT_G_SHADE, KT_G_DOT, KT_G_BULLET, KT_G_SQUARE,
+	KT_G_FULL, KT_G_SHADE, KT_G_SHADE_MED,
+	KT_G_DOT, KT_G_BULLET, KT_G_SQUARE,
 	KT_G_UP, KT_G_DOWN, KT_G_LEFT, KT_G_RIGHT, KT_G_ELLIPSIS, KT_G_DEG,
+	/*
+	 * CONTROL FURNITURE, and separate from KT_G_UP/DOWN/LEFT/RIGHT on
+	 * purpose. Those four are arrows in running text and in a hint row,
+	 * where they mean DIRECTION; a solid triangle there reads as a control
+	 * somebody can press. These five are the parts a control is built from
+	 * — a scrollbar's end caps, the marker on a selected row, the shadow
+	 * under a button — and they never appear in a sentence.
+	 */
+	KT_G_ARROW_UP, KT_G_ARROW_DOWN, KT_G_ARROW_L, KT_G_ARROW_R,
 	KT_G_N
 };
 
@@ -1141,6 +1151,61 @@ typedef void (*KtuiListRow)(int idx, int x, int y, int w, int sel, int focus,
 
 int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user,
 	      int id);
+
+/* ── HOW A SELECTED ROW IS DRAWN, EVERYWHERE ─────────────────────────
+ *
+ *     Files                FM  ■        a row
+ *   ► System Monitor       MO  ■        the caret, pane not focused
+ *   ►▓Git▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓GI▓▓■▓        the caret, pane focused
+ *
+ * ONE FUNCTION, AND NOTHING WORKS OUT A SELECTION COLOUR ANYWHERE ELSE.
+ * Twenty-five surfaces each wrote `bg = on ? KT_ACCENT : KT_SURFACE`, which
+ * fills the whole row with the accent and puts the background colour on the
+ * label — a lit plate that follows the pointer across the screen. It is also
+ * against the rule this desktop already had: `KT_DIM` is what owns SELECTION
+ * BACKGROUNDS, and the accent is an accent.
+ *
+ * THREE STATES, NOT TWO, AND THEY SAY THREE DIFFERENT THINGS:
+ *
+ *   - a row                    KT_TEXT on the page, no fill
+ *   - the caret, pane cold     a marker in KT_MID, still no fill
+ *   - the caret, pane focused  the row filled KT_DIM, marker in KT_ACCENT
+ *
+ * Measured against the palette, `KT_TEXT` on `KT_DIM` is 8.30:1 in the worst
+ * scheme and 10.22:1 in the best, so the label clears the 7:1 floor in every
+ * accent; the marker clears 4.5:1 in every accent. The fill is quiet because
+ * it is a fill, and the accent is spent on one cell that says where the caret
+ * is.
+ *
+ * THE MUTED COLOUR IS NOT LEGIBLE ON THE FILL — 2.18:1 to 3.43:1 measured
+ * against the live palette, below any reading floor. A row with a secondary
+ * column in it (a tag, a two-letter code, a units suffix) must lift that
+ * column when the row is selected; leaving it muted makes the right-hand half
+ * of the row disappear exactly when somebody is looking at it. ktui_sel_dim()
+ * is that question asked in one place.
+ *
+ * `page` is the background the surface is drawn on — KT_BG or KT_SURFACE, and
+ * half this desktop's surfaces use the second. It is a parameter rather than
+ * an assumption because a control that guessed would paint an opaque band
+ * across a translucent window.
+ */
+void ktui_sel_slots(int selected, int pane_focused, int page, int *fg,
+		    int *bg);
+
+/* The colour a SECONDARY column takes on a row in that state — muted on a
+ * page, KT_TEXT on the fill, because muted on the fill cannot be read. */
+int ktui_sel_dim(int selected, int pane_focused);
+
+/*
+ * Fill the row and draw the caret marker, then return the slots its text takes.
+ * `r` is the whole row including the marker column; text starts at r.x + 2.
+ *
+ * ANYTHING THAT OVERDRAWS PART OF A ROW OWNS ALL OF IT, so this clears the
+ * full width before it marks: a marker drawn onto a row somebody else filled
+ * leaves the old fill either side of it.
+ */
+void ktui_sel_row(KRect r, int selected, int pane_focused, int page_bg,
+		  int *fg, int *bg);
 
 int ktui_button(KRect r, const char *label, int enabled, int primary);
 int ktui_check(int x, int y, int w, const char *label, int *val);

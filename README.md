@@ -16,7 +16,7 @@ with a desktop that is a character grid all the way down.
 </p>
 
 <p align="center">
-<sub>764 ports · Linux 7.0.10 · 758 packages · 182 containerised applications · builds offline from this repo</sub>
+<sub>801 ports · Linux 7.0.10 · 758 packages · 182 containerised applications · builds offline from this repo</sub>
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@ Four properties. Everything else in this repository follows from them, and each
 is covered in [Why KDOS](docs/kdos/01-philosophy/why-kdos.md).
 
 **Built from source, with named exceptions.** The host is compiled here from
-upstream tarballs by 764 recipes: cross toolchain → musl userland →
+upstream tarballs by 801 recipes: cross toolchain → musl userland →
 self-hosting bootstrap → libraries → desktop → kernel. No base image, no binary
 archive to fall back on. The handful of things that are *not* compiled here —
 vendor firmware, two bootstrap compilers, two prebuilt font sets, the vendored
@@ -232,7 +232,7 @@ Three reading paths — *use it*, *build it*, *change it* — are laid out on th
 ## Repository layout
 
 ```
-ports/core/       764 upstream ports, two files each
+ports/core/       801 upstream ports, two files each
 src/libs/         13 C libraries, linking nothing but musl
 src/desktop/      the compositor, the shell, the daemons
 src/packages/     our own ports: the package manager, the installer, the tools

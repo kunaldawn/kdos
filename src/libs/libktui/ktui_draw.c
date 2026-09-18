@@ -33,10 +33,13 @@ static const char *glyph_utf8[KT_G_N] = {
 	[KT_G_DTL] = "╔", [KT_G_DTR] = "╗",
 	[KT_G_DBL] = "╚", [KT_G_DBR] = "╝",
 	[KT_G_FULL] = "█", [KT_G_SHADE] = "░",
+	[KT_G_SHADE_MED] = "▒",
 	[KT_G_DOT] = "·", [KT_G_BULLET] = "•", [KT_G_SQUARE] = "■",
 	[KT_G_UP] = "↑", [KT_G_DOWN] = "↓",
 	[KT_G_LEFT] = "◀", [KT_G_RIGHT] = "▶",
 	[KT_G_ELLIPSIS] = "…", [KT_G_DEG] = "°",
+	[KT_G_ARROW_UP] = "▲", [KT_G_ARROW_DOWN] = "▼",
+	[KT_G_ARROW_L] = "◄", [KT_G_ARROW_R] = "►",
 };
 
 static const char *glyph_ascii[KT_G_N] = {
@@ -47,9 +50,16 @@ static const char *glyph_ascii[KT_G_N] = {
 	[KT_G_DHL] = "=", [KT_G_DVL] = "|",
 	[KT_G_DTL] = "+", [KT_G_DTR] = "+", [KT_G_DBL] = "+", [KT_G_DBR] = "+",
 	[KT_G_FULL] = "#", [KT_G_SHADE] = ".",
+	/* A THIRD FILL THAT MUST STAY A THIRD. `▒` carries a scrollbar's track
+	 * against its thumb and a slider's track against its fill; collapsing
+	 * it onto `#` or `.` deletes the distinction rather than approximating
+	 * it, and the control reads as one flat block. */
+	[KT_G_SHADE_MED] = ":",
 	[KT_G_DOT] = ".", [KT_G_BULLET] = "*", [KT_G_SQUARE] = "#",
 	[KT_G_UP] = "^", [KT_G_DOWN] = "v", [KT_G_LEFT] = "<", [KT_G_RIGHT] = ">",
 	[KT_G_ELLIPSIS] = "...", [KT_G_DEG] = "o",
+	[KT_G_ARROW_UP] = "^", [KT_G_ARROW_DOWN] = "v",
+	[KT_G_ARROW_L] = "<", [KT_G_ARROW_R] = ">",
 };
 
 const char *ktui_glyph[KT_G_N];
@@ -718,15 +728,67 @@ void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl)
 	ktui_draw_vline(r.x, r.y + 1, r.h - 2, vl, fg, bg);
 	ktui_draw_vline(r.x + r.w - 1, r.y + 1, r.h - 2, vl, fg, bg);
 
+	/*
+	 * THE TITLE SITS IN A SOCKET, NOT IN A GAP:
+	 *
+	 *     ╔══[ Resources ]═══════╗
+	 *
+	 * Two blanks either side of a title leave the frame looking broken
+	 * where the rule stops — the eye reads a missing segment rather than a
+	 * label. The brackets terminate the rule into the title and start it
+	 * again after, which is what makes the label read as mounted in the
+	 * frame rather than floating in a gap.
+	 *
+	 * ASCII BRACKETS AND NOT `╡`/`╞`, FOR TWO REASONS THAT BOTH BITE. The
+	 * CP437 pair is not in the console font, so on `tty1` every window
+	 * title would sit between two blanks. And a vertical stroke on a
+	 * frame's TOP ROW is what `con_ring` in the self-test reads as a border
+	 * off the grid — a real defect class, and the tees are indistinguishable
+	 * from it at the ASCII tier. `[` and `]` are in every font, carry no
+	 * vertical rule, and are the bracket the DOS file managers used.
+	 */
+	/*
+	 * THE BOX SUPPLIES THE PADDING AND TRIMS WHAT THE CALLER BROUGHT, so
+	 * `" Settings "` and `"Settings"` draw the same socket. Ten callers
+	 * pad their titles; drawn as given, that padding lands inside the
+	 * brackets and the label floats in the middle of its own socket.
+	 *
+	 * The trailing trim is in BYTES and the width is measured on the copy,
+	 * never by indexing the original string with a column count: a space is
+	 * one byte and one column so the two agree for spaces, but mixing the
+	 * units is wrong the moment a title ends in anything wider than a cell.
+	 * `ktui_draw_text` then clips to that width, so nothing else is needed.
+	 */
+	while (title && *title == ' ')
+		title++;
 	if (title && *title && r.w > 6) {
-		int tw = ktui_utf8_width(title);
-		if (tw > r.w - 6)
-			tw = r.w - 6;
-		ktui_draw_cell(r.x + 2, r.y, ' ', fg, bg, 0);
-		ktui_draw_text(r.x + 3, r.y, tw, title, KT_ACCENT, bg, 0);
-		ktui_draw_cell(r.x + 3 + tw, r.y, ' ', fg, bg, 0);
+		char trimmed[160];
+		size_t tb = strlen(title);
+		int tw;
+
+		while (tb > 0 && title[tb - 1] == ' ')
+			tb--;
+		if (tb >= sizeof(trimmed))
+			tb = sizeof(trimmed) - 1;
+		memcpy(trimmed, title, tb);
+		trimmed[tb] = '\0';
+		title = trimmed;
+
+		tw = ktui_utf8_width(title);
+		if (tw > r.w - 8)
+			tw = r.w - 8;
+		if (tw > 0) {
+			int x = r.x + 2;
+
+			ktui_draw_cell(x, r.y, '[', fg, bg, 0);
+			ktui_draw_cell(x + 1, r.y, ' ', fg, bg, 0);
+			ktui_draw_text(x + 2, r.y, tw, title, KT_ACCENT, bg, 0);
+			ktui_draw_cell(x + 2 + tw, r.y, ' ', fg, bg, 0);
+			ktui_draw_cell(x + 3 + tw, r.y, ']', fg, bg, 0);
+		}
 	}
 }
+
 
 
 /*
@@ -891,6 +953,16 @@ void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
  * than as depth. Every cell keeps its glyph and both halves are mixed towards
  * KT_BG instead, so what is under the shadow is still legible and still there.
  *
+ * AND THE RESULT IS CLAMPED TO NO LIGHTER THAN IT STARTED, PER CHANNEL, which
+ * is what makes "darkens" a property of this function rather than of the
+ * palette it is handed. KT_BG is not darker than KT_SURFACE in every scheme —
+ * in `bone` the backdrop is lighter than the surface in red and green, and in
+ * `ice` it is lighter in blue — so a plain mix towards it BRIGHTENS the strip
+ * and the window appears to glow along two edges. The clamp costs nothing
+ * where the backdrop is already the darker of the two, which is most schemes,
+ * and it is the only thing standing between a new accent and a luminous
+ * shadow.
+ *
  * THE BACKGROUND SLOT GOES TO KT_BG ALONGSIDE THE LITERAL, and that is the
  * whole of the shadow on a display that declined the colour run — a --tty
  * view, a dump, a braille reader. A mix is a colour the palette does not hold,
@@ -909,6 +981,21 @@ void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
  */
 #define KT_SHADOW_KEEP 110	/* how much of the cell survives, of 255 */
 
+/* The mix, then the clamp. See above: the clamp is what makes this a shadow
+ * under an accent whose backdrop is lighter than its surface. */
+static uint32_t shade_mix(uint32_t from, uint32_t ground)
+{
+	uint32_t mixed = rgb_mix(from, ground, KT_SHADOW_KEEP);
+	uint32_t out = 0;
+
+	for (int sh = 16; sh >= 0; sh -= 8) {
+		unsigned a = (mixed >> sh) & 0xff, b = (from >> sh) & 0xff;
+
+		out |= (a < b ? a : b) << sh;
+	}
+	return out;
+}
+
 static void shade_cell(int x, int y)
 {
 	KtuiCell *c;
@@ -923,8 +1010,8 @@ static void shade_cell(int x, int y)
 		return;
 
 	ground = slot_rgb(KT_BG);
-	c->fgc = rgb_mix(cell_fg_rgb(c), ground, KT_SHADOW_KEEP);
-	c->bgc = rgb_mix(cell_bg_rgb(c), ground, KT_SHADOW_KEEP);
+	c->fgc = shade_mix(cell_fg_rgb(c), ground);
+	c->bgc = shade_mix(cell_bg_rgb(c), ground);
 	c->attr |= KT_A_FGRGB | KT_A_BGRGB;
 	if (!(c->attr & KT_A_REVERSE))
 		c->bg = KT_BG;

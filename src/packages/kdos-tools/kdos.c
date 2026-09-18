@@ -156,7 +156,7 @@ static const char *current_theme(void)
 		return name;
 	}
 	free(p);
-	return "phosphor";
+	return KCOL_DEFAULT_NAME;
 }
 
 /* The same answer, for `kdos update theme` — which has to re-run the
@@ -740,6 +740,12 @@ typedef struct {
 
 static void ansi_all(const KcolScheme *sc, AnsiDerived *o)
 {
+	/* PHOSPHOR IS THE REFERENCE THESE WERE SOLVED AGAINST, not the default
+	 * scheme — the palette names no blue, magenta or cyan, so the three
+	 * fixed triples below were tuned against phosphor's ground and are
+	 * carried to another scheme by ratio. Moving the DEFAULT accent must
+	 * not move this; the numbers would then be relative to a ground they
+	 * were never measured on. */
 	const KcolScheme *ph = kcol_find("phosphor");
 
 	o->blue = ansi_fixed(0x2f8fff, ph->text, sc->text);
@@ -2790,10 +2796,39 @@ static void theme_state(const KcolScheme *sc)
 	kdt_reload_session();
 }
 
+/*
+ * THE BOOT MENU AND THE SPLASH, THROUGH kdos-powerd. Both live in files this
+ * command cannot write: `/etc/kdos/accent` is root's and `limine.conf` is on
+ * the ESP. The daemon validates the name against the palette's own closed list
+ * and writes them, which is the same arrangement `kdos timezone` already uses
+ * for `/etc/localtime`.
+ *
+ * NOT REACHING THE DAEMON IS NOT A FAILED THEME CHANGE. On the live medium
+ * there is no writable ESP; in a box there is no daemon at all. Everything the
+ * user owns has already been rewritten by the time this runs, so the accent HAS
+ * been applied — reporting an error here would make the common case look
+ * broken. The one line of output says what was left alone.
+ */
+static void theme_boot(const KcolScheme *sc)
+{
+	KbArgv a = {0};
+
+	if (!kb_have_prog("kdos-power"))
+		return;
+	kb_argv_add(&a, "kdos-power");
+	kb_argv_add(&a, "accent");
+	kb_argv_add(&a, sc->name);
+	kb_argv_end(&a);
+	if (kb_run(&a) != 0)
+		printf("%sboot menu and splash unchanged%s "
+		       "(kdos-powerd did not answer)\n", C_D, C_0);
+}
+
 static void theme_commit(const KcolScheme *sc)
 {
 	write_wallpaper(sc);
 	theme_state(sc);
+	theme_boot(sc);
 
 	/* A regenerated file does not repaint a running process. kdos-shell and
 	 * kdos-comp retint on the SIGHUP above; starship on the next prompt;
@@ -3233,7 +3268,7 @@ static void help_body(FILE *o)
 		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
 		{ "kdos-fetch-app <name>", "install an alien app from a network" },
-		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | next | prev | list" },
+		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | paper | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
 		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-theme's arrows do" },
@@ -3254,6 +3289,7 @@ static void help_body(FILE *o)
 		{ "kdos settings [page]", "the control centre — appearance, panel, hardware, system…" },
 		{ "kdos menu summon <route>", "open the menu on a named place: `setup.network`" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
+		{ "kdos persist", "keep a live session's changes across a reboot" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-mpctl toggle", "the music: toggle, stop, next, prev, now, watch" },
@@ -5440,6 +5476,8 @@ int kdos_main(int argc, char **argv)
 		return rebuild_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "clone"))
 		return clone_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "persist"))
+		return persist_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "cve"))
 		return kdt_cve(rest, restv, C_A, C_W, C_0);
 	if (!strcmp(cmd, "hey"))
