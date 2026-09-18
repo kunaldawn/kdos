@@ -995,6 +995,93 @@ else
     note "installer filesystems" "skipped — conf.c or 01_initramfs.sh not found"
 fi
 
+# A WRITTEN STICK BOOTS BY ITS PARTITION TABLE AND BY NOTHING ELSE. `dd` copies
+# bytes, so an El Torito record — which lives in the ISO9660 boot catalogue and
+# is read only by an optical drive — carries nothing to a USB stick. UEFI wants
+# a partition of type EFI System; BIOS wants boot code in the first sector. The
+# image has to answer all four combinations of firmware and medium, and each
+# one is a separate flag that xorriso accepts in silence when it does nothing.
+# 02_iso.sh verifies the finished image too, but that costs a full packaging
+# run to learn; this costs a second.
+echo
+echo "==> the ISO boots BIOS and UEFI, from a disc and from a written stick"
+iso_sh=script/06_packaging/02_iso.sh
+if [ -f "$iso_sh" ]; then
+    iso_missing=""
+    for f in "limine-bios-cd.bin" "--efi-boot" "-efi-boot-part" \
+             "--efi-boot-image" "--protective-msdos-label" \
+             "limine bios-install"; do
+        grep -qF -- "$f" "$iso_sh" || iso_missing="$iso_missing '$f'"
+    done
+    if [ -n "$iso_missing" ]; then
+        bad "02_iso.sh" "a boot path is missing from the image —$iso_missing"
+    else
+        note "iso boot structure" "BIOS + UEFI, El Torito + partition table"
+    fi
+else
+    note "iso boot structure" "skipped — 02_iso.sh not found"
+fi
+
+# A BINARY BUILT BY A PHASE STEP IS NOT REBUILT BY `--rebuild <port>`, because
+# it is not a port. kinstall comes out of script/01_phase1/13_kinstall.sh, which
+# ALSO exits early when its marker exists — so editing the installer's sources,
+# rebuilding, and packaging produces an ISO carrying the binary from whenever
+# that marker was first written. Nothing fails: the build is green and the image
+# boots, and only the installed system is wrong.
+#
+# The check is against a STRING THE SOURCE OWNS. Comparing timestamps cannot
+# work — build/fs is stamped to a fixed epoch for reproducibility — and
+# comparing hashes would need a reference build. `limine`, which the rewritten
+# installer must mention and the old one cannot, answers it in one grep.
+echo
+echo "==> the built kinstall is the installer in this tree"
+ki_src=src/packages/kdos-installer/install.c
+ki_bin=build/fs/usr/bin/kinstall
+if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
+    ki_want=$(grep -oE '"[a-z/]*share/limine"' "$ki_src" | head -1 | tr -d '"')
+    if [ -z "$ki_want" ]; then
+        note "kinstall freshness" "skipped — install.c names no limine path"
+    elif strings "$ki_bin" 2>/dev/null | grep -qF "$ki_want"; then
+        note "kinstall freshness" "built binary carries $ki_want"
+    else
+        bad "13_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/phase1/kinstall and rebuild phase 1"
+    fi
+else
+    note "kinstall freshness" "skipped — no built kinstall to compare"
+fi
+
+# A PORT IS ITS RECIPE AND ITS TARBALL, AND THE TARBALL IS THE HALF THAT GOES
+# MISSING. `make build` runs with no network, so a source that is on the disk of
+# whoever added the port and not in the tree builds perfectly for them and fails
+# for everybody else — on a clone, at the unpack, with a message about a corrupt
+# archive rather than about a missing commit.
+#
+# THE SECOND CHECK IS NOT THE SAME AS THE FIRST. A tarball can be tracked and
+# still be wrong: if .gitattributes has no pattern covering its extension, git
+# stores the bytes themselves instead of an LFS pointer, and the repository
+# grows by the size of the source. `git check-attr` answers what git WILL do
+# with a path, which is the only thing that settles it before a commit.
+echo
+echo "==> every port's source archive is in the tree, through LFS"
+if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
+    pa_disk=$(find ports/core -type f \
+              \( -name '*.tar.*' -o -name '*.tgz' -o -name '*.zip' \
+                 -o -name '*.tar' -o -name '*.7z' \) | LC_ALL=C sort)
+    pa_trk=$(git ls-files ports/core | LC_ALL=C sort)
+    pa_missing=$(comm -23 <(printf '%s\n' "$pa_disk") <(printf '%s\n' "$pa_trk"))
+    pa_raw=$(printf '%s\n' "$pa_disk" | git check-attr --stdin filter 2>/dev/null \
+             | grep -v ": filter: lfs$" | cut -d: -f1)
+    if [ -n "$pa_missing" ]; then
+        bad "ports/core" "source archives not in git: $(printf '%s' "$pa_missing" | tr '\n' ' ')"
+    elif [ -n "$pa_raw" ]; then
+        bad ".gitattributes" "no LFS pattern covers: $(printf '%s' "$pa_raw" | tr '\n' ' ')"
+    else
+        note "port sources" "$(printf '%s\n' "$pa_disk" | grep -c . ) archives, all tracked through LFS"
+    fi
+else
+    note "port sources" "skipped — not a git checkout"
+fi
+
 # KDOS shipped exactly that file for a release. The symptom on a booted ISO is
 # "the mouse does not work" and it is invisible to every other check here: the
 # XML is valid, the recipe parses, the build succeeds.

@@ -44,12 +44,12 @@ bc
 elfutils
 rsync
 python3
-refind
 libburn
 libisofs
 libisoburn
 squashfs-tools
 mtools
+limine
 eudev
 dosfstools
 e2fsprogs

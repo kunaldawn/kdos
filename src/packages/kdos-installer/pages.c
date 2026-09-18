@@ -91,7 +91,8 @@ static void welcome_draw(KRect b)
 
 	snprintf(v, sizeof(v), "%s%s", ki_sys.uefi ? "UEFI" : "legacy BIOS",
 		 ki_sys.secure_boot ? "  (Secure Boot enabled)" : "");
-	ktui_kv(b.x, y++, b.w, "firmware", v, ki_sys.uefi ? KT_TEXT : KT_ERR);
+	/* Both firmwares install, so neither is an error colour. */
+	ktui_kv(b.x, y++, b.w, "firmware", v, KT_TEXT);
 	y++;
 
 	ktui_section(b.x, y, b.w, "PREFLIGHT");
@@ -102,12 +103,11 @@ static void welcome_draw(KRect b)
 		const char *msg;
 	} checks[] = {
 		{ geteuid() == 0, "running as root" },
-		{ ki_sys.uefi, "booted in UEFI mode" },
 		{ ki_ndisk > 0, "at least one writable disk" },
 		{ kb_have_prog("rsync"), "rsync present" },
 		{ kb_have_prog("mkfs.ext4") && kb_have_prog("mkfs.vfat"),
 		  "mkfs.ext4 and mkfs.vfat present" },
-		{ kb_path_exists("/usr/share/refind"), "rEFInd payload present" },
+		{ kb_path_exists("/usr/share/limine"), "Limine payload present" },
 	};
 
 	for (size_t i = 0; i < sizeof(checks) / sizeof(checks[0]); i++) {
@@ -118,13 +118,17 @@ static void welcome_draw(KRect b)
 		y++;
 	}
 
+	/* A LEGACY BOOT IS A NOTE AND NOT A REFUSAL. Limine writes both paths
+	 * onto the disk whichever way this machine started, so what changes is
+	 * which one the firmware will use — not whether the install works. */
 	if (!ki_sys.uefi) {
 		y++;
 		ktui_para(b.x, y, b.w,
-		     "KDOS ships a UEFI bootloader only. This machine booted in "
-		     "legacy mode, so an installed system would not start. Boot "
-		     "the medium in UEFI mode and run the installer again.",
-		     KT_WARN);
+		     "This machine booted in legacy BIOS mode. Limine is "
+		     "written for both firmwares, so the installed system will "
+		     "start here and on a UEFI machine — but the firmware's own "
+		     "boot entry cannot be created in legacy mode.",
+		     KT_MID);
 	}
 }
 
@@ -136,11 +140,6 @@ static int welcome_validate(char *err, size_t n)
 	}
 	if (!ki_ndisk) {
 		snprintf(err, n, "no disks found — nothing can be installed to");
-		return 1;
-	}
-	if (!ki_sys.uefi) {
-		snprintf(err, n,
-			 "not booted via UEFI — the installed system would not boot");
 		return 1;
 	}
 	return 0;

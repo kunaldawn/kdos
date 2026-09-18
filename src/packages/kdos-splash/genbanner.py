@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Restamp the two caption lines on kdos-banner.png, the rEFInd boot banner.
+# Restamp the two caption lines on kdos-banner.png, the boot menu's wallpaper.
 #
 # HOST ONLY, and its output is committed -- the arrangement genlogo.py,
 # genmarks.py and kdos-bb's genimg.py already use. It exists because the

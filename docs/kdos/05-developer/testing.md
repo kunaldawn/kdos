@@ -18,6 +18,7 @@ machine rig that drives a real session.
 | `testing/docscheck.sh` | That the book still links up and states the present | Anything a reader has to judge for themselves | Seconds |
 | `testing/packlane.sh` | The application lane end to end on a booted machine | | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | | Minutes |
+| `testing/bios-boot.sh` | That the image boots on a machine with **no UEFI firmware at all** | Anything about the UEFI path | ~2 minutes |
 
 **None of them proves the build works.** A package manager can only really be tested by building
 the distribution with it.
@@ -1010,6 +1011,7 @@ faster.
 |---|---|
 | `packlane.sh` | The application lane end to end on a booted machine: the daemon, the keyring, an install from the medium, the launchers, a box, and the telemetry — reporting pass, fail or **skip with a reason** |
 | `install-to-disk.sh` | Runs the installer into a disk image, on its own terminal, with a heartbeat |
+| `bios-boot.sh` | Boots the ISO as a USB stick under SeaBIOS, with no OVMF anywhere |
 | `appsweep.sh`, `appreport.sh` | Launch every catalogue application and render the results as a table and a contact sheet |
 | `bootcheck` | Boot verification |
 | `prepare_base.py`, `test_runner.py` | Build a minimal root filesystem as a container image and build individual ports against it |

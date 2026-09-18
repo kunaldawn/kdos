@@ -477,13 +477,13 @@ against a real account.
 
 **x86-64 only.** There is no other build target.
 
-**UEFI only.** There is no BIOS boot path and no bootable-CD boot entry for one.
+**Secure Boot is not supported.** Limine's EFI binary is unsigned and KDOS enrols no keys, so a
+machine with Secure Boot enabled refuses to load it. The installer reports the firmware state on
+its first page; turning Secure Boot off in firmware setup is the only route.
 
-**The shipped image carries no partition table.** A raw copy of it nevertheless boots, verified
-under one firmware implementation whose partition driver recognises the CD boot record on any block
-device. That is behaviour of that firmware rather than anything the specification requires of
-removable media, so it is recorded as measured rather than as a general claim. A recipe change
-producing a real partition table is tested and not applied, because it changes the boot path.
+**32-bit UEFI is not built.** The `uefi-ia32` Limine port exists and is not enabled, so a machine
+with a 64-bit CPU and a 32-bit firmware — some early Atom tablets — has no boot path. BIOS and
+64-bit UEFI are both built and both verified.
 
 **Broad hardware enablement is not a goal.** The firmware tree ships whole and unpruned, which
 covers a great deal — but nothing here is tested against a wide device matrix.
