@@ -1,4 +1,4 @@
-+-  Open with  ----------------------------------------------------------------+
++-[ Open with ]----------------------------------------------------------------+
 | .ting/fixtures/openwith/files/roll.tar.gz   *   application/x-compressed-tar |
 |------------------------------------------------------------------------------|
 | Other command...                                                             |
@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 | [ ] Always use this application                                              |
-| Enter command  Esc Close                                 [ Cancel ] [ Open ] |
+| Enter command | Esc Close                                [ Cancel ] [ Open ] |
 +------------------------------------------------------------------------------+

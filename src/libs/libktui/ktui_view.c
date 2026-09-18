@@ -413,16 +413,21 @@ int ktui_table_hit(KRect r, const KtuiTable *st, int count, int ncol,
 void ktui_dropdown_draw(KRect r, const KtuiDrop *d, const char *const *opt,
 			int n, int focus)
 {
-	int fg = focus ? KT_SURFACE : KT_TEXT;
-	int bg = focus ? KT_ACCENT : KT_SURFACE;
+	int fg, bg;
 	int sel = d->sel >= 0 && d->sel < n ? d->sel : 0;
 
+	/* THE SAME PLATE A SELECTED ROW WEARS. A closed dropdown filled with
+	 * the accent is the loudest thing on a form that may hold eight of
+	 * them, and it puts the background colour on the one word the control
+	 * exists to show. The caret glyph keeps the accent: it is what says
+	 * this opens. */
+	ktui_sel_slots(1, focus, KT_SURFACE, &fg, &bg);
 	ktui_draw_fill(r, bg);
 	ktui_draw_text(r.x + 1, r.y, r.w - 3, n ? opt[sel] : "—", fg, bg,
 		       KT_A_NONE);
 	ktui_draw_text(r.x + r.w - 2, r.y, 1,
-		       ktui_glyph[d->open ? KT_G_UP : KT_G_DOWN], fg, bg,
-		       KT_A_NONE);
+		       ktui_glyph[d->open ? KT_G_ARROW_UP : KT_G_ARROW_DOWN],
+		       focus ? KT_ACCENT : KT_MID, bg, KT_A_NONE);
 }
 
 /*
@@ -465,12 +470,14 @@ void ktui_dropdown_draw_open(KRect r, const KtuiDrop *d, const char *const *opt,
 	for (int i = 0; i < h; i++) {
 		int idx = top + i;
 		int on = idx == d->hi;
+		int ofg, obg;
 
-		ktui_draw_fill(krect(list.x, list.y + i, list.w, 1),
-			       on ? KT_ACCENT : KT_SURFACE);
+		/* An open dropdown holds the keyboard, so its highlight is
+		 * always the focused-pane case. */
+		ktui_sel_slots(on, 1, KT_SURFACE, &ofg, &obg);
+		ktui_draw_fill(krect(list.x, list.y + i, list.w, 1), obg);
 		ktui_draw_text(list.x + 1, list.y + i, list.w - 2, opt[idx],
-			       on ? KT_SURFACE : KT_TEXT,
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			       ofg, obg, KT_A_NONE);
 	}
 	ktui_draw_shadow(list);
 }

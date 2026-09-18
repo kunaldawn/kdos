@@ -1,4 +1,4 @@
-+=  keys  =====================================================================+
++=[ keys ]=====================================================================+
 | Welcome to KDOS. I use KDOS btw.                                             |
 |   Super+Enter    open a terminal                                             |
 |   Alt+Tab        reach another terminal                                      |

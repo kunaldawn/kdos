@@ -368,6 +368,51 @@ int ktui_focus_rect(KRect *out)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* ── the selection rule ────────────────────────────────────────────────────
+ *
+ * See ktui.h for the measurements. The short version: the fill is KT_DIM and
+ * the label is KT_TEXT, which reads at 8.30:1 or better in every scheme; the
+ * accent is spent on the one cell that says where the caret is, not on the
+ * whole row.
+ */
+void ktui_sel_slots(int selected, int pane_focused, int page, int *fg, int *bg)
+{
+	/*
+	 * THE CARET ON A PANE THAT LOST THE KEYBOARD KEEPS ITS MARKER AND
+	 * LOSES ITS FILL. A surface with two panes has two carets, and filling
+	 * both says both are live; dropping the cold one loses the place that
+	 * pane will come back to.
+	 */
+	*fg = KT_TEXT;
+	*bg = (selected && pane_focused) ? KT_DIM : page;
+}
+
+int ktui_sel_dim(int selected, int pane_focused)
+{
+	/* KT_MID off the fill and KT_TEXT on it. The derived muted colour
+	 * measures 2.84-3.38:1 against KT_DIM, so a tag left muted on a
+	 * selected row is a tag nobody can read. */
+	return (selected && pane_focused) ? KT_TEXT : KT_MID;
+}
+
+void ktui_sel_row(KRect r, int selected, int pane_focused, int page_bg,
+		  int *fg, int *bg)
+{
+	int f, b;
+
+	ktui_sel_slots(selected, pane_focused, page_bg, &f, &b);
+	ktui_draw_fill(r, b);
+	/* The marker, and it is the only thing wearing the accent. On a cold
+	 * pane it is KT_MID, which is what distinguishes "this is where the
+	 * caret is" from "this is the pane you are typing into". */
+	if (selected && r.w > 1)
+		ktui_draw_text(r.x, r.y, 1, ktui_glyph[KT_G_ARROW_R],
+			       pane_focused ? KT_ACCENT : KT_MID, b,
+			       KT_A_NONE);
+	*fg = f;
+	*bg = b;
+}
+
 int ktui_button(KRect r, const char *label, int enabled, int primary)
 {
 	/* A disabled control claims no focus id, so Tab never parks on a Back
@@ -406,11 +451,39 @@ int ktui_button(KRect r, const char *label, int enabled, int primary)
 	if (focus)
 		ktui_announce(KT_A11Y_BUTTON, label, NULL, 0, 0);
 
-	/* The focused button carries brackets rather than only a colour — on a
-	 * washed-out laptop panel colour alone is not a focus indicator. */
+	/*
+	 * THE FOCUSED BUTTON CARRIES MARKERS AND NOT ONLY A COLOUR. On a
+	 * washed-out laptop panel a colour alone is not a focus indicator, and
+	 * the markers are what a person looking for "which one does Enter
+	 * press" finds. Solid triangles rather than the text arrows: this is
+	 * control furniture, and `◀`/`▶` in running text mean direction.
+	 */
 	if (focus && r.w > 4) {
-		ktui_draw_text(r.x, cy, 1, ktui_glyph[KT_G_RIGHT], fg, bg, 0);
-		ktui_draw_text(r.x + r.w - 1, cy, 1, ktui_glyph[KT_G_LEFT], fg, bg, 0);
+		ktui_draw_text(r.x, cy, 1, ktui_glyph[KT_G_ARROW_R], fg, bg, 0);
+		ktui_draw_text(r.x + r.w - 1, cy, 1, ktui_glyph[KT_G_ARROW_L],
+			       fg, bg, 0);
+	}
+
+	/*
+	 * THE SHADOW IS WHAT MAKES A PLATE A BUTTON. Without it a filled
+	 * rectangle with a word in it is indistinguishable from a selected list
+	 * row — which is exactly the confusion a form full of both produces.
+	 *
+	 * It is drawn one column right and one row below, in KT_DIM on the
+	 * page. `░` AND NOT A HALF BLOCK: `▀`/`▄` would hug the plate's edge
+	 * and are not in the console font, so on `tty1` the shadow would be a
+	 * blank strip — which reads as the button having a hole beside it. A
+	 * DISABLED button casts none; it is not raised, because it cannot be
+	 * pressed.
+	 */
+	if (enabled && r.w > 2) {
+		int sy = r.y + r.h;
+
+		ktui_draw_text(r.x + r.w, cy, 1, ktui_glyph[KT_G_SHADE],
+			       KT_DIM, KT_BG, 0);
+		for (int i = 1; i <= r.w; i++)
+			ktui_draw_text(r.x + i, sy, 1, ktui_glyph[KT_G_SHADE],
+				       KT_DIM, KT_BG, 0);
 	}
 
 	return enabled ? ktui_activated(id, r) : 0;
@@ -421,14 +494,22 @@ int ktui_check(int x, int y, int w, const char *label, int *val)
 	int id = ktui_id();
 	KRect r = krect(x, y, w, 1);
 	int focus = ktui_focused(id);
-	int fg = focus ? KT_BG : KT_TEXT;
-	int bg = focus ? KT_ACCENT : KT_BG;
+	int fg, bg;
 
+	/*
+	 * THE FOCUSED BOX IS A QUIET PLATE AND THE MARK KEEPS THE ACCENT. A
+	 * whole row filled with the accent put the background colour on the
+	 * label and made the one cell that carries the STATE — the mark inside
+	 * the brackets — the same colour as everything around it. The plate
+	 * says where focus is; the mark says on or off, and they are different
+	 * questions.
+	 */
+	ktui_sel_slots(1, focus, KT_BG, &fg, &bg);
 	ktui_draw_fill(r, bg);
-	ktui_draw_text(x, y, 1, "[", focus ? KT_BG : KT_MID, bg, 0);
+	ktui_draw_text(x, y, 1, "[", KT_MID, bg, 0);
 	ktui_draw_text(x + 1, y, 1, *val ? ktui_glyph[KT_G_SQUARE] : " ",
-		  focus ? KT_BG : KT_ACCENT, bg, 0);
-	ktui_draw_text(x + 2, y, 1, "]", focus ? KT_BG : KT_MID, bg, 0);
+		  KT_ACCENT, bg, 0);
+	ktui_draw_text(x + 2, y, 1, "]", KT_MID, bg, 0);
 	ktui_draw_text(x + 4, y, w - 4, label, fg, bg, 0);
 
 	/* The VALUE as well as the name: "on" and "off" is what the box says,
@@ -449,14 +530,17 @@ int ktui_radio(int x, int y, int w, const char *label, int *val, int on)
 	KRect r = krect(x, y, w, 1);
 	int focus = ktui_focused(id);
 	int sel = (*val == on);
-	int fg = focus ? KT_BG : sel ? KT_TEXT : KT_MID;
-	int bg = focus ? KT_ACCENT : KT_BG;
+	int fg, bg;
 
+	/* Same rule as the checkbox: the plate is focus, the bullet is state. */
+	ktui_sel_slots(1, focus, KT_BG, &fg, &bg);
+	if (!focus && !sel)
+		fg = KT_MID;		/* an unchosen option is secondary */
 	ktui_draw_fill(r, bg);
-	ktui_draw_text(x, y, 1, "(", focus ? KT_BG : KT_MID, bg, 0);
+	ktui_draw_text(x, y, 1, "(", KT_MID, bg, 0);
 	ktui_draw_text(x + 1, y, 1, sel ? ktui_glyph[KT_G_BULLET] : " ",
-		  focus ? KT_BG : KT_ACCENT, bg, 0);
-	ktui_draw_text(x + 2, y, 1, ")", focus ? KT_BG : KT_MID, bg, 0);
+		  KT_ACCENT, bg, 0);
+	ktui_draw_text(x + 2, y, 1, ")", KT_MID, bg, 0);
 	ktui_draw_text(x + 4, y, w - 4, label, fg, bg, 0);
 
 	if (focus)
@@ -987,7 +1071,13 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user, int
 			continue;
 		}
 		int sel = idx == st->sel;
-		ktui_draw_fill(krect(r.x, y, listw, 1), sel ? KT_ACCENT : KT_BG);
+		int rfg, rbg;
+
+		/* The row painter is the caller's and is handed `sel` and
+		 * `focus`; the FILL is this control's, so every ktui_list on
+		 * the desktop selects the same way whatever its rows contain. */
+		ktui_sel_slots(sel, focus, KT_BG, &rfg, &rbg);
+		ktui_draw_fill(krect(r.x, y, listw, 1), rbg);
 		row(idx, r.x, y, listw, sel, focus, user);
 	}
 	if (count > vis)

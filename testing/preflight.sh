@@ -1605,6 +1605,63 @@ done
 note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
 
 echo
+echo "==> every chrome glyph is one the console font can actually draw"
+# A GLYPH THE CONSOLE FONT DOES NOT CARRY RENDERS AS A BLANK ON tty1, and
+# nothing anywhere says so: the cell is written, the flush succeeds, and the
+# console desktop is missing a piece of its own chrome.
+#
+# `ter-kdos32n` is 512 glyphs. The toolkit picks `glyph_utf8` whenever the
+# backend reports UTF-8 — which the Linux console does — so EVERY entry in that
+# table has to be in the font, not merely in Unicode. `▓`, the half blocks and
+# the double tees all look reasonable in an editor and are all absent from the
+# font; a slider built on `▓` draws its filled run as nothing at all.
+#
+# Checked against the SHIPPED font rather than a list, because the list is the
+# thing that goes stale.
+_font=build/fs/usr/share/consolefonts/ter-kdos32n.psf.gz
+if [ -f "$_font" ]; then
+    _glyphbad=$(python3 - "$_font" <<'PYEOF'
+import gzip, re, struct, sys
+
+d = gzip.open(sys.argv[1], 'rb').read()
+if d[:4] != b'\x72\xb5\x4a\x86':
+    sys.exit(0)                     # not PSF2: nothing to check against
+ver, hdr, flags, length, charsize, h, w = struct.unpack('<IIIIIII', d[4:32])
+if not flags & 1:
+    sys.exit(0)                     # no unicode table: the question is unanswerable
+cps, cur = set(), b''
+for b in d[hdr + length * charsize:]:
+    if b in (0xFF, 0xFE):
+        cur = b''
+    else:
+        cur += bytes([b])
+        try:
+            cps.add(ord(cur.decode('utf8')[0]))
+            cur = b''
+        except UnicodeDecodeError:
+            pass
+
+src = open('src/libs/libktui/ktui_draw.c').read()
+tbl = src.split('static const char *glyph_utf8')[1].split('};')[0]
+for name, glyph in re.findall(r'\[(KT_G_\w+)\]\s*=\s*"([^"]+)"', tbl):
+    for ch in glyph:
+        if ord(ch) > 0x7f and ord(ch) not in cps:
+            print(f"{name} {ch} U+{ord(ch):04X}")
+PYEOF
+)
+    if [ -n "$_glyphbad" ]; then
+        while read -r _n _g _u; do
+            bad "glyph $_n" "$_g $_u is not in ter-kdos32n — blank on tty1"
+        done <<< "$_glyphbad"
+    else
+        _ng=$(grep -c '\[KT_G_' src/libs/libktui/ktui_draw.c)
+        note "chrome glyphs" "every glyph_utf8 entry is in the console font"
+    fi
+else
+    note "chrome glyphs" "no built console font — skipped"
+fi
+
+echo
 echo "==> a desktop toggle has exactly one flag, and libkbase spells the path"
 # TWO PLACES ONLY. `kb_toggle_on()` reads and `kb_toggle_set()` writes, and a
 # program that builds `kdos/toggles/...` itself is a program looking where

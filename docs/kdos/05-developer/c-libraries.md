@@ -29,7 +29,7 @@ painter is not made to link a Wayland client library to get it.
 |---|---|---|---|
 | `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, group membership, the argument-vector builder and process helpers, and the freedesktop trash | Nothing |
 | `libkcolor` | `kcol_` | **The palette table**, colour-space conversion, mixing, the readable muted colour, the hue-family classifier, remapping and retinting | Nothing |
-| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, **the keys contract — the hint row, the Esc ladder and the menu**, the three glyph tiers, charts, offscreen rendering | Nothing |
+| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, **the keys contract — the hint row, the Esc ladder and the menu**, **the selection rule every surface draws its rows with**, the three glyph tiers, charts, offscreen rendering | Nothing |
 | `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, **the one correct way to turn a command line into an argument vector**, and the places column | `libkbase` |
 | `libkpkg` | `kp_` | The package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` |
 | `libksig` | `ksig_` | Signing and verification, key files, keyrings. **The one library with vendored third-party source** | `libkbase` |

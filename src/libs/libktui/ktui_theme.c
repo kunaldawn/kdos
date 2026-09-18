@@ -48,7 +48,15 @@ const char *ktui_slot_name(int slot)
 }
 
 int ktui_ntheme = (int)(sizeof(ktui_themes) / sizeof(ktui_themes[0]));
-const KtuiTheme *ktui_theme = &ktui_themes[0];
+
+/*
+ * THE DEFAULT IS NAMED IN libkcolor, NOT TAKEN FROM THE FRONT OF THIS TABLE.
+ * Both tables are expansions of the same X-macro, so an index into one is an
+ * index into the other by construction — which is what lets a compile-time
+ * constant derived from a scheme NAME pick the row here. Reaching for row 0
+ * instead made the default a property of the picker's ORDER.
+ */
+const KtuiTheme *ktui_theme = &ktui_themes[KCOL_DEFAULT_INDEX];
 
 /*
  * The scheme the user chose, and the warmed copy night light hands out in its
@@ -56,7 +64,7 @@ const KtuiTheme *ktui_theme = &ktui_themes[0];
  * blue scaled down and back up again is not the blue it started as, so turning
  * the toggle off has to go back to the table rather than undo the arithmetic.
  */
-static const KtuiTheme *chosen = &ktui_themes[0];
+static const KtuiTheme *chosen = &ktui_themes[KCOL_DEFAULT_INDEX];
 static KtuiTheme warmed;
 static int night;
 

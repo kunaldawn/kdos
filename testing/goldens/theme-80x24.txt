@@ -1,9 +1,9 @@
-+= Style ======================================================================+
++=[ Style ]====================================================================+
 |  Accent  Font                                                                |
-| > phosphor  KDOS-Phosphor  ########                                          |
+|   phosphor  KDOS-Phosphor  ########                                          |
 |   amber     KDOS-Amber     ########                                          |
 |   ice       KDOS-Ice       ########                                          |
-|   bone      KDOS-Bone      ########                                          |
+| > bone      KDOS-Bone      ########                                          |
 |   norton    KDOS-Norton    ########                                          |
 |   borland   KDOS-Borland   ########                                          |
 |   perfect   KDOS-Perfect   ########                                          |
@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-| ^v preview  Enter keep  Esc back  <> page                                    |
+| ^v preview | Enter keep | Esc back | <> page                                 |
 +==============================================================================+

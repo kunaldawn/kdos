@@ -80,7 +80,7 @@ void conf_defaults(void)
 	kb_strlcpy(cfg.hostname, "kdos", sizeof(cfg.hostname));
 	kb_strlcpy(cfg.username, "kdos", sizeof(cfg.username));
 	kb_strlcpy(cfg.fullname, "KDOS User", sizeof(cfg.fullname));
-	kb_strlcpy(cfg.theme, "phosphor", sizeof(cfg.theme));
+	kb_strlcpy(cfg.theme, KCOL_DEFAULT_NAME, sizeof(cfg.theme));
 	cfg.plan = PLAN_WIPE;
 	cfg.format_esp = 1;
 	cfg.swap = SWAP_FILE;

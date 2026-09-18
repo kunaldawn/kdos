@@ -1394,16 +1394,19 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 		kch_px_row(x, y, w, KCH_T_ACTIVE);
 	/*
 	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
-	 * The plate is the whole highlight, so on the console and in a dump
-	 * the selected row was indistinguishable from every other row — a
-	 * menu with no visible cursor, on a display where the cursor is the
-	 * only thing saying what Enter will do. An accent fill with the slots
-	 * swapped is what a character grid has, and it is what the row's mark
-	 * is already coloured for.
+	 * The plate is the whole highlight, so without one the selected row is
+	 * indistinguishable from every other row — a menu with no visible
+	 * cursor, on a display where the cursor is the only thing saying what
+	 * Enter will do.
+	 *
+	 * IT IS THE SAME SELECTION RULE EVERY OTHER ROW ON THIS DESKTOP USES,
+	 * and it has to be: `kch_px_row` above solves its plate along
+	 * `dim`-to-`pdark`, so a cell fallback in the ACCENT would make the one
+	 * display without a pixel layer the loud one. A menu of a dozen rows is
+	 * where that is least affordable.
 	 */
 		if (!kch_px_live()) {
-			fg = KT_SURFACE;
-			bg = KT_ACCENT;
+			ktui_sel_slots(1, 1, KT_BG, &fg, &bg);
 			ktui_draw_fill(krect(x, y, w, 1), bg);
 		}
 	}

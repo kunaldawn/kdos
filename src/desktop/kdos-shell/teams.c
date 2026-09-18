@@ -579,8 +579,9 @@ static void draw(int sel, int top)
 		/* Swapped slots, never KT_A_REVERSE over the text: the
 		 * attribute inverts only the cells the glyphs cover and the
 		 * row comes out as one lit block per word. */
-		int fg = is_sel ? KT_SURFACE : KT_TEXT;
-		int bg = is_sel ? KT_ACCENT : KT_SURFACE;
+		int fg, bg;
+
+		ktui_sel_slots(is_sel, 1, KT_SURFACE, &fg, &bg);
 		char right[64], label[192];
 
 		if (is_sel)

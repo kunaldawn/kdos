@@ -399,7 +399,7 @@ kdos_accent_scheme(void)
 	} else if (home && *home) {
 		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
 	} else {
-		return kcol_find("phosphor");
+		return kcol_default();
 	}
 
 	const KcolScheme *sc = NULL;
@@ -415,5 +415,5 @@ kdos_accent_scheme(void)
 		}
 		fclose(f);
 	}
-	return sc ? sc : kcol_find("phosphor");
+	return sc ? sc : kcol_default();
 }

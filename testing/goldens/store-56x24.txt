@@ -1,4 +1,4 @@
-+= Applications =======================================+
++=[ Applications ]=====================================+
 | Applications                                         |
 | 184 applications, 7 groups                           |
 |------------------------------------------------------|
@@ -19,6 +19,6 @@
 |                                                      |
 |------------------------------------------------------|
 | 2 of 184 installed . space ticks, F5 builds them     |
-| Space tick  Enter tick group  F5 install ticked      |
+| Space tick | Enter tick group | F5 install ticked |  |
 |         [ Install ] [ Import ] [ Export ] [ Close ]  |
 +======================================================+

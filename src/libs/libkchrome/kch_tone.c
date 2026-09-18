@@ -133,7 +133,7 @@ static void build(void)
 	uint32_t body_ref;
 
 	if (!s)
-		s = &kcol_schemes[0];
+		s = kcol_default();
 
 	/*
 	 * The body is a gradient between these two, both close to `variant`

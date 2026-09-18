@@ -323,8 +323,9 @@ static void draw_archive(void)
 	for (int i = 0; i < ph && top + i < nents; i++) {
 		const struct entry *e = &ents[top + i];
 		int y = py + i, on = top + i == sel;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
-		int fg = on ? KT_SURFACE : KT_TEXT;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 
 		ktui_draw_fill(krect(px, y, pw, 1), bg);
 		ktui_draw_text(px + 1, y, pw - 14, e->name, fg, bg,

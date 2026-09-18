@@ -1338,6 +1338,20 @@ making you pick it again would be a link that does half its job.
 The tile icon names are checked against the **shipped icon set**, not taken from the naming
 specification, and the blurbs are cut to what a tile holds at eighty columns.
 
+**Its two panes each carry a caret and only one carries a plate.** The category column and the
+field list are drawn through `ktui_sel_row()`, which fills the row of the pane holding the keyboard
+and marks the other's with `►` alone. Before that both panes filled — the focused one in the accent
+and the cold one in `KT_DIM`, which measures about 1.6:1 against the page and so said almost
+nothing. A form of eight numbered rows was eight accent-coloured slider tracks and one lit
+full-width bar following the pointer; there was no hierarchy in it to read.
+
+**The scope tag and the value column lift off the muted colour when their row is selected.** `live`
+and `login` are the answer to *did that do anything*, and a selected row is exactly when somebody
+is asking — but muted on the selection fill measures 2.18:1 to 3.43:1 depending on the accent, so
+left alone the right-hand half of the row would disappear at the moment it matters.
+`ktui_sel_dim()` is that question asked in one place. `KT_DIM` survives in one role only, and off
+the fill: an `(unset)` value, where it is carrying the distinction rather than trying to be read.
+
 **And the recorder's scrollbar is a control.** `kch_scrollbar` takes an id precisely so the bar that
 was DRAWN is the thing a press is measured against; that surface drew one beside its file list and
 answered neither its press nor its drag — a bar people try to drag once and then stop trusting.

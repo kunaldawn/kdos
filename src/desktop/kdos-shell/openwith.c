@@ -54,11 +54,6 @@
 
 #include "launch.h"
 
-/* apps.c's, and the only copy: the box-launcher test the Start menu marks its
- * rows with is the test this chooser marks its rows with, or the two surfaces
- * disagree about which application costs a container start. */
-int sh_exec_is_boxed(const char *exec);
-
 #define OW_MAX_CANDS 64
 #define OW_MIME_MAX 128
 
@@ -230,7 +225,8 @@ static void cand_add(const char *id, int is_default)
 		return;
 	}
 
-	struct ow_cand *c = &cands[ncands++];
+	struct ow_cand *c = &cands[ncands];
+	char box[128];
 	memset(c, 0, sizeof(*c));
 	snprintf(c->id, sizeof(c->id), "%s", id);
 	snprintf(c->name, sizeof(c->name), "%s", name && *name ? name : id);
@@ -239,8 +235,16 @@ static void cand_add(const char *id, int is_default)
 	/* The launcher's rule: an entry whose Exec IS the box launcher is a box
 	 * app whatever the alien-apps table is keyed by, and the box may be
 	 * named between the binary and the verb. */
-	c->alien = sh_exec_is_boxed(c->exec);
+	c->alien = sh_exec_box(c->exec, box, sizeof(box));
+	/* A chooser must not offer what cannot open the file. The Start menu
+	 * drops the same row for the same reason, and both ask one function so
+	 * the two cannot disagree about which applications exist. */
+	if (c->alien && sh_box_missing(box)) {
+		kxdg_free(&e);
+		return;
+	}
 	c->is_default = is_default;
+	ncands++;
 	kxdg_free(&e);
 }
 
@@ -658,8 +662,9 @@ static void draw(void)
 		if (idx >= nrows())
 			break;
 		int on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 		int y = list_top + i;
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);

@@ -83,7 +83,7 @@ static int step_skipped(int i)
 {
 	if (i == S_PARTITION && cfg.plan != PLAN_WIPE)
 		return 1;
-	if (i == S_THEME && !strcmp(cfg.theme, "phosphor"))
+	if (i == S_THEME && !strcmp(cfg.theme, KCOL_DEFAULT_NAME))
 		return 1;
 	/* Nothing chosen, or a medium with no catalogue on it — the step says
 	 * SKIPPED rather than running and doing nothing, because a step that
@@ -1585,22 +1585,39 @@ static void do_boot(void)
 	/* The menu's face and wallpaper, so an installed machine looks like the
 	 * medium it came from. Both are optional: absent, Limine draws its own
 	 * font on a plain backdrop and the entries are unchanged. */
+	/*
+	 * THE PATH ONLY. The scale, the style and every colour come out of
+	 * kcol_limine_conf below, so a machine themed later moves its layout
+	 * with its palette rather than keeping whichever arrangement it was
+	 * installed under.
+	 */
 	const char *fontline = "";
 	if (kb_path_exists("/boot/limine/font.bin")) {
 		copy_file("/boot/limine/font.bin",
 			  TARGET "/boot/efi/EFI/kdos/font.bin");
 		fontline = "term_font: boot():/EFI/kdos/font.bin\n"
-			   "term_font_size: 8x16\n"
-			   "term_font_scale: 2x2\n";
+			   "term_font_size: 8x16\n";
 	}
-	const char *paper = "backdrop: 02120a\n";
+	/* Same rule. The artwork is dimmed IN THE FILE — Limine has no
+	 * wallpaper opacity — so how dark it is belongs to the generator that
+	 * made it and not to this step. */
+	const char *paper = "";
 	if (kb_path_exists("/boot/limine/wallpaper.png")) {
 		copy_file("/boot/limine/wallpaper.png",
 			  TARGET "/boot/efi/EFI/kdos/wallpaper.png");
-		paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n"
-			"wallpaper_style: centered\n"
-			"backdrop: 02120a\n";
+		paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
 	}
+
+	/*
+	 * THE COLOURS ARE THE INSTALLED SYSTEM'S ACCENT, out of libkcolor, and
+	 * they are emitted by the same function the medium's own menu was
+	 * written with. Two hand-copied sets of nine literals is how a stick
+	 * and the machine installed from it end up different colours.
+	 */
+	char theme[1024];
+	const KcolScheme *boot_sc = kcol_find(cfg.theme);
+	if (kcol_limine_conf(boot_sc, theme, sizeof(theme)) >= (int)sizeof(theme))
+		kb_die("limine theme block does not fit");
 
 	/* memtest86+ is a payload rather than a program: bad RAM is the one
 	 * fault no tool running under an OS can honestly diagnose, because the
@@ -1645,35 +1662,31 @@ static void do_boot(void)
 	   "timeout: 10\n"
 	   "default_entry: 1\n"
 	   "\n"
-	   "interface_branding: KDOS\n"
-	   "interface_branding_colour: 39ff14\n"
-	   "interface_help_colour: 1f8f0c\n"
+	   "%s"
 	   "%s%s"
-	   "term_background: 8002120a\n"
-	   "term_foreground: b8ffc8\n"
-	   "term_palette: 02120a;ff3131;39ff14;ffb000;1f8f0c;b8ffc8;39ff14;b8ffc8\n"
-	   "term_palette_bright: 12401f;ff3131;39ff14;ffb000;1f8f0c;ffffff;39ff14;ffffff\n"
-	   "term_margin: 32\n"
 	   "\n"
 	   "/KDOS\n"
+	   "    comment: Start this machine\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
 	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\n"
 	   "\n"
 	   "/KDOS (verbose)\n"
+	   "    comment: Every kernel message on the console\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
 	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
 	   "/KDOS (single user)\n"
+	   "    comment: A root shell, no session\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
 	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s",
-	   paper, fontline,
+	   theme, paper, fontline,
 	   slot_opt, crypt_opt, root_uuid,
 	   slot_opt, crypt_opt, root_uuid,
 	   slot_opt, crypt_opt, root_uuid, memtest);

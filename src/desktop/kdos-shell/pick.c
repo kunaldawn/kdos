@@ -730,8 +730,9 @@ static void draw(const char *title)
 			break;
 		const struct row *r = &rows[idx];
 		bool on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 
 		ktui_draw_fill(krect(1, list_top + i, lw - 2, 1), bg);
 		if (multi_mode)
@@ -795,11 +796,16 @@ static void draw(const char *title)
 				if (y >= r.y + r.h - 1)
 					break;
 			}
-			ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1),
-				       on ? KT_ACCENT : KT_SURFACE);
-			ktui_draw_text(r.x + 2, y, r.w - 4, places[i].name,
-				       on ? KT_SURFACE : KT_TEXT,
-				       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			{
+				int pfg, pbg;
+
+				ktui_sel_slots(on, 1, KT_SURFACE, &pfg, &pbg);
+				ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1),
+					       pbg);
+				ktui_draw_text(r.x + 2, y, r.w - 4,
+					       places[i].name, pfg, pbg,
+					       KT_A_NONE);
+			}
 			y++;
 		}
 	}

@@ -262,13 +262,19 @@ static void keymap_apply(const char *name)
 static void keymap_row(int idx, int x, int y, int w, int selected, int focus,
 		       void *u)
 {
-	(void)focus;
 	(void)u;
 	const char *name = keymaps[kmfilter_idx[idx]];
 	int cur = !strcmp(name, cfg.keymap);
-	int fg = selected ? KT_BG : cur ? KT_ACCENT : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
-	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ", fg, bg, 0);
+	int fg, bg;
+
+	/* THE SAME SLOTS ktui_list FILLED THE ROW WITH. A row painter that
+	 * picks its own background paints over the list's, so the two disagree
+	 * the moment either changes. The bullet keeps the accent whatever the
+	 * row is doing: it is the chosen ITEM, which is not the same question
+	 * as where the caret is. */
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ",
+		       KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 3, y, w - 3, name, fg, bg, 0);
 }
 
@@ -434,13 +440,14 @@ static void tz_filter(void)
 
 static void tz_row(int idx, int x, int y, int w, int selected, int focus, void *u)
 {
-	(void)focus;
 	(void)u;
 	int z = tzidx[idx];
 	int cur = !strcmp(zones[z].label, cfg.tz_label);
-	int fg = selected ? KT_BG : cur ? KT_ACCENT : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
-	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ", fg, bg, 0);
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ",
+		       KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 3, y, w - 3, zones[z].label, fg, bg, 0);
 }
 
@@ -539,10 +546,18 @@ static void disk_row(int idx, int x, int y, int w, int selected, int focus,
 	Disk *d = &ki_disk[idx];
 	int cur = !strcmp(d->path, cfg.disk);
 	int warn = d->is_boot_media || d->readonly;
-	int fg = selected ? KT_BG : warn ? KT_WARN : cur ? KT_ACCENT : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg, bg;
 
-	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ", fg, bg, 0);
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	/* A DISK THE INSTALLER WILL REFUSE STAYS URGENT EVEN ON THE FILL.
+	 * KT_WARN on KT_DIM is the one pairing here worth keeping: this is the
+	 * row that says "not this one", and it is read precisely when somebody
+	 * has moved the caret onto it. */
+	if (warn)
+		fg = KT_WARN;
+
+	ktui_draw_text(x + 1, y, 2, cur ? ktui_glyph[KT_G_BULLET] : " ",
+		       KT_ACCENT, bg, 0);
 	ktui_draw_textf(x + 3, y, w - 3, fg, bg, 0, "%-10s %8s  %-6s %s",
 		   d->name,
 		   kb_human_size(d->sectors * (unsigned long long)d->sector_size),
@@ -725,11 +740,11 @@ static char swapbuf[16];
 static void part_row_generic(int idx, int x, int y, int w, int selected,
 			     int focus, void *u)
 {
-	(void)focus;
 	Disk *d = (Disk *)u;
 	Part *p = &d->part[idx];
-	int fg = selected ? KT_BG : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
 	ktui_draw_textf(x + 1, y, w - 1, fg, bg, 0, "%-12s %8s  %-8s %s", p->name,
 		   kb_human_size(p->sectors * 512ULL),
 		   p->is_esp ? "ESP" : p->fstype[0] ? p->fstype : "-",
@@ -1316,11 +1331,11 @@ static void apps_collect(void)
 static void app_row(int idx, int x, int y, int w, int selected, int focus,
 		    void *u)
 {
-	(void)focus;
 	(void)u;
 	const KiGroup *g = &ki_group[idx];
-	int fg = selected ? KT_BG : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
 	char size[16], n[16];
 	int szw = 10, nw = 7;
 	int descw = w - 4 - szw - nw;

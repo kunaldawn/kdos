@@ -308,8 +308,9 @@ int prompt_main(int argc, char **argv)
 			int x = b ? yes_x : no_x;
 			const char *label = b ? yb : nb;
 			bool on = sel == b;
-			int fg = on ? KT_SURFACE : KT_TEXT;
-			int bg = on ? KT_ACCENT : KT_SURFACE;
+			int fg, bg;
+
+			ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 			ktui_draw_text(x, by, 1, "[", KT_MID, KT_SURFACE,
 				       KT_A_NONE);
 			ktui_draw_fill(krect(x + 1, by,

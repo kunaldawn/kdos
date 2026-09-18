@@ -64,6 +64,36 @@
 
 #define KCOL_HEX(x) ((uint32_t)0x##x)
 
+/* ────────────────────────────────────────────────────────────────────────
+ * The default scheme, named once
+ *
+ * A consumer with nothing configured falls back to a row of the table above.
+ * Reaching for index 0 — `kcol_schemes[0]`, `ktui_themes[0]` — makes the
+ * default a property of WHERE A ROW SITS, so reordering the accent picker
+ * silently changes what an unconfigured machine boots in, and the compositor,
+ * the console, the cage and the chrome each end up holding their own copy of
+ * the assumption.
+ *
+ * The index is derived from the NAME instead, at compile time, so the table
+ * can be reordered freely and there is one line to edit to move the default.
+ * `KCOL_DEFAULT_ID` is the bare identifier as the X-macro spells it.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define KCOL_DEFAULT_ID bone
+
+#define KCOL_IDX_ENUM(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd)   \
+	KCOL_IDX_##id,
+
+enum { KCOL_SCHEMES(KCOL_IDX_ENUM) KCOL_IDX_COUNT };
+
+#define KCOL_CAT2(a, b) a##b
+#define KCOL_CAT(a, b) KCOL_CAT2(a, b)
+#define KCOL_STR2(x) #x
+#define KCOL_STR(x) KCOL_STR2(x)
+
+#define KCOL_DEFAULT_INDEX KCOL_CAT(KCOL_IDX_, KCOL_DEFAULT_ID)
+#define KCOL_DEFAULT_NAME  KCOL_STR(KCOL_DEFAULT_ID)
+
 typedef struct {
 	uint8_t r, g, b;
 } KcolRgb;
@@ -88,6 +118,42 @@ extern const int kcol_nscheme;
 
 /* NULL when the name is not one of ours. */
 const KcolScheme *kcol_find(const char *name);
+
+/* The scheme a machine with nothing configured is in. Never NULL. */
+const KcolScheme *kcol_default(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The bootloader's colours
+ *
+ * THE BOOT MENU IS THE FIRST SCREEN OF KDOS AND IT WEARS THE SAME PALETTE AS
+ * THE LAST ONE. The nine numbers reached it as literals, written out twice —
+ * once in the ISO step and once in the installer — so the medium and the
+ * machine installed from it could disagree about the colour of the menu, and
+ * the one that was wrong was the one nobody was booting that day.
+ *
+ * Emits the whole LOOK of a `limine.conf` — the `interface_*` lines, the
+ * backdrop, the palettes, the margins, the wallpaper STYLE and the font SCALE
+ * — newline-terminated.
+ *
+ * WHAT IT DOES NOT EMIT IS EXACTLY THE TWO LINES THAT NAME PATHS: `wallpaper`
+ * and `term_font`. Which artwork and which face are installed is not a
+ * question an accent answers, and this library names no paths. Everything
+ * else about how the menu looks is here, so re-theming an installed machine
+ * moves the layout as well as the colours — a restamp that changed only the
+ * palette would leave a menu drawn at `2x2` over a `centered` backdrop, which
+ * is unreadable in any scheme.
+ *
+ * `term_background` CARRIES A LEADING TRANSPARENCY BYTE and it is `00`.
+ * Limine's own default is `80` whenever a wallpaper is set — half-transparent
+ * — so a config that sets a wallpaper and says nothing about the background
+ * prints the artwork THROUGH the menu text. That is not a theme choice to be
+ * retuned; it is the difference between a menu that can be read and one that
+ * cannot.
+ *
+ * Returns the number of bytes that would have been written, snprintf-style, so
+ * a truncated buffer is detectable rather than silent.
+ * ──────────────────────────────────────────────────────────────────────── */
+int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Conversions

@@ -23,7 +23,7 @@ reader learns that those are **three different questions**, rather than three to
 ## theme
 
 ```sh
-kdos theme <phosphor|amber|ice|bone|norton|borland|perfect>
+kdos theme <phosphor|amber|ice|bone|norton|borland|perfect>    # bone is the default
 kdos theme list | next | prev
 kdos theme style <file>
 kdos theme --audit [accent]

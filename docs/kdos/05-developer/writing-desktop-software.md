@@ -401,6 +401,24 @@ Slots only. `KT_MID` for labels — `KT_DIM` is a **fill** and measures below an
 **Emphasis is a fill with swapped slots, never a reverse attribute over a label**: the attribute
 inverts only the cells a glyph covers, so a two-word name comes out as one lit block per word.
 
+**A selected row is `ktui_sel_slots()`'s, and a surface that works out its own is the defect.**
+Twenty-five of them did — `bg = on ? KT_ACCENT : KT_SURFACE` — which drags a lit plate under the
+pointer and puts the background colour on the label:
+
+```c
+int fg, bg;
+
+ktui_sel_slots(selected, pane_has_keyboard, KT_SURFACE, &fg, &bg);
+```
+
+`ktui_sel_row()` is the same answer with the fill and the `►` marker drawn for you. Pass the page
+slot — `KT_BG` or `KT_SURFACE` — rather than letting the control guess, or a translucent window
+gets an opaque band across it.
+
+**A secondary column on a selected row takes `ktui_sel_dim()`, never the muted colour.** Muted on
+the selection fill measures 2.18:1 to 3.43:1: a tag, a two-letter code or a units suffix left muted
+vanishes exactly when the row is selected.
+
 ## Adding a name to kdos-shell
 
 1. **Add a `<name>.c`** with an entry point following the naming convention.
@@ -465,10 +483,11 @@ procedure:
 | 1 | Box the surface, title on the top edge | `--dump` |
 | 2 | Header band, group headings, button bar from `libkchrome` | `grep kch_` |
 | 3 | Slots for colour; `KT_MID` for labels | `grep KT_DIM` in foreground positions |
+| 3b | Selection through `ktui_sel_slots`; secondary columns through `ktui_sel_dim` | `grep 'KT_ACCENT :'` — a match is a surface deciding for itself |
 | 4 | Motion, press, wheel, scrollbar, header sort | `grep -c KT_EVT_MOUSE` — zero is the defect |
 | 5 | Hit map recorded from the draw | Resize and click the top row |
 | 6 | Dump at two sizes, commit both | `testing/selftest.sh` |
-| 7 | Read it at the vt tier | `--dump` on a console |
+| 7 | Read it at the vt tier, and use no glyph the console font lacks | `--dump` on a console; `testing/preflight.sh` reads the shipped font |
 | 8 | One `KtuiKeys`; `ktui_keys()` first, `ktui_hint_row()` last, on every path | `grep -c ktui_hint_row` — the dump path counts |
 | 9 | Every raised state a declared layer, never an `Esc` arm | `grep KT_K_ESC` — a remaining case is one the ladder should own |
 

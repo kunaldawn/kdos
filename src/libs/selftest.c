@@ -1028,7 +1028,7 @@ static void test_trash(void)
 	{
 		KtuiTheme cold;
 
-		ktui_theme_set(ktui_themes[0].name);
+		ktui_theme_set(ktui_themes[KCOL_DEFAULT_INDEX].name);
 		cold = *ktui_theme;
 
 		ok(ktui_theme_night(1) == 1, "night light says it changed");
@@ -1998,6 +1998,39 @@ static void test_shade(void)
 	       "and the SLOT is the backdrop, which is the shadow a --tty shows");
 	ok(!(off->attr & KT_A_BGRGB),
 	   "a cell outside the one-cell strip is untouched");
+
+	/*
+	 * AND IT DARKENS IN EVERY SCHEME, not only in the one that happens to
+	 * be the default. The strip is mixed towards KT_BG, and KT_BG is NOT
+	 * the darker of the two in every accent — `bone`'s backdrop is lighter
+	 * than its surface in red and green, `ice`'s in blue — so an
+	 * unclamped mix makes those two glow along the shadowed edges instead.
+	 * Asserted per scheme and per channel, because it is a property of the
+	 * palette and the default moves.
+	 */
+	for (int t = 0; t < ktui_ntheme; t++) {
+		ktui_theme_set(ktui_themes[t].name);
+		ktui_offscreen_init(24, 8);
+		ktui_draw_init();
+		ktui_draw_fill(krect(0, 0, 24, 8), KT_BG);
+		ktui_draw_fill(krect(2, 3, 12, 3), KT_SURFACE);
+		ktui_draw_text(2, 3, 12, "HELLO", KT_TEXT, KT_SURFACE,
+			       KT_A_NONE);
+		ktui_draw_shadow(krect(1, 2, 12, 1));
+
+		cells = ktui_draw_cells(&w, &h);
+		const KtuiCell *sh = &cells[3 * w + 2];
+		KRgb surf = ktui_theme->slot[KT_SURFACE];
+		char why[96];
+
+		snprintf(why, sizeof(why),
+			 "%s: the shadow is darker than the surface, in all "
+			 "three channels", ktui_themes[t].name);
+		ok(((sh->bgc >> 16) & 0xff) <= surf.r &&
+		   ((sh->bgc >> 8) & 0xff) <= surf.g &&
+		   (sh->bgc & 0xff) <= surf.b, why);
+	}
+	ktui_theme_set(ktui_themes[KCOL_DEFAULT_INDEX].name);
 
 	/* ── the blend: a rectangle mixed back towards what it covered ── */
 	uint32_t under[12 * 3];

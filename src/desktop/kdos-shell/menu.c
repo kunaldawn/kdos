@@ -587,8 +587,13 @@ static void draw(const struct view *v)
 	 * is already coloured for.
 	 */
 			if (!kch_px_live()) {
-				fg = KT_SURFACE;
-				bg = KT_ACCENT;
+				/* The slots are `uint8_t` here and the rule
+				 * answers in `int`, so they go through one. */
+				int sfg, sbg;
+
+				ktui_sel_slots(1, 1, KT_SURFACE, &sfg, &sbg);
+				fg = (uint8_t)sfg;
+				bg = (uint8_t)sbg;
 				ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
 			}
 		}
@@ -927,8 +932,13 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 			/* The cell form of the same fact — see the cascading
 			 * menu above. */
 			if (!kch_px_live()) {
-				fg = KT_SURFACE;
-				bg = KT_ACCENT;
+				/* The slots are `uint8_t` here and the rule
+				 * answers in `int`, so they go through one. */
+				int sfg, sbg;
+
+				ktui_sel_slots(1, 1, KT_SURFACE, &sfg, &sbg);
+				fg = (uint8_t)sfg;
+				bg = (uint8_t)sbg;
 				ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
 			}
 		}

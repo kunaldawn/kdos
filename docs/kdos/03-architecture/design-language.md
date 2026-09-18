@@ -35,12 +35,17 @@ input-method framework's own generic panel protocol rather than by writing an in
 ## A window is a double-line box
 
 ```
-╔══ Resources ══════════════════════╗
+╔══[ Resources ]════════════════════╗
 ║                                   ║
 ║  body starts at column 1          ║
 ║                                   ║
 ╚═══════════════════════════════════╝
 ```
+
+**The title is bracketed, not merely spaced.** Two blanks either side leave the frame looking
+broken where the rule stops — the eye reads a missing segment rather than a label. `ktui_draw_box`
+supplies the brackets and the padding and trims whatever the caller brought, so `" Settings "` and
+`"Settings"` draw the same socket.
 
 Column 0, the last column and the last row belong to the frame. The body starts at column 1 and
 stops one row short of the bottom. The title hangs on the top edge.
@@ -77,11 +82,12 @@ drifts:
 
 | Control | Is |
 |---|---|
-| `ktui_button`, `ktui_check`, `ktui_radio` | A verb, a flag, one of a set |
-| `ktui_slider` | **A number on a track** — press, drag, wheel, or an end cap for one step |
+| `ktui_button`, `ktui_check`, `ktui_radio` | A verb, a flag, one of a set. A button is a plate with a `░` shadow; the shadow is what stops a filled rectangle with a word in it reading as a selected row |
+| `ktui_slider` | **A number on a track** — press, drag, wheel, or an end cap for one step. `◄ █████▒▒▒ ► 55`: the track is a fill, the thumb is the only accent |
 | `ktui_dropdown_*` | A choice, as a list that opens under its row |
 | `ktui_input` | A line of text with a caret |
 | `ktui_list`, `ktui_table` | Rows, and rows with columns |
+| `ktui_sel_slots`, `ktui_sel_row`, `ktui_sel_dim` | **What a selected row looks like**, for every surface that has one |
 | `ktui_rows_*` | Which row a pointer is on, for a surface that draws its own |
 | `ktui_table_event` | The same, for a table: wheel, press, pick, Back |
 | `ktui_tabs_*` | A strip of pages |
@@ -245,6 +251,55 @@ so a two-word name comes out as one lit block per word with a hole between them,
 correct for every name that happens to have no space in it.
 
 Fill the rectangle, swap the foreground and background slots, then draw the text.
+
+### A selected row is `KT_DIM` under `KT_TEXT`, and the accent is one cell
+
+```
+    Files                FM  ■        a row
+  ► System Monitor       MO  ■        the caret, on a pane with no keyboard
+  ►▓Git▓▓▓▓▓▓▓▓▓▓▓▓GI▓▓■▓            the caret, on the focused pane
+```
+
+**`ktui_sel_slots()` decides it and nothing else works it out.** Three states, because they say
+three different things:
+
+| State | Drawn as |
+|---|---|
+| A row | `KT_TEXT` on the page, no fill |
+| The caret, pane not focused | `►` in `KT_MID`, label `KT_TEXT`, still no fill |
+| The caret, pane focused | the row filled `KT_DIM`, `►` in `KT_ACCENT`, label `KT_TEXT` |
+
+Measured against the palette, `KT_TEXT` on `KT_DIM` is **8.30:1** in the worst accent and
+**10.22:1** in the best, so the label clears the 7:1 floor everywhere; the marker clears 4.5:1
+everywhere. The fill is quiet because it is a fill, and the accent is spent on the one cell that
+says where the caret is.
+
+**A row filled with `KT_ACCENT` is the defect this replaces.** Twenty-five surfaces each wrote
+`bg = on ? KT_ACCENT : KT_SURFACE`, which puts the background colour on the label and drags a lit
+plate across the screen under the pointer. It is also the rule above being broken: `KT_DIM` is what
+owns selection backgrounds.
+
+**A cold pane keeps its caret and loses its fill.** A surface with two panes has two carets, and
+filling both says both are live; dropping the cold one loses the place that pane will come back to.
+
+**`KT_ACCENT` as a fill survives in exactly two roles, and neither is a row.** A **state
+indicator** — the current workspace chip, the installer's current step, a window flashing its bell
+— and a **button**, where the plate is the control. Both are small, both are one thing on the
+screen rather than one per row, and both mean *this*, not *here*. A `grep 'KT_ACCENT :'` over the
+tree should return only those; a match on a list row is a surface deciding for itself again.
+
+**The muted colour cannot be read on the fill** — **2.18:1 to 3.43:1**, below any floor. A row with
+a secondary column in it (a tag, a two-letter code, a units suffix) lifts that column when the row
+is selected, and `ktui_sel_dim()` is that question asked in one place. Left muted, the right-hand
+half of the row disappears exactly when somebody is looking at it.
+
+### A shadow darkens, and the clamp is what guarantees it
+
+`ktui_draw_shadow()` mixes the strip towards `KT_BG` and then **clamps each channel to no lighter
+than it started**. `KT_BG` is not the darker of the two in every accent — in `bone` the backdrop is
+lighter than the surface in red and green, in `ice` in blue — so an unclamped mix makes those
+schemes glow along two edges of every window. The clamp costs nothing where the backdrop is already
+darker, and it is the only thing standing between a new accent and a luminous shadow.
 
 ### A mark on a fill is a shape, not a contrast
 
@@ -572,15 +627,29 @@ Ramps and box drawing come from one of three tables, chosen from the terminal's 
 renders as a **blank** on `tty1` — so an eighth-block bar there is not ugly, it is invisible. Three
 levels is the honest resolution of that font.
 
-What the console font **has**: `░ ▒ █`, the single and double box-drawing sets, and
-`· • ■ … ° ↑ ↓ ◀ ▶`.
+What the console font **has**: `░ ▒ █`, the **single** box-drawing set, the double corners and
+`╬`, and `· • ■ … ° ↑ ↓ ◀ ▶ ▲ ▼ ◄ ►`.
 
-What it **does not have**: eighth blocks, half blocks, `▓`, braille, and **`← →`** — which is why
-the shared glyph table carries `◀ ▶` instead.
+What it **does not have**: eighth blocks, half blocks (`▀ ▄`), `▓`, braille, **`← →`** — which is
+why the shared glyph table carries `◀ ▶` instead — and, less obviously, the **double tees**
+`╠ ╣ ╦ ╩` and the mixed joins `╡ ╞`. The double set is not all there: the corners are, the tees are
+not.
 
-**Anything that can reach `tty1` stays inside the vt tier.** Rich-tier ramps are for a surface
-that only ever runs under the compositor's font renderer. Check the font's character list before
-using a glyph that is not on the list above.
+**Anything that can reach `tty1` stays inside the vt tier**, and `glyph_utf8` is *entirely* inside
+it. The toolkit picks that table whenever the backend reports UTF-8, which the Linux console does,
+so an entry there that the font lacks is a blank on `tty1` — not a fallback, a blank, with nothing
+anywhere reporting it. A slider built on `▓` draws its filled run as nothing at all.
+
+**`testing/preflight.sh` reads the shipped `ter-kdos32n` and refuses a table entry the font cannot
+draw**, because a list of what the font carries is the thing that goes stale. Two consequences
+already in the tree: the slider separates its track from its fill by slot rather than by a third
+density, and a button's shadow is `░` rather than a half block.
+
+**A frame's title is bracketed `[ like this ]`, and the brackets are ASCII for a second reason on
+top of the font.** `con_ring` in the self-test reads a vertical stroke anywhere on a frame's **top
+row** as a border off the grid — a real defect class — and `╡ ╞` or `┤ ├` are indistinguishable
+from one at the ASCII tier the goldens are dumped in. `[` and `]` carry no vertical rule, are in
+every font, and are the bracket the DOS file managers put a title in.
 
 **A wide glyph is measured, not assumed.** The toolkit computes display width and reserves a
 continuation cell, so double-width text does not corrupt row layout. The console font carries none

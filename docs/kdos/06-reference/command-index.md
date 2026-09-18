@@ -16,7 +16,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-audio` | Audio devices | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
 | `kdos-bb` | The ASCII-art demo | [kdos-bb](../04-programs/kdos-bb.md) |
-| `kdos-bootctl` | A/B slot selection and confirmation | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
+| `kdos-bootctl` | A/B slot selection and confirmation, and the boot menu's colours (`theme [--print] <accent>`) | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
 | `kdos-backup` | What is in the restic repository, and one key to add to it | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-box` | Manage boxes | [kdos-appbox](../04-programs/kdos-appbox.md) |
 | `kdos-boxinit` | Process 1 inside a box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
