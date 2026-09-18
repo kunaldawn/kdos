@@ -57,9 +57,57 @@ static uint32_t glyph_cp[KT_G_N];
 
 static KtuiCell *front, *back;
 static int bw, bh;
+
+/*
+ * THE FRAME A BACKEND LAST DIFFED AGAINST — not what is on the screen. A
+ * backend need not maintain it: `kdos-con`'s does not, because a session with
+ * several views holds one previous frame per view, and its `front` stays the
+ * zeroed allocation for the life of the process. The one caller reads it
+ * BESIDE ktui_draw_cells(), which is the sprite table asking whether a slot
+ * is still referenced.
+ *
+ * NOT a general accessor. Nothing draws through this — every drawing path
+ * goes through ktui_draw_cell, so the clip, the wide-glyph rules and the
+ * damage diff all hold.
+ *
+ * The buffer's OWN size, not ktui_w by ktui_h. A backend reports a new size
+ * the moment it is resized and the buffer is only reallocated when the
+ * consumer calls ktui_draw_resize(), so between those two points the globals
+ * describe a grid larger than the allocation — and a caller that walked
+ * ktui_w * ktui_h cells would read past the end of it.
+ */
+const KtuiCell *ktui_cells(int *w, int *h)
+{
+	if (w)
+		*w = front ? bw : 0;
+	if (h)
+		*h = front ? bh : 0;
+	return front;
+}
+
+/*
+ * THE FRAME BEING COMPOSED — what `ktui_draw_cell` writes and what the next
+ * flush will send. Read it to find out what is on the screen.
+ *
+ * NOT `ktui_cells()`, WHICH IS A DIFFERENT BUFFER AND OFTEN AN EMPTY ONE. That
+ * one hands out `front`, the frame a backend last diffed against, and a
+ * backend is free never to maintain it: `kdos-con`'s own ignores `prev`
+ * entirely, because there may be several views and each diffs against its own.
+ * A caller that read `ktui_cells()` there got a screenful of zeroes and could
+ * not tell that from a screenful of spaces.
+ */
+const KtuiCell *ktui_draw_cells(int *w, int *h)
+{
+	if (w)
+		*w = back ? bw : 0;
+	if (h)
+		*h = back ? bh : 0;
+	return back;
+}
 static int force_full;
 static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
+
 
 /* A clip krect so a page can be drawn shifted and simply run off the top and
  * bottom of its pane. The console KDOS actually ships is 25 rows tall
@@ -415,13 +463,76 @@ void ktui_draw_invalidate(void)
 	force_full = 1;
 }
 
+/*
+ * A RECTANGLE OWES A REPAINT EVEN THOUGH ITS CELLS DID NOT CHANGE.
+ *
+ * The flush repaints what differs between the frame being drawn and the one on
+ * screen, which is right for everything a cell describes by value and wrong
+ * for the one thing it describes by reference: a sprite cell names a SLOT, so
+ * an animation's next frame writes byte-identical cells and the diff finds
+ * nothing. Spoiling the previous-frame copy is what says otherwise, and it is
+ * the same mechanism the pointer's XOR already relies on.
+ *
+ * A RECTANGLE RATHER THAN THE SCREEN, because the alternative — a full repaint
+ * per arriving picture — makes an embedded application cost the whole grid and
+ * the whole framebuffer upload on every tile it sends, which is dozens of
+ * times per frame. Nothing is a real cell here: 0xffffffff is above Unicode's
+ * last codepoint and is not KTUI_SPRITE_BASE, so it can never equal one.
+ *
+ * AND THE BACKEND IS TOLD AS WELL, because a backend may diff against a copy
+ * of its own rather than this one — libkkms keeps a previous frame per SCREEN,
+ * where this is per session. Spoiling only this copy leaves such a backend
+ * seeing no difference at all, which is an animation frozen on its first
+ * frame. A backend with no `dirty` reads `prev` and needs nothing more.
+ */
+void ktui_draw_dirty(int x, int y, int w, int h)
+{
+	if (!front || w < 1 || h < 1)
+		return;
+	if (x < 0) {
+		w += x;
+		x = 0;
+	}
+	if (y < 0) {
+		h += y;
+		y = 0;
+	}
+	if (x + w > bw)
+		w = bw - x;
+	if (y + h > bh)
+		h = bh - y;
+	if (w < 1 || h < 1)
+		return;
+	for (int r = y; r < y + h; r++)
+		for (int c = x; c < x + w; c++)
+			front[(size_t)r * bw + c].ch = 0xffffffffu;
+	if (cur_backend()->dirty)
+		cur_backend()->dirty(x, y, w, h);
+}
+
 void ktui_draw_clear(void)
 {
-	for (int i = 0; i < bw * bh; i++) {
-		back[i].ch = ' ';
-		back[i].fg = KT_TEXT;
-		back[i].bg = KT_BG;
-		back[i].attr = 0;
+	/*
+	 * ONE ROW BUILT AND THEN COPIED. Every field of every cell was
+	 * assigned in a scalar loop, and this runs at the top of every frame
+	 * of every surface — the first row is the only one that has to be
+	 * written a field at a time, and the rest are a memcpy the compiler
+	 * and the C library already vectorise.
+	 *
+	 * The literals go too: a cell is compared WHOLE by everything
+	 * downstream, so a clear that left `fgc` holding the last frame's
+	 * colour is a cell that differs from a blank one and is re-sent and
+	 * repainted for ever.
+	 */
+	KtuiCell blank = { .ch = ' ', .fg = KT_TEXT, .bg = KT_BG,
+			   .attr = 0, .fgc = 0, .bgc = 0, .ulc = 0 };
+
+	if (bw > 0 && bh > 0) {
+		for (int x = 0; x < bw; x++)
+			back[x] = blank;
+		for (int y = 1; y < bh; y++)
+			memcpy(back + (size_t)y * bw, back,
+			       (size_t)bw * sizeof(*back));
 	}
 	ptr_x = ptr_y = -1;
 }
@@ -447,17 +558,80 @@ void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr)
 	if (x < 0 || y < 0 || x >= bw || y >= bh)
 		return;
 	KtuiCell *c = &back[y * bw + x];
+
 	c->ch = ch;
 	c->fg = (uint8_t)fg;
 	c->bg = (uint8_t)bg;
-	c->attr = (uint8_t)attr;
+	/* The high bits are a colour run's and cannot be reached from here:
+	 * a caller drawing in slots that set KT_A_FGRGB, KT_A_BGRGB or
+	 * KT_A_ULCOLOR would name a colour it never supplied. */
+	c->attr = (uint16_t)attr & 0xffu;
+	c->fgc = c->bgc = c->ulc = 0;
 }
 
+void ktui_draw_put(int x, int y, const KtuiCell *cell)
+{
+	if (y > extent)
+		extent = y;
+	if (!krect_hit(clipr, x, y))
+		return;
+	if (x < 0 || y < 0 || x >= bw || y >= bh)
+		return;
+	back[y * bw + x] = *cell;
+}
+
+/*
+ * A RECTANGLE OF BACKDROP, CLIPPED ONCE AND WRITTEN BY THE ROW.
+ *
+ * Every surface fills its whole pane at the top of every frame. Going cell by
+ * cell through ktui_draw_cell costs a call, an extent update and two
+ * rectangle tests apiece — tens of thousands of them on a console-sized grid,
+ * every one reaching the same answer. The rect meets the clip and the buffer
+ * once here; what is left is one row of struct copies and a memcpy for each
+ * row below it.
+ */
 void ktui_draw_fill(KRect r, int bg)
 {
-	for (int y = r.y; y < r.y + r.h; y++)
-		for (int x = r.x; x < r.x + r.w; x++)
-			ktui_draw_cell(x, y, ' ', KT_TEXT, bg, 0);
+	if (r.w <= 0 || r.h <= 0)
+		return;
+	/* Tracked BEFORE clipping, for the reason ktui_draw_cell gives. */
+	if (r.y + r.h - 1 > extent)
+		extent = r.y + r.h - 1;
+
+	int x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h;
+
+	if (x0 < clipr.x)
+		x0 = clipr.x;
+	if (y0 < clipr.y)
+		y0 = clipr.y;
+	if (x1 > clipr.x + clipr.w)
+		x1 = clipr.x + clipr.w;
+	if (y1 > clipr.y + clipr.h)
+		y1 = clipr.y + clipr.h;
+	if (x0 < 0)
+		x0 = 0;
+	if (y0 < 0)
+		y0 = 0;
+	if (x1 > bw)
+		x1 = bw;
+	if (y1 > bh)
+		y1 = bh;
+	if (x0 >= x1 || y0 >= y1)
+		return;
+
+	/* The literals go too, as they do in ktui_draw_clear: a cell is
+	 * compared WHOLE downstream, so a fill that left `fgc` holding the
+	 * last frame's colour differs from a visually identical cell and is
+	 * re-encoded and re-sent for ever. */
+	const KtuiCell cell = { .ch = ' ', .fg = KT_TEXT, .bg = (uint8_t)bg,
+				.attr = 0, .fgc = 0, .bgc = 0, .ulc = 0 };
+	KtuiCell *row = back + (size_t)y0 * bw + x0;
+	size_t n = (size_t)(x1 - x0);
+
+	for (size_t i = 0; i < n; i++)
+		row[i] = cell;
+	for (int y = y0 + 1; y < y1; y++)
+		memcpy(back + (size_t)y * bw + x0, row, n * sizeof(*back));
 }
 
 int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg, int attr)
@@ -554,30 +728,217 @@ void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl)
 	}
 }
 
-/* A one-cell offset drop shadow. Cheap depth cue that survives eight colours:
- * the shadow is not a tint, it is the backdrop colour re-asserted. */
+
+/*
+ * XOR the reverse attribute over a rectangle of the frame being composed.
+ *
+ * A SELECTION IS NOT A REPAINT. The cells under it belong to whatever drew
+ * them — a terminal's output, a surface, a picture's fallback — and a caller
+ * that filled them with a colour of its own would hide the text a person is
+ * selecting the extent of. Reversing is the one transform that leaves the
+ * content and changes only how it reads.
+ *
+ * It works on `back`, the frame being composed, and must be called after
+ * everything under it is drawn. `ktui_cells()` is the wrong source for this:
+ * it hands out `front`, which is the frame that was last FLUSHED, so a caller
+ * reading it mid-compose reverses the cells of the previous picture.
+ */
+void ktui_draw_reverse(KRect r)
+{
+	for (int y = r.y; y < r.y + r.h; y++) {
+		if (y < 0 || y >= bh)
+			continue;
+		for (int x = r.x; x < r.x + r.w; x++) {
+			if (x < 0 || x >= bw)
+				continue;
+			back[y * bw + x].attr ^= KT_A_REVERSE;
+		}
+	}
+}
+
+/*
+ * ── TRANSLUCENCY ────────────────────────────────────────────────────
+ *
+ * A COMPOSED GRID HAS NOTHING UNDERNEATH IT. One cell is one place, so a
+ * caller that wants to see through a window has to keep what was there before
+ * it drew: ktui_draw_bg_take() copies the rectangle's background colours out,
+ * the caller draws its window, and ktui_draw_blend() mixes the result back
+ * towards them.
+ *
+ * THE LITERAL ONLY, NEVER THE SLOT. The blend is a colour the palette does not
+ * hold, so it is written as the cell's own `bgc` and the slot is left as the
+ * caller drew it: a display that declined the colour run — a --tty view, a
+ * golden, a braille reader — shows an opaque window, which is the honest
+ * answer where there is no colour to mix with.
+ *
+ * BACKGROUNDS AND NOT INK. A translucent glyph is a glyph nobody can read, so
+ * the foreground stays exactly the colour it was drawn in.
+ */
+
+static uint32_t slot_rgb(int slot)
+{
+	KRgb k = ktui_theme->slot[slot & 7];
+
+	return (uint32_t)k.r << 16 | (uint32_t)k.g << 8 | k.b;
+}
+
+/* The two halves of a cell as colours, each its literal where one was named
+ * and its slot otherwise. Neither follows KT_A_REVERSE: this is what was
+ * WRITTEN, and the swap is the painter's. */
+static uint32_t cell_fg_rgb(const KtuiCell *c)
+{
+	return (c->attr & KT_A_FGRGB) ? c->fgc & 0xffffffu : slot_rgb(c->fg);
+}
+
+static uint32_t cell_bg_rgb(const KtuiCell *c)
+{
+	return (c->attr & KT_A_BGRGB) ? c->bgc & 0xffffffu : slot_rgb(c->bg);
+}
+
+/* `a` at `alpha`/255 over `b`, channel by channel. */
+static uint32_t rgb_mix(uint32_t a, uint32_t b, int alpha)
+{
+	uint32_t out = 0;
+
+	if (alpha < 0)
+		alpha = 0;
+	if (alpha > 255)
+		alpha = 255;
+	for (int sh = 0; sh <= 16; sh += 8) {
+		unsigned x = (a >> sh) & 0xffu, y = (b >> sh) & 0xffu;
+
+		out |= ((x * (unsigned)alpha + y * (255u - (unsigned)alpha)) /
+			255u) << sh;
+	}
+	return out;
+}
+
+/*
+ * The colour a composed cell's background is ACTUALLY PAINTED IN, and under
+ * KT_A_REVERSE that is the foreground's: reverse is an exchange of what is
+ * drawn and what is behind it, and the painter swaps the slot and its literal
+ * together. A blend that read `bg` through a reversed cell would make the INK
+ * translucent and leave the background opaque, which is the two defects this
+ * pass exists to avoid, at once.
+ */
+static uint32_t bg_rgb_at(const KtuiCell *c)
+{
+	int rev = (c->attr & KT_A_REVERSE) != 0;
+
+	return rev ? cell_fg_rgb(c) : cell_bg_rgb(c);
+}
+
+void ktui_draw_bg_take(KRect r, uint32_t *out)
+{
+	for (int y = 0; y < r.h; y++) {
+		for (int x = 0; x < r.w; x++) {
+			int cx = r.x + x, cy = r.y + y;
+
+			out[(size_t)y * r.w + x] =
+				cx >= 0 && cy >= 0 && cx < bw && cy < bh
+					? bg_rgb_at(&back[cy * bw + cx])
+					: 0;
+		}
+	}
+}
+
+void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
+{
+	if (alpha >= 255)
+		return;
+	if (alpha < 0)
+		alpha = 0;
+	for (int y = 0; y < r.h; y++) {
+		for (int x = 0; x < r.w; x++) {
+			int cx = r.x + x, cy = r.y + y;
+			KtuiCell *c;
+			uint32_t o, u, mix = 0;
+
+			if (cx < 0 || cy < 0 || cx >= bw || cy >= bh)
+				continue;
+			if (!krect_hit(clipr, cx, cy))
+				continue;
+			c = &back[cy * bw + cx];
+			/*
+			 * A PICTURE IS NOT A BACKGROUND. A sprite cell's
+			 * pixels are somebody else's whole image, and the
+			 * colour behind them is never shown — mixing it
+			 * would cost the work and change nothing.
+			 */
+			if (KTUI_IS_SPRITE(c->ch))
+				continue;
+			o = bg_rgb_at(c);
+			u = under[(size_t)y * r.w + x];
+			mix = rgb_mix(o, u, alpha);
+			if (c->attr & KT_A_REVERSE) {
+				c->fgc = mix;
+				c->attr |= KT_A_FGRGB;
+			} else {
+				c->bgc = mix;
+				c->attr |= KT_A_BGRGB;
+			}
+		}
+	}
+}
+
+/*
+ * A ONE-CELL OFFSET DROP SHADOW, WHICH DARKENS AND DOES NOT ERASE.
+ *
+ * The strip hangs a column right of the rect and a row below it. It is not a
+ * cell of backdrop written over what was there: a shadow that replaced its
+ * cells cut a rectangular bite out of the window underneath — and out of an
+ * embedded application's picture — which reads as a compositing defect rather
+ * than as depth. Every cell keeps its glyph and both halves are mixed towards
+ * KT_BG instead, so what is under the shadow is still legible and still there.
+ *
+ * THE BACKGROUND SLOT GOES TO KT_BG ALONGSIDE THE LITERAL, and that is the
+ * whole of the shadow on a display that declined the colour run — a --tty
+ * view, a dump, a braille reader. A mix is a colour the palette does not hold,
+ * so the slot is the nearest thing to it eight colours can say.
+ *
+ * A REVERSED CELL KEEPS ITS SLOTS. The painter shows such a cell's FOREGROUND
+ * as its background, so writing KT_BG into `bg` would recolour the ink rather
+ * than the ground. The literal covers it on any display that has one.
+ *
+ * A PICTURE IS NOT SHADOWED. A sprite cell is somebody else's pixels edge to
+ * edge and there is no background of ours behind them to darken.
+ *
+ * The extent is put back afterwards: a shadow is decoration hanging one cell
+ * outside the rect, and letting it grow the page's reported height would add
+ * a phantom row to every scroll range measured around a shadowed box.
+ */
+#define KT_SHADOW_KEEP 110	/* how much of the cell survives, of 255 */
+
+static void shade_cell(int x, int y)
+{
+	KtuiCell *c;
+	uint32_t ground;
+
+	if (!krect_hit(clipr, x, y))
+		return;
+	if (x < 0 || y < 0 || x >= bw || y >= bh)
+		return;
+	c = &back[y * bw + x];
+	if (KTUI_IS_SPRITE(c->ch))
+		return;
+
+	ground = slot_rgb(KT_BG);
+	c->fgc = rgb_mix(cell_fg_rgb(c), ground, KT_SHADOW_KEEP);
+	c->bgc = rgb_mix(cell_bg_rgb(c), ground, KT_SHADOW_KEEP);
+	c->attr |= KT_A_FGRGB | KT_A_BGRGB;
+	if (!(c->attr & KT_A_REVERSE))
+		c->bg = KT_BG;
+}
+
 void ktui_draw_shadow(KRect r)
 {
-	for (int y = r.y + 1; y < r.y + r.h + 1 && y < bh; y++) {
-		int x = r.x + r.w;
-		if (x < bw) {
-			KtuiCell *c = &back[y * bw + x];
-			c->ch = ' ';
-			c->bg = KT_BG;
-			c->fg = KT_DIM;
-			c->attr = 0;
-		}
-	}
-	for (int x = r.x + 1; x < r.x + r.w + 1 && x < bw; x++) {
-		int y = r.y + r.h;
-		if (y < bh) {
-			KtuiCell *c = &back[y * bw + x];
-			c->ch = ' ';
-			c->bg = KT_BG;
-			c->fg = KT_DIM;
-			c->attr = 0;
-		}
-	}
+	int keep = extent;
+
+	for (int y = r.y + 1; y < r.y + r.h + 1; y++)
+		shade_cell(r.x + r.w, y);
+	for (int x = r.x + 1; x < r.x + r.w + 1; x++)
+		shade_cell(x, r.y + r.h);
+	extent = keep;
 }
 
 void ktui_draw_cursor(int x, int y)
@@ -599,54 +960,241 @@ void ktui_draw_hide_cursor(void)
 static const int ansi_fg[KT_NCOLOR] = { 30, 31, 92, 33, 90, 32, 30, 37 };
 static const int ansi_bg[KT_NCOLOR] = { 40, 41, 42, 43, 100, 42, 40, 47 };
 
+/*
+ * The nearest 6x6x6 cube level for one channel.
+ *
+ * The cube's levels are {0, 95, 135, 175, 215, 255} — not a linear ramp, so
+ * the nearest level is a comparison against their midpoints, not a division.
+ * Dividing by 255 quantises against {0, 51, 102, 153, 204, 255} instead and
+ * pushes every colour that IS an exact cube colour, which is what the shipped
+ * schemes are built from, a step off itself.
+ */
+static int cube_lvl(int v)
+{
+	return v < 48 ? 0 : v < 115 ? 1 : v < 155 ? 2 : v < 195 ? 3
+	     : v < 235 ? 4 : 5;
+}
+
 static int rgb_to_256(KRgb c)
 {
 	if (c.r == c.g && c.g == c.b) {
 		if (c.r < 8)
 			return 16;
-		if (c.r > 248)
+		/*
+		 * The ramp's top step is index 255 = 238 and the cube's white
+		 * is 231 = 255, so 247 upward is nearer white than any grey
+		 * the ramp carries. The bound also has to be at most 248:
+		 * 232 + (248 - 8) / 10 is 256, which is not a colour, and the
+		 * terminal gets `38;5;256` and draws whatever it makes of it.
+		 */
+		if (c.r >= 247)
 			return 231;
 		return 232 + (c.r - 8) / 10;
 	}
-	int r = c.r * 5 / 255, g = c.g * 5 / 255, b = c.b * 5 / 255;
+	int r = cube_lvl(c.r);
+	int g = cube_lvl(c.g);
+	int b = cube_lvl(c.b);
+
 	return 16 + 36 * r + 6 * g + b;
 }
 
-static void emit_sgr(int fg, int bg, int attr)
+/* A literal as the palette's own type, so both colour paths below take the
+ * same argument whatever it came from. */
+static KRgb rgb_krgb(uint32_t v)
 {
-	char buf[128];
+	KRgb c = { (uint8_t)(v >> 16), (uint8_t)(v >> 8), (uint8_t)v };
+
+	return c;
+}
+
+/*
+ * The SGR for one cell.
+ *
+ * It takes the CELL rather than three numbers because a colour may be a slot
+ * or a literal and the choice is per cell: the slot is what follows
+ * `kdos theme` and the literal is what a program asked for exactly, and every
+ * consumer that was never sent a literal still has the slot to draw.
+ */
+/*
+ * THE SGR FOR A CELL WHOSE COLOURS ARE SLOTS, BUILT ONCE PER COMBINATION.
+ *
+ * Every style change rebuilds the sequence from up to nine snprintf calls, and
+ * a frame of a coloured terminal changes style thousands of times. The slots
+ * and the drawable attributes are a small space — eight by eight by the six
+ * bits below the underline style — and what a combination produces depends
+ * only on them and on the palette. A cell naming a literal colour is not
+ * cached: those are unbounded and change every frame anyway.
+ */
+#define SGR_SLOTS (8 * 8 * 64)
+
+static char sgr_cache[SGR_SLOTS][48];
+static unsigned char sgr_len[SGR_SLOTS];
+static KRgb sgr_slot[KT_NCOLOR];
+static int sgr_caps = -1;
+
+/*
+ * DROP THE CACHED SEQUENCES WHEN THE PALETTE OR THE TERMINAL MOVED UNDER
+ * THEM.
+ *
+ * The test is on the eight COLOURS, not on the address of `ktui_theme`: night
+ * light projects the chosen scheme into a static buffer and rewrites that
+ * buffer in place, so the pointer does not move when the scheme changes while
+ * the toggle is on, and an address is therefore not a version of the palette.
+ *
+ * Called once per frame rather than once per style change. A palette cannot
+ * move while a frame is being written — nothing on this path yields — so
+ * every sequence a frame emits describes the same palette, and the per-cell
+ * hot path pays nothing for the check.
+ */
+static void sgr_check(void)
+{
+	if (sgr_caps == ktui_caps &&
+	    !memcmp(sgr_slot, ktui_theme->slot, sizeof(sgr_slot)))
+		return;
+	memcpy(sgr_slot, ktui_theme->slot, sizeof(sgr_slot));
+	sgr_caps = ktui_caps;
+	memset(sgr_len, 0, sizeof(sgr_len));
+}
+
+static void emit_sgr(const KtuiCell *cell)
+{
+	char buf[192];
+	unsigned attr = cell->attr;
+
+	/*
+	 * A cell naming a literal colour is not cached — those are unbounded —
+	 * and neither is a styled underline, whose style sits above the six
+	 * bits the key is built from and would otherwise share a slot with the
+	 * plain line.
+	 */
+	int cacheable = !(attr & (KT_A_FGRGB | KT_A_BGRGB | KT_A_ULCOLOR |
+				  KT_A_ULSTYLE));
+	unsigned slot = 0;
+
+	if (cacheable) {
+		slot = ((unsigned)(cell->fg & 7) << 9) |
+		       ((unsigned)(cell->bg & 7) << 6) | (attr & 0x3fu);
+		if (sgr_len[slot]) {
+			ktui_term_write(sgr_cache[slot], sgr_len[slot]);
+			return;
+		}
+	}
+	int vt = (ktui_caps & KT_CAP_LINUXVT) != 0;
+	/*
+	 * A STYLED UNDERLINE AND ITS COLOUR GO ONLY WHERE 24-BIT COLOUR DOES.
+	 * `4:3` is a sub-parameter, and a terminal old enough to want indexed
+	 * colour is old enough to drop the colon and read the pair as SGR 43 —
+	 * a green background where a program asked for a wavy line. There is
+	 * no probe for it, so the capability we do have stands in for it.
+	 */
+	int rich = (ktui_caps & KT_CAP_TRUECOLOR) && !vt;
 	int n = 0;
+
 	n += snprintf(buf + n, sizeof(buf) - (size_t)n, "\033[0");
 
 	if (attr & KT_A_REVERSE)
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";7");
-	if (attr & KT_A_UNDERLINE)
-		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";4");
+	/* A Linux VT has no underline attribute: it remaps SGR 4 onto a COLOUR
+	 * the palette does not own, so an underlined row there comes out a
+	 * shade nothing else on the screen uses. The guard is the same one
+	 * bold keeps three lines down, and for the same class of reason. */
+	if ((attr & KT_A_UNDERLINE) && !vt) {
+		unsigned st = KT_UL_STYLE(attr);
+
+		if (rich && st > KT_UL_SINGLE)
+			n += snprintf(buf + n, sizeof(buf) - (size_t)n,
+				      ";4:%u", st);
+		else
+			n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";4");
+	}
 	/* Bold on a VT sets the intensity bit, which a 512-glyph font has
 	 * repurposed as the 9th glyph bit — it changes the FONT PAGE, not the
 	 * weight, and the text turns into line-noise. Never emit it there. */
-	if ((attr & KT_A_BOLD) && !(ktui_caps & KT_CAP_LINUXVT))
+	if ((attr & KT_A_BOLD) && !vt)
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";1");
+	/* Italic, strikethrough and overline carry a terminal's own text
+	 * through this desktop unchanged, and they share bold's guard for
+	 * bold's reason: the VT has no style bits to set, only font pages and
+	 * a colour it would take these for. */
+	if ((attr & KT_A_ITALIC) && !vt)
+		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";3");
+	if ((attr & KT_A_STRIKE) && !vt)
+		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";9");
+	if ((attr & KT_A_OVERLINE) && !vt)
+		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";53");
+	if (rich && (attr & KT_A_ULCOLOR)) {
+		KRgb u = rgb_krgb(cell->ulc);
 
+		n += snprintf(buf + n, sizeof(buf) - (size_t)n,
+			      ";58:2::%u:%u:%u", u.r, u.g, u.b);
+	}
+
+	/*
+	 * EVERY SLOT INDEX IS MASKED TO THREE BITS. `fg` and `bg` are a whole
+	 * byte of the cell and nothing on the way in narrows them:
+	 * ktui_draw_put() copies a caller's cell wholesale and libkcon's wire
+	 * decoder takes the byte straight off the socket, so a program on the
+	 * session bus can name slot 200. The palette and the ANSI tables below
+	 * are eight entries, and the cache key masks as well — an unmasked
+	 * lookup would both read past the array and file the stray colour
+	 * under a real slot's key.
+	 */
 	if (ktui_caps & KT_CAP_TRUECOLOR) {
-		KRgb f = ktui_theme->slot[fg], b = ktui_theme->slot[bg];
+		KRgb f = (attr & KT_A_FGRGB) ? rgb_krgb(cell->fgc)
+					     : ktui_theme->slot[cell->fg & 7];
+		KRgb b = (attr & KT_A_BGRGB) ? rgb_krgb(cell->bgc)
+					     : ktui_theme->slot[cell->bg & 7];
+
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n,
 			      ";38;2;%u;%u;%u;48;2;%u;%u;%u",
 			      f.r, f.g, f.b, b.r, b.g, b.b);
 	} else if (ktui_caps & KT_CAP_256) {
+		KRgb f = (attr & KT_A_FGRGB) ? rgb_krgb(cell->fgc)
+					     : ktui_theme->slot[cell->fg & 7];
+		KRgb b = (attr & KT_A_BGRGB) ? rgb_krgb(cell->bgc)
+					     : ktui_theme->slot[cell->bg & 7];
+
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";38;5;%d;48;5;%d",
-			      rgb_to_256(ktui_theme->slot[fg]),
-			      rgb_to_256(ktui_theme->slot[bg]));
+			      rgb_to_256(f), rgb_to_256(b));
 	} else if (ktui_caps & KT_CAP_LINUXVT) {
+		/* The palette we installed makes slot == ANSI index, so a
+		 * literal has nowhere to go: eight colours are all there are
+		 * and the slot is the honest one of the two. */
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";%d;%d",
-			      30 + fg, 40 + bg);
+			      30 + (cell->fg & 7), 40 + (cell->bg & 7));
 	} else {
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";%d;%d",
-			      ansi_fg[fg], ansi_bg[bg]);
+			      ansi_fg[cell->fg & 7], ansi_bg[cell->bg & 7]);
 	}
 
 	n += snprintf(buf + n, sizeof(buf) - (size_t)n, "m");
+	if (cacheable && n > 0 && (size_t)n < sizeof(sgr_cache[0])) {
+		memcpy(sgr_cache[slot], buf, (size_t)n);
+		sgr_len[slot] = (unsigned char)n;
+	}
 	ktui_term_write(buf, (size_t)n);
+}
+
+/* Whether the terminal's current SGR already says what this cell wants. Every
+ * field, because a literal that changed with the slot unchanged is a colour
+ * change the terminal has not been told about. */
+static int same_style(const KtuiCell *a, const KtuiCell *b)
+{
+	return a->fg == b->fg && a->bg == b->bg && a->attr == b->attr &&
+	       a->fgc == b->fgc && a->bgc == b->bgc && a->ulc == b->ulc;
+}
+
+/*
+ * WHETHER THE TERMINAL IS ALREADY SHOWING THIS CELL, and the literals are part
+ * of the answer. emit_sgr() writes `fgc`/`bgc`/`ulc` wherever the matching
+ * attribute bit is set, so a cell that moved from one 24-bit colour to another
+ * reducing to the same slot keeps every field the slot-only test compares —
+ * and the diff would skip a cell whose colour the terminal has not been told
+ * about.
+ */
+static int cell_same(const KtuiCell *a, const KtuiCell *b)
+{
+	return a->ch == b->ch && same_style(a, b);
 }
 
 /*
@@ -662,9 +1210,32 @@ static void emit_sgr(int fg, int bg, int attr)
 static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		      int full)
 {
-	int cur_fg = -1, cur_bg = -1, cur_attr = -1;
+	KtuiCell style;
+	int have_style = 0;
 	int cx = -1, cy = -1;
 	char utf[8];
+	/*
+	 * SYNCHRONIZED OUTPUT BRACKETS THE WHOLE FRAME, where the terminal
+	 * said it understands the mode. A diff frame is a scatter of cursor
+	 * moves and single cells, so a terminal drawing as the bytes arrive
+	 * shows the new menu before the old one is erased and the row a
+	 * scroll moved twice. Held, the frame is shown whole or not at all.
+	 */
+	int sync = (ktui_caps & KT_CAP_SYNC) != 0;
+	/*
+	 * THE LINUX VT DRAWS EVERY WIDE CODEPOINT IN ONE COLUMN — its font is
+	 * 512 glyphs and none of them is a CJK ideograph — so a pair emitted
+	 * there advances the arithmetic below by two while the kernel's cursor
+	 * moves one, and every later cell on the row lands a column left with
+	 * the diff believing it delivered them. ktui_draw_text substitutes '?'
+	 * for the same reason; a cell that reached the frame from anywhere
+	 * else is narrowed here instead.
+	 */
+	int vt = (ktui_caps & KT_CAP_LINUXVT) != 0;
+
+	sgr_check();
+	if (sync)
+		ktui_term_write("\033[?2026h", 8);
 
 	for (int y = 0; y < h; y++) {
 		/* The cell before this one was re-emitted narrow over what had
@@ -684,18 +1255,13 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			 * they diff and update as a pair — half of one
 			 * re-emitted alone would leave cx off by one and every
 			 * later cell on the row skipping its reposition. */
-			int wide = b->ch >= 0x80 && x + 1 < w &&
+			int wide = !vt && b->ch >= 0x80 && x + 1 < w &&
 				   cur[i + 1].ch == KTUI_WIDE_CONT &&
 				   ktui_wcwidth(b->ch) == 2;
-			if (!full && !force && b->ch == f->ch &&
-			    b->fg == f->fg && b->bg == f->bg &&
-			    b->attr == f->attr) {
+			if (!full && !force && cell_same(b, f)) {
 				if (!wide)
 					continue;
-				const KtuiCell *b2 = &cur[i + 1];
-				const KtuiCell *f2 = &prev[i + 1];
-				if (b2->ch == f2->ch && b2->fg == f2->fg &&
-				    b2->bg == f2->bg && b2->attr == f2->attr) {
+				if (cell_same(&cur[i + 1], &prev[i + 1])) {
 					x++;
 					continue;
 				}
@@ -706,12 +1272,10 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 				cx = x;
 				cy = y;
 			}
-			if (b->fg != cur_fg || b->bg != cur_bg ||
-			    b->attr != cur_attr) {
-				emit_sgr(b->fg, b->bg, b->attr);
-				cur_fg = b->fg;
-				cur_bg = b->bg;
-				cur_attr = b->attr;
+			if (!have_style || !same_style(b, &style)) {
+				emit_sgr(b);
+				style = *b;
+				have_style = 1;
 			}
 			/* An orphaned continuation cell — its wide glyph was
 			 * overwritten by a narrow one — must not put a control
@@ -719,6 +1283,8 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			uint32_t ch = b->ch == KTUI_WIDE_CONT ? ' '
 							      : (b->ch ? b->ch : ' ');
 			ch = ktui_sprite_text_cell(ch);
+			if (vt && ktui_wcwidth(ch) == 2)
+				ch = '?';
 			int n = ktui_utf8_encode(ch, utf);
 			ktui_term_write(utf, (size_t)n);
 			*f = *b;
@@ -735,13 +1301,30 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	}
 
 	ktui_term_write("\033[0m", 4);
+	if (sync)
+		ktui_term_write("\033[?2026l", 8);
 	ktui_term_flush();
 
 	/* The diff above has already recorded this frame as what the screen
 	 * shows. If the flush dropped part of it, that belief is wrong for
 	 * every cell after the cut, and only a full paint can restore it. */
-	if (ktui_term_flush_dropped())
+	if (ktui_term_flush_dropped()) {
 		force_full = 1;
+		/*
+		 * The close went with everything else after the cut, and a
+		 * terminal left inside a block shows NOTHING further — the
+		 * next frame would be invisible too. So it is written again,
+		 * under the same deadline the frame had: a terminal still
+		 * refusing eight bytes is one nothing can be written to at
+		 * all, and the next frame's own close is what reaches it when
+		 * it starts reading again.
+		 */
+		if (sync) {
+			ktui_term_write("\033[?2026l", 8);
+			ktui_term_flush();
+			(void)ktui_term_flush_dropped();
+		}
+	}
 }
 
 static void tty_size(int *w, int *h)
@@ -778,6 +1361,11 @@ const KtuiBackend *ktui_backend(void)
 	return cur_backend();
 }
 
+int ktui_offscreen(void)
+{
+	return offscreen;
+}
+
 void ktui_draw_flush(void)
 {
 	/* Offscreen there is nothing to present to, and stdout is where the
@@ -792,9 +1380,162 @@ void ktui_draw_flush(void)
 	 * describe, and ktui_draw_dump() reads `back` directly. */
 	if (offscreen)
 		return;
-	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh)
-		back[ptr_y * bw + ptr_x].attr ^= KT_A_REVERSE;
+	/*
+	 * EVERY CALL PRESENTS. There is no "nothing changed" shortcut here and
+	 * there cannot be one that only watches the cells: a re-registered
+	 * animation frame keeps the same sprite key, so its cells are
+	 * byte-identical and only its pixels moved, and a gate on the cells
+	 * would drop that frame for ever. What a still picture costs is the
+	 * backend's own diff, which is where it can be measured and skipped.
+	 */
+	/*
+	 * THE POINTER IS AN OVERLAY, NOT CONTENT, so it goes on for the flush
+	 * and comes straight back off. `back` is what the session's cells are
+	 * accumulated into and it survives between frames — leaving the
+	 * reverse in it would make the pointer a stain the next frame draws
+	 * around, one per cell it was ever over.
+	 *
+	 * Taking it off again is also what erases it: `front` keeps the
+	 * reversed cell, `back` does not, so the cell differs and repaints
+	 * when the pointer leaves. The same XOR does both jobs.
+	 */
+	/*
+	 * A BACKEND THAT OWNS PIXELS DRAWS AN ARROW INSTEAD, and says so by
+	 * answering 1 to `.pointer`. The cell is then left exactly as the
+	 * session composed it, because the two pointers would otherwise be
+	 * drawn a pixel apart on the same screen.
+	 *
+	 * IT CANNOT BE DRAWN HERE. This file links nothing but musl and has to
+	 * keep doing so — kinstall links it in phase 1, before any library
+	 * exists to link against — so an arrow, which needs a pixel buffer and
+	 * a colour in it, lives in the backend that already owns both.
+	 *
+	 * THE HOOK IS CALLED ON EVERY FLUSH, including the ones with no
+	 * pointer to report: it is the only thing that tells a backend to take
+	 * the last arrow off the screen, and a backend told nothing would
+	 * leave one behind at the last place the hand was.
+	 *
+	 * A BACKEND WITHOUT THE HOOK, OR ONE THAT DECLINES, GETS THE REVERSED
+	 * CELL UNCHANGED. That is not a fallback anything may drop: `a11y =
+	 * yes` runs this desktop on a --tty view so brltty can read /dev/vcsa,
+	 * a dump has no pixels at all, and a view forwarded over ssh is a
+	 * terminal on the far end of it. The reversed cell is the pointer on
+	 * every one of them.
+	 */
+	/*
+	 * AND OVER AN EMBEDDED GUEST NOTHING IS DRAWN AT ALL — ONE POINTER AT
+	 * A TIME.
+	 *
+	 * A guest's window is a pixel surface somebody else is compositing, and
+	 * that compositor renders the cursor into the frames this desktop
+	 * pastes in. A reversed cell on top of that is a SECOND pointer a cell
+	 * from the first, and the one a person aims a two-pixel scrollbar with
+	 * is the guest's.
+	 *
+	 * THE CELL SAYS SO ITSELF. `KT_A_GUEST` is set by the session on a
+	 * guest's content cells and on nothing else, so this is a fact rather
+	 * than a guess about what the pixels are doing. A guess made from the
+	 * sprite table — counting how often a slot is re-registered — reads a
+	 * guest that is merely still as one that is not there: a hand resting
+	 * on a window generates no damage, no frame is published, no slot is
+	 * re-registered, and the pointer comes back on top of a cursor that is
+	 * still on the screen. That is exactly the moment a person clicks.
+	 *
+	 * A DESKTOP ICON, A PANEL ICON AND AN IMAGE IN A TERMINAL ARE NOT
+	 * GUESTS. They are sprites with pixels exactly as a guest's block is,
+	 * and nothing is drawing a cursor on them, so they carry no bit and
+	 * keep their pointer — which is where it is needed most, on the icon
+	 * grid.
+	 *
+	 * A SPRITE WITH NO PIXELS IS NOT A PICTURE AT ALL. A tty, a view with
+	 * no pixel library and a dump all carry the sprite's fallback MARK;
+	 * `ktui_sprite_get` answers NULL for a slot with no picture, and the
+	 * mark is then set aside for the reverse exactly as a glyph is — the
+	 * flush swaps the cell's character for a blank alongside the XOR and
+	 * puts it back afterwards, because reverse under a sprite is a fill the
+	 * painter composites over and an opaque one hides it completely. It
+	 * costs one cell of the picture, which is what a pointer costs over a
+	 * glyph too.
+	 *
+	 * The chrome round an embedded window is drawn in CELLS and carries no
+	 * bit, so the pointer comes back the moment it reaches the border —
+	 * which is where a window is grabbed, moved and resized. It is never
+	 * more than one cell from visible, and that is also the answer for a
+	 * guest that has hidden its own cursor, which a player and a game do on
+	 * purpose.
+	 */
+	int pt = -1;
+	uint32_t ptch = 0;
+	int px = -1, py = -1;
 
-	cur_backend()->flush(back, front, bw, bh, force_full);
+	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh) {
+		const KtuiCell *c = &back[ptr_y * bw + ptr_x];
+		int slot = KTUI_IS_SPRITE(c->ch)
+				   ? (int)KTUI_SPRITE_SLOT(c->ch)
+				   : -1;
+
+		/*
+		 * AND THE MARK ONLY COUNTS WHERE THE PICTURE IS. The bit says
+		 * the session drew this cell from a guest's pixels; it does
+		 * NOT say this view has them. A `--tty` view, a view with no
+		 * pixel library, a dump and a view over `ssh` all draw the
+		 * sprite's fallback MARK instead, and there is no composited
+		 * cursor on a mark to collide with — so suppressing the
+		 * pointer there would leave that view with no pointer at all
+		 * over the one window a person most needs to aim at. That view
+		 * is the accessible one: `a11y = yes` runs this desktop on a
+		 * `--tty` view precisely so a braille display can read
+		 * /dev/vcsa.
+		 *
+		 * ktui_sprite_get() answers NULL for a slot this view has no
+		 * picture for, which is the same question and the only one
+		 * that can be asked from here.
+		 */
+		if (!(c->attr & KT_A_GUEST) || slot < 0 ||
+		    !ktui_sprite_get(slot)) {
+			px = ptr_x;
+			py = ptr_y;
+		}
+	}
+
+	/* The guest rule is applied BEFORE the hook, so a backend with pixels
+	 * and a backend without are told the same thing about the same cell
+	 * and neither gets to decide it for itself. */
+	if (!(cur_backend()->pointer && cur_backend()->pointer(px, py)) &&
+	    px >= 0) {
+		pt = py * bw + px;
+		back[pt].attr ^= KT_A_REVERSE;
+		if (KTUI_IS_SPRITE(back[pt].ch)) {
+			ptch = back[pt].ch;
+			back[pt].ch = ' ';
+		}
+	}
+
+	/*
+	 * THE FLAG IS TAKEN AND CLEARED BEFORE THE BACKEND RUNS, so that a
+	 * backend which asks for a full repaint WHILE it is flushing gets one
+	 * on the next frame. Clearing afterwards discards it: the tty backend's
+	 * own recovery from a dropped write, and any wrapper that finds its
+	 * output cut in half, both set this from inside this call.
+	 */
+	int full = force_full;
+
 	force_full = 0;
+	cur_backend()->flush(back, front, bw, bh, full);
+	/*
+	 * A BACKEND THAT DECLINED TO PRESENT STILL OWES THE REPAINT. One that
+	 * skipped the frame — a display too far behind, a compositor holding
+	 * both buffers — left `front` describing a frame the screen never
+	 * showed, and the repaint this flush was carrying would be forgotten
+	 * with the flag. Asking again is what keeps the two in step.
+	 */
+	if (full && !force_full && cur_backend()->presented &&
+	    !cur_backend()->presented())
+		force_full = 1;
+
+	if (pt >= 0) {
+		back[pt].attr ^= KT_A_REVERSE;
+		if (ptch)
+			back[pt].ch = ptch;
+	}
 }

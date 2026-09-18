@@ -34,14 +34,58 @@ with no patch application step between the two.
 applied by hand. That is accepted deliberately: the alternative was maintaining a compositor
 outright.
 
+## A second fork for the kiosk, not a mode of the first
+
+**The question.** The console desktop composites character cells, and a Wayland client's surface is
+pixels. A graphical application launched there needs *something* holding a display for it — an
+output in memory it renders into, or a VT of its own. `kdos-comp` is already a compositor this
+project owns — give it a kiosk mode, or take a second one?
+
+**Chosen: a hard fork of cage 0.3.1**, MIT, in `src/desktop/kdos-cage`, built on `wlroots-0.20` —
+the branch this tree already pins for the labwc fork, so there is one wlroots to keep current and
+not two.
+
+**Rejected: a `--kiosk` flag on `kdos-comp`.** The compositor is a *desktop*: window management,
+workspaces, tiling, the panel's foreign-toplevel feed, the phosphor pass, per-box identity, the
+session lock. A kiosk is the negation of nearly all of it, and a flag that turns most of a program
+off is a second program sharing a binary — with every code path in it now answering "and what does
+this do in kiosk mode?". The parts a guest on a VT actually needs are the parts cage already is.
+
+**Rejected: writing one.** It is the same argument the labwc fork made and it holds harder here,
+because the job is smaller: a kiosk compositor is roughly three thousand lines of somebody else's
+tested XWayland integration, output layout, seat handling and idle inhibition.
+
+**And the compositing happens in a SEPARATE PROCESS, which is what makes the whole thing safe to
+have.** One `kdos-cage --embed` per embedded APPLICATION renders each toplevel that application maps
+into a mapping of its own, and the session puts the bytes in its cells. So `kdos-con` links no
+wlroots, no mesa and no pixel library at all: a machine whose GPU driver is broken still boots into
+its desktop, and a graphical toolkit that crashes takes that application's windows with it rather
+than the session. A compositor built into the session would have traded exactly that away for one
+fewer process.
+
+**What the fork changed.** The name, in what a person sees. `security-context-v1`, so
+`kdos-boxsock` can tag a box's socket exactly as it does under the compositor — one launch path for
+a boxed application rather than two. And a background in the palette's deep colour, because a guest
+that has not painted yet is otherwise a black rectangle in the middle of a phosphor screen.
+
+**Upstream's internal names are left alone**, which is the one place this fork differs in style
+from the labwc one: `cg_server` and `CAGE_HAS_XWAYLAND` still say cage. A fork whose identifiers
+stop matching upstream's is a fork nobody can read a security fix against, and this one is small
+enough that reading upstream's diffs by hand is the maintenance plan.
+
+**What it costs.** A second wlroots consumer to move whenever wlroots breaks API, which it does
+every release. The self-test compiles all seven files wherever wlroots exists, so that breakage is
+a failed check rather than a four-hour build that ends in an error.
+
 ## One pack per application, not one image
 
 **The question.** Roughly 180 graphical applications have to reach the medium. Ship them as one
 container image, or as separate artefacts?
 
-**Chosen: one signed image per application, over a small set of shared runtimes.** An install
-carries only what was ticked. Installing an application disturbs nothing else, and a shared
-runtime's pages are shared because the pack is mounted once.
+**Chosen: one artefact per application, over a small set of shared runtimes** — an image per row
+when the store builds it, a signed pack per row when a set is exported. Installing an application
+disturbs nothing else, and a shared runtime's layers are stored once however many applications
+name it.
 
 **Rejected: a single container image.** It puts every application on every install whether or not
 it is ever launched, and it makes adding one application a rebuild of the whole thing.
@@ -104,32 +148,64 @@ Note what this does *not* reject: the KDE **applications** — Dolphin, Kate, Ok
 Digikam and the rest — are in the catalogue, because they are the best in their segments and none
 of them needs Plasma running. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
-## No application store
+## A store that builds, and a medium that carries nothing
 
-**The question.** Users need to find and install applications.
+**The question.** Roughly 180 graphical applications have to be reachable. Bake them onto the
+medium, or describe them and build them on demand?
 
-**Chosen: the Start menu lists what the medium already carries.** Every category shows the
-application packs the medium would put there under an `ON THE MEDIUM` rule, search matches them
-by name and summary, and a row is *open this* — the pack is installed if it is not, and the
-application opens. The click that installs is the click that opens.
+**Chosen: the medium carries a catalogue, and podman builds what somebody asks for.** A row is a
+parent chain of apt packages; installing it builds an image per row, each `FROM` the one below, and
+creates a box over the top one. The ISO stops carrying 23 GB of packs it may never be asked for,
+adding an application is one line rather than a bake, and the shared runtime layers are stored once.
+`kdos-store` and kinstall both offer it by **group**, so a selection is one tick rather than twelve.
 
-**Rejected: a store front end.** On a distribution whose medium *is* the software library, "where
-do I get this" is not a question anyone has. What remains is disposal, and that belongs where the
-readings already are.
+**Rejected: baking the pack set.** Every application on every medium whether or not it is ever
+launched, an hour of bake to add one row, and a release channel to push 23 GB through.
 
-## Release assets, not Git LFS
+**Three costs, and they are not small.**
 
-**The question.** The tarballs, the vendored bundles and the pack set are tens of gigabytes.
-Where do they live?
+1. **A store install is unsigned.** It fetches content from somebody else's registry, which
+   nothing in `/etc/kdos/keys` vouches for — `kdos-box create` prints exactly that about an OCI
+   base, and it is true of every application built this way. *Everything here is verified and
+   nothing leaves the machine* holds for an imported set and for nothing else.
+2. **Installing needs a network, and minutes of apt.**
+3. **A live session can install nothing.** `$HOME` is on overlayfs there, so a box's overlay upper
+   has nowhere to go and `kdos-box create` refuses. Import is the only route to software on a live
+   stick.
 
-**Chosen: GitHub release assets, with git holding only what identifies them.** Each artefact
-class already carries its own content-addressed index — `sha256 =` in a recipe, a content hash
-per pack in the signed `PACKAGES` — and no second manifest was added, because a second copy of a
-hash is a second thing to drift. `make bootstrap` fetches them.
+**Which is why import exists and why the pack format stays.** `kdos-appbox export` writes the
+built images as signed packs with an index; `import` stages them through `kdos-packd`, which hashes
+and signature-checks each one where it mounts it. An imported application is *more* verified than a
+store-installed one, needs no network, and is what kinstall reads off a stick when there is no
+network during an install. The pack format is how a *set is carried*, not how software is
+distributed.
 
-**Rejected: Git LFS.** A free account provides 10 GiB of storage and 10 GiB of monthly bandwidth,
-shared across every repository the account owns. The tarballs alone exceed that, and the pack set
-is 24 GB. Release assets have a per-file limit and no total-size or bandwidth limit.
+## The tarballs are in the tree, through Git LFS
+
+**The question.** The upstream tarballs are 7.1 GB across 962 files, seven of them over the
+100 MB a github.com push refuses. Where do they live?
+
+**Chosen: Git LFS, in the tree.** A clone is then the whole input to a build: `git clone` and
+`make build`, with no fetch step in between and nothing that can be missing. The `sha256 =` in
+each recipe is what verifies an archive, and a hash with nothing to hash is a promise nobody can
+check — so the thing git holds and the thing it identifies are in the same place.
+
+**What it costs, and it is not small.** A free account provides 10 GiB of storage and 10 GiB of
+monthly bandwidth, shared across every repository the account owns. 7.1 GB of that leaves under
+3 GiB of margin and a month's bandwidth is a handful of clones. Exceeding the allowance does not
+slow a clone down — it blocks LFS reads outright, taking the vendored art and the test fixtures
+with it, so a fresh clone cannot check out at all. **A paid data pack is what keeps this
+working.** `git lfs install` must also precede the clone, or the working tree holds pointer files
+and the first port to unpack one fails on a corrupt archive rather than on anything that names
+the cause.
+
+**Rejected: release assets.** Two GiB per file, no total-size or bandwidth limit, and no quota to
+buy — but a clone is then not enough to build, and the step that closes the gap is one more thing
+to have run. The reproducibility argument won: what identifies an archive and the archive itself
+belong together.
+
+**Rejected: plain git blobs.** Seven files are over the 100 MB github.com refuses on a push, so
+this does not work at all on the stated remote.
 
 **Two properties that make this survivable.** The hash is the identity and the URL is advisory,
 so a mirror can be added in ten years without invalidating a commit — a commit names contents
@@ -221,6 +297,81 @@ fixed in place, including a heap corruption that only appears on 64-bit.
 
 **Rejected: a demo of our own.** One was written and then removed at the maintainer's request.
 It is not coming back, and a stale reference to one is a leftover rather than a plan.
+
+## Forking libtsm rather than writing a terminal
+
+`libkvt` is a hard fork of libtsm 4.7.1, kmscon's VT100–VT520 state machine, rebranded `tsm_` →
+`kvt_`. A terminal emulator is a decade of edge cases — charsets, the alternate screen, DEC private
+modes, wrapping rules that differ between terminals that both claim VT100 — and none of that is a
+place to be original. What is original here is the boundary, not the parser.
+
+**Upstream's cell stays.** `kcell.h` refuses a second cell type, and that refusal is about two
+libraries of the *toolkit* disagreeing — not about a terminal's private screen buffer, which nothing
+outside the library ever sees. Upstream's cell earns its place: it carries 24-bit colour, a per-cell
+age that drives damage tracking, and a symbol-table handle that is what makes combining characters
+possible at all. Reducing it to `KtuiCell` at the boundary loses none of that until the moment the
+screen is drawn.
+
+**The conversion happens in one file.** `kvt_grid.c` is the render boundary and is where a terminal
+cell becomes a `KtuiCell`. Three other files touch the toolkit and each for one narrow reason:
+`kvt_term.c` maps `KT_K_*` key codes into the escape bytes a child expects, `kvt_unicode.c` asks
+`ktui_wcwidth` so the library and the grid agree how wide a codepoint is, and `kvt_selection.c`
+holds `kvt_ui_mouse` — what a drag over a terminal means — because both desktops need that decision
+and two copies would drift.
+
+**`kvt_htable.c` and `kvt_grid.c` are the two files carrying no upstream copyright.** Every other
+file in the library carries libtsm's; the grid is this tree's render boundary, and the hash table
+was written here rather than carried.
+
+**Colour reduces to the palette's eight slots by nearest distance** — one rule for the ANSI sixteen,
+the 256 and truecolour alike. A table saying "red means the error slot" would be a second set of
+colour decisions sitting beside the palette, and `kdos theme` would move one of them. The two
+*default* colours are the exception and are slots outright: a terminal's default foreground is a
+light grey and its background black, and reducing both by distance against eight phosphor greens
+lands them on the same slot — which draws every character in the colour of the screen behind it.
+
+## Twin as prior art, not as a dependency
+
+Twin — the text-mode window manager that has drawn overlapping windows in a terminal since the
+nineties — was read closely and forked from not at all. It was mined for four questions this design
+had to answer, and answering them is what the two-socket split is:
+
+- **What happens when the last display detaches?** The session keeps every window and goes on
+  running. That is why the session holds all state and the display holds none.
+- **How does a display of a different size attach?** It says what grid it can show, and the session
+  composites to that. A view imposes a size or takes the session's own.
+- **How does input from several displays reach one session?** Through the same queue, because a view
+  decides nothing — it forwards keys and pointers and is not consulted about them.
+- **What does the wire carry when a client is remote?** Cells and input, and nothing else. No
+  window state crosses, which is what makes a forwarded display trustworthy with nothing.
+
+**Forking it was refused** for the reason the compositor is not forked either: Twin is its own window
+model, its own widget set and its own protocol, and taking it would mean two window models in one
+tree. `libkwm` exists so that a window lands in the same place on both desktops, and a second model
+would make that false by construction.
+
+## One file chooser at one width, not a wider one for the portal
+
+The chooser a boxed application reaches through the FileChooser portal and the chooser this
+desktop's own programs open are **one program at one size** — 64 columns by 22 rows — and the
+portal does not get a wider one to hold a sidebar column.
+
+**The width is not a free parameter.** The smallest screen this desktop is drawn for is 80 columns
+by 24 rows, which is what the console's reference frames are cut at. A 64-column dialog leaves eight
+cells of ground either side of it and one row of taskbar under it. A sidebar wide enough to read a
+place name is about sixteen more, and a chooser that needed 80 columns would be a chooser with no
+frame, no ground and nowhere for the bar — on the one screen every machine has.
+
+**And the third column is what it would cost.** The chooser already spends its right-hand column on
+a preview pane, so a sidebar takes its width from the names: about thirty cells for a filename, in
+the window whose entire purpose is showing filenames.
+
+**So the places are a rung and not a column.** `Ctrl+P` opens them over the file list as a declared
+`Esc` rung, reaching the same list `kxdg_places()` gives the Start menu — every place, at full
+width, and nothing taken from the names while it is closed. A boxed application's Open and Save get
+exactly what a native one gets, which is the other half of the decision: two dialogs of two widths
+would be two layouts to keep, two sets of reference frames, and two answers to how wide a chooser
+is.
 
 ## See also
 

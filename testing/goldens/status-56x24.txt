@@ -1,0 +1,24 @@
++======================================================+
+| Status                                               |
+| 3 hidden - 1 wants attention                         |
+|------------------------------------------------------|
+| Stutter        14 frames dropped in the last 10 seco |
+| Clipboard      12 entries kept                       |
+| fcitx5         its menu is dbusmenu - this tray cann |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+| Enter open  Esc Close  [ Open ] [ Panel ] [ Close ]  |
++======================================================+

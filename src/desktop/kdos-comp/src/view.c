@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "view.h"
+#include "kwm.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
@@ -482,38 +483,21 @@ view_get_edge_snap_box(struct view *view, struct output *output,
 		enum lab_edge edge)
 {
 	struct wlr_box usable = output_usable_area_in_layout_coords(output);
-	int x1 = rc.gap;
-	int y1 = rc.gap;
-	int x2 = usable.width - rc.gap;
-	int y2 = usable.height - rc.gap;
-
-	if (edge & LAB_EDGE_RIGHT) {
-		x1 = (usable.width + rc.gap) / 2;
-	}
-	if (edge & LAB_EDGE_LEFT) {
-		x2 = (usable.width - rc.gap) / 2;
-	}
-	if (edge & LAB_EDGE_BOTTOM) {
-		y1 = (usable.height + rc.gap) / 2;
-	}
-	if (edge & LAB_EDGE_TOP) {
-		y2 = (usable.height - rc.gap) / 2;
-	}
-
-	struct wlr_box dst = {
-		.x = x1 + usable.x,
-		.y = y1 + usable.y,
-		.width = x2 - x1,
-		.height = y2 - y1,
-	};
+	KwmRect u = { usable.x, usable.y, usable.width, usable.height };
+	KwmBorder m = { 0, 0, 0, 0 };
 
 	if (view) {
 		struct border margin = ssd_get_margin(view->ssd);
-		dst.x += margin.left;
-		dst.y += margin.top;
-		dst.width -= margin.left + margin.right;
-		dst.height -= margin.top + margin.bottom;
+
+		m.top = margin.top;
+		m.right = margin.right;
+		m.bottom = margin.bottom;
+		m.left = margin.left;
 	}
+
+	/* libkwm's enum takes the same bit values as lab_edge, deliberately. */
+	KwmRect r = kwm_tile_geom(u, rc.gap, m, (unsigned)edge);
+	struct wlr_box dst = { .x = r.x, .y = r.y, .width = r.w, .height = r.h };
 
 	return dst;
 }
@@ -2120,46 +2104,25 @@ view_snap_to_edge(struct view *view, enum lab_edge edge,
 	bool store_natural_geometry = !in_interactive_move(view);
 	view_set_shade(view, false);
 
-	if (lab_edge_is_cardinal(edge) && view->maximized == VIEW_AXIS_NONE
-			&& view->tiled != LAB_EDGE_CENTER) {
-		enum lab_edge invert_edge = lab_edge_invert(edge);
-		/* Represents axis of snapping direction */
-		enum lab_edge parallel_mask = edge | invert_edge;
-		/*
-		 * The vector view->tiled is split to components
-		 * parallel/orthogonal to snapping direction. For example,
-		 * view->tiled=TOP_LEFT is split to parallel_tiled=TOP and
-		 * orthogonal_tiled=LEFT when edge=TOP or edge=BOTTOM.
-		 */
-		enum lab_edge parallel_tiled = view->tiled & parallel_mask;
-		enum lab_edge orthogonal_tiled = view->tiled & ~parallel_mask;
+	/*
+	 * The transition is libkwm's. The maximised check stays here because it
+	 * is view state that library cannot see, and so does the adjacent
+	 * output, because it has no idea what a screen is.
+	 */
+	if (view->maximized == VIEW_AXIS_NONE) {
+		int move_output = 0;
+		enum lab_edge next = (enum lab_edge)kwm_tile_next(
+			(unsigned)view->tiled, (unsigned)edge,
+			combine, across_outputs, &move_output);
 
-		if (across_outputs && view->tiled == edge) {
-			/*
-			 * E.g. when window is tiled to up and being snapped
-			 * to up again, move it to the output above and tile
-			 * it to down.
-			 */
+		if (move_output) {
 			output = output_get_adjacent(view->output, edge,
 				/* wrap */ false);
 			if (!output_is_usable(output)) {
 				return;
 			}
-			edge = invert_edge;
-		} else if (combine && parallel_tiled == invert_edge
-				&& orthogonal_tiled != LAB_EDGE_NONE) {
-			/*
-			 * E.g. when window is tiled to downleft/downright and
-			 * being snapped to up, tile it to left/right.
-			 */
-			edge = view->tiled & ~parallel_mask;
-		} else if (combine && parallel_tiled == LAB_EDGE_NONE) {
-			/*
-			 * E.g. when window is tiled to left/right and being
-			 * snapped to up, tile it to upleft/upright.
-			 */
-			edge = view->tiled | edge;
 		}
+		edge = next;
 	}
 
 	if (view->maximized != VIEW_AXIS_NONE) {

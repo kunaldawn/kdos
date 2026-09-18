@@ -11,6 +11,7 @@
 | Network          |300     root      0.0    6.0M     -                       sshd                                                 |
 | Batteries        |800     kdos      0.0    8.0M     450M                    backup                                               |
 | Energy           |                                                                                                               |
+| Sensors          |                                                                                                               |
 | Boxes            |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
@@ -37,7 +38,6 @@
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
-|                  |                                                                                                               |
-|                  |                                                                                                               |
 |                  |2 hidden kernel threads  .  sort: cpu                                                                          |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                                                                                |
 +==================================================================================================================================+

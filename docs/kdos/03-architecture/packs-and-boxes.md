@@ -1,10 +1,22 @@
 # Packs and boxes
 
-The packaging system for applications: what a pack is, how one is built and verified, how it is
-mounted and composed into a container, and how the applications in it reach the desktop. This is
-a separate system from [host packaging](packaging.md) because it answers a different question —
-not "what is installed on this machine" but "what software is on this medium and how do I run a
-piece of it without installing anything".
+The packaging system for applications: how one is built from the catalogue, what a pack is, how a
+pack is verified and mounted, and how either kind of box reaches the desktop. This is a separate
+system from [host packaging](packaging.md) because it answers a different question — not "what is
+installed on this machine" but "what software can this machine run, and how do I get a piece of it
+without installing anything into the system".
+
+**Two lanes reach the same box.** The store builds a stack of container images from the catalogue
+and creates a box `FROM` the top one; an imported set installs signed packs and composes a box out
+of an overlay of them. The lanes differ in where the bytes came from and what vouches for them —
+everything from the container root upward is identical.
+
+| | Store | Import |
+|---|---|---|
+| Source | Debian archive, over the network | A `.ktar` somebody handed you |
+| Verified by | Nothing — unsigned registry content | Payload hash and signature, at the mount |
+| Costs | Minutes of apt | A copy |
+| Box base | `image:kdos/<id>` | `pack:<id>` |
 
 ## A pack is an image with parts appended
 
@@ -17,7 +29,7 @@ piece of it without installing anything".
 |  icon.png                  |  the application's own mark, untinted
 +----------------------------+
 |  signature block           |  signature lines, or empty
-+----------------------------+  sig_off + sig_len
++----------------------------+  sig_off + sig_len = start of the footer
 |  footer (512 bytes)        |  magic, offsets, payload hash
 +----------------------------+  end of file
 ```
@@ -33,13 +45,41 @@ to know nothing about the format.
 ### Three rules the format keeps
 
 - **A pack that does not parse whole is absent, never partial.** A short footer, a wrong magic
-  number, a version from the future, an offset past the end of the file — each answers "there is
-  no pack here" rather than handing back half a description.
+  number, a version from the future, an offset past the end of the file, a section that starts
+  before the one ahead of it ends — each answers "there is no pack here" rather than handing back
+  half a description. Three of the spans are bounded by what the section can honestly be as well
+  as by the file: **metadata 1 MiB, icon 4 MiB, signature block 64 KiB**. All three are read whole
+  into memory by a root daemon before anything about the pack is authenticated, so "it fits in the
+  file" would be an attacker's budget rather than a bound. **The signature block ends exactly
+  where the footer begins.** Slack there is what makes a later `kdos-pack sign` silently do
+  nothing: it appends its line at `sig_off + sig_len` and writes a new footer straight after,
+  landing in the middle of the file while the old footer at the end — still naming the old
+  `sig_len` — is the one a reader seeks to.
 - **The payload hash is checked before the signature means anything.** The signature is over a
   small subject containing the pack's id and its hash, so verification never holds a
   several-hundred-megabyte file in memory — and that binds the signature to the bytes *only*
   because the bytes were hashed first. The two are separate outcomes, because a caller told "bad
   signature" when the truth is "bad hash" goes looking for a key problem that does not exist.
+- **From format 2 the hash covers the footer too**, with `payload_sha256` and `sig_len` zeroed. The
+  footer is what says where the filesystem, the metadata and the icon are; over a hash that stops
+  at `sig_off` — which is all a format 1 pack's digest is — those offsets can be re-pointed
+  (`meta_off` into the payload, say) and the signature still verifies, because it is over bytes
+  nobody moved. A format 1 pack therefore leans on the medium's signed index, whose `C:` hash is
+  over the whole file, to cover its footer. The two zeroed fields are the two written after the
+  hash is taken: the digest itself, and the length that grows each time a further key signs an
+  already-signed pack.
+- **The format number is what says which span the digest covers**, and it is read from the pack, not
+  assumed from the build: format 1 is `[0, sig_off)`, format 2 that plus the footer. Every format
+  from `KPK_FORMAT_MIN` up is verified the way it declares, which is what lets a pack published
+  under an older rule still mount; `KPK_FORMAT` is only what a pack written *here* declares.
+  Widening the span without moving the number is the failure this prevents — every pack already
+  baked answers `HASH`, `kdos-packd` mounts nothing, no box composes, and every application in it
+  stops opening, indistinguishably from corruption. **`kdos-pack restamp <pack>` is the repair and
+  the upgrade**: it raises the footer to `KPK_FORMAT`, takes the digest under that format's span,
+  and drops the signature block with it — the block names the digest it replaced — so the pack is
+  signed and the directory indexed again afterwards. It leaves a pack already at this format with
+  an agreeing digest, and its signature, untouched. The bake re-stamps every pack it *keeps* for
+  this reason; a rebuild alone does not, because an unchanged pack is kept byte for byte.
 - **Nothing in the library mounts, executes or writes outside the file it was given.** A root
   daemon links it, so every line is code running as root.
 
@@ -108,7 +148,8 @@ not exist.
 
 ## Baking the catalogue
 
-`ports/appbox/packs.conf` defines the catalogue. Row types:
+`src/packages/kdos-appbox/catalogue` defines it, and ships to
+`/usr/share/kdos/appstore/catalogue`. Row types:
 
 | Row | Declares |
 |---|---|
@@ -116,12 +157,31 @@ not exist.
 | `runtime` | A layer over the base, shared by many applications |
 | `app` | One application, as a difference over a runtime |
 | `data` | A dataset, mounted but never composed into a container |
-| `cmd` | A command a pack provides that has no graphical launcher |
-| `env` | An environment variable a pack or runtime needs |
-| `needs` | A data pack an application is useless without |
-| `graft`, `boxgraft` | Where a data pack's contents should appear |
+| `cmd` | A command a row provides that has no graphical launcher |
+| `env` | An environment variable a row or runtime needs |
+| `deb` | An application Debian does not carry, by releases URL and asset pattern |
+| `needs` | A data row an application is useless without |
+| `graft`, `boxgraft` | Where a data row's contents should appear |
 | `image` | A base that names its own container image |
-| `recommended` | The set an installer ticks by default |
+| `group` | A curated bundle the store and the installer offer as one tick |
+| `meta` | Display name, category, size estimate and tagline |
+| `snapshot` | Which Debian archive date the packages come from |
+
+**A row's parent must appear above it.** The resolver walks a chain upward in
+one pass, so a forward reference is a chain it cannot close — reordering the
+file makes an install fail naming the missing parent.
+
+**A group is not a category.** The category is the application's own, out of
+its desktop entry, and every application has exactly one. A group is curated,
+most applications are in none, and a member that is not an `app` or `data` row
+is an install refused by name.
+
+**`meta` is optional and its absence is not an error.** A row without one
+presents as its own id, category `Other`, no tagline and size 0. A row added
+today has no `meta` until somebody writes one, and refusing to load would make
+adding software a two-file change for no benefit. The size is an **estimate**
+and every surface labels it one: what apt resolves on the day depends on the
+snapshot.
 
 The bake runs entirely inside a container carrying the container engine, the filesystem tool, a
 compiler and Python — so a clone needs no privileged tools installed and there is no password
@@ -150,6 +210,16 @@ provides and no layer above re-adds.
 instead of a second bake. The two go together with a second rule: everything the generated build
 file emits below the image line is package management, so a base whose value is the image as it
 stands declares **no packages** and the image *is* the pack.
+
+**The graphics stack is a base row and not a runtime one.** A pack's parent chain is a single
+line — the browser sits on the GTK runtime, the video editor on the media one — so a driver set
+placed on either reaches half the catalogue and no more. The DRI drivers, the GL and EGL loaders
+and the VA-API drivers are therefore carried in the base, where they are stored once and every box
+has them. What that buys is the difference between a box that draws and decodes on the card and one
+that does both on the CPU: the render nodes are bound into every box and the compositor offers
+`linux-dmabuf` wherever there is a card, and the piece that decides whether a video is decoded in
+silicon is `libva` plus a `*_drv_video.so` beside it. A browser whose runtime has neither reports
+no hardware decoder and decodes every frame on the CPU.
 
 ### Exclusions must be probed, not trusted
 
@@ -205,8 +275,12 @@ restarted while boxes are running and one that forgot would unmount a live box's
 
 ## Composition
 
-An application's container root is an overlay of: the base, the runtime it needs, the application
-pack, and a writable upper layer.
+**A store-built box has nothing to compose.** Its root is a container image the machine built, so
+the engine assembles the layers itself and the pack daemon is not involved at all. Everything
+below is the import lane.
+
+An imported application's container root is an overlay of: the base, the runtime it needs, the
+application pack, and a writable upper layer.
 
 **One box per application**, named after the pack. The alternative — one box composing every
 installed application — hits two walls at once: an overlay cannot gain a layer while it is
@@ -238,7 +312,8 @@ root. Ownership grants nothing either way, since packs are mounted `nosuid`.
 
 **`kdos-boxinit` is the container's init**, in place of a general-purpose container-init program:
 it creates a user and group matching the host's, sets the search path including the games
-directory, announces readiness where the launcher looks for it, and then stays alive reaping. It
+directory, writes `/usr/local/bin/xdg-open` and `/etc/asound.conf`, announces readiness where the
+launcher looks for it, and then stays alive reaping. It
 is **statically linked**, because it is bind-mounted into a container whose libraries are Debian's
 and a host-linked binary would look for its loader there.
 
@@ -247,6 +322,22 @@ account whose home directory is the filesystem root gives every application `HOM
 them reads any configuration in the real home — and a boxed application comes up in its toolkit's
 own light theme on a phosphor desktop, with the palette sitting correctly in a home it never
 looked at.
+
+**The card reaches a box as device nodes, and the box profile's two keys are about different
+halves of it.** `gpu` is the nodes: a box that shares the host's `/dev` has them and nothing can be
+subtracted from that, and a box with a private `/dev` gets `/dev/dri` bound back by this key alone.
+`render` is who draws, and it answers for both ends of a console guest: it resolves against the
+machine by opening a render node and puts `LIBGL_ALWAYS_SOFTWARE` into a launch that asked for
+software, and the session hands its value to the embedded cage unread as `KDOS_EMBED_GPU`, where
+`software` pins pixman and every other spelling leaves the renderer to `wlr_renderer_autocreate` —
+which the cage then proves against a real buffer and a real output before it builds on it, falling
+back to pixman where the driver will not import what an embedded cage has to be able to read, or
+will not put the pixels it rendered into memory the cage can read them back from. That second
+fallback takes the whole cage down to llvmpipe, the guest's own Mesa with it — no hardware GL and
+no hardware video decode in that box — and it is the only way such a machine gets a picture rather
+than a window the colour of the desk.
+Both keys default to the card, because the nodes, the drivers and both renderers are already there
+and a box drawing with llvmpipe on a machine whose card the cage can read is paying for nothing.
 
 **Every shared directory is formatted into the argument vector directly, never through one reused
 buffer.** The argument builder stores the pointer rather than copying, so several shares built in

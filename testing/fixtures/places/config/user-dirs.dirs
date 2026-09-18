@@ -1,0 +1,5 @@
+# The file KDOS seeds into /etc/skel. The desktop folder is RENAMED here, which
+# is the case the two readers used to disagree about.
+XDG_DESKTOP_DIR="$HOME/Bureau"
+XDG_DOCUMENTS_DIR="$HOME/Documents"
+XDG_DOWNLOAD_DIR="$HOME/Downloads"

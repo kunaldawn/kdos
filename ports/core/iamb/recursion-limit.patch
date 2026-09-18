@@ -1,0 +1,10 @@
+--- a/src/main.rs	2026-09-07 13:27:02.367974446 +0530
++++ b/src/main.rs	2026-09-07 13:27:02.381378709 +0530
+@@ -11,6 +11,7 @@
+ //!
+ //! Most rendering logic lives under the [windows] module, but [Matrix messages][message] have
+ //! their own module.
++#![recursion_limit = "512"]
+ #![allow(clippy::manual_range_contains)]
+ #![allow(clippy::needless_return)]
+ #![allow(clippy::result_large_err)]

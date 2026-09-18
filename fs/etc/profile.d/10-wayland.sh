@@ -21,7 +21,28 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
 fi
 
 export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=KDOS
+# THIS IS A FALLBACK FOR A SHELL NO SESSION STARTED, NOT THE SESSION'S ANSWER.
+# The name selects `kdos-console-mimeapps.list` or `kdos-mimeapps.list` and
+# `kdos-console-portals.conf` or `kdos-portals.conf`, so each session names
+# itself in the program that starts its display: `kdos-con-start` exports
+# `KDOS-Console:KDOS` and `kdos-desktop-start` exports `KDOS`, both before they
+# start anything and both over whatever a login shell guessed here. A guess
+# from `WAYLAND_DISPLAY` cannot do that job: a graphical session begins in a
+# login shell that has no compositor yet, so this file would name it the
+# console and leave every portal request routed to the console's backends.
+#
+# `Ctrl+Alt+F2`, a serial console and an ssh login reach here with no display
+# of any kind and no session to correct them; naming `KDOS` there sends every
+# link and every document to `kdos-mimeapps.list`, whose every row is a Wayland
+# client with nothing to connect to. The console's rows are the terminal ones,
+# which are the only ones that can run on a bare virtual terminal.
+if [ -z "$XDG_CURRENT_DESKTOP" ]; then
+	if [ -n "$WAYLAND_DISPLAY" ]; then
+		export XDG_CURRENT_DESKTOP=KDOS
+	else
+		export XDG_CURRENT_DESKTOP="KDOS-Console:KDOS"
+	fi
+fi
 
 # The per-user session bus lives at a fixed runtime path (started by
 # kdos-desktop; the same path is visible inside the appbox). Point shells

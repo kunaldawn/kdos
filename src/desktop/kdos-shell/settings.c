@@ -9,18 +9,32 @@
  *
  *   ╔═ Settings ═══════════════════════════════════════════════╗
  *   ║ Appearance │ accent           phosphor            live   ║
- *   ║ Session    │▸crt              55                  live   ║
- *   ║ Input      │ crt_scanlines    60                  live   ║
+ *   ║ Session    │▸crt              ◀ █████░░░░  55 ▶    live   ║
+ *   ║ Input      │ crt_fullscreen   on               ▼  live   ║
  *   ║ Apps       │ chrome_font      Terminus:pixel…     login  ║
  *   ╟────────────┴─────────────────────────────────────────────╢
  *   ║ the phosphor shader's strength; 0 is an honest off        ║
- *   ║ ←→ change  Enter edit  a apply  Esc close      [ Apply ]  ║
+ *   ║ ◀▶ change  Enter edit  a apply  Esc close      [ Apply ]  ║
  *   ╚══════════════════════════════════════════════════════════╝
  *
  * Every knob on this desktop was a text file and nothing else — which is the
  * right storage and the wrong interface for somebody who does not already know
  * the file exists. This is the OS/2-setup lineage: a category list, a form, and
  * no mode the mouse cannot reach.
+ *
+ * AND EVERY VALUE IS A CONTROL. A number is a `ktui_slider` — press its track,
+ * drag it, roll the wheel over it, click an end cap for one step — and a
+ * choice is a `ktui_dropdown` that opens under its row. Both were printed
+ * strings changed with Left and Right, which made this a settings window
+ * somebody holding a mouse could select a row in and do nothing else with.
+ *
+ * THE CONTROL ANSWERS THE FIRST PRESS. One gesture selects the row and sets
+ * the value; a slider that needed the row selecting first would be two
+ * movements for one. The drag belongs to the press that began it, so the
+ * pointer may leave the column and go on setting the value, and an open
+ * dropdown owns the pointer and the keyboard while it is down — it is drawn
+ * over the rows beneath it, and a press tested against those rows would pick
+ * whatever the list is covering.
  *
  * IT WRITES THE SAME TEXT FILES, AND PRESERVES THEM. comp.conf ships as a
  * commented essay about each key; a settings app that rewrote it would delete
@@ -49,14 +63,15 @@
 #include "kbase.h"
 #include "kicon.h"
 #include "kwl.h"
+#include "pages.h"
 #include "shell.h"
 
 enum { CAT_APPEARANCE = 0, CAT_PANEL, CAT_DESKTOP, CAT_HARDWARE, CAT_SESSION,
-       CAT_INPUT, CAT_APPS, CAT_BOXES, NCAT };
+       CAT_INPUT, CAT_APPS, CAT_BOXES, CAT_SYSTEM, NCAT };
 
 static const char *const CAT_NAMES[NCAT] = {
 	"Appearance", "Panel", "Desktop", "Hardware", "Session", "Input",
-	"Apps", "Boxes"
+	"Apps", "Boxes", "System"
 };
 
 /*
@@ -92,6 +107,14 @@ static const struct {
 	{ "input-keyboard",    "keyboard and pointer" },
 	{ "preferences-other", "which app opens what" },
 	{ "package-x-generic",  "environments and packs" },
+	/*
+	 * SYSTEM is the machine itself — disks, printing, backup, the services
+	 * that run without being asked. Most of it is not written yet, and the
+	 * category ships anyway with a note saying so: a control centre whose
+	 * front door has no door for the machine teaches that the machine is
+	 * not reachable from here, and that is the harder thing to unteach.
+	 */
+	{ "computer-symbolic", "disks, jobs, services" },
 };
 
 /* Where the app starts and what Escape steps back to. */
@@ -106,33 +129,27 @@ static int home_sel;
  */
 static const char *const PAGE_NAMES[NCAT] = {
 	"appearance", "panel", "desktop", "hardware", "session", "input",
-	"apps", "boxes"
+	"apps", "boxes", "system"
 };
 
-/* Where a row's value is stored. ST_THEME is the accent, which is not a file
- * this program writes at all: `kdos theme` owns the whole palette pipeline
- * (icons, cursors, gtk.css, foot, btop, starship) and a second writer of the
- * accent would be a second thing to keep in agreement with it. */
 /*
- * ST_PANEL is `~/.config/kdos/panel.conf`, which is a SECOND file in exactly
- * the same `key = value` shape — so write_kv already knows how to rewrite it
- * and the only new thing is which signal to send afterwards. It matters
- * because everything in it is a decision about the bar somebody is looking at
- * (which widgets, which charts, what is hidden behind the chevron), and until
- * now the only way to change any of it was to know the file existed.
+ * ASKED FOR RATHER THAN REPEATED. The palette searches the control centre's
+ * pages, and a second copy of this list there would be a page that exists and
+ * cannot be found, or a row that opens nothing — the same failure `kdos
+ * settings <page>` avoids by passing its word through unchecked.
  */
-/*
- * ST_RES is `~/.config/kdos/res.conf`, a THIRD file in the same `key = value`
- * shape. kdos-res re-reads it on the SIGHUP this program already sends for the
- * panel, so a changed interval or column set reaches the monitor that is on
- * the screen rather than the next one started.
- */
-/*
- * ST_BOX is `~/.config/kdos/boxes/<name>.conf` and is the ONE store this
- * program does not write itself: `kdos-box` is the writer, so a box configured
- * here and a box configured at a prompt cannot come out different.
- */
-enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL, ST_RES, ST_BOX };
+int sh_settings_pages(const char *const **labels, const char *const **names)
+{
+	*labels = CAT_NAMES;
+	*names = PAGE_NAMES;
+	return NCAT;
+}
+
+/* Where a row's value is stored. Every one of these is a configuration file
+ * this program reads and writes; a row that runs a program instead stores
+ * nothing and is ST_NONE. */
+enum { ST_NONE = 0, ST_COMP, ST_PANEL, ST_RES, ST_BOX, ST_CON,
+       ST_LAUNCH, ST_TERM, ST_MENU };
 
 /* When a change takes effect. */
 enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
@@ -144,7 +161,18 @@ enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
  * its own protocol; re-implementing a summary of them here would be a second
  * thing to keep true. The row says what it opens and opens it.
  */
-enum { FT_CHOICE = 0, FT_INT, FT_TEXT, FT_NOTE, FT_APP, FT_TOOL };
+/*
+ * FT_HEAD IS A SECTION RULE AND NOT A ROW. A page of forty knobs read as one
+ * undifferentiated list, and the store a row writes — the console's file, the
+ * compositor's, the panel's — is exactly what a person needs to know before
+ * they change one. The heading says it once for the rows under it instead of
+ * every row's help line saying it again.
+ *
+ * THE CARET STEPS OVER IT, in whichever direction it was travelling: a heading
+ * that could be selected is a row where Enter, Left and Right all do nothing,
+ * which is the shape of a control that is broken.
+ */
+enum { FT_CHOICE = 0, FT_INT, FT_TEXT, FT_NOTE, FT_APP, FT_TOOL, FT_HEAD };
 
 struct row {
 	int cat;
@@ -162,6 +190,7 @@ struct row {
 };
 
 static const char *const YESNO[] = { "yes", "no" };
+static const char *const TASKBAR[] = { "windows", "fkeys" };
 static const char *const ONOFF[] = { "on", "off" };
 static const char *const LIDS[] = { "off", "lock", "suspend" };
 static const char *const PANELS[] = { "bottom", "top", "off" };
@@ -169,18 +198,31 @@ static const char *const TASKLAB[] = { "auto", "yes", "no" };
 static const char *const CPUPCT[] = { "core", "machine" };
 static const char *const UNITS[] = { "1024", "1000" };
 static const char *const TEMPU[] = { "c", "f" };
+static const char *const TITLEDBL[] = { "maximise", "lower", "none" };
+static const char *const REFRESH[] = { "preferred", "fastest" };
+static const char *const MEMACCT[] = { "rss", "pss" };
+static const char *const SAVERS[] = { "art", "bounce", "rain", "matrix",
+				      "pipes", "starfield", "fire", "clock",
+				      "random" };
 
-/* The accent names, filled from libktui's own table at startup — the palette
- * lives in libkcolor and every consumer expands the same one. */
-static const char *accents[8];
-static int naccents;
 
 static struct row rows[] = {
 	/* ── Appearance ─────────────────────────────────────────────── */
-	{ CAT_APPEARANCE, FT_CHOICE, ST_THEME, SC_LIVE, "accent", "accent",
-	  NULL, 0, 0, 0, 0,
-	  "runs `kdos theme <accent>`: host, box and window frames together",
-	  "phosphor", "phosphor" },
+	/*
+	 * THE ACCENT IS PICKED IN THE PICKER AND NOWHERE ELSE. A list of names
+	 * here would be a second way to choose one, and the worse of the two:
+	 * `kdos-style` draws every scheme in its own colours and repaints the
+	 * desktop live as the highlight moves, which a row of words cannot.
+	 * This row is the way in, and the key is the program it opens.
+	 */
+	{ CAT_APPEARANCE, FT_HEAD, ST_NONE, SC_NONE, NULL, "Colour",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_APPEARANCE, FT_TOOL, ST_NONE, SC_NONE, "kdos-style",
+	  "Accent…", NULL, 0, 0, 0, 0,
+	  "every scheme in its own colours, previewed live; Enter keeps one",
+	  "", "" },
+	{ CAT_APPEARANCE, FT_HEAD, ST_NONE, SC_NONE, NULL, "The phosphor pass · compositor",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_APPEARANCE, FT_INT, ST_COMP, SC_LIVE, "crt", "crt",
 	  NULL, 0, 0, 100, 5,
 	  "the phosphor shader's strength; 0 is an honest off and gives the "
@@ -200,9 +242,13 @@ static struct row rows[] = {
 	  "off skips the pass while a window is fullscreen — a film gets direct "
 	  "scanout back",
 	  "on", "on" },
+	{ CAT_APPEARANCE, FT_HEAD, ST_NONE, SC_NONE, NULL, "Chrome · compositor",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_APPEARANCE, FT_TEXT, ST_COMP, SC_LIVE, "wallpaper", "wallpaper",
 	  NULL, 0, 0, 0, 0,
-	  "a PNG, scaled to cover and centred; the word `none` is an honest off",
+	  "the COMPOSITOR's: a PNG, scaled to cover and centred, `none` is an "
+	  "honest off. The console's ground is `kdos background`, which is "
+	  "character art",
 	  "/usr/share/backgrounds/kdos/default-wallpaper.png",
 	  "/usr/share/backgrounds/kdos/default-wallpaper.png" },
 	{ CAT_APPEARANCE, FT_TEXT, ST_COMP, SC_LOGIN, "chrome_font",
@@ -215,8 +261,119 @@ static struct row rows[] = {
 	  "the panel clock as a strftime format; it reaches the panel on its "
 	  "command line",
 	  "%H:%M", "%H:%M" },
+	/*
+	 * ── THE CONSOLE SESSION'S OWN KEYS ───────────────────────────
+	 *
+	 * `con.conf` was reachable from this window by nothing at all, on the
+	 * desktop that is the DEFAULT one: how many workspaces, what the bar
+	 * shows, whether a boxed application becomes a window, and both
+	 * transparency keys were a text file and a manual page.
+	 *
+	 * They are shown on both desktops and apply to one, which the help
+	 * says on every row rather than the category implying it — a person
+	 * on the compositor who changes one and sees nothing has been lied to
+	 * by omission.
+	 */
+	{ CAT_APPEARANCE, FT_HEAD, ST_NONE, SC_NONE, NULL, "Transparency · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_APPEARANCE, FT_INT, ST_CON, SC_LOGIN, "window_opacity",
+	  "window_opacity", NULL, 0, 20, 100, 5,
+	  "THE CONSOLE DESKTOP: how much of a window's own background it "
+	  "keeps. Below 100 it is mixed with whatever it covers; the ink is "
+	  "never mixed",
+	  "100", "100" },
+	{ CAT_APPEARANCE, FT_INT, ST_CON, SC_LOGIN, "panel_opacity",
+	  "panel_opacity", NULL, 0, 20, 100, 5,
+	  "THE CONSOLE DESKTOP: the same, for a docked bar",
+	  "80", "80" },
 
+	{ CAT_APPEARANCE, FT_HEAD, ST_NONE, SC_NONE, NULL, "The console screen",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_APPEARANCE, FT_TEXT, ST_CON, SC_LOGIN, "font", "font",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: the face kdos-view rasterises, as a fontconfig "
+	  "name. A name fontconfig cannot resolve falls back to the built-in",
+	  "monospace:size=12", "monospace:size=12" },
 	/* ── Session ────────────────────────────────────────────────── */
+	{ CAT_SESSION, FT_HEAD, ST_NONE, SC_NONE, NULL, "Workspaces and memory · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_SESSION, FT_INT, ST_CON, SC_LOGIN, "sessions", "sessions",
+	  NULL, 0, 1, 9, 1,
+	  "THE CONSOLE DESKTOP: how many workspaces. Nine is the ceiling "
+	  "because nine is the last digit Super can reach",
+	  "4", "4" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "restore", "restore",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: bring back the windows that were open when "
+	  "the session last ended cleanly",
+	  "no", "no" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "remember", "remember",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: open each program where its window was last "
+	  "time",
+	  "yes", "yes" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "restore_scrollback",
+	  "restore_scrollback", YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: put the last session's output back on a restored "
+	  "terminal. Off separately from `restore`: old output above a fresh "
+	  "prompt reads as live",
+	  "no", "no" },
+	{ CAT_SESSION, FT_HEAD, ST_NONE, SC_NONE, NULL, "Logging in · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "greet", "greet",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: whether tty1 asks who you are. `no` autologins "
+	  "the account below, which is what the live medium wants",
+	  "no", "no" },
+	{ CAT_SESSION, FT_TEXT, ST_CON, SC_LOGIN, "autologin", "autologin",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: which account `greet = no` logs in. An account "
+	  "that does not exist leaves the machine reachable only from tty2",
+	  "kdos", "kdos" },
+	{ CAT_SESSION, FT_INT, ST_CON, SC_LOGIN, "views", "views",
+	  NULL, 0, 0, 8, 1,
+	  "THE CONSOLE DESKTOP: how many displays may be attached at once; 0 is "
+	  "no limit. A view that is refused is told why",
+	  "0", "0" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "remote", "remote",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: whether `kdos con forward` may tunnel the view "
+	  "socket over ssh. It opens no port — there is no TCP listener here",
+	  "no", "no" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "a11y", "a11y",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: keep the kernel's text plane so `brltty` can "
+	  "read the screen. It costs the pixel half — no pictures, no font chords",
+	  "no", "no" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "speak", "speak",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: start kdos-a11y with the session, which says "
+	  "what each widget announces through espeak-ng",
+	  "no", "no" },
+	{ CAT_SESSION, FT_HEAD, ST_NONE, SC_NONE, NULL, "Idle · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_SESSION, FT_INT, ST_CON, SC_LOGIN, "idle_saver", "idle_saver",
+	  NULL, 0, 0, 3600, 30,
+	  "THE CONSOLE DESKTOP: seconds of no input before the saver covers the "
+	  "screen; 0 is never. In a virtual machine all three default to 0",
+	  "300", "300" },
+	{ CAT_SESSION, FT_INT, ST_CON, SC_LOGIN, "idle_lock", "idle_lock",
+	  NULL, 0, 0, 7200, 30,
+	  "THE CONSOLE DESKTOP: seconds before it locks, measured from the last "
+	  "activity and not from the saver. Activity does NOT unlock",
+	  "600", "600" },
+	{ CAT_SESSION, FT_INT, ST_CON, SC_LOGIN, "idle_off", "idle_off",
+	  NULL, 0, 0, 7200, 30,
+	  "THE CONSOLE DESKTOP: seconds before the screen powers down. The lock "
+	  "happens first, or a screen would come back showing what was on it",
+	  "900", "900" },
+	{ CAT_SESSION, FT_CHOICE, ST_CON, SC_LOGIN, "saver_mode", "saver_mode",
+	  SAVERS, 9, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: which effect the saver draws. `art` is the "
+	  "picture in screensaver.txt; `random` picks one at each start",
+	  "art", "art" },
+	{ CAT_SESSION, FT_HEAD, ST_NONE, SC_NONE, NULL, "Idle and power · compositor",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_SESSION, FT_INT, ST_COMP, SC_LIVE, "idle_dim", "idle_dim",
 	  NULL, 0, 0, 86400, 60,
 	  "seconds to the dim; 0 never. In a VM all three default to 0 — "
@@ -236,6 +393,22 @@ static struct row rows[] = {
 	  "what closing the laptop lid does; in a VM the default is off",
 	  "suspend", "suspend" },
 	/* ── Panel ──────────────────────────────────────────────────── */
+	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL, "The bar · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_PANEL, FT_CHOICE, ST_CON, SC_LOGIN, "taskbar", "taskbar",
+	  TASKBAR, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: what the session's own bottom row shows when "
+	  "the shell's panel is not up — the window rows, or Norton "
+	  "Commander's F1–F10",
+	  "windows", "windows" },
+	{ CAT_PANEL, FT_CHOICE, ST_CON, SC_LOGIN, "nowplaying", "nowplaying",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: whether the session's own bar shows what is "
+	  "playing. Not read when kdos-shell's panel is docked — that has its "
+	  "own mpris widget",
+	  "yes", "yes" },
+	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL, "The bar · compositor",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel", "panel",
 	  PANELS, 3, 0, 0, 0,
 	  "which edge the one taskbar is on, or off entirely. There were two "
@@ -255,6 +428,20 @@ static struct row rows[] = {
 	  "the clock as a strftime format; it reaches the panel on its command "
 	  "line",
 	  "%H:%M", "%H:%M" },
+	{ CAT_PANEL, FT_TEXT, ST_COMP, SC_LOGIN, "panel_font", "panel_font",
+	  NULL, 0, 0, 0, 0,
+	  "the bar's own face, as a PIXEL size. Empty follows `chrome_font`",
+	  "", "" },
+	{ CAT_PANEL, FT_INT, ST_COMP, SC_LOGIN, "panel_margin", "panel_margin",
+	  NULL, 0, 0, 64, 2,
+	  "pixels of gap between the bar and the edge of the screen",
+	  "0", "0" },
+	{ CAT_PANEL, FT_INT, ST_COMP, SC_LOGIN, "panel_opacity", "panel_opacity",
+	  NULL, 0, 20, 100, 5,
+	  "THE COMPOSITOR's bar. Floored at 20: a bar at zero is not "
+	  "see-through, it is a bar whose every control is invisible and still "
+	  "takes the pointer",
+	  "80", "80" },
 	/* ── panel.conf, the bar's own file ──────────────────────────── */
 	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "overflow", "overflow",
 	  NULL, 0, 0, 0, 0,
@@ -276,6 +463,10 @@ static struct row rows[] = {
 	  "whether a window button carries its name. `auto` is the bar "
 	  "deciding; `no` is a dock",
 	  "auto", "auto" },
+	{ CAT_PANEL, FT_CHOICE, ST_PANEL, SC_LIVE, "start_label", "start_label",
+	  YESNO, 2, 0, 0, 0,
+	  "whether the Start button carries the word as well as the mark",
+	  "yes", "yes" },
 	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "right", "right",
 	  NULL, 0, 0, 0, 0,
 	  "the notification area, left to right. An unknown name is reported "
@@ -288,6 +479,28 @@ static struct row rows[] = {
 	 * Every row here changes a READING, and a reading measured
 	 * differently is a different number — so each says what it changes
 	 * rather than restating its key. */
+	{ CAT_HARDWARE, FT_HEAD, ST_NONE, SC_NONE, NULL, "How the screen is driven · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_HARDWARE, FT_INT, ST_CON, SC_LOGIN, "buffers", "buffers",
+	  NULL, 0, 1, 3, 1,
+	  "THE CONSOLE DESKTOP: scanout buffers per screen. Three lets the "
+	  "painter work while a flip is in flight; two is the 60-to-30 cliff. A "
+	  "ceiling, not a promise",
+	  "3", "3" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_CON, SC_LOGIN, "refresh", "refresh",
+	  REFRESH, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: `preferred` is the mode the monitor's EDID "
+	  "certifies; `fastest` is the highest refresh AT THAT SAME SIZE and "
+	  "never changes the resolution",
+	  "preferred", "preferred" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_CON, SC_LOGIN, "tearing", "tearing",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: present each frame as it is composed. Removes up "
+	  "to a refresh period of latency and TEARS; silently off where the "
+	  "device cannot",
+	  "no", "no" },
+	{ CAT_HARDWARE, FT_HEAD, ST_NONE, SC_NONE, NULL, "The resource monitor · res.conf",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_HARDWARE, FT_INT, ST_RES, SC_LIVE, "interval", "interval",
 	  NULL, 0, 200, 60000, 100,
 	  "sampling interval in milliseconds. The floor is 200: a monitor "
@@ -315,20 +528,42 @@ static struct row rows[] = {
 	  "virtual_drives", YESNO, 2, 0, 0, 0,
 	  "show loop, zram and device-mapper devices on the Drives page",
 	  "no", "no" },
-	{ CAT_PANEL, FT_CHOICE, ST_PANEL, SC_LIVE, "task_labels", "task_labels",
-	  TASKLAB, 3, 0, 0, 0,
-	  "whether a window button carries its name. `auto` is the bar "
-	  "deciding; `no` is a dock",
-	  "auto", "auto" },
-	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "right", "right",
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "virtual_net", "virtual_net",
+	  YESNO, 2, 0, 0, 0,
+	  "show loopback, bridges and container interfaces on the Network page",
+	  "no", "no" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "memory", "memory",
+	  MEMACCT, 2, 0, 0, 0,
+	  "`rss` counts a shared page against every process holding it; `pss` "
+	  "divides it between them, which is the number that adds up",
+	  "rss", "rss" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "icons", "icons",
+	  YESNO, 2, 0, 0, 0,
+	  "draw pictures beside the rows. `no` is the glyph tier, which is what "
+	  "a --tty view and a braille reader get anyway",
+	  "yes", "yes" },
+	{ CAT_HARDWARE, FT_TEXT, ST_RES, SC_LIVE, "sort", "sort",
 	  NULL, 0, 0, 0, 0,
-	  "the notification area, left to right. An unknown name is reported "
-	  "on stderr, never ignored",
-	  "pager tray more media privacy mpris clipboard cpu stutter restart "
-	  "net volume battery notify clock",
-	  "pager tray more media privacy mpris clipboard cpu stutter restart "
-	  "net volume battery notify clock" },
+	  "which column each page sorts on, by that page's own identifier — one "
+	  "spelling, from the monitor's registry. A name a page has no column "
+	  "for leaves that page on its own default",
+	  "cpu", "cpu" },
+	{ CAT_HARDWARE, FT_TEXT, ST_RES, SC_LIVE, "columns", "columns",
+	  NULL, 0, 0, 0, 0,
+	  "which columns a page draws, by the same identifiers. Empty is every "
+	  "column that page has",
+	  "", "" },
 
+	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL,
+	  "The Start menu · menu.conf",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_PANEL, FT_TEXT, ST_MENU, SC_LIVE, "@toplevel", "@toplevel",
+	  NULL, 0, 0, 0, 0,
+	  "which system rows stay outside the fold below a hundred columns, as "
+	  "the menu draws their labels. A label naming no row promotes nothing "
+	  "and reports nothing — a preference file is not a wiring diagram",
+	  "Network Sound Displays Terminal",
+	  "Network Sound Displays Terminal" },
 	{ CAT_PANEL, FT_NOTE, ST_NONE, SC_NONE, NULL, "pinned launchers",
 	  NULL, 0, 0, 0, 0,
 	  "~/.config/kdos/favorites, one desktop-entry id per line — the same "
@@ -336,6 +571,64 @@ static struct row rows[] = {
 	  "", "" },
 
 	/* ── Desktop ────────────────────────────────────────────────── */
+	{ CAT_DESKTOP, FT_HEAD, ST_NONE, SC_NONE, NULL, "The console desktop",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_CON, SC_LOGIN, "embed", "embed",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: whether a graphical application's windows "
+	  "become windows here. `no` gives each one a terminal of its own, "
+	  "full screen",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_INT, ST_CON, SC_LOGIN, "scrollback", "scrollback",
+	  NULL, 0, 0, 100000, 500,
+	  "THE CONSOLE DESKTOP: lines a terminal window keeps above the "
+	  "screen, per window",
+	  "2000", "2000" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_CON, SC_LOGIN, "paste_guard", "paste_guard",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: ask before an UNBRACKETED paste carrying a "
+	  "newline. With bracketed paste off, a newline EXECUTES at a shell "
+	  "prompt; the chord again within five seconds means it",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_HEAD, ST_NONE, SC_NONE, NULL, "What the role chords open · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "terminal", "terminal",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: what Super+Return opens, in-process as a window. "
+	  "Split into an argument vector with no shell in front of it",
+	  "sh", "sh" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "files", "files",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+e. Each role runs in a TERMINAL, so a "
+	  "graphical program named here would open in one and draw nothing",
+	  "mc", "mc" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "mail", "mail",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+Shift+e",
+	  "aerc", "aerc" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "browser", "browser",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+Shift+b",
+	  "lynx", "lynx" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "music", "music",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+Shift+u",
+	  "rmpc", "rmpc" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "agenda", "agenda",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+Shift+g",
+	  "ikhal", "ikhal" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "chat", "chat",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+Shift+c",
+	  "iamb", "iamb" },
+	{ CAT_DESKTOP, FT_TEXT, ST_CON, SC_LOGIN, "writing", "writing",
+	  NULL, 0, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: Super+Shift+w. A chord pointed at a program that "
+	  "is not installed starts nothing and drops its row from the key card",
+	  "micro", "micro" },
+	{ CAT_DESKTOP, FT_HEAD, ST_NONE, SC_NONE, NULL, "The graphical desktop",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "desktop_icons",
 	  "desktop_icons", YESNO, 2, 0, 0, 0,
 	  "~/Desktop drawn on the background layer, with Home and Trash pinned "
@@ -351,6 +644,82 @@ static struct row rows[] = {
 	  "the dockapp column (kdos-slit), from ~/.config/kdos/slit.conf: "
 	  "<interval> <width> <command…> per line",
 	  "no", "no" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "window_memory",
+	  "window_memory", YESNO, 2, 0, 0, 0,
+	  "THE COMPOSITOR: a window opens where that program's window last was. "
+	  "The console keeps the same idea as `remember`, in cells",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "clipboard", "clipboard",
+	  YESNO, 2, 0, 0, 0,
+	  "THE COMPOSITOR: run the clipboard manager, which keeps what was "
+	  "copied after the program that copied it exits",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_HEAD, ST_NONE, SC_NONE, NULL,
+	  "The terminal · term.conf",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_DESKTOP, FT_TEXT, ST_TERM, SC_LIVE, "shell", "shell",
+	  NULL, 0, 0, 0, 0,
+	  "what an argument-less kdos-term runs. Split as a desktop entry's "
+	  "Exec is — there is no shell in front of it. Empty is $SHELL, then "
+	  "/bin/sh",
+	  "", "" },
+	{ CAT_DESKTOP, FT_TEXT, ST_TERM, SC_LIVE, "font", "font",
+	  NULL, 0, 0, 0, 0,
+	  "the face a terminal OPENS at, as a fontconfig name. Ctrl+= and "
+	  "Ctrl+- step it for one window and Ctrl+0 comes back here. Empty is "
+	  "the toolkit's",
+	  "", "" },
+	{ CAT_DESKTOP, FT_INT, ST_TERM, SC_LIVE, "columns", "columns",
+	  NULL, 0, 20, 400, 10,
+	  "columns asked for on the first configure",
+	  "80", "80" },
+	{ CAT_DESKTOP, FT_INT, ST_TERM, SC_LIVE, "rows", "rows",
+	  NULL, 0, 5, 200, 4,
+	  "rows asked for on the first configure",
+	  "24", "24" },
+	{ CAT_DESKTOP, FT_INT, ST_TERM, SC_LIVE, "scrollback", "scrollback",
+	  NULL, 0, 0, 100000, 500,
+	  "lines kept above the screen, per window. A line is a cell array as "
+	  "wide as the window, so a wide window costs more per line",
+	  "2000", "2000" },
+	{ CAT_DESKTOP, FT_INT, ST_TERM, SC_LIVE, "opacity", "opacity",
+	  NULL, 0, 20, 100, 5,
+	  "how much of the window's own background it keeps. ONLY where a "
+	  "compositor is under it; on the console the session composes and "
+	  "con.conf's window_opacity is the same request",
+	  "100", "100" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_TERM, SC_LIVE, "paste_guard",
+	  "paste_guard", YESNO, 2, 0, 0, 0,
+	  "ask before an UNBRACKETED paste carrying a newline, which EXECUTES "
+	  "at a shell prompt. A second attempt within five seconds means it",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_TERM, SC_LIVE, "images", "images",
+	  YESNO, 2, 0, 0, 0,
+	  "decode pictures. `no` turns the three image protocols off in the "
+	  "PARSER, not merely in the drawing",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_INT, ST_TERM, SC_LIVE, "image_max", "image_max",
+	  NULL, 0, 16, 16384, 64,
+	  "the cap on one image payload, in kilobytes. It is what bounds a "
+	  "payload before anything allocates for it, and a terminal is "
+	  "reachable by `cat` on a file somebody sent you",
+	  "1024", "1024" },
+	{ CAT_DESKTOP, FT_INT, ST_TERM, SC_LIVE, "image_cells", "image_cells",
+	  NULL, 0, 8, 1000, 8,
+	  "the widest and tallest a picture may be, in cells. It bounds what "
+	  "one escape sequence can ask this program to scale",
+	  "200", "200" },
+	{ CAT_DESKTOP, FT_HEAD, ST_NONE, SC_NONE, NULL,
+	  "The launcher · launcher.conf",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_LAUNCH, SC_LIVE, "files", "files",
+	  YESNO, 2, 0, 0, 0,
+	  "add the file index to what Super+d searches. OFF by default, and not "
+	  "for speed: a launcher that searched the disk unasked would put your "
+	  "filenames on screen in front of whoever is behind you",
+	  "no", "no" },
+	{ CAT_DESKTOP, FT_HEAD, ST_NONE, SC_NONE, NULL, "Screens",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_DESKTOP, FT_TOOL, ST_NONE, SC_NONE, "kdos-display",
 	  "Displays…", NULL, 0, 0, 0, 0,
 	  "modes, scale, rotation and the left-to-right order of every screen",
@@ -362,6 +731,8 @@ static struct row rows[] = {
 	 * of NetworkManager drawn in this window would be a second thing to
 	 * keep in agreement with the manager itself, so the row says what it
 	 * opens and opens it. */
+	{ CAT_HARDWARE, FT_HEAD, ST_NONE, SC_NONE, NULL, "Devices",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-net",
 	  "Network…", NULL, 0, 0, 0, 0,
 	  "wifi, wired and VPN over NetworkManager — what `foot -e nmtui` used "
@@ -382,15 +753,107 @@ static struct row rows[] = {
 	  "which cameras exist, what is holding one, and the key that mutes "
 	  "every microphone at once",
 	  "", "" },
+	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-rec",
+	  "Recording…", NULL, 0, 0, 0, 0,
+	  "record from a microphone, watch the level, and transcribe what came "
+	  "back when a speech model is present",
+	  "", "" },
 
 	/* ── Input ──────────────────────────────────────────────────────
 	 *
-	 * NOTES, and no fields. Nothing here writes the keyboard's settings,
-	 * because nothing on this system would read what it wrote: the layout
-	 * comes from /etc/keymap by way of kdos-desktop, and every keyboard knob
-	 * the compositor has is rc.xml's. A row that wrote a file no program
-	 * opens is exactly the "change a thing, see nothing" this surface
-	 * promised not to be, so the category says where the knobs really are. */
+	 * THE POINTING DEVICES ARE WRITTEN HERE AND THE KEYBOARD IS NOT.
+	 *
+	 * kdos-view opens the devices and applies every `con.conf` key below to
+	 * each one that accepts it, so these rows change what the hand feels.
+	 * The KEYBOARD's settings are notes at the end of the page for the
+	 * reason this whole surface exists: the layout comes from /etc/keymap
+	 * by way of kdos-desktop and every keyboard knob the compositor has is
+	 * rc.xml's, and a row that wrote a file no program opens is exactly the
+	 * "change a thing, see nothing" this window promised not to be.
+	 *
+	 * THE DEFAULT SHOWN IS libinput's, so a page nobody has touched
+	 * describes what the machine is already doing.
+	 */
+	{ CAT_INPUT, FT_HEAD, ST_NONE, SC_NONE, NULL, "Pointing devices · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_INPUT, FT_INT, ST_CON, SC_LOGIN, "pointer_speed",
+	  "pointer_speed", NULL, 0, -10, 10, 1,
+	  "THE CONSOLE DESKTOP: acceleration. 0 is the MIDDLE of the device's "
+	  "own range and not an unaccelerated pointer",
+	  "0", "0" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "natural_scroll",
+	  "natural_scroll", YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: the content follows the fingers rather than "
+	  "the view",
+	  "no", "no" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "tap_to_click",
+	  "tap_to_click", YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: a tap on a touchpad is a click. Off in "
+	  "libinput, so this is the line a laptop wants; a mouse ignores it",
+	  "no", "no" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "tap_drag", "tap_drag",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: a tap straight after a tap begins a drag that "
+	  "lasts while the finger stays down. Only matters once tapping is on",
+	  "yes", "yes" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "disable_while_typing",
+	  "disable_while_typing", YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: suppress the touchpad while the keyboard is "
+	  "being used, which is what stops a palm moving the cursor",
+	  "yes", "yes" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "left_handed", "left_handed",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: swap the two main buttons",
+	  "no", "no" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "middle_emulation",
+	  "middle_emulation", YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: both buttons together are the middle one — the "
+	  "only middle button a two-button trackpad has, and what pastes",
+	  "no", "no" },
+
+	/*
+	 * ── WHAT THE POINTER DOES TO A WINDOW ────────────────────────
+	 *
+	 * These are the session's rather than the device's, and they are on
+	 * this page rather than on Desktop because a person looking for what
+	 * their mouse does looks under the mouse.
+	 */
+	{ CAT_INPUT, FT_HEAD, ST_NONE, SC_NONE, NULL, "What the pointer does to a window · console",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "edge_snap", "edge_snap",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: dragging a window against an edge of the work "
+	  "area snaps it there — the same tiles Super+arrow gives",
+	  "yes", "yes" },
+	{ CAT_INPUT, FT_INT, ST_CON, SC_LOGIN, "snap_zone", "snap_zone",
+	  NULL, 0, 1, 8, 1,
+	  "THE CONSOLE DESKTOP: how far into the screen, in cells, counts as "
+	  "an edge for the drag above",
+	  "1", "1" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "title_dblclick",
+	  "title_dblclick", TITLEDBL, 3, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: what two clicks on a title bar do",
+	  "maximise", "maximise" },
+	{ CAT_INPUT, FT_INT, ST_CON, SC_LOGIN, "dblclick_ms", "dblclick_ms",
+	  NULL, 0, 100, 1000, 50,
+	  "THE CONSOLE DESKTOP: how long two clicks may be apart and still be a "
+	  "double click on a TITLE BAR. A list and a grid run in a process of "
+	  "their own and carry libktui's own interval",
+	  "400", "400" },
+	{ CAT_INPUT, FT_CHOICE, ST_CON, SC_LOGIN, "panel_wheel", "panel_wheel",
+	  YESNO, 2, 0, 0, 0,
+	  "THE CONSOLE DESKTOP: the wheel over the bottom row steps to the "
+	  "next occupied workspace",
+	  "yes", "yes" },
+
+	{ CAT_INPUT, FT_HEAD, ST_NONE, SC_NONE, NULL, "The keyboard",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_INPUT, FT_TOOL, ST_NONE, SC_NONE, "kdos-keys",
+	  "Keyboard shortcuts…", NULL, 0, 0, 0, 0,
+	  "every chord this desktop has, read from whichever one you are on — "
+	  "rc.xml under the compositor, `kdos-con --keys` on the console. It is "
+	  "a card and not an editor: the chords are keys.conf's and rc.xml's",
+	  "", "" },
 	{ CAT_INPUT, FT_NOTE, ST_NONE, SC_NONE, NULL, "where layout comes from",
 	  NULL, 0, 0, 0, 0,
 	  "/etc/keymap is the console map; kdos-desktop maps it to "
@@ -401,6 +864,77 @@ static struct row rows[] = {
 	  NULL, 0, 0, 0, 0,
 	  "rc.xml's <keyboard><repeatRate> and <repeatDelay>; kdos-comp reads "
 	  "them at startup and on the Reconfigure a SIGHUP is",
+	  "", "" },
+
+	/*
+	 * THE MACHINE. Every row here opens a whole program, for the reason
+	 * CAT_HARDWARE's rows do: a summary drawn in this window would be a
+	 * second thing to keep in agreement with the thing itself.
+	 *
+	 * THE CATEGORY SHIPS WITH WHAT EXISTS AND SAYS WHAT DOES NOT. Disks,
+	 * printing, backup and services are not written; a row that opened
+	 * nothing would be worse than no row, and no category at all would
+	 * teach that the machine is not reachable from here.
+	 */
+	{ CAT_SYSTEM, FT_HEAD, ST_NONE, SC_NONE, NULL, "The machine",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-res",
+	  "Resources…", NULL, 0, 0, 0, 0,
+	  "processes, memory, disks and the network, live — what `top` and "
+	  "`df` say, in one place",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-energy",
+	  "Power…", NULL, 0, 0, 0, 0,
+	  "the battery, what is draining it, and the governor",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-disks",
+	  "Disks…", NULL, 0, 0, 0, 0,
+	  "what is attached, what is mounted and what is full. Every privileged "
+	  "step is a kdos-mountd verb; partitioning is `cfdisk` in a terminal",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-print",
+	  "Printers…", NULL, 0, 0, 0, 0,
+	  "queues and jobs, over `lpstat` and `lpadmin`. The `lpadmin` group is "
+	  "CUPS' own authority, so this needs no daemon of ours in front of it",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-users",
+	  "Accounts…", NULL, 0, 0, 0, 0,
+	  "who has an account on this machine. It reads /etc/passwd and writes "
+	  "only the autologin, through the same wheel-gated daemon",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-time",
+	  "Date and time…", NULL, 0, 0, 0, 0,
+	  "the zone, from tzdata's own zone1970.tab. Setting it is a kdos-powerd "
+	  "verb, because /etc/localtime is root's",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-connect",
+	  "Sync…", NULL, 0, 0, 0, 0,
+	  "calendars and address books, through vdirsyncer",
+	  "", "" },
+	{ CAT_SYSTEM, FT_HEAD, ST_NONE, SC_NONE, NULL, "Security and updates",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-firewall",
+	  "Firewall…", NULL, 0, 0, 0, 0,
+	  "which services answer the network. It carries no table of ports: "
+	  "kdos-powerd owns the names, and a client that could name a port "
+	  "could open any port",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-update",
+	  "Updates…", NULL, 0, 0, 0, 0,
+	  "what is behind and what is vulnerable, from `kdos update check "
+	  "--json` and `kdos cve --json` rather than a second comparison",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-backup",
+	  "Backup…", NULL, 0, 0, 0, 0,
+	  "what is in the restic repository. It restores nothing: `restic "
+	  "restore` is the operation you do once under pressure and it wants "
+	  "the full command",
+	  "", "" },
+	{ CAT_SYSTEM, FT_NOTE, ST_NONE, SC_NONE, NULL, "what is not here",
+	  NULL, 0, 0, 0, 0,
+	  "the service list is not written; `kdos doctor` and `kdos pkg` do that "
+	  "work today. /etc/kdos/zram.conf, packd.conf and the timers are root's "
+	  "and are edited there",
 	  "", "" },
 };
 
@@ -571,9 +1105,106 @@ static int cat, sel, top, pane;		/* pane 0 = categories, 1 = fields */
 static int sel_follow = 1;
 static char note[192];
 static int editing, quit_armed;
+/* A press that landed on a slider's track owns every drag behind it, so the
+ * pointer may leave the column and go on setting the value. Cleared by the
+ * release, like any other capture. */
+static int drag_slider;
+
+/*
+ * THE EVENT THE EDITING FIELD WILL SEE.
+ *
+ * `ktui_input` is a frame control: it reads the event `ktui_frame_begin` was
+ * given, so a key meant for the field has to reach the DRAW rather than be
+ * spent in the loop. This surface hand-rolled a buffer instead — backspace and
+ * printable bytes, no caret to move, no paste, and a UTF-8 value cut in half by
+ * one backspace. Handing the event across is what lets the one field in the
+ * toolkit be the field here too.
+ *
+ * Cleared by the draw that spends it: an event left standing would be applied
+ * again on the next repaint, which is one keystroke typed twice.
+ */
+static KtuiEvent field_ev;
 static char edit_buf[256];
 
+/*
+ * THREE RUNGS, INNERMOST LAST: the page under the grid, a box profile under
+ * the box list, the field editor under everything. Every predicate is guarded
+ * on `mode == SM_PAGE` because a right-click back to the grid leaves
+ * `box_mode` and `editing` where they were — an unguarded rung would then
+ * unwind stale state instead of arming the unsaved-changes question, which is
+ * exactly the defect a declared ladder exists to remove.
+ */
+static KtuiKeys keys;
+
+static int page_up(void *user)
+{
+	(void)user;
+	return mode == SM_PAGE;
+}
+
+static void page_close(void *user)
+{
+	(void)user;
+	/* Back to the grid, not out of the program. Edits are held in `rows[]`
+	 * and Apply is still one key away, so stepping back loses nothing —
+	 * and the unsaved-changes guard stays at the single exit, on the home
+	 * screen, rather than firing every time somebody backs out of a page
+	 * they only wanted to look at. */
+	mode = SM_HOME;
+	home_sel = cat;
+	quit_armed = 0;
+}
+
+static int boxprof_up(void *user)
+{
+	(void)user;
+	return mode == SM_PAGE && cat == CAT_BOXES && box_mode != BOX_LIST;
+}
+
+static void boxprof_close(void *user)
+{
+	(void)user;
+	box_mode = BOX_LIST;
+	box_cur[0] = '\0';
+	sel = top = 0;
+	note[0] = '\0';
+}
+
+static int edit_up(void *user)
+{
+	(void)user;
+	return mode == SM_PAGE && editing;
+}
+
+static void edit_cancel(void *user)
+{
+	(void)user;
+	editing = 0;
+}
+
 /* ── the files ─────────────────────────────────────────────────────────── */
+
+/*
+ * `con.conf` IS NOT IN `~/.config/kdos`. The console session keeps its own
+ * directory — `kdos-con/` — beside its `keys.conf` and its layouts, so the
+ * leaf helper below cannot reach it and a second one says where it is rather
+ * than growing a special case into the first.
+ *
+ * EVERY CONSOLE KEY IS `login` AND NOT `live`. `kcon_conf_*` reads the file
+ * once, on the first lookup, and holds the answer for the life of the session:
+ * a SIGHUP retints the desktop and re-reads nothing here, so a row that
+ * promised `live` would be a row that lies about what it just did.
+ */
+static void con_path(char *out, size_t n)
+{
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+
+	if (cfg && *cfg)
+		snprintf(out, n, "%.400s/kdos-con/con.conf", cfg);
+	else
+		snprintf(out, n, "%.400s/.config/kdos-con/con.conf",
+			 kb_home_dir());
+}
 
 static void cfg_path(const char *leaf, char *out, size_t n)
 {
@@ -937,38 +1568,39 @@ static void load_all(void)
 {
 	char path[700];
 
-	for (int i = 0; i < ktui_ntheme && naccents < 8; i++)
-		accents[naccents++] = ktui_themes[i].name;
-	for (int i = 0; i < NROWS; i++)
-		if (rows[i].store == ST_THEME) {
-			rows[i].choices = accents;
-			rows[i].nchoices = naccents;
-		}
-
-	/* The accent in force is the one-word state file every other surface
-	 * reads, not a comp.conf key. */
-	char accent[64] = "";
-	const char *cache = getenv("XDG_CACHE_HOME");
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%.500s/kdos/theme", cache);
-	else
-		snprintf(path, sizeof(path), "%.500s/.cache/kdos/theme",
-			 kb_home_dir());
-	if (kb_read_line_file(path, accent, sizeof(accent)) > 0 && accent[0])
-		for (int i = 0; i < NROWS; i++)
-			if (rows[i].store == ST_THEME) {
-				kb_strlcpy(rows[i].val, accent,
-					   sizeof(rows[i].val));
-				kb_strlcpy(rows[i].orig, accent,
-					   sizeof(rows[i].orig));
-			}
-
 	cfg_path("comp.conf", path, sizeof(path));
 	load_kv(path, ST_COMP);
 	cfg_path("panel.conf", path, sizeof(path));
 	load_kv(path, ST_PANEL);
 	cfg_path("res.conf", path, sizeof(path));
 	load_kv(path, ST_RES);
+	cfg_path("launcher.conf", path, sizeof(path));
+	load_kv(path, ST_LAUNCH);
+	cfg_path("term.conf", path, sizeof(path));
+	load_kv(path, ST_TERM);
+	/*
+	 * THE USER'S HALF ONLY. menu.conf is merged system-then-user by every
+	 * reader, and the system file is a ROUTE TABLE: loading it here would
+	 * put its routes in front of a writer that rewrites what it loaded,
+	 * and this page owns one `@` setting in it and no route at all.
+	 */
+	cfg_path("menu.conf", path, sizeof(path));
+	load_kv(path, ST_MENU);
+	/*
+	 * THE SYSTEM FILE FIRST AND THE HOME FILE OVER IT, which is the order
+	 * the session itself reads them in. con.conf is the one store whose
+	 * system copy is the answer on a machine nobody has edited — /etc/skel
+	 * ships no ~/.config/kdos-con/con.conf — so a page loaded from the
+	 * home file alone showed this program's built-in defaults as though
+	 * they were the machine's, and every row read `*` the moment it was
+	 * touched.
+	 *
+	 * What is WRITTEN is still the home file: the rows that changed go
+	 * there, and /etc stays the administrator's.
+	 */
+	load_kv("/etc/kdos/con.conf", ST_CON);
+	con_path(path, sizeof(path));
+	load_kv(path, ST_CON);
 	load_boxes();
 	load_apps();
 }
@@ -1106,11 +1738,32 @@ static int dirty_count(int store)
 	return n;
 }
 
+/*
+ * EVERY STORE, WHICH IS WHAT THE COUNTER AND THE QUIT GUARD MEAN.
+ *
+ * Both asked ST_COMP alone. A change to the panel's file, the monitor's or the
+ * console session's therefore showed `0 pending` on the Apply button and was
+ * discarded by a single Escape without the guard saying anything — which is
+ * the one thing that guard exists to stop.
+ */
+static int dirty_any(void)
+{
+	int n = 0;
+
+	for (int i = 0; i < NROWS; i++)
+		if (rows[i].store != ST_NONE &&
+		    strcmp(rows[i].val, rows[i].orig))
+			n++;
+	return n;
+}
+
 static void apply(void)
 {
 	char path[700];
-	int comp = dirty_count(ST_COMP), theme = dirty_count(ST_THEME);
+	int comp = dirty_count(ST_COMP);
 	int panel = dirty_count(ST_PANEL), res = dirty_count(ST_RES);
+	int con = dirty_count(ST_CON), launch = dirty_count(ST_LAUNCH);
+	int term = dirty_count(ST_TERM), menu = dirty_count(ST_MENU);
 	int live = 0, login = 0, failed = 0;
 	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
 	 * substring of `kdos-desktop-start`, which is a /bin/sh script that
@@ -1156,27 +1809,53 @@ static void apply(void)
 		else
 			sighup("kdos-res");
 	}
-	if (theme) {
-		for (int i = 0; i < NROWS; i++) {
-			if (rows[i].store != ST_THEME ||
-			    !strcmp(rows[i].val, rows[i].orig))
-				continue;
-			/*
-			 * Detached, not waited for: `kdos theme` regenerates
-			 * ~10 000 icons and every cursor, which is seconds of
-			 * work, and it sends its own SIGHUP to the whole
-			 * desktop when it is done. A settings window frozen for
-			 * the duration would look like the crash it is not.
-			 */
-			KbArgv a = {0};
-			kb_argv_add(&a, "kdos");
-			kb_argv_add(&a, "theme");
-			kb_argv_add(&a, rows[i].val);
-			kb_argv_end(&a);
-			kb_run_detach(&a);
-		}
+	if (term) {
+		/*
+		 * `kdos-term` RE-READS ON THE SAME SIGNAL `kdos theme` sends,
+		 * so these reach every terminal already open. A window that
+		 * has stepped its own font or its own transparency keeps what
+		 * it stepped: this file is where a window STARTS.
+		 */
+		cfg_path("term.conf", path, sizeof(path));
+		if (write_kv(path, ST_TERM) != 0)
+			failed++;
+		else
+			sighup("kdos-term");
 	}
-
+	if (menu) {
+		/*
+		 * NO SIGNAL: kdos-start is opened by its chord and reads the
+		 * file as it comes up. Every line this page does not own —
+		 * every route — is copied through byte for byte, which is what
+		 * makes writing one `@` key into a route table safe.
+		 */
+		cfg_path("menu.conf", path, sizeof(path));
+		if (write_kv(path, ST_MENU) != 0)
+			failed++;
+	}
+	if (launch) {
+		/*
+		 * NO SIGNAL EITHER, and for a different reason: the launcher
+		 * is started by its chord and reads this file as it comes up,
+		 * so the next time it is opened it has the answer. There is no
+		 * long-lived process holding a stale one.
+		 */
+		cfg_path("launcher.conf", path, sizeof(path));
+		if (write_kv(path, ST_LAUNCH) != 0)
+			failed++;
+	}
+	if (con) {
+		/*
+		 * NO SIGNAL. The console session reads con.conf once and keeps
+		 * the answer; a SIGHUP is its retint and re-reads nothing
+		 * here. Every row of this store therefore says `login`, and
+		 * sending a signal that did nothing would be the program
+		 * pretending otherwise.
+		 */
+		con_path(path, sizeof(path));
+		if (write_kv(path, ST_CON) != 0)
+			failed++;
+	}
 	if (failed) {
 		snprintf(note, sizeof(note),
 			 "could not write %d file(s) — nothing else changed",
@@ -1186,14 +1865,13 @@ static void apply(void)
 	for (int i = 0; i < NROWS; i++)
 		kb_strlcpy(rows[i].orig, rows[i].val, sizeof(rows[i].orig));
 
-	if (!live && !login && !theme)
+	if (!live && !login)
 		snprintf(note, sizeof(note), "nothing to apply");
 	else if (login)
 		snprintf(note, sizeof(note),
-			 "applied: %d now, %d at the next login", live + theme,
-			 login);
+			 "applied: %d now, %d at the next login", live, login);
 	else
-		snprintf(note, sizeof(note), "applied: %d now", live + theme);
+		snprintf(note, sizeof(note), "applied: %d now", live);
 	quit_armed = 0;
 }
 
@@ -1205,7 +1883,7 @@ static void apply(void)
  */
 static int try_quit(void)
 {
-	if (!dirty_count(ST_COMP) && !dirty_count(ST_THEME))
+	if (!dirty_any())
 		return 1;
 	if (quit_armed)
 		return 1;
@@ -1269,6 +1947,57 @@ static struct row *sel_row(void)
 	return ri >= 0 ? &rows[ri] : NULL;
 }
 
+/* The same lookup for a row the POINTER is on rather than the caret. */
+static struct row *row_at(int n)
+{
+	int ri;
+
+	if (cat == CAT_BOXES) {
+		if (box_mode == BOX_LIST || n < 0 || n >= NBOXROWS)
+			return NULL;
+		if (box_mode != BOX_NEW && !strcmp(boxrows[n].key, "name"))
+			return NULL;
+		return &boxrows[n];
+	}
+	ri = cat_row(n);
+	return ri >= 0 ? &rows[ri] : NULL;
+}
+
+/*
+ * THE CARET NEVER RESTS ON A SECTION RULE.
+ *
+ * Called after every clamp rather than inside each key: Page Down, End, a
+ * click and a wheel all land wherever the arithmetic puts them, and one place
+ * that settles the result is one rule instead of six. `dir` is the way the
+ * caret was last travelling, so stepping off a heading continues the movement
+ * rather than reversing it — and a run of headings at either end of a page
+ * bounces off the end instead of walking past it.
+ */
+static int sel_dir = 1;
+
+static void sel_settle(void)
+{
+	int n = cat_rows();
+	int dir = sel_dir ? sel_dir : 1;
+
+	if (cat == CAT_APPS || cat == CAT_BOXES || n < 1)
+		return;
+	for (int i = 0; i < n; i++) {
+		int ri = cat_row(sel);
+
+		if (ri < 0 || rows[ri].type != FT_HEAD)
+			return;
+		sel += dir;
+		if (sel < 0) {
+			sel = 0;
+			dir = 1;
+		} else if (sel >= n) {
+			sel = n - 1;
+			dir = -1;
+		}
+	}
+}
+
 static void cycle(struct row *r, int dir)
 {
 	if (r->type == FT_CHOICE && r->nchoices) {
@@ -1291,6 +2020,115 @@ static void cycle(struct row *r, int dir)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 #define CATW 13
+
+/*
+ * ── THE VALUE COLUMN IS A CONTROL ────────────────────────────────
+ *
+ * Every knob here was a printed string changed with Left and Right, which is a
+ * settings window a mouse cannot use: a person who came to this surface with a
+ * pointer could select a row and nothing else. A number is a slider, a choice
+ * is a dropdown, and both answer a press, a drag and a wheel.
+ *
+ * ONE RECTANGLE FUNCTION, READ BY THE DRAW AND BY THE HIT TEST. A control the
+ * pointer misses by a cell is a control that does not exist.
+ */
+/*
+ * THE LABEL COLUMN IS A THIRD OF THE PANE, floored at 14 and capped at 26.
+ *
+ * A fixed width truncated `disable_while_typing` at every size, including the
+ * ones with cells to spare, and gave a 132-column window a value column
+ * starting at the same cell an 80-column one did. The cap is there because a
+ * value is the thing being changed: past a quarter of a wide window the label
+ * would be taking room from the control.
+ */
+static int lab_w(int fw)
+{
+	int w = fw / 3;
+
+	if (w < 14)
+		w = 14;
+	if (w > 26)
+		w = 26;
+	if (w > fw - 12)
+		w = fw - 12 > 4 ? fw - 12 : 4;
+	return w;
+}
+
+/*
+ * The value column, which begins one cell past the label and stops eight short
+ * of the right edge — that is where the `live`/`login` tag is drawn.
+ */
+static KRect val_rect(int y, int fx, int fw)
+{
+	int lw = lab_w(fw);
+	int vw = fw - lw - 9;
+
+	if (vw < 4)
+		vw = 4;
+	return krect(fx + lw + 1, y, vw, 1);
+}
+
+/* The same rectangle from a SCREEN row, which is what a pointer reports. The
+ * two columns are the page's and not the caller's, so both halves derive them
+ * here rather than each measuring the window for itself. */
+static KRect val_rect_at(int screen_y)
+{
+	int fx = CATW + 3;
+	int fw = ktui_w - fx - 1;
+
+	if (fw < 8)
+		fw = 8;
+	return val_rect(screen_y, fx, fw);
+}
+
+/*
+ * ONE DROPDOWN, BELONGING TO WHICHEVER ROW IS SELECTED. Only one list can be
+ * open at a time — it is drawn over the rows under it — so a `KtuiDrop` per
+ * row would be fifty copies of one piece of state, forty-nine of them stale.
+ * `drop_row` is which row it is currently describing; a selection that moves
+ * closes it, because a list hanging under a row nobody is on is a list that
+ * answers for the wrong key.
+ */
+static KtuiDrop drop;
+static int drop_row = -1;
+
+static int choice_at(const struct row *r)
+{
+	for (int i = 0; i < r->nchoices; i++)
+		if (!strcmp(r->val, r->choices[i]))
+			return i;
+	return 0;
+}
+
+static void drop_close(void)
+{
+	drop.open = 0;
+	drop_row = -1;
+}
+
+/*
+ * WHAT WAS TYPED, INTO THE ROW. One place, because Enter and a click away from
+ * the field are the same answer — two copies of the clamp would be two
+ * different ideas of what a number out of range becomes.
+ */
+static void commit_edit(void)
+{
+	struct row *er = sel_row();
+
+	if (!er)
+		return;
+	if (er->type == FT_INT) {
+		int v = atoi(edit_buf);
+
+		if (v < er->min)
+			v = er->min;
+		if (v > er->max)
+			v = er->max;
+		snprintf(er->val, sizeof(er->val), "%d", v);
+	} else {
+		kb_strlcpy(er->val, edit_buf, sizeof(er->val));
+	}
+}
 
 /*
  * A value too wide for its column, marked as such — libktui clips silently,
@@ -1407,11 +2245,12 @@ static void draw_home(void)
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 	/* WORDS, not arrows. The ascii tier has no ← →, and the console font
 	 * has no left/right arrow either — which is why ktui_glyph carries
-	 * ◀ ▶ — so a literal `↑↓←→` here came out as `????` in the golden
-	 * frame and would come out as four blanks on tty1. */
-	ktui_draw_text(2, h - 3, w - 4,
-		       "Enter opens a page   arrows move   Esc closes", KT_MID,
-		       KT_SURFACE, KT_A_NONE);
+	 * ◀ ▶ — so a literal `↑↓←→` here would come out as `????` in a golden
+	 * frame and as four blanks on tty1. */
+	ktui_hint("Enter", "open");
+	ktui_hint("Arrows", "move");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 3, w - 4, 1), KT_SURFACE);
 	ktui_draw_text(2, h - 2, w - 4, CAT_TILE[home_sel].blurb, KT_MID,
 		       KT_SURFACE, KT_A_NONE);
 	ktui_draw_flush();
@@ -1522,6 +2361,22 @@ static void draw_page(void)
 				continue;
 			r = &rows[ri];
 		}
+		if (r->type == FT_HEAD) {
+			/* THE LABEL, THEN A RULE TO THE EDGE OF THE PANE. The
+			 * rule is what makes a heading read as a divider at a
+			 * glance rather than as a row with no value. */
+			int lw = (int)strlen(r->label);
+
+			if (lw > fw - 4)
+				lw = fw - 4;
+			ktui_draw_fill(krect(fx, y, fw, 1), bg);
+			ktui_draw_text(fx, y, lw, r->label, KT_ACCENT, bg,
+				       KT_A_BOLD);
+			if (fw - lw - 2 > 0)
+				ktui_draw_hline(fx + lw + 1, y, fw - lw - 2,
+						KT_G_HL, KT_DIM, bg);
+			continue;
+		}
 		if (r->type == FT_NOTE) {
 			ktui_draw_text(fx, y, fw, r->label, on ? fg : KT_MID, bg,
 				       KT_A_NONE);
@@ -1541,25 +2396,72 @@ static void draw_page(void)
 		char label[64];
 		snprintf(label, sizeof(label), "%s%s", r->label,
 			 strcmp(r->val, r->orig) ? " *" : "");
-		ktui_draw_text(fx, y, 18, label, fg, bg, KT_A_NONE);
+		ktui_draw_text(fx, y, lab_w(fw), label, fg, bg, KT_A_NONE);
 
 		/* The value, then the scope tag hard against the right edge:
 		 * `live` and `login` are the two answers to "did that do
 		 * anything", and they belong on the row that raises it. */
 		const char *tag = r->scope == SC_LIVE ? "live" : "login";
-		int vw = fw - 20 - 7;
-		if (vw < 4)
-			vw = 4;
+		KRect vr = val_rect(y, fx, fw);
 		char shown[256];
-		ktui_draw_text(fx + 19, y, vw,
-			       elide(r->val[0] ? r->val : "(unset)", vw,
-				     shown, sizeof(shown)),
-			       on ? fg : (r->val[0] ? KT_MID : KT_DIM), bg,
-			       KT_A_NONE);
+
+		/*
+		 * A NUMBER IS A SLIDER AND A CHOICE IS A DROPDOWN, and the
+		 * row being EDITED is neither: while a person is typing an
+		 * exact value, what belongs in that column is what they have
+		 * typed.
+		 */
+		if (r->type == FT_INT && !(on && editing)) {
+			ktui_slider_draw(vr, atoi(r->val), r->min, r->max, on,
+					 bg);
+		} else if (r->type == FT_CHOICE && !(on && editing)) {
+			KtuiDrop d = { choice_at(r), 0, 0 };
+
+			if (on && drop_row == idx)
+				d = drop;
+			ktui_dropdown_draw(vr, &d, r->choices, r->nchoices, on);
+		} else if (on && editing) {
+			/*
+			 * THE ONE FIELD IN THE TOOLKIT, with the caret, the
+			 * arrows, Home and End, a click to place it and the
+			 * paste queue — and with UTF-8 handled in columns, so
+			 * a backspace cannot cut a character in half.
+			 *
+			 * The frame is opened and closed around this one
+			 * control because the surface has an event loop of its
+			 * own; with a single control claimed the focus is
+			 * always it.
+			 */
+			ktui_draw_fill(vr, bg);
+			ktui_frame_begin(&field_ev);
+			ktui_input(vr, edit_buf, sizeof(edit_buf), 0, NULL);
+			ktui_frame_end();
+			memset(&field_ev, 0, sizeof(field_ev));
+		} else {
+			ktui_draw_text(vr.x, y, vr.w,
+				       elide(r->val[0] ? r->val : "(unset)",
+					     vr.w, shown, sizeof(shown)),
+				       on ? fg : (r->val[0] ? KT_MID : KT_DIM),
+				       bg, KT_A_NONE);
+		}
 		ktui_draw_text_right(0, y, w - 2, tag,
 				     on ? fg : (r->scope == SC_LIVE ? KT_MID
 							            : KT_DIM),
 				     bg, KT_A_NONE);
+	}
+
+	/*
+	 * AND THE OPEN LIST LAST, OVER THE ROWS IT COVERS. A dropdown drawn in
+	 * its own row's turn would be painted over by every row below it.
+	 */
+	if (drop.open && drop_row >= top && drop_row < top + pane_rows) {
+		struct row *dr = sel_row();
+
+		if (dr && dr->type == FT_CHOICE)
+			ktui_dropdown_draw_open(val_rect(1 + drop_row - top, fx,
+							 fw),
+						&drop, dr->choices,
+						dr->nchoices);
 	}
 
 	/*
@@ -1639,30 +2541,52 @@ static void draw_page(void)
 			       KT_MID, KT_SURFACE, KT_A_NONE);
 	}
 
-	int pending = dirty_count(ST_COMP) + dirty_count(ST_THEME);
+	int pending = dirty_any();
 	if (cat == CAT_BOXES)
 		pending = box_mode == BOX_LIST ? 0 : box_dirty();
-	/* The arrows come from the glyph table: the console font has ◀ ▶ and
-	 * has no ← →, which is why ktui_glyph carries that pair. */
-	char hint[96];
-	if (editing)
-		snprintf(hint, sizeof(hint), "Enter ok   Esc cancel");
-	else if (cat == CAT_APPS)
-		snprintf(hint, sizeof(hint),
-			 "Enter chooser   Tab panes   Esc close");
-	else if (cat == CAT_BOXES && box_mode == BOX_LIST)
-		snprintf(hint, sizeof(hint),
-			 "Enter open   Tab panes   Esc close");
-	else if (cat == CAT_BOXES)
-		snprintf(hint, sizeof(hint),
-			 "%s%s change   Enter edit   a %s   Esc back",
-			 ktui_glyph[KT_G_LEFT], ktui_glyph[KT_G_RIGHT],
-			 box_mode == BOX_NEW ? "create" : "write");
-	else
-		snprintf(hint, sizeof(hint),
-			 "%s%s change   Enter edit   a apply   Esc close",
-			 ktui_glyph[KT_G_LEFT], ktui_glyph[KT_G_RIGHT]);
-	ktui_draw_text(2, h - 2, w - 16, hint, KT_MID, KT_SURFACE, KT_A_NONE);
+	/*
+	 * THE ROW FOLLOWS THE PANE AND THE ROW TYPE, which the fixed string
+	 * could not: on the categories pane it said ◀▶ change over a list
+	 * that answers neither, and on an FT_TOOL row it said Enter edit over
+	 * a row that runs a program.
+	 *
+	 * The arrows come from the glyph table: the console font has ◀ ▶ and
+	 * no ← →, which is why ktui_glyph carries that pair. The key is copied
+	 * by ktui_hint, so a buffer on this stack is enough.
+	 */
+	char lr[8];
+	const struct row *hr = sel_row();
+	int fields = !editing && pane == 1;
+	int boxlist = cat == CAT_BOXES && box_mode == BOX_LIST;
+
+	snprintf(lr, sizeof(lr), "%s%s", ktui_glyph[KT_G_LEFT],
+		 ktui_glyph[KT_G_RIGHT]);
+
+	ktui_hint_if(editing, "Enter", "ok");
+	ktui_hint_if(!editing && pane == 0, "Up/Down", "category");
+	ktui_hint_if(!editing && pane == 0, "Enter", "fields");
+	ktui_hint_if(fields && cat == CAT_APPS && napps > 0, "Enter",
+		     "chooser");
+	ktui_hint_if(fields && cat == CAT_BOXES && boxlist, "Enter", "open");
+	ktui_hint_if(fields && cat != CAT_APPS && !boxlist && hr &&
+			     (hr->type == FT_CHOICE || hr->type == FT_INT),
+		     lr, "change");
+	ktui_hint_if(fields && cat != CAT_APPS && !boxlist && hr &&
+			     (hr->type == FT_TEXT || hr->type == FT_INT),
+		     "Enter", "edit");
+	ktui_hint_if(fields && cat != CAT_APPS && cat != CAT_BOXES && hr &&
+			     hr->type == FT_TOOL,
+		     "Enter", "open");
+	/* `a` is not gated on `pending`: apply() also writes panel and monitor
+	 * state that the counter does not count, so gating it would hide a
+	 * live key. */
+	ktui_hint_if(fields && cat != CAT_APPS && !boxlist, "a",
+		     cat == CAT_BOXES
+			     ? (box_mode == BOX_NEW ? "create" : "write")
+			     : "apply");
+	ktui_hint_if(!editing, "Tab", "panes");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 16, 1), KT_SURFACE);
 
 	/* One button, and it is the one irreversible thing on the screen. */
 	char blabel[24];
@@ -1745,7 +2669,11 @@ static int cap_caps(void)
 }
 
 static const KtuiBackend cap_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
+	.name = "dump-cells",
+	.flush = cap_flush,
+	.poll_event = cap_poll,
+	.size = cap_size,
+	.caps = cap_caps,
 };
 
 /* ── main ──────────────────────────────────────────────────────────────── */
@@ -1763,6 +2691,7 @@ static void activate(void)
 		if (p == 0) {
 			if (fork() == 0) {
 				setsid();
+				kb_child_reset_signals();
 				execvp(argv[0], (char *const *)argv);
 				_exit(127);
 			}
@@ -1792,7 +2721,7 @@ static void activate(void)
 	}
 
 	struct row *sr = sel_row();
-	if (!sr || sr->type == FT_NOTE)
+	if (!sr || sr->type == FT_NOTE || sr->type == FT_HEAD)
 		return;
 	if (cat == CAT_BOXES) {
 		if (sr->type == FT_CHOICE) {
@@ -1806,7 +2735,7 @@ static void activate(void)
 	}
 
 	int ri = cat_row(sel);
-	if (ri < 0 || rows[ri].type == FT_NOTE)
+	if (ri < 0 || rows[ri].type == FT_NOTE || rows[ri].type == FT_HEAD)
 		return;
 	if (rows[ri].type == FT_TOOL) {
 		/* Spawned DETACHED, never waited for: the managers are
@@ -1880,6 +2809,17 @@ int settings_main(int argc, char **argv)
 		}
 	}
 
+	/* BEFORE the dump branches: both draw, `--page` makes the page rung up
+	 * in a dump, and a frame that read the verb through an empty ladder
+	 * would disagree with the live surface. */
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "settings";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Back", page_up, page_close, NULL);
+	ktui_keys_layer(&keys, "Back", boxprof_up, boxprof_close, NULL);
+	ktui_keys_layer(&keys, "Cancel", edit_up, edit_cancel, NULL);
+
 	load_all();
 	/* A deep link lands ON the page, not on the grid: the panel's battery
 	 * readout opening Settings and making you pick Session again would be
@@ -1907,7 +2847,7 @@ int settings_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -1918,7 +2858,7 @@ int settings_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 72,
 		.rows = 20,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -1930,21 +2870,32 @@ int settings_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-settings: no compositor or no "
 				"layer-shell\n");
 		return 2;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	/* AFTER kdisp_init: the icon layer needs the cell size and the output
 	 * scale, and neither exists until the surface does. */
+	/*
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
+	 * before it. A console surface has no pixel size of its own —
+	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * picture a pixel or two across, which is a blank cell by a longer
+	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
+	 * display rescales to its own font. sh_pic_backend() must come after
+	 * kdisp_init: the console backend clears its client state when it
+	 * connects, so a callback registered before that point is erased.
+	 */
+	sh_pic_backend();
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int pane_rows = ktui_h - 5;
@@ -1961,6 +2912,7 @@ int settings_main(int argc, char **argv)
 		 * nothing, so a hand-rolled pull sat here instead — which is
 		 * why the wheel and the scrollbar could not move the page: the
 		 * next frame put it straight back. */
+		sel_settle();
 		kch_list_clamp(&top, sel, n, pane_rows, sel_follow);
 
 		draw();
@@ -1977,6 +2929,23 @@ int settings_main(int argc, char **argv)
 			if (cat == CAT_APPS && !editing)
 				load_apps();
 			continue;
+		}
+
+		/*
+		 * THE LADDER FIRST, above both screens. CLOSE reaches here
+		 * only with no rung up — which is the home grid — and runs the
+		 * same unsaved-changes question the removed arm did.
+		 */
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE) {
+				if (try_quit())
+					goto out;
+				continue;
+			}
+			if (r == KTUI_KEY_TAKEN)
+				continue;
 		}
 
 		/* ── the home grid owns its own input ── */
@@ -2015,10 +2984,6 @@ int settings_main(int argc, char **argv)
 				}
 			} else if (ev.type == KT_EVT_KEY) {
 				switch (ev.key) {
-				case KT_K_ESC:
-					if (try_quit())
-						goto out;
-					continue;
 				case KT_K_LEFT:
 					if (home_sel > 0)
 						home_sel--;
@@ -2082,6 +3047,33 @@ int settings_main(int argc, char **argv)
 					continue;
 				}
 				if (in_fields && !editing) {
+					/*
+					 * A DRAG ON A SLIDER SETS IT, and on
+					 * anything else moves the caret. The
+					 * row is the one the press began on,
+					 * which is what lets the pointer leave
+					 * the column and go on setting the
+					 * value.
+					 */
+					struct row *dr = row_at(sel);
+
+					if (dr && dr->type == FT_INT &&
+					    drag_slider) {
+						int v = atoi(dr->val);
+
+						if (ktui_slider_hit(
+							    val_rect_at(1 + sel -
+									top),
+							    &v, dr->min,
+							    dr->max,
+							    dr->step ? dr->step
+								     : 1,
+							    ev.mx, ev.my, 0))
+							snprintf(dr->val,
+								 sizeof(dr->val),
+								 "%d", v);
+						continue;
+					}
 					pane = 1;
 					sel = row;
 					sel_follow = 1;
@@ -2090,10 +3082,35 @@ int settings_main(int argc, char **argv)
 			}
 			if (ev.press == KT_MP_RELEASE) {
 				kch_scrollbar_release();
+				drag_slider = 0;
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			/*
+			 * AN OPEN LIST IS OVER THE ROWS AND ANSWERS FIRST.
+			 * It was drawn last, so a press tested against the
+			 * rows would pick whatever the list is covering — and
+			 * a press outside it closes without choosing, which is
+			 * the only reading of a click on the thing a list is
+			 * standing in front of.
+			 */
+			if (drop.open && ev.btn == KT_MB_LEFT) {
+				struct row *dr = row_at(drop_row);
+
+				if (dr && dr->type == FT_CHOICE &&
+				    ktui_dropdown_hit(val_rect_at(1 + drop_row -
+								  top),
+						      &drop, dr->nchoices,
+						      ev.mx, ev.my) &&
+				    drop.sel >= 0 && drop.sel < dr->nchoices)
+					kb_strlcpy(dr->val,
+						   dr->choices[drop.sel],
+						   sizeof(dr->val));
+				if (!drop.open)
+					drop_close();
+				continue;
+			}
 			if (ev.btn == KT_MB_LEFT) {
 				int bt = kch_scrollbar_press(0, ev.mx, ev.my);
 
@@ -2103,12 +3120,36 @@ int settings_main(int argc, char **argv)
 					continue;
 				}
 			}
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				sel--;
-				sel_follow = 1;
-			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
-				sel++;
-				sel_follow = 1;
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				/*
+				 * A DETENT OVER A CONTROL TURNS IT and
+				 * anywhere else scrolls the page. A wheel that
+				 * always scrolled would leave the pointer
+				 * unable to nudge a value at all.
+				 */
+				int up = ev.btn == KT_MB_WHEEL_UP;
+				struct row *wr = in_fields && !editing
+						 ? row_at(row) : NULL;
+
+				if (wr && (wr->type == FT_INT ||
+					   wr->type == FT_CHOICE) &&
+				    krect_hit(val_rect_at(ev.my), ev.mx,
+					      ev.my)) {
+					pane = 1;
+					sel = row;
+					cycle(wr, up ? 1 : -1);
+				} else {
+					/* AND THE DETENT IS A DIRECTION. A
+					 * section rule is stepped over the way
+					 * the wheel was turning; without this
+					 * the settle uses whichever way a KEY
+					 * last went, so scrolling up through a
+					 * heading jumps down past it. */
+					sel_dir = up ? -1 : 1;
+					sel += up ? -1 : 1;
+					sel_follow = 1;
+				}
 			} else if (ev.btn == KT_MB_RIGHT) {
 				/* Back one level, the same as Escape. */
 				mode = SM_HOME;
@@ -2138,13 +3179,59 @@ int settings_main(int argc, char **argv)
 					}
 					pane = 0;
 				} else if (in_fields && !editing) {
+					struct row *cr = row_at(row);
+					KRect vr = val_rect_at(ev.my);
+					int on_val = krect_hit(vr, ev.mx,
+							       ev.my);
+					/* Where the caret WAS: a click on the
+					 * row it is already on is the one that
+					 * activates, and moving it first would
+					 * make every first click an activate. */
+					int sel_was = sel, pane_was = pane;
+
+					pane = 1;
+					sel = row;
+
+					/*
+					 * THE CONTROL IN THE VALUE COLUMN
+					 * ANSWERS FIRST, and it answers on the
+					 * FIRST press rather than the second:
+					 * a slider that needed the row
+					 * selecting before it could be dragged
+					 * would be two gestures for one
+					 * movement.
+					 */
+					if (cr && on_val &&
+					    cr->type == FT_INT) {
+						int v = atoi(cr->val);
+
+						drag_slider = 1;
+						if (ktui_slider_hit(
+							    vr, &v, cr->min,
+							    cr->max,
+							    cr->step ? cr->step
+								     : 1,
+							    ev.mx, ev.my, 1))
+							snprintf(cr->val,
+								 sizeof(cr->val),
+								 "%d", v);
+						continue;
+					}
+					if (cr && on_val &&
+					    cr->type == FT_CHOICE) {
+						drop.sel = choice_at(cr);
+						drop.hi = drop.sel;
+						drop.open = !drop.open ||
+							    drop_row != row;
+						drop_row = drop.open ? row
+								     : -1;
+						continue;
+					}
 					/* A click on the row that is already
 					 * selected activates it — pick.c's
 					 * rule, so one hand learns one thing. */
-					if (row == sel && pane == 1)
+					if (row == sel_was && pane_was == 1)
 						activate();
-					pane = 1;
-					sel = row;
 				}
 			}
 			continue;
@@ -2154,61 +3241,44 @@ int settings_main(int argc, char **argv)
 
 		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
+		/*
+		 * AN OPEN LIST OWNS THE KEYBOARD WHILE IT IS DOWN, exactly as
+		 * it owns the pointer: a caret that walked the rows underneath
+		 * would leave the list describing a key nobody is on.
+		 */
+		if (drop.open) {
+			struct row *dr = row_at(drop_row);
+
+			if (!dr || dr->type != FT_CHOICE) {
+				drop_close();
+			} else if (ktui_dropdown_key(&drop, dr->nchoices,
+						     ev.key) &&
+				   drop.sel >= 0 && drop.sel < dr->nchoices) {
+				kb_strlcpy(dr->val, dr->choices[drop.sel],
+					   sizeof(dr->val));
+			}
+			if (!drop.open)
+				drop_close();
+			continue;
+		}
+
 		if (editing) {
-			struct row *er = sel_row();
-			size_t len = strlen(edit_buf);
-			if (ev.key == KT_K_ESC) {
+			if (ev.key == KT_K_ENTER) {
+				commit_edit();
 				editing = 0;
-			} else if (ev.key == KT_K_ENTER) {
-				if (er) {
-					if (er->type == FT_INT) {
-						int v = atoi(edit_buf);
-						if (v < er->min)
-							v = er->min;
-						if (v > er->max)
-							v = er->max;
-						snprintf(er->val,
-							 sizeof(er->val),
-							 "%d", v);
-					} else {
-						kb_strlcpy(er->val, edit_buf,
-							   sizeof(er->val));
-					}
-				}
-				editing = 0;
-			} else if (ev.key == KT_K_BACKSPACE) {
-				if (len)
-					edit_buf[len - 1] = '\0';
-			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
-				   len + 1 < sizeof(edit_buf)) {
-				edit_buf[len] = (char)ev.key;
-				edit_buf[len + 1] = '\0';
+			} else {
+				/*
+				 * EVERYTHING ELSE IS THE FIELD'S, and it is
+				 * handed across rather than acted on here —
+				 * the control reads the event the frame was
+				 * given. Escape is not excepted: `ktui_keys`
+				 * above has already taken it.
+				 */
+				field_ev = ev;
 			}
 			continue;
 		}
 
-		if (ev.key == KT_K_ESC) {
-			/* On a box's profile, back one level to the box LIST.
-			 * Escape steps out of exactly one thing at a time,
-			 * which is what makes it usable without thinking. */
-			if (cat == CAT_BOXES && box_mode != BOX_LIST) {
-				box_mode = BOX_LIST;
-				box_cur[0] = '\0';
-				sel = top = 0;
-				note[0] = '\0';
-				continue;
-			}
-			/* Back to the grid, not out of the program. Edits are
-			 * held in `rows[]` and Apply is still one key away, so
-			 * stepping back loses nothing — and the unsaved-changes
-			 * guard stays at the single exit, on the home screen,
-			 * rather than firing every time somebody backs out of a
-			 * page they only wanted to look at. */
-			mode = SM_HOME;
-			home_sel = cat;
-			quit_armed = 0;
-			continue;
-		}
 		quit_armed = 0;
 
 		struct row *sr = sel_row();
@@ -2229,6 +3299,7 @@ int settings_main(int argc, char **argv)
 					}
 				}
 			} else {
+				sel_dir = -1;
 				sel--;
 			}
 			break;
@@ -2245,6 +3316,7 @@ int settings_main(int argc, char **argv)
 					}
 				}
 			} else {
+				sel_dir = 1;
 				sel++;
 			}
 			break;
@@ -2261,15 +3333,19 @@ int settings_main(int argc, char **argv)
 				cycle(sr, 1);
 			break;
 		case KT_K_PGUP:
+			sel_dir = -1;
 			sel -= pane_rows;
 			break;
 		case KT_K_PGDN:
+			sel_dir = 1;
 			sel += pane_rows;
 			break;
 		case KT_K_HOME:
+			sel_dir = 1;
 			sel = 0;
 			break;
 		case KT_K_END:
+			sel_dir = -1;
 			sel = n - 1;
 			break;
 		case KT_K_ENTER:
@@ -2295,6 +3371,6 @@ int settings_main(int argc, char **argv)
 		}
 	}
 out:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

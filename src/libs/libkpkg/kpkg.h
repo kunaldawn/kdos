@@ -155,11 +155,17 @@ int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash);
 /* Every path claimed by an installed package, sorted, for the conflict scan.
  * `owner[i]` is the package that claims `path[i]`, which is what an overwrite
  * needs: the path has to leave the old owner's manifest, or the file ends up
- * claimed twice and removing either package deletes the other's file. */
+ * claimed twice and removing either package deletes the other's file.
+ *
+ * `owner[i]` is a BORROWED pointer into `ownerv`, one copy per package rather
+ * than one per path; it is valid until kp_owned_free and must not be freed or
+ * kept after it. `ownerv`/`nowner` belong to the loader alone. */
 typedef struct {
 	char **path;
 	char **owner;
 	int n;
+	char **ownerv;
+	int nowner;
 } KpOwned;
 
 KpOwned *kp_owned_load(const KpConf *c);

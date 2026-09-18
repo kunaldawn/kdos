@@ -16,12 +16,15 @@
  *          ║  Enter to unlock                     ║
  *          ╚══════════════════════════════════════╝
  *
- * An ext-session-lock-v1 client, and the protocol is the whole design: the
- * COMPOSITOR owns the locked state, so this process dying leaves the screen
- * locked rather than open. That inverts the usual risk — the dangerous bug in a
- * lock screen is not "it crashed", it is "it unlocked". There is exactly one
- * call that unlocks anything (`kwl_unlock`) and exactly one thing that reaches
- * it: kdos-checkpass answering 0.
+ * An ext-session-lock-v1 client on Wayland and a lock-role surface on the
+ * console, and in both the protocol is the whole design: the SESSION SERVER
+ * owns the locked state — kdos-comp there, kdos-con here — so this process
+ * dying leaves the screen locked rather than open. That inverts the usual
+ * risk — the dangerous bug in a lock screen is not "it crashed", it is "it
+ * unlocked". There is exactly one call that unlocks anything (`kdisp_unlock`,
+ * which each display implements as its own single message, never as an
+ * inference from this process exiting) and exactly one thing that reaches it:
+ * kdos-checkpass answering 0.
  *
  * FOUR RULES IT IS BUILT AROUND:
  *
@@ -51,7 +54,14 @@
 
 #include "kbase.h"
 #include "ktui.h"
+#include "kcon.h"
 #include "kwl.h"
+
+/* See the declaration: naming kwl_impl is what links Wayland into this
+ * program. A console-only build would name a different one, or none. */
+static const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+static const int kdos_disp_n = 2;
+
 
 #define LK_MAX_PASS 256
 #define LK_BOX_W    46
@@ -375,7 +385,7 @@ static int try_unlock(void)
 	pass_clear();
 
 	if (rc == 0) {
-		kwl_unlock();
+		kdisp_unlock();
 		return 1;
 	}
 	failed = 1;
@@ -405,15 +415,15 @@ int main(int argc, char **argv)
 		snprintf(host, sizeof(host), "kdos");
 	host[sizeof(host) - 1] = '\0';
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_LOCK,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_LOCK,
 		.app_id = "kdos-lock",
 		.keyboard = 1,
 	};
 	theme_from_cache();
 	logo_load();
 
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		/*
 		 * No compositor, no session-lock global, or no font. Exiting
 		 * non-zero without having locked anything is the only safe
@@ -427,14 +437,14 @@ int main(int argc, char **argv)
 	ktui_draw_init();
 
 	int done = 0, announced = 0;
-	while (!done && !kwl_should_close()) {
+	while (!done && !kdisp_should_close()) {
 		/*
 		 * The LOCK READY handshake: kdos-power waits on this exact
 		 * line before it sends `suspend`, so a machine never sleeps
 		 * with its session still on screen. Once, when the compositor
 		 * confirms — never on this process's own say-so.
 		 */
-		if (!announced && kwl_lock_engaged()) {
+		if (!announced && kdisp_lock_engaged()) {
 			printf("locked\n");
 			fflush(stdout);
 			announced = 1;
@@ -448,12 +458,34 @@ int main(int argc, char **argv)
 		 * is not a second late for a suspend that is waiting on it. */
 		if (!ktui_backend()->poll_event(&ev, announced ? 1000 : 100))
 			continue;
+		/*
+		 * A PRESS CLEARS THE FIELD, and that is the whole of what a
+		 * pointer can honestly do here.
+		 *
+		 * THERE IS NOTHING ELSE TO CLICK ON A LOCK SCREEN, and a
+		 * control that let one in would be the defect: the single
+		 * action is typing a secret, and a button that unlocked, or a
+		 * field a pointer could fill, would be a lock with a way past
+		 * it that is not the password. What a press IS good for is the
+		 * half-typed attempt somebody wants to start again — the same
+		 * thing Escape does, on the hand that is already on the mouse.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_PRESS &&
+			    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_RIGHT) &&
+			    kdisp_lock_engaged()) {
+				pass_clear();
+				failed = 0;
+				status = NULL;
+			}
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
 		/* Refuse input until the compositor says the session is
 		 * actually locked — see the header. */
-		if (!kwl_lock_engaged()) {
+		if (!kdisp_lock_engaged()) {
 			status = "locking...";
 			continue;
 		}
@@ -496,6 +528,7 @@ int main(int argc, char **argv)
 			 * would store a password that cannot be retyped.
 			 */
 			if (ev.key >= 32 && ev.key < KT_K_SPECIAL &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 			    ev.key != KT_K_BACKSPACE) {
 				char seq[4];
 				int sl = utf8_encode((uint32_t)ev.key, seq);
@@ -520,13 +553,13 @@ int main(int argc, char **argv)
 
 	pass_clear();
 	/*
-	 * Read BEFORE the shutdown. kwl_shutdown() zeroes libkwl's state, so
+	 * Read BEFORE the shutdown. kdisp_shutdown() zeroes libkwl's state, so
 	 * asking afterwards always answered "not refused" — a second lock
 	 * client exited 0 while the compositor's log said it had been refused,
 	 * which is precisely the disagreement this exit code exists to prevent.
 	 */
-	int refused = kwl_lock_finished();
-	kwl_shutdown();
+	int refused = kdisp_lock_finished();
+	kdisp_shutdown();
 	if (refused)
 		fprintf(stderr, "kdos-lock: the session is already locked by "
 				"another client\n");

@@ -67,9 +67,12 @@ double kpr_hist_peak(const KprHist *h)
  * and the axis is moving.
  *
  * Grow the moment a sample does not fit, because a clipped chart is a lie.
- * Shrink only when the peak has been under a THIRD of the scale: one
- * threshold in each direction oscillates between two rungs for a series
- * sitting on the boundary, which is the same flicker wearing a different hat.
+ * Shrink one rung, and only to a rung the peak still fits inside — which on
+ * this ratio-4 ladder means the peak is under a QUARTER of the scale. A peak
+ * between the rung below and the current one HOLDS: the only rung that would
+ * be a step down is beneath the peak, and dropping to it would clip. Holding
+ * is what stops the axis flipping between two rungs on alternate ticks for
+ * every steady rate that lands in that band, which is a fifth of them.
  *
  * A pinned ring is a percentage and never rescales — 0..100 is the axis, and
  * a CPU chart that rescaled to its own peak would make 3% look like 100%.
@@ -94,12 +97,9 @@ double kpr_scale_step(double peak, double cur)
 				return LADDER[i];
 		return LADDER[n - 1];
 	}
-	if (peak < cur / 3.0) {
-		for (int i = n - 1; i >= 0; i--)
-			if (LADDER[i] < cur && LADDER[i] > peak)
-				return LADDER[i];
-		return LADDER[0];
-	}
+	for (int i = n - 1; i >= 0; i--)
+		if (LADDER[i] < cur && LADDER[i] > peak)
+			return LADDER[i];
 	return cur;
 }
 

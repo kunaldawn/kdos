@@ -41,6 +41,8 @@
 
 #include "kdos-appbox.h"
 
+#include <dirent.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +58,83 @@ void profile_defaults(Profile *p, const char *box)
 	p->wayland = 1;
 	p->audio = 1;
 	p->gpu = 1;
+	/*
+	 * THE CARD BY DEFAULT, AND THE FALL BACK IS AUTOMATIC. The device
+	 * nodes are bound in, the drivers are in the base pack and both
+	 * renderers are built: a box that draws with llvmpipe on a machine
+	 * that has all three is paying for nothing. `auto` is what asks the
+	 * machine — a render node that opens means hardware and its absence
+	 * means software — and the two literal values are what overrule it.
+	 */
+	kb_strlcpy(p->render, "auto", sizeof(p->render));
+}
+
+/*
+ * A DRM RENDER NODE THIS USER CAN OPEN, which is the whole of "can anything
+ * here draw on the card". OPENED AND NOT STAT()ED: the node is owned by the
+ * `render` group, and a session outside that group reaches the same dead end
+ * as a machine with no card at all — a name in /dev is not access to it.
+ *
+ * It is also the virgl test. virtio-gpu publishes a render node only when the
+ * host offered VIRGL, so a plain `make run` has none and every answer below
+ * resolves to software with nothing else asked.
+ */
+int box_render_node(char *out, size_t n)
+{
+	DIR *d = opendir("/dev/dri");
+	struct dirent *e;
+	int found = 0;
+
+	if (!d)
+		return 0;
+	while (!found && (e = readdir(d)) != NULL) {
+		/* "/dev/dri/" plus a NAME_MAX entry, so the compiler can see
+		 * that nothing here is ever truncated. */
+		char path[9 + 255 + 1];
+		int fd;
+
+		if (strncmp(e->d_name, "renderD", 7))
+			continue;
+		snprintf(path, sizeof(path), "/dev/dri/%s", e->d_name);
+		fd = open(path, O_RDWR | O_CLOEXEC);
+		if (fd < 0)
+			continue;
+		close(fd);
+		found = 1;
+		if (out)
+			snprintf(out, n, "%s", path);
+	}
+	closedir(d);
+	return found;
+}
+
+/*
+ * WHAT THE `render` KEY RESOLVES TO ON THIS MACHINE, which is the only form of
+ * it worth acting on: a profile states a wish and the hardware answers it.
+ *
+ * `software` is the one value that needs no machine — it is a refusal, and it
+ * is honoured whatever is plugged in. Everything else, `gpu` and `auto` and an
+ * absent key alike, is a REQUEST, so it resolves to hardware only where a
+ * render node opens. Saying `gpu` on a machine with no card does not make one,
+ * and a caller that believed the string would export a hardware promise into a
+ * box that then draws every frame on the CPU.
+ *
+ * AND THE NODE IS PROBED FROM HERE, WHICH IS NOT WHERE THE BOX STANDS. This
+ * process sees the host's /dev; a box with `devices = private` sees its own,
+ * and `gpu = no` is what leaves /dev/dri out of it. Those two together are the
+ * one case where the host's answer is not the box's, so they are refused here
+ * rather than probed: every other box either shares /dev or has the nodes
+ * bound back, and for those the open this makes IS the box's open.
+ */
+int profile_render_gpu(const Profile *p)
+{
+	if (!strcmp(p->render, "software") || !strcmp(p->render, "pixman") ||
+	    !strcmp(p->render, "no") || !strcmp(p->render, "off") ||
+	    !strcmp(p->render, "0") || !strcmp(p->render, "false"))
+		return 0;
+	if (p->devsys && !p->gpu)
+		return 0;
+	return box_render_node(NULL, 0);
 }
 
 char *profile_path(const char *box)
@@ -168,6 +247,10 @@ int profile_set(Profile *p, const char *kv)
 		p->gpu = truthy(eq) || !strcmp(eq, "shared");
 	else if (!strcmp(key, "export"))
 		p->autoexport = !strcmp(eq, "auto");
+	else if (!strcmp(key, "display"))
+		snprintf(p->display, sizeof(p->display), "%s", eq);
+	else if (!strcmp(key, "render"))
+		snprintf(p->render, sizeof(p->render), "%s", eq);
 	else if (!strcmp(key, "memory"))
 		snprintf(p->memory, sizeof(p->memory), "%s", eq);
 	else if (!strcmp(key, "cpus"))
@@ -294,6 +377,8 @@ int profile_save(const Profile *p)
 		 "wayland=%s\n"
 		 "audio=%s\n"
 		 "gpu=%s\n"
+		 "display=%s\n"
+		 "render=%s\n"
 		 "export=%s\n"
 		 "memory=%s\n"
 		 "cpus=%s\n"
@@ -312,6 +397,8 @@ int profile_save(const Profile *p)
 		 p->wayland ? "yes" : "no",
 		 p->audio ? "yes" : "no",
 		 p->gpu ? "yes" : "no",
+		 p->display[0] ? p->display : "window",
+		 p->render[0] ? p->render : "auto",
 		 p->autoexport ? "auto" : "manual",
 		 p->memory, p->cpus, p->pids, p->autostop_s);
 	/* ATOMIC: a profile that comes back empty has lost `base`, and a box
@@ -358,6 +445,35 @@ void profile_print(const Profile *p)
 	printf("wayland     = %-11s %s\n", p->wayland ? "yes" : "no",
 	       p->wayland ? "tagged through kdos-boxsock"
 			  : "no display socket reaches it");
+	/*
+	 * THE RENDERER, AND THE MACHINE'S ANSWER BESIDE IT. The key is a
+	 * request and the render node is what grants it, so printing the word
+	 * from the file alone would report hardware on a machine that has none
+	 * — the exact lie this format exists to avoid.
+	 *
+	 * THE NODE IS NAMED ONLY WHERE THE BOX CAN REACH IT. A private /dev
+	 * with `gpu = no` has no /dev/dri in it, so the host path this process
+	 * just opened is a path that does not exist inside the box, and
+	 * printing it would answer the question with another machine's /dev.
+	 *
+	 * The software answer names the variable it exports and calls it
+	 * advisory, because that is what it is: an application may unset
+	 * LIBGL_ALWAYS_SOFTWARE, and nothing here stops one.
+	 */
+	{
+		char node[256] = "";
+		int gpu = profile_render_gpu(p);
+		int reach = !(p->devsys && !p->gpu);
+
+		if (reach)
+			box_render_node(node, sizeof(node));
+		printf("render      = %-11s %s\n",
+		       p->render[0] ? p->render : "auto",
+		       gpu	   ? node
+		       : !reach	   ? "LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no /dev/dri inside this box"
+		       : node[0]   ? "LIBGL_ALWAYS_SOFTWARE=1 (advisory) — the profile refuses the card"
+				   : "LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no render node on this machine");
+	}
 	printf("memory      = %-11s %s\n", p->memory[0] ? p->memory : "unlimited",
 	       p->memory[0] ? "--memory" : "");
 	printf("cpus        = %-11s %s\n", p->cpus[0] ? p->cpus : "all",
@@ -376,11 +492,28 @@ void profile_print(const Profile *p)
 		free(h);
 	}
 	/*
-	 * `audio` and `gpu` are NOT printed as enforced, because they are not.
-	 * Both ride on /dev and /run/user being shared, which is the `devices`
-	 * key — there is no podman flag that grants a box a speaker and denies
-	 * it a camera. Saying so is the rule; a key that reported "yes" here
-	 * while changing nothing would be exactly the lie this format avoids.
+	 * THE CARD'S DEVICE NODES, WHICH IS A DIFFERENT KEY FROM `render`:
+	 * this one says whether /dev/dri reaches the box at all — hardware GL,
+	 * VA-API decode and Vulkan all need it — and `render` says which
+	 * renderer composites the guest's windows.
+	 *
+	 * It is enforceable in exactly one direction. A box with `devices =
+	 * shared` has the host's whole /dev bind-mounted and nothing can be
+	 * subtracted from it; a box with `devices = private` has none of it,
+	 * and this key is what binds the render nodes back in by themselves.
+	 * Both states are printed as what they are.
+	 */
+	printf("gpu         = %-11s %s\n", p->gpu ? "yes" : "no",
+	       !p->devsys	 ? "follows `devices` — the host's /dev is shared whole"
+	       : p->gpu		 ? "--volume /dev/dri"
+				 : "no device nodes reach it");
+	/*
+	 * A SHARED /dev CANNOT HAVE A HOLE CUT IN IT, and a key that reported
+	 * "no" here while changing nothing would be exactly the lie this format
+	 * avoids. There is no podman flag that grants a box a speaker and
+	 * denies it a camera, which is why this is printed only for the shared
+	 * case: with `devices = private` the box starts with no /dev at all and
+	 * `gpu` is the flag above that binds the card back.
 	 */
 	if (!p->devsys && (!p->audio || !p->gpu))
 		printf("            ! audio=%s gpu=%s cannot be enforced separately"
@@ -522,6 +655,18 @@ int box_create(const Profile *p)
 	if (kb_path_exists("/run/cups/cups.sock")) {
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/run/cups:/run/cups");
+	}
+	/*
+	 * THE RENDER NODES, FOR A BOX THAT HAS NO /dev OF THE HOST'S.
+	 * `--unshare-devsys` is all of /dev or none of it, so a box created
+	 * with private devices has no /dev/dri: no hardware GL, no VA-API and
+	 * no Vulkan, whatever the profile's `render` key says and whatever the
+	 * compositor offers. This binds back the card alone — which is what
+	 * `gpu = yes` means and the only direction it can be enforced in.
+	 */
+	if (p->devsys && p->gpu && kb_path_exists("/dev/dri")) {
+		kb_argv_add(&a, "--volume");
+		kb_argv_add(&a, "/dev/dri:/dev/dri");
 	}
 	if (flags[0]) {
 		kb_argv_add(&a, "--additional-flags");

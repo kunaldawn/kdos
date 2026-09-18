@@ -17,9 +17,24 @@ To run the result you also want a system emulator, UEFI firmware, and hardware v
 ## The first build
 
 ```sh
-make bootstrap        # fetch upstream sources — needs network, once
+git lfs install       # before the clone, not after
+git clone <this repository> kdos && cd kdos
 make build            # compile everything — no network at all
 ```
+
+**The upstream tarballs are in the tree, through Git LFS**, so there is no
+fetch step before a build. `git lfs install` has to have been run before the
+clone: without it the working tree holds 129-byte pointer files where the
+archives should be, and the first port to unpack one fails on a corrupt
+archive rather than on anything that names the cause. `git lfs pull` repairs a
+clone made without it.
+
+They are 7.1 GB against a free allowance of 10 GiB of storage and 10 GiB a
+month of bandwidth, counted across every repository the account owns.
+Exceeding it does not slow a clone down — it blocks LFS reads outright,
+including the vendored art and fixtures that have nothing to do with ports, so
+a fresh clone cannot check out at all. Keeping this working means a paid data
+pack.
 
 `make build` builds the container image, then runs the orchestrator inside it with
 `--network none`, `--privileged`, and the repository mounted: `build/` writable, everything else
@@ -29,9 +44,9 @@ The ISO lands at **`build/iso-build/kdos.iso`**.
 
 Two things to know before the first run:
 
-- **The application packs are separate.** `make bootstrap-packs` downloads a baked set;
-  `make fetch-packs` bakes one yourself. Without either you get a working ISO with no application
-  catalogue.
+- **The ISO carries no applications.** Nothing is baked into it and there is no pack set to fetch:
+  the medium ships the catalogue, and an application is built by podman on the machine that wants
+  it, from the store or from `kdos app install`. An exported set imports offline.
 - **The build refuses to overwrite an ISO a virtual machine is reading.** Rewriting it while a
   guest boots from it corrupts that guest — the emulator reads lazily, so every block the guest has
   not cached becomes an I/O error. Shut the guest down, or override deliberately.
@@ -42,12 +57,7 @@ Two things to know before the first run:
 |---|---|---|
 | `all` | The default target: an alias for `build` | |
 | `build` | The whole build, in the container | Container runtime |
-| `bootstrap` | Fetch upstream sources into `ports/core` | Network |
-| `bootstrap-packs` | Download a baked pack set | Network |
-| `fetch` | Fetch and vendor sources directly | Network, container |
-| `fetch-packs` | Bake the pack set yourself | Network, container, about an hour |
-| `publish-sources` | Upload new source archives | A token |
-| `publish-packs` | Upload a baked pack set | A token |
+| `fetch` | Fetch and vendor a port's sources into `ports/core` | Network, container |
 | `updates` | Check every port for a newer upstream release | Network |
 | `snapshots` | List the phase snapshots | |
 | `run` | Boot the ISO in a virtual machine | Emulator, firmware |
@@ -75,6 +85,28 @@ make run-hw       # accelerated: the phosphor pass is on
 and the phosphor pass declines anything that is not the accelerated renderer, because a fullscreen
 post-process on software rendering is a slideshow. `make run-hw` runs a containerised emulator with
 accelerated graphics, which is the configuration where the shader is actually in the picture.
+
+**Every run target comes up at 1920x1080, and `KDOS_RES` is the one place that says so.**
+
+```sh
+make run KDOS_RES=2560x1440
+```
+
+Nothing in KDOS asks for a mode: the desktop takes the connector's **preferred** one, which for
+virtio-gpu is whatever `xres`/`yres` put in the EDID it synthesises. Left unset those default to
+QEMU's own 1280x800 — about 160x50 characters once the mode is divided by the font's cell, which is
+not enough to lay the Start menu out in the three columns it ships with, so a machine that looked
+small was a desktop being measured for a screen nobody chose. `testing/qemu-hw/run.sh` reads the
+same variable and the Makefile passes it through, so the accelerated path and the plain one cannot
+disagree. `testing/vnc-shot.py` takes its own `--size` and sets the same two properties.
+
+**The accelerated run asks its window to scale rather than to resize the guest**, which is what
+makes that setting a resolution rather than a request: QEMU's GTK window reports its own size to the
+guest, virtio-gpu rebuilds the EDID around it, and the desktop takes the connector's preferred mode
+— so a window that opened at whatever the firmware left on screen dragged the whole desktop down
+with it. `zoom-to-fit=on` scales the picture into the window instead.
+`KDOS_QEMU_DISPLAY=gtk,gl=es` gives back the behaviour where the guest follows the window, and
+`KDOS_QEMU_DISPLAY=egl-headless` takes the window out of it entirely.
 
 ## Where things land
 
@@ -135,6 +167,14 @@ kdosbuild --preview build 132x43 vt    # a build screen, offscreen
 kdos-res --fixture … --dump     # a monitor page, offscreen
 kinstall --dry-run              # the installer, executing nothing
 ```
+
+**And the console session itself, with no display at all.** `kdos-con` links no Wayland and no
+pixel library, so it builds with plain `gcc` on any host: run it with `--new -t t` under a short
+`XDG_RUNTIME_DIR` (a unix socket path has about a hundred bytes, and a scratch directory under
+`/tmp` is usually longer than that), attach throwaway clients through `kdisp_init`, and read the
+layout back with `kdos-con --capture --socket …`, which prints the composed grid as text. It is
+the fastest way to answer a window-model question — where a panel docked, what the work area is,
+where an overlay landed — and needs no container and no emulator.
 
 See [Testing](testing.md) for what each proves.
 

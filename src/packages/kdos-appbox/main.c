@@ -53,11 +53,51 @@ const char *g_box = DEFAULT_BOX;
  * tagged one is the honest failure: the alternative is an app that does not
  * start at all because its sandbox could not be labelled.
  */
+/*
+ * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
+ *
+ * A tagged socket is a listener on ONE compositor, and the console desktop
+ * runs one per WINDOW — a kdos-cage for each embedded guest. Keyed on the box
+ * alone the path is therefore the FIRST launch's compositor for ever after:
+ * the second launch of the same application finds the file already there,
+ * connects to it, and its window opens inside the first launch's window.
+ * kdos-boxsock derives the same component from the same variable, which is
+ * what keeps the two in step with nothing passed between them.
+ *
+ * Twelve characters, because the whole path has to fit a sockaddr_un's 108 and
+ * a box name may be sixty-four of them. Every display name a compositor hands
+ * out is "wayland-<n>". Anything a path may not carry is dropped rather than
+ * escaped: the component only has to be the same on both sides and different
+ * between compositors.
+ */
+static void display_tag(char *out, size_t cap)
+{
+	const char *d = getenv("WAYLAND_DISPLAY");
+	const char *slash;
+	size_t n = 0;
+
+	if (cap > 13)
+		cap = 13;
+	if (d && (slash = strrchr(d, '/')) != NULL)
+		d = slash + 1;
+	for (; d && *d && n + 1 < cap; d++) {
+		char c = *d;
+
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		    (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_')
+			out[n++] = c;
+	}
+	out[n] = '\0';
+	if (!n)
+		snprintf(out, cap, "session");
+}
+
 static const char *box_wayland_socket(void)
 {
 	static char path[512];
 	const char *rundir = getenv("XDG_RUNTIME_DIR");
 	KbArgv a = {0};
+	char tag[16];
 
 	if (!rundir || !*rundir)
 		return NULL;
@@ -67,7 +107,9 @@ static const char *box_wayland_socket(void)
 	if (!kb_path_exists(KDOS_BOXSOCK))
 		return NULL;
 
-	snprintf(path, sizeof(path), "%s/kdos-box-%s.sock", rundir, g_box);
+	display_tag(tag, sizeof(tag));
+	snprintf(path, sizeof(path), "%s/kdos-box-%s@%s.sock", rundir, g_box,
+		 tag);
 
 	kb_argv_add(&a, KDOS_BOXSOCK);
 	kb_argv_add(&a, (char *)g_box);
@@ -115,6 +157,58 @@ static int a11y_wanted(void)
 }
 
 /*
+ * kb_argv_add keeps the POINTER, and these are the caller's frame. A value may
+ * say `$HOME` for the directory a boxgraft lands in: the catalogue cannot know
+ * the user's name, and the box shares the home under the same path.
+ */
+static void export_env(KbArgv *a, char env[][256], int n)
+{
+	for (int i = 0; i < n; i++) {
+		char *eq = strchr(env[i], '=');
+
+		if (eq && !strncmp(eq + 1, "$HOME", 5)) {
+			char *v = kb_calloc(1, 1024);
+			snprintf(v, 1024, "%.*s=%s%s", (int)(eq - env[i]),
+				 env[i], kb_home_dir(), eq + 6);
+			kb_argv_add(a, v);
+		} else {
+			kb_argv_add(a, kb_strdup(env[i]));
+		}
+	}
+}
+
+/*
+ * THE STORE LANE ASKS THE CATALOGUE, for the same reason the pack lane asks
+ * the pack: a store-built box is `base=image:kdos/<id>` over an image this
+ * machine built, so there is no vendor label on it to read and every Qt
+ * application would come up grey under an inert QT_QPA_PLATFORMTHEME.
+ *
+ * The box NAME is the catalogue id — that is what `store_install` creates it
+ * as — so a box whose name is not a row is not a store box and answers 0,
+ * leaving the label branches below to decide.
+ */
+static int store_env(const Profile *prof, KbArgv *a)
+{
+	char env[PACK_ENV_MAX][256];
+	char err[256];
+	int n;
+
+	if (strncmp(prof->base, "image:" STORE_IMG_PREFIX,
+		    6 + sizeof(STORE_IMG_PREFIX) - 1))
+		return 0;
+	if (cat_load(NULL, err, sizeof(err)) != 0)
+		return 0;
+	if (!cat_find(prof->name)) {
+		cat_free();
+		return 0;
+	}
+	n = cat_env(prof->name, env, PACK_ENV_MAX);
+	export_env(a, env, n);
+	cat_free();
+	return 1;
+}
+
+/*
  * Environment every app inside a box gets.
  *
  *   WAYLAND_DISPLAY            the box's own tagged socket, when there is one
@@ -133,9 +227,16 @@ static int a11y_wanted(void)
  *                              theme package, so the image lane asks the
  *                              image's labels and the pack lane asks the pack
  *                              stack's own `env =` lines.
- *   GTK_THEME=KDOS             belt and braces next to gtk-3.0/settings.ini
+ *   NO GTK_THEME               deliberately: that variable OVERRIDES the
+ *                              theme setting for the life of the process, so
+ *                              an accent switch could never reach a running
+ *                              GTK application. The name reaches the box
+ *                              through the settings portal and through the
+ *                              seeded gtk-3.0/settings.ini instead
+ *   LIBGL_ALWAYS_SOFTWARE      only where the box's graphics are the CPU's,
+ *                              see the `render` block below
  */
-static void box_env(KbArgv *a, const char *image, const char *pack)
+static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 {
 	const char *display;
 	const char *sock;
@@ -200,8 +301,6 @@ static void box_env(KbArgv *a, const char *image, const char *pack)
 		kb_argv_add(a, "NO_AT_BRIDGE=1");
 		kb_argv_add(a, "GTK_A11Y=none");
 	}
-	kb_argv_add(a, "GTK_THEME=KDOS");
-
 	/*
 	 * THE PORTAL, AND WHY THE ENV IS WHAT SWITCHES IT ON.
 	 *
@@ -285,28 +384,49 @@ static void box_env(KbArgv *a, const char *image, const char *pack)
 		char env[PACK_ENV_MAX][256];
 		int n = pack_env(pack, env, PACK_ENV_MAX);
 
-		/* kb_argv_add keeps the POINTER, and these are this frame's.
-		 * A value may say `$HOME` for the directory a boxgraft lands
-		 * in: the pack cannot know the user's name and the box shares
-		 * the home under the same path. */
-		for (int i = 0; i < n; i++) {
-			char *eq = strchr(env[i], '=');
-			if (eq && !strncmp(eq + 1, "$HOME", 5)) {
-				char *v = kb_calloc(1, 1024);
-				snprintf(v, 1024, "%.*s=%s%s", (int)(eq - env[i]),
-					 env[i], kb_home_dir(), eq + 6);
-				kb_argv_add(a, v);
-			} else {
-				kb_argv_add(a, kb_strdup(env[i]));
-			}
-		}
-	} else if (image_has_label(image, "kdos.qt-kde-theme")) {
+		export_env(a, env, n);
+	} else if (store_env(prof, a)) {
+		/* The store lane declared its own, out of the catalogue. */
+	} else if (image_has_label(prof->image, "kdos.qt-kde-theme")) {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=kde");
 	} else {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
-		if (image_has_label(image, "kdos.qt-gtk-theme"))
+		if (image_has_label(prof->image, "kdos.qt-gtk-theme"))
 			kb_argv_add(a, "QT_STYLE_OVERRIDE=Fusion");
 	}
+
+	/*
+	 * WHICH GRAPHICS THE GUEST'S MESA MAY LOAD, out of the profile's
+	 * `render` key resolved against this machine — see
+	 * profile_render_gpu().
+	 *
+	 * NOTHING IS EXPORTED FOR THE HARDWARE ANSWER, because Mesa already
+	 * asks the right question: it loads a driver for the render node it
+	 * finds and falls back to llvmpipe on its own when the compositor
+	 * offers neither linux-dmabuf nor wl_drm. A variable that pinned
+	 * hardware would only take that fallback away.
+	 *
+	 * The software answer is the one that has to be stated. The render
+	 * node is bound into the box and the drivers are in the base pack, so
+	 * a box told `render = software` would otherwise load a hardware
+	 * driver and draw with it. It governs GL and EGL and nothing else:
+	 * VA-API and Vulkan find the render node by their own route, and
+	 * denying those is the `gpu` key's job.
+	 *
+	 * BOTH ENDS OF A CONSOLE GUEST ANSWER TO THE ONE KEY, so the saving is
+	 * real there: kdos-con reads the same profile and hands the value to
+	 * the cage as KDOS_EMBED_GPU, which pins the cage on pixman for
+	 * exactly the spellings resolved to software here. A `software` guest
+	 * on the console therefore draws with llvmpipe into wl_shm and is
+	 * composited out of that same memory, with no upload and no readback
+	 * for pixels the CPU already had.
+	 *
+	 * ADVISORY AND PRINTED AS SUCH: it is an environment variable an
+	 * application may unset, and `kdos-box profile` names it on the render
+	 * line rather than claiming confinement this cannot enforce.
+	 */
+	if (!profile_render_gpu(prof))
+		kb_argv_add(a, "LIBGL_ALWAYS_SOFTWARE=1");
 
 	/*
 	 * Cost a debug cycle: a few apps are X11-only and their own .desktop
@@ -453,7 +573,7 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	/* box_env writes `env NAME=value …` in front of the command, so the
 	 * environment reaches the app the same way in both lanes and there is
 	 * one place where GTK_USE_PORTAL and the rest are decided. */
-	box_env(&a, p.image, id);
+	box_env(&a, &p, id);
 	for (i = 0; i < argc; i++)
 		kb_argv_add(&a, argv[i]);
 	kb_argv_end(&a);
@@ -471,10 +591,13 @@ int cmd_run(int argc, char **argv)
 	const char *app = argv[0];
 	int i;
 
-	/* The desktop entry's form: resolve the pack from the exec. An exec no
-	 * installed pack carries is refused by name — composing a box called
-	 * "kdos-apps" out of a pack of that name fails a step later with a
-	 * sentence about a box nobody asked for. */
+	/* NO `-b`, SO THE EXEC HAS TO NAME THE PACK. A generated launcher for an
+	 * app that belongs to a pack passes `-b <pack>` and never reaches here;
+	 * a prompt, a shim and an entry naming no box do, and the pack is
+	 * looked up from the exec. An exec no installed pack carries is refused
+	 * by name — composing a box called "kdos-apps" out of a pack of that
+	 * name fails a step later with a sentence about a box nobody asked
+	 * for. */
 	if (!strcmp(g_box, DEFAULT_BOX)) {
 		char pack[128] = "", joined[1024] = "";
 		/* The whole argv, so `sh -c "…"` and `env X=y prog` resolve
@@ -591,14 +714,14 @@ int cmd_warmup(void)
 		 * both names meet, so it is read rather than guessed at.
 		 */
 		/*
-		 * A GENERATED LAUNCHER'S EXEC IS `kdos-appbox run <exec>`, and
-		 * the pack is resolved from that <exec> exactly as `run` does
+		 * A GENERATED LAUNCHER'S EXEC IS `kdos-appbox [-b <pack>] run
+		 * <exec>`, so the FIRST word of such an entry is this binary
+		 * and never a shim — reading the shim out of it warms nothing
+		 * and exits 0. `-b` names the pack outright; without one the
+		 * pack is resolved from <exec> exactly as `run` does
 		 * (app_pack_by_exec: the table's command column, whole then by
-		 * basename). Taking the first word as the shim answered
-		 * 'kdos-appbox' for every entry genlaunchers writes, and the
-		 * warmup skipped the whole pinned set while exiting 0. An entry
-		 * somebody wrote by hand naming the shim itself still resolves
-		 * through the table by name.
+		 * basename). An entry somebody wrote by hand naming the shim
+		 * itself still resolves through the table by name.
 		 */
 		char shim[128] = "";
 		{
@@ -611,15 +734,43 @@ int cmd_warmup(void)
 				snprintf(path, sizeof(path),
 					 "/usr/share/applications/%s.desktop", line);
 			if (kxdg_load(&e, path, "Desktop Entry") == 0) {
+				/* kxdg_get answers `def` or a stored value, and
+				 * every stored value is allocated — so this is
+				 * never NULL. Said out loud because the
+				 * compiler cannot see through the allocator,
+				 * and the alternative to saying it is a
+				 * read through NULL if that ever changes. */
 				const char *ex = kxdg_get(&e, "Exec", "");
-				const char *b = strrchr(ex, '/');
-				b = b ? b + 1 : ex;
+				const char *b;
+
+				if (!ex)
+					ex = "";
+				/* THE FIRST WORD, THEN ITS BASENAME, in that
+				 * order: basenaming the whole line lands on
+				 * the last slash of the boxed program's own
+				 * path and never sees this binary. */
 				snprintf(shim, sizeof(shim), "%.*s",
-					 (int)strcspn(b, " \t"), b);
+					 (int)strcspn(ex, " \t"), ex);
+				b = strrchr(shim, '/');
+				if (b)
+					memmove(shim, b + 1, strlen(b + 1) + 1);
 				if (!strcmp(shim, "kdos-appbox")) {
-					const char *r = strstr(ex, " run ");
-					if (r)
-						app_pack_by_exec(r + 5, pack,
+					/* `-b` IS AN OPTION, SO IT PRECEDES
+					 * THE VERB. Past `run` the words are
+					 * the boxed program's own argv, where
+					 * a `-b` means whatever that program
+					 * says it does. */
+					const char *rn = strstr(ex, " run ");
+					const char *r = strstr(ex, " -b ");
+
+					if (r && (!rn || r < rn))
+						snprintf(pack, sizeof(pack),
+							 "%.*s",
+							 (int)strcspn(r + 4,
+								      " \t"),
+							 r + 4);
+					else if (rn)
+						app_pack_by_exec(rn + 5, pack,
 								 sizeof(pack));
 					shim[0] = 0;
 				}
@@ -668,6 +819,11 @@ static void usage(void)
 "       kdos-appbox warmup | status\n"
 "       kdos-appbox list                    boxes and their profiles\n"
 "       kdos-appbox apps                    known alien apps\n"
+"       kdos-appbox catalogue [--groups]    what this system can build\n"
+"       kdos-appbox install <id|group>... [--dry-run]\n"
+"       kdos-appbox uninstall <id|group>...\n"
+"       kdos-appbox export <file.ktar> <id|group>...\n"
+"       kdos-appbox import <file.ktar> [<id>...]\n"
 "       kdos-appbox genlaunchers --packs <fs-root> | --packs --user\n"
 "                               --packs-dir <dir> <fs-root>\n"
 "                               <desktop-dir> <fs-root>\n"
@@ -741,6 +897,17 @@ int main(int argc, char **argv)
 	 * ksvc/service already are — not a second program. */
 	if (!strcmp(self, "kdos-box"))
 		return box_main(argc - 1, argv + 1);
+	/*
+	 * AND xdg-open IS A THIRD, because everything that opens a link says
+	 * that word and means "whatever this machine opens it with": a mail
+	 * client's :open-link, a portal, anything reading $BROWSER.
+	 * /usr/local/bin comes first on the shipped $PATH, so this answers
+	 * before xdg-utils' script — which stays installed and is still what
+	 * cmd_open falls back to, by absolute path, when nothing here claims
+	 * the type.
+	 */
+	if (!strcmp(self, "xdg-open"))
+		return cmd_open(argc - 1, argv + 1);
 	if (strcmp(self, "kdos-appbox"))
 		return run_as_shim(self, argc - 1, argv + 1);
 
@@ -775,6 +942,61 @@ int main(int argc, char **argv)
 			kb_die("usage: kdos-appbox open [--print] [--choose] "
 			       "<path> [path...]");
 		return cmd_open(argc - i - 1, argv + i + 1);
+	}
+	/* The catalogue, for the surfaces, and the parser's own assertions.
+	 * Before anything that needs a daemon or a display: --selftest is
+	 * offline and pure and must stay runnable where neither exists. */
+	if (CMD("catalogue")) {
+		if (i + 1 < argc && !strcmp(argv[i + 1], "--selftest"))
+			return cat_selftest();
+		return cmd_catalogue(argc - i - 1, argv + i + 1);
+	}
+	if (CMD("install") || CMD("uninstall")) {
+		int dry = 0, first = i + 1, argn = 0;
+		const char *ids[CAT_MAX_PACKS];
+
+		for (int k = first; k < argc; k++) {
+			if (!strcmp(argv[k], "--dry-run")) {
+				dry = 1;
+				continue;
+			}
+			if (argn < CAT_MAX_PACKS)
+				ids[argn++] = argv[k];
+		}
+		if (!argn)
+			kb_die("usage: kdos-appbox %s <id|group>... [--dry-run]",
+			       argv[i]);
+		{
+			char err[256];
+			if (cat_load(NULL, err, sizeof(err)) != 0)
+				kb_die("%s", err);
+		}
+		return CMD("install") ? store_install_many(ids, argn, dry)
+				      : store_uninstall_many(ids, argn);
+	}
+	if (CMD("store") && i + 1 < argc && !strcmp(argv[i + 1], "--selftest"))
+		return store_selftest();
+	if (CMD("export") || CMD("import")) {
+		const char *file = i + 1 < argc ? argv[i + 1] : NULL;
+		const char *ids[CAT_MAX_PACKS];
+		char err[256];
+		int argn = 0;
+
+		if (!file)
+			kb_die("usage: kdos-appbox %s <file.ktar> [<id|group>...]",
+			       argv[i]);
+		for (int k = i + 2; k < argc && argn < CAT_MAX_PACKS; k++)
+			ids[argn++] = argv[k];
+		if (cat_load(NULL, err, sizeof(err)) != 0)
+			kb_die("%s", err);
+		/* EXPORT NEEDS A SELECTION and import does not: an archive
+		 * carries its own SELECTION, so `import <file>` is the whole
+		 * set and narrowing is the exception. */
+		if (CMD("export") && !argn)
+			kb_die("usage: kdos-appbox export <file.ktar> "
+			       "<id|group>...");
+		return CMD("export") ? store_export(file, ids, argn)
+				     : store_import(file, ids, argn);
 	}
 	if (CMD("warmup"))
 		return cmd_warmup();

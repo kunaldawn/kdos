@@ -13,9 +13,9 @@
  * The /proc walk: one readdir, and per pid only what the caller asked for.
  *
  * A monitor that is the load is a bug, so `stat` is the only file read
- * unconditionally. Each KPR_WANT_* adds one open per process, and
- * KPR_WANT_GPU adds a readdir of fd/ as well — a device page passes 0 and
- * walks no per-process files at all.
+ * unconditionally. Each KPR_WANT_* adds one open per process — KPR_WANT_CMDLINE
+ * a readlink of exe/ besides, and KPR_WANT_GPU a readdir of fd/ — and a device
+ * page passes 0 and walks no per-process files at all.
  */
 
 #include <ctype.h>
@@ -45,6 +45,32 @@ unsigned long long kpr_mono_ms(void)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (unsigned long long)ts.tv_sec * 1000ULL +
 	       (unsigned long long)(ts.tv_nsec / 1000000L);
+}
+
+/*
+ * A per-process file into a caller stack buffer, with the heap kept for the
+ * files a buffer cannot bound.
+ *
+ * A walk of several hundred processes reads four files each, and a
+ * whole-file slurp pays an fstat, an allocation and an EOF-confirming second
+ * read for every one of them — three syscalls and a heap block to carry a
+ * few hundred bytes, inside a draw loop. A full buffer means the content may
+ * be cut, and a cut value parsed as if it were whole is a wrong reading, so
+ * that case is re-read on the heap. *heap is what the caller must free, NULL
+ * when the answer is in the stack buffer.
+ */
+static char *proc_file(int pid, const char *leaf, char *buf, size_t cap,
+		       char **heap)
+{
+	int n = kpr_read_into_proc(buf, cap, "%d/%s", pid, leaf);
+
+	*heap = NULL;
+	if (n < 0)
+		return NULL;
+	if ((size_t)n + 1 < cap)
+		return buf;
+	*heap = kpr_slurp_proc("%d/%s", pid, leaf);
+	return *heap;
 }
 
 /*
@@ -106,7 +132,10 @@ static int parse_stat(char *d, KprProc *p)
 
 static void parse_status(int pid, KprProc *p)
 {
-	char *d = kpr_slurp_proc("%d/status", pid);
+	/* Uid, VmRSS, VmSwap and Threads are all in the first kilobyte; the
+	 * affinity masks that can run long come after them. */
+	char buf[4096], *heap;
+	char *d = proc_file(pid, "status", buf, sizeof(buf), &heap);
 	if (!d)
 		return;
 	for (char *line = d, *next; line && *line; line = next) {
@@ -132,7 +161,7 @@ static void parse_status(int pid, KprProc *p)
 		if (nl)
 			*nl = '\n';
 	}
-	free(d);
+	free(heap);
 }
 
 /*
@@ -143,8 +172,9 @@ static void parse_status(int pid, KprProc *p)
  */
 static void parse_io(int pid, KprProc *p)
 {
+	char buf[512], *heap;
 	p->rd_bytes = p->wr_bytes = KPR_UNREADABLE;
-	char *d = kpr_slurp_proc("%d/io", pid);
+	char *d = proc_file(pid, "io", buf, sizeof(buf), &heap);
 	if (!d)
 		return;
 	const char *r = strstr(d, "read_bytes:");
@@ -153,19 +183,39 @@ static void parse_io(int pid, KprProc *p)
 		sscanf(r + 11, "%llu", &p->rd_bytes);
 	if (w)
 		sscanf(w + 12, "%llu", &p->wr_bytes);
-	free(d);
+	free(heap);
 }
 
+/*
+ * The command line, joined for display and STORED AT ITS OWN LENGTH.
+ *
+ * /proc/<pid>/cmdline reports st_size 0 and is not bounded by any buffer —
+ * the kernel publishes the whole argument area — so the read is a stack
+ * buffer with a heap re-read behind it, and what is kept is a copy the size
+ * of the string. Keeping the read buffer instead costs four kilobytes per
+ * process for a median well under a hundred bytes, twice over in a monitor
+ * holding two samples, and hands the allocator a few thousand four-kilobyte
+ * blocks a second to churn.
+ */
 static void parse_cmdline(int pid, KprProc *p)
 {
-	size_t len = 0;
-	char path[512];
-	snprintf(path, sizeof(path), "%s/%d/cmdline", kpr_proc(), pid);
-	char *d = kb_read_all(path, &len);
-	if (!d)
+	char buf[4096], *heap = NULL, *d = buf;
+	size_t len;
+	int n = kpr_read_into_proc(buf, sizeof(buf), "%d/cmdline", pid);
+
+	if (n < 0)
 		return;
+	len = (size_t)n;
+	if (len + 1 == sizeof(buf)) {
+		char path[512];
+
+		snprintf(path, sizeof(path), "%s/%d/cmdline", kpr_proc(), pid);
+		d = heap = kb_read_all(path, &len);
+		if (!d)
+			return;
+	}
 	if (!len) {
-		free(d);
+		free(heap);
 		return;
 	}
 	/* NUL-separated on disk; joined with spaces for display. The trailing
@@ -173,7 +223,32 @@ static void parse_cmdline(int pid, KprProc *p)
 	for (size_t i = 0; i + 1 < len; i++)
 		if (!d[i])
 			d[i] = ' ';
-	p->cmdline = d;
+	p->cmdline = kb_strdup(d);
+	free(heap);
+}
+
+/*
+ * The executable behind the process.
+ *
+ * The one field that tells two processes with the same `comm` apart. NULL
+ * where the link cannot be followed — EACCES for another user's process,
+ * ENOENT for a kernel thread, and always under a fixture, which records
+ * files and not symlinks. It stays NULL rather than becoming an empty
+ * string, because a consumer tests the pointer and would otherwise draw an
+ * empty row. It is read through kpr_proc() like everything else here, or a
+ * replayed sample answers from the live machine.
+ */
+static void parse_exe(int pid, KprProc *p)
+{
+	char link[512], target[4096];
+	ssize_t r;
+
+	snprintf(link, sizeof(link), "%s/%d/exe", kpr_proc(), pid);
+	r = readlink(link, target, sizeof(target) - 1);
+	if (r <= 0)
+		return;
+	target[r] = 0;
+	p->exe = kb_strdup(target);
 }
 
 /*
@@ -231,6 +306,8 @@ static void parse_gpu(int pid, KprProc *p)
 	closedir(d);
 }
 
+static void index_pids(KprSample *s);
+
 int kpr_sample_take(KprSample *s, unsigned flags)
 {
 	memset(s, 0, sizeof(*s));
@@ -251,7 +328,9 @@ int kpr_sample_take(KprSample *s, unsigned flags)
 		if (pid <= 0)
 			continue;
 
-		char *st = kpr_slurp_proc("%s/stat", e->d_name);
+		char stbuf[1024], *stheap;
+		char *st = proc_file(pid, "stat", stbuf, sizeof(stbuf),
+				     &stheap);
 		if (!st)
 			continue;			/* it exited mid-walk */
 
@@ -269,17 +348,19 @@ int kpr_sample_take(KprSample *s, unsigned flags)
 		p->rd_bytes = p->wr_bytes = KPR_UNREADABLE;
 
 		if (parse_stat(st, p) != 0) {
-			free(st);
+			free(stheap);
 			continue;
 		}
-		free(st);
+		free(stheap);
 
 		if (flags & (KPR_WANT_STATUS | KPR_WANT_BOX))
 			parse_status(pid, p);
 		if (flags & KPR_WANT_IO)
 			parse_io(pid, p);
-		if (flags & KPR_WANT_CMDLINE)
+		if (flags & KPR_WANT_CMDLINE) {
 			parse_cmdline(pid, p);
+			parse_exe(pid, p);
+		}
 		if (flags & KPR_WANT_GPU)
 			parse_gpu(pid, p);
 
@@ -299,6 +380,16 @@ int kpr_sample_take(KprSample *s, unsigned flags)
 	 * the readdir would answer only for the processes whose ancestors
 	 * happened to be read first.
 	 */
+	/*
+	 * THE PID INDEX, BEFORE ANYTHING WALKS PARENTS. kpr_box_of climbs the
+	 * parent chain through kpr_find_pid once per hop for every process,
+	 * and over a linear scan that is the process count squared.
+	 */
+	index_pids(s);
+
+	/* One supervisor answers for every process in its box; the memo is
+	 * this pass's, because a pid can be somebody else's by the next. */
+	kpr_conmon_forget();
 	if (flags & KPR_WANT_BOX)
 		for (int i = 0; i < s->n; i++)
 			kpr_box_of(s, s->p[i].pid, s->p[i].box,
@@ -306,10 +397,48 @@ int kpr_sample_take(KprSample *s, unsigned flags)
 	return 0;
 }
 
+/*
+ * `p` in pid order, so kpr_find_pid is a binary search.
+ *
+ * The array itself stays in readdir order — a consumer sorts it by its own
+ * column and starting from a pid sort would be a different first screen — so
+ * the order lives beside it as indices rather than as a permutation of the
+ * rows, which would invalidate every KprProc pointer a caller is holding.
+ */
+static int by_pid_cmp(const void *a, const void *b, void *ctx)
+{
+	const KprProc *p = ctx;
+	int x = p[*(const int *)a].pid, y = p[*(const int *)b].pid;
+
+	return x < y ? -1 : x > y ? 1 : 0;
+}
+
+static void index_pids(KprSample *s)
+{
+	free(s->by_pid);
+	s->by_pid = NULL;
+	if (s->n <= 0)
+		return;
+	s->by_pid = kb_calloc((size_t)s->n, sizeof(*s->by_pid));
+	if (!s->by_pid)
+		return;		/* kpr_find_pid falls back to the scan */
+	for (int i = 0; i < s->n; i++)
+		s->by_pid[i] = i;
+	qsort_r(s->by_pid, (size_t)s->n, sizeof(*s->by_pid), by_pid_cmp,
+		s->p);
+}
+
 void kpr_sample_free(KprSample *s)
 {
-	if (!s || !s->p)
+	if (!s || !s->p) {
+		if (s) {
+			free(s->by_pid);
+			s->by_pid = NULL;
+		}
 		return;
+	}
+	free(s->by_pid);
+	s->by_pid = NULL;
 	for (int i = 0; i < s->n; i++) {
 		free(s->p[i].cmdline);
 		free(s->p[i].exe);
@@ -321,9 +450,27 @@ void kpr_sample_free(KprSample *s)
 
 const KprProc *kpr_find_pid(const KprSample *s, int pid)
 {
-	for (int i = 0; i < s->n; i++)
-		if (s->p[i].pid == pid)
-			return &s->p[i];
+	if (!s || !s->p)
+		return NULL;
+	if (!s->by_pid) {
+		/* No index: a sample a caller built by hand, or one whose
+		 * index could not be allocated. */
+		for (int i = 0; i < s->n; i++)
+			if (s->p[i].pid == pid)
+				return &s->p[i];
+		return NULL;
+	}
+	for (int lo = 0, hi = s->n - 1; lo <= hi;) {
+		int mid = lo + (hi - lo) / 2;
+		const KprProc *c = &s->p[s->by_pid[mid]];
+
+		if (c->pid == pid)
+			return c;
+		if (c->pid < pid)
+			lo = mid + 1;
+		else
+			hi = mid - 1;
+	}
 	return NULL;
 }
 

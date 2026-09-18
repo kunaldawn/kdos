@@ -35,14 +35,33 @@ for cmd in $(./bin/toybox); do
     [ "$cmd" != "toybox" ] && ln -sf toybox bin/$cmd
 done
 
-# Install util-linux switch_root, replacing toybox's.
+# Install util-linux switch_root, and NOT the name toybox claims.
+#
 # toybox switch_root only wipes the initramfs and chroot()s -- it never does
-# mount(newroot, "/", MS_MOVE). That leaves the mount-namespace root as the
-# (now empty) initramfs rootfs with the real root parked at /newroot, so any
-# process that JOINS a mount namespace via setns() -- podman exec, distrobox
-# enter, nsenter -m -- gets the empty rootfs as "/" and every path is ENOENT.
+# mount(newroot, "/", MS_MOVE). Two things follow and both are fatal to the
+# container lane. A process that JOINS a mount namespace via setns() -- podman
+# exec, distrobox enter, nsenter -m -- gets the empty initramfs rootfs as "/"
+# and every path is ENOENT. And every process on the machine is CHROOTED for
+# ever, because the task root is not the root of the mount namespace: the
+# kernel refuses CLONE_NEWUSER to a chrooted caller, so no user namespace can
+# be created by anybody, root included, and no box can start at all.
+#
+# /usr/sbin/switch_root IS TOYBOX ON THE FINISHED IMAGE -- toybox's symlink
+# farm is laid down after util-linux -- so the copy has to name util-linux's
+# own file, and the check below is here because following the wrong symlink
+# failed silently and booted perfectly.
 rm -f bin/switch_root
-cp /usr/sbin/switch_root bin/switch_root
+cp /usr/sbin/switch_root.real bin/switch_root
+# util-linux's binary is translated, so it carries libintl. Nothing else in
+# here needs that library and an initramfs missing one is an init that cannot
+# exec: the kernel panics with "Attempted to kill init".
+cp /usr/lib/libintl.so.8 lib/libintl.so.8
+if grep -qa 'Toybox .* multicall' bin/switch_root; then
+    echo "FATAL: the initramfs switch_root is toybox's applet." >&2
+    echo "       It chroot()s instead of moving the new root, which leaves" >&2
+    echo "       every process chrooted and every user namespace refused." >&2
+    exit 1
+fi
 
 # Install the boot splash. Static, so it needs nothing else here, and it keeps
 # running across switch_root: its FIFO lives in /dev (devtmpfs is moved into the
@@ -322,7 +341,7 @@ done
 # exists once the container is open. kinstall writes both.
 #
 # The prompt goes through the SPLASH, not to /dev/console. console= is ttyS0 on
-# this kernel command line (the last one wins), so a plain `read -p` prompts a
+# this kernel command line (the last one wins), so a plain \`read -p\` prompts a
 # serial port nobody is looking at while the screen shows a boot splash that
 # appears to have frozen. The keystrokes are read from /dev/tty1, which is where
 # the keyboard actually is.
@@ -333,9 +352,9 @@ done
 #
 # Two knobs, both defaulted to the real thing. The keyboard is on tty1 because
 # console= is the serial port, and the mapper directory is where the kernel puts
-# an opened container. They are variables so `testing/selftest.sh` can exercise
+# an opened container. They are variables so \`testing/selftest.sh\` can exercise
 # this function without a LUKS volume and without root — the same trick
-# `kdos stutter --fixture` uses for /proc.
+# \`kdos stutter --fixture\` uses for /proc.
 : "\${PASS_TTY:=/dev/tty1}"
 : "\${CRYPT_MAPPER_DIR:=/dev/mapper}"
 
@@ -395,10 +414,10 @@ unlock_root() {
 #
 # A/B slots: the boot state lives on the ESP because it must be readable and
 # WRITABLE before any root filesystem is mounted — including the one that turns
-# out not to work. `select` prints the UUID to boot and spends an attempt in the
+# out not to work. \`select\` prints the UUID to boot and spends an attempt in the
 # same breath, so a kernel that hangs after this point has still been counted.
 #
-# Failing to read it is not fatal: `root=` on the command line is what a machine
+# Failing to read it is not fatal: \`root=\` on the command line is what a machine
 # without A/B uses anyway, and it stays the fallback.
 #
 if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
@@ -501,26 +520,64 @@ fi
 mkdir -p /mnt/iso
 echo "Searching for KDOS boot media..."
 
-# Announce the stage BEFORE the settle wait: with only the two common steps
-# closed the bar would otherwise sit on "done" through the whole scan.
+# Announce the stage BEFORE the scan: with only the two common steps closed
+# the bar would otherwise sit on "done" through the whole scan.
 sp_total 4
 sp_step "BOOT MEDIA"
 
-# Try to mount CDROM/ISO
-# Wait a bit for devices to settle
-sleep 2
+# Find the medium by polling, never by waiting a fixed interval first: udev has
+# already settled above, so on every machine whose media is enumerated the first
+# pass succeeds and costs nothing. The 10-second bound is what covers the slow
+# ones — a USB stick, or a device behind a bridge — and it matches the bound the
+# disk-boot path gives its root device. Every retry walks EVERY device class
+# again: the first node to answer is not always the one holding the medium, and
+# a class that has not appeared yet must still get its chance.
+SCAN_UNTIL=\$(( \$(cut -d. -f1 /proc/uptime) + 10 ))
 FOUND=0
-for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
-    [ -e "\$dev" ] || continue
-    echo "Checking \$dev..."
-    if mount -t iso9660 "\$dev" /mnt/iso; then
+PASS=0
+STUCK=0
+CHECKED=" "
+while :; do
+    PASS=\$(( PASS + 1 ))
+    for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
+        [ -e "\$dev" ] || continue
+        # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
+        # system.sfs on it will not grow one, so repeating the mount/umount
+        # pair for it every 100 ms is churn on a device the scan has already
+        # answered. Only a device that has not mounted yet is retried, which
+        # is the case the bound exists for.
+        case "\$CHECKED" in *" \$dev "*) continue ;; esac
+        # Only the first pass narrates. A hundred retries of the same two
+        # lines would bury the one message that explains a failed boot, and
+        # this log is the only thing left to read when one happens.
+        if [ "\$PASS" == "1" ]; then
+            echo "Checking \$dev..."
+            mount -t iso9660 "\$dev" /mnt/iso || continue
+        else
+            mount -t iso9660 "\$dev" /mnt/iso 2>/dev/null || continue
+        fi
+        CHECKED="\$CHECKED\$dev "
         if [ -f /mnt/iso/system.sfs ]; then
             echo "Found KDOS media on \$dev"
             FOUND=1
             break
         fi
-        umount /mnt/iso
-    fi
+        # THE UMOUNT IS CHECKED because /mnt/iso is the only mount point the
+        # scan has: if it stays busy, the next mount stacks a second
+        # filesystem on the same path and every later test reads the wrong
+        # one. Nothing further can be inspected, so the scan stops here and
+        # the boot goes to the shell with a reason on the console.
+        if ! umount /mnt/iso; then
+            echo "Cannot release /mnt/iso after \$dev — stopping the scan"
+            STUCK=1
+            break
+        fi
+    done
+    [ "\$FOUND" == "1" ] && break
+    [ "\$STUCK" == "1" ] && break
+    [ "\$(cut -d. -f1 /proc/uptime)" -lt "\$SCAN_UNTIL" ] || break
+    [ "\$PASS" == "1" ] && echo "No KDOS media yet; retrying until the 10s bound..."
+    sleep 0.1
 done
 
 if [ "\$FOUND" == "1" ]; then

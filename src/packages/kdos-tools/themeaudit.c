@@ -101,11 +101,21 @@ static void walk(const char *want, const char *have, AuditCount *c)
 	}
 
 	if (S_ISLNK(sw.st_mode) || S_ISLNK(sh.st_mode)) {
-		if (S_ISLNK(sw.st_mode) && S_ISLNK(sh.st_mode) &&
-		    same_link(want, have))
-			c->same++;
-		else
+		struct stat tw, th;
+
+		if (!S_ISLNK(sw.st_mode) || !S_ISLNK(sh.st_mode) ||
+		    !same_link(want, have)) {
 			c->differ++;
+			return;
+		}
+		c->same++;
+		/* AND THROUGH IT, when it names a directory on both sides.
+		 * `.themes/KDOS` is a link to the accent's own stylesheet
+		 * directory; counting the link alone would leave the whole GTK
+		 * theme unaudited. */
+		if (stat(want, &tw) == 0 && stat(have, &th) == 0 &&
+		    S_ISDIR(tw.st_mode) && S_ISDIR(th.st_mode))
+			goto both_dirs;
 		return;
 	}
 
@@ -122,9 +132,11 @@ static void walk(const char *want, const char *have, AuditCount *c)
 		return;
 	}
 
+both_dirs:
 	/* Both directories: the union of their entries, so a file the machine has
 	 * and the generator does not is counted rather than passed over. Both
 	 * listings are sorted (kb_listdir sorts), so the merge is a walk. */
+	;
 	int nw = 0, nh = 0;
 	char **lw = kb_listdir(want, &nw);
 	char **lh = kb_listdir(have, &nh);
@@ -160,10 +172,20 @@ static const struct {
 	{ A_HOME,   ".themes/KDOS",             "GTK stylesheet"     },
 	{ A_HOME,   ".icons/KDOS",              "icon theme"         },
 	{ A_HOME,   ".icons/KDOS-cursors",      "cursor theme"       },
-	{ A_CONFIG, "gtk-3.0/gtk.css",          "GTK3 palette"       },
+	{ A_CONFIG, "gtk-3.0/settings.ini",     "GTK3 theme name"    },
+	{ A_CONFIG, "gtk-4.0/settings.ini",     "GTK4 theme name"    },
 	{ A_CONFIG, "gtk-4.0/gtk.css",          "GTK4 palette"       },
 	{ A_CONFIG, "kdos-comp/themerc-override", "window frames"    },
 	{ A_CONFIG, "foot/themes/kdos",         "foot"               },
+	{ A_CONFIG, "kdos/term-colors.conf",    "terminal colours"   },
+	{ A_CONFIG, "bat/themes/kdos.tmTheme",  "bat"                },
+	{ A_CONFIG, "micro/colorschemes/kdos.micro", "micro"         },
+	{ A_CONFIG, "helix/themes/kdos.toml",   "helix"              },
+	{ A_CONFIG, "nvim/colors/kdos.vim",     "neovim"             },
+	{ A_CONFIG, "git/kdos-delta",           "delta"              },
+	{ A_CONFIG, "newsboat/kdos-colors",     "newsboat"           },
+	{ A_CONFIG, "aerc/stylesets/kdos",      "aerc"               },
+	{ A_CONFIG, "kdos/fzf-colors",          "fzf"                },
 	{ A_CONFIG, "tmux/themes/kdos.conf",    "tmux"               },
 	{ A_CONFIG, "btop/themes/kdos.theme",   "btop"               },
 	{ A_CONFIG, "starship.toml",            "starship palette"   },
@@ -171,6 +193,7 @@ static const struct {
 	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
 	{ A_CONFIG, "mc/ini",                   "mc skin selection"  },
 	{ A_DATA,   "mc/skins/kdos.ini",        "mc skin"            },
+	{ A_CONFIG, "yazi/theme.toml",          "yazi"               },
 	{ A_DATA,   "color-schemes/KDOS.colors", "KDE colour scheme" },
 };
 #define NARTEFACTS ((int)(sizeof(ARTEFACTS) / sizeof(ARTEFACTS[0])))

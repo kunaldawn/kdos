@@ -20,9 +20,11 @@
  * of a button bar are two button bars, and the one nobody is looking at is the
  * one that drifts.
  *
- * Links libktui, libkicon, libkcolor and libkbase. It draws, and it holds the
- * hit map of what it drew; it owns no application state, which is why the
- * favourites store stayed in kdos-shell rather than coming along.
+ * Links libktui, libkicon, libkcolor and libkbase, plus libkcell and libkdisp
+ * for the tile's canvas and libkwl for the backdrop the pixel display list is
+ * replayed by. It draws, and it holds the hit map of what it drew; it owns no
+ * application state, which is why the favourites store stayed in kdos-shell
+ * rather than coming along.
  */
 
 #ifndef KCHROME_H
@@ -60,6 +62,11 @@ struct KCellCanvas;
  * EVERY CALLER MUST DRAW WITHOUT IT. `kch_tile_begin`/`kch_tile_slot` answer
  * NULL/-1 on a terminal, under `icons = no`, with no font, and when the table
  * is full — and the caller then draws the glyph layout it always had.
+ *
+ * A tile is cut to the DISPLAY's pixel cell, which is the one the caller laid
+ * its contents out in; where the display has no pixels of its own — a console
+ * surface, whose sprites cross a socket and are rescaled at the far end — it
+ * is cut to the nominal cell those pictures are sized in.
  * ──────────────────────────────────────────────────────────────────────── */
 
 struct KCellCanvas;
@@ -68,7 +75,11 @@ struct KCellCanvas;
 enum { SH_TILE_START = 0, SH_TILE_METERS };
 
 /* The canvas to draw into, or NULL when the tile already shows exactly this
- * content. `content` is the caller's hash of everything it is about to draw. */
+ * content, or while the sprite table has refused this content its attempts.
+ * `content` is the caller's hash of everything it is about to draw. A refused
+ * commit leaves the picture that is up in place and retries once; a second
+ * after the last refusal the attempts come back, so a tile whose hash never
+ * changes recovers once the table has room. */
 struct KCellCanvas *kch_tile_begin(int id, int cw, int ch, uint64_t content);
 int kch_tile_commit(int id);
 int kch_tile_slot(int id);
@@ -118,6 +129,13 @@ void kch_tone_reset(void);
  * PIXELS FOR PAINT, CELLS FOR LAYOUT: the degradation passes, the hit maps
  * and every --dump stay in cells. Coordinates are real pixels at scale 1 and
  * are multiplied on replay, so a HiDPI output needs nothing from the caller.
+ *
+ * Installing a backdrop also registers the question libkwl asks at flush
+ * time (kwl_set_pixels_dirty_fn): a frame is committed on a CELL diff and a
+ * plate that moves changes no cell, so without it a highlight following the
+ * pointer never reaches the screen — and a surface whose list is unchanged
+ * still skips its commit, because the answer is a comparison and not a flag
+ * set while recording.
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* Small on purpose. A radius is the one thing a cell grid cannot express, so
@@ -145,6 +163,7 @@ void kch_px_plate(int cx, int cy, int cw, int ch, KchTone tone, int inset);
  * the page's own slot by the caller, so the plate shows through under the
  * label.
  */
+int kch_px_live(void);
 void kch_px_row(int cx, int cy, int cw, KchTone tone);
 void kch_px_vrule(int cx, int y0, int rows);
 void kch_px_replay(pixman_image_t *dst, int scale);

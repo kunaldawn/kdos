@@ -25,8 +25,6 @@
 
 #include "kbase.h"
 
-#define ARGF_MAX 4096
-
 int kb_proc_verbose;
 
 void kb_argv_add(KbArgv *a, const char *s)
@@ -36,12 +34,35 @@ void kb_argv_add(KbArgv *a, const char *s)
 	a->v[a->n++] = s;
 }
 
+/*
+ * MEASURED, NOT GUESSED. The vector holds the pointer for the life of the
+ * call and nothing in KbArgv owns it, so every byte over what was formatted
+ * is resident until the process exits — a panel that formats a page number
+ * per preview pays it for the whole session. Measuring first also turns a
+ * too-long argument into a refusal: a silently truncated one execs a child
+ * with a wrong value, which reads as the child misbehaving.
+ */
 void kb_argv_addf(KbArgv *a, const char *fmt, ...)
 {
-	char *buf = kb_calloc(1, ARGF_MAX);
-	va_list ap;
+	va_list ap, ap2;
+	char *buf;
+	int n;
+
+	/* Prove the format non-null before either pass. Measuring and then
+	 * formatting reads `fmt` twice, and a fortified build treats a format
+	 * that may be null on the second read as a null format string and
+	 * refuses to compile. */
+	if (!fmt)
+		kb_die("argument format missing");
+
 	va_start(ap, fmt);
-	vsnprintf(buf, ARGF_MAX, fmt, ap);
+	va_copy(ap2, ap);
+	n = vsnprintf(NULL, 0, fmt, ap2);
+	va_end(ap2);
+	if (n < 0)
+		kb_die("argument format failed");
+	buf = kb_calloc(1, (size_t)n + 1);
+	vsnprintf(buf, (size_t)n + 1, fmt, ap);
 	va_end(ap);
 	kb_argv_add(a, buf);
 }
@@ -73,6 +94,7 @@ static pid_t spawn(const KbArgv *a, int outfd)
 			dup2(outfd, STDOUT_FILENO);
 			close(outfd);
 		}
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
@@ -123,7 +145,8 @@ int kb_run_to_file(const KbArgv *a, const char *path)
  * kill the CALLER, which for a lock screen means the lock client dying and the
  * session staying locked forever.
  */
-static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
+static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
+			bool keep_stdout)
 {
 	int fd[2];
 	pid_t pid;
@@ -143,13 +166,19 @@ static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
 		if (!keep_stdout) {
 			int null = open("/dev/null", O_RDWR);
 			if (null >= 0) {
-				dup2(null, STDOUT_FILENO);
+				if (outfd < 0)
+					dup2(null, STDOUT_FILENO);
 				if (!kb_proc_verbose)
 					dup2(null, STDERR_FILENO);
 				if (null > STDERR_FILENO)
 					close(null);
 			}
 		}
+		if (outfd >= 0) {
+			dup2(outfd, STDOUT_FILENO);
+			close(outfd);
+		}
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
@@ -168,12 +197,187 @@ static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
 	}
 	close(fd[1]);
 	signal(SIGPIPE, old);
-	return reap(pid);
+	return pid;
+}
+
+/* Feeding and reaping are separate calls because a caller that also captures
+ * the child's stdout has to drain that pipe BEFORE it waits: a child blocked
+ * writing to a full pipe never exits. */
+static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
+		bool keep_stdout)
+{
+	return reap(feed_start(a, in, n, outfd, keep_stdout));
 }
 
 int kb_run_feed(const KbArgv *a, const char *in, size_t n)
 {
-	return feed(a, in, n, false);
+	return feed(a, in, n, -1, false);
+}
+
+/*
+ * Fed on stdin AND captured from stdout — the shape a FILTER needs, which
+ * neither of the other two serve: one throws the output away and the other
+ * hands it to the terminal.
+ *
+ * THE INPUT MUST FIT IN ONE PIPE BUFFER. Nothing reads the child's stdout
+ * until the whole of `in` has been written, so a child that fills its output
+ * pipe before it has drained its input deadlocks both ends. Every caller here
+ * feeds a word and reads a picture of it, which is the case this is for; a
+ * filter over a document needs a loop over both fds and is not this function.
+ */
+int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
+			size_t cap)
+{
+	int fd[2];
+	pid_t pid;
+	int rc;
+	size_t o = 0;
+
+	if (!buf || cap < 2)
+		return -1;
+	buf[0] = '\0';
+	if (pipe(fd) < 0)
+		kb_die("pipe: %s", strerror(errno));
+	/* The read end must NOT survive into the child: its own copy keeps the
+	 * pipe readable forever, so once the buffer fills and this end closes,
+	 * the child blocks in write() rather than taking EPIPE and nothing
+	 * ever reaps it. */
+	fcntl(fd[0], F_SETFD, FD_CLOEXEC);
+
+	pid = feed_start(a, in, n, fd[1], false);
+	close(fd[1]);
+	for (;;) {
+		ssize_t r = read(fd[0], buf + o, cap - 1 - o);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		o += (size_t)r;
+		if (o >= cap - 1)
+			break;
+	}
+	buf[o] = '\0';
+	close(fd[0]);
+	rc = reap(pid);
+	return rc;
+}
+
+/*
+ * Fed on stdin, with NAMES ADDED TO THE CHILD'S ENVIRONMENT, and its stderr
+ * captured — the shape a MOUNT HELPER needs and the only one that keeps a
+ * network password out of every process table on the machine.
+ *
+ * THE ENVIRONMENT IS WHY THIS EXISTS. `mount.cifs` takes a password from the
+ * descriptor `$PASSWD_FD` names and from nowhere else that is not a file or an
+ * argument; a helper run without it either reads a world-readable file or
+ * takes the secret in argv, where `/proc/<pid>/cmdline` publishes it.
+ *
+ * THE STDERR IS THE OTHER HALF. A mount helper says why it refused on stderr
+ * and nothing else — a caller that dropped it could report a status and no
+ * reason, which for a wrong password and an unreachable server is the same
+ * message twice.
+ *
+ * THE INPUT MUST FIT IN ONE PIPE BUFFER, exactly as in kb_run_feed_capture:
+ * nothing drains stderr until the whole input is written. A password does.
+ */
+int kb_run_feed_env(const KbArgv *a, const char *const *env, int nenv,
+		    const char *in, size_t n, char *err, size_t cap)
+{
+	int fd[2], ep[2];
+	pid_t pid;
+	size_t o = 0;
+
+	if (err && cap)
+		err[0] = '\0';
+	if (pipe(fd) < 0 || pipe(ep) < 0)
+		kb_die("pipe: %s", strerror(errno));
+	fcntl(fd[1], F_SETFD, FD_CLOEXEC);
+	fcntl(ep[0], F_SETFD, FD_CLOEXEC);
+
+	pid = fork();
+	if (pid < 0)
+		kb_die("fork: %s", strerror(errno));
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDWR);
+
+		dup2(fd[0], STDIN_FILENO);
+		close(fd[0]);
+		if (null >= 0) {
+			dup2(null, STDOUT_FILENO);
+			if (null > STDERR_FILENO)
+				close(null);
+		}
+		dup2(ep[1], STDERR_FILENO);
+		close(ep[1]);
+		/*
+		 * setenv AFTER the fork and before the exec, so nothing the
+		 * caller holds is changed: a daemon that put a descriptor
+		 * number in its own environment would hand it to every later
+		 * child as well.
+		 */
+		for (int i = 0; i < nenv && env && env[i]; i++) {
+			const char *eq = strchr(env[i], '=');
+			char name[64];
+			size_t len;
+
+			if (!eq)
+				continue;
+			len = (size_t)(eq - env[i]);
+			if (len == 0 || len >= sizeof(name))
+				continue;
+			memcpy(name, env[i], len);
+			name[len] = '\0';
+			setenv(name, eq + 1, 1);
+		}
+		kb_child_reset_signals();
+		execvp(a->v[0], (char *const *)a->v);
+		_exit(127);
+	}
+	close(fd[0]);
+	close(ep[1]);
+
+	void (*old)(int) = signal(SIGPIPE, SIG_IGN);
+	size_t off = 0;
+
+	while (off < n) {
+		ssize_t w = write(fd[1], in + off, n - off);
+
+		if (w < 0) {
+			if (errno == EINTR)
+				continue;
+			break;		/* the child is gone; reap tells us */
+		}
+		off += (size_t)w;
+	}
+	close(fd[1]);
+	signal(SIGPIPE, old);
+
+	while (err && cap && o + 1 < cap) {
+		ssize_t r = read(ep[0], err + o, cap - 1 - o);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		o += (size_t)r;
+	}
+	if (err && cap)
+		err[o] = '\0';
+	/* The pipe is drained to EOF whatever the caller asked for: a child
+	 * blocked writing to a full stderr pipe never exits, and reap would
+	 * wait for it forever. */
+	for (;;) {
+		char sink[256];
+		ssize_t r = read(ep[0], sink, sizeof(sink));
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+	}
+	close(ep[0]);
+	return reap(pid);
 }
 
 /* A pager is the case kb_run_feed cannot serve: it has to be fed on stdin AND
@@ -182,7 +386,7 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n)
  * document. */
 int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n)
 {
-	return feed(a, in, n, true);
+	return feed(a, in, n, -1, true);
 }
 
 int kb_run_tty(const KbArgv *a)
@@ -191,10 +395,77 @@ int kb_run_tty(const KbArgv *a)
 	if (pid < 0)
 		kb_die("fork: %s", strerror(errno));
 	if (pid == 0) {
+		kb_child_reset_signals();
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
 	}
 	return reap(pid);
+}
+
+/*
+ * A DESKTOP NOTIFICATION, over `gdbus`, detached and best effort.
+ *
+ * DOUBLE-FORKED so nothing here waits: the caller is a terminal that has just
+ * been told a program finished, and one that stopped drawing to raise a toast
+ * about it would be a terminal that stops when anything says anything. The
+ * middle process exits at once and `init` reaps the grandchild, which is the
+ * same shape `con_spawn()` uses for the same reason.
+ *
+ * No bus library is linked. `gdbus` is on every image for the portal, and a
+ * machine without it raises nothing rather than failing.
+ */
+void kb_notify(const char *app, const char *summary, const char *body)
+{
+	if (!summary || !*summary || !kb_have_prog("gdbus"))
+		return;
+
+	pid_t p = fork();
+
+	if (p < 0)
+		return;
+	if (p == 0) {
+		if (fork() == 0) {
+			const char *av[20];
+			int n = 0;
+
+			av[n++] = "gdbus";
+			av[n++] = "call";
+			av[n++] = "--session";
+			av[n++] = "--dest";
+			av[n++] = "org.freedesktop.Notifications";
+			av[n++] = "--object-path";
+			av[n++] = "/org/freedesktop/Notifications";
+			av[n++] = "--method";
+			av[n++] = "org.freedesktop.Notifications.Notify";
+			av[n++] = app && *app ? app : "kdos";
+			av[n++] = "0";
+			av[n++] = "";
+			av[n++] = summary;
+			av[n++] = body ? body : "";
+			av[n++] = "[]";
+			av[n++] = "{}";
+			/*
+			 * THE TIMEOUT IS NOT OPTIONAL and must be POSITIVE.
+			 *
+			 * `Notify`'s signature ends in an int32, so a call
+			 * without it is refused for a signature mismatch —
+			 * silently, because nothing here reads the reply. And
+			 * `-1`, which is how the protocol spells "the daemon
+			 * decides", cannot be written here: `gdbus` parses an
+			 * argument beginning with a dash as one of its own
+			 * options and rejects the call the same silent way.
+			 * Five seconds is what every other toast on this
+			 * desktop asks for.
+			 */
+			av[n++] = "5000";
+			av[n] = NULL;
+			kb_child_reset_signals();
+			execvp(av[0], (char *const *)av);
+			_exit(127);
+		}
+		_exit(0);
+	}
+	waitpid(p, NULL, 0);
 }
 
 int kb_run_capture(const KbArgv *a, char *buf, size_t n)
@@ -259,6 +530,41 @@ int kb_run_capture_buf(const KbArgv *a, KbBuf *out)
 	return reap(pid);
 }
 
+/*
+ * A CHILD STARTS WITH THE SIGNALS A PROCESS STARTS WITH.
+ *
+ * An ignored disposition survives execve and a blocked mask survives fork, so
+ * a program launched from a surface inherits whatever that surface arranged
+ * for itself. A display backend ignores SIGPIPE so that a peer which declines
+ * its clipboard cannot kill it; a shell started under that never dies on a
+ * closed pipe, and `yes | head` runs until something else stops it.
+ *
+ * Everything is reset rather than SIGPIPE by name: the list of what a caller
+ * ignores is the caller's business and grows, and a child that inherits any
+ * of it is the same defect wearing another number. SIGKILL and SIGSTOP cannot
+ * be handled and are skipped; a handler the parent installed is already gone
+ * across the exec, so only SIG_IGN has to be undone.
+ *
+ * CALL IT IN THE CHILD, after fork and before exec.
+ */
+void kb_child_reset_signals(void)
+{
+	sigset_t empty;
+
+	sigemptyset(&empty);
+	sigprocmask(SIG_SETMASK, &empty, NULL);
+	for (int i = 1; i < NSIG; i++) {
+		struct sigaction sa;
+
+		if (i == SIGKILL || i == SIGSTOP)
+			continue;
+		if (sigaction(i, NULL, &sa) != 0)
+			continue;
+		if (!(sa.sa_flags & SA_SIGINFO) && sa.sa_handler == SIG_IGN)
+			signal(i, SIG_DFL);
+	}
+}
+
 void kb_run_detach(const KbArgv *a)
 {
 	pid_t pid = fork();
@@ -274,7 +580,9 @@ void kb_run_detach(const KbArgv *a)
 				if (null > STDERR_FILENO)
 					close(null);
 			}
+			kb_child_reset_signals();
 			setsid();
+			kb_child_reset_signals();
 			execvp(a->v[0], (char *const *)a->v);
 		}
 		_exit(0);
@@ -290,35 +598,84 @@ void kb_run_detach(const KbArgv *a)
  * a request — loading a name-service module to answer a question one file read
  * can is more code running as root, not less.
  *
+ * THE FILE IS READ WHOLE. A group line has no length limit — a shared group
+ * reaches several kilobytes at a few hundred members — and a fixed buffer
+ * splits it, dropping every member past the cut and handing the remainder to
+ * the next iteration as a line whose first field is a member name. The answer
+ * is then "not a member" for an account that is one, and a root daemon refuses
+ * a request it should obey with no way to tell that from a correct refusal.
+ *
+ * Three separate saveptrs. One reused across the line, field and member walks
+ * works only while members is the last field; with an outer walk over lines it
+ * is clobbered by the first group that has any, and the scan stops there.
+ *
  * The group's OWN gid counts as well as its member list. A user whose primary
  * group IS wheel never appears in that list, and a check that missed it would
  * refuse exactly the accounts an installer creates.
  */
 int kb_user_in_group(const char *user, gid_t primary, const char *group)
 {
-	FILE *f = fopen("/etc/group", "r");
-	if (!f)
+	char *txt = kb_read_all("/etc/group", NULL);
+	char *ls = NULL;
+	int ok = 0;
+
+	if (!txt)
 		return 0;
 
-	int ok = 0;
-	char line[4096];
-	while (!ok && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\n")] = '\0';
-		char *save = NULL;
-		char *gname = strtok_r(line, ":", &save);
+	for (char *line = strtok_r(txt, "\n", &ls); line && !ok;
+	     line = strtok_r(NULL, "\n", &ls)) {
+		char *fs = NULL, *ms = NULL;
+		char *gname = strtok_r(line, ":", &fs);
+
 		if (!gname || strcmp(gname, group))
 			continue;
-		strtok_r(NULL, ":", &save);		/* the password field */
-		char *gid_s = strtok_r(NULL, ":", &save);
-		char *members = strtok_r(NULL, ":", &save);
+		strtok_r(NULL, ":", &fs);		/* the password field */
+		char *gid_s = strtok_r(NULL, ":", &fs);
+		char *members = strtok_r(NULL, ":", &fs);
 
 		if (gid_s && (gid_t)strtoul(gid_s, NULL, 10) == primary)
 			ok = 1;
 
-		for (char *m = members ? strtok_r(members, ",", &save) : NULL;
-		     m && !ok; m = strtok_r(NULL, ",", &save))
+		for (char *m = members ? strtok_r(members, ",", &ms) : NULL;
+		     m && !ok; m = strtok_r(NULL, ",", &ms))
 			ok = !strcmp(m, user);
 	}
-	fclose(f);
+	free(txt);
 	return ok;
+}
+
+/*
+ * Is this machine virtual, by the DMI vendor string?
+ *
+ * The idle timers and the lid policy both default to OFF here, and both for
+ * the same reason: a blanked screen over VNC is indistinguishable from a
+ * crashed session, and a VM's lid event is a stray ACPI report rather than
+ * somebody closing a laptop.
+ *
+ * The vendor string is the only test that works from an unprivileged process
+ * with no hypervisor-specific code. It is a list of names and it will miss a
+ * hypervisor nobody here has run — which fails in the safe direction: the
+ * timers stay on, as they would on hardware.
+ */
+int kb_in_vm(void)
+{
+	static const char *const V[] = {
+		"QEMU", "Bochs", "VirtualBox", "VMware", "innotek",
+		"Microsoft Corporation",	/* Hyper-V */
+		"Parallels", "Amazon EC2",
+		"Google",			/* GCE */
+	};
+	char vendor[128] = { 0 };
+	FILE *f = fopen("/sys/class/dmi/id/sys_vendor", "re");
+
+	if (!f)
+		return 0;
+	if (!fgets(vendor, sizeof(vendor), f))
+		vendor[0] = '\0';
+	fclose(f);
+
+	for (size_t i = 0; i < sizeof(V) / sizeof(V[0]); i++)
+		if (strstr(vendor, V[i]))
+			return 1;
+	return 0;
 }

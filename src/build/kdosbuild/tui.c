@@ -583,7 +583,8 @@ static void screen_packages(PickState *st)
 			size_t n = strlen(filter);
 			if (n)
 				filter[n - 1] = 0;
-		} else if (ev.key >= 32 && ev.key < 127) {
+		} else if (ev.key >= 32 && ev.key < 127 &&
+		    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 			size_t n = strlen(filter);
 			if (n < sizeof(filter) - 1) {
 				filter[n] = (char)ev.key;
@@ -2274,7 +2275,8 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 				size_t n = strlen(v.search);
 				if (n)
 					v.search[n - 1] = 0;
-			} else if (ev.key >= 32 && ev.key < 127) {
+			} else if (ev.key >= 32 && ev.key < 127 &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT))) {
 				size_t n = strlen(v.search);
 				if (n < sizeof(v.search) - 1) {
 					v.search[n] = (char)ev.key;

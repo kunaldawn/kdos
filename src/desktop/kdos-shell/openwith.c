@@ -52,6 +52,13 @@
 #include "kxdg.h"
 #include "shell.h"
 
+#include "launch.h"
+
+/* apps.c's, and the only copy: the box-launcher test the Start menu marks its
+ * rows with is the test this chooser marks its rows with, or the two surfaces
+ * disagree about which application costs a container start. */
+int sh_exec_is_boxed(const char *exec);
+
 #define OW_MAX_CANDS 64
 #define OW_MIME_MAX 128
 
@@ -71,7 +78,7 @@ static int ncands;
  * scroll on the very next frame. */
 static int sel, top, sel_follow = 1;
 
-static char ow_path[1024];	/* the file, or "" for --mime               */
+static char ow_path[1024];	/* the file or URL, "" for --mime           */
 static char ow_mime[OW_MIME_MAX];
 static int set_default;		/* the "always use this" checkbox           */
 static char note[160];
@@ -84,6 +91,22 @@ static int row_is_other(int i) { return i == ncands; }
 static int editing;
 static char edit_buf[512];
 
+/* ONE RUNG: the inline command editor. Esc in it goes back to the list and
+ * Esc on the list cancels the dialog. */
+static KtuiKeys keys;
+
+static int ow_edit_up(void *user)
+{
+	(void)user;
+	return editing;
+}
+
+static void ow_edit_close(void *user)
+{
+	(void)user;
+	editing = 0;
+}
+
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
 /*
@@ -92,11 +115,11 @@ static char edit_buf[512];
  * disagree about what a file is — and the glob table's path is a compile-time
  * define there, which is what lets a fixture stand in for the compiled
  * database that exists only on a booted target.
+ *
+ * kxdg_mime_for_arg is the same function the opener asks, so a URL means the
+ * same thing on both sides: `x-scheme-handler/<scheme>`, and the path a
+ * `file:` URL names.
  */
-static void mime_for_path(const char *path, char *out, size_t n)
-{
-	kxdg_mime_for_path(path, out, n);
-}
 
 /* ── the search path ───────────────────────────────────────────────────── */
 
@@ -145,14 +168,24 @@ static int desktop_find(const char *id, char *out, size_t n)
 	return 0;
 }
 
-static void mimeapps_path(char *out, size_t n)
+/*
+ * The user's list, or the DESKTOP'S own when `pre` names one. A desktop's list
+ * is searched first at each level so the console and the compositor can hold
+ * different answers for the same type without either editing the other's.
+ */
+static void mimeapps_path(char *out, size_t n, const char *pre)
 {
 	const char *cfg = getenv("XDG_CONFIG_HOME");
+	char dir[512];
 
 	if (cfg && *cfg)
-		snprintf(out, n, "%.500s/mimeapps.list", cfg);
+		snprintf(dir, sizeof(dir), "%.500s", cfg);
 	else
-		snprintf(out, n, "%.500s/.config/mimeapps.list", kb_home_dir());
+		snprintf(dir, sizeof(dir), "%.500s/.config", kb_home_dir());
+	if (pre && *pre)
+		snprintf(out, n, "%.500s/%.40s-mimeapps.list", dir, pre);
+	else
+		snprintf(out, n, "%.500s/mimeapps.list", dir);
 }
 
 /* ── candidates ────────────────────────────────────────────────────────── */
@@ -204,9 +237,9 @@ static void cand_add(const char *id, int is_default)
 	snprintf(c->exec, sizeof(c->exec), "%s", exec);
 	c->terminal = kxdg_bool(&e, "Terminal", 0);
 	/* The launcher's rule: an entry whose Exec IS the box launcher is a box
-	 * app whatever the alien-apps table is keyed by. */
-	c->alien = !strncmp(c->exec, "kdos-appbox run ", 16) ||
-		   strstr(c->exec, "/kdos-appbox run ") != NULL;
+	 * app whatever the alien-apps table is keyed by, and the box may be
+	 * named between the binary and the verb. */
+	c->alien = sh_exec_is_boxed(c->exec);
 	c->is_default = is_default;
 	kxdg_free(&e);
 }
@@ -292,18 +325,81 @@ static void scan_for_mime(const char *dir, const char *mime)
 	closedir(d);
 }
 
+/*
+ * ON THE CONSOLE, A HANDLER THAT WANTS A TERMINAL COMES FIRST. There is no
+ * compositor on this desktop, so a windowed handler at the head of the list
+ * opens nothing anybody can see. `kdos-appbox open` applies the same rule to
+ * its own candidates, and it must: the first row here is the handler the
+ * opener would use, and a chooser whose first row is not that is a chooser
+ * that lies.
+ *
+ * ONLY WHERE NOBODY HAS DECIDED — a `[Default Applications]` row is somebody's
+ * answer and keeps its place. THE TEST IS THE OPENER'S, not the `is_default`
+ * marker beside it: that marker means "the row in force" and is set only for
+ * the first candidate, so once an Added Association had contributed anything
+ * the chooser would reorder where `kdos-appbox open` does not — and the first
+ * row here would stop being the handler that would actually run. Within each
+ * kind the order is unchanged.
+ */
+static void terminal_first(int any_default)
+{
+	static struct ow_cand out[OW_MAX_CANDS];
+	const char *con = getenv("KDOS_CON");
+	int k = 0;
+
+	if (!con || !*con || ncands < 2 || any_default)
+		return;
+	for (int i = 0; i < ncands; i++)
+		if (cands[i].terminal)
+			out[k++] = cands[i];
+	for (int i = 0; i < ncands; i++)
+		if (!cands[i].terminal)
+			out[k++] = cands[i];
+	memcpy(cands, out, (size_t)ncands * sizeof(*cands));
+}
+
+/* Did a `[Default Applications]` section name an installed entry? The opener's
+ * `defaulted`, computed the same way — by whether the section contributed. */
+static int add_defaults(const char *path, const char *mime, int mark)
+{
+	int n0 = ncands;
+
+	add_from_section(path, "Default Applications", mime, mark);
+	return ncands > n0;
+}
+
 static void gather(const char *mime)
 {
 	char dirs[16][512], path[700];
 	int nd = ow_data_dirs(dirs, 16);
+	int any_default = 0;
 
 	/* In the order `kdos-appbox open` consults them, so the first row is
-	 * the handler that would open the file right now. */
-	mimeapps_path(path, sizeof(path));
-	add_from_section(path, "Default Applications", mime, 1);
+	 * the handler that would open the file right now. The two must not
+	 * drift: a chooser that showed a different default from the one the
+	 * opener uses is a chooser that lies about what is in force. */
+	char pre[80];
+	int have_pre = kb_desktop_prefix(pre, sizeof(pre));
+
+	if (have_pre) {
+		mimeapps_path(path, sizeof(path), pre);
+		any_default |= add_defaults(path, mime, 1);
+	}
+	mimeapps_path(path, sizeof(path), NULL);
+	any_default |= add_defaults(path, mime, ncands == 0);
+	if (have_pre) {
+		mimeapps_path(path, sizeof(path), pre);
+		add_from_section(path, "Added Associations", mime, 0);
+	}
+	mimeapps_path(path, sizeof(path), NULL);
 	add_from_section(path, "Added Associations", mime, 0);
-	add_from_section("/etc/xdg/mimeapps.list", "Default Applications", mime,
-			 ncands == 0);
+	if (have_pre) {
+		snprintf(path, sizeof(path), "/etc/xdg/%.40s-mimeapps.list",
+			 pre);
+		any_default |= add_defaults(path, mime, ncands == 0);
+	}
+	any_default |= add_defaults("/etc/xdg/mimeapps.list", mime,
+				    ncands == 0);
 	for (int i = 0; i < nd; i++) {
 		snprintf(path, sizeof(path), "%.500s/applications/mimeinfo.cache",
 			 dirs[i]);
@@ -313,6 +409,7 @@ static void gather(const char *mime)
 		snprintf(path, sizeof(path), "%.500s/applications", dirs[i]);
 		scan_for_mime(path, mime);
 	}
+	terminal_first(any_default);
 	for (int i = 0; i < ncands; i++)
 		if (cands[i].is_default)
 			sel = i;
@@ -337,7 +434,13 @@ static int write_default(const char *mime, const char *id)
 	KbBuf out = {0};
 	int in_sec = 0, wrote = 0, have_sec = 0, rc = -1;
 
-	mimeapps_path(path, sizeof(path));
+	/*
+	 * WRITTEN TO THE PLAIN LIST, never to a desktop's own. A person
+	 * choosing a handler is choosing it, not choosing it here — and the
+	 * desktop lists are searched FIRST, so a choice written into one would
+	 * be invisible on the other desktop while silently outranking it here.
+	 */
+	mimeapps_path(path, sizeof(path), NULL);
 	kb_strlcpy(dir, path, sizeof(dir));
 	char *slash = strrchr(dir, '/');
 	if (slash) {
@@ -437,100 +540,47 @@ static int write_default(const char *mime, const char *id)
 /* ── launching ─────────────────────────────────────────────────────────── */
 
 /*
- * The Exec line, with the field codes SUBSTITUTED — open.c's rule, and the
- * difference between a chooser and a launcher. %f/%u take the path, %F/%U the
- * same one path (this chooser opens one thing), %% is a literal percent, and
- * %i/%c/%k are dropped: an icon, a name and the entry's own path, none of
- * which a caller has to supply.
+ * THE CHOOSER LAUNCHES THE WAY THE LAUNCHER DOES, through `sh_launch` — the
+ * difference between a chooser and a launcher is which entry is picked and
+ * nothing else. That path reads the line's quoting, SUBSTITUTES the field
+ * codes with the file this chooser was given, and on the console hands a
+ * graphical handler to the session, which is what gives a boxed viewer a
+ * display. A vector built and forked here would open nothing and say nothing.
+ * See launch.h.
+ *
+ * Returns 0 when something was launched.
  */
-static int build_argv(const char *exec, int terminal, const char *file,
-		      char *buf, size_t bufsz, const char **argv, int max)
-{
-	int n = 0;
-
-	kb_strlcpy(buf, exec, bufsz);
-	if (terminal && n + 2 < max) {
-		argv[n++] = "foot";
-		argv[n++] = "-e";
-	}
-	for (char *w = strtok(buf, " \t"); w && n < max - 1;
-	     w = strtok(NULL, " \t")) {
-		if (w[0] != '%' || !w[1] || w[2]) {
-			argv[n++] = w;
-			continue;
-		}
-		switch (w[1]) {
-		case 'f':
-		case 'u':
-		case 'F':
-		case 'U':
-			if (file && *file)
-				argv[n++] = file;
-			break;
-		case '%':
-			argv[n++] = "%";
-			break;
-		default:
-			break;
-		}
-	}
-	argv[n] = NULL;
-	return n;
-}
-
-/*
- * Double fork: the opened program is init's child, not ours — this process is
- * about to exit and would otherwise orphan it into whatever reaps the chooser.
- */
-static void spawn_argv(const char **argv)
-{
-	pid_t p = fork();
-
-	if (p == 0) {
-		if (fork() == 0) {
-			setsid();
-			execvp(argv[0], (char *const *)argv);
-			_exit(127);
-		}
-		_exit(0);
-	}
-	if (p > 0) {
-		int st;
-		waitpid(p, &st, 0);
-	}
-}
-
-/* Returns 0 when something was launched. */
 static int open_with(const struct ow_cand *c)
 {
-	char buf[512];
-	const char *argv[64];
+	const char *files[1] = { ow_path };
+	struct sh_launch l = {
+		.exec = c->exec,
+		.title = c->name,
+		.terminal = c->terminal,
+	};
 
-	if (!build_argv(c->exec, c->terminal, ow_path[0] ? ow_path : NULL, buf,
-			sizeof(buf), argv, 64)) {
-		snprintf(note, sizeof(note), "%.60s has an empty Exec line",
-			 c->name);
-		return -1;
-	}
 	if (set_default && write_default(ow_mime, c->id) != 0)
 		snprintf(note, sizeof(note), "could not write mimeapps.list");
-	spawn_argv(argv);
+	if (sh_launch(&l, files, ow_path[0] ? 1 : 0) != 0) {
+		snprintf(note, sizeof(note), "%.60s did not start", c->name);
+		return -1;
+	}
 	return 0;
 }
 
-/* The "Other command…" row: what was typed, plus the path. No shell — the
- * words are split here and exec'd, so a command with a `;` in it is one
- * program with a funny argument rather than two programs. */
+/*
+ * The "Other command…" row: what was typed, plus the path. NO SHELL — the
+ * words become an argument vector, so a command with a `;` in it is one
+ * program with a funny argument rather than two programs. A typed line keeps
+ * its `%` and takes the path as a trailing argument, which is what `verbatim`
+ * means.
+ */
 static int open_command(const char *cmd)
 {
-	char buf[512];
-	const char *argv[64];
-	int n = 0;
+	const char *files[1] = { ow_path };
+	struct sh_launch l = { .exec = cmd, .verbatim = 1 };
 
-	kb_strlcpy(buf, cmd, sizeof(buf));
-	for (char *w = strtok(buf, " \t"); w && n < 62; w = strtok(NULL, " \t"))
-		argv[n++] = w;
-	if (!n) {
+	if (!cmd || !*cmd) {
 		snprintf(note, sizeof(note), "nothing to run");
 		return -1;
 	}
@@ -541,10 +591,10 @@ static int open_command(const char *cmd)
 		fprintf(stderr, "kdos-openwith: a plain command cannot be made "
 				"the default for %s — write a .desktop entry\n",
 			ow_mime);
-	if (ow_path[0])
-		argv[n++] = ow_path;
-	argv[n] = NULL;
-	spawn_argv(argv);
+	if (sh_launch(&l, files, ow_path[0] ? 1 : 0) != 0) {
+		snprintf(note, sizeof(note), "nothing to run");
+		return -1;
+	}
 	return 0;
 }
 
@@ -675,14 +725,27 @@ static void draw(void)
 			       KT_A_NONE);
 	}
 
-	if (note[0])
+	/* What Enter does depends on the row: the last one is `Other command`
+	 * and opens the editor rather than a program. */
+	ktui_hint_if(!editing && !row_is_other(sel), "Enter", "open");
+	ktui_hint_if(!editing && row_is_other(sel), "Enter", "command");
+	ktui_hint_if(editing, "Enter", "run");
+	ktui_hint_if(!editing && nrows() > 1, "Up/Down", "select");
+	/* Not on the `Other command` row: the default cannot be recorded for
+	 * a command that is not a desktop entry, and open_command() refuses. */
+	ktui_hint_if(!editing && !row_is_other(sel), "d", "default");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+
+	if (note[0]) {
+		/* The note outranks the row and shares its cells; the row is
+		 * still called, with an empty rect, because it is what clears
+		 * the pool. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
 		ktui_draw_text(2, h - 2, w - 26, note, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
-	else
-		ktui_draw_text(2, h - 2, w - 26,
-			       editing ? "Enter run   Esc cancel"
-				       : "Enter open   d default   Esc cancel",
-			       KT_MID, KT_SURFACE, KT_A_NONE);
+	} else {
+		ktui_hint_row(&keys, krect(2, h - 2, w - 26, 1), KT_SURFACE);
+	}
 
 	/* The same two buttons pick.c carries, in the same place: this dialog
 	 * arrives in front of a person holding a mouse. */
@@ -772,20 +835,28 @@ int openwith_main(int argc, char **argv)
 	}
 
 	if (file_arg) {
-		/* Absolute, because the handler is spawned with setsid() from a
-		 * process that is about to exit and nothing guarantees it keeps
-		 * this working directory. */
-		if (file_arg[0] == '/') {
-			snprintf(ow_path, sizeof(ow_path), "%s", file_arg);
+		const char *p = kxdg_mime_for_arg(file_arg, ow_mime,
+						  sizeof(ow_mime));
+
+		/*
+		 * A RELATIVE FILE NAME IS MADE ABSOLUTE, because the handler is
+		 * spawned with setsid() from a process about to exit and
+		 * nothing guarantees it keeps this working directory. A URL IS
+		 * NOT A FILE NAME: prefixing one with the working directory
+		 * made `https://example.com/page.html` into
+		 * `/tmp/https://example.com/page.html`, a path nobody has.
+		 */
+		if (p[0] == '/' || !strncmp(ow_mime, "x-scheme-handler/", 17)) {
+			snprintf(ow_path, sizeof(ow_path), "%s", p);
 		} else {
 			char cwd[512];
+
 			if (getcwd(cwd, sizeof(cwd)))
 				snprintf(ow_path, sizeof(ow_path), "%s/%s", cwd,
-					 file_arg);
+					 p);
 			else
-				snprintf(ow_path, sizeof(ow_path), "%s", file_arg);
+				snprintf(ow_path, sizeof(ow_path), "%s", p);
 		}
-		mime_for_path(ow_path, ow_mime, sizeof(ow_mime));
 	} else if (mime_arg) {
 		snprintf(ow_mime, sizeof(ow_mime), "%s", mime_arg);
 	} else {
@@ -794,6 +865,10 @@ int openwith_main(int argc, char **argv)
 	}
 
 	gather(ow_mime);
+	/* BEFORE the print and dump returns: both draw, and a frame that read
+	 * the Esc verb through an empty ladder would say something the live
+	 * surface does not. */
+	ktui_keys_layer(&keys, "Cancel", ow_edit_up, ow_edit_close, NULL);
 
 	if (print) {
 		/* Resolves and prints, launching nothing — open.c's --print,
@@ -821,7 +896,7 @@ int openwith_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -832,7 +907,7 @@ int openwith_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 64,
 		.rows = 18,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -844,7 +919,7 @@ int openwith_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-openwith: no compositor or no layer-shell\n");
 		return 2;
 	}
@@ -854,7 +929,7 @@ int openwith_main(int argc, char **argv)
 	kch_px_popup(KT_SURFACE);
 
 	int rc = 1;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int list_rows = ktui_h - 6;
@@ -961,11 +1036,18 @@ int openwith_main(int argc, char **argv)
 		 * the viewport to follow. */
 		sel_follow = 1;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				break;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		if (editing) {
 			size_t n = strlen(edit_buf);
-			if (ev.key == KT_K_ESC) {
-				editing = 0;
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				if (open_command(edit_buf) == 0) {
 					rc = 0;
 					break;
@@ -974,6 +1056,7 @@ int openwith_main(int argc, char **argv)
 				if (n)
 					edit_buf[n - 1] = '\0';
 			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
 				   n + 1 < sizeof(edit_buf)) {
 				edit_buf[n] = (char)ev.key;
 				edit_buf[n + 1] = '\0';
@@ -985,8 +1068,6 @@ int openwith_main(int argc, char **argv)
 		if (page < 1)
 			page = 1;
 
-		if (ev.key == KT_K_ESC)
-			break;
 		if (ev.key == KT_K_ENTER) {
 			if (activate()) {
 				rc = 0;
@@ -1014,6 +1095,6 @@ int openwith_main(int argc, char **argv)
 			sel = nrows() ? nrows() - 1 : 0;
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return rc;
 }

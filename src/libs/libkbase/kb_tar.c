@@ -7,14 +7,21 @@
  * ---------------------------------
  *   libkbase — a minimal ustar stream reader and writer
  *
- * Enough tar to take the appbox image apart and put it back together, and no
- * more. The only archives this ever sees are `podman save` output: regular
- * files with short names, no devices, no hard links, no sparse members.
+ * Enough tar to walk a stream of regular files and to write one back: short
+ * names, no devices, no hard links, no sparse members. The appbox image path
+ * does not come through here — kdos-appbox drives podman over the overlay and
+ * podman owns the image bytes — so the only caller in the tree is the library
+ * selftest.
  *
- * GNU long names ('L') are handled because they cost four lines. A pax
- * extended header ('x'/'g') is skipped with its payload — if podman ever
- * starts emitting one for a path this will notice loudly rather than
- * silently produce a broken archive.
+ * A HEADER WITHOUT A MATCHING CHECKSUM ENDS THE WALK. Nothing else in a
+ * 512-byte block marks it as a header, so a reader that takes one on faith
+ * turns a truncated or corrupt archive into members with garbage names and
+ * garbage sizes and steps into the middle of a payload.
+ *
+ * GNU long names ('L') are read, and one that will not fit the name buffer is
+ * refused rather than clamped: a truncated member name extracts to the wrong
+ * path and nothing says so. A pax extended header ('x'/'g') is skipped with
+ * its payload and a warning.
  * ---------------------------------
  */
 
@@ -95,13 +102,11 @@ static long long from_octal(const char *s, size_t n)
 	/* GNU base-256: the top bit of the first byte marks a binary size,
 	 * which is how a member over 8 GB is expressed.
 	 *
-	 * Accumulated UNSIGNED and refused when it will not fit. The size field
-	 * is 12 bytes, so eleven shifts of 8 overflow a long long outright —
-	 * which is undefined behaviour reachable from a corrupt archive, not
-	 * from a bug here, and the value it produced was NEGATIVE. Every
-	 * consumer below then read that as a length: `(size_t)size` in the 'L'
-	 * branch became 2^63, and the only thing between that and a 512-byte
-	 * stack buffer was the kernel refusing the read. Found by fuzzing. */
+	 * Accumulate UNSIGNED and refuse what will not fit. The field is twelve
+	 * bytes, so eleven shifts of eight overflow a long long — undefined
+	 * behaviour reachable from a corrupt archive rather than from a bug
+	 * here, and a signed overflow reaches every consumer below as a length:
+	 * `(size_t)size` in the 'L' branch, against a 512-byte buffer. */
 	if ((unsigned char)s[0] & 0x80) {
 		unsigned long long v = (unsigned char)s[0] & 0x7f;
 		for (size_t i = 1; i < n; i++) {
@@ -116,6 +121,31 @@ static long long from_octal(const char *s, size_t n)
 	for (size_t i = 0; i < n && s[i] >= '0' && s[i] <= '7'; i++)
 		v = v * 8 + (s[i] - '0');
 	return v;
+}
+
+/*
+ * The ustar checksum, summed both ways. The field is the sum of all 512
+ * header bytes with the field itself read as spaces; producers have computed
+ * it with a signed char, so a header carrying a high-bit byte gives a
+ * different total depending on the sign of the accumulator and either answer
+ * has to be accepted or a correct archive is refused.
+ */
+static int chksum_ok(const TarHdr *h)
+{
+	TarHdr c = *h;
+	const unsigned char *u = (const unsigned char *)&c;
+	const signed char *sc = (const signed char *)&c;
+	long long want = from_octal(h->chksum, sizeof(h->chksum));
+	long long usum = 0, ssum = 0;
+
+	if (want < 0)
+		return 0;
+	memset(c.chksum, ' ', sizeof(c.chksum));
+	for (size_t i = 0; i < sizeof(c); i++) {
+		usum += u[i];
+		ssum += sc[i];
+	}
+	return want == usum || want == ssum;
 }
 
 static void to_octal(char *dst, size_t n, long long v)
@@ -178,6 +208,8 @@ int kb_tar_next(KbTarIn *t, KbTarEntry *e)
 			return -1;
 		if (h.name[0] == 0)
 			return 0;	/* end-of-archive block */
+		if (!chksum_ok(&h))
+			return -1;
 
 		long long size = from_octal(h.size, sizeof(h.size));
 		if (size < 0)
@@ -186,14 +218,26 @@ int kb_tar_next(KbTarIn *t, KbTarEntry *e)
 
 		if (h.typeflag == 'L') {
 			/* GNU long name: the payload IS the next member's
-			 * name. */
-			size_t n = size < (long long)sizeof(longname) - 1
-					   ? (size_t)size
-					   : sizeof(longname) - 1;
+			 * name, and it INCLUDES the terminating NUL the
+			 * producer wrote. A name that will not fit is refused,
+			 * because a clamped one extracts to a different path
+			 * than the archive names. A payload that exactly fills
+			 * the buffer has to carry that NUL itself — there is
+			 * no room to add one. */
+			size_t n;
+
+			if (size > (long long)sizeof(longname))
+				return -1;
+			n = (size_t)size;
 			if (read_full(t->fd, longname, n) != (int)n)
 				return -1;
-			longname[n] = 0;
-			t->remain = size - (long long)n;
+			if (n == sizeof(longname)) {
+				if (longname[n - 1] != 0)
+					return -1;
+			} else {
+				longname[n] = 0;
+			}
+			t->remain = 0;
 			t->pad = (int)pad;
 			have_long = 1;
 			continue;

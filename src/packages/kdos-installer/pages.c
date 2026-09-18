@@ -354,83 +354,63 @@ static Page page_keyboard = {
  * 3 · TIME
  * ════════════════════════════════════════════════════════════════════════ */
 
-/* KDOS ships no tzdata — there is no /usr/share/zoneinfo to walk. musl reads
- * a POSIX TZ string straight out of the environment, DST rules and all, so
- * that is what the installer writes. Each row carries both: the label is what
- * a person recognises, the string is what libc actually needs. */
-static const struct {
-	const char *label;
-	const char *tz;
-} zones[] = {
-	{ "UTC", "UTC0" },
-	{ "Atlantic/Reykjavik", "GMT0" },
-	{ "Europe/London", "GMT0BST,M3.5.0/1,M10.5.0" },
-	{ "Europe/Dublin", "GMT0IST,M3.5.0/1,M10.5.0" },
-	{ "Europe/Lisbon", "WET0WEST,M3.5.0/1,M10.5.0" },
-	{ "Europe/Paris", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Berlin", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Madrid", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Rome", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Amsterdam", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Brussels", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Vienna", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Zurich", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Prague", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Warsaw", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Budapest", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Stockholm", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Oslo", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Copenhagen", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Athens", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Helsinki", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Bucharest", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Kyiv", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Istanbul", "<+03>-3" },
-	{ "Europe/Moscow", "MSK-3" },
-	{ "Africa/Lagos", "WAT-1" },
-	{ "Africa/Cairo", "EET-2EEST,M4.5.5/0,M10.5.4/24" },
-	{ "Africa/Johannesburg", "SAST-2" },
-	{ "Africa/Nairobi", "EAT-3" },
-	{ "Asia/Jerusalem", "IST-2IDT,M3.4.4/26,M10.5.0" },
-	{ "Asia/Dubai", "<+04>-4" },
-	{ "Asia/Karachi", "PKT-5" },
-	{ "Asia/Tashkent", "<+05>-5" },
-	{ "Asia/Kolkata", "IST-5:30" },
-	{ "Asia/Kathmandu", "<+0545>-5:45" },
-	{ "Asia/Dhaka", "<+06>-6" },
-	{ "Asia/Bangkok", "<+07>-7" },
-	{ "Asia/Jakarta", "WIB-7" },
-	{ "Asia/Shanghai", "CST-8" },
-	{ "Asia/Hong_Kong", "HKT-8" },
-	{ "Asia/Singapore", "<+08>-8" },
-	{ "Asia/Taipei", "CST-8" },
-	{ "Asia/Seoul", "KST-9" },
-	{ "Asia/Tokyo", "JST-9" },
-	{ "Australia/Perth", "AWST-8" },
-	{ "Australia/Adelaide", "ACST-9:30ACDT,M10.1.0,M4.1.0/3" },
-	{ "Australia/Brisbane", "AEST-10" },
-	{ "Australia/Sydney", "AEST-10AEDT,M10.1.0,M4.1.0/3" },
-	{ "Pacific/Auckland", "NZST-12NZDT,M9.5.0,M4.1.0/3" },
-	{ "Pacific/Honolulu", "HST10" },
-	{ "America/Anchorage", "AKST9AKDT,M3.2.0,M11.1.0" },
-	{ "America/Los_Angeles", "PST8PDT,M3.2.0,M11.1.0" },
-	{ "America/Phoenix", "MST7" },
-	{ "America/Denver", "MST7MDT,M3.2.0,M11.1.0" },
-	{ "America/Chicago", "CST6CDT,M3.2.0,M11.1.0" },
-	{ "America/Mexico_City", "CST6" },
-	{ "America/New_York", "EST5EDT,M3.2.0,M11.1.0" },
-	{ "America/Toronto", "EST5EDT,M3.2.0,M11.1.0" },
-	{ "America/Halifax", "AST4ADT,M3.2.0,M11.1.0" },
-	{ "America/St_Johns", "NST3:30NDT,M3.2.0,M11.1.0" },
-	{ "America/Bogota", "<-05>5" },
-	{ "America/Lima", "<-05>5" },
-	{ "America/Santiago", "<-04>4<-03>,M9.1.6/24,M4.1.6/24" },
-	{ "America/Sao_Paulo", "<-03>3" },
-	{ "America/Argentina/Buenos_Aires", "<-03>3" },
-};
+/*
+ * THE ZONE LIST IS READ FROM `zone1970.tab`, which tzdata ships here.
+ *
+ * A hand-written table of labels and POSIX TZ strings went stale the first
+ * time a country changed its rules, and it cannot be right for long: the
+ * canonical list is maintained upstream and is on the image already. `TZ` is
+ * written as `:/etc/localtime` rather than as a rules string, because musl
+ * reads a zone FILE when the value starts with a colon — so the two halves of
+ * the setting, the symlink and the environment, cannot disagree about the
+ * rules for a zone.
+ */
+#define TZ_MAX_ZONES 800
 
-static const int nzones = (int)(sizeof(zones) / sizeof(zones[0]));
-static int tzidx[128], ntzidx;
+static struct {
+	char label[64];
+	char cc[40];		/* the country-code column, as it stands */
+} zones[TZ_MAX_ZONES];
+static int nzones;
+
+static const char *tz_dir(void)
+{
+	const char *d = getenv("KDOS_ZONEINFO");
+
+	return d && *d ? d : "/usr/share/zoneinfo";
+}
+
+static void tz_load(void)
+{
+	char path[512], line[512];
+	FILE *f;
+
+	nzones = 0;
+	snprintf(path, sizeof(path), "%s/zone1970.tab", tz_dir());
+	f = fopen(path, "r");
+	if (f) {
+		while (nzones < TZ_MAX_ZONES && fgets(line, sizeof(line), f)) {
+			if (line[0] == '#')
+				continue;
+			/* `codes<TAB>coords<TAB>name[<TAB>comment]` */
+			if (sscanf(line, "%39[^\t]\t%*[^\t]\t%63[^\t\n]",
+				   zones[nzones].cc,
+				   zones[nzones].label) != 2)
+				continue;
+			nzones++;
+		}
+		fclose(f);
+	}
+	/* An image with no zoneinfo tree still has to offer something, and UTC
+	 * is the one zone that needs no data to be right. */
+	if (!nzones) {
+		kb_strlcpy(zones[0].label, "UTC", sizeof(zones[0].label));
+		kb_strlcpy(zones[0].cc, "--", sizeof(zones[0].cc));
+		nzones = 1;
+	}
+}
+
+static int tzidx[TZ_MAX_ZONES], ntzidx;
 static char tzfilter[32];
 static KtuiList tzlist;
 
@@ -467,6 +447,8 @@ static void tz_row(int idx, int x, int y, int w, int selected, int focus, void *
 
 static void time_enter(void)
 {
+	if (!nzones)
+		tz_load();
 	tz_filter();
 	for (int i = 0; i < ntzidx; i++)
 		if (!strcmp(zones[tzidx[i]].label, cfg.tz_label))
@@ -501,8 +483,9 @@ static void time_draw(KRect b)
 	if (tzlist.sel < ntzidx) {
 		int z = tzidx[tzlist.sel];
 		if (ktui_focused(lid)) {
-			kb_strlcpy(cfg.tz_label, zones[z].label, sizeof(cfg.tz_label));
-			kb_strlcpy(cfg.tz, zones[z].tz, sizeof(cfg.tz));
+			kb_strlcpy(cfg.tz_label, zones[z].label,
+				   sizeof(cfg.tz_label));
+			kb_strlcpy(cfg.tz, ":/etc/localtime", sizeof(cfg.tz));
 		}
 	}
 
@@ -517,7 +500,13 @@ static void time_draw(KRect b)
 		ktui_kv(rx, ry++, rw, "TZ string", cfg.tz, KT_TEXT);
 		ry++;
 
-		setenv("TZ", cfg.tz, 1);
+		/* The PREVIEW reads the zone file directly: `cfg.tz` names
+		 * `/etc/localtime` on the target, which does not exist yet and
+		 * would preview this machine's own zone for every row. */
+		char pv[320];
+
+		snprintf(pv, sizeof(pv), ":%s/%s", tz_dir(), cfg.tz_label);
+		setenv("TZ", pv, 1);
 		tzset();
 		time_t t = time(NULL);
 		struct tm tm;
@@ -1287,187 +1276,186 @@ static Page page_system = {
 /* ════════════════════════════════════════════════════════════════════════
  * 8 · APPLICATIONS
  *
- * A page listing the packs on the medium with the recommended set already
- * ticked. Until it existed an install carried whatever the squashfs carried
- * and the applications stayed on the stick — which on a distro whose medium
- * IS the software library is the one thing an installer must not do.
+ * A page listing the application GROUPS this medium knows how to build, with
+ * `essential` already ticked. Nothing is baked onto the medium — what ships is
+ * a catalogue, and an application is built by podman on the installed machine.
  *
- * NOTHING IS WRITTEN HERE. Every tick sets a flag in `ki_pack[]`, exactly as
- * every other page fills `cfg` and only `cfg`; the copy happens in the install
+ * NOTHING IS WRITTEN HERE. Every tick sets a flag in `ki_group[]`, exactly as
+ * every other page fills `cfg` and only `cfg`; the work happens in the install
  * step, after the summary, which is this program's first design decision.
  *
- * The base and the runtimes are carried always and are drawn as facts rather
- * than as ticks nobody may clear: an application pack is a diff over a runtime
- * and a runtime is a diff over the base, so leaving one out installs
- * applications that cannot start.
+ * THE UNIT IS A GROUP, not an application. Seven named bundles is a thing to
+ * read during an install; 182 rows is not. An answer file may still name an
+ * application by id — `cat_expand` takes either.
+ *
+ * AND THE PAGE SAYS HOW THEY WILL ARRIVE. An exported set on a stick is
+ * offline and verified and wins; a network during the install is next; with
+ * neither, the selection is recorded and the first session offers it. A person
+ * must not discover at first boot that nothing was installed.
  * ════════════════════════════════════════════════════════════════════════ */
 
-static KtuiList packlist;
+static KtuiList applist;
 
-/* `cfg.packs` is the chosen set as one space-separated line: it is what the
- * answer file records, what `--dump plan` prints and what the install step
- * copies. Rebuilt from the ticks rather than maintained beside them, because
- * two representations of one choice is how they come apart. */
-static void packs_collect(void)
+/* `cfg.apps` is the chosen set as one space-separated line: it is what the
+ * answer file records and what `--dump plan` prints. Rebuilt from the ticks
+ * rather than maintained beside them, because two representations of one
+ * choice is how they come apart. */
+static void apps_collect(void)
 {
-	cfg.packs[0] = '\0';
-	for (int i = 0; i < ki_npack; i++) {
+	cfg.apps[0] = '\0';
+	for (int i = 0; i < ki_ngroup; i++) {
 		size_t l;
-		if (!ki_pack[i].chosen)
+
+		if (!ki_group[i].chosen)
 			continue;
-		if (strcmp(ki_pack[i].kind, "app") &&
-		    strcmp(ki_pack[i].kind, "data"))
-			continue;	/* carried always; not a choice */
-		l = strlen(cfg.packs);
-		snprintf(cfg.packs + l, sizeof(cfg.packs) - l, "%s%s",
-			 l ? " " : "", ki_pack[i].id);
+		l = strlen(cfg.apps);
+		snprintf(cfg.apps + l, sizeof(cfg.apps) - l, "%s%s",
+			 l ? " " : "", ki_group[i].id);
 	}
 }
 
-static void pack_row(int idx, int x, int y, int w, int selected, int focus,
-		     void *u)
+static void app_row(int idx, int x, int y, int w, int selected, int focus,
+		    void *u)
 {
 	(void)focus;
 	(void)u;
-	const KiPack *p = &ki_pack[idx];
-	/* base is carried whatever anybody thinks; a RUNTIME is carried
-	 * because something ticked needs it, which is a fact about the
-	 * selection rather than a choice of its own. Neither is togglable. */
-	int required = !strcmp(p->kind, "base");
-	int pulled = strcmp(p->kind, "app") && strcmp(p->kind, "data") &&
-		     !required;
+	const KiGroup *g = &ki_group[idx];
 	int fg = selected ? KT_BG : KT_TEXT;
 	int bg = selected ? KT_ACCENT : KT_BG;
-	char size[16];
-	int idw = 22, szw = 9;
-	int sumw = w - 4 - idw - szw;
+	char size[16], n[16];
+	int szw = 10, nw = 7;
+	int descw = w - 4 - szw - nw;
 
-	kb_strlcpy(size, kb_human_size(p->size), sizeof(size));
-	/*
-	 * `·` for a pack that is carried whatever anybody thinks, the tick
-	 * glyphs for one that is a choice. Both are in the 512-glyph console
-	 * font, which is where this has to read.
-	 */
-	ktui_draw_text(x + 1, y, 2,
-		       required	     ? ktui_glyph[KT_G_BULLET]
-		       : pulled	     ? (p->chosen ? ktui_glyph[KT_G_BULLET] : " ")
-		       : p->chosen   ? ktui_glyph[KT_G_FULL] : " ",
-		       selected ? fg
-		       : (required || pulled) ? KT_DIM : KT_ACCENT, bg, 0);
-	ktui_draw_text(x + 3, y, idw, p->id, fg, bg, 0);
-	if (sumw > 6)
-		ktui_draw_text(x + 3 + idw, y, sumw,
-			       p->summary[0] ? p->summary : p->kind,
-			       selected ? fg : KT_MID, bg, 0);
-	ktui_draw_text_right(x, y, w - 1, size, selected ? fg : KT_MID, bg, 0);
+	kb_strlcpy(size, kb_human_size(g->bytes), sizeof(size));
+	snprintf(n, sizeof(n), "%d", g->napp);
+
+	/* The tick glyph out of the tier table, never a literal: a mark
+	 * written into a format string draws as `?` wherever UTF-8 does not
+	 * reach, and this page is read on the console font. */
+	ktui_draw_text(x + 1, y, 2, g->chosen ? ktui_glyph[KT_G_FULL] : " ",
+		       selected ? fg : KT_ACCENT, bg, 0);
+	ktui_draw_text(x + 4, y, descw, g->desc[0] ? g->desc : g->id, fg, bg, 0);
+	ktui_draw_text(x + 4 + descw, y, nw, n, selected ? fg : KT_DIM, bg, 0);
+	ktui_draw_text(x + 4 + descw + nw, y, szw, size,
+		       selected ? fg : KT_MID, bg, 0);
 }
 
-void ki_packs_enter(void)
+void ki_apps_enter(void)
 {
-	probe_packs();
+	probe_apps();
+	if (!ki_apps_present)
+		return;
+
 	/*
-	 * AN ANSWER FILE NAMING AN UNKNOWN ID FALLS BACK TO THE RECOMMENDED
-	 * SET rather than failing. It is read after the point of no return is
-	 * decided and before it is crossed, and an unattended install that
-	 * refused here would leave a machine with no operating system on it
-	 * over the spelling of one application.
+	 * THE ANSWER FILE WINS WHERE IT NAMED SOMETHING, and `essential` is
+	 * the default where it did not. An unknown name falls the whole
+	 * selection back to `essential` rather than refusing: this runs before
+	 * the point of no return, and refusing there would leave a machine
+	 * with no operating system on it over one misspelling.
 	 */
-	if (!cfg.packs[0] || !ki_npack) {
-		packs_collect();
+	if (!cfg.apps[0]) {
+		for (int i = 0; i < ki_ngroup; i++)
+			ki_group[i].chosen = !strcmp(ki_group[i].id,
+						     "essential");
+		apps_collect();
 		return;
 	}
-	for (int i = 0; i < ki_npack; i++)
-		if (!strcmp(ki_pack[i].kind, "app") ||
-		    !strcmp(ki_pack[i].kind, "data"))
-			ki_pack[i].chosen = 0;
-	for (char *tok = strtok(cfg.packs, " "); tok; tok = strtok(NULL, " ")) {
-		int hit = 0;
-		for (int i = 0; i < ki_npack; i++)
-			if (!strcmp(ki_pack[i].id, tok)) {
-				ki_pack[i].chosen = 1;
-				hit = 1;
-			}
-		if (!hit) {
-			for (int i = 0; i < ki_npack; i++)
-				ki_pack[i].chosen =
-					!strcmp(ki_pack[i].kind, "base") ||
-					ki_pack[i].recommended;
-			break;
+	for (int i = 0; i < ki_ngroup; i++)
+		ki_group[i].chosen = 0;
+	{
+		char want[1024];
+		char *tok, *save;
+		int matched = 0, asked = 0;
+
+		kb_strlcpy(want, cfg.apps, sizeof(want));
+		for (tok = strtok_r(want, " ", &save); tok;
+		     tok = strtok_r(NULL, " ", &save)) {
+			asked++;
+			for (int i = 0; i < ki_ngroup; i++)
+				if (!strcmp(ki_group[i].id, tok)) {
+					ki_group[i].chosen = 1;
+					matched++;
+					break;
+				}
 		}
+		if (asked && !matched)
+			for (int i = 0; i < ki_ngroup; i++)
+				ki_group[i].chosen =
+					!strcmp(ki_group[i].id, "essential");
 	}
-	/* An answer file names APPLICATIONS; the runtimes under them are not
-	 * its business and are pulled in here. */
-	ki_packs_close();
-	/* strtok chewed it; rebuild it from what was actually chosen so the
-	 * summary, the dump and `--save` all report the same set. */
-	packs_collect();
+	apps_collect();
 }
 
-static void packs_draw(KRect b)
+static void apps_draw(KRect b)
 {
 	int y = b.y;
-	char v[192];
+	char v[256];
+	static const char *const ROUTE[] = {
+		"nothing ticked",
+		"from the set on the stick — offline, and verified where it mounts",
+		"built during the install, over the network",
+		"recorded; the first session offers them",
+	};
 
-	ktui_section(b.x, y, b.w, "APPLICATIONS ON THE MEDIUM");
+	ktui_section(b.x, y, b.w, "APPLICATIONS");
 	y++;
 
-	if (!ki_packs_present) {
+	if (!ki_apps_present) {
 		y += ktui_para(b.x, y, b.w,
-			  "This medium carries no pack index, so the "
-			  "applications are whatever the system image carries. "
-			  "That is the monolithic alien-app library on the "
-			  "previous page.", KT_MID);
+			  "This medium carries no application catalogue, so "
+			  "nothing can be chosen here. Applications are "
+			  "installed later with the store.", KT_MID);
 		return;
 	}
-	if (!ki_npack) {
+	if (!ki_ngroup) {
 		y += ktui_para(b.x, y, b.w,
-			  "The medium has an index and no packs in it.", KT_WARN);
+			  "The catalogue has no groups in it.", KT_WARN);
 		return;
 	}
 
 	y += ktui_para(b.x, y, b.w,
-		  "An application is one signed file, and installing it is a "
-		  "mount. Space toggles one; the base and the runtimes under "
-		  "them are carried always.", KT_MID);
+		  "An application is built here by podman, out of the "
+		  "catalogue. Space toggles a group; the runtimes under them "
+		  "come with whatever needs one.", KT_MID);
 	y++;
 
-	int lh = b.y + b.h - y - 3;
+	int lh = b.y + b.h - y - 4;
 	if (lh < 3)
 		lh = 3;
 	/*
 	 * THE WIDGET'S OWN RETURN VALUE, not a page-level key handler. Enter,
 	 * Space and a CLICK all come back through it, so the row answers the
-	 * pointer — which a `case ' '` in the page's event hook would not, and
-	 * a table of checkboxes nobody can click is the defect the whole "every
-	 * control answers the pointer" rule exists for.
+	 * pointer — which a `case ' '` in the page's event hook would not.
 	 */
-	if (ktui_list(krect(b.x, y, b.w, lh), &packlist, ki_npack, pack_row,
+	if (ktui_list(krect(b.x, y, b.w, lh), &applist, ki_ngroup, app_row,
 		      NULL, ktui_id())) {
-		int i = packlist.sel;
-		if (i >= 0 && i < ki_npack &&
-		    (!strcmp(ki_pack[i].kind, "app") ||
-		     !strcmp(ki_pack[i].kind, "data"))) {
-			ki_pack[i].chosen = !ki_pack[i].chosen;
-			ki_packs_close();
-			packs_collect();
+		int i = applist.sel;
+
+		if (i >= 0 && i < ki_ngroup) {
+			ki_group[i].chosen = !ki_group[i].chosen;
+			apps_collect();
 		}
 	}
 	y += lh;
 
 	/*
-	 * WHAT IT COSTS, on the page where it is being chosen. The disk page
-	 * already reports the payload; adding the number here rather than only
-	 * on the summary is what lets somebody stop before ticking 3 GB of
-	 * applications onto a 16 GB stick.
+	 * WHAT IT COSTS AND HOW IT ARRIVES, on the page where it is chosen.
+	 * The route matters more than the number: a person who ticks four
+	 * groups on a machine with no network and no stick has chosen a first
+	 * boot that offers them, and finding that out here rather than then is
+	 * the whole point of putting it on the screen.
 	 */
-	snprintf(v, sizeof(v), "%s in %d pack%s", kb_human_size(ki_packs_bytes()),
-		 ki_npack, ki_npack == 1 ? "" : "s");
+	snprintf(v, sizeof(v), "%s in %d group%s (an estimate)",
+		 kb_human_size(ki_apps_bytes()),
+		 ki_ngroup, ki_ngroup == 1 ? "" : "s");
 	ktui_kv(b.x, y + 1, b.w, "selected", v, KT_TEXT);
+	ktui_kv(b.x, y + 2, b.w, "how", ROUTE[ki_apps_route()],
+		ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
 }
 
-static Page page_packs = {
-	"packs", "Applications", "which packs the medium carries over",
-	ki_packs_enter, packs_draw, NULL, NULL, 0
+static Page page_apps = {
+	"apps", "Applications", "which applications this machine builds",
+	ki_apps_enter, apps_draw, NULL, NULL, 0
 };
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1497,16 +1485,24 @@ static void summary_draw(KRect b)
 	ktui_kv(b.x, y++, b.w, "alien apps",
 	      cfg.with_appbox ? "installed" : "left out",
 	      cfg.with_appbox ? KT_TEXT : KT_WARN);
-	if (ki_packs_present) {
-		int napp = 0;
-		for (int i = 0; i < ki_npack; i++)
-			if (ki_pack[i].chosen &&
-			    (!strcmp(ki_pack[i].kind, "app") ||
-			     !strcmp(ki_pack[i].kind, "data")))
-				napp++;
-		snprintf(v, sizeof(v), "%d selected, %s", napp,
-			 kb_human_size(ki_packs_bytes()));
-		ktui_kv(b.x, y++, b.w, "packs", v, KT_TEXT);
+	if (ki_apps_present) {
+		static const char *const HOW[] = { "nothing chosen",
+						   "from the stick",
+						   "over the network",
+						   "at first login" };
+		int ngrp = 0, napp = 0;
+
+		for (int i = 0; i < ki_ngroup; i++)
+			if (ki_group[i].chosen) {
+				ngrp++;
+				napp += ki_group[i].napp;
+			}
+		snprintf(v, sizeof(v), "%d group%s, %d apps, ~%s %s", ngrp,
+			 ngrp == 1 ? "" : "s", napp,
+			 kb_human_size(ki_apps_bytes()),
+			 HOW[ki_apps_route()]);
+		ktui_kv(b.x, y++, b.w, "applications", v,
+			ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
 	}
 
 	char svc[160] = "";
@@ -1841,7 +1837,7 @@ static Page page_done = {
 
 Page *ki_pages[] = {
 	&page_welcome, &page_keyboard, &page_time, &page_disk, &page_layout,
-	&page_accounts, &page_system, &page_packs, &page_summary, &page_install,
+	&page_accounts, &page_system, &page_apps, &page_summary, &page_install,
 	&page_done,
 };
 

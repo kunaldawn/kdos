@@ -20,21 +20,24 @@ The boundary is deliberate and is where the build cost is: no browser, office su
 package is native-ported, and none ever will be. See
 [Decisions](../01-philosophy/decisions.md).
 
-## What is on the medium
+## What the catalogue carries
 
-The catalogue is defined by `ports/appbox/packs.conf`:
+The catalogue is `/usr/share/kdos/appstore/catalogue`, shipped on the medium.
+It describes software rather than carrying it: nothing is baked into the ISO,
+and an application is built by podman on the machine that asks for it.
 
 | | |
 |---|---|
-| Applications | 181 |
+| Applications | 182 |
 | Shared runtimes | 7 |
-| Base packs | 2 |
-| Data packs | 2 |
-| Boxed commands with no graphical launcher | 33 |
+| Base rows | 2 |
+| Data rows | 2 |
+| Groups | 7 |
+| Boxed commands with no graphical launcher | 36, across 25 rows |
 
 The runtimes are `rt-gtk`, `rt-qt`, `rt-kde`, `rt-media`, `rt-sci`, `rt-electron` and `rt-wine`.
-An application pack is a difference over one of them, and each runtime is a difference over the
-base — so a runtime's bytes are on the medium once no matter how many applications use it.
+An application is built `FROM` one of them and each runtime `FROM` the base, so a runtime's layers
+are stored once no matter how many applications use it.
 
 The catalogue covers the best free software per segment: office and documents, browsers and mail,
 raster and vector graphics, photography, 3D and CAD, slicing and CNC, EDA and circuit simulation,
@@ -42,33 +45,61 @@ audio production, video editing and streaming, development environments, science
 astronomy, GIS and mapping, amateur radio and SDR, emulators and games, KDE's application suite,
 and Wine.
 
-**The recommended set** — what an installer ticks by default — is Firefox, LibreOffice, GIMP,
-Zathura and KeePassXC, plus the base and the runtimes those need.
-
-If your medium has no catalogue, it was built without `make bootstrap-packs` or
-`make fetch-packs`. See [Getting started](getting-started.md).
+**Groups** are how the store and the installer offer it: `essential`, `office`,
+`creative`, `dev`, `science`, `make` and `games`. `essential` is what an
+installer ticks by default — Firefox, LibreOffice, GIMP, Zathura and KeePassXC
+— and the base and runtimes those need arrive through the parent chain rather
+than by being listed.
 
 ## Finding and installing
 
 ```sh
 kdos app list              # what is installed here
-kdos app list --all        # everything on the medium as well
+kdos app list --all        # everything in the catalogue as well
 kdos app search image      # match name, id and summary
-kdos app show app.krita    # size, version, what it needs
-kdos app install app.krita
+kdos app info app.krita    # size estimate, its chain, what it needs
+kdos app install app.krita # one application
+kdos app install creative  # a whole group
 ```
 
-`kdos app show` tells you what a pack **needs**. Some applications are useless without a dataset —
-KiCad without its 3D models, Tesseract without language data — so those packs name a data pack in
-`needs`, and this says whether it is here.
+`kdos app info` tells you what an application **needs**. Some are useless without a dataset —
+KiCad without its 3D models, Tesseract without language data — so those rows name a data row in
+`needs`, and it is installed with them.
 
-**From the desktop**, the Start menu is the discovery surface. Every category lists the
-applications the medium would put there under an `ON THE MEDIUM` rule, search matches them, and
-choosing one **installs the pack and opens the application in the same action**. The next time you
-open the menu it is listed as installed.
+**Installing builds it here.** A row is an image `FROM` the row below it, so installing Krita
+builds the base, the Qt runtime and Krita itself, in that order. The next Qt application reuses
+that runtime and is one apt pass rather than three — which is also why the size the catalogue
+shows is an **estimate**: what apt resolves on the day depends on the snapshot, and the shared
+layers are counted once on disk however many applications name them.
 
-On a live session, installing mounts the pack directly off the medium without copying it, so it
-is close to instant. On an installed system it copies the pack into the store first.
+**It needs a network and it takes minutes**, where a pack was a mount. An exported set installs
+offline instead — see [Carrying a set to another machine](#carrying-a-set-to-another-machine).
+
+**It does not work on a live session.** `$HOME` is on overlayfs there, so a box's overlay upper
+has nowhere to go and `kdos-box create` refuses. Install to disk first, or import a set.
+
+## Carrying a set to another machine
+
+```sh
+kdos app export ~/apps.ktar creative app.vscodium
+kdos app import ~/apps.ktar          # on the other machine
+```
+
+Export flattens each installed application into a signed pack and puts the set
+in one file with an index. Import stages each pack through the pack daemon,
+which **hashes it and checks its signature where it mounts it** — so an imported
+application is verified where a store-installed one is not, and no network is
+needed at any point.
+
+It is also what the installer reads off a stick when there is no network during
+an install, and the only way to get software onto a live session.
+
+A pack the daemon refuses is named and skipped; the rest of the archive still
+imports. With no signing key the set still exports and still imports, every hash
+is still checked, and the export says plainly that it was not signed.
+
+The `SELECTION` file inside is flat text — one id per line — so a set can be
+read, diffed and edited by hand.
 
 ## Launching
 
@@ -95,6 +126,57 @@ have pinned are warmed in the background when you log in.
 Stage timings for a launch are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace` if you want to see
 where the time went.
 
+### From the console desktop
+
+**A graphical application's windows are windows.** Every window the application opens gets a title
+bar, a close button, snapping and a workspace, exactly like every other window there — a
+five-window editor is five windows. A small compositor holds the whole application in a process of
+its own and hands back a picture per window; the desktop puts each picture in its cells.
+
+**One entry in the taskbar for the application, not one per window.** A window that belongs to
+another window, or that says what kind of window it is — a dialog, a dock, a tool palette, a splash
+— belongs to a row that already exists, so an editor with four docks and a file chooser open is one
+entry and not six. A dialog opens centred on the window that raised it and stays above it, and
+while a modal dialog is up the window it belongs to cannot be used until the dialog is answered or
+closed — a question has no minimise button, because the taskbar row is the way back from a minimise
+and a dialog has no row of its own. `Alt+Tab` steps these windows and skips the splash and any
+window a modal is holding: the question is in the ring, the window behind it is not until the
+question is gone.
+
+**The keyboard and the pointer arrive whole.** Keys reach the application in the person's own
+layout, held keys stay held, the pointer is aimed at the pixel rather than the cell, a wheel
+scrolls both ways and a program that asks to hold the pointer — a drawing tool, a 3D view — gets
+it. A touch screen is the exception: a finger has no such stream and points a cell at a time, and a
+finger is wider than a cell anyway.
+
+**Copy and paste work across these windows, and so does the terminal beside them.** A copy inside a
+boxed application can be pasted in the terminal next to it, in another boxed application, and back
+inside itself; a copy made anywhere on the console can be pasted inside one. Both the clipboard and
+the middle-click selection cross, and the copy reaches the other side as it is made rather than at
+the paste, so an application's Paste item is live the moment there is something to paste. Text
+only, up to 64 KB of it: copying a picture leaves the previous text where it was rather than
+emptying the clipboard, and dragging a file onto one of these windows is still read as a cancelled
+drag — use a file or the application's own Save for anything a copy cannot carry.
+
+Everything else about the launch is the same — the same desktop entry, the same container, the same
+tagged socket — so an application does not know which desktop started it.
+
+**Over `ssh`, or in a terminal, it is characters.** The picture is matched to the characters whose
+shapes cover the same parts of a cell, so a graphical application reached from another machine is
+recognisable rather than absent. That is not a special case: every display is sent the same thing and
+each shows what it can.
+
+**Pinning one to a terminal of its own.** An application that needs acceleration a software renderer
+cannot give it — a game, a video editor — is better full screen on a virtual terminal. Put
+`display = vt` in its box profile (`~/.config/kdos/boxes/<name>.conf`) and it takes one: it appears
+in the taskbar marked with the terminal it is on, `[vt3]`, and `Ctrl+Alt+F<n>` is how you get back
+while it is running. Closing it returns the screen on its own. `kdos doctor` reports which
+applications are pinned.
+
+An application that runs **in a terminal** rather than in a window — a file manager, an editor —
+opens as an ordinary window on the console desktop instead, because a terminal is exactly what that
+desktop is made of.
+
 ## Opening files
 
 Double-clicking a file, or `kdos-appbox open <path>`, resolves the file's type from its name and
@@ -117,48 +199,41 @@ the print service was running does not have it — `kdos-appbox recreate <box>` 
 
 ## Commands that live in boxes
 
-Not all boxed software is an application. Thirty-three packs carry a **command** instead of, or
-as well as, a launcher — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls` and the rest.
-These are solvers and tools driven from a prompt, so they get a shim on your PATH and
-deliberately no menu entry: a launcher for `wine` with no arguments opens nothing.
+Not all boxed software is an application. Twenty-five packs declare a **command** instead of, or as
+well as, a launcher — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls`, `glxgears` and
+the rest. These are solvers, benchmarks and tools driven from a prompt, and they deliberately get
+no menu entry: a launcher for `wine` with no arguments opens nothing.
+
+`kdos app show <pack>` prints the commands a pack declares, and the box manager runs one by name:
 
 ```sh
-wine setup.exe
+kdos app show app.wine
+kdos-appbox -b app.wine run wine setup.exe
 ```
 
-A pack with neither a launcher nor a command is a pack nothing on the host can reach, which is a
-packaging bug rather than a feature.
+**A shim on your PATH is the shorter route, and it is written from what a pack's own desktop
+entries name.** A pack that carries no entry at all — which is most of the command-only ones — is
+reached through `kdos-appbox -b` as above. A shim that took its name from a program the host also
+carries would shadow the host's copy, which is why a pack whose binaries duplicate a host port's
+names declares no command.
 
-## Updating and rolling back
+A pack with neither a launcher nor a declared command is a pack nothing on the host can reach,
+which is a packaging bug rather than a feature.
+
+## Updating
 
 ```sh
-kdos app sources           # where updates are looked for
-kdos app update            # update everything with a newer version available
-kdos app rollback app.krita
+kdos app install app.krita     # rebuilds it against the current snapshot
 ```
 
-A **source** is a directory with a `PACKAGES` index in it — the medium the pack daemon reports,
-plus anything listed in `/etc/kdos/pack-sources`, one path per line. On a distribution whose medium
-*is* the software library, the interesting case is "the stick I just wrote is newer than the disk".
+**There is no separate update verb.** An application is a stack of images this
+machine built; rebuilding it is what an update is, and `install` over an
+existing one does exactly that. What it is built against is the catalogue's
+`snapshot`, so two machines on the same commit build the same thing.
 
-**A URL is never written in that file, and there is no line you can uncomment to make the machine
-reach the network.** That is `kdos app update --online <url>`, an argument given each time, so it
-is visible at the moment it is used — where a setting is invisible until the day it surprises
-somebody. Nothing KDOS does on its own leaves the machine.
-
-Where the old pack is still on disk, the update takes a **delta** and reconstructs the new pack
-locally; where it is not, it takes the whole pack.
-
-**Nothing in that path has to be trusted.** The reconstruction lands in a staging directory and is
-verified where it is mounted — hashed against the pack's own footer and checked against the
-signing key — so a tampered delta produces a pack that fails there and cannot make the machine
-install anything the index did not already name.
-
-`retain` in `/etc/kdos/packd.conf` decides how many previous versions are kept; the default is 1,
-which is what makes `rollback` possible. `retain = 0` is an honest off, and rollback then says no
-earlier version is kept rather than failing. Old versions are swept after an install and at no
-other time — a sweep on a timer would be a background job deleting your rollback while you were
-deciding whether to use it.
+**An imported set is different**: its packs carry versions, and `kdos-packd`
+keeps one superseded version so `kdos app` can put a replaced pack back. That
+is `retain` in [`packd.conf`](../06-reference/configuration.md).
 
 ## Removing
 

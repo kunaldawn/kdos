@@ -1,0 +1,6 @@
+[2J[H]8;;https://kdos.example/one\one link]8;;\ and plain text
+]8;;mailto:kunal@example.invalid\a mail address]8;;\
+]8;;javascript:alert(1)\a scheme this refuses]8;;\
+]8;;https://kdos.example/one\the same address again]8;;\
+]8;;file:///etc/os-release\a file]8;;\ then not a link
+]8;id=7;https://kdos.example/two\params are ignored]8;;\

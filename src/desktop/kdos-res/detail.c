@@ -142,8 +142,11 @@ static double proc_cpu(const KprProc *p)
 					  : NULL;
 	double pc = kpr_proc_cpu(prev, p, R.sample.wall_ms - R.prev.wall_ms);
 
-	if (RC.cpu_of_machine && R.cpu.ncpu > 0)
-		pc /= (double)R.cpu.ncpu;
+	/* Percent of the machine is over the CPUs that are RUNNING: `ncpu` is
+	 * the highest number plus one, so dividing by it understates every
+	 * process on a machine with a core offline. */
+	if (RC.cpu_of_machine)
+		pc /= (double)kpr_cpu_online(&R.cpu);
 	return pc;
 }
 

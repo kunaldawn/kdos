@@ -163,7 +163,7 @@ for id in $ids; do
     # `kdos app install` regenerated the USER tree (G1); the shim is there.
     # A PACK MAY SHIP MORE THAN ONE APPLICATION, so take the launcher whose
     # NAME matches the pack rather than whichever sorted first: `app.thunderbird`
-    # is `thunderbird claws-mail` in packs.conf, and the first row tested
+    # is `thunderbird claws-mail` in the catalogue, and the first row tested
     # claws-mail while the result was recorded against thunderbird. LibreOffice
     # ships eight. Falls back to the first row when nothing matches, which is
     # right for a pack whose one application is named differently from it.
@@ -193,7 +193,13 @@ for id in $ids; do
     # stdin exits on "you must specify --save", which is R being right.
     t0=$(date +%s%3N 2>/dev/null || echo 0)
     term=""
-    if grep -ls "^Exec=kdos-appbox run $shim\( \|$\)" \
+    # The box is named BETWEEN the binary and the verb for an app that
+    # belongs to a pack (`-b app.gimp run gimp-3.0`, either spelling of the
+    # option) and not at all for one that does not, so the entry is found by
+    # the verb: a fixed-prefix pattern matches no packed app and every
+    # terminal-only one is then launched with no terminal and scored as a
+    # launch that never produced a window.
+    if grep -ls "^Exec=kdos-appbox \(\(-b\|--box\) [^ ]* \)\?run $shim\( \|$\)" \
          /home/$U/.local/share/applications/*.desktop 2>/dev/null \
        | xargs -r grep -lq "^Terminal=true" 2>/dev/null; then
         term=foot

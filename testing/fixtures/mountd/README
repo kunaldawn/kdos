@@ -6,6 +6,10 @@ FAT32 one labelled KDOSSTICK on a REMOVABLE disk, and an ext4 one on an
 internal disk that must never be offered. `fstab` is an /etc/fstab that claims
 the stick by label.
 
+`mounts-live` is the /proc/mounts of a booted live medium, and it carries one
+cifs line: a network share is listed from there and from nowhere else, so a
+fixture with no such line could not exercise `shares` or `disconnect` at all.
+
     kdos-mountd --fixture testing/fixtures/mountd/sys testing/fixtures/mountd/dev
 
 Three assertions come out of it, and each is a refusal that matters more than

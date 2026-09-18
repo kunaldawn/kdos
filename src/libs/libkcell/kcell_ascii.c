@@ -65,6 +65,9 @@ static const uint32_t CANDIDATES[] = {
 
 static uint32_t glyphs[NCANDIDATES];
 static float vectors[NCANDIDATES][KCELL_ASCII_DIM];
+/* |v|^2 per candidate, so the match is a dot product. See
+ * kcell_ascii_match(). */
+static float norms[NCANDIDATES];
 static int nglyphs;
 static bool ready;
 
@@ -83,35 +86,131 @@ static const float DISC_Y[KCELL_ASCII_DIM] = {
 };
 #define DISC_R 0.26f
 
-/* Mean coverage of one disc over an 8-bit alpha bitmap. */
-static float disc_mean(const uint8_t *cov, int w, int h, int stride, int d)
+/*
+ * THE DISC MASKS, MEASURED ONCE PER CELL SIZE.
+ *
+ * Which pixels a disc covers depends on the cell's SHAPE and not on where the
+ * cell sits, so the ellipse test is the same for every cell of a picture — and
+ * a picture is thousands of cells. Deriving it per cell is two float divisions
+ * and a multiply-add per pixel, six times over, for an answer that never
+ * changes.
+ *
+ * An ellipse is convex, so each of its rows is ONE contiguous run: the mask is
+ * a list of spans, and sampling a cell is then a walk of sequential loads with
+ * no float arithmetic and no division anywhere inside it.
+ *
+ * The offsets are SIGNED and relative to the cell's own origin, because the
+ * top and bottom discs reach a few per cent outside the cell — the whole point
+ * of six samples is that they overlap. Whoever walks the spans clips them to
+ * the buffer it is reading, which is the cell for a candidate measurement and
+ * the picture for an image sample.
+ *
+ * One size is kept. A picture is tiled at one cell size from end to end.
+ */
+struct disc_span {
+	int dy, x0, x1;
+};
+
+static struct disc_span *disc_spans[KCELL_ASCII_DIM];
+static int disc_nspans[KCELL_ASCII_DIM];
+static int disc_cw, disc_ch;
+
+static void discs_free(void)
 {
-	float cx = DISC_X[d] * (float)w;
-	float cy = DISC_Y[d] * (float)h;
-	float rx = DISC_R * (float)w;
-	float ry = DISC_R * (float)h;
+	for (int d = 0; d < KCELL_ASCII_DIM; d++) {
+		free(disc_spans[d]);
+		disc_spans[d] = NULL;
+		disc_nspans[d] = 0;
+	}
+	disc_cw = disc_ch = 0;
+}
 
-	int x0 = (int)(cx - rx), x1 = (int)(cx + rx);
-	int y0 = (int)(cy - ry), y1 = (int)(cy + ry);
-	if (x0 < 0) x0 = 0;
-	if (y0 < 0) y0 = 0;
-	if (x1 > w) x1 = w;
-	if (y1 > h) y1 = h;
+/* Floor, not truncation, and no libm for it: a disc's bounding box starts at a
+ * negative offset and truncating towards zero would lose its first row. */
+static int ifloor(float f)
+{
+	int i = (int)f;
 
-	long sum = 0;
-	int n = 0;
-	for (int y = y0; y < y1; y++)
-		for (int x = x0; x < x1; x++) {
+	return (f < 0.0f && (float)i != f) ? i - 1 : i;
+}
+
+static bool discs_build(int cw, int ch)
+{
+	if (disc_spans[0] && cw == disc_cw && ch == disc_ch)
+		return true;
+	discs_free();
+	if (cw <= 0 || ch <= 0)
+		return false;
+
+	for (int d = 0; d < KCELL_ASCII_DIM; d++) {
+		float cx = DISC_X[d] * (float)cw;
+		float cy = DISC_Y[d] * (float)ch;
+		float rx = DISC_R * (float)cw;
+		float ry = DISC_R * (float)ch;
+		int bx0 = ifloor(cx - rx), bx1 = ifloor(cx + rx);
+		int by0 = ifloor(cy - ry), by1 = ifloor(cy + ry);
+		int rows = by1 > by0 ? by1 - by0 : 1;
+		struct disc_span *sp = calloc((size_t)rows, sizeof(*sp));
+
+		if (!sp) {
+			discs_free();
+			return false;
+		}
+		int n = 0;
+		for (int y = by0; y < by1; y++) {
 			/* An ellipse in cell space, so the disc is round on
 			 * screen rather than round in a stretched coordinate
 			 * system nobody looks at. */
-			float dx = ((float)x + 0.5f - cx) / rx;
 			float dy = ((float)y + 0.5f - cy) / ry;
-			if (dx * dx + dy * dy > 1.0f)
+			int first = -1, last = -1;
+
+			for (int x = bx0; x < bx1; x++) {
+				float dx = ((float)x + 0.5f - cx) / rx;
+
+				if (dx * dx + dy * dy > 1.0f)
+					continue;
+				if (first < 0)
+					first = x;
+				last = x;
+			}
+			if (first < 0)
 				continue;
-			sum += cov[(size_t)y * stride + x];
+			sp[n].dy = y;
+			sp[n].x0 = first;
+			sp[n].x1 = last + 1;
 			n++;
 		}
+		disc_spans[d] = sp;
+		disc_nspans[d] = n;
+	}
+	disc_cw = cw;
+	disc_ch = ch;
+	return true;
+}
+
+/* Mean coverage of one disc over a cell-sized 8-bit alpha bitmap, clipped to
+ * that cell. The mask must already be built for it. */
+static float disc_mean(const uint8_t *cov, int cw, int ch, int stride, int d)
+{
+	long sum = 0;
+	int n = 0;
+
+	for (int i = 0; i < disc_nspans[d]; i++) {
+		const struct disc_span *sp = &disc_spans[d][i];
+		const uint8_t *row;
+		int x0 = sp->x0, x1 = sp->x1;
+
+		if (sp->dy < 0 || sp->dy >= ch)
+			continue;
+		if (x0 < 0)
+			x0 = 0;
+		if (x1 > cw)
+			x1 = cw;
+		row = cov + (size_t)sp->dy * stride;
+		for (int x = x0; x < x1; x++)
+			sum += row[x];
+		n += x1 > x0 ? x1 - x0 : 0;
+	}
 	return n ? (float)sum / (float)n / 255.0f : 0.0f;
 }
 
@@ -137,6 +236,10 @@ int kcell_ascii_init(void)
 		return 0;
 
 	const int cw = kcell_w(), ch = kcell_h();
+
+	if (!discs_build(cw, ch))
+		return 0;
+
 	uint8_t *cov = calloc(1, (size_t)cw * ch);
 	if (!cov)
 		return 0;
@@ -205,8 +308,27 @@ int kcell_ascii_init(void)
 			for (int d = 0; d < KCELL_ASCII_DIM; d++)
 				vectors[i][d] /= maxc;
 
+	for (int i = 0; i < nglyphs; i++) {
+		float sq = 0.0f;
+
+		for (int d = 0; d < KCELL_ASCII_DIM; d++)
+			sq += vectors[i][d] * vectors[i][d];
+		norms[i] = sq;
+	}
+
 	ready = true;
 	return nglyphs;
+}
+
+/* The table measures ONE face at ONE cell size, so a font change invalidates
+ * every vector in it — a candidate dropped because the outgoing font lacked it
+ * would stay dropped, and one measured at the old cell would be compared
+ * against samples from the new. */
+void kcell_ascii_forget(void)
+{
+	ready = false;
+	nglyphs = 0;
+	discs_free();
 }
 
 int kcell_ascii_count(void)
@@ -246,18 +368,28 @@ void kcell_ascii_contrast(float *s)
 int kcell_ascii_match(const float *s)
 {
 	int best = 0;
-	float bestd = -1.0f;
+	float bestd = 0.0f;
 
+	/*
+	 * SQUARED distance: comparing squares orders identically to comparing
+	 * roots, and sqrt would mean libm.
+	 *
+	 * Expanded as |s|^2 - 2 s.v + |v|^2 and with the |s|^2 dropped, since
+	 * it is the same for every candidate and cannot change which one wins.
+	 * What is left is a dot product against a norm the table already
+	 * carries — the inner loop over eighty candidates per cell, for
+	 * thousands of cells, is then a multiply-add per component.
+	 */
 	for (int i = 0; i < nglyphs; i++) {
-		float d2 = 0.0f;
-		for (int d = 0; d < KCELL_ASCII_DIM; d++) {
-			float diff = s[d] - vectors[i][d];
-			d2 += diff * diff;
-		}
-		/* SQUARED distance: comparing squares orders identically to
-		 * comparing roots, and sqrt would mean libm. */
-		if (bestd < 0.0f || d2 < bestd) {
-			bestd = d2;
+		float dot = 0.0f;
+
+		for (int d = 0; d < KCELL_ASCII_DIM; d++)
+			dot += s[d] * vectors[i][d];
+
+		float score = norms[i] - 2.0f * dot;
+
+		if (i == 0 || score < bestd) {
+			bestd = score;
 			best = i;
 		}
 	}
@@ -272,43 +404,56 @@ void kcell_ascii_sample(const uint32_t *argb, int w, int h, int stride_px,
 {
 	long tr = 0, tg = 0, tb = 0;
 	int tn = 0;
+	int bx = cx * cell_w, by = cy * cell_h;
+
+	if (!discs_build(cell_w, cell_h)) {
+		for (int d = 0; d < KCELL_ASCII_DIM; d++)
+			out[d] = 0.0f;
+		if (tint)
+			*tint = 0xff000000u;
+		return;
+	}
 
 	for (int d = 0; d < KCELL_ASCII_DIM; d++) {
-		float dcx = (float)(cx * cell_w) + DISC_X[d] * (float)cell_w;
-		float dcy = (float)(cy * cell_h) + DISC_Y[d] * (float)cell_h;
-		float rx = DISC_R * (float)cell_w;
-		float ry = DISC_R * (float)cell_h;
-
-		int x0 = (int)(dcx - rx), x1 = (int)(dcx + rx);
-		int y0 = (int)(dcy - ry), y1 = (int)(dcy + ry);
-		if (x0 < 0) x0 = 0;
-		if (y0 < 0) y0 = 0;
-		if (x1 > w) x1 = w;
-		if (y1 > h) y1 = h;
-
 		long sum = 0;
 		int n = 0;
-		for (int y = y0; y < y1; y++)
+
+		for (int i = 0; i < disc_nspans[d]; i++) {
+			const struct disc_span *sp = &disc_spans[d][i];
+			int y = by + sp->dy;
+			int x0 = bx + sp->x0, x1 = bx + sp->x1;
+			const uint32_t *srow;
+
+			/* Clipped to the PICTURE, not to the cell: the top and
+			 * bottom discs overlap their neighbours, so only a
+			 * cell on the picture's edge loses anything here. */
+			if (y < 0 || y >= h)
+				continue;
+			if (x0 < 0)
+				x0 = 0;
+			if (x1 > w)
+				x1 = w;
+			srow = argb + (size_t)y * stride_px;
+			n += x1 > x0 ? x1 - x0 : 0;
 			for (int x = x0; x < x1; x++) {
-				float ddx = ((float)x + 0.5f - dcx) / rx;
-				float ddy = ((float)y + 0.5f - dcy) / ry;
-				if (ddx * ddx + ddy * ddy > 1.0f)
-					continue;
-				uint32_t p = argb[(size_t)y * stride_px + x];
+				uint32_t p = srow[x];
 				int r = (int)((p >> 16) & 0xff);
 				int g = (int)((p >> 8) & 0xff);
 				int b = (int)(p & 0xff);
+
 				/* Rec.601 luma, integer — the same weights
 				 * every other KDOS tool uses to reduce a colour
-				 * to a brightness. */
-				sum += (r * 30 + g * 59 + b * 11) / 100;
+				 * to a brightness. Weighted here and divided
+				 * once per disc: a divide per pixel buys
+				 * nothing but rounding error. */
+				sum += r * 30 + g * 59 + b * 11;
 				tr += r;
 				tg += g;
 				tb += b;
-				n++;
-				tn++;
 			}
-		out[d] = n ? (float)sum / (float)n / 255.0f : 0.0f;
+		}
+		tn += n;
+		out[d] = n ? (float)sum / ((float)n * 25500.0f) : 0.0f;
 	}
 
 	if (tint)

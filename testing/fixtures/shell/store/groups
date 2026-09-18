@@ -1,0 +1,7 @@
+essential	What a new machine starts with	app.firefox-esr app.libreoffice app.gimp app.zathura app.keepassxc
+office	Documents, spreadsheets and reading	app.libreoffice app.zathura app.xournalpp app.pdfarranger app.calibre app.foliate app.gnucash app.homebank
+creative	Images, audio and video	app.gimp app.inkscape app.krita app.darktable app.rawtherapee app.scribus app.audacity app.kdenlive app.shotcut app.obs-studio
+dev	Programming and electronics	app.vscodium app.geany app.meld app.ghex app.sqlitebrowser app.zeal app.kdevelop app.arduino
+science	Computation, modelling and data	app.octave app.maxima app.scilab app.rkward app.pspp app.scipy-stack app.paraview app.stellarium app.siril
+make	Three dimensions: model it, slice it, cut it	app.freecad app.openscad app.librecad app.solvespace app.cura app.prusa-slicer app.meshlab app.blender
+games	Games and emulators	app.supertuxkart app.supertux app.openttd app.wesnoth app.luanti app.scummvm app.retroarch app.mgba app.dosbox app.aisleriot app.gnome-chess app.gnome-mines app.gnome-sudoku

@@ -31,14 +31,25 @@ period bound means a device that never fills cannot trap us.
  
  	snd_pcm_hw_params_alloca(&hwparams);
  	err = alsa_pcm_hw_params_any(pcm_h, hwparams);
-@@ -393,31 +395,51 @@
+@@ -393,31 +395,62 @@
  	return err;
  }
  
 +/* Hard bound on the periods one Update may hand over, so a device that
-+   never reports full cannot trap us in the loop below. The ring is
-+   buffer_time/period_time == 5 periods, so this is never the limit that
-+   ends a real call. */
++   never reports full cannot trap us in the loop below. It is NOT the ring,
++   and the ring is not one number: the PipeWire ALSA plugin that `default`
++   names grants the 250ms/50ms this driver asks for verbatim -- five
++   periods -- while the emulated HDA reached as kdos_card rounds it to
++   16384 frames in 1024-frame periods, sixteen of them. Eight is ample for
++   either, because it is what one call may hand over and not what the ring
++   holds: against the 10ms a caller pumping on a 10ms tick consumes, even a
++   fully drained ring is full again two calls later.
++
++   ONE VC_WriteBytes PER PERIOD IS ALSO ONE ADVANCE OF THE SONG POSITION,
++   so a caller reading that position sees it move in period-sized steps,
++   once per graph cycle of whatever `default` leads to. Shrinking the
++   period request buys smaller steps but not more of them, because they all
++   land in the one call the cycle wakes. */
 +#define ALSA_UPDATE_MAX_PERIODS 8
 +
  static void ALSA_Update(void)

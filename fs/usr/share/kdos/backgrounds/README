@@ -1,0 +1,54 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The console desktop's backgrounds: a picture made of characters.
+#
+# One `<name>.txt` per piece. `kdos background <name>` chooses one and
+# `kdos background next` cycles; `~/.config/kdos/background.txt` is a person's
+# own and outranks every one of these.
+#
+# A FILE IS WHAT A PROGRAM WOULD HAVE WRITTEN TO A TERMINAL. UTF-8 text with
+# SGR colour in it, read by the same parser and the same render boundary every
+# terminal window on this desktop goes through — so there is one answer to what
+# `ESC [ 1 ; 36 m` means, and a piece written in cyan is drawn in whatever the
+# accent's cyan-most slot is. `kdos theme` moves the art with everything else.
+#
+# COLOUR BY SGR AND NEVER BY A LITERAL. `ESC [ 3 1 m` through `ESC [ 3 7 m`,
+# with `ESC [ 1 m` for the bright half, reduce to the eight slots by nearest
+# distance. A 24-bit colour is accepted and reduces the same way, but it is
+# reducing a colour that was already chosen against some other palette, so it
+# lands somewhere nobody picked.
+#
+# NOTHING BUT TEXT AND SGR. No cursor motion, no clear, no scroll region: the
+# piece is measured by counting cells and lines, and a sequence that moved the
+# cursor would draw somewhere the measure does not know about.
+#
+# THE GLYPHS ARE THE ONES THE CONSOLE FONT HAS, AND THAT IS A HARD LIMIT ON
+# tty1. The kernel's text plane carries 512 glyphs; a character outside them
+# renders BLANK there while the same file is correct in `kdos-term` and over
+# `ssh`, so a piece using more is a piece that looks like a different picture
+# on the screen it was made for. The three shipped pieces use only:
+#
+#   ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼        the whole single box set
+#   ═ ║ ╔ ╗ ╚ ╝ ╬                the double set the font HAS
+#   █ ▒ ░                        three shades, which is all there are
+#   · ° ∙                        and ASCII
+#
+# WHAT IS NOT THERE, MEASURED RATHER THAN ASSUMED: ╠ ╣ ╦ ╩ (the double tees),
+# ▓ (the fourth shade), and every half and eighth block — ▀ ▄ ▌ ▐ and the rest.
+# The font is `ter-kdos32n`, which is Terminus' `xos4-2` charset with six
+# spacing diacritics swapped for the double box glyphs the block logo needs, so
+# the list above is that file and not a guess. `selftest.sh` reads the same
+# charset out of the port and fails a piece that uses anything else.
+#
+# CP437 ART IS CONVERTED WHEN IT IS PACKAGED, never at runtime: a decoder on
+# the draw path would be a second character-set decision beside the terminal's.
+#
+# The piece is drawn CENTRED behind the icons. A BBS screen was eighty by
+# twenty-five and a display is not, so a piece anchored to a corner would sit
+# in one on every screen bigger than the one it was drawn for.
+# ---------------------------------

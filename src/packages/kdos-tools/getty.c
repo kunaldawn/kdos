@@ -25,6 +25,10 @@
  * implementation of that is a new way to produce exactly the wrong-font bug
  * this wrapper exists to prevent. What DID move into C is the polling — the
  * kernel ring is read with klogctl() instead of forking dmesg fifty times.
+ *
+ * It is also the last root process on either login path, so the two things that
+ * must be done as root and then inherited -- the delegated cgroup and the
+ * real-time resource limits -- are done here as well.
  * ---------------------------------
  */
 
@@ -39,6 +43,7 @@
 #include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/klog.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 
 #include "kdos-tools.h"
@@ -147,6 +152,125 @@ static int run(const char *const *argv, char *out, size_t outcap)
 		if (errno != EINTR)
 			return -1;
 	return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+}
+
+/*
+ * THE ACCOUNT `greet = no` LOGS IN, from /etc/kdos/con.conf.
+ *
+ * Parsed here rather than linked: this binary runs before anything else on
+ * tty1 and stays thin, and the key is one word after an equals sign. The
+ * default matches the shipped file, so a missing or unreadable file gives the
+ * same answer the shipped one would.
+ */
+static const char *autologin_user(void)
+{
+	static char name[64];
+	FILE *f = fopen("/etc/kdos/con.conf", "r");
+	char line[256];
+
+	if (!f)
+		return "kdos";
+
+	while (fgets(line, sizeof(line), f)) {
+		char *p = line;
+		char *v;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p == '#' || strncmp(p, "autologin", 9))
+			continue;
+		p += 9;
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p != '=')
+			continue;
+		v = p + 1;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		for (p = v; *p && !isspace((unsigned char)*p); p++)
+			;
+		*p = '\0';
+		if (*v) {
+			snprintf(name, sizeof(name), "%s", v);
+			fclose(f);
+			return name;
+		}
+	}
+
+	fclose(f);
+	return "kdos";
+}
+
+/*
+ * THE REAL-TIME BUDGET FOR EVERY PROCESS BELOW THIS ONE.
+ *
+ * rlimits survive setuid() and execve(), so raising them in the last root
+ * process is the one place that covers both console login paths -- `greet = no`
+ * through agetty and login, and the greeter's own setuid-and-exec, which never
+ * runs login at all. Nothing downstream lowers them again: shadow is built
+ * --without-libpam, so /etc/security/limits.d is read by nobody, and the
+ * /etc/limits reader login does have returns without touching a limit when no
+ * line names the account.
+ *
+ * WITHOUT THIS THE WHOLE AUDIO PATH IS SCHED_OTHER AND NOTHING SAYS SO.
+ * pcm.!default is the PipeWire ioplug, which puts a data-loop thread inside
+ * every ALSA client, and in a VM pipewire.conf forces
+ * default.clock.min-quantum = 1024 -- a 21.3 ms deadline at 48 kHz on that
+ * thread. PipeWire's module-rt is loaded `nofail` in both pipewire.conf and
+ * client.conf, so a thread it cannot promote simply stays at nice 0, and
+ * RTKit is not shipped for its fallback to reach. A missed cycle is mixed as
+ * silence, heard as a gap, and the buffer is delivered a cycle late for the
+ * rest of the run -- a drift no player corrects.
+ *
+ * The numbers are the ones the shipped 25-pw-rlimits.conf asks for, so the
+ * image grants what its own configuration says it wants: 95 clears module-rt's
+ * server priority of 88 and its client priority of 83. RLIMIT_NICE is the
+ * 20-minus-ceiling encoding, so 39 is nice -19, below module-rt's -11.
+ * RLIMIT_MEMLOCK is BYTES here where that file's number is kB: 4 MiB covers
+ * PipeWire's mlocked buffer pool, which the kernel's 64 KiB default does not,
+ * while the 4 GiB a kB reading would mean is a ceiling that lets an
+ * unprivileged session pin every page of a small machine.
+ *
+ * A LIMIT THE KERNEL REFUSES IS REPORTED, NEVER FATAL. A tty that will not
+ * come up is far worse than one without real-time audio.
+ */
+static void raise_rt_limits(void)
+{
+	static const struct {
+		const char	*name;
+		int		 res;
+		rlim_t		 val;
+	} want[] = {
+		{ "rtprio",  RLIMIT_RTPRIO,  95 },
+		{ "nice",    RLIMIT_NICE,    39 },
+		{ "memlock", RLIMIT_MEMLOCK, 4194304 },
+	};
+
+	for (size_t i = 0; i < sizeof(want) / sizeof(want[0]); i++) {
+		struct rlimit rl;
+
+		/* RAISE ONLY, AND BOTH HALVES. A hard limit cannot be put back
+		 * up once it is lowered, so whatever already grants more than
+		 * this keeps what it grants; and the soft limit is the one the
+		 * kernel checks, so a high hard limit on its own grants
+		 * nothing. Raising the hard half is what needs the root this
+		 * process still has. */
+		if (getrlimit(want[i].res, &rl) != 0)
+			rl.rlim_cur = rl.rlim_max = 0;
+		if (rl.rlim_cur >= want[i].val && rl.rlim_max >= want[i].val)
+			continue;
+		if (rl.rlim_cur < want[i].val)
+			rl.rlim_cur = want[i].val;
+		if (rl.rlim_max < want[i].val)
+			rl.rlim_max = want[i].val;
+
+		if (setrlimit(want[i].res, &rl) != 0)
+			fprintf(stderr,
+				"kdos-getty: %s limit not raised to %llu: %s\n",
+				want[i].name,
+				(unsigned long long)want[i].val,
+				strerror(errno));
+	}
 }
 
 int getty_main(int argc, char **argv)
@@ -281,8 +405,29 @@ int getty_main(int argc, char **argv)
 		break;
 	}
 
+	raise_rt_limits();
+
 	execvp(argv[2], argv + 2);
-	fprintf(stderr, "kdos-getty: cannot exec %s: %s\n", argv[2],
-		strerror(errno));
+
+	/*
+	 * A CONSOLE ALWAYS COMES UP. The program named here is whichever login
+	 * path the image was built with, and an image built without it — a
+	 * desktop package that did not land, a partially installed system —
+	 * would otherwise leave init respawning a failing exec forever and no
+	 * way to log in at all. The fallback is the plain autologin getty,
+	 * which needs nothing but util-linux.
+	 *
+	 * IT LOGS IN THE ACCOUNT con.conf NAMES, not a hardcoded one. The
+	 * desktop's account is named in one place and an installer that
+	 * renames it rewrites that place; a second copy of the name here logs
+	 * in a user the installed system does not have, leaving the machine
+	 * reachable only from tty2 — which is what the configuration file's
+	 * own comment warns about.
+	 */
+	fprintf(stderr, "kdos-getty: cannot exec %s: %s — falling back\n",
+		argv[2], strerror(errno));
+	execl("/sbin/agetty", "agetty", "--autologin", autologin_user(),
+	      "--noclear", tty, "38400", "linux", (char *)NULL);
+	fprintf(stderr, "kdos-getty: no agetty either: %s\n", strerror(errno));
 	return 127;
 }

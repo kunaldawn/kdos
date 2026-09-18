@@ -14,8 +14,62 @@ kdos-appbox run <app> [args...]      run an application from its pack's box
 kdos-appbox open [--print|--choose] <path>
 kdos-appbox warmup | status
 kdos-appbox list | apps
+kdos-appbox catalogue [--groups]      what this system can build
 kdos-appbox genlaunchers --packs <fs-root> | --packs --user
 ```
+
+`catalogue` prints one **tab-separated** line per application —
+`<id> <name> <category> <bytes> <parent> <tagline>` — because a tagline has
+spaces and every other table in this tree splits on tab. `--groups` prints
+`<id> <description> <member> <member> …` instead. It reports no install state:
+the surfaces join it against what podman reports rather than asking it for
+something it cannot know.
+
+`catalogue --selftest` runs the parser's own assertions against
+`$KDOS_CATALOGUE`, offline and with no daemon. See
+[Testing](../05-developer/testing.md).
+
+### install and uninstall
+
+```
+kdos-appbox install <id|group>... [--dry-run]
+kdos-appbox uninstall <id|group>...
+```
+
+**A chain is built bottom-up as a stack of images, one per catalogue row**,
+each `FROM` the one below — `kdos/base`, then `kdos/rt-gtk`, then
+`kdos/app.gimp`. That is what makes a second GTK application one apt pass
+instead of three: the base and the runtime are already images and are skipped.
+Flattening a chain into one image per application would rebuild and re-store
+every shared layer per application.
+
+**An image already present is never rebuilt.** `podman image exists` is the
+whole check: the catalogue has no version per row, so an image is current by
+definition until somebody removes it. `--dry-run` tracks the same thing for
+itself rather than asking podman, or a preview would show four builds where an
+install does two.
+
+**Nothing rolls back.** Six applications where the fourth fails leaves five
+installed and names the fourth: an installed application is not damaged by a
+later one failing, and unwinding throws away twenty minutes of apt.
+
+**Progress is one flushed line per step**, so a surface reading this process's
+stdout shows it without parsing podman — and the process is a direct child of
+that surface, never a supervised one, because a pipeline reading a supervised
+service's output never returns.
+
+`uninstall` removes the box, then the application's own image, then any runtime
+above the base that no remaining box's chain names. The base is never removed:
+it is every chain's floor. Which runtimes are still wanted is asked of the
+**catalogue**, not of podman — a dangling-image sweep cannot tell a runtime
+nothing uses yet from one whose only application is mid-install.
+
+**`snapshot = auto` is resolved against the base image**, by reading the date
+Debian records in its own sources file, so the packages installed on top cannot
+disagree with the rootfs under them. **A resolution that fails warns and builds
+unpinned**: refusing to install because a comment moved would be worse, but an
+unpinned Containerfile is indistinguishable from a pinned one once written, and
+the warning is the only thing that tells them apart.
 
 ```
 kdos-box list create enter run apps export unexport freeze import clone
@@ -25,6 +79,58 @@ kdos-box list create enter run apps export unexport freeze import clone
 **Invoked through a symlink named after an application**, it dispatches on its own name — so
 `gimp photo.png` works from a terminal with no shell wrapper, using exactly the same dispatch a
 multi-call binary does. That keeps the application path free of any shell.
+
+
+### export and import
+
+```
+kdos-appbox export <file.ktar> <id|group>...
+kdos-appbox import <file.ktar> [<id>...]
+```
+
+A set of applications as **signed packs in one file**. `export` needs a
+selection; `import` does not, because an archive carries its own.
+
+```
+apps-2026-09-18.ktar
+  SELECTION        the groups and ids this set was exported as
+  PACKAGES         id, version, size and payload hash per pack
+  PACKAGES.sig     when a key was readable
+  app.gimp.kpack
+  app.inkscape.kpack
+```
+
+**Packs and not `podman save`.** A store install is unsigned content from
+somebody else's registry; a pack is hashed and signature-checked by
+`kdos-packd` **where it mounts it**. That is what makes an imported application
+verified where a store-installed one is not, and it is the only route to
+software on a machine with no network.
+
+**`podman export`, not the overlay store.** An image's own content is spread
+across its layers and only the export flattens them. It also means no overlay
+whiteout and no `trusted.overlay.*` xattr is in play — the one thing that would
+force this to run as root.
+
+**`kdos-pack build`, not `mkfs.erofs` then `assemble`.** The build verb already
+runs mkfs with the reproducible flag set, and a second copy of that list is a
+second answer to how a pack is made. Its `--force-uid=1000` is what lets export
+run unprivileged: a box runs `--userns keep-id`, so the process inside it is
+uid 1000 and a tree owned by real root is one it can create nothing in.
+
+**An unsigned index says so.** With no `KDOS_PACK_KEY` the set still indexes and
+still imports, and every hash is still checked at the mount — but the export
+prints that it was not signed, because an unsigned archive is otherwise
+indistinguishable from a signed one.
+
+**Import hands the daemon a filename in its own staging directory, never a
+path.** That is the rule the daemon is built on and what keeps something
+reachable from `wheel` from being `mount /dev/sda2 /etc`. A pack the daemon
+refuses is named and skipped; the rest of the archive still imports.
+
+The `SELECTION` manifest is flat and commentable so a set can be diffed and
+hand-edited. A `group` line records what was *picked*; the id lines are what is
+installed, so a group whose membership changed later still imports the software
+the archive actually carries.
 
 ## Two rules the whole program is written under
 
@@ -43,10 +149,13 @@ It links four of our libraries and nothing else.
 
 In order, because the order is the design:
 
-1. **Resolve the pack from the command.** `run <exec>` is the form every desktop entry uses, and
-   the pack is looked up by **matching the command column whole and then by basename**. Without
-   this, only the shim path found a pack and the Start menu launched every application into a
-   default box the pack system never had — while the same application worked from a prompt.
+1. **Resolve the box.** A generated launcher for an application that belongs to a pack writes
+   `Exec=kdos-appbox -b <pack> run <exec>`, so the box is named outright and no lookup happens —
+   `-b` is parsed before the verb, and `<pack>` is the same string the box profile is filed under.
+   A command with no `-b` — a prompt, a shim, an entry naming no box — resolves the pack from the
+   command instead, by **matching the command column whole and then by basename**. An exec no
+   installed pack carries is **refused by name**: composing a box out of a name no pack answers to
+   fails a step later, with a sentence about a box nobody asked for.
 2. **Choose the storage driver, once.** See [Storage drivers](#storage-drivers).
 3. **Compose the pack stack**, if it is not composed. This is idempotent, and it is required
    because the overlay lives on a temporary filesystem — a box created before a reboot has a root
@@ -69,6 +178,13 @@ In order, because the order is the design:
 
 Stage timings are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace`. Measured on the reference
 machine: **18.3 s** cold with no container at all, **0.3 s** warm, **0.55 s** for a second window.
+
+**None of those stages is visible to the desktop.** What the person watches for those eighteen
+seconds is the session's [startup card](kdos-con.md#a-graphical-application-is-windows), whose bar counts
+the four things `kdos-con` can see from outside — the cage forked, the channel answered, a toplevel
+opened, the first frame — and this whole path happens inside the second of them. Relaying the stages
+above would cost a new `kembed` op and a cage that read its own child's trace, and it would still be
+a bar that stalls on the one step that actually takes the time.
 
 ## The environment a box gets
 
@@ -104,6 +220,11 @@ reimplemented against the metadata.
 available, and mounting one to read its entries is what makes it *installed* — so an unfiltered
 pass turns the whole catalogue into mounted packs.
 
+**And only a pack that carries desktop entries of its own.** A pack with no
+`/usr/share/applications` in it has nothing for the parse to read and contributes nothing to the
+set, which is the case for a pack whose value is a command: `kdos-appbox -b <pack> run <command>`
+is how those are reached, and `kdos app show <pack>` names them from the metadata.
+
 ### Four outputs, and dropping any one breaks something visible
 
 | Output | Without it |
@@ -137,6 +258,13 @@ tree, and a run as anyone else fails rather than reporting a launcher set it did
 
 ### Naming rules
 
+- **The launcher carries its box.** An application that belongs to a pack gets
+  `Exec=kdos-appbox -b <pack> run <exec>`; one with no pack keeps the bare `Exec=kdos-appbox run
+  <exec>`. `<pack>` is the pack identifier, which is also the box name and the stem of the box
+  profile — so the console reads a guest's policy key straight off the argument vector instead of
+  reversing the box layout out of an absolute `Exec`, and `run` skips the command table entirely.
+  A guest launched without `-b` resolves to the program's basename, which names a window but no
+  profile.
 - **The launcher filename is upstream's own desktop identifier**, not a KDOS-prefixed name and not
   the window-class field. A dock matches a running window to an entry by the entry's **file
   identifier**, so a mismatch shows a second generic icon beside the pinned one.
@@ -158,7 +286,7 @@ tree, and a run as anyone else fails rather than reporting a launcher set it did
 
 | Table | Does |
 |---|---|
-| `COMMANDS` | Packs whose value is a **command**, not an application: a table row and a shim, deliberately **no** desktop entry, because a launcher for a shell tool with no arguments opens nothing. Emitted only when the image really carries the binary |
+| `COMMANDS` | Program names whose value is a **command**, not an application: a table row and a shim, deliberately **no** desktop entry, because a launcher for a shell tool with no arguments opens nothing. Emitted only when the source really carries the binary, so a set baked before the segment existed gets no shim that dies on "not found" |
 | `RENAME` | Upstream's program name is not the one people know |
 | `RESERVED` | Names the sweep must not delete — see below |
 | `EXEC_EXTRA` | Arguments an application needs **only because it is containerised**: one sandboxing toolkit wants a privileged helper it cannot have and exits rather than falling back |
@@ -202,13 +330,67 @@ kdos-appbox open --choose report.pdf
 ```
 
 This is here rather than in a generic opener because this is already the program that knows what
-"open with GIMP" means on this machine.
+"open with GIMP" means on this machine — and `/usr/local/bin/xdg-open` **is this program**, a third
+name on the binary beside `kdos-box`. Everything that opens a link says that word and means
+"whatever this machine opens it with": a mail client's `:open-link`, a portal, anything reading
+`$BROWSER`. `/usr/local/bin` comes first on the shipped `PATH`, so this answers before xdg-utils'
+script — which stays installed and is still where an unclaimed type ends up, reached **by absolute
+path** because naming it otherwise would find this binary again and recurse.
 
-The resolution is the standard one and nothing clever: the glob table for the type — **longest
-matching suffix wins**, or every compound extension opens in a decompressor — then the default
-applications, the added associations, and each MIME cache. That last file is the one the generator
+**A URL is not a file name, and one function decides which it is.** `kxdg_mime_for_arg()` types an
+argument with a scheme as `x-scheme-handler/<scheme>` and unwraps `file:` to the path it names;
+anything else is a path. Without it the basename decided, so `mailto:a@b.c` matched the
+`*.C` glob and a mail address resolved to C++ source. The chooser asks the same function, so both
+sides mean the same thing by the same word.
+
+The resolution is otherwise the standard one and nothing clever: the glob table for the type —
+**longest matching suffix wins**, or every compound extension opens in a decompressor — then the
+default applications, the added associations, and each MIME cache. That last file is the one the generator
 already writes beside a box's launchers, so **a boxed application is found by exactly the same
 lookup as a host one**.
+
+**Each of those levels is searched twice, the running desktop's list first.**
+`<desktop>-mimeapps.list` — the first name in `XDG_CURRENT_DESKTOP`, lowercased, so
+`kdos-console-mimeapps.list` on the console — comes before the plain `mimeapps.list` beside it.
+That is what lets one picture open in `timg` inside a terminal on the console and in a boxed viewer
+under the compositor **without either desktop editing the other's choices**, which one list for one
+user cannot express.
+
+**Every shipped table is at `/etc/xdg` and a home starts with none.** Three files:
+`kdos-mimeapps.list` for the compositor, `kdos-console-mimeapps.list` for the console, and the
+plain `mimeapps.list` for what both desktops answer the same way. A person's own choice is searched
+before all three wherever they made it, so *Open With* can always change what is in force — a
+default shipped into `~/.config` would have outranked it and the chooser would have appeared to do
+nothing. *Open With* consults these in the opener's order and writes to the plain user list, so
+what it shows as current is what the opener would actually run.
+
+**A `Terminal=true` entry is wrapped in the desktop's own terminal.** `foot` under the compositor,
+`kdos-term` inside a console session — one rule in `kb_terminal()`, because the console resolving a
+handler correctly and then wrapping it in a Wayland client would look like the handler being wrong
+rather than the terminal being unreachable.
+
+**And on a bare virtual terminal it is not wrapped at all.** `Ctrl+Alt+F2`, a serial console and an
+ssh login are shells no session started: neither emulator can open there, and the caller is already
+sitting at a terminal. `kb_terminal()` answers NULL and the entry runs in place. The desktop name
+follows the same fact — a login with no display of any kind is given the **console's**, so a link
+resolves through `kdos-console-mimeapps.list` to `w3m` rather than through the compositor's list to
+a Wayland client with nothing to connect to.
+
+**Unless the entry asked for one by name.** `X-KDOS-Term` names the emulator a program needs — the
+one that draws pictures in the cell grid — and is honoured on either desktop. It is **a name and
+never a program**: only an emulator this image ships is accepted and anything else is the session's
+own, because an entry is a file anything can write and a key naming a program would be a second
+`Exec` line with none of the field-code rules.
+
+**And inside a console session it is preferred.** There is no compositor there, so a windowed
+handler at the head of the chain opens nothing anybody can see. The reordering is stable and it
+happens **only where nobody has decided**: a `[Default Applications]` row is somebody's answer and
+keeps its place, so this can never overrule a choice. *Open With* applies the same rule, because
+its first row has to be the handler the opener would use.
+
+**A type goes in exactly one of them.** One both desktops open the same way belongs in the plain
+file; writing it in each desktop's is the same decision recorded twice, which is a decision that
+drifts.
 
 Field codes are **substituted** rather than stripped: the code *is* the file, and dropping it
 opens the application with an empty document.
@@ -233,7 +415,9 @@ lanes honest rather than a wrapper over two systems.
 | `export` | Whether its applications get host launchers |
 | `network`, `ipc` | Namespace flags — **create-time** |
 | `devices` | Whether `/dev` and the runtime directory are shared |
-| `gpu`, `audio` | Ride on `devices`; see below |
+| `audio` | Rides on `devices`; see below |
+| `gpu` | The card's device nodes. Subtracts nothing from a shared `/dev`; **binds `/dev/dri` back into a box whose devices are private** |
+| `render` | `auto` (the default), `gpu` or `software` — which graphics this box's applications get; see below |
 | `memory` | Enforced by the **memory daemon**, not the container engine |
 | `accent` | The box's colour, which is what draws a title-bar chip |
 | `autostop` | Idle timeout for the collector |
@@ -244,9 +428,68 @@ Three properties this list is written to keep:
 
 - **Every key maps 1:1 onto a container-engine flag or onto something KDOS enforces itself**, and
   the profile printer names the mechanism behind each line.
-- **It says out loud what it could not enforce.** `gpu` and `audio` ride on `devices`, and there
-  is **no flag that grants a box a speaker and denies it a camera**.
+- **It says out loud what it could not enforce.** A shared `/dev` cannot have a hole cut in it, so
+  with `devices = shared` both `gpu` and `audio` ride on that key and there is **no flag that
+  grants a box a speaker and denies it a camera**. `gpu` is enforceable in the other direction
+  only: with `devices = private` the box has no `/dev` at all, and `gpu = yes` is the
+  `--volume /dev/dri` that binds the card back.
 - **An unknown key is reported by name.**
+
+**`display` is the console session's key and not the container's.** `display = vt` pins a box's
+applications to a virtual terminal of their own instead of the windows they otherwise become.
+`kdos-con` reads it straight out of the profile file, and `kdos-box profile` carries it through a
+rewrite without interpreting it — a profile writer that knows only its own keys deletes everybody
+else's, which is a setting that disappears the next time an unrelated one is changed.
+
+**`render` reaches the guest's own Mesa, and it defaults to the card.** The render nodes are bound
+into every box, the DRI drivers and `libva` are in the base pack and both renderers are built, so a
+box that draws with llvmpipe on a machine that has all three is paying for nothing. `auto` — the
+default, and what an absent key means — asks the machine: `profile_render_gpu()` resolves it by
+**opening** a `/dev/dri/renderD*` node, because a node owned by the `render` group that this
+session cannot open is the same dead end as a machine with no card. `gpu` is a request for the
+same thing and `software` is the one value that refuses it whatever is plugged in.
+
+The resolved answer becomes `LIBGL_ALWAYS_SOFTWARE=1` in the launch environment, and only for the
+software answer: for the hardware one Mesa already asks the right question and falls back by
+itself, and a variable that pinned hardware would take that fallback away. It is **advisory** — an
+application may unset it — and `kdos-box profile` prints it as the renderer line rather than as
+confinement.
+
+**It chooses the embedded cage's renderer too, and this program is not the end that does it.**
+`kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where
+`software` pins pixman and every other spelling leaves the cage on its own
+`wlr_renderer_autocreate` call — **whose answer the cage then proves and may overrule**. An
+embedded cage can publish only frames it can read back, so with a hardware renderer it allocates
+udmabuf buffers, and a driver is free to refuse to import them — or to accept the import and write
+the result where this process cannot see it. The cage renders one frame through the renderer, the
+allocator and a throwaway output before building anything on them, and then paints a second frame of
+known pixels and reads it back the way a published frame is read; where either fails it drops the
+card and rebuilds on pixman. So a box that asked for `auto` or `gpu` on a machine whose card fails
+either test is composited by pixman and draws with llvmpipe, and nothing in the profile says so — see
+[`kdos-cage`](kdos-cage.md#--embed-the-guests-pixels-without-a-screen). What the key decides is
+whether the card is *asked for*, and that is the half this file owns.
+
+So a `render = software` box on a console desktop with a card draws with llvmpipe into `wl_shm` and
+is composited out of that same memory — no upload and no readback for pixels the CPU already had — and the key saves a
+crossing rather than costing one. **A profile rewrite that dropped the key would change what
+composites the window**, which is why every writer of this file carries keys that mean nothing to a
+container flag.
+
+`kdos-box profile` prints the key **and what it resolves to on this machine**, because a profile
+states a wish and the hardware answers it. The hardware answer is the node it opened; the software
+answer names the variable and calls it advisory. **A box that can see no node is refused without
+opening anything** — `devices = private` with `gpu = no` leaves `/dev/dri` out of the box, and this
+process's own `/dev` is not that box's, so the host path it could open is one that does not exist
+inside:
+
+```
+render      = auto        /dev/dri/renderD128
+render      = software    LIBGL_ALWAYS_SOFTWARE=1 (advisory) — the profile refuses the card
+render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no render node on this machine
+render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no /dev/dri inside this box
+```
+
+It is a different question from `gpu`, which is about device nodes rather than about who draws.
 
 **`memory` is enforced by the memory daemon**, and that is what makes the key honest: rootless
 containers on a machine with no cgroup delegation accept a memory limit and ignore it. So the
@@ -305,9 +548,10 @@ a window to an entry by file identifier, and the panel now has a better key than
 ## Warmup and collection
 
 **Warmup is the pinned set.** One box per application means a single login warmup covers nothing,
-so the warmup reads the favourites file — which holds desktop identifiers — resolves each through
-its entry's command to the shim the table is keyed by, and composes and starts that pack's box at
-low priority.
+so the warmup reads the favourites file — which holds desktop identifiers — takes the pack from
+each entry's `Exec` (`-b <pack>` where it is named, otherwise the command resolved through the
+table), and composes and starts that pack's box at low priority. The first word of a generated
+entry is this binary and never a shim, so reading a shim out of it warms nothing and exits 0.
 
 **The collector runs every ten minutes from the session**, and **asks the compositor first**: a box
 with a mapped window is not idle whatever its clock says, and the command socket is the one question

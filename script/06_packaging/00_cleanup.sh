@@ -81,19 +81,17 @@ if [ "$CLEAN_PYCACHE" = 1 ]; then
     report "pycache + .pyc/.pyo" "$before" 0
 fi
 
-# ── The monolithic appbox's container store ─────────────────────────────
+# ── podman's container store ────────────────────────────────────────────
 #
-# THE IMAGE LANE IS GONE AND ITS STORE MUST GO WITH IT. `01_appbox.sh` used to
-# `podman load` the ~4 GB kdos-apps image into this directory so a live session
-# had it pre-seeded; nothing creates it now, and nothing REMOVED it either — so
-# 10.4 GB of a deleted lane rode into system.sfs on every build, which is the
-# same way 529 MB of a removed desktop rode three ISOs before the package sweep
-# existed. The pack lane composes a box at first launch, in the user's own home
-# on the running system, so a shipped rootfs carries no container store at all.
+# A SHIPPED ROOTFS CARRIES NO CONTAINER STORE. Applications are built on the
+# machine that asks for one, in that user's own home, so anything here is
+# somebody else's images riding into system.sfs — measured at 10.4 GB when a
+# build left one behind, which is the same way 529 MB of a removed desktop rode
+# three ISOs before the package sweep existed.
 #
 # Not a `kpkgdel`: no package owns these paths — podman wrote them.
 if [ -d "$FS/home/kdos/.local/share/containers" ]; then
-    section "the monolithic appbox's container store"
+    section "podman's container store"
     before=$(size_of "$FS/home/kdos/.local/share/containers")
     rm -rf "$FS/home/kdos/.local/share/containers"
     report "home/kdos/.local/share/containers" "$before" 0

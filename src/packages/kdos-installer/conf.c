@@ -70,7 +70,11 @@ void conf_defaults(void)
 {
 	memset(&cfg, 0, sizeof(cfg));
 	kb_strlcpy(cfg.keymap, "us", sizeof(cfg.keymap));
-	kb_strlcpy(cfg.tz, "UTC0", sizeof(cfg.tz));
+	cfg.greet = 1;
+	/* The colon form, not a rules string: musl reads the zone FILE when
+	 * `TZ` starts with a colon, so this cannot name different rules from
+	 * the `/etc/localtime` the same install writes. */
+	kb_strlcpy(cfg.tz, ":/etc/localtime", sizeof(cfg.tz));
 	kb_strlcpy(cfg.tz_label, "UTC", sizeof(cfg.tz_label));
 	kb_strlcpy(cfg.fstype, "ext4", sizeof(cfg.fstype));
 	kb_strlcpy(cfg.hostname, "kdos", sizeof(cfg.hostname));
@@ -97,6 +101,8 @@ static void set_kv(const char *k, const char *v)
 {
 	if (!strcmp(k, "keymap"))
 		kb_strlcpy(cfg.keymap, v, sizeof(cfg.keymap));
+	else if (!strcmp(k, "greet"))
+		cfg.greet = !strcmp(v, "yes") || !strcmp(v, "1");
 	else if (!strcmp(k, "timezone"))
 		kb_strlcpy(cfg.tz, v, sizeof(cfg.tz));
 	else if (!strcmp(k, "timezone_label"))
@@ -146,11 +152,11 @@ static void set_kv(const char *k, const char *v)
 		kb_strlcpy(cfg.theme, v, sizeof(cfg.theme));
 	else if (!strcmp(k, "alien_apps"))
 		cfg.with_appbox = atoi(v);
-	/* Space-separated ids. An unknown one falls back to the recommended
-	 * set — see packs_enter(); refusing here would leave a machine with no
-	 * operating system on it over the spelling of one application. */
-	else if (!strcmp(k, "packs"))
-		kb_strlcpy(cfg.packs, v, sizeof(cfg.packs));
+	/* Space-separated group or application ids. An unknown one falls back
+	 * to `essential` — see ki_apps_enter(); refusing here would leave a
+	 * machine with no operating system on it over one misspelling. */
+	else if (!strcmp(k, "apps"))
+		kb_strlcpy(cfg.apps, v, sizeof(cfg.apps));
 	else if (!strcmp(k, "reboot"))
 		cfg.reboot_after = atoi(v);
 	else if (!strcmp(k, "services")) {
@@ -215,6 +221,7 @@ int conf_save(const char *path)
 		 "# on the medium this file lives on.\n"
 		 "\n"
 		 "keymap         = %s\n"
+		 "greet          = %s\n"
 		 "timezone       = %s\n"
 		 "timezone_label = %s\n"
 		 "\n"
@@ -235,10 +242,10 @@ int conf_save(const char *path)
 		 "\n"
 		 "theme          = %s\n"
 		 "alien_apps     = %d\n"
-		 "packs          = %s\n"
+		 "apps           = %s\n"
 		 "services       = %s\n"
 		 "reboot         = %d\n",
-		 cfg.keymap, cfg.tz, cfg.tz_label,
+		 cfg.keymap, cfg.greet ? "yes" : "no", cfg.tz, cfg.tz_label,
 		 cfg.disk,
 		 cfg.plan == PLAN_REUSE ? "reuse"
 					: cfg.plan == PLAN_MANUAL ? "manual" : "wipe",
@@ -247,7 +254,7 @@ int conf_save(const char *path)
 				       : cfg.swap == SWAP_PART ? "partition" : "none",
 		 cfg.swap_mb, cfg.luks,
 		 cfg.hostname, cfg.username, cfg.fullname, cfg.root_locked,
-		 cfg.theme, cfg.with_appbox, cfg.packs, svc,
+		 cfg.theme, cfg.with_appbox, cfg.apps, svc,
 		 cfg.reboot_after);
 
 	return kb_write_file(path, buf);

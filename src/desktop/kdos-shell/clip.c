@@ -12,7 +12,7 @@
  *   │  2  https://wayland.freedesktop.org/docs/    │
  *   │  3  /media/kdos/KDOSSTICK/notes.txt          │
  *   ├──────────────────────────────────────────────┤
- *   │ Enter put it back   d forget   c clear   Esc │
+ *   │ Up/Down select  Enter put back  d forget     │
  *   └──────────────────────────────────────────────┘
  *
  * THE PROTOCOL IS THE WHOLE DESIGN. A clipboard manager cannot use
@@ -564,6 +564,9 @@ static int nrows;
 static int sel, top, sel_follow = 1;
 static char why[128];
 
+/* No layers: Esc closes the picker. */
+static KtuiKeys keys;
+
 /* One request, one answer. The daemon is in the same session and answers in
  * microseconds; a picker that is up for as long as somebody is reading it can
  * afford a blocking round trip. */
@@ -667,9 +670,15 @@ static void draw_frame(void)
 	kch_scrollbar(0, w - 1, 1, body, nrows, top, KT_BG);
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
-	ktui_draw_text(2, h - 2, w - 4,
-		       "Enter put it back   d forget   c clear   Esc",
-		       KT_MID, KT_BG, KT_A_NONE);
+	/* Three of these act on a clipping, so an empty history names none of
+	 * them — which is the whole reason the row is pushed rather than
+	 * written. */
+	ktui_hint_if(nrows > 1, "Up/Down", "select");
+	ktui_hint_if(nrows > 0, "Enter", "put back");
+	ktui_hint_if(nrows > 0, "d", "forget");
+	ktui_hint_if(nrows > 0, "c", "clear");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_BG);
 	ktui_draw_flush();
 }
 
@@ -686,11 +695,11 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = CL_COLS,
 		.rows = CL_ROWS,
-		.corner = at_x >= 0 ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = at_x >= 0 ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-clip",
@@ -702,7 +711,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-clip: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -711,7 +720,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		draw_frame();
 
@@ -784,9 +793,10 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 		sel_follow = 1;
-		switch (ev.key) {
-		case KT_K_ESC:
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			goto done;
+
+		switch (ev.key) {
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;
@@ -826,7 +836,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }
 

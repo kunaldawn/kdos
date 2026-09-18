@@ -20,17 +20,18 @@ every port in the tree — the compiler, the kernel and the desktop included.
 no network at any point.
 
 **The repository builds offline.** `make build` runs with `--network none`. Every upstream
-tarball, every vendored dependency bundle and every application pack is reachable at build time
-with no network at all. They are not in git — they are release assets, and `make bootstrap` is
-the one step that fetches them before the first build. Git holds what *identifies* them: the
-`sha256 =` in each recipe, and the content hash of each pack in the signed index. A build that
-reaches the internet is a build that stops reproducing the day a URL rots.
+tarball and every vendored dependency bundle is reachable at build time with no network at all,
+because they are **in the tree**, through Git LFS: a clone is the whole input to a build, with no
+fetch step in between and nothing that can be missing. The `sha256 =` in each recipe is what
+verifies one, and it sits beside the bytes it describes. A build that reaches the internet is a
+build that stops reproducing the day a URL rots.
 
 **Applications live in boxes.** KDOS builds the *desktop*. It does not native-port Firefox,
-LibreOffice or Blender, and it never will. The outer ring is a catalogue of 181 applications,
-each shipping as one signed image over a small set of shared runtimes, running in its own
-rootless container and behaving like ordinary system software: launcher entries, MIME handlers,
-terminal commands, one theme. The boundary sits exactly where the build cost is.
+LibreOffice or Blender, and it never will. The outer ring is a catalogue of 182 applications, each
+declared as a chain of Debian packages over a small set of shared runtimes and **built on the
+machine that asks for one**, then run in its own rootless container and behaving like ordinary
+system software: launcher entries, MIME handlers, terminal commands, one theme. The boundary sits
+exactly where the build cost is.
 
 Everything else in this documentation follows from those four. See
 [Principles](principles.md) for the rules they generate and [Decisions](decisions.md) for the
@@ -68,12 +69,13 @@ Both bootstraps are pinned by version and sha256 like every other source, so the
 still holds. Everything the bootstraps then produce — the shipped `rustc`, `cargo` and `go`, and
 every Rust and Go program in the tree — is compiled here.
 
-### Two prebuilt font sets
+### Four prebuilt font sets
 
-`ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as `.ttf` because upstream publishes them
-that way. The console font is a different port and *is* built from source: `terminus-font`
-(4.49.1) goes from BDF through `configure` and `make` into the PSF that
-[`kdos-getty`](../03-architecture/boot-and-init.md) loads.
+`noto-fonts` (2.015), `noto-cjk` (2.004), `ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as
+built faces because upstream publishes them that way — a font is drawn, not compiled, and
+rebuilding one from its sources would produce different outlines. The console font is a different
+port and *is* built from source: `terminus-font` (4.49.1) goes from BDF through `configure` and
+`make` into the PSF that [`kdos-getty`](../03-architecture/boot-and-init.md) loads.
 
 ### Vendored artwork, remade rather than redrawn
 
@@ -90,9 +92,10 @@ and [`libksig`](../05-developer/c-libraries.md) exists to wrap it.
 
 ### The application catalogue is Debian
 
-The 181 application packs and the runtimes beneath them are built from Debian trixie packages.
-Nothing inside them is compiled by this repository. That is the whole point of the outer ring,
-and it is by far the largest body of binaries on the medium, so it is worth saying plainly. See
+The 182 applications and the runtimes beneath them are Debian trixie packages. Nothing inside them
+is compiled by this repository, and nothing is carried on the medium: the catalogue says which
+packages an application is, and podman builds it on the machine that asks. That is the whole point
+of the outer ring, so it is worth saying plainly. See
 [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 ### Data files are data
@@ -143,7 +146,7 @@ Each of these is a decision with an argument behind it, not an omission. The arg
 | GTK and Qt on the host | A desktop drawn as a character-cell grid by our own libraries |
 | A display manager | `kdos-desktop`, started by hand from a tty |
 | A first-boot wizard | The installer asks its questions once, then the system is yours |
-| An application store | The medium **is** the software library; discovery is in the Start menu |
+| A vendor app store | `kdos-store` lists a catalogue in this repository and builds from Debian; there is no account, no telemetry and nothing to sign up to |
 | Telemetry | Nothing reports anything anywhere |
 | A binary package archive | Ports built here, with an optional signed binhost you run yourself |
 

@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# THIS FILE IS LIVE, NOT COMMENTED OUT, and that is the difference between khal
+# and the mail templates beside it. khal with no `[calendars]` section refuses
+# to start — `critical: Found no calendar section in the config file`, exit 1 —
+# so a file of comments would be a calendar that cannot open. It points instead
+# at an EMPTY store: nothing is configured, and everything runs.
+
+[calendars]
+
+# A DIRECTORY OF DIRECTORIES, each one a vdir: plain .ics files, one per event.
+# Greppable, diffable, and backed up by copying it — the same reason this image
+# keeps mail in a Maildir rather than in a database.
+#
+# `discover` AND NOT `calendar`, because `calendar` CREATES the path it is
+# given the first time anything reads it, and a fresh login would grow a
+# directory nobody asked for. `discover` over a glob that matches nothing is a
+# calendar with no calendars in it, which is what a machine that has not been
+# set up should look like.
+[[local]]
+path = ~/.local/share/calendars/*
+type = discover
+
+[locale]
+# ISO, AND THAT IS A DECISION kdos-cal DEPENDS ON. khal parses the dates on its
+# command line with THIS format and prints them with it too, so the desktop's
+# calendar can pass `2026-09-01 30d` and read back `2026-09-14` without
+# guessing at anybody's locale. Change it and the day marks stop appearing.
+dateformat = %Y-%m-%d
+longdateformat = %Y-%m-%d
+datetimeformat = %Y-%m-%d %H:%M
+longdatetimeformat = %Y-%m-%d %H:%M
+timeformat = %H:%M
+# Monday, which is what the ISO week is and what `kdos-cal` draws.
+firstweekday = 0

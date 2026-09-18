@@ -1,0 +1,75 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   testing/Dockerfile.devdeps — the image the GUARDED self-test blocks need
+#
+# testing/selftest.sh runs everywhere and skips what it cannot build. What it
+# skips on a bare host is most of the interesting half: libkimg's four
+# decoders, the sd-bus blocks, the fcft renderer, the Wayland consumers. Each
+# skip says so, which is honest, but a block that is skipped on every machine
+# is a block nobody runs.
+#
+# This is the machine where none of them skip. It is Alpine because the target
+# is musl and a feature-test difference is worth meeting here rather than in a
+# phase build, and it carries exactly what the script probes for:
+#
+#     pkg-config: alsa basu fcft libarchive libdrm libinput libpipewire-0.3
+#                 libseat libzstd pixman-1 wayland-client xkbcommon — and four
+#                 of the five decoders
+#     command -v: cpio dbus-daemon python3 xz zstd
+#
+# mesa, libxml2, cairo and pango are here for the compositor's graft block,
+# which needs them beside wlroots.
+#
+# vim, htop, mc, tmux and less are here to be DRIVEN. The self-test opens each
+# on a real pty, presses a key and resizes the window — which is the half of
+# "kdos-term handles the catalogue" that a recorded stream cannot show, because
+# it is what the program does in response to us rather than what it once did.
+#
+# THREE THINGS STILL SKIP HERE, and they are named rather than left to be found:
+#
+#   - wlroots. No distribution packages 0.20; the tree carries the tarball and
+#     building it is a second layer on top of this one — see "Compiling the
+#     compositor without a full build" in 05-developer/testing.md.
+#   - busctl, which gates the portal block. Alpine ships it in no package, so
+#     that one block stays skipped on this image even though its sd-bus and
+#     dbus-daemon halves are both here.
+#   - libnsgif, which gates libkimg's GIF cases. Alpine packages neither it nor
+#     netsurf's buildsystem; the port builds both, so the block runs inside the
+#     phase-4 chroot and skips here.
+#
+# A FONT IS NOT OPTIONAL HERE. fcft resolves `monospace` through fontconfig, and
+# an image with no font at all answers `failed to match font` — which stops the
+# suite at the first rasteriser block and takes every front-end dump with it,
+# so the half this image exists to run would not run.
+#
+# NOR IS GNU tar. Alpine's default is busybox's, and the reproducible-build
+# block answers "the synthetic port did not build" with it — which gates every
+# front-end golden behind it, so they are skipped in silence.
+#
+# NOR IS duktape. It is the engine polkitd runs a .rules file in, and the
+# shipped rules are the whole of this desktop's authorisation for networking —
+# there is no authentication agent to fall back on. Without `duk` the block
+# that evaluates them skips with a message, and a check that never runs is
+# worse than no check: it reads as covered.
+
+FROM alpine:3.23
+
+RUN apk add --no-cache \
+        bash build-base pkgconf python3 \
+        pixman-dev libpng-dev libjpeg-turbo-dev libwebp-dev libsixel-dev \
+        libarchive-dev \
+        fcft-dev libdrm-dev wayland-dev wayland-protocols \
+        libxkbcommon-dev libinput-dev libseat-dev \
+        mesa-dev libxml2-dev cairo-dev pango-dev \
+        basu-dev pipewire-dev alsa-lib-dev \
+        dbus cpio tar xz zstd zstd-dev fakeroot \
+        font-dejavu fontconfig duktape \
+        vim htop mc tmux less ncurses
+
+WORKDIR /kdos
+CMD ["bash", "testing/selftest.sh"]

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = docx2txt
+version     = 1.4
+release     = 1
+source      = https://downloads.sourceforge.net/project/$name/$name/v$version/$name-$version.tgz
+sha256      = b297752910a404c1435e703d5aedb4571222bd759fa316c86ad8c8bbe58c6d1b  docx2txt-1.4.tar.gz
+description = Text out of a .docx, on standard output
+homepage    = https://docx2txt.sourceforge.net/
+depends     = perl unzip

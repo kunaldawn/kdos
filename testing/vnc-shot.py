@@ -24,7 +24,13 @@ surfaces instead of one:
 an egl-headless display, so wlroots gets its GLES2 renderer instead of pixman.
 It needs /dev/dri, and the host may have no qemu at all — both are reasons to
 run this inside testing/qemu-hw's image, which carries QEMU 10 and its own
-firmware.
+firmware. That image reaches the host GPU through the container toolkit, so it
+wants --gpus all the way testing/qemu-hw/run.sh passes it; run without that and
+the only device inside the container is llvmpipe, which the guest never sees and
+cannot be told apart from a slow one. `--gl` gives the guest GL and no Vulkan:
+`--venus` adds the Vulkan capset, and WITHOUT IT every Vulkan tool in the guest
+measures lavapipe on the CPU without saying so. On an NVIDIA host `--venus`
+itself is measured dead at both ends — the flag's own help says how.
 
 Three things it has to get right, each recorded in CLAUDE.md's VM debug rig
 section before this file existed:
@@ -122,8 +128,13 @@ class Monitor:
         time.sleep(0.4)
         self.drain()
 
-    def type(self, text):
+    def type(self, text, ret=True):
         """Type on the VT, one `sendkey` per character.
+
+        `ret` sends Return at the end, which is what a command line wants and
+        what a FIELD does not: a search box, a rename or a filter is answered
+        while it is being typed, and a Return there has already moved on to
+        whatever the first match does.
 
         The session is started the way a person starts it — by typing
         `kdos-desktop` at the autologin prompt on tty1 — rather than from the
@@ -156,7 +167,8 @@ class Monitor:
                 key = names.get(ch, ch)
             self.cmd("sendkey " + key)
             time.sleep(0.08)
-        self.cmd("sendkey ret")
+        if ret:
+            self.cmd("sendkey ret")
 
 
 def rfb_pointer(host, port, moves):
@@ -181,6 +193,59 @@ def rfb_pointer(host, port, moves):
     # The server processes what it has been sent before the socket closes, and
     # a close with the last event still in flight loses it.
     time.sleep(0.5)
+    s.close()
+
+
+# The keysyms a chord can name. X11's numbering, which is what RFB carries.
+CHORD_KEYS = {
+    "super": 0xffeb, "shift": 0xffe1, "ctrl": 0xffe3, "alt": 0xffe9,
+    "space": 0x0020, "tab": 0xff09, "ret": 0xff0d, "esc": 0xff1b,
+    "up": 0xff52, "down": 0xff54, "left": 0xff51, "right": 0xff53,
+    "home": 0xff50, "end": 0xff57, "backspace": 0xff08, "delete": 0xffff,
+}
+for _i in range(1, 13):
+    CHORD_KEYS["f%d" % _i] = 0xffbd + _i
+
+
+def rfb_chord(host, port, spec):
+    """Hold the modifiers, tap the key, let go — over RFB.
+
+    WHY NOT `sendkey`. qemu's monitor presses and releases a whole combination
+    in one command, and a chord with TWO modifiers in it does not arrive:
+    `W-Return` opens a terminal and `W-S-space` and `W-C-h` reach the
+    compositor as nothing at all. RFB's KeyEvent is one key and one direction,
+    so the modifiers are genuinely DOWN while the key is tapped — which is what
+    a keyboard does and what xkb's modifier state is built to see.
+    """
+    names = [n.strip().lower() for n in spec.split("+") if n.strip()]
+    if not names:
+        return
+    shifted = "shift" in names
+    syms = []
+    for n in names:
+        if n in CHORD_KEYS:
+            syms.append(CHORD_KEYS[n])
+        elif len(n) == 1:
+            # THE SHIFTED KEYSYM WHERE SHIFT IS HELD. qemu's VNC input
+            # produces the keysym it was asked for and adjusts the shift state
+            # to do it — so asking for a lowercase letter with Shift down makes
+            # it RELEASE Shift, and the chord arrives as the bare letter typed
+            # into whatever had the focus.
+            syms.append(ord(n.upper() if shifted else n))
+        else:
+            raise SystemExit("--chord: no keysym named %r" % n)
+    s, _w, _h, _pf = rfb_handshake(host, port)
+    for sym in syms:
+        s.sendall(struct.pack(">BBHI", 4, 1, 0, sym))
+        time.sleep(0.05)
+    for sym in reversed(syms):
+        s.sendall(struct.pack(">BBHI", 4, 0, 0, sym))
+        time.sleep(0.05)
+    # A FRAMEBUFFER REQUEST AFTER THE RELEASE, for rfb_pointer's reason: the
+    # server processes a client's messages in order, and closing the socket
+    # before it has read them throws the chord away.
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    time.sleep(0.2)
     s.close()
 
 
@@ -359,10 +424,30 @@ def main():
                     help="wait this many seconds before the next step")
     ap.add_argument("--keys", action=Step,
                     help="monitor sendkey, e.g. meta_l-a")
+    ap.add_argument("--chord", action=Step,
+                    help="hold the modifiers and tap the key, over RFB — "
+                         "`super+shift+space`. Use this for anything with two "
+                         "modifiers in it: qemu's sendkey presses and releases "
+                         "the whole combination at once and such a chord never "
+                         "arrives")
+    ap.add_argument("--type", action=Step,
+                    help="type this into whatever has the focus, then Return "
+                         "— unlike --console-cmd this is a step, so it can "
+                         "follow a --keys that opened a window")
+    ap.add_argument("--text", action=Step,
+                    help="type this and stop — no Return. A search field, a "
+                         "filter or a rename is answered as it is typed, and "
+                         "a Return has already acted on the first match")
     ap.add_argument("--mouse", action=Step,
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
                     help="X,Y[,BTN] — move there and click; BTN 1/2/3")
+    ap.add_argument("--drag", action=Step,
+                    help="X1,Y1,X2,Y2[,BTN] — press at the first point, move "
+                         "to the second with the button held, release. A "
+                         "--click cannot express this: its three events share "
+                         "one coordinate, so no motion ever arrives with the "
+                         "button down, and a drag begins on motion")
     ap.add_argument("--cmd", action=Step,
                     help="run in the kdos session")
     ap.add_argument("--root-cmd", action=Step,
@@ -377,6 +462,15 @@ def main():
                     help="virtio-vga-gl on an egl-headless display, so wlroots "
                          "gets GLES2 and the CRT pass RUNS. Needs /dev/dri; "
                          "without it the shot is of the cell grid underneath")
+    ap.add_argument("--venus", action="store_true",
+                    help="with --gl, publish a Vulkan capset (venus + blob "
+                         "resources over a memfd), the only way a guest Vulkan "
+                         "tool can reach a host GPU. Measured on an NVIDIA "
+                         "host it works at neither end: QEMU aborts with the "
+                         "container toolkit attached, and the virtio ICD kills "
+                         "vkCreateInstance without it. Without --venus the "
+                         "tools measure lavapipe on the CPU and say nothing, "
+                         "so check vulkaninfo before trusting a number")
     ap.add_argument("--session-env", default=None,
                     help="prefix the session command, e.g. 'KDOS_PANEL_DEBUG=1 '"
                          " — the compositor supervises the panel, so a panel"
@@ -458,9 +552,33 @@ def main():
     video += ",xres=%d,yres=%d" % (sw, sh)
     display = "egl-headless" if args.gl else "none"
 
+    # Vulkan reaches a GPU only through venus, and venus needs the device to
+    # publish a Vulkan capset: without venus=true it publishes none, the guest's
+    # virtio ICD opens nothing, and every Vulkan tool silently lands on lavapipe.
+    # A number taken without --venus is a CPU rasteriser's, whatever it says.
+    #
+    # OPT-IN, and it has to stay opt-in, because BOTH ends of it are measured to
+    # fail on an NVIDIA host: with the container toolkit attached (--gpus all,
+    # the only way the container has a host Vulkan device to proxy to) QEMU
+    # aborts during guest boot, exit 134; without it the guest keeps booting but
+    # the virtio ICD now loads and takes instance creation down with it, so
+    # vulkaninfo answers ERROR_OUT_OF_HOST_MEMORY and even lavapipe is gone.
+    # Measuring lavapipe and saying so beats both, which is why the default
+    # device must not change.
+    mem = ["-m", "4G"]
+    if args.venus:
+        if not args.gl:
+            raise SystemExit("--venus needs --gl: venus rides on virtio-vga-gl")
+        print("--venus: check vulkaninfo names a GPU before trusting any "
+              "number — a dead emulator and a dead ICD both look like a slow "
+              "boot from here", flush=True)
+        video += ",venus=true,blob=true,hostmem=4G"
+        mem = ["-object", "memory-backend-memfd,id=mem,size=4G,share=on",
+               "-machine", "memory-backend=mem", "-m", "4G"]
+
     qemu = [
         "qemu-system-x86_64", "-enable-kvm", "-cpu", "host",
-        "-smp", str(min(8, os.cpu_count() or 4)), "-m", "4G",
+        "-smp", str(min(8, os.cpu_count() or 4)), *mem,
         "-bios", ovmf,
         "-vga", "none", "-device", video,
         "-display", display,
@@ -490,15 +608,32 @@ def main():
                  "-boot", "order=c" if (args.no_cdrom or args.boot_disk)
                           else "order=d"]
     if args.audio:
-        # AN HDA CONTROLLER WITH THE SAMPLES GOING NOWHERE. `-audiodev none`
-        # is a real backend as far as the guest is concerned: the kernel binds
-        # snd_hda_intel, ALSA opens the PCM, and anything that asks "is there
-        # a sound card" gets yes. Without it MikMod_Init fails, kdos-bb sets
-        # bbsound = 0, and every audio path in the guest is untestable — which
-        # is not the same as untested. The host in the rig container has no
-        # sound of its own, so a real backend is not on the table anyway.
-        qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
-                 "-device", "hda-output,audiodev=snd0"]
+        # AN HDA CONTROLLER, AND THE SAMPLES GO SOMEWHERE REAL WHERE THEY CAN.
+        # `-audiodev none` is a real backend as far as the guest is concerned:
+        # the kernel binds snd_hda_intel, ALSA opens the PCM, and anything that
+        # asks "is there a sound card" gets yes. Without it MikMod_Init fails,
+        # kdos-bb sets bbsound = 0, and every audio path in the guest is
+        # untestable — which is not the same as untested.
+        #
+        # A null sink consumes samples on a timer, though, and a host one
+        # consumes them as a device does: a guest whose pacing follows its own
+        # playback position runs to a different clock on the two, so the same
+        # probe every `make run*` uses is asked first and `none` is the answer
+        # when it finds nothing. The container needs the driver AND the
+        # socket — see testing/qemu-audio.sh.
+        probe = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "qemu-audio.sh")
+        real = ""
+        try:
+            real = subprocess.run(["bash", probe], capture_output=True,
+                                  text=True, timeout=20).stdout.strip()
+        except Exception:
+            real = ""
+        if real:
+            qemu += real.split()
+        else:
+            qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
+                     "-device", "hda-output,audiodev=snd0"]
     if args.scratch:
         # A RAW DISK THE GUEST WRITES A TAR ONTO, and the only path OUT of a
         # guest with no network. `--data-disk` carries files IN; nothing
@@ -563,20 +698,36 @@ def main():
         time.sleep(1)
         ser.pump()
 
-        # tty1 autologins as `kdos` and stops at a prompt: the session is
-        # started by hand on this distro, which is the documented entry point
-        # (`kdos-desktop` from a tty) and not something to work around.
+        # TTY1 IS THE CONSOLE DESKTOP, not a prompt. It autologins as `kdos`
+        # through kdos-con-login, and .bash_profile starts kdos-con-start
+        # there — so on this boot path the cell desktop is already up before
+        # any step runs, and `--no-session` is what photographs it. `--keys`
+        # then drives that desktop, because sendkey goes to the active VT.
+        #
+        # The graphical session is still started by hand, and it has to be
+        # started somewhere that IS a shell: tty2 has a getty, and the serial
+        # console is root. Typing it on tty1 types into the cell desktop.
         if args.no_session:
             print("not starting a session — the steps are the run", flush=True)
         elif args.console_cmd:
-            # tty1 autologins as `kdos` and stops at a prompt. Typing here
-            # rather than starting the session is what photographs a program
-            # on the CONSOLE — the 512-glyph font, the vt glyph tier, and no
-            # compositor between the program and the screen.
+            # Typing on tty1 reaches whatever OWNS it, and on this boot path
+            # that is the cell desktop rather than a shell — so a command only
+            # runs if a terminal window already has the focus. Open one first
+            # (`--keys meta_l-ret`) or the keystrokes go to the desktop, which
+            # is not the same as nothing happening.
             print("running on tty1: %s" % args.console_cmd, flush=True)
             mon.type(args.console_cmd)
             time.sleep(args.wait)
         else:
+            # THE GRAPHICAL SESSION NEEDS A SEAT, so it is typed on a VT and
+            # never sent down the serial line: a compositor launched from a
+            # serial console gets no seat and dies asking for one.
+            #
+            # On this boot path tty1 is the CELL DESKTOP, so typing here reaches
+            # that rather than a shell. The graphical session's own entry point
+            # from the console is its Start-menu row, which allocates a free VT
+            # and switches to it. Use --no-session and drive that, or --cmd,
+            # which runs on the serial console as the desktop user.
             print("starting the session on tty1…", flush=True)
             mon.type(args.session_env + "kdos-desktop"
                      if args.session_env else "kdos-desktop")
@@ -605,6 +756,21 @@ def main():
             elif kind == "keys":
                 mon.cmd("sendkey " + value)
                 time.sleep(3)
+            elif kind == "chord":
+                rfb_chord("127.0.0.1", args.vnc_port, value)
+                time.sleep(3)
+            elif kind == "type":
+                # TYPED AS A STEP, so it reaches whatever has the focus AT
+                # THIS POINT of the run. `--console-cmd` types during
+                # start-up, before any step, and is skipped entirely under
+                # `--no-session` — so there was no way to type into a window
+                # the run had just opened, which is what every check on the
+                # cell desktop's own terminals needs.
+                mon.type(value)
+                time.sleep(2)
+            elif kind == "text":
+                mon.type(value, ret=False)
+                time.sleep(2)
             elif kind == "mouse":
                 mx, my = (int(v) for v in value.split(","))
                 rfb_pointer("127.0.0.1", args.vnc_port, [(mx, my, 0)])
@@ -618,6 +784,24 @@ def main():
                 mask = 1 << (btn - 1)
                 rfb_pointer("127.0.0.1", args.vnc_port,
                             [(mx, my, 0), (mx, my, mask), (mx, my, 0)])
+                time.sleep(2.5)
+            elif kind == "drag":
+                # TWELVE INTERPOLATED POINTS AND NOT ONE. A drag is a press,
+                # then MOTION with the button held, then a release: the window
+                # manager fires on any non-zero delta, but the session needs an
+                # enter before a motion before a release, and each RFB event is
+                # its own tick. A jump straight to the far point is a press and
+                # a release at two places with nothing in between, which is not
+                # a drag anywhere in this tree.
+                p = value.split(",")
+                x0, y0, x1, y1 = (int(v) for v in p[:4])
+                mask = 1 << ((int(p[4]) if len(p) > 4 else 1) - 1)
+                mv = [(x0, y0, 0), (x0, y0, mask)]
+                for i in range(1, 13):
+                    mv.append((x0 + (x1 - x0) * i // 12,
+                               y0 + (y1 - y0) * i // 12, mask))
+                mv.append((x1, y1, 0))
+                rfb_pointer("127.0.0.1", args.vnc_port, mv)
                 time.sleep(2.5)
             elif kind == "sleep":
                 # Pumped, not slept through: the serial console fills and

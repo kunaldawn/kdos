@@ -1,0 +1,48 @@
+--- a/src/epy_reader/tools/KindleUnpack/mobi_cover.py
++++ b/src/epy_reader/tools/KindleUnpack/mobi_cover.py
+@@ -8,7 +8,6 @@
+ 
+ from .unipath import pathof
+ import os
+-import imghdr
+ 
+ import struct
+ # note:  struct pack, unpack, unpack_from all require bytestring format
+@@ -33,8 +32,36 @@
+ """ The max height for the svg cover page. """
+ 
+ 
++def _sniff_image(data):
++    """The formats a cover can be, by their magic bytes.
++
++    `imghdr` was removed from the standard library in Python 3.13 and this
++    module only ever asked it which of a handful of raster formats a cover is.
++    The names are the ones it returned, because the callers compare against
++    them.
++    """
++    if data[:8] == b'\x89PNG\r\n\x1a\n':
++        return 'png'
++    if data[:3] == b'\xff\xd8\xff':
++        return 'jpeg'
++    if data[:6] in (b'GIF87a', b'GIF89a'):
++        return 'gif'
++    if data[:2] == b'BM':
++        return 'bmp'
++    if data[:4] in (b'II*\x00', b'MM\x00*'):
++        return 'tiff'
++    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
++        return 'webp'
++    return None
++
++
+ def get_image_type(imgname, imgdata=None):
+-    imgtype = unicode_str(imghdr.what(pathof(imgname), imgdata))
++    if imgdata is None:
++        with open(pathof(imgname), 'rb') as f:
++            head = f.read(32)
++    else:
++        head = imgdata[:32]
++    imgtype = _sniff_image(head)
+ 
+     # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
+     # with only the magic JPEG bytes out there...

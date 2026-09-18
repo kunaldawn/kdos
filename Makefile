@@ -16,9 +16,22 @@ all: build
 #   make build BUILD_ARGS=--no-snapshot
 BUILD_ARGS ?=
 
+# WHAT SIZE A VM COMES UP AT, for every run target and for testing/qemu-hw.
+#
+# 1920x1080 rather than QEMU's own 1280x800 default for virtio-gpu: the cell
+# grid is the mode divided by the font's cell, so the default is a desktop of
+# about 160x50 characters — enough to look like the screen is small and not
+# enough to lay a three-column menu out the way it ships. It is the preferred
+# mode the guest is told about through EDID, so the desktop picks it without
+# being configured.
+#
+#   make run KDOS_RES=2560x1440
+KDOS_RES ?= 1920x1080
+KDOS_XRES = $(word 1,$(subst x, ,$(KDOS_RES)))
+KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
+
 fetch:
 	bash ports/fetch
-	@test -d ports/appbox/packs || echo "hint: 'make fetch-packs' bakes the application packs (needs network + docker/podman)"
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
 # release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
@@ -30,47 +43,6 @@ fetch:
 # fail the target.
 updates:
 	@ports/update $(PORTUP_ARGS); rc=$$?; [ $$rc -le 1 ] || exit $$rc
-
-# Build the PACK SET on the host and stash it for the (network-less) ISO build
-# to place on the medium. An application is one signed EROFS image with a KDOS
-# footer on the end; the runtimes underneath are shared, so editing one
-# application rewrites one file rather than a 485 MB blob.
-#
-# Runs entirely inside a container: podman, mkfs.erofs, python3 and a compiler
-# are all in the image, so nothing is installed on this machine and there is no
-# sudo prompt. Root is still required — mkfs.erofs preserves the overlay
-# whiteouts and the trusted.overlay xattrs only as root, and podman's store
-# only writes real ones as root — and a rootful docker daemon supplies it. The
-# packs are chowned back to the caller. See ports/appbox/bake.
-# Pack the upstream archive into immutable packfiles and upload the ones the
-# release does not have. Append-only: a published packfile is never rebuilt, so
-# new tarballs accumulate into the next one and an old commit keeps finding the
-# bytes it was written against. Needs a token with Contents: read+write.
-publish-sources:
-	ports/sources pack
-	ports/sources publish
-
-# What a developer runs after cloning: pull the upstream archive the tree needs
-# and extract it into ports/core. Only the packfiles holding files you are
-# missing are downloaded, each is checked against the sha256 in the manifest
-# before it is unpacked, and every archive inside is then verified again
-# against the `sha256 =` in its own recipe.
-bootstrap:
-	ports/sources fetch
-
-# The baked pack set, from the newest packs-* release (or PACKS_TAG=packs-…):
-# what a clone runs instead of `make fetch-packs` when it has no podman, or
-# no hour, or wants exactly the set a published ISO carried.
-bootstrap-packs:
-	ports/sources fetch-packs $(PACKS_TAG)
-
-# What this machine runs to publish: the sources it added and the packs it
-# baked. Both need a token in ~/.config/kdos/gh-token (mode 600).
-publish-packs:
-	ports/sources packs $(PACKS_TAG)
-
-fetch-packs:
-	bash ports/appbox/bake
 
 # Rewriting the ISO while a VM boots from it corrupts that VM: QEMU reads the
 # image lazily, so every block the guest has not cached yet turns into an I/O
@@ -116,13 +88,13 @@ run:
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd — install ovmf (debian: ovmf, arch: edk2-ovmf)"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
-	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 rundisk:
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || { echo "ERROR: disk image not found at build/kdos.qcow2 — run 'make run' first to create it"; exit 1; }
-	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 debug-boot:
 	test -f build/fs/boot/vmlinuz-kdos || { echo "ERROR: kernel not found at build/fs/boot/vmlinuz-kdos — run 'make build' first"; exit 1; }
@@ -139,10 +111,10 @@ debug-boot:
 # display flags (including gl=es — gl=on blanks the window) live in
 # testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
 run-hw: check-hw
-	testing/qemu-hw/run.sh iso
+	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh iso
 
 rundisk-hw: check-hw
-	testing/qemu-hw/run.sh disk
+	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh disk
 
 check-hw:
 	command -v docker >/dev/null || { echo "ERROR: docker not found — run-hw needs Docker + NVIDIA Container Toolkit"; exit 1; }
@@ -168,4 +140,4 @@ clean:
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true
 
-.PHONY: fetch-packs publish-sources bootstrap bootstrap-packs publish-packs all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates

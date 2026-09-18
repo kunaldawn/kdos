@@ -26,6 +26,11 @@
 #include <sys/stat.h>
 
 #include "kinstall.h"
+/* The catalogue reader, compiled into this program rather than shelled out to.
+ * It uses kb_* alone, so it costs none of the libraries kinstall deliberately
+ * does not link — and a live installer cannot assume anything is on $PATH in
+ * the target it is building. */
+#include "kdos-appbox.h"
 
 Disk ki_disk[MAX_DISKS];
 int ki_ndisk;
@@ -550,146 +555,191 @@ void probe_system(void)
 }
 
 /* ════════════════════════════════════════════════════════════════════════
- * The packs on the medium
+ * The applications this medium knows how to build
  * ════════════════════════════════════════════════════════════════════════ */
 
-KiPack ki_pack[MAX_PACKS];
-int ki_npack;
-int ki_packs_present;
+KiGroup ki_group[MAX_APPGROUPS];
+int ki_ngroup;
+int ki_apps_present;
+char ki_apps_archive[512];
 
 /*
- * `PACKAGES` is Alpine's shape — single-character keys, one stanza per pack,
- * a blank line between — and this reads the five fields an installer needs.
- * An unknown key is skipped rather than refused: the index is written by
- * `kdos-pack index` and will grow keys this reader does not care about.
- *
- * A STANZA WITH NO `P:` OR NO `F:` IS DROPPED, never half-recorded. A pack
- * whose file this cannot name is a row that would fail at the copy, after the
- * point of no return.
+ * WHERE THE CATALOGUE IS, on a live medium. $KDOS_CATALOGUE first so a dump
+ * can be driven over a fixture; then the live root's own copy, which is what
+ * an installer booted from the ISO actually reads.
  */
-void probe_packs(void)
+static const char *catalogue_path(void)
 {
-	const char *dir = getenv("KDOS_PACK_MEDIUM");
-	char path[512], *text;
-	KiPack cur;
-	int have = 0, is_delta = 0;
+	static char path[512];
+	const char *env = getenv("KDOS_CATALOGUE");
+	static const char *const tries[] = {
+		"/usr/share/kdos/appstore/catalogue",
+		"/mnt/iso/appstore/catalogue",
+	};
 
-	ki_npack = 0;
-	ki_packs_present = 0;
-	if (!dir || !*dir)
-		dir = "/mnt/iso/packs";
-	snprintf(path, sizeof(path), "%.400s/PACKAGES", dir);
-	text = kb_read_all(path, NULL);
-	if (!text)
+	if (env && *env)
+		return env;
+	for (size_t i = 0; i < sizeof(tries) / sizeof(tries[0]); i++)
+		if (kb_path_exists(tries[i])) {
+			kb_strlcpy(path, tries[i], sizeof(path));
+			return path;
+		}
+	return tries[0];
+}
+
+/*
+ * AN EXPORTED SET ON A MOUNTED DEVICE, which is the offline route and the only
+ * one a machine with no network has. The first `.ktar` found under a mounted
+ * removable filesystem wins; F6 on the page picks a different one.
+ *
+ * It is looked for ONCE, at probe time. Walking every mount on every draw
+ * would put a filesystem scan inside the paint path.
+ */
+static void find_archive(void)
+{
+	static const char *const roots[] = { "/mnt", "/media", "/run/media" };
+
+	ki_apps_archive[0] = '\0';
+	for (size_t r = 0; r < sizeof(roots) / sizeof(roots[0]); r++) {
+		char **ents = kb_listdir(roots[r], NULL);
+
+		for (char **e = ents; e && *e; e++) {
+			char dir[512];
+			char **f;
+
+			snprintf(dir, sizeof(dir), "%s/%s", roots[r], *e);
+			f = kb_listdir(dir, NULL);
+			for (char **g = f; g && *g; g++) {
+				size_t l = strlen(*g);
+
+				if (l < 6 || strcmp(*g + l - 5, ".ktar"))
+					continue;
+				/* A PATH THAT WOULD NOT FIT IS SKIPPED, never
+				 * truncated: a shortened path names a
+				 * different file, and the failure would be an
+				 * import of something nobody chose.
+				 *
+				 * Composed rather than formatted, so the bound
+				 * is the one checked here — a compiler cannot
+				 * see the guard through a format call and
+				 * rejects it whatever the check says. */
+				size_t dl = strlen(dir);
+
+				if (dl + 1 + l >= sizeof(ki_apps_archive))
+					continue;
+				memcpy(ki_apps_archive, dir, dl);
+				ki_apps_archive[dl] = '/';
+				memcpy(ki_apps_archive + dl + 1, *g, l + 1);
+				break;
+			}
+			kb_strv_free(f);
+			if (ki_apps_archive[0])
+				break;
+		}
+		kb_strv_free(ents);
+		if (ki_apps_archive[0])
+			break;
+	}
+}
+
+/*
+ * THE GROUPS, out of the catalogue, with a size estimate per group.
+ *
+ * A group's estimate counts each member ONCE and counts no runtime at all: the
+ * shared layers under two GTK applications are stored once on disk, so summing
+ * the per-application figures already over-counts, and adding the runtimes
+ * would over-count again. It is labelled an estimate everywhere it is shown.
+ */
+void probe_apps(void)
+{
+	char err[256];
+
+	ki_ngroup = 0;
+	ki_apps_present = 0;
+	find_archive();
+
+	if (cat_load(catalogue_path(), err, sizeof(err)) != 0)
 		return;
-	ki_packs_present = 1;
+	ki_apps_present = 1;
 
-	memset(&cur, 0, sizeof(cur));
-	for (char *line = text, *next; line && *line; line = next) {
-		char *nl = strchr(line, '\n');
-		next = nl ? nl + 1 : line + strlen(line);
-		if (nl)
-			*nl = '\0';
+	for (int i = 0; i < cat_ngroups() && ki_ngroup < MAX_APPGROUPS; i++) {
+		const CatGroup *g = cat_group_at(i);
+		KiGroup *k = &ki_group[ki_ngroup];
 
-		if (!line[0]) {			/* stanza boundary */
-			if (have && !is_delta && cur.id[0] && cur.file[0] &&
-			    ki_npack < MAX_PACKS)
-				ki_pack[ki_npack++] = cur;
-			memset(&cur, 0, sizeof(cur));
-			have = 0;
-			is_delta = 0;
-			continue;
-		}
-		if (line[1] != ':')
-			continue;
-		have = 1;
-		switch (line[0]) {
-		case 'P': kb_strlcpy(cur.id, line + 2, sizeof(cur.id)); break;
-		case 'V': kb_strlcpy(cur.version, line + 2, sizeof(cur.version)); break;
-		case 'K': kb_strlcpy(cur.kind, line + 2, sizeof(cur.kind)); break;
-		case 'F': kb_strlcpy(cur.file, line + 2, sizeof(cur.file)); break;
-		case 'T': kb_strlcpy(cur.summary, line + 2, sizeof(cur.summary)); break;
-		case 'S': cur.size = strtoull(line + 2, NULL, 10); break;
-		case 'R': cur.recommended = !strcmp(line + 2, "yes"); break;
-		case 'D': kb_strlcpy(cur.requires, line + 2,
-				     sizeof(cur.requires)); break;
-		/* A delta is a route to a pack rather than a pack, and an
-		 * installer that offered one would offer something it cannot
-		 * apply: `O:` marks the stanza and it is dropped WHOLE at the
-		 * boundary. Clearing a field here instead would depend on `O:`
-		 * coming after the field it cleared. */
-		case 'O': is_delta = 1; break;
-		default: break;
-		}
-	}
-	if (have && !is_delta && cur.id[0] && cur.file[0] &&
-	    ki_npack < MAX_PACKS)
-		ki_pack[ki_npack++] = cur;
-	free(text);
+		kb_strlcpy(k->id, g->id, sizeof(k->id));
+		kb_strlcpy(k->desc, g->desc, sizeof(k->desc));
+		k->napp = 0;
+		k->bytes = 0;
+		k->chosen = 0;
+		for (int m = 0; m < g->nmember; m++) {
+			const CatPack *a = cat_find(g->members[m]);
 
-	/*
-	 * THE BASE IS NOT A CHOICE; A RUNTIME IS CARRIED BECAUSE SOMETHING
-	 * NEEDS IT. An application pack is a diff over a runtime and a runtime
-	 * is a diff over the base, so leaving a needed one out installs
-	 * applications that cannot start — the one outcome a page of
-	 * checkboxes must not be able to produce. But carrying ALL of them is
-	 * the other error and it is not free: measured on a real bake the
-	 * seven runtimes are 1.7 GB of which rt-wine alone is 713 MB, on a
-	 * machine that may never run a Windows binary.
-	 */
-	for (int i = 0; i < ki_npack; i++)
-		ki_pack[i].chosen = !strcmp(ki_pack[i].kind, "base") ||
-				    ki_pack[i].recommended;
-	ki_packs_close();
-}
-
-/*
- * Pull in what the ticked packs need, transitively.
- *
- * `D:` carries NAMES and no version constraints, deliberately: this reader
- * links neither libkpack nor a solver. The loop repeats until nothing new is
- * added rather than recursing, so a chain of any depth resolves and a cycle
- * cannot spin — a pack already chosen is never chosen twice.
- */
-void ki_packs_close(void)
-{
-	int added = 1;
-
-	/* IDEMPOTENT, because unticking an application must give its runtime
-	 * back. Every runtime is dropped first and re-pulled by whatever still
-	 * needs it; base and the user's own app choices are untouched. */
-	for (int i = 0; i < ki_npack; i++)
-		if (strcmp(ki_pack[i].kind, "base") &&
-		    strcmp(ki_pack[i].kind, "app") &&
-		    strcmp(ki_pack[i].kind, "data"))
-			ki_pack[i].chosen = 0;
-
-	while (added) {
-		added = 0;
-		for (int i = 0; i < ki_npack; i++) {
-			char req[256], *tok, *save;
-
-			if (!ki_pack[i].chosen || !ki_pack[i].requires[0])
+			if (!a)
 				continue;
-			kb_strlcpy(req, ki_pack[i].requires, sizeof(req));
-			for (tok = strtok_r(req, " ", &save); tok;
-			     tok = strtok_r(NULL, " ", &save))
-				for (int j = 0; j < ki_npack; j++)
-					if (!ki_pack[j].chosen &&
-					    !strcmp(ki_pack[j].id, tok)) {
-						ki_pack[j].chosen = 1;
-						added = 1;
-					}
+			k->napp++;
+			k->bytes += a->bytes;
 		}
+		/* A group whose members are all absent from this catalogue is
+		 * not offered: a tick that installs nothing is worse than a
+		 * row that is not there. */
+		if (k->napp)
+			ki_ngroup++;
 	}
 }
 
-unsigned long long ki_packs_bytes(void)
+unsigned long long ki_apps_bytes(void)
 {
 	unsigned long long n = 0;
 
-	for (int i = 0; i < ki_npack; i++)
-		if (ki_pack[i].chosen)
-			n += ki_pack[i].size;
+	for (int i = 0; i < ki_ngroup; i++)
+		if (ki_group[i].chosen)
+			n += ki_group[i].bytes;
 	return n;
+}
+
+/*
+ * WHICH ROUTE, AND THE PAGE SAYS SO. In order: an exported set on a stick is
+ * offline and verified, so it wins; a network during the install is next; and
+ * with neither, the selection is recorded and the first session offers it.
+ *
+ * THE NETWORK TEST IS A ROUTE, NOT A PING. `/proc/net/route` carries a default
+ * gateway or it does not; opening a socket to somebody else's host to decide
+ * what to draw would be an installer reaching the network to ask whether it
+ * can reach the network.
+ */
+static int have_default_route(void)
+{
+	char buf[8192];
+	char *line, *save;
+	int n = 0;
+
+	if (kb_read_file("/proc/net/route", buf, sizeof(buf)) <= 0)
+		return 0;
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char iface[64], dest[64];
+
+		if (n++ == 0)
+			continue;	/* the header row */
+		if (sscanf(line, "%63s %63s", iface, dest) != 2)
+			continue;
+		if (!strcmp(dest, "00000000"))
+			return 1;
+	}
+	return 0;
+}
+
+int ki_apps_route(void)
+{
+	int any = 0;
+
+	for (int i = 0; i < ki_ngroup; i++)
+		any |= ki_group[i].chosen;
+	if (!any)
+		return APPS_NONE;
+	if (ki_apps_archive[0])
+		return APPS_IMPORT;
+	if (have_default_route())
+		return APPS_NETWORK;
+	return APPS_PENDING;
 }
