@@ -49,7 +49,7 @@ enum {
 	S_FORMAT,
 	S_MOUNT,
 	S_COPY,
-	S_PACKS,
+	S_APPS,
 	S_CONFIG,
 	S_ACCOUNTS,
 	S_THEME,
@@ -85,10 +85,10 @@ static int step_skipped(int i)
 		return 1;
 	if (i == S_THEME && !strcmp(cfg.theme, "phosphor"))
 		return 1;
-	/* Nothing chosen, or a medium with no index on it — the step says
-	 * SKIPPED rather than running and copying nothing, because a step that
+	/* Nothing chosen, or a medium with no catalogue on it — the step says
+	 * SKIPPED rather than running and doing nothing, because a step that
 	 * always succeeds having done nothing is a step nobody reads. */
-	if (i == S_PACKS && (!ki_packs_present || ki_packs_bytes() == 0))
+	if (i == S_APPS && (!ki_apps_present || ki_apps_route() == APPS_NONE))
 		return 1;
 	return 0;
 }
@@ -973,43 +973,48 @@ static void do_format(void)
 }
 
 /*
- * WHERE THE PACKS ARE READ FROM, and it cannot be `/mnt/iso`.
+ * WHERE AN EXPORTED SET IS READ FROM, and it cannot be a path under TARGET.
  *
- * TARGET is `/mnt` and the live medium is mounted at `/mnt/iso` — so the
- * moment the target root is mounted, the medium is UNDERNEATH it and every
- * path into it resolves inside the filesystem that was just created empty.
- * `do_packs` then reports `cannot copy alpine.kpack` for a file that is
- * sitting on the medium the installer booted from.
+ * TARGET is `/mnt`, and a stick with an archive on it is mounted at
+ * `/mnt/<something>` — so the moment the target root is mounted, that stick is
+ * UNDERNEATH it and every path into it resolves inside the filesystem that was
+ * just created empty. `do_apps` would then report that an archive it listed a
+ * moment ago is not there.
  *
- * The medium is bind-mounted somewhere the target cannot cover BEFORE that
- * happens, and `do_packs` reads from there. A bind rather than a second
- * mount of the device because the device is not the installer's to name: it
- * was mounted by the initramfs and MS_MOVEd across switch_root, and the only
- * handle anything has on it is the path.
+ * The tree is bind-mounted somewhere the target cannot cover BEFORE that
+ * happens, and the archive path is rewritten to the new location. A bind
+ * rather than a second mount of the device because the device is not the
+ * installer's to name: it was mounted by the initramfs or by the mount daemon,
+ * and the only handle anything has on it is the path.
+ *
+ * AN ARCHIVE OUTSIDE TARGET IS LEFT ALONE. `/media` and `/run/media` are not
+ * covered by mounting `/mnt`, so binding them would be work that buys nothing.
  */
 #define MEDIUM_BIND "/run/kdos-medium"
 
-static char medium_dir[256];
-
 static void bind_medium(void)
 {
-	const char *src = getenv("KDOS_PACK_MEDIUM");
+	char *b[] = { "mount", "--bind", TARGET, (char *)MEDIUM_BIND, NULL };
+	/* MEDIUM_BIND replaces TARGET at the front, and it is the longer of the
+	 * two — so the rewritten path can exceed the field it came out of. */
+	char moved[sizeof(ki_apps_archive) + sizeof(MEDIUM_BIND)];
 
-	if (src && *src) {			/* a fixture names its own */
-		kb_strlcpy(medium_dir, src, sizeof(medium_dir));
+	if (!ki_apps_archive[0])
+		return;
+	if (strncmp(ki_apps_archive, TARGET "/", sizeof(TARGET)))
+		return;			/* not under the target's mountpoint */
+
+	mkpath(MEDIUM_BIND);
+	if (run(b) != 0) {
+		logf_("could not bind %s; %s becomes unreadable once the "
+		      "target is mounted", TARGET, ki_apps_archive);
+		ki_apps_archive[0] = '\0';
 		return;
 	}
-	kb_strlcpy(medium_dir, "/mnt/iso/packs", sizeof(medium_dir));
-	if (!kb_path_exists("/mnt/iso/packs"))
-		return;
-	mkpath(MEDIUM_BIND);
-	char *b[] = { "mount", "--bind", "/mnt/iso", (char *)MEDIUM_BIND, NULL };
-	if (run(b) == 0)
-		kb_strlcpy(medium_dir, MEDIUM_BIND "/packs",
-			   sizeof(medium_dir));
-	else
-		logf_("could not bind the medium; packs will be unreadable "
-		      "once %s is mounted", TARGET);
+	snprintf(moved, sizeof(moved), "%s%s", MEDIUM_BIND,
+		 ki_apps_archive + sizeof(TARGET) - 1);
+	logf_("archive %s -> %s", ki_apps_archive, moved);
+	kb_strlcpy(ki_apps_archive, moved, sizeof(ki_apps_archive));
 }
 
 static void do_mount(void)
@@ -1078,60 +1083,102 @@ static void do_copy(void)
 }
 
 /*
- * The chosen packs, from the medium into the target's store.
+ * The chosen applications.
  *
- * A COPY AND NOTHING ELSE. kdos-packd verifies a pack where it MOUNTS it, so
- * an install that hashed and checked signatures here would be doing the work
- * twice and would additionally have to carry libkpack into a program that
- * links three libraries. What this must get right is that the store ends up
- * owned by root and mode 0755, which is the whole of why the daemon does not
- * re-hash what is in it.
+ * NOTHING IS BAKED ONTO THE MEDIUM, so there is no copy to make. What this
+ * does depends on what `ki_apps_route()` decided, and the Applications page
+ * has already SAID which — a person must not discover at first boot that
+ * nothing was installed.
  *
- * The base and the runtimes come across whatever was ticked — an application
- * pack is a diff over a runtime and installing one without the other installs
- * something that cannot start.
+ *   import   an exported set on a mounted device: staged through kdos-packd in
+ *            the target, which verifies each pack where it mounts it. Offline,
+ *            and the only route on a machine with no network.
+ *   network  built during the install, over the network.
+ *   pending  recorded in /var/lib/kdos/apps-pending; the first session offers
+ *            them. Building is podman and apt and can be most of an hour, and
+ *            an installer that did that silently is an installer that appears
+ *            to have hung.
+ *
+ * EITHER WAY THE STORE'S DIRECTORIES ARE MADE. kdos-packd sets the staging
+ * mode at startup, but a first boot that inherited 0755 would refuse an import
+ * until the daemon had run once — which reads as the feature not working.
  */
-static void do_packs(void)
+static void do_apps(void)
 {
-	const char *dir = medium_dir[0] ? medium_dir : NULL;
-	unsigned long long total = ki_packs_bytes(), done = 0;
+	int route = ki_apps_route();
 	int n = 0;
 
-	/* `do_mount` put the medium somewhere the target does not cover; a
-	 * plan that never mounts (a dump, a dry run) still has the live one. */
-	if (!dir)
-		dir = getenv("KDOS_PACK_MEDIUM");
-	if (!dir || !*dir)
-		dir = "/mnt/iso/packs";
-	emit('N', "copying %s of packs", kb_human_size(total));
 	mkpath("%s/var/lib/kdos/packs", TARGET);
 	mkpath("%s/var/lib/kdos/packs/staging", TARGET);
 	mkpath("%s/var/lib/kdos/packs/mnt", TARGET);
-
-	for (int i = 0; i < ki_npack; i++) {
-		char src[512], dst[640];
-
-		if (!ki_pack[i].chosen)
-			continue;
-		snprintf(src, sizeof(src), "%s/%s", dir, ki_pack[i].file);
-		snprintf(dst, sizeof(dst), "%s/var/lib/kdos/packs/%s", TARGET,
-			 ki_pack[i].file);
-		logf_("pack %s -> %s", ki_pack[i].id, dst);
-		if (!cfg.dry_run && kb_copy_file(src, dst) != 0)
-			fail("cannot copy %s", ki_pack[i].file);
-		done += ki_pack[i].size;
-		n++;
-		emit('P', "%.4f", total ? (double)done / (double)total : 1.0);
-	}
-	/*
-	 * The staging directory is the ONE place an unprivileged download may
-	 * land and the daemon sets its mode at startup — but a first boot that
-	 * inherited 0755 would refuse a `kdos app install` until the daemon had
-	 * run once, which reads as the feature not working.
-	 */
 	if (!cfg.dry_run)
 		chmod(TARGET "/var/lib/kdos/packs/staging", 01777);
-	emit('L', "%d pack(s) installed", n);
+
+	for (int i = 0; i < ki_ngroup; i++)
+		if (ki_group[i].chosen)
+			n++;
+	if (route == APPS_NONE || !n) {
+		emit('L', "no applications chosen");
+		emit('P', "1");
+		return;
+	}
+
+	if (route == APPS_IMPORT) {
+		KbArgv a = {0};
+
+		emit('N', "importing %s", ki_apps_archive);
+		kb_argv_add(&a, "kdos-appbox");
+		kb_argv_add(&a, "import");
+		kb_argv_add(&a, ki_apps_archive);
+		kb_argv_end(&a);
+		if (!cfg.dry_run && kb_run(&a) != 0) {
+			/* NOT `fail`. The system is installed and bootable;
+			 * an archive that would not import is a reason to say
+			 * so and carry on, not to abandon a disk mid-install
+			 * and leave a machine with no operating system. */
+			emit('W', "the set would not import — the selection is "
+				  "recorded instead");
+			route = APPS_PENDING;
+		} else {
+			emit('L', "imported from %s", ki_apps_archive);
+		}
+	} else if (route == APPS_NETWORK) {
+		KbArgv a = {0};
+
+		emit('N', "building %d group(s) — this takes minutes", n);
+		kb_argv_add(&a, "kdos-appbox");
+		kb_argv_add(&a, "install");
+		for (int i = 0; i < ki_ngroup; i++)
+			if (ki_group[i].chosen)
+				kb_argv_add(&a, ki_group[i].id);
+		kb_argv_end(&a);
+		if (!cfg.dry_run && kb_run(&a) != 0) {
+			emit('W', "some did not build — the selection is "
+				  "recorded for the first login");
+			route = APPS_PENDING;
+		} else {
+			emit('L', "%d group(s) built", n);
+		}
+	}
+
+	if (route == APPS_PENDING) {
+		KbBuf b = {0};
+		char path[512];
+
+		kb_buf_printf(&b, "# Chosen during the install and not yet "
+				  "built.\n# `kdos app install --pending` "
+				  "builds them.\n");
+		for (int i = 0; i < ki_ngroup; i++)
+			if (ki_group[i].chosen)
+				kb_buf_printf(&b, "%s\n", ki_group[i].id);
+		snprintf(path, sizeof(path), "%s/var/lib/kdos/apps-pending",
+			 TARGET);
+		mkpath("%s/var/lib/kdos", TARGET);
+		if (!cfg.dry_run)
+			kb_write_all(path, b.p, b.n);
+		kb_buf_free(&b);
+		emit('L', "%d group(s) recorded for the first login", n);
+	}
 	emit('P', "1");
 }
 
@@ -1677,7 +1724,7 @@ int install_child_main(int fd, int from_step)
 
 	static void (*const fns[S_COUNT])(void) = {
 		do_prepare, do_partition, do_format, do_mount, do_copy,
-		do_packs, do_config, do_accounts, do_theme, do_boot, do_finish,
+		do_apps, do_config, do_accounts, do_theme, do_boot, do_finish,
 	};
 
 	if (cfg.dry_run)

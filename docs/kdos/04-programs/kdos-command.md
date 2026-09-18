@@ -201,7 +201,10 @@ at rather than the one the image happens to ship.
 ## app
 
 ```sh
-kdos app list | search | show | install | launch | remove | rollback | update | sources
+kdos app list [--all] | search <text> | info <id> | groups
+kdos app install <id|group>... [--dry-run] | install --pending
+kdos app launch <id> | remove <id|group>...
+kdos app export <file.ktar> <id|group>... | import <file.ktar> [<id>...]
 kdos app tui add <name> <command> [--float] [--size COLSxROWS] [--icon N] [--category X]
 kdos app tui rm <slug> | ls
 ```
@@ -230,13 +233,30 @@ directory and needs `kdos-packd` for nothing — a verb refused because the daem
 the caller is not in `wheel`, would be a verb refused for a reason that has nothing to do with
 adding a menu row for `ncdu`.
 
-**There is deliberately no application store.** On a distribution whose medium *is* the software
-library, "where do I get this" is not a question anyone has; what remains is disposal, and that
-belongs where the readings already are.
+**It is the CLI half of the store**, over the same catalogue the surface reads. Every verb that
+builds, removes, exports or imports is `kdos-appbox` run as a child — one implementation, so a
+command line and a button cannot disagree about what installing means.
 
-**It never names a path to the daemon.** Every verb hands an identifier out of the list the daemon
-published; the one exception is installing a **file**, which copies into the daemon's own staging
-directory and then names the filename there.
+**`list` is what is installed; `--all` is the catalogue.** 182 applications printed whenever
+somebody types `kdos app list` buries the handful they actually have.
+
+**A size is labelled an estimate wherever it is printed.** What apt resolves on the day depends on
+the snapshot, and shared runtime layers are counted once on disk however many applications name
+them; a number presented as fact that the install then contradicts is worse than none.
+
+**There is no update verb.** An application is a stack of images this machine built, so rebuilding
+it *is* the update, and `install` over an existing one does that.
+
+**No daemon gate.** `kdos-packd` is needed only by `import`, the one verb that mounts anything.
+Refusing to list what this machine can build because a daemon is down would refuse the store on
+every machine that has never imported a set.
+
+**It never names a path to the daemon.** `import` hands `kdos-packd` a filename inside the daemon's
+own staging directory and nothing else — which is what keeps something reachable from `wheel` from
+being `mount /dev/sda2 /etc`.
+
+**`install --pending` builds what the installer chose** and could not install itself. The file is
+removed only on a clean run, so a partial one leaves it and a second attempt does the rest.
 
 ## version
 

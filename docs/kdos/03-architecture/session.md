@@ -24,7 +24,7 @@ typing a command; the graphical one is started by hand with `kdos-desktop`. What
 | `kdos_session_boxes` | The appbox warmup, and giving idle ones back |
 | `kdos_session_bus` | One session bus per user, at a fixed path |
 | `kdos_session_audio` | PipeWire, once per user rather than once per session |
-| `kdos_session_once` | The login sound, the first-run card, the session restore |
+| `kdos_session_once` | The login sound, the first-run card, the pending-applications offer, the session restore |
 
 It is one file rather than two copies because each of those blocks carries a trap that cost a
 debugging session to find — the `flock 7>&-` in the bus function above all — and a second copy is a
@@ -35,6 +35,17 @@ gave the console desktop US QWERTY on a machine whose owner does not type it.
 `kdos_session_once` takes its **readiness test as a command**, because what "up" means differs: a
 Wayland socket for one session, a session socket for the other. The command must block until the
 display is there and export whatever the children need to reach it.
+
+**Applications the installer chose are offered, never built in the background.** When `kinstall`
+could neither import a set nor reach a network it writes the ticked ids to
+`/var/lib/kdos/apps-pending`, and the first session notifies rather than starting anything:
+building them is podman and apt, twenty minutes on a machine somebody has just booted, and a job
+that long behind no surface at all is a machine busy for reasons nobody can see. `kdos-update`
+keeps the same rule about `kdos update apply`.
+
+The marker is `~/.config/kdos/apps-offered` and is the **user's** — delete it and the offer comes
+back. `/var/lib/kdos/apps-pending` is root's and survives until `kdos app install --pending`
+actually completes, so a partial run does not forget what was wanted.
 
 Both start scripts are deliberately still shell. Every line in them is a fix for something
 specific, they take no untrusted input, and rewriting them would buy nothing but risk.

@@ -26,18 +26,14 @@ kdos/
 │   │   ├── build.sh           the build; bash, working directory is the source
 │   │   ├── postinstall.sh     optional install-time hook
 │   │   ├── *.patch            optional
-│   │   └── <name>-<ver>.tar.* upstream archive — a release asset, gitignored
+│   │   └── <name>-<ver>.tar.* upstream archive — in the tree, through Git LFS
 │   ├── appbox/            the application catalogue
-│   │   ├── packs.conf         the catalogue: bases, runtimes, applications, data
 │   │   ├── bake               builds the pack set
-│   │   ├── harvest.py         collects metadata from a built image
 │   │   ├── Containerfile.bake the bake's own image
 │   │   └── packs/             the baked set — gitignored
 │   ├── Containerfile.fetch    the fetch image, pinning this tree's toolchains
 │   ├── fetch                  download and vendor sources
-│   ├── update                 the upstream version checker's front end
-│   ├── sources                publish and fetch release assets
-│   └── sources.manifest       what identifies each published archive
+│   └── update                 the upstream version checker's front end
 │
 ├── src/
 │   ├── libs/              our C libraries — static, and see the rule below
@@ -64,7 +60,7 @@ kdos/
 │   │
 │   ├── desktop/           the desktop — a port repository
 │   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
-│   │   ├── kdos-shell/        one binary under 29 names
+│   │   ├── kdos-shell/        one binary under 52 names
 │   │   ├── kdos-res/          the resource monitor, and its setuid helper
 │   │   ├── kdos-lock/         the lock screen, and the setuid password checker
 │   │   ├── kdos-powerd/       suspend, poweroff, reboot
@@ -81,7 +77,8 @@ kdos/
 │   ├── packages/          ports that are OURS — a port repository
 │   │   ├── kdos-kpkg/         the package manager, under five names
 │   │   ├── kdos-installer/    the installer; links three libraries
-│   │   ├── kdos-appbox/       launching boxed applications, and box management
+│   │   ├── kdos-appbox/       launching boxed applications, box management, the store
+│   │   │   └── catalogue          every application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
 │   │   ├── kdos-pack/         build, sign, index and diff packs
 │   │   ├── kdos-tools/        the kdos command, the supervisor, and their siblings
@@ -155,8 +152,7 @@ to any of the others moves every phase-1 consumer with it. See
 | Path | Gitignored | Notes |
 |---|---|---|
 | `build/` | **entirely** | The root filesystem, logs, snapshots, the ISO, signing keys, the bake's container store |
-| `ports/core/*/​*.tar.*` | yes | Upstream archives — release assets, fetched by bootstrap |
-| `ports/appbox/packs/` | yes | The baked pack set |
+| `ports/core/*/​*.tar.*` | **no** | Upstream archives, tracked through Git LFS — see `.gitattributes` |
 | `ports/.kpkg-meta`, `.portup`, `.portup-tools`, `.kpkgbin` | yes | Compiled host helpers. **Clear them when switching between a container run and a host run** — a binary built against one C library cannot execute under the other |
 
 ## Files at the root
@@ -167,6 +163,7 @@ to any of the others moves every phase-1 consumer with it. See
 | `CLAUDE.md` | Rules, conventions and workflow for working on this tree. **Not** a description of how the system works — that is this book |
 | `Makefile` | Every target |
 | `Dockerfile` | The build container |
+| `.gitattributes` | Which paths go through Git LFS. The upstream tarballs do, and the filter must be installed before they are added — a tarball staged before `git lfs install` is an ordinary blob until the history is rewritten |
 | `kdos.png`, `kdos.xcf` | The mascot. The banner logo, the splash artwork and the icon marks are all generated from it, so they cannot drift apart |
 | `*.plan.md` | Implementation plans for work in progress. Plans, not documentation |
 | `docs.design.md` | The design of record for this documentation |

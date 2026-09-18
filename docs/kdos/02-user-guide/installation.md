@@ -97,15 +97,23 @@ accent.
 
 ### 8. Applications
 
-The application packs on the medium, with the recommended set already ticked. Untick what you do
-not want; the size total updates as you go.
+The application **groups** this medium knows how to build, with `essential` already ticked. Space
+toggles one; the size total updates as you go and is labelled an **estimate**, because what apt
+resolves on the day depends on the snapshot and shared runtime layers are stored once however many
+applications use them.
 
-**The base pack and the runtimes are not choices.** An application pack is a difference over a
-runtime, and a runtime is a difference over the base, so leaving one out would install
-applications that cannot start. They are drawn as facts and are always carried.
+**The runtimes are not choices.** An application is built on one, and whichever is needed comes
+with it.
 
-This page is skipped entirely on a medium with no pack index — a plain ISO built without
-`make bootstrap-packs` or `make fetch-packs`.
+**The page says how they will arrive**, and that matters more than the number:
+
+| It says | Meaning |
+|---|---|
+| from the set on the stick | an exported `.ktar` was found on a mounted device — offline, and verified where each pack mounts |
+| built during the install | this machine has a network, and they are built now |
+| recorded; the first session offers them | neither — so the choice is written down and the first login offers it, because building is minutes of apt and an installer that did that silently looks like one that has hung |
+
+`F6` picks a different archive. This page is skipped on a medium with no catalogue.
 
 ### 9. Summary
 
@@ -201,7 +209,7 @@ kinstall --unattended --config answers.conf
 The file is flat `key = value`. The keys are the questions: `disk`, `plan`, `partition`, `root`,
 `esp`, `format_esp`, `fstype`, `swap`, `swap_mb`, `luks`, `luks_passphrase`, `keymap`,
 `timezone`, `hostname`, `username`, `fullname`, `password`, `root_locked`, `root_password`,
-`services`, `theme`, `packs`, `reboot`.
+`services`, `theme`, `apps`, `reboot`.
 
 Three behaviours that make an unattended run safe to script:
 
@@ -241,7 +249,7 @@ is the next thing that happens to them, and a dump is what ends up in a log.
 | `/etc/fstab` | **Appended to**, never replaced — the shipped file carries the `/tmp` entry that every graphical application depends on |
 | `/etc/keymap` | The console keymap |
 | `/etc/profile.d/20-timezone.sh` | The POSIX TZ string |
-| `/var/lib/kdos/packs` | The base, the runtimes, and the applications you ticked |
+| `/var/lib/kdos/packs` | The pack store — imported applications, and the staging directory an import goes through |
 
 The kernel and initramfs are copied **onto the ESP**, and the generated rEFInd configuration
 points at those FAT paths. rEFInd can read an ext4 root only through a filesystem driver, and a
@@ -257,4 +265,4 @@ memory test are reachable only from there.
 - [kinstall](../04-programs/kinstall.md) — how the installer works inside
 - [Administration](administration.md) — services, users and storage after the install
 - [Boot and init](../03-architecture/boot-and-init.md) — A/B slots, encryption and the boot path
-- [Applications](applications.md) — adding packs after the install
+- [Applications](applications.md) — installing applications after the install

@@ -14,8 +14,62 @@ kdos-appbox run <app> [args...]      run an application from its pack's box
 kdos-appbox open [--print|--choose] <path>
 kdos-appbox warmup | status
 kdos-appbox list | apps
+kdos-appbox catalogue [--groups]      what this system can build
 kdos-appbox genlaunchers --packs <fs-root> | --packs --user
 ```
+
+`catalogue` prints one **tab-separated** line per application —
+`<id> <name> <category> <bytes> <parent> <tagline>` — because a tagline has
+spaces and every other table in this tree splits on tab. `--groups` prints
+`<id> <description> <member> <member> …` instead. It reports no install state:
+the surfaces join it against what podman reports rather than asking it for
+something it cannot know.
+
+`catalogue --selftest` runs the parser's own assertions against
+`$KDOS_CATALOGUE`, offline and with no daemon. See
+[Testing](../05-developer/testing.md).
+
+### install and uninstall
+
+```
+kdos-appbox install <id|group>... [--dry-run]
+kdos-appbox uninstall <id|group>...
+```
+
+**A chain is built bottom-up as a stack of images, one per catalogue row**,
+each `FROM` the one below — `kdos/base`, then `kdos/rt-gtk`, then
+`kdos/app.gimp`. That is what makes a second GTK application one apt pass
+instead of three: the base and the runtime are already images and are skipped.
+Flattening a chain into one image per application would rebuild and re-store
+every shared layer per application.
+
+**An image already present is never rebuilt.** `podman image exists` is the
+whole check: the catalogue has no version per row, so an image is current by
+definition until somebody removes it. `--dry-run` tracks the same thing for
+itself rather than asking podman, or a preview would show four builds where an
+install does two.
+
+**Nothing rolls back.** Six applications where the fourth fails leaves five
+installed and names the fourth: an installed application is not damaged by a
+later one failing, and unwinding throws away twenty minutes of apt.
+
+**Progress is one flushed line per step**, so a surface reading this process's
+stdout shows it without parsing podman — and the process is a direct child of
+that surface, never a supervised one, because a pipeline reading a supervised
+service's output never returns.
+
+`uninstall` removes the box, then the application's own image, then any runtime
+above the base that no remaining box's chain names. The base is never removed:
+it is every chain's floor. Which runtimes are still wanted is asked of the
+**catalogue**, not of podman — a dangling-image sweep cannot tell a runtime
+nothing uses yet from one whose only application is mid-install.
+
+**`snapshot = auto` is resolved against the base image**, by reading the date
+Debian records in its own sources file, so the packages installed on top cannot
+disagree with the rootfs under them. **A resolution that fails warns and builds
+unpinned**: refusing to install because a comment moved would be worse, but an
+unpinned Containerfile is indistinguishable from a pinned one once written, and
+the warning is the only thing that tells them apart.
 
 ```
 kdos-box list create enter run apps export unexport freeze import clone
@@ -25,6 +79,58 @@ kdos-box list create enter run apps export unexport freeze import clone
 **Invoked through a symlink named after an application**, it dispatches on its own name — so
 `gimp photo.png` works from a terminal with no shell wrapper, using exactly the same dispatch a
 multi-call binary does. That keeps the application path free of any shell.
+
+
+### export and import
+
+```
+kdos-appbox export <file.ktar> <id|group>...
+kdos-appbox import <file.ktar> [<id>...]
+```
+
+A set of applications as **signed packs in one file**. `export` needs a
+selection; `import` does not, because an archive carries its own.
+
+```
+apps-2026-09-18.ktar
+  SELECTION        the groups and ids this set was exported as
+  PACKAGES         id, version, size and payload hash per pack
+  PACKAGES.sig     when a key was readable
+  app.gimp.kpack
+  app.inkscape.kpack
+```
+
+**Packs and not `podman save`.** A store install is unsigned content from
+somebody else's registry; a pack is hashed and signature-checked by
+`kdos-packd` **where it mounts it**. That is what makes an imported application
+verified where a store-installed one is not, and it is the only route to
+software on a machine with no network.
+
+**`podman export`, not the overlay store.** An image's own content is spread
+across its layers and only the export flattens them. It also means no overlay
+whiteout and no `trusted.overlay.*` xattr is in play — the one thing that would
+force this to run as root.
+
+**`kdos-pack build`, not `mkfs.erofs` then `assemble`.** The build verb already
+runs mkfs with the reproducible flag set, and a second copy of that list is a
+second answer to how a pack is made. Its `--force-uid=1000` is what lets export
+run unprivileged: a box runs `--userns keep-id`, so the process inside it is
+uid 1000 and a tree owned by real root is one it can create nothing in.
+
+**An unsigned index says so.** With no `KDOS_PACK_KEY` the set still indexes and
+still imports, and every hash is still checked at the mount — but the export
+prints that it was not signed, because an unsigned archive is otherwise
+indistinguishable from a signed one.
+
+**Import hands the daemon a filename in its own staging directory, never a
+path.** That is the rule the daemon is built on and what keeps something
+reachable from `wheel` from being `mount /dev/sda2 /etc`. A pack the daemon
+refuses is named and skipped; the rest of the archive still imports.
+
+The `SELECTION` manifest is flat and commentable so a set can be diffed and
+hand-edited. A `group` line records what was *picked*; the id lines are what is
+installed, so a group whose membership changed later still imports the software
+the archive actually carries.
 
 ## Two rules the whole program is written under
 

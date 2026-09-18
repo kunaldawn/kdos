@@ -99,7 +99,7 @@ Eleven pages in one table, each with an identifier, a title, an icon, an optiona
 draw function and input handlers. The identifiers are the only spelling.
 
 ```
-welcome  keyboard  time  disk  layout  accounts  system  packs  summary  install  done
+welcome  keyboard  time  disk  layout  accounts  system  apps  summary  install  done
 ```
 
 **Pages are found by identifier, never by index.** An unattended install jumps straight to the
@@ -167,12 +167,14 @@ an unknown application falls back to the recommended set, and an unknown filesys
 the default. Both are read **before** the point of no return, and refusing there would leave a
 machine with no operating system on it.
 
-**AND "UNKNOWN" MEANS "NOT ON THE LIST", WHICH IS NOT THE SAME AS "NOT ON THE MEDIUM."** The
-applications page holds a fixed number of packs — `MAX_PACKS`, sized for the whole index with room
-to grow — and one past it is not a row, cannot be ticked, and makes an answer file naming it fall
-the whole selection back to the recommended set. A run that asked for one application and got four
-looks exactly like a run that misspelled it. The page says how many it dropped whenever it drops
-any, so the two are told apart.
+**The Applications page lists GROUPS, not applications.** Seven named bundles is a thing to read
+during an install; 182 rows is not. An answer file may still name an application by id — the
+catalogue's expander takes either — and `essential` is what an empty answer file gets.
+
+**It reads the catalogue directly rather than running `kdos-appbox`.** kinstall links libkbase,
+libktui and libkcolor and nothing else, which is what lets it live in phase 1 and exist on every
+tree from the first bootable image; `catalogue.c` uses `kb_*` alone, so compiling it in costs no
+library. A live installer also cannot assume anything is on `$PATH` in the target it is building.
 
 **An unattended run ends by itself, whichever way it went.** The event loop has two exits — a key,
 and the reboot branch — and the reboot branch is gated on a key in the answer file. So an
@@ -240,17 +242,38 @@ refuses each, and the copy exits non-zero with a page of errors naming the **sou
 reads as a problem with the boot loader rather than a filesystem that cannot hold what was asked of
 it.
 
-**The medium is bound out of the target's way before the target is mounted.** The target mountpoint
-and the live medium's mountpoint are nested, so mounting the target hides the very directory the
-packs are copied *from* — and every path into it then resolves inside the filesystem created empty
-a moment earlier. It is a **bind**, not a second mount of the device: the device is not the
-installer's to name, since the initramfs mounted it and moved it across the root switch, and a path
-is the only handle anything has on it.
+### How the applications actually arrive, and the page says which
+
+Nothing is baked onto the medium, so there is no copy to make. The install step resolves in this
+order and **the Applications page shows the answer before anything is written** — a person must not
+discover at first boot that nothing was installed:
+
+| Route | When | What happens |
+|---|---|---|
+| **import** | an exported `.ktar` is on a mounted device | staged through `kdos-packd` in the target, which verifies each pack where it mounts it. Offline, and the only route on a machine with no network |
+| **network** | a default route exists | built during the install |
+| **pending** | neither | written to `/var/lib/kdos/apps-pending`; the first session offers them |
+
+**The network test is a route, not a ping.** `/proc/net/route` carries a default gateway or it does
+not. Opening a socket to somebody else's host to decide what to draw would be an installer reaching
+the network to ask whether it can reach the network.
+
+**An import or a build that fails falls back to pending rather than failing the install.** The
+system is bootable by then; abandoning a disk mid-install over an archive that would not unpack
+would leave a machine with no operating system on it.
+
+**A stick with an archive on it is bound out of the target's way before the target is mounted.**
+The target mountpoint is `/mnt` and a mounted stick is at `/mnt/<something>`, so mounting the
+target hides the very file the archive is read *from* — and every path into it then resolves inside
+the filesystem created empty a moment earlier. It is a **bind**, not a second mount of the device:
+the device is not the installer's to name, since something else mounted it, and a path is the only
+handle anything has on it. An archive under `/media` or `/run/media` is left alone, because
+mounting `/mnt` does not cover those.
 
 ## See also
 
 - [Installation](../02-user-guide/installation.md) — using the installer
 - [Boot and init](../03-architecture/boot-and-init.md) — what it writes, and what boots it
-- [Packs and boxes](../03-architecture/packs-and-boxes.md) — the index the applications page reads
+- [Packs and boxes](../03-architecture/packs-and-boxes.md) — the catalogue the applications page reads
 - [The C libraries](../05-developer/c-libraries.md) — the three it links
 - [Testing](../05-developer/testing.md) — the dumps and the disk-install harness

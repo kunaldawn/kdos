@@ -10,7 +10,7 @@
  * RUNS AT BUILD TIME AND SHIPS ITS OUTPUT. It links ICU; `kdos-shell` does
  * not and must not. ICU is thirty megabytes of shared library and a data blob,
  * and a panel that loaded it to answer "what is this character called" would
- * carry the whole of it into every one of the thirty surfaces the binary is.
+ * carry the whole of it into every one of the surfaces the binary is.
  * The names do not change between releases of this image, so the work belongs
  * where the image is made.
  *

@@ -1,0 +1,24 @@
++= Applications ===============================================================+
+| Applications                                                                 |
+| 184 applications, 7 groups                                                   |
+|------------------------------------------------------------------------------|
+|  Groups       All          Graphics     AudioVideo   Education               |
+|      APPLICATION                                     ON           SIZE~      |
+| ---------------------------------------------------------------------------- |
+| [*]  GNU Image Manipulation Program                  rt-gtk       112M     # |
+| [ ]  Krita                                           rt-qt        264M     # |
+| [ ]  Inkscape                                        rt-gtk       94M      # |
+| [ ]  Blender                                         rt-gtk       339M     # |
+| [ ]  FreeCAD                                         rt-sci       471M     # |
+| [ ]  OpenSCAD                                        rt-qt        17M      | |
+| [ ]  Prusa GCode viewer                              rt-gtk       383M     | |
+| [ ]  Okular                                          rt-kde       39M      | |
+| [ ]  Gwenview                                        rt-kde       11M      | |
+| [ ]  digiKam                                         rt-kde       276M     | |
+| [ ]  R                                               rt-sci       80M      | |
+| [ ]  ImageJ                                          rt-gtk       98M      | |
+|------------------------------------------------------------------------------|
+| 2 of 184 installed . space ticks, F5 builds them                             |
+| Space tick  Enter install this one  F5 install ticked  F6 import  F7 export  |
+|                                 [ Install ] [ Import ] [ Export ] [ Close ]  |
++==============================================================================+

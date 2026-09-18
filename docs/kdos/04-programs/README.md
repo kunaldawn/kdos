@@ -91,8 +91,6 @@ These run on a build host and **never ship on the target**.
 | `kdos-portup` | Checks every port for a newer upstream release | [Writing ports](../05-developer/writing-ports.md) |
 | `ports/fetch` | Downloads and vendors sources | [Writing ports](../05-developer/writing-ports.md) |
 | `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md) |
-| `ports/sources` | Publishes and fetches release assets | [Writing ports](../05-developer/writing-ports.md) |
-| `ports/appbox/bake` | Bakes the application catalogue | [Packs and boxes](../03-architecture/packs-and-boxes.md) |
 | `testing/*` | The test and rig harnesses | [Testing](../05-developer/testing.md) |
 
 ## Multi-name binaries

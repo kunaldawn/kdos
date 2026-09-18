@@ -10,7 +10,7 @@
  * ---------------------------------
  *
  * Generate everything the host needs to present the appbox's apps as its own.
- * This was ports/appbox/genlaunchers.py.
+ * Generate everything the host needs to present a box's apps as its own.
  *
  *   kdos-appbox genlaunchers <desktop-dir> <fs-root>
  *
@@ -265,7 +265,7 @@ typedef struct {
 
 /*
  * THE TABLE GROWS, because a fixed one silently loses applications. It held
- * 256, which covered the monolith's ~105 launchers with room to spare — and
+ * 256, which covers every application the catalogue carries with room — and
  * the pack lane parses each pack's OWN desktop entries, so 108 app packs
  * produce well past that (LibreOffice alone carries eight). What the ceiling
  * did was drop the tail: no error, an exit status of 0, and a Start menu

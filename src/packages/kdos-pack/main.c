@@ -17,7 +17,7 @@
  * `src/packages/` rather than beside kdos-portup in `src/tools/`:
  * `kdos-box freeze` builds a pack out of a box's writable layer on the machine
  * somebody is working on, and mkfs.erofs and zstd are both on the target.
- * `ports/appbox/packs` still compiles its own host copy on demand, the way
+ * the host side still compiles its own copy on demand, the way
  * `ports/fetch` compiles kpkg — it links libkbase, libksig, libkpkg and
  * libkpack, all of which link nothing but libc, so that is a two-second `cc`.
  *

@@ -15,8 +15,8 @@ Budget for it honestly:
 | | |
 |---|---|
 | Wall time, first build | Hours. The whole host is compiled, including gcc twice and the kernel |
-| Disk | Tens of gigabytes for `build/`, plus the fetched sources and packs |
-| Network | Needed once, for `make bootstrap`. The build itself runs with no network |
+| Disk | Tens of gigabytes for `build/`, plus 7.1 GB of upstream tarballs in the clone |
+| Network | Needed once, to clone. The build itself runs with no network |
 | Installed on your machine | Nothing. Everything happens inside a container |
 
 Subsequent builds are far shorter, because phases are snapshotted and a change usually needs only
@@ -34,18 +34,19 @@ To run the result in a virtual machine you also want `qemu-system-x86_64`, OVMF 
 ## Build an image
 
 ```sh
+git lfs install       # BEFORE the clone, not after
 git clone <this repository> kdos
 cd kdos
-make bootstrap        # fetch upstream sources (needs network, once)
 make build            # compile everything (no network at all)
 ```
 
-`make bootstrap` downloads the upstream archive from the release assets and extracts it into
-`ports/core`. Only the packfiles holding sources you are missing are fetched; each is checked
-against a hash before it is unpacked, and every archive it writes is checked afterwards against the
-`sha256 =` in its own recipe. **Afterwards matters**: extracting overwrites whatever was there, so
-an archive published wrong replaces a good local copy, and the run names the file and stops rather
-than leaving it for a build to refuse hours later.
+There is no fetch step: the upstream tarballs are **in the tree**, through Git LFS, and the
+`sha256 =` in each recipe sits beside the bytes it verifies.
+
+**`git lfs install` has to have run before the clone.** Without it the working tree holds 129-byte
+pointer files where the archives should be, and the first port to unpack one fails on a corrupt
+archive rather than on anything that names the cause. `git lfs pull` repairs a clone made without
+it.
 
 `make build` builds the container image, then runs the orchestrator inside it with
 `--network none`. The result is:
@@ -54,18 +55,10 @@ than leaving it for a build to refuse hours later.
 build/iso-build/kdos.iso
 ```
 
-**The application packs are separate.** They are large and are baked from Debian rather than
-compiled here, so they have their own step:
-
-```sh
-make bootstrap-packs   # download the baked set from a release (no podman needed)
-# or
-make fetch-packs       # bake them yourself (needs network, docker/podman, ~an hour)
-```
-
-Without either, you get a working ISO with no application catalogue on it. See
-[Applications](applications.md) for what the catalogue is and
-[Packs and boxes](../03-architecture/packs-and-boxes.md) for how it is built.
+**The ISO carries no applications**, and there is no step that would put any on it. The medium
+ships the catalogue — what each application is, as a chain of Debian packages — and the machine
+that wants one builds it with podman. See [Applications](applications.md) for using the store and
+[Packs and boxes](../03-architecture/packs-and-boxes.md) for how one is built.
 
 **If the build fails**, read the failing step's log under `build/logs/` and check
 [Build troubleshooting](../05-developer/build-troubleshooting.md), which catalogues the recurring
@@ -220,6 +213,10 @@ restarting anything. Switch back with `kdos theme phosphor`.
 
 ![The keybinding card, which opens on first login. `Super+F1` brings it back](../../screenshots/keys.png)
 
+**If you ticked applications during the install and the machine had no network at the time**, the
+first session says so and offers them rather than starting anything: building an application is
+podman and apt, and that is not a thing to have happen unannounced on a machine you have just
+booted. `kdos app install --pending` runs it when you are ready, and the store lists the same set.
 
 ## Where to go next
 

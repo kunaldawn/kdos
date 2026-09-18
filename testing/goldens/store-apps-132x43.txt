@@ -1,0 +1,43 @@
++= Applications ===================================================================================================================+
+| Applications                                                                                                                     |
+| 184 applications, 7 groups                                                                                                       |
+|----------------------------------------------------------------------------------------------------------------------------------|
+|  Groups       All          Graphics     AudioVideo   Education    Utility      Development  Science      Network                 |
+|      APPLICATION                                                                                          ON           SIZE~     |
+| -------------------------------------------------------------------------------------------------------------------------------- |
+| [*]  GNU Image Manipulation Program                                                                       rt-gtk       112M      |
+| [ ]  Krita                                                                                                rt-qt        264M      |
+| [ ]  Inkscape                                                                                             rt-gtk       94M       |
+| [ ]  Blender                                                                                              rt-gtk       339M      |
+| [ ]  FreeCAD                                                                                              rt-sci       471M      |
+| [ ]  OpenSCAD                                                                                             rt-qt        17M       |
+| [ ]  Prusa GCode viewer                                                                                   rt-gtk       383M      |
+| [ ]  Okular                                                                                               rt-kde       39M       |
+| [ ]  Gwenview                                                                                             rt-kde       11M       |
+| [ ]  digiKam                                                                                              rt-kde       276M      |
+| [ ]  R                                                                                                    rt-sci       80M       |
+| [ ]  ImageJ                                                                                               rt-gtk       98M       |
+| [ ]  LibreCAD                                                                                             rt-qt        28M       |
+| [ ]  F3D                                                                                                  rt-qt        250M      |
+| [ ]  MeshLab                                                                                              rt-qt        20M       |
+| [ ]  Ultimaker Cura                                                                                       rt-qt        185M      |
+| [ ]  COLMAP                                                                                               rt-qt        24M       |
+| [ ]  Scribus                                                                                              rt-qt        186M      |
+| [ ]  RawTherapee                                                                                          rt-gtk       517M      |
+| [ ]  Pencil2D                                                                                             rt-qt        57M       |
+| [ ]  OpenCPN                                                                                              rt-gtk       193M      |
+| [ ]  Darktable                                                                                            rt-gtk       48M       |
+| [ ]  Drawing                                                                                              rt-gtk       24M       |
+| [ ]  FontForge                                                                                            rt-gtk       20M       |
+| [ ]  gThumb                                                                                               rt-gtk       23M       |
+| [ ]  Document Scanner                                                                                     rt-gtk       59M       |
+| [ ]  SolveSpace                                                                                           rt-gtk       37M       |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| 2 of 184 installed . space ticks, F5 builds them                                                                                 |
+| Space tick  Enter install this one  F5 install ticked  F6 import  F7 export  Esc Close                                           |
+|                                                                                     [ Install ] [ Import ] [ Export ] [ Close ]  |
++==================================================================================================================================+

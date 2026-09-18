@@ -185,6 +185,29 @@ kdos_session_once() {
 			kdos-keys --first-run >/dev/null 2>&1 &
 		fi
 
+		# APPLICATIONS CHOSEN DURING THE INSTALL ARE OFFERED, NEVER
+		# BUILT IN THE BACKGROUND. Building them is podman and apt —
+		# twenty minutes on a machine somebody has just booted for the
+		# first time — and a job that long behind no surface at all is
+		# a machine that is busy for reasons nobody can see. The same
+		# rule kdos-update keeps about `kdos update apply`.
+		#
+		# The marker is what stops it asking at every login; delete it
+		# and the offer comes back. It is the user's, not the file's:
+		# /var/lib/kdos/apps-pending is root's and stays until the
+		# install actually runs.
+		if [ -s /var/lib/kdos/apps-pending ] && \
+		   [ ! -e "$_cfg/kdos/apps-offered" ] && \
+		   command -v kdos-notify >/dev/null 2>&1; then
+			mkdir -p "$_cfg/kdos"
+			: > "$_cfg/kdos/apps-offered"
+			_napp=$(grep -cvE '^[[:space:]]*(#|$)' \
+				/var/lib/kdos/apps-pending 2>/dev/null || echo 0)
+			kdos-notify "Applications" \
+				"$_napp chosen during installation are ready to install — open the store" \
+				>/dev/null 2>&1 &
+		fi
+
 		# Session restore, opt-in: ~/.config/kdos/session-restore has to
 		# exist, because relaunching half a dozen containerised
 		# applications at login is a decision, not a default. Only the

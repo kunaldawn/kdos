@@ -392,9 +392,9 @@ int kd_install(const char *staged, char *msg, size_t n)
 		 * public half of that key ships in /etc/kdos/keys, so a pack
 		 * that came off the medium takes the branch above and never
 		 * reaches here. What reaches here is a pack from somewhere
-		 * else — a stick, a `kdos-box freeze`, a directory in
-		 * pack-sources — and refusing those outright would refuse the
-		 * artefact this system can make for itself.
+		 * else — an imported set, a `kdos-box freeze` — and refusing
+		 * those outright would refuse the artefact this system can
+		 * make for itself.
 		 *
 		 * SHIPPING A KEY IS A CLAIM ABOUT WHO BAKED THE MEDIUM, not
 		 * about who wrote KDOS: it says the packs beside it came from

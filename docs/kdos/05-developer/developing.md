@@ -17,9 +17,24 @@ To run the result you also want a system emulator, UEFI firmware, and hardware v
 ## The first build
 
 ```sh
-make bootstrap        # fetch upstream sources — needs network, once
+git lfs install       # before the clone, not after
+git clone <this repository> kdos && cd kdos
 make build            # compile everything — no network at all
 ```
+
+**The upstream tarballs are in the tree, through Git LFS**, so there is no
+fetch step before a build. `git lfs install` has to have been run before the
+clone: without it the working tree holds 129-byte pointer files where the
+archives should be, and the first port to unpack one fails on a corrupt
+archive rather than on anything that names the cause. `git lfs pull` repairs a
+clone made without it.
+
+They are 7.1 GB against a free allowance of 10 GiB of storage and 10 GiB a
+month of bandwidth, counted across every repository the account owns.
+Exceeding it does not slow a clone down — it blocks LFS reads outright,
+including the vendored art and fixtures that have nothing to do with ports, so
+a fresh clone cannot check out at all. Keeping this working means a paid data
+pack.
 
 `make build` builds the container image, then runs the orchestrator inside it with
 `--network none`, `--privileged`, and the repository mounted: `build/` writable, everything else
@@ -29,9 +44,9 @@ The ISO lands at **`build/iso-build/kdos.iso`**.
 
 Two things to know before the first run:
 
-- **The application packs are separate.** `make bootstrap-packs` downloads a baked set;
-  `make fetch-packs` bakes one yourself. Without either you get a working ISO with no application
-  catalogue.
+- **The ISO carries no applications.** Nothing is baked into it and there is no pack set to fetch:
+  the medium ships the catalogue, and an application is built by podman on the machine that wants
+  it, from the store or from `kdos app install`. An exported set imports offline.
 - **The build refuses to overwrite an ISO a virtual machine is reading.** Rewriting it while a
   guest boots from it corrupts that guest — the emulator reads lazily, so every block the guest has
   not cached becomes an I/O error. Shut the guest down, or override deliberately.
@@ -42,12 +57,7 @@ Two things to know before the first run:
 |---|---|---|
 | `all` | The default target: an alias for `build` | |
 | `build` | The whole build, in the container | Container runtime |
-| `bootstrap` | Fetch upstream sources into `ports/core` | Network |
-| `bootstrap-packs` | Download a baked pack set | Network |
-| `fetch` | Fetch and vendor sources directly | Network, container |
-| `fetch-packs` | Bake the pack set yourself | Network, container, about an hour |
-| `publish-sources` | Upload new source archives | A token |
-| `publish-packs` | Upload a baked pack set | A token |
+| `fetch` | Fetch and vendor a port's sources into `ports/core` | Network, container |
 | `updates` | Check every port for a newer upstream release | Network |
 | `snapshots` | List the phase snapshots | |
 | `run` | Boot the ISO in a virtual machine | Emulator, firmware |
