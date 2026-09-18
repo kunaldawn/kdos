@@ -38,14 +38,27 @@ kdos-slit renders the output of forked commands, the panel needs a live
 compositor. A golden pinned with a hack nobody can reproduce is worse than a
 missing one.
 
-The dumps are ASCII: `ktui_caps` is 0 with no terminal, so every surface draws
-in the ascii tier here. The rich and vt tiers are covered by the ramp
+Most dumps are ASCII: `ktui_caps` is 0 with no terminal, so a surface drawing
+straight to a buffer gets the ascii tier. `con-view-80x24.txt` is the exception
+and is not ASCII — it comes through a real view process, which reports UTF-8
+and is given the rich tier. A dump's tier follows whoever painted it, not the
+fact that it is a dump. The rich and vt tiers are covered by the ramp
 assertions in `src/libs/selftest.c`.
 
-WHAT IS STILL MISSING
+THE CELL FRAMES
 
-`--dump-cells` — one line per non-blank cell, `row col U+XXXX fg bg attr` —
-is the other half of the contract and no surface implements it yet. It is what
-would make a COLOUR regression visible as well as a geometry one, and it is
-what `kdos chrome --audit` (D7) is meant to be built on. selftest.sh probes for
-it and says out loud that it is not there.
+`--dump-cells` — one line per non-blank cell, `row col U+XXXX fg bg attr` — is
+the other half of the contract, and it is what makes a COLOUR regression
+visible as well as a geometry one: a text frame is byte-identical across a
+selection that stopped being an accent fill and a label that dropped to an
+unreadable slot. Four surfaces implement it and their frames are the
+`cells-*.txt` files here. A surface that does not is skipped by name rather
+than silently, so the list of what is covered is the list of what exists.
+
+A CHORD'S EFFECT IS PRESSED, NOT IMITATED
+
+`kdos-con --dump` takes `--press CHORD`, repeatable, spelled the way
+`keys.conf` spells it. Each press goes through the session's own key handler
+before the frame is composited, so a frame taken after one is evidence about
+the key. `con-scratch-hidden-80x24.txt` and `con-scratch-80x24.txt` are that
+pair: the same session with the scratchpad away and with it dropped down.

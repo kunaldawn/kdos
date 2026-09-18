@@ -40,6 +40,8 @@
 #include "kwl.h"
 #include "shell.h"
 
+#include "launch.h"
+
 #define MAX_CMD 512
 #define MAX_HIST 50
 
@@ -262,38 +264,23 @@ static size_t cur_at_col(const char *s, int want)
 	return (size_t)(p - s);
 }
 
+/*
+ * WHAT IS TYPED IS A COMMAND LINE AND NOT A DESKTOP ENTRY, so `verbatim`: its
+ * quoting is read — `mpv "my film.mkv"` is two arguments — and its `%` is a
+ * character somebody typed and reaches the program untouched. No shell: a `;`
+ * in the box is an argument, never a second command.
+ *
+ * THE SESSION STARTS IT, through the one path every launch surface here takes.
+ * On the console a graphical program forked from this box would have no
+ * display and nothing holding it, and the run box would be a prompt that
+ * swallows what is typed into it. See launch.h.
+ */
 static void launch(const char *cmd, bool in_term)
 {
-	char buf[MAX_CMD + 32];
-	char *argv[32];
-	int n = 0;
+	struct sh_launch l = { .exec = cmd, .terminal = in_term,
+			       .verbatim = 1 };
 
-	if (!*cmd)
-		return;
-	if (in_term)
-		snprintf(buf, sizeof(buf), "foot -e %s", cmd);
-	else
-		snprintf(buf, sizeof(buf), "%s", cmd);
-
-	for (char *p = strtok(buf, " \t"); p && n < 31; p = strtok(NULL, " \t"))
-		argv[n++] = p;
-	argv[n] = NULL;
-	if (!n)
-		return;
-
-	/* Double fork: the run box is about to exit, and a single fork would
-	 * take the program with it. */
-	pid_t pid = fork();
-	if (pid == 0) {
-		if (fork() == 0) {
-			setsid();
-			execvp(argv[0], argv);
-			_exit(127);
-		}
-		_exit(0);
-	} else if (pid > 0) {
-		waitpid(pid, NULL, 0);
-	}
+	sh_launch(&l, NULL, 0);
 }
 
 int run_main(int argc, char **argv)
@@ -309,8 +296,8 @@ int run_main(int argc, char **argv)
 		}
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		/* Fifty-six, not fifty-two: the three buttons come to
 		 * thirty-five columns and the hint beside them is drawn whole
 		 * or not at all, so four more cells are the difference between
@@ -325,7 +312,7 @@ int run_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-run: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -344,7 +331,7 @@ int run_main(int argc, char **argv)
 	 * back through what was run before. */
 	int hpos = nhist;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		int w = ktui_w, h = ktui_h;
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 		ktui_draw_box(krect(0, 0, w, h), "Run", KT_ACCENT, KT_SURFACE, 0);
@@ -551,13 +538,15 @@ int run_main(int argc, char **argv)
 			cur = len;
 			continue;
 		}
-		if (ev.key == 21) {		/* Ctrl+U: clear the line */
+		if ((ev.mods & KT_MOD_CTRL) &&
+		    (ev.key == 'u' || ev.key == 'U')) {	/* Ctrl+U: clear the line */
 			cmd[0] = '\0';
 			len = 0;
 			cur = 0;
 			continue;
 		}
-		if (ev.key == 23) {		/* Ctrl+W: the word before the caret */
+		if ((ev.mods & KT_MOD_CTRL) &&
+		    (ev.key == 'w' || ev.key == 'W')) {	/* Ctrl+W: the word before the caret */
 			size_t p = cur;
 			while (p && cmd[p - 1] == ' ')
 				p--;
@@ -571,13 +560,14 @@ int run_main(int argc, char **argv)
 		/* Printable ASCII only: the command is split into argv by
 		 * bytes, and accepting multi-byte input here would let half a
 		 * codepoint end an argument. */
-		if (ev.key >= 0x20 && ev.key < 0x7f && len + 1 < sizeof(cmd)) {
+		if (ev.key >= 0x20 && ev.key < 0x7f &&
+		    !(ev.mods & KT_MOD_CTRL) && len + 1 < sizeof(cmd)) {
 			memmove(cmd + cur + 1, cmd + cur, len - cur + 1);
 			cmd[cur++] = (char)ev.key;
 			len++;
 		}
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return rc;
 }

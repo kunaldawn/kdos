@@ -82,8 +82,11 @@ int kpk_footer_unpack(const uint8_t in[KPK_FOOTER_LEN], KpkFooter *f)
 	f->sig_off = get64(in + 56);
 	f->sig_len = get64(in + 64);
 	memcpy(f->payload_sha256, in + 72, 32);
-	/* A format this build does not know is not a pack it may guess at. */
-	if (f->format != KPK_FORMAT)
+	/* A format this build does not know is not a pack it may guess at — but
+	 * every format it does know is read, because a number that only ever
+	 * accepted the newest would make each bump reject every pack already
+	 * published. What the older ones cost is in KPK_FORMAT's comment. */
+	if (f->format < KPK_FORMAT_MIN || f->format > KPK_FORMAT)
 		return -1;
 	return 0;
 }
@@ -93,12 +96,27 @@ int kpk_footer_unpack(const uint8_t in[KPK_FOOTER_LEN], KpkFooter *f)
  * required to sit in the declared order. Without this a footer claiming
  * `meta_off = 0, meta_len = 2^63` is a read of the whole address space — the
  * kb_tar base-256 lesson, on a different field.
+ *
+ * AND AGAINST WHAT EACH SECTION CAN HONESTLY BE, not only against the file.
+ * These three spans are read WHOLE into memory by a root daemon before
+ * anything about the pack has been authenticated, so "it fits in the file" is
+ * an attacker's budget rather than a bound: a 400 MB pack declaring its
+ * metadata to be all of itself is an allocation of 400 MB per open. The
+ * metadata is a handful of key-value lines, an icon is a small picture, and a
+ * signature block is a few 160-byte lines.
  */
+#define KPK_META_MAX (1u << 20)
+#define KPK_ICON_MAX (4u << 20)
+#define KPK_SIG_MAX (64u << 10)
+
 static int footer_consistent(const KpkFooter *f, uint64_t fsize)
 {
 	uint64_t end = fsize - KPK_FOOTER_LEN;
 
 	if (fsize < KPK_FOOTER_LEN)
+		return 0;
+	if (f->meta_len > KPK_META_MAX || f->icon_len > KPK_ICON_MAX ||
+	    f->sig_len > KPK_SIG_MAX)
 		return 0;
 	if (f->erofs_len > end)
 		return 0;
@@ -111,6 +129,19 @@ static int footer_consistent(const KpkFooter *f, uint64_t fsize)
 	if (f->sig_off > end || f->sig_len > end || f->sig_off > end - f->sig_len)
 		return 0;
 	if (f->sig_off < f->meta_off + f->meta_len)
+		return 0;
+	/*
+	 * THE SIGNATURE BLOCK ABUTS THE FOOTER, and it starts after the icon.
+	 * Slack between the two is what makes a later `kdos-pack sign`
+	 * silently do nothing: it appends its line at sig_off + sig_len and
+	 * writes a new footer straight after, which lands in the middle of
+	 * the file while the old footer — still at the end, still naming the
+	 * old sig_len — is the one the reader seeks to. The pack then reads
+	 * as unsigned and the signing command returned 0.
+	 */
+	if (f->sig_off + f->sig_len != end)
+		return 0;
+	if (f->icon_len && f->sig_off < f->icon_off + f->icon_len)
 		return 0;
 	return 1;
 }
@@ -277,17 +308,16 @@ int kpk_write(const char *out, const char *erofs_image, const KpkMeta *m,
 	kpk_footer_pack(&f, fbuf);
 	if (fwrite(fbuf, 1, KPK_FOOTER_LEN, fp) != KPK_FOOTER_LEN)
 		goto fail;
-	if (fclose(fp) != 0) {
-		free(meta);
-		return -1;
-	}
 	free(meta);
+	meta = NULL;
+	if (fclose(fp) != 0)
+		goto late_fail;
 
 	/* The hash covers everything before the signature block, so it can only
 	 * be computed once the file exists — and the footer is then rewritten
 	 * in place, which is the one write that happens after the fact. */
 	if (kpk_payload_hash(out, &f, hash) != 0)
-		return -1;
+		goto late_fail;
 	for (int i = 0; i < 32; i++) {
 		unsigned v;
 		sscanf(hash + i * 2, "%2x", &v);
@@ -297,16 +327,31 @@ int kpk_write(const char *out, const char *erofs_image, const KpkMeta *m,
 
 	fp = fopen(out, "r+b");
 	if (!fp)
-		return -1;
+		goto late_fail;
 	if (fseeko(fp, (off_t)(f.sig_off + f.sig_len), SEEK_SET) != 0 ||
 	    fwrite(fbuf, 1, KPK_FOOTER_LEN, fp) != KPK_FOOTER_LEN) {
 		fclose(fp);
-		return -1;
+		goto late_fail;
 	}
-	return fclose(fp) == 0 ? 0 : -1;
+	if (fclose(fp) != 0)
+		goto late_fail;
+	return 0;
 
 fail:
 	fclose(fp);
+	free(meta);
+	unlink(out);
+	return -1;
+
+	/*
+	 * EVERY FAILURE TAKES THE OUTPUT WITH IT, including the ones after the
+	 * file is closed and structurally complete. A pack left behind with an
+	 * all-zero payload hash opens, parses and lists like any other and only
+	 * fails at verification, which reports corruption — when the truth is
+	 * that the build failed and left its output. Unlinking costs nothing:
+	 * `fopen(out, "wb")` truncated whatever was there long before this.
+	 */
+late_fail:
 	free(meta);
 	unlink(out);
 	return -1;

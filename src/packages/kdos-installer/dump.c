@@ -199,7 +199,7 @@ static void plan_dump(int json)
 	 * about the medium, and install_plan() answers it. Planning before
 	 * scanning reports the step skipped on a machine that would carry
 	 * three gigabytes of applications. */
-	ki_packs_enter();
+	ki_apps_enter();
 	/* The same call the wizard makes on its way to the install page, so
 	 * the steps listed here are the steps that would run — including which
 	 * ones these answers skip. */
@@ -235,28 +235,31 @@ static void plan_dump(int json)
 		printf("theme         %s   appbox %s\n", cfg.theme,
 		       cfg.with_appbox ? "yes" : "no");
 		printf("services off  %s\n", svc.n ? svc.p : "-");
-		/* THE PACKS AND WHAT THEY COST. `plan` is what somebody pastes
-		 * into a bug report, and "the applications" is exactly the
-		 * part an installed system is judged on. */
-		if (ki_packs_present) {
-			printf("packs         %s\n",
-			       cfg.packs[0] ? cfg.packs : "(none chosen)");
-			/* The line above is the ANSWER FILE's set, which names
-			 * applications; the runtimes under them are derived
-			 * and are most of the cost, so a reader who saw only
-			 * the first line could not account for the second. */
-			printf("packs with    ");
-			for (int i = 0, first = 1; i < ki_npack; i++)
-				if (ki_pack[i].chosen &&
-				    strcmp(ki_pack[i].kind, "app") &&
-				    strcmp(ki_pack[i].kind, "data")) {
-					printf("%s%s", first ? "" : " ",
-					       ki_pack[i].id);
-					first = 0;
-				}
-			printf("\n");
-			printf("packs cost    %s\n",
-			       kb_human_size(ki_packs_bytes()));
+		/* THE APPLICATIONS, WHAT THEY COST AND HOW THEY WILL ARRIVE.
+		 * `plan` is what somebody pastes into a bug report, and the
+		 * ROUTE is the part that decides whether anything is installed
+		 * at all — a reader who saw only the selection could not tell
+		 * an install that built them from one that recorded them. */
+		if (ki_apps_present) {
+			static const char *const ROUTE[] = {
+				"nothing chosen",
+				"import, from the archive below",
+				"built during the install, over the network",
+				"recorded; the first session offers them",
+			};
+			int r = ki_apps_route();
+
+			printf("apps          %s\n",
+			       cfg.apps[0] ? cfg.apps : "(none chosen)");
+			printf("apps route    %s\n", ROUTE[r]);
+			if (r == APPS_IMPORT)
+				printf("apps archive  %s\n", ki_apps_archive);
+			/* AN ESTIMATE, and it says so: what apt resolves on the
+			 * day depends on the snapshot, and shared runtime
+			 * layers are stored once however many applications
+			 * name them. */
+			printf("apps cost     %s (an estimate)\n",
+			       kb_human_size(ki_apps_bytes()));
 		}
 		printf("dry run       %s\n", cfg.dry_run ? "yes" : "no");
 		printf("\nsteps\n");
@@ -305,22 +308,28 @@ static void plan_dump(int json)
 	kb_buf_printf(&b, ", \"appbox\": %s, \"dry_run\": %s",
 		      cfg.with_appbox ? "true" : "false",
 		      cfg.dry_run ? "true" : "false");
-	kb_buf_str(&b, ",\n  \"packs\": [");
+	kb_buf_str(&b, ",\n  \"apps\": [");
 	{
+		static const char *const ROUTE[] = { "none", "import",
+						     "network", "pending" };
 		int first = 1;
-		for (int i = 0; i < ki_npack; i++) {
-			if (!ki_pack[i].chosen)
+
+		for (int i = 0; i < ki_ngroup; i++) {
+			if (!ki_group[i].chosen)
 				continue;
 			kb_buf_printf(&b, "%s\n    {\"id\": ", first ? "" : ",");
 			first = 0;
-			kb_json_str(&b, ki_pack[i].id);
-			kb_buf_str(&b, ", \"kind\": ");
-			kb_json_str(&b, ki_pack[i].kind);
+			kb_json_str(&b, ki_group[i].id);
+			kb_buf_printf(&b, ", \"apps\": %d", ki_group[i].napp);
 			kb_buf_printf(&b, ", \"bytes\": %llu}",
-				      ki_pack[i].size);
+				      ki_group[i].bytes);
 		}
-		kb_buf_printf(&b, "%s], \"packs_bytes\": %llu",
-			      first ? "" : "\n  ", ki_packs_bytes());
+		/* ONE TRAVERSAL, TWO RENDERINGS: the same groups the text form
+		 * lists, so a disagreement between the two cannot happen. */
+		kb_buf_printf(&b, "%s], \"apps_bytes\": %llu",
+			      first ? "" : "\n  ", ki_apps_bytes());
+		kb_buf_str(&b, ", \"apps_route\": ");
+		kb_json_str(&b, ROUTE[ki_apps_route()]);
 	}
 	kb_buf_str(&b, ",\n  \"services_off\": [");
 	if (svc.n)

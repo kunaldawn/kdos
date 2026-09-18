@@ -6,7 +6,7 @@ _kdos() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "help theme status doctor version app" -- "$cur"))
+        COMPREPLY=($(compgen -W "help theme status doctor version app share remind notify toggle" -- "$cur"))
         return
     fi
 
@@ -14,6 +14,8 @@ _kdos() {
         theme)  COMPREPLY=($(compgen -W "phosphor amber ice bone next prev list current" -- "$cur")) ;;
         status) COMPREPLY=($(compgen -W "--bar" -- "$cur")) ;;
         help)   COMPREPLY=($(compgen -W "--pager" -- "$cur")) ;;
+        remind) COMPREPLY=($(compgen -W "in at tomorrow ls clear" -- "$cur")) ;;
+        notify) COMPREPLY=($(compgen -W "--time --battery" -- "$cur")) ;;
         *)      COMPREPLY=() ;;
     esac
 }
@@ -21,6 +23,18 @@ complete -F _kdos kdos
 
 _kdos_shot() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    [ "$COMP_CWORD" -eq 1 ] && COMPREPLY=($(compgen -W "region screen window" -- "$cur"))
+    [ "$COMP_CWORD" -eq 1 ] &&
+        COMPREPLY=($(compgen -W "region screen window qr colour" -- "$cur"))
 }
 complete -F _kdos_shot kdos-shot
+
+# kdos-share takes files, so the default file completion is right; only the one
+# flag needs naming.
+_kdos_share() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    case "$cur" in
+        -*) COMPREPLY=($(compgen -W "--clipboard" -- "$cur")) ;;
+        *)  COMPREPLY=($(compgen -f -- "$cur")) ;;
+    esac
+}
+complete -F _kdos_share kdos-share

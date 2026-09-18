@@ -1,0 +1,22 @@
+musl has no <execinfo.h> and no backtrace(), and this is the one file that
+includes the header without asking.
+
+configure already runs AC_CHECK_HEADERS([... execinfo.h]) and defines
+HAVE_EXECINFO_H, and src/util/backtrace.c and src/util/debug_util.c both guard
+their include with it; only src/util/linux_util.c does not. Its single use of
+backtrace() at the segv handler already sits inside #ifdef BACKTRACE, so the
+guard is all that is missing.
+
+--- a/src/util/linux_util.c
++++ b/src/util/linux_util.c
+@@ -10,7 +10,9 @@
+ 
+ /** \cond */
+ #include <assert.h>
+-#include <execinfo.h>      // for segv handler
++#ifdef HAVE_EXECINFO_H
++#include <execinfo.h>      // for segv handler
++#endif
+ #include <fcntl.h>
+ #include <glib-2.0/glib.h>
+ #include <inttypes.h>

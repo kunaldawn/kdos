@@ -16,7 +16,7 @@ with a desktop that is a character grid all the way down.
 </p>
 
 <p align="center">
-<sub>764 ports · Linux 7.0.10 · 758 packages · 181 containerised applications · builds offline from this repo</sub>
+<sub>764 ports · Linux 7.0.10 · 758 packages · 182 containerised applications · builds offline from this repo</sub>
 </p>
 
 <p align="center">
@@ -52,13 +52,15 @@ package manager, so a running KDOS can rebuild every port in the tree — the
 compiler, the kernel and the desktop included.
 
 **The repository builds offline.** `make build` runs with `--network none`.
-Every upstream tarball, every vendored bundle and every application image is
-reachable at build time with no network at all. They are release assets rather
-than repository contents; git holds what *identifies* them.
+Every upstream tarball and every vendored bundle is reachable at build time with
+no network at all, because they are **in the tree**, through Git LFS — a clone is
+the whole input to a build, and the `sha256 =` in each recipe sits beside the
+bytes it verifies.
 
 **Applications live in boxes.** KDOS builds the *desktop*. It does not
 native-port Firefox, LibreOffice or Blender. The outer ring is a catalogue of
-181 applications, each one signed image over a shared runtime, each running in
+182 applications, each declared as a chain of Debian packages over a shared
+runtime and built by podman on the machine that asks for one, each running in
 its own rootless container and behaving like ordinary system software.
 
 ---
@@ -90,15 +92,19 @@ disk, and a container runtime — nothing else is installed on your machine.
 **Build an image**
 
 ```sh
+git lfs install       # BEFORE the clone — see below
 git clone <this repository> kdos
 cd kdos
-make bootstrap        # fetch upstream sources — needs network, once
 make build            # compile everything — no network at all
 ```
 
-The result is `build/iso-build/kdos.iso`. The application catalogue is a
-separate step: `make bootstrap-packs` downloads a baked set, or
-`make fetch-packs` bakes one.
+The upstream tarballs are in the tree, through Git LFS. **`git lfs install`
+has to have been run before the clone**: without it you get 129-byte pointer
+files where the archives should be, and the build fails on an unreadable
+archive rather than on anything that names the cause.
+
+The result is `build/iso-build/kdos.iso`. It carries no applications: the
+medium ships a catalogue, and the machine that wants one builds it.
 → [Getting started](docs/kdos/02-user-guide/getting-started.md)
 
 **Run it**
@@ -146,12 +152,17 @@ on by default and `crt = 0` is an honest off.
 
 → [kdos-comp](docs/kdos/04-programs/kdos-comp.md)
 
-### One application is one file
+### An application is a row in a catalogue, until you want it
 
-An application ships as a single signed filesystem image with its metadata,
-icon, signature and a footer appended — mountable exactly as it sits. It runs in
-its own container over a shared runtime. Installing one disturbs nothing else,
-and an install carries only what was ticked.
+Nothing is baked onto the medium. A row says which Debian packages an
+application is and which runtime it sits on; the machine that wants it builds a
+stack of container images, so a second GTK application is one apt pass rather
+than three. Installing one disturbs nothing else.
+
+Hand a set to another machine and it becomes files again: `kdos app export`
+writes each built application as a signed filesystem image with its metadata,
+icon, signature and a footer appended — mountable exactly as it sits, verified
+where it mounts, and needing no network at the other end.
 
 → [Packs and boxes](docs/kdos/03-architecture/packs-and-boxes.md)
 
@@ -184,12 +195,13 @@ to what it was built from.
 
 → [Packaging](docs/kdos/03-architecture/packaging.md)
 
-### The medium is the software library
+### The store is a text file in this repository
 
-There is no application store. The Start menu lists what the medium already
-carries, and choosing one installs the pack and opens the application in the
-same action. A stick can also rebuild the image it booted from, and copy itself
-to another stick.
+`kdos-store` lists seven curated groups over 182 applications and builds what you
+tick. There is no account, no telemetry and nothing to sign up to — the catalogue
+is a file you can read, and adding an application to it is one line. The Start
+menu installs-and-opens in a single click. A stick can also rebuild the image it
+booted from, and copy itself to another stick.
 
 → [Applications](docs/kdos/02-user-guide/applications.md)
 
@@ -221,7 +233,6 @@ Three reading paths — *use it*, *build it*, *change it* — are laid out on th
 
 ```
 ports/core/       764 upstream ports, two files each
-ports/appbox/     the application catalogue
 src/libs/         13 C libraries, linking nothing but musl
 src/desktop/      the compositor, the shell, the daemons
 src/packages/     our own ports: the package manager, the installer, the tools

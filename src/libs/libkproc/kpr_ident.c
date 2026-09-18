@@ -55,10 +55,42 @@ int kpr_is_box_boundary(const char *comm)
 	return comm && !strcmp(comm, "conmon");
 }
 
+/*
+ * ONE SUPERVISOR ANSWERS FOR EVERY PROCESS IN ITS BOX, so the answer is
+ * remembered against its pid. A box holds dozens of processes and the parent
+ * walk arrives at the same conmon for each of them; without this its cmdline
+ * is read and parsed once per process per sample.
+ *
+ * THE TABLE LIVES FOR ONE SAMPLE. kpr_conmon_forget() empties it at the start
+ * of a pass, so a pid the kernel has handed to something else cannot answer
+ * with the box the process that had it belonged to.
+ */
+#define CONMON_CACHE 16
+
+static struct {
+	int pid;
+	char name[128];
+	int set;
+} conmon_cache[CONMON_CACHE];
+static int conmon_cursor;
+
+void kpr_conmon_forget(void)
+{
+	memset(conmon_cache, 0, sizeof(conmon_cache));
+	conmon_cursor = 0;
+}
+
 int kpr_conmon_name(int pid, char *out, size_t cap)
 {
 	size_t len = 0;
 	char path[512];
+
+	for (int i = 0; i < CONMON_CACHE; i++)
+		if (conmon_cache[i].set && conmon_cache[i].pid == pid) {
+			kb_strlcpy(out, conmon_cache[i].name, cap);
+			return conmon_cache[i].name[0] != '\0';
+		}
+
 	snprintf(path, sizeof(path), "%s/%d/cmdline", kpr_proc(), pid);
 	char *cmd = kb_read_all(path, &len);
 	if (!cmd)
@@ -79,6 +111,15 @@ int kpr_conmon_name(int pid, char *out, size_t cap)
 		a += alen + 1;
 	}
 	free(cmd);
+
+	/* A supervisor that names no box is remembered too: that is the
+	 * answer every process under a plain parent gets, and re-deriving it
+	 * is the case that cost the most. */
+	conmon_cache[conmon_cursor].pid = pid;
+	kb_strlcpy(conmon_cache[conmon_cursor].name, found ? out : "",
+		   sizeof(conmon_cache[conmon_cursor].name));
+	conmon_cache[conmon_cursor].set = 1;
+	conmon_cursor = (conmon_cursor + 1) % CONMON_CACHE;
 	return found;
 }
 
@@ -172,20 +213,50 @@ int kpr_box_of(const KprSample *s, int pid, char *out, size_t cap)
  * comes back as its own number rather than as "unknown" — the number is a
  * fact, and a table of "unknown" rows for every service account is not
  * useful.
+ *
+ * A UID THAT RESOLVES TO NOTHING IS CACHED TOO, as the number it answers
+ * with. Only a name found in the file was remembered, so every row owned by a
+ * uid the file does not name — which is most of a container's process list —
+ * re-read and re-parsed the whole file, once per row per redraw. The same is
+ * true of a full table: the answer went back to reading the file every time.
  */
 #define IDENT_CACHE 64
 
+static char *ident_slot(int uid)
+{
+	static struct { int uid; char name[32]; int set; } cache[IDENT_CACHE];
+	static int n, cursor;
+
+	for (int i = 0; i < n; i++)
+		if (cache[i].set && cache[i].uid == uid)
+			return cache[i].name;
+
+	int slot;
+
+	if (n < IDENT_CACHE) {
+		slot = n++;
+	} else {
+		/* A ring rather than a table that stops taking entries: one
+		 * that filled and then refused sent every later uid back to
+		 * reading the file, which is the case this exists for. */
+		slot = cursor;
+		cursor = (cursor + 1) % IDENT_CACHE;
+	}
+	cache[slot].uid = uid;
+	cache[slot].set = 1;
+	cache[slot].name[0] = '\0';
+	return cache[slot].name;
+}
+
 const char *kpr_user_of(int uid)
 {
-	static struct { int uid; char name[32]; } cache[IDENT_CACHE];
-	static int n;
-	static char num[16];
-
 	if (uid < 0)
 		return "-";
-	for (int i = 0; i < n; i++)
-		if (cache[i].uid == uid)
-			return cache[i].name;
+
+	char *slot = ident_slot(uid);
+
+	if (*slot)
+		return slot;
 
 	/*
 	 * The user database is a READING like any other, so it moves with the
@@ -208,14 +279,11 @@ const char *kpr_user_of(int uid)
 			char *c2 = strchr(c1 + 1, ':');
 			if (!c2)
 				goto cont;
-			if (atoi(c2 + 1) == uid && n < IDENT_CACHE) {
+			if (atoi(c2 + 1) == uid) {
 				*c1 = 0;
-				cache[n].uid = uid;
-				kb_strlcpy(cache[n].name, line,
-					   sizeof(cache[n].name));
-				n++;
+				kb_strlcpy(slot, line, 32);
 				free(pw);
-				return cache[n - 1].name;
+				return slot;
 			}
 cont:
 			if (nl)
@@ -223,6 +291,8 @@ cont:
 		}
 		free(pw);
 	}
-	snprintf(num, sizeof(num), "%d", uid);
-	return num;
+	/* Not in the file. The number IS the answer, and remembering it is
+	 * what stops the next redraw reading the file again. */
+	snprintf(slot, 32, "%d", uid);
+	return slot;
 }

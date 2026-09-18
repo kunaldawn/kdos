@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Extract Archive
+GenericName=Archive Extractor
+Comment=Extract an archive beside itself
+Exec=kdos-openarchive %f
+Icon=package-x-generic
+Terminal=true
+NoDisplay=true
+MimeType=application/x-7z-compressed;application/vnd.rar;application/x-cb7;application/vnd.comicbook-rar;
+Categories=Utility;Archiving;

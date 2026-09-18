@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vulkan-tools
+version     = 1.4.345
+release     = 1
+source      = https://github.com/KhronosGroup/Vulkan-Tools/archive/v$version/$name-$version.tar.gz
+sha256      = 907d2e8a099c039823f689de4f32feaee9208bfa5b447c0592155b90d39cfa2f  vulkan-tools-1.4.345.tar.gz
+description = Khronos Vulkan tools — vkcube, vkcubepp and vulkaninfo, Wayland and KMS display WSI
+homepage    = https://github.com/KhronosGroup/Vulkan-Tools
+depends     = cmake ninja pkgconf vulkan-headers vulkan-loader wayland wayland-protocols

@@ -59,6 +59,14 @@ int ksig_read_public(const char *path, uint8_t pub[KSIG_PUB_LEN], char *name,
 		     size_t ncap);
 int ksig_write_secret(const char *path, const uint8_t seed[KSIG_SEED_LEN],
 		      const uint8_t pub[KSIG_PUB_LEN]);
+
+/*
+ * 0 on success, -2 when the file's permissions could not be established to be
+ * private to its owner, -1 for anything else. -2 covers a key whose mode lets
+ * group or other read it AND a key that cannot be stat'ed: an unprovable mode
+ * is treated as a bad one, because a key that has to be assumed compromised
+ * must not sign.
+ */
 int ksig_read_secret(const char *path, uint8_t seed[KSIG_SEED_LEN],
 		     uint8_t pub[KSIG_PUB_LEN]);
 
@@ -107,9 +115,10 @@ int ksig_ring_load(KsigRing *ring, const char *dir);
  * Verify `msg` against a signature FILE holding one or more lines.
  *
  * Returns 0 when at least one line verifies against a key IN THE RING, and
- * writes that key's id to `who`. The key id inside the file selects which key
- * to try; it is never itself trusted, which is the whole difference between a
- * key id and a key.
+ * writes that key's id to `who`. The key id inside the file is informational:
+ * every line is tried against every key in the ring and against nothing
+ * outside it, so `who` names the key that actually verified rather than the id
+ * the line claimed. That is the whole difference between a key id and a key.
  */
 int ksig_verify_file(const KsigRing *ring, const char *sigpath, const void *msg,
 		     size_t len, char who[KSIG_ID_HEX]);

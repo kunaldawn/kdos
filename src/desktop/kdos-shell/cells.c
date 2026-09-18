@@ -76,7 +76,11 @@ static int cap_caps(void)
 }
 
 static const KtuiBackend cells_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
+	.name = "dump-cells",
+	.flush = cap_flush,
+	.poll_event = cap_poll,
+	.size = cap_size,
+	.caps = cap_caps,
 };
 
 const KtuiBackend *sh_cells_backend(int w, int h)

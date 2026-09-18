@@ -101,34 +101,95 @@ static void read_topology(KprCpu *c)
  * Temperature, in the order worth trying. -1 when nothing answered, which the
  * renderer must draw as an em dash: a machine with no sensor is not a machine
  * running at 0 °C.
+ *
+ * THE EARLIEST NAME IN temp_want[] WINS, WHATEVER ITS hwmon INDEX. The index is
+ * allocated from one system-wide ida and says nothing about what the chip
+ * measures: acpitz registers with the ACPI tables and coretemp only when the
+ * CPU driver loads, so taking the first index that matches anything reports
+ * the chassis sensor — a flat figure that barely moves under load — on the
+ * commonest laptop there is. One pass over the chips, keeping the best rank
+ * seen, and an early exit once the top rank answers because nothing can beat
+ * it.
+ *
+ * A die sensor's location is then LATCHED: it is the best answer that
+ * exists, so re-searching for a better one every tick can only find what was
+ * already found. acpitz is not latched — it is the fallback, and the die
+ * driver may still load. The latch re-checks the chip's name, because an
+ * hwmon index freed by a module unload is handed to the next chip to
+ * register and the file at that path would then be another device's
+ * temperature.
  */
+static const char *const temp_want[] = { "coretemp", "k10temp", "zenpower",
+					 "cpu_thermal", "acpitz", NULL };
+#define TEMP_FALLBACK_RANK 4		/* acpitz: re-searched every tick */
+
+static unsigned g_temp_gen;		/* 0 = nothing latched            */
+static int g_temp_chip, g_temp_chan, g_temp_rank;
+
 static double read_temp(void)
 {
-	static const char *want[] = { "coretemp", "k10temp", "zenpower",
-				      "cpu_thermal", "acpitz", NULL };
-	char *names = NULL;
-	for (int i = 0; i < 32; i++) {
-		names = kpr_slurp_sys("class/hwmon/hwmon%d/name", i);
-		if (!names)
+	int idx[256];
+	int nchip, best = -1, best_chan = 0, best_rank = TEMP_FALLBACK_RANK + 1;
+	double best_val = -1.0;
+
+	if (g_temp_gen == kpr_root_gen()) {
+		char name[64];
+		int n = kpr_read_into_sys(name, sizeof(name),
+					  "class/hwmon/hwmon%d/name",
+					  g_temp_chip);
+		long long mc = -1;
+
+		if (n > 0 && !strncmp(name, temp_want[g_temp_rank],
+				      strlen(temp_want[g_temp_rank])))
+			mc = kpr_num_sys(-1, "class/hwmon/hwmon%d/temp%d_input",
+					 g_temp_chip, g_temp_chan);
+		if (mc > 0)
+			return (double)mc / 1000.0;
+		g_temp_gen = 0;
+	}
+
+	nchip = kpr_sysfs_indices("class/hwmon", "hwmon", idx,
+				  (int)(sizeof(idx) / sizeof(*idx)));
+	for (int c = 0; c < nchip && best_rank > 0; c++) {
+		int i = idx[c];
+		char name[64];
+		int n = kpr_read_into_sys(name, sizeof(name),
+					  "class/hwmon/hwmon%d/name", i);
+
+		if (n <= 0)
 			continue;
-		for (int k = 0; want[k]; k++) {
-			if (strncmp(names, want[k], strlen(want[k]))) 
+		for (int k = 0; temp_want[k] && k < best_rank; k++) {
+			if (strncmp(name, temp_want[k], strlen(temp_want[k])))
 				continue;
 			for (int t = 1; t <= 4; t++) {
 				long long mc = kpr_num_sys(-1,
 					"class/hwmon/hwmon%d/temp%d_input", i, t);
-				if (mc > 0) {
-					free(names);
-					return (double)mc / 1000.0;
-				}
+				if (mc <= 0)
+					continue;
+				best = i;
+				best_chan = t;
+				best_rank = k;
+				best_val = (double)mc / 1000.0;
+				break;
 			}
+			break;
 		}
-		free(names);
-		names = NULL;
+	}
+	if (best >= 0) {
+		if (best_rank < TEMP_FALLBACK_RANK) {
+			g_temp_chip = best;
+			g_temp_chan = best_chan;
+			g_temp_rank = best_rank;
+			g_temp_gen = kpr_root_gen();
+		}
+		return best_val;
 	}
 
 	/* thermal_zone by type, for the boards with no hwmon entry. */
-	for (int i = 0; i < 16; i++) {
+	nchip = kpr_sysfs_indices("class/thermal", "thermal_zone", idx,
+				  (int)(sizeof(idx) / sizeof(*idx)));
+	for (int c = 0; c < nchip; c++) {
+		int i = idx[c];
 		char *type = kpr_slurp_sys("class/thermal/thermal_zone%d/type", i);
 		if (!type)
 			continue;
@@ -194,6 +255,25 @@ static void read_model(KprCpu *c)
 		kb_strlcpy(c->model, "unknown", sizeof(c->model));
 }
 
+/*
+ * The half of a snapshot that cannot change while the machine runs: the core
+ * and package counts, the model string, the architecture, the virtualisation
+ * kind and the maximum frequency.
+ *
+ * Re-deriving them is two topology files per logical CPU plus the whole of
+ * /proc/cpuinfo — 26 KB on sixteen cores — and a monitor samples once a tick
+ * inside its draw loop. The latch is keyed on the logical CPU COUNT and not
+ * on a bare flag, because hotplug changes ncpu and with it ncore and npkg,
+ * and a flag would report the old topology for ever. It is keyed on the root
+ * generation too, or a fixture switch reports this host's CPU under a
+ * recorded machine.
+ */
+static unsigned g_static_gen;		/* 0 = empty                      */
+static int g_static_ncpu;
+static int g_ncore, g_npkg, g_virt;
+static char g_model[96], g_arch[16];
+static long g_khz_max;
+
 int kpr_cpu_read(KprCpu *c)
 {
 	memset(c, 0, sizeof(*c));
@@ -203,15 +283,28 @@ int kpr_cpu_read(KprCpu *c)
 	if (!stat)
 		return -1;
 
-	/* Count the per-cpu lines first so the arrays are sized once. */
+	/*
+	 * SIZED BY THE HIGHEST CPU NUMBER, not by how many lines there are.
+	 * /proc/stat lists only the online CPUs and keeps their real numbers,
+	 * so with cpu1 offline the file holds cpu0, cpu2 and cpu3: a count
+	 * would size three slots, drop cpu3's times entirely and leave slot 1
+	 * all zeroes, which reads as a core pinned at 0%. The hole is marked
+	 * in `online` instead.
+	 */
+	int maxidx = -1;
 	for (char *p = stat; (p = strstr(p, "cpu")); p++)
-		if (isdigit((unsigned char)p[3]))
-			c->ncpu++;
+		if (isdigit((unsigned char)p[3])) {
+			int idx = atoi(p + 3);
+			if (idx > maxidx)
+				maxidx = idx;
+		}
+	c->ncpu = maxidx + 1;
 	if (c->ncpu <= 0)
 		c->ncpu = 1;
 
 	c->per = kb_calloc((size_t)c->ncpu, sizeof(*c->per));
 	c->khz = kb_calloc((size_t)c->ncpu, sizeof(*c->khz));
+	c->online = kb_calloc((size_t)c->ncpu, sizeof(*c->online));
 	for (int i = 0; i < c->ncpu; i++)
 		c->khz[i] = -1;
 
@@ -226,20 +319,46 @@ int kpr_cpu_read(KprCpu *c)
 			   isdigit((unsigned char)line[3])) {
 			int idx = atoi(line + 3);
 			char *sp = strchr(line, ' ');
-			if (sp && idx >= 0 && idx < c->ncpu)
+			if (sp && idx >= 0 && idx < c->ncpu) {
 				parse_times(sp + 1, &c->per[idx]);
+				c->online[idx] = 1;
+			}
 		}
 		if (nl)
 			*nl = '\n';
 	}
 	free(stat);
 
-	read_topology(c);
-	read_model(c);
+	if (g_static_gen != kpr_root_gen() || g_static_ncpu != c->ncpu) {
+		read_topology(c);
+		read_model(c);
+		c->khz_max = (long)kpr_num_sys(-1,
+			"devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
+		g_ncore = c->ncore;
+		g_npkg = c->npkg;
+		g_virt = c->virt;
+		g_khz_max = c->khz_max;
+		kb_strlcpy(g_model, c->model, sizeof(g_model));
+		kb_strlcpy(g_arch, c->arch, sizeof(g_arch));
+		g_static_ncpu = c->ncpu;
+		g_static_gen = kpr_root_gen();
+	} else {
+		c->ncore = g_ncore;
+		c->npkg = g_npkg;
+		c->virt = g_virt;
+		c->khz_max = g_khz_max;
+		kb_strlcpy(c->model, g_model, sizeof(c->model));
+		kb_strlcpy(c->arch, g_arch, sizeof(c->arch));
+	}
 	c->temp_c = read_temp();
 
-	/* Frequency: scaling_cur_freq, then cpuinfo_cur_freq. Both are kHz. */
+	/* Frequency: scaling_cur_freq, then cpuinfo_cur_freq. Both are kHz.
+	 * An offline CPU has no cpufreq directory and keeps -1, which is the
+	 * same answer as a machine with no cpufreq at all and is what the
+	 * renderer already draws as absent. */
 	for (int i = 0; i < c->ncpu; i++) {
+		if (!c->online[i])
+			continue;
 		long long k = kpr_num_sys(-1,
 			"devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", i);
 		if (k <= 0)
@@ -247,9 +366,9 @@ int kpr_cpu_read(KprCpu *c)
 				"devices/system/cpu/cpu%d/cpufreq/cpuinfo_cur_freq", i);
 		c->khz[i] = k > 0 ? (long)k : -1;
 	}
-	c->khz_max = (long)kpr_num_sys(-1,
-		"devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
 
+	/* The governor is NOT latched with the rest: it is the one of these a
+	 * user changes while the machine runs. */
 	char *gov = kpr_slurp_sys("devices/system/cpu/cpu0/cpufreq/scaling_governor");
 	if (gov) {
 		char *nl = strchr(gov, '\n');
@@ -261,12 +380,36 @@ int kpr_cpu_read(KprCpu *c)
 	return 0;
 }
 
+/*
+ * HOW MANY CPUs ARE RUNNING, which `ncpu` is not: that is the array length,
+ * the highest CPU number plus one. Anything dividing by "the number of CPUs"
+ * — a per-core percentage rescaled to percent-of-machine — must use this, or
+ * a machine with a CPU offline below the highest index reports every figure
+ * scaled down by the missing core's share.
+ *
+ * Never zero, so it is safe as a divisor: a KprCpu that has not been read yet
+ * has no `online` array and counts as one CPU.
+ */
+int kpr_cpu_online(const KprCpu *c)
+{
+	int n = 0;
+
+	if (!c)
+		return 1;
+	for (int i = 0; i < c->ncpu; i++)
+		if (!c->online || c->online[i])
+			n++;
+	return n ? n : 1;
+}
+
 void kpr_cpu_free(KprCpu *c)
 {
 	if (!c)
 		return;
 	free(c->per);
 	free(c->khz);
+	free(c->online);
 	c->per = NULL;
 	c->khz = NULL;
+	c->online = NULL;
 }

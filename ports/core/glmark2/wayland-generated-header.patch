@@ -1,0 +1,10 @@
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -134,6 +134,7 @@
+ 
+     native_wayland_dep = declare_dependency(
+         link_with: native_wayland_lib,
++        sources: xdg_shell_client_header,
+         dependencies: [wayland_client_dep, wayland_cursor_dep, wayland_egl_dep],
+         compile_args: ['-DGLMARK2_USE_WAYLAND', '-DWL_EGL_PLATFORM'],
+         )

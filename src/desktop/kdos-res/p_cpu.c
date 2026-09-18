@@ -42,15 +42,23 @@ static void facts(int x, int y, int w)
 	 * and calling the answer cores is wrong on every SMT machine.
 	 */
 	const char *dot = ktui_glyph[KT_G_DOT];
+	/*
+	 * `ncpu` IS THE HIGHEST CPU NUMBER PLUS ONE, not a count: /proc/stat
+	 * keeps the real numbers, so a machine with cpu1 offline has ncpu 4
+	 * and three running. The number a person reads here is how many are
+	 * running.
+	 */
+	int nonline = kpr_cpu_online(c);
+
 	snprintf(line, sizeof(line),
 		 "%d logical %s %d core%s %s %d package%s",
-		 c->ncpu, dot, c->ncore, c->ncore == 1 ? "" : "s",
+		 nonline, dot, c->ncore, c->ncore == 1 ? "" : "s",
 		 dot, c->npkg, c->npkg == 1 ? "" : "s");
 	ktui_draw_text(x, y + 1, w, line, KT_MID, KT_BG, 0);
 
 	long khz = 0;
 	for (int i = 0; i < c->ncpu; i++)
-		if (c->khz[i] > khz)
+		if ((!c->online || c->online[i]) && c->khz[i] > khz)
 			khz = c->khz[i];
 
 	char freq[64], maxf[64];
@@ -154,7 +162,8 @@ void res_draw_cpu(int x, int y, int w, int h)
 		double v[512];
 		int n = R.cpu.ncpu > 512 ? 512 : R.cpu.ncpu;
 		for (int i = 0; i < n; i++)
-			v[i] = R.h_core[i].n
+			v[i] = (!R.cpu.online || R.cpu.online[i]) &&
+			       R.h_core[i].n
 			       ? kpr_hist_at(&R.h_core[i], R.h_core[i].n - 1)
 			       : 0.0;
 		ktui_heat(krect(x + 1, row, w - 2, left < 2 ? 1 : 2), v, n,
@@ -167,6 +176,9 @@ void res_draw_cpu(int x, int y, int w, int h)
 	int ch = left / ((R.cpu.ncpu + cols - 1) / cols);
 	if (ch < 1)
 		ch = 1;
+	/* An offline CPU keeps its slot, so the numbers under the graphs stay
+	 * the kernel's; it is drawn empty rather than as an idle core, which a
+	 * zeroed history is indistinguishable from. */
 	for (int i = 0; i < R.cpu.ncpu; i++) {
 		int cx = x + 1 + (i % cols) * cw;
 		int cy = row + (i / cols) * ch;
@@ -174,6 +186,10 @@ void res_draw_cpu(int x, int y, int w, int h)
 			break;
 		char lbl[16];
 		snprintf(lbl, sizeof(lbl), "%d", i);
+		if (R.cpu.online && !R.cpu.online[i]) {
+			ktui_draw_text(cx, cy, cw - 1, lbl, KT_DIM, KT_BG, 0);
+			continue;
+		}
 		res_graph(100 + i, krect(cx, cy, cw - 1, ch), &R.h_core[i],
 			  lbl, NULL);
 	}

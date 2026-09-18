@@ -1,0 +1,8 @@
++= NetworkManager ===========================================+
+| Home Wifi                                                  |
+| will not take the saved passphrase.                        |
+|                                                            |
+| _                                                          |
+|                                                            |
+| Enter connect  Esc cancel          [ Cancel ]  [ Connect ] |
++============================================================+

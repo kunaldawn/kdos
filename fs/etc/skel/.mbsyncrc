@@ -1,0 +1,59 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# mbsync's configuration, and the machine ships it EMPTY OF ACCOUNTS. A row
+# here would be a mailbox somebody else chose.
+#
+# EMPTY LINES DELIMIT SECTIONS — that is mbsync's own rule, not a style. When
+# you uncomment a block below, keep its lines adjacent and keep the blank line
+# between blocks, or the Channel lands in the Store above it and mbsync
+# reports a key it does not understand.
+#
+# THE MAILDIR ROOT IS ~/Mail AND THREE PROGRAMS AGREE ON IT: mbsync writes
+# there, ~/.config/notmuch/default/config indexes there, and an aerc account
+# reads there. Move it here and you move it in all three, or the index is of a
+# directory nothing fills.
+#
+# THIS FILE IS MODE 600 because PassCmd's output is a password and a Pass line
+# is one outright. `notmuch new` runs `mbsync -a` from its pre-new hook, so
+# once a Channel below is live, fetching is something you never type.
+#
+# NO XOAUTH2. isync reaches it only through cyrus-sasl, which this image does
+# not carry, so an account whose provider has withdrawn application passwords
+# cannot be synchronised by this binary at all.
+
+# Defaults for every Channel that does not say otherwise. Expunge None keeps a
+# deletion local until you ask for it; Create Both lets either side make a
+# folder the other has.
+#Expunge None
+#Create Both
+
+#MaildirStore local
+#Path ~/Mail/
+#Inbox ~/Mail/INBOX
+#SubFolders Verbatim
+
+#IMAPStore mail
+#Host imap.example.org
+#User you@example.org
+#PassCmd "pass show mail/example.org"
+#TLSType IMAPS
+#CertificateFile /etc/ssl/certs/ca-certificates.crt
+
+#Channel mail
+#Far :mail:
+#Near :local:
+#Patterns *
+#SyncState *
+
+# `mbsync -a` runs every Channel in every Group. The pre-new hook calls exactly
+# that, so a Channel added here needs nothing else to be fetched.
+#Group all
+#Channels mail

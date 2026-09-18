@@ -12,12 +12,74 @@ calls the compiler; and ChangeLog, NEWS, INSTALL, bb.lsm, README.LZO.
 
 KDOS changes, all applied in place because this is our source now:
 
+  bb.c      timestuff() paces the DRAW on a DEADLINE GRID of one frame per
+            16ms. A scene states a rate for its control and never for its
+            picture, and one draw was 25ms on the hardware this was written
+            for, so the loop paced itself; here it draws as fast as the
+            machine turns it -- 5000 to 15000 frames a second in a fifty-
+            column window, 17 MB/s of escape sequences for a display that
+            shows sixty. The pty then never empties, every write comes apart
+            mid-frame, and the terminal composes a window from a screen it
+            has half received.
+            THE GRID IS WHAT MAKES IT A CAP AT EVERY SCREEN SIZE. Timed from
+            the END of a draw the period is 16ms PLUS the draw, and the draw
+            grows with the screen -- 0.46ms at 80x25 against 1.35ms at
+            240x67 -- so the period grows past the one thing it must stay
+            under: 1000000/60, the interval fourteen scenes state for their
+            control. A waitmode scene draws only on a turn its control fired,
+            so a period over the control's refuses every other tick and the
+            next chance is a whole interval later. Measured over 40s of one
+            scene, end-of-draw against deadline: 59.1/49.1/31.0 fps at
+            80x25/106x33/240x67 against 60.6/60.6/60.6, and frames held 25ms
+            or longer 0.2%/23.5%/93.9% against 0.1% at all three. At 106x33
+            there is nothing at all between 18ms and 30ms -- the bimodal
+            16.7/33.3 alternation an eye reads as judder. It is a GATE and
+            not a cost: one draw is 1.35ms against a 16ms budget.
+            SIXTEEN, because 666us under 1000000/60 is the margin that keeps
+            the deadline from ever being AHEAD of the control tick it is
+            checked against, and because the consumers' floors differ -- the
+            console session composes on CON_FRAME_MS = 16, while kdos-term on
+            Wayland has no constant and takes the output's 16.667. A producer
+            past a floor beats against it at the difference. Further under is
+            surplus nobody composes, further over is the halved rate.
+            A DEADLINE MORE THAN A WHOLE PERIOD BEHIND IS MOVED, never
+            chased: a stall must cost one late frame and not a burst of every
+            frame it missed. AND NOTHING TESTS THE GAP FOR GOING BACKWARDS --
+            the int subtraction is modular, so the turnover reads as the
+            small number it is (driven across it: 61.8 fps unbroken, no gap
+            over 18ms), and the servo cannot produce a negative gap because
+            its trim is capped at a fraction of the time that really passed.
+            THE CONTROL KEEPS ITS OWN RATE -- a handler is told how many
+            intervals it covers -- so no scene is a microsecond longer and
+            the music stays in step: measured under a pty, stage 1+2 reaches
+            the credits at 311.740156s against 311.740147s.
+            EVERY FRAME IS BRACKETED IN SYNCHRONIZED OUTPUT (DECSET 2026) by
+            bbflush(), and nothing calls aa_flush() directly. aalib hands the
+            frame to ncurses' refresh(), which writes ONE write() PER SCREEN
+            ROW -- 69 writes and 17.2 KB at 236x63 against a pty that holds
+            12288 -- so a full-screen frame cannot cross in one piece however
+            this is written, and a consumer composing on its own clock reads
+            half of two frames. The bracket is the fix precisely because the
+            write cannot be made atomic. It goes to stdout, the stream
+            aalib's curses driver is initscr()'d on, with both ends flushed,
+            and only when stdout is a terminal. The consumer half is
+            kvt_term_sync_hold() under a 150ms watchdog, so a producer that
+            sets the hold and dies cannot freeze a window, and a terminal
+            that honours neither ignores a private mode it does not know.
+            Measured at 236x63: 741 frames, 100.00% of bytes inside a
+            bracket, zero nesting errors, biggest bracketed frame 20178 B.
   main.c    the mixer runs on its own thread. Upstream pumped MikMod_Update
             from a 10ms timer in the same group bbwait() pumps, and bbwait()'s
             caller has just blocked in aa_flush() writing the frame to the
             terminal — so under a compositor the audio starved whenever the
             window was actually being drawn, and was perfect when it was
-            minimised.
+            minimised. The thread sleeps to an ABSOLUTE deadline, so the
+            update is inside the 10ms period rather than added to it, and a
+            deadline already past is moved rather than chased -- catching up
+            is a SCHED_FIFO thread that does not sleep. It records its worst
+            unscheduled gap and never prints one: stderr here is the terminal
+            the demo draws on, and a real-time thread blocked in write() is
+            the very stall the instrument is looking for.
   tex.c     clear_zbuff() cleared sizeof(long) per cell against a sizeof(int)
             allocation. The same size in 1997, double on x86_64: the heap
             corrupts and stage 2 aborts on "malloc(): corrupted top size".
@@ -49,14 +111,89 @@ own mark in the two beats that already spend time on a logo.
             the four slots after the last contributor, and the pointer that
             named README now names this file, which is the one that exists.
   credits2.c the mascot in the extro's logo beat, and THE CLOSING TEXT
-            SCROLLS ITSELF. It was a pager that waited on a keypress, so the
-            demo ended by sitting still until somebody noticed. It now asks
-            the player where it is and places the text at the same fraction
-            of its own length, landing on the last page just before bb3.s3m
-            ends. Any key hands control back for good -- a scroll that pulled
-            the page out from under a reader would be worse than none.
-            The module LOOPS (update_sound restarts it), so a fraction that
-            went backwards is read as "the song is over".
+            SCROLLS ITSELF, A SCREEN AT A TIME. It was a pager that waited on
+            a keypress, so the demo ended by sitting still until somebody
+            noticed. It now asks the player where it is and turns to the page
+            that fraction of the way through, landing on the last page just
+            before bb3.s3m ends. Any key hands control back for good -- a
+            scroll that pulled the page out from under a reader would be
+            worse than none. The module LOOPS (update_sound restarts it), so
+            a fraction that went backwards is read as "the song is over".
+            A SCREEN AND NEVER A LINE: every step of `p` costs a morph, a
+            whole second of cross-fade, and the document is some fifteen
+            screens against four and a half minutes -- a line at a time asks
+            for one every three quarters of a second, the morph never lands,
+            and nothing on the page can be read. Measured at 106x33: 16
+            turns, 16.4s a page, 1s of it the morph.
+  main.c    sound_sync() is a SERVO and not only a report: the scene clock
+            follows the player. A scene runs to an absolute deadline, so time
+            the machine loses is paid in skipped frames -- but the module
+            advances one tick per tick inside the mixer, every rendered
+            sample is written and the player is never seeked forward, so a
+            moment the card spends not playing is a moment the picture took
+            and the music did not, and the gap only ever grows.
+            THE CORRECTION IS A RATE AND NOT A LUMP, because bb.c paces the
+            next frame off the clock the correction bends: a step handed over
+            whole lands inside ONE frame interval and that frame is as long
+            as the step -- 10ms against a 16ms budget is a frame taking 27,
+            and the corrections were 99.6% of the variance in the frame
+            interval. So the error against module->sngtime is LOOKED AT every
+            200ms and PAID OUT on every call, each call taking the slice the
+            time since the previous one is worth, clamped to 5% of that same
+            time. Measured on a replica over 280s of scene clock losing 85ms
+            of audio every 3s: frame interval sd 1.802ms -> 0.377ms, p2p
+            11.385 -> 5.773, doubled frames 1.81/s -> 0.00/s, 4.9
+            corrections/s of 9883us -> 258.0/s of 162us (worst 10797us ->
+            775us), and the drift unchanged at +0.100s. Over 1200s, +0.030s
+            either way at sd 1.809ms against 0.379ms: the drift is BOUNDED
+            and not merely small, and what varies run to run is the phase the
+            track started at, which is one quantum and is kept on purpose.
+            The limit has a
+            floor, because what is rendered and what is played are not the
+            same second and the emulated card this is tested against
+            disagrees by 1.2% steadily; the phase each track started with is
+            KEPT, because what is heard trails what is rendered by rings this
+            program cannot measure.
+            sngtime IS A STAIRCASE AND NOT A CLOCK, which is what the servo
+            would otherwise saturate on: it moves one whole mixer buffer at a
+            time -- a 90.0ms riser every 97.7ms at the shipped quantum, with
+            88.3% of the mixer's 10ms ticks advancing it by nothing at all --
+            so a servo fed the raw reading applied 5.37 corrections/s of
+            7.74ms against a true disagreement of 0.12%. The reading is
+            carried forward from the last step seen and AT MOST ONE RISER,
+            past which the player has stopped rather than paused between
+            buffers and the stall must stay visible; what is left is smoothed
+            at 10% per look, about two seconds of memory. Across a quantum
+            sweep of 0 to 170ms the frame sd stays 0.371-0.405ms, and a 500ms
+            stall every 30s gives 0.481ms. THERE IS NO DEADBAND: a 2ms one
+            buys no drift at all (+0.101s against +0.100s over 280s, +0.030s
+            against +0.030s over 1200s) and costs the picture (p2p 18.941ms
+            against 5.773ms, and 10.028 against 7.462), because forgiving a
+            small error is forgiving the drift the servo exists to remove.
+            IT REMOVES PHASE AND NOT ONLY RATE, which turns entirely on
+            `base`: the rate would clear an error standing still in one
+            interval, but the 5% clamp leaves the rest of a large one for the
+            next look to carry, and `base` is what remembers it. Exactly
+            two things may re-peg it -- a track that started or restarted, and
+            the scene clock's int turnover -- and a third is a bug that shows
+            as the demo ending seconds away from its music rather than as a
+            bad frame. So the interval, the average and the turnover are all
+            measured on the RAW reading, TIME plus everything the servo has
+            handed tl_slowdown_timer(): a clock the servo is bending is a
+            ruler the servo is stretching, so the trim under-pays by exactly
+            the rate it is correcting. Measured over the same 280s, +11.980s
+            of drift timed on TIME against +0.100s timed on the raw reading.
+            And sound_clock() answers -1 until play() has started the player,
+            because Player_Load() leaves sngtime at zero and so does the first
+            tick -- bb.s3m is loaded 24s of scene clock before scene1() plays
+            it, and a standing zero across that window reads as a player 24s
+            behind. song_progress() is the wrong position for it -- its
+            rows-per-pattern is nominal and its skew is the MODULE's: bb.s3m
+            reads up to 14 thousandths high, bb3.s3m 13 low and shrinking,
+            bb2.s3m 63 low and growing, and a measured table per track is in
+            kdos-bb.md. Under KDOS_BB_DEBUG the line also carries `held`,
+            the whole correction so far and therefore the audio time this
+            machine has lost, and the mixer's worst unscheduled gap.
   textform.c the closing document gains what KDOS is and what this fork
             changed, and loses the claims that were no longer true.
   kdostux.c kdos.png as an LZO-compressed greyscale image in the format

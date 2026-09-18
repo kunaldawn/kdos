@@ -1,0 +1,8 @@
+ssh	on	incoming SSH (70_sshd.sh)
+http	off	a web server on this machine
+https	off	a TLS web server on this machine
+ipp	on	sharing a printer with CUPS
+smb	off	sharing files over SMB
+kiwix	off	kiwix-serve
+mdns	off	mDNS beyond the default rule
+ok

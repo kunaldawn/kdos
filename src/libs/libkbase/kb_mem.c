@@ -36,12 +36,19 @@ const char *kb_progname(void)
 	return prog;
 }
 
+/*
+ * The format is GUARDED in both of these. vfprintf with a null format is
+ * undefined, and the sanitiser build's interprocedural pass cannot prove one
+ * non-null across a whole program compiled in a single line — so without the
+ * guard `-Wformat-overflow` refuses to build the self-test at all.
+ */
 void kb_die(const char *fmt, ...)
 {
 	va_list ap;
 	fprintf(stderr, "%s: ", prog);
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	if (fmt)
+		vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	fputc('\n', stderr);
 	exit(1);
@@ -52,7 +59,8 @@ void kb_warn(const char *fmt, ...)
 	va_list ap;
 	fprintf(stderr, "%s: ", prog);
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	if (fmt)
+		vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	fputc('\n', stderr);
 }
@@ -67,6 +75,26 @@ void *kb_calloc(size_t n, size_t sz)
 		_exit(1);
 	}
 	return p;
+}
+
+/*
+ * Growth with the same OOM policy as kb_calloc, and therefore the same
+ * promise: it never returns NULL, so a grow loop needs no failure branch.
+ * The new tail is NOT zeroed — the callers here are buffers that write over
+ * it immediately and terminate it themselves, and zeroing a region about to
+ * be read into is the whole cost this replaces.
+ */
+void *kb_realloc(void *p, size_t n)
+{
+	void *np = realloc(p, n);
+
+	if (!np && n) {
+		if (oom_hook)
+			oom_hook();
+		fprintf(stderr, "%s: out of memory\n", prog);
+		_exit(1);
+	}
+	return np;
 }
 
 char *kb_strdup(const char *s)

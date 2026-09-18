@@ -344,15 +344,15 @@ int slit_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * A PANEL on the right edge, not an overlay: the exclusive zone
 		 * is the whole point. A column of gadgets that windows can
 		 * cover is a column nobody sees, and the zone is what a
 		 * maximised window is kept out of.
 		 */
-		.role = KWL_ROLE_PANEL,
-		.edge = KWL_EDGE_RIGHT,
+		.role = KDISP_ROLE_PANEL,
+		.edge = KDISP_EDGE_RIGHT,
 		.cells = sl_width,
 		.exclusive = 1,
 		.app_id = "kdos-slit",
@@ -363,7 +363,7 @@ int slit_main(int argc, char **argv)
 		 * a gadget refreshed would be unusable. */
 	};
 
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-slit: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -375,7 +375,7 @@ int slit_main(int argc, char **argv)
 
 	sl_tick(time(NULL));
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
@@ -400,6 +400,6 @@ int slit_main(int argc, char **argv)
 		sl_tick(time(NULL));
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

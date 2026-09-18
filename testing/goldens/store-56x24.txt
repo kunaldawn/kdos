@@ -1,0 +1,24 @@
++= Applications =======================================+
+| Applications                                         |
+| 184 applications, 7 groups                           |
+|------------------------------------------------------|
+|  Groups       All          Graphics     AudioVideo   |
+|      GROUP                          APPS   SIZE~     |
+| ---------------------------------------------------- |
+| [ ]  What a new machine starts with 5      442M      |
+| [ ]  Documents, spreadsheets and re 8      1.1G      |
+| [ ]  Images, audio and video        10     1.6G      |
+| [ ]  Programming and electronics    8      1.0G      |
+| [ ]  Computation, modelling and dat 9      2.0G      |
+| [ ]  Three dimensions: model it, sl 8      1.4G      |
+| [ ]  Games and emulators            13     1.8G      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|------------------------------------------------------|
+| 2 of 184 installed . space ticks, F5 builds them     |
+| Space tick  Enter tick group  F5 install ticked      |
+|         [ Install ] [ Import ] [ Export ] [ Close ]  |
++======================================================+

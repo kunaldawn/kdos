@@ -1,0 +1,5 @@
+network ipp://BRW9C305B123456.local:631/ipp/print
+network dnssd://HP%20LaserJet%20M15w._ipp._tcp.local/
+direct usb://Brother/DCP-L2540DW?serial=U63912H5N123456
+serial serial:/dev/ttyS0?baud=115200
+file cups-pdf:/

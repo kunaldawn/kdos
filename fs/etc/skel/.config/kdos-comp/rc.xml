@@ -113,6 +113,7 @@
     <keybind key="W-Tab"><action name="NextWindow"/></keybind>
     <keybind key="W-S-Tab"><action name="PreviousWindow"/></keybind>
     <keybind key="W-l"><action name="Execute" command="kdos-lock"/></keybind>
+    <keybind key="W-S-l"><action name="Execute" command="kdos-saver"/></keybind>
 
     <!-- new with the fork: maximize / fullscreen finally exist -->
     <keybind key="W-m"><action name="ToggleMaximize"/></keybind>
@@ -125,9 +126,34 @@
          otherwise, and the desktop is not always reachable — a maximised
          window covers all of it. atCursor="no" puts it where the pointer is
          NOT, which is the right answer for a menu opened by a key. -->
-    <keybind key="W-space">
-      <action name="ShowMenu" menu="root-menu" atCursor="no"/>
-    </keybind>
+<!-- One search over everything the desktop can reach, on the chord a
+         keyboard reaches for. This was labwc's own root menu, which is what
+         the RIGHT BUTTON on the desktop opens and what the Start button
+         opens — a pointer wants rows and a keyboard wants a search, so the
+         two are not the same thing on the same key. The console binds the
+         same chord, so there is one key card rather than two. -->
+    <keybind key="W-space"><action name="Execute" command="kdos-palette"/></keybind>
+
+    <!-- The capture group, opened at its own routes, for the verbs that have
+         no chord of their own — a QR on the screen decoded to the clipboard,
+         a sound recording. The palette is seeded with the group name rather
+         than a second menu being written for it. The console binds the same
+         chord, so there is one key card rather than two. -->
+    <keybind key="W-C-c"><action name="Execute" command="kdos-palette --route capture"/></keybind>
+
+    <!-- And the setting-up group, on the same shape. Eleven panels have a
+         chord of their own; the printers, the users and the clock do not, and
+         this is how they are reached without eleven more keys. The console
+         binds the same chord, so there is one key card rather than two. -->
+    <keybind key="W-C-h"><action name="Execute" command="kdos-palette --route setup"/></keybind>
+
+    <!-- THE BAR, AWAY AND BACK. The console's session owns its own bar and
+         takes its row out of the work area; here the panel drops its exclusive
+         zone, which gives the strip back to the windows and re-fits every one
+         of them. The same chord and the same verb on both desktops, because a
+         chord that hid one bar and left the other would mean two different
+         things on two machines. -->
+    <keybind key="W-S-space"><action name="Execute" command="kdos panel toggle"/></keybind>
 
     <!-- The notification CENTRE. A toast that expired used to be gone; the
          daemon keeps a history now and this is the way back to it, which
@@ -138,15 +164,171 @@
 
     <!-- the three shell front ends that had no way in until now -->
     <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
-    <keybind key="W-e"><action name="Execute" command="foot -e mc"/></keybind>
+
+    <!-- ONE KEY PER PROGRAM: raise the window running it, or start it.
+         ForEach runs its <then> on every view matching the <query> and its
+         <none> when nothing matched, so the key does both halves — it is
+         fluxbox's ClientPattern language and labwc already has it compiled in.
+         The <query identifier> is the app_id, which for a terminal program is
+         what `foot`'s app-id argument was given: the program's own name,
+         not `foot`.
+         The console session binds the same seven chords to the same seven
+         roles; con.conf names the programs there and this file names them
+         here, and a person who learns Super+e on one desktop must not have to
+         unlearn it on the other.
+
+         A ROW WHOSE PROGRAM IS NOT INSTALLED IS DROPPED FROM THE KEY CARD,
+         which reads the identifier out of the query. The key stays bound and
+         opens nothing, which is what a key naming a program you removed
+         should do. -->
+    <keybind key="W-e">
+      <action name="ForEach">
+        <query identifier="mc"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e mc"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-e">
+      <action name="ForEach">
+        <query identifier="aerc"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e aerc"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-b">
+      <action name="ForEach">
+        <query identifier="lynx"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e lynx"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-u">
+      <action name="ForEach">
+        <query identifier="rmpc"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e rmpc"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-c">
+      <action name="ForEach">
+        <query identifier="ikhal"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e ikhal"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-g">
+      <action name="ForEach">
+        <query identifier="iamb"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e iamb"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-w">
+      <action name="ForEach">
+        <query identifier="micro"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e micro"/></none>
+      </action>
+    </keybind>
+    <!-- THE SCRATCHPAD, and it is one flag on two desktops. The console
+         session keeps one window sticky and hidden and shows it with
+         Super+grave; here the flag is omnipresence, which is the same
+         statement — the view belongs to no workspace, so it is on the one you
+         are looking at. Pressing the key again takes the flag off, and the
+         view goes back to the workspace it was opened on.
+
+         THE QUERY NAMES A MARKER AND NOT A PROGRAM. `kdos-scratchpad` is the
+         app id `foot` is started under, which is what makes exactly one window
+         the scratchpad and no other terminal one. The key card reads a
+         <query identifier> as a program only when the container begins with
+         Focus, which is the run-or-raise shape above; this one begins with
+         ToggleOmnipresent and is kept whatever is installed. -->
+    <keybind key="W-grave">
+      <action name="ForEach">
+        <query identifier="kdos-scratchpad"/>
+        <then>
+          <action name="ToggleOmnipresent"/>
+          <action name="Raise"/>
+          <action name="Focus"/>
+        </then>
+        <none>
+          <action name="Execute" command="foot --app-id kdos-scratchpad"/>
+        </none>
+      </action>
+    </keybind>
     <!-- The screens. labwc takes its output configuration over
          wlr-output-management-v1 and KDOS had no client for it, so a mode, a
          scale or a second monitor's place could not be set at all. Both keys,
          because a laptop's own display key is the one people press. -->
     <keybind key="W-p"><action name="Execute" command="kdos-display"/></keybind>
     <keybind key="XF86Display"><action name="Execute" command="kdos-display"/></keybind>
-    <keybind key="Print"><action name="Execute" command="kdos-shot region"/></keybind>
-    <keybind key="S-Print"><action name="Execute" command="kdos-shot screen"/></keybind>
+    <!-- Print is the WHOLE SCREEN and its shifted form is the rectangle. The
+         console binds the same three, and there the bare key cannot be the
+         rectangle: a region is drawn with the session's own rubber band and a
+         bare Print has nothing to draw with. One key card serves both
+         desktops, so the graphical side follows. Alt starts the recording and
+         stops it — one screen, one portal session, so a second recording is
+         not something to want. -->
+    <keybind key="Print"><action name="Execute" command="kdos-shot screen"/></keybind>
+    <keybind key="S-Print"><action name="Execute" command="kdos-shot region"/></keybind>
+    <keybind key="A-Print"><action name="Execute" command="kdos-record"/></keybind>
+
+    <!-- AND THE Super FORM OF THE RECTANGLE, because Print reaches a keyboard
+         and nothing else: over ssh and in a terminal view there is no Print key
+         to press, and the console binds this chord for exactly that reason. One
+         key card serves both desktops, so the chord that works everywhere is
+         bound on both. -->
+    <keybind key="W-S-p"><action name="Execute" command="kdos-shot region"/></keybind>
+
+    <!-- THE TRANSPORT KEYS. A keyboard that has them expects them to work on
+         either desktop, and `kdos-mpctl` is the one caller of MPRIS here — the
+         same four commands `con.conf` names, so a key does the same thing on
+         both machines. Volume and brightness are labwc's own defaults and are
+         not restated. -->
+    <keybind key="XF86AudioPlay"><action name="Execute" command="kdos-mpctl toggle"/></keybind>
+    <keybind key="XF86AudioStop"><action name="Execute" command="kdos-mpctl stop"/></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="kdos-mpctl next"/></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="kdos-mpctl prev"/></keybind>
+
+    <!-- The time and the battery, as notices. The panel shows both while it is
+         up; these are for when it is not, and for the console beside this,
+         which puts its bar away on Super+Shift+d. Three modifiers because
+         neither is pressed often enough to earn a shorter chord. The console
+         binds the same two, so there is one key card. -->
+    <keybind key="W-C-A-t"><action name="Execute" command="kdos notify --time"/></keybind>
+    <keybind key="W-C-A-b"><action name="Execute" command="kdos notify --battery"/></keybind>
+
+    <!-- Remind me. The plain chord opens a one-row prompt whose line is what a
+         person would have typed at a shell; the reminder is a job in
+         ~/.config/kdos/timers.d, so it survives a logout, and it is delivered
+         once. Listing and clearing take a modifier more, so a hand reaching
+         for the prompt cannot forget the lot. -->
+    <keybind key="W-C-r"><action name="Execute" command="kdos remind --ask"/></keybind>
+    <keybind key="W-C-A-r"><action name="Execute" command="kdos remind ls"/></keybind>
+    <keybind key="W-C-S-r"><action name="Execute" command="kdos remind clear"/></keybind>
+
+    <!-- The notices already on the screen, on one letter: a toast interrupts,
+         so the chord that puts one away is the cheapest on the keyboard and the
+         three that do more to them are its modified forms. W-A-x is the undo
+         for W-x pressed a moment too early, and it comes back without its
+         buttons — the notification it came from is closed and its actions
+         belong to the program that sent it. Each is one line down the
+         notification daemon's own socket. The console binds the same four, so
+         there is one key card. -->
+    <keybind key="W-x"><action name="Execute" command="kdos notify --dismiss"/></keybind>
+    <keybind key="W-S-x"><action name="Execute" command="kdos notify --dismiss-all"/></keybind>
+    <keybind key="W-C-x"><action name="Execute" command="kdos notify --dnd"/></keybind>
+    <keybind key="W-A-x"><action name="Execute" command="kdos notify --raise"/></keybind>
+
+    <!-- Never lock or blank on idle, and again to let it. Named for the file it
+         sets: one switch in one place. -->
+    <keybind key="W-C-i"><action name="Execute" command="kdos toggle stay-awake"/></keybind>
+
+    <!-- Warm the palette, and again to cool it. NOT on W-C-n, which is the
+         scratch pad's on both desktops and has been since either had
+         accessories: a chord a person already knows here is worth more than one
+         that matches another desktop's defaults. -->
+    <keybind key="W-C-S-n"><action name="Execute" command="kdos toggle night-light"/></keybind>
 
     <keybind key="W-1"><action name="GoToDesktop" to="1"/></keybind>
     <keybind key="W-2"><action name="GoToDesktop" to="2"/></keybind>
@@ -218,6 +400,10 @@
     <keybind key="W-C-Right"><action name="GrowToEdge" direction="right"/></keybind>
     <keybind key="W-C-Up"><action name="GrowToEdge" direction="up"/></keybind>
     <keybind key="W-C-Down"><action name="GrowToEdge" direction="down"/></keybind>
+    <!-- The next workspace somebody is using, in either direction: nine of
+         them reached only by number is nine keys for a person who uses two. -->
+    <keybind key="W-Page_Up"><action name="GoToDesktop" to="left"/></keybind>
+    <keybind key="W-Page_Down"><action name="GoToDesktop" to="right"/></keybind>
 
     <!-- The keybind cheat sheet, generated from THIS file. -->
     <keybind key="W-F1"><action name="Execute" command="kdos-keys"/></keybind>
@@ -235,25 +421,55 @@
          keyboard, and it is deliberately NOT W-d — the launcher is a search
          box and this is a menu, and conflating them would cost one of them. -->
     <keybind key="W-a"><action name="Execute" command="kdos-start"/></keybind>
+    <!-- And the F-key twins the console's function-key taskbar names. That row
+         labels the chord rather than binding a bare key — a bare F7 belongs to
+         the program in the window — so the chord it labels has to exist on
+         both desktops or the label is true on one of them only. -->
+    <keybind key="W-F10"><action name="Execute" command="kdos-start"/></keybind>
+    <keybind key="W-F7"><action name="Execute" command="kdos-launcher"/></keybind>
     <!-- The device managers. Everything they drive has been running here
          since before there was a desktop; what was missing was a way in. -->
     <keybind key="W-F4"><action name="Execute" command="kdos-net"/></keybind>
     <keybind key="W-F5"><action name="Execute" command="kdos-bt"/></keybind>
     <keybind key="W-F6"><action name="Execute" command="kdos-devices"/></keybind>
 
-    <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
-         <then> on every view matching the <query> (identifier is the app_id,
-         globs allowed) and <none> when nothing matched — fluxbox's
-         ClientPattern language, already compiled in. One key, one terminal:
+    <!-- The two surfaces that had no chord on either desktop. A power page and
+         a system monitor are what a person reaches for while something is
+         going wrong, and both were reachable only from the Start menu. The
+         console binds the same two, so there is one key card. -->
+    <!-- Tile, cascade and keyboard rearrange are the CONSOLE'S ALONE and the
+         card says so. labwc has no tile-all or cascade action and its
+         MoveResize is not the same interaction, so binding W-S-t to the
+         nearest thing here would make one chord mean two different things on
+         the two desktops — which is the one rule this file and keys.conf
+         exist to keep. W-F2 already opens kdos-teams above, which is the
+         window list the console's Super+F2 draws for itself. -->
+    <keybind key="W-C-p"><action name="Execute" command="kdos-energy"/></keybind>
+    <keybind key="W-C-t"><action name="Execute" command="kdos-res"/></keybind>
 
-    <keybind key="W-grave">
-      <action name="ForEach">
-        <query identifier="foot"/>
-        <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot"/></none>
-      </action>
-    </keybind>
-    -->
+    <!-- The desk accessories, the same chords the console binds. Summoned over
+         whatever is on the screen and dismissed leaving it untouched, which is
+         what Sidekick sold a million copies of in 1984 and what a layer
+         surface already is. -->
+    <keybind key="W-C-q"><action name="Execute" command="kdos-calc"/></keybind>
+    <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
+    <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
+    <keybind key="W-C-e"><action name="Execute" command="kdos-chars"/></keybind>
+    <keybind key="W-C-b"><action name="Execute" command="kdos-contacts"/></keybind>
+    <!-- Find, and Shift because W-f is fullscreen on both desktops: a search
+         one slip from covering the screen is the wrong trade. The console
+         binds the same chord, so there is one key card rather than two. -->
+    <keybind key="W-S-f"><action name="Execute" command="kdos-find"/></keybind>
+    <!-- The accent picker, and Space with three modifiers on purpose: it
+         repaints the whole desktop live under the hand as the highlight
+         moves, so it must be hard to press by accident. The console binds
+         the same chord, so there is one key card rather than two. -->
+    <keybind key="W-C-S-space"><action name="Execute" command="kdos-style"/></keybind>
+    <!-- The console desktop's character-art ground. Bound here so one key card
+         serves both desktops and the chord means the same thing on each; under
+         the compositor the wallpaper is a PNG and this changes nothing that is
+         on the screen. -->
+    <keybind key="W-C-space"><action name="Execute" command="kdos background next"/></keybind>
 
 
     <!-- media keys: keysyms that exist only on those keys, safe unmodified.

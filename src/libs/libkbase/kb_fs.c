@@ -36,18 +36,20 @@ char *kb_read_all(const char *path, size_t *len)
 	/* st_size is a HINT, not the length. Every file under /proc reports 0 —
 	 * reading to st_size returns an empty string for /proc/mounts and
 	 * /proc/self/mountinfo, which reads as "nothing is mounted". So the
-	 * size only sizes the first allocation; the loop runs to real EOF. */
-	size_t cap = st.st_size > 0 ? (size_t)st.st_size : 4096;
+	 * size only sizes the first allocation; the loop runs to real EOF.
+	 *
+	 * One byte OVER st_size, so a file of exactly that length leaves the
+	 * buffer short of full and the next read returns 0 without a growth.
+	 * Sized to st_size exactly, every regular-file read doubles once and
+	 * copies the whole file for nothing — three times the file's size in
+	 * anonymous memory on a pack that runs to hundreds of megabytes. */
+	size_t cap = st.st_size > 0 ? (size_t)st.st_size + 1 : 4096;
 	char *buf = kb_calloc(1, cap + 1);
 	size_t got = 0;
 	for (;;) {
 		if (got == cap) {
-			size_t ncap = cap * 2;
-			char *nb = kb_calloc(1, ncap + 1);
-			memcpy(nb, buf, got);
-			free(buf);
-			buf = nb;
-			cap = ncap;
+			cap *= 2;
+			buf = kb_realloc(buf, cap + 1);
 		}
 		ssize_t r = read(fd, buf + got, cap - got);
 		if (r < 0) {
@@ -231,16 +233,12 @@ void kb_buf_add(KbBuf *b, const void *s, size_t n)
 		size_t cap = b->cap ? b->cap : 4096;
 		while (cap < b->n + n + 1)
 			cap *= 2;
-		char *np = kb_calloc(1, cap);
-		/* memcpy's second argument is declared never-null, so copying
-		 * zero bytes from a NULL b->p — true on a KbBuf's first ever
-		 * growth, straight out of a {0} initializer — is undefined
-		 * behaviour even though every real implementation tolerates
-		 * it. UBSan catches it on the very first kb_buf_add call. */
-		if (b->n)
-			memcpy(np, b->p, b->n);
-		free(b->p);
-		b->p = np;
+		/* Extended, not copied: realloc usually grows in place, and
+		 * nothing here depends on the tail being zero — the terminator
+		 * below is written explicitly on every append. Accumulating a
+		 * megabyte through calloc-and-copy zeroes and copies several
+		 * megabytes that are then overwritten. */
+		b->p = kb_realloc(b->p, cap);
 		b->cap = cap;
 	}
 	memcpy(b->p + b->n, s, n);
@@ -315,4 +313,115 @@ void kb_json_str(KbBuf *b, const char *s)
 		}
 	}
 	kb_buf_add(b, "\"", 1);
+}
+
+/*
+ * The one reader of a desktop toggle. See kbase.h.
+ *
+ * The path is rebuilt on each call rather than kept: the whole point of a flag
+ * file is that another process owns the answer, and a cached path would be the
+ * one place this could still go stale after $HOME changed under a program that
+ * re-execs.
+ */
+int kb_state_path(const char *rel, char *out, size_t n)
+{
+	const char *state = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+
+	if (!rel || !*rel || !out || !n)
+		return 0;
+	if (state && *state)
+		return snprintf(out, n, "%s/%s", state, rel) < (int)n;
+	if (home && *home)
+		return snprintf(out, n, "%s/.local/state/%s", home, rel)
+		       < (int)n;
+	return 0;
+}
+
+static int toggle_path(const char *name, char *out, size_t n)
+{
+	char rel[256];
+
+	if (!name || !*name)
+		return 0;
+	if (snprintf(rel, sizeof(rel), "kdos/toggles/%s", name) >=
+	    (int)sizeof(rel))
+		return 0;
+	return kb_state_path(rel, out, n);
+}
+
+int kb_toggle_on(const char *name)
+{
+	char path[512];
+
+	if (!toggle_path(name, path, sizeof(path)))
+		return 0;
+	return access(path, F_OK) == 0;
+}
+
+int kb_toggle_set(const char *name, int on)
+{
+	char path[512];
+	char *slash;
+	int fd;
+
+	if (!toggle_path(name, path, sizeof(path)))
+		return -1;
+	if (!on)
+		return unlink(path) == 0 || errno == ENOENT ? 0 : -1;
+
+	slash = strrchr(path, '/');
+	if (slash) {
+		*slash = '\0';
+		kb_mkdir_p(path);
+		*slash = '/';
+	}
+	fd = open(path, O_WRONLY | O_CREAT, 0644);
+	if (fd < 0)
+		return -1;
+	close(fd);
+	return 0;
+}
+
+/* See kbase.h. The FIRST entry only: the variable is a preference order and
+ * the desktop actually running is the one at its head — honouring the rest
+ * would let a session inherit choices made for a desktop it merely resembles. */
+int kb_desktop_prefix(char *out, size_t n)
+{
+	const char *d = getenv("XDG_CURRENT_DESKTOP");
+	size_t i = 0;
+
+	if (!out || n == 0)
+		return 0;
+	out[0] = '\0';
+	if (!d || !*d)
+		return 0;
+	for (; d[i] && d[i] != ':' && i + 1 < n; i++)
+		out[i] = (char)((d[i] >= 'A' && d[i] <= 'Z') ? d[i] + 32 : d[i]);
+	out[i] = '\0';
+	return i > 0;
+}
+
+/* See kbase.h. `$KDOS_CON` is set by the console session and by nothing else,
+ * which is the same test every other program in the tree uses to tell the two
+ * desktops apart. */
+const char *kb_terminal(void)
+{
+	const char *con = getenv("KDOS_CON");
+	const char *wl = getenv("WAYLAND_DISPLAY");
+
+	if (con && *con)
+		return "kdos-term";
+	if (wl && *wl)
+		return "foot";
+	/*
+	 * NEITHER EMULATOR EXISTS WITHOUT A SESSION TO OPEN IT IN. `foot` is a
+	 * Wayland client and `kdos-term` needs the console session's socket, so
+	 * a bare virtual terminal — `Ctrl+Alt+F2`, a serial console, an ssh
+	 * login — has neither. NULL is the honest answer and every caller
+	 * already has to have one: a name returned here would resolve the right
+	 * program and then fail to open a window for it, which reads as the
+	 * handler being wrong.
+	 */
+	return NULL;
 }

@@ -10,184 +10,27 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# The pack lane's packaging step, and it is almost nothing — which is the
-# point. There is no `podman load`, no flatten, no `remap-uids`, no $STORAGE
-# wipe and no libpod database surgery: every one of those five traps is a
-# consequence of shipping an IMAGE, and a pack has no equivalent of any of
-# them. A pack is a file; installing it is a mount that happens at run time,
-# performed by kdos-packd as root.
+# The pack store's directories, and optionally KDOS itself as a base pack.
 #
-# WHAT GOES INTO THE INSTALLED SYSTEM AND WHAT STAYS ON THE MEDIUM. Only the
-# `base` and the runtimes are placed in /var/lib/kdos/packs, because a box
-# cannot be composed without them and a machine with no medium in it would
-# otherwise have nothing at all. The applications stay on ISO9660 beside
-# system.sfs (02_iso.sh puts them there) and are `available` until somebody
-# asks for one — which is the whole reason an install stops costing 3.9 GB for
-# 105 applications nobody picked.
+# NOTHING IS BAKED. The medium carries a catalogue and no applications: one is
+# built by podman on the machine that asks for it, and an exported set is
+# imported through kdos-packd. So this step creates the two directories the
+# daemon needs and gets out of the way.
 #
-# A missing pack set is a warning, not an error: the monolithic image lane is
-# still there and kdos-appbox chooses between them by looking for a `base`.
+# THE STAGING DIRECTORY IS 01777 AND THAT IS THE WHOLE OF WHY IT IS HERE. It is
+# the one place an unprivileged write may land and the only argument
+# kdos-packd's `install` accepts — a filename in it and nothing else, which is
+# what keeps a daemon reachable from `wheel` from being `mount /dev/sda2 /etc`.
+# The daemon sets the mode at startup, but a first boot that inherited 0755
+# would refuse an import until the daemon had run once, which reads as the
+# feature not working.
 
 set -e
 
-# /ports, NOT /kdos/ports. chroot_exec binds $REPO_ROOT onto /kdos with a
-# non-recursive `mount --bind`, so the docker mounts UNDER it do not come along
-# — /kdos/ports is the empty directory that sat there before docker shadowed it,
-# and `ports` is bound separately at /ports for exactly this reason. Reading the
-# wrong one made this step find no PACKAGES, exit 2 from awk on a missing file
-# with `set -e`, and log nothing at all.
-SRC=/ports/appbox/packs
 STORE=/var/lib/kdos/packs
 
 mkdir -p "$STORE/staging" "$STORE/mnt"
-# The staging directory is the ONE place an unprivileged download may land, and
-# it is the only argument kdos-packd's `install` accepts — a filename in here
-# and nothing else.
 chmod 01777 "$STORE/staging"
-
-# WHICH RUNTIMES GO IN IS DECIDED BY WHAT NEEDS THEM, not by the `rt-` prefix.
-# Measured on a full bake the seven runtimes are 1.7 GB, of which rt-wine alone
-# is 713 MB — carried onto a machine that may never run a Windows binary. The
-# base plus the runtimes the RECOMMENDED applications need is what a live
-# session can actually launch; everything else arrives with its application.
-#
-# `D:` in the index is where the dependency comes from, and the closure is a
-# repeat-until-nothing-new rather than a recursion, so a chain of any depth
-# resolves and a cycle cannot spin.
-want=" base "
-if [ -f "$SRC/PACKAGES" ]; then
-    want="$want$(awk '
-        /^P:/ { id = substr($0, 3) }
-        /^D:/ { dep[id] = substr($0, 3) }
-        /^R:yes/ { rec[id] = 1 }
-        END { for (i in rec) printf "%s ", i }' "$SRC/PACKAGES")"
-    # pull in what those need, transitively
-    while :; do
-        more=$(awk -v want="$want" '
-            /^P:/ { id = substr($0, 3) }
-            /^D:/ { if (index(want, " " id " ")) print substr($0, 3) }
-        ' "$SRC/PACKAGES" | tr ' ' '\n' | sort -u)
-        added=0
-        for d in $more; do
-            case "$want" in *" $d "*) ;; *) want="$want$d "; added=1 ;; esac
-        done
-        [ "$added" = 0 ] && break
-    done
-fi
-
-# The APPLICATIONS themselves stay on the medium even when recommended: they
-# are already there, and copying one into the squashfs as well would ship it
-# twice on one ISO. What the closure is for is the runtimes UNDER them.
-kinds=$(awk '/^P:/ { id = substr($0, 3) } /^K:/ { printf "%s=%s ", id, substr($0, 3) }' \
-        "$SRC/PACKAGES" 2>/dev/null)
-
-n=0
-for p in "$SRC"/*.kpack; do
-    [ -e "$p" ] || continue
-    id=$(basename "$p" .kpack)
-    case " $kinds " in
-        *" $id=app "*|*" $id=data "*) continue ;;
-    esac
-    case "$want" in
-        *" $id "*)
-            cp -a "$p" "$STORE/$id.kpack"
-            # ROOT, AND THAT IS THE WHOLE BASIS FOR NOT RE-HASHING IT.
-            # kdos-packd trusts a pack in the store because only root can
-            # write there — `cp -a` preserves the SOURCE's owner, and the
-            # source is a bind mount of the repository, whose files belong to
-            # whoever cloned it. Left alone, the store ships owned by uid 1000,
-            # which on the target is the desktop user: they could replace a
-            # pack and the daemon would mount it unverified.
-            chown 0:0 "$STORE/$id.kpack"
-            chmod 0644 "$STORE/$id.kpack"
-            n=$((n + 1))
-            ;;
-        *)
-            # Everything else stays on the medium until somebody asks for it.
-            ;;
-    esac
-done
-
-if [ "$n" = 0 ]; then
-    echo "[packs] none baked — 'make fetch-packs' builds them (needs a network)."
-    echo "[packs] this ISO uses the monolithic appbox image."
-fi
-
-# The index travels with the packs it covers: one signature over it covers
-# every pack's hash transitively, which is what makes a pack on the medium
-# verifiable without a sidecar of its own.
-for f in PACKAGES PACKAGES.sig; do
-    [ -f "$SRC/$f" ] || continue
-    cp -a "$SRC/$f" "$STORE/$f"
-    chown 0:0 "$STORE/$f"
-    chmod 0644 "$STORE/$f"
-done
-
-# ── Launchers for the recommended set ──────────────────────────────────────
-#
-# THE ISO HAS TO SHIP A START MENU WITH APPLICATIONS IN IT, and nothing had
-# written one since the monolith went: `01_appbox.sh` used to run genlaunchers
-# against the image, the pack lane's `genlaunchers --packs` needs kdos-packd
-# and a mount, and the build is a chroot in an unprivileged container that has
-# neither. What shipped was the stale two-field table from the image lane, so
-# every launcher on the live ISO dispatched to a box called `kdos-apps` that
-# no longer exists — measured: `could not compose box 'kdos-apps' from packs`
-# on the first click of Firefox.
-#
-# The build reads INSIDE each recommended pack without mounting it:
-# `kdos-pack image` writes the EROFS bytes, `fsck.erofs --extract` (our
-# erofs-utils, built with zstd — the distro's images are -zzstd and a
-# fsck.erofs without it says "Failed to extract filesystem") pulls out
-# /usr/share/applications, and `genlaunchers --packs-dir` reads one directory
-# per pack, the directory NAME being the pack id the table's third field
-# carries. The result is byte-for-byte what a runtime regeneration would write
-# for the same packs, so a launcher clicked on the live ISO composes the same
-# box the installed system would.
-#
-# Only the RECOMMENDED set: those are the applications the medium promises at
-# first sight; everything else is a `kdos app install` away and gets its
-# launcher from the user tree at that moment.
-if [ -f "$SRC/PACKAGES" ] && command -v fsck.erofs >/dev/null 2>&1 \
-   && command -v kdos-pack >/dev/null 2>&1; then
-    LDIR=/kdos/build/launchers
-    rm -rf "$LDIR"; mkdir -p "$LDIR"
-    nrec=0
-    for id in $(awk '/^P:/ { id = substr($0, 3) } /^R:yes/ { print id }' "$SRC/PACKAGES"); do
-        [ -f "$SRC/$id.kpack" ] || continue
-        # an app pack only; a runtime's applications directory is whatever its
-        # libraries dropped there and is not this desktop's business
-        case " $kinds " in *" $id=app "*) ;; *) continue ;; esac
-        img=$(mktemp /tmp/kpack-XXXXXX)   # toybox mktemp takes no suffix after the Xs
-        if kdos-pack image "$SRC/$id.kpack" "$img" 2>/dev/null \
-           && mkdir -p "$LDIR/$id/usr/share/applications" \
-           && fsck.erofs --extract="$LDIR/$id/usr/share/applications" \
-                         --path=usr/share/applications "$img" >/dev/null 2>&1; then
-            nrec=$((nrec + 1))
-        else
-            echo "[packs] $id: could not read its desktop entries — no launcher" >&2
-            rm -rf "$LDIR/$id"
-        fi
-        rm -f "$img"
-    done
-    if [ "$nrec" -gt 0 ]; then
-        kdos-appbox genlaunchers --packs-dir "$LDIR" / 2>&1 | sed 's/^/[packs] /'
-        # THE LIVE USER'S HOME WAS MATERIALISED FROM SKEL BEFORE THIS STEP RAN
-        # (00_user.sh sorts first), so the launchers written into skel just
-        # now are on the ISO for every FUTURE home and absent from the one
-        # the live session logs into — the shim works from a prompt and the
-        # Start menu shows nothing. Measured. The same copy 00_user.sh does,
-        # for the one directory this step is responsible for.
-        for h in /home/*; do
-            [ -d "$h/.local/share" ] || continue
-            mkdir -p "$h/.local/share/applications"
-            cp -a /etc/skel/.local/share/applications/. "$h/.local/share/applications/"
-            chown -R "$(stat -c %u:%g "$h")" "$h/.local/share/applications"
-        done
-    else
-        echo "[packs] no recommended pack readable — the ISO ships no launchers" >&2
-    fi
-    rm -rf "$LDIR"
-fi
 
 # ── KDOS itself, as a base pack ────────────────────────────────────────────
 #
@@ -207,9 +50,9 @@ fi
 # AND THE PACK STORE IS EXCLUDED FROM THE PACK, which is not tidiness: the
 # artefact this step writes lands in `/var/lib/kdos/packs`, so a second run
 # would pack the first run's 15 GB pack inside the second one, and a third
-# would carry both. The monolithic image under
-# `home/kdos/.local/share/containers` goes for a different reason — it is
-# 11 GB of the OTHER lane, and this pack is a clean tree to build ports in.
+# would carry both. `home/kdos/.local/share/containers` goes for a different
+# reason: it is podman's own store, which a shipped rootfs must not carry, and
+# this pack is a clean tree to build ports in.
 #
 # THE PSEUDO-FILESYSTEMS GO BY REGEX, NOT BY PATH, BECAUSE THE DIRECTORY HAS
 # TO SURVIVE. `--exclude-path=proc` removes the DIRECTORY, and a container
@@ -224,7 +67,7 @@ fi
 # gone. `var/cache` and `var/log` ride the same rule because software inside a
 # box expects them to exist. What is excluded by PATH is what should genuinely
 # not be there: the repository bind mounts, the pack store (the artefact lands
-# in it) and the monolithic image.
+# in it) and podman's own container store.
 #
 # THEY ARE RELATIVE TO THE SOURCE ROOT AND MUST NOT CARRY A LEADING SLASH.
 # `--exclude-path` matches an EXACT LITERAL path, and mkfs.erofs matches it
@@ -324,5 +167,4 @@ META
     echo "[packs] kdos base pack: $(du -h "$OUT/kdos.kpack" | cut -f1) (on the medium)"
 fi
 
-echo "[packs] $n pack(s) installed (base + what the recommended set needs);"
-echo "[packs] everything else is on the medium"
+echo "[packs] store directories ready; the medium carries no applications"

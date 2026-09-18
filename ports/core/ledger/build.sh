@@ -37,3 +37,18 @@ cmake .. -G Ninja \
 	-DBUILD_LIBRARY=ON
 ninja
 DESTDIR=$PKG ninja install
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/ledger.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Accounting
+GenericName=Accounting
+Comment=Double-entry accounting from a plain-text ledger
+Exec=ledger
+Icon=office-chart-line
+Terminal=true
+Categories=Office;Finance;
+Keywords=account;ledger;finance;money;
+EOF
+chmod 644 "$PKG/usr/share/applications/ledger.desktop"

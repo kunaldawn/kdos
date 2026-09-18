@@ -23,6 +23,8 @@
  * ---------------------------------
  */
 
+#include <stdlib.h>
+
 #include "kchrome.h"
 #include "kcell.h"
 #include "kwl.h"
@@ -43,6 +45,119 @@ struct px_op {
 #define PX_MAX 256
 static struct px_op ops[PX_MAX];
 static int nops;
+
+/* Set by whichever backdrop this surface installed — see kch_px_live(). */
+static int backdrop_on;
+/* Which one: the popup body carries an alpha the bare one does not. */
+static int backdrop_popup;
+
+/*
+ * THE PICTURE THE LAST PAINT PRODUCED, kept so an unchanged one is a copy
+ * rather than a re-rasterisation.
+ *
+ * A backdrop runs on every paint the surface commits, and installing one makes
+ * every paint a FULL one — so a pointer moving over the taskbar re-ran the
+ * body gradient and every recorded plate, at full surface size, for each
+ * motion event. Nothing about that picture depends on the frame: it is the
+ * ops, the size, the scale and the palette, and all four are cheap to compare.
+ */
+static pixman_image_t *cache_img;
+static int cache_w, cache_h, cache_scale;
+static uint64_t cache_key;
+static const void *cache_theme;
+
+static uint64_t ops_key(void)
+{
+	uint64_t k = 1469598103934665603ULL;
+	const unsigned char *b = (const unsigned char *)ops;
+
+	for (size_t i = 0; i < (size_t)nops * sizeof(*ops); i++)
+		k = (k ^ b[i]) * 1099511628211ULL;
+	return k ^ ((uint64_t)nops << 32);
+}
+
+/*
+ * What the picture depends on beyond the op list. One definition, because a
+ * key that disagreed with the picture would either pin a stale backdrop on
+ * the screen or make every frame a repaint.
+ */
+static uint64_t cur_salt(void)
+{
+	if (backdrop_popup)
+		return (uint64_t)kch_popup_alpha() << 8 | 1u;
+	return 2u;
+}
+
+static void cache_drop(void)
+{
+	if (cache_img) {
+		pixman_image_unref(cache_img);
+		cache_img = NULL;
+	}
+	cache_w = cache_h = cache_scale = 0;
+}
+
+/*
+ * Paint through the cache: `draw` produces the picture, and it is only called
+ * when nothing it depends on has moved since the last time.
+ */
+static void cached_backdrop(pixman_image_t *dst, int w, int h, int scale,
+			    uint64_t salt,
+			    void (*draw)(pixman_image_t *, int, int, int))
+{
+	uint64_t key = ops_key() ^ salt;
+
+	if (cache_img && cache_w == w && cache_h == h &&
+	    cache_scale == scale && cache_key == key &&
+	    cache_theme == (const void *)ktui_theme) {
+		pixman_image_composite32(PIXMAN_OP_SRC, cache_img, NULL, dst,
+					 0, 0, 0, 0, 0, 0, w, h);
+		return;
+	}
+
+	if (!cache_img || cache_w != w || cache_h != h) {
+		cache_drop();
+		cache_img = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h,
+						     NULL, 0);
+	}
+	if (!cache_img) {
+		/* No memory for a copy is not a reason to draw nothing. */
+		draw(dst, w, h, scale);
+		return;
+	}
+	draw(cache_img, w, h, scale);
+	cache_w = w;
+	cache_h = h;
+	cache_scale = scale;
+	cache_key = key;
+	cache_theme = ktui_theme;
+	pixman_image_composite32(PIXMAN_OP_SRC, cache_img, NULL, dst,
+				 0, 0, 0, 0, 0, 0, w, h);
+}
+
+/*
+ * THE DISPLAY ASKS WHETHER THE PLATE LIST MOVED, at flush time.
+ *
+ * A frame is committed on a CELL diff, and a plate is not a cell: a menu row
+ * highlighted by one changes no text, so without this a highlight following
+ * the pointer down a list produces no frame at all and stays where it was.
+ *
+ * It has to be a question rather than an announcement. A surface re-records
+ * its whole list on every draw, so a flag set while recording cannot tell a
+ * change from a redescription and would make every draw of a backdrop
+ * surface a full-surface upload. Asked once the list is complete, the answer
+ * is the key of what is recorded now against the key of the picture last
+ * painted — and that is a change exactly when the two disagree.
+ */
+static int px_dirty(void)
+{
+	if (!backdrop_on)
+		return 0;
+	if (!cache_img)
+		return 1;		/* nothing painted yet */
+	return cache_key != (ops_key() ^ cur_salt()) ||
+	       cache_theme != (const void *)ktui_theme;
+}
 
 void kch_px_reset(void)
 {
@@ -99,6 +214,28 @@ void kch_px_plate(int cx, int cy, int cw, int ch, KchTone tone, int inset)
 	add(PXO_ROUND, cx * w + inset, cy * h + inset, cw * w - 2 * inset,
 	    ch * h - 2 * inset, KCH_PLATE_RADIUS, kch_tone(tone),
 	    kch_tone(tone), kch_tone_alpha(tone));
+}
+
+/*
+ * WHETHER A RECORDED OP CAN EVER REACH A SCREEN, asked in one place.
+ *
+ * The list is replayed by a backdrop, and a backdrop is painted by libkwl —
+ * so it reaches a screen only on a surface that has one installed AND is not
+ * a console surface, where the session composes character cells and there is
+ * no plane under them at all. Neither half can be dropped: a `--dump` installs
+ * no backdrop, and `$KDOS_CON` is the only thing that distinguishes the two
+ * displays, since the cell size is asked of libkwl either way and libkwl
+ * answers with its fallback rather than with nothing.
+ *
+ * A control whose only state cue is a plate is a control with no state at all
+ * where this is false, which is why every caller of `kch_px_row()` also draws
+ * the cell form of the same fact.
+ */
+int kch_px_live(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return backdrop_on && !(con && *con);
 }
 
 void kch_px_row(int cx, int cy, int cw, KchTone tone)
@@ -193,30 +330,46 @@ void kch_px_body(pixman_image_t *dst, int w, int h, int scale, uint8_t alpha,
  * has to be installed before the slot is cleared, or the first frame goes out
  * with a hole where the surface should be.
  */
-static void popup_backdrop(pixman_image_t *dst, int w, int h, int scale)
+static void popup_draw(pixman_image_t *dst, int w, int h, int scale)
 {
 	kch_px_body(dst, w, h, scale, kch_popup_alpha(), KCH_EDGE_NONE);
 	kch_px_replay(dst, scale);
 }
 
+static void popup_backdrop(pixman_image_t *dst, int w, int h, int scale)
+{
+	cached_backdrop(dst, w, h, scale, cur_salt(), popup_draw);
+}
+
 static int body_slot_v = KT_BG;
 
-static void bare_backdrop(pixman_image_t *dst, int w, int h, int scale)
+static void bare_draw(pixman_image_t *dst, int w, int h, int scale)
 {
 	kcell_px_clear(dst, 0, 0, w, h);
 	kch_px_replay(dst, scale);
 }
 
+static void bare_backdrop(pixman_image_t *dst, int w, int h, int scale)
+{
+	cached_backdrop(dst, w, h, scale, cur_salt(), bare_draw);
+}
+
 void kch_px_bare(int body_slot)
 {
+	backdrop_on = 1;
+	backdrop_popup = 0;
 	kwl_set_backdrop(bare_backdrop);
+	kwl_set_pixels_dirty_fn(px_dirty);
 	kcell_set_slot_alpha(body_slot & 7, 0);
 }
 
 void kch_px_popup(int body_slot)
 {
+	backdrop_on = 1;
+	backdrop_popup = 1;
 	body_slot_v = body_slot & 7;
 	kwl_set_backdrop(popup_backdrop);
+	kwl_set_pixels_dirty_fn(px_dirty);
 	kcell_set_slot_alpha(body_slot_v, 0);
 }
 

@@ -26,23 +26,21 @@ kdos/
 │   │   ├── build.sh           the build; bash, working directory is the source
 │   │   ├── postinstall.sh     optional install-time hook
 │   │   ├── *.patch            optional
-│   │   └── <name>-<ver>.tar.* upstream archive — a release asset, gitignored
+│   │   └── <name>-<ver>.tar.* upstream archive — in the tree, through Git LFS
 │   ├── appbox/            the application catalogue
-│   │   ├── packs.conf         the catalogue: bases, runtimes, applications, data
 │   │   ├── bake               builds the pack set
-│   │   ├── harvest.py         collects metadata from a built image
 │   │   ├── Containerfile.bake the bake's own image
 │   │   └── packs/             the baked set — gitignored
 │   ├── Containerfile.fetch    the fetch image, pinning this tree's toolchains
 │   ├── fetch                  download and vendor sources
-│   ├── update                 the upstream version checker's front end
-│   ├── sources                publish and fetch release assets
-│   └── sources.manifest       what identifies each published archive
+│   └── update                 the upstream version checker's front end
 │
 ├── src/
 │   ├── libs/              our C libraries — static, and see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
 │   │   ├── libkcolor/         the palette table and colour maths
+│   │   ├── libkwm/            the window model both desktops obey
+│   │   ├── libkdisp/          which display server, and the surface lifecycle
 │   │   ├── libktui/           the terminal, the cell buffer, widgets, charts
 │   │   ├── libkcell/          the glyph cache and the cell painter
 │   │   ├── libkchrome/        the window furniture
@@ -54,11 +52,15 @@ kdos/
 │   │   ├── libksig/           signing — the one vendored third-party source
 │   │   ├── libkbuild/         phases, plans, the snapshot inventory
 │   │   ├── libkproc/          every reading, from a movable root
+│   │   ├── libkvt/            the terminal state machine — a fork of libtsm
+│   │   ├── libkimg/           the only place untrusted image bytes are decoded
+│   │   ├── libkkms/           a screen, where there is one to take
+│   │   ├── libkcon/           the console session's wire, both ends
 │   │   └── selftest.c         the shared assertion program
 │   │
 │   ├── desktop/           the desktop — a port repository
 │   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
-│   │   ├── kdos-shell/        one binary under 28 names
+│   │   ├── kdos-shell/        one binary under 52 names
 │   │   ├── kdos-res/          the resource monitor, and its setuid helper
 │   │   ├── kdos-lock/         the lock screen, and the setuid password checker
 │   │   ├── kdos-powerd/       suspend, poweroff, reboot
@@ -66,13 +68,17 @@ kdos/
 │   │   ├── kdos-oomd/         memory-pressure protection
 │   │   ├── kdos-mountd/       removable media
 │   │   ├── kdos-packd/        the only thing that mounts a pack
-│   │   ├── kdos-boxsock/      one tagged compositor socket per box
+│   │   ├── kdos-con/          the console session: windows, terminals, surfaces
+│   │   ├── kdos-view/         the display half: cells arrive, input leaves
+│   │   ├── kdos-term/         the terminal, on both desktops
+│   │   ├── kdos-boxsock/      one tagged compositor socket per box, per compositor
 │   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser
 │   │
 │   ├── packages/          ports that are OURS — a port repository
 │   │   ├── kdos-kpkg/         the package manager, under five names
 │   │   ├── kdos-installer/    the installer; links three libraries
-│   │   ├── kdos-appbox/       launching boxed applications, and box management
+│   │   ├── kdos-appbox/       launching boxed applications, box management, the store
+│   │   │   └── catalogue          every application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
 │   │   ├── kdos-pack/         build, sign, index and diff packs
 │   │   ├── kdos-tools/        the kdos command, the supervisor, and their siblings
@@ -99,10 +105,14 @@ kdos/
 │
 ├── testing/
 │   ├── preflight.sh          the wiring, in seconds
+│   ├── docscheck.sh          the book: dead links, history, the page contract
 │   ├── selftest.sh           the libraries and their consumers
 │   ├── fixtures/             recorded system state
 │   ├── goldens/              committed reference frames
 │   ├── vnc-shot.py           drive and photograph a real session
+│   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
+│   ├── devdeps-image.sh      builds kdos-devdeps, where nothing in selftest skips
+│   ├── Dockerfile.qemu, Dockerfile.devdeps   what those two images are
 │   ├── packlane.sh           the application lane on a booted machine
 │   ├── install-to-disk.sh    run the installer into a disk image
 │   ├── appsweep.sh, appreport.sh   launch every application and report
@@ -130,8 +140,10 @@ compiled by their consumers' recipes, and the two tools are host-only and compil
 
 ## The library rule
 
-Everything under `src/libs/` links **nothing but the C library**, with one declared exception — the
-Wayland backend, which is a separate archive precisely so the rule survives it. Adding a dependency
+Everything under `src/libs/` links **nothing but the C library**, with two declared exceptions —
+`libkwl`, the Wayland backend, and `libkkms`, the KMS one. Both are separate archives precisely so
+the rule survives them, and both are named only by the consumers that want a display: `kdos-con`
+holds every window and links neither. Adding a dependency
 to any of the others moves every phase-1 consumer with it. See
 [The C libraries](../05-developer/c-libraries.md).
 
@@ -140,8 +152,7 @@ to any of the others moves every phase-1 consumer with it. See
 | Path | Gitignored | Notes |
 |---|---|---|
 | `build/` | **entirely** | The root filesystem, logs, snapshots, the ISO, signing keys, the bake's container store |
-| `ports/core/*/​*.tar.*` | yes | Upstream archives — release assets, fetched by bootstrap |
-| `ports/appbox/packs/` | yes | The baked pack set |
+| `ports/core/*/​*.tar.*` | **no** | Upstream archives, tracked through Git LFS — see `.gitattributes` |
 | `ports/.kpkg-meta`, `.portup`, `.portup-tools`, `.kpkgbin` | yes | Compiled host helpers. **Clear them when switching between a container run and a host run** — a binary built against one C library cannot execute under the other |
 
 ## Files at the root
@@ -152,6 +163,7 @@ to any of the others moves every phase-1 consumer with it. See
 | `CLAUDE.md` | Rules, conventions and workflow for working on this tree. **Not** a description of how the system works — that is this book |
 | `Makefile` | Every target |
 | `Dockerfile` | The build container |
+| `.gitattributes` | Which paths go through Git LFS. The upstream tarballs do, and the filter must be installed before they are added — a tarball staged before `git lfs install` is an ordinary blob until the history is rewritten |
 | `kdos.png`, `kdos.xcf` | The mascot. The banner logo, the splash artwork and the icon marks are all generated from it, so they cannot drift apart |
 | `*.plan.md` | Implementation plans for work in progress. Plans, not documentation |
 | `docs.design.md` | The design of record for this documentation |

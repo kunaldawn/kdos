@@ -1,0 +1,13 @@
+#ifndef CG_CONFIG_H
+#define CG_CONFIG_H
+
+#mesondefine CAGE_HAS_XWAYLAND
+
+#mesondefine CAGE_VERSION
+
+/* What upstream called itself at the commit this fork was taken from. The
+ * version line prints both, because "a fork of cage 0.3.1" is what somebody
+ * chasing a wlroots incompatibility needs to read. */
+#mesondefine CAGE_UPSTREAM
+
+#endif

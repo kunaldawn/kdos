@@ -1,0 +1,31 @@
+# KDOS — the panel's brightness, writable by the console user.
+#
+# NO GROUP= AND NO MODE= ON THESE LINES, AND THAT IS NOT A STYLE CHOICE.
+# udev applies an owner, a group and a mode to a DEVICE NODE; a backlight is a
+# class device with no node at all. Worse, eudev skips the WHOLE RULE LINE for
+# such a device the moment it carries one of those keys: GROUP= sets the rule's
+# `can_set_name`, and `can_set_name` is false wherever the device has neither a
+# devnum nor an ifindex, so the line is discarded before any token on it runs.
+# A rule written `SUBSYSTEM=="backlight", GROUP="video", MODE="0664", RUN+=…`
+# therefore does nothing whatever — RUN+= included — and reports nothing.
+#
+# So the permission is set by running chgrp and chmod, which is the only
+# mechanism left. `video` is the group because that is already the one that may
+# open /dev/dri and set a mode; 0664 is the kernel's own 0644 plus the group
+# write this exists to add.
+#
+# ACTION=="add" IS LOAD-BEARING TWICE. Writing brightness makes the kernel emit
+# a `change` uevent, so an unscoped rule would fork two processes on every press
+# of a brightness key. And `add` is what fires at boot: 01_udev.sh coldplugs
+# with `udevadm trigger --action=add`, so a panel that existed before udevd
+# started is replayed as an add — a rule written ACTION=="change" would never
+# run here at all.
+#
+# %S%p is the device's own directory under /sys. A hardcoded
+# /sys/class/backlight/<name> would depend on the class symlink as well.
+
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/usr/bin/chgrp video %S%p/brightness", RUN+="/usr/bin/chmod 0664 %S%p/brightness"
+
+# The keyboard backlight, where there is one. Same class-device rule, same
+# absence of a node, same mechanism.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::kbd_backlight", RUN+="/usr/bin/chgrp video %S%p/brightness", RUN+="/usr/bin/chmod 0664 %S%p/brightness"

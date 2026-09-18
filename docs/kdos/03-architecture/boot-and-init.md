@@ -23,9 +23,12 @@ For the user-facing view of the same path, see
 | 12 | The numbered service scripts | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
-| 15 | A login shell, autologin on tty1 | agetty |
+| 15 | `kdos-con-login`, which greets or autologins | `kdos-getty` on tty1 |
+| 16 | The console desktop | `~/.bash_profile`, on tty1 only |
 
-Everything after step 15 is [the session](session.md), and is started by hand.
+Step 16 is [the session](session.md). **The console desktop is the default one** — a login on tty1
+reaches it without anyone typing a command, and it needs no Wayland, so it comes up on a machine
+whose GPU driver does not. The graphical session is still started by hand, with `kdos-desktop`.
 
 ## rEFInd and the kernel command line
 
@@ -33,6 +36,23 @@ The boot loader is rEFInd on the ESP. The installer writes its configuration and
 kernel and initramfs **onto the ESP** rather than leaving them on the root filesystem: rEFInd can
 read ext4 only through a filesystem driver, and a boot that depends on a driver load is a boot
 that fails silently after a kernel update.
+
+**Two programs write that configuration and nothing else does.** `script/06_packaging/02_iso.sh`
+writes the live ISO's `EFI/BOOT/refind.conf` beside `vmlinuz` and `initramfs.cpio.gz` on the ESP
+image; `kinstall` writes the installed machine's `EFI/refind/refind.conf`, pointing at the
+`EFI/kdos/` copies it made, plus an `EFI/BOOT/refind.conf` that only `include`s it. rEFInd reads
+its configuration from its own ESP directory, so **a `refind.conf` anywhere in the root filesystem
+is read by nobody** and its entries are not the machine's boot menu.
+
+**The menu counts down for one second**, on the live ISO and on an installed system alike. The
+countdown is wall time spent before the kernel exists, with nothing else running, so it is kept to
+the shortest interval that still leaves the menu usable. At `timeout 1` the graphical menu is
+drawn in full — banner, every entry, the tool row — and a single keypress stops the countdown and
+leaves it up indefinitely: photographed under OVMF against the ISO's own ESP payload, menu on
+screen 4.2 s after power-on, and still on screen with the countdown line gone 43 s after power-on
+when Down was tapped during the first seconds. The recovery entries — the verbose boot, single
+user, memtest86+ — are reachable from nowhere else, so that has to hold. **`timeout 0` is not
+"boot at once"; it is "wait forever"**, and setting it hangs every unattended boot.
 
 Parameters KDOS itself reads:
 
@@ -101,6 +121,22 @@ that reason. **Every filesystem the installer offers must be in this list.**
 `cryptsetup` and its libraries are carried only when they are installed, and the build says so
 when they are not. A half-carried `cryptsetup` fails at the passphrase prompt rather than at build
 time, which is the wrong place to find out.
+
+**Both paths that look for a device poll, and both give up after ten seconds.** The disk path
+asks `blkid` for the root UUID once a second; the live path rescans `/dev/sr* /dev/sd* /dev/vd*
+/dev/nvme*` every 100 ms and mounts the first one holding `system.sfs`. Neither waits before its
+first attempt — udev has already settled by then, so on a machine whose medium is enumerated the
+first pass succeeds and costs nothing. The bound is what covers the slow cases, a USB stick or a
+device behind a bridge, and **every pass walks every device class again**: the first node to
+answer is not always the one holding the medium, and a class that has not appeared yet must still
+get its chance. **A device that mounts is inspected once**, though: a filesystem without
+`system.sfs` on it will not grow one, so it is remembered and skipped, and only nodes that have
+not mounted yet are tried again — one mount/umount pair for a wrong disk across the whole scan
+rather than one per pass. `/mnt/iso` is the only mount point the scan has, so **the umount is
+checked**: a mount point left busy would take a second filesystem stacked on top of it and every
+later test would read the wrong one, so a failed umount stops the scan and says so. Only the first
+pass narrates each device it tried; a hundred repetitions of the same two lines would bury the
+message that explains a failed boot.
 
 ## The splash
 
@@ -188,6 +224,19 @@ data survives.
 command line already carries", which is what a single-root machine does anyway. A `try` pointing
 at a slot with no root, or at the active slot, is refused rather than recorded.
 
+## `file` must be the magic database's, not toybox's
+
+Toybox's `file` applet is switched off in the recipe and in phase 1, so `/usr/bin/file` is the
+`file` port's — the reference implementation, with `/usr/share/misc/magic.mgc` behind it.
+
+The applet reads a handful of headers and refuses `--mime` outright. `lesspipe` asks
+`file -L -s -b --mime` and **nothing else**: with no answer there it hands every file through
+unchanged, so `less` on a `.tar.gz` shows the compressed bytes and the filter looks like it was
+never installed. Two `file`s on one image would also be two answers to "what is this", which is the
+question the handler tables, the thumbnailer and the pager all ask.
+
+The cost is stated: `magic.mgc` is about ten megabytes.
+
 ## switch_root must be util-linux's
 
 The initramfs installs `/usr/sbin/switch_root` over toybox's applet, and it must stay that way.
@@ -211,7 +260,13 @@ The tell-tale is that `readlink /proc/<pid>/root` prints `/newroot`. `kdos docto
 4. Runs each `NN_name.sh` in numeric order, logging each to `/run/kdos-init.<name>.log`, showing
    the splash a step per script and its failure detail if one fails.
 5. Runs `kdos-bootctl mark-good`.
-6. Quits the splash, which runs the power-off animation and leaves a clean framebuffer for agetty.
+6. Quits the splash, which runs the power-off animation and leaves a clean framebuffer for the
+   tty1 login.
+
+   **The quit is synchronous**, and the console desktop depends on it twice: init starts the tty1
+   login on a framebuffer nothing else owns, and `kdos-view`'s KMS modeset further down that chain
+   acquires a device the splash has already released. A splash that quit asynchronously would race
+   a modeset, and the loser of that race is a black screen with a running session behind it.
 
 **A service is disabled by a marker file**, not by editing anything:
 
@@ -272,8 +327,41 @@ takeover, load the font and palette, verify, then execute the getty.
 
 Do not move font or palette setup back into `rcS`.
 
-`/etc/inittab` gives `tty1` an autologin as `kdos`, `tty2` an ordinary login, and `ttyS0` a serial
+`/etc/inittab` gives `tty1` to `kdos-con-login`, `tty2` an ordinary login, and `ttyS0` a serial
 login on demand.
+
+`kdos-con-login` is `kdos-con` under a third name, and it reads `greet` from
+[`con.conf`](../06-reference/configuration.md):
+
+- **`greet = no`** — the live medium's answer — executes `agetty --autologin kdos`. Going through
+  agetty keeps utmp, lastlog and the shell profile on the path they take everywhere else, and a
+  machine with one account and no password has nothing to ask. **`/bin/login` must be shadow's**:
+  agetty's autologin calls `login -f -- USER`, and toybox's `login` reads the name as `-f`'s own
+  argument, takes `--` for the account and refuses it — so toybox is built with `login` and `su`
+  off and tty1 is left at a login prompt nobody can answer if they come back.
+- **`greet = yes`** — what the installer writes — draws the login surface on the tty. It uses the
+  **tty backend**, not a modeset: `kdos-getty` has already loaded the console font and palette, and
+  a greeter that opened a DRM device would make the session binary depend on the one thing the
+  session/view split exists to survive. The modeset is `kdos-view`'s, after the login.
+
+The greeter never handles a password hash. On submit it forks, the child drops to the candidate
+account, and it executes `kdos-checkpass` with the password on stdin — the same setuid helper the
+lock screen uses, which takes no arguments and checks the caller's own real uid, so nothing on this
+path can be aimed at root.
+
+**`kdos-getty` falls back to the plain autologin getty** when the program named in `/etc/inittab`
+cannot be executed. An image built without the console desktop still gives a console; without the
+fallback, init would respawn a failing exec forever and there would be no way to log in at all. It
+logs in the account `/etc/kdos/con.conf` names rather than a hardcoded one: the desktop's account
+is named in one place, and a second copy here would log in a user a renamed installation does not
+have.
+
+`tty2` is the recovery console and stays a plain getty whatever tty1 does. **Reaching it from the
+console desktop is `libkkms`'s job**, not the kernel's: once `libseat` puts tty1 into graphics mode
+the kernel stops answering Ctrl+Alt+F<n>. xkb resolves that chord to an `XF86Switch_VT_<n>` keysym,
+so `kkms_input.c` — which holds the seat and is the only place the keysym exists — calls
+`libseat_switch_session`. A desktop that forwarded it instead would guarantee a recovery console
+nothing can reach.
 
 ## The login banner
 

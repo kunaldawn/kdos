@@ -55,6 +55,15 @@ extern int bbmixer;			/* -mixer:   show the settings menu */
  * nothing in the code can notice.
  */
 int song_progress(void);
+void sound_sync(void);
+
+/*
+ * Writes the frame bracketed in synchronized output, so a terminal shows it
+ * whole or not at all. EVERY frame goes through here and none calls aa_flush()
+ * directly: a flush outside the bracket is a screen the consumer may compose
+ * halfway through, which is the tearing this exists to stop.
+ */
+void bbflush(void);
 
 
 void dvojprujezd(int, char *, char *);
@@ -67,6 +76,23 @@ struct font *uncompressfont(const aa_font * font);
 void fastscale(char *b1, char *b2, int x1, int x2, int y1, int y2, int width1, int width2, int color);
 void print(int x, int y, float width, int height, struct font *f, int color, char *text);
 void draw(void);
+/*
+ * HOW LONG A WAIT MAY SLEEP IN ONE GO.
+ *
+ * tl_process_group() answers -1 for a group holding no live timer, and
+ * syncgroup holds none for the whole of a wait: timestuff() frees its control
+ * timer on the way out, and the mixer is pumped by its own thread rather than
+ * by a timer in that group. A WAIT MUST THEREFORE CARRY ITS OWN BOUND --
+ * tl_sleep() hands select() a negative tv_usec and returns at once, so a loop
+ * that passes it that -1 never sleeps at all. It spins, spending a core and a
+ * keyboard poll per turn beside a mixer thread that has a deadline.
+ *
+ * TEN MILLISECONDS, which is what keys have to be polled at: a wait must
+ * answer S and Q as promptly as a scene does, and a longer slice would lag the
+ * keyboard exactly where the demo has nothing else to do.
+ */
+#define BB_WAIT_SLICE_US 10000
+
 void bbwait(int);
 void bbflushwait(int);
 void scene1(void);

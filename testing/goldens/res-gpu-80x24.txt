@@ -11,6 +11,7 @@
 | Net  | utilisation  46%                                                      |
 | Bat  | memory       1.2G of 8.0G                                             |
 | Ene  |                                                                       |
+| Sen  |                                                                       |
 | Box  |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
@@ -18,7 +19,6 @@
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
-|      |                                                                       |
-|      |                                                                       |
 |      | NVIDIA management library not present                                 |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                            |
 +==============================================================================+

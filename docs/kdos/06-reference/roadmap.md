@@ -34,17 +34,44 @@ names, no large toolkit on the host — redesigned from nothing for a finger rat
 And the property only this arrangement can offer: **the same device driving an external monitor**
 with the desktop session, rather than a phone interface stretched across it.
 
-**Plan of record:** [`mobile.plan.md`](../../../mobile.plan.md) for the port,
-[`mobile.plan2.md`](../../../mobile.plan2.md) for the touchscreen desktop.
+**There is no plan of record for either.** What is written down is this page; the shape above is
+what the tree already supports, not a schedule anybody has committed to.
 
 ## Direction
 
 Themes the tree shows work heading toward, each with what would have to be true for it to land.
 
-**Closing the input gaps.** Drag and drop and touch are both absent from the toolkit's Wayland
-backend, and touch is a prerequisite for the mobile work above. Drag and drop needs a data-source
-implementation on the send side and a drop target on the receive side, plus a decision about what
-dragging means between a cell grid and a boxed application.
+**Exercising the new input paths.** Touch and drag and drop are both implemented now — one
+gesture recogniser in the toolkit, fed by `wl_touch`; a data source and an accepted offer in the
+Wayland backend — and neither has been run against real hardware. What would move them off
+[Status](status.md)'s experimental line is a rig pass with a virtual touch device and a real drag
+between a KDOS surface and a boxed application.
+
+**Widening what a drag can carry.** `text/plain` and `text/uri-list` only, with no MIME
+negotiation and no deferred transfer, and only the trash accepts a drop on the desktop. Dropping
+onto a folder means deciding what a move that half-succeeds across filesystems should do.
+
+**Booting the console desktop.** Everything it is made of compiles, self-tests and reproduces its
+goldens, and much of it has now been driven end to end between real processes — but none of it has
+been booted into. What would move it off [Status](status.md)'s experimental line is one rig pass on
+the ISO: log in, open a terminal, run `htop`, open `kdos-res` as a window, tile a pair, switch a
+workspace, lock and unlock, come back from `tty2`, and start a boxed graphical application as a
+window.
+
+**One specific about a graphical application on the cell grid.** Its windows are ordinary windows
+there — one `kdos-cage --embed` composites every toplevel the application maps and the session cuts
+the frames into sprites — and an application that needs acceleration a software renderer cannot
+give it has to be pinned to a terminal by hand, rather than being detected.
+
+**A second CARD on the console.** `libkkms` takes the first `/dev/dri/card0..7` with a connected
+output and lights every connector on that one, laid edge to edge into a single grid; a screen on a
+second card is unreachable. Reaching it means a second device, a second seat lease and a grid that
+stops being one rectangle — which is the decision, not the code.
+
+**A still screenshot of the console as a picture.** `kdos-view --cast` records the session into a
+PipeWire stream — a view rasterises, so a recording is a view nobody looks at — and `kdos-shot`
+still writes the grid as text. Rendering cells to a single image needs `libkcell`, which `kdos-tools`
+does not link.
 
 **Per-output rendering settings.** The font size is one number for every screen, and fractional
 scaling is not negotiated. Both matter on a machine with two displays of different densities, and

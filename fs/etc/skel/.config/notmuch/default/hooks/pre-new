@@ -1,0 +1,28 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# FETCH, THEN INDEX. notmuch runs this before it scans, so `notmuch new` is the
+# only command anybody types: it pulls new mail into ~/Mail and then indexes
+# it. Nothing else on this machine runs mbsync.
+#
+# THE THREE TESTS ARE THE DIFFERENCE BETWEEN "NOT SET UP" AND "BROKEN", and a
+# non-zero exit here aborts `notmuch new` entirely. On a machine with no
+# Channel configured mbsync exits non-zero, and swallowing that with
+# `|| true` would be indistinguishable from swallowing a real failure — so the
+# unconfigured case is detected and stepped over, and a CONFIGURED mbsync that
+# fails takes the run down with it. That is deliberate: indexing after a fetch
+# that did not happen reports "0 new messages" and looks like an empty inbox.
+
+command -v mbsync >/dev/null 2>&1 || exit 0
+[ -r "$HOME/.mbsyncrc" ] || exit 0
+grep -q '^[[:space:]]*Channel[[:space:]]' "$HOME/.mbsyncrc" || exit 0
+
+exec mbsync -a

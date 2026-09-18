@@ -9,16 +9,20 @@
  *   kdos-appbox open — a file, in whatever opens it
  *
  *     $ kdos-appbox open report.odt        -> libreoffice, in the box
- *     $ kdos-appbox open ~/Pictures        -> mc, in foot
+ *     $ kdos-appbox open ~/Pictures        -> mc, in the desktop's terminal
  *
- * WHY THIS IS HERE AND NOT xdg-open. kdos-appbox owns the alien-app table and
- * every launcher in /usr/local/bin is a symlink to it, so it is already the
- * program that knows what "open with GIMP" means on this machine. xdg-open is
- * still installed and is still the right answer for a URL; this is the answer
- * for a PATH, and kdos-desk called it for a release before it existed.
+ * THIS IS xdg-open ON THIS MACHINE. /usr/local/bin/xdg-open is a name on this
+ * binary and /usr/local/bin comes first on the shipped $PATH, so everything
+ * that opens a link or a file by that word arrives here. kdos-appbox owns the
+ * alien-app table and every launcher in /usr/local/bin is a symlink to it, so
+ * it is already the program that knows what "open with GIMP" means. xdg-utils'
+ * own script stays installed and is the last resort, reached BY ABSOLUTE PATH
+ * because naming it otherwise would find this binary again.
  *
  * The resolution is the freedesktop one and nothing clever:
  *
+ *   argument -> MIME kxdg_mime_for_arg: a scheme is x-scheme-handler/<scheme>,
+ *                    `file:` names a path, anything else IS a path
  *   path -> MIME     /usr/share/mime/globs (shared-mime-info is a host port)
  *   MIME -> entry    mimeapps.list [Default Applications], then
  *                    [Added Associations], then each applications/
@@ -43,6 +47,14 @@
 #define MIME_MAX 128
 #define CAND_MAX 32
 
+/*
+ * THE LAST RESORT, BY ABSOLUTE PATH. `/usr/local/bin/xdg-open` is a second
+ * name on THIS binary and `/usr/local/bin` comes first on the shipped $PATH,
+ * so naming it here without a path would re-enter this function until the
+ * process died.
+ */
+#define XDG_OPEN_PROG "/usr/bin/xdg-open"
+
 /* A handler for a type: the desktop id somebody wrote in a list, and the
  * entry it resolved to. Both, because the chooser is addressed by id and the
  * Exec line is read out of the file. */
@@ -57,75 +69,15 @@ typedef struct {
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
+/* ── what an argument is ───────────────────────────────────────────────── */
+
 /*
- * shared-mime-info's `globs`, which is one `type:glob` per line and is the
- * whole of what a launcher needs from that package. The full `globs2` adds
- * weights and case-sensitivity flags; nothing here would use either.
- *
- * The LONGEST matching suffix wins, so `.tar.gz` beats `.gz` — get that
- * backwards and every compressed tarball opens in a decompressor.
+ * libkxdg ANSWERS THIS, and this binary already compiles it. A second copy
+ * here resolved a path the same way and a URL not at all: `mailto:a@b.c` has a
+ * basename that matches the `*.c` glob, so a mail address was offered to an
+ * editor. kxdg_mime_for_arg also hands back the path a `file:` URL names,
+ * which is what the handler must be given.
  */
-static int mime_from_globs(const char *base, char *out, size_t n)
-{
-	size_t len = 0;
-	char *data = kb_read_all("/usr/share/mime/globs", &len);
-	size_t best = 0;
-	int found = 0;
-
-	if (!data)
-		return 0;
-
-	for (char *p = data; *p;) {
-		char *nl = strchr(p, '\n');
-		if (nl)
-			*nl = '\0';
-		if (*p == '#' || !*p)
-			goto next;
-
-		char *colon = strchr(p, ':');
-		if (!colon)
-			goto next;
-		*colon = '\0';
-		const char *type = p, *glob = colon + 1;
-
-		if (glob[0] == '*' && glob[1] == '.') {
-			const char *suffix = glob + 1;	/* ".odt" */
-			size_t sl = strlen(suffix), bl = strlen(base);
-			if (bl > sl && !strcasecmp(base + bl - sl, suffix) &&
-			    sl > best) {
-				best = sl;
-				snprintf(out, n, "%s", type);
-				found = 1;
-			}
-		} else if (!strchr(glob, '*') && !strchr(glob, '?') &&
-			   !strcasecmp(glob, base) && best == 0) {
-			/* An exact name — `Makefile`, `.bashrc`. Only when no
-			 * suffix matched, because a suffix is the more specific
-			 * statement of the two. */
-			snprintf(out, n, "%s", type);
-			found = 1;
-		}
-next:
-		if (!nl)
-			break;
-		p = nl + 1;
-	}
-	free(data);
-	return found;
-}
-
-static void mime_for_path(const char *path, char *out, size_t n)
-{
-	if (kb_is_dir(path)) {
-		snprintf(out, n, "inode/directory");
-		return;
-	}
-	if (mime_from_globs(kb_basename(path), out, n))
-		return;
-	/* Not a failure: it is what every desktop calls a file it cannot
-	 * name, and a handler may still claim it. */
-	snprintf(out, n, "application/octet-stream");
-}
 
 /* ── the search path ───────────────────────────────────────────────────── */
 
@@ -249,31 +201,63 @@ static int collect_in(const char *path, const char *section, const char *mime,
 static int handlers_for_mime(const char *mime, OpenCand *c, int max,
 			     int *defaulted)
 {
-	char dirs[16][512], path[600];
+	char dirs[16][512], path[600], dpre[80];
 	int nd = data_dirs(dirs, 16);
 	int n = 0;
 	const char *cfg = getenv("XDG_CONFIG_HOME");
+	char cfgdir[512];
 
 	*defaulted = 0;
 
+	if (cfg && *cfg)
+		snprintf(cfgdir, sizeof(cfgdir), "%.500s", cfg);
+	else
+		snprintf(cfgdir, sizeof(cfgdir), "%.500s/.config",
+			 kb_home_dir());
+
+	/*
+	 * THE DESKTOP'S OWN LIST FIRST, at each level, which is what the spec
+	 * says and what makes one image open in `timg` on the console and in a
+	 * boxed viewer under the compositor without either desktop editing the
+	 * other's choices.
+	 */
+	int have_pre = kb_desktop_prefix(dpre, sizeof(dpre));
+
+	if (have_pre) {
+		snprintf(path, sizeof(path), "%.500s/%s-mimeapps.list", cfgdir,
+			 dpre);
+		collect_in(path, "Default Applications", mime, c, &n, max);
+		if (n) {
+			*defaulted = 1;
+			return n;
+		}
+	}
+
 	/* The user's declared default beats everything, including a launcher
 	 * the box shipped a moment ago. */
-	if (cfg && *cfg)
-		snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfg);
-	else
-		snprintf(path, sizeof(path), "%.500s/.config/mimeapps.list",
-			 kb_home_dir());
+	snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfgdir);
 	collect_in(path, "Default Applications", mime, c, &n, max);
 	if (n) {
 		*defaulted = 1;
 		return n;
 	}
+	if (have_pre) {
+		snprintf(path, sizeof(path), "%.500s/%s-mimeapps.list", cfgdir,
+			 dpre);
+		collect_in(path, "Added Associations", mime, c, &n, max);
+	}
+	snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfgdir);
 	collect_in(path, "Added Associations", mime, c, &n, max);
 
 	/* The distro's default counts as a decision too, whatever the user's
 	 * additions found: XDG puts Default Applications ahead of Added
 	 * Associations at every level, so an association that masked one would
 	 * turn a type somebody had decided into a chooser prompt. */
+	if (have_pre) {
+		snprintf(path, sizeof(path), "/etc/xdg/%s-mimeapps.list", dpre);
+		if (collect_in(path, "Default Applications", mime, c, &n, max))
+			*defaulted = 1;
+	}
 	if (collect_in("/etc/xdg/mimeapps.list", "Default Applications",
 		       mime, c, &n, max))
 		*defaulted = 1;
@@ -303,8 +287,23 @@ static int handlers_for_mime(const char *mime, OpenCand *c, int max,
  * icon, a name and the entry's own path, none of which this has to supply.
  * `%%` is a literal percent.
  */
+/*
+ * A NAME, NOT A PROGRAM. `X-KDOS-Term` chooses between the two emulators this
+ * image ships and can name nothing else: an entry is a file anything can
+ * write, and a key that named an arbitrary program would be a second Exec line
+ * with none of the field-code rules. An unknown value is the session's own
+ * terminal rather than a refusal, because an entry written for another desktop
+ * must still start.
+ */
+static const char *term_named(const char *want)
+{
+	if (want && (!strcmp(want, "kdos-term") || !strcmp(want, "foot")))
+		return want;
+	return kb_terminal();
+}
+
 static void exec_to_argv(const char *exec, char *const *files, int nfiles,
-			 int terminal, KbArgv *a)
+			 int terminal, const char *want, KbArgv *a)
 {
 	/*
 	 * STATIC, and that is not laziness: kb_argv_add stores the POINTER it
@@ -318,8 +317,22 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 	kb_strlcpy(buf, exec, sizeof(buf));
 
 	if (terminal) {
-		kb_argv_add(a, "foot");
-		kb_argv_add(a, "-e");
+		/* THE TERMINAL FOLLOWS THE DESKTOP. `foot` needs a compositor,
+		 * so a console session that wrapped an entry in it would pick
+		 * the right program and then fail to open a window for it —
+		 * unless the entry asked for one by name, which is what a
+		 * program drawing pictures in the grid does.
+		 *
+		 * AND A BARE VIRTUAL TERMINAL HAS NEITHER, so the entry runs
+		 * where this process already is: `Ctrl+Alt+F2` is a terminal,
+		 * and wrapping a terminal program in an emulator that cannot
+		 * start is the one outcome worse than not wrapping it. */
+		const char *term = term_named(want);
+
+		if (term) {
+			kb_argv_add(a, term);
+			kb_argv_add(a, "-e");
+		}
 	}
 
 	for (char *w = strtok(buf, " \t"); w; w = strtok(NULL, " \t")) {
@@ -370,6 +383,48 @@ static int run_openwith(int argc, char **argv)
 	return 127;
 }
 
+/*
+ * ON THE CONSOLE, A HANDLER THAT WANTS A TERMINAL COMES FIRST. There is no
+ * compositor there, so a windowed handler at the head of the chain opens
+ * nothing anybody can see, while a terminal one is what this desktop is made
+ * of. `$KDOS_CON` is the same discriminator kb_terminal() uses, so the choice
+ * and the emulator it is wrapped in agree.
+ *
+ * ONLY WHERE NOBODY HAS DECIDED. A `[Default Applications]` row is somebody's
+ * answer and must not be overruled, so the call site passes `defaulted` —
+ * which handlers_for_mime sets for a row at ANY level, not only the two in a
+ * config directory where it returns early. Within each kind the order is
+ * unchanged, so a row that named a handler keeps its place relative to the
+ * others of its kind. kdos-openwith gates on the same fact, and has to: its
+ * first row is the handler this function would pick.
+ */
+static void terminal_first(OpenCand *c, int n)
+{
+	OpenCand out[CAND_MAX];
+	char term[CAND_MAX];
+	int k = 0;
+	const char *con = getenv("KDOS_CON");
+
+	if (!con || !*con || n < 2)
+		return;
+	for (int i = 0; i < n; i++) {
+		KxdgEntry e;
+
+		term[i] = 0;
+		if (kxdg_load(&e, c[i].path, "Desktop Entry") == 0) {
+			term[i] = (char)kxdg_bool(&e, "Terminal", 0);
+			kxdg_free(&e);
+		}
+	}
+	for (int i = 0; i < n; i++)
+		if (term[i])
+			out[k++] = c[i];
+	for (int i = 0; i < n; i++)
+		if (!term[i])
+			out[k++] = c[i];
+	memcpy(c, out, (size_t)n * sizeof(*c));
+}
+
 int cmd_open(int argc, char **argv)
 {
 	OpenCand cand[CAND_MAX];
@@ -402,12 +457,21 @@ int cmd_open(int argc, char **argv)
 	/* One MIME type for the set, taken from the first: a handler is chosen
 	 * once and handed every file, which is what %F means. Mixed types are
 	 * the caller's business. */
-	mime_for_path(argv[0], mime, sizeof(mime));
+	/*
+	 * TYPED HERE, UNWRAPPED LATER. The arguments are left alone until a
+	 * handler has been chosen, because the xdg-open fallback below must
+	 * receive what the caller typed: that script decodes the percent
+	 * escapes in a `file:///` URL itself, and handing it the raw path
+	 * instead loses every name with a space in it.
+	 */
+	kxdg_mime_for_arg(argv[0], mime, sizeof(mime));
 
 	if (print)
 		printf("mime\t%s\n", mime);
 
 	ncand = handlers_for_mime(mime, cand, CAND_MAX, &defaulted);
+	if (!defaulted)
+		terminal_first(cand, ncand);
 
 	if (print && ncand) {
 		printf("candidates");
@@ -442,7 +506,7 @@ int cmd_open(int argc, char **argv)
 
 	if (!ncand) {
 		if (print) {
-			printf("entry\t-\nexec\txdg-open\n");
+			printf("entry\t-\nexec\t%s\n", XDG_OPEN_PROG);
 			return 0;
 		}
 		/*
@@ -452,10 +516,10 @@ int cmd_open(int argc, char **argv)
 		 */
 		tracef("open: no handler for %s, falling back to xdg-open",
 		       mime);
-		if (!kb_have_prog("xdg-open"))
+		if (access(XDG_OPEN_PROG, X_OK) != 0)
 			kb_die("nothing on this machine opens %s", mime);
 		KbArgv a = {0};
-		kb_argv_add(&a, "xdg-open");
+		kb_argv_add(&a, XDG_OPEN_PROG);
 		for (int i = 0; i < argc; i++)
 			kb_argv_add(&a, argv[i]);
 		kb_argv_end(&a);
@@ -463,6 +527,19 @@ int cmd_open(int argc, char **argv)
 	}
 
 	entry = cand[0].path;
+
+	/*
+	 * NOW the arguments are unwrapped, and in place. kxdg_mime_for_arg
+	 * returns the path a `file:` URL names, or the argument itself — a
+	 * pointer that outlives this call and is never written through, so the
+	 * handler is given what the argument meant with nothing copied and
+	 * nothing truncated on the way.
+	 */
+	for (int i = 0; i < argc; i++) {
+		char m[MIME_MAX];
+
+		argv[i] = (char *)kxdg_mime_for_arg(argv[i], m, sizeof(m));
+	}
 
 	KxdgEntry e;
 	if (kxdg_load(&e, entry, "Desktop Entry") != 0)
@@ -472,7 +549,8 @@ int cmd_open(int argc, char **argv)
 		kb_die("%s has no Exec line", entry);
 
 	KbArgv a = {0};
-	exec_to_argv(exec, argv, argc, kxdg_bool(&e, "Terminal", 0), &a);
+	exec_to_argv(exec, argv, argc, kxdg_bool(&e, "Terminal", 0),
+		     kxdg_get(&e, "X-KDOS-Term", NULL), &a);
 	kb_argv_end(&a);
 	if (!a.v[0])
 		kb_die("%s has an empty Exec line", entry);
@@ -486,6 +564,35 @@ int cmd_open(int argc, char **argv)
 	}
 
 	tracef("open: %s -> %s", mime, kb_basename(entry));
+
+	/*
+	 * RECORDED HERE AND NOWHERE ELSE. Every open on this desktop passes
+	 * through this function — the desktop's icons, the file chooser, a
+	 * menu, `xdg-open` — so this is the one place a recent-files store can
+	 * be written without a second copy of the rule going stale beside it.
+	 *
+	 * BEFORE the exec, which never returns. Only an absolute path is
+	 * recorded: a URL has no file to go back to, and a relative one means
+	 * nothing to whatever reads the store next.
+	 *
+	 * A failed write is ignored on purpose. A convenience list is not a
+	 * reason to refuse to open a file.
+	 */
+	{
+		/* The ENTRY'S STEM, not its filename: the store's convention
+		 * is the program's own name, and `kxdg_recent("nvim", …)` is
+		 * what a jump list asks with. */
+		char who[128], *dot;
+
+		kb_strlcpy(who, kb_basename(entry), sizeof(who));
+		dot = strrchr(who, '.');
+		if (dot && !strcmp(dot, ".desktop"))
+			*dot = '\0';
+		for (int i = 0; i < argc; i++)
+			if (argv[i][0] == '/')
+				kxdg_recent_add(who, argv[i], mime);
+	}
+
 	/*
 	 * exec, not fork: `open` is a one-shot command and the caller — a
 	 * double-forked kdos-desk, a menu, a shell — already decided what

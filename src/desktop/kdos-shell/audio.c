@@ -112,6 +112,9 @@ static int au_icons_on = 1;
  */
 static int au_out_y = 3, au_out_rows, au_bt_y, au_bt_rows;
 
+/* No layers: nothing in this window is a raised state, so Esc closes it. */
+static KtuiKeys keys;
+
 /* ── ALSA ────────────────────────────────────────────────────────────────
  *
  * osd.c owns the mixer for the `default` PCM, which is the one the media keys
@@ -224,6 +227,24 @@ static void au_card_volume(struct au_dev *d)
 						    &on);
 		d->muted = !on;
 	}
+}
+
+/*
+ * WHERE A ROW'S VOLUME SLIDER IS. One function, read by the draw and by the
+ * pointer: a control the hit test misses by a cell is a control that does not
+ * exist, and the two measuring the row separately is how that happens.
+ */
+#define AU_PCT_W 5
+
+/* The device whose track a press was captured by, or -1. Cleared by the
+ * release, like any other pointer capture. */
+static int au_drag = -1;
+
+static KRect au_vol_rect(int y, int w)
+{
+	int bar_w = 16;
+
+	return krect(w - 2 - AU_PCT_W - bar_w, y, bar_w, 1);
 }
 
 static void au_card_set_volume(struct au_dev *d, int pct)
@@ -882,7 +903,13 @@ static void au_set_default(struct au_dev *d, char *msg, size_t n)
 	if (d->card >= 0) {
 		if (au_write_default_card(d->card) == 0) {
 			au_default_card = d->card;
-			snprintf(msg, n, "default is hw:%d — new streams only",
+			/* `defaults.pcm.card` steers the CARD chain and
+			 * nothing else, and on this image `default` is the
+			 * sound server unless $KDOS_ALSA_DEFAULT names the
+			 * card — so this is what the card route will open,
+			 * not what this session is playing through. The sink
+			 * rows are what moves a running stream. */
+			snprintf(msg, n, "card route is hw:%d — sink rows move this session",
 				 d->card);
 		} else {
 			snprintf(msg, n, "could not write ~/.asoundrc");
@@ -963,30 +990,37 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 
 		/* The bar takes the right of the row; the name gets what is
 		 * left, and is clipped rather than allowed to run under it. */
-		int bar_w = 16, pct_w = 5;
-		int name_w = w - 10 - bar_w - pct_w - 3;
+		KRect br = au_vol_rect(y, w);
+		int name_w = w - 10 - br.w - AU_PCT_W - 3;
 		if (name_w < 8) {
 			/* Too narrow for a bar: the name gets the row rather
 			 * than being squeezed under one. */
 			name_w = w - 12;
-			bar_w = 0;
+			br.w = 0;
 		}
 		ktui_draw_text(10, y, name_w, label,
 			       on ? KT_TEXT : KT_MID, KT_SURFACE, KT_A_NONE);
 
-		if (bar_w > 0 && d->vol >= 0) {
-			int bx = w - 2 - pct_w - bar_w;
-			char pct[8];
-			ktui_progress_ex(krect(bx, y, bar_w, 1),
-					 d->muted ? 0.0 : d->vol / 100.0, NULL,
-					 KT_BAR_SOLID, KT_SURFACE);
+		if (br.w > 0 && d->vol >= 0) {
+			/*
+			 * A SLIDER AND NOT A BAR, because this is a value
+			 * somebody sets. A progress bar drawn where a control
+			 * belongs is a control the pointer cannot find: the
+			 * volume was `Left` and `Right` and nothing else, on
+			 * the one surface a person opens BECAUSE they want to
+			 * change it.
+			 *
+			 * A MUTED DEVICE DRAWS AT ZERO AND SAYS SO. Its real
+			 * level is still there and comes back with the mute;
+			 * a track showing it while the machine is silent would
+			 * be the control disagreeing with the speaker.
+			 */
+			ktui_slider_draw(br, d->muted ? 0 : d->vol, 0, 100, on,
+					 KT_SURFACE);
 			if (d->muted)
-				snprintf(pct, sizeof(pct), "mute");
-			else
-				snprintf(pct, sizeof(pct), "%d%%", d->vol);
-			ktui_draw_text_right(0, y, w - 2, pct,
-					     d->muted ? KT_DIM : KT_ACCENT,
-					     KT_SURFACE, KT_A_NONE);
+				ktui_draw_text_right(0, y, w - 2, "mute",
+						     KT_DIM, KT_SURFACE,
+						     KT_A_NONE);
 		} else if (d->card < 0) {
 			ktui_draw_text_right(0, y, w - 2, "[pipewire]", KT_MID,
 					     KT_SURFACE, KT_A_NONE);
@@ -1147,13 +1181,41 @@ static void au_draw(struct au_ui *u)
 	 * pair in net.c. The hint row is the message row: an action's answer
 	 * belongs where the user's eyes already are, not in a toast they may
 	 * not have on. */
-	static const char HINT[] = "Tab pane   <> volume   Enter switch   Esc";
 	int bx = au_buttons(u, w, h - 2);
 	int room = bx - 3;
-	if (u->msg[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT))
-		ktui_draw_text(2, h - 2, room, u->msg[0] ? u->msg : HINT,
-			       u->msg[0] ? KT_WARN : KT_DIM, KT_SURFACE,
-			       KT_A_NONE);
+
+	/*
+	 * THE ROW IS NARROW HERE and that decides the hint set. Five buttons
+	 * leave about twenty cells at this window's own width, and a hint is
+	 * drawn whole or not at all — so anything long pushed before Esc costs
+	 * Esc entirely. The buttons already name Mute, Set Default, Scan and
+	 * Pair on the screen; what is pushed is what only the KEYBOARD does.
+	 */
+	const struct au_dev *sd = u->pane == AU_PANE_OUT &&
+				  u->sel[AU_PANE_OUT] < au_ndev
+					  ? &au_dev[u->sel[AU_PANE_OUT]]
+					  : NULL;
+	const struct au_bt *sb = u->pane == AU_PANE_BT &&
+				 u->sel[AU_PANE_BT] < au_nbt
+					 ? &au_bt[u->sel[AU_PANE_BT]]
+					 : NULL;
+
+	if (u->msg[0]) {
+		/* The message outranks the row and shares its cells; the row
+		 * is still called, with an empty rect, because it is what
+		 * clears the pool. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
+		if (room >= 8)
+			ktui_draw_text(2, h - 2, room, u->msg, KT_WARN,
+				       KT_SURFACE, KT_A_NONE);
+	} else if (room > 0) {
+		ktui_hint("Tab", "pane");
+		ktui_hint_if(sb != NULL, "Enter",
+			     sb && sb->connected ? "disconnect" : "connect");
+		ktui_hint_if(sd && sd->vol >= 0, "Left/Right", "volume");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_SURFACE);
+	}
 	ktui_draw_flush();
 }
 
@@ -1237,7 +1299,7 @@ int audio_main(int argc, char **argv)
 	/* Anchored means popup, centred means window — see the same block in
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -1248,18 +1310,24 @@ int audio_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : AU_COLS,
 		.rows = popup ? 18 : AU_ROWS,
 		/* Above the applet that opened it, or centred when nobody
 		 * said where. */
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
 		 * empty titlebar, which is a frame that says nothing. */
 		.title = "Sound",
 		.app_id = "kdos-audio",
+		/* The numbers this surface's own too-small check uses: one
+		 * answer to the smallest grid it can compose on, told to the
+		 * session that decides the size rather than only found out
+		 * after it has decided. */
+		.min_cols = 40,
+		.min_rows = 12,
 		.font = font,
 		.keyboard = 1,
 		/* The window stays: people click back to whatever is playing
@@ -1267,7 +1335,7 @@ int audio_main(int argc, char **argv)
 		 * like every other panel popup. */
 		.dismiss_on_unfocus = popup,
 	};
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-audio: no compositor or no layer-shell\n");
 		if (au_bus)
 			sd_bus_unref(au_bus);
@@ -1275,9 +1343,20 @@ int audio_main(int argc, char **argv)
 		au_mixer_close_all();
 		return 1;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the scale. */
+	/* AFTER kdisp_init: the icon layer needs the cell size and the scale. */
+	/*
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
+	 * before it. A console surface has no pixel size of its own —
+	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * picture a pixel or two across, which is a blank cell by a longer
+	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
+	 * display rescales to its own font. sh_pic_backend() must come after
+	 * kdisp_init: the console backend clears its client state when it
+	 * connects, so a callback registered before that point is erased.
+	 */
+	sh_pic_backend();
 	if (au_icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -1285,7 +1364,7 @@ int audio_main(int argc, char **argv)
 
 	time_t last_bt = time(NULL), last_dev = last_bt;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		/* The geometry the LAST frame drew. On the very first turn the
@@ -1347,6 +1426,27 @@ int audio_main(int argc, char **argv)
 			 * spelling, the same contract every other front end
 			 * keeps. */
 			if (ev.press == KT_MP_DRAG) {
+				/*
+				 * A DRAG THAT BEGAN ON A TRACK GOES ON SETTING
+				 * IT, wherever the pointer has since gone — a
+				 * slider that stopped at its own edge would
+				 * need the hand to stay inside sixteen cells.
+				 */
+				if (au_drag >= 0 && au_drag < au_ndev &&
+				    au_dev[au_drag].vol >= 0) {
+					int v = au_dev[au_drag].vol;
+
+					if (ktui_slider_hit(
+						    au_vol_rect(out_y +
+								au_drag -
+								u.top[AU_PANE_OUT],
+								ktui_w),
+						    &v, 0, 100, 5, ev.mx,
+						    ev.my, 0))
+						au_card_set_volume(
+							&au_dev[au_drag], v);
+					continue;
+				}
 				if (row >= 0) {
 					u.pane = pane;
 					u.sel[pane] = row;
@@ -1356,20 +1456,57 @@ int audio_main(int argc, char **argv)
 				kch_hover(ev.mx, ev.my);
 				continue;
 			}
-			if (ev.press != KT_MP_PRESS)
-				continue;
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				u.sel[u.pane]--;
+			if (ev.press == KT_MP_RELEASE) {
+				au_drag = -1;
 				continue;
 			}
-			if (ev.btn == KT_MB_WHEEL_DOWN) {
-				u.sel[u.pane]++;
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				int up = ev.btn == KT_MB_WHEEL_UP;
+
+				/* A DETENT OVER A TRACK TURNS IT and anywhere
+				 * else walks the list. */
+				if (pane == AU_PANE_OUT && row >= 0 &&
+				    row < au_ndev && au_dev[row].vol >= 0 &&
+				    krect_hit(au_vol_rect(ev.my, ktui_w),
+					      ev.mx, ev.my)) {
+					u.pane = pane;
+					u.sel[pane] = row;
+					au_card_set_volume(&au_dev[row],
+							   au_dev[row].vol +
+							   (up ? 5 : -5));
+				} else {
+					u.sel[u.pane] += up ? -1 : 1;
+				}
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
+			/*
+			 * THE TRACK ANSWERS THE FIRST PRESS, before the row
+			 * selection: one gesture picks the device and sets its
+			 * volume, and a slider that needed the row selecting
+			 * first would be two movements for one.
+			 */
+			if (pane == AU_PANE_OUT && row >= 0 &&
+			    row < au_ndev && au_dev[row].vol >= 0 &&
+			    krect_hit(au_vol_rect(ev.my, ktui_w), ev.mx,
+				      ev.my)) {
+				int v = au_dev[row].vol;
+
+				u.pane = pane;
+				u.sel[pane] = row;
+				au_drag = row;
+				if (ktui_slider_hit(au_vol_rect(ev.my, ktui_w),
+						    &v, 0, 100, 5, ev.mx,
+						    ev.my, 1))
+					au_card_set_volume(&au_dev[row], v);
+				continue;
+			}
 			int bi = kch_button_at(ev.mx, ev.my);
 			if (bi >= 0) {
 				switch (bi) {
@@ -1436,9 +1573,10 @@ int audio_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
-		switch (ev.key) {
-		case KT_K_ESC:
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			goto done;
+
+		switch (ev.key) {
 		case KT_K_TAB:
 			u.pane = u.pane == AU_PANE_OUT ? AU_PANE_BT
 						       : AU_PANE_OUT;
@@ -1503,7 +1641,7 @@ int audio_main(int argc, char **argv)
 	}
 
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	if (au_bus)
 		sd_bus_unref(au_bus);
 	au_pw_free();

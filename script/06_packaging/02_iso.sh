@@ -52,47 +52,16 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "media d 755 0 0" \
     -noappend -comp xz
 
-# 2a. The packs, on ISO9660 BESIDE system.sfs rather than inside it.
+# 2a. The KDOS base pack, when KDOS_PACK_KDOS built one.
 #
-# They are already compressed and squashing them again buys nothing, and on the
-# medium they are readable from /mnt/iso the moment the live image is up — so a
-# live stick carries every application while an installed system carries what
-# somebody chose. That is the same argument the sources below are placed by,
-# and it is what makes `kdos app install` on a live session a MOUNT rather than
-# a copy.
-#
-# THE STORE IS NOT EXCLUDED FROM THE SQUASHFS, AND MUST NOT BE. `pack_mode()`
-# is `/var/lib/kdos/packs/base.kpack` existing, so a live session whose store
-# was empty falls back to the monolithic image lane with 135 packs sitting on
-# the medium beside it. What 01_packs.sh put there is the base plus the
-# runtimes the recommended set needs — 314 MB, which is exactly what an install
-# carries — and those three files are the only ones that ride twice. Every
-# application and every data pack is on ISO9660 alone.
-# /ports, NOT /kdos/ports — see the note in 01_packs.sh: chroot_exec's bind of
-# $REPO_ROOT onto /kdos is non-recursive, so /kdos/ports is an empty shadow.
-if [ -d /ports/appbox/packs ] && \
-   ls /ports/appbox/packs/*.kpack >/dev/null 2>&1; then
-    echo "Packs onto the medium..."
-    mkdir -p $ISO_ROOT/packs
-    cp -a /ports/appbox/packs/*.kpack $ISO_ROOT/packs/
-    [ -f /ports/appbox/packs/PACKAGES ] && \
-        cp -a /ports/appbox/packs/PACKAGES* $ISO_ROOT/packs/
-    echo "Packs: $(ls $ISO_ROOT/packs/*.kpack | wc -l), $(du -sh $ISO_ROOT/packs | cut -f1)"
-else
-    # SINGLE QUOTES: backticks inside a double-quoted string are command
-    # substitution, so this line RAN `make fetch-packs` during packaging — in a
-    # chroot with no Makefile, which reported `No rule to make target
-    # 'fetch-packs'` from the middle of an ISO build that was otherwise fine.
-    echo 'Packs: none baked — `make fetch-packs` builds them (needs a network)'
-fi
-
-# The KDOS base pack, when KDOS_PACK_KDOS built one. It goes here rather than
-# into /var/lib/kdos/packs for the reason 01_packs.sh records: that directory
-# is inside the rootfs, and squashing a compressed image of the rootfs into
-# system.sfs makes the medium carry the tree twice. It is not in the medium's
-# PACKAGES index — that file is the bake's, and this pack is built here — but
-# kdos-packd scans the medium for *.kpack rather than reading the index, so
+# It goes on ISO9660 rather than into /var/lib/kdos/packs for the reason
+# 01_packs.sh records: that directory is inside the rootfs, and squashing a
+# compressed image of the rootfs into system.sfs makes the medium carry the
+# tree twice. kdos-packd scans the medium for *.kpack and needs no index, so
 # `kdos-box create ports base=pack:kdos` finds it with nothing installed.
+#
+# IT IS THE ONLY PACK A MEDIUM CARRIES. Applications are built by podman on the
+# machine that asks for one, or imported from an exported set; nothing is baked.
 # GATED ON THE FLAG, NOT ON THE FILE. `build/` is not cleaned between runs, so
 # testing whether the artefact EXISTS carries a 9.1 GB pack from an earlier
 # opt-in build onto every ISO after it — measured, on a build that never set
@@ -166,8 +135,15 @@ else
     echo "Warning: KDOS mascot icon not found — using rEFInd's tux"
 fi
 
+# Every second of countdown is a second of the boot spent before the kernel
+# exists, with nothing else running, so it is the shortest interval that keeps
+# the menu usable: one second still draws it and any keypress still cancels the
+# countdown. The menu has to stay reachable — the verbose entry and memtest86+
+# are reachable from nowhere else, and a machine that will not boot needs the
+# verbose one. `timeout 0` is NOT an immediate boot; rEFInd reads it as "wait
+# forever", which hangs every unattended boot.
 cat > $ISO_ROOT/EFI/BOOT/refind.conf <<EOF
-timeout 5
+timeout 1
 banner /EFI/BOOT/kdos-banner.png
 banner_scale noscale
 hideui hints,badges

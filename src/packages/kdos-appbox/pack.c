@@ -322,7 +322,8 @@ int pack_decompose(const char *box)
  *   /tmp and /run/user shared, because that is where the bus and the sockets
  *                      are — and /tmp must be 1777 on the host or every GTK
  *                      app fails to make its lock file
- *   /dev and /sys      a GPU, a camera and an audio device are all in there
+ *   /dev and /sys      a GPU, a camera and an audio device are all in there,
+ *                      and with private devices `gpu` binds /dev/dri back alone
  *   label/apparmor off the host runs neither, and a profile that is not loaded
  *                      is a denial rather than a policy
  *   tmpfs on /run      a pack is read-only, and /run must be writable
@@ -414,11 +415,25 @@ int pack_box_create(const Profile *p, const char *merged)
 		kb_argv_addf(&a, "%s:%s:rslave", home, home);
 	}
 
+	/*
+	 * THE RENDER NODES ARE BOUND BY WHICHEVER BRANCH RUNS, and both
+	 * branches are here because this is the lane every boxed application
+	 * takes: a pack box is `podman --rootfs` and never sees box_create().
+	 * A shared /dev carries /dev/dri with everything else; private devices
+	 * are all of /dev or none of it, so `gpu = yes` binding the card back
+	 * by itself is the only direction that key can be enforced in. Omit
+	 * the second branch and `gpu` grants nothing on the lane that matters:
+	 * no hardware GL, no VA-API decode and no Vulkan, whatever the
+	 * profile says and whatever the compositor offers.
+	 */
 	if (!p->devsys) {
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/dev:/dev:rslave");
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/sys:/sys:rslave");
+	} else if (p->gpu && kb_path_exists("/dev/dri")) {
+		kb_argv_add(&a, "--volume");
+		kb_argv_add(&a, "/dev/dri:/dev/dri");
 	}
 	kb_argv_add(&a, "--volume");
 	kb_argv_addf(&a, "/run/user/%u:/run/user/%u:rslave",

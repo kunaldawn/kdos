@@ -18,9 +18,12 @@ and
 .B \-mixer
 to change either.
 .PP
-The closing text scrolls itself, paced by the module rather than by a
-clock, and reaches its last page just before the music does.  Pressing any
-key hands control back to you for the rest of the scene.
+The closing text scrolls itself a screen at a time, paced by the module
+rather than by a clock, and reaches its last page just before the music
+does.  Each turn is one cross-fade and then a still page: a line at a time
+would start the next fade before the last had landed and nothing could be
+read.  Pressing any key hands control back to you for the rest of the
+scene.
 .SH OPTIONS
 A summary of options are included below.
 For a complete description type 
@@ -45,13 +48,13 @@ Continue.  This was the startup behaviour before KDOS.
 start at stage 1, 2 or 3
 .TP
 .B \-driver
-select driver available drivers:linux slang X11 stdout stderr
+select driver available drivers:linux curses stdout stderr
 .TP
 .B \-kbddriver
-select keyboard driver available drivers:slang X11 stdin
+select keyboard driver available drivers:curses stdin
 .TP
 .B \-mousedriver
-select mouse driver available drivers:X11 gpm dos
+select mouse driver available drivers:curses dos
 .TP
 .B \-width
 set width
@@ -147,7 +150,10 @@ The soundtrack. Without libmikmod the demo runs silent.
 KDOS ships a frozen fork of bb 1.3rc1; see
 .I /usr/share/licenses/kdos-bb/
 for the upstream authors and the licence. The mixer runs on its own thread
-here, so the music does not stutter while the terminal is drawing.
+here, so the music does not stutter while the terminal is drawing, and the
+scene clock follows the player's own position, so a moment the sound card
+spends not playing is taken back out of the animation rather than left as a
+picture that has run away from the track.
 .SH SEE ALSO
 .BR aafire (1)
 .SH AUTHORS

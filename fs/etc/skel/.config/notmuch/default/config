@@ -1,0 +1,46 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# notmuch's configuration. It indexes; it does not fetch and it does not send.
+#
+# database.mail_root IS RELATIVE ON PURPOSE. notmuch expands a relative
+# database path against $HOME, so this one file is right for every account on
+# the machine — an absolute path here would be right for exactly one of them.
+# It names ~/Mail, which is the same directory ~/.mbsyncrc fills and the same
+# one an aerc maildir or notmuch account reads.
+#
+# WITHOUT THIS FILE notmuch's database search lands on $XDG_DATA_HOME/notmuch/
+# default and takes that for the mail root: it would index its own data
+# directory and report nothing wrong.
+#
+# THE HOOKS BESIDE THIS FILE ARE PART OF IT. hooks/pre-new runs `mbsync -a`
+# before the scan and hooks/post-new tags what arrived, so `notmuch new` is the
+# whole of fetching, indexing and filing.
+#
+# `new` IN new.tags IS THE TRANSIENT ONE: post-new queries `tag:new` to find
+# what this run added and removes it on the way out. Take it out of this list
+# and every example in that hook silently matches nothing.
+
+[database]
+mail_root=Mail
+
+[new]
+tags=unread;inbox;new
+ignore=.mbsyncstate;.uidvalidity;.isyncuidmap.db;.mbsyncstate.new;.mbsyncstate.journal
+
+[user]
+# Your own address, so notmuch can tell a message you sent from one you were
+# sent, and so a reply does not go to yourself. aerc reads its own From line
+# from accounts.conf and does not consult this.
+#name=Your Name
+#primary_email=you@example.org
+
+[search]
+exclude_tags=deleted;spam

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libintl
+version     = 0.26
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-$version.tar.xz
+sha256      = d1fb86e260cfe7da6031f94d2e44c0da55903dbae0a2fa0fae78c91ae1b56f00  libintl-0.26.tar.xz
+description = GNU libintl — the gettext runtime musl does not carry in libc
+homepage    = https://www.gnu.org/software/gettext/
+depends     = gettext

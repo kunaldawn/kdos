@@ -30,10 +30,17 @@
  * same one polkit treats as admin, so "can poweroff" and "can administer this
  * machine" stay one answer.
  *
- * THE PROTOCOL IS ONE WORD PER CONNECTION. `suspend`, `poweroff`, `reboot`,
- * `ping`, then a one-line reply and the socket closes. No length prefixes, no
- * multiplexing, no state: a parser is an attack surface and this one is 30 bytes
- * of strcmp.
+ * THE PROTOCOL IS ONE LINE PER CONNECTION. `suspend`, `poweroff`, `reboot`,
+ * `ping` are a bare word; `timezone <zone>` is the one verb with an argument,
+ * then a one-line reply and the socket closes. No length prefixes, no
+ * multiplexing, no state: a parser is an attack surface and this one is a
+ * handful of strcmp.
+ *
+ * THE TIMEZONE IS HERE AND NOT IN A SECOND DAEMON because it is the same
+ * question: writing `/etc/localtime` and `/etc/profile.d/20-timezone.sh` is
+ * root's, the person doing it is the one administering the machine, and
+ * `wheel` is already the answer to who that is. A second socket with a second
+ * authorisation rule would be a second answer to one question.
  */
 
 #ifndef _GNU_SOURCE
@@ -166,6 +173,398 @@ static int do_reboot(int cmd)
 	return -1;		/* only reached if reboot(2) itself failed */
 }
 
+/*
+ * THE FIREWALL, AS NAMED SERVICES AND NEVER AS PORTS.
+ *
+ * THE TABLE IS HERE, NOT IN THE SURFACE, AND THAT IS THE WHOLE POINT. A client
+ * that could name a port could open any port; a client that can only name
+ * `ssh` can open exactly what this table says `ssh` is. The surface asks for
+ * the list rather than carrying a copy, so there is one answer to what a name
+ * means.
+ *
+ * THE FILE IS REWRITTEN WHOLE from the names that are on. Merging into an
+ * existing file would mean parsing nftables syntax to find what to remove, and
+ * a parser that got it wrong would leave a port open that the surface showed
+ * as closed. What a person writes by hand goes in another file beside it,
+ * which this never reads or touches.
+ */
+static const struct {
+	const char *name;
+	const char *rule;
+	const char *what;
+} FW[] = {
+	{ "ssh",   "tcp dport 22 accept",   "incoming SSH (70_sshd.sh)" },
+	{ "http",  "tcp dport 80 accept",   "a web server on this machine" },
+	{ "https", "tcp dport 443 accept",  "a TLS web server on this machine" },
+	{ "ipp",   "tcp dport 631 accept",  "sharing a printer with CUPS" },
+	{ "smb",   "tcp dport 445 accept",  "sharing files over SMB" },
+	/* kiwix-serve's default, and the one offline-content port this desktop
+	 * ships a reason for. */
+	{ "kiwix", "tcp dport 8080 accept", "kiwix-serve" },
+	{ "mdns",  "udp dport 5353 accept", "mDNS beyond the default rule" },
+};
+#define FW_N ((int)(sizeof(FW) / sizeof(FW[0])))
+
+#define FW_FILE "nftables.d/50-kdos-services.nft"
+
+static const char *fw_etc(void)
+{
+	const char *e = getenv("KDOS_POWERD_ETC");
+
+	return e && *e ? e : "/etc";
+}
+
+/* Which names the file currently carries, by looking for each table entry's
+ * own rule text — the file is this program's output, so an exact match is the
+ * right test and a partial one would report a name that is not really on. */
+static void fw_state(int *on)
+{
+	char path[320], buf[8192];
+
+	for (int i = 0; i < FW_N; i++)
+		on[i] = 0;
+	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return;
+	for (int i = 0; i < FW_N; i++)
+		if (strstr(buf, FW[i].rule))
+			on[i] = 1;
+}
+
+static int fw_write(const int *on, char *out, size_t nout)
+{
+	char path[320], tmp[336];
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
+	snprintf(tmp, sizeof(tmp), "%s.new", path);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+	fprintf(f,
+		"# Written by `kdos-firewall` through kdos-powerd. Rewritten\n"
+		"# WHOLE on every change, so a rule it does not recognise is\n"
+		"# dropped — anything hand-made belongs in a file beside this\n"
+		"# one, which this never touches.\n"
+		"#\n"
+		"# No `type`/`hook` line: that is what re-opens the existing\n"
+		"# input chain rather than declaring a second one.\n"
+		"\n"
+		"table inet filter {\n"
+		"\tchain input {\n");
+	for (int i = 0; i < FW_N; i++)
+		if (on[i])
+			fprintf(f, "\t\t%s\n", FW[i].rule);
+	fprintf(f, "\t}\n}\n");
+	fflush(f);
+	fsync(fileno(f));
+	if (fclose(f) != 0 || rename(tmp, path) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+
+	/*
+	 * APPLIED BY RELOADING THE WHOLE RULESET, because `/etc/nftables.conf`
+	 * begins with `flush ruleset` and the included files are only reached
+	 * from there. `nft --check` first: a bad ruleset refused is the
+	 * previous one still in the kernel, and a bad ruleset half-applied is
+	 * a machine with no firewall.
+	 */
+	if (!getenv("KDOS_POWERD_ETC")) {
+		KbArgv chk = { 0 }, app = { 0 };
+
+		kb_argv_add(&chk, "/usr/sbin/nft");
+		kb_argv_add(&chk, "--check");
+		kb_argv_add(&chk, "-f");
+		kb_argv_add(&chk, "/etc/nftables.conf");
+		kb_argv_end(&chk);
+		if (kb_run(&chk) != 0) {
+			snprintf(out, nout,
+				 "err the ruleset would not load; nothing changed\n");
+			return -1;
+		}
+		kb_argv_add(&app, "/usr/sbin/nft");
+		kb_argv_add(&app, "-f");
+		kb_argv_add(&app, "/etc/nftables.conf");
+		kb_argv_end(&app);
+		if (kb_run(&app) != 0) {
+			snprintf(out, nout, "err the ruleset did not apply\n");
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static int fw_verb(const char *arg, char *out, size_t nout)
+{
+	int on[FW_N];
+	char name[64] = "", state[16] = "";
+
+	fw_state(on);
+
+	if (!strcmp(arg, "list")) {
+		/* One row per service: the surface draws this and carries no
+		 * table of its own. */
+		size_t used = 0;
+
+		for (int i = 0; i < FW_N; i++) {
+			int k = snprintf(out + used, nout - used,
+					 "%s\t%s\t%s\n", FW[i].name,
+					 on[i] ? "on" : "off", FW[i].what);
+
+			if (k < 0 || (size_t)k >= nout - used)
+				break;
+			used += (size_t)k;
+		}
+		snprintf(out + used, nout - used, "ok\n");
+		return 0;
+	}
+
+	if (sscanf(arg, "%63s %15s", name, state) != 2) {
+		snprintf(out, nout, "err usage: firewall list|<name> on|off\n");
+		return -1;
+	}
+	int want = !strcmp(state, "on");
+
+	if (!want && strcmp(state, "off")) {
+		snprintf(out, nout, "err a service is on or off\n");
+		return -1;
+	}
+	for (int i = 0; i < FW_N; i++) {
+		if (strcmp(FW[i].name, name))
+			continue;
+		on[i] = want;
+		if (fw_write(on, out, nout) != 0)
+			return -1;
+		snprintf(out, nout, "ok %s %s\n", name, want ? "on" : "off");
+		return 0;
+	}
+	/* A NAME THIS TABLE DOES NOT CARRY IS NOT A PORT TO OPEN. */
+	snprintf(out, nout, "err no service called that\n");
+	return -1;
+}
+
+/*
+ * WHICH ACCOUNT tty1 LOGS IN WITHOUT ASKING, or none.
+ *
+ * `/etc/kdos/con.conf` is root's and the choice is an administrator's, which
+ * is the same question `wheel` already answers — so it is a verb here rather
+ * than a second daemon or a setuid writer for two lines.
+ *
+ * THE ACCOUNT MUST BE ONE A GREETER WOULD OFFER. `kb_users()` is the one place
+ * that decides who may log in, and pointing autologin at a name it would not
+ * list is a machine that boots to a login nobody can complete — a service
+ * account with `nologin`, or a name that is not there at all.
+ *
+ * BOTH KEYS ARE REWRITTEN TOGETHER. `greet` and `autologin` are one setting
+ * seen twice: `greet = no` with no `autologin` is a tty1 that logs in as
+ * whatever the default happens to be, and an `autologin` under `greet = yes`
+ * is a line that does nothing and reads as though it does.
+ */
+static int set_autologin(const char *who, char *out, size_t nout)
+{
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	char path[320], tmp[336];
+	char *buf, *next;
+	size_t cap;
+	int off = !strcmp(who, "off");
+	FILE *f;
+
+	if (!etc || !*etc)
+		etc = "/etc";
+	if (!off) {
+		KbUser u[64];
+		int n = kb_users(u, 64), i;
+
+		for (i = 0; i < n; i++)
+			if (!strcmp(u[i].name, who))
+				break;
+		if (i == n) {
+			snprintf(out, nout, "err no such account\n");
+			return -1;
+		}
+	}
+
+	/*
+	 * ON THE HEAP, BECAUSE A CONFIGURATION FILE GROWS. `kb_read_file`
+	 * fills a fixed buffer and NUL-terminates whatever fitted, so a
+	 * con.conf past that size was read as its own first N bytes and this
+	 * rewrote the machine's login settings out of a truncated file —
+	 * silently, and the last comment came out cut in half. libkbase says
+	 * so in its own header: a file a PERSON edits wants kb_read_whole.
+	 */
+	size_t len = 0;
+
+	snprintf(path, sizeof(path), "%s/kdos/con.conf", etc);
+	buf = kb_read_whole(path, &len);
+	if (!buf || !len) {
+		free(buf);
+		snprintf(out, nout, "err cannot read con.conf\n");
+		return -1;
+	}
+
+	/* Two keys may each grow by a name, and every line gains nothing else;
+	 * the slack is a name's worth per line, which no rewrite can exceed. */
+	cap = len + 1024;
+	next = malloc(cap);
+	if (!next) {
+		free(buf);
+		snprintf(out, nout, "err cannot read con.conf\n");
+		return -1;
+	}
+	next[0] = '\0';
+
+	size_t used = 0;
+
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
+	     ln = strtok_r(NULL, "\n", &sp)) {
+		char row[512];
+
+		/* The KEY only, and leading space is not part of it: a comment
+		 * mentioning `greet` must not be rewritten into a setting. */
+		if (!strncmp(ln, "greet", 5) && strchr(ln, '='))
+			snprintf(row, sizeof(row), "greet = %s",
+				 off ? "yes" : "no");
+		else if (!strncmp(ln, "autologin", 9) && strchr(ln, '='))
+			snprintf(row, sizeof(row), "autologin = %s",
+				 off ? "kdos" : who);
+		else
+			snprintf(row, sizeof(row), "%s", ln);
+		int k = snprintf(next + used, cap - used, "%s\n", row);
+
+		/* A file that would not fit is REFUSED rather than truncated:
+		 * writing half a config leaves a machine whose login settings
+		 * are whatever survived. */
+		if (k < 0 || (size_t)k >= cap - used) {
+			free(buf);
+			free(next);
+			snprintf(out, nout, "err con.conf is too large\n");
+			return -1;
+		}
+		used += (size_t)k;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s/kdos/con.conf.new", etc);
+	f = fopen(tmp, "w");
+	if (!f) {
+		free(buf);
+		free(next);
+		snprintf(out, nout, "err cannot write con.conf\n");
+		return -1;
+	}
+	fputs(next, f);
+	fflush(f);
+	fsync(fileno(f));
+	fclose(f);
+	free(buf);
+	free(next);
+	if (rename(tmp, path) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write con.conf\n");
+		return -1;
+	}
+	snprintf(out, nout, "ok %s\n", off ? "off" : who);
+	return 0;
+}
+
+/*
+ * SET THE MACHINE'S TIMEZONE, from a name in the shipped zoneinfo tree.
+ *
+ * THE NAME IS VALIDATED AS A PATH COMPONENT SET AND THEN AS A FILE, in that
+ * order. A zone is `Area/City` or `Area/Sub/City`, so a slash is legal — which
+ * makes `../../etc/shadow` legal-looking too, and the first check is what
+ * stops it: letters, digits, `+`, `-`, `_` and `/`, no dot at all, no leading
+ * or doubled slash. The second is that the file must exist under
+ * `/usr/share/zoneinfo`, so a name that passes the first and names nothing is
+ * refused rather than symlinked to.
+ *
+ * BOTH HALVES ARE WRITTEN OR NEITHER IS. `/etc/localtime` is what a program
+ * reading the zoneinfo tree follows; `TZ` in the profile is what musl reads
+ * when it is set, and it is set on every KDOS login — so writing only the
+ * symlink leaves `date` reporting the OLD zone for the life of every shell
+ * that had already sourced the profile, which reads as the setting having
+ * done nothing.
+ */
+static const char *KP_ZONEDIR = "/usr/share/zoneinfo";
+
+static bool zone_name_ok(const char *z)
+{
+	size_t n = strlen(z);
+
+	if (!n || n > 64 || z[0] == '/' || z[n - 1] == '/')
+		return false;
+	for (size_t i = 0; i < n; i++) {
+		char c = z[i];
+
+		if (c == '/' && z[i + 1] == '/')
+			return false;
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		      (c >= '0' && c <= '9') || c == '+' || c == '-' ||
+		      c == '_' || c == '/'))
+			return false;
+	}
+	return true;
+}
+
+static int set_timezone(const char *zone, char *out, size_t nout)
+{
+	const char *dir = getenv("KDOS_POWERD_ZONEDIR");
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	char zi[320], link[320], prof[320], tmp[336];
+	FILE *f;
+
+	if (!zone_name_ok(zone)) {
+		snprintf(out, nout, "err not a zone name\n");
+		return -1;
+	}
+	if (!dir || !*dir)
+		dir = KP_ZONEDIR;
+	if (!etc || !*etc)
+		etc = "/etc";
+	snprintf(zi, sizeof(zi), "%s/%s", dir, zone);
+	if (!kb_path_exists(zi)) {
+		snprintf(out, nout, "err no such zone\n");
+		return -1;
+	}
+
+	snprintf(link, sizeof(link), "%s/localtime", etc);
+	snprintf(tmp, sizeof(tmp), "%s/localtime.new", etc);
+	unlink(tmp);
+	if (symlink(zi, tmp) != 0 || rename(tmp, link) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write localtime\n");
+		return -1;
+	}
+
+	snprintf(prof, sizeof(prof), "%s/profile.d/20-timezone.sh", etc);
+	snprintf(tmp, sizeof(tmp), "%s/profile.d/20-timezone.sh.new", etc);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write the profile\n");
+		return -1;
+	}
+	fprintf(f,
+		"# Written by kdos-powerd.\n"
+		"# `/etc/localtime` is what a program reading the zoneinfo\n"
+		"# tree follows; this is what musl reads, and it wins where it\n"
+		"# is set. Both say the same zone or `date` and the desktop\n"
+		"# disagree.\n"
+		"export TZ=':/etc/localtime'\n");
+	fflush(f);
+	fsync(fileno(f));
+	fclose(f);
+	if (rename(tmp, prof) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write the profile\n");
+		return -1;
+	}
+	snprintf(out, nout, "ok %s\n", zone);
+	return 0;
+}
+
 /* ── the daemon ────────────────────────────────────────────────────────── */
 
 static int serve(void)
@@ -266,6 +665,29 @@ static int serve(void)
 			(void)!write(c, "ok\n", 3);
 			close(c);
 			do_reboot(RB_POWER_OFF);
+			continue;
+		} else if (!strncmp(buf, "firewall ", 9)) {
+			/* The list reply is many rows, so it gets a buffer of
+			 * its own rather than the one-line one above. */
+			static char fwmsg[4096];
+
+			fw_verb(buf + 9, fwmsg, sizeof(fwmsg));
+			(void)!write(c, fwmsg, strlen(fwmsg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "autologin ", 10)) {
+			char msg[128];
+
+			set_autologin(buf + 10, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "timezone ", 9)) {
+			char msg[128];
+
+			set_timezone(buf + 9, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
 			continue;
 		} else if (!strcmp(buf, "reboot")) {
 			(void)!write(c, "ok\n", 3);
@@ -391,7 +813,10 @@ static void lock_before_suspend(void)
 static int usage(void)
 {
 	fprintf(stderr,
-		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n");
+		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n"
+		"       kdos-power timezone <Area/City>\n"
+		"       kdos-power autologin <user>|off\n"
+		"       kdos-power firewall list|<service> on|off\n");
 	return 2;
 }
 
@@ -443,15 +868,41 @@ static int client(int argc, char **argv)
 	const char *cmd = NULL;
 	bool no_lock = false;
 
+	const char *arg = NULL;
+
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--no-lock"))
 			no_lock = true;
 		else if (!cmd)
 			cmd = argv[i];
+		else if (!arg)
+			arg = argv[i];
 		else
 			return usage();
 	}
 	if (!cmd)
+		return usage();
+
+	/*
+	 * `timezone` IS THE ONE VERB WITH AN ARGUMENT, and it is joined here
+	 * rather than in the daemon's parser: the request line is `timezone
+	 * <zone>` and a zone name carries no space, so one buffer and one
+	 * strncmp on the far side is the whole protocol change.
+	 */
+	char line[KP_MAX];
+
+	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin") ||
+	    !strcmp(cmd, "firewall")) {
+		if (!arg)
+			return usage();
+		if (snprintf(line, sizeof(line), "%s %s", cmd, arg) >=
+		    (int)sizeof(line)) {
+			fprintf(stderr, "kdos-power: argument too long\n");
+			return 2;
+		}
+		return request(line);
+	}
+	if (arg)
 		return usage();
 	if (strcmp(cmd, "suspend") && strcmp(cmd, "poweroff") &&
 	    strcmp(cmd, "reboot") && strcmp(cmd, "ping"))
@@ -490,8 +941,55 @@ int main(int argc, char **argv)
 	if (!strcmp(me, "kdos-powerd")) {
 		if (argc == 3 && !strcmp(argv[1], "--explain"))
 			return explain(argv[2]);
+		/*
+		 * THE TIMEZONE WRITE WITHOUT THE SOCKET, which is the only way
+		 * it gets tested at all: the gate is SO_PEERCRED on a
+		 * connection and cannot be exercised without two uids, so the
+		 * verb's own rules — what a zone name may contain, that the
+		 * file must exist, that both halves are written — would
+		 * otherwise be asserted by nothing.
+		 *
+		 * IT GRANTS NOTHING. It is this binary run by whoever ran it,
+		 * writing to an `/etc` that user could already write to; on
+		 * the real path that is root's and this changes neither who
+		 * may connect nor what the daemon does for them.
+		 */
+		if (argc >= 3 && !strcmp(argv[1], "--firewall")) {
+			static char msg[4096];
+			char joined[128] = "";
+			int rc;
+
+			for (int i = 2; i < argc && i < 5; i++) {
+				if (joined[0])
+					strncat(joined, " ",
+						sizeof(joined) - strlen(joined) - 1);
+				strncat(joined, argv[i],
+					sizeof(joined) - strlen(joined) - 1);
+			}
+			rc = fw_verb(joined, msg, sizeof(msg));
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
+		if (argc == 3 && !strcmp(argv[1], "--set-autologin")) {
+			char msg[128];
+			int rc = set_autologin(argv[2], msg, sizeof(msg));
+
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
+		if (argc == 3 && !strcmp(argv[1], "--set-timezone")) {
+			char msg[128];
+			int rc = set_timezone(argv[2], msg, sizeof(msg));
+
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
 		if (argc > 1) {
-			fprintf(stderr, "usage: kdos-powerd [--explain USER]\n");
+			fprintf(stderr, "usage: kdos-powerd [--explain USER]\n"
+					"       kdos-powerd --set-timezone "
+					"<Area/City>\n"
+					"       kdos-powerd --set-autologin "
+					"<user>|off\n");
 			return 2;
 		}
 		return serve();

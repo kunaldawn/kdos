@@ -21,27 +21,34 @@
 typedef struct {
 	int focus;		/* id of the focused control               */
 	int nfocus;		/* focusables seen this frame              */
-	int maxid;
 	int clicked;		/* control id clicked this frame, -1 none  */
 	int dblclick;
 	int wheel;		/* -1 up, +1 down, 0 none                  */
-	int wheel_id;
+	int wheel_id;		/* wheel-consuming control under the pointer */
 	KtuiEvent ev;		/* event being dispatched this frame       */
 	int consumed;
 	int mx, my;		/* pointer position for hover              */
-	int hover;
 	KRect focus_rect;	/* where the focused control landed        */
 	int focus_seen;
-	/* Press capture: the id whose rect saw the left press owns every
-	 * KT_MP_DRAG until the release, however far the pointer strays — a
-	 * slider or a text selection that loses its widget the moment the hand
-	 * drifts a row is not a drag at all. `drag` is that id for exactly the
-	 * frames a captured drag arrived on, -1 otherwise. */
+	/* Press capture: the id whose rect saw the left press keeps every
+	 * subsequent motion until the release, however far the pointer strays —
+	 * a slider or a text selection that loses its widget the moment the hand
+	 * drifts a row is not a drag at all. `drag` is that id on the frames a
+	 * captured drag arrived on and -1 otherwise; ktui_drag() reads it. */
 	int capture;
 	int drag;
+	int in_frame;		/* between ktui_frame_begin and _end       */
 } KtuiUi;
 
-static KtuiUi ui = { .capture = -1, .drag = -1 };
+/* EVERY "none" FIELD RESTS AT -1, not at 0, because 0 is the first id
+ * ktui_id() hands out: a zeroed `clicked` makes the first control of a
+ * surface that has not begun a frame yet read as clicked and fire itself. */
+static KtuiUi ui = {
+	.capture = -1,
+	.drag = -1,
+	.clicked = -1,
+	.wheel_id = -1,
+};
 
 #define MAX_HITS 512
 #define MAX_IDS 512
@@ -49,6 +56,7 @@ static KtuiUi ui = { .capture = -1, .drag = -1 };
 typedef struct {
 	KRect r;
 	int id;
+	int wheel;		/* claims the wheel over its rect          */
 } Hit;
 
 static Hit hits_a[MAX_HITS], hits_b[MAX_HITS];
@@ -62,8 +70,53 @@ static int last_click_id = -1;
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * The frame's announcements. Fixed, cleared below, and never allocated: see
+ * ktui.h for why silence rather than a stale name is the failure mode.
+ */
+static KtuiA11y a11y[KTUI_A11Y_MAX];
+static int na11y;
+
+void ktui_announce(int role, const char *label, const char *value, int index,
+		   int count)
+{
+	KtuiA11y *a;
+
+	if (na11y >= KTUI_A11Y_MAX || role == KT_A11Y_NONE)
+		return;
+	a = &a11y[na11y++];
+	a->role = role;
+	a->index = index;
+	a->count = count;
+	kb_strlcpy(a->label, label ? label : "", sizeof(a->label));
+	kb_strlcpy(a->value, value ? value : "", sizeof(a->value));
+}
+
+int ktui_announce_count(void)
+{
+	return na11y;
+}
+
+const KtuiA11y *ktui_announce_at(int i)
+{
+	return i >= 0 && i < na11y ? &a11y[i] : NULL;
+}
+
 void ktui_frame_begin(KtuiEvent *ev)
 {
+	/* SWAPPED BEFORE THE SCAN, because the click being dispatched belongs
+	 * to the layout the caller drew LAST frame. Scanning first would match
+	 * it against the frame before that, and every surface would swallow
+	 * its first two clicks. */
+	Hit *t = cur_hits;
+	cur_hits = prev_hits;
+	prev_hits = t;
+	int *tn = cur_n;
+	cur_n = prev_n;
+	prev_n = tn;
+	*cur_n = 0;
+
+	na11y = 0;
 	ui.ev = *ev;
 	ui.consumed = 0;
 	ui.clicked = -1;
@@ -71,23 +124,33 @@ void ktui_frame_begin(KtuiEvent *ev)
 	ui.wheel = 0;
 	ui.wheel_id = -1;
 	ui.nfocus = 0;
-	ui.maxid = 0;
-	ui.hover = -1;
 	ui.focus_seen = 0;
 	ui.drag = -1;
+	ui.in_frame = 1;
 
 	if (ev->type == KT_EVT_MOUSE) {
 		ui.mx = ev->mx;
 		ui.my = ev->my;
 		int is_wheel = ev->btn == KT_MB_WHEEL_UP ||
 			       ev->btn == KT_MB_WHEEL_DOWN;
+		/* A wheel exists whether or not anything is under it: an
+		 * unclaimed one falls through to the page, which is what
+		 * ktui_wheel_take() collects. */
+		if (is_wheel)
+			ui.wheel = ev->btn == KT_MB_WHEEL_UP ? -1 : 1;
 		if (!is_wheel && ev->press == KT_MP_DRAG && ui.capture >= 0) {
 			ui.drag = ui.capture;
 		} else for (int i = *prev_n - 1; i >= 0; i--) {
 			if (!krect_hit(prev_hits[i].r, ev->mx, ev->my))
 				continue;
 			if (is_wheel) {
-				ui.wheel = ev->btn == KT_MB_WHEEL_UP ? -1 : 1;
+				/* Only a control that REGISTERED for the wheel
+				 * claims it, and the scan keeps going past the
+				 * ones that did not — a button drawn inside a
+				 * list sits on top of the list's rect and would
+				 * otherwise swallow the list's scrolling. */
+				if (!prev_hits[i].wheel)
+					continue;
 				ui.wheel_id = prev_hits[i].id;
 			} else if (ev->btn == KT_MB_LEFT && ev->press == KT_MP_PRESS) {
 				ui.clicked = prev_hits[i].id;
@@ -108,14 +171,6 @@ void ktui_frame_begin(KtuiEvent *ev)
 		if (!is_wheel && ev->press == KT_MP_RELEASE)
 			ui.capture = -1;
 	}
-
-	Hit *t = cur_hits;
-	cur_hits = prev_hits;
-	prev_hits = t;
-	int *tn = cur_n;
-	cur_n = prev_n;
-	prev_n = tn;
-	*cur_n = 0;
 }
 
 void ktui_frame_end(void)
@@ -134,6 +189,7 @@ void ktui_frame_end(void)
 		ui.focus = ui.nfocus - 1;
 	if (ui.focus < 0)
 		ui.focus = 0;
+	ui.in_frame = 0;
 }
 
 int ktui_id(void)
@@ -142,6 +198,24 @@ int ktui_id(void)
 	if (id >= MAX_IDS)
 		id = MAX_IDS - 1;
 	return id;
+}
+
+/*
+ * The id the next control will claim, for a group that has to point the focus
+ * at one of its own members before drawing them.
+ *
+ * Outside a frame the counter is restarted first. ktui_frame_begin() is what
+ * resets it, and a surface that runs its own event loop and calls a
+ * draw/key pair never begins one, so its ids would climb with every repaint
+ * until they all clamped to MAX_IDS - 1 and every control in the group
+ * answered to the same id. Inside a frame the counter belongs to the page and
+ * is only read — restarting it there would hand two controls one id.
+ */
+int ktui_id_base(void)
+{
+	if (!ui.in_frame)
+		ui.nfocus = 0;
+	return ui.nfocus;
 }
 
 void ktui_hit(KRect r, int id)
@@ -156,7 +230,21 @@ void ktui_hit(KRect r, int id)
 		return;
 	cur_hits[*cur_n].r = r;
 	cur_hits[*cur_n].id = id;
+	cur_hits[*cur_n].wheel = 0;
 	(*cur_n)++;
+}
+
+/* A control that SCROLLS registers with this instead, and everything else
+ * lets the wheel through to the page under it. A rect that claimed the wheel
+ * merely by being under the pointer would make a page with one list in it
+ * unscrollable everywhere the list is. */
+static void hit_wheel(KRect r, int id)
+{
+	int n = *cur_n;
+
+	ktui_hit(r, id);
+	if (*cur_n > n)
+		cur_hits[n].wheel = 1;
 }
 
 int ktui_focused(int id)
@@ -240,6 +328,14 @@ int ktui_clicked(void)
 	return ui.clicked;
 }
 
+/* The id holding the press capture on this frame, -1 otherwise. A dragging
+ * control must test THIS and not its own rect: the whole point of the capture
+ * is that the pointer has left the rect. */
+int ktui_drag(void)
+{
+	return ui.drag;
+}
+
 int ktui_mouse_x(void)
 {
 	return ui.mx;
@@ -250,6 +346,9 @@ int ktui_mouse_y(void)
 	return ui.my;
 }
 
+/* The wheel that no scrolling control claimed, if the pointer is inside r.
+ * `wheel_id >= 0` means a control registered for the wheel sits under the
+ * pointer and has first refusal; the page gets what is left. */
 int ktui_wheel_take(KRect r)
 {
 	if (!ui.wheel || ui.wheel_id >= 0 || !krect_hit(r, ui.mx, ui.my))
@@ -301,6 +400,12 @@ int ktui_button(KRect r, const char *label, int enabled, int primary)
 	int cy = r.y + r.h / 2;
 	ktui_draw_text(x, cy, r.w, label, fg, bg, 0);
 
+	/* SAID WHERE FOCUS IS COMPUTED, not where it is drawn: a second place
+	 * that worked out which control has focus is a second place to get it
+	 * wrong. */
+	if (focus)
+		ktui_announce(KT_A11Y_BUTTON, label, NULL, 0, 0);
+
 	/* The focused button carries brackets rather than only a colour — on a
 	 * washed-out laptop panel colour alone is not a focus indicator. */
 	if (focus && r.w > 4) {
@@ -326,6 +431,11 @@ int ktui_check(int x, int y, int w, const char *label, int *val)
 	ktui_draw_text(x + 2, y, 1, "]", focus ? KT_BG : KT_MID, bg, 0);
 	ktui_draw_text(x + 4, y, w - 4, label, fg, bg, 0);
 
+	/* The VALUE as well as the name: "on" and "off" is what the box says,
+	 * and a reader given only the label has to guess which. */
+	if (focus)
+		ktui_announce(KT_A11Y_CHECK, label, *val ? "on" : "off", 0, 0);
+
 	if (ktui_activated(id, r)) {
 		*val = !*val;
 		return 1;
@@ -348,6 +458,10 @@ int ktui_radio(int x, int y, int w, const char *label, int *val, int on)
 		  focus ? KT_BG : KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 2, y, 1, ")", focus ? KT_BG : KT_MID, bg, 0);
 	ktui_draw_text(x + 4, y, w - 4, label, fg, bg, 0);
+
+	if (focus)
+		ktui_announce(KT_A11Y_RADIO, label,
+			      sel ? "selected" : "not selected", 0, 0);
 
 	if (ktui_activated(id, r)) {
 		*val = on;
@@ -398,6 +512,30 @@ void ktui_paste_push(const char *utf8, size_t len)
 			paste_len = k - 1;
 	}
 	paste_buf[paste_len] = 0;
+}
+
+/*
+ * Take the pending paste, for a consumer that is not a text field. A terminal
+ * is the case: its "caret" is a child process on a pty, so it cannot go
+ * through ktui_input and has to be handed the bytes.
+ *
+ * The same TTL as the input path, and the same filter: newlines arrived as
+ * spaces, so a paste cannot press Enter in a shell any more than it can in a
+ * field. Returns the length and clears the queue — a paste is taken once.
+ */
+size_t ktui_paste_take(const char **out)
+{
+	if (paste_len && kb_now_s() - paste_at > PASTE_TTL)
+		paste_len = 0;
+	if (!paste_len)
+		return 0;
+
+	size_t n = paste_len;
+
+	if (out)
+		*out = paste_buf;
+	paste_len = 0;
+	return n;
 }
 
 /* The caret is a BYTE index into a UTF-8 buffer; it only ever rests on a
@@ -604,6 +742,17 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 			col = 0;
 		*cur = in_byte_at(buf, col, secret);
 	}
+
+	/*
+	 * A SECRET FIELD ANNOUNCES THAT IT IS ONE AND NEVER ITS CONTENTS. The
+	 * whole point of the field is that what is typed into it is not on the
+	 * screen; a reader that said it aloud would put it in the room.
+	 */
+	if (focus)
+		ktui_announce(KT_A11Y_INPUT,
+			      placeholder && *placeholder ? placeholder
+							  : "text",
+			      secret ? "hidden" : buf, 0, 0);
 	return changed;
 }
 
@@ -647,39 +796,36 @@ void ktui_progress_ex(KRect r, double frac, const char *label, int style,
 		int p = (int)(kb_now_s() * 12) % (r.w * 2);
 		if (p >= r.w)
 			p = r.w * 2 - p - 1;
-		for (int i = 0; i < 3 && p + i < r.w; i++)
-			ktui_draw_text(r.x + p + i, r.y, 1, ktui_glyph[KT_G_FULL],
-				       KT_ACCENT, bg, 0);
+		int n = p + 3 > r.w ? r.w - p : 3;
+		ktui_draw_hline(r.x + p, r.y, n, KT_G_FULL, KT_ACCENT, bg);
 	} else if (style == KT_BAR_SEGMENTED) {
 		if (frac > 1)
 			frac = 1;
 		int fill = (int)(frac * r.w + 0.5);
-		for (int i = 0; i < r.w; i++)
-			ktui_draw_text(r.x + i, r.y, 1,
-				       (i & 1) ? " "
-					       : (i < fill ? ktui_glyph[KT_G_FULL]
-							   : ktui_glyph[KT_G_SHADE]),
+		ktui_draw_hline(r.x, r.y, fill, KT_G_FULL, KT_ACCENT, bg);
+		ktui_draw_hline(r.x + fill, r.y, r.w - fill, KT_G_SHADE, KT_DIM,
+				bg);
+		for (int i = 1; i < r.w; i += 2)
+			ktui_draw_cell(r.x + i, r.y, ' ',
 				       i < fill ? KT_ACCENT : KT_DIM, bg, 0);
 	} else {
 		double tip = 0;
 		int fill = style == KT_BAR_TIP
 				   ? ktui_bar_fill(r.w, frac, &tip)
 				   : (frac > 1 ? r.w : (int)(frac * r.w + 0.5));
-		for (int i = 0; i < r.w; i++) {
-			const char *g;
-			int fg;
-			if (i < fill) {
-				g = ktui_glyph[KT_G_FULL];
-				fg = KT_ACCENT;
-			} else if (i == fill && tip > 0) {
-				g = ktui_ramp_h(tip);
-				fg = KT_ACCENT;
-			} else {
-				g = ktui_glyph[KT_G_SHADE];
-				fg = KT_DIM;
-			}
-			ktui_draw_text(r.x + i, r.y, 1, g, fg, bg, 0);
+		/* DRAWN AS RUNS, not cell by cell: ktui_draw_hline goes
+		 * straight to the pre-decoded codepoint, while a per-cell
+		 * ktui_draw_text re-decodes the same three bytes and re-walks
+		 * the width tables for every column of every frame. */
+		ktui_draw_hline(r.x, r.y, fill, KT_G_FULL, KT_ACCENT, bg);
+		int rest = r.x + fill;
+		if (tip > 0 && fill < r.w) {
+			ktui_draw_text(rest, r.y, 1, ktui_ramp_h(tip),
+				       KT_ACCENT, bg, 0);
+			rest++;
 		}
+		ktui_draw_hline(rest, r.y, r.x + r.w - rest, KT_G_SHADE,
+				KT_DIM, bg);
 
 		/* One cell of the filled run is lit a shade brighter and walks
 		 * left to right. It says "still moving" on a bar that has not
@@ -688,9 +834,8 @@ void ktui_progress_ex(KRect r, double frac, const char *label, int style,
 		if (pulse && fill > 0) {
 			int p = (int)(kb_now_s() * 9) % (fill + 4);
 			if (p < fill)
-				ktui_draw_text(r.x + p, r.y, 1,
-					       ktui_glyph[KT_G_FULL], KT_WARN,
-					       bg, 0);
+				ktui_draw_hline(r.x + p, r.y, 1, KT_G_FULL,
+						KT_WARN, bg);
 		}
 	}
 
@@ -723,12 +868,29 @@ void ktui_scrollbar(KRect r, int total, int shown, int off)
 	int th = r.h * shown / total;
 	if (th < 1)
 		th = 1;
+	/* The offset is clamped here and nowhere else: a caller is free to
+	 * hand over one past its own end — a filter that shrinks the list
+	 * under a scrolled view does exactly that — and the runs below are
+	 * unclipped against the rect, so an unclamped thumb paints down over
+	 * whatever sits beneath the panel. th < r.h on this branch, so
+	 * r.h - th is always a valid upper bound and the track below the
+	 * thumb never takes a negative length. */
+	if (off < 0)
+		off = 0;
+	if (off > total - shown)
+		off = total - shown;
 	int ty = (r.h - th) * off / (total - shown);
-	for (int i = 0; i < r.h; i++)
-		ktui_draw_text(r.x, r.y + i, 1,
-			  (i >= ty && i < ty + th) ? ktui_glyph[KT_G_FULL]
-						   : ktui_glyph[KT_G_VL],
-			  (i >= ty && i < ty + th) ? KT_MID : KT_DIM, KT_BG, 0);
+	if (ty < 0)
+		ty = 0;
+	if (ty > r.h - th)
+		ty = r.h - th;
+	/* Three runs, not r.h separate strings: the track and the thumb are
+	 * each one glyph repeated, and ktui_draw_vline writes the codepoint
+	 * the tier already decoded instead of decoding it per cell. */
+	ktui_draw_vline(r.x, r.y, ty, KT_G_VL, KT_DIM, KT_BG);
+	ktui_draw_vline(r.x, r.y + ty, th, KT_G_FULL, KT_MID, KT_BG);
+	ktui_draw_vline(r.x, r.y + ty + th, r.h - ty - th, KT_G_VL, KT_DIM,
+			KT_BG);
 }
 
 int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user, int id)
@@ -831,6 +993,12 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user, int
 	if (count > vis)
 		ktui_scrollbar(krect(r.x + r.w - 1, r.y, 1, r.h), count, vis, st->off);
 
-	ktui_hit(r, id);
+	/* THE POSITION, because the rows are the caller's callback and this
+	 * knows which one is selected rather than what is in it. A surface
+	 * that has the text may say the name itself. */
+	if (focus && count > 0)
+		ktui_announce(KT_A11Y_LIST, NULL, NULL, st->sel + 1, count);
+
+	hit_wheel(r, id);
 	return chosen;
 }

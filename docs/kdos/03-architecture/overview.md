@@ -13,7 +13,7 @@ how it is built, how it is packaged and who is responsible for it.
 |---|---|---|---|
 | **Core** | `ports/core/` | musl, toybox, the toolchain, libraries, the kernel, init | Compiled here from upstream tarballs |
 | **Desktop** | `src/desktop/`, `src/libs/`, `src/packages/` | The compositor, the shell, the daemons, the libraries, the tools | Compiled here from our own source |
-| **Outer** | `ports/appbox/` | Applications: browsers, office, CAD, media, IDEs, games | Assembled from Debian packages into signed images |
+| **Outer** | `src/packages/kdos-appbox/catalogue` | Applications: browsers, office, CAD, media, IDEs, games | Declared as Debian packages; built by podman on the machine that asks |
 
 The rule that decides is the build cost. Anything the desktop needs to exist is compiled here.
 Anything that is an *application* — something a user opens to do work unrelated to the operating
@@ -68,25 +68,44 @@ init (PID 1, toybox)
  │        kdos-mountd    /run/kdos-mountd.sock    removable media
  │        kdos-packd     /run/kdos-packd.sock     mounting application packs
  │
- ├─ kdos-getty tty1 ── loads the console font, then agetty --autologin kdos
- │   └─ login shell
- │       └─ kdos-desktop            ← started by hand
- │           ├─ dbus-daemon --session   at $XDG_RUNTIME_DIR/bus
- │           ├─ pipewire, pipewire-pulse
- │           ├─ kdos-appbox warmup      pinned applications, at nice 10
- │           └─ kdos-desktop-start
- │               ├─ xdg-desktop-portal-wlr, then the main portal
- │               └─ kdos-comp                     the compositor
- │                   ├─ kdos-shell      per output   the panel
- │                   ├─ kdos-desk       per output   desktop icons
- │                   ├─ kdos-slit       per output   dockapps, off by default
- │                   ├─ kdos-notifyd    one          notifications
- │                   ├─ kdos-clip       one          clipboard history
- │                   ├─ Xwayland        rootless
- │                   └─ application clients, host and boxed
+ ├─ kdos-getty tty1 ── loads the console font, then kdos-con-login
+ │   └─ greeter, or agetty --autologin kdos
+ │       └─ login shell
+ │           ├─ kdos-con-start        ← THE DEFAULT SESSION, from ~/.bash_profile
+ │           │   ├─ session-common.sh:  bus, audio, keymap, box warmup
+ │           │   ├─ xdg-desktop-portal-kdos, then the main portal
+ │           │   ├─ kdos-view --kms    the display — supervised, restartable
+ │           │   └─ kdos-con --new     the session: every window, no display
+ │           │       ├─ kdos-shell         the panel, as a docked surface
+ │           │       ├─ kdos-res, kdos-lock, …   native surfaces
+ │           │       └─ terminal windows   libkvt + a pty each
+ │           │
+ │           └─ kdos-desktop          ← started by hand, on its own terminal
+ │               ├─ session-common.sh:  the same bring-up
+ │               └─ kdos-desktop-start
+ │                   ├─ xdg-desktop-portal-wlr, then the main portal
+ │                   └─ kdos-comp                 the compositor
+ │                       ├─ kdos-shell  per output   the panel
+ │                       ├─ kdos-desk   per output   desktop icons
+ │                       ├─ kdos-slit   per output   dockapps, off by default
+ │                       ├─ kdos-notifyd    one      notifications
+ │                       ├─ kdos-clip       one      clipboard history
+ │                       ├─ Xwayland        rootless
+ │                       └─ application clients, host and boxed
  │
- └─ kdos-getty tty2 ── an ordinary login
+ └─ kdos-getty tty2 ── an ordinary login, the RECOVERY CONSOLE
 ```
+
+**Two sessions, and the same surfaces on both.** `kdos-shell`, `kdos-res` and `kdos-lock` each name
+both display backends and libkdisp picks whichever answers — console first, so a surface started
+from the console desktop attaches to it even on a machine also running a compositor. A Wayland
+application is the one thing that needs the graphical session, because its surface is pixels and
+the console composites cells.
+
+**The console session and its display are separate processes.** `kdos-con` holds every window and
+opens no device; `kdos-view` holds the device and no window state. That is why `kdos-con-start`
+supervises the view and not the session, and why detach, reattach and a desktop over ssh fall out
+rather than being built.
 
 **The compositor supervises its own chrome.** Five programs are started from a table inside it,
 respawned if they die, and stopped when their output goes away. Three are per-output, because a
@@ -120,20 +139,25 @@ a way to mount a stick over `/etc`. See [The daemons](../04-programs/daemons.md)
 
 KDOS has two, and they are not one system because they answer different questions.
 
-| | Host packages | Application packs |
+| | Host packages | Applications |
 |---|---|---|
-| Unit | A compiled port | A filesystem image |
-| Built by | `kpkg` from a recipe | `bake` from Debian packages |
-| Format | A reproducible tar archive | EROFS with a signed footer |
-| Installed by | `kpkg`, as root, into `/` | `kdos-packd`, as a mount |
-| Verified by | `sha256` in the recipe, and an optional signature | Payload hash, then signature, at mount time |
-| Updated with | A rebuild, or a signed binary host | A delta or a whole pack, from a directory |
+| Unit | A compiled port | A container image, or a pack |
+| Built by | `kpkg` from a recipe | podman, from the catalogue, on this machine |
+| Format | A reproducible tar archive | OCI layers; EROFS with a signed footer when exported |
+| Installed by | `kpkg`, as root, into `/` | `kdos-appbox`, as a box; `kdos-packd` for an import |
+| Verified by | `sha256` in the recipe, and an optional signature | **nothing**, when built here; payload hash then signature at mount time, when imported |
+| Updated with | A rebuild, or a signed binary host | A rebuild against the catalogue's snapshot |
 | Trusted keyring | `/etc/kdos/keys` | `/etc/kdos/keys/packs` |
 
-**The keyrings are separate on purpose.** A pack-signing key attests that some application images
-came off one medium. Putting it in the host keyring would silently make it a trusted publisher of
-*host* packages too, which is a widening nobody asked for. The keyring loader does not descend
-into subdirectories, so the separation is structural rather than a convention.
+**A store install is unsigned and an import is not**, and the row above says so rather than
+implying one answer for both. Building fetches from Debian's archive over a pinned snapshot, which
+apt verifies — but nothing this system controls attests to the result. An exported set is hashed
+and signature-checked by `kdos-packd` where it mounts it.
+
+**The keyrings are separate on purpose.** A pack-signing key attests to who exported a set. Putting
+it in the host keyring would silently make it a trusted publisher of *host* packages too, which is
+a widening nobody asked for. The keyring loader does not descend into subdirectories, so the
+separation is structural rather than a convention.
 
 See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 
@@ -142,8 +166,8 @@ See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 | Path | What | Who writes it |
 |---|---|---|
 | `/var/lib/kpkg/db` | The installed-package database and manifests | `kpkg`, as root |
-| `/var/lib/kdos/packs` | Installed application packs | `kdos-packd`, as root |
-| `/var/lib/kdos/packs/staging` | Where an unprivileged download may land | You, mode 01777 |
+| `/var/lib/kdos/packs` | Imported application packs | `kdos-packd`, as root |
+| `/var/lib/kdos/packs/staging` | The one place an unprivileged write may land | You, mode 01777 |
 | `/var/lib/kdos/packs/mnt` | Mount points for packs | `kdos-packd` |
 | `/var/lib/kdos/pack-manifest` | Every graft made, so removal is exact | `kdos-packd` |
 | `/var/lib/kdos/fs-manifest` | Every path the build's `fs/` tree provided | The build |

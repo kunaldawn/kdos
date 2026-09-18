@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = iamb
+version     = 0.0.11
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ulyssa/iamb/archive/refs/tags/v$version.tar.gz
+sha256      = a5cf4f248e0893b5657c5ad1234207c09968018c5462d4063c096f0db459dd7c  iamb-0.0.11.tar.gz
+sha256      = ab24c8656ff7c59c702e3eb2bb898eb13a740748fc23e0d85b79f4c3f9e21872  iamb-vendor-0.0.11.tar.xz
+description = A Matrix client with vim's keys, on the grid
+homepage    = https://iamb.chat/
+depends     = rust
+vendoring   = rust

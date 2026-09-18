@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   xdg-desktop-portal-kdos — FileChooser and Settings
+ *   xdg-desktop-portal-kdos — FileChooser, Settings, AppChooser and ScreenCast
  *
  * THE GAP THIS CLOSES. xdg-desktop-portal-wlr implements ScreenCast and
  * Screenshot and nothing else, and the usual second backend is
@@ -55,6 +55,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/inotify.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -71,6 +73,37 @@
  * every build of this file — the port's and the selftest's — finds it with no
  * -I flag to keep in step. */
 #include "../../libs/libkcolor/kcolor.h"
+
+
+/*
+ * A CHILD STARTS WITH THE SIGNALS A PROCESS STARTS WITH.
+ *
+ * An ignored disposition survives execve and a blocked mask survives fork, so
+ * a program launched from here inherits whatever this process arranged for
+ * itself — an ignored SIGPIPE means the shell it runs never ends a pipeline.
+ * Everything is reset rather than SIGPIPE by name: what a process ignores is
+ * its own business and grows.
+ *
+ * Its own copy rather than libkbase's, because this port links no libk* and
+ * its recipe says so.
+ */
+static void child_reset_signals(void)
+{
+	sigset_t empty;
+
+	sigemptyset(&empty);
+	sigprocmask(SIG_SETMASK, &empty, NULL);
+	for (int i = 1; i < NSIG; i++) {
+		struct sigaction sa;
+
+		if (i == SIGKILL || i == SIGSTOP)
+			continue;
+		if (sigaction(i, NULL, &sa) != 0)
+			continue;
+		if (!(sa.sa_flags & SA_SIGINFO) && sa.sa_handler == SIG_IGN)
+			signal(i, SIG_DFL);
+	}
+}
 
 #define PORTAL_BUS "org.freedesktop.impl.portal.desktop.kdos"
 #define PORTAL_PATH "/org/freedesktop/portal/desktop"
@@ -147,6 +180,7 @@ static int start_picker(const char *const argv[], sd_bus_message *call,
 		close(fds[0]);
 		dup2(fds[1], STDOUT_FILENO);
 		close(fds[1]);
+		child_reset_signals();
 		execvp(argv[0], (char *const *)argv);
 		_exit(127);
 	}
@@ -525,6 +559,7 @@ static void open_detached(const char *const argv[])
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
+			child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
@@ -725,14 +760,24 @@ static int pending_read(struct pending *pend)
 /* ── Settings ──────────────────────────────────────────────────────────── */
 
 /*
- * `org.freedesktop.appearance color-scheme` is the one setting worth answering
- * and the answer is always 1 — "prefer dark". KDOS has no light palette: all
- * four accents are phosphor on near-black, and a toolkit told "no preference"
- * picks its own light theme and stands out from everything around it.
+ * TWO NAMESPACES, AND A BOXED APPLICATION NEEDS BOTH.
  *
- * `accent-color` is a (ddd) of doubles in 0..1. It is read from the same
- * one-word file kdos-shell and kdos-comp read, so an application that honours
- * it wears the accent the desktop is wearing.
+ * `org.freedesktop.appearance` is what libadwaita and every current toolkit
+ * reads: `color-scheme` is always 1 — "prefer dark", because KDOS has no light
+ * palette and a toolkit told "no preference" picks its own light theme and
+ * stands out from everything around it — and `accent-color` is a (ddd) of
+ * doubles in 0..1.
+ *
+ * `org.gnome.desktop.interface` is what GTK3 reads through a portal, and it is
+ * the ONLY thing that retints a GTK3 application that is already running: the
+ * user stylesheet is loaded once at startup and never again, so a palette
+ * written into it reaches the next launch and not this one. A theme NAME that
+ * changes does reach it — GTK rebuilds the whole cascade when the setting
+ * moves — which is why `kdos theme` writes the stylesheet to ~/.themes/KDOS-
+ * <accent> and this answers with that name.
+ *
+ * Everything here is read from the same one-word file kdos-shell and kdos-comp
+ * read, so an application wears the accent the desktop is wearing.
  */
 /* The accent table is KCOL_SCHEMES expanded at compile time — the X-macro,
  * not libkcolor's object code, so this process still links sd-bus and nothing
@@ -749,35 +794,55 @@ static const struct {
 #undef ACCENT_ROW
 };
 
-static int read_accent(double *r, double *g, double *b)
+/* Where the desktop records which accent is in force. Empty when there is no
+ * home to look in, which every reader below treats as the default. */
+static void accent_path(char *path, size_t n)
 {
-	/* Default: the first scheme in the table, which is phosphor. */
-	uint32_t p = accents[0].primary;
-
 	const char *home = getenv("HOME");
 	const char *cache = getenv("XDG_CACHE_HOME");
-	char path[1024];
+
 	if (cache && *cache)
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
+		snprintf(path, n, "%s/kdos/theme", cache);
 	else if (home)
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
+		snprintf(path, n, "%s/.cache/kdos/theme", home);
 	else
 		path[0] = '\0';
+}
 
-	FILE *f = path[0] ? fopen(path, "r") : NULL;
-	if (f) {
-		char name[64] = { 0 };
-		if (fgets(name, sizeof(name), f)) {
-			char *nl = strchr(name, '\n');
-			if (nl)
-				*nl = '\0';
-			for (size_t i = 0;
-			     i < sizeof(accents) / sizeof(accents[0]); i++)
-				if (!strcmp(name, accents[i].name))
-					p = accents[i].primary;
-		}
-		fclose(f);
+/* The accent's name, or the first scheme in the table — which is phosphor —
+ * for a file that is absent, empty or holds a name this build does not know. */
+static void read_accent_name(char *out, size_t n)
+{
+	char path[1024];
+	char name[64] = { 0 };
+	FILE *f;
+
+	snprintf(out, n, "%s", accents[0].name);
+	accent_path(path, sizeof(path));
+	f = path[0] ? fopen(path, "r") : NULL;
+	if (!f)
+		return;
+	if (fgets(name, sizeof(name), f)) {
+		char *nl = strchr(name, '\n');
+
+		if (nl)
+			*nl = '\0';
+		for (size_t i = 0; i < sizeof(accents) / sizeof(accents[0]); i++)
+			if (!strcmp(name, accents[i].name))
+				snprintf(out, n, "%s", accents[i].name);
 	}
+	fclose(f);
+}
+
+static int read_accent(double *r, double *g, double *b)
+{
+	uint32_t p = accents[0].primary;
+	char name[64];
+
+	read_accent_name(name, sizeof(name));
+	for (size_t i = 0; i < sizeof(accents) / sizeof(accents[0]); i++)
+		if (!strcmp(name, accents[i].name))
+			p = accents[i].primary;
 
 	*r = ((p >> 16) & 0xff) / 255.0;
 	*g = ((p >> 8) & 0xff) / 255.0;
@@ -785,21 +850,71 @@ static int read_accent(double *r, double *g, double *b)
 	return 0;
 }
 
-static int append_setting(sd_bus_message *reply, const char *key)
+/* The stylesheet `kdos theme` generated for the accent in force. The name
+ * carries the accent because a NAME that does not change is a theme GTK does
+ * not reload. */
+static void theme_name(char *out, size_t n)
 {
+	char name[64];
+
+	read_accent_name(name, sizeof(name));
+	snprintf(out, n, "KDOS-%s", name);
+}
+
+#define NS_APPEARANCE "org.freedesktop.appearance"
+#define NS_INTERFACE  "org.gnome.desktop.interface"
+
+static int append_setting(sd_bus_message *reply, const char *ns, const char *key)
+{
+	char buf[128];
 	int r;
-	if (!strcmp(key, "color-scheme"))
-		return sd_bus_message_append(reply, "v", "u", (uint32_t)1);
-	if (!strcmp(key, "accent-color")) {
-		double cr, cg, cb;
-		read_accent(&cr, &cg, &cb);
-		if ((r = sd_bus_message_open_container(reply, 'v', "(ddd)")) < 0 ||
-		    (r = sd_bus_message_append(reply, "(ddd)", cr, cg, cb)) < 0)
-			return r;
-		return sd_bus_message_close_container(reply);
+
+	if (!strcmp(ns, NS_APPEARANCE)) {
+		if (!strcmp(key, "color-scheme"))
+			return sd_bus_message_append(reply, "v", "u",
+						     (uint32_t)1);
+		if (!strcmp(key, "accent-color")) {
+			double cr, cg, cb;
+
+			read_accent(&cr, &cg, &cb);
+			if ((r = sd_bus_message_open_container(reply, 'v',
+							       "(ddd)")) < 0 ||
+			    (r = sd_bus_message_append(reply, "(ddd)", cr, cg,
+						       cb)) < 0)
+				return r;
+			return sd_bus_message_close_container(reply);
+		}
+		return -ENOENT;
 	}
+
+	if (strcmp(ns, NS_INTERFACE))
+		return -ENOENT;
+	if (!strcmp(key, "gtk-theme-name")) {
+		theme_name(buf, sizeof(buf));
+		return sd_bus_message_append(reply, "v", "s", buf);
+	}
+	if (!strcmp(key, "icon-theme-name"))
+		return sd_bus_message_append(reply, "v", "s", "KDOS");
+	if (!strcmp(key, "cursor-theme"))
+		return sd_bus_message_append(reply, "v", "s", "KDOS-cursors");
+	if (!strcmp(key, "color-scheme"))
+		return sd_bus_message_append(reply, "v", "s", "prefer-dark");
 	return -ENOENT;
 }
+
+/* Every key this backend answers, so the reader and the change signal cannot
+ * disagree about the set. */
+static const struct {
+	const char *ns;
+	const char *key;
+} SETTINGS[] = {
+	{ NS_APPEARANCE, "color-scheme" },
+	{ NS_APPEARANCE, "accent-color" },
+	{ NS_INTERFACE,  "gtk-theme-name" },
+	{ NS_INTERFACE,  "icon-theme-name" },
+	{ NS_INTERFACE,  "cursor-theme" },
+	{ NS_INTERFACE,  "color-scheme" },
+};
 
 static int method_settings_read(sd_bus_message *m, void *userdata,
 				sd_bus_error *err)
@@ -809,7 +924,7 @@ static int method_settings_read(sd_bus_message *m, void *userdata,
 
 	if (sd_bus_message_read(m, "ss", &ns, &key) < 0)
 		return sd_bus_error_set_const(err, SD_BUS_ERROR_INVALID_ARGS, "bad args");
-	if (strcmp(ns, "org.freedesktop.appearance"))
+	if (strcmp(ns, NS_APPEARANCE) && strcmp(ns, NS_INTERFACE))
 		return sd_bus_error_set_const(err,
 			"org.freedesktop.portal.Error.NotFound", "no such namespace");
 
@@ -817,7 +932,7 @@ static int method_settings_read(sd_bus_message *m, void *userdata,
 	int r = sd_bus_message_new_method_return(m, &reply);
 	if (r < 0)
 		return r;
-	if ((r = append_setting(reply, key)) < 0) {
+	if ((r = append_setting(reply, ns, key)) < 0) {
 		sd_bus_message_unref(reply);
 		return sd_bus_error_set_const(err,
 			"org.freedesktop.portal.Error.NotFound", "no such key");
@@ -832,9 +947,10 @@ static int method_settings_read_all(sd_bus_message *m, void *userdata,
 {
 	(void)userdata;
 	(void)err;
-	/* The requested namespaces are ignored: there is exactly one, and
-	 * filtering a single-entry set against a pattern list would be more
-	 * code than the set. */
+	/* The requested namespaces are ignored: there are two and a handful of
+	 * keys, and filtering that against a pattern list would be more code
+	 * than the set. A reader that asked for one namespace takes the one it
+	 * asked for out of the map. */
 	sd_bus_message_skip(m, "as");
 
 	sd_bus_message *reply = NULL;
@@ -842,25 +958,37 @@ static int method_settings_read_all(sd_bus_message *m, void *userdata,
 	if (r < 0)
 		return r;
 
-	static const char *const keys[] = { "color-scheme", "accent-color" };
+	static const char *const NSS[] = { NS_APPEARANCE, NS_INTERFACE };
 
-	if ((r = sd_bus_message_open_container(reply, 'a', "{sa{sv}}")) < 0 ||
-	    (r = sd_bus_message_open_container(reply, 'e', "sa{sv}")) < 0 ||
-	    (r = sd_bus_message_append(reply, "s", "org.freedesktop.appearance")) < 0 ||
-	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0)
+	if ((r = sd_bus_message_open_container(reply, 'a', "{sa{sv}}")) < 0)
 		goto out;
 
-	for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
-		if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
-		    (r = sd_bus_message_append(reply, "s", keys[i])) < 0 ||
-		    (r = append_setting(reply, keys[i])) < 0 ||
+	for (size_t n = 0; n < sizeof(NSS) / sizeof(NSS[0]); n++) {
+		if ((r = sd_bus_message_open_container(reply, 'e', "sa{sv}")) < 0 ||
+		    (r = sd_bus_message_append(reply, "s", NSS[n])) < 0 ||
+		    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0)
+			goto out;
+
+		for (size_t i = 0;
+		     i < sizeof(SETTINGS) / sizeof(SETTINGS[0]); i++) {
+			if (strcmp(SETTINGS[i].ns, NSS[n]))
+				continue;
+			if ((r = sd_bus_message_open_container(reply, 'e',
+							       "sv")) < 0 ||
+			    (r = sd_bus_message_append(reply, "s",
+						       SETTINGS[i].key)) < 0 ||
+			    (r = append_setting(reply, NSS[n],
+						SETTINGS[i].key)) < 0 ||
+			    (r = sd_bus_message_close_container(reply)) < 0)
+				goto out;
+		}
+
+		if ((r = sd_bus_message_close_container(reply)) < 0 ||
 		    (r = sd_bus_message_close_container(reply)) < 0)
 			goto out;
 	}
 
-	if ((r = sd_bus_message_close_container(reply)) < 0 ||
-	    (r = sd_bus_message_close_container(reply)) < 0 ||
-	    (r = sd_bus_message_close_container(reply)) < 0)
+	if ((r = sd_bus_message_close_container(reply)) < 0)
 		goto out;
 	r = sd_bus_send(NULL, reply, NULL);
 out:
@@ -868,7 +996,513 @@ out:
 	return r;
 }
 
+/*
+ * THE ACCENT MOVED, AND EVERY RUNNING APPLICATION IS TOLD.
+ *
+ * `kdos theme` writes the one-word file and regenerates the stylesheets; this
+ * watches the DIRECTORY, because the file is replaced rather than edited and a
+ * watch on the file itself follows the inode that was thrown away.
+ *
+ * WITHOUT THIS THE PORTAL IS A LOOKUP NOBODY REPEATS: a toolkit reads the
+ * settings once at startup and then waits for this signal, so an accent
+ * switched while a boxed application is open reached the next launch and never
+ * that window.
+ */
+static int theme_watch = -1;
+
+static void theme_watch_open(void)
+{
+	char path[1024], *slash;
+
+	accent_path(path, sizeof(path));
+	if (!path[0])
+		return;
+	slash = strrchr(path, '/');
+	if (!slash)
+		return;
+	*slash = '\0';
+	theme_watch = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+	if (theme_watch < 0)
+		return;
+	/* A directory that does not exist yet is not an error: nothing has
+	 * switched the accent on this machine, and the default is what every
+	 * reader above already answers. */
+	if (inotify_add_watch(theme_watch, path,
+			      IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE) < 0) {
+		close(theme_watch);
+		theme_watch = -1;
+	}
+}
+
+static void theme_changed(sd_bus *bus)
+{
+	char buf[4096];
+	char now[64];
+	static char was[64];
+	ssize_t n;
+
+	while ((n = read(theme_watch, buf, sizeof(buf))) > 0)
+		;
+	(void)n;
+
+	read_accent_name(now, sizeof(now));
+	if (!strcmp(now, was))
+		return;
+
+	/*
+	 * ONLY WHEN THE STYLESHEET IS ACTUALLY THERE. `kdos theme --preview`
+	 * writes this file and generates nothing — that is what makes a preview
+	 * a preview — and a toolkit sent the name of a theme directory that
+	 * does not exist falls back to its own default, which is a boxed
+	 * application turning light grey while somebody scrolls a swatch list.
+	 */
+	{
+		const char *home = getenv("HOME");
+		char dir[1024];
+		struct stat st;
+
+		if (!home)
+			return;
+		snprintf(dir, sizeof(dir), "%s/.themes/KDOS-%s/index.theme",
+			 home, now);
+		if (stat(dir, &st) != 0)
+			return;
+	}
+	snprintf(was, sizeof(was), "%s", now);
+
+	for (size_t i = 0; i < sizeof(SETTINGS) / sizeof(SETTINGS[0]); i++) {
+		sd_bus_message *sig = NULL;
+
+		if (sd_bus_message_new_signal(bus, &sig, PORTAL_PATH,
+					      "org.freedesktop.impl.portal.Settings",
+					      "SettingChanged") < 0)
+			continue;
+		if (sd_bus_message_append(sig, "ss", SETTINGS[i].ns,
+					  SETTINGS[i].key) >= 0 &&
+		    append_setting(sig, SETTINGS[i].ns, SETTINGS[i].key) >= 0)
+			sd_bus_send(NULL, sig, NULL);
+		sd_bus_message_unref(sig);
+	}
+}
+
+
+/* ── ScreenCast ────────────────────────────────────────────────────────────
+ *
+ * A SCREENCAST IS A VIEW NOBODY LOOKS AT. The console session holds cells and a
+ * view is what turns them into pixels, so recording is a second `kdos-view`
+ * rasterising into a PipeWire stream. This backend starts one and hands back
+ * the node it registered; it opens no device, renders nothing and holds no
+ * frame.
+ *
+ * ONE STREAM, THE WHOLE DESKTOP. There is one grid and no notion of a monitor
+ * inside it, so a window picker would be a picker with one entry — and a
+ * "window" here is a rectangle of cells with nothing behind it to capture
+ * separately.
+ *
+ * `xdg-desktop-portal-wlr` remains the Wayland session's backend and is
+ * untouched. Two sessions, two backends, one portal interface, chosen by the
+ * desktop name in the portal configuration.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+struct cast_session {
+	struct cast_session *next;
+	char handle[256];	/* the Session object path */
+	sd_bus_slot *slot;	/* its exported vtable */
+	pid_t pid;		/* the view holding the stream, or 0 */
+};
+
+static struct cast_session *cast_sessions;
+
+/*
+ * A `Start` waiting for the view to say which node it registered. The bus loop
+ * must not block on it for the reason it must not block on a chooser, and the
+ * view does NOT exit — it is the stream — so the completion is a LINE rather
+ * than end-of-file.
+ */
+struct cast_pending {
+	struct cast_pending *next;
+	sd_bus_message *call;
+	int fd;
+	char buf[64];
+	size_t len;
+	struct cast_session *sess;
+};
+
+static struct cast_pending *cast_pendings;
+
+static struct cast_session *cast_find(const char *handle)
+{
+	for (struct cast_session *c = cast_sessions; c; c = c->next)
+		if (!strcmp(c->handle, handle))
+			return c;
+	return NULL;
+}
+
+static void cast_drop(struct cast_session *c)
+{
+	if (!c)
+		return;
+	if (c->pid > 0) {
+		kill(c->pid, SIGTERM);
+		waitpid(c->pid, NULL, 0);
+		c->pid = 0;
+	}
+	for (struct cast_session **pp = &cast_sessions; *pp; pp = &(*pp)->next)
+		if (*pp == c) {
+			*pp = c->next;
+			break;
+		}
+	sd_bus_slot_unref(c->slot);
+	free(c);
+}
+
+static int method_session_close(sd_bus_message *m, void *userdata,
+				sd_bus_error *err)
+{
+	(void)err;
+	cast_drop(userdata);
+	return sd_bus_reply_method_return(m, NULL);
+}
+
+/*
+ * The Session object the front end closes when the recording ends. Exported at
+ * the path the front end chose — a backend that did not export it would leave
+ * the view running after the application stopped recording, which is a desktop
+ * that keeps rasterising for nobody.
+ */
+static const sd_bus_vtable session_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("Close", "", "", method_session_close,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_SIGNAL("Closed", "", 0),
+	SD_BUS_VTABLE_END
+};
+
+static int method_cast_create_session(sd_bus_message *m, void *userdata,
+				      sd_bus_error *err)
+{
+	const char *handle, *session_handle, *app_id;
+	int r;
+
+	(void)userdata;
+	(void)err;
+
+	r = sd_bus_message_read(m, "oos", &handle, &session_handle, &app_id);
+	if (r < 0)
+		return r;
+
+	if (cast_find(session_handle))
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)1,
+						  0);
+
+	struct cast_session *c = calloc(1, sizeof(*c));
+
+	if (!c)
+		return -ENOMEM;
+	snprintf(c->handle, sizeof(c->handle), "%s", session_handle);
+
+	if (sd_bus_add_object_vtable(sd_bus_message_get_bus(m), &c->slot,
+				     session_handle,
+				     "org.freedesktop.impl.portal.Session",
+				     session_vtable, c) < 0) {
+		free(c);
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+
+	c->next = cast_sessions;
+	cast_sessions = c;
+	return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)0, 0);
+}
+
+/*
+ * WHAT THERE IS TO CHOOSE FROM IS ONE THING. The options carry a source type,
+ * a cursor mode and a restore token; none of them changes what this can offer,
+ * so they are read past and the answer is yes.
+ */
+static int method_cast_select_sources(sd_bus_message *m, void *userdata,
+				      sd_bus_error *err)
+{
+	const char *handle, *session_handle, *app_id;
+	int r;
+
+	(void)userdata;
+	(void)err;
+
+	r = sd_bus_message_read(m, "oos", &handle, &session_handle, &app_id);
+	if (r < 0)
+		return r;
+	if (!cast_find(session_handle))
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)0, 0);
+}
+
+/* The reply `Start` owes: one stream, its node id and its size. */
+static int cast_reply(sd_bus_message *call, uint32_t node, int w, int h)
+{
+	sd_bus_message *reply = NULL;
+	int r = sd_bus_message_new_method_return(call, &reply);
+
+	if (r < 0)
+		return r;
+
+	if ((r = sd_bus_message_append(reply, "u", (uint32_t)0)) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "streams")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "a(ua{sv})")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "(ua{sv})")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'r', "ua{sv}")) < 0 ||
+	    (r = sd_bus_message_append(reply, "u", node)) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0)
+		goto out;
+
+	/*
+	 * `size` and `position` are what a consumer lays the stream out with.
+	 * The position is 0,0 because there is one grid and it is the whole
+	 * desktop; a second output would be a second stream, not an offset.
+	 */
+	if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "size")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "(ii)")) < 0 ||
+	    (r = sd_bus_message_append(reply, "(ii)", w, h)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+
+	if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "position")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "(ii)")) < 0 ||
+	    (r = sd_bus_message_append(reply, "(ii)", 0, 0)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+
+	if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "source_type")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "u")) < 0 ||
+	    (r = sd_bus_message_append(reply, "u", (uint32_t)1)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+
+	if ((r = sd_bus_message_close_container(reply)) < 0 ||	/* a{sv} */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* (ua{sv}) */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* a(ua{sv}) */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* v */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* {sv} */
+	    (r = sd_bus_message_close_container(reply)) < 0)	/* a{sv} */
+		goto out;
+
+	r = sd_bus_send(NULL, reply, NULL);
+out:
+	sd_bus_message_unref(reply);
+	return r;
+}
+
+static void cast_pending_free(struct cast_pending *cp)
+{
+	if (!cp)
+		return;
+	if (cp->fd >= 0)
+		close(cp->fd);
+	sd_bus_message_unref(cp->call);
+	free(cp);
+}
+
+/*
+ * One line, then the reply. Returns 1 when the view has answered — with a node
+ * id, or with nothing because it died, which is the same message to the caller
+ * and a different one in the log.
+ */
+static int cast_pending_read(struct cast_pending *cp)
+{
+	for (;;) {
+		ssize_t n;
+
+		if (cp->len + 1 >= sizeof(cp->buf))
+			return 1;
+		n = read(cp->fd, cp->buf + cp->len, sizeof(cp->buf) - 1 - cp->len);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				return 0;
+			return 1;
+		}
+		if (n == 0)
+			return 1;	/* the view exited without answering */
+		cp->len += (size_t)n;
+		cp->buf[cp->len] = '\0';
+		if (strchr(cp->buf, '\n'))
+			return 1;
+	}
+}
+
+static void cast_pending_finish(struct cast_pending *cp)
+{
+	unsigned long node = 0;
+	int w = 0, h = 0;
+
+	cp->buf[cp->len] = '\0';
+
+	/*
+	 * THE SIZE COMES FROM THE VIEW, on the same line as the node. This
+	 * backend never rasterises and cannot work it out — the cell size is
+	 * the view's font's — and a consumer told a size of zero has to guess
+	 * one before the stream's format arrives.
+	 */
+	if (sscanf(cp->buf, "%lu %d %d", &node, &w, &h) < 1 || node == 0) {
+		fprintf(stderr, "xdg-desktop-portal-kdos: the cast view "
+				"registered no node\n");
+		if (cp->sess)
+			cast_drop(cp->sess);
+		sd_bus_reply_method_return(cp->call, "ua{sv}", (uint32_t)2, 0);
+		return;
+	}
+
+	cast_reply(cp->call, (uint32_t)node, w, h);
+}
+
+/*
+ * Start the recording: one `kdos-view --cast` on the session named by
+ * $KDOS_CON, which this process inherited from the console session that
+ * started it.
+ *
+ * A VIEW ATTACHES TO THE VIEW SOCKET, and $KDOS_CON names the surface one.
+ * They are a pair whose names differ only in the suffix, so the second is
+ * derived here rather than passed: a view given the surface socket is never
+ * told a size and gives up.
+ */
+static int method_cast_start(sd_bus_message *m, void *userdata,
+			     sd_bus_error *err)
+{
+	const char *handle, *session_handle, *app_id, *parent;
+	int fds[2];
+	int r;
+
+	(void)userdata;
+	(void)err;
+
+	r = sd_bus_message_read(m, "ooss", &handle, &session_handle, &app_id,
+				&parent);
+	if (r < 0)
+		return r;
+
+	struct cast_session *c = cast_find(session_handle);
+
+	if (!c)
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+
+	const char *con = getenv("KDOS_CON");
+	char view[256];
+	size_t conlen;
+
+	if (!con || !*con) {
+		fprintf(stderr, "xdg-desktop-portal-kdos: no console session "
+				"to record ($KDOS_CON unset)\n");
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+	conlen = strlen(con);
+	if (conlen < 6 || strcmp(con + conlen - 5, ".sock")) {
+		fprintf(stderr, "xdg-desktop-portal-kdos: $KDOS_CON is not a "
+				"session socket\n");
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+	snprintf(view, sizeof(view), "%.*s.view", (int)(conlen - 5), con);
+
+	if (pipe(fds) != 0)
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+
+	pid_t pid = fork();
+
+	if (pid < 0) {
+		close(fds[0]);
+		close(fds[1]);
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+	if (pid == 0) {
+		close(fds[0]);
+		dup2(fds[1], STDOUT_FILENO);
+		close(fds[1]);
+		child_reset_signals();
+		execlp("kdos-view", "kdos-view", "--cast", "--socket", view,
+		       (char *)NULL);
+		_exit(127);
+	}
+	close(fds[1]);
+	fcntl(fds[0], F_SETFL, O_NONBLOCK);
+
+	struct cast_pending *cp = calloc(1, sizeof(*cp));
+
+	if (!cp) {
+		close(fds[0]);
+		kill(pid, SIGTERM);
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+
+	c->pid = pid;
+	cp->call = sd_bus_message_ref(m);
+	cp->fd = fds[0];
+	cp->sess = c;
+	cp->next = cast_pendings;
+	cast_pendings = cp;
+	return 1;	/* answered later, when the view names its node */
+}
+
+static int prop_cast_source_types(sd_bus *bus, const char *path,
+				  const char *iface, const char *prop,
+				  sd_bus_message *reply, void *userdata,
+				  sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	/* MONITOR only. There is one grid and no window behind a window. */
+	return sd_bus_message_append(reply, "u", (uint32_t)1);
+}
+
+static int prop_cast_cursor_modes(sd_bus *bus, const char *path,
+				  const char *iface, const char *prop,
+				  sd_bus_message *reply, void *userdata,
+				  sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	/*
+	 * EMBEDDED only. The caret is a cell drawn in reverse video by the
+	 * toolkit, so it is already in the frame and there is no separate
+	 * cursor image to hide or to send alongside.
+	 */
+	return sd_bus_message_append(reply, "u", (uint32_t)2);
+}
+
+static int prop_cast_version(sd_bus *bus, const char *path, const char *iface,
+			     const char *prop, sd_bus_message *reply,
+			     void *userdata, sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	return sd_bus_message_append(reply, "u", (uint32_t)2);
+}
+
+static const sd_bus_vtable screen_cast_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("CreateSession", "oosa{sv}", "ua{sv}",
+		      method_cast_create_session, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("SelectSources", "oosa{sv}", "ua{sv}",
+		      method_cast_select_sources, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("Start", "oossa{sv}", "ua{sv}", method_cast_start,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_PROPERTY("AvailableSourceTypes", "u", prop_cast_source_types, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_PROPERTY("AvailableCursorModes", "u", prop_cast_cursor_modes, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_PROPERTY("version", "u", prop_cast_version, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_VTABLE_END
+};
+
 /* ── vtables ───────────────────────────────────────────────────────────── */
+
 
 static const sd_bus_vtable file_chooser_vtable[] = {
 	SD_BUS_VTABLE_START(0),
@@ -921,7 +1555,7 @@ static const sd_bus_vtable settings_vtable[] = {
 int main(int argc, char **argv)
 {
 	sd_bus *bus = NULL;
-	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL;
+	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL, *sc = NULL;
 	int r;
 
 	for (int i = 1; i < argc; i++) {
@@ -963,6 +1597,11 @@ int main(int argc, char **argv)
 				     app_chooser_vtable, NULL);
 	if (r < 0)
 		goto fail;
+	r = sd_bus_add_object_vtable(bus, &sc, PORTAL_PATH,
+				     "org.freedesktop.impl.portal.ScreenCast",
+				     screen_cast_vtable, NULL);
+	if (r < 0)
+		goto fail;
 
 	/*
 	 * The name is requested LAST, after both interfaces exist. The main
@@ -974,6 +1613,8 @@ int main(int argc, char **argv)
 	r = sd_bus_request_name(bus, PORTAL_BUS, 0);
 	if (r < 0)
 		goto fail;
+
+	theme_watch_open();
 
 	/*
 	 * sd_bus_wait() would be the one-liner and it is exactly what cannot be
@@ -989,9 +1630,9 @@ int main(int argc, char **argv)
 		if (r > 0)
 			continue;
 
-		struct pollfd fds[1 + 16];
+		struct pollfd fds[2 + 16];
 		struct pending *watched[16];
-		int nfds = 0, nw = 0;
+		int nfds = 0, nw = 0, theme_slot = -1;
 
 		fds[nfds].fd = sd_bus_get_fd(bus);
 		fds[nfds].events = (short)sd_bus_get_events(bus);
@@ -1003,6 +1644,27 @@ int main(int argc, char **argv)
 			fds[nfds].events = POLLIN;
 			fds[nfds].revents = 0;
 			watched[nw++] = p;
+			nfds++;
+		}
+
+		struct cast_pending *cwatch[8];
+		int ncw = 0;
+
+		for (struct cast_pending *cp = cast_pendings;
+		     cp && ncw < 8 && nfds < 1 + 16; cp = cp->next) {
+			fds[nfds].fd = cp->fd;
+			fds[nfds].events = POLLIN;
+			fds[nfds].revents = 0;
+			cwatch[ncw++] = cp;
+			nfds++;
+		}
+
+		if (theme_watch >= 0 &&
+		    nfds < (int)(sizeof(fds) / sizeof(fds[0]))) {
+			theme_slot = nfds;
+			fds[nfds].fd = theme_watch;
+			fds[nfds].events = POLLIN;
+			fds[nfds].revents = 0;
 			nfds++;
 		}
 
@@ -1022,6 +1684,25 @@ int main(int argc, char **argv)
 			if (errno == EINTR)
 				continue;
 			break;
+		}
+
+		if (theme_slot >= 0 && fds[theme_slot].revents)
+			theme_changed(bus);
+
+		for (int i = 0; i < ncw; i++) {
+			if (!fds[1 + nw + i].revents)
+				continue;
+			if (!cast_pending_read(cwatch[i]))
+				continue;
+			cast_pending_finish(cwatch[i]);
+			for (struct cast_pending **pp = &cast_pendings; *pp;
+			     pp = &(*pp)->next) {
+				if (*pp == cwatch[i]) {
+					*pp = cwatch[i]->next;
+					break;
+				}
+			}
+			cast_pending_free(cwatch[i]);
 		}
 
 		for (int i = 0; i < nw; i++) {
@@ -1047,6 +1728,7 @@ int main(int argc, char **argv)
 fail:
 	if (r < 0)
 		fprintf(stderr, "xdg-desktop-portal-kdos: %s\n", strerror(-r));
+	sd_bus_slot_unref(sc);
 	sd_bus_slot_unref(ou);
 	sd_bus_slot_unref(st);
 	sd_bus_slot_unref(fc);
