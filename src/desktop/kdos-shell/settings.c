@@ -106,7 +106,7 @@ static const struct {
 	{ "system-shutdown",   "idle, lock and power" },
 	{ "input-keyboard",    "keyboard and pointer" },
 	{ "preferences-other", "which app opens what" },
-	{ "package-x-generic",  "environments and packs" },
+	{ "package",            "environments and packs" },
 	/*
 	 * SYSTEM is the machine itself — disks, printing, backup, the services
 	 * that run without being asked. Most of it is not written yet, and the

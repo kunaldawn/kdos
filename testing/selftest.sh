@@ -8251,10 +8251,26 @@ cells_golden() {		# <name> <argv…>
         golden_fail=1
     fi
 }
-cells_golden start       start --dump-cells
-cells_golden menu-system menu system --dump-cells
-cells_golden keys        keys --dump-cells
-cells_golden doc         doc --dump-cells
+#
+# THE SURFACES THAT CARRY A SELECTION ARE THE ONES THAT NEED THIS MOST, and
+# they were the ones without it. A selected row is the only chrome on this
+# desktop whose whole job is a COLOUR — the glyphs either side of it are
+# identical — so a text dump of a list is byte-identical whether the caret is
+# drawn as an accent plate, as a quiet fill, or not at all. Four surfaces had
+# cells and twenty-six did not.
+#
+# `settings` is here twice on purpose: the home grid and a PAGE are different
+# selection shapes — a tile and a two-pane row — and the page is the one with a
+# cold pane in it, which is the state that reads as "no caret" when it breaks.
+cells_golden start          start --dump-cells
+cells_golden menu-system    menu system --dump-cells
+cells_golden keys           keys --dump-cells
+cells_golden doc            doc --dump-cells
+cells_golden settings       settings --dump-cells
+cells_golden settings-input settings --page input --dump-cells
+cells_golden pick           pick --dir tree --dump-cells
+cells_golden find           find --dump-cells /tmp
+cells_golden openwith       openwith --dump-cells "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
 
 # THE CELL VERDICT IS ITS OWN CHECK, because the frame check above has already
 # run: a `golden_fail` raised by a cells_golden after it would be recorded and

@@ -677,6 +677,45 @@ def main():
         # that is already there. Probing for a shell rather than expecting a
         # prompt covers both, and covers the third case nobody thinks about:
         # a prompt whose text is a starship theme with escape codes in it.
+        #
+        # NOT A KEYSTROKE UNTIL THE KERNEL HAS THE PORT. Limine reads the
+        # serial console as INPUT, and any byte arriving during its countdown
+        # cancels the countdown and leaves the menu up — indefinitely, because
+        # nothing is going to press Enter. A probe loop that starts typing the
+        # moment it connects gets about eight keystrokes into a ten-second
+        # window, so the rig reliably stops the boot it is waiting for and then
+        # reports `no shell on the serial console`, which reads as a broken
+        # image rather than as the harness.
+        #
+        # Measured on one ISO, same qemu, same socket: receive-only reaches a
+        # root shell with 9259 bytes; probing from connect stops at 328 bytes
+        # and never leaves the firmware.
+        #
+        # So the boot is WATCHED first and typed at only once something past the
+        # bootloader has spoken.
+        #
+        # `[KDOS]` IS THE MARKER, AND THE KERNEL'S OWN BANNER IS NOT. The Live
+        # cmdline carries `quiet loglevel=3`, so the kernel prints essentially
+        # nothing to ttyS0 — waiting for `Linux version` waits for a line this
+        # image never writes, and times out on a boot that is going perfectly.
+        # `[KDOS]` is rcS announcing each service, which is userspace running
+        # and therefore the port long since handed over. `login:` and a root
+        # prompt are kept as alternates for an image that reaches one first.
+        #
+        print("waiting for the kernel to take the serial console…", flush=True)
+        boot_deadline = time.time() + 180
+        while time.time() < boot_deadline:
+            ser.pump()
+            if b"[KDOS]" in ser.buf or b"login:" in ser.buf \
+               or b"root@" in ser.buf or b"Linux version" in ser.buf:
+                break
+            time.sleep(0.25)
+        else:
+            print(ser.tail(4000))
+            raise SystemExit(
+                "the bootloader never handed over — if the last thing on the "
+                "console is the firmware, something typed at the menu")
+
         print("waiting for a shell on the serial console…", flush=True)
         deadline = time.time() + 240
         ready = False

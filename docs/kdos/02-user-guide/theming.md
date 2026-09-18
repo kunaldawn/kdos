@@ -4,7 +4,7 @@ Changing how KDOS looks: the seven accents, the phosphor shader, the wallpaper, 
 applications inside boxes get the same palette. One command does almost all of it, and most of
 the result appears without restarting anything.
 
-## The seven accents
+## The eight accents
 
 | Accent | Character |
 |---|---|
@@ -15,13 +15,19 @@ the result appears without restarting anything.
 | `norton` | Yellow and cyan on deep blue. The two-pane file manager's own colours |
 | `borland` | Cyan and yellow on dark teal. The blue-box IDEs of the late eighties |
 | `perfect` | White on blue, and almost nothing else. The word processor that showed a blank screen |
+| `paper` | Ink on paper — **the light one**, and the only one whose ground is the light end |
 
-**Every accent is dark, and that is the chrome rather than a preference.** The focused plate is
-solved along one axis and carries one label colour, so on a light ground the plate darkens away
-from its own label and no mix clears both the separation floor and the legibility one: the best
-light candidate reaches 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off
-the bar where the label reads at 6.58:1. A light accent needs the plate ladder to choose its label
-per plate first; until then the self-test refuses a scheme whose ground is the light end.
+**Seven are dark and one is light, and what decides whether a palette works is its PLATES rather
+than its ground.** The focused plate has to stand off the bar it sits on and carry its own label,
+and mixing toward the brighter end buys the first at the second's expense. A palette that leaves no
+mix doing both is unusable whichever end its ground is, which is why the self-test measures the
+plates themselves: whether white beats black against the background is a proxy that refuses a good
+light palette and accepts a bad dark one.
+
+`paper`'s plate separates at the hover floor and carries its label at **7.51:1**. For comparison
+`bone`'s reaches **6.21:1** and cannot do better: its separation floor binds first, and the best
+any mix of its own colours reaches is 6.69:1. The solver aims at 7:1 and stops early when it gets
+there; 4.5:1 is what every accent is held to.
 
 An accent is not a colour, it is a small palette: a primary, a dim variant of it, a secondary, an
 urgent colour, a background, a text colour, a surface, and two more derived shades. Everything

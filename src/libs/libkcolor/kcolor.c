@@ -36,6 +36,18 @@ const KcolScheme *kcol_find(const char *name)
 	return NULL;
 }
 
+uint32_t kcol_over(uint32_t fg, uint32_t bg, uint8_t alpha)
+{
+	uint32_t out = 0;
+
+	for (int sh = 16; sh >= 0; sh -= 8) {
+		uint32_t f = (fg >> sh) & 0xff, b = (bg >> sh) & 0xff;
+
+		out |= ((f * alpha + b * (255 - alpha)) / 255) << sh;
+	}
+	return out;
+}
+
 const KcolScheme *kcol_default(void)
 {
 	return &kcol_schemes[KCOL_DEFAULT_INDEX];
@@ -78,6 +90,16 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		"interface_branding: KDOS\n"
 		"interface_branding_colour: %s\n"
 		"interface_help_hidden: yes\n"
+		/*
+		 * AND THE HELP COLOUR IS STILL SET THOUGH THE HELP IS HIDDEN.
+		 * `interface_help_hidden` removes the key list at the top; the
+		 * COUNTDOWN — "Booting automatically in N…" — keeps drawing in
+		 * the help colour, so leaving the key out does not mean the
+		 * line is gone, it means the line is Limine's default GREEN on
+		 * a menu wearing some other accent. Photographed.
+		 */
+		"interface_help_colour: %s\n"
+		"interface_help_colour_bright: %s\n"
 		"backdrop: %s\n"
 		/* `00` — OPAQUE. See the header: Limine's own default with a
 		 * wallpaper set is `80`, and that is the unreadable menu. */
@@ -103,7 +125,7 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		 * a dense panel and leaves the menu width to say what an entry
 		 * is. */
 		"term_font_scale: 1x2\n",
-		primary, backdrop, deep, text,
+		primary, pdark, primary, backdrop, deep, text,
 		deep, urgent, primary, secondary, pdark, text, primary, text,
 		dim, urgent, primary, secondary, pdark, primary);
 }
