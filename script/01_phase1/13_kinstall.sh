@@ -36,12 +36,20 @@ SRC=$WORKSPACE/src/packages/kdos-installer
 LIBS=$WORKSPACE/src/libs
 OUT=$BUILD_DIR/tmp/kinstall
 
+# THE CATALOGUE READER IS COMPILED IN, not shelled out to. The installer runs
+# before anything it would call exists, on the first bootable image, so it reads
+# the catalogue itself; catalogue.c links against kb_* alone, so carrying it
+# costs no library this program does not already have. Its header lives with
+# kdos-appbox, which is why that directory is on the include path and is not a
+# dependency on the rest of that program.
 $KDOS_TARGET-gcc \
     -O2 -pipe -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
     -I"$LIBS"/libkbase -I"$LIBS"/libktui -I"$LIBS"/libkcolor -I"$SRC" \
+    -I"$WORKSPACE"/src/packages/kdos-appbox \
     -o "$OUT" \
     "$SRC"/main.c "$SRC"/probe.c "$SRC"/conf.c \
     "$SRC"/install.c "$SRC"/pages.c "$SRC"/dump.c \
+    "$WORKSPACE"/src/packages/kdos-appbox/catalogue.c \
     "$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c
 
 install -Dm755 "$OUT" $SYSROOT/usr/bin/kinstall

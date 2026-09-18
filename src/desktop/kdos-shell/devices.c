@@ -793,8 +793,9 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			empty = "none — no sound card is present";
 		else if (!strcmp(r->head, "REMOVABLE MEDIA") && !nmedia)
 			empty = media_why[0] ? media_why : "nothing plugged in";
-		else if (!strcmp(r->head, "UPDATES ON THE MEDIUM") && !updates_n)
-			empty = "up to date";
+		else if (!strcmp(r->head, "APPLICATION SETS ON A STICK") &&
+			 !updates_n)
+			empty = "none — no .ktar on a mounted stick";
 		else if (!strcmp(r->head, "SCANNERS") && !nscan)
 			empty = scan_why;
 		else if (!strcmp(r->head, "INPUT") && !ninput)

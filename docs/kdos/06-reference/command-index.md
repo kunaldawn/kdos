@@ -128,6 +128,8 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos march` | Measure per-machine optimisation, and the ledger |
 | `kdos rebuild` | Rebuild the image from the sources on the medium |
 | `kdos clone` | Copy this medium to another device |
+| `kdos persist` | Report the live session's persistence store |
+| `kdos persist create [<dev>]` | Make one in the free space after the image |
 | `kdos cve` | Which pins carry known vulnerabilities, offline |
 | `kdos trash` | The freedesktop trash |
 | `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |

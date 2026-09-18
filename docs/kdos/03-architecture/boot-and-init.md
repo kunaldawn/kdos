@@ -9,9 +9,9 @@ For the user-facing view of the same path, see
 
 | # | Stage | Who runs it |
 |---|---|---|
-| 1 | Firmware, UEFI only | The machine |
-| 2 | rEFInd, from the ESP | The firmware |
-| 3 | The kernel, with its command line | rEFInd |
+| 1 | Firmware, BIOS or UEFI | The machine |
+| 2 | Limine — from the ESP on UEFI, from the MBR on BIOS | The firmware |
+| 3 | The kernel, with its command line | Limine |
 | 4 | Early microcode load | The kernel, before any filesystem exists |
 | 5 | The initramfs `init` | The kernel |
 | 6 | The splash | `kdos-splash`, from the initramfs |
@@ -30,29 +30,40 @@ Step 16 is [the session](session.md). **The console desktop is the default one**
 reaches it without anyone typing a command, and it needs no Wayland, so it comes up on a machine
 whose GPU driver does not. The graphical session is still started by hand, with `kdos-desktop`.
 
-## rEFInd and the kernel command line
+## Limine and the kernel command line
 
-The boot loader is rEFInd on the ESP. The installer writes its configuration and copies the
-kernel and initramfs **onto the ESP** rather than leaving them on the root filesystem: rEFInd can
-read ext4 only through a filesystem driver, and a boot that depends on a driver load is a boot
-that fails silently after a kernel update.
+The boot loader is [Limine](https://limine-bootloader.org/), and it is the only one: the same
+binary, the same configuration file and the same menu serve BIOS and UEFI, so what a machine
+shows at power-on does not depend on how it started. On UEFI the firmware loads
+`EFI/BOOT/BOOTX64.EFI`; on BIOS it runs the boot code in the first sector, which finds
+`limine-bios.sys` by name in the root, `/boot`, `/limine` or `/boot/limine` of a volume it can
+read.
 
-**Two programs write that configuration and nothing else does.** `script/06_packaging/02_iso.sh`
-writes the live ISO's `EFI/BOOT/refind.conf` beside `vmlinuz` and `initramfs.cpio.gz` on the ESP
-image; `kinstall` writes the installed machine's `EFI/refind/refind.conf`, pointing at the
-`EFI/kdos/` copies it made, plus an `EFI/BOOT/refind.conf` that only `include`s it. rEFInd reads
-its configuration from its own ESP directory, so **a `refind.conf` anywhere in the root filesystem
-is read by nobody** and its entries are not the machine's boot menu.
+The kernel and initramfs are placed where the loader is certain to read them — on the ISO9660
+medium for the live image, and **on the ESP** for an installed system. Limine reads FAT and
+ISO9660; it does not read the roots the installer offers, which include xfs, f2fs and anything
+under LUKS. A kernel on the root filesystem would be a boot that depends on a driver the
+bootloader does not have.
 
-**The menu counts down for one second**, on the live ISO and on an installed system alike. The
-countdown is wall time spent before the kernel exists, with nothing else running, so it is kept to
-the shortest interval that still leaves the menu usable. At `timeout 1` the graphical menu is
-drawn in full — banner, every entry, the tool row — and a single keypress stops the countdown and
-leaves it up indefinitely: photographed under OVMF against the ISO's own ESP payload, menu on
-screen 4.2 s after power-on, and still on screen with the countdown line gone 43 s after power-on
-when Down was tapped during the first seconds. The recovery entries — the verbose boot, single
-user, memtest86+ — are reachable from nowhere else, so that has to hold. **`timeout 0` is not
-"boot at once"; it is "wait forever"**, and setting it hangs every unattended boot.
+**Two programs write that configuration and nothing else does.**
+`script/06_packaging/02_iso.sh` writes the live medium's `boot/limine/limine.conf`;
+`kinstall` writes `limine.conf` at the root of the installed machine's ESP. That location is not
+arbitrary: Limine looks beside its own EFI binary first and then at `/boot/limine/`, `/boot/`,
+`/limine/` and `/` on each volume — and **only that last set is searched on BIOS**, so the root of
+the ESP is the one path both firmwares find. A second copy beside `BOOTX64.EFI` would be the copy
+that goes stale.
+
+**The menu counts down for ten seconds**, on the live medium and on an installed system alike, and
+a single keypress stops it and leaves it up. That countdown is wall time spent before the kernel
+exists with nothing else running, so it is bought rather than free — but the recovery entries (the
+verbose boot, the clean session, single user, memtest86+) are reachable from nowhere else, and a
+countdown short enough to miss makes them unreachable on exactly the machine that needs them.
+**`timeout: 0` does not draw a menu at all**; it boots the default entry immediately, which takes
+those entries with it.
+
+The menu is drawn as a character grid in the phosphor palette, in the console's own Terminus face,
+over the boot banner. See [Theming the boot menu](../02-user-guide/theming.md) for what is
+configurable and [the design language](design-language.md) for where the colours come from.
 
 Parameters KDOS itself reads:
 

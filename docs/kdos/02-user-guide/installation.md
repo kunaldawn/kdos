@@ -243,7 +243,7 @@ is the next thing that happens to them, and a dump is what ends up in a log.
 
 | Path | What |
 |---|---|
-| The ESP | rEFInd, its generated configuration, the kernel and the initramfs |
+| The ESP | Limine, its generated `limine.conf`, the kernel, the initramfs and the BIOS second stage |
 | The ESP | The A/B boot state file |
 | Root | The system, copied from the medium |
 | `/etc/fstab` | **Appended to**, never replaced — the shipped file carries the `/tmp` entry that every graphical application depends on |
@@ -251,12 +251,21 @@ is the next thing that happens to them, and a dump is what ends up in a log.
 | `/etc/profile.d/20-timezone.sh` | The POSIX TZ string |
 | `/var/lib/kdos/packs` | The pack store — imported applications, and the staging directory an import goes through |
 
-The kernel and initramfs are copied **onto the ESP**, and the generated rEFInd configuration
-points at those FAT paths. rEFInd can read an ext4 root only through a filesystem driver, and a
-boot that depends on a driver load is a boot that fails silently after a kernel update.
+The kernel and initramfs are copied **onto the ESP**, and the generated `limine.conf` points at
+those FAT paths. Limine reads FAT and ISO9660; it does not read xfs, f2fs or anything under LUKS,
+all of which the installer will happily give you as a root. Putting the kernel where the loader
+can always reach it is what keeps those choices bootable.
 
-The generated menu counts down for **one second** before booting the normal entry. Press any key
-during it to stop the countdown and keep the menu: the verbose and single-user submenus and the
+`limine.conf` is written at the **root of the ESP** rather than beside `BOOTX64.EFI`, because that
+is the one location both firmwares search — a BIOS boot never looks in `/EFI/BOOT/`.
+
+**The BIOS boot code is written whichever way the installing machine booted.** It costs one sector,
+and it means a disk imaged on a UEFI machine still starts when it is moved to a legacy one. A
+failure there is reported and does not abandon the install: on a UEFI machine the EFI path is
+already complete.
+
+The generated menu counts down for **ten seconds** before booting the normal entry. Press any key
+during it to stop the countdown and keep the menu: the verbose and single-user entries and the
 memory test are reachable only from there.
 
 ## See also

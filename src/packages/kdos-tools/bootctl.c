@@ -15,9 +15,9 @@
  *
  * The shape is RAUC's state machine and none of its dependencies: a file with
  * `active`, `try` and `attempts` in it, one decision, and one place that
- * decrements. What it replaces is the thing rEFInd does not have — **boot
+ * decrements. What it replaces is the thing Limine does not have — **boot
  * counting**. systemd-boot counts by renaming files with `+N-M` suffixes;
- * rEFInd has nothing of the sort, so the counting is ours, and it belongs in the
+ * Limine has nothing of the sort, so the counting is ours, and it belongs in the
  * INITRAMFS rather than in `rcS`: a kernel that boots into a wedged userland
  * must still be caught, and `rcS` in that userland never runs to say so.
  *

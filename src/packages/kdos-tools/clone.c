@@ -76,18 +76,15 @@ static unsigned int le16(const unsigned char *p)
  * How long is the image on this device or in this file?
  *
  * TWO RECORDS DESCRIBE IT AND THE ISO9660 ONE IS THE SHORTER. The Primary
- * Volume Descriptor at sector 16 carries the volume space size, and on an
- * optical-only image that is the whole thing to the byte — measured against
- * the shipped ISO, 4970509 blocks x 2048 = its exact file size. But a hybrid
- * image built with `-append_partition` puts the EFI System Partition AFTER the
- * ISO9660 volume, and the PVD does not count it: measured on a test image, the
- * PVD stopped 4.5 MB short, and those 4.5 MB were precisely the ESP. Trusting
- * the PVD alone would truncate away the thing that makes the copy boot.
+ * Volume Descriptor at sector 16 carries the volume space size, which spans
+ * the ISO9660 volume and nothing else. The shipped image appends its EFI
+ * System Partition AFTER that volume, so the PVD stops short by the whole
+ * length of the ESP — and a copy made to the PVD's length would truncate away
+ * exactly the partition that makes the copy boot.
  *
  * The GPT's backup header is the other record and it is the one that spans an
  * appended partition: the header at LBA 1 names `alternate_lba`, and the image
- * ends one sector past it. Measured: (17187 + 1) x 512 was the test image's
- * exact size.
+ * ends one sector past it.
  *
  * So both are read and the LARGER wins. An image with only one gets that one;
  * an image with neither is not something to copy blindly, and is refused.

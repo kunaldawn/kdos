@@ -59,6 +59,12 @@ int march_main(int argc, char **argv);
  * opinion about how a KDOS stick is laid out.
  */
 int clone_main(int argc, char **argv);
+/*
+ * `kdos persist` (persist.c): the live session remembers. Makes and reports
+ * the ext4 filesystem labelled KDOS_PERSIST that the initramfs uses as the
+ * overlay's upper layer, in place of the tmpfs a live session gets by default.
+ */
+int persist_main(int argc, char **argv);
 int shot_main(int argc, char **argv);		/* kdos-shot                */
 int banner_main(int argc, char **argv);		/* kdos-banner              */
 int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */

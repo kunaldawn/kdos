@@ -101,7 +101,7 @@ cp /usr/lib/libz.so.1 lib/libz.so.1
 cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 
 # Install kdos-bootctl, which decides WHICH root to boot when the machine has
-# two. rEFInd cannot count boots — that is a systemd-boot feature — so the
+# two. Limine cannot count boots — that is a systemd-boot feature — so the
 # counting is ours and it has to happen here rather than in rcS: a kernel that
 # boots into a wedged userland must still spend an attempt.
 if [ -x /usr/bin/kdos-bootctl ]; then
@@ -605,13 +605,70 @@ if [ "\$FOUND" == "1" ]; then
 
              # Setup OverlayFS
              sp_step "OVERLAY ROOT"
-             mkdir -p /mnt/overlay
-             mount -t tmpfs tmpfs /mnt/overlay
-             mkdir -p /mnt/overlay/upper /mnt/overlay/work /newroot
-
-             echo "Mounting OverlayFS..."
+             mkdir -p /newroot
              modprobe overlay
-             mount -t overlay overlay -o lowerdir=/mnt/system,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /newroot
+
+             # THE UPPER IS WHERE A LIVE SESSION'S WRITES LAND, and whether it
+             # survives a power-off is the whole of what persistence means. A
+             # filesystem labelled KDOS_PERSIST is used as the upper when one
+             # is present; with no store the upper is a tmpfs and the session
+             # is gone at reboot. \`kdos persist\` makes the store.
+             #
+             # `nopersist` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
+             # boot menu carries an entry that passes it. A store holding a
+             # change that stops the desktop coming up would otherwise be
+             # reachable only by taking the stick to another machine.
+             #
+             # THE STORE MUST CARRY XATTRS, HARDLINKS AND A d_type, so vfat,
+             # exfat and ntfs cannot hold one: overlayfs refuses such an upper
+             # with EINVAL, which is the same answer it gives for every other
+             # bad mount. Refusing them BY NAME here is what makes a
+             # hand-made store say what is wrong with it.
+             PERSIST=""
+             case " \$(cat /proc/cmdline) " in
+             *" nopersist "*)
+                 echo "nopersist: this session will not be saved" ;;
+             *)
+                 PERSIST=\$(blkid -L KDOS_PERSIST 2>/dev/null) ;;
+             esac
+
+             UPPER=""
+             if [ -n "\$PERSIST" ]; then
+                 PTYPE=\$(blkid -o value -s TYPE "\$PERSIST" 2>/dev/null)
+                 case "\$PTYPE" in
+                 vfat|exfat|ntfs|iso9660|squashfs)
+                     echo "persistence store \$PERSIST is \$PTYPE, which cannot hold an overlay upper"
+                     ;;
+                 *)
+                     mkdir -p /mnt/persist
+                     if mount "\$PERSIST" /mnt/persist; then
+                         mkdir -p /mnt/persist/upper /mnt/persist/work
+                         UPPER="upperdir=/mnt/persist/upper,workdir=/mnt/persist/work"
+                         echo "Persistent session on \$PERSIST (\$PTYPE)"
+                     else
+                         echo "persistence store \$PERSIST would not mount"
+                     fi
+                     ;;
+                 esac
+             fi
+
+             # A STORE THAT DOES NOT WORK MUST NOT COST THE BOOT. Everything
+             # above can fail on a medium somebody else wrote, and a stick that
+             # drops to a shell because its persistence is broken is worse than
+             # one that quietly forgets. Every failure lands here, and the
+             # session comes up exactly as it would with no store at all.
+             if [ -n "\$UPPER" ]; then
+                 echo "Mounting OverlayFS (persistent)..."
+                 mount -t overlay overlay -o lowerdir=/mnt/system,\$UPPER /newroot || UPPER=""
+                 [ -n "\$UPPER" ] || umount /mnt/persist 2>/dev/null
+             fi
+             if [ -z "\$UPPER" ]; then
+                 echo "Mounting OverlayFS..."
+                 mkdir -p /mnt/overlay
+                 mount -t tmpfs tmpfs /mnt/overlay
+                 mkdir -p /mnt/overlay/upper /mnt/overlay/work
+                 mount -t overlay overlay -o lowerdir=/mnt/system,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /newroot
+             fi
 
              # Check if switch root dir is valid
              if [ ! -d "/newroot" ]; then
@@ -650,6 +707,17 @@ if [ "\$FOUND" == "1" ]; then
             if [ -e /mnt/iso/system.sfs ]; then
                 mkdir -p /newroot/mnt/iso
                 mount --move /mnt/iso /newroot/mnt/iso
+            fi
+
+            # THE PERSISTENCE STORE MOVES FOR THE SAME REASON AND ONE MORE.
+            # Left in the initramfs namespace it is unreachable by name, so
+            # \`kdos persist\` could not report how full the store is that the
+            # session is writing to. It also has to be a mount the SHUTDOWN can
+            # see: /etc/inittab unmounts what is mounted, and a store that is
+            # not in the new root's table is never flushed by it.
+            if [ -n "\$UPPER" ]; then
+                mkdir -p /newroot/mnt/persist
+                mount --move /mnt/persist /newroot/mnt/persist
             fi
 
             # Switch Root

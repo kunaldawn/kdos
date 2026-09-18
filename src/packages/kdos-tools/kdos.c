@@ -3254,6 +3254,7 @@ static void help_body(FILE *o)
 		{ "kdos settings [page]", "the control centre — appearance, panel, hardware, system…" },
 		{ "kdos menu summon <route>", "open the menu on a named place: `setup.network`" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
+		{ "kdos persist", "keep a live session's changes across a reboot" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-mpctl toggle", "the music: toggle, stop, next, prev, now, watch" },
@@ -5440,6 +5441,8 @@ int kdos_main(int argc, char **argv)
 		return rebuild_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "clone"))
 		return clone_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "persist"))
+		return persist_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "cve"))
 		return kdt_cve(rest, restv, C_A, C_W, C_0);
 	if (!strcmp(cmd, "hey"))
