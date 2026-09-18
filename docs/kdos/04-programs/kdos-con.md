@@ -2485,6 +2485,19 @@ highlighting targets that would refuse the drop.
 **The payload waits for the release.** A drag crossing six windows would otherwise hand its bytes to
 all six, and five of those are windows somebody was only passing over.
 
+**An embedded graphical application is a target like any other.** The same four verbs go out over
+its cage's channel instead of over the surface socket — `KEMBED_DRAG_ENTER` and its three — and the
+cage turns them into the `wl_data_device` events its guest understands. A guest that begins a drag
+of its own is read out at once and the session takes it over, so it can be released on a terminal,
+on another guest or on the trash. See [`kdos-cage`](kdos-cage.md) for the grab that makes the
+guest's own acceptance of a type mean something.
+
+**Whatever the drag was over is told when it ends, however it ended.** A target keeps state for the
+length of one — a KDOS surface holds the `ENTER` it was sent, a cage holds a pointer grab and an
+offer in the guest's hands — and one never told it ended keeps both for as long as it lives. The
+drop is the exception and is ordered the other way: a leave sent after a drop would take back the
+offer the drop just made.
+
 **A drop reaches the icon layer, which a click does not.** `win_at()` skips the background
 deliberately — it covers the whole grid, so hit-testing it before the windows would take every click
 on the desktop — so a drag asks it **last**, after every window has declined. Without that the whole

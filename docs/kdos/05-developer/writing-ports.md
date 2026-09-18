@@ -205,11 +205,20 @@ EOF
 chmod 644 "$PKG/usr/share/applications/btop.desktop"
 ```
 
-Four rules, each with a consequence:
+Five rules, each with a consequence:
 
 - **`Terminal=true` and a bare `Exec`.** Naming an emulator in `Exec` pins the entry to one
   desktop: `foot` is a Wayland client and cannot run on the console. The launcher picks the
   emulator and supplies the identity — see [`kdos-shell`](../04-programs/kdos-shell.md).
+- **`X-KDOS-Cells=true` where the program is a KDOS surface**, and on nothing else. The console
+  session wraps every non-terminal program it is handed in a kiosk compositor, because a Wayland
+  client's surface is pixels and that desktop composites cells — right for a boxed application and
+  wrong for a program that attaches to the session itself. Without the key `kdos-res` costs a whole
+  wlroots compositor to draw a grid of text, and `kdos-term` is a terminal emulator inside a kiosk
+  inside the console. Only an entry can answer it: the session is handed an argument vector, and a
+  program's name says nothing about what it will draw. An entry that does not carry it is treated
+  as a graphical application, which is the safe direction — a cage costs a compositor, and the
+  mistake the other way is a Wayland client with no display that exits at once.
 - **`X-KDOS-Float=true` and `X-KDOS-Size=COLSxROWS` say how the window should open.** A float is an
   unanchored window at the size the entry asks for rather than one the session places among the
   rest; the size is **cells**, and a terminal smaller than 4x2 is refused. `kdos app tui` writes

@@ -8,11 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = isync
-version     = 1.5.1
-release     = 2
-source      = https://downloads.sourceforge.net/project/$name/$name/$version/$name-$version.tar.gz
-sha256      = 28cc90288036aa5b6f5307bfc7178a397799003b96f7fd6e4bd2478265bb22fa  isync-1.5.1.tar.gz
-description = mbsync — an IMAP mailbox and a local Maildir made equal, XOAUTH2 included
-homepage    = https://isync.sourceforge.io/
-depends     = openssl zlib pkgconf perl cyrus-sasl cyrus-sasl-xoauth2
+name        = cyrus-sasl-xoauth2
+version     = 0.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/moriyoshi/$name/archive/refs/tags/v$version.tar.gz
+sha256      = a62c26566098100d30aa254e4c1aa4309876b470f139e1019bb9032b6e2ee943  cyrus-sasl-xoauth2-0.2.tar.gz
+description = The XOAUTH2 SASL mechanism — what mbsync authenticates with where a provider has withdrawn app passwords
+homepage    = https://github.com/moriyoshi/cyrus-sasl-xoauth2
+depends     = cyrus-sasl autoconf automake libtool

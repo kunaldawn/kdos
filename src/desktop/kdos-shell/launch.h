@@ -75,6 +75,34 @@ struct sh_launch {
 	int terminal;		/* Terminal=true — wrap it in an emulator   */
 	int floating;		/* X-KDOS-Float: open unanchored            */
 	/*
+	 * IT DRAWS ON THE CONSOLE'S OWN GRID — `X-KDOS-Cells=true`, and the
+	 * one thing that keeps a KDOS surface out of a kiosk compositor.
+	 *
+	 * On the console every non-terminal program goes to the session, and
+	 * the session gives a guest a cage because a Wayland client's surface
+	 * is pixels and this desktop composites cells. A program that attaches
+	 * to the session ITSELF needs none of that: measured, `kdos-res`
+	 * started from a launch surface is a whole wlroots compositor holding a
+	 * grid of text the session was already able to draw, and `kdos-term` is
+	 * a terminal emulator inside a kiosk inside the console.
+	 *
+	 * Unset is "graphical application", which is the safe direction — see
+	 * KxdgLaunch.cells in kxdg.h for why it is the entry that answers.
+	 */
+	int cells;
+	/*
+	 * A COMMAND THIS DESKTOP WROTE, NOT AN APPLICATION — so it is never
+	 * handed to the session either.
+	 *
+	 * For a row whose command came from this tree rather than from a
+	 * desktop entry: `kdos-menu`'s System column, where `kdos-power
+	 * suspend` would otherwise cost a compositor start to run a one-line
+	 * verb and `pkill` on the session would leave a cage outliving what it
+	 * killed. NEVER set from an entry — there the entry's own keys are the
+	 * only thing that may decide.
+	 */
+	int host;
+	/*
 	 * A TYPED COMMAND LINE IS NOT A DESKTOP ENTRY. Its `%` is a character
 	 * somebody typed and must reach the program, so no field code is
 	 * expanded or dropped, and files are APPENDED rather than substituted.
@@ -98,6 +126,18 @@ struct sh_launch {
  * document appended and none substituted.
  */
 int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles);
+
+/*
+ * THE SAME LAUNCH, NAMED BY ITS DESKTOP-ENTRY ID.
+ *
+ * Resolves the id through the XDG data dirs and hands what it found to
+ * `sh_launch`, so a surface holding an id rather than a line carries no copy
+ * of the key list and cannot forget one: a row that read only `Exec` starts a
+ * `Terminal=true` application with no terminal round it, and a row that missed
+ * `X-KDOS-Cells` puts a KDOS surface in a cage. Returns what `sh_launch`
+ * returns, and -1 when the id names no entry that can be started.
+ */
+int sh_launch_id(const char *id, const char *const *files, int nfiles);
 
 /*
  * IS THIS EXEC LINE THE BOX LAUNCHER, and which box does it name — apps.c's,

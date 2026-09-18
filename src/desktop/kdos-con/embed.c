@@ -942,12 +942,17 @@ static int send_msg(struct EmbedWin *e, unsigned op, int a, int b, int c,
  * through the loop that also pumps frames. `fd` is the caller's and stays the
  * caller's — the kernel copies it, so the sender closes its own copy when it
  * is finished with it and not before.
+ *
+ * `win` IS WHICH WINDOW, AND ZERO IS THE CHANNEL, the same rule proc_send
+ * keeps. The keymap and the selection are the channel's and carry 0; a drop is
+ * one toplevel's, and a cage holding two would otherwise answer it on
+ * whichever happens to be in front.
  */
 static int proc_send_fd(struct EmbedProc *p, unsigned op, int a, int b, int c,
-			int d, unsigned f, int fd)
+			int d, unsigned f, uint32_t win, int fd)
 {
 	KembedMsg m = { .magic = KEMBED_MAGIC, .op = op, .a = a, .b = b,
-			.c = c, .d = d, .e = f };
+			.c = c, .d = d, .e = f, .win = win };
 	struct iovec iov = { .iov_base = &m, .iov_len = sizeof(m) };
 	struct msghdr hdr = { .msg_iov = &iov, .msg_iovlen = 1 };
 	union {
@@ -968,6 +973,40 @@ static int proc_send_fd(struct EmbedProc *p, unsigned op, int a, int b, int c,
 	memcpy(CMSG_DATA(c1), &fd, sizeof(fd));
 
 	while (sendmsg(p->fd, &hdr, MSG_NOSIGNAL) < 0) {
+		if (errno == EINTR)
+			continue;
+		return -1;
+	}
+	return 0;
+}
+
+/*
+ * THE SAME MESSAGE, CARRYING A STRING AFTER IT.
+ *
+ * The socket is SOCK_SEQPACKET and the kernel frames every datagram, so a
+ * string after the struct needs no length field: the boundary is its end. One
+ * op sends one — KEMBED_DRAG_ENTER's MIME type — and the cage reads the tail as
+ * whatever is left of the datagram, so a message longer than KEMBED_TAIL_MAX is
+ * refused here rather than truncated by the kernel at the far end with no error
+ * anywhere.
+ */
+static int send_msg_tail(struct EmbedWin *e, unsigned op, int a, int b, int c,
+			 int d, unsigned f, const char *tail)
+{
+	KembedMsg m = { .magic = KEMBED_MAGIC, .op = op, .a = a, .b = b,
+			.c = c, .d = d, .e = f };
+	char buf[sizeof(KembedMsg) + KEMBED_TAIL_MAX];
+	size_t n;
+
+	if (!e || !e->id || !e->proc || e->proc->fd < 0 || !tail)
+		return -1;
+	n = strlen(tail) + 1;
+	if (n > KEMBED_TAIL_MAX)
+		return -1;
+	m.win = e->id;
+	memcpy(buf, &m, sizeof(m));
+	memcpy(buf + sizeof(m), tail, n);
+	while (send(e->proc->fd, buf, sizeof(m) + n, MSG_NOSIGNAL) < 0) {
 		if (errno == EINTR)
 			continue;
 		return -1;
@@ -3012,7 +3051,7 @@ static void send_clip(struct EmbedProc *p)
 			r = proc_send(p, KEMBED_CLIP_SET, i, 0, 0, 0, 0, 0);
 		else
 			r = proc_send_fd(p, KEMBED_CLIP_SET, i,
-					 (int)clip_fd_len[i], 0, 0, 0,
+					 (int)clip_fd_len[i], 0, 0, 0, 0,
 					 clip_fd[i]);
 		if (r != 0)
 			return;		/* the channel is going; try again */
@@ -3058,6 +3097,57 @@ static void take_clip(const KembedMsg *m, int fd)
 	if (map == MAP_FAILED)
 		return;
 	clip_put(map, len, m->a != 0);
+	munmap(map, len);
+}
+
+/*
+ * A GUEST'S DRAG, OUT OF THE DESCRIPTOR IT ARRIVED IN — the same checks
+ * take_clip() makes, and for the same reasons: the length is verified against
+ * the file rather than taken from the message, and a descriptor that could
+ * still be shrunk is one whose reader can be faulted after the fact.
+ *
+ * `mime` is the tail of the datagram; recv_msg NUL-terminates it, and an empty
+ * one is a cage that sent no type. The session refuses a type it cannot carry
+ * itself, in con_drag_from_guest().
+ */
+static void take_drag_offer(struct EmbedProc *p, const KembedMsg *m, int fd,
+			    const char *mime)
+{
+	struct stat st;
+	int seals;
+	void *map;
+	size_t len;
+	unsigned src = 0;
+
+	if (fd < 0 || !mime || !*mime || m->b <= 0 ||
+	    (size_t)m->b > KEMBED_CLIP_MAX)
+		return;
+	len = (size_t)m->b;
+
+	if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+	    (size_t)st.st_size < len)
+		return;
+	seals = fcntl(fd, F_GET_SEALS);
+	if (seals < 0 || !(seals & F_SEAL_SHRINK))
+		return;
+
+	/*
+	 * THE WINDOW THE DRAG CAME FROM, which the session wants only so the
+	 * bar can say so. A cage's front window is the honest answer: the
+	 * offer is the SEAT'S and the seat has one pointer, so whichever
+	 * toplevel that pointer was in is the one in front.
+	 */
+	{
+		struct EmbedWin *e = proc_front(p);
+
+		if (e)
+			src = e->id;
+	}
+
+	map = mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (map == MAP_FAILED)
+		return;
+	con_drag_from_guest(mime, map, len, src);
 	munmap(map, len);
 }
 
@@ -3274,6 +3364,24 @@ static void drain(struct EmbedProc *p)
 		 */
 		if (m.op == KEMBED_CLIP_OFFER) {
 			take_clip(&m, fd);
+			if (fd >= 0)
+				close(fd);
+			continue;
+		}
+		/*
+		 * A GUEST BEGAN A DRAG, and from here the session is carrying
+		 * it: only the session knows what is under the pointer, and the
+		 * next window the drag crosses may be a terminal, a KDOS
+		 * surface or another guest entirely. The type is the tail of
+		 * the datagram and the payload the descriptor, which is the
+		 * shape KEMBED_CLIP_OFFER already uses.
+		 *
+		 * THE CHANNEL'S AND NOT A WINDOW'S: one cage is one seat, so a
+		 * drag begun in a dock and one begun in the image window are
+		 * the same seat's and arrive under `win` 0.
+		 */
+		if (m.op == KEMBED_DRAG_OFFER) {
+			take_drag_offer(p, &m, fd, text);
 			if (fd >= 0)
 				close(fd);
 			continue;
@@ -4691,6 +4799,130 @@ int embed_key(Win *w, const KtuiEvent *ev)
 	return 1;
 }
 
+/*
+ * ── A DRAG OVER AN EMBEDDED WINDOW ──────────────────────────────────────
+ *
+ * The session owns the drag: it hit-tests the windows, draws the arrow and
+ * holds the payload from the pick-up to the release, so a guest is told what
+ * is being carried and never what it is. The cage turns these four back into
+ * the `wl_data_device` events a toolkit understands — see kdos-cage's drag.c.
+ *
+ * ONLY THE TYPE CROSSES ON THE ENTER AND ONLY THE BYTES ON THE DROP. A drag
+ * passing over six windows would otherwise hand its payload to all six, five
+ * of which are windows somebody was moving the pointer across.
+ */
+
+/* The cell the drag is over, in the guest's own pixels — the centre of it, the
+ * same place a click in that cell lands. `lx`/`ly` are window-relative cells,
+ * which is what drag_local() clamps them to. */
+static void drag_px(const struct EmbedWin *e, int lx, int ly, int *px, int *py)
+{
+	*px = lx * e->cell_w + e->cell_w / 2;
+	*py = ly * e->cell_h + e->cell_h / 2;
+	if (*px < 0)
+		*px = 0;
+	if (*py < 0)
+		*py = 0;
+	if (e->pw > 0 && *px >= e->pw)
+		*px = e->pw - 1;
+	if (e->ph > 0 && *py >= e->ph)
+		*py = e->ph - 1;
+}
+
+static struct EmbedWin *drag_win(Win *w)
+{
+	struct EmbedWin *e = w ? w->em : NULL;
+
+	if (!e || !e->id || !e->proc || e->proc->fd < 0)
+		return NULL;
+	return e;
+}
+
+int embed_drag_enter(Win *w, int lx, int ly, const char *mime)
+{
+	struct EmbedWin *e = drag_win(w);
+	int px, py;
+
+	if (!e || !mime || !*mime)
+		return 0;
+	drag_px(e, lx, ly, &px, &py);
+	return send_msg_tail(e, KEMBED_DRAG_ENTER, px, py, 0, 0,
+			     (unsigned)now_ms(), mime) == 0;
+}
+
+int embed_drag_motion(Win *w, int lx, int ly)
+{
+	struct EmbedWin *e = drag_win(w);
+	int px, py;
+
+	if (!e)
+		return 0;
+	drag_px(e, lx, ly, &px, &py);
+	return send_msg(e, KEMBED_DRAG_MOTION, px, py, 0, 0,
+			(unsigned)now_ms()) == 0;
+}
+
+int embed_drag_leave(Win *w)
+{
+	struct EmbedWin *e = drag_win(w);
+
+	if (!e)
+		return 0;
+	return send_msg(e, KEMBED_DRAG_LEAVE, 0, 0, 0, 0,
+			(unsigned)now_ms()) == 0;
+}
+
+/*
+ * THE PAYLOAD, IN A SEALED DESCRIPTOR — the carrier the selection already uses.
+ * A drop is one message and a drag is bytes, so chunking it through a 32-byte
+ * message would be thousands of datagrams through the loop that pumps frames.
+ *
+ * SEALED BEFORE IT CROSSES, because the cage maps it at the length it was told:
+ * a descriptor that could still be shrunk is one whose reader can be faulted
+ * after the fact.
+ */
+int embed_drag_drop(Win *w, int lx, int ly, const char *data, size_t len)
+{
+	struct EmbedWin *e = drag_win(w);
+	int px, py, fd, rc;
+
+	if (!e || !data || !len || len > KEMBED_CLIP_MAX)
+		return 0;
+	drag_px(e, lx, ly, &px, &py);
+
+	fd = memfd_create("kdos-drag", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	if (fd < 0)
+		return 0;
+	for (size_t off = 0; off < len;) {
+		ssize_t n = write(fd, data + off, len - off);
+
+		if (n > 0) {
+			off += (size_t)n;
+			continue;
+		}
+		if (n < 0 && errno == EINTR)
+			continue;
+		close(fd);
+		return 0;
+	}
+	if (fcntl(fd, F_ADD_SEALS,
+		  F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE) != 0) {
+		close(fd);
+		return 0;
+	}
+	/*
+	 * THE WINDOW IS NAMED. A cage holding two toplevels would otherwise
+	 * answer the drop on whichever one happens to be in front; the two
+	 * other senders of a descriptor — the keymap and the selection — are
+	 * the CHANNEL'S and carry 0, which is what the far end reads as "not a
+	 * window".
+	 */
+	rc = proc_send_fd(e->proc, KEMBED_DROP, px, py, (int)len, 0,
+			  (unsigned)now_ms(), e->id, fd);
+	close(fd);
+	return rc == 0;
+}
+
 int embed_ptr(Win *w, const KtuiEvent *ev)
 {
 	struct EmbedWin *e = w ? w->em : NULL;
@@ -4904,7 +5136,7 @@ static void send_keymap(struct EmbedProc *p)
 {
 	if (km_fd < 0 || !p || p->fd < 0 || p->km_gen == km_gen)
 		return;
-	if (proc_send_fd(p, KEMBED_KEYMAP, (int)km_len, km_format, 0, 0, 0,
+	if (proc_send_fd(p, KEMBED_KEYMAP, (int)km_len, km_format, 0, 0, 0, 0,
 			 km_fd) != 0)
 		return;
 	p->km_gen = km_gen;

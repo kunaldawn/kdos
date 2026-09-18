@@ -406,7 +406,8 @@ exactly one of them and is told the size of that one.
 
 **A drag from one of its windows into another is one seat's drag inside one compositor**, and it
 works with no help from this channel at all — the toolbox and the image window are two windows on
-the parent's desktop and one client on one `wl_display`.
+the parent's desktop and one client on one `wl_display`. **A drag that crosses the cage boundary
+does need the channel**, in both directions; see below.
 
 **Two frames in one mapping.** The child renders into the half the parent is not reading and then
 flips. Single buffering tears on every commit, and on a photograph that reads as the compositor
@@ -781,6 +782,42 @@ Ctrl+C in it. A pipe whose reader has left kills the writer and a pipe has no `M
 set after the guest is forked and no earlier; every process this compositor execs from there on
 carries it, Xwayland included — and Xwayland installs the same disposition itself, so nothing it runs
 is changed by it.
+
+### A drag across the cage boundary
+
+**The session owns the drag and this cage plays it into the guest.** On the cell desktop the pointer
+belongs to the console: it hit-tests the windows, draws the arrow and holds the payload from the
+pick-up to the release. A drag that crossed a boxed application would end as cancelled unless
+something inside turned `KEMBED_DRAG_ENTER`, `KEMBED_DRAG_MOTION`, `KEMBED_DRAG_LEAVE` and
+`KEMBED_DROP` back into the `wl_data_device` events a toolkit understands. Both directions are here:
+a drag the **guest** begins is read out at once and offered up as `KEMBED_DRAG_OFFER`, so the session
+is carrying it before the pointer has left the window — which is what lets it cross into a terminal
+or onto the desktop at all.
+
+**It is a real pointer grab and not a synthesised event stream.** wlroots' own drag machinery decides
+which surface holds the offer, sends the enter, motion and leave, and refuses the drop where the
+guest declined the type; none of that can be faked from outside without reimplementing it. So the
+bridge creates a `wlr_drag`, starts a pointer grab with it, and drives that grab. **The press that
+arms the release is swallowed by the grab itself** and never reaches the guest as a click — wlroots
+reads a drop as "the button the grab started with came back up", and a grab with no button recorded
+can only ever read the release as a cancel.
+
+**The cage's own arrow stays down for the length of it.** The parent draws the pointer and says in
+its bar what is being carried, so a cage that also showed its cursor would put a second arrow into
+the framebuffer the session composites, at the same place. The guest is still aimed at — a drop
+lands on whatever widget is under the pointer — through a motion that warps without un-hiding.
+
+**The payload arrives at the drop and not at the enter**, because that is what the session sends: a
+drag crossing six windows must not hand its bytes to all six. A guest that asks for the data
+earlier — a toolkit previewing what is being dragged — is not refused and not answered either: its
+pipe is held until the drop fills it, and dropped with the drag if the pointer leaves. A refusal
+would read to the guest as a drag carrying an empty file.
+
+**Text and file names, which is what the session carries.** `text/plain` and `text/uri-list` are the
+two types `kdos-con` accepts at all, and the type the session named is offered at the head with the
+other beside it: a file name is `text/uri-list` to a file manager and a line of text to an editor,
+and offering only one would make an editor refuse a drop it can perfectly well accept. A guest
+dragging an image out has begun a drag this desktop has nowhere to put, so no offer is made.
 
 ### A video must not be covered by the screensaver
 

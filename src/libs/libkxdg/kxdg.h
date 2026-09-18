@@ -45,6 +45,59 @@ void kxdg_free(KxdgEntry *e);
 /* "true"/"TRUE"/"True" -> 1. Anything else, including absent, -> def. */
 int kxdg_bool(const KxdgEntry *e, const char *key, int def);
 
+/*
+ * THE LAUNCH HALF OF AN ENTRY, read once and in one place.
+ *
+ * Four programs used to read these seven keys with four private copies of the
+ * list — the application index, the desktop's icons, the "Open with" chooser
+ * and `kdos-appbox open` — and a key added to one of them was a row that
+ * behaved differently depending on which surface it was clicked from. The
+ * fields are what deciding HOW to start something needs; everything else about
+ * an entry (its icon, its categories, its mime types) belongs to whoever is
+ * drawing it.
+ */
+#define KXDG_LAUNCH_EXEC 512
+typedef struct {
+	char exec[KXDG_LAUNCH_EXEC];	/* Exec, FIELD CODES INTACT — see
+					   kxdg_exec_split                  */
+	char name[128];			/* Name                             */
+	char term[24];			/* X-KDOS-Term: which emulator      */
+	char size[16];			/* X-KDOS-Size: COLSxROWS           */
+	int terminal;			/* Terminal=true                    */
+	int floating;			/* X-KDOS-Float=true                */
+	/*
+	 * X-KDOS-Cells=true — THIS PROGRAM DRAWS ON THE CONSOLE'S OWN GRID.
+	 *
+	 * The console session composites character cells, and everything it is
+	 * handed that is not a terminal program it wraps in a kiosk compositor
+	 * so a Wayland client has a display. That is right for a boxed
+	 * application and wrong for one of KDOS's own surfaces, which attaches
+	 * to the session directly: `kdos-res` inside a cage is a whole wlroots
+	 * compositor started to draw a grid of text the session was already
+	 * drawing, and `kdos-term` inside one is a terminal emulator inside a
+	 * kiosk inside the console.
+	 *
+	 * Only an entry can answer it — the session is handed an argv and a
+	 * program name says nothing about what it will draw — so the entry
+	 * says, and a surface that does not carry the key is treated as a
+	 * graphical application, which is the safe direction: a cage costs a
+	 * compositor, and the mistake the other way is a Wayland client with
+	 * no display that exits at once.
+	 */
+	int cells;
+} KxdgLaunch;
+
+/*
+ * Fill one from a loaded entry. Returns 0 when the entry can be started at
+ * all — Type=Application with an Exec — and -1 otherwise, so a caller's
+ * "is this a row" test and its read are the same call.
+ *
+ * NoDisplay and Hidden are NOT tested here: they say whether an entry belongs
+ * in a MENU, which is a question for whoever is drawing one, and the mime
+ * route opens NoDisplay entries on purpose.
+ */
+int kxdg_launch_read(const KxdgEntry *e, KxdgLaunch *out);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Exec (kxdg_exec.c)
  *

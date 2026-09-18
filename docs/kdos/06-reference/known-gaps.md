@@ -16,8 +16,8 @@ offered and accepted; there is no MIME negotiation, no deferred transfer and no 
 Only the trash accepts a drop on the desktop — dropping onto a folder would be a move, and a move
 that half-succeeds across filesystems is worse than not offering it. Both directions work between
 a KDOS surface and a boxed application under `kdos-comp`; on the console the session carries a drag
-between its own windows, and an embedded graphical application is not one of them — see below.
-See [Status](status.md) for what that rests on.
+between its own windows and across the cage boundary in both directions, which is built and
+unphotographed — see below. See [Status](status.md) for what that rests on.
 
 **A drag on the console has no picture under the pointer.** The view draws the pointer and the
 session owns the drag, so nothing that knows what is being carried is in a position to hang a
@@ -110,25 +110,6 @@ wired up.
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
 
-**The panel's own launch rows and `kdos-menu` split an `Exec` line on whitespace.** The
-quick-launch row, the taskbar chip's *New window* and every application row in `kdos-menu` build
-their argv with `strtok(" ")`, so an entry whose `Exec` carries a quoted argument starts wrong:
-`Exec=foot --title="Install KDOS" -- sudo kinstall` reaches `foot` as `--title="Install` with a
-stray `KDOS"` after it. They also fork the child themselves, so a graphical application started
-from the panel while it is docked on the console session gets no cage and no display. The six
-surfaces that go through `sh_launch()` — the Start menu, the palette, the desktop's icons,
-`kdos-find`, *Open With* and the run box — have neither fault; these three are what a `sh_launch()`
-call would close.
-
-**`kdos-appbox open` starts a graphical handler outside the console session.** `open` resolves a
-file's handler and `execvp`s it in the process it was given, so on the console a handler that is not
-a terminal program gets no cage and no display and exits at once, with nothing on the screen to say
-why. `terminal_first()` hides this wherever a terminal handler exists — it is put at the head of the
-chain — so what is left exposed is a type whose only handler is graphical. The same function splits
-the handler's `Exec` line on whitespace, so a quoted argument reaches the program in pieces. The
-launch surfaces in `kdos-shell` do neither: they go through `sh_launch()`, which reads the quoting
-and hands a graphical program to the session.
-
 **A recording of a screen that does not change is an empty file.** `wlr-screencopy` hands over a
 frame when the output is damaged and at no other time, so a session left alone produces no buffers,
 the muxer writes no header, and `~/Videos/<name>.mkv` ends at zero bytes with nothing in the
@@ -141,17 +122,12 @@ on the screen while it runs.
 drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
 not running.
 
-**A terminal application opens nothing from a launch surface on the console.** `Super+space`, `ma`,
-`Enter` on **Mail** leaves the desktop as it was, and so does any other row whose desktop entry says
-`Terminal=true` — from the palette, the Start menu, a desktop icon or `kdos-find` alike, because all
-four make the same call. The wrapper is not the problem: typed by hand, `kdos-term --title mc
---app-id mc -e mc` opens the window and the taskbar names it.
-
-**The two kinds of row do not end up in the same place**, which is where to look. On the console a
-row that is *not* a terminal entry is handed to the session through `kcon_run()`, and the session
-owns what it started; a `Terminal=true` row is double-forked by the surface, which then closes.
-*Resources* opens because it is the first kind. The chord route is unaffected, so `Super+Shift+e`
-still opens mail.
+**A typed command in the run box is treated as a graphical application on the console.** Every
+non-terminal program the session is handed goes into a cage, and a run box cannot know whether what
+somebody typed draws pixels or cells: `kdos-res` typed there costs a kiosk compositor that the same
+application started from the Start menu does not, because the entry carries `X-KDOS-Cells` and a
+typed line carries nothing. A second guess — resolving the first word back to a desktop entry —
+would make the run box behave differently from the terminal it otherwise resembles.
 
 **A terminal framed by the session loses its prompt marks.** `kdos-term` draws the `OSC 133` dots on
 the one column that is its own — the left border of the box it draws when nothing else drew one —
@@ -210,21 +186,28 @@ it was given the size it asked for, so it does not paginate either. Make the con
 enough for the menu and the whole of it appears. See
 [`kdos-cage`](../04-programs/kdos-cage.md).
 
-**A drag onto an embedded graphical application reads as cancelled.** `KEMBED_DRAG_OFFER`,
-`KEMBED_DRAG_ENTER`, `KEMBED_DRAG_MOTION`, `KEMBED_DRAG_LEAVE` and `KEMBED_DROP` are declared in
-`kembed.h` and implemented by neither `kdos-cage` nor `kdos-con`, so a drag released over an
-embedded window is one the guest never hears of and the session ends as cancelled, and a drag begun
-inside one never leaves it. The clipboard is the way across and it is built: `KEMBED_CLIP_OFFER`
-puts a guest's copy on the session's own clipboard and `KEMBED_CLIP_SET` mirrors that clipboard and
-the primary onto every cage's seat, both over a sealed `memfd`. What the clipboard cannot carry is
-what a drag would have: it is text of at most `KEMBED_CLIP_MAX`, so a copied image leaves the
-selection as it was, and a file goes across as a path and not as its contents.
+**A drag across the cage boundary has never been seen on a screen.** Both halves are built — the
+session sends `KEMBED_DRAG_ENTER` and its three over the channel and `kdos-cage` replays them as a
+real `wlr_drag` with a pointer grab, and a guest's own drag is read out as `KEMBED_DRAG_OFFER` — and
+what stands behind them is the compile gate and the reasoning, not a photograph. The negotiation
+against a real `wl_data_device` is the untested half — the same half the clipboard's own gap below
+names: a stand-in guest accepts a type because it was written to accept it, and a toolkit decides.
 
-**No real boxed application has pasted across the cage boundary.** Both ends of `KEMBED_CLIP_*` are
-built and the crossing is proved on a host with stand-in cages — one guest's offer reaching another
-guest, and a copy made in the session reaching both — but the guest in that proof is a stub that
-writes a fixed string, not a toolkit negotiating mime types on a real `wl_data_device`. What is
-untested is the negotiation against a real client, not the carrier.
+**And what crosses is text, which is what the session carries.** `text/plain` and `text/uri-list`
+are the two types `kdos-con` accepts at all, so a guest dragging an image out has begun a drag this
+desktop has nowhere to put and no offer is made; a file crosses as a path and not as its contents,
+and the payload is capped at `KEMBED_CLIP_MAX`.
+
+**No real boxed application has pasted or dropped across the cage boundary.** Both ends of
+`KEMBED_CLIP_*` are built and the crossing is proved on a host with stand-in cages — one guest's
+offer reaching another guest, and a copy made in the session reaching both — but the guest in that
+proof is a stub that writes a fixed string, not a toolkit negotiating mime types on a real
+`wl_data_device`. What is untested is the negotiation against a real client, not the carrier.
+
+**The drag is one step further back, because the negotiation is what the drop is gated on.**
+wlroots sends `wl_data_device.drop` only where the target both accepted a type and set an action,
+and a stub accepts because it was written to. So a stand-in guest can prove that the five ops cross
+and cannot prove that a toolkit takes what they carry.
 
 **A guest given the keyboard while Caps Lock is on resolves one key before it is told.** The
 modifier mask travels on the raw stream and nowhere else, and that stream runs only while an
@@ -423,18 +406,9 @@ costs nothing to carry — but there is no X server here and the Wayland path is
 so a yank inside such a program has nowhere to go. The desktop's own clipboard is `kdos-clip`, and
 `kdos-term` puts a selection there.
 
-**A spreadsheet can be read and not written back.** `sc-im` opens an `.xlsx` natively — it links
-`libzip` and `libxml2` and carries the reader in C — but its **export** is gated on
-`libxlsxwriter`, which is not a port here, so it answers `XLSX export support not compiled in.` and
-saves back out as `.sc`, `.csv` or `.ods`. You can open a file somebody sent you and cannot hand it
-back in the format they sent. `visidata` reaches the same file only through `openpyxl` and can
-write one, so the round trip exists — through the other program.
-
-**A call is voice only, and out of the box it is G.711.** `baresip` is the SIP phone here and its
-interface is a terminal menu. The codecs are all built — `opus.so`, `vp8.so`, `vp9.so` and
-`avcodec.so` are among the 55 modules installed — but baresip's own generated `config` leaves every
-one of them commented out, so a first run reports `Populated 0 video codecs` and negotiates G.711
-alone. Uncommenting the module lines in `~/.baresip/config` turns them on.
+**A call is voice only.** `baresip` is the SIP phone here, its interface is a terminal menu, and the
+codecs it loads on a first run are the four this image builds — `opus.so`, `avcodec.so`, `vp8.so`
+and `vp9.so`. What a call cannot do is show you the other person: see the video display below.
 
 **Video calling has nowhere to put the picture.** The capture half is there — the built `avformat`
 module registers a video source and the shipped ffmpeg carries `video4linux2` — and the codecs
@@ -443,17 +417,13 @@ and `vidbridge` (a loopback) were built, because `x11` needs the X headers this 
 rule and `sdl` needs an SDL port that does not exist. A call can send your camera and cannot show
 you theirs.
 
-**`mbsync` cannot use XOAUTH2, so mail from such a provider cannot be mirrored locally.** `isync`
-reaches XOAUTH2 and OAUTHBEARER only through `cyrus-sasl`, which this tree does not build —
-measured: the shipped `mbsync` links `libssl`, `libcrypto`, `libz` and `libc` and carries no XOAUTH2
-string at all, and `pizauth` does not lift it because there is nothing to present a token to.
-
-**The rest of the lane does.** Measured on the image: `msmtp --version` reports
-`Authentication library: built-in` and lists `oauthbearer` and `xoauth2`, and `aerc` carries
-`imaps+oauthbearer`, `smtps+oauthbearer` and its own `xoauth2Client`. So an account whose provider
-has withdrawn application passwords is **read in `aerc` directly and sent through `msmtp`** — what
-it does not get is a local Maildir kept in step by `mbsync`, and with it `notmuch`'s index and
-offline search.
+**`mbsync` reaches XOAUTH2 and not OAUTHBEARER.** `cyrus-sasl` is the mechanism loader and ships no
+XOAUTH2 of its own, so the mechanism comes from `cyrus-sasl-xoauth2` beside it and that plugin
+implements the one. A server offering only OAUTHBEARER cannot be mirrored into a local Maildir, and
+with it goes `notmuch`'s index and offline search for that account. **`aerc` reads it and `msmtp`
+sends it**: measured on the image, `msmtp --version` reports `Authentication library: built-in` and
+lists `oauthbearer` and `xoauth2`, and `aerc` carries `imaps+oauthbearer`, `smtps+oauthbearer` and
+its own `xoauth2Client`.
 
 **A network share is reached by an address or a DNS name, never by a workgroup name.** musl
 resolves through `/etc/hosts` and `/etc/resolv.conf`; `nsswitch.conf` is inert on this C library,
@@ -471,7 +441,9 @@ cannot be mounted from here; the verb offers username, domain and password and n
 no account, no network and no IMAP or CalDAV server on the image, so what is measured of `mbsync`
 and `vdirsyncer` is that each runs, reports its version, and does nothing and exits cleanly with
 nothing configured. That a password account synchronises is unproven here and can only be proven
-against a real account.
+against a real account — and **the XOAUTH2 lane is unproven in the same way and one step further
+back**: that `libxoauth2.so` is in `/usr/lib/sasl2` and that `mbsync` links `libsasl2` can be
+measured on the image, and that a provider accepts the token `pizauth` mints cannot.
 
 ## Hardware and platform
 
@@ -481,9 +453,11 @@ against a real account.
 machine with Secure Boot enabled refuses to load it. The installer reports the firmware state on
 its first page; turning Secure Boot off in firmware setup is the only route.
 
-**32-bit UEFI is not built.** The `uefi-ia32` Limine port exists and is not enabled, so a machine
-with a 64-bit CPU and a 32-bit firmware — some early Atom tablets — has no boot path. BIOS and
-64-bit UEFI are both built and both verified.
+**32-bit UEFI is built and has never been booted.** `BOOTIA32.EFI` is on the ISO's ESP tree, on an
+installed machine's, and in the El Torito UEFI record, and the installer writes an NVRAM entry
+naming it where `/sys/firmware/efi/fw_platform_size` says 32 — but the machine that needs it is an
+early Atom tablet and nothing in this tree has one. What is verified is that the binary is built and
+placed; BIOS and 64-bit UEFI are the two that have been booted.
 
 **Broad hardware enablement is not a goal.** The firmware tree ships whole and unpruned, which
 covers a great deal — but nothing here is tested against a wide device matrix.

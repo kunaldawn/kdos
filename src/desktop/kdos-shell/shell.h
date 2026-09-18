@@ -583,6 +583,9 @@ struct sh_app {
 	char term[24];			/* X-KDOS-Term: the emulator it asked
 					   for, or empty for this session's */
 	int floating;			/* X-KDOS-Float: open unanchored     */
+	/* X-KDOS-Cells: it draws on the console's own grid, so the session
+	 * must not put it in a cage. See struct sh_launch in launch.h. */
+	int cells;
 	char size[16];			/* X-KDOS-Size: COLSxROWS, or empty  */
 	int alien;			/* lives in the appbox — see apps.c  */
 	int uses;			/* launch count, from appusage       */
@@ -740,20 +743,37 @@ int sh_restart_poll(void);
  * literal percent, every other `%X` is removed, and the whitespace a dropped
  * code leaves behind is collapsed so the line still splits into clean argv.
  *
- * FOR A READER THAT CANNOT SPEND A CODE, and for nothing on the launch path:
- * a surface that splits the line itself and can carry no document (`panel.c`'s
- * quick-launch row, `kdos-menu`), and a haystack a search is matched against.
- * `sh_launch` needs the codes — it substitutes them, and decides from them
- * whether to append instead — so it is handed the line the entry wrote.
+ * FOR A HAYSTACK AND FOR NOTHING ON THE LAUNCH PATH. The one caller is the
+ * application matcher, which searches a stripped COPY of the Exec line: a `%U`
+ * in the haystack is two more letters for a subsequence matcher to travel
+ * through, so `fu` would find every entry whose Exec ends in one. `sh_launch`
+ * needs the codes — it substitutes them, and decides from them whether to
+ * append instead — so it is handed the line the entry wrote, and a caller that
+ * stripped one first would get every document appended and none substituted.
  * One copy, here: two would be two answers to what a `%` means.
  */
 void sh_strip_field_codes(char *exec);
 
-/* Resolve a desktop-entry id to its Name and Exec through the XDG data dirs —
- * the same search the taskbar's label uses. Returns 0 when found. Either out
- * pointer may be NULL. */
-int sh_desktop_entry(const char *id, char *name, size_t nname,
-		     char *exec, size_t nexec);
+/*
+ * Resolve a desktop-entry id through the XDG data dirs — the same search the
+ * taskbar's label uses — into everything STARTING it needs. Returns 0 when the
+ * id names an entry that can be started.
+ *
+ * A RECORD AND NOT TWO STRINGS. The callers are launch surfaces, and one given
+ * only Name and Exec starts a `Terminal=true` row with no terminal round it
+ * and a KDOS surface inside a cage; there is no shape of this call that hands
+ * back half the answer.
+ */
+struct sh_entry {
+	char name[96];
+	char exec[SH_APP_EXEC];		/* FIELD CODES INTACT — see sh_launch */
+	char term[24];
+	char size[16];
+	int terminal;
+	int floating;
+	int cells;
+};
+int sh_desktop_entry(const char *id, struct sh_entry *out);
 
 /* The accent the desktop is currently wearing, from
  * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads. */

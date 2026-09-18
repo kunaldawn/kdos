@@ -89,7 +89,15 @@ static void welcome_draw(KRect b)
 	ktui_kv(b.x, y++, b.w, "install size",
 	      kb_human_size((unsigned long long)ki_sys.payload_kb * 1024), KT_TEXT);
 
-	snprintf(v, sizeof(v), "%s%s", ki_sys.uefi ? "UEFI" : "legacy BIOS",
+	/*
+	 * THE WIDTH IS SHOWN ONLY WHERE IT IS THE UNUSUAL ONE. "UEFI (32-bit)"
+	 * is the machine a person needs told about — it is what makes the boot
+	 * path different from every other x86-64 install, and it is exactly the
+	 * case that used to have no boot path at all — while "UEFI (64-bit)"
+	 * on every other machine is a word nobody reads twice.
+	 */
+	snprintf(v, sizeof(v), "%s%s%s", ki_sys.uefi ? "UEFI" : "legacy BIOS",
+		 ki_sys.fw_bits == 32 ? "  (32-bit firmware)" : "",
 		 ki_sys.secure_boot ? "  (Secure Boot enabled)" : "");
 	/* Both firmwares install, so neither is an error colour. */
 	ktui_kv(b.x, y++, b.w, "firmware", v, KT_TEXT);

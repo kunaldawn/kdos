@@ -91,6 +91,7 @@
 #include "kcolor.h"
 
 #include "clipboard.h"
+#include "drag.h"
 #include "embed.h"
 #include "idle_inhibit_v1.h"
 #include "kembed.h"
@@ -1181,11 +1182,19 @@ main(int argc, char *argv[])
 		 * the clipboard every other window pastes from.
 		 */
 		clipboard_init(&server);
+		/*
+		 * AND THE DRAG BRIDGE WITH IT, for the same reason: a drag the
+		 * guest begins before this is listening is one the session
+		 * never hears about, and the session is what carries a drag
+		 * from one window to the next.
+		 */
+		drag_init(&server);
 	}
 
 	seat_center_cursor(server.seat);
 	wl_display_run(server.wl_display);
 
+	drag_finish(&server);
 	clipboard_finish(&server);
 	embed_finish(&server);
 

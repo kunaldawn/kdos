@@ -1,0 +1,37 @@
+Every codec this image builds is commented out of the config baresip writes on
+a first run, so the phone negotiates G.711 and reports `Populated 0 video
+codecs` on a machine carrying opus.so, vp8.so, vp9.so and avcodec.so.
+
+The default is upstream's and is written for a build that may have none of
+them: an uncommented `module opus.so` in a config on a machine without the
+module is a start-up error. Here the four are built by this port and installed
+beside it, so the line is true wherever this config is written.
+
+It is the GENERATED default and not a shipped file, because baresip writes
+`~/.baresip/config` only when there is none — a person who deletes theirs gets
+these codecs back, and one who has edited theirs is not overwritten.
+
+--- a/src/config.c
++++ b/src/config.c
+@@ -1088,7 +1088,7 @@
+ 	(void)re_fprintf(f, "#module\t\t\t" "httpd" MOD_EXT "\n");
+ 
+ 	(void)re_fprintf(f, "\n# Audio codec Modules (in order)\n");
+-	(void)re_fprintf(f, "#module\t\t\t" "opus" MOD_EXT "\n");
++	(void)re_fprintf(f, "module\t\t\t" "opus" MOD_EXT "\n");
+ 	(void)re_fprintf(f, "#module\t\t\t" "amr" MOD_EXT "\n");
+ 	(void)re_fprintf(f, "#module\t\t\t" "g7221" MOD_EXT "\n");
+ 	(void)re_fprintf(f, "#module\t\t\t" "libg722" MOD_EXT "\n");
+@@ -1147,9 +1147,9 @@
+ 	(void)re_fprintf(f, "#module\t\t\t" "ausine" MOD_EXT "\n");
+ 
+ 	(void)re_fprintf(f, "\n# Video codec Modules (in order)\n");
+-	(void)re_fprintf(f, "#module\t\t\t" "avcodec" MOD_EXT "\n");
+-	(void)re_fprintf(f, "#module\t\t\t" "vp8" MOD_EXT "\n");
+-	(void)re_fprintf(f, "#module\t\t\t" "vp9" MOD_EXT "\n");
++	(void)re_fprintf(f, "module\t\t\t" "avcodec" MOD_EXT "\n");
++	(void)re_fprintf(f, "module\t\t\t" "vp8" MOD_EXT "\n");
++	(void)re_fprintf(f, "module\t\t\t" "vp9" MOD_EXT "\n");
+ 
+ 	(void)re_fprintf(f, "\n# Video filter Modules (in encoding order)\n");
+ 	(void)re_fprintf(f, "#module\t\t\t" "selfview" MOD_EXT "\n");

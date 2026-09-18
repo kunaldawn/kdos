@@ -20,16 +20,23 @@
 # drv_proxy.inc with drv_proxy_gen.pl — the .inc is not in the tarball, so a
 # tree without perl fails at the first object rather than at configure.
 #
-# --without-sasl IS THE XOAUTH2 CEILING, AND IT IS mbsync'S ALONE. isync reaches
-# XOAUTH2 and OAUTHBEARER only through cyrus-sasl, which this tree does not
-# build, so an account whose provider has withdrawn application passwords fails
-# here at run time on a mechanism the library does not have — and a token
-# minter does not lift it, because there is nothing to present one to.
+# --with-sasl IS WHAT MAKES XOAUTH2 REACHABLE, AND IT IS TWO PORTS AND NOT ONE.
+# isync calls sasl_client_* and takes whichever mechanism a plugin under
+# /usr/lib/sasl2 provides — cyrus-sasl is the loader and ships no XOAUTH2 of its
+# own, so cyrus-sasl-xoauth2 is the plugin that carries the mechanism. Both are
+# `depends`: with the library and without the plugin, mbsync links, negotiates,
+# and still fails on an account whose provider has withdrawn application
+# passwords.
 #
-# THE OTHER TWO CAN. aerc speaks `imaps+oauthbearer://` in its own Go code and
-# msmtp reports `Authentication library: built-in` with `oauthbearer` and
-# `xoauth2` among its methods, so such an account is readable in aerc and
-# sendable through msmtp. What it cannot be is MIRRORED into a local Maildir.
+# THE TOKEN IS THE PASSWORD. The plugin asks for SASL_CB_PASS and wraps it as
+# `auth=Bearer <token>`, which mbsync fills from the account's `PassCmd` — so
+# `AuthMechs XOAUTH2` beside `PassCmd "pizauth show <account>"` is the whole of
+# it, and the minter this tree already carries is what it presents to.
+#
+# OAUTHBEARER IS STILL OUT. The plugin implements the one mechanism; a server
+# offering only OAUTHBEARER is read in aerc, which speaks
+# `imaps+oauthbearer://` in its own Go code, and sent through msmtp, which
+# reports `Authentication library: built-in` with both methods.
 #
 # NO mdconvert. It needs Berkeley DB >= 4.1, which configure probes for by
 # linking rather than by a flag, and this tree builds no libdb — so the program
@@ -40,6 +47,6 @@
 	--sysconfdir=/etc \
 	--with-ssl \
 	--with-zlib \
-	--without-sasl
+	--with-sasl
 make
 make DESTDIR=$PKG install

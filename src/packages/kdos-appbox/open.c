@@ -35,6 +35,7 @@
  * write, and a shell in the middle turns either into an injection point.
  * ---------------------------------
  */
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +47,13 @@
 
 #define MIME_MAX 128
 #define CAND_MAX 32
+/*
+ * HOW MANY DOCUMENTS ONE OPEN CARRIES. The split writes the substituted paths
+ * into a fixed store, and a store that will not hold them yields NO arguments
+ * and opens nothing — so the count is a cap the caller's files are clamped to
+ * rather than a promise. Four, the same number `sh_launch` clamps to.
+ */
+#define OPEN_MAX_FILES 4
 
 /*
  * THE LAST RESORT, BY ABSOLUTE PATH. `/usr/local/bin/xdg-open` is a second
@@ -54,6 +62,13 @@
  * process died.
  */
 #define XDG_OPEN_PROG "/usr/bin/xdg-open"
+
+/*
+ * THE CONSOLE SESSION'S OWN COMMAND, which is how a graphical handler reaches
+ * it — see cmd_open(). By name, because it is on the shipped $PATH and this
+ * package does not own it.
+ */
+#define CON_PROG "kdos-con"
 
 /* A handler for a type: the desktop id somebody wrote in a list, and the
  * entry it resolved to. Both, because the chooser is addressed by id and the
@@ -302,6 +317,16 @@ static const char *term_named(const char *want)
 	return kb_terminal();
 }
 
+/*
+ * THE SPLIT IS kxdg_exec_split'S, NOT A `strtok(" ")`.
+ *
+ * An Exec line carries quoting as well as field codes, and the two are the
+ * format: `Exec=foot --title="Install KDOS" -- sudo kinstall` split on
+ * whitespace reaches foot as `--title="Install` with a stray `KDOS"` after it,
+ * and `Exec="/usr/bin/gsmartcontrol-root"` execs a file whose name begins with
+ * a quote. A code is also not always a word of its own — `--open=%f` is one
+ * argument — which a per-word switch cannot express at all.
+ */
 static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 			 int terminal, const char *want, KbArgv *a)
 {
@@ -312,9 +337,17 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 	 * and the argv would be `foot -e ' ;'`-shaped garbage — the same
 	 * defect CLAUDE.md already records against kdosbuild. `open` is a
 	 * one-shot command, so one buffer is all there ever is.
+	 *
+	 * The store is sized for the line plus a path per document, because a
+	 * split that will not fit yields NO arguments — which is an open that
+	 * silently does nothing.
 	 */
-	static char buf[1024];
-	kb_strlcpy(buf, exec, sizeof(buf));
+	static char buf[1024 + OPEN_MAX_FILES * PATH_MAX];
+	const char *split[KB_MAX_ARGV];
+	int n;
+
+	if (nfiles > OPEN_MAX_FILES)
+		nfiles = OPEN_MAX_FILES;
 
 	if (terminal) {
 		/* THE TERMINAL FOLLOWS THE DESKTOP. `foot` needs a compositor,
@@ -335,28 +368,33 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 		}
 	}
 
-	for (char *w = strtok(buf, " \t"); w; w = strtok(NULL, " \t")) {
-		if (w[0] != '%' || !w[1] || w[2]) {
-			kb_argv_add(a, w);
-			continue;
-		}
-		switch (w[1]) {
-		case 'f':
-		case 'u':
-			if (nfiles > 0)
-				kb_argv_add(a, files[0]);
-			break;
-		case 'F':
-		case 'U':
+	n = kxdg_exec_split(exec, (const char *const *)files, nfiles, buf,
+			    sizeof(buf), split,
+			    (int)(sizeof(split) / sizeof(*split)));
+	for (int i = 0; i < n; i++)
+		kb_argv_add(a, split[i]);
+
+	/*
+	 * AN ENTRY WITH NO FIELD CODE STILL OPENS THE FILE. Every launcher
+	 * appends the paths in that case and it is the only way `Exec=xterm`
+	 * can be handed one — the same decision `sh_launch` makes, read off
+	 * the same line, so the opener and the launcher cannot disagree about
+	 * where a document goes.
+	 *
+	 * The scan steps TWO bytes past a `%` so a literal `%%` is not read as
+	 * a code, and stops on a trailing one.
+	 */
+	if (n > 0) {
+		int append = 1;
+
+		for (const char *p = strchr(exec, '%'); p && p[1];
+		     p = strchr(p + 2, '%'))
+			if (p[1] == 'f' || p[1] == 'F' || p[1] == 'u' ||
+			    p[1] == 'U')
+				append = 0;
+		if (append)
 			for (int i = 0; i < nfiles; i++)
 				kb_argv_add(a, files[i]);
-			break;
-		case '%':
-			kb_argv_add(a, "%");
-			break;
-		default:
-			break;		/* %i %c %k and anything new */
-		}
 	}
 }
 
@@ -542,15 +580,43 @@ int cmd_open(int argc, char **argv)
 	}
 
 	KxdgEntry e;
+	KxdgLaunch kl;
+
 	if (kxdg_load(&e, entry, "Desktop Entry") != 0)
 		kb_die("%s is not a desktop entry", entry);
-	const char *exec = kxdg_get(&e, "Exec", NULL);
-	if (!exec || !*exec)
+	/* libkxdg's one reader — the same keys kdos-shell's launch surfaces
+	 * read, so the opener and the launcher cannot come to different
+	 * conclusions about the same entry. See kxdg.h. */
+	if (kxdg_launch_read(&e, &kl) != 0)
 		kb_die("%s has no Exec line", entry);
 
 	KbArgv a = {0};
-	exec_to_argv(exec, argv, argc, kxdg_bool(&e, "Terminal", 0),
-		     kxdg_get(&e, "X-KDOS-Term", NULL), &a);
+
+	/*
+	 * A GRAPHICAL HANDLER ON THE CONSOLE IS THE SESSION'S TO START.
+	 *
+	 * This process is whatever called `open` — a file manager, a menu, the
+	 * portal — and it has no display to give a Wayland client. The session
+	 * does: it puts a guest in a cage, embedded in a window or full screen
+	 * on a terminal of its own. Exec'd here instead the handler gets
+	 * neither and exits at once, with nothing on the screen to say why,
+	 * which is what `terminal_first()` hides wherever a terminal handler
+	 * exists and cannot hide for a type that has only a graphical one.
+	 *
+	 * `kdos-con --run` is the hand-off rather than a socket of our own:
+	 * one program owns that protocol, and this one links no libkcon.
+	 *
+	 * NEITHER a terminal handler NOR an `X-KDOS-Cells` one goes that way.
+	 * The first becomes a kdos-term window and belongs on this grid; the
+	 * second attaches to the session as a surface itself, and a cage round
+	 * it would be a wlroots compositor started to draw cells.
+	 */
+	if (getenv("KDOS_CON") && !kl.terminal && !kl.cells) {
+		kb_argv_add(&a, CON_PROG);
+		kb_argv_add(&a, "--run");
+		kb_argv_add(&a, "--");
+	}
+	exec_to_argv(kl.exec, argv, argc, kl.terminal, kl.term, &a);
 	kb_argv_end(&a);
 	if (!a.v[0])
 		kb_die("%s has an empty Exec line", entry);

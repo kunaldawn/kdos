@@ -130,6 +130,13 @@ cp $LIMINE_DIR/limine-bios.sys    $ISO_ROOT/boot/limine/
 cp $LIMINE_DIR/limine-bios-cd.bin $ISO_ROOT/boot/limine/
 cp $LIMINE_DIR/limine-uefi-cd.bin $ISO_ROOT/boot/limine/
 cp $LIMINE_DIR/BOOTX64.EFI        $ISO_ROOT/EFI/BOOT/BOOTX64.EFI
+# AND THE 32-BIT FIRMWARE'S FIRST STAGE BESIDE IT. A UEFI machine loads
+# `EFI/BOOT/BOOT<arch>.EFI` off removable media and reads only the one its own
+# firmware can execute, so the two sit together and never compete: a 64-bit
+# firmware takes BOOTX64 and an early Atom tablet, whose CPU is 64 bit and whose
+# firmware is not, takes BOOTIA32 and boots the same kernel. Both are built by
+# ports/core/limine.
+cp $LIMINE_DIR/BOOTIA32.EFI       $ISO_ROOT/EFI/BOOT/BOOTIA32.EFI
 
 # THE MENU IS DRAWN IN THE CONSOLE'S OWN FACE, so the first screen of KDOS is
 # the same character grid in the same palette as every screen after it.

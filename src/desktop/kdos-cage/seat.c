@@ -1184,8 +1184,9 @@ seat_embed_show_pointer(struct cg_seat *seat)
 	wlr_cursor_set_xcursor(seat->cursor, seat->xcursor_manager, DEFAULT_XCURSOR);
 }
 
-void
-seat_embed_motion(struct cg_seat *seat, struct cg_view *view, double x, double y, uint32_t time_msec)
+static void
+embed_motion(struct cg_seat *seat, struct cg_view *view, double x, double y, uint32_t time_msec,
+	     bool show_arrow)
 {
 	if (!seat || !view)
 		return;
@@ -1231,7 +1232,9 @@ seat_embed_motion(struct cg_seat *seat, struct cg_view *view, double x, double y
 		seat->rel_pending = false;
 	}
 
-	seat_embed_show_pointer(seat);
+	if (show_arrow) {
+		seat_embed_show_pointer(seat);
+	}
 	wlr_cursor_warp_closest(seat->cursor, NULL, lx, ly);
 	process_cursor_motion(seat, embed_when(time_msec), dx, dy, dx_unaccel, dy_unaccel);
 	/*
@@ -1246,6 +1249,28 @@ seat_embed_motion(struct cg_seat *seat, struct cg_view *view, double x, double y
 	 */
 	wlr_seat_pointer_notify_frame(seat->seat);
 	wlr_idle_notifier_v1_notify_activity(seat->server->idle, seat->seat);
+}
+
+void
+seat_embed_motion(struct cg_seat *seat, struct cg_view *view, double x, double y, uint32_t time_msec)
+{
+	embed_motion(seat, view, x, y, time_msec, true);
+}
+
+/*
+ * THE SAME MOTION WITH THIS COMPOSITOR'S OWN ARROW LEFT OFF.
+ *
+ * A drag over an embedded window is the PARENT'S: the session holds the
+ * payload, draws the pointer and says in its bar what is being carried. The
+ * guest still has to be aimed at — the drop lands on whatever widget is under
+ * the pointer — but a cage that also showed its cursor would put a second
+ * arrow into the framebuffer the session composites, at the same place.
+ */
+void
+seat_embed_drag_motion(struct cg_seat *seat, struct cg_view *view, double x, double y,
+		       uint32_t time_msec)
+{
+	embed_motion(seat, view, x, y, time_msec, false);
 }
 
 void

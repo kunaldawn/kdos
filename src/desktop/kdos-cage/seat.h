@@ -190,6 +190,10 @@ void seat_embed_motion(struct cg_seat *seat, struct cg_view *view, double x,
  * the region. Otherwise it is spent by the motion that follows. */
 void seat_embed_rel(struct cg_seat *seat, double dx, double dy,
 		    double dx_unaccel, double dy_unaccel, uint32_t time_msec);
+/* The same aim with no arrow drawn — the parent is carrying a drag and draws
+ * its own pointer. See seat.c. */
+void seat_embed_drag_motion(struct cg_seat *seat, struct cg_view *view, double x,
+			    double y, uint32_t time_msec);
 void seat_embed_button(struct cg_seat *seat, uint32_t button, bool pressed,
 		       uint32_t time_msec);
 

@@ -367,14 +367,25 @@ static void add_desktop_file(const char *path)
 	if (napps >= SH_MAX_APPS || kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
-	const char *type = kxdg_get(&e, "Type", "Application");
-	const char *name = kxdg_get(&e, "Name", NULL);
-	const char *exec = kxdg_get(&e, "Exec", NULL);
+	KxdgLaunch kl;
+
+	/*
+	 * THE LAUNCH KEYS THROUGH libkxdg'S ONE READER, which is also the test
+	 * that this entry can be started at all — Type=Application with an
+	 * Exec. Four surfaces used to read the same seven keys with four
+	 * private lists; see kxdg.h.
+	 */
+	if (kxdg_launch_read(&e, &kl) != 0) {
+		kxdg_free(&e);
+		return;
+	}
 
 	/* NoDisplay is the entry saying "I am not for a menu" — wine's is the
-	 * example kdos-appbox already documents. Hidden means deleted. */
-	if (strcmp(type, "Application") || !name || !exec ||
-	    kxdg_bool(&e, "NoDisplay", 0) || kxdg_bool(&e, "Hidden", 0)) {
+	 * example kdos-appbox already documents. Hidden means deleted. Neither
+	 * is libkxdg's to judge: the mime route opens a NoDisplay entry on
+	 * purpose, and this is the index a MENU is drawn from. */
+	if (!kl.name[0] || kxdg_bool(&e, "NoDisplay", 0) ||
+	    kxdg_bool(&e, "Hidden", 0)) {
 		kxdg_free(&e);
 		return;
 	}
@@ -382,7 +393,7 @@ static void add_desktop_file(const char *path)
 	struct sh_app *a = &apps[napps];
 	memset(a, 0, sizeof(*a));
 	snprintf(a->id, sizeof(a->id), "%s", id);
-	snprintf(a->name, sizeof(a->name), "%s", name);
+	kb_strlcpy(a->name, kl.name, sizeof(a->name));
 	/*
 	 * THE LINE THE ENTRY WROTE, FIELD CODES AND ALL. `sh_launch` spends
 	 * `%f`/`%F`/`%u`/`%U` on the documents a launch carries and decides
@@ -393,7 +404,7 @@ static void add_desktop_file(const char *path)
 	 * `kxdg_exec_split` drops every code and leaves no empty argument
 	 * behind, which is the whole reason nothing has to be deleted first.
 	 */
-	snprintf(a->exec, sizeof(a->exec), "%s", exec);
+	kb_strlcpy(a->exec, kl.exec, sizeof(a->exec));
 	snprintf(a->icon, sizeof(a->icon), "%s",
 		 kxdg_get(&e, "Icon", ""));
 	snprintf(a->comment, sizeof(a->comment), "%s",
@@ -403,26 +414,18 @@ static void add_desktop_file(const char *path)
 	snprintf(a->keywords, sizeof(a->keywords), "%s %s",
 		 kxdg_get(&e, "Keywords", ""), kxdg_get(&e, "GenericName", ""));
 	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
-	a->terminal = kxdg_bool(&e, "Terminal", 0);
 	/*
-	 * WHICH TERMINAL, for the few entries that need one in particular.
-	 * A program drawing pictures in the grid needs the emulator that links
-	 * the decoders; everything else gets the session's own, which is
-	 * lighter. Validated in sh_term_named(), so the key names one of two
-	 * emulators and never a program.
+	 * AND THE REST OF THE LAUNCH, off the record libkxdg filled: which
+	 * terminal the entry asked for, the shape it wants, and whether it
+	 * draws cells rather than pixels. Copied rather than re-read, so a key
+	 * added to KxdgLaunch reaches this index, the desktop's icons, the
+	 * chooser and `kdos-appbox open` together.
 	 */
-	snprintf(a->term, sizeof(a->term), "%s",
-		 kxdg_get(&e, "X-KDOS-Term", ""));
-	/*
-	 * HOW THE WINDOW SHOULD OPEN, for the entries that have a shape rather
-	 * than a size somebody drags. Read here and in `desk.c`, which parses
-	 * an entry of its own — a key read in one and not the other is a
-	 * desktop icon that behaves differently from the same row in the Start
-	 * menu.
-	 */
-	a->floating = kxdg_bool(&e, "X-KDOS-Float", 0);
-	snprintf(a->size, sizeof(a->size), "%s",
-		 kxdg_get(&e, "X-KDOS-Size", ""));
+	a->terminal = kl.terminal;
+	kb_strlcpy(a->term, kl.term, sizeof(a->term));
+	a->floating = kl.floating;
+	a->cells = kl.cells;
+	kb_strlcpy(a->size, kl.size, sizeof(a->size));
 	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
 	 * distro's menus can answer and only this distro's users need asked.
@@ -728,8 +731,16 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
 	 * decides how a NON-terminal program is started below. A terminal one
 	 * needs no branch here: sh_term_argv_in() names the emulator, from the
 	 * entry's own X-KDOS-Term when it asked for one.
+	 *
+	 * AND WHETHER THE SESSION IS THE RIGHT THING TO HAND IT TO. `cells` is
+	 * a program that attaches to the session as a surface of its own and
+	 * `host` is a command that draws nothing at all; both are forked here
+	 * like anything on the graphical desktop, because what the session
+	 * gives a guest is a cage, and a cage round either is a wlroots
+	 * compositor started for nothing. See launch.h.
 	 */
 	const char *con = getenv("KDOS_CON");
+	int to_session = con && *con && !l->terminal && !l->cells && !l->host;
 
 	if (l->terminal)
 		n = sh_term_argv_in(l->term, l->floating, l->size, argv, n,
@@ -788,10 +799,12 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
 	 * neither, and a boxed application would exit at once with nothing on
 	 * the screen to say why.
 	 *
-	 * A terminal program is not one of these: it becomes a kdos-term
-	 * window above and belongs on this grid.
+	 * Three kinds are not one of these and are forked instead: a terminal
+	 * program, which becomes a kdos-term window above and belongs on this
+	 * grid; a `cells` program, which opens its own window by attaching to
+	 * the session; and a `host` command, which draws nothing.
 	 */
-	if (con && *con && !l->terminal) {
+	if (to_session) {
 		const char *what = l->title && l->title[0] ? l->title : argv[0];
 
 		if (kcon_run(con, argv, what, 0) < 0) {
@@ -856,7 +869,36 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 		.size = a->size,
 		.terminal = a->terminal,
 		.floating = a->floating,
+		.cells = a->cells,
 	};
 
 	sh_launch(&l, files, nfiles);
+}
+
+/*
+ * THE SAME LAUNCH FROM AN ID, for a surface that holds one and no index.
+ *
+ * The panel's quick-launch row and its taskbar chips are the callers: both
+ * know a desktop id and neither builds the application index, which walks
+ * every directory on the machine. Resolved through `sh_desktop_entry`, so it
+ * is the same search and the same key list the index reads.
+ */
+int sh_launch_id(const char *id, const char *const *files, int nfiles)
+{
+	struct sh_entry se;
+
+	if (sh_desktop_entry(id, &se) != 0)
+		return -1;
+
+	struct sh_launch l = {
+		.exec = se.exec,
+		.title = se.name[0] ? se.name : NULL,
+		.term = se.term,
+		.size = se.size,
+		.terminal = se.terminal,
+		.floating = se.floating,
+		.cells = se.cells,
+	};
+
+	return sh_launch(&l, files, nfiles);
 }

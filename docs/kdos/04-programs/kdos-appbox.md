@@ -409,12 +409,27 @@ happens **only where nobody has decided**: a `[Default Applications]` row is som
 keeps its place, so this can never overrule a choice. *Open With* applies the same rule, because
 its first row has to be the handler the opener would use.
 
+**A graphical handler on the console is handed to the session, not exec'd here.** Preferring a
+terminal handler hides the problem wherever one exists and cannot hide it for a type whose only
+handler draws pixels: this process is whatever called `open` — a file manager, a menu, the portal —
+and it has no display to give a Wayland client. The session does. The hand-off is `kdos-con --run`
+rather than a socket of this program's own: one program owns that protocol, and this one links no
+`libkcon`. Neither a `Terminal=true` handler nor an `X-KDOS-Cells` one goes that way — the first
+becomes a `kdos-term` window and belongs on the grid, and the second attaches to the session as a
+surface itself, where a cage would be a compositor started to draw cells.
+
 **A type goes in exactly one of them.** One both desktops open the same way belongs in the plain
 file; writing it in each desktop's is the same decision recorded twice, which is a decision that
 drifts.
 
-Field codes are **substituted** rather than stripped: the code *is* the file, and dropping it
-opens the application with an empty document.
+**The handler's `Exec` is split by `kxdg_exec_split()`, which is the launcher's own split.** An
+`Exec` line carries quoting as well as field codes and the two are the format: split on whitespace,
+`Exec=foot --title="Install KDOS" -- sudo kinstall` reaches `foot` as `--title="Install` with a
+stray `KDOS"` after it, and `--open=%f` cannot be expressed at all because the code is not a word of
+its own. Field codes are **substituted** rather than stripped — the code *is* the file, and dropping
+it opens the application with an empty document — and a line carrying **no** code takes its
+documents appended, which is the same decision `sh_launch()` reads off the same line, so the opener
+and the launcher cannot disagree about where a document goes.
 
 **The shared MIME database has to be compiled on the target.** The port ships the source
 definitions and nothing else — no glob table, no cache — so every consumer asking what type a file

@@ -7,7 +7,7 @@
 |   norton    KDOS-Norton    ########                                          |
 |   borland   KDOS-Borland   ########                                          |
 |   perfect   KDOS-Perfect   ########                                          |
-|                                                                              |
+|   paper     KDOS-Paper     ########                                          |
 |                                                                              |
 |                                                                              |
 |                                                                              |

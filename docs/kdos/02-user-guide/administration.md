@@ -228,11 +228,21 @@ so puts `unshare: Operation not permitted` where the message should be: a filter
 Keep passwords out of all of them — `pass` is on the image, and both `PassCmd "pass show …"` and
 `passwordeval "pass show …"` are in the shipped templates.
 
-**XOAUTH2 works everywhere except `mbsync`.** `aerc` speaks it itself and `msmtp` has it built in,
-so an account whose provider has withdrawn application passwords can be read and sent from here —
-`pizauth` mints and refreshes the token, and a `*-cred-cmd` hands it over. What that account cannot
-have is a local Maildir: `mbsync` reaches XOAUTH2 only through `cyrus-sasl`, which this image does
-not carry, so nothing mirrors it offline and `notmuch` has nothing to index.
+**XOAUTH2 works in all three, and `mbsync` needs one line for it.** `aerc` speaks it itself and
+`msmtp` has it built in; `mbsync` reaches it through `cyrus-sasl` and the `libxoauth2.so` plugin
+beside it, which this image carries. `pizauth` mints and refreshes the token in every case — the
+plugin asks SASL for the password and wraps whatever it gets as the bearer token, so the account's
+`PassCmd` is the whole of the configuration:
+
+```
+IMAPAccount work
+AuthMechs XOAUTH2
+PassCmd   "pizauth show work"
+```
+
+**OAUTHBEARER is the one that is still out of `mbsync`'s reach.** The plugin implements XOAUTH2 and
+nothing else, so a provider that offers only the newer mechanism is read in `aerc` and sent through
+`msmtp` and has no local Maildir — and with it no `notmuch` index and no offline search.
 
 ## Passwords and one-time codes
 

@@ -50,6 +50,7 @@
 #include "kwl.h"
 #include "kxdg.h"
 #include "shell.h"
+#include "launch.h"
 
 #define MAX_ITEMS 512
 #define NAME_MAX_LEN 64
@@ -93,7 +94,17 @@ struct item {
 	char path[256];
 	int group;			/* index into GROUPS, or -1 */
 	int submenu;			/* -1, or the group this row opens */
-	int terminal;			/* Terminal=true — run it inside foot */
+	int terminal;			/* Terminal=true — run it in one     */
+	char term[24];			/* X-KDOS-Term: which emulator       */
+	char size[16];			/* X-KDOS-Size: COLSxROWS            */
+	int floating;			/* X-KDOS-Float: open unanchored     */
+	int cells;			/* X-KDOS-Cells: it draws on the grid */
+	/*
+	 * A COMMAND THIS FILE WROTE rather than a row read out of an entry —
+	 * the System column. It is never handed to the console session: see
+	 * `host` in launch.h.
+	 */
+	int host;
 	/* Ask before running it. Three rows in System end the session or the
 	 * machine, and they sit one cell apart from "Terminal" in a menu
 	 * people navigate with a mouse. */
@@ -157,13 +168,12 @@ static void add_desktop_file(const char *path)
 	if (nitems >= MAX_ITEMS || kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
-	const char *type = kxdg_get(&e, "Type", "Application");
-	const char *name = kxdg_get(&e, "Name", NULL);
-	const char *exec = kxdg_get(&e, "Exec", NULL);
+	KxdgLaunch kl;
 
-	/* NoDisplay is the entry saying "I am not for a menu" — wine's is the
-	 * example kdos-appbox already documents. Hidden means deleted. */
-	if (strcmp(type, "Application") || !name || !exec ||
+	/* libkxdg's one reader, which is also the test that this entry names
+	 * something runnable — see kxdg.h. NoDisplay and Hidden stay here:
+	 * they say whether a row belongs in a MENU, and this is one. */
+	if (kxdg_launch_read(&e, &kl) != 0 || !kl.name[0] ||
 	    kxdg_bool(&e, "NoDisplay", 0) || kxdg_bool(&e, "Hidden", 0)) {
 		kxdg_free(&e);
 		return;
@@ -171,15 +181,25 @@ static void add_desktop_file(const char *path)
 
 	struct item *it = &items[nitems];
 	memset(it, 0, sizeof(*it));
-	snprintf(it->name, sizeof(it->name), "%s", name);
-	snprintf(it->exec, sizeof(it->exec), "%s", exec);
+	kb_strlcpy(it->name, kl.name, sizeof(it->name));
+	/*
+	 * FIELD CODES INTACT. `sh_launch` spends them on the documents a
+	 * launch carries and reads the same codes to decide that a line
+	 * carrying none takes its documents appended — so a row stripped here
+	 * would look exactly like `Exec=xterm` from there. A menu row opens no
+	 * document, and with none to open the split drops every code and
+	 * leaves no empty argument behind.
+	 */
+	kb_strlcpy(it->exec, kl.exec, sizeof(it->exec));
 	snprintf(it->id, sizeof(it->id), "%s", id);
-	sh_strip_field_codes(it->exec);
+	kb_strlcpy(it->term, kl.term, sizeof(it->term));
+	kb_strlcpy(it->size, kl.size, sizeof(it->size));
 	it->group = group_for(kxdg_get(&e, "Categories", NULL));
 	it->submenu = -1;
-	it->terminal = kxdg_bool(&e, "Terminal", 0);
-	if (*it->exec)
-		nitems++;
+	it->terminal = kl.terminal;
+	it->floating = kl.floating;
+	it->cells = kl.cells;
+	nitems++;
 	kxdg_free(&e);
 }
 
@@ -224,6 +244,13 @@ static void load_applications(void)
 
 /* ── Places and System, which are lists rather than a scan ─────────────── */
 
+/*
+ * A ROW THIS FILE WROTE. Its command is a constant in this source and not a
+ * line out of a file anything can write, so it is marked `host` and never
+ * handed to the console session: `kdos-power suspend` in a cage would be a
+ * wlroots compositor started to run a one-line verb, and Log Out's `pkill` on
+ * the session would leave that cage outliving what it killed. See launch.h.
+ */
 static void add(const char *name, const char *exec, int submenu)
 {
 	if (nitems >= MAX_ITEMS)
@@ -235,6 +262,7 @@ static void add(const char *name, const char *exec, int submenu)
 		snprintf(it->exec, sizeof(it->exec), "%s", exec);
 	it->group = -1;
 	it->submenu = submenu;
+	it->host = 1;
 }
 
 /*
@@ -306,14 +334,20 @@ static void load_places(void)
 	fclose(f);
 }
 
-/* Same as add(), for a command that draws in a terminal: the emulator's name
- * is this desktop's, not a constant. See sh_term(). */
+/*
+ * Same as add(), for a command that draws in a terminal.
+ *
+ * THE WRAPPER IS NOT BUILT HERE. `sh_launch` names the emulator from
+ * `sh_term()` — which is this desktop's and not a constant — and gives the
+ * window the command's own identity, so the row carries the bare command and
+ * the flag. A wrapper pasted into `exec` would be a second answer to what a
+ * terminal row is, and it is the one a re-split then takes apart again.
+ */
 static void add_term(const char *name, const char *cmd)
 {
-	char buf[128 + SH_TERM_PREFIX_MAX];
-
-	sh_term_cmd(buf, sizeof(buf), cmd);
-	add(name, buf, -1);
+	add(name, cmd, -1);
+	if (nitems > 0)
+		items[nitems - 1].terminal = 1;
 }
 
 /* Same as add(), plus the question to ask first. */
@@ -367,13 +401,14 @@ static void load_system(void)
 /* ── launching ─────────────────────────────────────────────────────────── */
 
 /*
- * argv, never a command string, and never /bin/sh -c.
+ * THROUGH sh_launch, LIKE EVERY OTHER LAUNCH SURFACE — see launch.h for the
+ * rule and for what a surface that writes its own carries.
  *
- * The same rule kdos-comp, kpkg, kinstall and kdos-appbox all follow: an Exec
- * line comes from a file anything can write, and a shell in the middle turns it
- * into an injection point. Splitting on whitespace loses quoted arguments,
- * which is a real limitation and the correct trade — a launcher that runs
- * `rm -rf ~` because a .desktop asked it to is not a launcher.
+ * argv, never a command string, and never /bin/sh -c: the same rule kdos-comp,
+ * kpkg, kinstall and kdos-appbox all follow, because an Exec line comes from a
+ * file anything can write and a shell in the middle turns it into an injection
+ * point. The split is `kxdg_exec_split`'s, which reads the quoting the format
+ * actually has.
  */
 /*
  * Ask, and wait for the answer.
@@ -404,10 +439,16 @@ static int confirmed(const char *question)
 
 static void launch(const struct item *it)
 {
-	char buf[EXEC_MAX_LEN + SH_TERM_PREFIX_MAX];
-	char id[160];			/* argv points into it until the exec */
-	const char *argv[32];
-	int n = 0;
+	struct sh_launch l = {
+		.exec = it->exec,
+		.title = it->name[0] ? it->name : NULL,
+		.term = it->term,
+		.size = it->size,
+		.terminal = it->terminal,
+		.floating = it->floating,
+		.cells = it->cells,
+		.host = it->host,
+	};
 
 	if (!*it->exec && !it->path[0])
 		return;
@@ -415,39 +456,21 @@ static void launch(const struct item *it)
 		return;
 
 	if (it->path[0]) {
-		/* A Places row: the path travels as ONE argument, whatever is
-		 * in it — no re-split, no truncation. */
-		n = sh_term_argv(argv, n, 32, "mc", id, sizeof(id));
-		argv[n++] = "mc";
-		argv[n++] = it->path;
-	} else {
-		if (it->terminal)
-			sh_term_cmd(buf, sizeof(buf), it->exec);
-		else
-			snprintf(buf, sizeof(buf), "%s", it->exec);
+		/*
+		 * A Places row: the path travels as ONE argument, whatever is
+		 * in it. `mc` carries no field code, so sh_launch APPENDS the
+		 * document — which is the only way a command that never
+		 * expected one can be handed a directory.
+		 */
+		const char *files[1] = { it->path };
 
-		for (char *p = strtok(buf, " \t"); p && n < 31;
-		     p = strtok(NULL, " \t"))
-			argv[n++] = p;
-	}
-	argv[n] = NULL;
-	if (!n)
+		l.exec = "mc";
+		l.title = it->name[0] ? it->name : "mc";
+		l.terminal = 1;
+		sh_launch(&l, files, 1);
 		return;
-
-	/* Double fork, so the menu never has to reap and the application is not
-	 * killed when the menu exits — which it is about to. */
-	pid_t pid = fork();
-	if (pid == 0) {
-		if (fork() == 0) {
-			setsid();
-			kb_child_reset_signals();
-			execvp(argv[0], (char *const *)argv);
-			_exit(127);
-		}
-		_exit(0);
-	} else if (pid > 0) {
-		waitpid(pid, NULL, 0);
 	}
+	sh_launch(&l, NULL, 0);
 }
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
@@ -963,12 +986,18 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
  * — because "Maximize" on four windows at once is not what anybody aiming at a
  * taskbar button means. The `all` rows are the group operations and say so.
  */
-static char pin_id[128];	/* the desktop id behind `app`, or empty */
-/* The jump list. `new_exec` is the entry's own Exec, for New Window; the
- * destinations come from freedesktop's recent-files store. Both are resolved
- * ONCE when the menu is built — a lookup per frame would be a file read per
- * frame, on a surface that redraws for every pointer motion. */
-static char new_exec[256];
+/*
+ * The desktop id behind `app`, or empty — the Pin row's, and New Window's.
+ *
+ * AN ID AND NOT A COPY OF THE Exec LINE. The launch is `sh_launch_id`, which
+ * reads the whole of the entry: a row holding only `Exec` starts a terminal
+ * application with no terminal round it. Resolved ONCE when the menu is built,
+ * because a lookup per frame would be a file read per frame on a surface that
+ * redraws for every pointer motion; the entry is read again at the launch, and
+ * an id that stopped resolving between the two starts nothing.
+ */
+static char pin_id[128];
+/* The jump list's destinations, from freedesktop's recent-files store. */
 #define WIN_RECENT_MAX 6
 static char recents[WIN_RECENT_MAX][512];
 static int nrecent;
@@ -1060,7 +1089,7 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 		 * would be a coin toss. A row in a menu is also the only one of
 		 * the two that says what it does.
 		 */
-		if (pin_id[0] && new_exec[0]) {
+		if (pin_id[0]) {
 			rows[nrows].kind = WR_NEW;
 			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
 				 "New Window");
@@ -1214,12 +1243,10 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 	 * gets no Pin row rather than a row that pins nothing.
 	 */
 	if (ctrl) {
-		char nm[64], ex[256];
-		if (sh_desktop_entry(app, nm, sizeof(nm), ex, sizeof(ex)) == 0 &&
-		    ex[0]) {
+		struct sh_entry se;
+
+		if (sh_desktop_entry(app, &se) == 0)
 			snprintf(pin_id, sizeof(pin_id), "%s", app);
-			snprintf(new_exec, sizeof(new_exec), "%s", ex);
-		}
 		/*
 		 * The destinations are looked up by the APP_ID, which is what
 		 * a writer of recently-used.xbel conventionally records as the
@@ -1468,24 +1495,20 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 			if (pin_id[0])
 				sh_fav_set(pin_id, !sh_fav_has(pin_id));
 			break;
-		case WR_NEW: {
-			/* The entry's own Exec, with the field codes gone —
-			 * there is no document to substitute and a stray %U
-			 * opens the application on a file called "%U". */
-			const char *av[32];
-			char buf[512];
-			int na = 0;
-
-			snprintf(buf, sizeof(buf), "%s", new_exec);
-			sh_strip_field_codes(buf);
-			for (char *t = strtok(buf, " \t");
-			     t && na < 31; t = strtok(NULL, " \t"))
-				av[na++] = t;
-			av[na] = NULL;
-			if (na)
-				spawn_argv(av);
+		case WR_NEW:
+			/*
+			 * THE ENTRY, NOT A LINE OFF IT. `sh_launch_id` reads
+			 * the same keys the Start menu reads, so a second
+			 * window of a terminal application gets a terminal and
+			 * one of a boxed application reaches the console
+			 * session — neither of which a re-split of `Exec`
+			 * could do. With no document to open, the split drops
+			 * every field code, so a stray `%U` never becomes a
+			 * file called "%U".
+			 */
+			if (pin_id[0])
+				sh_launch_id(pin_id, NULL, 0);
 			break;
-		}
 		case WR_RECENT:
 			/*
 			 * `kdos-appbox open` IS what "open this on this

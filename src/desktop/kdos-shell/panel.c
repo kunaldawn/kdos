@@ -54,6 +54,7 @@
 #include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
+#include "launch.h"
 
 /*
  * Spawn something the panel must not wait for. Double-forked, so the panel
@@ -483,10 +484,10 @@ static int net_state(char *out, size_t n, int *wireless)
 
 struct fav {
 	/* The desktop-entry id, kept so Unpin knows what line to remove: the
-	 * file is a list of ids and the label is not one. */
+	 * file is a list of ids and the label is not one. It is also what the
+	 * LAUNCH is made from — see fav_launch(). */
 	char id[128];
 	char name[24];
-	char exec[256];
 	/* The entry's own `Icon=`, resolved once at load. Quick launch is a row
 	 * of pictures when there is artwork and a row of names when there is
 	 * not — the same fallback every other surface keeps. */
@@ -583,41 +584,44 @@ static void load_favorites(void)
 		 * row actually stands for. */
 		s = (char *)sh_fav_id(s);
 		snprintf(fv->id, sizeof(fv->id), "%s", s);
-		if (sh_desktop_entry(s, fv->name, sizeof(fv->name),
-				     fv->exec, sizeof(fv->exec)) != 0 ||
-		    !fv->exec[0])
+		/*
+		 * RESOLVED HERE FOR THE LABEL ONLY, and resolved again at the
+		 * launch. A row is drawn far more often than it is clicked and
+		 * the entry can be rewritten between the two — a package
+		 * upgrade does exactly that — so the copy that decides how
+		 * something starts is read when it starts.
+		 */
+		struct sh_entry se;
+
+		if (sh_desktop_entry(s, &se) != 0)
 			continue;	/* an id with no entry launches nothing */
-		if (!fv->name[0])
-			snprintf(fv->name, sizeof(fv->name), "%.*s",
-				 (int)sizeof(fv->name) - 1, s);
-		/* Stripped ONCE, here: a favorite has no document to
-		 * substitute, and "%U" in argv opens as a search. */
-		sh_strip_field_codes(fv->exec);
+		kb_strlcpy(fv->name, se.name[0] ? se.name : s, sizeof(fv->name));
 		const char *ic = kicon_app_icon(s);
 		snprintf(fv->icon, sizeof(fv->icon), "%s", ic ? ic : s);
-		if (fv->exec[0])
-			nfavs++;
+		nfavs++;
 	}
 	fclose(f);
 }
 
+/*
+ * THROUGH sh_launch, LIKE EVERY OTHER LAUNCH SURFACE. This row used to split
+ * the Exec line on whitespace and fork the child itself, which carried both
+ * faults launch.h names: `Exec=foot --title="Install KDOS" -- sudo kinstall`
+ * reached foot as `--title="Install` with a stray `KDOS"` after it, and a
+ * graphical application pinned here while the panel was docked on the console
+ * session got no cage and no display.
+ *
+ * THE PULSE RUNS WHETHER OR NOT IT STARTED, because it says "the click
+ * landed" — a row that looked identical before and after is one people click
+ * twice, and that is as true of a launch that failed.
+ */
 static void fav_launch(int i)
 {
-	char buf[256];
-	const char *argv[32];
-	int n = 0;
-
 	if (i < 0 || i >= nfavs)
 		return;
-	snprintf(buf, sizeof(buf), "%s", favs[i].exec);
-	for (char *p = strtok(buf, " \t"); p && n < 31; p = strtok(NULL, " \t"))
-		argv[n++] = p;
-	argv[n] = NULL;
-	if (n) {
-		fav_anim = i;
-		fav_anim_at = panel_now_ms();
-		panel_spawn(argv);
-	}
+	fav_anim = i;
+	fav_anim_at = panel_now_ms();
+	sh_launch_id(favs[i].id, NULL, 0);
 }
 
 /* Set by panel_main from `--cells`; comp.conf's `panel_cells`. */
@@ -1693,22 +1697,9 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
  */
 static void chip_launch_again(const struct sh_state *sh, const struct chip *c)
 {
-	char exec[256], buf[256];
-	const char *argv[32];
-	int n = 0;
-
 	if (c->first < 0 || c->first >= sh->ntasks)
 		return;
-	if (sh_desktop_entry(sh->tasks[c->first].app_id, NULL, 0, exec,
-			     sizeof(exec)) != 0)
-		return;
-	sh_strip_field_codes(exec);
-	snprintf(buf, sizeof(buf), "%s", exec);
-	for (char *p = strtok(buf, " \t"); p && n < 31; p = strtok(NULL, " \t"))
-		argv[n++] = p;
-	argv[n] = NULL;
-	if (n)
-		panel_spawn(argv);
+	sh_launch_id(sh->tasks[c->first].app_id, NULL, 0);
 }
 
 static void chip_click(struct sh_state *sh, int ci, int btn)

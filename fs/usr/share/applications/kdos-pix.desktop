@@ -6,6 +6,9 @@ Comment=One picture, and the folder it is in
 Exec=kdos-pix %f
 Icon=image-x-generic
 Terminal=false
+# It attaches to the console session as a surface of its own, so the session
+# must give it a window and not a cage — see X-KDOS-Cells in kxdg.h.
+X-KDOS-Cells=true
 NoDisplay=true
 MimeType=image/png;image/jpeg;image/webp;
 Categories=Graphics;Viewer;

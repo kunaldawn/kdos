@@ -49,7 +49,15 @@ revisited by clicking it.
 ### 1. Welcome
 
 What this installer is about to do, and the machine it has detected — processor, memory, storage
-and firmware. If the firmware line does not say UEFI, stop: KDOS has no BIOS boot path.
+and firmware.
+
+**The firmware line is a note and never a refusal.** Limine writes both boot paths onto the disk
+whichever way this machine started, so what the line changes is which one the firmware will use.
+`legacy BIOS` means this machine booted that way and gets the same install; `32-bit firmware` means
+a 64-bit CPU whose firmware is not — an early Atom tablet — and the installer writes the 32-bit EFI
+binary and the boot entry that names it. `Secure Boot enabled` is the one that stops you: Limine's
+EFI binary is unsigned and KDOS enrols no keys, so the machine will refuse to load it until Secure
+Boot is turned off in firmware setup.
 
 ### 2. Keyboard
 
@@ -243,7 +251,7 @@ is the next thing that happens to them, and a dump is what ends up in a log.
 
 | Path | What |
 |---|---|
-| The ESP | Limine, its generated `limine.conf`, the kernel, the initramfs and the BIOS second stage |
+| The ESP | Limine — **both EFI binaries**, `BOOTX64.EFI` and `BOOTIA32.EFI` — its generated `limine.conf`, the kernel, the initramfs and the BIOS second stage |
 | The ESP | The A/B boot state file |
 | Root | The system, copied from the medium |
 | `/etc/fstab` | **Appended to**, never replaced — the shipped file carries the `/tmp` entry that every graphical application depends on |
@@ -258,6 +266,13 @@ can always reach it is what keeps those choices bootable.
 
 `limine.conf` is written at the **root of the ESP** rather than beside `BOOTX64.EFI`, because that
 is the one location both firmwares search — a BIOS boot never looks in `/EFI/BOOT/`.
+
+**Both EFI binaries go on, and firmware reads only the one it can execute.** A 64-bit CPU does not
+imply a 64-bit firmware, so `BOOTIA32.EFI` sits beside `BOOTX64.EFI` and the two never compete; it
+costs about a hundred kilobytes. The boot entry the installer writes into NVRAM names one path, so
+it is chosen from `/sys/firmware/efi/fw_platform_size` — the removable-media fallback picks by
+itself, but an NVRAM entry pointing at a binary the firmware cannot load is an option that fails
+rather than one that falls through.
 
 **The BIOS boot code is written whichever way the installing machine booted.** It costs one sector,
 and it means a disk imaged on a UEFI machine still starts when it is moved to a legacy one. A
