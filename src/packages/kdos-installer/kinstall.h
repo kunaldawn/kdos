@@ -22,6 +22,7 @@
 #include <sys/types.h>
 
 #include "kbase.h"
+#include "kcolor.h"	/* the scheme table, and which of its rows is the default */
 #include "ktui.h"
 
 #define KI_VERSION "4.0"

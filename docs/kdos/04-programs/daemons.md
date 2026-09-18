@@ -52,10 +52,27 @@ Suspend, poweroff and reboot for a desktop that is not root.
 | `timezone <Area/City>` | Point `/etc/localtime` and `TZ` at a zone |
 | `autologin <user>\|off` | Which account tty1 logs in without asking |
 | `firewall list\|<service> on\|off` | Which named services answer the network |
+| `accent <scheme>` | Repaint the boot menu and the splash |
 | `ping` | Liveness |
 
-One line per connection. Four verbs are a bare word; `timezone` is **the only one that takes an
-argument**, and it is the only place in this protocol where anything has to be validated.
+One line per connection. Four verbs are a bare word; `timezone` and `accent` take one.
+
+**`accent` is the one verb whose argument needs no sanitising, and that is why it is safe to
+reach from a session.** It must be one of the seven scheme names compiled into `libkcolor`, matched
+by `kcol_find()`. There is no path to aim and nothing to traverse — a name that is not a scheme
+names nothing at all — which is a stronger story than `timezone`'s, whose argument is
+path-shaped and has to be filtered by character class first.
+
+**It writes two root-owned things and retints nothing.** `/etc/kdos/accent` is what `rcS` reads to
+repaint the running splash; the boot menu is restamped by handing the name to `kdos-bootctl theme`,
+which owns `limine.conf`. The desktop is `kdos theme`'s, runs as the user, and touches only the
+user's own files — so root is needed for those two and for nothing else, and those two are all this
+verb writes.
+
+**A machine with no writable ESP is not a failure.** The live medium is read-only and a machine may
+have no `/boot/efi` at all; the verb reports `ok <scheme> (boot menu unchanged)` and exits 0.
+Refusing would make `kdos theme` look broken on the ISO, where every other surface retints
+perfectly.
 
 **The timezone is here rather than in a second daemon** because it is the same question: writing
 `/etc/localtime` and `/etc/profile.d/20-timezone.sh` is root's, the person doing it is the one

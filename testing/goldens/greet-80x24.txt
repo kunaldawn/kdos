@@ -3,7 +3,7 @@
                                                                                 
                                                                                 
                                                                                 
-                 += KDOS =====================================+                 
+                 +=[ KDOS ]===================================+                 
                  |                                            |                 
                  |  > Ada Lovelace                            |                 
                  |    Grace Hopper                            |                 
@@ -20,5 +20,5 @@
                                                                                 
                                                                                 
                                                                                 
-  Up/Down account  Left/Right session  Enter log in  Esc clear                  
+  Up/Down account | Left/Right session | Enter log in | Esc clear               
                                                                                 

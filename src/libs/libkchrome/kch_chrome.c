@@ -272,18 +272,40 @@ void kch_list_clamp(int *top, int sel, int n, int body, int follow)
  * Deriving that twice is how a bar you can see and a bar you can grab end up
  * in different places.
  */
+/*
+ * THE CAPS TAKE A ROW EACH AND THE TRACK IS WHAT IS LEFT. Every geometry below
+ * works in TRACK rows, never bar rows, so the draw and the hit test cannot
+ * disagree about where the thumb is — which is the one defect a scrollbar
+ * cannot survive, because a bar you can see and a bar you can grab in
+ * different places is worse than no bar.
+ */
+#define SCROLL_CAPS 2
+
 static int scroll_thumb(int rows, int n, int top, int *at)
 {
-	int th = rows * rows / n;
+	/*
+	 * THE THUMB'S SIZE IS THE TRACK'S AND ITS RANGE IS THE VIEWPORT'S, and
+	 * mixing the two is how a bar you can see and a bar you can grab end
+	 * up in different places. `track` is what the caps leave; `n - rows`
+	 * is how far the LIST can travel, which the caps do not change.
+	 * scroll_top_for() inverts exactly this, so both must read `rows` as
+	 * the viewport and never as the track.
+	 */
+	int track = rows - SCROLL_CAPS;
+	int th, span, max, a;
 
+	if (track < 1)
+		track = 1;
+	th = track * track / n;
+
+	if (th > track - 1)
+		th = track - 1;
 	if (th < 1)
 		th = 1;
-	if (th > rows - 1)
-		th = rows - 1;
 
-	int span = rows - th;
-	int max = n - rows;
-	int a = max > 0 ? top * span / max : 0;
+	span = track - th;
+	max = n - rows;
+	a = max > 0 ? top * span / max : 0;
 
 	if (a < 0)
 		a = 0;
@@ -311,6 +333,7 @@ static int scroll_thumb(int rows, int n, int top, int *at)
 static struct {
 	int live;		/* there is a bar to grab            */
 	int x, y, rows, n;
+	int top;		/* what the caps step from           */
 } kch_bar[KCH_SCROLLBARS];
 static int kch_bar_grab = -1;	/* the bar a press is still down on  */
 
@@ -323,15 +346,28 @@ static int scroll_top_for(int id, int my)
 	int rows = kch_bar[id].rows, n = kch_bar[id].n;
 	int at = 0;
 	int th = scroll_thumb(rows, n, 0, &at);
-	int span = rows - th;
-	int want = my - kch_bar[id].y - th / 2;
+	int span = rows - SCROLL_CAPS - th;
+	/* The pointer's row measured from the top of the TRACK, which starts
+	 * one row below the bar: a press on the up cap is handled before this
+	 * is ever called, so a negative here is only the rounding at the join
+	 * and clamps to the top. */
+	int want = my - kch_bar[id].y - 1 - th / 2;
+	int max = n - rows;
 	int top;
 
 	if (want < 0)
 		want = 0;
 	if (want > span)
 		want = span;
-	top = span > 0 ? want * (n - rows) / span : 0;
+	/*
+	 * ROUNDED UP, AND THAT IS WHAT MAKES THE GRAB STABLE. The draw floors
+	 * `top * span / max` to pick the thumb's cell; flooring the inverse
+	 * too lands on the largest `top` that still maps to the cell BELOW the
+	 * one under the pointer, so the thumb hops up a row the instant it is
+	 * grabbed. Rounding up returns the smallest `top` whose thumb is drawn
+	 * exactly where the hand is.
+	 */
+	top = span > 0 ? (want * max + span - 1) / span : 0;
 	if (top < 0)
 		top = 0;
 	if (top > n - rows)
@@ -341,11 +377,31 @@ static int scroll_top_for(int id, int my)
 
 int kch_scrollbar_press(int id, int mx, int my)
 {
+	int top;
+
 	if (id < 0 || id >= KCH_SCROLLBARS || !kch_bar[id].live)
 		return -1;
 	if (mx != kch_bar[id].x || my < kch_bar[id].y ||
 	    my >= kch_bar[id].y + kch_bar[id].rows)
 		return -1;
+
+	/*
+	 * THE CAPS ARE ONE-LINE STEPS AND THEY DO NOT ARM A DRAG. A press on
+	 * `▲` that grabbed the thumb would jump the list to the top the moment
+	 * the hand moved a pixel, which is the opposite of what a cap is for —
+	 * it is the control somebody uses precisely because they want ONE row.
+	 */
+	top = kch_bar[id].top;
+	if (my == kch_bar[id].y)
+		return top > 0 ? top - 1 : 0;
+	if (my == kch_bar[id].y + kch_bar[id].rows - 1) {
+		int max = kch_bar[id].n - kch_bar[id].rows;
+
+		if (max < 0)
+			max = 0;
+		return top < max ? top + 1 : max;
+	}
+
 	kch_bar_grab = id;
 	return scroll_top_for(id, my);
 }
@@ -378,12 +434,18 @@ void kch_scrollbar(int id, int x, int y, int rows, int n, int top, int bg)
 {
 	int live = rows > 1 && n > rows && x >= 0 && x < ktui_w;
 
+	/* A bar needs room for two caps and a track. Below that there is
+	 * nothing to draw and nothing to grab. */
+	if (rows < SCROLL_CAPS + 1)
+		live = 0;
+
 	if (id >= 0 && id < KCH_SCROLLBARS) {
 		kch_bar[id].live = live;
 		kch_bar[id].x = x;
 		kch_bar[id].y = y;
 		kch_bar[id].rows = rows;
 		kch_bar[id].n = n;
+		kch_bar[id].top = top;
 	}
 	if (!live)
 		return;
@@ -392,11 +454,33 @@ void kch_scrollbar(int id, int x, int y, int rows, int n, int top, int bg)
 	 * fills its own length says the same thing as no bar at all. */
 	int at = 0;
 	int th = scroll_thumb(rows, n, top, &at);
+	int max = n - rows;
 
-	for (int i = 0; i < rows; i++)
-		ktui_draw_text(x, y + i, 1,
-			       ktui_glyph[i >= at && i < at + th ? KT_G_FULL
-								 : KT_G_SHADE],
+	/*
+	 * `▲` TRACK `▼`, AND THE CAPS ARE PRESSABLE. A bar with no caps is a
+	 * bar whose only fine control is the keyboard: the wheel moves three
+	 * rows and a drag moves a page, so a list nudged one row at a time had
+	 * to be nudged with the arrow keys. A cap at the end of its travel goes
+	 * KT_DIM, which is the same thing the slider's caps say.
+	 */
+	ktui_draw_text(x, y, 1, ktui_glyph[KT_G_ARROW_UP],
+		       top > 0 ? KT_MID : KT_DIM, bg, KT_A_NONE);
+	ktui_draw_text(x, y + rows - 1, 1, ktui_glyph[KT_G_ARROW_DOWN],
+		       top < max ? KT_MID : KT_DIM, bg, KT_A_NONE);
+
+	/*
+	 * `▒` TRACK AND `█` THUMB, AND THE PAIR HAS TO STAY TWO DENSITIES
+	 * APART. `░` is one density above nothing and on a dark ground it is
+	 * invisible until the thumb passes it, which leaves the bar reading as
+	 * a floating block rather than as a position on a run. The pair is
+	 * carrying the distinction, which is also why KT_DIM stays a fill here
+	 * rather than being flattened onto KT_MID for legibility.
+	 */
+	for (int i = 0; i < rows - SCROLL_CAPS; i++)
+		ktui_draw_text(x, y + 1 + i, 1,
+			       ktui_glyph[i >= at && i < at + th
+						  ? KT_G_FULL
+						  : KT_G_SHADE_MED],
 			       i >= at && i < at + th ? KT_MID : KT_DIM, bg,
 			       KT_A_NONE);
 }

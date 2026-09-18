@@ -186,9 +186,26 @@ int ktui_hint_row(const KtuiKeys *k, KRect r, int bg)
 				    KT_A_NONE);
 		x += ktui_draw_text(x, r.y, end - x, mine[i].verb, KT_MID, bg,
 				    KT_A_NONE);
-		if (x + 2 <= end)
+		/*
+		 * A RULE BETWEEN HINTS, NOT TWO BLANKS. A row of four hints
+		 * separated by spaces is eight words with gaps in it, and
+		 * `Tab panes Esc close` reads as one phrase until somebody
+		 * counts. The bar is what makes each pair a unit. Drawn only
+		 * where another hint follows it, and only where it fits: a
+		 * trailing separator says something was dropped.
+		 */
+		if (i + 1 < n && x + 3 <= end) {
+			x += ktui_draw_text(x, r.y, end - x, " ", KT_MID, bg,
+					    KT_A_NONE);
+			x += ktui_draw_text(x, r.y, end - x,
+					    ktui_glyph[KT_G_VL], KT_DIM, bg,
+					    KT_A_NONE);
+			x += ktui_draw_text(x, r.y, end - x, " ", KT_MID, bg,
+					    KT_A_NONE);
+		} else if (x + 2 <= end) {
 			x += ktui_draw_text(x, r.y, end - x, "  ", KT_MID, bg,
 					    KT_A_NONE);
+		}
 		drawn = 1;
 	}
 	return drawn;

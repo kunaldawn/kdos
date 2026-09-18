@@ -469,7 +469,7 @@ int main(int argc, char **argv)
 		return ki_dump(dump, json);
 
 	if (ktui_theme_set(cfg.theme) < 0)
-		ktui_theme_set("phosphor");
+		ktui_theme_set(KCOL_DEFAULT_NAME);
 
 	fputs("kinstall: measuring the live system...\n", stderr);
 	probe_system();

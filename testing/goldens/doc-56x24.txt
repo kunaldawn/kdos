@@ -1,4 +1,4 @@
-+=  kdos-doc * index  =================================+
++=[ kdos-doc * index ]=================================+
 | KDOS DOC                                             |
 |                                                      |
 | Everything on this machine that can explain itself,  |
@@ -20,5 +20,5 @@
 |                                                      |
 | A document is plain text with kind:target spans in   |
 | double square                                        |
-| Tab link  Enter follow  / search  Esc Close          |
+| Tab link | Enter follow | / search | Esc Close       |
 +======================================================+

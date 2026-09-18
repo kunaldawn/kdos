@@ -145,14 +145,18 @@ static void draw(void)
 		int r = nhist - 1 - i;
 		int on = recall == r;
 
+		int hfg, hbg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &hfg, &hbg);
 		if (on)
-			ktui_draw_fill(krect(1, 4 + i, w - 2, 1), KT_ACCENT);
+			ktui_draw_fill(krect(1, 4 + i, w - 2, 1), hbg);
+		/* The expression is the secondary half of the row and the
+		 * result is the answer, so only the expression is muted —
+		 * and not on the fill, where muted cannot be read. */
 		ktui_draw_text(2, 4 + i, (w - 4) / 2, hist[r].expr,
-			       on ? KT_BG : KT_MID,
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			       ktui_sel_dim(on, 1), hbg, KT_A_NONE);
 		ktui_draw_text_right(0, 4 + i, w - 3, hist[r].res,
-				     on ? KT_BG : KT_TEXT,
-				     on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+				     hfg, hbg, KT_A_NONE);
 	}
 
 	/* PUSHED, not written: the row names what the surface answers RIGHT

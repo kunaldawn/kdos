@@ -183,11 +183,14 @@ static void draw_form(int w, int top, int body)
 		}
 		ktui_draw_text(2, top + i, 9, FLABEL[i], KT_MID, KT_SURFACE,
 			       KT_A_NONE);
-		ktui_draw_fill(krect(11, top + i, w - 13, 1),
-			       on ? KT_ACCENT : KT_SURFACE);
-		ktui_draw_text(11, top + i, w - 13, shown,
-			       on ? KT_SURFACE : KT_TEXT,
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+		{
+			int cfg, cbg;
+
+			ktui_sel_slots(on, 1, KT_SURFACE, &cfg, &cbg);
+			ktui_draw_fill(krect(11, top + i, w - 13, 1), cbg);
+			ktui_draw_text(11, top + i, w - 13, shown, cfg, cbg,
+				       KT_A_NONE);
+		}
 	}
 	ktui_term_caret(11 + caret, top + focus);
 }

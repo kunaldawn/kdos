@@ -1,4 +1,4 @@
-+=  Settings  =================================================================+
++=[ Settings ]=================================================================+
 | Appearance                Panel                     Desktop                  |
 | accent, CRT, wallpaper    the taskbar and tray      icons and workspaces     |
 |                                                                              |
@@ -19,6 +19,6 @@
 |                                                                              |
 |                                                                              |
 |------------------------------------------------------------------------------|
-| F1 help  Enter open  Arrows move  Esc Close                                  |
+| F1 help  Enter open | Arrows move | Esc Close                                |
 | accent, CRT, wallpaper                                                       |
 +==============================================================================+

@@ -148,30 +148,43 @@ if [ -f "$BOOTFONT" ]; then
                 /tmp/kdos-bootfont.psf $ISO_ROOT/boot/limine/font.bin)
     rm -f /tmp/kdos-bootfont.psf
     FONT_LINES="term_font: boot():/boot/limine/font.bin
-term_font_size: $FONT_SIZE
-term_font_scale: 2x2"
+term_font_size: $FONT_SIZE"
 else
     echo "Warning: $BOOTFONT not found — the menu keeps Limine's own font"
     FONT_LINES=""
 fi
 
-# The banner becomes the wallpaper the menu floats over. `term_background`
-# takes a leading alpha byte, so the terminal is translucent and the artwork
-# stays visible behind it.
-if [ -f /usr/share/kdos/boot/kdos-banner.png ]; then
-    cp /usr/share/kdos/boot/kdos-banner.png $ISO_ROOT/boot/limine/wallpaper.png
-    WALLPAPER="wallpaper: boot():/boot/limine/wallpaper.png
-wallpaper_style: centered
-backdrop: 02120a"
+# THE ARTWORK GOES BEHIND EVERYTHING AND THE MENU SITS OPAQUE ON TOP OF IT.
+# `centered` draws a wallpaper at its own size in the middle of the screen,
+# which is exactly where Limine draws the menu, and `term_background`'s leading
+# transparency byte defaults to `80` whenever a wallpaper is set. Either one
+# alone prints the artwork THROUGH the entry text. Neither is a taste: they are
+# the difference between a menu somebody can read and one they cannot.
+#
+# The file here is PRE-DIMMED, because Limine has no wallpaper opacity. The
+# backdrop generator writes it; how dark it is belongs there and not here.
+#
+# Only the PATH is set below. `wallpaper_style`, every colour and the font
+# scale come out of `kdos-bootctl theme --print`, so the medium, the installer
+# and a later `kdos theme` cannot disagree about how the menu looks.
+BACKDROP_ART=/usr/share/kdos/boot/kdos-backdrop.png
+if [ ! -f "$BACKDROP_ART" ]; then
+    BACKDROP_ART=/usr/share/kdos/boot/kdos-banner.png
+fi
+if [ -f "$BACKDROP_ART" ]; then
+    cp "$BACKDROP_ART" $ISO_ROOT/boot/limine/wallpaper.png
+    WALLPAPER="wallpaper: boot():/boot/limine/wallpaper.png"
 else
-    echo "Warning: KDOS boot banner not found — the menu is a plain backdrop"
-    WALLPAPER="backdrop: 02120a"
+    echo "Warning: no KDOS boot artwork — the menu is a plain backdrop"
+    WALLPAPER=""
 fi
 
-# THE COLOURS ARE THE PHOSPHOR SCHEME OUT OF libkcolor AND MUST STAY THAT WAY.
-# They are the same nine numbers `KCOL_SCHEMES` gives every other surface, so
-# the menu, the splash, the console and the desktop are one palette. A literal
-# picked to look right here would drift the moment the scheme is retuned.
+# THE COLOURS COME OUT OF libkcolor AND ARE NEVER WRITTEN HERE. `kdos-bootctl
+# theme --print` expands the scheme's own nine numbers into Limine's keys, and
+# the installer writes the same block through the same function — so the menu,
+# the splash, the console and the desktop are one palette, and a stick and the
+# machine installed from it cannot show different colours. A literal picked to
+# look right here would drift the moment the scheme is retuned.
 #
 # TEN SECONDS IS A COUNTDOWN SOMEBODY CAN ACT ON. Every second of it is boot
 # time spent before the kernel exists, with nothing else running, so it is
@@ -183,21 +196,15 @@ fi
 #
 # `timeout: 0` is NOT an immediate boot with a menu; it boots the default entry
 # without drawing one at all, and those entries become unreachable.
+BOOT_THEME=$(kdos-bootctl theme --print "$KDOS_ACCENT")
+
 cat > $ISO_ROOT/boot/limine/limine.conf <<EOF
 timeout: 10
 default_entry: 1
 
-interface_branding: KDOS
-interface_branding_colour: 39ff14
-interface_help_colour: 1f8f0c
-
+$BOOT_THEME
 $WALLPAPER
 $FONT_LINES
-term_background: 8002120a
-term_foreground: b8ffc8
-term_palette: 02120a;ff3131;39ff14;ffb000;1f8f0c;b8ffc8;39ff14;b8ffc8
-term_palette_bright: 12401f;ff3131;39ff14;ffb000;1f8f0c;ffffff;39ff14;ffffff
-term_margin: 32
 
 /KDOS Live
     comment: Start KDOS from this medium

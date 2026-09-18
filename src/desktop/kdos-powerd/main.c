@@ -31,7 +31,7 @@
  * machine" stay one answer.
  *
  * THE PROTOCOL IS ONE LINE PER CONNECTION. `suspend`, `poweroff`, `reboot`,
- * `ping` are a bare word; `timezone <zone>` is the one verb with an argument,
+ * `ping` are a bare word; `timezone <zone>` and `accent <scheme>` take one,
  * then a one-line reply and the socket closes. No length prefixes, no
  * multiplexing, no state: a parser is an attack surface and this one is a
  * handful of strcmp.
@@ -63,6 +63,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kcolor.h"
 
 #define KP_SOCKET "/run/kdos-powerd.sock"
 #define KP_GROUP  "wheel"
@@ -509,6 +510,77 @@ static bool zone_name_ok(const char *z)
 	return true;
 }
 
+/* ── the accent, and the two root-owned files that carry it ────────────────
+ *
+ * HERE FOR THE REASON THE TIMEZONE IS HERE. `/etc/kdos/accent` and the ESP's
+ * `limine.conf` are root's, the person changing the look of their machine is
+ * the one administering it, and `wheel` is already the answer to who that is.
+ * A second socket with a second authorisation rule would be a second answer to
+ * one question.
+ *
+ * ITS ARGUMENT IS TIGHTER THAN EVERY OTHER VERB'S. A zone is `Area/City`, so a
+ * slash is legal and `../../etc/shadow` is legal-LOOKING — which is why
+ * `zone_name_ok` exists. An accent is one of seven strings compiled into
+ * libkcolor. There is no path to aim and nothing to traverse: a name that is
+ * not a scheme names nothing at all, and `kcol_find` is the whole check.
+ *
+ * WHAT IT DOES NOT DO IS RETINT THE DESKTOP. That is `kdos theme`'s, runs as
+ * the user, and touches only the user's own files. Root is needed for these
+ * two and for nothing else, so these two are all this verb writes.
+ */
+static int set_accent(const char *name, char *out, size_t nout)
+{
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	const KcolScheme *sc = kcol_find(name);
+	char path[320], dir[320];
+	KbArgv a = {0};
+
+	if (!sc) {
+		snprintf(out, nout, "err not an accent\n");
+		return -1;
+	}
+	if (!etc || !*etc)
+		etc = "/etc";
+
+	/* The name, for kdos-splash: it is started by the INITRAMFS, before any
+	 * root filesystem exists, so it cannot read this at the moment it
+	 * starts. `rcS` reads it after switch_root and tells the running splash
+	 * over the FIFO it is already holding. */
+	snprintf(dir, sizeof(dir), "%s/kdos", etc);
+	kb_mkdir_p(dir);
+	snprintf(path, sizeof(path), "%s/accent", dir);
+	if (kb_write_file_atomic(path, sc->name) != 0) {
+		snprintf(out, nout, "err cannot write the accent\n");
+		return -1;
+	}
+
+	/*
+	 * AND THE BOOT MENU, THROUGH kdos-bootctl, WHICH OWNS limine.conf.
+	 * Exec'd rather than linked: the restamp is the bootloader tool's rule
+	 * about which keys a theme owns, and a copy of that rule in a daemon is
+	 * a copy that goes stale the next time Limine gains a key.
+	 *
+	 * ITS FAILURE IS NOT THIS VERB'S FAILURE. A live medium is read-only
+	 * and a machine may have no ESP; the accent still applied to everything
+	 * else, and reporting `err` would make `kdos theme` look broken on the
+	 * ISO, where every surface retints perfectly.
+	 */
+	if (kb_have_prog("kdos-bootctl")) {
+		kb_argv_add(&a, "kdos-bootctl");
+		kb_argv_add(&a, "theme");
+		kb_argv_add(&a, sc->name);
+		kb_argv_end(&a);
+		if (kb_run(&a) != 0)
+			snprintf(out, nout, "ok %s (boot menu unchanged)\n",
+				 sc->name);
+		else
+			snprintf(out, nout, "ok %s\n", sc->name);
+	} else {
+		snprintf(out, nout, "ok %s (boot menu unchanged)\n", sc->name);
+	}
+	return 0;
+}
+
 static int set_timezone(const char *zone, char *out, size_t nout)
 {
 	const char *dir = getenv("KDOS_POWERD_ZONEDIR");
@@ -682,6 +754,13 @@ static int serve(void)
 			(void)!write(c, msg, strlen(msg));
 			close(c);
 			continue;
+		} else if (!strncmp(buf, "accent ", 7)) {
+			char msg[128];
+
+			set_accent(buf + 7, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
 		} else if (!strncmp(buf, "timezone ", 9)) {
 			char msg[128];
 
@@ -816,7 +895,8 @@ static int usage(void)
 		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n"
 		"       kdos-power timezone <Area/City>\n"
 		"       kdos-power autologin <user>|off\n"
-		"       kdos-power firewall list|<service> on|off\n");
+		"       kdos-power firewall list|<service> on|off\n"
+		"       kdos-power accent <scheme>\n");
 	return 2;
 }
 
@@ -892,7 +972,7 @@ static int client(int argc, char **argv)
 	char line[KP_MAX];
 
 	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin") ||
-	    !strcmp(cmd, "firewall")) {
+	    !strcmp(cmd, "firewall") || !strcmp(cmd, "accent")) {
 		if (!arg)
 			return usage();
 		if (snprintf(line, sizeof(line), "%s %s", cmd, arg) >=

@@ -525,7 +525,7 @@ background_color(float out[4])
 	if (kcol_theme_name(name, sizeof(name)))
 		sc = kcol_find(name);
 	if (!sc)
-		sc = &kcol_schemes[0];
+		sc = kcol_default();
 
 	out[0] = (float)((sc->deep >> 16) & 0xff) / 255.0f;
 	out[1] = (float)((sc->deep >> 8) & 0xff) / 255.0f;

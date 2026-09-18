@@ -249,6 +249,27 @@ in the Start menu before the command returns, with no root anywhere. Before that
 mounted the pack and stopped — and the menu's own install row led to an application nobody could
 launch.
 
+**The system tree is reconciled at packaging time by `script/06_packaging/00_launchers.sh`**, which
+runs `genlaunchers --packs-dir` over the extraction root. That call is the only thing standing
+between a medium that bakes no packs and a Start menu still offering the ones a previous bake left
+behind: the generated set is not under `fs/`, so `var/lib/kdos/fs-manifest` does not own it and
+nothing else removes it. It runs **before** `00_user.sh`, which materialises every home with
+`cp -r /etc/skel/.`; a skel cleaned after that step leaves the launchers in `/home/kdos`, and the
+Start menu reads the home first.
+
+**`genlaunchers` reconciles rather than appends**, which is why one call is the whole cleanup: it
+sweeps every `.desktop` carrying `X-KDOS-Alien=true`, every `/usr/local/bin` symlink it recognises
+as its own, and rewrites the table and the mime cache whole. A second sweep written elsewhere would
+be a second answer to which launchers are ours.
+
+**And a launcher can still outlive its pack**, because only the paths that run `genlaunchers`
+reconcile: a pack removed through `kdos-packd` rather than through `kdos app remove` leaves a row
+behind. `sh_box_missing()` in `kdos-shell` is the runtime half — a row whose box is neither an
+installed `.kpack` nor a box profile is dropped from the Start menu and the "Open with" chooser.
+**Absence has to be proved**: an unnamed box, a name that is not an id, or a machine with no pack
+store all count as present, because hiding an application somebody installed is a worse failure
+than showing one whose pack has gone.
+
 **An extra argument is refused.** The two forms differ by one, so passing both a directory and a
 root would read the directory as the root and write the whole set underneath it: a table nothing
 reads, no shims swept, and a successful exit.

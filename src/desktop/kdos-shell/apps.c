@@ -47,6 +47,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kbase.h"
 #include "kcon.h"
 #include "kxdg.h"
 #include "shell.h"
@@ -146,11 +147,13 @@ static const char *exec_token(const char **p, size_t *len)
  * kdos-appbox's own: `-b`/`--box` takes a name, every other switch takes
  * none, and both spellings are accepted or a hand-edited entry goes unmarked.
  */
-int sh_exec_is_boxed(const char *exec)
+int sh_exec_box(const char *exec, char *box, size_t cap)
 {
 	const char *p = exec, *tok;
 	size_t n;
 
+	if (box && cap)
+		box[0] = 0;
 	if (!exec)
 		return 0;
 	tok = exec_token(&p, &n);
@@ -171,10 +174,77 @@ int sh_exec_is_boxed(const char *exec)
 		if (*tok != '-')
 			return 0;
 		if ((n == 2 && !strncmp(tok, "-b", 2)) ||
-		    (n == 5 && !strncmp(tok, "--box", 5)))
-			exec_token(&p, &n);	/* the box name */
+		    (n == 5 && !strncmp(tok, "--box", 5))) {
+			tok = exec_token(&p, &n);	/* the box name */
+			if (tok && box && cap && n < cap) {
+				memcpy(box, tok, n);
+				box[n] = 0;
+			}
+		}
 	}
 	return 0;
+}
+
+int sh_exec_is_boxed(const char *exec)
+{
+	return sh_exec_box(exec, NULL, 0);
+}
+
+/*
+ * IS THERE ANYTHING BEHIND THIS LAUNCHER — asked so a menu never offers an
+ * application whose box is not on the machine. A launcher outlives its pack:
+ * `genlaunchers` reconciles the set, but only the paths that run it do, so a
+ * pack taken away through kdos-packd rather than through `kdos app remove`
+ * leaves a row that starts a container start and fails.
+ *
+ * ABSENCE MUST BE PROVED, NEVER ASSUMED, and the asymmetry is the whole of the
+ * rule: a false positive hides an application somebody installed, which is a
+ * worse failure than the ghost this removes. So two cheap positives are
+ * consulted and anything else counts as present.
+ *
+ *   - `<store>/<id>.kpack`, which is an installed pack.
+ *   - `~/.config/kdos/boxes/<id>.conf`, which is a box profile — what a
+ *     store-BUILT box has instead of a pack file, since podman holds it as an
+ *     image the pack store has never heard of.
+ *
+ * NEITHER FORKS AND NEITHER OPENS A SOCKET. The index is rebuilt every time a
+ * surface opens and already walks ~400 entries; asking podman or kdos-packd
+ * per row would put a process spawn or a round trip on each one.
+ *
+ * A row naming no box at all is present by definition — there is nothing to
+ * look for — and so is every row on a machine with no pack store, where the
+ * question cannot be answered and a blank menu would be the answer given.
+ */
+int sh_box_missing(const char *box)
+{
+	const char *store = getenv("KDOS_PACK_STORE");
+	const char *home = getenv("HOME");
+	char p[1024];
+
+	if (!box || !*box)
+		return 0;
+	/* A name with a slash in it is not a box id. It cannot come from
+	 * genlaunchers, so it is a hand-edited entry, and the one thing not to
+	 * do with it is build a path out of it. */
+	if (strchr(box, '/'))
+		return 0;
+
+	if (!store || !*store)
+		store = "/var/lib/kdos/packs";
+	if (!kb_is_dir(store))
+		return 0;		/* no store: the question has no answer */
+
+	snprintf(p, sizeof(p), "%s/%s.kpack", store, box);
+	if (kb_path_exists(p))
+		return 0;
+
+	if (home && *home) {
+		snprintf(p, sizeof(p), "%s/.config/kdos/boxes/%s.conf", home,
+			 box);
+		if (kb_path_exists(p))
+			return 0;
+	}
+	return 1;
 }
 
 /* ── the usage file ────────────────────────────────────────────────────── */
@@ -364,7 +434,19 @@ static void add_desktop_file(const char *path)
 	 * index answers instead, so the Start menu and kdos-menu cannot
 	 * disagree with it.
 	 */
-	a->alien = sh_exec_is_boxed(a->exec);
+	char box[128];
+	a->alien = sh_exec_box(a->exec, box, sizeof(box));
+	/*
+	 * AND THE ROW IS DROPPED WHERE ITS BOX IS NOT THERE. Kept as an entry
+	 * with a mark instead, it would be a menu row that spends eighteen
+	 * seconds starting a container and then reports that the pack is
+	 * missing — the `[box]` tag exists to warn about that cost, not to
+	 * make it survivable.
+	 */
+	if (a->alien && sh_box_missing(box)) {
+		kxdg_free(&e);
+		return;		/* napps is not advanced: the slot is reused */
+	}
 	if (*a->exec)
 		napps++;
 	kxdg_free(&e);

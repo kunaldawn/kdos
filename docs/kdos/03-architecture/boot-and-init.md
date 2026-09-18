@@ -61,9 +61,35 @@ countdown short enough to miss makes them unreachable on exactly the machine tha
 **`timeout: 0` does not draw a menu at all**; it boots the default entry immediately, which takes
 those entries with it.
 
-The menu is drawn as a character grid in the phosphor palette, in the console's own Terminus face,
-over the boot banner. See [Theming the boot menu](../02-user-guide/theming.md) for what is
-configurable and [the design language](design-language.md) for where the colours come from.
+The menu is drawn as a character grid in **the accent in force**, in the console's own Terminus
+face, over a dimmed full-bleed backdrop. See [Theming the boot menu](../02-user-guide/theming.md)
+for what is configurable and [the design language](design-language.md) for where the colours come
+from.
+
+**`kcol_limine_conf()` emits the whole look and both writers call it.** The ISO step reaches it
+through `kdos-bootctl theme --print`; `kinstall` links it. Two hand-copied sets of nine literals is
+how a stick and the machine installed from it end up different colours, and the one that is wrong
+is the one nobody is booting that day. The only lines the writers own are the two that name paths
+on the medium — `wallpaper` and `term_font`.
+
+**The menu's plate is opaque and its backdrop is stretched, and both are legibility rather than
+taste.** `term_background` carries a leading transparency byte, and Limine's own default is `80` —
+half-transparent — whenever a wallpaper is set. A `centered` wallpaper is drawn at its own size in
+the middle of the screen, which is exactly where the menu is. Together they print the artwork
+*through* the entry text. The shipped configuration is `00` transparency over a `stretched`
+backdrop that is dimmed **in the file**, because Limine has no wallpaper opacity. `term_font_scale`
+is `1x2`: doubling both axes of an 8x16 face fills a 1080-row screen with four entries.
+
+**`kdos-bootctl theme <accent>` restamps an installed machine in place.** It rewrites only the keys
+the theme owns and leaves every entry, `cmdline`, `default_entry` and the A/B state alone — a
+restamp that rewrote the file from a template would discard a slot somebody is mid-rollback on.
+`wallpaper_style` and `term_font_scale` are among the keys it owns: they are layout, so a machine
+installed before a retheme picks up the new arrangement rather than keeping `2x2` over `centered`.
+The write is temp/fsync/rename/fsync-the-directory, because the ESP is FAT and a zero-length
+`limine.conf` is a machine that shows no menu.
+
+`kdos theme` reaches it through `kdos-powerd accent`, which also writes `/etc/kdos/accent` for the
+splash. A machine with no writable ESP skips the boot half and says so; the desktop still retints.
 
 Parameters KDOS itself reads:
 

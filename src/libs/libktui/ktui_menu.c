@@ -337,6 +337,15 @@ void ktui_menu_draw(KtuiMenu *m)
 	m->w = r.w;
 	m->rows = rows;
 
+	/*
+	 * THE SHADOW IS WHAT SAYS THE PANE IS ABOVE THE PAGE. A menu drawn flat
+	 * on the desktop reads as part of whatever it opened over — the modal
+	 * and the dropdown list have both cast one for as long as they have
+	 * existed, and the menu pane was the one transient surface that did
+	 * not. It darkens rather than erases, so the window underneath stays
+	 * legible and an embedded picture is left alone.
+	 */
+	ktui_draw_shadow(r);
 	ktui_draw_fill(r, KT_SURFACE);
 	ktui_draw_box(r, NULL, KT_ACCENT, KT_SURFACE, 0);
 
@@ -355,8 +364,11 @@ void ktui_menu_draw(KtuiMenu *m)
 			continue;
 		}
 		on = i == m->sel;
-		bg = on ? KT_ACCENT : KT_SURFACE;
-		fg = !it->enabled ? KT_DIM : on ? KT_SURFACE : KT_TEXT;
+		/* A menu pane always holds the keyboard while it is open, so
+		 * its highlighted item is always the focused-pane case. */
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
+		if (!it->enabled)
+			fg = KT_DIM;
 		ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1), bg);
 		ktui_menu_label(r.x + 2, y, r.w - 4, it->label, fg, bg);
 		/*

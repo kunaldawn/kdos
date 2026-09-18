@@ -8,10 +8,10 @@ the result appears without restarting anything.
 
 | Accent | Character |
 |---|---|
-| `phosphor` | Green on near-black. The default, and the project's own colour |
+| `phosphor` | Green on near-black. The project's own colour |
 | `amber` | Amber on warm black |
 | `ice` | Cyan and blue on deep blue-black |
-| `bone` | Warm off-white on near-black — the least saturated of them |
+| `bone` | Warm off-white on near-black — the least saturated of them. **The default** |
 | `norton` | Yellow and cyan on deep blue. The two-pane file manager's own colours |
 | `borland` | Cyan and yellow on dark teal. The blue-box IDEs of the late eighties |
 | `perfect` | White on blue, and almost nothing else. The word processor that showed a blank screen |
@@ -102,6 +102,8 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | `~/.icons/KDOS/` | Every toolkit, host and box | On the application's next launch |
 | `~/.config/kdeglobals` | Qt applications under the KDE platform theme | On the application's next launch |
 | `~/.icons/KDOS-cursors/` | Cursor lookup inside boxes | On the application's next launch |
+| `/etc/kdos/accent` | `rcS`, which retints the running splash | On the next boot |
+| `/boot/efi/limine.conf` | The bootloader | On the next boot |
 
 **A GTK3 application restyles while it is open, and the accent in the directory name is what does
 it.** GTK rebuilds its whole style cascade when the `gtk-theme-name` setting moves and at no other
@@ -126,6 +128,28 @@ are therefore the nearest of the 256 terminal indices rather than the scheme's e
 **lazygit** has no include, no import and no separate theme file: its colours live inside the one
 `config.yml` you edit, so `kdos theme` does not write them at all. Writing them would mean owning
 that file and discarding whatever else you had put in it.
+
+## The boot menu and the splash
+
+**These two are root's, and `kdos theme` reaches them through `kdos-powerd`.** The boot menu lives
+in `limine.conf` on the ESP and the splash reads `/etc/kdos/accent`; neither is a file your account
+can write, and both are administration of the machine rather than of your session — which is the
+same argument that puts the timezone and the autologin account on that daemon.
+
+**Both apply on the next boot**, and the splash applies *partway* through it. The splash is started
+by the initramfs, before any root filesystem is mounted, so it comes up in the accent compiled into
+it and `rcS` tells it the machine's real one as soon as `/etc` can be read. On a machine whose
+accent has never been changed those are the same scheme and nothing is visible at all.
+
+**A machine with no writable ESP skips the boot menu and says so.** The live medium is read-only,
+and a machine may have no `/boot/efi` at all. `kdos theme` reports `boot menu and splash unchanged`
+and applies everything else — refusing the whole change over a bootloader would be the wrong trade,
+since the desktop is the thing you are looking at.
+
+**What the bootloader cannot follow is the artwork.** Limine cannot retint a picture and a theme
+change must not write a PNG to a FAT filesystem that may be half-done when the power goes, so the
+backdrop behind the boot menu is achromatic by construction: one dimmed, hueless image that sits
+under every accent.
 
 ## The CRT pass
 

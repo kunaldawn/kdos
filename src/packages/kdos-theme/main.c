@@ -51,7 +51,7 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	const char *out = NULL, *src = NULL, *marks = NULL, *accent = "phosphor";
+	const char *out = NULL, *src = NULL, *marks = NULL, *accent = KCOL_DEFAULT_NAME;
 	int positional = 0;
 
 	for (int i = 2; i < argc; i++) {

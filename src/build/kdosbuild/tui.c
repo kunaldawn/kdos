@@ -196,8 +196,9 @@ static void draw_startup_frame(StartupView *v)
 	v->first_row = y;
 	for (int r = 0; r < nrow && y < ktui_h - 8; r++, y++, nshown++) {
 		int selrow = r == sel;
-		int fg = selrow ? KT_BG : KT_TEXT;
-		int bg = selrow ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(selrow, 1, KT_BG, &fg, &bg);
 		char text[256];
 		char size[32] = "", cm[72] = "", steps[32] = "", dur[32] = "";
 
@@ -498,8 +499,14 @@ static void draw_packages_frame(PackView *v)
 		const KbuildPkgRef *p = &st->pkg[match[off + i]];
 		int on = pick_has(st, p->name);
 		int selrow = off + i == sel;
-		int fg = selrow ? KT_BG : (on ? KT_WARN : KT_TEXT);
-		int bg = selrow ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(selrow, 1, KT_BG, &fg, &bg);
+		/* The enabled mark keeps its own colour off the fill and takes
+		 * the label's on it: KT_WARN on KT_DIM is below any reading
+		 * floor, and the mark is the column this list is FOR. */
+		if (on && !selrow)
+			fg = KT_WARN;
 		snprintf(line, sizeof(line), " %s %-28s %s",
 			 on ? "[x]" : "[ ]", p->name,
 			 p->phase[0] ? p->phase : "-");
@@ -661,8 +668,9 @@ static void draw_plan_frame(PlanView *v)
 	for (int i = 0; i < rows && off + i < nrow; i++) {
 		int pi = v->row[off + i].phase, si = v->row[off + i].step;
 		int selrow = off + i == sel;
-		int fg = selrow ? KT_BG : KT_TEXT;
-		int bg = selrow ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(selrow, 1, KT_BG, &fg, &bg);
 		char line[256];
 		int on = 0, nreb = 0;
 
@@ -1350,7 +1358,12 @@ static void draw_tree(BuildView *v)
 		BStep *n = v->visible[idx];
 		int y = g.content.y + i;
 		int sel = n == v->selected;
-		draw_tree_row(n, tr.x, y, width, sel ? KT_ACCENT : KT_BG, sel);
+		{
+			int rfg, rbg;
+
+			ktui_sel_slots(sel, 1, KT_BG, &rfg, &rbg);
+			draw_tree_row(n, tr.x, y, width, rbg, sel);
+		}
 	}
 
 	ktui_scrollbar(krect(tr.x + tr.w - 1, g.content.y, 1, g.content.h),

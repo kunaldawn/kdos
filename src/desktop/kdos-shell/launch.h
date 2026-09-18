@@ -49,6 +49,8 @@
 #ifndef SH_LAUNCH_H
 #define SH_LAUNCH_H
 
+#include <stddef.h>	/* size_t, for the box-name buffer below */
+
 /*
  * HOW MANY DOCUMENTS ONE LAUNCH CARRIES. The split writes the substituted
  * paths into a buffer sized for this many, and a buffer that will not hold
@@ -96,5 +98,26 @@ struct sh_launch {
  * document appended and none substituted.
  */
 int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles);
+
+/*
+ * IS THIS EXEC LINE THE BOX LAUNCHER, and which box does it name — apps.c's,
+ * and the only copy. The box-launcher test the Start menu marks its rows with
+ * is the test the "Open with" chooser marks its rows with, or the two surfaces
+ * disagree about which application costs a container start.
+ *
+ * `sh_exec_box` fills `box` with the `-b`/`--box` argument, or leaves it empty
+ * for a launcher that names none. `sh_exec_is_boxed` asks only the first half.
+ */
+int sh_exec_box(const char *exec, char *box, size_t cap);
+int sh_exec_is_boxed(const char *exec);
+
+/*
+ * IS THERE NOTHING BEHIND THAT BOX — 1 only where absence can be PROVED, so a
+ * machine that cannot answer keeps every row. Hiding an application somebody
+ * installed is a worse failure than showing one whose pack has gone, and every
+ * unknown resolves that way: an unnamed box, a name that is not an id, a
+ * machine with no pack store.
+ */
+int sh_box_missing(const char *box);
 
 #endif /* SH_LAUNCH_H */

@@ -652,8 +652,9 @@ static void draw_frame(void)
 		const struct pick_row *r = &rows[top + i];
 		int y = 1 + i;
 		int on = top + i == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
 		ktui_draw_textf(2, y, 4, on ? KT_SURFACE : KT_DIM, bg,
