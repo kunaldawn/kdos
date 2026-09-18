@@ -1276,195 +1276,186 @@ static Page page_system = {
 /* ════════════════════════════════════════════════════════════════════════
  * 8 · APPLICATIONS
  *
- * A page listing the packs on the medium with the recommended set already
- * ticked. Until it existed an install carried whatever the squashfs carried
- * and the applications stayed on the stick — which on a distro whose medium
- * IS the software library is the one thing an installer must not do.
+ * A page listing the application GROUPS this medium knows how to build, with
+ * `essential` already ticked. Nothing is baked onto the medium — what ships is
+ * a catalogue, and an application is built by podman on the installed machine.
  *
- * NOTHING IS WRITTEN HERE. Every tick sets a flag in `ki_pack[]`, exactly as
- * every other page fills `cfg` and only `cfg`; the copy happens in the install
+ * NOTHING IS WRITTEN HERE. Every tick sets a flag in `ki_group[]`, exactly as
+ * every other page fills `cfg` and only `cfg`; the work happens in the install
  * step, after the summary, which is this program's first design decision.
  *
- * The base and the runtimes are carried always and are drawn as facts rather
- * than as ticks nobody may clear: an application pack is a diff over a runtime
- * and a runtime is a diff over the base, so leaving one out installs
- * applications that cannot start.
+ * THE UNIT IS A GROUP, not an application. Seven named bundles is a thing to
+ * read during an install; 182 rows is not. An answer file may still name an
+ * application by id — `cat_expand` takes either.
+ *
+ * AND THE PAGE SAYS HOW THEY WILL ARRIVE. An exported set on a stick is
+ * offline and verified and wins; a network during the install is next; with
+ * neither, the selection is recorded and the first session offers it. A person
+ * must not discover at first boot that nothing was installed.
  * ════════════════════════════════════════════════════════════════════════ */
 
-static KtuiList packlist;
+static KtuiList applist;
 
-/* `cfg.packs` is the chosen set as one space-separated line: it is what the
- * answer file records, what `--dump plan` prints and what the install step
- * copies. Rebuilt from the ticks rather than maintained beside them, because
- * two representations of one choice is how they come apart. */
-static void packs_collect(void)
+/* `cfg.apps` is the chosen set as one space-separated line: it is what the
+ * answer file records and what `--dump plan` prints. Rebuilt from the ticks
+ * rather than maintained beside them, because two representations of one
+ * choice is how they come apart. */
+static void apps_collect(void)
 {
-	cfg.packs[0] = '\0';
-	for (int i = 0; i < ki_npack; i++) {
+	cfg.apps[0] = '\0';
+	for (int i = 0; i < ki_ngroup; i++) {
 		size_t l;
-		if (!ki_pack[i].chosen)
+
+		if (!ki_group[i].chosen)
 			continue;
-		if (strcmp(ki_pack[i].kind, "app") &&
-		    strcmp(ki_pack[i].kind, "data"))
-			continue;	/* carried always; not a choice */
-		l = strlen(cfg.packs);
-		snprintf(cfg.packs + l, sizeof(cfg.packs) - l, "%s%s",
-			 l ? " " : "", ki_pack[i].id);
+		l = strlen(cfg.apps);
+		snprintf(cfg.apps + l, sizeof(cfg.apps) - l, "%s%s",
+			 l ? " " : "", ki_group[i].id);
 	}
 }
 
-static void pack_row(int idx, int x, int y, int w, int selected, int focus,
-		     void *u)
+static void app_row(int idx, int x, int y, int w, int selected, int focus,
+		    void *u)
 {
 	(void)focus;
 	(void)u;
-	const KiPack *p = &ki_pack[idx];
-	/* base is carried whatever anybody thinks; a RUNTIME is carried
-	 * because something ticked needs it, which is a fact about the
-	 * selection rather than a choice of its own. Neither is togglable. */
-	int required = !strcmp(p->kind, "base");
-	int pulled = strcmp(p->kind, "app") && strcmp(p->kind, "data") &&
-		     !required;
+	const KiGroup *g = &ki_group[idx];
 	int fg = selected ? KT_BG : KT_TEXT;
 	int bg = selected ? KT_ACCENT : KT_BG;
-	char size[16];
-	int idw = 22, szw = 9;
-	int sumw = w - 4 - idw - szw;
+	char size[16], n[16];
+	int szw = 10, nw = 7;
+	int descw = w - 4 - szw - nw;
 
-	kb_strlcpy(size, kb_human_size(p->size), sizeof(size));
-	/*
-	 * `·` for a pack that is carried whatever anybody thinks, the tick
-	 * glyphs for one that is a choice. Both are in the 512-glyph console
-	 * font, which is where this has to read.
-	 */
-	ktui_draw_text(x + 1, y, 2,
-		       required	     ? ktui_glyph[KT_G_BULLET]
-		       : pulled	     ? (p->chosen ? ktui_glyph[KT_G_BULLET] : " ")
-		       : p->chosen   ? ktui_glyph[KT_G_FULL] : " ",
-		       selected ? fg
-		       : (required || pulled) ? KT_DIM : KT_ACCENT, bg, 0);
-	ktui_draw_text(x + 3, y, idw, p->id, fg, bg, 0);
-	if (sumw > 6)
-		ktui_draw_text(x + 3 + idw, y, sumw,
-			       p->summary[0] ? p->summary : p->kind,
-			       selected ? fg : KT_MID, bg, 0);
-	ktui_draw_text_right(x, y, w - 1, size, selected ? fg : KT_MID, bg, 0);
+	kb_strlcpy(size, kb_human_size(g->bytes), sizeof(size));
+	snprintf(n, sizeof(n), "%d", g->napp);
+
+	/* The tick glyph out of the tier table, never a literal: a mark
+	 * written into a format string draws as `?` wherever UTF-8 does not
+	 * reach, and this page is read on the console font. */
+	ktui_draw_text(x + 1, y, 2, g->chosen ? ktui_glyph[KT_G_FULL] : " ",
+		       selected ? fg : KT_ACCENT, bg, 0);
+	ktui_draw_text(x + 4, y, descw, g->desc[0] ? g->desc : g->id, fg, bg, 0);
+	ktui_draw_text(x + 4 + descw, y, nw, n, selected ? fg : KT_DIM, bg, 0);
+	ktui_draw_text(x + 4 + descw + nw, y, szw, size,
+		       selected ? fg : KT_MID, bg, 0);
 }
 
-void ki_packs_enter(void)
+void ki_apps_enter(void)
 {
-	probe_packs();
+	probe_apps();
+	if (!ki_apps_present)
+		return;
+
 	/*
-	 * AN ANSWER FILE NAMING AN UNKNOWN ID FALLS BACK TO THE RECOMMENDED
-	 * SET rather than failing. It is read after the point of no return is
-	 * decided and before it is crossed, and an unattended install that
-	 * refused here would leave a machine with no operating system on it
-	 * over the spelling of one application.
+	 * THE ANSWER FILE WINS WHERE IT NAMED SOMETHING, and `essential` is
+	 * the default where it did not. An unknown name falls the whole
+	 * selection back to `essential` rather than refusing: this runs before
+	 * the point of no return, and refusing there would leave a machine
+	 * with no operating system on it over one misspelling.
 	 */
-	if (!cfg.packs[0] || !ki_npack) {
-		packs_collect();
+	if (!cfg.apps[0]) {
+		for (int i = 0; i < ki_ngroup; i++)
+			ki_group[i].chosen = !strcmp(ki_group[i].id,
+						     "essential");
+		apps_collect();
 		return;
 	}
-	for (int i = 0; i < ki_npack; i++)
-		if (!strcmp(ki_pack[i].kind, "app") ||
-		    !strcmp(ki_pack[i].kind, "data"))
-			ki_pack[i].chosen = 0;
-	for (char *tok = strtok(cfg.packs, " "); tok; tok = strtok(NULL, " ")) {
-		int hit = 0;
-		for (int i = 0; i < ki_npack; i++)
-			if (!strcmp(ki_pack[i].id, tok)) {
-				ki_pack[i].chosen = 1;
-				hit = 1;
-			}
-		if (!hit) {
-			for (int i = 0; i < ki_npack; i++)
-				ki_pack[i].chosen =
-					!strcmp(ki_pack[i].kind, "base") ||
-					ki_pack[i].recommended;
-			break;
+	for (int i = 0; i < ki_ngroup; i++)
+		ki_group[i].chosen = 0;
+	{
+		char want[1024];
+		char *tok, *save;
+		int matched = 0, asked = 0;
+
+		kb_strlcpy(want, cfg.apps, sizeof(want));
+		for (tok = strtok_r(want, " ", &save); tok;
+		     tok = strtok_r(NULL, " ", &save)) {
+			asked++;
+			for (int i = 0; i < ki_ngroup; i++)
+				if (!strcmp(ki_group[i].id, tok)) {
+					ki_group[i].chosen = 1;
+					matched++;
+					break;
+				}
 		}
+		if (asked && !matched)
+			for (int i = 0; i < ki_ngroup; i++)
+				ki_group[i].chosen =
+					!strcmp(ki_group[i].id, "essential");
 	}
-	/* An answer file names APPLICATIONS; the runtimes under them are not
-	 * its business and are pulled in here. */
-	ki_packs_close();
-	/* strtok chewed it; rebuild it from what was actually chosen so the
-	 * summary, the dump and `--save` all report the same set. */
-	packs_collect();
+	apps_collect();
 }
 
-static void packs_draw(KRect b)
+static void apps_draw(KRect b)
 {
 	int y = b.y;
-	char v[192];
+	char v[256];
+	static const char *const ROUTE[] = {
+		"nothing ticked",
+		"from the set on the stick — offline, and verified where it mounts",
+		"built during the install, over the network",
+		"recorded; the first session offers them",
+	};
 
-	ktui_section(b.x, y, b.w, "APPLICATIONS ON THE MEDIUM");
+	ktui_section(b.x, y, b.w, "APPLICATIONS");
 	y++;
 
-	if (!ki_packs_present) {
+	if (!ki_apps_present) {
 		y += ktui_para(b.x, y, b.w,
-			  "This medium carries no pack index, so the "
-			  "applications are whatever the system image carries. "
-			  "That is the monolithic alien-app library on the "
-			  "previous page.", KT_MID);
+			  "This medium carries no application catalogue, so "
+			  "nothing can be chosen here. Applications are "
+			  "installed later with the store.", KT_MID);
 		return;
 	}
-	if (!ki_npack) {
+	if (!ki_ngroup) {
 		y += ktui_para(b.x, y, b.w,
-			  "The medium has an index and no packs in it.", KT_WARN);
+			  "The catalogue has no groups in it.", KT_WARN);
 		return;
 	}
 
 	y += ktui_para(b.x, y, b.w,
-		  "An application is one signed file, and installing it is a "
-		  "mount. Space toggles one; the base and the runtimes under "
-		  "them are carried always.", KT_MID);
-	if (ki_packs_dropped) {
-		snprintf(v, sizeof(v),
-			 "%d pack(s) on this medium are not on this list — it "
-			 "holds %d and the index is longer. An answer file "
-			 "naming one of them installs the recommended set "
-			 "instead.", ki_packs_dropped, MAX_PACKS);
-		y += ktui_para(b.x, y, b.w, v, KT_WARN);
-	}
+		  "An application is built here by podman, out of the "
+		  "catalogue. Space toggles a group; the runtimes under them "
+		  "come with whatever needs one.", KT_MID);
 	y++;
 
-	int lh = b.y + b.h - y - 3;
+	int lh = b.y + b.h - y - 4;
 	if (lh < 3)
 		lh = 3;
 	/*
 	 * THE WIDGET'S OWN RETURN VALUE, not a page-level key handler. Enter,
 	 * Space and a CLICK all come back through it, so the row answers the
-	 * pointer — which a `case ' '` in the page's event hook would not, and
-	 * a table of checkboxes nobody can click is the defect the whole "every
-	 * control answers the pointer" rule exists for.
+	 * pointer — which a `case ' '` in the page's event hook would not.
 	 */
-	if (ktui_list(krect(b.x, y, b.w, lh), &packlist, ki_npack, pack_row,
+	if (ktui_list(krect(b.x, y, b.w, lh), &applist, ki_ngroup, app_row,
 		      NULL, ktui_id())) {
-		int i = packlist.sel;
-		if (i >= 0 && i < ki_npack &&
-		    (!strcmp(ki_pack[i].kind, "app") ||
-		     !strcmp(ki_pack[i].kind, "data"))) {
-			ki_pack[i].chosen = !ki_pack[i].chosen;
-			ki_packs_close();
-			packs_collect();
+		int i = applist.sel;
+
+		if (i >= 0 && i < ki_ngroup) {
+			ki_group[i].chosen = !ki_group[i].chosen;
+			apps_collect();
 		}
 	}
 	y += lh;
 
 	/*
-	 * WHAT IT COSTS, on the page where it is being chosen. The disk page
-	 * already reports the payload; adding the number here rather than only
-	 * on the summary is what lets somebody stop before ticking 3 GB of
-	 * applications onto a 16 GB stick.
+	 * WHAT IT COSTS AND HOW IT ARRIVES, on the page where it is chosen.
+	 * The route matters more than the number: a person who ticks four
+	 * groups on a machine with no network and no stick has chosen a first
+	 * boot that offers them, and finding that out here rather than then is
+	 * the whole point of putting it on the screen.
 	 */
-	snprintf(v, sizeof(v), "%s in %d pack%s", kb_human_size(ki_packs_bytes()),
-		 ki_npack, ki_npack == 1 ? "" : "s");
+	snprintf(v, sizeof(v), "%s in %d group%s (an estimate)",
+		 kb_human_size(ki_apps_bytes()),
+		 ki_ngroup, ki_ngroup == 1 ? "" : "s");
 	ktui_kv(b.x, y + 1, b.w, "selected", v, KT_TEXT);
+	ktui_kv(b.x, y + 2, b.w, "how", ROUTE[ki_apps_route()],
+		ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
 }
 
-static Page page_packs = {
-	"packs", "Applications", "which packs the medium carries over",
-	ki_packs_enter, packs_draw, NULL, NULL, 0
+static Page page_apps = {
+	"apps", "Applications", "which applications this machine builds",
+	ki_apps_enter, apps_draw, NULL, NULL, 0
 };
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1494,16 +1485,24 @@ static void summary_draw(KRect b)
 	ktui_kv(b.x, y++, b.w, "alien apps",
 	      cfg.with_appbox ? "installed" : "left out",
 	      cfg.with_appbox ? KT_TEXT : KT_WARN);
-	if (ki_packs_present) {
-		int napp = 0;
-		for (int i = 0; i < ki_npack; i++)
-			if (ki_pack[i].chosen &&
-			    (!strcmp(ki_pack[i].kind, "app") ||
-			     !strcmp(ki_pack[i].kind, "data")))
-				napp++;
-		snprintf(v, sizeof(v), "%d selected, %s", napp,
-			 kb_human_size(ki_packs_bytes()));
-		ktui_kv(b.x, y++, b.w, "packs", v, KT_TEXT);
+	if (ki_apps_present) {
+		static const char *const HOW[] = { "nothing chosen",
+						   "from the stick",
+						   "over the network",
+						   "at first login" };
+		int ngrp = 0, napp = 0;
+
+		for (int i = 0; i < ki_ngroup; i++)
+			if (ki_group[i].chosen) {
+				ngrp++;
+				napp += ki_group[i].napp;
+			}
+		snprintf(v, sizeof(v), "%d group%s, %d apps, ~%s %s", ngrp,
+			 ngrp == 1 ? "" : "s", napp,
+			 kb_human_size(ki_apps_bytes()),
+			 HOW[ki_apps_route()]);
+		ktui_kv(b.x, y++, b.w, "applications", v,
+			ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
 	}
 
 	char svc[160] = "";
@@ -1838,7 +1837,7 @@ static Page page_done = {
 
 Page *ki_pages[] = {
 	&page_welcome, &page_keyboard, &page_time, &page_disk, &page_layout,
-	&page_accounts, &page_system, &page_packs, &page_summary, &page_install,
+	&page_accounts, &page_system, &page_apps, &page_summary, &page_install,
 	&page_done,
 };
 

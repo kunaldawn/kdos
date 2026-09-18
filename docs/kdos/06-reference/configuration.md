@@ -768,19 +768,6 @@ job deleting somebody's rollback while they were deciding whether to use it.
 
 Applies at **next start** of the daemon.
 
-## `/etc/kdos/pack-sources`
-
-Where application updates are looked for: **one directory per line**. A source is a directory with
-a pack index in it — a second stick, a mounted share, a directory somebody copied a repository
-into. The medium is always consulted and needs no line.
-
-**A URL is never written here, and there is no line to uncomment that makes the machine reach the
-network.** That is `kdos app update --online <url>`, an argument given each time, so it is visible
-at the moment it is used.
-
-**Nothing here is trusted**: every pack is hashed and verified where it is mounted, so a source can
-offer a file and still not get it installed.
-
 ## `/etc/kdos/zram.conf`
 
 | Key | Default | Means |

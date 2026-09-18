@@ -161,7 +161,7 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-style"
 ln -s kdos-shell "$PKG/usr/bin/kdos-calc"
 # The character map. The index it searches is built HERE, once, by a program
 # that links ICU — kdos-shell does not and must not: ICU is thirty megabytes
-# of library and data, and every one of the thirty surfaces this binary is
+# of library and data, and every one of the surfaces this binary is
 # would carry it. The names do not change between builds of an image.
 ln -s kdos-shell "$PKG/usr/bin/kdos-chars"
 # Sidekick's fifth accessory dialed a modem; its descendant is a lookup. The
@@ -191,6 +191,11 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-users"
 # check --json` and `kdos cve --json` already answer, and a surface that
 # re-derived a version comparison would be a second answer that drifts.
 ln -s kdos-shell "$PKG/usr/bin/kdos-update"
+# What this machine can build, and one tick to build it. It builds nothing
+# itself: every install is `kdos-appbox install` in a terminal, so the surface
+# and the command line cannot disagree about what installing means, and a
+# twenty-minute apt run is not hidden behind a window that cannot be resized.
+ln -s kdos-shell "$PKG/usr/bin/kdos-store"
 # Which services answer the network. It carries no table of ports: a client
 # that could name a port could open any port, so kdos-powerd owns the names
 # and this asks for them.

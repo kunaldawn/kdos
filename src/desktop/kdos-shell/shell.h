@@ -356,6 +356,7 @@ int print_main(int argc, char **argv);		/* kdos-print    */
 int timezone_main(int argc, char **argv);	/* kdos-time     */
 int users_main(int argc, char **argv);		/* kdos-users    */
 int update_main(int argc, char **argv);		/* kdos-update   */
+int store_main(int argc, char **argv);		/* kdos-store    */
 int firewall_main(int argc, char **argv);	/* kdos-firewall */
 int backup_main(int argc, char **argv);		/* kdos-backup   */
 int note_main(int argc, char **argv);		/* kdos-note     */

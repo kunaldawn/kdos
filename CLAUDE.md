@@ -24,7 +24,7 @@ Read the map below before touching anything.
 | **Drawing anything** — colour, chrome, the pointer contract, glyph tiers | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
 | The compositor and its grafts | [`04-programs/kdos-comp.md`](docs/kdos/04-programs/kdos-comp.md) |
 | The console desktop, its two sockets, the greeter | [`04-programs/kdos-con.md`](docs/kdos/04-programs/kdos-con.md) |
-| The panel and its 29 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
+| The panel and its 51 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
 | The resource monitor | [`04-programs/kdos-res.md`](docs/kdos/04-programs/kdos-res.md) |
 | The terminal, its keys and clipboards, and pictures in one | [`04-programs/kdos-term.md`](docs/kdos/04-programs/kdos-term.md) |
 | A graphical application on the console, and the kiosk that holds it | [`04-programs/kdos-cage.md`](docs/kdos/04-programs/kdos-cage.md) |
@@ -151,7 +151,6 @@ State the rule and its consequence. Never the story. See hard rule 2.
 ## Build and iteration
 
 ```sh
-make bootstrap                                   # fetch sources — network, once
 make build                                       # everything — no network
 make build BUILD_ARGS=--fresh                    # skip the picker
 make build BUILD_ARGS="--continue-from 04_phase4"

@@ -198,6 +198,135 @@ int cmd_open(int argc, char **argv);
 /* `kdos-box` — a second name on this binary, basename-dispatched. */
 int box_main(int argc, char **argv);
 
+/* ----------------------------------------------------------- catalogue.c */
+
+/*
+ * The catalogue: every application this system knows how to build, as a parent
+ * chain of apt packages. Shipped at CAT_PATH and read by the store surface,
+ * kinstall and `kdos app` alike — there is no second copy.
+ */
+#define CAT_PATH       "/usr/share/kdos/appstore/catalogue"
+#define CAT_ID_MAX     64
+#define CAT_MAX_PACKS  512
+#define CAT_MAX_GROUPS 32
+/* A chain is base -> runtime -> runtime -> app; sixteen is four times the
+ * deepest the catalogue has and bounds a file that names a parent loop. */
+#define CAT_CHAIN_MAX  16
+
+typedef struct {
+	char id[CAT_ID_MAX];
+	char kind[8];			/* base | runtime | app | data       */
+	char parent[CAT_ID_MAX];	/* "" for a base                     */
+	char image[256];		/* a base's own ref, else ""         */
+	char name[128];			/* meta, else the id                 */
+	char category[32];		/* meta, else "Other"                */
+	char tagline[192];
+	unsigned long long bytes;	/* meta: an installed-size ESTIMATE  */
+	char *packages;			/* space-separated, "" when none     */
+} CatPack;
+
+typedef struct {
+	char id[CAT_ID_MAX];
+	char desc[128];
+	char members[CAT_MAX_PACKS][CAT_ID_MAX];
+	int  nmember;
+} CatGroup;
+
+/* `path` NULL means $KDOS_CATALOGUE, else CAT_PATH. The override is what the
+ * fixture test sets and is the only reason it exists. */
+int  cat_load(const char *path, char *err, size_t errn);
+void cat_free(void);
+
+int  cat_count(void);
+const CatPack  *cat_at(int i);
+const CatPack  *cat_find(const char *id);
+int  cat_ngroups(void);
+const CatGroup *cat_group_at(int i);
+const CatGroup *cat_group_find(const char *id);
+
+/* Walk `id` up to its base, BASE-FIRST because that is the build order — a
+ * runtime is built FROM its base, so the other order names an image that does
+ * not exist yet. -1 when a parent is missing or the chain is too long. */
+int cat_chain(const char *id, const CatPack *out[CAT_CHAIN_MAX]);
+
+/* The whole chain's env rows, base-first: a runtime's variable has to be set
+ * for an application that never declares one. */
+int cat_env(const char *id, char out[][256], int max);
+int cat_cmds(const char *id, char out[][64], int max);
+int cat_needs(const char *id, char out[][CAT_ID_MAX], int max);
+int cat_deb(const char *id, char *url, size_t un, char *pat, size_t pn);
+/* `box` selects boxgraft over graft. */
+int cat_grafts(const char *id, int box, char from[][256], char to[][256],
+	       int max);
+const char *cat_snapshot(void);
+/* The catalogue's own identity, for an exported set's provenance. */
+const char *cat_version(void);
+
+/* Expand ids, any of which may be a group, into app/data ids with duplicates
+ * removed — installing one twice is a second build of an image that exists.
+ * -1 with `err` filled when a name is neither. */
+int cat_expand(const char *const *ids, int n, char out[][CAT_ID_MAX], int max,
+	       char *err, size_t errn);
+
+/* One line per app for the surfaces, or `--groups`. */
+int cmd_catalogue(int argc, char **argv);
+
+/* The assertion helpers the two --selftest seams share. One copy, so a failure
+ * counts the same however it was reached. */
+extern int cat_fail;
+void cat_chk(int cond, const char *what);
+int  cat_selftest(void);
+
+/* --------------------------------------------------------------- store.c */
+
+/*
+ * Building an application out of the catalogue, on this machine.
+ *
+ * An image per catalogue row, each FROM the one below, so a runtime's layers
+ * are stored once however many applications sit on it.
+ */
+#define STORE_BASE_IMAGE "debian:trixie-slim"
+#define STORE_IMG_PREFIX "kdos/"
+/* An EMPTY build context. Nothing is COPY'd in, and handing podman a real
+ * directory makes it read and hash whatever is there for nothing. */
+#define STORE_EMPTY_CTX  "/var/empty"
+
+/* The Containerfile for one row. Pure — no network, no podman, no filesystem —
+ * which is why it is the seam --selftest drives. -1 when it would not fit:
+ * half a Containerfile builds an image missing whatever the tail installs. */
+int store_containerfile(const CatPack *p, const CatPack *parent,
+			const char *snapshot, char *out, size_t n);
+
+/* `snapshot = auto` resolved against the base image, once per process. */
+const char *store_snapshot(void);
+
+int store_install(const char *id, int dry);
+int store_uninstall(const char *id);
+/* Over a list that may name groups. Returns how many failed; every outcome is
+ * printed as it happens and nothing rolls back. */
+int store_install_many(const char *const *ids, int n, int dry);
+int store_uninstall_many(const char *const *ids, int n);
+/* Regenerate the user's launchers, shims and mime cache from every store box.
+ * The pack walk cannot see one: a store box is an IMAGE and kdos-packd has
+ * never heard of it, so an application installed here would have no Start menu
+ * entry, no $PATH shim and no "Open with" row. Returns how many were read. */
+int store_launchers(void);
+
+/* A set, as signed packs in one file. Packs and not `podman save`: kdos-packd
+ * hashes and signature-checks a pack where it MOUNTS it, which is what makes
+ * an imported application verified where a store-installed one is not. */
+int store_export(const char *out, const char *const *ids, int n);
+/* The SELECTION manifest — flat and commentable, so a set can be diffed and
+ * hand-edited. A `group` line records what was picked; the id lines are what
+ * is installed. */
+int store_selection(const char *const *ids, int n, const char *catver,
+		    char *out, size_t outn);
+int store_selection_parse(const char *text, char out[][CAT_ID_MAX], int max);
+/* Stage each pack through kdos-packd — which verifies it where it MOUNTS it —
+ * and create a box per id. `n == 0` imports the whole SELECTION. */
+int store_import(const char *archive, const char *const *ids, int n);
+int store_selftest(void);
+
 /* ---------------------------------------------------------------- main.c */
 
 extern const char *g_box;

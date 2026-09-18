@@ -82,9 +82,10 @@ a failed check rather than a four-hour build that ends in an error.
 **The question.** Roughly 180 graphical applications have to reach the medium. Ship them as one
 container image, or as separate artefacts?
 
-**Chosen: one signed image per application, over a small set of shared runtimes.** An install
-carries only what was ticked. Installing an application disturbs nothing else, and a shared
-runtime's pages are shared because the pack is mounted once.
+**Chosen: one artefact per application, over a small set of shared runtimes** — an image per row
+when the store builds it, a signed pack per row when a set is exported. Installing an application
+disturbs nothing else, and a shared runtime's layers are stored once however many applications
+name it.
 
 **Rejected: a single container image.** It puts every application on every install whether or not
 it is ever launched, and it makes adding one application a rebuild of the whole thing.
@@ -147,32 +148,64 @@ Note what this does *not* reject: the KDE **applications** — Dolphin, Kate, Ok
 Digikam and the rest — are in the catalogue, because they are the best in their segments and none
 of them needs Plasma running. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
-## No application store
+## A store that builds, and a medium that carries nothing
 
-**The question.** Users need to find and install applications.
+**The question.** Roughly 180 graphical applications have to be reachable. Bake them onto the
+medium, or describe them and build them on demand?
 
-**Chosen: the Start menu lists what the medium already carries.** Every category shows the
-application packs the medium would put there under an `ON THE MEDIUM` rule, search matches them
-by name and summary, and a row is *open this* — the pack is installed if it is not, and the
-application opens. The click that installs is the click that opens.
+**Chosen: the medium carries a catalogue, and podman builds what somebody asks for.** A row is a
+parent chain of apt packages; installing it builds an image per row, each `FROM` the one below, and
+creates a box over the top one. The ISO stops carrying 23 GB of packs it may never be asked for,
+adding an application is one line rather than a bake, and the shared runtime layers are stored once.
+`kdos-store` and kinstall both offer it by **group**, so a selection is one tick rather than twelve.
 
-**Rejected: a store front end.** On a distribution whose medium *is* the software library, "where
-do I get this" is not a question anyone has. What remains is disposal, and that belongs where the
-readings already are.
+**Rejected: baking the pack set.** Every application on every medium whether or not it is ever
+launched, an hour of bake to add one row, and a release channel to push 23 GB through.
 
-## Release assets, not Git LFS
+**Three costs, and they are not small.**
 
-**The question.** The tarballs, the vendored bundles and the pack set are tens of gigabytes.
-Where do they live?
+1. **A store install is unsigned.** It fetches content from somebody else's registry, which
+   nothing in `/etc/kdos/keys` vouches for — `kdos-box create` prints exactly that about an OCI
+   base, and it is true of every application built this way. *Everything here is verified and
+   nothing leaves the machine* holds for an imported set and for nothing else.
+2. **Installing needs a network, and minutes of apt.**
+3. **A live session can install nothing.** `$HOME` is on overlayfs there, so a box's overlay upper
+   has nowhere to go and `kdos-box create` refuses. Import is the only route to software on a live
+   stick.
 
-**Chosen: GitHub release assets, with git holding only what identifies them.** Each artefact
-class already carries its own content-addressed index — `sha256 =` in a recipe, a content hash
-per pack in the signed `PACKAGES` — and no second manifest was added, because a second copy of a
-hash is a second thing to drift. `make bootstrap` fetches them.
+**Which is why import exists and why the pack format stays.** `kdos-appbox export` writes the
+built images as signed packs with an index; `import` stages them through `kdos-packd`, which hashes
+and signature-checks each one where it mounts it. An imported application is *more* verified than a
+store-installed one, needs no network, and is what kinstall reads off a stick when there is no
+network during an install. The pack format is how a *set is carried*, not how software is
+distributed.
 
-**Rejected: Git LFS.** A free account provides 10 GiB of storage and 10 GiB of monthly bandwidth,
-shared across every repository the account owns. The tarballs alone exceed that, and the pack set
-is 24 GB. Release assets have a per-file limit and no total-size or bandwidth limit.
+## The tarballs are in the tree, through Git LFS
+
+**The question.** The upstream tarballs are 7.1 GB across 962 files, seven of them over the
+100 MB a github.com push refuses. Where do they live?
+
+**Chosen: Git LFS, in the tree.** A clone is then the whole input to a build: `git clone` and
+`make build`, with no fetch step in between and nothing that can be missing. The `sha256 =` in
+each recipe is what verifies an archive, and a hash with nothing to hash is a promise nobody can
+check — so the thing git holds and the thing it identifies are in the same place.
+
+**What it costs, and it is not small.** A free account provides 10 GiB of storage and 10 GiB of
+monthly bandwidth, shared across every repository the account owns. 7.1 GB of that leaves under
+3 GiB of margin and a month's bandwidth is a handful of clones. Exceeding the allowance does not
+slow a clone down — it blocks LFS reads outright, taking the vendored art and the test fixtures
+with it, so a fresh clone cannot check out at all. **A paid data pack is what keeps this
+working.** `git lfs install` must also precede the clone, or the working tree holds pointer files
+and the first port to unpack one fails on a corrupt archive rather than on anything that names
+the cause.
+
+**Rejected: release assets.** Two GiB per file, no total-size or bandwidth limit, and no quota to
+buy — but a clone is then not enough to build, and the step that closes the gap is one more thing
+to have run. The reproducibility argument won: what identifies an archive and the archive itself
+belong together.
+
+**Rejected: plain git blobs.** Seven files are over the 100 MB github.com refuses on a push, so
+this does not work at all on the stated remote.
 
 **Two properties that make this survivable.** The hash is the identity and the URL is advisory,
 so a mirror can be added in ten years without invalidating a commit — a commit names contents

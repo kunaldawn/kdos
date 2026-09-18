@@ -32,7 +32,6 @@ KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 
 fetch:
 	bash ports/fetch
-	@test -d ports/appbox/packs || echo "hint: 'make fetch-packs' bakes the application packs (needs network + docker/podman)"
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
 # release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
@@ -44,47 +43,6 @@ fetch:
 # fail the target.
 updates:
 	@ports/update $(PORTUP_ARGS); rc=$$?; [ $$rc -le 1 ] || exit $$rc
-
-# Build the PACK SET on the host and stash it for the (network-less) ISO build
-# to place on the medium. An application is one signed EROFS image with a KDOS
-# footer on the end; the runtimes underneath are shared, so editing one
-# application rewrites one file rather than a 485 MB blob.
-#
-# Runs entirely inside a container: podman, mkfs.erofs, python3 and a compiler
-# are all in the image, so nothing is installed on this machine and there is no
-# sudo prompt. Root is still required — mkfs.erofs preserves the overlay
-# whiteouts and the trusted.overlay xattrs only as root, and podman's store
-# only writes real ones as root — and a rootful docker daemon supplies it. The
-# packs are chowned back to the caller. See ports/appbox/bake.
-# Pack the upstream archive into immutable packfiles and upload the ones the
-# release does not have. Append-only: a published packfile is never rebuilt, so
-# new tarballs accumulate into the next one and an old commit keeps finding the
-# bytes it was written against. Needs a token with Contents: read+write.
-publish-sources:
-	ports/sources pack
-	ports/sources publish
-
-# What a developer runs after cloning: pull the upstream archive the tree needs
-# and extract it into ports/core. Only the packfiles holding files you are
-# missing are downloaded, each is checked against the sha256 in the manifest
-# before it is unpacked, and every archive inside is then verified again
-# against the `sha256 =` in its own recipe.
-bootstrap:
-	ports/sources fetch
-
-# The baked pack set, from the newest packs-* release (or PACKS_TAG=packs-…):
-# what a clone runs instead of `make fetch-packs` when it has no podman, or
-# no hour, or wants exactly the set a published ISO carried.
-bootstrap-packs:
-	ports/sources fetch-packs $(PACKS_TAG)
-
-# What this machine runs to publish: the sources it added and the packs it
-# baked. Both need a token in ~/.config/kdos/gh-token (mode 600).
-publish-packs:
-	ports/sources packs $(PACKS_TAG)
-
-fetch-packs:
-	bash ports/appbox/bake
 
 # Rewriting the ISO while a VM boots from it corrupts that VM: QEMU reads the
 # image lazily, so every block the guest has not cached yet turns into an I/O
@@ -182,4 +140,4 @@ clean:
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true
 
-.PHONY: fetch-packs publish-sources bootstrap bootstrap-packs publish-packs all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates

@@ -13,10 +13,6 @@
 /build/
 /build_test/
 
-# Host-built alien-app archive (make fetch-apps). The tar itself is too big
-# for LFS's 2G/file limit; its chunked form (ports/appbox/image/) and the
-# icons ARE committed — the repo alone must be able to build the full ISO.
-ports/appbox/appbox.tar
 # Host-built recipe reader (ports/fetch compiles it to read kpkgbuild files,
 # which are no longer shell and cannot be sourced). Its basename must be
 # literally "kpkg" for kdos-kpkg's own basename dispatch to resolve it, hence
@@ -51,22 +47,6 @@ testing/test_results.json
 docs/*
 !docs/screenshots/
 !docs/kdos/
-
-# ── the artefacts that live in releases, not in git ────────────────────────
-#
-# Git LFS on a free account is 10 GiB of storage and 10 GiB a month of
-# bandwidth, shared across the whole account; release assets are 2 GiB per file
-# with no cap on total size or bandwidth. The tarballs are 3.5 GB and the pack
-# set 7.2 GB, so one channel cannot hold them and the other does not care.
-#
-# WHAT IS IN GIT IS WHAT IDENTIFIES THEM: every tarball's `sha256 =` in its
-# recipe, ports/sources.manifest naming each packfile and its members, and each
-# pack's `C:` in PACKAGES. `make bootstrap` reconstructs the tree from those.
-ports/core/*/*.tar.*
-ports/core/*/*.tgz
-ports/core/*/*.zip
-ports/appbox/image/
-ports/appbox/packs/
 
 # The mobile build root. Firmware blobs land under it and are never committed.
 build-mobile/

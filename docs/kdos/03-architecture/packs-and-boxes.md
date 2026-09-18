@@ -1,10 +1,22 @@
 # Packs and boxes
 
-The packaging system for applications: what a pack is, how one is built and verified, how it is
-mounted and composed into a container, and how the applications in it reach the desktop. This is
-a separate system from [host packaging](packaging.md) because it answers a different question —
-not "what is installed on this machine" but "what software is on this medium and how do I run a
-piece of it without installing anything".
+The packaging system for applications: how one is built from the catalogue, what a pack is, how a
+pack is verified and mounted, and how either kind of box reaches the desktop. This is a separate
+system from [host packaging](packaging.md) because it answers a different question — not "what is
+installed on this machine" but "what software can this machine run, and how do I get a piece of it
+without installing anything into the system".
+
+**Two lanes reach the same box.** The store builds a stack of container images from the catalogue
+and creates a box `FROM` the top one; an imported set installs signed packs and composes a box out
+of an overlay of them. The lanes differ in where the bytes came from and what vouches for them —
+everything from the container root upward is identical.
+
+| | Store | Import |
+|---|---|---|
+| Source | Debian archive, over the network | A `.ktar` somebody handed you |
+| Verified by | Nothing — unsigned registry content | Payload hash and signature, at the mount |
+| Costs | Minutes of apt | A copy |
+| Box base | `image:kdos/<id>` | `pack:<id>` |
 
 ## A pack is an image with parts appended
 
@@ -136,7 +148,8 @@ not exist.
 
 ## Baking the catalogue
 
-`ports/appbox/packs.conf` defines the catalogue. Row types:
+`src/packages/kdos-appbox/catalogue` defines it, and ships to
+`/usr/share/kdos/appstore/catalogue`. Row types:
 
 | Row | Declares |
 |---|---|
@@ -144,12 +157,31 @@ not exist.
 | `runtime` | A layer over the base, shared by many applications |
 | `app` | One application, as a difference over a runtime |
 | `data` | A dataset, mounted but never composed into a container |
-| `cmd` | A command a pack provides that has no graphical launcher |
-| `env` | An environment variable a pack or runtime needs |
-| `needs` | A data pack an application is useless without |
-| `graft`, `boxgraft` | Where a data pack's contents should appear |
+| `cmd` | A command a row provides that has no graphical launcher |
+| `env` | An environment variable a row or runtime needs |
+| `deb` | An application Debian does not carry, by releases URL and asset pattern |
+| `needs` | A data row an application is useless without |
+| `graft`, `boxgraft` | Where a data row's contents should appear |
 | `image` | A base that names its own container image |
-| `recommended` | The set an installer ticks by default |
+| `group` | A curated bundle the store and the installer offer as one tick |
+| `meta` | Display name, category, size estimate and tagline |
+| `snapshot` | Which Debian archive date the packages come from |
+
+**A row's parent must appear above it.** The resolver walks a chain upward in
+one pass, so a forward reference is a chain it cannot close — reordering the
+file makes an install fail naming the missing parent.
+
+**A group is not a category.** The category is the application's own, out of
+its desktop entry, and every application has exactly one. A group is curated,
+most applications are in none, and a member that is not an `app` or `data` row
+is an install refused by name.
+
+**`meta` is optional and its absence is not an error.** A row without one
+presents as its own id, category `Other`, no tagline and size 0. A row added
+today has no `meta` until somebody writes one, and refusing to load would make
+adding software a two-file change for no benefit. The size is an **estimate**
+and every surface labels it one: what apt resolves on the day depends on the
+snapshot.
 
 The bake runs entirely inside a container carrying the container engine, the filesystem tool, a
 compiler and Python — so a clone needs no privileged tools installed and there is no password
@@ -243,8 +275,12 @@ restarted while boxes are running and one that forgot would unmount a live box's
 
 ## Composition
 
-An application's container root is an overlay of: the base, the runtime it needs, the application
-pack, and a writable upper layer.
+**A store-built box has nothing to compose.** Its root is a container image the machine built, so
+the engine assembles the layers itself and the pack daemon is not involved at all. Everything
+below is the import lane.
+
+An imported application's container root is an overlay of: the base, the runtime it needs, the
+application pack, and a writable upper layer.
 
 **One box per application**, named after the pack. The alternative — one box composing every
 installed application — hits two walls at once: an overlay cannot gain a layer while it is

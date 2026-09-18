@@ -4152,7 +4152,7 @@ static void check_packs(void)
 			      "status`");
 		} else {
 			skip_("no packs installed and no kdos-packd — this "
-			      "machine runs the monolithic appbox image");
+			      "machine has no application catalogue");
 		}
 	}
 

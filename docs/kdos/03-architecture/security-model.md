@@ -318,7 +318,7 @@ Two keyrings, and their separation is **structural rather than a convention**:
 | Directory | Attests | Used for |
 |---|---|---|
 | `/etc/kdos/keys` | Who built a host package | The binary host index and package sidecars |
-| `/etc/kdos/keys/packs` | Which bake an application image came from | The pack index |
+| `/etc/kdos/keys/packs` | Who exported an application pack | The pack index |
 
 The keyring loader reads `*.pub` in a directory and **does not descend**, so the two are genuinely
 different policies. A pack-signing key placed in the host directory would silently become a
@@ -330,6 +330,34 @@ the signature line, and verification tries every key in the directory and nothin
 what a tool reports is the key that verified, not the id the line claimed.
 
 The rest of the signing design is in [Packaging](packaging.md).
+
+### An application is verified or it is not, and which one is knowable
+
+The two ways an application arrives have **different guarantees, and neither is
+hidden**:
+
+| | Store install | Import |
+|---|---|---|
+| Bytes come from | Debian's archive, over the network | A `.ktar` somebody handed you |
+| Signed by | nothing in `/etc/kdos/keys` | a key in `/etc/kdos/keys/packs`, when the exporter had one |
+| Checked at | nothing checks it | `kdos-packd`, at the mount: payload hash, then signature |
+| Needs a network | yes | no |
+
+**A store install fetches unsigned content from somebody else's registry.**
+`kdos-box create` prints exactly that for an OCI base and it is true of every
+application built this way. What apt itself verifies still holds — the archive's
+own GPG signature, over a pinned snapshot — but nothing this system controls
+attests to the result, and the image is not signed afterwards.
+
+**An imported pack is checked where it is mounted, not where it is chosen.** A
+client that verified a pack and then asked for a mount would have verified
+nothing; `kdos-packd` hashes the payload and checks the signature itself, at the
+moment it mounts, which is why import is safe over a channel that is not.
+
+**An unsigned export is still hash-checked and says it is unsigned.** The index
+records a payload hash per pack whether or not a key was available, so a
+tampered member fails at the mount either way. What the signature adds is *who*,
+and an export with no key prints that it added nothing.
 
 ## Untrusted image bytes
 

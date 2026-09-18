@@ -163,7 +163,7 @@ for id in $ids; do
     # `kdos app install` regenerated the USER tree (G1); the shim is there.
     # A PACK MAY SHIP MORE THAN ONE APPLICATION, so take the launcher whose
     # NAME matches the pack rather than whichever sorted first: `app.thunderbird`
-    # is `thunderbird claws-mail` in packs.conf, and the first row tested
+    # is `thunderbird claws-mail` in the catalogue, and the first row tested
     # claws-mail while the result was recorded against thunderbird. LibreOffice
     # ships eight. Falls back to the first row when nothing matches, which is
     # right for a pack whose one application is named differently from it.

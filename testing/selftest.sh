@@ -136,14 +136,57 @@ fi
 
 echo
 echo "==> every consumer still compiles against the libraries"
-$CC $STD $WARN $INC -Isrc/packages/kdos-installer -o "$OUT/kinstall" \
-    src/packages/kdos-installer/*.c src/libs/libkbase/*.c \
+# kinstall compiles catalogue.c IN — the Applications page reads the catalogue
+# rather than running kdos-appbox, because a live installer cannot assume
+# anything is on $PATH in the target it is building.
+$CC $STD $WARN $INC -Isrc/packages/kdos-installer -Isrc/packages/kdos-appbox \
+    -o "$OUT/kinstall" \
+    src/packages/kdos-installer/*.c src/packages/kdos-appbox/catalogue.c \
+    src/libs/libkbase/*.c \
     src/libs/libktui/*.c src/libs/libkcolor/*.c -lcrypt
 echo "  kinstall"
+# The plan resolves over the SHIPPED catalogue, and the two renderings agree.
+# A disagreement between the text dump and the JSON is what makes a dump
+# untrustworthy, and it is the one thing an installer's dumps must not be.
+KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kinstall" \
+    --dump plan >/dev/null
+KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kinstall" \
+    --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
+assert d["apps"], "the plan chose no applications"
+assert d["apps_bytes"] > 0, "the chosen set costs nothing"
+assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]'
+echo "  kinstall plan"
 $CC $STD $WARN $INC -Isrc/packages/kdos-appbox -o "$OUT/kdos-appbox" \
     src/packages/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
 echo "  kdos-appbox"
+# The catalogue parser, against a fixture AND against the shipped file. The
+# fixture pins the rules — base-first chains, the meta fallback, an expand that
+# dedupes; the real catalogue is what a surface will actually read, and a row
+# added by hand that the parser rejects is a store that opens empty with no
+# error on the screen.
+KDOS_CATALOGUE=testing/fixtures/catalogue/catalogue "$OUT/kdos-appbox" \
+    catalogue --selftest
+KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+    catalogue >/dev/null
+KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+    catalogue --groups >/dev/null
+echo "  catalogue"
+# The Containerfile generator. podman is not here and never will be, so what is
+# under test is the one part that is pure — and it is the part that matters: a
+# missing snapshot pin is an unreproducible image, a missing
+# `dpkg --add-architecture i386` is `wine32 has no installation candidate`
+# naming the package rather than the architecture, and an apt RUN emitted
+# against a row with no packages is `apt-get: not found` on an alpine rootfs.
+KDOS_CATALOGUE=testing/fixtures/catalogue/catalogue "$OUT/kdos-appbox" \
+    store --selftest
+# And the chain resolves over the SHIPPED catalogue, with the snapshot pinned
+# so the generator takes its longest path rather than the `off` short one.
+sed 's/^snapshot = auto/snapshot = 20260824T000000Z/' \
+    src/packages/kdos-appbox/catalogue > "$OUT/catalogue-pinned"
+KDOS_CATALOGUE="$OUT/catalogue-pinned" "$OUT/kdos-appbox" \
+    install essential --dry-run >/dev/null
+echo "  store"
 $CC $STD $WARN $INC -Isrc/packages/kdos-theme -o "$OUT/kdos-theme" \
     src/packages/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 echo "  kdos-theme"
@@ -5292,130 +5335,70 @@ grep -q '^luks  *= *1' "$OUT/saved.conf" \
 "$KI" --dump bogus >/dev/null 2>&1 && { echo "  --dump took a bad subject"; exit 1; }
 echo "  no secret reaches a dump or the answer file it writes"
 
-# ── the packs page reads the FLAT index ─────────────────────────────────────
+# ── the Applications page reads the CATALOGUE ───────────────────────────────
 # kinstall links libkbase, libktui and libkcolor and nothing else, which is what
-# lets it live in phase 1 — so it reads `PACKAGES` itself and `R:`/`T:` are in
-# that file for this reader. The three answers that matter: the recommended set
-# is preselected, an answer file's choice wins, and an UNKNOWN id falls back to
-# the recommended set rather than failing after the point of no return.
-mkdir -p "$OUT/medium"
-cat > "$OUT/medium/PACKAGES" <<'PKGS'
-P:app.gimp
-V:3.0.4-1
-A:x86_64
-K:app
-S:96468992
-C:1111111111111111111111111111111111111111111111111111111111111111
-F:app.gimp.kpack
-D:rt-gtk
-R:yes
-T:Create images and edit photographs
+# lets it live in phase 1 — so catalogue.c is compiled IN rather than shelled
+# out to, and this asserts the four answers that decide what an install carries:
+# `essential` is preselected, an answer file's choice wins, an UNKNOWN id falls
+# back rather than failing after the point of no return, and the page says which
+# ROUTE the applications will take.
+mkdir -p "$OUT/cat"
+cat > "$OUT/cat/catalogue" <<'CAT'
+snapshot = 20260824T000000Z
+base    base    -      bash curl
+runtime rt-gtk  base   libgtk-3-0t64
+runtime rt-qt   base   libqt6widgets6
+app     app.gimp   rt-gtk  gimp
+app     app.krita  rt-qt   krita
+app     app.meld   rt-gtk  meld
 
-P:app.krita
-V:5.2.6-1
-A:x86_64
-K:app
-S:188743680
-C:2222222222222222222222222222222222222222222222222222222222222222
-F:app.krita.kpack
-D:rt-kde
-T:Digital painting
+group essential  What a new machine starts with
+group essential  app.gimp
+group creative   Images and painting
+group creative   app.gimp app.krita
+group dev        Programming
+group dev        app.meld
 
-P:rt-gtk
-V:1.0-1
-A:x86_64
-K:runtime
-S:24000000
-C:5555555555555555555555555555555555555555555555555555555555555555
-F:rt-gtk.kpack
-D:base
-
-P:rt-qt
-V:1.0-1
-A:x86_64
-K:runtime
-S:83000000
-C:6666666666666666666666666666666666666666666666666666666666666666
-F:rt-qt.kpack
-D:base
-
-P:rt-kde
-V:1.0-1
-A:x86_64
-K:runtime
-S:277000000
-C:7777777777777777777777777777777777777777777777777777777777777777
-F:rt-kde.kpack
-D:rt-qt
-
-P:rt-wine
-V:1.0-1
-A:x86_64
-K:runtime
-S:713000000
-C:8888888888888888888888888888888888888888888888888888888888888888
-F:rt-wine.kpack
-D:base
-
-P:app.krita
-V:5.2.5-1
-A:x86_64
-K:app
-S:188000000
-C:4444444444444444444444444444444444444444444444444444444444444444
-F:app.krita-5.2.5.kpack
-O:app.krita-5.2.4.kpack
-
-P:base
-V:1.0-1
-A:x86_64
-K:base
-S:54525952
-C:3333333333333333333333333333333333333333333333333333333333333333
-F:base.kpack
-T:Debian trixie, the whole filesystem
-PKGS
-kipack() { KDOS_PACK_MEDIUM="$OUT/medium" "$KI" --config "$1" --dump plan 2>&1; }
+meta app.gimp   GIMP|Graphics|96468992|Create images and edit photographs
+meta app.krita  Krita|Graphics|188000000|Digital painting
+meta app.meld   Meld|Development|24000000|Compare and merge files
+CAT
+kiapp() { KDOS_CATALOGUE="$OUT/cat/catalogue" "$KI" --config "$1" --dump plan 2>&1; }
+kiappj() { KDOS_CATALOGUE="$OUT/cat/catalogue" "$KI" --config "$1" --dump plan --json 2>/dev/null; }
 : > "$OUT/none.conf"
-kipack "$OUT/none.conf" | grep -qE '^packs +app\.gimp$' \
-    || { echo "  the recommended set was not preselected"; exit 1; }
-# The base is carried whatever anybody ticks, and a DELTA stanza is not a pack:
-# offering one would offer something the installer cannot apply.
-KDOS_PACK_MEDIUM="$OUT/medium" "$KI" --config "$OUT/none.conf" --dump plan --json \
-    2>&1 > "$OUT/packs.json"
-grep -q '"id": "base"' "$OUT/packs.json" \
-    || { echo "  the base pack is not carried"; exit 1; }
-grep -q 'app.krita-5.2.5' "$OUT/packs.json" \
-    && { echo "  a delta was offered as a pack"; exit 1; }
-printf 'packs = app.krita\n' > "$OUT/p1.conf"
-kipack "$OUT/p1.conf" | grep -qE '^packs +app\.krita$' \
-    || { echo "  an answer file's pack choice was ignored"; exit 1; }
-printf 'packs = app.nosuch\n' > "$OUT/p2.conf"
-kipack "$OUT/p2.conf" | grep -qE '^packs +app\.gimp$' \
-    || { echo "  an unknown pack id did not fall back to the recommended set"; exit 1; }
-kipack "$OUT/none.conf" | grep -qE "^ +[0-9]+ +Packs +pending" \
-    || { echo "  the packs step is skipped with a medium in the machine"; exit 1; }
-# A RUNTIME IS CARRIED BECAUSE SOMETHING NEEDS IT. `D:` is in the index for
-# this reader, which links no solver: the recommended app.gimp pulls rt-gtk and
-# base, and rt-wine — 713 MB on a real bake — is left on the medium. Carrying
-# every runtime because it exists was 1.7 GB where 313 MB does.
-# `cfg.packs` is the ANSWER FILE's key and names applications only — a runtime
-# is derived, never written there. What is CARRIED is the json dump's array.
-kijson() { KDOS_PACK_MEDIUM="$OUT/medium" "$KI" --config "$1" --dump plan --json 2>/dev/null; }
-kijson "$OUT/none.conf" | grep -q '"id": "rt-gtk"' \
-    || { echo "  a needed runtime was not pulled in by its app"; exit 1; }
-kijson "$OUT/none.conf" | grep -q '"id": "rt-wine"' \
-    && { echo "  an unneeded runtime was carried anyway"; exit 1; }
-# app.krita needs rt-kde, which needs rt-qt, which needs base: the closure is
-# transitive or a two-deep chain installs something that cannot start.
-kijson "$OUT/p1.conf" | grep -q '"id": "rt-qt"' \
-    || { echo "  the requires closure is not transitive"; exit 1; }
-# and it is IDEMPOTENT — an answer file that does not name gimp must not leave
-# gimp's runtime ticked from the preselect that ran before it.
-kijson "$OUT/p1.conf" | grep -q '"id": "rt-gtk"' \
-    && { echo "  a runtime survived the app that needed it being unticked"; exit 1; }
-echo "  a runtime is carried because something needs it, transitively"
-echo "  the medium's packs: recommended preselected, unknown falls back"
+kiapp "$OUT/none.conf" | grep -qE '^apps +essential$' \
+    || { echo "  essential was not preselected"; exit 1; }
+printf 'apps = creative\n' > "$OUT/a1.conf"
+kiapp "$OUT/a1.conf" | grep -qE '^apps +creative$' \
+    || { echo "  an answer file's choice was ignored"; exit 1; }
+printf 'apps = nosuchgroup\n' > "$OUT/a2.conf"
+kiapp "$OUT/a2.conf" | grep -qE '^apps +essential$' \
+    || { echo "  an unknown id did not fall back to essential"; exit 1; }
+# AND IT IS IDEMPOTENT — an answer file that does not name essential must not
+# leave essential ticked from the preselect that ran before it.
+kiapp "$OUT/a1.conf" | grep -qE '^apps +essential' \
+    && { echo "  a group survived an answer file that did not name it"; exit 1; }
+# THE ROUTE IS ON THE PAGE. A person must not discover at first boot that
+# nothing was installed, so `plan` names which of the four it will take — and
+# the two renderings must agree about it, which is what makes a dump worth
+# pasting into a bug report.
+kiapp "$OUT/none.conf" | grep -qE '^apps route +' \
+    || { echo "  the plan does not say how the applications arrive"; exit 1; }
+kiappj "$OUT/none.conf" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+ids = [g["id"] for g in d["apps"]]
+assert ids == ["essential"], ids
+assert d["apps_bytes"] == 96468992, d["apps_bytes"]
+assert d["apps_route"] in ("none", "import", "network", "pending"), d["apps_route"]' \
+    || { echo "  the json plan disagrees with the text one"; exit 1; }
+# A GROUP'S ESTIMATE COUNTS EACH MEMBER ONCE AND NO RUNTIME. The shared layers
+# under two GTK applications are stored once, so summing per-application
+# figures already over-counts; adding rt-gtk would over-count again.
+kiappj "$OUT/a1.conf" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+assert d["apps_bytes"] == 96468992 + 188000000, d["apps_bytes"]' \
+    || { echo "  a group's size estimate is not the sum of its members"; exit 1; }
+echo "  the catalogue: essential preselected, unknown falls back, route named"
 
 # The root filesystem choice, read back as what it actually becomes. The three
 # things that must move together are the mkfs, its overwrite flag and the fstab
@@ -6774,7 +6757,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
-             netagent backup theme palette contacts; do
+             netagent backup theme palette contacts store; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -7717,6 +7700,32 @@ fi
 # The Phase B surfaces, each only if it linked in. `--have` is dumpmain.c
 # answering for its own weak symbols, so a surface that has not landed is a
 # skip with a name on it rather than a silent gap.
+# The store, over a RECORDED catalogue: what it draws is whatever the shipped
+# catalogue and podman say, and both are the host's — so a golden taken without
+# the fixture would hold the machine that ran it. Two rows in the recording are
+# marked installed, so the `[·]` mark and the footer's count are in the picture
+# as well as the ordinary case.
+if "$DUMPCK" --have store; then
+    _stf="$PWD/testing/fixtures/shell/store"
+    golden store 80x24  store --fixture "$_stf" --dump
+    golden store 56x24  store --fixture "$_stf" --dump
+    golden store 132x43 store --fixture "$_stf" --dump
+    # THE APPLICATION ROWS, which the groups page never shows. `Graphics` is
+    # the most-populated category so it is the first category tab, and the
+    # recording marks app.gimp installed — so this frame carries the `[.]` mark
+    # and an untickable row, which is the whole of what the list has to get
+    # right and none of which the default page reaches.
+    golden store-apps 80x24  store --fixture "$_stf" --page Graphics --dump
+    golden store-apps 132x43 store --fixture "$_stf" --page Graphics --dump
+elif [ -f "$GOLD/store-80x24.txt" ]; then
+    # A COMMITTED golden that stops being asserted is a test weakening itself
+    # in response to a regression.
+    echo "  store: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  store (skipped — not linked into the harness)"
+fi
+
 for _s in keys teams doc settings start notify trash chars; do
     if "$DUMPCK" --have "$_s"; then
         golden "$_s" 80x24  "$_s" --dump

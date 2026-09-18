@@ -80,57 +80,62 @@ void probe_system(void);
 void probe_disks(void);
 
 /* ────────────────────────────────────────────────────────────────────────
- * The packs on the medium.
+ * The applications this medium knows how to build.
  *
- * An application is one file on the ISO9660 filesystem beside `system.sfs`,
- * and until this page existed an install carried whatever the squashfs
- * carried and nothing else — the packs stayed on the stick.
+ * THE CATALOGUE IS READ, NOT A PACK INDEX. Nothing is baked onto the medium;
+ * what ships is `/usr/share/kdos/appstore/catalogue`, and an application is
+ * built by podman on the installed machine. The installer's job is to record
+ * WHICH, and to install them itself only when it can.
  *
- * IT IS READ FROM THE FLAT `PACKAGES` INDEX, not through libkpack. kinstall
- * links libkbase, libktui and libkcolor and nothing else, which is what lets
- * it live in phase 1 and exist on every tree from the first bootable image;
- * `R:yes` is in the index for exactly this reader, so the installer and
- * `kdos app` cannot disagree about what KDOS suggests.
+ * IT LINKS catalogue.c DIRECTLY rather than running `kdos-appbox`. kinstall
+ * links libkbase, libktui and libkcolor and nothing else — which is what lets
+ * it live in phase 1 and exist on every tree from the first bootable image —
+ * and catalogue.c uses `kb_*` alone, so it costs no library. A live installer
+ * also cannot assume anything is on `$PATH` in the target.
+ *
+ * THE UNIT IS A GROUP. A list of 182 applications is not a thing to page
+ * through during an install; seven named bundles is. An application chosen by
+ * id in an answer file still works — `cat_expand` takes either.
  * ──────────────────────────────────────────────────────────────────────── */
 
-/*
- * BIG ENOUGH FOR THE WHOLE INDEX, with room for it to grow. A pack past this
- * is not on the list, cannot be ticked, and — worse — an answer file naming
- * one misses and falls the whole selection back to the recommended set, which
- * is how an unattended install quietly puts four applications on a disk that
- * asked for one. `ki_packs_dropped` is what says so when it ever happens.
- */
-#define MAX_PACKS 512
+/* How the ticked set will actually be installed, decided at plan time and
+ * SHOWN ON THE PAGE. A person must not discover at first boot that nothing
+ * was installed. */
+enum {
+	APPS_NONE = 0,	/* nothing ticked                                  */
+	APPS_IMPORT,	/* an exported set on a mounted device — offline   */
+	APPS_NETWORK,	/* built during the install                        */
+	APPS_PENDING,	/* recorded, and the first session offers them     */
+};
+
+#define MAX_APPGROUPS 32
 
 typedef struct {
 	char id[64];
-	char version[32];
-	char kind[16];		/* base | runtime | app | data             */
-	char file[128];
-	char summary[128];
-	char requires[256];	/* `D:` — the ids under this one, by name  */
-	unsigned long long size;
-	int recommended;
-	int chosen;		/* ticked, or pulled in by something ticked */
-} KiPack;
+	char desc[128];
+	int  napp;		/* members that are applications              */
+	unsigned long long bytes;	/* an ESTIMATE, and labelled one     */
+	int  chosen;
+} KiGroup;
 
-extern KiPack ki_pack[MAX_PACKS];
-extern int ki_npack;
-extern int ki_packs_present;	/* a medium with an index on it            */
-extern int ki_packs_dropped;	/* stanzas the array had no room for       */
+extern KiGroup ki_group[MAX_APPGROUPS];
+extern int ki_ngroup;
+extern int ki_apps_present;	/* a catalogue was found and parsed         */
+/* The archive the Applications page found, or "" — what makes APPS_IMPORT
+ * possible. F6 on the page picks a different one. */
+extern char ki_apps_archive[512];
 
-void probe_packs(void);
-/* Tick everything the ticked packs need, transitively. Called after any change
- * to the selection — a runtime is carried because something needs it, never
- * because it exists. */
-void ki_packs_close(void);
-/* Bytes the chosen set costs — what the Summary and `--dump plan` report. */
-unsigned long long ki_packs_bytes(void);
-/* The Applications page's `enter`: scan the medium and apply an answer file's
- * `packs =`. Called by the page, and by every path that plans an install
- * WITHOUT walking the wizard — `--dump plan` and `--unattended`. Whether the
- * Packs step runs at all depends on it, so install_plan() must not run first. */
-void ki_packs_enter(void);
+void probe_apps(void);
+/* Bytes the chosen groups cost, as an estimate. What the Summary and
+ * `--dump plan` report. */
+unsigned long long ki_apps_bytes(void);
+/* Which of the four routes this install will take, given what is ticked, what
+ * is on the mounted devices and whether a network answers. */
+int  ki_apps_route(void);
+/* The Applications page's `enter`: read the catalogue and apply an answer
+ * file's `apps =`. Called by the page, and by every path that plans an install
+ * WITHOUT walking the wizard — `--dump plan` and `--unattended`. */
+void ki_apps_enter(void);
 
 void probe_part(const char *path, Part *p);
 Disk *disk_by_path(const char *path);
@@ -179,9 +184,10 @@ typedef struct {
 
 	char theme[16];
 	int with_appbox;
-	/* Which packs the answer file named, space separated. Empty means
-	 * "whatever the page chose", which starts as the recommended set. */
-	char packs[1024];
+	/* Which groups or applications the answer file named, space separated.
+	 * Empty means "whatever the page chose", which starts as `essential`.
+	 * A group id or an application id both work: cat_expand takes either. */
+	char apps[1024];
 	unsigned svc_off;	/* bitmask over ki_services                */
 
 	int reboot_after;

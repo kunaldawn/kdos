@@ -118,7 +118,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos menu summon\|toggle [route]` | Open the menu on a named place; a route is what a script holds instead of a chord |
 | `kdos status` | What this machine is and what it is running |
 | `kdos doctor` | Check the things that actually break here |
-| `kdos app` | Applications: list, search, show, install, launch, remove, rollback, update, sources. `kdos app tui add\|rm\|ls` makes a terminal program an application — a `.desktop` in `~/.local/share/applications` with `Terminal=true`, `X-KDOS-TUI` as the marker `rm` checks, and optional `X-KDOS-Float` and `X-KDOS-Size` | [kdos-command](../04-programs/kdos-command.md#app) |
+| `kdos app` | Applications: list, search, info, groups, install, launch, remove, export, import. `install --pending` builds what the installer chose. `kdos app tui add\|rm\|ls` makes a terminal program an application — a `.desktop` in `~/.local/share/applications` with `Terminal=true`, `X-KDOS-TUI` as the marker `rm` checks, and optional `X-KDOS-Float` and `X-KDOS-Size` | [kdos-command](../04-programs/kdos-command.md#app) |
 | `kdos version` | Release, commit, and whether that tree was clean |
 | `kdos why` / `kdos explain` | Why something is the way it is |
 | `kdos sandbox` | What a box may do |
@@ -151,8 +151,6 @@ These run on a build machine and **never ship on the target**.
 | `kdos-portup` | Check ports for newer upstream releases | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/fetch` | Download and vendor sources | [Writing ports](../05-developer/writing-ports.md#vendoring) |
 | `ports/update` | Front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
-| `ports/sources` | Publish and fetch release assets | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
-| `ports/appbox/bake` | Bake the application catalogue | [Packs and boxes](../03-architecture/packs-and-boxes.md#baking-the-catalogue) |
 | `testing/preflight.sh` | Check the wiring | [Testing](../05-developer/testing.md#preflightsh) |
 | `testing/selftest.sh` | The library and consumer suite | [Testing](../05-developer/testing.md#selftestsh) |
 | `testing/vnc-shot.py` | Drive and photograph a real session | [Testing](../05-developer/testing.md#the-qemu-rig) |

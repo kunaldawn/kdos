@@ -357,12 +357,12 @@ on its own, which moves the accent and not the rest of the palette.
 fixed allowlist: a client is sandboxed or it is not. A profile can open named globals; teaching the
 filter to consult a box's profile for anything finer is deliberate work that is not done.
 
-**Hardware video decode reaches a box only after the packs are re-baked.** `ports/appbox/packs.conf`
-carries `libva` and the VA-API driver set in the base row, but a pack is a built artefact: the
-`.kpack` files on the medium are whatever the last `make fetch-packs` produced, and a row edited
-since then changes nothing a running system can see. A boxed browser on packs baked before that
-row reports no hardware decoder and decodes every frame on the CPU. The bake needs network and
-about an hour.
+**A catalogue edit reaches a box only after the image is rebuilt.** The base row carries `libva`
+and the VA-API driver set, but an installed application is a built image: editing the row changes
+nothing a running system can see until `kdos app install <id>` builds it again. A boxed browser
+built before that row reports no hardware decoder and decodes every frame on the CPU. There is no
+notification that a row moved — the catalogue has no version per row, so an image is current by
+definition until somebody removes it.
 
 **Applications that need raw block devices are not in the catalogue** and get no launcher —
 partitioners, drive-health tools, recovery tools. A rootless container cannot do anything useful

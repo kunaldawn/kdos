@@ -408,8 +408,28 @@ inverts only the cells a glyph covers, so a two-word name comes out as one lit b
    error**, not a missing feature — the table and the file are one edit.
 3. **Add the symlink in the recipe's build script.** A name in the table that the build does not
    link is a program nothing can reach.
-4. **Give it `--dump`** and commit reference frames.
-5. **If another tool spawns it, check the flags.** `testing/preflight.sh` verifies that every flag
+4. **Declare it in `shell.h`** — the table in `main.c` names the entry point and the header is
+   where every other file learns of it.
+5. **Add a route or a menu row** if a person should be able to reach it. `routes.c` reads
+   `/etc/kdos/menu.conf`, so a shipped surface needs a row there; `testing/preflight.sh` checks the
+   four places together, because a surface wired in three of them is a chord that opens nothing.
+6. **Give it `--dump`** and commit reference frames — which is **four more edits, and the suite
+   passes with none of them**:
+   - the `for s in …` harness list in `testing/selftest.sh`, so the file compiles into the dump
+     harness;
+   - **both** `FRONT_END(<x>_main);` and a `{ "<x>", <x>_main }` row in
+     `testing/fixtures/shell/dumpmain.c`. Missing either makes `dumpcheck --have <x>` answer no and
+     the golden block print `skipped — not linked into the harness`;
+   - a `golden <name> <size> …` call. **The harness list and the golden-frames table are separate
+     lists**, and being in the first buys no coverage at all;
+   - a **fixture**, if the surface reads anything the host owns. `--fixture <dir>` replaying
+     recorded output is the idiom — `print` over recorded `lpstat`, `disks` over a socket that is
+     not there, `kdos-store` over a recorded catalogue. Without one the golden holds the machine
+     that wrote it and fails everywhere else.
+
+   Every one of those failures reads as a pass. `ls testing/goldens/ | grep <name>` after the run
+   is what tells a covered surface from an uncovered one; the exit code cannot.
+7. **If another tool spawns it, check the flags.** `testing/preflight.sh` verifies that every flag
    one of these tools passes another is one the target accepts — an unknown argument prints a usage
    line to an error stream nobody reads and exits **before a surface exists**, so the symptom is a
    control that silently does nothing.

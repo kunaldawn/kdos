@@ -1,0 +1,184 @@
+app.zathura	Zathura	Office	8969283	rt-gtk	installed	A minimalistic document viewer
+app.calibre	calibre	Office	436979283	rt-qt	available	The one stop solution to all your e-book needs
+app.foliate	Foliate	Office	169059851	rt-gtk	available	Read e-books in style
+app.libreoffice	LibreOffice Base	Office	290353985	rt-gtk	available	Database manager part of the LibreOffice productivity suite
+app.gimp	GNU Image Manipulation Program	Graphics	117441922	rt-gtk	installed	Create images and edit photographs
+app.krita	Krita	Graphics	276850176	rt-qt	available	Digital Painting, Creative Freedom
+app.inkscape	Inkscape	Graphics	99071849	rt-gtk	available	Vector Graphics Editor
+app.blender	Blender	Graphics	355190212	rt-gtk	available	Free and open source 3D creation suite
+app.freecad	FreeCAD	Graphics	493976195	rt-sci	available	An open source parametric 3D CAD modeler
+app.openscad	OpenSCAD	Graphics	17410621	rt-qt	available	The Programmers Solid 3D CAD Modeller
+app.prusa-slicer	Prusa GCode viewer	Graphics	401218315	rt-gtk	available	
+app.kicad	KiCad	Science	305234131	rt-gtk	available	An EDA suite for schematic and circuit board design
+data.kicad-packages3d	data.kicad-packages3d	Other	1169343364	base	available	
+data.tesseract-langs	data.tesseract-langs	Other	10658768	base	available	
+app.gtkwave	GTKWave	Utility	9753979	rt-gtk	available	Display simulation results
+app.ngspice	app.ngspice	Other	5673809	rt-gtk	available	
+app.octave	GNU Octave	Education	115800676	rt-sci	available	Interactive programming environment for numerical computations
+app.maxima	wxMaxima	Education	176230490	rt-sci	available	A graphical user interface for Maxima, a powerful computer algebra system
+app.stellarium	Stellarium	Education	425522122	rt-qt	available	Desktop Planetarium
+app.ardour	Ardour	AudioVideo	105284570	rt-gtk	available	Record, mix and master multi-track audio
+app.hydrogen	Hydrogen	AudioVideo	20235595	rt-qt	available	The advanced drum machine
+app.lmms	LMMS	AudioVideo	51242337	rt-qt	available	Music sequencer and synthesizer
+app.kdenlive	Kdenlive	AudioVideo	286066306	rt-media	available	Video editor
+app.obs-studio	OBS Studio	AudioVideo	68776110	rt-media	available	Live stream and record videos
+app.vscodium	VSCodium	TextEditor	371281015	rt-electron	available	VSCodium. Code editing. Redefined.
+app.wireshark	Wireshark	Network	69217377	rt-qt	available	Network protocol analyzer
+app.keepassxc	KeePassXC	Utility	28587467	rt-qt	available	Community-driven port of the Windows application “KeePass Password Safe”
+app.firefox-esr	Firefox ESR	Network	144423433	rt-gtk	available	Browse the World Wide Web
+app.dolphin	Dolphin	System	11405341	rt-kde	available	Manage your files
+app.konsole	Konsole	System	4441197	rt-kde	available	Use the command line interface
+app.kate	Kate	Utility	17843601	rt-kde	available	Advanced text editor
+app.okular	Okular	Graphics	40538439	rt-kde	available	View and annotate documents
+app.gwenview	Gwenview	Graphics	11131541	rt-kde	available	Image Viewer
+app.ark	Ark	Utility	2472183	rt-kde	available	Archiving Tool
+app.kcalc	KCalc	Utility	2090004	rt-kde	available	Scientific calculator
+app.digikam	digiKam	Graphics	289354058	rt-kde	available	Photo Management Program
+app.elisa	Elisa	Audio	12301662	rt-kde	available	Play local music and listen to online radio
+app.kdevelop	KDevelop	Development	210837207	rt-kde	available	Featureful, plugin-extensible IDE for C/C++ and other programming languages
+app.filelight	Filelight	Utility	2969280	rt-kde	available	Show disk usage and delete unused files
+app.wine	app.wine	Other	4937	rt-wine	available	
+app.ghdl	app.ghdl	Other	5149510	base	available	
+app.pulseview	PulseView	Development	20521522	rt-qt	available	Logic analyzer, oscilloscope and MSO GUI
+app.gerbv	Gerbv Gerber File Viewer	Development	4658759	rt-gtk	available	Gerber file viewer for PCB design
+app.horizon-eda	Horizon EDA	Development	101733376	rt-gtk	available	A free EDA package
+app.arduino	Arduino IDE	Development	336719721	rt-gtk	available	Open-source electronics prototyping platform
+app.fldigi	Fldigi	Network	14594870	rt-gtk	available	Amateur Radio Sound Card Communications
+app.wsjtx	wsjtx	AudioVideo	26270713	rt-qt	available	Utilities to support the hamlib radio control library
+app.js8call	js8call	AudioVideo	28583510	rt-qt	available	Utilities to support the hamlib radio control library
+app.chirp	CHIRP	Utility	66922218	rt-gtk	available	Program amateur radios
+app.gqrx	Gqrx	AudioVideo	33174781	rt-qt	available	Software defined radio receiver implemented using GNU Radio and the Qt GUI toolkit
+app.gnuradio	GNU Radio Companion	Development	275459398	rt-qt	available	Graphical Signal Processing Flow Graph Design Tool
+app.inspectrum	app.inspectrum	Other	3240793	rt-qt	available	
+app.xnec2c	xnec2c	Science	4513457	rt-gtk	available	Numerical Electromagnetics Code software
+app.xastir	Xastir	Network	22680512	rt-gtk	available	X Amateur Station Tracking and Information Reporting
+app.gpredict	Gpredict	HamRadio	5760550	rt-gtk	available	Satellite tracker
+app.klog	KLog	Network	16175047	rt-qt	available	The free ham radio logging multiplatform program
+app.nanovna-saver	NanoVNASaver	Electronics	132036605	rt-qt	available	Tool for reading, displaying and saving data from the NanoVNA
+app.okteta	Okteta	Utility	11835288	rt-kde	available	Hex editor
+app.octave-forge	GNU Octave	Education	126372458	rt-sci	available	Interactive programming environment for numerical computations
+app.cantor	Cantor	Education	199296447	rt-kde	available	Frontend to mathematical software
+app.r-base	R	Graphics	84245919	rt-sci	available	R software environment for statistical computing and graphics
+app.rkward	RKWard	Science	210215517	rt-kde	available	KDE frontend to the R statistics language
+app.pspp	GNU PSPP	Science	13106664	rt-gtk	available	GNU PSPP is a program for statistical analysis of sampled data
+app.gmsh	Gmsh Mesh Generator	Education	95421364	rt-qt	available	3D finite element mesh generator
+app.paraview	ParaView	Science	638795766	rt-qt	available	Data analysis and visualization
+app.openfoam	app.openfoam	Other	313987950	rt-sci	available	
+app.xtb	app.xtb	Other	4281157	rt-sci	available	
+app.nwchem	app.nwchem	Other	172651342	rt-sci	available	
+app.quantum-espresso	app.quantum-espresso	Other	272638816	rt-sci	available	
+app.cp2k	app.cp2k	Other	217379656	rt-sci	available	
+app.gromacs	app.gromacs	Other	333730655	rt-sci	available	
+app.jmol	Jmol	Java	217396121	rt-sci	available	Java molecular viewer for three-dimensional chemical structures
+app.openbabel	app.openbabel	Other	63513428	rt-sci	available	
+app.kalzium	Kalzium	Education	16416329	rt-kde	available	Periodic Table of Elements
+app.kstars	KStars	Education	51489441	rt-kde	available	Desktop Planetarium
+app.astrometry	app.astrometry	Other	48128859	rt-sci	available	
+app.siril	Siril	Science	39508199	rt-gtk	available	Astronomical image processor
+app.ds9	SAOImage DS9	Education	124676004	rt-sci	available	Astronomical Data Visualization Application
+app.qgis	QGIS Desktop	Education	577927243	rt-qt	available	A Geographic Information System
+app.grass	GRASS GIS 8	Education	163715981	rt-qt	available	GRASS GIS, the Open Source Geographic Information System
+app.marble	KDE Marble	Education	192662715	rt-kde	available	Virtual Globe
+app.gmt	app.gmt	Other	246281029	rt-sci	available	
+app.josm	JOSM	Education	138128939	rt-gtk	available	Java OpenStreetMap Editor
+app.eccodes	app.eccodes	Other	301548411	rt-sci	available	
+app.veusz	Veusz	DataVisualization	212317895	rt-qt	available	Core Font Set containing 35 freely distributable fonts from (URW)++
+app.grace	Grace	Education	25864939	rt-gtk	available	Core Font Set containing 35 freely distributable fonts from (URW)++
+app.imagej	ImageJ	Graphics	102488017	rt-gtk	available	Image processing and analysis
+app.gwyddion	Gwyddion	Science	13864070	rt-gtk	available	Program for SPM (scanning probe microscopy) data visualization and analysis
+app.seaview	SeaView	Biology	5481472	rt-gtk	available	Edits multiple sequence alignments and prints them in PostScript format.
+app.igv	Integrative Genomics Viewer	Science	191418197	rt-gtk	available	desktop genome vizualisation tool
+app.kig	Kig	Education	195297545	rt-kde	available	Interactive Geometry
+app.scilab	Scilab	Science	337266491	rt-sci	available	Scientific software for numerical computations
+app.scipy-stack	Jupyter Notebook	Development	173446126	rt-sci	available	Run Jupyter Notebook
+app.openjdk	app.openjdk	Other	199443314	base	available	
+app.virt-manager	Virtual Machine Manager	System	61475544	rt-gtk	available	Graphically manage KVM, Xen, or LXC via libvirt
+app.heaptrack	Heaptrack	Development	3704828	rt-kde	available	A heap memory profiler for Linux
+app.rr	app.rr	Other	32154432	base	available	
+app.sqlitebrowser	DB Browser for SQLite	Development	8769949	rt-qt	available	light GUI editor for SQLite databases
+app.librecad	LibreCAD	Graphics	29404744	rt-qt	available	A professional CAD System
+app.f3d	F3D	Graphics	262518214	rt-qt	available	A fast and minimalist 3D viewer
+app.meshlab	MeshLab	Graphics	21299497	rt-qt	available	View and process meshes
+app.cura	Ultimaker Cura	Graphics	193621758	rt-qt	available	The world's most advanced 3d printer software
+app.bcnc	bCNC	Science	362558563	rt-gtk	available	libgphoto2 digital camera library
+app.linuxcnc	LinuxCNC	Science	630400351	rt-gtk	available	LinuxCNC Machine Controller
+app.colmap	COLMAP	Graphics	24900535	rt-qt	available	Structure-from-Motion and Multi-View Stereo
+app.scribus	Scribus	Graphics	194802512	rt-qt	available	Open Source Page Layout and Desktop Publishing (DTP)
+app.gmic	app.gmic	Other	122102600	rt-gtk	available	
+app.rawtherapee	RawTherapee	Graphics	541981597	rt-gtk	available	An advanced raw photo development program
+app.texlive	TeXdoctk	Settings	126485427	base	available	Display TeX related documentation
+app.pandoc	app.pandoc	Other	67281740	base	available	
+app.aegisub	Aegisub	AudioVideo	73260353	rt-gtk	available	A free, cross-platform open source tool for creating and modifying subtitles
+app.mkvtoolnix	MKVToolNix GUI	AudioVideo	40388488	rt-qt	available	Matroska files creator and tools
+app.audio-plugins	Calf Plugin Pack for JACK	AudioVideo	60209088	rt-media	available	Process and produce sounds using a set of plugins with JACK interface
+app.qpwgraph	qpwgraph	AudioVideo	34401364	rt-media	available	A PipeWire Graph Qt GUI Interface
+app.sonicpi	SuperCollider IDE	AudioVideo	265815844	rt-media	available	realtime computer music system
+app.pencil2d	Pencil2D	Graphics	59409783	rt-qt	available	Create 2D animations with ease
+app.kiwix	Kiwix	Education	106952096	rt-qt	available	View offline content
+app.homebank	HomeBank	Office	7104632	rt-gtk	available	Free, easy, personal accounting, for everyone
+app.vorta	Vorta	Utility	33146013	rt-qt	available	Backup client
+app.gcompris	GCompris	Education	84275843	rt-qt	available	Educational game for children
+app.qmapshack	QMapShack	Geoscience	170892964	rt-qt	available	
+app.opencpn	OpenCPN	Graphics	202443881	rt-gtk	available	Chartplotter and Navigation tool
+app.thunderbird	Thunderbird	Network	156260430	rt-gtk	available	Thunderbird is a free and open source email, newsfeed, chat, and calendaring client
+app.apertium	app.apertium	Other	24838994	base	available	
+app.rtklib	app.rtklib	Other	5923727	base	available	
+app.a11y	app.a11y	Other	60662667	base	available	Support for braille devices
+app.baresip	app.baresip	Other	3556175	base	available	
+app.audacity	Audacity	AudioVideo	30208580	rt-gtk	available	Audacity is the world's most popular audio editing and recording app
+app.audacious	Audacious	AudioVideo	78257583	rt-gtk	available	Lightweight audio player
+app.baobab	Disk Usage Analyzer	System	1774929	rt-gtk	available	Check folder sizes and available disk space
+app.bleachbit	BleachBit	System	36108790	rt-gtk	available	Free space and maintain privacy
+app.darktable	Darktable	Graphics	50417796	rt-gtk	available	Organize and develop images from digital cameras
+app.deja-dup	Backups	Utility	36771317	rt-gtk	available	Protect yourself from data loss
+app.dino	Dino	Network	35181973	rt-gtk	available	Modern XMPP chat client
+app.drawing	Drawing	Graphics	25676649	rt-gtk	available	Edit screenshots or memes
+app.easyeffects	Easy Effects	AudioVideo	21886980	rt-gtk	available	Audio Effects for PipeWire Applications
+app.font-manager	Font Manager	Utility	129259221	rt-gtk	available	A simple font management application for Gtk+ Desktop Environments
+app.fontforge	FontForge	Graphics	21129205	rt-gtk	available	An outline font editor
+app.geany	Geany	Development	4519514	rt-gtk	available	A fast and lightweight IDE using GTK+
+app.ghex	GHex	Development	1733919	rt-gtk	available	Inspect and edit binary files
+app.gnucash	GnuCash	Office	214505606	rt-gtk	available	Manage your finances, accounts, and investments
+app.grsync	Grsync	System	4541751	rt-gtk	available	Synchronize files and folders (a GTK GUI for rsync)
+app.gthumb	gThumb	Graphics	24318855	rt-gtk	available	View and organize your images
+app.hexchat	HexChat	Network	5537523	rt-gtk	available	IRC Client
+app.meld	Meld	Development	27420076	rt-gtk	available	Compare and merge your files
+app.mousepad	Mousepad	Utility	27109392	rt-gtk	available	Mousepad is a simple text editor for the Xfce desktop environment
+app.pcmanfm	PCMan File Manager	System	5022734	rt-gtk	available	Browse the file system and manage the files
+app.pdfarranger	PDF Arranger	Office	35959437	rt-gtk	available	Merge, shuffle, and crop PDFs
+app.qalculate	Qalculate!	Utility	26205225	rt-gtk	available	Powerful and easy to use calculator
+app.remmina	Remmina	X-GNOME-NetworkSettings	26306106	rt-gtk	available	Remote Desktop Client
+app.simple-scan	Document Scanner	Graphics	61777196	rt-gtk	available	Make a digital copy of your photos and documents
+app.solvespace	SolveSpace	Graphics	39122369	rt-gtk	available	A free (GPLv3) parametric 3d CAD tool
+app.transmission	Transmission	Network	7464510	rt-gtk	available	Download and share files over BitTorrent
+app.xarchiver	Xarchiver	Utility	5275935	rt-gtk	available	Create, extract and modify archives
+app.xournalpp	Xournal++	Office	13530622	rt-gtk	available	Take handwritten notes
+app.zim	Zim Desktop Wiki	Utility	28624145	rt-gtk	available	Write notes in a desktop wiki
+app.goldendict	GoldenDict-ng	Office	189131672	rt-qt	available	Advanced dictionary lookup program
+app.musescore	MuseScore 2	Audio	78977436	rt-qt	available	Create, playback, and print sheet music for free
+app.picard	MusicBrainz Picard	AudioVideo	46992590	rt-qt	available	MusicBrainz's music tagger
+app.sioyek	Sioyek	Development	67424790	rt-qt	available	A sanserif type­face fam­ily
+app.zeal	Zeal	Development	164265752	rt-qt	available	Documentation browser
+app.k3b	K3b	AudioVideo	190680738	rt-kde	available	Disk Burning
+app.kdeconnect	KDE Connect Settings	Settings	24512023	rt-kde	available	Manage connected devices
+app.kwalletmanager	KWalletManager	System	1536389	rt-kde	available	Wallet Management Tool
+app.handbrake	HandBrake	AudioVideo	14444564	rt-media	available	Video Transcoder
+app.shotcut	Shotcut	AudioVideo	177769040	rt-media	available	Video editor
+app.xfburn	Xfburn	X-XFCE	4121874	rt-media	available	A simple CD burning tool
+app.supertux	SuperTux 2	Game	218125691	base	available	A jump-and-run game starring Tux the Penguin
+app.supertuxkart	SuperTuxKart	Game	705285710	base	available	A 3D open-source kart racing game
+app.wesnoth	Battle for Wesnoth (1.18)	Game	206362763	base	available	A turn-based strategy game with a high fantasy theme
+app.openttd	OpenTTD	Game	72893150	base	available	A simulation game based on Transport Tycoon Deluxe
+app.luanti	Luanti	Game	21022010	base	available	Block-based multiplayer game platform
+app.dosbox	DOSBox Emulator	Game	6810508	base	available	Run old DOS applications
+app.mednafen	app.mednafen	Other	12579666	base	available	
+app.desmume	app.desmume	Other	6849359	base	available	
+app.scummvm	ScummVM	Game	160933668	base	available	Interpreter for numerous adventure games and role-playing games
+app.mgba	mGBA	Game	54955387	rt-qt	available	Game Boy Advance emulator
+app.retroarch	RetroArch	Game	425031156	base	available	Frontend for emulators, game engines and media players
+app.aisleriot	AisleRiot Solitaire	Game	27618164	rt-gtk	available	Play many different solitaire games
+app.gnome-chess	Chess	Game	2180476	rt-gtk	available	Play the classic two-player board game of chess
+app.gnome-mines	Mines	Game	2213298	rt-gtk	available	Clear hidden mines from a minefield
+app.gnome-sudoku	Sudoku	Game	2348220	rt-gtk	available	Test yourself in the classic puzzle
+app.quadrapassel	Quadrapassel	Game	5420687	rt-gtk	available	Fit falling blocks together
+app.mesa-utils	mesa-utils	Development	12000000	base	available	glxgears, glxinfo and es2gears — what a GL problem is diagnosed with

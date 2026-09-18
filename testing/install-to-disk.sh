@@ -37,7 +37,7 @@ say "the target"
 ls -l "$DISK" 2>&1 || { echo "no $DISK — was --disk passed?"; exit 2; }
 cat /proc/partitions
 
-# alien_apps = 0 is deliberate: copying the 3.9 GB monolith is the OTHER lane
+# alien_apps = 0 is deliberate: an application is built on the machine that
 # and this run exists to exercise packs. reboot = 0 because the rig decides
 # when the machine goes down, not the installer.
 say "the answer file"

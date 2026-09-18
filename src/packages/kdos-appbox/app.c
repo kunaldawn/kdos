@@ -15,7 +15,7 @@
  * There are TWO tables and the split is deliberate:
  *
  *   /usr/share/kdos/alien-apps          baked into the ISO by
- *                                       ports/appbox/genlaunchers.py, read-only
+ *                                       the launcher generator, read-only
  *   ~/.local/share/kdos/alien-apps      whatever the user has installed since
  *
  * Lookups check the user table first. The same split applies to the launchers

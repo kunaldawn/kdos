@@ -452,31 +452,41 @@ a build from inheriting silently.
 The tool **never runs version control**. Accepting a bump rewrites a `version =` line and re-fetches
 the archive; committing that is still a human decision.
 
-## Publishing sources
+## Committing sources
+
+An archive `ports/fetch` downloaded is committed with the recipe that names
+it. There is no publish step and no release to upload to: the tarballs are in
+the tree, tracked through Git LFS by the `ports/core/**` patterns in
+`.gitattributes`.
 
 ```sh
-make publish-sources
+ports/fetch <port>            # downloads and vendors, into ports/core/<port>/
+git add ports/core/<port>
+git lfs ls-files | grep <port>   # the archive must appear here
 ```
 
-Archives are **release assets, sharded by first letter**, with git holding only the checksums that
-identify them. Three guarantees:
+**The archive must show in `git lfs ls-files`.** One staged before
+`git lfs install` has run is an ordinary blob and stays one until the history
+is rewritten — and an archive over 100 MB is then a push github.com refuses,
+which is where the mistake first surfaces. Identical archives under different
+ports share one entry, because LFS lists an object once however many paths
+point at it.
 
-- **Nothing is published that does not match its recipe.** The packer hashes every archive before
-  it goes in and refuses the run naming the file. A packfile is immutable, so an archive published
-  wrong is wrong for ever — it cannot be corrected in place, only superseded by a recipe naming a
-  different file — and every clone made afterwards carries it.
+Two rules the tree keeps about what an archive is:
 
-- **Append-only.** An asset is never deleted and never replaced, because replacing one silently
-  changes what an old commit builds. The publisher skips one that is already there rather than
-  overwriting.
-- **The hash is the identity; the URL is advisory.** With a hash, our archive and upstream are
-  interchangeable and ours is tried first. **Without one — you have just bumped the version —
-  upstream is the only source**, because our archive cannot hold an archive that has never existed,
-  and reaching for our own release for an unverifiable file would be trusting the wrong thing
-  entirely.
+- **Nothing is committed that does not match its recipe.** The `sha256 =` line
+  is what verifies the bytes, and `preflight.sh` checks that every recipe has
+  one. An archive whose hash does not match its recipe fails the build at the
+  port that unpacks it, hours in.
+- **The hash is the identity; the URL is advisory.** With a hash, our copy and
+  upstream are interchangeable and ours is used. **Without one — you have just
+  bumped the version — upstream is the only source**, because the tree cannot
+  hold an archive that has never existed, and trusting a local file for an
+  unverifiable one would be trusting the wrong thing entirely.
 
-The version tool records the new checksum in the same operation as the version, for the archive
-**and** the vendor bundle, so the tree is never left with an archive nothing verifies.
+The version tool records the new checksum in the same operation as the
+version, for the archive **and** the vendor bundle, so the tree is never left
+with an archive nothing verifies.
 
 ## See also
 

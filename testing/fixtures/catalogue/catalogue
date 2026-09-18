@@ -1,0 +1,38 @@
+# A catalogue the parser tests parse. Deliberately small and deliberately
+# irregular: a base with its own image, a two-deep runtime chain, an app with
+# env and cmd and deb rows, a data pack with both graft kinds, a group naming a
+# member that is in two groups, and a row with no packages and no meta.
+#
+# Every assertion in cat_selftest() reads this file. A row added here without
+# an assertion is a row nothing checks.
+snapshot = 20260824T000000Z
+
+image   alpine    alpine:3.24.1
+base    alpine    -
+base    base      -        bash curl ca-certificates
+runtime rt-gtk    base     libgtk-3-0t64
+runtime rt-extra  rt-gtk   libfoo1
+app     app.one   rt-gtk   one
+app     app.two   rt-extra two twoextra
+# NO PACKAGES and NO meta row: the two fallbacks, under test together. A row
+# with an empty package list emits no apt line at all, which is the only way a
+# non-Debian rootfs can be a row.
+app     app.bare  base     -
+data    data.dat  base     dat-files
+
+env  rt-gtk    GDK_BACKEND=wayland
+env  app.two   QT_STYLE_OVERRIDE=Fusion
+cmd  app.bare  bare
+deb  app.two   https://api.example/releases/latest  amd64.deb
+needs app.one  data.dat
+graft    data.dat  usr/share/dat  dat
+boxgraft data.dat  usr/share/dat  boxdat
+
+group alpha   The first group
+group alpha   app.one app.two
+group beta    The second group
+group beta    app.two app.bare
+
+meta app.one   One|Graphics|1048576|The first application
+meta app.two   Two|Office|2097152|The second application
+meta data.dat  Dat files|Other|4096|Data for One

@@ -1502,6 +1502,13 @@ Three things every control panel of the classic lineage has and these did not:
 - **Real buttons**, labelled with verbs, clickable, each **enabled from the selection** — a Connect
   that fails when pressed teaches people to stop trusting the row it was on.
 
+**`kdos-devices` notices an application set on a stick.** A `.ktar` on a mounted removable
+filesystem gets a row under `APPLICATION SETS ON A STICK`, and Enter imports it — offline, with
+every pack verified where it mounts. That is the only route to software on a machine with no
+network, and a stick somebody wrote on another machine is exactly what this surface exists to
+notice. It reads one directory per *already mounted* filesystem rather than scanning the machine,
+because the surface is waiting for a keystroke and a scan would not be fine on a panel tick.
+
 **Anchored means popup; centred means window.** Each is both things and the difference is which
 one asked: from the panel it is the bar's own popup, sized like one and dismissed by a click
 elsewhere; typed by name or opened from the Start menu it is the application, centred, full size
@@ -1600,6 +1607,56 @@ Per-manager:
   file or one that names an empty serial port is offering a queue that will never produce a page.
   The queue name is derived from the URI rather than asked for, because CUPS refuses a name
   carrying a space, a slash or a `#` and a device URI is full of all three.
+
+## kdos-store
+
+What this machine can build, and one tick to build it. The tab row is `Groups`,
+`All`, then a tab per category the catalogue actually uses (most-populated
+first), then `Installed`.
+
+```
+┌ Applications ─────────────────────────────────────────┐
+│ Groups │ All │ Graphics │ Office │ Installed          │
+├────────────────────────────────────────────────────────┤
+│ [x] GIMP        rt-gtk   Create images and edit photos │
+│ [ ] Krita       rt-qt    Digital painting              │
+│ [·] Inkscape    rt-gtk   Vector graphics     installed │
+├────────────────────────────────────────────────────────┤
+│ 2 ticked · ~1.2 GB    F5 install  F6 import  F7 export │
+└────────────────────────────────────────────────────────┘
+```
+
+**It computes nothing.** `kdos-appbox catalogue` answers what exists and what is
+installed — in one call, with the state as a field, so the three surfaces that
+ask cannot disagree — and `kdos-appbox install` knows how to build one. A
+surface that re-derived either would be a second answer that drifts, which is
+the rule `kdos-update` keeps about the version comparison.
+
+**The category tabs are built from the data**, not listed in C, so a new
+category in the catalogue is a tab with no code change. `Other` is not given a
+tab: it is where a row with no `meta` lands, and a tab named after the absence
+of information is not a place anybody looks.
+
+**`[·]` is an application already here and cannot be ticked.** Installing it
+again rebuilds an image that exists, and a tick that does nothing is a tick
+somebody will count. A group row shows `[x]`, `[-]` or `[ ]` for all, some or
+none of its members.
+
+**The size is an estimate and the footer says so.** What apt resolves on the day
+depends on the snapshot, and a runtime's layers are counted once on disk however
+many applications name them.
+
+**A build runs in a terminal and this window stays alive.** Installing is podman
+and apt — minutes for one application, the better part of an hour for a group —
+and a surface that ran it would be frozen for all of it, with one status line
+standing in for output that is worth reading when a package fails to resolve.
+The verb is handed to `kb_terminal()` and detached, so the build survives the
+window being closed and `r` picks up the result. On a bare virtual terminal
+there is no emulator to open, and the surface says so rather than naming a
+window nobody gets.
+
+Space ticks, Enter installs the row under the cursor (or ticks a group), `F5`
+installs the ticked set, `F6` imports, `F7` exports, `r` refreshes.
 
 ## The small surfaces
 

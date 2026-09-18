@@ -486,7 +486,7 @@ int main(int argc, char **argv)
 		/* The wizard reaches the Applications page on its way past;
 		 * an unattended install does not, and would carry no packs at
 		 * all with an answer file that named some. */
-		ki_packs_enter();
+		ki_apps_enter();
 		install_plan();
 		install_start(0);
 		ki_page = page_index("install");

@@ -830,6 +830,17 @@ Each is a rule with its consequence:
   NetworkManager would be asked for the passphrases of the machine running the tests.
   `agentcheck.c` links the real `netagent.c` against a scripted display, so the keystrokes are the
   test's and everything else is the shipped code.
+- **A parser gets a fixture AND the shipped file.** `catalogue --selftest` runs
+  `cat_selftest()` over `testing/fixtures/catalogue/catalogue`, which is small enough
+  to reason about and carries every row type including the awkward ones: a base with
+  its own image, a two-deep runtime chain, a row whose package list is `-`, a row with
+  no `meta`, and a member in two groups. The fixture pins the rules — a chain is
+  base-first, a `-` package list presents as empty, an expand dedupes. It cannot pin
+  the other half: the **shipped** `src/packages/kdos-appbox/catalogue` is what a surface
+  will actually read, and a row added by hand that the parser rejects is a store that
+  opens empty with no error on the screen. Both runs are in `selftest.sh`, and
+  `KDOS_CATALOGUE` is the override that exists for them.
+
 - **A shared helper a front end calls belongs in the harness's base source list**, not in the
   candidate loop: `mountd.c` is the one `kdos-mountd` client `kdos-devices` and `kdos-disks` both
   use, and leaving it out reports "the new front ends do not link" — which reads as a defect in

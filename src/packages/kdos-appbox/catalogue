@@ -5,36 +5,33 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   ports/appbox/packs.conf — the pack set, one row per pack
+#   src/packages/kdos-appbox/catalogue — every application, as packages
 # ---------------------------------
 #
 #   <kind>  <id>  <parent>  <apt packages …>
 #
-# `kind` is base | runtime | app. `parent` is the pack this one is built ON
-# TOP of, and it becomes the row's `requires =` — so the stage's diff layer
-# contains only what this row adds, and nothing is curated by hand.
+# `kind` is base | runtime | app | data. `parent` is the row this one is built
+# ON TOP of: the device builds a stack of podman images, one per row, so a
+# runtime's bytes are stored once however many applications sit on it.
 #
-# ORDER MATTERS: a row's parent must appear above it. The runtimes are factored
-# out first so the bytes dozens of applications share are stored once, which is
-# the whole reason a 3.9 GB monolith becomes a set of packs somebody chooses
-# from.
+# ORDER MATTERS: a row's parent must appear ABOVE it. The resolver walks a
+# chain upward in one pass and a forward reference is a chain it cannot close —
+# reorder the file and an install fails naming the missing parent rather than
+# looping.
 #
-# A row's third field is a PACK id, not an image tag. `ports/appbox/bake`
-# resolves it to the image it built for that pack.
+# A row's third field is a ROW id here, never an image tag. The builder
+# resolves it to `kdos/<id>`, the image it built for that row.
 #
-# `recommended =` is the one line that says what a default install SUGGESTS. It
-# becomes `recommended = yes` in each named pack's metadata and `R:yes` in the
-# index, which is the only thing kinstall's Applications page preselects from.
-# The base and the runtimes are not listed: they are carried always, because an
-# application pack is a diff over a runtime and leaving one out installs
-# applications that cannot start.
-# `auto` takes the snapshot date from the base image's own sources file, so the
-# packages installed on top cannot disagree with the rootfs under them. A
-# literal 20260824T000000Z pins explicitly; `off` reads the live archive and
-# gives up reproducibility.
+# THIS FILE IS SHIPPED. It installs to /usr/share/kdos/appstore/catalogue and
+# is what the store, kinstall and `kdos app` all read. There is no second copy
+# and no generated index: a row added here is offered by every surface.
+#
+# `snapshot` pins the Debian archive the packages come from. `auto` takes the
+# date from the base image's own sources file, so what is installed on top
+# cannot disagree with the rootfs under it. A literal 20260824T000000Z pins
+# explicitly; `off` reads the live archive and gives up reproducibility.
 snapshot = auto
 
-recommended = app.firefox-esr app.libreoffice app.gimp app.zathura app.keepassxc
 #
 # `env <pack> NAME=VALUE` becomes an `env =` line in that pack's metadata, and
 # kdos-appbox exports the whole stack's worth when it enters a pack box. This
@@ -530,3 +527,247 @@ cmd app.mesa-utils es2gears_x11
 # additionally needs mesa-vulkan-drivers — 241 MB and 26 packages — because a
 # box sees none of the host's ICDs, and it would buy the same two commands the
 # host installs.
+
+# ── groups ─────────────────────────────────────────────────────────────────
+#
+# A group is a name somebody picks software by, and it is the unit both the
+# store and kinstall offer. The FIRST row for a group id is its description;
+# every later row lists members, and a member may be in more than one group.
+#
+# Every member must be an `app` or `data` row in this file. One that is not is
+# an install the resolver refuses by name — a group is not a place to record
+# software that is not carried.
+#
+# `essential` is what a default install suggests and what kinstall preselects.
+# The bases and the runtimes are in NO group: they arrive through the parent
+# chain of whatever is chosen, and an application whose runtime was left out is
+# an application that cannot start.
+#
+# A GROUP IS NOT A CATEGORY. The category comes from the application's own
+# desktop entry and every application has exactly one; a group is curated, and
+# most applications are in none. The store lists both.
+group essential   What a new machine starts with
+group essential   app.firefox-esr app.libreoffice app.gimp app.zathura app.keepassxc
+
+group office      Documents, spreadsheets and reading
+group office      app.libreoffice app.zathura app.xournalpp app.pdfarranger
+group office      app.calibre app.foliate app.gnucash app.homebank
+
+group creative    Images, audio and video
+group creative    app.gimp app.inkscape app.krita app.darktable app.rawtherapee
+group creative    app.scribus app.audacity app.kdenlive app.shotcut app.obs-studio
+
+group dev         Programming and electronics
+group dev         app.vscodium app.geany app.meld app.ghex app.sqlitebrowser
+group dev         app.zeal app.kdevelop app.arduino
+
+group science     Computation, modelling and data
+group science     app.octave app.maxima app.scilab app.rkward app.pspp
+group science     app.scipy-stack app.paraview app.stellarium app.siril
+
+group make        Three dimensions: model it, slice it, cut it
+group make        app.freecad app.openscad app.librecad app.solvespace
+group make        app.cura app.prusa-slicer app.meshlab app.blender
+
+group games       Games and emulators
+group games       app.supertuxkart app.supertux app.openttd app.wesnoth
+group games       app.luanti app.scummvm app.retroarch app.mgba app.dosbox
+group games       app.aisleriot app.gnome-chess app.gnome-mines app.gnome-sudoku
+
+# ── what the store shows ───────────────────────────────────────────────
+#
+# `meta <id> <name>|<category>|<bytes>|<tagline>`. Pipe-separated because a
+# tagline contains spaces and every other row here is whitespace-delimited.
+#
+# <bytes> IS AN ESTIMATE and every surface labels it one: what apt resolves
+# on the day depends on the snapshot, and a number presented as fact that
+# the install then contradicts is worse than no number.
+#
+# A row with no `meta` falls back to its id, category Other and no tagline.
+# That is what an application looks like until somebody writes one, and it
+# must never be an error — otherwise adding software is a two-file change
+# for no benefit.
+meta app.a11y                 app.a11y|Other|60662667|Support for braille devices
+meta app.aegisub              Aegisub|AudioVideo|73260353|A free, cross-platform open source tool for creating and modifying subtitles
+meta app.aisleriot            AisleRiot Solitaire|Game|27618164|Play many different solitaire games
+meta app.apertium             app.apertium|Other|24838994|
+meta app.ardour               Ardour|AudioVideo|105284570|Record, mix and master multi-track audio
+meta app.arduino              Arduino IDE|Development|336719721|Open-source electronics prototyping platform
+meta app.ark                  Ark|Utility|2472183|Archiving Tool
+meta app.astrometry           app.astrometry|Other|48128859|
+meta app.audacious            Audacious|AudioVideo|78257583|Lightweight audio player
+meta app.audacity             Audacity|AudioVideo|30208580|Audacity is the world's most popular audio editing and recording app
+meta app.audio-plugins        Calf Plugin Pack for JACK|AudioVideo|60209088|Process and produce sounds using a set of plugins with JACK interface
+meta app.baobab               Disk Usage Analyzer|System|1774929|Check folder sizes and available disk space
+meta app.baresip              app.baresip|Other|3556175|
+meta app.bcnc                 bCNC|Science|362558563|libgphoto2 digital camera library
+meta app.bleachbit            BleachBit|System|36108790|Free space and maintain privacy
+meta app.blender              Blender|Graphics|355190212|Free and open source 3D creation suite
+meta app.calibre              calibre|Office|436979283|The one stop solution to all your e-book needs
+meta app.cantor               Cantor|Education|199296447|Frontend to mathematical software
+meta app.chirp                CHIRP|Utility|66922218|Program amateur radios
+meta app.colmap               COLMAP|Graphics|24900535|Structure-from-Motion and Multi-View Stereo
+meta app.cp2k                 app.cp2k|Other|217379656|
+meta app.cura                 Ultimaker Cura|Graphics|193621758|The world's most advanced 3d printer software
+meta app.darktable            Darktable|Graphics|50417796|Organize and develop images from digital cameras
+meta app.deja-dup             Backups|Utility|36771317|Protect yourself from data loss
+meta app.desmume              app.desmume|Other|6849359|
+meta app.digikam              digiKam|Graphics|289354058|Photo Management Program
+meta app.dino                 Dino|Network|35181973|Modern XMPP chat client
+meta app.dolphin              Dolphin|System|11405341|Manage your files
+meta app.dosbox               DOSBox Emulator|Game|6810508|Run old DOS applications
+meta app.drawing              Drawing|Graphics|25676649|Edit screenshots or memes
+meta app.ds9                  SAOImage DS9|Education|124676004|Astronomical Data Visualization Application
+meta app.easyeffects          Easy Effects|AudioVideo|21886980|Audio Effects for PipeWire Applications
+meta app.eccodes              app.eccodes|Other|301548411|
+meta app.elisa                Elisa|Audio|12301662|Play local music and listen to online radio
+meta app.f3d                  F3D|Graphics|262518214|A fast and minimalist 3D viewer
+meta app.filelight            Filelight|Utility|2969280|Show disk usage and delete unused files
+meta app.firefox-esr          Firefox ESR|Network|144423433|Browse the World Wide Web
+meta app.fldigi               Fldigi|Network|14594870|Amateur Radio Sound Card Communications
+meta app.foliate              Foliate|Office|169059851|Read e-books in style
+meta app.font-manager         Font Manager|Utility|129259221|A simple font management application for Gtk+ Desktop Environments
+meta app.fontforge            FontForge|Graphics|21129205|An outline font editor
+meta app.freecad              FreeCAD|Graphics|493976195|An open source parametric 3D CAD modeler
+meta app.gcompris             GCompris|Education|84275843|Educational game for children
+meta app.geany                Geany|Development|4519514|A fast and lightweight IDE using GTK+
+meta app.gerbv                Gerbv Gerber File Viewer|Development|4658759|Gerber file viewer for PCB design
+meta app.ghdl                 app.ghdl|Other|5149510|
+meta app.ghex                 GHex|Development|1733919|Inspect and edit binary files
+meta app.gimp                 GNU Image Manipulation Program|Graphics|117441922|Create images and edit photographs
+meta app.gmic                 app.gmic|Other|122102600|
+meta app.gmsh                 Gmsh Mesh Generator|Education|95421364|3D finite element mesh generator
+meta app.gmt                  app.gmt|Other|246281029|
+meta app.gnome-chess          Chess|Game|2180476|Play the classic two-player board game of chess
+meta app.gnome-mines          Mines|Game|2213298|Clear hidden mines from a minefield
+meta app.gnome-sudoku         Sudoku|Game|2348220|Test yourself in the classic puzzle
+meta app.gnucash              GnuCash|Office|214505606|Manage your finances, accounts, and investments
+meta app.gnuradio             GNU Radio Companion|Development|275459398|Graphical Signal Processing Flow Graph Design Tool
+meta app.goldendict           GoldenDict-ng|Office|189131672|Advanced dictionary lookup program
+meta app.gpredict             Gpredict|HamRadio|5760550|Satellite tracker
+meta app.gqrx                 Gqrx|AudioVideo|33174781|Software defined radio receiver implemented using GNU Radio and the Qt GUI toolkit
+meta app.grace                Grace|Education|25864939|Core Font Set containing 35 freely distributable fonts from (URW)++
+meta app.grass                GRASS GIS 8|Education|163715981|GRASS GIS, the Open Source Geographic Information System
+meta app.gromacs              app.gromacs|Other|333730655|
+meta app.grsync               Grsync|System|4541751|Synchronize files and folders (a GTK GUI for rsync)
+meta app.gthumb               gThumb|Graphics|24318855|View and organize your images
+meta app.gtkwave              GTKWave|Utility|9753979|Display simulation results
+meta app.gwenview             Gwenview|Graphics|11131541|Image Viewer
+meta app.gwyddion             Gwyddion|Science|13864070|Program for SPM (scanning probe microscopy) data visualization and analysis
+meta app.handbrake            HandBrake|AudioVideo|14444564|Video Transcoder
+meta app.heaptrack            Heaptrack|Development|3704828|A heap memory profiler for Linux
+meta app.hexchat              HexChat|Network|5537523|IRC Client
+meta app.homebank             HomeBank|Office|7104632|Free, easy, personal accounting, for everyone
+meta app.horizon-eda          Horizon EDA|Development|101733376|A free EDA package
+meta app.hydrogen             Hydrogen|AudioVideo|20235595|The advanced drum machine
+meta app.igv                  Integrative Genomics Viewer|Science|191418197|desktop genome vizualisation tool
+meta app.imagej               ImageJ|Graphics|102488017|Image processing and analysis
+meta app.inkscape             Inkscape|Graphics|99071849|Vector Graphics Editor
+meta app.inspectrum           app.inspectrum|Other|3240793|
+meta app.jmol                 Jmol|Java|217396121|Java molecular viewer for three-dimensional chemical structures
+meta app.josm                 JOSM|Education|138128939|Java OpenStreetMap Editor
+meta app.js8call              js8call|AudioVideo|28583510|Utilities to support the hamlib radio control library
+meta app.k3b                  K3b|AudioVideo|190680738|Disk Burning
+meta app.kalzium              Kalzium|Education|16416329|Periodic Table of Elements
+meta app.kate                 Kate|Utility|17843601|Advanced text editor
+meta app.kcalc                KCalc|Utility|2090004|Scientific calculator
+meta app.kdeconnect           KDE Connect Settings|Settings|24512023|Manage connected devices
+meta app.kdenlive             Kdenlive|AudioVideo|286066306|Video editor
+meta app.kdevelop             KDevelop|Development|210837207|Featureful, plugin-extensible IDE for C/C++ and other programming languages
+meta app.keepassxc            KeePassXC|Utility|28587467|Community-driven port of the Windows application “KeePass Password Safe”
+meta app.kicad                KiCad|Science|305234131|An EDA suite for schematic and circuit board design
+meta app.kig                  Kig|Education|195297545|Interactive Geometry
+meta app.kiwix                Kiwix|Education|106952096|View offline content
+meta app.klog                 KLog|Network|16175047|The free ham radio logging multiplatform program
+meta app.konsole              Konsole|System|4441197|Use the command line interface
+meta app.krita                Krita|Graphics|276850176|Digital Painting, Creative Freedom
+meta app.kstars               KStars|Education|51489441|Desktop Planetarium
+meta app.kwalletmanager       KWalletManager|System|1536389|Wallet Management Tool
+meta app.librecad             LibreCAD|Graphics|29404744|A professional CAD System
+meta app.libreoffice          LibreOffice Base|Office|290353985|Database manager part of the LibreOffice productivity suite
+meta app.linuxcnc             LinuxCNC|Science|630400351|LinuxCNC Machine Controller
+meta app.lmms                 LMMS|AudioVideo|51242337|Music sequencer and synthesizer
+meta app.luanti               Luanti|Game|21022010|Block-based multiplayer game platform
+meta app.marble               KDE Marble|Education|192662715|Virtual Globe
+meta app.maxima               wxMaxima|Education|176230490|A graphical user interface for Maxima, a powerful computer algebra system
+meta app.mednafen             app.mednafen|Other|12579666|
+meta app.mesa-utils          mesa-utils|Development|12000000|glxgears, glxinfo and es2gears — what a GL problem is diagnosed with
+meta app.meld                 Meld|Development|27420076|Compare and merge your files
+meta app.meshlab              MeshLab|Graphics|21299497|View and process meshes
+meta app.mgba                 mGBA|Game|54955387|Game Boy Advance emulator
+meta app.mkvtoolnix           MKVToolNix GUI|AudioVideo|40388488|Matroska files creator and tools
+meta app.mousepad             Mousepad|Utility|27109392|Mousepad is a simple text editor for the Xfce desktop environment
+meta app.musescore            MuseScore 2|Audio|78977436|Create, playback, and print sheet music for free
+meta app.nanovna-saver        NanoVNASaver|Electronics|132036605|Tool for reading, displaying and saving data from the NanoVNA
+meta app.ngspice              app.ngspice|Other|5673809|
+meta app.nwchem               app.nwchem|Other|172651342|
+meta app.obs-studio           OBS Studio|AudioVideo|68776110|Live stream and record videos
+meta app.octave               GNU Octave|Education|115800676|Interactive programming environment for numerical computations
+meta app.octave-forge         GNU Octave|Education|126372458|Interactive programming environment for numerical computations
+meta app.okteta               Okteta|Utility|11835288|Hex editor
+meta app.okular               Okular|Graphics|40538439|View and annotate documents
+meta app.openbabel            app.openbabel|Other|63513428|
+meta app.opencpn              OpenCPN|Graphics|202443881|Chartplotter and Navigation tool
+meta app.openfoam             app.openfoam|Other|313987950|
+meta app.openjdk              app.openjdk|Other|199443314|
+meta app.openscad             OpenSCAD|Graphics|17410621|The Programmers Solid 3D CAD Modeller
+meta app.openttd              OpenTTD|Game|72893150|A simulation game based on Transport Tycoon Deluxe
+meta app.pandoc               app.pandoc|Other|67281740|
+meta app.paraview             ParaView|Science|638795766|Data analysis and visualization
+meta app.pcmanfm              PCMan File Manager|System|5022734|Browse the file system and manage the files
+meta app.pdfarranger          PDF Arranger|Office|35959437|Merge, shuffle, and crop PDFs
+meta app.pencil2d             Pencil2D|Graphics|59409783|Create 2D animations with ease
+meta app.picard               MusicBrainz Picard|AudioVideo|46992590|MusicBrainz's music tagger
+meta app.prusa-slicer         Prusa GCode viewer|Graphics|401218315|
+meta app.pspp                 GNU PSPP|Science|13106664|GNU PSPP is a program for statistical analysis of sampled data
+meta app.pulseview            PulseView|Development|20521522|Logic analyzer, oscilloscope and MSO GUI
+meta app.qalculate            Qalculate!|Utility|26205225|Powerful and easy to use calculator
+meta app.qgis                 QGIS Desktop|Education|577927243|A Geographic Information System
+meta app.qmapshack            QMapShack|Geoscience|170892964|
+meta app.qpwgraph             qpwgraph|AudioVideo|34401364|A PipeWire Graph Qt GUI Interface
+meta app.quadrapassel         Quadrapassel|Game|5420687|Fit falling blocks together
+meta app.quantum-espresso     app.quantum-espresso|Other|272638816|
+meta app.r-base               R|Graphics|84245919|R software environment for statistical computing and graphics
+meta app.rawtherapee          RawTherapee|Graphics|541981597|An advanced raw photo development program
+meta app.remmina              Remmina|X-GNOME-NetworkSettings|26306106|Remote Desktop Client
+meta app.retroarch            RetroArch|Game|425031156|Frontend for emulators, game engines and media players
+meta app.rkward               RKWard|Science|210215517|KDE frontend to the R statistics language
+meta app.rr                   app.rr|Other|32154432|
+meta app.rtklib               app.rtklib|Other|5923727|
+meta app.scilab               Scilab|Science|337266491|Scientific software for numerical computations
+meta app.scipy-stack          Jupyter Notebook|Development|173446126|Run Jupyter Notebook
+meta app.scribus              Scribus|Graphics|194802512|Open Source Page Layout and Desktop Publishing (DTP)
+meta app.scummvm              ScummVM|Game|160933668|Interpreter for numerous adventure games and role-playing games
+meta app.seaview              SeaView|Biology|5481472|Edits multiple sequence alignments and prints them in PostScript format.
+meta app.shotcut              Shotcut|AudioVideo|177769040|Video editor
+meta app.simple-scan          Document Scanner|Graphics|61777196|Make a digital copy of your photos and documents
+meta app.sioyek               Sioyek|Development|67424790|A sanserif type­face fam­ily
+meta app.siril                Siril|Science|39508199|Astronomical image processor
+meta app.solvespace           SolveSpace|Graphics|39122369|A free (GPLv3) parametric 3d CAD tool
+meta app.sonicpi              SuperCollider IDE|AudioVideo|265815844|realtime computer music system
+meta app.sqlitebrowser        DB Browser for SQLite|Development|8769949|light GUI editor for SQLite databases
+meta app.stellarium           Stellarium|Education|425522122|Desktop Planetarium
+meta app.supertux             SuperTux 2|Game|218125691|A jump-and-run game starring Tux the Penguin
+meta app.supertuxkart         SuperTuxKart|Game|705285710|A 3D open-source kart racing game
+meta app.texlive              TeXdoctk|Settings|126485427|Display TeX related documentation
+meta app.thunderbird          Thunderbird|Network|156260430|Thunderbird is a free and open source email, newsfeed, chat, and calendaring client
+meta app.transmission         Transmission|Network|7464510|Download and share files over BitTorrent
+meta app.veusz                Veusz|DataVisualization|212317895|Core Font Set containing 35 freely distributable fonts from (URW)++
+meta app.virt-manager         Virtual Machine Manager|System|61475544|Graphically manage KVM, Xen, or LXC via libvirt
+meta app.vorta                Vorta|Utility|33146013|Backup client
+meta app.vscodium             VSCodium|TextEditor|371281015|VSCodium. Code editing. Redefined.
+meta app.wesnoth              Battle for Wesnoth (1.18)|Game|206362763|A turn-based strategy game with a high fantasy theme
+meta app.wine                 app.wine|Other|4937|
+meta app.wireshark            Wireshark|Network|69217377|Network protocol analyzer
+meta app.wsjtx                wsjtx|AudioVideo|26270713|Utilities to support the hamlib radio control library
+meta app.xarchiver            Xarchiver|Utility|5275935|Create, extract and modify archives
+meta app.xastir               Xastir|Network|22680512|X Amateur Station Tracking and Information Reporting
+meta app.xfburn               Xfburn|X-XFCE|4121874|A simple CD burning tool
+meta app.xnec2c               xnec2c|Science|4513457|Numerical Electromagnetics Code software
+meta app.xournalpp            Xournal++|Office|13530622|Take handwritten notes
+meta app.xtb                  app.xtb|Other|4281157|
+meta app.zathura              Zathura|Office|8969283|A minimalistic document viewer
+meta app.zeal                 Zeal|Development|164265752|Documentation browser
+meta app.zim                  Zim Desktop Wiki|Utility|28624145|Write notes in a desktop wiki
+meta data.kicad-packages3d    data.kicad-packages3d|Other|1169343364|
+meta data.tesseract-langs     data.tesseract-langs|Other|10658768|

@@ -10,8 +10,9 @@ to each other.
 
 | Path | Holds | Survives reinstall |
 |---|---|---|
+| `apps-pending` | What the installer chose and could not install (under `/var/lib/kdos`, root's) | no |
+| `appstore/catalogue` | Every application, as a chain of apt packages (under `/usr/share/kdos`) | no |
 | `packd.conf` | The pack daemon's retention | no |
-| `pack-sources` | Where application updates are looked for | no |
 | `zram.conf` | Compressed-swap size and algorithm | no |
 | `con.conf` | The console session: which program is each thing, and the idle steps | no |
 | `menu.conf` | The routes — a name a script can hold for every place in the system | no |

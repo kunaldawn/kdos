@@ -157,6 +157,58 @@ static int a11y_wanted(void)
 }
 
 /*
+ * kb_argv_add keeps the POINTER, and these are the caller's frame. A value may
+ * say `$HOME` for the directory a boxgraft lands in: the catalogue cannot know
+ * the user's name, and the box shares the home under the same path.
+ */
+static void export_env(KbArgv *a, char env[][256], int n)
+{
+	for (int i = 0; i < n; i++) {
+		char *eq = strchr(env[i], '=');
+
+		if (eq && !strncmp(eq + 1, "$HOME", 5)) {
+			char *v = kb_calloc(1, 1024);
+			snprintf(v, 1024, "%.*s=%s%s", (int)(eq - env[i]),
+				 env[i], kb_home_dir(), eq + 6);
+			kb_argv_add(a, v);
+		} else {
+			kb_argv_add(a, kb_strdup(env[i]));
+		}
+	}
+}
+
+/*
+ * THE STORE LANE ASKS THE CATALOGUE, for the same reason the pack lane asks
+ * the pack: a store-built box is `base=image:kdos/<id>` over an image this
+ * machine built, so there is no vendor label on it to read and every Qt
+ * application would come up grey under an inert QT_QPA_PLATFORMTHEME.
+ *
+ * The box NAME is the catalogue id — that is what `store_install` creates it
+ * as — so a box whose name is not a row is not a store box and answers 0,
+ * leaving the label branches below to decide.
+ */
+static int store_env(const Profile *prof, KbArgv *a)
+{
+	char env[PACK_ENV_MAX][256];
+	char err[256];
+	int n;
+
+	if (strncmp(prof->base, "image:" STORE_IMG_PREFIX,
+		    6 + sizeof(STORE_IMG_PREFIX) - 1))
+		return 0;
+	if (cat_load(NULL, err, sizeof(err)) != 0)
+		return 0;
+	if (!cat_find(prof->name)) {
+		cat_free();
+		return 0;
+	}
+	n = cat_env(prof->name, env, PACK_ENV_MAX);
+	export_env(a, env, n);
+	cat_free();
+	return 1;
+}
+
+/*
  * Environment every app inside a box gets.
  *
  *   WAYLAND_DISPLAY            the box's own tagged socket, when there is one
@@ -332,21 +384,9 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 		char env[PACK_ENV_MAX][256];
 		int n = pack_env(pack, env, PACK_ENV_MAX);
 
-		/* kb_argv_add keeps the POINTER, and these are this frame's.
-		 * A value may say `$HOME` for the directory a boxgraft lands
-		 * in: the pack cannot know the user's name and the box shares
-		 * the home under the same path. */
-		for (int i = 0; i < n; i++) {
-			char *eq = strchr(env[i], '=');
-			if (eq && !strncmp(eq + 1, "$HOME", 5)) {
-				char *v = kb_calloc(1, 1024);
-				snprintf(v, 1024, "%.*s=%s%s", (int)(eq - env[i]),
-					 env[i], kb_home_dir(), eq + 6);
-				kb_argv_add(a, v);
-			} else {
-				kb_argv_add(a, kb_strdup(env[i]));
-			}
-		}
+		export_env(a, env, n);
+	} else if (store_env(prof, a)) {
+		/* The store lane declared its own, out of the catalogue. */
 	} else if (image_has_label(prof->image, "kdos.qt-kde-theme")) {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=kde");
 	} else {
@@ -779,6 +819,11 @@ static void usage(void)
 "       kdos-appbox warmup | status\n"
 "       kdos-appbox list                    boxes and their profiles\n"
 "       kdos-appbox apps                    known alien apps\n"
+"       kdos-appbox catalogue [--groups]    what this system can build\n"
+"       kdos-appbox install <id|group>... [--dry-run]\n"
+"       kdos-appbox uninstall <id|group>...\n"
+"       kdos-appbox export <file.ktar> <id|group>...\n"
+"       kdos-appbox import <file.ktar> [<id>...]\n"
 "       kdos-appbox genlaunchers --packs <fs-root> | --packs --user\n"
 "                               --packs-dir <dir> <fs-root>\n"
 "                               <desktop-dir> <fs-root>\n"
@@ -897,6 +942,61 @@ int main(int argc, char **argv)
 			kb_die("usage: kdos-appbox open [--print] [--choose] "
 			       "<path> [path...]");
 		return cmd_open(argc - i - 1, argv + i + 1);
+	}
+	/* The catalogue, for the surfaces, and the parser's own assertions.
+	 * Before anything that needs a daemon or a display: --selftest is
+	 * offline and pure and must stay runnable where neither exists. */
+	if (CMD("catalogue")) {
+		if (i + 1 < argc && !strcmp(argv[i + 1], "--selftest"))
+			return cat_selftest();
+		return cmd_catalogue(argc - i - 1, argv + i + 1);
+	}
+	if (CMD("install") || CMD("uninstall")) {
+		int dry = 0, first = i + 1, argn = 0;
+		const char *ids[CAT_MAX_PACKS];
+
+		for (int k = first; k < argc; k++) {
+			if (!strcmp(argv[k], "--dry-run")) {
+				dry = 1;
+				continue;
+			}
+			if (argn < CAT_MAX_PACKS)
+				ids[argn++] = argv[k];
+		}
+		if (!argn)
+			kb_die("usage: kdos-appbox %s <id|group>... [--dry-run]",
+			       argv[i]);
+		{
+			char err[256];
+			if (cat_load(NULL, err, sizeof(err)) != 0)
+				kb_die("%s", err);
+		}
+		return CMD("install") ? store_install_many(ids, argn, dry)
+				      : store_uninstall_many(ids, argn);
+	}
+	if (CMD("store") && i + 1 < argc && !strcmp(argv[i + 1], "--selftest"))
+		return store_selftest();
+	if (CMD("export") || CMD("import")) {
+		const char *file = i + 1 < argc ? argv[i + 1] : NULL;
+		const char *ids[CAT_MAX_PACKS];
+		char err[256];
+		int argn = 0;
+
+		if (!file)
+			kb_die("usage: kdos-appbox %s <file.ktar> [<id|group>...]",
+			       argv[i]);
+		for (int k = i + 2; k < argc && argn < CAT_MAX_PACKS; k++)
+			ids[argn++] = argv[k];
+		if (cat_load(NULL, err, sizeof(err)) != 0)
+			kb_die("%s", err);
+		/* EXPORT NEEDS A SELECTION and import does not: an archive
+		 * carries its own SELECTION, so `import <file>` is the whole
+		 * set and narrowing is the exception. */
+		if (CMD("export") && !argn)
+			kb_die("usage: kdos-appbox export <file.ktar> "
+			       "<id|group>...");
+		return CMD("export") ? store_export(file, ids, argn)
+				     : store_import(file, ids, argn);
 	}
 	if (CMD("warmup"))
 		return cmd_warmup();

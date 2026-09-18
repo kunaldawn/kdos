@@ -155,10 +155,12 @@ static char scan_why[96];
 static ShMountRow media[DV_MAX_MEDIA];
 static int nmedia;
 static char media_why[96];
-/* What `kdos app update --check` said, once per refresh: a stick that IS
- * newer than the disk is the offline update story, and it had no surface. */
+/* An exported application set on a mounted stick, once per refresh. Importing
+ * one is the offline route to software and the only one on a machine with no
+ * network — and it had no surface until this row. */
 static char updates_line[96];
 static int updates_n;
+static char appset_path[320];
 static KtuiTable tbl;
 static char status[128];
 
@@ -648,30 +650,46 @@ static void scan_scanners(void)
 }
 
 /*
- * A STICK THAT IS NEWER THAN THE DISK. `kdos app update --check` answers in
- * one line and an exit status; it reads the medium's own index and costs one
- * daemon round trip, which is fine for a program that is already waiting for a
- * keystroke and would not be fine on a panel tick. Run once per refresh.
+ * AN APPLICATION SET ON A STICK. Importing one needs no network and every pack
+ * in it is verified where it mounts, which makes it the only route to software
+ * on a machine that has none — and a stick somebody wrote on another machine is
+ * exactly the thing this surface exists to notice.
+ *
+ * A DIRECTORY LISTING OF WHAT IS ALREADY MOUNTED, not a scan of the machine.
+ * The mount list has just been fetched from the daemon; reading one directory
+ * per mounted filesystem is fine for a program already waiting for a keystroke
+ * and would not be fine on a panel tick. Run once per refresh.
  */
 static void scan_updates(void)
 {
-	char buf[256];
-	KbArgv a = {0};
-
 	updates_line[0] = 0;
 	updates_n = 0;
-	kb_argv_add(&a, "kdos");
-	kb_argv_add(&a, "app");
-	kb_argv_add(&a, "update");
-	kb_argv_add(&a, "--check");
-	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, sizeof(buf)) < 0)
-		return;
-	buf[strcspn(buf, "\r\n")] = 0;
-	if (sscanf(buf, "%d update", &updates_n) != 1)
-		updates_n = 0;
-	if (updates_n > 0)
-		snprintf(updates_line, sizeof(updates_line), "%s — Enter to apply", buf);
+	appset_path[0] = 0;
+
+	for (int i = 0; i < nmedia && !appset_path[0]; i++) {
+		char **ents;
+
+		if (!media[i].mnt[0])
+			continue;
+		ents = kb_listdir(media[i].mnt, NULL);
+		for (char **e = ents; e && *e; e++) {
+			size_t l = strlen(*e);
+
+			if (l < 6 || strcmp(*e + l - 5, ".ktar"))
+				continue;
+			/* A path that would not fit is skipped rather than
+			 * truncated: a shortened one names a different file. */
+			if (strlen(media[i].mnt) + 1 + l >= sizeof(appset_path))
+				continue;
+			snprintf(appset_path, sizeof(appset_path), "%s/%s",
+				 media[i].mnt, *e);
+			updates_n = 1;
+			snprintf(updates_line, sizeof(updates_line),
+				 "%s — Enter to import", *e);
+			break;
+		}
+		kb_strv_free(ents);
+	}
 }
 
 /* ── the row list ──────────────────────────────────────────────────────── */
@@ -710,7 +728,7 @@ static void build_rows(void)
 		rows[nrows++].idx = i;
 	}
 	rows[nrows].kind = R_HEAD;
-	rows[nrows++].head = "UPDATES ON THE MEDIUM";
+	rows[nrows++].head = "APPLICATION SETS ON A STICK";
 	if (updates_n > 0) {
 		rows[nrows].kind = R_UPDATE;
 		rows[nrows++].idx = 0;
@@ -1149,9 +1167,11 @@ int devices_main(int argc, char **argv)
 
 				argv[k++] = "kdos";
 				argv[k++] = "app";
-				argv[k++] = "update";
+				argv[k++] = "import";
+				argv[k++] = appset_path;
 				argv[k] = NULL;
-				sh_spawn(argv);
+				if (appset_path[0])
+					sh_spawn(argv);
 			} else if (tbl.sel < nrows && rows[tbl.sel].kind == R_MEDIA) {
 				/* Enter is the obvious verb for the state it
 				 * is in: mount what is not mounted, open what

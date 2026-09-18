@@ -229,8 +229,10 @@ echo "==> every meson -D a recipe passes is an option that port defines"
 # default_library, b_*, and the rest meson defines for every project) is
 # always valid and is not in that file, so the known set is listed here.
 #
-# A port whose tarball is absent (a release asset, not in git) is SKIPPED
-# rather than failed — `make bootstrap` is what puts it there.
+# A port whose tarball is absent is SKIPPED rather than failed. The archives
+# are in the tree through Git LFS, so the case this covers is a clone made
+# without `git lfs install`: the working tree then holds pointer files and
+# every meson option in it would be reported unknown.
 meson_checked=0
 meson_builtin="auto_features backend b_asneeded b_colorout b_coverage b_lto \
 b_lundef b_ndebug b_pch b_pgo b_sanitize b_staticpic b_vscrt buildtype \
@@ -581,7 +583,7 @@ echo
 echo "==> shell that ships or builds is syntactically valid"
 _sh=0
 for f in script/*.sh script/*/*.sh fs/etc/init.d/* fs/usr/share/kdos/init \
-         ports/appbox/fetch ports/fetch testing/*.sh \
+         ports/fetch testing/*.sh \
          ports/core/*/build.sh src/packages/*/build.sh \
          ports/core/*/postinstall.sh src/packages/*/postinstall.sh \
          fs/etc/profile fs/etc/profile.d/* fs/usr/local/bin/* \
@@ -688,8 +690,8 @@ for gone in fs/usr/local/bin/kdos fs/usr/local/bin/kdos-banner \
             fs/usr/local/bin/kdos-shot fs/usr/local/bin/kdos-fetch-app \
             fs/usr/local/bin/kdos-fetch-static fs/usr/sbin/service \
             fs/usr/local/sbin/kdos-getty src/kpkg/kpkg \
-            ports/appbox/pack ports/appbox/assemble \
-            ports/appbox/genlaunchers.py; do
+            ports/appbox ports/sources ports/sources.manifest \
+            fs/etc/kdos/pack-sources; do
     [ -e "$gone" ] && bad "$gone" "should have been removed"
 done
 # Only things that would INVOKE the removed tools count. A C file naming one in
@@ -1212,7 +1214,15 @@ for d in src/desktop/*/ src/packages/*/; do
     for f in "$d"*.c; do
         [ -e "$f" ] || continue
         base=$(basename "$f")
-        grep -q "$base" "$b" || echo "$d$base" >> "$SP/uncompiled"
+        # A LITERAL FILENAME AT A BOUNDARY, not a bare grep. `grep "store.c"`
+        # is a REGEX whose `.` matches any character, so an unrelated
+        # `appstore/catalogue` in the same file answered yes for a store.c
+        # nothing compiled — and the link failure was the first thing that
+        # noticed. The dot is escaped and the name must sit at a path or quote
+        # boundary, so `re.c` no longer matches `core.c` either.
+        _esc=$(printf '%s' "$base" | sed 's/\./\\./g')
+        grep -qE "(^|[/\"'\'' ])$_esc([\"'\'' ]|\$)" "$b" ||
+            echo "$d$base" >> "$SP/uncompiled"
     done
 done
 if [ -s "$SP/uncompiled" ]; then
@@ -1222,28 +1232,43 @@ else
 fi
 
 echo
-echo "==> every helper the Makefile runs is on disk, and none shadows its own output"
-# `make fetch-packs` ran `bash ports/appbox/packs`, and `ports/appbox/packs` is
-# ALSO the directory `01_packs.sh` and `02_iso.sh` read .kpack files out of. The
-# script's own `mkdir -p "$OUT"` therefore failed on its first line of work and
-# `set -e` ended the bake before a single row was built — invisible to every
-# other gate, because nothing here runs a bake.
+echo "==> every helper the Makefile runs is on disk"
 for _h in $(sed -n 's/^\t.*\bbash \([a-z][a-zA-Z0-9._/-]*\).*/\1/p' Makefile | sort -u); do
     if [ ! -f "$_h" ]; then
         bad "makefile helpers" "$_h is invoked by the Makefile and is not a file"
     fi
 done
-[ -e ports/appbox/packs ] && [ ! -d ports/appbox/packs ] &&
-    bad "pack output" "ports/appbox/packs must be the .kpack directory, not a file"
-note "makefile helpers" "every 'bash <path>' resolves, and the pack output path is free"
+note "makefile helpers" "every 'bash <path>' resolves"
+
+echo
+echo "==> the application store is wired everywhere it has to be"
+# A SURFACE WIRED IN FOUR OF FIVE PLACES IS A CHORD THAT OPENS NOTHING. The
+# binary dispatches on its own basename, so a missing symlink, a missing TOOLS
+# row, a missing declaration and a missing menu row each fail differently and
+# none of them at build time.
+for _f in src/desktop/kdos-shell/main.c src/desktop/kdos-shell/build.sh \
+          fs/etc/kdos/menu.conf; do
+    grep -q 'kdos-store' "$_f" ||
+        bad "kdos-store" "not wired in $_f"
+done
+grep -q 'store_main' src/desktop/kdos-shell/shell.h ||
+    bad "kdos-store" "store_main is not declared in shell.h"
+# THE CATALOGUE MUST BE INSTALLED, not merely present in the tree. A path
+# nothing installs is a store that opens empty with no error on the screen:
+# cat_load() cannot tell "no applications" from "no file".
+grep -q 'usr/share/kdos/appstore/catalogue' src/packages/kdos-appbox/build.sh ||
+    bad "catalogue" "build.sh does not install it"
+[ -f src/packages/kdos-appbox/catalogue ] ||
+    bad "catalogue" "src/packages/kdos-appbox/catalogue is missing"
+note "kdos-store" "the surface is wired in four places and the catalogue ships"
 
 echo
 echo "==> no build script NAMES a command inside double quotes and RUNS it"
-# `echo "Packs: none baked — `make fetch-packs` builds them"` is not a message,
-# it is a command substitution: 02_iso.sh executed `make fetch-packs` in the
-# middle of packaging, inside a chroot with no Makefile, and printed `No rule to
-# make target` from a step that was otherwise fine. A diagnostic that names a
-# command the reader should run must quote it so the shell does not.
+# A backtick inside a double-quoted echo is not a message, it is a command
+# SUBSTITUTION: a packaging step that wrote one ran the named command inside a
+# chroot with no Makefile and printed `No rule to make target` from a step that
+# was otherwise fine. A diagnostic that names a command the reader should run
+# must quote it so the shell does not.
 #
 # Only ECHO lines are checked, and only in the build tree: a backtick elsewhere
 # is ordinary (00_toolchain/01_gcc.sh uses one to place limits.h) and rewriting
@@ -1324,12 +1349,16 @@ for d in ("ports/core", "src/packages", "src/desktop"):
         names |= {n for n in os.listdir(d)
                   if os.path.isfile(os.path.join(d, n, "kpkgbuild"))}
 boxed = set()
-if os.path.isfile("ports/appbox/packs.conf"):
-    for line in open("ports/appbox/packs.conf"):
-        line = line.strip()
-        if not line or line.startswith("#"):
+if os.path.isfile("src/packages/kdos-appbox/catalogue"):
+    # ONLY A PACK ROW CARRIES PACKAGES IN COLUMN 3. `group` and `meta` rows put
+    # prose there, and slicing them in fills this set with English.
+    for line in open("src/packages/kdos-appbox/catalogue"):
+        f = line.strip().split()
+        if not f or f[0].startswith("#"):
             continue
-        boxed |= set(line.split()[3:])
+        if f[0] not in ("base", "runtime", "app", "data"):
+            continue
+        boxed |= {x for x in f[3:] if x != "-"}
 
 rows, have = set(), set()
 in_table = False
