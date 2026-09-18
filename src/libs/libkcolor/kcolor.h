@@ -36,14 +36,25 @@
  * scheme. A scheme is not a set of colours somebody liked, it is a set that
  * clears those two floors.
  *
- * EVERY SCHEME HERE IS DARK, and that is a limit of the chrome rather than a
- * preference. `libkchrome` solves the focused plate along `dim`-to-`pdark` and
- * writes `text` on it — one label colour for every plate — so on a light ground
- * the plate darkens away from a dark label and no mix clears both the
- * separation floor and the legibility one: the best light candidate reaches
- * 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off the
- * bar where the label reads at 6.58:1. A light scheme needs the ladder to
- * choose its label per plate first, and `selftest.c` refuses one until then.
+ * A SCHEME'S GROUND MAY BE EITHER END, and what decides whether one is usable
+ * is the PLATE LADDER rather than the ground. `libkchrome` solves the focused
+ * plate along `dim`-to-`pdark` and writes `text` on it, and that plate has to
+ * do two things that pull against each other: stand off the bar, and carry its
+ * own label. A palette whose `dim`, `pdark` and `variant` leave no mix doing
+ * both is unusable whichever end its ground is; one that leaves a mix doing
+ * both is usable whichever end its ground is.
+ *
+ * `paper` is the light one and it is what proved the distinction: at 30% its
+ * plate separates at the hover floor and carries `text` at 7.51:1. The refusal
+ * that used to sit in `selftest.c` measured the GROUND, which is a proxy — it
+ * would have refused this palette and accepted a dark one that failed. The
+ * assertion measures the plates now.
+ *
+ * THE SOLVER AIMS AT 7:1 ON THE LABEL AND DOES NOT ALWAYS REACH IT. `bone`
+ * lands at 6.21:1 and no `pdark` fixes it — the separation floor binds first,
+ * and the best any mix reaches is 6.69:1. The floor asserted is therefore WCAG
+ * AA at 4.5:1, which is what every scheme can hold; 7:1 is the target the walk
+ * stops early on, not a promise.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KCOL_SCHEMES(X)                                                       \
@@ -60,7 +71,9 @@
 	X(borland, "BORLAND", "KDOS-Borland",                                 \
 	  5fd7d7, 24494d, ffd75f, ff5f5f, 020e12, f0fcfc, 07181c, 2f8f8f, 010c0f) \
 	X(perfect, "PERFECT", "KDOS-Perfect",                                 \
-	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38)
+	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38) \
+	X(paper, "PAPER", "KDOS-Paper",                                       \
+	  1a5fb4, c9c6bd, 9c6500, a51d2d, fbfaf6, 1a1a17, f2f0e9, 5b5750, eceae2)
 
 #define KCOL_HEX(x) ((uint32_t)0x##x)
 
@@ -181,6 +194,18 @@ uint32_t kcol_from_hls(double h, double l, double s);
 /* Linear blend, pct 0..100 of `b` over `a`. Integer maths, matching the
  * `mix_hex` the shell version used, so generated files do not shift by one. */
 uint32_t kcol_mix(uint32_t a, uint32_t b, int pct);
+
+/*
+ * STRAIGHT (not premultiplied) COMPOSITE of `fg` at `alpha` over `bg` — what a
+ * translucent plate LOOKS like, so a contrast can be measured against what
+ * reaches a screen rather than against the colour before it is laid down.
+ *
+ * The difference is not cosmetic: the focused plate measures about 0.8 lower
+ * raw than composited, which is the gap between a ladder that reads as working
+ * and one that reads as broken. The painting itself is pixman's and
+ * premultiplied; this is only ever for measuring.
+ */
+uint32_t kcol_over(uint32_t fg, uint32_t bg, uint8_t alpha);
 
 /* The float form the stylesheet generator uses: x + (y - x) * t, rounded the
  * way python rounds. NOT interchangeable with kcol_mix — they disagree by a

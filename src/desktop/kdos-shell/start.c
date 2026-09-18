@@ -851,7 +851,7 @@ static void build_routes(void)
 		 * substring both ways, so `network` already reaches
 		 * `setup.network`. */
 		r->keys = rt->cmd;
-		r->icon = "application-x-executable";
+		r->icon = "system-run";
 	}
 }
 
@@ -1049,7 +1049,7 @@ static void build_right(void)
 		 * a lane with no line in a menu is a lane nothing can reach.
 		 */
 		r->keys = "box container environment distrobox pack apps";
-		r->icon = "package-x-generic";
+		r->icon = "package";
 		r->argv[0] = "kdos-res";
 		r->argv[1] = "--page";
 		r->argv[2] = "boxes";
@@ -1122,7 +1122,7 @@ static void build_right(void)
 	if (r) {
 		r->rsub = 1;
 		r->keys = "system preferences control panel more";
-		r->icon = "preferences-system";
+		r->icon = "configure";
 	}
 }
 

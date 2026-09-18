@@ -1605,6 +1605,68 @@ done
 note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
 
 echo
+echo "==> every icon name a surface asks for is one the image can resolve"
+# A NAME kicon_slot CANNOT RESOLVE RETURNS -1 AND DRAWS A FALLBACK GLYPH, and
+# nothing anywhere says so. The surface renders, the flush succeeds, and a row
+# that was meant to carry a picture carries a dot. The Start button asked for
+# `start-here` that way — the most visible icon on the desktop, silently not an
+# icon, because the logo mark was installed into the theme tree and libkicon
+# searches the atlas and `icons/hicolor` and not `~/.icons/<theme>`.
+#
+# Both sources are checked, because both are real lookup paths. Checked against
+# what is BUILT rather than a list, for the reason the console-font check is:
+# the list is the thing that goes stale.
+_atlas=build/fs/usr/share/kdos/icons/atlas.kia
+if [ -f "$_atlas" ]; then
+    _iconbad=$(python3 - "$_atlas" <<'PYEOF'
+import glob, os, re, struct, subprocess, sys
+
+d = open(sys.argv[1], 'rb').read()
+if d[:4] != b'KIA1':
+    sys.exit(0)
+n, = struct.unpack('<I', d[4:8])
+names, off = set(), 8
+for _ in range(n):
+    nlen, size, noff, boff, blen = struct.unpack('<HHIII', d[off:off + 16])
+    off += 16
+    names.add(d[noff:noff + nlen].decode())
+
+# The other lookup path: hicolor, wherever the build put one.
+for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
+    names.add(os.path.basename(p)[:-4])
+
+# Every literal name a surface hands to the icon layer. Three spellings,
+# because the name reaches it as an argument, as a row field, or as a table
+# column, and a check that knew only one would pass the other two.
+pats = (r'kicon_slot(?:_pad)?\("([a-z0-9._-]+)"',
+        r'kicon_pixmap\("([a-z0-9._-]+)"',
+        r'(?:->|\.)icon = "([a-z0-9._-]+)"')
+used = set()
+out = subprocess.run(['grep', '-rhoE', '|'.join(pats), 'src/', '--include=*.c'],
+                     capture_output=True, text=True).stdout
+for line in out.splitlines():
+    for pat in pats:
+        m = re.search(pat, line)
+        if m:
+            used.add(m.group(1))
+            break
+
+for name in sorted(used - names):
+    print(name)
+PYEOF
+)
+    if [ -n "$_iconbad" ]; then
+        for _n in $_iconbad; do
+            bad "icon $_n" "resolves in neither the atlas nor hicolor"
+        done
+    else
+        note "icon names" "every name resolves in the atlas or in hicolor"
+    fi
+else
+    note "icon names" "no built atlas — skipped"
+fi
+
+echo
 echo "==> every chrome glyph is one the console font can actually draw"
 # A GLYPH THE CONSOLE FONT DOES NOT CARRY RENDERS AS A BLANK ON tty1, and
 # nothing anywhere says so: the cell is written, the flush succeeds, and the

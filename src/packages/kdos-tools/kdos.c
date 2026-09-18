@@ -3268,7 +3268,7 @@ static void help_body(FILE *o)
 		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
 		{ "kdos-fetch-app <name>", "install an alien app from a network" },
-		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | next | prev | list" },
+		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | paper | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
 		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-theme's arrows do" },
