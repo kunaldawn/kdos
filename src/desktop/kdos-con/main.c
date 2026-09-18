@@ -5002,8 +5002,26 @@ int con_dragging(void)
 	return drag.on;
 }
 
+/*
+ * THE DRAG IS OVER, HOWEVER IT ENDED — a drop, an Escape, a source that died,
+ * the session shutting down.
+ *
+ * WHATEVER IT WAS OVER IS TOLD. A target keeps state for the length of a drag —
+ * a KDOS surface holds the ENTER it was sent, a cage holds a real pointer grab
+ * and an offer in the guest's hands — and one never told it ended keeps both
+ * for as long as it lives. The drop path clears `over` first, because a leave
+ * after a drop would take back the offer the drop just made.
+ */
 static void drag_end(void)
 {
+	if (drag.over) {
+		Win *prev = win_find((int)drag.over);
+
+		if (prev && prev->surf)
+			kcon_surface_drag_leave(prev->surf);
+		else if (prev)
+			embed_drag_leave(prev);
+	}
 	free(drag.data);
 	drag.data = NULL;
 	drag.len = 0;
@@ -5013,16 +5031,20 @@ static void drag_end(void)
 	drag.mime[0] = '\0';
 }
 
-static void on_drag_start(KconSurface *f, const char *mime, const char *data,
-			  size_t len, void *user)
+/*
+ * SOMETHING WAS PICKED UP. One entry point, because the two things that can
+ * pick something up — a KDOS surface over the socket and a boxed application
+ * over its cage's channel — must produce the same drag or the bar, the
+ * targets and the drop would each be answering a different one.
+ *
+ * TWO TYPES AND NO OTHERS. A drag is a filename or a line of text on this
+ * desktop; anything else is a payload nothing here can act on, and accepting
+ * it would mean a highlight over targets that would refuse the drop.
+ */
+static void drag_begin(const char *mime, const char *data, size_t len,
+		       unsigned src)
 {
-	(void)f;
-	(void)user;
 	drag_end();
-	/* TWO TYPES AND NO OTHERS. A drag is a filename or a line of text on
-	 * this desktop; anything else is a payload nothing here can act on,
-	 * and accepting it would mean a highlight over targets that would
-	 * refuse the drop. */
 	if (!mime || (strcmp(mime, "text/plain") &&
 		      strcmp(mime, "text/uri-list")))
 		return;
@@ -5035,11 +5057,33 @@ static void on_drag_start(KconSurface *f, const char *mime, const char *data,
 	drag.data[len] = '\0';
 	drag.len = len;
 	snprintf(drag.mime, sizeof(drag.mime), "%s", mime);
-	for (Win *w = S.wins; w; w = w->next)
-		if (w->surf == f)
-			drag.src = w->id;
+	drag.src = src;
 	drag.on = 1;
 	ktui_draw_invalidate();
+}
+
+static void on_drag_start(KconSurface *f, const char *mime, const char *data,
+			  size_t len, void *user)
+{
+	unsigned src = 0;
+
+	(void)user;
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->surf == f)
+			src = w->id;
+	drag_begin(mime, data, len, src);
+}
+
+/*
+ * A BOXED APPLICATION BEGAN ONE. The cage read the payload out of the guest's
+ * own data source the moment the drag started — see kdos-cage's drag.c — so
+ * the session is carrying it before the pointer has left the window, which is
+ * what lets the drag cross into a terminal or onto the desktop at all.
+ */
+void con_drag_from_guest(const char *mime, const char *data, size_t len,
+			 unsigned src)
+{
+	drag_begin(mime, data, len, src);
 }
 
 /*
@@ -5106,28 +5150,49 @@ static int drag_ptr(const KtuiEvent *ev)
 	t = drag_target(ev->mx, ev->my);
 	id = t ? t->id : 0;
 
+	/*
+	 * TWO KINDS OF TARGET AND ONE SET OF RULES. A KDOS surface is told over
+	 * its socket and an embedded guest over its cage's channel, and the
+	 * ENTER, MOTION, LEAVE and DROP mean the same thing on both — a window
+	 * that answered neither is a window a drag passes over as if it were
+	 * the desktop, which is what an embedded application was.
+	 */
 	if (id != drag.over) {
 		Win *prev = drag.over ? win_find((int)drag.over) : NULL;
 
 		if (prev && prev->surf)
 			kcon_surface_drag_leave(prev->surf);
+		else if (prev)
+			embed_drag_leave(prev);
 		drag.over = id;
-		if (t && t->surf) {
+		if (t) {
 			drag_local(t, ev->mx, ev->my, &lx, &ly);
-			kcon_surface_drag_enter(t->surf, lx, ly, drag.mime);
+			if (t->surf)
+				kcon_surface_drag_enter(t->surf, lx, ly,
+							drag.mime);
+			else
+				embed_drag_enter(t, lx, ly, drag.mime);
 		}
-	} else if (t && t->surf && ev->press == KT_MP_DRAG) {
+	} else if (t && ev->press == KT_MP_DRAG) {
 		drag_local(t, ev->mx, ev->my, &lx, &ly);
-		kcon_surface_drag_motion(t->surf, lx, ly);
+		if (t->surf)
+			kcon_surface_drag_motion(t->surf, lx, ly);
+		else
+			embed_drag_motion(t, lx, ly);
 	}
 
 	if (ev->press == KT_MP_RELEASE) {
 		/* THE PAYLOAD, ONCE, TO WHATEVER IT WAS LET GO OVER. A release
 		 * over nothing is a drag cancelled, which is what every desktop
 		 * has meant by it. */
-		if (t && t->surf) {
+		if (t) {
 			drag_local(t, ev->mx, ev->my, &lx, &ly);
-			kcon_surface_drop(t->surf, lx, ly, drag.data);
+			if (t->surf)
+				kcon_surface_drop(t->surf, lx, ly, drag.data);
+			else
+				embed_drag_drop(t, lx, ly, drag.data,
+						drag.len);
+			drag.over = 0;	/* dropped, not left */
 		}
 		drag_end();
 		ktui_draw_invalidate();

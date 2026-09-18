@@ -10,9 +10,14 @@
  * `apps.c`'s two questions, asserted against a fixture store. A BINARY OF ITS
  * OWN because `selftest.c` links libraries and these live in `kdos-shell`;
  * linking the whole shell into the library self-test to reach two functions
- * would drag a Wayland client and a font renderer in with them. Four stubs are
+ * would drag a Wayland client and a font renderer in with them. Five stubs are
  * the whole cost of not doing that — they are the launch path, which nothing
  * here calls.
+ *
+ * THE STUBS ARE COMPILED AGAINST `shell.h`, so a signature that drifts from the
+ * real one is a compile error here rather than a link that silently binds a
+ * different function. That is the whole reason the header is included for a
+ * file that calls none of what it declares.
  *
  * WHAT IS ACTUALLY BEING PROTECTED IS THE ASYMMETRY. `sh_box_missing` answers
  * 1 only where absence is PROVED, and every unknown resolves to "present":
@@ -28,26 +33,38 @@
 #include <string.h>
 
 #include "launch.h"
+#include "shell.h"
 
-/* The launch path, which none of this reaches. */
-int kcon_run(const char *sock, char *const argv[], const char *title,
-	     int floating, const char *size);
-int sh_spawn(char *const argv[]);
-void sh_strip_field_codes(char *s);
-int sh_term_argv_in(const char *term, const char *cmd, char **argv, int max);
+/*
+ * The launch path, which none of this reaches. `kcon_run` is libkcon's and is
+ * declared here rather than by including `kcon.h`: that header pulls in the
+ * whole display vtable, which is the dependency this binary exists to avoid.
+ */
+int kcon_run(const char *sock, const char *const argv[], const char *title,
+	     unsigned flags);
 
-int kcon_run(const char *sock, char *const argv[], const char *title,
-	     int floating, const char *size)
+int kcon_run(const char *sock, const char *const argv[], const char *title,
+	     unsigned flags)
 {
-	(void)sock; (void)argv; (void)title; (void)floating; (void)size;
+	(void)sock; (void)argv; (void)title; (void)flags;
 	return -1;
 }
-int sh_spawn(char *const argv[]) { (void)argv; return -1; }
+void sh_spawn(const char *const argv[]) { (void)argv; }
 void sh_strip_field_codes(char *s) { (void)s; }
-int sh_term_argv_in(const char *term, const char *cmd, char **argv, int max)
+int sh_term_argv_in(const char *want, int floating, const char *size,
+		    const char *argv[], int n, int max, const char *cmd,
+		    char *id, size_t idsz)
 {
-	(void)term; (void)cmd; (void)argv; (void)max;
-	return 0;
+	(void)want; (void)floating; (void)size; (void)argv; (void)max;
+	(void)cmd; (void)id; (void)idsz;
+	return n;
+}
+/* `sh_launch_id` resolves an id through this before it launches; nothing here
+ * launches, so nothing here resolves one either. */
+int sh_desktop_entry(const char *id, struct sh_entry *out)
+{
+	(void)id; (void)out;
+	return -1;
 }
 
 static int fails;

@@ -326,9 +326,9 @@ different one.
 
 **A spreadsheet and a data file open in different programs, on purpose.** A `.csv` goes to
 `visidata`, which is built for exploring columns; an `.xlsx` goes to `sc-im`, which is a spreadsheet
-and reads the format in C with nothing in between. `visidata` can open an `.xlsx` too if you ask it
-to — that is what `openpyxl` is on the image for — and it is the one of the two that can write one
-back.
+and reads and writes the format in C with nothing in between — so a file somebody sent you can be
+handed back as the file they sent. `visidata` can open an `.xlsx` too if you ask it to; that is what
+`openpyxl` is on the image for.
 
 **A link opens the same way a file does.** `mailto:` reaches `aerc` on either desktop; `http`,
 `https` and a saved page reach `w3m` on the console, and the browser you installed as a box under

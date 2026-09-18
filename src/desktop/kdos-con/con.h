@@ -1091,6 +1091,35 @@ void embed_raw_reset(void);
 void embed_keymap(int format, const char *text, size_t len);
 /* The pointer is no longer over this window. */
 void embed_leave(Win *w);
+
+/*
+ * ── A DRAG ACROSS AN EMBEDDED WINDOW ────────────────────────────────────
+ *
+ * The session owns the drag — it hit-tests, it draws the pointer and it holds
+ * the payload — and these four hand a guest the part of it a toolkit needs.
+ * `lx`/`ly` are window-relative CELLS, the same numbers drag_local() clamps,
+ * and are converted to the guest's pixels here.
+ *
+ * ONLY THE TYPE CROSSES ON THE ENTER AND ONLY THE BYTES ON THE DROP, which is
+ * the rule the session already keeps for its own surfaces: a drag passing over
+ * six windows must not hand its payload to all six. Each answers non-zero when
+ * the message reached the cage.
+ */
+int embed_drag_enter(Win *w, int lx, int ly, const char *mime);
+int embed_drag_motion(Win *w, int lx, int ly);
+int embed_drag_leave(Win *w);
+int embed_drag_drop(Win *w, int lx, int ly, const char *data, size_t len);
+
+/*
+ * AND THE OTHER DIRECTION: a guest began a drag, so the session takes it over.
+ * Implemented in main.c, which owns the drag state; called from embed.c, which
+ * owns the channel. `src` is the window it came from, for the bar.
+ *
+ * A TYPE THE SESSION CANNOT CARRY IS REFUSED HERE, in the one place that
+ * decides what a drag on this desktop may be.
+ */
+void con_drag_from_guest(const char *mime, const char *data, size_t len,
+			 unsigned src);
 /* The window whose guest has taken the pointer, or NULL for none. */
 Win *embed_grab_win(void);
 /* Is a guest anybody can see asking for the screen to stay on. */

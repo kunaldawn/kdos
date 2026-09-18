@@ -748,9 +748,10 @@ a box profile carrying `display = vt` gets a terminal of its own instead, and `k
 with which of the two happened. A `Terminal=true` entry takes neither: it becomes a `kdos-term`
 window.
 
-**Six launch surfaces call `sh_launch()`** — the Start menu, the palette, the desktop's icons,
-`kdos-find`, *Open With* and the run box — and the one path is what makes them agree about three
-things a surface splitting the line for itself gets wrong:
+**Every launch surface in this binary calls `sh_launch()`** — the Start menu, the palette, the
+desktop's icons, `kdos-find`, *Open With*, the run box, the panel's quick-launch row, its taskbar
+chips and `kdos-menu`'s rows — and the one path is what makes them agree about three things a
+surface splitting the line for itself gets wrong:
 
 | The shared path | A surface that splits its own line |
 |---|---|
@@ -767,10 +768,10 @@ twice: it **spends** them on the documents the launch carries, and it takes a li
 the kind that wants its documents appended — which is the only way `Exec=xterm` can be handed a
 file. A surface that deleted the codes as it read the entry makes every line look like that second
 kind, so `--open=%f` runs as `--open=` with the path as a word of its own and `%u` takes four
-documents where the entry asked for one. Deleting them — `sh_strip_field_codes()` — belongs to a
-reader that cannot spend one: the three surfaces that split their own line, and the haystack a
-search is matched against, where a `%U` is two more letters for a subsequence matcher to travel
-through. With nothing to open, `kxdg_exec_split()` drops every code and leaves no empty argument
+documents where the entry asked for one. Deleting them — `sh_strip_field_codes()` — belongs to the
+one reader that cannot spend one: the haystack a search is matched against, where a `%U` is two
+more letters for a subsequence matcher to travel through, so `fu` would find every entry whose
+`Exec` ends in one. It is a **copy** that is stripped; the launch reads the same buffer. With nothing to open, `kxdg_exec_split()` drops every code and leaves no empty argument
 behind, which is why nothing has to be deleted first.
 
 **A `verbatim` launch is a typed command line** — the run box, and *Open With*'s *Other
@@ -778,11 +779,20 @@ command…* row. A `%` somebody typed is a character the program must see, so no
 and a file travels as a trailing argument; the quoting is read either way, so `mpv "my film.mkv"`
 is two arguments from the run box as much as from an entry.
 
-**Three surfaces in this binary still split their own line** and are the gap a seventh must not
-join: the panel's quick-launch row and the taskbar chip's *New window* (`panel.c`), and
-`kdos-menu`'s application rows. An entry whose `Exec` carries a quoted argument starts wrong from
-those three, and a graphical one started from the panel while it is docked on the console is forked
-beside the session rather than given to it. See [known gaps](../06-reference/known-gaps.md).
+**A surface that holds an ID rather than a line calls `sh_launch_id()`**, which resolves the entry
+through the XDG data directories and hands the whole of it over. The panel's quick-launch row, its
+taskbar chips' *New window* and `kdos-menu`'s window menu are the callers: none of the three builds
+the application index, which walks every directory on the machine, and a row that read only `Exec`
+would start a `Terminal=true` application with no terminal round it and put a KDOS surface in a
+cage. **The row is resolved twice on purpose** — once when it is drawn, for the label, and again
+when it is clicked. A row is drawn far more often than it is clicked and a package upgrade rewrites
+the entry between the two, so the copy that decides how something starts is read when it starts.
+
+**A row whose command this tree wrote is marked `host` and is never handed to the session.**
+`kdos-menu`'s System column is the case: `kdos-power suspend` in a cage would be a wlroots
+compositor started to run a one-line verb, and Log Out's `pkill` on the session would leave that
+cage outliving what it killed. It is set only by a surface whose rows are constants in its own
+source — never from an entry, where the entry's own keys are the only thing that may decide.
 
 **Nothing here names a terminal emulator.** `sh_term()` answers with `kdos-term` when `$KDOS_CON` is
 set and `foot` otherwise, and every place that opens one — the root menu's rows, Places, Open
@@ -803,8 +813,24 @@ it the same way `X-KDOS-Term` does: through the `kdos-term` argv this builds, as
 place, so they are emitted only for `kdos-term`. **A hint is dropped where there is no room** in the
 caller's argv — thirteen callers size their own, and a window that opens the ordinary way is better
 than a terminal that does not open because its wrapper would not fit. Both keys are read here and in
-`kdos-desk`, which parses an entry of its own: a key read in one and not the other is one entry with
-two answers.
+`kdos-desk`, which reads the entry through the same call: a key read in one and not the other is one
+entry with two answers.
+
+**`X-KDOS-Cells=true` is what keeps a KDOS surface out of a cage on the console.** The session wraps
+every non-terminal program it is handed in a kiosk compositor, because a Wayland client's surface is
+pixels and that desktop composites cells; a program that attaches to the session *itself* needs none
+of it. Without the key `kdos-res` is a whole wlroots compositor holding a grid of text the session
+was already drawing, and `kdos-term` is a terminal emulator inside a kiosk inside the console. Only
+an entry can answer it — the session is handed an argument vector, and a program's name says nothing
+about what it will draw — and an entry that does not carry it is treated as a graphical application,
+which is the safe direction.
+
+**All seven launch keys are read once, by `kxdg_launch_read()`.** The application index, the
+desktop's icons, the *Open With* chooser and `kdos-appbox open` each used to carry a private copy of
+the list, and a key added to one of them was a row that behaved differently depending on which
+surface it was clicked from. `NoDisplay` and `Hidden` are not among them: they say whether an entry
+belongs in a **menu**, which is a question for whoever is drawing one, and the MIME route opens a
+`NoDisplay` entry on purpose.
 
 desktop** — an entry may ask for `kdos-term` with `X-KDOS-Term` while the compositor is up, and
 choosing the flag by which session is running would hand it a `--app-id` it does not know. The two rows that open a terminal *as itself* —

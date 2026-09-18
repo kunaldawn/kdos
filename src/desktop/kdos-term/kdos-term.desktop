@@ -6,6 +6,9 @@ Comment=A shell, on either desktop
 Exec=kdos-term
 Icon=utilities-terminal
 Terminal=false
+# It attaches to the console session as a surface of its own, so the session
+# must give it a window and not a cage — see X-KDOS-Cells in kxdg.h.
+X-KDOS-Cells=true
 Categories=System;TerminalEmulator;
 Keywords=shell;prompt;command;console;pty;
 StartupWMClass=kdos-term

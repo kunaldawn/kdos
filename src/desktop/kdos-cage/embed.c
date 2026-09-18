@@ -57,6 +57,7 @@
 #include <wlr/util/log.h>
 
 #include "clipboard.h"
+#include "drag.h"
 #include "embed.h"
 #include "kembed.h"
 #include "output.h"
@@ -1121,6 +1122,40 @@ static int handle_readable(int fd, uint32_t mask, void *data)
 			break;
 		case KEMBED_CLIP_SET:
 			clipboard_take(server, &m, msgfd);
+			break;
+		/*
+		 * A DRAG THE SESSION IS CARRYING, replayed on this seat as a
+		 * real pointer drag — see drag.c. The positions are converted
+		 * like every other one on this channel; the MIME type is the
+		 * tail of the enter's datagram, terminated here rather than
+		 * trusted, because a peer's string is not this end's to assume
+		 * is one.
+		 */
+		case KEMBED_DRAG_ENTER: {
+			char mime[64];
+			size_t tail = n > (ssize_t)sizeof(m)
+					      ? (size_t)n - sizeof(m)
+					      : 0;
+
+			if (!w || !tail)
+				break;
+			if (tail > sizeof(mime) - 1)
+				tail = sizeof(mime) - 1;
+			memcpy(mime, buf + sizeof(m), tail);
+			mime[tail] = '\0';
+			drag_enter(server, w, m.a / sc, m.b / sc, mime, m.e);
+			break;
+		}
+		case KEMBED_DRAG_MOTION:
+			if (w)
+				drag_motion(server, w, m.a / sc, m.b / sc, m.e);
+			break;
+		case KEMBED_DRAG_LEAVE:
+			drag_leave(server);
+			break;
+		case KEMBED_DROP:
+			drag_drop(server, w, m.a / sc, m.b / sc, &m, msgfd,
+				  m.e);
 			break;
 		case KEMBED_MODS:
 			seat_embed_mods(server->seat, (uint32_t)m.a,

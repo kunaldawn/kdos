@@ -473,41 +473,58 @@ static void desktop_name(const char *app_id, char *out, size_t n, char *did,
 }
 
 /*
- * Name and Exec for a desktop-entry id — the favorites row's lookup, through
- * the same directories the taskbar label search reads, so the two can never
- * disagree about which entry an id means.
+ * A desktop-entry id resolved into a launch — the favorites row's lookup and
+ * the taskbar chip's, through the same directories the taskbar label search
+ * reads, so the two can never disagree about which entry an id means.
+ *
+ * The USER's directory is searched first and the first hit wins, which is what
+ * makes a ~/.local/share override an override; the index in apps.c resolves
+ * the same way.
  */
-int sh_desktop_entry(const char *id, char *name, size_t nname,
-		     char *exec, size_t nexec)
+int sh_desktop_entry(const char *id, struct sh_entry *out)
 {
 	char bases[8][512];
-	int nb, found = -1;
+	int nb;
 
-	if (name && nname)
-		*name = '\0';
-	if (exec && nexec)
-		*exec = '\0';
+	if (!out)
+		return -1;
+	memset(out, 0, sizeof(*out));
 	if (!id || !*id || strchr(id, '/'))
 		return -1;
 	nb = data_dirs(bases);
 
-	for (int i = 0; i < nb && found < 0; i++) {
+	for (int i = 0; i < nb; i++) {
 		char path[1024];
 		KxdgEntry e;
+		KxdgLaunch kl;
+
 		snprintf(path, sizeof(path), "%.400s/applications/%.100s.desktop",
 			 bases[i], id);
 		if (kxdg_load(&e, path, "Desktop Entry") != 0)
 			continue;
-		const char *v = kxdg_get(&e, "Name", NULL);
-		if (name && nname && v && *v)
-			snprintf(name, nname, "%s", v);
-		v = kxdg_get(&e, "Exec", NULL);
-		if (exec && nexec && v && *v)
-			snprintf(exec, nexec, "%s", v);
+		/*
+		 * THE ONE READER, so this and the application index cannot
+		 * come to different conclusions about the same file — see
+		 * kxdg.h. A file that parsed but names no runnable application
+		 * ends the search rather than falling through to a system
+		 * entry of the same id: an override that is broken is still
+		 * the answer that id resolves to.
+		 */
+		int ok = kxdg_launch_read(&e, &kl);
+
 		kxdg_free(&e);
-		found = 0;
+		if (ok != 0)
+			return -1;
+		kb_strlcpy(out->name, kl.name, sizeof(out->name));
+		kb_strlcpy(out->exec, kl.exec, sizeof(out->exec));
+		kb_strlcpy(out->term, kl.term, sizeof(out->term));
+		kb_strlcpy(out->size, kl.size, sizeof(out->size));
+		out->terminal = kl.terminal;
+		out->floating = kl.floating;
+		out->cells = kl.cells;
+		return 0;
 	}
-	return found;
+	return -1;
 }
 
 /*

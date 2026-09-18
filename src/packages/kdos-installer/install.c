@@ -1566,6 +1566,25 @@ static void do_boot(void)
 	copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTX64.EFI");
 
 	/*
+	 * AND THE 32-BIT FIRMWARE'S FIRST STAGE BESIDE IT, so a disk written on
+	 * one machine starts on the other. A 64-bit CPU does not imply a 64-bit
+	 * firmware — the early Atom tablets are the case — and firmware reads
+	 * only the `EFI/BOOT/BOOT<arch>.EFI` it can execute, so the two never
+	 * compete. It costs about a hundred kilobytes of an ESP.
+	 *
+	 * COPIED WHERE IT EXISTS AND SKIPPED WHERE IT DOES NOT: a Limine built
+	 * without `--enable-uefi-ia32` installs no such file, and failing the
+	 * install over a fallback for firmware this machine does not have would
+	 * throw away a working system.
+	 */
+	snprintf(src, sizeof(src), "%s/BOOTIA32.EFI", lim);
+	if (kb_path_exists(src))
+		copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTIA32.EFI");
+	else
+		emit('W', "Limine has no BOOTIA32.EFI — this disk will not "
+			  "start on 32-bit UEFI firmware");
+
+	/*
 	 * limine-bios.sys IS THE BIOS SECOND STAGE and it is found by NAME, not
 	 * by configuration: the MBR code written below searches the root,
 	 * /boot, /limine and /boot/limine of each volume for exactly this file.
@@ -1740,11 +1759,26 @@ static void do_boot(void)
 
 	if (kb_have_prog("efibootmgr") && ki_sys.uefi) {
 		char disk[64];
+		/*
+		 * THE ENTRY NAMES ONE PATH, so it has to be the one THIS
+		 * firmware can execute — an NVRAM entry pointing at a binary
+		 * the firmware cannot load is a boot option that fails rather
+		 * than falls through. Both files are on the ESP above; only
+		 * the removable-media fallback picks between them by itself.
+		 *
+		 * 0 bits is a kernel that did not publish the width, and is
+		 * read as 64: that is nearly every machine, and being wrong
+		 * leaves a 32-bit firmware booting through the fallback path
+		 * instead of through its own entry.
+		 */
+		const char *loader = ki_sys.fw_bits == 32
+					     ? "\\EFI\\BOOT\\BOOTIA32.EFI"
+					     : "\\EFI\\BOOT\\BOOTX64.EFI";
+
 		kb_strlcpy(disk, cfg.disk, sizeof(disk));
 		char *eb[] = { "efibootmgr", "--create", "--disk", disk,
-			       "--part", "1", "--loader",
-			       "\\EFI\\BOOT\\BOOTX64.EFI", "--label",
-			       "KDOS", NULL };
+			       "--part", "1", "--loader", (char *)loader,
+			       "--label", "KDOS", NULL };
 		try_(eb);
 	}
 	emit('P', "1");

@@ -460,6 +460,23 @@ void probe_system(void)
 
 	ki_sys.uefi = kb_path_exists("/sys/firmware/efi");
 
+	/*
+	 * AND WHICH EFI BINARY THIS MACHINE CAN EXECUTE. The kernel publishes
+	 * the firmware's own width, which on an early Atom tablet is 32 while
+	 * the CPU and every byte of this image are 64. A kernel too old to
+	 * publish it leaves this 0, which the bootloader step reads as
+	 * "assume 64" — the overwhelming majority, and the case where being
+	 * wrong is a machine that boots through the removable-media fallback
+	 * rather than one that does not boot at all.
+	 */
+	if (ki_sys.uefi) {
+		char fw[16];
+
+		if (kb_read_file("/sys/firmware/efi/fw_platform_size", fw,
+				 sizeof(fw)) > 0)
+			ki_sys.fw_bits = atoi(fw);
+	}
+
 	DIR *d = opendir("/sys/firmware/efi/efivars");
 	if (d) {
 		struct dirent *e;

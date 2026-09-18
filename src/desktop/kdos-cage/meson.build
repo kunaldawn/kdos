@@ -51,6 +51,7 @@ conf_data.set_quoted('CAGE_UPSTREAM', '0.3.1')
 cage_sources = [
   'cage.c',
   'clipboard.c',
+  'drag.c',
   'embed.c',
   'idle_inhibit_v1.c',
   'output.c',

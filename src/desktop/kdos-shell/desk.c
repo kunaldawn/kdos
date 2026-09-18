@@ -68,6 +68,7 @@ struct entry {
 	bool terminal;		/* ...inside a terminal emulator */
 	char term[24];		/* X-KDOS-Term, or empty for this session's */
 	int floating;		/* X-KDOS-Float: open unanchored            */
+	int cells;		/* X-KDOS-Cells: it draws on the grid       */
 	char size[16];		/* X-KDOS-Size: COLSxROWS, or empty         */
 	char icon[96];		/* a .desktop's Icon=, for the picture layer */
 	long mtime;		/* for Sort Icons ▸ date */
@@ -421,23 +422,23 @@ static int load_desktop_entry(struct entry *it)
 	if (kxdg_load(&e, it->path, "Desktop Entry") != 0)
 		return 0;
 
-	const char *name = kxdg_get(&e, "Name", NULL);
-	const char *exec = kxdg_get(&e, "Exec", NULL);
-	if (!name || !exec || !*exec) {
+	KxdgLaunch kl;
+
+	/* libkxdg's one reader — the same keys the Start menu reads, and read
+	 * through the same call for the reason the key list was shared: an
+	 * icon that behaved differently from the same row in the menu would be
+	 * one entry with two answers. */
+	if (kxdg_launch_read(&e, &kl) != 0 || !kl.name[0]) {
 		kxdg_free(&e);
 		return 0;
 	}
-	snprintf(it->name, sizeof(it->name), "%s", name);
-	snprintf(it->exec, sizeof(it->exec), "%s", exec);
-	it->terminal = kxdg_bool(&e, "Terminal", 0);
-	snprintf(it->term, sizeof(it->term), "%s",
-		 kxdg_get(&e, "X-KDOS-Term", ""));
-	/* The same two keys `apps.c` reads, and read here for the same reason
-	 * `X-KDOS-Term` is: a desktop icon that behaved differently from the
-	 * same row in the Start menu would be one entry with two answers. */
-	it->floating = kxdg_bool(&e, "X-KDOS-Float", 0);
-	snprintf(it->size, sizeof(it->size), "%s",
-		 kxdg_get(&e, "X-KDOS-Size", ""));
+	kb_strlcpy(it->name, kl.name, sizeof(it->name));
+	kb_strlcpy(it->exec, kl.exec, sizeof(it->exec));
+	it->terminal = kl.terminal;
+	kb_strlcpy(it->term, kl.term, sizeof(it->term));
+	it->floating = kl.floating;
+	it->cells = kl.cells;
+	kb_strlcpy(it->size, kl.size, sizeof(it->size));
 	it->is_app = true;
 	snprintf(it->icon, sizeof(it->icon), "%s", kxdg_get(&e, "Icon", ""));
 	kxdg_free(&e);
@@ -604,6 +605,7 @@ static void open_entry(const struct entry *it)
 			.size = it->size,
 			.terminal = it->terminal,
 			.floating = it->floating,
+			.cells = it->cells,
 		};
 
 		sh_launch(&l, NULL, 0);

@@ -7038,7 +7038,9 @@ int main(void)
 	return bad;
 }
 
-/* Stubs: see above. */
+/* Stubs: see above. The launch path, which this driver never reaches —
+ * `sh_desktop_entry` is `sh_launch_id`'s resolver and lives in shell.c, which
+ * is a Wayland client. */
 void sh_strip_field_codes(char *s) { (void)s; }
 void sh_spawn(const char *const argv[]) { (void)argv; }
 int sh_term_argv_in(const char *w, int flt, const char *size,
@@ -7046,6 +7048,8 @@ int sh_term_argv_in(const char *w, int flt, const char *size,
 		    const char *cmd, char *id, size_t idsz)
 { (void)w; (void)flt; (void)size; (void)argv; (void)max; (void)cmd; (void)id;
   (void)idsz; return n; }
+int sh_desktop_entry(const char *id, struct sh_entry *out)
+{ (void)id; (void)out; return -1; }
 int kcon_run(const char *sock, const char *const argv[], int at, unsigned f)
 { (void)sock; (void)argv; (void)at; (void)f; return -1; }
 RANKEOF

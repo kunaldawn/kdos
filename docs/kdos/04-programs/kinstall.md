@@ -235,6 +235,15 @@ Each of these existed for the installer and would otherwise be decorative:
   **and `con.conf`'s `autologin`**, which is what tty1 logs in.
 - The kernel and initramfs are copied onto the ESP, and the boot configuration points at those
   paths.
+- **Both EFI binaries go onto the ESP**, so a disk written on one machine starts on the other: a
+  64-bit CPU does not imply a 64-bit firmware, and firmware reads only the
+  `EFI/BOOT/BOOT<arch>.EFI` it can execute. `BOOTIA32.EFI` is copied where it exists and skipped
+  with a warning where it does not — a Limine built without `--enable-uefi-ia32` installs none, and
+  failing the install over a fallback for firmware this machine does not have would throw away a
+  working system.
+- **The NVRAM entry names the binary this firmware can load**, from
+  `/sys/firmware/efi/fw_platform_size`. The removable-media fallback chooses by itself;
+  `efibootmgr --create` cannot, so an entry pointing at the wrong one is a boot option that fails.
 
 **The ESP is a FAT filesystem, so nothing is copied onto it with an archive-preserving copy.** FAT
 has no ownership to preserve: such a copy calls the ownership change on every file, the kernel

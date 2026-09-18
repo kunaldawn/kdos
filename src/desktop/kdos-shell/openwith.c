@@ -33,8 +33,10 @@
  *
  * FIELD CODES ARE SUBSTITUTED, NEVER STRIPPED. `%f` IS the file; dropping it
  * opens the application with an empty document, which looks exactly like the
- * chooser having done nothing. sh_strip_field_codes() is the LAUNCHER's rule
- * (there is no file), and using it here would be the bug.
+ * chooser having done nothing. sh_launch() spends them on the path this
+ * chooser was given, so the line it is handed keeps every one of them and
+ * sh_strip_field_codes() — which is a search haystack's and nothing else's —
+ * has no place on this path.
  * ---------------------------------
  */
 
@@ -61,7 +63,14 @@ struct ow_cand {
 	char id[160];		/* the desktop file id, with .desktop      */
 	char name[96];
 	char exec[256];
+	/* The launch keys, from libkxdg's one reader — a chooser that read
+	 * fewer of them than the Start menu would open the same file in a
+	 * differently shaped window. */
+	char term[24];		/* X-KDOS-Term                             */
+	char size[16];		/* X-KDOS-Size                             */
 	int terminal;
+	int floating;		/* X-KDOS-Float                            */
+	int cells;		/* X-KDOS-Cells: it draws on the grid      */
 	int alien;		/* launched through kdos-appbox            */
 	int is_default;		/* what mimeapps.list already says         */
 };
@@ -217,9 +226,12 @@ static void cand_add(const char *id, int is_default)
 	if (kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
-	const char *exec = kxdg_get(&e, "Exec", NULL);
-	const char *name = kxdg_get(&e, "Name", NULL);
-	if (!exec || !*exec || kxdg_bool(&e, "Hidden", 0) ||
+	KxdgLaunch kl;
+
+	/* Hidden means deleted; NoDisplay means "not for a menu", which a
+	 * DEFAULT handler is allowed to be — that is how the mime route opens
+	 * an entry no menu lists. */
+	if (kxdg_launch_read(&e, &kl) != 0 || kxdg_bool(&e, "Hidden", 0) ||
 	    (!is_default && kxdg_bool(&e, "NoDisplay", 0))) {
 		kxdg_free(&e);
 		return;
@@ -229,9 +241,13 @@ static void cand_add(const char *id, int is_default)
 	char box[128];
 	memset(c, 0, sizeof(*c));
 	snprintf(c->id, sizeof(c->id), "%s", id);
-	snprintf(c->name, sizeof(c->name), "%s", name && *name ? name : id);
-	snprintf(c->exec, sizeof(c->exec), "%s", exec);
-	c->terminal = kxdg_bool(&e, "Terminal", 0);
+	kb_strlcpy(c->name, kl.name[0] ? kl.name : id, sizeof(c->name));
+	kb_strlcpy(c->exec, kl.exec, sizeof(c->exec));
+	kb_strlcpy(c->term, kl.term, sizeof(c->term));
+	kb_strlcpy(c->size, kl.size, sizeof(c->size));
+	c->terminal = kl.terminal;
+	c->floating = kl.floating;
+	c->cells = kl.cells;
 	/* The launcher's rule: an entry whose Exec IS the box launcher is a box
 	 * app whatever the alien-apps table is keyed by, and the box may be
 	 * named between the binary and the verb. */
@@ -560,7 +576,11 @@ static int open_with(const struct ow_cand *c)
 	struct sh_launch l = {
 		.exec = c->exec,
 		.title = c->name,
+		.term = c->term,
+		.size = c->size,
 		.terminal = c->terminal,
+		.floating = c->floating,
+		.cells = c->cells,
 	};
 
 	if (set_default && write_default(ow_mime, c->id) != 0)

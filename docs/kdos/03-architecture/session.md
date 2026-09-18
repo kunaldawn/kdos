@@ -439,10 +439,25 @@ and the cage recognises what it last offered and does nothing with it — which 
 from cancelling itself a moment after it was made. Comparing bytes instead would cost a full
 compare per channel per pump to answer the same question.
 
-**A drag does not cross, and that is the gap beside it.** `KEMBED_DRAG_*` and `KEMBED_DROP` are
-declared in `kembed.h` and implemented by neither end, so a drag released over a boxed window is
-one the guest never hears of and the session ends as cancelled. A copy is the way across;
-[known-gaps](../06-reference/known-gaps.md) is where the drag is recorded.
+**A drag crosses on the same channel, and the session owns it in both directions.** The five
+`KEMBED_DRAG_*` and `KEMBED_DROP` ops carry the half a toolkit needs: `ENTER` with the type when the
+pointer arrives over an embedded window, `MOTION` while it stays, `LEAVE` when it goes and `DROP`
+with the payload on release — converted to the guest's own pixels like every other position here.
+The cage turns them back into `wl_data_device` events by creating a real `wlr_drag` and driving its
+pointer grab, which is the only way the guest's own refusal of a type still means something; see
+[`kdos-cage`](../04-programs/kdos-cage.md).
+
+**The other direction is read at the START of the guest's drag and not at the release.**
+`KEMBED_DRAG_OFFER` carries the type and a sealed descriptor the moment a guest picks something up,
+because the session has to be carrying the payload before the pointer leaves that window — fetching
+it at the drop would need a round trip through another process with a person's hand already off the
+button. It is the channel's and not a window's: one cage is one seat, so a drag begun in a dock and
+one begun in an image window arrive under `win` 0.
+
+**Two types and no others**, `text/plain` and `text/uri-list` — the same pair the session accepts
+from its own surfaces, refused in the one place that decides what a drag on this desktop may be. A
+guest dragging an image out has begun something this desktop has nowhere to put, and no offer is
+made rather than one whose bytes nothing can read.
 
 ### A boxed application's scale on the console
 

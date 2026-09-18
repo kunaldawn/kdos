@@ -587,11 +587,19 @@ gtk-doc
 # MIME parsing that verifies a signature and decrypts a part correctly, which
 # is the whole value over a hand-rolled parser.
 gmime
+# WHAT mbsync AUTHENTICATES THROUGH, and it is two packages because the library
+# ships no XOAUTH2 of its own. cyrus-sasl is the mechanism LOADER — client side
+# only, with no saslauthd and no password store; the plugin beside it is the
+# mechanism a provider that has withdrawn application passwords requires.
+# Without both, an account on such a provider can be read in aerc and sent
+# through msmtp and cannot be mirrored into a local Maildir at all.
+cyrus-sasl
+cyrus-sasl-xoauth2
 # THE WRITER notmuch's comment below refers to. mbsync makes an IMAP mailbox
 # and ~/Mail equal in both directions and indexes nothing, which is why
 # `notmuch new` runs it from a pre-new hook and then indexes what it left: one
 # command fetches and files, and nothing has to remember the order. XOAUTH2 is
-# out of reach — that path is cyrus-sasl, which this tree does not build.
+# reached through the two packages above; OAUTHBEARER is not, and is aerc's.
 isync
 # The transport. `sendmail` on this image is a symlink to msmtp, so aerc, cron
 # and a shell script hand a message to one program instead of three settings.
@@ -696,9 +704,16 @@ routino
 # PARI answers exact integer and number-theoretic questions; maxima answers
 # symbolic ones. Neither substitutes for the other.
 pari
+# WHAT LETS THE SPREADSHEET HAND A FILE BACK IN THE FORMAT IT ARRIVED IN.
+# sc-im READS .xlsx through libxml2 and libzip and gates its EXPORT on a
+# pkg-config probe for `xlsxwriter`; without this port that probe fails
+# silently at build time and the finished program answers `XLSX export support
+# not compiled in.` to a save.
+libxlsxwriter
 # A spreadsheet is a grid of cells, which is what this whole desktop is — so
 # it runs on tty1 at the console font with no compromise. libxml2 and libzip
-# are what let it read the .xlsx a spreadsheet actually arrives as.
+# are what let it read the .xlsx a spreadsheet actually arrives as, and
+# libxlsxwriter is what lets it write one back.
 sc-im
 # SQL over CSV, JSON and Parquet with no server and no import step. The two
 # autoload flags are the point: by default it DOWNLOADS an extension from

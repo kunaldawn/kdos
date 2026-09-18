@@ -39,6 +39,20 @@ shows at power-on does not depend on how it started. On UEFI the firmware loads
 `limine-bios.sys` by name in the root, `/boot`, `/limine` or `/boot/limine` of a volume it can
 read.
 
+**`BOOTIA32.EFI` sits beside it, and the two never compete.** A 64-bit CPU does not imply a 64-bit
+firmware — the early Atom tablets and a few netbooks run this kernel and this userland and can load
+only a 32-bit EFI binary — and firmware reads the one `EFI/BOOT/BOOT<arch>.EFI` it can execute and
+never looks at the other. Both are built from one source by `ports/core/limine`, both are on the
+ISO's ESP tree and on an installed machine's, and the El Torito UEFI record gathers whichever were
+built with no second switch. It costs about a hundred kilobytes and one more freestanding build.
+
+**An NVRAM entry names one path, so the installer has to choose.** The removable-media fallback
+picks between the two by itself; `efibootmgr --create` cannot, and an entry pointing at a binary the
+firmware cannot load is a boot option that fails rather than one that falls through. `kinstall`
+reads `/sys/firmware/efi/fw_platform_size` and writes the matching path. A kernel too old to publish
+it leaves the installer assuming 64 — nearly every machine, and where that is wrong the 32-bit
+firmware still boots through the fallback rather than not at all.
+
 The kernel and initramfs are placed where the loader is certain to read them — on the ISO9660
 medium for the live image, and **on the ESP** for an installed system. Limine reads FAT and
 ISO9660; it does not read the roots the installer offers, which include xfs, f2fs and anything

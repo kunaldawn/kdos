@@ -64,6 +64,17 @@ typedef struct {
 
 typedef struct {
 	int uefi;
+	/*
+	 * HOW WIDE THAT FIRMWARE IS, in bits, and 0 where it did not say.
+	 *
+	 * A 64-bit CPU does not imply a 64-bit firmware: the early Atom
+	 * tablets run this kernel and this userland and load only a 32-bit EFI
+	 * binary. Firmware finds the right one by itself on removable media —
+	 * it reads `EFI/BOOT/BOOTIA32.EFI` and never looks at BOOTX64 — but an
+	 * NVRAM entry names one path, so the installer has to know which to
+	 * write. Read from `/sys/firmware/efi/fw_platform_size`.
+	 */
+	int fw_bits;
 	int secure_boot;
 	unsigned long long mem_kb;
 	char cpu[64];

@@ -26,12 +26,21 @@
 # `vidbridge` (a loopback) were: `x11` wants the X headers this tree refuses by
 # rule, and `sdl` wants an SDL port that does not exist.
 #
-# THE CODECS ARE BUILT AND THE DEFAULT CONFIG DOES NOT USE THEM. opus.so,
-# vp8.so, vp9.so and avcodec.so are all among the modules this installs, and
-# baresip's generated `config` leaves every one of them commented out — so a
-# first run reports `Populated 0 video codecs` and speaks G.711 alone. That is
-# upstream's default, not a build result, and it is lifted by uncommenting the
-# module lines in ~/.baresip/config.
+# THE CODECS THIS IMAGE BUILDS ARE THE ONES ITS CONFIG LOADS, and the patch is
+# what makes that true. Upstream's generated `config` comments every codec
+# module out — a default written for a build that may carry none of them, where
+# an uncommented `module opus.so` names a file that is not there and is a
+# start-up error — so an unpatched baresip here reports `Populated 0 video
+# codecs` and negotiates G.711 on a machine carrying all four.
+#
+# THE FOUR IT UNCOMMENTS ARE THE FOUR THIS RECIPE GUARANTEES: opus, libvpx and
+# ffmpeg are `depends`, so opus.so, vp8.so, vp9.so and avcodec.so are installed
+# beside the binary wherever this config is written. A fifth line for a module
+# whose library is not in `depends` would be the start-up error above.
+#
+# There is no flag for it: the template is a run of re_fprintf calls.
+patch -p1 -i "$PORT_SRC/default-codecs.patch"
+
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

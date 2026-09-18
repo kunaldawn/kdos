@@ -782,6 +782,22 @@ than running one. Its inverse re-quotes, so a generator's output round-trips.
 Every launch path in the system goes through it. See
 [kdos-appbox](../04-programs/kdos-appbox.md#exec-lines).
 
+**`kxdg_launch_read()` is the single reader of the keys that decide HOW to start something** —
+`Exec`, `Name`, `Terminal`, `X-KDOS-Term`, `X-KDOS-Size`, `X-KDOS-Float` and `X-KDOS-Cells`. Four
+programs carried a private copy of that list — `kdos-shell`'s application index, its desktop icons,
+its *Open With* chooser and `kdos-appbox open` — and a key added to one of them was a row that
+behaved differently depending on which surface it was clicked from. It is the "can this entry be
+started at all" test as well, so a caller's check and its read are one call.
+
+**`NoDisplay` and `Hidden` are deliberately not among them.** They say whether an entry belongs in a
+**menu**, which is a question for whoever is drawing one — the MIME route opens a `NoDisplay` entry
+on purpose, and a shared reader that refused one would break every default handler that carries it.
+
+**The `Exec` line is copied with its field codes intact.** The splitter spends them on the documents
+a launch carries and reads the same codes to decide that a line carrying none takes its documents
+appended instead, so a reader that stripped them here would make every entry look like `Exec=xterm`
+and open a file in the wrong argument.
+
 **`kxdg_mime_for_arg()` says what a command-line argument is**, and it exists because the two
 openers were answering that question separately and getting a URL wrong in two different ways. An
 argument carrying a scheme is typed `x-scheme-handler/<scheme>`; `file:` names a path, so the path
