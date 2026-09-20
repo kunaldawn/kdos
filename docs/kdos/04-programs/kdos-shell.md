@@ -583,12 +583,23 @@ loop owns one surface and one cell buffer, and an application slow to answer `Ge
 take the bar with it. The panel hands it the item's bus name, the `Menu` object path and the item's
 `Id` for the title — the menu object publishes no name of its own.
 
-**What a row does not carry is a picture or a chord.** `icon-name` is a theme lookup and
-`icon-data` a PNG per row, on a character grid; `shortcut` is the application's own chord and is not
-this desktop's to press. A **toggle** is drawn, because a row that says "Pause" with no mark is a
-row whose state is a guess. The tooltip says which button does what, because the cell cannot: an
-item that declares `ItemIsMenu` and publishes no path to a tree has nothing anybody can do with it,
-and that is the one thing a tray item cannot say for itself.
+**A row carries its picture and its chord.** `icon-name` goes through the theme lookup every other
+surface in this binary makes and `icon-data` is a PNG decoded straight off the bus — a row that
+publishes its own bytes usually publishes no name, so declining the bytes would be declining the
+icon. `shortcut` is drawn on the right, dimmed even on the selected row: this desktop cannot press
+it, and a menu that names the key is how somebody stops opening the menu. A **toggle** is drawn
+because a row that says "Pause" with no mark is a row whose state is a guess.
+
+**The icon column is spent by the LEVEL, not by the row.** Labels that started in different
+columns depending on whether the row above resolved a picture would read as ragged, which is the
+rule the toggle mark already keeps; the chord field is as wide as the widest chord **on screen**,
+so scrolling a long menu can move it rather than every level paying for the one row with four
+modifiers in it. `--no-icons` turns the pictures off, and a `--dump` turns them off for itself:
+a golden frame is the character grid.
+
+The tooltip says which button does what, because the cell cannot: an item that declares
+`ItemIsMenu` and publishes no path to a tree has nothing anybody can do with it, and that is the
+one thing a tray item cannot say for itself.
 
 Because items can be hidden, the drawn order is **recorded** and the click reads that, rather than
 deriving an index from the pointer's column.
@@ -1175,14 +1186,22 @@ function `kdosbuild` and `kdos-res` also call is a wider change than this surfac
 **Recording refuses to start while the input is muted**, and says so on the row. A recorder that
 quietly records a muted input is the worst thing this surface can do.
 
-**Transcribe is enabled by the model gate alone.** Whether `whisper-cli` is on `$PATH` is asked
-only when a child is started: `$PATH` is not frozen in a reference frame, so a button that changed
-shade with the host's packages could not have one. The three model locations, `$KDOS_WHISPER_MODEL`'s
-exclusive semantics and the four-byte magic test are in
-[configuration](../06-reference/configuration.md#speech-to-text-models).
+**One button, two verbs, and the model decides which.** With a model on the disk it says
+*Transcribe*; with none it says *Get model* and opens a terminal on `kdos speech get`. A control
+that is permanently greyed teaches that a feature does not work rather than that something is
+missing — and this window is the only place anybody finds out a model is missing at all. The
+download is not done here: a progress bar, a cancel, a disk-full and a network that went away all
+already exist in that command, and a second implementation of the four inside the process that
+draws the taskbar is not worth the button. Nothing is waited for either — the window keeps looking
+while there is no model, so the button becomes *Transcribe* on its own when the file lands.
 
-**The words have never been read back on this tree.** No model ships and the desktop cannot fetch
-one, so what is proved about transcription is the gate, the argv, the spawn and the exit status.
+Whether `whisper-cli` is on `$PATH` is asked only when a child is started: `$PATH` is not frozen in
+a reference frame, so a button that changed shade with the host's packages could not have one. The
+three model locations, `$KDOS_WHISPER_MODEL`'s exclusive semantics and the four-byte magic test are
+in [configuration](../06-reference/configuration.md#speech-to-text-models).
+
+**The words have never been read back on this tree.** No model ships, so what is proved about
+transcription is the gate, the argv, the spawn and the exit status.
 
 **And this surface transcribes a FILE.** `whisper-stream` on the image transcribes a live
 microphone and is a terminal program with no desktop verb in front of it: it opens SDL's audio

@@ -21,16 +21,20 @@
 # reason to need the system's certificate stack rather than its own.
 #
 # THE `desktop` FEATURE IS KEPT, AND IT COSTS NOTHING TO LINK. It is
-# notify-rust plus modalkit's clipboard, which is arboard — and measured on the
-# built binary, arboard reaches X11 through x11rb, which speaks the PROTOCOL in
-# Rust: the result is static-pie with no NEEDED at all and not one libX11,
-# libxcb or libwayland-client string in it. What it buys is notifications over
-# zbus, which reach kdos-notifyd like any other program's.
+# notify-rust plus modalkit's clipboard, and both halves are pure Rust: the
+# result is static-pie with no NEEDED at all and not one libX11, libxcb or
+# libwayland-client string in it. Notifications go over zbus and reach
+# kdos-notifyd like any other program's.
 #
-# ITS CLIPBOARD HALF IS INERT HERE and that is worth knowing rather than
-# discovering: there is no X server on this image, and `wayland-data-control`
-# is absent from the binary, so a yank inside iamb has nowhere to go. The
-# desktop's clipboard is kdos-clip.
+# AND ITS CLIPBOARD REACHES kdos-clip, WHICH IS WHY THE FEATURE IS NOT NARROWED.
+# modalkit asks arboard for `wayland-data-control`, so the binary carries
+# wl-clipboard-rs speaking `zwlr_data_control_v1` — 214 of those symbols are in
+# it — and kdos-comp creates both data-control managers. That path stays pure
+# Rust only while wayland-backend's `client_system` feature is off: turning it
+# on links libwayland-client and a static-pie musl binary cannot have it.
+# Under the console session there is no Wayland socket, arboard falls back to
+# X11, and there is no X server here — so a yank on that desktop has nowhere
+# to go and kdos-term's own selection is the answer.
 # THE TRAIT SOLVER RUNS OUT OF DEPTH BEFORE THE CODE RUNS OUT OF SENSE.
 # matrix-sdk's sync path is async functions nested deep enough that proving the
 # future is `Send` exceeds rustc's default recursion limit of 128, and the

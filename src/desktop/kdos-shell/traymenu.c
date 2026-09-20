@@ -38,11 +38,18 @@
  * activates the wrong row. `AboutToShow` is sent first, which is where an
  * application fills a submenu in, and its answer is the only update taken.
  *
- * WHAT IT DOES NOT DRAW: an icon (`icon-name` and `icon-data` are a theme
- * lookup and a PNG, and this is a character grid), and a shortcut (`shortcut`
- * is the application's own chord, which nothing here can press for you). A
- * toggle IS drawn, because a row that says "Pause" with no mark is a row whose
- * state is a guess.
+ * AN ICON IS A SPRITE AND A SHORTCUT IS TEXT. `icon-name` goes through the
+ * same theme lookup every other surface in this binary makes, `icon-data` is
+ * a PNG decoded straight from the bus, and either one occupies two cells of a
+ * column the level spends only if something in it resolved. `shortcut` is the
+ * application's own chord and nothing here can press it — it is drawn because
+ * a menu that names the key is how somebody stops opening the menu. A toggle
+ * is drawn for the same kind of reason: a row that says "Pause" with no mark
+ * is a row whose state is a guess.
+ *
+ * THE ICON COLUMN IS SPENT BY THE LEVEL, NOT BY THE ROW. Labels that start in
+ * different columns depending on whether the row above resolved a picture
+ * read as ragged, which is the rule the toggle mark already keeps.
  * ---------------------------------
  */
 
@@ -66,6 +73,7 @@
 #endif
 
 #include "kchrome.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -84,12 +92,26 @@
  * to reach this; an application's real menu is two levels. */
 #define TM_DEPTH 8
 
+/* A chord as it is drawn. `Ctrl+Shift+Alt+Super+Backspace` is 28 characters
+ * and nothing real is longer; a chord that overflows is cut rather than
+ * allowed to push the label out of its column. */
+#define TM_CHORD 32
+
+/* THE ICON IS TWO CELLS WIDE AND ONE TALL, which is what "one icon" means
+ * everywhere in this binary — a cell is taller than it is wide, so a square
+ * picture needs two of them. */
+#define TM_ICON_W 2
+
 enum { TM_TOGGLE_NONE = 0, TM_TOGGLE_CHECK, TM_TOGGLE_RADIO };
 
 struct tmitem {
 	int id;			/* the dbusmenu id, which Event names     */
 	int parent;		/* index into tm[], -1 at the root        */
 	char label[96];
+	char icon[96];		/* `icon-name`, a theme name              */
+	char chord[TM_CHORD];	/* `shortcut`, already in this desk's form */
+	unsigned char *png;	/* `icon-data`, owned; NULL for most rows */
+	size_t png_len;
 	int enabled;
 	int separator;
 	int submenu;		/* `children-display` said `submenu`      */
@@ -134,6 +156,52 @@ static void take_label(char *out, size_t n, const char *in)
 		 * item shape this draws in. */
 		out[k++] = (unsigned char)*p < 32 ? ' ' : *p;
 	}
+	out[k] = '\0';
+}
+
+/*
+ * `shortcut` IS aas AND ONLY THE FIRST SEQUENCE IS DRAWN. The property is a
+ * LIST of chords — an application may offer two ways to reach one row — and a
+ * menu column wide enough for both is a column that has taken the label's
+ * space to say the same thing twice.
+ *
+ * THE MODIFIER NAMES ARE THE SPEC'S AND THE DRAWN ONES ARE THIS DESKTOP'S.
+ * dbusmenu spells them `Control`, `Alt`, `Shift` and `Super`; every chord
+ * KDOS prints says `Ctrl`, and a menu that said `Control` beside a keyboard
+ * card that says `Ctrl` reads as two different keys.
+ *
+ * A token this does not know is copied through. The last token of a sequence
+ * is the key itself and the spec puts no vocabulary on it at all.
+ */
+static void take_chord(char *out, size_t n, sd_bus_message *m)
+{
+	size_t k = 0;
+	int first = 1;
+
+	if (!n)
+		return;
+	out[0] = '\0';
+	if (sd_bus_message_enter_container(m, 'a', "as") <= 0)
+		return;
+	/* The first sequence fills the field; the rest are entered and left
+	 * so the message stays in step for the property after this one. */
+	while (sd_bus_message_enter_container(m, 'a', "s") > 0) {
+		const char *tok = NULL;
+
+		while (sd_bus_message_read_basic(m, 's', &tok) > 0) {
+			if (!first || !tok)
+				continue;
+			if (!strcmp(tok, "Control"))
+				tok = "Ctrl";
+			if (k && k + 1 < n)
+				out[k++] = '+';
+			while (*tok && k + 1 < n)
+				out[k++] = *tok++;
+		}
+		sd_bus_message_exit_container(m);
+		first = 0;
+	}
+	sd_bus_message_exit_container(m);
 	out[k] = '\0';
 }
 
@@ -213,6 +281,9 @@ static int read_item(sd_bus_message *m, int parent, int depth)
 				if (!strcmp(key, "label"))
 					take_label(it->label,
 						   sizeof(it->label), v);
+				else if (!strcmp(key, "icon-name") && v)
+					snprintf(it->icon, sizeof(it->icon),
+						 "%s", v);
 				else if (!strcmp(key, "type") && v)
 					it->separator =
 						!strcmp(v, "separator");
@@ -249,6 +320,41 @@ static int read_item(sd_bus_message *m, int parent, int depth)
 				sd_bus_message_read_basic(m, 'i', &v);
 				if (!strcmp(key, "toggle-state"))
 					it->state = v;
+				sd_bus_message_exit_container(m);
+			} else if (!strcmp(contents, "ay") &&
+				   !strcmp(key, "icon-data") &&
+				   sd_bus_message_enter_container(m, 'v',
+								  "ay") > 0) {
+				const void *d = NULL;
+				size_t dn = 0;
+
+				/*
+				 * COPIED, BECAUSE THE MESSAGE IS FREED FIRST.
+				 * sd_bus hands out a pointer into the reply
+				 * and the reply is unref'd the moment the
+				 * tree is read; the decode happens later,
+				 * once there is a display to size a sprite
+				 * against.
+				 *
+				 * A blob past the cap is DROPPED rather than
+				 * truncated: half a PNG decodes to nothing
+				 * and would be retried every frame.
+				 */
+				if (sd_bus_message_read_array(m, 'y', &d,
+							      &dn) > 0 &&
+				    d && dn && dn <= KICON_PNG_MAX) {
+					it->png = malloc(dn);
+					if (it->png) {
+						memcpy(it->png, d, dn);
+						it->png_len = dn;
+					}
+				}
+				sd_bus_message_exit_container(m);
+			} else if (!strcmp(contents, "aas") &&
+				   !strcmp(key, "shortcut") &&
+				   sd_bus_message_enter_container(m, 'v',
+								  "aas") > 0) {
+				take_chord(it->chord, sizeof(it->chord), m);
 				sd_bus_message_exit_container(m);
 			} else {
 				sd_bus_message_skip(m, "v");
@@ -301,15 +407,21 @@ static void about_to_show(sd_bus *bus, const char *service, const char *path)
 
 /*
  * THE PROPERTY LIST IS NAMED RATHER THAN LEFT EMPTY. An empty list means "give
- * me everything", and everything includes `icon-data` — a PNG per row, on a
- * grid that cannot draw one. Naming the seven this file reads keeps a menu of
- * twenty rows a message of a few hundred bytes.
+ * me everything", and everything is whatever an application decided to hang
+ * off a row — naming the ten this file reads is what bounds the message.
+ *
+ * `icon-data` IS ASKED FOR AND IT IS THE EXPENSIVE ONE: a PNG per row, where
+ * every other property is a word. It is asked for because a tray item that
+ * publishes one usually publishes no `icon-name` at all, so declining it is
+ * declining the icon. The per-row cap is KICON_PNG_MAX and a blob past it is
+ * dropped on the way in.
  */
 static int load(sd_bus *bus, const char *service, const char *path)
 {
 	static const char *const props[] = {
 		"label", "enabled", "visible", "type", "children-display",
-		"toggle-type", "toggle-state", NULL
+		"toggle-type", "toggle-state", "icon-name", "icon-data",
+		"shortcut", NULL
 	};
 	sd_bus_error err = SD_BUS_ERROR_NULL;
 	sd_bus_message *m = NULL, *reply = NULL;
@@ -439,6 +551,29 @@ static void step(int by)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
+/* Off for a dump and for `--no-icons`, which is bt.c's flag and its reason: a
+ * golden frame is the character grid, and a picture in one is a diff against
+ * whatever theme the machine that regenerated it happened to carry. */
+static int icons_on = 1;
+
+/*
+ * THE SPRITE FOR ONE ROW, or -1. `icon-data` wins over `icon-name`: a row that
+ * carries its own picture carries it because the theme has nothing for it.
+ *
+ * Both lookups are memoised inside libkicon, so calling this once per visible
+ * row per frame is a hash after the first frame.
+ */
+static int row_icon(const struct tmitem *it)
+{
+	if (!icons_on)
+		return -1;
+	if (it->png)
+		return kicon_slot_png(it->png, it->png_len, TM_ICON_W, 1);
+	if (it->icon[0])
+		return kicon_slot(it->icon, TM_ICON_W, 1);
+	return -1;
+}
+
 static void draw(void)
 {
 	int w = ktui_w, h = ktui_h;
@@ -460,6 +595,39 @@ static void draw(void)
 		ktui_draw_flush();
 		return;
 	}
+
+	/*
+	 * WHAT THIS LEVEL SPENDS ON PICTURES AND ON CHORDS, decided before the
+	 * first row is drawn and the same for all of them.
+	 *
+	 * A column resolved per row would put the labels of a menu in two
+	 * different places depending on which rows the theme happened to have
+	 * a picture for, and a chord field as wide as the widest chord ON
+	 * SCREEN keeps the whole of every label a menu can afford to show.
+	 * Both are measured over the VISIBLE rows, so scrolling a long menu
+	 * can move them — which is right: the alternative is every level
+	 * paying for the one row with a four-modifier chord in it.
+	 */
+	int icol = 0, chordw = 0;
+
+	for (int r = 0; r < body; r++) {
+		int idx = top + r;
+
+		if (idx >= nrows)
+			break;
+
+		const struct tmitem *it = &tm[rows[idx]];
+		int cl = (int)strlen(it->chord);
+
+		if (row_icon(it) >= 0)
+			icol = TM_ICON_W + 1;
+		if (cl > chordw)
+			chordw = cl;
+	}
+	/* The gap before the chord is part of its field: a chord butting up
+	 * against a label reads as one word. */
+	if (chordw)
+		chordw += 2;
 
 	for (int r = 0; r < body; r++) {
 		int idx = top + r;
@@ -519,7 +687,34 @@ static void draw(void)
 				       : it->state == 0 ? " "
 						        : ktui_glyph[KT_G_DOT];
 		ktui_draw_text(2, 1 + r, 1, mark, fg, bg, KT_A_NONE);
-		ktui_draw_text(4, 1 + r, w - 8, it->label, fg, bg, KT_A_NONE);
+
+		int icon = icol ? row_icon(it) : -1;
+
+		/* THE PICTURE TAKES THE SELECTED ROW'S BACKGROUND, so a row
+		 * under the accent plate does not carry a rectangle of the
+		 * surface colour with an icon in it. */
+		if (icon >= 0)
+			ktui_draw_sprite(krect(4, 1 + r, TM_ICON_W, 1), icon,
+					 fg, bg);
+
+		/* The label ends where the chord's field begins, and the
+		 * chord's field ends one column short of the submenu arm —
+		 * which is spent whether or not this row has an arrow, for
+		 * the reason the mark column is. */
+		int lx = 4 + icol;
+		int lw = w - 4 - lx - chordw;
+
+		ktui_draw_text(lx, 1 + r, lw, it->label, fg, bg, KT_A_NONE);
+		/*
+		 * THE CHORD IS DIMMED EVEN ON THE SELECTED ROW. It is not a
+		 * thing to aim at — this desktop cannot press it — and at the
+		 * label's own weight it reads as a second label.
+		 */
+		if (it->chord[0] && chordw)
+			ktui_draw_text_right(w - 4 - chordw + 1, 1 + r,
+					     chordw - 1, it->chord,
+					     it->enabled ? KT_MID : KT_DIM, bg,
+					     KT_A_NONE);
 		if (it->submenu)
 			ktui_draw_text(w - 3, 1 + r, 1, ktui_glyph[KT_G_RIGHT],
 				       fg, bg, KT_A_NONE);
@@ -527,6 +722,21 @@ static void draw(void)
 
 	kch_scrollbar(0, w - 1, 1, body, nrows, top, KT_SURFACE);
 	ktui_draw_flush();
+}
+
+/*
+ * THE BLOBS, HANDED BACK. Every other field of tm[] is inline and dies with
+ * the process; `icon-data` is the one that is not, and a menu that exits
+ * through any of the several paths below must not depend on which one it
+ * took. Idempotent, so a path that frees twice is a path that works.
+ */
+static void drop_icons(void)
+{
+	for (int i = 0; i < ntm; i++) {
+		free(tm[i].png);
+		tm[i].png = NULL;
+		tm[i].png_len = 0;
+	}
 }
 
 /* ── the surface ───────────────────────────────────────────────────────── */
@@ -549,6 +759,8 @@ int traymenu_main(int argc, char **argv)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
+		else if (!strcmp(argv[i], "--no-icons"))
+			icons_on = 0;
 		/* The item's own name, for the title. The panel has it and
 		 * this does not: an `Id` is read off the StatusNotifierItem
 		 * interface and the menu object does not publish one. */
@@ -581,7 +793,8 @@ int traymenu_main(int argc, char **argv)
 					"[--at-bottom X Y] [--open ID] "
 					"[--pick ID]\n"
 					"                       "
-					"[--dump] [--font NAME]\n");
+					"[--dump] [--no-icons] "
+					"[--font NAME]\n");
 			return 2;
 		}
 	}
@@ -614,6 +827,7 @@ int traymenu_main(int argc, char **argv)
 	 * window somebody would then have to close.
 	 */
 	if (pick_id) {
+		drop_icons();
 		if (!bus)
 			return 1;
 		send_clicked(bus, service, path, pick_id);
@@ -638,10 +852,13 @@ int traymenu_main(int argc, char **argv)
 
 	sh_theme_from_cache();
 	if (dump) {
+		/* A golden frame is the character grid — bt.c's rule. */
+		icons_on = 0;
 		ktui_offscreen_init(wide, high);
 		ktui_draw_init();
 		draw();
 		ktui_draw_dump();
+		drop_icons();
 		sd_bus_unref(bus);
 		return 0;
 	}
@@ -664,9 +881,20 @@ int traymenu_main(int argc, char **argv)
 
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-traymenu: no display server\n");
+		drop_icons();
 		sd_bus_unref(bus);
 		return 1;
 	}
+	/*
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
+	 * before it — osd.c's pair, for its reasons: a console surface has no
+	 * pixel size of its own, and the console backend clears its client
+	 * state when it connects, so a callback registered before kdisp_init
+	 * is erased.
+	 */
+	sh_pic_backend();
+	if (icons_on)
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	kch_px_popup(KT_SURFACE);
 
@@ -799,6 +1027,9 @@ int traymenu_main(int argc, char **argv)
 		}
 	}
 done:
+	if (icons_on)
+		kicon_finish();
+	drop_icons();
 	kdisp_shutdown();
 	sd_bus_unref(bus);
 	return 0;

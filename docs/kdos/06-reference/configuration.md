@@ -889,8 +889,25 @@ button. The surface's header line names the model that was found, or the directo
 searched.
 
 Upstream's own directory name is used deliberately: the model is whisper's data, and naming where
-`models/download-ggml-model.sh` writes means a later change that packages one has a single answer
-rather than two. **Nothing ships a model and the desktop cannot fetch one.**
+`models/download-ggml-model.sh` writes means a model fetched by that script and one fetched here
+land in the same place.
+
+**Nothing ships a model, and `kdos speech` is how one arrives.** `kdos speech list` prints the
+catalogue — every English-only size, the three smallest multilingual ones and the two large ones
+worth the disk, smallest first — and `kdos speech get <name>` downloads it into
+`$XDG_DATA_HOME/whisper.cpp/models`, which needs no privilege because a model is a per-user
+choice. The name is looked up in a table and never interpolated into a URL, the download is
+verified against a sha256 compiled into the tool, and the file is renamed into place only after
+both that and the `lmgg` magic pass — so an interrupted download is never a file the gate above
+has to reject. The checksum says the bytes are the bytes this tree was written against; upstream
+signs nothing, and that is the [unsigned content](../03-architecture/security-model.md) rule
+applying here as everywhere.
+
+**`kdos-rec`'s third button is *Get model* while there is none**, and it opens a terminal on that
+same command rather than downloading inside the panel: a progress bar, a cancel, a disk-full and a
+network that went away all already exist in the command, and a second implementation of the four
+in the process that draws the taskbar is not worth the button. The window keeps looking while
+there is no model, so the button becomes *Transcribe* on its own when the file lands.
 
 **`whisper-stream` wants the same model and is not a desktop verb.** It transcribes a live
 microphone rather than a closed file — through SDL's audio device, which opens no window, so it

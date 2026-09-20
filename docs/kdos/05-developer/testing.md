@@ -202,6 +202,31 @@ evidence about the chord: a flag per behaviour would be a second path into the c
 reaches, and it could pass while the key did nothing. A chord this session does not bind is a
 silent no-op, for the same reason a typo in `keys.conf` is one.
 
+**A GESTURE is goldened the same way, with `--point`.** `X,Y[,BUTTON],PHASE`, repeatable and
+ordered, delivered through `route_ptr()` — the handler a view's events reach — so what the frame
+shows is the gesture and not a second implementation of it. BUTTON is `left` (the default),
+`middle`, `right` or `move`; PHASE is `press`, `drag`, `release` or `move`. **A drag is three
+events and the gesture is the relation between them**, which is why a single flag could not state
+one:
+
+```sh
+con_golden con-tabdrag-132x43 --dump 132x43 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --term "/bin/echo gamma" \
+    --press Super+Shift+s --press Super+Shift+s \
+    --point 105,0,left,press --point 75,0,left,drag \
+    --point 45,0,left,drag --point 45,0,left,release
+```
+
+**And what the pointer cannot show goes to stderr.** The pointer's SHAPE is the one thing about it
+a cell grid cannot draw, so after a `--point` the session prints `pointer-shape: <name>` on stderr
+— outside the golden, which stays the cells. That is what lets ten positions on one window be
+asserted without a framebuffer anywhere:
+
+```sh
+"$OUT/kdos-con" --dump 132x43 --term "/bin/echo alpha" \
+    --point 0,0,move 2>&1 >/dev/null      # -> pointer-shape: size-nwse
+```
+
 **A frame that must NOT move is goldened by the frames that already exist.** The console's tab
 strip is drawn only on a window with more than one tab, so `con-window-80x24` and
 `con-window-132x43` stay byte-identical and are the assertion that a stack costs an ordinary frame
@@ -1071,8 +1096,10 @@ Stated so nobody assumes otherwise:
   complete musl root carrying the target's gcc, wlroots and every `.pc` file: chroot into it from a
   throwaway container with `/tmp` mounted exec, and run the port's own `build.sh` flags. Write
   nothing into `build/fs` while you do — a stray object there is a file the next phase ships.
-- **The memory daemon has never fired for real.** Its victim selection is exercised against recorded
-  state; a genuine pressure stall is the test that matters.
+- **The memory daemon fires under `testing/oomd-fire.sh`**, which is a rig run rather than a
+  self-test block: it needs a booted machine with real memory to exhaust. Victim selection is
+  exercised against recorded state by `kdos-oomd --fixture`; the script proves the daemon wakes
+  at all, which a fixture cannot.
 - **Six shell surfaces have no dump and no reference frame.**
 - **A list of goldened pages must not skip the ones with no golden yet.** `kdos-res`'s loop tested
   for a committed golden and skipped past a page that had none — so a page ADDED to the list was

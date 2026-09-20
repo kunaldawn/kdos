@@ -117,6 +117,10 @@ const KtuiCell *ktui_draw_cells(int *w, int *h)
 static int force_full;
 static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
+/* What a press where the pointer is would do. Set by whatever knows — the
+ * window manager on the console — and handed to the backend on every flush;
+ * see ktui_draw_cursor_shape(). */
+static int ptr_shape = KT_PTR_ARROW;
 
 
 /* A clip krect so a page can be drawn shifted and simply run off the top and
@@ -1039,6 +1043,26 @@ void ktui_draw_hide_cursor(void)
 	ptr_x = ptr_y = -1;
 }
 
+/*
+ * THE SHAPE IS NOT CLEARED BY HIDING THE POINTER, and that is deliberate: a
+ * pointer that goes away and comes back in the same place is over the same
+ * thing, and a shape reset to the arrow on every hide would flicker through
+ * the arrow on the way back.
+ *
+ * An out-of-range value is the arrow rather than an error. The shape crosses
+ * a socket from another process, and a view told a number it does not know
+ * must draw something.
+ */
+void ktui_draw_cursor_shape(int shape)
+{
+	ptr_shape = shape >= 0 && shape < KT_PTR_N ? shape : KT_PTR_ARROW;
+}
+
+int ktui_cursor_shape(void)
+{
+	return ptr_shape;
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 /* On a VT the palette we installed makes slot == ANSI index, so the mapping
@@ -1588,8 +1612,8 @@ void ktui_draw_flush(void)
 	/* The guest rule is applied BEFORE the hook, so a backend with pixels
 	 * and a backend without are told the same thing about the same cell
 	 * and neither gets to decide it for itself. */
-	if (!(cur_backend()->pointer && cur_backend()->pointer(px, py)) &&
-	    px >= 0) {
+	if (!(cur_backend()->pointer
+	      && cur_backend()->pointer(px, py, ptr_shape)) && px >= 0) {
 		pt = py * bw + px;
 		back[pt].attr ^= KT_A_REVERSE;
 		if (KTUI_IS_SPRITE(back[pt].ch)) {

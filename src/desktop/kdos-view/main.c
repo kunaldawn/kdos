@@ -1651,6 +1651,26 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 	}
 
 	/*
+	 * WHAT A PRESS WHERE THE POINTER IS WOULD DO. Handed to the
+	 * toolkit, which hands it to whichever backend is drawing:
+	 * libkkms picks a mask, and every other backend ignores it and
+	 * keeps the reversed cell. A view with no pixels is told
+	 * anyway rather than the session deciding who is interested —
+	 * one session can be looked at through both kinds at once.
+	 */
+	if (op == KCON_OP_PTRSHAPE) {
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		int shape = (int)kcon_get_u8(&b);
+
+		if (!b.err)
+			ktui_draw_cursor_shape(shape);
+		return got;
+	}
+
+	/*
 	 * A BELL RINGS WHERE THE PERSON IS. A view in somebody's
 	 * terminal writes BEL and lets that terminal do whatever it is
 	 * configured to do — a sound, a flash, or nothing; a view with

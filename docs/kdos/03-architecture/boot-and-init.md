@@ -249,11 +249,13 @@ hidden.
 Two root partitions, a state file on the ESP, and a boot that can change its mind:
 
 ```
-slot_a   = <root uuid>
-slot_b   = <root uuid>
-active   = a          the slot known to work
-try      = b          a candidate, or empty
-attempts = 3          how many boots it gets
+slot_a   = <filesystem uuid>
+slot_b   = <filesystem uuid>
+crypt_a  = <luks uuid>      the container that filesystem is inside, or empty
+crypt_b  = <luks uuid>
+active   = a                the slot known to work
+try      = b                a candidate, or empty
+attempts = 3                how many boots it gets
 ```
 
 **The counting lives in the initramfs**, and that placement is the design. `rcS` is the wrong
@@ -273,7 +275,37 @@ data survives.
 
 **A state file that does not parse is absent, never partial.** Absent means "use the `root=` the
 command line already carries", which is what a single-root machine does anyway. A `try` pointing
-at a slot with no root, or at the active slot, is refused rather than recorded.
+at a slot with no root, or at the active slot, is refused rather than recorded. An unknown key is
+skipped, which is what makes a state file written before `crypt_a` existed read as a machine with
+no containers — because that is what it is.
+
+### A slot knows its own container
+
+**`slot_a` is a FILESYSTEM and `crypt_a` is what it is inside**, and keeping the two apart is what
+joins A/B to encryption. On an encrypted machine the root filesystem lives in a LUKS container,
+and the kernel command line can name exactly one `cryptdevice=`. Two slots inside two containers
+cannot both be named there — so the second one is recorded per slot, here, and the initramfs asks
+for it **after** `select` has chosen:
+
+```sh
+SEL=$(kdos-bootctl select)          # the filesystem, and one attempt spent
+SLOT_CRYPT=$(kdos-bootctl crypt "$SEL")   # its container, if it has one
+```
+
+`crypt` is keyed by the **filesystem UUID** rather than by a slot name, so it is one call with
+nothing carried between the two: `select` may have rolled back, and asking "which slot did that
+turn out to be" would be a second decision that could disagree with the first. Both reads happen
+while the ESP is still mounted — the second one reads the same file the first just wrote.
+
+**A slot that names no container leaves `cryptdevice=` exactly as the command line set it**, which
+is every unencrypted machine and every machine whose two slots share one container. The mapper
+name is the initramfs's own and never the state file's: only one container is open at a time
+there, so a per-slot name would disambiguate nothing, and a name read out of a file on the ESP is
+a name somebody can edit into a path.
+
+Without this, selecting slot B unlocks slot A's container and then looks for B's filesystem inside
+it. There is nothing there, and the failure reads as a corrupt filesystem rather than as a lookup
+that was never made.
 
 ## `file` must be the magic database's, not toybox's
 

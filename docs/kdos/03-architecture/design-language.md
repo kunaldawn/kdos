@@ -345,13 +345,43 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 screen, so a pointer the session drew would cost a round trip for every motion event and trail the
 hand moving it. The view already holds the device and already knows where it is.
 
-**The pointer is an arrow where there are pixels and the reversed cell everywhere else.** `libkkms`
-composites an arrow into the framebuffer it already owns and puts it at the DEVICE'S OWN PIXEL, so
-it moves as smoothly as the hand holding it; a `--tty` view, a `--dump`, a view forwarded over `ssh`
+**The pointer is a SHAPE where there are pixels and the reversed cell everywhere else.** `libkkms`
+composites one into the framebuffer it already owns and puts it at the DEVICE'S OWN PIXEL, so it
+moves as smoothly as the hand holding it; a `--tty` view, a `--dump`, a view forwarded over `ssh`
 and `tty1` reverse the cell under it, which is the pointer every text mode has drawn and is as fine
 as a grid of characters goes. **The reversed cell is not a fallback anything may drop**
 — `a11y = yes` runs this desktop on a `--tty` view precisely so `brltty` can read `/dev/vcsa`, and
 a session looked at through two views at once is pointed at through both.
+
+### What a press would do
+
+**Seven shapes, and the SESSION decides which.** `KT_PTR_ARROW` is the default and every unhandled
+case; `KT_PTR_IBEAM`, `KT_PTR_SIZE_NS`, `KT_PTR_SIZE_WE`, `KT_PTR_SIZE_NWSE`, `KT_PTR_SIZE_NESW`
+and `KT_PTR_MOVE` are the rest. There is no busy pointer: nothing in the session tracks a window
+as not-answering in a way a pointer could report, and a shape nothing sets is a picture nobody
+maintains. The list is what this desktop can *mean* and not what any protocol carries — it is
+neither `wp_cursor_shape_device_v1`'s enumeration nor X11's, for the reason the raw event codes
+are not libinput's: a number that happened to equal an upstream one is a coupling neither end can
+see.
+
+**A view holds no window state, so it cannot choose.** It cannot tell a border from a box-drawing
+character. The session names the shape and sends it on `KCON_OP_PTRSHAPE` — **only when it
+changes**, because a pointer crossing a window spends hundreds of frames over the same thing.
+`ktui_draw_cursor_shape()` is where it lands, and `KtuiBackend.pointer` carries it to whichever
+backend is drawing.
+
+**The shape and the grip are decided in one place, from one answer.** `win_grab_at()` is asked with
+the left button standing in for the press that has not happened, and its verdict sets both. Two
+readings of the same geometry would eventually disagree, and a window whose lit edge and whose
+pointer promise different things is worse than one that promises nothing.
+
+**THE SHAPE IS A HINT AND NEVER A PROMISE**, and this is the rule a new surface breaks first. Half
+the views this desktop supports cannot draw one: a `--tty` view, a dump, a view over `ssh` and
+`tty1` reverse the cell whatever the shape says. So **nothing may say what a control does through
+the pointer alone** — the grip says it in cells, the window says what a press would arm, and the
+shape is the third telling for the people who can see it. A value a view does not recognise is the
+arrow rather than an error: a newer session may know more shapes than an older view, and a view
+that refused would draw no pointer at all.
 
 `ktui_draw_cursor(x, y)` names the cell; `ktui_draw_flush()` decides which of the two is drawn, and
 how it does it is the whole of the contract:
@@ -364,6 +394,13 @@ how it does it is the whole of the contract:
 - **The hook is called on every flush, including the ones with no pointer to report.** A negative
   `x` is no pointer at all, and it is the only thing that tells a backend to take the last arrow
   off the screen — one told nothing leaves an arrow at the last place the hand was.
+- **The hook carries a shape beside the cell, and a backend may ignore it.** `libkkms` keeps one
+  mask per shape with a HOTSPOT of its own — an arrow points with its tip, a resize arrow and an
+  I-beam point with their middle, and drawing every shape from a fixed corner puts a resize arrow
+  half a cell off the border it belongs to, which is exactly the distance that makes a border feel
+  like it moves when you reach for it. The outline is still computed from the mask's own
+  eight-neighbourhood rather than drawn by hand, so a new shape is legible over its own colour
+  without anybody remembering to halo it.
 - **The hook carries cells, and a backend that owns the device draws finer than that.** `libkkms`
   reports a cooked motion only when the *cell* changes, so a hook handed pixels would be handed the
   same pixel until it did — what the hook says is that there IS a pointer and which cell the session

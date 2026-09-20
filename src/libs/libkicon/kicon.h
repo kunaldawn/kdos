@@ -39,6 +39,7 @@
 #ifndef KICON_H
 #define KICON_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /*
@@ -104,6 +105,27 @@ int kicon_slot(const char *name, int cw, int ch);
  * `cw` x `ch` cells either way.
  */
 int kicon_slot_pad(const char *name, int cw, int ch, int pad);
+
+/*
+ * A sprite from PNG BYTES the caller already holds, rather than from a name.
+ *
+ * For a picture that has no theme entry to look up because it never came from
+ * a theme: a tray item's `icon-data`, which is a PNG on the bus. The key is a
+ * hash of the bytes, so two items publishing the same picture share one slot
+ * and an item that republishes the same bytes costs a hash rather than a
+ * decode.
+ *
+ * NOT TINTED. The accent is applied to the theme's own places and devices,
+ * and an application's own mark is not this desktop's to recolour — the rule
+ * app icons already keep. `len` above KICON_PNG_MAX answers -1 rather than
+ * decoding: the bytes arrive from another process over a bus.
+ */
+int kicon_slot_png(const void *png, size_t len, int cw, int ch);
+
+/* What kicon_slot_png() will decode. A tray icon is a few kilobytes; a
+ * megabyte of it is an application that has confused an icon with a
+ * photograph, and a character grid would draw either the same. */
+#define KICON_PNG_MAX (256 * 1024)
 
 /* A file's icon, by MIME type — the same resolution `kdos-appbox open` does
  * (/usr/share/mime/globs, LONGEST matching suffix wins, or every .tar.gz gets

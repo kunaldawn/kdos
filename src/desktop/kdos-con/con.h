@@ -937,6 +937,20 @@ void win_stack_step(Win *w, int dir);
  * two tabs has nowhere to move to and this does nothing.
  */
 void win_stack_move(Win *w, int dir);
+/*
+ * THIS TAB TO SLOT `to`, 0-based, shifting the rest along — what a drag does,
+ * where win_stack_move() is what the chord does. An INSERT: a hand that
+ * crosses three tabs leaves them in the order it crossed them. `to` is
+ * clamped. Answers whether anything moved.
+ */
+int win_stack_move_to(Win *w, int to);
+/*
+ * WHICH SLOT OF THE STRIP A COLUMN IS OVER, 0-based, or -1 where the strip
+ * has no per-tab targets. CLAMPED to the ends rather than refusing off them,
+ * which is what makes it the question a drag asks — see win_stack_tab_at()
+ * for the question a press asks.
+ */
+int win_stack_slot_at(Win *w, int x);
 /* Fold the ring's next window into this one as a tab. */
 void win_stack_with_next(Win *w);
 /*

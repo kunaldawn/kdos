@@ -71,6 +71,13 @@ static void usage(FILE *f)
 "  --press CHORD      press one of the session's own chords before the dump,\n"
 "                     spelled the way keys.conf spells it; repeatable, and\n"
 "                     only with --dump\n"
+"  --point X,Y[,BTN],PHASE\n"
+"                     deliver one pointer event before the dump, through the\n"
+"                     handler a view's events reach. BTN is left (the\n"
+"                     default), middle, right or move; PHASE is press, drag,\n"
+"                     release or move. Repeatable and ordered, which is how\n"
+"                     a drag is stated: a press, one or more drags, and a\n"
+"                     release\n"
 "  --layout NAME      open a saved arrangement before the dump; only with\n"
 "                     --dump, because a dump composites a session of its own\n"
 "  --clip-text        put stdin on this session's clipboard. Stdin rather\n"
@@ -2348,6 +2355,30 @@ static struct {
 } grab;
 
 /*
+ * A TAB BEING DRAGGED ALONG ITS OWN STRIP.
+ *
+ * SEPARATE FROM `grab` AND ASKED BEFORE IT, because the two mean opposite
+ * things about the same row: `grab` moves the whole window and this reorders
+ * one tab inside it. A press on a tab arms this and never arms that, which is
+ * the whole rule — the window is moved from the rest of the title row, from
+ * either corner arm, or with Super from anywhere.
+ *
+ * IT REORDERS WHILE THE HAND IS MOVING, not on the release. A strip that
+ * jumped into its new order only when the button came up would be a drag
+ * nobody could aim: the picture under the hand is the only feedback a strip
+ * with no drag image has.
+ *
+ * `moved` SEPARATES A DRAG FROM A CLICK. A press and a release on the same
+ * slot is what brings a tab up, and it must keep doing that — the reorder is
+ * an extra meaning for the gesture, not a replacement for it.
+ */
+static struct {
+	int id;			/* the tab, or 0 for no tab drag           */
+	int head;		/* the stack it belongs to                 */
+	int moved;
+} tabdrag;
+
+/*
  * ── WHAT THE POINTER MAY DO, FROM con.conf ──────────────────────────────
  *
  * Read on the first call and kept, which is the rule the rest of the session
@@ -2774,6 +2805,92 @@ static void ptr_track(const KtuiEvent *ev)
  * no press reaches a frame at all, and a lit edge would promise a drag that
  * cannot start.
  */
+/*
+ * WHICH SHAPE A SET OF EDGES MEANS. Two edges is a corner and names a
+ * diagonal; one is a side. KWM_EDGE_NONE cannot reach here — a resize grab
+ * always names at least one edge — and the arrow is the honest answer if it
+ * ever does.
+ */
+static int shape_for_edges(unsigned e)
+{
+	unsigned card = e & KWM_EDGES_CARDINAL;
+
+	if ((card & (KWM_EDGE_TOP | KWM_EDGE_LEFT))
+	    == (KWM_EDGE_TOP | KWM_EDGE_LEFT))
+		return KT_PTR_SIZE_NWSE;
+	if ((card & (KWM_EDGE_BOTTOM | KWM_EDGE_RIGHT))
+	    == (KWM_EDGE_BOTTOM | KWM_EDGE_RIGHT))
+		return KT_PTR_SIZE_NWSE;
+	if ((card & (KWM_EDGE_TOP | KWM_EDGE_RIGHT))
+	    == (KWM_EDGE_TOP | KWM_EDGE_RIGHT))
+		return KT_PTR_SIZE_NESW;
+	if ((card & (KWM_EDGE_BOTTOM | KWM_EDGE_LEFT))
+	    == (KWM_EDGE_BOTTOM | KWM_EDGE_LEFT))
+		return KT_PTR_SIZE_NESW;
+	if (card & (KWM_EDGE_TOP | KWM_EDGE_BOTTOM))
+		return KT_PTR_SIZE_NS;
+	if (card & (KWM_EDGE_LEFT | KWM_EDGE_RIGHT))
+		return KT_PTR_SIZE_WE;
+	return KT_PTR_ARROW;
+}
+
+/*
+ * WHAT A PRESS WHERE THE POINTER IS WOULD DO, OUT TO EVERY VIEW.
+ *
+ * THE SESSION DECIDES AND THE VIEW DRAWS, which is the pointer contract's own
+ * split: a view holds no window state, so it cannot tell a border from a
+ * box-drawing character. It is sent only on a change — kcon_view_pointer_shape
+ * drops a repeat — so a pointer crossing a window costs nothing per frame.
+ *
+ * IT IS A HINT AND NOT A PROMISE. A `--tty` view, a dump and a view over
+ * `ssh` draw the reversed cell whatever this says, so nothing on this desktop
+ * may say what a control does through the pointer ALONE — the grip is what
+ * says it in cells, and the two are set from the same answer a few lines
+ * below precisely so they cannot disagree.
+ */
+/* The last one decided, for the dump's report below. A dump has no view
+ * attached, so the broadcast reaches nobody and the decision would otherwise
+ * leave no trace at all. */
+static int shape_last = KT_PTR_ARROW;
+
+static void shape_set(int shape)
+{
+	shape_last = shape;
+	for (int i = 0; i < kcon_server_view_count(S.server); i++)
+		kcon_view_pointer_shape(kcon_server_view_at(S.server, i),
+					shape);
+}
+
+/*
+ * THE SHAPE, BY NAME, ON STDERR AFTER A `--point` DUMP.
+ *
+ * ON STDERR AND NOT IN THE FRAME. A dump's stdout is a golden, and a golden
+ * is the cell grid; the shape is not in the cells and never will be — it is
+ * the one thing about the pointer that a character grid cannot show, which is
+ * precisely why it needs a channel of its own to be asserted on.
+ *
+ * ONLY AFTER A `--point`, because the shape is only meaningful once something
+ * has moved the pointer. A dump with no pointer in it would report the arrow
+ * and say nothing.
+ */
+static void shape_report(void)
+{
+	static const char *const names[KT_PTR_N] = {
+		[KT_PTR_ARROW] = "arrow",
+		[KT_PTR_IBEAM] = "ibeam",
+		[KT_PTR_SIZE_NS] = "size-ns",
+		[KT_PTR_SIZE_WE] = "size-we",
+		[KT_PTR_SIZE_NWSE] = "size-nwse",
+		[KT_PTR_SIZE_NESW] = "size-nesw",
+		[KT_PTR_MOVE] = "move",
+	};
+
+	fprintf(stderr, "pointer-shape: %s\n",
+		shape_last >= 0 && shape_last < KT_PTR_N
+			&& names[shape_last]
+			? names[shape_last] : "?");
+}
+
 static void grip_track(const KtuiEvent *ev)
 {
 	unsigned edges = KWM_EDGE_NONE;
@@ -2784,11 +2901,20 @@ static void grip_track(const KtuiEvent *ev)
 		w = win_find(grab.id);
 		grip_set(w ? w->id : 0, grab.resizing ? grab.edges : 0,
 			 w && !grab.resizing);
+		/* THE GRAB'S OWN SHAPE AND NOT THE CELL'S. The window follows
+		 * the hand, so the pointer is off the border from the first
+		 * cell of a resize; a shape read from under the pointer would
+		 * drop back to the arrow the instant the drag began to mean
+		 * something. Same argument the grip makes above. */
+		shape_set(w ? (grab.resizing ? shape_for_edges(grab.edges)
+					     : KT_PTR_MOVE)
+			    : KT_PTR_ARROW);
 		return;
 	}
 	if (S.locked || S.saver || mark.on || picking || win_menu_active() ||
 	    embed_grab_win()) {
 		grip_set(0, 0, 0);
+		shape_set(KT_PTR_ARROW);
 		return;
 	}
 	/*
@@ -2799,6 +2925,7 @@ static void grip_track(const KtuiEvent *ev)
 	 */
 	if (win_button_at(ev->mx, ev->my, &id)) {
 		grip_set(0, 0, 0);
+		shape_set(KT_PTR_ARROW);
 		return;
 	}
 	/*
@@ -2813,12 +2940,35 @@ static void grip_track(const KtuiEvent *ev)
 	w = win_at(ev->mx, ev->my);
 	g = w ? win_grab_at(w, ev->mx, ev->my, KT_MB_LEFT, ev->mods, &edges)
 	      : WIN_GRAB_NONE;
-	if (g == WIN_GRAB_MOVE)
+	if (g == WIN_GRAB_MOVE) {
 		grip_set(w->id, 0, 1);
-	else if (g == WIN_GRAB_RESIZE)
+		shape_set(KT_PTR_MOVE);
+	} else if (g == WIN_GRAB_RESIZE) {
 		grip_set(w->id, edges, 0);
-	else
+		shape_set(shape_for_edges(edges));
+	} else {
 		grip_set(0, 0, 0);
+		/*
+		 * AND TEXT WHERE THE SESSION KNOWS IT IS TEXT. A terminal's
+		 * CONTENT is the one region this process can say that about:
+		 * it owns the grid, a press there places a selection, and
+		 * `w->geom` is the content rectangle with the frame already
+		 * outside it.
+		 *
+		 * NOT A SURFACE'S CONTENT, however text-like it looks. A
+		 * surface is another process's cells and this one cannot tell
+		 * a text field from a list row — the shape would be a guess,
+		 * and a guess is worse than the arrow because an I-beam that
+		 * is wrong says a press will do something it will not.
+		 */
+		shape_set(w && w->kind == WIN_TERM
+				  && ev->mx >= w->geom.x
+				  && ev->mx < w->geom.x + w->geom.w
+				  && ev->my >= w->geom.y
+				  && ev->my < w->geom.y + w->geom.h
+			          ? KT_PTR_IBEAM
+			          : KT_PTR_ARROW);
+	}
 }
 
 /*
@@ -3051,6 +3201,59 @@ static void ptr_leave(const Win *now)
 		embed_leave(was);
 }
 
+/*
+ * `X,Y,BUTTON,PHASE` INTO A MOUSE EVENT, for `--point`. Answers 0 on anything
+ * it cannot read, so a harness that mistypes a gesture is told rather than
+ * silently asserting a frame nothing happened in.
+ *
+ * `move` IS A PHASE AND IT CARRIES NO BUTTON, which is what a hover is; the
+ * other three are a button's and default to the left one, because every
+ * gesture on this desktop that a test needs to state is the left button's.
+ */
+static int point_parse(const char *spec, KtuiEvent *ev)
+{
+	char buf[64], *p, *save = NULL, *f[4] = { NULL, NULL, NULL, NULL };
+	int n = 0;
+
+	snprintf(buf, sizeof(buf), "%s", spec);
+	for (p = strtok_r(buf, ",", &save); p && n < 4;
+	     p = strtok_r(NULL, ",", &save))
+		f[n++] = p;
+	if (n < 3 || !f[0] || !f[1])
+		return 0;
+
+	ev->type = KT_EVT_MOUSE;
+	ev->mx = atoi(f[0]);
+	ev->my = atoi(f[1]);
+
+	const char *btn = n == 4 ? f[2] : "left";
+	const char *ph = n == 4 ? f[3] : f[2];
+
+	if (!strcmp(btn, "left"))
+		ev->btn = KT_MB_LEFT;
+	else if (!strcmp(btn, "middle"))
+		ev->btn = KT_MB_MIDDLE;
+	else if (!strcmp(btn, "right"))
+		ev->btn = KT_MB_RIGHT;
+	else if (!strcmp(btn, "move"))
+		ev->btn = KT_MB_MOVE;
+	else
+		return 0;
+
+	if (!strcmp(ph, "press"))
+		ev->press = KT_MP_PRESS;
+	else if (!strcmp(ph, "drag"))
+		ev->press = KT_MP_DRAG;
+	else if (!strcmp(ph, "release"))
+		ev->press = KT_MP_RELEASE;
+	else if (!strcmp(ph, "move")) {
+		ev->btn = KT_MB_MOVE;
+		ev->press = KT_MP_DRAG;
+	} else
+		return 0;
+	return 1;
+}
+
 static void route_ptr(const KtuiEvent *ev, int raw_src)
 {
 	int finger = ptr_synth || touch_btn;
@@ -3135,6 +3338,49 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	 * ENDED BY ANYTHING THAT IS NOT A CONTINUING DRAG, for the same
 	 * reason: one lost button-up must cost a drag, never the pointer.
 	 */
+	/*
+	 * THE TAB DRAG, ASKED BEFORE THE WINDOW GRAB because a press on a tab
+	 * arms only this one and the two must not both be live.
+	 *
+	 * ENDED BY ANYTHING THAT IS NOT A CONTINUING DRAG, which is the rule
+	 * the window grab below keeps and for its reason: one lost button-up
+	 * must cost a gesture, never the pointer.
+	 */
+	if (tabdrag.id) {
+		Win *t = win_find(tabdrag.id);
+		Win *hd = win_find(tabdrag.head);
+
+		if (!t || !hd || t->stack != tabdrag.head) {
+			/* The stack came apart under the hand — a tab closed,
+			 * or something tore one out. There is nothing left to
+			 * reorder and no click to deliver. */
+			tabdrag.id = 0;
+			tabdrag.moved = 0;
+		} else if (ev->press == KT_MP_DRAG) {
+			int slot = win_stack_slot_at(hd, ev->mx);
+
+			if (slot >= 0 && win_stack_move_to(t, slot))
+				tabdrag.moved = 1;
+			return;
+		} else {
+			/*
+			 * A PRESS AND A RELEASE ON ONE SLOT BRINGS THE TAB UP;
+			 * a drag has already put it where the hand left it and
+			 * brings it up as well. The tab in somebody's hand is
+			 * the tab they want to look at, and a reorder that
+			 * left a different one on screen would need a second
+			 * gesture to undo.
+			 */
+			if (ev->press == KT_MP_RELEASE)
+				win_stack_show(t);
+			tabdrag.id = 0;
+			tabdrag.moved = 0;
+			ptr_track(ev);
+			grip_track(ev);
+			return;
+		}
+	}
+
 	if (grab.id) {
 		if (ev->press == KT_MP_DRAG)
 			grab_apply(ev);
@@ -3522,29 +3768,36 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 	}
 
 	/*
-	 * A PRESS ON A TAB BRINGS THAT TAB UP, AND IT IS ASKED BEFORE THE
+	 * A PRESS ON A TAB ARMS THE TAB DRAG, AND IT IS ASKED BEFORE THE
 	 * GRAB. The strip lives on the title row and the title row is what
 	 * arms a move, so a press answered by the grab first is a strip no
 	 * press can reach at all.
 	 *
-	 * THE LIVE TAB IS NOT A TARGET. Pressing the tab already on screen
-	 * means the person wants to move the window, which is exactly what
-	 * falls through to the grab below; consuming it would make the one
-	 * tab a hand is most likely to be over the one part of the row that
-	 * cannot drag the frame.
+	 * EVERY TAB, THE LIVE ONE INCLUDED. One rule for the strip: a press
+	 * on any tab is that tab's, and it comes up on the release if the
+	 * hand did not travel and moves along the strip if it did. A strip
+	 * where the tab on screen behaved differently from the rest would be
+	 * a strip whose one predictable target is the one a hand is most
+	 * likely to be over.
 	 *
-	 * AND A COLLAPSED STRIP STEPS INSTEAD. Below CON_TAB_MIN per tab the
-	 * strip is a ` 2/4 ` counter with no per-tab targets, and a counter
-	 * that answered nothing on a frame too narrow for names would make
-	 * the mouse route depend on the width of the window.
+	 * SO THE WINDOW IS MOVED FROM THE REST OF THE ROW — the two columns
+	 * outside the run, the frame buttons' side of it, either corner arm,
+	 * or Super from anywhere, which is the way in this desktop already
+	 * has for a window that is all content.
+	 *
+	 * AND A COLLAPSED STRIP MOVES THE WINDOW. Below CON_TAB_MIN per tab
+	 * the strip is a ` 2/4 ` counter with no per-tab targets, so there is
+	 * nothing there to pick up and the press falls through to the grab.
 	 */
 	if (w && !w->background && ev->btn == KT_MB_LEFT &&
 	    ev->press == KT_MP_PRESS && w->stack &&
 	    win_on_title(w, ev->mx, ev->my)) {
 		Win *t = win_stack_tab_at(w, ev->mx, ev->my);
 
-		if (t && t->id != w->stack) {
-			win_stack_show(t);
+		if (t) {
+			tabdrag.id = t->id;
+			tabdrag.head = w->stack;
+			tabdrag.moved = 0;
 			return;
 		}
 	}
@@ -5953,6 +6206,8 @@ int main(int argc, char **argv)
 	 */
 	const char *presses[8];
 	int npress = 0;
+	const char *points[16];
+	int npoint = 0;
 	/* A named arrangement, applied to the frame a dump composites. What it
 	 * proves is the file and the placement, not the socket verb — a dump
 	 * is a second session of its own, which is the whole difference
@@ -6115,6 +6370,13 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i], "--press") && i + 1 < argc) {
 			if (npress < (int)(sizeof(presses) / sizeof(presses[0])))
 				presses[npress++] = argv[++i];
+			else
+				i++;
+			continue;
+		}
+		if (!strcmp(argv[i], "--point") && i + 1 < argc) {
+			if (npoint < (int)(sizeof(points) / sizeof(points[0])))
+				points[npoint++] = argv[++i];
 			else
 				i++;
 			continue;
@@ -6499,6 +6761,31 @@ int main(int argc, char **argv)
 			continue;
 		session_key(&ev);
 	}
+
+	/*
+	 * AND THE POINTER, THROUGH THE SAME HANDLER A VIEW'S EVENTS REACH.
+	 * `--press`'s rule and for its reason: a synthetic event that took a
+	 * shortcut past route_ptr() would assert a second implementation of
+	 * the gesture rather than the one a hand gets.
+	 *
+	 * `X,Y,BUTTON,PHASE` — 5,0,left,press then 20,0,left,drag then
+	 * 20,0,left,release is a tab picked up at column 5 and put down at
+	 * column 20, which is the only way a DRAG is expressible at all: it
+	 * is three events and a gesture that is the relation between them, so
+	 * a flag that took one position could not state one.
+	 */
+	for (int i = 0; i < npoint; i++) {
+		KtuiEvent ev = { 0 };
+
+		if (!point_parse(points[i], &ev)) {
+			fprintf(stderr, "%s: cannot read the point '%s'\n",
+				name, points[i]);
+			return 2;
+		}
+		route_ptr(&ev, 0);
+	}
+	if (npoint)
+		shape_report();
 
 	settle();
 	if (S.server)

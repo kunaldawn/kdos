@@ -38,6 +38,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "xdg-foreign-unstable-v2-client-protocol.h"
 
 /*
  * Every output gets a lock surface, because the protocol will not report the
@@ -109,6 +110,24 @@ static struct {
 	struct xdg_wm_base *wm_base;
 	struct zwlr_layer_shell_v1 *layer_shell;
 	struct ext_session_lock_manager_v1 *lock_mgr;
+	/*
+	 * xdg-foreign-v2, and it is bound for EXACTLY ONE JOB: telling the
+	 * compositor which window this dialog belongs to, when the window
+	 * belongs to another process.
+	 *
+	 * A CLIENT CANNOT PLACE ITS OWN TOPLEVEL. There is no "open here" in
+	 * xdg-shell and there never will be — placement is the compositor's.
+	 * What a client CAN say is whose child it is, and a compositor that
+	 * knows that centres the child on the parent. `xdg_toplevel.set_parent`
+	 * says it within one process; across two, the parent exports a handle
+	 * and this imports it, which is the whole of what xdg-foreign is for.
+	 *
+	 * THE PORTAL IS THE ONLY CALLER. A FileChooser is handed
+	 * `parent_window` by the application that asked for it, and without
+	 * this the dialog opens in the middle of the screen whatever asked.
+	 */
+	struct zxdg_importer_v2 *importer;
+	struct zxdg_imported_v2 *imported;
 	/* cursor-shape-v1. Without it the pointer VANISHES over every libkwl
 	 * surface: on Wayland the focused client owns the cursor image, this
 	 * library never set one, and once kdos-desk covered the whole screen
@@ -3877,6 +3896,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 			return;
 		K.seat = wl_registry_bind(r, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(K.seat, &seat_listener, NULL);
+	} else if (!strcmp(iface, zxdg_importer_v2_interface.name)) {
+		K.importer = wl_registry_bind(r, name,
+					      &zxdg_importer_v2_interface, 1);
 	} else if (!strcmp(iface, xdg_wm_base_interface.name)) {
 		K.wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(K.wm_base, &wm_base_listener, NULL);
@@ -4594,6 +4616,27 @@ static int make_toplevel(void)
 	if (K.cfg.app_id)
 		xdg_toplevel_set_app_id(K.xdg_toplevel, K.cfg.app_id);
 	/*
+	 * WHOSE CHILD THIS IS, WHERE THE CALLER WAS TOLD. See K.importer.
+	 *
+	 * BEFORE THE FIRST COMMIT, because the parent is part of what the
+	 * compositor places on: labwc reads it when the surface maps, and a
+	 * parent set afterwards is a dialog that has already appeared
+	 * somewhere else and then jumps.
+	 *
+	 * A HANDLE THAT NO LONGER NAMES ANYTHING IS NOT AN ERROR. The
+	 * compositor answers the import with a `destroyed` event and the
+	 * dialog is simply parentless — which is the placement it would have
+	 * had anyway. The window that asked can close between the request
+	 * and the dialog, and a chooser that refused to open because of that
+	 * would be worse than one in the middle of the screen.
+	 */
+	if (K.importer && K.cfg.parent && K.cfg.parent[0]) {
+		K.imported = zxdg_importer_v2_import_toplevel(K.importer,
+							      K.cfg.parent);
+		if (K.imported)
+			zxdg_imported_v2_set_parent_of(K.imported, K.surface);
+	}
+	/*
 	 * Ask for a SERVER frame. A compositor that does not offer the
 	 * protocol simply has no manager to bind and the window is undecorated
 	 * as before, which is the honest fallback rather than a failure.
@@ -5191,6 +5234,13 @@ void kwl_shutdown(void)
 	}
 	if (K.frame_cb)
 		wl_callback_destroy(K.frame_cb);
+	/* The import before the importer: the child object names the parent
+	 * one, and destroying a manager with a live object under it is a
+	 * protocol error on some compositors and a leak on the rest. */
+	if (K.imported)
+		zxdg_imported_v2_destroy(K.imported);
+	if (K.importer)
+		zxdg_importer_v2_destroy(K.importer);
 	buffer_free(&K.buf[0]);
 	buffer_free(&K.buf[1]);
 	for (int i = 0; i < K.nextra; i++) {

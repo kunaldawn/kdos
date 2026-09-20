@@ -455,6 +455,13 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header \
             "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/primary-selection/primary-selection-unstable-v1.xml" \
             "$PROTO/primary-selection-unstable-v1-client-protocol.h"
+        # xdg-foreign: kdos-pick tells the compositor whose child a dialog
+        # is, which is the only way a portal's file chooser reaches the
+        # window that asked for it. libkwl includes this unconditionally too,
+        # so it is as mandatory here as the lock role's protocol.
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+            "$PROTO/xdg-foreign-unstable-v2-client-protocol.h"
         # The private-code halves. The blocks above only COMPILE, so headers
         # were enough for them; kdos-res LINKS, and an interface referenced
         # with no generated code is an undefined symbol at link rather than a
@@ -482,6 +489,9 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" private-code \
             "$_wp/unstable/primary-selection/primary-selection-unstable-v1.xml" \
             "$PROTO/primary-selection-unstable-v1-protocol.c"
+        "$SCANNER" private-code \
+            "$_wp/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+            "$PROTO/xdg-foreign-unstable-v2-protocol.c"
         KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
 -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm"
         # libkcell first and on its OWN: it must compile with no Wayland
@@ -568,6 +578,35 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             $(pkg-config --libs fcft pixman-1)
         "$OUT/obliquecheck" >/dev/null
         echo "  obliquecheck (a synthesised italic leans, and leans evenly)"
+
+        # A TRAY ITEM'S OWN PICTURE, decoded from bytes rather than found by
+        # name. Every surface turns its icons OFF for a dump — a golden frame
+        # is the character grid — so this is the one path in libkicon that no
+        # reference frame can reach, and without a fixture it is compiled and
+        # never run. It was: the PNG the tray fixture published was malformed
+        # and nothing had ever decoded it.
+        #
+        # STDERR IS DISCARDED because libpng prints its own complaint about
+        # the deliberately truncated blob, and a refusal that says so twice
+        # reads as a failure.
+        #
+        # libpng is asked for separately: the block above this one is guarded
+        # on fcft and pixman, which libkicon needs too but which say nothing
+        # about a decoder.
+        if pkg-config --exists libpng 2>/dev/null; then
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkicon \
+            -Isrc/libs/libkxdg \
+            $(pkg-config --cflags pixman-1 fcft libpng) \
+            -o "$OUT/iconpng" testing/fixtures/iconpng/iconpng.c \
+            src/libs/libkicon/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcolor/*.c src/libs/libkbase/*.c src/libs/libkxdg/*.c \
+            $(pkg-config --libs pixman-1 fcft libpng)
+        "$OUT/iconpng" 2>/dev/null \
+            || { echo "  kicon_slot_png FAILED"; exit 1; }
+        else
+            echo "  kicon_slot_png (skipped — no libpng on this host)"
+        fi
 
         $CC $STD $WARN -c -I"$PROTO" $KCINC \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
@@ -1154,6 +1193,76 @@ con_golden con-stack-132x43 --dump 132x43 \
 con_golden con-stack-moved-132x43 --dump 132x43 \
     --term "/bin/echo alpha" --term "/bin/echo beta" --term "/bin/echo gamma" \
     --press Super+Shift+s --press Super+Shift+s --press 'Super+Alt+['
+
+#
+# AND THE SAME VERB UNDER A HAND, which is the half a chord cannot assert.
+#
+# `--point` reaches route_ptr() exactly as `--press` reaches the chord table,
+# so these are frames of the gesture and not of a second implementation of it.
+# A DRAG IS THREE EVENTS and the gesture is the relation between them, which
+# is why each frame states all three.
+#
+#   THE LIVE TAB IS DRAGGED, and it is the live one on purpose: it sits on
+#   the title row, which is also what arms a window MOVE, so it is the tab
+#   whose press has two plausible meanings. A frame showing it reordered is
+#   the frame that says the strip owns the whole of its own row. `1:` marks
+#   it, and it ends at the left end with `gamma` still under the frame — the
+#   tab travelled and the window did not.
+#
+con_golden con-tabdrag-132x43 --dump 132x43 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --term "/bin/echo gamma" \
+    --press Super+Shift+s --press Super+Shift+s \
+    --point 105,0,left,press --point 75,0,left,drag \
+    --point 45,0,left,drag --point 45,0,left,release
+
+#
+#   AND A PRESS WITH NO MOTION IS STILL A CLICK. The reorder is an extra
+#   meaning for the gesture and not a replacement for it: the same two events
+#   with the same column bring that tab up and leave the strip in the order it
+#   was in. `1:` is on the first tab and `alpha` is under the frame.
+#
+con_golden con-tabclick-132x43 --dump 132x43 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --term "/bin/echo gamma" \
+    --press Super+Shift+s --press Super+Shift+s \
+    --point 45,0,left,press --point 45,0,left,release
+
+#
+# WHAT A PRESS WOULD DO, WHERE THE POINTER IS. The session decides the
+# pointer's shape and the view draws it, so the decision is testable here and
+# the PICTURE is not — a shape is the one thing about the pointer that a cell
+# grid cannot show, which is why `--point` reports it on STDERR and the
+# golden above stays the cells.
+#
+# TEN POSITIONS AROUND ONE WINDOW, which is every branch of the mapping: four
+# corners (both diagonals, from both ends — a table that mirrored one of them
+# wrongly passes a test that only probes one), four sides, the title row, and
+# the content of a terminal. A shape that is right on the top-left corner and
+# wrong on the bottom-right is the defect this shape of test exists for.
+#
+_shape() {   # <point> <expected>
+    rm -rf "$OUT/constate"; mkdir -p "$OUT/constate"
+    _got=$(PATH="$OUT/nogdbus" XDG_STATE_HOME="$OUT/constate" \
+           XDG_CONFIG_HOME="$OUT/constate" \
+           KDOS_GREET_FIXTURE=/nonexistent-kdos-greet \
+           "$OUT/kdos-con" --dump 132x43 --term "/bin/echo alpha" \
+           --point "$1" 2>&1 >/dev/null | sed -n 's/^pointer-shape: //p')
+    if [ "$_got" != "$2" ]; then
+        echo "  POINTER SHAPE at $1: expected $2, got '${_got:-nothing}'"
+        golden_fail=1
+    fi
+}
+# The window is 0,0 to 91,29 at this size — the frame the golden above draws.
+_shape 0,0,move    size-nwse
+_shape 91,0,move   size-nesw
+_shape 0,29,move   size-nesw
+_shape 91,29,move  size-nwse
+_shape 0,15,move   size-we
+_shape 91,15,move  size-we
+_shape 40,29,move  size-ns
+_shape 40,0,move   move
+_shape 40,15,move  ibeam
+_shape 125,40,move arrow
+echo "  the pointer's shape, at ten places on one window"
 
 #
 # THE SCRATCHPAD, BOTH WAYS ROUND, AND THROUGH THE CHORDS THEMSELVES.
@@ -5297,6 +5406,43 @@ bootctl try b >/dev/null 2>&1 \
     && { echo "  trying a slot with no root was allowed"; exit 1; }
 echo "  three attempts then rollback, mark-good confirms, torn state ignored"
 
+# EACH SLOT'S OWN LUKS CONTAINER, which is what joins A/B to encryption. The
+# command line names ONE `cryptdevice=`, so a second slot inside a second
+# container is reachable only because `crypt` answers per slot — and the case
+# that matters is the ROLLBACK, where the filesystem changes under the
+# initramfs and the container has to change with it.
+rm -f "$AB/bootstate"
+bootctl set-slot a AAAA-1111 LUKS-AAAA >/dev/null
+bootctl set-slot b BBBB-2222 LUKS-BBBB >/dev/null
+test "$(bootctl crypt AAAA-1111)" = "LUKS-AAAA" \
+    || { echo "  a slot's container did not come back"; exit 1; }
+# Keyed by the FILESYSTEM and not by a slot name: that is what makes it one
+# call after `select`, with no second decision that could disagree.
+bootctl try b >/dev/null
+_sel="$(bootctl select 2>/dev/null)"
+test "$_sel" = "BBBB-2222" || { echo "  no candidate"; exit 1; }
+test "$(bootctl crypt "$_sel")" = "LUKS-BBBB" \
+    || { echo "  the candidate slot got the WRONG container"; exit 1; }
+# Exhaust it: the rollback must carry A's container back with A's filesystem,
+# because unlocking B's and looking for A's filesystem inside it reads as a
+# corrupt disk rather than as a lookup that was never made. THREE attempts is
+# the default and one has been spent above, so two more reach the rollback —
+# the count is the loop's own a few lines up, not a new one.
+bootctl select >/dev/null 2>&1
+bootctl select >/dev/null 2>&1
+_sel="$(bootctl select 2>/dev/null)"
+test "$_sel" = "AAAA-1111" || { echo "  no rollback"; exit 1; }
+test "$(bootctl crypt "$_sel")" = "LUKS-AAAA" \
+    || { echo "  the rollback kept the OTHER slot's container"; exit 1; }
+# A slot described with no container is a slot that is not encrypted, and the
+# value is REWRITTEN rather than kept: an updater that puts a plain filesystem
+# over an encrypted slot must not leave the initramfs unlocking a container
+# that is no longer in the way.
+bootctl set-slot a AAAA-1111 >/dev/null
+bootctl crypt AAAA-1111 >/dev/null 2>&1 \
+    && { echo "  a container survived a slot being rewritten without one"; exit 1; }
+echo "  each slot carries its own LUKS container, across a rollback"
+
 echo
 echo "==> the initramfs unlocks a LUKS root, or says why it cannot"
 # The generated init is a heredoc inside a packaging script, which is exactly
@@ -5364,6 +5510,38 @@ luks_try "$IR/bad.tty" "UUID=1234-abcd:kdosroot" \
 luks_try "$IR/good.tty" "this-is-not-a-spec" \
     && { echo "  a malformed cryptdevice= was accepted"; exit 1; }
 echo "  cryptdevice= parsed, passphrase on stdin, three tries then a shell"
+
+# AND THE SLOT'S OWN CONTAINER, WHICH IS ORDERING AND NOT LOGIC. `select` and
+# `crypt` both read the state file on the ESP, and the ESP is unmounted a few
+# lines later — so a `crypt` call that drifted below the umount reads nothing,
+# silently drops the container, and an encrypted second slot is then unlocked
+# with the FIRST slot's container. That fails as a corrupt filesystem, which
+# is the worst way for a lookup that was never made to present.
+#
+# Asserted on the GENERATED init, by line number, because the bug is entirely
+# a question of which line comes first.
+_ln() { grep -n "$1" "$IR/init" | head -1 | cut -d: -f1; }
+_sel=$(_ln 'kdos-bootctl select')
+_cry=$(_ln 'kdos-bootctl crypt')
+_umt=$(_ln 'umount /esp')
+if [ -z "$_sel" ] || [ -z "$_cry" ] || [ -z "$_umt" ]; then
+    echo "  the init lost its slot block (select=$_sel crypt=$_cry umount=$_umt)"
+    exit 1
+fi
+[ "$_sel" -lt "$_cry" ] \
+    || { echo "  the container is read before the slot is chosen"; exit 1; }
+[ "$_cry" -lt "$_umt" ] \
+    || { echo "  the container is read AFTER the ESP is unmounted"; exit 1; }
+# And the answer has to reach the unlock, which is the other half: a lookup
+# whose result nothing assigns is a lookup that changes nothing.
+grep -q 'CRYPTDEV="UUID=\$SLOT_CRYPT' "$IR/init" \
+    || { echo "  the slot's container never reaches CRYPTDEV"; exit 1; }
+# The unlock must still come after the whole slot block, or it unlocks
+# whatever the command line named and then looks for the other slot inside it.
+_unl=$(_ln 'if \[ -n "\$CRYPTDEV" \]')
+[ -n "$_unl" ] && [ "$_cry" -lt "$_unl" ] \
+    || { echo "  the unlock does not follow the slot selection"; exit 1; }
+echo "  a slot's LUKS container is read while the ESP is mounted, before the unlock"
 
 echo
 echo "==> kdosbuild reads the build tree correctly"
@@ -8469,9 +8647,15 @@ if "$DUMPCK" --have rec; then
     golden rec        80x24  rec --fixture rec --dump
     golden rec        56x24  rec --fixture rec --dump
     golden rec        132x43 rec --fixture rec --dump
+    # AN ENVIRONMENT PREFIX BINDS TO ONE COMMAND AND THE INDENTATION SAYS
+    # OTHERWISE. Written as a prefix on the first line and a continuation on
+    # the second, the 56x24 frame ran with NO model at all — so the golden
+    # named `rec-model` was a golden of a machine that has none, which is the
+    # frame `rec` already commits. Both lines carry it.
     KDOS_GOLDEN_MODEL=rec/whisper/ggml-tiny.bin \
         golden rec-model 80x24 rec --fixture rec --dump
-        golden rec-model  56x24 rec --fixture rec --dump
+    KDOS_GOLDEN_MODEL=rec/whisper/ggml-tiny.bin \
+        golden rec-model 56x24 rec --fixture rec --dump
     golden rec-meter  80x24  rec --fixture rec --meter rec/tone.raw --dump
     golden rec-meter  56x24  rec --fixture rec --meter rec/tone.raw --dump
 

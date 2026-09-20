@@ -266,9 +266,13 @@ Three rules it exists to keep:
 
 - **Every request is answered** — success, cancelled, or error. An unanswered request leaves the
   asking application blocked forever.
-- **The parent-window hint is ignored, and it says so.** Positioning a dialog over the window that
-  asked for it needs cross-process window referencing that is not wired up, so dialogs open
-  centred.
+- **The parent-window hint is passed on, not parsed.** An application sends
+  `wayland:<xdg-foreign handle>`; the portal strips the scheme and hands the handle to
+  `kdos-pick --parent`, which imports it and tells the compositor whose child the dialog is. A
+  client cannot place its own toplevel, so this is the only route there is — `kdos-comp` centres a
+  child on its parent. An `x11:` handle is dropped, and so is a handle the compositor does not
+  know: a parent is a hint about placement and never a condition of opening, so either one leaves
+  the dialog centred on the screen.
 - **The chooser is executed with an argument vector, never a command string.**
 
 **`kdos-record` is the host's own caller of all this.** Three calls — `CreateSession`,

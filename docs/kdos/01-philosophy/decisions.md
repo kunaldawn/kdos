@@ -7,6 +7,10 @@ weekend rediscovering why the obvious option does not work.
 
 Each entry states the question, what was chosen, and what was rejected.
 
+The last section, [Narrowings](#narrowings), holds the small ones — a decision whose whole
+argument is a paragraph, and which a reader is most likely to arrive at from
+[Known gaps](../06-reference/known-gaps.md) asking why something is missing.
+
 ## A hard fork of labwc, not a compositor of our own
 
 **The question.** KDOS needs a Wayland compositor with a phosphor shader, a wallpaper it owns, a
@@ -372,6 +376,123 @@ width, and nothing taken from the names while it is closed. A boxed application'
 exactly what a native one gets, which is the other half of the decision: two dialogs of two widths
 would be two layouts to keep, two sets of reference frames, and two answers to how wide a chooser
 is.
+
+## Narrowings
+
+A narrowing is a decision that reads like a gap: the thing genuinely is not there, and it is not
+there because a smaller answer was chosen over a larger one. Each of these is small enough that a
+section of its own would be mostly heading, and each has the same shape — what was asked for, what
+is built instead, and what the larger answer would have cost.
+
+**A drop on the desktop reaches the trash and nothing else.** Dropping a file onto a folder icon
+would be a move, and a move across filesystems is a copy and an unlink that can half-succeed. A
+desktop that offers the gesture has to answer what it did with the file when the second half
+failed, on a surface with nowhere to say it. The trash is the one target whose failure mode is
+"nothing happened".
+
+**Screens are placed edge to edge in list order, not at coordinates.** A vertical arrangement, an
+overlap and a deliberate gap cannot be expressed. What people reach a screen tool for is which
+screen is left of which, and an order answers that in a list; a geometry answers it with a canvas,
+a drag, a snapping rule and a validity check for the arrangements that leave a hole.
+
+**Tabs stack; they do not tile.** `Super+Shift+s` folds one window into another as a tab, and
+there are no tile groups — two windows side by side that move, size and minimise together.
+`tiled` is a per-window bitmask resolved against the work area and never against a neighbour, and
+the arrangements clear it afterwards precisely so that an arrangement is not a state. A group is a
+relation between windows, which is the one thing the window model does not hold, so it would reuse
+none of the machinery a stack reuses.
+
+**A console screen takes a mode, and not an off, a scale or a rotation.** `kdos-display` lists
+connectors and sets a mode on one; the other three verbs are Wayland's. A text grid has no scale
+factor, a rotation would give the cells a different shape on one screen than on the next, and a
+dark connector would leave a hole in the middle of a grid that windows are already placed across.
+The buttons are drawn **disabled** rather than hidden, so the surface is the same surface in both
+sessions.
+
+**One font for every output.** The font every KDOS surface draws with is a single setting, so it
+is right on a machine with one screen and wrong on two of different densities. The console's font
+chords step every view that has a screen of its own and the picker sets the face on all of them,
+which keeps two screens agreeing rather than letting each be right. A per-output font is a
+different design — a font per connector, a picker that asks which, and a cell size that changes
+under a window when it is dragged across the boundary — not a missing call.
+
+**The pointer is composited into the framebuffer, not put on a cursor plane.** `drmModeSetCursor2`
+would move the arrow without repainting anything, and `kkms_drm_fd()` is public. A plane has its
+own size limits, its own format and a per-driver set of refusals, and the transfer-model drivers
+the console runs on in a virtual machine have no usable plane at all — so the composited path has
+to exist underneath it either way, and a second path is a second set of frames to get right for
+the machines that already work.
+
+**A typed command in the run box is treated as a graphical application.** Every non-terminal
+program the session is handed goes into a cage, and a run box cannot know whether what somebody
+typed draws pixels or cells: `kdos-res` typed there costs a kiosk compositor that the same
+application started from the Start menu does not, because the entry carries `X-KDOS-Cells` and a
+typed line carries nothing. Resolving the first word back to a desktop entry is the other road,
+and it would make the run box behave differently from the terminal it otherwise resembles — the
+same string, two meanings, decided by whether a `.desktop` file happens to exist.
+
+**A picture needs `kdos-term`, not one of the session's own terminal windows.** The session links
+no pixel code, which is what keeps `kdos-con` compilable and testable on a machine with no
+graphics stack at all, so a terminal window it opens itself shows the fallback shade where a
+picture is. `kdos-term` is the terminal that joins the parser to the decoder and it is a surface
+like any other. A `--tty` view inside one of the session's own terminal windows detects this and
+stays on characters: that window answers the device-attributes probe claiming sixel and then
+reports no picture geometry, and it is the second answer that decides.
+
+**A touch screen aims at an embedded application a cell at a time.** A view with a real pointer or
+keyboard carries the raw device stream beside the cell one, so a guest is aimed in pixels; a touch
+event is synthesised from the gesture recogniser and has no raw partner, so it arrives at the
+grid's resolution. A finger is wider than a cell, which is what makes the second synthesis path
+cost more than it buys.
+
+**No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
+the catalogue emits either. The three raster protocols are what a modern program reaches for.
+
+**A recording is not an asciicast, and no player is packaged.** `kdos con record` writes the
+session's own messages — cell frames, sprites, window chrome — so no asciinema player will open
+one, and a view that draws cells is already the player for the format this tree writes. An
+`asciinema` port would be weight carried for a format nothing here produces.
+
+**Braille is `brltty`'s route.** `a11y = yes` keeps the kernel's text plane so `brltty` reads it
+over `/dev/vcsa`, and BrlAPI is linked by nothing here. A display driven that way is driven by
+`brltty` — which already supports every display anyone owns — rather than by a second driver stack
+inside this desktop.
+
+**An invitation in a message is read and never answered.** `aerc`'s calendar filter prints the
+event — summary, times, location, who was asked — and writes nothing anywhere. A filter runs every
+time a message scrolls past, so one that imported would accept every meeting it was scrolled over;
+and no `text/calendar` handler is registered for the same reason. Filing one is manual and it
+works: `:save` the part out of the message and `khal import` it, and the day carries a mark in the
+panel's calendar.
+
+**Applications that need raw block devices are not in the catalogue** — partitioners, drive-health
+tools, recovery tools. A rootless container cannot do anything useful with them, and a launcher
+that opens onto a permission error teaches somebody that the machine is broken. Those jobs are
+native tools on the host, which is where privilege is.
+
+**Applications requiring a particular compositor's private protocols are out.** One catalogue
+screenshot tool asks a named compositor's interface and opens an error dialog on every other.
+Screenshots are the host's own tool.
+
+**No font that has to be downloaded.** A Windows program wanting a specific proprietary font gets
+a substitute. Fetching one happens at run time over the network, and nothing in the image may
+depend on that.
+
+**Editing a library rebuilds every port of ours, not only its consumers.** A recipe names which
+libraries it compiles, and working out which of them a given edit actually reaches would be a
+shell parser inside the package manager — reading `build.sh` to find out what it compiles. The
+over-rebuild costs minutes; the parser would be a second, quieter build system.
+
+**The initramfs carries util-linux's `switch_root` and not toybox's.** toybox's applet `chroot()`s
+into the new root and never moves that root onto the root of the mount namespace, so every process
+on the booted system is chrooted for ever — and `create_user_ns()` refuses a chrooted caller
+outright, which is every container on the machine. The symptom is `EPERM` from `CLONE_NEWUSER` for
+uid 0 with the full capability set as readily as for anybody, on a kernel reporting
+`CONFIG_USER_NS=y`, no LSM, no seccomp filter and nothing on the command line;
+`/proc/self/mountinfo` gives it away, with the root mount present on the right device and a
+**parent id that is not in the table**. toybox owns the name `/usr/sbin/switch_root` on the
+finished image and is installed after util-linux, so the copy names util-linux's own file and the
+packaging step refuses to build an initramfs whose `switch_root` is toybox's.
 
 ## See also
 

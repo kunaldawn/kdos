@@ -8,7 +8,11 @@
  *   kdos-bootctl — two root slots, and a boot that can change its mind
  *
  *   kdos-bootctl status                what the state file says
- *   kdos-bootctl set-slot a <uuid>     record where a slot lives
+ *   kdos-bootctl set-slot a <uuid> [<luks-uuid>]
+ *                                      record where a slot lives, and which
+ *                                      container it lives inside
+ *   kdos-bootctl crypt <fs-uuid>       the container UUID that filesystem is
+ *                                      inside, for the initramfs
  *   kdos-bootctl try <slot> [n]        boot that slot n times, then give up
  *   kdos-bootctl select                DECIDE and count down (the initramfs)
  *   kdos-bootctl mark-good             this boot worked (the end of rcS)
@@ -33,6 +37,20 @@
  * state file that looked complete is exactly how a machine ends up booting a
  * slot that was never installed. Absent means "boot the root the kernel command
  * line already names", which is what a machine with no A/B setup does anyway.
+ *
+ * A SLOT KNOWS ITS OWN CONTAINER, AND THAT IS WHAT JOINS A/B TO ENCRYPTION.
+ * `select` yields a FILESYSTEM identifier; on an encrypted machine that
+ * filesystem is inside a LUKS container, and the container the kernel command
+ * line names is one fixed `cryptdevice=`. Two slots inside two containers
+ * cannot both be named there, so the second slot's container is recorded HERE
+ * — per slot, beside the filesystem it holds — and the initramfs asks for it
+ * after it has chosen. Without that, selecting slot B unlocks slot A's
+ * container and then looks for B's filesystem inside it, and finds nothing.
+ *
+ * `crypt_a`/`crypt_b` EMPTY IS THE UNENCRYPTED MACHINE and is the common
+ * case. The initramfs falls back to the command line's `cryptdevice=` when a
+ * slot names none, so a machine installed before slots carried containers
+ * boots exactly as it did.
  * ---------------------------------
  */
 
@@ -51,6 +69,9 @@
 
 typedef struct {
 	char slot[2][80];	/* a, b — the root UUID of each, "" if unset */
+	/* The LUKS container each slot's filesystem is inside, "" for a slot
+	 * that is not encrypted. See the note at the top of this file. */
+	char crypt[2][80];
 	int active;		/* 0 = a, 1 = b                              */
 	int trying;		/* -1 when not trying, else the slot index   */
 	int attempts;
@@ -122,6 +143,13 @@ static int state_load(BootState *st)
 			kb_strlcpy(st->slot[0], v, sizeof(st->slot[0]));
 		else if (!strcmp(k, "slot_b"))
 			kb_strlcpy(st->slot[1], v, sizeof(st->slot[1]));
+		/* An UNKNOWN key is skipped by the loop's own default, so a
+		 * state file written before these two existed parses as a
+		 * machine with no containers — which is what it is. */
+		else if (!strcmp(k, "crypt_a"))
+			kb_strlcpy(st->crypt[0], v, sizeof(st->crypt[0]));
+		else if (!strcmp(k, "crypt_b"))
+			kb_strlcpy(st->crypt[1], v, sizeof(st->crypt[1]));
 		else if (!strcmp(k, "active")) {
 			int i = slot_index(v);
 			if (i < 0) {
@@ -167,10 +195,13 @@ static int state_save(const BootState *st)
 		      "# reads it before it mounts a root filesystem.\n"
 		      "slot_a   = %s\n"
 		      "slot_b   = %s\n"
+		      "crypt_a  = %s\n"
+		      "crypt_b  = %s\n"
 		      "active   = %s\n"
 		      "try      = %s\n"
 		      "attempts = %d\n",
-		      st->slot[0], st->slot[1], slot_name(st->active),
+		      st->slot[0], st->slot[1], st->crypt[0], st->crypt[1],
+		      slot_name(st->active),
 		      st->trying >= 0 ? slot_name(st->trying) : "",
 		      st->attempts);
 
@@ -404,18 +435,23 @@ static int cmd_status(const BootState *st, int have, int json)
 	if (json) {
 		printf("{\"configured\": true, \"active\": \"%s\", "
 		       "\"trying\": %s%s%s, \"attempts\": %d, "
-		       "\"slot_a\": \"%s\", \"slot_b\": \"%s\"}\n",
+		       "\"slot_a\": \"%s\", \"slot_b\": \"%s\", "
+		       "\"crypt_a\": \"%s\", \"crypt_b\": \"%s\"}\n",
 		       slot_name(st->active),
 		       st->trying >= 0 ? "\"" : "null",
 		       st->trying >= 0 ? slot_name(st->trying) : "",
 		       st->trying >= 0 ? "\"" : "", st->attempts,
-		       st->slot[0], st->slot[1]);
+		       st->slot[0], st->slot[1], st->crypt[0], st->crypt[1]);
 		return 0;
 	}
 	printf("active   %s  %s\n", slot_name(st->active),
 	       st->slot[st->active][0] ? st->slot[st->active] : "(no root)");
+	if (st->crypt[st->active][0])
+		printf("         inside LUKS %s\n", st->crypt[st->active]);
 	printf("other    %s  %s\n", slot_name(!st->active),
 	       st->slot[!st->active][0] ? st->slot[!st->active] : "(no root)");
+	if (st->crypt[!st->active][0])
+		printf("         inside LUKS %s\n", st->crypt[!st->active]);
 	if (st->trying >= 0)
 		printf("trying   %s, %d attempt(s) left\n",
 		       slot_name(st->trying), st->attempts);
@@ -514,10 +550,41 @@ int bootctl_main(int argc, char **argv)
 	if (!strcmp(cmd, "theme"))
 		return cmd_theme(argc, argv);
 
+	/*
+	 * WHICH CONTAINER THAT FILESYSTEM IS INSIDE, asked by the initramfs
+	 * after `select` has chosen.
+	 *
+	 * KEYED BY THE FILESYSTEM UUID AND NOT BY A SLOT NAME, which is what
+	 * makes it a single call with no state between the two. `select` has
+	 * already spent an attempt and may have rolled back; asking "which
+	 * slot did that turn out to be" would be a second decision, made
+	 * separately, that could disagree with the first.
+	 *
+	 * SILENT AND 1 WHERE THERE IS NO CONTAINER, so the caller's fallback
+	 * to the command line's own `cryptdevice=` is the empty answer rather
+	 * than a special case.
+	 */
+	if (!strcmp(cmd, "crypt")) {
+		if (argc < 3) {
+			fprintf(stderr, "usage: kdos-bootctl crypt <fs-uuid>\n");
+			return 2;
+		}
+		if (!have)
+			return 1;
+		for (int i = 0; i < 2; i++)
+			if (st.slot[i][0] && !strcmp(st.slot[i], argv[2])) {
+				if (!st.crypt[i][0])
+					return 1;
+				printf("%s\n", st.crypt[i]);
+				return 0;
+			}
+		return 1;
+	}
+
 	if (!strcmp(cmd, "set-slot")) {
 		if (argc < 4) {
 			fprintf(stderr, "usage: kdos-bootctl set-slot <a|b> "
-					"<uuid>\n");
+					"<uuid> [<luks-uuid>]\n");
 			return 2;
 		}
 		int i = slot_index(argv[2]);
@@ -534,6 +601,16 @@ int bootctl_main(int argc, char **argv)
 			st.active = i;
 		}
 		kb_strlcpy(st.slot[i], argv[3], sizeof(st.slot[i]));
+		/*
+		 * THE CONTAINER IS REWRITTEN EVERY TIME, including to empty
+		 * when none is given. A slot described without one is a slot
+		 * that is not encrypted, and keeping the previous value would
+		 * have an updater that reinstalled a plain filesystem over an
+		 * encrypted slot leave the initramfs unlocking a container
+		 * that is no longer in the way.
+		 */
+		kb_strlcpy(st.crypt[i], argc > 4 ? argv[4] : "",
+			   sizeof(st.crypt[i]));
 		return state_save(&st) == 0 ? 0 : 1;
 	}
 
@@ -578,7 +655,9 @@ int bootctl_main(int argc, char **argv)
 
 	fprintf(stderr,
 		"usage: kdos-bootctl {status [--json]|select|mark-good|\n"
-		"                     set-slot <a|b> <uuid>|try <a|b> [n]|\n"
+		"                     crypt <fs-uuid>|\n"
+		"                     set-slot <a|b> <uuid> [<luks-uuid>]|\n"
+		"                     try <a|b> [n]|\n"
 		"                     theme [--print] <accent>}\n");
 	return 2;
 }

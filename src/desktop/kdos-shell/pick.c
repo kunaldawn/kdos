@@ -1090,6 +1090,7 @@ int pick_main(int argc, char **argv)
 	const char *font = NULL;
 	const char *title = "Open File";
 	const char *start = NULL;
+	const char *parent = NULL;	/* --parent, an xdg-foreign handle */
 	int dump = 0, dump_places = 0, dump_cells = 0;
 
 	for (int i = 1; i < argc; i++) {
@@ -1114,6 +1115,21 @@ int pick_main(int argc, char **argv)
 			dump_places = 1;
 		else if (!strcmp(argv[i], "--title") && i + 1 < argc)
 			title = argv[++i];
+		/*
+		 * THE WINDOW THAT ASKED FOR THIS ONE, as an xdg-foreign
+		 * handle. The portal is the only caller: an application hands
+		 * it `parent_window` and the portal hands it here with the
+		 * `wayland:` prefix already off, because a chooser has no
+		 * business knowing which display protocols spell a handle
+		 * which way.
+		 *
+		 * A HINT AND NEVER A CONDITION. A handle the compositor does
+		 * not know, no importer, or the console session — where there
+		 * is no Wayland at all — each leave the window centred, which
+		 * is where it would have been.
+		 */
+		else if (!strcmp(argv[i], "--parent") && i + 1 < argc)
+			parent = argv[++i];
 		else if (!strcmp(argv[i], "--save"))
 			save_mode = true;
 		else if (!strcmp(argv[i], "--directory"))
@@ -1159,7 +1175,7 @@ int pick_main(int argc, char **argv)
 				"[--dir D] "
 				"[--filter 'Label:*.png *.jpg']\n"
 				"                 [--dump|--dump-cells] "
-				"[--font F]\n");
+				"[--font F] [--parent H]\n");
 			return 2;
 		}
 	}
@@ -1253,6 +1269,11 @@ int pick_main(int argc, char **argv)
 		 * empty titlebar, which is a frame that says nothing. */
 		.title = "Files",
 		.app_id = "kdos-pick",
+		/* WHOSE CHILD THIS IS. The compositor centres a child on its
+		 * parent, which is the only way a dialog reaches the window
+		 * that asked for it — a client cannot place its own toplevel.
+		 * NULL everywhere but the portal's invocation. */
+		.parent = parent,
 		.font = font,
 		.keyboard = 1,
 	};

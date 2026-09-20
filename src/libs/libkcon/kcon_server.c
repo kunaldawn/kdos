@@ -138,6 +138,11 @@ struct KconSurface {
 	 * frames are being skipped, for as many frames as are skipped.
 	 */
 	int cur_x, cur_y, cur_dirty, cur_seen;
+	/* The pointer's shape, and whether this view has been told the
+	 * current one. `shape_seen` starts 0 so the first frame sends it:
+	 * a view that attached mid-session would otherwise draw an arrow
+	 * over whatever the pointer is actually on. */
+	int shape, shape_dirty, shape_seen;
 
 	/*
 	 * THE FRAME CONTRACT, both directions. A surface that sent cells or a
@@ -2310,6 +2315,21 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 		goto fail;
 	v->have_prev = 1;
 
+	/*
+	 * BEFORE THE CARET AND FOR THE SAME REASON THE CARET IS BEHIND THE
+	 * CELLS: a shape is about what the pointer is over, and the cells
+	 * that say so have just been sent. Sending it first would have the
+	 * view draw a resize arrow over a border that has not arrived yet.
+	 */
+	if (v->shape_dirty) {
+		KconBuf sb = { 0 };
+
+		kcon_put_u8(&sb, (uint8_t)v->shape);
+		if (kcon_send(v->conn, KCON_OP_PTRSHAPE, &sb) == 0)
+			v->shape_dirty = 0;
+		kcon_buf_free(&sb);
+	}
+
 	/* Behind the cells, so the caret is never on a picture that has not
 	 * arrived, and inside the same skip rule. */
 	if (v->cur_dirty) {
@@ -2489,6 +2509,20 @@ void kcon_view_bell(KconServer *s)
 	for (int i = 0; i < s->n; i++)
 		if (s->s[i]->kind == KCON_KIND_VIEW)
 			kcon_send(s->s[i]->conn, KCON_OP_BELL, NULL);
+}
+
+void kcon_view_pointer_shape(KconSurface *v, int shape)
+{
+	if (!v || v->kind != KCON_KIND_VIEW)
+		return;
+
+	/* A shape that did not change is not news — the whole reason this is
+	 * an op rather than a field on every commit. */
+	if (v->shape_seen && v->shape == shape)
+		return;
+	v->shape_seen = 1;
+	v->shape = shape;
+	v->shape_dirty = 1;
 }
 
 void kcon_view_cursor(KconSurface *v, int x, int y)
