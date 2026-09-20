@@ -397,18 +397,24 @@ int find_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *want_dir = NULL;
-	int dump = 0;
+	int dump = 0, dump_cells = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
+		/* THE SAME FRAME, CELL BY CELL: a codepoint and a colour slot
+		 * per painted cell. A frame golden cannot see a colour, and
+		 * this surface draws three kinds of row in three slots. */
+		else if (!strcmp(argv[i], "--dump-cells"))
+			dump = dump_cells = 1;
 		else if (!strcmp(argv[i], "--query") && i + 1 < argc)
 			snprintf(query, sizeof(query), "%s", argv[++i]);
 		else if (argv[i][0] == '-') {
 			fprintf(stderr, "usage: kdos-find [--font NAME] "
-					"[--query TEXT] [--dump] [DIR]\n");
+					"[--query TEXT] "
+					"[--dump|--dump-cells] [DIR]\n");
 			return 2;
 		} else if (!want_dir) {
 			want_dir = argv[i];
@@ -439,6 +445,12 @@ int find_main(int argc, char **argv)
 
 	sh_theme_from_cache();
 	if (dump) {
+		if (dump_cells) {
+			ktui_backend_set(sh_cells_backend(FI_COLS, FI_ROWS));
+			ktui_draw_init();
+			draw();
+			return 0;
+		}
 		ktui_offscreen_init(FI_COLS, FI_ROWS);
 		ktui_draw_init();
 		draw();

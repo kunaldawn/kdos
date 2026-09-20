@@ -260,6 +260,27 @@ Add the stub. A stub answers the state a dump actually has: `kdisp_win_supported
 dump renders one frame with no compositor, and a stub that invented two windows would make the
 frames assert a fiction.
 
+**A surface that exits non-zero costs its own golden and not the run.** `set -e` is on, so a
+surface refusing a flag used to end the suite where it stood — every check below it, including the
+ones that say whether the goldens are committed at all, simply never ran, and the failure read as
+"the suite stopped" rather than as one bad frame. `golden()` and `cells_golden()` catch the status
+and record it, which is the rule the candidate compile loop already keeps: each is admitted on its
+own.
+
+**One missing stub costs EVERY front-end golden, not its own.** The link is one command over the
+whole family, so `undefined reference to kch_px_bare` in `notifyd.c` skips the panel, the desktop,
+the calendar and the other forty with it — and the suite says so in one NOTE and then passes. That
+is the shape to expect: a run that is *green* and a `ls testing/goldens/` that is missing a name is
+this failure, not a surface nobody wrote a golden for.
+
+**And the other half of that link is the opposite mistake.** A stub for a symbol one of the linked
+files now DEFINES is a *multiple definition*, which carries neither the word `undefined` nor the
+word `error` — a filter looking for those two reports only half the breakage and sends the reader
+hunting for a missing library. `osd.c` is the worked example: it defines `sh_volume_get` and
+`sh_mic_muted`, which `panel.c` calls, so it is in the always-linked set beside `cal.c` and
+`shell.c` rather than in the candidate loop — a file that is sometimes linked and sometimes stubbed
+collides on exactly the hosts where the harness otherwise works.
+
 Regenerating is a variable on the self-test, and must be done where the Wayland dependencies exist
 — a build container, not a bare host. The terminal's are the exception: it builds console-only on
 any host, which is the point of that build.
@@ -831,6 +852,17 @@ Each is a rule with its consequence:
   `org.freedesktop.DBus.ObjectManager` and refuses a manual vtable for it with `EINVAL`. The
   recording gives the second radio a network the first cannot see, so a guess at the association
   fails the golden instead of passing by luck.
+- **A NESTED VARIANT TREE NEEDS A REAL SERVER, for the same reason.** `kdos-traymenu` reads a
+  `com.canonical.dbusmenu` layout, whose signature is `(ia{sv}av)` — recursive, with a variant per
+  child. What goes wrong there is not the drawing: a reader that miscounts a container leaves
+  sd-bus's cursor somewhere it cannot name, every row after the mistake is nonsense, and the frame
+  still draws. So `testing/fixtures/traymenu/menustub.c` builds the tree with a real sd-bus on a
+  **private session bus**, the real reader reads it, and the golden is what the two agree on. One
+  tree carries everything the parser can get wrong — a mnemonic underscore to strip, a separator, a
+  disabled row, a submenu with three children, two toggle states, and a row marked
+  `visible: false` that must not appear. The surface's own `--open ID` and `--pick ID` are what let
+  a dump reach the submenu and send an `Event` without a keyboard; the stub prints the id it was
+  given, which is how a pick is asserted with no display.
 - **A D-Bus contract needs its own end of the wire, not a mock of ours.** `kdos-netagent` answers
   NetworkManager, and none of what it must get right is photographable: the flag that has to be set
   before anybody is asked, the exact `a{sa{sv}}` a secret comes back in, and error names that carry

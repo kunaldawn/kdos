@@ -35,7 +35,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-desktop-start` | Bring up services, then the compositor | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-devices` | Cameras, microphones, removable media | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
-| `kdos-connect` | A folder on another machine, over SMB. Five fields to `kdos-mountd`'s `cifs` verb; the password never in an argument | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
+| `kdos-connect` | A folder on another machine, over SMB. Six fields to `kdos-mountd`'s `cifs` or `krb5` verb — `Sign in` chooses between a password and the ticket `kinit` left in the credential cache — and `Browse` asks who answered a broadcast. The password never in an argument | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-display` | Screen configuration | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-doc` | The documentation viewer | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-energy` | Per-application energy report | [The daemons](../04-programs/daemons.md#kdos-energyd) |
@@ -46,6 +46,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-launcher` | Full-screen application search | [kdos-shell](../04-programs/kdos-shell.md#kdos-launcher) |
 | `kdos-lock` | The lock screen | [The daemons](../04-programs/daemons.md#kdos-lock) |
 | `kdos-menu` | Root, System and window menus | [kdos-shell](../04-programs/kdos-shell.md#kdos-menu) |
+| `kdos-mount list\|mount\|unmount\|smart\|shares\|browse\|krb5\|ping\|subscribe` | The client half of the removable-media daemon. Every block verb takes a row number out of `list`; `browse` and `krb5` name a server, because a share is not a row in anything | [The daemons](../04-programs/daemons.md#kdos-mountd) |
 | `kdos-mountd` | The removable-media daemon | [The daemons](../04-programs/daemons.md#kdos-mountd) |
 | `kdos-net` | Networking | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-netagent` | The NetworkManager secret agent: the passphrase box the service asks for | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
@@ -92,6 +93,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-style` | How the screen looks: the accent on one page, the screen's font on the other. `--page accent\|font` opens either | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-theme` | Generate the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-tip` | Tooltips | [kdos-shell](../04-programs/kdos-shell.md#tooltips) |
+| `kdos-traymenu SERVICE PATH` | A tray item's own `com.canonical.dbusmenu` tree, drawn as cells. `--name`, `--at`, `--at-bottom`, and the test seams `--open ID`, `--pick ID`, `--dump` | [kdos-shell](../04-programs/kdos-shell.md#the-tray) |
 | `kdos-ime` | The input-method candidate window, as cells | [kdos-shell](../04-programs/kdos-shell.md#the-candidate-window) |
 | `kinstall` | The installer | [kinstall](../04-programs/kinstall.md) |
 | `kpkg` | The package manager | [Packaging](../03-architecture/packaging.md#kpkg) |

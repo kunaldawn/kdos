@@ -174,8 +174,14 @@ kdisp_win_count(void)
 int
 kdisp_win_at(int i, KDispWin *out)
 {
-	if (cur && cur->win_at && out)
+	if (cur && cur->win_at && out) {
+		/* Set BEFORE the backend fills the row. A server with no
+		 * per-screen answer leaves the field alone, and a task bar
+		 * filtering on whatever was in the caller's stack frame would
+		 * drop windows at random. */
+		out->here = 1;
 		return cur->win_at(i, out);
+	}
 	return 0;
 }
 

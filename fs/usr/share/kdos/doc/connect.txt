@@ -2,37 +2,55 @@ KDOS CONNECT
 
 A folder on another machine, over SMB.
 
-  Enter     on the list opens the form; on the form, connects.
-  Tab       moves between the five fields.
+  Enter     on the list opens the form; on the form, connects. On the
+            browse list, fills the Server field with the row you are on.
+  Tab       moves between the six fields.
+  b         asks the network who is offering a share.
   d         disconnects the selected share.
   r         asks the daemon again.
-  Escape    on the form cancels it; on the list closes the window.
+  Escape    on the form or the browse list backs out; on the list closes
+            the window.
 
-The five fields
+The six fields
 
-  Server    a DNS name or an IP address. A workgroup name will not work:
-            this system resolves names through /etc/hosts and /etc/resolv.conf
-            and has no NetBIOS and no mDNS, so a name that only a workgroup
-            broadcast could answer fails with a message nobody can act on.
+  Server    a name or an address. A DNS name and an IP address work
+            directly; a .local name and a bare workgroup name are resolved
+            by a broadcast, because this system's C library resolves only
+            through /etc/hosts and /etc/resolv.conf.
   Share     the folder's name on that server, without slashes.
-  User      the account on the server, not the one on this machine.
+  User      the account on the server, not the one on this machine. On a
+            ticket it may be left empty: the ticket says who you are.
   Domain    empty where there is none.
-  Password  typed here, sent as its own frame, and never written down.
+  Sign in   a password, or the Kerberos ticket kinit already put in your
+            credential cache. Space changes it.
+  Password  typed here, sent as its own frame, and never written down. Not
+            asked for on a ticket.
 
   A comma, a slash or a backslash in any of the first four is refused. The
   mount helper builds its option string by joining these together and escapes
   nothing but the password, so one of those characters is a new mount option
   rather than part of a name.
 
+Browse
+
+  What answered an mDNS query and a NetBIOS one in the moment you pressed it,
+  not a directory: there is no browse master on this system to ask. A machine
+  that is asleep, on another subnet, or behind a router that does not forward
+  broadcasts is not on the list and can still be reached by typing its name.
+  It takes as long as a broadcast takes, which is seconds.
+
+Kerberos
+
+  `kinit` gets the ticket and this window never sees it: the kernel asks for
+  one through cifs.upcall, which reads your own credential cache. That is why
+  the mount carries your user id and not root's, and why no password crosses
+  the socket.
+
 What this window does not do
 
-  It does not mount anything. It fills in five fields and hands them to
+  It does not mount anything. It fills in the fields and hands them to
   kdos-mountd, which runs as root and owns every privileged path here. The
   password reaches the mount helper on a file descriptor, so it is in no
   argument list and in no file.
-
-  Kerberos is not available on this system: the upcall helper is not built and
-  there is no krb5 port, so a server that will only take a ticket cannot be
-  reached from here at all.
 
   [[doc:index]]

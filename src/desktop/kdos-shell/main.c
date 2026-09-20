@@ -60,6 +60,7 @@ static const struct {
 	{ "kdos-calc", calc_main },
 	{ "kdos-chars", chars_main },
 	{ "kdos-connect", connect_main },
+	{ "kdos-traymenu", traymenu_main },
 	{ "kdos-contacts", contacts_main },
 	{ "kdos-disks", disks_main },
 	{ "kdos-print", print_main },

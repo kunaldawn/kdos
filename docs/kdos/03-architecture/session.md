@@ -365,6 +365,19 @@ entries:
 our toolkit has a single cell buffer per process — so a second monitor cannot be a second surface,
 it has to be a second process. Each takes the output name as an argument.
 
+**And a bar lists its own screen's windows.** The window-management protocol reports which outputs
+a window is on, and a panel filters its taskbar to the one its surface actually entered — not the
+one `--output` asked for, because a panel placed on a screen that was unplugged between the request
+and the mapping is on whichever screen the compositor chose. Two bars listing the same windows
+would put the same buttons on both screens and a click on either would raise a window somewhere
+else. A server with no per-screen answer — the console, which composes every screen into one grid —
+gets the unfiltered list, because a bar that filtered on an answer nobody gave would be an empty
+bar. **The window MENU is not filtered**: it is how a window on the other screen is reached.
+
+**And neither is the pager.** A workspace spans every screen — there is one workspace group and
+every output enters it — so occupancy is counted over every window and not over the bar's own
+list, or a workspace would read as empty on the left screen while its windows were on the right.
+
 **Four are single-instance** because each owns something unique: the notification daemon owns a bus
 name that a second instance would simply fail to take; the secret agent registers one agent with
 NetworkManager, and a second would be a second passphrase box for the same question; the media

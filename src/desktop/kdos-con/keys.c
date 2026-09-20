@@ -117,6 +117,23 @@ static Bind binds[] = {
 	{ "stack-next",	CON_ACT_STACK_NEXT, 0, ']', KT_MOD_SUPER },
 	{ "stack-prev",	CON_ACT_STACK_PREV, 0, '[', KT_MOD_SUPER },
 	/*
+	 * AND ALT CARRIES THE TAB rather than walking to it, which is the
+	 * shape Alt already has here: `Super+Shift+s` folds a window in and
+	 * `Super+Alt+s` takes the group apart, `Super+grave` shows the
+	 * scratchpad and `Super+Alt+grave` hands the role over.
+	 *
+	 * NOT SHIFT, AND THAT IS NOT A PREFERENCE. keys_action() normalises
+	 * the CASE of a letter and nothing else, so `Shift+[` arrives as the
+	 * `{` the layout produced and a table row naming `[` with
+	 * KT_MOD_SHIFT matches nothing at all — the chord would fall through
+	 * to the focused window, which would type a brace into it. Every
+	 * Super+Shift chord in this table is on a letter for that reason.
+	 */
+	{ "stack-move-next", CON_ACT_STACK_MOVE_NEXT, 0, ']',
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	{ "stack-move-prev", CON_ACT_STACK_MOVE_PREV, 0, '[',
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	/*
 	 * THE WINDOW MENU, ON THE CHORD `rc.xml` ALREADY OPENS THE CLIENT MENU
 	 * WITH. It is one of the few chords in this table not on Super, and
 	 * it cannot be: Super+space is the palette, its shifted form is the

@@ -97,7 +97,7 @@ Read by the panel, and re-read on the same signal a theme change sends — so th
 | `overflow` | `stutter restart clipboard` | Which of them live behind the chevron |
 | `meters` | `cpu ram net` | Which meters, **in order of importance** — a narrow bar drops them from the right |
 | `task_labels` | `auto` | `auto`, `yes` or `no`: the ladder, always, or never |
-| `tray_hide` | the input-method identifiers | Tray items to hide |
+| `tray_hide` | empty | Tray item identifiers not drawn on the bar; they go in the chevron's popup |
 | `start_label` | `yes` | Whether the Start button carries its word |
 | `icons` | `yes` | Whether pictures are drawn |
 
@@ -588,6 +588,7 @@ Changing a default in one file changes it in the other.
 | `window-menu` | `Alt+Space` | | |
 | `stack` | `Super+Shift+s` | `unstack` | `Super+Alt+s` |
 | `stack-next` | `Super+]` | `stack-prev` | `Super+[` |
+| `stack-move-next` | `Super+Alt+]` | `stack-move-prev` | `Super+Alt+[` |
 | `scratchpad` | `Super+grave` | `scratchpad-mark` | `Super+Alt+grave` |
 | `workspace-prev` | `Super+PageUp` | `swap-left` … `swap-down` | `Super+Alt+`arrow |
 | `workspace-next` | `Super+PageDown` | | |
@@ -660,15 +661,18 @@ dialog goes down with the window it belongs to and stays above it. `Super+b` is 
 desktops unmodified; the browser, the address book and the battery are that letter's shifted and
 control forms.
 
-**The four `stack` rows are the tabbed windows, and this desktop's alone.** `stack` folds the
-ring's next window into the focused one as a tab, the two brackets walk the strip and `unstack`
-takes the group apart; two windows in a stack are one rectangle showing one of them at a time.
-`kdos-comp` has no stacking, so `rc.xml` binds nothing to these four — and nothing else to those
-keys either, so the day it grows tabs the chords are still free to mean the same thing. Not plain
-`Super+s`, which `rc.xml` gives `ToggleShade`; `Shift` folds in and `Alt` takes apart, the shape
-`tile` and `cascade` already have. **Not a form of `Tab`**: a shifted `Tab` arrives as back-tab and
-a chord spelled `Shift+Tab` parses to `Tab`, so half the family would be a chord no line in this
-file could name.
+**The six `stack` rows are the tabbed windows, and this desktop's alone.** `stack` folds the
+ring's next window into the focused one as a tab, the two brackets walk the strip, their `Alt`
+forms carry the live tab along it and `unstack` takes the group apart; two windows in a stack are
+one rectangle showing one of them at a time. `kdos-comp` has no stacking, so `rc.xml` binds nothing
+to these six — and nothing else to those keys either, so the day it grows tabs the chords are still
+free to mean the same thing. Not plain `Super+s`, which `rc.xml` gives `ToggleShade`; `Shift` folds
+in and `Alt` takes apart, the shape `tile` and `cascade` already have. **Not a form of `Tab`**: a
+shifted `Tab` arrives as back-tab and a chord spelled `Shift+Tab` parses to `Tab`, so half the
+family would be a chord no line in this file could name. **And the carry is on `Alt` rather than
+`Shift` for a reason a bracket has and a letter does not**: the matcher normalises the case of a
+letter and nothing else, so `Shift+[` arrives as `{` and a line naming `Super+Shift+[` would bind a
+chord no keyboard sends.
 
 **`window-menu` is the frame's own menu, and one of the few chords in this file not on `Super`.**
 It cannot be one: `Super+space` is the palette and `Super+Shift+space` the taskbar, so a third form
@@ -887,6 +891,25 @@ searched.
 Upstream's own directory name is used deliberately: the model is whisper's data, and naming where
 `models/download-ggml-model.sh` writes means a later change that packages one has a single answer
 rather than two. **Nothing ships a model and the desktop cannot fetch one.**
+
+**`whisper-stream` wants the same model and is not a desktop verb.** It transcribes a live
+microphone rather than a closed file — through SDL's audio device, which opens no window, so it
+runs in a terminal on the console with no compositor above it — and nothing on either desktop
+starts it. `kdos-rec`'s *Transcribe* is `whisper-cli` over the file it has just recorded.
+
+## Video in a call
+
+`baresip` writes `~/.baresip/config` on a first run and only when there is none, so the default
+below is what a fresh account gets and an edited file is never overwritten. Five module lines are
+uncommented there that upstream leaves commented, and they are exactly the five this image builds:
+`opus.so`, `avcodec.so`, `vp8.so`, `vp9.so` and `sdl.so`. An uncommented line naming a module that
+is not installed is a start-up error, which is why upstream's default comments them all.
+
+**The display is uncommented and the camera is not**, and the asymmetry is the point: which screen
+a picture goes on is a property of the build, and which camera it comes from is a choice. Turning
+on `avformat.so` is what sends yours — it registers a video source and the shipped ffmpeg carries
+`video4linux2`. `x11.so` is not built, by rule; `fakevideo.so` is a null sink and `vidbridge.so` a
+loopback, and both stay commented because each is something a person chooses deliberately.
 
 ## Shipped configuration for software that is not ours
 

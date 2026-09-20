@@ -1090,7 +1090,7 @@ int pick_main(int argc, char **argv)
 	const char *font = NULL;
 	const char *title = "Open File";
 	const char *start = NULL;
-	int dump = 0, dump_places = 0;
+	int dump = 0, dump_places = 0, dump_cells = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -1101,6 +1101,12 @@ int pick_main(int argc, char **argv)
 		 * compositor to hand. */
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
+		/* THE SAME FRAME, CELL BY CELL: a codepoint and a colour slot
+		 * per painted cell rather than a picture of them. A frame
+		 * golden cannot see a colour at all, and this dialog is the
+		 * one every boxed application's Open goes through. */
+		else if (!strcmp(argv[i], "--dump-cells"))
+			dump = dump_cells = 1;
 		/* The places rung, for a dump. The layout that matters about it
 		 * is whether a name fits, and that cannot be seen in the frame
 		 * underneath it. */
@@ -1152,7 +1158,8 @@ int pick_main(int argc, char **argv)
 				"                 [--title T] [--name N] "
 				"[--dir D] "
 				"[--filter 'Label:*.png *.jpg']\n"
-				"                 [--dump] [--font F]\n");
+				"                 [--dump|--dump-cells] "
+				"[--font F]\n");
 			return 2;
 		}
 	}
@@ -1216,6 +1223,12 @@ int pick_main(int argc, char **argv)
 
 	if (dump) {
 		sh_theme_from_cache();
+		if (dump_cells) {
+			ktui_backend_set(sh_cells_backend(64, 22));
+			ktui_draw_init();
+			draw(title);
+			return 0;
+		}
 		ktui_offscreen_init(64, 22);
 		draw(title);
 		ktui_draw_dump();

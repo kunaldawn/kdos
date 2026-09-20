@@ -24,6 +24,14 @@
  * terminal and not which program was in it — and a session restored from one
  * would come back as a screen of bare shells. A window running the file
  * manager is written as `files`, and `con.conf` says what fills that.
+ *
+ * A STACK IS THE ONE RELATION A ROW CARRIES, and it is carried in the flags
+ * column rather than in a column of its own: a row is a rectangle and a set of
+ * one-letter states, and a relation spelled as a group NUMBER shared by
+ * several rows fits that without a second format. `g<group>t<position>` says
+ * which stack and where in the strip, and `h` marks the one tab that was on
+ * screen. A row with no `g` is a window in no stack, which is what every row
+ * of a file written without the column reads as.
  * ---------------------------------
  */
 
@@ -124,12 +132,32 @@ static void save_text(const char *name, int row, Win *w)
  * `name` and `text` are for the per-terminal output files, which only a
  * session save writes — a layout is an arrangement and not a transcript.
  */
+/*
+ * THE GROUP NUMBER FOR A STACK'S HEAD ID, 1-based, or 0 when there is no room
+ * for another. Held for the length of one render and cleared at the start of
+ * it: a number is only meaningful among the rows written beside it.
+ */
+static int gmap[CON_STATE_MAX];
+static int ngmap;
+
+static int group_of(int stack_id)
+{
+	for (int i = 0; i < ngmap; i++)
+		if (gmap[i] == stack_id)
+			return i + 1;
+	if (ngmap >= CON_STATE_MAX)
+		return 0;
+	gmap[ngmap++] = stack_id;
+	return ngmap;
+}
+
 int con_state_rows(char *buf, size_t cap, const char *name, int text)
 {
 	char t[160], a[80];
 	size_t n = 0;
 	int rows = 0;
 
+	ngmap = 0;
 	n += (size_t)snprintf(buf + n, cap - n,
 			      "# kdos-con session state\n"
 			      "# kind\tworkspace\tx\ty\tw\th\tapp\tflags\ttitle\n");
@@ -182,13 +210,30 @@ int con_state_rows(char *buf, size_t cap, const char *name, int text)
 		 * A dash is the empty set, so the column is never empty and
 		 * the one after it is never mistaken for it.
 		 */
-		char fl[8];
+		char fl[CON_FLAGS_MAX];
 		int nf = 0;
 
 		if (w->full)
 			fl[nf++] = 'f';
 		if (w->sticky)
 			fl[nf++] = 's';
+		/*
+		 * THE GROUP NUMBER IS THIS SAVE'S AND NOT THE STACK'S ID. A
+		 * window id is whatever this session happened to reach and
+		 * means nothing to the next one; what has to survive is which
+		 * rows shared a stack, so the head's id is mapped to a small
+		 * number the moment it is first seen.
+		 */
+		if (w->stack) {
+			int g = group_of(w->stack);
+
+			if (g > 0)
+				nf += snprintf(fl + nf,
+					       sizeof(fl) - (size_t)nf,
+					       "g%dt%d%s", g,
+					       win_stack_index(w),
+					       w->id == w->stack ? "h" : "");
+		}
 		if (!nf)
 			fl[nf++] = '-';
 		fl[nf] = '\0';
@@ -262,7 +307,7 @@ int con_state_save(const char *name)
  */
 static struct {
 	char app[64];
-	char flags[8];
+	char flags[CON_FLAGS_MAX];
 	int ws, x, y, w, h;
 	int used;
 } pend[CON_STATE_MAX];
@@ -324,12 +369,36 @@ void con_state_flags(const char *line, char *out, size_t n)
 }
 
 /*
+ * THE WINDOW STANDING IN FOR EACH SAVED GROUP — the first member of it to
+ * appear. Later members join THAT window's stack, which resolves to whichever
+ * tab is on screen by then, so the order the rows arrive in does not matter.
+ *
+ * Reset at the start of a restore and of a layout load, and never otherwise:
+ * an anchor left over from the previous one would fold the new session's
+ * windows into a stack whose members are gone.
+ */
+static int ganchor[CON_STATE_MAX];
+
+void con_state_groups_reset(void)
+{
+	memset(ganchor, 0, sizeof(ganchor));
+}
+
+/*
  * WHAT A RECTANGLE CANNOT SAY, put back. Applied AFTER the placement, because
- * both of these replace the rectangle rather than adjust it: a fullscreen
+ * `f` and `s` both replace the rectangle rather than adjust it: a fullscreen
  * window is the whole grid and a scratchpad is its own drop-down shape.
+ *
+ * AND THE STACK IS REBUILT ACROSS CALLS rather than within one. A group's
+ * first member becomes its anchor and every later one joins the anchor's
+ * stack; `h` brings this tab up the moment it arrives, which is the only
+ * moment there is for an application whose window did not exist when its row
+ * was read.
  */
 void con_state_apply_flags(Win *w, const char *flags)
 {
+	int group = 0, pos = 0, head = 0;
+
 	if (!w || !flags)
 		return;
 	for (const char *p = flags; *p; p++) {
@@ -337,7 +406,42 @@ void con_state_apply_flags(Win *w, const char *flags)
 			win_fullscreen(w);
 		else if (*p == 's')
 			win_scratch_mark(w);
+		else if (*p == 'h')
+			head = 1;
+		else if (*p == 'g' || *p == 't') {
+			int c = *p, v = 0;
+
+			while (p[1] >= '0' && p[1] <= '9')
+				v = v * 10 + (*++p - '0');
+			if (c == 'g')
+				group = v;
+			else
+				pos = v;
+		}
 	}
+	if (group < 1 || group > CON_STATE_MAX)
+		return;
+
+	Win *anchor = ganchor[group - 1] ? win_find(ganchor[group - 1]) : NULL;
+
+	if (!anchor || anchor == w) {
+		ganchor[group - 1] = w->id;
+		if (pos > 0)
+			w->tabpos = pos;
+		return;
+	}
+	win_stack_join(w, anchor);
+	/*
+	 * THE SAVED PLACE GOES ON AFTER THE JOIN AND NOT BEFORE IT. A join
+	 * puts an incoming member on the END of the strip and numbers it
+	 * there, so a position written first is one the join throws away —
+	 * and the file's order is the one this has to reproduce, not the
+	 * order the rows happened to be read in.
+	 */
+	if (pos > 0)
+		w->tabpos = pos;
+	if (head)
+		win_stack_show(w);
 }
 
 /*
@@ -405,6 +509,7 @@ int con_state_restore(const char *name)
 	int opened = 0;
 
 	npend = 0;
+	con_state_groups_reset();
 	if (!con_state_path(name, path, sizeof(path)))
 		return 0;
 	text = kb_read_whole(path, NULL);
@@ -412,7 +517,7 @@ int con_state_restore(const char *name)
 		return 0;
 
 	for (char *line = text, *nl; line && *line; line = nl) {
-		char kind[16], app[64], fl[8] = "-";
+		char kind[16], app[64], fl[CON_FLAGS_MAX] = "-";
 		int ws, x, y, w, h;
 
 		nl = strchr(line, '\n');

@@ -176,12 +176,18 @@ enum {
 	/*
 	 * TABS ON A WINDOW FRAME, and stacking is the whole of what they are:
 	 * `stack` folds the next window of the ring into the focused one, the
-	 * two steps walk the strip, and `unstack` takes the group apart again.
-	 * Nothing here moves a window beside another — see win_stack_join().
+	 * two steps walk the strip, `move` carries the live tab one place
+	 * along it, and `unstack` takes the group apart again. Nothing here
+	 * puts a window BESIDE another — see win_stack_join().
 	 * APPENDED, like every value here.
 	 */
 	CON_ACT_STACK, CON_ACT_STACK_NEXT, CON_ACT_STACK_PREV,
 	CON_ACT_UNSTACK,
+	/* And the two that carry the live tab along the strip, APPENDED after
+	 * the four above rather than beside them: main.c's tables are
+	 * designated-initialiser arrays indexed by this enum, and a value
+	 * inserted in the middle renumbers every one after it. */
+	CON_ACT_STACK_MOVE_NEXT, CON_ACT_STACK_MOVE_PREV,
 	/*
 	 * HOW MUCH OF THIS ONE WINDOW'S BACKGROUND SURVIVES. `con.conf` says
 	 * what a window starts at; these three are the same question asked of
@@ -578,10 +584,23 @@ typedef struct Win {
 	 *
 	 * IT IS SESSION STATE AND NOT A libkwm CONCEPT: libkwm computes
 	 * rectangles and knows nothing about a neighbour, so nothing about a
-	 * stack is shared with kdos-comp and nothing here is written to the
-	 * session record.
+	 * stack is shared with kdos-comp. It IS written to the session record,
+	 * as a group letter in the flags column — see con_state_rows().
 	 */
 	int stack;
+
+	/*
+	 * WHERE THIS TAB SITS IN THE STRIP, 1-based, and 0 for a window in no
+	 * stack or one whose stack has never been reordered.
+	 *
+	 * THE SORT IS (tabpos, id) AND THE FALLBACK IS THE POINT. Zero for
+	 * every member is id order, which is the order a strip had before
+	 * anything could move a tab and the only one that does not reshuffle
+	 * when a different tab is brought up. A move renumbers the whole
+	 * stack 1..n first, so a strip is either entirely explicit or
+	 * entirely implicit and never half of each.
+	 */
+	int tabpos;
 
 	/*
 	 * A ROW IN THE TASKBAR IS FOR SOMETHING A PERSON OPENED. A tool
@@ -891,8 +910,8 @@ void win_scratch_mark(Win *w);
  * ── THE STACK ──────────────────────────────────────────────────────────
  *
  * Tabs on a window frame, and stacking only: two windows in a stack are ONE
- * rectangle showing one of them at a time. Nothing here tiles a group, drags
- * one window onto another or reorders a strip — see `Win.stack`.
+ * rectangle showing one of them at a time. Nothing here tiles a GROUP — two
+ * windows side by side that move and size together — see `Win.stack`.
  */
 /* How many tabs this window's stack has, and where this one sits in the strip
  * (1-based). Both answer 0 for a window in no stack, which is what the frame
@@ -912,8 +931,28 @@ void win_stack_join(Win *a, Win *b);
 void win_stack_show(Win *m);
 /* One tab along the strip, forward or back, wrapping. */
 void win_stack_step(Win *w, int dir);
+/*
+ * THE LIVE TAB ONE PLACE ALONG THE STRIP, forward or back, wrapping — the
+ * strip moves and the window on screen does not change. A stack of fewer than
+ * two tabs has nowhere to move to and this does nothing.
+ */
+void win_stack_move(Win *w, int dir);
 /* Fold the ring's next window into this one as a tab. */
 void win_stack_with_next(Win *w);
+/*
+ * THE TAB UNDER A POINT ON THIS WINDOW'S TITLE ROW, or NULL. Answers NULL for
+ * a window in no stack and for a strip collapsed to its counter — there is no
+ * tab to point at in either case, and a caller that got the live one back
+ * could not tell a hit from a miss.
+ */
+Win *win_stack_tab_at(Win *w, int x, int y);
+/*
+ * THE WINDOW A TITLE-BAR DRAG WOULD DROP `w` ONTO: the topmost OTHER window
+ * whose title row is under the point and which can be a tab, or NULL. The
+ * dragged window itself is never the answer, and neither is a member of its
+ * own stack.
+ */
+Win *win_stack_drop_at(const Win *w, int x, int y);
 /* Take the group apart: every member un-hidden and placed by the ordinary
  * search, the one on screen left where it is. */
 void win_stack_unstack(Win *w);
@@ -1162,6 +1201,16 @@ void geo_record(const Win *w);
  * than an archive. */
 #define CON_STATE_MAX 64
 
+/*
+ * HOW LONG A ROW'S FLAGS COLUMN CAN BE. `f` and `s` are one letter each; a
+ * stack costs `g<group>t<position>` and a `h` on the one tab that was on
+ * screen, so a member of the thirty-second stack at the thirty-second place
+ * spells nine characters. One name for it, because a buffer of a different
+ * size in any of the four places a row's flags are held is a truncation nobody
+ * sees until a session with tabs comes back without them.
+ */
+#define CON_FLAGS_MAX 24
+
 /* `$XDG_STATE_HOME/kdos/con/<name>.session`. 0 when there is nowhere to put
  * it, or the name could not be a file name. */
 int con_state_path(const char *name, char *out, size_t n);
@@ -1219,9 +1268,25 @@ int con_state_restore(const char *name);
 /* The flags column of one row — the eighth field, or "-" when the row was
  * written before the column existed. */
 void con_state_flags(const char *line, char *out, size_t n);
-/* What a rectangle cannot say, put back. After the placement, because both
- * flags REPLACE the rectangle rather than adjust it. */
+/*
+ * WHAT A RECTANGLE CANNOT SAY, PUT BACK: fullscreen, the scratchpad mark, and
+ * the stack this row was a tab of. After the placement, because `f` and `s`
+ * both REPLACE the rectangle rather than adjust it.
+ *
+ * THE STACK IS A RELATION AND IS THEREFORE REBUILT ACROSS CALLS. A group's
+ * first member to appear becomes its anchor and every later one joins that
+ * anchor's stack; the member marked as the tab that was on screen is brought
+ * up when it arrives, in whatever order that is. An application's window does
+ * not exist until it attaches, so "when it arrives" is the only moment there
+ * is — see con_state_groups_reset().
+ */
 void con_state_apply_flags(Win *w, const char *flags);
+/*
+ * FORGET EVERY GROUP ANCHOR. Called at the start of a restore and of a layout
+ * load: an anchor left from the previous one would fold the new session's
+ * windows into the old session's stacks.
+ */
+void con_state_groups_reset(void);
 int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w,
 		   int *h, char *flags, size_t nflags);
 void term_mouse(Win *w, const KtuiEvent *ev);

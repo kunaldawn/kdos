@@ -1143,6 +1143,19 @@ con_golden con-stack-132x43 --dump 132x43 \
     --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
 
 #
+# AND THE STRIP REORDERED, which is the other verb on it.
+#
+# THREE TABS, because two cannot tell a move from a step: with a pair, the
+# live tab swapping with its neighbour and the live tab simply changing draw
+# the same strip. Three make the difference visible — `Super+Alt+]` carries
+# the tab on screen one place along and the window under the frame does not
+# change, which is exactly what `Super+]` would have changed.
+#
+con_golden con-stack-moved-132x43 --dump 132x43 \
+    --term "/bin/echo alpha" --term "/bin/echo beta" --term "/bin/echo gamma" \
+    --press Super+Shift+s --press Super+Shift+s --press 'Super+Alt+['
+
+#
 # THE SCRATCHPAD, BOTH WAYS ROUND, AND THROUGH THE CHORDS THEMSELVES.
 #
 # `--press` reaches the same handler a keyboard does, so what these two frames
@@ -2822,6 +2835,102 @@ int main(void)
 
 	want("a name with a slash is refused", con_layout_save("../out"), -1);
 	want("four windows, four rows", con_layout_save("t"), 4);
+
+	/*
+	 * ── A STACK SURVIVES THE RECORD ─────────────────────────────
+	 *
+	 * The relation between two rows is the one thing a rectangle cannot
+	 * say, so it rides in the flags column as a group number, a strip
+	 * position and a mark on the tab that was on screen. What is asserted
+	 * is the ROUND TRIP: the rows a save renders, read back through the
+	 * same flags reader a restore uses, rebuild the same strip in the
+	 * same order with the same tab up.
+	 *
+	 * IN THIS PROCESS AND WITH NO SCREEN, because none of it needs one —
+	 * a live session would prove the same thing and take a second per
+	 * assertion.
+	 */
+	/* THREE APP ROWS AND NOT THREE TERMINALS, so that a row can be matched
+	 * back to the window that wrote it: every terminal's row names the
+	 * literal `terminal`, and three rows spelled alike cannot be told
+	 * apart by a reader — which is the whole of what is being asserted. */
+	Win *ta = mk(WIN_SURFACE, "", "org.example.A");
+	Win *tb = mk(WIN_SURFACE, "", "org.example.B");
+	Win *tc = mk(WIN_SURFACE, "", "org.example.C");
+
+	win_stack_join(tb, ta);
+	win_stack_join(tc, ta);
+	want("three windows make one stack of three", win_stack_n(ta), 3);
+	want("and the window joined onto is the one on screen",
+	     ta->stack == ta->id, 1);
+	/* THE STRIP IS ID ORDER UNTIL SOMETHING MOVES A TAB. */
+	want("ta is the first tab", win_stack_index(ta), 1);
+	want("tc is the third", win_stack_index(tc), 3);
+
+	want("and a strip nobody has reordered carries no numbers at all",
+	     ta->tabpos | tb->tabpos | tc->tabpos, 0);
+
+	win_stack_move(ta, 1);
+	want("a move carries the live tab along the strip",
+	     win_stack_index(ta), 2);
+	want("and the tab it passed takes the place it left",
+	     win_stack_index(tb), 1);
+	want("and nothing else moves", win_stack_index(tc), 3);
+	want("and the tab on screen is still the same one",
+	     ta->stack == ta->id, 1);
+
+	static char rows[8192];
+
+	con_state_rows(rows, sizeof(rows), "t", 0);
+
+	/*
+	 * THE STACK APART AND THE FLAGS PUT BACK. Every member is taken out
+	 * of the stack first, so what rebuilds it is the file and not
+	 * whatever was left in memory.
+	 */
+	win_stack_unstack(ta);
+	want("unstacked", win_stack_n(ta), 0);
+	want("and a tab that is out of a strip carries no place in one",
+	     ta->tabpos, 0);
+
+	con_state_groups_reset();
+	{
+		int applied = 0;
+
+		for (char *line = rows, *nl; line && *line; line = nl) {
+			char fl[CON_FLAGS_MAX], app[64] = "";
+			Win *to;
+
+			nl = strchr(line, '\n');
+			if (nl)
+				*nl++ = '\0';
+			if (*line == '#' || !*line)
+				continue;
+			con_state_flags(line, fl, sizeof(fl));
+			if (!strchr(fl, 'g'))
+				continue;
+			/* THE SEVENTH FIELD IS THE APP ID, which is how a row
+			 * is matched back to the window that wrote it —
+			 * the ROW ORDER is the z-order and a stack reorders
+			 * that, so an assertion built on it would be one. */
+			sscanf(line, "%*[^\t]\t%*d\t%*d\t%*d\t%*d\t%*d\t"
+				     "%63[^\t]", app);
+			to = !strcmp(app, "org.example.A") ? ta
+			     : !strcmp(app, "org.example.B") ? tb
+			     : !strcmp(app, "org.example.C") ? tc : NULL;
+			if (!to)
+				continue;
+			con_state_apply_flags(to, fl);
+			applied++;
+		}
+		want("three rows carried a group", applied, 3);
+	}
+	want("the stack came back", win_stack_n(ta), 3);
+	want("with the tab that was on screen up", ta->stack == ta->id, 1);
+	want("and the strip in the order it was moved into",
+	     win_stack_index(tb), 1);
+	want("second", win_stack_index(ta), 2);
+	want("third", win_stack_index(tc), 3);
 	return bad;
 }
 LAYEOF
@@ -3689,6 +3798,8 @@ con	Super+Shift+s	stack: a stack is one rectangle showing one of several windows
 con	Super+Alt+s	unstack: the other half of stack
 con	Super+]	stack-next: walks a tab strip the compositor has no strip for
 con	Super+[	stack-prev: the other half of stack-next
+con	Super+Alt+]	stack-move-next: carries a tab along a strip the compositor has no strip for
+con	Super+Alt+[	stack-move-prev: the other half of stack-move-next
 comp	Super+Ctrl+Left	GrowToEdge: the console has no grow action, and nothing there may take this family
 comp	Super+Ctrl+Right	GrowToEdge
 comp	Super+Ctrl+Up	GrowToEdge
@@ -6303,10 +6414,80 @@ passw0rd" 'ok ' "a full corporate name, share, user and domain all fit"
 
 kmwant 'shares
 ' '//files.example/team' "a connected share is listed from /proc/mounts"
+# `browse` IS A DIFFERENT LIST FROM `shares` AND NEITHER IS AN INDEX. What is
+# asserted here is the protocol and never the neighbours: under the fixture
+# nothing is broadcast, so the answer is an empty list and an `ok` — which is
+# also the answer a real network with nothing on it gives, and the reason a
+# surface must not read "no servers" as "the verb failed".
+kmwant 'browse
+' 'ok' "a browse on a network with nothing on it answers ok and no rows"
+grep -q 'nmblookup\|avahi-browse' "$OUT/km.exec" \
+    && { echo "  FAIL  the fixture broadcast on somebody's network"
+         mountd_fail=1; } \
+    || echo "  ok    and the fixture broadcast nothing"
+# A NAME THE RESOLVER CAN ALREADY ANSWER IS NEVER BROADCAST FOR. Every request
+# above names a dotted server, which is the shape km_resolve returns on
+# immediately — so no helper ran for one, and the option string carries no
+# `ip=`. A workgroup name is the shape that does, and it cannot be asserted
+# here: under the fixture nothing resolves, and on a real network the answer is
+# the network's rather than this suite's.
+grep -q 'ip=' "$OUT/km.exec" \
+    && { echo "  FAIL  a dotted server was resolved by hand"; mountd_fail=1; } \
+    || echo "  ok    a name musl can resolve reaches the helper unresolved"
 kmwant 'disconnect 9
 ' 'no such share' "a share index past the list is refused"
 kmwant 'cifs a b c d e
 ' 'bad request' "a byte count that is not a number is not a request"
+
+# ── A TICKET INSTEAD OF A PASSWORD ────────────────────────────────────────
+#
+# `krb5` IS A VERB OF ITS OWN AND NOT `cifs` WITH AN EMPTY COUNT, and the
+# reason is on the wire: a ticket is in the caller's credential cache and
+# nothing about it crosses this socket, so there is no second frame to read
+# and nothing to wipe afterwards. km_count() refuses a zero for that reason.
+#
+# `cruid=` IS THE ONE OPTION THIS VERB EXISTS FOR. The daemon is root and the
+# mount is the caller's, so without it `cifs.upcall` looks in ROOT'S cache —
+# empty on a machine where nobody has any reason to kinit as root — and the
+# mount fails with `Required key not available` naming no user.
+#
+# THE LOG IS NOT TRUNCATED BETWEEN REQUESTS. It is the daemon's own stdout and
+# the daemon is still running, so a truncation from outside leaves it writing
+# past a hole; every string grepped for below appears in no other request.
+kmwant 'krb5 files.example archive ada -
+' 'ok ' "a ticket mount names a server, a share, a user and a domain"
+if grep -q 'sec=krb5,cruid=' "$OUT/km.exec"; then
+    echo "  ok    and the helper is told to read the CALLER's ticket cache"
+else
+    echo "  FAIL  a ticket mount did not carry sec=krb5,cruid="
+    grep mount.cifs "$OUT/km.exec"; mountd_fail=1
+fi
+grep -q '^stdin 0 bytes$' "$OUT/km.exec" \
+    && echo "  ok    and no secret was fed to it" \
+    || { echo "  FAIL  a ticket mount fed something to mount.cifs"
+         mountd_fail=1; }
+kmwant 'krb5 files.example archive - -
+' 'ok ' "a ticket may name no user at all — the principal says who you are"
+grep -q 'user=-' "$OUT/km.exec" \
+    && { echo "  FAIL  a dash username became a user= option"; mountd_fail=1; } \
+    || echo "  ok    and a \`-\` user is no user rather than a user named -"
+kmwant 'krb5 files.example,uid=0 archive ada -
+' 'cannot' "and every field is checked exactly as the password verb's is"
+kmwant 'krb5 files.example archive ada
+' 'unknown command' "a ticket request one token short is not a request"
+# EVERY FIELD AT ITS CEILING AT ONCE, which is the shape that overflows an
+# option string. A username may be 104 bytes and an NT domain 255, and with
+# `sec=krb5`, a `cruid=` and the ownership tail that is over four hundred and
+# fifty — a buffer that merely LOOKED big enough truncated `dir_mode=0700` to
+# `dir_mode=07`, which is a mount with permissions nobody asked for.
+_ku=$(printf '%0104d' 0 | tr '0' 'a')
+_kd=$(printf '%0255d' 0 | tr '0' 'd')
+kmwant "krb5 fileserver-04.corp.subsidiary.example.co.uk department-share $_ku $_kd
+" 'ok ' "a ticket mount with every field at its ceiling still fits"
+grep -q 'dir_mode=0700,nosuid,nodev' "$OUT/km.exec" \
+    && echo "  ok    and the option string is not truncated at the tail" \
+    || { echo "  FAIL  the longest option string lost its tail"
+         grep mount.cifs "$OUT/km.exec" | tail -1; mountd_fail=1; }
 
 kill $KMPID 2>/dev/null || true
 wait $KMPID 2>/dev/null || true
@@ -6840,6 +7021,14 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # privacy.c is NOT here and must not be: dumpmain.c stubs the whole
     # sh_priv_* API, so compiling the real one in is a multiple definition.
     # A privacy symbol panel.c calls belongs in that stub set.
+    # osd.c IS here and is a front end as well, which is cal.c's and shell.c's
+    # shape: it DEFINES sh_volume_* and sh_mic_*, which panel.c calls, so the
+    # harness needs it whether or not its own golden is wanted — and a file
+    # that is sometimes linked and sometimes stubbed is a multiple definition
+    # on exactly the hosts where it compiles.
+    # background.c is kdos-desk's reader for the console's cell art. It is why
+    # libkvt is linked below: the parser that reads a file full of SGR is the
+    # one that reads a terminal, and it brings no dependency of its own.
     # routes.c, chords.c and filesearch.c are READERS, not front ends: start.c,
     # keys.c and find.c each lost one to a shared file so the palette could use
     # the same one, and a reader missing from this list is a LINK failure that
@@ -6854,6 +7043,8 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              src/desktop/kdos-shell/fav.c src/desktop/kdos-shell/cells.c
              src/desktop/kdos-shell/logo.c
              src/desktop/kdos-shell/mountd.c
+             src/desktop/kdos-shell/osd.c
+             src/desktop/kdos-shell/background.c
              src/libs/libkchrome/kch_chrome.c
              src/libs/libkchrome/kch_tone.c"
     # A new surface may want alsa or an sd-bus; offer them when the host has
@@ -6892,7 +7083,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
              netagent backup theme palette contacts store \
-             run prompt osd notifyd desk; do
+             run prompt notifyd desk connect traymenu; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -6906,7 +7097,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
-                -Isrc/libs/libkcell \
+                -Isrc/libs/libkcell -Isrc/libs/libkvt \
                 $(pkg-config --cflags wayland-client pixman-1 fcft \
                              $DEXTRA_PC) \
                 "src/desktop/kdos-shell/$s.c" 2>"$OUT/dump-$s.err"; then
@@ -6935,14 +7126,14 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
             -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
-            -Isrc/libs/libkcell \
+            -Isrc/libs/libkcell -Isrc/libs/libkvt \
             $(pkg-config --cflags pixman-1 fcft 2>/dev/null) \
             -Wl,--wrap=ktui_offscreen_init \
             testing/fixtures/shell/dumpmain.c $DFRONTS "$@" \
             "$DPROTO"/*-protocol.c \
             src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
             src/libs/libkbase/*.c src/libs/libkproc/*.c \
-            src/libs/libkcon/*.c \
+            src/libs/libkcon/*.c src/libs/libkvt/*.c \
             $(pkg-config --cflags --libs wayland-client pixman-1 $DEXTRA_PC)
     }
     # The libraries kdos-peek pulls in are added only when it was admitted:
@@ -6964,7 +7155,13 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             echo "  NOTE: the new front ends do not LINK into the dump harness,"
             echo "        so their goldens are skipped:$(echo $DNEW | \
                 sed 's,src/desktop/kdos-shell/,,g; s,\.c,,g')"
-            grep -m3 "undefined\|error" "$OUT/dumpnew.err" | sed 's/^/        /'
+            # `multiple definition` carries neither of the other two words,
+            # and it is HALF of what breaks this link: a stub in dumpmain.c
+            # for a symbol one of the files above now defines. A filter that
+            # missed it reported only the undefined half and sent the next
+            # reader looking for a missing library.
+            grep -m5 "undefined\|multiple definition\|error" \
+                "$OUT/dumpnew.err" | sed 's/^/        /'
         }
     else
         echo "  the dump harness does not build"; exit 1
@@ -7206,14 +7403,27 @@ check_box() {
 # and a surface that stopped drawing it is a surface whose keys nobody can
 # find.
 #
-# FURNITURE IS NOT A SURFACE. The taskbar, the tooltip, the savers and the two
+# FURNITURE IS NOT A SURFACE. The taskbar, the tooltip, the savers and the
 # menus are drawn ON the desktop rather than in a window: a saver closes on any
 # key and a tooltip answers none, so a row naming Esc on either would be a row
 # teaching a key that does nothing. They are named here with that reason rather
 # than skipped by a pattern that would also hide a real surface.
 #
+# A TRAY MENU IS THE SAME FURNITURE AS THE OTHER MENUS, and it is named here
+# although its own goldens are narrower than this loop reads: an exemption that
+# exists only because of a frame's width is one that surprises whoever takes
+# the first wide frame of it.
+#
+# AND SO ARE THE DESKTOP, THE TOAST STACK AND THE BEZEL, each for the reason
+# above and each with nowhere to put a row. `desk` has no frame at all — it IS
+# the background, and its keys belong to the icons on it; `notifyd` is the
+# toast stack, which answers no key and goes on a timer; the three `osd` frames
+# are the volume, brightness and microphone bezels, which appear on a change
+# and go the same way. A row naming Esc on any of them would name a key that
+# does nothing.
+#
 echo "==> every surface draws the row that names its keys"
-_furniture=" start start-console start-route start-system menu-system tip saver saver-clock saver-fire saver-matrix saver-pipes saver-starfield "
+_furniture=" start start-console start-route start-system menu-system traymenu traymenu-folders tip desk notifyd osd-volume osd-brightness osd-mic saver saver-clock saver-fire saver-matrix saver-pipes saver-starfield "
 _norow=""
 for _g in testing/goldens/*-80x24.txt; do
     _n=$(basename "$_g" -80x24.txt)
@@ -7374,6 +7584,7 @@ echo "==> golden frames — the committed cell grid, diffed"
 GOLD="$PWD/testing/goldens"
 golden() {			# <name> <WxH> <argv…>
     _g_name=$1; _g_size=$2; shift 2
+    _g_rc=0
     _g_file="$GOLD/$_g_name-$_g_size.txt"
     _g_got="$OUT/golden-$_g_name-$_g_size.txt"
     ( cd testing/fixtures/shell &&
@@ -7387,7 +7598,23 @@ golden() {			# <name> <WxH> <argv…>
           ${KDOS_GOLDEN_CON:+KDOS_CON=$KDOS_GOLDEN_CON} \
           ${KDOS_GOLDEN_MODEL:+KDOS_WHISPER_MODEL=$KDOS_GOLDEN_MODEL} \
           ${KDOS_GOLDEN_CHARIDX:+KDOS_CHARIDX=$KDOS_GOLDEN_CHARIDX} \
-          KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got"
+          KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got" || _g_rc=$?
+    #
+    # A SURFACE THAT EXITS NON-ZERO COSTS ITS OWN GOLDEN AND NOT THE RUN.
+    # `set -e` is on, so without catching this a single surface refusing a
+    # flag ends the whole suite where it stands — every check below it,
+    # including the ones that say whether the goldens are committed at all,
+    # simply never runs and the failure reads as "the suite stopped".
+    # It is the rule the candidate compile loop already keeps: each is
+    # admitted on its own.
+    #
+    if [ "${_g_rc:-0}" != 0 ]; then
+        echo "  $_g_name-$_g_size: the surface exited ${_g_rc}"
+        sed 's/^/      /' "$_g_got" | head -3
+        _g_rc=0
+        golden_fail=1
+        return 0
+    fi
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         mkdir -p "$GOLD"
         cp "$_g_got" "$_g_file"
@@ -7425,6 +7652,106 @@ if "$DUMPCK" --have disks; then
         golden disks 56x24  disks --dump
     KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
         golden disks 132x43 disks --dump
+fi
+# THE CONNECT WINDOW, POINTED AT THE SAME ABSENT SOCKET and for the same
+# reason: on a host running a real kdos-mountd it would draw that host's
+# shares. `--dump --browse` is the browse list, whose row count is the
+# network's and therefore never the same twice — against a socket that is not
+# there it is the refusal, which is the one frame every machine draws alike.
+if "$DUMPCK" --have connect; then
+    KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        golden connect 80x24  connect --dump
+    KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        golden connect 56x24  connect --dump
+    KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        golden connect-browse 80x24 connect --dump --browse
+fi
+
+#
+# A TRAY ITEM'S OWN MENU, AGAINST A REAL dbusmenu SERVER ON A BUS OF ITS OWN.
+#
+# THE STUB IS NOT OPTIONAL AND A MOCK WOULD PROVE NOTHING. What can go wrong
+# in that surface is the READER: `(ia{sv}av)` is a recursive signature with a
+# variant per child, and a reader that miscounts a container leaves sd-bus's
+# cursor somewhere it cannot name — every row after the mistake is nonsense and
+# the frame still draws. So the tree is built by a real sd-bus and read by the
+# real reader, and the golden is what the two agree on.
+#
+# EVERYTHING THE PARSER CAN GET WRONG IS IN ONE TREE: a mnemonic underscore
+# that must be stripped, a separator, a disabled row, a submenu with three
+# children, two toggle states, and a row marked `visible: false` that must not
+# appear at all.
+#
+# A BUS OF ITS OWN, for the netagent block's reason: a stub on the host's
+# session bus is a name on the machine running the tests.
+#
+if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1 &&
+   "$DUMPCK" --have traymenu; then
+    TMO="$OUT/traymenu"
+    mkdir -p "$TMO"
+    if $CC $STD $WARN -o "$TMO/menustub" \
+            testing/fixtures/traymenu/menustub.c \
+            $(pkg-config --cflags --libs "$TRAY_SDBUS") \
+            2>"$TMO/stub.err"; then
+        cat > "$TMO/bus.conf" <<'TMBUS'
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+TMBUS
+        dbus-daemon --config-file="$TMO/bus.conf" --print-address=3 --fork \
+            --print-pid=4 3>"$TMO/addr" 4>"$TMO/pid"
+        DBUS_SESSION_BUS_ADDRESS="$(cat "$TMO/addr")"
+        export DBUS_SESSION_BUS_ADDRESS
+        "$TMO/menustub" 20 > "$TMO/stub.txt" 2>&1 &
+        _tmp=$!
+        # The name has to be ON the bus before the surface asks for it; a
+        # dump that raced it would draw "the menu did not answer" and the
+        # golden would record a timing accident.
+        _tw=0
+        while ! grep -q '^READY ' "$TMO/stub.txt" 2>/dev/null &&
+              [ "$_tw" -lt 50 ]; do
+            sleep 0.1
+            _tw=$((_tw + 1))
+        done
+        golden traymenu 42x12 traymenu org.kdos.test.TrayMenu /MenuBar \
+            --name Syncthing --dump
+        # AND THE SUBMENU, which is the half the recursion is for: three rows
+        # that only exist one level down, two of them carrying a toggle.
+        golden traymenu-folders 42x12 traymenu org.kdos.test.TrayMenu \
+            /MenuBar --name Syncthing --open 2 --dump
+        # AND THE CALL THE SURFACE MAKES BEFORE IT READS. An application fills
+        # a submenu in when it is told the menu is about to be shown, so a host
+        # that skipped it would draw the tree as it stood before anybody looked.
+        grep -q '^ABOUTTOSHOW$' "$TMO/stub.txt" \
+            && echo "  the menu is told it is about to be shown" \
+            || { echo "  THE MENU WAS READ WITHOUT AboutToShow"; golden_fail=1; }
+        # AND A PICK REACHES THE APPLICATION as the id the tree named, over
+        # `Event`. It is the surface's only outward effect and the one thing a
+        # frame cannot show.
+        "$DUMPCK" traymenu org.kdos.test.TrayMenu /MenuBar --dump --pick 6 \
+            >/dev/null 2>&1
+        grep -q '^EVENT 6 clicked$' "$TMO/stub.txt" \
+            && echo "  and a pick reaches it as Event(id, clicked)" \
+            || { echo "  A PICK DID NOT REACH THE APPLICATION:"
+                 sed 's/^/    /' "$TMO/stub.txt"; golden_fail=1; }
+        kill "$_tmp" 2>/dev/null || true
+        wait "$_tmp" 2>/dev/null || true
+        kill "$(cat "$TMO/pid")" 2>/dev/null || true
+        unset DBUS_SESSION_BUS_ADDRESS
+    else
+        echo "  kdos-traymenu goldens (skipped — the stub does not build)"
+        sed 's/^/    /' "$TMO/stub.err" | head -5
+    fi
+else
+    echo "  kdos-traymenu goldens (skipped — no sd-bus or no dbus-daemon)"
 fi
 # kdos-update computes none of its three answers — `kdos update check --json`,
 # `kdos cve --json` and `kdos-bootctl status` do — so its picture depends on
@@ -8357,6 +8684,7 @@ fi
 # written for one is a golden in the format every other one prints.
 cells_golden() {		# <name> <argv…>
     _c_name=$1; shift
+    _c_rc=0
     _c_file="$GOLD/cells-$_c_name.txt"
     _c_got="$OUT/cells-$_c_name.txt"
     ( cd testing/fixtures/shell &&
@@ -8367,7 +8695,14 @@ cells_golden() {		# <name> <argv…>
           XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
           XDG_RUNTIME_DIR=/nonexistent-kdos-run \
           KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 \
-          "$DUMPCK" "$@" ) > "$_c_got" 2>/dev/null
+          "$DUMPCK" "$@" ) > "$_c_got" 2>/dev/null || _c_rc=$?
+    # Its own golden and not the run — see golden() above.
+    if [ "${_c_rc:-0}" != 0 ]; then
+        echo "  cells-$_c_name: the surface exited ${_c_rc}"
+        _c_rc=0
+        golden_fail=1
+        return 0
+    fi
     if ! grep -qE '^[0-9]+ [0-9]+ U\+[0-9A-Fa-f]+ ' "$_c_got"; then
         echo "  cells-$_c_name: --dump-cells printed no cells"
         golden_fail=1

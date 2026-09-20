@@ -1670,6 +1670,32 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 }
 
 /*
+ * A TRAY ITEM'S OWN MENU, at the cell the press landed on.
+ *
+ * `--name` CARRIES THE TITLE AND THE MENU OBJECT DOES NOT PUBLISH ONE. `Id` is
+ * a StatusNotifierItem property and the dbusmenu tree at the other end of
+ * `Menu` knows nothing about it, so a menu spawned without it would be headed
+ * `Menu` with no way to tell two of them apart.
+ *
+ * `panel_at_flag()` is the same anchor kdos-menu is given, and for its reason:
+ * layer-shell margins are measured from the top-left and this process does not
+ * know the output's pixel height, so a bar on the bottom has to say so.
+ */
+static void spawn_tray_menu(const struct sh_tray_item *it, int cx)
+{
+	char xs[16], ys[16];
+
+	snprintf(xs, sizeof(xs), "%d", cx * kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
+
+	const char *argv[] = { "kdos-traymenu", it->service, it->menu,
+			       "--name", it->id[0] ? it->id : it->service,
+			       panel_at_flag(), xs, ys, NULL };
+
+	panel_spawn(argv);
+}
+
+/*
  * A click on a chip.
  *
  * LEFT keeps the semantics every taskbar has had since Windows 95: it toggles
@@ -5675,16 +5701,19 @@ static void build_overflow(struct sh_state *sh)
 		snprintf(o->label, sizeof(o->label), "%s",
 			 it->title[0] ? it->title : it->id);
 		/*
-		 * AN ITEM WHOSE ONLY VERB IS A MENU WE CANNOT DRAW SAYS SO.
-		 * `ItemIsMenu` means Activate is "show my menu", the menu is
-		 * com.canonical.dbusmenu, and this tray does not render it —
-		 * so a click on that item does nothing, silently, which is
-		 * exactly the report this whole change came from.
+		 * WHAT A CLICK ON THIS ITEM WILL DO, and there are three
+		 * answers. `ItemIsMenu` means Activate is "show my menu"; a
+		 * `Menu` path means that menu is a dbusmenu tree this desktop
+		 * draws itself; and an item with neither is activated. Saying
+		 * which is the only way a row in a list of unlabelled cells
+		 * tells somebody what is behind it.
 		 */
 		snprintf(o->detail, sizeof(o->detail), "%s",
-			 it->is_menu ? "its menu is dbusmenu - this tray does "
-				       "not draw one"
-				     : "tray item - click to activate");
+			 it->menu[0] ? "tray item - click for its menu"
+			 : it->is_menu
+				 ? "its menu is dbusmenu and it published no "
+				   "path to one"
+				 : "tray item - click to activate");
 		snprintf(o->service, sizeof(o->service), "%s", it->service);
 		snprintf(o->path, sizeof(o->path), "%s", it->path);
 		if (it->status == SH_TRAY_ATTENTION)
@@ -5925,14 +5954,15 @@ static void draw_taskbar(struct sh_state *sh)
 		 * workspace as minimized, which is what makes that true. Right
 		 * for every workspace the user has visited and silent about
 		 * the rest, which is the honest shape.
+		 *
+		 * FROM THE COUNT OVER EVERY SCREEN AND NOT FROM `tasks`, which
+		 * this bar has filtered to its own: there is ONE workspace
+		 * group and every output enters it, so a pager built on the
+		 * filtered list would call a workspace empty here while its
+		 * windows were on the other screen.
 		 */
-		if (sh->active_ws >= 0 && sh->active_ws < SH_MAX_WS) {
-			int live = 0;
-			for (int i = 0; i < sh->ntasks; i++)
-				if (!sh->tasks[i].minimized)
-					live = 1;
-			sh->ws_occupied[sh->active_ws] = live;
-		}
+		if (sh->active_ws >= 0 && sh->active_ws < SH_MAX_WS)
+			sh->ws_occupied[sh->active_ws] = sh->live_anywhere;
 
 		/* The floor the right wing may not cross: enough for one
 		 * window button, whenever there is a window to put in it. */
@@ -6733,16 +6763,23 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 		snprintf(t1, n1, "%s",
 			 it->title[0] ? it->title : (it->id[0] ? it->id
 							       : "tray item"));
-		/* THE ONE THING A TRAY ITEM CANNOT SAY FOR ITSELF. An item that
-		 * declares ItemIsMenu means Activate is "show my menu", the
-		 * menu is dbusmenu, and this tray does not draw one — so the
-		 * click does nothing and the tip is the only place that can
-		 * admit it. */
+		/* WHICH BUTTON DOES WHAT ON THIS ITEM, which the item cannot
+		 * say for itself and the cell cannot show. An item that
+		 * published a `Menu` path has its menu drawn here, and one
+		 * that declares `ItemIsMenu` as well has no other verb at
+		 * all; an item that declares it and publishes no path has
+		 * nothing anybody can do with it, and the tip is the only
+		 * place that can admit it. */
 		snprintf(t2, n2, "%s",
-			 it->is_menu ? "its menu is dbusmenu - this tray cannot "
-				       "draw it"
-				     : "left activates · middle and right are "
-				       "its other verbs");
+			 it->menu[0]
+				 ? (it->is_menu
+					    ? "click for its menu"
+					    : "left activates · right opens "
+					      "its menu")
+			 : it->is_menu ? "its menu is dbusmenu and it "
+					 "published no path to one"
+				       : "left activates · middle and right "
+					 "are its other verbs");
 		return 1;
 	}
 	case TT_AP:
@@ -7352,12 +7389,42 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 
 	if (in_span(cx, sh->tray_hit_x, sh->tray_hit_end)) {
 		int k = (cx - sh->tray_hit_x) / TRAY_W;
-		/* The item is told where the pointer was in PIXELS: an app
-		 * that pops a menu at the cursor gets the cursor, and one that
-		 * ignores the argument loses nothing. */
-		if (k >= 0 && k < tray_nvis)
+
+		if (k >= 0 && k < tray_nvis) {
+			const struct sh_tray_item *it =
+				sh_tray_get(sh, tray_map[k]);
+
+			/*
+			 * AN ITEM WITH A MENU GETS ITS MENU DRAWN, AND THAT IS
+			 * THIS DESKTOP'S JOB RATHER THAN THE APPLICATION'S. An
+			 * item that publishes a `com.canonical.dbusmenu` tree
+			 * is telling the host to render it, and one that sets
+			 * `ItemIsMenu` as well has no useful Activate at all —
+			 * so an item of that kind answers no button unless
+			 * this branch takes it.
+			 *
+			 * THE RIGHT BUTTON AND THE LEFT ONE ON `ItemIsMenu`,
+			 * which is the spec's own division: right always means
+			 * the menu, and left means it only for an item that
+			 * said it IS one. Middle is SecondaryActivate and is
+			 * never the menu.
+			 *
+			 * An item with no tree falls through to ContextMenu
+			 * below, which is what an application with its own
+			 * menu window answers.
+			 */
+			if (it && it->menu[0] &&
+			    (btn == SH_TRAY_BTN_RIGHT ||
+			     (it->is_menu && btn != SH_TRAY_BTN_MIDDLE))) {
+				spawn_tray_menu(it, cx);
+				return;
+			}
+			/* The item is told where the pointer was in PIXELS: an
+			 * app that pops a menu at the cursor gets the cursor,
+			 * and one that ignores the argument loses nothing. */
 			sh_tray_activate(sh, tray_map[k], btn,
 					 cx * kdisp_cell_w(), kdisp_cell_h());
+		}
 		return;
 	}
 

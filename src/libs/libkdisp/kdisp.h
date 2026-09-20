@@ -322,6 +322,12 @@ typedef struct {
 	 * wlr-foreign-toplevel has no workspace, so a Wayland row is -1 and a
 	 * caller that groups by workspace groups them all together. */
 	int workspace;
+	/* 1 when the window is on the same screen as the surface asking, 0
+	 * when it is on another. A server that does not report a window's
+	 * screen answers 1 for every window, because a task bar that filtered
+	 * on an answer nobody gave would be an empty task bar — which is what
+	 * the console answers, where one grid spans every screen. */
+	int here;
 	char app_id[64];
 	char title[128];
 } KDispWin;

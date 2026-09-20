@@ -22,7 +22,7 @@ end. Read that section before relying on any of this.
 
 ## setuid binaries
 
-The shipped system carries **seventeen** setuid-root binaries. **Exactly two are ours.**
+The shipped system carries **eighteen** setuid-root binaries. **Exactly two are ours.**
 
 | Binary | Origin | For |
 |---|---|---|
@@ -33,6 +33,7 @@ The shipped system carries **seventeen** setuid-root binaries. **Exactly two are
 | `pkexec`, `polkit-agent-helper-1` | polkit | Authorised privileged actions |
 | `ssh-keysign` | OpenSSH | Host-based authentication |
 | `dbus-daemon-launch-helper` | dbus | System bus activation |
+| `mount.nfs` | nfs-utils | Mounting an NFS share named in `fstab` as an ordinary user |
 | **`newuidmap`, `newgidmap`** | shadow | **Rootless containers** |
 
 **The last two are why every application on the machine works.** The container engine runs them to
@@ -40,6 +41,15 @@ write a process's user-namespace map, the kernel allows that only from a process
 the relevant capability, and the engine checks the binary first and refuses outright if it is not
 setuid — then exits with nothing else printed. Lose those bits and every graphical application
 stops starting, with nothing saying why.
+
+**Kerberos adds none of these.** `krb5`'s own `ksu` — `su` to another Kerberos principal — is
+installed setuid by upstream and is removed by the recipe: the accounts on this machine are local
+and its privilege escalation is `sudo`, so it would be an entry nothing uses and nobody audits.
+What Kerberos is here for is `kinit`, which is an ordinary program writing your own credential
+cache.
+
+**Count the tree, never this table.** `find / -perm /4000 -type f` on a built image is the
+authority; a page that disagreed with it would be the one thing in this chapter nobody can act on.
 
 **Mode bits rather than file capabilities**, deliberately: mode bits survive all three hops the
 system makes them take — the compressed system image, the installer's copy, and the pack image

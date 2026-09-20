@@ -17,29 +17,39 @@
 #
 # The codecs are the ones already ported for ffmpeg — opus for speech and vp8
 # for video — so this adds a protocol stack and no new media dependency.
-# Everything graphical is off by rule: baresip's own interface is a terminal
-# menu, which is the right shape for this desktop anyway.
 #
-# THE VIDEO HOLE IS THE DISPLAY SIDE ONLY. Capture works — the built avformat
-# module registers a video source and the shipped ffmpeg has video4linux2 — and
-# the codecs build. Of the outputs, only `fakevideo` (a null sink) and
-# `vidbridge` (a loopback) were: `x11` wants the X headers this tree refuses by
-# rule, and `sdl` wants an SDL port that does not exist.
+# THE INTERFACE IS A TERMINAL MENU AND THE PICTURE IS A WINDOW. baresip drives
+# itself from the terminal it was started in; the far end's video goes in a
+# window of its own, which on the console means the kiosk kdos-cage forks for
+# any program that draws pixels. The gtk menu and every other toolkit front end
+# stay off by rule.
 #
-# THE CODECS THIS IMAGE BUILDS ARE THE ONES ITS CONFIG LOADS, and the patch is
-# what makes that true. Upstream's generated `config` comments every codec
-# module out — a default written for a build that may carry none of them, where
-# an uncommented `module opus.so` names a file that is not there and is a
-# start-up error — so an unpatched baresip here reports `Populated 0 video
-# codecs` and negotiates G.711 on a machine carrying all four.
+# THE PICTURE HAS A PLACE TO GO, AND `sdl2` IN `depends` IS THE WHOLE OF IT.
+# `modules/sdl` builds itself whenever pkg-config answers for `sdl2` and
+# returns silently when it does not, so naming the port is what turns a call
+# that could send your camera and not show you theirs into one that can do
+# both. `x11` stays unbuilt by rule — there is no X server here — and
+# `fakevideo` and `vidbridge` remain what they are, a null sink and a loopback.
 #
-# THE FOUR IT UNCOMMENTS ARE THE FOUR THIS RECIPE GUARANTEES: opus, libvpx and
-# ffmpeg are `depends`, so opus.so, vp8.so, vp9.so and avcodec.so are installed
-# beside the binary wherever this config is written. A fifth line for a module
-# whose library is not in `depends` would be the start-up error above.
+# Capture is the half that was never missing: the built avformat module
+# registers a video source and the shipped ffmpeg carries video4linux2.
+#
+# THE MODULES THIS IMAGE BUILDS ARE THE ONES ITS CONFIG LOADS, and the patch is
+# what makes that true. Upstream's generated `config` comments every codec and
+# every display out — a default written for a build that may carry none of
+# them, where an uncommented `module opus.so` names a file that is not there
+# and is a start-up error — so an unpatched baresip here reports `Populated 0
+# video codecs` and negotiates G.711 on a machine carrying all four, and has
+# nowhere to draw on a machine carrying sdl.so.
+#
+# THE FIVE IT UNCOMMENTS ARE THE FIVE THIS RECIPE GUARANTEES: opus, libvpx,
+# ffmpeg and sdl2 are `depends`, so opus.so, vp8.so, vp9.so, avcodec.so and
+# sdl.so are installed beside the binary wherever this config is written. A
+# sixth line for a module whose library is not in `depends` would be the
+# start-up error above.
 #
 # There is no flag for it: the template is a run of re_fprintf calls.
-patch -p1 -i "$PORT_SRC/default-codecs.patch"
+patch -p1 -i "$PORT_SRC/default-modules.patch"
 
 mkdir -p build && cd build
 cmake .. -G Ninja \

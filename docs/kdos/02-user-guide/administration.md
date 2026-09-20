@@ -160,9 +160,16 @@ network starts, so there is no window in which the machine is up and unfiltered.
 | Loopback | Accept |
 | ICMP and **ICMPv6** | Accept the necessary types |
 | mDNS (5353), DHCPv6 (546) | Accept |
+| A NetBIOS name reply (137 to 137) | Accept |
 
 ICMPv6 is answered rather than dropped, because dropping it does not harden IPv6 — it breaks
 neighbour discovery and path MTU discovery.
+
+**The NetBIOS row is a reply and not a service.** A name query is a broadcast and every machine
+answers from its own address, so conntrack holds no entry for any of them and "the connection this
+machine opened, coming back" does not match — without the rule, `kdos-mount browse` finds nothing
+on a network full of file servers. It is scoped to the port pair a reply carries rather than
+opening the NetBIOS service: nothing on this image listens there.
 
 **Anything that should be reachable needs a rule.** sshd, a shared printer or a served corpus are
 all blocked by the shipped policy; the file carries commented examples. The loader runs a syntax

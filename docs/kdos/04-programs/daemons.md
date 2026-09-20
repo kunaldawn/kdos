@@ -248,7 +248,9 @@ no general-purpose disk service here, mounting is root's, and the desktop is not
 | `format` | Write a filesystem. **Off unless `format = yes`** |
 | `smart` | The drive's model, serial and health, tab-separated |
 | `cifs` | Mount an SMB share. The password is a second frame, never a token |
+| `krb5` | Mount one with the ticket `kinit` left in the caller's credential cache. **No second frame at all** |
 | `shares` | The network shares that are mounted, with an index each |
+| `browse` | Who answered an mDNS and a NetBIOS broadcast just now, as `name<TAB>address` |
 | `disconnect` | Unmount the share at a share index |
 | `ping` | Liveness |
 
@@ -324,6 +326,46 @@ only root can read has not mounted as far as the person who asked is concerned. 
 **What is connected is what `/proc/mounts` says is connected.** No list is held between requests:
 a server that went away, or a share a second session mounted, must not be answered for out of this
 daemon's memory.
+
+**A name this C library cannot resolve is resolved here, and only that name.** `nsswitch.conf` is
+inert on musl and there is no winbind, so a `.local` name and a bare NetBIOS label are the two
+shapes `getaddrinfo` will never answer — the first goes to `avahi-resolve-host-name` over the mDNS
+responder this image already supervises, the second to `nmblookup` over samba's client tools. The
+resolver is tried first either way, because a name in `/etc/hosts` is one somebody wrote down and a
+broadcast answer must not override it; an address or a dotted DNS name never reaches a broadcast at
+all, which is what bounds the wait. **What is resolved is the address and not the UNC**: the share
+mounts under the name that was typed, with the number carried in `ip=` beside it, because a
+mountpoint named after an address is one nobody recognises and a lease that moved would leave the
+old number on the filesystem for ever.
+
+**`browse` is two broadcasts and not a directory.** There is no browse master to ask — samba here
+is built without winbind and without a domain controller — so the list is `avahi-browse -ptrk
+_smb._tcp` for the machines that advertise the service and `nmblookup -S -- '*'` for the ones that
+answer a NetBIOS query. `-S` does the node status in the **same process**, so a network of twenty
+machines costs one child rather than twenty. Only a `<20>` entry is offered, which is the
+file-server name: a machine with none is sharing nothing, and listing it would be offering a server
+that refuses every share. A row is **not an index** — `cifs` and `krb5` name a server — and no list
+is held between requests.
+
+### A ticket instead of a password
+
+**`sec=krb5` is not a third kind of secret, it is the absence of one.** The ticket is already in
+the caller's credential cache, put there by `kinit`, and nothing about it crosses the socket: the
+kernel's cifs module raises a `cifs.spnego` key request, `request-key` runs `cifs.upcall` against
+that cache, and the helper hands back the SPNEGO blob. That is why it is a verb of its own rather
+than `cifs` with an empty count — there is no second frame to read and nothing to wipe afterwards.
+
+**Which makes `cruid=` load-bearing.** This daemon is root and the mount is the caller's, so
+without it the upcall looks in **root's** cache — empty on a machine where nobody has any reason to
+`kinit` as root — and the mount fails with `Required key not available`, naming no user.
+
+**`-` is the whole of "no username", and here that is the ordinary case.** The principal in the
+ticket says who you are; a `user=` beside it is a second answer to a question already settled.
+
+**The helper and its rule are checked before the module is loaded and before the mountpoint is
+made.** An image built without `cifs.upcall`, or without `/etc/request-key.d/cifs.spnego.conf`,
+answers that same `Required key not available` — which says nothing about why — so the refusal here
+names the file instead, and leaves no empty directory under `/media` behind it.
 
 ### What a destructive verb refuses
 

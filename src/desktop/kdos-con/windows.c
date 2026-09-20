@@ -1386,10 +1386,13 @@ void win_scratch_mark(Win *w)
  * a state. There is nowhere for a group to live and nothing for it to be made
  * out of, so it is not built here.
  *
- * AND THE POINTER DOES NOT MAKE ONE. A title-bar drag is a translation with no
- * drop target and no hit test against another window, so a stack made by
- * dragging could be proved only by a rig photograph; the chords can be proved
- * by a golden, which is why the chords are what exist.
+ * AND THE POINTER MAKES ONE TOO. A title-bar drag released over another
+ * window's title row joins the two — win_stack_drop_at() is the hit test and
+ * main.c's release path is the one caller — and a press on a tab of a strip
+ * brings that tab up. Neither can be proved by a golden, which renders one
+ * frame and presses nothing; what a golden proves is the STRIP the two
+ * produce, which is why win_stack_move() and win_stack_join() are asserted
+ * through `--press` rather than through a photograph.
  */
 #define STACK_MAX 32
 
@@ -1421,16 +1424,28 @@ static int stackable(const Win *w)
 }
 
 /*
- * EVERY TAB OF THIS WINDOW'S STACK, IN ID ORDER — which is the strip's order.
+ * EVERY TAB OF THIS WINDOW'S STACK, IN STRIP ORDER — `tabpos` first, id after.
  *
  * NOT S.wins' ORDER. That list is the z-order and win_stack_show() brings the
  * incoming member to the front of it, so a strip drawn by walking the list
- * would put the tabs in a different sequence after every switch. An id only
- * ever goes up, so id order is the one order a person can point at twice.
+ * would put the tabs in a different sequence after every switch.
+ *
+ * AND `tabpos` IS ZERO UNTIL SOMETHING MOVES A TAB, which makes the id the
+ * whole of the order on a stack nobody has reordered — ids only ever go up, so
+ * that is the one order a person can point at twice. win_stack_move() numbers
+ * the whole stack before it moves anything, so a strip is either entirely
+ * explicit or entirely implicit and never half of each.
  *
  * Answers 0 for a window in no stack, which is what the frame tests before it
  * draws a strip at all.
  */
+static int stack_before(const Win *a, const Win *b)
+{
+	if (a->tabpos != b->tabpos)
+		return a->tabpos < b->tabpos;
+	return a->id < b->id;
+}
+
 static int stack_set(const Win *w, Win **set, int max)
 {
 	int n = 0;
@@ -1442,12 +1457,27 @@ static int stack_set(const Win *w, Win **set, int max)
 
 		if (o->stack != w->stack)
 			continue;
-		for (i = n; i > 0 && set[i - 1]->id > o->id; i--)
+		for (i = n; i > 0 && stack_before(o, set[i - 1]); i--)
 			set[i] = set[i - 1];
 		set[i] = o;
 		n++;
 	}
 	return n;
+}
+
+/*
+ * 1..n ALONG THE STRIP AS IT STANDS. Called before anything moves a tab and
+ * after anything joins one: a stack with some members numbered and some at
+ * zero sorts every unnumbered one to the front, which is a strip that
+ * reshuffles the moment a tab is moved for the first time.
+ */
+static void stack_renumber(const Win *w)
+{
+	Win *set[STACK_MAX];
+	int n = stack_set(w, set, STACK_MAX);
+
+	for (int i = 0; i < n; i++)
+		set[i]->tabpos = i + 1;
 }
 
 int win_stack_n(const Win *w)
@@ -1491,8 +1521,8 @@ static void stack_place_as(Win *m, const Win *hd)
 
 void win_stack_join(Win *a, Win *b)
 {
-	Win *hd;
-	int old;
+	Win *hd, *in[STACK_MAX];
+	int nin, tail;
 
 	if (!a || !b || a == b || !stackable(a) || !stackable(b))
 		return;
@@ -1507,24 +1537,81 @@ void win_stack_join(Win *a, Win *b)
 	if (!hd)
 		hd = b;
 	hd->stack = hd->id;
-	old = a->stack;
 
-	/* AND WHAT `a` WAS ALREADY CARRYING COMES WITH IT. Joining a stack to
-	 * a stack is one frame with every tab of both, not a tab whose own
-	 * members are left pointing at a window that is now hidden — that is
-	 * the same stranding win_drop() below exists to prevent. */
-	for (Win *w = S.wins; w; w = w->next) {
+	/*
+	 * AND WHAT `a` WAS ALREADY CARRYING COMES WITH IT, IN ITS OWN STRIP
+	 * ORDER. Joining a stack to a stack is one frame with every tab of
+	 * both, not a tab whose own members are left pointing at a window that
+	 * is now hidden — that is the same stranding win_drop() below exists
+	 * to prevent. Collected BEFORE anything is re-pointed, because
+	 * stack_set() answers on `stack` and this is what changes it.
+	 */
+	nin = a->stack ? stack_set(a, in, STACK_MAX) : 0;
+	if (!nin) {
+		in[0] = a;
+		nin = 1;
+	}
+
+	/*
+	 * A NEWCOMER IS NUMBERED ONLY WHERE THE STRIP ALREADY IS, and the
+	 * asymmetry is what keeps a stack nobody has reordered in id order —
+	 * where a window with a lower id than every tab belongs at the FRONT,
+	 * which is the order the strip has always had.
+	 *
+	 * Once something has moved a tab the strip is explicit, and then a
+	 * member left at zero would sort ahead of every numbered one and a
+	 * member carrying the number it had in the stack it came out of would
+	 * land in the middle. So there the newcomers are numbered onto the
+	 * end, in the strip order they had between themselves.
+	 */
+	tail = 0;
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->stack == hd->id && w->tabpos > tail)
+			tail = w->tabpos;
+
+	for (int i = 0; i < nin; i++) {
+		Win *w = in[i];
+
 		if (w == hd)
 			continue;
-		if (w != a && (!old || w->stack != old))
-			continue;
 		w->stack = hd->id;
+		w->tabpos = tail ? ++tail : 0;
 		stack_place_as(w, hd);
 		w->hidden = 1;
 	}
 	/* The head takes the keyboard: the window that has just been hidden
 	 * cannot keep it, and it is the tab the chord left on screen. */
 	win_raise(hd->id);
+	ktui_draw_invalidate();
+}
+
+void win_stack_move(Win *w, int dir)
+{
+	Win *set[STACK_MAX], *live = NULL;
+	int n, cur = -1, to;
+
+	if (!w || !w->stack)
+		return;
+	stack_renumber(w);
+	n = stack_set(w, set, STACK_MAX);
+	if (n < 2)
+		return;
+	/* THE TAB ON SCREEN IS THE ONE THAT MOVES, not `w` — every member of
+	 * a stack answers every verb, and a hidden tab moving under a strip
+	 * nobody is pointing at is a strip that reorders itself for no
+	 * visible reason. */
+	for (int i = 0; i < n; i++)
+		if (set[i]->id == w->stack) {
+			live = set[i];
+			cur = i;
+		}
+	if (!live)
+		return;
+	to = (cur + (dir < 0 ? n - 1 : 1)) % n;
+	/* A SWAP AND NOT AN INSERT, so the wrap from one end to the other
+	 * costs one other tab its place rather than every tab in between. */
+	set[cur]->tabpos = to + 1;
+	set[to]->tabpos = cur + 1;
 	ktui_draw_invalidate();
 }
 
@@ -1636,6 +1723,10 @@ void win_stack_unstack(Win *w)
 		Win *m = set[i];
 
 		m->stack = 0;
+		/* AND THE STRIP NUMBER GOES WITH THE STRIP. A window that is
+		 * no tab of anything carrying a position would sort ahead of
+		 * every fresh member the next time it joined one. */
+		m->tabpos = 0;
 		/* The tab on screen is already where the person put it. */
 		if (m == hd)
 			continue;
@@ -3300,17 +3391,100 @@ static void draw_buttons(Win *w, KRect r, int focused)
  * worth a cell. The rest of the run is left as the rule the box drew, so the
  * counter reads as one plate on a title row rather than as a shrunken strip.
  */
+/*
+ * THE RUN THE STRIP FILLS, and whether it has room for tabs or only for the
+ * counter. 0 is "there is no strip here at all".
+ *
+ * ASKED BY THE PAINTER AND BY THE HIT TEST, and that is the whole reason it
+ * exists: a strip that lights one tab and brings up another is two readings of
+ * this arithmetic disagreeing, on frames nobody photographs.
+ */
+static int tabs_run(Win *w, KRect r, int *x0, int *avail, int *n)
+{
+	Win *set[STACK_MAX];
+	int first;
+
+	*n = stack_set(w, set, STACK_MAX);
+	*x0 = r.x + 2;
+	*avail = btn_run(w, r, &first) - 1 - *x0;
+	if (*n < 2 || *avail < 4)
+		return 0;
+	/* Below CON_TAB_MIN per tab the names are initials and the strip has
+	 * stopped saying anything: what is left is the counter, which is one
+	 * plate and not a row of targets. */
+	return *avail / *n < CON_TAB_MIN ? 1 : 2;
+}
+
+/*
+ * WHERE TAB `i` OF `n` BEGINS AND HOW WIDE IT IS, from the run.
+ *
+ * THE REMAINDER GOES TO THE TABS ON THE LEFT, so the strip fills its run
+ * exactly — one cell short leaves a length of the box's own rule in the middle
+ * of the strip, which reads as two strips.
+ */
+static void tab_span(int x0, int avail, int n, int i, int *x, int *tw)
+{
+	int lead = i < avail % n ? i : avail % n;
+
+	*x = x0 + i * (avail / n) + lead;
+	*tw = avail / n + (i < avail % n);
+}
+
+Win *win_stack_tab_at(Win *w, int x, int y)
+{
+	Win *set[STACK_MAX];
+	KwmRect f;
+	KRect r;
+	int x0, avail, n;
+
+	if (!w || !win_framed(w) || !w->stack)
+		return NULL;
+	f = win_frame(w);
+	r = krect(f.x, f.y, f.w, f.h);
+	if (y != r.y)
+		return NULL;
+	/* A COLLAPSED STRIP HAS NO TABS TO POINT AT. Answering the live one
+	 * would leave a caller unable to tell a hit from a miss, and a click
+	 * on the counter means something else — see main.c's press path. */
+	if (tabs_run(w, r, &x0, &avail, &n) != 2)
+		return NULL;
+	if (stack_set(w, set, STACK_MAX) != n)
+		return NULL;
+	for (int i = 0; i < n; i++) {
+		int tx, tw;
+
+		tab_span(x0, avail, n, i, &tx, &tw);
+		if (x >= tx && x < tx + tw)
+			return set[i];
+	}
+	return NULL;
+}
+
+Win *win_stack_drop_at(const Win *w, int x, int y)
+{
+	/* THE LIST IS THE Z-ORDER, front first, so the first window whose
+	 * title row is under the point is the one a hand is over. */
+	for (Win *o = S.wins; o; o = o->next) {
+		if (o == w || !reachable(o) || !stackable(o))
+			continue;
+		if (w && w->stack && o->stack == w->stack)
+			continue;
+		if (win_on_title(o, x, y))
+			return o;
+	}
+	return NULL;
+}
+
 static void draw_tabs(Win *w, KRect r)
 {
 	Win *set[STACK_MAX];
-	int n = stack_set(w, set, STACK_MAX);
-	int first, x0 = r.x + 2, x1 = btn_run(w, r, &first) - 1;
-	int avail = x1 - x0;
+	int n, x0, avail, kind = tabs_run(w, r, &x0, &avail, &n);
 
-	if (n < 2 || avail < 4)
+	if (!kind)
 		return;
+	stack_set(w, set, STACK_MAX);
 
-	if (avail / n < CON_TAB_MIN) {
+	if (kind == 1) {
 		char c[16];
 		int len;
 
@@ -3323,9 +3497,9 @@ static void draw_tabs(Win *w, KRect r)
 		return;
 	}
 
-	for (int i = 0, x = x0; i < n; i++) {
+	for (int i = 0; i < n; i++) {
 		Win *m = set[i];
-		int tw = avail / n + (i < avail % n);
+		int x, tw;
 		int live = m->id == w->stack;
 		int fg = live ? KT_SURFACE : KT_TEXT;
 		int bg = live ? KT_ACCENT : KT_DIM;
@@ -3339,10 +3513,10 @@ static void draw_tabs(Win *w, KRect r)
 			snprintf(t, sizeof(t), "%d:%s", idx, m->title);
 		else
 			snprintf(t, sizeof(t), "%s", m->title);
+		tab_span(x0, avail, n, i, &x, &tw);
 		for (int c = 0; c < tw; c++)
 			ktui_draw_cell(x + c, r.y, ' ', fg, bg, KT_A_NONE);
 		ktui_draw_text(x + 1, r.y, tw - 2, t, fg, bg, KT_A_NONE);
-		x += tw;
 	}
 }
 
@@ -3870,7 +4044,8 @@ enum {
 	 * with one number and must not have to ask which list it came from. */
 	WM_SNAP_L, WM_SNAP_R, WM_SNAP_U, WM_SNAP_D,
 	WM_SWAP_L, WM_SWAP_R, WM_SWAP_U, WM_SWAP_D,
-	WM_TAB_STACK, WM_TAB_NEXT, WM_TAB_PREV, WM_TAB_OUT,
+	WM_TAB_STACK, WM_TAB_NEXT, WM_TAB_PREV, WM_TAB_MOVE_N, WM_TAB_MOVE_P,
+	WM_TAB_OUT,
 	/* A workspace by number, and a percentage by value: the id CARRIES the
 	 * argument, so nine rows are one row's worth of code. Above every verb
 	 * above them, and far enough apart that neither can reach the other. */
@@ -3909,7 +4084,7 @@ static char wm_ws_label[9][24];
 static char wm_ws_chord[9][32];
 static char wm_op_label[WM_NOPACITY][16];
 static char wm_snap_chord[8][32];
-static char wm_tab_chord[4][32];
+static char wm_tab_chord[6][32];
 
 /*
  * EVERY VERB THAT ACTS ON ONE WINDOW, IN ONE LIST. A chord that has no row
@@ -3963,6 +4138,11 @@ static KtuiMenuItem wm_tab_item[] = {
 	{ "&Stack with next",	WM_TAB_STACK,	NULL, 1 },
 	{ "&Next tab",		WM_TAB_NEXT,	NULL, 1 },
 	{ "&Previous tab",	WM_TAB_PREV,	NULL, 1 },
+	/* WALKING THE STRIP AND CARRYING A TAB ALONG IT ARE DIFFERENT VERBS,
+	 * and they are adjacent so that somebody looking for one finds the
+	 * other rather than a third level of menu. */
+	{ "Move tab &right",	WM_TAB_MOVE_N,	NULL, 1 },
+	{ "Move tab &left",	WM_TAB_MOVE_P,	NULL, 1 },
 	{ "&Take out",		WM_TAB_OUT,	NULL, 1 }
 };
 
@@ -4065,8 +4245,9 @@ static void wm_arm(Win *w)
 			NULL,
 			"swap-left", "swap-right", "swap-up", "swap-down"
 		};
-		static const char *const tab_by[4] = {
-			"stack", "stack-next", "stack-prev", "unstack"
+		static const char *const tab_by[6] = {
+			"stack", "stack-next", "stack-prev",
+			"stack-move-next", "stack-move-prev", "unstack"
 		};
 
 		for (int i = 0; i < 9; i++) {
@@ -4081,16 +4262,15 @@ static void wm_arm(Win *w)
 				wm_snap_chord[i > 4 ? i - 1 : i][0]
 				? wm_snap_chord[i > 4 ? i - 1 : i] : NULL;
 		}
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < 6; i++) {
 			keys_chord_for(tab_by[i], wm_tab_chord[i],
 				       sizeof wm_tab_chord[i]);
 			wm_tab_item[i].accel = wm_tab_chord[i][0]
 					       ? wm_tab_chord[i] : NULL;
 		}
 		wm_tab_item[0].enabled = win_stack_n(w) < 2;
-		wm_tab_item[1].enabled = win_stack_n(w) > 1;
-		wm_tab_item[2].enabled = win_stack_n(w) > 1;
-		wm_tab_item[3].enabled = win_stack_n(w) > 1;
+		for (int i = 1; i < 6; i++)
+			wm_tab_item[i].enabled = win_stack_n(w) > 1;
 	}
 
 	/*
@@ -4245,6 +4425,12 @@ static void wm_act(Win *w, int id)
 		break;
 	case WM_TAB_PREV:
 		win_stack_step(w, -1);
+		break;
+	case WM_TAB_MOVE_N:
+		win_stack_move(w, 1);
+		break;
+	case WM_TAB_MOVE_P:
+		win_stack_move(w, -1);
 		break;
 	case WM_TAB_OUT:
 		win_stack_unstack(w);

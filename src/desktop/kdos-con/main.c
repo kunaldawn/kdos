@@ -2075,6 +2075,12 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_STACK_PREV:
 		win_stack_step(w, -1);
 		return 1;
+	case CON_ACT_STACK_MOVE_NEXT:
+		win_stack_move(w, 1);
+		return 1;
+	case CON_ACT_STACK_MOVE_PREV:
+		win_stack_move(w, -1);
+		return 1;
 	case CON_ACT_UNSTACK:
 		win_stack_unstack(w);
 		return 1;
@@ -3146,14 +3152,29 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 			 */
 			if (gw && grab.resizing)
 				win_resized(gw);
-			/* AND A MOVE THAT ENDED AGAINST AN EDGE OF THE WORK
-			 * AREA IS A SNAP. Only on the release: a tile applied
-			 * mid-drag would resize the window under the hand and
-			 * leave the grab measuring against a rectangle that no
-			 * longer exists. */
+			/*
+			 * AND A MOVE THAT ENDED ON ANOTHER WINDOW'S TITLE ROW
+			 * FOLDS THIS ONE IN AS A TAB — asked BEFORE the snap,
+			 * because a window dropped on a title row against the
+			 * top of the work area is one gesture and cannot be
+			 * both a stack and a maximise. A drop anywhere else
+			 * falls through to the snap exactly as before.
+			 *
+			 * Only on the release, for the snap's reason: a join
+			 * applied mid-drag hides the window under the hand and
+			 * leaves the grab measuring against a rectangle
+			 * nothing is drawing.
+			 */
 			else if (gw && grab.moved &&
-				 ev->press == KT_MP_RELEASE)
-				snap_on_release(gw, ev);
+				 ev->press == KT_MP_RELEASE) {
+				Win *onto = win_stack_drop_at(gw, ev->mx,
+							      ev->my);
+
+				if (onto)
+					win_stack_join(gw, onto);
+				else
+					snap_on_release(gw, ev);
+			}
 			grab.moved = 0;
 			/* THE CHROME WAS THE GRAB'S AND THE GRAB IS OVER: both
 			 * asked again with none held, so what is lit is the
@@ -3498,6 +3519,34 @@ static void route_ptr(const KtuiEvent *ev, int raw_src)
 		else
 			win_lower(w);
 		return;
+	}
+
+	/*
+	 * A PRESS ON A TAB BRINGS THAT TAB UP, AND IT IS ASKED BEFORE THE
+	 * GRAB. The strip lives on the title row and the title row is what
+	 * arms a move, so a press answered by the grab first is a strip no
+	 * press can reach at all.
+	 *
+	 * THE LIVE TAB IS NOT A TARGET. Pressing the tab already on screen
+	 * means the person wants to move the window, which is exactly what
+	 * falls through to the grab below; consuming it would make the one
+	 * tab a hand is most likely to be over the one part of the row that
+	 * cannot drag the frame.
+	 *
+	 * AND A COLLAPSED STRIP STEPS INSTEAD. Below CON_TAB_MIN per tab the
+	 * strip is a ` 2/4 ` counter with no per-tab targets, and a counter
+	 * that answered nothing on a frame too narrow for names would make
+	 * the mouse route depend on the width of the window.
+	 */
+	if (w && !w->background && ev->btn == KT_MB_LEFT &&
+	    ev->press == KT_MP_PRESS && w->stack &&
+	    win_on_title(w, ev->mx, ev->my)) {
+		Win *t = win_stack_tab_at(w, ev->mx, ev->my);
+
+		if (t && t->id != w->stack) {
+			win_stack_show(t);
+			return;
+		}
 	}
 
 	if (w && ptr_is_button(ev) && ev->press == KT_MP_PRESS) {
@@ -4232,7 +4281,7 @@ static void adopt_surfaces(void)
 		 * attaches; everything else is placed the ordinary way.
 		 */
 		int rw, rh, rx, ry, rws;
-		char rfl[8];
+		char rfl[CON_FLAGS_MAX];
 
 		if (con_state_take(w->app_id, &rws, &rx, &ry, &rw, &rh, rfl,
 				   sizeof(rfl))) {

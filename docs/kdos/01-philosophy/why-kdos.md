@@ -156,8 +156,8 @@ Counted from the tree at the time of writing.
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 813 |
-| Packages installed on the built system | 810 |
+| Port recipes in `ports/core` | 815 |
+| Packages installed on the built system | 812 |
 | Applications in the catalogue | 181 |
 | Shared runtimes beneath them | 7 |
 | Base packs | 2 |

@@ -3973,6 +3973,11 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
  * nothing can hand it to get_layer_surface or get_lock_surface afterwards.
  * The other globals go away with the compositor.
  */
+/* Defined with the window list far below; declared here because an unplugged
+ * screen is where a window's record of which screens it is on has to be
+ * corrected. */
+static void kwl_win_output_gone(int slot);
+
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name)
 {
 	(void)d;
@@ -3991,6 +3996,14 @@ static void reg_remove(void *d, struct wl_registry *r, uint32_t name)
 		K.output_scale[i] = 0;
 		K.output_transform[i] = 0;
 		K.output_w[i] = K.output_h[i] = 0;
+		/*
+		 * AND NO WINDOW IS ON IT ANY MORE. A slot is emptied rather
+		 * than compacted — the output listener carries its index as
+		 * user data — so the NEXT screen plugged in takes this number,
+		 * and a window left holding the bit would read as being on a
+		 * monitor it has never been near.
+		 */
+		kwl_win_output_gone(i);
 		if (K.on_output == i) {
 			K.on_output = -1;
 			apply_scale();
@@ -5258,11 +5271,24 @@ static struct kwl_win {
 	 * index: both consumers walk indices until kwl_win_at answers 0, and a
 	 * hole would hide every settled window behind it. */
 	unsigned pending;
+	/* One bit per slot in K.outputs, from the handle's output_enter and
+	 * output_leave. The compositor reports a window's outputs from its
+	 * GEOMETRY and not from whether it is mapped, so a minimised window
+	 * keeps the screen it is on and a task bar filtered on this still
+	 * lists it. Zero is "the server never said", which kwl_win_at reads
+	 * as every screen rather than none. */
+	unsigned outputs;
 	char app_id[64];
 	char title[128];
 } kwl_wins[KWL_WIN_MAX];
 static int kwl_nwins;
 static unsigned kwl_win_next_id = 1;
+
+static void kwl_win_output_gone(int slot)
+{
+	for (int i = 0; i < kwl_nwins; i++)
+		kwl_wins[i].outputs &= ~(1u << slot);
+}
 
 static struct kwl_win *kwl_win_for(struct zwlr_foreign_toplevel_handle_v1 *h)
 {
@@ -5293,18 +5319,40 @@ static void wtl_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
 			 app_id ? app_id : "");
 }
 
+/* The slot `o` was bound into, or -1 for an output this client never bound —
+ * which is what a compositor announcing more screens than KWL_MAX_OUTPUTS
+ * leaves. An unknown output moves no bit: a window on it reads as being on
+ * every screen, which lists it everywhere rather than nowhere. */
+static int kwl_output_slot(struct wl_output *o)
+{
+	for (int i = 0; i < K.noutputs; i++)
+		if (K.outputs[i] == o)
+			return i;
+	return -1;
+}
+
 static void wtl_output_enter(void *d,
 			     struct zwlr_foreign_toplevel_handle_v1 *h,
 			     struct wl_output *o)
 {
-	(void)d; (void)h; (void)o;
+	struct kwl_win *w = kwl_win_for(h);
+	int slot = kwl_output_slot(o);
+
+	(void)d;
+	if (w && slot >= 0)
+		w->outputs |= 1u << slot;
 }
 
 static void wtl_output_leave(void *d,
 			     struct zwlr_foreign_toplevel_handle_v1 *h,
 			     struct wl_output *o)
 {
-	(void)d; (void)h; (void)o;
+	struct kwl_win *w = kwl_win_for(h);
+	int slot = kwl_output_slot(o);
+
+	(void)d;
+	if (w && slot >= 0)
+		w->outputs &= ~(1u << slot);
 }
 
 static void wtl_state(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
@@ -5476,6 +5524,14 @@ static int kwl_win_at(int i, KDispWin *out)
 	out->id = w->id;
 	out->flags = w->flags;
 	out->workspace = -1;
+	/* THE SURFACE'S OWN SCREEN, not the one `cfg.output` asked for: a
+	 * panel placed on a screen that was unplugged between the request and
+	 * the mapping is on whichever screen the compositor chose, and the
+	 * bar it draws must list that screen's windows. Both unknowns answer
+	 * "here": a surface that has had no enter yet, and a window whose
+	 * outputs the compositor never reported. */
+	out->here = K.on_output < 0 || !w->outputs ||
+		    (w->outputs & (1u << K.on_output)) != 0;
 	snprintf(out->app_id, sizeof(out->app_id), "%s", w->app_id);
 	snprintf(out->title, sizeof(out->title), "%s", w->title);
 	return 1;
