@@ -1,0 +1,24 @@
++=[ connect to server ]================================+
+|                                                      |
+| kdos-mountd is not running (service start 58_mountd) |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|------------------------------------------------------|
+| Enter connect? | b browse | Esc Close                |
+|    [ Connect? ] [ Browse ] [ Disconnect ] [ Close ]  |
++======================================================+

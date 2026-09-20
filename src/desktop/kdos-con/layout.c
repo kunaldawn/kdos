@@ -279,9 +279,12 @@ int con_layout_load(const char *name)
 	}
 	if (!text)
 		return -1;
+	/* A LAYOUT CARRIES STACKS TOO, through the same flags column, so a
+	 * previous load's group anchors must not still be standing. */
+	con_state_groups_reset();
 
 	for (char *line = text, *nl; line && *line; line = nl) {
-		char kind[16], app[64], fl[8];
+		char kind[16], app[64], fl[CON_FLAGS_MAX];
 		int ws, x, y, w, h;
 		const char *cmd;
 		Win *win = NULL;

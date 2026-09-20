@@ -259,6 +259,13 @@ member left is not a stack at all. **The strip is ordered by id and not by the z
 tab up moves it to the front of the list, so a strip drawn in list order would reshuffle on every
 switch, and ids only ever go up.
 
+**A member also carries a place in the strip, and it is zero until something moves a tab.** The
+sort is that number first and the id after, so a strip nobody has reordered is in id order exactly
+as it always was. A carry numbers the whole strip 1..n before it swaps two of them, which is what
+makes a strip **either entirely explicit or entirely implicit and never half of each** — a member
+left at zero would sort ahead of every numbered one, and a member carrying the number it had in
+another stack would land in the middle of this one.
+
 **Joining takes the head's rectangle before it hides.** A member is placed through the same call an
 ordinary resize goes through — which reflows a terminal and configures a guest — because a member
 still configured to its old size would draw the old size into the new rectangle the moment it came
@@ -274,13 +281,19 @@ The frontmost survivor takes the head's rectangle and its place at the head and 
 it — a member still naming a head that has gone is a hidden window with no row, no ring step and no
 rectangle, which is a window a person can reach by nothing at all.
 
+**A stack IS made by dragging.** A title-bar drag released over another window's title row joins
+the two, and the drop is asked before the edge snap: a window let go on a title row against the top
+of the work area is one gesture and cannot be both a stack and a maximise. A press on a tab of a
+strip brings that tab up; the tab already on screen is not a target, because a press on it is a
+hand reaching for the frame.
+
 **What is not built:** chrome, a guest on a terminal of its own and the scratchpad cannot be tabs —
 the scratchpad because its own chord shows and hides it through the same flag, so it would be a
 window two mechanisms disagreed about. There are no **tile groups**: `tiled` is a per-window bitmask
 resolved against the work area and never against a neighbour, and the arrangements clear it
 afterwards precisely so that an arrangement is not a state, so a group of windows that move and size
-together would reuse none of this. And a stack is not made by **dragging**: a title-bar drag is a
-translation with no drop target and no hit test against another window. Both are in
+together would reuse none of this. And a tab cannot be dragged **along** its strip: the drag is a
+translation with a drop test at the end of it, not a position within a run. Both are in
 [Known gaps](../06-reference/known-gaps.md).
 
 ## The edge search is one question

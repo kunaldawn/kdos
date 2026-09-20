@@ -169,7 +169,9 @@ Root and `wheel`.
 | `unlock` | An index and a byte count | The mapper's name; the passphrase is a second frame |
 | `format` | An index, a filesystem and a byte count | The device's own name typed back, as a second frame |
 | `cifs` | A server, a share, a username, a domain and a byte count | The mountpoint; the password is a second frame |
+| `krb5` | A server, a share, a username or `-`, and a domain or `-` | The mountpoint; **no second frame at all** |
 | `shares` | — | The network shares that are mounted, **with an index each** |
+| `browse` | — | The servers that answered an mDNS and a NetBIOS broadcast, as `name<TAB>address` |
 | `disconnect` | A share index | Unmounts one |
 | `subscribe` | — | Keeps the socket and writes a line per block uevent |
 | `ping` | — | Liveness |
@@ -195,7 +197,31 @@ second implementation of that parser, and two parsers of one string eventually d
 
 **The password reaches `mount.cifs` on a file descriptor.** `PASSWD_FD=0` and the bytes on the
 child's stdin: an option string is argv, an environment value is `/proc/<pid>/environ`, and a
-password file is a file somebody has to delete.
+password file is a file somebody has to delete. A `krb5` mount is given neither the descriptor nor
+the environment, because there is nothing on stdin for the helper to read and a helper told
+otherwise waits for a descriptor already at end of file.
+
+**`krb5` IS A VERB OF ITS OWN AND NOT `cifs` WITH AN EMPTY COUNT.** A ticket is in the caller's
+credential cache and nothing about it crosses this socket, so there is no second frame to read and
+nothing to wipe afterwards; the byte count a secret-carrying verb declares may not be zero. What it
+adds to the option string is `sec=krb5` and **`cruid=<the caller>`**: the daemon is root and the
+mount is the caller's, so without it `cifs.upcall` reads root's credential cache — empty on a
+machine where nobody has any reason to `kinit` as root — and the mount fails with `Required key not
+available` naming no user. The helper and the `request-key` rule are both checked before the module
+is loaded and before the mountpoint is made, so a machine that cannot do this says which file is
+missing.
+
+**A server name the C library cannot resolve is resolved before the helper runs.** `nsswitch.conf`
+is inert on musl and there is no winbind, so a `.local` name goes to `avahi-resolve-host-name` and
+a bare NetBIOS label to `nmblookup` — and only those two shapes, and only after `getaddrinfo` has
+already failed on them, so an address or a DNS name never waits for a broadcast. What the helper is
+handed is an **`ip=` beside the name that was typed**: a mountpoint named after an address is one
+nobody recognises, and a lease that moved would leave the old number on the filesystem for ever.
+
+**A `browse` row is not an index.** `cifs` and `krb5` name a server, so there is no row for a
+number to be, and the row carries the name itself with the address beside it — which is what tells
+two machines with the same NetBIOS name on different subnets apart. The list is never held between
+requests, for the reason the device list is not.
 
 **The token count is fixed per verb, and a longer line is refused rather than truncated.** The
 argument allowlist is what makes an index mean an index: `mount 0 rm -rf /` is not a well-formed

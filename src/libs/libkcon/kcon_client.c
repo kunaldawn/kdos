@@ -1770,6 +1770,9 @@ static int kcon_win_at(int i, KDispWin *out)
 	out->id = t->id;
 	out->flags = t->flags;
 	out->workspace = t->workspace;
+	/* The console composes every connected screen into ONE grid, so there
+	 * is no screen for a window to be on other than the one asking. */
+	out->here = 1;
 	snprintf(out->app_id, sizeof(out->app_id), "%s", t->app_id);
 	snprintf(out->title, sizeof(out->title), "%s", t->title);
 	return 1;

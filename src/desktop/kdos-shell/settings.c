@@ -450,8 +450,8 @@ static struct row rows[] = {
 	  "stutter restart clipboard", "stutter restart clipboard" },
 	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "tray_hide", "tray_hide",
 	  NULL, 0, 0, 0, 0,
-	  "tray ids not drawn on the bar. fcitx5 is here because its menu is "
-	  "dbusmenu, which this tray cannot draw",
+	  "tray ids not drawn on the bar. They are listed in the chevron's "
+	  "popup instead",
 	  "fcitx fcitx5 org.fcitx.fcitx5", "fcitx fcitx5 org.fcitx.fcitx5" },
 	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "meters", "meters",
 	  NULL, 0, 0, 0, 0,

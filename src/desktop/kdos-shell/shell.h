@@ -82,6 +82,11 @@ struct sh_tray_item {
 	char id[64];
 	char title[64];
 	char icon[64];
+	/* The `Menu` property: the object path of this item's
+	 * com.canonical.dbusmenu tree, on the same bus name. Empty where the
+	 * item publishes none, which is an item whose ContextMenu opens a
+	 * window of its own. */
+	char menu[SH_TRAY_NAME];
 	int status;			/* SH_TRAY_* */
 	int is_menu;			/* ItemIsMenu: Activate means "show menu" */
 	int fdo_iface;			/* publishes the freedesktop spelling */
@@ -193,6 +198,16 @@ struct sh_state {
 
 	struct sh_task tasks[SH_MAX_TASKS];
 	int ntasks;
+	/*
+	 * WHETHER ANY WINDOW ANYWHERE IS NOT MINIMISED, counted over EVERY
+	 * screen and not over `tasks` — which a per-output bar has filtered to
+	 * its own. A workspace spans every screen: there is one workspace
+	 * group and every output enters it, so a pager that read the filtered
+	 * list would call a workspace empty on the left screen while its
+	 * windows were on the right, which is a false statement about a global
+	 * thing.
+	 */
+	int live_anywhere;
 
 	void *ws[SH_MAX_WS];
 	int ws_occupied[SH_MAX_WS];
@@ -347,9 +362,27 @@ int sh_mountd_do(int idx, const char *verb, char *out, size_t nout);
  * an index exists: a row number is true only of the list it came with. */
 int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy);
 
+/* A SERVER THAT ANSWERED A BROADCAST, and it is not a row in anything. The
+ * `cifs` verb names a server rather than an index, so what a browse row
+ * carries is the name itself; the address beside it is what the daemon will
+ * aim the mount at, shown so that two machines with the same NetBIOS name on
+ * different subnets are tellable apart. */
+typedef struct {
+	char name[64];
+	char addr[46];
+} ShServerRow;
+
+/* Who is offering a share, asked fresh: an mDNS and a NetBIOS broadcast, both
+ * made by the daemon. IT BLOCKS FOR AS LONG AS A BROADCAST TAKES — seconds,
+ * not microseconds — so a caller says what it is doing before calling and
+ * never calls it on a redraw. Zero rows is a real answer and not a failure;
+ * `why` is set only where the daemon could not be reached. */
+int sh_mountd_browse(ShServerRow *out, int max, char *why, size_t nwhy);
+
 int calc_main(int argc, char **argv);		/* kdos-calc     */
 int chars_main(int argc, char **argv);		/* kdos-chars    */
 int connect_main(int argc, char **argv);	/* kdos-connect  */
+int traymenu_main(int argc, char **argv);	/* kdos-traymenu */
 int contacts_main(int argc, char **argv);	/* kdos-contacts */
 int disks_main(int argc, char **argv);		/* kdos-disks    */
 int print_main(int argc, char **argv);		/* kdos-print    */

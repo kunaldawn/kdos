@@ -169,6 +169,12 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-chars"
 # second answer to what a contact is, and the one that is not the store's is
 # the one that goes stale.
 ln -s kdos-shell "$PKG/usr/bin/kdos-connect"
+# A tray item's own menu. `com.canonical.dbusmenu` is the second protocol a
+# tray icon speaks, and an item that sets `ItemIsMenu` has no useful Activate
+# — the host is expected to draw the tree. Its own surface for the reason
+# every popup here is one: the panel's loop owns one cell buffer, and an
+# application slow to answer GetLayout must not take the bar with it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-traymenu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-contacts"
 # The disks window. Every privileged operation on it is a kdos-mountd verb and
 # this binary opens no block device: what it does is draw a list the daemon

@@ -82,22 +82,16 @@ picker lists what fontconfig offers. The shipped PCF bitmap faces are also invis
 `70-no-bitmaps-except-emoji` rule rejects them and the rescue rule names `Terminus` where the files
 report `xos4 Terminus` — so what is listed is the scalable monospaced families.
 
-**A per-output panel shows every window, not that output's.** The window-management protocol
-reports which output a window is on and the panel ignores it, so on two screens both taskbars list
-the same windows. That is a well-established behaviour rather than obviously wrong; filtering is a
-decision, not a fix, and it is not made.
-
-**Tray menus published over the menu protocol are not rendered.** An item that expects the host to
-draw its menu does nothing when clicked. It is a second protocol with a nested layout tree, and
-drawing it as cells is its own piece of work. Such an item is hidden by default, listed in the
-overflow popup where the row can say what it is, and its tooltip says why it cannot be clicked.
+**A tray menu carries no icons and no shortcuts, and does not update while it is open.** The rows,
+their submenus and their toggles are drawn; `icon-name` is a theme lookup and `icon-data` a PNG, on
+a character grid, and `shortcut` is the application's own chord and not this desktop's to press.
+The tree is read when the menu opens and `LayoutUpdated` is not watched — a menu whose rows move
+under the hand activates the wrong row. An item that publishes no menu path is sent `ContextMenu`
+and opens whatever window it has of its own.
 
 **Workspace occupancy is derived, not reported.** The protocol has active, urgent and hidden but
 no "there are windows here", so the panel marks a workspace occupied when a window on it is not
 minimised. That is right for every workspace you have visited and silent about the rest.
-
-**Six surfaces have no offscreen dump and therefore no reference frame**: the panel itself, the run
-box, the prompt, the notification daemon, the on-screen display and the desktop.
 
 **Screen layout is an order, not a geometry.** Screens are placed edge to edge from the left in
 list order; a vertical arrangement, an overlap or a deliberate gap cannot be expressed. That is a
@@ -238,17 +232,9 @@ by side that move, size and minimise together — because nothing in the window 
 the arrangements clear it afterwards precisely so that an arrangement is not a state, so a group
 would reuse none of the machinery a stack reuses and is a much larger change.
 
-**A stack is made by a chord and never by a drag.** A title-bar drag on the console is a pure
-translation with no drop target and no hit test against another window, and the tab strip answers no
-press at all — so there is no dropping one window onto another's title bar and no clicking a tab to
-bring it up. The four chords are what exist.
-
-**Tabs cannot be reordered, and a stack does not survive a session restore.** The strip is ordered
-by window id, which is the only order that does not reshuffle when a tab is brought up; there is no
-verb that moves one along it. And the saved-session record is a rectangle and a flags column per
-window, with no word for a relation between two of them, so a session saved with a stack open comes
-back as that many ordinary windows. Both are in
-[kdos-con](../04-programs/kdos-con.md#tabbed-windows).
+**A tab cannot be dragged along its own strip.** A drag is a translation with a drop test at the
+end of it, not a position within a run, so the two chords are what carry a tab: `Super+Alt+]` and
+`Super+Alt+[`. See [kdos-con](../04-programs/kdos-con.md#tabbed-windows).
 
 **A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
 code by design, so a terminal window it opens itself shows the fallback shade where a picture is.
@@ -378,16 +364,11 @@ costs nothing to carry — but there is no X server here and the Wayland path is
 so a yank inside such a program has nowhere to go. The desktop's own clipboard is `kdos-clip`, and
 `kdos-term` puts a selection there.
 
-**A call is voice only.** `baresip` is the SIP phone here, its interface is a terminal menu, and the
-codecs it loads on a first run are the four this image builds — `opus.so`, `avcodec.so`, `vp8.so`
-and `vp9.so`. What a call cannot do is show you the other person: see the video display below.
-
-**Video calling has nowhere to put the picture.** The capture half is there — the built `avformat`
-module registers a video source and the shipped ffmpeg carries `video4linux2` — and the codecs
-build. What is missing is a **display**: of baresip's video outputs only `fakevideo` (a null sink)
-and `vidbridge` (a loopback) were built, because `x11` needs the X headers this image refuses by
-rule and `sdl` needs an SDL port that does not exist. A call can send your camera and cannot show
-you theirs.
+**A video call has never been placed.** `baresip` is the SIP phone here and its interface is a
+terminal menu; the far end's picture goes in an `sdl.so` window, and sending your own means turning
+on `avformat.so`, which the generated config leaves commented because which camera to send is a
+choice. The rig has no second endpoint and no camera, so what is measured is that the modules
+load.
 
 **`mbsync` reaches XOAUTH2 and not OAUTHBEARER.** `cyrus-sasl` is the mechanism loader and ships no
 XOAUTH2 of its own, so the mechanism comes from `cyrus-sasl-xoauth2` beside it and that plugin
@@ -397,17 +378,18 @@ sends it**: measured on the image, `msmtp --version` reports `Authentication lib
 lists `oauthbearer` and `xoauth2`, and `aerc` carries `imaps+oauthbearer`, `smtps+oauthbearer` and
 its own `xoauth2Client`.
 
-**A network share is reached by an address or a DNS name, never by a workgroup name.** musl
-resolves through `/etc/hosts` and `/etc/resolv.conf`; `nsswitch.conf` is inert on this C library,
-there is no winbind and there is no mDNS responder, so a name only a NetBIOS or a Bonjour
-broadcast could answer fails inside `mount.cifs` with a message nobody can act on.
-`kdos-mountd`'s `cifs` verb refuses such a name up front rather than passing it on, and there is
-no browse list: a server has to be named.
+**A browse list is what answered a broadcast, not a directory.** Samba here is built without
+winbind and without a domain controller, so there is no browse master to ask: `kdos-mount browse`
+is an mDNS query and a NetBIOS one, and a machine asleep, on another subnet, or behind a router
+that does not forward broadcasts is absent from it. It can still be reached by name.
 
-**Kerberos is not reachable from this image, and `CONFIG_CIFS_UPCALL=y` is not evidence that it
-is.** `cifs.upcall` is disabled in the `cifs-utils` recipe and is absent from the image, and there
-is no krb5 port, so `sec=krb5` has nothing to call out to. A server that will accept only a ticket
-cannot be mounted from here; the verb offers username, domain and password and nothing else.
+**Kerberos is built and has never been given a ticket.** `kinit`, `cifs.upcall` and the
+`request-key` rule that joins them are on the image and `kdos-mount krb5` mounts with `sec=krb5`,
+but there is no KDC here and no realm to join — the server half of krb5 is not installed — so what
+is measured is the request this daemon makes and not that a domain controller accepts it. **No
+share has ever been mounted with a ticket on this image.** `cifs.idmap` is not built either: it
+needs winbind's client library, and this desktop does not need it, because every share is mounted
+with an explicit `uid=` and `gid=`.
 
 **Neither synchroniser in the mail and calendar lanes has ever run against a server.** The rig has
 no account, no network and no IMAP or CalDAV server on the image, so what is measured of `mbsync`
@@ -443,8 +425,9 @@ tree: the model gate, the `whisper-cli` argv, the spawn and the exit status are 
 The way in is upstream's `models/download-ggml-model.sh` writing to
 `~/.local/share/whisper.cpp/models`.
 
-**Transcription is batch over a closed file**, not live. The streaming example needs SDL2, which is
-not a port here.
+**Live transcription is a terminal program and not a desktop verb.** `whisper-stream` is built and
+transcribes a microphone, and nothing on either desktop starts it: `kdos-rec`'s *Transcribe* is
+`whisper-cli` over the file it has just recorded. Both want the same model, and no model ships.
 
 **The emulated HDA codec gives the guest no capture signal**, so the rig cannot photograph a
 deflecting meter from `--audio` alone. The recording evidence comes from `snd-aloop`, loaded by

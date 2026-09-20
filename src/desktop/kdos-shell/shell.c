@@ -613,6 +613,14 @@ static void task_box(struct sh_task *t)
  * ORDER IS THE SERVER'S. Position N in the panel is tasks[N] and the click map
  * is dense, so a list that reordered itself between the draw and the click
  * would activate the wrong window.
+ *
+ * A BAR LISTS ITS OWN SCREEN. One panel is supervised per output, so a bar
+ * that listed every window would put the same buttons on both screens and a
+ * click on either would raise a window somewhere else. `w.here` is the
+ * display server's answer and it is 1 wherever there is no answer — the
+ * console, which composes every screen into one grid, and a compositor that
+ * has not yet said where a window is — so the unfiltered list is what a
+ * single screen and the console both get.
  */
 void sh_tasks_refresh(struct sh_state *sh)
 {
@@ -622,9 +630,18 @@ void sh_tasks_refresh(struct sh_state *sh)
 
 	memcpy(prev, sh->tasks, sizeof(prev[0]) * (size_t)nprev);
 	sh->ntasks = 0;
+	sh->live_anywhere = 0;
 	for (int i = 0; sh->ntasks < SH_MAX_TASKS && kdisp_win_at(i, &w); i++) {
-		struct sh_task *t = &sh->tasks[sh->ntasks++];
+		struct sh_task *t;
 		int carried = 0;
+
+		/* COUNTED BEFORE THE FILTER, because it is a fact about the
+		 * WORKSPACE and a workspace spans every screen. */
+		if (!(w.flags & KDISP_WIN_MINIMISED))
+			sh->live_anywhere = 1;
+		if (!w.here)
+			continue;
+		t = &sh->tasks[sh->ntasks++];
 
 		memset(t, 0, sizeof(*t));
 		t->id = w.id;

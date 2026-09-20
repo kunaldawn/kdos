@@ -42,6 +42,7 @@ half of the same mistake.
 | `kdos-backup` | What is in the restic repository, and adding to it | [The small surfaces](#the-small-surfaces) |
 | `kdos-clip` | Clipboard history | [The small surfaces](#the-small-surfaces) |
 | `kdos-status` | The overflow popup | [The overflow chevron](#the-overflow-chevron) |
+| `kdos-traymenu` | A tray item's own menu, from its `dbusmenu` tree | [The tray](#the-tray) |
 | `kdos-tip` | Tooltips | [Tooltips](#tooltips) |
 | `kdos-ime` | The input-method candidate window | [The candidate window](#the-candidate-window) |
 | `kdos-teams` | The window list | [The small surfaces](#the-small-surfaces) |
@@ -549,7 +550,11 @@ the bar, the cell reads as empty. The identifier
 rather than the icon name, because a letter from a name a human chose beats a letter from a theme
 lookup that will never happen on a character grid.
 
-Left activates, middle secondary-activates, right opens the context menu.
+Left activates, middle secondary-activates, right opens the menu — and **which menu depends on
+what the item published**. An item with a `com.canonical.dbusmenu` path gets its tree drawn here by
+`kdos-traymenu`; one with none gets `ContextMenu`, which is what an application with a menu window
+of its own answers. An item that also sets `ItemIsMenu` has no useful Activate at all — the spec's
+answer to a click on one is "show the menu" — so for those the **left** button opens it too.
 
 Three rules, each a defect that was already there:
 
@@ -573,10 +578,17 @@ identifiers map to a keyboard icon before the application-artwork lookup runs. T
 licence to restyle other people's marks — it is the narrow case where the item is a *system*
 function.
 
-**Known gap: menus published over the menu protocol are not rendered.** An item that expects the
-host to draw its menu will do nothing when clicked. Such an item is hidden by default through
-`tray_hide =`, listed in the chevron's popup where the row can say what it is, and its tooltip
-says why it cannot be clicked. One line of `panel.conf` brings it back.
+**The menu is its own process**, which is the rule every popup on this bar keeps: the panel's event
+loop owns one surface and one cell buffer, and an application slow to answer `GetLayout` must not
+take the bar with it. The panel hands it the item's bus name, the `Menu` object path and the item's
+`Id` for the title — the menu object publishes no name of its own.
+
+**What a row does not carry is a picture or a chord.** `icon-name` is a theme lookup and
+`icon-data` a PNG per row, on a character grid; `shortcut` is the application's own chord and is not
+this desktop's to press. A **toggle** is drawn, because a row that says "Pause" with no mark is a
+row whose state is a guess. The tooltip says which button does what, because the cell cannot: an
+item that declares `ItemIsMenu` and publishes no path to a tree has nothing anybody can do with it,
+and that is the one thing a tray item cannot say for itself.
 
 Because items can be hidden, the drawn order is **recorded** and the click reads that, rather than
 deriving an index from the pointer's column.
@@ -1171,6 +1183,11 @@ exclusive semantics and the four-byte magic test are in
 
 **The words have never been read back on this tree.** No model ships and the desktop cannot fetch
 one, so what is proved about transcription is the gate, the argv, the spawn and the exit status.
+
+**And this surface transcribes a FILE.** `whisper-stream` on the image transcribes a live
+microphone and is a terminal program with no desktop verb in front of it: it opens SDL's audio
+device, which raises no window, so it runs on the console with nothing above it. Both want the same
+model.
 
 ## kdos-palette
 

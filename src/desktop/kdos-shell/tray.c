@@ -27,11 +27,13 @@
  *     is also why `Id` is read rather than `IconName`: a letter from a name a
  *     human chose beats a letter from a theme lookup that will never happen.
  *   - Draw the item's MENU. `com.canonical.dbusmenu` is a second protocol with
- *     a nested-variant layout tree, and rendering it as cells is its own piece
- *     of work. Right-click sends ContextMenu, which is what the spec says to
- *     do and what an app with its own menu window answers correctly. Apps that
- *     set ItemIsMenu expect the host to draw the menu and will do nothing —
- *     that is the known gap, stated rather than hidden.
+ *     a nested-variant layout tree and it is rendered by `kdos-traymenu`, a
+ *     surface of its own — for the reason every popup here is one: the panel's
+ *     event loop owns one surface and one cell buffer, and an app that takes
+ *     four seconds to answer GetLayout must not take the panel with it. What
+ *     this file contributes is the `Menu` property, which is the object path
+ *     that tree is at. An item publishing none gets ContextMenu, which is what
+ *     the spec says to send and what an app with its own menu window answers.
  */
 
 #include <stdint.h>
@@ -193,6 +195,18 @@ static int getall(struct sh_tray *t, struct sh_tray_item *it, const char *iface)
 					     : !strcmp(val, "Active")
 						     ? SH_TRAY_ACTIVE
 						     : SH_TRAY_PASSIVE;
+			sd_bus_message_exit_container(reply);
+		} else if (contents && !strcmp(contents, "o") &&
+			   sd_bus_message_enter_container(reply, 'v', "o") >
+				   0) {
+			/* AN OBJECT PATH IS ITS OWN D-BUS TYPE and needs its
+			 * own branch: a variant holding `o` does not match
+			 * `s`, so the string branch above skips it and the
+			 * property reads as absent on every item that
+			 * publishes one. */
+			sd_bus_message_read_basic(reply, 'o', &val);
+			if (!strcmp(key, "Menu"))
+				copy_str(it->menu, sizeof(it->menu), val);
 			sd_bus_message_exit_container(reply);
 		} else if (contents && !strcmp(contents, "b") &&
 			   sd_bus_message_enter_container(reply, 'v', "b") > 0) {

@@ -93,15 +93,6 @@ int kdisp_copy(const char *t, size_t n, int p)
  * the surface draws exactly what it draws on a machine with no font, which is
  * the layout the goldens are of.
  */
-/*
- * The microphone switch, stubbed. It is ALSA's, through privacy.c, which
- * needs libpipewire — and kdos-devices draws the lamp beside its camera list.
- * A dump records nothing and mutes nothing, so "not muted" is the honest
- * answer and the one that keeps the layout the goldens are of.
- */
-int sh_mic_muted(void) { return 0; }
-void sh_mic_toggle(void) {}
-
 int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
 		      int cell_w, int cell_h, uint32_t *out_cp,
 		      uint32_t *out_tint, int *out_cols, int *out_rows)
@@ -111,6 +102,27 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
 	(void)out_cols; (void)out_rows;
 	return -1;
 }
+
+/*
+ * THE FIVE kdos-desk AND kdos-notifyd REACH FOR, and every one of them is a
+ * verb rather than a reading: a dump presses nothing, drags nothing and asks
+ * the session for nothing, so each does what it does on a machine with no
+ * compositor — nothing, and says so in its return value.
+ *
+ * A MISSING ONE COSTS EVERY FRONT-END GOLDEN AND NOT ITS OWN. There is no
+ * compiler check that this stub set is complete; what there is, is a link that
+ * fails and a harness that then skips the whole family. See the note at the
+ * top of this file.
+ */
+void kdisp_session_action(const char *verb) { (void)verb; }
+int kdisp_drag_start(const char *mime, const char *data, size_t len)
+{ (void)mime; (void)data; (void)len; return -1; }
+/* 0 is "no window has the keyboard", which is the truth with no server. */
+int kdisp_focused(void) { return 0; }
+void kicon_forget_paths(void) {}
+/* The plate under a toast. kch_px_* is the pixel layer and this harness has
+ * none — see the kch_tile_* set above, which is stubbed for the same reason. */
+void kch_px_bare(int body_slot) { (void)body_slot; }
 
 int kdisp_lock_engaged(void) { return 0; }
 int kdisp_lock_finished(void) { return 1; }
@@ -332,11 +344,18 @@ const char *sh_priv_name(const struct sh_state *sh, int kind)
 int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n)
 { (void)sh; (void)kind; if (out && n) out[0] = '\0'; return 0; }
 
-/* -1 is "no mixer", which is what every readout here has to survive. */
-int sh_volume_get(int *muted) { if (muted) *muted = 0; return -1; }
-void sh_volume_set(int pct) { (void)pct; }
-void sh_volume_toggle(void) {}
-void sh_alsa_quiet(void) {}
+/*
+ * THE MIXER AND THE MICROPHONE SWITCH ARE NOT STUBBED HERE, and the reason is
+ * that `osd.c` defines them and `osd.c` is linked: it is a front end AND the
+ * file panel.c gets `sh_volume_get` and `sh_mic_muted` from, which is cal.c's
+ * and shell.c's shape. A stub for either beside the real one is a multiple
+ * definition, on exactly the hosts where the harness otherwise works — and
+ * that link failure skips EVERY front-end golden rather than one.
+ *
+ * What a dump gets from the real code is "no mixer" and "not muted", which are
+ * the answers a machine with no sound server gives and the layout the goldens
+ * are of.
+ */
 
 /*
  * The pixel canvas, stubbed with the rest of the paint layer. `kch_tile_begin`
@@ -422,6 +441,8 @@ FRONT_END(palette_main);
  * day and none had a reference frame, which is the one class of surface where
  * a geometry regression ships unseen. */
 FRONT_END(run_main);
+FRONT_END(connect_main);
+FRONT_END(traymenu_main);
 FRONT_END(prompt_main);
 FRONT_END(osd_main);
 FRONT_END(notifyd_main);
@@ -469,6 +490,8 @@ static const struct {
 	{ "palette",	palette_main },
 	{ "shell",	panel_main },
 	{ "run",	run_main },
+	{ "connect",	connect_main },
+	{ "traymenu",	traymenu_main },
 	{ "prompt",	prompt_main },
 	{ "osd",	osd_main },
 	/* The DAEMON, which is the toast stack — `notify` above is the

@@ -1219,6 +1219,12 @@ mtr
 # dnsmasq is shipped and there was no way to ask this machine a DNS question;
 # drill comes with the library.
 ldns
+# A TICKET, BECAUSE A CORPORATE FILE SERVER OFTEN WILL NOT TAKE A PASSWORD.
+# `kinit` gets one and `cifs.upcall` — which is what puts krb5 in cifs-utils'
+# `depends` — hands it to the kernel's cifs module, so `sec=krb5` has somewhere
+# to call out to. The client half only: no KDC and no administration daemon
+# are installed.
+krb5
 # The two remote filesystems a workstation actually mounts. cifs-utils pulls
 # talloc, which samba requires unconditionally.
 cifs-utils
@@ -1233,6 +1239,12 @@ wayland
 wayland-protocols
 seatd
 libdisplay-info
+# THE 2 LINE, AND ITS CONSUMERS ARE WHY. baresip's video display and
+# whisper.cpp's streaming transcription both look for `sdl2` through
+# pkg-config and neither has an SDL3 path; without it a call cannot show the
+# other person and transcription is batch over a closed file. Built with no
+# X11 and no KMSDRM — a graphical program here runs under a compositor.
+sdl2
 gstreamer
 gst-plugins-base
 gst-plugins-good

@@ -2318,9 +2318,22 @@ has no equivalent there and the flag is where the two desktops meet.
 ### Tabbed windows
 
 **Two windows in one rectangle, showing one of them at a time.** `Super+Shift+s` folds the next
-window of the ring into the focused one; `Super+]` and `Super+[` walk the strip; `Super+Alt+s` takes
-the group apart. It is Haiku's stack, and **stacking is the whole of it** — nothing here puts two
-windows side by side and moves them together.
+window of the ring into the focused one; `Super+]` and `Super+[` walk the strip; `Super+Alt+]` and
+`Super+Alt+[` carry the live tab along it; `Super+Alt+s` takes the group apart. It is Haiku's
+stack, and **stacking is the whole of it** — nothing here puts two windows side by side and moves
+them together.
+
+**The pointer does both of the things the chords do.** A press on a tab brings that tab up — the
+live tab is not a target, because a press on it is a hand reaching for the frame — and a title-bar
+drag released over another window's title row folds this window into that window's stack. A drop
+anywhere else is the edge snap it always was, and the join is asked first: a window dropped on a
+title row against the top of the work area is one gesture and cannot be both.
+
+**The carry is on Alt and not on Shift, and that is not a preference.** The chord table normalises
+the CASE of a letter and nothing else, so `Shift+[` arrives as the `{` the layout produced and a
+binding naming `[` with a Shift modifier would match nothing at all — the chord would fall through
+to the focused window, which would type a brace into it. Every `Super+Shift` chord on this desktop
+is on a letter for that reason.
 
 **The tab on screen is an ordinary window and every other tab is hidden**, by the same flag the
 scratchpad is put away with. That is what makes a stack one window to everything that counts
@@ -2345,9 +2358,13 @@ per tab the names are initials and the strip has stopped saying anything, so ` 3
 instead — which tab of how many, the one thing still worth a cell — and the rest of the run is left
 as the rule the box drew.
 
-**The strip is ordered by window id and never by the z-order.** Bringing a tab up moves it to the
-front of the stacking list, so a strip drawn in list order would reshuffle on every switch; ids only
-ever go up, so id order is the one order a person can point at twice. **Tabs cannot be reordered.**
+**The strip is ordered by window id until something moves a tab, and never by the z-order.**
+Bringing a tab up moves it to the front of the stacking list, so a strip drawn in list order would
+reshuffle on every switch; ids only ever go up, so id order is the one order a person can point at
+twice. A carry numbers the whole strip 1..n first and then swaps two of those numbers, so a strip
+is **either entirely implicit or entirely explicit and never half of each** — and a window folded
+into a strip nobody has reordered still arrives in id order, which is where a window with a lower
+id than every tab belongs.
 
 **A tab takes the stack's rectangle before it hides**, through the same call an ordinary resize goes
 through — a terminal reflows and a guest is configured — because a tab carrying some other size
@@ -2367,10 +2384,16 @@ not things a person switches between; the scratchpad is put away with the very f
 its members with, so folding it in would make two mechanisms disagree about whether it is on the
 screen.
 
+**A stack survives a saved session, as a group letter and not as a second file.** A row's flags
+column carries `g<group>t<position>` and an `h` on the tab that was on screen; the group number is
+this save's own, because a window id means nothing to the next session. On the way back the first
+member of a group to appear becomes its anchor and every later one joins that anchor's stack, which
+is what makes the order the rows arrive in — and an application's window does not exist until it
+attaches — not matter. A file written before the column existed restores as windows in no stack.
+
 **It is this desktop's alone.** `kdos-comp` has no stacking, so `rc.xml` binds nothing for these
-four chords — and it binds nothing *else* to them either, so the day the compositor grows tabs the
-chords are still free to mean the same thing. A stack is session state and is written to no saved
-session; see [Known gaps](../06-reference/known-gaps.md).
+six chords — and it binds nothing *else* to them either, so the day the compositor grows tabs the
+chords are still free to mean the same thing.
 
 ### Where a window opens
 

@@ -60,7 +60,7 @@ kdos/
 │   │
 │   ├── desktop/           the desktop — a port repository
 │   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
-│   │   ├── kdos-shell/        one binary under 52 names
+│   │   ├── kdos-shell/        one binary under 53 names
 │   │   ├── kdos-res/          the resource monitor, and its setuid helper
 │   │   ├── kdos-lock/         the lock screen, and the setuid password checker
 │   │   ├── kdos-powerd/       suspend, poweroff, reboot

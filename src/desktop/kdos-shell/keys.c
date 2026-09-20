@@ -362,6 +362,10 @@ static int con_section(const char *act, const char **desc)
 							SEC_WINDOW },
 		{ "stack-next",	"the next tab of this stack",	SEC_WINDOW },
 		{ "stack-prev",	"the previous tab",	SEC_WINDOW },
+		{ "stack-move-next", "carry this tab one place along the strip",
+							SEC_WINDOW },
+		{ "stack-move-prev", "carry it back one place",
+							SEC_WINDOW },
 		{ "unstack",	"put every tab back on the desk",
 							SEC_WINDOW },
 		/* THE SAME WORDS THE COMPOSITOR'S ROW USES. One key, two

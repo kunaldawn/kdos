@@ -24,8 +24,10 @@
 # off by a flag rather than by a missing library, so a build host that happens
 # to carry Kerberos or OpenLDAP cannot quietly add a plugin to the image:
 #
-#   gssapi, kerberos4  — no krb5 port, and `sec=krb5` is out by the same rule
-#                        cifs-utils keeps; see the security model.
+#   gssapi, kerberos4  — krb5 IS a port and is on the image, for the ticket a
+#                        file server takes; no mail provider on this lane
+#                        offers GSSAPI, and kerberos4 has been dead for
+#                        twenty years.
 #   ldapdb, sql        — server-side auxprop backends.
 #   otp, srp, ntlm     — mechanisms no provider on the mail lane offers.
 #   digest, cram       — obsolete challenge-response, refused by every current
