@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,11 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = mesa-demos
-version     = 9.0.0
-release     = 1
-source      = https://archive.mesa3d.org/demos/$name-$version.tar.xz
-sha256      = 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b  mesa-demos-9.0.0.tar.xz
-description = Mesa EGL, GLES2 and Vulkan demos for Wayland — es2gears_wayland, eglinfo, vkgears
-homepage    = https://gitlab.freedesktop.org/mesa/demos
-depends     = meson ninja pkgconf mesa glu wayland wayland-protocols libxkbcommon libdecor vulkan-loader glslang
+# THE CONVERTERS ARE THE POINT, not the format. png2ff and jpg2ff read into a
+# stream every other tool here can filter, and ff2png/ff2jpg write it back out;
+# ff2pam and ff2ppm hand it to anything that speaks netpbm. Nothing is linked
+# into a library, so a missing codec is a missing pair of programs rather than
+# a build failure.
+make PREFIX=/usr MANPREFIX=/usr/share/man
+make DESTDIR=$PKG PREFIX=/usr MANPREFIX=/usr/share/man install

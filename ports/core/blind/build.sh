@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,11 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = mesa-demos
-version     = 9.0.0
-release     = 1
-source      = https://archive.mesa3d.org/demos/$name-$version.tar.xz
-sha256      = 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b  mesa-demos-9.0.0.tar.xz
-description = Mesa EGL, GLES2 and Vulkan demos for Wayland — es2gears_wayland, eglinfo, vkgears
-homepage    = https://gitlab.freedesktop.org/mesa/demos
-depends     = meson ninja pkgconf mesa glu wayland wayland-protocols libxkbcommon libdecor vulkan-loader glslang
+# A VIDEO HERE IS A STREAM OF FRAMES AND EVERY PROGRAM IS A FILTER over it, so
+# blind is farbfeld's argument carried into time: the same bet that a format
+# worth having is one a pipe can carry. It needs no codec of its own — reading
+# and writing real containers is ffmpeg's job at either end.
+make PREFIX=/usr MANPREFIX=/usr/share/man
+make DESTDIR=$PKG PREFIX=/usr MANPREFIX=/usr/share/man install

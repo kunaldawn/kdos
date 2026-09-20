@@ -1554,10 +1554,13 @@ into a **PipeWire stream** instead of onto a screen. There is no capture path be
 path, because a view is already what turns cells into pixels.
 
 It imposes no grid size, so starting a recording does not resize the desktop being recorded, and it
-sends no input: a recording is not a seat. Damage drives the frames — a still desktop rasterises
-nothing and the stream's cycles carry an empty chunk — with one exception: a consumer that has just
-connected is fed one frame anyway, because otherwise a recording of an idle console is a recording
-of nothing.
+sends no input: a recording is not a seat. Damage drives the frames and a **keep-alive floors
+them**: a still desktop rasterises nothing, so a cycle with nothing new re-sends the last frame
+once every 500 ms and carries an empty chunk in between. That floor is not a nicety —
+`pipewiresrc` drops a chunk of size zero, so a stream that only ever said "no new data" would hand
+the pipeline downstream nothing at all and the recording would end with no header in it. A
+consumer that has just connected is fed a frame for the same reason, immediately rather than at
+the floor.
 
 It prints the node id and the stream's pixel size on one line, which is what
 `xdg-desktop-portal-kdos` hands to the application that asked. See
@@ -2120,6 +2123,17 @@ modes it published and which one is in force. Choosing one sends it back down th
 fifteen-second countdown starts: the console has no second screen to fix an unreadable mode from,
 so the mode reverts unless a person says to keep it. Off, scale and rotate are drawn disabled —
 they are Wayland's verbs, and [Known gaps](../06-reference/known-gaps.md) says why.
+
+**A KEPT mode survives the session, in `~/.local/state/kdos/con-modes`.** One
+`<connector> <W>x<H>@<mHz>` line per screen, written by the **view** — the end that knows what a
+connector is called and may be at the far end of an ssh link driving its own machine's monitors —
+and written only after the mode took, so a mode the driver refused is never the one the next login
+asks for. It is a geometry and never an index: the row a picker sends is a position in the list
+that screen published this boot, and a cable, a firmware update or a different monitor publishes
+them in another order. A geometry that is no longer on the list leaves the screen on the mode the
+monitor prefers, and every other screen's line survives a keep on this one. The `keep` flag is what
+distinguishes the two: an apply sends 0 and writes nothing, so a screen nobody can read is never
+what the next login comes up on.
 
 **Which program each chord runs is `con.conf`'s, and the table above is the whole list.** They are
 keys rather than literals in the chord table for the same reason `menu` and `lock` are: one place

@@ -1510,14 +1510,81 @@ static void ctx_run(int id, char *status, size_t n)
 	}
 }
 
+/*
+ * A DESKTOP NOBODY'S HOME DIRECTORY DECIDES, so there is a reference frame of
+ * the surface whose whole content is somebody's files.
+ *
+ * The two pinned cells come first, exactly as reload() places them, and three
+ * ordinary entries follow — a folder, a file and an application — because the
+ * grid's arithmetic, the label truncation and the row wrap are what this
+ * surface has gone wrong at, and one icon shows none of them.
+ */
+static void dump_entries(void)
+{
+	static const struct {
+		const char *name;
+		int dir;
+		int app;
+	} ROW[] = {
+		{ "Projects", 1, 0 },
+		{ "a very long file name indeed.txt", 0, 0 },
+		{ "Text Editor", 0, 1 },
+	};
+
+	nentries = 0;
+
+	struct entry *it = &entries[nentries++];
+
+	memset(it, 0, sizeof(*it));
+	snprintf(it->name, sizeof(it->name), "Home");
+	snprintf(it->path, sizeof(it->path), "%s", "/home/kdos");
+	it->dir = true;
+	it->pinned = true;
+
+	it = &entries[nentries++];
+	memset(it, 0, sizeof(*it));
+	snprintf(it->name, sizeof(it->name), "Trash");
+	snprintf(it->path, sizeof(it->path), "%s",
+		 "/home/kdos/.local/share/Trash/files");
+	it->dir = true;
+	it->is_trash = true;
+	it->pinned = true;
+
+	for (size_t i = 0; i < sizeof(ROW) / sizeof(ROW[0]); i++) {
+		it = &entries[nentries++];
+		memset(it, 0, sizeof(*it));
+		snprintf(it->name, sizeof(it->name), "%s", ROW[i].name);
+		snprintf(it->path, sizeof(it->path), "/home/kdos/Desktop/%s",
+			 ROW[i].name);
+		it->dir = ROW[i].dir;
+		it->is_app = ROW[i].app;
+	}
+}
+
 int desk_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *output = NULL;
+	int dump = 0, dump_w = 0, dump_h = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/*
+		 * One frame, offscreen, as text — see kdos-launcher --dump.
+		 * The size is given because this surface has none of its own:
+		 * it is anchored to all four edges, so on a screen it is
+		 * whatever the output is, and a dump has no output.
+		 */
+		else if (!strcmp(argv[i], "--dump")) {
+			dump = 1;
+			dump_w = 80;
+			dump_h = 24;
+		} else if (!strcmp(argv[i], "--dump-size") && i + 2 < argc) {
+			dump = 1;
+			dump_w = atoi(argv[++i]);
+			dump_h = atoi(argv[++i]);
+		}
 		/* One desktop per screen: layer-shell puts an unnamed surface
 		 * on whichever output the compositor picks, so a second monitor
 		 * got a wallpaper and no icons. */
@@ -1530,9 +1597,30 @@ int desk_main(int argc, char **argv)
 		else {
 			fprintf(stderr,
 				"usage: kdos-desk [--output NAME] [--font NAME] "
-				"[--no-icons]\n");
+				"[--no-icons]\n"
+				"       kdos-desk --dump [--dump-size W H]\n");
 			return 2;
 		}
+	}
+
+	/*
+	 * BEFORE THE COMPOSITOR AND BEFORE THE ICON LAYER. A dump is cells: the
+	 * picture layer needs a real cell size in pixels and a display to
+	 * rescale to, and neither exists here — so the glyph tier under it is
+	 * what a dumped desktop shows, which is also what `icons = no` draws.
+	 */
+	if (dump) {
+		if (dump_w < 20 || dump_w > 500)
+			dump_w = 80;
+		if (dump_h < 4 || dump_h > 200)
+			dump_h = 24;
+		icons_on = 0;
+		sh_theme_from_cache();
+		dump_entries();
+		ktui_offscreen_init(dump_w, dump_h);
+		draw("");
+		ktui_draw_dump();
+		return 0;
 	}
 
 	KDispConfig cfg = {

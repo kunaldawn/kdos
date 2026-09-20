@@ -136,7 +136,8 @@ colon and read the pair as `SGR 43` — a green background where a program asked
 strikethrough (`SGR 9`) and overline (`SGR 53`) each ride a bit of the cell's attribute byte, so
 they cost nothing on the wire between a session and a view. Bold is drawn from a bold companion
 face where the loaded font has one whose cell matches, and by striking the mask twice where it does
-not. `blink` and `dim` are parsed and reach
+not; italic the same way, from an italic companion where there is one and from the upright mask
+sheared a little over twelve degrees where there is not. `blink` and `dim` are parsed and reach
 no bit at all — a blink drawn as bold is a lie about the text, and a terminal that lies about which
 words are emphasised is worse than one that shows them plainly.
 

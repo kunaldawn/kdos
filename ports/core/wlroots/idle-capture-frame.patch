@@ -1,0 +1,37 @@
+A capture of an idle screen is answered, so a screen recording of a desk
+nobody is sitting at is a file with a timeline in it.
+
+ext-image-copy-capture asks its source for a frame only when the session has
+damage waiting. A session is created with its whole area damaged, so the FIRST
+capture is answered and every one after it waits for somebody to move
+something: on a still screen `xdg-desktop-portal-wlr` hands the pipeline one
+buffer and then nothing, `pipewiresrc` drops the empty cycles that follow, and
+`~/Videos/<name>.mkv` ends with no header in it.
+
+wlroots' own screencopy implementation already calls
+wlr_output_update_needs_frame() unconditionally when a client asks to copy, so
+this makes the two agree. What it costs is one output commit per capture on a
+screen that has not changed, and the client's own rate is what bounds that —
+xdpw's max_fps for a recording, a single capture for a thumbnail.
+
+--- a/types/wlr_ext_image_copy_capture_v1.c
++++ b/types/wlr_ext_image_copy_capture_v1.c
+@@ -278,10 +278,16 @@
+ 
+ 	frame->capturing = true;
+ 
+-	bool schedule_frame = !pixman_region32_empty(&frame->session->damage);
++	// Ask the source for a frame whether or not anything is damaged. A
++	// capture that waits for damage is never answered on a screen nobody is
++	// touching, so a recorder gets the one frame the session's initial
++	// damage owed it and then nothing until somebody moves the pointer --
++	// and a muxer handed one frame writes a file with no timeline in it.
++	// The screencopy implementation beside this one already asks
++	// unconditionally; the rate is the client's capture rate either way.
+ 	struct wlr_ext_image_capture_source_v1 *source = frame->session->source;
+ 	if (source->impl->request_frame) {
+-		source->impl->request_frame(source, schedule_frame);
++		source->impl->request_frame(source, true);
+ 	}
+ }
+ 

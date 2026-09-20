@@ -8,11 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = mesa-demos
-version     = 9.0.0
+name        = libmad
+version     = 0.16.4
 release     = 1
-source      = https://archive.mesa3d.org/demos/$name-$version.tar.xz
-sha256      = 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b  mesa-demos-9.0.0.tar.xz
-description = Mesa EGL, GLES2 and Vulkan demos for Wayland — es2gears_wayland, eglinfo, vkgears
-homepage    = https://gitlab.freedesktop.org/mesa/demos
-depends     = meson ninja pkgconf mesa glu wayland wayland-protocols libxkbcommon libdecor vulkan-loader glslang
+source      = https://codeberg.org/tenacityteam/$name/archive/$version.tar.gz
+sha256      = f4eb229452252600ce48f3c2704c9e6d97b789f81e31c37b0c67dd66f445ea35  libmad-0.16.4.tar.gz
+description = MPEG audio decoder — the mp3 input every console player reaches for
+homepage    = https://codeberg.org/tenacityteam/libmad
+depends     = cmake ninja pkgconf

@@ -631,7 +631,8 @@ static int usage(void)
 		"usage: kdos-osd volume [+N|-N|mute|toggle]\n"
 		"       kdos-osd mic [toggle|up|down|+N|-N]\n"
 		"       kdos-osd brightness [+N|-N]\n"
-		"       kdos-osd slider [--at-bottom X Y] [--font NAME]\n");
+		"       kdos-osd slider [--at-bottom X Y] [--font NAME]\n"
+		"       kdos-osd --dump [volume|mic|brightness]\n");
 	return 2;
 }
 
@@ -909,6 +910,28 @@ int osd_main(int argc, char **argv)
 {
 	if (argc < 2)
 		return usage();
+
+	/*
+	 * ONE FRAME, OFFSCREEN, AS TEXT — see kdos-launcher --dump.
+	 *
+	 * AT A FIXED VALUE AND NOT AT THE MACHINE'S. A reference frame has to
+	 * be the same picture on every machine, and this overlay's whole
+	 * content is a number somebody's mixer happens to be at. Sixty per
+	 * cent unmuted is a bar with both ends visible, which is the frame
+	 * worth comparing.
+	 */
+	if (!strcmp(argv[1], "--dump")) {
+		const char *what = argc > 2 ? argv[2] : "volume";
+
+		if (strcmp(what, "volume") && strcmp(what, "mic") &&
+		    strcmp(what, "brightness"))
+			return usage();
+		sh_theme_from_cache();
+		ktui_offscreen_init(OSD_COLS, OSD_ROWS);
+		osd_show(what, 60, 0);
+		ktui_draw_dump();
+		return 0;
+	}
 
 	const char *what = argv[1];
 	const char *arg = argc > 2 ? argv[2] : NULL;

@@ -8,11 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = mesa-demos
-version     = 9.0.0
+name        = smu
+version     = 1.5
 release     = 1
-source      = https://archive.mesa3d.org/demos/$name-$version.tar.xz
-sha256      = 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b  mesa-demos-9.0.0.tar.xz
-description = Mesa EGL, GLES2 and Vulkan demos for Wayland — es2gears_wayland, eglinfo, vkgears
-homepage    = https://gitlab.freedesktop.org/mesa/demos
-depends     = meson ninja pkgconf mesa glu wayland wayland-protocols libxkbcommon libdecor vulkan-loader glslang
+source      = $name-$version.tar.gz::https://github.com/Gottox/$name/archive/refs/tags/v$version.tar.gz
+sha256      = f3bb18f958962679a7fb48d7f8dcab8b59154d66f23c9aba02e78103106093a4  smu-1.5.tar.gz
+description = Markdown to HTML in one C file
+homepage    = https://github.com/Gottox/smu

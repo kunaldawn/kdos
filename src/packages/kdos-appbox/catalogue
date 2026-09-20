@@ -55,6 +55,15 @@ env app.heaptrack QT_STYLE_OVERRIDE=Fusion
 # libjack, which Debian installs beside the real one and selects with pw-jack
 # — this is what pw-jack sets, for every program on the media runtime.
 env rt-media LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/pipewire-0.3/jack
+# surf IS AN X11 CLIENT AND CANNOT BE TALKED OUT OF IT. It calls
+# gdk_x11_window_get_xid() and gtk_plug_new() to hang its URI and find
+# properties off a window id — that is how `tabbed` embeds it and how a script
+# drives it — so GTK choosing the Wayland backend is an abort and not a
+# fallback. Xwayland is the carve-out this rides on, and it is built with
+# glamor and DRI3, so WebKit's EGL renderer is accelerated there; only the GLX
+# clients lose out. This is an env line and NOT an `env GDK_BACKEND=x11`
+# prefix in the Exec, which the launcher generator strips on sight.
+env app.surf GDK_BACKEND=x11
 
 # `deb <pack> <releases-api> <asset-pattern>` — for an application Debian does
 # not carry. The newest asset matching the pattern is fetched and handed to
@@ -266,6 +275,14 @@ app app.vscodium     rt-electron  ca-certificates curl
 app app.wireshark    rt-qt        wireshark
 app app.keepassxc    rt-qt        keepassxc
 app app.firefox-esr  rt-gtk       firefox-esr
+# THE OTHER KIND OF BROWSER: no tabs, no toolbar, no preferences — a window, a
+# page and a key for everything. `suckless-tools` is dmenu and tabbed: surf's
+# own URL prompt pipes an X property through dmenu, and tabbed is what gives it
+# tabs, both inside the box. xprop comes from rt-gtk's x11-xserver-utils.
+#
+# It is NOT the smaller browser: webkit2gtk and its GStreamer set are 275 MB
+# against Firefox ESR's 144. What it is smaller than is its own interface.
+app app.surf         rt-gtk       surf suckless-tools
 app app.dolphin      rt-kde       dolphin
 app app.konsole      rt-kde       konsole
 app app.kate         rt-kde       kate
@@ -749,6 +766,7 @@ meta app.sqlitebrowser        DB Browser for SQLite|Development|8769949|light GU
 meta app.stellarium           Stellarium|Education|425522122|Desktop Planetarium
 meta app.supertux             SuperTux 2|Game|218125691|A jump-and-run game starring Tux the Penguin
 meta app.supertuxkart         SuperTuxKart|Game|705285710|A 3D open-source kart racing game
+meta app.surf                 Surf|Network|275196928|Simple web browser by the suckless community
 meta app.texlive              TeXdoctk|Settings|126485427|Display TeX related documentation
 meta app.thunderbird          Thunderbird|Network|156260430|Thunderbird is a free and open source email, newsfeed, chat, and calendaring client
 meta app.transmission         Transmission|Network|7464510|Download and share files over BitTorrent

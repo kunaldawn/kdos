@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,11 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = mesa-demos
-version     = 9.0.0
-release     = 1
-source      = https://archive.mesa3d.org/demos/$name-$version.tar.xz
-sha256      = 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b  mesa-demos-9.0.0.tar.xz
-description = Mesa EGL, GLES2 and Vulkan demos for Wayland — es2gears_wayland, eglinfo, vkgears
-homepage    = https://gitlab.freedesktop.org/mesa/demos
-depends     = meson ninja pkgconf mesa glu wayland wayland-protocols libxkbcommon libdecor vulkan-loader glslang
+# NEED_STRLCPY STAYS. musl does not provide strlcpy, so upstream's own copy is
+# what this links; dropping the define is the change a glibc host would tempt
+# somebody into and it does not build here.
+export CFLAGS="$CFLAGS -O2"
+make PREFIX=/usr
+make DESTDIR=$PKG PREFIX=/usr install
+
+# NO DESKTOP ENTRY. `ii` is a connection and not a program with a window: it
+# writes a directory of FIFOs and reading it is `tail -f` in one terminal and
+# `echo` into another. A launcher for it with no server, no nick and no channel
+# opens a program that exits.

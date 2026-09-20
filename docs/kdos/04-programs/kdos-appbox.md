@@ -308,13 +308,14 @@ tree, and a run as anyone else fails rather than reporting a launcher set it did
 | Table | Does |
 |---|---|
 | `COMMANDS` | Program names whose value is a **command**, not an application: a table row and a shim, deliberately **no** desktop entry, because a launcher for a shell tool with no arguments opens nothing. Emitted only when the source really carries the binary, so a set baked before the segment existed gets no shim that dies on "not found" |
+| `ENTRIES` | The opposite case: software that IS an application and ships no desktop entry at all, so there is nothing to parse. The name, category, MIME types and `Exec` are written here, because a shipped entry could be replaced by apt and its `Exec` has to name `kdos-appbox run`. `surf` is the row that forced it — a browser with no launcher claims no scheme, so installing it would change nothing about what opens a link |
 | `RENAME` | Upstream's program name is not the one people know |
 | `RESERVED` | Names the sweep must not delete — see below |
 | `EXEC_EXTRA` | Arguments an application needs **only because it is containerised**: one sandboxing toolkit wants a privileged helper it cannot have and exits rather than falling back |
 | `SKIP_NEEDS_KWIN` | Applications that ask a specific compositor's private interface and open an error dialog on any other |
 | `SKIP_ROOTLESS_INERT` | Applications needing raw block devices, which a rootless container cannot give them. A launcher that opens onto "permission denied" teaches somebody the machine is broken rather than that they wanted the host tool |
 | `SKIP_PREFIXES`, `SKIP_BASENAMES` | Entries that are not applications |
-| `X11_FORCING` | Environment prefixes forcing X11, stripped — those applications run fine on Wayland, and forcing X11 kills them under a compositor whose X server they cannot reach |
+| `X11_FORCING` | Environment prefixes forcing X11, stripped from an `Exec` — those applications run fine on Wayland and the prefix is upstream's habit rather than a requirement. An application that genuinely **is** an X11 client says so with an `env` row in the catalogue instead, which travels as pack metadata and is not an `Exec` this table can strip |
 
 **The sweep spares `RESERVED`.** Every shim is removed before the set is rewritten, and the marker
 for one this program wrote is a **relative symlink** — on the reasoning that hand-written entries
@@ -376,6 +377,16 @@ lookup as a host one**.
 That is what lets one picture open in `timg` inside a terminal on the console and in a boxed viewer
 under the compositor **without either desktop editing the other's choices**, which one list for one
 user cannot express.
+
+**And the OTHER desktop's table is read last, when nothing at all claimed the type.** The two lists
+are deliberately not copied into each other: a `http` row naming the console's text browser, put
+where the compositor reads it in order, would outrank a browser box's launcher the moment one was
+installed, because a `[Default Applications]` row at `/etc/xdg` beats every MIME cache. Read
+**after** the caches it outranks nothing — it is reached only where the running desktop, the user
+and every installed application have all said nothing — and it is what stands between a graphical
+session with no browser pack and xdg-utils' own last resort, which starts a text browser with no
+terminal around it and puts nothing on the screen at all. What comes back is a candidate and never
+a default, so a second handler arriving later still opens the chooser.
 
 **Every shipped table is at `/etc/xdg` and a home starts with none.** Three files:
 `kdos-mimeapps.list` for the compositor, `kdos-console-mimeapps.list` for the console, and the
