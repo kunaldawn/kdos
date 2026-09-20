@@ -142,6 +142,23 @@ typedef struct {
 	int cells;		/* panel thickness in CELLS, not pixels    */
 	const char *title;	/* toplevel only                           */
 	const char *app_id;	/* must equal the .desktop id — `kdos appid` */
+	/*
+	 * THE WINDOW THIS ONE BELONGS TO, when it belongs to another
+	 * PROCESS's: an xdg-foreign handle, with no `wayland:` prefix.
+	 *
+	 * TOPLEVEL ROLE ONLY, and the portal's file chooser is the only
+	 * caller. A client cannot place its own toplevel, so "open this
+	 * dialog over the window that asked for it" is not a position a
+	 * client can state — what it can state is whose child it is, and a
+	 * compositor that is told centres the child on the parent.
+	 *
+	 * IGNORED WHERE THERE IS NO xdg-foreign AND ON THE CONSOLE. A handle
+	 * the compositor does not know, a compositor with no importer, and a
+	 * session with no Wayland at all each leave the window placed the way
+	 * it would have been anyway — which is centred. A parent is a hint
+	 * about placement and never a condition of opening.
+	 */
+	const char *parent;
 	const char *font;	/* fontconfig name; NULL for the default   */
 	/*
 	 * Which screen, by the compositor's own name for it (`eDP-1`,

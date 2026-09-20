@@ -51,6 +51,18 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
 	xdg-decoration-unstable-v1-protocol.c
+# xdg-foreign is kdos-pick's, and it is the only way one process can say its
+# window is a child of another process's. A client cannot place its own
+# toplevel; a compositor centres a child on its parent. Without this the
+# portal's file chooser opens in the middle of the screen whatever asked for
+# it. libkwl includes the header unconditionally, so it is generated here and
+# not only where the picker is linked.
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \
 	ext-workspace-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \

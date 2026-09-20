@@ -50,15 +50,21 @@
  *
  * NOTHING ABOUT ANOTHER PROGRAM'S PRESENCE REACHES A DRAW. `kb_have_prog`
  * walks $PATH, which a golden does not freeze, so it is called only when a
- * child is actually started. `Transcribe` is enabled by the MODEL GATE alone.
+ * child is actually started. The third button's LABEL is decided by whether a
+ * model is on the disk and by nothing else.
  *
  * THE TWO LENGTH FIELDS ARE REWRITTEN EVERY TICK. A WAV header written only at
  * stop leaves a file no player will open whenever the machine goes away
  * mid-recording — which in the rig is every run.
  *
- * THE WORDS HAVE NEVER BEEN READ BACK. No speech model ships and the desktop
- * cannot fetch one, so the gate, the argv, the spawn and the exit status are
- * what this surface proves about transcription. Nothing here claims more.
+ * THE WORDS HAVE NEVER BEEN READ BACK. No speech model ships, so the gate,
+ * the argv, the spawn and the exit status are what this surface proves about
+ * transcription. Nothing here claims more.
+ *
+ * AND THE BUTTON FETCHES ONE WHEN THERE IS NONE. `Get model` opens a terminal
+ * on `kdos speech get`, which names a model out of a table, checks its sha256
+ * and writes it where find_model() looks; the loop below keeps looking while
+ * there is nothing, so the button turns into `Transcribe` on its own.
  * ---------------------------------
  */
 
@@ -807,6 +813,38 @@ static void delete_sel(void)
 	scan_files();
 }
 
+/*
+ * FETCH A MODEL, IN A TERMINAL, AND NOT IN THIS PROCESS.
+ *
+ * The smallest useful model is thirty megabytes and the default is a hundred
+ * and forty: that is a progress bar, a cancel, a disk-full and a network that
+ * went away, and every one of them already exists in `kdos speech get`. A
+ * download inside the panel's event loop would be a second implementation of
+ * all four, in the process that draws the taskbar.
+ *
+ * SO THE VERB IS THE ONE A PERSON CAN ALSO TYPE, which is the rule the whole
+ * of this desktop keeps: what a button does is a command, and the command is
+ * the documentation. `kdos speech get` names the model, checks its sha256 and
+ * writes it where find_model() looks.
+ *
+ * NOTHING IS WAITED FOR. The terminal owns the download and this window keeps
+ * drawing; find_model() runs again on the next poll, so the button becomes
+ * Transcribe when the file lands without anything here watching for it.
+ */
+static void get_model(void)
+{
+	const char *argv[12];
+	char id[64];
+	int n = 0;
+
+	n = sh_term_argv(argv, n, (int)(sizeof(argv) / sizeof(argv[0])) - 1,
+			 "kdos speech get", id, sizeof(id));
+	if (n <= 0)
+		return;
+	argv[n] = NULL;
+	sh_spawn(argv);
+}
+
 /* ── the frame ──────────────────────────────────────────────────────────── */
 
 enum { RB_REC = 0, RB_TRANS, RB_PLAY, RB_DEL, RB_CLOSE, RB_N };
@@ -817,11 +855,23 @@ static int rec_buttons(int w, int row)
 
 	b[RB_REC].label = kid > 0 ? "Stop" : "Record";
 	b[RB_REC].enabled = nin > 0;
-	b[RB_TRANS].label = "Transcribe";
-	/* THE MODEL GATE ALONE. Whether `whisper-cli` is on $PATH is not asked
-	 * here: $PATH is not frozen in a golden, and a button that changes
-	 * shade with the host's packages cannot have a reference frame. */
-	b[RB_TRANS].enabled = *model != '\0' && nfile > 0 && kid < 0;
+	/*
+	 * ONE BUTTON, TWO VERBS, AND THE MODEL DECIDES WHICH. With a model it
+	 * transcribes; with none it fetches one, because a control that is
+	 * permanently greyed teaches that the feature does not work rather
+	 * than that something is missing — and this window is the only place
+	 * anybody finds out a model is missing at all.
+	 *
+	 * IT IS NEVER GREYED FOR WANT OF A MODEL, THEN. The remaining gates
+	 * are the ones that are about this window's own state: a recording to
+	 * transcribe, and no child already running.
+	 */
+	b[RB_TRANS].label = *model ? "Transcribe" : "Get model";
+	/* THE MODEL GATE ALONE, on the transcribe half. Whether `whisper-cli`
+	 * is on $PATH is not asked here: $PATH is not frozen in a golden, and
+	 * a button that changes shade with the host's packages cannot have a
+	 * reference frame. */
+	b[RB_TRANS].enabled = kid < 0 && (*model ? nfile > 0 : 1);
 	b[RB_PLAY].label = "Play";
 	b[RB_PLAY].enabled = nfile > 0 && kid < 0;
 	b[RB_DEL].label = "Delete";
@@ -846,8 +896,14 @@ static void rec_button(int b)
 			rec_start();
 		break;
 	case RB_TRANS:
-		if (*model && nfile > 0 && kid < 0)
-			transcribe();
+		if (kid >= 0)
+			break;
+		if (*model) {
+			if (nfile > 0)
+				transcribe();
+		} else {
+			get_model();
+		}
 		break;
 	case RB_PLAY:
 		if (nfile > 0 && kid < 0)
@@ -1279,6 +1335,19 @@ int rec_main(int argc, char **argv)
 						 "the recorder stopped");
 			}
 		}
+		/*
+		 * AND THE MODEL IS LOOKED FOR AGAIN WHILE THERE IS NONE.
+		 * `Get model` starts a download in a terminal this window
+		 * does not wait for, so the file appears while this loop is
+		 * running — and a button that stayed `Get model` after the
+		 * model landed would have somebody download it twice.
+		 *
+		 * ONLY WHILE THERE IS NONE, which is what keeps it free: once
+		 * a model is found this never runs again, so the readdir is
+		 * not a per-frame cost on the machines that have one.
+		 */
+		if (!*model)
+			find_model();
 		draw();
 
 		KtuiEvent ev;

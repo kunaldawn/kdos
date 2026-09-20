@@ -820,6 +820,31 @@ enum {
 	 */
 	KCON_OP_ACTION,
 
+	/*
+	 * WHAT A PRESS WHERE THE POINTER IS WOULD DO — one u8, a KT_PTR_*.
+	 *
+	 * SESSION TO VIEW, and it travels for the same reason KCON_OP_CURSOR
+	 * does: the view draws the pointer and the session is the only end
+	 * that knows what is under it. A view holds no window state, so it
+	 * cannot tell a border from a box-drawing character.
+	 *
+	 * ONLY WHEN IT CHANGES, which is most of why it is an op of its own
+	 * rather than a field on a commit: a pointer crossing a window spends
+	 * hundreds of frames over the same thing, and the shape is news on
+	 * perhaps three of them.
+	 *
+	 * A VIEW MAY IGNORE IT ENTIRELY. Only a backend with a framebuffer
+	 * draws a shape; a `--tty` view, a dump and a view over `ssh` reverse
+	 * the cell under the pointer whatever this says. Nothing about the
+	 * CELLS depends on it, so two views of one session showing different
+	 * pointers is the expected state and not a disagreement.
+	 *
+	 * AND A VALUE THE VIEW DOES NOT KNOW IS THE ARROW. This op is the one
+	 * place a number crosses that a newer session may have more of than
+	 * an older view, and a view that refused would draw nothing at all.
+	 */
+	KCON_OP_PTRSHAPE,
+
 	KCON_OP_N
 };
 
@@ -1547,6 +1572,11 @@ int kcon_view_ready(const KconSurface *v);
  * picture the view has not been given, and a skipped frame skips it too.
  */
 void kcon_view_cursor(KconSurface *v, int x, int y);
+/*
+ * WHAT A PRESS WHERE THE POINTER IS WOULD DO — a KT_PTR_*, sent on to this
+ * view when it CHANGES. See KCON_OP_PTRSHAPE.
+ */
+void kcon_view_pointer_shape(KconSurface *v, int shape);
 
 /* Ask a view to power its screen down (1) or back up (0). */
 void kcon_view_blank(KconSurface *v, int on);

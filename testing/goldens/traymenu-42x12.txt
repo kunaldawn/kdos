@@ -2,8 +2,8 @@
 |   Open Web GUI                         |
 |   Folders                            > |
 |----------------------------------------|
-|   Pause                                |
-|   Quit                                 |
+|   Pause                 Ctrl+Shift+P   |
+|   Quit                        Ctrl+Q   |
 |                                        |
 |                                        |
 |                                        |

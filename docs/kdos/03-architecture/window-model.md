@@ -292,9 +292,11 @@ the scratchpad because its own chord shows and hides it through the same flag, s
 window two mechanisms disagreed about. There are no **tile groups**: `tiled` is a per-window bitmask
 resolved against the work area and never against a neighbour, and the arrangements clear it
 afterwards precisely so that an arrangement is not a state, so a group of windows that move and size
-together would reuse none of this. And a tab cannot be dragged **along** its strip: the drag is a
-translation with a drop test at the end of it, not a position within a run. Both are in
-[Known gaps](../06-reference/known-gaps.md).
+together would reuse none of this — see
+[Decisions](../01-philosophy/decisions.md#narrowings). A tab **is** dragged along its strip, which
+is a position within a run rather than a translation with a drop test, and it is the one pointer
+gesture on a window that is not either of those: see
+[kdos-con](../04-programs/kdos-con.md#tabbed-windows).
 
 ## The edge search is one question
 

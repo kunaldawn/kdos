@@ -5496,6 +5496,8 @@ int kdos_main(int argc, char **argv)
 		return kdt_places(argc - 2, argv + 2);
 	if (!strcmp(cmd, "thumb"))
 		return kdt_thumb(argc - 2, argv + 2);
+	if (!strcmp(cmd, "speech"))
+		return kdt_speech(argc - 2, argv + 2);
 	if (!strcmp(cmd, "con"))
 		return cmd_con(argc - 2, argv + 2);
 	if (!strcmp(cmd, "settings"))

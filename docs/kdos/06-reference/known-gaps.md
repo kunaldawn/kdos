@@ -13,8 +13,8 @@ Where something is deliberately absent rather than merely missing, the reason is
 
 **Drag and drop carries text and files, and nothing else.** `text/plain` and `text/uri-list` are
 offered and accepted; there is no MIME negotiation, no deferred transfer and no image payload.
-Only the trash accepts a drop on the desktop — dropping onto a folder would be a move, and a move
-that half-succeeds across filesystems is worse than not offering it. Both directions work between
+Only the trash accepts a drop on the desktop, which is a narrowing rather than a gap — see
+[Decisions](../01-philosophy/decisions.md#narrowings). Both directions work between
 a KDOS surface and a boxed application under `kdos-comp`; on the console the session carries a drag
 between its own windows and across the cage boundary in both directions, which is built and
 unphotographed — see below. See [Status](status.md) for what that rests on.
@@ -25,21 +25,24 @@ picture off it — the bar says what is being carried instead. A target does not
 the session sends `ENTER` and `LEAVE`, and `kdos-desk` keeps them rather than drawing on them,
 which is what `libkwl` does with the compositor's own.
 
-**The pointer does not change shape, and it steps a cell at a time.** On a screen of its own it is
-an arrow in pixels and everywhere else it is the cell under it reversed, but it is one picture
-either way: there is no resize double-arrow, no I-beam and no busy pointer, and the window says
-what a press would arm instead — see the pointer contract in
-[design-language](../03-architecture/design-language.md). It also moves in whole cells, because
-`libkkms` reports a cooked motion only when the cell changes and that event is what moves the
-drawn pointer; the pixel and the delta beside it go to an embedded guest, which is the one thing
-aimed more finely than a cell.
+**The pointer changes shape only where the session knows what is under it, and only on a view with
+pixels.** Seven shapes are drawn on a screen of its own — resize arrows for every edge and corner,
+a move handle on a title row, an I-beam over a terminal's content — and everywhere else the
+pointer is the cell under it reversed, whatever the shape says. **There is no busy pointer**:
+nothing here tracks a window as not-answering in a way a pointer could report. **An I-beam over a text
+field in a SURFACE is the one that is missing**: a surface is another process's cells and the
+session cannot tell a text field from a list row, so the shape there would be a guess, and a guess
+is worse than an arrow because an I-beam that is wrong says a press will do something it will not.
+Nothing may therefore say what a control does through the pointer alone — see the pointer contract
+in [design-language](../03-architecture/design-language.md).
 
-**The console pointer is composited, not a hardware cursor plane.** `libkkms` draws the arrow into
-the same framebuffer as the cells, so moving it costs the rows it covers and the rows it left.
-`drmModeSetCursor2` on a plane would cost nothing per move and `kkms_drm_fd()` is public, but a
-plane has its own size limits, its own format and a per-driver set of refusals, and the
-transfer-model drivers the console runs on in a virtual machine have no usable plane at all — so
-there would still have to be the composited path underneath it.
+**The pointer also moves in whole cells.** `libkkms` reports a cooked motion only when the cell
+changes and that event is what moves the drawn pointer; the pixel and the delta beside it go to an
+embedded guest, which is the one thing aimed more finely than a cell.
+
+**And no shape has been photographed.** The mapping is asserted at ten places on one window by the
+self-test, which reads the shape the session decided; the masks themselves are drawn by `libkkms`
+into a real framebuffer, and the rig's virtual display does not run that backend.
 
 **No multi-seat.** `seat0` only. The session and view split makes a second seat
 reachable — a second session with a second view — and nothing implements it, so
@@ -63,18 +66,6 @@ session's, and is off by default because old output that is not marked reads as 
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
 scale is not negotiated.
 
-**One font for every output, size and face alike — everywhere but a terminal window.** The font
-every KDOS surface draws with is a single setting, so it is right on a machine with one screen and
-wrong on two of different densities. The console's font chords step every view that has a screen of
-its own and the font picker sets the face on all of them, which keeps the two screens agreeing
-rather than letting each be right: a per-output font is a different design, not a missing call. The
-one window with a size of its own is `kdos-term` under `kdos-comp`, and only because it is one
-process per window and the face is a process-global: `Ctrl+=`, `Ctrl+-` and `Ctrl+0` move that
-process and nothing else. The same chords in a console window have nowhere to go — the cell there
-is the view's — and say so. The picker also shows one list where two displays are attached — the
-FIRST to answer — because two lists would be one question with two answers and nothing to say
-which screen a person meant.
-
 **No console font is loadable from `/usr/share/consolefonts`.** Every one of those is a PSF, and
 the cell painter loads a face through fontconfig, which cannot scan a PSF at all: FreeType has no
 driver for the format. The console draws in a fontconfig face like every other surface, and the
@@ -82,24 +73,23 @@ picker lists what fontconfig offers. The shipped PCF bitmap faces are also invis
 `70-no-bitmaps-except-emoji` rule rejects them and the rescue rule names `Terminus` where the files
 report `xos4 Terminus` — so what is listed is the scalable monospaced families.
 
-**A tray menu carries no icons and no shortcuts, and does not update while it is open.** The rows,
-their submenus and their toggles are drawn; `icon-name` is a theme lookup and `icon-data` a PNG, on
-a character grid, and `shortcut` is the application's own chord and not this desktop's to press.
-The tree is read when the menu opens and `LayoutUpdated` is not watched — a menu whose rows move
-under the hand activates the wrong row. An item that publishes no menu path is sent `ContextMenu`
-and opens whatever window it has of its own.
+**A tray menu does not update while it is open.** The tree is read when the menu opens and
+`LayoutUpdated` is not watched, which is a narrowing rather than a gap: a menu whose rows move
+under the hand activates the wrong row. `AboutToShow` is sent first and its answer is the one
+update taken. The rows, their submenus, their toggles, their icons and their chords are all drawn
+— see [kdos-shell](../04-programs/kdos-shell.md). An item that publishes no menu path is sent
+`ContextMenu` and opens whatever window it has of its own.
 
 **Workspace occupancy is derived, not reported.** The protocol has active, urgent and hidden but
 no "there are windows here", so the panel marks a workspace occupied when a window on it is not
 minimised. That is right for every workspace you have visited and silent about the rest.
 
-**Screen layout is an order, not a geometry.** Screens are placed edge to edge from the left in
-list order; a vertical arrangement, an overlap or a deliberate gap cannot be expressed. That is a
-deliberate narrowing — what people usually want is an order.
-
-**The file dialog opens centred.** The portal's parent-window hint is ignored, because positioning
-a dialog over the window that asked for it needs cross-process window referencing that is not
-wired up.
+**A file dialog opened for a CONSOLE cage's guest is centred.** Under `kdos-comp` the portal's
+`parent_window` reaches the chooser: the handle is imported through `xdg-foreign` and the
+compositor centres the dialog on the window that asked for it. A guest under `kdos-cage` exports
+its handle from the cage's own compositor, which is not the one the chooser connects to, so that
+handle resolves to nothing and the dialog is centred on the screen. An `x11:` handle is dropped
+for the same reason it always was: there is no X server here.
 
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
@@ -108,13 +98,6 @@ not have. Configuration is text files.
 `input-method-v2` to the compositor; there is no compositor on that path. The candidate *window* is
 drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
 not running.
-
-**A typed command in the run box is treated as a graphical application on the console.** Every
-non-terminal program the session is handed goes into a cage, and a run box cannot know whether what
-somebody typed draws pixels or cells: `kdos-res` typed there costs a kiosk compositor that the same
-application started from the Start menu does not, because the entry carries `X-KDOS-Cells` and a
-typed line carries nothing. A second guess — resolving the first word back to a desktop entry —
-would make the run box behave differently from the terminal it otherwise resembles.
 
 **A terminal framed by the session loses its prompt marks.** `kdos-term` draws the `OSC 133` dots on
 the one column that is its own — the left border of the box it draws when nothing else drew one —
@@ -219,45 +202,11 @@ carrying `kdos-cage` and a machine with real terminals. What exists is the mecha
 reasoning behind its ordering; what is missing is the evidence that a guest ever appeared on a
 screen that way.
 
-**A touch screen points at an embedded application a cell at a time.** A view with a real pointer
-or keyboard carries the raw device stream beside the cell one, so a guest is aimed in pixels and
-typed at through the person's own layout; a touch event is synthesised from the gesture recogniser
-and has no raw partner, so it arrives at the grid's resolution. A finger is wider than a cell, which
-is why this has not been worth a second synthesis path.
-
-**The console's tabbed windows stack and do not tile.** `Super+Shift+s` folds one window into
-another as a tab and that is the whole of it: there are no **tile groups** — two windows put side
-by side that move, size and minimise together — because nothing in the window model can hold one.
-`tiled` is a per-window bitmask resolved against the work area and never against a neighbour, and
-the arrangements clear it afterwards precisely so that an arrangement is not a state, so a group
-would reuse none of the machinery a stack reuses and is a much larger change.
-
-**A tab cannot be dragged along its own strip.** A drag is a translation with a drop test at the
-end of it, not a position within a run, so the two chords are what carry a tab: `Super+Alt+]` and
-`Super+Alt+[`. See [kdos-con](../04-programs/kdos-con.md#tabbed-windows).
-
-**A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
-code by design, so a terminal window it opens itself shows the fallback shade where a picture is.
-`kdos-term` is the terminal that joins the parser to the decoder, and it is a surface like any
-other — so a picture on the console desktop means opening one of those. A `--tty` view running
-inside one of the session's own terminal windows detects this and stays on characters: that window
-answers the device-attributes probe claiming sixel and then reports no picture geometry, and it is
-the second answer that decides.
-
 **Nothing reads the GRAPHICAL desktop.** The console session is read by `kdos-a11y` over its third
 socket, because it holds the literal text of every cell and every widget announces itself.
 `kdos-comp` draws pixels and has no such buffer, so a reader there would need the tree of accessible
 objects this project does not build. What exists for a boxed application is that box's own registry,
 opted into with `~/.config/kdos/a11y`.
-
-**Braille is the `brltty` route and not a library this tree links.** `a11y = yes` keeps the kernel's
-text plane so `brltty` reads it over `/dev/vcsa`; BrlAPI is not linked by anything here, and a
-display driven that way is driven by `brltty` rather than by the desktop.
-
-**A recording is not an asciicast, and there is no player port.** `kdos con record` writes the
-session's own messages — cell frames, sprites, window chrome — so no asciinema player will open one,
-and a view that draws cells is already the player. An `asciinema` port to replay a format this tree
-writes would be weight with no user on it.
 
 **A terminal view's cell size is a guess unless the terminal names one.** `kdos-view --tty` asks
 `CSI 16t`, which `kdos-term` answers and most terminals do not; without an answer it uses 8x16 and
@@ -267,16 +216,6 @@ scale, which does not look like a probe failure.
 **The last grid row of a terminal view is never pixels.** A picture at the bottom margin scrolls the
 host terminal in every protocol, and a scroll invalidates the frame diff with nothing able to detect
 it, so those cells keep the fallback mark.
-
-**No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
-the catalogue emits either. The three raster protocols are what a modern program reaches for.
-
-**A console screen can be given a mode but not turned off, scaled or rotated.** The session lights
-every connected connector into one grid, and `kdos-display` lists them and sets a mode on one; the
-other three verbs are Wayland's, because a text grid has no scale factor, a rotation would give the
-cells a different shape on one screen than on the next, and a dark connector would leave a hole in
-the middle of a grid that windows are already placed across. The buttons for them are drawn
-disabled on the console rather than hidden, so the surface is the same surface in both sessions.
 
 **Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off.** They are
 private-use codepoints and the console font is 512 glyphs, which is a kernel limit: a glyph the font
@@ -312,34 +251,9 @@ built before that row reports no hardware decoder and decodes every frame on the
 notification that a row moved — the catalogue has no version per row, so an image is current by
 definition until somebody removes it.
 
-**Applications that need raw block devices are not in the catalogue** and get no launcher —
-partitioners, drive-health tools, recovery tools. A rootless container cannot do anything useful
-with them, and a launcher that opens onto a permission error teaches somebody that the machine is
-broken. Those jobs are native tools on the host, which is where privilege is.
-
-**Applications requiring a specific compositor's private protocols are out.** One catalogue
-screenshot tool asks a particular compositor's interface and opens an error dialog on any other.
-Screenshots are the host's own tool.
-
-**No fonts that must be downloaded.** A Windows program wanting a specific proprietary font gets a
-substitute, because fetching them happens at run time over the network and nothing in the image may
-depend on that.
-
 **X11 clients get no OpenGL.** The X server is built without the GL extension, because the graphics
 stack is built without X11 platform support. Enabling it means rebuilding the graphics stack and
 adding several X libraries. Wayland-native applications are unaffected.
-
-**The initramfs must carry util-linux's `switch_root` and not toybox's, and the difference is
-every container on the machine.** toybox's applet chroot()s into the new root and never moves that
-root onto the root of the mount namespace, so every process on the booted system is chrooted for
-ever — and `create_user_ns()` refuses a chrooted caller outright. The symptom is `EPERM` from
-`CLONE_NEWUSER` for uid 0 with the full capability set as readily as for anybody, on a kernel
-reporting `CONFIG_USER_NS=y`, 15440 namespaces available, no LSM, no seccomp filter, no lockdown
-and nothing on the command line; `/proc/self/mountinfo` gives it away, with the root mount present
-on the right device and a **parent id that is not in the table**. toybox owns the name
-`/usr/sbin/switch_root` on the finished image and is installed after util-linux, so the copy has to
-name util-linux's own file, and the packaging step refuses to build an initramfs whose
-`switch_root` is toybox's.
 
 **A live session cannot create a persistent box.** The home directory is on the boot overlay, and
 the kernel refuses to stack a container's writable layer on an overlay. A pack is mounted from the
@@ -350,19 +264,16 @@ rather than as a failure.
 constrains what an application can do to the **desktop**, not to your data. See
 [The security model](../03-architecture/security-model.md#what-is-not-protected).
 
-**An invitation in a message is read, never answered.** `aerc`'s calendar filter prints the event —
-summary, times, location, who was asked — and writes nothing anywhere. There is no verb that accepts
-or declines one, because a filter runs every time a message scrolls past and one that imported would
-accept every meeting it was scrolled over, and nothing on this image sends a reply to an organiser.
-**Filing one is now manual and it works**: `:save` the part out of the message and `khal import` it,
-and the day carries a mark in the panel's calendar. No `text/calendar` handler is registered for the
-same reason the filter writes nothing — opening a file would file it.
-
-**Nothing on this image has a clipboard a Rust program can reach.** `iamb` and `atuin` both offer
-one through `arboard`, which speaks the X11 protocol in pure Rust — it links no C library, so it
-costs nothing to carry — but there is no X server here and the Wayland path is not compiled into it,
-so a yank inside such a program has nowhere to go. The desktop's own clipboard is `kdos-clip`, and
-`kdos-term` puts a selection there.
+**A Rust program's clipboard reaches `kdos-comp` and not the console session.** `iamb` and `atuin`
+both offer one through `arboard`, and both ask it for `wayland-data-control` on Linux — which is
+wl-clipboard-rs speaking `zwlr_data_control_v1`, in pure Rust, so the binaries stay static-pie with
+no `NEEDED` at all. `kdos-comp` creates both data-control managers, so a yank under that session
+reaches `kdos-clip`. Measured on both built binaries: 214 `zwlr_data_control` symbols each and no
+`NEEDED` entry at all. **Under the console session there is no Wayland socket**: arboard falls
+back to its X11 path, there is no X server on this image, and a yank has nowhere to go —
+`kdos-term`'s own selection is the answer there. **And no yank has been photographed reaching
+`kdos-clip`**: what is measured is the path in the binary and the manager in the compositor, not
+the two meeting.
 
 **A video call has never been placed.** `baresip` is the SIP phone here and its interface is a
 terminal menu; the far end's picture goes in an `sdl.so` window, and sending your own means turning
@@ -419,11 +330,12 @@ covers a great deal — but nothing here is tested against a wide device matrix.
 **Much of `kdos doctor` cannot answer in a virtual machine**, which is why it has a *skip with a
 reason* level rather than reporting those as passing.
 
-**No speech model ships and the desktop cannot fetch one.** `kdos-rec`'s *Transcribe* is therefore
-permanently greyed on a fresh image, and the transcribed text has never been read back on this
-tree: the model gate, the `whisper-cli` argv, the spawn and the exit status are what is verified.
-The way in is upstream's `models/download-ggml-model.sh` writing to
-`~/.local/share/whisper.cpp/models`.
+**No speech model ships, and the transcribed text has never been read back on this tree.** What is
+verified is the model gate, the `whisper-cli` argv, the spawn and the exit status. A model is
+fetched rather than packaged — `kdos speech get` names one out of a table, checks its sha256 and
+writes it to `~/.local/share/whisper.cpp/models`, and `kdos-rec`'s third button is *Get model*
+until one is there — so what is missing is a machine with a model on it and somebody reading the
+result, not a way in.
 
 **Live transcription is a terminal program and not a desktop verb.** `whisper-stream` is built and
 transcribes a microphone, and nothing on either desktop starts it: `kdos-rec`'s *Transcribe* is
@@ -442,27 +354,21 @@ unsigned pack mounts while a failed signature does not, and there is no automati
 
 ## Build and packaging
 
-**A/B slots and encryption are not wired together.** Slot selection yields a filesystem identifier,
-and an encrypted slot's filesystem lives inside a container — combining them needs a per-slot
-container identifier on the kernel command line.
-
 **Filling the second root slot is an updater's job**, and there is no updater. What exists is the
-complete state machine: the installer writes the initial state, the initramfs counts attempts, and
-a boot that reaches the end of initialisation confirms the slot.
+complete state machine: the installer writes the initial state and each slot's LUKS container,
+the initramfs selects a slot, unlocks that slot's container and counts attempts, and a boot that
+reaches the end of initialisation confirms the slot. **So a second ENCRYPTED slot has never been
+booted** — nothing fills one. What is measured is on the host: `select` rolling from B back to A
+hands back A's container and not B's, which is the failure the mechanism exists to prevent.
 
 **There is no public binary host.** The mechanism is complete — a signed index, three equality
 tests, deltas — but it is one you run yourself.
 
-**Editing a library rebuilds every port of ours**, not only its consumers, because a recipe names
-which libraries it compiles and parsing that would be a shell parser inside the package manager.
-
-**Vendoring for one language is declared by no port**, though the fetch mechanism supports it.
+**No port declares `vendoring = node`**, though `ports/fetch` implements it beside the three that
+are used — 57 recipes declare `rust`, 32 `go` and 25 `python`. The npm path has never been run, so
+what stands behind it is the code and not a tarball it produced.
 
 ## Testing
-
-**The memory-pressure daemon has never fired for real.** Its victim selection is exercised against
-recorded system state; a genuine stall on a machine under real memory pressure is the test that
-matters and has not been run.
 
 **The compositor and the shell are not compiled by the self-test on a bare host**, because their
 Wayland dependencies are not there. Those blocks report as skipped on most machines.

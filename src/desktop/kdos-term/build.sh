@@ -47,6 +47,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
 	xdg-decoration-unstable-v1-protocol.c
+# xdg-foreign: libkwl includes its header unconditionally, for kdos-pick's
+# one use of it — a dialog saying whose child it is, across processes. Any
+# port that links libkwl must generate it or the build stops at the include,
+# which is the lesson ext-session-lock already taught this file.
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \

@@ -420,6 +420,20 @@ unlock_root() {
 # Failing to read it is not fatal: \`root=\` on the command line is what a machine
 # without A/B uses anyway, and it stays the fallback.
 #
+# AND THE SLOT'S OWN CONTAINER COMES WITH IT. \`select\` yields a FILESYSTEM
+# identifier; on an encrypted machine that filesystem is inside a LUKS
+# container, and the command line can name exactly one \`cryptdevice=\`. Two
+# slots inside two containers cannot both be named there, so each slot records
+# its own and \`crypt\` is asked for the one that belongs to the filesystem
+# \`select\` just chose. A slot that names none leaves \`CRYPTDEV\` exactly as the
+# command line set it, which is every machine installed without encryption and
+# every machine whose two slots share one container.
+#
+# THE ORDER IS LOAD-BEARING: this block runs BEFORE the unlock below, because
+# the unlock is what has to happen to the container this block names. Moving
+# the unlock above it would unlock whichever container the command line
+# mentions and then look for the other slot's filesystem inside it.
+#
 if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
     sp_total 1
     sp_step "BOOT SLOT"
@@ -434,6 +448,15 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
     if [ -n "\$ESP_DEV" ] && mount -t vfat "\$ESP_DEV" /esp 2>/dev/null; then
         SEL=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
                /bin/kdos-bootctl select 2>/dev/console)
+        # BOTH READS HAPPEN WHILE IT IS MOUNTED. \`crypt\` reads the same file
+        # \`select\` just wrote, so asking after the umount below reads nothing
+        # and silently drops the container — an encrypted second slot would
+        # then be unlocked with the first slot's container and fail to mount,
+        # which reads as a corrupt filesystem rather than as a missing lookup.
+        # It spends no attempt: \`select\` is the only verb that counts.
+        SLOT_CRYPT=""
+        [ -n "\$SEL" ] && SLOT_CRYPT=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
+               /bin/kdos-bootctl crypt "\$SEL" 2>/dev/null)
         # Unmounted immediately: the root filesystem mounts it again at
         # /boot/efi, and two mounts of one FAT filesystem is how a state file
         # gets written twice and read once.
@@ -441,6 +464,15 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
         if [ -n "\$SEL" ]; then
             echo "Boot slot selected: \$SEL"
             ROOT_UUID="\$SEL"
+            if [ -n "\$SLOT_CRYPT" ]; then
+                # The mapper name is this initramfs's own and not the state
+                # file's: only one container is ever open at a time here, so
+                # there is nothing for a per-slot name to disambiguate, and a
+                # name read out of a file on the ESP is a name somebody can
+                # edit into a path.
+                CRYPTDEV="UUID=\$SLOT_CRYPT:kdosroot"
+                echo "Slot container: \$SLOT_CRYPT"
+            fi
             sp_ok
         else
             echo "No usable boot state; keeping root=\$ROOT_UUID"

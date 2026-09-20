@@ -152,6 +152,13 @@ int kicon_slot_for_path(const char *p, int d, int cw, int ch)
 	(void)p; (void)d; (void)cw; (void)ch;
 	return -1;
 }
+/* A tray item's own `icon-data`, which is a PNG on the bus rather than a
+ * theme name — and this harness decodes nothing, for the reason above. */
+int kicon_slot_png(const void *png, size_t len, int cw, int ch)
+{
+	(void)png; (void)len; (void)cw; (void)ch;
+	return -1;
+}
 const char *kicon_app_icon(const char *id) { (void)id; return NULL; }
 void kicon_retint(void) {}
 int kicon_cached(void) { return 0; }

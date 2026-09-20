@@ -32,9 +32,14 @@
  *     application blocked forever with a half-drawn window. This is the same
  *     lesson as the ScreenCast zero-streams trap already recorded in
  *     CLAUDE.md, arriving on a different interface.
- *   - `parent_window` IS IGNORED, and that is written down rather than hidden.
- *     KDOS has no xdg-foreign, so there is no way to position a dialog over the
- *     window that asked for it. It opens centred.
+ *   - `parent_window` IS PASSED ON AND NEVER PARSED FURTHER. The string an
+ *     application sends is `wayland:<xdg-foreign handle>`; this strips the
+ *     scheme and hands the handle to `kdos-pick --parent`, which imports it
+ *     and tells the compositor whose child the dialog is. A CLIENT CANNOT
+ *     PLACE ITS OWN TOPLEVEL, so this is the only route there is: the
+ *     compositor centres a child on its parent. An `x11:` handle is dropped —
+ *     there is no X server here — and so is anything with no scheme, because
+ *     a bare string is not a handle this desktop minted.
  *   - THE CHOOSER IS EXEC'D WITH argv, never a command string. Filter patterns
  *     and file names arrive from other applications over a bus.
  * ---------------------------------
@@ -411,6 +416,24 @@ out:
 	return r;
 }
 
+/*
+ * THE xdg-foreign HANDLE INSIDE A `parent_window`, or NULL.
+ *
+ * The portal spec makes this an opaque string with a scheme: `wayland:<h>`
+ * for a Wayland toplevel that exported itself, `x11:<xid>` for an X window,
+ * and an empty string for "no parent". Only the first is usable here, and an
+ * unrecognised one is NOT an error — a dialog with no parent is centred,
+ * which is what every dialog did before there was a parent at all.
+ */
+static const char *wayland_handle(const char *parent)
+{
+	static const char pfx[] = "wayland:";
+
+	if (!parent || strncmp(parent, pfx, sizeof(pfx) - 1))
+		return NULL;
+	return parent[sizeof(pfx) - 1] ? parent + sizeof(pfx) - 1 : NULL;
+}
+
 static int file_chooser(sd_bus_message *m, void *userdata, sd_bus_error *err,
 			bool save)
 {
@@ -429,6 +452,22 @@ static int file_chooser(sd_bus_message *m, void *userdata, sd_bus_error *err,
 	argv[n++] = "kdos-pick";
 	argv[n++] = "--title";
 	argv[n++] = (title && *title) ? title : (save ? "Save File" : "Open File");
+	/*
+	 * WHOSE CHILD THE DIALOG IS. `parent` points into the bus message,
+	 * which outlives this call — start_picker() execs before the message
+	 * is unreferenced — so the handle is passed by pointer rather than
+	 * copied.
+	 *
+	 * THE SCHEME IS CHECKED AND THE REST IS NOT. `wayland:` is the one
+	 * this desktop can use; the handle behind it is a token the
+	 * compositor minted and this has no business looking inside it.
+	 */
+	const char *handle = wayland_handle(parent);
+
+	if (handle) {
+		argv[n++] = "--parent";
+		argv[n++] = handle;
+	}
 	if (save)
 		argv[n++] = "--save";
 	if (o.directory)

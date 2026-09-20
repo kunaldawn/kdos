@@ -136,6 +136,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos trash` | The freedesktop trash |
 | `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |
 | `kdos thumb <file>` | A thumbnail in the shared freedesktop cache — also `--path` and `--ppm` | [kdos-command](../04-programs/kdos-command.md#thumb) |
+| `kdos speech list\|get NAME\|where\|remove NAME` | The transcription model, which the image does not carry. `get` checks a sha256 and writes to `$XDG_DATA_HOME/whisper.cpp/models`, where `kdos-rec` looks | [configuration](configuration.md) |
 | `kdos share [--clipboard] [FILE…]` | The same program as `kdos-share`, under the spelling a person types | [kdos-command](../04-programs/kdos-command.md#share) |
 | `kdos remind in 20m\|at 15:30\|tomorrow 9 TEXT` | A toast, later — a row in J.13's per-user table, delivered **once**. Also `ls`, `clear`, `--ask` (the one-row prompt a chord opens) and `fire ID` (what the timer runs) | [kdos-command](../04-programs/kdos-command.md#remind) |
 | `kdos notify <summary> [body]` | Raise a toast. `--time` and `--battery` compute their own; `--dismiss`, `--dismiss-all`, `--raise` and `--dnd` are one line down `kdos-notifyd`'s socket | [kdos-command](../04-programs/kdos-command.md#notify) |

@@ -229,8 +229,17 @@ most one kill per ten seconds.
 
 `--fixture <dir>` prints who **would** be killed and signals nobody.
 
-**It has never fired for real.** A genuine pressure stall is the test that matters and has not been
-run.
+**It has fired for real, and `testing/oomd-fire.sh` is how.** The script touches memory in a
+booted virtual machine until the trigger goes off, and asks the socket what happened rather than
+watching the hog die — a hog that merely died proves nothing, because the kernel's own killer
+would also have got it, later and after the desktop had stopped answering. Measured on a 4 GB
+guest with zram swap: `full` pressure reached 158 ms of stall in the window against a trigger of
+150 ms, `status` went from `kills 0` to `kills 1, last: python3 (pid 1615, 3644 MB)`, and the
+script that started the hog kept running.
+
+**What is still untested is a kill that is WRONG.** The victim above was the only large process on
+a machine with nothing else on it; a desktop under real pressure with a browser, a slicer and a
+session to choose between is the case `--fixture` reasons about and no run has arbitrated.
 
 ## kdos-mountd
 

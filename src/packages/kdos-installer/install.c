@@ -1510,6 +1510,10 @@ static void do_boot(void)
 {
 	char root_uuid[64] = "", esp_uuid[64] = "";
 	char crypt_opt[128] = "", slot_opt[128] = "";
+	/* The CONTAINER this slot's filesystem lives inside, recorded in the
+	 * boot state beside the filesystem. Empty on an unencrypted install.
+	 * See the bootstate write below. */
+	char luks_uuid[64] = "";
 	Part p;
 
 	resolve_parts();
@@ -1533,9 +1537,11 @@ static void do_boot(void)
 	if (cfg.luks && luks_part[0]) {
 		Part lp;
 		probe_part(luks_part, &lp);
-		if (lp.uuid[0])
+		if (lp.uuid[0]) {
 			snprintf(crypt_opt, sizeof(crypt_opt),
 				 "cryptdevice=UUID=%s:%s ", lp.uuid, LUKS_NAME);
+			kb_strlcpy(luks_uuid, lp.uuid, sizeof(luks_uuid));
+		}
 		else if (!cfg.dry_run)
 			fail("cannot read the LUKS UUID back from %s",
 			     luks_part);
@@ -1718,8 +1724,14 @@ static void do_boot(void)
 	 *
 	 * Written straight rather than through kdos-bootctl: this runs from the
 	 * live image against a target at /mnt, and the tool's default path is
-	 * the RUNNING system's ESP. One file, four lines, and the format is in
-	 * bootctl.c.
+	 * the RUNNING system's ESP. One file, and the format is in bootctl.c.
+	 *
+	 * `crypt_a` IS WHAT JOINS THE TWO MECHANISMS. `slot_a` is the
+	 * FILESYSTEM and `crypt_a` is the container it is inside; the command
+	 * line can name only one `cryptdevice=`, so a second slot inside a
+	 * second container is only reachable because each slot records its
+	 * own and the initramfs asks after it has chosen. Empty here on an
+	 * unencrypted install, which is the fallback to the command line.
 	 */
 	if (esp_uuid[0]) {
 		mkpath(TARGET "/boot/efi/EFI/kdos");
@@ -1728,10 +1740,12 @@ static void do_boot(void)
 		   "# kdos-bootctl.\n"
 		   "slot_a   = %s\n"
 		   "slot_b   = \n"
+		   "crypt_a  = %s\n"
+		   "crypt_b  = \n"
 		   "active   = a\n"
 		   "try      = \n"
 		   "attempts = 0\n",
-		   root_uuid);
+		   root_uuid, luks_uuid);
 	}
 
 	/*

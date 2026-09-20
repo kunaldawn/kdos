@@ -1615,6 +1615,61 @@ void win_stack_move(Win *w, int dir)
 	ktui_draw_invalidate();
 }
 
+/*
+ * PUT THIS TAB AT SLOT `to`, SHIFTING THE REST — the drag's verb, where
+ * win_stack_move() is the chord's.
+ *
+ * AN INSERT AND NOT A SWAP, which is the one thing that separates the two. A
+ * chord steps one place and a swap is indistinguishable from an insert over a
+ * single step; a hand dragging a tab past three others would have it trade
+ * places with the one under it and leave the two it crossed behind, so the
+ * strip under the hand would stop matching the hand.
+ *
+ * AND IT IS `w` THAT MOVES, NOT THE LIVE TAB. win_stack_move() moves whatever
+ * is on screen because a chord names no tab; a drag names the one under the
+ * pointer, and moving a different one would be the strip reordering itself
+ * somewhere other than where the hand is.
+ *
+ * Answers whether anything moved, so a caller can tell a drag that travelled
+ * from a press that did not.
+ */
+int win_stack_move_to(Win *w, int to)
+{
+	Win *set[STACK_MAX], *moved;
+	int n, cur = -1;
+
+	if (!w || !w->stack)
+		return 0;
+	stack_renumber(w);
+	n = stack_set(w, set, STACK_MAX);
+	if (n < 2)
+		return 0;
+	for (int i = 0; i < n; i++)
+		if (set[i] == w)
+			cur = i;
+	if (cur < 0)
+		return 0;
+	if (to < 0)
+		to = 0;
+	if (to >= n)
+		to = n - 1;
+	if (to == cur)
+		return 0;
+
+	moved = set[cur];
+	if (to < cur)
+		memmove(&set[to + 1], &set[to],
+			(size_t)(cur - to) * sizeof(set[0]));
+	else
+		memmove(&set[cur], &set[cur + 1],
+			(size_t)(to - cur) * sizeof(set[0]));
+	set[to] = moved;
+	for (int i = 0; i < n; i++)
+		set[i]->tabpos = i + 1;
+	ktui_draw_invalidate();
+	return 1;
+}
+
 void win_stack_show(Win *m)
 {
 	Win *hd;
@@ -3458,6 +3513,42 @@ Win *win_stack_tab_at(Win *w, int x, int y)
 			return set[i];
 	}
 	return NULL;
+}
+
+/*
+ * WHICH SLOT OF THE STRIP A COLUMN IS OVER, 0-based, or -1 where there is no
+ * strip with targets in it.
+ *
+ * CLAMPED TO THE RUN AND NOT TESTED AGAINST IT, which is what makes it a
+ * DRAG's question rather than a press's. win_stack_tab_at() answers NULL off
+ * the ends because a click there is a click on the frame; a hand dragging a
+ * tab that has run off the left of the strip still means the first slot, and
+ * a drag that answered "nowhere" would drop the tab back where it started.
+ *
+ * THE ROW IS NOT ASKED ABOUT. A drag that has wandered a row off the title
+ * still belongs to the strip it started on — the alternative is a tab that
+ * springs back whenever the hand drifts, which is most hands.
+ */
+int win_stack_slot_at(Win *w, int x)
+{
+	KwmRect f;
+	KRect r;
+	int x0, avail, n;
+
+	if (!w || !win_framed(w) || !w->stack)
+		return -1;
+	f = win_frame(w);
+	r = krect(f.x, f.y, f.w, f.h);
+	if (tabs_run(w, r, &x0, &avail, &n) != 2 || n < 2)
+		return -1;
+	for (int i = 0; i < n; i++) {
+		int tx, tw;
+
+		tab_span(x0, avail, n, i, &tx, &tw);
+		if (x < tx + tw)
+			return i;
+	}
+	return n - 1;
 }
 
 Win *win_stack_drop_at(const Win *w, int x, int y)

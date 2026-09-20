@@ -1594,10 +1594,41 @@ static void kkms_owe(int x, int y, int w, int h)
  * left edge, a 45-degree upper-right edge, and a tail leaving the notch at
  * the bottom.
  */
+/*
+ * THE CANVAS EVERY SHAPE IS MEASURED AGAINST, and the reference the scale is
+ * taken from. A shape may be smaller than this in either direction — the
+ * horizontal double arrow is short and wide where the arrow is tall and
+ * narrow — but all of them are scaled by the same number, so no shape is
+ * suddenly twice the size of the last one when the pointer crosses a border.
+ */
 #define KKMS_PTR_W 11
 #define KKMS_PTR_H 18
 
-static const char ptr_mask[KKMS_PTR_H][KKMS_PTR_W + 1] = {
+/*
+ * ONE TABLE, ONE ENTRY PER KT_PTR_*, IN THAT ORDER. A shape missing from here
+ * is a compile-time hole rather than a blank pointer at run time — see the
+ * static assertion below the table.
+ *
+ * THE HOTSPOT IS PART OF THE SHAPE AND NOT A CONSTANT. An arrow points with
+ * its tip, which is its own corner; a double-headed resize arrow and an
+ * I-beam point with their MIDDLE, because the thing being aimed at is under
+ * the centre of the picture and not off one edge of it. Drawing every shape
+ * from a fixed corner puts the resize arrow half a cell from the border it
+ * belongs to, which is exactly the distance that makes a border feel like it
+ * moves when you reach for it.
+ *
+ * AND THE OUTLINE IS STILL COMPUTED. Every shape here is a body only; the
+ * eight-neighbourhood pass below surrounds whatever is in the table, which is
+ * what keeps a new shape legible over its own colour without anybody drawing
+ * the halo by hand and leaving a gap in it.
+ */
+struct ptr_shape {
+	const char *const *rows;
+	int w, h;		/* the mask's own size, in mask pixels */
+	int hx, hy;		/* where in it the device's pixel is   */
+};
+
+static const char *const ptr_arrow[] = {
 	"X..........",
 	"XX.........",
 	"XXX........",
@@ -1617,6 +1648,125 @@ static const char ptr_mask[KKMS_PTR_H][KKMS_PTR_W + 1] = {
 	"X.....XXX..",
 	".......XXX.",
 };
+
+/* Text. The serifs are what separate it from a plain bar at one scale step,
+ * where a bar reads as a cursor rather than as a pointer. */
+static const char *const ptr_ibeam[] = {
+	"XXXXX",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"..X..",
+	"XXXXX",
+};
+
+static const char *const ptr_ns[] = {
+	"...X...",
+	"..XXX..",
+	".XXXXX.",
+	"XXXXXXX",
+	"...X...",
+	"...X...",
+	"...X...",
+	"...X...",
+	"...X...",
+	"XXXXXXX",
+	".XXXXX.",
+	"..XXX..",
+	"...X...",
+};
+
+static const char *const ptr_we[] = {
+	"...X.......X...",
+	"..XX.......XX..",
+	".XXXXXXXXXXXXX.",
+	"XXXXXXXXXXXXXXX",
+	".XXXXXXXXXXXXX.",
+	"..XX.......XX..",
+	"...X.......X...",
+};
+
+/* The two diagonals. Each is the other mirrored, and they are written out
+ * rather than generated: a mirror at run time is a second code path for a
+ * picture that is nine rows long. */
+static const char *const ptr_nwse[] = {
+	"XXXXXX...",
+	"XXXX.....",
+	"XXXXX....",
+	"XX.XXX...",
+	"X...XXX.X",
+	"....XXXXX",
+	"...XXXXXX",
+	".....XXXX",
+	"...XXXXXX",
+};
+
+static const char *const ptr_nesw[] = {
+	"...XXXXXX",
+	".....XXXX",
+	"...XXXXXX",
+	"....XXXXX",
+	"X...XXX.X",
+	"XX.XXX...",
+	"XXXXX....",
+	"XXXX.....",
+	"XXXXXX...",
+};
+
+/* A handle. Four arms from one centre, which is the one shape that says "this
+ * goes in any direction" without an animation. */
+static const char *const ptr_move[] = {
+	"....X....",
+	"...XXX...",
+	"..XXXXX..",
+	"....X....",
+	".X..X..X.",
+	"XX..X..XX",
+	"XXXXXXXXX",
+	"XX..X..XX",
+	".X..X..X.",
+	"....X....",
+	"..XXXXX..",
+	"...XXX...",
+	"....X....",
+};
+
+#define SHAPE(m, hx, hy) \
+	{ (m), (int)(sizeof((m)[0]) - 1), \
+	  (int)(sizeof(m) / sizeof((m)[0])), (hx), (hy) }
+
+static const struct ptr_shape ptr_shapes[] = {
+	[KT_PTR_ARROW]     = SHAPE(ptr_arrow, 0, 0),
+	[KT_PTR_IBEAM]     = SHAPE(ptr_ibeam, 2, 6),
+	[KT_PTR_SIZE_NS]   = SHAPE(ptr_ns, 3, 6),
+	[KT_PTR_SIZE_WE]   = SHAPE(ptr_we, 7, 3),
+	[KT_PTR_SIZE_NWSE] = SHAPE(ptr_nwse, 4, 4),
+	[KT_PTR_SIZE_NESW] = SHAPE(ptr_nesw, 4, 4),
+	[KT_PTR_MOVE]      = SHAPE(ptr_move, 4, 6),
+};
+
+/* A KT_PTR_* with no row above is a pointer that would draw nothing at all,
+ * and the failure would be a hand over a border with no picture under it —
+ * which reads as the pointer having been lost. */
+_Static_assert(sizeof(ptr_shapes) / sizeof(ptr_shapes[0]) == KT_PTR_N,
+	       "every KT_PTR_* needs a mask");
+
+/* WHICH ONE IS BEING DRAWN, taken from the hook on every flush. */
+static int ptr_cur = KT_PTR_ARROW;
+
+static const struct ptr_shape *ptr_shape(void)
+{
+	return &ptr_shapes[ptr_cur >= 0 && ptr_cur < KT_PTR_N
+				   ? ptr_cur
+				   : KT_PTR_ARROW];
+}
 
 /*
  * WHERE THE ARROW'S TIP IS, IN THE SHARED GRID'S PIXELS, and where each screen
@@ -1652,10 +1802,16 @@ static int ptr_scale(void)
 	return s < 1 ? 1 : s;
 }
 
+/* Forward: the scale is the CANVAS's and not the shape's, so a shape shorter
+ * than the canvas is drawn smaller rather than stretched — which is what
+ * keeps a resize arrow from being taller than the border it sits on. */
+
 static int ptr_body(int x, int y)
 {
-	return x >= 0 && x < KKMS_PTR_W && y >= 0 && y < KKMS_PTR_H &&
-	       ptr_mask[y][x] == 'X';
+	const struct ptr_shape *sh = ptr_shape();
+
+	return x >= 0 && x < sh->w && y >= 0 && y < sh->h &&
+	       sh->rows[y][x] == 'X';
 }
 
 static int ptr_edge(int x, int y)
@@ -1684,13 +1840,17 @@ static int ptr_box(const struct kkms_out *o, int px, int py,
 		   int *x0, int *y0, int *x1, int *y1)
 {
 	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
+	const struct ptr_shape *sh = ptr_shape();
 
 	if (px < 0 || py < 0 || cw < 1 || ch < 1)
 		return 0;
-	*x0 = px - o->col * cw - s;
-	*y0 = py - s;
-	*x1 = *x0 + (KKMS_PTR_W + 2) * s;
-	*y1 = *y0 + (KKMS_PTR_H + 2) * s;
+	/* THE HOTSPOT COMES OFF THE POSITION FIRST, and the outline's one
+	 * scaled pixel off that — so the box is the mask's own footprint
+	 * wherever the shape's aiming point happens to be inside it. */
+	*x0 = px - o->col * cw - sh->hx * s - s;
+	*y0 = py - sh->hy * s - s;
+	*x1 = *x0 + (sh->w + 2) * s;
+	*y1 = *y0 + (sh->h + 2) * s;
 	if (*x0 < 0)
 		*x0 = 0;
 	if (*y0 < 0)
@@ -1748,12 +1908,13 @@ static uint32_t ptr_pixel(int slot)
 static void ptr_draw(struct kkms_out *o, int px, int py)
 {
 	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
-	int ox = px - o->col * cw, oy = py;
+	const struct ptr_shape *sh = ptr_shape();
+	int ox = px - o->col * cw - sh->hx * s, oy = py - sh->hy * s;
 	int maxx = o->cols * cw, maxy = o->rows * ch;
 	uint32_t body = ptr_pixel(KT_TEXT), edge = ptr_pixel(KT_BG);
 
-	for (int my = -1; my <= KKMS_PTR_H; my++) {
-		for (int mx = -1; mx <= KKMS_PTR_W; mx++) {
+	for (int my = -1; my <= sh->h; my++) {
+		for (int mx = -1; mx <= sh->w; mx++) {
 			uint32_t v;
 
 			if (ptr_body(mx, my))
@@ -1793,9 +1954,17 @@ static void ptr_draw(struct kkms_out *o, int px, int py)
  * frame the session is accumulating, and that frame is what comes back when
  * the screen does: the repaint is whole, so the arrow arrives with it.
  */
-static int kkms_pointer(int x, int y)
+static int kkms_pointer(int x, int y, int shape)
 {
 	int cw = kcell_w(), ch = kcell_h();
+
+	/*
+	 * THE SHAPE IS TAKEN EVEN WHEN THE POINTER IS GOING AWAY. It is read
+	 * on the next flush that draws one, and a shape dropped here would
+	 * have the pointer come back as an arrow for one frame wherever it
+	 * had been hidden — which on the console is every frame a menu opens.
+	 */
+	ptr_cur = shape;
 
 	if (x < 0 || y < 0 || cw < 1 || ch < 1) {
 		ptr_x = ptr_y = -1;

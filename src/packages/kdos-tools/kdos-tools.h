@@ -162,6 +162,12 @@ int kdt_app(int argc, char **argv);
 int kdt_trash(int argc, char **argv);
 int kdt_places(int argc, char **argv);
 int kdt_thumb(int argc, char **argv);
+/*
+ * `kdos speech` — the transcription model. No speech model ships, so this is
+ * the way one arrives: a named catalogue, a checksummed download into the
+ * user's own data directory, and the directory kdos-rec searches.
+ */
+int kdt_speech(int argc, char **argv);
 
 /* $XDG_CACHE_HOME/<rest>, and the parent of a path. Shared because `kdos
  * theme` and `kdos thumb` write into the same cache root, and two answers to

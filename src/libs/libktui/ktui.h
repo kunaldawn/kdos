@@ -528,8 +528,15 @@ typedef struct {
 	 * does reads its own position rather than these coordinates — what it
 	 * takes from here is that there is a pointer and which cell the session
 	 * believes it is on, which is what says whose it is to draw.
+	 *
+	 * `shape` IS A KT_PTR_* AND A BACKEND MAY IGNORE IT. It says what a
+	 * press would do where the pointer is — a resize, a drag, a text
+	 * caret — and a backend that draws one picture answers the same way
+	 * whatever it is given. Nothing about the CELLS depends on it, which
+	 * is what lets a view that draws a reversed cell and a view that draws
+	 * an arrow show the same session at the same time.
 	 */
-	int (*pointer)(int x, int y);
+	int (*pointer)(int x, int y, int shape);
 	/*
 	 * WHETHER THE LAST FLUSH ACTUALLY REACHED THE SCREEN, or NULL for a
 	 * backend that always presents what it is given.
@@ -670,6 +677,50 @@ void ktui_draw_shadow(KRect r);
 void ktui_draw_bg_take(KRect r, uint32_t *out);
 void ktui_draw_blend(KRect r, const uint32_t *under, int alpha);
 void ktui_draw_cursor(int x, int y);	/* pointer overlay, evdev backend  */
+/*
+ * THE POINTER'S SHAPES.
+ *
+ * THIS LIST IS WHAT THE DESKTOP MEANS AND NOT WHAT A PROTOCOL CARRIES. It is
+ * not `wp_cursor_shape_device_v1`'s enumeration and not X11's: a number that
+ * happened to equal an upstream one would be a coupling neither end could
+ * see, so whatever forwards these maps them in a switch — the rule the raw
+ * event codes already keep.
+ *
+ * SEVEN, BECAUSE SEVEN IS WHAT THIS DESKTOP CAN MEAN. Every one of them
+ * answers a question a person asks with their hand: can I resize this, and in
+ * which direction; can I drag it; is this text I can select. There is no
+ * hand, no crosshair, no help pointer and NO BUSY POINTER — a shape nothing
+ * sets is a picture nobody maintains, and nothing in this session tracks a
+ * window as not-answering in a way a pointer could report. A busy pointer
+ * arrives with the state that justifies it or not at all.
+ */
+enum {
+	KT_PTR_ARROW = 0,	/* the default, and every unhandled case    */
+	KT_PTR_IBEAM,		/* text: a caret goes where you press       */
+	KT_PTR_SIZE_NS,		/* a top or bottom edge                     */
+	KT_PTR_SIZE_WE,		/* a left or right edge                     */
+	KT_PTR_SIZE_NWSE,	/* the top-left / bottom-right corners      */
+	KT_PTR_SIZE_NESW,	/* the top-right / bottom-left corners      */
+	KT_PTR_MOVE,		/* a handle: pressing moves the whole thing */
+	KT_PTR_N
+};
+
+/*
+ * WHAT A PRESS WHERE THE POINTER IS WOULD DO, as a KT_PTR_*.
+ *
+ * SEPARATE FROM THE POSITION because they are decided in different places and
+ * at different rates: ktui_draw_cursor() is called every frame by whatever
+ * owns the pointer, and the shape changes only when the thing under it does.
+ *
+ * IT IS A HINT AND NOT A GUARANTEE. Only a backend with a framebuffer of its
+ * own draws it; a terminal, a dump, a view over ssh and `tty1` reverse the
+ * cell under the pointer whatever this says, because a character grid has one
+ * pointer and that is it. So NOTHING may depend on the shape being visible —
+ * a control that says what it does only through the pointer is a control that
+ * says nothing on half the views this desktop supports.
+ */
+void ktui_draw_cursor_shape(int shape);
+int ktui_cursor_shape(void);
 void ktui_draw_hide_cursor(void);
 void ktui_draw_clip(KRect r);		/* confine drawing to a pane       */
 void ktui_draw_clip_none(void);
