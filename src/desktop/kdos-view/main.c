@@ -586,6 +586,56 @@ static int font_nnames;
  */
 enum { FONT_PREVIEW = 0, FONT_KEEP, FONT_RESET };
 
+/*
+ * PUT BACK THE MODE THIS SCREEN WAS LEFT WEARING, matched by GEOMETRY against
+ * the list it published THIS boot. The index the picker sent is a row in the
+ * list of the boot it was sent on, and a cable, a firmware update or a
+ * different monitor publishes them in another order — so an index replayed is
+ * a resolution nobody chose.
+ *
+ * A geometry no longer on the list leaves the screen on the mode the monitor
+ * prefers, which is the honest answer to "the screen you kept is not the
+ * screen that is here".
+ *
+ * The refresh is matched EXACTLY first and by nearest afterwards: a panel that
+ * reports 59.94 Hz one boot and 60.00 the next is the same mode to a person,
+ * and refusing it would put the desktop back at the preferred rate with
+ * nothing on screen to say why.
+ */
+static void mode_restore(void)
+{
+	for (int oi = 0; oi < kkms_outputs(); oi++) {
+		KkmsOutput o;
+		int want_w = 0, want_h = 0, want_r = 0;
+		int best = -1, best_d = 0;
+
+		if (!kkms_output(oi, &o))
+			continue;
+		if (!view_mode_recall(o.name, &want_w, &want_h, &want_r))
+			continue;
+
+		for (int mi = 0; mi < kkms_modes(oi); mi++) {
+			KkmsMode m;
+			int d;
+
+			if (!kkms_mode(oi, mi, &m))
+				continue;
+			if (m.width != want_w || m.height != want_h)
+				continue;
+			d = m.refresh > want_r ? m.refresh - want_r
+					       : want_r - m.refresh;
+			if (best < 0 || d < best_d) {
+				best = mi;
+				best_d = d;
+			}
+			if (d == 0)
+				break;
+		}
+		if (best >= 0 && best != kkms_mode_current(oi))
+			kkms_set_mode(oi, best);
+	}
+}
+
 static void font_apply(KconConn *conn, const char *want, int how)
 {
 	char path[512];
@@ -1781,15 +1831,35 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 
 		int oi = (int)(int16_t)kcon_get_u16(&b);
 		int mi = (int)(int16_t)kcon_get_u16(&b);
+		/*
+		 * `keep` IS THE COUNTDOWN'S ANSWER. An apply sends 0 and the
+		 * fifteen-second countdown that follows sends the same mode
+		 * again with 1 when somebody confirms it, so writing on an
+		 * apply would leave a screen nobody can read as the one the
+		 * next login comes up on.
+		 */
+		int keep = (int)kcon_get_u8(&b);
 
-		(void)kcon_get_u8(&b);	/* `keep` is the picker's countdown;
-					 * a mode is not persisted anywhere on
-					 * this desktop, so nothing here reads
-					 * it — see known-gaps. */
 		if (b.err || !own_screen)
 			return got;
 		if (kkms_set_mode(oi, mi) != 0)
 			return got;
+
+		/*
+		 * WRITTEN AFTER THE MODE TOOK, never before, and as a
+		 * GEOMETRY — the same two rules the font state keeps. A mode
+		 * the screen refused must not be the one the next login asks
+		 * for, and an index is a row in a list that a cable or a
+		 * firmware update reorders.
+		 */
+		if (keep) {
+			KkmsOutput o;
+			KkmsMode m;
+
+			if (kkms_output(oi, &o) && kkms_mode(oi, mi, &m))
+				view_mode_remember(o.name, m.width, m.height,
+						   m.refresh);
+		}
 
 		/* THE GRID IS DERIVED, so the announcement is the same one a
 		 * font step and a hotplug make. */
@@ -2450,6 +2520,13 @@ int main(int argc, char **argv)
 			};
 
 			kkms_set_input(&in);
+			/*
+			 * BEFORE THE GRID IS DERIVED. ktui_draw_init() divides
+			 * the mode by the cell, so a mode put back after it
+			 * would be a screen of one size holding a grid cut for
+			 * another until something else resized it.
+			 */
+			mode_restore();
 			ktui_draw_init();
 
 			/*

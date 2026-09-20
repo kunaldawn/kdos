@@ -47,6 +47,25 @@ int view_font_state_path(char *out, size_t n);
 int view_font_stepped(const char *base, int step, char *out, size_t n);
 
 /*
+ * WHICH MODE EACH SCREEN WAS LEFT WEARING, in
+ * `~/.local/state/kdos/con-modes`: one `<connector> <W>x<H>@<mHz>` line per
+ * screen, written by the view that is driving it. See mode.c.
+ *
+ * `view_mode_remember()` replaces that connector's line and leaves every other
+ * one alone, including a line for a screen this machine cannot currently see.
+ * `view_mode_recall()` fills the three and returns non-zero when the file named
+ * that connector; the caller MATCHES THE GEOMETRY against the modes the screen
+ * published now, because an index is a row in a list that a cable or a firmware
+ * update reorders.
+ *
+ * Both are non-zero on success and both answer 0 where there is no state
+ * directory at all, which a caller treats as "nothing was kept".
+ */
+int view_mode_state_path(char *out, size_t n);
+int view_mode_remember(const char *conn, int w, int h, int refresh);
+int view_mode_recall(const char *conn, int *w, int *h, int *refresh);
+
+/*
  * THE FACES THIS DISPLAY CAN RENDER, and it is the display that decides.
  *
  * A view is the only end with a font stack and it may be on another machine

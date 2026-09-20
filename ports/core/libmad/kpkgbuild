@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmad
+version     = 0.16.4
+release     = 1
+source      = https://codeberg.org/tenacityteam/$name/archive/$version.tar.gz
+sha256      = f4eb229452252600ce48f3c2704c9e6d97b789f81e31c37b0c67dd66f445ea35  libmad-0.16.4.tar.gz
+description = MPEG audio decoder — the mp3 input every console player reaches for
+homepage    = https://codeberg.org/tenacityteam/libmad
+depends     = cmake ninja pkgconf

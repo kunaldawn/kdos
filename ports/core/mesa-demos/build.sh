@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-patch -p1 -i $PORT_SRC/gl-disabler.patch
-patch -p1 -i $PORT_SRC/util-without-glu.patch
 
 export CFLAGS="$CFLAGS -D_GNU_SOURCE -include sys/types.h"
 

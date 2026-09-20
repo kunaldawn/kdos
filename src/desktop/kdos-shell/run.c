@@ -283,17 +283,109 @@ static void launch(const char *cmd, bool in_term)
 	sh_launch(&l, NULL, 0);
 }
 
+/*
+ * ONE FRAME OF THE BOX, so the loop and `--dump` draw the same thing. A dump
+ * that described the run box a second time would be a second description to
+ * keep true, which is the failure a reference frame exists to catch.
+ *
+ * `off` is in and out: the window follows the CARET, and where it lands is
+ * part of what the frame shows.
+ */
+static void run_draw(const char *cmd, size_t len, size_t cur, int *offp)
+{
+	int off = *offp;
+
+	int w = ktui_w, h = ktui_h;
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), "Run", KT_ACCENT, KT_SURFACE, 0);
+
+	ktui_draw_text(2, 1, 1, ">", KT_ACCENT, KT_SURFACE, KT_A_NONE);
+	/* The window follows the CARET, not the tail: a long command
+	 * scrolls under a caret that stays inside the box, so editing
+	 * in the middle is visible wherever the middle is. */
+	int room = w - 6;
+	if (room < 1)
+		room = 1;
+	int pw = col_of(cmd, cur);
+	if (pw < off)
+		off = pw;
+	if (pw - off >= room)
+		off = pw - room + 1;
+	const char *shown = cmd;
+	for (int c = 0; c < off && *shown; c++) {
+		uint32_t cp;
+		shown = ktui_utf8_next(shown, &cp);
+	}
+	ktui_draw_text(4, 1, room, shown, KT_TEXT, KT_SURFACE, KT_A_NONE);
+	/* The caret: the cell under it with the colours swapped, or a
+	 * bare underscore when it sits past the end of the line. */
+	int cx = 4 + (pw - off);
+	if (cur < len) {
+		uint32_t cp;
+		const char *nx = ktui_utf8_next(cmd + cur, &cp);
+		char ch[8];
+		snprintf(ch, sizeof(ch), "%.*s",
+			 (int)(nx - (cmd + cur)), cmd + cur);
+		ktui_draw_fill(krect(cx, 1, 1, 1), KT_ACCENT);
+		ktui_draw_text(cx, 1, 1, ch, KT_SURFACE, KT_ACCENT,
+			       KT_A_NONE);
+	} else {
+		ktui_draw_text(cx, 1, 1, "_", KT_ACCENT, KT_SURFACE,
+			       KT_A_NONE);
+	}
+	/*
+	 * THE VERBS AS BUTTONS. The row said `Enter run    Ctrl+Enter
+	 * in a terminal    Esc cancel`, which is a legend: the one
+	 * feature this box has beyond a prompt — running something in
+	 * a terminal — was a modifier nobody is told about, and a
+	 * pointer could do nothing here at all. Three buttons say the
+	 * same three things and can be pressed. Most useful first, so
+	 * the shared bar drops Cancel before it drops Run.
+	 */
+	struct kch_button rb[RB_N];
+	rb[RB_RUN] = (struct kch_button){ "Run", cmd[0] != '\0' };
+	rb[RB_TERM] = (struct kch_button){ "In Terminal",
+					  cmd[0] != '\0' };
+	rb[RB_CANCEL] = (struct kch_button){ "Cancel", 1 };
+	int bx = kch_buttons(w, h - 2, rb, RB_N, -1);
+	const char *hint = "type a command";
+	if (bx - 3 >= (int)ktui_utf8_width(hint))
+		ktui_draw_text(2, h - 2, bx - 3, hint, KT_MID,
+			       KT_SURFACE, KT_A_NONE);
+	*offp = off;
+}
+
 int run_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	int dump = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* One frame, offscreen, as text — see kdos-launcher --dump. */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else {
-			fprintf(stderr, "usage: kdos-run [--font NAME]\n");
+			fprintf(stderr,
+				"usage: kdos-run [--font NAME] [--dump]\n");
 			return 2;
 		}
+	}
+
+	/*
+	 * BEFORE THE COMPOSITOR, because a dump needs none. The box is a text
+	 * field and its frame is the empty line it opens on, which is the
+	 * frame a person sees every time they press the chord.
+	 */
+	if (dump) {
+		int off = 0;
+
+		sh_theme_from_cache();
+		ktui_offscreen_init(56, 5);
+		run_draw("", 0, 0, &off);
+		ktui_draw_dump();
+		return 0;
 	}
 
 	KDispConfig cfg = {
@@ -332,63 +424,7 @@ int run_main(int argc, char **argv)
 	int hpos = nhist;
 
 	while (!kdisp_should_close()) {
-		int w = ktui_w, h = ktui_h;
-		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-		ktui_draw_box(krect(0, 0, w, h), "Run", KT_ACCENT, KT_SURFACE, 0);
-
-		ktui_draw_text(2, 1, 1, ">", KT_ACCENT, KT_SURFACE, KT_A_NONE);
-		/* The window follows the CARET, not the tail: a long command
-		 * scrolls under a caret that stays inside the box, so editing
-		 * in the middle is visible wherever the middle is. */
-		int room = w - 6;
-		if (room < 1)
-			room = 1;
-		int pw = col_of(cmd, cur);
-		if (pw < off)
-			off = pw;
-		if (pw - off >= room)
-			off = pw - room + 1;
-		const char *shown = cmd;
-		for (int c = 0; c < off && *shown; c++) {
-			uint32_t cp;
-			shown = ktui_utf8_next(shown, &cp);
-		}
-		ktui_draw_text(4, 1, room, shown, KT_TEXT, KT_SURFACE, KT_A_NONE);
-		/* The caret: the cell under it with the colours swapped, or a
-		 * bare underscore when it sits past the end of the line. */
-		int cx = 4 + (pw - off);
-		if (cur < len) {
-			uint32_t cp;
-			const char *nx = ktui_utf8_next(cmd + cur, &cp);
-			char ch[8];
-			snprintf(ch, sizeof(ch), "%.*s",
-				 (int)(nx - (cmd + cur)), cmd + cur);
-			ktui_draw_fill(krect(cx, 1, 1, 1), KT_ACCENT);
-			ktui_draw_text(cx, 1, 1, ch, KT_SURFACE, KT_ACCENT,
-				       KT_A_NONE);
-		} else {
-			ktui_draw_text(cx, 1, 1, "_", KT_ACCENT, KT_SURFACE,
-				       KT_A_NONE);
-		}
-		/*
-		 * THE VERBS AS BUTTONS. The row said `Enter run    Ctrl+Enter
-		 * in a terminal    Esc cancel`, which is a legend: the one
-		 * feature this box has beyond a prompt — running something in
-		 * a terminal — was a modifier nobody is told about, and a
-		 * pointer could do nothing here at all. Three buttons say the
-		 * same three things and can be pressed. Most useful first, so
-		 * the shared bar drops Cancel before it drops Run.
-		 */
-		struct kch_button rb[RB_N];
-		rb[RB_RUN] = (struct kch_button){ "Run", cmd[0] != '\0' };
-		rb[RB_TERM] = (struct kch_button){ "In Terminal",
-						  cmd[0] != '\0' };
-		rb[RB_CANCEL] = (struct kch_button){ "Cancel", 1 };
-		int bx = kch_buttons(w, h - 2, rb, RB_N, -1);
-		const char *hint = "type a command";
-		if (bx - 3 >= (int)ktui_utf8_width(hint))
-			ktui_draw_text(2, h - 2, bx - 3, hint, KT_MID,
-				       KT_SURFACE, KT_A_NONE);
+		run_draw(cmd, len, cur, &off);
 		ktui_draw_flush();
 
 		KtuiEvent ev;

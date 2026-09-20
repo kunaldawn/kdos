@@ -278,6 +278,16 @@ Three rules it exists to keep:
 the portal rather than round it even though the backend is ours, because `Start` is what makes the
 view exist and the answer it gives is the one a boxed application would get.
 
+**A STILL SCREEN STILL PRODUCES FRAMES, and it takes a different answer on each desktop.** A
+recording that carried no buffer at all would be a file with no header in it — `pipewiresrc` drops
+a chunk of size zero, so the muxer downstream is never handed a frame and `~/Videos/<name>.mkv`
+ends at nothing with no error anywhere to say why. On the console the view re-sends its last frame
+every 500 ms when nothing has changed, which is two copies a second for a desktop nobody is
+touching. Under the compositor the frames come from `ext-image-copy-capture`, which asks the
+output for a frame whether or not anything is damaged — `max_fps` in
+`~/.config/xdg-desktop-portal-wlr/config` is what bounds the commits that costs, and removing that
+line lets a still screen be committed at the output's own rate for as long as the recording runs.
+
 **AND `SelectSources` IS ANSWERED BY A PERSON.** On the compositor the ScreenCast backend is the
 wlr one, whose chooser is `slurp` — it covers the screen and waits for the pointer to pick an
 output. So the three calls do not share one deadline: `CreateSession` is a program on a local bus

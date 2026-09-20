@@ -7,7 +7,7 @@ arbitrary elsewhere in the documentation is usually one of these four being paid
 ## The four properties
 
 **Built from source, with named exceptions.** The host is compiled here from upstream tarballs by
-recipes in `ports/` — 801 of them, running cross toolchain → musl userland → self-hosting
+recipes in `ports/` — 813 of them, running cross toolchain → musl userland → self-hosting
 bootstrap → libraries → desktop → kernel. There is no base image and no binary package archive
 to fall back on. A handful of ports are exceptions, and they are listed in full below rather than
 glossed over.
@@ -156,8 +156,8 @@ Counted from the tree at the time of writing.
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 801 |
-| Packages installed on the built system | 758 |
+| Port recipes in `ports/core` | 813 |
+| Packages installed on the built system | 810 |
 | Applications in the catalogue | 181 |
 | Shared runtimes beneath them | 7 |
 | Base packs | 2 |

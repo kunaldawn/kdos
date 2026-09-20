@@ -30,4 +30,17 @@
 int kcell_fcft_ref(void);
 void kcell_fcft_unref(void);
 
+/*
+ * HOW FAR ONE ROW OF A SYNTHESISED ITALIC LEANS, in whole pixels, positive to
+ * the right. `row` is counted from the top of the glyph's own mask and `h` is
+ * its height, because the shear is about the mask's middle and not about the
+ * baseline — see kcell_font.c for why.
+ *
+ * DECLARED HERE SO IT CAN BE MEASURED. The shear's geometry is arithmetic and
+ * is the half of the slant that can be checked without a font, a screen or a
+ * frame; a test that re-derived the formula beside it would be a test that
+ * agrees with itself while the library drifts.
+ */
+int kcell_oblique_shift(int row, int h);
+
 #endif /* KCELL_PRIV_H */

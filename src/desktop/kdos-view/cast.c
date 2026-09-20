@@ -20,9 +20,14 @@
  *
  * IT SENDS NO INPUT. A recording is not a seat.
  *
- * DAMAGE DRIVES THE FRAMES: a still desktop produces none. That is the rule the
- * rig already lives under, and it is why a recording of a terminal nobody is
- * typing in costs nothing.
+ * DAMAGE DRIVES THE FRAMES AND A KEEP-ALIVE FLOORS THEM. A still desktop
+ * produces no damage, so nothing is rasterised — but a stream that carries no
+ * buffer at all is a file with no header in it: `pipewiresrc` drops a chunk of
+ * size zero, the muxer downstream is never handed a frame, and a recording of a
+ * screen nobody touched ends at zero bytes with nothing to say why. So a cycle
+ * with nothing new re-sends the LAST frame once every KCAST_KEEPALIVE_MS. A
+ * recording therefore always has a timeline; an idle one costs two copies a
+ * second rather than the stream's full rate.
  * ---------------------------------
  */
 
@@ -32,6 +37,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
@@ -44,7 +50,30 @@ static int hungry;
 /* The frame waiting to go out, or NULL. Borrowed: the view owns one buffer for
  * the life of the stream and paints into it in place. */
 static const uint32_t *pending;
+/*
+ * The last frame that went out, and when. It is the SAME borrowed buffer, which
+ * is why re-sending it is re-sending the screen as it is now and not a stale
+ * copy: the view paints in place and pumps this loop from its own thread, so a
+ * cycle can never read a buffer somebody is halfway through painting.
+ */
+static const uint32_t *last;
+static int64_t last_ms;
 static unsigned long frames;
+
+/*
+ * THE FLOOR UNDER A STILL SCREEN. Long enough that an idle recording costs
+ * almost nothing, short enough that no player and no muxer sees a gap it treats
+ * as the end of the stream.
+ */
+#define KCAST_KEEPALIVE_MS 500
+
+static int64_t now_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
 static void on_state(void *data, enum pw_stream_state old,
 		     enum pw_stream_state state, const char *error)
@@ -108,17 +137,24 @@ static void on_param_changed(void *data, uint32_t id,
 /*
  * THE FRAME PIPEWIRE ASKS FOR, when it asks. The graph runs at the rate the
  * consumer negotiated and the desktop changes at its own; `pending` is the
- * bridge. A cycle with nothing new queues a buffer whose chunk is EMPTY, which
- * is PipeWire's way of saying "no new data" — so a still desktop costs a
- * scheduled cycle and not a copy, and a consumer sees a frame only when
- * something actually changed.
+ * bridge. A cycle with nothing new and nothing owed re-uses the chunk size
+ * ZERO, which is PipeWire's way of saying "no new data" — so a still desktop
+ * costs a scheduled cycle and not a copy.
+ *
+ * WHAT IS OWED IS THE KEEP-ALIVE. `pipewiresrc` DROPS a zero-sized chunk, so a
+ * stream that only ever says "no new data" hands the pipeline downstream
+ * nothing at all and the recording has no header in it. Every
+ * KCAST_KEEPALIVE_MS the last frame goes out again, which is a copy the
+ * encoder collapses to almost nothing and a timeline that advances.
  */
 static void on_process(void *data)
 {
 	struct pw_buffer *pb;
 	struct spa_buffer *sb;
+	const uint32_t *src;
 	uint8_t *dst;
 	size_t stride, need;
+	int64_t now;
 
 	(void)data;
 	pb = pw_stream_dequeue_buffer(stream);
@@ -129,12 +165,19 @@ static void on_process(void *data)
 	dst = sb->datas[0].data;
 	stride = (size_t)cast_w * 4;
 	need = stride * (size_t)cast_h;
+	now = now_ms();
 
-	if (pending && dst && sb->datas[0].maxsize >= need) {
-		memcpy(dst, pending, need);
+	src = pending;
+	if (!src && last && now - last_ms >= KCAST_KEEPALIVE_MS)
+		src = last;
+
+	if (src && dst && sb->datas[0].maxsize >= need) {
+		memcpy(dst, src, need);
 		sb->datas[0].chunk->offset = 0;
 		sb->datas[0].chunk->stride = (int32_t)stride;
 		sb->datas[0].chunk->size = (uint32_t)need;
+		last = src;
+		last_ms = now;
 		pending = NULL;
 		frames++;
 	} else {

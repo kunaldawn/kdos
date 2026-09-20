@@ -110,13 +110,6 @@ wired up.
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
 
-**A recording of a screen that does not change is an empty file.** `wlr-screencopy` hands over a
-frame when the output is damaged and at no other time, so a session left alone produces no buffers,
-the muxer writes no header, and `~/Videos/<name>.mkv` ends at zero bytes with nothing in the
-recorder's log to say why. It is the shape of the protocol rather than a defect — a desk somebody
-is sitting at always changes — but a recording taken to prove the pipeline needs something moving
-on the screen while it runs.
-
 **No input method in the console session.** fcitx5 is a Wayland client and speaks
 `input-method-v2` to the compositor; there is no compositor on that path. The candidate *window* is
 drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
@@ -265,13 +258,6 @@ inside one of the session's own terminal windows detects this and stays on chara
 answers the device-attributes probe claiming sixel and then reports no picture geometry, and it is
 the second answer that decides.
 
-**Italic is upright wherever the loaded font has no italic companion at the same cell size.** The
-painter asks fontconfig for the face with `:slant=italic` and keeps it only if its advance and
-height match — and fontconfig never fails a match, so an italic Terminus comes back as a different
-family at a different size and is refused. The attribute still travels: the cell carries it, a
-terminal view emits `SGR 3` and the host terminal draws it. It is the KMS and Wayland painters,
-drawing with the console's own bitmap face, that show the words upright.
-
 **Nothing reads the GRAPHICAL desktop.** The console session is read by `kdos-a11y` over its third
 socket, because it holds the literal text of every cell and every widget announces itself.
 `kdos-comp` draws pixels and has no such buffer, so a reader there would need the tree of accessible
@@ -305,13 +291,6 @@ other three verbs are Wayland's, because a text grid has no scale factor, a rota
 cells a different shape on one screen than on the next, and a dark connector would leave a hole in
 the middle of a grid that windows are already placed across. The buttons for them are drawn
 disabled on the console rather than hidden, so the surface is the same surface in both sessions.
-
-**A mode chosen on the console does not survive the session.** `kdos-display`'s keep sends the
-mode with its `keep` flag set and the view acts on the mode and drops the flag: there is nowhere on
-this desktop a mode is written down, so the next login comes up at whichever mode `con.conf`'s
-`refresh` names — the monitor's preferred one, or the fastest at that size. The
-flag is on the wire because the countdown is the only thing that distinguishes an applied mode from
-a kept one, and a keep that could not be expressed would make the countdown a lie.
 
 **Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off.** They are
 private-use codepoints and the console font is 512 glyphs, which is a kernel limit: a glyph the font
@@ -392,13 +371,6 @@ accept every meeting it was scrolled over, and nothing on this image sends a rep
 **Filing one is now manual and it works**: `:save` the part out of the message and `khal import` it,
 and the day carries a mark in the panel's calendar. No `text/calendar` handler is registered for the
 same reason the filter writes nothing — opening a file would file it.
-
-**With no browser pack installed, the compositor has nothing that opens `http`.** The console
-answers with `w3m` in a terminal, and a browser installed as a box claims the scheme through the
-launcher table the generator writes — but a graphical session with neither falls through to
-xdg-utils' own script, whose last resort is to start a **text** browser with no terminal around it,
-which means nothing visible happens. The console rows are not copied to the compositor on purpose:
-they would outrank the browser box's entry the moment one was installed.
 
 **Nothing on this image has a clipboard a Rust program can reach.** `iamb` and `atuin` both offer
 one through `arboard`, which speaks the X11 protocol in pure Rust — it links no C library, so it

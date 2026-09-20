@@ -847,8 +847,9 @@ static int toast_rows(void)
 }
 
 /* One wrapped body line, as runs of equal style. <b> is the house fill —
- * swapped slots, never KT_A_REVERSE over a label. <i> maps to the body's own
- * dim, which is honest rather than loud: the grid has no second slant. */
+ * swapped slots, never KT_A_REVERSE over a label — and <i> is the cell's own
+ * italic bit, which the painter draws from an italic companion face where the
+ * loaded font has one and from the upright mask sheared where it does not. */
 static void draw_body_line(const struct toast *t, int start, int len, int x,
 			   int y)
 {
@@ -870,6 +871,8 @@ static void draw_body_line(const struct toast *t, int start, int len, int x,
 			fg = KT_ACCENT;
 		if (st & ST_U)
 			attr |= KT_A_UNDERLINE;
+		if (st & ST_I)
+			attr |= KT_A_ITALIC;
 		if (st & ST_B) {
 			fg = KT_SURFACE;
 			bg = KT_TEXT;
@@ -1023,16 +1026,74 @@ static void open_href(const char *href)
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
+/*
+ * A STACK NOBODY SENT, so there is a reference frame of the one surface on
+ * this desktop whose content always comes from somewhere else.
+ *
+ * Two toasts and not one: the gap between cards, the second card's plate and
+ * the button row are the geometry that a single toast cannot show, and they
+ * are where this surface has actually gone wrong. Written into the array the
+ * daemon draws from rather than through Notify, because a dump must not need
+ * a session bus to reach.
+ */
+static void dump_stack(void)
+{
+	int st_[BODY_LINES], ln_[BODY_LINES];
+	struct toast *t;
+
+	ntoasts = 0;
+
+	t = &toasts[ntoasts++];
+	memset(t, 0, sizeof(*t));
+	t->id = 1;
+	snprintf(t->app, sizeof(t->app), "%s", "kdos");
+	snprintf(t->summary, sizeof(t->summary), "%s", "Backup finished");
+	snprintf(t->body, sizeof(t->body), "%s",
+		 "1 204 files, 3.1 GB, in 4 minutes.");
+	t->body_rows = wrap_ranges(t->body, BODY_W, st_, ln_);
+
+	t = &toasts[ntoasts++];
+	memset(t, 0, sizeof(*t));
+	t->id = 2;
+	snprintf(t->app, sizeof(t->app), "%s", "kdos-packd");
+	snprintf(t->summary, sizeof(t->summary), "%s", "A pack wants mounting");
+	snprintf(t->body, sizeof(t->body), "%s",
+		 "app.firefox-esr is on the medium and is not mounted.");
+	t->body_rows = wrap_ranges(t->body, BODY_W, st_, ln_);
+	t->nact = 2;
+	snprintf(t->act_id[0], sizeof(t->act_id[0]), "%s", "mount");
+	snprintf(t->act_label[0], sizeof(t->act_label[0]), "%s", "Mount");
+	snprintf(t->act_id[1], sizeof(t->act_id[1]), "%s", "ignore");
+	snprintf(t->act_label[1], sizeof(t->act_label[1]), "%s", "Ignore");
+}
+
 int notifyd_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	int dump = 0;
+
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* One frame, offscreen, as text — see kdos-launcher --dump. */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else {
-			fprintf(stderr, "usage: kdos-notifyd [--font NAME]\n");
+			fprintf(stderr,
+				"usage: kdos-notifyd [--font NAME] [--dump]\n");
 			return 2;
 		}
+	}
+
+	/* BEFORE THE BUS AND BEFORE THE NAME. A dump must not take
+	 * org.freedesktop.Notifications from the daemon that is running. */
+	if (dump) {
+		sh_theme_from_cache();
+		dump_stack();
+		ktui_offscreen_init(TOAST_COLS, toast_rows());
+		draw_toasts();
+		ktui_draw_dump();
+		return 0;
 	}
 
 	int r = sd_bus_open_user(&bus);

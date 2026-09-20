@@ -28,7 +28,7 @@ and an application is built by podman on the machine that asks for it.
 
 | | |
 |---|---|
-| Applications | 182 |
+| Applications | 183 |
 | Shared runtimes | 7 |
 | Base rows | 2 |
 | Data rows | 2 |

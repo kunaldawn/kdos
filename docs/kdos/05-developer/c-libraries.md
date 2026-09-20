@@ -1059,10 +1059,21 @@ advance and height match the upright face** — fontconfig never fails a match, 
 italic Terminus returns a different family at a different size, and a companion that disagrees
 would draw a row out of step with the one above it. There are four faces, indexed by the two style
 bits, and the face is part of the glyph cache's key, because the same codepoint from two faces is
-two glyphs. **Where a companion is missing the request falls back keeping the slant**: italic with
-no italic face is drawn upright, a style lost rather than a grid broken, while bold with no bold
-face is the same mask struck twice one scaled pixel apart — a weight approximated rather than
-dropped.
+two glyphs. **Where a companion is missing the style is SYNTHESISED, and the two are synthesised
+differently.** Bold with no bold face is the same mask struck twice one scaled pixel apart, so it
+shares the upright glyph's cache slot — the weight belongs to the blit. Italic with no italic face
+is a **shear** and therefore a different mask: the upright coverage is leaned by 7/32, a little
+over twelve degrees, into a slot of its own, because a shear widens the box and moves the bearing
+and neither can be done at the blit.
+
+**The shear is about the mask's vertical middle and not about the baseline**, and it moves by whole
+pixels. The painter clips a glyph to its own cell, so a baseline shear — which leans the whole
+letter to the right — would cut the top off every tall one; shearing about the middle spends half
+the displacement on each side, and what is still lost is a pixel at each extreme of a glyph that
+already fills its cell. Whole pixels because a fractional shift needs the mask resampled, and an
+alpha mask resampled at a terminal's size is a blur rather than a slant. A glyph under six pixels
+tall leans by nothing at all and keeps the upright mask, which is the one case where the style is
+still lost.
 
 **A codepoint is missing only when it matches the sentinel.** fcft cannot report an absent
 codepoint: its fallback search ends by rasterising glyph index 0 out of the primary face, so what

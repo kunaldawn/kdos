@@ -288,6 +288,38 @@ static int handlers_for_mime(const char *mime, OpenCand *c, int max,
 			 dirs[i]);
 		collect_in(path, "MIME Cache", mime, c, &n, max);
 	}
+
+	/*
+	 * AND LAST, THE OTHER DESKTOP'S DEFAULTS.
+	 *
+	 * The two desktops answer a type differently on purpose and neither
+	 * copies the other's rows: a `http` row naming the console's text
+	 * browser, placed where the compositor reads it, would outrank a
+	 * browser box's launcher the moment one was installed, because
+	 * `[Default Applications]` at /etc/xdg beats every `mimeinfo.cache`.
+	 * Read LAST it outranks nothing — it is consulted only where the
+	 * running desktop, the user and every installed application have all
+	 * said nothing — and it is what stands between a graphical session
+	 * with no browser pack and xdg-utils' last resort, which starts a text
+	 * browser with no terminal around it and puts nothing at all on the
+	 * screen.
+	 *
+	 * Not a default either: what comes back is a candidate, so a second
+	 * one that arrives later still opens the chooser rather than being
+	 * pre-empted by a fallback.
+	 */
+	if (!n && have_pre) {
+		const char *other = !strcmp(dpre, "kdos-console") ? "kdos"
+				  : !strcmp(dpre, "kdos") ? "kdos-console"
+							  : NULL;
+
+		if (other) {
+			snprintf(path, sizeof(path),
+				 "/etc/xdg/%s-mimeapps.list", other);
+			collect_in(path, "Default Applications", mime, c, &n,
+				   max);
+		}
+	}
 	return n;
 }
 

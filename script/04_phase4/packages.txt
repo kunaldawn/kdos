@@ -628,6 +628,21 @@ w3m
 stfl
 libintl
 newsboat
+# THE OTHER ANSWER TO THE SAME QUESTION, and it is a different one rather than
+# a smaller one. newsboat is a reader with a database; sfeed is a PARSER that
+# writes one tab-separated line per item, and everything after that — the
+# curses reader, an mbox, a gopher page, a plain list — is a separate program
+# reading that file. That is what makes a feed greppable, and it is why the
+# two are both here: one is an application, the other is a pipeline.
+sfeed
+# MARKDOWN OUT, AND NOT MARKDOWN DRAWN. `glow` renders a document into a
+# terminal; this writes the HTML, which is what `w3m` reads and what a page
+# published anywhere needs. One C file.
+smu
+# IRC AS A DIRECTORY. A FIFO to write into and a text file to read, per channel
+# — so the client is `tail -f` and the composer is `echo`, and a bot is a shell
+# script with no library at all. There is no other IRC client on this image.
+ii
 # Its database is two plain text files — greppable, diffable, syncable with
 # the rest of $HOME, and a backup is a copy.
 # A missing AX_* macro does not fail at aclocal time — it survives into the
@@ -1256,6 +1271,11 @@ vulkan-loader
 # which are also what says whether the machine has a Vulkan driver at all.
 # mesa-demos' Vulkan Wayland surface needs libdecor and nothing else in this
 # file does, so its `depends` is what puts that port in the install order.
+libmad
+cmus
+farbfeld
+blind
+libgrapheme
 mesa-demos
 glmark2
 vulkan-tools

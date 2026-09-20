@@ -554,6 +554,21 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$OUT/clipcheck" >/dev/null
         echo "  clipcheck (no writes past a ragged cell grid)"
 
+        # AND THE SLANT NO BITMAP FACE CARRIES. An italic companion is taken
+        # only where its metrics match the upright face's, which on this
+        # image's faces they do not — so the slant is sheared out of the
+        # upright mask, and the shear's geometry is the half of it that can be
+        # measured with no font and no frame.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell \
+            $(pkg-config --cflags fcft pixman-1) \
+            -o "$OUT/obliquecheck" testing/fixtures/oblique/obliquecheck.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft pixman-1)
+        "$OUT/obliquecheck" >/dev/null
+        echo "  obliquecheck (a synthesised italic leans, and leans evenly)"
+
         $CC $STD $WARN -c -I"$PROTO" $KCINC \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
             -o "$OUT/kwl.o" src/libs/libkwl/kwl.c
@@ -3202,6 +3217,86 @@ if "$OUT/fontdrv"; then
     echo "  a font step keeps the name and clamps the size"
 else
     echo "  A FONT STEP WOULD WRITE A NAME NOBODY ASKED FOR"
+    exit 1
+fi
+
+#
+# A KEPT MODE IS ONE LINE PER CONNECTOR AND IT IS A GEOMETRY, and that is the
+# whole of what runs without a screen. The rest is a DRM device.
+#
+# What this is really for is the OTHER screen's row: a two-monitor desk keeps a
+# mode on each, and a writer that rewrote the file from what it was told would
+# drop the row for the screen it was not told about — which a person discovers
+# one login later, on the monitor they did not touch.
+#
+cat > "$OUT/modedrv.c" <<'MODEEOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "view.h"
+
+static int bad;
+
+int main(void)
+{
+	char path[512];
+	int w = 0, h = 0, r = 0;
+
+	setenv("XDG_STATE_HOME", getenv("KDOS_TEST_STATE"), 1);
+	if (!view_mode_state_path(path, sizeof(path)) ||
+	    !strstr(path, "/kdos/con-modes")) {
+		printf("    the state path is not where kdos-view writes it\n");
+		return 1;
+	}
+
+	/* Nothing kept yet: a recall must say so rather than answer zeroes. */
+	if (view_mode_recall("DP-1", &w, &h, &r)) {
+		printf("    an empty state recalled a mode\n");
+		bad = 1;
+	}
+
+	if (!view_mode_remember("DP-1", 1920, 1080, 60000) ||
+	    !view_mode_remember("HDMI-A-1", 1280, 1024, 59940)) {
+		printf("    a mode could not be written\n");
+		return 1;
+	}
+	if (!view_mode_recall("DP-1", &w, &h, &r) ||
+	    w != 1920 || h != 1080 || r != 60000) {
+		printf("    DP-1 came back as %dx%d@%d\n", w, h, r);
+		bad = 1;
+	}
+	/* THE OTHER SCREEN'S ROW SURVIVED THE SECOND WRITE. */
+	if (!view_mode_recall("HDMI-A-1", &w, &h, &r) ||
+	    w != 1280 || h != 1024 || r != 59940) {
+		printf("    HDMI-A-1 came back as %dx%d@%d\n", w, h, r);
+		bad = 1;
+	}
+	/* And a second keep on one screen replaces that screen's row alone. */
+	if (!view_mode_remember("DP-1", 1024, 768, 75000) ||
+	    !view_mode_recall("DP-1", &w, &h, &r) || w != 1024 || h != 768) {
+		printf("    a second keep did not replace the row\n");
+		bad = 1;
+	}
+	if (!view_mode_recall("HDMI-A-1", &w, &h, &r) || w != 1280) {
+		printf("    replacing one row dropped the other\n");
+		bad = 1;
+	}
+	/* A screen the file never named keeps whatever it is wearing. */
+	if (view_mode_recall("eDP-1", &w, &h, &r)) {
+		printf("    a connector with no row recalled a mode\n");
+		bad = 1;
+	}
+	return bad;
+}
+MODEEOF
+$CC $STD $SHWARN -D_GNU_SOURCE -Isrc/desktop/kdos-view -Isrc/libs/libkbase \
+    -Isrc/libs/libktui -Isrc/libs/libkcolor \
+    -o "$OUT/modedrv" "$OUT/modedrv.c" src/desktop/kdos-view/mode.c \
+    src/libs/libkbase/*.c
+if KDOS_TEST_STATE="$OUT/modestate" "$OUT/modedrv"; then
+    echo "  a kept mode is a geometry, per connector, and keeps its neighbours"
+else
+    echo "  A KEPT MODE WOULD COME BACK WRONG OR TAKE ANOTHER SCREEN'S WITH IT"
     exit 1
 fi
 
@@ -6796,7 +6891,8 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
-             netagent backup theme palette contacts store; do
+             netagent backup theme palette contacts store \
+             run prompt osd notifyd desk; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -7574,6 +7670,42 @@ for _sz in 80x24 56x24 132x43; do
     KDOS_GOLDEN_CON=/nonexistent-kdos-con \
         golden start-console "$_sz" start --dump
 done
+
+#
+# THE FIVE SURFACES THAT HAD NO REFERENCE FRAME, and they are the five somebody
+# sees most: the run box, the yes/no dialog, the volume bezel, the toast stack
+# and the desktop itself. Each draws from something outside itself — a typed
+# line, a caller's message, a mixer, a bus, a home directory — which is exactly
+# why none of them had a dump and exactly why each needs one: a frame that is a
+# function of the machine it ran on is not a frame anybody can compare.
+#
+# So each dump supplies its own content. The bezel shows a fixed 60%, the toast
+# stack two notifications nobody sent, and the desktop five entries no home
+# directory decides; the run box and the dialog already draw from their
+# arguments. `--dump-size` on the desktop is not a convenience: that surface is
+# anchored to all four edges and has no size of its own at all.
+#
+if "$DUMPCK" --have run; then
+    golden run 80x24  run --dump
+    golden run 56x24  run --dump
+fi
+if "$DUMPCK" --have prompt; then
+    golden prompt 80x24 prompt --message "End this session? Every program it started stops with it." --yes "Log out" --dump
+    golden prompt 56x24 prompt --message "End this session? Every program it started stops with it." --yes "Log out" --dump
+fi
+if "$DUMPCK" --have osd; then
+    golden osd-volume     80x24 osd --dump volume
+    golden osd-brightness 80x24 osd --dump brightness
+    golden osd-mic        80x24 osd --dump mic
+fi
+if "$DUMPCK" --have notifyd; then
+    golden notifyd 80x24  notifyd --dump
+    golden notifyd 56x24  notifyd --dump
+fi
+if "$DUMPCK" --have desk; then
+    golden desk 80x24  desk --dump
+    golden desk 132x43 desk --dump
+fi
 
 golden menu-system 80x24  menu system --dump
 golden menu-system 56x24  menu system --dump

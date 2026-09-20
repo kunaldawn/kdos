@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ii
+version     = 2.0
+release     = 1
+source      = https://dl.suckless.org/tools/$name-$version.tar.gz
+sha256      = 4f67afcd208c07939b88aadbf21497a702ad0a07f9b5a6ce861f9f39ffe5425b  ii-2.0.tar.gz
+description = An IRC client that is a directory of FIFOs and text files
+homepage    = https://tools.suckless.org/ii/

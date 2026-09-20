@@ -72,6 +72,10 @@ text/html=w3m.desktop
 # page that is nothing but tables is readable. The entry is `Terminal=true`, so
 # the opener wraps it in `kdos-term` rather than starting a browser nobody can
 # see. Under the compositor these types are the browser box's, which is why
-# they are here and not in the plain list beside this file.
+# they are here and not in the plain list beside this file — and why the opener
+# reads this file LAST when it is the compositor running and nothing else
+# claimed the type at all: last, a row here outranks nothing, and a graphical
+# session with no browser pack opens the page in `foot` instead of starting a
+# text browser with no terminal around it.
 x-scheme-handler/http=w3m.desktop
 x-scheme-handler/https=w3m.desktop

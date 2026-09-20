@@ -418,6 +418,14 @@ FRONT_END(firewall_main);
 FRONT_END(backup_main);
 FRONT_END(theme_main);
 FRONT_END(palette_main);
+/* The five that had no dump at all. Each is a surface somebody looks at every
+ * day and none had a reference frame, which is the one class of surface where
+ * a geometry regression ships unseen. */
+FRONT_END(run_main);
+FRONT_END(prompt_main);
+FRONT_END(osd_main);
+FRONT_END(notifyd_main);
+FRONT_END(desk_main);
 
 static const struct {
 	const char *name;
@@ -460,6 +468,13 @@ static const struct {
 	{ "theme",	theme_main },
 	{ "palette",	palette_main },
 	{ "shell",	panel_main },
+	{ "run",	run_main },
+	{ "prompt",	prompt_main },
+	{ "osd",	osd_main },
+	/* The DAEMON, which is the toast stack — `notify` above is the
+	 * centre that reads its history. Two surfaces, two frames. */
+	{ "notifyd",	notifyd_main },
+	{ "desk",	desk_main },
 };
 
 int main(int argc, char **argv)
