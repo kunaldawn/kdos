@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ldacbt
+version     = 2.0.2.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/EHfive/ldacBT/releases/download/v$version/ldacBT-$version.tar.gz
+sha256      = fee05740e86ee66f4540486d92683ee8e8071119907b57ca762c7e5d943ecef0  ldacbt-2.0.2.6.tar.gz
+description = Sony LDAC encoder, for the Bluetooth headsets that negotiate it
+homepage    = https://github.com/EHfive/ldacBT
+depends     = cmake

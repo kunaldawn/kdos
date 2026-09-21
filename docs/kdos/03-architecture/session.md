@@ -119,7 +119,21 @@ Three details in that startup are each load-bearing:
 ## Audio
 
 PipeWire runs on the **host**, started by `kdos-desktop-start` *and* `kdos-con-start`: the daemon,
-a session manager and the PulseAudio compatibility layer. **A box reaches it because the base pack
+**WirePlumber** as its session manager, and the PulseAudio compatibility layer — in that order,
+because WirePlumber connects to the daemon's socket and the shim announces sinks that do not
+exist until something has created them.
+
+**PipeWire is built with no session manager of its own.** The daemon routes nothing on its own:
+device discovery, which sink a stream lands on, and a Bluetooth headset's profile are all policy,
+and policy is WirePlumber's. `kdos-oomd` names it explicitly in its protected list — the prefix
+that covers `pipewire` and `pipewire-pulse` does not reach a process called `wireplumber`, and
+killing it leaves a running daemon with a graph nothing is connected to.
+
+**The Bluetooth codecs are named rather than left to `auto`.** Each is a meson feature that
+disables itself when its library is absent, so an automatic build produces a PipeWire that
+negotiates SBC and says nothing about why. aptX, LDAC and AAC are linked from `libfreeaptx`,
+`ldacbt` and `fdk-aac`; SBC is mandatory in the profile and always present. Without them every
+headset falls back to the worst codec the specification has. **A box reaches it because the base pack
 carries an audio client and its init writes the ALSA default.** `libpulse0` is what a program that
 opens PulseAudio finds on the shared `$XDG_RUNTIME_DIR`; `libasound2-plugins` plus the
 `/etc/asound.conf` `kdos-boxinit` writes (`pcm.!default { type pulse }`) is what a plain ALSA

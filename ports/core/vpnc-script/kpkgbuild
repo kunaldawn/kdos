@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vpnc-script
+version     = 20240208
+release     = 1
+_commit     = 33f4b0e5e83c9d9e79bbcb5b0dd2a3ac9b5b8f9b
+source      = $name::https://gitlab.com/openconnect/vpnc-scripts/-/raw/master/vpnc-script
+sha256      = f0c4d936a382f07711263242699b5e2d85d1ace37136bb78785d352997c17742  vpnc-script
+description = The routing and DNS script every openconnect tunnel runs on connect
+homepage    = https://gitlab.com/openconnect/vpnc-scripts

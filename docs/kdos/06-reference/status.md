@@ -39,7 +39,7 @@ weaker than the verdict would suggest, the row says so.
 | **Snapshots and plans** | Stable | Exercised by every incremental build, plus the synthetic-tree run |
 | **The binary host** | In progress | Signing, the index, the three equality tests and deltas are all asserted against a synthetic port, including four distinct refusals. **There is no public host** — the mechanism is complete and unused |
 | **The pack format** | Stable | Byte-identical across rebuilds under a hostile environment; a small delta reconstructs its pack exactly; the parse-whole and hash-before-signature rules asserted in the suite |
-| **The application catalogue** | Stable | 182 applications and 2 datasets over 7 runtimes, in 7 groups; built on demand, nothing baked |
+| **The application catalogue** | Stable | 183 applications and 2 datasets over 7 runtimes, in 7 groups; built on demand, nothing baked |
 | **kdos-packd** | Stable | Mount, compose, install and rollback exercised on a booted machine by the application-lane harness |
 | **Boxes** | Stable | One box per application, in daily use. Freeze measured on a real box: a couple of megabytes against a merged root of several hundred |
 | **kdos-appbox** | Stable | Every launcher on the system goes through it; launch timings measured cold, warm and repeat |

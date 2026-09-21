@@ -3,7 +3,7 @@
 # per-user daemon first). Brings up the media stack the desktop expects:
 #
 #   pipewire               the media graph
-#   pipewire-media-session its session manager (no wireplumber on KDOS)
+#   wireplumber its session manager — pipewire builds none of its own
 #   pipewire-pulse         PulseAudio shim — appbox apps find audio via the
 #                          shared /run/user/<uid>/pulse socket
 #

@@ -1630,6 +1630,12 @@ Per-manager:
   the service asks the agent to confirm a passkey and refuses the pairing when nobody answers. The
   confirmation is a **deferred reply** — the handler retains the message and returns without
   replying — because a handler that sat in its own loop would stop answering the service.
+- **What a headset actually sounds like is WirePlumber's and not this surface's.** The profile a
+  device negotiates — A2DP for music, HFP for a call — and the codec inside it are the session
+  manager's decision; `kdos-bt` pairs, trusts and connects, and the audio graph is
+  [PipeWire's](../03-architecture/session.md#audio). SBC, AAC, aptX, LDAC, FastStream, G.722 and
+  both HFP codecs are linked into the bluez5 plugin, so what a device gets is what it asks for
+  rather than the worst codec the specification mandates.
 - **`kdos-devices`** enumerates cameras by device call rather than through a library, finds who is
   holding one by walking the process table, and previews a grabbed frame through the shape-matching
   character renderer. **Its scanner section is `scanimage -L` and not `libsane`**: linking the

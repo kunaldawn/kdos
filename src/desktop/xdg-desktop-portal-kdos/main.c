@@ -462,11 +462,11 @@ static int file_chooser(sd_bus_message *m, void *userdata, sd_bus_error *err,
 	 * this desktop can use; the handle behind it is a token the
 	 * compositor minted and this has no business looking inside it.
 	 */
-	const char *handle = wayland_handle(parent);
+	const char *parent_handle = wayland_handle(parent);
 
-	if (handle) {
+	if (parent_handle) {
 		argv[n++] = "--parent";
-		argv[n++] = handle;
+		argv[n++] = parent_handle;
 	}
 	if (save)
 		argv[n++] = "--save";

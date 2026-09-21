@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = noto-emoji
+version     = 2.051
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/googlefonts/noto-emoji/archive/refs/tags/v$version.tar.gz
+sha256      = 04f3d1e5605edebebac00a7a0becb390a4a3ead015066905b27935b30c18e745  noto-emoji-2.051.tar.gz
+description = Noto Color Emoji — the colour emoji face the rest of the desktop assumes
+homepage    = https://github.com/googlefonts/noto-emoji

@@ -168,7 +168,7 @@ the default. Both are read **before** the point of no return, and refusing there
 machine with no operating system on it.
 
 **The Applications page lists GROUPS, not applications.** Seven named bundles is a thing to read
-during an install; 182 rows is not. An answer file may still name an application by id — the
+during an install; 183 rows is not. An answer file may still name an application by id — the
 catalogue's expander takes either — and `essential` is what an empty answer file gets.
 
 **It reads the catalogue directly rather than running `kdos-appbox`.** kinstall links libkbase,

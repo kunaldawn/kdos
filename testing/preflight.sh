@@ -187,10 +187,22 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
     case "$first" in
     ./*)
         dotp=$((dotp + 1))
-        # Accounted for means the recipe descends into the directory the strip
-        # left behind. Anything else is the silent one-level-down failure.
-        grep -qE '^[[:space:]]*cd[[:space:]]+"?[A-Za-z0-9_.-]*\$\{?(name|version)' "$d/build.sh" \
-            || bad "$(basename "$d")" "first source is ./-prefixed and build.sh never cds into the stripped directory"
+        # ONLY A SINGLE WRAPPER IS THE BUG. `./dir/…` with one directory under
+        # the dot loses the dot and lands at $SRC/<dir>, one level too deep.
+        # `./a ./b ./c` — a FLAT archive that merely carries the dot — loses
+        # the same dot and lands exactly right, so demanding a `cd` there
+        # would be demanding a `cd` into nothing. Counting the entries under
+        # the dot is what separates them.
+        _tops=$(tar tf "$t" 2>/dev/null | sed 's|^\./||' \
+                | awk -F/ 'NF && $1 != "" { print $1 }' | sort -u | head -5)
+        _ntop=$(printf '%s\n' "$_tops" | grep -c .)
+        if [ "$_ntop" -eq 1 ]; then
+            # Accounted for means the recipe descends into the directory the
+            # strip left behind. Anything else is the silent one-level-down
+            # failure.
+            grep -qE '^[[:space:]]*cd[[:space:]]+"?[A-Za-z0-9_.-]*\$\{?(name|version)' "$d/build.sh" \
+                || bad "$(basename "$d")" "first source is ./-prefixed with one wrapping directory and build.sh never cds into it"
+        fi
         ;;
     esac
 done
