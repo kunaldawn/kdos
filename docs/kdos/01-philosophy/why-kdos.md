@@ -7,7 +7,7 @@ arbitrary elsewhere in the documentation is usually one of these four being paid
 ## The four properties
 
 **Built from source, with named exceptions.** The host is compiled here from upstream tarballs by
-recipes in `ports/` — 813 of them, running cross toolchain → musl userland → self-hosting
+recipes in `ports/` — 836 of them, running cross toolchain → musl userland → self-hosting
 bootstrap → libraries → desktop → kernel. There is no base image and no binary package archive
 to fall back on. A handful of ports are exceptions, and they are listed in full below rather than
 glossed over.
@@ -27,7 +27,7 @@ verifies one, and it sits beside the bytes it describes. A build that reaches th
 build that stops reproducing the day a URL rots.
 
 **Applications live in boxes.** KDOS builds the *desktop*. It does not native-port Firefox,
-LibreOffice or Blender, and it never will. The outer ring is a catalogue of 182 applications, each
+LibreOffice or Blender, and it never will. The outer ring is a catalogue of 183 applications, each
 declared as a chain of Debian packages over a small set of shared runtimes and **built on the
 machine that asks for one**, then run in its own rootless container and behaving like ordinary
 system software: launcher entries, MIME handlers, terminal commands, one theme. The boundary sits
@@ -92,7 +92,7 @@ and [`libksig`](../05-developer/c-libraries.md) exists to wrap it.
 
 ### The application catalogue is Debian
 
-The 182 applications and the runtimes beneath them are Debian trixie packages. Nothing inside them
+The 183 applications and the runtimes beneath them are Debian trixie packages. Nothing inside them
 is compiled by this repository, and nothing is carried on the medium: the catalogue says which
 packages an application is, and podman builds it on the machine that asks. That is the whole point
 of the outer ring, so it is worth saying plainly. See

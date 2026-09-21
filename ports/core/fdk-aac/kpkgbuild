@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fdk-aac
+version     = 2.0.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/mstorsjo/fdk-aac/archive/refs/tags/v$version.tar.gz
+sha256      = e25671cd96b10bad896aa42ab91a695a9e573395262baed4e4a2ff178d6a3a78  fdk-aac-2.0.3.tar.gz
+description = Fraunhofer AAC codec — what Apple and most phones negotiate over Bluetooth
+homepage    = https://github.com/mstorsjo/fdk-aac
+depends     = cmake

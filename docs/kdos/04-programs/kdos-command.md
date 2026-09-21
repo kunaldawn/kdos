@@ -237,7 +237,7 @@ adding a menu row for `ncdu`.
 builds, removes, exports or imports is `kdos-appbox` run as a child — one implementation, so a
 command line and a button cannot disagree about what installing means.
 
-**`list` is what is installed; `--all` is the catalogue.** 182 applications printed whenever
+**`list` is what is installed; `--all` is the catalogue.** 183 applications printed whenever
 somebody types `kdos app list` buries the handful they actually have.
 
 **A size is labelled an estimate wherever it is printed.** What apt resolves on the day depends on

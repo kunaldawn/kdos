@@ -66,6 +66,12 @@ session's, and is off by default because old output that is not marked reads as 
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
 scale is not negotiated.
 
+**Emoji are a colour bitmap face and `tty1` cannot draw one.** Noto Color Emoji ships and
+fontconfig resolves the generic `emoji` family to it, so every surface with a pixel layer draws
+them — a `kdos-term` window, the panel, a boxed application. The Linux console's font is 512
+monochrome glyphs, so an emoji there is a blank cell like any other codepoint the font does not
+carry.
+
 **No console font is loadable from `/usr/share/consolefonts`.** Every one of those is a PSF, and
 the cell painter loads a face through fontconfig, which cannot scan a PSF at all: FreeType has no
 driver for the format. The console draws in a fontconfig face like every other surface, and the
@@ -90,6 +96,18 @@ compositor centres the dialog on the window that asked for it. A guest under `kd
 its handle from the cage's own compositor, which is not the one the chooser connects to, so that
 handle resolves to nothing and the dialog is centred on the screen. An `x11:` handle is dropped
 for the same reason it always was: there is no X server here.
+
+**A corporate VPN is a terminal program here.** `openconnect` ships and speaks AnyConnect,
+GlobalProtect, Fortinet and Pulse, with `vpnc-script` giving the tunnel its routes — but there is
+no NetworkManager plugin for it, so it does not appear in the network surface beside Wi-Fi and
+OpenVPN. Upstream's plugin checks `webkit2gtk` **unconditionally**, and the dialog it builds with
+it is what the VPN service delegates authentication to: on a host with no GTK the plugin cannot
+be built, and one built with the dialog disabled would be a connection type the surface offers
+and cannot authenticate. WireGuard and OpenVPN are the two that do appear.
+
+**Fingerprint login needs the reader enrolled from a terminal.** `fprintd` and `pam_fprintd`
+ship, so a reader unlocks a session once a finger is on file, and `fprintd-enroll` is what puts
+one there. No surface on either desktop offers enrolment.
 
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
@@ -353,6 +371,12 @@ data at rest only, `wheel` is effectively root, a registry base fetches unsigned
 unsigned pack mounts while a failed signature does not, and there is no automatic update path.
 
 ## Build and packaging
+
+**A LUKS key is typed and not sealed.** `tpm2-tss` and the `tpm2_*` tools ship, so a key CAN be
+sealed to the chip by hand, but nothing in the boot path unseals one: `unlock_root` reads a
+passphrase from `tty1` and has no second road. Wiring one means a sealed blob on the ESP, a PCR
+policy, and an answer for what happens when a firmware update changes the measurements — none of
+which is decided.
 
 **Filling the second root slot is an updater's job**, and there is no updater. What exists is the
 complete state machine: the installer writes the initial state and each slot's LUKS container,

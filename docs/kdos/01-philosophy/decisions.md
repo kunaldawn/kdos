@@ -456,7 +456,9 @@ one, and a view that draws cells is already the player for the format this tree 
 **Braille is `brltty`'s route.** `a11y = yes` keeps the kernel's text plane so `brltty` reads it
 over `/dev/vcsa`, and BrlAPI is linked by nothing here. A display driven that way is driven by
 `brltty` — which already supports every display anyone owns — rather than by a second driver stack
-inside this desktop.
+inside this desktop. **Speech takes the other road**: `speech-dispatcher` is the API every screen
+reader speaks and `espeak-ng` is the voice behind it, so a reader gets its words from the daemon
+rather than from a synthesiser this desktop drives itself.
 
 **An invitation in a message is read and never answered.** `aerc`'s calendar filter prints the
 event — summary, times, location, who was asked — and writes nothing anywhere. A filter runs every

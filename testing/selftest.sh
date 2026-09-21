@@ -5468,8 +5468,14 @@ grep -q -- "--key-file=-" "$IR/init" \
 grep -q "cryptsetup open .*\"\$PASS\"" "$IR/init" \
     && { echo "  the passphrase is passed as an argument"; exit 1; }
 
+# THE STUB ANSWERS `-U <uuid>` AND NOTHING ELSE, which is the whole of what
+# unlock_root asks of it. A stub that echoed a device whatever it was handed
+# could not tell a blkid that implements the UUID LOOKUP from one that does
+# not — and toybox's applet does not, which is exactly the defect that hid
+# behind the permissive version.
 cat > "$IR/bin/blkid" <<'EOF'
 #!/bin/sh
+[ "$1" = "-U" ] && [ -n "${2:-}" ] || exit 1
 echo "$FAKE_LUKS_DEV"
 EOF
 cat > "$IR/bin/cryptsetup" <<'EOF'
@@ -5510,6 +5516,20 @@ luks_try "$IR/bad.tty" "UUID=1234-abcd:kdosroot" \
 luks_try "$IR/good.tty" "this-is-not-a-spec" \
     && { echo "  a malformed cryptdevice= was accepted"; exit 1; }
 echo "  cryptdevice= parsed, passphrase on stdin, three tries then a shell"
+
+# AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S, NOT THE NAME TOYBOX
+# CLAIMS. Every lookup in the generated init is `blkid -U` — the root
+# filesystem, the ESP holding the A/B state, and the LUKS container — and
+# toybox's applet implements no `-U` and cannot see `crypto_LUKS`. With the
+# applet, an installed machine drops to a shell with "Root device not found".
+# $PATH puts /usr/bin ahead of /usr/sbin, so the name alone decides it.
+grep -q 'cp /usr/sbin/blkid bin/blkid' script/06_packaging/01_initramfs.sh \
+    || { echo "  the initramfs no longer copies util-linux's blkid"; exit 1; }
+grep -q "rm -f bin/blkid" script/06_packaging/01_initramfs.sh \
+    || { echo "  the toybox blkid symlink is not removed first — cp writes THROUGH it"; exit 1; }
+grep -q "CONFIG_BLKID is not set" ports/core/toybox/build.sh \
+    || { echo "  toybox's blkid applet is back, and it shadows util-linux's on PATH"; exit 1; }
+echo "  the initramfs blkid is util-linux's, and toybox claims no such name"
 
 # AND THE SLOT'S OWN CONTAINER, WHICH IS ORDERING AND NOT LOGIC. `select` and
 # `crypt` both read the state file on the ESP, and the ESP is unmounted a few

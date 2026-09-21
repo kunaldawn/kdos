@@ -22,4 +22,12 @@ sed -i 's/CONFIG_PATCH=y/# CONFIG_PATCH is not set/' .config
 sed -i 's/CONFIG_FILE=y/# CONFIG_FILE is not set/' .config
 sed -i 's/CONFIG_LOGIN=y/# CONFIG_LOGIN is not set/' .config
 sed -i 's/CONFIG_SU=y/# CONFIG_SU is not set/' .config
+# BLKID IS UTIL-LINUX'S, AND TWO OF THEM IS TWO ANSWERS TO "WHAT IS THIS
+# DEVICE". The applet's prober knows ext, vfat, ntfs, btrfs, f2fs, squashfs
+# and swap — not `crypto_LUKS` — and it implements no `-U` or `-L` LOOKUP at
+# all, only reporting on devices it is handed. $PATH puts /usr/bin ahead of
+# /usr/sbin, so leaving this on shadows the real one for every caller: the
+# initramfs resolving a root, an ESP or a LUKS container by UUID, `kdos
+# persist` finding its store by label, and anybody typing `blkid`.
+sed -i 's/CONFIG_BLKID=y/# CONFIG_BLKID is not set/' .config
 make PREFIX=$PKG install -j1

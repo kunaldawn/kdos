@@ -307,6 +307,31 @@ Without this, selecting slot B unlocks slot A's container and then looks for B's
 it. There is nothing there, and the failure reads as a corrupt filesystem rather than as a lookup
 that was never made.
 
+## `blkid` must be util-linux's, not toybox's
+
+Every lookup the initramfs makes is `blkid -U <uuid>`: the **root filesystem**, the **ESP** that
+holds the A/B state, and the **LUKS container** an encrypted root lives inside. None of the three
+has a fallback.
+
+**toybox's applet implements neither half of that.** `-U` is not a lookup flag there — the applet
+only reports on devices it is handed — and its prober knows ext, vfat, ntfs, btrfs, f2fs,
+squashfs and swap but **not `crypto_LUKS`**. With it, an installed machine prints *"Root device
+with UUID=… not found!"* and drops to a shell, A/B selection silently never engages, and an
+encrypted root never reaches a passphrase prompt. A live ISO is unaffected, because it finds
+`rootfs.squashfs` by scanning and never calls blkid at all.
+
+**`/usr/bin/blkid` is toybox's name on the finished image** and `$PATH` puts `/usr/bin` ahead of
+`/usr/sbin`, so the applet shadows the real tool for every caller — the initramfs, `kdos persist`
+finding its store by label, and anybody typing the name. Two rules follow, and they are the same
+two `switch_root` keeps:
+
+- **toybox's `blkid` is switched off in the recipe**, beside `tar`, `getopt`, `patch`, `file`,
+  `login` and `su`, so the name resolves to util-linux's everywhere.
+- **The initramfs removes `bin/blkid` before copying.** The applet loop has already made it a
+  symlink to `bin/toybox`, and `cp` writes *through* a symlink — overwriting `bin/toybox` while
+  leaving `bin/blkid` pointing at the applet. The packaging step then refuses an initramfs whose
+  `blkid` reports itself as a Toybox multicall binary.
+
 ## `file` must be the magic database's, not toybox's
 
 Toybox's `file` applet is switched off in the recipe and in phase 1, so `/usr/bin/file` is the

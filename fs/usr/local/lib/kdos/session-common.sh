@@ -143,12 +143,22 @@ kdos_session_bus() {
 #
 # Not Wayland's and not the console's — a login sound and a boxed application's
 # audio are the same stack on either desktop.
+#
+# WIREPLUMBER IS THE SESSION MANAGER AND PIPEWIRE BUILDS NONE. The daemon
+# routes nothing on its own: device discovery, which sink a stream lands on,
+# and a Bluetooth headset's profile are all policy, and policy lives here.
+# Without it there is a graph with nothing connected to anything — a machine
+# with working hardware and no sound.
+#
+# STARTED AFTER pipewire AND BEFORE pipewire-pulse: it connects to the
+# daemon's socket, and the PulseAudio shim announces sinks that do not exist
+# until something has created them.
 kdos_session_audio() {
 	if command -v pipewire >/dev/null 2>&1 && ! pgrep -f '^pipewire$' >/dev/null 2>&1; then
 		pipewire >/dev/null 2>&1 &
 		sleep 0.3
-		command -v pipewire-media-session >/dev/null 2>&1 && \
-			pipewire-media-session >/dev/null 2>&1 &
+		command -v wireplumber >/dev/null 2>&1 && \
+			wireplumber >/dev/null 2>&1 &
 		command -v pipewire-pulse >/dev/null 2>&1 && \
 			pipewire-pulse >/dev/null 2>&1 &
 	fi

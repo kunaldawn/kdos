@@ -86,10 +86,42 @@ cp /usr/lib/libhistory.so.8 lib/libhistory.so.8
 cp /usr/lib/libncursesw.so.6 lib/libncursesw.so.6
 ln -sf bash bin/sh
 
-# Install blkid and dependencies
-cp /usr/bin/blkid bin/blkid
+# Install util-linux's blkid, and NOT the name toybox claims.
+#
+# EVERY LOOKUP IN THIS INIT IS `blkid -U <uuid>` — the root filesystem, the
+# ESP that holds the A/B state, and the LUKS container an encrypted root
+# lives inside. toybox's applet implements NEITHER HALF of that: `-U` is not
+# a lookup flag there, and its prober knows ext/vfat/ntfs/btrfs/f2fs/squashfs
+# and swap but NOT `crypto_LUKS`. With toybox's, every one of those lookups
+# answers nothing — an installed machine drops to a shell with "Root device
+# not found", A/B selection silently never engages, and an encrypted root
+# cannot be unlocked at all.
+#
+# `/usr/bin/blkid` IS TOYBOX ON THE FINISHED IMAGE — toybox's symlink farm
+# owns that name, and util-linux's real binary is at /sbin and /usr/sbin.
+# The applet loop above has also already made `bin/blkid` a symlink to
+# `bin/toybox`, so the symlink is REMOVED FIRST: `cp` onto a symlink writes
+# THROUGH it, which would overwrite bin/toybox and leave bin/blkid still
+# pointing at the applet. Exactly the switch_root rule, thirty lines up.
+rm -f bin/blkid
+cp /usr/sbin/blkid bin/blkid
 cp /usr/lib/libblkid.so.1 lib/libblkid.so.1
 cp /usr/lib/libuuid.so.1 lib/libuuid.so.1
+# A prober that cannot name a LUKS container is a machine that cannot unlock
+# its own disk, and the failure is a passphrase prompt that never appears.
+if grep -qa 'Toybox .* multicall' bin/blkid; then
+    echo "FATAL: the initramfs blkid is toybox's applet." >&2
+    echo "       It cannot resolve -U and cannot see crypto_LUKS." >&2
+    exit 1
+fi
+
+# Install mdadm, for a root that lives on a software RAID array. Only
+# libudev beyond libc, and that is already carried below for udevd.
+if [ -x /usr/sbin/mdadm ]; then
+    cp /usr/sbin/mdadm bin/mdadm
+else
+    echo "Note: mdadm not installed — the initramfs cannot assemble an array"
+fi
 
 # Install eudev and dependencies
 cp /sbin/udevd bin/udevd
@@ -231,6 +263,12 @@ MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
 # is what offers the choice and this is what makes the choice bootable.
 MODULES="$MODULES xfs f2fs"
 MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_generic sha512_generic crypto_null algif_skcipher"
+# Software RAID. A root ON an array needs these before anything can be
+# assembled, and a machine whose DATA disks are an array needs them before
+# udev settles — without md_mod the members are bare disks with a superblock
+# nobody reads, which looks like an empty drive rather than a missing module.
+# The personalities are listed individually because md_mod loads none of them.
+MODULES="$MODULES md_mod raid0 raid1 raid10 raid456 dm-raid"
 
 for MOD in $MODULES; do
     copy_module $MOD
@@ -299,6 +337,30 @@ udevadm trigger --type=subsystems --action=add
 udevadm trigger --type=devices --action=add
 udevadm settle
 sp_ok
+
+#
+# ASSEMBLE ANY SOFTWARE RAID BEFORE ANYTHING LOOKS FOR A ROOT. An array's
+# members are bare partitions carrying a superblock until mdadm brings them
+# together; the filesystem UUID the boot is hunting for lives INSIDE the
+# array and does not exist on the disk, so a blkid run before this finds the
+# members and not the root.
+#
+# `--scan` AND NOT A CONFIG. Nothing here knows which arrays this machine
+# has; each member's own superblock does, which is also what makes a machine
+# whose disks were reordered still boot.
+#
+# SILENT WHEN THERE IS NO ARRAY: mdadm exits non-zero when it assembles
+# nothing, which is the ordinary case on the overwhelming majority of
+# machines and must not read as a failure.
+if [ -x /bin/mdadm ]; then
+    # The total is additive and only this branch knows it is going to run —
+    # the rule the unlock and the slot blocks already keep.
+    sp_total 1
+    sp_step "RAID"
+    mdadm --assemble --scan >/dev/null 2>&1 || true
+    udevadm settle
+    sp_ok
+fi
 
 echo "Loading essential filesystem modules..."
 sp_step "FILESYSTEM MODULES"

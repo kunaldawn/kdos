@@ -610,9 +610,9 @@ static void au_pw_free(void)
 /* ── wpctl ───────────────────────────────────────────────────────────────
  *
  * Switching PipeWire's default sink is a metadata write, and the program that
- * already knows how to do it is wireplumber's own. Spawned only when it is on
- * the PATH — an image with pipewire-media-session and no wireplumber has no
- * wpctl at all, and a control that silently did nothing there would be worse
+ * already knows how to do it is wireplumber's own. Still spawned only when it
+ * is on the PATH: this surface is the same binary on an image built without
+ * the session manager, and a control that silently did nothing would be worse
  * than one that says what it can and cannot do.
  */
 static int au_have_wpctl(void)

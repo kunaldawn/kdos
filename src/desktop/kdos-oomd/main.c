@@ -203,7 +203,16 @@ static int box_of(int pid, char *out, size_t cap)
 static const char *const ko_protected[] = {
 	"kdos-comp", "kdos-shell", "kdos-desk", "kdos-notifyd",
 	"Xwayland", "dbus-daemon", "seatd", "ksvc",
-	"kdos-powerd", "kdos-energyd", "kdos-oomd", NULL
+	"kdos-powerd", "kdos-energyd", "kdos-oomd",
+	/*
+	 * THE SESSION MANAGER IS NOT NAMED "pipewire" AND THE PREFIX BELOW
+	 * DOES NOT REACH IT. wireplumber is where every routing decision
+	 * lives — which sink a stream lands on, a headset's profile, the
+	 * device list itself — so killing it leaves a running daemon with a
+	 * graph nothing is connected to, which is a machine whose audio
+	 * stopped for no reason a person can see.
+	 */
+	"wireplumber", NULL
 };
 
 static int is_protected(const KoProc *p)
@@ -213,7 +222,9 @@ static int is_protected(const KoProc *p)
 	for (int i = 0; ko_protected[i]; i++)
 		if (!strcmp(p->comm, ko_protected[i]))
 			return 1;
-	/* pipewire, pipewire-pulse, pipewire-media-session (comm-truncated). */
+	/* pipewire and pipewire-pulse; `comm` is truncated at 15 characters,
+	 * so the prefix is what matches both. wireplumber shares no prefix
+	 * with them and is named in the list above. */
 	if (!strncmp(p->comm, "pipewire", 8))
 		return 1;
 
