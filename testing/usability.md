@@ -136,6 +136,11 @@ The reference frame for everything below.
 
 ## 16 — a notification
 
+**The terminal is clicked first, and that click is load-bearing.** Shots 14 and
+15 leave the focus on the icon layer, and a `--type` there reaches the icon
+layer's own type-ahead rather than a shell — so without it this shot is a bare
+desktop, every run, and says nothing about notifications at all.
+
 **The shot comes straight after the notification, with no sleep**, and that is
 not tidiness: a toast lives five seconds and a rig `--shot` costs a good part of
 that on its own, so a step that waits first photographs the desktop the toast

@@ -1,20 +1,12 @@
-██╗  ██╗██████╗  ██████╗ ███████╗
-██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
-█████╔╝ ██║  ██║██║   ██║███████╗
-██╔═██╗ ██║  ██║██║   ██║╚════██║
-██║  ██╗██████╔╝╚██████╔╝███████║
-╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+[1;32mWelcome to KDOS[0m
+[0;33mKD's Homebrew Linux Distro[0m
 
-Welcome to KDOS
-KD's Homebrew Linux Distro
+[0;37mLinux kernel, musl libc, every port built from source.[0m
 
-Based on Linux Kernel and Musl libc.
-This banner is the fallback; fastfetch replaces it when installed.
-
-λ desktop        start the KDOS desktop (alias of kdos-desktop)
-λ kdos help      keybinds and commands
-λ kdos app gimp  install an alien app into a container
-λ kdos theme     phosphor · amber · ice · bone
-λ kdos doctor    check the session for common breakage
-λ kdos cve       pinned versions with known holes, offline
-λ kdos stutter   why the desktop hiccuped — with the app's name
+[0;33mλ[0m [0;37mdesktop       [0m start the KDOS desktop (alias of kdos-desktop)
+[0;33mλ[0m [0;37mkdos help     [0m keybinds and commands
+[0;33mλ[0m [0;37mkdos app gimp [0m install an alien app into a container
+[0;33mλ[0m [0;37mkdos theme    [0m phosphor · amber · ice · bone
+[0;33mλ[0m [0;37mkdos doctor   [0m check the session for common breakage
+[0;33mλ[0m [0;37mkdos cve      [0m pinned versions with known holes, offline
+[0;33mλ[0m [0;37mkdos stutter  [0m why the desktop hiccuped — with the app's name

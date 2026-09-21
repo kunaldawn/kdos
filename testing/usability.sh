@@ -43,12 +43,17 @@ rm -f "$OUT"/*.png "$OUT"/*.ppm
 #
 # WHERE THE BAR IS, IN PIXELS, AT THIS SIZE.
 #
-# The cell is 8x15 with the shipped face, the bar is its bottom three rows on
+# The cell is 8x17 with the shipped face, the bar is its bottom three rows on
 # this display (two of content and one of edge — see kdos-shell.md), and the
 # row worth aiming at is the one the Start button's word is on. Derived rather
 # than written down: a run at another size must aim at the same button.
 #
-CELL_H=15
+# MEASURED FROM A SHOT AND NOT READ OUT OF THE FONT. The session picks its face
+# through fcft at run time and prints no grid, so the only place this number
+# exists is the picture: the pitch between two glyph rows in 01-welcome. A face
+# change moves it, and the tell is a --click on the bar that opens nothing.
+#
+CELL_H=17
 H=${SIZE#*x}
 ROWS=$((H / CELL_H))
 START_Y=$(((ROWS - 2) * CELL_H + CELL_H / 2))	# the bar's first content row
@@ -91,6 +96,13 @@ exec docker run --rm --device /dev/kvm -v "$PWD:/kdos" -w /kdos \
 	\
 	--click 900,300 --sleep 1 --shot "/kdos/$OUT/14-desktop-click.png" \
 	--mouse 900,700 --sleep 1 --shot "/kdos/$OUT/15-desktop-lower.png" \
+	\
+	`# THE TERMINAL HAS TO BE GIVEN THE FOCUS BACK FIRST. The two steps` \
+	`# above click bare desktop, which focuses the ICON LAYER — and a` \
+	`# --type then goes to the icon layer's own type-ahead, so the` \
+	`# notification is never raised and the shot below is of a desktop` \
+	`# with nothing on it, every run.` \
+	--click 400,300 --sleep 1 \
 	--type 'kdos notify "Usability" "a toast takes no keyboard"' \
 	--shot "/kdos/$OUT/16-toast.png" \
 	--sleep 8 --shot "/kdos/$OUT/17-toast-gone.png"

@@ -704,9 +704,10 @@ is the Start-menu row that allocates a free terminal and switches to it.
 |---|---|
 | `--disk`, `--boot-disk` | Attach and boot a disk image instead of the ISO |
 | `--no-cdrom` | Leave the ISO off, so the **disk** is what boots |
-| `--no-session` | Do not start a compositor |
+| `--no-session` | Do not start a compositor. **The console desktop is what tty1 already is**, so this is the flag every check of it wants; without it the run opens a terminal with Super+Return, types `kdos-desktop` into it and waits for `kdos-comp` — four more minutes before the first step |
 | `--shot <file>` | Capture the framebuffer |
 | `--keys`, `--chord`, `--click x,y`, `--mouse x,y`, `--drag x1,y1,x2,y2` | Drive it |
+| `--press x,y[,btn]`, `--release [x,y]` | A drag held OPEN across later steps, so a `--shot` between two `--press`es photographs it in progress. A button is down only while its RFB client is connected, so the whole gesture travels one socket — which is why this is two flags and not a longer `--drag` |
 | `--type`, `--text` | Type into whatever has the focus — `--type` ends with Return, `--text` does not |
 | `--sleep`, `--wait`, `--soak <s>` | Timing |
 | `--cmd`, `--root-cmd` | Run something in the guest |

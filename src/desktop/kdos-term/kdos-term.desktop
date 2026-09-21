@@ -4,7 +4,7 @@ Name=Terminal
 GenericName=Terminal Emulator
 Comment=A shell, on either desktop
 Exec=kdos-term
-Icon=utilities-terminal
+Icon=system-run
 Terminal=false
 # It attaches to the console session as a surface of its own, so the session
 # must give it a window and not a cage — see X-KDOS-Cells in kxdg.h.

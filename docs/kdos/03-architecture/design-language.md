@@ -412,6 +412,14 @@ how it does it is the whole of the contract:
 - **The view presents AFTER it drains its input, not before.** The cell the session is told about
   and the pixel the arrow is drawn at come out of the same queue, so a frame flushed first is a
   frame drawn one cell behind the hand.
+- **Each mask's width is measured off the art, never taken with `sizeof`.** The table is an array
+  of `const char *`, so `sizeof(rows[0])` is the size of a *pointer* — the same eight for every
+  shape whatever the picture says. A width taken that way is seven columns for all of them, and it
+  cuts four off the eleven-column arrow and eight off the fifteen-column horizontal resize. It cuts
+  the draw, the damage box and the erase by the same amount, so nothing is ever left behind and the
+  only symptom is a pointer with its right-hand side missing — which no comparison of two frames
+  can see. `testing/selftest.sh` lifts the table and `ptr_body` out of `kkms.c` and asserts every
+  pixel of every mask is reachable.
 
 And where the reverse is what gets drawn:
 

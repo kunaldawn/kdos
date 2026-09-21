@@ -31,16 +31,56 @@
 # is one with no hue of its own. Under bone it reads as texture; under phosphor
 # the menu's own green sits on it and it still reads as texture.
 #
-# AND IT IS DIM IN THE FILE, because Limine has no wallpaper opacity. How dark
-# the backdrop is belongs here and nowhere else.
+# THE MENU PLATE IS TRANSPARENT, SO THIS PICTURE IS THE WHOLE SCREEN.
+# `term_background` carries a transparency byte and it is set to `ff` — see
+# kcol_limine_conf(). An OPAQUE plate covers everything but `term_margin`, so
+# the wordmark had to squeeze into a hundred-pixel band and the plate's edge
+# drew a visible rectangle around the menu wherever the band was not exactly
+# the plate's colour. Transparent, there is no plate and no rectangle: the
+# entries are drawn straight onto this, and the wordmark can be as large as
+# the space above them allows.
 #
+# WHICH IS WHY THE FIELD IS FLAT. Every gradient, vignette and texture that
+# was here before existed to make a hundred-pixel border look deliberate. With
+# no border there is nothing for them to do, and what they actually
+# contributed was banding in the corners: the wordmark folded onto itself
+# reads as grain at full size and as smudges at a sixth of it. A flat floor
+# cannot band.
+#
+# THE BANNER IS PLACED AT 1:1 AND NEVER RESAMPLED. It is PIXEL ART — the
+# wordmark is chunky blocks with hard edges — and resampling pixel art with a
+# photographic filter is what makes the blocks come out different widths with
+# soft jagged edges. SIZE is 1920x1080 because that is what `KDOS_RES`
+# defaults to, so on the common screen Limine's `stretched` is 1:1 and every
+# block lands on the pixel it was drawn on. Other resolutions are stretched
+# and soften; nothing can be done about that from here, and an artwork that is
+# right at one resolution beats one that is wrong at all of them.
+#
+# THE INK IS THE MAX CHANNEL, NOT THE LUMINANCE. The wordmark is phosphor
+# green — (57, 255, 20) — which Rec.601 puts at 169 while the penguin's white
+# lands at 249, so a plain greyscale conversion leaves the letters visibly
+# duller than the mascot beside them. Taking the largest channel puts both at
+# the top of the range, which is what "achromatic" was supposed to mean.
+#
+# AND THE BLACK POINT IS 64, WHICH IS WHAT STOPS THE RECTANGLE. The banner has
+# an ambient green glow over the whole image: its corner pixel is (18, 64, 31),
+# not black. Composited onto the floor, that glow lifts the banner's whole area
+# above the field and draws a visible box around it. 64 is measured — it is the
+# 95th percentile of the border ring, and subtracting it takes the border to
+# exactly zero while costing 2% of the strong ink.
+
+# IT IS ACHROMATIC. Limine cannot retint a wallpaper, so this one file sits
+# under every accent and a green penguin would be green under amber.
+# Greyscale reads as engraved under all eight.
+
 #   ./genbackdrop.py            rewrite the backdrop in place
 #   ./genbackdrop.py --check    report what it is now and exit
 
 import os
 import sys
 
-from PIL import Image, ImageEnhance, ImageFilter
+import numpy as np
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
@@ -53,49 +93,62 @@ OUT = os.path.join(BOOT, "kdos-backdrop.png")
 # so it compresses to a few kilobytes at this size.
 SIZE = (1920, 1080)
 
-# The floor the artwork is composited onto. Near-black and very slightly warm,
-# so it is not the same value as the terminal plate above it -- a backdrop that
-# matched `deep` exactly would make the margin look like a rendering fault
-# rather than like a margin.
+# The floor, and the colour `term_foreground` is read against. Near-black and
+# very slightly warm, so it is the scheme's `deep` and the screen is one field
+# rather than a picture with a terminal sitting on it.
 FLOOR = (10, 10, 9)
 
-# 8%: measured as the point where the wordmark is still discernible as a shape
-# on a dark panel and contributes nothing readable behind the menu plate. Above
-# about 15% it starts to compete with the entry text at the screen edges; below
-# about 4% it is indistinguishable from a flat fill and the picture is dead
-# weight on the ESP.
-BRIGHT = 0.08
+# THE WHOLE BANNER, frame and captions and all. It is one designed piece and
+# cropping it to the wordmark threw away the two lines that say what this is.
+CROP = None
 
-# Enough blur that no edge in the artwork reads as a line somebody might
-# mistake for chrome, and not so much that it is a grey cloud.
-BLUR = 6.0
+# What the border ring measures at, and what is subtracted to take it to zero.
+# See the header: below this the banner draws a box on the field.
+BLACK_POINT = 64
+
+# Where the banner's top edge sits, as a fraction of the height. Fractions
+# because the wallpaper is `stretched`, so this holds at every resolution.
+#
+# THE ONE RULE IS THAT NOTHING REACHES THE MIDDLE. Limine centres the entry
+# list vertically whatever the margin is; at 5.5% the banner ends at 31% and
+# the list starts at 50%.
+BAND_TOP = 0.055
+
+# The hero's brightest pixel. Not 255: pure white is structure — an outline, a
+# highlight — everywhere else in this distribution, and a wordmark that reaches
+# it has nothing left to be drawn against.
+HERO_PEAK = 235
 
 
 def build() -> Image.Image:
     src = Image.open(SRC).convert("RGB")
+    if CROP:
+        src = src.crop(CROP)
 
-    # COVER, NOT FIT: the banner is 960x280 and the target is 16:9, so fitting
-    # it would letterbox and stretching it would smear the wordmark. Scale to
-    # cover and crop the overflow, which keeps the letterforms' proportions.
-    sw, sh = src.size
-    scale = max(SIZE[0] / sw, SIZE[1] / sh)
-    grown = src.resize((max(1, round(sw * scale)), max(1, round(sh * scale))),
-                       Image.LANCZOS)
-    left = (grown.size[0] - SIZE[0]) // 2
-    top = (grown.size[1] - SIZE[1]) // 2
-    art = grown.crop((left, top, left + SIZE[0], top + SIZE[1]))
+    # The largest channel, floored at the border's own level and stretched to
+    # the peak — see the header for why each of those three is not the obvious
+    # choice.
+    # int32, NOT int16: the stretch multiplies by HERO_PEAK before dividing,
+    # and 191 * 235 overflows a signed 16-bit lane into negative values that
+    # come back as garbage through the uint8 cast. The peak lands at 181
+    # instead of 245 and the whole banner is dim.
+    a = np.array(src).max(axis=2).astype(np.int32)
+    a = np.clip(a - BLACK_POINT, 0, None)
+    a = (a * HERO_PEAK) // (255 - BLACK_POINT)
+    art = Image.fromarray(a.astype(np.uint8), "L")
 
-    art = art.convert("L").convert("RGB")       # no hue of its own
-    art = art.filter(ImageFilter.GaussianBlur(BLUR))
-    art = ImageEnhance.Brightness(art).enhance(BRIGHT)
+    lum = Image.new("L", SIZE, 0)
+    w, h = art.size
+    if w > SIZE[0] or h > SIZE[1]:
+        raise SystemExit("genbackdrop: the banner does not fit the canvas")
+    # PASTED, NOT RESIZED. See the header.
+    lum.paste(art, ((SIZE[0] - w) // 2, int(SIZE[1] * BAND_TOP)))
 
     # ADDED TO THE FLOOR RATHER THAN PASTED OVER IT, so the artwork can only
-    # ever contribute light. Pasted, its black areas would punch the floor down
-    # to zero and the margin gradient would end at a different colour from the
-    # field it surrounds.
+    # ever contribute light and the field stays exactly one colour everywhere
+    # the artwork is black.
     return Image.merge("RGB", [
-        Image.eval(chan, lambda v, f=floor: min(255, v + f))
-        for chan, floor in zip(art.split(), FLOOR)
+        Image.eval(lum, lambda v, f=f: min(255, v + f)) for f in FLOOR
     ])
 
 

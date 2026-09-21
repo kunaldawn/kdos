@@ -25,11 +25,11 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/lazydocker.desktop" <<'EOF2'
 [Desktop Entry]
 Type=Application
-Name=Containers
+Name=Containers (lazydocker)
 GenericName=Container Manager
 Comment=Containers, images, volumes and logs on one screen
 Exec=lazydocker
-Icon=applications-system
+Icon=network-server
 Terminal=true
 Categories=System;
 Keywords=docker;podman;container;image;logs;lazydocker;

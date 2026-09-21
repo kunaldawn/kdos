@@ -93,7 +93,7 @@ int con_layout_resolve(const char *kind, const char *app, const char **cmd)
 	/* A `term` row is a terminal and says nothing about what ran in it —
 	 * which is the record's own rule, kept here. */
 	if (!strcmp(kind, "term")) {
-		*cmd = kcon_conf_str("terminal", "sh");
+		*cmd = kcon_conf_str("terminal", term_default_cmd());
 		return CON_ROW_TERM;
 	}
 	if (strcmp(kind, "app") || !app[0] || !strcmp(app, "-"))

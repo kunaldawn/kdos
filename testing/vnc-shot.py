@@ -196,6 +196,48 @@ def rfb_pointer(host, port, moves):
     s.close()
 
 
+# THE SOCKET A HELD DRAG LIVES ON.
+#
+# A BUTTON IS DOWN ONLY WHILE ITS CLIENT IS CONNECTED. qemu's VNC server
+# releases every button when a client disconnects, so a press sent down one
+# connection and a move sent down the next is two clicks and no drag. The
+# whole gesture has to travel one socket, which means the socket outlives the
+# step that opened it.
+#
+# WHICH IS WHAT `--press` EXISTS FOR. `--drag` sends press, motion and release
+# in one call and nothing can be photographed between them, so a bug that only
+# exists WHILE the button is down — a window whose frame is redrawn on every
+# motion event — is invisible to it. Held open, a `--shot` in the middle
+# photographs exactly that.
+_held = {"sock": None, "mask": 0}
+
+
+def rfb_hold(host, port, x, y, mask):
+    """Move the pointer, with `mask` held, on the drag's own connection."""
+    if _held["sock"] is None:
+        _held["sock"] = rfb_handshake(host, port)[0]
+    s = _held["sock"]
+    s.sendall(struct.pack(">BBHH", 5, mask, x, y))
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    _held["mask"] = mask
+    time.sleep(0.15)
+
+
+def rfb_drop(host, port, x, y):
+    """Let go, and close the drag's connection. A release with no press is a
+    no-op rather than an error: a run that ends mid-drag still has to tidy
+    up, and the tidy-up cannot be the thing that fails it."""
+    s = _held["sock"]
+    if s is None:
+        return
+    s.sendall(struct.pack(">BBHH", 5, 0, x, y))
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    time.sleep(0.5)
+    s.close()
+    _held["sock"] = None
+    _held["mask"] = 0
+
+
 # The keysyms a chord can name. X11's numbering, which is what RFB carries.
 CHORD_KEYS = {
     "super": 0xffeb, "shift": 0xffe1, "ctrl": 0xffe3, "alt": 0xffe9,
@@ -442,6 +484,16 @@ def main():
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
                     help="X,Y[,BTN] — move there and click; BTN 1/2/3")
+    ap.add_argument("--press", action=Step,
+                    help="X,Y[,BTN] — press there and HOLD, on a connection "
+                         "that stays open. Every later --press moves the "
+                         "pointer with the button still down, so a --shot "
+                         "between two of them photographs the drag in "
+                         "progress; --release ends it")
+    ap.add_argument("--release", action=Step, nargs="?", const="",
+                    help="let go, ending the held drag — at X,Y if one is "
+                         "given, otherwise where the last --press left the "
+                         "pointer")
     ap.add_argument("--drag", action=Step,
                     help="X1,Y1,X2,Y2[,BTN] — press at the first point, move "
                          "to the second with the button held, release. A "
@@ -762,12 +814,18 @@ def main():
             # never sent down the serial line: a compositor launched from a
             # serial console gets no seat and dies asking for one.
             #
-            # On this boot path tty1 is the CELL DESKTOP, so typing here reaches
-            # that rather than a shell. The graphical session's own entry point
-            # from the console is its Start-menu row, which allocates a free VT
-            # and switches to it. Use --no-session and drive that, or --cmd,
-            # which runs on the serial console as the desktop user.
-            print("starting the session on tty1…", flush=True)
+            # AND tty1 IS THE CELL DESKTOP, NOT A SHELL, so a command typed
+            # straight at it reaches the icon layer's type-ahead and runs
+            # nothing — four minutes of boot ending in "kdos-comp never came
+            # up". Super+Return opens one of the session's own terminal
+            # windows first; the command then has a shell to land in, and
+            # `kdos-desktop` allocates a free VT and switches to it from
+            # there. Use --no-session to drive the console desktop itself, or
+            # --cmd, which runs on the serial console as the desktop user.
+            print("opening a terminal on tty1…", flush=True)
+            mon.cmd("sendkey meta_l-ret")
+            time.sleep(6)
+            print("starting the session…", flush=True)
             mon.type(args.session_env + "kdos-desktop"
                      if args.session_env else "kdos-desktop")
 
@@ -824,6 +882,27 @@ def main():
                 rfb_pointer("127.0.0.1", args.vnc_port,
                             [(mx, my, 0), (mx, my, mask), (mx, my, 0)])
                 time.sleep(2.5)
+            elif kind == "press":
+                parts = value.split(",")
+                mx, my = int(parts[0]), int(parts[1])
+                btn = int(parts[2]) if len(parts) > 2 else 1
+                mask = 1 << (btn - 1)
+                if _held["sock"] is None:
+                    # THE ENTER BEFORE THE PRESS. A press at a point the
+                    # pointer was never at is a press the session routes
+                    # against whatever it last thought was under the cursor.
+                    rfb_hold("127.0.0.1", args.vnc_port, mx, my, 0)
+                    _held["last"] = (mx, my)
+                rfb_hold("127.0.0.1", args.vnc_port, mx, my, mask)
+                _held["last"] = (mx, my)
+                time.sleep(0.6)
+            elif kind == "release":
+                if value:
+                    mx, my = (int(v) for v in value.split(","))
+                else:
+                    mx, my = _held.get("last", (0, 0))
+                rfb_drop("127.0.0.1", args.vnc_port, mx, my)
+                time.sleep(2.0)
             elif kind == "drag":
                 # TWELVE INTERPOLATED POINTS AND NOT ONE. A drag is a press,
                 # then MOTION with the button held, then a release: the window
