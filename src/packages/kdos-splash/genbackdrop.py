@@ -31,30 +31,25 @@
 # is one with no hue of its own. Under bone it reads as texture; under phosphor
 # the menu's own green sits on it and it still reads as texture.
 #
-# THE MENU PLATE IS TRANSPARENT, SO THIS PICTURE IS THE WHOLE SCREEN.
-# `term_background` carries a transparency byte and it is set to `ff` — see
-# kcol_limine_conf(). An OPAQUE plate covers everything but `term_margin`, so
-# the wordmark had to squeeze into a hundred-pixel band and the plate's edge
-# drew a visible rectangle around the menu wherever the band was not exactly
-# the plate's colour. Transparent, there is no plate and no rectangle: the
-# entries are drawn straight onto this, and the wordmark can be as large as
-# the space above them allows.
+# THE MENU PLATE IS OPAQUE, SO ONLY THE MARGIN BAND IS EVER SEEN.
+# `term_background` has no transparency and `term_margin` is 100 — see
+# kcol_limine_conf(). Transparent, the artwork could be any size, but Limine
+# prints `linux: Loading kernel …` at the terminal's own origin the moment an
+# entry is picked and those lines then land across it. Opaque, the loading
+# text can only appear inside the plate, and the price is that everything
+# here must fit the margin.
 #
-# WHICH IS WHY THE FIELD IS FLAT. Every gradient, vignette and texture that
-# was here before existed to make a hundred-pixel border look deliberate. With
-# no border there is nothing for them to do, and what they actually
-# contributed was banding in the corners: the wordmark folded onto itself
-# reads as grain at full size and as smudges at a sixth of it. A flat floor
-# cannot band.
+# WHICH FIXES THE HEIGHT AT 6.3% OF THE SCREEN. The wallpaper is `stretched`,
+# so this is a FRACTION while the margin is PIXELS: the artwork has to clear
+# 100 pixels on the tallest screen it will be seen on, not on the one it was
+# drawn for. 6.3% is 68 pixels at 1080 lines and 90 at 1440 — the largest
+# resolution the tree references — and clips above about 1580. There is no
+# placement that both clears the loading text and fits every resolution,
+# which is why the plate is opaque rather than the artwork being moved.
 #
-# THE BANNER IS PLACED AT 1:1 AND NEVER RESAMPLED. It is PIXEL ART — the
-# wordmark is chunky blocks with hard edges — and resampling pixel art with a
-# photographic filter is what makes the blocks come out different widths with
-# soft jagged edges. SIZE is 1920x1080 because that is what `KDOS_RES`
-# defaults to, so on the common screen Limine's `stretched` is 1:1 and every
-# block lands on the pixel it was drawn on. Other resolutions are stretched
-# and soften; nothing can be done about that from here, and an artwork that is
-# right at one resolution beats one that is wrong at all of them.
+# AND THE CAPTIONS ARE DROPPED. At this height the two lines of small print
+# are three pixels tall: including them costs the wordmark a third of its own
+# height to render something nobody can read.
 #
 # THE INK IS THE MAX CHANNEL, NOT THE LUMINANCE. The wordmark is phosphor
 # green — (57, 255, 20) — which Rec.601 puts at 169 while the penguin's white
@@ -64,10 +59,15 @@
 #
 # AND THE BLACK POINT IS 64, WHICH IS WHAT STOPS THE RECTANGLE. The banner has
 # an ambient green glow over the whole image: its corner pixel is (18, 64, 31),
-# not black. Composited onto the floor, that glow lifts the banner's whole area
-# above the field and draws a visible box around it. 64 is measured — it is the
-# 95th percentile of the border ring, and subtracting it takes the border to
-# exactly zero while costing 2% of the strong ink.
+# not black. Composited onto the floor, that glow lifts the artwork's whole
+# area above the field and draws a visible box around it. 64 is measured — it
+# is the 95th percentile of the border ring, and subtracting it takes the
+# border to exactly zero while costing 2% of the strong ink.
+#
+# THE DOWNSCALE IS `BOX`, WHICH IS AREA AVERAGING. The wordmark is pixel art;
+# LANCZOS on it gives blocks of different widths and soft jagged edges, which
+# is what a photographic filter does to hard edges. Averaging whole areas is
+# the right operation going DOWN, and going down is all this does.
 
 # IT IS ACHROMATIC. Limine cannot retint a wallpaper, so this one file sits
 # under every accent and a green penguin would be green under amber.
@@ -98,21 +98,18 @@ SIZE = (1920, 1080)
 # rather than a picture with a terminal sitting on it.
 FLOOR = (10, 10, 9)
 
-# THE WHOLE BANNER, frame and captions and all. It is one designed piece and
-# cropping it to the wordmark threw away the two lines that say what this is.
-CROP = None
+# THE INK OF THE PENGUIN AND THE LETTERS, measured in the 960x280 source.
+# The ruled frame and the two caption lines are left out — see the header.
+CROP = (67, 38, 754, 182)
 
 # What the border ring measures at, and what is subtracted to take it to zero.
-# See the header: below this the banner draws a box on the field.
 BLACK_POINT = 64
 
-# Where the banner's top edge sits, as a fraction of the height. Fractions
-# because the wallpaper is `stretched`, so this holds at every resolution.
-#
-# THE ONE RULE IS THAT NOTHING REACHES THE MIDDLE. Limine centres the entry
-# list vertically whatever the margin is; at 5.5% the banner ends at 31% and
-# the list starts at 50%.
-BAND_TOP = 0.055
+# Where the artwork sits and how tall it is, as fractions of the height.
+# BAND_TOP + BAND_H must stay under `term_margin`/height on the tallest screen
+# the menu will be seen on, or the plate draws over the artwork.
+BAND_TOP = 0.004
+BAND_H = 0.059
 
 # The hero's brightest pixel. Not 255: pure white is structure — an outline, a
 # highlight — everywhere else in this distribution, and a wordmark that reaches
@@ -121,28 +118,24 @@ HERO_PEAK = 235
 
 
 def build() -> Image.Image:
-    src = Image.open(SRC).convert("RGB")
-    if CROP:
-        src = src.crop(CROP)
+    src = Image.open(SRC).convert("RGB").crop(CROP)
 
     # The largest channel, floored at the border's own level and stretched to
-    # the peak — see the header for why each of those three is not the obvious
-    # choice.
-    # int32, NOT int16: the stretch multiplies by HERO_PEAK before dividing,
-    # and 191 * 235 overflows a signed 16-bit lane into negative values that
-    # come back as garbage through the uint8 cast. The peak lands at 181
-    # instead of 245 and the whole banner is dim.
+    # the peak. int32, NOT int16: the stretch multiplies by HERO_PEAK before
+    # dividing, and 191 * 235 overflows a signed 16-bit lane into negative
+    # values that come back as garbage through the uint8 cast — the peak lands
+    # at 181 instead of 245 and the whole banner is dim.
     a = np.array(src).max(axis=2).astype(np.int32)
     a = np.clip(a - BLACK_POINT, 0, None)
     a = (a * HERO_PEAK) // (255 - BLACK_POINT)
     art = Image.fromarray(a.astype(np.uint8), "L")
 
+    bh = max(1, int(SIZE[1] * BAND_H))
+    bw = max(1, round(bh * art.size[0] / art.size[1]))
+    art = art.resize((bw, bh), Image.BOX)
+
     lum = Image.new("L", SIZE, 0)
-    w, h = art.size
-    if w > SIZE[0] or h > SIZE[1]:
-        raise SystemExit("genbackdrop: the banner does not fit the canvas")
-    # PASTED, NOT RESIZED. See the header.
-    lum.paste(art, ((SIZE[0] - w) // 2, int(SIZE[1] * BAND_TOP)))
+    lum.paste(art, ((SIZE[0] - bw) // 2, int(SIZE[1] * BAND_TOP)))
 
     # ADDED TO THE FLOOR RATHER THAN PASTED OVER IT, so the artwork can only
     # ever contribute light and the field stays exactly one colour everywhere

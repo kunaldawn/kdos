@@ -223,6 +223,39 @@ def rfb_hold(host, port, x, y, mask):
     time.sleep(0.15)
 
 
+def rfb_sweep(host, port, x0, y0, x1, y1, n, mask, gap):
+    """A drag at something like a real mouse's REPORT RATE.
+
+    `--drag` and `--press` space their events 150 ms apart, which is about six
+    a second; a mouse on a desk sends between 125 and 1000. A defect that only
+    appears when the events arrive faster than the session can answer them is
+    invisible to both, and "I cannot reproduce it" then means "my hand is
+    slower than theirs", not "it is not there". One connection, one press, `n`
+    interpolated moves `gap` seconds apart, one release.
+    """
+    s, _w, _h, _pf = rfb_handshake(host, port)
+
+    def at(x, y, m):
+        s.sendall(struct.pack(">BBHH", 5, m, x, y))
+
+    at(x0, y0, 0)
+    time.sleep(0.15)
+    at(x0, y0, mask)
+    time.sleep(0.05)
+    for i in range(1, n + 1):
+        at(x0 + (x1 - x0) * i // n, y0 + (y1 - y0) * i // n, mask)
+        if gap:
+            time.sleep(gap)
+    at(x1, y1, mask)
+    time.sleep(0.05)
+    at(x1, y1, 0)
+    # The framebuffer request is what makes the server drain the queue before
+    # the socket closes — see rfb_pointer.
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    time.sleep(0.5)
+    s.close()
+
+
 def rfb_drop(host, port, x, y):
     """Let go, and close the drag's connection. A release with no press is a
     no-op rather than an error: a run that ends mid-drag still has to tidy
@@ -484,6 +517,13 @@ def main():
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
                     help="X,Y[,BTN] — move there and click; BTN 1/2/3")
+    ap.add_argument("--sweep", action=Step,
+                    help="X1,Y1,X2,Y2[,N[,MS[,BTN]]] — a drag delivered at a "
+                         "real mouse's report rate: N interpolated motions MS "
+                         "milliseconds apart with the button held. --drag and "
+                         "--press space their events 150ms apart, so a defect "
+                         "that only appears under a fast hand cannot be "
+                         "reproduced with either. Defaults: N=120, MS=2, BTN=1")
     ap.add_argument("--press", action=Step,
                     help="X,Y[,BTN] — press there and HOLD, on a connection "
                          "that stays open. Every later --press moves the "
@@ -881,6 +921,15 @@ def main():
                 mask = 1 << (btn - 1)
                 rfb_pointer("127.0.0.1", args.vnc_port,
                             [(mx, my, 0), (mx, my, mask), (mx, my, 0)])
+                time.sleep(2.5)
+            elif kind == "sweep":
+                p = value.split(",")
+                x0, y0, x1, y1 = (int(v) for v in p[:4])
+                n = int(p[4]) if len(p) > 4 else 120
+                ms = int(p[5]) if len(p) > 5 else 2
+                btn = int(p[6]) if len(p) > 6 else 1
+                rfb_sweep("127.0.0.1", args.vnc_port, x0, y0, x1, y1,
+                          n, 1 << (btn - 1), ms / 1000.0)
                 time.sleep(2.5)
             elif kind == "press":
                 parts = value.split(",")
