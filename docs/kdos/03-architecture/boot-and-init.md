@@ -86,21 +86,19 @@ how a stick and the machine installed from it end up different colours, and the 
 is the one nobody is booting that day. The only lines the writers own are the two that name paths
 on the medium — `wallpaper` and `term_font`.
 
-**The menu's plate is TRANSPARENT and its backdrop is stretched, and both are legibility rather
-than taste.** `term_background` carries a leading transparency byte. Opaque, the plate covers
-everything inside `term_margin` — which forces the wordmark into the margin band and draws a
-visible rectangle round the menu wherever the band is not exactly the plate's colour. Set to `ff`
-there is no plate and no rectangle: the entries are drawn straight onto the wallpaper. A
+**The menu's plate is OPAQUE and its backdrop is stretched, and both are legibility rather than
+taste.** `term_background` carries a leading transparency byte. Transparent, there is no plate and
+the artwork may be any size — but **Limine prints `linux: Loading kernel …` at the terminal's own
+origin the moment an entry is picked**, and with no plate to draw it on those lines land across
+the artwork. Photographed. Opaque, the loading text can only ever appear inside the plate. A
 `centered` wallpaper is drawn at its own size in the middle of the screen, which is exactly where
-the menu is, so the style is `stretched`. `term_margin_gradient` is `0` because there is no plate
-edge left to soften. `term_font_scale` is `1x2`: doubling both axes of an 8x16 face fills a
-1080-row screen with four entries.
+the menu is, so the style is `stretched`. `term_font_scale` is `1x2`: doubling both axes of an
+8x16 face fills a 1080-row screen with four entries.
 
-**Limine's own default over a wallpaper is `80`, and that is the unreadable menu** this key used
-to be pinned to `00` for. What replaces the pin is a rule on the artwork instead: **nothing
-`genbackdrop.py` draws may reach the middle of the screen**, because Limine centres the entry
-list vertically whatever the margin is. The hero ends at 16.5% of the height and both it and the
-entries scale with the screen, so clearing it once clears it at every resolution.
+**There is no placement that avoids the loading text at every resolution**, which is why the plate
+is opaque rather than the artwork being moved. The text's position is in PIXELS from the margin;
+the artwork's is a FRACTION of a stretched wallpaper. A banner that clears the text at 1080 lines
+runs underneath it at 720.
 
 **A margin that leaves the terminal under SIXTEEN ROWS makes Limine abandon the graphical terminal
 altogether**, and that is the ceiling `term_margin` is set against. Measured by booting one ESP
@@ -115,31 +113,31 @@ branding, so the key would print "KDOS" in a font directly under a picture of it
 key out does not remove it. Limine falls back to its own default and prints `Limine <version>
 (x86-64, UEFI)` in its own cyan. Photographed.
 
-**The artwork is the whole banner on a flat field, placed at 1:1 and never resampled.**
-`genbackdrop.py` lays `kdos-banner.png` — frame, penguin, wordmark and both caption lines —
-straight onto a floor of the scheme's `deep`. Three things about it are measured rather than
-chosen, and each fixes something that looked broken:
+**The artwork is the penguin and the wordmark, sized to fit the margin.** `genbackdrop.py` lays
+them on a floor of the scheme's `deep`. Four things about it are measured rather than chosen, and
+each fixes something that looked broken:
 
-- **1:1, because it is PIXEL ART.** The wordmark is chunky blocks with hard edges, and resampling
-  that with a photographic filter gives blocks of different widths and soft jagged edges. The
-  canvas is 1920x1080 because that is what `KDOS_RES` defaults to, so `stretched` is 1:1 on the
-  common screen and every block lands on the pixel it was drawn on. Other resolutions stretch and
-  soften; an artwork that is right at one resolution beats one that is wrong at all of them.
+- **6.3% of the height, because the margin is 100 pixels.** The wallpaper is `stretched`, so the
+  artwork scales with the screen while the margin does not: it has to clear 100 pixels on the
+  tallest screen it will be seen on. 6.3% is 68 pixels at 1080 lines and 90 at 1440 — the largest
+  resolution the tree references — and is covered by the plate above about 1580.
+- **The captions are dropped.** At this height the two lines of small print are three pixels tall;
+  including them costs the wordmark a third of its own height to render something illegible.
 - **The ink is the MAX CHANNEL, not the luminance.** The wordmark is phosphor green — `(57,255,20)`
   — which Rec.601 puts at 169 while the penguin's white lands at 249, so a plain greyscale
-  conversion leaves the letters visibly duller than the mascot beside them. The largest channel
-  puts both at the top of the range, which is what "achromatic" was supposed to mean.
+  conversion leaves the letters visibly duller than the mascot beside them.
 - **The black point is 64, and that is what stops the rectangle.** The banner carries an ambient
   green glow over its whole area — its corner pixel is `(18,64,31)`, not black — so composited
   onto the floor it lifts its own area above the field and draws a box around itself. 64 is the
   95th percentile of the border ring: subtracting it takes the border to exactly zero at a cost of
   2% of the strong ink.
 
-There is no vignette and no texture. Both existed to make a hundred-pixel border look deliberate,
-and with no border what they contributed was banding in the corners, because a wordmark folded
-onto itself reads as grain at full size and as smudges at a sixth of it. A flat floor cannot band.
-It is a host script whose output is committed, the arrangement `genbanner.py` and `genlogo.py`
-already use.
+The downscale is `BOX` — area averaging — because the wordmark is pixel art and a photographic
+filter on hard edges gives blocks of different widths with soft jagged edges. There is no vignette
+and no texture: both existed to make the border look deliberate, and what they contributed was
+banding in the corners, because a wordmark folded onto itself reads as grain at full size and as
+smudges at a sixth of it. A flat floor cannot band. It is a host script whose output is committed,
+the arrangement `genbanner.py` and `genlogo.py` already use.
 
 **`kdos-bootctl theme <accent>` restamps an installed machine in place.** It rewrites only the keys
 the theme owns and leaves every entry, `cmdline`, `default_entry` and the A/B state alone — a

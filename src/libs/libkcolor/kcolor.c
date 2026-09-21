@@ -113,26 +113,27 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		"interface_help_colour_bright: %s\n"
 		"backdrop: %s\n"
 		/*
-		 * `ff` — FULLY TRANSPARENT, AND THE PLATE IS GONE.
+		 * `00` — OPAQUE, AND THAT IS WHAT KEEPS THE ARTWORK CLEAN.
 		 *
-		 * The leading byte is transparency. Opaque (`00`) the plate
-		 * covers everything inside `term_margin`, which does two bad
-		 * things at once: the wordmark has to squeeze into the margin
-		 * band, and the plate's edge draws a visible rectangle round
-		 * the menu wherever the band is not exactly the plate's
-		 * colour. Transparent there is no plate and no rectangle —
-		 * the entries are drawn straight onto the wallpaper, and
-		 * genbackdrop.py can give the wordmark a third of the screen.
+		 * The leading byte is transparency. Transparent, there is no
+		 * plate and the wordmark may be any size — but Limine prints
+		 * `linux: Loading kernel …` at the terminal's own origin the
+		 * moment an entry is picked, and with nothing to draw it on
+		 * those lines land across the artwork. Photographed. Opaque,
+		 * the plate covers the whole terminal and the loading text
+		 * can only ever appear inside it.
 		 *
-		 * WHICH IS SAFE ONLY BECAUSE THE WALLPAPER IS FLAT AND DARK
-		 * BEHIND THE TEXT. Limine's own default over a wallpaper is
-		 * `80` against whatever artwork it is given, which is the
-		 * unreadable menu this key was pinned to `00` for. The rule
-		 * that replaces the pin is genbackdrop.py's: nothing the
-		 * artwork draws may reach the middle of the screen, where the
-		 * entry list is centred.
+		 * THE PRICE IS THAT THE ARTWORK MUST FIT `term_margin`, which
+		 * the sixteen-row floor below caps at 100 pixels. There is no
+		 * placement that avoids both: the text's position is in
+		 * PIXELS from the margin and the artwork's is a FRACTION of a
+		 * stretched wallpaper, so a banner that clears the text at one
+		 * resolution runs under it at another.
+		 *
+		 * Limine's own default over a wallpaper is `80`, which is the
+		 * unreadable menu this was first pinned to `00` for.
 		 */
-		"term_background: ff%s\n"
+		"term_background: 00%s\n"
 		"term_foreground: %s\n"
 		"term_palette: %s;%s;%s;%s;%s;%s;%s;%s\n"
 		"term_palette_bright: %s;%s;%s;%s;%s;ffffff;%s;ffffff\n"
@@ -161,13 +162,13 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		 * it; going higher trades the whole theme on a small panel for
 		 * a larger logo on a big one.
 		 *
-		 * THE GRADIENT IS 0 BECAUSE THERE IS NO PLATE EDGE LEFT TO
-		 * SOFTEN. It blends the backdrop into the terminal's
-		 * background colour over the last few pixels of the margin,
-		 * and a transparent background has none to blend into.
+		 * The gradient softens the plate's edge over the last few
+		 * pixels of the margin, so the backdrop does not stop dead at
+		 * it. It is small because the artwork sits at the TOP of the
+		 * margin and a wide gradient would reach up and dim it.
 		 */
 		"term_margin: 100\n"
-		"term_margin_gradient: 0\n"
+		"term_margin_gradient: 8\n"
 		/* `stretched`, NEVER `centered`. A centred backdrop is drawn at
 		 * its own size in the middle of the screen — which is where the
 		 * menu is — so its shapes land behind the entry text. Stretched,
