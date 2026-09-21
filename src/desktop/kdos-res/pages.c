@@ -32,7 +32,7 @@ void res_page_placeholder(int x, int y, int w, int h, const char *name)
 
 const ResPage RES_PAGES[RP_NPAGES] = {
 	{ "applications", "Applications", "applications-system", res_app_prepare, res_app_headline, res_draw_apps, res_app_click, res_app_wheel, res_app_key, res_app_motion, res_app_release },
-	{ "processes",    "Processes",    "utilities-terminal",  res_procs_prepare, res_proc_headline, res_draw_procs, res_procs_click, res_procs_wheel, res_procs_key, res_procs_motion, res_procs_release },
+	{ "processes",    "Processes",    "system-run",  res_procs_prepare, res_proc_headline, res_draw_procs, res_procs_click, res_procs_wheel, res_procs_key, res_procs_motion, res_procs_release },
 	{ "cpu",          "CPU",          "cpu",                 NULL, res_cpu_headline, res_draw_cpu, NULL, NULL, NULL, NULL, NULL },
 	{ "memory",       "Memory",       "media-flash",         NULL, res_mem_headline, res_draw_mem, NULL, NULL, NULL, NULL, NULL },
 	{ "gpu",          "GPU",          "video-display",       res_gpu_prepare, res_gpu_headline, res_draw_gpu, NULL, NULL, NULL, NULL, NULL },

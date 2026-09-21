@@ -1075,7 +1075,10 @@ con_golden() {
     # left behind.
     rm -rf "$OUT/constate"
     mkdir -p "$OUT/constate"
-    PATH="$OUT/nogdbus" XDG_STATE_HOME="$OUT/constate" \
+    # AND A FIXED $SHELL. The `terminal` key's default is the account's login
+    # shell, so a frame that opens one without saying which would be a golden
+    # that depends on whoever ran the suite.
+    PATH="$OUT/nogdbus" XDG_STATE_HOME="$OUT/constate" SHELL=/bin/bash \
         XDG_CONFIG_HOME="${_conhome:-$OUT/constate}" \
         KDOS_GREET_FIXTURE="${_greetfix:-/nonexistent-kdos-greet}" \
         "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
@@ -4413,6 +4416,112 @@ else
 fi
 
 echo
+echo "==> every pointer mask is drawn at its own width"
+#
+# THE ARROW IS ELEVEN COLUMNS AND THE HORIZONTAL RESIZE IS FIFTEEN, and the
+# table that holds them is an array of POINTERS — so a width taken with
+# `sizeof(rows[0])` is the size of a pointer and the same for all seven. Every
+# mask wider than that was drawn, damaged and erased with its right-hand
+# columns missing: four off the arrow, eight off the resize. Nothing was left
+# behind, because the draw and the damage were cut by the same amount — which
+# is exactly why a before/after comparison of two frames could not see it.
+#
+# COMPILED WITHOUT drm, BY LIFTING THE TWO REGIONS OUT OF kkms.c. The table
+# and `ptr_body` are pure data and one string index; the rest of that file
+# needs a GPU device and is gated below on pkg-config, so a machine with no
+# libdrm would otherwise never check the artwork at all.
+#
+# THE EXTRACTION IS ASSERTED. A rename that made either `sed` match nothing
+# would leave a test that compiles, passes, and checks no shape whatsoever.
+_ptrdir="$OUT/ptrmask"
+mkdir -p "$_ptrdir"
+sed -n '/^struct ptr_shape {/,/"every KT_PTR_\* needs a mask");/p' \
+    src/libs/libkkms/kkms.c > "$_ptrdir/table.inc"
+sed -n '/^static const struct ptr_shape \*ptr_shape_at(int idx)/,/^}/p' \
+    src/libs/libkkms/kkms.c > "$_ptrdir/fns.inc"
+sed -n '/^static int ptr_mask_w(const struct ptr_shape \*sh)/,/^}/p' \
+    src/libs/libkkms/kkms.c >> "$_ptrdir/fns.inc"
+sed -n '/^static int ptr_body(const struct ptr_shape \*sh, int x, int y)/,/^}/p' \
+    src/libs/libkkms/kkms.c >> "$_ptrdir/fns.inc"
+for _part in table fns; do
+    [ -s "$_ptrdir/$_part.inc" ] ||
+        { echo "  the $_part extraction from kkms.c matched nothing"; exit 1; }
+done
+grep -q 'ptr_arrow' "$_ptrdir/table.inc" ||
+    { echo "  the table extraction carries no artwork"; exit 1; }
+for _fn in ptr_shape_at ptr_mask_w ptr_body; do
+    grep -q "^static .*$_fn(" "$_ptrdir/fns.inc" ||
+        { echo "  the function extraction is missing $_fn"; exit 1; }
+done
+
+cat > "$_ptrdir/main.c" <<'PTREOF'
+#include <stdio.h>
+#include <string.h>
+#include "ktui.h"
+#include "table.inc"
+#include "fns.inc"
+
+static const char *const nm[KT_PTR_N] = {
+	"arrow", "ibeam", "size-ns", "size-we", "size-nwse", "size-nesw",
+	"move"
+};
+
+int main(void)
+{
+	int bad = 0;
+
+	for (int i = 0; i < KT_PTR_N; i++) {
+		const struct ptr_shape *sh = ptr_shape_at(i);
+		int wide = 0, ink = 0, drawn = 0;
+
+		for (int y = 0; y < sh->h; y++) {
+			int n = (int)strlen(sh->rows[y]);
+
+			if (n > wide)
+				wide = n;
+			for (int x = 0; x < n; x++)
+				if (sh->rows[y][x] == 'X')
+					ink++;
+		}
+		/* WHAT THE DRAW LOOP WOULD ACTUALLY PUT ON THE SCREEN: every
+		 * mask pixel ptr_body() answers for, over the box ptr_draw()
+		 * walks. A cut mask reports fewer than the art has. */
+		for (int y = 0; y < sh->h; y++)
+			for (int x = 0; x < ptr_mask_w(sh); x++)
+				if (ptr_body(sh, x, y))
+					drawn++;
+		if (ptr_mask_w(sh) != wide) {
+			printf("  %s: the table says %d columns, the art has "
+			       "%d\n", nm[i], ptr_mask_w(sh), wide);
+			bad = 1;
+		}
+		if (drawn != ink) {
+			printf("  %s: the art has %d pixels and the draw "
+			       "reaches %d\n", nm[i], ink, drawn);
+			bad = 1;
+		}
+		/* AND NOTHING IS READ PAST A ROW. A mask narrower than its
+		 * widest row must answer 0 there rather than whatever follows
+		 * the string literal. */
+		for (int y = 0; y < sh->h; y++)
+			if (ptr_body(sh, (int)strlen(sh->rows[y]), y)) {
+				printf("  %s: row %d answers past its end\n",
+				       nm[i], y);
+				bad = 1;
+			}
+	}
+	if (!bad)
+		printf("  %d masks, each drawn at its own width, none read "
+		       "past a row\n", KT_PTR_N);
+	return bad;
+}
+PTREOF
+$CC $STD $WARN -I"$_ptrdir" -Isrc/libs/libktui -Isrc/libs/libkbase \
+    -Isrc/libs/libkcolor -o "$_ptrdir/ptrmask" "$_ptrdir/main.c" ||
+    { echo "  the pointer-mask check does not compile"; exit 1; }
+"$_ptrdir/ptrmask" || exit 1
+
+echo
 echo "==> libkkms takes a screen, where there is one to take"
 #
 # The only thing on the console path that needs a GPU device, and the reason it
@@ -5562,6 +5671,35 @@ _unl=$(_ln 'if \[ -n "\$CRYPTDEV" \]')
 [ -n "$_unl" ] && [ "$_cry" -lt "$_unl" ] \
     || { echo "  the unlock does not follow the slot selection"; exit 1; }
 echo "  a slot's LUKS container is read while the ESP is mounted, before the unlock"
+
+echo
+echo "==> the shipped console palette is the default scheme"
+# fs/etc/vtrgb IS A GENERATED FILE THAT IS COMMITTED, the way the boot backdrop
+# is: kdos-getty loads it onto every VT before the login prompt, and nothing at
+# run time derives it. So the tree carries a second copy of KCOL_DEFAULT_ID's
+# sixteen colours, and a second copy nothing compares is the copy that goes
+# stale — moving the default accent and leaving this behind is a machine whose
+# console and desktop are different colours from first boot.
+"$OUT/kdos-bootctl" palette > "$OUT/vtrgb.want" \
+    || { echo "  kdos-bootctl palette failed"; exit 1; }
+if ! diff -u fs/etc/vtrgb "$OUT/vtrgb.want" > "$OUT/vtrgb.diff" 2>&1; then
+    echo "  fs/etc/vtrgb is not the default scheme's palette:"
+    sed 's/^/    /' "$OUT/vtrgb.diff"
+    echo "    regenerate with: kdos-bootctl palette > fs/etc/vtrgb"
+    exit 1
+fi
+# AND THE ACCENT HAS TO REACH IT. Every scheme must give a different table, or
+# `kdos theme` writes the same sixteen colours whatever it is handed.
+_pal_prev=
+for _sc in phosphor amber ice bone norton borland perfect paper; do
+    _pal=$("$OUT/kdos-bootctl" palette "$_sc") \
+        || { echo "  no palette for $_sc"; exit 1; }
+    [ "$_pal" != "$_pal_prev" ] \
+        || { echo "  $_sc has the same console palette as the scheme before it"
+             exit 1; }
+    _pal_prev=$_pal
+done
+echo "  fs/etc/vtrgb matches kcol_vtrgb(default), and every accent differs"
 
 echo
 echo "==> kdosbuild reads the build tree correctly"

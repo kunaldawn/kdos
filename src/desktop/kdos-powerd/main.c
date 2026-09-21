@@ -510,9 +510,10 @@ static bool zone_name_ok(const char *z)
 	return true;
 }
 
-/* ── the accent, and the two root-owned files that carry it ────────────────
+/* ── the accent, and the root-owned files that carry it ───────────────────
  *
- * HERE FOR THE REASON THE TIMEZONE IS HERE. `/etc/kdos/accent` and the ESP's
+ * HERE FOR THE REASON THE TIMEZONE IS HERE. `/etc/kdos/accent`, `/etc/vtrgb`
+ * and the ESP's
  * `limine.conf` are root's, the person changing the look of their machine is
  * the one administering it, and `wheel` is already the answer to who that is.
  * A second socket with a second authorisation rule would be a second answer to
@@ -525,14 +526,18 @@ static bool zone_name_ok(const char *z)
  * not a scheme names nothing at all, and `kcol_find` is the whole check.
  *
  * WHAT IT DOES NOT DO IS RETINT THE DESKTOP. That is `kdos theme`'s, runs as
- * the user, and touches only the user's own files. Root is needed for these
- * two and for nothing else, so these two are all this verb writes.
+ * the user, and touches only the user's own files. Root is needed for the
+ * accent name, the boot menu and the console palette and for nothing else, so
+ * those three are all this verb reaches.
  */
 static int set_accent(const char *name, char *out, size_t nout)
 {
 	const char *etc = getenv("KDOS_POWERD_ETC");
 	const KcolScheme *sc = kcol_find(name);
-	char path[320], dir[320];
+	/* `path` is `dir` plus a name, so it is the longer of the two — sized
+	 * the same, a compiler that can see the concatenation refuses the
+	 * build rather than the truncation. */
+	char path[352], dir[320];
 	KbArgv a = {0};
 
 	if (!sc) {
@@ -555,10 +560,12 @@ static int set_accent(const char *name, char *out, size_t nout)
 	}
 
 	/*
-	 * AND THE BOOT MENU, THROUGH kdos-bootctl, WHICH OWNS limine.conf.
-	 * Exec'd rather than linked: the restamp is the bootloader tool's rule
-	 * about which keys a theme owns, and a copy of that rule in a daemon is
-	 * a copy that goes stale the next time Limine gains a key.
+	 * AND THE BOOT MENU AND THE TEXT CONSOLE, THROUGH kdos-bootctl, WHICH
+	 * OWNS limine.conf AND /etc/vtrgb — the two surfaces drawn before any
+	 * session exists. Exec'd rather than linked: the restamp is the
+	 * bootloader tool's rule about which keys a theme owns, and a copy of
+	 * that rule in a daemon is a copy that goes stale the next time Limine
+	 * gains a key.
 	 *
 	 * ITS FAILURE IS NOT THIS VERB'S FAILURE. A live medium is read-only
 	 * and a machine may have no ESP; the accent still applied to everything

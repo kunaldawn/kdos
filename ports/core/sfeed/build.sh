@@ -30,7 +30,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/sfeed.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Feeds
+Name=Feeds (sfeed)
 GenericName=Feed Reader
 Comment=Read the feeds sfeed_update has fetched
 Exec=sfeed_curses

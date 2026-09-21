@@ -110,6 +110,7 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | `~/.icons/KDOS-cursors/` | Cursor lookup inside boxes | On the application's next launch |
 | `/etc/kdos/accent` | `rcS`, which retints the running splash | On the next boot |
 | `/boot/efi/limine.conf` | The bootloader | On the next boot |
+| `/etc/vtrgb` | Every text console — the login prompt, `/etc/issue`, the banner | On the next login prompt |
 
 **A GTK3 application restyles while it is open, and the accent in the directory name is what does
 it.** GTK rebuilds its whole style cascade when the `gtk-theme-name` setting moves and at no other
@@ -135,12 +136,20 @@ are therefore the nearest of the 256 terminal indices rather than the scheme's e
 `config.yml` you edit, so `kdos theme` does not write them at all. Writing them would mean owning
 that file and discarding whatever else you had put in it.
 
-## The boot menu and the splash
+## The boot menu, the splash and the text consoles
 
-**These two are root's, and `kdos theme` reaches them through `kdos-powerd`.** The boot menu lives
-in `limine.conf` on the ESP and the splash reads `/etc/kdos/accent`; neither is a file your account
-can write, and both are administration of the machine rather than of your session — which is the
-same argument that puts the timezone and the autologin account on that daemon.
+**These three are root's, and `kdos theme` reaches them through `kdos-powerd`.** The boot menu
+lives in `limine.conf` on the ESP, the splash reads `/etc/kdos/accent` and every text console
+reads `/etc/vtrgb`; none is a file your account can write, and all three are administration of the
+machine rather than of your session — which is the same argument that puts the timezone and the
+autologin account on that daemon.
+
+**The console palette is the accent's sixteen, and it is where SGR reaches a scheme.** `kdos-getty`
+loads `/etc/vtrgb` onto each VT before it clears the screen, so the login prompt, `/etc/issue` and
+the login banner draw in `\e[…;3Nm` and land on the accent — bold reaching slots 8–15 and plain
+0–7. Blue, magenta and cyan are the exception: no accent names them, and a console whose eight
+colours collapsed onto one would have nothing left to show `ls --color`, a diff or a syntax
+highlight with. `kdos-bootctl palette [<accent>]` prints the table without writing it.
 
 **Both apply on the next boot**, and the splash applies *partway* through it. The splash is started
 by the initramfs, before any root filesystem is mounted, so it comes up in the accent compiled into

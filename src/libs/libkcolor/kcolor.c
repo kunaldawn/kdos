@@ -82,13 +82,24 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 	kcol_format(sc->backdrop, backdrop);
 
 	return snprintf(buf, cap,
-		/* The wordmark, and it is the ONLY branding left: the four-line
-		 * help block Limine draws above the menu names five keys, three
-		 * of which do nothing a person booting this medium wants, and it
-		 * pushed the entry list into the artwork. `interface_help_hidden`
-		 * removes it; the entries say what they are. */
-		"interface_branding: KDOS\n"
-		"interface_branding_colour: %s\n"
+		/*
+		 * AN EMPTY BRANDING STRING, AND EMPTY IS NOT THE SAME AS
+		 * ABSENT.
+		 *
+		 * The artwork is the branding now: the plate sits below a
+		 * header band carrying the wordmark and the penguin, so the
+		 * key would put "KDOS" on the screen a second time, in a
+		 * font, under a picture of it. But LEAVING THE KEY OUT does
+		 * not remove it — Limine falls back to its own default and
+		 * prints "Limine <version> (x86-64, UEFI)" in its own cyan.
+		 * Photographed. The key has to be present and empty.
+		 *
+		 * The four-line help block goes for its own reason: it names
+		 * five keys, three of which do nothing a person booting this
+		 * medium wants, and it pushed the entry list into the
+		 * artwork. The entries say what they are.
+		 */
+		"interface_branding:\n"
 		"interface_help_hidden: yes\n"
 		/*
 		 * AND THE HELP COLOUR IS STILL SET THOUGH THE HELP IS HIDDEN.
@@ -101,17 +112,62 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		"interface_help_colour: %s\n"
 		"interface_help_colour_bright: %s\n"
 		"backdrop: %s\n"
-		/* `00` — OPAQUE. See the header: Limine's own default with a
-		 * wallpaper set is `80`, and that is the unreadable menu. */
-		"term_background: 00%s\n"
+		/*
+		 * `ff` — FULLY TRANSPARENT, AND THE PLATE IS GONE.
+		 *
+		 * The leading byte is transparency. Opaque (`00`) the plate
+		 * covers everything inside `term_margin`, which does two bad
+		 * things at once: the wordmark has to squeeze into the margin
+		 * band, and the plate's edge draws a visible rectangle round
+		 * the menu wherever the band is not exactly the plate's
+		 * colour. Transparent there is no plate and no rectangle —
+		 * the entries are drawn straight onto the wallpaper, and
+		 * genbackdrop.py can give the wordmark a third of the screen.
+		 *
+		 * WHICH IS SAFE ONLY BECAUSE THE WALLPAPER IS FLAT AND DARK
+		 * BEHIND THE TEXT. Limine's own default over a wallpaper is
+		 * `80` against whatever artwork it is given, which is the
+		 * unreadable menu this key was pinned to `00` for. The rule
+		 * that replaces the pin is genbackdrop.py's: nothing the
+		 * artwork draws may reach the middle of the screen, where the
+		 * entry list is centred.
+		 */
+		"term_background: ff%s\n"
 		"term_foreground: %s\n"
 		"term_palette: %s;%s;%s;%s;%s;%s;%s;%s\n"
 		"term_palette_bright: %s;%s;%s;%s;%s;ffffff;%s;ffffff\n"
-		/* The gap that makes the plate read as a plate rather than as
-		 * text lying on a picture. The gradient softens the edge so the
-		 * backdrop does not stop dead at the margin. */
-		"term_margin: 48\n"
-		"term_margin_gradient: 8\n"
+		/*
+		 * THE MARGIN IS A HEADER, AND 100 IS THE LARGEST ONE THAT IS
+		 * SAFE.
+		 *
+		 * Limine has no logo key, no per-side margin and no way to
+		 * move the menu down the screen, so a uniform margin wide
+		 * enough to hold the wordmark above the plate is the whole of
+		 * what it can be told.
+		 *
+		 * BUT A MARGIN THAT LEAVES THE TERMINAL UNDER SIXTEEN ROWS
+		 * MAKES LIMINE ABANDON THE GRAPHICAL TERMINAL ALTOGETHER —
+		 * measured, by booting one ESP per value: at 1280x800 with
+		 * these keys, 144 keeps sixteen rows and themes correctly and
+		 * 152 leaves fifteen and comes up in Limine's own font, its
+		 * own palette, its own branding and NO WALLPAPER. It is not a
+		 * degraded theme, it is no theme, so the value has to be safe
+		 * on the smallest screen anybody boots rather than tuned for
+		 * this one.
+		 *
+		 * A row is `term_font_size` times `term_font_scale` — 16 by 2
+		 * — so the ceiling is (height - 512) / 2: 144 at 800 lines,
+		 * 104 at 720, 44 at 600. 100 clears 720 and everything above
+		 * it; going higher trades the whole theme on a small panel for
+		 * a larger logo on a big one.
+		 *
+		 * THE GRADIENT IS 0 BECAUSE THERE IS NO PLATE EDGE LEFT TO
+		 * SOFTEN. It blends the backdrop into the terminal's
+		 * background colour over the last few pixels of the margin,
+		 * and a transparent background has none to blend into.
+		 */
+		"term_margin: 100\n"
+		"term_margin_gradient: 0\n"
 		/* `stretched`, NEVER `centered`. A centred backdrop is drawn at
 		 * its own size in the middle of the screen — which is where the
 		 * menu is — so its shapes land behind the entry text. Stretched,
@@ -125,9 +181,69 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		 * a dense panel and leaves the menu width to say what an entry
 		 * is. */
 		"term_font_scale: 1x2\n",
-		primary, pdark, primary, backdrop, deep, text,
+		pdark, primary, backdrop, deep, text,
 		deep, urgent, primary, secondary, pdark, text, primary, text,
 		dim, urgent, primary, secondary, pdark, primary);
+}
+
+/*
+ * THE BRIGHT HALF MOVES TOWARDS THE GROUND'S OPPOSITE, not always towards
+ * white. On `paper` the console's ground IS white, so a bright ramp mixed
+ * with white is eight slots of invisible text; the emphasis has to travel the
+ * way the contrast does.
+ */
+static uint32_t vt_bright(const KcolScheme *sc, uint32_t c, int pct)
+{
+	return kcol_mix(c, kcol_luma(sc->deep) < 0.5 ? 0xffffffu : 0x000000u,
+			pct);
+}
+
+/* See the header: the three the schemes do not own. */
+#define VT_BLUE		0x2f8fffu
+#define VT_MAGENTA	0xc77dffu
+#define VT_CYAN		0x25d0c0u
+
+/* A third of the way. Enough that bold is visibly bold against its own slot,
+ * little enough that the accent is still the accent — a ramp far enough to
+ * read as a second colour makes `\e[1;32m` a hue the scheme never chose. */
+#define VT_LIGHT	33
+
+/* Slot 15 is the console's "brightest thing on screen" and is asked for by
+ * name — a ramp step from `text` lands it on `text` and the emphasis is
+ * lost. */
+#define VT_LIGHT15	65
+
+int kcol_vtrgb(const KcolScheme *sc, char *buf, size_t cap)
+{
+	if (!sc)
+		sc = kcol_default();
+
+	const uint32_t slot[16] = {
+		sc->deep, sc->urgent, sc->primary, sc->secondary,
+		VT_BLUE, VT_MAGENTA, VT_CYAN, sc->text,
+		sc->dim,
+		vt_bright(sc, sc->urgent, VT_LIGHT),
+		vt_bright(sc, sc->primary, VT_LIGHT),
+		vt_bright(sc, sc->secondary, VT_LIGHT),
+		vt_bright(sc, VT_BLUE, VT_LIGHT),
+		vt_bright(sc, VT_MAGENTA, VT_LIGHT),
+		vt_bright(sc, VT_CYAN, VT_LIGHT),
+		vt_bright(sc, sc->text, VT_LIGHT15),
+	};
+	int n = 0;
+
+	for (int ch = 0; ch < 3; ch++) {
+		int sh = 16 - ch * 8;
+
+		for (int i = 0; i < 16; i++)
+			n += snprintf(buf + (n < (int)cap ? n : (int)cap),
+				      n < (int)cap ? cap - (size_t)n : 0,
+				      "%s%u", i ? "," : "",
+				      (slot[i] >> sh) & 0xffu);
+		n += snprintf(buf + (n < (int)cap ? n : (int)cap),
+			      n < (int)cap ? cap - (size_t)n : 0, "\n");
+	}
+	return n;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

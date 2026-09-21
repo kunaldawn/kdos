@@ -16,8 +16,12 @@
  *   kdos-bootctl try <slot> [n]        boot that slot n times, then give up
  *   kdos-bootctl select                DECIDE and count down (the initramfs)
  *   kdos-bootctl mark-good             this boot worked (the end of rcS)
- *   kdos-bootctl theme <accent>        repaint the boot menu in that scheme
+ *   kdos-bootctl theme <accent>        repaint the boot menu and the text
+ *                                      consoles in that scheme
  *   kdos-bootctl theme --print <name>  the theme block, to stdout
+ *   kdos-bootctl palette [<name>]      that scheme's setvtrgb table, to
+ *                                      stdout — the default scheme's is what
+ *                                      `fs/etc/vtrgb` has to be
  *
  * The shape is RAUC's state machine and none of its dependencies: a file with
  * `active`, `try` and `attempts` in it, one decision, and one place that
@@ -253,6 +257,16 @@ static const char *limine_path(void)
 	return (e && *e) ? e : LIMINE_CONF_DEFAULT;
 }
 
+/* setvtrgb's table, read by kdos-getty onto every VT before it clears the
+ * screen. Overridable for the same reason the two above are. */
+#define VTRGB_DEFAULT "/etc/vtrgb"
+
+static const char *vtrgb_path(void)
+{
+	const char *e = getenv("KDOS_VTRGB");
+	return (e && *e) ? e : VTRGB_DEFAULT;
+}
+
 /*
  * THE KEYS THE THEME OWNS, and nothing else in the file is this function's to
  * touch. `cmdline`, `path`, `module_path`, `default_entry`, `timeout` and
@@ -397,6 +411,35 @@ static int cmd_theme(int argc, char **argv)
 		}
 		fputs(theme, stdout);
 		return 0;
+	}
+
+	/*
+	 * AND THE TEXT CONSOLE, WHICH IS THE OTHER SURFACE A SESSION DOES NOT
+	 * OWN. The boot menu and tty1 are the two places an accent has to
+	 * reach through a file rather than through a running program, they
+	 * are both root's to write, and they are wanted together: a menu
+	 * retinted while the login prompt underneath it keeps the old accent
+	 * is a boot that changes colour halfway through.
+	 *
+	 * BEFORE THE ESP TEST AND NOT AFTER IT. The live medium has no
+	 * writable limine.conf and returns success below; the console there
+	 * is as retintable as anywhere else, and a return placed first would
+	 * make `kdos theme` a no-op on the ISO.
+	 */
+	{
+		char vt[512];
+
+		if (kcol_vtrgb(sc, vt, sizeof(vt)) >= (int)sizeof(vt)) {
+			fprintf(stderr, "bootctl: palette does not fit\n");
+			return 1;
+		}
+		if (kb_write_file_atomic(vtrgb_path(), vt) != 0)
+			fprintf(stderr, "bootctl: cannot rewrite %s: %s — "
+				"text consoles keep the old accent\n",
+				vtrgb_path(), strerror(errno));
+		else
+			printf("text consoles are now %s at the next "
+			       "login prompt\n", sc->name);
 	}
 
 	/*
@@ -549,6 +592,29 @@ int bootctl_main(int argc, char **argv)
 	 * still be able to repaint its bootloader. */
 	if (!strcmp(cmd, "theme"))
 		return cmd_theme(argc, argv);
+	/*
+	 * THE CONSOLE PALETTE ON ITS OWN, WRITTEN NOWHERE. `fs/etc/vtrgb` is
+	 * generated and committed, so the tree carries a second copy of the
+	 * default scheme; this is what the selftest diffs it against, and a
+	 * copy nothing compares is the copy that goes stale.
+	 */
+	if (!strcmp(cmd, "palette")) {
+		char vt[512];
+		const KcolScheme *sc = argc > 2 ? kcol_find(argv[2])
+						: kcol_default();
+
+		if (!sc) {
+			fprintf(stderr, "bootctl: no accent named '%s'\n",
+				argv[2]);
+			return 2;
+		}
+		if (kcol_vtrgb(sc, vt, sizeof(vt)) >= (int)sizeof(vt)) {
+			fprintf(stderr, "bootctl: palette does not fit\n");
+			return 1;
+		}
+		fputs(vt, stdout);
+		return 0;
+	}
 
 	/*
 	 * WHICH CONTAINER THAT FILESYSTEM IS INSIDE, asked by the initramfs
@@ -658,6 +724,7 @@ int bootctl_main(int argc, char **argv)
 		"                     crypt <fs-uuid>|\n"
 		"                     set-slot <a|b> <uuid> [<luks-uuid>]|\n"
 		"                     try <a|b> [n]|\n"
+		"                     palette [<accent>]|\n"
 		"                     theme [--print] <accent>}\n");
 	return 2;
 }

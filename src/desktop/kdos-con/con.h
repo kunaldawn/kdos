@@ -455,6 +455,26 @@ void con_spawn_at(const char *cmd, int x);
 #define CON_FLASH_MS 120
 
 /*
+ * HOW OFTEN A CLIENT IS TOLD ITS NEW SIZE WHILE THE HAND IS STILL MOVING.
+ *
+ * NOT EVERY MOTION. A client answers a size with a whole frame and cannot
+ * answer at the rate a pointer moves; told one per motion it falls behind by
+ * a growing queue of configures and the edge jitters for the whole gesture.
+ *
+ * AND NOT NONE EITHER. Suppressed for the length of the drag, the frame is at
+ * the pointer and the content is at the size the gesture started in, with the
+ * window's own fill in the strip between them — for a slow, deliberate resize,
+ * which is most of them, that is the whole gesture spent looking at a window
+ * flickering between two sizes.
+ *
+ * 100 ms is about six frames at 60 Hz: fast enough that the content is never
+ * visibly detached from the frame, slow enough that a client redrawing a full
+ * window can keep up. The final rectangle does not depend on it — every path
+ * that ends a gesture asserts the size once more on the way out.
+ */
+#define CON_SIZING_MS 100
+
+/*
  * THE STARTUP CARD A BOXED APPLICATION OPENS AS, in cells of content.
  *
  * A launch is a window on the desktop from the moment the cage is forked,
@@ -721,6 +741,15 @@ typedef struct Win {
 	 * being milliseconds the moment a frame takes longer than one.
 	 */
 	unsigned long long bell_until;
+
+	/*
+	 * THE LAST SIZE THIS WINDOW'S CLIENT WAS TOLD, and when — the state
+	 * win_resized()'s gate is made of while a drag is live. Zeroed is
+	 * "never told", which is what makes the first motion of a gesture go
+	 * out immediately instead of CON_SIZING_MS late.
+	 */
+	int sized_w, sized_h;
+	unsigned long long sized_ms;
 } Win;
 
 typedef struct {
@@ -1187,6 +1216,10 @@ void vt_close_all(void);
 
 /* term.c */
 Win *term_open(const char *const argv[]);
+
+/* See the definition: the `terminal` key's default, which is the account's
+ * login shell and never the literal `sh`. */
+const char *term_default_cmd(void);
 
 /* ── geom.c ────────────────────────────────────────────────────────────── */
 

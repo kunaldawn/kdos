@@ -942,23 +942,43 @@ void win_resized(Win *w)
 	}
 
 	/*
-	 * EVERYTHING ELSE IS ACROSS A SOCKET, AND IS NOT TOLD WHILE THE HAND
-	 * IS MOVING.
+	 * EVERYTHING ELSE IS ACROSS A SOCKET, AND IS RATE-GATED WHILE THE HAND
+	 * IS MOVING — gated, not suppressed.
 	 *
 	 * A client answers a size with a whole frame and cannot answer at the
 	 * rate a pointer moves, so a window told one per motion is a window
 	 * permanently one answer behind: the strip between the size it has
 	 * drawn and the size the frame is showing is the window's own fill,
-	 * and it jitters along the edge for the whole gesture. An embedded
-	 * guest is worse still — see con_sizing_id().
+	 * and it jitters along the edge for the whole gesture.
 	 *
-	 * So the frame follows the pointer and the content follows the
-	 * release. Every path that ends a gesture asserts the size once more
-	 * on the way out; a size that reached nothing is the resize that "did
-	 * not take".
+	 * Told NOTHING for the length of the drag it is worse, and worse in
+	 * the common case: the frame is at the pointer and the content is
+	 * still the size the gesture began at, so a slow deliberate resize —
+	 * which is most of them — is spent looking at a window that appears to
+	 * flicker between its old size and the new one.
+	 *
+	 * So one configure per CON_SIZING_MS, and only where the rectangle has
+	 * actually changed since the last one. Every path that ends a gesture
+	 * asserts the size once more on the way out, so the rectangle the
+	 * person settled on never depends on where the gate happened to be; a
+	 * size that reached nothing is the resize that "did not take".
 	 */
-	if (w->id == con_sizing_id())
-		return;
+	if (w->id == con_sizing_id()) {
+		unsigned long long t = con_now_ms();
+
+		if (w->sized_w == w->geom.w && w->sized_h == w->geom.h)
+			return;
+		if (w->sized_ms && t - w->sized_ms < CON_SIZING_MS)
+			return;
+		w->sized_ms = t;
+	} else {
+		/* OUT OF THE GESTURE THE GATE IS OPEN AGAIN. Leaving `sized_ms`
+		 * set would make the first motion of the NEXT drag wait for a
+		 * deadline measured from the last one. */
+		w->sized_ms = 0;
+	}
+	w->sized_w = w->geom.w;
+	w->sized_h = w->geom.h;
 
 	if (w->kind == WIN_SURFACE && w->surf)
 		kcon_surface_configure(w->surf, w->geom.w, w->geom.h);

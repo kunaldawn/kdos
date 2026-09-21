@@ -12,8 +12,10 @@
  * the take-over re-initialises every VT with the kernel's built-in font —
  * wiping anything setfont loaded earlier. So the sequence lives here, wrapping
  * getty: one write ends the deferral, then the font (ter-kdos32n carries λ and
- * the double box glyphs the banner needs) and the phosphor palette are loaded
- * onto this VT.
+ * the double box glyphs the banner needs) and `/etc/vtrgb` are loaded onto
+ * this VT. That file is the accent's sixteen, written by `kdos-bootctl theme`
+ * from kcol_vtrgb() — the login prompt, `/etc/issue` and the banner draw in
+ * SGR 30-37 and reach the scheme through it and through nothing else.
  *
  * The take-over is scheduled work, so a fixed sleep is a race that first boot
  * reliably loses: wait for fbcon to report it in the kernel ring, then retry

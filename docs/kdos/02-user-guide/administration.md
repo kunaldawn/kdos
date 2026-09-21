@@ -346,7 +346,7 @@ draws the greeter. `tty2` stays a plain getty and is the recovery console.
 | `greet` | `yes` draws the login surface; `no` logs in the account `autologin` names |
 | `autologin` | Which account `greet = no` logs in. **The only place the desktop's account is named** |
 | `sessions` | How many workspaces, and so how many cells the pager draws |
-| `terminal` | What `Super+Return` opens |
+| `terminal` | What `Super+Return` opens — your login shell (`$SHELL`, falling back to `/bin/bash`) unless you set it |
 | `scrollback` | Lines a terminal window keeps after they scroll off |
 | `idle_saver`, `idle_lock`, `idle_off` | Seconds from the last input, each measured from that input rather than from the step before it |
 | `remote` | Whether `kdos con forward` will carry a view socket off the machine |

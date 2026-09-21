@@ -950,7 +950,7 @@ when it shrinks, not when it closes. One guest may put at most sixteen windows o
 toplevel past that is dropped with a line in the log, because an application mapping without bound
 would take the pictures away from every other window.
 
-**A resize is an output resize, and NOTHING ACROSS A SOCKET IS TOLD WHILE THE HAND IS MOVING.**
+**A resize is an output resize, and NOTHING ACROSS A SOCKET IS TOLD AT POINTER RATE.**
 The window's cells *are* the guest's output, so dragging an edge changes its mode: the cage
 reallocates its swapchain, both processes map a new buffer and the application relayouts — far
 heavier than the configure a toolkit answers on any other compositor. No client can answer at the
@@ -967,11 +967,19 @@ whole window — which re-sent every block of a guest that had not repainted one
 over the watermark that stops the SESSION composing, and churned the slot rotation until numbers
 came round to windows still showing the old picture.
 
-**So the cut stands still for the length of the gesture.** `con_sizing_id()` names the window a
-pointer drag on an edge or the keyboard `rearrange` mode is holding; while it does, the size is not
-sent and the grid is not re-cut. The frame is the size the pointer says and the guest's pixels are
-the size it last rendered; `embed_draw()` clamps to both, so a window that has grown shows its own
-fill where the guest has not reached and one that has shrunk draws what fits.
+**So a client is told at most once every `CON_SIZING_MS` — 100 ms — while the gesture runs.**
+`con_sizing_id()` names the window a pointer drag on an edge or the keyboard `rearrange` mode is
+holding; while it does, a configure goes out only where the rectangle has changed since the last
+one and the gate has expired. Between those, the frame is the size the pointer says and the
+guest's pixels are the size it last rendered; `embed_draw()` clamps to both, so a window that has
+grown shows its own fill where the guest has not reached and one that has shrunk draws what fits.
+
+**Gated and not suppressed, because suppressed is worse in the common case.** Told nothing for the
+length of the drag, the content stays at the size the gesture began at while the frame walks to
+the pointer — so a slow deliberate resize, which is most of them, is spent looking at a window
+that appears to flicker between its old size and its new one. 100 ms is about six frames: fast
+enough that the content is never visibly detached from the frame, slow enough that a client
+redrawing a whole window can keep up.
 
 **A terminal the session renders itself is the exception and follows the pointer exactly.** Its
 cells are drawn at the window's size on every composed frame, so a reflow costs one call and there
@@ -992,6 +1000,12 @@ made of cells, but the distance the hand travelled is not a whole number of them
 alone, a drag begun near the right-hand edge of a cell jumps a whole character on the first pixel of
 movement and then runs ahead of the hand for the rest of the gesture. The sub-cell offsets the view
 already sends are what make the window move exactly as far as the pointer did.
+
+**Which is why a motion that lands on the rectangle the window already has redraws nothing.** Most
+of the events in a slow, deliberate drag are those, and a real mouse sends hundreds a second;
+answering each one with a full invalidate is the whole grid recomposed and re-sent for a picture
+identical to the one on screen, and it is what puts the view far enough behind the model that the
+size under the hand is not the size being drawn. The fit is skipped with it, for the same reason.
 
 **A font step is a resize for the guest even when the window keeps its rectangle**, because that
 output is measured in pixels. The cell size is read on every resize and a change in it alone
@@ -1578,8 +1592,12 @@ It prints the node id and the stream's pixel size on one line, which is what
 
 ## Two kinds of terminal, and why
 
-`Super+Return` opens what `con.conf`'s `terminal` names — `sh` by default — as a window the session
-runs **itself**, with `libkvt` driving a pty and no separate process. `kdos-term` is the other kind:
+`Super+Return` opens what `con.conf`'s `terminal` names — **your login shell**, `$SHELL`, by
+default, falling back to `/bin/bash` where that is unset or has whitespace in it — as a window the
+session runs **itself**, with `libkvt` driving a pty and no separate process. The shipped skeleton
+has no `con.conf`, so the default is what every new account gets, and a shell started under the
+name `sh` is bash in POSIX mode: it reads neither `/etc/bash.bashrc` nor `~/.bashrc`, which is
+where the prompt, `LS_COLORS` and the aliases all come from. `kdos-term` is the other kind:
 a full terminal that attaches as a client over `libkcon`.
 
 They differ in one visible way. **`kdos-con` links no `libkimg`**, so a picture arriving in a

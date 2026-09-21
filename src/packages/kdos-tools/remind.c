@@ -347,7 +347,11 @@ static int each(int (*fn)(const char *path, const char *id, void *u), void *u)
 }
 
 struct listing {
-	char line[REMIND_MAX][160];
+	/* WIDE ENOUGH FOR THE ROW THE FORMAT BELOW BUILDS: an id, a formatted
+	 * time and the explicit 100-column precision, plus their separators.
+	 * Sized to the precision alone, the id and the time are what get
+	 * truncated and the line loses its left half, not its right. */
+	char line[REMIND_MAX][208];
 	int n;
 };
 

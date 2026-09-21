@@ -169,6 +169,38 @@ const KcolScheme *kcol_default(void);
 int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap);
 
 /* ────────────────────────────────────────────────────────────────────────
+ * The Linux VT's sixteen — setvtrgb's `/etc/vtrgb`
+ *
+ * THE FIRST SURFACE A PERSON SEES IS A TEXT CONSOLE, not the desktop.
+ * kdos-getty loads this before it clears tty1, so the login prompt, the
+ * banner, `/etc/issue` and every program run before the session inherit the
+ * scheme. A palette left on some other accent is a boot that changes colour
+ * halfway through.
+ *
+ * WHICH IS WHY IT IS GENERATED AND NOT WRITTEN OUT. A hand-kept table is a
+ * second copy of the scheme, and the copy is what goes stale: moving
+ * KCOL_DEFAULT_ID has to move the console with it or the two disagree on
+ * every fresh install.
+ *
+ * SGR 30-37 REACH SLOTS 0-7 AND BOLD REACHES 8-15, so both halves are
+ * scheme-derived: `\e[1;32m` — what the logo and `/etc/issue` are written in
+ * — lands on slot 10 and never on slot 2. A bright ramp left generic is an
+ * accent that only applies to the text nobody emphasised.
+ *
+ * BLUE, MAGENTA AND CYAN ARE NOT THE SCHEME'S AND ARE NOT DERIVED FROM IT.
+ * No scheme names them, and a console whose eight colours collapse onto one
+ * accent cannot show `ls --color`, a diff or a syntax highlight — every
+ * class becomes the same lozenge. They are fixed hues chosen to read on a
+ * dark ground and on a light one, and they are the reason this is not
+ * `kcol_limine_conf`'s palette: a boot menu draws in five colours and a
+ * console draws in sixteen.
+ *
+ * Emits setvtrgb's format exactly — three lines, red then green then blue,
+ * sixteen decimal bytes each — and returns snprintf's count.
+ * ──────────────────────────────────────────────────────────────────────── */
+int kcol_vtrgb(const KcolScheme *sc, char *buf, size_t cap);
+
+/* ────────────────────────────────────────────────────────────────────────
  * Conversions
  * ──────────────────────────────────────────────────────────────────────── */
 

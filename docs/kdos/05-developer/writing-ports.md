@@ -234,10 +234,21 @@ Five rules, each with a consequence:
   ships is accepted, and an unknown value falls back to the session's own, because an entry is a
   file anything can write and a key that named a program would be a second `Exec` line with none of
   the field-code rules. Without the key the session's terminal is used, which is lighter.
-- **Check `Icon=` against the shipped atlas**, `src/packages/kdos-icons/art`. The set is
-  Papirus-derived and does not carry the freedesktop names you would guess: there is `file-manager`
-  but no `system-file-manager`, `help-contents` but no `help-browser`. A name that misses still
-  draws — the glyph tier is underneath — so this is polish, not correctness.
+- **Check `Icon=` against the shipped atlas, and the atlas is narrower than the artwork.**
+  `genatlas.py` takes six contexts — `places`, `devices`, `status`, `mimetypes`, `actions`,
+  `emblems` — at four sizes — 24, 32, 48, 64. `apps/` is deliberately left out (an accented
+  Firefox mark is vandalism) and so is `panel/`, which is thousands of third-party tray marks.
+  So a name can be present in `src/packages/kdos-icons/art` and still be undrawable: `file-manager`
+  is `panel/`-only and `utilities-terminal` is not there at all, though both are what the
+  freedesktop naming spec would have you write. After the atlas libkicon falls back to hicolor's
+  `apps/` **PNGs** and to `pixmaps/`; an SVG there is never read, because nothing in the session
+  rasterises one. `testing/preflight.sh` resolves every shipped entry's `Icon=` and `Exec=` by
+  exactly those rules against `build/fs` and names the ones that miss.
+- **No two visible entries may share a `Name=`.** The Start menu, the launcher and the search all
+  list entries by their name, so two rows both reading `Calendar` are two rows a person cannot
+  choose between. The program a `con.conf` role names — `files = mc`, `agenda = ikhal` — keeps the
+  plain name, and every alternative is qualified: `Files (lf)`, `Files (yazi)`,
+  `Calendar (calcurse)`. `testing/preflight.sh` refuses a collision.
 - **`MimeType=` only where nothing else claims the type.** Two entries claiming one type is how a
   machine opens folders in whichever of them sorted first, which is not a decision anybody made.
   `mimeapps.list` is where a default is chosen.

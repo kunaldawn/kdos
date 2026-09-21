@@ -1867,7 +1867,7 @@ static int session_key(const KtuiEvent *ev)
 		 * anywhere in this tree. */
 		char store[512];
 		const char *av[16];
-		int n = kxdg_exec_split(kcon_conf_str("terminal", "sh"), NULL,
+		int n = kxdg_exec_split(kcon_conf_str("terminal", term_default_cmd()), NULL,
 					0, store, sizeof(store), av, 16);
 
 		if (n > 0) {
@@ -1990,7 +1990,7 @@ static int session_key(const KtuiEvent *ev)
 		 * terminal, the same `con.conf` key `Super+Return` reads. No
 		 * shell and no system(): the value is an argument vector.
 		 */
-		n = kxdg_exec_split(kcon_conf_str("terminal", "sh"), NULL, 0,
+		n = kxdg_exec_split(kcon_conf_str("terminal", term_default_cmd()), NULL, 0,
 				    store, sizeof(store), av, 16);
 		if (n > 0) {
 			av[n] = NULL;
@@ -2686,6 +2686,27 @@ static void grab_apply(const KtuiEvent *ev)
 	w->geom = kwm_fit(g, win_workarea(), w->min_w, w->min_h);
 	/* A dragged window is no longer where a tile put it. */
 	w->tiled = 0;
+
+	/*
+	 * A HAND THAT MOVED LESS THAN A CELL REDRAWS NOTHING.
+	 *
+	 * The gesture is measured in PIXELS and lands on CELLS, so most of the
+	 * events in a slow, deliberate drag — which is most drags — produce
+	 * the rectangle the window already has. Answering each of those with
+	 * ktui_draw_invalidate() is the whole grid recomposed and re-sent at
+	 * pointer rate, hundreds of times a second from a real mouse, for a
+	 * picture identical to the one already on screen. That is what puts
+	 * the view far enough behind the model that the size under the hand is
+	 * not the size being drawn.
+	 *
+	 * BEFORE win_resized() AND win_moved() AND NOT AFTER. Both end in
+	 * win_fit(), and a fit of a rectangle that did not change is the same
+	 * work thrown away for the same reason.
+	 */
+	if (w->geom.x == was.x && w->geom.y == was.y &&
+	    w->geom.w == was.w && w->geom.h == was.h)
+		return;
+
 	/*
 	 * A MOVE IS NOT A RESIZE, AND ONLY A RESIZE TELLS ANYBODY.
 	 *

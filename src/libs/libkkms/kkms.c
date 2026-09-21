@@ -1624,8 +1624,19 @@ static void kkms_owe(int x, int y, int w, int h)
  */
 struct ptr_shape {
 	const char *const *rows;
-	int w, h;		/* the mask's own size, in mask pixels */
-	int hx, hy;		/* where in it the device's pixel is   */
+	/*
+	 * THE HEIGHT IS THE ROW COUNT AND THE WIDTH IS NOT STORED AT ALL.
+	 *
+	 * `rows` is an array of POINTERS, so `sizeof(rows[0])` is the size of
+	 * a pointer — eight — whatever the art says. A width taken that way
+	 * is the same seven for every shape: the arrow loses four of its
+	 * eleven columns and the horizontal resize eight of its fifteen, and
+	 * it loses them from the draw, the damage box and the erase alike, so
+	 * nothing is ever left behind and the pointer is simply cut. The
+	 * width is measured off the art instead — see ptr_mask_w().
+	 */
+	int h;
+	int hx, hy;		/* where in the mask the device's pixel is */
 };
 
 static const char *const ptr_arrow[] = {
@@ -1738,9 +1749,10 @@ static const char *const ptr_move[] = {
 	"....X....",
 };
 
+/* The row COUNT is the one thing sizeof can answer here, because `m` is
+ * still an array at the point of expansion. */
 #define SHAPE(m, hx, hy) \
-	{ (m), (int)(sizeof((m)[0]) - 1), \
-	  (int)(sizeof(m) / sizeof((m)[0])), (hx), (hy) }
+	{ (m), (int)(sizeof(m) / sizeof((m)[0])), (hx), (hy) }
 
 static const struct ptr_shape ptr_shapes[] = {
 	[KT_PTR_ARROW]     = SHAPE(ptr_arrow, 0, 0),
@@ -1761,11 +1773,19 @@ _Static_assert(sizeof(ptr_shapes) / sizeof(ptr_shapes[0]) == KT_PTR_N,
 /* WHICH ONE IS BEING DRAWN, taken from the hook on every flush. */
 static int ptr_cur = KT_PTR_ARROW;
 
-static const struct ptr_shape *ptr_shape(void)
+/*
+ * A SHAPE IS LOOKED UP BY INDEX AND NEVER READ OFF `ptr_cur` BY THE GEOMETRY.
+ *
+ * Erasing the last pointer means computing the box it occupied, and it
+ * occupied the box of the shape it was DRAWN as — which is not necessarily
+ * the one being drawn now. A border is precisely where the shape changes, so
+ * a footprint taken from the current shape is wrong exactly where the
+ * pointer spends its time, and what is left behind is the part of the old
+ * picture the new box does not cover.
+ */
+static const struct ptr_shape *ptr_shape_at(int idx)
 {
-	return &ptr_shapes[ptr_cur >= 0 && ptr_cur < KT_PTR_N
-				   ? ptr_cur
-				   : KT_PTR_ARROW];
+	return &ptr_shapes[idx >= 0 && idx < KT_PTR_N ? idx : KT_PTR_ARROW];
 }
 
 /*
@@ -1785,6 +1805,11 @@ static const struct ptr_shape *ptr_shape(void)
 static int ptr_x = -1, ptr_y = -1;
 static int ptr_last_x[KKMS_MAX_OUT], ptr_last_y[KKMS_MAX_OUT];
 static unsigned char ptr_last_on[KKMS_MAX_OUT];
+/* AND WHICH SHAPE EACH SCREEN IS SHOWING. The erase is computed from the
+ * shape that was drawn, not the one about to be — see ptr_shape_at(). Per
+ * screen for ptr_last_x's reason: a screen that was skipped still holds the
+ * picture it was last given. */
+static int ptr_last_shape[KKMS_MAX_OUT];
 
 /*
  * WHOLE PIXELS PER MASK PIXEL, so the arrow is about a cell tall at every font
@@ -1806,19 +1831,53 @@ static int ptr_scale(void)
  * than the canvas is drawn smaller rather than stretched — which is what
  * keeps a resize arrow from being taller than the border it sits on. */
 
-static int ptr_body(int x, int y)
+/*
+ * THE MASK'S WIDEST ROW, MEASURED OFF THE ART AND KEPT.
+ *
+ * The art is `const` in the binary and cannot change under us, so one pass
+ * per shape answers it for the life of the process — and measuring beats
+ * writing the number beside the picture, which is a second copy of the art's
+ * width and the copy that goes stale when somebody widens a row.
+ *
+ * Keyed by the shape's index in the table because every caller reaches a
+ * shape through ptr_shape_at(), which returns a pointer into it.
+ */
+static int ptr_mask_w(const struct ptr_shape *sh)
 {
-	const struct ptr_shape *sh = ptr_shape();
+	static int cache[KT_PTR_N];
+	long i = sh - ptr_shapes;
 
-	return x >= 0 && x < sh->w && y >= 0 && y < sh->h &&
-	       sh->rows[y][x] == 'X';
+	if (i < 0 || i >= KT_PTR_N)
+		return 0;
+	if (!cache[i]) {
+		size_t wide = 0;
+
+		for (int y = 0; y < sh->h; y++) {
+			size_t n = strlen(sh->rows[y]);
+
+			if (n > wide)
+				wide = n;
+		}
+		cache[i] = (int)wide;
+	}
+	return cache[i];
 }
 
-static int ptr_edge(int x, int y)
+/* BOUNDED BY THE ROW'S OWN LENGTH and not by the mask's widest. A mask need
+ * not be a rectangle, and indexing a short row at the widest row's width
+ * reads past the end of a string literal. */
+static int ptr_body(const struct ptr_shape *sh, int x, int y)
+{
+	if (x < 0 || y < 0 || y >= sh->h)
+		return 0;
+	return x < (int)strlen(sh->rows[y]) && sh->rows[y][x] == 'X';
+}
+
+static int ptr_edge(const struct ptr_shape *sh, int x, int y)
 {
 	for (int dy = -1; dy <= 1; dy++)
 		for (int dx = -1; dx <= 1; dx++)
-			if (ptr_body(x + dx, y + dy))
+			if (ptr_body(sh, x + dx, y + dy))
 				return 1;
 	return 0;
 }
@@ -1836,11 +1895,11 @@ static int ptr_edge(int x, int y)
  * full repaint and no row of `owed` covers them, so an arrow drawn there would
  * reach the shadow and no buffer.
  */
-static int ptr_box(const struct kkms_out *o, int px, int py,
+static int ptr_box(const struct kkms_out *o, int px, int py, int shape,
 		   int *x0, int *y0, int *x1, int *y1)
 {
 	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
-	const struct ptr_shape *sh = ptr_shape();
+	const struct ptr_shape *sh = ptr_shape_at(shape);
 
 	if (px < 0 || py < 0 || cw < 1 || ch < 1)
 		return 0;
@@ -1849,7 +1908,7 @@ static int ptr_box(const struct kkms_out *o, int px, int py,
 	 * wherever the shape's aiming point happens to be inside it. */
 	*x0 = px - o->col * cw - sh->hx * s - s;
 	*y0 = py - sh->hy * s - s;
-	*x1 = *x0 + (sh->w + 2) * s;
+	*x1 = *x0 + (ptr_mask_w(sh) + 2) * s;
 	*y1 = *y0 + (sh->h + 2) * s;
 	if (*x0 < 0)
 		*x0 = 0;
@@ -1905,21 +1964,21 @@ static uint32_t ptr_pixel(int slot)
  * like everything else: a light theme draws a dark arrow with a light outline
  * without a second decision being made anywhere.
  */
-static void ptr_draw(struct kkms_out *o, int px, int py)
+static void ptr_draw(struct kkms_out *o, int px, int py, int shape)
 {
 	int cw = kcell_w(), ch = kcell_h(), s = ptr_scale();
-	const struct ptr_shape *sh = ptr_shape();
+	const struct ptr_shape *sh = ptr_shape_at(shape);
 	int ox = px - o->col * cw - sh->hx * s, oy = py - sh->hy * s;
 	int maxx = o->cols * cw, maxy = o->rows * ch;
 	uint32_t body = ptr_pixel(KT_TEXT), edge = ptr_pixel(KT_BG);
 
 	for (int my = -1; my <= sh->h; my++) {
-		for (int mx = -1; mx <= sh->w; mx++) {
+		for (int mx = -1; mx <= ptr_mask_w(sh); mx++) {
 			uint32_t v;
 
-			if (ptr_body(mx, my))
+			if (ptr_body(sh, mx, my))
 				v = body;
-			else if (ptr_edge(mx, my))
+			else if (ptr_edge(sh, mx, my))
 				v = edge;
 			else
 				continue;
@@ -2072,15 +2131,28 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		 * spoil and nothing owed from the old position.
 		 */
 		int nx0, ny0, nx1, ny1, ox0, oy0, ox1, oy1;
-		int has = ptr_box(o, ptr_x, ptr_y, &nx0, &ny0, &nx1, &ny1);
+		int has = ptr_box(o, ptr_x, ptr_y, ptr_cur,
+				  &nx0, &ny0, &nx1, &ny1);
 		int had = full ? 0 : ptr_last_on[i];
+		/*
+		 * A SHAPE CHANGE IS A MOVE EVEN WHERE THE PIXEL DID NOT
+		 * CHANGE. Crossing into a border swaps the picture without
+		 * moving the hand a pixel; treated as stationary, the old
+		 * picture is never spoiled and the new one is drawn into the
+		 * shadow with no row marked owed — so what reaches the screen
+		 * is whatever part of it another repaint happened to carry.
+		 */
 		int moved = has != ptr_last_on[i] ||
 			    (has && (ptr_x != ptr_last_x[i] ||
-				     ptr_y != ptr_last_y[i]));
+				     ptr_y != ptr_last_y[i] ||
+				     ptr_cur != ptr_last_shape[i]));
 
+		/* THE OLD SHAPE'S OWN FOOTPRINT, which is why the index is
+		 * kept: a resize arrow is wider than the arrow that replaces
+		 * it, and a box taken from the new one leaves its ends. */
 		if (had && moved &&
-		    ptr_box(o, ptr_last_x[i], ptr_last_y[i], &ox0, &oy0, &ox1,
-			    &oy1))
+		    ptr_box(o, ptr_last_x[i], ptr_last_y[i], ptr_last_shape[i],
+			    &ox0, &oy0, &ox1, &oy1))
 			ptr_spoil(o, ox0, oy0, ox1, oy1);
 
 		o->force_full = 0;
@@ -2090,7 +2162,7 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			continue;	/* nothing on this screen moved */
 
 		if (has) {
-			ptr_draw(o, ptr_x, ptr_y);
+			ptr_draw(o, ptr_x, ptr_y, ptr_cur);
 			/*
 			 * THE ROWS IT COVERS ARE OWED ONLY WHEN IT MOVED. A
 			 * row the paint above touched is already in `painted`
@@ -2110,6 +2182,7 @@ static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		ptr_last_on[i] = (unsigned char)has;
 		ptr_last_x[i] = ptr_x;
 		ptr_last_y[i] = ptr_y;
+		ptr_last_shape[i] = ptr_cur;
 
 		if (full) {
 			owe_all(o);

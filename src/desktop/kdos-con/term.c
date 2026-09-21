@@ -199,6 +199,31 @@ void term_free(Win *w)
 	w->sync_w = w->sync_h = 0;
 }
 
+/*
+ * WHAT `Super+Return` RUNS WHEN `con.conf` DOES NOT SAY.
+ *
+ * THE LOGIN SHELL, AND NOT `sh`. A shell started under the name `sh` is bash
+ * in POSIX mode: it reads neither `/etc/bash.bashrc` nor `~/.bashrc`, so the
+ * window opens with no prompt, no `LS_COLORS`, no aliases and no accent —
+ * every one of which this distribution generates into those two files. The
+ * shipped skeleton has no `con.conf` at all, so this default is what every
+ * new account actually gets.
+ *
+ * `$SHELL` AND NOT A COMPILED-IN NAME, because the account's shell is
+ * `/etc/passwd`'s to choose and a session that overrides it is a session
+ * arguing with `chsh`. A value with whitespace in it is refused rather than
+ * split: `kxdg_exec_split` would read it as a command and arguments, and a
+ * shell named by a path with a space in it is not a program plus a flag.
+ */
+const char *term_default_cmd(void)
+{
+	const char *sh = getenv("SHELL");
+
+	if (!sh || !*sh || strpbrk(sh, " \t"))
+		sh = "/bin/bash";
+	return sh;
+}
+
 Win *term_open(const char *const argv[])
 {
 	Win *w = calloc(1, sizeof(*w));

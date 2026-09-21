@@ -1913,6 +1913,99 @@ each one key, one list, one con.conf line"
 fi
 
 echo
+echo "==> every desktop entry's icon and command exist on the image"
+#
+# A ROW WHOSE ICON RESOLVES TO NOTHING QUIETLY LOSES ITS PICTURE while every
+# row beside it keeps one, and a row whose Exec names a program this image
+# does not carry opens nothing and says nothing about why. Both are invisible
+# to every other check here: the entry parses, the recipe installs it, and the
+# defect is only in the Start menu.
+#
+# THE ICON RULE IS THE ATLAS'S, NOT THE FREEDESKTOP SPEC'S. genatlas.py takes
+# six contexts at four sizes; `panel/`, `apps/` and 16x16 are deliberately not
+# among them, so `file-manager` and `utilities-terminal` are names the spec
+# blesses and this image cannot draw. After the atlas, libkicon falls back to
+# hicolor's `apps/` PNGs and to `pixmaps/` — SVG there is never read, because
+# nothing in the session rasterises one.
+if [ ! -d build/fs/usr/share/applications ]; then
+    note "desktop entries" "unchecked — no build tree"
+else
+    _ATLAS_SIZES="24 32 48 64"
+    _ATLAS_CTX="places devices status mimetypes actions emblems"
+    _icon_ok() {
+        case "$1" in
+            /*) [ -e "build/fs$1" ] || [ -L "build/fs$1" ] && return 0
+                return 1 ;;
+        esac
+        for _s in $_ATLAS_SIZES; do
+            for _c in $_ATLAS_CTX; do
+                [ -e "build/fs/usr/share/icons/KDOS/${_s}x${_s}/$_c/$1.svg" ] &&
+                    return 0
+            done
+        done
+        for _h in build/fs/usr/share/icons/hicolor/*/apps/"$1".png; do
+            [ -e "$_h" ] && return 0
+        done
+        [ -e "build/fs/usr/share/pixmaps/$1.png" ]
+    }
+    # -e OR -L. Half the commands here are symlinks into /usr/sbin written
+    # with an ABSOLUTE target, which resolves inside the image and dangles on
+    # the host running this — so -e alone reports every multicall front end as
+    # missing.
+    _exec_ok() {
+        case "$1" in
+            /*) [ -e "build/fs$1" ] || [ -L "build/fs$1" ] && return 0
+                return 1 ;;
+        esac
+        for _d in usr/bin bin usr/sbin sbin usr/games usr/local/bin \
+                  usr/local/sbin; do
+            [ -e "build/fs/$_d/$1" ] || [ -L "build/fs/$_d/$1" ] && return 0
+        done
+        return 1
+    }
+    _de=0; _debad=0
+    for _f in build/fs/usr/share/applications/*.desktop; do
+        [ -e "$_f" ] || continue
+        grep -qi '^NoDisplay=true' "$_f" && continue
+        _de=$((_de + 1))
+        _n=$(basename "$_f")
+        _i=$(sed -n 's/^Icon=//p' "$_f" | head -1)
+        _x=$(sed -n 's/^Exec=//p' "$_f" | head -1 | awk '{print $1}')
+        if [ -n "$_i" ] && ! _icon_ok "$_i"; then
+            bad "desktop entries" "$_n: Icon=$_i is in no atlas context and no hicolor apps/ PNG"
+            _debad=$((_debad + 1))
+        fi
+        if [ -n "$_x" ] && ! _exec_ok "$_x"; then
+            bad "desktop entries" "$_n: Exec=$_x is on no PATH directory of this image"
+            _debad=$((_debad + 1))
+        fi
+    done
+    # AND NO TWO VISIBLE ENTRIES MAY SHARE A Name=. The Start menu, the
+    # launcher and the search all list entries by their name, so two rows
+    # reading `Calendar` are two rows a person cannot choose between. The
+    # convention is that the program a role in `con.conf` names keeps the
+    # plain name and every alternative is qualified — `Files` and
+    # `Files (lf)`.
+    _dupe=$(for _f in build/fs/usr/share/applications/*.desktop; do
+                [ -e "$_f" ] || continue
+                grep -qi '^NoDisplay=true' "$_f" && continue
+                sed -n 's/^Name=//p' "$_f" | head -1
+            done | sort | uniq -d)
+    if [ -n "$_dupe" ]; then
+        while IFS= read -r _l; do
+            [ -n "$_l" ] || continue
+            bad "desktop entries" "two visible entries are both called '$_l'"
+            _debad=$((_debad + 1))
+        done <<EOF
+$_dupe
+EOF
+    fi
+    [ "$_debad" != 0 ] ||
+        note "desktop entries" \
+             "$_de visible, every icon drawable, every command present, every name distinct"
+fi
+
+echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"
 else
