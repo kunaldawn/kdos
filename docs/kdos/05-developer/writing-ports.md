@@ -61,15 +61,20 @@ recipe helper.
 | `sha256` | | yes | `<64 hex>  <filename>`, one per source |
 | `description` | | | One line. It is read and printed — not a comment |
 | `homepage` | | | |
-| `depends` | | yes | Space-separated port names |
+| `depends` | | | One line, space-separated port names — the solver reads the first and stops |
 | `vendoring` | | | `rust`, `go` or `python` — see [Vendoring](#vendoring) |
 | `pypackages` | | yes | An explicit Python dependency closure to vendor |
 | `secdb` | | | The name the security database uses, when it differs from ours |
 | `bench` | | | A command `kdos march` times |
 | `bench_setup` | | | A command that runs once and is not timed |
 
-`description`, `homepage` and `depends` are keys, not comments. An older comment form is still read
-as a fallback.
+`description`, `homepage` and `depends` are keys, not comments — the parser skips a `#` line
+entirely, so a fact written as one reaches nothing.
+
+`source` and `sha256` accumulate across lines; `depends` does not. `kp_decl` appends a second
+`depends` line into the variable `build.sh` sees, but `kp_depends`, which is what the solver and
+`kpkg info` read, takes the first line and stops. Two `depends` lines are a dependency the build
+order does not know about.
 
 ### Keys other tools read
 
@@ -108,10 +113,12 @@ each depends on its position and its extension:
 
 | Source | Saved as | Unpacked |
 |---|---|---|
-| The first, a tarball | `<name>-<version>.<ext>`, whatever the URL's basename is | Into `$SRC`, with `--strip-components=1` |
-| A later tarball | The URL's basename | Into `$SRC_ROOT`, unstripped, beside `$SRC` |
-| Anything named `filename::url` | `filename` | As above, by extension |
-| A non-tarball — a data file, a `.zip`, a `.tar.zst` | Its own name | Copied into `$SRC` as-is |
+| The first, with a recognised archive extension | `<name>-<version>.<ext>`, whatever the URL's basename is | By extension, below |
+| A later source, or a bare filename | The URL's basename | By extension, below |
+| Anything named `filename::url` | `filename`, first or not | By extension, below |
+| A tarball, first | | Into `$SRC`, with `--strip-components=1` |
+| A tarball, later | | Into `$SRC_ROOT`, unstripped, beside `$SRC` |
+| A data file, a `.zip` or a `.tar.zst` | | Copied into `$SRC` as-is |
 
 The first source is renamed on purpose. A forge that generates an archive named after a tag would
 otherwise leave every port holding a file called `2.55.tar.gz`, and the standardised name is what
@@ -122,9 +129,11 @@ Checksums are matched to sources by **basename**, not by position, so reordering
 cannot silently pair a hash with the wrong file. A source with no hash in the recipe is a refusal,
 not a pass.
 
-Recognised tarball extensions are `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz` and
-`.tar`. A `.zip` or `.tar.zst` is recognised for naming but copied rather than unpacked; a recipe
-that wants one unpacks it in `build.sh`.
+Two extension sets, and they are not the same. The standardised name is derived from `.tar.gz`,
+`.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz`, `.tar.zst` and `.zip`; what is actually unpacked is
+`.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz` and `.tar`. So a first source that is a
+`.zip` or a `.tar.zst` is saved as `<name>-<version>.zip` or `.tar.zst` and copied into `$SRC`
+whole; a recipe that wants one unpacks it in `build.sh`.
 
 A release archive carries a submodule's directory empty, because the archive is generated from the
 repository without recursing. If upstream's build expects a submodule, add it as a second `source`
@@ -278,8 +287,9 @@ rules. Without the key the session's terminal is used, which is lighter.
 
 Check `Icon=` against the shipped atlas, which is narrower than the artwork. `genatlas.py`
 takes six contexts — `places`, `devices`, `status`, `mimetypes`, `actions`, `emblems` — at four
-sizes: 24, 32, 48 and 64. `apps/` is deliberately left out, and so is `panel/`, which is thousands
-of third-party tray marks. A name can therefore be present in `src/packages/kdos-icons/art` and
+sizes: 24, 32, 48 and 64. There is no `apps` context and no `panel` one: `panel/` is 2,344
+third-party tray marks, and an application's own icon comes from hicolor at run time instead. A
+name can therefore be present in `src/packages/kdos-icons/art` and
 still be undrawable: `file-manager` is `panel/`-only and `utilities-terminal` is not there at all,
 though both are what the freedesktop naming specification would have you write. After the atlas,
 `libkicon` falls back to hicolor's `apps/` PNGs and to `pixmaps/`; an SVG there is never read,
@@ -505,7 +515,7 @@ job `build.sh` cannot do.
    `source`.
 3. **Fetch and record the checksum:**
    ```sh
-   make fetch
+   ports/fetch <port>          # `make fetch` takes no argument and walks all 853
    ```
 4. **Write `build.sh`** from the canonical shape for its build system.
 5. **Wire it in.** Add it to the `depends` of whatever needs it, and to the `packages.txt` of the
@@ -580,8 +590,8 @@ misses the member of a release family whose repository is named differently, whi
 resolve to the same organisation and version and are correctly offered as a bump together. A
 `group` key overrides the derived one.
 
-Exit codes: 0 means every named port is current, 1 means at least one has an update, and 2 means a
-bump was accepted but its archive never made it to disk — the one state this tool exists to keep a
+Exit codes: 0 means every named port is current, 1 means `--check` found at least one update, and 2
+means a bump was accepted but its archive never made it to disk — the one state this tool exists to keep a
 build from inheriting silently.
 
 The tool never runs version control. Accepting a bump rewrites a `version =` line and re-fetches
@@ -589,9 +599,14 @@ the archive; committing that stays a human decision.
 
 ## Committing sources
 
-An archive `ports/fetch` downloaded is committed with the recipe that names it. There is no publish
-step and no release to upload to: the tarballs are in the tree, tracked through Git LFS by the
-`ports/core/**` patterns in `.gitattributes`.
+An archive `ports/fetch` downloaded is committed with the recipe that names it. The tarballs are in
+the tree, tracked through Git LFS by the three `ports/core/**` patterns in `.gitattributes`:
+`*.tar.*`, `*.tgz` and `*.zip`.
+
+`ports/fetch` tries a mirror before upstream. `KDOS_SOURCES_BASE` names an append-only archive of
+every tarball this tree has ever used, sharded by the filename's first character, so
+`curl-8.21.0.tar.xz` is always under `sources-c` and a five-year-old checkout finds the exact
+archive its recipe was written against. Set the variable empty to fetch from upstream alone.
 
 ```sh
 ports/fetch <port>               # downloads and vendors, into ports/core/<port>/

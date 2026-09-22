@@ -1602,7 +1602,7 @@ run_action(struct view *view, struct action *action,
 		break;
 	case ACTION_TYPE_NEXT_IN_TAB_GROUP: /* KDOS */
 		if (view) {
-			kdos_group_next(view, /*reverse*/ false);
+			kdos_group_next(view);
 		}
 		break;
 	case ACTION_TYPE_WARP_CURSOR: {

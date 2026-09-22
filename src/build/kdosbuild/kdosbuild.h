@@ -7,22 +7,17 @@
  * ---------------------------------
  *   kdosbuild — the build orchestrator
  *
- * Replaces script/build.py and the python modules under script/buildlib. Runs
- * the phases, snapshots them, restores them, and draws it all on libktui — the
- * change that kills the third TUI toolkit (kinstall's, kdos-appbox's ncurses
- * one and buildlib's python curses one were three implementations of one).
+ * Runs the phases, snapshots them, restores them, and draws it all on libktui
+ * — the one TUI toolkit in the tree, shared with kinstall and kdos-appbox.
  *
- * ONE STRUCTURAL CHANGE FROM THE PYTHON, AND IT IS A SIMPLIFICATION.
- * build.py ran the build on a worker THREAD because curses' getch() blocks.
- * libktui's input has a timeout, so here the build IS the main loop: poll the
- * running child and the terminal together, read whichever is ready, redraw.
- * No threads, no locks, no "never let the worker die silently" wrapper, and
- * the progress callbacks that had to be careful never to draw concurrently
- * with the caller now cannot be.
+ * THE BUILD IS THE MAIN LOOP. libktui's input has a timeout, so the running
+ * child and the terminal are polled together and whichever is ready is read.
+ * There is no worker thread, which is why no progress callback has to guard
+ * against drawing concurrently with the caller — none can.
  *
  * The pieces that only INSPECT the tree — phase discovery, the metadata
- * block, build plans, the snapshot inventory — are libkbuild's, and are
- * verified against buildlib itself by testing/selftest.sh.
+ * block, build plans, the snapshot inventory — are libkbuild's, and
+ * testing/selftest.sh checks them against the repository itself.
  * ---------------------------------
  */
 
@@ -42,7 +37,7 @@
  * return more than that, so a phase that reaches this has already been
  * truncated upstream and the build must say so rather than carry on. */
 #define KB_MAX_PKGS    2048
-#define KB_MAX_LOG     2000	/* lines kept per step, as in build.py      */
+#define KB_MAX_LOG     2000	/* lines kept per step                      */
 #define KB_MAX_NOTICE  50
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -178,8 +173,9 @@ typedef struct {
 	double start_time;
 	long long total_lines;
 
+	/* The last phase a restore skipped and the last one --continue-from
+	 * skipped: the banner names one or the other. */
 	const KbuildPhase *restored_from;
-	const KbuildPhase *resumed_inside;
 	const KbuildPhase *continued_from;
 
 	BNotice notice[KB_MAX_NOTICE];

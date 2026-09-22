@@ -234,8 +234,9 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 			path, lineno, key);
 	} else {
 		/*
-		 * A typo used to be indistinguishable from a setting that had
-		 * no effect, and this file's own comment promises otherwise.
+		 * Named rather than dropped: this file's own comment promises
+		 * that a line which does not take effect says so, and a silent
+		 * skip makes a typo indistinguishable from a working key.
 		 */
 		wlr_log(WLR_INFO, "%s:%d: unknown key `%s` — ignored",
 			path, lineno, key);

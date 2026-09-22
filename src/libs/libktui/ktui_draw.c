@@ -1036,16 +1036,11 @@ void ktui_draw_cursor(int x, int y)
 	ptr_y = y;
 }
 
-void ktui_draw_hide_cursor(void)
-{
-	ptr_x = ptr_y = -1;
-}
-
 /*
- * THE SHAPE IS NOT CLEARED BY HIDING THE POINTER, and that is deliberate: a
- * pointer that goes away and comes back in the same place is over the same
- * thing, and a shape reset to the arrow on every hide would flicker through
- * the arrow on the way back.
+ * THE SHAPE OUTLIVES THE POINTER GOING AWAY, and that is deliberate: a pointer
+ * that leaves and comes back in the same place is over the same thing, and a
+ * shape reset to the arrow whenever the position went negative would flicker
+ * through the arrow on the way back.
  *
  * An out-of-range value is the arrow rather than an error. The caller names a
  * shape this build may not have, and something still has to be drawn.
@@ -1053,11 +1048,6 @@ void ktui_draw_hide_cursor(void)
 void ktui_draw_cursor_shape(int shape)
 {
 	ptr_shape = shape >= 0 && shape < KT_PTR_N ? shape : KT_PTR_ARROW;
-}
-
-int ktui_cursor_shape(void)
-{
-	return ptr_shape;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

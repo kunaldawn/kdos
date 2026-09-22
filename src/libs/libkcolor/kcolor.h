@@ -357,10 +357,13 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
 		       size_t *outlen);
 
 /*
- * The accent `kdos theme` last wrote, from $XDG_CACHE_HOME/kdos/theme. The
- * READ is shared because every front end resolves the same two paths; what
- * each does with the name is its own. Empty `out` means the default scheme,
- * which is not an error.
+ * The accent `kdos theme` last wrote, from $XDG_CACHE_HOME/kdos/theme.
+ *
+ * THE ONE READ OF THAT FILE, for every front end that links this library: the
+ * two paths and their order are a contract with `kdos theme`, and a second
+ * resolution of them drifts from this one the first time the fallback moves.
+ * What a front end does with the name is its own. Empty `out` means the
+ * default scheme, which is not an error.
  */
 int kcol_theme_name(char *out, size_t cap);
 

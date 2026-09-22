@@ -4521,8 +4521,8 @@ static int cmd_menu(int argc, char **argv)
 {
 	const char *verb = argc > 0 ? argv[0] : NULL;
 	const char *route = argc > 1 ? argv[1] : NULL;
-	char prog[128];
-	const char *av[8];
+	/* The program, `--route` and its value, and the terminator. */
+	const char *av[4];
 	int n = 0;
 
 	if (!verb || (strcmp(verb, "summon") && strcmp(verb, "toggle"))) {
@@ -4536,27 +4536,12 @@ static int cmd_menu(int argc, char **argv)
 	 * search with the name already typed — which is the palette, not the
 	 * menu. It is the same program `rc.xml` binds Super+space to, so the
 	 * route and the chord land in one place.
+	 *
+	 * A BARE NAME AND NEVER A COMMAND LINE: `pkill -x` below matches a
+	 * comm, so anything but the program's own name signals nothing and the
+	 * toggle would spawn a second palette on top of the open one.
 	 */
-	snprintf(prog, sizeof(prog), "kdos-palette");
-
-	/* Split rather than taken as one name: the FIRST word is the process to
-	 * signal, because `pkill -x` matches a comm, which is a program's name
-	 * and never its command line. */
-	char *p = prog;
-
-	while (*p && n < (int)(sizeof(av) / sizeof(av[0])) - 3) {
-		while (*p == ' ' || *p == '\t')
-			*p++ = '\0';
-		if (!*p)
-			break;
-		av[n++] = p;
-		while (*p && *p != ' ' && *p != '\t')
-			p++;
-	}
-	if (!n) {
-		fprintf(stderr, "kdos menu: no menu program\n");
-		return 1;
-	}
+	av[n++] = "kdos-palette";
 
 	if (!strcmp(verb, "toggle")) {
 		KbArgv a = { 0 };
@@ -4575,7 +4560,7 @@ static int cmd_menu(int argc, char **argv)
 	}
 	av[n] = NULL;
 	execvp(av[0], (char *const *)av);
-	fprintf(stderr, "kdos menu: %s is not installed\n", prog);
+	fprintf(stderr, "kdos menu: %s is not installed\n", av[0]);
 	return 127;
 }
 

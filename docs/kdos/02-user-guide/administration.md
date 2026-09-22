@@ -65,8 +65,13 @@ A daemon that cannot do its job on this machine is skipped rather than started a
 mount the pack filesystem. Each check happens *before* supervision begins, because a refusing
 daemon under a respawn loop is a boot that never settles.
 
-Two scripts are deliberately not supervised — `25_nftables` and `12_zram` — because in both cases
-the kernel holds the result and the program is meant to exit.
+Supervision is for the scripts that leave a daemon running. Ten do not: `01_udev`, `02_modules`,
+`05_hostname`, `10_sysctl`, `12_zram`, `15_userdirs`, `20_dmesg`, `25_nftables`, `50_alsa` and
+`55_tlp`. Most of those apply a setting and exit, and two carry the argument written out in the
+script — `25_nftables` and `12_zram` both hand their result to the kernel, which then holds it, so
+a supervisor would be a respawn loop around a program that is meant to exit. `01_udev` is the one
+that does leave a daemon: `udevd --daemon` forks away from the script, so there is no child for
+`ksvc` to watch, and the script's `status` asks `pgrep` instead.
 
 ## Periodic jobs
 
@@ -132,7 +137,8 @@ a home directory can take hours.
 2. Put that password in `~/.config/kdos/backup.pass` at mode 0600, with nothing else in the file.
    `kdos-backup` refuses to run while that file is group- or world-readable.
 3. Point `repo` at the repository in `~/.config/kdos/backup.conf`, and set `include` and `exclude`
-   lines for what to carry. Both may repeat; every other key is last-one-wins.
+   lines for what to carry. Each may repeat up to eight times; `repo` and `password-file` are the
+   other two keys and are last-one-wins.
 4. Run `kdos-backup --once` to prove it works, then uncomment the `backup` line in
    `~/.config/kdos/timers.d/10-backup.timer`.
 
@@ -177,15 +183,26 @@ network starts, so there is no window in which the machine is up and unfiltered.
 | | |
 |---|---|
 | Input | Drop by default |
-| Forward | Drop |
-| Established and related | Accept |
+| Forward | Drop by default |
+| Output | Accept |
+| Established and related | Accept, in both input and forward |
+| Invalid | Drop |
 | Loopback | Accept |
 | ICMP and ICMPv6 | Accept the necessary types |
 | mDNS (5353), DHCPv6 (546) | Accept |
 | A NetBIOS name reply (137 to 137) | Accept |
+| From 10.42.0.0/16: DNS (53) and DHCP (67) | Accept |
+| To or from 10.42.0.0/16 | Forward |
 
 ICMPv6 is answered rather than dropped, because dropping it does not harden IPv6 — it breaks
 neighbour discovery and path MTU discovery.
+
+The two `10.42.0.0/16` rows are `kdos-net`'s hotspot and nothing else. That is NetworkManager's
+`ipv4.method = shared`, which allocates every shared connection a /24 out of that pool and starts
+`dnsmasq` on the access point's interface — and NetworkManager's own tables carry no input chain
+and cannot rescue a packet this one drops, because in netfilter an `accept` ends only the chain
+that issued it while a drop on the hook is final. Without these rows a client associates, ARPs,
+answers a ping, and never gets an address. Off that subnet those ports stay closed.
 
 The NetBIOS row is a reply rather than a service. A name query is a broadcast and every machine
 answers from its own address, so conntrack holds no entry for any of them and "the connection this
@@ -194,14 +211,32 @@ a network full of file servers. The rule is scoped to the port pair a reply carr
 opening the NetBIOS service: nothing on this image listens there.
 
 Anything that should be reachable needs a rule of its own. sshd, a shared printer and a served
-corpus are all blocked by the shipped policy, and the file carries commented examples. The loader
-runs a syntax check first, so an unloadable ruleset leaves the previous state standing rather than
-half-applying a flush:
+corpus are all blocked by the shipped policy. There are two places to put the rule, and they do not
+tread on each other.
+
+`kdos-firewall` (Settings' System page) is the short way, for a short list of named services. It
+knows seven — `ssh`, `http`, `https`, `ipp`, `smb`, `kiwix` and `mdns` — and the table of what each
+name means lives in `kdos-powerd`, not in the client: a surface that could name a port could open
+any port. `kdos-power firewall list` prints the table, and `kdos-power firewall <name> on|off`
+flips one. The daemon rewrites `/etc/nftables.d/50-kdos-services.nft` **whole** on every change, so
+a rule it does not recognise is dropped on the next toggle.
+
+Everything else is an edit. `/etc/nftables.conf` carries commented examples inside its `input`
+chain, and `include "/etc/nftables.d/*.nft"` at the bottom pulls in every file there — so a file of
+your own beside `50-kdos-services.nft` re-opens the same chain and is never touched by the surface.
+The include is last because nft evaluates in the order rules were added and the chain's policy is
+what applies when none matched, so an accept appended there is still reached.
+
+The loader runs a syntax check first, so an unloadable ruleset leaves the previous state standing
+rather than half-applying a flush:
 
 ```sh
 sudo nft -c -f /etc/nftables.conf     # check
 sudo service nftables start           # apply
 ```
+
+A change through `kdos-firewall` reloads the whole ruleset for the same reason: `/etc/nftables.conf`
+opens with `flush ruleset` and the included files are reached only from there.
 
 ## Finding a file by name
 
@@ -230,8 +265,14 @@ pointed at it:
 | `msmtp` | Sends. `/usr/sbin/sendmail` and `/usr/bin/sendmail` are both links to it |
 
 `notmuch new` is the only command you type. A `pre-new` hook runs `mbsync -a` before the scan and a
-`post-new` hook tags what arrived, so one command fetches, files and indexes. Until a `Channel` is
-configured the hook steps over itself and `notmuch new` indexes.
+`post-new` hook tags what arrived, so one command fetches, files and indexes.
+
+A non-zero exit from `pre-new` aborts `notmuch new` outright, and the hook uses that deliberately.
+It checks three things — that `mbsync` is on the path, that `~/.mbsyncrc` is readable, and that the
+file names a `Channel` — and steps over itself with exit 0 if any is missing, so an unconfigured
+machine still indexes. Past those three it runs `mbsync -a` and lets a failure take the run down,
+because indexing after a fetch that did not happen reports "0 new messages" and reads as an empty
+inbox.
 
 Three files to fill in, all shipped commented out:
 
@@ -250,9 +291,11 @@ Keep passwords out of all of them. `pass` is on the image, and both `PassCmd "pa
 
 ### Rendering attachments
 
-Six kinds of part render as text, and nothing else does. `~/.config/aerc/aerc.conf` names one
-script, `kdos-part`, for everything that is not already plain text; a type it does not list gets
-aerc's own *No filter configured* card and its `:open`, `:save` and `:pipe` hints. The script spools
+Five kinds of part render as text, and nothing else does. `~/.config/aerc/aerc.conf` names one
+script, `kdos-part`, for each of them; plain text, a delivery status and an attached message go
+through aerc's own `colorize`, and a type the file does not list gets aerc's *No filter configured*
+card and its `:open`, `:save` and `:pipe` hints. That section replaces aerc's whole default set
+rather than adding to it, which is why the plain-text rows are written out again. The script spools
 the part to a temporary file first, because `mutool` opens a document by path and has no form that
 reads a pipe.
 
@@ -361,7 +404,9 @@ algorithm = zstd
 
 `size` is a percentage of RAM rather than an absolute size, and it is how much swap the device may
 claim to hold — never how much memory it will occupy, since the compressed pages live in that same
-memory.
+memory. It is clamped to 1–90 and anything outside that is reported and replaced by 50. An
+`algorithm` the running kernel does not carry is reported too, and the kernel's own default is kept
+rather than the device failing to come up.
 
 Removable media are handled by a root daemon and reached through `kdos-devices` (`Super+F6`).
 Everything removable is mounted `nosuid,nodev` and, by default, `noexec`. A setuid binary on
@@ -453,10 +498,11 @@ alone has no group to grant to. Most of these are `dialout`; the two display one
 | `70-kdos-camera.rules` | PTP/MTP cameras, for gphoto2 | `dialout` |
 | `70-kdos-scanner.rules` | Flatbed and sheet-fed scanners, for SANE | `dialout` |
 | `70-kdos-i2c.rules` | The DDC/CI line of a display controller, for `ddcutil` | `video` |
-| `70-kdos-backlight.rules` | The panel's brightness, for `kdos-osd` | `video` |
+| `70-kdos-backlight.rules` | The panel's brightness for `kdos-osd`, and the keyboard backlight where there is one | `video` |
 
-All grant `MODE="0660"` rather than world-readable: these are devices other users on a multi-user
-machine have no business reading.
+Every rule that names a node grants `MODE="0660"` rather than world-readable: these are devices
+other users on a multi-user machine have no business reading. The backlight is the exception, and
+it cannot be otherwise — see below.
 
 The i2c rule is scoped, and the scoping is the point. `/dev/i2c-*` covers the graphics cards' DDC
 lines and the chipset SMBus alike, and every DIMM's SPD EEPROM hangs off the SMBus — a stray write
@@ -464,10 +510,12 @@ there is a machine that will not boot. The rule matches only adapters whose PCI 
 controller (`ATTRS{class}=="0x03*"`), so the SMBus is never in it. `ddcutil` ships an unscoped rule
 of its own, and the recipe deletes it.
 
-The backlight rule grants no group, and cannot. A backlight is a class device with no node in
-`/dev`, and udev's `GROUP=` and `MODE=` apply to a node — worse, a rule carrying either is discarded
-whole for such a device, taking its `RUN+=` with it. So that file runs `chgrp` and `chmod` on the
-`brightness` attribute instead, on the `add` event that `01_udev.sh`'s coldplug replays at boot.
+The backlight rule carries neither `GROUP=` nor `MODE=`, and cannot. A backlight is a class device
+with no node in `/dev`, and udev's `GROUP=` and `MODE=` apply to a node — worse, a rule carrying
+either is discarded whole for such a device, taking its `RUN+=` with it and reporting nothing. So
+that file runs `chgrp video` and `chmod 0664` on the `brightness` attribute instead, on the `add`
+event that `01_udev.sh`'s coldplug replays at boot. `0664` is the kernel's own `0644` plus the
+group write the rule exists to add.
 
 `/dev/i2c-*` needs a module nothing autoloads. `i2c-dev` declares no modalias, so udev can never
 name it; `/etc/modules-load.d/kdos-i2c.conf` is what loads it, and without that the rule has
@@ -483,6 +531,25 @@ than as a permission. `kdos doctor` walks the attached devices and reports each 
 open, naming the group that owns it, because "add yourself to dialout" is an instruction and
 "permission denied" is not.
 
+### Thunderbolt, phones and firmware updates
+
+Three pieces of hardware enablement have no script in `/etc/init.d` and are reached through the
+tools that carry them.
+
+`bolt` authorises Thunderbolt devices. Where the firmware's security level is `user` or `secure` —
+the shipping default on most business laptops — a TB3 or TB4 dock is enumerated and then never
+authorised, so the dock's ports stay dead until something says yes. `boltctl` is that something,
+and `boltd` is built with `-Dprivileged-group=wheel` to match `/etc/group`, so the account this
+image ships authorises a dock without a password.
+
+`fwupd` updates firmware on SSDs, docks and peripherals. It is built with `-Defi_binary=false`
+because this tree carries no `fwupd-efi`, so the UEFI capsule plugin builds and reports the capsule
+method *unsupported* rather than pretending: a UEFI firmware update is not applied from here. The
+other plugins are unaffected.
+
+`libmtp` is what makes a phone visible. `gphoto2` and `libgphoto2` cover PTP-mode still cameras
+only, so without it an Android handset plugged into a USB port does nothing.
+
 ## Media, colour and time
 
 The host's `ffmpeg` is built with the full codec set: H.264, HEVC, VP8/VP9, AV1 encode and decode,
@@ -491,6 +558,13 @@ deliberately — a second one for the same format earns nothing.
 
 Building it that way relicenses the shipped binary to GPL-2-or-later, and everything that links it
 inherits that. `ports/core/ffmpeg/LICENSE.notice` is the record a redistributor is expected to read.
+
+Hardware decode goes through VA-API, and which driver answers depends on the GPU. mesa's
+`gallium-va` covers r600, radeonsi, nouveau and virgl; Intel integrated graphics from Broadwell
+forward are `intel-media-driver` over `intel-gmmlib`, whose versions are coupled hard enough that
+a mismatch fails partway through the compile rather than at configure. Without a driver there is no
+VA-API entry point at all and ffmpeg and mpv fall back to software decode, silently. `vainfo`, from
+`libva-utils`, is the one command that says which profiles a machine actually has.
 
 `lcms2` is the colour management engine, and it is the only thing on the host that can apply an ICC
 profile.
@@ -503,9 +577,17 @@ machine.
 ## Input methods
 
 `fcitx5` is the engine, with Chinese (pinyin, shuangpin and the table methods), Japanese and Korean
-available. It is started by name from the session, is Wayland-only, and is configured through text
-files under `~/.config/fcitx5/`. There is no configuration tool, because that tool is Qt.
-`Ctrl+Space` switches method, which is fcitx5's own binding rather than the compositor's.
+available. It is started by name from the session — there is no XDG autostart agent here, and the
+port is built with `ENABLE_XDGAUTOSTART=Off` to match — speaks `input-method-v2` to `kdos-comp`, and
+is configured through text files under `~/.config/fcitx5/`. There is no configuration tool, because
+that tool is Qt. `Ctrl+Space` switches method, which is fcitx5's own binding rather than the
+compositor's: nothing in `rc.xml` claims it.
+
+The candidate window is ours. `kdos-ime` starts just before fcitx5 and owns `org.kde.impanel`, so
+the preedit and the candidate list are drawn as cells like every other KDOS surface; fcitx5's
+kimpanel module outranks its own classic interface the moment that name appears, so starting
+`kdos-ime` is the whole of selecting it. Without it fcitx5 draws its own window with its own
+toolkit.
 
 Cloud completion is compiled out. Sending what you are typing to a remote service is not something
 a distribution that builds offline should do by default.

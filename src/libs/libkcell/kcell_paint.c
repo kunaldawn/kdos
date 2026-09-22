@@ -75,11 +75,6 @@ void kcell_set_slot_alpha(int slot, uint8_t alpha)
 			any_alpha = true;
 }
 
-uint8_t kcell_slot_alpha(int slot)
-{
-	return slot_alpha[slot & 7];
-}
-
 void kcell_reset_slot_alpha(void)
 {
 	memset(slot_alpha, 255, sizeof(slot_alpha));
@@ -299,21 +294,6 @@ static KRgb solid_rgb[KT_NCOLOR];
 static pixman_image_t *solid_lit[SOLID_LIT];
 static uint32_t solid_lit_key[SOLID_LIT];
 static bool solid_lit_set[SOLID_LIT];
-
-static void solid_drop(void)
-{
-	for (int i = 0; i < 8; i++)
-		if (solid_slot[i]) {
-			pixman_image_unref(solid_slot[i]);
-			solid_slot[i] = NULL;
-		}
-	for (int i = 0; i < SOLID_LIT; i++)
-		if (solid_lit[i]) {
-			pixman_image_unref(solid_lit[i]);
-			solid_lit[i] = NULL;
-			solid_lit_set[i] = false;
-		}
-}
 
 /*
  * The palette in force changed, so every cached slot names a colour that is no
@@ -669,7 +649,7 @@ static void block_rects(uint32_t cp, int X, int Y, int cw, int ch,
  *
  * One tile per tone per scale — at most twelve images of a few dozen bytes —
  * and they survive a font change, because the period is the scale and nothing
- * the face decides. kcell_paint_forget() drops them with the colour sources.
+ * the face decides — they live for the process.
  */
 #define SHADE_W 4
 #define SHADE_H 2
@@ -724,16 +704,6 @@ static pixman_image_t *shade_for(int tone, int scale)
 	pixman_image_set_repeat(t, PIXMAN_REPEAT_NORMAL);
 	shade_tile[tone][scale] = t;
 	return t;
-}
-
-static void shade_drop(void)
-{
-	for (int i = 0; i < 3; i++)
-		for (int s = 0; s <= KCELL_MAX_SCALE; s++)
-			if (shade_tile[i][s]) {
-				pixman_image_unref(shade_tile[i][s]);
-				shade_tile[i][s] = NULL;
-			}
 }
 
 /*
@@ -791,13 +761,6 @@ static void synth_draw(pixman_image_t *dst, uint32_t cp, int X, int Y,
 	 * pieces of one colour. */
 	if (n)
 		pixman_image_fill_rectangles(PIXMAN_OP_OVER, dst, &c, n, r);
-}
-
-void kcell_paint_forget(void)
-{
-	solid_drop();
-	shade_drop();
-	solid_theme = NULL;
 }
 
 /*

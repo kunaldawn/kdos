@@ -81,19 +81,23 @@ kdos-appbox catalogue --groups
 kdos-appbox catalogue --selftest
 ```
 
-Prints one tab-separated line per application — `<id> <name> <category> <bytes> <parent>
-<tagline>`. Tab, because a tagline contains spaces and every other table in this tree splits on
-tab. `--groups` prints `<id> <description> <member> <member> …` instead.
+Prints one tab-separated line per `app` and `data` row — `<id> <name> <category> <bytes>
+<parent> <installed|available> <tagline>`. Tab, because a tagline contains spaces and every other
+table in this tree splits on tab. `--groups` prints `<id> <description> <member> <member> …`
+instead.
 
-The catalogue reports no install state. The surfaces join it against what the container engine
-reports rather than asking a static file for something it cannot know.
+The install state is reported here and nowhere else. Three surfaces ask what is installed — the
+store, `kinstall` and `kdos app` — and three joins against the container engine would be three
+chances to disagree about what installed means. A box the engine lists under a catalogue id *is*
+that application; nothing else counts, because nothing else could be launched, and a machine with
+no container engine reports everything `available`.
 
 `--selftest` runs the parser's own assertions against `$KDOS_CATALOGUE`, offline and with no
 daemon. It is checked before anything that needs a daemon or a display, so it stays runnable where
 neither exists. See [Testing](../05-developer/testing.md).
 
-The shipped catalogue is `/usr/share/kdos/appstore/catalogue`, and it carries 183 applications on
-2 base rows and 7 runtimes, grouped into 7 named bundles.
+The shipped catalogue is `/usr/share/kdos/appstore/catalogue`, and it carries 183 applications and
+2 data rows on 2 base rows and 7 runtimes, grouped into 7 named bundles.
 
 ### install and uninstall
 
@@ -446,30 +450,48 @@ is a target binary.
 
 `~/.config/kdos/boxes/<name>.conf`, flat `key = value`.
 
-An application box and a development box differ in three keys, not in kind: the base, whether it
-persists, and whether its applications are exported. That is what makes one manager over two lanes
-honest rather than a wrapper over two systems.
+An application box and a development box differ in three keys, not in kind: `base`, `persistence`
+and `export`. That is what makes one manager over two lanes honest rather than a wrapper over two
+systems.
 
 | Key | Maps onto |
 |---|---|
 | `base` | `pack:<id>`, `box:<name>` or `image:<ref>` |
 | `persistence` | Whether the writable layer survives |
-| `export` | Whether its applications get host launchers |
+| `export` | Descriptive — nothing exports on the strength of it |
 | `network`, `ipc` | Namespace flags — create-time |
-| `devices` | Whether `/dev` and the runtime directory are shared |
+| `devices` | Whether `/dev` and `/sys` are bind-mounted in |
+| `processes` | `shared` is `--pid host`; private is a process namespace of the box's own |
+| `home` | `private` gives the box a home of its own; shared is the user's own `$HOME` |
+| `init` | `--init` on the image lane. A pack box always runs `kdos-boxinit` |
+| `wayland` | Descriptive — a launch tags every box through `kdos-boxsock` either way |
 | `audio` | Rides on `devices` |
 | `gpu` | The card's device nodes. Subtracts nothing from a shared `/dev`; binds `/dev/dri` back into a box whose devices are private |
 | `render` | `auto` (the default), `gpu` or `software` — which graphics this box's applications get |
-| `memory` | Enforced by `kdos-oomd`, not by the container engine |
+| `memory` | Passed as `--memory` and enforced by `kdos-oomd`, because rootless has no cgroup to enforce it with |
+| `cpus` | `--cpus`. Absent is every core |
+| `pids` | `--pids-limit`. Absent is unlimited |
 | `accent` | The box's colour, which is what draws a title-bar chip |
 | `autostop` | Idle timeout for the collector |
 | `grant` | Compositor globals the sandbox allowlist otherwise refuses |
 | `image` | The reference, for a registry base |
 
-Three properties the list is written to keep. Every key maps one-to-one onto a container-engine
-flag or onto something KDOS enforces itself, and the profile printer names the mechanism behind
-each line. The file says out loud what it could not enforce. And an unknown key is reported by
-name.
+Three properties the list is written to keep. Every key that changes a launch maps one-to-one onto
+a container-engine flag or onto something KDOS enforces itself, and the profile printer names the
+mechanism behind each line. A key that enforces nothing is printed as such rather than left to read
+as a switch. And an unknown key is reported by name.
+
+`export` and `wayland` are the two in that state, and `kdos-box profile` prints a `!` line under
+either one set to something it cannot deliver:
+
+- **`wayland`** cannot take a display away. The box shares `$XDG_RUNTIME_DIR`, so a client that
+  opens the default `wayland-0` reaches the session's own socket; withholding `WAYLAND_DISPLAY`
+  would advertise a confinement the sandbox does not have. The per-box `kdos-boxsock` socket a
+  launch hands over is what carries the tag the compositor's allowlist filters on, and it is handed
+  over whatever the key says.
+- **`export`** triggers nothing. `kdos-appbox genlaunchers` writes launchers, shims and the MIME
+  cache for every installed pack and every store box at once, and `kdos-box export <box> <app>` is
+  the per-application route.
 
 A shared `/dev` cannot have a hole cut in it, so with `devices = shared` both `gpu` and `audio`
 ride on that key and there is no flag that grants a box a speaker and denies it a camera. `gpu` is

@@ -902,18 +902,6 @@ void sh_restore_task(struct sh_state *sh, int i)
 }
 
 /*
- * Close, for the middle click every taskbar since the nineties has answered
- * that way. This is the protocol's polite close — the same request the window's
- * own close box sends, so an editor with unsaved work still gets to ask.
- */
-void sh_close_task(struct sh_state *sh, int i)
-{
-	if (i < 0 || i >= sh->ntasks)
-		return;
-	kdisp_win_close(sh->tasks[i].id);
-}
-
-/*
  * What a LEFT click on a task entry should do, which is not simply "activate".
  * Clicking the window you are already in minimises it and clicking it again
  * brings it back — the behaviour every taskbar has, and the reason the entry
@@ -1136,25 +1124,6 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
 	}
 	argv[n++] = "-e";
 	return n;
-}
-
-/*
- * The same, as the single command string the callers that re-split one need.
- * No argument here may contain a space: the identity is one word and `--app-id`
- * is joined to it with `=` for exactly that reason.
- */
-void sh_term_cmd(char *out, size_t n, const char *cmd)
-{
-	const char *argv[8];
-	char id[160];
-	int k = sh_term_argv(argv, 0, 8, cmd, id, sizeof(id));
-	size_t len = 0;
-
-	out[0] = '\0';
-	for (int i = 0; i < k && len < n; i++)
-		len += (size_t)snprintf(out + len, n - len, "%s ", argv[i]);
-	if (len < n)
-		snprintf(out + len, n - len, "%s", cmd);
 }
 
 /*

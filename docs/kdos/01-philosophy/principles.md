@@ -38,8 +38,8 @@ does not exist and must not be created.
 Xwayland is the single exception. The compositor runs it rootlessly so that X11-only applications
 inside boxes work, and it pulls in a client-side chain that exists only to satisfy it:
 `xorgproto`, `xtrans`, `libXau`, `libXdmcp`, `xcb-proto`, `libxcb`, `libX11`, `libxkbfile`,
-`xkbcomp`, `libxshmfence`, `libfontenc`, `libXfont2` and the five `xcb-util` ports. A recipe that
-wants any of those for a different reason gets pushed back.
+`xkbcomp`, `libxshmfence`, `libfontenc`, `libXfont2`, `libxcvt`, `libepoxy` and the five
+`xcb-util` ports. A recipe that wants any of those for a different reason gets pushed back.
 
 Two consequences are worth knowing before you plan work around them. Mesa is built with
 `-D glx=disabled -D platforms=wayland` and Xwayland with `-Dglx=false`, so X clients get no
@@ -50,17 +50,30 @@ host ports, because a boxed Xt or Motif program asks the host's Xwayland for `-m
 
 ## No GTK and no Qt on the host
 
-Neither toolkit is a host port. The desktop is drawn as a grid of character cells by
-[libraries written for it](../05-developer/c-libraries.md), which need neither. Graphical
-applications live in [boxes](../03-architecture/packs-and-boxes.md), where both toolkits are
-present and are themed through the shared home directory.
+Neither toolkit is a host port. Every surface KDOS paints is a grid of character cells drawn by
+[libraries written for it](../05-developer/c-libraries.md), which need neither: the panel and all
+its surfaces, the file chooser, the resource monitor, the terminal, the lock screen, the installer,
+the boot splash and `tty1`. `libktui` composes the cells and knows nothing about where they go:
+`libkwl` paints them into a `wl_shm` buffer as an ordinary Wayland surface, a terminal gets them as
+escape sequences, and the boot splash writes PSF glyphs straight to `/dev/fb0` before any of that
+exists.
+
+There is one carve-out inside the desktop and it is worth knowing before your first titlebar. The
+compositor links `cairo` and `pangocairo` and draws its own chrome — titlebars, the root menu and
+the window-switcher OSD — with pango rather than with cells, at a size matched to the grid so the
+machine still looks like one machine. `~/.config/kdos-comp/rc.xml` states the rule and the size;
+`comp.conf`'s `chrome_font` and `panel_font` are what pick the face.
+
+Graphical applications live in [boxes](../03-architecture/packs-and-boxes.md), where both toolkits
+are present and are themed through the shared home directory, and an application in a box draws
+whatever its toolkit draws.
 
 This is what keeps the host small enough to compile from source in one sitting and to reason about
 in full. The rule reaches dependencies as well as applications: a library that would drag a
 toolkit in builds without it, so `libcanberra`, were it ever added, builds `--disable-gtk`.
 
-The cost is that the host has no rich graphical toolkit at all. Anything the desktop wants to draw
-has to be expressible in cells, and anything that is not goes in a box.
+The cost is that the host has no widget toolkit. Anything a KDOS surface wants to draw has to be
+expressible in cells, and anything that is not goes in a box.
 
 ## One implementation of an idea
 
@@ -78,8 +91,9 @@ The worked examples each mark a place where two answers could otherwise diverge.
   launch path goes through it, including the one that writes those lines back out.
 - What a pin is: `~/.config/kdos/favorites` has exactly one writer, even though the pinning
   happens in a menu and the drawing happens in the panel, which are separate processes.
-- Which program a command line runs is one function, used by launcher generation, by the
-  dispatcher and by the warmup.
+- Which pack a command belongs to is `app_pack_by_exec()` in `kdos-appbox`, reading the
+  `alien-apps` table the launcher generator writes. `run` and the login warmup both ask it
+  rather than each deciding.
 
 When you find yourself about to write the second one, make the first one reachable instead. The
 cost is indirection: reaching a library function from a place that would rather hold a local copy.
@@ -160,7 +174,7 @@ network-enabled build would have done for you.
 
 A package built twice from the same tree is byte-identical. That is a property of one function —
 `roll_package()` in `kpkg`, which invokes tar with `--sort=name`, a pinned `--mtime` honouring
-`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 853 recipes. Concentrating it
+`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 877 recipes. Concentrating it
 there is precisely why `kpkg` rolls the archive itself instead of letting each recipe do it.
 
 Reproducibility is not decoration. It is what makes a signed binhost meaningful, what lets a delta

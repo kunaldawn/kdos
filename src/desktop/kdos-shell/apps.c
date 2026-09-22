@@ -516,16 +516,6 @@ int sh_apps_load(void)
 	return napps;
 }
 
-int sh_apps_count(void)
-{
-	return napps;
-}
-
-const struct sh_app *sh_apps_get(int i)
-{
-	return i >= 0 && i < napps ? &apps[i] : NULL;
-}
-
 const struct sh_app *sh_apps_find(const char *id)
 {
 	return find_id(id);

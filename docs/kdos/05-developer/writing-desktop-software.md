@@ -19,6 +19,13 @@ A surface is a grid of character cells drawn by `libktui` onto one of three back
 Nothing above that line knows which. That is what makes a program identical at a prompt, in a
 window and in a test fixture.
 
+Every surface KDOS paints is one of these grids — the panel and its front ends, the resource
+monitor, the terminal, the lock screen, the installer, the boot splash and `tty1` — handed to
+`kdos-comp` as an ordinary Wayland surface. Two things on the screen are not. The compositor draws
+its own chrome with pango — titlebars, the root menu and the window-switcher OSD, at a size matched
+to the cell grid — and an application in a box draws whatever its toolkit draws. So the frame
+around your window is not yours to lay out, and the pixels inside somebody else's are not cells.
+
 ### Reaching a display
 
 A surface does not call a backend by name. `libkdisp` owns the choice and the whole surface
@@ -44,13 +51,13 @@ if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
         return 1;                            /* say so and exit, do not run blind */
 ```
 
-`libkdisp` names no implementation and links none, so that array is what pulls Wayland — or the
-console client — into a program, and it is the one line that changes when a display server is added
-or removed. Passing zero implementations selects the terminal backend, which is what a `--tty` flag
-means.
+`libkdisp` names no implementation and links none, so that array is what pulls Wayland into a
+program, and it is the one line that changes when a display server is added or removed. `kwl_impl`
+is the only implementation in the tree. Passing zero implementations selects the terminal backend,
+which is what a `--tty` flag means.
 
-`kdos-shell` alone opens a surface from more than twenty places. Branching on the display server at
-each of them is the same decision written twenty times in one program and again in the next, which
+`kdos-shell` alone opens a surface from fifty-five places. Branching on the display server at each
+of them is the same decision written fifty-five times in one program and again in the next, which
 is why the lifecycle is an interface.
 
 A cell dump does not go through it. `--dump-cells` installs its own `KtuiBackend` with
@@ -96,6 +103,7 @@ Three rules hold:
 | `TOPLEVEL` | An ordinary window | See below |
 | `LOCK` | A session-lock surface | Covers every output |
 | `SAVER` | The whole screen, above windows, taking nothing | See below |
+| `NONE` | Connect and bind the globals, install no backend, create no surface | What `--dump` runs under |
 
 A panel gives its thickness and nothing else. `.cells` is the depth across the edge; the extent
 along it belongs to the display, because a layer surface is anchored to three sides. Set
@@ -434,9 +442,14 @@ vanishes exactly when the row is selected.
 
 ```sh
 kdos-start --dump
-KDOS_DUMP_SIZE=66x10 kdos-start --dump
 kdos-menu system --dump-cells
+kdos-res --fixture testing/fixtures/res --dump-size 66x10 --dump
 ```
+
+A `kdos-shell` front end draws its dump at a size compiled into the surface; only `kdos-res` takes
+`--dump-size`. The size a reference frame is taken at comes from `$KDOS_DUMP_SIZE`, which is the
+dump harness's — `testing/fixtures/shell/dumpmain.c` wraps `ktui_offscreen_init` for it — and not
+something a shipped binary reads.
 
 | Flag | Produces | Catches |
 |---|---|---|

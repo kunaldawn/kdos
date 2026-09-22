@@ -177,8 +177,7 @@ A chord has nowhere to print, so it gets a toast. Typed at a prompt the state go
 output; spawned by a keystroke it is a one-line notification naming the switch and where it now
 stands. Two of the three change nothing visible, and a switch flipped by a keystroke and answered
 by nothing cannot be told from a broken keystroke. `Super+Ctrl+i` is `stay-awake` and
-`Super+Ctrl+Shift+n` is `night-light` — not `Super+Ctrl+n`, which is the scratch pad's on both
-desktops.
+`Super+Ctrl+Shift+n` is `night-light` — not `Super+Ctrl+n`, which `rc.xml` gives to `kdos-note`.
 
 ## kdos panel
 
@@ -264,7 +263,7 @@ tested, while a warning would make every virtual machine look broken.
 | Boxes | Whether the pack filesystem is loadable, whether `kdos-packd` answers and by which mount route, whether the home directory's filesystem can host a container layer, and whether every mounted pack still has a file behind it |
 | Session | Whether the compositor's **socket** exists rather than whether the variable is set, `XDG_RUNTIME_DIR`, and whether `kdos-comp`, `kdos-shell` and the wlroots portal are running |
 | Containers | The mount-namespace root, and the `subuid` and `subgid` mappings rootless containers need |
-| Desktop | The accent state file, the foot theme, the KDE bridge file, the portal configuration, `~/.local/bin` on `PATH`, and the three setuid bits: `kdos-checkpass`, `kdos-resctl`, and both user-namespace mapping helpers |
+| Desktop | The accent state file, the foot theme, the KDE bridge file, the portal configuration, `~/.local/bin` on `PATH`, Xwayland's socket, the session daemons and their sockets, and four setuid bits: `kdos-checkpass`, `kdos-resctl`, `newuidmap` and `newgidmap` |
 | Security | The default password. Root only — an ordinary user gets no section at all rather than a check that pretends it looked |
 
 "Add yourself to this group" is an instruction; "permission denied" is not. That difference is why
@@ -939,7 +938,7 @@ selects the tool, so `kdos-tools service list` works before the symlinks exist.
 | `ksvc` | The service supervisor |
 | `service` | The same, under the conventional name |
 | `kdos-getty` | Loads the console font and palette, then runs a getty |
-| `kdos-bootctl` | `status`, `select`, `mark-good`, `try`, `set-slot` and `crypt` for the A/B slots — also copied into the initramfs |
+| `kdos-bootctl` | `status`, `select`, `mark-good`, `try`, `set-slot` and `crypt` for the A/B slots, plus `theme` and `palette`, which own `limine.conf` and `/etc/vtrgb` — also copied into the initramfs |
 | `kdos-shot` | Screenshots: `region`, `screen`, `window`, `qr` |
 | `kdos-banner` | The login banner |
 | `kdos-fetch-app` | Install an alien application from a network |

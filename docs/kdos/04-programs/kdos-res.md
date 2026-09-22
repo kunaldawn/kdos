@@ -110,9 +110,9 @@ measured in cells because that is the unit the whole program works in:
 | 60 to 99 cells | 6 cells, three-character prefixes |
 | Under 60 cells | None; `F10` is the only way between pages |
 
-Three characters is the shortest prefix that keeps all eleven page names distinct. A single
-initial makes two pages the same control, which is worse than a truncation: a truncation at least
-reads as incomplete.
+The fallback is three characters rather than one, and the toolkit's tab strip takes the prefix
+where a name does not fit. A single initial makes Batteries and Boxes the same control, which is
+worse than a truncation: a truncation at least reads as incomplete.
 
 `F10` opens the page list as a modal over the body. The list is this program's menu, so it is on
 the menu key; `F1` opens this program's page under `/usr/share/kdos/doc`, which is what `F1` means
@@ -228,8 +228,8 @@ becoming the machine's top consumer.
 
 ## The charts
 
-A full-width chart cannot be a sprite tile. The toolkit encodes a tile's sub-cell coordinate in a
-few bits each way, which bounds a tile to a modest number of cells — the size the panel's meters
+A full-width chart cannot be a sprite tile. The toolkit encodes a tile's sub-cell coordinate in
+four bits each way, so one sprite slot covers at most 16x16 cells — the size the panel's meters
 strip is built around. A page-wide chart here is many times that, so the pixel path is not merely
 unused, it is unreachable.
 

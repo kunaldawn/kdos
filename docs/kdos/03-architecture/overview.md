@@ -28,17 +28,17 @@ initramfs init ─── splash, A/B slot selection, LUKS unlock, find the root
    │  switch_root (util-linux's)
    ▼
 init (toybox, PID 1)
-   ├─ /etc/init.d/rcS ──── 27 numbered service scripts, in order
+   ├─ /etc/init.d/rcS ──── 28 numbered service scripts, in order
    └─ kdos-getty on tty1 and tty2
           │
           ▼
       kdos-login → agetty → login shell → ~/.bash_profile
           │
           ▼
-      kdos-desktop ──── environment, bus, audio, box warmup
+      kdos-desktop ──── environment, keymap, bus, box warmup
           │
           ▼
-      kdos-desktop-start ──── portals, input method, then the compositor
+      kdos-desktop-start ──── audio, portals, input method, the compositor
           │
           ▼
       kdos-comp ──── supervises the panel and the desktop's own daemons,
@@ -142,7 +142,7 @@ init (PID 1, toybox)
  │   └─ agetty, autologging in the account login.conf names
  │       └─ login shell
  │           └─ kdos-desktop        ← THE SESSION, from ~/.bash_profile
- │               ├─ session-common.sh:  bus, audio, keymap, box warmup
+ │               ├─ session-common.sh:  runtime dir, keymap, boxes, bus
  │               └─ kdos-desktop-start
  │                   ├─ xdg-desktop-portal-wlr, then the main portal
  │                   ├─ fcitx5 and kdos-ime, if an input method is installed
@@ -160,11 +160,20 @@ init (PID 1, toybox)
  └─ kdos-getty tty2 ── an ordinary login: the RECOVERY CONSOLE
 ```
 
-Every surface in that tree is a grid of character cells, and the compositor is
+Every surface KDOS paints is a grid of character cells, and the compositor is
 what puts them on a screen. `kdos-shell`, `kdos-res`, `kdos-term` and
 `kdos-lock` each paint their own cell buffer through `libkwl` and hand it over
 as an ordinary Wayland surface. `libkdisp` is the one place that picks a
 display server, and there is one to pick.
+
+Two things on that screen are not cells, and knowing which saves a reader the
+surprise of their first titlebar. The compositor draws its own chrome —
+titlebars, the root menu, the window-switcher OSD — with pango: those are
+scene-graph nodes the server renders itself, not client surfaces with a cell
+buffer behind them. The face is `Terminus (TTF)` at 24 points, which is 32
+pixels at 96dpi and so exactly one cell high, and the corner radius is zero, so
+the frames sit on the grid even though they are not drawn on it. And an
+application inside a box draws whatever its own toolkit draws.
 
 The compositor supervises the desktop's own chrome from a table in its source —
 seven entries, respawned when they die and stopped when their output goes away.

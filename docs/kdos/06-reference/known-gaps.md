@@ -14,8 +14,9 @@ Where something is deliberately absent rather than merely missing, the reason is
 Drag and drop carries text and files, and nothing else. `text/plain` and `text/uri-list` are offered
 and accepted; there is no MIME negotiation, no deferred transfer and no image payload. Only the
 trash accepts a drop on the desktop, which is a narrowing rather than a gap — see
-[Decisions](../01-philosophy/decisions.md#narrowings). Both directions work between a KDOS surface
-and a boxed application. See [Status](status.md) for what that rests on.
+[Decisions](../01-philosophy/decisions.md#narrowings). Both directions are implemented, and what is
+asserted is the four verbs and their order over a socketpair: nothing has been dragged with a
+pointer between a KDOS surface and a boxed application. See [Status](status.md).
 
 There is no fractional scaling. The toolkit adopts an output's integer scale and renders glyphs at
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
@@ -78,16 +79,17 @@ upward, whatever the file says. Neither reads `~/.cache/kdos/plocate.db`; the pa
 `fd` over `$HOME`, and the index `kdos-updatedb` builds nightly is reached only by the `locate`
 command.
 
-Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off. They are
-private-use codepoints and the VT font is 512 glyphs, which is a kernel limit: a glyph the font does
-not carry renders as a blank cell, so an icon in front of a filename is a hole rather than a picture.
-`yazi`'s generated theme empties all five `[icon]` tables, `starship`'s format uses box drawing only,
-the `eza` aliases say `--icons=never` rather than relying on a default, and `lazygit` 0.61 already
-ships `showIcons: false`. No shipped program has been found that draws them with no way to be told
-otherwise — and a scan of the built binaries is not evidence either way, because a private-use
-codepoint in compiled data is a coincidence far more often than it is a glyph. The answer for
-somebody who wants icons is a Nerd Font in `~/.local/share/fonts` and a `kdos-term` window at the
-TTF, which draws what fontconfig can find. There is no Nerd Font port and no VT-font patching.
+Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off everywhere. They
+are private-use codepoints and the VT font is 512 glyphs, which is a kernel limit: a glyph the font
+does not carry renders as a blank cell, so an icon in front of a filename is a hole rather than a
+picture. The face itself is on the image — `nerd-fonts-symbols` installs Symbols Nerd Font and Mono
+under `/usr/share/fonts/nerd-fonts`, and its `66-nerd-font-symbols.conf` accepts the Mono face as a
+fallback for `monospace` and `Terminus`, so anything with a pixel layer can draw one. What turns
+them off is each program's own configuration: `yazi`'s generated theme empties all five `[icon]`
+tables, `starship`'s format uses box drawing only, the `eza` aliases say `--icons=never` rather than
+relying on a default, and `lazygit` 0.61 already ships `showIcons: false`. Turning them back on is
+editing those four, one program at a time, with the understanding that the same shell on `tty1` will
+show holes. There is no VT-font patching, and the console is where this cannot be fixed.
 
 ## Applications and boxes
 

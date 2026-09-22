@@ -38,8 +38,11 @@ void notify(const char *summary, const char *body);
 /* ----------------------------------------------------------------- box.c */
 
 /*
- * A box's sandbox profile. Every field maps 1:1 onto a distrobox flag, which
- * is the whole point: KDOS does not invent confinement it cannot enforce.
+ * A box's sandbox profile. Every field that changes a launch maps 1:1 onto a
+ * container-engine flag, which is the whole point: KDOS does not invent
+ * confinement it cannot enforce. The two that change nothing are marked below,
+ * and profile_print() prints each of them as unenforced rather than letting it
+ * read as a switch.
  * The defaults are what an unprofiled `distrobox create` already does, so an
  * existing box behaves identically whether or not it has a profile file.
  */
@@ -68,10 +71,18 @@ typedef struct {
 	int  process;    /* 1 = private PID namespace     (--unshare-process)*/
 	int  privhome;   /* 1 = private $HOME, not the user's                */
 	int  init;       /* 1 = run an init inside the container (--init)    */
-	int  wayland;    /* 1 = tagged through kdos-boxsock; 0 = no display  */
+	/* Recorded and printed, never acted on: the box shares
+	 * $XDG_RUNTIME_DIR, so a client opening the default `wayland-0`
+	 * reaches the session's socket whatever this says. A launch hands the
+	 * box a per-box kdos-boxsock socket either way, and the tag on that is
+	 * what the compositor's allowlist filters on. */
+	int  wayland;
 	int  audio;
 	int  gpu;
-	int  autoexport; /* 1 = its apps become host launchers on install    */
+	/* Recorded and printed, never acted on: `kdos-appbox genlaunchers`
+	 * writes launchers for every installed pack and every store box at
+	 * once, and `kdos-box export` is the per-application route. */
+	int  autoexport;
 	int  pids;       /* --pids-limit, 0 for unlimited                    */
 	int  autostop_s; /* idle seconds before `kdos-box gc` stops it, 0 off*/
 	/*
@@ -123,7 +134,6 @@ int  box_state(const char *box, char *buf, size_t n);
  * 3 (removed, so the caller must create it again). */
 int  box_unstick(const char *box, char *state, size_t n);
 int  box_create(const Profile *p);
-int  box_remove(const char *box, int force);
 int  box_list(void);
 int  box_setup_done(const char *box);
 int  box_wait_ready(const char *box, int seconds);
@@ -142,7 +152,6 @@ const char *pack_store(void);
  * tell the last two apart: they send a person to different places. */
 int  packd_ask(const char *req, char *out, size_t n);
 char *pack_list(void);
-int  pack_of_command(const char *cmd, char *id, size_t n);
 
 /* Every `env =` the pack's own stack declares, nearest pack first. The pack
  * lane's answer to the image label: which QT_QPA_PLATFORMTHEME works is a fact
@@ -158,15 +167,8 @@ int  pack_box_start(const char *box);
 
 /* ----------------------------------------------------------------- app.c */
 
-typedef struct {
-	char name[64];
-	char cmd[512];
-} App;
-
-int  app_table_load(App **out);
-int  app_lookup(const char *name, char *cmd, size_t n);
-/* The same, also answering which pack provides it — the third field of the
- * alien-apps table, empty on a table written before the pack lane. */
+/* Which pack provides the app a command line runs — the third field of the
+ * alien-apps table, empty where the row predates the pack lane. */
 int  app_pack_by_exec(const char *exec, char *pack, size_t pn);
 /* The basename of the program a command line runs, `env`/`sh -c` skipped. */
 void app_exec_key(const char *cmdline, char *out, size_t n);
@@ -231,7 +233,6 @@ int  cat_load(const char *path, char *err, size_t errn);
 void cat_free(void);
 
 int  cat_count(void);
-const CatPack  *cat_at(int i);
 const CatPack  *cat_find(const char *id);
 int  cat_ngroups(void);
 const CatGroup *cat_group_at(int i);

@@ -104,16 +104,17 @@ carries no monospace family at all, or the run is `--tty` inside a terminal that
 
 ## What changes when
 
-Everything `kdos theme` writes beyond the state file exists for software that is not ours and
-cannot be told to repaint. The timing differs by target:
+Everything `kdos theme` writes beyond the state file exists for software that reads its colours
+once, at start, and cannot be told to repaint — nearly all of it software that is not ours. The
+timing differs by target:
 
 | Artefact | Read by | Applies |
 |---|---|---|
 | The accent state file | The compositor, the panel, the desktop, notifications | Immediately, on signal |
-| Window frame theme | The compositor | Immediately, same signal |
-| The wallpaper cache | The compositor | Immediately, same signal |
-| `~/.config/tmux/themes/kdos` | tmux | Immediately, if tmux is running |
-| The starship palette block | starship | On the next shell prompt |
+| `~/.config/kdos-comp/themerc-override` | The compositor's frame theme | Immediately, same signal |
+| `~/.cache/kdos/wallpaper.png` | The compositor | Immediately, same signal |
+| `~/.config/tmux/themes/kdos.conf` | tmux | Immediately, if tmux is running |
+| The palette block in `~/.config/starship.toml`, between its two markers | starship | On the next shell prompt |
 | `~/.config/foot/themes/kdos` | foot | On the next terminal — foot cannot reload its configuration |
 | `~/.config/btop/themes/kdos.theme` | btop | On the next start |
 | `~/.config/kdos/term-colors.conf` | `kdos-term` | On the next terminal |
@@ -125,11 +126,15 @@ cannot be told to repaint. The timing differs by target:
 | `~/.config/git/kdos-delta` | delta, included from the shipped gitconfig | On the next diff |
 | `~/.config/newsboat/kdos-colors` | newsboat, `include`d from its config | On the next start |
 | `~/.config/aerc/stylesets/kdos` | aerc | On the next start |
-| The `mc` skin and `LS_COLORS` | mc, ls | On the next start |
+| `~/.config/yazi/theme.toml` | yazi | On the next start |
+| `~/.local/share/mc/skins/kdos.ini` | mc, pointed at it by `skin = kdos` under `[Midnight-Commander]` in `~/.config/mc/ini` | On the next start |
+| `~/.config/kdos/ls-colors` | `ls`, through `$LS_COLORS`, sourced by `.bashrc` | On the next shell |
 | `~/.themes/KDOS-<accent>/` | GTK3 applications in containers | At once, in the window already open |
+| `~/.config/gtk-{3,4}.0/settings.ini` | GTK, where the settings portal cannot be reached | On the application's next launch |
 | `~/.config/gtk-4.0/gtk.css` | libadwaita applications | On the application's next launch |
 | `~/.icons/KDOS/` | Every toolkit, host and container | On the application's next launch |
 | `~/.config/kdeglobals` | Qt applications under the KDE platform theme | On the application's next launch |
+| `~/.local/share/color-schemes/KDOS.colors` | KDE's own appearance dialog, as a scheme you can pick | On the application's next launch |
 | `~/.icons/KDOS-cursors/` | Cursor lookup inside containers | On the application's next launch |
 | `/etc/kdos/accent` | `rcS`, which retints the running splash | On the next boot |
 | `/boot/efi/limine.conf` | The bootloader | On the next boot |
@@ -146,11 +151,18 @@ Everything else picks the switch up when you next start it. GTK re-reads neither
 user stylesheet when those files change, and no toolkit offers a way around that from outside.
 
 A generated file is never a file you edit. Each row above is written whole on every accent switch,
-and each is *selected* by something that ships once and is then yours: `settings.json` for micro,
-`config.toml` for helix, `init.vim` for neovim, an `[include]` for delta, an `include` line for
-newsboat, `styleset-name` for aerc, `--theme` for bat. Change those freely; they are not rewritten.
-Your own micro scheme may `include "kdos"` and your own helix theme may `inherits = "kdos"`, so you
-can keep the accent and override one colour.
+and most are *selected* by a second file that ships once and is then yours: `settings.json` for
+micro, `config.toml` for helix, `init.vim` for neovim, an `[include]` for delta, an `include` line
+for newsboat, `styleset-name` for aerc, `--theme="kdos"` for bat, `color_theme = "kdos"` for btop,
+`include=` in `foot.ini`, a `source-file` line in `tmux.conf`. Change those freely; they are not
+rewritten. Your own micro scheme may `include "kdos"` and your own helix theme may
+`inherits = "kdos"`, so you can keep the accent and override one colour.
+
+Two rows have no such second file. yazi reads `theme.toml` by that name and deserializes it over
+its own preset, so the generated file is partial on purpose — only what this palette decides is in
+it, and the preset supplies the rest. And mc's selector is not yours: `kdos theme` sets
+`skin = kdos` in `~/.config/mc/ini` itself, rewriting that one key and leaving the rest of the file
+alone.
 
 Two programs cannot take a colour, and each is answered differently. newsboat reads `#` as a
 comment, so a hex value truncates the line and the entry is refused outright — its colours are
@@ -217,9 +229,14 @@ honest answers to different questions.
 ## Wallpaper
 
 The wallpaper is drawn by the compositor rather than by a client, and it is retinted to follow the
-accent: `kdos theme` remaps the shipped image into the current palette and caches it, and the
-compositor prefers that cache. Point `wallpaper =` in `comp.conf` at your own image, or set
-`wallpaper = none` for an honest off.
+accent: `kdos theme` remaps the *shipped* image into the current palette and writes
+`$XDG_CACHE_HOME/kdos/wallpaper.png`.
+
+That cache is what the compositor draws whenever it exists, and it beats `wallpaper =` in
+`comp.conf` — so pointing that key at your own picture takes effect only while no cache is there,
+and the next accent switch puts the shipped image back. Delete `~/.cache/kdos/wallpaper.png` after
+naming your own, or accept that a theme change overrides it. `wallpaper = none` is the one answer
+the cache never overrides: you said none, and none is what you get.
 
 The shipped image carries no scanlines baked in — the shader draws those — because two sets of
 scanlines beating against each other is moiré rather than identity.
@@ -242,11 +259,12 @@ previous style left, because a style is a whole look rather than a patch on the 
 
 ## Fonts
 
-Two fonts matter, and they are different objects.
+Three settings decide what this desktop is drawn in, and they are different objects in different
+files. None of them is the others' fallback.
 
-The console font is a bitmap PSF at 16x32 pixels, built from source and loaded by `kdos-getty` on
-every terminal. It carries 512 glyphs, which is why parts of this system restrict themselves to a
-small glyph set — anything outside it renders as a blank on `tty1`.
+The console font is a bitmap PSF at 16x32 pixels, built from source and loaded by `kdos-getty` onto
+each VT before it clears the screen. It carries 512 glyphs, which is why parts of this system
+restrict themselves to a small glyph set — anything outside it renders as a blank on `tty1`.
 
 `chrome_font` in `comp.conf` is what the desktop's own surfaces are drawn with, as a fontconfig
 pattern (`Terminus:pixelsize=32`). `panel_font` (`Terminus:pixelsize=20`) is the bar's own and
@@ -259,17 +277,23 @@ its Appearance page and `panel_font` on its Panel page; a style file may carry `
 Whichever of them wrote it, the value is read once by each surface as it starts, so the desktop
 agrees at the next login and not on a signal.
 
-The compositor's own title bars are a separate setting: `<theme><font>` in `rc.xml`, in *points*.
-It must name a scalable face. Pango does not render bitmap fonts, so naming the bitmap Terminus
-there resolves and then silently falls back to a generic sans. The shipped configuration names the
-TrueType Terminus at 24 points, which is 32 pixels at 96 dpi, so a title bar is exactly one cell
-tall.
+The compositor's own chrome is a separate setting: `<theme><font>` in `rc.xml`, in *points*, with a
+row for each of the five places it draws — `ActiveWindow`, `InactiveWindow`, `MenuHeader`,
+`MenuItem` and `OnScreenDisplay`. These are the surfaces the compositor renders with pango rather
+than as cells, which is why they need a font of their own and why it must name a *scalable* face:
+pango has not drawn bitmap fonts since 1.44, so asking for the bitmap `Terminus` here resolves in
+fontconfig and then falls through to a generic sans, silently.
+
+The shipped configuration names `Terminus (TTF)` at 24 points on all five rows — the same face as
+the cell grid, converted to TrueType, which is what the `terminus-ttf` port exists for. Twenty-four
+points is 32 pixels at 96 dpi, so a title bar is exactly one cell tall and the chrome sits on the
+same rhythm as everything drawn in cells.
 
 ## Theming applications inside containers
 
-A box shares your home directory and nothing else, so `/usr/share/themes` and `/usr/share/icons` on
-the host are invisible inside it. Everything a containerised application reads is therefore written
-into `$HOME`:
+A box's `/usr` is Debian's, not this machine's, so `/usr/share/themes` and `/usr/share/icons` on the
+host are invisible inside it. What the box does share is your home directory, at the same path on
+both sides — so everything a containerised application reads is written into `$HOME`:
 
 | Path | Read by |
 |---|---|
@@ -318,7 +342,12 @@ file types, and collapsing every hue onto one accent turns a folder of files int
 identical lozenges. A PDF stays red and an audio file stays amber while folders and devices go
 phosphor.
 
-Application icons are never recoloured. A phosphor Firefox logo is vandalism, not theming.
+The vendored artwork carries no Applications context at all, so the generator builds one by
+sweeping `/usr/share/icons/hicolor` — every size directory, not just `scalable/`, because a theme
+that ships SVGs under numeric sizes and nowhere else would otherwise leave exactly the dock buttons
+you look at unthemed. It takes **only** the `kdos.` prefix. Packaging installs the boxed
+applications' own icons into that same directory, and a phosphor Firefox logo is vandalism, not
+theming: somebody else's mark is left alone.
 
 ### Auditing what is installed
 

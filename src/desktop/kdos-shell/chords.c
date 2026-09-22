@@ -576,11 +576,6 @@ int sh_chords_use_builtin(void)
 	return nchords;
 }
 
-int sh_chords_count(void)
-{
-	return nchords;
-}
-
 const struct sh_chord *sh_chord_at(int i)
 {
 	if (i < 0 || i >= nchords)

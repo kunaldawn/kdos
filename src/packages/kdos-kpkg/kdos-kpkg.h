@@ -43,8 +43,6 @@ const char *kp_decl_version(const KpDecl *d);
 const char *kp_decl_release(const KpDecl *d);
 const char *kp_decl_source(const KpDecl *d);
 const char *kp_decl_sha256(const KpDecl *d);
-const char *kp_decl_description(const KpDecl *d);
-const char *kp_decl_depends(const KpDecl *d);
 
 /* `$var`, `${var}` and the parameter forms the recipes use — `${v#p}`,
  * `${v##p}`, `${v%p}`, `${v%%p}`, `${v/a/b}`, `${v//a/b}`. `p` may be NULL

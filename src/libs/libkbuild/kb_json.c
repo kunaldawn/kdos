@@ -356,11 +356,3 @@ int kj_bool(const KjNode *obj, const char *key, int def)
 		return n->str[0] != 0;
 	return def;
 }
-
-int kj_len(const KjNode *n)
-{
-	int k = 0;
-	for (const KjNode *c = n ? n->child : NULL; c; c = c->next)
-		k++;
-	return k;
-}

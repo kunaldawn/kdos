@@ -90,7 +90,8 @@ kdos/
 │   │                          skel, kdos, xdg, udev, polkit-1, pipewire, alsa
 │   ├── root/                  root's own dotfiles
 │   └── usr/                   local/{bin,sbin,lib} and share/{kdos,applications,
-│                              backgrounds,dbus-1,xdg-desktop-portal}
+│                              backgrounds,bash-completion,dbus-1,
+│                              xdg-desktop-portal}
 │
 ├── script/                the build
 │   ├── 00_toolchain/ … 06_packaging/    the eight phases

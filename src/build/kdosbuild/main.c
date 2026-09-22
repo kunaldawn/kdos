@@ -7,8 +7,8 @@
  * ---------------------------------
  *   kdosbuild — the command line
  *
- * Every flag build.py accepted, with the same names and the same meanings:
- * `make build BUILD_ARGS=...` has to keep working while both drivers exist.
+ * The flags `make build BUILD_ARGS=...` passes through, and the whole of what
+ * this program accepts: there is no second driver to agree with.
  * ---------------------------------
  */
 
@@ -312,11 +312,11 @@ static int do_restore(Manager *m, const KbuildPhase *target, int plain,
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Headless
  *
- * build.py had no such mode: it went straight through curses.wrapper, so a
- * build with its output redirected drew a full-screen UI into a log file and
- * a build with no terminal at all could not start. kpkg already answers
- * TERM=dumb or a non-tty stdout with plain lines; this is the same rule, and
- * it is also what makes the engine testable without a pty.
+ * A driver that always took the terminal would draw a full-screen UI into a
+ * log file whenever its output was redirected, and could not start at all
+ * with no terminal. kpkg already answers TERM=dumb or a non-tty stdout with
+ * plain lines; this is the same rule, and it is also what makes the engine
+ * testable without a pty.
  *
  * ONE traversal, two renderings. `rep` is text or NDJSON (report.c); this loop
  * does not know which, so the two cannot disagree about what happened.

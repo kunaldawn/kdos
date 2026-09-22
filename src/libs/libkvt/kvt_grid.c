@@ -7,10 +7,12 @@
  * ---------------------------------
  *   kvt_grid — a terminal screen becomes KtuiCells
  *
- * The render boundary, and the only file in this library that knows KDOS
- * exists. Everything below it is upstream's state machine with 24-bit colour
- * and a per-cell age; everything above it is the eight-slot grid the rest of
- * the desktop draws on.
+ * The render boundary. Below it is upstream's state machine with 24-bit
+ * colour and a per-cell age; above it is the eight-slot grid the rest of the
+ * desktop draws on. The state machine itself (kvt_vte.c, kvt_screen.c,
+ * kvt_render.c) links nothing of KDOS; the toolkit is reached only from here,
+ * from kvt_term.c and kvt_selection.c, which are the terminal's front end,
+ * and from kvt_unicode.c for character width.
  *
  * THE CONVERSION HAPPENS HERE AND ONLY HERE, once per frame, over the runs the
  * screen says changed. That is the trade for keeping upstream's cell: the

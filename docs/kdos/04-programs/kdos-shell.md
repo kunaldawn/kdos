@@ -479,9 +479,10 @@ words with no edges.
 
 The state cue is a pixel underline, and a cell marker where there is no pixel layer. Running,
 focused and minimised are a two-pixel accent line under the plate: one fact in one place, so a chip
-carrying its application's own picture is not also carrying a glyph saying the same thing. The
-console has no pixel layer, so a group that is entirely minimised marks the column between the
-picture and the label, which is the chip's one spare cell.
+carrying its application's own picture is not also carrying a glyph saying the same thing. Where
+there is no pixel layer that line is never replayed, so a group that is entirely minimised marks
+the column between the picture and the label instead — the chip's one spare cell, and exactly wide
+enough for the mark.
 
 Icon mode needs the pixel layer, whatever `task_labels` says. A dock button is a 40×40 square whose
 shape is a plate and whose state is an underline, and both are pixels. On a character grid the same
@@ -599,7 +600,8 @@ complement of the set that can be full.
   `KDOS_PANEL_ROOT` suppresses the walk rather than measuring the machine running the dump.
 
 At 90% a mark appears one column inside the clock's own segment: an exclamation mark, warning
-coloured, error coloured past 95%. A letter rather than a glyph slot, because nothing in the tiers
+coloured, error coloured from 95%. The column is spent whether or not there is a warning, or
+crossing the threshold would move every item left of the clock by one. A letter rather than a glyph slot, because nothing in the tiers
 is a warning sign and a missing glyph draws a box. The clock is the one landmark on the bar that
 never moves, and the warning is about the machine rather than about whichever applet is next to it.
 
@@ -747,8 +749,8 @@ repository.
 
 ### Tooltips
 
-Half the panel is pictures with no words. Hovering one thing for about three quarters of a second
-raises `kdos-tip`, which says what it is and what its three buttons do.
+Half the panel is pictures with no words. Hovering one thing for 700 ms raises `kdos-tip`, which
+says what it is and what its three buttons do.
 
 It is a separate process, because the toolkit has one cell buffer per process, and it takes no
 input at all, or it would eat the click aimed at the thing it describes. The panel shortens its own
@@ -772,8 +774,9 @@ that strip shows it at once, and a leave arms a deadline rather than hiding unde
 the running panel with `SIGUSR1`, by name — which reaches the panel and not the desktop icons or
 the notification daemon, the other `argv[0]`s of the same binary — and while the bar is put away
 the pointer will not bring it back. Without that it would return the first time the mouse crossed
-the bottom row, which reads as a chord that did not work. The console's half of the chord is a
-session action with no process to signal; one name for both is what keeps the key card one card.
+the bottom row, which reads as a chord that did not work. The name is matched against `comm` and
+matched whole, because `SIGUSR1`'s default disposition is death and an unanchored match would
+reach a future name carrying this one.
 
 ### Configuration
 
@@ -1026,23 +1029,17 @@ surface is transparent over it, so anything painted here would be a rectangle of
 somebody's photograph. What it draws is the icons, their labels and the selection, and nothing
 behind them.
 
-A real picture is the second tier, where the display has pixels. The same setting takes an image as
-well as character art: `sh_bg_path()` answers with the kind it found, decided by the extension
-alone because `background.c` links no pixel code at all. A picture goes through `picture.c`, the
-same decode-crop-scale-and-cut every other picture on this desktop uses, and is registered as a
-grid of sprite tiles behind the icons.
+Wanting that is not the same as getting it. `libkcell` paints every cell including its background
+slot, and the ordinary shm buffer is `XRGB8888`, which carries no alpha — so whatever `KT_BG` is,
+it would land opaque and the wallpaper would disappear the moment `kdos-desk` started. The
+background role therefore asks `libkwl` for an ARGB surface and turns on `libkcell`'s
+transparent-`KT_BG` mode: every cell the desktop does not write is cleared to zero and the
+compositor's wallpaper shows through, and a cell that does carry something — an icon glyph, a
+label, the selection bar — is painted normally.
 
-It is cut to cover the desktop, centred, and never stretched. The crop is the largest centred
-rectangle of the file that has the screen's own shape, and that is what is scaled to every cell.
-The shape is taken in pixels and not in cells: a cell is about twice as tall as it is wide, so a
-ratio taken from the grid would stretch every wallpaper by that factor. The cut is redone only when
-the grid moves, which is what a font step or a resized display is.
-
-Where there are no pixels there is no picture. A `tty1` at the 512-glyph console font, and a view
-over `ssh`, have none, and `sh_pic_view()` says so by failing — the desktop then falls back to the
-theme's ground. Character art is the tier that draws everywhere, which is why `.txt` is tried first
-when both exist. Icon labels stay readable over a photograph because they paint their own `KT_BG`
-rather than letting the ground show through.
+Which image, how it is cut and whether there is one at all are `wallpaper` in `comp.conf` and the
+compositor's business; see [kdos-comp](kdos-comp.md#the-wallpaper). Icon labels stay readable over
+a photograph because they paint their own `KT_BG` rather than letting the ground show through.
 
 ## kdos-pick
 
@@ -1302,8 +1299,8 @@ handler that sat in its own loop would stop answering the service.
 What a headset actually sounds like is WirePlumber's decision, not this surface's. The profile a
 device negotiates — A2DP for music, HFP for a call — and the codec inside it belong to the session
 manager; `kdos-bt` pairs, trusts and connects, and the audio graph is
-[PipeWire's](../03-architecture/session.md#audio). SBC, AAC, aptX, LDAC, FastStream, G.722 and both
-HFP codecs are linked into the bluez5 plugin, so a device gets what it asks for rather than the
+[PipeWire's](../03-architecture/session.md#audio). SBC, AAC, aptX, LDAC, LC3, FastStream, G.722 and
+both HFP codecs are linked into the bluez5 plugin, so a device gets what it asks for rather than the
 worst codec the specification mandates.
 
 ### kdos-devices
@@ -1415,10 +1412,14 @@ The daemon keeps a ring of recent entries and answers a short connection per req
 
 | Verb | Does |
 |---|---|
-| `count` | How many, and how many unseen |
-| `list` | The history |
+| `count` | Unseen, total and the do-not-disturb flag, on one line — the panel asks once a second |
+| `list` | The history, newest first, tab separated |
 | `seen` | Clear the unseen count |
-| `open` | Activate an entry |
+| `open <n>` | Follow entry *n*'s link |
+| `forget <n>` | Drop entry *n* from the history |
+| `dismiss` | Take the newest toast off the screen, with the protocol's dismissed reason |
+| `dismiss all` | The same for every toast on screen |
+| `raise` | Put the last one dismissed back, out of the history rather than copied from it, and without its buttons |
 | `clear` | Empty the history |
 | `dnd [on\|off\|toggle]` | Set do not disturb, and answer with the state as it then reads |
 
@@ -1557,8 +1558,8 @@ Anything left is refused by name, in the middle of the window, rather than shown
 A directory is refused, and that is a decision rather than a gap: a file manager drawn inside a
 viewer that a file manager opened is the circularity this desktop refused for tabs. `mc` shows
 directories and this shows files. The refusal is taken from `stat` before any display is opened, so
-a directory named over `ssh` fails on the argument rather than on the display, and the message
-names where to open one.
+a directory fails on the argument rather than after a window has come up, and the message names
+where to open one.
 
 Nothing here decodes a picture. `libkimg` is the one place in KDOS that turns untrusted image bytes
 into pixels, under a budget checked before any allocation, and a page from `mutool` arrives as a
@@ -1673,9 +1674,9 @@ than about the choice.
 
 `Default` is the first row and always present. It is the one that works while the session's
 PipeWire holds the card, through `pipewire-alsa`; a `hw:C,D` row names one PCM directly, which is
-what answers on a console with no session running. A live session can therefore refuse a `hw:` row
-with `EBUSY` while `Default` records — the list is the kernel's PCMs, not PipeWire's graph, and the
-surface shows `sox`'s own message rather than an empty file.
+what answers when nothing else holds the card — a bare terminal, and the rig. A live session can
+therefore refuse a `hw:` row with `EBUSY` while `Default` records — the list is the kernel's PCMs,
+not PipeWire's graph, and the surface shows `sox`'s own message rather than an empty file.
 
 The input is named on argv, `-t alsa hw:C,D`, and never left to `rec` or `-d`: sox's default-device
 probe opens a card for playback, so it skips a card that has no DAC.
@@ -1922,7 +1923,7 @@ There is no configuration surface for the engines themselves. See
 | `kdos-note` | The scratch pad, on `Super+Ctrl+N`: one buffer per user at `~/.local/share/kdos/scratch.txt`, saved on close and every thirty seconds. It is not an editor and must not grow into one — `micro` is the editor, `Ctrl+O` opens this same file in it, and every feature past "type a line and find it later" already exists there and is better done there |
 | `kdos-contacts` | The address book, on `Super+Ctrl+B`: type a name, `Enter` copies the address or the number. The store is `khard` and this window holds none, because a second vCard parser would be a second answer to what a contact is. Two forks per query, never from the draw. Two things khard does cost a line each: `email --parsable` prints `searching for '' ...` as its first row unless told not to, results or not; and an empty book exits non-zero while printing nothing, so what is read is the output and the status is not consulted. An empty book names the program that fills it rather than saying only "0" |
 | `kdos-clip` | Clipboard history. One binary, one name, two roles: the daemon the compositor supervises owns the list, and `Super+Ctrl+V` opens the picker that draws it. It speaks `wlr-data-control`, which is the only protocol that can carry a clipboard history — `wl_data_device` delivers a selection event solely to the client with keyboard focus, so a manager built on it records nothing |
-| `kdos-about` | What this machine is: the KDOS logo beside the version, kernel, libc, userland, session, terminal, grid, CPU, memory, uptime and package count. Every fact is read rather than forked — `uname`, `/proc`, `/etc/os-release` and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would make this the one surface with no offscreen dump |
+| `kdos-about` | What this machine is: the KDOS logo beside the version, kernel, libc, userland, session, terminal, CPU, memory, uptime and package count. No grid size — a surface knows the cells it was given and not the ones the screen has, so a figure printed here would be this window's own size under a name every reader takes for the desktop's. Every fact is read rather than forked — `uname`, `/proc`, `/etc/os-release` and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would make this the one surface with no offscreen dump |
 | `kdos-teams` | The window list, on `Super+F2`, and what the panel's overflow cell opens. The cell opens the list rather than stepping the chip row: a row that shifted by one per click costs a click and a reflow per hidden window, and the list reaches any of them in one |
 | `kdos-display` | Screens, on `Super+P`. It carries a button bar, because a pointer could otherwise select a screen and then not switch it off or apply anything. `m` and the Mode button open a dropdown of the modes the monitor published: a screen that cannot show the mode being tried is a black screen and a wait for the revert, so the list is read before it is chosen from, never stepped blindly through. It speaks `wlr-output-management`, which is how every wlroots compositor takes its screen configuration |
 | `kdos-doc` | The documentation viewer, on `Super+/`, and what `F1` opens on the eight surfaces that claim a page. `F1` inside it does nothing: this surface is the help, and opening it on top of itself is worse than the key doing nothing |

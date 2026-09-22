@@ -6,7 +6,7 @@
 
 <p align="center">
 A Linux distribution compiled from source, one <code>kpkgbuild</code> at a time,<br>
-with a desktop drawn entirely on a grid of character cells.
+with a desktop whose every surface is a grid of character cells.
 </p>
 
 <p align="center">
@@ -40,10 +40,11 @@ Four properties shape everything else in the tree.
 It is built from source, and the exceptions are listed rather than glossed over.
 Vendor firmware and microcode ship prebuilt because no source exists. Rust and
 Go each need a working compiler of their own kind, so both carry a pinned
-upstream bootstrap. Four font sets ship as built faces, three sets of artwork are
-vendored and recoloured at build time, and one cryptography implementation
-(Monocypher) is third-party C compiled here like everything else. The complete
-list, with versions and sizes, is in
+upstream bootstrap. Six font sets ship as built faces, three sets of artwork are
+vendored and recoloured at build time, one cryptography implementation
+(Monocypher) is third-party C compiled here like everything else, and the
+application catalogue is Debian binaries by design. The complete list, with
+versions and sizes, is in
 [Why KDOS](docs/kdos/01-philosophy/why-kdos.md).
 
 KDOS can build KDOS. Phase 2 is a genuine self-hosting pass: inside the chroot
@@ -59,7 +60,8 @@ recipe sits beside the bytes it verifies.
 
 Applications live in containers. KDOS builds the desktop, not Firefox. The outer
 ring is a catalogue of 183 applications, each declared as a chain of Debian
-packages over one of seven shared runtimes and built by podman on the machine
+packages over one of seven shared runtimes — or, for the twenty that pull in no
+shared toolkit, straight onto a base image — and built by podman on the machine
 that asks for it. Each runs rootless, in its own container, and behaves like
 ordinary system software.
 
@@ -86,8 +88,8 @@ gigabytes of disk, and a container runtime. Nothing else is installed on your
 machine.
 
 Install the Git LFS filter **before** cloning. Without it the archives arrive as
-129-byte pointer files and the build fails on an unreadable archive rather than
-on anything that names the cause.
+pointer files of about 130 bytes and the build fails on an unreadable archive
+rather than on anything that names the cause.
 
 ```sh
 git lfs install
@@ -121,25 +123,32 @@ Details are in [Getting started](docs/kdos/02-user-guide/getting-started.md),
 
 ## What is unusual about it
 
-### The desktop is a character grid
+### Every surface is a character grid
 
-The panel, the menus, the file dialog, the resource monitor and the installer
-are all grids of character cells, drawn in one palette by seventeen C libraries
-written for this project. All but three of them link nothing beyond musl; the
-exceptions take a font renderer, a pixel library and the Wayland client
-libraries. No GTK and no Qt run on the host. The same code paints a terminal, a
-Wayland window and an offscreen test frame, so a program looks identical on
-`tty1` and under the compositor.
+The panel, the menus, the file chooser, the resource monitor, the lock screen,
+the boot splash, `tty1` and the installer are grids of character cells, drawn in
+one palette on top of seventeen C libraries written for this project. All but
+four of those link nothing beyond musl; the exceptions take a font renderer, a
+pixel library, the image decoders and the Wayland client libraries. No GTK and
+no Qt run on the host. The same code paints a terminal, a Wayland window and an
+offscreen test frame, so a program looks identical on `tty1` and under the
+compositor.
+
+The compositor's own chrome is the one thing on the desktop that is not cells:
+titlebars, the root menu and the window-switcher OSD are drawn with pango, in
+the same face at a size matched to the grid. An application in a box draws
+whatever its toolkit draws.
 
 See [the design language](docs/kdos/03-architecture/design-language.md).
 
 ### The compositor renders through a phosphor pass
 
 `kdos-comp` composites the desktop into a buffer of its own and blits it through
-a GLES2 shader: scanlines, a horizontal bleed, a vignette, a phosphor floor and
-optional tube curvature. The boot splash, the console and the session all pass
-through the same machinery. The effect is on by default and `crt = 0` turns it
-fully off.
+a GLES2 shader: scanlines, a three-tap horizontal bleed, a vignette, a phosphor
+floor and optional tube curvature. The effect is on by default and `crt = 0`
+turns it fully off; it also declines itself when the session is not on the GLES2
+renderer, where a fullscreen shader would be a slideshow. The boot splash paints
+the same look straight onto `/dev/fb0`, before any compositor exists.
 
 See [kdos-comp](docs/kdos/04-programs/kdos-comp.md).
 
@@ -186,8 +195,9 @@ See [Packaging](docs/kdos/03-architecture/packaging.md).
 
 ### The software store is a file you can read
 
-`kdos-store` presents seven curated groups over the 183 catalogue applications
-and builds whatever you tick. There is no account and nothing to sign up to;
+`kdos-store` lists all 183 catalogue applications — as seven curated groups, by
+category, or filtered to what is installed — and builds whatever you tick. There
+is no account and nothing to sign up to;
 adding an application is one line in `src/packages/kdos-appbox/catalogue`. The
 Start menu installs and opens in a single click. A booted stick can also rebuild
 the image it came from and copy itself to another stick.
@@ -243,6 +253,7 @@ Maturity per subsystem, with the evidence behind each verdict, is in
 The KDOS-authored parts are MIT. Vendored artwork keeps its upstream license:
 see `LICENSE.notice` in `src/packages/kdos-cursors/`, `kdos-icons/` and
 `kdos-gtk-theme/`, each of which records exactly what was changed. Monocypher is
-public domain. `kdos-comp` and `kdos-bb` are forks of GPL-2.0 projects and keep
+dual-licensed BSD-2-Clause or CC0-1.0. `kdos-comp` and `kdos-bb` are forks of
+GPL-2.0 projects and keep
 that license along with their upstream copyright headers. Every port under
 `ports/core/` is upstream's own code under upstream's own terms.

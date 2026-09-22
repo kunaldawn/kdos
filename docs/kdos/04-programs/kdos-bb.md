@@ -19,7 +19,7 @@ nothing to answer before the demo runs. A trailing `1`, `2` or `3` starts at tha
 
 | Option | Does |
 |---|---|
-| `-help` | Summary of options |
+| any unrecognised argument | Prints the summary of options and exits 1. There is no `-help` flag: the parser takes `-loop`, `-nosound`, `-mixer`, aalib's own options and a stage digit, and everything else falls to the usage line |
 | `-loop` | Play in an infinite loop |
 | `-nosound` | Run silent. With no player to ask, the closing scroll falls back to a fixed rate instead of following the music |
 | `-mixer` | Show the sample rate and mixing settings, and wait for Continue |
@@ -116,20 +116,18 @@ leaves below `1000000 / 60` is the margin, and what the margin buys is that the 
 further behind the tick every frame, and is never re-pegged closer than 666 µs behind. A tick is
 refused only after a stall, never for the jitter of noticing one.
 
-The consumers do not agree with each other. A 16 ms compose is `frame_floor_ms()`, the period of
-the fastest mode any attached display is wearing, rounded up to the millisecond — 16 on a
-sixty-hertz display, 7 at 144 Hz — and it will not compose two frames inside that. `kdos-term` on
-Wayland is gated on the compositor's frame callback, so its floor is the output's: 16.667 ms at
-sixty hertz. A frame produced faster than the floor is bytes the consumer must read and parse for a
-picture nobody sees.
+The consumer states no such constant at all. `kdos-term`'s draw is gated on the compositor's frame
+callback, so its floor is whatever the output is wearing — 16.667 ms at sixty hertz. A frame
+produced faster than the floor is bytes the consumer must read and parse for a picture nobody
+sees.
 
 Producing faster than the consumer is a beat, not extra smoothness. The surplus does not drop one
 frame in sixteen quietly; it beats at the difference, and a beat is what an eye reads as judder. A
 scene in waitmode is paced by its control and runs at sixty, which beats against neither consumer.
 A scene stating a *positive* rate is not gated by its control at all — it draws on every turn — so
-its picture runs at exactly the cap: 62.5, which leaves no beat against the console's 16 and two
-and a half a second against a sixty-hertz output. Further under is more surplus; further over is
-the halved rate. The number is not free in either direction.
+its picture runs at exactly the cap: 62.5, which is two and a half frames a second against a
+sixty-hertz output and is the price of the margin above. Further under is more surplus; further
+over is the halved rate. The number is not free in either direction.
 
 A deadline more than a whole period behind is moved rather than chased. A stall leaves the grid
 arbitrarily far behind, and catching up would draw every missed frame back to back: the
@@ -168,9 +166,9 @@ hands the picture to the curses library's refresh, and refresh writes one write 
 21 writes and 2.0 KB at 75x19, 69 writes and 17.2 KB at 236x63. A pseudo-terminal holds 12288
 bytes, so at a full screen the frame is larger than the pipe it crosses and cannot cross in one
 piece however the program is written. A consumer composing on its own clock therefore reads a
-screen that is half this frame and half the last one: modelled against the console session's
-compose, 7.5% of composes show a torn frame and between eighteen and twenty-four per cent of frames
-are never shown whole.
+screen that is half this frame and half the last one: modelled against a consumer composing on its
+own sixty-hertz clock, 7.5% of composes show a torn frame and between eighteen and twenty-four per
+cent of frames are never shown whole.
 
 So the demo says where a frame begins and ends. Each frame is written between `CSI ? 2026 h` and
 `CSI ? 2026 l` — synchronized output. Between the set and the reset a terminal keeps showing the

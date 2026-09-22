@@ -47,7 +47,6 @@ struct kvt_symbol_table;
 extern const kvt_symbol_t kvt_symbol_default;
 
 int kvt_symbol_table_new(struct kvt_symbol_table **out);
-void kvt_symbol_table_ref(struct kvt_symbol_table *tbl);
 void kvt_symbol_table_unref(struct kvt_symbol_table *tbl);
 
 kvt_symbol_t kvt_symbol_make(uint32_t ucs4);
@@ -75,7 +74,6 @@ int kvt_utf8_mach_new(struct kvt_utf8_mach **out);
 void kvt_utf8_mach_free(struct kvt_utf8_mach *mach);
 
 int kvt_utf8_mach_feed(struct kvt_utf8_mach *mach, char c);
-int kvt_utf8_mach_idle(const struct kvt_utf8_mach *mach);
 uint32_t kvt_utf8_mach_get(struct kvt_utf8_mach *mach);
 void kvt_utf8_mach_reset(struct kvt_utf8_mach *mach);
 
@@ -130,7 +128,6 @@ struct kvt_screen {
 	size_t ref;
 	llog_submit_t llog;
 	void *llog_data;
-	unsigned int opts;
 	unsigned int flags;
 	struct kvt_symbol_table *sym_table;
 
@@ -204,9 +201,6 @@ struct line *screen_line_at(struct kvt_screen *con, unsigned int y);
  * across a scroll is a pointer to a line the screen may have recycled. */
 struct line *screen_mark_last(struct kvt_screen *con);
 
-void kvt_screen_set_opts(struct kvt_screen *scr, unsigned int opts);
-void kvt_screen_reset_opts(struct kvt_screen *scr, unsigned int opts);
-unsigned int kvt_screen_get_opts(struct kvt_screen *scr);
 void kvt_screen_repeat_char(struct kvt_screen *con, unsigned int num);
 
 static inline void screen_inc_age(struct kvt_screen *con)

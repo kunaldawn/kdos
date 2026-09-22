@@ -84,9 +84,13 @@ three times, which is the price of testing that claim against the real vendored 
 
 Its assertions are the invariants, most of which were established by comparing against the
 implementations these libraries replaced. Each is a claim that was measured once; the suite is what
-notices when it stops being true. Two are counter-intuitive and worth knowing: the two colour-mixing
+notices when it stops being true. One is counter-intuitive and worth knowing: the two colour-mixing
 functions are asserted to *disagree*, because each generated file was written against exactly one
-of them; and the archive writer is checked by handing its output to the real archive tool.
+of them.
+
+A test whose only subject is code nothing ships is not coverage — it is a second implementation
+with an audience of one, and it reports green while the behaviour a person sees is untested. When
+the last shipped caller of something goes, its assertions go with it.
 
 ### The window-model contract
 
@@ -481,8 +485,9 @@ show: the phosphor pass, a real modeset, window management, a boxed client.
 with a serial socket and a monitor socket, types on the first terminal through the monitor, and
 reads the framebuffer over the remote-framebuffer protocol.
 
-The session is already there when the rig starts driving. `tty1` runs `kdos-login`, which
-autologins, and `.bash_profile` starts `kdos-desktop` — so the desktop is up before any step runs.
+The session is already there when the rig starts driving. `/etc/inittab` respawns `kdos-getty` on
+`tty1`, which starts `kdos-login`; that autologins, and `.bash_profile` starts `kdos-desktop` — so
+the desktop is up before any step runs.
 
 `--keys` is a monitor `sendkey`, so it reaches whatever owns the active VT, which is that desktop.
 `--cmd` runs on the serial console as the desktop user, and `--root-cmd` as root, so neither
@@ -684,8 +689,8 @@ Each is a rule with its consequence.
   That container needs no Python of its own: start its emulator with the serial and monitor chardevs
   on unix sockets in a bind-mounted directory, `chmod 666` them from inside once QEMU has made them
   — the container is root and the driver is not — and drive it from the host by importing
-  `vnc-shot.py`'s own `Serial` and `Monitor`. `Super+Return` opens a terminal on the console desktop,
-  so `Monitor.type()` is enough to start a program and no pointer is needed.
+  `vnc-shot.py`'s own `Serial` and `Monitor`. `Super+Return` opens a terminal on the desktop, so
+  `Monitor.type()` is enough to start a program and no pointer is needed.
 - A step costs seconds, so anything with a timeout must be photographed with no sleep before it.
   Typing is one character at a time and a `--shot` is a full framebuffer over VNC: `date` either
   side of four shots measured sixty-eight seconds. A five-second toast, a pulse, a tooltip's own
@@ -902,8 +907,8 @@ block: it needs a booted machine with real memory to exhaust. Victim selection i
 recorded state by `kdos-oomd --fixture`; the script proves the daemon wakes at all, which a fixture
 cannot.
 
-Fifteen of `kdos-shell`'s names carry no committed frame: `about`, `ascii`, `audio`, `bt`, `cal`,
-`calc`, `clip`, `devices`, `ime`, `mediad`, `note`, `slit`, `style`, `time` and `users`. Some of
+Fourteen of `kdos-shell`'s names carry no committed frame: `about`, `ascii`, `audio`, `bt`, `cal`,
+`calc`, `clip`, `devices`, `ime`, `mediad`, `note`, `slit`, `time` and `users`. Some of
 those have no dump at all; the rest are surfaces whose reading is the host's, which
 `testing/goldens/README` names one by one — `cal` draws the current month, the apps and places
 menus read the host's `/usr/share/applications` and `/proc/mounts`, `kdos-slit` renders the output

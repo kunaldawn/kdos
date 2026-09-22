@@ -53,7 +53,6 @@ struct sh_route {
  * no file open. */
 int sh_routes_load(void);
 
-int sh_routes_count(void);
 /* NULL outside the table. The pointer stays valid for the life of the program:
  * see SH_ROUTE_MAX. */
 const struct sh_route *sh_route_at(int i);

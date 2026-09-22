@@ -34,12 +34,18 @@ onto something KDOS enforces itself, and the profile printer says which.
 architecture, C library, target, compiler version and flags. Written `B:` in an index.
 
 **cell grid** — The model every KDOS surface is drawn in: a two-dimensional buffer of character
-cells, each with a character, a foreground slot, a background slot and attributes. See
-[the design language](../03-architecture/design-language.md).
+cells, each with a character, a foreground slot, a background slot and attributes. Every surface
+this project paints is one — the panel and all its surfaces, the resource monitor, the terminal, the
+lock screen, the installer, the boot splash, `tty1` — drawn by `libktui` and handed to the
+compositor as an ordinary Wayland surface. Two things on the screen are not: the compositor's own
+window chrome, which is pango at a size matched to the cell, and whatever an application in a box
+draws for itself. See [the design language](../03-architecture/design-language.md).
 
-**chrome** — The furniture around content: the frame, the header band, group headings, the button
-bar, scrollbars. Drawn by one library, so there is one implementation of each. Also, *supervised
-chrome*: the desktop programs the compositor starts and restarts.
+**chrome** — The furniture around content *inside* a KDOS surface: the frame, the header band,
+group headings, the button bar, scrollbars. Drawn in cells by `libkchrome`, so there is one
+implementation of each. Distinct from *window chrome* — the titlebar, the root menu and the
+window-switcher OSD — which the compositor draws itself, with pango. Also, *supervised chrome*: the
+desktop programs the compositor starts and restarts.
 
 **compose** — To build a box's overlay from its pack stack. Idempotent, reference counted, and
 redone before every start because the overlay lives on a temporary filesystem.
@@ -101,7 +107,9 @@ with `kdos menu summon`. It keeps resolving when the chord is rebound or the row
 exist. An application pack is a difference over one.
 
 **session** — A running desktop: the compositor, its supervised chrome, and the per-user services
-under it. Started by hand from a terminal.
+under it. `tty1`'s login shell starts one through `kdos-desktop`, and no other tty does; a session
+that fails to come up falls through to that shell's prompt rather than taking the terminal with
+it.
 
 **shim** — A symlink on your search path named after an application, pointing at the launcher
 program, which dispatches on the name it was invoked as. What makes a boxed application an ordinary

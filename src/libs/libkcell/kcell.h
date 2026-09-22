@@ -123,7 +123,6 @@ pixman_color_t kcell_slot_color(int slot);
  * alpha, or every reversed cell is an opaque hole in a translucent surface.
  */
 void kcell_set_slot_alpha(int slot, uint8_t alpha);
-uint8_t kcell_slot_alpha(int slot);
 void kcell_reset_slot_alpha(void);
 bool kcell_needs_alpha(void);
 
@@ -151,10 +150,9 @@ void kcell_set_bg_preserve(bool on);
 void kcell_px_clear(pixman_image_t *dst, int x, int y, int w, int h);
 void kcell_px_fill(pixman_image_t *dst, int x, int y, int w, int h,
 		   uint32_t rgb, uint8_t a);
-void kcell_px_round(pixman_image_t *dst, int x, int y, int w, int h, int r,
-		    uint32_t rgb, uint8_t a);
-/* The same plate, graded top to bottom. A gradient reads as a button; a flat
- * slab of full-strength accent reads as an error state. */
+/* A rounded plate, graded top to bottom. A gradient reads as a button; a flat
+ * slab of full-strength accent reads as an error state — pass the same colour
+ * twice for a flat one. */
 void kcell_px_round_grad(pixman_image_t *dst, int x, int y, int w, int h,
 			 int r, uint32_t top, uint32_t bot, uint8_t a);
 void kcell_px_vgrad(pixman_image_t *dst, int x, int y, int w, int h,
@@ -188,10 +186,8 @@ enum {
 	KCELL_NSTYLE    = 4
 };
 
+/* The upright face; equivalent to kcell_glyph_face() with no style bits. */
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out);
-/* The upright or italic face; equivalent to kcell_glyph_face() with
- * KCELL_ST_ITALIC. */
-bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out);
 bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
 
 /*
@@ -226,17 +222,6 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
  */
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
-
-/*
- * Drop the cached colour sources and the shade tiles. A glyph is composited
- * through a solid-fill image and those are kept per slot and per literal, and
- * the three shades are one repeating a8 tile per scale; nothing but a shutdown
- * needs to ask. A palette change needs no announcement: the slot cache is
- * keyed on the eight COLOURS in force, not on the identity of the table
- * holding them, because libktui projects night light by rewriting one table in
- * place.
- */
-void kcell_paint_forget(void);
 
 /* ── a pixel canvas that lands in the cell grid (kcell_canvas.c) ─────────
  *

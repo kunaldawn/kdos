@@ -184,7 +184,6 @@ struct kvt_vte {
 	kvt_vte_write_cb write_cb;
 	void *data;
 	char *palette_name;
-	bool backspace_sends_delete;
 
 	struct kvt_utf8_mach *mach;
 	/*
@@ -261,8 +260,6 @@ struct kvt_vte {
 	bool img_over;
 	bool img_active;
 
-	kvt_vte_mouse_cb mouse_cb;
-	void *mouse_data;
 	unsigned int mouse_mode;
 	unsigned int mouse_event;
 	unsigned int mouse_last_col;
@@ -285,16 +282,11 @@ struct kvt_vte {
 	 */
 	bool sync_output;
 
-	kvt_vte_bell_cb bell_cb;
-	void *bell_data;
 	kvt_vte_sync_cb sync_cb;
 	void *sync_data;
 	kvt_vte_notify_cb notify_cb;
 	void *notify_data;
 
-	kvt_vte_led_cb led_cb;
-	void *led_data;
-	unsigned int led_state;
 
 	uint8_t (*custom_palette_storage)[3];
 	uint8_t (*palette)[3];
@@ -629,11 +621,8 @@ int kvt_vte_new(struct kvt_vte **out, struct kvt_screen *con,
 	vte->con = con;
 	vte->write_cb = write_cb;
 	vte->data = data;
-	vte->backspace_sends_delete = false;
 	vte->osc_cb = NULL;
 	vte->osc_data = NULL;
-	vte->mouse_cb = NULL;
-	vte->mouse_data = NULL;
 	vte->custom_palette_storage = NULL;
 	vte->palette = get_palette(vte);
 	vte->rgb_valid = 0;
@@ -657,15 +646,6 @@ int kvt_vte_new(struct kvt_vte **out, struct kvt_screen *con,
 err_free:
 	free(vte);
 	return ret;
-}
-
-KVT_SHL_EXPORT
-void kvt_vte_ref(struct kvt_vte *vte)
-{
-	if (!vte)
-		return;
-
-	vte->ref++;
 }
 
 KVT_SHL_EXPORT
@@ -861,26 +841,6 @@ void kvt_vte_set_osc_cb(struct kvt_vte *vte, kvt_vte_osc_cb osc_cb, void *osc_da
 }
 
 KVT_SHL_EXPORT
-void kvt_vte_set_mouse_cb(struct kvt_vte *vte, kvt_vte_mouse_cb mouse_cb, void *mouse_data)
-{
-	if (!vte)
-		return;
-
-	vte->mouse_cb = mouse_cb;
-	vte->mouse_data = mouse_data;
-}
-
-KVT_SHL_EXPORT
-void kvt_vte_set_bell_cb(struct kvt_vte *vte, kvt_vte_bell_cb bell_cb, void *bell_data)
-{
-	if (!vte)
-		return;
-
-	vte->bell_cb = bell_cb;
-	vte->bell_data = bell_data;
-}
-
-KVT_SHL_EXPORT
 void kvt_vte_set_sync_cb(struct kvt_vte *vte, kvt_vte_sync_cb cb, void *data)
 {
 	if (!vte)
@@ -901,17 +861,6 @@ void kvt_vte_set_notify_cb(struct kvt_vte *vte, kvt_vte_notify_cb cb,
 	vte->notify_data = data;
 }
 
-
-
-KVT_SHL_EXPORT
-void kvt_vte_set_led_cb(struct kvt_vte *vte, kvt_vte_led_cb led_cb, void *led_data)
-{
-	if (!vte)
-		return;
-
-	vte->led_cb = led_cb;
-	vte->led_data = led_data;
-}
 
 static int vte_update_palette(struct kvt_vte *vte)
 {
@@ -989,16 +938,6 @@ void kvt_vte_get_def_attr(struct kvt_vte *vte, struct kvt_screen_attr *out)
 }
 
 KVT_SHL_EXPORT
-unsigned int kvt_vte_get_flags(struct kvt_vte *vte)
-{
-	if (!vte) {
-		return 0;
-	}
-
-	return vte->flags;
-}
-
-KVT_SHL_EXPORT
 unsigned int kvt_vte_get_mouse_mode(struct kvt_vte *vte)
 {
 	if (!vte) {
@@ -1006,16 +945,6 @@ unsigned int kvt_vte_get_mouse_mode(struct kvt_vte *vte)
 	}
 
 	return vte->mouse_mode;
-}
-
-KVT_SHL_EXPORT
-unsigned int kvt_vte_get_mouse_event(struct kvt_vte *vte)
-{
-	if (!vte) {
-		return 0;
-	}
-
-	return vte->mouse_event;
 }
 
 /*
@@ -1336,8 +1265,9 @@ static void do_execute(struct kvt_vte *vte, uint32_t ctrl)
 		vte_write(vte, "\x06", 1);
 		break;
 	case 0x07: /* BEL */
-		if (vte->bell_cb)
-			vte->bell_cb(vte, vte->bell_data);
+		/* Swallowed. No surface in this desktop rings a bell, and a
+		 * BEL that is not consumed here reaches the screen as a
+		 * printable cell. */
 		break;
 	case 0x08: /* BS */
 		/* Move cursor one position left */
@@ -2239,10 +2169,6 @@ static void csi_mode(struct kvt_vte *vte, bool set)
 		case KVT_VTE_MOUSE_MODE_VT200:
 			vte->mouse_mode = set ? vte->csi_argv[i] : 0;
 			vte->mouse_event = KVT_VTE_MOUSE_EVENT_BTN;
-
-			if (vte->mouse_cb) {
-			    vte->mouse_cb(vte, vte->mouse_event, false, vte->mouse_data);
-			}
 			continue;
 		case 12: /* blinking cursor */
 			/* TODO: implement */
@@ -2338,34 +2264,10 @@ static void csi_mode(struct kvt_vte *vte, bool set)
 			 * program to 1002 and it would never see a hover.
 			 */
 			vte->mouse_event = set ? vte->csi_argv[i] : 0;
-
-			if (vte->mouse_cb && vte->mouse_mode) {
-			    vte->mouse_cb(vte, vte->mouse_event, vte->mouse_mode == KVT_VTE_MOUSE_MODE_PIXEL, vte->mouse_data);
-			}
 			continue;
 		case KVT_VTE_MOUSE_MODE_SGR:
-			vte->mouse_mode = set ? vte->csi_argv[i] : 0;
-
-			if (!vte->mouse_cb) {
-			    continue;
-			}
-
-			if (!set || vte->mouse_event) {
-			    vte->mouse_cb(vte, vte->mouse_event, false, vte->mouse_data);
-			    continue;
-			}
-			continue;
 		case KVT_VTE_MOUSE_MODE_PIXEL:
 			vte->mouse_mode = set ? vte->csi_argv[i] : 0;
-
-			if (!vte->mouse_cb) {
-			    continue;
-			}
-
-			if (!set || vte->mouse_event) {
-			    vte->mouse_cb(vte, vte->mouse_event, set, vte->mouse_data);
-			    continue;
-			}
 			continue;
 		case KVT_VTE_BRACKETED_PASTE:
 			vte->bracketed_paste = set;
@@ -2921,22 +2823,10 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 			if (num < 0)
 				num = 0;
 			kvt_screen_set_cursor_style(vte->con, num);
-		} else {
-			num = vte->csi_argv[0];
-			if (num <= 0) {
-				vte->led_state = 0;
-			} else if (num == 1) {
-				vte->led_state |= KVT_VTE_LED_SCROLL_LOCK;
-			} else if (num == 2) {
-				vte->led_state |= KVT_VTE_LED_NUM_LOCK;
-			} else if (num == 3) {
-				vte->led_state |= KVT_VTE_LED_CAPS_LOCK;
-			} else {
-				break;
-			}
-			if (vte->led_cb)
-				vte->led_cb(vte, vte->led_state, vte->led_data);
 		}
+		/* DECLL is accepted and dropped: this terminal drives no
+		 * keyboard LEDs, and an unrecognised final byte would be
+		 * logged once per sequence by a program that polls them. */
 		break;
 	default:
 		llog_debug(vte, "unhandled CSI sequence %c", data);
@@ -3980,12 +3870,6 @@ void kvt_vte_input(struct kvt_vte *vte, const char *u8, size_t len)
 	--vte->parse_cnt;
 }
 
-KVT_SHL_EXPORT
-void kvt_vte_set_backspace_sends_delete(struct kvt_vte *vte, bool enable)
-{
-	vte->backspace_sends_delete = enable;
-}
-
 /*
 Code     Modifiers
 ---------+---------------------------
@@ -4220,10 +4104,10 @@ bool kvt_vte_handle_keyboard(struct kvt_vte *vte, uint32_t keysym,
 
 	switch (keysym) {
 		case XKB_KEY_BackSpace:
-			if (vte->backspace_sends_delete)
-				vte_write(vte, "\x7f", 1);
-			else
-				vte_write(vte, "\x08", 1);
+			/* BS, not DEL. The shipped terminfo entry is
+			 * xterm-256color, whose kbs is ^H; sending DEL
+			 * instead makes readline erase nothing. */
+			vte_write(vte, "\x08", 1);
 			return true;
 		case XKB_KEY_Tab:
 		case XKB_KEY_KP_Tab:

@@ -144,10 +144,11 @@ and killing it leaves a running daemon with a graph nothing is connected to.
 
 The Bluetooth codecs are named rather than left to `auto`. Each is a meson
 feature that disables itself when its library is absent, so an automatic build
-produces a PipeWire that negotiates SBC and says nothing about why. aptX, LDAC
-and AAC are linked from `libfreeaptx`, `ldacbt` and `fdk-aac`; SBC is mandatory
-in the profile and always present. Without them every headset falls back to the
-worst codec the specification has.
+produces a PipeWire that negotiates SBC and says nothing about why. aptX, LDAC,
+AAC and LC3 are enabled explicitly and linked from `libfreeaptx`, `ldacbt`,
+`fdk-aac` and `liblc3`, every one of them named in the port's `depends`; SBC is
+mandatory in the profile and always present. Without them every headset falls
+back to the worst codec the specification has.
 
 ### Reaching the graph from inside a box
 
@@ -357,10 +358,12 @@ committed at the output's own rate for as long as the recording runs.
 backend is the wlr one, whose chooser is `slurp`: it covers the screen and
 waits for the pointer to pick an output. The three calls therefore do not share
 one deadline. `CreateSession` is a program on a local bus answering in
-milliseconds and gets five seconds, while `SelectSources` and `Start` are
-waiting for somebody to decide and get two minutes and thirty. A deadline of
-seconds on the middle call cancels every recording before the question on
-screen has been answered, and reports it as a portal that did not reply.
+milliseconds and gets five seconds. `SelectSources` is waiting for somebody to
+decide and gets two minutes — a deadline of seconds there cancels every
+recording before the question on screen has been answered, and reports it as a
+portal that did not reply. `Start` gets thirty seconds, which is not a slow bus
+either: the backend binds the compositor's capture global, takes a first frame
+to learn the format and registers a PipeWire node before it answers.
 
 `kdos-record` again stops it. There is one screen and one portal session, so a
 second recording is not something to want, and a chord or a menu row that
@@ -564,6 +567,7 @@ needs is therefore stated explicitly:
 | *(no `GTK_THEME`)* | Deliberately absent: it overrides the theme setting for the life of the process, so an accent switch could never reach a running GTK application. The name arrives through the settings portal and through the seeded `gtk-3.0/settings.ini` instead |
 | `GSETTINGS_BACKEND=keyfile` | No settings daemon is reachable |
 | `QT_IM_MODULE=wayland` | Input methods through the compositor |
+| `QT_QPA_PLATFORMTHEME` | `kde` where the stack installs that platform theme, `gtk3` otherwise; a pack declares its own in its metadata rather than being labelled |
 | `CUPS_SERVER` | The host's print socket, when it exists |
 | `NO_AT_BRIDGE`, `GTK_A11Y` | A default, not a policy — see below |
 | `DISPLAY` | Added when Xwayland is running, for X11-only applications |

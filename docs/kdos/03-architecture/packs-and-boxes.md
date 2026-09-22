@@ -36,8 +36,8 @@ container root upward is identical.
 +----------------------------+  icon_off + icon_len
 |  signature block           |  one line per signature ≤ 64 KiB
 +----------------------------+  sig_off + sig_len
-|  footer (512 bytes)        |  magic, format, flags, six offset/length
-|                            |  pairs, payload_sha256
+|  footer (512 bytes)        |  magic, format, flags, the image's length,
+|                            |  three offset/length pairs, payload_sha256
 +----------------------------+  end of file
 ```
 
@@ -101,8 +101,7 @@ raises the footer to `KPK_FORMAT`, takes the digest under that format's span,
 and drops the signature block with it, since the block names the digest it
 replaced. The pack is then signed and the directory indexed again. A pack
 already at this format with an agreeing digest is left alone, signature
-included. The bake re-stamps every pack it *keeps* for this reason; a rebuild
-alone does not, because an unchanged pack is kept byte for byte.
+included.
 
 **Nothing in the library mounts, executes or writes outside the file it was
 given.** A root daemon links it, so every line is code running as root.
@@ -115,12 +114,14 @@ given.** A root daemon links it, so every line is code running as root.
 | `NONE` | No signature block at all | yes |
 | `HASH` | The payload hash does not match | **no** |
 | `BAD` | Signed, and the signature does not verify | **no** |
-| `NOKEY` | Signed against a key this machine does not hold | **no** |
+| `NOKEY` | Signed, and this machine holds no pack key at all | **no** |
 
-`NOKEY` is deliberately its own outcome rather than a forgery. A pack carrying
-a block against a key nobody here holds is a question about the *machine*, not
-the artefact, and reporting it as tampering sends the reader to inspect the
-pack instead of the key directory.
+`NOKEY` is deliberately its own outcome rather than a forgery. It is asked
+before the block is even read: with an **empty** keyring every signature fails
+and every failure looks the same, so that answer names the *machine* rather
+than the artefact. Reporting it as tampering would send the reader to inspect
+the pack instead of the key directory. A signature that no key in a non-empty
+ring verifies is `BAD`.
 
 Note the asymmetry this leaves standing, stated rather than hidden: an
 **unsigned** pack mounts, so a pack that is signed and uncheckable is treated
@@ -142,7 +143,9 @@ machine you are working on.
 | `uuid` | Derive the image UUID for an id |
 | `sign`, `verify` | Signature handling |
 | `index` | Write the `PACKAGES` index |
-| `delta` | Difference between two packs |
+| `delta`, `apply` | Difference between two packs, and rebuilding one from it |
+| `keygen` | Make an Ed25519 pack-signing key pair |
+| `extract-meta` | Write the metadata blob out on its own |
 | `restamp` | Raise the footer format and re-take the digest |
 
 `build` and `assemble` are split for a reason that is not convenience. Making
@@ -165,13 +168,14 @@ build:
 The version is deliberately not in that UUID. It lands in the filesystem
 superblock, so a version taken from the build clock would make every rebuild a
 different image even when no file inside had moved — and `imagehash`, which is
-what lets a rebuild keep an unchanged pack's file rather than rewriting the
-whole catalogue, could never answer "unchanged".
+how a rebuild is asked whether anything moved, could never answer "unchanged".
+The self-test packs the same tree under two versions and fails if the two
+hashes differ.
 
-A rebuild keeps an existing file only when **both** the image and the metadata
-are unchanged. The image hash alone is not enough: a metadata line changes what
-the pack *declares* and no byte of its filesystem, so comparing only the image
-ships a medium on which a newly declared command does not exist.
+`imagehash` covers the image and not the metadata, so it is only half the
+question. A metadata line changes what the pack *declares* and no byte of its
+filesystem, so anything deciding to keep an existing file has to compare both
+or ship a pack on which a newly declared command does not exist.
 
 ## The catalogue
 
@@ -212,52 +216,35 @@ software a two-file change for no benefit. The size is an **estimate** and
 every surface labels it one: what apt resolves on the day depends on the
 snapshot.
 
-## Baking
+## Where a pack comes from
 
-The bake runs entirely inside a container carrying the container engine, the
-filesystem tool, a compiler and Python, so a clone needs no privileged tools
-installed and there is no password prompt. Root is still required inside it,
-and the results are handed back to the calling user.
+**Nothing is baked onto the medium.** The ISO carries the catalogue and no
+applications: `script/06_packaging/01_packs.sh` creates the store's two
+directories — `/var/lib/kdos/packs/staging` at `01777` and `.../mnt` — and gets
+out of the way. Staging is the one place an unprivileged write may land, and
+its mode is set here as well as by the daemon, because a first boot that
+inherited `0755` would refuse an import until `kdos-packd` had run once.
 
-### The whiteout convention is the filesystem's, not the image format's
+Three things make a pack, and each answers a different question:
 
-A pack is built from a container's on-disk top layer, never from an exported
-image archive. The two record deletions differently: an overlay filesystem
-deletes with a special device node carrying the deleted file's name, while an
-image archive deletes with a specially named regular entry. A pack built from
-the second merges with the deleted file **still present** — measured, and
-silent. So the bake reads the layer directory the container engine reports.
+| Route | Makes |
+|---|---|
+| `kdos-appbox export <file.ktar> <id>…` | One pack per store image this machine has built, tarred into one file to hand over |
+| `kdos-box freeze <name> [out.kpack]` | A box's **writable upper** — only what you changed, deduped against its base by construction |
+| `KDOS_PACK_KDOS=1` at packaging time | The running rootfs as the base pack `kdos`, so `kdos-box create ports base=pack:kdos` gives a running KDOS a clean KDOS to build ports in |
 
-That in turn constrains the engine's storage: it must use a real overlay layer
-directory rather than a fallback driver that publishes none, which is why the
-bake bind-mounts its own store rather than nesting inside the host daemon's.
+The export is a flatten: a container is created over the built image, `podman
+export` writes its whole merged filesystem, and that is what gets wrapped. So
+an exported pack carries no deletion markers of any kind and nothing has to
+agree about how a deletion is spelled.
 
-### The base row is the whole filesystem
-
-A base row is exported and re-extracted; every other row is packed from its top
-layer. A base packed from its top layer instead is a base missing the
-top-level directories that are symlinks the upstream image provides and no
-layer above re-adds — and a merged stack built on it has no shell.
-
-A base may name its own image, which is what makes a second, non-Debian base
-cost one line instead of a second bake. That goes together with a second rule:
-everything the generated build file emits below the image line is package
-management, so a base whose value is the image as it stands declares **no
-packages** and the image *is* the pack.
-
-The graphics stack is a base row and not a runtime one. A pack's parent chain
-is a single line — the browser sits on the GTK runtime, the video editor on the
-media one — so a driver set placed on either reaches half the catalogue and no
-more. The DRI drivers, the GL and EGL loaders and the VA-API drivers are
-therefore carried in the base, where they are stored once and every box has
-them.
-
-What that buys is the difference between a box that draws and decodes on the
-card and one that does both on the CPU. The render nodes are bound into every
-box and the compositor offers `linux-dmabuf` wherever there is a card, and the
-piece that decides whether a video is decoded in silicon is `libva` plus a
-`*_drv_video.so` beside it. A browser whose runtime has neither reports no
-hardware decoder and decodes every frame on the CPU.
+The rootfs pack is **opt-in** because it is a second `mkfs.erofs` over the
+whole tree on every build, for a base most installs will never compose. It
+lands in `build/` rather than in the store: the store is *inside* the rootfs,
+so a pack written there would be squashed into `system.sfs` and the medium
+would carry the tree twice. The ISO step picks it up from `build/` and puts it
+on ISO9660 beside `system.sfs`, where `kdos-packd`'s scan for `*.kpack` finds
+it.
 
 ### Exclusions must be probed, not trusted
 
@@ -273,16 +260,40 @@ themselves.
 
 A path exclusion is relative to the tree being packed and must carry no leading
 slash. It matches an exact literal, so a leading slash matches nothing, is not
-an error, and excludes **nothing**. The build therefore probes the flag against
-a throwaway tree before trusting it, nested and top-level, because a silently
+an error, and excludes **nothing**. The packaging step therefore probes the
+flag against a throwaway tree first — nested and top-level, and it refuses to
+pack at all if a 2 MB directory it excluded comes back — because a silently
 inert exclusion here fills the disk rather than printing a warning.
 
-A hand-rolled image must still force the ownership. A container runs with the
-user's identity mapped, so every pack built through `kdos-pack` forces a fixed
-owner and the user therefore owns the tree. An image packed with *real*
-ownership from a root-owned rootfs leaves the container user able to create
-nothing anywhere in it, and it fails in two stages, neither of which mentions
-ownership.
+A hand-rolled image must still force the ownership. A box runs `--userns
+keep-id`, so the process inside it is uid 1000; every pack `kdos-pack build`
+makes forces uid and gid 1000 so that user owns the tree, and the rootfs pack
+passes the same flags by hand. Packed with *real* ownership from a root-owned
+rootfs, the container user can create nothing anywhere in it, and it fails in
+two stages — a permission denial on `/etc/mtab`, then a missing bind
+destination for `kdos-boxinit` — neither of which mentions ownership.
+
+### The graphics stack is a base row
+
+A base may name its own container image, which is what makes a second,
+non-Debian base cost one line: `image alpine alpine:3.24.1` beside
+`base alpine -`. Everything the generated build file emits below the image line
+is package management, so a base whose value is the image as it stands declares
+**no packages** and the image *is* the pack.
+
+The drivers sit there rather than in a runtime. A pack's parent chain is a
+single line — the browser sits on the GTK runtime, the video editor on the
+media one — so a driver set placed on either reaches half the catalogue and no
+more. The DRI drivers, the GL and EGL loaders and the VA-API drivers
+(`libgl1-mesa-dri`, `libegl1`, `libgl1`, `libva2`, `va-driver-all`) are
+therefore in the `base` row, where they are stored once and every box has them.
+
+What that buys is the difference between a box that draws and decodes on the
+card and one that does both on the CPU. The render nodes are bound into every
+box and the compositor offers `linux-dmabuf` wherever there is a card, and the
+piece that decides whether a video is decoded in silicon is `libva` plus a
+`*_drv_video.so` beside it. A browser whose runtime has neither reports no
+hardware decoder and decodes every frame on the CPU.
 
 ## Mounting
 
@@ -329,6 +340,13 @@ not involved at all. Everything below is the import lane.
 
 An imported application's container root is an overlay of the base, the runtime
 it needs, the application pack, and a writable upper layer.
+
+The daemon places that upper by asking the filesystem: under the user's data
+directory where `$HOME`'s filesystem takes an overlay upper, and on the runtime
+`tmpfs` where it does not, because a live session's `$HOME` is on the boot
+overlay and the kernel refuses to stack an upper there. The `status` reply
+names which of the two a composed box got — losing somebody's work quietly is
+the failure that fallback exists to avoid.
 
 There is **one box per application**, named after the pack. The alternative —
 one box composing every installed application — hits two walls at once. An
@@ -398,6 +416,14 @@ keys default to the card, because the nodes and the drivers are already there
 and a box drawing with llvmpipe on a machine that has a render node is paying
 for nothing.
 
+That socket is a per-box one `kdos-boxsock` holds open, and the tag on it is
+what the compositor's allowlist filters screencopy, data-control, input-method
+and layer-shell on. It is a label and not a gate. The box shares
+`$XDG_RUNTIME_DIR` with the session, so a client that opens the default
+`wayland-0` reaches the session's own socket; withholding the variable would
+advertise a confinement the sandbox does not have, which is why no profile key
+withholds it.
+
 ### Building the launch command
 
 Every shared directory is formatted into the argument vector directly, never
@@ -438,22 +464,34 @@ first. A mount with no grafts made is a dataset nothing can find.
 
 ## What an install carries
 
-The applications stay on the medium. Of the runtimes, only the ones something
-needs are copied into the store: carrying every runtime because it exists costs
-well over a gigabyte on a machine that may never run a Windows binary.
+Nothing, and the installer says so before it runs. The medium has no
+applications on it, so there is no copy to make; what the Applications page
+picks is a set of groups, and `ki_apps_route()` turns that into one of four
+answers:
 
-The dependency closure is computed from a key in the flat index, by both the
-installer and the package tool, and **neither links a solver**. The key carries
-names with no version constraints, so the closure is a repeat-until-nothing-new
-that resolves at any depth and cannot spin on a cycle. It is idempotent,
-because unticking an application has to give its runtime back.
+| Route | What the install does |
+|---|---|
+| nothing chosen | Makes the store's directories and stops |
+| from the stick | `kdos-appbox import` on the first `.ktar` found under a mounted device — staged through `kdos-packd` in the target, which verifies each pack where it mounts it. The only route on a machine with no network |
+| over the network | `kdos-appbox install <group>…` during the install: podman and apt, which is minutes |
+| at first login | The selection is written to `/var/lib/kdos/apps-pending`, and `kdos app install --pending` builds it |
+
+The page has already **said** which, because a person must not discover at
+first boot that nothing was installed. Building is most of an hour, and an
+installer that did that silently is an installer that appears to have hung.
+
+An import or a build that fails falls back to *pending* rather than failing the
+install. The system is on the disk and bootable; an archive that would not
+import is a reason to say so and carry on, not to abandon a partitioned disk.
 
 ## Reaching the desktop
 
 `kdos-appbox genlaunchers` walks every installed pack, mounts it through the
 daemon, and parses the application's **own** desktop entries. A pack carries
 the real entries, so the existing parse is reused rather than reimplemented
-against the metadata.
+against the metadata. It covers every pack and every store box in one pass, so
+no profile key decides whether a box's applications get launchers; `kdos-box
+export <box> <app>` is the per-application route for a box that is neither.
 
 It writes four things, and dropping any one breaks something visible:
 

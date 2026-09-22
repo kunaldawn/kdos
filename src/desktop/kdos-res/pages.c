@@ -12,23 +12,11 @@
 /*
  * The registry. One row per page, in sidebar order.
  *
- * A page with a NULL draw is one that has not landed yet and says so on the
- * screen rather than drawing an empty frame that looks finished.
+ * `draw` is the one field every page fills; the input handlers are NULL on a
+ * page that takes none, and page.c tests each before it calls.
  */
 
-#include <stdio.h>
-#include <string.h>
-
 #include "res.h"
-
-void res_page_placeholder(int x, int y, int w, int h, const char *name)
-{
-	(void)name;
-	(void)h;
-	ktui_draw_text(x + 2, y + 1, w - 4,
-		       "This page has no reader yet.", KT_DIM, KT_BG, 0);
-}
-
 
 const ResPage RES_PAGES[RP_NPAGES] = {
 	{ "applications", "Applications", "applications-system", res_app_prepare, res_app_headline, res_draw_apps, res_app_click, res_app_wheel, res_app_key, res_app_motion, res_app_release },

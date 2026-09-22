@@ -22,16 +22,22 @@
  * live container, so changing one marks the box as needing a recreate rather
  * than silently doing nothing — see cmd_security() in main.c.
  *
- * THE PROTOCOL HALF IS NOT THIS FILE'S ANY MORE. Before the labwc fork a
- * `wayland.*` key here could grant an individual global back to one box; the
- * fork's filter (allow_for_sandbox() in kdos-comp's server.c) is a fixed
- * allowlist, so a client is sandboxed or it is not — screencopy, data-control,
- * input-method and layer-shell are denied to every tagged client and no
- * profile key changes that. Nothing here writes or reads a `wayland.*` key,
- * which is the honest state: KDOS does not offer confinement it cannot
- * enforce, and it does not offer a knob that enforces nothing either. What
- * this file still owns is the namespace half — the keys above, applied at
- * create time.
+ * THE PROTOCOL HALF IS NOT THIS FILE'S. kdos-comp's filter
+ * (allow_for_sandbox() in its server.c) is a fixed allowlist, so a client is
+ * sandboxed or it is not — screencopy, data-control, input-method and
+ * layer-shell are denied to every tagged client, and no profile key changes
+ * that. Nothing here writes or reads a `wayland.*` key. What this file owns is
+ * the namespace half — the keys above, applied at create time.
+ *
+ * A KEY THAT ENFORCES NOTHING IS PRINTED AS SUCH, never silently, which is
+ * what the `audio` note already does: a setting that quietly does nothing is
+ * worse than an absent one. Two are in that state and profile_print() says so
+ * on the line. `wayland` cannot take a display away, because the box shares
+ * $XDG_RUNTIME_DIR and a client that opens the default `wayland-0` reaches the
+ * session's own socket — withholding WAYLAND_DISPLAY would advertise
+ * confinement the sandbox does not deliver. `export` triggers nothing:
+ * `kdos-appbox genlaunchers` covers every installed pack and every store box
+ * at once and `kdos-box export` is the per-application route.
  *
  * The path is resolved from $HOME/.config and NOT from $XDG_CONFIG_HOME, and
  * kdos-comp deliberately copies that rather than doing the more correct thing,
@@ -442,9 +448,21 @@ void profile_print(const Profile *p)
 	       p->process ? "--unshare-process" : "--pid host");
 	printf("home        = %-11s %s\n", p->privhome ? "private" : "shared",
 	       p->privhome ? "--home" : "the user's own $HOME");
+	/*
+	 * THE DISPLAY IS NOT THIS KEY'S TO TAKE AWAY. The box shares
+	 * $XDG_RUNTIME_DIR, so a client that opens the default `wayland-0`
+	 * finds the session's own socket whatever the profile says, and a
+	 * launch that withheld WAYLAND_DISPLAY would print a confinement the
+	 * sandbox does not deliver. What a launch adds is a per-box
+	 * kdos-boxsock socket; the tag on that is what kdos-comp's allowlist
+	 * filters screencopy, data-control, input-method and layer-shell on.
+	 */
 	printf("wayland     = %-11s %s\n", p->wayland ? "yes" : "no",
-	       p->wayland ? "tagged through kdos-boxsock"
-			  : "no display socket reaches it");
+	       "tagged through kdos-boxsock");
+	if (!p->wayland)
+		printf("            ! wayland=no cannot be enforced — the box"
+		       " shares $XDG_RUNTIME_DIR and the session's socket is"
+		       " in it\n");
 	/*
 	 * THE RENDERER, AND THE MACHINE'S ANSWER BESIDE IT. The key is a
 	 * request and the render node is what grants it, so printing the word
@@ -483,9 +501,19 @@ void profile_print(const Profile *p)
 	if (p->autostop_s)
 		printf("autostop    = %-11d seconds idle, enforced by `kdos-box gc`\n",
 		       p->autostop_s);
+	/*
+	 * ONE ROUTE, WHICHEVER WORD IS IN THE FILE. `kdos-appbox genlaunchers`
+	 * writes the entries, the shims and the mime cache for every installed
+	 * pack and every store box at once, and `kdos-box export` is the
+	 * per-application route for a box that is neither. Neither of them
+	 * consults this key.
+	 */
 	printf("export      = %-11s %s\n", p->autoexport ? "auto" : "manual",
-	       p->autoexport ? "its apps become host launchers"
-			     : "`kdos-box export` is how an app gets a launcher");
+	       "`kdos-box export` is how one app gets a launcher");
+	if (p->autoexport)
+		printf("            ! export=auto is not a trigger — nothing"
+		       " exports by itself; `kdos-appbox genlaunchers` does"
+		       " every pack and store box\n");
 	if (p->privhome) {
 		char *h = profile_home(p->name);
 		printf("home-path   = %s\n", h);
@@ -672,19 +700,6 @@ int box_create(const Profile *p)
 		kb_argv_add(&a, "--additional-flags");
 		kb_argv_add(&a, flags);
 	}
-	kb_argv_end(&a);
-	return kb_run(&a);
-}
-
-int box_remove(const char *box, int force)
-{
-	KbArgv a = {0};
-	kb_argv_add(&a, "distrobox");
-	kb_argv_add(&a, "rm");
-	kb_argv_add(&a, box);
-	kb_argv_add(&a, "--yes");
-	if (force)
-		kb_argv_add(&a, "--force");
 	kb_argv_end(&a);
 	return kb_run(&a);
 }

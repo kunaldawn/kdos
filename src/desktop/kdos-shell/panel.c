@@ -58,9 +58,8 @@
 
 /*
  * Spawn something the panel must not wait for. Double-forked, so the panel
- * neither reaps nor blocks — the same shape sh_spawn_menu uses, and the reason
- * is the same: a clock that stopped while a terminal started would be worse
- * than no button at all.
+ * neither reaps nor blocks: a clock that stopped while a terminal started
+ * would be worse than no button at all.
  */
 static void panel_spawn(const char *const argv[])
 {
@@ -1808,8 +1807,6 @@ static void clear_hits(struct sh_state *sh)
 {
 	meter_row0 = -1;
 	meter_rows = 0;
-	for (int i = 0; i < SH_NMENUS; i++)
-		sh->menu_hit_x[i] = sh->menu_hit_end[i] = 0;
 	sh->ws_hit_x = sh->ws_hit_end = 0;
 	for (int i = 0; i < SH_MAX_WS; i++)
 		sh->ws_hit[i] = -1;
@@ -7626,8 +7623,6 @@ int panel_main(int argc, char **argv)
 	struct sh_state sh = {0};
 	/* -1, not 0: a zeroed struct would light a chip for the whole session,
 	 * which reads as a button that is stuck pressed. */
-	sh.menu_open = -1;
-	sh.hover_menu = -1;
 	sh.hover_task = -1;
 	KDispConfig cfg = {
 		.role = KDISP_ROLE_PANEL,

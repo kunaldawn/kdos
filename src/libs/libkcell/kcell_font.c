@@ -830,11 +830,6 @@ bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out)
 	return kcell_glyph_face(cp, scale, 0, out);
 }
 
-bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out)
-{
-	return kcell_glyph_face(cp, scale, italic ? KCELL_ST_ITALIC : 0, out);
-}
-
 bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out)
 {
 	if (scale < 1)

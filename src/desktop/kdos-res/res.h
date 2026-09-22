@@ -241,8 +241,6 @@ void res_batt_prepare(void);
 const char *res_batt_headline(void);
 void res_draw_batt(int x, int y, int w, int h);
 void res_theme_from_cache(void);
-/* The one header band. Returns the first BODY row. */
-void res_page_placeholder(int x, int y, int w, int h, const char *name);
 void res_graph(int id, KRect r, const KprHist *h, const char *label,
 	       const char *reading);
 /* A mirrored pair on ONE shared axis: `a` above the midline in the accent,
@@ -278,7 +276,6 @@ unsigned res_detail_wants(void);
 /* The ONE confirm modal, shared by every verb — see page.c. */
 void res_confirm(const char *title, const char *msg, const char *yes,
 		 void (*on_yes)(void));
-int  res_confirm_active(void);
 void res_draw_mem(int x, int y, int w, int h);
 
 /*

@@ -31,11 +31,6 @@ void kb_set_progname(const char *name)
 		prog = name;
 }
 
-const char *kb_progname(void)
-{
-	return prog;
-}
-
 /*
  * The format is GUARDED in both of these. vfprintf with a null format is
  * undefined, and the sanitiser build's interprocedural pass cannot prove one

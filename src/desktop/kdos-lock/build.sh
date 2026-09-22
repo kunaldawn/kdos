@@ -97,7 +97,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-o kdos-checkpass "$PORT_SRC"/checkpass.c -lcrypt $LDFLAGS
 
 install -Dm755 kdos-lock "$PKG/usr/bin/kdos-lock"
-# 4755, and this is the only setuid bit KDOS ships. /etc/shadow is root-only
-# and the lock screen must not be root; see checkpass.c's header for what the
-# 120 lines behind this bit are allowed to do.
+# 4755, one of the two setuid bits KDOS ships (kdos-resctl is the other).
+# /etc/shadow is root-only and the lock screen must not be root; see
+# checkpass.c's header for what the 120 lines behind this bit are allowed to do.
 install -Dm4755 kdos-checkpass "$PKG/usr/bin/kdos-checkpass"

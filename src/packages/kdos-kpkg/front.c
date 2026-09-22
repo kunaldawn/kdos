@@ -9,14 +9,12 @@
  *
  * `kpkg install -f` FORCES ONLY WHAT WAS NAMED. Dependencies pulled in behind
  * a forced package keep the ordinary skip-if-installed behaviour. That is not
- * a nicety: `script/buildlib/phases.py` passes `-f` for exactly the ports a
- * build plan selected, and a blanket force would rebuild all ~350 packages on
- * every run.
+ * a nicety: kdosbuild passes `-f` for exactly the ports a build plan selected,
+ * and a blanket force would rebuild all ~350 packages on every run.
  *
- * The mechanism is the one the shell version arrived at. kpkgdepends drops
- * anything already installed, which would make `-f` resolve to nothing at all,
- * so under `-f` resolution runs against an EMPTY database and the decision
- * about what to actually rebuild is taken here, per package.
+ * kpkgdepends drops anything already installed, which would make `-f` resolve
+ * to nothing at all, so under `-f` resolution runs against an EMPTY database
+ * and the decision about what to actually rebuild is taken here, per package.
  * ---------------------------------
  */
 

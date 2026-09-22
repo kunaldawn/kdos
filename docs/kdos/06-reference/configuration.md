@@ -111,13 +111,22 @@ immediately.
 | `right` | `pager tray more media privacy mpris clipboard cpu stutter update restart net volume battery notify clock` | The notification-area widgets, in order |
 | `overflow` | `stutter restart clipboard` | Which of them live behind the chevron |
 | `meters` | `cpu ram net` | Which meters, in order of importance — a narrow bar drops them from the right |
-| `task_labels` | `auto` | `auto`, `yes` or `no`: the ladder, always, or never |
-| `tray_hide` | empty | Tray item identifiers not drawn on the bar; they go in the chevron's popup |
+| `task_labels` | `no` | `auto`, `yes` or `no`: the ladder, always, or never |
+| `tray_hide` | `fcitx fcitx5 org.fcitx.fcitx5` | Tray item identifiers not drawn on the bar; they go in the chevron's popup |
 | `start_label` | `yes` | Whether the Start button carries its word |
 
 The sixteen widget names are `pager`, `tray`, `more`, `media`, `privacy`, `mpris`, `clipboard`,
 `cpu`, `stutter`, `update`, `restart`, `net`, `volume`, `battery`, `notify` and `clock`. The six
 meter names are `cpu`, `ram`, `disk`, `net`, `diskio` and `temp`.
+
+`task_labels` defaults to `no` because the bar is a dock: a two-cell bar gives a square button with
+a picture in it, and the name is what the tooltip carries. `auto` is the adaptive ladder — full
+labels, then squeezed ones, then icon mode.
+
+`tray_hide` is the one key here whose default is not empty. fcitx5 publishes `ItemIsMenu`, so its
+Activate means *show my menu*; the three identifiers it may register under start behind the chevron,
+where the popup can at least say what the item is. Writing `tray_hide =` with nothing after it puts
+every tray item back on the bar.
 
 `temp` is the hottest sensor on the machine, on a fixed 0–100 °C band. It is read every fourth
 sample rather than every one: the read walks `/sys/class/hwmon`, and a die's temperature does not
@@ -126,9 +135,12 @@ zero — a machine with no sensor is not one running cold.
 
 The `update` widget reads a file and never computes. `kdos update check` walks the ports tree
 against the package database, which is hundreds of file reads and nothing the panel may do on a
-tick. The count comes from `$XDG_STATE_HOME/kdos/update.json`, which `kdos update check --json`
-writes. An absent file is zero and the badge is not drawn at all, which is the honest picture of a
-machine nobody has checked. It is re-read at most once a minute.
+tick. The count is the `behind` field of `/var/lib/kdos/update.json`, which the system timer writes
+with `kdos update check --json`; `$XDG_STATE_HOME/kdos/update.json` is the fallback, for somebody
+who ran the check themselves on a machine whose timer is off. What the ports tree pins against what
+is installed is a fact about the machine, so one walk serves every session. An absent file is zero
+and the badge is not drawn at all, which is the honest picture of a machine nobody has checked. It
+is re-read at most once a minute.
 
 The loader restores every default before parsing, because it runs again on reload. A reload that
 only ever *added* would leave a widget hidden after the line hiding it was deleted.
@@ -161,9 +173,11 @@ extension. Written by the panel and the menus when you pin, unpin or reorder.
 Two surfaces read this one file: the panel's quick-launch row and the Start menu's pinned column.
 Two lists of favourites would be two things to keep in agreement, and one always loses.
 
-It ships populated. An empty list makes both surfaces look broken on a freshly booted machine;
-delete every line if you want one. An identifier with no matching entry is skipped in silence, so an
-application this image's catalogue does not carry leaves no launcher that opens nothing.
+It ships populated, with seven rows. An empty list makes both surfaces look broken on a freshly
+booted machine; delete every line if you want one. Each surface draws the first eight identifiers
+and stops, so a ninth line is parsed and never shown. An identifier with no matching entry is
+skipped in silence, so an application this image's catalogue does not carry leaves no launcher that
+opens nothing.
 
 A line may carry a two-letter code:
 
@@ -214,9 +228,15 @@ so a maximised window stops short of it rather than covering it.
 
 ### `~/.config/kdos/session-restore`
 
-Ships absent. Its existence is the setting: with it, the windows open when the session ended are
-reopened at the next login. The list itself is written before the confirmation dialog, because
-after the answer there is no session left to ask.
+Ships absent. Its existence is the setting, and the contents are ignored. With it, the boxed
+applications that were running when the session ended are started again at the next login, two
+seconds apart in the background.
+
+The list is `$XDG_STATE_HOME/kdos/session`, written by `kdos-session-save` from the menu's Log Out,
+Restart and Shut Down rows — before the confirmation dialog, because after the answer there is no
+session left to ask. Each line is `app <name>` for a boxed application or `native <app_id>` for a
+host toplevel, and only the `app` lines are relaunched: a host program costs no container start,
+and where a window comes *back* is `comp.conf`'s `window_memory` rather than this list.
 
 ### `~/.config/kdos/backup.conf`
 
@@ -261,16 +281,26 @@ looking one second from now, so a slot already past is the same slot next time r
 slack says. `-t FILE` starts the search from that file's modification time, and the slack then
 covers the gap.
 
-The two tiers differ in how often a job can fire:
+The two tiers differ in when a job can fire at all:
 
-| Tier | Started by | Repeats |
+| Tier | Started by | Fires |
 |---|---|---|
 | `/etc/kdos/timers.d/` | The system supervisor | Every occurrence, whether or not anybody is logged in |
-| `~/.config/kdos/timers.d/` | The session, at login, reaped with it | At most once per login |
+| `~/.config/kdos/timers.d/` | The session, at login, reaped with it | Every occurrence while that login lasts |
 
-`snooze` waits for its slot, runs the command once and exits. The system table repeats because its
-supervisor starts it again, and nothing in the user table may write the pidfile that supervisor
-needs. Put a job that must run every night in the system tier.
+`snooze` waits for its slot, runs the command once and exits, so something has to start it again.
+The system table's supervisor does that; the user table gets a loop of its own per row, whose pid
+goes in `$XDG_RUNTIME_DIR/kdos/timers.pid` so the next login stops what the last one left. A loop
+whose command fails instantly is floored at one second, which is far below any schedule and far
+above a spin.
+
+A row is checked before its loop starts: the command's first word must be on `PATH`, and `snooze
+-n` must accept the timespec. Both tiers reject a row on either count rather than starting a loop
+that can never fire.
+
+The tier decides who is there to run the job. A job that must run on a machine nobody has logged
+into belongs in the system tier; a job that writes into `$HOME` belongs in the user tier, where it
+dies with the login that started it.
 
 Two timers ship enabled: `/etc/kdos/timers.d/10-update-check.timer` at 04:17 and
 `~/.config/kdos/timers.d/20-updatedb.timer` at 03:05, with `10-backup.timer` beside the latter
@@ -392,7 +422,7 @@ spelling. An unknown key is reported by name.
 
 | Key | Default | Means |
 |---|---|---|
-| `interval` | `1000` | Sampling interval in milliseconds, floored at 200: a monitor sampling faster than that is mostly measuring itself |
+| `interval` | `1000` | Sampling interval in milliseconds, clamped to 200–60000: a monitor sampling faster than 200 ms is mostly measuring itself |
 | `units` | `1024` | `1024` gives KiB/MiB/GiB; `1000` gives kB/MB/GB |
 | `temperature` | `c` | `c` or `f`, everywhere a sensor is shown |
 | `cpu_percent` | `core` | `core` — eight busy threads read 800%, which is `top`'s convention — or `machine`, where the same load reads 100% |
@@ -732,11 +762,17 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/btop/themes/kdos.theme` | Its colours | Generated |
 | `~/.config/kdos/term-colors.conf` | The sixteen colours a program asks for, in this desktop's terminals | Generated |
 | `~/.config/kdos/fzf-colors` | fzf's `--color` flags, sourced by `/etc/profile.d/30-kdos-colors.sh` | Generated |
+| `~/.config/bat/config` | The pager | One line: `--theme="kdos"` |
 | `~/.config/bat/themes/kdos.tmTheme` | bat's theme, selected by file stem | Generated |
+| `~/.config/micro/settings.json` | The editor | Selects the generated colorscheme |
 | `~/.config/micro/colorschemes/kdos.micro` | micro's colorscheme | Generated |
+| `~/.config/helix/config.toml` | The editor | Selects the generated theme |
 | `~/.config/helix/themes/kdos.toml` | helix's theme | Generated |
+| `~/.config/nvim/init.vim` | The editor | `termguicolors` and the generated colorscheme |
 | `~/.config/nvim/colors/kdos.vim` | neovim's colorscheme | Generated |
+| `~/.config/git/config` | Version control | Names delta as the pager and `[include]`s the generated colours |
 | `~/.config/git/kdos-delta` | delta's colours, `[include]`d from the shipped gitconfig | Generated |
+| `~/.config/newsboat/config` | The feed reader | `include`s the generated colours |
 | `~/.config/newsboat/kdos-colors` | newsboat's colours, as 256 indices | Generated |
 | `~/.config/aerc/stylesets/kdos` | aerc's styleset | Generated |
 | `~/.config/tmux/tmux.conf` | The terminal multiplexer | |
@@ -748,6 +784,9 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/user-dirs.dirs` | The standard user directories | Seeded from `/etc/skel`; there is no `xdg-user-dirs` here. `$HOME` is the only expansion read |
 | `~/.config/kdos/places` | Extra rows on the places column, `Name = /path` one per line | Merged over the user directories; a row whose path is already listed is dropped, and one pointing at nothing is never shown. Written by *Add to Places* on the desktop |
 | `~/.config/xdg-desktop-portal-wlr/config` | The screen-capture backend | Uses an output picker; the alternative captures the first output silently, which is wrong the moment a second screen is plugged in |
+| `~/.config/fcitx5/profile` | The input method | One group, `Default`, holding the four engines the image carries: `keyboard-us`, `pinyin`, `anthy` and `hangul` |
+| `~/.config/mimeapps.list` | This account's own handler choices | Ships with an empty `[Default Applications]` section, deliberately: this file outranks every system table, and *Open With*'s **always** tick is what writes to it |
+| `~/.bashrc`, `~/.bash_profile` | The shell | `.bashrc` reads `/etc/bash.bashrc` — through `/run/host` inside a box, because `$HOME` is bind-mounted into every one. `.bash_profile` is what starts the desktop on `tty1` |
 
 ### Default handlers
 
@@ -779,8 +818,9 @@ the skin itself into `~/.local/share/mc/skins/kdos.ini` — `mc` looks for skins
 
 `mc.ext.ini` replaces the system file wholesale, because `mc` does not merge them. Only the archive
 rows whose VFS helper is on this image are carried; everything else falls to the catch-all, which is
-`kdos-appbox open`. The `F2` menu carries eight verbs, each naming a program on the image, and
-`testing/preflight.sh` refuses one that is not.
+`kdos-appbox open`. The `F2` menu carries nine verbs — open with the desktop's handler, peek, edit,
+find in this folder, terminal here, add to Places, share, move to trash, and git status — each
+naming a program on the image, and `testing/preflight.sh` refuses one that is not.
 
 ### Shell environment
 

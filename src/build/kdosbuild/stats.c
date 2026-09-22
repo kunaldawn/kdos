@@ -124,8 +124,9 @@ void tm_save(Timings *t)
 	kb_buf_free(&b);
 }
 
-/* Round to two decimals the way python's round() does — the file is shared
- * with build.py for as long as both exist. */
+/* Round to two decimals, half away from zero: the timings file is plain text
+ * and a value that reads back differently from how it was written would let
+ * the EWMA drift by a rounding step every save. */
 static double blend(double old, double now)
 {
 	double v = old <= 0 ? now : old * (1 - EWMA_ALPHA) + now * EWMA_ALPHA;
@@ -235,10 +236,10 @@ double eta_seconds(const Manager *m, const Timings *t)
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Sampler
  *
- * build.py ran this on a thread. Here the cheap counters are read inline on a
- * one-second timer and the only expensive part — walking build/fs — is a
- * FORKED child writing one line back through a pipe. Same effect, no shared
- * state to get wrong, and a walk that wedges cannot take the UI with it.
+ * The cheap counters are read inline on a one-second timer; the only
+ * expensive part — walking build/fs — is a FORKED child writing one line back
+ * through a pipe. No shared state to get wrong, and a walk that wedges cannot
+ * take the UI with it.
  */
 
 void sam_init(Sampler *s)

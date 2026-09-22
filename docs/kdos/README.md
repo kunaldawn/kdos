@@ -101,7 +101,7 @@ A page for each program KDOS itself ships.
 | [kdos-res](04-programs/kdos-res.md) | The resource monitor: its pages, identity by container, and what it refuses to infer |
 | [kdos-term](04-programs/kdos-term.md) | The terminal: keys and clipboards, the three image protocols, and animation |
 | [kdos-appbox](04-programs/kdos-appbox.md) | Launching containerised applications, generating launchers, and container profiles |
-| [The daemons](04-programs/daemons.md) | powerd, energyd, oomd, mountd, packd, boxsock, and the portal backend |
+| [The daemons](04-programs/daemons.md) | powerd, energyd, oomd, mountd, packd, boxsock, kdos-lock, and the portal backend |
 | [kinstall](04-programs/kinstall.md) | The installer's design: the probe, the page model, the install child, answer files |
 | [The kdos command](04-programs/kdos-command.md) | The front door, and every subcommand behind it |
 | [kdos-bb](04-programs/kdos-bb.md) | The forked AAlib demo, and the audio rules it establishes |
@@ -143,9 +143,11 @@ closes with a **See also** list. Terms carry the meaning the
 [glossary](06-reference/glossary.md) gives them. Where a page states a count or
 a measurement, it says what was counted or measured.
 
-Two files carry a version. The [repository README](../../README.md) names the
-release line, and [Status](06-reference/status.md) says what each subsystem's
-maturity rests on. No other page states a version.
+The KDOS version string appears in three places and nowhere else: the
+[repository README](../../README.md), which names the release line;
+[Status](06-reference/status.md), which says what each subsystem's maturity
+rests on; and `fs/etc/os-release`. A version number anywhere else in the book
+belongs to an upstream component, not to the system.
 
 ## See also
 

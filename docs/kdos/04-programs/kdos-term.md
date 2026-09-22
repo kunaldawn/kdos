@@ -12,12 +12,14 @@ this is not — the same trade [`kdos-res`](kdos-res.md) makes beside `btop`.
 
 ```
 kdos-term [--title TEXT] [--app-id NAME] [--font NAME] [-D DIR]
-          [--size WxH] [--float] [--tty] [--dump WxH] [-e CMD [args...]]
+          [--size WxH] [--float] [--tty] [--dump WxH]
+          [-e CMD [args...] | -- CMD [args...]]
 ```
 
 | Option | Effect |
 |---|---|
 | `-e`, `--exec CMD` | Run `CMD` instead of the shell. Everything after it is the child's argument vector |
+| `--` | The same, for a caller that would rather not spell `-e`: everything after it is the child's |
 | `--title TEXT` | The window title, until the program sets one |
 | `--app-id NAME` | The identity the desktop files this window under. Defaults to `kdos-term` |
 | `-D`, `--working-directory DIR` | Enter `DIR` before the fork |

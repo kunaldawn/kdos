@@ -1,9 +1,9 @@
 # The design language
 
-Every surface KDOS ships is a grid of character cells drawn in one palette, and
-they all agree. This page is the specification that makes that true: the window
-frame, the chrome primitives, colour, the pointer contract, touch, hit maps,
-the glyph tiers, and the checklist a new surface is not finished without.
+Every surface KDOS paints is a grid of character cells drawn in one palette,
+and they all agree. This page is the specification that makes that true: the
+window frame, the chrome primitives, colour, the pointer contract, touch, hit
+maps, the glyph tiers, and the checklist a new surface is not finished without.
 
 It is a rule rather than a taste. A surface that does not follow it does not
 read as a variant — it reads as somebody else's program dropped into the middle
@@ -12,7 +12,7 @@ of this one.
 For how to build a surface, see
 [Writing desktop software](../05-developer/writing-desktop-software.md).
 
-## Everything is a grid of character cells
+## Every surface is a grid of character cells
 
 There is no scene graph, no widget hierarchy with its own layout engine, and no
 vector rendering. A surface is a two-dimensional buffer of cells; each cell
@@ -20,7 +20,7 @@ holds a character, a foreground slot, a background slot and a small attribute
 set. Drawing is writing cells. Presenting is diffing against what was last
 shown and sending only what changed.
 
-The same buffer is painted by three different backends — a terminal, a Wayland
+The same buffer is painted for three destinations — a terminal, a Wayland
 surface, and an offscreen dump — and nothing above that line knows which. That
 is what makes the resource monitor identical on `tty1`, in a window, and in a
 committed test fixture.
@@ -30,11 +30,19 @@ Where that is genuinely wrong, the answer is a picture drawn into whole cells,
 not a second renderer. See
 [Pictures](#pictures-are-an-enhancement-layer).
 
-Nothing on this desktop is drawn by another toolkit. The input-method candidate
-window is the case that tests the rule: an engine draws its own with its own
-renderer, which on a character grid is a rounded antialiased panel sitting on
-top of a text-mode desktop. `kdos-ime` draws it here instead — the same chrome
-and the same slots — by speaking the input-method framework's own generic panel
+Two things on the screen are not cells, and both are named here so that a first
+titlebar is not a surprise. The compositor's own chrome — titlebars, the root
+menu and the window-switcher OSD — is drawn with pango, at a size matched to
+the cell grid so the desktop still reads as one machine; see
+[the decoration](#the-compositors-decoration-is-part-of-the-set). And an
+application in a box draws whatever its toolkit draws, which is arbitrary
+pixels inside a frame this desktop owns.
+
+No KDOS surface is drawn by another toolkit. The input-method candidate window
+is the case that tests the rule: an engine draws its own with its own renderer,
+which on a character grid is a rounded antialiased panel sitting on top of a
+text-mode desktop. `kdos-ime` draws it here instead — the same chrome and the
+same slots — by speaking the input-method framework's own generic panel
 protocol rather than by writing an input method.
 
 ## A window is a double-line box
@@ -64,8 +72,8 @@ with nothing in it — which is the give-away that a box was forgotten.
 A surface too small for a frame keeps the whole area rather than drawing a box
 with nothing inside it.
 
-Under the compositor, the server-side decoration *is* that box, so a toplevel
-window suppresses its own drawn frame and keeps only the inset. Two boxes
+Under the compositor, the server-side decoration takes that box's place, so a
+toplevel window suppresses its own drawn frame and keeps only the inset. Two boxes
 nested one inside the other is the tell that a program drew chrome the
 compositor had already drawn for it.
 
@@ -122,7 +130,7 @@ a track and not a printed string.
 
 `if (ev.type != KT_EVT_KEY) continue;` is how the rule is broken. A surface
 with that line drops every pointer event before anything can be asked of it, so
-a person can look at seven colour schemes and choose none of them. A surface
+a person can look at all eight colour schemes and choose none of them. A surface
 that draws its own rows uses `ktui_rows_event` rather than inventing an answer:
 a press **moves** the caret, a press on the row the caret is already on
 **picks**, the wheel walks, the right button is Back. One implementation,
@@ -238,8 +246,8 @@ through a window is a pass over the rectangle after it is drawn:
 `ktui_draw_blend()` mixes what has since been drawn back towards them. The
 result is written as the cell's literal and the slot is left exactly as the
 caller drew it, so a display that declined the colour run — a `--tty` view, a
-golden, a braille reader — shows an opaque window, which is the honest answer
-where there is nothing to mix with.
+golden, `tty1` — shows an opaque window, which is the honest answer where there
+is nothing to mix with.
 
 Both ends of the mix come out of the palette in force and it is recomputed
 every frame, so a retint moves it like everything else drawn in slots. That is
@@ -259,9 +267,9 @@ reads as a compositing defect rather than as depth.
 
 ### `KT_DIM` is a fill, not a label colour
 
-Measured against the palette, `KT_DIM` as a **foreground** lands around
-**1.5–1.7:1** on both the surface and the background, in every accent. `KT_MID`
-is **3.4–5.4:1**. There is no reading below about 3:1.
+Measured against the palette, `KT_DIM` as a **foreground** lands between
+**1.42:1 and 2.12:1** on the surface and on the background, in every accent.
+`KT_MID` is **3.40:1 to 6.30:1**. There is no reading below about 3:1.
 
 So a label is `KT_MID`. Hint rows, empty-state messages, help text and the
 brackets around a button all belong there. Searching for `KT_DIM` in a
@@ -272,10 +280,12 @@ pair — a scrollbar's track against its thumb, an unpinned star against a pinne
 one — it is carrying the *distinction*, and flattening it onto `KT_MID` deletes
 the state rather than making it readable. Those pairs stay `KT_DIM`.
 
-For text that must be muted **and** readable there is a derived mixed colour
-that measures around **4.1–4.7:1**. Every muted *text* role uses it. `KT_DIM`
-keeps fills, borders and selection backgrounds, where contrast is not the
-question.
+For text that must be muted **and** readable there is a derived mixed colour,
+`kcol_muted()` — the scheme's ground mixed 56% towards its text. It measures
+**3.47:1 to 6.26:1** against the background and the surface — above 3:1 in
+every accent, and more than twice as far from the ground as `KT_DIM` is, which
+is what the self-test asserts. Every muted *text* role uses it. `KT_DIM` keeps
+fills, borders and selection backgrounds, where contrast is not the question.
 
 ### Emphasis is a fill with swapped slots
 
@@ -306,8 +316,9 @@ states, because they say three different things:
 
 Measured against the palette, `KT_TEXT` on `KT_DIM` is **8.30:1** in the worst
 accent and **10.22:1** in the best, so the label clears the 7:1 floor
-everywhere; the marker clears 4.5:1 everywhere. The fill is quiet because it is
-a fill, and the accent is spent on the one cell that says where the caret is.
+everywhere; the marker clears **3.68:1** everywhere. The fill is quiet because
+it is a fill, and the accent is spent on the one cell that says where the caret
+is.
 
 A row filled with `KT_ACCENT` is the defect this replaces. Writing
 `bg = on ? KT_ACCENT : KT_SURFACE` puts the background colour on the label and
@@ -325,7 +336,7 @@ Both are small, both are one thing on the screen rather than one per row, and
 both mean *this*, not *here*. `grep 'KT_ACCENT :'` over the tree is the check;
 a match on a list row is a surface deciding for itself again.
 
-The muted colour cannot be read on the fill — **2.18:1 to 3.43:1**, below any
+The muted colour cannot be read on the fill — **2.44:1 to 3.38:1**, below any
 floor. A row with a secondary column in it (a tag, a two-letter code, a units
 suffix) lifts that column when the row is selected, and `ktui_sel_dim()` is
 that question asked in one place. Left muted, the right-hand half of the row
@@ -336,7 +347,7 @@ disappears exactly when somebody is looking at it.
 `ktui_draw_shadow()` mixes the strip towards `KT_BG` and then clamps each
 channel to no lighter than it started. `KT_BG` is not the darker of the two in
 every accent — in `bone` the backdrop is lighter than the surface in red and
-green, in `ice` in blue — so an unclamped mix makes those schemes glow along
+green, in `ice` in green and blue — so an unclamped mix makes those schemes glow along
 two edges of every window. The clamp costs nothing where the backdrop is
 already darker, and it is the only thing standing between a new accent and a
 luminous shadow.
@@ -364,9 +375,10 @@ more** rows clear above and below, which is why those three are the window
 frame's chips. Six of thirty-two holds; three does not.
 
 The same measurement is why the ink on a bright fill is dark at all. `KT_TEXT`
-is **1.10:1** on `KT_ACCENT` and **2.17:1** on `KT_ERR`, so a bright glyph on a
-lit or urgent plate is a plate with nothing drawn on it. `KT_SURFACE` clears
-**3.4:1** on `KT_MID`, **5.2:1** on `KT_ERR` and **10.4:1** on `KT_ACCENT`.
+falls as low as **1.10:1** on `KT_ACCENT` and **2.17:1** on `KT_ERR`, so a
+bright glyph on a lit or urgent plate is a plate with nothing drawn on it.
+`KT_SURFACE` clears **3.40:1** on `KT_MID`, **5.23:1** on `KT_ERR` and
+**5.51:1** on `KT_ACCENT` in the worst accent of each.
 
 ## The pointer contract
 
@@ -390,11 +402,14 @@ A surface owns its cells and the display owns the screen, so a pointer a
 surface drew would cost a round trip for every motion event and trail the hand
 moving it. The display already holds the device and already knows where it is.
 
-The pointer is a **shape** where there are pixels and the reversed cell
-everywhere else. The compositor puts a cursor at the device's own pixel, so it
-moves as smoothly as the hand holding it; a `--tty` run, a `--dump` and `tty1`
-reverse the cell under it, which is the pointer every text mode has drawn and
-is as fine as a grid of characters goes.
+In the cells, the pointer is the **reversed cell** under it, on every backend —
+that is the pointer every text mode has drawn and is as fine as a grid of
+characters goes. Over a Wayland surface there is a real arrow on top of it,
+and it is not drawn here: `libkwl` answers the pointer-enter serial with
+`wp_cursor_shape_device_v1.set_shape`, and the compositor puts a cursor at the
+device's own pixel, so it moves as smoothly as the hand holding it. Without that request a
+client owns no cursor image and the pointer disappears over every surface this
+library draws.
 
 ### What a press would do
 
@@ -419,8 +434,8 @@ pointer crossing a window spends hundreds of frames over the same thing — and
 `KtuiBackend.pointer` carries it to whichever backend is drawing.
 
 **The shape is a hint and never a promise**, and this is the rule a new surface
-breaks first. Half the views this desktop supports cannot draw one: a `--tty`
-view, a dump, a view over `ssh` and `tty1` reverse the cell whatever the shape
+breaks first. No backend in this tree fills `KtuiBackend.pointer`: a terminal,
+a dump, `tty1` and the Wayland surface all reverse the cell whatever the shape
 says. So nothing may say what a control does through the pointer alone — a
 control says what it does in its own cells, and the shape is a second telling
 for the people who can see it. A value a view does not recognise is the arrow
@@ -432,12 +447,13 @@ and a view that refused would draw no pointer at all.
 `ktui_draw_cursor(x, y)` names the cell; `ktui_draw_flush()` decides which of
 the two is drawn, and how it does it is the whole of the contract.
 
-- **A backend with pixels claims the pointer through `KtuiBackend.pointer`**,
+- **A backend with pixels may claim the pointer through `KtuiBackend.pointer`**,
   and answering `1` is a promise that the cells reach the screen exactly as the
-  surface composed them. A backend that does not answer leaves the entry `NULL`
-  and gets the reverse. It cannot be drawn in `libktui`: that library links
-  nothing but musl and has to keep doing so, and an arrow needs a pixel buffer
-  and a colour in it.
+  surface composed them. A backend that leaves the entry `NULL` — which every
+  backend here does — gets the reverse. It cannot be drawn in `libktui`: that
+  library links nothing but musl and has to keep doing so, and an arrow needs a
+  pixel buffer and a colour in it. The hook is the contract a backend that owns
+  a screen would fill; on Wayland the arrow is the compositor's instead.
 - **The hook is called on every flush, including the ones with no pointer to
   report.** A negative `x` is no pointer at all, and it is the only thing that
   tells a backend to take the last arrow off the screen — one told nothing
@@ -622,12 +638,21 @@ carry renders as a **blank** on `tty1` — so an eighth-block bar there is not
 ugly, it is invisible. Three levels is the honest resolution of that font.
 
 What the VT font **has**: `░ ▒ █`, the **single** box-drawing set, the double
-corners and `╬`, and `· • ■ … ° ↑ ↓ ◀ ▶ ▲ ▼ ◄ ►`.
+rules `═ ║`, the double corners and `╬`, and `· • ■ … ° ↑ ↓ ◀ ▶`.
 
 What it **does not have**: eighth blocks, half blocks (`▀ ▄`), `▓`, braille,
-`← →` — which is why the shared glyph table carries `◀ ▶` instead — and, less
-expectedly, the **double tees** `╠ ╣ ╦ ╩` and the mixed joins `╡ ╞`. The double
-set is not all there: the corners are, the tees are not.
+and, less expectedly, the **double tees** `╠ ╣ ╦ ╩` and the mixed joins `╡ ╞`.
+The double set is not all there: the rules and the corners are, the tees are
+not.
+
+Six of its 512 glyphs are the double box-drawing characters, swapped in over
+spacing diacritics by the font recipe; that is what the KDOS block logo needs.
+And 627 codepoints map onto those 512 glyphs, because the duplicate tables
+alias a second name onto a drawn shape. `▲ ▼ ◄ ►` and `← →` are all present
+that way, mapped onto `↑ ↓ ◀ ▶` — so the shared glyph table's `◄ ►` and its
+`◀ ▶` draw the same two cells on `tty1`. Present is not distinct: a pair of
+entries that must read differently there has to be two different glyphs, not
+two names for one.
 
 Anything that can reach `tty1` stays inside the vt tier, and `glyph_utf8` is
 *entirely* inside it. The toolkit picks that table whenever the backend reports
@@ -642,11 +667,12 @@ separates its track from its fill by slot rather than by a third density, and a
 button's shadow is `░` rather than a half block.
 
 A frame's title is bracketed `[ like this ]`, and the brackets are ASCII for a
-second reason on top of the font. `con_ring` in the self-test reads a vertical
-stroke anywhere on a frame's **top row** as a border off the grid — a real
-defect class — and `╡ ╞` or `┤ ├` are indistinguishable from one at the ASCII
-tier the goldens are dumped in. `[` and `]` carry no vertical rule, are in
-every font, and are the bracket the DOS file managers put a title in.
+second reason on top of the font. The goldens are dumped at the **ascii** tier
+— `+=[ title ]===+` is what a committed frame looks like — and every join in
+that table collapses onto `+`, so a title bracketed with `╡ ╞` or `┤ ├` would
+read there as two corners in the middle of the top rule. `[` and `]` are the
+same two characters at all three tiers, are in every font, and are the bracket
+the DOS file managers put a title in.
 
 A wide glyph is measured, not assumed. The toolkit computes display width and
 reserves a continuation cell, so double-width text does not corrupt row layout.

@@ -85,8 +85,6 @@ struct btdev {
 	 * its name. */
 	char icon[64];
 	unsigned battery;	/* org.bluez.Battery1, 0 when absent */
-	unsigned rssi_set;
-	int rssi;
 };
 
 static sd_bus *bus;
@@ -194,15 +192,6 @@ static void read_props(sd_bus_message *m, struct btdev *d, int is_adapter,
 			sd_bus_message_read_basic(m, 'y', &v);
 			if (d && is_battery && !strcmp(key, "Percentage"))
 				d->battery = v;
-			sd_bus_message_exit_container(m);
-		} else if (contents && !strcmp(contents, "n") &&
-			   sd_bus_message_enter_container(m, 'v', "n") > 0) {
-			int16_t v = 0;
-			sd_bus_message_read_basic(m, 'n', &v);
-			if (d && !strcmp(key, "RSSI")) {
-				d->rssi = v;
-				d->rssi_set = 1;
-			}
 			sd_bus_message_exit_container(m);
 		} else {
 			sd_bus_message_skip(m, "v");
