@@ -154,7 +154,7 @@ A full build takes hours, and almost nothing needs one. Match what changed again
 | A library under `src/libs/` | Every port of ours — see below |
 | Only packaging | `make build BUILD_ARGS="--phases 06_packaging"` |
 | Nothing; resuming an interrupted run | `make build BUILD_ARGS="--continue-from 04_phase4"` |
-| Everything, skipping the snapshot picker | `make build BUILD_ARGS=--fresh` |
+| Everything, skipping the startup picker | `make build BUILD_ARGS=--fresh` |
 
 Editing a library rebuilds every port of ours, not only its consumers. A recipe names the libraries
 it compiles, and parsing that would mean a shell parser inside the package manager, so a

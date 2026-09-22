@@ -110,7 +110,7 @@ should come back.
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/packages/kdos-appbox/catalogue` |
 | Catalogue base packs | 2 | `grep -c '^base ' src/packages/kdos-appbox/catalogue` |
 | Catalogue groups | 21 | `grep -c '^group ' src/packages/kdos-appbox/catalogue` |
-| Kernel | 7.0.10 | `grep '^version' ports/core/linux/kpkgbuild` |
+| Kernel | 7.2.7 | `grep '^version' ports/core/linux/kpkgbuild` |
 | C libraries written here | 17 | `ls -d src/libs/*/ \| wc -l` |
 | Names `kdos-shell` answers to | 53 | the `TOOLS[]` table in `src/desktop/kdos-shell/main.c` |
 | Distinct `kdos-shell` surfaces | 52 | the distinct entry points in that table |

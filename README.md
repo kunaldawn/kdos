@@ -14,7 +14,7 @@ with a desktop whose every surface is a grid of character cells.
 </p>
 
 <p align="center">
-<sub>853 upstream ports · Linux 7.0.10 · 833 packages in the image · 183 containerised applications · builds with the network off</sub>
+<sub>853 upstream ports · Linux 7.2.7 · 833 packages in the image · 183 containerised applications · builds with the network off</sub>
 </p>
 
 <p align="center">

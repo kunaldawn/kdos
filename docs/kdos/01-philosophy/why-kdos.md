@@ -208,7 +208,7 @@ Measured from the tree.
 | Base packs | 2 |
 | Data packs | 2 |
 | Boxed commands with no graphical launcher | 36 rows across 25 applications |
-| Kernel | 7.0.10 |
+| Kernel | 7.2.7 |
 | C libraries written for this system | 17 |
 | Upstream archives held in Git LFS | 1,020 archives, about 8.3 GB |
 

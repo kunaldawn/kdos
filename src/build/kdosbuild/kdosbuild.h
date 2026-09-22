@@ -331,7 +331,15 @@ void report_snapshots_json(const KbuildPhase *ph, int nph,
 
 enum { PICK_QUIT = 0, PICK_FRESH, PICK_RESTORE, PICK_PLAN };
 
-int screen_startup(Manager *m, int *index, const char *commit);
+/* The startup picker. `index` receives the phase to restore when the result is
+ * PICK_RESTORE. `snapshot_enabled` carries the snapshot-writing choice BOTH
+ * ways: in as the state the screen opens on (the command line's), out as what
+ * the operator left it at. It is answered here rather than on the command line
+ * because the cost being chosen — tens of gigabytes and a large part of the
+ * run's wall clock — is only knowable once the phase list and the codec are on
+ * screen beside it. */
+int screen_startup(Manager *m, int *index, const char *commit,
+		   int *snapshot_enabled);
 int screen_plan(Manager *m, KbuildPlan *out);
 void screen_progress(Manager *m, const char *title);	/* restore HUD      */
 void screen_build(Manager *m, Sampler *s, Timings *t);

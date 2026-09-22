@@ -139,6 +139,7 @@ typedef struct {
 	const char *commit;
 	const char *status;
 	int first_row;
+	int snap_on;
 } StartupView;
 
 static void draw_startup_frame(StartupView *v)
@@ -318,18 +319,29 @@ static void draw_startup_frame(StartupView *v)
 		ktui_draw_text(2, y + 1, ktui_w - 4, v->status, KT_WARN,
 			       KT_BG, 0);
 
-	const char *keys[] = { arrow_ud(), "ENTER", "P", "D", "Q" };
-	static const char *labels[] = { "select", "start", "plan",
-					"delete", "quit" };
-	keyhint(krect(2, ktui_h - 2, ktui_w - 4, 1), keys, labels, 5);
+	/* WRITING OFF IS THE COSTLY CHOICE AND SO IT IS THE LOUD ONE. Every
+	 * later phase restores from the snapshot the phase before it wrote,
+	 * so a run with writing off that fails in hour nineteen has nothing to
+	 * resume from and starts again at the toolchain. */
+	if (!v->snap_on && y + 2 < ktui_h - 2)
+		ktui_draw_text(2, y + 2, ktui_w - 4,
+			       "snapshot writing is OFF — a failed phase will "
+			       "have no restore point (S turns it on)",
+			       KT_WARN, KT_BG, KT_A_BOLD);
+
+	const char *keys[] = { arrow_ud(), "ENTER", "S", "P", "D", "Q" };
+	static const char *labels[] = { "select", "start", "snapshots",
+					"plan", "delete", "quit" };
+	keyhint(krect(2, ktui_h - 2, ktui_w - 4, 1), keys, labels, 6);
 
 	char foot[640];
-	snprintf(foot, sizeof(foot), "codec: %s   snapshots: %s",
-		 snap_codec(), m->snap_root);
+	snprintf(foot, sizeof(foot), "codec: %s   writing: %s   snapshots: %s",
+		 snap_codec(), v->snap_on ? "on" : "off", m->snap_root);
 	ktui_draw_text(2, ktui_h - 1, ktui_w - 4, foot, KT_DIM, KT_BG, 0);
 }
 
-int screen_startup(Manager *m, int *index, const char *commit)
+int screen_startup(Manager *m, int *index, const char *commit,
+		   int *snapshot_enabled)
 {
 	KbuildSnapshot *snaps = kb_calloc(KBUILD_MAX_PHASES, sizeof(*snaps));
 	int nsnap = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
@@ -348,7 +360,7 @@ int screen_startup(Manager *m, int *index, const char *commit)
 
 	for (;;) {
 		StartupView vw = { m, snaps, nsnap, row_phase, nrow, sel,
-				   commit, status, 0 };
+				   commit, status, 0, *snapshot_enabled };
 		draw_startup_frame(&vw);
 		int first_row = vw.first_row;
 		ktui_draw_flush();
@@ -392,7 +404,14 @@ int screen_startup(Manager *m, int *index, const char *commit)
 			sel = sel > 0 ? sel - 1 : 0;
 		else if (ev.key == KT_K_DOWN || ev.key == 'j')
 			sel = sel < nrow - 1 ? sel + 1 : sel;
-		else if (ev.key == 'p' || ev.key == 'P') {
+		else if (ev.key == 's' || ev.key == 'S') {
+			*snapshot_enabled = !*snapshot_enabled;
+			kb_strlcpy(status,
+				   *snapshot_enabled
+					   ? "snapshots will be written"
+					   : "snapshots will NOT be written",
+				   sizeof(status));
+		} else if (ev.key == 'p' || ev.key == 'P') {
 			result = PICK_PLAN;
 			break;
 		} else if (ev.key == 'd' || ev.key == 'D') {
@@ -2537,7 +2556,7 @@ static void preview_startup(Manager *m)
 			row_phase[nrow++] = i;
 
 	StartupView vw = { m, snaps, nsnap, row_phase, nrow,
-			   nrow > 1 ? nrow - 1 : 0, "9f3a1c2", "", 0 };
+			   nrow > 1 ? nrow - 1 : 0, "9f3a1c2", "", 0, 1 };
 	draw_startup_frame(&vw);
 	free(snaps);
 }
