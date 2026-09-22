@@ -37,4 +37,4 @@ ENV LANG=C.UTF-8
 
 WORKDIR /workspace
 
-CMD ["/workspace/script/build.py"]
+CMD ["/workspace/script/kdosbuild.sh"]

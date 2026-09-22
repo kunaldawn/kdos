@@ -43,4 +43,16 @@ void kcell_fcft_unref(void);
  */
 int kcell_oblique_shift(int row, int h);
 
+/*
+ * Drop the scratch a picture is scaled through before it is cut into tiles.
+ * It is kept between tilings because an animation re-tiles at one size for
+ * every frame it plays; nothing but a shutdown or a grid that changed shape
+ * needs to ask.
+ *
+ * DECLARED HERE AND NOT IN kcell.h: both callers are inside this library, and
+ * a consumer that dropped the scratch between two frames of one animation
+ * would pay the scale again for every frame.
+ */
+void kcell_tile_forget(void);
+
 #endif /* KCELL_PRIV_H */

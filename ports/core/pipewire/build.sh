@@ -53,6 +53,7 @@ meson setup build \
 	-Dbluez5-codec-aptx=enabled \
 	-Dbluez5-codec-ldac=enabled \
 	-Dbluez5-codec-aac=enabled \
+	-Dbluez5-codec-lc3=enabled \
 	-Dreadline=enabled \
 	-Dlibpulse=disabled \
 	-Dfftw=disabled \

@@ -383,12 +383,14 @@ static void drop_faces(void)
 int kcell_font_load(const char *name)
 {
 	/*
-	 * The desktop asks for Terminus by name — see docs/KDOS-TEXTMODE.md —
-	 * because it is the same rasterisation tty1 and the boot splash use.
-	 * The choice is load-bearing either way: libktui's rich tier uses
-	 * eighth blocks and the full box-drawing set, and a font missing them
-	 * renders a chart as blanks. The console's ter-kdos32n has neither,
-	 * which is exactly why the vt tier exists — see ktui_ramp_init().
+	 * The desktop asks for Terminus by name — `chrome_font` in
+	 * docs/kdos/06-reference/configuration.md — because it is the same
+	 * rasterisation tty1 and the boot splash use. The choice is
+	 * load-bearing either way: libktui's rich tier uses eighth blocks and
+	 * the full box-drawing set, and a font missing them renders a chart as
+	 * blanks. The VT font ter-kdos32n has neither, which is exactly why
+	 * the vt tier exists — see ktui_ramp_init() and "The glyph tiers" in
+	 * docs/kdos/03-architecture/design-language.md.
 	 */
 	const char *names[1] = { name && *name ? name : "monospace:size=11" };
 

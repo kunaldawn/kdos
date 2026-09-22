@@ -725,34 +725,16 @@ typedef void (*kvt_vte_clip_cb)(struct kvt_vte *vte, const char *text,
 
 void kvt_vte_set_clip_cb(struct kvt_vte *vte, kvt_vte_clip_cb cb, void *data);
 void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user);
-/*
- * BEL, for a consumer that can show one. The state machine calls it and
- * decides nothing: what a bell looks like is a window's question, and a
- * terminal with no callback set swallows it exactly as it did before.
- */
-void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user);
-/*
- * Synchronized output went on or off. The terminal watches every transition
- * itself — that is what arms kvt_term_sync_hold()'s watchdog — and calls this
- * after its own, so asking for one costs the watchdog nothing.
- */
-void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user);
 void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user);
 /* The focus moved. Sends CSI I / CSI O only while the child asked for them. */
 void kvt_term_focus(struct kvt_term *t, int in);
 /*
  * Every line the screen still holds — the scrollback and then the screen —
  * oldest first, as plain text with trailing blanks trimmed. The caller frees
- * it. Characters only: colour and attributes are not what a saved session puts
- * back, and a picture cannot be put back at all.
+ * it. CHARACTERS ONLY: colour, attributes and pictures are cell state, and a
+ * caller that wants them back has to keep the cells, not this string.
  */
 char *kvt_screen_text(struct kvt_screen *con, size_t *len_out);
-/* The same for a terminal, and the other way: text the terminal SHOWS, as if
- * its child had written it. Never sent to the child — the one caller is a
- * session putting back what the last one printed, and a process cannot be
- * restored, only its output. */
-char *kvt_term_text(struct kvt_term *t, size_t *len_out);
-void kvt_term_show(struct kvt_term *t, const char *u8, size_t len);
 
 /* OSC 133's prompt marks. `kvt_screen_mark_at` answers for a VISIBLE row and
  * fills `status` with the exit code of the command run at that prompt, or -1
@@ -768,9 +750,6 @@ int kvt_screen_scroll_to_mark(struct kvt_screen *con, int dir);
 unsigned int kvt_screen_link_at(struct kvt_screen *con, unsigned int x,
 				unsigned int y);
 const char *kvt_vte_link_uri(struct kvt_vte *vte, unsigned int id);
-
-/* True while the child has synchronized output on. */
-int kvt_term_sync_output(struct kvt_term *t);
 
 /*
  * PUT BACK THE MODES A CHILD SET, when it has gone.

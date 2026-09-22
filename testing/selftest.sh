@@ -592,9 +592,13 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         $CC $STD $WARN -c -I"$PROTO" $KCINC \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
             -o "$OUT/kdisp.o" src/libs/libkdisp/kdisp.c
-        for f in src/libs/libkwl/kwl_key.c; do
+        # kwl_font.c is HERE and not left to the two links below: it is the
+        # only file in the archive that reaches fontconfig, so a name it gets
+        # wrong is a compile error nothing else in this suite would show.
+        for f in src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c; do
             $CC $STD $WARN -c -I"$PROTO" $KCINC \
-                $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
+                $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
+                             wayland-client) \
                 -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkwl"
@@ -708,8 +712,8 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                 src/libs/libkxdg/*.c src/libs/libkicon/*.c \
                 src/libs/libkchrome/*.c src/libs/libkproc/*.c \
                 "$PROTO"/*-protocol.c \
-                $(pkg-config --cflags --libs fcft pixman-1 xkbcommon \
-                             wayland-client libpng)
+                $(pkg-config --cflags --libs fcft fontconfig pixman-1 \
+                             xkbcommon wayland-client libpng)
             RESBIN="$OUT/kdos-res"
             echo "  kdos-res"
 
@@ -728,8 +732,8 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                 src/libs/libkcolor/*.c src/libs/libkbase/*.c \
                 src/libs/libkxdg/*.c $KIMG_SRC \
                 "$PROTO"/*-protocol.c \
-                $(pkg-config --cflags --libs fcft pixman-1 xkbcommon \
-                             wayland-client) $KIMG_LIBS
+                $(pkg-config --cflags --libs fcft fontconfig pixman-1 \
+                             xkbcommon wayland-client) $KIMG_LIBS
             echo "  kdos-term (as a Wayland window)"
 
             # The setuid helper, built SEPARATELY and linking libkbase alone:
@@ -3988,9 +3992,17 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
    [ -n "$DWLR" ] && [ -n "$DWP" ] &&
    [ -f "$DWP/staging/ext-workspace/ext-workspace-v1.xml" ]; then
     mkdir -p "$DPROTO"
-    tar xf "$DWLR" -C "$DPROTO" --strip-components=2 \
-        "$(tar tf "$DWLR" | grep 'protocol/wlr-foreign-toplevel-management-unstable-v1.xml$' | head -1)"
+    # Every wlr protocol a front end INCLUDES, not the one the window list
+    # needs: kdos-display includes output-management, and a header this
+    # directory is missing takes that surface out of the harness with a
+    # "goldens are skipped" line rather than a failure.
+    for _wp in wlr-foreign-toplevel-management-unstable-v1 \
+               wlr-output-management-unstable-v1; do
+        tar xf "$DWLR" -C "$DPROTO" --strip-components=2 \
+            "$(tar tf "$DWLR" | grep "protocol/$_wp.xml\$" | head -1)"
+    done
     for x in "$DPROTO/wlr-foreign-toplevel-management-unstable-v1.xml" \
+             "$DPROTO/wlr-output-management-unstable-v1.xml" \
              "$DWP/staging/ext-workspace/ext-workspace-v1.xml"; do
         b=$(basename "$x" .xml)
         "$DSCAN" client-header "$x" "$DPROTO/$b-client-protocol.h"
@@ -4066,13 +4078,26 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
 
     # Each candidate is admitted on its OWN compile, not the batch's: one file
     # that does not build must cost its own golden and nobody else's.
+    #
+    # A CANDIDATE IS LINKED IN WHETHER OR NOT IT HAS A GOLDEN, which is what
+    # makes this list the only syntax check several of these files get. Three
+    # of the shell's front ends cannot be on it:
+    #
+    #   clip     wants wlr-data-control-unstable-v1 and display wants
+    #   display  wlr-output-management-unstable-v1; the proto step above
+    #            extracts two protocols and neither is one of them
+    #   asciicmd calls kcell_font_load/kcell_w/kcell_h, which live in
+    #            libkcell/kcell_font.c — an fcft font loader, and a harness
+    #            that links one stops running on a host without fcft, which
+    #            is the whole point of this build
     DNEW=""
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
              netagent backup theme palette contacts store \
-             run prompt notifyd desk connect traymenu; do
+             run prompt notifyd desk connect traymenu \
+             about calc note ime mediad display; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -4414,7 +4439,7 @@ _furniture=" start start-route start-system menu-system traymenu traymenu-folder
 _norow=""
 for _g in testing/goldens/*-80x24.txt; do
     _n=$(basename "$_g" -80x24.txt)
-    case "$_n" in con-*|cells-*|res-*|term-*|vt-*|shell*) continue ;; esac
+    case "$_n" in cells-*|res-*|term-*|vt-*|shell*) continue ;; esac
     case "$_furniture" in *" $_n "*) continue ;; esac
     # THE ROW ABOVE THE BOTTOM BORDER. A hint is `Key verb`, so the row must
     # hold at least two words between the frame's own columns — a blank row
@@ -4524,8 +4549,7 @@ echo "==> golden frames — the committed cell grid, diffed"
 # that rules a good deal of this desktop out. Left out, and why:
 #
 #   cal        draws the CURRENT month and honours no date override
-#   launcher   scans /usr/share/applications, which is the host's
-#   menu apps  likewise
+#   menu apps  scans /usr/share/applications, which is the host's
 #   menu places reads /proc/mounts and the $HOME xdg dirs
 #   saver rain seeds from time() ^ getpid(); phosphor rain is never twice the
 #              same picture, which is the point of it. The ART mode IS
@@ -4534,16 +4558,31 @@ echo "==> golden frames — the committed cell grid, diffed"
 #              everywhere
 #   slit       renders the OUTPUT of forked gadget commands, arriving
 #              asynchronously — a dump catches whatever had answered by then
-#   openwith   its header carries the file's absolute path. Its resolution is
-#              checked below instead, which is the part that can be wrong
 #   bt         needs a system bus, and what is ON it — a paired headset — is
 #              the machine's, not a fixture's
 #   devices    /dev/video* and /proc/asound are the host's
 #   time       draws a running CLOCK, which is a different frame every second
+#   audio      enumerates the machine's ALSA cards and connects to a live
+#              PipeWire registry; there is no fixture seam, so a dump is
+#              whatever sound hardware answered
+#   users      kb_users() walks getpwent() and the group list comes from
+#              getgrent(); KDOS_ETC redirects only login.conf, so the account
+#              list is the developer's own
+#   about      reads /etc/os-release, uname(), /proc/cpuinfo, /proc/meminfo and
+#              /proc/uptime and counts /var/lib/kpkg/db — a machine report, and
+#              a frame of one is true on the host that wrote it and nowhere
+#              else
 #
-# Two more are goldened but need their own environment rather than the loop's,
-# and both are set up below: `disks` is pointed at a mountd socket that is not
+# Two are goldened but need their own environment rather than the loop's, and
+# both are set up below: `disks` is pointed at a mountd socket that is not
 # there, and `print` at recorded `lpstat`/`lpinfo` answers.
+#
+# Two more need an ARGUMENT rather than an environment. `launcher` is goldened
+# with `--apps`, and the loop's XDG_DATA_DIRS points at nothing, so its frame is
+# the empty state instead of the host's menu. `openwith` is goldened against a
+# file inside the openwith fixture: its header row is right-truncated to the
+# field, so what the frame carries is the tail of that path and not the
+# checkout's.
 #
 # What is goldened reads its inputs from testing/fixtures/shell: `tree/` for
 # pick, `config/` for the surfaces that parse one (a frozen rc.xml for the
@@ -4757,6 +4796,16 @@ if "$DUMPCK" --have update; then
 fi
 # kdos-firewall asks kdos-powerd for the service table, so its picture depends
 # on a running daemon. Recorded instead.
+# kdos-display's rows are the compositor's, so a dump has none and the only
+# frame it could draw unaided is the empty one. The fixture is what makes the
+# row drawing — the scaled screen, the preferred-mode star, the transform and
+# the off row — something a golden can hold.
+if "$DUMPCK" --have display; then
+    _dl="$PWD/testing/fixtures/display/list.txt"
+    KDOS_DISPLAY_LIST="$_dl" golden display 80x24  display --dump
+    KDOS_DISPLAY_LIST="$_dl" golden display 132x43 display --dump
+    golden display-empty 80x24 display --dump
+fi
 if "$DUMPCK" --have firewall; then
     _ff="$PWD/testing/fixtures/firewall/list.txt"
     KDOS_FIREWALL_LIST="$_ff" golden firewall 80x24  firewall --dump
@@ -5118,18 +5167,19 @@ if "$DUMPCK" --have theme; then
     KDOS_FONT_LIST="$OUT/fontlist.txt" \
         golden theme-font 80x24 theme --page font --dump
     #
-    # AND THE ANSWER WHERE THERE IS NOTHING TO OFFER, which is a `--tty` view
-    # inside somebody else's terminal: the list is empty and the page says who
-    # owns the font instead of drawing an empty box. The sentence is the one
-    # the CHORD puts on the bar, and a person who pressed `Super+equal` first
-    # must not be told two different things.
+    # AND THE ANSWER WHERE THERE IS NOTHING TO OFFER, which is every display
+    # that enumerates no face: the list is empty and the page names the file
+    # and the keys that do set the font instead of drawing an empty box. An
+    # empty list with no sentence reads as a list still loading. The grep
+    # anchors on the two key names, not the whole sentence: the em-dash in it
+    # dumps as `?` in the ascii tier.
     #
     golden theme-font-none 80x24 theme --page font --dump
-    if grep -q "owns the font" "$GOLD/theme-font-none-80x24.txt" 2>/dev/null ||
+    if grep -q "chrome_font and panel_font" "$GOLD/theme-font-none-80x24.txt" 2>/dev/null ||
        [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
-        echo "  the font page names who owns the font when it cannot offer one"
+        echo "  the font page names comp.conf when it cannot offer a font"
     else
-        echo "  THE EMPTY FONT PAGE SAYS NOTHING ABOUT WHO OWNS THE FONT"
+        echo "  THE EMPTY FONT PAGE DOES NOT NAME WHERE THE FONT COMES FROM"
         golden_fail=1
     fi
 fi
@@ -5744,11 +5794,15 @@ fi
 # AND THE VERDICT AGAIN, OUTSIDE THE HARNESS'S OWN BLOCK.
 #
 # The two gates above are inside `if [ -n "$DUMPCK" ]`, because they read the
-# frames that harness produced. Every OTHER golden here is produced whether or
-# not the harness could be built — the session's own `con-*` frames, the
-# terminal's, libkvt's, the resource monitor's — so on a host without Wayland
-# their drift was recorded and never read, and the run said `all good`. A
-# comparison whose answer nothing acts on is a comparison that cannot fail.
+# frames that harness produced. The bottom-row and hint-row checks come BEFORE
+# that block and read the committed frames straight off the tree, so they raise
+# the same `golden_fail` on a host where the harness cannot be built — and
+# without this gate that answer would be recorded and never read, and the run
+# would say `all good`. A comparison whose answer nothing acts on is a
+# comparison that cannot fail.
+#
+# kdos-term's frames and libkvt's need no gate here: term_golden exits on drift
+# where it stands and vt_golden carries its own flag.
 #
 if [ "$golden_fail" != 0 ]; then
     echo

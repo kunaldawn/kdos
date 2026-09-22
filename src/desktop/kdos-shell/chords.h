@@ -11,11 +11,11 @@
  * A HEADER OF ITS OWN, and not two lines in `shell.h`: that header pulls in
  * Wayland, the icon layer and the chrome band, and none of the three has
  * anything to do with reading a table of keys. Keeping the interface here is
- * what lets the readers be compiled and driven on a host with no compositor
+ * what lets the reader be compiled and driven on a host with no compositor
  * at all, which is where a parse is actually checked.
  *
  * ONE READER FOR EVERY SURFACE THAT NAMES A CHORD. The key card and the
- * palette ask the same question of the same two sources, and a private copy in
+ * palette ask the same question of the same file, and a private copy in
  * either of them is the copy that goes stale — a surface naming a chord this
  * session does not bind is worse than a surface naming none.
  *
@@ -28,8 +28,9 @@
 #ifndef SH_CHORDS_H
 #define SH_CHORDS_H
 
-/* Room for the whole table, the recorded scripts and
- * the workspace rows the session answers without binding. A table past this is
+/* Room for rc.xml's whole table with margin: the shipped
+ * /etc/skel/.config/kdos-comp/rc.xml binds 115 chords, and the same bound sizes
+ * the program-key rows keys.c reads from progkeys.c. A table past this is
  * truncated rather than grown: what is loaded is drawn by surfaces that scroll
  * it, and no keyboard has this many chords on it. */
 #define SH_CHORD_MAX 160
@@ -53,9 +54,9 @@ struct sh_chord {
 
 /*
  * Read the table of the desktop this is, and return how many rows it has. The
- * count is never negative: when neither reader answers, what is loaded is the
- * built-in defaults rather than nothing, because a surface with an empty chord
- * list teaches nobody the key that would have filled it.
+ * count is never negative: when the reader answers nothing, what is loaded is
+ * the built-in defaults rather than nothing, because a surface with an empty
+ * chord list teaches nobody the key that would have filled it.
  *
  * Idempotent — the first call reads and every later one returns the same
  * count, so a surface may ask per keystroke.

@@ -4746,10 +4746,11 @@ int kwl_init(const KDispConfig *cfg)
 	/*
 	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the cell
 	 * tty1 draws in — the same default kdos-comp uses for the window
-	 * frames. It used to fall through to libkcell's generic
-	 * `monospace:size=11`, and the result was on the first live screenshot:
-	 * 32px Turbo Vision frames around an 11px DejaVu panel, a bar nobody
-	 * could read. One knob, all chrome — panel, menus, desk, pick, run,
+	 * frames. Falling through to libkcell's generic `monospace:size=11`
+	 * instead puts 32px Turbo Vision frames around an 11px panel: chrome
+	 * is measured against this cell, so the default has to be the cell the
+	 * rest of the chrome assumes. One knob, all chrome — panel, menus,
+	 * desk, pick, run,
 	 * launcher, notifyd, osd, lock. foot is CONTENT, not chrome, and keeps
 	 * its own 16px config.
 	 */
@@ -5717,17 +5718,20 @@ static int font_stepped(const char *base, int step, char *out, size_t n)
 	return snprintf(out, n, "%s%s%d", base, key, size) < (int)n;
 }
 
-int kwl_font_step(int step)
+/*
+ * A FONT CHANGE, WHOLE — the one sequence every change of face or size goes
+ * through, whether the name came from a size step or from the picker.
+ *
+ * 0 when `want` is loaded and in force, including when it already was. -1 with
+ * NOTHING MOVED otherwise.
+ */
+static int font_apply(const char *want)
 {
-	char want[sizeof(K.font)], prev[sizeof(K.font)];
+	char prev[sizeof(K.font)];
 
-	if (!K.surface)
+	if (!K.surface || !want || !*want)
 		return -1;
 	snprintf(prev, sizeof(prev), "%s", K.font);
-	if (step == 0)
-		snprintf(want, sizeof(want), "%s", K.font_init);
-	else if (!font_stepped(prev, step, want, sizeof(want)))
-		return -1;
 	if (!strcmp(want, prev))
 		return 0;	/* the clamp, or a reset already in force */
 
@@ -5766,6 +5770,29 @@ int kwl_font_step(int step)
 	return 0;
 }
 
+int kwl_font_step(int step)
+{
+	char want[sizeof(K.font)];
+
+	if (!K.surface)
+		return -1;
+	if (step == 0)
+		snprintf(want, sizeof(want), "%s", K.font_init);
+	else if (!font_stepped(K.font, step, want, sizeof(want)))
+		return -1;
+	return font_apply(want);
+}
+
+int kwl_font_use(const char *name)
+{
+	return font_apply(name);
+}
+
+const char *kwl_font_name(void)
+{
+	return K.font;
+}
+
 const KDispImpl kwl_impl = {
 	.name = "wayland",
 	.probe = kwl_probe,
@@ -5801,4 +5828,14 @@ const KDispImpl kwl_impl = {
 	.win_activate = kwl_win_activate,
 	.win_close = kwl_win_close,
 	.win_set_state = kwl_win_set_state,
+	/*
+	 * NO `font_ask`. The list is fontconfig's and fontconfig answers in
+	 * this process, so the first `font_count` is already the whole list —
+	 * there is no round trip for a caller to start, and a slot that did
+	 * nothing would read as one that started something.
+	 */
+	.font_count = kwl_font_count,
+	.font_at = kwl_font_at,
+	.font_current = kwl_font_current,
+	.font_set = kwl_font_set,
 };

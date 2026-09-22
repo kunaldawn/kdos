@@ -13,4 +13,4 @@ version     = 0.2.0
 release     = 1
 description = The KDOS lock screen and its setuid password checker
 homepage    = https://github.com/kunaldawn/kdos
-depends     = wayland wayland-protocols wlroots fcft pixman libxkbcommon
+depends     = wayland wayland-protocols wlroots fcft fontconfig pixman libxkbcommon

@@ -313,9 +313,11 @@ drag 3 -2 -> yes
 # comes back the same size, because the screen may grow again and a window that
 # was quietly made smaller never grows back.
 #
-# This is the console's rule and has no kdos-comp call site: the compositor
-# leaves output layout to wlroots. It is here because the session has to refit
-# every window when a view detaches and a smaller one is promoted.
+# NOTHING IN THE TREE CALLS IT. The compositor leaves output layout to wlroots,
+# and kdos-winpos clamps a remembered box itself, in pixels, against the usable
+# area of whichever output that box lands nearest. The rule is written out here
+# so that a caller that needs it gets move-before-shrink instead of inventing a
+# second answer to the same question.
 # ─────────────────────────────────────────────────────────────────────────
 
 # Already inside: untouched.

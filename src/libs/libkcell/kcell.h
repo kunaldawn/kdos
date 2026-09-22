@@ -221,24 +221,11 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
  * it, so a border joins at every size and every face; a face is still asked
  * for every other character, the heavy, dashed and rounded box variants
  * included. A synthesised character is one cell wide and puts no ink outside
- * its own cell, which is what the damage report and the wide-glyph clip both
+ * its own cell, which is what the row diff and the wide-glyph clip both
  * assume.
  */
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
-
-/*
- * The same paint, saying WHICH ROWS it touched: `painted` is one byte per row,
- * cleared first and set for every row this call drew. Returns how many.
- *
- * It exists because the two things downstream of a paint both need the answer
- * and neither can derive it: a KMS view copies the painted rows into the
- * buffer it is about to flip to, and a Wayland surface turns them into damage
- * rectangles. A caller that needs neither passes NULL and pays nothing.
- */
-int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
-		       KtuiCell *prev, int cols, int rows, int full, int scale,
-		       int dst_w, int dst_h, unsigned char *painted);
 
 /*
  * Drop the cached colour sources and the shade tiles. A glyph is composited
@@ -250,14 +237,6 @@ int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
  * place.
  */
 void kcell_paint_forget(void);
-
-/*
- * Drop the scratch a picture is scaled through before it is cut into tiles.
- * It is kept between tilings because an animation re-tiles at one size for
- * every frame it plays; nothing but a shutdown or a grid that changed shape
- * needs to ask.
- */
-void kcell_tile_forget(void);
 
 /* ── a pixel canvas that lands in the cell grid (kcell_canvas.c) ─────────
  *

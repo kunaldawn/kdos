@@ -1167,9 +1167,12 @@ static void accounts_draw(KRect b)
 	}
 
 	ktui_para(b.x, y, b.w,
-		     "The live system logs in as kdos/kdos automatically. Both "
-		     "the name and the password are replaced here, and tty1's "
-		     "autologin follows the rename.", KT_DIM);
+		     "The live system logs in as kdos/kdos without asking; the "
+		     "installed one asks for this password at tty1 — a machine "
+		     "with one account and no password has nothing to ask, and "
+		     "one you installed does. The name here is the account "
+		     "/etc/kdos/login.conf carries, and an answer file is what "
+		     "turns its autologin back on.", KT_DIM);
 }
 
 static int accounts_validate(char *err, size_t n)

@@ -68,18 +68,6 @@ struct sh_launch {
 	int terminal;		/* Terminal=true — wrap it in an emulator   */
 	int floating;		/* X-KDOS-Float: open unanchored            */
 	/*
-	 * A COMMAND THIS DESKTOP WROTE, NOT AN APPLICATION — so it is never
-	 * handed to the session either.
-	 *
-	 * For a row whose command came from this tree rather than from a
-	 * desktop entry: `kdos-menu`'s System column, where `kdos-power
-	 * suspend` would otherwise cost a compositor start to run a one-line
-	 * verb and `pkill` on the session would leave a cage outliving what it
-	 * killed. NEVER set from an entry — there the entry's own keys are the
-	 * only thing that may decide.
-	 */
-	int host;
-	/*
 	 * A TYPED COMMAND LINE IS NOT A DESKTOP ENTRY. Its `%` is a character
 	 * somebody typed and must reach the program, so no field code is
 	 * expanded or dropped, and files are APPENDED rather than substituted.

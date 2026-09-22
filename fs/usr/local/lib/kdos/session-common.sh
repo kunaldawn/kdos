@@ -11,7 +11,9 @@
 #   kdos_session_boxes     the appbox warmup, and giving idle ones back
 #   kdos_session_bus       one session bus per user, at a fixed path
 #   kdos_session_audio     pipewire, once per user rather than per session
-#   kdos_session_once      the login sound, the first-run card, the restore
+#   kdos_session_once      the login sound, the first-run card, the offer of
+#                          the applications the install left pending, the
+#                          per-user timers, the session restore
 
 # ONE ROAD TO A LINK, ON A PATH THAT MAY HAVE READ NO PROFILE.
 # /etc/profile.d sets $BROWSER for a login shell, and
@@ -164,12 +166,14 @@ kdos_session_audio() {
 #
 # The command is the caller's readiness test and must BLOCK until the display
 # is up, exporting whatever the children need to reach it, and return non-zero
-# if it never comes. What "up" means differs — a Wayland socket for one session,
-# a session socket for the other — and only the caller knows.
+# if it never comes — for kdos-desktop-start that is kdos-comp's socket
+# appearing under $XDG_RUNTIME_DIR and WAYLAND_DISPLAY being exported from it.
+# The test is the caller's rather than this file's because this file is sourced
+# before anything has a display to test.
 #
 # All of it is one backgrounded subshell, because none of it may delay the
-# display by a millisecond: the session starts whether or not any of the three
-# is installed or wanted.
+# display by a millisecond: the session starts whether or not any of these is
+# installed or wanted.
 kdos_session_once() {
 	(
 		"$@" || exit 0
@@ -202,14 +206,52 @@ kdos_session_once() {
 		# install actually runs.
 		if [ -s /var/lib/kdos/apps-pending ] && \
 		   [ ! -e "$_cfg/kdos/apps-offered" ] && \
-		   command -v kdos-notify >/dev/null 2>&1; then
-			mkdir -p "$_cfg/kdos"
-			: > "$_cfg/kdos/apps-offered"
+		   command -v kdos >/dev/null 2>&1 && \
+		   command -v gdbus >/dev/null 2>&1; then
+			# `grep -c` PRINTS THE ZERO AND THEN EXITS 1, so an
+			# `|| echo 0` behind it would put a second zero in the
+			# substitution and the toast would open with "0 0".
 			_napp=$(grep -cvE '^[[:space:]]*(#|$)' \
-				/var/lib/kdos/apps-pending 2>/dev/null || echo 0)
-			kdos-notify "Applications" \
-				"$_napp chosen during installation are ready to install — open the store" \
-				>/dev/null 2>&1 &
+				/var/lib/kdos/apps-pending 2>/dev/null)
+			[ -n "$_napp" ] || _napp=0
+			# `kdos notify` SENDS one; `kdos-notify` is the centre
+			# that displays what has already arrived and takes no
+			# summary at all.
+			#
+			# AND THE NAME HAS TO BE OWNED FIRST. The send is one
+			# `gdbus call`, double-forked and best effort — it
+			# reports nothing either way — and there is no
+			# activation file for org.freedesktop.Notifications, so
+			# a call made the moment the display is up reaches a
+			# notifier that is still starting and is simply lost.
+			# The wait is the only test there is, so the marker is
+			# written only once the name has appeared: a session
+			# that never got a notifier keeps the offer for the
+			# next login instead of burning its one shot. All of it
+			# in a subshell, because the restore below must not
+			# wait twenty seconds for a machine with no notifier.
+			(
+				_own=0
+				for _ in $(seq 1 100); do
+					dbus-send --session --print-reply \
+						--dest=org.freedesktop.DBus \
+						/org/freedesktop/DBus \
+						org.freedesktop.DBus.NameHasOwner \
+						string:org.freedesktop.Notifications \
+						2>/dev/null \
+						| grep -q 'boolean true' && {
+						_own=1
+						break
+					}
+					sleep 0.2
+				done
+				[ "$_own" = 1 ] || exit 0
+				kdos notify "Applications" \
+					"$_napp chosen during installation are ready to install — open the store" \
+					>/dev/null 2>&1
+				mkdir -p "$_cfg/kdos"
+				: > "$_cfg/kdos/apps-offered"
+			) &
 		fi
 
 		# Session restore, opt-in: ~/.config/kdos/session-restore has to

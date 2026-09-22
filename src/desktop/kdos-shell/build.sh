@@ -100,7 +100,10 @@ done
 # this tree has, and asks libarchive whether a file is an archive by opening it.
 # No libsixel — a file on disk is not an escape sequence, and kdos-term is where
 # sixel arrives.
-PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
+# fontconfig is libkwl's: the face list the style picker offers is
+# `FC_SPACING == FC_MONO` out of FcFontList, and fcft carries fontconfig as a
+# Requires.private, so `pkg-config --libs fcft` alone does not link it.
+PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP -DKIMG_HAVE_GIF \

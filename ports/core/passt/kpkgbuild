@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = passt
+version     = 2026_07_28.f8df3f1
+release     = 1
+source      = https://passt.top/passt/snapshot/$name-$version.tar.xz
+sha256      = fcfeb5fbdf775bcc48edc1d5eac8a6d57bc333f8e67b714149376d36061416f0  passt-2026_07_28.f8df3f1.tar.xz
+description = User-mode networking for VMs and containers, unprivileged and without a tap device
+homepage    = https://passt.top/

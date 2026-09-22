@@ -34,6 +34,7 @@
 #include <wayland-client.h>
 
 #include "ext-workspace-v1-client-protocol.h"
+#include "kbase.h"
 #include "kwl.h"
 #include "shell.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
@@ -198,6 +199,16 @@ void sh_theme_from_cache(void)
 		ktui_theme_set(name);
 	/* No file is not an error: ktui_theme_set already defaulted to
 	 * phosphor, which is what a fresh install wears. */
+
+	/*
+	 * NIGHT LIGHT RIDES THE SAME PATH AS THE ACCENT, and it must be read
+	 * after it: the accent is what projects the palette, so a warm shift
+	 * applied before it would be projected away. Every surface reaches the
+	 * palette through this one function, which is why the toggle is read
+	 * here rather than at each of them — one that read it for itself would
+	 * be a surface that warms on a different frame from the panel.
+	 */
+	ktui_theme_night(kb_toggle_on("night-light"));
 }
 
 /*

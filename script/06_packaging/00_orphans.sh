@@ -12,17 +12,12 @@
 #
 # Remove packages whose PORT no longer exists.
 #
-# `fs/` has been manifest-guarded since a stale shell kdos-appbox blocked its C
-# replacement — a file deleted from `fs/` disappears from the tree on the next
-# sync. PACKAGES had no such guard, and the build tree is incremental, so a port
-# deleted from `ports/` left its package installed forever with nothing to
-# notice.
-#
-# Measured on the v0.2 tree: the ISO still carried all sixteen `cosmic-*`
-# packages, `pop-launcher`, `kdos-theme-helper` and `xdg-desktop-portal-cosmic`
-# — 529 MB of a desktop that had been removed a milestone earlier, plus a
-# portal backend advertising itself to xdg-desktop-portal. Nothing was wrong
-# with the recipes; there were no recipes.
+# The build tree is incremental and `cp` never deletes, so a port removed from
+# `ports/` keeps its package installed forever unless something sweeps it.
+# `fs/` is manifest-guarded and needs no such pass; PACKAGES are not. Skip this
+# and a whole deleted desktop still rides into the ISO — hundreds of megabytes
+# of binaries no recipe describes, and a portal backend with no port still
+# advertising itself to xdg-desktop-portal.
 #
 # Runs inside the chroot, before the ISO is rolled.
 

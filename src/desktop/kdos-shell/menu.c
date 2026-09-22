@@ -98,12 +98,6 @@ struct item {
 	char term[24];			/* X-KDOS-Term: which emulator       */
 	char size[16];			/* X-KDOS-Size: COLSxROWS            */
 	int floating;			/* X-KDOS-Float: open unanchored     */
-	/*
-	 * A COMMAND THIS FILE WROTE rather than a row read out of an entry —
-	 * the System column. See
-	 * `host` in launch.h.
-	 */
-	int host;
 	/* Ask before running it. Three rows in System end the session or the
 	 * machine, and they sit one cell apart from "Terminal" in a menu
 	 * people navigate with a mouse. */
@@ -243,11 +237,13 @@ static void load_applications(void)
 /* ── Places and System, which are lists rather than a scan ─────────────── */
 
 /*
- * A ROW THIS FILE WROTE. Its command is a constant in this source and not a
- * line out of a file anything can write, so it is marked `host` and never
- * run as this process: `kdos-power suspend` in a box would be a
- * wlroots compositor started to run a one-line verb, and Log Out's `pkill` on
- * the session would leave that cage outliving what it killed. See launch.h.
+ * A ROW THIS FILE WROTE — Places, System and the terminal rows — as against
+ * the ones add_desktop_file() reads out of an entry. Nothing it carries came
+ * from a file anything can write.
+ *
+ * THE ROW IS ZEROED ON THE WAY IN, so a caller that wants a field sets it on
+ * the row add() has just appended rather than building an item itself: a
+ * second appender is a second set of defaults for the ones it forgets.
  */
 static void add(const char *name, const char *exec, int submenu)
 {
@@ -260,7 +256,6 @@ static void add(const char *name, const char *exec, int submenu)
 		snprintf(it->exec, sizeof(it->exec), "%s", exec);
 	it->group = -1;
 	it->submenu = submenu;
-	it->host = 1;
 }
 
 /*
@@ -444,7 +439,6 @@ static void launch(const struct item *it)
 		.size = it->size,
 		.terminal = it->terminal,
 		.floating = it->floating,
-		.host = it->host,
 	};
 
 	if (!*it->exec && !it->path[0])

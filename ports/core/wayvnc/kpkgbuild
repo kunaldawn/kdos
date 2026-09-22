@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wayvnc
+version     = 0.10.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/any1/wayvnc/archive/v$version.tar.gz
+sha256      = 1dcb54f58d1637995bfb59c17709efca7833bae41f31b33eb47e608668a89d66  wayvnc-0.10.1.tar.gz
+description = VNC server for wlroots compositors, serving the session over the network
+homepage    = https://github.com/any1/wayvnc
+depends     = meson scdoc aml neatvnc pixman libxkbcommon wayland libdrm mesa jansson pam

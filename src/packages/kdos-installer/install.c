@@ -68,8 +68,8 @@ static const struct {
 	{ "Mount",       "attach the target at /mnt" },
 	{ "Copy system", "the live tree, verbatim" },
 	{ "Packs",       "the applications chosen from the medium" },
-	{ "Configure",   "fstab, hostname, keymap, services" },
-	{ "Accounts",    "users, passwords, autologin" },
+	{ "Configure",   "fstab, hostname, keymap, autologin, services" },
+	{ "Accounts",    "users, passwords, sudo" },
 	{ "Theme",       "regenerate the accent for the new home" },
 	{ "Bootloader",  "Limine on the ESP, BIOS and UEFI" },
 	{ "Finish",      "flush and unmount" },
@@ -634,9 +634,12 @@ static const char *hash_password(const char *plain)
 }
 
 /* Rewrite one colon-separated database in place, field by field. Renaming
- * the live user touches passwd, shadow, group (as a member AND as the
- * primary group name) and login.conf's `autologin` — miss any one of them and
- * the installed system logs nobody in. */
+ * the live user touches passwd, shadow and group (as a member AND as the
+ * primary group name) — miss any one of them and the installed system logs
+ * nobody in. login.conf's `autologin` names the same account and is NOT
+ * touched here: do_config is its single writer, runs before this step and
+ * already writes cfg.username, so a second editor could only disagree with
+ * it about whether the key is commented out. */
 static void rewrite_accounts(const char *oldu, const char *newu,
 			     const char *fullname, const char *userhash,
 			     const char *roothash)
@@ -739,50 +742,6 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 		if (!cfg.dry_run)
 			chmod(path, 0600);
 		logf_("updated %s", path);
-	}
-
-	/*
-	 * login.conf's `autologin`: tty1 logs in the account this key names, so
-	 * a rename has to reach it. It is the ONLY place the desktop's account
-	 * is named — `/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` and
-	 * carries no account at all — so missing this key leaves the key naming
-	 * a user the installed system does not have and the machine reachable
-	 * only from tty2.
-	 *
-	 * Edited in place: the shipped file is mostly the explanation of what
-	 * the key does, and replacing it wholesale leaves a configuration file
-	 * nobody can read.
-	 */
-	snprintf(path, sizeof(path), "%s/etc/kdos/login.conf", TARGET);
-	if (strcmp(oldu, newu) && slurp(path, buf, sizeof(buf)) > 0) {
-		size_t o = 0;
-		int done = 0;
-
-		out[0] = 0;
-		for (char *line = strtok(buf, "\n"); line;
-		     line = strtok(NULL, "\n")) {
-			const char *p = line;
-
-			while (*p == ' ' || *p == '\t')
-				p++;
-			if (!strncmp(p, "autologin", 9) &&
-			    (p[9] == ' ' || p[9] == '\t' || p[9] == '=')) {
-				o += (size_t)snprintf(out + o, sizeof(out) - o,
-						      "autologin = %s\n", newu);
-				done = 1;
-				continue;
-			}
-			o += (size_t)snprintf(out + o, sizeof(out) - o, "%s\n",
-					      line);
-			if (o >= sizeof(out) - 64)
-				break;
-		}
-		if (!done)
-			snprintf(out + o, sizeof(out) - o, "autologin = %s\n",
-				 newu);
-		if (!cfg.dry_run && kb_write_file(path, out) < 0)
-			fail("cannot write %s", path);
-		logf_("updated %s (autologin -> %s)", path, newu);
 	}
 }
 
@@ -1276,7 +1235,18 @@ static void do_config(void)
 	 * login.conf's `autologin`, edited in place rather than rewritten: the
 	 * shipped file is mostly the explanation of what the key does, and a
 	 * one-line replacement would leave the installed system with a
-	 * configuration file nobody can read.
+	 * configuration file nobody can read. The lines are walked by hand
+	 * rather than with strtok for the same reason — strtok collapses runs
+	 * of newlines, and the installed file would arrive with every
+	 * paragraph break in that explanation gone.
+	 *
+	 * THIS IS THE INSTALL'S SINGLE WRITER OF THE KEY, and the key is the
+	 * ONLY place the desktop's account is named: `/etc/inittab` runs
+	 * `kdos-getty tty1 kdos-login tty1` and carries no account at all. So
+	 * writing cfg.username here is also what carries a renamed user to
+	 * tty1; a second editor in a later step would only disagree with this
+	 * one about whether the key is commented, and leave the file with two
+	 * `autologin` lines — of which kdos-login honours the last.
 	 *
 	 * OFF IS A COMMENTED LINE AND NOT AN EMPTY VALUE. kdos-login reads the
 	 * key and asks when it finds none, and `autologin =` with nothing after
@@ -1292,11 +1262,15 @@ static void do_config(void)
 			char out[8192];
 			size_t o = 0;
 			int done = 0;
+			char *line = cc;
 
-			for (char *line = strtok(cc, "\n"); line;
-			     line = strtok(NULL, "\n")) {
+			while (*line) {
+				char *nl = strchr(line, '\n');
+				char *next = nl ? nl + 1 : line + strlen(line);
 				const char *p = line;
 
+				if (nl)
+					*nl = '\0';
 				while (*p == ' ' || *p == '\t')
 					p++;
 				if (*p == '#')
@@ -1313,12 +1287,14 @@ static void do_config(void)
 							      : "#autologin = %s\n",
 							      cfg.username);
 					done = 1;
-					continue;
+				} else {
+					o += (size_t)snprintf(out + o,
+							      sizeof(out) - o,
+							      "%s\n", line);
 				}
-				o += (size_t)snprintf(out + o, sizeof(out) - o,
-						      "%s\n", line);
 				if (o >= sizeof(out) - 64)
 					break;
+				line = next;
 			}
 			if (!done && cfg.autologin)
 				snprintf(out + o, sizeof(out) - o,

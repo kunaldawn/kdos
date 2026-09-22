@@ -14,7 +14,8 @@
 # The Wayland base (wayland, wayland-protocols, seatd, foot, grim, slurp,
 # wl-clipboard, xwayland) is phase 4 — it is useful without a compositor.
 #
-# See docs/KDOS-DESKTOP.md.
+# See docs/kdos/03-architecture/session.md for the session shape and
+# docs/kdos/04-programs/kdos-comp.md for the compositor.
 
 # The compositor library. Pinned and vendored; wlroots breaks API every
 # release. Xwayland's xwm needs ICCCM and EWMH, which is xcb-util-wm.
@@ -116,12 +117,12 @@ fcitx5-hangul
 # Phase 4 installs the main portal; this is the half that knows about wlroots.
 xdg-desktop-portal-wlr
 
-# The FileChooser portal, which nothing served before this: xdg-desktop-portal-wlr
-# does ScreenCast and Screenshot only, and the backend every other desktop falls
-# back to is xdg-desktop-portal-gtk — impossible here, because there is no GTK on
-# the host. Until this existed, every boxed app's Open and Save dialog was its
-# own toolkit's, which put a rounded antialiased GTK dialog in the middle of a
-# text-mode desktop. Settings comes with it and hands out the accent.
+# The FileChooser portal. Nothing else can serve it: xdg-desktop-portal-wlr does
+# ScreenCast and Screenshot only, and the backend every other desktop falls back
+# to is xdg-desktop-portal-gtk — impossible here, because there is no GTK on the
+# host. Without this, a boxed app's Open and Save dialog is whatever its own
+# toolkit draws, carrying none of the desktop's palette, chrome or file roots.
+# Settings comes with it and hands out the accent.
 xdg-desktop-portal-kdos
 
 # The screen recorder. It is a program rather than a shell script because

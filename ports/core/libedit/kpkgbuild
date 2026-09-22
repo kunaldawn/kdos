@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libedit
+version     = 20260512
+release     = 1
+
+_api        = 3.1
+
+source      = $name-$version.tar.gz::https://www.thrysoee.dk/editline/$name-$version-$_api.tar.gz
+sha256      = 432d5e7ea8b0116dd39f2eca7bc11d0eed77faa6b77ea526ace89907c23ea4a0  libedit-20260512.tar.gz
+description = NetBSD line editor with history, key bindings and tab completion
+homepage    = https://www.thrysoee.dk/editline/
+depends     = ncurses

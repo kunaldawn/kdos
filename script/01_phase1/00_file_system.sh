@@ -130,8 +130,8 @@ done
 # hash on the machine readable by every account on it.
 #
 # THIS IS WHAT `kdos-checkpass` EXISTS FOR. It is setuid root so that the
-# greeter never opens the shadow file itself; a world-readable shadow makes
-# that setuid bit decoration and hands the hashes out anyway.
+# lock screen never opens the shadow file itself; a world-readable shadow
+# makes that setuid bit decoration and hands the hashes out anyway.
 #
 # OWNERSHIP TOO, AND FOR THE SAME REASON. git records no owner at all, so a
 # file that must belong to root belongs to whoever ran the build until

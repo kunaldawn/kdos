@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = aml
+version     = 1.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/any1/aml/archive/v$version.tar.gz
+sha256      = b2b8f743213af39f40e8bc611147d69e2ea9e010b9b19cb65246582338f28d96  aml-1.0.0.tar.gz
+description = Event loop library for main-loop driven Wayland services
+homepage    = https://github.com/any1/aml
+depends     = meson ninja

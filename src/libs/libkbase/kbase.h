@@ -116,14 +116,6 @@ int kb_read_line_file(const char *path, char *buf, size_t cap);
 	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" \
 	"/usr/games:/usr/local/games"
 
-/*
- * THE SHIPPED CONSOLE BACKGROUNDS, one `<name>.txt` per piece. Here rather
- * than in either consumer's own header because two of them need it and neither
- * owns it: `kdos background` writes the name a person chose and `kdos-desk`
- * turns that name into this path. Two spellings of one directory is a desktop
- * that offers a piece it cannot then draw.
- */
-
 int kb_write_file(const char *path, const char *data);
 /* Replace a state file atomically: temp, fsync the file, rename, fsync the
  * directory. Use this wherever an empty file is a LOSS rather than a retry. */
@@ -569,16 +561,15 @@ void kb_landlock_free(KbLandlock *ll);
 /*
  * Base64. The decoder returns the byte count, or -1 when the input is not
  * base64 or would not fit — refused whole rather than partially decoded, so a
- * caller never pastes half a selection. The encoder returns the string length
- * it wrote, or -1 when it would not fit; `out` needs (n + 2) / 3 * 4 + 1
- * bytes.
+ * caller never pastes half a selection.
  *
- * `libktui` has an encoder of its own and keeps it: that library links nothing
- * but libc, and pulling this one in for a single OSC 52 write would break the
- * property every other file there depends on.
+ * Here rather than in libkvt: OSC 52 carries a base64 selection, so the escape
+ * parser decodes one, and decoding base64 is not a terminal's question.
+ * `libktui` hand-rolls the encode for its own OSC 52 write: that library links
+ * nothing but libc, and pulling this one in would break the property every
+ * other file there depends on.
  */
 int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
 		  size_t *outlen);
-int kb_b64_encode(const void *in, size_t n, char *out, size_t outsz);
 
 #endif /* KBASE_H */

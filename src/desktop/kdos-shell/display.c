@@ -78,6 +78,7 @@ struct head {
 	double scale;
 	int32_t transform;
 	int32_t x, y;
+	int live;			/* the screen is plugged in and ours */
 };
 
 static struct head heads[MAX_HEADS];
@@ -260,6 +261,7 @@ static void head_finished(void *data, struct zwlr_output_head_v1 *p)
 	 * `apply` skips it.
 	 */
 	h->proxy = NULL;
+	h->live = 0;
 	zwlr_output_head_v1_destroy(p);
 }
 
@@ -308,6 +310,7 @@ static void mgr_head(void *d, struct zwlr_output_manager_v1 *m,
 	struct head *h = &heads[nheads];
 	memset(h, 0, sizeof(*h));
 	h->proxy = p;
+	h->live = 1;
 	h->cur_mode = -1;
 	h->scale = 1.0;
 	order[nheads] = nheads;
@@ -540,10 +543,7 @@ static void cd_revert(void *user)
 	snap_restore();
 	reverting = 1;
 	apply_now();
-	/* NULL ON THE CONSOLE: apply_now() has already reached the session
-	 * over its own socket and there is no display to flush. */
-	if (dpy)
-		wl_display_flush(dpy);
+	wl_display_flush(dpy);
 }
 
 static int conf_path(char *out, size_t n)
@@ -819,9 +819,16 @@ enum { DB_APPLY, DB_ONOFF, DB_MODE, DB_SCALE, DB_ROTATE, DB_CLOSE, DB_N };
  * IS THERE STILL A SCREEN BEHIND THIS ROW. A head loses its proxy when the
  * monitor goes, and nothing about it may be edited after that.
  */
+/*
+ * SEPARATE FROM THE PROTOCOL OBJECT, because a row outlives the screen: an
+ * unplug clears both, and the apply path still asks for `proxy` itself since
+ * it is what the request needs. Reading liveness off a pointer would also tie
+ * every drawn row to a compositor being present, and the frame is drawn
+ * offscreen for a golden with no compositor at all.
+ */
 static int head_live(const struct head *h)
 {
-	return h && h->proxy;
+	return h && h->live;
 }
 
 static void mode_label(const struct head *h, char *out, size_t n)
@@ -1039,10 +1046,69 @@ static void print_list(void)
 	}
 }
 
+/*
+ * THE ROWS A GOLDEN IS DRAWN FROM, one screen per tab-separated line:
+ *
+ *     <name>\t<w>x<h>@<mHz>[*]\t<on|off>\t<scale>\t<transform>
+ *
+ * READ ONLY UNDER --dump, because the real list is the compositor's and a
+ * frame drawn from anything else would be a picture of a machine nobody has.
+ * A dump has no compositor at all, so without this the only frame that could
+ * be committed is the empty one — which passes whatever the row drawing later
+ * does to it.
+ */
+static void heads_from_fixture(const char *path)
+{
+	char buf[4096];
+	FILE *f = fopen(path, "r");
+	char line[256];
+
+	(void)buf;
+	if (!f)
+		return;
+	while (nheads < MAX_HEADS && fgets(line, sizeof(line), f)) {
+		struct head *h = &heads[nheads];
+		char name[64], mode[64], on[16], tr[32];
+		double sc = 1.0;
+
+		line[strcspn(line, "\r\n")] = '\0';
+		if (!line[0] || line[0] == '#')
+			continue;
+		if (sscanf(line, "%63[^\t]\t%63[^\t]\t%15[^\t]\t%lf\t%31[^\t]",
+			   name, mode, on, &sc, tr) != 5)
+			continue;
+		memset(h, 0, sizeof(*h));
+		snprintf(h->name, sizeof(h->name), "%s", name);
+		h->live = 1;
+		h->enabled = !strcmp(on, "on");
+		h->scale = sc;
+		h->cur_mode = -1;
+		for (uint32_t t = 0; t < NTRANSFORMS; t++)
+			if (!strcmp(tr, TRANSFORMS[t]))
+				h->transform = (int32_t)t;
+		if (strcmp(mode, "auto")) {
+			struct mode *m = &h->modes[0];
+			int w = 0, hh = 0, hz = 0;
+
+			if (sscanf(mode, "%dx%d@%d", &w, &hh, &hz) == 3) {
+				m->w = w;
+				m->h = hh;
+				m->refresh = hz * 1000;
+				m->preferred = strchr(mode, '*') != NULL;
+				h->nmodes = 1;
+				h->cur_mode = 0;
+			}
+		}
+		order[nheads] = nheads;
+		nheads++;
+	}
+	fclose(f);
+}
+
 int display_main(int argc, char **argv)
 {
 	const char *font = NULL;
-	int list_only = 0, apply_only = 0;
+	int list_only = 0, apply_only = 0, dump = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -1051,11 +1117,31 @@ int display_main(int argc, char **argv)
 			list_only = 1;
 		else if (!strcmp(argv[i], "--apply"))
 			apply_only = 1;
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else {
 			fprintf(stderr, "usage: kdos-display [--list] "
-					"[--apply] [--font NAME]\n");
+					"[--apply] [--font NAME] [--dump]\n");
 			return 2;
 		}
+	}
+
+	/*
+	 * A DUMP OPENS NO DISPLAY AND SPEAKS NO PROTOCOL. The frame is the one
+	 * the rows produce, so the selection is the first row and the screens
+	 * come from the fixture or not at all.
+	 */
+	if (dump) {
+		const char *fix = getenv("KDOS_DISPLAY_LIST");
+
+		sh_theme_from_cache();
+		if (fix && *fix)
+			heads_from_fixture(fix);
+		sel = 0;
+		ktui_offscreen_init(60, 14);
+		draw();
+		ktui_draw_dump();
+		return 0;
 	}
 
 	/*
@@ -1089,19 +1175,11 @@ int display_main(int argc, char **argv)
 
 	/*
 	 * OUTPUT MANAGEMENT IS WAYLAND'S, and `kwl_display()` is how this
-	 * surface reaches past libkdisp for it. A display that is not a
-	 * compositor answers NULL, and handing that to
-	 * `wl_display_get_registry` would be a crash from a Start menu row a
-	 * person can click.
+	 * surface reaches past libkdisp for it. kdisp_init() returned 0, so
+	 * the connection is up and this is never NULL.
 	 */
 	struct wl_display *dpy = kwl_display();
 
-	if (!dpy) {
-		fprintf(stderr, "kdos-display: this display reports no screens "
-				"it can change\n");
-		kdisp_shutdown();
-		return 1;
-	}
 	{
 		struct wl_registry *reg = wl_display_get_registry(dpy);
 
@@ -1168,8 +1246,7 @@ int display_main(int argc, char **argv)
 				snap_restore();
 				reverting = 1;
 				apply_now();
-				if (dpy)
-					wl_display_flush(dpy);
+				wl_display_flush(dpy);
 			} else {
 				snprintf(applied_note, sizeof(applied_note),
 					 "Keep these settings? reverting in %ds — press K",
@@ -1213,8 +1290,7 @@ int display_main(int argc, char **argv)
 				snap_restore();
 				reverting = 1;
 				apply_now();
-				if (dpy)
-					wl_display_flush(dpy);
+				wl_display_flush(dpy);
 			}
 			continue;
 		}
@@ -1285,8 +1361,7 @@ int display_main(int argc, char **argv)
 					applied = 0;
 					applied_note[0] = '\0';
 					apply_now();
-					if (dpy)
-						wl_display_flush(dpy);
+					wl_display_flush(dpy);
 					break;
 				case DB_ONOFF:
 					toggle_enabled(hh);
@@ -1357,8 +1432,7 @@ int display_main(int argc, char **argv)
 			applied = 0;
 			applied_note[0] = '\0';
 			apply_now();
-			if (dpy)
-				wl_display_flush(dpy);
+			wl_display_flush(dpy);
 			break;
 		default:
 			break;

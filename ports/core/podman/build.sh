@@ -39,7 +39,7 @@ runtime = "crun"
 [network]
 network_backend = "netavark"
 firewall_driver = "nftables"
-default_rootless_network_cmd = "slirp4netns"
+default_rootless_network_cmd = "pasta"
 EOF
 
 cat > $PKG/etc/containers/storage.conf <<'EOF'

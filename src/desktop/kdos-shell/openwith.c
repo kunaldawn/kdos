@@ -417,10 +417,12 @@ static int write_default(const char *mime, const char *id)
 	int in_sec = 0, wrote = 0, have_sec = 0, rc = -1;
 
 	/*
-	 * WRITTEN TO THE PLAIN LIST, never to a desktop's own. A person
-	 * choosing a handler is choosing it, not choosing it here — and the
-	 * desktop lists are searched FIRST, so a choice written into one would
-	 * be invisible on the other desktop while silently outranking it here.
+	 * WRITTEN TO THE PLAIN LIST, never to the desktop-named one beside
+	 * it. A desktop-named table is where the image's own defaults live —
+	 * /etc/xdg/kdos-mimeapps.list — and it is searched before the plain
+	 * table at the same level. A person's choice put there would be
+	 * indistinguishable from a shipped default; in the plain list it
+	 * still outranks every system table and stays plainly theirs.
 	 */
 	mimeapps_path(path, sizeof(path), NULL);
 	kb_strlcpy(dir, path, sizeof(dir));

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fwupd
+version     = 2.1.7
+release     = 1
+source      = https://github.com/fwupd/fwupd/releases/download/$version/$name-$version.tar.xz
+sha256      = 472e9426f7a1b18fa9d199666c15482d4ee51ea35e916ca53bb3ca25919edb10  fwupd-2.1.7.tar.xz
+description = Daemon and client for updating device firmware
+homepage    = https://fwupd.org
+depends     = meson ninja pkgconf python3 python3-jinja2 gettext glib libxmlb libusb sqlite curl zlib xz gnutls polkit dbus util-linux libdrm libmnl readline bash-completion tpm2-tss hwdata

@@ -13,9 +13,9 @@
  *
  * A FLAG FILE, NOT A CONFIGURATION KEY. A configuration file is read when the
  * session starts, so a runtime writer would make half its answers come from
- * before an edit and half from after. These are state: they
- * live under `~/.local/state/kdos/toggles/`, and their readers either stat
- * them on a tick they already run or are sent the retint signal below.
+ * before an edit and half from after. These are state: they live under
+ * `~/.local/state/kdos/toggles/`, and their readers either stat them on a tick
+ * they already run or are sent the retint signal below.
  *
  * THE PATH IS libkbase'S. `kb_toggle_on()` and `kb_toggle_set()` are the only
  * two places it is spelled, so a surface and this command cannot disagree

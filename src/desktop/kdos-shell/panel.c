@@ -641,24 +641,14 @@ static int panel_opacity = 80;
  */
 
 /*
- * How many of the bar's rows its own edge takes: none, because the backdrop
- * draws it between the cells.
- */
-static int bar_rule_rows(void)
-{
-	return 0;
-}
-
-/*
  * WHERE THE BAR'S CONTENT LIVES INSIDE ITS OWN ROWS, decided once per frame by
  * draw_taskbar and read by everything it calls.
  *
  * `applet_row` is the row the wing, the window buttons and the Start button
  * all sit on; `bar_y0` and `bar_h` are the rows that are content at all, which
- * is every row except the one the bar's own edge takes where it takes one. Two
- * functions used to derive the row themselves from the height, and a bar whose
- * halves disagree about which row they are on is exactly what a rule row would
- * produce.
+ * is every row the surface has. ONE place decides the row: a half of the bar
+ * that derives it again from the height is a half that will disagree with the
+ * other about which row it is on.
  */
 static int applet_row;
 static int bar_y0, bar_h;
@@ -5835,16 +5825,13 @@ static void draw_taskbar(struct sh_state *sh)
 		date[0] = '\0';
 
 	/*
-	 * THE ROW THE BAR'S OWN EDGE TAKES IS ON THE DESKTOP SIDE, and the
-	 * content is centred in what is left — so a bottom bar's rule is its
-	 * top row and a top bar's is its bottom one, and neither is drawn
-	 * over. Where the backdrop draws the edge in pixels there is no such
-	 * row and this is the arithmetic the bar has always used.
+	 * THE BAR'S OWN EDGE COSTS IT NO ROW: the backdrop draws it in pixels
+	 * between the grid and the desktop — see panel_backdrop() — so every
+	 * row the surface has is content and the content is centred in all of
+	 * them.
 	 */
-	bar_h = h - bar_rule_rows();
-	if (bar_h < 1)
-		bar_h = h;
-	bar_y0 = (bar_h < h && !panel_top) ? h - bar_h : 0;
+	bar_h = h;
+	bar_y0 = 0;
 	applet_row = bar_y0 + (bar_h - 1) / 2;
 
 	/*
@@ -6392,26 +6379,6 @@ static void draw_taskbar(struct sh_state *sh)
 		draw_chips(sh, x, x + avail, 1, h);
 		break;
 	}
-
-	/*
-	 * THE BAR'S OWN EDGE, IN CELLS, LAST.
-	 *
-	 * Under a compositor this is one pixel of the backdrop between the
-	 * grid and the desktop — see panel_backdrop(). Where there are no
-	 * pixels to put it in, KT_SURFACE is one shade off KT_BG and the bar
-	 * would have no boundary at all: it would read as a region of the
-	 * desktop with words on it rather than as a piece of chrome. A row, in
-	 * the DOUBLE horizontal every KDOS window frame is drawn with, on the side
-	 * the desktop is.
-	 *
-	 * Drawn after the layout rather than before it because the layout is
-	 * four passes and only the last one kept has drawn anything.
-	 */
-	if (bar_rule_rows() && bar_h < h)
-		for (int cx = 0; cx < w; cx++)
-			ktui_draw_text(cx, panel_top ? h - 1 : 0, 1,
-				       ktui_glyph[KT_G_DHL], KT_MID,
-				       KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_flush();
 }
@@ -7048,8 +7015,11 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 			return;
 		}
 		case SH_AP_BATT: {
+			/* Session, because that is the page carrying the idle
+			 * and power rows; kdos-settings refuses a name its
+			 * category list does not hold and opens nothing. */
 			const char *argv[] = { "kdos-settings", "--page",
-					       "power", NULL };
+					       "session", NULL };
 			panel_spawn(argv);
 			return;
 		}
@@ -7662,10 +7632,9 @@ int panel_main(int argc, char **argv)
 	KDispConfig cfg = {
 		.role = KDISP_ROLE_PANEL,
 		.edge = edge,
-		/* ONE MORE ROW WHERE THE EDGE HAS TO BE A ROW — see
-		 * bar_rule_rows(). A docked surface cannot change its
-		 * thickness after it attaches, so this is decided here. */
-		.cells = tb_rows + bar_rule_rows(),
+		/* A docked surface cannot change its thickness after it
+		 * attaches, so this is decided here. */
+		.cells = tb_rows,
 		/* Must equal the .desktop id or the shell shows a second, unnamed
 		 * icon for itself — the bug `kdos appid` exists to catch, and the
 		 * one program with no excuse for it. */
@@ -7677,23 +7646,19 @@ int panel_main(int argc, char **argv)
 		 * see KDispConfig.manage. */
 		.manage = 1,
 		/*
-		 * THE BAR IS FRAMED, like everything else on this desktop.
+		 * THE BAR IS FRAMED, like everything else on this desktop, and
+		 * without an edge against a dark wallpaper it reads as a
+		 * region of the desktop rather than as a piece of chrome. The
+		 * only edge a docked panel HAS is the one facing the desktop,
+		 * and a box wants four sides and two rows where two rows is
+		 * the whole bar.
 		 *
-		 * Every KDOS surface but this one puts a double-line box round
-		 * itself; the taskbar had no edge at all, so against a dark
-		 * wallpaper it read as a region of the desktop rather than as
-		 * a piece of chrome. A box wants four sides and two rows, and
-		 * two rows is the whole bar — but the only edge a bottom-
-		 * anchored panel HAS is its top one, and libkwl will draw that
-		 * outside the cell grid for three pixels rather than a row.
-		 */
-		/*
-		 * NO RULE. The bar's top edge is a pixel of the BACKDROP now —
-		 * see panel_backdrop() — which keeps it inside the surface
-		 * instead of costing a row's worth of extra height, and lets it
-		 * carry a highlight under it that a single flat band cannot.
-		 * The five pixels of full accent this replaces were 14:1 across
-		 * the whole width of the screen.
+		 * NO RULE, THEREFORE: the edge is drawn in PIXELS by
+		 * panel_backdrop(), inside the surface, so it costs no row and
+		 * can carry a highlight under it that a flat band cannot. Ask
+		 * libkwl for one here instead and the bar grows a row it then
+		 * has to leave empty, and draw_taskbar's `bar_h = h` becomes a
+		 * lie about which rows are content.
 		 */
 		.rule = 0,
 		/*

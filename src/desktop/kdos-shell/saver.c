@@ -15,10 +15,12 @@
  * there otherwise is a desktop sitting on screen being read over somebody's
  * shoulder; this covers it with something that is unmistakably not the desktop.
  *
- * STARTED BY A DISPLAY'S IDLE POLICY, not by itself, and NOTHING STARTS IT.
- * kdos-idle.c spawns kdos-lock and no saver, and TEMPLATES[] in
- * kdos-child.c does not carry one — a feature with no line there does not run,
- * whatever a comment says — so there it is a program you run by hand.
+ * NOTHING STARTS IT AUTOMATICALLY. The compositor's idle ladder in
+ * kdos-comp/src/kdos-idle.c dims, spawns kdos-lock and powers the outputs
+ * off; it never spawns a saver, and TEMPLATES[] in kdos-comp/src/kdos-child.c
+ * carries no row for it — a feature with no line there does not run, whatever
+ * a comment says. rc.xml binds Super+Shift+L to it, so it is a program you
+ * ask for.
  *
  * IT NEVER WATCHES INPUT, and that is the whole of its safety story. A
  * screensaver that decides for itself when to go away is a screensaver that can

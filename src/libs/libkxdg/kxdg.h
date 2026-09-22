@@ -48,13 +48,13 @@ int kxdg_bool(const KxdgEntry *e, const char *key, int def);
 /*
  * THE LAUNCH HALF OF AN ENTRY, read once and in one place.
  *
- * Four programs used to read these seven keys with four private copies of the
- * list — the application index, the desktop's icons, the "Open with" chooser
- * and `kdos-appbox open` — and a key added to one of them was a row that
- * behaved differently depending on which surface it was clicked from. The
- * fields are what deciding HOW to start something needs; everything else about
- * an entry (its icon, its categories, its mime types) belongs to whoever is
- * drawing it.
+ * Every surface that starts something — the application index, the desktop's
+ * icons, the Start menu, the "Open with" chooser and `kdos-appbox open` —
+ * reads it through this one struct, so a key added here reaches all of them at
+ * once. A surface that parsed the keys itself would make the same row behave
+ * differently depending on where it was clicked from. The fields are what
+ * deciding HOW to start something needs; everything else about an entry (its
+ * icon, its categories, its mime types) belongs to whoever is drawing it.
  */
 #define KXDG_LAUNCH_EXEC 512
 typedef struct {

@@ -18,12 +18,19 @@ LIBS="$PORT_SRC/../../libs"
 # $PATH in the target it is building.
 APPBOX="$PORT_SRC/../kdos-appbox"
 
+# EVERY .c IN THIS DIRECTORY IS COMPILED, by glob and never by name.
+# script/01_phase1/13_kinstall.sh builds this same program from this same
+# directory before any packages.txt exists, and the two must compile the same
+# sources — only the flags differ. A name list in either place omits the next
+# file added on one side alone, and the phase-1 kinstall and the packaged one
+# stop being the same program, with only a link error or a silently absent page
+# to say so. The glob is exact here: the directory holds nothing generated and
+# no test harness.
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" \
 	-I"$PORT_SRC" -I"$APPBOX" \
 	-o kinstall \
-	"$PORT_SRC"/main.c "$PORT_SRC"/probe.c "$PORT_SRC"/conf.c \
-	"$PORT_SRC"/install.c "$PORT_SRC"/pages.c "$PORT_SRC"/dump.c \
+	"$PORT_SRC"/*.c \
 	"$APPBOX"/catalogue.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c $LDFLAGS
 

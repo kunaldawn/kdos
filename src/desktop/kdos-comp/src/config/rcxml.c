@@ -192,7 +192,10 @@ fill_section(const char *content, enum lab_node_type *buttons, int *count,
 
 		assert(type != LAB_NODE_NONE);
 
-		/* We no longer need this check, but let's keep it just in case */
+		/* One slot per button type is all `buttons` has, so a repeated
+		 * identifier would run off the end — and without libsfdo
+		 * `icon` becomes `menu`, which makes `icon,menu` a repeat
+		 * nobody wrote. The assert below is compiled out with NDEBUG. */
 		if (*found_buttons & (1 << type)) {
 			wlr_log(WLR_ERROR, "ignoring duplicated button type '%s'",
 				identifier);
@@ -1516,7 +1519,11 @@ rcxml_init(void)
 	}
 	has_run = true;
 
-	rc.placement_policy = LAB_PLACE_CASCADE;
+	/* Automatic: placement is libkwm's overlap search, and
+	 * view_compute_position_by_policy() reaches it under no other policy.
+	 * Any other default places new windows by a rule the window model does
+	 * not describe. */
+	rc.placement_policy = LAB_PLACE_AUTOMATIC;
 	rc.placement_cascade_offset_x = 0;
 	rc.placement_cascade_offset_y = 0;
 

@@ -1,0 +1,46 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = noto-fonts-extra
+version     = 1
+release     = 1
+_arab       = 2.013
+_beng       = 3.011
+_deva       = 2.007
+_ethi       = 2.102
+_gujr       = 2.106
+_hebr       = 3.001
+_khmr       = 2.004
+_taml       = 2.004
+_telu       = 2.005
+_thai       = 2.002
+source      = $name-arabic-$_arab.zip::https://github.com/notofonts/arabic/releases/download/NotoSansArabic-v$_arab/NotoSansArabic-v$_arab.zip
+source      = $name-bengali-$_beng.zip::https://github.com/notofonts/bengali/releases/download/NotoSansBengali-v$_beng/NotoSansBengali-v$_beng.zip
+source      = $name-devanagari-$_deva.zip::https://github.com/notofonts/devanagari/releases/download/NotoSansDevanagari-v$_deva/NotoSansDevanagari-v$_deva.zip
+source      = $name-ethiopic-$_ethi.zip::https://github.com/notofonts/ethiopic/releases/download/NotoSansEthiopic-v$_ethi/NotoSansEthiopic-v$_ethi.zip
+source      = $name-gujarati-$_gujr.zip::https://github.com/notofonts/gujarati/releases/download/NotoSansGujarati-v$_gujr/NotoSansGujarati-v$_gujr.zip
+source      = $name-hebrew-$_hebr.zip::https://github.com/notofonts/hebrew/releases/download/NotoSansHebrew-v$_hebr/NotoSansHebrew-v$_hebr.zip
+source      = $name-khmer-$_khmr.zip::https://github.com/notofonts/khmer/releases/download/NotoSansKhmer-v$_khmr/NotoSansKhmer-v$_khmr.zip
+source      = $name-tamil-$_taml.zip::https://github.com/notofonts/tamil/releases/download/NotoSansTamil-v$_taml/NotoSansTamil-v$_taml.zip
+source      = $name-telugu-$_telu.zip::https://github.com/notofonts/telugu/releases/download/NotoSansTelugu-v$_telu/NotoSansTelugu-v$_telu.zip
+source      = $name-thai-$_thai.zip::https://github.com/notofonts/thai/releases/download/NotoSansThai-v$_thai/NotoSansThai-v$_thai.zip
+sha256      = 1301aceaea84c501cf2e6dcfb3182e2328c8eae5725817fcb239672bda7154f1  noto-fonts-extra-arabic-2.013.zip
+sha256      = 2aca24bf71665e66c32e14862ee58857dd8b8b07b6321ec7c96f3121ad6683b1  noto-fonts-extra-bengali-3.011.zip
+sha256      = 820c7da45b1e63562cb41c0a8cac5d9a4202312043a3a040ed1325857ef469b1  noto-fonts-extra-devanagari-2.007.zip
+sha256      = 4e3e53aa1586344ba842f310ab35c65281fa11e8cc2d259613ad06a9ae994d52  noto-fonts-extra-ethiopic-2.102.zip
+sha256      = a4ff1dd03a4998ba08ee7ee43be2aca7594a884982049e48c25ccc48991474ed  noto-fonts-extra-gujarati-2.106.zip
+sha256      = df0a71814b4e63644cf40fcc4529111b61266b7a2dafbe95068b29a7520cc3cb  noto-fonts-extra-hebrew-3.001.zip
+sha256      = 19382ca97d62febea1c735ebee35a5aa4f03beca9b6ea6f6d86b7a7a0025a688  noto-fonts-extra-khmer-2.004.zip
+sha256      = f8284e0f200a7f29a439b4ec88280d864b2b31f8479111c5b658ba6da38b3005  noto-fonts-extra-tamil-2.004.zip
+sha256      = 3553e00ca341dc06f4a143c604dd93a1342553169b5a06dc8b0ff50ab6eba0a2  noto-fonts-extra-telugu-2.005.zip
+sha256      = af889cc673fc714060ce5e4e088fbad32aa4c0571a19958efeaff128a22da485  noto-fonts-extra-thai-2.002.zip
+description = Noto Sans coverage for Arabic, Hebrew, Indic, Thai, Khmer and Ethiopic
+homepage    = https://notofonts.github.io/
+depends     = unzip fontconfig

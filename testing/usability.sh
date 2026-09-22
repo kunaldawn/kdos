@@ -43,22 +43,25 @@ rm -f "$OUT"/*.png "$OUT"/*.ppm
 #
 # WHERE THE BAR IS, IN PIXELS, AT THIS SIZE.
 #
-# The cell is 8x17 with the shipped face, the bar is its bottom three rows on
-# this display (two of content and one of edge — see kdos-shell.md), and the
-# row worth aiming at is the one the Start button's word is on. Derived rather
-# than written down: a run at another size must aim at the same button.
+# The cell is 10x20: comp.conf's `panel_font` defaults to Terminus:pixelsize=20
+# and a cell is half as wide as the font is tall. The bar is `panel_cells` rows
+# of it — two by default, a 40-pixel bar — and every one of them is content:
+# the backdrop draws the edge between the bar and the desktop, so there is no
+# edge row to skip. The row worth aiming at is `ROWS - 2`, the applet row the
+# Start button and the clock sit on; `ROWS - 1` is the detail line under it.
 #
-# MEASURED FROM A SHOT AND NOT READ OUT OF THE FONT. The session picks its face
-# through fcft at run time and prints no grid, so the only place this number
-# exists is the picture: the pitch between two glyph rows in 01-welcome. A face
-# change moves it, and the tell is a --click on the bar that opens nothing.
+# DERIVED, NOT WRITTEN DOWN, so a run at another size aims at the same button.
+# A run at a non-default `panel_font` or `panel_cells` has a different grid and
+# the number has to come back out of a fresh 01-welcome shot — the session
+# picks its face through fcft and prints no grid, so the picture is the only
+# place it exists. The tell is a --click on the bar that opens nothing.
 #
-CELL_H=17
+CELL_H=20
 H=${SIZE#*x}
 ROWS=$((H / CELL_H))
-START_Y=$(((ROWS - 2) * CELL_H + CELL_H / 2))	# the bar's first content row
-BELOW_Y=$(((ROWS - 1) * CELL_H + CELL_H / 2))	# its second
-START_X=45					# inside the word `Start`
+START_Y=$(((ROWS - 2) * CELL_H + CELL_H / 2))	# the bar's applet row
+BELOW_Y=$(((ROWS - 1) * CELL_H + CELL_H / 2))	# its detail line
+START_X=45					# on the Start button's plate
 CLOCK_X=$(( ${SIZE%x*} - 60 ))			# inside the clock
 
 echo "==> $SIZE: $ROWS rows, the bar's content at y=$START_Y and y=$BELOW_Y"

@@ -63,11 +63,11 @@ const char *kb_human_size(unsigned long long bytes)
 /*
  * ── base64 ───────────────────────────────────────────────────────────────
  *
- * Here rather than in a state machine or a terminal, because both halves have
- * a caller outside either: OSC 52 carries a base64 selection, so libkvt's
- * escape parser decodes one, and an encoder is wanted well away from it.
+ * Here rather than in a state machine or a terminal, because the caller is
+ * outside either: OSC 52 carries a base64 selection, so libkvt's escape
+ * parser decodes one.
  *
- * libktui keeps a third table of its own. That library links nothing but
+ * libktui keeps a second table of its own. That library links nothing but
  * libc, and pulling libkbase in for a single OSC 52 write would cost it the
  * property every other file there depends on.
  */
@@ -85,40 +85,6 @@ static int b64_val(unsigned char c)
 	if (c == '/')
 		return 63;
 	return -1;
-}
-
-/*
- * Base64, out. Returns the length written, or -1 when it would not fit.
- *
- * A table and three shifts: the alphabet is the standard one with padding,
- * because everything this encodes is read by something that expects exactly
- * that — an OSC 52 selection, a recorded protocol message.
- */
-int kb_b64_encode(const void *in, size_t n, char *out, size_t outsz)
-{
-	static const char A[] =
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-	const unsigned char *p = in;
-	size_t need = (n + 2) / 3 * 4 + 1;
-	size_t k = 0;
-
-	if (!out || !outsz || (!p && n))
-		return -1;
-	if (need > outsz)
-		return -1;
-
-	for (size_t i = 0; i < n; i += 3) {
-		unsigned char b0 = p[i];
-		unsigned char b1 = i + 1 < n ? p[i + 1] : 0;
-		unsigned char b2 = i + 2 < n ? p[i + 2] : 0;
-
-		out[k++] = A[b0 >> 2];
-		out[k++] = A[((b0 & 0x3) << 4) | (b1 >> 4)];
-		out[k++] = i + 1 < n ? A[((b1 & 0xf) << 2) | (b2 >> 6)] : '=';
-		out[k++] = i + 2 < n ? A[b2 & 0x3f] : '=';
-	}
-	out[k] = '\0';
-	return (int)k;
 }
 
 /*

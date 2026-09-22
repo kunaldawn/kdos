@@ -3,8 +3,8 @@
 | Panel       | Keyboard shortcuts?                                          > |
 | Desktop     | where layout comes from                                        |
 | Hardware    | where key repeat comes from                                    |
-| Session     |                                                                |
-|>Input       |                                                                |
+| Session     | The pointer -------------------------------------------------- |
+|>Input       | where pointer settings come from                               |
 | Apps        |                                                                |
 | Boxes       |                                                                |
 | System      |                                                                |

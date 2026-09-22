@@ -3,7 +3,7 @@
 
 [0;37mLinux kernel, musl libc, every port built from source.[0m
 
-[0;33mλ[0m [0;37mdesktop       [0m start the KDOS desktop (alias of kdos-desktop)
+[0;33mλ[0m [0;37mkdos-desktop  [0m start the KDOS desktop from a tty
 [0;33mλ[0m [0;37mkdos help     [0m keybinds and commands
 [0;33mλ[0m [0;37mkdos app gimp [0m install an alien app into a container
 [0;33mλ[0m [0;37mkdos theme    [0m phosphor · amber · ice · bone
