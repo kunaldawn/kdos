@@ -46,9 +46,9 @@ make build
 There is no fetch step. The upstream tarballs live in the tree through Git LFS — 1022 archives
 across 853 ports — and the `sha256 =` line in each recipe sits beside the bytes it verifies.
 
-If `git lfs install` has not run before the clone, the working tree holds 129-byte pointer files
-where the archives should be. The first port to unpack one fails on a corrupt archive rather than
-on anything that names the cause. `git lfs pull` repairs such a clone.
+If `git lfs install` has not run before the clone, the working tree holds three-line text pointers
+of about 130 bytes where the archives should be. The first port to unpack one fails on a corrupt
+archive rather than on anything that names the cause. `git lfs pull` repairs such a clone.
 
 `make build` builds the container image, then runs the orchestrator inside it with
 `--network none`. The result is:
@@ -165,7 +165,7 @@ Terminals are laid out like this:
 |---|---|
 | `tty1` | The desktop. Autologin as `kdos` on the live medium; a password prompt on an installed system that was set up that way |
 | `tty2` | An ordinary login prompt — the recovery console |
-| `ttyS0` | A serial login, used by the test rig |
+| `ttyS0` | A login shell on the serial line, after one keypress. This is what the test rig drives |
 
 Switch between them with `Alt+F1` and `Alt+F2`.
 

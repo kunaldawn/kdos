@@ -75,17 +75,16 @@ struct kdos_conf {
 	char wallpaper[512];
 
 	/*
-	 * WHERE THE ONE BAR IS. There used to be two panels — a menu bar at
-	 * the top and a second panel at the bottom — which was two exclusive
-	 * zones, two hit maps and the window list drawn twice. It is one
-	 * taskbar on the bottom edge now, the shape every desktop of this
-	 * lineage settled on, and this key is what moves it or turns it off.
+	 * WHERE THE ONE BAR IS. There is a single taskbar: a second would be
+	 * a second exclusive zone, a second hit map and the window list drawn
+	 * twice. This key is what moves it or turns it off.
 	 *
 	 *   0 bottom (the default)   1 top   2 off
 	 *
-	 * `panel_bottom` is GONE. A comp.conf that still carries it is
-	 * reported by name rather than silently ignored, because the file
-	 * promises that a line which does not take effect says so.
+	 * `panel = bottom|top|off` is the comp.conf spelling. The retired
+	 * `panel_bottom` is reported by name rather than silently ignored,
+	 * because the file promises that a line which does not take effect
+	 * says so.
 	 */
 	int panel_edge;
 
@@ -206,9 +205,9 @@ void kdos_conf_load(void);
 
 /*
  * SIGHUP/Reconfigure: re-parse comp.conf. The crt, idle, lid_close and
- * wallpaper keys apply live; the chrome keys (panel_bottom, desktop_icons, chrome_font,
- * clock_format) are a child's command line and stay startup-only — a
- * change is LOGGED, never half-applied.
+ * wallpaper keys apply live; the chrome keys (panel, desktop_icons,
+ * chrome_font, clock_format) are a child's command line and stay
+ * startup-only — a change is LOGGED, never half-applied.
  */
 void kdos_conf_reload(void);
 
@@ -284,10 +283,9 @@ void kdos_winpos_finish(void);
 struct ssd;
 void kdos_group_add(struct view *view);
 void kdos_group_remove(struct view *view);
-void kdos_group_next(struct view *view, bool reverse);
+void kdos_group_next(struct view *view);
 /* From the focus path: this member is now the one showing. */
 void kdos_group_activate(struct view *view);
-int kdos_group_size(struct view *view);
 /* From ssd_update_title(): (re)draw the tab strip over the title area. */
 void kdos_group_ssd_update(struct ssd *ssd);
 /* From ssd_titlebar_destroy(): the strip went with the titlebar. */

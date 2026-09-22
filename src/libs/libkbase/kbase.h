@@ -35,7 +35,6 @@ void kb_set_oom_handler(kb_oom_fn fn);
 
 /* Prefixes kb_die/kb_warn and the OOM message. */
 void kb_set_progname(const char *name);
-const char *kb_progname(void);
 
 void kb_die(const char *fmt, ...)
 	__attribute__((noreturn, format(printf, 1, 2)));
@@ -76,10 +75,6 @@ const char *kb_human_size(unsigned long long bytes);
  * ranks a correct list backwards.
  */
 int kb_fuzzy(const char *hay, const char *needle);
-
-/* The best score over several fields — a name, an id, keywords, a command —
- * so the field that happens to be checked first cannot decide the ranking. */
-int kb_fuzzy_best(const char *const *fields, int n, const char *needle);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Files
@@ -198,41 +193,6 @@ int kb_trash_list(KbTrashItem **out);	/* count; caller free()s *out       */
 int kb_trash_restore(const char *name, char *to, size_t tn);
 int kb_trash_remove(const char *name);
 int kb_trash_empty(void);		/* items removed, or -1             */
-
-/* ────────────────────────────────────────────────────────────────────────
- * tar
- *
- * A minimal ustar stream reader and writer: regular files, short names, no
- * devices, no hard links, no sparse members. The appbox image path does NOT
- * come through here — kdos-appbox drives podman over the overlay and podman
- * owns the image bytes — so the library selftest is the only caller in the
- * tree.
- *
- * A member whose header checksum does not match, and a GNU long name that
- * does not fit KbTarEntry, are both -1 from kb_tar_next rather than a member
- * the caller then acts on.
- * ──────────────────────────────────────────────────────────────────────── */
-
-typedef struct {
-	char name[512];
-	long long size;
-	char typeflag;
-} KbTarEntry;
-
-typedef struct {
-	int fd;
-	long long remain;	/* payload left in the current member      */
-	int pad;		/* padding left after it                   */
-} KbTarIn;
-
-int kb_tar_open(KbTarIn *t, const char *path);
-int kb_tar_next(KbTarIn *t, KbTarEntry *e);	/* 1 got one, 0 end, -1 err */
-int kb_tar_read(KbTarIn *t, void *buf, size_t n);
-void kb_tar_close(KbTarIn *t);
-
-int kb_tar_put_header(int fd, const char *name, long long size);
-int kb_tar_pad(int fd, long long size);	/* zero-fill to the block boundary */
-int kb_tar_finish(int fd);		/* the two zero blocks that end it */
 
 const char *kb_runtime_dir(void);	/* $XDG_RUNTIME_DIR, or /tmp       */
 const char *kb_home_dir(void);		/* $HOME, or /root                 */
@@ -463,8 +423,6 @@ void kb_sha256_final(KbSha256 *s, char out[65]);	/* lowercase hex */
 
 /* Streamed, so a 552 MB tarball costs one 64 K buffer. -1 on read error. */
 int kb_sha256_file(const char *path, char out[65]);
-/* 0 match, 1 mismatch, -1 unreadable. Comparison is case-insensitive. */
-int kb_sha256_check(const char *path, const char *want);
 
 /*
  * MD5 — a FILE NAME, never a security claim.
@@ -526,9 +484,8 @@ int kb_uri_path(const char *uri, char *out, size_t n);
  * ──────────────────────────────────────────────────────────────────────── */
 
 typedef struct {
-	int fd;			/* ruleset fd, -1 once enforced or freed */
+	int fd;			/* ruleset fd, -1 once enforced            */
 	int abi;		/* what the RUNNING kernel supports        */
-	int nrules;
 	int net_handled;	/* TCP is being policed at all             */
 	int scope_handled;	/* abstract sockets and signals scoped     */
 } KbLandlock;
@@ -554,9 +511,10 @@ int kb_landlock_new(KbLandlock *ll, int net_off);
 int kb_landlock_allow(KbLandlock *ll, const char *path, int write);
 int kb_landlock_allow_tcp(KbLandlock *ll, uint16_t port, int connect);
 
-/* Sets PR_SET_NO_NEW_PRIVS then restricts. Irreversible. */
+/* Sets PR_SET_NO_NEW_PRIVS then restricts. Irreversible, and it closes the
+ * ruleset fd. A caller that builds a ruleset and then does not enforce it owns
+ * that fd and must close() it, or the descriptor leaks into every child. */
 int kb_landlock_enforce(KbLandlock *ll);
-void kb_landlock_free(KbLandlock *ll);
 
 /*
  * Base64. The decoder returns the byte count, or -1 when the input is not

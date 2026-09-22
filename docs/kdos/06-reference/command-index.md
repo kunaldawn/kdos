@@ -59,7 +59,10 @@ Full descriptions are in [The kdos command](../04-programs/kdos-command.md).
 
 ## Desktop surfaces
 
-All 53 names below are `kdos-shell`. Each is a surface drawn on the character-cell grid.
+All 53 names below are `kdos-shell`, and they reach 52 distinct surfaces: `kdos-launcher` and
+`kdos-palette` are one search program that reads the name it was invoked by. Every one of them is
+drawn as a grid of character cells and handed to the compositor as an ordinary Wayland surface; the
+frame around that surface is the compositor's own, drawn with pango.
 
 | Command | What it does | Documented in |
 |---|---|---|
@@ -199,7 +202,8 @@ anything. The full protocol is in [Filesystem and IPC](filesystem-and-ipc.md#soc
 | `kinstall` | The installer | [kinstall](../04-programs/kinstall.md) |
 
 `ksvc` takes `start`, `stop`, `restart`, `status`, `enable`, `disable`, `list`, `check`,
-`supervise` and `help`. `kdos-bootctl` takes `status`, `select`, `try`, `set-slot`, `mark-good`,
+`supervise`, `stop-supervised` and `help`. The last three are what an init script calls; the rest
+are what a person types. `kdos-bootctl` takes `status`, `select`, `try`, `set-slot`, `mark-good`,
 `attempts`, `active`, `crypt`, `theme [--print] ACCENT` and `palette [ACCENT]`.
 
 ## Tools and helpers
@@ -216,7 +220,9 @@ anything. The full protocol is in [Filesystem and IPC](filesystem-and-ipc.md#soc
 | `kdos-fetch-app` | Install an alien application from a network | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-fetch-static` | Fetch a single verified static binary | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 
-`kdos-term` takes `-e`, `--title`, `--font`, `-D DIR`, `--tty` and `--dump WxH`. `kdos-mpctl watch`
+`kdos-term` takes `-e` (also spelled `--exec`), `--title`, `--app-id`, `--font`, `--size WxH`,
+`--float`, `-D DIR` (also `--working-directory`), `--tty` and `--dump WxH`. Everything after `--`
+is the command. `kdos-mpctl watch`
 writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle`.
 
 ## Privileged helpers

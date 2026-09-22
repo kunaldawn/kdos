@@ -3,8 +3,12 @@
 This page covers working in the KDOS desktop: the panel, the Start menu, windows and workspaces,
 the complete keyboard shortcut table, notifications, files, locking, displays and removable media.
 
-Everything you see is drawn as a grid of character cells.
-[The design language](../03-architecture/design-language.md) explains why, and
+Every surface KDOS paints is a grid of character cells — the panel and everything that pops out of
+it, the desktop icons, the lock screen, the boot splash and `tty1`, all drawn by `libktui` in one
+palette at Terminus 32px. The compositor's own chrome is the exception: titlebars, the root menu
+and the window-switcher OSD are drawn with pango at a size matched to the cell, so they line up
+with the grid without being on it. An application running in a box draws whatever its toolkit
+draws. [The design language](../03-architecture/design-language.md) explains why, and
 [kdos-shell](../04-programs/kdos-shell.md) explains how.
 
 ![The KDOS desktop: the panel along the bottom, desktop icons on the wallpaper, and a terminal](../../screenshots/desktop.png)
@@ -18,36 +22,47 @@ Everything you see is drawn as a grid of character cells.
 | Icons on the wallpaper | `kdos-desk` |
 | Everything that pops up from the panel | Other names of the same `kdos-shell` binary |
 
-There is one panel, on the bottom edge, two rows tall. The second row is not padding: it carries
-the clock's date, a window button's own title under its application name, and the live meters
-strip.
+There is one panel per screen, on the bottom edge, two rows tall. The second row is not padding:
+it carries the clock's date, the live meters strip, and — on a bar whose window buttons carry
+their names — each window's own title under its application name.
 
 ## The panel
 
-Reading left to right:
+Left to right, and these are the pieces that are always there. The occasional ones — the media
+keys, the clipboard depth, the CPU readout, the recording lamps, the update and restart marks, the
+stutter chip — are widgets in the same list, and [the notification area](#the-notification-area)
+below is how the list is set.
 
 | Element | Left click | Middle click | Right click |
 |---|---|---|---|
-| Start button | Opens the Start menu | — | The System menu |
-| Quick launch | Launches the pinned application | — | Unpins it |
-| Window list | Toggles the window: minimises the one you are in, restores one you are not, opens the member list for a group | Opens a new instance | The window menu |
-| Meters strip | [`kdos-res`](../04-programs/kdos-res.md) | `kdos stutter` | `kdos-energy` |
+| Start button | Opens the Start menu | Run a command | The System menu |
+| Window list | Pinned and not running: launches it. Running: toggles the window, or opens the member list for a group | Launches another instance | The window menu, or Unpin on a pinned button with nothing running |
+| Meters strip | `btop` in a terminal | The stutter report | The energy report |
 | Workspace squares | Switch workspace | — | — |
 | Tray items | Activate the item | Secondary activate | The item's context menu |
 | Overflow chevron | The status popup | — | — |
-| Volume | A slider you can drag | Mute | — |
-| Network | The network manager | — | — |
-| Clock and battery | The calendar | — | — |
+| Network | The network manager | — | The network manager |
+| Volume | A slider you can drag; the wheel over it changes the volume | Mute | Audio devices and volumes |
+| Battery | The calendar | — | Settings' Session page |
+| Notification badge | The notification centre | Do not disturb, on and off | — |
+| Clock | The calendar — one popup with the battery, so either cell shuts what the other opened | — | — |
 | Show desktop (the last column) | Minimises every window, or brings every minimised one back when nothing is on screen | — | — |
 
-To reorder the quick-launch row, drag an icon along it. The order is written to
-`~/.config/kdos/favorites`. Dropping an icon off the row does nothing.
+The pinned launchers and the window list are one row: a pinned application that is running
+occupies its pinned slot rather than appearing twice, and the underline under a button is what
+says it is running at all. Drag a pinned icon along the row to reorder it; the order is written to
+`~/.config/kdos/favorites`, and dropping an icon off the row does nothing.
 
-The panel degrades in four passes as the bar fills up, and the order is the priority: first the
-meters go, then the Start button collapses to its mark, then the quick-launch row goes. No pass
-ever drops a window button. Before any of that, the window list drops its *text* and every window
-keeps a button showing its icon and its minimised state, because a picture that identifies the
-window is worth more than a word beside it.
+By default a window button is a picture with no label — `task_labels = no` in
+`~/.config/kdos/panel.conf`, which is what makes this a dock. `auto` lets the bar decide, and
+`yes` keeps the label whatever the room.
+
+The panel degrades in four passes as the bar fills up, and the order is the priority: pass 0 is
+the whole bar, pass 1 drops the meters, pass 2 also collapses the Start button to its mark, and
+pass 3 also drops the pinned applications that are not running. No pass ever drops a window
+button; windows too many for the row go behind a `+N` cell, which the wheel over the row also
+steps. On `task_labels = auto` the row gives up its *text* before any of that, because a picture
+that identifies the window is worth more than a word beside it.
 
 ### The meters strip
 
@@ -56,13 +71,14 @@ memory and the network — the network drawn as a mirrored pair, received above 
 accent colour and sent below in the secondary, on one shared scale. Summing them would hide the
 only thing anybody watches a network meter for.
 
-Choose which meters appear with `meters =` in `~/.config/kdos/panel.conf`. Five are available:
+Choose which meters appear with `meters =` in `~/.config/kdos/panel.conf`. Six are available:
 
 | Name | Shows | Cells |
 |---|---|---|
 | `cpu` | Processor load, as a percentage band | 5 |
 | `ram` | Memory in use, as a percentage band | 5 |
-| `disk` | Filesystem fullness, as a percentage band | 5 |
+| `disk` | Fullness of `/`, as a percentage band | 5 |
+| `temp` | The hottest sensor, on a fixed 0–100 °C band | 5 |
 | `net` | Received and sent, mirrored | 6 |
 | `diskio` | Read and written, mirrored | 6 |
 
@@ -91,8 +107,10 @@ which is the only way to tell three terminals apart by looking.
 Press `Super+A`, or click the Start button.
 
 The left column is what you use: pinned applications above the rule, most-frequently-launched
-below it. The right column carries Places, the settings and the power actions. **All Programs**
-opens the category list in place rather than cascading.
+below it. The right column carries Places, a Recent group where anything has been opened, and the
+System group under it. The five power actions — Lock Screen, Suspend, Restart, Log Off, Shut Down
+— are the footer, and the search reaches them as well as the columns. **All Programs** opens the
+category list in place rather than cascading.
 
 Start typing to search, and the search covers more than applications. Every fixed row carries
 synonyms, so typing `wifi` finds the network manager. Applications that are in the catalogue but
@@ -100,12 +118,12 @@ not installed appear under **INSTALL FROM THE MEDIUM**, and choosing one install
 and opens it in the same action.
 
 An application that runs in a container is marked `[box]`, because its first launch costs a
-container start and you are entitled to know before you click. The star at the right edge of a row
-pins that application to the quick-launch row.
+container start and you are entitled to know before you click. The mark at the right edge of a row
+pins that application to the panel's launcher row.
 
 Terminal programs are applications here. btop, lazygit, yazi, aerc, calcurse, visidata, nmtui and
 the rest of the installed catalogue each carry a desktop entry, so they appear as rows in the menu,
-answer to the search, pin to the quick-launch row and open with a double-click, exactly like
+answer to the search, pin to the panel and open with a double-click, exactly like
 anything with a window of its own. Each entry names the program rather than an emulator, and the
 desktop supplies the terminal, which is `foot`. The entry belongs to the package, so installing a
 program adds its row and removing it takes the row away.
@@ -115,8 +133,9 @@ program adds its row and removing it takes the row away.
 ## Windows
 
 Window frames are drawn by the compositor and belong to the same visual set as everything else:
-square corners, a two-pixel accent border, a title bar carrying the same double rule the cell grid
-draws with, and hard-edged block buttons.
+square corners, a two-pixel accent border, and hard-edged block buttons. The title is pango text
+in `Terminus (TTF)` at 24 points, which at 96dpi is 32 pixels — one cell of the grid everything
+else is drawn on, so the bar is a cell tall even though it is not made of cells.
 
 A frame may carry a small coloured square at the left of the title. That is a box chip, showing
 which container the window came from. It appears only for a box that has been given its own accent
@@ -131,7 +150,9 @@ draw their own decorations and have no title bar to aim at, which is why the `Su
 ## Keyboard shortcuts
 
 The tables below are the complete shipped set, from `~/.config/kdos-comp/rc.xml`, where `Super` is
-written `W`. `Super+F1` opens the same card generated from your own file.
+written `W`. `Alt+Tab`, `Alt+Shift+Tab` and `Alt+F4` are not in that file: they are compositor
+defaults, which its `<default />` line is what pulls in. `Super+F1` opens the same card generated
+from your own file.
 
 ### Applications and shell surfaces
 
@@ -231,8 +252,10 @@ Each accessory is summoned over whatever is on the screen and dismissed leaving 
 
 ### Workspaces
 
-Four workspaces ship, named `main`, `www`, `hack` and `misc`. The panel's strip shows a name where
-it has room for one.
+Four workspaces ship, named `main`, `www`, `hack` and `misc`. The panel draws each as a small
+screen with a label under it, and the label is the workspace's own name only where that name is
+one or two characters wide — never a truncation, because two characters of `Workspace 3` is `Wo`.
+The four shipped names are longer than that, so the strip reads `1 2 3 4`.
 
 | Shortcut | Does |
 |---|---|
@@ -243,8 +266,9 @@ it has room for one.
 | `Super+Shift+,` / `Super+Shift+.` | Send the window to the previous / next workspace |
 
 Keys for workspaces 5 to 9 are bound already, so raising `<desktops number>` in `rc.xml` makes them
-work with no further edit. The panel's strip has room for four digits and does not scroll, so past
-four the wheel over the strip is the pointer's route there.
+work with no further edit. The strip grows two cells per workspace to match, and the wheel over it
+steps workspaces, wrapping at the ends. Where the bar cannot afford the squares they collapse to a
+compact `N/M` readout, which is a readout and not a control: only what was drawn is clickable.
 
 ### Session, screen and media
 
@@ -314,13 +338,16 @@ by nothing is one you cannot tell from a broken key.
 
 `kdos-desk` draws the desktop. Right-click the wallpaper for the verbs that mean *here* — Open
 Terminal Here, Find Here, Add to Places, Git Status Here — then New Folder, New File, Sort Icons,
-Refresh, Applications, Change Wallpaper, Display Settings and Settings. Right-click an icon
-instead and you get the file verbs: Open, Peek, Edit, Open Terminal Here, Share, Git Status Here,
-Extract Here and Move to Trash, with Find Here and Add to Places added when the icon is a folder.
-Rename is there too, and Empty Trash on the Trash icon. `~/Desktop` is created if it is missing.
+Refresh, Applications, Change Wallpaper, Display Settings, Settings, and the three that act on the
+whole desktop: Show Desktop, Screenshot and Lock Screen. Right-click an icon instead and you get
+the file verbs: Open, Peek, Edit, Open Terminal Here, Share, Git Status Here, Extract Here and
+Move to Trash, with Find Here and Add to Places added when the icon is a folder. Rename is there
+too, and Empty Trash on the Trash icon. `~/Desktop` is created if it is missing.
 
-That file half is the same table `kdos-pick` and `mc`'s `F2` read, so a verb arrives on all three
-at once, and a verb whose program is not installed is offered nowhere.
+That file half is `libkxdg`'s table, which `kdos-pick` reads too, so a verb arrives on both at
+once and a verb whose program is not installed is offered on neither. `mc`'s `F2` menu carries the
+same verbs from a shipped file, `~/.config/mc/menu`, which a missing program does not hide a row
+from.
 
 No icon is selected until you select one. Arrow keys, `Tab` or a click pick one out; `Esc`, or a
 click on bare wallpaper, puts it back down. The bottom row of the desktop says what the keys do
@@ -343,14 +370,16 @@ rather than by their own toolkit.
 Double-clicking a file opens it with the handler for its type. `kdos-openwith` chooses a different
 one.
 
-A spreadsheet and a data file open in different programs on purpose. A `.csv` goes to `visidata`,
-which is built for exploring columns; an `.xlsx` goes to `sc-im`, which is a spreadsheet and reads
-and writes the format in C with nothing in between, so a file somebody sent you can be handed back
-as the file they sent. `visidata` can open an `.xlsx` too if you ask it to, which is what
-`openpyxl` is on the image for.
+A `.csv` goes to `visidata`, which claims `text/csv` in its own desktop entry and is built for
+exploring columns. A spreadsheet is `sc-im`, which reads and writes `.xlsx` in C with nothing in
+between, so a file somebody sent you can be handed back as the file they sent — but its entry
+claims no MIME type, so it is what **Open With** offers rather than what a double-click picks.
+`visidata` can open an `.xlsx` too if you ask it to, which is what `openpyxl` is on the image for.
 
-A link opens the same way a file does. `mailto:` reaches `aerc`; `http`, `https` and a saved page
-reach the browser you installed as a container, and `w3m` where no browser is installed. A link
+A link opens the same way a file does. `mailto:` reaches `aerc`; `text/html`, `http` and `https`
+reach `w3m`, which is a default in `/etc/xdg/mimeapps.list` and not a fallback — a text browser
+answers the same way on `tty1` as it does under a compositor. A browser installed as a container
+publishes itself as a candidate, and `kdos-openwith` is how you make it the default. A link
 clicked on the desktop or in a terminal program goes through `xdg-open`, which here *is* the same
 resolver a double-click uses. A link clicked inside a containerised application goes to the portal
 instead, which resolves it itself — but out of the same tables, so both end at the same handler. A
@@ -378,21 +407,31 @@ indistinguishable from a crashed session. Set any `idle_*` key in `~/.config/kdo
 turn them on anyway; the shipped values, commented out, are 300, 600 and 900 seconds. See
 [Configuration](../06-reference/configuration.md).
 
-Suspend, restart and shut down are in the Start menu's footer and in the System menu. Each asks
-before acting.
+Lock, suspend, restart, log off and shut down are the Start menu's footer, and the same five sit
+on the System menu. Restart, log off and shut down each ask first; suspend does not, because it is
+the one power action that undoes itself.
 
 ## Displays
 
-`Super+P` opens `kdos-display`: the outputs, their modes, scale, and which is enabled. Press `m`
-for the list of modes the selected monitor published, `Enter` to take the highlighted one, and
-`Escape` to leave the screen as it was.
+`Super+P` opens `kdos-display`: the outputs, their modes, scale, and which is enabled.
 
-Screens are laid out edge to edge from the left in list order. A vertical arrangement, an overlap
-or a deliberate gap cannot be expressed. That is a deliberate narrowing, since what people usually
-want is an order.
+Nothing is applied until you press `Enter`. Every key before it edits a plan — `m` opens the list
+of modes the selected monitor published, `Space` turns an output on and off, `s` cycles the scale,
+`t` the rotation, and `[` and `]` move a screen in the order. `Esc` leaves without applying.
 
-Each output gets its own panel and its own desktop icons. Both panels list every window rather than
-only that output's; see [Known gaps](../06-reference/known-gaps.md).
+An apply that the compositor accepts is still not kept: a mode a monitor cannot show comes back as
+a success and a screen you cannot read, so `Enter` opens a fifteen-second countdown. `K` keeps the
+result and writes it to `~/.config/kdos/displays.conf`; `R` or the timeout puts back the snapshot
+taken before the first edit. `kdos-display --apply` replays that file headless, which is what a
+session start and a hotplug run.
+
+Screens are laid out edge to edge from x=0 in list order. A vertical arrangement, an overlap or a
+deliberate gap cannot be expressed. That is a deliberate narrowing, since what people usually want
+is an order.
+
+Each output gets its own panel and its own desktop icons, and each panel lists the windows on its
+own screen. The notification daemon is not per-output — it owns one bus name — so a toast lands
+wherever the compositor puts it.
 
 ## Removable media and devices
 
@@ -400,32 +439,43 @@ only that output's; see [Known gaps](../06-reference/known-gaps.md).
 rather than by path, and the mount is performed by a root daemon that decides the device, the
 mountpoint and the options itself.
 
-Everything removable is mounted `nosuid,nodev` and, by default, `noexec`. The mountpoint is
-`/media/<user>/<label>`.
+Everything removable is mounted `nosuid,nodev` and, by default, `noexec` — `exec = yes` in
+`/etc/kdos/mountd.conf` is how you say you meant it. The mountpoint is `/media/<user>/<label>`, or
+the device name where the filesystem has no label.
 
-The daemon refuses to offer four things: an internal disk, a filesystem the kernel cannot mount,
-anything named in `/etc/fstab`, and the medium this system booted from. See
-[the daemons](../04-programs/daemons.md).
+The daemon refuses to offer five things: an internal disk, a filesystem this kernel cannot mount,
+anything already mounted, anything named in `/etc/fstab`, and the medium this system booted from.
+See [the daemons](../04-programs/daemons.md).
 
 ![kdos-devices: removable media, cameras and microphones on one surface](../../screenshots/devices.png)
 
 ## Who is using the camera and microphone
 
 The panel shows a lamp naming the application currently recording — the application's own name, not
-`pipewire`. The microphone lamp is also a control: click it to mute, or press the mic-mute key.
+`pipewire`. There are three: the microphone, the camera, and the screen, which is its own lamp
+because somebody watching your screen is not the same event as somebody watching your face. The
+microphone lamp is also a control: click it to mute, or press the mic-mute key.
+
+The microphone counts a PipeWire capture node only while it is *running*, not merely open, because
+a lamp that cannot tell those apart is one nobody believes twice. The camera is found by walking
+`/proc` for an open descriptor on `/dev/video*`, since almost nothing takes a camera through the
+portal.
 
 The tooltip names the container the application is in, which on a machine where every application
 is containerised is the half that says *which* Firefox.
 
 ## When the desktop misbehaves
 
-A stutter chip appears in the panel when the compositor has dropped at least three frames in the
-last ten seconds. Click it for the attribution: which frames were late, by how much, whether the
+A stutter chip appears when the compositor has dropped at least three frames in the last ten
+seconds — behind the overflow chevron by default, since it is one of the occasional widgets
+`overflow =` lists. Click it for the attribution: which frames were late, by how much, whether the
 compositor itself was slow, and who was busy at the time. The chip goes away when the desktop stops
 missing frames.
 
-For everything else, the meters strip is the way in — left click for
-[`kdos-res`](../04-programs/kdos-res.md), middle for `kdos stutter`, right for `kdos-energy`. When
+For everything else, the meters strip is the way in — left click opens `btop` in a terminal, middle
+the stutter attribution and right the per-application energy share. The panel's own CPU readout
+opens [`kdos-res`](../04-programs/kdos-res.md), which is the monitor that can name a boxed
+application rather than its processes. When
 a fullscreen application has stopped answering and owns the screen, `Super+F2` opens the Team
 Monitor: `Enter` asks it to close politely, and `k` sends the process behind it a SIGTERM.
 

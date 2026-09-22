@@ -82,22 +82,6 @@ static void eq_int(long long got, long long want, const char *what)
 /* ──────────────────────────────────────────────────────────────────────── */
 
 
-/* The ustar header checksum: the sum of all 512 bytes with the checksum field
- * itself read as spaces, six octal digits then NUL and a space. A reader that
- * checks it refuses any header without one, so a fixture that wants a later
- * field tested has to carry it. */
-static void tar_checksum(unsigned char *hdr)
-{
-	unsigned sum = 0;
-
-	memset(hdr + 148, ' ', 8);
-	for (int i = 0; i < 512; i++)
-		sum += hdr[i];
-	snprintf((char *)hdr + 148, 7, "%06o", sum & 0777777);
-	hdr[154] = 0;
-	hdr[155] = ' ';
-}
-
 static void test_colour(void)
 {
 	printf("libkcolor\n");
@@ -763,12 +747,6 @@ static void test_base(void)
 	/* camelCase is a word boundary, or every application id is one word. */
 	ok(kb_fuzzy("SystemMonitor", "sm") > kb_fuzzy("Assembler", "sm"),
 	   "fuzzy: a capital inside a word starts one");
-	{
-		const char *f[3] = { "Files", "org.kdos.pick", "browse files" };
-		ok(kb_fuzzy_best(f, 3, "pick") > 0,
-		   "fuzzy_best takes the best field, not the first");
-		ok(kb_fuzzy_best(f, 3, "zzz") == 0, "fuzzy_best: no field matches");
-	}
 
 	/* kb_buf_printf must never truncate: a fixed stack buffer here once cut
 	 * a generated btop theme in half, and the half-file looked plausible. */
@@ -815,87 +793,20 @@ static void test_base(void)
 	eq_str(j.p, "\"\"", "json NULL is an empty string");
 	kb_buf_free(&j);
 
-	/* ustar round-trip — the appbox image goes out and comes back through
-	 * this, and a wrong header is a `podman load` that fails at 11 GB. */
+	/* A scratch tree for the filesystem helpers. Every component is made,
+	 * because a caller handed a path two levels deep gets one mkdir and a
+	 * missing parent otherwise. */
 	char dir[] = "/tmp/kdos-selftest.XXXXXX";
 	ok(mkdtemp(dir) != NULL, "scratch directory");
 
-	char *tarpath = kb_path_join(dir, "t.tar");
-	int fd = open(tarpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	ok(fd >= 0, "create a tar");
-	const char *payload = "hello tar";
-	kb_tar_put_header(fd, "blobs/sha256/deadbeef", (long long)strlen(payload));
-	ok(write(fd, payload, strlen(payload)) == (ssize_t)strlen(payload),
-	   "write a member");
-	kb_tar_pad(fd, (long long)strlen(payload));
-	kb_tar_finish(fd);
-	close(fd);
-
-	KbTarIn t;
-	KbTarEntry e;
-	ok(kb_tar_open(&t, tarpath) == 0, "reopen the tar");
-	ok(kb_tar_next(&t, &e) == 1, "read a member");
-	eq_str(e.name, "blobs/sha256/deadbeef", "member name survives");
-	ok(e.size == (long long)strlen(payload), "member size survives");
-	char back[32] = {0};
-	ok(kb_tar_read(&t, back, sizeof(back) - 1) == (int)strlen(payload),
-	   "member payload length");
-	eq_str(back, payload, "member payload bytes");
-	ok(kb_tar_next(&t, &e) == 0, "end of archive");
-	kb_tar_close(&t);
-
-	/* And a real tar has to accept what we wrote. */
-	KbArgv a = {0};
-	kb_argv_add(&a, "tar");
-	kb_argv_add(&a, "-tf");
-	kb_argv_add(&a, tarpath);
-	kb_argv_end(&a);
-	char listing[256];
-	ok(kb_run_capture(&a, listing, sizeof(listing)) == 0,
-	   "GNU tar reads our archive");
-	eq_str(listing, "blobs/sha256/deadbeef", "GNU tar agrees on the name");
-
-	/*
-	 * A size field that does not fit is a REFUSAL, not a number. GNU
-	 * base-256 puts the size in the low bytes of a 12-byte field, and
-	 * eleven shifts of 8 overflow a long long — undefined behaviour whose
-	 * result is negative, which the GNU-long-name branch then hands to
-	 * read() as a length: 2^63 bytes into a 512-byte stack buffer.
-	 *
-	 * THE HEADER CARRIES A VALID CHECKSUM, or the reader refuses it for
-	 * that instead and the size is never parsed — the guard under test
-	 * would not run at all.
-	 */
-	char *badpath = kb_path_join(dir, "bad.tar");
-	unsigned char hdr[512] = {0};
-	memcpy(hdr, "longname", 8);
-	hdr[124] = 0x80;	/* base-256 marker */
-	hdr[128] = 0x80;	/* lands in bit 63 after the shifts */
-	hdr[156] = 'L';		/* GNU long name: the payload is a length */
-	memcpy(hdr + 257, "ustar\0" "00", 8);
-	tar_checksum(hdr);
-	int bfd = open(badpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	ok(bfd >= 0, "create a corrupt tar");
-	ok(write(bfd, hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr), "write its header");
-	close(bfd);
-	KbTarIn bt;
-	KbTarEntry be;
-	ok(kb_tar_open(&bt, badpath) == 0, "open the corrupt tar");
-	ok(kb_tar_next(&bt, &be) == -1, "a size that overflows is refused, not read");
-	kb_tar_close(&bt);
-
-	/* And a header whose checksum does not add up is refused before any
-	 * field of it is believed. */
-	hdr[148] = '9';		/* corrupt the checksum itself */
-	bfd = open(badpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	ok(bfd >= 0 &&
-	   write(bfd, hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr),
-	   "write a header with a wrong checksum");
-	close(bfd);
-	ok(kb_tar_open(&bt, badpath) == 0, "open it");
-	ok(kb_tar_next(&bt, &be) == -1, "a header that does not add up is refused");
-	kb_tar_close(&bt);
-	free(badpath);
+	char *nested = kb_path_join(dir, "a/b");
+	ok(kb_mkdir_p(nested) == 0, "mkdir_p makes every component");
+	ok(kb_is_dir(nested), "and the deepest one is there");
+	char *leaf = kb_path_join(nested, "f");
+	ok(kb_write_file(leaf, "x") == 0, "write a file under it");
+	ok(kb_path_exists(leaf), "and it is on disk");
+	free(leaf);
+	free(nested);
 
 	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
 	 * hang: the child inherited the pipe's read end, so closing ours left
@@ -915,7 +826,6 @@ static void test_base(void)
 	eq_str(all.p + all.n - 7, "100000\n", "and the last line is intact");
 	kb_buf_free(&all);
 
-	free(tarpath);
 	kb_rmtree(dir);
 	ok(!kb_path_exists(dir), "rmtree removes the tree");
 
@@ -939,7 +849,9 @@ static void test_base(void)
 		   "a read rule on a directory is accepted");
 		ok(kb_landlock_allow(&ll, "/nonexistent-kdos-selftest", 0) == -ENOENT,
 		   "a missing path reports ENOENT rather than being ignored");
-		kb_landlock_free(&ll);
+		/* Never enforced: enforcement is irreversible and would sandbox
+		 * the rest of this process. The ruleset fd is ours to close. */
+		close(ll.fd);
 	}
 }
 
@@ -1291,16 +1203,13 @@ static void test_pkg(void)
 	free(dbdir);
 
 	KpOwned *ow = kp_owned_load(&owned_conf);
-	ok(kp_owned_has(ow, "usr/bin/owned"), "a file an installed package owns");
-	ok(!kp_owned_has(ow, "usr/bin/stray"),
-	   "a file left by a hand install is owned by nobody");
-	ok(!kp_owned_has(ow, "usr/share"),
-	   "directories are shared and never owned");
 	/* An overwrite has to know WHO to take the path from. */
 	eq_str(kp_owned_owner(ow, "usr/bin/owned"), "owner",
-	       "the claim names its package");
+	       "a file an installed package owns names its package");
 	ok(kp_owned_owner(ow, "usr/bin/stray") == NULL,
-	   "an unowned path has no owner to take it from");
+	   "a file left by a hand install is owned by nobody");
+	ok(kp_owned_owner(ow, "usr/share") == NULL,
+	   "directories are shared and never owned");
 	kp_owned_free(ow);
 
 	/* `--overwrite` moves the path out of the old owner's manifest. Left
@@ -1312,8 +1221,8 @@ static void test_pkg(void)
 	ok(kp_db_drop_paths(&owned_conf, "owner", drop, 1) == 0,
 	   "and dropping it twice is a no-op");
 	ow = kp_owned_load(&owned_conf);
-	ok(!kp_owned_has(ow, "usr/bin/owned"), "nothing claims it now");
-	ok(!kp_owned_has(ow, "usr/share"),
+	ok(kp_owned_owner(ow, "usr/bin/owned") == NULL, "nothing claims it now");
+	ok(kp_owned_owner(ow, "usr/share") == NULL,
 	   "the rest of the manifest survived the rewrite");
 	kp_owned_free(ow);
 	char *dbcheck = kb_path_join(dir, "db/owner");
@@ -1741,7 +1650,6 @@ static void test_build(void)
 	ok(kj_num(j, "n", 0) == -150.0, "exponents and signs are read");
 	ok(kj_bool(j, "t", 0) && !kj_bool(j, "f", 1), "true and false");
 	ok(kj_bool(j, "z", 1) == 1, "null falls back to the default");
-	ok(kj_len(kj_get(j, "arr")) == 2, "arrays count their members");
 	eq_str(kj_str(kj_get(j, "arr")->child->next, "k", ""), "v",
 	       "an object inside an array");
 	ok(kj_str(j, "missing", "def") != NULL &&
@@ -2880,8 +2788,8 @@ static void test_pack(void)
 	ok(kpk_footer_read(p2, &f, NULL) == 0, "and reads again once restored");
 
 	/* a footer whose offsets point past the end of the file. Without the
-	 * consistency check this is a read of the whole address space — the
-	 * kb_tar base-256 lesson on a different field. */
+	 * consistency check this is a read of the whole address space: a length
+	 * taken from the file and never measured against the file. */
 	{
 		uint8_t buf[KPK_FOOTER_LEN];
 		KpkFooter bad = f;
@@ -3209,41 +3117,6 @@ static int wm_num(const char *s)
 	return atoi(s);
 }
 
-/*
- * The gap rule, asserted against what the search hands its validator rather
- * than against a rectangle it returns — the rule IS which of the two candidate
- * edges carries the padding.
- *
- * The moving box arrives ALREADY PADDED by the gap (kdos-comp builds it that
- * way in src/edges.c:28-31), so an unpadded opposing edge leaves that padding
- * standing as the space between two windows placed beside each other, and an
- * aligned edge padded outward by the same amount cancels it so the two line up
- * exactly. Swap the two pads and both rows fail.
- */
-typedef struct {
-	int want_cur;		/* the mover edge offset that picks one call */
-	int seen;
-	int oppose;
-	int align;
-} WmGapProbe;
-
-static void wm_gap_probe(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
-			 KwmEdge align, int lesser, void *user)
-{
-	WmGapProbe *p = user;
-
-	(void)best;
-	(void)tgt;
-	(void)lesser;
-
-	if (cur.offset != p->want_cur)
-		return;
-
-	p->seen++;
-	p->oppose = oppose.offset;
-	p->align = align.offset;
-}
-
 static void test_wm(void)
 {
 	printf("\n==> libkwm replays the window-model contract\n");
@@ -3385,32 +3258,6 @@ static void test_wm(void)
 				ok(g.x != wx || g.y != wy, line);
 			else
 				ok(0, line);
-		} else if (!strncmp(line, "fit ", 4)) {
-			KwmRect work, wnt;
-			int rx, ry, rw, rh, mw = 0, mh = 0;
-
-			/* The minimum is OPTIONAL in the fixture: a row that
-			 * names none is the same rule with no floor, which is
-			 * what a terminal passes. */
-			if (sscanf(line,
-				   "fit %d,%d,%d,%d %d,%d,%d,%d min %d,%d"
-				   " -> %d,%d,%d,%d",
-				   &work.x, &work.y, &work.w, &work.h,
-				   &wnt.x, &wnt.y, &wnt.w, &wnt.h, &mw, &mh,
-				   &rx, &ry, &rw, &rh) != 14 &&
-			    sscanf(line,
-				   "fit %d,%d,%d,%d %d,%d,%d,%d"
-				   " -> %d,%d,%d,%d",
-				   &work.x, &work.y, &work.w, &work.h,
-				   &wnt.x, &wnt.y, &wnt.w, &wnt.h,
-				   &rx, &ry, &rw, &rh) != 12)
-				continue;
-
-			KwmRect g = kwm_fit(wnt, work, mw, mh);
-
-			rows++;
-			ok(g.x == rx && g.y == ry && g.w == rw && g.h == rh,
-			   line);
 		} else if (!strncmp(line, "drag ", 5)) {
 			int dx, dy;
 			char w[16];
@@ -3444,45 +3291,6 @@ static void test_wm(void)
 			rows++;
 			eq_int(!!kwm_edge_between(i2, i3, i4),
 			       !strcmp(c, "yes"), line);
-		} else if (!strncmp(line, "gaprule ", 8)) {
-			/* top, right, bottom, left */
-			const KwmBox mover = { 50, 1000, 900, 10 };
-			const KwmRegion reg = {
-				{ 100, 400, 300, 200 },
-				KWM_EDGE_TOP | KWM_EDGE_BOTTOM |
-				KWM_EDGE_LEFT | KWM_EDGE_RIGHT
-			};
-			const int gap = 7;
-			WmGapProbe probe = { mover.left, 0, 0, 0 };
-			KwmBox best;
-
-			if (sscanf(line, "gaprule %63s -> %63s", a, b) != 2)
-				continue;
-
-			kwm_edge_init(&best);
-			kwm_edge_regions(&best, mover, mover, &reg, 1, gap,
-					 wm_gap_probe, &probe);
-
-			/*
-			 * What the mover's REAL edge keeps from the region edge
-			 * it met, once its own padding is added back.
-			 */
-			int landed = !strcmp(a, "oppose") ? probe.oppose
-							  : probe.align;
-			int refer = !strcmp(a, "oppose") ? reg.box.right
-							 : reg.box.left;
-
-			rows++;
-			ok(probe.seen == 1, "the gap rule's left-edge call ran");
-			eq_int((landed + gap) - refer,
-			       !strcmp(b, "gap") ? gap : 0, line);
-		} else if (!strncmp(line, "ring ", 5)) {
-			if (sscanf(line, "ring %d %d %d -> %d",
-				   &i2, &i3, &i4, &want) != 4)
-				continue;
-
-			rows++;
-			eq_int(kwm_ring_next(i2, i3, i4), want, line);
 		} else if (!strncmp(line, "wsadj ", 6)) {
 			unsigned char bits[64];
 

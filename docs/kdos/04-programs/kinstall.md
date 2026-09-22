@@ -50,7 +50,7 @@ A recipe sits beside the sources, so a running KDOS can rebuild the installer na
 
 | File | Owns |
 |---|---|
-| `probe.c` | The `/sys` and superblock reader, the partition-table reader, and the medium's flat pack index |
+| `probe.c` | The `/sys` and superblock reader, the partition-table reader, the catalogue and group reader, and the archive hunt |
 | `pages.c` | The eleven wizard pages |
 | `install.c` | The forked install child and its line protocol |
 | `conf.c` | The answer file, and the filesystem table |
@@ -166,31 +166,32 @@ The Applications page lists **groups**, not applications. Seven named bundles is
 during an install; 183 rows is not. An answer file may still name an application by id — the
 catalogue's expander takes either — and `essential` is what an empty answer file gets.
 
-It reads the flat index rather than the pack library, which is the property that keeps the
-installer in phase 1. The index carries a recommended flag and a human summary for exactly this
-reader, so the installer and the application tool cannot disagree about what is suggested or what
-a pack is. A list of identifiers and byte counts is not a page anybody can choose from, which is
-why the summary is in the file. The catalogue itself is read directly rather than by running
-`kdos-appbox`: `catalogue.c` uses `kb_*` alone, so compiling it in costs no library, and a live
-installer cannot assume anything is on `$PATH` in the target it is building.
+What it reads is the shipped catalogue at `/usr/share/kdos/appstore/catalogue`, which carries a
+group's description and each application's own byte estimate — the two things a page anybody can
+choose from needs, and neither of them derivable from a list of identifiers. Nothing is baked onto
+the medium: an application is built by the container engine on the installed machine, so there is
+no pack index here and no pack to copy.
 
-The base and the runtimes are not a choice. They are drawn as facts and carried always, because
-leaving one out installs applications that cannot start — the one outcome a page of checkboxes must
-not be able to produce.
+The catalogue is read by linking `kdos-appbox`'s `catalogue.c` directly rather than by running
+`kdos-appbox`. That file uses `kb_*` alone, so compiling it in costs no library and the installer
+stays a phase-1 program — and a live installer cannot assume anything is on `$PATH` in the target
+it is building.
 
-A delta stanza is dropped whole, at the stanza boundary rather than by clearing a field when the
-marker is seen; clearing depends on the marker arriving *after* the field it clears. A delta is a
-route to a pack rather than a pack, and an installer that offered one would offer something it
-cannot apply.
+The base and the runtimes are not a choice, and the page says so in a line rather than offering
+them as rows: a group holds application identifiers and the expander pulls each one's chain, so a
+runtime arrives with whatever needs it. Leaving one out would install applications that cannot
+start, which is the one outcome a page of checkboxes must not be able to produce.
+
+A group whose members are all absent from this catalogue is not offered at all. A tick that
+installs nothing is worse than a row that is not there.
 
 The entry hook runs before the plan is computed on every path that plans without walking the
-wizard. Whether this step runs at all is a question about the medium, and planning first reports it
-skipped on a machine that would carry gigabytes.
+wizard — `--dump plan` and `--unattended` — because the selection an answer file names is what the
+plan is about.
 
-The copy is a copy and nothing else. The pack daemon verifies a pack where it *mounts* it, so
-hashing here would do the work twice and drag the pack library into a program that links three. It
-does set the staging directory's permissions, because a first boot that inherited restrictive ones
-would refuse an install until the daemon had run once — which reads as the feature not working.
+The store's directories are made whichever route runs, and the staging directory is left mode
+`01777`. `kdos-packd` sets that at startup, but a first boot that inherited `0755` would refuse an
+import until the daemon had run once — which reads as the feature not working.
 
 ### How the applications actually arrive
 

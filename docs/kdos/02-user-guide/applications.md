@@ -7,9 +7,15 @@ applications come from a catalogue of containerised packages shipped on the medi
 
 ## What an alien app is
 
-An alien app is a graphical application that is not compiled by this repository. It ships as a
-*pack* — one signed filesystem image — and runs inside a *box*, a rootless container built from
-that pack stacked over a shared runtime and a base.
+An alien app is a graphical application that is not compiled by this repository. It arrives by one
+of two routes and runs in a *box* either way — a rootless podman container of its own, named after
+the application.
+
+Installed from the catalogue, it is a stack of podman images this machine builds: a base, a shared
+runtime, the application on top, and a box over that top image. Installed from an exported set or
+off the medium, it is a *pack* — one read-only filesystem image whose hash and signature are
+checked before anything mounts it — composed into the box's root with the runtime and base packs
+under it.
 
 From your side it behaves like ordinary system software. It has a launcher in the Start menu, it
 handles the file types it claims, it can be a default handler, and it has a command you can type
@@ -32,11 +38,17 @@ Podman on the machine that asks for it.
 | Base rows | 2 |
 | Data rows | 2 |
 | Groups | 7 |
-| Boxed commands with no graphical launcher | 36, across 25 packs |
+| `cmd` rows — programs meant to be typed | 36, across 25 packs |
 
 The runtimes are `rt-gtk`, `rt-qt`, `rt-kde`, `rt-media`, `rt-sci`, `rt-electron` and `rt-wine`.
-An application is built `FROM` one of them and each runtime `FROM` the base, so a runtime's layers
-are stored once no matter how many applications use it.
+An application is built `FROM` one of them and each runtime `FROM` a base, so a runtime's layers
+are stored once no matter how many applications use it. The two base rows are `base` — Debian plus
+what every box pays for, which is the set a graphical application needs and no more — and `alpine`,
+about 3 MB of busybox and musl, carried because a clean scratch userland to try something in is
+worth one line and this one needs no network to reach.
+
+A row's parent must appear *above* it in the file: the resolver walks a chain upward in one pass,
+so a forward reference is a chain it cannot close and the install fails naming the missing parent.
 
 Between them the rows cover the best free software per segment: office and documents, browsers and
 mail, raster and vector graphics, photography, 3D and CAD, slicing and CNC, EDA and circuit
@@ -56,17 +68,19 @@ kdos app list              # what is installed here
 kdos app list --all        # everything in the catalogue as well
 kdos app groups            # the seven groups and what is in each
 kdos app search image      # match name, id and summary
-kdos app info app.krita    # size estimate, its chain, what it needs
+kdos app info app.krita    # category, state, the row it is built on, a size estimate
 kdos app install app.krita # one application
 kdos app install creative  # a whole group
 kdos app install app.krita --dry-run   # what would be built, without building it
 ```
 
-`kdos app info` also tells you what an application *needs*. Some are useless without a dataset —
-KiCad without its 3D models, Tesseract without language data — so those rows name a data row in
-`needs`, and it is installed with them.
+Some applications are useless without a dataset, and the dataset is a row of its own. A `needs` row
+in the catalogue ties an application to one, and installing the application installs it too: KiCad
+pulls `data.kicad-packages3d` that way, which is why 5 GB of 3D models is not inside `app.kicad`.
+`data.tesseract-langs` is the other data row and belongs to no application — it grafts its language
+files over the *host's* `tesseract`, and you install it by name.
 
-Installing builds the application here. A row is an image `FROM` the row below it, so installing
+Installing builds the application here. Each row is an image `FROM` its parent row, so installing
 Krita builds the base, the Qt runtime and Krita itself, in that order. The next Qt application
 reuses that runtime and is one apt pass rather than three. That is also why the size the catalogue
 shows is an estimate: what apt resolves on the day depends on the snapshot, and shared layers are
@@ -88,17 +102,19 @@ kdos app export ~/apps.ktar creative app.vscodium
 kdos app import ~/apps.ktar          # on the other machine
 ```
 
-Export flattens each installed application into a signed pack and puts the set in one file with an
-index. Import stages each pack through the pack daemon, which hashes it and checks its signature
-where it mounts it — so an imported application is verified where a store-installed one is not,
+Export flattens each installed application into a pack and puts the set in one file with an index.
+The index is what carries the signature: it is signed once and holds every pack's hash, so a pack
+matching it is covered. Import hands each pack to the pack daemon, which verifies it — against that
+index where the archive has a signed one, against the pack's own signature block otherwise — before
+anything is installed. So an imported application is verified where a store-installed one is not,
 and no network is needed at any point.
 
 This is also what the installer reads off a stick when there is no network during an install, and
 it is the only way to get software onto a live session.
 
 A pack the daemon refuses is named and skipped; the rest of the archive still imports. With no
-signing key the set still exports and still imports, every hash is still checked, and the export
-says plainly that it was not signed.
+signing key (`KDOS_PACK_KEY`) the set still exports and still imports, every hash is still checked,
+and the export says plainly that the index was not signed.
 
 The `SELECTION` file inside the archive is flat text, one id per line, so a set can be read, diffed
 and edited by hand.
@@ -123,7 +139,8 @@ A first launch is slow, because it has to create and start a container. Measured
 machine: **18.3 seconds** cold with no container at all, **0.3 seconds** warm, and **0.55 seconds**
 for a second window. That is why the Start menu marks containerised applications `[box]`, and why
 the applications you have pinned are started in the background when you log in — the warm-up reads
-`~/.config/kdos/favorites`, which is the set you chose.
+`~/.config/kdos/favorites`, which is the set you chose, and starts the first eight of them one at a
+time under `nice`.
 
 Stage timings for one launch are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace` if you want to
 see where the time went.
@@ -152,26 +169,30 @@ next launch builds it again with the socket in place.
 
 ## Commands that live in boxes
 
-Not all containerised software is an application. Twenty-five packs declare a *command* instead of,
-or as well as, a launcher — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls`,
-`glxgears` and the rest, thirty-six commands in all. These are solvers, benchmarks and tools driven
-from a prompt, and they deliberately get no menu entry: a launcher for `wine` with no arguments
-opens nothing.
+Not all containerised software is an application. Twenty-five packs carry a program meant to be
+typed rather than clicked — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls`,
+`glxgears` and the rest, thirty-six in all, written down as the catalogue's `cmd` rows. These are
+solvers, benchmarks and tools driven from a prompt, and they deliberately get no menu entry: a
+launcher for `wine` with no arguments opens nothing.
 
-`kdos app info <pack>` prints the commands a pack declares, and the box manager runs one by name:
+The box manager runs one by name, in the pack's own box:
 
 ```sh
-kdos app info app.wine
 kdos-appbox -b app.wine run wine setup.exe
+kdos-appbox -b app.gromacs run gmx mdrun -h
 ```
 
-A shim on your PATH is the shorter route, and it is written from what a pack's own desktop entries
-name. A pack that carries no entry at all — which is most of the command-only ones — is reached
-through `kdos-appbox -b` as above. A shim that took its name from a program the host also carries
-would shadow the host's copy, which is why a pack whose binaries duplicate a host port's names
-declares no command.
+`-b` is what makes that work: without it, `kdos-appbox run` resolves the box from the exec line of
+an installed application, and a solver nothing launches has no such line.
 
-A pack with neither a launcher nor a declared command is a pack nothing on the host can reach,
+A shim on your PATH is the shorter route where there is one, and a shim is written from what a
+pack's own desktop entries name — plus `wine`, `winecfg` and `winetricks`, which launcher
+generation emits wherever the image carries the binary. A pack that ships no entry naming its
+program, which is most of the command-only ones, is reached through `kdos-appbox -b` as above. A
+shim that took its name from a program the host also carries would shadow the host's copy, which is
+why a pack whose binaries duplicate a host port's names is left without one.
+
+A pack with neither a launcher nor a shim nor a `cmd` row is a pack nothing on the host can name,
 which is a packaging bug rather than a feature.
 
 ## Updating
@@ -186,8 +207,9 @@ is built against is the catalogue's `snapshot` key, so two machines on the same 
 same thing.
 
 An imported set behaves differently. Its packs carry versions, and `kdos-packd` keeps one
-superseded version, so `kdos app` can put a replaced pack back. That is `retain` in
-[`packd.conf`](../06-reference/configuration.md), and it ships set to 1.
+superseded version of each on disk rather than deleting it as the new one lands. That is `retain`
+in [`packd.conf`](../06-reference/configuration.md), and it ships set to 1; `retain = 0` is an
+honest off.
 
 ## Removing
 
@@ -206,7 +228,7 @@ they are first-class objects when you want them:
 ```sh
 kdos-box list                          # every box, running or not
 kdos-box enter app.krita               # a shell inside one
-kdos-box create scratch base=pack:alpine
+kdos-box create scratch base=image:kdos/alpine     # also pack:<id> and box:<name>
 kdos-box clone app.krita krita-test    # the software and the work
 kdos-box snapshot app.krita before-plugin
 kdos-box freeze scratch                # capture what you changed, as a pack

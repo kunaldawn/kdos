@@ -112,10 +112,15 @@ The application catalogue is glibc, inside boxes, which is exactly the point of 
 
 ## No KDE, GNOME or any existing desktop on the host
 
-The host runs a desktop written for it, drawn as a character-cell grid.
+The host runs a desktop written for it, in which every surface KDOS paints is a character-cell
+grid — the panel and all its surfaces, the file chooser, the resource monitor, the terminal, the
+lock screen, the installer, the boot splash and `tty1`. The compositor is the one place with
+pixels of its own: it links `cairo` and `pangocairo` and draws titlebars, the root menu and the
+window-switcher OSD with pango, at a size matched to the grid. An application in a box draws
+whatever its toolkit draws.
 
 The question is fair: a complete, mature desktop exists, so why not run one? Two answers. The
-desktop is the identity of the project, and keeping it means the host stays free of both large
+cell grid is the identity of the project, and keeping it means the host stays free of both large
 toolkits, which is what makes compiling the whole host from source in one sitting tractable.
 
 KDE Plasma on the host was the serious alternative and was rejected because it would bring Qt, and
@@ -132,7 +137,8 @@ The medium carries a catalogue, and podman builds what somebody asks for. A cata
 parent chain of apt packages; installing it builds an image per row, each `FROM` the one below,
 and creates a box over the top one. Adding an application to KDOS is one line in a text file
 rather than a bake, and the shared runtime layers are stored once. `kdos-store` and kinstall both
-offer the catalogue by group — 21 of them — so a selection is one tick rather than twelve.
+offer the catalogue by group — seven of them, from `essential` at five applications to `games` at
+thirteen — so a selection is one tick rather than thirteen.
 
 Baking the pack set onto the ISO was rejected: every application on every medium whether or not it
 is ever launched, an hour of bake to add one row, and a release channel to push the whole set
@@ -158,8 +164,8 @@ distributed.
 
 ## The tarballs are in the tree, through Git LFS
 
-Upstream archives live in the repository, held by Git LFS: 1,025 objects, about 8.1 GB, fourteen
-of them over the 100 MB a github.com push refuses.
+Upstream archives live in the repository, held by Git LFS: 1,025 objects, about 8.3 GB, nine of
+them over the 100 MiB a github.com push refuses.
 
 The reason is that a clone is then the whole input to a build — `git clone` followed by
 `make build`, with no fetch step between and nothing that can be missing. The `sha256 =` in each
@@ -169,11 +175,11 @@ so the thing git holds and the thing it identifies are in the same place.
 Release assets were the strongest alternative: two GiB per file, no total-size or bandwidth limit,
 and no quota to buy. They lost because a clone is then not enough to build, and the step that
 closes the gap is one more thing to have run. Plain git blobs do not work at all on the stated
-remote, since fourteen files exceed the 100 MB push limit.
+remote, since nine files exceed the 100 MiB push limit.
 
 What LFS costs is not small either. A free account provides 10 GiB of storage and 10 GiB of
-monthly bandwidth, shared across every repository the account owns. 8.1 GB of that leaves under
-2 GiB of margin, and a month's bandwidth is a handful of clones. Exceeding the allowance does not
+monthly bandwidth, shared across every repository the account owns. The archives are 7.7 GiB of
+that, which leaves about 2.3 GiB of margin, and a month's bandwidth is a handful of clones. Exceeding the allowance does not
 slow a clone down — it blocks LFS reads outright, taking the vendored art and the test fixtures
 with it, so a fresh clone cannot check out at all. A paid data pack is what keeps this working.
 `git lfs install` must also precede the clone, or the working tree holds pointer files and the
@@ -263,8 +269,9 @@ x86-64, so the heap corrupts; the message scroll used `memcpy` on overlapping ra
 free not to survive; and `REGISTERS(n)` expanded to an x86-32-only `regparm` attribute that warns
 on every declaration.
 
-A demo written from scratch is not the plan. One was written and then removed at the maintainer's
-request, so a reference to one is a leftover rather than a roadmap item.
+A demo written from scratch is not on the roadmap. `bb` is a set of scenes paced against three
+tracker modules it ships with, and reaching that from nothing is a project of its own; the frozen
+fork is the whole of the plan.
 
 ## Forking libtsm rather than writing a terminal
 
@@ -287,9 +294,10 @@ cell becomes a `KtuiCell`. Three other files touch the toolkit, each for one nar
 holds `kvt_ui_mouse`, which decides what a drag over a terminal means, because every consumer of
 the vte needs that decision and two copies would drift.
 
-`kvt_htable.c` and `kvt_grid.c` are the two files carrying no upstream copyright. Every other file
-in the library carries libtsm's; the grid is this tree's render boundary, and the hash table was
-written here rather than carried.
+`kvt_grid.c`, `kvt_term.c` and `kvt_htable.c` (with its header) are the files carrying no upstream
+copyright. Every other file in the library carries libtsm's: the grid is this tree's render
+boundary, `kvt_term` is the screen-plus-state-machine-plus-child object upstream never had, and the
+hash table was written here rather than carried.
 
 Colour reduces to the palette's eight slots by nearest distance — one rule for the ANSI sixteen,
 the 256 and truecolour alike. A table saying "red means the error slot" would be a second set of
@@ -347,11 +355,13 @@ not a state. A group is a relation between windows, which is the one thing the w
 not hold, so it would reuse none of the machinery a stack reuses. See
 [the window model](../03-architecture/window-model.md).
 
-**One font for every output.** The font every KDOS surface draws with is a single setting, so it
-is right on a machine with one screen and wrong on two of different densities. The picker sets the
-face on all of them, which keeps two screens agreeing rather than letting each be right. A
-per-output font is a different design — a font per connector, a picker that asks which, and a cell
-size that changes under a window when it is dragged across the boundary — not a missing call.
+**One font for every output.** `comp.conf` holds `chrome_font` and `panel_font`, and both are
+machine-wide, so they are right on a machine with one screen and wrong on two of different
+densities. `kdos-style`'s font page offers fontconfig's monospace families and writes those two
+keys, setting the face on every output, which keeps two screens agreeing rather than letting each
+be right. A per-output font is a different design — a font per connector, a picker that asks which,
+and a cell size that changes under a window when it is dragged across the boundary — not a missing
+call.
 
 **No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing
 in the catalogue emits either. The three raster protocols the terminal implements are what a

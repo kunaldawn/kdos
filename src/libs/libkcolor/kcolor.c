@@ -733,9 +733,10 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
  * The accent in force, from the one word `kdos theme` writes to
  * $XDG_CACHE_HOME/kdos/theme.
  *
- * READING IS SHARED, APPLYING IS NOT. Every front end resolves the same two
- * paths in the same order and every one of them got the same fallback wrong at
- * least once; what it then does with the name differs — a cell surface calls
+ * READING BELONGS HERE, APPLYING DOES NOT. The two paths and the order they
+ * are tried in are a contract with `kdos theme`, and a front end resolving
+ * them itself drifts from this one the first time the fallback moves. What a
+ * front end then does with the name differs — a cell surface calls
  * ktui_theme_set, the compositor rebuilds its own tables — so only the read is
  * here. No colours are read: the palette is compiled in, and this file names
  * which of its schemes is in force.

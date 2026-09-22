@@ -839,26 +839,3 @@ int kvt_term_scroll_to_mark(struct kvt_term *t, int dir)
 {
 	return t ? kvt_screen_scroll_to_mark(t->screen, dir) : 0;
 }
-
-/*
- * The selection, onto the clipboard the rest of the desktop uses. One
- * implementation of "what is on the clipboard", so a copy out of a terminal
- * pastes into a KDOS surface and the other way round.
- */
-int
-kvt_term_copy_selection(struct kvt_term *t)
-{
-	if (!t)
-		return -1;
-
-	char *text = NULL;
-	int len = kvt_screen_selection_copy(t->screen, &text);
-
-	if (len < 0 || !text)
-		return -1;
-
-	int r = ktui_clip_copy(text);
-
-	free(text);
-	return r;
-}

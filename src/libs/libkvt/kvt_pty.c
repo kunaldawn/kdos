@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/uio.h>
 #include <termios.h>
@@ -47,16 +46,12 @@
  * parent exits, we loose them and restart the client. But this seems to
  * be the expected behavior so we implement it here.
  *
- * Unfortunately, epoll always polls for EPOLLHUP so as long as the
- * vhangup() is ongoing, we will _always_ get EPOLLHUP and cannot sleep.
- * This gets worse if the client closes the TTY but doesn't exit.
- * Therefore, the fd must be edge-triggered in the epoll-set so we
- * only get the events once they change. This has to be taken into account by
- * the user of kvt_shl_pty. As many event-loops don't support edge-triggered
- * behavior, you can use the kvt_shl_pty_bridge interface.
+ * While the vhangup() is ongoing the master reports HUP continuously, so a
+ * caller that polls this fd level-triggered never sleeps. Poll it
+ * edge-triggered, or gate the poll on kvt_shl_pty_is_open().
  *
- * Note that kvt_shl_pty does not track SIGHUP, you need to do that yourself
- * and call kvt_shl_pty_close() once the client exited.
+ * kvt_shl_pty does not track SIGHUP: the caller does that itself and calls
+ * kvt_shl_pty_close() once the client exited.
  */
 
 struct kvt_shl_pty {
@@ -269,14 +264,6 @@ pid_t kvt_shl_pty_open(struct kvt_shl_pty **out,
 	return pid;
 }
 
-void kvt_shl_pty_ref(struct kvt_shl_pty *pty)
-{
-	if (!pty || !pty->ref)
-		return;
-
-	++pty->ref;
-}
-
 void kvt_shl_pty_unref(struct kvt_shl_pty *pty)
 {
 	if (!pty || !pty->ref || --pty->ref)
@@ -307,14 +294,6 @@ int kvt_shl_pty_get_fd(struct kvt_shl_pty *pty)
 		return -EINVAL;
 
 	return pty->fd >= 0 ? pty->fd : -EPIPE;
-}
-
-pid_t kvt_shl_pty_get_child(struct kvt_shl_pty *pty)
-{
-	if (!pty)
-		return -EINVAL;
-
-	return pty->child > 0 ? pty->child : -ECHILD;
 }
 
 /*
@@ -498,117 +477,4 @@ int kvt_shl_pty_resize(struct kvt_shl_pty *pty,
 	 * We will also get one, but we don't need it.
 	 */
 	return ioctl(pty->fd, TIOCSWINSZ, &ws) < 0 ? -errno : 0;
-}
-
-/*
- * PTY Bridge
- * The PTY bridge wraps multiple ptys in a single file-descriptor. It is
- * enough for the caller to listen for read-events on the fd.
- *
- * This interface is provided to allow integration of PTYs into event-loops
- * that do not support edge-triggered interfaces. There is no other reason
- * to use this bridge.
- */
-
-int kvt_shl_pty_bridge_new(void)
-{
-	int fd;
-
-	fd = epoll_create1(EPOLL_CLOEXEC);
-	if (fd < 0)
-		return -errno;
-
-	return fd;
-}
-
-void kvt_shl_pty_bridge_free(int bridge)
-{
-	if (bridge < 0)
-		return;
-
-	close(bridge);
-}
-
-int kvt_shl_pty_bridge_dispatch_pty(int bridge, struct kvt_shl_pty *pty)
-{
-	struct epoll_event up;
-	int r;
-
-	if (bridge < 0 || !pty)
-		return -EINVAL;
-
-	r = kvt_shl_pty_dispatch(pty);
-	if (r == -EAGAIN) {
-		/* EAGAIN means we couldn't dispatch data fast enough. Modify
-		 * the fd in the epoll-set so we get edge-triggered events
-		 * next round. */
-		memset(&up, 0, sizeof(up));
-		up.events = EPOLLHUP | EPOLLERR | EPOLLIN | EPOLLOUT | EPOLLET;
-		up.data.ptr = pty;
-		epoll_ctl(bridge,
-			  EPOLL_CTL_ADD,
-			  kvt_shl_pty_get_fd(pty),
-			  &up);
-	}
-
-	return 0;
-}
-
-int kvt_shl_pty_bridge_dispatch(int bridge, int timeout)
-{
-	struct epoll_event ev;
-	struct kvt_shl_pty *pty;
-	int r;
-
-	if (bridge < 0)
-		return -EINVAL;
-
-	r = epoll_wait(bridge, &ev, 1, timeout);
-	if (r < 0) {
-		if (errno == EAGAIN || errno == EINTR)
-			return 0;
-
-		return -errno;
-	}
-
-	if (!r)
-		return 0;
-
-	pty = ev.data.ptr;
-	return kvt_shl_pty_bridge_dispatch_pty(bridge, pty);
-}
-
-int kvt_shl_pty_bridge_add(int bridge, struct kvt_shl_pty *pty)
-{
-	struct epoll_event ev;
-	int r;
-
-	if (bridge < 0)
-		return -EINVAL;
-	if (!kvt_shl_pty_is_open(pty))
-		return -ENODEV;
-
-	memset(&ev, 0, sizeof(ev));
-	ev.events = EPOLLHUP | EPOLLERR | EPOLLIN | EPOLLOUT | EPOLLET;
-	ev.data.ptr = pty;
-
-	r = epoll_ctl(bridge,
-		      EPOLL_CTL_ADD,
-		      kvt_shl_pty_get_fd(pty),
-		      &ev);
-	if (r < 0)
-		return -errno;
-
-	return 0;
-}
-
-void kvt_shl_pty_bridge_remove(int bridge, struct kvt_shl_pty *pty)
-{
-	if (bridge < 0 || !kvt_shl_pty_is_open(pty))
-		return;
-
-	epoll_ctl(bridge,
-		  EPOLL_CTL_DEL,
-		  kvt_shl_pty_get_fd(pty),
-		  NULL);
 }

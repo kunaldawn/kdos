@@ -1,7 +1,7 @@
 # The window model
 
 Where a new window lands, what tiling does to it, which edge it stops against,
-and what order it is cycled in. All of that arithmetic lives outside the
+and which workspace a switch moves to. All of that arithmetic lives outside the
 compositor that obeys it, in `libkwm`, which is what lets every rule on this
 page be asserted against a fixture with no display anywhere.
 
@@ -15,20 +15,18 @@ about windows.
 | Where a new window lands among the ones already there | What a window *is*, and which output it is on |
 | What the tiled state becomes, and what rectangle that state occupies | Whether the view is maximised, and whether a client accepted the size |
 | Which other edge a moving edge meets first | Walking the view list, and reading decoration thickness |
-| The next index in a ring, and the nearest occupied workspace | Which windows exist, and what "occupied" means here |
+| The nearest occupied workspace in one direction | Which windows exist, and what "occupied" means here |
 
 That division is the whole reason the rules can be replayed with no compositor
 running. `libkwm` links `libkbase` and no maths library — the same constraint
 `libkcolor` and `kcell_ascii.c` are written under.
 
-One rule is stated twice on purpose, and it is window cycling. `kwm_ring_next`
-steps a ring of `n` by index; `kdos-comp` holds its cycle list as a `wl_list`
-and steps it by following a link, using the list head as the same sentinel. The
-rule is identical — the sentinel between the last item and the first is stepped
-over, so the ring always closes — but an index-based signature cannot take a
-linked list without turning a pointer hop into a scan. The compositor therefore
-keeps its own walk, and what the `ring` rows in the contract hold to account is
-the library's.
+Window cycling is not in the library. `kdos-comp` holds its cycle list as a
+`wl_list` and steps it by following a link, using the list head as a sentinel
+so the ring always closes; an index-based signature cannot take a linked list
+without turning a pointer hop into a scan. Stating the rule a second time here
+would be a copy with no caller, and the contract cannot arbitrate between two
+copies when only one of them runs.
 
 ## The contract
 
@@ -41,21 +39,23 @@ The file is not a description of what the model ought to do. It is a record of
 what the compositor does, read off its source. A row that fails means `libkwm`
 and the compositor have drifted apart, and the line it cites is where to look.
 
-There are 131 rows in eleven kinds:
+There are 106 rows in eight kinds:
 
 | Kind | Rows | Covers |
 |---|---|---|
 | `tile` | 28 | The tiled-state transition |
 | `geom` | 26 | The rectangle a tiled state occupies |
-| `fit` | 14 | Fitting a rectangle into an area |
 | `wsadj` | 12 | The nearest occupied workspace |
 | `place` | 10 | The overlap search |
-| `ring` | 9 | Ring stepping |
 | `btwn` | 9 | Edge-search primitive |
 | `best` | 9 | Edge-search primitive |
 | `drag` | 6 | Pointer drags ending against an edge |
 | `clip` | 6 | Edge-search primitive |
-| `gaprule` | 2 | Aligned versus opposing edges |
+
+One `place` row states what the *caller* does rather than what the library
+returns — `kwm_place` is never reached when the output is unusable — so the
+replay drives 105 of them and counts the last, which is how the file and the
+replay reconcile.
 
 ## Tiling is two steps
 
@@ -377,9 +377,9 @@ policy about programs, not arithmetic about rectangles.
 Where a window was last time is not in the model. The library places a
 rectangle from the space available and the obstacles present; remembering one
 across a close and an open is a question about a *program*, which is a thing
-the library has no word for. `comp.conf`'s `window_memory` answers it and keeps
-its own file; `kwm_fit()` is the shared half, so whatever is remembered is
-fitted back into the area that exists now.
+the library has no word for. `comp.conf`'s `window_memory` answers it, keeps
+its own file, and clamps what it remembered itself — in pixels, against the
+usable area of whichever output that box lands nearest.
 
 Nor is a relation between two windows. `libkwm` computes rectangles from
 the space available and the obstacles present. It has no word for a neighbour,

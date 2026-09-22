@@ -169,8 +169,11 @@ typedef struct {
 } KpOwned;
 
 KpOwned *kp_owned_load(const KpConf *c);
-int kp_owned_has(const KpOwned *o, const char *rel);
-/* The package claiming `rel`, or NULL. */
+/* The package claiming `rel` (`usr/bin/tar`; the database spells it
+ * `./usr/bin/tar`), or NULL. A path no package claims is NOT a conflict: the
+ * bootstrap phases install tar, musl, binutils and gcc by hand, so those files
+ * exist with no database entry, and the self-hosting phase that rebuilds them
+ * with kpkg cannot run if an unowned file counts as one. */
 const char *kp_owned_owner(const KpOwned *o, const char *rel);
 void kp_owned_free(KpOwned *o);
 

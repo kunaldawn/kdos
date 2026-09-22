@@ -16,15 +16,16 @@ A decision elsewhere in the book that looks arbitrary is usually one of these be
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from upstream tarballs by recipes under `ports/core` —
-853 of them at present — running from a cross toolchain, through a musl userland, through a
-self-hosting pass, through the build tools, the libraries, the desktop and finally the kernel.
+The host is compiled in this repository from upstream tarballs by 877 recipes — 853 under
+`ports/core` for upstream software, 24 under `src/` for the desktop, the daemons and the tools —
+running from a cross toolchain, through a musl userland, through a self-hosting pass, through the
+build tools, the libraries, the desktop and finally the kernel.
 There is no base image underneath it and no binary archive to fall back on. The finished system
 carries 833 installed packages.
 
 A claim like that is worth nothing without its exceptions, so [the exceptions are listed in
 full](#what-is-not-built-from-source) rather than glossed over: vendor firmware, two bootstrap
-compilers, four font sets, some vendored artwork, one third-party C source set, and the Debian
+compilers, seven font sets, some vendored artwork, one third-party C source set, and the Debian
 packages that make up the application catalogue.
 
 ## KDOS can build KDOS
@@ -51,7 +52,7 @@ recipe that reaches out fails immediately and visibly on the machine that added 
 working there and failing everywhere else a year later.
 
 Every upstream tarball and every vendored dependency bundle is reachable at build time because
-each is in the tree, held by Git LFS — 1,025 objects, about 8.1 GB. A clone is therefore the
+each is in the tree, held by Git LFS — 1,025 objects, about 8.3 GB. A clone is therefore the
 entire input to a build. Nothing is fetched in between and nothing can be missing.
 
 The `sha256 =` line in a recipe is what verifies an archive, and it sits beside the bytes it
@@ -67,9 +68,9 @@ The outer ring is a catalogue of 183 applications over 7 shared runtimes, each d
 of Debian packages rather than shipped as bytes, and each built by podman on the machine that asks
 for one. An installed application runs in its own rootless container and behaves like ordinary
 system software: it appears in the launcher, registers as a MIME handler, takes the desktop's
-theme, and can be run from a terminal. Thirty-six catalogue rows across 25 applications are
-commands rather than applications and get no launcher entry at all, because a solver driven from a
-prompt has no window to open.
+theme, and can be run from a terminal. Thirty-six `cmd` rows across 25 applications name commands
+rather than applications — solvers, converters and toolchains driven from a prompt — and get no
+launcher entry, because a program with no window has nothing for a launcher to open.
 
 The boundary sits exactly where the build cost is. A browser is tens of millions of lines whose
 packaging is a full-time job for other people; a panel is not. Putting the first group in
@@ -100,17 +101,19 @@ Rust and Go are each written in themselves, so building either needs a working o
 
 | Port | Version | Bootstrap payload |
 |---|---|---|
-| `rust` | 1.98.0 | 150 MB of upstream 1.97.1 stage-0 binaries — `rustc` (101 MB), `rust-std` (38 MB) and `cargo` (12 MB) — beside the 234 MB source |
-| `go` | 1.27.0 | 58 MB of upstream 1.25.9 bootstrap toolchain beside the 34 MB source |
+| `rust` | 1.98.0 | 150 MB of upstream 1.97.1 stage-0 binaries — `rustc` (101 MB), `rust-std` (37 MB) and `cargo` (11 MB) — beside the 233 MB source |
+| `go` | 1.27.0 | 57 MB of upstream 1.25.9 bootstrap toolchain beside the 33 MB source |
 
 Both bootstraps are pinned by version and sha256 like every other source, so the offline build
 still holds. Everything the bootstraps produce — the shipped `rustc`, `cargo` and `go`, and every
 Rust and Go program in the tree — is compiled here.
 
-### Four prebuilt font sets
+### Seven prebuilt font sets
 
-`noto-fonts` (2.015), `noto-cjk` (2.004), `ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as
-built faces because upstream publishes them that way. A font is drawn rather than compiled, and
+`noto-fonts` (2.015), `noto-cjk` (2.004), `noto-emoji` (2.051), `noto-fonts-extra`,
+`nerd-fonts-symbols` (3.5.1), `ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as built faces
+because upstream publishes them that way. Each recipe unpacks an archive and installs the `.ttf`,
+`.ttc` or `.otf` files in it; none runs a font compiler. A font is drawn rather than compiled, and
 regenerating one from its sources would produce different outlines.
 
 The console font is a separate port and is built from source: `terminus-font` (4.49.1) goes from
@@ -183,7 +186,7 @@ Each of these is a decision with an argument behind it. The arguments are in
 |---|---|
 | systemd | `seatd`, `basu`, `eudev`, `dbus`, `dnsmasq`, and init scripts run by `ksvc` |
 | An Xorg server | Wayland only, with rootless Xwayland as the single carve-out for X11 clients |
-| GTK and Qt on the host | A desktop drawn as a character-cell grid by libraries written for it |
+| GTK and Qt on the host | Every KDOS surface drawn as a character-cell grid by libraries written for it, with the compositor's own chrome in pango at the cell size |
 | A display manager | `kdos-desktop`, started by hand from a tty |
 | A first-boot wizard | The installer asks its questions once, then the system is yours |
 | A vendor app store | `kdos-store` lists a catalogue held in this repository and builds from Debian; there is no account and nothing to sign up to |
@@ -197,16 +200,17 @@ Measured from the tree.
 | | |
 |---|---|
 | Port recipes in `ports/core` | 853 |
+| Port recipes under `src/` for KDOS's own software | 24 |
 | Packages installed on the built system | 833 |
 | Applications in the catalogue | 183 |
 | Shared runtimes beneath them | 7 |
-| Catalogue groups offered by the installer and the store | 21 |
+| Catalogue groups offered by the installer and the store | 7 |
 | Base packs | 2 |
 | Data packs | 2 |
 | Boxed commands with no graphical launcher | 36 rows across 25 applications |
 | Kernel | 7.0.10 |
 | C libraries written for this system | 17 |
-| Upstream archives held in Git LFS | 1,025 objects, about 8.1 GB |
+| Upstream archives held in Git LFS | 1,025 objects, about 8.3 GB |
 
 ## See also
 

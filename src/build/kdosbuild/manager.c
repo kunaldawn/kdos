@@ -316,15 +316,11 @@ void mgr_mark_continued(Manager *m, int phase_index)
 void mgr_mark_restored(Manager *m, int phase_index, int resume_inside)
 {
 	int ceiling = resume_inside ? phase_index - 1 : phase_index;
-	for (int i = 0; i < m->nroot; i++) {
+	for (int i = 0; i < m->nroot; i++)
 		if (m->root[i]->meta->index <= ceiling) {
 			m->root[i]->status = ST_SKIPPED;
 			m->restored_from = m->root[i]->meta;
-		} else if (resume_inside &&
-			   m->root[i]->meta->index == phase_index) {
-			m->resumed_inside = m->root[i]->meta;
 		}
-	}
 }
 
 BStep *mgr_phase_of(BStep *s)

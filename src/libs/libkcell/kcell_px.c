@@ -134,12 +134,6 @@ void kcell_px_round_grad(pixman_image_t *dst, int x, int y, int w, int h,
 	}
 }
 
-void kcell_px_round(pixman_image_t *dst, int x, int y, int w, int h, int r,
-		    uint32_t rgb, uint8_t a)
-{
-	kcell_px_round_grad(dst, x, y, w, h, r, rgb, rgb, a);
-}
-
 /*
  * A vertical gradient, one fill per row.
  *

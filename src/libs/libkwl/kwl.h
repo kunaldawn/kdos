@@ -160,25 +160,19 @@ int kwl_font_step(int step);
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);
 int kwl_cell_h(void);
-/* The surface's own height in LOGICAL pixels — the cell grid plus the rule.
- * What a panel passes as a popup's margin; `rows * cell_h` is short by the
- * rule. */
-int kwl_px_h(void);
-
 /*
  * The offset a popup of THIS panel passes as its own margin from the same
- * screen edge: the surface's height plus the panel's gap.
+ * screen edge: the surface's own height in logical pixels — the cell grid
+ * plus the rule — plus the panel's gap.
  *
- * Use this and never kwl_px_h() for that purpose. They are the same number
- * only while the bar is flush with the edge; with `margin_y` set they differ
- * by exactly the gap, and a popup placed with the height opens behind the bar
- * it belongs to.
+ * THE GAP IS PART OF IT. Height and offset are the same number only while the
+ * bar is flush with the edge; with `margin_y` set they differ by exactly the
+ * gap, and a popup placed with the bare height opens behind the bar it
+ * belongs to.
  */
 int kwl_popup_offset(void);
 /* Which side of this surface faces away from the bar — see kwl.c. */
 int kwl_edge_bottom(void);
-/* Print whatever the display has gone wrong with, if anything — see kwl.c. */
-void kwl_report_error(void);
 
 /*
  * THE BACKDROP — pixel chrome painted UNDER the cell grid, every frame.
@@ -202,26 +196,22 @@ void kwl_report_error(void);
  */
 void kwl_set_backdrop(KDispBackdropFn fn);
 /*
- * SOMETHING BELOW THE GRID CHANGED ITS PIXELS, so the next flush must commit
- * even though no cell moved.
+ * SOMETHING BELOW THE GRID CHANGED ITS PIXELS, asked at FLUSH TIME.
  *
  * The frame diff tracks cells, which is what the grid IS — but a surface with
  * a backdrop draws part of its picture underneath them, and a menu row
  * highlighted by a plate rather than by a cell attribute changes no text at
  * all. Without this the highlight stays where it is until something else
  * causes a frame.
- */
-void kwl_pixels_dirty(void);
-/*
- * THE SAME QUESTION, ASKED AT FLUSH TIME instead of announced.
  *
- * A backdrop that describes its picture as it draws cannot tell a change from
- * a redescription, and calling kwl_pixels_dirty() for each piece makes every
- * frame a commit — which is the "nothing changed: no commit at all" gate gone
- * for every surface that has a backdrop. A callback is asked once per flush,
- * after the picture is complete: it answers non-zero only when what the
- * backdrop would draw now differs from what it last drew, and a non-zero
- * answer costs a full repaint of the surface. NULL removes it.
+ * ASKED RATHER THAN ANNOUNCED, because a backdrop that describes its picture
+ * as it draws cannot tell a change from a redescription: a latch set from
+ * each piece makes every frame a commit, which is the "nothing changed: no
+ * commit at all" gate gone for every surface that has a backdrop. The
+ * callback is asked once per flush, after the picture is complete: it answers
+ * non-zero only when what the backdrop would draw now differs from what it
+ * last drew, and a non-zero answer costs a full repaint of the surface. NULL
+ * removes it.
  */
 void kwl_set_pixels_dirty_fn(int (*fn)(void));
 /*
@@ -280,18 +270,17 @@ void kwl_input_cells(const KRect *rects, int n);
 void kwl_set_title(const char *title);
 
 /*
- * The connection and the seat, for a consumer that needs to bind protocols of
- * its own — kdos-shell binds foreign-toplevel and ext-workspace on exactly this
+ * The connection, for a consumer that needs to bind protocols of its own —
+ * kdos-shell binds foreign-toplevel and ext-workspace on exactly this
  * display. Deliberately shared rather than opened a second time: two
  * wl_displays would be two clients, with two seats and two sets of globals,
  * which would then have to be kept agreeing with each other about what one
- * panel is showing. Both are NULL before kwl_init() succeeds.
+ * panel is showing. NULL before kwl_init() succeeds.
  *
- * They are `void *` because kwl.h is included by files that do not otherwise
+ * It is a `void *` because kwl.h is included by files that do not otherwise
  * pull in wayland-client.h; cast at the use site.
  */
 void *kwl_display(void);
-void *kwl_seat(void);
 
 /*
  * The connection's fd, and one turn of the protocol, for a consumer that has

@@ -264,14 +264,6 @@ void ktui_focus_next(int dir)
 	ui.focus = (ui.focus + dir + ui.nfocus) % ui.nfocus;
 }
 
-int ktui_key(int k)
-{
-	if (ui.consumed || ui.ev.type != KT_EVT_KEY || ui.ev.key != k)
-		return 0;
-	ui.consumed = 1;
-	return 1;
-}
-
 int ktui_activated(int id, KRect r)
 {
 	ktui_hit(r, id);

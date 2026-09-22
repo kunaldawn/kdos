@@ -58,7 +58,6 @@ struct cached {
 	char box[NAME_MAX_];
 	char names[GRANT_MAX][32];
 	int n;
-	int loaded;
 };
 
 static struct cached cache[8];
@@ -71,7 +70,6 @@ parse_profile(struct cached *c)
 	char path[512], line[512];
 	FILE *f;
 
-	c->loaded = 1;
 	c->n = 0;
 	if (!home)
 		return;

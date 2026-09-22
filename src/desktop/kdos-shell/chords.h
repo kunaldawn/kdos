@@ -63,8 +63,6 @@ struct sh_chord {
  */
 int sh_chords_load(void);
 
-int sh_chords_count(void);
-
 /* NULL outside the loaded table. */
 const struct sh_chord *sh_chord_at(int i);
 

@@ -66,7 +66,6 @@ kdisp_current(void)
 FWD_VOID(shutdown, shutdown)
 FWD_VOID(pump, pump)
 FWD_VOID(overlay_hide, overlay_hide)
-FWD_VOID(report_error, report_error)
 FWD_VOID(unlock, unlock)
 
 /* should_close is 0 on a backend with no window to close: a terminal program
@@ -75,7 +74,6 @@ FWD_INT(should_close, should_close, 0)
 FWD_INT(fd, fd, -1)
 FWD_INT(cell_w, cell_w, 1)
 FWD_INT(cell_h, cell_h, 1)
-FWD_INT(px_h, px_h, 0)
 FWD_INT(scale, scale, 1)
 FWD_INT(decorated, decorated, 0)
 FWD_INT(popup_offset, popup_offset, 0)
@@ -216,13 +214,6 @@ kdisp_font_set(int index, int keep)
 {
 	if (cur && cur->font_set)
 		cur->font_set(index, keep);
-}
-
-void
-kdisp_session_action(const char *verb)
-{
-	if (cur && cur->session_action && verb && *verb)
-		cur->session_action(verb);
 }
 
 void

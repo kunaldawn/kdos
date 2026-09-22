@@ -167,22 +167,3 @@ int kb_fuzzy(const char *hay, const char *needle)
 	s = scan(hay, needle, 1);
 	return s ? s : scan(hay, needle, 0);
 }
-
-/*
- * THE BEST OF SEVERAL FIELDS, which is what a row actually is: an application
- * has a name, an id, its keywords and the command it runs, and somebody typing
- * `gimp` may mean any of them. Taking the best rather than the first means the
- * field that happened to be checked first cannot decide the ranking.
- */
-int kb_fuzzy_best(const char *const *fields, int n, const char *needle)
-{
-	int best = 0;
-
-	for (int i = 0; i < n; i++) {
-		int s = fields[i] ? kb_fuzzy(fields[i], needle) : 0;
-
-		if (s > best)
-			best = s;
-	}
-	return best;
-}

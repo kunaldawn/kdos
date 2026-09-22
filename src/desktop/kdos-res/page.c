@@ -126,8 +126,6 @@ void res_confirm(const char *title, const char *msg, const char *yes,
 	g_conf.on_yes = on_yes;
 }
 
-int res_confirm_active(void) { return g_conf.active; }
-
 static void confirm_take(int yes);
 
 static int confirm_up(void *user)

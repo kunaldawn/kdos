@@ -87,7 +87,8 @@ carry the five lines that make packages reproducible. See
 Later phases run inside the target root filesystem. The entry script:
 
 1. Requires root.
-2. Bind-mounts `/dev`, `/proc`, `/sys`, `/tmp` and `/run`.
+2. Bind-mounts `/dev`, and mounts a fresh `proc`, `sysfs` and two tmpfs at `/proc`, `/sys`, `/tmp`
+   and `/run`.
 3. Bind-mounts the repository at `/kdos`, `build/` at `/kdos/build`, `ports/` at `/ports`, and
    `script/` and `src/` under `/kdos`.
 4. Enters with `env -i`, a fixed search path, and the three forwarded variables.
@@ -110,9 +111,10 @@ What is snapshotted is declared by the phase, in the metadata block above. Paths
 pseudo-filesystems and the bind mounts. Each snapshot directory holds one compressed archive per
 declared path, plus a manifest and timings. A phase with no declared paths is never snapshotted.
 
-Budget roughly 51 GB for a complete set — a few hundred megabytes for the early phases, about 7 GB
-each for `04_phase4` and `05_desktop`, and around 22 GB for packaging, which carries the ISO. The
-full clean removes snapshots; the build clean keeps them.
+Budget roughly 84 GB for a complete set — a few hundred megabytes for the early phases and 59 GB
+for packaging alone, which carries `iso_root` and `iso-build`. `snap_create` writes its archive
+beside the old one, so the free-space guard refuses a phase whose previous snapshot plus a fifth of
+it does not fit. The full clean removes snapshots; the build clean keeps them.
 
 A declared path is either kept or reported as rejected, never quietly repaired. Snapshot and
 restore delete and re-extract those paths as root, so an absolute path, an empty one, a bare dot,
@@ -173,8 +175,9 @@ nothing.
 
 ## kdosbuild
 
-The orchestrator lives in `src/build/kdosbuild/`. It is a C program linking only `libkbase` and
-`libkbuild`, compiled on demand in a couple of seconds by `script/kdosbuild.sh`.
+The orchestrator lives in `src/build/kdosbuild/`. It is a C program linking `libkbase`,
+`libkbuild`, `libktui` and `libkcolor` and nothing else, compiled on demand in a couple of seconds
+by `script/kdosbuild.sh`.
 
 | File | Owns |
 |---|---|
@@ -241,9 +244,9 @@ kdosbuild --preview <screen> <WxH> <tier>
 
 `--preview` draws one screen offscreen and dumps the cell buffer as plain text. The screens are
 `build`, `activity`, `failure`, `pinned`, `complete`, `startup`, `plan` and `packages`; the tiers
-are the three glyph tiers.
+are `rich`, `vt` and `ascii`.
 
-It is the only way to see a layout without a two-hour build and a terminal. Several geometry
+It is the only way to see a layout without a whole build and a terminal. Several geometry
 defects in this interface were found by hand arithmetic, and none of them was visible to the
 compiler.
 
@@ -312,7 +315,7 @@ A port deleted from the tree leaves its package installed unless something remov
 manifest guard; packages need one too.
 
 A packaging step removes every installed package with no recipe in any port repository, and
-`testing/preflight.sh` reports the same thing in seconds instead of at the end of a two-hour build.
+`testing/preflight.sh` reports the same thing in seconds instead of at the end of a whole build.
 Neither is fatal on failure: an orphan with a damaged manifest must not stop the ISO from being
 rolled.
 

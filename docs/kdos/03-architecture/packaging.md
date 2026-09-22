@@ -32,7 +32,7 @@ There are three port repositories, searched in order, and they use one format:
 
 ```
 /ports/core              853 recipes — upstream software
-/kdos/src/packages        11 recipes — ours: the tools, the installer, the packer
+/kdos/src/packages        12 recipes — ours: the tools, the installer, the packer
 /kdos/src/desktop         13 recipes — ours: the compositor, the shell, the daemons
 ```
 
@@ -93,7 +93,7 @@ the new one is removed rather than left on disk owned by nothing.
 
 ## Deciding what to rebuild
 
-The build must not recompile 877 ports on every run, and must not skip one
+The build must not recompile 878 ports on every run, and must not skip one
 whose recipe changed. Two hashes decide, and they are the same two the binary
 host uses.
 
@@ -163,7 +163,7 @@ changed.
 ## Reproducible packages
 
 A package built twice from the same tree is byte-identical. That is a property
-of one function — the archive roller inside `kpkg` — rather than of 877
+of one function — the archive roller inside `kpkg` — rather than of 878
 recipes, which is exactly why `kpkg` rolls the archive itself instead of
 letting each `build.sh` do it.
 
@@ -217,7 +217,7 @@ tests, and it works because KDOS has no USE flags.
 ### Signing
 
 Ed25519, through a vendored public-domain implementation — the only
-third-party source under `src/`. See
+third-party source under `src/libs`. See
 [The C libraries](../05-developer/c-libraries.md).
 
 One signature over the index covers every package transitively, because the

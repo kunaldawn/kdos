@@ -222,7 +222,7 @@ int kpr_psi_read(const char *what, KprPsi *out);
 
 /* ── processes ───────────────────────────────────────────────────────────── */
 typedef struct {
-	int pid, ppid, uid, threads, nice, on_cpu;
+	int pid, ppid, uid, threads, nice;
 	char state;			/* R S D Z T ...                   */
 	char comm[24];
 	char *cmdline;			/* space-joined, may be NULL        */

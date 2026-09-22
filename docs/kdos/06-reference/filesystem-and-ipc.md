@@ -17,7 +17,7 @@ For the source tree rather than the target, see [Repository layout](repository-l
 | `packd.conf` | The pack daemon's retention | yes |
 | `zram.conf` | Compressed-swap size and algorithm | yes |
 | `timers.d/` | The system's periodic jobs | yes |
-| `keys/` | Trusted keys for host packages | yes, empty |
+| `keys/` | Trusted keys for host packages | yes, no keys — a `README` stating the policy |
 | `keys/packs/` | Trusted keys for application packs | yes, one key |
 | `mountd.conf` | Removable-media options | no — create it |
 
@@ -79,6 +79,7 @@ other six screensaver effects draw without a file.
 | `~/.local/bin/` | Shims for applications you installed |
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
 | `~/.local/state/kdos/toggles/` | One empty file per switch that is on: `stay-awake`, `night-light`, `dnd` |
+| `~/.local/state/kdos/session` | What was running when the session ended: `app <name>` per boxed application, `native <app_id>` per host toplevel |
 | `~/.local/state/kdos/winpos` | Where the compositor last saw each application |
 | `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
 | `~/.local/state/kdos/update.json` | What `kdos update check --json` found, for the panel's badge |

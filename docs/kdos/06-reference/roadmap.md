@@ -80,9 +80,10 @@ and marks the slot to try.
 are tested. What does not exist is a public one, which is a hosting and key-custody question rather
 than a code one.
 
-**More reference frames, and lifting the skips.** Six surfaces have no offscreen dump, and the
-compositor and the shell are not compiled by the self-test on a bare host. Both are the kind of gap
-that hides other gaps.
+**More reference frames, and lifting the skips.** Fourteen of the shell's fifty-two surfaces have
+no committed reference frame, and three of those — `kdos-ascii`, `kdos-ime` and `kdos-mediad` —
+have no offscreen dump to take one with. The compositor and the shell are not compiled by the
+self-test on a bare host either. Both are the kind of gap that hides other gaps.
 
 ## Not planned
 

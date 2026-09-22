@@ -30,8 +30,8 @@ labwc's, and labwc's manual pages are the reference for them.
 
 Two conventions keep the additions greppable. KDOS code lives in `src/kdos-*.c` — sixteen files —
 plus one shared header, `include/kdos.h`. Upstream files carry minimal hooks marked with the
-comment `/* KDOS */`; grep for that marker to find every touch point. There are 21 such files, and
-`main.c` holds seventeen of the markers on its own.
+comment `/* KDOS */`; grep for that marker to find every touch point. There are 29 such files
+carrying 107 markers between them, and `main.c` holds 29 of them on its own.
 
 | Graft | What it adds |
 |---|---|
@@ -87,7 +87,7 @@ already sends the signal that triggers a reload.
 | `idle_dim` | `300` | Seconds of inactivity before the screen dims |
 | `idle_lock` | `600` | Seconds before the session locks |
 | `idle_off` | `900` | Seconds before outputs are powered off |
-| `lid_close` | `suspend` | `suspend`, `off`, or anything else to ignore the lid |
+| `lid_close` | `suspend` | `suspend`, `lock` or `off`; any other value is refused by name |
 | `window_memory` | `yes` | Whether an application opens where its window last was |
 
 A path value may be written `~/…` or `$HOME/…`; both are expanded. Boolean values accept
@@ -174,7 +174,8 @@ compositor reads over its built-in theme, so frames retint live with the panel a
 reasoning is in [the design language](../03-architecture/design-language.md); the mechanics are
 these.
 
-- `<cornerRadius>0</cornerRadius>` and a two-pixel border in `rc.xml`.
+- `<cornerRadius>0</cornerRadius>` in `rc.xml`, and `border.width: 2` in the generated override. A
+  hairline is what a modern toolkit draws and it disappears beside a 32-pixel cell.
 - A custom title-bar texture rendering the same double rule the cell grid draws with. The title-bar
   fill is one pixel wide and stretched, so anything varying only vertically costs nothing — and a
   double horizontal rule varies only vertically.
@@ -228,8 +229,9 @@ per refresh interval, read from the output's own mode. The shutdown collapse ste
 the event loop is being pumped by hand after the display has already stopped.
 
 The mode is chosen resolution first, then the highest rate that will commit. The preferred mode —
-the panel's EDID-preferred timing — fixes the resolution only; every mode at that resolution is
-then tried in descending order of refresh rate, and the first that passes its test commits. Taking
+the panel's EDID-preferred timing — fixes the resolution only; every mode at that resolution with a
+higher rate is then tried in descending order, then the preferred mode itself, and the first that
+passes its test commits. Taking
 the preferred mode's own rate is the trap, because panels routinely advertise 60 Hz as the
 preferred timing and 120 or 144 elsewhere in the same mode list, and the session would then sit at
 60 with nothing in the desktop presenting it as a choice. Descending order is what makes this safe:

@@ -351,11 +351,6 @@ static int owned_find(const KpOwned *o, const char *rel)
 }
 
 /* `rel` is `usr/bin/tar`; the database spells it `./usr/bin/tar`. */
-int kp_owned_has(const KpOwned *o, const char *rel)
-{
-	return owned_find(o, rel) >= 0;
-}
-
 const char *kp_owned_owner(const KpOwned *o, const char *rel)
 {
 	int i = owned_find(o, rel);

@@ -151,11 +151,3 @@ int kb_sha256_file(const char *path, char out[65])
 	kb_sha256_final(&s, out);
 	return 0;
 }
-
-int kb_sha256_check(const char *path, const char *want)
-{
-	char got[65];
-	if (kb_sha256_file(path, got))
-		return -1;
-	return kb_str_ieq(got, want) ? 0 : 1;
-}

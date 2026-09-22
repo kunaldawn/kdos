@@ -12,17 +12,15 @@
  * against a fixture with no display.
  *
  * WHAT IS ONE IMPLEMENTATION AND WHAT IS TWO, because the difference decides
- * whether a defect is one fix or two. Placement, tiling and the ring walk are
- * here and nowhere else — and kwm_fit and kwm_ring_next have no call site in
- * any program: they are the written rule for move-before-shrink and for
- * cycling, and the contract below is the only thing holding them to it. Of the
- * neighbour-edge search only the arithmetic is shared — kwm_clip_add,
- * kwm_clip_sub, kwm_edge_best and kwm_edge_check are what kdos-comp calls —
- * while the walk that FINDS the candidate edges is the compositor's, across
- * its scene graph. The region-array walk here (kwm_edge_init, kwm_edge_of,
- * kwm_edge_regions) is replayed against the contract and nothing else, so a
- * change to it moves no shipped behaviour, which is why the contract is the
- * arbiter rather than either copy.
+ * whether a defect is one fix or two. Placement, tiling and the workspace walk
+ * are here and nowhere else. Of the neighbour-edge search only the arithmetic
+ * is shared — kwm_clip_add, kwm_clip_sub, kwm_edge_best and kwm_edge_check are
+ * what kdos-comp calls — while the walk that FINDS the candidate edges is the
+ * compositor's, across its scene graph.
+ *
+ * EVERY ENTRY POINT HERE HAS A CALLER IN A SHIPPED PROGRAM. A rule kept here
+ * that nothing calls is a second answer to a question, and the contract cannot
+ * arbitrate between two copies when only one of them ships.
  *
  * NOTHING BUT libkbase, AND NO MATHS LIBRARY. kdos-comp compiles libkbase and
  * libkcolor into a static archive and feeds it to meson; giving this library a
@@ -217,49 +215,18 @@ typedef struct {
 } KwmBox;
 
 /*
- * A region a moving edge may stop against: its box, and which of its own edges
- * are actually visible. An edge that is covered by another window is not a
- * thing you can snap to, and `visible` is how the caller says so — working that
- * out needs the scene graph, so it stays with the caller.
- */
-typedef struct {
-	KwmBox box;
-	unsigned visible;
-} KwmRegion;
-
-/*
- * Decides whether a region edge is a stopping point, and updates `*best`.
- *
- * `user` is not decoration: kdos-comp's validators read rc.gap and the two
- * edge-strength settings out of a global, and this library owns no globals.
- * Snapping and pointer resistance want DIFFERENT answers from the same search
- * — resistance has resist and attract zones and snapping does not — which is
- * why this is a callback rather than a rule written in here.
- */
-typedef void (*KwmEdgeValidator)(int *best, KwmEdge cur, KwmEdge tgt,
-				 KwmEdge oppose, KwmEdge align, int lesser,
-				 void *user);
-
-/* The four "no edge here" bounds a search starts from. */
-void kwm_edge_init(KwmBox *best);
-
-/* One edge of a box, offset outward by `pad`. */
-KwmEdge kwm_edge_of(KwmBox b, unsigned dir, int pad);
-
-/*
- * The stopping points a box moving from `cur` to `tgt` meets among `regions`.
- *
- * An OPPOSING edge keeps the gap and an ALIGNED edge does not, which is why
- * only the aligned one is padded: the first is two windows placed beside each
- * other and the second is two windows lined up.
- */
-void kwm_edge_regions(KwmBox *best, KwmBox cur, KwmBox tgt,
-		      const KwmRegion *regions, int n, int gap,
-		      KwmEdgeValidator v, void *user);
-
-/*
  * The validator snapping uses: an edge counts when it lies between where the
- * moving edge is and where it is going. Pointer resistance supplies its own.
+ * moving edge is and where it is going. It is called by the compositor's own
+ * region walk, which supplies a second validator for pointer resistance —
+ * resistance has resist and attract zones and snapping does not, so the walk
+ * takes the decision as a callback rather than writing either rule into itself.
+ *
+ * `lesser` and `user` ARE PART OF THAT CALLBACK'S SHAPE, not of this rule:
+ * resistance needs to know which side of an axis it is on, and kdos-comp's
+ * validators read rc.gap and the two edge-strength settings out of a global
+ * this library cannot see. Snapping needs neither, so both are ignored here.
+ * Dropping them from the signature would make this the one validator the walk
+ * cannot call.
  */
 void kwm_edge_check(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
 		    KwmEdge align, int lesser, void *user);
@@ -288,37 +255,14 @@ void kwm_edge_check(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
 KwmRect kwm_place(KwmRect usable, int gap, KwmBorder margin,
 		  int want_w, int want_h, const KwmBox *ex, int n);
 
-/*
- * Bring a rectangle back inside a work area.
- *
- * MOVES BEFORE IT SHRINKS. A window pushed off the edge by a smaller screen
- * should come back the same size, because the screen may grow again and a
- * window that was silently made smaller never grows back. Only one that cannot
- * fit at all is shrunk, and then to exactly the area.
- *
- * AND NEVER BELOW `min_w` x `min_h`, which wins over the work area: a program
- * given fewer cells than it can compose on draws nothing at all, and the cells
- * under it keep the last picture. Oversized and clipped is a window with a
- * corner off the screen; too small is a hole in the desktop. Zero for either
- * is "no minimum", which is what a terminal and an untitled rectangle pass.
- */
-KwmRect kwm_fit(KwmRect want, KwmRect work, int min_w, int min_h);
-
 /* ────────────────────────────────────────────────────────────────────────
- * Rings
+ * Workspaces
  *
- * Window cycling and workspace switching are both a walk around a ring with a
- * sentinel between the last item and the first. The caller owns the container
- * — kdos-comp's is a linked list — and this walks indices, so the rule is
- * written once and can be asserted with no scene graph to build first.
+ * A walk around a ring with a sentinel between the last item and the first.
+ * The caller owns the container — kdos-comp's is a linked list — and this
+ * walks indices, so the rule is written once and can be asserted with no
+ * scene graph to build first.
  * ──────────────────────────────────────────────────────────────────────── */
-
-/*
- * The next index in a ring of `n`, `dir` positive for forward. The sentinel is
- * skipped, so this always wraps and never returns `cur` unless n is 1.
- * Returns -1 for an empty ring or an index outside it.
- */
-int kwm_ring_next(int n, int cur, int dir);
 
 /*
  * The nearest workspace to `cur` that has something on it, searching in one

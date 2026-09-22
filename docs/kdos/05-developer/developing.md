@@ -18,8 +18,8 @@ requires no language toolchains, no filesystem utilities, and no elevated privil
 
 To boot the result, add a system emulator, UEFI firmware, and hardware virtualisation.
 
-Disk is the real cost. A complete build tree runs to roughly 18 GB, a full set of phase snapshots
-to about 51 GB, and the ISO itself to around 8 GB.
+Disk is the real cost. Budget tens of gigabytes for `build/` and about 84 GB more for a complete
+set of phase snapshots, of which packaging alone is 59 GB because it carries the ISO tree.
 
 ## Getting the source
 
@@ -35,11 +35,13 @@ Run `git lfs install` before cloning. Without it the working tree holds small te
 where the archives should be, and the first port to unpack one fails on a corrupt archive rather
 than on anything naming the cause. `git lfs pull` repairs a clone made without it.
 
-The LFS payload is about 8.1 GB across 1,025 objects, against a free allowance of 10 GiB of storage
-and 10 GiB a month of bandwidth, counted across every repository the account owns. Exceeding that
-allowance does not slow a clone down — it blocks LFS reads outright, including vendored art and
-test fixtures that have nothing to do with ports, so a fresh clone cannot check out at all. Keeping
-the repository usable therefore means a paid data pack.
+The LFS payload is 1,022 archives, 8.27 GB, against a free allowance of 10 GiB of storage and
+10 GiB a month of bandwidth, counted across every repository the account owns. Exceeding that
+allowance does not slow a clone down — it blocks LFS reads outright, so a fresh clone cannot check
+out at all. Keeping the repository usable therefore means a paid data pack. Only the three
+`ports/core/**` patterns are tracked: `testing/fixtures/.gitattributes` opts its own archives back
+out, because a fixture named `.tar.gz` is two bytes and a pointer file of a different size would
+fail a layout golden with nothing naming the cause.
 
 ## The first build
 
@@ -67,7 +69,7 @@ deliberately.
 |---|---|---|
 | `all` | The default target; an alias for `build` | |
 | `build` | The whole build, in the container | Container runtime |
-| `fetch` | Fetch and vendor a port's sources into `ports/core` | Network, container |
+| `fetch` | Fetch and vendor every port's sources into `ports/core`; `ports/fetch <port>` narrows it | Network, container |
 | `updates` | Check every port for a newer upstream release | Network |
 | `snapshots` | List the phase snapshots | |
 | `run` | Boot the ISO in a virtual machine | Emulator, firmware |
@@ -212,7 +214,7 @@ Work through these in order:
    `C compiler cannot create executables` almost never means what it says — the real error is on
    the failing test program.
 4. `testing/preflight.sh`, which catches the dull wiring failures in seconds rather than at the end
-   of a two-hour build.
+   of a build that runs for hours.
 
 ## The phases
 

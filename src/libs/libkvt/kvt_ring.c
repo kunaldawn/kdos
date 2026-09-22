@@ -18,12 +18,6 @@
 
 #define RING_MASK(_r, _v) ((_v) & ((_r)->size - 1))
 
-void kvt_shl_ring_flush(struct kvt_shl_ring *r)
-{
-	r->start = 0;
-	r->used = 0;
-}
-
 void kvt_shl_ring_clear(struct kvt_shl_ring *r)
 {
 	free(r->buf);
@@ -61,31 +55,6 @@ size_t kvt_shl_ring_peek(struct kvt_shl_ring *r, struct iovec *vec)
 		}
 		return 2;
 	}
-}
-
-/*
- * Copy data from the ring buffer into the linear external buffer @buf. Copy
- * at most @size bytes. If the ring buffer size is smaller, copy less bytes and
- * return the number of bytes copied.
- */
-size_t kvt_shl_ring_copy(struct kvt_shl_ring *r, void *buf, size_t size)
-{
-	size_t l;
-
-	if (size > r->used)
-		size = r->used;
-
-	if (size > 0) {
-		l = r->size - r->start;
-		if (size <= l) {
-			memcpy(buf, &r->buf[r->start], size);
-		} else {
-			memcpy(buf, &r->buf[r->start], l);
-			memcpy((uint8_t*)buf + l, r->buf, size - l);
-		}
-	}
-
-	return size;
 }
 
 /*

@@ -56,7 +56,6 @@
 #define SV_DUMP_FRAMES	60
 #define SV_FPS_DEF	10
 #define SV_MAX_COLS	512
-#define SV_MAX_ROWS	256
 #define SV_ART_PATH	"/usr/share/kdos/screensaver.txt"
 /* The artwork's own limits are shell.h's — see sh_logo_load(). */
 #define SV_ART_LINES	SH_LOGO_LINES

@@ -30,7 +30,8 @@ KDOS's own.
 |---|---|---|
 | `kdos-checkpass` | **KDOS** | Checking the caller's own password against the shadow file |
 | `kdos-resctl` | **KDOS** | Signalling and renicing a process from the resource monitor |
-| `sudo`, `su` | sudo, util-linux | Running as another user |
+| `sudo` | sudo | Running as another user |
+| `su` | shadow | Switching to another account — util-linux's is disabled with `--disable-su` |
 | `passwd`, `chage`, `expiry`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
 | `pkexec`, `polkit-agent-helper-1` | polkit | Authorised privileged actions |
 | `ssh-keysign` | OpenSSH | Host-based authentication |
@@ -169,11 +170,11 @@ Per-daemon refusals:
 
 | Daemon | Refuses |
 |---|---|
-| `kdos-mountd` | Internal disks; filesystems the kernel cannot mount; anything in `fstab`; **every partition of the disk the system booted from**; a verb carrying a token nobody named; an index that is not a number; a filesystem outside the four it will write; a `format` not confirmed with the device's own kernel name; a node whose device differs from the one the scan recorded |
+| `kdos-mountd` | Internal disks; filesystems the kernel cannot mount; anything in `fstab`; **every partition of the disk the system booted from**; a verb carrying a token nobody named; an index that is not a number; a filesystem outside the four it will write; a `format` at all unless `format = yes` is set in its configuration, or one not confirmed with the device's own kernel name; a node whose device differs from the one the scan recorded |
 | `kdos-packd` | Paths as arguments; a pack whose hash or signature fails; removing a pack that is in use |
 | `kdos-oomd` | Any argument at all — killing is its own decision or it does not happen |
 | `kdos-energyd` | Republishing the raw counter; a client-chosen sampling interval |
-| `kdos-powerd` | Anything but four fixed words and three that take one validated argument; an `accent` that does not name a scheme compiled into `libkcolor` |
+| `kdos-powerd` | Anything but four fixed words — `ping`, `suspend`, `poweroff`, `reboot` — and four that carry an argument validated against a table compiled into it: `firewall`, `autologin`, `accent`, `timezone`; an `accent` that does not name a scheme in `libkcolor` |
 
 `kdos-energyd` deserves its own note. The CPU energy counter is root-only
 because fine-grained unprivileged reads can recover cryptographic keys through
@@ -189,10 +190,11 @@ security context open for that box's lifetime.
 
 ## polkit, and why the desktop has no authentication agent
 
-polkit is installed, `polkitd` is D-Bus activated, and NetworkManager is the
-only thing on this system that asks it anything. What follows is measured
-against the shipped image, not against how polkit behaves on a distribution
-that has a session manager.
+polkit is installed and `polkitd` is started by the init system. Four things
+on the image are built against it — NetworkManager, `bolt`, `fwupd` and
+`upower` — and NetworkManager's actions are the only ones a KDOS surface calls.
+What follows is measured against the shipped image, not against how polkit
+behaves on a distribution that has a session manager.
 
 polkit here can never see an ACTIVE session, so `allow_active` and
 `allow_inactive` are dead columns. It resolves a subject's session by calling
@@ -217,9 +219,17 @@ because polkit never asks anybody about a flat refusal. It would also have
 nothing to register as: with no session, an agent can only register a
 **unix-process** subject, and polkit finds that agent by an exact match on pid
 and start time, so a session-lifetime agent would never be found for a surface
-it did not itself spawn. And `polkit-agent-helper-1`, the component that would
-actually check the password, does not ship setuid, so it could authenticate
-nobody.
+it did not itself spawn. `polkit-agent-helper-1` is on this machine and is
+setuid, so it could check a password — but nothing ever asks it to, because a
+flat refusal raises no challenge for an agent to answer.
+
+The same reasoning reaches the other three consumers, and it is why none of
+them has a working privileged path here. Their actions are `auth_admin`, which
+is a challenge, and a challenge with no agent is a refusal; `bolt` ships a rule
+of its own that would grant `wheel`, but it tests `subject.active` and
+`subject.local`, which are never true on this machine, so it never fires. A
+thunderbolt enrolment or a firmware update is therefore a `sudo` away, not a
+prompt away.
 
 So the answer is a rules file, and there is no agent on this system.
 `fs/etc/polkit-1/rules.d/50-kdos.rules` names the actions this desktop calls
@@ -292,9 +302,9 @@ allowlist**.
 | Outputs, dmabuf, viewporter, presentation, fractional scale | Data-control (clipboard manipulation), both generations |
 | Both decoration managers, activation, tablet, toplevel icon, dialog | Foreign-toplevel management and the toplevel list |
 | **Text input** | **Input method and virtual keyboard** |
-| The primary selection | Output management and output power |
+| The primary selection, and the ordinary data device — the clipboard and drag-and-drop | Output management and output power |
 | Colour management, alpha modifier, syncobj, single-pixel buffer | The layer shell |
-| | The security-context manager itself |
+| Cursor shape, idle inhibit, tearing control, xdg-foreign both ways, xdg-output | The security-context manager itself |
 
 Two entries in that table are the interesting ones.
 

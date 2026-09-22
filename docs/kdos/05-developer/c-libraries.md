@@ -38,7 +38,7 @@ painter is not made to link a Wayland client library to get it.
 | `libkpack` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` |
 | `libkvt` | `kvt_` | The terminal: the VT100-VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. A hard fork of libtsm 4.7.1 | `libktui` |
 | `libkimg` | `kimg_` | The only place untrusted image bytes are decoded. Two entry points — one picture, or every frame of the one format that has more than one — five optional decoders, and a budget enforced from the header the format declares *before* any allocation | pixman, plus png/jpeg/webp/sixel/gif where present |
-| `libkwm` | `kwm_` | The window model the compositor obeys: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
+| `libkwm` | `kwm_` | The window model the compositor obeys: placement, the tiled-state transition and its geometry, the neighbour-edge arithmetic, and the nearest occupied workspace | `libkbase` |
 | `libkdisp` | `kdisp_` | Which display server, decided once: the surface config, the seven roles, the lifecycle every surface asks for, and the window list a panel manages | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` |
 | `libkicon` | `kicon_` | A name becomes a sprite slot, or −1 | `libktui` |
@@ -316,17 +316,20 @@ a fact the widget states rather than a count somebody has to make.
 
 ### The cell's attribute byte
 
-A cell's attribute byte carries six styles and the wire stays eight bytes wide. Bold, reverse,
-underline, italic, strikethrough and overline are one bit each in the byte the cell already had, so
-a terminal's own text reaches a KDOS surface without the per-cell run growing for it. All of them
-but reverse are dropped on a real VT, where an attribute bit selects a font page or a colour the
-palette does not own rather than a style.
+A cell's attribute byte carries six styles in its low half. Bold, reverse, underline, italic,
+strikethrough and overline are one bit each in the byte the cell already had, so a terminal's own
+text reaches a KDOS surface without the per-cell run growing for it. All of them but reverse are
+dropped on a real VT, where an attribute bit selects a font page or a colour the palette does not
+own rather than a style. A seventh low bit, `KT_A_GUEST`, is not a style at all: it says the cell
+holds an embedded guest's pixels with the guest's own cursor already composited into them, and the
+flush is its only reader.
 
-Above the eighth bit nothing travels in that byte. The attribute is sixteen bits wide in memory and
-eight on the wire; the high half says which of the cell's three literal colours — foreground,
-background, underline — mean anything, and what shape the underline is. They are set only by a
-negotiated colour run, so a consumer that was never sent a literal cannot receive a cell claiming
-to have one and draw the black it never got. There is one bit per colour, not one for the pair: a
+Above the eighth bit nothing is part of the portable attribute. The attribute is sixteen bits wide
+and the low byte is what a consumer drawing in slots alone honours; the high half says which of the
+cell's three literal colours — foreground, background, underline — mean anything, and what shape
+the underline is. A literal reaches a cell only from the terminal's render boundary and from the
+theme picker's swatches, so a consumer reading slots alone cannot receive a cell claiming a colour
+it never got and draw the black it was never given. There is one bit per colour, not one for the pair: a
 program that sets a foreground and leaves the background alone is the common case, and a single bit
 would freeze the theme's background into the cell as a literal, after which a retint leaves a
 rectangle of the old scheme behind.
@@ -364,15 +367,18 @@ delivered early is a chord the session ate and the guest saw.
 
 ## libkwm
 
-The window model, and only the model. Placement, tiling and the ring walks live here and nowhere
-else, out of the compositor that obeys them — which is what lets every one of them be asserted
-against a fixture with no display anywhere.
+The window model, and only the model. Placement, tiling and the workspace walk live here and
+nowhere else, out of the compositor that obeys them — which is what lets every one of them be
+asserted against a fixture with no display anywhere.
 
 Of the neighbour-edge search only the arithmetic is shared. `kwm_clip_add`, `kwm_clip_sub`,
 `kwm_edge_best` and `kwm_edge_check` are what `kdos-comp` calls, while the walk that *finds* the
-candidate edges is the compositor's, across its scene graph. This library's region-array walk —
-`kwm_edge_init`, `kwm_edge_of`, `kwm_edge_regions` — is reached only by the contract replay below,
-which is what pins the two to the same answer.
+candidate edges is the compositor's, across its scene graph.
+
+Every entry point here has a caller in a shipped program. A rule kept in this library that nothing
+calls is a second answer to a question the compositor already answers, and the contract cannot
+arbitrate between two copies when only one of them ships — so a rule with no caller belongs in the
+one place that runs.
 
 The library is handed rectangles and told what is being asked. What a window *is*, which output it
 is on, whether a client accepted its size and whether it is maximised all stay with the caller,
@@ -403,9 +409,9 @@ nothing.
 
 Which display server a surface reaches, decided in one place.
 
-`kdos-shell` alone opens a surface from more than twenty call sites, and each then asks whether it
-should close, resizes itself, or hides its panel. Branching on the server at every one of those is
-the same decision written twenty times in one program and again in the next.
+`kdos-shell` alone opens a surface from fifty-five call sites, and each then asks whether it should
+close, resizes itself, or hides its panel. Branching on the server at every one of those is the
+same decision written fifty-five times in one program and again in the next.
 
 The consumer decides what it links. This library names no implementation and pulls in none; a
 caller hands over the ones it compiled, in preference order, so a program that links no display
@@ -794,11 +800,6 @@ installed — which a `--dump` run never does. The cell size cannot stand in for
 asked of `libkwl` either way and `libkwl` answers with a fallback rather than with nothing. A
 control whose only state cue is a plate has to draw the cell form of the same fact where this is
 false.
-
-Consumed input is skipped by offset and moved down once per read, not once per message. A peer's
-backlog of *n* small messages — one cell run each, which a speckled full-screen animation sends
-thousands of a frame — would otherwise cost *n²/2* bytes of copying to drain, and a drain that
-slows as the backlog grows is a stall that feeds itself until the peer's queue hits its cap.
 
 ## libkicon
 

@@ -108,13 +108,6 @@ kg_member_of(struct view *view)
 	return NULL;
 }
 
-int
-kdos_group_size(struct view *view)
-{
-	struct kg_member *m = kg_member_of(view);
-	return m ? wl_list_length(&m->group->members) : 0;
-}
-
 /* ── the tab strip ──────────────────────────────────────────────── */
 
 static void
@@ -467,15 +460,17 @@ kdos_group_remove(struct view *view)
 }
 
 void
-kdos_group_next(struct view *view, bool reverse)
+kdos_group_next(struct view *view)
 {
 	struct kg_member *m = kg_member_of(view);
 	if (!m) {
 		return;
 	}
-	struct wl_list *link = reverse ? m->link.prev : m->link.next;
+	/* The head is the list sentinel, not a member: step past it once and
+	 * the walk wraps. Landing back on ourselves means a group of one. */
+	struct wl_list *link = m->link.next;
 	if (link == &m->group->members) {
-		link = reverse ? link->prev : link->next;
+		link = link->next;
 	}
 	if (link == &m->link) {
 		return;

@@ -733,8 +733,6 @@ enum {
  * nothing at all here.
  */
 void ktui_draw_cursor_shape(int shape);
-int ktui_cursor_shape(void);
-void ktui_draw_hide_cursor(void);
 void ktui_draw_clip(KRect r);		/* confine drawing to a pane       */
 void ktui_draw_clip_none(void);
 
@@ -1173,7 +1171,6 @@ void ktui_announce(int role, const char *label, const char *value, int index,
 		   int count);
 int ktui_announce_count(void);
 const KtuiA11y *ktui_announce_at(int i);
-int ktui_key(int k);		/* consume a key press this frame          */
 void ktui_focus_next(int dir);
 void ktui_focus_set(int id);
 

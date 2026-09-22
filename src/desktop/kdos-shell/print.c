@@ -10,8 +10,8 @@
  *   ┌ Printers ────────────────────────────────────────────┐
  *   │ Printers │ Discovered                                │
  *   ├──────────────────────────────────────────────────────┤
- *   │ * HP_LaserJet    idle      accepting                  │
- *   │   Brother_DCP    printing  accepting                  │
+ *   │ * HP_LaserJet    idle                                 │
+ *   │   Brother_DCP    printing                             │
  *   ├──────────────────────────────────────────────────────┤
  *   │ [ Add ] [ Default ] [ Remove ]                        │
  *   └──────────────────────────────────────────────────────┘
@@ -64,7 +64,6 @@ static const KtuiTab PAGES[PG_N] = {
 struct printer {
 	char name[PR_NAME];
 	char state[32];
-	int accepting;
 	int is_default;
 };
 
@@ -153,7 +152,6 @@ static void scan_printers(void)
 		 * `is`, up to the full stop, is the state. */
 		if (sscanf(ln, "printer %63s is %31[^.]", p->name, p->state) != 2)
 			continue;
-		p->accepting = 1;
 		p->is_default = 0;
 		nprn++;
 	}

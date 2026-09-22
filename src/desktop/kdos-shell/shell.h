@@ -151,23 +151,13 @@ static inline const char *sh_task_label(const struct sh_task *t)
 }
 
 /*
- * The menu bar: GNOME 2's three words, on the left of the top panel.
- *
- * The mark is `≡` where an icon theme would have put a distributor logo — on a
- * character grid a logo is one cell, and three horizontal rules is what that
- * cell can honestly hold. It falls back to the word KDOS on a font without it
- * (panel.c's menu_mark(), resolved once from ktui_caps rather than per frame) —
- * U+2261 is not among the VT font's 512 glyphs.
+ * THE START BUTTON'S MARK, where an icon theme would have put a distributor
+ * logo — on a character grid a logo is one cell, and three horizontal rules
+ * is what that cell can honestly hold. It falls back to the word KDOS on a
+ * font without it (panel.c's menu_mark(), resolved once from ktui_caps rather
+ * than per frame): U+2261 is not among the VT font's 512 glyphs.
  */
-#define SH_NMENUS 3
 #define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
-extern const char *const sh_menu_labels[SH_NMENUS];
-/* Spawn kdos-menu for one of them, anchored at (x, y) in PIXELS — where the
- * word that was clicked starts, and how far down the panel reaches. Layer-shell
- * has no coordinates, so that pair becomes an anchor and a margin. Double-
- * forked, so the panel neither reaps nor blocks: a menu that takes a moment to
- * scan 400 desktop files must not stop the clock. */
-void sh_spawn_menu(int which, int x, int y);
 /*
  * The window's outer frame: the double-line box when this surface has no
  * decoration of its own, and just the background when the COMPOSITOR is
@@ -246,13 +236,6 @@ struct sh_state {
 	 * workspace. The draw records what it drew.
 	 */
 	int ws_hit[SH_MAX_WS];
-	int menu_hit_x[SH_NMENUS], menu_hit_end[SH_NMENUS];
-	int menu_open;			/* which label is lit, or -1 */
-	/* What the pointer is over, or -1. The panel and the menu are two
-	 * processes, so `menu_open` is never set by anything; hover is what
-	 * the bar actually knows, and it is what makes three words read as
-	 * three buttons. */
-	int hover_menu;
 	int hover_task;
 	/* The bottom panel's hit map: the pager and show-desktop. Half-open
 	 * spans, show-desktop included — it is one cell at w - 2, and an
@@ -490,8 +473,6 @@ void sh_activate_task(struct sh_state *sh, int i);
  * you are not — what every taskbar does, and what makes the entry worth
  * clicking once the window is already on screen. */
 void sh_toggle_task(struct sh_state *sh, int i);
-/* Middle click: the protocol's polite close, so an editor still gets to ask. */
-void sh_close_task(struct sh_state *sh, int i);
 /* The two halves of show-desktop. Each is a no-op on a window already the way
  * it asks for, so a caller walks a list without first working out which
  * windows are already the way it wants them. Which half the column runs is
@@ -554,7 +535,6 @@ void sh_mpris_free(struct sh_mpris *p);
 int sh_mpris_have(const struct sh_mpris *p);
 int sh_mpris_playing(const struct sh_mpris *p);
 const char *sh_mpris_title(const struct sh_mpris *p);
-const char *sh_mpris_artist(const struct sh_mpris *p);
 /* "PlayPause", "Next", "Previous" — fire and forget. */
 void sh_mpris_action(struct sh_mpris *p, const char *method);
 
@@ -619,8 +599,6 @@ struct sh_app {
 };
 
 int sh_apps_load(void);
-int sh_apps_count(void);
-const struct sh_app *sh_apps_get(int i);
 const struct sh_app *sh_apps_find(const char *id);
 /* Most-used first, with the score halving every fortnight since the last
  * launch — a frequency list that never forgets is a list of what somebody used
@@ -698,13 +676,6 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
  * this image ships are accepted, and anything else falls back to sh_term(),
  * so an entry cannot turn the key into a way to run something. */
 const char *sh_term_named(const char *want);
-
-/* The same as one command string, for the callers that re-split one. The
- * buffer must be the command's length plus SH_TERM_PREFIX_MAX: what goes in
- * front is an emulator's name, an identity taken from the command, and `-e`,
- * and a buffer sized for the bare command truncates all three into it. */
-#define SH_TERM_PREFIX_MAX 160
-void sh_term_cmd(char *out, size_t n, const char *cmd);
 
 /* The program that IS this session: `kdos-comp`. Log Out sends it SIGTERM. */
 const char *sh_session_prog(void);

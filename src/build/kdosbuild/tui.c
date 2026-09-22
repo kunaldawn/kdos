@@ -7,9 +7,9 @@
  * ---------------------------------
  *   kdosbuild — the screens
  *
- * On libktui, which is why buildlib/tui.py's 1220 lines of python curses can
- * go. Everything here draws in the SAME eight colour slots the installer and
- * kdos-appbox use, so a tty and a truecolor terminal render one picture.
+ * On libktui. Everything here draws in the SAME eight colour slots the
+ * installer and kdos-appbox use, so a tty and a truecolor terminal render one
+ * picture.
  * ---------------------------------
  */
 

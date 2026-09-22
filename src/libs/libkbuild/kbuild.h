@@ -103,7 +103,6 @@ const KjNode *kj_get(const KjNode *obj, const char *key);
 const char *kj_str(const KjNode *obj, const char *key, const char *def);
 double kj_num(const KjNode *obj, const char *key, double def);
 int kj_bool(const KjNode *obj, const char *key, int def);
-int kj_len(const KjNode *n);
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* The build plan

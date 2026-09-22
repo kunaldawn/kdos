@@ -54,7 +54,7 @@ pointer straight from the input devices, so clicking works on `tty1` with no add
 | `Ctrl+U` | Clear the field you are in |
 | `F1` | The key card |
 | `L` | The full log, on the Install page |
-| `Ctrl+Q` | Quit; it asks to confirm while an install is running |
+| `Ctrl+Q`, `Ctrl+C` | Quit. It always confirms, and while an install is running it says the target is left half written |
 
 ## The pages
 
@@ -253,11 +253,11 @@ cryptdevice=UUID=<the LUKS container>:kdosroot
 root=UUID=<the filesystem inside it>
 ```
 
-The second does not exist until the first is open. At boot the initramfs prompts through the splash
-rather than on `/dev/console` — the kernel command line sends the console to a serial port, so a
-plain prompt would be typed at a wire nobody is looking at — reads the keystrokes from `/dev/tty1`,
-and feeds the passphrase to `cryptsetup` on stdin. Three attempts, then a shell rather than a
-reboot loop.
+The second does not exist until the first is open. At boot the initramfs writes the prompt through
+the splash, which owns the framebuffer, and reads the keystrokes from `/dev/tty1` rather than from
+`/dev/console`, because tty1 is where the keyboard is and `/dev/console` is wherever the kernel
+command line last sent it. The passphrase reaches `cryptsetup` on stdin. Three attempts, each
+counted on screen, then a shell rather than a reboot loop.
 
 There is no per-keystroke feedback while typing the passphrase. The splash owns the framebuffer and
 the shell owns the terminal, so a masked field would mean moving the read into the splash.

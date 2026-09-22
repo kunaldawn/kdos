@@ -285,10 +285,9 @@ static struct {
 	int dirty_n;
 	/* Whether the last flush reached a commit; see KtuiBackend.presented. */
 	int committed;
-	/* Something below the grid changed its pixels; see flush_commit(). */
-	int pixels_dirty;
-	/* Asked the same question at flush time, for a caller that can only
-	 * answer once its picture is complete. See kwl_set_pixels_dirty_fn(). */
+	/* Whether something below the grid changed its pixels, asked at flush
+	 * time so a caller answers once its picture is complete. See
+	 * kwl_set_pixels_dirty_fn(). */
 	int (*px_dirty_fn)(void);
 
 	/*
@@ -476,7 +475,6 @@ int kwl_lock_engaged(void) { return K.lock_engaged; }
 static int kwl_focused(void) { return K.kb_entered ? K.kb_here : 1; }
 int kwl_lock_finished(void) { return K.lock_finished; }
 void *kwl_display(void) { return K.display; }
-void *kwl_seat(void) { return K.seat; }
 
 int kwl_fd(void)
 {
@@ -605,7 +603,8 @@ static int panel_gap(void)
 		       ? K.cfg.margin_y : K.cfg.margin_x;
 }
 
-int kwl_px_h(void)
+/* The surface's own height in LOGICAL pixels — the cell grid plus the rule. */
+static int surface_px_h(void)
 {
 	return K.px_h > 0 ? K.px_h : K.rows * kcell_h() + K.rule;
 }
@@ -614,20 +613,20 @@ int kwl_px_h(void)
  * What a popup belonging to THIS panel passes as its own margin from the same
  * screen edge.
  *
- * NOT kwl_px_h(), and the difference is exactly the panel's gap. The two are
- * the same number only while the bar is flush with the edge, which is why
+ * NOT the bare height, and the difference is exactly the panel's gap. The two
+ * are the same number only while the bar is flush with the edge, which is why
  * seven call sites in the taskbar could pass the height and be right. Give the
  * bar a margin and every one of them opens its popup `gap` pixels too low —
  * the Start menu, the calendar and the volume slider all half-behind the bar
  * they belong to. Same shape as the exclusive-zone trap above: a second
  * derivation of one distance, correct right up until the distance changes.
  *
- * Horizontal panels, like kwl_px_h() itself: on a left or right bar the
+ * Horizontal panels, like the height itself: on a left or right bar the
  * surface's height is the whole output and neither number means anything.
  */
 int kwl_popup_offset(void)
 {
-	return kwl_px_h() + panel_gap();
+	return surface_px_h() + panel_gap();
 }
 
 /*
@@ -650,11 +649,6 @@ int kwl_edge_bottom(void)
 		return 0;
 	return K.cfg.corner == KDISP_CORNER_TOP_LEFT ||
 	       K.cfg.corner == KDISP_CORNER_TOP_RIGHT;
-}
-
-void kwl_pixels_dirty(void)
-{
-	K.pixels_dirty = 1;
 }
 
 void kwl_set_pixels_dirty_fn(int (*fn)(void))
@@ -1828,16 +1822,8 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		 * draw, and a latch set from that makes every frame a commit
 		 * and defeats this gate entirely.
 		 */
-		if (dirty_y0 < 0 && !K.pixels_dirty &&
-		    !(K.px_dirty_fn && K.px_dirty_fn()))
+		if (dirty_y0 < 0 && !(K.px_dirty_fn && K.px_dirty_fn()))
 			return;		/* nothing changed: no commit at all */
-	}
-	/* A pixel change the cell diff cannot see is a full frame: the diff
-	 * has no rows to name for it, and a partial damage would leave the
-	 * compositor showing the picture the backdrop just replaced. */
-	if (K.pixels_dirty) {
-		K.pixels_dirty = 0;
-		full = 1;
 	}
 
 	/*
@@ -1962,7 +1948,7 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		 * weight the titlebar's own rule is drawn at, which is the
 		 * point of matching it at all.
 		 */
-		KRgb rgb = ktui_theme->slot[K.cfg.rule_slot & 7];
+		KRgb rgb = ktui_theme->slot[KT_BG];
 		pixman_color_t c = { .red = (uint16_t)(rgb.r * 257),
 				     .green = (uint16_t)(rgb.g * 257),
 				     .blue = (uint16_t)(rgb.b * 257),
@@ -4677,7 +4663,7 @@ static int make_toplevel(void)
  * to bring up has looked like. Called from the one place a surface can fail to
  * start and from the one place every client ends.
  */
-void kwl_report_error(void)
+static void kwl_report_error(void)
 {
 	int e;
 
@@ -5573,7 +5559,6 @@ static int kwl_win_at(int i, KDispWin *out)
 		return 0;
 	out->id = w->id;
 	out->flags = w->flags;
-	out->workspace = -1;
 	/* THE SURFACE'S OWN SCREEN, not the one `cfg.output` asked for: a
 	 * panel placed on a screen that was unplugged between the request and
 	 * the mapping is on whichever screen the compositor chose, and the
@@ -5809,7 +5794,6 @@ const KDispImpl kwl_impl = {
 	.drag_start = kwl_drag_start,
 	.cell_w = kwl_cell_w,
 	.cell_h = kwl_cell_h,
-	.px_h = kwl_px_h,
 	.scale = kwl_scale,
 	.decorated = kwl_decorated,
 	.popup_offset = kwl_popup_offset,
@@ -5818,7 +5802,6 @@ const KDispImpl kwl_impl = {
 	.set_backdrop = kwl_set_backdrop,
 	.input_cells = kwl_input_cells,
 	.set_title = kwl_set_title,
-	.report_error = kwl_report_error,
 	.focused = kwl_focused,
 	.lock_engaged = kwl_lock_engaged,
 	.lock_finished = kwl_lock_finished,

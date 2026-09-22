@@ -20,7 +20,7 @@ the user's side, see [Getting started](../02-user-guide/getting-started.md).
 | 9 | Find and mount the root | The initramfs `init` |
 | 10 | `switch_root` | util-linux's, never toybox's |
 | 11 | `/etc/init.d/rcS` | init (toybox), as `sysinit` |
-| 12 | The 27 numbered service scripts | `rcS` |
+| 12 | The 28 numbered service scripts | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
 | 15 | `kdos-login`, which hands the tty to agetty | `kdos-getty` on tty1 |
@@ -81,11 +81,12 @@ would be the copy that goes stale.
 The menu counts down for ten seconds, on the live medium and on an installed
 system alike, and a single keypress stops it and leaves it up. That countdown
 is wall time spent before the kernel exists with nothing else running, so it is
-bought rather than free. What it buys is reachability: the verbose boot, the
-clean session, single user and memtest86+ are reachable from nowhere else, and
-a countdown short enough to miss makes them unreachable on exactly the machine
-that needs them. Setting `timeout: 0` does not draw a menu at all — it boots
-the default entry immediately, and takes those entries with it.
+bought rather than free. What it buys is reachability: the verbose boot and
+memtest86+ on both menus, the clean session on the live medium and single user
+on an installed machine, are reachable from nowhere else, and a countdown short
+enough to miss makes them unreachable on exactly the machine that needs them.
+Setting `timeout: 0` does not draw a menu at all — it boots the default entry
+immediately, and takes those entries with it.
 
 The menu is drawn as a character grid in the accent in force, in the console's
 own Terminus face, over a dimmed full-bleed backdrop. See
@@ -454,8 +455,9 @@ there — the applet only reports on devices it is handed — and its prober kno
 ext, vfat, ntfs, btrfs, f2fs, squashfs and swap but **not `crypto_LUKS`**. With
 it in place, an installed machine prints *"Root device with UUID=… not found!"*
 and drops to a shell, A/B selection silently never engages, and an encrypted
-root never reaches a passphrase prompt. A live ISO is unaffected, because it
-finds `rootfs.squashfs` by scanning and never calls blkid at all.
+root never reaches a passphrase prompt. A live boot without a persistence store
+is unaffected, because it finds `system.sfs` by mounting each device in turn
+and resolves no UUID at all.
 
 Two rules follow, and they are the same two `switch_root` keeps:
 
@@ -583,8 +585,9 @@ getty.
 
 Font and palette setup must not move back into `rcS`.
 
-`/etc/inittab` gives `tty1` to `kdos-login`, `tty2` an ordinary login, and
-`ttyS0` a serial login on demand.
+`/etc/inittab` gives `tty1` to `kdos-login`, `tty2` an ordinary getty, and
+`ttyS0` an `askfirst` root login shell — a serial console that costs nothing
+until somebody presses a key on it.
 
 `kdos-login` reads `autologin` from
 [`login.conf`](../06-reference/configuration.md#etckdosloginconf) and hands the

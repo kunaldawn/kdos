@@ -216,7 +216,6 @@ struct net_act {
 	char dev[160];
 	unsigned state;
 	unsigned vpn_state;
-	int is_vpn;
 };
 
 static struct net_act acts[NET_MAX_CONN];
@@ -506,7 +505,6 @@ static void vpn_prop(void *ctx, const char *key, sd_bus_message *m,
 {
 	struct net_act *a = ctx;
 
-	a->is_vpn = 1;
 	if (!strcmp(key, "VpnState") && take_u32(m, c, &a->vpn_state))
 		return;
 	sd_bus_message_skip(m, "v");

@@ -15,7 +15,7 @@ list is the [command index](../06-reference/command-index.md).
 | Command | What it is | Documented in |
 |---|---|---|
 | `kdos-comp` | The compositor: a frozen fork of labwc 0.20.0 with sixteen KDOS grafts | [kdos-comp](kdos-comp.md) |
-| `kdos-shell` | The panel, and 52 further surfaces under 52 further names | [kdos-shell](kdos-shell.md) |
+| `kdos-shell` | The panel, and 51 further surfaces under 52 further names | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor | [kdos-res](kdos-res.md) |
 | `kdos-term` | The terminal, with three inline-picture protocols | [kdos-term](kdos-term.md) |
 | `kdos-lock` | The lock screen | [The daemons](daemons.md) |

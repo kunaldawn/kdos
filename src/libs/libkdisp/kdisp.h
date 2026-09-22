@@ -28,6 +28,28 @@
  * LINKS libktui AND NOTHING ELSE, so gaining it costs a surface a vtable and a
  * struct rather than a font renderer.
  *
+ * ONE IMPLEMENTATION SHIPS (kwl_impl, in libkwl) AND THE INDIRECTION STILL
+ * EARNS ITS KEEP, BECAUSE IT IS THE TEST SEAM. A surface reached through this
+ * interface can be drawn with no compositor and no display libraries at all,
+ * which is what lets testing/goldens/ be rendered and compared on a bare host.
+ * Two fixtures stand in the seam, each on a different side of it:
+ *
+ *   testing/fixtures/shell/dumpmain.c  replaces the flat kdisp_* entry points
+ *                                      below. kdisp_init() answers -1, so
+ *                                      every kdos-shell front end takes its
+ *                                      non-Wayland path and draws one frame
+ *                                      into libktui's offscreen cell buffer.
+ *   testing/fixtures/term/kwlstub.c    supplies a KDispImpl whose probe
+ *                                      answers no. kdisp_current() is then
+ *                                      NULL and `kdos-term --dump` is in
+ *                                      exactly the state the shipped binary
+ *                                      is in with no display.
+ *
+ * Collapse the vtable into direct libkwl calls and both fixtures lose what
+ * they substitute for: every golden then needs fcft, pixman and
+ * wayland-client present to render, so the suite runs only in a build
+ * container and a host selftest can no longer look at a layout.
+ *
  * NOTE THE TWO EDGE VOCABULARIES IN THIS TREE AND DO NOT CONFLATE THEM.
  * KDISP_EDGE_* below is a SEQUENCE naming which edge a panel is anchored to.
  * libkwm's KWM_EDGE_* is a BITMASK whose values match the compositor's own
@@ -234,8 +256,8 @@ typedef struct {
 	 */
 	int dismiss_on_unfocus;
 	/*
-	 * A RULE ALONG THE SURFACE'S TOP EDGE, in logical pixels, drawn in
-	 * `rule_slot` and outside the cell grid entirely.
+	 * A RULE ALONG THE SURFACE'S TOP EDGE, in logical pixels, drawn in the
+	 * backdrop slot and outside the cell grid entirely.
 	 *
 	 * The panel is the reason. Every other surface on this desktop puts a
 	 * double-line box round itself and reads as a framed thing; the bar at
@@ -252,7 +274,6 @@ typedef struct {
 	 * wants.
 	 */
 	int rule;
-	int rule_slot;
 
 	/*
 	 * This surface's body opacity, in PERCENT. 0 means unset and is
@@ -307,10 +328,6 @@ enum {
 typedef struct {
 	unsigned id;
 	unsigned flags;
-	/* Which workspace it is on, or -1 where the server does not say.
-	 * wlr-foreign-toplevel has no workspace, so a Wayland row is -1 and a
-	 * caller that groups by workspace groups them all together. */
-	int workspace;
 	/* 1 when the window is on the same screen as the surface asking, 0
 	 * when it is on another. A server that does not report a window's
 	 * screen answers 1 for every window, because a task bar that filtered
@@ -363,7 +380,6 @@ typedef struct {
 
 	int (*cell_w)(void);
 	int (*cell_h)(void);
-	int (*px_h)(void);
 	int (*scale)(void);
 	int (*decorated)(void);
 	int (*popup_offset)(void);
@@ -379,7 +395,6 @@ typedef struct {
 	 * told leaves the name the surface attached with.
 	 */
 	void (*set_title)(const char *title);
-	void (*report_error)(void);
 
 	int (*lock_engaged)(void);
 	int (*lock_finished)(void);
@@ -432,15 +447,6 @@ typedef struct {
 	int (*win_count)(void);
 	int (*win_at)(int i, KDispWin *out);
 	void (*win_activate)(unsigned id);
-	/*
-	 * RUN ONE OF THE SESSION'S OWN VERBS, by name. NULL on a display that
-	 * has no such thing, which is every display in this tree: a
-	 * compositor's verbs are its own actions, reached through its
-	 * configuration and its command socket rather than through a client
-	 * vtable, so a surface asking here gets nothing and must be built to
-	 * act for itself.
-	 */
-	void (*session_action)(const char *verb);
 	void (*win_close)(unsigned id);
 	/* One KDISP_WIN_ bit, and the value wanted. Minimise, maximise and
 	 * fullscreen are one request with a different bit; the named callers
@@ -517,7 +523,6 @@ int kdisp_copy(const char *text, size_t len, int primary);
 int kdisp_drag_start(const char *mime, const char *data, size_t len);
 int kdisp_cell_w(void);
 int kdisp_cell_h(void);
-int kdisp_px_h(void);
 int kdisp_scale(void);
 int kdisp_decorated(void);
 int kdisp_popup_offset(void);
@@ -527,7 +532,6 @@ void kdisp_set_backdrop(KDispBackdropFn fn);
 void kdisp_input_cells(const KRect *rects, int n);
 /* Rename this window after it was created. See KDispImpl.set_title. */
 void kdisp_set_title(const char *title);
-void kdisp_report_error(void);
 int kdisp_lock_engaged(void);
 /* Does this surface have the keyboard? See KDispImpl.focused. */
 int kdisp_focused(void);
@@ -553,9 +557,6 @@ void kdisp_font_ask(void);
 int kdisp_win_count(void);
 int kdisp_win_at(int i, KDispWin *out);
 void kdisp_win_activate(unsigned id);
-/* Ask the session for one of its own verbs. Silently nothing where the display
- * has none — see KDispImpl.session_action. */
-void kdisp_session_action(const char *verb);
 void kdisp_win_close(unsigned id);
 void kdisp_win_minimise(unsigned id, int on);
 void kdisp_win_maximise(unsigned id, int on);
