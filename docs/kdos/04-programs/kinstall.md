@@ -158,7 +158,7 @@ Flat `key = value`, written by a save flag and read by a config flag.
 `greet` is one of them, and it is the one key whose **default differs from what the live medium
 ships**. The medium ships `greet = no` — a machine with one account and no password has nothing to
 ask — and the installer writes `yes`, because a system somebody installed has a real answer to give.
-The key is written by **editing the line** in the target's `/etc/kdos/con.conf`, not by replacing
+The key is written by **editing the line** in the target's `/etc/kdos/login.conf`, not by replacing
 the file: that file is mostly the explanation of what each key does, and a one-line rewrite would
 leave the installed system with a configuration file nobody can read.
 
@@ -232,7 +232,7 @@ Each of these existed for the installer and would otherwise be decorative:
 - **`fstab` is appended to, never replaced** — the shipped file carries the temporary-filesystem
   entry every graphical application depends on.
 - Renaming the user rewrites the account files, the primary group's own name, the home directory
-  **and `con.conf`'s `autologin`**, which is what tty1 logs in.
+  **and `login.conf`'s `autologin`**, which is what tty1 logs in.
 - The kernel and initramfs are copied onto the ESP, and the boot configuration points at those
   paths.
 - **Both EFI binaries go onto the ESP**, so a disk written on one machine starts on the other: a

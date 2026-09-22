@@ -157,7 +157,7 @@ static inline const char *sh_task_label(const struct sh_task *t)
  * character grid a logo is one cell, and three horizontal rules is what that
  * cell can honestly hold. It falls back to the word KDOS on a font without it
  * (panel.c's menu_mark(), resolved once from ktui_caps rather than per frame) —
- * U+2261 is not among the console font's 512 glyphs.
+ * U+2261 is not among the VT font's 512 glyphs.
  */
 #define SH_NMENUS 3
 #define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
@@ -191,8 +191,7 @@ int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn);
 const KtuiBackend *sh_cells_backend(int w, int h);
 
 struct sh_state {
-	/* The workspace pager's alone: NULL on the console, where the session
-	 * draws its own. The task list is libkdisp's on both desktops. */
+	/* The workspace pager's alone. The task list is libkdisp's. */
 	void *display;			/* the panel shares libkwl's connection */
 	void *ws_mgr;
 
@@ -320,9 +319,6 @@ int saver_main(int argc, char **argv);		/* kdos-saver    */
 int about_main(int argc, char **argv);		/* kdos-about    */
 int theme_main(int argc, char **argv);		/* kdos-theme    */
 
-/* The console desktop's character-art background. Its own header, because the
- * loader needs no compositor and this one pulls in Wayland. */
-#include "background.h"
 /* ────────────────────────────────────────────────────────────────────────
  * kdos-mountd, from the session side
  *
@@ -616,9 +612,6 @@ struct sh_app {
 	char term[24];			/* X-KDOS-Term: the emulator it asked
 					   for, or empty for this session's */
 	int floating;			/* X-KDOS-Float: open unanchored     */
-	/* X-KDOS-Cells: it draws on the console's own grid, so the session
-	 * must not put it in a cage. See struct sh_launch in launch.h. */
-	int cells;
 	char size[16];			/* X-KDOS-Size: COLSxROWS, or empty  */
 	int alien;			/* lives in the appbox — see apps.c  */
 	int uses;			/* launch count, from appusage       */
@@ -663,8 +656,7 @@ void sh_spawn(const char *const argv[]);
  * that is not in the corpus. */
 void sh_help(const char *doc, void *user);
 
-/* The terminal emulator on THIS desktop: kdos-term on the console, foot under
- * the compositor. Both take `-e CMD` and `-D DIR`. */
+/* The terminal emulator on this desktop. */
 /*
  * The KDOS logo as cells, from /usr/share/kdos/logo.txt. The file carries SGR
  * colour for the login banner; this strips it, because a surface paints slots.
@@ -714,8 +706,7 @@ const char *sh_term_named(const char *want);
 #define SH_TERM_PREFIX_MAX 160
 void sh_term_cmd(char *out, size_t n, const char *cmd);
 
-/* The program that IS this session: `kdos-con` on the console, `kdos-comp`
- * under the compositor. Log Out sends it SIGTERM. */
+/* The program that IS this session: `kdos-comp`. Log Out sends it SIGTERM. */
 const char *sh_session_prog(void);
 
 #include "kchrome.h"
@@ -723,10 +714,8 @@ const char *sh_session_prog(void);
 #include "kdisp.h"
 
 /*
- * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
- * first, so a surface started FROM the console desktop attaches to it even on a
- * machine that also has a compositor running. libkdisp names no implementation;
- * this list is what links each one in.
+ * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order. libkdisp names
+ * no implementation; this list is what links each one in.
  */
 extern const KDispImpl *const kdos_disp[];
 extern const int kdos_disp_n;
@@ -804,7 +793,6 @@ struct sh_entry {
 	char size[16];
 	int terminal;
 	int floating;
-	int cells;
 };
 int sh_desktop_entry(const char *id, struct sh_entry *out);
 

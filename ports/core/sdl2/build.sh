@@ -21,17 +21,15 @@
 #
 # KMSDRM IS OFF, AND WITHOUT IT SDL FAILS CLEANLY INSTEAD OF WINNING. A KMSDRM
 # program takes the card and the input devices directly — which on this image
-# means taking them from the console session that is already drawing on them,
-# leaving a desk nobody can get back to without a terminal switch. A graphical
-# program here runs under a compositor: kdos-comp on the graphical desktop and
-# the kiosk kdos-cage forks on the console. With the driver absent, a program
-# started anywhere else says "No available video device" and exits, which is a
-# sentence somebody can act on.
+# means taking them from the compositor that is already drawing on them, leaving
+# a desk nobody can get back to without a terminal switch. A graphical program
+# here runs under kdos-comp. With the driver absent, a program started anywhere
+# else says "No available video device" and exits, which is a sentence somebody
+# can act on.
 #
 # AND AUDIO IS THE HALF WITH NO VIDEO DEVICE AT ALL. `SDL_Init(SDL_INIT_AUDIO)`
 # opens no window, so whisper.cpp's streaming transcription runs in a terminal
-# on the console with nothing above — which is the one consumer here that is
-# not a window.
+# with nothing above it — which is the one consumer here that is not a window.
 #
 # PULSE IS OFF AND PIPEWIRE IS ON: PipeWire is this image's server and there is
 # no PulseAudio port, so the pulse backend would be a dlopen that never finds

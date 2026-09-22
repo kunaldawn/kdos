@@ -28,7 +28,7 @@
 #ifndef SH_CHORDS_H
 #define SH_CHORDS_H
 
-/* Room for either desktop's whole table, the console's recorded scripts and
+/* Room for the whole table, the recorded scripts and
  * the workspace rows the session answers without binding. A table past this is
  * truncated rather than grown: what is loaded is drawn by surfaces that scroll
  * it, and no keyboard has this many chords on it. */
@@ -67,7 +67,7 @@ int sh_chords_count(void);
 /* NULL outside the loaded table. */
 const struct sh_chord *sh_chord_at(int i);
 
-/* Non-zero when neither desktop's reader answered and the built-in defaults
+/* Non-zero when the reader answered nothing and the built-in defaults
  * are what is loaded. A surface that tells the reader where its rows came from
  * — the key card prints the refusal above them — has to be able to tell the
  * defaults from a table that was really read. */

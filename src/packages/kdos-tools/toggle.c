@@ -11,9 +11,9 @@
  *   kdos toggle <name>          flip it
  *   kdos toggle <name> on|off   set it
  *
- * A FLAG FILE, NOT A CONFIGURATION KEY. `con.conf` documents itself as read
- * once when the session starts, so a runtime writer would make half its
- * answers come from before an edit and half from after. These are state: they
+ * A FLAG FILE, NOT A CONFIGURATION KEY. A configuration file is read when the
+ * session starts, so a runtime writer would make half its answers come from
+ * before an edit and half from after. These are state: they
  * live under `~/.local/state/kdos/toggles/`, and their readers either stat
  * them on a tick they already run or are sent the retint signal below.
  *
@@ -51,9 +51,9 @@ static const struct {
 	int retint;
 } TOGGLES[] = {
 	{ "stay-awake", "never save, lock or blank on idle",
-	  "kdos-con's idle tick", 0 },
+	  "kdos-comp's idle policy", 0 },
 	{ "night-light", "warm the palette",
-	  "kdos-con and kdos-view, on the retint signal", 1 },
+	  "every surface, on the retint signal", 1 },
 	{ "dnd", "hold notifications back", "kdos-notifyd", 0 },
 };
 

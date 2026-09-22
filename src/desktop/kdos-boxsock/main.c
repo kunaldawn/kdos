@@ -150,9 +150,8 @@ static int listen_socket(const char *path)
 /*
  * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
  *
- * A tagged socket is a listener on ONE compositor, and the console desktop
- * runs one per WINDOW — a kdos-cage for each embedded guest. Keyed on the box
- * alone the path is therefore the FIRST launch's compositor for ever after:
+ * A tagged socket is a listener on ONE compositor. Keyed on the box alone the
+ * path would be the FIRST launch's compositor for ever after:
  * the second launch of the same application finds the file already there,
  * connects to it, and its window opens inside the first launch's window.
  * kdos-boxsock derives the same component from the same variable, which is

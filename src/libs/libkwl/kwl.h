@@ -134,8 +134,8 @@ int kwl_drag_start(const char *mime, const char *data, size_t len);
  *
  * `step` moves the size in the name by that many units of whichever key
  * carries it, `:pixelsize=N` or `:size=N`, clamped at both ends. A step of 0
- * puts back the name kwl_init() was given, which is what the console's own
- * font chords mean by a reset. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE
+ * puts back the name kwl_init() was given, which is what a reset chord
+ * means. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE
  * IT CARRIES, so a step that lands between two of them reloads a face of the
  * same size and the cell does not move at all. kwl_cell_w()/kwl_cell_h() are
  * how a caller tells: everything it cut for the old cell is still right when

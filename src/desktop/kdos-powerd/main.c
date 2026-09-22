@@ -351,19 +351,18 @@ static int fw_verb(const char *arg, char *out, size_t nout)
 /*
  * WHICH ACCOUNT tty1 LOGS IN WITHOUT ASKING, or none.
  *
- * `/etc/kdos/con.conf` is root's and the choice is an administrator's, which
+ * `/etc/kdos/login.conf` is root's and the choice is an administrator's, which
  * is the same question `wheel` already answers — so it is a verb here rather
- * than a second daemon or a setuid writer for two lines.
+ * than a second daemon or a setuid writer for one line.
  *
- * THE ACCOUNT MUST BE ONE A GREETER WOULD OFFER. `kb_users()` is the one place
- * that decides who may log in, and pointing autologin at a name it would not
- * list is a machine that boots to a login nobody can complete — a service
- * account with `nologin`, or a name that is not there at all.
+ * THE ACCOUNT MUST BE ONE THAT CAN LOG IN. `kb_users()` is the one place that
+ * decides who may, and pointing autologin at a name it would not list is a
+ * machine that boots to a login nobody can complete — a service account with
+ * `nologin`, or a name that is not there at all.
  *
- * BOTH KEYS ARE REWRITTEN TOGETHER. `greet` and `autologin` are one setting
- * seen twice: `greet = no` with no `autologin` is a tty1 that logs in as
- * whatever the default happens to be, and an `autologin` under `greet = yes`
- * is a line that does nothing and reads as though it does.
+ * OFF IS A COMMENTED LINE, NOT AN EMPTY VALUE. kdos-login asks for a password
+ * when it finds no key, and `autologin =` with nothing after it would be a key
+ * naming an account called "", which agetty would be handed.
  */
 static int set_autologin(const char *who, char *out, size_t nout)
 {
@@ -392,28 +391,28 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	/*
 	 * ON THE HEAP, BECAUSE A CONFIGURATION FILE GROWS. `kb_read_file`
 	 * fills a fixed buffer and NUL-terminates whatever fitted, so a
-	 * con.conf past that size was read as its own first N bytes and this
+	 * login.conf past that size was read as its own first N bytes and this
 	 * rewrote the machine's login settings out of a truncated file —
 	 * silently, and the last comment came out cut in half. libkbase says
 	 * so in its own header: a file a PERSON edits wants kb_read_whole.
 	 */
 	size_t len = 0;
 
-	snprintf(path, sizeof(path), "%s/kdos/con.conf", etc);
+	snprintf(path, sizeof(path), "%s/kdos/login.conf", etc);
 	buf = kb_read_whole(path, &len);
 	if (!buf || !len) {
 		free(buf);
-		snprintf(out, nout, "err cannot read con.conf\n");
+		snprintf(out, nout, "err cannot read login.conf\n");
 		return -1;
 	}
 
-	/* Two keys may each grow by a name, and every line gains nothing else;
-	 * the slack is a name's worth per line, which no rewrite can exceed. */
+	/* The one key may grow by a name and every line gains nothing else; the
+	 * slack is a name's worth per line, which no rewrite can exceed. */
 	cap = len + 1024;
 	next = malloc(cap);
 	if (!next) {
 		free(buf);
-		snprintf(out, nout, "err cannot read con.conf\n");
+		snprintf(out, nout, "err cannot read login.conf\n");
 		return -1;
 	}
 	next[0] = '\0';
@@ -424,14 +423,17 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	     ln = strtok_r(NULL, "\n", &sp)) {
 		char row[512];
 
-		/* The KEY only, and leading space is not part of it: a comment
-		 * mentioning `greet` must not be rewritten into a setting. */
-		if (!strncmp(ln, "greet", 5) && strchr(ln, '='))
-			snprintf(row, sizeof(row), "greet = %s",
-				 off ? "yes" : "no");
-		else if (!strncmp(ln, "autologin", 9) && strchr(ln, '='))
-			snprintf(row, sizeof(row), "autologin = %s",
-				 off ? "kdos" : who);
+		/* THE KEY, COMMENTED OR NOT, and nothing else on the line: a
+		 * comment ABOUT the key — prose that merely mentions it — must
+		 * not be rewritten into a setting, so the match is anchored at
+		 * the line and allows exactly one leading `#`. */
+		const char *key = ln;
+
+		if (*key == '#')
+			key++;
+		if (!strncmp(key, "autologin", 9) && strchr(key, '='))
+			snprintf(row, sizeof(row), off ? "#autologin = kdos"
+						       : "autologin = %s", who);
 		else
 			snprintf(row, sizeof(row), "%s", ln);
 		int k = snprintf(next + used, cap - used, "%s\n", row);
@@ -442,18 +444,18 @@ static int set_autologin(const char *who, char *out, size_t nout)
 		if (k < 0 || (size_t)k >= cap - used) {
 			free(buf);
 			free(next);
-			snprintf(out, nout, "err con.conf is too large\n");
+			snprintf(out, nout, "err login.conf is too large\n");
 			return -1;
 		}
 		used += (size_t)k;
 	}
 
-	snprintf(tmp, sizeof(tmp), "%s/kdos/con.conf.new", etc);
+	snprintf(tmp, sizeof(tmp), "%s/kdos/login.conf.new", etc);
 	f = fopen(tmp, "w");
 	if (!f) {
 		free(buf);
 		free(next);
-		snprintf(out, nout, "err cannot write con.conf\n");
+		snprintf(out, nout, "err cannot write login.conf\n");
 		return -1;
 	}
 	fputs(next, f);
@@ -464,7 +466,7 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	free(next);
 	if (rename(tmp, path) != 0) {
 		unlink(tmp);
-		snprintf(out, nout, "err cannot write con.conf\n");
+		snprintf(out, nout, "err cannot write login.conf\n");
 		return -1;
 	}
 	snprintf(out, nout, "ok %s\n", off ? "off" : who);

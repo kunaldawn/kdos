@@ -16,10 +16,10 @@
 # container, and on a laptop that difference is a container's worth of memory
 # and 18 seconds of cold start.
 #
-# -Dsixel=enabled is the console's video output. The Wayland path needs a
-# compositor; on a console session there is none, and `--vo=sixel` is how a
-# video reaches a terminal that answered the DA reply. Without it mpv on the
-# console has no video output at all and plays the sound of a film.
+# -Dsixel=enabled is the terminal video output. The Wayland path needs a
+# compositor, and `--vo=sixel` is how a video reaches a terminal that answered
+# the DA reply — a serial line, an ssh login, or a terminal on tty2. Without it
+# mpv there has no video output at all and plays the sound of a film.
 #
 # -Dx11=disabled is the hard rule; -Dgl=enabled -Degl=enabled is what makes the
 # Wayland path work at all. -Dlua=disabled drops the scripting layer rather

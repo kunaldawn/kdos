@@ -1,22 +1,22 @@
 +=[ Settings ]=====================================================================================================================+
-| Appearance  |>Pointing devices ? console  -------------------------------------------------------------------------------------- |
-| Panel       | pointer_speed              < #####################################::::::::::::::::::::::::::::::::::: >   0  login |
-| Desktop     | natural_scroll              no                                                                           v   login |
-| Hardware    | tap_to_click                no                                                                           v   login |
-| Session     | tap_drag                    yes                                                                          v   login |
-|>Input       | disable_while_typing        yes                                                                          v   login |
-| Apps        | left_handed                 no                                                                           v   login |
-| Boxes       | middle_emulation            no                                                                           v   login |
-| System      | What the pointer does to a window ? console  --------------------------------------------------------------------- |
-|             | edge_snap                   yes                                                                          v   login |
-|             | snap_zone                  < #::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: >   1  login |
-|             | title_dblclick              maximise                                                                     v   login |
-|             | dblclick_ms                < #########################::::::::::::::::::::::::::::::::::::::::::::::: > 400  login |
-|             | panel_wheel                 yes                                                                          v   login |
-|             | The keyboard ----------------------------------------------------------------------------------------------------- |
-|             | Keyboard shortcuts?                                                                                              > |
-|             | where layout comes from                                                                                            |
-|             | where key repeat comes from                                                                                        |
+| Appearance  |>The keyboard ----------------------------------------------------------------------------------------------------- |
+| Panel       | Keyboard shortcuts?                                                                                              > |
+| Desktop     | where layout comes from                                                                                            |
+| Hardware    | where key repeat comes from                                                                                        |
+| Session     |                                                                                                                    |
+|>Input       |                                                                                                                    |
+| Apps        |                                                                                                                    |
+| Boxes       |                                                                                                                    |
+| System      |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
 |             |                                                                                                                    |
 |             |                                                                                                                    |
 |             |                                                                                                                    |

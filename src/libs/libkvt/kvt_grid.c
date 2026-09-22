@@ -202,9 +202,9 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
 	 * is precisely that boundary: the vte resolves an index of 16 or more
 	 * to RGB and clears the code.
 	 *
-	 * The slot stays either way, so a consumer that was never sent the
-	 * literals — a view that declined them, a golden, a sixteen-colour
-	 * terminal — draws exactly what it drew before.
+	 * The slot stays either way, so a consumer that reads slots alone — a
+	 * dump, a golden, a sixteen-colour terminal — draws exactly what it
+	 * drew before.
 	 */
 	if (attr->fccode < 0) {
 		c.fgc = ((uint32_t)attr->fr << 16) |
@@ -271,10 +271,9 @@ kvt_age_t kvt_grid_render(struct kvt_screen *con, KtuiCell *cells, int w, int h)
 	struct grid g = { cells, w, h, -1, -1 };
 	/*
 	 * Every field, the literals included: the cell is compared whole by
-	 * every consumer downstream — the wire diff, the painter's row diff,
-	 * the tty backend's style test — so a field left uninitialised is a
-	 * cell that differs from itself and a frame that is re-sent and
-	 * repainted for ever.
+	 * every consumer downstream — the painter's row diff, the tty
+	 * backend's style test — so a field left uninitialised is a cell that
+	 * differs from itself and a frame that is repainted for ever.
 	 */
 	KtuiCell blank = { .ch = ' ', .fg = KT_TEXT, .bg = KT_BG,
 			   .attr = KT_A_NONE, .fgc = 0, .bgc = 0, .ulc = 0 };

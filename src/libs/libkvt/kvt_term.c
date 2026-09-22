@@ -294,10 +294,8 @@ void kvt_term_scrollback(struct kvt_term *t, unsigned int lines)
  *
  * `kdos theme` writes `~/.config/kdos/term-colors.conf` — eighteen
  * `name = #rrggbb` lines — and this turns it into the array the vte wants.
- * It lives here rather than in either terminal because BOTH read it: the
- * window `kdos-term` opens and the one the console session opens are the same
- * terminal, and a colour that differed between them would be the same program
- * looking different depending on which desktop started it.
+ * It lives here rather than in the terminal because every consumer of the vte
+ * reads it, and a colour resolved twice is a colour that can differ.
  *
  * A MISSING FILE IS NOT AN ERROR. It is what a fresh account has before
  * anybody has chosen an accent, and the answer there is the built-in palette.
@@ -512,9 +510,9 @@ void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user)
 }
 
 /*
- * The focus moved. Both desktops call this from the one place each decides
- * focus, so a window on a workspace somebody left is told it lost it — which
- * it did, and an editor that is not told does not reload a changed file.
+ * The focus moved. Called from the one place the surface decides focus, so a
+ * window on a workspace somebody left is told it lost it — which it did, and
+ * an editor that is not told does not reload a changed file.
  */
 void kvt_term_focus(struct kvt_term *t, int in)
 {

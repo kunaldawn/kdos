@@ -98,10 +98,9 @@ struct item {
 	char term[24];			/* X-KDOS-Term: which emulator       */
 	char size[16];			/* X-KDOS-Size: COLSxROWS            */
 	int floating;			/* X-KDOS-Float: open unanchored     */
-	int cells;			/* X-KDOS-Cells: it draws on the grid */
 	/*
 	 * A COMMAND THIS FILE WROTE rather than a row read out of an entry —
-	 * the System column. It is never handed to the console session: see
+	 * the System column. See
 	 * `host` in launch.h.
 	 */
 	int host;
@@ -198,7 +197,6 @@ static void add_desktop_file(const char *path)
 	it->submenu = -1;
 	it->terminal = kl.terminal;
 	it->floating = kl.floating;
-	it->cells = kl.cells;
 	nitems++;
 	kxdg_free(&e);
 }
@@ -247,7 +245,7 @@ static void load_applications(void)
 /*
  * A ROW THIS FILE WROTE. Its command is a constant in this source and not a
  * line out of a file anything can write, so it is marked `host` and never
- * handed to the console session: `kdos-power suspend` in a cage would be a
+ * run as this process: `kdos-power suspend` in a box would be a
  * wlroots compositor started to run a one-line verb, and Log Out's `pkill` on
  * the session would leave that cage outliving what it killed. See launch.h.
  */
@@ -446,7 +444,6 @@ static void launch(const struct item *it)
 		.size = it->size,
 		.terminal = it->terminal,
 		.floating = it->floating,
-		.cells = it->cells,
 		.host = it->host,
 	};
 
@@ -602,7 +599,7 @@ static void draw(const struct view *v)
 			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
 	/*
 	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
-	 * The plate is the whole highlight, so on the console and in a dump
+	 * The plate is the whole highlight, so in a dump
 	 * the selected row was indistinguishable from every other row — a
 	 * menu with no visible cursor, on a display where the cursor is the
 	 * only thing saying what Enter will do. An accent fill with the slots
@@ -720,7 +717,7 @@ static void typeahead(struct view *v, int ch)
  * grouped task chip with more than one window is clicked.
  *
  * THE LIST COMES FROM libkdisp, so this menu is the same menu on both
- * desktops: the console answers it from the session's management messages and
+ * servers: libkdisp answers it from the management messages and
  * a compositor from wlr-foreign-toplevel-management, and neither protocol
  * appears here.
  *
@@ -793,13 +790,11 @@ static int win_have(const char *app)
  */
 #define WIN_SETTLE_MS 20
 /*
- * A BOUND ON THE TURNS AS WELL AS ON THE CLOCK. libkcon stops reading the
- * socket while its event queue has fewer than a few slots free, and only this
- * program's own loop empties that queue — so a deadline alone would poll a
+ * A BOUND ON THE TURNS AS WELL AS ON THE CLOCK. A deadline alone would poll a
  * socket that is readable every time and spin until it expired, with whatever
  * was typed at the menu sitting unread behind it. Sixty-four turns is far more
- * than a session's window list takes and is over in microseconds when nothing
- * can be read.
+ * than a window list takes and is over in microseconds when nothing can be
+ * read.
  */
 #define WIN_WAIT_TURNS 64
 
@@ -817,9 +812,8 @@ static long win_since(const struct timespec *t0)
  *
  * A compositor binds the manager and announces its toplevels inside
  * kdisp_init's own roundtrip, so its list is complete the moment that call
- * returns. The console sends HELLO and ATTACH and returns without reading a
- * byte (see kcon_init), so the session's window ADDs are still on the wire —
- * a list read there is empty every time, whatever is on screen.
+ * returns — but a backend that answers later leaves a list read at once empty,
+ * whatever is on screen.
  *
  * The wait is for a window of THIS app and not for any window at all: the
  * menu has nothing to draw until the chip's own windows are in the list, and
@@ -1261,7 +1255,7 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 	/*
 	 * WHETHER THE SERVER HAS A LIST IS ASKED OF THE SERVER, not of the
 	 * count. A count of zero is an ordinary empty desktop (see kdisp.h),
-	 * and on the console it is also what a list still on the wire looks
+	 * and it is also what a list still on the wire looks
 	 * like; only the vtable says whether anything can be enumerated at
 	 * all. There is still nothing to ask a display server for here
 	 * directly, which is why neither protocol appears in this file.
@@ -1499,10 +1493,9 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 			/*
 			 * THE ENTRY, NOT A LINE OFF IT. `sh_launch_id` reads
 			 * the same keys the Start menu reads, so a second
-			 * window of a terminal application gets a terminal and
-			 * one of a boxed application reaches the console
-			 * session — neither of which a re-split of `Exec`
-			 * could do. With no document to open, the split drops
+			 * window of a terminal application gets a terminal —
+			 * which a re-split of `Exec` could not do. With no
+			 * document to open, the split drops
 			 * every field code, so a stray `%U` never becomes a
 			 * file called "%U".
 			 */

@@ -115,8 +115,7 @@ static void commit(void)
 	/*
 	 * AND ONTO THE CLIPBOARD, because the answer to "what is 3 inches in
 	 * millimetres" is nearly always going somewhere else. It is the
-	 * session's clipboard on the console and the compositor's under
-	 * Wayland, from one call.
+	 * compositor's clipboard, from one call.
 	 */
 	kdisp_copy(result, strlen(result), 0);
 }

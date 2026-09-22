@@ -640,9 +640,9 @@ typedef void (*kvt_vte_osc_cb) (struct kvt_vte *vte,
  * bytes between the introducer and the terminator, and it is borrowed for the
  * length of the call.
  *
- * libkvt decodes NOTHING. It is linked by kdos-con, which links no pixel code
- * at all, and it has to stay that way — so the decoder is a function pointer
- * the consumer sets, backed by libkimg where a consumer wants pictures.
+ * libkvt decodes NOTHING, because a consumer that links no pixel code still
+ * links this — so the decoder is a function pointer the consumer sets, backed
+ * by libkimg where a consumer wants pictures.
  *
  * A payload past the cap set by kvt_vte_set_img_cb is DROPPED ENTIRELY rather
  * than truncated: half an image is not a smaller image, and a decoder handed
@@ -929,8 +929,6 @@ unsigned int kvt_vte_get_mouse_event(struct kvt_vte *vte);
  */
 #ifdef KDOS_TERM_VERSION
 #define KVT_TERM_VERSION KDOS_TERM_VERSION
-#elif defined(KDOS_CON_VERSION)
-#define KVT_TERM_VERSION KDOS_CON_VERSION
 #else
 #define KVT_TERM_VERSION "0"
 #endif
@@ -971,14 +969,11 @@ int kvt_vte_paste_needs_confirm(struct kvt_vte *vte, const char *data);
 /*
  * THE POINTER OVER A TERMINAL, and the selection it makes.
  *
- * IT LIVES HERE BECAUSE TWO PROGRAMS NEED IT. `kdos-term` is a window on the
- * graphical desktop and `kdos-con` runs terminals of its own inside the
- * session, and both must decide the same things: when the wheel belongs to the
- * child rather than to the scrollback, when a drag is a selection rather than
- * a mouse report, and that a press and a release in one cell is a click and
- * selects nothing. Written twice, the two would drift, and the difference
- * would be a terminal that behaves differently depending on which desktop it
- * is on.
+ * IT LIVES HERE AND NOT IN THE TERMINAL, because every consumer of the vte
+ * must decide the same things: when the wheel belongs to the child rather than
+ * to the scrollback, when a drag is a selection rather than a mouse report,
+ * and that a press and a release in one cell is a click and selects nothing.
+ * Written per consumer, they would drift.
  *
  * `KvtUi` is the caller's — one per terminal, zeroed once. Nothing in libkvt
  * keeps it, so a program with many terminals keeps many.

@@ -6,9 +6,6 @@ Comment=What is using this machine, how much, and since when
 Exec=kdos-res
 Icon=speedometer
 Terminal=false
-# It attaches to the console session as a surface of its own, so the session
-# must give it a window and not a cage — see X-KDOS-Cells in kxdg.h.
-X-KDOS-Cells=true
 Categories=System;Monitor;
 Keywords=cpu;memory;gpu;disk;network;battery;process;task;monitor;
 StartupWMClass=kdos-res

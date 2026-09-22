@@ -457,8 +457,7 @@ static int fire_one(const char *path, const char *id, void *u)
 	 * nothing was listening must stay a reminder, or a machine that
 	 * happened to have no session at the wrong minute silently eats it.
 	 */
-	if (!kb_have_prog("gdbus") ||
-	    (!getenv("DBUS_SESSION_BUS_ADDRESS") && !getenv("KDOS_CON")))
+	if (!kb_have_prog("gdbus") || !getenv("DBUS_SESSION_BUS_ADDRESS"))
 		return 0;
 	kb_notify("kdos", "Reminder", text);
 	/* REMOVED BEFORE RETURNING, and that is what makes it fire once: the

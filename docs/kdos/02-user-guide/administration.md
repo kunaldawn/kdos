@@ -334,37 +334,21 @@ named in `/etc/fstab`, and the medium the system booted from.
 
 ## The session on tty1
 
-**The console desktop is the default session**, so administering this machine starts here rather
-than with the compositor. `/etc/inittab` gives `tty1` to `kdos-getty`, which loads the console font
-and hands over to `kdos-con-login`; that reads `/etc/kdos/con.conf` and either logs an account in or
-draws the greeter. `tty2` stays a plain getty and is the recovery console.
+**A login on `tty1` reaches the desktop.** `/etc/inittab` gives `tty1` to `kdos-getty`, which loads
+the VT font and hands over to `kdos-login`; that reads `/etc/kdos/login.conf` and either autologins
+the account it names or leaves the ordinary password prompt. `tty2` stays a plain getty and is the
+recovery console.
 
-`/etc/kdos/con.conf` — the keys an administrator changes:
+`/etc/kdos/login.conf` carries one key:
 
 | Key | Does |
 |---|---|
-| `greet` | `yes` draws the login surface; `no` logs in the account `autologin` names |
-| `autologin` | Which account `greet = no` logs in. **The only place the desktop's account is named** |
-| `sessions` | How many workspaces, and so how many cells the pager draws |
-| `terminal` | What `Super+Return` opens — your login shell (`$SHELL`, falling back to `/bin/bash`) unless you set it |
-| `scrollback` | Lines a terminal window keeps after they scroll off |
-| `idle_saver`, `idle_lock`, `idle_off` | Seconds from the last input, each measured from that input rather than from the step before it |
-| `remote` | Whether `kdos con forward` will carry a view socket off the machine |
-| `embed` | Whether a graphical application becomes a window or takes a terminal of its own |
+| `autologin` | Which account tty1 logs in without asking. **The only place the desktop's account is named**; commented out means a password prompt |
 
-**Renaming the desktop user rewrites `autologin`.** It is named in one place, and `kinstall` rewrites
-that place; a second copy elsewhere would log in an account the installed system does not have,
-leaving the machine reachable only from `tty2` — which is what the shipped file's own comment warns
-about. `kdos-getty`'s fallback getty reads the same key for the same reason.
-
-**Sessions are addressed by name, not by pid.** `kdos con ls` lists them, `attach` and `detach` move
-a display on and off one, and `kill` asks a session to end rather than unlinking its sockets. See
-[the `kdos` command](../04-programs/kdos-command.md#con).
-
-**Two sockets per session, and only the view socket may be forwarded** — forwarding the surface
-socket would hand the far end the right to place windows in the session. `remote = no` is enforced
-by `kdos con forward` refusing, because at the accepting end a forwarded socket's peer is the local
-`ssh` process running as the same user and cannot be told from a local display.
+**Renaming the desktop user rewrites `autologin`.** It is named in one place, and `kinstall`
+rewrites that place; a second copy elsewhere would log in an account the installed system does not
+have, leaving the machine reachable only from `tty2`. `kdos-getty`'s fallback getty reads the same
+key for the same reason.
 
 ## Users and groups
 
@@ -379,9 +363,8 @@ usable without root. Removing one has a specific, silent consequence.
 
 **`tty` is the one that is not about hardware.** `/dev/tty0` is `0620 root:tty` and `/dev/console`
 is `0600 root:root`, and a session that has been backgrounded has no controlling terminal for
-`/dev/tty` to resolve to — so without that group the console session cannot carry a `VT_OPENQRY` on
-any device, and a graphical application that needs a terminal of its own is refused with "no free
-terminal" on a machine that has plenty.
+`/dev/tty` to resolve to — so without that group a backgrounded session cannot carry a
+`VT_OPENQRY` on any device and is refused a terminal on a machine that has plenty.
 
 ## Hardware
 

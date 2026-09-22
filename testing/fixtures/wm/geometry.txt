@@ -292,8 +292,8 @@ wsadj 0000 2 1 1 -> -1
 #
 # drag <dx> <dy> -> <yes|no>
 #
-# One cell. Both desktops must agree, or the same gesture picks a file up on
-# one and only selects it on the other.
+# One cell. Pixels are not a unit this model has, and a mixed one would pick a
+# file up at one scale and only select it at another.
 # ─────────────────────────────────────────────────────────────────────────
 
 drag 0 0 -> no

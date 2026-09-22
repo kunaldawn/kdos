@@ -132,18 +132,16 @@ int bbupdate()
  * the frame is larger than the pipe it crosses and CANNOT cross in one piece
  * however this program is written. A consumer composing on its own clock
  * therefore reads a screen that is half this frame and half the last one:
- * modelled against the console session's compose, 7.5% of composes show a
- * torn frame and between eighteen and twenty-four per cent of frames are
- * never shown whole.
+ * modelled against a 16ms compose, 7.5% of composes show a torn frame and
+ * between eighteen and twenty-four per cent of frames are never shown whole.
  *
  * DECSET 2026 IS HOW A PRODUCER SAYS SO, and the bracket rather than the
  * write is the fix precisely because the write cannot be made atomic.
  * Between the set and the reset the terminal keeps showing the screen it
  * already had and composes nothing it receives, so the rows arrive in as many
  * writes as they like and the picture changes once, whole. kdos-term honours
- * it through libkvt's kvt_term_sync_hold() and the console session honours it
- * in its VT layer, both under a watchdog: a producer that sets the hold and
- * dies must not freeze the window. A terminal that honours neither ignores a
+ * it through libkvt's kvt_term_sync_hold(), under a watchdog: a producer that
+ * sets the hold and dies must not freeze the window. A terminal that honours neither ignores a
  * private mode it does not know and gets exactly the stream it gets today.
  *
  * ON THE SAME STREAM AS THE FRAME, WHICH IS WHY IT IS stdout AND WHY BOTH
@@ -208,17 +206,14 @@ void bbflush(void)
  * checked against: a grid shorter than the control's falls 666us further
  * behind the tick every frame, and the re-peg below puts it back no closer
  * than 666us behind. A tick is therefore refused only after a stall, never
- * for the jitter of noticing one. The consumers do not agree with each
- * other: the console session composes on CON_FRAME_MS, which is
- * 16, and will not compose two frames inside it; kdos-term on Wayland has no
- * such constant at all, because its draw is gated on the compositor's frame
- * callback, so its floor is the output's -- 16.667 at sixty hertz. A frame
+ * for the jitter of noticing one. kdos-term has no such constant at all,
+ * because its draw is gated on the compositor's frame callback, so its floor
+ * is the output's -- 16.667 at sixty hertz. A frame
  * produced faster than the floor is not a frame anybody sees: it is bytes
  * the consumer must still read and parse. Nor is the surplus dropped quietly
  * -- a producer beats against its consumer at the difference, and a beat is
- * what an eye reads as judder. 16000 leaves none against the console's 16
- * and two and a half a second against sixty hertz, which is the price of the
- * margin above.
+ * what an eye reads as judder. 16000 leaves two and a half a second against
+ * sixty hertz, which is the price of the margin above.
  *
  * FURTHER UNDER IS SURPLUS AND FURTHER OVER IS JUDDER, which is the whole of
  * why the number is not free either way. A scene stating a POSITIVE rate is

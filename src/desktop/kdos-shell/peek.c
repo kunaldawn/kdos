@@ -50,7 +50,6 @@
 
 #include "kbase.h"
 #include "kcell.h"
-#include "kcon.h"
 #include "kimg.h"
 #include "kwl.h"
 #include "shell.h"

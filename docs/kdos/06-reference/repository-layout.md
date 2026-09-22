@@ -39,7 +39,7 @@ kdos/
 │   ├── libs/              our C libraries — static, and see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
 │   │   ├── libkcolor/         the palette table and colour maths
-│   │   ├── libkwm/            the window model both desktops obey
+│   │   ├── libkwm/            the window model, out of the compositor that obeys it
 │   │   ├── libkdisp/          which display server, and the surface lifecycle
 │   │   ├── libktui/           the terminal, the cell buffer, widgets, charts
 │   │   ├── libkcell/          the glyph cache and the cell painter
@@ -54,8 +54,6 @@ kdos/
 │   │   ├── libkproc/          every reading, from a movable root
 │   │   ├── libkvt/            the terminal state machine — a fork of libtsm
 │   │   ├── libkimg/           the only place untrusted image bytes are decoded
-│   │   ├── libkkms/           a screen, where there is one to take
-│   │   ├── libkcon/           the console session's wire, both ends
 │   │   └── selftest.c         the shared assertion program
 │   │
 │   ├── desktop/           the desktop — a port repository
@@ -68,9 +66,7 @@ kdos/
 │   │   ├── kdos-oomd/         memory-pressure protection
 │   │   ├── kdos-mountd/       removable media
 │   │   ├── kdos-packd/        the only thing that mounts a pack
-│   │   ├── kdos-con/          the console session: windows, terminals, surfaces
-│   │   ├── kdos-view/         the display half: cells arrive, input leaves
-│   │   ├── kdos-term/         the terminal, on both desktops
+│   │   ├── kdos-term/         the terminal
 │   │   ├── kdos-boxsock/      one tagged compositor socket per box, per compositor
 │   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser
 │   │
@@ -140,11 +136,11 @@ compiled by their consumers' recipes, and the two tools are host-only and compil
 
 ## The library rule
 
-Everything under `src/libs/` links **nothing but the C library**, with two declared exceptions —
-`libkwl`, the Wayland backend, and `libkkms`, the KMS one. Both are separate archives precisely so
-the rule survives them, and both are named only by the consumers that want a display: `kdos-con`
-holds every window and links neither. Adding a dependency
-to any of the others moves every phase-1 consumer with it. See
+Everything under `src/libs/` links **nothing but the C library**, with one declared exception —
+`libkwl`, the Wayland backend. It is a separate archive precisely so the rule survives it, and it
+is named only by a consumer that wants a display: `kinstall` links neither it nor a font renderer,
+which is what lets the installer be built in phase 1. Adding a dependency to any of the others
+moves every phase-1 consumer with it. See
 [The C libraries](../05-developer/c-libraries.md).
 
 ## Generated directories

@@ -809,7 +809,7 @@ void kcell_paint_forget(void)
  * that the setup is the whole cost. A full 16x16-cell block copied cell by cell
  * is 256 of those; copied a row at a time it is 16, and the identical pixels
  * land more than three times cheaper. An embedded guest publishes a screenful
- * of blocks per frame, so that difference is most of the view's frame budget.
+ * of blocks per frame, so that difference is most of the frame budget.
  *
  * The test is deliberately narrow and everything outside it FLUSHES THE RUN
  * AND FALLS BACK TO ONE CALL PER CELL, because a run is only the same pixels

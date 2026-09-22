@@ -211,11 +211,11 @@ static int rc_role(const char *act, const char *detail)
 			return WEL_TERM;
 		if (!strncmp(detail, "kdos-keys", 9))
 			return WEL_CARD;
-		/* THE SEARCH IS THE TOUR'S SECOND STEP ON BOTH DESKTOPS, and
-		 * under the compositor it is an Execute like any other rather
-		 * than a labwc verb — W-space runs the palette where it used
-		 * to open the root menu. Without this the step has nothing to
-		 * name here and the tour comes up with a hole in it. */
+		/* THE SEARCH IS THE TOUR'S SECOND STEP, and it is an Execute
+		 * like any other rather than a labwc verb — W-space runs the
+		 * palette, not labwc's root menu. Without this the step has
+		 * nothing to name here and the tour comes up with a hole in
+		 * it. */
 		if (!strncmp(detail, "kdos-palette", 12))
 			return WEL_MENU;
 		return WEL_NONE;
@@ -289,218 +289,14 @@ static int classify(const char *chord, const char *act, const char *detail)
 	return SEC_WINDOW;
 }
 
-/*
- * THE CONSOLE'S CHORDS COME FROM THE SESSION THAT BINDS THEM — chords.c runs
- * `kdos-con --keys` on this desktop and parses `rc.xml` on the other one, so
- * the table that binds the chords is the table that prints them.
- *
- * THIS SIDE OWNS ONLY HOW THEY ARE DESCRIBED AND GROUPED, which is presentation
- * and belongs to the card. An action with no row here is DROPPED rather than
- * shown by its own name: `swap-up` on a card teaches nobody anything, and
- * selftest.sh fails the build when the session binds an action this table has
- * forgotten.
- */
-/* The tour's steps on the console, by the action that performs them. A table
- * of its own rather than a fifth column on the one below: four rows of forty
- * would be buried there, and the roles are read by one caller. */
-static int con_role(const char *act)
-{
-	static const struct { const char *act; int role; } tbl[] = {
-		{ "terminal",		WEL_TERM },
-		/* THE TOUR'S SECOND STEP IS THE PALETTE, because that is what
-		 * the chord a newcomer presses now opens: Super+space searches
-		 * everything, and the menu is the Start button and the F-key.
-		 * A step naming an action nothing binds is dropped from the
-		 * tour rather than shown wrong, and selftest.sh fails the
-		 * build on it — which is how this was caught. */
-		{ "palette",		WEL_MENU },
-		{ "workspace-next",	WEL_WS },
-		{ "next",		WEL_NEXT },
-		{ "keys",		WEL_CARD },
-	};
-
-	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++)
-		if (!strcmp(tbl[i].act, act))
-			return tbl[i].role;
-	return WEL_NONE;
-}
-
-static int con_section(const char *act, const char **desc)
-{
-	static const struct { const char *act, *desc; int sect; } tbl[] = {
-		{ "terminal",	NULL,			SEC_LAUNCH },
-		{ "launcher",	"kdos-launcher",	SEC_LAUNCH },
-		{ "launcher-fkey", "kdos-launcher",	SEC_LAUNCH },
-		{ "palette",	"search everything: windows, apps, settings",
-							SEC_LAUNCH },
-		{ "menu",	"the root menu",	SEC_LAUNCH },
-		{ "menu-fkey",	"the root menu",	SEC_LAUNCH },
-		/*
-		 * ONE KEY PER PROGRAM. The description is the ROLE and not the
-		 * program's name — which program fills it is a con.conf key,
-		 * and the row is dropped entirely when that program is not
-		 * installed, so a card never offers a key that opens nothing.
-		 */
-		{ "files",	"the file manager, or raise it",	SEC_LAUNCH },
-		{ "mail",	"mail, or raise it",	SEC_LAUNCH },
-		{ "browser",	"the web, or raise it",	SEC_LAUNCH },
-		{ "music",	"music, or raise it",	SEC_LAUNCH },
-		{ "agenda",	"the diary, or raise it",	SEC_LAUNCH },
-		{ "chat",	"chat, or raise it",	SEC_LAUNCH },
-		{ "writing",	"the editor, or raise it",	SEC_LAUNCH },
-		{ "close",	"close the window",	SEC_WINDOW },
-		{ "maximise",	"maximise / restore",	SEC_WINDOW },
-		{ "fullscreen",	"fullscreen",		SEC_WINDOW },
-		{ "minimise",	"minimise",		SEC_WINDOW },
-		{ "restore",	"bring back the last minimised",	SEC_WINDOW },
-		{ "restore-all", "bring back every minimised window",
-							SEC_WINDOW },
-		{ "lower",	"send the window to the back",	SEC_WINDOW },
-		{ "window-menu", "every verb for this window, in a list",
-							SEC_WINDOW },
-		{ "stack",	"fold the next window in as a tab",
-							SEC_WINDOW },
-		{ "stack-next",	"the next tab of this stack",	SEC_WINDOW },
-		{ "stack-prev",	"the previous tab",	SEC_WINDOW },
-		{ "stack-move-next", "carry this tab one place along the strip",
-							SEC_WINDOW },
-		{ "stack-move-prev", "carry it back one place",
-							SEC_WINDOW },
-		{ "unstack",	"put every tab back on the desk",
-							SEC_WINDOW },
-		/* THE SAME WORDS THE COMPOSITOR'S ROW USES. One key, two
-		 * desktops: a card that called it a scratchpad here and a
-		 * drop-down there would read as two features. */
-		{ "scratchpad",	"the drop-down terminal, over every window",
-							SEC_WINDOW },
-		{ "scratchpad-mark", "make this window the drop-down",
-							SEC_WINDOW },
-		{ "next",	"next window",		SEC_WINDOW },
-		{ "prev",	"previous window",	SEC_WINDOW },
-		{ "next-alt",	"next window",		SEC_WINDOW },
-		{ "prev-alt",	"previous window",	SEC_WINDOW },
-		{ "snap-left",	"snap left",		SEC_WINDOW },
-		{ "snap-right",	"snap right",		SEC_WINDOW },
-		{ "snap-up",	"snap up",		SEC_WINDOW },
-		{ "snap-down",	"snap down",		SEC_WINDOW },
-		{ "focus-left",	 "focus left",		SEC_WINDOW },
-		{ "focus-right", "focus right",		SEC_WINDOW },
-		{ "focus-up",	 "focus up",		SEC_WINDOW },
-		{ "focus-down",	 "focus down",		SEC_WINDOW },
-		{ "swap-left",	 "swap with the window left",	SEC_WINDOW },
-		{ "swap-right",	 "swap with the window right",	SEC_WINDOW },
-		{ "swap-up",	 "swap with the window above",	SEC_WINDOW },
-		{ "swap-down",	 "swap with the window below",	SEC_WINDOW },
-		{ "workspace-prev", "previous workspace in use",	SEC_WS },
-		{ "workspace-next", "next workspace in use",	SEC_WS },
-		/* The two the session prints no line for: it answers a digit
-		 * directly rather than binding nine actions, and the reader
-		 * synthesises the rows so a desktop with workspaces does not
-		 * read as one without. */
-		{ "workspace-digit", "switch workspace",	SEC_WS },
-		{ "workspace-send-digit", "send the window there",	SEC_WS },
-		{ "tile",	"tile this workspace",		SEC_WINDOW },
-		{ "tile-fkey",	"tile this workspace",		SEC_WINDOW },
-		{ "cascade",	"cascade this workspace",	SEC_WINDOW },
-		{ "rearrange",	"move and size from the keyboard",	SEC_WINDOW },
-		{ "rearrange-fkey", "move and size from the keyboard",	SEC_WINDOW },
-		{ "show-desktop", "hide every window, and bring them back",
-							SEC_WINDOW },
-		{ "windows",	"the window list",		SEC_WINDOW },
-		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
-		{ "paste",	"paste what was marked",	SEC_WINDOW },
-		{ "capture",	"mark a rectangle: text copied, picture filed",	SEC_WINDOW },
-		{ "capture-menu", "capture: a region, a recording, a QR code",
-							SEC_TOOLS },
-		{ "capture-screen", "the whole screen to a file",	SEC_TOOLS },
-		{ "capture-print", "mark a rectangle: text copied, picture filed",
-							SEC_TOOLS },
-		{ "capture-record", "record the screen to a file, and stop",
-							SEC_TOOLS },
-		{ "time",	"the time and date, as a notice",	SEC_TOOLS },
-		{ "battery",	"what the battery says, as a notice",	SEC_TOOLS },
-		{ "remind",	"remind me — `in 20m tea`",	SEC_TOOLS },
-		{ "remind-ls",	"the reminders still waiting",	SEC_TOOLS },
-		{ "remind-clear", "forget every reminder",	SEC_TOOLS },
-		{ "dismiss",	"put the newest notice away",	SEC_TOOLS },
-		{ "dismiss-all", "put every notice away",	SEC_TOOLS },
-		{ "dnd",	"hold notices back, and let them through",
-							SEC_TOOLS },
-		{ "undismiss",	"bring the last one back",	SEC_TOOLS },
-		{ "stay-awake",	"never lock or blank on idle, or do",
-							SEC_SYSTEM },
-		{ "taskbar",	"put the bar away, and bring it back",
-							SEC_WINDOW },
-		{ "night-light", "warm the palette, and cool it",	SEC_SYSTEM },
-		{ "learn",	"record the keys you type, and stop",	SEC_WINDOW },
-		{ "play",	"type a recorded script back",	SEC_WINDOW },
-		/* The screen's own font, which is the view's and not a
-		 * window's — filed under system for that reason. */
-		{ "font-up",	"bigger text on the screen",	SEC_SYSTEM },
-		{ "font-down",	"smaller text on the screen",	SEC_SYSTEM },
-		{ "font-reset",	"the text size back",		SEC_SYSTEM },
-		{ "opacity-up",	  "this window more solid",	SEC_WINDOW },
-		{ "opacity-down", "this window more see-through", SEC_WINDOW },
-		{ "opacity-reset", "this window's transparency back", SEC_WINDOW },
-		{ "theme",	"the accent, with a live preview",	SEC_SYSTEM },
-		{ "background",	"the console's character-art ground",	SEC_SYSTEM },
-		{ "volume-up",	"louder",		SEC_WINDOW },
-		{ "volume-down", "quieter",		SEC_WINDOW },
-		{ "volume-mute", "mute and unmute",	SEC_WINDOW },
-		{ "media-play",	"play or pause",	SEC_WINDOW },
-		{ "media-stop",	"stop playing",		SEC_WINDOW },
-		{ "media-next",	"the next track",	SEC_WINDOW },
-		{ "media-prev",	"the track before",	SEC_WINDOW },
-		/*
-		 * The surfaces. Eleven chords reaching eleven programs, and
-		 * the description is what the program IS rather than its name:
-		 * a card that read `kdos-bt` would be a card only somebody who
-		 * already knew the answer could use.
-		 */
-		{ "setup-menu",	"every one of them, in one list",	SEC_TOOLS },
-		{ "keys",	"this card",		SEC_TOOLS },
-		{ "audio",	"sound devices and volume",	SEC_TOOLS },
-		{ "net",	"networking",		SEC_TOOLS },
-		{ "bluetooth",	"Bluetooth",		SEC_TOOLS },
-		{ "devices",	"cameras, microphones, disks",	SEC_TOOLS },
-		{ "settings",	"settings",		SEC_TOOLS },
-		{ "calendar",	"the calendar",		SEC_TOOLS },
-		{ "find",	"files by name or contents",	SEC_TOOLS },
-		{ "docs",	"the documentation",	SEC_TOOLS },
-		{ "displays",	"screens",		SEC_TOOLS },
-		{ "power",	"power and battery",	SEC_TOOLS },
-		{ "monitor",	"processes, CPU, memory",	SEC_TOOLS },
-		{ "calculator",	"a calculator that reads units",	SEC_TOOLS },
-		{ "notes",	"the scratch pad",		SEC_TOOLS },
-		{ "clipboard",	"what has been copied",		SEC_TOOLS },
-		{ "characters",	"any character, by its name",	SEC_TOOLS },
-		{ "contacts",	"names, numbers and addresses",	SEC_TOOLS },
-		{ "lock",	"kdos-lock",		SEC_SYSTEM },
-		{ "saver",	"kdos-saver",		SEC_SYSTEM },
-		{ "quit",	"end the session",	SEC_SYSTEM },
-		{ "leader",	"then a chord's own key, where Super does not arrive",
-							SEC_SYSTEM },
-	};
-
-	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++)
-		if (!strcmp(tbl[i].act, act)) {
-			/* The terminal is not the same program on the two
-			 * desktops, and the card names the one that opens. */
-			*desc = tbl[i].desc ? tbl[i].desc : sh_term();
-			return tbl[i].sect;
-		}
-	return -1;
-}
 
 /*
- * THE BUILT-IN DEFAULTS' WORDS. The chords are the reader's — it knows which
- * desktop is running and which spelling the one default they do not share
- * takes — and the words are the card's, like every other source's.
+ * THE BUILT-IN DEFAULTS' WORDS. The chords are the reader's and the words are
+ * the card's, like every other source's.
  *
- * THE FIELDS ARE NAMED here on purpose. selftest.sh proves con_section() above
- * has a row for every action `kdos-con --keys` prints by looking for
- * `{ "name",` in this file, and a second bare-brace table would answer in the
- * place of a row that had gone. An omitted `.role` is WEL_NONE.
+ * THE FIELDS ARE NAMED here on purpose: a bare-brace table beside this one
+ * would answer in the place of a row that had gone. An omitted `.role` is
+ * WEL_NONE.
  */
 static int builtin_words(const char *act, const char **desc, int *role)
 {
@@ -548,16 +344,11 @@ static int builtin_words(const char *act, const char **desc, int *role)
 /*
  * A CARD ROW FOR EVERY CHORD THE READER LOADED, in the order it loaded them.
  *
- * WHICH TABLE WORDS A ROW IS THE SOURCE'S: the console's actions are named in
- * con_section(), the compositor's in describe(), and the fallback's in
- * builtin_words(). The discriminator is the one the reader itself used —
- * $KDOS_CON — because a row worded out of the other desktop's table would be
- * as wrong as a chord read from it.
+ * WHICH TABLE WORDS A ROW IS THE SOURCE'S: rc.xml's actions are named in
+ * describe(), and the fallback's in builtin_words().
  */
 static void build_cards(void)
 {
-	const char *con = getenv("KDOS_CON");
-	int on_con = con && *con;
 	int n = sh_chords_load();
 	int defaults = sh_chords_builtin();
 
@@ -573,18 +364,6 @@ static void build_cards(void)
 			continue;
 		if (defaults) {
 			sect = builtin_words(c->action, &desc, &role);
-		} else if (on_con) {
-			/* The recorded scripts are the one console row whose
-			 * words are the source's: the letters somebody
-			 * recorded are data, and this side has nothing to add
-			 * to them. */
-			if (!strcmp(c->action, "script")) {
-				desc = c->detail;
-				sect = SEC_WINDOW;
-			} else {
-				sect = con_section(c->action, &desc);
-			}
-			role = con_role(c->action);
 		} else {
 			describe(c->action, c->detail, words, sizeof(words));
 			desc = words;
@@ -603,9 +382,9 @@ static void build_cards(void)
 	/*
 	 * READ SOMETHING AND COULD WORD NONE OF IT is the same failure as
 	 * reading nothing, and it has to say so the same way. The reader
-	 * cannot detect this — it does not have con_section()'s table — so the
-	 * card checks its own output and asks for the built-ins, which is what
-	 * also puts the note on screen.
+	 * cannot detect this — it holds no table of words — so the card checks
+	 * its own output and asks for the built-ins, which is what also puts
+	 * the note on screen.
 	 */
 	if (!ncards && n && !defaults) {
 		sh_chords_use_builtin();
@@ -1133,8 +912,6 @@ int keys_main(int argc, char **argv)
 	if (first_run && !dump && !dump_cells && marker_seen())
 		return 0;
 
-	const char *on_con = getenv("KDOS_CON");
-
 	sh_chords_load();
 	build_cards();
 
@@ -1163,14 +940,10 @@ int keys_main(int argc, char **argv)
 	 * discover. Deciding the note first would leave that second case
 	 * showing the defaults with nothing saying why.
 	 *
-	 * WHICH READER FAILED IS WHAT THE NOTE HAS TO SAY, and the desktop
-	 * decides that the same way the reader decided which one to run.
 	 */
 	if (sh_chords_builtin())
 		snprintf(parse_note, sizeof(parse_note), "%s",
-			 (on_con && *on_con)
-			 ? "kdos-con --keys gave nothing - built-in defaults shown"
-			 : "rc.xml unreadable - built-in defaults shown");
+			 "rc.xml unreadable - built-in defaults shown");
 	build_rows();
 	build_welcome();
 

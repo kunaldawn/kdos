@@ -8,16 +8,14 @@ here.
 the number of *commands* is much larger than the number of *binaries*. The full mapping is at the
 bottom of this page.
 
-## The compositor and the desktop
+## The desktop
 
 | Command | What it is | Page |
 |---|---|---|
 | `kdos-comp` | The compositor: a frozen fork of labwc with KDOS additions | [kdos-comp](kdos-comp.md) |
-| `kdos-con` | The console desktop: the default session, and no Wayland on its path | [kdos-con](kdos-con.md) |
 | `kdos-shell` | The panel, and thirty-five other surfaces under other names | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor | [kdos-res](kdos-res.md) |
-| `kdos-term` | The terminal: one binary, both desktops, and the three image protocols | [kdos-term](kdos-term.md) |
-| `kdos-cage` | One application, embedded in the cell desktop or full screen on a VT — a hard fork of cage | [kdos-cage](kdos-cage.md) |
+| `kdos-term` | The terminal, and the three image protocols | [kdos-term](kdos-term.md) |
 | `kdos-lock` | The lock screen | [The daemons](daemons.md) |
 | `kdos-desktop` | Starts a session. A shell script | [The session](../03-architecture/session.md) |
 | `kdos-desktop-start` | Brings up audio and portals, then the compositor. A shell script | [The session](../03-architecture/session.md) |
@@ -69,11 +67,12 @@ Both are setuid root, and both are deliberately tiny. See
 
 | Command | Does | Page |
 |---|---|---|
-| `kdos` | The front door: nineteen subcommands | [The kdos command](kdos-command.md) |
+| `kdos` | The front door: thirty subcommands | [The kdos command](kdos-command.md) |
 | `kinstall` | The installer | [kinstall](kinstall.md) |
 | `ksvc` | The service supervisor | [Boot and init](../03-architecture/boot-and-init.md) |
 | `service` | The same binary, under the familiar name | [Administration](../02-user-guide/administration.md) |
-| `kdos-getty` | Loads the console font and palette, then runs a getty | [Boot and init](../03-architecture/boot-and-init.md) |
+| `kdos-getty` | Loads the VT font and palette, then runs a getty | [Boot and init](../03-architecture/boot-and-init.md) |
+| `kdos-login` | Reads `login.conf` and hands tty1 to agetty | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-bootctl` | Chooses and confirms the A/B root slot | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md) |
@@ -121,17 +120,6 @@ authoritative list is the name table in its own `main.c`.
 
 All are documented in [kdos-shell](kdos-shell.md).
 
-### `kdos-con` — 3 names
-
-The console session, plus the two ways in. `kdos-view` is a **separate binary**, because it links
-the display libraries the session must not.
-
-| | | |
-|---|---|---|
-| `kdos-con` | `kdos-grid` | `kdos-con-login` |
-
-Documented in [kdos-con](kdos-con.md).
-
 ### `ksvc` — 9 names
 
 The supervisor, and the tools that ride on the same binary.
@@ -140,9 +128,9 @@ The supervisor, and the tools that ride on the same binary.
 |---|---|
 | `ksvc` | The service supervisor |
 | `service` | The same, under the conventional name |
-| `kdos-getty` | The console font and palette wrapper around a getty |
+| `kdos-getty` | The VT font and palette wrapper around a getty |
 | `kdos-bootctl` | A/B slot selection, also copied into the initramfs |
-| `kdos` | The front door and its nineteen subcommands |
+| `kdos` | The front door and its thirty subcommands |
 | `kdos-banner` | The login banner |
 | `kdos-shot` | Screenshots |
 | `kdos-sfx` | Sound effects |

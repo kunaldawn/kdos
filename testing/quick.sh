@@ -8,7 +8,7 @@
 # ---------------------------------
 #   The fast loop: change a program, see it on a booted desktop.
 #
-#   testing/quick.sh kdos-con,kdos-shell -- --keys meta_l-ret --sleep 3 \
+#   testing/quick.sh kdos-comp,kdos-shell -- --keys meta_l-ret --sleep 3 \
 #                                            --shot /kdos/build/shots/x.png
 #
 # WHAT IT SAVES, AND WHY THAT IS THE WHOLE POINT. The ordinary loop is

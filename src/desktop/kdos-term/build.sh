@@ -9,9 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ONE BINARY, TWO DESKTOPS. libkdisp picks between libkwl and libkcon at
-# startup, so the same source is an xdg-toplevel under kdos-comp and a cell
-# surface under kdos-con.
+# libkdisp resolves the display server at startup, and libkwl is the one it
+# finds: this is an xdg-toplevel under kdos-comp. A --tty or --dump run opens
+# no display at all and draws through libktui's terminal backend.
 #
 # ncurses is in `depends` for its terminfo, not to link: the child gets
 # TERM=xterm-256color and reads the entry from the database.
@@ -83,12 +83,12 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" \
 	-I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" \
-	-I"$LIBS/libkcon" -I"$LIBS/libkvt" -I"$LIBS/libkimg" \
+	-I"$LIBS/libkvt" -I"$LIBS/libkimg" \
 	-I"$LIBS/libkxdg" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-term \
 	"$PORT_SRC"/*.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c \
 	"$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkvt/*.c \
 	"$LIBS"/libkimg/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkbase/*.c \
 	"$LIBS"/libkxdg/*.c \

@@ -136,9 +136,9 @@ fi
 # triggers fbcon's deferred take-over — paints onto a clean console instead of
 # fighting a process that is still drawing.
 #
-# SYNCHRONOUS, and the console desktop depends on it twice over. `kdos-splash
-# quit` returns only once the splash has stopped drawing, so init starts the
-# tty1 login on a framebuffer nothing else owns; and kdos-view's KMS modeset,
+# SYNCHRONOUS, and the desktop depends on it twice over. `kdos-splash quit`
+# returns only once the splash has stopped drawing, so init starts the tty1
+# login on a framebuffer nothing else owns; and the compositor's modeset,
 # further down that same chain, acquires a device the splash has already let
 # go. A splash that quit asynchronously would race a modeset, and the loser of
 # that race is a black screen with a running session behind it.

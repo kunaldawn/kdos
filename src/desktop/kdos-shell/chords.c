@@ -5,19 +5,11 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   The chord table, read from whichever desktop is running
+ *   The chord table, read from the file the compositor loaded
  *
- * WHICH DESKTOP THIS IS DECIDES WHICH READER RUNS, and `$KDOS_CON` is the
- * discriminator, as it is everywhere else in this tree. `rc.xml` is the
- * COMPOSITOR'S file and must not be parsed on the console; `kdos-con --keys`
- * is the console session's table and must not be run under the compositor. A
- * surface that named the other desktop's chords would be confidently wrong,
- * which is worse than a surface that names none.
- *
- * ONE READER AND ONE WRITER. `kdos-con --keys` prints its table after the
- * `keys.conf` overlay, so the thing that binds the chords is the thing that
- * prints them, and `rc.xml` is read as the compositor loaded it. Nothing here
- * remembers a chord: a second copy of either table is the copy that goes
+ * ONE READER AND ONE WRITER. `rc.xml` is read as the compositor loaded it, so
+ * the file that binds the chords is the file that prints them. Nothing here
+ * remembers a chord: a second copy of that table is the copy that goes
  * stale.
  *
  * THE LABWC PARSE IS A LINE-ORIENTED SCANNER rather than an XML library,
@@ -223,7 +215,7 @@ static void pretty_key(const char *in, char *out, size_t n)
 
 /*
  * rc.xml IS THE COMPOSITOR'S FILE and names the compositor's terminal. This
- * table is read on both desktops, and on the console `foot` is a Wayland
+ * table is read wherever a chord is shown, and `foot` is a Wayland
  * client that cannot run — a row naming it points the reader at a program that
  * will not start. Only the leading word is rewritten, because that word is the
  * program and everything after it is arguments both emulators take alike.
@@ -423,154 +415,9 @@ static int parse_rc(const char *path)
 	return nchords ? 0 : -1;
 }
 
-/* ── the console session's table ───────────────────────────────────────── */
-
-/*
- * THE SCRIPTS THAT EXIST, AND THE FIRST TEN KEYS OF EACH.
- *
- * A script is a letter and nothing else on the screen says which letters are
- * taken: `Super+Alt+r` then a letter with no script is a chord that does
- * nothing, and a letter with the wrong script types a paragraph into the wrong
- * window. A card is where a person looks, so the directory is read.
- *
- * READ HERE AND NOT ASKED FOR OVER THE SOCKET. A script is a file in the
- * person's own configuration, this program runs as that person, and the
- * session grew no verb that could be asked — which is the refusal that keeps a
- * client on the surface socket from learning what somebody has recorded.
- */
-/* The letters of one script on one row, and then a count of the rest. A row is
- * one line of a surface and not the file: a list allowed to run past this is
- * cut by whatever draws it, and what the cut takes off the end is the count
- * that said there was more. */
-#define SCRIPT_ROW_MAX 80
-
-static void scripts_rows(void)
-{
-	const char *cfg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
-	char dir[256];
-
-	if (cfg && *cfg)
-		snprintf(dir, sizeof(dir), "%s/kdos-con/scripts", cfg);
-	else if (home && *home)
-		snprintf(dir, sizeof(dir), "%s/.config/kdos-con/scripts", home);
-	else
-		return;
-
-	for (int c = 'a'; c <= 'z'; c++) {
-		char path[300], names[SCRIPT_ROW_MAX], *text, *line, *nl;
-		size_t used = 0;
-		int shown = 0, total = 0;
-		struct sh_chord *ch;
-
-		snprintf(path, sizeof(path), "%s/%c", dir, c);
-		text = kb_read_whole(path, NULL);
-		if (!text)
-			continue;
-
-		names[0] = '\0';
-		for (line = text; line && *line; line = nl) {
-			char *tab;
-
-			nl = strchr(line, '\n');
-			if (nl)
-				*nl++ = '\0';
-			if (*line == '#' || !*line)
-				continue;
-			total++;
-			/* The name column, which is the chord spelled the way
-			 * keys.conf spells it. Ten of them and then a count:
-			 * the row is one line on a card, not the script. */
-			tab = strchr(line, '\t');
-			if (tab)
-				*tab = '\0';
-			if (shown < 10) {
-				used += (size_t)snprintf(names + used,
-							 sizeof(names) - used,
-							 "%s%s",
-							 shown ? " " : "", line);
-				shown++;
-				if (used >= sizeof(names) - 8) {
-					shown = 10;
-					used = sizeof(names) - 8;
-				}
-			}
-		}
-		free(text);
-		if (!total)
-			continue;
-		if (total > shown)
-			snprintf(names + used, sizeof(names) - used, " +%d",
-				 total - shown);
-		ch = chord_add();
-		if (!ch)
-			return;
-		snprintf(ch->chord, sizeof(ch->chord), "Super+Alt+r %c", c);
-		snprintf(ch->action, sizeof(ch->action), "script");
-		snprintf(ch->detail, sizeof(ch->detail), "%s", names);
-	}
-}
-
-static int parse_con_keys(void)
-{
-	char buf[4096];
-	KbArgv a = { 0 };
-
-	kb_argv_add(&a, "kdos-con");
-	kb_argv_add(&a, "--keys");
-	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, sizeof(buf)) != 0 || !buf[0])
-		return -1;
-
-	for (char *line = strtok(buf, "\n"); line; line = strtok(NULL, "\n")) {
-		char *tab = strchr(line, '\t');
-		char *needs;
-		struct sh_chord *c;
-
-		if (!tab)
-			continue;
-		*tab = '\0';
-		/* The optional third field: the program a run-or-raise row
-		 * cannot work without. See keys_print(). */
-		needs = strchr(tab + 1, '\t');
-		if (needs)
-			*needs++ = '\0';
-		if (needs && *needs && !kb_have_prog(needs))
-			continue;
-		c = chord_add();
-		if (!c)
-			break;
-		snprintf(c->action, sizeof(c->action), "%s", line);
-		snprintf(c->chord, sizeof(c->chord), "%s", tab + 1);
-		if (needs) {
-			snprintf(c->needs, sizeof(c->needs), "%s", needs);
-			snprintf(c->detail, sizeof(c->detail), "%s", needs);
-		}
-	}
-
-	/*
-	 * THE WORKSPACE CHORDS ARE NOT IN THE TABLE. The session answers a
-	 * digit directly rather than binding nine actions, so they have no
-	 * line to print and a surface would otherwise show a desktop with no
-	 * workspaces at all.
-	 */
-	if (nchords && nchords + 2 <= SH_CHORD_MAX) {
-		struct sh_chord *c = chord_add();
-
-		snprintf(c->chord, sizeof(c->chord), "Super+1..9");
-		snprintf(c->action, sizeof(c->action), "workspace-digit");
-		c = chord_add();
-		snprintf(c->chord, sizeof(c->chord), "Super+Shift+1..9");
-		snprintf(c->action, sizeof(c->action), "workspace-send-digit");
-	}
-
-	scripts_rows();
-
-	return nchords ? 0 : -1;
-}
-
 /* ── the defaults ──────────────────────────────────────────────────────── */
 
-/* What neither desktop could be used without, and nothing else. Deliberately
+/* What the desktop could not be used without, and nothing else. Deliberately
  * short: a second copy of rc.xml here would itself go stale, and these rows
  * are only ever seen when the real table could not be read. */
 static void builtin_table(void)
@@ -588,13 +435,8 @@ static void builtin_table(void)
 		{ "Super+1..4",		"workspace-1-4" },
 		{ "Super+l",		"lock" },
 		{ "Super+F1",		"keys" },
-		/* The one default the two desktops do not share: the console
-		 * puts Shift on it, so the chord that closes a window and the
-		 * chord that ends the desktop are not one slip apart. */
-		{ NULL,			"quit" },
+		{ "Super+Escape",	"quit" },
 	};
-
-	const char *con = getenv("KDOS_CON");
 
 	nchords = 0;
 	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
@@ -602,10 +444,7 @@ static void builtin_table(void)
 
 		if (!c)
 			return;
-		snprintf(c->chord, sizeof(c->chord), "%s",
-			 tbl[i].chord ? tbl[i].chord
-				      : (con && *con) ? "Super+Shift+q"
-						      : "Super+Escape");
+		snprintf(c->chord, sizeof(c->chord), "%s", tbl[i].chord);
 		snprintf(c->action, sizeof(c->action), "%s", tbl[i].act);
 	}
 }
@@ -629,23 +468,17 @@ static int rc_path(char *buf, size_t n)
 int sh_chords_load(void)
 {
 	char path[512];
-	const char *con;
 
 	if (loaded)
 		return nchords;
 	loaded = 1;
 
-	con = getenv("KDOS_CON");
-	if (con && *con) {
-		if (parse_con_keys() == 0)
-			return nchords;
-	} else if ((rc_path(path, sizeof(path)) == 0 && parse_rc(path) == 0) ||
-		   /* /etc/skel's copy is what a home with no rc.xml is
-		    * running: the compositor reads its own default from the
-		    * same file the user's would have been copied from. */
-		   parse_rc("/etc/skel/.config/kdos-comp/rc.xml") == 0) {
+	if ((rc_path(path, sizeof(path)) == 0 && parse_rc(path) == 0) ||
+	    /* /etc/skel's copy is what a home with no rc.xml is running: the
+	     * compositor reads its own default from the same file the user's
+	     * would have been copied from. */
+	    parse_rc("/etc/skel/.config/kdos-comp/rc.xml") == 0)
 		return nchords;
-	}
 
 	builtin_table();
 	builtin = 1;

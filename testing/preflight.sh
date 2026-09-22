@@ -1547,7 +1547,6 @@ echo
 echo "==> mimeapps rows: every kdos-* handler is shipped"
 _mh=0
 for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
-          fs/etc/xdg/kdos-console-mimeapps.list \
           fs/etc/skel/.config/mimeapps.list; do
     [ -f "$_f" ] || continue
     for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
@@ -1576,7 +1575,6 @@ else
     _me=0
     _mebad=0
     for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
-              fs/etc/xdg/kdos-console-mimeapps.list \
               fs/etc/skel/.config/mimeapps.list; do
         [ -f "$_f" ] || continue
         for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
@@ -1682,7 +1680,7 @@ echo
 echo "==> every chrome glyph is one the console font can actually draw"
 # A GLYPH THE CONSOLE FONT DOES NOT CARRY RENDERS AS A BLANK ON tty1, and
 # nothing anywhere says so: the cell is written, the flush succeeds, and the
-# console desktop is missing a piece of its own chrome.
+# desktop is missing a piece of its own chrome on tty1.
 #
 # `ter-kdos32n` is 512 glyphs. The toolkit picks `glyph_utf8` whenever the
 # backend reports UTF-8 — which the Linux console does — so EVERY entry in that
@@ -1789,10 +1787,9 @@ fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
-# `kdos theme`, so the bits that say it has one may be SET in exactly five
+# `kdos theme`, so the bits that say it has one may be SET in exactly four
 # places: the render boundary where a terminal's own colour arrives
-# (kvt_grid.c), the wire that carries it to a view that asked (kcon_wire.c),
-# the header that defines them, the accent picker — whose swatches ARE the
+# (kvt_grid.c), the header that defines them, the accent picker — whose swatches ARE the
 # schemes it is offering, so drawing them in slots would show one palette seven
 # times — and the translucency pass in ktui_draw.c, which MIXES TWO SLOTS of
 # the palette in force and does it again on every frame, so a retint moves it
@@ -1805,7 +1802,7 @@ _lit=0
 for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|attr *= *KT_A_(FGRGB|BGRGB|ULCOLOR)' \
         src/ 2>/dev/null); do
     case "$_f" in
-    src/libs/libkvt/kvt_grid.c|src/libs/libkcon/kcon_wire.c) continue ;;
+    src/libs/libkvt/kvt_grid.c) continue ;;
     src/libs/libktui/ktui.h|src/libs/selftest.c) continue ;;
     src/libs/libktui/ktui_draw.c) continue ;;
     src/desktop/kdos-shell/theme.c) continue ;;
@@ -1814,7 +1811,7 @@ for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|
     _lit=$((_lit + 1))
 done
 [ "$_lit" = 0 ] &&
-    note "colour" "at the boundary, on the wire, in the blend, and in the picker"
+    note "colour" "at the boundary, in the blend, and in the picker"
 
 echo "==> the generated aerc styleset is one aerc will load"
 # A KEY IS object[.selected].attribute, and aerc refuses the WHOLE FILE on one
@@ -1845,10 +1842,11 @@ echo "==> the control centre's row table is consistent with the files it writes"
 # first entry — so opening the page and pressing Right once silently changes a
 # key nobody touched.
 #
-# A ST_CON KEY THAT IS NOT IN con.conf is a control the session never reads.
-# That file is this program's whole contract with the console desktop, and a
-# row writing a key the session has no lookup for is the "change a thing, see
-# nothing" the surface exists not to be.
+# A ST_COMP KEY THAT IS NOT IN comp.conf is a control nothing reads. That file
+# is this program's whole contract with the compositor, and a row writing a key
+# the compositor has no lookup for is the "change a thing, see nothing" the
+# surface exists not to be. It is checked against the SHIPPED copy, which is
+# what a fresh account gets and what documents every key.
 _srows=$(python3 - <<'PYEOF'
 import re
 
@@ -1857,7 +1855,7 @@ i = src.index('static struct row rows[] = {')
 body = src[i:src.index('\n};', i)]
 
 lists = dict(re.findall(r'static const char \*const (\w+)\[\] = \{([^}]*)\};', src))
-conf = open('fs/etc/kdos/con.conf').read()
+conf = open('fs/etc/skel/.config/kdos/comp.conf').read()
 
 # One row is a brace at the start of a line down to the `}` that closes it,
 # and its VALUE is the last string literal in it: help, val and orig are all
@@ -1893,9 +1891,9 @@ for a, b in zip(starts, starts[1:]):
         if items and int(nch) != len(items):
             bad.append('%s %s says %s choices, %s has %d'
                        % (cat, k, nch, choices, len(items)))
-    if st == 'ST_CON' and not re.search(r'^#?\s*%s\s*=' % re.escape(k), conf,
-                                        re.M):
-        bad.append('ST_CON %s is not a key in fs/etc/kdos/con.conf' % k)
+    if st == 'ST_COMP' and not re.search(r'^#?\s*%s\s*=' % re.escape(k), conf,
+                                         re.M):
+        bad.append('ST_COMP %s is not a key in comp.conf' % k)
 
 for x in bad:
     print('BAD ' + x)
@@ -1909,7 +1907,7 @@ $_sbad
 EOF
 else
     note "settings rows" "$(printf '%s\n' "$_srows" | sed -n 's/^N //p') row(s), \
-each one key, one list, one con.conf line"
+each one key, one list, one comp.conf line"
 fi
 
 echo
@@ -1983,9 +1981,8 @@ else
     # AND NO TWO VISIBLE ENTRIES MAY SHARE A Name=. The Start menu, the
     # launcher and the search all list entries by their name, so two rows
     # reading `Calendar` are two rows a person cannot choose between. The
-    # convention is that the program a role in `con.conf` names keeps the
-    # plain name and every alternative is qualified — `Files` and
-    # `Files (lf)`.
+    # convention is that the program filling a role keeps the plain name and
+    # every alternative is qualified — `Files` and `Files (lf)`.
     _dupe=$(for _f in build/fs/usr/share/applications/*.desktop; do
                 [ -e "$_f" ] || continue
                 grep -qi '^NoDisplay=true' "$_f" && continue

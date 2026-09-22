@@ -3,7 +3,7 @@
  * Ported from kdos-comp's edges.c. What stayed behind is everything that walks
  * the compositor: the view list, the output list, and the scene-graph pass that
  * works out which edges are visible. What is here is the arithmetic those three
- * feed, which is the half both desktops need.
+ * feed, which is the half that can be asserted without one.
  */
 
 #include "kwm.h"

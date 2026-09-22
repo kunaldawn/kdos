@@ -1,4 +1,4 @@
-# The console desktop, read by a person
+# The desktop, read by a person
 
 `testing/usability.sh` drives a booted ISO through the things a hand does in the
 first two minutes of a session and leaves a numbered contact sheet in
@@ -164,7 +164,7 @@ eight seconds apart.
 
 | What the shot shows | Where it lives |
 |---|---|
-| A strip of desktop under the bar; menus on top of the bar | the work-area walk in `kdos-con` — one walk, and it skips panels |
+| A strip of desktop under the bar; menus on top of the bar | the panel's exclusive zone, and whether the compositor re-fitted to it |
 | A tip over its own button; a click that opens nothing | the surface's input region, `kdisp_input_cells()` |
 | A menu that closes when a tip appears | whether an overlay that asked for no keyboard is focused |
 | A button that stays lit after the pointer leaves | the pointer leave the display reports as `(-1,-1)` |
@@ -175,5 +175,5 @@ eight seconds apart.
 
 Related: [`testing.md`](../docs/kdos/05-developer/testing.md) for the harnesses
 this one is built on, and
-[`kdos-con.md`](../docs/kdos/04-programs/kdos-con.md) for the roles and the
+[`kdos-comp.md`](../docs/kdos/04-programs/kdos-comp.md) for the roles and the
 rules each of these checks.

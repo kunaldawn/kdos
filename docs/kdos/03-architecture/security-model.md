@@ -96,13 +96,6 @@ do.
 Without its setuid bit it cannot read the shadow file, so it **refuses every password** and locks
 the user out of their own session.
 
-**The console greeter uses it too, and holds no hash of its own.** `kdos-con-login` runs as root
-from `/etc/inittab`; on submit it forks, and the child does `initgroups`, `setgid`, `setuid` — in
-that order, because `setuid` first would drop the privilege the other two need — and then executes
-`kdos-checkpass`. After the drop the caller **is** the candidate, so the "no arguments, own uid"
-rule above covers the greeter without a second mechanism, and no crypt implementation is linked
-into a program that draws on a screen.
-
 **The shadow file is 0600, and the build has to be told so.** git records one permission bit, so
 nothing under `fs/` can carry a mode narrower than 644 and the file-system step hands every
 non-executable file exactly that. A password database at 644 is every hash on the machine readable
@@ -110,28 +103,6 @@ by every account on it — and it makes the setuid bit above decoration, because
 program exists to keep private is already open. `script/01_phase1/00_file_system.sh` carries an
 explicit table of the paths 644 is wrong for; `testing/preflight.sh` asserts the result on the
 **built** tree, because the source tree cannot express the answer.
-
-## The console session's two sockets
-
-`$XDG_RUNTIME_DIR/kdos/<name>.sock` admits **surfaces** — programs that place windows.
-`<name>.view` admits **views** — a display, which holds no window state at all.
-
-**Which socket a client reached decides what it is allowed to be.** The kind in a client's
-handshake is a claim and is overridden by the listener's. That is the entire reason there are two:
-only the view socket is ever forwarded, and forwarding one that admitted surfaces would hand the
-far end the right to place windows in a session rather than the right to display it.
-
-Both are gated by `SO_PEERCRED` against the session's owner, inside a directory the session creates
-`0700`. A directory that already exists with the wrong mode or owner is **a refusal to start, not a
-`chmod`**: if it is not ours, taking it over puts the socket in a path another account chose, after
-which the credential check is guarding the wrong door.
-
-**There is no TCP listener.** A remote desktop is a forwarded unix socket and inherits ssh's
-authentication, which is why it needs none of its own — and that argument holds only while there is
-no other way in, so the self-test asserts the absence by grepping those sources for `AF_INET`.
-`remote = no` is enforced where the tunnel is built rather than where a connection arrives: a
-forwarded socket's peer is the local ssh process running as the same user and cannot be told from a
-local view by credentials, so `kdos con forward` refuses to build the tunnel at all.
 
 ## kdos-resctl
 
@@ -402,52 +373,6 @@ would be added.
 **A build without the decoders turns the three protocols off in the parser**, rather than parsing
 them and dropping the result. Parsing bytes nobody can use is a buffer somebody can fill.
 
-## A view that watches, and a view that drives
-
-A session and its displays are separate processes and the view socket can be forwarded over `ssh`,
-so "who is attached" is a privilege question rather than a feature. **A view says in its hello what
-it may do** — drive or observe — and a view that says nothing is a driver, which is what every view
-was before an observer existed.
-
-- **A client can only ask for LESS.** Saying "observe" is a client holding itself to something; it
-  cannot grant itself rights it did not have, so the field is safe to take at its word in one
-  direction only.
-- **The refusal is the server's.** An observer's `KCON_OP_KEY` and `KCON_OP_PTR` are dropped where
-  they arrive, not where they are sent. A view that promised to observe and then typed is exactly
-  the case the field exists for, and a promise the client keeps by itself is decorative.
-- **`kdos con attach --observe`** is the whole interface. Over a forwarded socket it is the
-  difference between showing somebody a problem and handing them the machine.
-- **An observer draws no pointer**, because a pointer that cannot click is a lie about what the
-  view is. Each view draws its own locally over the shared frame — the frame carries none — so two
-  people looking at one session each see their own and neither sees the other's.
-- **`views` in `con.conf` caps how many displays may attach at once**, and a view that is refused is
-  told why rather than finding a closed socket.
-
-## A recorded script
-
-A script is what `Super+Shift+r` recorded and `Super+Alt+r` types back: a file of keys under
-`~/.config/kdos-con/scripts/<letter>`. It is the one thing on this desktop that stores keystrokes,
-so the refusals are the feature.
-
-- **A script is keys into a window and never a command.** Each line is a chord's name, its
-  modifiers, its key number and the gap before it. There is no field that could name a program, so
-  a file planted in that directory types into a window and cannot start anything.
-- **Nothing is recorded and nothing is played while the screen is locked.** A lock is typed into
-  with a password. The refusal is checked when a recording starts, again for every key, when a
-  replay starts and again on every turn of it — a screen can lock on its own timer in the middle of
-  either, and a recorder that only checked at the start would write the password that followed.
-- **The greeter needs no rule of its own.** `kdos-con-login` is a separate process; no session, and
-  so no recorder, exists while it is up.
-- **A replayed key goes into the focused window, never through the chord table.** A replay routed
-  through the session's own keys would fire whatever a file happened to contain — a workspace
-  switch, a quit — from a file.
-- **The directory is 0700 and the files 0600**, created with the mode rather than chmod'd
-  afterwards: between the two there is a file somebody else can read, holding whatever was typed.
-- **Neither `kdos con` nor the protocol grew a `script` verb.** A recording starts and a script
-  plays from the chord table and nowhere else, so a client on the surface socket can neither type
-  into the session this way nor read back what somebody recorded. An observing view is refused every
-  key it sends, so it cannot press the chord either.
-
 ## A URI a terminal was told about
 
 `OSC 8` marks a run of text as a hyperlink, and following one is **the one place a terminal hands a
@@ -469,30 +394,6 @@ payload: a shell script, a program inside a box, `cat` on a file somebody sent y
   the shape of the attack, and past the cap the text is text with no link offered.
 - **A refused link is silent.** The characters draw normally; nothing says "refused", because a
   message naming the address would put the attacker's string on the screen.
-
-## The one descriptor, and the two protocols that carry none
-
-**The surface protocol and the view protocol carry no file descriptors, ever.** That is not a
-minimalism: it is what lets the view socket be forwarded over `ssh`, so a desktop reached from
-another machine is the same desktop rather than a second implementation. A sprite travels as its
-pixels and is cached by key; nothing on either socket is a handle to anything.
-
-**Descriptors cross on one channel, and it is neither of those.** An embedded application's
-compositor is a child of the session, and its frames come back over a `socketpair` created *before*
-the fork and inherited — never a path anything can connect to, never a name in a directory, never
-reachable by a process that is not that child. What crosses it is a shared mapping for each window
-the guest maps, the keymap, and a sealed `memfd` for a selection. The mapping **is** the frame:
-passing it any other way would mean copying every frame through the session, which is the process
-whose whole purpose is to hold no pixels.
-
-So the rule is stated as a boundary rather than as a habit: **a descriptor may cross a channel with
-exactly one peer that this process forked.** Anything a stranger can connect to carries bytes.
-
-**`testing/selftest.sh` holds the boundary.** It greps `libkcon`, `kdos-con` and `kdos-view` for
-`SCM_RIGHTS` and allows exactly one file — `kdos-con`'s `embed.c`, the session's end of that
-private pair. A descriptor
-added to either published protocol is a broken build rather than a property somebody has to
-remember, which is the only form a rule like this survives in.
 
 ## What is not protected
 

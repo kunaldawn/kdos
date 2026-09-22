@@ -20,58 +20,24 @@
 #include <unistd.h>
 
 #include "kbase.h"
-#include "kcon.h"	/* kcon_impl */
-#ifndef KDOS_TERM_CONSOLE_ONLY
-#include "kwl.h"	/* kwl_impl — naming these is what links each one in */
-#endif
+#include "kwl.h"	/* kwl_impl — naming it is what links it in */
 #include "kxdg.h"
 #include "term.h"
 
-#ifdef HAVE_KIMG
-#include <pixman.h>
-#endif
-
 /*
- * See the declaration: naming kwl_impl is what links Wayland into this binary,
- * and naming kcon_impl is what makes the same one a console surface.
+ * Naming kwl_impl is what links Wayland in; comparing against it is how this
+ * program knows the window it drew is one with pixels in it — a --tty or
+ * --dump run draws through somebody else's terminal and has no display here.
  *
- * KDOS_TERM_CONSOLE_ONLY drops the Wayland half, which is what the self-test
- * builds: the state machine, the frame and the image path are the whole of
- * what a `--dump` exercises, and they must be asserted on a bare host rather
- * than only where fcft and wayland-client happen to exist. The SHIPPED binary
- * is the one without it — a define that has to be present for the desktop to
- * work would be a define somebody forgets.
+ * THE SELF-TEST BUILDS THIS FILE AGAINST A STUB kwl_impl on a bare host, so
+ * the state machine, the frame and the image path are asserted where fcft and
+ * wayland-client do not exist. Nothing here may therefore assume a display was
+ * opened.
  */
-#ifdef KDOS_TERM_CONSOLE_ONLY
-const KDispImpl *const kdos_disp[] = { &kcon_impl };
+const KDispImpl *const kdos_disp[] = { &kwl_impl };
 const int kdos_disp_n = 1;
 
-/*
- * AND THE FRAME THROTTLE ANSWERS "NOT HELD" WITH NO WAYLAND TO ASK.
- *
- * The draw loop tests it on every turn, on both backends, because a console
- * surface is never throttled and the test is one comparison there — so the
- * answer has to exist in a build that has no compositor half to give it, or
- * this build does not compile and the self-test stops on the file it is
- * checking.
- */
-static int kwl_frame_throttled(void) { return 0; }
-/*
- * AND THE FONT CHORD HAS NO SURFACE TO ASK EITHER. The chord is tested on
- * every backend — a console surface answers it with a message rather than with
- * a resize — so both halves of the question have to exist in a build with no
- * compositor half to answer them, or this build does not compile.
- */
-static int kwl_surface(void) { return 0; }
-static int kwl_font_step(int step) { (void)step; return -1; }
-#else
-const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
-const int kdos_disp_n = 2;
-
-/* Naming kwl_impl is what links Wayland in; comparing against it is how this
- * program knows the window it drew is one with pixels in it. */
 static int kwl_surface(void) { return kdisp_current() == &kwl_impl; }
-#endif
 
 /* Zeroed: `selecting` is what says whether a drag is in progress, so the
  * sentinel the cell coordinates used to carry is not needed. */
@@ -147,13 +113,13 @@ static void on_hup(int sig)
 }
 
 /* OSC 0 and OSC 2, which is how a program names its own window. It reaches the
- * frame whoever drew it: `kdisp_set_title()` is the session's own title
- * message on the console and `xdg_toplevel_set_title` under a compositor, and
- * the box this program draws when nothing else did reads `g_title` directly. */
+ * frame whoever drew it: `kdisp_set_title()` is `xdg_toplevel_set_title` under
+ * a compositor, and the box this program draws when nothing else did reads
+ * `g_title` directly. */
 /*
  * A CHILD PUT SOMETHING ON THE CLIPBOARD, through OSC 52. It goes wherever
- * this program's display server puts a selection — the compositor's data
- * device under Wayland, the session's own buffer on the console.
+ * this program's display server puts a selection, which is the compositor's
+ * data device.
  */
 static void on_clip(struct kvt_vte *vte, const char *text, size_t len,
 		    int primary, void *data)
@@ -181,28 +147,6 @@ static void on_osc(struct kvt_vte *vte, const char *u8, size_t len, void *data)
 	}
 }
 
-#ifdef HAVE_KIMG
-/*
- * WHERE A SPRITE'S PIXELS COME FROM when this program is a console surface.
- * libkcon links no pixel library and must not; it asks for the bytes through
- * this and puts them on the wire, and the display on the other end scales them
- * to whatever a cell is there.
- */
-static int sprite_bits(const void *pix, const uint32_t **argb, int *w, int *h,
-		       int *stride_px, void *user)
-{
-	pixman_image_t *img = (pixman_image_t *)pix;
-
-	(void)user;
-	if (!img)
-		return -1;
-	*argb = pixman_image_get_data(img);
-	*w = pixman_image_get_width(img);
-	*h = pixman_image_get_height(img);
-	*stride_px = pixman_image_get_stride(img) / 4;
-	return *argb && *w > 0 && *h > 0 ? 0 : -1;
-}
-#endif
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
@@ -422,22 +366,6 @@ static int font_chord(const KtuiEvent *ev)
 	else
 		return 0;
 
-	/*
-	 * A CONSOLE SURFACE HAS NO PIXELS TO GIVE. A kcon client draws in a
-	 * cell the protocol reports as one unit square, carries no per-surface
-	 * font, and the session refuses a font from anything but the shell
-	 * surface — precisely so that one window cannot resize every other
-	 * window on the desktop. Forwarding the key instead would be a child
-	 * acting on a size nothing here can change, so the person is told
-	 * where the control actually is.
-	 */
-	if (kdisp_current() == &kcon_impl) {
-		ktui_modal_alert("Font",
-				 "The font here belongs to the whole view.\n"
-				 "Super+= and Super+- step it, Super+0 puts it back.");
-		ktui_draw_invalidate();
-		return 1;
-	}
 	/* A --tty or --dump run draws through somebody else's terminal, which
 	 * owns its own font: the key is the child's, exactly as it was. */
 	if (!kwl_surface())
@@ -689,10 +617,6 @@ int main(int argc, char **argv)
 	kvt_term_osc_cb(T.t, on_osc, NULL);
 	kvt_term_notify_cb(T.t, on_notify, NULL);
 	kvt_term_clip_cb(T.t, on_clip, NULL);
-
-#ifdef HAVE_KIMG
-	kcon_set_sprite_bits(sprite_bits, NULL);
-#endif
 	term_pic_init();
 
 	if (dump_w) {
@@ -772,8 +696,7 @@ int main(int argc, char **argv)
 		 * and the core that goes into the frames nobody sees is the
 		 * core the child wanted. The throttle opens on the frame
 		 * callback, which wakes this loop, so the next turn draws and
-		 * commits. On the console backend it is never closed and this
-		 * costs one comparison.
+		 * commits. A backend that never closes it costs one comparison.
 		 */
 		if (!kvt_term_sync_hold(T.t) && !kwl_frame_throttled()) {
 			draw();

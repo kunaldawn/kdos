@@ -649,7 +649,7 @@ static void draw(void)
 		}
 		/* THE PLATE AND THE CELL FORM OF IT, which is kdos-menu's
 		 * rule: the pixel plate is the whole highlight where there is
-		 * a pixel layer, and on a character grid — the console, and
+		 * a pixel layer, and on a character grid — a `--tty` run, and
 		 * every dump — an accent fill with the slots swapped is what
 		 * says which row Enter will take. */
 		if (on) {
@@ -887,10 +887,9 @@ int traymenu_main(int argc, char **argv)
 	}
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it — osd.c's pair, for its reasons: a console surface has no
-	 * pixel size of its own, and the console backend clears its client
-	 * state when it connects, so a callback registered before kdisp_init
-	 * is erased.
+	 * before it — osd.c's pair, for its reasons: a display with no pixel
+	 * size of its own answers 1, and sh_pic_backend()'s budget is in cells
+	 * and needs the cell size kdisp_init resolved.
 	 */
 	sh_pic_backend();
 	if (icons_on)

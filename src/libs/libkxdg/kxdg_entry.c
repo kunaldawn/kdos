@@ -182,6 +182,5 @@ int kxdg_launch_read(const KxdgEntry *e, KxdgLaunch *out)
 		   sizeof(out->size));
 	out->terminal = kxdg_bool(e, "Terminal", 0);
 	out->floating = kxdg_bool(e, "X-KDOS-Float", 0);
-	out->cells = kxdg_bool(e, "X-KDOS-Cells", 0);
 	return 0;
 }

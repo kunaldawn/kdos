@@ -55,10 +55,3 @@ unreadable slot. Four surfaces implement it and their frames are the
 `cells-*.txt` files here. A surface that does not is skipped by name rather
 than silently, so the list of what is covered is the list of what exists.
 
-A CHORD'S EFFECT IS PRESSED, NOT IMITATED
-
-`kdos-con --dump` takes `--press CHORD`, repeatable, spelled the way
-`keys.conf` spells it. Each press goes through the session's own key handler
-before the frame is composited, so a frame taken after one is evidence about
-the key. `con-scratch-hidden-80x24.txt` and `con-scratch-80x24.txt` are that
-pair: the same session with the scratchpad away and with it dropped down.

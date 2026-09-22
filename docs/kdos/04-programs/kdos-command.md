@@ -47,10 +47,9 @@ wallpaper because the compositor re-decodes on that same signal.
 
 **The signal goes to every long-lived surface by name, and an exact match is required.** The panel,
 the desktop and the notification daemon are three names of one binary, so signalling only one
-retints the panel and leaves the desktop icons and any live toast in the old accent; both halves of
-the console desktop are on the list because `kdos-con` holds the cells and `kdos-view` holds the
-palette they are painted with. And the match must be exact: one of those names is a **substring**
-of the two shell scripts that own the session, and an unhandled signal kills a shell.
+retints the panel and leaves the desktop icons and any live toast in the old accent. And the match
+must be exact: `kdos-comp` is a **substring** of `kdos-desktop-start`, the shell script that owns
+the session, and an unhandled signal kills a shell.
 
 **`--audit` is the palette claim, checked.** It does not try to recognise "palette colours" in the
 installed files — that test would have to know which mixes are legal and would drift from the
@@ -68,7 +67,7 @@ run.
 makes for a child's OSC 9, so the two cannot drift apart.
 
 **`--time` and `--battery` compute their own text, and that is why they are verbs.** A chord runs a
-static command: `rc.xml` binds a string and `con.conf` names one, so a chord that wanted the time
+static command: `rc.xml` binds a string, so a chord that wanted the time
 could not be a chord that formatted it. `Super+Ctrl+Alt+t` and `Super+Ctrl+Alt+b` are the two
 questions a bar answers by being on the screen — and this desktop puts its bar away.
 
@@ -123,12 +122,10 @@ desktops and has been since either had accessories.
 kdos panel toggle            # put the compositor's bar away, and bring it back
 ```
 
-**One verb for a chord both desktops bind.** `Super+Shift+space` is a session action on the console
-— the bar's row leaves the work area and every window re-fits — and there is no process there to
-signal. Under the compositor the bar is `kdos-shell`, so this signals it: `SIGUSR1`, **by exact
+**One verb, because `rc.xml` runs a command and cannot send a signal.** The bar is `kdos-shell`,
+so this signals it: `SIGUSR1`, **by exact
 `comm`**, which reaches the panel and not the desktop icons or the notification daemon, the other
-`argv[0]`s of the same binary. `rc.xml` runs a command and cannot send a signal, which is why the
-verb exists rather than the binding doing it.
+`argv[0]`s of the same binary.
 
 **It walks `/proc` itself instead of running `pkill`, and this is the one signal in `kdos` that
 has to.** This image's `pkill` is toybox's, whose `-U` takes a user id — so `-USR1` is parsed as
@@ -153,8 +150,9 @@ holds instead of a chord: a chord is rebindable and a menu row moves, and neithe
 another program can refer to. Summoning opens the menu with the route in its search field, which is
 the one code path that finds a route.
 
-**The menu is whatever `con.conf` names.** Which key opens a thing is `keys.conf`'s and which
-program is the thing is `con.conf`'s; a command that hardcoded `kdos-start` would be a third answer
+**The menu is `kdos-palette`**, which is what `rc.xml` binds `Super+space` to — taking somebody to
+a named place is a search with the name already typed. A command that hardcoded `kdos-start` would
+be a third answer
 to that question. The key may carry arguments and is split into an argument vector here, as the
 session splits it — the first word is the program, which is what `pkill -x` matches, because that
 match is against a name and never against a command line.
@@ -186,7 +184,7 @@ Sections and their most valuable checks:
 | setuid | The password checker, the resource helper, and **both user-namespace mapping helpers** — losing any is silent and catastrophic |
 | Hardware | **Device present but unopenable**: it walks the attached devices and reports each one the calling user cannot open, **naming the owning group** |
 | Boxes | Whether the pack filesystem is loadable, whether the pack daemon answers and by which mount route, whether the home directory's filesystem can host a container layer, and whether every mounted pack still has a file behind it |
-| Desktop | Whether the frame-reporting socket exists, and **the checks that belong to the session that is running**: a graphical session is asked about `kdos-comp`, its panel and the wlroots portal; a console session about `kdos-con` and whether a view is attached. `$KDOS_CON` decides, and reporting a missing compositor on a cell desktop would fail a working machine |
+| Desktop | Whether the frame-reporting socket exists, whether `kdos-comp` and its panel are running, and whether the wlroots portal is |
 
 "Add yourself to this group" is an instruction; "permission denied" is not. That difference is why
 the hardware check names the group.
@@ -616,7 +614,7 @@ either stream. It is a global flag and the wrapper's own arguments come first, s
 `send`.
 
 **The code word becomes a QR in the window, in full blocks.** `qrencode -t ASCIIi`, with `#`
-replaced by `█`: `-t UTF8` draws with half blocks and the console font is 512 glyphs and carries
+replaced by `█`: `-t UTF8` draws with half blocks and the VT font is 512 glyphs and carries
 none of them, so that rendering is not a worse QR on `tty1`, it is no QR. `ASCIIi`'s `#` is a
 *light* module, so the substitution puts the light of the code on a dark screen — the printed
 convention in emitted light rather than an inverted code. **Drawn whole or not at all**: a QR
@@ -707,110 +705,6 @@ kdos settings hardware  # straight to a page
 Execs `kdos-settings`, passing a page word through as `--page`. **The page name is not checked
 here**: `kdos-settings` owns the list, and a second copy would be a second list to keep in step —
 whose failure is a page that exists and cannot be reached from a prompt.
-
-## con
-
-```sh
-kdos con ls
-kdos con {new|attach|detach|kill} [session]
-kdos con attach --observe [session]
-kdos con capture [--window N] [session]
-kdos con record FILE
-kdos con replay FILE
-kdos con forward <host> [session]
-kdos con layout {save|load} <name>
-kdos con run [--] CMD [ARG...]
-```
-
-**The session is a bare name, not a flag.** `kdos con new work` — not `-t work`, which names a
-session `-t`. This front end execs `kdos-con` and supplies the `-t` itself; it is five verbs and a
-name, deliberately not an argument tunnel. `capture` sits beside that table rather than in it,
-because it is the one verb with a flag of its own to pass.
-
-The console desktop's sessions — the verb that reaches the **default** session, since `tty1` runs
-`kdos-con-login` and everything else is started from there.
-
-| Verb | Does |
-|---|---|
-| `ls` | The sessions that exist, by name |
-| `new [session]` | Start one. **It holds the session and does not return** — nothing is displayed until a view attaches |
-| `attach [--observe] [session]` | Put a display on one. `--observe` watches without typing: the session drops that view's keys and pointer |
-| `detach [session]` | Take every display off one, leaving it and its windows running |
-| `kill [session]` | Ask one to end. It stops its listeners and drains its clients |
-| `capture [--window N] [session]` | Print what is on a **running** session's screen as text; `--window N` narrows it to one window by its ring number |
-| `record FILE` | Draw the session in this terminal and write everything it sends to `FILE` — KDOS's own format, not an asciicast |
-| `replay FILE` | Draw a recording in this terminal. It attaches to no session |
-| `forward` | Carry a session's view socket to another machine over `ssh` |
-| `layout save <name>` | Write what the **running** session has open to `~/.config/kdos-con/layouts/<name>` |
-| `layout load <name>` | Open every entry of that layout that is not already open. It closes nothing |
-
-**A layout is the session record with a name.** Same rows, same columns, same reader as the file a
-session leaves behind on a clean exit — so what a person arranged is what comes back, and there is
-one format rather than two to keep in step. `save` and `load` both reach the session that is
-running, for the reason a capture does: it is the half that holds the windows, and nothing on the
-wire can move one.
-
-**A row names what to open and never how.** `term` is `con.conf`'s `terminal`; a **role** — `files`,
-`mail`, `writing` — is the `con.conf` key for that role, opened in a terminal; a `con.conf` command
-key such as `monitor` or `notes` is one of this desktop's own surfaces; anything else is an app id
-for the pack store. A file that named a command line would be a file that executes one, and it is
-written by a program into a directory anything running as this person can write.
-
-**Which is why a terminal's row names a role.** Every terminal window's app id is the literal
-`terminal`, so a row carrying that says a window *was* a terminal and not which program was in it —
-saved and reloaded, an arrangement would come back as a screen of bare shells. A window running the
-file manager is written as `files`, and `con.conf` says what fills that.
-
-**A load adds; it never takes away.** A row whose program this image does not carry opens nothing
-and is not an error — no image carries all seven roles, and a layout that refused to load at all
-would be one nobody could use. A row already open opens nothing either, so a layout route is safe
-to press twice. A `term` row always opens: there is no name that separates one plain shell from
-another, so two terminals in a layout mean two terminals.
-
-**Three ship** under `/usr/share/kdos/layouts/`, and a person's own copy of a name replaces it
-rather than merging with it: `work` is a terminal with the file manager and the monitor beside it,
-`write` the editor full-screen with the note pad as the scratchpad, `talk` mail, the diary and chat
-side by side. Each has a `layout.<name>` route in the palette. Routes are read from `menu.conf`
-rather than found in a directory, so a layout somebody saves of their own gets its row in their own
-copy of that file.
-
-**A capture asks the session that is running; it is not `kdos-con --dump`.** The dump composites a
-session of its own and **settles** it — runs every terminal until its child has exited — which is
-right for one-shot commands and wrong for a live session, whose shell never exits: a capture that
-settled would hold the session for the length of its own spin and answer nothing. It pumps once
-instead, so what comes back is what the children have already written.
-
-**Only a shell surface may ask**, like every other management verb. Reading back a whole session is
-not something a program with a window in it, or a display that was handed cells, has any business
-doing — and a window number naming nothing returns nothing rather than widening silently to the
-whole screen.
-
-**A session and a display are separate processes, and that is the whole design.** The session holds
-every window and draws nothing; the view holds a screen and no window state. So a view that crashes
-loses nothing, a detach leaves the work running, and a display at the far end of an `ssh` connection
-is trusted with nothing but the cells it is sent.
-
-**Two sockets, and only one may leave the machine.**
-
-| Socket | Admits | May be forwarded |
-|---|---|---|
-| `<name>.sock` | Surfaces — programs that place windows | **never** |
-| `<name>.view` | Views — a display | yes, with `forward` |
-
-Which socket a client reached decides what it is allowed to be; the kind in its handshake is a claim
-and is overridden. Forwarding a socket that admitted surfaces would hand the far end the right to
-place windows in your session, which is a different thing entirely from showing you yours.
-
-**`remote = no` is enforced where the tunnel is built, not where a connection arrives.** `kdos con
-forward` refuses. It cannot be enforced at the far end: a forwarded socket's peer is the local `ssh`
-process running as the same user, so it is indistinguishable from a local view by credentials. A
-check at the accepting end would be a check that cannot tell the two apart, which is worse than
-none because it reads as protection.
-
-**`kill` asks; it does not unlink.** Removing the socket files would leave the session running on
-listeners it still holds — every attached view keeps its display and the session is unreachable and
-alive. There is no pid in a socket path either, so looking one up by name would end whichever
-process happened to match.
 
 ## The other names on this binary
 

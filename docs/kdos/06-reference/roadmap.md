@@ -51,27 +51,18 @@ between a KDOS surface and a boxed application.
 negotiation and no deferred transfer, and only the trash accepts a drop on the desktop. Dropping
 onto a folder means deciding what a move that half-succeeds across filesystems should do.
 
-**Booting the console desktop.** Everything it is made of compiles, self-tests and reproduces its
-goldens, and much of it has now been driven end to end between real processes — but none of it has
-been booted into. What would move it off [Status](status.md)'s experimental line is one rig pass on
-the ISO: log in, open a terminal, run `htop`, open `kdos-res` as a window, tile a pair, switch a
-workspace, lock and unlock, come back from `tty2`, and start a boxed graphical application as a
-window.
+**A rig pass on the window model.** `libkwm` reproduces its contract fixture and the compositor
+calls five of its entries, but no photograph shows a window landing where a person expects. What
+would close it is one rig run on the ISO: open a terminal, tile a pair, switch a workspace, lock
+and unlock, come back from `tty2`, and start a boxed graphical application.
 
-**One specific about a graphical application on the cell grid.** Its windows are ordinary windows
-there — one `kdos-cage --embed` composites every toplevel the application maps and the session cuts
-the frames into sprites — and an application that needs acceleration a software renderer cannot
-give it has to be pinned to a terminal by hand, rather than being detected.
+**Something that reads the desktop.** Every widget already states what it is, what it is called and
+what it is set to — `ktui_announce()` — and nothing reads that record. It is the largest single
+absence here and it is a missing subsystem rather than a missing feature; see
+[Accessibility](../02-user-guide/accessibility.md) for what would have to change.
 
-**A second CARD on the console.** `libkkms` takes the first `/dev/dri/card0..7` with a connected
-output and lights every connector on that one, laid edge to edge into a single grid; a screen on a
-second card is unreachable. Reaching it means a second device, a second seat lease and a grid that
-stops being one rectangle — which is the decision, not the code.
-
-**A still screenshot of the console as a picture.** `kdos-view --cast` records the session into a
-PipeWire stream — a view rasterises, so a recording is a view nobody looks at — and `kdos-shot`
-still writes the grid as text. Rendering cells to a single image needs `libkcell`, which `kdos-tools`
-does not link.
+**A greeter, or a decision not to have one.** `tty1` is handed to `agetty` and there is no account
+chooser and no session chooser. One would be a Wayland client that runs before the compositor does.
 
 **Per-output rendering settings.** The font size is one number for every screen, and fractional
 scaling is not negotiated. Both matter on a machine with two displays of different densities, and

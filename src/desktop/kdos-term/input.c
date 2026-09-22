@@ -44,11 +44,9 @@ int term_key(const KtuiEvent *ev)
  * is drawing its own idea of what is selected, and a second selection drawn on
  * top of it belongs to nobody.
  *
- * ALL OF THAT IS `kvt_ui_mouse`, in libkvt, because the console session runs
- * terminals of its own and must decide the same things. Two copies would
- * drift, and the difference would be a terminal that behaves differently
- * depending on which desktop it is on. What is left here is the one thing
- * that IS this program's: where a completed selection goes.
+ * ALL OF THAT IS `kvt_ui_mouse`, in libkvt, because every consumer of the vte
+ * must decide the same things and two copies would drift. What is left here is
+ * the one thing that IS this program's: where a completed selection goes.
  */
 void term_mouse(const KtuiEvent *ev)
 {

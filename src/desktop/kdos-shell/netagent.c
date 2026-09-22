@@ -73,7 +73,7 @@
  * NOTHING FROM THE REQUEST IS DRAWN AS IT ARRIVED. An SSID is thirty-two
  * arbitrary bytes that NetworkManager copies into `connection.id` unfiltered,
  * so naming an access point is a way to write escape sequences into the
- * console session this box is drawn on. Same rule net.c's take_ssid() keeps.
+ * terminal this box is drawn on. Same rule net.c's take_ssid() keeps.
  * ---------------------------------
  */
 

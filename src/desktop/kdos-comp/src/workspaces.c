@@ -295,8 +295,8 @@ workspace_has_views(struct workspace *workspace)
 }
 
 /*
- * The ring walk is libkwm's, so the console desktop cannot disagree about it —
- * and the rule that matters is subtle: WRAPPING HAPPENS AT MOST ONCE, or a set
+ * The ring walk is libkwm's, asserted against a fixture with no compositor
+ * running — and the rule that matters is subtle: WRAPPING HAPPENS AT MOST ONCE, or a set
  * of workspaces that are all empty is circled forever.
  *
  * Occupancy stays here. This compositor counts views that are not omnipresent;

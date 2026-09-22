@@ -5,12 +5,11 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   What opens a file on EITHER desktop.
+#   What opens a file when no desktop-specific table answers.
 #
-# Only the types where both desktops want the same program. Anything a
-# graphical session and a terminal session would answer differently belongs in
-# `kdos-mimeapps.list` or `kdos-console-mimeapps.list` beside this file, which
-# are searched first for the desktop that is actually running.
+# `kdos-mimeapps.list` beside this file names the desktop and is searched
+# first; this is the layer under it, for the types that answer the same way on
+# a bare virtual terminal as they do in a session.
 #
 # A person's own choices live in their config directory and outrank every row
 # here, which is what makes this a default rather than a policy.
@@ -31,9 +30,7 @@ application/x-cb7=kdos-openarchive.desktop
 application/vnd.comicbook-rar=kdos-openarchive.desktop
 
 # THE PAGES NOTHING ELSE ON THIS IMAGE RENDERS. `kdos-peek` draws one through
-# `mutool`, and it is the same surface on both desktops — a viewer that draws
-# into a cell grid needs no compositor, so these rows belong here rather than
-# being written twice.
+# `mutool` into a cell grid.
 application/pdf=kdos-peek.desktop
 application/vnd.comicbook+zip=kdos-peek.desktop
 application/oxps=kdos-peek.desktop
@@ -46,7 +43,6 @@ application/epub+zip=epy.desktop
 application/x-mobipocket-ebook=epy.desktop
 application/x-fictionbook+xml=epy.desktop
 
-# A MAIL ADDRESS, ON EITHER DESKTOP. `aerc` is the only mail client on this
-# image and it is a terminal program on both, so the opener wraps it in
-# whichever emulator the desktop uses and the answer is the same one twice.
+# A MAIL ADDRESS. `aerc` is the only mail client on this image and it is a
+# terminal program, so the opener wraps it in the emulator.
 x-scheme-handler/mailto=aerc.desktop

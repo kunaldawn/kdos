@@ -81,9 +81,9 @@
  * `deep` by less than a swatch can show. */
 #define TH_SWATCH 8
 
-/* How many faces the list holds and how long one name is — the wire's own
- * caps, so a display offering more sends the first of them and this window
- * never has to say it dropped any. */
+/* How many faces the list holds and how long one name is. A display offering
+ * more is read down to the first of them, so this window never has to say it
+ * dropped any. */
 #define TH_FONT_MAX  64
 #define TH_FONT_NAME 192
 
@@ -436,17 +436,18 @@ int theme_main(int argc, char **argv)
 		}
 
 		/*
-		 * AND THE HONEST ANSWER WHERE THERE IS NOTHING TO OFFER. A
-		 * view running inside somebody else's terminal cannot change
-		 * a font — that terminal owns it — and the session says so
-		 * with the same sentence the chord does, because a person who
-		 * pressed `Super+equal` and then opened this must not be told
-		 * two different things.
+		 * AND THE HONEST ANSWER WHERE THERE IS NOTHING TO OFFER. The
+		 * font is not this window's to change under the compositor —
+		 * every surface carries its own, from `chrome_font` and
+		 * `panel_font` — and a `--tty` run is inside a terminal that
+		 * owns it. An empty list with no sentence reads as a list
+		 * still loading.
 		 */
 		if (page == PG_FONT && nfonts == 0)
 			ktui_draw_text(2, 3, w - 4,
-				       "the terminal this view runs in owns "
-				       "the font — change it there",
+				       "the font is set in "
+				       "~/.config/kdos/comp.conf — "
+				       "chrome_font and panel_font",
 				       KT_MID, KT_SURFACE, KT_A_NONE);
 
 		char updown[8];

@@ -1,27 +1,24 @@
 #!/bin/sh
-# session-common.sh — what BOTH sessions do, in one place.
+# session-common.sh — the session bring-up, in one place.
 #
-# Sourced, never executed. The graphical session and the console session
-# differ in which display they bring up and which portal backend they start;
-# everything below is the same work, and every one of these blocks carries a
-# trap that cost a debugging session to find. A second copy is a second place
-# to lose one.
+# Sourced, never executed. Everything below runs before the compositor does,
+# and every one of these blocks carries a trap that cost a debugging session
+# to find. A second copy is a second place to lose one.
 #
 #   kdos_session_open      $BROWSER, which the login shell may not have set
 #   kdos_session_runtime   XDG_RUNTIME_DIR, before anything uses it
-#   kdos_session_keymap    the console keymap as XKB variables
+#   kdos_session_keymap    the VT keymap as XKB variables
 #   kdos_session_boxes     the appbox warmup, and giving idle ones back
 #   kdos_session_bus       one session bus per user, at a fixed path
 #   kdos_session_audio     pipewire, once per user rather than per session
 #   kdos_session_once      the login sound, the first-run card, the restore
 
-# ONE ROAD TO A LINK, ON A PATH THAT READS NO PROFILE. /etc/profile.d sets
-# $BROWSER for a login shell, and the `greet = yes` console session is exec'd
-# from a program that clears the environment and runs this script directly — so
-# the variable would exist on one supported login path and not the other, and
+# ONE ROAD TO A LINK, ON A PATH THAT MAY HAVE READ NO PROFILE.
+# /etc/profile.d sets $BROWSER for a login shell, and
 # `dbus-update-activation-environment BROWSER` pushes NOTHING for an unset name
-# rather than failing. Only fills a gap: a person who exported their own has
-# said what they want.
+# rather than failing — so a session started any other way would push nothing
+# and every boxed link would go nowhere. Only fills a gap: a person who
+# exported their own has said what they want.
 kdos_session_open() {
 	BROWSER="${BROWSER:-xdg-open}"
 	export BROWSER
@@ -32,18 +29,15 @@ kdos_session_runtime() {
 	export XDG_RUNTIME_DIR
 }
 
-# THE CONSOLE SESSION NEEDS THIS TOO. libkkms reads the same XKB variables
-# through xkbcommon that every Wayland client does, so leaving this in the
-# graphical script gave the console US QWERTY on a machine whose owner does not
-# type it.
 kdos_session_keymap() {
-	# The keyboard layout. The installer writes the CONSOLE keymap name to
-	# /etc/keymap and kdos-getty loadkeys it on every tty — but nothing carried it
-	# into the Wayland session, so a non-US user got US QWERTY in the desktop,
-	# the lock-screen password prompt included. xkbcommon reads these variables in
-	# every client and in kdos-comp itself; console names and XKB layout names are
-	# different vocabularies, hence the table. Anything not listed falls back to
-	# its first two letters, which is how most console maps are named anyway.
+	# The keyboard layout. The installer writes the VT keymap name to
+	# /etc/keymap and kdos-getty loadkeys it on every tty — and nothing else
+	# carries it into the session, so without this a non-US user gets US QWERTY
+	# in the desktop, the lock-screen password prompt included. xkbcommon reads
+	# these variables in every client and in kdos-comp itself; VT map names and
+	# XKB layout names are different vocabularies, hence the table. Anything not
+	# listed falls back to its first two letters, which is how most VT maps are
+	# named anyway.
 	if [ -r /etc/keymap ]; then
 		_km=$(cat /etc/keymap 2>/dev/null)
 		_layout= _variant=
@@ -57,7 +51,7 @@ kdos_session_keymap() {
 		it*)       _layout=it ;;
 		br*)       _layout=br ;;
 		ru*)       _layout=ru ;;
-		# The console names whose first two letters are a DIFFERENT layout —
+		# The VT map names whose first two letters are a DIFFERENT layout —
 		# `la` is Lao, not Latin American, and there is no `sg`, `sl` or `cr`.
 		sg*)       _layout=ch ;;
 		slovene)   _layout=si ;;
@@ -141,8 +135,8 @@ kdos_session_bus() {
 # because a session restart must not start a second pipewire: two of them
 # fight over the same devices and the loser's clients get silence.
 #
-# Not Wayland's and not the console's — a login sound and a boxed application's
-# audio are the same stack on either desktop.
+# Not the compositor's — a login sound and a boxed application's audio are the
+# same stack, and neither goes through it.
 #
 # WIREPLUMBER IS THE SESSION MANAGER AND PIPEWIRE BUILDS NONE. The daemon
 # routes nothing on its own: device discovery, which sink a stream lands on,

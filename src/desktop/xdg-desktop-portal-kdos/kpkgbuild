@@ -14,4 +14,4 @@ release     = 1
 source      =
 description = FileChooser, Settings, AppChooser and ScreenCast portal backend for KDOS
 homepage    = https://github.com/kunaldawn/kdos
-depends     = basu xdg-desktop-portal kdos-shell kdos-view
+depends     = basu xdg-desktop-portal kdos-shell

@@ -86,7 +86,7 @@ deadline is never *ahead* of the control tick it is checked against: a grid shor
 control's falls 666 µs further behind the tick every frame, and is never re-pegged closer than
 666 µs behind. A tick is refused only after a stall, never for the jitter of noticing one.
 
-The consumers, meanwhile, do not agree with each other. The console session composes on
+The consumers, meanwhile, do not agree with each other. A 16 ms compose is
 `frame_floor_ms()`, the period of the fastest mode any attached display is wearing, rounded up to
 the millisecond — 16 on a sixty-hertz display, 7 at 144 Hz — and will not compose two frames inside
 it; `kdos-term` on
@@ -150,7 +150,7 @@ they like and the picture changes **once, whole**.
 
 **This is a contract with two ends and one end alone changes nothing.** The producer brackets its
 frames; the consumer honours the mode. `kdos-term` honours it through `libkvt`'s
-`kvt_term_sync_hold()`, and the console session honours it in its VT layer the same way — both
+`kvt_term_sync_hold()`, and any other consumer of the vte honours it the same way — both
 under a **150 ms watchdog**, because a producer that sets the hold and then dies must not freeze
 the window.
 
@@ -393,7 +393,7 @@ Two stacked requirements, both in init scripts, and neither is about this progra
   here, so its status is deliberately ignored.
 
 **The console has a sound server, and reaching it is a configuration file rather than a given.**
-`kdos-con-start` starts PipeWire exactly as the graphical session does, but ALSA only routes
+`kdos-desktop-start` starts PipeWire, but ALSA only routes
 `default` to it because `/etc/alsa/conf.d/99-kdos-pipewire.conf` says so — the directory PipeWire
 installs its own drop-in into is not one alsa-lib reads. See [the session](../03-architecture/session.md#audio).
 

@@ -6,9 +6,6 @@ Comment=Look inside a file without starting its application
 Exec=kdos-peek %f
 Icon=document-preview
 Terminal=false
-# It attaches to the console session as a surface of its own, so the session
-# must give it a window and not a cage — see X-KDOS-Cells in kxdg.h.
-X-KDOS-Cells=true
 NoDisplay=true
 MimeType=application/pdf;application/epub+zip;application/vnd.comicbook+zip;application/oxps;application/x-fictionbook+xml;
 Categories=Utility;Viewer;

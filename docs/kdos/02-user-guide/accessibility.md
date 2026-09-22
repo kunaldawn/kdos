@@ -1,84 +1,57 @@
 # Accessibility
 
-Making the console desktop readable: what says what, how to turn it on, and what the two routes
-cost.
+What is here, what is not, and why. **This page is short because the answer is short: nothing on
+this image reads the desktop.** It is written so that nobody spends an afternoon looking for a
+setting that does not exist.
 
-**This desktop is the one best placed to be read.** A graphical desktop reconstructs a tree of
-accessible objects and hopes it matches what was drawn. The console session holds the literal text
-of every cell, knows which window has the focus, and — because every widget announces itself —
-knows which control within it. Reading the screen is a loop over a buffer that already exists.
+## The desktop itself is not read
 
-## Two routes, and which to take
+`kdos-comp` draws pixels. A screen reader on a pixel desktop works from a tree of accessible
+objects the toolkit publishes — AT-SPI, in the world this borrows from — and **KDOS builds no such
+tree**. Every KDOS surface composes its own grid of cells and hands it to the compositor as a
+buffer; nothing in that path carries what a control *is*, what it is called or what it is set to.
 
-| Route | What it needs | What it costs |
-|---|---|---|
-| `a11y = yes` in `con.conf` | Nothing but `brltty` | The pixel half: no pictures on the screen, no font chords |
-| `speak = yes` in `con.conf` | `espeak-ng`, which ships | Nothing; it runs beside the desktop |
+`ktui_announce()` exists and every widget in `libktui` calls it: a control states its kind, its
+name, its value and its position in its set — "check box Night light, on", "tab Keys, 2 of 3". That
+record is composed per frame and **read by nothing**. It is the material a reader would need and
+half the work of having one; what is missing is a client, and a way for a client to reach it.
 
-They are independent. A braille display and a voice can both be on.
+There is no braille route and no voice. `brltty`, `espeak-ng` and `speech-dispatcher` are ports and
+are on the image, because they are useful to somebody at a terminal — but no KDOS surface talks to
+any of them.
 
-## The braille route
+## A boxed application can be read
 
-`kdos-view --kms` takes the terminal into graphics mode, and the kernel's text plane goes with it —
-which is the plane `brltty` reads over `/dev/vcsa`. A `--tty` view on the same terminal leaves that
-plane intact, so a braille display reads the console desktop with nothing else installed and
-nothing else running.
+**Inside a box, the ordinary Linux stack applies.** An application in a box runs against that box's
+own accessibility registry, which is a complete AT-SPI world of its own: the toolkit publishes its
+tree, and a reader installed in the same box walks it.
 
-```sh
-# /etc/kdos/con.conf, or ~/.config/kdos-con/con.conf
-a11y = yes
-```
-
-`kdos-con-start` then brings the desktop up on a `--tty` view. **It is a trade, not a free
-setting**: the pixel half of the display is what pays for it.
-
-## The voice
+It is **off by default**, because the host runs no registry and the probe for one always times out —
+so every boxed application paid a start-up delay for a service that was never there.
 
 ```sh
-speak = yes
+touch ~/.config/kdos/a11y      # opt every box in; an empty file is enough
+KDOS_A11Y=1 kdos-appbox run gimp   # or just this launch
 ```
 
-`kdos-a11y` starts with the session, connects to the reader's socket and says what each widget
-announces: what the control is, its name, its value, and where it sits in its set — "check box
-Night light, on", "tab Keys, 2 of 3", "list, 3 of 9".
+What that buys is what the application's own toolkit offers. It does not reach the panel, the Start
+menu, the file chooser or anything else KDOS draws.
 
-**The position is a fact the widget states**, not a count somebody made from the screen. A list of
-nine says nine because the list knows.
+## What would have to change
 
-**A password field says that it is one and never what is in it.** The whole point of the field is
-that what is typed into it is not on the screen; a reader that said it aloud would put it in the
-room.
+Stated so the size of the job is clear rather than implied:
 
-**It says a thing once.** A widget is right on every frame; dropping the repeat is the reader's job.
+- **A reader needs something to read.** The announcement record would have to leave the process
+  that composed it — a socket, a bus interface, or an AT-SPI bridge built on the record libktui
+  already keeps.
+- **And something to read it with.** A client, and a decision about what it may do: a reader that
+  could type would be a keylogger with a friendly name, so whatever carries the announcements has
+  to grant less than a client that places windows does.
 
-Run it by hand to hear what a desktop would say without a synthesiser:
-
-```sh
-kdos-a11y --print
-```
-
-## What a reader may do
-
-**A reader may not type.** It arrives on a third socket — beside the surface socket and the view
-socket, in the same private directory — whose clients are displays that cannot drive. That is the
-socket's decision and not the client's: reaching it grants less, which is the whole reason it is a
-separate path rather than a flag on the other one.
-
-It is sent the composed grid like any display, plus one message per announcement. So a reader
-written by somebody else has the same material: the text of the screen and what the desktop says
-about it.
-
-## What is not here
-
-**No accessibility registry on the host, and no AT-SPI.** A screen reader running **inside** a box
-reaches that box's own registry — `~/.config/kdos/a11y` opts boxed applications into it — and that
-is a separate mechanism for a separate problem.
-
-**Nothing reads the graphical desktop.** `kdos-comp` draws pixels and has no cell buffer to walk;
-what is written here is the console session's.
+Neither is built. See [Known gaps](../06-reference/known-gaps.md).
 
 ## See also
 
-- [Configuration](../06-reference/configuration.md#etckdosconconf) — the `a11y` and `speak` keys
-- [kdos-con](../04-programs/kdos-con.md) — the session, its sockets and the reader's
+- [Configuration](../06-reference/configuration.md#configkdosa11y) — the `~/.config/kdos/a11y` file
 - [C libraries](../05-developer/c-libraries.md#libktui) — `ktui_announce()`, and what a widget says
+- [Known gaps](../06-reference/known-gaps.md) — this, stated as the gap it is

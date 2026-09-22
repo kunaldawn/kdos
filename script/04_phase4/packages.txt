@@ -578,8 +578,8 @@ exiv2
 qpdf
 
 # THE OTHER HALF OF THE PICTURE PATH. kdos-term decodes sixel, kitty and
-# iTerm2 pictures and nothing in this tree emitted one, so an image on the
-# console desktop was a filename. chafa converts anything to whichever of those
+# iTerm2 pictures and nothing in this tree emits one, so an image in a terminal
+# is a filename without this. chafa converts anything to whichever of those
 # the terminal admits to; timg adds video frames and is the entry the file
 # managers' previewers call. Neither renders a PDF: that wants poppler's glib
 # binding, which the poppler port does not build. Both are also reached from a
@@ -1021,7 +1021,7 @@ caddy
 # xh explores and hurl asserts: a request plus what the answer must contain,
 # in a file that diffs. On a machine with no CI, that file IS the CI.
 hurl
-# A character-cell desktop is the ideal thing to read — tty1, the installer
+# A character-cell surface is the ideal thing to read — tty1, the installer
 # and every kdos-shell surface is a grid BRLTTY takes verbatim out of
 # /dev/vcsa, with none of the guessing a toolkit tree needs. Boxed GUI apps
 # stay unreachable; docs/ACCESSIBILITY.md is the statement of record.

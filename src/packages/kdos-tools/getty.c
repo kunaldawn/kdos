@@ -157,17 +157,20 @@ static int run(const char *const *argv, char *out, size_t outcap)
 }
 
 /*
- * THE ACCOUNT `greet = no` LOGS IN, from /etc/kdos/con.conf.
+ * THE ACCOUNT tty1 LOGS IN, from /etc/kdos/login.conf.
  *
  * Parsed here rather than linked: this binary runs before anything else on
  * tty1 and stays thin, and the key is one word after an equals sign. The
  * default matches the shipped file, so a missing or unreadable file gives the
  * same answer the shipped one would.
+ *
+ * ONLY THE FALLBACK PATH USES IT. kdos-login reads the same key and is what
+ * inittab names; this is what is left when that program cannot be exec'd.
  */
 static const char *autologin_user(void)
 {
 	static char name[64];
-	FILE *f = fopen("/etc/kdos/con.conf", "r");
+	FILE *f = fopen("/etc/kdos/login.conf", "r");
 	char line[256];
 
 	if (!f)
@@ -207,9 +210,8 @@ static const char *autologin_user(void)
  * THE REAL-TIME BUDGET FOR EVERY PROCESS BELOW THIS ONE.
  *
  * rlimits survive setuid() and execve(), so raising them in the last root
- * process is the one place that covers both console login paths -- `greet = no`
- * through agetty and login, and the greeter's own setuid-and-exec, which never
- * runs login at all. Nothing downstream lowers them again: shadow is built
+ * process is the one place that covers the whole login path, autologin and a
+ * password prompt alike. Nothing downstream lowers them again: shadow is built
  * --without-libpam, so /etc/security/limits.d is read by nobody, and the
  * /etc/limits reader login does have returns without touching a limit when no
  * line names the account.
@@ -419,7 +421,7 @@ int getty_main(int argc, char **argv)
 	 * way to log in at all. The fallback is the plain autologin getty,
 	 * which needs nothing but util-linux.
 	 *
-	 * IT LOGS IN THE ACCOUNT con.conf NAMES, not a hardcoded one. The
+	 * IT LOGS IN THE ACCOUNT login.conf NAMES, not a hardcoded one. The
 	 * desktop's account is named in one place and an installer that
 	 * renames it rewrites that place; a second copy of the name here logs
 	 * in a user the installed system does not have, leaving the machine

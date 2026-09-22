@@ -13,17 +13,11 @@
 # capture source simply never appears.
 . /usr/local/lib/kdos/session-common.sh
 
-# WHICH DESKTOP THIS IS, DECIDED BY THE PROGRAM THAT STARTS THE COMPOSITOR.
-#
-# `/etc/profile.d/10-wayland.sh` picks the name from whether WAYLAND_DISPLAY is
-# already set, and a login shell runs it BEFORE this script execs the
-# compositor — so the graphical session inherits `KDOS-Console:KDOS` and then
-# advertises itself as the console for the rest of its life. The portal front
-# end reads `<desktop>-portals.conf` off the FIRST name, finds the console's
-# file, and routes ScreenCast to the backend that records a console session by
-# `$KDOS_CON` — which a compositor session does not have. Every screen
-# recording then fails with `the cast was refused (2)` in twenty milliseconds,
-# with the wlr backend running and never asked.
+# WHICH DESKTOP THIS IS, SET BY THE PROGRAM THAT STARTS THE COMPOSITOR AND NOT
+# BY THE LOGIN SHELL. The portal front end reads `<desktop>-portals.conf` off
+# the FIRST name here and the mimeapps search reads `<desktop>-mimeapps.list`
+# off the same one, so this has to be the session's own answer rather than
+# whatever a shell with no compositor yet filled in.
 export XDG_CURRENT_DESKTOP=KDOS
 
 # THE COMPOSITOR IS EXEC'D BY THIS SCRIPT, so everything that needs it to exist
@@ -96,14 +90,11 @@ kdos_session_audio
 if command -v fcitx5 >/dev/null 2>&1; then
 	(
 		_wait_wayland || exit 0
-		# AND THE PANEL BELONGS TO THE SESSION WITH THE KEYBOARD. One
-		# kimpanel can own `org.kde.impanel` and the two desktops share
-		# one session bus, so the console's panel — started at boot,
-		# long before this — already has the name: a second one exits
-		# saying so, and the candidate window is then drawn on a
-		# virtual terminal nobody is looking at while the engine
-		# converts perfectly. This session ends that one and takes the
-		# name; the console's respawn loop takes it back at logout.
+		# ONE kimpanel CAN OWN `org.kde.impanel`, and a session bus
+		# outlives a session restart — so a panel left by an earlier
+		# one still holds the name and a second exits saying so, with
+		# the candidate window then drawn by a process nothing is
+		# feeding. Take the name rather than ask for it.
 		pkill -x kdos-ime
 		kdos-ime >/dev/null 2>&1 &
 		fcitx5 -d >/dev/null 2>&1
@@ -111,8 +102,7 @@ if command -v fcitx5 >/dev/null 2>&1; then
 fi
 
 # Everything the session does ONCE, after the compositor exists: the login
-# sound, the first-run keybind card, and the session restore. Shared with the
-# console session, which passes its own readiness test.
+# sound, the first-run keybind card, and the session restore.
 kdos_session_once _wait_wayland
 
 # The compositor, no longer exec'd blind: a crashing kdos-comp used to drop
