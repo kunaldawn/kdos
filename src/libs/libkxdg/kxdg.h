@@ -65,26 +65,6 @@ typedef struct {
 	char size[16];			/* X-KDOS-Size: COLSxROWS           */
 	int terminal;			/* Terminal=true                    */
 	int floating;			/* X-KDOS-Float=true                */
-	/*
-	 * X-KDOS-Cells=true — THIS PROGRAM DRAWS ON THE CONSOLE'S OWN GRID.
-	 *
-	 * The console session composites character cells, and everything it is
-	 * handed that is not a terminal program it wraps in a kiosk compositor
-	 * so a Wayland client has a display. That is right for a boxed
-	 * application and wrong for one of KDOS's own surfaces, which attaches
-	 * to the session directly: `kdos-res` inside a cage is a whole wlroots
-	 * compositor started to draw a grid of text the session was already
-	 * drawing, and `kdos-term` inside one is a terminal emulator inside a
-	 * kiosk inside the console.
-	 *
-	 * Only an entry can answer it — the session is handed an argv and a
-	 * program name says nothing about what it will draw — so the entry
-	 * says, and a surface that does not carry the key is treated as a
-	 * graphical application, which is the safe direction: a cage costs a
-	 * compositor, and the mistake the other way is a Wayland client with
-	 * no display that exits at once.
-	 */
-	int cells;
 } KxdgLaunch;
 
 /*

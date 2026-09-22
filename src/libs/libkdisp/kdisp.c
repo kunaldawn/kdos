@@ -44,8 +44,8 @@ kdisp_current(void)
 
 /*
  * A server that cannot answer leaves its entry NULL and gets the neutral
- * answer, not a crash: a console has no server-side decoration to report and
- * nothing to hand out in place of a Wayland handle. Every caller of these
+ * answer, not a crash: a `--tty` run has no server-side decoration to report
+ * and nothing to hand out in place of a Wayland handle. Every caller of these
  * already copes with the neutral value, because it is what a terminal returns.
  */
 #define FWD_VOID(name, member)                 \
@@ -273,8 +273,8 @@ kdisp_win_close(unsigned id)
 }
 
 /* The three named states, each one bit through the same entry: a backend that
- * had to implement three would be three places for the two desktops to end up
- * disagreeing about what "restore" does. */
+ * had to implement three would be three places to disagree about what
+ * "restore" does. */
 void
 kdisp_win_minimise(unsigned id, int on)
 {

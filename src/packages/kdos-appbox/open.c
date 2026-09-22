@@ -63,13 +63,6 @@
  */
 #define XDG_OPEN_PROG "/usr/bin/xdg-open"
 
-/*
- * THE CONSOLE SESSION'S OWN COMMAND, which is how a graphical handler reaches
- * it — see cmd_open(). By name, because it is on the shipped $PATH and this
- * package does not own it.
- */
-#define CON_PROG "kdos-con"
-
 /* A handler for a type: the desktop id somebody wrote in a list, and the
  * entry it resolved to. Both, because the chooser is addressed by id and the
  * Exec line is read out of the file. */
@@ -232,9 +225,8 @@ static int handlers_for_mime(const char *mime, OpenCand *c, int max,
 
 	/*
 	 * THE DESKTOP'S OWN LIST FIRST, at each level, which is what the spec
-	 * says and what makes one image open in `timg` on the console and in a
-	 * boxed viewer under the compositor without either desktop editing the
-	 * other's choices.
+	 * says: a row naming this desktop outranks the plain table under it
+	 * without either file editing the other.
 	 */
 	int have_pre = kb_desktop_prefix(dpre, sizeof(dpre));
 
@@ -289,37 +281,6 @@ static int handlers_for_mime(const char *mime, OpenCand *c, int max,
 		collect_in(path, "MIME Cache", mime, c, &n, max);
 	}
 
-	/*
-	 * AND LAST, THE OTHER DESKTOP'S DEFAULTS.
-	 *
-	 * The two desktops answer a type differently on purpose and neither
-	 * copies the other's rows: a `http` row naming the console's text
-	 * browser, placed where the compositor reads it, would outrank a
-	 * browser box's launcher the moment one was installed, because
-	 * `[Default Applications]` at /etc/xdg beats every `mimeinfo.cache`.
-	 * Read LAST it outranks nothing — it is consulted only where the
-	 * running desktop, the user and every installed application have all
-	 * said nothing — and it is what stands between a graphical session
-	 * with no browser pack and xdg-utils' last resort, which starts a text
-	 * browser with no terminal around it and puts nothing at all on the
-	 * screen.
-	 *
-	 * Not a default either: what comes back is a candidate, so a second
-	 * one that arrives later still opens the chooser rather than being
-	 * pre-empted by a fallback.
-	 */
-	if (!n && have_pre) {
-		const char *other = !strcmp(dpre, "kdos-console") ? "kdos"
-				  : !strcmp(dpre, "kdos") ? "kdos-console"
-							  : NULL;
-
-		if (other) {
-			snprintf(path, sizeof(path),
-				 "/etc/xdg/%s-mimeapps.list", other);
-			collect_in(path, "Default Applications", mime, c, &n,
-				   max);
-		}
-	}
 	return n;
 }
 
@@ -382,11 +343,8 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 		nfiles = OPEN_MAX_FILES;
 
 	if (terminal) {
-		/* THE TERMINAL FOLLOWS THE DESKTOP. `foot` needs a compositor,
-		 * so a console session that wrapped an entry in it would pick
-		 * the right program and then fail to open a window for it —
-		 * unless the entry asked for one by name, which is what a
-		 * program drawing pictures in the grid does.
+		/* THE TERMINAL FOLLOWS THE DESKTOP, unless the entry asked for
+		 * one by name.
 		 *
 		 * AND A BARE VIRTUAL TERMINAL HAS NEITHER, so the entry runs
 		 * where this process already is: `Ctrl+Alt+F2` is a terminal,
@@ -453,48 +411,6 @@ static int run_openwith(int argc, char **argv)
 	return 127;
 }
 
-/*
- * ON THE CONSOLE, A HANDLER THAT WANTS A TERMINAL COMES FIRST. There is no
- * compositor there, so a windowed handler at the head of the chain opens
- * nothing anybody can see, while a terminal one is what this desktop is made
- * of. `$KDOS_CON` is the same discriminator kb_terminal() uses, so the choice
- * and the emulator it is wrapped in agree.
- *
- * ONLY WHERE NOBODY HAS DECIDED. A `[Default Applications]` row is somebody's
- * answer and must not be overruled, so the call site passes `defaulted` —
- * which handlers_for_mime sets for a row at ANY level, not only the two in a
- * config directory where it returns early. Within each kind the order is
- * unchanged, so a row that named a handler keeps its place relative to the
- * others of its kind. kdos-openwith gates on the same fact, and has to: its
- * first row is the handler this function would pick.
- */
-static void terminal_first(OpenCand *c, int n)
-{
-	OpenCand out[CAND_MAX];
-	char term[CAND_MAX];
-	int k = 0;
-	const char *con = getenv("KDOS_CON");
-
-	if (!con || !*con || n < 2)
-		return;
-	for (int i = 0; i < n; i++) {
-		KxdgEntry e;
-
-		term[i] = 0;
-		if (kxdg_load(&e, c[i].path, "Desktop Entry") == 0) {
-			term[i] = (char)kxdg_bool(&e, "Terminal", 0);
-			kxdg_free(&e);
-		}
-	}
-	for (int i = 0; i < n; i++)
-		if (term[i])
-			out[k++] = c[i];
-	for (int i = 0; i < n; i++)
-		if (!term[i])
-			out[k++] = c[i];
-	memcpy(c, out, (size_t)n * sizeof(*c));
-}
-
 int cmd_open(int argc, char **argv)
 {
 	OpenCand cand[CAND_MAX];
@@ -540,8 +456,6 @@ int cmd_open(int argc, char **argv)
 		printf("mime\t%s\n", mime);
 
 	ncand = handlers_for_mime(mime, cand, CAND_MAX, &defaulted);
-	if (!defaulted)
-		terminal_first(cand, ncand);
 
 	if (print && ncand) {
 		printf("candidates");
@@ -627,27 +541,7 @@ int cmd_open(int argc, char **argv)
 	/*
 	 * A GRAPHICAL HANDLER ON THE CONSOLE IS THE SESSION'S TO START.
 	 *
-	 * This process is whatever called `open` — a file manager, a menu, the
-	 * portal — and it has no display to give a Wayland client. The session
-	 * does: it puts a guest in a cage, embedded in a window or full screen
-	 * on a terminal of its own. Exec'd here instead the handler gets
-	 * neither and exits at once, with nothing on the screen to say why,
-	 * which is what `terminal_first()` hides wherever a terminal handler
-	 * exists and cannot hide for a type that has only a graphical one.
-	 *
-	 * `kdos-con --run` is the hand-off rather than a socket of our own:
-	 * one program owns that protocol, and this one links no libkcon.
-	 *
-	 * NEITHER a terminal handler NOR an `X-KDOS-Cells` one goes that way.
-	 * The first becomes a kdos-term window and belongs on this grid; the
-	 * second attaches to the session as a surface itself, and a cage round
-	 * it would be a wlroots compositor started to draw cells.
 	 */
-	if (getenv("KDOS_CON") && !kl.terminal && !kl.cells) {
-		kb_argv_add(&a, CON_PROG);
-		kb_argv_add(&a, "--run");
-		kb_argv_add(&a, "--");
-	}
 	exec_to_argv(kl.exec, argv, argc, kl.terminal, kl.term, &a);
 	kb_argv_end(&a);
 	if (!a.v[0])

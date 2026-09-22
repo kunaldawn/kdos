@@ -70,89 +70,6 @@ static int grim_works(void)
 }
 
 /*
- * The console desktop's screenshot: the composited grid, as a picture.
- *
- * THE RASTERISING IS THE VIEW'S, not this program's. Turning cells into
- * pixels needs a font, fcft and pixman; `kdos-tools` is on every image and
- * links none of them, while a view already loads a font to put the same cells
- * on a screen. `kdos-view --shot` is that view taking one frame.
- *
- * The view socket is the surface socket's name with its suffix changed —
- * they are one session's pair, and deriving it is what keeps the caller from
- * having to know the layout. There is no clipboard step: the console's
- * clipboard is the session's, and wl-copy is a Wayland client.
- *
- * `geom` is `X,Y,W,H` in CELLS or NULL for the whole grid. It comes from the
- * session, which drew the rubber band and already put the text of those cells
- * on the clipboard; this program's half is the picture of the same rectangle.
- */
-/*
- * `out` NAMES THE FILE, or is NULL for one named after the clock in `dir` and
- * announced. The qr verb wants the picture somewhere private and unannounced —
- * it is going to decode it and delete it — and a second copy of the view
- * plumbing to get that would be a second thing to keep right.
- */
-static int shot_console(const char *sock, const char *dir, const char *geom,
-			const char *out)
-{
-	char view[256];
-	size_t n = strlen(sock);
-
-	if (n < 6 || strcmp(sock + n - 5, ".sock")) {
-		fprintf(stderr, "kdos-shot: $KDOS_CON is not a session socket\n");
-		return 1;
-	}
-	snprintf(view, sizeof(view), "%.*s.view", (int)(n - 5), sock);
-
-	time_t now = time(NULL);
-	struct tm tm;
-
-	localtime_r(&now, &tm);
-
-	char leaf[64];
-
-	strftime(leaf, sizeof(leaf), "kdos-%Y%m%d-%H%M%S.png", &tm);
-
-	char *file = out ? kb_strdup(out) : kb_path_join(dir, leaf);
-	pid_t p = fork();
-
-	if (p == 0) {
-		/* The view writes the file itself, so there is no descriptor
-		 * to hand it and nothing on stdout to redirect. */
-		if (geom)
-			execlp("kdos-view", "kdos-view", "--shot", file,
-			       "--socket", view, "--crop", geom, (char *)NULL);
-		else
-			execlp("kdos-view", "kdos-view", "--shot", file,
-			       "--socket", view, (char *)NULL);
-		_exit(127);
-	}
-	if (p < 0) {
-		free(file);
-		return 1;
-	}
-
-	int st = 0;
-
-	waitpid(p, &st, 0);
-	if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) {
-		unlink(file);
-		fprintf(stderr, "kdos-shot: could not attach a view to %s\n",
-			view);
-		free(file);
-		return 1;
-	}
-
-	/* A picture the caller asked for by name is theirs to announce. */
-	if (!out) {
-		printf("%s\n", file);
-		toast("Screenshot", leaf);
-	}
-	free(file);
-	return 0;
-}
-
-/*
  * A QR CODE ON THE SCREEN, DECODED — AND THE PICTURE NEVER KEPT.
  *
  * A QR is a secret more often than not: a wifi password, a one-time code, a
@@ -225,35 +142,11 @@ int shot_main(int argc, char **argv)
 		mode = "region";	/* per-window needs the compositor's help */
 
 	if (strcmp(mode, "region") && strcmp(mode, "screen") &&
-	    strcmp(mode, "full") && strcmp(mode, "qr") &&
-	    strcmp(mode, "colour")) {
+	    strcmp(mode, "full") && strcmp(mode, "qr")) {
 		fprintf(stderr,
-			"usage: kdos-shot [region|screen|window|qr|colour] "
+			"usage: kdos-shot [region|screen|window|qr] "
 			"[--geom X,Y,W,H]\n");
 		return 1;
-	}
-
-	/*
-	 * THE COLOUR UNDER THE POINTER IS THE CONSOLE'S ALONE.
-	 *
-	 * There, every cell carries the slot it was drawn in and the session
-	 * has both the frame and the pointer, so the answer is a lookup. Under
-	 * the compositor there is no protocol that says where the pointer is —
-	 * a client is told when one enters its own surface and nothing more —
-	 * so a picker here would have to be the compositor, and this program
-	 * is not it.
-	 */
-	if (!strcmp(mode, "colour")) {
-		const char *con = getenv("KDOS_CON");
-		KbArgv a = { 0 };
-
-		if (!con || !*con)
-			kb_die("colour is the console's: the compositor tells "
-			       "no client where the pointer is");
-		kb_argv_add(&a, "kdos-con");
-		kb_argv_add(&a, "--pick-colour");
-		kb_argv_end(&a);
-		return kb_run(&a) == 0 ? 0 : 1;
 	}
 
 	for (int i = 1; i < argc; i++) {
@@ -283,50 +176,9 @@ int shot_main(int argc, char **argv)
 	if (strcmp(mode, "qr"))
 		kb_mkdir_p(dir);
 
-	/*
-	 * THE CONSOLE DESKTOP HAS NO WAYLAND AND NO grim. A second view
-	 * attaches, asks for no size of its own — so taking the picture does
-	 * not resize the desktop — and rasterises the grid it is sent.
-	 *
-	 * The rasterising is kdos-view's and not this program's: it needs
-	 * libkcell, fcft and pixman, and kdos-tools is on every image and
-	 * links none of them.
-	 */
-	const char *con = getenv("KDOS_CON");
-
-	if (con && *con) {
-		/*
-		 * THE MODE DISPATCH. `screen` is the whole grid whatever else
-		 * was asked for, and `region` is the rectangle the session
-		 * marked — or, with no rectangle given, the whole grid again,
-		 * because the console's region selector is the session's mark
-		 * and it is what supplies `--geom`. There is no picker here to
-		 * fall back to.
-		 */
-		if (!strcmp(mode, "qr")) {
-			/*
-			 * THE RUNTIME DIRECTORY, not /tmp: it is 0700 and this
-			 * person's own, and what is about to be written there
-			 * is a picture of something they are about to treat as
-			 * a secret.
-			 */
-			char tmp[256];
-
-			snprintf(tmp, sizeof(tmp), "%s/kdos-qr.png",
-				 kb_runtime_dir());
-			if (shot_console(con, NULL, geom, tmp) != 0) {
-				unlink(tmp);
-				return 1;
-			}
-			return shot_qr(tmp);
-		}
-		return shot_console(con, dir,
-				    strcmp(mode, "region") ? NULL : geom, NULL);
-	}
-
 	if (geom)
-		kb_die("--geom is the console's cell rectangle; the "
-		       "compositor selects with slurp");
+		kb_die("--geom is a cell rectangle and this desktop selects "
+		       "with slurp");
 
 	if (!kb_have_prog("grim"))
 		kb_die("grim is not installed");

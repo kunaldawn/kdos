@@ -38,49 +38,6 @@ with no patch application step between the two.
 applied by hand. That is accepted deliberately: the alternative was maintaining a compositor
 outright.
 
-## A second fork for the kiosk, not a mode of the first
-
-**The question.** The console desktop composites character cells, and a Wayland client's surface is
-pixels. A graphical application launched there needs *something* holding a display for it — an
-output in memory it renders into, or a VT of its own. `kdos-comp` is already a compositor this
-project owns — give it a kiosk mode, or take a second one?
-
-**Chosen: a hard fork of cage 0.3.1**, MIT, in `src/desktop/kdos-cage`, built on `wlroots-0.20` —
-the branch this tree already pins for the labwc fork, so there is one wlroots to keep current and
-not two.
-
-**Rejected: a `--kiosk` flag on `kdos-comp`.** The compositor is a *desktop*: window management,
-workspaces, tiling, the panel's foreign-toplevel feed, the phosphor pass, per-box identity, the
-session lock. A kiosk is the negation of nearly all of it, and a flag that turns most of a program
-off is a second program sharing a binary — with every code path in it now answering "and what does
-this do in kiosk mode?". The parts a guest on a VT actually needs are the parts cage already is.
-
-**Rejected: writing one.** It is the same argument the labwc fork made and it holds harder here,
-because the job is smaller: a kiosk compositor is roughly three thousand lines of somebody else's
-tested XWayland integration, output layout, seat handling and idle inhibition.
-
-**And the compositing happens in a SEPARATE PROCESS, which is what makes the whole thing safe to
-have.** One `kdos-cage --embed` per embedded APPLICATION renders each toplevel that application maps
-into a mapping of its own, and the session puts the bytes in its cells. So `kdos-con` links no
-wlroots, no mesa and no pixel library at all: a machine whose GPU driver is broken still boots into
-its desktop, and a graphical toolkit that crashes takes that application's windows with it rather
-than the session. A compositor built into the session would have traded exactly that away for one
-fewer process.
-
-**What the fork changed.** The name, in what a person sees. `security-context-v1`, so
-`kdos-boxsock` can tag a box's socket exactly as it does under the compositor — one launch path for
-a boxed application rather than two. And a background in the palette's deep colour, because a guest
-that has not painted yet is otherwise a black rectangle in the middle of a phosphor screen.
-
-**Upstream's internal names are left alone**, which is the one place this fork differs in style
-from the labwc one: `cg_server` and `CAGE_HAS_XWAYLAND` still say cage. A fork whose identifiers
-stop matching upstream's is a fork nobody can read a security fix against, and this one is small
-enough that reading upstream's diffs by hand is the maintenance plan.
-
-**What it costs.** A second wlroots consumer to move whenever wlroots breaks API, which it does
-every release. The self-test compiles all seven files wherever wlroots exists, so that breakage is
-a failed check rather than a four-hour build that ends in an error.
-
 ## One pack per application, not one image
 
 **The question.** Roughly 180 graphical applications have to reach the medium. Ship them as one
@@ -320,8 +277,8 @@ screen is drawn.
 cell becomes a `KtuiCell`. Three other files touch the toolkit and each for one narrow reason:
 `kvt_term.c` maps `KT_K_*` key codes into the escape bytes a child expects, `kvt_unicode.c` asks
 `ktui_wcwidth` so the library and the grid agree how wide a codepoint is, and `kvt_selection.c`
-holds `kvt_ui_mouse` — what a drag over a terminal means — because both desktops need that decision
-and two copies would drift.
+holds `kvt_ui_mouse` — what a drag over a terminal means — because every consumer of the vte needs
+that decision and two copies would drift.
 
 **`kvt_htable.c` and `kvt_grid.c` are the two files carrying no upstream copyright.** Every other
 file in the library carries libtsm's; the grid is this tree's render boundary, and the hash table
@@ -333,26 +290,6 @@ colour decisions sitting beside the palette, and `kdos theme` would move one of 
 *default* colours are the exception and are slots outright: a terminal's default foreground is a
 light grey and its background black, and reducing both by distance against eight phosphor greens
 lands them on the same slot — which draws every character in the colour of the screen behind it.
-
-## Twin as prior art, not as a dependency
-
-Twin — the text-mode window manager that has drawn overlapping windows in a terminal since the
-nineties — was read closely and forked from not at all. It was mined for four questions this design
-had to answer, and answering them is what the two-socket split is:
-
-- **What happens when the last display detaches?** The session keeps every window and goes on
-  running. That is why the session holds all state and the display holds none.
-- **How does a display of a different size attach?** It says what grid it can show, and the session
-  composites to that. A view imposes a size or takes the session's own.
-- **How does input from several displays reach one session?** Through the same queue, because a view
-  decides nothing — it forwards keys and pointers and is not consulted about them.
-- **What does the wire carry when a client is remote?** Cells and input, and nothing else. No
-  window state crosses, which is what makes a forwarded display trustworthy with nothing.
-
-**Forking it was refused** for the reason the compositor is not forked either: Twin is its own window
-model, its own widget set and its own protocol, and taking it would mean two window models in one
-tree. `libkwm` exists so that a window lands in the same place on both desktops, and a second model
-would make that false by construction.
 
 ## One file chooser at one width, not a wider one for the portal
 
@@ -410,55 +347,20 @@ The buttons are drawn **disabled** rather than hidden, so the surface is the sam
 sessions.
 
 **One font for every output.** The font every KDOS surface draws with is a single setting, so it
-is right on a machine with one screen and wrong on two of different densities. The console's font
-chords step every view that has a screen of its own and the picker sets the face on all of them,
-which keeps two screens agreeing rather than letting each be right. A per-output font is a
-different design — a font per connector, a picker that asks which, and a cell size that changes
-under a window when it is dragged across the boundary — not a missing call.
-
-**The pointer is composited into the framebuffer, not put on a cursor plane.** `drmModeSetCursor2`
-would move the arrow without repainting anything, and `kkms_drm_fd()` is public. A plane has its
-own size limits, its own format and a per-driver set of refusals, and the transfer-model drivers
-the console runs on in a virtual machine have no usable plane at all — so the composited path has
-to exist underneath it either way, and a second path is a second set of frames to get right for
-the machines that already work.
-
-**A typed command in the run box is treated as a graphical application.** Every non-terminal
-program the session is handed goes into a cage, and a run box cannot know whether what somebody
-typed draws pixels or cells: `kdos-res` typed there costs a kiosk compositor that the same
-application started from the Start menu does not, because the entry carries `X-KDOS-Cells` and a
-typed line carries nothing. Resolving the first word back to a desktop entry is the other road,
-and it would make the run box behave differently from the terminal it otherwise resembles — the
-same string, two meanings, decided by whether a `.desktop` file happens to exist.
-
-**A picture needs `kdos-term`, not one of the session's own terminal windows.** The session links
-no pixel code, which is what keeps `kdos-con` compilable and testable on a machine with no
-graphics stack at all, so a terminal window it opens itself shows the fallback shade where a
-picture is. `kdos-term` is the terminal that joins the parser to the decoder and it is a surface
-like any other. A `--tty` view inside one of the session's own terminal windows detects this and
-stays on characters: that window answers the device-attributes probe claiming sixel and then
-reports no picture geometry, and it is the second answer that decides.
-
-**A touch screen aims at an embedded application a cell at a time.** A view with a real pointer or
-keyboard carries the raw device stream beside the cell one, so a guest is aimed in pixels; a touch
-event is synthesised from the gesture recogniser and has no raw partner, so it arrives at the
-grid's resolution. A finger is wider than a cell, which is what makes the second synthesis path
-cost more than it buys.
+is right on a machine with one screen and wrong on two of different densities. The picker sets the
+face on all of them, which keeps two screens agreeing rather than letting each be right. A
+per-output font is a different design — a font per connector, a picker that asks which, and a cell
+size that changes under a window when it is dragged across the boundary — not a missing call.
 
 **No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
 the catalogue emits either. The three raster protocols are what a modern program reaches for.
 
-**A recording is not an asciicast, and no player is packaged.** `kdos con record` writes the
-session's own messages — cell frames, sprites, window chrome — so no asciinema player will open
-one, and a view that draws cells is already the player for the format this tree writes. An
-`asciinema` port would be weight carried for a format nothing here produces.
-
-**Braille is `brltty`'s route.** `a11y = yes` keeps the kernel's text plane so `brltty` reads it
-over `/dev/vcsa`, and BrlAPI is linked by nothing here. A display driven that way is driven by
-`brltty` — which already supports every display anyone owns — rather than by a second driver stack
-inside this desktop. **Speech takes the other road**: `speech-dispatcher` is the API every screen
-reader speaks and `espeak-ng` is the voice behind it, so a reader gets its words from the daemon
-rather than from a synthesiser this desktop drives itself.
+**Braille and speech are ports, and neither reads the desktop.** `brltty` reads `/dev/vcsa`, so it
+covers `tty1` and the installer and nothing the compositor draws; `speech-dispatcher` is the API a
+screen reader speaks and `espeak-ng` is the voice behind it. BrlAPI is linked by nothing here and no
+KDOS surface talks to any of the three. They are on the image because they are useful to somebody at
+a terminal, not because the desktop is readable — see
+[Accessibility](../02-user-guide/accessibility.md).
 
 **An invitation in a message is read and never answered.** `aerc`'s calendar filter prints the
 event — summary, times, location, who was asked — and writes nothing anywhere. A filter runs every

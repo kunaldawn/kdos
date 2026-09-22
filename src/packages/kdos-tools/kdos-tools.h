@@ -104,8 +104,8 @@ int hey_app_ids(char ***out);
  * things that play them are init scripts and keybinds, not `kdos` users. */
 int sfx_main(int argc, char **argv);
 /* A basename of its own rather than a `kdos` subcommand, for the reason
- * kdos-sfx has one: a media key runs it out of con.conf and rc.xml, and those
- * name a program. */
+ * kdos-sfx has one: a media key runs it out of rc.xml, which names a
+ * program. */
 int mpctl_main(int argc, char **argv);		/* kdos-mpctl               */
 
 /*
@@ -173,9 +173,7 @@ int kdt_speech(int argc, char **argv);
  * theme` and `kdos thumb` write into the same cache root, and two answers to
  * where that is would put one program's files where nothing else looks. */
 /*
- * THE CLIPBOARD, on whichever desktop this is (clip.c). The console is asked
- * first, because a console session running inside a graphical one has both and
- * the near one is right. Neither direction puts the text in an argument
+ * THE CLIPBOARD (clip.c). Neither direction puts the text in an argument
  * vector. `kdt_clip_take` answers 0 for an empty clipboard as well as for no
  * clipboard at all: a caller with nothing to send cannot use the difference.
  */

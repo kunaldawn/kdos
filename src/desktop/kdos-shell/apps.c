@@ -48,7 +48,6 @@
 #include <unistd.h>
 
 #include "kbase.h"
-#include "kcon.h"
 #include "kxdg.h"
 #include "shell.h"
 
@@ -424,7 +423,6 @@ static void add_desktop_file(const char *path)
 	a->terminal = kl.terminal;
 	kb_strlcpy(a->term, kl.term, sizeof(a->term));
 	a->floating = kl.floating;
-	a->cells = kl.cells;
 	kb_strlcpy(a->size, kl.size, sizeof(a->size));
 	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
@@ -726,22 +724,9 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
 		nfiles = SH_LAUNCH_FILES;
 
 	/*
-	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
-	 * socket, set by the session for everything started inside it, and it
-	 * decides how a NON-terminal program is started below. A terminal one
-	 * needs no branch here: sh_term_argv_in() names the emulator, from the
-	 * entry's own X-KDOS-Term when it asked for one.
-	 *
-	 * AND WHETHER THE SESSION IS THE RIGHT THING TO HAND IT TO. `cells` is
-	 * a program that attaches to the session as a surface of its own and
-	 * `host` is a command that draws nothing at all; both are forked here
-	 * like anything on the graphical desktop, because what the session
-	 * gives a guest is a cage, and a cage round either is a wlroots
-	 * compositor started for nothing. See launch.h.
+	 * A terminal program needs no branch here: sh_term_argv_in() names the
+	 * emulator, from the entry's own X-KDOS-Term when it asked for one.
 	 */
-	const char *con = getenv("KDOS_CON");
-	int to_session = con && *con && !l->terminal && !l->cells && !l->host;
-
 	if (l->terminal)
 		n = sh_term_argv_in(l->term, l->floating, l->size, argv, n,
 				    max, l->exec, id, sizeof(id));
@@ -789,32 +774,6 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
 		for (int i = 0; i < nfiles && n < max - 1; i++)
 			argv[n++] = files[i];
 	argv[n] = NULL;
-
-	/*
-	 * A GRAPHICAL APPLICATION ON THE CONSOLE IS THE SESSION'S TO START.
-	 * This desktop composites character cells and a Wayland client's
-	 * surface is pixels; the session gives the guest a cage — embedded in
-	 * a window, or full screen on a terminal of its own — and with it the
-	 * display the guest connects to. Forked from here it would have
-	 * neither, and a boxed application would exit at once with nothing on
-	 * the screen to say why.
-	 *
-	 * Three kinds are not one of these and are forked instead: a terminal
-	 * program, which becomes a kdos-term window above and belongs on this
-	 * grid; a `cells` program, which opens its own window by attaching to
-	 * the session; and a `host` command, which draws nothing.
-	 */
-	if (to_session) {
-		const char *what = l->title && l->title[0] ? l->title : argv[0];
-
-		if (kcon_run(con, argv, what, 0) < 0) {
-			fprintf(stderr,
-				"kdos-shell: cannot start '%s' — the session "
-				"has no free terminal to give it\n", what);
-			return -1;
-		}
-		return 0;
-	}
 
 	sh_spawn(argv);
 	return 0;
@@ -869,7 +828,6 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 		.size = a->size,
 		.terminal = a->terminal,
 		.floating = a->floating,
-		.cells = a->cells,
 	};
 
 	sh_launch(&l, files, nfiles);
@@ -897,7 +855,6 @@ int sh_launch_id(const char *id, const char *const *files, int nfiles)
 		.size = se.size,
 		.terminal = se.terminal,
 		.floating = se.floating,
-		.cells = se.cells,
 	};
 
 	return sh_launch(&l, files, nfiles);

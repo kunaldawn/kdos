@@ -8,8 +8,8 @@
  *   libkwm — the window model, and only the model
  *
  * Placement, tiling, the neighbour-edge search, the focus stack, workspace
- * semantics and output ordering. Two desktops obey it: kdos-comp draws windows
- * in pixels and kdos-con draws them in cells.
+ * semantics and output ordering, kept out of the compositor that obeys it so
+ * that each of them can be asserted against a fixture with no display.
  *
  * WHAT IS ONE IMPLEMENTATION AND WHAT IS TWO, because the difference decides
  * whether a defect is one fix or two. Placement, tiling, the focus stack and
@@ -122,9 +122,10 @@ KwmRect kwm_tile_geom(KwmRect usable, int gap, KwmBorder margin, unsigned tiled)
  * Has a press-and-move become a drag?
  *
  * MEASURED IN CELLS, so a drag begins when the pointer or finger leaves the
- * cell it went down in. Both desktops must agree, or the same gesture picks a
- * file up on one and merely selects it on the other. A threshold in pixels is a
- * number the console cannot see.
+ * cell it went down in. A threshold in pixels is a number nothing else in this
+ * window model can express — every geometry here is cells, and a mixed unit
+ * would make the same gesture pick a file up at one scale and merely select it
+ * at another.
  */
 static inline int kwm_drag_threshold(int dx, int dy)
 {

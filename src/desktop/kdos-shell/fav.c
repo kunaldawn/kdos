@@ -51,7 +51,7 @@ int sh_fav_path(char *out, size_t n)
 /*
  * THE TERMINAL FOLLOWS THE DESKTOP, so one favourites file serves both.
  *
- * `foot` is a Wayland client and the console session has no compositor to run
+ * `foot` is a Wayland client and a bare terminal has no compositor to run
  * it on, so a pinned row naming it there is a row that launches nothing; the
  * mirror case is `kdos-term` on the graphical desktop, where `foot` is the
  * terminal that has run on real hardware. The file names *the terminal* and

@@ -15,9 +15,8 @@
  * there otherwise is a desktop sitting on screen being read over somebody's
  * shoulder; this covers it with something that is unmistakably not the desktop.
  *
- * STARTED BY THE DISPLAY'S IDLE POLICY, not by itself. kdos-con spawns it at
- * `idle_saver` and asks it to close on the first keystroke. On the graphical
- * desktop kdos-idle.c spawns kdos-lock and no saver, and TEMPLATES[] in
+ * STARTED BY A DISPLAY'S IDLE POLICY, not by itself, and NOTHING STARTS IT.
+ * kdos-idle.c spawns kdos-lock and no saver, and TEMPLATES[] in
  * kdos-child.c does not carry one — a feature with no line there does not run,
  * whatever a comment says — so there it is a program you run by hand.
  *
@@ -46,7 +45,6 @@
 #include <unistd.h>
 
 #include "kbase.h"
-#include "kcon.h"
 #include "shell.h"
 
 #define SV_FPS_MAX	15
@@ -656,8 +654,8 @@ static void sv_stars_draw(int cols, int rows)
  *
  * FOUR SLOTS AND THREE DENSITIES, which is the ladder this palette can spell:
  * dim, urgent, secondary, text — cold through hot — crossed with ░ ▒ █. A
- * fourth density does not exist on the console font, so the ladder is climbed
- * with colour where it cannot be climbed with glyphs.
+ * fourth density does not exist in the block-element range, so the ladder is
+ * climbed with colour where it cannot be climbed with glyphs.
  *
  * The heat plane is malloc'd for the same reason the pipe grid is.
  */
@@ -984,22 +982,13 @@ int saver_main(int argc, char **argv)
 	}
 
 	/*
-	 * THE FLAG BEATS THE FILE, and that is load-bearing rather than a
-	 * convention: `kcon_conf` reads /etc/kdos/con.conf unconditionally,
-	 * before any XDG path and with nothing able to shadow it, so a machine
-	 * with KDOS installed would otherwise decide what a `--mode art` dump
-	 * draws. A golden that depended on the developer's own /etc is a
-	 * golden that passes on one machine.
-	 *
-	 * An unknown name in the file falls back to `art` rather than
-	 * refusing: a screensaver that would not start because a configuration
-	 * key was misspelled is a black screen with no explanation on it.
+	 * `--mode` IS THE ONLY WAY IN, and the default is the picture. Reading
+	 * a name out of a file under /etc would make a `--mode art` dump
+	 * depend on the developer's own machine, and a golden that does is a
+	 * golden that passes in one place.
 	 */
-	if (mode == SV_MODE_UNSET) {
-		mode = sv_mode_of(kcon_conf_str("saver_mode", "art"));
-		if (mode == SV_MODE_UNSET)
-			mode = sv_mode_of("art");
-	}
+	if (mode == SV_MODE_UNSET)
+		mode = sv_mode_of("art");
 
 	/* `off` is an honest off: nothing is drawn and nothing is connected to,
 	 * so the idle policy can start this unconditionally and have it cost a

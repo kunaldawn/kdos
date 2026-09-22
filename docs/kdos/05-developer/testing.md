@@ -14,7 +14,7 @@ machine rig that drives a real session.
 | Reference frames | That a surface's geometry and colours have not drifted | That it is usable | Included above |
 | Fixtures | That a reading or a decision is correct against recorded state | That the reading is correct live | Included above |
 | `testing/vnc-shot.py` | That a **real session** does a thing, photographed | Anything the renderer used cannot show | Minutes per boot |
-| `testing/usability.sh` | That the console desktop can be **driven by a hand** — hover, click, chord — photographed step by step | Nothing: it asserts nothing and is read by a person | Six minutes |
+| `testing/usability.sh` | That the desktop can be **driven by a hand** — hover, click, chord — photographed step by step | Nothing: it asserts nothing and is read by a person | Six minutes |
 | `testing/docscheck.sh` | That the book still links up and states the present | Anything a reader has to judge for themselves | Seconds |
 | `testing/packlane.sh` | The application lane end to end on a booted machine | | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | | Minutes |
@@ -51,7 +51,7 @@ compiler:
 - **Every chrome glyph is one `ter-kdos32n` carries.** The toolkit picks its UTF-8 table whenever
   the backend reports UTF-8, which the Linux console does — and the console font is 512 glyphs, so
   an entry that font lacks renders on `tty1` as a **blank**. Not a fallback and not an error: the
-  cell is written, the flush succeeds, and a piece of the console desktop's own chrome is simply
+  cell is written, the flush succeeds, and a piece of the desktop's own chrome is simply
   missing. `▓`, the half blocks `▀ ▄` and the double tees `╠ ╣ ╦ ╩` all look perfectly reasonable in
   an editor and are none of them in the font. The check reads the **shipped font**, because a list
   of what it carries is the thing that goes stale. Goldens cannot catch this: they are slot dumps at
@@ -93,7 +93,7 @@ Two are worth knowing because they are counter-intuitive:
 `libkwm`'s block asserts nothing of its own. It **replays
 `testing/fixtures/wm/geometry.txt`**, every row of which was derived by reading a named line of
 `kdos-comp` and cites it. A failure means the library and the compositor have parted company, which
-is the one thing sharing a window model between two desktops exists to prevent.
+is the one thing keeping the window model out of the compositor exists to catch.
 
 **Add a case by adding a row and citing its line**, never by writing an assertion in
 `selftest.c`. A row whose expected value came from taste rather than from the source is worse than
@@ -174,13 +174,8 @@ elevated privileges.
 Committed reference frames: a surface rendered offscreen and compared byte for byte.
 
 **A hundred and sixty-four frames** across six sizes, covering the shell's front ends, all ten
-monitor pages plus its detail page, the console desktop, the terminal, the cell-level frames, and
-the nine replayed terminal recordings.
-
-**One of them is the same surface on the other desktop.** `start-console` is the Start menu with
-`$KDOS_CON` set, which is what a program started inside a console session inherits — and two rows
-differ because of it. A menu whose console-only entries no frame ever drew would be a menu whose
-console-only entries nothing checks.
+monitor pages plus its detail page, the terminal, the cell-level frames, and the nine replayed
+terminal recordings.
 
 | Kind | Catches | Count |
 |---|---|---|
@@ -194,50 +189,6 @@ writing is a different frame every time it is taken. One of the three holds a **
 has no pixels, so a sprite renders as its fallback in the picture's top-left cell and as blanks
 under the rest, which is exactly what a tty and a view with no pixel library show. What the frame
 asserts is the shape — how many rows the picture took, and where the cursor was left afterwards.
-
-**A chord's effect is goldened by pressing it, not by a flag that imitates it.** `kdos-con --dump`
-takes `--press CHORD`, repeatable, spelled the way `keys.conf` spells it, and each press goes
-through the session's own key handler before the frame is composited. That is what makes the frame
-evidence about the chord: a flag per behaviour would be a second path into the code the key already
-reaches, and it could pass while the key did nothing. A chord this session does not bind is a
-silent no-op, for the same reason a typo in `keys.conf` is one.
-
-**A GESTURE is goldened the same way, with `--point`.** `X,Y[,BUTTON],PHASE`, repeatable and
-ordered, delivered through `route_ptr()` — the handler a view's events reach — so what the frame
-shows is the gesture and not a second implementation of it. BUTTON is `left` (the default),
-`middle`, `right` or `move`; PHASE is `press`, `drag`, `release` or `move`. **A drag is three
-events and the gesture is the relation between them**, which is why a single flag could not state
-one:
-
-```sh
-con_golden con-tabdrag-132x43 --dump 132x43 \
-    --term "/bin/echo alpha" --term "/bin/echo beta" --term "/bin/echo gamma" \
-    --press Super+Shift+s --press Super+Shift+s \
-    --point 105,0,left,press --point 75,0,left,drag \
-    --point 45,0,left,drag --point 45,0,left,release
-```
-
-**And what the pointer cannot show goes to stderr.** The pointer's SHAPE is the one thing about it
-a cell grid cannot draw, so after a `--point` the session prints `pointer-shape: <name>` on stderr
-— outside the golden, which stays the cells. That is what lets ten positions on one window be
-asserted without a framebuffer anywhere:
-
-```sh
-"$OUT/kdos-con" --dump 132x43 --term "/bin/echo alpha" \
-    --point 0,0,move 2>&1 >/dev/null      # -> pointer-shape: size-nwse
-```
-
-**A frame that must NOT move is goldened by the frames that already exist.** The console's tab
-strip is drawn only on a window with more than one tab, so `con-window-80x24` and
-`con-window-132x43` stay byte-identical and are the assertion that a stack costs an ordinary frame
-nothing. `con-stack-80x24` and `con-stack-132x43` are the pair that shows one:
-
-```sh
-con_golden con-stack-80x24 --dump 80x24 \
-    --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
-con_golden con-stack-132x43 --dump 132x43 \
-    --term "/bin/echo alpha" --term "/bin/echo beta" --press Super+Shift+s
-```
 
 What they assert is everything a stack claims to cost nothing: **two tabs on one title row**, the
 live one carrying the ring number and the resting one carrying none — `win_index()` answers 0 for a
@@ -258,10 +209,10 @@ grid**, and a layout that only lines up once the pictures load is a layout that 
 harness must stub the **whole** interface a front end calls: a missing stub is a link failure that
 reads as "the front ends do not compile" and takes every frame behind it.
 
-**`kdos-view --shot` draws at the font's MAX advance, so a container photograph is spaced out.**
+**A rasteriser draws at the font's MAX advance, so a container photograph is spaced out.**
 `libkcell` takes its cell width from `max_advance.x`, which for a font with CJK coverage — the
 fontconfig default on a build container — is about twice the Latin advance. The glyphs are then
-drawn at the left of a cell twice their width. The shipped image's console font has one advance for
+drawn at the left of a cell twice their width. The shipped image's VT font has one advance for
 everything, so this is the borrowed font talking and not the painter; judge a shot on the image, or
 pass `--font`.
 
@@ -314,12 +265,6 @@ any host, which is the point of that build.
 the notification daemon, the on-screen display and the desktop. That is a stated gap, not an
 oversight in this page.
 
-**The greeter has one, and it is drawn from a fixture.** `kdos-con --greet --dump COLSxROWS` reads
-the accounts and the sessions out of `$KDOS_GREET_FIXTURE` rather than out of `/etc/passwd` and the
-installed programs: a frame taken from the machine is a picture of that machine, and the golden
-would move the day an account was added. Two accounts and two sessions, because one of either
-draws no chooser at all and the chooser is half of what there is to see.
-
 **Every frame that exists carries the row that names its keys**, and the suite checks it against
 the committed goldens rather than against a fresh dump — a blank bottom row is a surface whose keys
 nobody can find, whatever it drew the day the golden was written. **Furniture is exempt and is
@@ -328,49 +273,6 @@ desktop rather than in a window, a saver closes on any key and a tooltip answers
 naming `Esc` on either would teach a key that does nothing. `menu.c` is the one file that holds a
 `KtuiKeys` and draws no row, for the reason its own header gives. A pattern broad enough to skip
 these would also skip a real surface, which is why each is a name with a reason beside it.
-
-### embedcheck
-
-The parent half of `kdos-cage --embed`, as a test — and a **second process** for the reason
-`decocheck` is one: a headless wlroots output, a software renderer, a `memfd` and `SCM_RIGHTS` are
-real kernel and library behaviours, and a mock would only assert about itself.
-
-```sh
-embedcheck --size 640x480 --out frame.ppm -- kdos-term -e /bin/sh -c '...'
-embedcheck --size 640x480 --key 28     -- kdos-term -e /bin/sh -c 'read x; ...'
-```
-
-Two assertions, and neither is the obvious one:
-
-- **Not "the frame is not black".** The compositor paints a background, so a frame with nothing
-  rendered into it is a uniform colour that is not black either. What proves a guest drew is that
-  the frame has **more than one colour** in it.
-- **Input is a frame that changed.** The key is typed into a frame that was already drawn, and a
-  later frame must differ from it. "The guest changed" is the only thing a parent holding pixels can
-  observe about input having arrived — and it is enough, because nothing else moves in a still
-  terminal.
-
-**It observes one window's frames.** The channel carries a `win` id and a mapping per toplevel;
-`embedcheck` receives into a buffer the size of the struct, so the kernel discards the tail of an
-op it does not know and the op falls through the arms it does not have. That is what a
-single-toplevel guest has, and it is all this harness sees — a multi-window guest is driven from a
-session, not from here.
-
-Running it needs a linked `kdos-cage` and a guest to render. The suite compiles it, which is what
-stops it rotting.
-
-**A guest that draws nothing is a passing compositor and a failing test**, so pick one whose output
-you know: a client painting a checkerboard tells you the frame is right pixel for pixel, and a
-terminal whose window happens to be the theme's own background colour tells you nothing at all. That
-is worth knowing before spending an afternoon on the compositor.
-
-### The sprite wire
-
-A picture crossing `libkcon` is checked **byte for byte**, in the surface test, against a source
-buffer whose stride is wider than its width. Checking the metadata is not enough: a picture that
-arrives one pixel out of step, or with a length field where its first pixel should be, still has the
-right size, the right slot and the right fallback — so a test that looked only at those would pass
-while every photograph on the desktop was shifted.
 
 ### Goldens and the decoders they need
 
@@ -404,25 +306,6 @@ a variable moves one walk.
 | `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80x24 pty, plus a hand-written malformed stream | That the libtsm fork's state machine still produces the same screen |
 | `pack`, `box`, `deco`, `openwith`, `recent`, `tone`, `cellclip`, `ascii` | | Their respective units |
 | `img` | Images, and `fuzz.c` beside them | `libkimg` — every fixture decoded, then mutated and truncated |
-| `cast` | A recorded PipeWire stream | `kdos-view --cast`, which rasterises through the same cell painter |
-| `embed` | A guest's frames | `kdos-cage --embed` cutting them into sprites |
-
-### Looking at a session from inside another one
-
-**A view of the session it is running in draws nothing**, so a terminal view cannot be photographed
-against its own desktop. The harness is a second session:
-
-```sh
-kdos-con --new -t t2 &                                   # SERVES in the foreground: background it
-# wait for $XDG_RUNTIME_DIR/kdos/t2.view to exist — do not sleep on faith
-KDOS_CON=$XDG_RUNTIME_DIR/kdos/t2.sock kdos-pix FILE &   # something that produces pixels
-# then, inside a kdos-term window on the FIRST session:
-kdos-view --tty --socket $XDG_RUNTIME_DIR/kdos/t2.view
-```
-
-`kdos-pix` takes its socket from `$KDOS_CON` and has no `--socket`. `kdos-con --attach -t t2` is the
-short form of the third line. `KDOS_VIEW_PIX=off|kitty|sixel` forces the tier and `KDOS_VIEW_CELL`
-the cell size, which is how all three are driven on one host.
 
 **A recorded stream is not a running program.** Beside the `vt` fixtures the suite opens real
 programs on a real pty and presses one key each: `less`, `nvim`, `htop`, `top`, `mc`, `lf`, `tmux`,
@@ -468,7 +351,7 @@ stdin and left it redirected takes every later block that reads a terminal with 
 
 `selftest.sh` runs everywhere and skips what it cannot build, saying so each time. What it skips on
 a bare host is most of the interesting half — `libkimg`'s four decoders, the sd-bus blocks, `fcft`,
-the Wayland consumers, `libkkms` — and a block that is skipped on every machine is a block nobody
+the Wayland consumers — and a block that is skipped on every machine is a block nobody
 runs. **In this image it runs: 61 sections against a bare host's 24**, including every front-end
 dump and the surface goldens behind them.
 
@@ -552,17 +435,16 @@ check the root: it refuses a `build/fs` whose top level is not a root filesystem
 
 ## The QEMU rig
 
-**A dump proves a character, never a colour.** `kdos-view --dump` writes the codepoint in each cell
-and throws the foreground and background away, so text drawn in the background's own slot — present,
+**A dump proves a character, never a colour.** A `--dump` writes the codepoint in each cell and
+throws the foreground and background away, so text drawn in the background's own slot — present,
 and invisible on every screen — dumps identically to text a person can read. A check on what a
 surface *drew* asserts the cell's colours as well as its character; a dump answers "is it there",
 not "can it be seen".
 
-**For a cell surface, prefer `kdos-view --dump` over a photograph.** A console session hands out its
-exact composited grid, so a check on what a surface drew is a text diff rather than an image
-comparison — no boot, no framebuffer, no tolerance for antialiasing. Without a size it takes the
-session's own grid, so taking the picture does not resize the desktop. The rig stays necessary for
-anything the renderer cannot show: the phosphor pass, a real modeset, a Wayland client.
+**Prefer a surface's own `--dump` over a photograph.** It hands out that surface's exact composited
+grid, so a check on what it drew is a text diff rather than an image comparison — no boot, no
+framebuffer, no tolerance for antialiasing. The rig stays necessary for anything a dump cannot
+show: the phosphor pass, a real modeset, window management, a boxed client.
 
 `testing/vnc-shot.py` boots a real image, drives it, and reads the framebuffer. It is how anything
 a dump cannot see gets looked at: the compositor, the wallpaper, the icon layer, a popup anchored to
@@ -571,8 +453,9 @@ the wrong corner.
 It boots headless with a serial socket and a monitor socket, types on the first terminal through the
 monitor, and reads the framebuffer over the remote-framebuffer protocol.
 
-**Which session is already there decides how the rig is driven.** `tty1` runs `kdos-con-login`,
-which autologins and starts `kdos-con-start`, so **the cell desktop is up before any step runs**.
+**The session is already there when the rig starts driving.** `tty1` runs `kdos-login`, which
+autologins, and `.bash_profile` starts `kdos-desktop` — so **the desktop is up before any step
+runs**.
 
 `--keys` is a monitor `sendkey`, so it reaches whatever owns the **active VT** — which is that
 desktop. `--cmd` runs on the serial console as the desktop user, and `--root-cmd` as root, so
@@ -584,7 +467,7 @@ neither disturbs what is on screen.
 Repacking 32 GB to carry a 200 KB binary made every look-at-it-on-screen cycle twelve minutes.
 
 ```sh
-testing/quick.sh kdos-con,kdos-shell -- --keys meta_l-ret --sleep 3 \
+testing/quick.sh kdos-comp,kdos-shell -- --keys meta_l-ret --sleep 3 \
                                         --shot /kdos/build/shots/x.png
 ```
 
@@ -605,7 +488,7 @@ remembering to add it.
 
 **`KDOS_QUICK_KEEP=1` is right whenever the program under test is spawned.** Every `kdos-shell`
 surface is started fresh by the chord that opens it, so the new binary runs with no restart at all
-and the run is a minute shorter. It is wrong for `kdos-con` and `kdos-view`, which are the session.
+and the run is a minute shorter. It is wrong for `kdos-comp`, which is the session.
 
 Four things it cannot carry, each with what to do instead:
 
@@ -620,83 +503,11 @@ Four things it cannot carry, each with what to do instead:
 
 Two traps it removes, both measured the hard way:
 
-- **The session's socket file outlives the process that bound it**, so "the socket exists" is true
-  one millisecond after the kill and the steps then run against the binaries the patch replaced.
-  The wait is for a *different pid*, and the stale sockets are removed — `kdos-con-start`'s own
-  readiness test is that file, so leaving it makes the icon layer and the notification daemon start
-  before the new session has bound anything, and they are not supervised.
+- **The compositor's socket file outlives the process that bound it**, so "the socket exists" is
+  true one millisecond after the kill and the steps then run against the binaries the patch
+  replaced. The wait is for a *different pid*, and the stale socket is removed.
 - **`/etc/inittab` respawns `tty1` and it does not come back** when the chain is killed. The script
-  starts `kdos-con-login` itself, which is `kdos-con` under another name and does exactly what the
-  getty would.
-
-### Photographing the console desktop
-
-Every wave of console work verifies this way, so the recipe is here once rather than rediscovered
-each time:
-
-```sh
-R="docker run --rm --device /dev/kvm -v $PWD:/kdos -w /kdos kdos-qemu-py:latest \
-   python3 testing/vnc-shot.py --size 1280x800"
-
-$R --no-session \
-   --sleep 40 --keys esc --sleep 2 --shot /kdos/build/shots/con-desktop.png \
-   --keys meta_l-ret --sleep 4 --shot /kdos/build/shots/con-terminal.png
-```
-
-Five rules, each with the consequence of getting it wrong:
-
-- **`--no-session`, and the wait is a `--sleep`.** `--wait` settles a *graphical* session and is
-  skipped entirely when none is started, so a `--wait 45` before the first `--shot` photographs the
-  boot banner at seven seconds of uptime. Forty seconds of `--sleep` is what the ISO takes to reach
-  a drawn desktop.
-- **`esc` closes the welcome card, and nothing else does.** It opens focused on first login over
-  the top-left of the grid. Its hint row says *Any key close*, and the key has to reach it: a chord
-  the session binds is taken by the session first.
-- **The harness writes raw PPM whatever the extension says.** Convert before comparing, or an image
-  library reads the file by its magic and the diff is against a header.
-- **Read the display's own report before reading the screen.** `$XDG_RUNTIME_DIR/kdos-view.log`
-  carries one line naming the mode, the CRTC, the connector, the seat state, the cell size and the
-  grid — a desktop that comes up on the wrong output or at the wrong size says so there, where the
-  photograph only shows that it looks wrong.
-- **A grid that is not redrawn looks identical to one that is.** Two shots a minute apart with the
-  clock reading different minutes is the cheapest proof that flushes are reaching the screen.
-- **`pkill -t tty1` selects nothing** — toybox's `pkill` has no terminal predicate, and it fails
-  silently. Find the pid with `ps -eo pid,tty,comm` and kill that.
-- **Restarting the login chain does not free the screen.** The session and its view outlive the
-  login shell by design, and the view holds DRM master — so a new `kdos-con-login` draws its
-  greeter onto a screen it does not own and the photograph shows the old desktop. End `kdos-view`,
-  `kdos-con` and `kdos-con-start` alongside the shell.
-- **`greet` cannot be tested on the live medium by editing `/etc`**: the setting is read at login,
-  and the overlay resets on reboot, so a boot-time test of the greeter needs an installed system.
-
-### What the rig cannot show about an embedded application
-
-The rig boots the ISO and photographs the cell grid, which is exactly the wrong end of the embed
-path for most of what it carries. Four limits, each with what to do instead:
-
-- **The ISO carries no boxed graphical application**, so photographing one means a disk image with
-  a pack installed on it — not `testing/quick.sh`, which cannot carry a new port or anything under
-  `fs/`, and not the ISO. Everything below a real guest is `embedcheck` and the host lab.
-- **A multi-window guest has never been photographed.** One cage is as many KDOS windows as its
-  guest maps toplevels, and what stands behind that is the compile gate plus a stand-in cage driven
-  against `kdos-con` on a host. A picture of five real windows over one compositor is the evidence
-  that is missing; see [Known gaps](../06-reference/known-gaps.md).
-- **Raw input does not appear in a photograph at all.** A held key, the person's own layout inside a
-  guest, sub-cell aiming, a modifier on a click, a horizontal wheel and pointer lock are all
-  answered by the guest and not by the grid, so a shot shows a window either way. Drive the wire
-  instead: `kdos-con --new -t t` under a short `XDG_RUNTIME_DIR` with a stub cage on the other end,
-  and read what was sent.
-- **The clipboard across the cage boundary photographs as a working one either way.** Both ends are
-  built and the mirror is continuous, so a paste inside a guest puts text on the screen whether it
-  came from the session or from that guest's own seat — the picture cannot tell them apart. Drive
-  the wire instead, the same lab as above: a stub cage that sends `KEMBED_CLIP_OFFER` with a sealed
-  `memfd`, a second one that logs every `KEMBED_CLIP_SET` it is sent, and `kdos-con --clip-text` on
-  the session socket for the other direction. The second stub logging the first stub's bytes, and
-  then the session's, is the whole of the proof; neither a photograph nor `embedcheck` reaches it.
-
-**The graphical session is started on a VT and never down the serial line**: a compositor launched
-from a serial console gets no seat and dies asking for one. Its entry point from the console desktop
-is the Start-menu row that allocates a free terminal and switches to it.
+  starts `kdos-desktop` itself, which is what the login shell's profile would have done.
 
 ### The flags
 
@@ -704,7 +515,7 @@ is the Start-menu row that allocates a free terminal and switches to it.
 |---|---|
 | `--disk`, `--boot-disk` | Attach and boot a disk image instead of the ISO |
 | `--no-cdrom` | Leave the ISO off, so the **disk** is what boots |
-| `--no-session` | Do not start a compositor. **The console desktop is what tty1 already is**, so this is the flag every check of it wants; without it the run opens a terminal with Super+Return, types `kdos-desktop` into it and waits for `kdos-comp` — four more minutes before the first step |
+| `--no-session` | Do not start a session. **tty1 is already the desktop**, so this is the flag every check of it wants; without it the run opens a terminal with Super+Return, types `kdos-desktop` into it and waits — four more minutes before the first step |
 | `--shot <file>` | Capture the framebuffer |
 | `--keys`, `--chord`, `--click x,y`, `--mouse x,y`, `--drag x1,y1,x2,y2` | Drive it |
 | `--press x,y[,btn]`, `--release [x,y]` | A drag held OPEN across later steps, so a `--shot` between two `--press`es photographs it in progress. A button is down only while its RFB client is connected, so the whole gesture travels one socket — which is why this is two flags and not a longer `--drag` |
@@ -774,7 +585,7 @@ sleep 2
 sox -q -t alsa hw:Loopback,1 -t raw -e signed -b 16 -c 1 -r 16000 /tmp/cap.raw trim 0 3
 ```
 
-Run it under **`--no-session`**: tty1 is the console desktop and PipeWire never starts, so the
+Run it under **`--no-session`**: the run starts no second session and PipeWire never starts, so the
 loopback's capture side is free.
 
 - **A swept tone is the only version of this test that can fail.** Silence and a flat baseline pass
@@ -1046,31 +857,9 @@ numbers is what that path costs.
 
 ### Where the ceilings are
 
-Four of them are in this tree, so a number that stops at a round figure has somewhere to be looked
-up before it is called a driver problem.
-
-- **`libkkms` presents with at most three buffers**, `con.conf`'s `buffers` and the driver's memory
-  deciding between 3, 2 and 1. Below three the painter has nothing to compose into while a flip is
-  in flight, which behind a vsync-locked flip is the classic 60-to-30 cliff: miss one deadline and
-  the whole refresh period is lost. A transfer-model driver is held at 1 on purpose — there the
-  dirty rectangle is the presentation.
-- **`libkkms` presents with the legacy `drmModePageFlip`**, vsync-locked unless `tearing = yes`
-  passes `DRM_MODE_PAGE_FLIP_ASYNC` to the same call; atomic is not required for it, and a device
-  that does not publish `DRM_CAP_ASYNC_PAGE_FLIP` stays locked whatever the key says.
-- **`libkkms` takes the connector's `DRM_MODE_TYPE_PREFERRED` mode** unless `refresh = fastest`,
-  which takes the highest refresh **at that same size** and never a different resolution. So a
-  144 Hz panel whose preferred mode is 60 Hz gives 60 by default and 144 with the key. A mode the
-  screen was **already** set to outranks both and must keep doing so: it is somebody's decision and
-  not a default.
-- **The console session redraws on a fixed interval compiled into `kdos-con`**, so a cell surface
-  cannot exceed it however fast the machine is. `kdos-comp` has no such constant — it paces off
-  wlroots output frame events and therefore follows whatever mode is set.
-
-**None of these is the shadow buffer.** `libkkms` paints into ordinary memory and flushes only the
-rows that changed into the mapped dumb buffer, because a dumb buffer is mapped write-combined:
-reads from it run at a few bytes a cycle, and every glyph composite would be a read-modify-write.
-There is no full-frame copy per frame, and removing the shadow makes the path slower rather than
-faster.
+**`kdos-comp` has no frame constant of its own** — it paces off wlroots output frame events and
+therefore follows whatever mode is set, so a number that stops at a round figure is the mode, the
+driver or the client, and never a ceiling written down here.
 
 ## The other harnesses
 
@@ -1084,19 +873,12 @@ faster.
 | `prepare_base.py`, `test_runner.py` | Build a minimal root filesystem as a container image and build individual ports against it |
 | `qemu-audio.sh` | Probe for a working audio backend rather than hardcoding one, because the emulator aborts at startup on a backend its build lacks — and name the mixer's rate, because QEMU's own default is 44100 and the guest drives the codec at 48000 |
 | `qemu-hw/` | The containerised emulator with accelerated graphics |
-| `usability.sh` | Drives the console desktop the way a person does and leaves a numbered contact sheet; `testing/usability.md` is the checklist to read it against |
+| `usability.sh` | Drives the desktop the way a person does and leaves a numbered contact sheet; `testing/usability.md` is the checklist to read it against |
 
 ## What is not tested
 
 Stated so nobody assumes otherwise:
 
-- **`kdos-cage` is compiled by nothing under `testing/`.** `selftest.sh` skips the compositor block
-  for want of wlroots and has no cage block at all, and `preflight.sh` compiles nothing — so
-  `xdg_shell.c`, `view.c`, `output.c` and `embed.c` are outside every automated gate here. The check
-  that closes it takes about forty seconds and needs no new image, because `build/fs` is already a
-  complete musl root carrying the target's gcc, wlroots and every `.pc` file: chroot into it from a
-  throwaway container with `/tmp` mounted exec, and run the port's own `build.sh` flags. Write
-  nothing into `build/fs` while you do — a stray object there is a file the next phase ships.
 - **The memory daemon fires under `testing/oomd-fire.sh`**, which is a rig run rather than a
   self-test block: it needs a booted machine with real memory to exhaust. Victim selection is
   exercised against recorded state by `kdos-oomd --fixture`; the script proves the daemon wakes
@@ -1118,13 +900,12 @@ Stated so nobody assumes otherwise:
   green in `selftest.sh` on the day it shipped. `usability.sh` drives those paths and photographs
   them; reading the result is still a person's job.
 - **A console golden cannot see a translucent window.** `window_opacity` writes the blend as the
-  cell's literal colour and leaves the slot exactly as the window was drawn in, which is what makes
-  a `--tty` view and a braille reader show an opaque window — and a golden is that same slot dump.
+  cell's literal colour and leaves the slot exactly as the window was drawn in — and a golden is
+  that same slot dump.
   So a frame at 70 per cent and a frame at 100 are byte-identical goldens. The pixel path is the
   only place it can be looked at, which means the rig.
-- **The pointer's own pixels are in no test.** `libkkms` draws the arrow at the device's position
-  and erases it by spoiling the cell rows it covered; a missed spoil is a trail of arrows across the
-  screen and shows up nowhere but a photograph of a moving pointer.
+- **The pointer's own pixels are in no test.** The compositor draws the cursor and a photograph of
+  a moving pointer is the only place it can be looked at.
 - **Nothing here tests the build**, which takes hours and a container.
 
 ## See also

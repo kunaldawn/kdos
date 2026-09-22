@@ -23,12 +23,12 @@ For the user-facing view of the same path, see
 | 12 | The numbered service scripts | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
-| 15 | `kdos-con-login`, which greets or autologins | `kdos-getty` on tty1 |
-| 16 | The console desktop | `~/.bash_profile`, on tty1 only |
+| 15 | `kdos-login`, which hands the tty to agetty | `kdos-getty` on tty1 |
+| 16 | The desktop | `~/.bash_profile`, on tty1 only |
 
-Step 16 is [the session](session.md). **The console desktop is the default one** — a login on tty1
-reaches it without anyone typing a command, and it needs no Wayland, so it comes up on a machine
-whose GPU driver does not. The graphical session is still started by hand, with `kdos-desktop`.
+Step 16 is [the session](session.md). A login on tty1 reaches it without anyone typing a command.
+**A machine whose GPU driver does not come up reaches `tty2`**, which is a plain getty and is the
+recovery console.
 
 ## Limine and the kernel command line
 
@@ -416,9 +416,9 @@ The tell-tale is that `readlink /proc/<pid>/root` prints `/newroot`. `kdos docto
 6. Quits the splash, which runs the power-off animation and leaves a clean framebuffer for the
    tty1 login.
 
-   **The quit is synchronous**, and the console desktop depends on it twice: init starts the tty1
-   login on a framebuffer nothing else owns, and `kdos-view`'s KMS modeset further down that chain
-   acquires a device the splash has already released. A splash that quit asynchronously would race
+   **The quit is synchronous**, and the desktop depends on it twice: init starts the tty1 login on
+   a framebuffer nothing else owns, and the compositor's modeset further down that chain acquires a
+   device the splash has already released. A splash that quit asynchronously would race
    a modeset, and the loser of that race is a black screen with a running session behind it.
 
 **A service is disabled by a marker file**, not by editing anything:
@@ -471,8 +471,8 @@ takeover, load the font and palette, verify, then execute the getty.
   machine, and even spaces are skipped by the render path. The wrapper prints one character and
   clears it.
 - The takeover is scheduled work, so the wrapper waits for the kernel to report it and retries the
-  font load until the console confirms the size.
-- **The font is the KDOS console font**, built in the `terminus-font` port: a 512-glyph set with
+  font load until the VT confirms the size.
+- **The font is the KDOS VT font**, built in the `terminus-font` port: a 512-glyph set with
   six spacing characters replaced by the double box-drawing glyphs the block logo needs.
 - The palette is loaded **before** the final clear, or the screen ends up half pure black and half
   phosphor black.
@@ -480,40 +480,35 @@ takeover, load the font and palette, verify, then execute the getty.
 
 Do not move font or palette setup back into `rcS`.
 
-`/etc/inittab` gives `tty1` to `kdos-con-login`, `tty2` an ordinary login, and `ttyS0` a serial
-login on demand.
+`/etc/inittab` gives `tty1` to `kdos-login`, `tty2` an ordinary login, and `ttyS0` a serial login
+on demand.
 
-`kdos-con-login` is `kdos-con` under a third name, and it reads `greet` from
-[`con.conf`](../06-reference/configuration.md):
+`kdos-login` reads `autologin` from
+[`login.conf`](../06-reference/configuration.md#etckdosloginconf) and hands the tty to `agetty`
+either way:
 
-- **`greet = no`** — the live medium's answer — executes `agetty --autologin kdos`. Going through
-  agetty keeps utmp, lastlog and the shell profile on the path they take everywhere else, and a
+- **With the key** it executes `agetty --autologin <account>`, which is the live medium's answer: a
   machine with one account and no password has nothing to ask. **`/bin/login` must be shadow's**:
   agetty's autologin calls `login -f -- USER`, and toybox's `login` reads the name as `-f`'s own
   argument, takes `--` for the account and refuses it — so toybox is built with `login` and `su`
   off and tty1 is left at a login prompt nobody can answer if they come back.
-- **`greet = yes`** — what the installer writes — draws the login surface on the tty. It uses the
-  **tty backend**, not a modeset: `kdos-getty` has already loaded the console font and palette, and
-  a greeter that opened a DRM device would make the session binary depend on the one thing the
-  session/view split exists to survive. The modeset is `kdos-view`'s, after the login.
+- **Without it** — commented out, which is what the installer writes unless an answer file asked
+  otherwise — it executes plain `agetty` and the ordinary password prompt appears. There is no
+  greeter: no account chooser, no session chooser and no surface of any kind before the shell.
 
-The greeter never handles a password hash. On submit it forks, the child drops to the candidate
-account, and it executes `kdos-checkpass` with the password on stdin — the same setuid helper the
-lock screen uses, which takes no arguments and checks the caller's own real uid, so nothing on this
-path can be aimed at root.
+Going through agetty either way keeps utmp, lastlog and the shell profile on the path they take
+everywhere else — and the profile is what starts the desktop, so a second way in here would be a
+second place that has to remember to.
 
 **`kdos-getty` falls back to the plain autologin getty** when the program named in `/etc/inittab`
-cannot be executed. An image built without the console desktop still gives a console; without the
-fallback, init would respawn a failing exec forever and there would be no way to log in at all. It
-logs in the account `/etc/kdos/con.conf` names rather than a hardcoded one: the desktop's account
-is named in one place, and a second copy here would log in a user a renamed installation does not
-have.
+cannot be executed; without the fallback, init would respawn a failing exec forever and there would
+be no way to log in at all. It reads the same `login.conf` key rather than a hardcoded account: the
+desktop's account is named in one place, and a second copy here would log in a user a renamed
+installation does not have.
 
 `tty2` is the recovery console and stays a plain getty whatever tty1 does. **Reaching it from the
-console desktop is `libkkms`'s job**, not the kernel's: once `libseat` puts tty1 into graphics mode
-the kernel stops answering Ctrl+Alt+F<n>. xkb resolves that chord to an `XF86Switch_VT_<n>` keysym,
-so `kkms_input.c` — which holds the seat and is the only place the keysym exists — calls
-`libseat_switch_session`. A desktop that forwarded it instead would guarantee a recovery console
+desktop is the compositor's job**, not the kernel's: once `libseat` puts tty1 into graphics mode
+the kernel stops answering Ctrl+Alt+F<n>, so a session that forwarded it instead would guarantee a recovery console
 nothing can reach.
 
 ## The login banner
@@ -531,8 +526,8 @@ raster lines, so replaying it a line at a time drifts one row per line and draws
 The logo is **generated** from the same image the boot splash draws, so the banner, the splash and
 the mascot cannot drift apart.
 
-![The login banner at the 512-glyph console font, on the first terminal](../../screenshots/tty-banner.png)
- Three constraints are baked into that generator: the console font
+![The login banner at the 512-glyph VT font, on the first terminal](../../screenshots/tty-banner.png)
+ Three constraints are baked into that generator: the VT font
 has full blocks and the double box characters but **no half blocks**, so one cell is one solid
 block; character cells are twice as tall as wide, so the sampling grid must be about twice as wide
 as tall or the image stretches; and the banner must stay under about thirty lines or it scrolls

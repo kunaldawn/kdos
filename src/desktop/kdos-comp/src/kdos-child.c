@@ -197,7 +197,7 @@ child_build_argv(struct kdos_child *c)
 	 *
 	 * The panel's thickness is its font size — a cell is half as wide as
 	 * it is tall — so this is the knob that makes the taskbar 40 pixels
-	 * while the menus it opens stay at the console's own 32. The panel
+	 * while the menus it opens stay at 32. The panel
 	 * does not forward --font to the popups it spawns, so setting it here
 	 * reaches the bar and nothing else.
 	 */

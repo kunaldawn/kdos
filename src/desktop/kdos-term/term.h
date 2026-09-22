@@ -5,13 +5,12 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-term — one terminal, on either desktop
+ *   kdos-term — one terminal
  *
  * libkvt is the state machine, libkdisp picks the server, and libkimg is the
- * only thing here that touches an untrusted picture. ONE BINARY: the same
- * source is an xdg-toplevel under kdos-comp and a cell surface under kdos-con,
- * because both are the same character grid and libkdisp is what makes the
- * difference a vtable rather than a second program.
+ * only thing here that touches an untrusted picture. It is an xdg-toplevel
+ * under kdos-comp, and a `--tty` or `--dump` run draws through somebody else's
+ * terminal with no display of its own.
  *
  * IT DOES NOT REPLACE foot. foot is the default terminal everywhere in this
  * tree and stays there until this one has run on real hardware — the same
@@ -57,10 +56,8 @@ typedef struct {
 	 * desktop behind them; the ink is never mixed, so the text is as
 	 * legible as it is at 100.
 	 *
-	 * ONLY WHERE THERE IS A COMPOSITOR UNDER IT. On the console desktop the
-	 * session composes the grid and `window_opacity` in con.conf is the
-	 * knob for the same thing; on a tty there is nothing behind the window
-	 * at all.
+	 * ONLY WHERE THERE IS A COMPOSITOR UNDER IT: on a tty there is nothing
+	 * behind the window at all.
 	 */
 	int opacity;
 } TermConf;

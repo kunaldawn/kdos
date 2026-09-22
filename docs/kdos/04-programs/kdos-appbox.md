@@ -180,11 +180,8 @@ Stage timings are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace`. Measured on 
 machine: **18.3 s** cold with no container at all, **0.3 s** warm, **0.55 s** for a second window.
 
 **None of those stages is visible to the desktop.** What the person watches for those eighteen
-seconds is the session's [startup card](kdos-con.md#a-graphical-application-is-windows), whose bar counts
-the four things `kdos-con` can see from outside — the cage forked, the channel answered, a toplevel
-opened, the first frame — and this whole path happens inside the second of them. Relaying the stages
-above would cost a new `kembed` op and a cage that read its own child's trace, and it would still be
-a bar that stalls on the one step that actually takes the time.
+seconds is a launcher with nothing on the screen yet: the compositor has no window to map until the
+client connects, and this whole path happens before it does.
 
 ## The environment a box gets
 
@@ -282,7 +279,7 @@ tree, and a run as anyone else fails rather than reporting a launcher set it did
 - **The launcher carries its box.** An application that belongs to a pack gets
   `Exec=kdos-appbox -b <pack> run <exec>`; one with no pack keeps the bare `Exec=kdos-appbox run
   <exec>`. `<pack>` is the pack identifier, which is also the box name and the stem of the box
-  profile — so the console reads a guest's policy key straight off the argument vector instead of
+  profile — so a reader takes a guest's policy key straight off the argument vector instead of
   reversing the box layout out of an absolute `Exec`, and `run` skips the command table entirely.
   A guest launched without `-b` resolves to the program's basename, which names a window but no
   profile.
@@ -371,67 +368,35 @@ default applications, the added associations, and each MIME cache. That last fil
 already writes beside a box's launchers, so **a boxed application is found by exactly the same
 lookup as a host one**.
 
-**Each of those levels is searched twice, the running desktop's list first.**
+**Each of those levels is searched twice, this desktop's list first.**
 `<desktop>-mimeapps.list` — the first name in `XDG_CURRENT_DESKTOP`, lowercased, so
-`kdos-console-mimeapps.list` on the console — comes before the plain `mimeapps.list` beside it.
-That is what lets one picture open in `timg` inside a terminal on the console and in a boxed viewer
-under the compositor **without either desktop editing the other's choices**, which one list for one
-user cannot express.
+`kdos-mimeapps.list` — comes before the plain `mimeapps.list` beside it, which is what the spec
+asks for.
 
-**And the OTHER desktop's table is read last, when nothing at all claimed the type.** The two lists
-are deliberately not copied into each other: a `http` row naming the console's text browser, put
-where the compositor reads it in order, would outrank a browser box's launcher the moment one was
-installed, because a `[Default Applications]` row at `/etc/xdg` beats every MIME cache. Read
-**after** the caches it outranks nothing — it is reached only where the running desktop, the user
-and every installed application have all said nothing — and it is what stands between a graphical
-session with no browser pack and xdg-utils' own last resort, which starts a text browser with no
-terminal around it and puts nothing on the screen at all. What comes back is a candidate and never
-a default, so a second handler arriving later still opens the chooser.
+**Every shipped table is at `/etc/xdg` and a home starts with none.** Two files:
+`kdos-mimeapps.list`, which names this desktop, and the plain `mimeapps.list` under it for the
+types that answer the same way on a bare virtual terminal. A person's own choice is searched before
+both wherever they made it, so *Open With* can always change what is in force — a default shipped
+into `~/.config` would have outranked it and the chooser would have appeared to do nothing. *Open
+With* consults these in the opener's order and writes to the plain user list, so what it shows as
+current is what the opener would actually run.
 
-**Every shipped table is at `/etc/xdg` and a home starts with none.** Three files:
-`kdos-mimeapps.list` for the compositor, `kdos-console-mimeapps.list` for the console, and the
-plain `mimeapps.list` for what both desktops answer the same way. A person's own choice is searched
-before all three wherever they made it, so *Open With* can always change what is in force — a
-default shipped into `~/.config` would have outranked it and the chooser would have appeared to do
-nothing. *Open With* consults these in the opener's order and writes to the plain user list, so
-what it shows as current is what the opener would actually run.
-
-**A `Terminal=true` entry is wrapped in the desktop's own terminal.** `foot` under the compositor,
-`kdos-term` inside a console session — one rule in `kb_terminal()`, because the console resolving a
-handler correctly and then wrapping it in a Wayland client would look like the handler being wrong
-rather than the terminal being unreachable.
+**A `Terminal=true` entry is wrapped in the desktop's own terminal**, named once in
+`kb_terminal()`.
 
 **And on a bare virtual terminal it is not wrapped at all.** `Ctrl+Alt+F2`, a serial console and an
-ssh login are shells no session started: neither emulator can open there, and the caller is already
-sitting at a terminal. `kb_terminal()` answers NULL and the entry runs in place. The desktop name
-follows the same fact — a login with no display of any kind is given the **console's**, so a link
-resolves through `kdos-console-mimeapps.list` to `w3m` rather than through the compositor's list to
-a Wayland client with nothing to connect to.
+ssh login are shells no session started: the emulator cannot open there, and the caller is already
+sitting at a terminal. `kb_terminal()` answers NULL and the entry runs in place.
 
 **Unless the entry asked for one by name.** `X-KDOS-Term` names the emulator a program needs — the
-one that draws pictures in the cell grid — and is honoured on either desktop. It is **a name and
-never a program**: only an emulator this image ships is accepted and anything else is the session's
-own, because an entry is a file anything can write and a key naming a program would be a second
-`Exec` line with none of the field-code rules.
+one that draws pictures in the cell grid — and is honoured whatever the session runs. It is **a
+name and never a program**: only an emulator this image ships is accepted and anything else is the
+session's own, because an entry is a file anything can write and a key naming a program would be a
+second `Exec` line with none of the field-code rules.
 
-**And inside a console session it is preferred.** There is no compositor there, so a windowed
-handler at the head of the chain opens nothing anybody can see. The reordering is stable and it
-happens **only where nobody has decided**: a `[Default Applications]` row is somebody's answer and
-keeps its place, so this can never overrule a choice. *Open With* applies the same rule, because
-its first row has to be the handler the opener would use.
-
-**A graphical handler on the console is handed to the session, not exec'd here.** Preferring a
-terminal handler hides the problem wherever one exists and cannot hide it for a type whose only
-handler draws pixels: this process is whatever called `open` — a file manager, a menu, the portal —
-and it has no display to give a Wayland client. The session does. The hand-off is `kdos-con --run`
-rather than a socket of this program's own: one program owns that protocol, and this one links no
-`libkcon`. Neither a `Terminal=true` handler nor an `X-KDOS-Cells` one goes that way — the first
-becomes a `kdos-term` window and belongs on the grid, and the second attaches to the session as a
-surface itself, where a cage would be a compositor started to draw cells.
-
-**A type goes in exactly one of them.** One both desktops open the same way belongs in the plain
-file; writing it in each desktop's is the same decision recorded twice, which is a decision that
-drifts.
+**A type goes in exactly one of them.** One that answers the same way with no session belongs in the plain
+file; writing it in the desktop's list as well is the same decision recorded twice, which is a
+decision that drifts.
 
 **The handler's `Exec` is split by `kxdg_exec_split()`, which is the launcher's own split.** An
 `Exec` line carries quoting as well as field codes and the two are the format: split on whitespace,
@@ -482,11 +447,10 @@ Three properties this list is written to keep:
   `--volume /dev/dri` that binds the card back.
 - **An unknown key is reported by name.**
 
-**`display` is the console session's key and not the container's.** `display = vt` pins a box's
-applications to a virtual terminal of their own instead of the windows they otherwise become.
-`kdos-con` reads it straight out of the profile file, and `kdos-box profile` carries it through a
-rewrite without interpreting it — a profile writer that knows only its own keys deletes everybody
-else's, which is a setting that disappears the next time an unrelated one is changed.
+**`display` is carried and not interpreted.** Nothing on this desktop reads it and it means
+nothing to a container flag; `kdos-box profile` carries it through a rewrite untouched, because a
+profile writer that knows only its own keys deletes everybody else's — which is a setting that
+disappears the next time an unrelated one is changed.
 
 **`render` reaches the guest's own Mesa, and it defaults to the card.** The render nodes are bound
 into every box, the DRI drivers and `libva` are in the base pack and both renderers are built, so a
@@ -502,25 +466,10 @@ itself, and a variable that pinned hardware would take that fallback away. It is
 application may unset it — and `kdos-box profile` prints it as the renderer line rather than as
 confinement.
 
-**It chooses the embedded cage's renderer too, and this program is not the end that does it.**
-`kdos-con` reads the same profile and hands the value to the cage as `KDOS_EMBED_GPU`, where
-`software` pins pixman and every other spelling leaves the cage on its own
-`wlr_renderer_autocreate` call — **whose answer the cage then proves and may overrule**. An
-embedded cage can publish only frames it can read back, so with a hardware renderer it allocates
-udmabuf buffers, and a driver is free to refuse to import them — or to accept the import and write
-the result where this process cannot see it. The cage renders one frame through the renderer, the
-allocator and a throwaway output before building anything on them, and then paints a second frame of
-known pixels and reads it back the way a published frame is read; where either fails it drops the
-card and rebuilds on pixman. So a box that asked for `auto` or `gpu` on a machine whose card fails
-either test is composited by pixman and draws with llvmpipe, and nothing in the profile says so — see
-[`kdos-cage`](kdos-cage.md#--embed-the-guests-pixels-without-a-screen). What the key decides is
-whether the card is *asked for*, and that is the half this file owns.
-
-So a `render = software` box on a console desktop with a card draws with llvmpipe into `wl_shm` and
-is composited out of that same memory — no upload and no readback for pixels the CPU already had — and the key saves a
-crossing rather than costing one. **A profile rewrite that dropped the key would change what
-composites the window**, which is why every writer of this file carries keys that mean nothing to a
-container flag.
+So a `render = software` box on a machine with a card draws with llvmpipe rather than paying for a
+driver it will not use. **A profile rewrite that dropped the key would change what the application
+draws with**, which is why every writer of this file carries keys that mean nothing to a container
+flag.
 
 `kdos-box profile` prints the key **and what it resolves to on this machine**, because a profile
 states a wish and the hardware answers it. The hardware answer is the node it opened; the software

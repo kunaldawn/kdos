@@ -75,11 +75,10 @@ typedef struct {
 	int  pids;       /* --pids-limit, 0 for unlimited                    */
 	int  autostop_s; /* idle seconds before `kdos-box gc` stops it, 0 off*/
 	/*
-	 * `display` chooses between a window and a terminal of the guest's
-	 * own. It is the SESSION's key, carried and not interpreted: kdos-con
-	 * reads it and it means nothing to a container flag. It is held here
-	 * so that a rewrite of this file keeps it — a profile writer that
-	 * knows only its own keys silently deletes everybody else's.
+	 * `display` is carried and not interpreted: it means nothing to a
+	 * container flag. It is held here so that a rewrite of this file keeps
+	 * it — a profile writer that knows only its own keys silently deletes
+	 * everybody else's.
 	 *
 	 * `render` IS WHO DRAWS. `auto` (the default) means the machine
 	 * decides, `gpu` asks for the card and `software` refuses it; see
@@ -88,14 +87,6 @@ typedef struct {
 	 * LIBGL_ALWAYS_SOFTWARE=1 in the launch environment; the hardware one
 	 * sets nothing at all, because Mesa asks the machine the same question
 	 * by itself.
-	 *
-	 * THE SAME KEY PICKS THE EMBEDDED CAGE'S RENDERER, and this file is
-	 * not the end that does it: kdos-con reads the profile itself and
-	 * hands the value to the cage as KDOS_EMBED_GPU, where `software` pins
-	 * pixman and every other spelling leaves wlr_renderer_autocreate its
-	 * choice. The rewrite this file performs therefore governs a console
-	 * guest's compositor as well as its Mesa — drop the key on a rewrite
-	 * and a box that refuses the card is composited on it.
 	 */
 	char display[16];
 	char render[16];

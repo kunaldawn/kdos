@@ -223,7 +223,7 @@ static void copy_selected(void)
 		return;
 	r = &rows[tbl.sel];
 	/* kdisp_copy, not ktui_clip_copy: OSC 52 is a terminal's channel and
-	 * this surface is a Wayland overlay as often as it is a console one.
+	 * this surface is an overlay and never a window.
 	 * The seam picks whichever the session actually has. */
 	if (kdisp_copy(r->value, strlen(r->value), 0))
 		snprintf(note, sizeof(note), "copied %s", r->value);

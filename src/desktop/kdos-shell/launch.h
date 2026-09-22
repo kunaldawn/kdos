@@ -19,13 +19,6 @@
  *
  * WHAT THE SHARED PATH IS FOR, in the order it matters:
  *
- *   - THE SESSION STARTS A GRAPHICAL PROGRAM, NOT THE SURFACE. On the console
- *     desktop `$KDOS_CON` names the session's surface socket, and `kcon_run`
- *     hands the vector there: the session decides between a cage-backed
- *     window and a terminal of its own, and it is the session that gives the
- *     guest a Wayland display. A vector forked here instead has no display and
- *     nothing holding it, so a boxed application draws nowhere, exits, and
- *     leaves nothing on the screen to say why.
  *   - AN `Exec=` LINE IS NOT A LIST OF WORDS. `kxdg_exec_split` reads its
  *     quoting and its field codes; a `strtok(" ")` execs a file whose name
  *     begins with a quote, and hands `%U` to a program as a document to open.
@@ -75,22 +68,6 @@ struct sh_launch {
 	int terminal;		/* Terminal=true — wrap it in an emulator   */
 	int floating;		/* X-KDOS-Float: open unanchored            */
 	/*
-	 * IT DRAWS ON THE CONSOLE'S OWN GRID — `X-KDOS-Cells=true`, and the
-	 * one thing that keeps a KDOS surface out of a kiosk compositor.
-	 *
-	 * On the console every non-terminal program goes to the session, and
-	 * the session gives a guest a cage because a Wayland client's surface
-	 * is pixels and this desktop composites cells. A program that attaches
-	 * to the session ITSELF needs none of that: measured, `kdos-res`
-	 * started from a launch surface is a whole wlroots compositor holding a
-	 * grid of text the session was already able to draw, and `kdos-term` is
-	 * a terminal emulator inside a kiosk inside the console.
-	 *
-	 * Unset is "graphical application", which is the safe direction — see
-	 * KxdgLaunch.cells in kxdg.h for why it is the entry that answers.
-	 */
-	int cells;
-	/*
 	 * A COMMAND THIS DESKTOP WROTE, NOT AN APPLICATION — so it is never
 	 * handed to the session either.
 	 *
@@ -133,9 +110,8 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles);
  * Resolves the id through the XDG data dirs and hands what it found to
  * `sh_launch`, so a surface holding an id rather than a line carries no copy
  * of the key list and cannot forget one: a row that read only `Exec` starts a
- * `Terminal=true` application with no terminal round it, and a row that missed
- * `X-KDOS-Cells` puts a KDOS surface in a cage. Returns what `sh_launch`
- * returns, and -1 when the id names no entry that can be started.
+ * `Terminal=true` application with no terminal round it. Returns what
+ * `sh_launch` returns, and -1 when the id names no entry that can be started.
  */
 int sh_launch_id(const char *id, const char *const *files, int nfiles);
 

@@ -240,9 +240,9 @@ struct kvt_vte {
 	 * one cap, one overflow rule and one place a payload can be truncated.
 	 *
 	 * libkvt DECODES NOTHING. The buffer goes to a callback the consumer
-	 * set, which is what keeps this library free of image decoders — and
-	 * it has to stay free of them, because it is linked by kdos-con, which
-	 * links no pixel code at all.
+	 * set, which is what keeps this library free of image decoders — and it
+	 * has to stay free of them, because a consumer that links no pixel code
+	 * still links this.
 	 */
 	kvt_vte_img_cb img_cb;
 	void *img_img_data;

@@ -40,9 +40,8 @@
 
 /*
  * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
- * first, so a surface started FROM the console desktop attaches to it even on a
- * machine that also has a compositor running. libkdisp names no implementation;
- * this list is what links each one in.
+ * in preference order. libkdisp names no implementation; this list is what
+ * links each one in.
  */
 extern const KDispImpl *const kdos_disp[];
 extern const int kdos_disp_n;

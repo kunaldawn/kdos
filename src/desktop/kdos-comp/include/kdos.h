@@ -150,8 +150,8 @@ struct kdos_conf {
 	/*
 	 * The font every piece of supervised chrome is drawn in, as a
 	 * fontconfig name. Empty means libkwl's default, which is
-	 * `Terminus:pixelsize=32` — the console's own cell, and the reason the
-	 * panel, the boot splash and tty1 look like one machine.
+	 * `Terminus:pixelsize=32` — the same cell the boot splash and tty1 draw
+	 * in, and the reason they look like one machine.
 	 *
 	 * It exists because that default is a PIXEL size and libkwl does no
 	 * HiDPI: on a 4K panel the chrome comes out half the height it should
@@ -174,7 +174,7 @@ struct kdos_conf {
 	 * A cell is half as wide as the font is tall, so the panel's thickness
 	 * IS this number: Terminus at 20 gives a 10x20 cell and a two-row bar
 	 * 40 pixels tall, which is what a taskbar has been since Windows 7.
-	 * chrome_font stays at the console's own 32 for the menus and popups,
+	 * chrome_font stays at 32 for the menus and popups,
 	 * which are read rather than glanced at. Empty falls back to
 	 * chrome_font, and then to libkwl's default.
 	 *

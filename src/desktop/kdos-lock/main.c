@@ -18,8 +18,8 @@
  *
  * An ext-session-lock-v1 client on Wayland and a lock-role surface on the
  * console, and in both the protocol is the whole design: the SESSION SERVER
- * owns the locked state — kdos-comp there, kdos-con here — so this process
- * dying leaves the screen locked rather than open. That inverts the usual
+ * owns the locked state, so this process dying leaves the screen locked
+ * rather than open. That inverts the usual
  * risk — the dangerous bug in a lock screen is not "it crashed", it is "it
  * unlocked". There is exactly one call that unlocks anything (`kdisp_unlock`,
  * which each display implements as its own single message, never as an
@@ -54,13 +54,12 @@
 
 #include "kbase.h"
 #include "ktui.h"
-#include "kcon.h"
 #include "kwl.h"
 
-/* See the declaration: naming kwl_impl is what links Wayland into this
- * program. A console-only build would name a different one, or none. */
-static const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
-static const int kdos_disp_n = 2;
+/* Naming kwl_impl is what links Wayland into this program: libkdisp resolves
+ * the display server out of this table and there is one entry in it. */
+static const KDispImpl *const kdos_disp[] = { &kwl_impl };
+static const int kdos_disp_n = 1;
 
 
 #define LK_MAX_PASS 256

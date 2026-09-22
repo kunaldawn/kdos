@@ -271,7 +271,7 @@ static size_t cur_at_col(const char *s, int want)
  * in the box is an argument, never a second command.
  *
  * THE SESSION STARTS IT, through the one path every launch surface here takes.
- * On the console a graphical program forked from this box would have no
+ * A graphical program forked from a box with no display would have no
  * display and nothing holding it, and the run box would be a prompt that
  * swallows what is typed into it. See launch.h.
  */

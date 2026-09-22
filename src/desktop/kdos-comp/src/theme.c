@@ -289,9 +289,8 @@ load_button(struct theme *theme, struct button *b, enum ssd_active_state active)
  * XBM bit order is LSB-first, so bit 0 is the LEFTMOST column of the row.
  *
  * THEY ARE NOT A COPY OF THE CHARACTER GRID'S MARKS. What is drawn here is a
- * bar, a framed box, a cross and a rule stack; `kdos-con` draws `↓ ■ X` on its
- * chips (`draw_buttons`, src/desktop/kdos-con/windows.c). The two sets diverge
- * because the grounds do. A button image is a colour of its own on a titlebar
+ * bar, a framed box, a cross and a rule stack. A button image is a colour of
+ * its own on a titlebar
  * of another (`window.active.button.unpressed.image.color` against
  * `window.active.title.bg.color`), so a bar that hugs the button's floor is
  * still a bar against its ground. A chip's mark is KT_SURFACE, which is the

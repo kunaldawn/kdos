@@ -1,6 +1,6 @@
 # The C libraries
 
-Nineteen static libraries under `src/libs/`, the constraint they are built under, the dependency
+Seventeen static libraries under `src/libs/`, the constraint they are built under, the dependency
 direction that must not be violated, and the invariants each one exists to protect.
 
 Everything KDOS writes is built on these. Adding one is a small decision; giving one a new
@@ -38,9 +38,7 @@ painter is not made to link a Wayland client library to get it.
 | `libkpack` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` |
 | `libkvt` | `kvt_` | The terminal: the VT100-VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. **A hard fork of libtsm 4.7.1** | `libktui` |
 | `libkimg` | `kimg_` | **The only place untrusted image bytes are decoded**, and reachable by anything that can write to a terminal. Two entry points — one picture, or every frame of the one format that has more than one — five optional decoders, and a budget enforced from the header the format declares *before* any allocation | pixman, plus png/jpeg/webp/sixel/gif where present |
-| `libkkms` | `kkms_` | **The cell grid on a screen**: seat, connector, mode, a dumb buffer, libinput and xkb. The one thing on the console path that needs a GPU device, which is why only the view links it | `libkcell`, plus drm, input, seat, xkb, udev |
-| `libkcon` | `kcon_` | **A surface over a socket**, both ends: the wire, the client's `KDispImpl` and `KtuiBackend`, and the server side a display composites. **No file descriptors cross it**, which is what makes it forwardable | `libkdisp`, `libktui` |
-| `libkwm` | `kwm_` | **The window model both desktops obey**: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
+| `libkwm` | `kwm_` | **The window model the compositor obeys**: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
 | `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the seven roles, the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor — and the window list a panel manages | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
@@ -64,25 +62,20 @@ libkwm     → libkbase
 libkpack   → libksig, libkpkg, libkbase
 
 libkvt     → libktui, libkcolor, libkbase
-libkcon    → libkdisp, libktui, libkcolor, libkbase
 libkimg    → libkbase
-libkkms    → libkcell, libktui, libkcolor, libkbase
 ```
 
-**The four edges worth stating are the console's.** `libkvt` is a terminal's
-private screen and reaches libktui only at its render boundary, in one file.
-`libkcon` carries cells over a socket and links **no** pixel library, which is
-what lets the session come up on a machine whose GPU driver does not. `libkimg`
-decodes untrusted bytes and depends on nothing but libkbase, so the decoder
-cannot reach the toolkit. `libkkms` is the only one of the four that opens a
-device, and it is a separate archive for exactly that reason: `kdos-con` links
-none of it and only the view does.
+**The two edges worth stating.** `libkvt` is a terminal's private screen and
+reaches libktui only at its render boundary, in one file. `libkimg` decodes
+untrusted bytes and depends on nothing but libkbase, so the decoder cannot
+reach the toolkit.
 
 ## libkwm
 
-The window model, and only the model. `kdos-comp` draws windows in pixels and
-`kdos-con` draws them in cells. Placement, tiling, the focus stack and the ring
-walks live here and nowhere else, so a defect in one of those is **one fix**.
+The window model, and only the model. Placement, tiling, the focus stack and
+the ring walks live here and nowhere else, out of the compositor that obeys
+them — which is what lets every one of them be asserted against a fixture with
+no display anywhere.
 The neighbour-edge search is half shared: the arithmetic is this library's and
 the compositor calls it, but the walks that *find* the candidate edges exist
 twice — the compositor's across its scene graph, this library's across a region
@@ -129,31 +122,23 @@ one program and again in the next.
 
 **The consumer decides what it links.** This library names no implementation and
 pulls in none; a caller hands over the ones it compiled, in preference order, so
-a console-only program never sees Wayland:
+a program that links no display server still compiles:
 
 ```c
-extern const KDispImpl kcon_impl;  /* libkcon — the console session   */
-extern const KDispImpl kwl_impl;   /* libkwl  — the Wayland compositor */
-static const KDispImpl *const have[] = { &kcon_impl, &kwl_impl };
-kdisp_init(&cfg, have, 2);
+extern const KDispImpl kwl_impl;   /* libkwl — the Wayland compositor */
+static const KDispImpl *const have[] = { &kwl_impl };
+kdisp_init(&cfg, have, 1);
 ```
 
-**Both, and the console first.** Every shipped surface registers this pair: a
-program that offered only `kwl_impl` compiles and runs and simply cannot be
-opened on the console desktop, which is the default session. The order is the
-preference order, and the console comes first because a program started inside
-a console session must not find a Wayland display left over from somewhere else
-and attach to that instead.
-
 Each program states that list once, and it is the single line that changes when
-a third server is added.
+a second server is added.
 
 **The screen's font is here for the reason the window list is.** A surface never
 loads a font — it draws cells and something else turns them into pixels — so
 `kdisp_font_count` / `_at` / `_current` / `_set` is the only way a picker can
-ask what faces exist, and the list is the **display's**: on the console the view
-gathers it, and that view may be at the far end of an `ssh` link with its own
-machine's fonts. `font_set` takes an **index into that list and never a name**,
+ask what faces exist, and the list is the **display's** — which may be a machine
+other than the one the surface runs on. `font_set` takes an **index into that
+list and never a name**,
 so no fontconfig syntax crosses from a surface to a display that has never seen
 it. A backend leaves the entries NULL where the font is not the desktop's to
 change — the compositor, where every program carries its own — and a count of
@@ -174,8 +159,8 @@ Wayland object and nothing else can stand in for one.
 **Somebody else's windows are five entries, and they are asked for.** `win_count`, `win_at`,
 `win_activate`, `win_close` and `win_set_state` are what a panel, a task switcher
 and a window menu need — enough to draw a row and act on the one that was clicked. A surface only
-receives them if it set `manage` on its configuration, which on the console makes it a shell in the
-session's eyes and under a compositor is what `wlr-foreign-toplevel-management` grants anyway. An
+receives them if it set `manage` on its configuration, which under a compositor is what
+`wlr-foreign-toplevel-management` grants anyway. An
 **id** crosses the interface, never a handle: a caller draws a list in one frame and acts on a row
 in a later one, and a stale handle is a request to a destroyed proxy that kills the connection.
 **Announcement order is list order, and a row is only offered once it is settled.** A panel draws
@@ -277,7 +262,7 @@ and every text role goes through it. See
 
 The toolkit. Terminal ownership, the cell buffer, the diff, input decoding, widgets, and the charts.
 
-**Three glyph tiers**, chosen from the terminal's capabilities, because the console font is 512
+**Three glyph tiers**, chosen from the terminal's capabilities, because the VT font is 512
 glyphs and a character it lacks renders as a **blank**. The table is in
 [the design language](../03-architecture/design-language.md#the-glyph-tiers).
 
@@ -308,17 +293,16 @@ against stale dimensions and silently fail its own bounds checks.
 
 **The caret goes to the backend when the backend has one.** `ktui_term_caret()` is the one call a
 surface makes to say where it is typing, and it writes the terminal escape only when nothing else
-claims the answer. The console client claims it: a surface drawn through a display server is not on
-a terminal, its stdout is not the screen it appears on, and the position it knows is in its own
-cells — which only the server can place on a screen. A backend that leaves the entry NULL keeps the
-escape, which is what the Wayland one does, because a compositor's surfaces draw their own.
+claims the answer. A client that draws through a display server claims it: its stdout is not the
+screen it appears on, and the position it knows is in its own cells. A backend that leaves the entry
+NULL keeps the escape, which is what the Wayland one does, because a compositor's surfaces draw
+their own.
 
 **The pointer goes the same way, and for the same reason.** `KtuiBackend.pointer` is handed the
-cell the pointer is on and answers whether it drew one itself; `libkkms` is the only backend that
-does, compositing an arrow into the framebuffer it already owns. Everything else leaves the entry
-NULL and `ktui_draw_flush()` reverses the cell under the pointer, which is the pointer a `--tty`
-view, a `--dump`, an `ssh` forward and `tty1` can show — and the one `a11y = yes` depends on, since
-that setting runs the desktop on a `--tty` view so `brltty` can read `/dev/vcsa`. **An arrow cannot
+cell the pointer is on and answers whether it drew one itself; a backend that composites an arrow
+into a framebuffer it owns says so. Everything else leaves the entry NULL and `ktui_draw_flush()`
+reverses the cell under the pointer, which is the pointer a `--tty` run, a `--dump` and `tty1` can
+show. **An arrow cannot
 be drawn in this library**: it links nothing but musl and has to keep doing so, and an arrow needs
 a pixel buffer and a colour in it. **The hook is called on every flush**, with a negative `x` for
 no pointer at all, because that call is the only thing that tells a backend to take the last arrow
@@ -363,8 +347,8 @@ and wrong for photographs, which are megabytes each.
 budget cannot be made to fit: eviction skips every slot the cell grids still reference, so a table
 whose pictures are all on screen has nothing it may take. A caller that stores that -1 as a slot
 draws the background where a picture belongs, and the table can never repair it because it never
-learned the picture existed. A consumer holding pictures that are not its own — a view showing a
-session's — has to tell the side that owns them; see `KCON_OP_SPRITE_LOST` under libkcon.
+learned the picture existed. A consumer holding pictures that are not its own has to tell the side
+that owns them.
 
 **There is one evictor per process, and every owner in it shares that one.** A program that draws
 photographs and icons has a single function handing back pictures built by two different libraries,
@@ -402,8 +386,8 @@ that matter most: which cell of a table, which tab of a strip, which item of how
 takes a role, a label, a value and the item's **position in its set**, so "3 of 9" is a fact the
 widget states rather than a count somebody has to make.
 
-- **It lives here, not in a session.** A record composed in `kdos-con` would reach the console and
-  give the graphical desktop nothing; one set in this library is set once and both desktops read it.
+- **It lives here, not in a surface.** A record composed per surface would be composed once per
+  surface; one set in this library is set once and every consumer reads it.
 - **The queue is per frame, fixed, and cleared at the start of every frame.** Nothing on the draw
   path allocates — a widget that allocated to say its own name would drop frames on the link this
   desktop is sold on — and a frame with more to say than the queue holds drops the rest.
@@ -425,7 +409,7 @@ palette does not own rather than a style.
 **Above the eighth bit nothing travels in that byte.** The attribute is sixteen bits wide in memory
 and eight on the wire; the high half says which of the cell's three literal colours — foreground,
 background, underline — mean anything, and what shape the underline is. They are set **only** by a
-[negotiated colour run](#libkcon), so a consumer that was never sent a literal cannot receive a cell
+negotiated colour run, so a consumer that was never sent a literal cannot receive a cell
 claiming to have one and draw the black it never got. **One bit per colour, not one for the pair**:
 a program that sets a foreground and leaves the background alone is the common case, and a single
 bit would freeze the theme's background into the cell as a literal, after which a retint leaves a
@@ -441,7 +425,7 @@ a frame copy whole cells.
 Nothing drawn in cells reads it. It is what aims a pixel guest embedded in a window when the event
 has no raw partner beside it: a view that reports no pixels at all, which is every view inside
 somebody else's terminal, and a touch gesture's synthesised pointer on a view that does. Where
-there is a partner the guest is aimed from it instead — see [libkcon](#libkcon).
+there is a partner the guest is aimed from it instead.
 
 **The same physical input travels twice, in two queues.** `poll_event` answers a character and a
 cell; `KtuiBackend.poll_raw` answers a `KtuiRaw` — an evdev keycode with a separate press and
@@ -538,8 +522,8 @@ foreground index and a background index can be the same slot — a blank drawn o
 
 **It decodes nothing.** The three image protocols are delimited by one collector — they differ only
 in how they are framed — and the payload goes to a callback the consumer set. That is what keeps
-this library free of image decoders, and it has to stay free of them because `kdos-con` links it
-and links no pixel code at all.
+this library free of image decoders, and it has to stay free of them because a consumer that links
+no pixel code at all still links this.
 
 **The colour a cell reduces to is cached, and the cache is indexed by the high bits of its
 multiplicative hash** — the same rule as libkchrome's literal table above, for the same reason: the
@@ -559,216 +543,6 @@ so it keeps the widest the terminal has ever been; after a shrink a word crossin
 edge would set `sel_end.x` past `size_x`, the renderer would never reach the index that turns the
 highlight off, and every row below it would draw inverted. The copy takes the same bound, so the
 text that comes back is the text that was lit.
-
-## libkcon
-
-A surface over a socket, both ends in one file so the two cannot drift.
-
-**No file descriptor crosses it, ever.** That is the whole reason the view socket can be forwarded
-over `ssh`: a desktop reached from another machine is the same desktop. The one descriptor anywhere
-near this design goes over a different channel — a `socketpair` between the session and the
-`kdos-cage` it forked — which is private, local and parent-to-child, and is not this protocol.
-
-**A field at a time, little-endian.** A struct written whole is a struct whose padding and alignment
-become protocol, and the two ends of a forwarded socket are not always the same build.
-
-**A cell run is eight bytes a cell and stays eight bytes a cell.** The colours a terminal named
-itself ride a **separate run**, sent only to a view that asked for it in its hello and only for a
-run that carries any: three bytes each for the foreground, the background and the underline, then
-one byte saying which of them mean anything. It repeats the position and count of the commit it
-follows, so a view patches cells it already has rather than holding a frame back for a message that
-may never come — and a view that declined draws the slots every cell still carries. A surface sends
-the same run up to the session, which patches it over the commit it follows: without it a terminal
-on the console shows every colour outside the sixteen reduced to a slot. Widening the
-cell record instead would have doubled what every commit costs across the `ssh` link this desktop is
-sold on, to carry colour most cells on a desktop do not have.
-
-**A frame is cut into messages, because a frame is not a message.** A length field is an allocation
-request from an untrusted peer, so it is refused at the header above a megabyte — but the grid a
-frame covers may be 4096x4096, tens of megabytes of runs. The sender walks the grid and flushes
-every quarter of a megabyte, cells before the colours that patch them, rather than building the
-whole frame and discovering it cannot be encoded. The threshold is well under the cap on purpose: a
-buffer grows by doubling, so one allowed to approach the cap reallocs to exactly the ceiling and
-then refuses the run that follows.
-
-**A fill buffer is kept, not allocated.** Every message is encoded into a `KconBuf` that belongs to
-the connection — three of them, for the cells of a frame, the colour records that patch them, and
-the pictures those cells reference — and `kcon_buf_retire` empties one instead of freeing it. A
-sprite block at an 8x15 cell is a hundred and twenty kilobytes and a fullscreen guest is dozens of
-them a frame; under a size-class allocator like musl's an allocation that large is an `mmap` and the
-matching free an `munmap`, so a buffer allocated per message has the kernel fault in and zero every
-page of every block on every frame. Measured on musl 1.2.5 at 1080p with a 75-block frame, a
-per-message buffer costs 2400 minor faults a frame; keeping it costs under one, and with the socket
-buffer below it the frame goes from 8.0 ms to 2.0 ms. **Measure this on musl, not on glibc** — glibc
-keeps a 120 KiB block on its own free list, reports zero faults either way, and says the change is
-worth nothing. A buffer that grew past `KCON_BUF_KEEP` (512 KiB, above both a block
-and a frame chunk) is released rather than kept, so one outsized message cannot pin its memory for
-the life of the connection. `KCON_BUF_KEEP` must stay at or above **twice** `KCON_CHUNK_BYTES`,
-because a buffer grows by doubling and a chunk a byte over a power of two rounds its capacity up to
-the next one; below that margin the frame buffers fall out of retention silently and the allocator
-cost returns in full, so the relation is a `_Static_assert` rather than a convention. The cost of
-keeping them is at most three buffers of `KCON_BUF_KEEP` per surface, held until that surface goes,
-so the ceiling scales with the number of live surfaces rather than with how much any one sends. **The buffers belong to one connection** — on the server a field of the
-`KconSurface`, in a client a field of the one connection that process holds. What breaks the rule is
-a buffer *shared* between two connections, or between two senders filling at once, not the storage
-class it happens to have: two surfaces are sent frames in the same loop and a shared buffer would
-put one's pixels in the other's message. they are safe to refill the instant a send returns, because `kcon_send` copies the payload
-into the connection's own out queue and nothing downstream holds a pointer into a `KconBuf`.
-
-**Two ways to put bytes, and the difference is what a reader has to know.** `kcon_put_blob` writes a
-length first, for a payload whose size the message does not otherwise give. `kcon_put_bytes` writes
-none, for one it does — a sprite's pixels are `pw * ph * 4` and nothing else. A second length is a
-second thing that can disagree with the first, and a reader computing the size from the header would
-then be four bytes out for every picture on the desktop.
-
-**A string is valid only until the next get.** The payload's bytes are not terminated where a string
-ends, so one scratch buffer is shared by every call; a reader taking several strings copies each
-before it reads the next, or every pointer it kept names the last one.
-
-**A message may gain optional trailing fields**, and `kcon_rd_left` is how a reader tells a peer that
-predates them from a truncated message. A view's pixel geometry and a pointer's position inside its
-cell arrived that way.
-
-**A view reports its input twice, and the two streams are different things.** `KCON_OP_KEY` and
-`KCON_OP_PTR` are cooked: a character the view resolved through the person's own layout, and a cell
-with an offset inside it. That is everything a cell desktop needs and nothing a pixel guest can use
-— a guest holds a key down, repeats from its own keymap, reads a modifier that produces no character
-at all, and is aimed at things smaller than a cell. So a view that holds a real keyboard and a real
-pointing device claims `KCON_VIEW_RAW` and reports the same physical events again, unresolved:
-`KCON_OP_KEY_RAW` (an evdev code, a separate press and release, the xkb mask and group),
-`KCON_OP_PTR_RAW` (the view's own pixels, the cell size those pixels were measured in, libinput's
-accelerated and unaccelerated deltas and the full evdev button code), `KCON_OP_AXIS_RAW` (a
-continuous value, a `value120`, a horizontal axis and which device made the scroll) and
-`KCON_OP_KEYMAP`. They reach the session on `view_key_raw`, `view_ptr_raw`, `view_axis_raw` and
-`view_keymap`, beside the cooked hooks and never instead of them. All four are refused from a view
-that did not claim the capability and from one that attached to observe, the same guard the cooked
-input keeps.
-
-**The cooked message for one physical event goes first, and that ordering is protocol.** It buys
-three things: the session has already decided whether a chord ate the key, has already decided which
-window the pointer is over, and has already moved its own cursor cell — so the raw arm never routes,
-never chords and never touches the cursor. It only delivers, which is what keeps one answer to
-"where did this click land".
-
-**A view sends none of it until it is asked.** `kcon_view_raw()` turns the stream on and is silently
-nothing on a view that did not claim the capability; the session asks only while an embedded pixel
-guest holds the focus, because the raw stream is one message per device event and a pointer at a
-thousand hertz on a socket that also carries a window of pixels is a socket that carries no pixels.
-
-**Motion coalesces to the newest; a key, a button and an axis never do.** A view merges a motion into
-the pending one when no button, key or axis sits between them, and sums the deltas it merges, because
-a delta is a distance and a dropped one shortens the movement a grabbed guest sees. A dropped press
-is a letter that never arrives, a dropped release is a key held down for ever, and a scroll of zero
-is the end of a gesture — so those are sent whole however far behind the link is.
-
-**The keymap crosses as bytes, not as a descriptor**, which is the rule this whole protocol is built
-on: a layout sent as a `memfd` would make a view unforwardable for the sake of tens of kilobytes
-sent once. It is xkb's text format, refused above `KCON_KEYMAP_MAX` and refused unless its last byte
-is the terminator the length counts, because the consumer hands it to a compiler that reads to a NUL.
-One session is one keyboard, so the last view to speak wins.
-
-**Every raw field is bounded before a hook sees it.** A keycode and a button share evdev's number
-space and are refused above `KCON_KEYCODE_MAX`, which is what sizes the set of presses a window is
-owed a release for; a cell size of zero is refused because the session derives its cell by dividing
-by it; an axis or a source outside its enum is refused because the far end maps both in a switch and
-a scroll whose direction it guessed is a page that moves the wrong way.
-
-**A view that claims no capability is driven by the cooked stream alone.** It is never asked for raw
-input, sends no keymap, and its keys and clicks arrive cooked — which is what a view inside somebody
-else's terminal, at the far end of an `ssh` link, can produce at all. The session drives a pixel
-guest from that stream the way it drives a cell window: a character turned back into a keycode, a
-press and a release together, no modifier on a click, no horizontal axis and no pointer lock.
-
-**A surface's slot numbers are its own.** Two surfaces both using slot 0 is the normal case, so the
-server assigns a session slot on first sight and a compositing session rewrites the slot in every
-sprite cell it copies out. A session that owns a picture itself — an embedded application's frame —
-takes slots from the same rotation, because a second numbering would eventually hand a view a number
-a surface is already using.
-
-**And the session's slots are a free map, not a counter.** A slot goes back when its surface goes,
-when the client drops the picture, or when a session that cuts its own pictures calls
-`kcon_server_free_slot`; the rotation point is only where the search for a free one starts. A
-counter alone wrapped onto numbers still being drawn with, so one program's picture appeared inside
-another's window on a session that had been open long enough. A session with every slot taken hands
-back −1 and the caller draws the fallback mark.
-
-**Giving a slot back tells every attached display to forget it**, as a `KCON_OP_SPRITE_DROP` in the
-session→view direction — the same verb a client uses to give up one of its own numbers. A number
-back in the rotation is a number the rotation will hand out again when the search comes round to it,
-and until it does nobody owns the number and nothing sends a picture under it, while a display keys
-its sprite table on that number alone: one that was never told holds those pixels in its own byte
-budget with nothing that will ever replace them, and the eviction that eventually takes them is
-reported as a loss of a slot that by then belongs to somebody else, spending that owner's repair
-allowance on a picture it never lost. Best effort — a drop that cannot be queued leaves the display
-holding a stale picture until the slot's next owner sends its own, which replaces it under the same
-key.
-
-**A picture is sent when its PIXELS change, not once per slot.** An animation registers a new frame
-under the same key and therefore in the same slot, without touching a single cell — so a client that
-remembered "slot sent" would leave the display holding the first frame for ever. The client tracks
-the sprite table's put counter for each slot, never the pixel pointer: the evictor frees the
-previous frame as the next one is registered and the allocator hands the same block straight back,
-so a pointer comparison calls every frame after the first a repeat. **A picture also arms the frame
-contract at both ends** — the sender waits for a boundary after it, and the session marks the
-surface as owing one the moment a `KCON_OP_SPRITE` arrives, accepted or not, because a leg answered
-only for cells leaves an animation paced by the 100 ms stall timeout.
-
-**A picture that reached the wire has not reached a screen.** `kcon_view_sprite` answers for the
-send: 1 means the bytes were queued, and the view's own sprite table — which has a byte budget of its
-own — may still refuse to keep them. `KCON_OP_SPRITE_LOST` is how it says so, carrying the slots it
-dropped, and the session hears them one at a time through the `view_sprite_lost` hook. It is the only
-way the sender can learn of the loss: it cleared what it owed on the send's own answer, so without
-this the cells naming that slot are drawn over a picture that is not there. **The count and every
-slot in that message are bounded against `KCON_MAX_SPRITE_MAP` before either indexes anything**: a
-slot number is an untrusted peer's index into a table of the session's own. **The view sends one
-message per frame it presents, not one per loss** — a display short of budget loses a picture per
-block per frame, and
-a message each would spend the queue the pictures need — and the side that re-owes the slots has to
-bound how often it pays them **per unit of time**, because a table too small for the window refuses
-the replacement too. A total restored only when the owner next draws is not a bound but an expiry:
-an owner that has finished drawing never restores it, and the first picture the display loses after
-that is a hole nothing fills.
-
-**Every connection asks the kernel for a large socket buffer.** `kcon_conn_new` requests
-`KCON_SOCK_BUF` (2 MiB) for `SO_SNDBUF` and `SO_RCVBUF` on both ends. **An AF_UNIX stream write is
-gated by the *sender's* own send buffer and by nothing else** — the receiver's `SO_RCVBUF` is never
-consulted, measured — so the other direction is covered because the peer sets its own send buffer in
-the same constructor, not because this end asked for a receive buffer. The receive request is made
-so the pair is right on a transport whose flow control does read it; it is not what does the work
-here. A frame that cannot be placed in one turn of the sender's loop is presented
-partially: the display shows what arrived and the window fills in horizontal bands over several
-frames. With the default 208 KiB buffer a 75-block 1080p frame places 11 blocks a turn and
-needs seven turns; with a 4 MiB grant it places 43 and needs two. A session pacing against half
-`KCON_VIEW_HIGH` rather than against the refusal mark sees the same shape one step down: 7 blocks a
-turn and eleven turns, against 38 and two. **The kernel doubles the request and
-clamps it to `net.core.wmem_max`** — measured, the grant is `min(2 × request, 2 × wmem_max)` — so
-what is granted is never what was asked for and `kcon_conn_sndbuf` reads it back off the socket
-rather than reporting the constant. On the 7.0 kernel this system ships, `net.core.wmem_max`
-defaults to 4 MiB and nothing in `fs/etc/sysctl.conf` changes it, so the 2 MiB request is granted
-whole as 4 MiB; on a host that lowered the ceiling the same request gets less and the desktop is
-correspondingly slower. A clamp is not an error and the request never fails a
-connection: a smaller buffer is a slower desktop, not a broken one.
-
-**The backlog is the pacing signal, and it is truthful.** `kcon_conn_pending` is bytes owed to the
-kernel and nothing else: `kcon_view_ready` reads it against `KCON_VIEW_HIGH`, and the connection is
-marked dead above `KCON_MAX_QUEUE`, so a figure that meant anything other than "not yet written"
-would break the peer-is-gone guard. `kcon_send` ends in a flush, so the backlog is zero until the
-socket's own buffer fills; a caller cutting a picture into pieces asks between them and flushes
-between them, which makes `kcon_view_pending` a WATERMARK on a queue that re-clears rather than a
-budget for one turn. A caller pacing against it must also poll the view for writability —
-`kcon_server_view_at` plus `kcon_surface_fd` and `kcon_view_pending` are the three calls that shape
-the poll — or the room the display frees goes unused until the caller's next tick.
-
-**And a display that attached late is told to start again.** `KCON_OP_SPRITE_RESEND` asks every
-surface to forget what the display has: cells that name a slot do not change, so a view that arrived
-after a picture was placed would show the fallback mark for the rest of its life.
-
-**A surface with nothing to show says so.** `KCON_OP_HIDE` is not a close — the connection, the
-sprites and the clipboard all survive it — and it is what an overlay needs on this desktop: a
-candidate window or a stack of toasts is up for a fraction of the time its program runs, and a
-surface that could not say so would park an empty box on somebody's desktop. **A different size is a
-second attach**, because the session already reads a requested size out of one and a separate resize
-message would be a second place for the two to disagree.
 
 ## libkxdg
 
@@ -947,9 +721,9 @@ the one nobody is looking at is the one that drifts. The rules it enforces are i
 
 **A tile is cut to the display's pixel cell**, because that is the one the caller laid its contents
 out in — a canvas cut to anything else clips the word or mis-centres the mark. Where the display
-has no pixels of its own the tile is cut to the **nominal** cell instead: the console client answers
-a cell of one, its sprites cross a socket and the far end rescales them, which is the same rule
-libkicon keeps for icons. A change of cell size or output scale is a resize — both canvases go and
+has no pixels of its own the tile is cut to the **nominal** cell instead: such a display answers a
+cell of one and whatever presents the sprite rescales it, which is the same rule libkicon keeps for
+icons. A change of cell size or output scale is a resize — both canvases go and
 are cut again.
 
 **A refused sprite put keeps the picture that is up.** The table refuses on a full table or a spent
@@ -972,7 +746,7 @@ a callback libkwl asks once the list is complete, and the answer is the key of w
 against the key of the picture last painted. **`kch_px_live()` is the one answer to whether a recorded op can reach a
 screen**: a backdrop has to be installed, and the surface must not be a console one, where the
 session composes character cells and there is no plane under them. Neither half can be dropped — a
-`--dump` installs no backdrop, and `$KDOS_CON` is the only thing separating the two displays, since
+`--dump` installs no backdrop, since
 the cell size is asked of libkwl either way and libkwl answers with a fallback rather than with
 nothing. A control whose only state cue is a plate has to draw the cell form of the same fact where
 this is false.
@@ -991,12 +765,12 @@ and a name nothing on this machine has a picture for. **Every caller draws its g
 exactly as it would without this library, which is the rule the whole icon layer is built under.
 
 **A cell under 4x4 pixels is not a pixel backend, and `kicon_init()` refuses it.** A backend with no
-pixels of its own answers a cell of one — the console client does, because there are no pixels on
-its side of the socket — and rasterising at that decodes, tints and rescales a PNG per name to
+pixels of its own answers a cell of one, and rasterising at that decodes, tints and rescales a PNG
+per name to
 produce a picture a pixel across, which is a blank cell reached the long way. Refused means
 `kicon_enabled()` stays false and every lookup answers −1, so the caller draws its glyph. A consumer
 that ships pictures over a wire at a **nominal** cell size passes that size instead of the
-backend's, which is how a console surface keeps its icons.
+backend's, which is how such a consumer keeps its icons.
 
 **A decoded picture outlives the sprite slot naming it.** The table gives slots back under its byte
 budget, so a lookup that misses it re-registers the picture this library still holds rather than
@@ -1046,7 +820,7 @@ unbroken across a whole shaded area instead of changing phase at every cell boun
 
 **The synthesised set is exactly what the VT tier's font carries**, so a box character is the same
 picture on a screen of its own as it is on `tty1` and the two tiers cannot drift apart. That
-includes the two mixed single/double junctions `╪` and `╬`, which the console font has. The heavy,
+includes the two mixed single/double junctions `╪` and `╬`, which the VT font has. The heavy,
 dashed and rounded variants are not in it and still reach whatever face carries them.
 
 **A cell's style is drawn here, and two of them need a second face.** Underline, strike and
@@ -1128,8 +902,8 @@ as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button).
 
 **fcft is reference-counted inside libkcell, so the two entry points are free of each other and of
 any ordering.** `fcft_from_name()` answers `NULL` for every request until `fcft_init()` has run, so
-a consumer that draws canvases and never calls `kcell_font_load()` — a console surface, whose cells
-are characters on a wire — would measure every string as zero and draw none of them, with the
+a consumer that draws canvases and never calls `kcell_font_load()` would measure every string as
+zero and draw none of them, with the
 library's own complaint going to a stderr nothing reads. And neither of fcft's own calls is
 idempotent: a second `fcft_init()` replaces FreeType's handle and orphans every face resolved
 through the old one, and `fcft_fini()` destroys FreeType whether or not anything still wants it.
@@ -1140,142 +914,6 @@ and neither tears fcft down under the other.** A canvas drawing through a `kcell
 its faces, and a failed `kcell_font_load()` gives its reference back before it returns `-1` — a
 caller reading that as "no cell font" has nothing left to free. The pair is private: a reference
 taken outside libkcell matches no face inside it, so nothing could ever release it.
-
-## libkkms
-
-The cell grid on a screen: seat, connector, mode, a dumb buffer, libinput and xkb. The one library
-here that opens a GPU device, which is why only the view links it.
-
-**The grid is derived, never stored.** The backend answers its size by dividing the mode by the
-cell, so `kkms_set_font()` is the whole of a font change on a screen that is already up: reload,
-and every consumer of `ktui_w`/`ktui_h` sees a different answer the next time it asks. The caller
-calls `ktui_draw_resize()` and tells whoever is composing for it — this library knows the pixels and
-nothing about the session on top of them. **The old font comes back if the new one will not load**,
-because a screen is the one thing a person cannot work around from somewhere else.
-
-**Up to three scanout buffers a screen, plus the painter's own, and the painter never touches one
-the kernel can see.** The cells are composited into a system-memory image, the rows that changed
-are copied into a buffer that is neither on the screen nor named by a flip, and a page flip points
-the CRTC at it. Painting into the buffer being scanned out is what tearing is, and compositing into
-it is worse than slow: a dumb buffer is mapped write-combined and every `OVER` reads the
-destination back.
-
-**Every buffer is in exactly one role, and the roles are the safety argument — not arithmetic on an
-index.** `front` is under the raster, `queued` is named by a flip the kernel has not reported,
-`ready` holds a composed frame waiting for the queue to clear, and anything left is the painter's.
-`kkms_ready()` is false when no buffer is left, `kkms_drm_fd()` is the descriptor a flip completes
-on, and together they are how a view draws at the refresh rate instead of on a timer. **The third
-buffer is what stops the painter waiting for the vblank**: with two, the only buffer it may touch
-is the one the flip is waiting on, so a compose that overruns a refresh period costs a whole
-further period — the 60-to-30 cliff. With three the next frame is composed during the flight and
-the flip's own completion presents it, so the latency lost is that frame's and not the next one's.
-**At most one frame waits**, which is what makes the presentation order the paint order without a
-queue to keep in step. `KkmsTune.buffers` is a ceiling of 1 to 3 and a driver with no memory for
-the third gets two; `front` moves only when a completion arrives, because every relight and every
-wake points the CRTC at it.
-
-**More than one buffer is for hardware and for host-scanned virtual framebuffers; a transfer-model
-driver stays single-buffered.** `virtio_gpu`, `qxl` and `vmwgfx` copy the guest's buffer to the
-host at the rectangle `drmModeDirtyFB` names and read it at no other time, so one buffer there is
-already tear-free and a legacy page flip — no damage rectangle, so the driver takes the whole plane
-— turns a few changed rows into an 8 MB upload. The decision is the driver's name, read once at
-open, not "is this virtual": QEMU's stdvga is scanned continuously and tears exactly like hardware.
-**A refusal is only permanent when it is about the driver.** `EINVAL`, `ENOSYS` and `EOPNOTSUPP`
-give up every buffer but one, and the frame is copied into the survivor before the CRTC is pointed
-at it — anything else (`EBUSY` from a CRTC the screen blank detached, `EACCES` on the way back from
-another VT) costs one repainted frame and changes nothing.
-
-**A row painted is owed to every buffer and cleared only in the one it is copied into.** The
-buffers are frames apart, so a row given to one is still an older frame's in the others; with three
-it stays owed to two. The strip below the last whole cell row, where the mode is not a multiple of
-the cell, carries the same debt separately because no row covers it and the painter fills it only
-on a full repaint — given to one buffer alone it blinks at a fraction of the flip rate.
-
-**The mode policy and the present are the caller's, passed to `kkms_init()` as `KkmsTune`.**
-`KKMS_MODE_PREFERRED` takes the monitor's EDID choice and is the default; `KKMS_MODE_FASTEST` takes
-the highest refresh **at the size the monitor chose** and never another resolution, because a
-scaled desktop is a blur nobody asked for. A mode already in force still outranks both, so a hotplug
-for an unrelated connector does not undo a choice somebody made; that match is on the size and the
-**computed** refresh, because 59.94 and 60 share a rounded `vrefresh` and a connector listing the
-59.94 mode first would otherwise hand it back on every re-probe. `tearing` passes
-`DRM_MODE_PAGE_FLIP_ASYNC` to the same legacy flip, which presents immediately and cuts a moving
-edge across the screen; it is off unless asked for, silently off where `DRM_CAP_ASYNC_PAGE_FLIP` is
-absent, and **dropped for the rest of the session on its first `EINVAL`** — a driver refusing the
-flag would otherwise be read as a driver that cannot flip at all, which costs every buffer but one.
-
-**The refresh is published so a session can pace itself to the screen.** `KkmsOutput.refresh` is
-the timing in force per screen and `kkms_refresh_mhz()` is the highest among the lit ones, both in
-millihertz and both computed from the clock and the totals rather than read from the kernel's
-rounded `vrefresh` — 59.94 reported as 59 is two modes a picker cannot tell apart. The fastest
-screen is the right one to pace to because one grid is cut across all of them: a frame slow enough
-for the 60 Hz panel is a frame the 144 Hz one shows twice. It moves with a hotplug and a mode
-change, so it is read again wherever those are announced.
-
-**Nothing is painted while the screen is blanked**, and going dark retires any flip in flight,
-because a detached CRTC never presents the frame a flip is waiting for and a flush skips an output
-that is still waiting. Waking owes every output a full frame. **`kkms_blank()` records the state
-even when it cannot program the device** — a call that lands while the session is switched away
-still takes effect, and coming back from the other VT puts every CRTC in whichever state the last
-call named — so one call per transition is enough and a caller that tracks its own idea of awake
-never has to re-send.
-
-**The pointing devices are configured by policy, not per device.** `kkms_set_input()` takes a
-`KkmsInput` — speed, natural scroll, tap-to-click, tap-drag, disable-while-typing, left-handed,
-middle emulation — and applies each field to every device on the seat that **accepts** it. A device
-that will not, a mouse asked about tap-to-click, is skipped rather than treated as a failure: one
-answer covers a seat made of different hardware, and a refusal there is not something a caller can
-act on. `KKMS_IN_KEEP` in a field leaves libinput's own default for that device class standing,
-which is not the same as `0` — tap-to-click off and tap-to-click unset differ on a touchpad whose
-driver enables it. `speed` is a tenth of libinput's `-1.0..1.0` so a configuration file and a
-slider can both be whole numbers, and `0` is the middle of the device's range rather than an
-unaccelerated pointer.
-
-**The open devices are held by reference.** libinput frees a device object when it is removed, so
-a bare pointer kept here would outlive it; a reference of our own is what lets the policy be
-re-applied to everything already open. They are tracked at `DEVICE_ADDED` and `DEVICE_REMOVED`,
-**including while the seat is switched away** — the devices are suspended, not unplugged, and one
-added during another session's turn would otherwise come back unconfigured and untracked for the
-rest of this one.
-
-**Key repeat is this backend's, because libinput has none.** One press and one release is all a
-device reports; a compositor owns the rest, and here that is this library. The deadline is checked
-from the same idle pump the long-press recogniser uses. **A repeat carries the modifiers as they
-are held now, not as they were latched at the press** — taking Shift while an arrow is held extends
-a selection — while the keysym stays the one that was pressed, exactly as `libkwl` does it, because
-re-resolving it would turn a repeating letter into its capital mid-stream.
-
-**The pointer is an arrow composited into the shadow after the cells, and erasing it is the harder
-half.** Nothing in the cell model knows the arrow is there, so the cells it covered are unchanged
-and the row diff finds nothing to repaint: this library puts those cells back into its own previous
-frame, which is what makes the next paint rewrite the pixels under the old arrow. A move is also
-carried past the nothing-changed exit, or the first arrow is never drawn and every later one is
-drawn where it was. Getting either wrong is a trail of arrows down the screen, one per place the
-hand stopped. The rows the arrow covers are marked owed **only when it moved** — a row the paint
-touched is already owed, a row it did not holds the same pixels it held last frame, and `owed` is
-per buffer and sticky. **The mask is drawn in code**, 11x18 scaled by a whole number of pixels to
-about one cell tall, with the outline computed from the mask's own eight-neighbourhood; the body is
-`KT_TEXT` and the outline `KT_BG`, so the arrow follows `kdos theme` and night light like
-everything else. **Not a hardware cursor plane** — see
-[known-gaps](../06-reference/known-gaps.md).
-
-**The virtual box is a whole number of cells.** Each screen contributes its own cell width and the
-trailing partial cell of its mode is padding no pointer can enter. Summing raw mode widths instead
-invents a column that belongs to no screen's slice, because `floor(sum(w)/cw)` can exceed
-`sum(floor(w/cw))`: the arrow vanishes in the last strip of the screen and the click lands on
-nothing.
-
-**A VT switch suspends libinput and resumes it.** The seat revokes every evdev descriptor when it
-deactivates a session and hands none back by itself. Keys that arrive while switched away still
-move the xkb state, or the modifiers held down when the switch fired are still held when the
-session returns. A release still travels raw while switched away, because a switch that swallowed
-one leaves the chord's modifier held down in a guest for ever.
-
-**This is the backend that fills the raw queue completely.** libinput reports the unaccelerated
-distance, the discrete detent count and every button's evdev code, and xkb compiles the layout the
-session's own environment names — so `poll_raw` and `keymap` are both real here and a view on this
-backend is the one that claims `KCON_VIEW_RAW`. The exception is touch: the gesture recogniser
-synthesises a cooked pointer event and no raw partner, so a finger reaches an embedded guest at the
-grid's resolution, which is the resolution a finger has.
 
 ## libkwl
 
@@ -1326,7 +964,7 @@ failure:
   and the surface outlives whatever the caller built it in.
 - **A lock surface must not receive the pre-configure commit**, which is a protocol error there.
 - **A Ctrl chord is the letter plus `KT_MOD_CTRL`**, never the control code xkb folds it into —
-  the tty decoder and libkkms both deliver the letter, and a chord table has one vocabulary.
+  the tty decoder delivers the letter, and a chord table has one vocabulary.
 - **A drop's offer is owned apart from the drag's**, because the leave that follows a drop arrives
   while the payload is still draining and a second drag may enter before it ends. One slot for both
   loses the first offer and destroys the second while it is live, so the next drag lands and does

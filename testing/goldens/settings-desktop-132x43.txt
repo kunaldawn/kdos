@@ -1,26 +1,13 @@
 +=[ Settings ]=====================================================================================================================+
-| Appearance  |>The console desktop ---------------------------------------------------------------------------------------------- |
-| Panel       | embed                       yes                                                                          v   login |
-|>Desktop     | scrollback                 < ##:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: >2000  login |
-| Hardware    | paste_guard                 yes                                                                          v   login |
-| Session     | What the role chords open ? console  ----------------------------------------------------------------------------- |
-| Input       | terminal                   sh                                                                                login |
-| Apps        | files                      mc                                                                                login |
-| Boxes       | mail                       aerc                                                                              login |
-| System      | browser                    lynx                                                                              login |
-|             | music                      rmpc                                                                              login |
-|             | agenda                     ikhal                                                                             login |
-|             | chat                       iamb                                                                              login |
-|             | writing                    micro                                                                             login |
-|             | The graphical desktop -------------------------------------------------------------------------------------------- |
-|             | desktop_icons               yes                                                                          v   login |
-|             | icons                       yes                                                                          v   login |
-|             | slit                        no                                                                           v   login |
-|             | window_memory               yes                                                                          v   login |
-|             | clipboard                   yes                                                                          v   login |
-|             | The terminal ? term.conf  ---------------------------------------------------------------------------------------- |
-|             | shell                      (unset)                                                                            live |
-|             | font                       (unset)                                                                            live |
+| Appearance  |>The desktop ? comp.conf  ----------------------------------------------------------------------------------------- |
+| Panel       | desktop_icons               yes                                                                          v   login |
+|>Desktop     | icons                       yes                                                                          v   login |
+| Hardware    | slit                        no                                                                           v   login |
+| Session     | window_memory               yes                                                                          v   login |
+| Input       | clipboard                   yes                                                                          v   login |
+| Apps        | The terminal ? term.conf  ---------------------------------------------------------------------------------------- |
+| Boxes       | shell                      (unset)                                                                            live |
+| System      | font                       (unset)                                                                            live |
 |             | columns                    < ############:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: >  80   live |
 |             | rows                       < ########:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: >  24   live |
 |             | scrollback                 < ##:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: >2000   live |
@@ -33,6 +20,19 @@
 |             | files                       no                                                                           v    live |
 |             | Screens ---------------------------------------------------------------------------------------------------------- |
 |             | Displays?                                                                                                        > |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
+|             |                                                                                                                    |
 |             |                                                                                                                    |
 |             |                                                                                                                    |
 |             |                                                                                                                    |

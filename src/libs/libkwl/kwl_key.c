@@ -93,12 +93,11 @@ int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 
 	/*
 	 * ONE VOCABULARY FOR A CTRL CHORD: the letter, with KT_MOD_CTRL in
-	 * `mods`. xkb folds Ctrl into a control code here and neither of the
-	 * other two backends does — libktui's terminal decoder unfolds 0x03
-	 * back to `c`, and libkkms reads the keysym, which xkb never folds —
-	 * so a chord written against either of those misses every Ctrl chord
-	 * under Wayland. The fold is undone rather than propagated, because
-	 * the event already carries the modifier.
+	 * `mods`. xkb folds Ctrl into a control code here and libktui's
+	 * terminal decoder does not — it unfolds 0x03 back to `c` — so a chord
+	 * written against that one misses every Ctrl chord under Wayland. The
+	 * fold is undone rather than propagated, because the event already
+	 * carries the modifier.
 	 */
 	if (cp < 0x20) {
 		uint32_t plain = xkb_keysym_to_utf32(sym);

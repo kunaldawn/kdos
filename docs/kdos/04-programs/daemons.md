@@ -92,12 +92,12 @@ already sourced the profile, which reads as the setting having done nothing. `TZ
 `:/etc/localtime`, the colon form that points musl at the same file, because that is the only value
 that cannot name different rules from the symlink beside it.
 
-**`autologin` is here for the same reason the timezone is**: `/etc/kdos/con.conf` is root's and the
-choice is an administrator's, which is what `wheel` already answers. **The account must be one a
-greeter would offer** — `kb_users()` is the one place that decides who may log in, and pointing
-autologin at a name it would not list is a machine that boots to a login nobody can complete.
-**Both keys are rewritten together**, because `greet` and `autologin` are one setting seen twice:
-`greet = no` with no autologin logs in whatever the default happens to be, and an autologin under
+**`autologin` is here for the same reason the timezone is**: `/etc/kdos/login.conf` is root's and
+the choice is an administrator's, which is what `wheel` already answers. **The account must be one
+that can log in** — `kb_users()` is the one place that decides who may, and pointing autologin at a
+name it would not list is a machine that boots to a login nobody can complete.
+**Off COMMENTS the key rather than emptying it**, because `kdos-login` asks for a password when it
+finds none and `autologin =` with nothing after it would be an account called `""`. An autologin under
 `greet = yes` is a line that does nothing and reads as though it does. A file that would not fit
 the rewrite buffer is refused rather than truncated — half a config is a machine whose login
 settings are whatever survived.
@@ -507,9 +507,8 @@ that appears not to exist — and two different runtime directories can land on 
 Not a `/run` daemon: **one tagged Wayland socket per box, per compositor**.
 
 **The path carries the display's name as well as the box's**, because the listener belongs to the
-compositor this process connected to — and the console desktop runs a `kdos-cage` per launched
-*application*, so several compositors are alive at once with a display name each. A path keyed on
-the box alone is the first launch's compositor for ever after: a later launch finds the file
+compositor this process connected to. A path keyed on the box alone would be the first launch's
+compositor for ever after: a later launch finds the file
 already there and connects through a compositor that is not the one it will run under, and may
 already be gone, so it is tagged by a listener its own compositor never bound. `kdos-appbox`
 derives the same component from the same variable, which is what keeps the two in step with nothing

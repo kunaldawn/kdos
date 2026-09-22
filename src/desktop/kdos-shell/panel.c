@@ -607,9 +607,7 @@ static void load_favorites(void)
  * THROUGH sh_launch, LIKE EVERY OTHER LAUNCH SURFACE. This row used to split
  * the Exec line on whitespace and fork the child itself, which carried both
  * faults launch.h names: `Exec=foot --title="Install KDOS" -- sudo kinstall`
- * reached foot as `--title="Install` with a stray `KDOS"` after it, and a
- * graphical application pinned here while the panel was docked on the console
- * session got no cage and no display.
+ * reached foot as `--title="Install` with a stray `KDOS"` after it.
  *
  * THE PULSE RUNS WHETHER OR NOT IT STARTED, because it says "the click
  * landed" — a row that looked identical before and after is one people click
@@ -643,33 +641,12 @@ static int panel_opacity = 80;
  */
 
 /*
- * IS THERE A PIXEL LAYER UNDER THE CELLS?
- *
- * On the console there is not: a cell IS a character, libkcon carries no
- * backdrop, and every plate, hairline and gradient this bar is drawn with
- * lands nowhere. The bar was left as text on a body one shade off the
- * desktop's own — no edge, no separators, and a Start button whose label is
- * drawn in the plate's colour and therefore vanished.
- *
- * $KDOS_CON AND NOT THE CHOSEN IMPLEMENTATION, because the answer is needed
- * BEFORE kdisp_init as well as after it — the bar's thickness depends on it
- * and a docked surface cannot change its thickness afterwards. It is the same
- * one question libkcon's own probe asks, so there is still one rule.
- */
-static int cells_only(void)
-{
-	const char *con = getenv("KDOS_CON");
-
-	return con && *con;
-}
-
-/*
- * How many of the bar's rows its own edge takes: one where there is no pixel
- * layer, none where the backdrop draws it between the cells.
+ * How many of the bar's rows its own edge takes: none, because the backdrop
+ * draws it between the cells.
  */
 static int bar_rule_rows(void)
 {
-	return cells_only() ? 1 : 0;
+	return 0;
 }
 
 /*
@@ -765,8 +742,8 @@ static int icons_on = 1;
  * into its own plate — which is what "Start is not aligned" was. So the test
  * has to be "can a picture be drawn at all here", asked in ONE place.
  *
- * sh_pic_cell_w() and not kdisp_cell_w(): a console surface has no pixel size
- * of its own and answers 1, which is not "no pictures" but "ask the display".
+ * sh_pic_cell_w() and not kdisp_cell_w(): a display with no pixel size of its
+ * own answers 1, which is not "no pictures" but "ask the display".
  */
 static int icons_drawable(void)
 {
@@ -1546,9 +1523,9 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 			/*
 			 * THE STATE STILL HAS TO BE SAID WHERE THERE IS NO
 			 * PIXEL LAYER. The accent underline recorded above is
-			 * the state cue and it does not exist on the console,
-			 * so a minimised group and a visible one were the same
-			 * button there. The column between the picture and the
+			 * the state cue and it is not replayed there, so a
+			 * minimised group and a visible one would be the same
+			 * button. The column between the picture and the
 			 * label is the chip's only spare cell and it is
 			 * exactly wide enough for the mark.
 			 */
@@ -2320,7 +2297,7 @@ static int clock_field(const char *fmt, int with_date)
 
 /*
  * The ≡ mark, or the word it stands in for — the fallback shell.h promises and
- * did not have. U+2261 is not one of the console font's 512 glyphs and is in
+ * did not have. U+2261 is not one of the VT font's 512 glyphs and is in
  * neither the vt nor the ascii tier, so anywhere but a full font the first cell
  * of the panel came out as `?`. Resolved ONCE, from the same caps
  * ktui_ramp_init picks its ramps with; the hit span is recorded from what was
@@ -4054,16 +4031,11 @@ static int draw_start(struct sh_state *sh, int compact)
 	 */
 	int ink = lit ? KT_SURFACE : KT_TEXT;
 	/*
-	 * KT_SURFACE under a pixel layer is not "no plate": it is the slot the
-	 * backdrop OWNS, so the plate start_plate() records shows through the
-	 * cells instead of being filled over. On a character grid there is
-	 * nothing to record into and the slot itself has to carry the three
-	 * states — the same ladder, in fills.
+	 * KT_SURFACE IS NOT "NO PLATE": it is the slot the backdrop OWNS, so
+	 * the plate start_plate() records shows through the cells instead of
+	 * being filled over.
 	 */
-	int plate = !cells_only() ? KT_SURFACE
-		    : start_menu_open() ? KT_WARN
-		    : sh->hover_start  ? KT_ACCENT
-				       : KT_DIM;
+	int plate = KT_SURFACE;
 
 	if (w > ktui_w / 3) {
 		lw = 0;
@@ -4084,9 +4056,9 @@ static int draw_start(struct sh_state *sh, int compact)
 	if (bar_h > 1 && !compact && lw) {
 		/*
 		 * THE NOMINAL CELL, the same pair the tile layer and the icon
-		 * layer are sized with. kdisp_cell_w() is 1 on the console —
-		 * a surface there has no pixel size of its own — and every
-		 * pixel figure below is derived from it, so the real cell
+		 * layer are sized with. A display with no pixel size of its own
+		 * answers 1 to kdisp_cell_w(), and every pixel figure below is
+		 * derived from it, so the real cell
 		 * would put a one-pixel mark beside a one-pixel word on a
 		 * canvas the display then upscales.
 		 */
@@ -4120,8 +4092,8 @@ static int draw_start(struct sh_state *sh, int compact)
 		 * and not as a button.
 		 *
 		 * `cell_h` here is sh_pic_cell_h() and not kdisp_cell_h(): a
-		 * console surface has no pixel size of its own and answers 1,
-		 * which would leave no air at all.
+		 * display with no pixel size of its own answers 1, which would
+		 * leave no air at all.
 		 */
 		int air = cell_h * scale / 5;
 
@@ -4233,14 +4205,9 @@ static int draw_start(struct sh_state *sh, int compact)
 				 * seen to be under the pointer or to have its
 				 * own menu up.
 				 *
-				 * `plate` is KT_SURFACE wherever the pixel
-				 * layer draws the plate, so the picture still
-				 * sits on the recorded plate there and nothing
-				 * fills over it; on the console it is the same
-				 * three-state ladder start_plate() draws in
-				 * pixels — quiet, accent under the pointer,
-				 * warn while the menu is up — and the button's
-				 * two renderings agree about its state.
+				 * `plate` is KT_SURFACE, which the pixel layer
+				 * owns, so the picture sits on the recorded
+				 * plate and nothing fills over it.
 				 */
 				ktui_draw_sprite(krect(0, bar_y0, tw_cells,
 						       bar_h),
@@ -4284,10 +4251,6 @@ static int draw_start(struct sh_state *sh, int compact)
 
 	if (lead < 0)
 		lead = 0;
-	/* And the ink is read against whatever the plate turned out to be:
-	 * KT_TEXT on the quiet fill, KT_SURFACE on a lit one. */
-	if (cells_only())
-		ink = plate == KT_DIM ? KT_TEXT : KT_SURFACE;
 	if (icon >= 0)
 		ktui_draw_sprite(krect(lead, bar_y0, mark_w, bar_h), icon,
 				 KT_SURFACE, plate);
@@ -4339,20 +4302,6 @@ static void draw_sep(int x, int h)
 	 * thing more quietly — and it is drawn short of the bar's full height
 	 * so it reads as a divider rather than as a wall.
 	 */
-	if (cells_only()) {
-		/*
-		 * THE GLYPH WHERE THERE IS NOTHING TO DRAW A HAIRLINE IN. A
-		 * cell is a character on the console, so the boundary is the
-		 * DOUBLE vertical — the stroke every KDOS window frame is
-		 * drawn in — and it costs the column the layout has already
-		 * reserved for it. Without this the bar's segments had no
-		 * boundary at all there.
-		 */
-		for (int r = bar_y0; r < bar_y0 + bar_h && r < h; r++)
-			ktui_draw_text(x, r, 1, ktui_glyph[KT_G_DVL],
-				       KT_MID, KT_SURFACE, KT_A_NONE);
-		return;
-	}
 	kch_px_vrule(x, 0, h);
 }
 
@@ -6448,11 +6397,11 @@ static void draw_taskbar(struct sh_state *sh)
 	 * THE BAR'S OWN EDGE, IN CELLS, LAST.
 	 *
 	 * Under a compositor this is one pixel of the backdrop between the
-	 * grid and the desktop — see panel_backdrop(). On the console there
-	 * are no pixels to put it in and KT_SURFACE is one shade off KT_BG, so
-	 * the bar had no boundary at all: it read as a region of the desktop
-	 * with words on it rather than as a piece of chrome. A row, in the
-	 * DOUBLE horizontal every KDOS window frame is drawn with, on the side
+	 * grid and the desktop — see panel_backdrop(). Where there are no
+	 * pixels to put it in, KT_SURFACE is one shade off KT_BG and the bar
+	 * would have no boundary at all: it would read as a region of the
+	 * desktop with words on it rather than as a piece of chrome. A row, in
+	 * the DOUBLE horizontal every KDOS window frame is drawn with, on the side
 	 * the desktop is.
 	 *
 	 * Drawn after the layout rather than before it because the layout is
@@ -7508,8 +7457,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 * panel started against an already-cleared desk has hidden
 		 * nothing and the column does nothing until there is something
 		 * on screen to hide, which is the same answer it gives for a
-		 * desk somebody else cleared. The session's own `show-desktop`
-		 * chord keeps its own memory the same way; see kdos-con.
+		 * desk somebody else cleared.
 		 */
 		static unsigned hidden[SH_MAX_TASKS];
 		static int nhidden;
@@ -7573,10 +7521,6 @@ static int64_t ah_hide_at;	/* when to collapse it, or 0 for "not armed" */
  * first time the mouse crossed the bottom row, which reads as a chord that
  * did not work.
  *
- * It is also what makes the chord mean the same thing on both desktops: the
- * console's own bar goes away on `Super+Shift+space` and takes its row out of
- * the work area, and a chord that hid one bar and left the other would mean
- * two different things on two machines.
  */
 static int bar_away;
 
@@ -7608,7 +7552,7 @@ static void ah_hide(void)
 }
 
 /* The edge. One row of shade in the accent — the vt tier has ░, so this reads
- * the same on the console font as it does under fcft. */
+ * the same on a VT font as it does under fcft. */
 static void ah_draw_edge(void)
 {
 	int w = ktui_w;
@@ -7851,11 +7795,11 @@ int panel_main(int argc, char **argv)
 	 * frame goes out with a hole where the bar should be.
 	 */
 	kdisp_set_backdrop(panel_backdrop);
-	/* AND THERE IS NO BACKDROP WHERE THERE ARE NO PIXELS. A display that
-	 * ignored the call leaves KT_SURFACE as an ordinary opaque slot, and a
-	 * bar that believed otherwise would clear the one colour it is drawn
-	 * on. See cells_only(). */
-	px_live = !cells_only();
+	/* THE BACKDROP OWNS KT_SURFACE FROM HERE, so the slot is cleared and
+	 * the plates show through the cells rather than being filled over. A
+	 * display that ignored the call leaves KT_SURFACE an ordinary opaque
+	 * slot and a `--dump` simply draws nothing into it. */
+	px_live = 1;
 	if (px_live)
 		kcell_set_slot_alpha(KT_SURFACE, 0);
 	if (sh_connect(&sh) != 0) {
@@ -7867,20 +7811,9 @@ int panel_main(int argc, char **argv)
 		return 1;
 	}
 	/*
-	 * WHERE A SPRITE'S PIXELS COME FROM, and this bar had no answer.
-	 *
-	 * On the console libkcon puts a picture's BYTES on the wire through a
-	 * callback the surface registers; without one it sends the metadata
-	 * alone and the display maps a slot it was never sent to -1, so the
-	 * cell becomes a space. Every icon this bar drew on the console was
-	 * therefore a blank that had still spent its cells — the Start mark's
-	 * three of them, which is why the word sat four columns into its own
-	 * plate. `kdos-peek` and `kdos-pix` have always called this; the one
-	 * surface that is on the screen the whole time did not.
-	 *
-	 * AFTER kdisp_init, and that is not tidiness: the console backend
-	 * clears its client state when it connects, so a callback registered
-	 * before this point is erased. See picture.c.
+	 * THE SPRITE TABLE'S EVICTOR AND BUDGET, and every surface that draws a
+	 * picture registers them. AFTER kdisp_init, because the budget is in
+	 * cells and the cell size is the display's. See picture.c.
 	 */
 	sh_pic_backend();
 
@@ -7890,9 +7823,9 @@ int panel_main(int argc, char **argv)
 	 * name each. Failing is a desktop with no pictures, which is the one it
 	 * had last week — every draw path here falls back to its glyph tier.
 	 *
-	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE. `kdisp_cell_w()` is 1 on
-	 * the console — a surface there has no pixel size of its own — so
-	 * rasterising at it made every icon a picture a few pixels across,
+	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE. A display with no pixel
+	 * size of its own answers 1 to `kdisp_cell_w()`, so rasterising at it
+	 * makes every icon a picture a few pixels across,
 	 * which is a blank cell by another route. sh_pic_cell_w() is the size
 	 * the wire is bounded by, and the display rescales to its own font.
 	 */
@@ -7933,10 +7866,7 @@ int panel_main(int argc, char **argv)
 			/*
 			 * THE BAR, AWAY AND BACK. Hiding drops the exclusive
 			 * zone, so the strip the panel was holding goes back
-			 * to the windows and every one of them re-fits — which
-			 * is the half that makes this the same verb as the
-			 * console's, where the row is taken out of the work
-			 * area.
+			 * to the windows and every one of them re-fits.
 			 */
 			bar_away = !bar_away;
 			if (bar_away)
@@ -7944,8 +7874,8 @@ int panel_main(int argc, char **argv)
 			else
 				ah_show();	/* bar_away is clear: it acts */
 			/*
-			 * A CHORD THAT CHANGES THE LAYOUT SAYS SO, in the
-			 * console's words. What is left is one row of shade,
+			 * A CHORD THAT CHANGES THE LAYOUT SAYS SO. What is
+			 * left is one row of shade,
 			 * and the chord that undoes it is not written anywhere
 			 * on the screen — a person who pressed this by
 			 * accident would have nothing to read.

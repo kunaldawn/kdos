@@ -163,10 +163,10 @@ enum { SWAP_NONE = 0, SWAP_FILE, SWAP_PART };
 typedef struct {
 	char keymap[64];
 
-	/* Whether the installed system asks who you are at tty1. Default on for
-	 * an install and off on the live medium: a machine with one account and
-	 * no password has nothing to ask, and one somebody installed does. */
-	int greet;
+	/* Whether tty1 logs the account in without asking. Default OFF for an
+	 * install and on for the live medium: a machine with one account and no
+	 * password has nothing to ask, and one somebody installed does. */
+	int autologin;
 	char tz[80];
 	char tz_label[64];
 

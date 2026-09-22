@@ -7,8 +7,8 @@
  * non-static in a second file.
  *
  * EVERY DECODER IS OPTIONAL. A build without one refuses that format rather
- * than failing to link, because the console desktop must come up on an image
- * that ships no decoders at all.
+ * than failing to link, because a surface must come up on an image that ships
+ * no decoders at all.
  */
 
 #include "kimg.h"

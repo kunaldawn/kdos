@@ -123,7 +123,6 @@ int kb_read_line_file(const char *path, char *buf, size_t cap);
  * turns that name into this path. Two spellings of one directory is a desktop
  * that offers a piece it cannot then draw.
  */
-#define KB_BACKGROUND_DIR "/usr/share/kdos/backgrounds"
 
 int kb_write_file(const char *path, const char *data);
 /* Replace a state file atomically: temp, fsync the file, rename, fsync the
@@ -297,8 +296,7 @@ int kb_toggle_set(const char *name, int on);
 /*
  * THE FIRST NAME IN $XDG_CURRENT_DESKTOP, which is the prefix a desktop's own
  * `<desktop>-mimeapps.list` is spelled with — lowercased, because the variable
- * is `KDOS-Console:KDOS` and the file the spec asks for is
- * `kdos-console-mimeapps.list`.
+ * is `KDOS` and the file the spec asks for is `kdos-mimeapps.list`.
  *
  * Returns 0 when the variable is unset or empty, and the caller then searches
  * only the plain lists: a machine with no desktop declared has no per-desktop
@@ -307,20 +305,15 @@ int kb_toggle_set(const char *name, int on);
 int kb_desktop_prefix(char *out, size_t n);
 
 /*
- * WHICH TERMINAL A `Terminal=true` ENTRY IS RUN IN, and it follows the desktop:
- * `kdos-term` inside a console session, `foot` under the compositor. Both take
- * `-e`, so the name is the whole of the difference.
+ * WHICH TERMINAL A `Terminal=true` ENTRY IS RUN IN: `foot`, under the
+ * compositor. Named here rather than at each call site so the answer cannot
+ * differ between two of them.
  *
- * IT IS NOT A PREFERENCE. `foot` is a Wayland client, so a console session that
- * wrapped an entry in it would resolve the right program and then fail to open
- * a window for it — which reads as the handler being wrong rather than the
- * terminal being unreachable.
- *
- * NULL WHERE THERE IS NEITHER SESSION, which is a bare virtual terminal, a
- * serial console or an ssh login. There is no emulator to open and nothing to
- * open it in, so the caller runs the program where it already is — which on
- * every one of those is a terminal. A caller that cannot is a caller with
- * nowhere to draw, and it must say so rather than name a window nobody gets.
+ * NULL WHERE THERE IS NO SESSION, which is a bare virtual terminal, a serial
+ * console or an ssh login. There is no emulator to open and nothing to open it
+ * in, so the caller runs the program where it already is — which on every one
+ * of those is a terminal. A caller that cannot is a caller with nowhere to
+ * draw, and it must say so rather than name a window nobody gets.
  */
 const char *kb_terminal(void);
 

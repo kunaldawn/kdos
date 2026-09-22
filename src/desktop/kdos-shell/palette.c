@@ -324,11 +324,10 @@ static void src_chords(void)
 			return;
 		snprintf(r->chord, sizeof(r->chord), "%s", c->chord);
 		/*
-		 * A ROW IS NAMED BY WHAT IT DOES, and on the two desktops that
-		 * is two different fields. The console's action IS the verb —
-		 * `tile`, `launcher` — while the compositor's is labwc's, so
-		 * nearly every row there is the word `Execute` and the thing a
-		 * person recognises is the command it runs. A list of forty
+		 * A ROW IS NAMED BY WHAT IT DOES, which is not the action
+		 * field: labwc's action is the word `Execute` on nearly every
+		 * row, and the thing a person recognises is the command it
+		 * runs. A list of forty
 		 * rows all called Execute is a list nobody can search.
 		 */
 		if (!strcmp(c->action, "Execute") && c->detail[0])

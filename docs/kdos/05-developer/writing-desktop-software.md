@@ -8,16 +8,15 @@ specification; this page is how to implement it.
 
 ## What a surface is
 
-A grid of character cells drawn by `libktui` onto one of four backends:
+A grid of character cells drawn by `libktui` onto one of three backends:
 
 | Backend | Used by |
 |---|---|
 | A terminal | Anything run at a prompt |
 | `libkwl` | Anything under the compositor |
-| `libkcon` | Anything on the console desktop — a window in `kdos-con` |
 | An offscreen buffer | `--dump`, and the committed reference frames |
 
-**Nothing above that line knows which.** That is what makes a program identical on a console, in a
+**Nothing above that line knows which.** That is what makes a program identical at a prompt, in a
 window and in a test fixture.
 
 ### Reaching a display
@@ -27,16 +26,15 @@ lifecycle — open, close, resize, autohide, cell size, scale, clipboard, cursor
 states **once** which implementations it links:
 
 ```c
-extern const KDispImpl kcon_impl;           /* libkcon */
-extern const KDispImpl kwl_impl;            /* libkwl  */
-const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
-const int kdos_disp_n = 2;
+extern const KDispImpl kwl_impl;            /* libkwl */
+const KDispImpl *const kdos_disp[] = { &kwl_impl };
+const int kdos_disp_n = 1;
 ```
 
-**Order is the policy.** The first whose `probe` succeeds is used, and the console goes first so a
-surface started *from* the console desktop attaches to it even on a machine that is also running a
-compositor. A probe must be cheap and free of side effects — `kcon_probe` tests `$KDOS_CON` and does
-not connect, because `kdisp_init` probes implementations it will not go on to use.
+**Order is the policy.** The first whose `probe` succeeds is used, and a probe must be cheap and
+free of side effects, because `kdisp_init` probes implementations it will not go on to use. A
+program that links none of them still compiles and draws through the terminal backend, which is
+what a `--dump` is.
 
 Then every call site is the same three lines regardless of server:
 
@@ -100,9 +98,9 @@ Three rules:
 | `SAVER` | The whole screen, above windows, taking nothing | See below |
 
 **A panel gives its thickness and nothing else.** `.cells` is the depth across the edge; the extent
-along it belongs to the display, on both backends — a layer surface is anchored to three sides and
-the console session docks it to the screen. Set `.cols`/`.rows` on a panel and the console attaches
-at that size instead, which is a bar the length of a window sitting where nobody put it.
+along it belongs to the display — a layer surface is anchored to three sides. Set `.cols`/`.rows`
+on a panel and a server may attach at that size instead, which is a bar the length of a window
+sitting where nobody put it.
 
 ### A toplevel must ask for its frame
 
@@ -117,12 +115,10 @@ and has no decoration to negotiate.
 **Ask for a size that leaves the frame somewhere to go**, and treat it as a default rather than a
 demand — the compositor's first configure carries the size it wants, and that wins.
 
-**And say the smallest grid you can compose on, in `.min_cols`/`.min_rows`.** It travels with the
-attach and the console session honours it: a window given fewer cells than it needs is one that
-draws nothing at all, leaving the cells under it carrying the last program's picture. Told the
-minimum, the session hands the window that size and lets it hang off the edge. Zero is no minimum,
-which is right for anything that reflows to whatever it is given. It is not a licence to drop the
-surface's own `ktui_toosmall` check — a Wayland compositor is told the same numbers and may ignore
+**And say the smallest grid you can compose on, in `.min_cols`/`.min_rows`.** A window given fewer
+cells than it needs is one that draws nothing at all. Zero is no minimum, which is right for
+anything that reflows to whatever it is given. It is not a licence to drop the surface's own
+`ktui_toosmall` check — a compositor is told the same numbers and may ignore
 them.
 
 ### Bind the layer shell at the right version
@@ -367,22 +363,6 @@ Three rules:
 **A tile is bounded to a modest number of cells**, because the sub-cell coordinate is a few bits
 each way. A page-wide chart is past that and must be drawn as cells — see
 [kdos-res](../04-programs/kdos-res.md#the-charts).
-
-### A picture on the console needs its bytes offered
-
-`libkcon` links no pixel library and must not — it is linked by `kdos-con`, which links none either.
-So a sprite crosses to the display as **metadata** unless the surface registers
-`kcon_set_sprite_bits()`, which hands libkcon the ARGB the picture already holds.
-
-**Register it AFTER `kdisp_init()`, never before.** The console backend clears its whole client
-state when it connects, so a callback registered earlier is erased — and the failure does not look
-like a missing picture: the session maps a slot it was never sent to −1 and the cell becomes a
-**space**, so the pane is blank rather than showing the fallback codepoint.
-
-**The cell's pixel size is nominal there.** A console surface has no pixels of its own — the display
-it is eventually drawn on has them and scales what arrives — so `kdisp_cell_w()` answers nothing
-usable and a picture is rendered at a fixed nominal cell, which bounds what goes on the wire without
-pretending to know the font at the other end. `kdos-term` and `kdos-peek` take the same two numbers.
 
 ### Two font traps, both silent
 

@@ -20,9 +20,8 @@
 #
 # THE INTERFACE IS A TERMINAL MENU AND THE PICTURE IS A WINDOW. baresip drives
 # itself from the terminal it was started in; the far end's video goes in a
-# window of its own, which on the console means the kiosk kdos-cage forks for
-# any program that draws pixels. The gtk menu and every other toolkit front end
-# stay off by rule.
+# window of its own, under the compositor. The gtk menu and every other toolkit
+# front end stay off by rule.
 #
 # THE PICTURE HAS A PLACE TO GO, AND `sdl2` IN `depends` IS THE WHOLE OF IT.
 # `modules/sdl` builds itself whenever pkg-config answers for `sdl2` and

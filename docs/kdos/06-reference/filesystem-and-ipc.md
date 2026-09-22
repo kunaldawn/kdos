@@ -14,7 +14,6 @@ to each other.
 | `appstore/catalogue` | Every application, as a chain of apt packages (under `/usr/share/kdos`) | no |
 | `packd.conf` | The pack daemon's retention | no |
 | `zram.conf` | Compressed-swap size and algorithm | no |
-| `con.conf` | The console session: which program is each thing, and the idle steps | no |
 | `menu.conf` | The routes — a name a script can hold for every place in the system | no |
 | `timers.d/` | The per-user timers the session arms | no |
 | `mountd.conf` | Removable-media options. **Not shipped** — create it | no |
@@ -70,16 +69,9 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.local/share/applications/` | Launchers for applications you installed |
 | `~/.local/bin/` | Shims for applications you installed |
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
-| `~/.local/state/kdos/con-font` | The console screen's font name, once a font chord has stepped it. An **override**: written by `kdos-view` only after the font has loaded, removed by `font-reset`, and beaten by `--font` and `$KDOS_CON_FONT` |
-| `~/.local/state/kdos/con-modes` | Which mode each console screen was left wearing — one `<connector> <W>x<H>@<mHz>` line. Written by `kdos-view` when `kdos-display`'s countdown is **kept**, never on an apply, and never before the mode took. A **geometry** and not an index, matched against what the screen publishes at the next login; no match leaves it on the monitor's preferred mode |
 | `~/.local/state/kdos/toggles/` | One empty file per switch that is on — `stay-awake`, `night-light`, `dnd` |
-| `~/.local/state/kdos/con/<name>.session` | What a console session had open: one readable row per window — kind, workspace, rectangle, the **name** to reopen it by, a flag column and the title. Written when the session ends and read when one of that name starts, with `restore = yes`. **Never a command line**: a row names `con.conf`'s `terminal`, a role key such as `files`, one of this desktop's own surface keys, or an app id for the pack store, and something else resolves it |
-| `~/.config/kdos-con/layouts/<name>` | An arrangement with a name: the same rows as the file above, written by `kdos con layout save` and opened by `kdos con layout load`. A load opens what is not already open and closes nothing |
-| `/usr/share/kdos/layouts/<name>` | The three shipped arrangements — `work`, `write`, `talk` — read when the user has no file of that name. A person's own copy replaces one rather than merging with it |
 | `~/.local/state/kdos/winpos` | Where the **compositor** last saw each application: `app_id x y w h workspace shaded`, in **pixels**, most recent first and capped at 200. Read at map and written at unmap, with `comp.conf`'s `window_memory` |
-| `~/.local/state/kdos/con/geometry` | The same idea for the **console**: `prog<TAB>workspace<TAB>x y w h<TAB>tiled`, in **cells**, one line per program and workspace. A separate file from the one above and it has to be — those rectangles are pixels and these are cells, so a shared row would put every window back at a size taken from the other desktop's units. With `con.conf`'s `remember` |
 | `~/.local/state/kdos/con/<name>.<n>.text` | That session's terminal output, one file per restored terminal, with `restore_scrollback = yes`. Put back above the fresh prompt under a line saying whose it is |
-| `~/.config/kdos-con/scripts/<letter>` | A recorded script: one line per key — the chord's name, its modifiers, its key number and the gap in milliseconds before it. Directory 0700, files 0600. **Keys into a window and never a command**: there is no field that could name a program |
 | `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
 | `~/.cache/kdos/theme` | **One word**: the accent name. The entire theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The retinted wallpaper the compositor prefers |
@@ -102,13 +94,10 @@ Every key is documented in [Configuration](configuration.md).
 | `kdos-panel.overflow` | What the panel has hidden behind the chevron |
 | `kdos-comp.log` | The compositor's output |
 | `kdos-appbox.trace` | Stage timings for the last launches |
-| `kdos/` | The console desktop's sockets, mode **0700** |
-| `kdos/<name>.sock` | A console session's **surface** socket |
 | `kdos/<name>.view` | The same session's **view** socket |
 | `kdos/<name>.windows` | What has a window there, one app id per line |
 | `kdos/nowplaying` | One line naming what is playing, written by `kdos-mpctl watch` |
 | `kdos/screencast.pid` | The pid of the running `kdos-record`, while one is running |
-| `kdos-con.log` | The console session's output |
 
 ## Sockets
 
@@ -293,67 +282,6 @@ that. The frame loop is what this must never slow.
 | `dismiss all` | The same for every toast on the screen |
 | `raise` | The last one dismissed, back on the screen — **taken out of the history**, so a notification is on screen or in the centre and never both. It comes back without its buttons: the notification it came from is closed and its actions belong to the program that sent it |
 
-### `$XDG_RUNTIME_DIR/kdos/<name>.sock` and `.view` — a console session
-
-Not a line protocol: this pair is the console desktop's own framed protocol, and the two sockets
-exist so that **only one of them is safe to forward**.
-
-| Socket | Admits | May leave the machine |
-|---|---|---|
-| `<name>.sock` | Surfaces — programs that place windows | **never** |
-| `<name>.view` | Views — a display, which holds no window state | over ssh, with `kdos con forward` |
-
-**Which socket a client reached decides what it is allowed to be.** The kind in its handshake is a
-claim and is overridden; a forwarded socket that admitted surfaces would give the far end the right
-to place windows in your session, which is a different thing entirely from showing you yours.
-
-`$KDOS_CON` names the **surface** socket, so a program started inside the session inherits an
-address that opens a window. A view is told its socket on the command line.
-
-**Three kinds of client, and what each is told.** A *surface* places a window and hears about its
-own. A *view* is a display and is sent frames. A *shell* is the panel and its family, and it alone
-is sent the **window list** — `TOPLEVEL_ADD`, `TOPLEVEL_STATE`, `TOPLEVEL_REMOVE` and `WORKSPACE`,
-which carry on the console what `wlr-foreign-toplevel-management` and `ext-workspace-v1` carry on
-Wayland. A program with a window in the session has no business knowing what else is open, and
-because the surface socket never leaves the machine a forwarded display cannot ask either.
-
-The two requests back — `ACTIVATE` and `CLOSE_REQUEST` — are **requests**. The session owns the
-stack and every window's lifetime, so a panel says which window it means and reads the answer out
-of the list it is then sent; a panel that raised a window itself would be a second implementation of
-raising.
-
-**There is no "send me the list" message, deliberately.** A client that could ask could ask
-repeatedly. The session notices a shell attaching and sends the list again, which is the same shape
-as the sprite resend a newly attached view gets.
-
-**A shell may also ask the session to run a graphical application** — the one message on this socket
-that is not about a window. The answer is `0` when it became an ordinary window, the terminal's
-number when it was pinned to one, and a refusal when it could not be started at all. It is
-restricted to shell-kind clients the way "detach every view" is, and for the same reason: not because it is a privilege boundary — a client that reached this socket is
-already the session's own user and can fork and exec whatever it likes — but so the message has one
-caller and one meaning.
-
-The directory is created `0700` by the session server, and one that already exists with the wrong
-mode or owner is **a refusal to start, not a `chmod`** — if it is not ours, quietly taking it over
-puts the socket in a path another account chose, after which the peer-credential check is guarding
-the wrong door.
-
-**A third socket, `<name>.a11y`, is the reader's.** Same directory, same mode, same
-peer-credential check; what differs is what reaching it grants. Its clients are views that may not
-drive, and they alone are sent the announcements a widget makes — so a screen reader is a client
-with the text of the screen and what the desktop says about it, and nothing else.
-
-**Descriptors cross one channel, and it is neither of these.** An embedded application's
-compositor is a child of the session, and a mapping for each window its guest maps comes back over
-a `socketpair` created before the fork — never a path anything can connect to. That is what keeps both published protocols
-descriptor-free, and descriptor-free is what lets the view socket be forwarded.
-
-**There is no TCP listener.** A remote desktop is a forwarded unix socket and inherits ssh's
-authentication, which is why it needs none of its own; the self-test asserts the absence by
-grepping these sources for `AF_INET`. `remote = no` in `con.conf` is enforced by `kdos con forward`
-refusing to build the tunnel — a complete refusal rather than a check something could connect
-around.
-
 ### `$XDG_RUNTIME_DIR/kdos-clip.sock` — the clipboard
 
 The daemon owns the history and the front end draws it — the same split notifications use.
@@ -361,21 +289,6 @@ The daemon owns the history and the front end draws it — the same split notifi
 **A socket path that does not fit the address structure is refused, not truncated.** Truncation
 binds a socket nobody asked for and answers the next start with an address-in-use error for a file
 that appears not to exist — and two different runtime directories can land on one socket.
-
-### `$XDG_RUNTIME_DIR/kdos/<name>.windows`
-
-One application id per line, for every mapped, non-minimised window in that console session.
-Rewritten only when the set changes — a desktop that rewrote a file every frame would be doing IO
-for as long as it is switched on.
-
-It exists for `kdos-box gc`, which must know whether a box still has something on screen before it
-stops it. On Wayland that is a question for the compositor's command socket; here it is a file,
-because teaching `kdos-appbox` this session's protocol would pull `libkcon` and the whole cell model
-into a binary that is on every image.
-
-**"Cannot tell" is not "no window".** `box_has_window` answers 1, 0 or **-1**, and the collector
-leaves a box alone on -1. A collector that read the third as the second would stop every warmed box
-on a desktop it did not know how to question.
 
 ## Files used as an interface
 
@@ -391,7 +304,7 @@ Not configuration, and not storage: these are how one program tells another some
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once per window | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
 | `$XDG_RUNTIME_DIR/kdos-appbox.trace` | The launcher | You |
-| `$XDG_RUNTIME_DIR/kdos/screencast.pid` | `kdos-record`, while its pipeline runs | The next `kdos-record`, which stops that one, and the console bar, which draws its lamp. **Both check the pid is alive** — a marker left by a crash is not a recording |
+| `$XDG_RUNTIME_DIR/kdos/screencast.pid` | `kdos-record`, while its pipeline runs | The next `kdos-record`, which stops that one, and the panel, which draws its lamp. **Both check the pid is alive** — a marker left by a crash is not a recording |
 
 ## Protocol conventions
 
@@ -403,10 +316,6 @@ Shared by every daemon here:
   and not the socket's mode.
 - **No verb takes a path.** Identifiers come from a list the daemon published.
 - **A fixture mode** on every daemon prints what it *would* do and does nothing.
-
-The console session's protocol shares only the third of these: authorisation is the peer's real
-user id. It is framed rather than line-based, it is stateful, and **it passes no file
-descriptors** — which is what lets the whole of it survive being forwarded down an ssh channel.
 
 ## Environment variables
 

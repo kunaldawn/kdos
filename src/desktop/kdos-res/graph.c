@@ -51,8 +51,7 @@ static int grid_period(void)
  * must not slide its history sideways as it fills. Whole rows are the full
  * block and the top row of each column is the ramp glyph for what is left
  * over, so the resolution is `rows * ktui_ramp_levels()` — eight levels a row
- * in a modern terminal, three on the console font, and the shape survives
- * both.
+ * in a modern terminal, three on a VT font, and the shape survives both.
  */
 static void graph_cells(KRect r, const KprHist *h, double vmax, int colour,
 			int bg)

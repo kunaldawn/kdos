@@ -327,8 +327,8 @@ static void wav_sync_len(void)
 /*
  * `Default` first and always: it is the row that works while the session's
  * PipeWire holds the card, through pipewire-alsa. A `hw:` device is the one
- * that answers when nothing else has the card, which is the console and the
- * rig.
+ * that answers when nothing else has the card, which is a bare terminal and
+ * the rig.
  */
 static void scan_inputs(void)
 {

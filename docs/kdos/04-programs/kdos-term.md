@@ -1,7 +1,7 @@
 # kdos-term
 
-The terminal. One binary that is an `xdg-toplevel` window under `kdos-comp` and a cell surface
-under `kdos-con`, because both desktops are the same character grid.
+The terminal: an `xdg-toplevel` window under `kdos-comp`, and a picture in somebody else's terminal
+under `--tty` or `--dump`.
 
 It ships **beside** `foot` and changes nothing: `foot` is still the default terminal in `rc.xml`,
 `menu.xml`, the `.desktop` files, `favorites` and `tmux.conf`. `foot` is battle-tested and this is
@@ -17,9 +17,8 @@ not, which is the trade [`kdos-res`](kdos-res.md) already made beside `btop`.
 | `libktui` | The cell grid, the sprite table and its budget |
 | `libkcell` | The one scale-and-cut from a decoded picture into sprite tiles |
 
-Naming `kwl_impl` is what links the Wayland half in, and naming `kcon_impl` is what makes the same
-source a console surface. `libkdisp` picks the first whose probe succeeds, so the console is tried
-before Wayland and a program started inside a session finds its own.
+Naming `kwl_impl` is what links the Wayland half in; `libkdisp` picks the first implementation
+whose probe succeeds, and a `--tty` or `--dump` run opens no display at all.
 
 It draws **no chrome of its own beyond one frame**. Under the compositor the server-side decoration
 is that frame, so the drawn one is suppressed; on a tty and in a dump nothing else draws one and
@@ -31,7 +30,7 @@ grid of text and a plate, a header band or a button row would each cost it a row
 A caller that writes `\x1b[A` for an arrow is wrong the moment a program sends DECCKM, which `less`
 does on its first screen. So a key goes in as a **keysym and a modifier set** and `libkvt` decides
 what bytes it becomes — application cursor mode, keypad mode and the modifier encoding all live
-there, and there is one implementation of them for both this terminal and `kdos-con`'s own windows.
+there, and there is one implementation of them for every consumer of the state machine.
 
 `TERM` is `xterm-256color`, because that is what the state machine implements and what ncurses
 already ships an entry for. A private `TERM` breaks the first time somebody types `ssh`.
@@ -55,9 +54,8 @@ Answering is what makes every later mode safe to add.
 editor that is not told it lost the focus does not reload a file changed underneath it, so its next
 write is over somebody else's work — nearer to data loss than to polish. It is silent until asked,
 because a terminal that wrote `CSI I` unasked would put two stray characters into every program that
-never requested them. Both desktops report it, from a diff against the previous turn of the loop
-rather than an event, because each display server already holds the answer and neither delivers it
-as one.
+never requested them. It is reported from a diff against the previous turn of the loop rather than
+an event, because the display server already holds the answer and does not deliver it as one.
 
 **Synchronized output** (`DECSET 2026`) holds the frame while the child draws it, so a program that
 brackets its screen is never seen half-drawn — which on a slow link is the difference between a
@@ -66,19 +64,12 @@ otherwise freeze its window forever and the terminal cannot tell that from a pro
 time. The rule lives in `libkvt` rather than in each renderer, because two copies of a timeout is
 two timeouts.
 
-**Both terminals honour it, and they honour it the same way**, so a program need not know which one
-it is talking to. This one owns a grid per window and holds a frame by not drawing it; the console
-session composes one grid for every window on a frame paced by the screens attached to it, with
-16 ms as the widest that period gets, so it holds a window by composing that window from
-**its last whole frame** while the rest of the desktop composes normally — see
-[kdos-con](kdos-con.md#terminals). The difference is invisible to the program: the bracket it wrote
-is what decides, and the same 150 ms watchdog releases both.
+It owns a grid per window and holds a frame by not drawing it, released by a 150 ms watchdog.
 
 **Every KDOS surface brackets its own frames the same way**, when the terminal it is running in
 answers the probe — `libktui` asks with DECRQM and emits nothing where the answer is "not
 recognised". Inside this terminal the answer is yes, so a surface's frame is held here by the path
-above, and a surface drawing into a terminal window of the console session is held there by that
-session's — the same bracket, answered by both.
+above.
 
 **The primary device attributes report sixel.** `chafa`, `img2sixel`, `lsix`, `timg` and
 `mpv --vo=sixel` all send `CSI c` and read parameter `4` as sixel support, so a reply without it
@@ -181,13 +172,9 @@ it stopped being a thought experiment the moment a clipboard could arrive from a
 A payload with a newline, a carriage return or any other control byte except tab is held back. A tab
 is not held: it is what a person pasting a table has, and it submits nothing.
 
-`kdos-term` asks with a dialog naming how many lines would run. **The console session cannot** — it
-does not own the toolkit of the window the paste is going into — so there the first attempt is
-refused, the taskbar says why, and pressing the chord again within five seconds means it. A
-confirmation nobody can see would be a refusal with no way past it.
-
-`paste_guard = no` in `term.conf` or `con.conf` turns it off, which is what somebody pasting all day
-into a program that never enables bracketing will want.
+`kdos-term` asks with a dialog naming how many lines would run. `paste_guard = no` in `term.conf`
+turns it off, which is what somebody pasting all day into a program that never enables bracketing
+will want.
 
 ## Selection and the two clipboards
 
@@ -245,14 +232,8 @@ resized exactly as it is when the window is. **A picture already on the screen g
 program sends it again** — every tile was scaled to the old cell, and only the program that
 transmitted it can say what it should look like at the new one.
 
-**Under `kdos-con` the chord says where the control is instead.** A console window has no pixels of
-its own: the cell belongs to the view, the protocol carries no per-surface font, and the session
-refuses a font from anything but the shell surface precisely so that one window cannot resize every
-other window on the desktop. The chord opens a message naming `Super+=`, `Super+-` and `Super+0`,
-which are [the console's own font chords](kdos-con.md) and do reach the screen. It is neither eaten
-in silence nor passed down, because a child acting on it would be acting on a size nothing in this
-window can change. In a `--tty` run the key is left alone and reaches the child: there the font
-belongs to the terminal this one is running inside.
+In a `--tty` run the key is left alone and reaches the child: there the font belongs to the
+terminal this one is running inside.
 
 ## Hyperlinks
 
@@ -304,8 +285,8 @@ things to draw.
 
 **It is drawn on the frame's left border, where there is one.** A terminal has no gutter: every
 column belongs to the child, so the only column this program owns is its own border. An undecorated
-window and every window in the console session have one; a window the compositor decorates does
-not, and gets no dot — the chords still jump. The colour carries the meaning, a bullet in the error
+window has one; a window the compositor decorates does not, and gets no dot — the chords still
+jump. The colour carries the meaning, a bullet in the error
 slot for a command that failed and in the accent for one that did not, with a dot where nothing has
 finished.
 
@@ -394,12 +375,11 @@ A frame is a picture with a delay after it, which is how the protocol describes 
 holds. `a=f` transmits one — whole, or a rectangle composed onto an earlier frame at an offset —
 and `a=a` runs it, stops it, or sets how many times round.
 
-**A frame that changes no cell still has to reach the display.** Over the console protocol the
-client sends a sprite when the table's put counter for that slot moved — not when the pointer did,
-because the evictor frees the previous frame at the moment the next is registered and the allocator
-hands the same block straight back. On the display side the cells are byte-identical for the same
-reason, so the view forces that frame rather than letting its diff drop it. Both are the same fact
-seen from two ends: a sprite cell encodes the slot, not the picture.
+**A frame that changes no cell still has to reach the screen.** The sprite table's put counter for
+a slot is what moved — not the pointer, because the evictor frees the previous frame at the moment
+the next is registered and the allocator hands the same block straight back. A sprite cell encodes
+the slot, not the picture, so a diff over the cells alone would drop every frame of an animation
+after the first.
 
 **A FRAME REPLACES THE PICTURE UNDER THE SAME SPRITE KEY**, so the screen is never rewritten. The
 cells naming those slots go on naming them and only the pixels behind them change. An animation
@@ -432,7 +412,7 @@ name. Every key has a working default and the file need not exist.
 | `images` | `yes` | Decode pictures at all |
 | `image_max` | 1024 | The cap on one image payload, in kilobytes |
 | `image_cells` | 200 | The widest and tallest a picture may be, in cells |
-| `opacity` | 100 | How much of the window's own background it keeps, per cent, 20–100. Below 100 the desktop shows through the cells the terminal has not drawn on, and the ink is never mixed. **Only under a compositor**: on the console the session composes every window into one grid, and `con.conf`'s `window_opacity` is where the same request is made; on a `--tty` there is nothing behind the window at all |
+| `opacity` | 100 | How much of the window's own background it keeps, per cent, 20–100. Below 100 the desktop shows through the cells the terminal has not drawn on, and the ink is never mixed. **Only under a compositor**: on a `--tty` there is nothing behind the window at all |
 
 `SIGHUP` re-reads the file and the accent, which is how `kdos theme` retints a running window —
 something `foot` cannot do at all.
@@ -453,11 +433,11 @@ moment it emits an OSC; the app id is the desktop's, and it is what a taskbar ro
 and a run-or-launch chord all key on. It defaults to `kdos-term`, which is right when the terminal
 *is* the application; a terminal running somebody else's program is given that program's name, the
 same way `foot --app-id` is. `sh_term_argv_in()` passes both to whichever emulator it named, so a
-`Terminal=true` entry opens a window that says what is running in it on either desktop.
+`Terminal=true` entry opens a window that says what is running in it.
 
 `-D`/`--working-directory` enters `DIR` before the fork, so the child and everything it starts
 begin there. It is spelled as `foot` spells it on purpose: every caller in `kdos-shell` names the
-terminal through one helper and passes the same flags to whichever of the two it named.
+terminal through one helper and passes the same flags whichever program that helper named.
 
 `--dump` runs the child to completion, consumes everything it wrote and prints the cells. That is
 the whole terminal short of a display, which is why the self-test's goldens are taken through it.
@@ -465,8 +445,8 @@ the whole terminal short of a display, which is why the self-test's goldens are 
 The exit status is the **child's**: a terminal opened to run one command is a wrapper round it.
 
 **A child that dies leaves a clean terminal.** A program killed before it could tidy up leaves its
-modes set, and the window outlives it on both desktops — the console keeps a terminal window showing
-how its program finished, and this one draws one more frame before it goes. So `kvt_term_reset_modes()`
+modes set, and the window outlives it — this one draws one more frame before it goes, showing how
+its program finished. So `kvt_term_reset_modes()`
 runs the moment the death is seen: bracketed paste off, mouse reporting off, focus reporting off,
 synchronized output off, and **the primary screen back with its cursor where DECRST 1049 would have
 put it**. A `vim` killed with `-9` would otherwise leave its own buffer on the screen, on an
@@ -490,7 +470,6 @@ It has **not** been through a rig pass against the catalogue's full-screen progr
 
 ## See also
 
-- [kdos-con](kdos-con.md) — the console desktop it is a surface on
 - [kdos-comp](kdos-comp.md) — the compositor it is a window under
 - [The C libraries](../05-developer/c-libraries.md) — `libkvt`, `libkimg` and the sprite table
 - [Known gaps](../06-reference/known-gaps.md) — what a picture still cannot do

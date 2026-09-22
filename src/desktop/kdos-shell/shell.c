@@ -521,7 +521,6 @@ int sh_desktop_entry(const char *id, struct sh_entry *out)
 		kb_strlcpy(out->size, kl.size, sizeof(out->size));
 		out->terminal = kl.terminal;
 		out->floating = kl.floating;
-		out->cells = kl.cells;
 		return 0;
 	}
 	return -1;
@@ -599,9 +598,7 @@ static void task_box(struct sh_task *t)
  *
  * The list is short and the panel redraws on a change rather than on a timer,
  * so a copy of at most sixty-four rows is cheaper than a cache to keep in step
- * with the one the display server already keeps. It is also the only shape
- * that works on both desktops: the console publishes whole rows and announces
- * no per-window events for a listener to accumulate.
+ * with the one the display server already keeps.
  *
  * THE RESOLVED FIELDS ARE CARRIED OVER, not recomputed. `name`, `did` and
  * `box` cost a desktop-entry lookup and a read of the box registry, and they
@@ -618,9 +615,9 @@ static void task_box(struct sh_task *t)
  * that listed every window would put the same buttons on both screens and a
  * click on either would raise a window somewhere else. `w.here` is the
  * display server's answer and it is 1 wherever there is no answer — the
- * console, which composes every screen into one grid, and a compositor that
+ * display that composes every screen into one grid, and a compositor that
  * has not yet said where a window is — so the unfiltered list is what a
- * single screen and the console both get.
+ * single screen gets.
  */
 void sh_tasks_refresh(struct sh_state *sh)
 {
@@ -789,9 +786,8 @@ static void reg_global(void *data, struct wl_registry *r, uint32_t name,
 {
 	struct sh_state *sh = data;
 	(void)version;
-	/* The window list is libkdisp's on both desktops; only the workspace
-	 * pager is still asked for here, because ext-workspace has no console
-	 * equivalent and the session draws its own pager there. */
+	/* The window list is libkdisp's; only the workspace pager is still
+	 * asked for here, because libkdisp does not model one. */
 	if (!strcmp(iface, ext_workspace_manager_v1_interface.name)) {
 		sh->ws_mgr = wl_registry_bind(
 			r, name, &ext_workspace_manager_v1_interface, 1);
@@ -814,7 +810,7 @@ int sh_connect(struct sh_state *sh)
 	 * The window list is what a panel IS. Without it there is a clock and
 	 * a row of workspace numbers, which is not worth a layer-shell surface
 	 * and an exclusive zone taken off every other window. Asked of
-	 * libkdisp, so the answer is the same question on both desktops.
+	 * libkdisp, so there is one answer to it.
 	 *
 	 * SUPPORTED, NOT NON-EMPTY. A freshly booted session has no windows
 	 * open and a panel must still start on it.
@@ -824,10 +820,10 @@ int sh_connect(struct sh_state *sh)
 	sh_tasks_refresh(sh);
 
 	/*
-	 * The workspace pager is the compositor's alone. NULL on the console,
-	 * and unguarded that is a null dereference from a chord a person can
-	 * press: `kdisp_init` succeeds there because the console backend
-	 * probes first, so a Wayland display asked for afterwards is simply
+	 * The workspace pager is the compositor's. NULL where the compositor
+	 * does not offer ext-workspace, and unguarded that is a null
+	 * dereference from a chord a person can press: `kdisp_init` succeeds
+	 * anyway, so a manager asked for afterwards is simply
 	 * absent. The session draws its own pager on that desktop.
 	 */
 	sh->display = kwl_display();
@@ -845,9 +841,9 @@ int sh_connect(struct sh_state *sh)
  * TAKE IN WHAT THE SERVERS SAID, once per turn.
  *
  * The window list is re-read rather than accumulated from events, and it is
- * re-read HERE rather than from a callback inside a pump: on the console the
- * only pump that reads the socket is the one that also delivers key events, so
- * a pump added for the list would swallow the panel's input. The refresh is a
+ * re-read HERE rather than from a callback inside a pump: the pump that reads
+ * the socket is the one that also delivers key events, so a pump added for the
+ * list would swallow the panel's input. The refresh is a
  * copy of at most sixty-four short rows and carries the resolved fields over,
  * so it costs no desktop-entry lookup on a frame where nothing changed.
  */
@@ -999,15 +995,9 @@ void sh_spawn(const char *const argv[])
 }
 
 /*
- * THE TERMINAL EMULATOR ON THIS DESKTOP, which is not the same program on the
- * two of them. foot is a Wayland client and there is no compositor on the
- * console path to be one under; kdos-term is a cell surface and opens as a
- * window on either. $KDOS_CON is the console session's surface socket and is
- * set by the session for everything started inside it, so its presence is the
- * question "am I on the console desktop" already answered.
- *
- * Both accept `-e CMD` and `-D DIR` with the same meaning, so a call site
- * picks the name here and needs no other branch.
+ * THE TERMINAL EMULATOR ON THIS DESKTOP, named in one place so a call site
+ * needs no branch of its own. `kdos-term` accepts the same `-e CMD` and
+ * `-D DIR`, so swapping the name here is the whole change.
  */
 /*
  * THE WALL CLOCK, AND THE ONE PLACE $KDOS_PANEL_NOW IS READ.
@@ -1030,9 +1020,7 @@ time_t sh_wall(void)
 
 const char *sh_term(void)
 {
-	const char *con = getenv("KDOS_CON");
-
-	return (con && *con) ? "kdos-term" : "foot";
+	return "foot";
 }
 
 /*
@@ -1160,19 +1148,16 @@ void sh_term_cmd(char *out, size_t n, const char *cmd)
 
 /*
  * THE PROGRAM THAT IS THE SESSION, and killing it is what logging out means.
- * The compositor is the graphical session and `kdos-con` is the console one;
- * both end on SIGTERM and tear down in order, and neither publishes its pid,
- * so an exact-name `pkill` is the route. Exact, not a pattern: a pattern that
- * matched `kdos-con` would match `kdos-con-login` and `kdos-con-start` too.
+ * The compositor ends on SIGTERM and tears down in order, and it publishes no
+ * pid, so an exact-name `pkill` is the route. Exact, not a pattern: a pattern
+ * would match anything else carrying the name.
  *
- * Both names are inside the 15 characters `pkill -x` compares against, which
- * is the length at which an exact-name kill silently matches nothing.
+ * The name is inside the 15 characters `pkill -x` compares against, which is
+ * the length at which an exact-name kill silently matches nothing.
  */
 const char *sh_session_prog(void)
 {
-	const char *con = getenv("KDOS_CON");
-
-	return (con && *con) ? "kdos-con" : "kdos-comp";
+	return "kdos-comp";
 }
 
 /*

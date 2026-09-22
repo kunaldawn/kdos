@@ -2565,7 +2565,7 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	/*
 	 * THE SWITCH FIRST, AND FOR THE RELEASE TOO. Everything below resolves
 	 * a character and drops what produces none, which is the whole of what
-	 * a cell desktop wants and none of what a pixel guest needs: it holds
+	 * a cell surface wants and none of what a pixel guest needs: it holds
 	 * the key down, repeats from its own keymap and reads a modifier that
 	 * types nothing. A press whose release never travelled is a key held
 	 * for ever, so this sits above every early return under it.
@@ -3191,10 +3191,9 @@ static const struct wl_pointer_listener pointer_listener = {
  * WHAT IS HERE IS ONLY WHAT wl_touch KNOWS: which slot, where in cells, and
  * that `frame` is the commit point exactly as it is for the pointer.
  *
- * The disambiguation is libktui's — ktui_gesture_feed — because the console
- * desktop's KMS backend feeds the same recogniser from libinput. A
- * disambiguator written inside a backend is written twice and disagrees twice,
- * and the two desktops would then differ on what a long press is.
+ * The disambiguation is libktui's — ktui_gesture_feed — so a second backend
+ * feeds the same recogniser rather than writing its own. A disambiguator
+ * written inside a backend is written twice and disagrees twice.
  */
 
 static int tc_cell(wl_fixed_t sx, wl_fixed_t sy, int *cx, int *cy)
@@ -4745,8 +4744,8 @@ int kwl_init(const KDispConfig *cfg)
 								      : KT_SURFACE,
 				     (uint8_t)(cfg->opacity * 255 / 100));
 	/*
-	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the
-	 * console's own cell — the same default kdos-comp uses for the window
+	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the cell
+	 * tty1 draws in — the same default kdos-comp uses for the window
 	 * frames. It used to fall through to libkcell's generic
 	 * `monospace:size=11`, and the result was on the first live screenshot:
 	 * 32px Turbo Vision frames around an 11px DejaVu panel, a bar nobody

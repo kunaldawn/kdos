@@ -642,7 +642,7 @@ static void write_launchers(const char *dir)
 		 * THE LAUNCHER CARRIES THE BOX. `-b <pack>` is the pack id, and
 		 * the pack id is what a box profile is filed under
 		 * (~/.config/kdos/boxes/<pack>.conf) — so `run` skips the
-		 * exec→pack table entirely and kdos-con reads a guest's policy
+		 * exec→pack table entirely and a reader takes a guest's policy
 		 * key straight off the argv instead of reversing the box layout
 		 * out of an absolute Exec. A row with no pack keeps the bare
 		 * verb, and both sides fall back to the program's own name.

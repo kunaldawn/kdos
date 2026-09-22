@@ -402,26 +402,20 @@ int kb_desktop_prefix(char *out, size_t n)
 	return i > 0;
 }
 
-/* See kbase.h. `$KDOS_CON` is set by the console session and by nothing else,
- * which is the same test every other program in the tree uses to tell the two
- * desktops apart. */
+/* See kbase.h. */
 const char *kb_terminal(void)
 {
-	const char *con = getenv("KDOS_CON");
 	const char *wl = getenv("WAYLAND_DISPLAY");
 
-	if (con && *con)
-		return "kdos-term";
 	if (wl && *wl)
 		return "foot";
 	/*
-	 * NEITHER EMULATOR EXISTS WITHOUT A SESSION TO OPEN IT IN. `foot` is a
-	 * Wayland client and `kdos-term` needs the console session's socket, so
-	 * a bare virtual terminal — `Ctrl+Alt+F2`, a serial console, an ssh
-	 * login — has neither. NULL is the honest answer and every caller
-	 * already has to have one: a name returned here would resolve the right
-	 * program and then fail to open a window for it, which reads as the
-	 * handler being wrong.
+	 * NO EMULATOR EXISTS WITHOUT A SESSION TO OPEN IT IN. `foot` is a
+	 * Wayland client, so a bare virtual terminal — `Ctrl+Alt+F2`, a serial
+	 * console, an ssh login — has none. NULL is the honest answer and every
+	 * caller already has to have one: a name returned here would resolve
+	 * the right program and then fail to open a window for it, which reads
+	 * as the handler being wrong.
 	 */
 	return NULL;
 }

@@ -168,13 +168,10 @@ kdos-res --fixture … --dump     # a monitor page, offscreen
 kinstall --dry-run              # the installer, executing nothing
 ```
 
-**And the console session itself, with no display at all.** `kdos-con` links no Wayland and no
-pixel library, so it builds with plain `gcc` on any host: run it with `--new -t t` under a short
-`XDG_RUNTIME_DIR` (a unix socket path has about a hundred bytes, and a scratch directory under
-`/tmp` is usually longer than that), attach throwaway clients through `kdisp_init`, and read the
-layout back with `kdos-con --capture --socket …`, which prints the composed grid as text. It is
-the fastest way to answer a window-model question — where a panel docked, what the work area is,
-where an overlay landed — and needs no container and no emulator.
+**And the window model itself, with no display at all.** `libkwm` links `libkbase` and nothing
+else, so `testing/fixtures/wm/geometry.txt` replays on any host in milliseconds. It is the fastest
+way to answer a window-model question — where a window lands, what a tiled state becomes, which
+edge a moving edge stops against — and needs no container and no emulator.
 
 See [Testing](testing.md) for what each proves.
 

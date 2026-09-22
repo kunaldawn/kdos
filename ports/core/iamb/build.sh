@@ -32,9 +32,9 @@
 # it — and kdos-comp creates both data-control managers. That path stays pure
 # Rust only while wayland-backend's `client_system` feature is off: turning it
 # on links libwayland-client and a static-pie musl binary cannot have it.
-# Under the console session there is no Wayland socket, arboard falls back to
-# X11, and there is no X server here — so a yank on that desktop has nowhere
-# to go and kdos-term's own selection is the answer.
+# A login with no Wayland socket falls back to arboard's X11 path, and there is
+# no X server here — so a yank from a bare terminal has nowhere to go and the
+# terminal's own selection is the answer.
 # THE TRAIT SOLVER RUNS OUT OF DEPTH BEFORE THE CODE RUNS OUT OF SENSE.
 # matrix-sdk's sync path is async functions nested deep enough that proving the
 # future is `Send` exceeds rustc's default recursion limit of 128, and the
@@ -50,7 +50,7 @@ cargo build --release --frozen --offline
 install -Dm755 target/release/iamb $PKG/usr/bin/iamb
 
 # Terminal=true and a bare Exec: the launcher supplies the emulator, which is
-# the only way one entry serves both desktops. No X-KDOS-Term: that key names
+# what keeps the entry free of one. No X-KDOS-Term: that key names
 # the emulator an entry needs, and it is for the programs that draw pictures in
 # the cell grid. iamb's image preview is `image_preview` in its own config and
 # is absent unless somebody sets it, so this entry takes the session's terminal,

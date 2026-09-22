@@ -109,11 +109,10 @@ static int tiles_on = 1;
  * one — a canvas cut to anything else clips the text or mis-centres the mark,
  * and the picture is then rescaled by whatever is presenting it.
  *
- * A console surface has no pixels on its side of the socket and answers a
- * cell of one: a sprite there goes over the wire and the display rescales it
- * to whatever a cell is at that end, so it is rasterised at the nominal cell
- * every picture on that wire is sized in. Four pixels is the floor a cell has
- * to clear to be a pixel cell at all, the same one kicon_init() refuses at.
+ * A display with no pixels of its own answers a cell of one, and a sprite it
+ * is handed is rescaled by whatever presents it — so such a tile is rasterised
+ * at the nominal cell instead. Four pixels is the floor a cell has to clear to
+ * be a pixel cell at all, the same one kicon_init() refuses at.
  */
 #define TILE_NOMINAL_CW 10
 #define TILE_NOMINAL_CH 20

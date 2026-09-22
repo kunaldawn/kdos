@@ -1124,7 +1124,7 @@ int pick_main(int argc, char **argv)
 		 * which way.
 		 *
 		 * A HINT AND NEVER A CONDITION. A handle the compositor does
-		 * not know, no importer, or the console session — where there
+		 * not know, or no importer — where there
 		 * is no Wayland at all — each leave the window centred, which
 		 * is where it would have been.
 		 */

@@ -14,14 +14,6 @@
  * THE PIECES THAT ARE EASY TO GET WRONG, and each of them cost a debugging
  * session before it was written down:
  *
- *   - `kcon_set_sprite_bits()` AFTER `kdisp_init`. The console backend clears
- *     its whole client state when it connects, so a callback registered before
- *     is erased — and the failure is not a missing picture but a BLANK one,
- *     because the session maps a slot it was never sent to -1 and the cell
- *     becomes a space.
- *   - A console surface has no pixel size of its own. The display it is drawn
- *     on has, and it rescales what arrives, so a nominal cell bounds the wire
- *     without pretending to know the font at the other end.
  *   - The new tile grid is registered BEFORE the old one is given back. The
  *     table hands a freed slot straight out again, so dropping first lets the
  *     next picture take the same slot numbers, the row diff sees nothing, and
@@ -42,12 +34,11 @@
 
 #include "kbase.h"
 #include "kcell.h"
-#include "kcon.h"
 #include "kimg.h"
 #include "kwl.h"
 #include "shell.h"
 
-/* Under the compositor the backend knows a cell's pixel size; as a console
+/* Under the compositor the backend knows a cell's pixel size; as a `--tty`
  * surface this program has none at all. */
 #define PIC_NOMINAL_CW 10
 #define PIC_NOMINAL_CH 20
@@ -66,30 +57,8 @@ int sh_pic_cell_h(void)
 	return h > 1 ? h : PIC_NOMINAL_CH;
 }
 
-/*
- * WHERE A SPRITE'S PIXELS COME FROM when this is a console surface. libkcon
- * links no pixel library and must not; it asks through this and puts the bytes
- * on the wire, and the display on the other end scales them to whatever a cell
- * is there.
- */
-static int sprite_bits(const void *pix, const uint32_t **argb, int *w, int *h,
-		       int *stride_px, void *user)
-{
-	pixman_image_t *img = (pixman_image_t *)pix;
-
-	(void)user;
-	if (!img)
-		return -1;
-	*argb = pixman_image_get_data(img);
-	*w = pixman_image_get_width(img);
-	*h = pixman_image_get_height(img);
-	*stride_px = pixman_image_get_stride(img) / 4;
-	return *argb && *w > 0 && *h > 0 ? 0 : -1;
-}
-
 void sh_pic_backend(void)
 {
-	kcon_set_sprite_bits(sprite_bits, NULL);
 	ktui_sprite_evictor(kcell_tile_free, NULL);
 	ktui_sprite_budget(SH_PIC_BUDGET, sh_pic_cell_w(), sh_pic_cell_h());
 }

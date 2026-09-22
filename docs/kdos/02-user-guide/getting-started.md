@@ -175,58 +175,29 @@ The terminals are laid out like this:
 
 Switch between them with `Alt+F1` and `Alt+F2`.
 
-On `tty1` the **console desktop** comes up on its own. It is a full desktop — windows you can snap,
-maximise, minimise and cycle, terminals, a taskbar with a clock, and the KDOS applications as real
-windows — made of character cells rather than pixels, and it needs no Wayland at all. Windows are
-placed and sized by chord; there is no drag to move and no drag to resize. If it does not start, you are left at a
-shell rather than at nothing, which is the point: a session that fails is a machine you can still
-fix.
+On `tty1` the **desktop** comes up on its own: `kdos-login` autologins the account `login.conf`
+names and the shell's profile starts it. If it does not start, you are left at a shell rather than
+at nothing, which is the point — a session that fails is a machine you can still fix, and `tty2` is
+a plain login whatever `tty1` does.
 
 Behind it is the login banner, drawn one raster line at a time with a bright beam leading the fill.
 Any keypress skips the rest of the animation.
 
-The console is running the KDOS console font at 16x32 — 512 glyphs, loaded by
+The virtual terminal is running the KDOS VT font at 16x32 — 512 glyphs, loaded by
 [`kdos-getty`](../03-architecture/boot-and-init.md) rather than by an init script. That font is
 why parts of this system deliberately restrict themselves to a small glyph set: see
 [the design language](../03-architecture/design-language.md).
 
-## The two desktops
+## The session
 
-**The console desktop** is what you are already in. Everything in
-[The desktop](desktop.md) applies to it — the same chords, the same Start menu, the same
-applications — with two differences: it draws in character cells, and a Wayland application (a
-browser, an alien app in a box) cannot appear in it.
+There is **no display manager and no greeter**: a display manager is a privileged process whose
+only job is to run the thing the profile is about to run anyway, and on a single-user workstation
+it buys nothing. `login.conf` names the account tty1 logs in; comment the key out and the ordinary
+password prompt appears instead.
 
-**The graphical desktop** is for those. From a terminal:
-
-```sh
-kdos-desktop
-```
-
-It takes a terminal of its own, so `Alt+F1` brings you back to the console one and both keep
-running. There is no display manager and no graphical login: a display manager is a privileged
-process whose only job is to run the thing you are about to run anyway, and on a single-user
-workstation it buys nothing.
-
-Both sessions share the same bring-up — the message bus, audio, the box warmup — and each adds what
-only it needs. If either exits, you are returned to the tty with its log at
-`$XDG_RUNTIME_DIR/kdos-con.log` or `kdos-comp.log`. The full sequence is in
+If the session exits you are returned to the tty, with its log at
+`$XDG_RUNTIME_DIR/kdos-comp.log`. The full sequence is in
 [The session](../03-architecture/session.md).
-
-### Sessions you can leave running
-
-The console session and its display are separate processes, so the display is something you can
-take away and give back:
-
-```sh
-kdos con ls               # what is running
-kdos con detach           # take the screen back; the session keeps going
-kdos con attach           # put it back, every window where it was
-```
-
-`kdos con forward <host>` carries a session's display to another machine over ssh. Only the display
-travels — nothing on the far end can place a window in your session — and it is off until you set
-`remote = yes` in `/etc/kdos/con.conf`.
 
 ## Try these first
 

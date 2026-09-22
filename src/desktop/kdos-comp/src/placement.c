@@ -12,8 +12,9 @@
 #include "kwm.h"
 
 /*
- * The search itself is libkwm's — one implementation, shared with kdos-con.
- * What stays here is the half only a compositor can do: walking its own views
+ * The search itself is libkwm's, so it is asserted against a fixture with no
+ * compositor running. What stays here is the half only a compositor can do:
+ * walking its own views
  * and asking the decoration how thick it is.
  */
 bool

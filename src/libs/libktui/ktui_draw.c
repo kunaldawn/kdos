@@ -70,9 +70,9 @@ static int bw, bh;
 
 /*
  * THE FRAME A BACKEND LAST DIFFED AGAINST — not what is on the screen. A
- * backend need not maintain it: `kdos-con`'s does not, because a session with
- * several views holds one previous frame per view, and its `front` stays the
- * zeroed allocation for the life of the process. The one caller reads it
+ * backend need not maintain it: one that keeps a previous frame of its own
+ * leaves `front` the zeroed allocation for the life of the process. The one
+ * caller reads it
  * BESIDE ktui_draw_cells(), which is the sprite table asking whether a slot
  * is still referenced.
  *
@@ -101,10 +101,9 @@ const KtuiCell *ktui_cells(int *w, int *h)
  *
  * NOT `ktui_cells()`, WHICH IS A DIFFERENT BUFFER AND OFTEN AN EMPTY ONE. That
  * one hands out `front`, the frame a backend last diffed against, and a
- * backend is free never to maintain it: `kdos-con`'s own ignores `prev`
- * entirely, because there may be several views and each diffs against its own.
- * A caller that read `ktui_cells()` there got a screenful of zeroes and could
- * not tell that from a screenful of spaces.
+ * backend is free never to maintain it. A caller that reads `ktui_cells()`
+ * against such a backend gets a screenful of zeroes and cannot tell that from
+ * a screenful of spaces.
  */
 const KtuiCell *ktui_draw_cells(int *w, int *h)
 {
@@ -117,9 +116,8 @@ const KtuiCell *ktui_draw_cells(int *w, int *h)
 static int force_full;
 static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
-/* What a press where the pointer is would do. Set by whatever knows — the
- * window manager on the console — and handed to the backend on every flush;
- * see ktui_draw_cursor_shape(). */
+/* What a press where the pointer is would do. Set by whatever knows, and
+ * handed to the backend on every flush; see ktui_draw_cursor_shape(). */
 static int ptr_shape = KT_PTR_ARROW;
 
 
@@ -494,10 +492,10 @@ void ktui_draw_invalidate(void)
  * last codepoint and is not KTUI_SPRITE_BASE, so it can never equal one.
  *
  * AND THE BACKEND IS TOLD AS WELL, because a backend may diff against a copy
- * of its own rather than this one — libkkms keeps a previous frame per SCREEN,
- * where this is per session. Spoiling only this copy leaves such a backend
- * seeing no difference at all, which is an animation frozen on its first
- * frame. A backend with no `dirty` reads `prev` and needs nothing more.
+ * of its own rather than this one — libkwl keeps one per buffer. Spoiling only
+ * this copy leaves such a backend seeing no difference at all, which is an
+ * animation frozen on its first frame. A backend with no `dirty` reads `prev`
+ * and needs nothing more.
  */
 void ktui_draw_dirty(int x, int y, int w, int h)
 {
@@ -576,9 +574,9 @@ void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr)
 	c->ch = ch;
 	c->fg = (uint8_t)fg;
 	c->bg = (uint8_t)bg;
-	/* The high bits are a colour run's and cannot be reached from here:
-	 * a caller drawing in slots that set KT_A_FGRGB, KT_A_BGRGB or
-	 * KT_A_ULCOLOR would name a colour it never supplied. */
+	/* The high bits belong to the literal colour fields and cannot be
+	 * reached from here: a caller drawing in slots that set KT_A_FGRGB,
+	 * KT_A_BGRGB or KT_A_ULCOLOR would name a colour it never supplied. */
 	c->attr = (uint16_t)attr & 0xffu;
 	c->fgc = c->bgc = c->ulc = 0;
 }
@@ -833,9 +831,9 @@ void ktui_draw_reverse(KRect r)
  *
  * THE LITERAL ONLY, NEVER THE SLOT. The blend is a colour the palette does not
  * hold, so it is written as the cell's own `bgc` and the slot is left as the
- * caller drew it: a display that declined the colour run — a --tty view, a
- * golden, a braille reader — shows an opaque window, which is the honest
- * answer where there is no colour to mix with.
+ * caller drew it: a display that draws in slots alone — a terminal, a golden,
+ * a braille reader — shows an opaque window, which is the honest answer where
+ * there is no colour to mix with.
  *
  * BACKGROUNDS AND NOT INK. A translucent glyph is a glyph nobody can read, so
  * the foreground stays exactly the colour it was drawn in.
@@ -968,9 +966,9 @@ void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
  * shadow.
  *
  * THE BACKGROUND SLOT GOES TO KT_BG ALONGSIDE THE LITERAL, and that is the
- * whole of the shadow on a display that declined the colour run — a --tty
- * view, a dump, a braille reader. A mix is a colour the palette does not hold,
- * so the slot is the nearest thing to it eight colours can say.
+ * whole of the shadow on a display that draws in slots alone — a terminal, a
+ * dump, a braille reader. A mix is a colour the palette does not hold, so the
+ * slot is the nearest thing to it eight colours can say.
  *
  * A REVERSED CELL KEEPS ITS SLOTS. The painter shows such a cell's FOREGROUND
  * as its background, so writing KT_BG into `bg` would recolour the ink rather
@@ -1049,9 +1047,8 @@ void ktui_draw_hide_cursor(void)
  * thing, and a shape reset to the arrow on every hide would flicker through
  * the arrow on the way back.
  *
- * An out-of-range value is the arrow rather than an error. The shape crosses
- * a socket from another process, and a view told a number it does not know
- * must draw something.
+ * An out-of-range value is the arrow rather than an error. The caller names a
+ * shape this build may not have, and something still has to be drawn.
  */
 void ktui_draw_cursor_shape(int shape)
 {
@@ -1243,9 +1240,8 @@ static void emit_sgr(const KtuiCell *cell)
 	/*
 	 * EVERY SLOT INDEX IS MASKED TO THREE BITS. `fg` and `bg` are a whole
 	 * byte of the cell and nothing on the way in narrows them:
-	 * ktui_draw_put() copies a caller's cell wholesale and libkcon's wire
-	 * decoder takes the byte straight off the socket, so a program on the
-	 * session bus can name slot 200. The palette and the ANSI tables below
+	 * ktui_draw_put() copies a caller's cell wholesale, so a caller can
+	 * name slot 200. The palette and the ANSI tables below
 	 * are eight entries, and the cache key masks as well — an unmasked
 	 * lookup would both read past the array and file the stray colour
 	 * under a real slot's key.
@@ -1390,7 +1386,7 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			}
 			/* An orphaned continuation cell — its wide glyph was
 			 * overwritten by a narrow one — must not put a control
-			 * byte on the wire. */
+			 * byte on the terminal. */
 			uint32_t ch = b->ch == KTUI_WIDE_CONT ? ' '
 							      : (b->ch ? b->ch : ' ');
 			ch = ktui_sprite_text_cell(ch);
@@ -1527,10 +1523,10 @@ void ktui_draw_flush(void)
 	 * leave one behind at the last place the hand was.
 	 *
 	 * A BACKEND WITHOUT THE HOOK, OR ONE THAT DECLINES, GETS THE REVERSED
-	 * CELL UNCHANGED. That is not a fallback anything may drop: `a11y =
-	 * yes` runs this desktop on a --tty view so brltty can read /dev/vcsa,
-	 * a dump has no pixels at all, and a view forwarded over ssh is a
-	 * terminal on the far end of it. The reversed cell is the pointer on
+	 * CELL UNCHANGED. That is not a fallback anything may drop: a dump has
+	 * no pixels at all, `tty1` has the kernel's text plane and nothing
+	 * else, and a surface run with `--tty` draws into a terminal that may
+	 * be on the far end of an ssh link. The reversed cell is the pointer on
 	 * every one of them.
 	 */
 	/*
@@ -1558,7 +1554,7 @@ void ktui_draw_flush(void)
 	 * keep their pointer — which is where it is needed most, on the icon
 	 * grid.
 	 *
-	 * A SPRITE WITH NO PIXELS IS NOT A PICTURE AT ALL. A tty, a view with
+	 * A SPRITE WITH NO PIXELS IS NOT A PICTURE AT ALL. A tty, a build with
 	 * no pixel library and a dump all carry the sprite's fallback MARK;
 	 * `ktui_sprite_get` answers NULL for a slot with no picture, and the
 	 * mark is then set aside for the reverse exactly as a glyph is — the
@@ -1587,19 +1583,16 @@ void ktui_draw_flush(void)
 
 		/*
 		 * AND THE MARK ONLY COUNTS WHERE THE PICTURE IS. The bit says
-		 * the session drew this cell from a guest's pixels; it does
-		 * NOT say this view has them. A `--tty` view, a view with no
-		 * pixel library, a dump and a view over `ssh` all draw the
-		 * sprite's fallback MARK instead, and there is no composited
-		 * cursor on a mark to collide with — so suppressing the
-		 * pointer there would leave that view with no pointer at all
-		 * over the one window a person most needs to aim at. That view
-		 * is the accessible one: `a11y = yes` runs this desktop on a
-		 * `--tty` view precisely so a braille display can read
-		 * /dev/vcsa.
+		 * the surface drew this cell from a guest's pixels; it does
+		 * NOT say this backend has them. A `--tty` run, a build with
+		 * no pixel library and a dump all draw the sprite's fallback
+		 * MARK instead, and there is no composited cursor on a mark to
+		 * collide with — so suppressing the pointer there would leave
+		 * that backend with no pointer at all over the one window a
+		 * person most needs to aim at.
 		 *
-		 * ktui_sprite_get() answers NULL for a slot this view has no
-		 * picture for, which is the same question and the only one
+		 * ktui_sprite_get() answers NULL for a slot this process has
+		 * no picture for, which is the same question and the only one
 		 * that can be asked from here.
 		 */
 		if (!(c->attr & KT_A_GUEST) || slot < 0 ||

@@ -16,8 +16,7 @@
 # NOT OVER A VALUE SOMEBODY SET. A person who exports their own $BROWSER has
 # said what they want and this must not argue.
 #
-# THIS FILE IS READ BY A LOGIN SHELL ONLY. The console session on the `greet =
-# yes` path is exec'd from a program that clears the environment first, so
-# kdos-con-start defaults the same variable for that path; neither place
-# overrides the other, because both only fill a gap.
+# THIS FILE IS READ BY A LOGIN SHELL ONLY, which is the only way into a session
+# here: /etc/inittab hands tty1 to agetty and the shell's profile starts the
+# desktop, so anything the desktop needs defaulted can be defaulted here.
 export BROWSER="${BROWSER:-xdg-open}"

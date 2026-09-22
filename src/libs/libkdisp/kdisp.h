@@ -7,9 +7,9 @@
  * ---------------------------------
  *   libkdisp — which display server, decided in one place
  *
- * A KDOS surface reaches a screen three ways: as a Wayland client under
- * kdos-comp, as a cell client under kdos-con, or through escape sequences on a
- * terminal. kdos-shell alone opens a surface from more than twenty places, and
+ * A KDOS surface reaches a screen two ways: as a Wayland client under
+ * kdos-comp, or through escape sequences on a terminal. kdos-shell alone opens
+ * a surface from more than twenty places, and
  * each of them then asks whether it should close, resizes itself, or hides its
  * panel. Branching on the server at every one of those is the same decision
  * written twenty times in one program and again in the next — which is exactly
@@ -19,12 +19,11 @@
  *
  * THE CONSUMER DECIDES WHAT IT LINKS. This library names no implementation and
  * pulls in none; a caller hands over the ones it compiled, in preference order,
- * and a console-only program never sees Wayland:
+ * so a program that links no display server still compiles:
  *
  *     extern const KDispImpl kwl_impl;   // libkwl
- *     extern const KDispImpl kcon_impl;  // libkcon
- *     static const KDispImpl *const have[] = { &kcon_impl, &kwl_impl };
- *     kdisp_init(&cfg, have, 2);
+ *     static const KDispImpl *const have[] = { &kwl_impl };
+ *     kdisp_init(&cfg, have, 1);
  *
  * LINKS libktui AND NOTHING ELSE, so gaining it costs a surface a vtable and a
  * struct rather than a font renderer.
@@ -152,11 +151,10 @@ typedef struct {
 	 * client can state — what it can state is whose child it is, and a
 	 * compositor that is told centres the child on the parent.
 	 *
-	 * IGNORED WHERE THERE IS NO xdg-foreign AND ON THE CONSOLE. A handle
-	 * the compositor does not know, a compositor with no importer, and a
-	 * session with no Wayland at all each leave the window placed the way
-	 * it would have been anyway — which is centred. A parent is a hint
-	 * about placement and never a condition of opening.
+	 * IGNORED WHERE THERE IS NO xdg-foreign. A handle the compositor does
+	 * not know, and a compositor with no importer, each leave the window
+	 * placed the way it would have been anyway — which is centred. A parent
+	 * is a hint about placement and never a condition of opening.
 	 */
 	const char *parent;
 	const char *font;	/* fontconfig name; NULL for the default   */
@@ -191,9 +189,9 @@ typedef struct {
 	 * gives the window that size and CLIPS it, which is a window with a
 	 * corner off the screen rather than a hole in the desktop.
 	 *
-	 * It is not a promise the surface may skip its own too-small check.
-	 * A console session honours this; a Wayland compositor is told the
-	 * same numbers through xdg_toplevel's min size and may ignore them.
+	 * It is not a promise the surface may skip its own too-small check: a
+	 * compositor is told the same numbers through xdg_toplevel's min size
+	 * and may ignore them.
 	 */
 	int min_cols, min_rows;
 	/*
@@ -274,9 +272,6 @@ typedef struct {
 	 * the whole reason this is per-slot rather than a multiplier on the
 	 * surface.
 	 *
-	 * IT REACHES A COMPOSITOR AND NOTHING ELSE. On the console the session
-	 * composes every window into one grid, and `window_opacity` in
-	 * con.conf is where the same request is made.
 	 */
 	int opacity;
 
@@ -291,8 +286,7 @@ typedef struct {
 	 * IT IS A PRIVILEGE AND IT IS ASKED FOR EXPLICITLY. A surface that
 	 * did not ask cannot act on another program's window, which is what
 	 * stops a launcher or a calculator from closing somebody's editor.
-	 * The console grants it because the surface socket never leaves the
-	 * machine; a Wayland compositor grants its own equivalent through
+	 * A Wayland compositor grants its own equivalent through
 	 * foreign-toplevel and ignores this.
 	 */
 	int manage;
@@ -342,8 +336,7 @@ typedef struct {
 	/* 1 when the window is on the same screen as the surface asking, 0
 	 * when it is on another. A server that does not report a window's
 	 * screen answers 1 for every window, because a task bar that filtered
-	 * on an answer nobody gave would be an empty task bar — which is what
-	 * the console answers, where one grid spans every screen. */
+	 * on an answer nobody gave would be an empty task bar. */
 	int here;
 	char app_id[64];
 	char title[128];
@@ -361,7 +354,7 @@ enum kdisp_cursor {
  *
  * Every entry is something a surface already asks libkwl today. A server that
  * cannot answer one leaves it NULL, and the forwarder below returns the
- * neutral answer rather than crashing — a console has no server-side
+ * neutral answer rather than crashing — a `--tty` run has no server-side
  * decoration to report and no Wayland handle to hand out.
  * ──────────────────────────────────────────────────────────────────────── */
 
@@ -404,9 +397,8 @@ typedef struct {
 	/*
 	 * RENAME THIS WINDOW. A program names its own window while it runs —
 	 * a shell sets OSC 2 on every command — and the name is drawn by
-	 * whoever drew the frame. Answered by the console, where the session
-	 * draws it, and by Wayland, where the compositor does; a display that
-	 * cannot be told leaves the name the surface attached with.
+	 * whoever drew the frame — the compositor. A display that cannot be
+	 * told leaves the name the surface attached with.
 	 */
 	void (*set_title)(const char *title);
 	void (*report_error)(void);
@@ -421,8 +413,8 @@ typedef struct {
 	 * A terminal has to tell its child when the focus moved (`CSI I` /
 	 * `CSI O`), because an editor that is not told does not reload a file
 	 * changed underneath it and its next write is over somebody else's
-	 * work. Both servers already know the answer — `wl_keyboard` enter and
-	 * leave on one, `KCON_OP_FOCUS` on the other — and neither told anybody.
+	 * work. The server already knows the answer — `wl_keyboard` enter and
+	 * leave — and did not tell anybody.
 	 *
 	 * A backend that cannot answer returns 1: a surface that assumed it had
 	 * the focus is what every program did before this existed, so the
@@ -445,9 +437,8 @@ typedef struct {
 	 * A CALLER RE-READS THE LIST ON EACH TURN rather than being called
 	 * back. Both consumers already have a poll loop with a timeout, and a
 	 * callback fired from inside a pump would have to be delivered from
-	 * whichever of the two event paths happened to read the socket —
-	 * which on the console is the one that also delivers key events, so a
-	 * pump added for the callback would swallow them.
+	 * whichever of the two event paths happened to read the socket, so a
+	 * pump added for the callback would swallow key events.
 	 *
 	 * Every verb is a REQUEST. The server owns the stack and the lifetime,
 	 * and nothing here reports what happened — the change arrives as a new
@@ -483,12 +474,10 @@ typedef struct {
 	 *
 	 * A surface never loads one — it draws cells and something else turns
 	 * them into pixels — so this is the only way a picker can ask what
-	 * faces exist, and the list is the DISPLAY'S: on the console it is
-	 * gathered by the view, which may be at the far end of an ssh link
-	 * with its own machine's fonts.
+	 * faces exist, and the list is the DISPLAY'S.
 	 *
 	 * `font_count` is 0 where the font is not this desktop's to change,
-	 * which is a `--tty` view inside somebody else's terminal and the
+	 * which is a `--tty` run inside somebody else's terminal and the
 	 * compositor, where every program carries its own. `font_at` fills
 	 * `out` with a display name and returns 1, or 0 past the end.
 	 * `font_current` is the index in force or -1.
@@ -509,12 +498,10 @@ typedef struct {
 	 * THE SCREENS, AND THEIR MODES.
 	 *
 	 * The same shape the font list keeps and for the same reason: a
-	 * surface never drives a screen, so the list is the DISPLAY'S — on the
-	 * console the view gathers it, and that view may be at the far end of
-	 * an ssh link driving somebody else's monitors.
+	 * surface never drives a screen, so the list is the DISPLAY'S.
 	 *
 	 * `out_count` is 0 where the screens are not this desktop's to change:
-	 * a `--tty` view inside somebody's terminal, and the compositor, which
+	 * a `--tty` run inside somebody's terminal, and the compositor, which
 	 * takes its output configuration on `wlr-output-management` — a
 	 * protocol carrying scale, transform and position that this vtable
 	 * deliberately does not model.

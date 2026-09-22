@@ -24,13 +24,13 @@ because there is only a grid of character cells, and the toolkit's backend decid
 Nothing above that line knows which.
 
 **Which display server it reaches is `libkdisp`'s decision, not this program's.** It registers both
-implementations — `kcon_impl` for a console session and `kwl_impl` for the compositor — and calls
+implementation — `kwl_impl`, the compositor's — and calls
 `kdisp_init`, so the same binary is a window on the graphical desktop and a window on the console
 desktop with no branch of its own. The console is offered first: a program started inside a console
 session must not find a Wayland display left over from elsewhere and attach to that instead.
 
 **Whether to open a window at all is this program's, and it asks about both sessions.** With
-neither `--tty` nor a forced window it looks for `$WAYLAND_DISPLAY` *or* `$KDOS_CON` — the console
+neither `--tty` nor a forced window it looks for `$WAYLAND_DISPLAY` — the compositor
 session's surface socket, which is in every child's environment there and is the same fact
 `sh_term()` and `kdos doctor` decide on. Asking about Wayland alone made a chord on the console
 start this program into the terminal it was launched from, which on `tty1` means the process table

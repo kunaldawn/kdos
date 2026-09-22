@@ -13,8 +13,8 @@
 #include "kwm.h"
 
 /*
- * The rule is libkwm's, so kdos-con stops at the same edges as this does. What
- * arrives here is the compositor's own edge type; the two are the same three
+ * The rule is libkwm's, asserted against a fixture with no compositor running.
+ * What arrives here is the compositor's own edge type; the two are the same three
  * fields, copied rather than cast because a cast would silently survive one of
  * them gaining a fourth.
  */

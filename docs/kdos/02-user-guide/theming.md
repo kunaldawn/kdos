@@ -93,7 +93,7 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | The starship palette block | starship | On the next shell prompt |
 | `~/.config/foot/themes/kdos` | foot | On the next terminal — foot cannot reload its configuration at all |
 | `~/.config/btop/themes/kdos.theme` | btop | On the next start |
-| `~/.config/kdos/term-colors.conf` | `kdos-term` and the console session | On the next terminal |
+| `~/.config/kdos/term-colors.conf` | `kdos-term` | On the next terminal |
 | `~/.config/kdos/fzf-colors` | fzf, through `$FZF_DEFAULT_OPTS` | On the next login shell |
 | `~/.config/bat/themes/kdos.tmTheme` | bat | On the next start, once the cache is built |
 | `~/.config/micro/colorschemes/kdos.micro` | micro | On the next start |

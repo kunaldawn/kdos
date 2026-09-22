@@ -29,7 +29,7 @@ wrong, the answer is a picture drawn into whole cells, not a second renderer. Se
 **And nothing on this desktop is drawn by another toolkit.** The last thing that was is the
 input-method candidate window: an engine draws its own with its own renderer, which on a character
 grid is a rounded antialiased panel sitting on top of a text-mode desktop. `kdos-ime` draws it here
-instead — the same chrome, the same slots, one program on both desktops — by speaking the
+instead — the same chrome and the same slots — by speaking the
 input-method framework's own generic panel protocol rather than by writing an input method.
 
 ## A window is a double-line box
@@ -211,10 +211,8 @@ is the honest answer where there is nothing to mix with. **Both ends of the mix 
 palette in force and it is recomputed every frame**, so a retint moves it like everything drawn in
 slots; that is why this is not the rule above being broken. **Backgrounds only** — a translucent
 glyph is a glyph nobody can read — and a sprite cell is skipped, because a picture's pixels are not
-a background. `window_opacity` and `panel_opacity` in `con.conf` are where a person asks for it, and
-`Super+Ctrl+=` / `Super+Ctrl+-` / `Super+Ctrl+Alt+0` are where one window disagrees; on a compositor
-a surface asks through `KDispConfig.opacity`, which dims one slot in `libkcell` and takes an alpha
-buffer instead.
+a background. A surface asks through `KDispConfig.opacity`, which dims one slot in `libkcell` and
+takes an alpha buffer instead.
 
 **The drop shadow is the same mechanism.** It darkens rather than erases: every cell under the
 one-cell strip keeps its glyph and both halves are mixed towards `KT_BG`, so the window underneath
@@ -312,7 +310,7 @@ of the two it is drawn in. What separates them is the fill enclosing the mark.
 the whole of the boundary.** The mark is drawn in the slot that fills the body below the plate — on
 a focused frame chip, `KT_SURFACE` both times — so the strip of plate between ink and cell floor
 is the only thing dividing the mark from the body, and a thin strip reads as the plate ending early
-rather than as carrying a mark. It is a threshold, not an absolute: in the console's `ter-kdos32n`,
+rather than as carrying a mark. It is a threshold, not an absolute: in `ter-kdos32n`,
 `_`
 is 24 lit pixels of 512 on rows 27–28 of 32, which leaves **three** rows of plate at the floor, and
 it is the one shape a fill cannot hold. `■` is 108 pixels on rows 10–21, `X` is 80 on rows 6–25 and
@@ -341,34 +339,31 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 
 ### Drawing the pointer
 
-**The view draws it, never the session.** The session owns the windows and the view owns the
-screen, so a pointer the session drew would cost a round trip for every motion event and trail the
-hand moving it. The view already holds the device and already knows where it is.
+**The display draws it, never the surface.** A surface owns its cells and the display owns the
+screen, so a pointer a surface drew would cost a round trip for every motion event and trail the
+hand moving it. The display already holds the device and already knows where it is.
 
-**The pointer is a SHAPE where there are pixels and the reversed cell everywhere else.** `libkkms`
-composites one into the framebuffer it already owns and puts it at the DEVICE'S OWN PIXEL, so it
-moves as smoothly as the hand holding it; a `--tty` view, a `--dump`, a view forwarded over `ssh`
-and `tty1` reverse the cell under it, which is the pointer every text mode has drawn and is as fine
-as a grid of characters goes. **The reversed cell is not a fallback anything may drop**
-— `a11y = yes` runs this desktop on a `--tty` view precisely so `brltty` can read `/dev/vcsa`, and
-a session looked at through two views at once is pointed at through both.
+**The pointer is a SHAPE where there are pixels and the reversed cell everywhere else.** The
+compositor puts a cursor at the DEVICE'S OWN PIXEL, so it moves as smoothly as the hand holding it;
+a `--tty` run, a `--dump` and `tty1` reverse the cell under it, which is the pointer every text
+mode has drawn and is as fine as a grid of characters goes.
 
 ### What a press would do
 
-**Seven shapes, and the SESSION decides which.** `KT_PTR_ARROW` is the default and every unhandled
+**Seven shapes, and the SURFACE decides which.** `KT_PTR_ARROW` is the default and every unhandled
 case; `KT_PTR_IBEAM`, `KT_PTR_SIZE_NS`, `KT_PTR_SIZE_WE`, `KT_PTR_SIZE_NWSE`, `KT_PTR_SIZE_NESW`
-and `KT_PTR_MOVE` are the rest. There is no busy pointer: nothing in the session tracks a window
-as not-answering in a way a pointer could report, and a shape nothing sets is a picture nobody
+and `KT_PTR_MOVE` are the rest. There is no busy pointer: nothing here tracks a window as
+not-answering in a way a pointer could report, and a shape nothing sets is a picture nobody
 maintains. The list is what this desktop can *mean* and not what any protocol carries — it is
 neither `wp_cursor_shape_device_v1`'s enumeration nor X11's, for the reason the raw event codes
 are not libinput's: a number that happened to equal an upstream one is a coupling neither end can
 see.
 
-**A view holds no window state, so it cannot choose.** It cannot tell a border from a box-drawing
-character. The session names the shape and sends it on `KCON_OP_PTRSHAPE` — **only when it
-changes**, because a pointer crossing a window spends hundreds of frames over the same thing.
-`ktui_draw_cursor_shape()` is where it lands, and `KtuiBackend.pointer` carries it to whichever
-backend is drawing.
+**A backend holds no window state, so it cannot choose.** It cannot tell a border from a
+box-drawing character. Whatever owns the pointer names the shape and sets it with
+`ktui_draw_cursor_shape()` — **only when it changes**, because a pointer crossing a window spends
+hundreds of frames over the same thing — and `KtuiBackend.pointer` carries it to whichever backend
+is drawing.
 
 **The shape and the grip are decided in one place, from one answer.** `win_grab_at()` is asked with
 the left button standing in for the press that has not happened, and its verdict sets both. Two
@@ -387,31 +382,20 @@ that refused would draw no pointer at all.
 how it does it is the whole of the contract:
 
 - **A backend with pixels claims the pointer through `KtuiBackend.pointer`**, and answering `1` is
-  a promise that the cells reach the screen exactly as the session composed them. `libkkms` is the
-  only backend that answers; every other leaves the entry `NULL` and gets the reverse. It cannot be
-  drawn in `libktui`: that library links nothing but musl and has to keep doing so, and an arrow
+  a promise that the cells reach the screen exactly as the surface composed them. A backend that
+  does not answer leaves the entry `NULL` and gets the reverse. It cannot be drawn in `libktui`: that library links nothing but musl and has to keep doing so, and an arrow
   needs a pixel buffer and a colour in it.
 - **The hook is called on every flush, including the ones with no pointer to report.** A negative
   `x` is no pointer at all, and it is the only thing that tells a backend to take the last arrow
   off the screen — one told nothing leaves an arrow at the last place the hand was.
-- **The hook carries a shape beside the cell, and a backend may ignore it.** `libkkms` keeps one
-  mask per shape with a HOTSPOT of its own — an arrow points with its tip, a resize arrow and an
-  I-beam point with their middle, and drawing every shape from a fixed corner puts a resize arrow
-  half a cell off the border it belongs to, which is exactly the distance that makes a border feel
-  like it moves when you reach for it. The outline is still computed from the mask's own
-  eight-neighbourhood rather than drawn by hand, so a new shape is legible over its own colour
-  without anybody remembering to halo it.
-- **The hook carries cells, and a backend that owns the device draws finer than that.** `libkkms`
-  reports a cooked motion only when the *cell* changes, so a hook handed pixels would be handed the
-  same pixel until it did — what the hook says is that there IS a pointer and which cell the session
-  believes it is on, which is what decides whose it is to draw. `libkkms` then draws at its own
-  `ptr_px`/`ptr_py`, the position it read off the device, and its flush repaints on a move of one
-  pixel. The cell is still the truth for a pointer this library did not move: a finger's cell comes
-  from the touch recogniser and leaves the device position where the mouse last was, so the arrow
-  snaps to the named cell whenever the two disagree about which cell they are in.
-- **The view presents AFTER it drains its input, not before.** The cell the session is told about
-  and the pixel the arrow is drawn at come out of the same queue, so a frame flushed first is a
-  frame drawn one cell behind the hand.
+- **The hook carries a shape beside the cell, and a backend may ignore it.** A shape needs a
+  HOTSPOT of its own — an arrow points with its tip, a resize arrow and an I-beam point with their
+  middle, and drawing every shape from a fixed corner puts a resize arrow half a cell off the
+  border it belongs to, which is exactly the distance that makes a border feel like it moves when
+  you reach for it.
+- **The hook carries cells, and a backend that owns the device draws finer than that.** What the
+  hook says is that there IS a pointer and which cell the surface believes it is on, which is what
+  decides whose it is to draw.
 - **Each mask's width is measured off the art, never taken with `sizeof`.** The table is an array
   of `const char *`, so `sizeof(rows[0])` is the size of a *pointer* — the same eight for every
   shape whatever the picture says. A width taken that way is seven columns for all of them, and it
@@ -472,13 +456,13 @@ And where the reverse is what gets drawn:
   painter composites over. Inverting a picture's own pixels instead would be wrong — `KT_A_REVERSE`
   is also how a selected row is drawn, and a panel icon on a hovered row would come out in negative.
 - **Motion is a change even when no cell's content is**, so the framebuffer is marked dirty for it.
-  Otherwise the pointer moves only when something else on the screen happens to. On the arrow path
-  that is two jobs and both are `libkkms`'s: the cells under the *old* position are put back into
-  the row diff, which is the only thing that erases an arrow the cell model does not know is there,
-  and the move carries the frame past the nothing-changed exit so it is presented at all. Skipping
-  either leaves a trail of arrows down the screen, one per place the hand stopped.
-- **The arrow is drawn in code and scaled to the cell**, an 11x18 mask at a whole number of pixels
-  each so it is about one cell tall at every font size — the same footprint the reversed cell has.
+  Otherwise the pointer moves only when something else on the screen happens to. On a backend that
+  composites its own arrow that is two jobs: the cells under the *old* position go back into the row
+  diff, which is the only thing that erases an arrow the cell model does not know is there, and the
+  move carries the frame past the nothing-changed exit so it is presented at all. Skipping either
+  leaves a trail of arrows down the screen, one per place the hand stopped.
+- **An arrow drawn in code is scaled to the cell**, a mask at a whole number of pixels so it is
+  about one cell tall at every font size — the same footprint the reversed cell has.
   The body is `KT_TEXT` and the outline `KT_BG`: most of any screen is the background slot, so a
   foreground body is legible over all of it without relying on one pixel of anything, and the
   outline is what rescues it over the minority that is foreground-coloured. The outline is computed
@@ -497,13 +481,9 @@ and resized. It is never more than one cell from visible.
 The sub-cell offsets in the wire format, biased so that zero is the centre of a cell, are not for
 this. They are for the one thing on the desktop that can be pointed at more finely than a cell: an
 embedded pixel guest, which is told where inside the cell the press landed. **Motion finer than a
-cell is carried by the raw stream and by nothing else.** `libkkms` reports a cooked event only when
-the cell changes — nothing this desktop ROUTES on is finer than a cell — and emits the pixel and
-the delta for *every* device sample beside it, so a guest is aimed at the pixel. Sending the dropped
-motion as a cooked event too would deliver one movement twice to every guest, once as a pixel and
-once as the middle of a cell it is already inside. The ARROW is not routing: it is drawn by the
-backend that owns the device, out of the same `ptr_px` the raw stream carries, so it moves a pixel
-at a time while the cooked stream steps cells.
+cell is carried by the raw stream and by nothing else**, because nothing this desktop ROUTES on is
+finer than a cell. The ARROW is not routing: it is drawn by the backend that owns the device, so it
+moves a pixel at a time while the cooked stream steps cells.
 
 ### Pointer state: the window answers, not the pointer
 
@@ -514,9 +494,8 @@ the far end of an `ssh` forward, and a cell has no room for a second shape. A sh
 motion would also be a commit per motion — the round trip the pointer is drawn by the view to
 avoid — and the view that drew it is the one place that does not know what is under the pointer.
 
-**So the window answers instead.** The same hit test the press asks — `win_grab_at()` in
-`kdos-con` — is asked with the left button standing in for the press that has not happened, and
-what it answers is lit on the frame:
+**So the window answers instead.** The same hit test the press asks is asked with the left button
+standing in for the press that has not happened, and what it answers is lit on the frame:
 
 | What a press would arm | What lights | Unicode / ASCII tier |
 |---|---|---|
@@ -562,9 +541,8 @@ marks a selection out, so neither carries a shape of its own.
 ## Touch
 
 A touchscreen answers the same contract, because **one recogniser turns a finger into the pointer
-events above**. `ktui_gesture_feed` in `libktui` is fed by `wl_touch` on the graphical desktop and
-by `libinput` on the console; a disambiguator written inside a backend would be written twice and
-would disagree twice.
+events above**. `ktui_gesture_feed` in `libktui` is fed by `wl_touch`; a disambiguator written
+inside a backend would be written twice and would disagree twice.
 
 | Gesture | Reported as | And also arrives as |
 |---|---|---|
@@ -581,9 +559,9 @@ reads `ev.gesture` on a `KT_EVT_TOUCH`.
 Two rules that are each a defect if missed:
 
 - **Movement is measured in CELLS.** A drag begins when the finger leaves the cell it went down in.
-  Coarse on purpose: everything here is a grid, and a threshold in pixels is a number the console
-  cannot see. The same threshold decides when a pointer press became a drag, from `libkwm`, so both
-  desktops pick a file up on the same gesture.
+  Coarse on purpose: everything here is a grid, and a threshold in pixels is a number a surface
+  drawn in cells cannot see. The same threshold decides when a pointer press became a drag, from
+  `libkwm`, so every drag in this tree starts on the same gesture.
 - **One finger of two says nothing.** Moving away from a stationary finger is a pinch and a scroll
   at the same time; the answer arrives when the second finger agrees or disagrees. Guessing makes
   the two flip back and forth mid-gesture, which is unusable.
@@ -598,10 +576,9 @@ Two rules that are each a defect if missed:
   a surface forwarding the gesture needs.
 
 Long press has no event to arrive on — the finger is down and nothing is moving — so it is polled
-with `ktui_gesture_tick` from the backend's idle wait, and reported **once**. **Both backends poll
-it**: `libkwl` from the Wayland loop and `libkkms` from the KMS one, with the same
-`CLOCK_MONOTONIC` milliseconds the recogniser was fed — a deadline compared against a different
-clock never expires, and nothing says so.
+with `ktui_gesture_tick` from the backend's idle wait, and reported **once** — with the same
+`CLOCK_MONOTONIC` milliseconds the recogniser was fed, because a deadline compared against a
+different clock never expires and nothing says so.
 
 **A long press is `Shift+F10` with a finger, and the contract answers it.** `ktui_keys()` opens the
 surface's context pane on `KT_GEST_LONG`, so a surface that declared one inherits touch without a
@@ -668,11 +645,11 @@ Ramps and box drawing come from one of three tables, chosen from the terminal's 
 | **vt** | UTF-8 **on a Linux console** | `░▒█` | 3 |
 | ascii | Neither | `.:#` | 3 |
 
-**The vt tier exists because the console font is 512 glyphs.** A glyph the font does not carry
+**The vt tier exists because the VT font is 512 glyphs.** A glyph the font does not carry
 renders as a **blank** on `tty1` — so an eighth-block bar there is not ugly, it is invisible. Three
 levels is the honest resolution of that font.
 
-What the console font **has**: `░ ▒ █`, the **single** box-drawing set, the double corners and
+What the VT font **has**: `░ ▒ █`, the **single** box-drawing set, the double corners and
 `╬`, and `· • ■ … ° ↑ ↓ ◀ ▶ ▲ ▼ ◄ ►`.
 
 What it **does not have**: eighth blocks, half blocks (`▀ ▄`), `▓`, braille, **`← →`** — which is
@@ -731,8 +708,7 @@ rectangle; the alternative, a whole-screen repaint per arriving tile, costs ever
 desktop and a full framebuffer upload dozens of times a second.
 
 **A backend that keeps its own previous frame has to implement `dirty` — and mark every copy it
-keeps.** `libkkms` keeps one per *screen* where libktui's is per *session*, and it overwrites
-libktui's from the new frame before diffing. `libkwl` keeps three: the cells the compositor is
+keeps.** `libkwl` keeps three: the cells the compositor is
 showing, which is what the damage rectangles are cut from, and one shadow per shm buffer, which is
 what the paint diffs against — mark only the shadows and the pixels land in a buffer nobody is told
 to re-read; mark only the screen copy and the damage names rows nothing repainted. Spoiling only
@@ -783,8 +759,8 @@ themed to match rather than left as the upstream compositor's:
   each button — so it reads as `════ Title ════[_][=][X]`.
 - **Buttons are small bitmaps enlarged by a whole number with nearest-neighbour filtering**, so
   they are hard-edged cells rather than smeared glyphs. **The marks are the compositor's own, not
-  the grid's** — a bar, a framed box, a cross and a rule stack, against the console's `↓ ■ X` — and
-  the grounds are what part them. A button image is one colour on a titlebar of another
+  the grid's** — a bar, a framed box, a cross and a rule stack — because the grounds differ. A
+  button image is one colour on a titlebar of another
   (`window.active.button.unpressed.image.color` is the accent; the titlebar behind it is not), so
   the minimise bar is a bar against its ground with the single row of eight it keeps clear beneath
   it. A chip's mark is `KT_SURFACE`, which is the slot the frame body under it is filled with —

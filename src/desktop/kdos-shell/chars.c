@@ -216,7 +216,7 @@ static void copy_selected(void)
 	n = ktui_utf8_encode(ent[hits[tbl.sel]].cp, buf);
 	buf[n] = '\0';
 	/* kdisp_copy, not ktui_clip_copy: OSC 52 is a terminal's channel and
-	 * this surface is a Wayland overlay as often as it is a console one.
+	 * this surface is an overlay and never a window.
 	 * The seam picks whichever the session actually has. */
 	if (kdisp_copy(buf, (size_t)n, 0))
 		snprintf(note, sizeof(note), "copied %s", buf);

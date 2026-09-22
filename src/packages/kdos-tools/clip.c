@@ -5,17 +5,12 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-tools — the clipboard, on whichever desktop this is
+ *   kdos-tools — the clipboard
  *
- * TWO DESKTOPS, TWO ANSWERS, AND NEITHER IS AVAILABLE ON THE OTHER. The
- * compositor's clipboard is `wl-copy`/`wl-paste`, which are Wayland clients;
- * the console has no Wayland at all and its clipboard is the session's, reached
- * through `kdos-con`. The console is asked FIRST, because a console session
- * running inside a graphical one has both and the near one is right.
- *
- * NOT OVER libkcon. This binary is on every image and linking the session
- * protocol would drag the cell model in behind it, so the console half goes
- * through `kdos-con` as a program — the same reason `kdos con <verb>` execs it.
+ * `wl-copy`/`wl-paste` AND NOT A PROTOCOL OF OUR OWN. They are Wayland clients
+ * and the desktop is a compositor, so the clipboard a boxed application sees
+ * is the clipboard this reaches; a second road to it would be a second answer
+ * to what is on it.
  *
  * NOTHING GOES IN argv IN EITHER DIRECTION. A clipboard is a password as often
  * as it is a URL and `/proc/<pid>/cmdline` is world-readable for the life of
@@ -31,20 +26,8 @@
 /* See kdos-tools.h. */
 int kdt_clip_put(const char *text)
 {
-	const char *con = getenv("KDOS_CON");
-
 	if (!text)
 		return 0;
-
-	if (con && *con) {
-		KbArgv c = { 0 };
-
-		kb_argv_add(&c, "kdos-con");
-		kb_argv_add(&c, "--clip-text");
-		kb_argv_end(&c);
-		if (kb_run_feed(&c, text, strlen(text)) == 0)
-			return 1;
-	}
 
 	if (!kb_have_prog("wl-copy"))
 		return 0;
@@ -64,22 +47,9 @@ int kdt_clip_put(const char *text)
  */
 int kdt_clip_take(char *buf, size_t n)
 {
-	const char *con = getenv("KDOS_CON");
-
 	if (!buf || n < 2)
 		return 0;
 	buf[0] = '\0';
-
-	if (con && *con) {
-		KbArgv c = { 0 };
-
-		kb_argv_add(&c, "kdos-con");
-		kb_argv_add(&c, "--clip-take");
-		kb_argv_end(&c);
-		if (kb_run_capture(&c, buf, n) == 0 && buf[0])
-			return 1;
-		buf[0] = '\0';
-	}
 
 	if (!kb_have_prog("wl-paste"))
 		return 0;

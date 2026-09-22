@@ -23,14 +23,14 @@
  * a fault in the machine rather than as the boundary it is.
  *
  * THE ONE THING IT CAN CHANGE is which account tty1 logs in without asking,
- * because `/etc/kdos/con.conf` is a KDOS file and `kdos-powerd` already
+ * because `/etc/kdos/login.conf` is a KDOS file and `kdos-powerd` already
  * answers "is this person administering the machine" for the power verbs. It
  * is the same question and it gets the same answer rather than a second one.
  *
- * THE LIST IS `kb_users()`, the same call the greeter makes. Two answers to
- * who may log in would disagree, and the disagreement would be invisible: an
- * account listed here and not offered at the login screen reads as a bug in
- * whichever one was opened second.
+ * THE LIST IS `kb_users()`, and the daemon validates the name against the same
+ * call. Two answers to who may log in would disagree, and the disagreement
+ * would be invisible: an account listed here and refused by the daemon reads
+ * as a bug in whichever was opened second.
  *
  * WHAT IT DELIBERATELY DOES NOT DO. `passwd`, `adduser`, `deluser` and
  * `usermod` are on the image and are what a person changing accounts uses;
@@ -108,18 +108,19 @@ static void load_groups(const KbUser *u)
 }
 
 /*
- * Which account tty1 logs in without asking. `greet = yes` means it asks, so
- * `autologin` is a line that does nothing — reporting its value there would
- * name an account that is not being logged in.
+ * Which account tty1 logs in without asking, or none.
+ *
+ * A COMMENTED KEY IS OFF and is what `kdos-powerd` writes for it, so a `#`
+ * line is skipped rather than read: reading one would name an account that is
+ * not being logged in.
  */
 static void load_autologin(void)
 {
 	char path[320], buf[16384];
-	int greet = 0;
 	char who[64] = "";
 
 	snprintf(autologin, sizeof(autologin), "%s", "unknown");
-	snprintf(path, sizeof(path), "%s/kdos/con.conf", etc());
+	snprintf(path, sizeof(path), "%s/kdos/login.conf", etc());
 	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
 		return;
 	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
@@ -128,17 +129,11 @@ static void load_autologin(void)
 
 		if (ln[0] == '#')
 			continue;
-		if (sscanf(ln, "greet = %63s", val) == 1)
-			greet = !strcmp(val, "yes");
-		else if (sscanf(ln, "autologin = %63s", val) == 1)
+		if (sscanf(ln, "autologin = %63s", val) == 1)
 			snprintf(who, sizeof(who), "%s", val);
 	}
-	if (greet)
-		snprintf(autologin, sizeof(autologin), "%s",
-			 "off — tty1 asks who you are");
-	else
-		snprintf(autologin, sizeof(autologin), "%s",
-			 who[0] ? who : "kdos");
+	snprintf(autologin, sizeof(autologin), "%s",
+		 who[0] ? who : "off — tty1 asks who you are");
 }
 
 static const KbUser *sel_user(void)

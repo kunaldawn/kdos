@@ -228,7 +228,7 @@ Five rules, each with a consequence:
   command wrote this file", which is what makes `kdos app tui rm` safe; a recipe's entry carrying it
   would be a shipped application that verb could delete.
 - **`X-KDOS-Term=kdos-term` only where the program draws pictures.** It names the emulator the
-  entry needs rather than the one the session runs, and the launcher honours it on either desktop:
+  entry needs rather than the one the session runs, and the launcher honours it:
   `kdos-term` links the decoders and speaks sixel and the kitty protocol, so `yazi`'s previews are
   pictures rather than a filename. **A name and never a program** — only an emulator this image
   ships is accepted, and an unknown value falls back to the session's own, because an entry is a
@@ -246,7 +246,7 @@ Five rules, each with a consequence:
   exactly those rules against `build/fs` and names the ones that miss.
 - **No two visible entries may share a `Name=`.** The Start menu, the launcher and the search all
   list entries by their name, so two rows both reading `Calendar` are two rows a person cannot
-  choose between. The program a `con.conf` role names — `files = mc`, `agenda = ikhal` — keeps the
+  choose between. The program filling a role — the file manager, the agenda — keeps the
   plain name, and every alternative is qualified: `Files (lf)`, `Files (yazi)`,
   `Calendar (calcurse)`. `testing/preflight.sh` refuses a collision.
 - **`MimeType=` only where nothing else claims the type.** Two entries claiming one type is how a

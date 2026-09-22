@@ -15,7 +15,7 @@ Read the map below before touching anything.
 |---|---|
 | Anything at all, first time | [`docs/kdos/README.md`](docs/kdos/README.md) — the book's index and three reading paths |
 | Why the system is shaped this way | [`01-philosophy/why-kdos.md`](docs/kdos/01-philosophy/why-kdos.md), [`principles.md`](docs/kdos/01-philosophy/principles.md), [`decisions.md`](docs/kdos/01-philosophy/decisions.md) |
-| The boot path, initramfs, splash, A/B slots, the console | [`03-architecture/boot-and-init.md`](docs/kdos/03-architecture/boot-and-init.md) |
+| The boot path, initramfs, splash, A/B slots, the login | [`03-architecture/boot-and-init.md`](docs/kdos/03-architecture/boot-and-init.md) |
 | The session bus, portals, audio, supervised chrome, the box environment | [`03-architecture/session.md`](docs/kdos/03-architecture/session.md) |
 | Ports, packages, the solver, reproducibility, the binhost, deltas | [`03-architecture/packaging.md`](docs/kdos/03-architecture/packaging.md) |
 | The pack format, the bake, mounting, composition, grafts | [`03-architecture/packs-and-boxes.md`](docs/kdos/03-architecture/packs-and-boxes.md) |
@@ -23,11 +23,9 @@ Read the map below before touching anything.
 | Where a window goes, tiling, snapping, workspaces | [`03-architecture/window-model.md`](docs/kdos/03-architecture/window-model.md) |
 | **Drawing anything** — colour, chrome, the pointer contract, glyph tiers | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
 | The compositor and its grafts | [`04-programs/kdos-comp.md`](docs/kdos/04-programs/kdos-comp.md) |
-| The console desktop, its two sockets, the greeter | [`04-programs/kdos-con.md`](docs/kdos/04-programs/kdos-con.md) |
 | The panel and its 52 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
 | The resource monitor | [`04-programs/kdos-res.md`](docs/kdos/04-programs/kdos-res.md) |
 | The terminal, its keys and clipboards, and pictures in one | [`04-programs/kdos-term.md`](docs/kdos/04-programs/kdos-term.md) |
-| A graphical application on the console, and the kiosk that holds it | [`04-programs/kdos-cage.md`](docs/kdos/04-programs/kdos-cage.md) |
 | Launching boxed apps, launcher generation, box profiles | [`04-programs/kdos-appbox.md`](docs/kdos/04-programs/kdos-appbox.md) |
 | Any root daemon | [`04-programs/daemons.md`](docs/kdos/04-programs/daemons.md) |
 | The installer | [`04-programs/kinstall.md`](docs/kdos/04-programs/kinstall.md) |

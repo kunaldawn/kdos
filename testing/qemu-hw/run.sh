@@ -19,7 +19,7 @@ DISPLAY_NUM="${DISPLAY:-:0}"
 # The size the guest comes up at, and the same default and spelling the
 # Makefile's run targets use — it passes its own KDOS_RES in, so one setting
 # covers every way of starting a VM. QEMU's own virtio-gpu default is 1280x800,
-# which on a cell desktop is about 160x50 characters.
+# which at the shipped cell is about 160x50 characters.
 KDOS_RES="${KDOS_RES:-1920x1080}"
 XRES="${KDOS_RES%%x*}"
 YRES="${KDOS_RES##*x}"

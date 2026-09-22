@@ -35,20 +35,6 @@
 #include "launch.h"
 #include "shell.h"
 
-/*
- * The launch path, which none of this reaches. `kcon_run` is libkcon's and is
- * declared here rather than by including `kcon.h`: that header pulls in the
- * whole display vtable, which is the dependency this binary exists to avoid.
- */
-int kcon_run(const char *sock, const char *const argv[], const char *title,
-	     unsigned flags);
-
-int kcon_run(const char *sock, const char *const argv[], const char *title,
-	     unsigned flags)
-{
-	(void)sock; (void)argv; (void)title; (void)flags;
-	return -1;
-}
 void sh_spawn(const char *const argv[]) { (void)argv; }
 void sh_strip_field_codes(char *s) { (void)s; }
 int sh_term_argv_in(const char *want, int floating, const char *size,

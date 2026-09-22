@@ -26,9 +26,9 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # `client_system` feature is the only thing that would link libwayland, it is
 # opt-in, and nothing in the chain turns it on. The binary stays static-pie
 # with no NEEDED at all, which is what every Rust port here must be. kdos-comp
-# creates both data-control managers, so a yank reaches kdos-clip there like
-# any other program's; under the console session there is no Wayland socket
-# and arboard falls back to X11, which is not on this image either.
+# creates both data-control managers, so a yank reaches kdos-clip like any
+# other program's. A login with no Wayland socket falls back to arboard's X11
+# path, and there is no X server on this image either.
 cargo build --release --frozen --offline \
 	--package atuin --no-default-features --features client,clipboard
 

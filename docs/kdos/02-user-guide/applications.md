@@ -126,57 +126,6 @@ have pinned are warmed in the background when you log in.
 Stage timings for a launch are appended to `$XDG_RUNTIME_DIR/kdos-appbox.trace` if you want to see
 where the time went.
 
-### From the console desktop
-
-**A graphical application's windows are windows.** Every window the application opens gets a title
-bar, a close button, snapping and a workspace, exactly like every other window there — a
-five-window editor is five windows. A small compositor holds the whole application in a process of
-its own and hands back a picture per window; the desktop puts each picture in its cells.
-
-**One entry in the taskbar for the application, not one per window.** A window that belongs to
-another window, or that says what kind of window it is — a dialog, a dock, a tool palette, a splash
-— belongs to a row that already exists, so an editor with four docks and a file chooser open is one
-entry and not six. A dialog opens centred on the window that raised it and stays above it, and
-while a modal dialog is up the window it belongs to cannot be used until the dialog is answered or
-closed — a question has no minimise button, because the taskbar row is the way back from a minimise
-and a dialog has no row of its own. `Alt+Tab` steps these windows and skips the splash and any
-window a modal is holding: the question is in the ring, the window behind it is not until the
-question is gone.
-
-**The keyboard and the pointer arrive whole.** Keys reach the application in the person's own
-layout, held keys stay held, the pointer is aimed at the pixel rather than the cell, a wheel
-scrolls both ways and a program that asks to hold the pointer — a drawing tool, a 3D view — gets
-it. A touch screen is the exception: a finger has no such stream and points a cell at a time, and a
-finger is wider than a cell anyway.
-
-**Copy and paste work across these windows, and so does the terminal beside them.** A copy inside a
-boxed application can be pasted in the terminal next to it, in another boxed application, and back
-inside itself; a copy made anywhere on the console can be pasted inside one. Both the clipboard and
-the middle-click selection cross, and the copy reaches the other side as it is made rather than at
-the paste, so an application's Paste item is live the moment there is something to paste. Text
-only, up to 64 KB of it: copying a picture leaves the previous text where it was rather than
-emptying the clipboard, and dragging a file onto one of these windows is still read as a cancelled
-drag — use a file or the application's own Save for anything a copy cannot carry.
-
-Everything else about the launch is the same — the same desktop entry, the same container, the same
-tagged socket — so an application does not know which desktop started it.
-
-**Over `ssh`, or in a terminal, it is characters.** The picture is matched to the characters whose
-shapes cover the same parts of a cell, so a graphical application reached from another machine is
-recognisable rather than absent. That is not a special case: every display is sent the same thing and
-each shows what it can.
-
-**Pinning one to a terminal of its own.** An application that needs acceleration a software renderer
-cannot give it — a game, a video editor — is better full screen on a virtual terminal. Put
-`display = vt` in its box profile (`~/.config/kdos/boxes/<name>.conf`) and it takes one: it appears
-in the taskbar marked with the terminal it is on, `[vt3]`, and `Ctrl+Alt+F<n>` is how you get back
-while it is running. Closing it returns the screen on its own. `kdos doctor` reports which
-applications are pinned.
-
-An application that runs **in a terminal** rather than in a window — a file manager, an editor —
-opens as an ordinary window on the console desktop instead, because a terminal is exactly what that
-desktop is made of.
-
 ## Opening files
 
 Double-clicking a file, or `kdos-appbox open <path>`, resolves the file's type from its name and

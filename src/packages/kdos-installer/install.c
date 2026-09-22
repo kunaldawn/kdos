@@ -635,7 +635,7 @@ static const char *hash_password(const char *plain)
 
 /* Rewrite one colon-separated database in place, field by field. Renaming
  * the live user touches passwd, shadow, group (as a member AND as the
- * primary group name) and con.conf's `autologin` — miss any one of them and
+ * primary group name) and login.conf's `autologin` — miss any one of them and
  * the installed system logs nobody in. */
 static void rewrite_accounts(const char *oldu, const char *newu,
 			     const char *fullname, const char *userhash,
@@ -742,19 +742,18 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 	}
 
 	/*
-	 * con.conf's `autologin`: tty1 logs in the account this key names, so
+	 * login.conf's `autologin`: tty1 logs in the account this key names, so
 	 * a rename has to reach it. It is the ONLY place the desktop's account
-	 * is named — `/etc/inittab` runs `kdos-getty tty1 kdos-con-login tty1`
-	 * and carries no account at all — so missing this key leaves the key
-	 * naming a user the installed system does not have and the machine
-	 * reachable only from tty2.
+	 * is named — `/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` and
+	 * carries no account at all — so missing this key leaves the key naming
+	 * a user the installed system does not have and the machine reachable
+	 * only from tty2.
 	 *
-	 * Edited in place and after the `greet` rewrite, for the same reason
-	 * that one is: the shipped file is mostly the explanation of what each
-	 * key does, and replacing it wholesale leaves a configuration file
+	 * Edited in place: the shipped file is mostly the explanation of what
+	 * the key does, and replacing it wholesale leaves a configuration file
 	 * nobody can read.
 	 */
-	snprintf(path, sizeof(path), "%s/etc/kdos/con.conf", TARGET);
+	snprintf(path, sizeof(path), "%s/etc/kdos/login.conf", TARGET);
 	if (strcmp(oldu, newu) && slurp(path, buf, sizeof(buf)) > 0) {
 		size_t o = 0;
 		int done = 0;
@@ -1274,16 +1273,20 @@ static void do_config(void)
 	wr("/etc/keymap", "%s\n", cfg.keymap);
 
 	/*
-	 * con.conf's `greet`, edited in place rather than rewritten: the
-	 * shipped file is mostly the explanation of what each key does, and a
+	 * login.conf's `autologin`, edited in place rather than rewritten: the
+	 * shipped file is mostly the explanation of what the key does, and a
 	 * one-line replacement would leave the installed system with a
-	 * configuration file nobody can read. Only the line is replaced; a
-	 * file that has none gains one, and a missing file is left missing
-	 * because the default already matches what would be written.
+	 * configuration file nobody can read.
+	 *
+	 * OFF IS A COMMENTED LINE AND NOT AN EMPTY VALUE. kdos-login reads the
+	 * key and asks when it finds none, and `autologin =` with nothing after
+	 * it would be a key naming an account called "", which agetty would be
+	 * handed. A file that has no line at all gains one only when autologin
+	 * was asked for.
 	 */
 	{
 		char cc[8192];
-		int n = slurp(TARGET "/etc/kdos/con.conf", cc, sizeof(cc));
+		int n = slurp(TARGET "/etc/kdos/login.conf", cc, sizeof(cc));
 
 		if (n > 0) {
 			char out[8192];
@@ -1296,14 +1299,19 @@ static void do_config(void)
 
 				while (*p == ' ' || *p == '\t')
 					p++;
-				if (!strncmp(p, "greet", 5) &&
-				    (p[5] == ' ' || p[5] == '\t' ||
-				     p[5] == '=')) {
+				if (*p == '#')
+					p++;
+				while (*p == ' ' || *p == '\t')
+					p++;
+				if (!strncmp(p, "autologin", 9) &&
+				    (p[9] == ' ' || p[9] == '\t' ||
+				     p[9] == '=')) {
 					o += (size_t)snprintf(out + o,
 							      sizeof(out) - o,
-							      "greet = %s\n",
-							      cfg.greet ? "yes"
-									: "no");
+							      cfg.autologin
+							      ? "autologin = %s\n"
+							      : "#autologin = %s\n",
+							      cfg.username);
 					done = 1;
 					continue;
 				}
@@ -1312,11 +1320,10 @@ static void do_config(void)
 				if (o >= sizeof(out) - 64)
 					break;
 			}
-			if (!done)
+			if (!done && cfg.autologin)
 				snprintf(out + o, sizeof(out) - o,
-					 "greet = %s\n",
-					 cfg.greet ? "yes" : "no");
-			wr("/etc/kdos/con.conf", "%s", out);
+					 "autologin = %s\n", cfg.username);
+			wr("/etc/kdos/login.conf", "%s", out);
 		}
 	}
 

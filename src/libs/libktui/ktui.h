@@ -188,9 +188,10 @@ enum {
 	KT_A_REVERSE = 1 << 1,
 	KT_A_UNDERLINE = 1 << 2,
 	/* The three a terminal's SGR carries and this desktop draws. They are
-	 * bits in the byte a cell already had, so nothing on the wire is wider
-	 * for them; a real VT is where they are dropped, because there an
-	 * attribute bit selects a FONT PAGE rather than a style. */
+	 * bits in the byte a cell already had, so no consumer reading the low
+	 * byte alone is widened for them; a real VT is where they are dropped,
+	 * because there an attribute bit selects a FONT PAGE rather than a
+	 * style. */
 	KT_A_ITALIC = 1 << 3,
 	KT_A_STRIKE = 1 << 4,
 	KT_A_OVERLINE = 1 << 5,
@@ -204,10 +205,10 @@ enum {
 	 * because one drawn over a composited cursor is a SECOND pointer a cell
 	 * from the first and the one a person aims with is the guest's.
 	 *
-	 * IN THE LOW BYTE BECAUSE IT HAS TO TRAVEL. The per-cell run is eight
-	 * bytes and carries this byte unconditionally; a bit above the eighth
-	 * reaches only a view that asked for the colour run, and a view that
-	 * declined it would draw two pointers.
+	 * IN THE LOW BYTE, WHICH EVERY CONSUMER READS UNCONDITIONALLY. Above
+	 * the eighth bit a bit is meaningful only to a consumer that also reads
+	 * the literal colours, and one that ignores them would draw two
+	 * pointers.
 	 *
 	 * Set on a guest's CONTENT cells alone. The chrome around the window is
 	 * drawn in cells and carries none, so the pointer comes back the moment
@@ -218,13 +219,13 @@ enum {
 	KT_A_GUEST = 1 << 6,
 
 	/*
-	 * ABOVE THE EIGHTH BIT NOTHING TRAVELS IN THE WIRE'S ATTRIBUTE BYTE.
+	 * ABOVE THE EIGHTH BIT NOTHING IS PART OF THE PORTABLE ATTRIBUTE.
 	 *
-	 * The per-cell run is eight bytes and stays eight bytes; a literal
-	 * colour arrives in a SEPARATE run that a view has to have asked for.
-	 * Putting these bits in the low byte would send a view that declined
-	 * the colours a cell claiming to have them, and it would draw the
-	 * black it was never sent.
+	 * The low byte is what a consumer with slots alone honours;
+	 * `fgc`/`bgc`/`ulc` beside it are the literals, and these bits say
+	 * which of them mean anything. Putting them in the low byte would hand
+	 * a display that draws in slots a cell claiming a colour it never
+	 * reads, and it would draw the black it was never given.
 	 *
 	 * ONE BIT PER COLOUR, not one for the pair. A program that sets a
 	 * foreground and leaves the background alone is the common case, and a
@@ -241,8 +242,8 @@ enum {
  * THE UNDERLINE'S SHAPE, in three bits above those.
  *
  * `KT_A_UNDERLINE` says there is one and is what every consumer already
- * honours; the style refines it, so a view that never hears the colour run
- * draws a straight line rather than nothing. SGR `4:0`-`4:5` in order, and 0
+ * honours; the style refines it, so a display that draws in slots alone draws
+ * a straight line rather than nothing. SGR `4:0`-`4:5` in order, and 0
  * means the plain line the attribute alone asks for.
  */
 enum {
@@ -266,9 +267,8 @@ typedef struct {
 	/*
 	 * The literal a terminal asked for, kept BESIDE the slot the same
 	 * colour reduced to rather than instead of it. Every consumer that has
-	 * only slots — a view that declined the colour run, a golden, a tty
-	 * with sixteen colours — reads `fg`/`bg` and is unaffected by whatever
-	 * is here. Meaningful only with KT_A_FGRGB, KT_A_BGRGB and
+	 * only slots — a dump, a golden, a tty with sixteen colours — reads
+	 * `fg`/`bg` and is unaffected by whatever is here. Meaningful only with KT_A_FGRGB, KT_A_BGRGB and
 	 * KT_A_ULCOLOR.
 	 */
 	uint32_t fgc, bgc, ulc;
@@ -319,14 +319,14 @@ typedef struct {
 	uint32_t fallback;	/* what a text backend puts there instead   */
 	int w, h;		/* size in cells, 1..16                     */
 	/*
-	 * BUMPED ON EVERY PUT, AND IT IS WHAT A FORWARDING BACKEND COMPARES.
+	 * BUMPED ON EVERY PUT, AND IT IS WHAT A CACHING BACKEND COMPARES.
 	 * An animation re-registers the same key so the cells go on naming the
 	 * same slot and only the pixels change — and the new picture is very
 	 * often the SAME POINTER, because the evictor freed the old one and
 	 * the allocator handed the memory straight back. A backend that keyed
-	 * its "already sent" cache on the pointer would then never send a
-	 * frame after the first, and the animation would run everywhere except
-	 * over the wire.
+	 * its "already uploaded" cache on the pointer would then never take a
+	 * frame after the first, and the animation would stop on its first
+	 * picture.
 	 */
 	unsigned long gen;
 } KtuiSprite;
@@ -380,8 +380,7 @@ size_t ktui_sprite_bytes(void);
  * ktui_draw_resize(). For the sprite table's eviction check and nothing else.
  *
  * IT IS NOT WHAT IS ON THE SCREEN, and a backend need not maintain it at all:
- * `kdos-con`'s ignores it, because a session with several views has one
- * previous frame per view rather than one between them. Read
+ * one that keeps previous frames of its own ignores it. Read
  * `ktui_draw_cells()` for the composed frame.
  */
 const KtuiCell *ktui_cells(int *w, int *h);
@@ -479,8 +478,7 @@ typedef struct {
 	 *
 	 * A BACKEND THAT KEEPS ITS OWN PREVIOUS FRAME MUST IMPLEMENT THIS, AND
 	 * SPOIL EVERY COPY IT KEEPS. `prev` above is libktui's, and a backend
-	 * is free to diff against copies of its own instead — libkkms keeps
-	 * one per screen where libktui's is per session, and libkwl keeps one
+	 * is free to diff against copies of its own instead — libkwl keeps one
 	 * per buffer plus the cells the compositor is showing. Spoiling
 	 * libktui's changes nothing such a backend reads; spoiling some but
 	 * not all of its own repaints pixels into a buffer nothing is told to
@@ -533,8 +531,8 @@ typedef struct {
 	 * press would do where the pointer is — a resize, a drag, a text
 	 * caret — and a backend that draws one picture answers the same way
 	 * whatever it is given. Nothing about the CELLS depends on it, which
-	 * is what lets a view that draws a reversed cell and a view that draws
-	 * an arrow show the same session at the same time.
+	 * is what lets a backend that draws a reversed cell and one that draws
+	 * an arrow render the same frame identically.
 	 */
 	int (*pointer)(int x, int y, int shape);
 	/*
@@ -555,7 +553,7 @@ typedef struct {
 	 * device of its own.
 	 *
 	 * poll_event above answers a CHARACTER and a CELL, which is everything
-	 * a cell desktop wants and nothing a pixel guest embedded in a window
+	 * a cell surface wants and nothing a pixel guest embedded in a window
 	 * can use: a guest holds a key down, repeats from its own keymap,
 	 * reads a modifier that produces no character, and aims at a scrollbar
 	 * two pixels wide. So the switch and the pixel travel too, in a queue
@@ -653,7 +651,7 @@ void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl);
  * are mixed towards KT_BG, so the window underneath stays legible and an
  * embedded application's picture is left alone entirely. The background slot
  * goes to KT_BG beside the literal, which is the whole of the shadow on a
- * display that declined the colour run.
+ * display that draws in slots alone.
  */
 void ktui_draw_shadow(KRect r);
 /*
@@ -666,7 +664,7 @@ void ktui_draw_shadow(KRect r);
  * `alpha` is the weight of the new content, 0..255; 255 does nothing.
  *
  * THE BLEND IS WRITTEN AS THE CELL'S LITERAL and the slot is left alone, so a
- * display that declined the colour run shows an opaque rectangle. Backgrounds
+ * display that draws in slots alone shows an opaque rectangle. Backgrounds
  * only — the ink keeps the colour it was drawn in — and a sprite cell is
  * skipped, because a picture's pixels are not a background.
  *
@@ -713,11 +711,11 @@ enum {
  * owns the pointer, and the shape changes only when the thing under it does.
  *
  * IT IS A HINT AND NOT A GUARANTEE. Only a backend with a framebuffer of its
- * own draws it; a terminal, a dump, a view over ssh and `tty1` reverse the
- * cell under the pointer whatever this says, because a character grid has one
- * pointer and that is it. So NOTHING may depend on the shape being visible —
- * a control that says what it does only through the pointer is a control that
- * says nothing on half the views this desktop supports.
+ * own draws it; a terminal, a dump and `tty1` reverse the cell under the
+ * pointer whatever this says, because a character grid has one pointer and
+ * that is it. So NOTHING may depend on the shape being visible — a control
+ * that says what it does only through the pointer is a control that says
+ * nothing on half the backends this desktop supports.
  */
 void ktui_draw_cursor_shape(int shape);
 int ktui_cursor_shape(void);
@@ -806,14 +804,14 @@ enum {
 	KT_K_F7, KT_K_F8, KT_K_F9, KT_K_F10, KT_K_F11, KT_K_F12,
 	/*
 	 * THE KEYS A KEYBOARD HAS AND A TERMINAL DOES NOT. A media key
-	 * produces no character, so a backend reading a terminal never sees
-	 * one and never will: these reach a session through libkkms and
-	 * nowhere else.
+	 * produces no character, so a backend reading a terminal never sees one
+	 * and never will: these reach a surface through libkwl and nowhere
+	 * else.
 	 *
 	 * APPENDED, NEVER INSERTED. The enum is positional from
-	 * KT_K_SPECIAL and the NUMBER travels: a session writes it over the
-	 * socket to a surface, so a key added in the middle renumbers every
-	 * key after it and a client built before the change reads Home where
+	 * KT_K_SPECIAL and the NUMBER travels, so a key added in the middle
+	 * renumbers every key after it and a client built before the change
+	 * reads Home where
 	 * the session sent End.
 	 */
 	KT_K_VOLUP, KT_K_VOLDOWN, KT_K_MUTE,
@@ -1120,9 +1118,9 @@ int ktui_activated(int id, KRect r);	/* Enter on focus, or a click      */
  * it guesses wrong first on the controls that matter most: which cell of a
  * table, which tab of a strip, which item of how many in a menu.
  *
- * SO THE WIDGET SAYS IT, AND IT SAYS IT HERE. A record composed in `kdos-con`
- * would reach the console and give the graphical desktop nothing; one set in
- * this library is set once and both desktops read it.
+ * SO THE WIDGET SAYS IT, AND IT SAYS IT HERE. A record composed by a surface
+ * would be composed once per surface; one set in this library is set once and
+ * every surface gets it.
  *
  * THE QUEUE IS PER FRAME AND FIXED. Nothing on the draw path allocates — a
  * widget that allocated to say its own name would drop frames on the link this

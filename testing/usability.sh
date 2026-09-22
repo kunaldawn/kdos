@@ -6,7 +6,7 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   The console desktop, driven the way a person drives it.
+#   The desktop, driven the way a person drives it.
 #
 #   testing/usability.sh              # the ISO, 1280x800
 #   testing/usability.sh 1920x1080    # a size whose cell count is not the same

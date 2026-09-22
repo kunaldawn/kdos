@@ -65,8 +65,7 @@ const char *kb_human_size(unsigned long long bytes)
  *
  * Here rather than in a state machine or a terminal, because both halves have
  * a caller outside either: OSC 52 carries a base64 selection, so libkvt's
- * escape parser decodes one, and kdos-view's recorder encodes a protocol
- * message into a transcript.
+ * escape parser decodes one, and an encoder is wanted well away from it.
  *
  * libktui keeps a third table of its own. That library links nothing but
  * libc, and pulling libkbase in for a single OSC 52 write would cost it the

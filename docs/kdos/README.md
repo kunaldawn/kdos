@@ -1,7 +1,7 @@
 # KDOS documentation
 
 The complete documentation for KDOS: a Linux distribution compiled from source, with a desktop
-that is a grid of character cells all the way down. It is written for a reader who is comfortable
+whose every surface is a grid of character cells. It is written for a reader who is comfortable
 with a build log, a package recipe and the C that draws the panel — someone who intends to change
 this system rather than configure around it. Every page describes KDOS as it is now. Nothing here
 records what it was.
@@ -61,7 +61,7 @@ Getting a system running and living in it.
 | [Applications](02-user-guide/applications.md) | Alien apps: installing from the medium, launching, file handling, updates, rollback |
 | [Theming](02-user-guide/theming.md) | The seven accents, what retints live, the CRT knobs, wallpaper, fonts, boxed applications |
 | [Administration](02-user-guide/administration.md) | Services, networking, firewall, storage, users, hardware, codecs, updates, diagnosis |
-| [Accessibility](02-user-guide/accessibility.md) | Reading the console desktop: the braille route, the voice, what a widget announces, what a reader may do |
+| [Accessibility](02-user-guide/accessibility.md) | What a boxed application's own registry offers, and what this desktop does not read |
 
 ### III — Architecture and core
 
@@ -76,7 +76,7 @@ How the system is put together, and the models a change has to respect.
 | [Packs and boxes](03-architecture/packs-and-boxes.md) | The pack format, mounting, composition, grafts, the catalogue, one box per application |
 | [Security model](03-architecture/security-model.md) | Signing, setuid, daemon authorisation, sandboxing, containers — and what is not protected |
 | [Design language](03-architecture/design-language.md) | The character grid as a specification: frame, chrome, colour, pointer, glyph tiers |
-| [The window model](03-architecture/window-model.md) | Placement, tiling, the edge search and the ring walks — the model both desktops obey |
+| [The window model](03-architecture/window-model.md) | Placement, tiling, the edge search and the ring walks — the arithmetic the compositor obeys |
 
 ### IV — Programs and applications
 
@@ -86,11 +86,9 @@ A page per program KDOS itself ships.
 |---|---|
 | [Program map](04-programs/README.md) | Every KDOS binary, what it is, and which name it answers to |
 | [kdos-comp](04-programs/kdos-comp.md) | The compositor: configuration, decorations, the CRT pass, wallpaper, idle, sockets |
-| [kdos-con](04-programs/kdos-con.md) | The console desktop: the default session, the session/view split, both sockets, the greeter, a graphical application as a window, and recording one |
 | [kdos-shell](04-programs/kdos-shell.md) | One binary under many names: the panel, Start menu, desktop, chooser, notifications, applets |
 | [kdos-res](04-programs/kdos-res.md) | The resource monitor: its pages, identity by box, and what it refuses to invent |
-| [kdos-term](04-programs/kdos-term.md) | The terminal: one binary on both desktops, its keys and clipboards, the three image protocols and animation |
-| [kdos-cage](04-programs/kdos-cage.md) | The kiosk: one application embedded in the cell desktop or full screen on a VT, and what the fork of cage changed |
+| [kdos-term](04-programs/kdos-term.md) | The terminal: its keys and clipboards, the three image protocols and animation |
 | [kdos-appbox](04-programs/kdos-appbox.md) | Launching alien apps, generating launchers, and boxes as first-class objects |
 | [The root daemons](04-programs/daemons.md) | powerd, energyd, oomd, mountd, packd, boxsock, and the portal backend |
 | [kinstall](04-programs/kinstall.md) | The installer's design: the probe, the page model, the install child, answer files |

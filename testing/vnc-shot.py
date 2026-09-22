@@ -829,39 +829,34 @@ def main():
         time.sleep(1)
         ser.pump()
 
-        # TTY1 IS THE CONSOLE DESKTOP, not a prompt. It autologins as `kdos`
-        # through kdos-con-login, and .bash_profile starts kdos-con-start
-        # there — so on this boot path the cell desktop is already up before
-        # any step runs, and `--no-session` is what photographs it. `--keys`
-        # then drives that desktop, because sendkey goes to the active VT.
-        #
-        # The graphical session is still started by hand, and it has to be
-        # started somewhere that IS a shell: tty2 has a getty, and the serial
-        # console is root. Typing it on tty1 types into the cell desktop.
+        # TTY1 IS THE DESKTOP, not a prompt. It autologins as `kdos` through
+        # kdos-login, and .bash_profile starts kdos-desktop there — so on this
+        # boot path the compositor is already up before any step runs, and
+        # `--no-session` is what photographs it. `--keys` then drives it,
+        # because sendkey goes to the active VT.
         if args.no_session:
             print("not starting a session — the steps are the run", flush=True)
         elif args.console_cmd:
             # Typing on tty1 reaches whatever OWNS it, and on this boot path
-            # that is the cell desktop rather than a shell — so a command only
-            # runs if a terminal window already has the focus. Open one first
+            # that is the desktop rather than a shell — so a command only runs
+            # if a terminal window already has the focus. Open one first
             # (`--keys meta_l-ret`) or the keystrokes go to the desktop, which
             # is not the same as nothing happening.
             print("running on tty1: %s" % args.console_cmd, flush=True)
             mon.type(args.console_cmd)
             time.sleep(args.wait)
         else:
-            # THE GRAPHICAL SESSION NEEDS A SEAT, so it is typed on a VT and
-            # never sent down the serial line: a compositor launched from a
-            # serial console gets no seat and dies asking for one.
+            # A COMPOSITOR NEEDS A SEAT, so it is typed on a VT and never sent
+            # down the serial line: one launched from a serial console gets no
+            # seat and dies asking for one.
             #
-            # AND tty1 IS THE CELL DESKTOP, NOT A SHELL, so a command typed
-            # straight at it reaches the icon layer's type-ahead and runs
-            # nothing — four minutes of boot ending in "kdos-comp never came
-            # up". Super+Return opens one of the session's own terminal
-            # windows first; the command then has a shell to land in, and
-            # `kdos-desktop` allocates a free VT and switches to it from
-            # there. Use --no-session to drive the console desktop itself, or
-            # --cmd, which runs on the serial console as the desktop user.
+            # AND tty1 IS THE DESKTOP, NOT A SHELL, so a command typed straight
+            # at it reaches the icon layer's type-ahead and runs nothing —
+            # four minutes of boot ending in "kdos-comp never came up".
+            # Super+Return opens a terminal window first and the command then
+            # has a shell to land in. Use --no-session to photograph the
+            # desktop that is already up, or --cmd, which runs on the serial
+            # console as the desktop user.
             print("opening a terminal on tty1…", flush=True)
             mon.cmd("sendkey meta_l-ret")
             time.sleep(6)
@@ -901,8 +896,8 @@ def main():
                 # THIS POINT of the run. `--console-cmd` types during
                 # start-up, before any step, and is skipped entirely under
                 # `--no-session` — so there was no way to type into a window
-                # the run had just opened, which is what every check on the
-                # cell desktop's own terminals needs.
+                # the run had just opened, which is what every check on a
+                # terminal window needs.
                 mon.type(value)
                 time.sleep(2)
             elif kind == "text":
