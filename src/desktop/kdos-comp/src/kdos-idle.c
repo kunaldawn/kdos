@@ -155,8 +155,18 @@ arm(void)
 		return;
 	}
 	int next = next_deadline();
-	/* an inhibitor stops the policy dead rather than pausing it */
-	if (next <= 0 || ninhibit > 0) {
+	/*
+	 * An inhibitor stops the policy dead rather than pausing it, and
+	 * `stay-awake` is the same thing asked for by a person instead of by a
+	 * program: a video player holds idle-inhibit while it plays, and this
+	 * holds it until it is turned off.
+	 *
+	 * READ ON EVERY ARM, not cached. The toggle is a flag file another
+	 * process creates, so a value read once at startup would need this
+	 * process restarted to notice — and arm() already runs on activity,
+	 * where one stat is beneath measuring.
+	 */
+	if (next <= 0 || ninhibit > 0 || kb_toggle_on("stay-awake")) {
 		wl_event_source_timer_update(idle_timer, 0);
 		return;
 	}
@@ -328,10 +338,10 @@ in_a_vm(void)
 #else
 	return true;
 #endif
-	/* The vendor list is libkbase's, so the compositor and the console
-	 * desktop answer this the same way — they share the reason, and a
-	 * hypervisor added to one list but not the other would give one
-	 * desktop working idle timers and the other none. */
+	/* The vendor list is libkbase's so the idle gate and the lid gate
+	 * (kdos_in_vm) read one table: a hypervisor added to a private copy
+	 * would blank the screen on a timer the lid policy never suspends
+	 * for. Missing a hypervisor fails safe — timers simply stay on. */
 	return kb_in_vm();
 }
 

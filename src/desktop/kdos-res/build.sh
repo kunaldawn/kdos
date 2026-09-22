@@ -72,7 +72,10 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
 # libpng is libkicon's: the icon layer decodes the alien apps' own PNGs.
-PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng"
+# fontconfig is libkwl's: kwl_font.c enumerates the monospace families with
+# FcFontList, and fcft carries fontconfig as a Requires.private, so
+# `pkg-config --libs fcft` alone does not link it.
+PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client libpng"
 
 # EVERY .c IN THE PORT EXCEPT THE HELPER, by glob rather than by a list. The
 # list was a second place to remember a new file, and the selftest — which

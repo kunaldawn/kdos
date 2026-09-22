@@ -46,3 +46,14 @@ application/x-fictionbook+xml=epy.desktop
 # A MAIL ADDRESS. `aerc` is the only mail client on this image and it is a
 # terminal program, so the opener wraps it in the emulator.
 x-scheme-handler/mailto=aerc.desktop
+
+# A PAGE AND A LINK. `w3m` is the only browser this image carries and it is a
+# terminal program, so these four answer the same way with a compositor and
+# without one — which is why they sit in the plain table and not in the
+# desktop's. On a bare virtual terminal there is no emulator to wrap it in and
+# it runs in place, which is the whole reason a text browser is the default
+# here rather than a fallback.
+text/html=w3m.desktop
+application/xhtml+xml=w3m.desktop
+x-scheme-handler/http=w3m.desktop
+x-scheme-handler/https=w3m.desktop

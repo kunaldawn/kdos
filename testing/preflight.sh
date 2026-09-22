@@ -63,6 +63,34 @@ for f in script/*/packages.txt; do
 done
 
 echo
+echo
+echo "==> ports built from one tarball agree on its version"
+# `perf` is tools/perf/ inside the kernel tree, so it fetches the SAME archive
+# as `linux` and carries its own copy of the version and hash. A mismatch does
+# not fail the build and does not fail at runtime either: perf loads, and then
+# reports unknown record types for every event the running kernel added after
+# the source it was built from. That is a bug nobody attributes to a version
+# skew, so it is caught here instead.
+shared=0
+for pair in "linux perf"; do
+    set -- $pair
+    a=$1; b=$2
+    av=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$a/kpkgbuild" 2>/dev/null | head -1)
+    bv=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$b/kpkgbuild" 2>/dev/null | head -1)
+    [ -z "$av" ] || [ -z "$bv" ] && continue
+    ah=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "ports/core/$a/kpkgbuild" | head -1)
+    bh=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "ports/core/$b/kpkgbuild" | head -1)
+    if [ "$av" != "$bv" ]; then
+        bad "$a/$b" "versions differ: $a is $av, $b is $bv"
+    elif [ "$ah" != "$bh" ]; then
+        bad "$a/$b" "same version $av but different sha256 — not the same tarball"
+    else
+        note "$a and $b" "both $av, same tarball"
+    fi
+    shared=$((shared + 1))
+done
+[ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
+
 echo "==> every packages.txt resolves to a dependency order"
 for f in script/*/packages.txt; do
     pkgs=$(grep -v '^#' "$f" | grep -v '^$' | tr '\n' ' ')
@@ -1228,6 +1256,51 @@ if [ -s "$SP/missing-cmds" ]; then
     bad "desktop commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
 else
     note "desktop commands" "every one is provided by the tree"
+fi
+
+echo
+echo "==> every program fs/etc/inittab names is on the image"
+#
+# THE WHOLE LOGIN PATH IS IN THIS ONE FILE, and nothing reads it until an ISO
+# boots. A typo in a name, or a binary a recipe stopped installing, is a tty
+# that respawns into nothing — and the tty it takes first is tty1, which is
+# the desktop.
+#
+# EVERY ABSOLUTE WORD OF THE PROCESS FIELD, not just the first: tty1's entry is
+# `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` and kdos-getty execs that
+# second path, so a program missing THERE is the exact failure this exists to
+# catch. The field is everything after the third colon, which is why the id and
+# the runlevels are stripped by position rather than by pattern — `::shutdown:`
+# has an empty id and an empty runlevel list and still names a program.
+#
+# `-L` AS WELL AS `-e`: an installed program may be an absolute symlink into a
+# multi-call binary, which dangles in a staged rootfs and which `-e` alone
+# reports as missing.
+#
+# Most of these are on the image and in no `fs/` overlay, so without a build
+# tree there is nothing to resolve them against and the check says so rather
+# than failing on every line.
+_it_n=0
+_it_bad=0
+for _p in $(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' fs/etc/inittab 2>/dev/null |
+            awk -F: 'NF>=4 { sub(/^[^:]*:[^:]*:[^:]*:/, ""); print }' |
+            tr ' \t' '\n\n' | grep '^/' | sort -u); do
+    _it_n=$((_it_n + 1))
+    [ -e "fs$_p" ] || [ -L "fs$_p" ] && continue
+    [ -d build/fs/usr/bin ] || continue
+    [ -e "build/fs$_p" ] || [ -L "build/fs$_p" ] || {
+        bad "inittab" "$_p is named by fs/etc/inittab and is installed by nothing"
+        _it_bad=$((_it_bad + 1))
+    }
+done
+if [ "$_it_bad" != 0 ]; then
+    :
+elif [ "$_it_n" = 0 ]; then
+    bad "inittab" "fs/etc/inittab names no program at all"
+elif [ -d build/fs/usr/bin ]; then
+    note "inittab" "$_it_n programs, every one on the image"
+else
+    note "inittab" "$_it_n programs; only the ones fs/ ships checked — no build tree"
 fi
 
 # ── every flag one kdos-shell tool passes another, the other accepts ──────

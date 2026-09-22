@@ -71,7 +71,7 @@ static const void *tone_for;		/* the theme the cache was built from */
  * It has two jobs that pull against each other: stand far enough off the bar
  * to say which window you are in, and stay dark enough that the label on it
  * reads. Mixing further toward `pdark` does the first and undoes the second,
- * and no single percentage serves all seven accents — measured, 68% gives
+ * and no single percentage serves all eight accents — measured, 68% gives
  * 3.95:1 for text on bone and 50% still only gives 4.83:1.
  *
  * So walk down from 68% and stop at the first mix whose label clears 7:1,

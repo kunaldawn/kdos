@@ -100,9 +100,22 @@ fi
 old=$(pgrep -x kdos-comp | head -1)
 log "old compositor pid ${old:-none}"
 
-# EXACT, and `kdos-desktop-start` is why: it is a /bin/sh script that owns the
-# session and `kdos-comp` is a substring of its name, so a pattern kill takes
-# the script down with an unhandled signal and init never brings it back.
+# THE SUPERVISOR FIRST, AND BY PATTERN. `kdos-desktop-start` is a /bin/sh
+# script, so its comm is the name truncated to fifteen characters
+# (`kdos-desktop-st`) and no `-x` pattern can reach it — `-f` matches the path
+# on its command line instead. It has to go before the compositor does: on a
+# non-zero `kdos-comp` status it stops at `read -r _ans </dev/tty` on tty1 and
+# waits for an answer, and the session started below would then run on the
+# same descriptors as a prompt that re-execs a second supervisor for any `r`
+# a later step delivers.
+#
+# The login bash under it is left alone: `.bash_profile` does not exec the
+# desktop, so that shell survives, tty1's getty stays up, init respawns
+# nothing, and the manual start below is still what brings a session back.
+#
+# The compositor is EXACT because it names a binary. Reparented to init by the
+# kill above, it is still reached by its own name.
+pkill -f '/usr/local/bin/kdos-desktop-start' 2>/dev/null
 pkill -x kdos-comp 2>/dev/null
 
 # AND THE SHELL SURFACES, which the session does not own. They are not

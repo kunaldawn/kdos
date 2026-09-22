@@ -607,7 +607,8 @@ static const char *catalogue_path(void)
 /*
  * AN EXPORTED SET ON A MOUNTED DEVICE, which is the offline route and the only
  * one a machine with no network has. The first `.ktar` found under a mounted
- * removable filesystem wins; F6 on the page picks a different one.
+ * removable filesystem wins, and it is the only one offered — a second medium
+ * carrying a different set is not reachable from the page.
  *
  * It is looked for ONCE, at probe time. Walking every mount on every draw
  * would put a filesystem scan inside the paint path.

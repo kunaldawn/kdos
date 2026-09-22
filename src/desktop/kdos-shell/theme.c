@@ -25,11 +25,12 @@
  * and the face it draws in, and a second window for the second half would be a
  * second thing to find.
  *
- * THE FONT LIST IS THE DISPLAY'S. A surface never loads a font — it draws
- * cells and something else turns them into pixels — so the faces come from the
- * display through `libkdisp`, and what goes back is an INDEX into that list
- * and never a name: the display may be at the far end of an ssh link with its
- * own machine's fonts.
+ * THE FONT LIST IS THE DISPLAY BACKEND'S. A surface never loads a font — it
+ * draws cells and the backend turns them into pixels — so the faces come
+ * through `libkdisp`, and what goes back is an INDEX into that list and never
+ * a name: the names are the backend's and mean nothing on this side of it.
+ * Under the compositor the list is fontconfig's MONOSPACE families, because a
+ * cell grid drawn in a proportional face is a smear.
  *
  * AND THE SAMPLE ROW IS THE SCREEN. A cell grid has exactly one font at a
  * time, so a row cannot be drawn in a face the screen is not wearing — the
@@ -37,6 +38,13 @@
  * then a sample of it. That is why the sample text is beside each name rather
  * than only under the list: whichever row the highlight is on, its letters are
  * the ones being judged.
+ *
+ * AND `Enter` ON THE FONT PAGE IS A FILE. Each surface on this desktop is its
+ * own process with its own face, so a font this window loaded reaches this
+ * window and nothing else; keeping one writes the family into comp.conf's
+ * `chrome_font` and `panel_font`, which every other surface reads once, at
+ * startup. The desktop agrees at the next login and not before — the accent
+ * half of this window is the one that repaints the screen as you arrow.
  *
  * THE SWATCHES ARE LITERAL COLOURS, AND THIS IS THE ONLY SURFACE ON THE
  * DESKTOP THAT MAY SET ONE. Chrome draws in slots so that one word repaints
@@ -105,6 +113,10 @@ static KtuiKeys keys;
 static int page;
 static int sel;
 static int fsel;		/* the highlighted face */
+/* The first face drawn, so the highlight stays inside the window. The grid is
+ * asked for once and fontconfig answers with as many families as the machine
+ * has, so the LIST scrolls under a fixed frame. */
+static int ftop;
 static int fopen_idx = -1;	/* the face this window was opened on */
 /* What this window has put on the screen, or TH_NO_FACE when it has changed
  * nothing. A negative index is a real answer here — it is what the display
@@ -167,9 +179,10 @@ static void restore(void)
 /*
  * THE FACES THE DISPLAY OFFERS, re-read every turn.
  *
- * The list arrives over a socket some pumps after it is asked for, so a
- * caller that asked once and believed the first count would draw an empty
- * list for ever — the rule the window list keeps, for the same reason.
+ * A backend is allowed to gather its list over a socket and answer some pumps
+ * later, so a caller that asked once and believed the first count would draw
+ * an empty list for ever on that backend — the rule the window list keeps, for
+ * the same reason.
  */
 static int font_rows(char out[][TH_FONT_NAME], int max)
 {
@@ -330,9 +343,10 @@ int theme_main(int argc, char **argv)
 		char fonts[TH_FONT_MAX][TH_FONT_NAME];
 		int nfonts = font_rows(fonts, TH_FONT_MAX);
 
-		/* THE LIST ARRIVES LATE, so the highlight follows it: a face
-		 * in force when this opened is the row the eye should start
-		 * on, and the index for it is not known until the answer is. */
+		/* THE HIGHLIGHT FOLLOWS THE LIST WHENEVER IT LANDS: a face in
+		 * force when this opened is the row the eye should start on,
+		 * and on a backend that answers late the index for it is not
+		 * known until the answer is. */
 		if (fopen_idx < 0 && nfonts > 0) {
 			fopen_idx = kdisp_font_current();
 			if (fopen_idx > 0)
@@ -340,6 +354,8 @@ int theme_main(int argc, char **argv)
 		}
 		if (fsel >= nfonts)
 			fsel = nfonts > 0 ? nfonts - 1 : 0;
+		ktui_rows_follow(krect(1, 2, w - 2, h - 4 > 0 ? h - 4 : 1),
+				 fsel, &ftop, nfonts);
 
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 		ktui_draw_box(krect(0, 0, w, h), "Style", KT_ACCENT,
@@ -416,9 +432,9 @@ int theme_main(int argc, char **argv)
 		 * face on, so the row under the highlight is being shown in
 		 * itself, and so is every other cell in this window.
 		 */
-		for (int i = 0; page == PG_FONT && i < nfonts &&
-		     2 + i < h - 2; i++) {
-			int y = 2 + i;
+		for (int i = ftop; page == PG_FONT && i < nfonts &&
+		     2 + i - ftop < h - 2; i++) {
+			int y = 2 + i - ftop;
 			int x = 2;
 
 			ktui_draw_text(x, y, 1,
@@ -436,19 +452,24 @@ int theme_main(int argc, char **argv)
 		}
 
 		/*
-		 * AND THE HONEST ANSWER WHERE THERE IS NOTHING TO OFFER. The
-		 * font is not this window's to change under the compositor —
-		 * every surface carries its own, from `chrome_font` and
-		 * `panel_font` — and a `--tty` run is inside a terminal that
-		 * owns it. An empty list with no sentence reads as a list
-		 * still loading.
+		 * AND THE HONEST ANSWER WHERE THERE IS NOTHING TO OFFER. A
+		 * display that enumerates no face is a machine carrying no
+		 * monospace family at all, or a `--tty` run inside a terminal
+		 * that owns the font and will not hand it over. TWO LINES
+		 * BECAUSE THEY ARE TWO FACTS: that there is nothing to pick,
+		 * and where the font is set instead. An empty list with
+		 * neither reads as a list still loading.
 		 */
-		if (page == PG_FONT && nfonts == 0)
+		if (page == PG_FONT && nfonts == 0) {
 			ktui_draw_text(2, 3, w - 4,
+				       "the display offers no face it can wear",
+				       KT_MID, KT_SURFACE, KT_A_NONE);
+			ktui_draw_text(2, 4, w - 4,
 				       "the font is set in "
 				       "~/.config/kdos/comp.conf — "
 				       "chrome_font and panel_font",
 				       KT_MID, KT_SURFACE, KT_A_NONE);
+		}
 
 		char updown[8];
 
@@ -504,7 +525,13 @@ int theme_main(int argc, char **argv)
 			int n = page == PG_FONT ? kdisp_font_count()
 					        : kcol_nscheme;
 			int *at = page == PG_FONT ? &fsel : &sel;
-			int top = 0;
+			int atop = 0;
+			/* The font list is the only one here that can outrun
+			 * its frame, and its scroll position is the one the
+			 * draw above used — a local reset to 0 on every event
+			 * would hand the widget a window the screen is not
+			 * showing. */
+			int *top = page == PG_FONT ? &ftop : &atop;
 
 			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT &&
 			    ktui_tabs_hit(krect(2, 1, w - 4, 1), PAGES, PG_N,
@@ -514,7 +541,7 @@ int theme_main(int argc, char **argv)
 						     ev.my);
 				continue;
 			}
-			switch (ktui_rows_event(lr, at, &top, n, &ev)) {
+			switch (ktui_rows_event(lr, at, top, n, &ev)) {
 			case KTUI_ROWS_MOVED:
 				if (page == PG_FONT)
 					font_preview(fsel);

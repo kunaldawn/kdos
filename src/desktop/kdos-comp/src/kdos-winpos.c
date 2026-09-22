@@ -8,13 +8,17 @@
  * cannot relaunch anything, but it can stop every application opening in
  * the middle of the screen at the size its author picked.
  *
- * Four rules, each one a way this feature usually becomes an annoyance:
+ * Five rules, each one a way this feature usually becomes an annoyance:
  *
  * - It applies only to a view that would otherwise be PLACED by us. A
  *   client that positioned itself (an X11 window with USPosition), a
  *   window rule that placed it, a fixedPosition rule, and anything that
  *   maps maximized, tiled or fullscreen are all left alone: overriding
  *   an explicit intent is worse than having no memory at all.
+ * - A window with a parent is neither recorded nor restored. Every
+ *   window of one guest carries the same app_id, so a remembered file
+ *   chooser would be the rectangle the document window opens at next
+ *   time, on disk, for every session after this one.
  * - The restored box is clamped into the output's USABLE area — labwc
  *   already computes one, panels included. A window remembered from a
  *   1920-wide screen must not open off the edge of a 1366-wide one.
@@ -272,7 +276,8 @@ kdos_winpos_forget(struct view *view)
 void
 kdos_winpos_record(struct view *view)
 {
-	if (!kw_enabled() || !kw_usable_app_id(view->app_id)) {
+	if (!kw_enabled() || !kw_usable_app_id(view->app_id)
+			|| view->impl->get_parent(view)) {
 		return;
 	}
 	kw_load();
@@ -390,7 +395,8 @@ kdos_winpos_apply(struct view *view)
 {
 	bool client_placed = kw_take_mark(view);
 	if (!kw_enabled() || client_placed
-			|| !kw_usable_app_id(view->app_id)) {
+			|| !kw_usable_app_id(view->app_id)
+			|| view->impl->get_parent(view)) {
 		return;
 	}
 	/*

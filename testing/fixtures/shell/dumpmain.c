@@ -409,6 +409,7 @@ int __wrap_ktui_offscreen_init(int w, int h)
 #define FRONT_END(sym) __attribute__((weak)) int sym(int argc, char **argv)
 
 FRONT_END(cal_main);
+FRONT_END(display_main);
 FRONT_END(peek_main);
 FRONT_END(find_main);
 FRONT_END(pix_main);
@@ -469,6 +470,7 @@ static const struct {
 	{ "pick",	pick_main },
 	{ "keys",	keys_main },
 	{ "teams",	teams_main },
+	{ "display",	display_main },
 	{ "saver",	saver_main },
 	{ "slit",	slit_main },
 	{ "doc",	doc_main },

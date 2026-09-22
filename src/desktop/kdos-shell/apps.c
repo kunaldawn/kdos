@@ -371,8 +371,8 @@ static void add_desktop_file(const char *path)
 	/*
 	 * THE LAUNCH KEYS THROUGH libkxdg'S ONE READER, which is also the test
 	 * that this entry can be started at all — Type=Application with an
-	 * Exec. Four surfaces used to read the same seven keys with four
-	 * private lists; see kxdg.h.
+	 * Exec. Every surface that starts something reads them through this
+	 * same call, so none of them can disagree; see kxdg.h.
 	 */
 	if (kxdg_launch_read(&e, &kl) != 0) {
 		kxdg_free(&e);
@@ -414,11 +414,11 @@ static void add_desktop_file(const char *path)
 		 kxdg_get(&e, "Keywords", ""), kxdg_get(&e, "GenericName", ""));
 	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
 	/*
-	 * AND THE REST OF THE LAUNCH, off the record libkxdg filled: which
-	 * terminal the entry asked for, the shape it wants, and whether it
-	 * draws cells rather than pixels. Copied rather than re-read, so a key
-	 * added to KxdgLaunch reaches this index, the desktop's icons, the
-	 * chooser and `kdos-appbox open` together.
+	 * AND THE REST OF THE LAUNCH, off the record libkxdg filled: whether
+	 * the entry needs a terminal, which emulator it asked for, whether it
+	 * wants a floating window and the shape it wants. Copied rather than
+	 * re-read, so a key added to KxdgLaunch reaches this index, the
+	 * desktop's icons, the chooser and `kdos-appbox open` together.
 	 */
 	a->terminal = kl.terminal;
 	kb_strlcpy(a->term, kl.term, sizeof(a->term));

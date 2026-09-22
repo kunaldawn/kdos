@@ -118,38 +118,6 @@ kwm_edge_regions(KwmBox *best, KwmBox cur, KwmBox tgt,
 }
 
 void
-kwm_edge_output(KwmBox *best, KwmBox cur, KwmBox tgt, KwmRect usable,
-		KwmEdgeValidator v, void *user)
-{
-	static const KwmBox unbounded = {
-		INT_MIN, INT_MAX, INT_MAX, INT_MIN
-	};
-	static const unsigned dirs[] = {
-		KWM_EDGE_LEFT, KWM_EDGE_RIGHT, KWM_EDGE_TOP, KWM_EDGE_BOTTOM
-	};
-
-	KwmBox out;
-	out.top = usable.y;
-	out.right = usable.x + usable.w;
-	out.bottom = usable.y + usable.h;
-	out.left = usable.x;
-
-	/*
-	 * An output is treated as four half-planes, each sharing one edge of it
-	 * and extending away from it, and only the opposing edge of each is
-	 * ever finite. Validating the aligned edge as well would compare four
-	 * infinities for nothing.
-	 */
-	for (unsigned d = 0; d < 4; d++)
-		v(slot(best, dirs[d]),
-		  kwm_edge_of(cur, dirs[d], 0),
-		  kwm_edge_of(tgt, dirs[d], 0),
-		  kwm_edge_of(out, dirs[d], 0),
-		  kwm_edge_of(unbounded, dirs[d], 0),
-		  is_lesser(dirs[d]), user);
-}
-
-void
 kwm_edge_check(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
 	       KwmEdge align, int lesser, void *user)
 {

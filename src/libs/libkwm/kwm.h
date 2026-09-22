@@ -7,19 +7,21 @@
  * ---------------------------------
  *   libkwm — the window model, and only the model
  *
- * Placement, tiling, the neighbour-edge search, the focus stack, workspace
- * semantics and output ordering, kept out of the compositor that obeys it so
- * that each of them can be asserted against a fixture with no display.
+ * Placement, tiling, the neighbour-edge search and workspace semantics, kept
+ * out of the compositor that obeys it so that each of them can be asserted
+ * against a fixture with no display.
  *
  * WHAT IS ONE IMPLEMENTATION AND WHAT IS TWO, because the difference decides
- * whether a defect is one fix or two. Placement, tiling, the focus stack and
- * the ring walks are here and nowhere else. Of the neighbour-edge search only
- * the arithmetic is shared — kwm_clip_add, kwm_clip_sub, kwm_edge_best and
- * kwm_edge_check are what kdos-comp calls — while the walks that FIND the
- * candidate edges exist twice over, the compositor's across its scene graph
- * and this library's across a region array. Change a walk here and the
- * compositor is untouched; that is the cost of a model that has to serve a
- * scene graph and a cell grid, and it is why the contract below is the
+ * whether a defect is one fix or two. Placement, tiling and the ring walk are
+ * here and nowhere else — and kwm_fit and kwm_ring_next have no call site in
+ * any program: they are the written rule for move-before-shrink and for
+ * cycling, and the contract below is the only thing holding them to it. Of the
+ * neighbour-edge search only the arithmetic is shared — kwm_clip_add,
+ * kwm_clip_sub, kwm_edge_best and kwm_edge_check are what kdos-comp calls —
+ * while the walk that FINDS the candidate edges is the compositor's, across
+ * its scene graph. The region-array walk here (kwm_edge_init, kwm_edge_of,
+ * kwm_edge_regions) is replayed against the contract and nothing else, so a
+ * change to it moves no shipped behaviour, which is why the contract is the
  * arbiter rather than either copy.
  *
  * NOTHING BUT libkbase, AND NO MATHS LIBRARY. kdos-comp compiles libkbase and
@@ -31,7 +33,8 @@
  * THIS LIBRARY KNOWS NOTHING ABOUT WINDOWS. It is handed rectangles and told
  * what is being asked; what a window IS, which output it is on, whether a
  * client accepted its size and whether it is maximised all stay with the
- * caller. That is what lets a compositor and a cell grid share it.
+ * caller. That is what lets every rule here be asserted against a table of
+ * rectangles, with no compositor and no display underneath it.
  *
  * The contract is testing/fixtures/wm/geometry.txt, every row of which cites
  * the line of kdos-comp it was derived from. This library reproduces that
@@ -254,10 +257,6 @@ void kwm_edge_regions(KwmBox *best, KwmBox cur, KwmBox tgt,
 		      const KwmRegion *regions, int n, int gap,
 		      KwmEdgeValidator v, void *user);
 
-/* The same, against the edges of an output the box is inside. */
-void kwm_edge_output(KwmBox *best, KwmBox cur, KwmBox tgt, KwmRect usable,
-		     KwmEdgeValidator v, void *user);
-
 /*
  * The validator snapping uses: an edge counts when it lies between where the
  * moving edge is and where it is going. Pointer resistance supplies its own.
@@ -309,9 +308,9 @@ KwmRect kwm_fit(KwmRect want, KwmRect work, int min_w, int min_h);
  * Rings
  *
  * Window cycling and workspace switching are both a walk around a ring with a
- * sentinel between the last item and the first. The compositor keeps them as
- * linked lists and the console keeps them as arrays; the RULE is the same one,
- * so it lives here and neither writes it twice.
+ * sentinel between the last item and the first. The caller owns the container
+ * — kdos-comp's is a linked list — and this walks indices, so the rule is
+ * written once and can be asserted with no scene graph to build first.
  * ──────────────────────────────────────────────────────────────────────── */
 
 /*

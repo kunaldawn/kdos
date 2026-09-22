@@ -31,10 +31,13 @@
  * the one state worth seeing — "the thing I am monitoring stopped answering" —
  * would be indistinguishable from "I never configured it".
  *
- * NOTHING STARTS IT YET. There is no `slit` key in comp.conf and no row in
- * kdos-child.c's TEMPLATES[], so writing ~/.config/kdos/slit.conf does not make
- * a column appear: this is run by hand or from a keybind until the compositor
- * carries a supervised child for it, one per output, the way kdos-desk is.
+ * OFF BY DEFAULT AND SUPERVISED BY THE COMPOSITOR. `slit = yes` in comp.conf
+ * puts kdos-slit in kdos-child.c's TEMPLATES[] with per_output set, so there is
+ * one column per screen, the way kdos-desk is. With no ~/.config/kdos/slit.conf
+ * it exits 0 and nothing is drawn, which is why the default is off — a slit
+ * nobody configured is a column of dim `!` marks. The key is read ONCE at
+ * startup, so switching it on takes effect at the next login and not on a
+ * reconfigure.
  */
 
 #include <stdio.h>

@@ -32,8 +32,8 @@ cannot be told apart from a slow one. `--gl` gives the guest GL and no Vulkan:
 measures lavapipe on the CPU without saying so. On an NVIDIA host `--venus`
 itself is measured dead at both ends — the flag's own help says how.
 
-Three things it has to get right, each recorded in CLAUDE.md's VM debug rig
-section before this file existed:
+Three things it has to get right, each also stated as a trap in CLAUDE.md's
+rig section:
 
   - `screendump` over the monitor socket answers "no surface" under a GL
     display, so the framebuffer is read over RFB instead. The handshake's
@@ -136,12 +136,13 @@ class Monitor:
         while it is being typed, and a Return there has already moved on to
         whatever the first match does.
 
-        The session is started the way a person starts it — by typing
-        `kdos-desktop` at the autologin prompt on tty1 — rather than from the
-        serial root shell, and that is not a stylistic choice: wlroots' DRM
-        backend needs a seat, and seatd grants one to a session that is ON a
-        VT. A compositor launched from ttyS0 gets no seat and never opens the
-        display.
+        Typing goes to tty1, which reaches whatever owns it: tty1 autologins
+        and `.bash_profile` starts kdos-desktop there, so that is the desktop
+        unless a window has the focus. Nothing about the display is driven
+        from the serial root shell instead, and that is not a stylistic
+        choice: wlroots' DRM backend needs a seat, and seatd grants one to a
+        session that is ON a VT. A compositor launched from ttyS0 gets no seat
+        and never opens the display.
         """
         # A character with no qemu keyname is sent VERBATIM, which the monitor
         # rejects — silently, from this side — so the line arrives with that
@@ -477,10 +478,10 @@ def send_script(ser, path, timeout=600):
 class Step(argparse.Action):
     """Append (kind, value) to one ORDERED list shared by every action flag.
 
-    The flags used to be four independent lists run in a fixed order — every
-    `--cmd`, then every `--keys`, then the shot — so "open this, photograph it,
-    close it, open the next" could not be expressed and each picture cost its
-    own boot. A README's worth of them is a dozen boots of a 10 GB ISO.
+    ORDER ON THE COMMAND LINE IS ORDER OF EXECUTION. One list per flag kind,
+    run kind by kind, cannot express "open this, photograph it, close it, open
+    the next", so every picture would cost its own boot of a 10 GB ISO — a
+    README's worth of them is a dozen boots.
     """
 
     def __call__(self, parser, ns, value, option_string=None):
@@ -563,14 +564,11 @@ def main():
                          "vkCreateInstance without it. Without --venus the "
                          "tools measure lavapipe on the CPU and say nothing, "
                          "so check vulkaninfo before trusting a number")
-    ap.add_argument("--session-env", default=None,
-                    help="prefix the session command, e.g. 'KDOS_PANEL_DEBUG=1 '"
-                         " — the compositor supervises the panel, so a panel"
-                         " variable has to be in ITS environment")
     ap.add_argument("--console-cmd", default=None,
-                    help="type this on tty1 INSTEAD of starting the session, "
-                         "and photograph the console — the only way to see a "
-                         "program at the 512-glyph font it has to read in")
+                    help="type this on tty1 during start-up, before any step. "
+                         "tty1 is the desktop, so it reaches the icon layer's "
+                         "type-ahead and not a shell — to land a command in a "
+                         "terminal window use --keys meta_l-ret then --type")
     ap.add_argument("--soak", type=int, default=0,
                     help="seconds to let the session run after every step and "
                          "before the final shot, for a load test that has to "
@@ -600,14 +598,18 @@ def main():
                          "a tar onto, which is how files come back out. "
                          "--data-disk is input only")
     ap.add_argument("--no-session", action="store_true",
-                    help="do not start the desktop: the steps are all this "
-                         "run wants and a compositor is 40s of nothing")
+                    help="accepted and ignored: tty1 autologins and starts "
+                         "kdos-desktop itself, so the desktop the steps drive "
+                         "is the one the boot brought up either way")
     ap.add_argument("--usb", default=None,
                     help="attach a raw disk image as a USB stick")
     ap.add_argument("--data-disk", default=None,
                     help="attach a raw file as a plain virtio disk — how a "
                          "large artefact reaches a guest with no network. Far "
-                         "faster than --usb, and not removable")
+                         "faster than --usb, and not removable. The session "
+                         "starts at boot, so its environment is the boot's: a "
+                         "variable for the compositor or the panel goes in on "
+                         "this disk and is exported before kdos-desktop runs")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--serial-log", default="/tmp/kdos-serial.log")
     args = ap.parse_args()
@@ -830,51 +832,29 @@ def main():
         ser.pump()
 
         # TTY1 IS THE DESKTOP, not a prompt. It autologins as `kdos` through
-        # kdos-login, and .bash_profile starts kdos-desktop there — so on this
-        # boot path the compositor is already up before any step runs, and
-        # `--no-session` is what photographs it. `--keys` then drives it,
-        # because sendkey goes to the active VT.
-        if args.no_session:
-            print("not starting a session — the steps are the run", flush=True)
-        elif args.console_cmd:
-            # Typing on tty1 reaches whatever OWNS it, and on this boot path
-            # that is the desktop rather than a shell — so a command only runs
-            # if a terminal window already has the focus. Open one first
-            # (`--keys meta_l-ret`) or the keystrokes go to the desktop, which
-            # is not the same as nothing happening.
-            print("running on tty1: %s" % args.console_cmd, flush=True)
+        # kdos-login, and .bash_profile starts kdos-desktop there — so the
+        # compositor is up before any step runs and NOTHING HERE STARTS ONE.
+        #
+        # A second compositor is not a session: it would be launched inside the
+        # first one's seat, and a readiness gate that greps for a `kdos-comp`
+        # pid is answered by the one that booted whatever the launch did — a
+        # check that cannot fail is a check that is not there.
+        #
+        # `--keys` drives the session that booted, because sendkey goes to the
+        # active VT; a compositor needs a seat and seatd grants one only to a
+        # session ON a VT, which is why nothing about the display is ever done
+        # down the serial line.
+        if args.console_cmd:
+            # Typing on tty1 reaches whatever OWNS it, which is the desktop:
+            # this lands in the icon layer's type-ahead, not in a shell, and it
+            # fires before the step loop so no `--keys meta_l-ret` can precede
+            # it. A command that needs a shell is `--keys meta_l-ret` followed
+            # by `--type`, or `--cmd` on the serial console.
+            print("typing on tty1: %s" % args.console_cmd, flush=True)
             mon.type(args.console_cmd)
             time.sleep(args.wait)
         else:
-            # A COMPOSITOR NEEDS A SEAT, so it is typed on a VT and never sent
-            # down the serial line: one launched from a serial console gets no
-            # seat and dies asking for one.
-            #
-            # AND tty1 IS THE DESKTOP, NOT A SHELL, so a command typed straight
-            # at it reaches the icon layer's type-ahead and runs nothing —
-            # four minutes of boot ending in "kdos-comp never came up".
-            # Super+Return opens a terminal window first and the command then
-            # has a shell to land in. Use --no-session to photograph the
-            # desktop that is already up, or --cmd, which runs on the serial
-            # console as the desktop user.
-            print("opening a terminal on tty1…", flush=True)
-            mon.cmd("sendkey meta_l-ret")
-            time.sleep(6)
-            print("starting the session…", flush=True)
-            mon.type(args.session_env + "kdos-desktop"
-                     if args.session_env else "kdos-desktop")
-
-            print("waiting for the desktop…", flush=True)
-            deadline = time.time() + 240
-            up = False
-            while time.time() < deadline and not up:
-                ser.send("pgrep -x kdos-comp >/dev/null && echo COMPUP "
-                         "|| echo NOCOMP")
-                ser.expect("COMPUP", timeout=5)
-                up = b"COMPUP" in ser.buf
-            if not up:
-                print(ser.tail(4000))
-                raise SystemExit("kdos-comp never came up")
+            print("letting the desktop settle…", flush=True)
             time.sleep(args.wait)
 
         shots = 0
@@ -894,10 +874,9 @@ def main():
             elif kind == "type":
                 # TYPED AS A STEP, so it reaches whatever has the focus AT
                 # THIS POINT of the run. `--console-cmd` types during
-                # start-up, before any step, and is skipped entirely under
-                # `--no-session` — so there was no way to type into a window
-                # the run had just opened, which is what every check on a
-                # terminal window needs.
+                # start-up, before any step, so it can only reach the desktop
+                # itself; this is the only way into a window the run has just
+                # opened, which is what every check on a terminal window needs.
                 mon.type(value)
                 time.sleep(2)
             elif kind == "text":
@@ -1002,11 +981,10 @@ def main():
                 ser.buf = ser.buf[-8000:]
 
         # `--out` is the one-shot form and stays the default: a run that asked
-        # for no picture at all is a run that booted the ISO for nothing.
-        # A run that asked for no picture at all is a run that booted the ISO
-        # for nothing — unless it deliberately started no session, where the
-        # only thing on the screen is a login prompt.
-        if not shots and not args.no_session:
+        # for no picture at all is a run that booted the ISO for nothing, and
+        # what is on the screen at the end of it is the desktop the boot
+        # brought up.
+        if not shots:
             time.sleep(2)
             print("reading the framebuffer over VNC…", flush=True)
             w, h = rfb_shot("127.0.0.1", args.vnc_port, args.out)

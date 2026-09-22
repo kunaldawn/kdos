@@ -7,11 +7,12 @@
  * ---------------------------------
  *   kdos-record — the desktop, into a file, through the portal
  *
- * THE PORTAL AND NOT THE BACKEND, even though the backend is ours. `Start` is
- * what turns a request into a running cast and hands back the PipeWire node it
- * registered, and the front end is what picks the backend per desktop — `kdos`
- * the `wlr` backend. Going round it would mean a second answer to "who may
- * record this screen".
+ * THE PORTAL AND NOT THE BACKEND. `Start` is what turns a request into a
+ * running cast and hands back the PipeWire node it registered, and the front
+ * end is what picks the backend — on KDOS that is `wlr`, which
+ * `kdos-portals.conf` names for `org.freedesktop.impl.portal.ScreenCast`.
+ * Going round the portal would mean a second answer to "who may record this
+ * screen".
  *
  * A SESSION BELONGS TO A CONNECTION, which is why this is a program and not a
  * shell script. `xdg-desktop-portal` keys a session by the unique name that
@@ -264,13 +265,13 @@ static int is_element(const char *name)
  *
  * `$XDG_RUNTIME_DIR/kdos/screencast.pid`, the directory the now-playing line
  * already lives in and for the same reason: it is tmpfs, so a marker left
- * behind by a crash cannot outlive the boot it lied about. Two readers — the
- * next invocation, which stops the recording this one names, and the console
- * bar, which draws its lamp.
+ * behind by a crash cannot outlive the boot it lied about. One reader — the
+ * next invocation, which stops the recording this one names. The panel's ●SCR
+ * lamp is not a reader: it counts PipeWire ScreenCast nodes, so it lights for
+ * any screen share and not only for this program.
  *
- * `screencast` AND NOT `recording`: `kdos-rec` records a microphone and the
- * console bar already says RECORDING about a keystroke macro, so the word is
- * three things and the path may only be one.
+ * `screencast` AND NOT `recording`: `kdos-rec` records a microphone, so the
+ * word is two things and the path may only be one.
  */
 static int marker_path(char *buf, size_t n)
 {

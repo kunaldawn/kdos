@@ -52,7 +52,7 @@ mouse_close_dialog=1
 mouse_repeat_rate=100
 
 [Layout]
-# The panel's directory in the window title, which is what the console
-# desktop's taskbar and the compositor's title bar both draw. Without it every
-# `mc` window is called `mc`.
+# The panel's directory in the window title, which is what the taskbar chip's
+# second line and the window's own title bar both draw. Without it every `mc`
+# window is called `mc`.
 xterm_title=1

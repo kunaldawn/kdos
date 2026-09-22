@@ -3,8 +3,8 @@
 |------------------------------------------------------------------------------|
 | ROUTES                                                                       |
 | > setup.printers                         kdos-print                          |
-|                                                                              |
-|                                                                              |
+| CHORDS                                                                       |
+|   PreviousWindow                         Alt+Shift+Tab                       |
 |                                                                              |
 |                                                                              |
 |                                                                              |

@@ -31,7 +31,7 @@
  *       kdos-icons/genatlas.py, because there is no SVG parser anywhere in
  *       this tree and there is not going to be one. Shipped in upstream's own
  *       colours and tinted at load through kcol_remap — the wallpaper's
- *       pipeline — so one atlas serves all seven accents and `kdos theme amber`
+ *       pipeline — so one atlas serves all eight accents and `kdos theme amber`
  *       retints it live.
  * ---------------------------------
  */
@@ -61,13 +61,13 @@ typedef union pixman_image pixman_image_t;
  * -1 when there is no artwork at all (which is a working desktop, not an
  * error). Safe to call twice; the second call is a re-scan.
  *
- * BOTH MUST BE AT LEAST 4. A backend with no pixels of its own answers one —
- * the console client does, because there are no pixels on its side of the
- * socket — and an icon rasterised into a cell that small is a blank cell that
- * cost a PNG decode. Anything under the floor is refused with -1 and leaves
- * kicon_enabled() false, so every lookup answers -1 and every caller draws
- * its glyph tier. A consumer that has a nominal cell size of its own — one it
- * sends pictures over a wire at — passes that instead of the backend's.
+ * BOTH MUST BE AT LEAST 4. A run with no pixel display — `--tty` — answers 1,
+ * which is libkdisp's neutral cell, and an icon rasterised into a cell that
+ * small is a blank cell that cost a PNG decode. Anything under the floor is
+ * refused with -1 and leaves kicon_enabled() false, so every lookup answers -1
+ * and every caller draws its glyph tier. A consumer that has a nominal cell
+ * size of its own — one it bounds its sprites by and lets the display rescale
+ * from — passes that instead of the backend's.
  */
 int kicon_init(int cell_w, int cell_h, int scale);
 void kicon_finish(void);

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lldb
+version     = 21.1.8
+release     = 1
+source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/lldb-$version.src.tar.xz
+source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/cmake-$version.src.tar.xz
+sha256      = e28d73ed3f9e231f798ed66865e652a641eb0666cfa6c7b36e116da92fb72e56  lldb-21.1.8.tar.xz
+sha256      = 85735f20fd8c81ecb0a09abb0c267018475420e93b65050cc5b7634eab744de9  cmake-21.1.8.src.tar.xz
+description = Debugger from the LLVM project, for C, C++, Rust and Zig
+homepage    = https://lldb.llvm.org/
+depends     = llvm clang swig python3 ncurses libedit libxml2 zlib xz

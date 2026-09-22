@@ -33,6 +33,38 @@
 int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 		       xkb_keycode_t code);
 
+/*
+ * THE FACE LIST AND THE LIVE SWITCH — kwl_font.c, and the four libkdisp
+ * vtable slots it fills.
+ *
+ * The list is FONTCONFIG'S MONOSPACE FAMILIES, deduplicated and sorted. A cell
+ * grid has one advance for every glyph, so a proportional face is not a face
+ * this backend can wear and offering one is offering a broken screen.
+ *
+ * `kwl_font_set` takes an INDEX into that list. A negative one puts back the
+ * name the surface opened with. `keep` writes the family into comp.conf's
+ * `chrome_font` and `panel_font`, which is the only way a choice reaches the
+ * OTHER surfaces: under the compositor each one is its own process with its
+ * own font, and both keys are read once at startup.
+ */
+int kwl_font_count(void);
+int kwl_font_at(int i, char *out, int cap);
+int kwl_font_current(void);
+void kwl_font_set(int index, int keep);
+
+/*
+ * The name in force, in fontconfig's own syntax — family, then the size and
+ * whatever options ride behind it.
+ */
+const char *kwl_font_name(void);
+/*
+ * Load `name` and re-cut the grid around the cell it gives, the sequence
+ * kwl_font_step() takes. 0 when it is in force, including when it already was;
+ * -1 with NOTHING MOVED when it will not load, the old face back on the
+ * screen.
+ */
+int kwl_font_use(const char *name);
+
 /* The shm buffer the cells are painted into. */
 typedef struct {
 	pixman_image_t *img;

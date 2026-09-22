@@ -132,8 +132,10 @@ int  image_has_label(const char *image, const char *label);
 
 /* ---------------------------------------------------------------- pack.c */
 
-/* Is the pack lane in use? The store has a `base` and kdos-packd answers.
- * The migration seam, and W7-5 deletes it once packs are what ships. */
+/* Where the packs and their staging directory live: $KDOS_PACK_STORE when it
+ * is set, else /var/lib/kdos/packs. A caller that spells the default itself
+ * instead of asking loses the override, and a bake writing staging and a mount
+ * reading it then land in two different stores. */
 const char *pack_store(void);
 
 /* 0 the daemon said ok, 1 it said err, -1 there is no daemon. A caller must

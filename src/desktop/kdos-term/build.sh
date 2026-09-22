@@ -74,7 +74,10 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
-PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng libjpeg libwebp libsixel libnsgif"
+# fontconfig is libkwl's: kwl_font.c enumerates the monospace families with
+# FcFontList, and fcft carries fontconfig as a Requires.private, so
+# `pkg-config --libs fcft` alone does not link it.
+PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client libpng libjpeg libwebp libsixel libnsgif"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_TERM_VERSION="\"$version\"" \

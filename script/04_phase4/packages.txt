@@ -19,7 +19,8 @@
 #   - the Wayland base and Xwayland, but NOT the desktop
 #
 # The desktop — wlroots, kdos-comp, kdos-shell — is 05_desktop.
-# See docs/KDOS-DESKTOP.md for the architecture rationale.
+# See docs/kdos/05-developer/build-system.md for why the desktop is its own
+# phase.
 
 # ---------------------------------
 # Core Build Utilities (host-side)
@@ -168,12 +169,27 @@ ttf-dejavu
 # as a box — in foot, in an alien app, and in any filename that carries one.
 noto-cjk
 # Noto Sans and Noto Sans Mono, and the preference file that puts them at the
-# head of `sans-serif` and `monospace`. This is the face the cell grid is drawn
-# in, so it decides what every console surface looks like. It is installed
+# head of `sans-serif` and `monospace`. Anything that asks fontconfig for a
+# generic family gets Noto: libkcell's default and its monospace retry, the
+# canvas fallback, libkwl's font-step fallback and every boxed GTK or Qt app.
+# The desktop's own chrome, panel and terminal name Terminus. It is installed
 # BESIDE DejaVu and not instead of it: Noto Sans Mono carries the full box and
 # block sets but no diagonal arrows, four dingbats and three misc symbols, and
 # the preference file is numbered so fontconfig reaches DejaVu for those next.
 noto-fonts
+
+# The scripts noto-fonts itself does not carry: its sources are Latin, Greek
+# and Cyrillic, so Thai, Devanagari, Bengali, Tamil, Telugu, Gujarati, Hebrew,
+# Arabic, Khmer and Ethiopic all render as tofu without this. CJK is NOT here
+# — noto-cjk already ships the same 112 MB asset, and two packages owning one
+# file is a conflict at install time.
+noto-fonts-extra
+
+# The glyph range a prompt theme, a file manager's type column and a status bar
+# reach for. Upstream's own fontconfig rule prefers the PROPORTIONAL symbol
+# face for `monospace`, which puts a double-width icon in a single cell; the
+# recipe ships a corrected rule that keeps the cell grid's real family first.
+nerd-fonts-symbols
 libcbor
 libfido2
 # The colour emoji face, which the rest of the font configuration already
@@ -473,7 +489,8 @@ gpsd
 # ---------------------------------
 # Opening /dev/ttyUSB0 is trivial; knowing it exists, that it is an FTDI, and
 # which of three identical adapters it is, is sysfs walking every bench
-# program would otherwise reimplement.
+# program would otherwise reimplement. Reachability is the other half:
+# fs/etc/group and fs/etc/udev/rules.d.
 libserialport
 # A hundred hardware drivers behind one interface, so a program reads samples
 # without knowing which box produced them. The decoders are python modules —
@@ -1021,10 +1038,12 @@ caddy
 # xh explores and hurl asserts: a request plus what the answer must contain,
 # in a file that diffs. On a machine with no CI, that file IS the CI.
 hurl
-# A character-cell surface is the ideal thing to read — tty1, the installer
-# and every kdos-shell surface is a grid BRLTTY takes verbatim out of
-# /dev/vcsa, with none of the guessing a toolkit tree needs. Boxed GUI apps
-# stay unreachable; docs/ACCESSIBILITY.md is the statement of record.
+# BRLTTY reads /dev/vcsa, so what it covers is tty1 and the installer — grids
+# of cells it takes verbatim, with none of the guessing a toolkit tree needs.
+# The graphical session is Wayland and publishes no accessibility tree, so no
+# desktop surface is reachable; a boxed GUI app has no cells here either and is
+# read by its own box's AT-SPI registry instead. The statement of record is
+# docs/kdos/02-user-guide/accessibility.md.
 # `expr length` is a GNU extension toybox does not implement — it yields the
 # empty string, and brltty's configure then reports a driver that is present
 # as unknown. One program, for the same reason sed and gawk are ports.
@@ -1357,6 +1376,25 @@ libsixel
 # permission opens a device nothing can talk to.
 libgphoto2
 gphoto2
+
+# Android and every other MTP device. gphoto2 above covers PTP-mode still
+# cameras only, so without this a phone plugged into a USB port does nothing.
+libmtp
+
+# Thunderbolt authorisation. Where the firmware's security level is `user` or
+# `secure` — the shipping default on most business laptops — a TB3/TB4 dock is
+# enumerated and then never authorised, so the dock's ports stay dead.
+bolt
+
+# Firmware updates: UEFI, SSDs, docks, peripherals. Built without the capsule
+# binary, so the UEFI plugin reports unsupported rather than pretending.
+fwupd
+
+# The camera stack the shipped kernel config already assumes: it sets
+# CONFIG_VIDEO_INTEL_IPU6 and ~40 sensor drivers, none of which reach userspace
+# without this. python3-ply is its parser generator, build-time only.
+python3-ply
+libcamera
 # Check and repair an STL before a slicer refuses it — the failure that
 # otherwise appears as a print that starts and stops.
 admesh
@@ -1576,11 +1614,12 @@ tzdata
 # ---------------------------------
 # Device access libraries (serial, HID, USB)
 # ---------------------------------
-# What the flashing, SDR and instrument tools link against. Listed here rather
-# than arriving through a `depends` because those consumers are not in the tree
-# yet, and a library built only once something needs it is not a prerequisite.
-# Reachability is the other half: fs/etc/group and fs/etc/udev/rules.d.
-libserialport
+# What the flashing, SDR and instrument tools link against. hidapi and libzip
+# also arrive through a `depends`. Nothing in the tree names libftdi1 or
+# eigen3 — they build the same upstream releases as the libftdi and eigen
+# ports listed above, and a path belongs to one manifest only, so the later
+# install takes the files out of the earlier package and leaves it owning
+# directories and nothing else.
 libftdi1
 hidapi
 libzip
@@ -1609,8 +1648,64 @@ libvpx
 svt-av1
 libass
 libva
+
+# Intel's VA-API driver, and the memory-management library it cannot build
+# without. mesa's gallium-va covers r600, radeonsi, nouveau and virgl only, so
+# without these every Intel iGPU from Broadwell forward has no VA-API entry
+# point at all and ffmpeg and mpv fall back to software decode. The version
+# coupling is hard: media-driver 26.2.4 needs igdgmm 12.10.x, and against an
+# older one it fails 25 minutes into the compile rather than at configure.
+intel-gmmlib
+intel-media-driver
+
+# `vainfo` — the one command that answers which decode profiles a machine
+# actually has. A driver that did not load is otherwise silent.
+libva-utils
+
+# The mandatory codec of Bluetooth LE Audio. A codec left on meson's `auto`
+# produces a pipewire that negotiates SBC and says nothing, so pipewire names
+# this one explicitly.
+liblc3
+
 libde265
 libheif
+
+# Reaching this desktop from another machine. kdos-comp already offers
+# zwlr_screencopy_manager_v1, so the server side needs no code of ours — only
+# these three, in this order: aml is the event loop neatvnc links, and neatvnc
+# is the protocol library wayvnc drives. neatvnc must be 1.x; wayvnc 0.10.1
+# pins `>=1.0.0 <2.0.0` and fails at meson setup against a 0.9 series.
+aml
+neatvnc
+wayvnc
+
+# IRC and the rest of the chat networks, in cells. The three scripting plugins
+# are hard configure dependencies as well as runtime ones: dropping python3,
+# perl or lua from the recipe's depends stops the build rather than narrowing
+# it.
+weechat
+
+# Who owns a domain or an address range. Nothing else on the image answers it.
+whois
+
+# User-mode networking for rootless containers. podman 5.x treats slirp4netns
+# as deprecated and defaults to pasta.
+passt
+
+# The line editor lldb links for its prompt. Without it IOHandlerEditline
+# never builds an Editline and `(lldb)` loses history, arrow-key editing and
+# tab completion — and lldb offers no readline fallback.
+libedit
+
+# The debugger Rust and Zig point at; gdb above is the C story. Its version is
+# not a free choice — it must equal the llvm and clang the tree already pins,
+# or the plugin ABI does not match.
+lldb
+
+# The kernel profiler. Built from the same tarball as the `linux` port and
+# pinned to the same version: a perf built from a different kernel's source
+# does not fail, it silently reports unknown record types.
+perf
 
 # Boot splash. Lives in src/packages rather than ports/core because the source
 # is ours, not an upstream tarball. Draws the CRT power-on animation straight

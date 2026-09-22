@@ -6,14 +6,13 @@ Each file is `ktui_draw_dump()`'s output for one front end at one size: the
 libktui cell buffer as plain text, every row padded to the full width, one
 line per row. `testing/selftest.sh` renders the same frame and diffs.
 
-WHY, beyond the shape checks that were already there
+WHY, BEYOND THE SHAPE CHECKS
 
-selftest.sh already asserted that a dump is SQUARE — every row the same width,
-enough rows to be a box. S1 (the double-buffer stale-row bug: paint diffed
-against libktui's single global front buffer while every commit alternated
-buffers, so the other buffer's rows went stale) passed that check on every
-frame it corrupted. Every row was the right width and every row was wrong.
-A golden is the only check that notices.
+selftest.sh asserts that a dump is SQUARE — every row the same width, enough
+rows to be a box. That says nothing about CONTENT: a frame painted into the
+wrong buffer, or diffed against a front buffer the commit has already swapped
+away from, is the right width on every row and wrong on every row. A golden is
+the only check that notices.
 
 HOW TO REGENERATE
 
@@ -32,18 +31,16 @@ surfaces that parse an rc.xml or a comp.conf), frozen there on purpose so a
 golden cannot move because somebody edited skel.
 
 A surface that cannot meet that is left out and SAID SO in selftest.sh's
-comment beside the list — cal draws the current month, the launcher scans the
-host's /usr/share/applications, kdos-saver seeds from time() ^ getpid(),
-kdos-slit renders the output of forked commands, the panel needs a live
-compositor. A golden pinned with a hack nobody can reproduce is worse than a
-missing one.
+comment beside the list — cal draws the current month, the apps and places
+menus read the host's /usr/share/applications and /proc/mounts, kdos-slit
+renders the output of forked commands, the mixer enumerates the machine's ALSA
+cards and kdos-users walks its password file. A golden pinned with a hack
+nobody can reproduce is worse than a missing one.
 
-Most dumps are ASCII: `ktui_caps` is 0 with no terminal, so a surface drawing
-straight to a buffer gets the ascii tier. `con-view-80x24.txt` is the exception
-and is not ASCII — it comes through a real view process, which reports UTF-8
-and is given the rich tier. A dump's tier follows whoever painted it, not the
-fact that it is a dump. The rich and vt tiers are covered by the ramp
-assertions in `src/libs/selftest.c`.
+Every dump is ASCII: `ktui_caps` is 0 with no terminal, so a surface drawing
+straight to a buffer gets the ascii tier. A dump's tier follows whoever painted
+it, not the fact that it is a dump. The rich and vt tiers are covered by the
+ramp assertions in `src/libs/selftest.c`.
 
 THE CELL FRAMES
 
@@ -51,7 +48,10 @@ THE CELL FRAMES
 the other half of the contract, and it is what makes a COLOUR regression
 visible as well as a geometry one: a text frame is byte-identical across a
 selection that stopped being an accent fill and a label that dropped to an
-unreadable slot. Four surfaces implement it and their frames are the
-`cells-*.txt` files here. A surface that does not is skipped by name rather
-than silently, so the list of what is covered is the list of what exists.
+unreadable slot. The `cells-*.txt` files here are the frames that are
+goldened, and they are fewer than the surfaces that implement the flag: a
+frame is committed only where the same rule as above holds, and kdos-res and
+the teams surface answer `--dump-cells` without one. A surface that is not
+goldened is skipped by name rather than silently, so the list of what is
+covered is the list of what was chosen.
 

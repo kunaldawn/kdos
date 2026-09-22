@@ -57,8 +57,8 @@ The reference frame for everything below.
 
 ## 04 — the menu, opened by a click on `Start`
 
-- **Did it open at all?** Nothing is the failure a tooltip used to cause: the
-  tip sat over the button and took the click.
+- **Did it open at all?** Nothing on screen is a tooltip drawn over the button
+  it describes, taking the click that was aimed at the button.
 - **Does it sit above the bar rather than across it?**
 - Is its bottom-left corner against the Start button it belongs to?
 - Are all three columns drawn, with their headings and their rules?
@@ -68,14 +68,13 @@ The reference frame for everything below.
 - **Is the menu still open?** It closes when it loses the keyboard, so anything
   that takes focus while the pointer crosses the screen closes it.
 - **Is the row under the pointer highlighted, and only that row?** The highlight
-  is a plate under a compositor and an accent fill on the console; a menu whose
-  hint line names a row that nothing on screen marks is the plate being drawn
-  into a layer this display has not got.
+  is a plate; a menu whose hint line names a row that nothing on screen marks is
+  the plate being drawn into a layer it has not got.
 
 ## 06 — the pointer back over the taskbar, menu open
 
 - **Is the menu still open?** This is where a tooltip is raised over a bar
-  button, and where the menu used to vanish.
+  button, and an overlay that takes the keyboard closes the menu under it.
 - Is the `Start` button drawn as opened — and still readable?
 
 ## 07 — `Esc`
@@ -102,11 +101,13 @@ The reference frame for everything below.
 
 ## 11 — the bar with a window open
 
-- **Is the window button drawn as a button — a filled tile with a name, not a
-  bare word and not a lone letter?** Icon mode is a 40x40 square whose shape and
-  state are pixels, so a cell display gets the labelled chip instead.
+- **Is the window button drawn as a button — a filled tile, not a bare word and
+  not a lone letter?** `task_labels` decides whether it carries its name: `no`
+  is the shipped default and gives a 40x40 icon square, `yes` keeps the label
+  whatever the room, `auto` drops it only when the row runs out. A button that
+  is a lone letter is one whose icon did not resolve.
 - **Does the chip say whether the window is minimised?** The underline is
-  pixels; on the console it is the marker cell.
+  pixels.
 - **Is there a separator between the segments?** The Start button, the window
   list and the status wing are three groups and read as one run without them.
 - Do the meters read plausibly — a percentage, a chart, a rate?

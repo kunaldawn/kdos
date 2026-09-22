@@ -164,7 +164,7 @@ enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
 /*
  * FT_HEAD IS A SECTION RULE AND NOT A ROW. A page of forty knobs read as one
  * undifferentiated list, and the store a row writes — the compositor's file, the
- * compositor's, the panel's — is exactly what a person needs to know before
+ * panel's, the terminal's — is exactly what a person needs to know before
  * they change one. The heading says it once for the rows under it instead of
  * every row's help line saying it again.
  *
@@ -240,9 +240,8 @@ static struct row rows[] = {
 	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_APPEARANCE, FT_TEXT, ST_COMP, SC_LIVE, "wallpaper", "wallpaper",
 	  NULL, 0, 0, 0, 0,
-	  "the COMPOSITOR's: a PNG, scaled to cover and centred, `none` is an "
-	  "honest off. The ground is the wallpaper, which is "
-	  "character art",
+	  "a PNG, scaled to cover and centred; `none` is an honest off. "
+	  "kdos-desk draws its icons transparently over it",
 	  "/usr/share/backgrounds/kdos/default-wallpaper.png",
 	  "/usr/share/backgrounds/kdos/default-wallpaper.png" },
 	{ CAT_APPEARANCE, FT_TEXT, ST_COMP, SC_LOGIN, "chrome_font",
@@ -552,7 +551,7 @@ static struct row rows[] = {
 
 	/* ── Input ──────────────────────────────────────────────────────
 	 *
-	 * THE POINTER AND THE KEYBOARD ARE BOTH THE COMPOSITOR'S, and both are
+	 * THE KEYBOARD AND THE POINTER ARE BOTH THE COMPOSITOR'S, and both are
 	 * `rc.xml`'s rather than this page's: the layout comes from
 	 * /etc/keymap by way of kdos-desktop, and a row that wrote a file no
 	 * program opens is exactly the "change a thing, see nothing" this
@@ -576,6 +575,16 @@ static struct row rows[] = {
 	  NULL, 0, 0, 0, 0,
 	  "rc.xml's <keyboard><repeatRate> and <repeatDelay>; kdos-comp reads "
 	  "them at startup and on the Reconfigure a SIGHUP is",
+	  "", "" },
+
+	{ CAT_INPUT, FT_HEAD, ST_NONE, SC_NONE, NULL, "The pointer",
+	  NULL, 0, 0, 0, 0, "", "", "" },
+	{ CAT_INPUT, FT_NOTE, ST_NONE, SC_NONE, NULL,
+	  "where pointer settings come from",
+	  NULL, 0, 0, 0, 0,
+	  "rc.xml ships a commented <libinput> template: tap, naturalScroll "
+	  "and pointerSpeed per touchpad, accelProfile and scrollFactor for "
+	  "every device. Tap-to-click is on without it",
 	  "", "" },
 
 	/*
@@ -1428,10 +1437,11 @@ static int dirty_count(int store)
 /*
  * EVERY STORE, WHICH IS WHAT THE COUNTER AND THE QUIT GUARD MEAN.
  *
- * Both asked ST_COMP alone. A change to the panel's file, the monitor's or the
- * store therefore showed `0 pending` on the Apply button and was
- * discarded by a single Escape without the guard saying anything — which is
- * the one thing that guard exists to stop.
+ * The Apply count and the quit guard both read this, so the test is
+ * `store != ST_NONE` and not any one store: a store left out here is a
+ * change that reports `0 pending` on the Apply button and is discarded by a
+ * single Escape with the guard silent — the one thing that guard exists to
+ * stop.
  */
 static int dirty_any(void)
 {

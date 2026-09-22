@@ -538,10 +538,6 @@ int cmd_open(int argc, char **argv)
 
 	KbArgv a = {0};
 
-	/*
-	 * A GRAPHICAL HANDLER ON THE CONSOLE IS THE SESSION'S TO START.
-	 *
-	 */
 	exec_to_argv(kl.exec, argv, argc, kl.terminal, kl.term, &a);
 	kb_argv_end(&a);
 	if (!a.v[0])

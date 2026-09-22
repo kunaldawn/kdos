@@ -15,9 +15,9 @@
  *   kdos app      install an alien app
  *   kdos version
  *
- * The palette is libkcolor's and nothing else's. This file used to carry a
- * second copy of the table — seven schemes, nine colours, hand-kept in step
- * with the installer's — and the two were edited separately.
+ * The palette is libkcolor's and nothing else's. A second copy of the scheme
+ * table here would be eight schemes and nine colours hand-kept in step with
+ * the installer's, and the two would be edited separately.
  * ---------------------------------
  */
 
@@ -1396,9 +1396,9 @@ static void write_tmux(const KcolScheme *sc)
  * installed) and the appbox's Debian coreutils; toybox's own `ls` colours from
  * a hardcoded table and reads no LS_COLORS at all, so the host's fallback `ls`
  * gains nothing from this file. Each class gets its OWN colour rather than a
- * bold bit: directory and executable used to share `primary` and were told
- * apart only by the intensity attribute, which on a 512-glyph console font is
- * the 9th glyph bit rather than a weight.
+ * bold bit: two classes sharing one colour are told apart only by the
+ * intensity attribute, which on a 512-glyph console font is the 9th glyph bit
+ * rather than a weight.
  */
 static void write_lscolors(const KcolScheme *sc)
 {
@@ -1435,12 +1435,12 @@ static void write_lscolors(const KcolScheme *sc)
 /*
  * The window frames — labwc's themerc, at ~/.config/kdos-comp/themerc-override.
  *
- * This was the LAST thing on the desktop that an accent switch could not
- * reach. The file shipped as a fixed neutral grey precisely so it would read
- * acceptably under all seven accents without being regenerated, and the cost of
- * that was a desktop where `kdos theme amber` retinted the panel, the shader,
- * the icons, the cursors, GTK, Qt, foot, btop, mc and starship — and left the
- * bar across the top of every window looking like somebody else's desktop.
+ * THIS FILE IS GENERATED PER ACCENT RATHER THAN SHIPPED FIXED. A fixed neutral
+ * grey is the only value that reads acceptably under all eight accents without
+ * being regenerated, and it costs a desktop where `kdos theme amber` retints
+ * the panel, the shader, the icons, the cursors, GTK, Qt, foot, btop, mc and
+ * starship — and leaves the bar across the top of every window looking like
+ * somebody else's desktop.
  *
  * kdos-comp reads it on SIGHUP (labwc's Reconfigure), which `kdos theme`
  * already sends, so this repaints live with the rest.
@@ -3088,7 +3088,6 @@ static void help_body(FILE *o)
 		{ "why <path|port>", "what provides this, and why it is that way" },
 		{ "explain [topic]", "the recorded debug cycles, browsable" },
 		{ "sandbox <prof> -- <cmd>", "run a native app under Landlock" },
-		{ "desktop", "start the KDOS desktop from a tty (kdos-desktop)" },
 		{ "kdos app search <t>", "the applications here and on the medium" },
 		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
@@ -3121,6 +3120,7 @@ static void help_body(FILE *o)
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
 		{ "kdos-energy", "which app is spending the battery" },
 		{ "kdos-res", "resources: per-device pages, processes, apps" },
+		{ "kdos-desktop", "start the KDOS desktop from a tty" },
 		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
@@ -3150,19 +3150,17 @@ static void help_body(FILE *o)
 			"the full card, generated from your own rc.xml");
 
 	/* Every line here is a binding the skel rc.xml actually installs, and
-	 * the file named above is the one that installs it: since the labwc
-	 * fork, comp.conf keeps only the KDOS keys and skips a `bind` line in
-	 * silence, so pointing a remapper at it was pointing them at a file
-	 * that would ignore them. The list used to carry four keys that
-	 * nothing bound — Alt+Tab, the snap arrows, Super+F, PrtSc — which is
-	 * worse than a short cheat sheet: a key that the help says exists and
-	 * the desktop ignores reads as a broken desktop.
+	 * the file named above is the one that installs it: comp.conf keeps
+	 * only the KDOS keys and skips a `bind` line in silence, so a remapper
+	 * pointed at it is pointed at a file that ignores them. A key this
+	 * table names and rc.xml does not bind is worse than a short cheat
+	 * sheet — the help says it exists, the desktop ignores it, and the
+	 * desktop reads as broken.
 	 *
-	 * They are all bound now. Alt+Tab, Alt+F4 and the snap arrows come
-	 * from labwc's OWN defaults, which the skel rc.xml loads with
-	 * <default /> — without that line a file that binds one key throws
-	 * every default away, and with them went click-to-focus and the
-	 * titlebar. */
+	 * Alt+Tab, Alt+F4 and the snap arrows come from labwc's OWN defaults,
+	 * which the skel rc.xml loads with <default />: without that line a
+	 * file that binds one key throws every default away, and
+	 * click-to-focus and the titlebar go with them. */
 	static const char *KEYS[][2] = {
 		{ "Super+D", "open the launcher" },
 		{ "Ctrl+Shift+Esc", "open Resources" },

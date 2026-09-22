@@ -360,7 +360,18 @@ int pack_box_create(const Profile *p, const char *merged)
 	/* The profile's namespaces, the 1:1 mapping the Profile struct exists
 	 * to keep: a key that cannot be enforced is not offered, and each of
 	 * these is exactly one podman flag. */
-	if (!p->netns) {
+	/*
+	 * THREE NETWORK STATES AND `netnone` IS CHECKED FIRST, because it is
+	 * the only one a person asks for to take something away: a box that
+	 * asked for no network and was given the rootless default is a box
+	 * whose profile says one thing and whose traffic does another.
+	 * Neither flag means podman's own rootless default, which is the
+	 * private namespace `netns` asks for.
+	 */
+	if (p->netnone) {
+		kb_argv_add(&a, "--network");
+		kb_argv_add(&a, "none");
+	} else if (!p->netns) {
 		kb_argv_add(&a, "--network");
 		kb_argv_add(&a, "host");
 	}

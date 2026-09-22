@@ -103,9 +103,8 @@ static int icons_on = 1;
  * hidden for this entry can never be run by its position. */
 enum { CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_EMPTY, CT_REFRESH, CT_SORT,
        CT_APPS, CT_WALL, CT_DISPLAY, CT_SETTINGS, CT_RULE,
-       /* The SESSION's own verbs, asked for by name. See CT_VERB below. */
-       CT_TILE, CT_CASCADE, CT_SHOWDESK, CT_WINDOWS, CT_RESTORE_ALL,
-       CT_CAPTURE, CT_LOCK };
+       /* The verbs that act on the whole desktop. See desk_verb(). */
+       CT_SHOWDESK, CT_CAPTURE, CT_LOCK };
 
 /*
  * THE TWO ID SPACES MUST NOT COLLIDE. The shared verbs are `KXDG_VERB_*` and
@@ -144,10 +143,12 @@ static const struct {
 	 * menu are different sets of rows, and the letter picks the first
 	 * SHOWN row that carries it.
 	 *
-	 * THE SHARED VERBS ARE IN BOTH SCOPES AND HAVE THE FIRST CLAIM on a
-	 * letter — o k e t f p s g m — so these are lettered around them. `s`
-	 * is Settings' here and Share's there, and the two never appear on one
-	 * menu: Share is a verb on a THING and the wallpaper has none.
+	 * THE SHARED VERBS HAVE THE FIRST CLAIM on a letter — o k e t f p s g
+	 * m x — so these are lettered around them. `s` is Settings' here and
+	 * Share's there, and the two never appear on one menu: Share is a verb
+	 * on a THING and the wallpaper has none. Only Terminal, Find, Places
+	 * and Git reach bare wallpaper — see ctx_show() — so an SC_DESK row may
+	 * take a letter one of the others holds, and an SC_BOTH row may not.
 	 */
 	/* Open, Open Terminal Here, Add to Places, Move to Trash and the rest
 	 * of the FILE verbs are libkxdg's — see the pane built below. What is
@@ -169,22 +170,13 @@ static const struct {
 	{ "&Settings",           CT_SETTINGS, SC_DESK, 0, 0, 0 },
 	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
 	/*
-	 * THE VERBS THAT ACT ON THE WHOLE DESKTOP, which were bound to chords
-	 * and to nothing else — a person using a mouse had no way to tile
-	 * their windows at all. The desktop's own right press is where a root
-	 * menu has always been, and this is the surface that owns it.
-	 *
-	 * ASKED FOR BY NAME through kdisp_session_action(), never run here:
-	 * the windows are the session's and a surface that tiled them itself
-	 * would be a second window model. The name is `keys.conf`'s, so the
-	 * row and the chord reach the same code.
+	 * THE VERBS THAT ACT ON THE WHOLE DESKTOP. The desktop's own right
+	 * press is where a root menu has always been, and this is the surface
+	 * that owns it; the rows carry the same commands the chords do, so a
+	 * row and its key do one thing. See desk_verb().
 	 */
-	{ "&Tile Windows",       CT_TILE,     SC_DESK, 0, 0, 0 },
-	{ "Casca&de Windows",    CT_CASCADE,  SC_DESK, 0, 0, 0 },
-	{ "Sho&w Desktop",       CT_SHOWDESK, SC_DESK, 0, 0, 0 },
-	{ "Window &List",        CT_WINDOWS,  SC_DESK, 0, 0, 0 },
-	{ "Restore &All",        CT_RESTORE_ALL, SC_DESK, 0, 0, 0 },
-	{ "Scree&nshot",         CT_CAPTURE,  SC_DESK, 0, 0, 0 },
+	{ "Sh&ow Desktop",       CT_SHOWDESK, SC_DESK, 0, 0, 0 },
+	{ "Sc&reenshot",         CT_CAPTURE,  SC_DESK, 0, 0, 0 },
 	{ "Loc&k Screen",        CT_LOCK,     SC_DESK, 0, 0, 0 },
 };
 #define NCTX ((int)(sizeof(CTX) / sizeof(CTX[0])))
@@ -192,25 +184,14 @@ static const struct {
 /*
  * ── THE DESKTOP'S OWN VERBS ─────────────────────────────────────────────
  *
- * The command socket for the one labwc has an action for, and the PROGRAM for
- * the two that are programs.
- *
- * AND FOUR OF THEM THE COMPOSITOR CANNOT DO AT ALL. Tiling, cascading, the
- * window list and restore-all have no labwc action and no chord runs them
- * either. A row for one is HIDDEN rather than drawn and inert: a menu row that
- * does nothing is a lie about what the machine can do, which is the one thing
- * this menu exists not to be.
+ * The command socket for the one the compositor has an action for, and the
+ * PROGRAM for the two that are programs. A verb reaches this table only if the
+ * machine can actually do it: a menu row that does nothing is a lie about what
+ * the machine can do, which is the one thing this menu exists not to be.
  */
 /* Defined with the rest of the process plumbing below; the verb road is the
  * first caller. */
 static void spawn(const char *const argv[]);
-
-/* Which of the session rows this display can actually answer. */
-static int desk_verb_ok(const char *verb)
-{
-	return !strcmp(verb, "show-desktop") || !strcmp(verb, "lock") ||
-	       !strcmp(verb, "capture-screen");
-}
 
 static void desk_verb(const char *verb)
 {
@@ -819,22 +800,6 @@ static int ctx_show(int i, void *user)
 	if (ctx_for < 0) {
 		if (!(CTX[i].scope & SC_DESK))
 			return 0;
-		/*
-		 * AND A SESSION VERB THIS DISPLAY DOES NOT HAVE IS HIDDEN.
-		 * Tiling, cascading, the window list and restore-all have no
-		 * labwc action; a row for one would be a row that does
-		 * nothing, which is exactly what a menu must not contain.
-		 */
-		switch (CTX[i].id) {
-		case CT_TILE:		return desk_verb_ok("tile");
-		case CT_CASCADE:	return desk_verb_ok("cascade");
-		case CT_SHOWDESK:	return desk_verb_ok("show-desktop");
-		case CT_WINDOWS:	return desk_verb_ok("windows");
-		case CT_RESTORE_ALL:	return desk_verb_ok("restore-all");
-		case CT_CAPTURE:	return desk_verb_ok("capture-screen");
-		case CT_LOCK:		return desk_verb_ok("lock");
-		default:		break;
-		}
 		return 1;
 	}
 	if (ctx_for >= nentries)
@@ -1284,22 +1249,10 @@ static void ctx_run(int id, char *status, size_t n)
 			spawn(argv);
 			break;
 		}
-		/* THE SESSION'S — see desk_verb(), which is the one place that
-		 * knows how each display answers one. */
-		case CT_TILE:
-			desk_verb("tile");
-			break;
-		case CT_CASCADE:
-			desk_verb("cascade");
-			break;
+		/* THE WHOLE DESKTOP'S — see desk_verb(), which is the one
+		 * place that knows how each is answered. */
 		case CT_SHOWDESK:
 			desk_verb("show-desktop");
-			break;
-		case CT_WINDOWS:
-			desk_verb("windows");
-			break;
-		case CT_RESTORE_ALL:
-			desk_verb("restore-all");
 			break;
 		case CT_CAPTURE:
 			desk_verb("capture-screen");

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcamera
+version     = 0.7.2
+release     = 1
+source      = $name-$version.tar.gz::https://gitlab.freedesktop.org/camera/$name/-/archive/v$version/$name-v$version.tar.gz
+sha256      = 64881a4bafbda02f34861153d8f0d42be9ff46f5598408f9b585b07a10c448c9  libcamera-0.7.2.tar.gz
+description = Camera stack that puts ISP pipelines and sensor control behind one API
+homepage    = https://libcamera.org/
+depends     = meson ninja python3 python3-jinja2 python3-yaml python3-ply yaml gnutls openssl eudev glib gstreamer gst-plugins-base libevent

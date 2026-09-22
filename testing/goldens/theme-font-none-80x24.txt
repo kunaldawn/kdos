@@ -1,8 +1,8 @@
 +=[ Style ]====================================================================+
 |  Accent  Font                                                                |
 |                                                                              |
+| the display offers no face it can wear                                       |
 | the font is set in ~/.config/kdos/comp.conf ? chrome_font and panel_font     |
-|                                                                              |
 |                                                                              |
 |                                                                              |
 |                                                                              |

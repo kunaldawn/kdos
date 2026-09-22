@@ -39,9 +39,8 @@
 #include "kdisp.h"
 
 /*
- * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
- * in preference order. libkdisp names no implementation; this list is what
- * links each one in.
+ * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order. libkdisp names
+ * no implementation; this list is what links each one in.
  */
 extern const KDispImpl *const kdos_disp[];
 extern const int kdos_disp_n;

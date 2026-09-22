@@ -86,7 +86,7 @@ int ktui_theme_set(const char *name);
 /*
  * NIGHT LIGHT — a warm transform over the eight slots, not a scheme of its own.
  *
- * Seven accents times a warm copy is fourteen palettes to keep in step, and
+ * Eight accents times a warm copy is sixteen palettes to keep in step, and
  * the cast belongs to the screen rather than to the theme: the scheme stays
  * the one the user chose and `ktui_theme` points at a warmed copy of it while
  * this is on. Blue loses the most and red nothing, which is what a colour
@@ -94,8 +94,9 @@ int ktui_theme_set(const char *name);
  *
  * Returns non-zero when the palette actually changed, so a caller can skip a
  * repaint it does not owe. THE CALLER READS THE TOGGLE: this library holds no
- * opinion about where a desktop keeps its state, and both consumers already
- * have the state directory in hand.
+ * opinion about where a desktop keeps its state, and a surface that loads its
+ * scheme already has the state directory in hand. A surface that reads the
+ * scheme and not the toggle draws the cold palette while the toggle is on.
  */
 int ktui_theme_night(int on);
 
@@ -111,11 +112,15 @@ int ktui_theme_night(int on);
 int ktui_theme_nearest(uint32_t rgb);
 
 /*
- * THE NAME OF A SLOT, for the one place a colour is shown to a person rather
- * than drawn: the desktop's colour picker, which answers with a slot and its
- * hex. The names are the ones the enum uses, lowercased, so what a person is
- * handed is what they would write in a configuration file. NULL for a value
- * that is not a slot.
+ * THE NAME OF A SLOT, for a colour shown to a person rather than drawn. The
+ * names are the ones the enum uses, lowercased, so what a person is handed is
+ * what they would write in a configuration file. NULL for a value that is not
+ * a slot.
+ *
+ * NO SURFACE IN THIS TREE CALLS IT — the library's own tests are its only
+ * caller. It is the answer a colour picker owes a person beside the hex, and
+ * a header entry with neither a caller nor this line reads as load-bearing to
+ * whoever changes the palette next.
  */
 const char *ktui_slot_name(int slot);
 
@@ -338,6 +343,10 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 		    uint32_t fallback);
 int ktui_sprite_find(uint64_t key);
 const KtuiSprite *ktui_sprite_get(int slot);
+/* How many slots the table has ever handed out — a high-water mark and not a
+ * live count, since a dropped slot is reused rather than renumbered. No
+ * backend in this tree calls it; it is what a backend sizing a cache of its
+ * own would ask. */
 int ktui_sprite_slots(void);
 /* Call BEFORE freeing the picture. */
 void ktui_sprite_drop(uint64_t key);
@@ -493,11 +502,12 @@ typedef struct {
 	int (*caps)(void);
 	/*
 	 * WHERE THIS SURFACE'S CARET IS, in its own cells, or a negative x for
-	 * none. A backend drawing on somebody else's screen has no terminal
-	 * cursor to place and something else that does: the console client
-	 * sends it to the session, which is the only thing that knows where
-	 * this surface sits on the screen. NULL is a backend that places its
-	 * own cursor, and ktui_term_caret() then writes the escape.
+	 * none. For a backend drawing on somebody else's screen: it has no
+	 * terminal cursor of its own to place, and only it knows where this
+	 * surface sits on that screen. NULL is a backend that places its own
+	 * cursor, and ktui_term_caret() then writes the escape — which is what
+	 * every backend in this tree does, so filling this in turns a branch
+	 * on rather than replacing one.
 	 */
 	void (*caret)(int x, int y);
 	/*
@@ -539,8 +549,7 @@ typedef struct {
 	 * WHETHER THE LAST FLUSH ACTUALLY REACHED THE SCREEN, or NULL for a
 	 * backend that always presents what it is given.
 	 *
-	 * Two of them do not: the console client skips a frame while its
-	 * display is behind, and the Wayland one stashes a frame while the
+	 * The Wayland backend does not: it stashes a frame while the
 	 * compositor holds both buffers. A skipped frame leaves `prev`
 	 * describing a picture nobody saw, so a full repaint handed to that
 	 * flush would be forgotten — the flag is cleared before the backend
@@ -553,11 +562,11 @@ typedef struct {
 	 * device of its own.
 	 *
 	 * poll_event above answers a CHARACTER and a CELL, which is everything
-	 * a cell surface wants and nothing a pixel guest embedded in a window
-	 * can use: a guest holds a key down, repeats from its own keymap,
-	 * reads a modifier that produces no character, and aims at a scrollbar
-	 * two pixels wide. So the switch and the pixel travel too, in a queue
-	 * of their own.
+	 * a cell surface wants and nothing a client of its own pixels can use:
+	 * such a client holds a key down, repeats from its own keymap, reads a
+	 * modifier that produces no character, and aims at a scrollbar two
+	 * pixels wide. So the switch and the pixel travel too, in a queue of
+	 * their own.
 	 *
 	 * A QUEUE OF ITS OWN BECAUSE MOTION COALESCES AND A KEY MUST NOT. A
 	 * thousand-hertz mouse in the cooked queue evicts the click that came
@@ -671,10 +680,15 @@ void ktui_draw_shadow(KRect r);
  * UNDER KT_A_REVERSE THE FOREGROUND IS THE BACKGROUND, and both calls follow
  * the swap the painter makes: reading or writing `bg` through a reversed cell
  * would leave it opaque and make its ink translucent instead.
+ *
+ * NO SURFACE IN THIS TREE CALLS THE PAIR. A surface that wants its whole body
+ * seen through sets `KDispConfig.opacity` instead, which dims the one slot
+ * that body is drawn in and leaves the ink alone; this pair is the route for a
+ * RECTANGLE of cells rather than a whole surface.
  */
 void ktui_draw_bg_take(KRect r, uint32_t *out);
 void ktui_draw_blend(KRect r, const uint32_t *under, int alpha);
-void ktui_draw_cursor(int x, int y);	/* pointer overlay, evdev backend  */
+void ktui_draw_cursor(int x, int y);	/* where the pointer is, in cells  */
 /*
  * THE POINTER'S SHAPES.
  *
@@ -710,12 +724,13 @@ enum {
  * at different rates: ktui_draw_cursor() is called every frame by whatever
  * owns the pointer, and the shape changes only when the thing under it does.
  *
- * IT IS A HINT AND NOT A GUARANTEE. Only a backend with a framebuffer of its
- * own draws it; a terminal, a dump and `tty1` reverse the cell under the
- * pointer whatever this says, because a character grid has one pointer and
+ * IT IS A HINT AND NOT A GUARANTEE. Only a backend that fills
+ * `KtuiBackend.pointer` draws a shape, and none in this tree fills it: a
+ * terminal, a dump, `tty1` and the Wayland surface all reverse the cell under
+ * the pointer whatever this says, because a character grid has one pointer and
  * that is it. So NOTHING may depend on the shape being visible — a control
  * that says what it does only through the pointer is a control that says
- * nothing on half the backends this desktop supports.
+ * nothing at all here.
  */
 void ktui_draw_cursor_shape(int shape);
 int ktui_cursor_shape(void);
@@ -828,9 +843,9 @@ enum {
  * chords simply do not fire.
  *
  * A CTRL CHORD IS THE LETTER PLUS KT_MOD_CTRL, never the control code. Every
- * backend delivers it that way: the terminal decoder unfolds the byte the
- * tty sends, and the two xkb backends read the unmodified keysym. A chord
- * table that tested for 0x16 would fire on one backend and not the others. */
+ * backend delivers it that way: the terminal decoder unfolds the byte the tty
+ * sends, and the Wayland backend reads the unmodified keysym. A chord table
+ * that tested for 0x16 would fire on one backend and not the others. */
 enum {
 	KT_MOD_SHIFT = 1,
 	KT_MOD_ALT = 2,
@@ -851,18 +866,6 @@ struct KtuiEvent {
 	int key;		/* codepoint or KT_K_*                     */
 	int mods;
 	int mx, my;
-	/*
-	 * WHERE IN THE CELL, as an offset from its CENTRE in 1/256ths of a
-	 * cell width and height, -128..127. Zero is the centre — which is what
-	 * a backend with no pixel geometry leaves behind, and is the right
-	 * answer for one, because a cell's corner is a pixel that belongs to
-	 * its neighbour.
-	 *
-	 * Nothing drawn in cells reads these. They exist for the one thing on
-	 * this desktop that is not cells: a pixel guest embedded in a window,
-	 * whose buttons are smaller than the grid pointing at them.
-	 */
-	int subx, suby;
 	int btn;
 	int press;
 	/* Touch only. `ms` is the BACKEND'S timestamp, not a clock read here:
@@ -886,11 +889,12 @@ struct KtuiEvent {
  * the device actually moved, and a scroll with a second axis and a real value.
  *
  * NOTHING DRAWN IN CELLS READS ANY OF IT, and no widget in this toolkit does.
- * It exists for the one thing on this desktop that is not cells: a pixel guest
- * embedded in a window, which holds keys down, resolves the layout itself and
- * aims at controls smaller than the grid pointing at them. A backend fills it
- * beside the KtuiEvent for the same event and a caller drains it through
- * KtuiBackend.poll_raw.
+ * It is for a consumer that is not cells: one that holds keys down, resolves
+ * the layout itself and aims at controls smaller than the grid pointing at
+ * them. A backend fills it beside the KtuiEvent for the same event, and it is
+ * drained through KtuiBackend.poll_raw — which nothing in this tree does. A
+ * backend that fills the queue is paying for a consumer that has to arrive
+ * with its own reader.
  *
  * THE FIELDS ARE FLAT AND NAMED PER TYPE, the shape KtuiEvent already keeps. A
  * union would save a dozen words per queue slot and cost every reader a switch
@@ -1017,9 +1021,10 @@ struct KtuiRaw {
 /* ────────────────────────────────────────────────────────────────────────
  * Gestures
  *
- * ONE recogniser, fed by every backend that has touch: libinput under the KMS
- * backend and wl_touch under the Wayland one. Putting the disambiguation in a
- * backend would mean writing it twice and having it disagree twice.
+ * ONE recogniser, fed by wl_touch under the Wayland backend. Putting the
+ * disambiguation in a backend would mean writing it twice and having it
+ * disagree twice, so a backend added later feeds this one rather than
+ * carrying a recogniser of its own.
  *
  * It emits a gesture AND synthesises the ordinary mouse events every existing
  * widget already handles, so the toolkit inherits touch without being
@@ -1089,9 +1094,9 @@ int ktui_input_mouse_visible(int *x, int *y);
  * NEXT frame is matched against that list. Keeps every control a single
  * call with no retained tree to keep in sync with a resize.
  *
- * The frame state used to be a public `Ui` struct that applications wrote to
- * field by field. It is private now — an application that sets `.consumed`
- * by hand is one that cannot be moved to a new version of this file.
+ * The frame state is private and reached only through the accessors below.
+ * An application able to set `.consumed` by hand is one that could not be
+ * moved to a new version of this file.
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* Hit ids for mouse-only chrome — a sidebar, a tab bar, a title button.
@@ -1122,6 +1127,11 @@ int ktui_activated(int id, KRect r);	/* Enter on focus, or a click      */
  * would be composed once per surface; one set in this library is set once and
  * every surface gets it.
  *
+ * EVERY WIDGET FILLS IT AND NOTHING DRAWN READS IT BACK. There is no screen
+ * reader on this image and no route to one, so the queue is kept for what it
+ * is: the material such a reader needs, stated by the only thing that knows
+ * it — the widget, in the frame it drew.
+ *
  * THE QUEUE IS PER FRAME AND FIXED. Nothing on the draw path allocates — a
  * widget that allocated to say its own name would drop frames on the link this
  * desktop is sold on — and it is cleared at the start of every frame, so a
@@ -1142,13 +1152,6 @@ enum {
 	KT_A11Y_TAB,
 	KT_A11Y_CHOICE,
 	KT_A11Y_TEXT,
-	/* Not a widget: the window a session has just focused. The toolkit
-	 * never sets it — a surface does not know it is in a window — and it
-	 * is here so that a reader has one vocabulary rather than two. */
-	KT_A11Y_WINDOW,
-	/* APPENDED, and every value above keeps its number: these cross the
-	 * session wire, so an insertion would rename every role a reader on
-	 * the other end already knows. */
 	KT_A11Y_SLIDER
 };
 
@@ -1174,7 +1177,7 @@ int ktui_key(int k);		/* consume a key press this frame          */
 void ktui_focus_next(int dir);
 void ktui_focus_set(int id);
 
-/* Frame state, read-only where it used to be a struct field. */
+/* Frame state, read-only: every field is reached through a call. */
 const KtuiEvent *ktui_event(void);
 int ktui_consumed(void);
 void ktui_consume(void);

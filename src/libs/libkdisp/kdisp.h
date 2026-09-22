@@ -181,17 +181,12 @@ typedef struct {
 	 * minimum, and it is the right answer for a surface that reflows to
 	 * anything it is given.
 	 *
-	 * It is reported at ATTACH because the session is the only thing that
-	 * can act on it: a tiling window manager divides a screen and hands
-	 * out what is left, and a surface handed forty columns when it needs
-	 * fifty-six composes nothing at all and leaves the cells under it
-	 * carrying the last program's picture. Told the minimum, the session
-	 * gives the window that size and CLIPS it, which is a window with a
-	 * corner off the screen rather than a hole in the desktop.
-	 *
-	 * It is not a promise the surface may skip its own too-small check: a
-	 * compositor is told the same numbers through xdg_toplevel's min size
-	 * and may ignore them.
+	 * IT IS A REQUEST AND NEVER A GUARANTEE. No display in this tree acts
+	 * on it, and a compositor handed the same numbers through
+	 * xdg_toplevel's min size may ignore them, so the surface's own
+	 * too-small check is the only thing between it and forty columns when
+	 * it needs fifty-six — where it composes nothing at all and leaves the
+	 * cells under it carrying the last program's picture.
 	 */
 	int min_cols, min_rows;
 	/*
@@ -226,8 +221,8 @@ typedef struct {
 	int keyboard;
 	/*
 	 * Close when the keyboard focus goes elsewhere. Right for a MENU and
-	 * for the launcher and the run box — clicking on a window while one is
-	 * open used to leave it floating over that window until somebody found
+	 * for the launcher and the run box — without it, a click on a window
+	 * leaves the menu floating over that window until somebody finds
 	 * Escape, and there is no useful "unfocused menu" state.
 	 *
 	 * WRONG for a dialog, which is why it is opt-in rather than implied by
@@ -278,35 +273,18 @@ typedef struct {
 	/*
 	 * THIS SURFACE MANAGES THE SESSION'S WINDOWS: a panel, a task
 	 * switcher, a window menu, the desktop's own root menu. It asks to be
-	 * sent the window list, to be allowed to raise, close and minimise
-	 * what is on it, and to ask the session for one of ITS OWN verbs —
-	 * `kdisp_session_action`, which is how a pointer reaches tiling and
-	 * everything else that was bound to a chord and to nothing else.
+	 * sent the window list and to be allowed to raise, close and change
+	 * the state of what is on it.
 	 *
-	 * IT IS A PRIVILEGE AND IT IS ASKED FOR EXPLICITLY. A surface that
-	 * did not ask cannot act on another program's window, which is what
-	 * stops a launcher or a calculator from closing somebody's editor.
-	 * A Wayland compositor grants its own equivalent through
-	 * foreign-toplevel and ignores this.
+	 * IT IS A DECLARATION AND NOT A GATE. A Wayland compositor hands the
+	 * list and the verbs to whatever binds foreign-toplevel and cannot
+	 * tell one client from another, so nothing here keeps a launcher from
+	 * closing somebody's editor — only never calling `kdisp_win_*` does.
+	 * Set it where the surface means to manage windows, and read it as a
+	 * statement of what the surface is for.
 	 */
 	int manage;
 } KDispConfig;
-
-/*
- * ONE SCREEN AND ITS MODES. A mode list without the screen it belongs to is a
- * picker that cannot say which monitor a choice is for.
- */
-typedef struct {
-	char name[32];		/* `HDMI-A-1`, `eDP-1`                     */
-	int col, cols;		/* its slice of the shared grid, in cells  */
-	int width, height;	/* its mode, in pixels                     */
-	int cur_mode, nmodes;
-} KDispOut;
-
-typedef struct {
-	int width, height;
-	int refresh;		/* millihertz, so 59.94 Hz is not 59       */
-} KDispMode;
 
 typedef void (*KDispBackdropFn)(pixman_image_t *dst, int w, int h, int scale);
 
@@ -413,13 +391,13 @@ typedef struct {
 	 * A terminal has to tell its child when the focus moved (`CSI I` /
 	 * `CSI O`), because an editor that is not told does not reload a file
 	 * changed underneath it and its next write is over somebody else's
-	 * work. The server already knows the answer — `wl_keyboard` enter and
-	 * leave — and did not tell anybody.
+	 * work. The server knows the answer — `wl_keyboard` enter and leave —
+	 * and this slot is the only path by which it reaches the surface.
 	 *
-	 * A backend that cannot answer returns 1: a surface that assumed it had
-	 * the focus is what every program did before this existed, so the
-	 * neutral answer is the old behaviour rather than a terminal that never
-	 * reports focus at all.
+	 * A backend that cannot answer returns 1, never 0: a surface that
+	 * assumes it has the focus sends one focus report too many, while one
+	 * told it is permanently blurred sends none at all and the editor under
+	 * it never reloads.
 	 */
 	int (*focused)(void);
 
@@ -455,12 +433,12 @@ typedef struct {
 	int (*win_at)(int i, KDispWin *out);
 	void (*win_activate)(unsigned id);
 	/*
-	 * RUN ONE OF THE SESSION'S OWN VERBS, by the name `keys.conf` gives it
-	 * — `tile`, `cascade`, `show-desktop`, `windows`, `lock`. NULL on a
-	 * display that has no such thing: the compositor desktop's verbs are
-	 * the compositor's own actions and are reached through its
-	 * configuration, so a surface asking here gets nothing there and must
-	 * be built to accept that.
+	 * RUN ONE OF THE SESSION'S OWN VERBS, by name. NULL on a display that
+	 * has no such thing, which is every display in this tree: a
+	 * compositor's verbs are its own actions, reached through its
+	 * configuration and its command socket rather than through a client
+	 * vtable, so a surface asking here gets nothing and must be built to
+	 * act for itself.
 	 */
 	void (*session_action)(const char *verb);
 	void (*win_close)(unsigned id);
@@ -476,11 +454,17 @@ typedef struct {
 	 * them into pixels — so this is the only way a picker can ask what
 	 * faces exist, and the list is the DISPLAY'S.
 	 *
-	 * `font_count` is 0 where the font is not this desktop's to change,
-	 * which is a `--tty` run inside somebody else's terminal and the
-	 * compositor, where every program carries its own. `font_at` fills
-	 * `out` with a display name and returns 1, or 0 past the end.
-	 * `font_current` is the index in force or -1.
+	 * `font_count` is 0 where the display has no face to offer: a machine
+	 * carrying no monospaced family, or a `--tty` run inside somebody
+	 * else's terminal, which owns its own font. `font_at`
+	 * fills `out` with a display name and returns 1, or 0 past the end.
+	 * `font_current` is the index in force, or -1 when the screen is
+	 * wearing something no row in the list names.
+	 *
+	 * ONLY FACES THE BACKEND CAN ACTUALLY WEAR. A cell grid has one
+	 * advance for every glyph, so a backend that paints cells lists its
+	 * monospaced faces and nothing else — a proportional family offered
+	 * here is a screen a person cannot read.
 	 *
 	 * `font_set` takes an INDEX into that list and never a name, because
 	 * the names belong to the display and mean nothing here. A negative
@@ -488,35 +472,19 @@ typedef struct {
 	 * it survives the logout: a picker's arrows pass 0, because every step
 	 * is a real font on a real screen and a step that persisted would make
 	 * the last face a highlight passed over the one the next login wears.
+	 * Where each surface carries its own font, `keep` is the only thing
+	 * that reaches the others, and it reaches them at their next start.
 	 *
 	 * A CALLER RE-READS THE LIST ON EACH TURN, the rule the window list
-	 * keeps: the answer arrives over a socket some pumps later, and a
-	 * caller that asked once and believed the first answer would draw an
-	 * empty list for ever.
+	 * keeps: a backend that gathers its faces over a socket answers some
+	 * pumps later, and a caller that asked once and believed the first
+	 * answer would draw an empty list for ever.
+	 *
+	 * `font_ask` starts that gathering. A BACKEND WHOSE LIST IS LOCAL
+	 * LEAVES IT EMPTY — its first `font_count` is already the whole
+	 * answer, and a slot that did nothing would read as one that started
+	 * something.
 	 */
-	/*
-	 * THE SCREENS, AND THEIR MODES.
-	 *
-	 * The same shape the font list keeps and for the same reason: a
-	 * surface never drives a screen, so the list is the DISPLAY'S.
-	 *
-	 * `out_count` is 0 where the screens are not this desktop's to change:
-	 * a `--tty` run inside somebody's terminal, and the compositor, which
-	 * takes its output configuration on `wlr-output-management` — a
-	 * protocol carrying scale, transform and position that this vtable
-	 * deliberately does not model.
-	 *
-	 * `out_set_mode` takes two INDICES and never a resolution, because the
-	 * modes belong to the display and mean nothing here. `keep` is whether
-	 * the choice survives the logout, so a picker's countdown passes 0
-	 * until a person says the screen is readable.
-	 */
-	void (*out_ask)(void);
-	int (*out_count)(void);
-	int (*out_at)(int i, KDispOut *out);
-	int (*out_mode_at)(int i, int m, KDispMode *mode);
-	void (*out_set_mode)(int i, int m, int keep);
-
 	void (*font_ask)(void);
 	int (*font_count)(void);
 	int (*font_at)(int i, char *out, int cap);
@@ -571,25 +539,22 @@ void kdisp_unlock(void);
 /* Whether this display server can enumerate windows at all, as distinct from
  * a desktop with none open. */
 int kdisp_win_supported(void);
-/* See the vtable: 0 where the font is not this desktop's to change. */
+/* See the vtable: 0 where the display has no face to offer. */
 int kdisp_font_count(void);
 int kdisp_font_at(int i, char *out, int cap);
 int kdisp_font_current(void);
 void kdisp_font_set(int index, int keep);
-/* Ask the display to send its list. Cheap, answered later, and a caller that
- * never asks sees a count of zero for ever. */
+/* Ask the display to start gathering its list. Cheap, answered later where it
+ * is answered at all, and nothing where the backend's list is local. A caller
+ * that never asks sees a count of zero for ever on a backend that needs it. */
 void kdisp_font_ask(void);
-/* See the vtable: 0 where the screens are not this desktop's to change. */
-void kdisp_out_ask(void);
-int kdisp_out_count(void);
-int kdisp_out_at(int i, KDispOut *out);
-int kdisp_out_mode_at(int i, int m, KDispMode *mode);
-void kdisp_out_set_mode(int i, int m, int keep);
+/* See the vtable: 0 where the display cannot enumerate windows, which is not
+ * the same as a desktop with none open — kdisp_win_supported() separates them. */
 int kdisp_win_count(void);
 int kdisp_win_at(int i, KDispWin *out);
 void kdisp_win_activate(unsigned id);
 /* Ask the session for one of its own verbs. Silently nothing where the display
- * has none — see KDispBackend.session_action. */
+ * has none — see KDispImpl.session_action. */
 void kdisp_session_action(const char *verb);
 void kdisp_win_close(unsigned id);
 void kdisp_win_minimise(unsigned id, int on);

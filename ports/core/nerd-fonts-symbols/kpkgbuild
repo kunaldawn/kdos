@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nerd-fonts-symbols
+version     = 3.5.1
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/ryanoasis/nerd-fonts/releases/download/v$version/NerdFontsSymbolsOnly.tar.xz
+sha256      = 01172f37db8543edb102e5cb5c64101c9f4686630804d49b419aa07b23a69996  nerd-fonts-symbols-3.5.1.tar.xz
+description = Symbols Nerd Font — the icon codepoints a patched font carries, as a fallback face
+homepage    = https://www.nerdfonts.com/
+depends     = fontconfig

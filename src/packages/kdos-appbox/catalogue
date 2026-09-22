@@ -34,10 +34,9 @@ snapshot = auto
 
 #
 # `env <pack> NAME=VALUE` becomes an `env =` line in that pack's metadata, and
-# kdos-appbox exports the whole stack's worth when it enters a pack box. This
-# is the pack lane's answer to the monolith's image labels: a pack box is
-# `podman --rootfs`, so there is no image to inspect and the fact has to travel
-# with the packages it describes.
+# kdos-appbox exports the whole stack's worth when it enters a pack box. A pack
+# box is `podman --rootfs`, so there is no image whose labels could carry the
+# fact: it has to travel with the packages it describes.
 #
 # QT_STYLE_OVERRIDE is only safe where a platform theme is present — Fusion
 # with none falls back to Qt's built-in LIGHT palette, which is worse than
@@ -222,8 +221,9 @@ runtime rt-electron base   libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2
 runtime rt-wine   base     wine wine64 wine32:i386
 
 # ── the applications ──────────────────────────────────────────────────────
-# One row per application, so editing one rewrites ONE pack. Under the
-# monolith, editing a segment rewrote that segment's whole 485 MB blob.
+# One row per application, so editing one rewrites ONE pack. A row that gathers
+# several applications makes every one of them a fresh download when any one of
+# them changes.
 
 app app.zathura      rt-gtk       zathura zathura-pdf-poppler zathura-djvu zathura-cb
 app app.calibre      rt-qt        calibre
@@ -300,11 +300,10 @@ app app.filelight    rt-kde       filelight
 # entries are NoDisplay and a launcher for bare `wine` opens nothing.
 app app.wine         rt-wine      wine
 
-# ── the catalogue's boxed ring (W9-4) ─────────────────────────────────────
-# One row per application, as above. A row here resolved against the pinned
-# archive before it was written: 26 of the catalogue's entries have nothing in
-# Debian to install and are recorded in apps.plan.md rather than shipped as a
-# row that cannot build.
+# ── the catalogue's boxed ring ────────────────────────────────────────────
+# One row per application, as above. Every row must resolve against the pinned
+# archive: a name Debian has nothing to install for belongs nowhere in this
+# file, because the bake fails on it long after the store has offered it.
 
 # C1 — electronics, embedded, RF, instrumentation
 app app.ghdl             base         ghdl
@@ -408,21 +407,21 @@ app app.a11y             base         brltty espeak-ng
 app app.baresip          base         baresip
 
 
-# ── PARITY WITH THE MONOLITH ───────────────────────────────────────────────
+# ── the rest of the applications ──────────────────────────────────────────
 #
-# Every row below is an application `ports/appbox/Containerfile` installs and
-# `packs.conf` did not, which is the whole of what stands between the pack lane
-# and W7-5. The set was not curated: it is the difference between the two files,
-# minus the three that are NATIVE ports here already (git, gnuplot, mpv) and
-# minus the support packages, which belong to a runtime or to the row that
-# needs them — `breeze` and `kio` to rt-kde, `cabextract` to winetricks,
+# git, gnuplot and mpv are NATIVE ports on this host and must never be rowed
+# here: two lanes carrying one name is two answers to `which`, and the pack
+# would shadow a program the host already supports.
+#
+# A SUPPORT PACKAGE IS NOT A ROW. It belongs either to a runtime or to the one
+# row that needs it — `breeze` and `kio` to rt-kde, `cabextract` to winetricks,
 # `genisoimage` and `dvdauthor` to the burner, the `libretro-*` cores to
-# RetroArch. Deleting the monolith with any of these unrowed would delete a
-# working application from the distribution.
+# RetroArch. A row is what the store offers, and nobody installs a shared
+# library on purpose.
 #
-# ONE ROW PER APPLICATION, which is W9-1's rule and is why five small GNOME
-# games are five packs rather than one `app.games`: a pack is what somebody
-# chooses, and nobody chooses "games".
+# ONE ROW PER APPLICATION, which is why five small GNOME games are five packs
+# rather than one `app.games`: a pack is what somebody chooses, and nobody
+# chooses "games".
 
 # GTK applications
 app app.audacity        rt-gtk       audacity
@@ -500,13 +499,11 @@ app app.gnome-mines     rt-gtk       gnome-mines
 app app.gnome-sudoku    rt-gtk       gnome-sudoku
 app app.quadrapassel    rt-gtk       quadrapassel
 
-# winetricks is NOT a row, and the Containerfile carrying it is the odd one
-# out rather than a gap here. It is in `contrib`, and it fetches Windows
-# runtimes from the network at run time — which an offline distro cannot
-# promise, and which `docs`/CLAUDE.md already record as the reason there are no
-# corefonts for wine. `cabextract` goes with it. The decision is four rows up,
-# beside `app.wine`; this note exists so the next person to diff the
-# Containerfile against this file does not re-add it a third time.
+# winetricks is NOT a row. It is in `contrib`, and it fetches Windows runtimes
+# from the network at run time — which an offline distro cannot promise, and
+# which is the same reason there are no corefonts for wine. `cabextract` is
+# its support package and goes with it. The rule is stated once more on the
+# `app.wine` row, which is the row a reader looking for winetricks lands on.
 
 # ── the graphics tools a box is the only way to run ───────────────────────
 #

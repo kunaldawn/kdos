@@ -134,7 +134,9 @@ extern KiGroup ki_group[MAX_APPGROUPS];
 extern int ki_ngroup;
 extern int ki_apps_present;	/* a catalogue was found and parsed         */
 /* The archive the Applications page found, or "" — what makes APPS_IMPORT
- * possible. F6 on the page picks a different one. */
+ * possible. One archive is found at probe time and the page offers no way to
+ * choose another: a picker would need a filesystem walk the paint path cannot
+ * afford. */
 extern char ki_apps_archive[512];
 
 void probe_apps(void);

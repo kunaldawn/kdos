@@ -924,7 +924,7 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			 * made its background — the FOREGROUND colour — so a
 			 * rule drawn in the foreground would be a rule drawn in
 			 * the colour of the cell it sits on. That is a
-			 * selection or the console pointer crossing an
+			 * selection or the mouse pointer crossing an
 			 * underlined space, where the line must stay visible.
 			 * KT_A_ULCOLOR is not part of the exchange: a colour a
 			 * program named for the underline is the underline's,
@@ -1127,9 +1127,9 @@ glyph:
 
 		/*
 		 * The slot is masked here as it is everywhere else in this
-		 * file: `fg` is a byte off a socket by the time a console
-		 * surface's cells reach the painter, and the theme has eight
-		 * entries.
+		 * file: `fg` is a byte a child's SGR sequence chose and the
+		 * theme has eight entries, so an unmasked index reads past the
+		 * table.
 		 */
 		pixman_color_t c = fg_lit ? rgb_color(fgl)
 					  : to_pixman(ktui_theme->slot[fg & 7]);
@@ -1230,16 +1230,16 @@ static void pad_remainder(pixman_image_t *dst, int used_w, int used_h,
 						 (uint16_t)(dst_h - used_h) });
 }
 
-void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
-		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
-{
-	kcell_paint_damage(dst, cur, prev, cols, rows, full, scale, dst_w,
-			   dst_h, NULL);
-}
-
-int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
-		       KtuiCell *prev, int cols, int rows, int full, int scale,
-		       int dst_w, int dst_h, unsigned char *painted)
+/*
+ * The paint itself, saying WHICH ROWS it touched: `painted` is one byte per
+ * row, cleared first and set for every row this call drew, and the return is
+ * how many. Internal to the library — a caller outside it sees `kcell_paint`,
+ * which asks for no row list.
+ */
+static int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
+			      KtuiCell *prev, int cols, int rows, int full,
+			      int scale, int dst_w, int dst_h,
+			      unsigned char *painted)
 {
 	int npainted = 0;
 
@@ -1356,4 +1356,11 @@ int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
 		pad_remainder(dst, cols * kcell_w() * scale,
 			      rows * kcell_h() * scale, dst_w, dst_h);
 	return npainted;
+}
+
+void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
+		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
+{
+	kcell_paint_damage(dst, cur, prev, cols, rows, full, scale, dst_w,
+			   dst_h, NULL);
 }

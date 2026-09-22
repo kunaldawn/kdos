@@ -7,10 +7,10 @@
  * ---------------------------------
  *   The chord table, read from the file the compositor loaded
  *
- * ONE READER AND ONE WRITER. `rc.xml` is read as the compositor loaded it, so
- * the file that binds the chords is the file that prints them. Nothing here
- * remembers a chord: a second copy of that table is the copy that goes
- * stale.
+ * ONE READER AND ONE WRITER. The table is rc.xml's `<keybind>` rows plus what
+ * `<default />` brings with them, so the file that binds the chords is the
+ * file that prints them. Nothing here remembers a chord the file could say:
+ * a second copy of that table is the copy that goes stale.
  *
  * THE LABWC PARSE IS A LINE-ORIENTED SCANNER rather than an XML library,
  * because the subset it reads is tag-regular: a `<keybind key="...">` followed
@@ -274,15 +274,81 @@ static void act_detail(const char *act, const char *cmd, const char *to,
 
 /* ── the compositor's table ────────────────────────────────────────────── */
 
+/* `<default />` is required to be the FIRST CHILD of <keyboard>, so the search
+ * is bounded by that element: <mouse> carries one too, and a `<default />`
+ * found there would seed keyboard rows the compositor never bound. */
+static int keyboard_has_default(const char *buf)
+{
+	const char *kb = strstr(buf, "<keyboard");
+	const char *end, *def;
+
+	if (!kb)
+		return 0;
+	end = strstr(kb, "</keyboard>");
+	if (!end)
+		return 0;
+	def = strstr(kb, "<default");
+	return def && def < end;
+}
+
+/*
+ * THE KEYBOARD DEFAULTS NO `<keybind>` IN THE SHIPPED rc.xml RESTATES. The
+ * compositor's set lives in its own default-bindings.h, which is not on this
+ * program's include path, so the rows it seeds have to be written out; every
+ * other default in that header is bound again by
+ * /etc/skel/.config/kdos-comp/rc.xml and the parse above already has it. A
+ * default that stops being restated and is not listed here is a chord bound
+ * on the machine that no surface names.
+ *
+ * ADDED ONLY WHERE THE FILE BOUND NOTHING. The compositor keeps the LAST
+ * binding for a chord and `<default />` is the first child, so a `<keybind>`
+ * always beats the default it shadows — an unconditional seed would put a
+ * second row on the card for every default the file restates.
+ */
+static void add_defaults(void)
+{
+	static const struct { const char *key, *act, *menu; } tbl[] = {
+		{ "A-Tab",	"NextWindow",		"" },
+		{ "A-S-Tab",	"PreviousWindow",	"" },
+		{ "A-F4",	"Close",		"" },
+		{ "A-Space",	"ShowMenu",		"client-menu" },
+	};
+
+	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
+		char chord[48];
+		struct sh_chord *c;
+		int j;
+
+		pretty_key(tbl[i].key, chord, sizeof(chord));
+		for (j = 0; j < nchords; j++)
+			if (!strcmp(chords[j].chord, chord))
+				break;
+		if (j < nchords)
+			continue;
+		c = chord_add();
+		if (!c)
+			return;
+		/* No default is a run-or-raise row, and chord_add() leaves
+		 * this field alone. */
+		c->needs[0] = '\0';
+		snprintf(c->chord, sizeof(c->chord), "%s", chord);
+		snprintf(c->action, sizeof(c->action), "%s", tbl[i].act);
+		act_detail(tbl[i].act, "", "", "", tbl[i].menu, c->detail,
+			   sizeof(c->detail));
+	}
+}
+
 static int parse_rc(const char *path)
 {
 	size_t len = 0;
 	char *buf = read_all(path, &len);
 	const char *p;
+	int defaults;
 
 	if (!buf)
 		return -1;
 	strip_comments(buf);
+	defaults = keyboard_has_default(buf);
 
 	p = buf;
 	while (nchords < SH_CHORD_MAX && (p = strstr(p, "<keybind"))) {
@@ -411,6 +477,8 @@ static int parse_rc(const char *path)
 			snprintf(c->detail, sizeof(c->detail), "%s", need);
 		p = close;
 	}
+	if (defaults)
+		add_defaults();
 	free(buf);
 	return nchords ? 0 : -1;
 }
@@ -426,7 +494,7 @@ static void builtin_table(void)
 		{ "Super+d",		"launcher" },
 		{ "Super+Enter",	"terminal" },
 		{ "Alt+F2",		"run" },
-		{ "Super+Space",	"menu" },
+		{ "Super+a",		"menu" },
 		{ "Super+q",		"close" },
 		{ "Super+Tab",		"next" },
 		{ "Super+m",		"maximise" },
