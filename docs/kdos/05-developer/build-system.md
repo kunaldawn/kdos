@@ -121,14 +121,32 @@ restore delete and re-extract those paths as root, so an absolute path, an empty
 or anything containing a parent-directory component is refused. A name that merely begins with dots
 is a real name and is allowed; only a whole parent component counts.
 
-### Restoring
+### The startup picker
 
 ```sh
-make build                                       # opens a picker
+make build                                       # opens the picker
+make build BUILD_ARGS=--fresh                    # skip it; run every phase
 make build BUILD_ARGS="--restore phase2"         # restore, continue at the next phase
 make build BUILD_ARGS="--continue-from phase3"   # resume on the CURRENT tree, no restore
 make snapshots                                   # list them
 ```
+
+On a terminal, and unless `--fresh`, `--restore`, `--continue-from` or a command-line plan already
+decides, a build opens the picker before it runs anything. It answers two questions:
+
+- **What to restore.** Row 0 is *start fresh*; below it is one row per phase that has a snapshot,
+  with its size, commit, step count and duration. `ENTER` starts.
+- **Whether to write snapshots at all**, toggled with `S` and shown in the footer as
+  `writing: on|off`. `--no-snapshot` sets what the picker opens on rather than settling it.
+
+The picker opens whether or not a snapshot exists. Both questions have to be asked on a tree with
+none, because that is precisely the from-scratch run where writing them costs tens of gigabytes and
+a large part of the wall clock — and the one where turning them off means a failure in the last
+phase has nothing to resume from and starts again at the toolchain.
+
+A plan that narrows execution still suppresses writing regardless of the toggle, unless
+`--snapshot` is passed: a snapshot taken from a partially re-run tree would be filed under a phase
+whose contents it does not hold.
 
 Restore selection is layered and newest-wins: each declared path comes from the newest snapshot at
 or below the target phase, so a phase that declares only part of the tree does not lose the rest.
