@@ -31,9 +31,11 @@
 #include "kpkg.h"
 
 /* The files that DEFINE a build. For a port that names a `source =`, anything
- * else in its directory — a tarball, a vendor bundle — is content the recipe
- * names and the `sha256 =` beside it already covers, so hashing it here would
- * only make the key change for no reason. */
+ * else in its directory — a tarball, a vendor bundle — is covered by its own
+ * `sha256 =` line, which `kpkgbuild` checks for EVERY declared entry present
+ * beside the recipe and not only for the ones `source =` reaches, so hashing
+ * it here would only make the key change for no reason. A file beside the
+ * recipe that no `sha256 =` names is in neither this key nor that check. */
 static int recipe_file(const char *name)
 {
 	size_t n = strlen(name);

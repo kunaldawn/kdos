@@ -16,7 +16,7 @@
  *     Removal keys its rmdir-vs-unlink decision off that slash, and four
  *     things on the running system count the files in that directory.
  *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Three
- *     callers rely on it (kpkg's own -f, buildlib/phases.py, mini_build.py)
+ *     callers rely on it (kpkg's own -f, the build driver, mini_build.py)
  *     and it works because `/dev/null/<name>` cannot be a file. Anything here
  *     that stats the DIRECTORY first would silently break all three.
  *   - `PORT_REPO` is a whitespace-separated list, first match wins, and a
@@ -97,6 +97,15 @@ void kp_description(const char *portdir, char *out, size_t cap);
  * eventually answer them differently.
  */
 int kp_vercmp(const char *a, const char *b);
+
+/*
+ * The SHAPE of a version string: digit-runs collapse to 'N', letter-runs to
+ * 'a', separators are kept. A string that is ONE digit run records its length
+ * ("N8") so a date cannot compare equal in shape to a bare "1". A candidate
+ * whose shape differs from the current version's is a different numbering
+ * scheme, not a newer release.
+ */
+void kp_vershape(const char *v, char *out, size_t cap);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Binary-package identity (kp_hash.c)

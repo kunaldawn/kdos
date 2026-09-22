@@ -442,8 +442,8 @@ const char *human_time(double seconds)
 	return b;
 }
 
-/* python's "{:,}" — the file counts in `--list` are grouped, and that listing
- * is the one output a person reads next to the python version's. */
+/* Thousands-grouped: the file counts in `--list` are read by eye, and an
+ * ungrouped seven-digit count cannot be sized at a glance. */
 const char *human_count(long long n)
 {
 	static char out[4][32];

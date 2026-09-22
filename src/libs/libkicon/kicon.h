@@ -21,8 +21,8 @@
  * Two sources, and they are different in kind:
  *
  *   /usr/share/icons/hicolor/<size>/apps/<name>.png   the alien apps' own
- *       icons, installed by 06_packaging/01_appbox.sh. Already PNG, already
- *       at fixed sizes, and NEVER recoloured — a phosphor Firefox logo is
+ *       icons, out of the system hicolor tree. Already PNG, already at
+ *       fixed sizes, and NEVER recoloured — a phosphor Firefox logo is
  *       vandalism, the same rule kdos-theme icons already keeps.
  *
  *   /usr/share/kdos/icons/atlas.kia                   the theme's own set

@@ -58,6 +58,14 @@ old to publish that file leaves the installer assuming 64 — which covers nearl
 every machine, and where the assumption is wrong the 32-bit firmware still
 boots through the removable fallback rather than not at all.
 
+The entry also names a partition, and that number is measured from the kernel's
+`/sys/class/block/<node>/partition` for the ESP the install actually wrote to,
+never derived from the device name: only a wipe lays the ESP out at index 1, and
+an install reusing existing partitions takes whichever one was chosen. Where the
+index cannot be read the installer writes no entry and says so, because the
+removable-media fallback still starts the disk while an entry naming the wrong
+partition is a boot option the firmware cannot load.
+
 ### Where the kernel is kept
 
 The kernel and initramfs are placed where the loader is certain to read them:
@@ -292,6 +300,17 @@ the build says so when they are not. A half-carried `cryptsetup` fails at the
 passphrase prompt rather than at build time, which is the wrong place to find
 out.
 
+`kdos-bootctl` follows the same rule, and it needs `libpng16` to do so.
+`/usr/bin/kdos-bootctl` is a symlink to `/usr/sbin/ksvc`, which links libpng
+for `kdos theme`'s wallpaper retint, so the copy carries that dependency into
+an initramfs whose other unconditional libraries are libc, libintl, libblkid,
+libuuid, libudev, libkmod, liblzma, libz, libzstd and bash's three. libpng16 is
+carried beside it — libz is already there and musl's libm is inside libc, so
+those two close the set — and the copy is skipped entirely when libpng is
+absent. A `kdos-bootctl` that cannot exec makes A/B slot selection never run,
+and the machine then reads as one whose slot was never marked good rather than
+one missing a library.
+
 ### Finding the root
 
 Both paths that look for a device poll, and both give up after ten seconds. The
@@ -449,12 +468,15 @@ Without this split, selecting slot B unlocks slot A's container and then looks
 for B's filesystem inside it. There is nothing there, and the failure reads as
 a corrupt filesystem rather than as a lookup that was never made.
 
-## Two tools that must not be toybox's
+## Three tools that must not be toybox's
 
 Toybox provides applets under names that also belong to full implementations,
 and `$PATH` puts `/usr/bin` ahead of `/usr/sbin`. Where the applet is not a
-drop-in, the recipe switches it off so the name resolves to the real tool
-everywhere.
+drop-in, the recipe and phase 1 both switch it off, so the name resolves to the
+real tool everywhere. Both are needed: phase 1 installs toybox outside the
+package database, so a name it plants is owned by no package — the later port
+install replaces `/usr/bin/toybox` without removing the symlink, and the orphan
+sweep works from the database and never sees it.
 
 ### `blkid`
 
@@ -473,13 +495,19 @@ and resolves no UUID at all.
 
 Two rules follow, and they are the same two `switch_root` keeps:
 
-- Toybox's `blkid` is switched off in the recipe, beside `tar`, `getopt`,
-  `patch`, `file`, `login` and `su`, so the name resolves to util-linux's.
-- The initramfs removes `bin/blkid` before copying. The applet loop has already
-  made it a symlink to `bin/toybox`, and `cp` writes *through* a symlink —
-  overwriting `bin/toybox` while leaving `bin/blkid` pointing at the applet. The
-  packaging step then refuses an initramfs whose `blkid` reports itself as a
-  Toybox multicall binary.
+- Toybox's `blkid` is switched off in the recipe **and in phase 1**, beside
+  `tar` and `file`, so neither build plants `/usr/bin/blkid` and the name
+  resolves to util-linux's `/usr/sbin/blkid`. `getopt`, `patch`, `login` and
+  `su` are switched off in the recipe alone, because util-linux, the `patch`
+  port and shadow each install those names into `/usr/bin` and so reclaim
+  whatever phase 1 left there; `blkid` is an `sbin` program and nothing ever
+  reclaims it, which is why it has to be off in phase 1 too.
+- The initramfs removes `bin/blkid` before copying. With the applet compiled
+  out, `./bin/toybox` does not list it and the applet loop never claims the
+  name; the removal is the guard on that, because `cp` writes *through* a
+  symlink and a `bin/blkid` pointing at `bin/toybox` would take the copy and
+  overwrite the multicall binary. The packaging step then refuses an initramfs
+  whose `blkid` reports itself as a Toybox multicall binary.
 
 ### `file`
 
@@ -542,6 +570,30 @@ The convention for the scripts themselves, and the reason `ksvc` exists rather
 than a shell supervisor, are in
 [Administration](../02-user-guide/administration.md#services) and
 [The daemons](../04-programs/daemons.md).
+
+### One DHCP client on the link
+
+Two scripts can bring an interface up, and only one of them may. `30_network`
+starts `dhcpcd`; `42_networkmanager` starts NetworkManager, whose DHCP client
+is internal. NetworkManager never defers to a running `dhcpcd`, so a machine
+that started both leases every interface twice — two default routes installed
+and withdrawn on each renewal, and two writers of `/etc/resolv.conf`.
+
+`30_network` therefore stands down when `/usr/sbin/NetworkManager` is
+executable and `/etc/service.disabled/networkmanager` is absent. The marker is
+half of the test on purpose: disabling the service leaves the binary on disk,
+and a guard that read the binary alone would leave such a machine with no DHCP
+client at all. Turning NetworkManager off hands DHCP back to `dhcpcd`, and that
+is what makes `dhcpcd` the fallback for a machine that runs no connection
+manager — a server install, or a recovery boot.
+
+`dhcpcd` is supervised with `-B`, which keeps it in the foreground so `ksvc`
+watches the daemon itself rather than a parent that has already exited. Its
+lease database is `/var/lib/dhcpcd`, which is also the home directory of the
+`dhcpcd` account uid 999 that its privilege-separated children run as; the
+account ships in `/etc/passwd`. `25_nftables` runs ahead of both scripts,
+because a firewall loaded after an address is configured is a window during
+which the machine is on the network with no policy.
 
 ## Mount points that must be right
 

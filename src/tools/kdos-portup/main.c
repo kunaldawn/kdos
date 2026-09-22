@@ -1068,7 +1068,7 @@ static int discover(const KpConf *conf, const char *kpkg_bin, char names[][64],
 /* ────────────────────────────────────────────────────────────────────────
  * --selftest — pure, offline assertions over this file's own logic
  *
- * kp_vercmp/pu_shape/pu_extract already have a table in src/libs/selftest.c,
+ * kp_vercmp/kp_vershape/pu_extract already have a table in src/libs/selftest.c,
  * built against the pipeline's earlier stages. Everything new in THIS file
  * is the line layout, the grouping decision and the cache's round trip —
  * none of it touches the network, so all three get exercised here with no

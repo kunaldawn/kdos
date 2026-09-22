@@ -36,6 +36,13 @@ sed -i 's/CONFIG_TAR=y/# CONFIG_TAR is not set/' .config
 # desktop's type guessing both ask `file -L -s -b --mime`, which the applet has
 # no database to answer, and two answers to "what is this file" is one too many.
 sed -i 's/CONFIG_FILE=y/# CONFIG_FILE is not set/' .config
+# `blkid` is util-linux's, here as in the phase-4 recipe, and util-linux puts
+# it in /usr/sbin only — so a /usr/bin/blkid planted here is a name no later
+# package ever overwrites. Phase 1 installs outside the package database, so
+# the orphan sweep cannot see it either, and $PATH puts /usr/bin ahead of
+# /usr/sbin: the symlink would shadow the real tool for every caller while
+# pointing at a toybox that has the applet compiled out.
+sed -i 's/CONFIG_BLKID=y/# CONFIG_BLKID is not set/' .config
 CC=$KDOS_TARGET-gcc make PREFIX=$SYSROOT install -j1
 
 rm -rf "$TOYBOX_SRC"

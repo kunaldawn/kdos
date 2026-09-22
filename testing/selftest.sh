@@ -2373,12 +2373,10 @@ echo "  fs/etc/vtrgb matches kcol_vtrgb(default), and every accent differs"
 
 echo
 echo "==> kdosbuild reads the build tree correctly"
-# This used to be a DIFFERENTIAL against script/buildlib: the C and python
-# views of the same tree, compared line by line. buildlib is gone, so there is
-# nothing left to diff against — the invariant it protected (that the port
-# matched the original) has been discharged. What remains is libkbuild's own
-# assertions in src/libs/selftest.c and the end-to-end run below, which
-# exercises the same code against a real tree.
+# libkbuild is the only view of the build tree, so there is nothing to diff it
+# against: what stands in for a differential is its own assertions in
+# src/libs/selftest.c plus the end-to-end run below, which drives the same code
+# over a real tree.
 "$OUT/kdosbuild" --script-dir script --list >/dev/null 2>&1 \
     || { echo "  kdosbuild cannot read script/"; exit 1; }
 phases=$("$OUT/kdosbuild" --script-dir script --build-dir "$OUT/empty" --list 2>&1)
@@ -2422,7 +2420,7 @@ KB="$OUT/kdosbuild"
 grep -q "BUILD COMPLETE" "$OUT/e2e.log" || { echo "  build did not complete"; cat "$OUT/e2e.log"; exit 1; }
 [ -f "$E/build/snapshots/00_alpha/manifest.json" ] || { echo "  no snapshot written"; exit 1; }
 [ -f "$E/build/logs/00_alpha/0000_tree.sh.log" ] || { echo "  no step log written"; exit 1; }
-# The log FILE is verbatim, as build.py wrote it — escapes and all; only the
+# The log FILE is verbatim, as the step wrote it — escapes and all; only the
 # in-memory copy the TUI draws is sanitised. What matters here is that a final
 # line with no newline on it is not swallowed, which is where a build's real
 # error message often is.

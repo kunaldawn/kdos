@@ -227,7 +227,9 @@ writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle`.
 
 ## Privileged helpers
 
-Two setuid binaries ship, each doing one thing that an unprivileged process cannot.
+Two of KDOS's own binaries are setuid root, each doing one thing that an unprivileged process
+cannot. The image's whole setuid inventory — these two and eighteen upstream ones — is in
+[The security model](../03-architecture/security-model.md#setuid-binaries).
 
 | Command | What it does | Documented in |
 |---|---|---|

@@ -7,11 +7,11 @@
  * ---------------------------------
  *   libkbuild — the snapshot inventory and what a restore would extract
  *
- * The decidable half of script/buildlib/snapshot.py: reading manifests,
- * deciding which snapshots exist, and choosing which archive supplies each
- * path for a restore. Creating and extracting them runs tar as root and stays
- * where it is for now — this is the part that DECIDES, and a wrong decision
- * here restores the wrong tree under the right name.
+ * The decidable half of snapshotting: reading manifests, deciding which
+ * snapshots exist, and choosing which archive supplies each path for a
+ * restore. Creating and extracting them runs tar as root and belongs to the
+ * driver — this is the part that DECIDES, and a wrong decision here restores
+ * the wrong tree under the right name.
  * ---------------------------------
  */
 
@@ -219,8 +219,8 @@ int kbuild_snap_plan_restore(const char *root, const KbuildPhase *ph, int nph,
 	}
 	free(snaps);
 
-	/* python returns `[chosen[k] for k in sorted(chosen)]` — path order, not
-	 * discovery order. Extraction order is observable in the progress UI. */
+	/* Path order, not discovery order: extraction order is observable in
+	 * the progress UI and has to be the same on every run. */
 	for (int i = 1; i < n; i++) {
 		KbuildRestoreItem key = out[i];
 		int k = i - 1;
@@ -250,11 +250,11 @@ int kbuild_snap_interrupted(const char *build_dir, char *target, size_t cap)
 
 	KjNode *m = kj_parse(text);
 	free(text);
-	/* An empty object is not a marker: python returns the dict and every
-	 * caller tests it for truth, so `{}` means no interrupted restore. */
+	/* An interrupted restore names its target, so `{}` is not a marker: an
+	 * empty object means no restore to resume and the build goes on. */
 	if (!m || m->type != KJ_OBJ || !m->child) {
 		kj_free(m);
-		return 0;		/* python: ValueError -> None */
+		return 0;		/* unparsable reads as absent */
 	}
 	if (target && cap)
 		kb_strlcpy(target, kj_str(m, "target", ""), cap);

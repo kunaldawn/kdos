@@ -128,7 +128,6 @@ readline
 # ---------------------------------
 util-linux
 shadow
-linux-pam
 kmod
 eudev
 attr

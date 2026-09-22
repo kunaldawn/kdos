@@ -31,7 +31,7 @@ See [Decisions](../01-philosophy/decisions.md).
 There are three port repositories, searched in order, and they use one format:
 
 ```
-/ports/core              853 recipes — upstream software
+/ports/core              851 recipes — upstream software
 /kdos/src/packages        12 recipes — ours: the tools, the installer, the packer
 /kdos/src/desktop         13 recipes — ours: the compositor, the shell, the daemons
 ```
@@ -91,9 +91,30 @@ removing the older package would delete a file the newer one installed.
 An upgrade removes orphans. A file present in the old version and absent from
 the new one is removed rather than left on disk owned by nothing.
 
+## What a build verifies
+
+`kpkgbuild` hashes **every** `sha256 =` entry whose file is present beside the
+recipe or in the source cache, before it touches the work directory. That is
+wider than the source list on purpose: the 114 Go, Rust and Python ports carry
+a vendor bundle — `<name>-vendor-<version>.tar.xz`, unpacked by `build.sh`
+itself — which is declared with a hash and named by no `source =` line, so a
+check that walked `source =` alone would compile those ports from bytes nothing
+had looked at.
+
+A declared file that is in neither place is skipped rather than refused: a
+source the build actually needs is caught when extraction cannot find it, and
+failing on a declared file the build never opens would refuse a port over a
+hash that cannot reach it.
+
+On top of that, no source is unpacked before its bytes match. A source the
+recipe names with no `sha256 =` for it is a hard failure, not a warning:
+`KDOS_ALLOW_UNVERIFIED=1` is the bring-up escape hatch for adding a port before
+its hash is known, and `testing/preflight.sh` asserts that no recipe in the
+tree needs it.
+
 ## Deciding what to rebuild
 
-The build must not recompile 878 ports on every run, and must not skip one
+The build must not recompile 875 ports on every run, and must not skip one
 whose recipe changed. Two hashes decide, and they are the same two the binary
 host uses.
 
@@ -104,8 +125,10 @@ by name, each contributing its name *and* its bytes. It is an exact statement
 of what a package was built from.
 
 For a port that names a `source =`, nothing else in the directory is hashed: a
-tarball is content the recipe already names and the `sha256 =` beside it
-already covers.
+tarball or a vendor bundle is covered by its own `sha256 =` line, which
+`kpkgbuild` checks before it builds anything (see
+[What a build verifies](#what-a-build-verifies)). A file beside the recipe that
+no `sha256 =` names is in neither the key nor that check.
 
 A source-less port is different, and that difference is what makes the rule
 true for this tree's own code. A port with no `source =` builds out of its own
@@ -163,7 +186,7 @@ changed.
 ## Reproducible packages
 
 A package built twice from the same tree is byte-identical. That is a property
-of one function — the archive roller inside `kpkg` — rather than of 878
+of one function — the archive roller inside `kpkg` — rather than of 875
 recipes, which is exactly why `kpkg` rolls the archive itself instead of
 letting each `build.sh` do it.
 

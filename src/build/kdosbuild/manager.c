@@ -39,8 +39,8 @@ static BStep *step_new(const char *path, int is_group)
 	return s;
 }
 
-/* `# Title: ...` in the first five lines, else the filename tidied. The
- * python matched it case-insensitively and so does this. */
+/* `# Title: ...` in the first five lines, else the filename tidied. The key
+ * matches case-insensitively, so a step writing `# title:` is still titled. */
 static void step_derive_title(BStep *s)
 {
 	if (!s->is_group) {
@@ -456,6 +456,27 @@ static void set_family_status(BStep *s, int status)
 	}
 }
 
+/* A step the driver cannot even start is a FAILED step, and the stamp has to
+ * be terminal: the cursor only advances past a step that reached ST_DONE or
+ * stopped the run, so leaving one at ST_RUNNING re-enters start_step() on it
+ * for ever and leaks the log descriptor on every pass. */
+static void fail_start(Manager *m, BStep *s, const char *why)
+{
+	step_log(s, why);
+	if (m->log_fd >= 0) {
+		dprintf(m->log_fd, "%s\n", why);
+		close(m->log_fd);
+		m->log_fd = -1;
+	}
+	s->return_code = 999;
+	s->end_time = kb_now_s();
+	set_family_status(s, ST_FAIL);
+	m->error_step = s;
+	m->stop_requested = 1;
+	m->is_running = 0;
+	mgr_notice(m, "%s: %s", s->title, why);
+}
+
 static void start_step(Manager *m, BStep *s)
 {
 	set_family_status(s, ST_RUNNING);
@@ -473,11 +494,13 @@ static void start_step(Manager *m, BStep *s)
 	}
 	m->log_fd = open(logp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 
+	/* `rel` outlives the branch that fills it: KbArgv stores the pointer
+	 * and the exec happens after the fork, not inside the branch. */
+	char rel[512];
 	KbArgv a = {0};
 	if (s->have_cmd) {
 		a = s->cmd;
 	} else if (s->step_type == SX_CHROOT) {
-		char rel[512];
 		path_for(m, s->path, s->step_type, rel, sizeof(rel));
 		kb_argv_add(&a, m->chroot_exec);
 		kb_argv_add(&a, "bash");
@@ -491,8 +514,7 @@ static void start_step(Manager *m, BStep *s)
 
 	int pipefd[2];
 	if (pipe(pipefd) < 0) {
-		step_log(s, "INTERNAL ERROR: pipe failed");
-		s->return_code = 999;
+		fail_start(m, s, "INTERNAL ERROR: pipe failed");
 		return;
 	}
 
@@ -500,8 +522,7 @@ static void start_step(Manager *m, BStep *s)
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
-		step_log(s, "INTERNAL ERROR: fork failed");
-		s->return_code = 999;
+		fail_start(m, s, "INTERNAL ERROR: fork failed");
 		return;
 	}
 	if (pid == 0) {

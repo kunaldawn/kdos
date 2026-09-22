@@ -15,8 +15,9 @@
 # build that has no network — and it offers -DSYSTEM_CORROSION=ON for exactly
 # this case.
 #
-# Nothing is compiled: what installs is the CMake package plus a small helper
-# that corrosion builds to parse `cargo metadata`.
+# Nothing is compiled: from CMake 3.19 on, corrosion parses `cargo metadata`
+# in CMake itself and CORROSION_INSTALL_EXECUTABLE defaults off, so what
+# installs is the CMake package alone.
 mkdir -p build && cd build
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib

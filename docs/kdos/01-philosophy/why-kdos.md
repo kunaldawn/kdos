@@ -16,7 +16,7 @@ A decision elsewhere in the book that looks arbitrary is usually one of these be
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from upstream tarballs by 877 recipes — 853 under
+The host is compiled in this repository from upstream tarballs by 875 recipes — 851 under
 `ports/core` for upstream software, 24 under `src/` for the desktop, the daemons and the tools —
 running from a cross toolchain, through a musl userland, through a self-hosting pass, through the
 build tools, the libraries, the desktop and finally the kernel.
@@ -52,7 +52,7 @@ recipe that reaches out fails immediately and visibly on the machine that added 
 working there and failing everywhere else a year later.
 
 Every upstream tarball and every vendored dependency bundle is reachable at build time because
-each is in the tree, held by Git LFS — 1,025 objects, about 8.3 GB. A clone is therefore the
+each is in the tree, held by Git LFS — 1,020 archives, about 8.3 GB. A clone is therefore the
 entire input to a build. Nothing is fetched in between and nothing can be missing.
 
 The `sha256 =` line in a recipe is what verifies an archive, and it sits beside the bytes it
@@ -199,7 +199,7 @@ Measured from the tree.
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 853 |
+| Port recipes in `ports/core` | 851 |
 | Port recipes under `src/` for KDOS's own software | 24 |
 | Packages installed on the built system | 833 |
 | Applications in the catalogue | 183 |
@@ -210,7 +210,7 @@ Measured from the tree.
 | Boxed commands with no graphical launcher | 36 rows across 25 applications |
 | Kernel | 7.0.10 |
 | C libraries written for this system | 17 |
-| Upstream archives held in Git LFS | 1,025 objects, about 8.3 GB |
+| Upstream archives held in Git LFS | 1,020 archives, about 8.3 GB |
 
 ## See also
 

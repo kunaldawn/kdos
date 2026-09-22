@@ -38,8 +38,11 @@ does not exist and must not be created.
 Xwayland is the single exception. The compositor runs it rootlessly so that X11-only applications
 inside boxes work, and it pulls in a client-side chain that exists only to satisfy it:
 `xorgproto`, `xtrans`, `libXau`, `libXdmcp`, `xcb-proto`, `libxcb`, `libX11`, `libxkbfile`,
-`xkbcomp`, `libxshmfence`, `libfontenc`, `libXfont2`, `libxcvt`, `libepoxy` and the five
-`xcb-util` ports. A recipe that wants any of those for a different reason gets pushed back.
+`xkbcomp`, `libxshmfence`, `libfontenc`, `libXfont2`, `libxcvt`, `libepoxy`, and two of the five
+`xcb-util` ports: `xcb-util-wm`, which `script/05_desktop/packages.txt` names because Xwayland's
+xwm needs ICCCM and EWMH, and `xcb-util-renderutil`, which arrives through wlroots's `depends`.
+`xcb-util`, `xcb-util-image` and `xcb-util-cursor` are recipes nothing reaches, so nothing builds
+them. A recipe that wants any of these for a different reason gets pushed back.
 
 Two consequences are worth knowing before you plan work around them. Mesa is built with
 `-D glx=disabled -D platforms=wayland` and Xwayland with `-Dglx=false`, so X clients get no
@@ -174,7 +177,7 @@ network-enabled build would have done for you.
 
 A package built twice from the same tree is byte-identical. That is a property of one function —
 `roll_package()` in `kpkg`, which invokes tar with `--sort=name`, a pinned `--mtime` honouring
-`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 877 recipes. Concentrating it
+`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 875 recipes. Concentrating it
 there is precisely why `kpkg` rolls the archive itself instead of letting each recipe do it.
 
 Reproducibility is not decoration. It is what makes a signed binhost meaningful, what lets a delta

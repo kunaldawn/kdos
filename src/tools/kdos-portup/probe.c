@@ -669,7 +669,7 @@ static int add_if_matching_shape(char cands[][PU_MAX_VER], int n, int max,
 	if (n >= max || !cand[0])
 		return n;
 	char shape[PU_MAX_VER];
-	pu_shape(cand, shape, sizeof(shape));
+	kp_vershape(cand, shape, sizeof(shape));
 	if (strcmp(shape, want_shape) || already_have(cands, n, cand))
 		return n;
 	kb_strlcpy(cands[n], cand, PU_MAX_VER);
@@ -755,7 +755,7 @@ int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
 	}
 
 	char cur_shape[PU_MAX_VER];
-	pu_shape(r->version, cur_shape, sizeof(cur_shape));
+	kp_vershape(r->version, cur_shape, sizeof(cur_shape));
 
 	char (*matches)[PU_MAX_VER] = kb_calloc(PU_MATCH_MAX, PU_MAX_VER);
 	int nm = collect_matches(raws, nraw, cur_shape, 0, matches, PU_MATCH_MAX);

@@ -1131,9 +1131,9 @@ shfmt
 # Every documented appbox failure is podman state — a box stuck in `stopping`,
 # a half-built init, a storage driver mismatch.
 podman-tui
-# The KDOS repo no longer uses LFS, but `kdos rebuild` promises this stick can
-# rebuild this stick, and that extends to any other repo cloned on it: without
-# this a clone SUCCEEDS and checks out pointer files.
+# The KDOS repo keeps every source archive in LFS, and `kdos rebuild` promises
+# this stick can rebuild this stick — as it does for any other repo cloned on
+# it. Without this a clone SUCCEEDS and checks out pointer files.
 git-lfs
 
 # ---------------------------------
@@ -1612,18 +1612,13 @@ sof-firmware
 tzdata
 
 # ---------------------------------
-# Device access libraries (serial, HID, USB)
+# Device access libraries (HID, USB)
 # ---------------------------------
-# What the flashing, SDR and instrument tools link against. hidapi and libzip
-# also arrive through a `depends`. Nothing in the tree names libftdi1 or
-# eigen3 — they build the same upstream releases as the libftdi and eigen
-# ports listed above, and a path belongs to one manifest only, so the later
-# install takes the files out of the earlier package and leaves it owning
-# directories and nothing else.
-libftdi1
+# What the flashing, SDR and instrument tools link against. Both also arrive
+# through a `depends`, so naming them here fixes their position in the build
+# order, not whether they are built at all.
 hidapi
 libzip
-eigen3
 
 # ---------------------------------
 # Colour management and codecs

@@ -28,7 +28,7 @@
  *   [[port:zlib]]              kpkg meta — the recipe's own metadata
  *   [[reason:tmp-mode-1777]]   the reasons store `kdos why` reads
  *   [[man:kpkg.1]]             mandoc, in a terminal
- *   [[key:W-d]]                the keybind card
+ *   [[key:W-F1]]               the keybind card
  *   [[doc:index]]              another document in this corpus
  *
  * NOTHING IS AUTHORED HERE. The viewer ships with no corpus at all, and an
@@ -441,7 +441,7 @@ static void load_index(void)
 	kb_buf_str(&b, "  reason  a recorded debug cycle      "
 		       "[[reason:tmp-mode-1777]]\n");
 	kb_buf_str(&b, "  man     a manual page, in foot      [[man:kpkg.1]]\n");
-	kb_buf_str(&b, "  key     the keybind card            [[key:W-d]]\n");
+	kb_buf_str(&b, "  key     the keybind card            [[key:W-F1]]\n");
 	kb_buf_str(&b, "  doc     another document            [[doc:index]]\n");
 	/* The link syntax cannot be written out here — the parser would eat it,
 	 * which is the one joke a hypertext viewer is not allowed to make. */

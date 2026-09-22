@@ -46,7 +46,7 @@ $KDOS_TARGET-gcc \
 install -Dm755 "$OUT" $SYSROOT/usr/bin/kpkg
 
 # One binary, five names — dispatched on its own basename. The names are what
-# 393 recipes, script/build.py, testing/ and muscle memory all call.
+# the recipes, the build driver, testing/ and muscle memory all call.
 for t in kpkgadd kpkgbuild kpkgdel kpkgdepends; do
     ln -sf kpkg $SYSROOT/usr/bin/$t
 done

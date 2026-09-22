@@ -407,7 +407,7 @@ environment names nothing.
 | `KDOS_REPLAY=1` | A step's marker guard stands down — set for steps a plan named |
 | `KDOS_ISO_SOURCES=1` | Put the sources on the medium |
 | `KDOS_PACK_KDOS=1` | Build this root filesystem as a base pack |
-| `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Stamped into the version |
+| `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the restore picker, which marks a snapshot stale when either disagrees with the tree. Nothing on the image reads them — `/etc/os-release` carries a static version |
 | `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | The phase metadata block — parsed, never sourced |
 
 Any variable a chroot step reads must be named on the chroot command line, because the chroot is

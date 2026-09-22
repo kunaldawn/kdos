@@ -148,7 +148,7 @@ int kp_vercmp(const char *a, const char *b)
 	}
 }
 
-void pu_shape(const char *v, char *out, size_t cap)
+void kp_vershape(const char *v, char *out, size_t cap)
 {
 	if (!cap)
 		return;		/* no room even for the terminator */

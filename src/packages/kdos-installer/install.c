@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -490,6 +491,39 @@ static void partname(const char *disk, int n, char *out, size_t cap)
 	size_t l = strlen(disk);
 	int digit = l && isdigit((unsigned char)disk[l - 1]);
 	snprintf(out, cap, "%s%s%d", disk, digit ? "p" : "", n);
+}
+
+/* The index of a partition within its disk, read from the kernel, or -1 when
+ * the node is not a partition. The kernel's own attribute is what makes sdaN,
+ * nvme0n1pN and mmcblk0pN one case rather than three naming rules to parse —
+ * and the reason the number is measured and never derived from the name. */
+static int part_index(const char *part)
+{
+	/* sysfs is keyed by the kernel's node name, so a link is followed
+	 * first: an answer file may name the ESP as /dev/disk/by-id/… or
+	 * /dev/disk/by-partuuid/…, which mount and mkfs take and which has no
+	 * directory of its own under /sys/class/block. */
+	char real[PATH_MAX];
+	if (realpath(part, real))
+		part = real;
+
+	const char *base = strrchr(part, '/');
+	base = base ? base + 1 : part;
+
+	char path[256], buf[32];
+	int n = snprintf(path, sizeof(path), "/sys/class/block/%.64s/partition",
+			 base);
+	if (n < 0 || (size_t)n >= sizeof(path))
+		return -1;
+	if (kb_read_line_file(path, buf, sizeof(buf)) < 0)
+		return -1;
+
+	long idx = strtol(buf, NULL, 10);
+	/* DISK_MAX_PARTS is the kernel's own ceiling; anything outside it is a
+	 * value this attribute cannot hold and is read as unusable. */
+	if (idx < 1 || idx > 256)
+		return -1;
+	return (int)idx;
 }
 
 static void mkpath(const char *fmt, ...)
@@ -1013,6 +1047,16 @@ static void do_copy(void)
 	argv[n++] = "--exclude=/media/*";
 	argv[n++] = "--exclude=/lost+found";
 	argv[n++] = "--exclude=/var/log/kinstall.log";
+	/*
+	 * PER-MACHINE IDENTITY IS NOT COPIED. Both of these are generated on
+	 * first boot only when absent (fs/etc/init.d/40_dbus.sh,
+	 * fs/etc/init.d/70_sshd.sh), so a copy from the live session would be
+	 * adopted by the installed system and never regenerated: every machine
+	 * installed from one medium would answer GetMachineId with the same
+	 * UUID and present the same SSH host keys.
+	 */
+	argv[n++] = "--exclude=/var/lib/dbus/machine-id";
+	argv[n++] = "--exclude=/etc/ssh/ssh_host_*";
 	if (!cfg.with_appbox)
 		argv[n++] = "--exclude=/home/kdos/.local/share/containers/***";
 	argv[n++] = "/";
@@ -1799,11 +1843,37 @@ static void do_boot(void)
 					     ? "\\EFI\\BOOT\\BOOTIA32.EFI"
 					     : "\\EFI\\BOOT\\BOOTX64.EFI";
 
-		kb_strlcpy(disk, cfg.disk, sizeof(disk));
-		char *eb[] = { "efibootmgr", "--create", "--disk", disk,
-			       "--part", "1", "--loader", (char *)loader,
-			       "--label", "KDOS", NULL };
-		try_(eb);
+		/*
+		 * THE ENTRY NAMES THE PARTITION THE ESP IS ACTUALLY ON, and
+		 * that is measured rather than assumed: only the wipe plan
+		 * lays the ESP out at index 1, and a reuse install takes
+		 * whichever partition the user picked. An entry naming any
+		 * other partition is a boot option the firmware cannot load.
+		 * Without a measured index no entry is written at all — the
+		 * removable-media fallback still starts this disk, and a
+		 * guessed index would take that chance away.
+		 */
+		int esp_part = part_index(part_esp);
+		/* A dry run has no partition table to measure; the command is
+		 * logged and never executed. */
+		if (esp_part < 0 && cfg.dry_run)
+			esp_part = 1;
+
+		char pn[8];
+		int w = esp_part < 0 ? -1 : snprintf(pn, sizeof(pn), "%d",
+						     esp_part);
+		if (w < 0 || (size_t)w >= sizeof(pn)) {
+			emit('W', "no partition index for %s — no NVRAM boot "
+				  "entry; this disk boots through the "
+				  "removable-media fallback",
+			     part_esp);
+		} else {
+			kb_strlcpy(disk, cfg.disk, sizeof(disk));
+			char *eb[] = { "efibootmgr", "--create", "--disk", disk,
+				       "--part", pn, "--loader", (char *)loader,
+				       "--label", "KDOS", NULL };
+			try_(eb);
+		}
 	}
 	emit('P', "1");
 }

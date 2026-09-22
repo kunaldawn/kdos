@@ -121,7 +121,7 @@ timing differs by target:
 | `~/.config/kdos/fzf-colors` | fzf, through `$FZF_DEFAULT_OPTS` | On the next login shell |
 | `~/.config/bat/themes/kdos.tmTheme` | bat | On the next start, once the cache is built |
 | `~/.config/micro/colorschemes/kdos.micro` | micro | On the next start |
-| `~/.config/helix/themes/kdos.toml` | helix | On the next start |
+| `~/.config/helix/themes/kdos.toml` | helix, which is not on the image — a helix you install in a box | On the next start |
 | `~/.config/nvim/colors/kdos.vim` | neovim | On the next start |
 | `~/.config/git/kdos-delta` | delta, included from the shipped gitconfig | On the next diff |
 | `~/.config/newsboat/kdos-colors` | newsboat, `include`d from its config | On the next start |
@@ -152,11 +152,16 @@ user stylesheet when those files change, and no toolkit offers a way around that
 
 A generated file is never a file you edit. Each row above is written whole on every accent switch,
 and most are *selected* by a second file that ships once and is then yours: `settings.json` for
-micro, `config.toml` for helix, `init.vim` for neovim, an `[include]` for delta, an `include` line
-for newsboat, `styleset-name` for aerc, `--theme="kdos"` for bat, `color_theme = "kdos"` for btop,
-`include=` in `foot.ini`, a `source-file` line in `tmux.conf`. Change those freely; they are not
-rewritten. Your own micro scheme may `include "kdos"` and your own helix theme may
-`inherits = "kdos"`, so you can keep the accent and override one colour.
+micro, `init.vim` for neovim, an `[include]` for delta, an `include` line for newsboat,
+`styleset-name` for aerc, `--theme="kdos"` for bat, `color_theme = "kdos"` for btop, `include=` in
+`foot.ini`, a `source-file` line in `tmux.conf`. Change those freely; they are not rewritten. Your
+own micro scheme may `include "kdos"` and your own helix theme may `inherits = "kdos"`, so you can
+keep the accent and override one colour.
+
+helix is the one row whose program is not on the image: the port exists, no `packages.txt` names
+it, and nothing builds it. The theme is still written, because a box takes `home = shared` by
+default and a helix installed in one reads it. Nothing selects it for you — write `theme = "kdos"` in
+your own `~/.config/helix/config.toml`.
 
 Two rows have no such second file. yazi reads `theme.toml` by that name and deserializes it over
 its own preset, so the generated file is partial on purpose — only what this palette decides is in

@@ -367,7 +367,7 @@ kdos explain [topic]
 `why` answers what provides a path or a port and why it is configured the way it is. For an
 absolute path it prints the owning package first, out of the package database's own file list.
 
-`explain` browses the recorded reasons — 79 of them, installed under `/usr/share/kdos/reasons` —
+`explain` browses the recorded reasons — 78 of them, installed under `/usr/share/kdos/reasons` —
 each one a constraint and its consequence. The match is a substring over the whole document rather
 than over the filename alone, so `kdos explain musl` finds the reasons that mention it in passing.
 

@@ -596,9 +596,12 @@ argument vector, never a command line.
 
 The package database, the ports tree, the solver, version comparison, and the two hashes.
 
-Version comparison lives here rather than in either consumer, because the package manager and the
-upstream version checker ask the same question about the same strings and two implementations would
-eventually disagree.
+Version comparison (`kp_vercmp`) and the version-shape filter (`kp_vershape`) live here rather than
+in either consumer, because the package manager and the upstream version checker ask the same
+questions about the same strings and two implementations would eventually disagree. Both carry
+libkpkg's `kp_` prefix even though `kdos-portup` is the shape filter's only caller: a symbol
+exported under a consumer's prefix is one the next reader hunts for in the wrong library, and two
+libraries that each define a generic name cannot be linked into one program.
 
 The hashes and their three states are in
 [Packaging](../03-architecture/packaging.md#deciding-what-to-rebuild).
@@ -1053,7 +1056,7 @@ failure:
   loses the first offer and destroys the second while it is live, so the next drag lands and does
   nothing.
 - A backdrop's "my pixels moved" is a flush-time question, not an announcement.
-  `kwl_pixels_dirty()` latches; a backdrop redescribes the same plates on every draw and cannot
+  A latched dirty flag would do: a backdrop redescribes the same plates on every draw and cannot
   tell a change from a redescription, so it installs `kwl_set_pixels_dirty_fn()` instead. Latching
   from the description makes every frame a commit and removes the unchanged-frame gate for every
   surface that has a backdrop.

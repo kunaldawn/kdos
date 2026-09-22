@@ -25,7 +25,7 @@ char **kbuild_steps(const KbuildPhase *p, int *count)
 		*count = 0;
 
 	/* A packages.txt phase has no steps at all — the package list IS the
-	 * work, and build.py runs it through kpkg rather than through *.sh. */
+	 * work, and the driver runs it through kpkg rather than through *.sh. */
 	char *pkgs = kb_path_join(p->dir_path, "packages.txt");
 	int is_pkg_phase = kb_path_exists(pkgs) && !kb_is_dir(pkgs);
 	free(pkgs);
@@ -109,6 +109,8 @@ char **kbuild_ports(const char *repo_root, int *count)
 
 	if (count)
 		*count = 0;
+	/* The array grows: a fixed cap drops every recipe past it with nothing
+	 * said, and the picker cannot rebuild a port it never lists. */
 	int cap = 512, n = 0;
 	char **out = kb_calloc((size_t)cap + 1, sizeof(*out));
 
@@ -131,8 +133,17 @@ char **kbuild_ports(const char *repo_root, int *count)
 			int dup = 0;		/* a set, so the second repo loses */
 			for (int i = 0; i < n && !dup; i++)
 				dup = !strcmp(out[i], *e);
-			if (dup || n == cap)
+			if (dup)
 				continue;
+
+			if (n == cap) {
+				cap *= 2;
+				char **nv = kb_calloc((size_t)cap + 1,
+						      sizeof(*nv));
+				memcpy(nv, out, (size_t)n * sizeof(*out));
+				free(out);
+				out = nv;
+			}
 			out[n++] = kb_strdup(*e);
 		}
 		kb_strv_free(names);
@@ -159,8 +170,8 @@ int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
 	}
 	kb_strv_free(ports);
 
-	/* A packages.txt entry with no port of its own still lands in the index
-	 * (python appends it), which is how a missing port stays visible. */
+	/* A packages.txt entry with no port of its own still lands in the
+	 * index, which is how a missing port stays visible. */
 	for (int p = 0; p < nph; p++) {
 		int npkg = 0;
 		char **pkgs = kbuild_packages(&ph[p], &npkg);
@@ -189,9 +200,10 @@ int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
 /* ──────────────────────────────────────────────────────────────────────── */
 /* CLI token splitting                                                      */
 
-/* `--rebuild "a, b c"` — spaces become commas, then split, then strip. A tab
- * is NOT a separator (python replaces only " "), it is only stripped off the
- * ends. Reproduced rather than tidied: a plan file round-trips through both. */
+/* `--rebuild "a, b c"` — spaces become commas, then split, then strip. Only a
+ * space separates: a tab is stripped off the ends and never splits, so a
+ * tab-bearing value arrives whole and the caller below is the one that
+ * refuses it. */
 static int split_tokens(const char *value, char out[][64], int max)
 {
 	if (!value || !*value)
@@ -302,8 +314,8 @@ void kbuild_plan_summary(const KbuildPlan *pl, char *out, size_t cap)
 		first = 0;
 	}
 
-	/* python iterates `sorted(self.steps)` — the phase keys, not the run
-	 * order — and sorts each phase's scripts too. */
+	/* Phase keys in name order, not run order, and each phase's scripts
+	 * sorted too: one plan has to summarise the same way every time. */
 	int order[KBUILD_MAX_PHASES];
 	for (int i = 0; i < pl->nsteps; i++)
 		order[i] = i;
@@ -491,7 +503,7 @@ const KbuildPhase *kbuild_find(const KbuildPhase *ph, int n, const char *token)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
-/* Persistence — byte-identical to python's json.dump(..., indent=2)         */
+/* Persistence — two-space-indented JSON the loader round-trips             */
 
 static void json_list(KbBuf *b, const char dst[][64], int n, const char *indent)
 {
@@ -631,7 +643,7 @@ int kbuild_plan_load(KbuildPlan *pl, const char *build_dir)
 
 	/* The document has to BE an object. Without this a file that is not
 	 * JSON at all parses as "no keys found" — which reads as the plan that
-	 * runs everything, the opposite of python's "no plan". */
+	 * runs everything, where a file that is not a plan has to fail. */
 	const char *head = skip_ws(data);
 	const char *tail = data + len;
 	while (tail > head && isspace((unsigned char)tail[-1]))

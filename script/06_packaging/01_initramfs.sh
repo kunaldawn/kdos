@@ -86,7 +86,7 @@ cp /usr/lib/libhistory.so.8 lib/libhistory.so.8
 cp /usr/lib/libncursesw.so.6 lib/libncursesw.so.6
 ln -sf bash bin/sh
 
-# Install util-linux's blkid, and NOT the name toybox claims.
+# Install util-linux's blkid.
 #
 # EVERY LOOKUP IN THIS INIT IS `blkid -U <uuid>` — the root filesystem, the
 # ESP that holds the A/B state, and the LUKS container an encrypted root
@@ -97,12 +97,13 @@ ln -sf bash bin/sh
 # not found", A/B selection silently never engages, and an encrypted root
 # cannot be unlocked at all.
 #
-# `/usr/bin/blkid` IS TOYBOX ON THE FINISHED IMAGE — toybox's symlink farm
-# owns that name, and util-linux's real binary is at /sbin and /usr/sbin.
-# The applet loop above has also already made `bin/blkid` a symlink to
-# `bin/toybox`, so the symlink is REMOVED FIRST: `cp` onto a symlink writes
-# THROUGH it, which would overwrite bin/toybox and leave bin/blkid still
-# pointing at the applet. Exactly the switch_root rule, thirty lines up.
+# THE APPLET IS COMPILED OUT, in the phase-4 recipe and in phase 1 alike, so
+# `./bin/toybox` does not list it and the applet loop above never claims the
+# name; `blkid` on this system is one binary, util-linux's, in /usr/sbin.
+# The removal is the guard on that: `cp` onto a symlink writes THROUGH
+# it, so were `bin/blkid` ever a link to `bin/toybox`, this copy would
+# overwrite the multicall binary. Exactly the switch_root rule, thirty lines
+# up.
 rm -f bin/blkid
 cp /usr/sbin/blkid bin/blkid
 cp /usr/lib/libblkid.so.1 lib/libblkid.so.1
@@ -136,12 +137,27 @@ cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 # two. Limine cannot count boots — that is a systemd-boot feature — so the
 # counting is ours and it has to happen here rather than in rcS: a kernel that
 # boots into a wedged userland must still spend an attempt.
-if [ -x /usr/bin/kdos-bootctl ]; then
-    cp /usr/bin/kdos-bootctl bin/kdos-bootctl
-elif [ -x /usr/bin/kdos-tools ]; then
-    cp /usr/bin/kdos-tools bin/kdos-bootctl
-else
+#
+# /usr/bin/kdos-bootctl IS A SYMLINK TO /usr/sbin/ksvc and cp copies through it,
+# so what lands here is the whole tool — linked -lpng for `kdos theme`'s
+# wallpaper retint. libpng16 is therefore carried beside it; libz.so.1 is
+# already above and musl's libm is inside libc, so those two are the whole
+# closure.
+#
+# COPIED WHOLE OR NOT AT ALL, the cryptsetup rule one block down: a
+# kdos-bootctl that cannot exec makes A/B selection silently never run, and the
+# machine reads as one whose slot was never marked good rather than one missing
+# a library.
+BOOTCTL=""
+[ -x /usr/bin/kdos-bootctl ] && BOOTCTL=/usr/bin/kdos-bootctl
+[ -z "$BOOTCTL" ] && [ -x /usr/bin/kdos-tools ] && BOOTCTL=/usr/bin/kdos-tools
+if [ -z "$BOOTCTL" ]; then
     echo "Note: kdos-bootctl not installed — no A/B slot selection at boot"
+elif [ ! -f /usr/lib/libpng16.so.16 ]; then
+    echo "Note: no libpng16 for kdos-bootctl — no A/B slot selection at boot"
+else
+    cp $BOOTCTL bin/kdos-bootctl
+    cp /usr/lib/libpng16.so.16 lib/libpng16.so.16
 fi
 
 # Install cryptsetup, for an encrypted root.
@@ -276,7 +292,6 @@ done
 
 # Copy modules.order and modules.builtin for depmod
 cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
-cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
 cp /lib/modules/$KERNEL_VER/modules.builtin $MOD_DIR/
 if [ -f /lib/modules/$KERNEL_VER/modules.builtin.modinfo ]; then
     cp /lib/modules/$KERNEL_VER/modules.builtin.modinfo $MOD_DIR/
@@ -345,7 +360,7 @@ sp_ok
 # array and does not exist on the disk, so a blkid run before this finds the
 # members and not the root.
 #
-# `--scan` AND NOT A CONFIG. Nothing here knows which arrays this machine
+# \`--scan\` AND NOT A CONFIG. Nothing here knows which arrays this machine
 # has; each member's own superblock does, which is also what makes a machine
 # whose disks were reordered still boot.
 #
@@ -708,7 +723,7 @@ if [ "\$FOUND" == "1" ]; then
              # is present; with no store the upper is a tmpfs and the session
              # is gone at reboot. \`kdos persist\` makes the store.
              #
-             # `nopersist` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
+             # \`nopersist\` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
              # boot menu carries an entry that passes it. A store holding a
              # change that stops the desktop coming up would otherwise be
              # reachable only by taking the stick to another machine.

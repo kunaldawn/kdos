@@ -2478,17 +2478,17 @@ static void test_portup(void)
 	vcmp_sym("007", "7", 0, "leading zeroes do not change the value");
 
 	char sh[64];
-	pu_shape("1.4.0", sh, sizeof(sh));
+	kp_vershape("1.4.0", sh, sizeof(sh));
 	eq_str(sh, "N.N.N", "shape of a three-part version");
-	pu_shape("20250826", sh, sizeof(sh));
+	kp_vershape("20250826", sh, sizeof(sh));
 	eq_str(sh, "N8", "a lone digit run records its length");
-	pu_shape("1", sh, sizeof(sh));
+	kp_vershape("1", sh, sizeof(sh));
 	eq_str(sh, "N1", "so a date cannot match a bare 1");
-	pu_shape("r62", sh, sizeof(sh));
+	kp_vershape("r62", sh, sizeof(sh));
 	eq_str(sh, "aN", "letter then digits");
-	pu_shape("10.2p1", sh, sizeof(sh));
+	kp_vershape("10.2p1", sh, sizeof(sh));
 	eq_str(sh, "N.NaN", "sudo/openssh p-suffix shape");
-	pu_shape("1.4rc5", sh, sizeof(sh));
+	kp_vershape("1.4rc5", sh, sizeof(sh));
 	eq_str(sh, "N.NaN", "rc shares the p-suffix shape, which is fine: "
 			    "shape only gates comparability");
 

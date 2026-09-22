@@ -55,10 +55,10 @@ recipe helper.
 | Key | Required | Repeats | Means |
 |---|---|---|---|
 | `name` | yes | | The package name |
-| `version` | yes | | Upstream's version |
+| `version` | yes | | Upstream's version. No hyphen — a package file is `<name>-<version>-<release>.tar.xz`, so a hyphenated version makes that name ambiguous and preflight refuses it. Spell a tag like `1.9.0-Jumbo-1` as `1.9.0.jumbo1` and carry upstream's own form in a helper the `source` line reads |
 | `release` | yes | | Bump to force a rebuild for a reason the recipe hash cannot see |
 | `source` | | yes | An upstream URL, or `filename::url` |
-| `sha256` | | yes | `<64 hex>  <filename>`, one per source |
+| `sha256` | | yes | `<64 hex>  <filename>`, one per declared file — every `source`, plus a vendor bundle or anything else beside the recipe the build opens |
 | `description` | | | One line. It is read and printed — not a comment |
 | `homepage` | | | |
 | `depends` | | | One line, space-separated port names — the solver reads the first and stops |
@@ -352,8 +352,12 @@ the recipe runs rather than while the script does.
 
 ## postinstall.sh
 
-The install-time hook, which becomes a marker inside the package. Seven ports have one: `avahi`,
-`dbus`, `frotz`, `glib`, `linux`, `polkit` and `shared-mime-info`.
+The install-time hook, which becomes a marker inside the package. Six ports have one: `avahi`,
+`frotz`, `glib`, `linux`, `polkit` and `shared-mime-info`.
+
+It runs once, while the package is installed into the image, so anything it writes is baked into
+that image and is identical on every machine installed from it. Per-machine state therefore cannot
+come from here; it is generated on first boot by the init script that needs it.
 
 Reach for it only where the job must happen on the target with target binaries — compiling a
 database that ships as source, or registering something in a runtime index. It is not a place to
@@ -515,7 +519,7 @@ job `build.sh` cannot do.
    `source`.
 3. **Fetch and record the checksum:**
    ```sh
-   ports/fetch <port>          # `make fetch` takes no argument and walks all 853
+   ports/fetch <port>          # `make fetch` takes no argument and walks all 851
    ```
 4. **Write `build.sh`** from the canonical shape for its build system.
 5. **Wire it in.** Add it to the `depends` of whatever needs it, and to the `packages.txt` of the

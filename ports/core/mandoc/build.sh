@@ -36,6 +36,9 @@ EOF
 make
 make DESTDIR=$PKG install
 
-# The manpath default above covers /usr/share/man; makewhatis builds the
-# apropos/whatis index and needs a writable directory to put it in. kpkg
-# stages into $PKG, so the index is built on first use rather than here.
+# BINM_MAKEWHATIS above is the indexer, and the index it writes is a
+# `mandoc.db` inside each manual root. kpkg stages into $PKG, where a root
+# holds only this package's own pages, so the index is stamped into the image
+# once every package is installed — by script/06_packaging/00_whatis.sh.
+# Without that step apropos and whatis reach mansearch(), find no database and
+# print nothing; only `man` falls back to walking the filesystem.

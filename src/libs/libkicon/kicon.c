@@ -166,8 +166,7 @@ static int ki_on = 1;
 static int ki_ready;
 static int ki_have_atlas;
 
-/* The sizes 06_packaging/01_appbox.sh flattens the alien apps' icons into, and
- * the ones hicolor themes conventionally carry. Ascending, so the first at or
+/* The sizes hicolor themes conventionally carry. Ascending, so the first at or
  * above the wanted size is the one to take. */
 static const int hicolor_sizes[] = { 16,  22,  24,	32,  48,
 				     64,  72,  96,	128, 192,
@@ -488,7 +487,7 @@ static int data_dirs(char out[][512], int max)
 }
 
 /*
- * An application's own icon, out of the hicolor tree that 01_appbox.sh fills.
+ * An application's own icon, out of the system hicolor tree.
  * Never tinted. `want` is the pixel side.
  */
 static uint8_t *load_hicolor(const char *name, int want, int *w, int *h)
@@ -704,11 +703,11 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 	/*
 	 * THE ATLAS FIRST, and the order is the whole of this lookup.
 	 *
-	 * `01_appbox.sh` flattens every context of the appbox image's icon
-	 * theme into hicolor's `apps/` — so `/usr/share/icons/hicolor/16x16/
-	 * apps/folder.png` exists, and looking there first makes every folder
-	 * on the desktop Debian's blue one, at 16 pixels upscaled to 32, with
-	 * no tint. Photographed on a booted ISO.
+	 * hicolor's `apps/` is a shared tree any package may write into, and it
+	 * is not restricted to applications — a `folder.png` filed there by
+	 * somebody would otherwise win, and every folder on the desktop would
+	 * come back as that package's artwork, at 16 pixels upscaled to 32,
+	 * with no tint.
 	 *
 	 * The atlas can never shadow an application: it carries the theme's
 	 * places, devices, mimetypes, status, actions and emblems, and

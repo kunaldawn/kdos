@@ -52,10 +52,16 @@ ln -svfT ../run/lock "$SYSROOT/var/lock"
 cd $SYSROOT
 
 # merged /usr
-ln -svf usr/bin bin
-ln -svf usr/sbin sbin
-ln -svf usr/lib lib
-ln -svf usr/lib64 lib64
+#
+# -T on every one: without it a second pass over a tree that already has the
+# links dereferences them and writes the new link INSIDE the target — /usr/bin/bin,
+# /usr/lib/lib — dangling and owned by no package, so the orphan sweep, which works
+# from the kpkg database, steps over them and they ship in system.sfs. A second pass is
+# ordinary: a partial phase-1 snapshot resume, or `--steps 01_phase1:00_file_system.sh`.
+ln -svfT usr/bin bin
+ln -svfT usr/sbin sbin
+ln -svfT usr/lib lib
+ln -svfT usr/lib64 lib64
 
 cd $WORKSPACE
 
