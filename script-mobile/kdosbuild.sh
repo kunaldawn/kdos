@@ -9,11 +9,19 @@
 # ---------------------------------
 #   script-mobile/kdosbuild.sh — compile the orchestrator, then run it for aarch64
 #
-# `make build-mobile` comes through here. The orchestrator itself is arch-
-# neutral: --script-dir and --build-dir are all that separate the two targets,
-# so this is script/kdosbuild.sh with those two flags pointed at the mobile
-# tree. It is compiled from source at run start for the same reason the desktop
-# wrapper is — a two-second compile keeps the image independent of the tree.
+# Invoked directly; no Makefile target reaches it. The orchestrator itself is
+# arch-neutral: --script-dir and --build-dir are all that separate the two
+# targets, so this is script/kdosbuild.sh with those two flags pointed at the
+# mobile tree. It is compiled from source at run start for the same reason the
+# desktop wrapper is — a two-second compile keeps the image independent of the
+# tree.
+#
+# WHAT IT NEEDS TO DO ANYTHING: phase discovery accepts only a subdirectory of
+# script-mobile/ whose name carries a numeric prefix, so with none present the
+# run finds zero phases and exits having built nothing. The phase env files
+# then resolve recipes through ports/mobile ahead of ports/core, so that
+# overlay has to exist before any phase can pick a mobile recipe over the
+# desktop one.
 
 set -e
 cd "$(dirname "$0")/.."

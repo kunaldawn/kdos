@@ -82,6 +82,11 @@ struct sh_tray_item {
 	char id[64];
 	char title[64];
 	char icon[64];
+	/* The `Menu` property: the object path of this item's
+	 * com.canonical.dbusmenu tree, on the same bus name. Empty where the
+	 * item publishes none, which is an item whose ContextMenu opens a
+	 * window of its own. */
+	char menu[SH_TRAY_NAME];
 	int status;			/* SH_TRAY_* */
 	int is_menu;			/* ItemIsMenu: Activate means "show menu" */
 	int fdo_iface;			/* publishes the freedesktop spelling */
@@ -110,10 +115,10 @@ struct sh_task {
 	 * And the desktop ID that Name came from, which is not always the
 	 * app_id: a GTK client on Wayland calls itself `mousepad` and its entry
 	 * is `org.xfce.mousepad.desktop`. The taskbar merges a running window
-	 * onto its PINNED button by comparing ids, so a window whose app_id is
-	 * not the id appeared twice — once as the pin and once as itself. The
-	 * lookup that finds the Name already knows the answer; it used to throw
-	 * it away. Empty when no entry claims this window.
+	 * onto its PINNED button by comparing ids, so a window carrying only its
+	 * app_id appears twice — once as the pin and once as itself. The lookup
+	 * that finds the Name already knows the id, so it is kept here rather
+	 * than thrown away. Empty when no entry claims this window.
 	 */
 	char did[128];
 	/*
@@ -146,23 +151,13 @@ static inline const char *sh_task_label(const struct sh_task *t)
 }
 
 /*
- * The menu bar: GNOME 2's three words, on the left of the top panel.
- *
- * The mark is `≡` where an icon theme would have put a distributor logo — on a
- * character grid a logo is one cell, and three horizontal rules is what that
- * cell can honestly hold. It falls back to the word KDOS on a font without it
- * (panel.c's menu_mark(), resolved once from ktui_caps rather than per frame) —
- * U+2261 is not among the console font's 512 glyphs.
+ * THE START BUTTON'S MARK, where an icon theme would have put a distributor
+ * logo — on a character grid a logo is one cell, and three horizontal rules
+ * is what that cell can honestly hold. It falls back to the word KDOS on a
+ * font without it (panel.c's menu_mark(), resolved once from ktui_caps rather
+ * than per frame): U+2261 is not among the VT font's 512 glyphs.
  */
-#define SH_NMENUS 3
 #define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
-extern const char *const sh_menu_labels[SH_NMENUS];
-/* Spawn kdos-menu for one of them, anchored at (x, y) in PIXELS — where the
- * word that was clicked starts, and how far down the panel reaches. Layer-shell
- * has no coordinates, so that pair becomes an anchor and a margin. Double-
- * forked, so the panel neither reaps nor blocks: a menu that takes a moment to
- * scan 400 desktop files must not stop the clock. */
-void sh_spawn_menu(int which, int x, int y);
 /*
  * The window's outer frame: the double-line box when this surface has no
  * decoration of its own, and just the background when the COMPOSITOR is
@@ -186,13 +181,22 @@ int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn);
 const KtuiBackend *sh_cells_backend(int w, int h);
 
 struct sh_state {
-	/* The workspace pager's alone: NULL on the console, where the session
-	 * draws its own. The task list is libkdisp's on both desktops. */
+	/* The workspace pager's alone. The task list is libkdisp's. */
 	void *display;			/* the panel shares libkwl's connection */
 	void *ws_mgr;
 
 	struct sh_task tasks[SH_MAX_TASKS];
 	int ntasks;
+	/*
+	 * WHETHER ANY WINDOW ANYWHERE IS NOT MINIMISED, counted over EVERY
+	 * screen and not over `tasks` — which a per-output bar has filtered to
+	 * its own. A workspace spans every screen: there is one workspace
+	 * group and every output enters it, so a pager that read the filtered
+	 * list would call a workspace empty on the left screen while its
+	 * windows were on the right, which is a false statement about a global
+	 * thing.
+	 */
+	int live_anywhere;
 
 	void *ws[SH_MAX_WS];
 	int ws_occupied[SH_MAX_WS];
@@ -232,13 +236,6 @@ struct sh_state {
 	 * workspace. The draw records what it drew.
 	 */
 	int ws_hit[SH_MAX_WS];
-	int menu_hit_x[SH_NMENUS], menu_hit_end[SH_NMENUS];
-	int menu_open;			/* which label is lit, or -1 */
-	/* What the pointer is over, or -1. The panel and the menu are two
-	 * processes, so `menu_open` is never set by anything; hover is what
-	 * the bar actually knows, and it is what makes three words read as
-	 * three buttons. */
-	int hover_menu;
 	int hover_task;
 	/* The bottom panel's hit map: the pager and show-desktop. Half-open
 	 * spans, show-desktop included — it is one cell at w - 2, and an
@@ -256,13 +253,12 @@ struct sh_state {
 	/*
 	 * The right wing's applets, and where the last frame put each of them.
 	 *
-	 * Everything on that side of the panel used to be a picture: the clock,
-	 * the battery and the "something needs restarting" mark were drawn and
-	 * answered nothing, and there was no volume or network indicator at all
-	 * — so on a laptop with no media keys there was NO WAY to change the
-	 * volume from the desktop, and nothing said whether the machine was on
-	 * a network. Each is a span now, and each does the obvious thing when
-	 * it is clicked.
+	 * EVERY APPLET ON THAT SIDE IS A SPAN, not a picture. A readout that is
+	 * only drawn answers nothing: a clock, a battery or a "something needs
+	 * restarting" mark that cannot be clicked leaves a laptop with no media
+	 * keys no way to change the volume from the desktop, and nothing to ask
+	 * whether the machine is on a network. Each records its span here, and
+	 * each does the obvious thing when it is clicked.
 	 */
 	int ap_x[SH_AP_N], ap_end[SH_AP_N];
 
@@ -305,9 +301,6 @@ int saver_main(int argc, char **argv);		/* kdos-saver    */
 int about_main(int argc, char **argv);		/* kdos-about    */
 int theme_main(int argc, char **argv);		/* kdos-theme    */
 
-/* The console desktop's character-art background. Its own header, because the
- * loader needs no compositor and this one pulls in Wayland. */
-#include "background.h"
 /* ────────────────────────────────────────────────────────────────────────
  * kdos-mountd, from the session side
  *
@@ -347,9 +340,27 @@ int sh_mountd_do(int idx, const char *verb, char *out, size_t nout);
  * an index exists: a row number is true only of the list it came with. */
 int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy);
 
+/* A SERVER THAT ANSWERED A BROADCAST, and it is not a row in anything. The
+ * `cifs` verb names a server rather than an index, so what a browse row
+ * carries is the name itself; the address beside it is what the daemon will
+ * aim the mount at, shown so that two machines with the same NetBIOS name on
+ * different subnets are tellable apart. */
+typedef struct {
+	char name[64];
+	char addr[46];
+} ShServerRow;
+
+/* Who is offering a share, asked fresh: an mDNS and a NetBIOS broadcast, both
+ * made by the daemon. IT BLOCKS FOR AS LONG AS A BROADCAST TAKES — seconds,
+ * not microseconds — so a caller says what it is doing before calling and
+ * never calls it on a redraw. Zero rows is a real answer and not a failure;
+ * `why` is set only where the daemon could not be reached. */
+int sh_mountd_browse(ShServerRow *out, int max, char *why, size_t nwhy);
+
 int calc_main(int argc, char **argv);		/* kdos-calc     */
 int chars_main(int argc, char **argv);		/* kdos-chars    */
 int connect_main(int argc, char **argv);	/* kdos-connect  */
+int traymenu_main(int argc, char **argv);	/* kdos-traymenu */
 int contacts_main(int argc, char **argv);	/* kdos-contacts */
 int disks_main(int argc, char **argv);		/* kdos-disks    */
 int print_main(int argc, char **argv);		/* kdos-print    */
@@ -461,8 +472,6 @@ void sh_activate_task(struct sh_state *sh, int i);
  * you are not — what every taskbar does, and what makes the entry worth
  * clicking once the window is already on screen. */
 void sh_toggle_task(struct sh_state *sh, int i);
-/* Middle click: the protocol's polite close, so an editor still gets to ask. */
-void sh_close_task(struct sh_state *sh, int i);
 /* The two halves of show-desktop. Each is a no-op on a window already the way
  * it asks for, so a caller walks a list without first working out which
  * windows are already the way it wants them. Which half the column runs is
@@ -525,7 +534,6 @@ void sh_mpris_free(struct sh_mpris *p);
 int sh_mpris_have(const struct sh_mpris *p);
 int sh_mpris_playing(const struct sh_mpris *p);
 const char *sh_mpris_title(const struct sh_mpris *p);
-const char *sh_mpris_artist(const struct sh_mpris *p);
 /* "PlayPause", "Next", "Previous" — fire and forget. */
 void sh_mpris_action(struct sh_mpris *p, const char *method);
 
@@ -550,8 +558,8 @@ int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n);
  * The application index (apps.c)
  *
  * One answer to "what is installed on this machine", shared by the Start
- * menu, the launcher, the run box and the chooser — four surfaces that each
- * used to walk /usr/share/applications with their own rule about NoDisplay.
+ * menu, the launcher, the run box and the chooser — rather than four surfaces
+ * each walking /usr/share/applications with its own rule about NoDisplay.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define SH_MAX_APPS 512
@@ -590,8 +598,6 @@ struct sh_app {
 };
 
 int sh_apps_load(void);
-int sh_apps_count(void);
-const struct sh_app *sh_apps_get(int i);
 const struct sh_app *sh_apps_find(const char *id);
 /* Most-used first, with the score halving every fortnight since the last
  * launch — a frequency list that never forgets is a list of what somebody used
@@ -627,8 +633,7 @@ void sh_spawn(const char *const argv[]);
  * that is not in the corpus. */
 void sh_help(const char *doc, void *user);
 
-/* The terminal emulator on THIS desktop: kdos-term on the console, foot under
- * the compositor. Both take `-e CMD` and `-D DIR`. */
+/* The terminal emulator on this desktop. */
 /*
  * The KDOS logo as cells, from /usr/share/kdos/logo.txt. The file carries SGR
  * colour for the login banner; this strips it, because a surface paints slots.
@@ -671,15 +676,7 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
  * so an entry cannot turn the key into a way to run something. */
 const char *sh_term_named(const char *want);
 
-/* The same as one command string, for the callers that re-split one. The
- * buffer must be the command's length plus SH_TERM_PREFIX_MAX: what goes in
- * front is an emulator's name, an identity taken from the command, and `-e`,
- * and a buffer sized for the bare command truncates all three into it. */
-#define SH_TERM_PREFIX_MAX 160
-void sh_term_cmd(char *out, size_t n, const char *cmd);
-
-/* The program that IS this session: `kdos-con` on the console, `kdos-comp`
- * under the compositor. Log Out sends it SIGTERM. */
+/* The program that IS this session: `kdos-comp`. Log Out sends it SIGTERM. */
 const char *sh_session_prog(void);
 
 #include "kchrome.h"
@@ -687,10 +684,8 @@ const char *sh_session_prog(void);
 #include "kdisp.h"
 
 /*
- * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
- * first, so a surface started FROM the console desktop attaches to it even on a
- * machine that also has a compositor running. libkdisp names no implementation;
- * this list is what links each one in.
+ * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order. libkdisp names
+ * no implementation; this list is what links each one in.
  */
 extern const KDispImpl *const kdos_disp[];
 extern const int kdos_disp_n;
@@ -740,20 +735,36 @@ int sh_restart_poll(void);
  * literal percent, every other `%X` is removed, and the whitespace a dropped
  * code leaves behind is collapsed so the line still splits into clean argv.
  *
- * FOR A READER THAT CANNOT SPEND A CODE, and for nothing on the launch path:
- * a surface that splits the line itself and can carry no document (`panel.c`'s
- * quick-launch row, `kdos-menu`), and a haystack a search is matched against.
- * `sh_launch` needs the codes — it substitutes them, and decides from them
- * whether to append instead — so it is handed the line the entry wrote.
+ * FOR A HAYSTACK AND FOR NOTHING ON THE LAUNCH PATH. The one caller is the
+ * application matcher, which searches a stripped COPY of the Exec line: a `%U`
+ * in the haystack is two more letters for a subsequence matcher to travel
+ * through, so `fu` would find every entry whose Exec ends in one. `sh_launch`
+ * needs the codes — it substitutes them, and decides from them whether to
+ * append instead — so it is handed the line the entry wrote, and a caller that
+ * stripped one first would get every document appended and none substituted.
  * One copy, here: two would be two answers to what a `%` means.
  */
 void sh_strip_field_codes(char *exec);
 
-/* Resolve a desktop-entry id to its Name and Exec through the XDG data dirs —
- * the same search the taskbar's label uses. Returns 0 when found. Either out
- * pointer may be NULL. */
-int sh_desktop_entry(const char *id, char *name, size_t nname,
-		     char *exec, size_t nexec);
+/*
+ * Resolve a desktop-entry id through the XDG data dirs — the same search the
+ * taskbar's label uses — into everything STARTING it needs. Returns 0 when the
+ * id names an entry that can be started.
+ *
+ * A RECORD AND NOT TWO STRINGS. The callers are launch surfaces, and one given
+ * only Name and Exec starts a `Terminal=true` row with no terminal round it
+ * and a KDOS surface inside a cage; there is no shape of this call that hands
+ * back half the answer.
+ */
+struct sh_entry {
+	char name[96];
+	char exec[SH_APP_EXEC];		/* FIELD CODES INTACT — see sh_launch */
+	char term[24];
+	char size[16];
+	int terminal;
+	int floating;
+};
+int sh_desktop_entry(const char *id, struct sh_entry *out);
 
 /* The accent the desktop is currently wearing, from
  * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads. */
@@ -770,9 +781,9 @@ void sh_theme_from_cache(void);
  * Everything else calls sh_theme_poll() once per loop instead. It needs no
  * signal and therefore no entry on that list — which matters, because SIGHUP
  * kills a process that installs no handler, so the list and the handlers are
- * two things that have to agree and already did not. A dialog is not
- * short-lived merely because it is modal: kdos-settings is where an accent
- * gets changed, and it was left wearing the old one.
+ * two things that have to agree. A dialog is not short-lived merely because it
+ * is modal: kdos-settings is where an accent gets changed, so it must retint
+ * too, and polling is the way it does it without joining the signal list.
  */
 extern volatile sig_atomic_t sh_theme_dirty;
 /* Raised by SIGUSR1: the bar was asked to go away or come back. Read and

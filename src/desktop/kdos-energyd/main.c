@@ -44,7 +44,6 @@
 #endif
 #include <errno.h>
 #include <poll.h>
-#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,31 +78,6 @@ static const char *sock_path(void)
 {
 	const char *p = getenv("KDOS_ENERGYD_SOCKET");
 	return p && *p ? p : KE_SOCKET;
-}
-
-/* ── the allowed set ───────────────────────────────────────────────────── */
-
-/*
- * Root and wheel, the same answer kdos-powerd gives to the same question, from
- * the same libkbase function. It matters that this is a real gate rather than
- * a courtesy: on a multi-user machine the app list is a list of what other
- * people are running, and this daemon's whole subject matter is what everyone
- * on the machine is doing.
- *
- * The gate is HERE and not on the socket's mode. The socket is 0666 and every
- * uid may connect; what an unauthorised one gets is `err not permitted` and a
- * closed connection. That is deliberate and is kdos-powerd's reasoning too —
- * a mode that looked like the authorisation is a mode somebody eventually
- * loosens, and SO_PEERCRED cannot be forged by the peer.
- */
-static bool uid_allowed(uid_t uid)
-{
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return kb_user_in_group(pw->pw_name, pw->pw_gid, KE_GROUP) != 0;
 }
 
 /* ── the daemon ────────────────────────────────────────────────────────── */
@@ -193,9 +167,24 @@ static int serve(void)
 				setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv,
 					   sizeof(tv));
 
+				/*
+				 * Root or KE_GROUP, from libkbase — the one
+				 * answer every root daemon here gives. A real
+				 * gate rather than a courtesy: on a multi-user
+				 * machine the report is a list of what other
+				 * people are running.
+				 *
+				 * The gate is HERE and not on the socket's
+				 * mode. The socket is 0666 and every uid may
+				 * connect; an unauthorised one gets `err not
+				 * permitted` and a closed connection. A mode
+				 * that looked like the authorisation is a mode
+				 * somebody eventually loosens, and SO_PEERCRED
+				 * cannot be forged by the peer.
+				 */
 				if (getsockopt(c, SOL_SOCKET, SO_PEERCRED,
 					       &cred, &len) < 0 ||
-				    !uid_allowed(cred.uid)) {
+				    !kb_uid_allowed(cred.uid, KE_GROUP)) {
 					(void)!write(c, "err not permitted\n", 18);
 					close(c);
 				} else {

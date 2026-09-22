@@ -16,7 +16,7 @@
  *     Removal keys its rmdir-vs-unlink decision off that slash, and four
  *     things on the running system count the files in that directory.
  *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Three
- *     callers rely on it (kpkg's own -f, buildlib/phases.py, mini_build.py)
+ *     callers rely on it (kpkg's own -f, the build driver, mini_build.py)
  *     and it works because `/dev/null/<name>` cannot be a file. Anything here
  *     that stats the DIRECTORY first would silently break all three.
  *   - `PORT_REPO` is a whitespace-separated list, first match wins, and a
@@ -98,6 +98,15 @@ void kp_description(const char *portdir, char *out, size_t cap);
  */
 int kp_vercmp(const char *a, const char *b);
 
+/*
+ * The SHAPE of a version string: digit-runs collapse to 'N', letter-runs to
+ * 'a', separators are kept. A string that is ONE digit run records its length
+ * ("N8") so a date cannot compare equal in shape to a bare "1". A candidate
+ * whose shape differs from the current version's is a different numbering
+ * scheme, not a newer release.
+ */
+void kp_vershape(const char *v, char *out, size_t cap);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Binary-package identity (kp_hash.c)
  *
@@ -169,8 +178,11 @@ typedef struct {
 } KpOwned;
 
 KpOwned *kp_owned_load(const KpConf *c);
-int kp_owned_has(const KpOwned *o, const char *rel);
-/* The package claiming `rel`, or NULL. */
+/* The package claiming `rel` (`usr/bin/tar`; the database spells it
+ * `./usr/bin/tar`), or NULL. A path no package claims is NOT a conflict: the
+ * bootstrap phases install tar, musl, binutils and gcc by hand, so those files
+ * exist with no database entry, and the self-hosting phase that rebuilds them
+ * with kpkg cannot run if an unowned file counts as one. */
 const char *kp_owned_owner(const KpOwned *o, const char *rel);
 void kp_owned_free(KpOwned *o);
 

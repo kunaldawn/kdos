@@ -78,6 +78,7 @@ struct head {
 	double scale;
 	int32_t transform;
 	int32_t x, y;
+	int live;			/* the screen is plugged in and ours */
 };
 
 static struct head heads[MAX_HEADS];
@@ -260,6 +261,7 @@ static void head_finished(void *data, struct zwlr_output_head_v1 *p)
 	 * `apply` skips it.
 	 */
 	h->proxy = NULL;
+	h->live = 0;
 	zwlr_output_head_v1_destroy(p);
 }
 
@@ -308,6 +310,7 @@ static void mgr_head(void *d, struct zwlr_output_manager_v1 *m,
 	struct head *h = &heads[nheads];
 	memset(h, 0, sizeof(*h));
 	h->proxy = p;
+	h->live = 1;
 	h->cur_mode = -1;
 	h->scale = 1.0;
 	order[nheads] = nheads;
@@ -414,99 +417,21 @@ static void logical_size(const struct head *h, int *w, int *ht)
 	*ht = (int)((rotated ? mw : mh) / s);
 }
 
-/*
- * ── the console's screens ────────────────────────────────────────────────
- *
- * THE SAME MODEL, FILLED FROM A DIFFERENT PLACE. `heads[]` is the plan and the
- * draw, the selection, the snapshot and the keep/revert countdown all read it;
- * what differs between the two desktops is only where the list comes from and
- * what an apply calls. A second surface for the console would be a second
- * answer to what a screen is.
- *
- * WHAT THIS DESKTOP CAN CHANGE IS THE MODE, and the header says why: the scale
- * is the FONT, the position is connector order, off is the screensaver's verb,
- * and a character grid has no transform. So the rows show a screen and its
- * mode and nothing else is editable here.
- */
-static int con_outs;		/* screens the display reported, or 0 */
-
-static void con_fill(void)
-{
-	int ox = 0;
-
-	con_outs = kdisp_out_count();
-	if (con_outs > MAX_HEADS)
-		con_outs = MAX_HEADS;
-	nheads = 0;
-	for (int i = 0; i < con_outs; i++) {
-		KDispOut o;
-		struct head *h = &heads[nheads];
-
-		if (!kdisp_out_at(i, &o))
-			break;
-		memset(h, 0, sizeof(*h));
-		snprintf(h->name, sizeof(h->name), "%s", o.name);
-		snprintf(h->desc, sizeof(h->desc), "columns %d..%d", o.col,
-			 o.col + o.cols - 1);
-		h->nmodes = o.nmodes > MAX_MODES ? MAX_MODES : o.nmodes;
-		for (int m = 0; m < h->nmodes; m++) {
-			KDispMode md;
-
-			if (!kdisp_out_mode_at(i, m, &md))
-				break;
-			h->modes[m].w = md.width;
-			h->modes[m].h = md.height;
-			h->modes[m].refresh = md.refresh;
-		}
-		h->cur_mode = o.cur_mode;
-		h->enabled = 1;
-		h->scale = 1.0;
-		/* EDGE TO EDGE FROM THE LEFT, TOPS ALIGNED — the same
-		 * arrangement the view cut the grid with, so the position a
-		 * row reports is the position a pointer crosses. */
-		h->x = ox;
-		h->y = 0;
-		ox += o.width;
-		order[nheads] = nheads;
-		nheads++;
-	}
-}
-
 static int persist_layout(void);
 
 /*
  * THE COUNTDOWN SURVIVED, so the applied state becomes the one to come back
- * to. The console says so over the same verb it applied with — `keep` is the
+ * to. The server says so over the same verb it applied with — `keep` is the
  * whole difference between the two — while a Wayland session writes the
  * arrangement out for `--apply` to replay at the next login.
  */
 static void keep_now(void)
 {
-	if (con_outs) {
-		for (int k = 0; k < nheads; k++)
-			if (heads[k].cur_mode >= 0)
-				kdisp_out_set_mode(k, heads[k].cur_mode, 1);
-		return;
-	}
 	persist_layout();
 }
 
 static void apply_now(void)
 {
-	if (con_outs) {
-		/*
-		 * KEEP IS 0 UNTIL A PERSON SAYS SO. The countdown below is
-		 * what turns an applied mode into a kept one; an apply that
-		 * persisted would leave a screen nobody can read as the one
-		 * the next login comes up on.
-		 */
-		for (int k = 0; k < nheads; k++)
-			if (heads[k].cur_mode >= 0)
-				kdisp_out_set_mode(k, heads[k].cur_mode, 0);
-		applied = 1;
-		applied_note[0] = '\0';
-		return;
-	}
 	if (!mgr || !have_serial) {
 		applied = -1;
 		snprintf(applied_note, sizeof(applied_note),
@@ -618,10 +543,7 @@ static void cd_revert(void *user)
 	snap_restore();
 	reverting = 1;
 	apply_now();
-	/* NULL ON THE CONSOLE: apply_now() has already reached the session
-	 * over its own socket and there is no display to flush. */
-	if (dpy)
-		wl_display_flush(dpy);
+	wl_display_flush(dpy);
 }
 
 static int conf_path(char *out, size_t n)
@@ -894,14 +816,19 @@ static void toggle_enabled(struct head *h)
 enum { DB_APPLY, DB_ONOFF, DB_MODE, DB_SCALE, DB_ROTATE, DB_CLOSE, DB_N };
 
 /*
- * IS THERE STILL A SCREEN BEHIND THIS ROW. A Wayland head loses its proxy when
- * the monitor goes, and nothing about it may be edited after that. A console
- * head has no proxy at all — it is a slice of the session's grid — so the test
- * has to name where the row came from or every console screen reads as gone.
+ * IS THERE STILL A SCREEN BEHIND THIS ROW. A head loses its proxy when the
+ * monitor goes, and nothing about it may be edited after that.
+ */
+/*
+ * SEPARATE FROM THE PROTOCOL OBJECT, because a row outlives the screen: an
+ * unplug clears both, and the apply path still asks for `proxy` itself since
+ * it is what the request needs. Reading liveness off a pointer would also tie
+ * every drawn row to a compositor being present, and the frame is drawn
+ * offscreen for a golden with no compositor at all.
  */
 static int head_live(const struct head *h)
 {
-	return h && (h->proxy || con_outs);
+	return h && h->live;
 }
 
 static void mode_label(const struct head *h, char *out, size_t n)
@@ -991,13 +918,15 @@ static void draw(void)
 			 TRANSFORMS[(uint32_t)hd->transform < NTRANSFORMS
 					    ? hd->transform
 					    : 0]);
-		ktui_draw_fill(krect(1, 1 + k, w - 2, 1),
-			       on ? KT_ACCENT : KT_SURFACE);
-		ktui_draw_text(2, 1 + k, w - 4, line,
-			       on ? KT_SURFACE
-				  : (hd->enabled && head_live(hd) ? KT_TEXT
-								  : KT_DIM),
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+		int hfg, hbg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &hfg, &hbg);
+		/* A screen that is off or not reporting is secondary — off
+		 * the fill only, where KT_DIM on KT_DIM is one colour. */
+		if (!on && !(hd->enabled && head_live(hd)))
+			hfg = KT_DIM;
+		ktui_draw_fill(krect(1, 1 + k, w - 2, 1), hbg);
+		ktui_draw_text(2, 1 + k, w - 4, line, hfg, hbg, KT_A_NONE);
 	}
 	if (!nheads)
 		ktui_draw_text(2, 1, w - 4, "no screens reported", KT_MID,
@@ -1030,8 +959,8 @@ static void draw(void)
 	b[DB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, DB_N, -1);
 	int room = bx - 3;
-	/* A MESSAGE takes whatever room is left. The keys are the row's now,
-	 * one row up, where the legend used to be written by hand. */
+	/* A MESSAGE takes whatever room is left. The keys are the hint row's,
+	 * one row up, and not a legend written by hand beside this. */
 	if (applied_note[0] && room > 0)
 		ktui_draw_text(2, h - 2, room, applied_note,
 			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,
@@ -1117,10 +1046,69 @@ static void print_list(void)
 	}
 }
 
+/*
+ * THE ROWS A GOLDEN IS DRAWN FROM, one screen per tab-separated line:
+ *
+ *     <name>\t<w>x<h>@<mHz>[*]\t<on|off>\t<scale>\t<transform>
+ *
+ * READ ONLY UNDER --dump, because the real list is the compositor's and a
+ * frame drawn from anything else would be a picture of a machine nobody has.
+ * A dump has no compositor at all, so without this the only frame that could
+ * be committed is the empty one — which passes whatever the row drawing later
+ * does to it.
+ */
+static void heads_from_fixture(const char *path)
+{
+	char buf[4096];
+	FILE *f = fopen(path, "r");
+	char line[256];
+
+	(void)buf;
+	if (!f)
+		return;
+	while (nheads < MAX_HEADS && fgets(line, sizeof(line), f)) {
+		struct head *h = &heads[nheads];
+		char name[64], mode[64], on[16], tr[32];
+		double sc = 1.0;
+
+		line[strcspn(line, "\r\n")] = '\0';
+		if (!line[0] || line[0] == '#')
+			continue;
+		if (sscanf(line, "%63[^\t]\t%63[^\t]\t%15[^\t]\t%lf\t%31[^\t]",
+			   name, mode, on, &sc, tr) != 5)
+			continue;
+		memset(h, 0, sizeof(*h));
+		snprintf(h->name, sizeof(h->name), "%s", name);
+		h->live = 1;
+		h->enabled = !strcmp(on, "on");
+		h->scale = sc;
+		h->cur_mode = -1;
+		for (uint32_t t = 0; t < NTRANSFORMS; t++)
+			if (!strcmp(tr, TRANSFORMS[t]))
+				h->transform = (int32_t)t;
+		if (strcmp(mode, "auto")) {
+			struct mode *m = &h->modes[0];
+			int w = 0, hh = 0, hz = 0;
+
+			if (sscanf(mode, "%dx%d@%d", &w, &hh, &hz) == 3) {
+				m->w = w;
+				m->h = hh;
+				m->refresh = hz * 1000;
+				m->preferred = strchr(mode, '*') != NULL;
+				h->nmodes = 1;
+				h->cur_mode = 0;
+			}
+		}
+		order[nheads] = nheads;
+		nheads++;
+	}
+	fclose(f);
+}
+
 int display_main(int argc, char **argv)
 {
 	const char *font = NULL;
-	int list_only = 0, apply_only = 0;
+	int list_only = 0, apply_only = 0, dump = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -1129,11 +1117,31 @@ int display_main(int argc, char **argv)
 			list_only = 1;
 		else if (!strcmp(argv[i], "--apply"))
 			apply_only = 1;
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else {
 			fprintf(stderr, "usage: kdos-display [--list] "
-					"[--apply] [--font NAME]\n");
+					"[--apply] [--font NAME] [--dump]\n");
 			return 2;
 		}
+	}
+
+	/*
+	 * A DUMP OPENS NO DISPLAY AND SPEAKS NO PROTOCOL. The frame is the one
+	 * the rows produce, so the selection is the first row and the screens
+	 * come from the fixture or not at all.
+	 */
+	if (dump) {
+		const char *fix = getenv("KDOS_DISPLAY_LIST");
+
+		sh_theme_from_cache();
+		if (fix && *fix)
+			heads_from_fixture(fix);
+		sel = 0;
+		ktui_offscreen_init(60, 14);
+		draw();
+		ktui_draw_dump();
+		return 0;
 	}
 
 	/*
@@ -1152,11 +1160,9 @@ int display_main(int argc, char **argv)
 		.font = font,
 		.keyboard = 1,
 		/*
-		 * A MODE CHANGE IS A MANAGEMENT VERB. It re-cuts the grid
-		 * under every window on the desktop, so the privilege is
-		 * asked for explicitly — the rule the window list and the
-		 * screen's font both keep, and the thing that makes the
-		 * console answer this surface at all.
+		 * A MODE CHANGE IS A MANAGEMENT VERB. It re-lays every window
+		 * on the desktop, so the privilege is asked for explicitly —
+		 * the rule the window list and the screen's font both keep.
 		 */
 		.manage = 1,
 	};
@@ -1168,52 +1174,13 @@ int display_main(int argc, char **argv)
 	}
 
 	/*
-	 * NULL ON THE CONSOLE, and this is the guard that stops it being a
-	 * crash. `kdisp_init` succeeds there — the console backend probes
-	 * first and takes it — so reaching past libkdisp for a Wayland
-	 * display hands `wl_display_get_registry` a null pointer, from a Start
-	 * menu row a person can click.
-	 *
-	 * Output management is Wayland's. The console desktop has one grid at
-	 * one size, so there is nothing here for this program to arrange.
-	 */
-	/*
-	 * THE CONSOLE ASKS THE DISPLAY, NOT THE COMPOSITOR. `kwl_display()` is
-	 * NULL there — reaching past libkdisp for a Wayland display would hand
-	 * `wl_display_get_registry` a null pointer from a Start menu row a
-	 * person can click — and the screens come over the session's own wire
-	 * instead, gathered by the view that is driving them.
-	 *
-	 * ASKED AND THEN WAITED FOR. The answer crosses a socket and arrives
-	 * some pumps later, so a surface that read the count once would draw
-	 * an empty list for ever; this is the one place that spins, because
-	 * everything below it needs a list to draw.
+	 * OUTPUT MANAGEMENT IS WAYLAND'S, and `kwl_display()` is how this
+	 * surface reaches past libkdisp for it. kdisp_init() returned 0, so
+	 * the connection is up and this is never NULL.
 	 */
 	struct wl_display *dpy = kwl_display();
 
-	if (!dpy) {
-		/*
-		 * ASKED, THEN WAITED OUT IN FULL. The session answers from
-		 * what it holds at once and the display's own answer follows,
-		 * so a spin that stopped at the first non-zero count would
-		 * draw whichever screens the LAST display had. One second is
-		 * far longer than a unix socket needs and far shorter than a
-		 * person notices.
-		 */
-		kdisp_out_ask();
-		for (int i = 0; i < 200; i++) {
-			kdisp_pump();
-			usleep(5000);
-		}
-		con_fill();
-		if (!nheads) {
-			fprintf(stderr, "kdos-display: this display reports no "
-					"screens it can change\n");
-			kdisp_shutdown();
-			return 1;
-		}
-	}
-	if (dpy) {
+	{
 		struct wl_registry *reg = wl_display_get_registry(dpy);
 
 		wl_registry_add_listener(reg, &registry_listener, NULL);
@@ -1279,8 +1246,7 @@ int display_main(int argc, char **argv)
 				snap_restore();
 				reverting = 1;
 				apply_now();
-				if (dpy)
-					wl_display_flush(dpy);
+				wl_display_flush(dpy);
 			} else {
 				snprintf(applied_note, sizeof(applied_note),
 					 "Keep these settings? reverting in %ds — press K",
@@ -1324,8 +1290,7 @@ int display_main(int argc, char **argv)
 				snap_restore();
 				reverting = 1;
 				apply_now();
-				if (dpy)
-					wl_display_flush(dpy);
+				wl_display_flush(dpy);
 			}
 			continue;
 		}
@@ -1396,8 +1361,7 @@ int display_main(int argc, char **argv)
 					applied = 0;
 					applied_note[0] = '\0';
 					apply_now();
-					if (dpy)
-						wl_display_flush(dpy);
+					wl_display_flush(dpy);
 					break;
 				case DB_ONOFF:
 					toggle_enabled(hh);
@@ -1468,8 +1432,7 @@ int display_main(int argc, char **argv)
 			applied = 0;
 			applied_note[0] = '\0';
 			apply_now();
-			if (dpy)
-				wl_display_flush(dpy);
+			wl_display_flush(dpy);
 			break;
 		default:
 			break;

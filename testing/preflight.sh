@@ -50,7 +50,10 @@ echo
 echo "==> every package named in a packages.txt has a port"
 for f in script/*/packages.txt; do
     missing=""
-    while read -r p; do
+    # `|| [ -n "$p" ]`: a packages.txt whose last line has no newline still
+    # names a package the build installs, and a plain `read` would drop it —
+    # this gate would then pass a phase whose last entry has no port.
+    while read -r p || [ -n "$p" ]; do
         [ -z "$p" ] && continue
         case "$p" in \#*) continue ;; esac
         if [ ! -f "ports/core/$p/kpkgbuild" ] && \
@@ -63,6 +66,34 @@ for f in script/*/packages.txt; do
 done
 
 echo
+echo
+echo "==> ports built from one tarball agree on its version"
+# `perf` is tools/perf/ inside the kernel tree, so it fetches the SAME archive
+# as `linux` and carries its own copy of the version and hash. A mismatch does
+# not fail the build and does not fail at runtime either: perf loads, and then
+# reports unknown record types for every event the running kernel added after
+# the source it was built from. That is a bug nobody attributes to a version
+# skew, so it is caught here instead.
+shared=0
+for pair in "linux perf"; do
+    set -- $pair
+    a=$1; b=$2
+    av=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$a/kpkgbuild" 2>/dev/null | head -1)
+    bv=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$b/kpkgbuild" 2>/dev/null | head -1)
+    [ -z "$av" ] || [ -z "$bv" ] && continue
+    ah=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "ports/core/$a/kpkgbuild" | head -1)
+    bh=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "ports/core/$b/kpkgbuild" | head -1)
+    if [ "$av" != "$bv" ]; then
+        bad "$a/$b" "versions differ: $a is $av, $b is $bv"
+    elif [ "$ah" != "$bh" ]; then
+        bad "$a/$b" "same version $av but different sha256 — not the same tarball"
+    else
+        note "$a and $b" "both $av, same tarball"
+    fi
+    shared=$((shared + 1))
+done
+[ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
+
 echo "==> every packages.txt resolves to a dependency order"
 for f in script/*/packages.txt; do
     pkgs=$(grep -v '^#' "$f" | grep -v '^$' | tr '\n' ' ')
@@ -131,7 +162,7 @@ for f in fs/etc/init.d/*.sh; do
     # Read from a file, not a pipe: `bad` in a pipeline's subshell increments
     # a copy of $fail and the check reports without failing.
     sed -n 's/^[[:space:]]*DAEMON="\([^"]*\)".*/\1/p' "$f" > "$SP/daemons"
-    while read -r dpath; do
+    while read -r dpath || [ -n "$dpath" ]; do
         case "$(basename "$dpath")" in kdos-*) ;; *) continue ;; esac
         if ! grep -rqF -- "$dpath\"" ports/core/*/build.sh src/packages/*/build.sh \
                 src/desktop/*/build.sh 2>/dev/null; then
@@ -187,10 +218,22 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
     case "$first" in
     ./*)
         dotp=$((dotp + 1))
-        # Accounted for means the recipe descends into the directory the strip
-        # left behind. Anything else is the silent one-level-down failure.
-        grep -qE '^[[:space:]]*cd[[:space:]]+"?[A-Za-z0-9_.-]*\$\{?(name|version)' "$d/build.sh" \
-            || bad "$(basename "$d")" "first source is ./-prefixed and build.sh never cds into the stripped directory"
+        # ONLY A SINGLE WRAPPER IS THE BUG. `./dir/…` with one directory under
+        # the dot loses the dot and lands at $SRC/<dir>, one level too deep.
+        # `./a ./b ./c` — a FLAT archive that merely carries the dot — loses
+        # the same dot and lands exactly right, so demanding a `cd` there
+        # would be demanding a `cd` into nothing. Counting the entries under
+        # the dot is what separates them.
+        _tops=$(tar tf "$t" 2>/dev/null | sed 's|^\./||' \
+                | awk -F/ 'NF && $1 != "" { print $1 }' | sort -u | head -5)
+        _ntop=$(printf '%s\n' "$_tops" | grep -c .)
+        if [ "$_ntop" -eq 1 ]; then
+            # Accounted for means the recipe descends into the directory the
+            # strip left behind. Anything else is the silent one-level-down
+            # failure.
+            grep -qE '^[[:space:]]*cd[[:space:]]+"?[A-Za-z0-9_.-]*\$\{?(name|version)' "$d/build.sh" \
+                || bad "$(basename "$d")" "first source is ./-prefixed with one wrapping directory and build.sh never cds into it"
+        fi
         ;;
     esac
 done
@@ -351,7 +394,7 @@ archive_magic() {
 }
 
 echo
-echo "==> every source a port ships is named by a sha256 in its recipe"
+echo "==> every source a port declares is on disk, hashed and non-empty"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The enumeration is the RECIPE's own source list
 # read through the same parser the build uses, NOT a glob of archive
@@ -392,7 +435,18 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
         idx=$((idx + 1))
         resolved="$resolved $base"
-        [ -f "$d/$base" ] || continue
+        # A DECLARED SOURCE THAT IS NOT ON DISK IS A BUILD THAT DIES AT THE
+        # UNPACK. `make build` runs with no network, so the copy committed
+        # beside the recipe is the only one there will ever be, and a name
+        # nothing provides is reported here rather than at whatever hour of
+        # the build its phase reaches that package. Every port is judged, not
+        # only the ones a packages.txt names: a port wired into no phase yet
+        # is exactly the one whose tarball was never committed.
+        if [ ! -f "$d/$base" ]; then
+            bad "$p" "declares $base, which is not in the port directory"
+            unhashed=$((unhashed + 1))
+            continue
+        fi
         # AN EMPTY ARCHIVE IS NOT AN ARCHIVE, and a hash does not catch it:
         # sha256 of nothing is a stable digest, so a recipe written while the
         # download was empty verifies clean everywhere and fails only when tar
@@ -427,11 +481,10 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     done
 
     # AN ARCHIVE THE RECIPE CANNOT NAME IS ONE THE BUILD WILL NOT FIND. The
-    # loop above skips a resolved name that is not on disk, which is right —
-    # tarballs are fetched rather than committed. The consequence is that a
-    # file sitting there under some OTHER name is invisible to every check
-    # here and fails at `Source not found`, minutes into a phase. That is what
-    # a hand-placed download looks like: kpkg renames a FIRST source to
+    # loop above judges the names the recipe resolves to; a file sitting in
+    # the port directory under some OTHER name is claimed by none of them and
+    # fails at `Source not found`, minutes into a phase. That is what a
+    # hand-placed download looks like: kpkg renames a FIRST source to
     # <name>-<version>.<ext> and a `.tgz` saved under the URL's own suffix
     # matches nothing.
     for f in "$d"/*.tar.* "$d"/*.tgz "$d"/*.tbz2 "$d"/*.txz "$d"/*.zip; do
@@ -462,7 +515,7 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
     fi
 done
-[ "$unhashed" = 0 ] && note "every source is hashed and non-empty" "ok"
+[ "$unhashed" = 0 ] && note "every source is present, hashed and non-empty" "ok"
 
 # The escape hatch must be unused in a committed tree.
 if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
@@ -477,34 +530,66 @@ echo "==> every reason names things that still exist"
 # then actively lies, which is worse than not existing at all. Same gate as
 # an unresolvable `# depends`.
 rot=0
+# Basenames of every file in the tree, which is what a `cite:` resolves
+# against. The list comes off the disk rather than out of `git ls-files`: a
+# run outside a checkout — a container that owns the tree differently, an
+# export — gets no file list from git and would then reject every cite. build/
+# is generated and .git/ is not the tree, so neither may answer for a cite.
+find . -path ./build -prune -o -path ./.git -prune -o -type f -print 2>/dev/null |
+    sed 's,.*/,,' | sort -u > "$SP/treenames"
 for r in src/packages/kdos-tools/reasons/*.txt; do
     [ -f "$r" ] || continue
     _rn=$(basename "$r" .txt)
     grep -q "^title:" "$r" || { bad "$_rn" "has no title:"; rot=$((rot + 1)); }
     grep -q "^path:\|^port:" "$r" || { bad "$_rn" "claims nothing"; rot=$((rot + 1)); }
 
-    sed -n 's/^port:[[:blank:]]*//p' "$r" | while read -r _p; do
+    # Every one of these loops reads from a file, never from a pipe: `bad` in
+    # a pipeline's subshell increments a copy of $fail, so the check would
+    # print FAIL and preflight would still exit 0.
+    sed -n 's/^port:[[:blank:]]*//p' "$r" > "$SP/rports"
+    while read -r _p || [ -n "$_p" ]; do
         [ -n "$_p" ] || continue
         if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ] && \
            [ ! -f "src/desktop/$_p/kpkgbuild" ]; then
             bad "$_rn" "names port '$_p', which no longer exists"
+            rot=$((rot + 1))
         fi
-    done
+    done < "$SP/rports"
 
     # A path is real if fs/ provides it, or if the reason also names a port
     # (which is what installs it — preflight cannot see an installed tree).
     _hasport=$(grep -c "^port:" "$r")
-    sed -n 's/^path:[[:blank:]]*//p' "$r" | while read -r _q; do
+    sed -n 's/^path:[[:blank:]]*//p' "$r" > "$SP/rpaths"
+    while read -r _q || [ -n "$_q" ]; do
         [ -n "$_q" ] || continue
         if [ ! -e "fs$_q" ] && [ "$_hasport" = 0 ]; then
             bad "$_rn" "names path '$_q', which fs/ does not provide and no port claims"
+            rot=$((rot + 1))
         fi
-    done
+    done < "$SP/rpaths"
 
-    sed -n 's/^see:[[:blank:]]*//p' "$r" | while read -r _s; do
+    sed -n 's/^see:[[:blank:]]*//p' "$r" > "$SP/rsees"
+    while read -r _s || [ -n "$_s" ]; do
         [ -n "$_s" ] || continue
-        [ -f "src/packages/kdos-tools/reasons/$_s.txt" ] || bad "$_rn" "sees '$_s', which is not a reason"
-    done
+        if [ ! -f "src/packages/kdos-tools/reasons/$_s.txt" ]; then
+            bad "$_rn" "sees '$_s', which is not a reason"
+            rot=$((rot + 1))
+        fi
+    done < "$SP/rsees"
+
+    # A cite is prose, and only the words in it that carry an extension are
+    # file names — those must still name a tracked file, by basename, wherever
+    # in the tree it lives. A cite is the one key a reader retypes into a
+    # search, so a cite naming a step or a source that is gone sends them
+    # looking for nothing.
+    sed -n 's/^cite:[[:blank:]]*//p' "$r" | tr ' \t,' '\n\n\n' > "$SP/cites"
+    while read -r _c || [ -n "$_c" ]; do
+        case "$_c" in *.*) ;; *) continue ;; esac
+        if ! grep -qxF "$_c" "$SP/treenames"; then
+            bad "$_rn" "cites '$_c', which is not a file in the tree"
+            rot=$((rot + 1))
+        fi
+    done < "$SP/cites"
 done
 [ "$rot" = 0 ] && note "reasons resolve" "$(ls src/packages/kdos-tools/reasons/*.txt 2>/dev/null | wc -l) recorded"
 
@@ -582,7 +667,7 @@ note "recipe fields" "checked $(ls -d ports/core/*/ src/packages/*/ 2>/dev/null 
 echo
 echo "==> shell that ships or builds is syntactically valid"
 _sh=0
-for f in script/*.sh script/*/*.sh fs/etc/init.d/* fs/usr/share/kdos/init \
+for f in script/*.sh script/*/*.sh fs/etc/init.d/* \
          ports/fetch testing/*.sh \
          ports/core/*/build.sh src/packages/*/build.sh \
          ports/core/*/postinstall.sh src/packages/*/postinstall.sh \
@@ -795,6 +880,8 @@ if [ -f build/fs/etc/shadow ]; then
     esac
     grep -q "^etc/shadow " script/01_phase1/00_file_system.sh \
         || bad "sensitive modes" "nothing in 00_file_system.sh narrows etc/shadow"
+else
+    note "sensitive modes" "skipped — no build tree"
 fi
 
 # polkitd reads every rule it finds with no ownership check, so a rules
@@ -809,6 +896,8 @@ if [ -f build/fs/etc/polkit-1/rules.d/50-kdos.rules ]; then
     else
         bad "polkit rules" "rules.d is uid $_ro and the file uid $_fo — the granted user can rewrite the grant"
     fi
+else
+    note "polkit rules" "skipped — no build tree"
 fi
 
 # udevd runs every RUN+= as root and reads every file it finds in rules.d with
@@ -827,6 +916,8 @@ if [ -d build/fs/etc/udev/rules.d ]; then
     else
         bad "udev rules" "rules.d is uid $_uo and these are not root's:$_ubad — RUN+= is root code"
     fi
+else
+    note "udev rules" "skipped — no build tree"
 fi
 
 # ── what a udev rule can and cannot grant ─────────────────────────────────
@@ -995,6 +1086,93 @@ else
     note "installer filesystems" "skipped — conf.c or 01_initramfs.sh not found"
 fi
 
+# A WRITTEN STICK BOOTS BY ITS PARTITION TABLE AND BY NOTHING ELSE. `dd` copies
+# bytes, so an El Torito record — which lives in the ISO9660 boot catalogue and
+# is read only by an optical drive — carries nothing to a USB stick. UEFI wants
+# a partition of type EFI System; BIOS wants boot code in the first sector. The
+# image has to answer all four combinations of firmware and medium, and each
+# one is a separate flag that xorriso accepts in silence when it does nothing.
+# 02_iso.sh verifies the finished image too, but that costs a full packaging
+# run to learn; this costs a second.
+echo
+echo "==> the ISO boots BIOS and UEFI, from a disc and from a written stick"
+iso_sh=script/06_packaging/02_iso.sh
+if [ -f "$iso_sh" ]; then
+    iso_missing=""
+    for f in "limine-bios-cd.bin" "--efi-boot" "-efi-boot-part" \
+             "--efi-boot-image" "--protective-msdos-label" \
+             "limine bios-install"; do
+        grep -qF -- "$f" "$iso_sh" || iso_missing="$iso_missing '$f'"
+    done
+    if [ -n "$iso_missing" ]; then
+        bad "02_iso.sh" "a boot path is missing from the image —$iso_missing"
+    else
+        note "iso boot structure" "BIOS + UEFI, El Torito + partition table"
+    fi
+else
+    note "iso boot structure" "skipped — 02_iso.sh not found"
+fi
+
+# A BINARY BUILT BY A PHASE STEP IS NOT REBUILT BY `--rebuild <port>`, because
+# it is not a port. kinstall comes out of script/01_phase1/13_kinstall.sh, which
+# ALSO exits early when its marker exists — so editing the installer's sources,
+# rebuilding, and packaging produces an ISO carrying the binary from whenever
+# that marker was first written. Nothing fails: the build is green and the image
+# boots, and only the installed system is wrong.
+#
+# The check is against a STRING THE SOURCE OWNS. Comparing timestamps cannot
+# work — build/fs is stamped to a fixed epoch for reproducibility — and
+# comparing hashes would need a reference build. `limine`, which the rewritten
+# installer must mention and the old one cannot, answers it in one grep.
+echo
+echo "==> the built kinstall is the installer in this tree"
+ki_src=src/packages/kdos-installer/install.c
+ki_bin=build/fs/usr/bin/kinstall
+if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
+    ki_want=$(grep -oE '"[a-z/]*share/limine"' "$ki_src" | head -1 | tr -d '"')
+    if [ -z "$ki_want" ]; then
+        note "kinstall freshness" "skipped — install.c names no limine path"
+    elif strings "$ki_bin" 2>/dev/null | grep -qF "$ki_want"; then
+        note "kinstall freshness" "built binary carries $ki_want"
+    else
+        bad "13_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/phase1/kinstall and rebuild phase 1"
+    fi
+else
+    note "kinstall freshness" "skipped — no build tree"
+fi
+
+# A PORT IS ITS RECIPE AND ITS TARBALL, AND THE TARBALL IS THE HALF THAT GOES
+# MISSING. `make build` runs with no network, so a source that is on the disk of
+# whoever added the port and not in the tree builds perfectly for them and fails
+# for everybody else — on a clone, at the unpack, with a message about a corrupt
+# archive rather than about a missing commit.
+#
+# THE SECOND CHECK IS NOT THE SAME AS THE FIRST. A tarball can be tracked and
+# still be wrong: if .gitattributes has no pattern covering its extension, git
+# stores the bytes themselves instead of an LFS pointer, and the repository
+# grows by the size of the source. `git check-attr` answers what git WILL do
+# with a path, which is the only thing that settles it before a commit.
+echo
+echo "==> every port's source archive is in the tree, through LFS"
+if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
+    pa_disk=$(find ports/core -type f \
+              \( -name '*.tar.*' -o -name '*.tgz' -o -name '*.zip' \
+                 -o -name '*.tar' -o -name '*.7z' \) | LC_ALL=C sort)
+    pa_trk=$(git ls-files ports/core | LC_ALL=C sort)
+    pa_missing=$(comm -23 <(printf '%s\n' "$pa_disk") <(printf '%s\n' "$pa_trk"))
+    pa_raw=$(printf '%s\n' "$pa_disk" | git check-attr --stdin filter 2>/dev/null \
+             | grep -v ": filter: lfs$" | cut -d: -f1)
+    if [ -n "$pa_missing" ]; then
+        bad "ports/core" "source archives not in git: $(printf '%s' "$pa_missing" | tr '\n' ' ')"
+    elif [ -n "$pa_raw" ]; then
+        bad ".gitattributes" "no LFS pattern covers: $(printf '%s' "$pa_raw" | tr '\n' ' ')"
+    else
+        note "port sources" "$(printf '%s\n' "$pa_disk" | grep -c . ) archives, all tracked through LFS"
+    fi
+else
+    note "port sources" "skipped — not a git checkout"
+fi
+
 # KDOS shipped exactly that file for a release. The symptom on a booted ISO is
 # "the mouse does not work" and it is invisible to every other check here: the
 # XML is valid, the recipe parses, the build succeeds.
@@ -1131,6 +1309,51 @@ else
     note "desktop commands" "every one is provided by the tree"
 fi
 
+echo
+echo "==> every program fs/etc/inittab names is on the image"
+#
+# THE WHOLE LOGIN PATH IS IN THIS ONE FILE, and nothing reads it until an ISO
+# boots. A typo in a name, or a binary a recipe stopped installing, is a tty
+# that respawns into nothing — and the tty it takes first is tty1, which is
+# the desktop.
+#
+# EVERY ABSOLUTE WORD OF THE PROCESS FIELD, not just the first: tty1's entry is
+# `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` and kdos-getty execs that
+# second path, so a program missing THERE is the exact failure this exists to
+# catch. The field is everything after the third colon, which is why the id and
+# the runlevels are stripped by position rather than by pattern — `::shutdown:`
+# has an empty id and an empty runlevel list and still names a program.
+#
+# `-L` AS WELL AS `-e`: an installed program may be an absolute symlink into a
+# multi-call binary, which dangles in a staged rootfs and which `-e` alone
+# reports as missing.
+#
+# Most of these are on the image and in no `fs/` overlay, so without a build
+# tree there is nothing to resolve them against and the check says so rather
+# than failing on every line.
+_it_n=0
+_it_bad=0
+for _p in $(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' fs/etc/inittab 2>/dev/null |
+            awk -F: 'NF>=4 { sub(/^[^:]*:[^:]*:[^:]*:/, ""); print }' |
+            tr ' \t' '\n\n' | grep '^/' | sort -u); do
+    _it_n=$((_it_n + 1))
+    [ -e "fs$_p" ] || [ -L "fs$_p" ] && continue
+    [ -d build/fs/usr/bin ] || continue
+    [ -e "build/fs$_p" ] || [ -L "build/fs$_p" ] || {
+        bad "inittab" "$_p is named by fs/etc/inittab and is installed by nothing"
+        _it_bad=$((_it_bad + 1))
+    }
+done
+if [ "$_it_bad" != 0 ]; then
+    :
+elif [ "$_it_n" = 0 ]; then
+    bad "inittab" "fs/etc/inittab names no program at all"
+elif [ -d build/fs/usr/bin ]; then
+    note "inittab" "$_it_n programs, every one on the image"
+else
+    note "inittab" "$_it_n programs; only the ones fs/ ships checked — no build tree"
+fi
+
 # ── every flag one kdos-shell tool passes another, the other accepts ──────
 #
 # kdos-shell is one binary under two dozen names and they spawn each other by
@@ -1209,8 +1432,12 @@ echo "==> every source file in one of OUR ports is compiled by its recipe"
 for d in src/desktop/*/ src/packages/*/; do
     b="$d/build.sh"
     [ -f "$b" ] || continue
-    # A recipe that globs *.c compiles whatever is there; nothing to check.
-    grep -q '\*\.c' "$b" && continue
+    # A recipe that globs its OWN source directory compiles whatever is
+    # there; nothing to check. The glob has to be anchored to $PORT_SRC: a
+    # bare `*.c` test also matches the `"$LIBS"/libk*/*.c` link line that
+    # nearly every recipe carries, which exempts precisely the recipes that
+    # hand-list their sources — the only ones where a file can be left out.
+    grep -qE '("?\$\{?PORT_SRC\}?"?|\.)/\*\.c' "$b" && continue
     for f in "$d"*.c; do
         [ -e "$f" ] || continue
         base=$(basename "$f")
@@ -1292,10 +1519,9 @@ echo "==> no chroot step reads the ports tree through /kdos/ports"
 # chroot_exec binds $REPO_ROOT onto /kdos with a NON-RECURSIVE `mount --bind`,
 # so the container's own mounts underneath it do not come along: /kdos/ports is
 # the empty directory that sat there before docker shadowed it, and the ports
-# tree is bound separately at /ports. Every env file and 01_appbox.sh already
-# say /ports; 01_packs.sh and 02_iso.sh said /kdos/ports and therefore found no
-# packs on a machine with 135 of them — exit 2 out of awk under `set -e`, with
-# an empty step log and nothing naming the path.
+# tree is bound separately at /ports. A step that spells it /kdos/ports finds
+# an empty directory on a machine holding every pack, and reports it as awk's
+# exit 2 under `set -e`: an empty step log and nothing naming the path.
 _kp=0
 for _f in script/*/*.sh; do
     [ -f "$_f" ] || continue
@@ -1448,7 +1674,6 @@ echo
 echo "==> mimeapps rows: every kdos-* handler is shipped"
 _mh=0
 for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
-          fs/etc/xdg/kdos-console-mimeapps.list \
           fs/etc/skel/.config/mimeapps.list; do
     [ -f "$_f" ] || continue
     for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
@@ -1477,7 +1702,6 @@ else
     _me=0
     _mebad=0
     for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
-              fs/etc/xdg/kdos-console-mimeapps.list \
               fs/etc/skel/.config/mimeapps.list; do
         [ -f "$_f" ] || continue
         for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
@@ -1516,6 +1740,125 @@ for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/packages 2>/de
         bad "help page $_d" "no fs/usr/share/kdos/doc/$_d.txt"
 done
 note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
+
+echo
+echo "==> every icon name a surface asks for is one the image can resolve"
+# A NAME kicon_slot CANNOT RESOLVE RETURNS -1 AND DRAWS A FALLBACK GLYPH, and
+# nothing anywhere says so. The surface renders, the flush succeeds, and a row
+# that was meant to carry a picture carries a dot. The Start button asked for
+# `start-here` that way — the most visible icon on the desktop, silently not an
+# icon, because the logo mark was installed into the theme tree and libkicon
+# searches the atlas and `icons/hicolor` and not `~/.icons/<theme>`.
+#
+# Both sources are checked, because both are real lookup paths. Checked against
+# what is BUILT rather than a list, for the reason the console-font check is:
+# the list is the thing that goes stale.
+_atlas=build/fs/usr/share/kdos/icons/atlas.kia
+if [ -f "$_atlas" ]; then
+    _iconbad=$(python3 - "$_atlas" <<'PYEOF'
+import glob, os, re, struct, subprocess, sys
+
+d = open(sys.argv[1], 'rb').read()
+if d[:4] != b'KIA1':
+    sys.exit(0)
+n, = struct.unpack('<I', d[4:8])
+names, off = set(), 8
+for _ in range(n):
+    nlen, size, noff, boff, blen = struct.unpack('<HHIII', d[off:off + 16])
+    off += 16
+    names.add(d[noff:noff + nlen].decode())
+
+# The other lookup path: hicolor, wherever the build put one.
+for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
+    names.add(os.path.basename(p)[:-4])
+
+# Every literal name a surface hands to the icon layer. Three spellings,
+# because the name reaches it as an argument, as a row field, or as a table
+# column, and a check that knew only one would pass the other two.
+pats = (r'kicon_slot(?:_pad)?\("([a-z0-9._-]+)"',
+        r'kicon_pixmap\("([a-z0-9._-]+)"',
+        r'(?:->|\.)icon = "([a-z0-9._-]+)"')
+used = set()
+out = subprocess.run(['grep', '-rhoE', '|'.join(pats), 'src/', '--include=*.c'],
+                     capture_output=True, text=True).stdout
+for line in out.splitlines():
+    for pat in pats:
+        m = re.search(pat, line)
+        if m:
+            used.add(m.group(1))
+            break
+
+for name in sorted(used - names):
+    print(name)
+PYEOF
+)
+    if [ -n "$_iconbad" ]; then
+        for _n in $_iconbad; do
+            bad "icon $_n" "resolves in neither the atlas nor hicolor"
+        done
+    else
+        note "icon names" "every name resolves in the atlas or in hicolor"
+    fi
+else
+    note "icon names" "skipped — no build tree"
+fi
+
+echo
+echo "==> every chrome glyph is one the console font can actually draw"
+# A GLYPH THE CONSOLE FONT DOES NOT CARRY RENDERS AS A BLANK ON tty1, and
+# nothing anywhere says so: the cell is written, the flush succeeds, and the
+# desktop is missing a piece of its own chrome on tty1.
+#
+# `ter-kdos32n` is 512 glyphs. The toolkit picks `glyph_utf8` whenever the
+# backend reports UTF-8 — which the Linux console does — so EVERY entry in that
+# table has to be in the font, not merely in Unicode. `▓`, the half blocks and
+# the double tees all look reasonable in an editor and are all absent from the
+# font; a slider built on `▓` draws its filled run as nothing at all.
+#
+# Checked against the SHIPPED font rather than a list, because the list is the
+# thing that goes stale.
+_font=build/fs/usr/share/consolefonts/ter-kdos32n.psf.gz
+if [ -f "$_font" ]; then
+    _glyphbad=$(python3 - "$_font" <<'PYEOF'
+import gzip, re, struct, sys
+
+d = gzip.open(sys.argv[1], 'rb').read()
+if d[:4] != b'\x72\xb5\x4a\x86':
+    sys.exit(0)                     # not PSF2: nothing to check against
+ver, hdr, flags, length, charsize, h, w = struct.unpack('<IIIIIII', d[4:32])
+if not flags & 1:
+    sys.exit(0)                     # no unicode table: the question is unanswerable
+cps, cur = set(), b''
+for b in d[hdr + length * charsize:]:
+    if b in (0xFF, 0xFE):
+        cur = b''
+    else:
+        cur += bytes([b])
+        try:
+            cps.add(ord(cur.decode('utf8')[0]))
+            cur = b''
+        except UnicodeDecodeError:
+            pass
+
+src = open('src/libs/libktui/ktui_draw.c').read()
+tbl = src.split('static const char *glyph_utf8')[1].split('};')[0]
+for name, glyph in re.findall(r'\[(KT_G_\w+)\]\s*=\s*"([^"]+)"', tbl):
+    for ch in glyph:
+        if ord(ch) > 0x7f and ord(ch) not in cps:
+            print(f"{name} {ch} U+{ord(ch):04X}")
+PYEOF
+)
+    if [ -n "$_glyphbad" ]; then
+        while read -r _n _g _u; do
+            bad "glyph $_n" "$_g $_u is not in ter-kdos32n — blank on tty1"
+        done <<< "$_glyphbad"
+    else
+        _ng=$(grep -c '\[KT_G_' src/libs/libktui/ktui_draw.c)
+        note "chrome glyphs" "every glyph_utf8 entry is in the console font"
+    fi
+else
+    note "chrome glyphs" "skipped — no build tree"
+fi
 
 echo
 echo "==> a desktop toggle has exactly one flag, and libkbase spells the path"
@@ -1571,10 +1914,9 @@ fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
-# `kdos theme`, so the bits that say it has one may be SET in exactly five
+# `kdos theme`, so the bits that say it has one may be SET in exactly four
 # places: the render boundary where a terminal's own colour arrives
-# (kvt_grid.c), the wire that carries it to a view that asked (kcon_wire.c),
-# the header that defines them, the accent picker — whose swatches ARE the
+# (kvt_grid.c), the header that defines them, the accent picker — whose swatches ARE the
 # schemes it is offering, so drawing them in slots would show one palette seven
 # times — and the translucency pass in ktui_draw.c, which MIXES TWO SLOTS of
 # the palette in force and does it again on every frame, so a retint moves it
@@ -1587,7 +1929,7 @@ _lit=0
 for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|attr *= *KT_A_(FGRGB|BGRGB|ULCOLOR)' \
         src/ 2>/dev/null); do
     case "$_f" in
-    src/libs/libkvt/kvt_grid.c|src/libs/libkcon/kcon_wire.c) continue ;;
+    src/libs/libkvt/kvt_grid.c) continue ;;
     src/libs/libktui/ktui.h|src/libs/selftest.c) continue ;;
     src/libs/libktui/ktui_draw.c) continue ;;
     src/desktop/kdos-shell/theme.c) continue ;;
@@ -1596,7 +1938,7 @@ for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|
     _lit=$((_lit + 1))
 done
 [ "$_lit" = 0 ] &&
-    note "colour" "at the boundary, on the wire, in the blend, and in the picker"
+    note "colour" "at the boundary, in the blend, and in the picker"
 
 echo "==> the generated aerc styleset is one aerc will load"
 # A KEY IS object[.selected].attribute, and aerc refuses the WHOLE FILE on one
@@ -1627,10 +1969,11 @@ echo "==> the control centre's row table is consistent with the files it writes"
 # first entry — so opening the page and pressing Right once silently changes a
 # key nobody touched.
 #
-# A ST_CON KEY THAT IS NOT IN con.conf is a control the session never reads.
-# That file is this program's whole contract with the console desktop, and a
-# row writing a key the session has no lookup for is the "change a thing, see
-# nothing" the surface exists not to be.
+# A ST_COMP KEY THAT IS NOT IN comp.conf is a control nothing reads. That file
+# is this program's whole contract with the compositor, and a row writing a key
+# the compositor has no lookup for is the "change a thing, see nothing" the
+# surface exists not to be. It is checked against the SHIPPED copy, which is
+# what a fresh account gets and what documents every key.
 _srows=$(python3 - <<'PYEOF'
 import re
 
@@ -1639,7 +1982,7 @@ i = src.index('static struct row rows[] = {')
 body = src[i:src.index('\n};', i)]
 
 lists = dict(re.findall(r'static const char \*const (\w+)\[\] = \{([^}]*)\};', src))
-conf = open('fs/etc/kdos/con.conf').read()
+conf = open('fs/etc/skel/.config/kdos/comp.conf').read()
 
 # One row is a brace at the start of a line down to the `}` that closes it,
 # and its VALUE is the last string literal in it: help, val and orig are all
@@ -1675,9 +2018,9 @@ for a, b in zip(starts, starts[1:]):
         if items and int(nch) != len(items):
             bad.append('%s %s says %s choices, %s has %d'
                        % (cat, k, nch, choices, len(items)))
-    if st == 'ST_CON' and not re.search(r'^#?\s*%s\s*=' % re.escape(k), conf,
-                                        re.M):
-        bad.append('ST_CON %s is not a key in fs/etc/kdos/con.conf' % k)
+    if st == 'ST_COMP' and not re.search(r'^#?\s*%s\s*=' % re.escape(k), conf,
+                                         re.M):
+        bad.append('ST_COMP %s is not a key in comp.conf' % k)
 
 for x in bad:
     print('BAD ' + x)
@@ -1691,7 +2034,99 @@ $_sbad
 EOF
 else
     note "settings rows" "$(printf '%s\n' "$_srows" | sed -n 's/^N //p') row(s), \
-each one key, one list, one con.conf line"
+each one key, one list, one comp.conf line"
+fi
+
+echo
+echo "==> every desktop entry's icon and command exist on the image"
+#
+# A ROW WHOSE ICON RESOLVES TO NOTHING QUIETLY LOSES ITS PICTURE while every
+# row beside it keeps one, and a row whose Exec names a program this image
+# does not carry opens nothing and says nothing about why. Both are invisible
+# to every other check here: the entry parses, the recipe installs it, and the
+# defect is only in the Start menu.
+#
+# THE ICON RULE IS THE ATLAS'S, NOT THE FREEDESKTOP SPEC'S. genatlas.py takes
+# six contexts at four sizes; `panel/`, `apps/` and 16x16 are deliberately not
+# among them, so `file-manager` and `utilities-terminal` are names the spec
+# blesses and this image cannot draw. After the atlas, libkicon falls back to
+# hicolor's `apps/` PNGs and to `pixmaps/` — SVG there is never read, because
+# nothing in the session rasterises one.
+if [ ! -d build/fs/usr/share/applications ]; then
+    note "desktop entries" "skipped — no build tree"
+else
+    _ATLAS_SIZES="24 32 48 64"
+    _ATLAS_CTX="places devices status mimetypes actions emblems"
+    _icon_ok() {
+        case "$1" in
+            /*) [ -e "build/fs$1" ] || [ -L "build/fs$1" ] && return 0
+                return 1 ;;
+        esac
+        for _s in $_ATLAS_SIZES; do
+            for _c in $_ATLAS_CTX; do
+                [ -e "build/fs/usr/share/icons/KDOS/${_s}x${_s}/$_c/$1.svg" ] &&
+                    return 0
+            done
+        done
+        for _h in build/fs/usr/share/icons/hicolor/*/apps/"$1".png; do
+            [ -e "$_h" ] && return 0
+        done
+        [ -e "build/fs/usr/share/pixmaps/$1.png" ]
+    }
+    # -e OR -L. Half the commands here are symlinks into /usr/sbin written
+    # with an ABSOLUTE target, which resolves inside the image and dangles on
+    # the host running this — so -e alone reports every multicall front end as
+    # missing.
+    _exec_ok() {
+        case "$1" in
+            /*) [ -e "build/fs$1" ] || [ -L "build/fs$1" ] && return 0
+                return 1 ;;
+        esac
+        for _d in usr/bin bin usr/sbin sbin usr/games usr/local/bin \
+                  usr/local/sbin; do
+            [ -e "build/fs/$_d/$1" ] || [ -L "build/fs/$_d/$1" ] && return 0
+        done
+        return 1
+    }
+    _de=0; _debad=0
+    for _f in build/fs/usr/share/applications/*.desktop; do
+        [ -e "$_f" ] || continue
+        grep -qi '^NoDisplay=true' "$_f" && continue
+        _de=$((_de + 1))
+        _n=$(basename "$_f")
+        _i=$(sed -n 's/^Icon=//p' "$_f" | head -1)
+        _x=$(sed -n 's/^Exec=//p' "$_f" | head -1 | awk '{print $1}')
+        if [ -n "$_i" ] && ! _icon_ok "$_i"; then
+            bad "desktop entries" "$_n: Icon=$_i is in no atlas context and no hicolor apps/ PNG"
+            _debad=$((_debad + 1))
+        fi
+        if [ -n "$_x" ] && ! _exec_ok "$_x"; then
+            bad "desktop entries" "$_n: Exec=$_x is on no PATH directory of this image"
+            _debad=$((_debad + 1))
+        fi
+    done
+    # AND NO TWO VISIBLE ENTRIES MAY SHARE A Name=. The Start menu, the
+    # launcher and the search all list entries by their name, so two rows
+    # reading `Calendar` are two rows a person cannot choose between. The
+    # convention is that the program filling a role keeps the plain name and
+    # every alternative is qualified — `Files` and `Files (lf)`.
+    _dupe=$(for _f in build/fs/usr/share/applications/*.desktop; do
+                [ -e "$_f" ] || continue
+                grep -qi '^NoDisplay=true' "$_f" && continue
+                sed -n 's/^Name=//p' "$_f" | head -1
+            done | sort | uniq -d)
+    if [ -n "$_dupe" ]; then
+        while IFS= read -r _l; do
+            [ -n "$_l" ] || continue
+            bad "desktop entries" "two visible entries are both called '$_l'"
+            _debad=$((_debad + 1))
+        done <<EOF
+$_dupe
+EOF
+    fi
+    [ "$_debad" != 0 ] ||
+        note "desktop entries" \
+             "$_de visible, every icon drawable, every command present, every name distinct"
 fi
 
 echo

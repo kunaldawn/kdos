@@ -1,0 +1,16 @@
+close_range() and CLOSE_RANGE_UNSHARE are glibc's: it declares both in
+<unistd.h> under __USE_GNU, and musl has neither. passt carries its own
+fallbacks in linux_dep.h -- the flag, and a weak close_range() over the raw
+syscall -- but isolation.c, the only file that calls close_range(), is the one
+that does not include that header, so it does not compile against musl at all.
+
+--- a/isolation.c
++++ b/isolation.c
+@@ -89,6 +89,7 @@
+ #include <linux/seccomp.h>
+ 
+ #include "util.h"
++#include "linux_dep.h"
+ #include "seccomp.h"
+ #include "passt.h"
+ #include "log.h"

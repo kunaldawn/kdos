@@ -22,6 +22,7 @@
 #include <sys/types.h>
 
 #include "kbase.h"
+#include "kcolor.h"	/* the scheme table, and which of its rows is the default */
 #include "ktui.h"
 
 #define KI_VERSION "4.0"
@@ -63,6 +64,17 @@ typedef struct {
 
 typedef struct {
 	int uefi;
+	/*
+	 * HOW WIDE THAT FIRMWARE IS, in bits, and 0 where it did not say.
+	 *
+	 * A 64-bit CPU does not imply a 64-bit firmware: the early Atom
+	 * tablets run this kernel and this userland and load only a 32-bit EFI
+	 * binary. Firmware finds the right one by itself on removable media —
+	 * it reads `EFI/BOOT/BOOTIA32.EFI` and never looks at BOOTX64 — but an
+	 * NVRAM entry names one path, so the installer has to know which to
+	 * write. Read from `/sys/firmware/efi/fw_platform_size`.
+	 */
+	int fw_bits;
 	int secure_boot;
 	unsigned long long mem_kb;
 	char cpu[64];
@@ -122,7 +134,9 @@ extern KiGroup ki_group[MAX_APPGROUPS];
 extern int ki_ngroup;
 extern int ki_apps_present;	/* a catalogue was found and parsed         */
 /* The archive the Applications page found, or "" — what makes APPS_IMPORT
- * possible. F6 on the page picks a different one. */
+ * possible. One archive is found at probe time and the page offers no way to
+ * choose another: a picker would need a filesystem walk the paint path cannot
+ * afford. */
 extern char ki_apps_archive[512];
 
 void probe_apps(void);
@@ -151,10 +165,10 @@ enum { SWAP_NONE = 0, SWAP_FILE, SWAP_PART };
 typedef struct {
 	char keymap[64];
 
-	/* Whether the installed system asks who you are at tty1. Default on for
-	 * an install and off on the live medium: a machine with one account and
-	 * no password has nothing to ask, and one somebody installed does. */
-	int greet;
+	/* Whether tty1 logs the account in without asking. Default OFF for an
+	 * install and on for the live medium: a machine with one account and no
+	 * password has nothing to ask, and one somebody installed does. */
+	int autologin;
 	char tz[80];
 	char tz_label[64];
 

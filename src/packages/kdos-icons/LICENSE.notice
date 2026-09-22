@@ -18,9 +18,9 @@ only things that produce the installed files.
 What KDOS changed
 -----------------
 
-1. apps/ is not vendored at all. The alien apps ship their own icons and
-   script/06_packaging/01_appbox.sh installs them into the system hicolor
-   tree; replacing Firefox's and GIMP's own marks with redraws makes the
+1. apps/ is not vendored at all. An application's own mark is the one people
+   recognise, and libkicon reads those out of the system hicolor tree
+   untinted; replacing Firefox's and GIMP's own marks with redraws makes the
    launcher harder to read, not easier. It is also 76 MB of the 90.
 
 2. Only six sizes are kept (16, 22, 24, 32, 48, 64). Upstream ships 8 through

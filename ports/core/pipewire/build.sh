@@ -17,15 +17,20 @@
 # gstreamer and gst-plugins-base with it; this tree has no split packages, so
 # the element and the audio server arrive together or not at all.
 
+# THE BLUETOOTH CODECS ARE NAMED RATHER THAN LEFT TO `auto`. Each one is a
+# feature that quietly disables itself when its library is not found, so an
+# `auto` build on a machine missing libfreeaptx produces a pipewire that
+# negotiates SBC and says nothing about why — the exact failure the explicit
+# `depends` line exists to prevent. SBC is mandatory in the profile and is
+# always built; aptX, LDAC and AAC are what a headset actually asks for, and
+# without them every device falls back to the worst codec in the spec.
+
 # -Dv4l2=enabled builds the SPA plugin that puts a camera on the graph, which
-# is what media-session's `api.v4l2.*` mapping has been pointing at all along.
+# is what the session manager's `api.v4l2.*` mapping points at.
 # -Dpipewire-v4l2 stays off: that half is an LD_PRELOAD shim which resolves its
 # passthrough with dlsym(RTLD_NEXT, "openat64") and dlsym(RTLD_NEXT, "mmap64"),
 # and musl exports no large-file aliases at all — both come back NULL and are
 # called anyway, so every process started under it faults on its first open().
-
-# Vendor media-session subproject for offline build (wrap-git → directory)
-ln -sf "$SRC_ROOT/media-session-master" subprojects/media-session
 
 # THE LIMITS FILE IS NOT INSTALLED -- see -Drlimits-install below. Nothing on
 # this image could read it and nobody could match it: limits.d is PAM's and
@@ -45,6 +50,10 @@ meson setup build \
 	-Dexamples=disabled \
 	-Dffmpeg=enabled \
 	-Dbluez5=enabled \
+	-Dbluez5-codec-aptx=enabled \
+	-Dbluez5-codec-ldac=enabled \
+	-Dbluez5-codec-aac=enabled \
+	-Dbluez5-codec-lc3=enabled \
 	-Dreadline=enabled \
 	-Dlibpulse=disabled \
 	-Dfftw=disabled \
@@ -72,6 +81,6 @@ meson setup build \
 	-Dgsettings=disabled \
 	-Dsnap=disabled \
 	-Drlimits-install=false \
-	"-Dsession-managers=['media-session']"
+	"-Dsession-managers=[]"
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

@@ -802,35 +802,13 @@ static int cmd_box_remove(const char *box, int force)
  *
  * THREE ANSWERS, NOT TWO: 1 has a window, 0 has none, -1 there was nothing to
  * ask. The third is not the second. A collector that read "cannot tell" as "no
- * window" would stop every warmed box on a desktop it did not know how to
- * question — which is exactly what happened to the console desktop, whose
- * session is not a compositor and does not answer `kdos hey`.
- *
- * The console publishes its window set as a file beside its socket, because
- * teaching this binary that protocol would pull libkcon and the whole cell
- * model into something that is on every image.
+ * window" would stop every warmed box on a desktop it could not question.
  */
 static int box_has_window(const char *box)
 {
-	const char *con = getenv("KDOS_CON");
 	KbArgv a = {0};
 	char *buf;
 	int found;
-
-	if (con && *con) {
-		char path[256];
-		size_t n = strlen(con);
-
-		if (n < 6 || strcmp(con + n - 5, ".sock"))
-			return -1;
-		snprintf(path, sizeof(path), "%.*s.windows", (int)(n - 5), con);
-
-		char win[4096];
-
-		if (kb_read_file(path, win, sizeof(win)) < 0)
-			return -1;	/* the session has not published yet */
-		return strstr(win, box) != NULL;
-	}
 
 	buf = kb_calloc(1, 1 << 16);
 	kb_argv_add(&a, "kdos");

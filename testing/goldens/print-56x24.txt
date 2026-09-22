@@ -1,4 +1,4 @@
-+= Printers ===========================================+
++=[ Printers ]=========================================+
 | Printers                                             |
 | queues on this machine, and what is on the network   |
 |------------------------------------------------------|
@@ -19,6 +19,6 @@
 |                                                      |
 |                                                      |
 |------------------------------------------------------|
-| Left/Right page  r refresh  Esc Close                |
+| Left/Right page | r refresh | Esc Close              |
 |          [ Add ] [ Default ] [ Remove ] [ Refresh ]  |
 +======================================================+

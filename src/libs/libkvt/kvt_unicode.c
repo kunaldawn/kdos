@@ -187,14 +187,6 @@ err_free:
 	return ret;
 }
 
-void kvt_symbol_table_ref(struct kvt_symbol_table *tbl)
-{
-	if (!tbl || !tbl->ref)
-		return;
-
-	++tbl->ref;
-}
-
 void kvt_symbol_table_unref(struct kvt_symbol_table *tbl)
 {
 	if (!tbl || !tbl->ref || --tbl->ref)
@@ -405,30 +397,6 @@ size_t kvt_ucs4_to_utf8(uint32_t g, char *txt)
 	}
 }
 
-KVT_SHL_EXPORT
-char *kvt_ucs4_to_utf8_alloc(const uint32_t *ucs4, size_t len, size_t *len_out)
-{
-	char *val;
-	size_t i, pos;
-
-	val = malloc(4 * len);
-	if (!val)
-		return NULL;
-
-	pos = 0;
-	for (i = 0; i < len; ++i)
-		pos += kvt_ucs4_to_utf8(ucs4[i], &val[pos]);
-
-	if (!pos) {
-		free(val);
-		return NULL;
-	}
-
-	if (len_out)
-		*len_out = pos;
-	return val;
-}
-
 /*
  * UTF8 State Machine
  * This state machine parses UTF8 and converts it into a stream of Unicode
@@ -506,17 +474,6 @@ void kvt_utf8_mach_free(struct kvt_utf8_mach *mach)
 		return;
 
 	free(mach);
-}
-
-/*
- * Whether the machine holds no partial sequence, so the next byte stands on
- * its own. START and ACCEPT both mean that; every other state is the middle
- * of a multi-byte character, where an ASCII byte is a REJECT and not a letter.
- */
-int kvt_utf8_mach_idle(const struct kvt_utf8_mach *mach)
-{
-	return !mach || mach->state == KVT_UTF8_START ||
-	       mach->state == KVT_UTF8_ACCEPT;
 }
 
 int kvt_utf8_mach_feed(struct kvt_utf8_mach *mach, char ci)

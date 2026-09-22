@@ -472,8 +472,9 @@ static void sanitize(char *s)
  * The markup subset: <b> <i> <u> <a href="..."> and the four entities.
  * Unknown tags are STRIPPED, never shown — advertising `body-markup` means a
  * client may send anything HTML-shaped, and a literal `<img>` painted into a
- * toast is the failure the capability list used to avoid by lying the other
- * way. Only the FIRST link's target is kept; the count is what decides
+ * toast is what that promise must not be allowed to produce. Withdrawing the
+ * capability is the other way to be honest and costs the markup this surface
+ * does render. Only the FIRST link's target is kept; the count is what decides
  * whether a click can open anything (one link is unambiguous, two is a menu
  * this surface does not have).
  */
@@ -847,8 +848,9 @@ static int toast_rows(void)
 }
 
 /* One wrapped body line, as runs of equal style. <b> is the house fill —
- * swapped slots, never KT_A_REVERSE over a label. <i> maps to the body's own
- * dim, which is honest rather than loud: the grid has no second slant. */
+ * swapped slots, never KT_A_REVERSE over a label — and <i> is the cell's own
+ * italic bit, which the painter draws from an italic companion face where the
+ * loaded font has one and from the upright mask sheared where it does not. */
 static void draw_body_line(const struct toast *t, int start, int len, int x,
 			   int y)
 {
@@ -870,6 +872,8 @@ static void draw_body_line(const struct toast *t, int start, int len, int x,
 			fg = KT_ACCENT;
 		if (st & ST_U)
 			attr |= KT_A_UNDERLINE;
+		if (st & ST_I)
+			attr |= KT_A_ITALIC;
 		if (st & ST_B) {
 			fg = KT_SURFACE;
 			bg = KT_TEXT;
@@ -1023,16 +1027,74 @@ static void open_href(const char *href)
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
+/*
+ * A STACK NOBODY SENT, so there is a reference frame of the one surface on
+ * this desktop whose content always comes from somewhere else.
+ *
+ * Two toasts and not one: the gap between cards, the second card's plate and
+ * the button row are the geometry that a single toast cannot show, and they
+ * are where this surface has actually gone wrong. Written into the array the
+ * daemon draws from rather than through Notify, because a dump must not need
+ * a session bus to reach.
+ */
+static void dump_stack(void)
+{
+	int st_[BODY_LINES], ln_[BODY_LINES];
+	struct toast *t;
+
+	ntoasts = 0;
+
+	t = &toasts[ntoasts++];
+	memset(t, 0, sizeof(*t));
+	t->id = 1;
+	snprintf(t->app, sizeof(t->app), "%s", "kdos");
+	snprintf(t->summary, sizeof(t->summary), "%s", "Backup finished");
+	snprintf(t->body, sizeof(t->body), "%s",
+		 "1 204 files, 3.1 GB, in 4 minutes.");
+	t->body_rows = wrap_ranges(t->body, BODY_W, st_, ln_);
+
+	t = &toasts[ntoasts++];
+	memset(t, 0, sizeof(*t));
+	t->id = 2;
+	snprintf(t->app, sizeof(t->app), "%s", "kdos-packd");
+	snprintf(t->summary, sizeof(t->summary), "%s", "A pack wants mounting");
+	snprintf(t->body, sizeof(t->body), "%s",
+		 "app.firefox-esr is on the medium and is not mounted.");
+	t->body_rows = wrap_ranges(t->body, BODY_W, st_, ln_);
+	t->nact = 2;
+	snprintf(t->act_id[0], sizeof(t->act_id[0]), "%s", "mount");
+	snprintf(t->act_label[0], sizeof(t->act_label[0]), "%s", "Mount");
+	snprintf(t->act_id[1], sizeof(t->act_id[1]), "%s", "ignore");
+	snprintf(t->act_label[1], sizeof(t->act_label[1]), "%s", "Ignore");
+}
+
 int notifyd_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	int dump = 0;
+
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* One frame, offscreen, as text — see kdos-launcher --dump. */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else {
-			fprintf(stderr, "usage: kdos-notifyd [--font NAME]\n");
+			fprintf(stderr,
+				"usage: kdos-notifyd [--font NAME] [--dump]\n");
 			return 2;
 		}
+	}
+
+	/* BEFORE THE BUS AND BEFORE THE NAME. A dump must not take
+	 * org.freedesktop.Notifications from the daemon that is running. */
+	if (dump) {
+		sh_theme_from_cache();
+		dump_stack();
+		ktui_offscreen_init(TOAST_COLS, toast_rows());
+		draw_toasts();
+		ktui_draw_dump();
+		return 0;
 	}
 
 	int r = sd_bus_open_user(&bus);
@@ -1126,13 +1188,13 @@ int notifyd_main(int argc, char **argv)
 			ktui_draw_invalidate();
 		}
 		/*
-		 * Drain the bus BEFORE deciding what to draw. This used to sit
-		 * after draw_toasts(), so a Notify was read only on the way
-		 * INTO poll: the toast joined the list, poll slept until its
-		 * expiry, expire_due() removed it at the top of the next pass,
-		 * and the toast was never drawn at all — accepted, given an
-		 * id, invisible. Traced with WAYLAND_DEBUG: the surface never
-		 * saw a single request between hide and expiry.
+		 * Drain the bus BEFORE deciding what to draw. Draining after
+		 * draw_toasts() reads a Notify only on the way INTO poll: the
+		 * toast joins the list, poll sleeps until its expiry,
+		 * expire_due() removes it at the top of the next pass, and the
+		 * toast is never drawn at all — accepted, given an id,
+		 * invisible, with no request reaching the surface between hide
+		 * and expiry.
 		 */
 		while (sd_bus_process(bus, NULL) > 0)
 			;
@@ -1156,13 +1218,13 @@ int notifyd_main(int argc, char **argv)
 		if (want != shown_rows) {
 			/*
 			 * With nothing to show the surface is DESTROYED, not
-			 * shrunk: kdisp_overlay_hide()/show() replace the old
-			 * one-cell workaround, and the show path completes the
+			 * shrunk to a cell: kdisp_overlay_show() completes the
 			 * initial-commit handshake before returning, so the
 			 * first toast after an idle period is drawn on a
-			 * surface that exists. The resize lesson still holds:
-			 * the configure lands in kdisp_pump() below and the cell
-			 * buffer follows only through ktui_draw_resize().
+			 * surface that exists. The resize rule still binds
+			 * here: the configure lands in kdisp_pump() below and
+			 * the cell buffer follows only through
+			 * ktui_draw_resize().
 			 */
 			if (want > 0)
 				kdisp_overlay_show(TOAST_COLS, want);
@@ -1268,11 +1330,10 @@ int notifyd_main(int argc, char **argv)
 		 * The configure that answers kdisp_overlay_resize() lands here, and
 		 * the cell buffer does NOT follow by itself — `ktui_w`/`ktui_h`
 		 * come from ktui_draw_resize(), exactly as panel.c and
-		 * launcher.c already do it. Without this the surface grew and
-		 * draw_toasts() went on believing it had the old three rows, so
-		 * a toast WITH A BODY (four rows) failed its `y + rows > h`
-		 * guard and the daemon painted an empty box. It only became
-		 * reachable when the surface started being resized at all.
+		 * launcher.c already do it. Without this the surface grows and
+		 * draw_toasts() goes on believing it has the three rows it
+		 * started with, so a toast WITH A BODY (four rows) fails its
+		 * `y + rows > h` guard and the daemon paints an empty box.
 		 */
 		if (srv >= 0 && (fds[2].revents & POLLIN)) {
 			int c = accept(srv, NULL, NULL);

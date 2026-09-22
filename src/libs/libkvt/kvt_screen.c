@@ -64,7 +64,6 @@
 #include "kvt.h"
 #include "kvt_int.h"
 #include "kvt_llog.h"
-#include "kvt_macro.h"
 #include "kvt_dlist.h"
 
 #define LLOG_SUBSYSTEM "tsm-screen"
@@ -169,97 +168,6 @@ struct line *screen_line_at(struct kvt_screen *con, unsigned int y)
 	con->at_pos = con->sb.pos;
 	con->at_gen = con->sb.gen;
 	return line;
-}
-
-/*
- * EVERY LINE THIS SCREEN STILL HOLDS, oldest first, as text.
- *
- * The scrollback and then the screen, which is the order a person read them
- * in. Trailing blanks go: a terminal's lines are padded to the width and a
- * saved session made of eighty-column padding is a file nothing can diff.
- *
- * A CELL'S CHARACTER AND NOTHING ELSE — no colour, no attribute, no sprite.
- * What this is for is putting the last session's output back on a screen, and
- * a picture cannot be put back: the tiles it named belong to a program that
- * has exited.
- */
-KVT_SHL_EXPORT
-char *kvt_screen_text(struct kvt_screen *con, size_t *len_out)
-{
-	struct line *line;
-	size_t cap, n = 0;
-	char *out;
-
-	if (len_out)
-		*len_out = 0;
-	if (!con)
-		return NULL;
-
-	/* Four bytes a cell is the widest UTF-8 one can hold, and a newline
-	 * for each line. */
-	cap = (size_t)(con->sb.count + con->size_y) *
-	      ((size_t)con->size_x * 4 + 1) + 1;
-	out = malloc(cap);
-	if (!out)
-		return NULL;
-
-	line = kvt_shl_dlist_empty(&con->sb.list)
-		       ? NULL
-		       : kvt_shl_dlist_first(&con->sb.list, struct line, list);
-	for (unsigned int i = 0; i < con->sb.count + con->size_y; i++) {
-		struct line *l;
-		size_t eol;
-
-		if (i < con->sb.count) {
-			l = line;
-			if (line)
-				line = kvt_shl_dlist_next(line, &con->sb.list,
-							  list);
-		} else {
-			l = con->lines[i - con->sb.count];
-		}
-		if (!l)
-			continue;
-
-		eol = n;
-		for (unsigned int x = 0; x < l->size && x < con->size_x; x++) {
-			uint32_t ch = l->cells[x].ch;
-
-			if (!ch)
-				ch = ' ';
-			if (n + 4 >= cap)
-				break;
-			n += kvt_ucs4_to_utf8(ch, out + n);
-			if (ch != ' ')
-				eol = n;
-		}
-		n = eol;
-		if (n + 1 < cap)
-			out[n++] = '\n';
-	}
-	/*
-	 * AND THE SCREEN'S EMPTY TAIL IS PADDING, NOT OUTPUT. A screen is
-	 * always its full height, so a terminal showing two lines ends this
-	 * with a dozen blank ones — and a caller putting the text back would
-	 * feed those dozen newlines and scroll the two lines it cared about
-	 * off the top before anybody saw them.
-	 */
-	while (n && out[n - 1] == '\n') {
-		size_t k = n - 1;
-
-		while (k && out[k - 1] != '\n')
-			k--;
-		if (k != n - 1)
-			break;		/* a real line ends here */
-		n = k;
-	}
-	if (n && out[n - 1] != '\n' && n + 1 < cap)
-		out[n++] = '\n';
-
-	out[n] = '\0';
-	if (len_out)
-		*len_out = n;
-	return out;
 }
 
 /*
@@ -956,30 +864,6 @@ void kvt_screen_unref(struct kvt_screen *con)
 	free(con);
 }
 
-void kvt_screen_set_opts(struct kvt_screen *scr, unsigned int opts)
-{
-	if (!scr || !opts)
-		return;
-
-	scr->opts |= opts;
-}
-
-void kvt_screen_reset_opts(struct kvt_screen *scr, unsigned int opts)
-{
-	if (!scr || !opts)
-		return;
-
-	scr->opts &= ~opts;
-}
-
-unsigned int kvt_screen_get_opts(struct kvt_screen *scr)
-{
-	if (!scr)
-		return 0;
-
-	return scr->opts;
-}
-
 KVT_SHL_EXPORT
 unsigned int kvt_screen_get_width(struct kvt_screen *con)
 {
@@ -1328,26 +1212,6 @@ void kvt_screen_sb_down(struct kvt_screen *con, unsigned int num)
 }
 
 KVT_SHL_EXPORT
-void kvt_screen_sb_page_up(struct kvt_screen *con, unsigned int num)
-{
-	if (!con || !num)
-		return;
-
-	screen_inc_age(con);
-	kvt_screen_sb_up(con, num * con->size_y);
-}
-
-KVT_SHL_EXPORT
-void kvt_screen_sb_page_down(struct kvt_screen *con, unsigned int num)
-{
-	if (!con || !num)
-		return;
-
-	screen_inc_age(con);
-	kvt_screen_sb_down(con, num * con->size_y);
-}
-
-KVT_SHL_EXPORT
 void kvt_screen_sb_reset(struct kvt_screen *con)
 {
 	if (!con || !con->sb.pos)
@@ -1359,24 +1223,6 @@ void kvt_screen_sb_reset(struct kvt_screen *con)
 
 	con->sb.pos = NULL;
 	con->sb.pos_num = con->sb.count;
-}
-
-unsigned int kvt_screen_sb_get_line_count(struct kvt_screen *con)
-{
-	if (!con) {
-		return 0;
-	}
-
-	return con->sb.count;
-}
-
-unsigned int kvt_screen_sb_get_line_pos(struct kvt_screen *con)
-{
-	if (!con) {
-		return 0;
-	}
-
-	return con->sb.pos_num;
 }
 
 KVT_SHL_EXPORT
@@ -1741,17 +1587,6 @@ void kvt_screen_move_right(struct kvt_screen *con, unsigned int num)
 }
 
 KVT_SHL_EXPORT
-void kvt_screen_move_line_end(struct kvt_screen *con)
-{
-	if (!con)
-		return;
-
-	screen_inc_age(con);
-
-	move_cursor(con, con->size_x - 1, con->cursor_y);
-}
-
-KVT_SHL_EXPORT
 void kvt_screen_move_line_home(struct kvt_screen *con)
 {
 	if (!con)
@@ -1998,24 +1833,6 @@ void kvt_screen_delete_chars(struct kvt_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i)
 		screen_cell_init(con, &cells[con->cursor_x + mv + i]);
-}
-
-KVT_SHL_EXPORT
-void kvt_screen_erase_cursor(struct kvt_screen *con)
-{
-	unsigned int x;
-
-	if (!con)
-		return;
-
-	screen_inc_age(con);
-
-	if (con->cursor_x >= con->size_x)
-		x = con->size_x - 1;
-	else
-		x = con->cursor_x;
-
-	screen_erase_region(con, x, con->cursor_y, x, con->cursor_y, false);
 }
 
 KVT_SHL_EXPORT

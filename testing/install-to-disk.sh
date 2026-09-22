@@ -30,6 +30,16 @@ DISK=${INSTALL_DISK:-/dev/vda}
 ANSWERS=/tmp/kdos-answers
 PACKS=${INSTALL_PACKS:-"app.zathura app.kcalc alpine"}
 CAP=${INSTALL_CAP:-5400}   # kinstall in a VM is slow; 40 minutes was not enough
+# AN ENCRYPTED INSTALL IS THE SAME RUN WITH ONE KEY CHANGED, which is the
+# whole reason it is a knob here rather than a second script: what an
+# encrypted install must prove is that the boot state records the CONTAINER
+# beside the filesystem, and everything else about the run is identical.
+#
+# The passphrase is in the answer file in plain text and that is what
+# kinstall's own comment says about the key: this is a throwaway virtual
+# machine, and a run that stopped to be typed at is a run nothing can drive.
+LUKS=${INSTALL_LUKS:-0}
+LUKS_PASS=${INSTALL_LUKS_PASS:-kdosdisk}
 
 say() { printf '\n== %s ==\n' "$*"; }
 
@@ -53,7 +63,8 @@ format_esp     = 1
 fstype         = ext4
 swap           = none
 swap_mb        = 0
-luks           = 0
+luks           = $LUKS
+luks_passphrase = $LUKS_PASS
 
 hostname       = kdos-test
 username       = kdos
@@ -130,7 +141,14 @@ esp=$(ls "${DISK}"* 2>/dev/null | grep -v "^${DISK}\$" | head -1)
 echo "esp partition guess: $esp"
 mount "$esp" /mnt/esp 2>&1 && {
 	echo "--- the ESP ---"; find /mnt/esp -maxdepth 3 | head -20
-	echo "--- refind.conf ---"; cat /mnt/esp/EFI/*/refind.conf 2>/dev/null | grep -v '^#' | head -20
+	echo "--- limine.conf ---"; cat /mnt/esp/limine.conf /mnt/esp/boot/limine/limine.conf 2>/dev/null | grep -v '^#' | head -20
+	# THE BOOT STATE, AND ON AN ENCRYPTED INSTALL IT IS THE POINT. `slot_a`
+	# is the FILESYSTEM and `crypt_a` is the container it is inside; the
+	# kernel command line can name one `cryptdevice=`, so a second slot in
+	# a second container is only reachable because each slot records its
+	# own. An encrypted install whose `crypt_a` is empty is the join
+	# silently not made.
+	echo "--- bootstate ---"; cat /mnt/esp/EFI/kdos/bootstate 2>&1
 	umount /mnt/esp
 }
 

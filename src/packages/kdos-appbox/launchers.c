@@ -216,11 +216,45 @@ static const char *EXEC_EXTRA[][2] = {
  * an alien-apps row and a /usr/local/bin shim, and deliberately NOT a .desktop:
  * a launcher for `wine` with no arguments opens nothing.
  *
- * Only emitted when the image actually carries the binary, so an appbox baked
- * before this segment existed does not get a shim that dies on "not found".
+ * Only emitted when the image actually carries the binary: a shim written for
+ * a binary an image does not have is a command that dies on "not found".
  */
 static const char *COMMANDS[] = {
 	"wine", "winecfg", "winetricks", NULL
+};
+
+/*
+ * Alien software that IS an application and ships no desktop entry at all, so
+ * `parse_dir` has nothing to read and the box would hold a program the host
+ * cannot reach from a menu.
+ *
+ * surf is the case that forced it: Debian's package is the binary, a web
+ * extension and a man page, because upstream ships no entry and a browser with
+ * no launcher claims no scheme — which on a machine whose only other answer is
+ * a text browser means installing it changes nothing about what opens a link.
+ *
+ * WRITTEN HERE AND NOT SHIPPED IN THE PACK. An entry in the image would be an
+ * entry apt could replace, and the `Exec` has to name `kdos-appbox run`, which
+ * only this side knows how to spell.
+ *
+ * Only emitted where the image actually carries the binary, the same rule
+ * COMMANDS keeps.
+ */
+static const struct {
+	const char *bin;
+	const char *name;
+	const char *generic;
+	const char *cats;
+	const char *mime;
+	const char *keywords;
+	const char *icon;
+	const char *exec;
+} ENTRIES[] = {
+	{ "surf", "Surf", "Web Browser", "Network;WebBrowser;",
+	  "text/html;application/xhtml+xml;x-scheme-handler/http;"
+	  "x-scheme-handler/https;",
+	  "web;browser;http;suckless;surf;", "gtk-network", "surf %u" },
+	{ NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
 static const char *X11_FORCING[] = {
@@ -540,10 +574,37 @@ static void add_commands(const char *srcdir)
 			continue;
 		Launcher *a = app_new();
 		a->cmdonly = 1;
+		kb_strlcpy(a->pack, cur_pack, sizeof(a->pack));
 		kb_strlcpy(a->id, COMMANDS[i], sizeof(a->id));
 		kb_strlcpy(a->base, COMMANDS[i], sizeof(a->base));
 		kb_strlcpy(a->name, COMMANDS[i], sizeof(a->name));
 		kb_strlcpy(a->exec, COMMANDS[i], sizeof(a->exec));
+	}
+
+	for (int i = 0; ENTRIES[i].bin; i++) {
+		char probe[1200];
+
+		snprintf(probe, sizeof(probe), "%s/usr/bin/%s", root,
+			 ENTRIES[i].bin);
+		if (!kb_path_exists(probe))
+			continue;
+		Launcher *a = app_new();
+
+		kb_strlcpy(a->pack, cur_pack, sizeof(a->pack));
+		kb_strlcpy(a->id, ENTRIES[i].bin, sizeof(a->id));
+		kb_strlcpy(a->base, ENTRIES[i].bin, sizeof(a->base));
+		kb_strlcpy(a->name, ENTRIES[i].name, sizeof(a->name));
+		kb_strlcpy(a->generic, ENTRIES[i].generic, sizeof(a->generic));
+		kb_strlcpy(a->cats, ENTRIES[i].cats, sizeof(a->cats));
+		kb_strlcpy(a->mime, ENTRIES[i].mime, sizeof(a->mime));
+		kb_strlcpy(a->keywords, ENTRIES[i].keywords,
+			   sizeof(a->keywords));
+		kb_strlcpy(a->exec, ENTRIES[i].exec, sizeof(a->exec));
+		/* The window announces the program's own class, which for an
+		 * X11 client under Xwayland is its WM_CLASS — without it the
+		 * taskbar cannot tie the running window to this entry. */
+		kb_strlcpy(a->wmclass, ENTRIES[i].bin, sizeof(a->wmclass));
+		kb_strlcpy(a->icon, ENTRIES[i].icon, sizeof(a->icon));
 	}
 }
 
@@ -581,7 +642,7 @@ static void write_launchers(const char *dir)
 		 * THE LAUNCHER CARRIES THE BOX. `-b <pack>` is the pack id, and
 		 * the pack id is what a box profile is filed under
 		 * (~/.config/kdos/boxes/<pack>.conf) — so `run` skips the
-		 * exec→pack table entirely and kdos-con reads a guest's policy
+		 * exec→pack table entirely and a reader takes a guest's policy
 		 * key straight off the argv instead of reversing the box layout
 		 * out of an absolute Exec. A row with no pack keeps the bare
 		 * verb, and both sides fall back to the program's own name.
@@ -701,9 +762,9 @@ static int write_shims(const char *share, const char *bindir)
 	char *table = kb_path_join(share, "alien-apps");
 	/* A WRITE THAT FAILED MUST NOT REPORT A LAUNCHER SET. Every output
 	 * here is under /usr, so a run as anyone but root writes nothing at
-	 * all — and this program went on to print "11 launchers, 188 mime
-	 * types, 0 shims" and exit 0, which reads as the pack lane having
-	 * taken over when the shipped table is still whoever wrote it last. */
+	 * all — and printing "11 launchers, 188 mime types, 0 shims" and
+	 * exiting 0 reads as the pack lane having taken over when the shipped
+	 * table is still whoever wrote it last. */
 	if (kb_write_all(table, t.p, t.n) != 0)
 		kb_die("cannot write %s: %s", table, strerror(errno));
 	free(table);
@@ -712,16 +773,17 @@ static int write_shims(const char *share, const char *bindir)
 	kb_mkdir_p(bindir);
 
 	/*
-	 * Every shim goes, whatever it used to point at — the dispatcher has
-	 * changed name once already and a stale symlink is a dead command. A
-	 * RELATIVE link target is the marker for one this program wrote.
+	 * Every shim goes and is written again, whatever it points at: a shim
+	 * naming a dispatcher under any other name is a dead command, and the
+	 * name is not guaranteed for ever. A RELATIVE link target is the
+	 * marker for one this program wrote.
 	 *
 	 * RESERVED IS CONSULTED HERE AS WELL AS AT CREATE TIME, and that is
 	 * what keeps `kdos-box` alive: it is the box manager's name on this
 	 * same binary, installed by the recipe as a relative symlink, so a
-	 * sweep that went by the marker alone deleted the front door to every
-	 * box on the machine — leaving `kdos-box: command not found` on a
-	 * system where nothing was missing but a link.
+	 * sweep going by the marker alone deletes the front door to every box
+	 * on the machine — leaving `kdos-box: command not found` on a system
+	 * where nothing is missing but a link.
 	 */
 	char **old = kb_listdir(bindir, NULL);
 	for (char **f = old; f && *f; f++) {

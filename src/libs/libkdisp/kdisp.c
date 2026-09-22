@@ -44,8 +44,8 @@ kdisp_current(void)
 
 /*
  * A server that cannot answer leaves its entry NULL and gets the neutral
- * answer, not a crash: a console has no server-side decoration to report and
- * nothing to hand out in place of a Wayland handle. Every caller of these
+ * answer, not a crash: a `--tty` run has no server-side decoration to report
+ * and nothing to hand out in place of a Wayland handle. Every caller of these
  * already copes with the neutral value, because it is what a terminal returns.
  */
 #define FWD_VOID(name, member)                 \
@@ -66,7 +66,6 @@ kdisp_current(void)
 FWD_VOID(shutdown, shutdown)
 FWD_VOID(pump, pump)
 FWD_VOID(overlay_hide, overlay_hide)
-FWD_VOID(report_error, report_error)
 FWD_VOID(unlock, unlock)
 
 /* should_close is 0 on a backend with no window to close: a terminal program
@@ -75,7 +74,6 @@ FWD_INT(should_close, should_close, 0)
 FWD_INT(fd, fd, -1)
 FWD_INT(cell_w, cell_w, 1)
 FWD_INT(cell_h, cell_h, 1)
-FWD_INT(px_h, px_h, 0)
 FWD_INT(scale, scale, 1)
 FWD_INT(decorated, decorated, 0)
 FWD_INT(popup_offset, popup_offset, 0)
@@ -174,8 +172,14 @@ kdisp_win_count(void)
 int
 kdisp_win_at(int i, KDispWin *out)
 {
-	if (cur && cur->win_at && out)
+	if (cur && cur->win_at && out) {
+		/* Set BEFORE the backend fills the row. A server with no
+		 * per-screen answer leaves the field alone, and a task bar
+		 * filtering on whatever was in the caller's stack frame would
+		 * drop windows at random. */
+		out->here = 1;
 		return cur->win_at(i, out);
+	}
 	return 0;
 }
 
@@ -184,39 +188,6 @@ kdisp_font_ask(void)
 {
 	if (cur && cur->font_ask)
 		cur->font_ask();
-}
-
-void
-kdisp_out_ask(void)
-{
-	if (cur && cur->out_ask)
-		cur->out_ask();
-}
-
-int
-kdisp_out_count(void)
-{
-	return cur && cur->out_count ? cur->out_count() : 0;
-}
-
-int
-kdisp_out_at(int i, KDispOut *out)
-{
-	return cur && cur->out_at && out ? cur->out_at(i, out) : 0;
-}
-
-int
-kdisp_out_mode_at(int i, int m, KDispMode *mode)
-{
-	return cur && cur->out_mode_at && mode ? cur->out_mode_at(i, m, mode)
-					       : 0;
-}
-
-void
-kdisp_out_set_mode(int i, int m, int keep)
-{
-	if (cur && cur->out_set_mode)
-		cur->out_set_mode(i, m, keep);
 }
 
 int
@@ -246,13 +217,6 @@ kdisp_font_set(int index, int keep)
 }
 
 void
-kdisp_session_action(const char *verb)
-{
-	if (cur && cur->session_action && verb && *verb)
-		cur->session_action(verb);
-}
-
-void
 kdisp_win_activate(unsigned id)
 {
 	if (cur && cur->win_activate)
@@ -267,8 +231,8 @@ kdisp_win_close(unsigned id)
 }
 
 /* The three named states, each one bit through the same entry: a backend that
- * had to implement three would be three places for the two desktops to end up
- * disagreeing about what "restore" does. */
+ * had to implement three would be three places to disagree about what
+ * "restore" does. */
 void
 kdisp_win_minimise(unsigned id, int on)
 {

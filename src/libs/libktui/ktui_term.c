@@ -460,8 +460,8 @@ static void enter_screen(void)
 	emit("\033[?1049h\033[?25l\033[2J\033[H");
 	/*
 	 * BRACKETED PASTE, ALWAYS. Without it a paste arrives as the keys it
-	 * spells and a line beginning with a chord runs the chord — and a view
-	 * in somebody's terminal has no other way to be handed text at all,
+	 * spells and a line beginning with a chord runs the chord — and a
+	 * surface in somebody's terminal has no other way to be handed text,
 	 * because the host terminal owns the clipboard and this program never
 	 * sees the menu. A terminal that does not implement it ignores the
 	 * mode and nothing changes.

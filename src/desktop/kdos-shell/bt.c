@@ -85,8 +85,6 @@ struct btdev {
 	 * its name. */
 	char icon[64];
 	unsigned battery;	/* org.bluez.Battery1, 0 when absent */
-	unsigned rssi_set;
-	int rssi;
 };
 
 static sd_bus *bus;
@@ -100,7 +98,7 @@ static char why[128];
 static char status[128];
 static int sel, top;
 /* Where the last frame put the list. The header band is two rows plus a rule,
- * so the first device row is no longer 3 — recorded rather than recomputed,
+ * so the first device row is 4 and not 3 — recorded rather than recomputed,
  * because two places deriving one origin is how a click lands a row off. */
 static int list_y0 = 4, list_rows;
 /* comp.conf's `icons = no`, through --no-icons. */
@@ -194,15 +192,6 @@ static void read_props(sd_bus_message *m, struct btdev *d, int is_adapter,
 			sd_bus_message_read_basic(m, 'y', &v);
 			if (d && is_battery && !strcmp(key, "Percentage"))
 				d->battery = v;
-			sd_bus_message_exit_container(m);
-		} else if (contents && !strcmp(contents, "n") &&
-			   sd_bus_message_enter_container(m, 'v', "n") > 0) {
-			int16_t v = 0;
-			sd_bus_message_read_basic(m, 'n', &v);
-			if (d && !strcmp(key, "RSSI")) {
-				d->rssi = v;
-				d->rssi_set = 1;
-			}
 			sd_bus_message_exit_container(m);
 		} else {
 			sd_bus_message_skip(m, "v");
@@ -624,10 +613,10 @@ static void draw_frame(void)
 	sh_frame(w, h, "Bluetooth", KT_ACCENT, KT_BG, 1);
 
 	/*
-	 * The adapter's state, as the header's subject line. It used to be a
-	 * row of five columns at the top of the list, which reads as another
-	 * device — and the one thing this window has to say before anything
-	 * else is whether the radio is even on.
+	 * The adapter's state, as the header's subject line — not a row of five
+	 * columns at the top of the list, which reads as another device. The
+	 * one thing this window has to say before anything else is whether the
+	 * radio is even on.
 	 */
 	if (adapter[0]) {
 		int nconn = 0;
@@ -661,8 +650,9 @@ static void draw_frame(void)
 		const struct btdev *d = &devs[top + i];
 		int y = body_y + i;
 		int on = top + i == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
 		/* bluez's own Icon where the theme has a picture for it, the
@@ -853,13 +843,13 @@ int bt_main(int argc, char **argv)
 	/* AFTER kdisp_init: the icon layer needs the cell size and the scale. */
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
 	if (icons_on)

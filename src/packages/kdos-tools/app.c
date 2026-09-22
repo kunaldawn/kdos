@@ -478,7 +478,7 @@ static int tui_ours(const char *path, char *name, size_t nn)
 static int tui_add(int argc, char **argv)
 {
 	const char *name = NULL, *cmd = NULL;
-	const char *icon = "utilities-terminal", *cat = "Utility";
+	const char *icon = "system-run", *cat = "Utility";
 	const char *size = NULL;
 	int flt = 0;
 	char slug[128], exec[2048], path[1024];

@@ -85,29 +85,38 @@ if [ -d /etc/skel/.config ] && [ "$SKEL" = 1 ]; then
 	log "skel copied over the live user's config"
 fi
 
-# ── restart the console session ─────────────────────────────────────────
+# ── restart the session ─────────────────────────────────────────────────
 #
-# All of them, and in this order. The session and its view OUTLIVE the login
-# shell by design, and the view holds DRM master — so ending only the login
-# chain leaves the old view owning the screen and the new session drawing onto
-# one it does not have.
-#
-# THE WAIT IS FOR A DIFFERENT PID, not for the socket. The old session's socket
-# file outlives the process that bound it, so "the socket is there" is true one
-# millisecond after the kill and the steps then run against the binaries this
-# script just replaced.
+# THE WAIT IS FOR A DIFFERENT PID, not for the socket. The old compositor's
+# socket file outlives the process that bound it, so "the socket is there" is
+# true one millisecond after the kill and the steps then run against the
+# binaries this script just replaced.
 if [ "$KEEP" = 1 ]; then
 	log "session left alone — the new binaries run when something spawns them"
 	sync
 	exit 0
 fi
 
-old=$(pgrep -x kdos-con | head -1)
-log "old session pid ${old:-none}"
+old=$(pgrep -x kdos-comp | head -1)
+log "old compositor pid ${old:-none}"
 
-pkill -x kdos-view      2>/dev/null
-pkill -x kdos-con       2>/dev/null
-pkill -f kdos-con-start 2>/dev/null
+# THE SUPERVISOR FIRST, AND BY PATTERN. `kdos-desktop-start` is a /bin/sh
+# script, so its comm is the name truncated to fifteen characters
+# (`kdos-desktop-st`) and no `-x` pattern can reach it — `-f` matches the path
+# on its command line instead. It has to go before the compositor does: on a
+# non-zero `kdos-comp` status it stops at `read -r _ans </dev/tty` on tty1 and
+# waits for an answer, and the session started below would then run on the
+# same descriptors as a prompt that re-execs a second supervisor for any `r`
+# a later step delivers.
+#
+# The login bash under it is left alone: `.bash_profile` does not exec the
+# desktop, so that shell survives, tty1's getty stays up, init respawns
+# nothing, and the manual start below is still what brings a session back.
+#
+# The compositor is EXACT because it names a binary. Reparented to init by the
+# kill above, it is still reached by its own name.
+pkill -f '/usr/local/bin/kdos-desktop-start' 2>/dev/null
+pkill -x kdos-comp 2>/dev/null
 
 # AND THE SHELL SURFACES, which the session does not own. They are not
 # supervised and they outlive it — and `kdos-notifyd` holds a BUS NAME, so a
@@ -124,38 +133,33 @@ for _s in kdos-notifyd kdos-desk kdos-ime kdos-slit kdos-shell; do
 done
 sleep 1
 
-# THE STALE SOCKETS GO WITH IT, and this is not tidiness. `kdos-con-start`'s
-# readiness test is "does con.view exist", and the file outlives the process
-# that bound it — so on a restart it returns TRUE immediately and the icon
-# layer and the notification daemon are started before the new session has
-# bound anything. They are not supervised, so they fail once and stay gone,
-# and the desktop comes back with no icons and no toasts for reasons that look
-# like the code under test.
-rm -f /run/user/1000/kdos/con.sock /run/user/1000/kdos/con.view
+# THE STALE SOCKET GOES WITH IT, and this is not tidiness. A readiness test
+# that asks "does the wayland socket exist" returns TRUE immediately on a
+# restart, and the chrome is then started before the new compositor has bound
+# anything.
+rm -f /run/user/1000/wayland-[0-9] /run/user/1000/wayland-[0-9].lock
 
 # ── AND START IT AGAIN BY HAND ──────────────────────────────────────────
 #
 # NOT by waiting for init. `/etc/inittab` respawns tty1, and it does not come
 # back here: ending the chain takes the getty with it and init leaves it down —
 # measured, twice, with nothing but `getty` on tty2 left running. Rather than
-# guess at a respawn policy, this starts the same program the getty would:
-# `kdos-con-login` IS `kdos-con` under another name (a basename dispatch), and
-# it does the autologin and execs the supervisor exactly as it does at boot.
+# guess at a respawn policy, this starts what the login shell's profile would.
 #
-# On tty1's own descriptors, because the session opens the seat for that
+# On tty1's own descriptors, because the compositor opens the seat for that
 # terminal and a process with no controlling terminal there gets no input.
-setsid /usr/local/sbin/kdos-con-login tty1 </dev/tty1 >/dev/tty1 2>&1 &
+setsid su - kdos -c 'exec kdos-desktop' </dev/tty1 >/dev/tty1 2>&1 &
 
 i=0
 while [ $i -lt 80 ]; do
-	now=$(pgrep -x kdos-con | head -1)
+	now=$(pgrep -x kdos-comp | head -1)
 	if [ -n "$now" ] && [ "$now" != "${old:-}" ] &&
-	   [ -S /run/user/1000/kdos/con.view ]; then
+	   ls /run/user/1000/wayland-[0-9] >/dev/null 2>&1; then
 		# And a moment for the once-per-login block to attach the icon
 		# layer and the notification daemon, which are started after
 		# the session is accepting rather than before.
 		sleep 2
-		log "session $now up after $((i * 5))00ms"
+		log "compositor $now up after $((i * 5))00ms"
 		sync
 		exit 0
 	fi
@@ -164,7 +168,7 @@ while [ $i -lt 80 ]; do
 done
 log "the session did not come back — what is running:"
 ps -eo pid,comm | grep -E 'kdos|getty' | head -12
-log "and the supervisor said:"
-tail -5 /run/user/1000/kdos-con.log 2>/dev/null
+log "and the compositor said:"
+tail -5 /run/user/1000/kdos-comp.log 2>/dev/null
 sync
 exit 1

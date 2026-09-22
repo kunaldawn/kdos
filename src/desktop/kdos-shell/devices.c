@@ -793,8 +793,9 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			empty = "none — no sound card is present";
 		else if (!strcmp(r->head, "REMOVABLE MEDIA") && !nmedia)
 			empty = media_why[0] ? media_why : "nothing plugged in";
-		else if (!strcmp(r->head, "UPDATES ON THE MEDIUM") && !updates_n)
-			empty = "up to date";
+		else if (!strcmp(r->head, "APPLICATION SETS ON A STICK") &&
+			 !updates_n)
+			empty = "none — no .ktar on a mounted stick";
 		else if (!strcmp(r->head, "SCANNERS") && !nscan)
 			empty = scan_why;
 		else if (!strcmp(r->head, "INPUT") && !ninput)
@@ -914,10 +915,10 @@ static void draw_frame(void)
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 
 	/*
-	 * WHAT ENTER DOES DEPENDS ON THE ROW, which is why the old constant
-	 * string was wrong: it read `Enter mount` while the caret sat on a
-	 * camera. The verb is computed from the selection, and the key is
-	 * named only on a row that answers it.
+	 * WHAT ENTER DOES DEPENDS ON THE ROW, so the hint cannot be a constant
+	 * string: one would read `Enter mount` while the caret sat on a camera.
+	 * The verb is computed from the selection, and the key is named only on
+	 * a row that answers it.
 	 */
 	const struct drow *sr = tbl.sel < nrows ? &rows[tbl.sel] : NULL;
 	const ShMountRow *sm = sr && sr->kind == R_MEDIA

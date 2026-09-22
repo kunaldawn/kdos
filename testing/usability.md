@@ -1,4 +1,4 @@
-# The console desktop, read by a person
+# The desktop, read by a person
 
 `testing/usability.sh` drives a booted ISO through the things a hand does in the
 first two minutes of a session and leaves a numbered contact sheet in
@@ -57,8 +57,8 @@ The reference frame for everything below.
 
 ## 04 — the menu, opened by a click on `Start`
 
-- **Did it open at all?** Nothing is the failure a tooltip used to cause: the
-  tip sat over the button and took the click.
+- **Did it open at all?** Nothing on screen is a tooltip drawn over the button
+  it describes, taking the click that was aimed at the button.
 - **Does it sit above the bar rather than across it?**
 - Is its bottom-left corner against the Start button it belongs to?
 - Are all three columns drawn, with their headings and their rules?
@@ -68,14 +68,13 @@ The reference frame for everything below.
 - **Is the menu still open?** It closes when it loses the keyboard, so anything
   that takes focus while the pointer crosses the screen closes it.
 - **Is the row under the pointer highlighted, and only that row?** The highlight
-  is a plate under a compositor and an accent fill on the console; a menu whose
-  hint line names a row that nothing on screen marks is the plate being drawn
-  into a layer this display has not got.
+  is a plate; a menu whose hint line names a row that nothing on screen marks is
+  the plate being drawn into a layer it has not got.
 
 ## 06 — the pointer back over the taskbar, menu open
 
 - **Is the menu still open?** This is where a tooltip is raised over a bar
-  button, and where the menu used to vanish.
+  button, and an overlay that takes the keyboard closes the menu under it.
 - Is the `Start` button drawn as opened — and still readable?
 
 ## 07 — `Esc`
@@ -102,11 +101,13 @@ The reference frame for everything below.
 
 ## 11 — the bar with a window open
 
-- **Is the window button drawn as a button — a filled tile with a name, not a
-  bare word and not a lone letter?** Icon mode is a 40x40 square whose shape and
-  state are pixels, so a cell display gets the labelled chip instead.
+- **Is the window button drawn as a button — a filled tile, not a bare word and
+  not a lone letter?** `task_labels` decides whether it carries its name: `no`
+  is the shipped default and gives a 40x40 icon square, `yes` keeps the label
+  whatever the room, `auto` drops it only when the row runs out. A button that
+  is a lone letter is one whose icon did not resolve.
 - **Does the chip say whether the window is minimised?** The underline is
-  pixels; on the console it is the marker cell.
+  pixels.
 - **Is there a separator between the segments?** The Start button, the window
   list and the status wing are three groups and read as one run without them.
 - Do the meters read plausibly — a percentage, a chart, a rate?
@@ -136,6 +137,11 @@ The reference frame for everything below.
 
 ## 16 — a notification
 
+**The terminal is clicked first, and that click is load-bearing.** Shots 14 and
+15 leave the focus on the icon layer, and a `--type` there reaches the icon
+layer's own type-ahead rather than a shell — so without it this shot is a bare
+desktop, every run, and says nothing about notifications at all.
+
 **The shot comes straight after the notification, with no sleep**, and that is
 not tidiness: a toast lives five seconds and a rig `--shot` costs a good part of
 that on its own, so a step that waits first photographs the desktop the toast
@@ -159,7 +165,7 @@ eight seconds apart.
 
 | What the shot shows | Where it lives |
 |---|---|
-| A strip of desktop under the bar; menus on top of the bar | the work-area walk in `kdos-con` — one walk, and it skips panels |
+| A strip of desktop under the bar; menus on top of the bar | the panel's exclusive zone, and whether the compositor re-fitted to it |
 | A tip over its own button; a click that opens nothing | the surface's input region, `kdisp_input_cells()` |
 | A menu that closes when a tip appears | whether an overlay that asked for no keyboard is focused |
 | A button that stays lit after the pointer leaves | the pointer leave the display reports as `(-1,-1)` |
@@ -170,5 +176,5 @@ eight seconds apart.
 
 Related: [`testing.md`](../docs/kdos/05-developer/testing.md) for the harnesses
 this one is built on, and
-[`kdos-con.md`](../docs/kdos/04-programs/kdos-con.md) for the roles and the
+[`kdos-comp.md`](../docs/kdos/04-programs/kdos-comp.md) for the roles and the
 rules each of these checks.

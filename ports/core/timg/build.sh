@@ -26,7 +26,7 @@
 #
 # WITH_VIDEO_DEVICE is the camera: it wants libavdevice, which the ffmpeg port
 # builds, and it is what makes `timg /dev/video0` a live preview rather than an
-# error. It is the only way to look at a camera from a console session.
+# error. It is the only way to look at a camera from a terminal.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \

@@ -4,8 +4,8 @@
 # that outranks whatever the desktop ships — which is why KDOS ships none of
 # its own defaults in it. `Open With` writes here when you tick "always".
 #
-# The defaults live at /etc/xdg: `kdos-mimeapps.list` for the compositor,
-# `kdos-console-mimeapps.list` for the console, and `mimeapps.list` for what
-# both desktops agree on. Anything you put here beats all three.
+# The defaults live at /etc/xdg: `kdos-mimeapps.list`, searched first because
+# it names this desktop, and `mimeapps.list` under it. Anything you put here
+# beats both.
 
 [Default Applications]

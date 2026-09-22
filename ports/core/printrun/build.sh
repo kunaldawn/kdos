@@ -32,6 +32,12 @@ pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr
 rm -f $PKG/usr/bin/pronterface.py $PKG/usr/bin/plater.py
 rm -f $PKG/usr/bin/__pycache__/pronterface.*.pyc $PKG/usr/bin/__pycache__/plater.*.pyc
 
+# AND THEIR LAUNCHERS WITH THEM. A desktop entry is an entry in the Start menu,
+# the launcher and the taskbar's search; one naming a command this recipe has
+# just deleted is a row that opens nothing and says nothing about why.
+rm -f $PKG/usr/share/applications/pronterface.desktop \
+      $PKG/usr/share/applications/plater.desktop
+
 # THE COMMAND IS `pronsole`, not `pronsole.py`. Upstream's scripts keep their
 # suffix because setup.py lists the files rather than entry points, and every
 # guide, every forum answer and the plan's own row call it by the bare name.

@@ -150,3 +150,37 @@ void kxdg_free(KxdgEntry *e)
 	free(e->v);
 	memset(e, 0, sizeof(*e));
 }
+
+/*
+ * THE LAUNCH KEYS, ONCE. See kxdg.h for why there is one reader and not one
+ * per surface.
+ *
+ * The Exec line is copied WITH its field codes. kxdg_exec_split spends them on
+ * the documents a launch carries and decides from the same codes that a line
+ * carrying none takes its documents appended instead, so a reader that
+ * stripped them here would make every entry look like `Exec=xterm` and open a
+ * file in the wrong argument.
+ */
+int kxdg_launch_read(const KxdgEntry *e, KxdgLaunch *out)
+{
+	const char *exec;
+
+	if (!e || !out)
+		return -1;
+	memset(out, 0, sizeof(*out));
+
+	exec = kxdg_get(e, "Exec", NULL);
+	if (!exec || !*exec ||
+	    !kb_str_ieq(kxdg_get(e, "Type", "Application"), "Application"))
+		return -1;
+
+	kb_strlcpy(out->exec, exec, sizeof(out->exec));
+	kb_strlcpy(out->name, kxdg_get(e, "Name", ""), sizeof(out->name));
+	kb_strlcpy(out->term, kxdg_get(e, "X-KDOS-Term", ""),
+		   sizeof(out->term));
+	kb_strlcpy(out->size, kxdg_get(e, "X-KDOS-Size", ""),
+		   sizeof(out->size));
+	out->terminal = kxdg_bool(e, "Terminal", 0);
+	out->floating = kxdg_bool(e, "X-KDOS-Float", 0);
+	return 0;
+}

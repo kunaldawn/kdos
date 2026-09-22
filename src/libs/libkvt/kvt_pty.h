@@ -34,7 +34,6 @@ pid_t kvt_shl_pty_open(struct kvt_shl_pty **out,
 		   void *fn_input_data,
 		   unsigned short term_width,
 		   unsigned short term_height);
-void kvt_shl_pty_ref(struct kvt_shl_pty *pty);
 void kvt_shl_pty_unref(struct kvt_shl_pty *pty);
 void kvt_shl_pty_close(struct kvt_shl_pty *pty);
 
@@ -47,7 +46,6 @@ static inline void kvt_shl_pty_unref_p(struct kvt_shl_pty **pty)
 
 bool kvt_shl_pty_is_open(struct kvt_shl_pty *pty);
 int kvt_shl_pty_get_fd(struct kvt_shl_pty *pty);
-pid_t kvt_shl_pty_get_child(struct kvt_shl_pty *pty);
 
 int kvt_shl_pty_dispatch(struct kvt_shl_pty *pty);
 /* Bytes written to the child that the pty has not accepted. Poll the
@@ -59,15 +57,5 @@ int kvt_shl_pty_signal(struct kvt_shl_pty *pty, int sig);
 int kvt_shl_pty_resize(struct kvt_shl_pty *pty,
 		   unsigned short term_width,
 		   unsigned short term_height);
-
-/* pty bridge */
-
-int kvt_shl_pty_bridge_new(void);
-void kvt_shl_pty_bridge_free(int bridge);
-
-int kvt_shl_pty_bridge_dispatch_pty(int bridge, struct kvt_shl_pty *pty);
-int kvt_shl_pty_bridge_dispatch(int bridge, int timeout);
-int kvt_shl_pty_bridge_add(int bridge, struct kvt_shl_pty *pty);
-void kvt_shl_pty_bridge_remove(int bridge, struct kvt_shl_pty *pty);
 
 #endif  /* KVT_SHL_PTY_H */

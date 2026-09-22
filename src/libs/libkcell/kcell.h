@@ -7,18 +7,18 @@
  * ---------------------------------
  *   libkcell — a cell grid, rasterised
  *
- * The fcft glyph cache and the cell -> ARGB painter, with no Wayland in either.
- * They were libkwl's, and libkwl is a CLIENT: it can only paint into a surface
- * it owns. kdos-comp has to paint window frames into buffers of its own, in the
- * middle of the scene graph, where no client can be — so the half of libkwl that
- * knows how to turn a KtuiCell into pixels had to become something both sides
- * can link.
+ * The fcft glyph cache and the cell -> ARGB painter, with NO WAYLAND IN EITHER,
+ * because both sides of the desktop link this. libkwl is a CLIENT: it can only
+ * paint into a surface it owns. kdos-comp paints window frames into buffers of
+ * its own, in the middle of the scene graph, where no client can be. Turning a
+ * KtuiCell into pixels is the half they share, so it may know about a font
+ * renderer and a pixel library and about nothing else.
  *
- * WHAT THIS COSTS, stated rather than discovered. CLAUDE.md called libkwl "the
- * ONE library with real -l dependencies"; it is two now, and kdos-comp gains
- * fcft. The part of that rule which is actually load-bearing is untouched and
- * must stay untouched: NOTHING IN PHASE 1 LINKS EITHER OF THEM, so kinstall
- * still links zero libraries on the first bootable image. If you are about to
+ * WHAT THIS COSTS, stated rather than discovered. This archive carries real
+ * `-l` dependencies — a font renderer and a pixel library — and kdos-comp
+ * gains fcft by linking it. The load-bearing rule must stay untouched: NOTHING
+ * IN PHASE 1 LINKS THIS OR libkwl, so kinstall links libkbase, libktui and
+ * libkcolor and nothing else on the first bootable image. If you are about to
  * add a `-l` to libktui to save a file here, that is the trade you are making.
  *
  * Dependency direction gains one edge and reverses none:
@@ -123,7 +123,6 @@ pixman_color_t kcell_slot_color(int slot);
  * alpha, or every reversed cell is an opaque hole in a translucent surface.
  */
 void kcell_set_slot_alpha(int slot, uint8_t alpha);
-uint8_t kcell_slot_alpha(int slot);
 void kcell_reset_slot_alpha(void);
 bool kcell_needs_alpha(void);
 
@@ -151,10 +150,9 @@ void kcell_set_bg_preserve(bool on);
 void kcell_px_clear(pixman_image_t *dst, int x, int y, int w, int h);
 void kcell_px_fill(pixman_image_t *dst, int x, int y, int w, int h,
 		   uint32_t rgb, uint8_t a);
-void kcell_px_round(pixman_image_t *dst, int x, int y, int w, int h, int r,
-		    uint32_t rgb, uint8_t a);
-/* The same plate, graded top to bottom. A gradient reads as a button; a flat
- * slab of full-strength accent reads as an error state. */
+/* A rounded plate, graded top to bottom. A gradient reads as a button; a flat
+ * slab of full-strength accent reads as an error state — pass the same colour
+ * twice for a flat one. */
 void kcell_px_round_grad(pixman_image_t *dst, int x, int y, int w, int h,
 			 int r, uint32_t top, uint32_t bot, uint8_t a);
 void kcell_px_vgrad(pixman_image_t *dst, int x, int y, int w, int h,
@@ -188,10 +186,8 @@ enum {
 	KCELL_NSTYLE    = 4
 };
 
+/* The upright face; equivalent to kcell_glyph_face() with no style bits. */
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out);
-/* The upright or italic face; equivalent to kcell_glyph_face() with
- * KCELL_ST_ITALIC. */
-bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out);
 bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
 
 /*
@@ -221,43 +217,11 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
  * it, so a border joins at every size and every face; a face is still asked
  * for every other character, the heavy, dashed and rounded box variants
  * included. A synthesised character is one cell wide and puts no ink outside
- * its own cell, which is what the damage report and the wide-glyph clip both
+ * its own cell, which is what the row diff and the wide-glyph clip both
  * assume.
  */
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
-
-/*
- * The same paint, saying WHICH ROWS it touched: `painted` is one byte per row,
- * cleared first and set for every row this call drew. Returns how many.
- *
- * It exists because the two things downstream of a paint both need the answer
- * and neither can derive it: a KMS view copies the painted rows into the
- * buffer it is about to flip to, and a Wayland surface turns them into damage
- * rectangles. A caller that needs neither passes NULL and pays nothing.
- */
-int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
-		       KtuiCell *prev, int cols, int rows, int full, int scale,
-		       int dst_w, int dst_h, unsigned char *painted);
-
-/*
- * Drop the cached colour sources and the shade tiles. A glyph is composited
- * through a solid-fill image and those are kept per slot and per literal, and
- * the three shades are one repeating a8 tile per scale; nothing but a shutdown
- * needs to ask. A palette change needs no announcement: the slot cache is
- * keyed on the eight COLOURS in force, not on the identity of the table
- * holding them, because libktui projects night light by rewriting one table in
- * place.
- */
-void kcell_paint_forget(void);
-
-/*
- * Drop the scratch a picture is scaled through before it is cut into tiles.
- * It is kept between tilings because an animation re-tiles at one size for
- * every frame it plays; nothing but a shutdown or a grid that changed shape
- * needs to ask.
- */
-void kcell_tile_forget(void);
 
 /* ── a pixel canvas that lands in the cell grid (kcell_canvas.c) ─────────
  *

@@ -44,6 +44,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
 	xdg-decoration-unstable-v1-protocol.c
+# xdg-foreign: libkwl includes its header unconditionally, for kdos-pick's
+# one use of it — a dialog saying whose child it is, across processes. Any
+# port that links libkwl must generate it or the build stops at the include,
+# which is the lesson ext-session-lock already taught this file.
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
@@ -62,7 +72,10 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
 # libpng is libkicon's: the icon layer decodes the alien apps' own PNGs.
-PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng"
+# fontconfig is libkwl's: kwl_font.c enumerates the monospace families with
+# FcFontList, and fcft carries fontconfig as a Requires.private, so
+# `pkg-config --libs fcft` alone does not link it.
+PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client libpng"
 
 # EVERY .c IN THE PORT EXCEPT THE HELPER, by glob rather than by a list. The
 # list was a second place to remember a new file, and the selftest — which
@@ -82,12 +95,12 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_RES_VERSION="\"$version\"" \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" \
-	-I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkxdg" \
+	-I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkxdg" \
 	-I"$LIBS/libkicon" -I"$LIBS/libkchrome" -I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-res \
 	$RES_SRC \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c \
 	"$LIBS"/libkcolor/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c \
 	"$LIBS"/libkicon/*.c "$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c \
 	./*-protocol.c \

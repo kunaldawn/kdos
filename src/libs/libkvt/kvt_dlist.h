@@ -51,8 +51,6 @@ struct kvt_shl_dlist {
 	struct kvt_shl_dlist *prev;
 };
 
-#define KVT_SHL_DLIST_INIT(head) {&(head), &(head)}
-
 static inline void kvt_shl_dlist_init(struct kvt_shl_dlist *list)
 {
 	list->next = list;
@@ -66,11 +64,6 @@ static inline void kvt_shl_dlist__link(struct kvt_shl_dlist *prev, struct kvt_sh
 	n->next = next;
 	n->prev = prev;
 	prev->next = n;
-}
-
-static inline void kvt_shl_dlist_link(struct kvt_shl_dlist *head, struct kvt_shl_dlist *n)
-{
-	return kvt_shl_dlist__link(head, head->next, n);
 }
 
 static inline void kvt_shl_dlist_link_tail(struct kvt_shl_dlist *head, struct kvt_shl_dlist *n)
@@ -108,25 +101,7 @@ static inline bool kvt_shl_dlist_empty(struct kvt_shl_dlist *head)
 #define kvt_shl_dlist_prev(iter, head, member) \
 	((iter)->member.prev == (head) ? NULL : kvt_shl_dlist_entry((iter)->member.prev, typeof(*iter), list))
 
-#define kvt_shl_dlist_for_each(iter, head) for (iter = (head)->next; iter != (head); iter = iter->next)
-
-#define kvt_shl_dlist_for_each_but_one(iter, start, head)                                              \
-	for (iter = ((start)->next == (head)) ? (start)->next->next : (start)->next;               \
-	     iter != (start);                                                                      \
-	     iter = (iter->next == (head) && (start) != (head)) ? iter->next->next : iter->next)
-
 #define kvt_shl_dlist_for_each_safe(iter, tmp, head)                                                   \
 	for (iter = (head)->next, tmp = iter->next; iter != (head); iter = tmp, tmp = iter->next)
-
-#define kvt_shl_dlist_for_each_reverse(iter, head)                                                     \
-	for (iter = (head)->prev; iter != (head); iter = iter->prev)
-
-#define kvt_shl_dlist_for_each_reverse_but_one(iter, start, head)                                      \
-	for (iter = ((start)->prev == (head)) ? (start)->prev->prev : (start)->prev;               \
-	     iter != (start);                                                                      \
-	     iter = (iter->prev == (head) && (start) != (head)) ? iter->prev->prev : iter->prev)
-
-#define kvt_shl_dlist_for_each_reverse_safe(iter, tmp, head)                                           \
-	for (iter = (head)->prev, tmp = iter->prev; iter != (head); iter = tmp, tmp = iter->prev)
 
 #endif /* KVT_SHL_DLIST_H */

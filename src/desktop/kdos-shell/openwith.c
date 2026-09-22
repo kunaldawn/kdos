@@ -33,8 +33,10 @@
  *
  * FIELD CODES ARE SUBSTITUTED, NEVER STRIPPED. `%f` IS the file; dropping it
  * opens the application with an empty document, which looks exactly like the
- * chooser having done nothing. sh_strip_field_codes() is the LAUNCHER's rule
- * (there is no file), and using it here would be the bug.
+ * chooser having done nothing. sh_launch() spends them on the path this
+ * chooser was given, so the line it is handed keeps every one of them and
+ * sh_strip_field_codes() — which is a search haystack's and nothing else's —
+ * has no place on this path.
  * ---------------------------------
  */
 
@@ -54,11 +56,6 @@
 
 #include "launch.h"
 
-/* apps.c's, and the only copy: the box-launcher test the Start menu marks its
- * rows with is the test this chooser marks its rows with, or the two surfaces
- * disagree about which application costs a container start. */
-int sh_exec_is_boxed(const char *exec);
-
 #define OW_MAX_CANDS 64
 #define OW_MIME_MAX 128
 
@@ -66,7 +63,13 @@ struct ow_cand {
 	char id[160];		/* the desktop file id, with .desktop      */
 	char name[96];
 	char exec[256];
+	/* The launch keys, from libkxdg's one reader — a chooser that read
+	 * fewer of them than the Start menu would open the same file in a
+	 * differently shaped window. */
+	char term[24];		/* X-KDOS-Term                             */
+	char size[16];		/* X-KDOS-Size                             */
 	int terminal;
+	int floating;		/* X-KDOS-Float                            */
 	int alien;		/* launched through kdos-appbox            */
 	int is_default;		/* what mimeapps.list already says         */
 };
@@ -170,7 +173,7 @@ static int desktop_find(const char *id, char *out, size_t n)
 
 /*
  * The user's list, or the DESKTOP'S own when `pre` names one. A desktop's list
- * is searched first at each level so the console and the compositor can hold
+ * is searched first at each level so this desktop and a plain terminal hold
  * different answers for the same type without either editing the other's.
  */
 static void mimeapps_path(char *out, size_t n, const char *pre)
@@ -222,25 +225,40 @@ static void cand_add(const char *id, int is_default)
 	if (kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
-	const char *exec = kxdg_get(&e, "Exec", NULL);
-	const char *name = kxdg_get(&e, "Name", NULL);
-	if (!exec || !*exec || kxdg_bool(&e, "Hidden", 0) ||
+	KxdgLaunch kl;
+
+	/* Hidden means deleted; NoDisplay means "not for a menu", which a
+	 * DEFAULT handler is allowed to be — that is how the mime route opens
+	 * an entry no menu lists. */
+	if (kxdg_launch_read(&e, &kl) != 0 || kxdg_bool(&e, "Hidden", 0) ||
 	    (!is_default && kxdg_bool(&e, "NoDisplay", 0))) {
 		kxdg_free(&e);
 		return;
 	}
 
-	struct ow_cand *c = &cands[ncands++];
+	struct ow_cand *c = &cands[ncands];
+	char box[128];
 	memset(c, 0, sizeof(*c));
 	snprintf(c->id, sizeof(c->id), "%s", id);
-	snprintf(c->name, sizeof(c->name), "%s", name && *name ? name : id);
-	snprintf(c->exec, sizeof(c->exec), "%s", exec);
-	c->terminal = kxdg_bool(&e, "Terminal", 0);
+	kb_strlcpy(c->name, kl.name[0] ? kl.name : id, sizeof(c->name));
+	kb_strlcpy(c->exec, kl.exec, sizeof(c->exec));
+	kb_strlcpy(c->term, kl.term, sizeof(c->term));
+	kb_strlcpy(c->size, kl.size, sizeof(c->size));
+	c->terminal = kl.terminal;
+	c->floating = kl.floating;
 	/* The launcher's rule: an entry whose Exec IS the box launcher is a box
 	 * app whatever the alien-apps table is keyed by, and the box may be
 	 * named between the binary and the verb. */
-	c->alien = sh_exec_is_boxed(c->exec);
+	c->alien = sh_exec_box(c->exec, box, sizeof(box));
+	/* A chooser must not offer what cannot open the file. The Start menu
+	 * drops the same row for the same reason, and both ask one function so
+	 * the two cannot disagree about which applications exist. */
+	if (c->alien && sh_box_missing(box)) {
+		kxdg_free(&e);
+		return;
+	}
 	c->is_default = is_default;
+	ncands++;
 	kxdg_free(&e);
 }
 
@@ -325,39 +343,6 @@ static void scan_for_mime(const char *dir, const char *mime)
 	closedir(d);
 }
 
-/*
- * ON THE CONSOLE, A HANDLER THAT WANTS A TERMINAL COMES FIRST. There is no
- * compositor on this desktop, so a windowed handler at the head of the list
- * opens nothing anybody can see. `kdos-appbox open` applies the same rule to
- * its own candidates, and it must: the first row here is the handler the
- * opener would use, and a chooser whose first row is not that is a chooser
- * that lies.
- *
- * ONLY WHERE NOBODY HAS DECIDED — a `[Default Applications]` row is somebody's
- * answer and keeps its place. THE TEST IS THE OPENER'S, not the `is_default`
- * marker beside it: that marker means "the row in force" and is set only for
- * the first candidate, so once an Added Association had contributed anything
- * the chooser would reorder where `kdos-appbox open` does not — and the first
- * row here would stop being the handler that would actually run. Within each
- * kind the order is unchanged.
- */
-static void terminal_first(int any_default)
-{
-	static struct ow_cand out[OW_MAX_CANDS];
-	const char *con = getenv("KDOS_CON");
-	int k = 0;
-
-	if (!con || !*con || ncands < 2 || any_default)
-		return;
-	for (int i = 0; i < ncands; i++)
-		if (cands[i].terminal)
-			out[k++] = cands[i];
-	for (int i = 0; i < ncands; i++)
-		if (!cands[i].terminal)
-			out[k++] = cands[i];
-	memcpy(cands, out, (size_t)ncands * sizeof(*cands));
-}
-
 /* Did a `[Default Applications]` section name an installed entry? The opener's
  * `defaulted`, computed the same way — by whether the section contributed. */
 static int add_defaults(const char *path, const char *mime, int mark)
@@ -372,7 +357,6 @@ static void gather(const char *mime)
 {
 	char dirs[16][512], path[700];
 	int nd = ow_data_dirs(dirs, 16);
-	int any_default = 0;
 
 	/* In the order `kdos-appbox open` consults them, so the first row is
 	 * the handler that would open the file right now. The two must not
@@ -383,10 +367,10 @@ static void gather(const char *mime)
 
 	if (have_pre) {
 		mimeapps_path(path, sizeof(path), pre);
-		any_default |= add_defaults(path, mime, 1);
+		add_defaults(path, mime, 1);
 	}
 	mimeapps_path(path, sizeof(path), NULL);
-	any_default |= add_defaults(path, mime, ncands == 0);
+	add_defaults(path, mime, ncands == 0);
 	if (have_pre) {
 		mimeapps_path(path, sizeof(path), pre);
 		add_from_section(path, "Added Associations", mime, 0);
@@ -396,10 +380,9 @@ static void gather(const char *mime)
 	if (have_pre) {
 		snprintf(path, sizeof(path), "/etc/xdg/%.40s-mimeapps.list",
 			 pre);
-		any_default |= add_defaults(path, mime, ncands == 0);
+		add_defaults(path, mime, ncands == 0);
 	}
-	any_default |= add_defaults("/etc/xdg/mimeapps.list", mime,
-				    ncands == 0);
+	add_defaults("/etc/xdg/mimeapps.list", mime, ncands == 0);
 	for (int i = 0; i < nd; i++) {
 		snprintf(path, sizeof(path), "%.500s/applications/mimeinfo.cache",
 			 dirs[i]);
@@ -409,7 +392,6 @@ static void gather(const char *mime)
 		snprintf(path, sizeof(path), "%.500s/applications", dirs[i]);
 		scan_for_mime(path, mime);
 	}
-	terminal_first(any_default);
 	for (int i = 0; i < ncands; i++)
 		if (cands[i].is_default)
 			sel = i;
@@ -435,10 +417,12 @@ static int write_default(const char *mime, const char *id)
 	int in_sec = 0, wrote = 0, have_sec = 0, rc = -1;
 
 	/*
-	 * WRITTEN TO THE PLAIN LIST, never to a desktop's own. A person
-	 * choosing a handler is choosing it, not choosing it here — and the
-	 * desktop lists are searched FIRST, so a choice written into one would
-	 * be invisible on the other desktop while silently outranking it here.
+	 * WRITTEN TO THE PLAIN LIST, never to the desktop-named one beside
+	 * it. A desktop-named table is where the image's own defaults live —
+	 * /etc/xdg/kdos-mimeapps.list — and it is searched before the plain
+	 * table at the same level. A person's choice put there would be
+	 * indistinguishable from a shipped default; in the plain list it
+	 * still outranks every system table and stays plainly theirs.
 	 */
 	mimeapps_path(path, sizeof(path), NULL);
 	kb_strlcpy(dir, path, sizeof(dir));
@@ -543,10 +527,8 @@ static int write_default(const char *mime, const char *id)
  * THE CHOOSER LAUNCHES THE WAY THE LAUNCHER DOES, through `sh_launch` — the
  * difference between a chooser and a launcher is which entry is picked and
  * nothing else. That path reads the line's quoting, SUBSTITUTES the field
- * codes with the file this chooser was given, and on the console hands a
- * graphical handler to the session, which is what gives a boxed viewer a
- * display. A vector built and forked here would open nothing and say nothing.
- * See launch.h.
+ * codes with the file this chooser was given. A vector built and forked here
+ * would carry the field codes unspent. See launch.h.
  *
  * Returns 0 when something was launched.
  */
@@ -556,7 +538,10 @@ static int open_with(const struct ow_cand *c)
 	struct sh_launch l = {
 		.exec = c->exec,
 		.title = c->name,
+		.term = c->term,
+		.size = c->size,
 		.terminal = c->terminal,
+		.floating = c->floating,
 	};
 
 	if (set_default && write_default(ow_mime, c->id) != 0)
@@ -658,8 +643,9 @@ static void draw(void)
 		if (idx >= nrows())
 			break;
 		int on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 		int y = list_top + i;
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);

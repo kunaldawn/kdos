@@ -13,10 +13,14 @@
 #include "kwm.h"
 
 /*
- * The rule is libkwm's, so kdos-con stops at the same edges as this does. What
- * arrives here is the compositor's own edge type; the two are the same three
+ * The rule is libkwm's, asserted against a fixture with no compositor running.
+ * What arrives here is the compositor's own edge type; the two are the same three
  * fields, copied rather than cast because a cast would silently survive one of
  * them gaining a fourth.
+ *
+ * `lesser` is edge_validator_t's, for the resistance validators that must know
+ * which side of the axis the moving edge is on; the snap rule does not ask, so
+ * it stops here.
  */
 static void
 check_edge(int *next, struct edge current, struct edge target,
@@ -27,7 +31,7 @@ check_edge(int *next, struct edge current, struct edge target,
 	KwmEdge o = { oppose.offset, oppose.min, oppose.max };
 	KwmEdge a = { align.offset, align.min, align.max };
 
-	kwm_edge_check(next, c, t, o, a, lesser, NULL);
+	kwm_edge_check(next, c, t, o, a);
 }
 
 void

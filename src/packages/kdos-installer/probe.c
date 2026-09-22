@@ -460,6 +460,23 @@ void probe_system(void)
 
 	ki_sys.uefi = kb_path_exists("/sys/firmware/efi");
 
+	/*
+	 * AND WHICH EFI BINARY THIS MACHINE CAN EXECUTE. The kernel publishes
+	 * the firmware's own width, which on an early Atom tablet is 32 while
+	 * the CPU and every byte of this image are 64. A kernel too old to
+	 * publish it leaves this 0, which the bootloader step reads as
+	 * "assume 64" — the overwhelming majority, and the case where being
+	 * wrong is a machine that boots through the removable-media fallback
+	 * rather than one that does not boot at all.
+	 */
+	if (ki_sys.uefi) {
+		char fw[16];
+
+		if (kb_read_file("/sys/firmware/efi/fw_platform_size", fw,
+				 sizeof(fw)) > 0)
+			ki_sys.fw_bits = atoi(fw);
+	}
+
 	DIR *d = opendir("/sys/firmware/efi/efivars");
 	if (d) {
 		struct dirent *e;
@@ -590,7 +607,8 @@ static const char *catalogue_path(void)
 /*
  * AN EXPORTED SET ON A MOUNTED DEVICE, which is the offline route and the only
  * one a machine with no network has. The first `.ktar` found under a mounted
- * removable filesystem wins; F6 on the page picks a different one.
+ * removable filesystem wins, and it is the only one offered — a second medium
+ * carrying a different set is not reachable from the page.
  *
  * It is looked for ONCE, at probe time. Walking every mount on every draw
  * would put a filesystem scan inside the paint path.

@@ -10,8 +10,8 @@
  * The one job: a NAME (or a file path) becomes a libktui sprite slot, or -1.
  * Minus one is not a failure — it is a tty, an install with no artwork,
  * `icons = off`, and a name nothing on this machine has a picture for. Every
- * caller draws its glyph tier then, exactly as it did before this library
- * existed, which is the rule the whole icon layer is built under.
+ * caller draws its glyph tier then, and a layout that only works once a picture
+ * loads is broken — that is the rule the whole icon layer is built under.
  *
  * NOTHING PIXMAN OR PNG APPEARS IN THIS HEADER. The dump harness that renders
  * the shell's front ends offscreen links neither, and it stubs this file's
@@ -21,8 +21,8 @@
  * Two sources, and they are different in kind:
  *
  *   /usr/share/icons/hicolor/<size>/apps/<name>.png   the alien apps' own
- *       icons, installed by 06_packaging/01_appbox.sh. Already PNG, already
- *       at fixed sizes, and NEVER recoloured — a phosphor Firefox logo is
+ *       icons, out of the system hicolor tree. Already PNG, already at
+ *       fixed sizes, and NEVER recoloured — a phosphor Firefox logo is
  *       vandalism, the same rule kdos-theme icons already keeps.
  *
  *   /usr/share/kdos/icons/atlas.kia                   the theme's own set
@@ -31,7 +31,7 @@
  *       kdos-icons/genatlas.py, because there is no SVG parser anywhere in
  *       this tree and there is not going to be one. Shipped in upstream's own
  *       colours and tinted at load through kcol_remap — the wallpaper's
- *       pipeline — so one atlas serves all seven accents and `kdos theme amber`
+ *       pipeline — so one atlas serves all eight accents and `kdos theme amber`
  *       retints it live.
  * ---------------------------------
  */
@@ -39,6 +39,7 @@
 #ifndef KICON_H
 #define KICON_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /*
@@ -60,13 +61,13 @@ typedef union pixman_image pixman_image_t;
  * -1 when there is no artwork at all (which is a working desktop, not an
  * error). Safe to call twice; the second call is a re-scan.
  *
- * BOTH MUST BE AT LEAST 4. A backend with no pixels of its own answers one —
- * the console client does, because there are no pixels on its side of the
- * socket — and an icon rasterised into a cell that small is a blank cell that
- * cost a PNG decode. Anything under the floor is refused with -1 and leaves
- * kicon_enabled() false, so every lookup answers -1 and every caller draws
- * its glyph tier. A consumer that has a nominal cell size of its own — one it
- * sends pictures over a wire at — passes that instead of the backend's.
+ * BOTH MUST BE AT LEAST 4. A run with no pixel display — `--tty` — answers 1,
+ * which is libkdisp's neutral cell, and an icon rasterised into a cell that
+ * small is a blank cell that cost a PNG decode. Anything under the floor is
+ * refused with -1 and leaves kicon_enabled() false, so every lookup answers -1
+ * and every caller draws its glyph tier. A consumer that has a nominal cell
+ * size of its own — one it bounds its sprites by and lets the display rescale
+ * from — passes that instead of the backend's.
  */
 int kicon_init(int cell_w, int cell_h, int scale);
 void kicon_finish(void);
@@ -104,6 +105,27 @@ int kicon_slot(const char *name, int cw, int ch);
  * `cw` x `ch` cells either way.
  */
 int kicon_slot_pad(const char *name, int cw, int ch, int pad);
+
+/*
+ * A sprite from PNG BYTES the caller already holds, rather than from a name.
+ *
+ * For a picture that has no theme entry to look up because it never came from
+ * a theme: a tray item's `icon-data`, which is a PNG on the bus. The key is a
+ * hash of the bytes, so two items publishing the same picture share one slot
+ * and an item that republishes the same bytes costs a hash rather than a
+ * decode.
+ *
+ * NOT TINTED. The accent is applied to the theme's own places and devices,
+ * and an application's own mark is not this desktop's to recolour — the rule
+ * app icons already keep. `len` above KICON_PNG_MAX answers -1 rather than
+ * decoding: the bytes arrive from another process over a bus.
+ */
+int kicon_slot_png(const void *png, size_t len, int cw, int ch);
+
+/* What kicon_slot_png() will decode. A tray icon is a few kilobytes; a
+ * megabyte of it is an application that has confused an icon with a
+ * photograph, and a character grid would draw either the same. */
+#define KICON_PNG_MAX (256 * 1024)
 
 /* A file's icon, by MIME type — the same resolution `kdos-appbox open` does
  * (/usr/share/mime/globs, LONGEST matching suffix wins, or every .tar.gz gets

@@ -73,7 +73,7 @@
  * NOTHING FROM THE REQUEST IS DRAWN AS IT ARRIVED. An SSID is thirty-two
  * arbitrary bytes that NetworkManager copies into `connection.id` unfiltered,
  * so naming an access point is a way to write escape sequences into the
- * console session this box is drawn on. Same rule net.c's take_ssid() keeps.
+ * terminal this box is drawn on. Same rule net.c's take_ssid() keeps.
  * ---------------------------------
  */
 
@@ -652,8 +652,9 @@ static void draw(void)
 		int x = b ? btn_ok_x : btn_cancel_x;
 		const char *label = b ? ob : cb;
 		int on = sel == b;
-		int fg = on ? KT_BG : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		ktui_draw_text(x, by, 1, "[", KT_MID, KT_BG, KT_A_NONE);
 		ktui_draw_fill(krect(x + 1, by, ktui_utf8_width(label), 1), bg);

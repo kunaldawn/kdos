@@ -75,11 +75,6 @@ void kcell_set_slot_alpha(int slot, uint8_t alpha)
 			any_alpha = true;
 }
 
-uint8_t kcell_slot_alpha(int slot)
-{
-	return slot_alpha[slot & 7];
-}
-
 void kcell_reset_slot_alpha(void)
 {
 	memset(slot_alpha, 255, sizeof(slot_alpha));
@@ -299,21 +294,6 @@ static KRgb solid_rgb[KT_NCOLOR];
 static pixman_image_t *solid_lit[SOLID_LIT];
 static uint32_t solid_lit_key[SOLID_LIT];
 static bool solid_lit_set[SOLID_LIT];
-
-static void solid_drop(void)
-{
-	for (int i = 0; i < 8; i++)
-		if (solid_slot[i]) {
-			pixman_image_unref(solid_slot[i]);
-			solid_slot[i] = NULL;
-		}
-	for (int i = 0; i < SOLID_LIT; i++)
-		if (solid_lit[i]) {
-			pixman_image_unref(solid_lit[i]);
-			solid_lit[i] = NULL;
-			solid_lit_set[i] = false;
-		}
-}
 
 /*
  * The palette in force changed, so every cached slot names a colour that is no
@@ -669,7 +649,7 @@ static void block_rects(uint32_t cp, int X, int Y, int cw, int ch,
  *
  * One tile per tone per scale — at most twelve images of a few dozen bytes —
  * and they survive a font change, because the period is the scale and nothing
- * the face decides. kcell_paint_forget() drops them with the colour sources.
+ * the face decides — they live for the process.
  */
 #define SHADE_W 4
 #define SHADE_H 2
@@ -724,16 +704,6 @@ static pixman_image_t *shade_for(int tone, int scale)
 	pixman_image_set_repeat(t, PIXMAN_REPEAT_NORMAL);
 	shade_tile[tone][scale] = t;
 	return t;
-}
-
-static void shade_drop(void)
-{
-	for (int i = 0; i < 3; i++)
-		for (int s = 0; s <= KCELL_MAX_SCALE; s++)
-			if (shade_tile[i][s]) {
-				pixman_image_unref(shade_tile[i][s]);
-				shade_tile[i][s] = NULL;
-			}
 }
 
 /*
@@ -793,13 +763,6 @@ static void synth_draw(pixman_image_t *dst, uint32_t cp, int X, int Y,
 		pixman_image_fill_rectangles(PIXMAN_OP_OVER, dst, &c, n, r);
 }
 
-void kcell_paint_forget(void)
-{
-	solid_drop();
-	shade_drop();
-	solid_theme = NULL;
-}
-
 /*
  * WHETHER THE CELL `k` PLACES AFTER A SPRITE CELL IS THE SAME PICTURE'S NEXT
  * ONE ALONG, so that a row of a block can be composited in a single call.
@@ -809,7 +772,7 @@ void kcell_paint_forget(void)
  * that the setup is the whole cost. A full 16x16-cell block copied cell by cell
  * is 256 of those; copied a row at a time it is 16, and the identical pixels
  * land more than three times cheaper. An embedded guest publishes a screenful
- * of blocks per frame, so that difference is most of the view's frame budget.
+ * of blocks per frame, so that difference is most of the frame budget.
  *
  * The test is deliberately narrow and everything outside it FLUSHES THE RUN
  * AND FALLS BACK TO ONE CALL PER CELL, because a run is only the same pixels
@@ -924,7 +887,7 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			 * made its background — the FOREGROUND colour — so a
 			 * rule drawn in the foreground would be a rule drawn in
 			 * the colour of the cell it sits on. That is a
-			 * selection or the console pointer crossing an
+			 * selection or the mouse pointer crossing an
 			 * underlined space, where the line must stay visible.
 			 * KT_A_ULCOLOR is not part of the exchange: a colour a
 			 * program named for the underline is the underline's,
@@ -1127,9 +1090,9 @@ glyph:
 
 		/*
 		 * The slot is masked here as it is everywhere else in this
-		 * file: `fg` is a byte off a socket by the time a console
-		 * surface's cells reach the painter, and the theme has eight
-		 * entries.
+		 * file: `fg` is a byte a child's SGR sequence chose and the
+		 * theme has eight entries, so an unmasked index reads past the
+		 * table.
 		 */
 		pixman_color_t c = fg_lit ? rgb_color(fgl)
 					  : to_pixman(ktui_theme->slot[fg & 7]);
@@ -1201,9 +1164,9 @@ glyph:
  * Fill everything the grid does not reach with KT_BG.
  *
  * A cell grid on a surface whose height is not a multiple of the cell height
- * leaves a strip of whatever the buffer happened to contain — visible as a
- * black band along the bottom of the lock screen at 1280x800, which is a live
- * defect this fixes for every consumer at once. Two rectangles, not four: the
+ * leaves a strip of whatever the buffer happens to contain — a black band along
+ * the bottom of the lock screen at 1280x800. Covering it here covers every
+ * consumer at once. Two rectangles, not four: the
  * right-hand one is full height, so the bottom one only has to cover what is
  * left to its left.
  */
@@ -1230,16 +1193,16 @@ static void pad_remainder(pixman_image_t *dst, int used_w, int used_h,
 						 (uint16_t)(dst_h - used_h) });
 }
 
-void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
-		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
-{
-	kcell_paint_damage(dst, cur, prev, cols, rows, full, scale, dst_w,
-			   dst_h, NULL);
-}
-
-int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
-		       KtuiCell *prev, int cols, int rows, int full, int scale,
-		       int dst_w, int dst_h, unsigned char *painted)
+/*
+ * The paint itself, saying WHICH ROWS it touched: `painted` is one byte per
+ * row, cleared first and set for every row this call drew, and the return is
+ * how many. Internal to the library — a caller outside it sees `kcell_paint`,
+ * which asks for no row list.
+ */
+static int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
+			      KtuiCell *prev, int cols, int rows, int full,
+			      int scale, int dst_w, int dst_h,
+			      unsigned char *painted)
 {
 	int npainted = 0;
 
@@ -1356,4 +1319,11 @@ int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
 		pad_remainder(dst, cols * kcell_w() * scale,
 			      rows * kcell_h() * scale, dst_w, dst_h);
 	return npainted;
+}
+
+void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
+		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
+{
+	kcell_paint_damage(dst, cur, prev, cols, rows, full, scale, dst_w,
+			   dst_h, NULL);
 }

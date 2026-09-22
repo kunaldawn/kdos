@@ -35,9 +35,9 @@ static int last_focus = -1;
 
 /*
  * The index of a page by its id. An unattended install jumps straight to the
- * install page and used to do it by a literal 8 — which is right until a page
- * is added in front of it, and then an unattended install lands on the wrong
- * screen with the child already forked. -1 when there is no such page.
+ * install page and must look it up by id: a literal index is right until a
+ * page is added in front of it, and then an unattended install lands on the
+ * wrong screen with the child already forked. -1 when there is no such page.
  */
 int page_index(const char *id)
 {
@@ -402,7 +402,8 @@ static void usage(void)
 	       "  --dump probe      what the installer sees on this machine\n"
 	       "  --dump plan       the steps these answers would run\n"
 	       "  --json            render --dump as JSON instead of text\n"
-	       "  --theme NAME      phosphor | amber | ice | bone | norton | borland | perfect\n"
+	       "  --theme NAME      phosphor | amber | ice | bone | norton | borland |\n"
+	       "                    perfect | paper\n"
 	       "  --no-mouse        keyboard only\n"
 	       "  --ascii           box drawing with - | +, for odd terminals\n"
 	       "  --version\n"
@@ -469,7 +470,7 @@ int main(int argc, char **argv)
 		return ki_dump(dump, json);
 
 	if (ktui_theme_set(cfg.theme) < 0)
-		ktui_theme_set("phosphor");
+		ktui_theme_set(KCOL_DEFAULT_NAME);
 
 	fputs("kinstall: measuring the live system...\n", stderr);
 	probe_system();

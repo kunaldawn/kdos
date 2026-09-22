@@ -231,8 +231,6 @@ int kb_landlock_allow(KbLandlock *ll, const char *path, int write)
 			 &pb, 0UL);
 	int err = r < 0 ? -errno : 0;
 	close(fd);
-	if (!err)
-		ll->nrules++;
 	return err;
 }
 
@@ -268,11 +266,4 @@ int kb_landlock_enforce(KbLandlock *ll)
 	close(ll->fd);
 	ll->fd = -1;
 	return err;
-}
-
-void kb_landlock_free(KbLandlock *ll)
-{
-	if (ll->fd >= 0)
-		close(ll->fd);
-	ll->fd = -1;
 }

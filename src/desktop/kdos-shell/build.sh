@@ -51,6 +51,18 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
 	xdg-decoration-unstable-v1-protocol.c
+# xdg-foreign is kdos-pick's, and it is the only way one process can say its
+# window is a child of another process's. A client cannot place its own
+# toplevel; a compositor centres a child on its parent. Without this the
+# portal's file chooser opens in the middle of the screen whatever asked for
+# it. libkwl includes the header unconditionally, so it is generated here and
+# not only where the picker is linked.
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \
 	ext-workspace-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \
@@ -88,29 +100,24 @@ done
 # this tree has, and asks libarchive whether a file is an archive by opening it.
 # No libsixel — a file on disk is not an escape sequence, and kdos-term is where
 # sixel arrives.
-#
-# libkvt is linked for ONE reason and brings no dependency: it links musl and
-# nothing else. kdos-desk's console background is a text file with SGR colour in
-# it, which is exactly what a program writes to a terminal, so the parser that
-# reads it is the parser that reads a terminal — a private SGR reader in this
-# binary would be a second answer to what an escape means.
-PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
+# fontconfig is libkwl's: the face list the style picker offers is
+# `FC_SPACING == FC_MONO` out of FcFontList, and fcft carries fontconfig as a
+# Requires.private, so `pkg-config --libs fcft` alone does not link it.
+PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP -DKIMG_HAVE_GIF \
 	-I. -I"$PORT_SRC" \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkwm" \
+	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkwm" \
 	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" -I"$LIBS/libkchrome" \
 	-I"$LIBS/libkimg" \
-	-I"$LIBS/libkvt" \
 	-I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
 	"$PORT_SRC"/*.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkwm/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkwm/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c "$LIBS"/libkicon/*.c \
 	"$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c "$LIBS"/libkimg/*.c \
-	"$LIBS"/libkvt/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
@@ -169,6 +176,12 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-chars"
 # second answer to what a contact is, and the one that is not the store's is
 # the one that goes stale.
 ln -s kdos-shell "$PKG/usr/bin/kdos-connect"
+# A tray item's own menu. `com.canonical.dbusmenu` is the second protocol a
+# tray icon speaks, and an item that sets `ItemIsMenu` has no useful Activate
+# — the host is expected to draw the tree. Its own surface for the reason
+# every popup here is one: the panel's loop owns one cell buffer, and an
+# application slow to answer GetLayout must not take the bar with it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-traymenu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-contacts"
 # The disks window. Every privileged operation on it is a kdos-mountd verb and
 # this binary opens no block device: what it does is draw a list the daemon

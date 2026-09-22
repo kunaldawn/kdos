@@ -31,7 +31,7 @@
  * machine" stay one answer.
  *
  * THE PROTOCOL IS ONE LINE PER CONNECTION. `suspend`, `poweroff`, `reboot`,
- * `ping` are a bare word; `timezone <zone>` is the one verb with an argument,
+ * `ping` are a bare word; `timezone <zone>` and `accent <scheme>` take one,
  * then a one-line reply and the socket closes. No length prefixes, no
  * multiplexing, no state: a parser is an attack surface and this one is a
  * handful of strcmp.
@@ -63,6 +63,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kcolor.h"
 
 #define KP_SOCKET "/run/kdos-powerd.sock"
 #define KP_GROUP  "wheel"
@@ -85,34 +86,15 @@ static const char *sock_path(void)
 /* ── the allowed set ───────────────────────────────────────────────────── */
 
 /*
- * Is `uid` root or a member of wheel?
- *
- * The membership test itself is libkbase's, because kdos-energyd gates its
- * socket on exactly the same question and two copies of a security decision
- * eventually disagree about one of them.
- */
-static bool in_wheel(const char *name, gid_t primary)
-{
-	return kb_user_in_group(name, primary, KP_GROUP) != 0;
-}
-
-static bool uid_allowed(uid_t uid)
-{
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return in_wheel(pw->pw_name, pw->pw_gid);
-}
-
-/*
  * `kdos-powerd --explain <user>` — would that user be permitted, and why.
  *
  * A refused power key is otherwise unattributable: the daemon's stderr goes to
  * the supervisor's log, which is the one place a user watching a dead
- * Super+power will not look. It reads the same two files the gate does and
- * needs no privilege, so it is also how the wheel parse gets tested.
+ * Super+power will not look.
+ *
+ * IT ASKS libkbase THE QUESTION THE SOCKET ASKS, so the explanation cannot
+ * drift from the decision. It needs no privilege, so it is also how the wheel
+ * parse gets tested.
  */
 static int explain(const char *user)
 {
@@ -125,7 +107,7 @@ static int explain(const char *user)
 		printf("%s: uid 0 — permitted\n", user);
 		return 0;
 	}
-	bool ok = in_wheel(pw->pw_name, pw->pw_gid);
+	bool ok = kb_uid_allowed(pw->pw_uid, KP_GROUP) != 0;
 	printf("%s: uid %u, primary gid %u, %s %s — %s\n", user,
 	       (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
 	       ok ? "in" : "not in", KP_GROUP,
@@ -350,19 +332,18 @@ static int fw_verb(const char *arg, char *out, size_t nout)
 /*
  * WHICH ACCOUNT tty1 LOGS IN WITHOUT ASKING, or none.
  *
- * `/etc/kdos/con.conf` is root's and the choice is an administrator's, which
+ * `/etc/kdos/login.conf` is root's and the choice is an administrator's, which
  * is the same question `wheel` already answers — so it is a verb here rather
- * than a second daemon or a setuid writer for two lines.
+ * than a second daemon or a setuid writer for one line.
  *
- * THE ACCOUNT MUST BE ONE A GREETER WOULD OFFER. `kb_users()` is the one place
- * that decides who may log in, and pointing autologin at a name it would not
- * list is a machine that boots to a login nobody can complete — a service
- * account with `nologin`, or a name that is not there at all.
+ * THE ACCOUNT MUST BE ONE THAT CAN LOG IN. `kb_users()` is the one place that
+ * decides who may, and pointing autologin at a name it would not list is a
+ * machine that boots to a login nobody can complete — a service account with
+ * `nologin`, or a name that is not there at all.
  *
- * BOTH KEYS ARE REWRITTEN TOGETHER. `greet` and `autologin` are one setting
- * seen twice: `greet = no` with no `autologin` is a tty1 that logs in as
- * whatever the default happens to be, and an `autologin` under `greet = yes`
- * is a line that does nothing and reads as though it does.
+ * OFF IS A COMMENTED LINE, NOT AN EMPTY VALUE. kdos-login asks for a password
+ * when it finds no key, and `autologin =` with nothing after it would be a key
+ * naming an account called "", which agetty would be handed.
  */
 static int set_autologin(const char *who, char *out, size_t nout)
 {
@@ -391,28 +372,28 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	/*
 	 * ON THE HEAP, BECAUSE A CONFIGURATION FILE GROWS. `kb_read_file`
 	 * fills a fixed buffer and NUL-terminates whatever fitted, so a
-	 * con.conf past that size was read as its own first N bytes and this
+	 * login.conf past that size was read as its own first N bytes and this
 	 * rewrote the machine's login settings out of a truncated file —
 	 * silently, and the last comment came out cut in half. libkbase says
 	 * so in its own header: a file a PERSON edits wants kb_read_whole.
 	 */
 	size_t len = 0;
 
-	snprintf(path, sizeof(path), "%s/kdos/con.conf", etc);
+	snprintf(path, sizeof(path), "%s/kdos/login.conf", etc);
 	buf = kb_read_whole(path, &len);
 	if (!buf || !len) {
 		free(buf);
-		snprintf(out, nout, "err cannot read con.conf\n");
+		snprintf(out, nout, "err cannot read login.conf\n");
 		return -1;
 	}
 
-	/* Two keys may each grow by a name, and every line gains nothing else;
-	 * the slack is a name's worth per line, which no rewrite can exceed. */
+	/* The one key may grow by a name and every line gains nothing else; the
+	 * slack is a name's worth per line, which no rewrite can exceed. */
 	cap = len + 1024;
 	next = malloc(cap);
 	if (!next) {
 		free(buf);
-		snprintf(out, nout, "err cannot read con.conf\n");
+		snprintf(out, nout, "err cannot read login.conf\n");
 		return -1;
 	}
 	next[0] = '\0';
@@ -423,14 +404,17 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	     ln = strtok_r(NULL, "\n", &sp)) {
 		char row[512];
 
-		/* The KEY only, and leading space is not part of it: a comment
-		 * mentioning `greet` must not be rewritten into a setting. */
-		if (!strncmp(ln, "greet", 5) && strchr(ln, '='))
-			snprintf(row, sizeof(row), "greet = %s",
-				 off ? "yes" : "no");
-		else if (!strncmp(ln, "autologin", 9) && strchr(ln, '='))
-			snprintf(row, sizeof(row), "autologin = %s",
-				 off ? "kdos" : who);
+		/* THE KEY, COMMENTED OR NOT, and nothing else on the line: a
+		 * comment ABOUT the key — prose that merely mentions it — must
+		 * not be rewritten into a setting, so the match is anchored at
+		 * the line and allows exactly one leading `#`. */
+		const char *key = ln;
+
+		if (*key == '#')
+			key++;
+		if (!strncmp(key, "autologin", 9) && strchr(key, '='))
+			snprintf(row, sizeof(row), off ? "#autologin = kdos"
+						       : "autologin = %s", who);
 		else
 			snprintf(row, sizeof(row), "%s", ln);
 		int k = snprintf(next + used, cap - used, "%s\n", row);
@@ -441,18 +425,18 @@ static int set_autologin(const char *who, char *out, size_t nout)
 		if (k < 0 || (size_t)k >= cap - used) {
 			free(buf);
 			free(next);
-			snprintf(out, nout, "err con.conf is too large\n");
+			snprintf(out, nout, "err login.conf is too large\n");
 			return -1;
 		}
 		used += (size_t)k;
 	}
 
-	snprintf(tmp, sizeof(tmp), "%s/kdos/con.conf.new", etc);
+	snprintf(tmp, sizeof(tmp), "%s/kdos/login.conf.new", etc);
 	f = fopen(tmp, "w");
 	if (!f) {
 		free(buf);
 		free(next);
-		snprintf(out, nout, "err cannot write con.conf\n");
+		snprintf(out, nout, "err cannot write login.conf\n");
 		return -1;
 	}
 	fputs(next, f);
@@ -463,7 +447,7 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	free(next);
 	if (rename(tmp, path) != 0) {
 		unlink(tmp);
-		snprintf(out, nout, "err cannot write con.conf\n");
+		snprintf(out, nout, "err cannot write login.conf\n");
 		return -1;
 	}
 	snprintf(out, nout, "ok %s\n", off ? "off" : who);
@@ -507,6 +491,84 @@ static bool zone_name_ok(const char *z)
 			return false;
 	}
 	return true;
+}
+
+/* ── the accent, and the root-owned files that carry it ───────────────────
+ *
+ * HERE FOR THE REASON THE TIMEZONE IS HERE. `/etc/kdos/accent`, `/etc/vtrgb`
+ * and the ESP's
+ * `limine.conf` are root's, the person changing the look of their machine is
+ * the one administering it, and `wheel` is already the answer to who that is.
+ * A second socket with a second authorisation rule would be a second answer to
+ * one question.
+ *
+ * ITS ARGUMENT IS TIGHTER THAN EVERY OTHER VERB'S. A zone is `Area/City`, so a
+ * slash is legal and `../../etc/shadow` is legal-LOOKING — which is why
+ * `zone_name_ok` exists. An accent is one of seven strings compiled into
+ * libkcolor. There is no path to aim and nothing to traverse: a name that is
+ * not a scheme names nothing at all, and `kcol_find` is the whole check.
+ *
+ * WHAT IT DOES NOT DO IS RETINT THE DESKTOP. That is `kdos theme`'s, runs as
+ * the user, and touches only the user's own files. Root is needed for the
+ * accent name, the boot menu and the console palette and for nothing else, so
+ * those three are all this verb reaches.
+ */
+static int set_accent(const char *name, char *out, size_t nout)
+{
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	const KcolScheme *sc = kcol_find(name);
+	/* `path` is `dir` plus a name, so it is the longer of the two — sized
+	 * the same, a compiler that can see the concatenation refuses the
+	 * build rather than the truncation. */
+	char path[352], dir[320];
+	KbArgv a = {0};
+
+	if (!sc) {
+		snprintf(out, nout, "err not an accent\n");
+		return -1;
+	}
+	if (!etc || !*etc)
+		etc = "/etc";
+
+	/* The name, for kdos-splash: it is started by the INITRAMFS, before any
+	 * root filesystem exists, so it cannot read this at the moment it
+	 * starts. `rcS` reads it after switch_root and tells the running splash
+	 * over the FIFO it is already holding. */
+	snprintf(dir, sizeof(dir), "%s/kdos", etc);
+	kb_mkdir_p(dir);
+	snprintf(path, sizeof(path), "%s/accent", dir);
+	if (kb_write_file_atomic(path, sc->name) != 0) {
+		snprintf(out, nout, "err cannot write the accent\n");
+		return -1;
+	}
+
+	/*
+	 * AND THE BOOT MENU AND THE TEXT CONSOLE, THROUGH kdos-bootctl, WHICH
+	 * OWNS limine.conf AND /etc/vtrgb — the two surfaces drawn before any
+	 * session exists. Exec'd rather than linked: the restamp is the
+	 * bootloader tool's rule about which keys a theme owns, and a copy of
+	 * that rule in a daemon is a copy that goes stale the next time Limine
+	 * gains a key.
+	 *
+	 * ITS FAILURE IS NOT THIS VERB'S FAILURE. A live medium is read-only
+	 * and a machine may have no ESP; the accent still applied to everything
+	 * else, and reporting `err` would make `kdos theme` look broken on the
+	 * ISO, where every surface retints perfectly.
+	 */
+	if (kb_have_prog("kdos-bootctl")) {
+		kb_argv_add(&a, "kdos-bootctl");
+		kb_argv_add(&a, "theme");
+		kb_argv_add(&a, sc->name);
+		kb_argv_end(&a);
+		if (kb_run(&a) != 0)
+			snprintf(out, nout, "ok %s (boot menu unchanged)\n",
+				 sc->name);
+		else
+			snprintf(out, nout, "ok %s\n", sc->name);
+	} else {
+		snprintf(out, nout, "ok %s (boot menu unchanged)\n", sc->name);
+	}
+	return 0;
 }
 
 static int set_timezone(const char *zone, char *out, size_t nout)
@@ -625,8 +687,11 @@ static int serve(void)
 
 		struct ucred cred = {0};
 		socklen_t len = sizeof(cred);
+		/* Root or KP_GROUP, from libkbase — the one answer every root
+		 * daemon here gives to this question. The socket's mode is not
+		 * the gate. */
 		if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-		    !uid_allowed(cred.uid)) {
+		    !kb_uid_allowed(cred.uid, KP_GROUP)) {
 			/* Refused with a reason, and logged: an unexplained
 			 * dead power key is unattributable, and this is the
 			 * message that attributes it. */
@@ -679,6 +744,13 @@ static int serve(void)
 			char msg[128];
 
 			set_autologin(buf + 10, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "accent ", 7)) {
+			char msg[128];
+
+			set_accent(buf + 7, msg, sizeof(msg));
 			(void)!write(c, msg, strlen(msg));
 			close(c);
 			continue;
@@ -816,7 +888,8 @@ static int usage(void)
 		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n"
 		"       kdos-power timezone <Area/City>\n"
 		"       kdos-power autologin <user>|off\n"
-		"       kdos-power firewall list|<service> on|off\n");
+		"       kdos-power firewall list|<service> on|off\n"
+		"       kdos-power accent <scheme>\n");
 	return 2;
 }
 
@@ -892,7 +965,7 @@ static int client(int argc, char **argv)
 	char line[KP_MAX];
 
 	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin") ||
-	    !strcmp(cmd, "firewall")) {
+	    !strcmp(cmd, "firewall") || !strcmp(cmd, "accent")) {
 		if (!arg)
 			return usage();
 		if (snprintf(line, sizeof(line), "%s %s", cmd, arg) >=

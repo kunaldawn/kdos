@@ -3,7 +3,7 @@
  * █████╔╝ ██║  ██║██║   ██║███████╗
  * ██╔═██╗ ██║  ██║██║   ██║╚════██║
  * ██║  ██╗██████╔╝╚██████╔╝███████║
- * ╚═╝  ╚═╝  ╚═════╝ ╚═════╝ ╚══════╝
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
  *   mpris.c — what is playing, and the two keys that stop it
  *
@@ -52,7 +52,6 @@
 #define MP_PREFIX "org.mpris.MediaPlayer2."
 #define MP_OBJ "/org/mpris/MediaPlayer2"
 #define MP_IFACE "org.mpris.MediaPlayer2.Player"
-#define MP_TIMEOUT_US 300000
 #define MP_REFRESH_S 2
 
 struct sh_mpris {
@@ -60,7 +59,6 @@ struct sh_mpris {
 	int owns_bus;			/* we opened it, so we close it */
 	char name[128];			/* the bus name of the player     */
 	char title[96];
-	char artist[96];
 	int playing;
 	int have;
 	time_t last;
@@ -70,10 +68,10 @@ struct sh_mpris {
 /* ── reading one player ────────────────────────────────────────────────── */
 
 /*
- * Metadata is a{sv} where `xesam:title` is a string and `xesam:artist` is an
- * ARRAY of strings — the one field everybody gets wrong, because reading it as
- * a string silently yields nothing and a panel with no artist looks like a
- * panel with no metadata.
+ * Metadata is a{sv}. Only `xesam:title` is read; every other key is SKIPPED as
+ * a variant rather than decoded, because the types differ per key — the
+ * `xesam:artist` everyone reaches for is an array of strings, and reading it
+ * as a string yields nothing at all.
  */
 static void read_metadata(sd_bus_message *m, struct sh_mpris *p)
 {
@@ -94,17 +92,6 @@ static void read_metadata(sd_bus_message *m, struct sh_mpris *p)
 			if (sd_bus_message_read_basic(m, 's', &s) >= 0 && s)
 				snprintf(p->title, sizeof(p->title), "%s", s);
 			sd_bus_message_exit_container(m);
-		} else if (!strcmp(key, "xesam:artist") && contents &&
-			   !strcmp(contents, "as") &&
-			   sd_bus_message_enter_container(m, 'v', "as") > 0) {
-			if (sd_bus_message_enter_container(m, 'a', "s") > 0) {
-				if (sd_bus_message_read_basic(m, 's', &s) > 0 &&
-				    s)
-					snprintf(p->artist, sizeof(p->artist),
-						 "%s", s);
-				sd_bus_message_exit_container(m);
-			}
-			sd_bus_message_exit_container(m);
 		} else {
 			sd_bus_message_skip(m, "v");
 		}
@@ -124,7 +111,7 @@ static int props_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	if (sd_bus_message_enter_container(reply, 'a', "{sv}") <= 0)
 		return 0;
 
-	p->title[0] = p->artist[0] = '\0';
+	p->title[0] = '\0';
 	p->playing = 0;
 	while (sd_bus_message_enter_container(reply, 'e', "sv") > 0) {
 		const char *key = NULL, *contents = NULL, *s = NULL;
@@ -279,11 +266,6 @@ int sh_mpris_playing(const struct sh_mpris *p)
 const char *sh_mpris_title(const struct sh_mpris *p)
 {
 	return p && p->title[0] ? p->title : "";
-}
-
-const char *sh_mpris_artist(const struct sh_mpris *p)
-{
-	return p && p->artist[0] ? p->artist : "";
 }
 
 /* Fire and forget, like every call to a tray item: a player that does not

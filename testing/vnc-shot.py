@@ -32,8 +32,8 @@ cannot be told apart from a slow one. `--gl` gives the guest GL and no Vulkan:
 measures lavapipe on the CPU without saying so. On an NVIDIA host `--venus`
 itself is measured dead at both ends — the flag's own help says how.
 
-Three things it has to get right, each recorded in CLAUDE.md's VM debug rig
-section before this file existed:
+Three things it has to get right, each also stated as a trap in CLAUDE.md's
+rig section:
 
   - `screendump` over the monitor socket answers "no surface" under a GL
     display, so the framebuffer is read over RFB instead. The handshake's
@@ -136,12 +136,13 @@ class Monitor:
         while it is being typed, and a Return there has already moved on to
         whatever the first match does.
 
-        The session is started the way a person starts it — by typing
-        `kdos-desktop` at the autologin prompt on tty1 — rather than from the
-        serial root shell, and that is not a stylistic choice: wlroots' DRM
-        backend needs a seat, and seatd grants one to a session that is ON a
-        VT. A compositor launched from ttyS0 gets no seat and never opens the
-        display.
+        Typing goes to tty1, which reaches whatever owns it: tty1 autologins
+        and `.bash_profile` starts kdos-desktop there, so that is the desktop
+        unless a window has the focus. Nothing about the display is driven
+        from the serial root shell instead, and that is not a stylistic
+        choice: wlroots' DRM backend needs a seat, and seatd grants one to a
+        session that is ON a VT. A compositor launched from ttyS0 gets no seat
+        and never opens the display.
         """
         # A character with no qemu keyname is sent VERBATIM, which the monitor
         # rejects — silently, from this side — so the line arrives with that
@@ -194,6 +195,81 @@ def rfb_pointer(host, port, moves):
     # a close with the last event still in flight loses it.
     time.sleep(0.5)
     s.close()
+
+
+# THE SOCKET A HELD DRAG LIVES ON.
+#
+# A BUTTON IS DOWN ONLY WHILE ITS CLIENT IS CONNECTED. qemu's VNC server
+# releases every button when a client disconnects, so a press sent down one
+# connection and a move sent down the next is two clicks and no drag. The
+# whole gesture has to travel one socket, which means the socket outlives the
+# step that opened it.
+#
+# WHICH IS WHAT `--press` EXISTS FOR. `--drag` sends press, motion and release
+# in one call and nothing can be photographed between them, so a bug that only
+# exists WHILE the button is down — a window whose frame is redrawn on every
+# motion event — is invisible to it. Held open, a `--shot` in the middle
+# photographs exactly that.
+_held = {"sock": None, "mask": 0}
+
+
+def rfb_hold(host, port, x, y, mask):
+    """Move the pointer, with `mask` held, on the drag's own connection."""
+    if _held["sock"] is None:
+        _held["sock"] = rfb_handshake(host, port)[0]
+    s = _held["sock"]
+    s.sendall(struct.pack(">BBHH", 5, mask, x, y))
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    _held["mask"] = mask
+    time.sleep(0.15)
+
+
+def rfb_sweep(host, port, x0, y0, x1, y1, n, mask, gap):
+    """A drag at something like a real mouse's REPORT RATE.
+
+    `--drag` and `--press` space their events 150 ms apart, which is about six
+    a second; a mouse on a desk sends between 125 and 1000. A defect that only
+    appears when the events arrive faster than the session can answer them is
+    invisible to both, and "I cannot reproduce it" then means "my hand is
+    slower than theirs", not "it is not there". One connection, one press, `n`
+    interpolated moves `gap` seconds apart, one release.
+    """
+    s, _w, _h, _pf = rfb_handshake(host, port)
+
+    def at(x, y, m):
+        s.sendall(struct.pack(">BBHH", 5, m, x, y))
+
+    at(x0, y0, 0)
+    time.sleep(0.15)
+    at(x0, y0, mask)
+    time.sleep(0.05)
+    for i in range(1, n + 1):
+        at(x0 + (x1 - x0) * i // n, y0 + (y1 - y0) * i // n, mask)
+        if gap:
+            time.sleep(gap)
+    at(x1, y1, mask)
+    time.sleep(0.05)
+    at(x1, y1, 0)
+    # The framebuffer request is what makes the server drain the queue before
+    # the socket closes — see rfb_pointer.
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    time.sleep(0.5)
+    s.close()
+
+
+def rfb_drop(host, port, x, y):
+    """Let go, and close the drag's connection. A release with no press is a
+    no-op rather than an error: a run that ends mid-drag still has to tidy
+    up, and the tidy-up cannot be the thing that fails it."""
+    s = _held["sock"]
+    if s is None:
+        return
+    s.sendall(struct.pack(">BBHH", 5, 0, x, y))
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    time.sleep(0.5)
+    s.close()
+    _held["sock"] = None
+    _held["mask"] = 0
 
 
 # The keysyms a chord can name. X11's numbering, which is what RFB carries.
@@ -402,10 +478,10 @@ def send_script(ser, path, timeout=600):
 class Step(argparse.Action):
     """Append (kind, value) to one ORDERED list shared by every action flag.
 
-    The flags used to be four independent lists run in a fixed order — every
-    `--cmd`, then every `--keys`, then the shot — so "open this, photograph it,
-    close it, open the next" could not be expressed and each picture cost its
-    own boot. A README's worth of them is a dozen boots of a 10 GB ISO.
+    ORDER ON THE COMMAND LINE IS ORDER OF EXECUTION. One list per flag kind,
+    run kind by kind, cannot express "open this, photograph it, close it, open
+    the next", so every picture would cost its own boot of a 10 GB ISO — a
+    README's worth of them is a dozen boots.
     """
 
     def __call__(self, parser, ns, value, option_string=None):
@@ -442,6 +518,23 @@ def main():
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
                     help="X,Y[,BTN] — move there and click; BTN 1/2/3")
+    ap.add_argument("--sweep", action=Step,
+                    help="X1,Y1,X2,Y2[,N[,MS[,BTN]]] — a drag delivered at a "
+                         "real mouse's report rate: N interpolated motions MS "
+                         "milliseconds apart with the button held. --drag and "
+                         "--press space their events 150ms apart, so a defect "
+                         "that only appears under a fast hand cannot be "
+                         "reproduced with either. Defaults: N=120, MS=2, BTN=1")
+    ap.add_argument("--press", action=Step,
+                    help="X,Y[,BTN] — press there and HOLD, on a connection "
+                         "that stays open. Every later --press moves the "
+                         "pointer with the button still down, so a --shot "
+                         "between two of them photographs the drag in "
+                         "progress; --release ends it")
+    ap.add_argument("--release", action=Step, nargs="?", const="",
+                    help="let go, ending the held drag — at X,Y if one is "
+                         "given, otherwise where the last --press left the "
+                         "pointer")
     ap.add_argument("--drag", action=Step,
                     help="X1,Y1,X2,Y2[,BTN] — press at the first point, move "
                          "to the second with the button held, release. A "
@@ -471,14 +564,11 @@ def main():
                          "vkCreateInstance without it. Without --venus the "
                          "tools measure lavapipe on the CPU and say nothing, "
                          "so check vulkaninfo before trusting a number")
-    ap.add_argument("--session-env", default=None,
-                    help="prefix the session command, e.g. 'KDOS_PANEL_DEBUG=1 '"
-                         " — the compositor supervises the panel, so a panel"
-                         " variable has to be in ITS environment")
     ap.add_argument("--console-cmd", default=None,
-                    help="type this on tty1 INSTEAD of starting the session, "
-                         "and photograph the console — the only way to see a "
-                         "program at the 512-glyph font it has to read in")
+                    help="type this on tty1 during start-up, before any step. "
+                         "tty1 is the desktop, so it reaches the icon layer's "
+                         "type-ahead and not a shell — to land a command in a "
+                         "terminal window use --keys meta_l-ret then --type")
     ap.add_argument("--soak", type=int, default=0,
                     help="seconds to let the session run after every step and "
                          "before the final shot, for a load test that has to "
@@ -508,14 +598,18 @@ def main():
                          "a tar onto, which is how files come back out. "
                          "--data-disk is input only")
     ap.add_argument("--no-session", action="store_true",
-                    help="do not start the desktop: the steps are all this "
-                         "run wants and a compositor is 40s of nothing")
+                    help="accepted and ignored: tty1 autologins and starts "
+                         "kdos-desktop itself, so the desktop the steps drive "
+                         "is the one the boot brought up either way")
     ap.add_argument("--usb", default=None,
                     help="attach a raw disk image as a USB stick")
     ap.add_argument("--data-disk", default=None,
                     help="attach a raw file as a plain virtio disk — how a "
                          "large artefact reaches a guest with no network. Far "
-                         "faster than --usb, and not removable")
+                         "faster than --usb, and not removable. The session "
+                         "starts at boot, so its environment is the boot's: a "
+                         "variable for the compositor or the panel goes in on "
+                         "this disk and is exported before kdos-desktop runs")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--serial-log", default="/tmp/kdos-serial.log")
     args = ap.parse_args()
@@ -677,6 +771,45 @@ def main():
         # that is already there. Probing for a shell rather than expecting a
         # prompt covers both, and covers the third case nobody thinks about:
         # a prompt whose text is a starship theme with escape codes in it.
+        #
+        # NOT A KEYSTROKE UNTIL THE KERNEL HAS THE PORT. Limine reads the
+        # serial console as INPUT, and any byte arriving during its countdown
+        # cancels the countdown and leaves the menu up — indefinitely, because
+        # nothing is going to press Enter. A probe loop that starts typing the
+        # moment it connects gets about eight keystrokes into a ten-second
+        # window, so the rig reliably stops the boot it is waiting for and then
+        # reports `no shell on the serial console`, which reads as a broken
+        # image rather than as the harness.
+        #
+        # Measured on one ISO, same qemu, same socket: receive-only reaches a
+        # root shell with 9259 bytes; probing from connect stops at 328 bytes
+        # and never leaves the firmware.
+        #
+        # So the boot is WATCHED first and typed at only once something past the
+        # bootloader has spoken.
+        #
+        # `[KDOS]` IS THE MARKER, AND THE KERNEL'S OWN BANNER IS NOT. The Live
+        # cmdline carries `quiet loglevel=3`, so the kernel prints essentially
+        # nothing to ttyS0 — waiting for `Linux version` waits for a line this
+        # image never writes, and times out on a boot that is going perfectly.
+        # `[KDOS]` is rcS announcing each service, which is userspace running
+        # and therefore the port long since handed over. `login:` and a root
+        # prompt are kept as alternates for an image that reaches one first.
+        #
+        print("waiting for the kernel to take the serial console…", flush=True)
+        boot_deadline = time.time() + 180
+        while time.time() < boot_deadline:
+            ser.pump()
+            if b"[KDOS]" in ser.buf or b"login:" in ser.buf \
+               or b"root@" in ser.buf or b"Linux version" in ser.buf:
+                break
+            time.sleep(0.25)
+        else:
+            print(ser.tail(4000))
+            raise SystemExit(
+                "the bootloader never handed over — if the last thing on the "
+                "console is the firmware, something typed at the menu")
+
         print("waiting for a shell on the serial console…", flush=True)
         deadline = time.time() + 240
         ready = False
@@ -698,51 +831,30 @@ def main():
         time.sleep(1)
         ser.pump()
 
-        # TTY1 IS THE CONSOLE DESKTOP, not a prompt. It autologins as `kdos`
-        # through kdos-con-login, and .bash_profile starts kdos-con-start
-        # there — so on this boot path the cell desktop is already up before
-        # any step runs, and `--no-session` is what photographs it. `--keys`
-        # then drives that desktop, because sendkey goes to the active VT.
+        # TTY1 IS THE DESKTOP, not a prompt. It autologins as `kdos` through
+        # kdos-login, and .bash_profile starts kdos-desktop there — so the
+        # compositor is up before any step runs and NOTHING HERE STARTS ONE.
         #
-        # The graphical session is still started by hand, and it has to be
-        # started somewhere that IS a shell: tty2 has a getty, and the serial
-        # console is root. Typing it on tty1 types into the cell desktop.
-        if args.no_session:
-            print("not starting a session — the steps are the run", flush=True)
-        elif args.console_cmd:
-            # Typing on tty1 reaches whatever OWNS it, and on this boot path
-            # that is the cell desktop rather than a shell — so a command only
-            # runs if a terminal window already has the focus. Open one first
-            # (`--keys meta_l-ret`) or the keystrokes go to the desktop, which
-            # is not the same as nothing happening.
-            print("running on tty1: %s" % args.console_cmd, flush=True)
+        # A second compositor is not a session: it would be launched inside the
+        # first one's seat, and a readiness gate that greps for a `kdos-comp`
+        # pid is answered by the one that booted whatever the launch did — a
+        # check that cannot fail is a check that is not there.
+        #
+        # `--keys` drives the session that booted, because sendkey goes to the
+        # active VT; a compositor needs a seat and seatd grants one only to a
+        # session ON a VT, which is why nothing about the display is ever done
+        # down the serial line.
+        if args.console_cmd:
+            # Typing on tty1 reaches whatever OWNS it, which is the desktop:
+            # this lands in the icon layer's type-ahead, not in a shell, and it
+            # fires before the step loop so no `--keys meta_l-ret` can precede
+            # it. A command that needs a shell is `--keys meta_l-ret` followed
+            # by `--type`, or `--cmd` on the serial console.
+            print("typing on tty1: %s" % args.console_cmd, flush=True)
             mon.type(args.console_cmd)
             time.sleep(args.wait)
         else:
-            # THE GRAPHICAL SESSION NEEDS A SEAT, so it is typed on a VT and
-            # never sent down the serial line: a compositor launched from a
-            # serial console gets no seat and dies asking for one.
-            #
-            # On this boot path tty1 is the CELL DESKTOP, so typing here reaches
-            # that rather than a shell. The graphical session's own entry point
-            # from the console is its Start-menu row, which allocates a free VT
-            # and switches to it. Use --no-session and drive that, or --cmd,
-            # which runs on the serial console as the desktop user.
-            print("starting the session on tty1…", flush=True)
-            mon.type(args.session_env + "kdos-desktop"
-                     if args.session_env else "kdos-desktop")
-
-            print("waiting for the desktop…", flush=True)
-            deadline = time.time() + 240
-            up = False
-            while time.time() < deadline and not up:
-                ser.send("pgrep -x kdos-comp >/dev/null && echo COMPUP "
-                         "|| echo NOCOMP")
-                ser.expect("COMPUP", timeout=5)
-                up = b"COMPUP" in ser.buf
-            if not up:
-                print(ser.tail(4000))
-                raise SystemExit("kdos-comp never came up")
+            print("letting the desktop settle…", flush=True)
             time.sleep(args.wait)
 
         shots = 0
@@ -762,10 +874,9 @@ def main():
             elif kind == "type":
                 # TYPED AS A STEP, so it reaches whatever has the focus AT
                 # THIS POINT of the run. `--console-cmd` types during
-                # start-up, before any step, and is skipped entirely under
-                # `--no-session` — so there was no way to type into a window
-                # the run had just opened, which is what every check on the
-                # cell desktop's own terminals needs.
+                # start-up, before any step, so it can only reach the desktop
+                # itself; this is the only way into a window the run has just
+                # opened, which is what every check on a terminal window needs.
                 mon.type(value)
                 time.sleep(2)
             elif kind == "text":
@@ -785,6 +896,36 @@ def main():
                 rfb_pointer("127.0.0.1", args.vnc_port,
                             [(mx, my, 0), (mx, my, mask), (mx, my, 0)])
                 time.sleep(2.5)
+            elif kind == "sweep":
+                p = value.split(",")
+                x0, y0, x1, y1 = (int(v) for v in p[:4])
+                n = int(p[4]) if len(p) > 4 else 120
+                ms = int(p[5]) if len(p) > 5 else 2
+                btn = int(p[6]) if len(p) > 6 else 1
+                rfb_sweep("127.0.0.1", args.vnc_port, x0, y0, x1, y1,
+                          n, 1 << (btn - 1), ms / 1000.0)
+                time.sleep(2.5)
+            elif kind == "press":
+                parts = value.split(",")
+                mx, my = int(parts[0]), int(parts[1])
+                btn = int(parts[2]) if len(parts) > 2 else 1
+                mask = 1 << (btn - 1)
+                if _held["sock"] is None:
+                    # THE ENTER BEFORE THE PRESS. A press at a point the
+                    # pointer was never at is a press the session routes
+                    # against whatever it last thought was under the cursor.
+                    rfb_hold("127.0.0.1", args.vnc_port, mx, my, 0)
+                    _held["last"] = (mx, my)
+                rfb_hold("127.0.0.1", args.vnc_port, mx, my, mask)
+                _held["last"] = (mx, my)
+                time.sleep(0.6)
+            elif kind == "release":
+                if value:
+                    mx, my = (int(v) for v in value.split(","))
+                else:
+                    mx, my = _held.get("last", (0, 0))
+                rfb_drop("127.0.0.1", args.vnc_port, mx, my)
+                time.sleep(2.0)
             elif kind == "drag":
                 # TWELVE INTERPOLATED POINTS AND NOT ONE. A drag is a press,
                 # then MOTION with the button held, then a release: the window
@@ -840,11 +981,10 @@ def main():
                 ser.buf = ser.buf[-8000:]
 
         # `--out` is the one-shot form and stays the default: a run that asked
-        # for no picture at all is a run that booted the ISO for nothing.
-        # A run that asked for no picture at all is a run that booted the ISO
-        # for nothing — unless it deliberately started no session, where the
-        # only thing on the screen is a login prompt.
-        if not shots and not args.no_session:
+        # for no picture at all is a run that booted the ISO for nothing, and
+        # what is on the screen at the end of it is the desktop the boot
+        # brought up.
+        if not shots:
             time.sleep(2)
             print("reading the framebuffer over VNC…", flush=True)
             w, h = rfb_shot("127.0.0.1", args.vnc_port, args.out)

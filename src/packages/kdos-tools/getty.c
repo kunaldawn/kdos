@@ -12,8 +12,10 @@
  * the take-over re-initialises every VT with the kernel's built-in font —
  * wiping anything setfont loaded earlier. So the sequence lives here, wrapping
  * getty: one write ends the deferral, then the font (ter-kdos32n carries λ and
- * the double box glyphs the banner needs) and the phosphor palette are loaded
- * onto this VT.
+ * the double box glyphs the banner needs) and `/etc/vtrgb` are loaded onto
+ * this VT. That file is the accent's sixteen, written by `kdos-bootctl theme`
+ * from kcol_vtrgb() — the login prompt, `/etc/issue` and the banner draw in
+ * SGR 30-37 and reach the scheme through it and through nothing else.
  *
  * The take-over is scheduled work, so a fixed sleep is a race that first boot
  * reliably loses: wait for fbcon to report it in the kernel ring, then retry
@@ -59,12 +61,11 @@
  * tty1 that fallback stuck: the VT is 120x33 with the 16x32 font, but every
  * full-screen program came up believing it had 80x24 and drew into the
  * top-left corner of the screen (measured with a full-screen aalib demo,
- * which centred on column 40 of 120). kinstall and every other libktui
- * program are on the same
- * path. The size the loaded font actually produced is the first two bytes of
- * /dev/vcsa<n> — rows, then columns — which is the console's own answer
- * rather than a second guess at the arithmetic. Runs after the font is
- * loaded, because that is what decides the grid. */
+ * which centred on column 40 of 120). kinstall and every other libktui program
+ * are on the same path. The size the loaded font actually produced is the
+ * first two bytes of /dev/vcsa<n> — rows, then columns — which is the
+ * console's own answer rather than a second guess at the arithmetic. Runs
+ * after the font is loaded, because that is what decides the grid. */
 static void fix_winsize(int fd, const char *tty)
 {
 	char path[128];
@@ -155,21 +156,26 @@ static int run(const char *const *argv, char *out, size_t outcap)
 }
 
 /*
- * THE ACCOUNT `greet = no` LOGS IN, from /etc/kdos/con.conf.
+ * THE ACCOUNT tty1 LOGS IN, from /etc/kdos/login.conf, or NULL for nobody.
  *
  * Parsed here rather than linked: this binary runs before anything else on
- * tty1 and stays thin, and the key is one word after an equals sign. The
- * default matches the shipped file, so a missing or unreadable file gives the
- * same answer the shipped one would.
+ * tty1 and stays thin, and the key is one word after an equals sign.
+ *
+ * NO ACCOUNT IS AN ANSWER, AND IT IS THE SAME ONE kdos-login GIVES. Turning
+ * autologin off comments the key out rather than emptying it, so an absent,
+ * commented or unreadable file all mean a password prompt. A default of
+ * "kdos" here would log in an account the administrator disabled — and on a
+ * renamed installation one that does not exist, leaving init respawning a
+ * failing agetty. The two callers below both take NULL for "ask".
  */
 static const char *autologin_user(void)
 {
 	static char name[64];
-	FILE *f = fopen("/etc/kdos/con.conf", "r");
+	FILE *f = fopen("/etc/kdos/login.conf", "r");
 	char line[256];
 
 	if (!f)
-		return "kdos";
+		return NULL;
 
 	while (fgets(line, sizeof(line), f)) {
 		char *p = line;
@@ -198,16 +204,15 @@ static const char *autologin_user(void)
 	}
 
 	fclose(f);
-	return "kdos";
+	return NULL;
 }
 
 /*
  * THE REAL-TIME BUDGET FOR EVERY PROCESS BELOW THIS ONE.
  *
  * rlimits survive setuid() and execve(), so raising them in the last root
- * process is the one place that covers both console login paths -- `greet = no`
- * through agetty and login, and the greeter's own setuid-and-exec, which never
- * runs login at all. Nothing downstream lowers them again: shadow is built
+ * process is the one place that covers the whole login path, autologin and a
+ * password prompt alike. Nothing downstream lowers them again: shadow is built
  * --without-libpam, so /etc/security/limits.d is read by nobody, and the
  * /etc/limits reader login does have returns without touching a limit when no
  * line names the account.
@@ -378,31 +383,47 @@ int getty_main(int argc, char **argv)
 	 * memory.max set; the same box from the root cgroup reads `max`. The
 	 * move needs root — a process cannot write itself out of `/` — and
 	 * this is the last root process before login, so it is done here,
-	 * for the user `--autologin` names. `session` is a LEAF: a cgroup
-	 * with processes in it may not enable controllers for children, and
-	 * the container cgroups have to be siblings of the shell's, not
-	 * children. A tty that logs in interactively and an ssh session are
-	 * not covered and stay in the root cgroup.
+	 * for the account that is about to be logged in. `session` is a LEAF:
+	 * a cgroup with processes in it may not enable controllers for
+	 * children, and the container cgroups have to be siblings of the
+	 * shell's, not children. A tty that logs in interactively and an ssh
+	 * session are not covered and stay in the root cgroup.
+	 *
+	 * THE ACCOUNT IS RESOLVED THE WAY THE LOGIN PROGRAM WILL RESOLVE IT,
+	 * not from a fixed argument: kdos-login takes the tty and nothing else
+	 * and reads login.conf itself, so an argv scan alone matches nothing
+	 * on the shipped inittab and every box gets `--memory` accepted and
+	 * ignored. The scan stays first so an inittab naming agetty directly
+	 * still works, and login.conf answering "nobody" means a password
+	 * prompt whose account is not known here — so nothing is moved.
 	 */
-	for (int i = 3; i + 1 < argc; i++) {
-		if (strcmp(argv[i], "--autologin") && strcmp(argv[i], "-a"))
-			continue;
-		struct passwd *pw = getpwnam(argv[i + 1]);
+	const char *who = NULL;
+
+	for (int i = 3; i + 1 < argc; i++)
+		if (!strcmp(argv[i], "--autologin") || !strcmp(argv[i], "-a")) {
+			who = argv[i + 1];
+			break;
+		}
+	if (!who && !strcmp(kb_basename(argv[2]), "kdos-login"))
+		who = autologin_user();
+	if (who) {
+		struct passwd *pw = getpwnam(who);
 		char cgp[256], pid[32];
 		int fd;
-		if (!pw)
-			break;
-		snprintf(cgp, sizeof(cgp),
-			 "/sys/fs/cgroup/user.slice/user-%u/session/cgroup.procs",
-			 (unsigned)pw->pw_uid);
-		snprintf(pid, sizeof(pid), "%ld\n", (long)getpid());
-		fd = open(cgp, O_WRONLY | O_CLOEXEC);
-		if (fd < 0 || write(fd, pid, strlen(pid)) < 0)
-			fprintf(stderr, "kdos-getty: not moved into %s: %s\n",
-				cgp, strerror(errno));
-		if (fd >= 0)
-			close(fd);
-		break;
+
+		if (pw) {
+			snprintf(cgp, sizeof(cgp),
+				 "/sys/fs/cgroup/user.slice/user-%u/session/cgroup.procs",
+				 (unsigned)pw->pw_uid);
+			snprintf(pid, sizeof(pid), "%ld\n", (long)getpid());
+			fd = open(cgp, O_WRONLY | O_CLOEXEC);
+			if (fd < 0 || write(fd, pid, strlen(pid)) < 0)
+				fprintf(stderr,
+					"kdos-getty: not moved into %s: %s\n",
+					cgp, strerror(errno));
+			if (fd >= 0)
+				close(fd);
+		}
 	}
 
 	raise_rt_limits();
@@ -414,20 +435,26 @@ int getty_main(int argc, char **argv)
 	 * path the image was built with, and an image built without it — a
 	 * desktop package that did not land, a partially installed system —
 	 * would otherwise leave init respawning a failing exec forever and no
-	 * way to log in at all. The fallback is the plain autologin getty,
-	 * which needs nothing but util-linux.
+	 * way to log in at all. The fallback is a bare agetty, which needs
+	 * nothing but util-linux.
 	 *
-	 * IT LOGS IN THE ACCOUNT con.conf NAMES, not a hardcoded one. The
-	 * desktop's account is named in one place and an installer that
-	 * renames it rewrites that place; a second copy of the name here logs
-	 * in a user the installed system does not have, leaving the machine
-	 * reachable only from tty2 — which is what the configuration file's
-	 * own comment warns about.
+	 * IT LOGS IN WHOEVER THE MISSING PROGRAM WOULD HAVE, AND OTHERWISE
+	 * ASKS — the same account resolved for the cgroup above. The desktop's
+	 * account is named in one place and an installer that renames it
+	 * rewrites that place; a second copy of the name here logs in a user
+	 * the installed system does not have, leaving the machine reachable
+	 * only from tty2. A tty whose inittab line names a plain getty
+	 * resolves nobody and falls back to a password prompt, which is what
+	 * keeps tty2 the recovery console when the login path is broken
+	 * everywhere else.
 	 */
 	fprintf(stderr, "kdos-getty: cannot exec %s: %s — falling back\n",
 		argv[2], strerror(errno));
-	execl("/sbin/agetty", "agetty", "--autologin", autologin_user(),
-	      "--noclear", tty, "38400", "linux", (char *)NULL);
+	if (who)
+		execl("/sbin/agetty", "agetty", "--autologin", who,
+		      "--noclear", tty, "38400", "linux", (char *)NULL);
+	execl("/sbin/agetty", "agetty", "--noclear", tty, "38400", "linux",
+	      (char *)NULL);
 	fprintf(stderr, "kdos-getty: no agetty either: %s\n", strerror(errno));
 	return 127;
 }

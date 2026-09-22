@@ -33,6 +33,13 @@
 #
 # color-management is OFF for now: it needs lcms2, which is not a port yet.
 # Turning it on is one dependency and one flag — see docs/KDOS-ROADMAP.md N9.
+
+# A CAPTURE OF AN IDLE SCREEN HAS TO BE ANSWERED. There is no build flag for
+# it: ext-image-copy-capture forces an output commit only where the session
+# already has damage, which makes a recording of a still desktop one frame
+# long. The patch beside this file states the rest.
+patch -p1 -i "$PORT_SRC/idle-capture-frame.patch"
+
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \

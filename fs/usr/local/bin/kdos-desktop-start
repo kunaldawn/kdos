@@ -3,31 +3,30 @@
 # per-user daemon first). Brings up the media stack the desktop expects:
 #
 #   pipewire               the media graph
-#   pipewire-media-session its session manager (no wireplumber on KDOS)
+#   wireplumber its session manager — pipewire builds none of its own
 #   pipewire-pulse         PulseAudio shim — appbox apps find audio via the
 #                          shared /run/user/<uid>/pulse socket
 #
-# The xdg-desktop portals (xdg-desktop-portal + the wlr backend) are
-# D-Bus-activated on demand and need no spawning here — but OBS's screen
-# capture goes portal -> ScreenCast -> pipewire, so without this stack the
-# capture source simply never appears.
+# OBS's screen capture goes portal -> ScreenCast -> pipewire, so without this
+# stack the capture source never appears.
+#
+# The xdg-desktop portals are started by hand below rather than left to D-Bus
+# activation: the front end snapshots its backends at startup and
+# xdg-desktop-portal-wlr is a Wayland client, so the backend goes up only once
+# the compositor socket exists, and the front end only once the backend owns
+# its bus name.
 . /usr/local/lib/kdos/session-common.sh
 
-# WHICH DESKTOP THIS IS, DECIDED BY THE PROGRAM THAT STARTS THE COMPOSITOR.
-#
-# `/etc/profile.d/10-wayland.sh` picks the name from whether WAYLAND_DISPLAY is
-# already set, and a login shell runs it BEFORE this script execs the
-# compositor — so the graphical session inherits `KDOS-Console:KDOS` and then
-# advertises itself as the console for the rest of its life. The portal front
-# end reads `<desktop>-portals.conf` off the FIRST name, finds the console's
-# file, and routes ScreenCast to the backend that records a console session by
-# `$KDOS_CON` — which a compositor session does not have. Every screen
-# recording then fails with `the cast was refused (2)` in twenty milliseconds,
-# with the wlr backend running and never asked.
+# WHICH DESKTOP THIS IS, SET BY THE PROGRAM THAT STARTS THE COMPOSITOR AND NOT
+# BY THE LOGIN SHELL. The portal front end reads `<desktop>-portals.conf` off
+# the FIRST name here and the mimeapps search reads `<desktop>-mimeapps.list`
+# off the same one, so this has to be the session's own answer rather than
+# whatever a shell with no compositor yet filled in.
 export XDG_CURRENT_DESKTOP=KDOS
 
-# THE COMPOSITOR IS EXEC'D BY THIS SCRIPT, so everything that needs it to exist
-# first waits in the background instead. Blocks until the socket appears and
+# THE COMPOSITOR RUNS IN THE FOREGROUND OF THIS SCRIPT, at the bottom, so
+# anything that needs its socket must wait for it in a background subshell
+# rather than be started ahead of it. Blocks until the socket appears and
 # exports WAYLAND_DISPLAY for the children; non-zero if it never does, which is
 # how a caller declines to start something into a session that failed.
 _wait_wayland() {
@@ -76,8 +75,9 @@ kdos_session_audio
 
 # The input method, if one is installed. fcitx5 is a Wayland client and speaks
 # input-method-v2 to kdos-comp (the fork's src/input/ime.c, labwc's own relay),
-# so it has to start AFTER the compositor exists — but this script execs the compositor, so
-# the wait happens in the background exactly as the portal's does.
+# so it has to start AFTER the compositor exists — but the compositor is the
+# last thing this script runs, so the wait happens in the background exactly as
+# the portal's does.
 #
 # It is started here rather than by XDG autostart because KDOS runs no autostart
 # agent; the fcitx5 port is built with ENABLE_XDGAUTOSTART=Off for the same
@@ -96,14 +96,11 @@ kdos_session_audio
 if command -v fcitx5 >/dev/null 2>&1; then
 	(
 		_wait_wayland || exit 0
-		# AND THE PANEL BELONGS TO THE SESSION WITH THE KEYBOARD. One
-		# kimpanel can own `org.kde.impanel` and the two desktops share
-		# one session bus, so the console's panel — started at boot,
-		# long before this — already has the name: a second one exits
-		# saying so, and the candidate window is then drawn on a
-		# virtual terminal nobody is looking at while the engine
-		# converts perfectly. This session ends that one and takes the
-		# name; the console's respawn loop takes it back at logout.
+		# ONE kimpanel CAN OWN `org.kde.impanel`, and a session bus
+		# outlives a session restart — so a panel left by an earlier
+		# one still holds the name and a second exits saying so, with
+		# the candidate window then drawn by a process nothing is
+		# feeding. Take the name rather than ask for it.
 		pkill -x kdos-ime
 		kdos-ime >/dev/null 2>&1 &
 		fcitx5 -d >/dev/null 2>&1
@@ -111,14 +108,15 @@ if command -v fcitx5 >/dev/null 2>&1; then
 fi
 
 # Everything the session does ONCE, after the compositor exists: the login
-# sound, the first-run keybind card, and the session restore. Shared with the
-# console session, which passes its own readiness test.
+# sound, the first-run keybind card, the pending-applications offer, the
+# per-user timers, and the session restore.
 kdos_session_once _wait_wayland
 
-# The compositor, no longer exec'd blind: a crashing kdos-comp used to drop
-# straight back to a bare tty with its dying words lost — the least mature
-# thing a desktop can do is die silently. So its stderr is kept, and it goes
-# to a FILE followed by `tail -f`, never through a pipe into `tee`:
+# The compositor runs in the foreground rather than being exec'd: this script
+# has to outlive it to reap it, print its log tail and offer the restart below,
+# and a compositor that died with its words lost is a tty with no explanation
+# on it. So its stderr is kept, and it goes to a FILE followed by `tail -f`,
+# never through a pipe into `tee`:
 #
 # EVERY DESCENDANT OF THE COMPOSITOR INHERITS FD 2. A pipe's reader sees EOF
 # only when the LAST write end closes, so a single surviving grandchild —
@@ -141,9 +139,11 @@ rc=$?
 kill "$_tail" 2>/dev/null
 wait "$_tail" 2>/dev/null
 
-# THE PANEL GOES BACK TO THE CONSOLE. This session's kdos-ime holds
-# `org.kde.impanel` and its display has just gone; leaving it there would keep
-# the console's respawn loop failing for the rest of the login.
+# THE PANEL OUTLIVES A BRIEF DISPLAY LOSS. kdos-ime notices a dead compositor
+# only on its next poll turn, so it can still hold `org.kde.impanel` when the
+# re-exec below starts the next one. Drop it here rather than rely on that
+# turn, and on the exit path too, so nothing is left holding the name on a
+# session bus that outlasts the session.
 pkill -x kdos-ime 2>/dev/null
 
 # A clean exit is a logout.

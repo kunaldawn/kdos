@@ -21,8 +21,8 @@
 #include "kpkg.h"
 #include "ksig.h"
 
-/* `==> ` on stdout, `ERROR: ` on stderr — the two the shell version had, and
- * the only two anything downstream has ever seen. */
+/* `==> ` on stdout, `ERROR: ` on stderr — the only two prefixes anything
+ * downstream matches on, so neither string is free to change. */
 void kp_msg(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void kp_err(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
@@ -43,8 +43,6 @@ const char *kp_decl_version(const KpDecl *d);
 const char *kp_decl_release(const KpDecl *d);
 const char *kp_decl_source(const KpDecl *d);
 const char *kp_decl_sha256(const KpDecl *d);
-const char *kp_decl_description(const KpDecl *d);
-const char *kp_decl_depends(const KpDecl *d);
 
 /* `$var`, `${var}` and the parameter forms the recipes use — `${v#p}`,
  * `${v##p}`, `${v%p}`, `${v%%p}`, `${v/a/b}`, `${v//a/b}`. `p` may be NULL

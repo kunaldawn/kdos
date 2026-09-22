@@ -1,84 +1,108 @@
 # Accessibility
 
-Making the console desktop readable: what says what, how to turn it on, and what the two routes
-cost.
+This page states what accessibility support exists on a KDOS machine and what does not, so that
+nobody spends an afternoon looking for a setting that is not there. The short answer: nothing on
+this image reads the desktop aloud. What does exist is a screen magnifier with no key bound to it,
+and an opt-in that turns the ordinary Linux stack back on inside a box.
 
-**This desktop is the one best placed to be read.** A graphical desktop reconstructs a tree of
-accessible objects and hopes it matches what was drawn. The console session holds the literal text
-of every cell, knows which window has the focus, and — because every widget announces itself —
-knows which control within it. Reading the screen is a loop over a buffer that already exists.
+## The desktop itself is not read
 
-## Two routes, and which to take
+`kdos-comp` draws pixels. A screen reader on a pixel desktop works from a tree of accessible
+objects that the toolkit publishes — AT-SPI, in the world this borrows from — and KDOS builds no
+such tree. Every KDOS surface composes its own grid of cells and hands it to the compositor as an
+ordinary Wayland buffer; the compositor's own chrome — titlebars, the root menu, the
+window-switcher OSD — is drawn with pango and handed to the screen the same way. Nothing in either
+path carries what a control *is*, what it is called, or what it is set to.
 
-| Route | What it needs | What it costs |
-|---|---|---|
-| `a11y = yes` in `con.conf` | Nothing but `brltty` | The pixel half: no pictures on the screen, no font chords |
-| `speak = yes` in `con.conf` | `espeak-ng`, which ships | Nothing; it runs beside the desktop |
+Half the material for one exists. `ktui_announce()` is in `libktui`, and ten roles of widget call
+it — buttons, check boxes, radios, text inputs, lists, tables, tabs, choices, sliders and text
+areas. A control states its kind, its name, its value and its position in its set: "check box Night
+light, on", "tab Keys, 2 of 3"; where the rows are the caller's own draw callback the widget states
+the position and leaves the name to the surface that painted it. It states it under either hand: a
+control that says itself in the frame it draws covers the pointer and the keyboard at once, and a
+control whose selection moves in a handler says so from the press and the wheel as well as the key.
+A menu is in the set: a bar pane and a popped context menu each name the row the caret is on and
+count the rows a caret can reach, so the separators and the rows the scope rules hid are left out
+of both the ordinal and the total.
 
-They are independent. A braille display and a voice can both be on.
+The record is rebuilt from scratch at the start of every frame and drained by nothing on this
+image. Its only reader is the library's own self-test, which is what keeps it honest with no client
+to notice when it is wrong. What is missing is a client, and a way for a client to reach it.
 
-## The braille route
+There is no braille route and no voice from any KDOS surface. `brltty`, `espeak-ng` and
+`speech-dispatcher` are ports and are on the image, because they are useful to somebody at a
+terminal, but no KDOS surface talks to any of them. The catalogue also carries an `app.a11y` pack
+holding Debian's `brltty` and `espeak-ng`, reachable with `kdos-appbox -b app.a11y run espeak-ng`;
+it is the same story one container further out.
 
-`kdos-view --kms` takes the terminal into graphics mode, and the kernel's text plane goes with it —
-which is the plane `brltty` reads over `/dev/vcsa`. A `--tty` view on the same terminal leaves that
-plane intact, so a braille display reads the console desktop with nothing else installed and
-nothing else running.
+## What does exist: the magnifier
 
-```sh
-# /etc/kdos/con.conf, or ~/.config/kdos-con/con.conf
-a11y = yes
+`kdos-comp` magnifies. Three actions drive it — `ToggleMagnify`, `ZoomIn` and `ZoomOut` — and a
+`<magnifier>` block in `~/.config/kdos-comp/rc.xml` sets its `width`, `height`, `initScale`,
+`increment` and `useFilter`. The defaults are a 400x400 inset at 2x, stepping by 0.2, filtered;
+setting `width` or `height` to `-1` magnifies the whole output instead.
+
+**Nothing in the shipped `rc.xml` binds any of the three**, so on a fresh install the magnifier
+exists and no key reaches it. Add a `keybind` of your own:
+
+```xml
+<keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
 ```
 
-`kdos-con-start` then brings the desktop up on a `--tty` view. **It is a trade, not a free
-setting**: the pixel half of the display is what pays for it.
+The phosphor pass steps aside while the magnifier is on, whole-frame: the two cannot both process
+the same buffer, and an accessibility zoom read through scanlines is harder to read rather than
+easier. See [Theming](theming.md#the-phosphor-pass).
 
-## The voice
+The other lever that exists is size. `chrome_font` and `panel_font` in `~/.config/kdos/comp.conf`
+set the pixel size every KDOS surface draws at, and the Font page of `kdos-style` changes the face
+without touching either size. A larger `chrome_font` is a larger desktop, in cells rather than in
+scaling. See [Theming](theming.md#fonts).
 
-```sh
-speak = yes
-```
+## A containerised application can be read
 
-`kdos-a11y` starts with the session, connects to the reader's socket and says what each widget
-announces: what the control is, its name, its value, and where it sits in its set — "check box
-Night light, on", "tab Keys, 2 of 3", "list, 3 of 9".
+Inside a box, the ordinary Linux accessibility stack applies. An application in a box runs against
+that box's own accessibility registry, which is a complete AT-SPI world of its own: the toolkit
+publishes its tree, and a reader installed in the same box walks it.
 
-**The position is a fact the widget states**, not a count somebody made from the screen. A list of
-nine says nine because the list knows.
+It is off by default, because nothing on the host owns `org.a11y.Bus` and the probe for it can only
+time out — so every containerised application would pay a start-up delay for a service that is
+never there. Off means two variables in the box's environment: `NO_AT_BRIDGE=1` and
+`GTK_A11Y=none`.
 
-**A password field says that it is one and never what is in it.** The whole point of the field is
-that what is typed into it is not on the screen; a reader that said it aloud would put it in the
-room.
-
-**It says a thing once.** A widget is right on every frame; dropping the repeat is the reader's job.
-
-Run it by hand to hear what a desktop would say without a synthesiser:
+To turn it on for every box, create an empty file:
 
 ```sh
-kdos-a11y --print
+touch ~/.config/kdos/a11y
 ```
 
-## What a reader may do
+To turn it on for one launch, set the variable in front of whatever you were going to type:
 
-**A reader may not type.** It arrives on a third socket — beside the surface socket and the view
-socket, in the same private directory — whose clients are displays that cannot drive. That is the
-socket's decision and not the client's: reaching it grants less, which is the whole reason it is a
-separate path rather than a flag on the other one.
+```sh
+KDOS_A11Y=1 gimp                     # the shim on your PATH
+KDOS_A11Y=1 kdos-appbox -b app.gimp run gimp
+```
 
-It is sent the composed grid like any display, plus one message per announcement. So a reader
-written by somebody else has the same material: the text of the screen and what the desktop says
-about it.
+`KDOS_A11Y=0` is an explicit off and wins over the file.
 
-## What is not here
+What that buys you is what the application's own toolkit offers. It does not reach the panel, the
+Start menu, the file chooser or anything else KDOS draws.
 
-**No accessibility registry on the host, and no AT-SPI.** A screen reader running **inside** a box
-reaches that box's own registry — `~/.config/kdos/a11y` opts boxed applications into it — and that
-is a separate mechanism for a separate problem.
+## What would have to change
 
-**Nothing reads the graphical desktop.** `kdos-comp` draws pixels and has no cell buffer to walk;
-what is written here is the console session's.
+Stated so that the size of the job is clear rather than implied:
+
+- A reader needs something to read. The announcement record would have to leave the process that
+  composed it — a socket, a bus interface, or an AT-SPI bridge built on the record `libktui`
+  already keeps.
+- And something to read it with. That means a client, and a decision about what it may do: a reader
+  that could type would be a keylogger with a friendly name, so whatever carries the announcements
+  has to grant less than a client that places windows does.
+
+Neither is built. See [Known gaps](../06-reference/known-gaps.md).
 
 ## See also
 
-- [Configuration](../06-reference/configuration.md#etckdosconconf) — the `a11y` and `speak` keys
-- [kdos-con](../04-programs/kdos-con.md) — the session, its sockets and the reader's
+- [Configuration](../06-reference/configuration.md#configkdosa11y) — the `~/.config/kdos/a11y` file
 - [C libraries](../05-developer/c-libraries.md#libktui) — `ktui_announce()`, and what a widget says
+- [Known gaps](../06-reference/known-gaps.md) — this, stated as the gap it is
+- [The desktop](desktop.md) — the keyboard route to every surface

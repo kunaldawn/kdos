@@ -14,7 +14,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # X-KDOS-Term NAMES THE EMULATOR THIS ENTRY NEEDS. The previews are the whole
 # reason this is on the image, and they are drawn by the terminal rather than by
 # yazi: `kdos-term` links the decoders and speaks sixel and the kitty protocol,
-# and the launcher opens this entry in it on either desktop. The key accepts
+# and the launcher opens this entry in it. The key accepts
 # only an emulator this image ships; without it the session's own terminal is
 # used, which is lighter.
 
@@ -45,7 +45,7 @@ Name=Files (yazi)
 GenericName=File Manager
 Comment=Browse files with yazi
 Exec=yazi %f
-Icon=file-manager
+Icon=folder
 Terminal=true
 X-KDOS-Term=kdos-term
 Categories=System;FileTools;FileManager;

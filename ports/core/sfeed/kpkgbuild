@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sfeed
+version     = 2.4
+release     = 1
+source      = https://codemadness.org/releases/$name/$name-$version.tar.gz
+sha256      = f9503fe9205a8136f76a9b753c6007abad33e2a516807e416a986723db06e879  sfeed-2.4.tar.gz
+description = RSS and Atom feeds as a tab-separated file, and the programs that read it
+homepage    = https://codemadness.org/sfeed-simple-feed-parser.html
+depends     = ncurses curl

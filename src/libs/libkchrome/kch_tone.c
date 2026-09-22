@@ -61,20 +61,9 @@ static const uint8_t tone_alpha[KCH_T_N] = {
 static uint32_t tone[KCH_T_N];
 static const void *tone_for;		/* the theme the cache was built from */
 
-/* Straight (not premultiplied) composite of `fg` at `a` over `bg`. Used only
- * to work out what a tone will LOOK like so the solve below can measure it;
- * the painting is pixman's and premultiplied. */
-static uint32_t over(uint32_t fg, uint32_t bg, uint8_t a)
-{
-	uint32_t out = 0;
-
-	for (int sh = 16; sh >= 0; sh -= 8) {
-		uint32_t f = (fg >> sh) & 0xff, b = (bg >> sh) & 0xff;
-
-		out |= ((f * a + b * (255 - a)) / 255) << sh;
-	}
-	return out;
-}
+/* libkcolor's, because the self-test measures these same plates and two
+ * composites is two answers to what a translucent tone looks like. */
+#define over(fg, bg, a) kcol_over((fg), (bg), (a))
 
 /*
  * THE FOCUSED PLATE IS SOLVED, NOT CHOSEN.
@@ -82,7 +71,7 @@ static uint32_t over(uint32_t fg, uint32_t bg, uint8_t a)
  * It has two jobs that pull against each other: stand far enough off the bar
  * to say which window you are in, and stay dark enough that the label on it
  * reads. Mixing further toward `pdark` does the first and undoes the second,
- * and no single percentage serves all seven accents — measured, 68% gives
+ * and no single percentage serves all eight accents — measured, 68% gives
  * 3.95:1 for text on bone and 50% still only gives 4.83:1.
  *
  * So walk down from 68% and stop at the first mix whose label clears 7:1,
@@ -133,7 +122,7 @@ static void build(void)
 	uint32_t body_ref;
 
 	if (!s)
-		s = &kcol_schemes[0];
+		s = kcol_default();
 
 	/*
 	 * The body is a gradient between these two, both close to `variant`

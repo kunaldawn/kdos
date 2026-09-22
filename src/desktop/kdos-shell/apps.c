@@ -7,21 +7,20 @@
  * ---------------------------------
  *   apps.c — one index of what is installed
  *
- * `kdos-start`, `kdos-launcher`, `kdos-run` and `kdos-openwith` each walked
- * /usr/share/applications for themselves, which is four answers to "what is
- * installed on this machine" and four places for a rule about NoDisplay to be
- * slightly different. This is the answer `kdos-start` uses.
+ * ONE WALK OF /usr/share/applications, shared. Every surface that lists what
+ * is installed — `kdos-start`, `kdos-launcher`, `kdos-run`, `kdos-openwith` —
+ * reading the directory for itself is four answers to "what is installed on
+ * this machine" and four places for a rule about NoDisplay to drift apart.
  *
- * IT IS NOT YET THE ONLY ONE. `kdos-launcher` still keeps its own index —
- * frecency and the alien mark ride on its entries — and `kdos-run` and
- * `kdos-openwith` have their own reasons. What the launcher no longer keeps is
- * its own idea of WHERE applications live: it reads the XDG data directories in
- * this file's order, because ignoring `XDG_DATA_DIRS` made it the one surface
- * that could not find what the others listed.
+ * IT IS NOT THE ONLY INDEX. `kdos-launcher` keeps one of its own, because
+ * frecency and the alien mark ride on its entries, and `kdos-run` and
+ * `kdos-openwith` have their own reasons. What no surface keeps privately is
+ * WHERE applications live: the XDG data directories, in this file's order. A
+ * surface that ignores `XDG_DATA_DIRS` is the one that cannot find what the
+ * others list.
  *
- * WHAT IS HERE THAT WAS NOT ANYWHERE: a USAGE COUNT. A Start menu whose left
- * column is "the things you actually run" cannot be built without one, and
- * nothing on this desktop recorded a launch. It is a plain text file —
+ * THE USAGE COUNT LIVES HERE. A Start menu whose left column is "the things
+ * you actually run" cannot be built without one. It is a plain text file —
  * `$XDG_STATE_HOME/kdos/appusage`, `count last-used id` per line — written the
  * way every other state file in this tree is written (temp, fsync the file,
  * fsync the DIRECTORY, rename), and capped, because an unbounded history of
@@ -47,7 +46,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "kcon.h"
+#include "kbase.h"
 #include "kxdg.h"
 #include "shell.h"
 
@@ -146,11 +145,13 @@ static const char *exec_token(const char **p, size_t *len)
  * kdos-appbox's own: `-b`/`--box` takes a name, every other switch takes
  * none, and both spellings are accepted or a hand-edited entry goes unmarked.
  */
-int sh_exec_is_boxed(const char *exec)
+int sh_exec_box(const char *exec, char *box, size_t cap)
 {
 	const char *p = exec, *tok;
 	size_t n;
 
+	if (box && cap)
+		box[0] = 0;
 	if (!exec)
 		return 0;
 	tok = exec_token(&p, &n);
@@ -171,10 +172,77 @@ int sh_exec_is_boxed(const char *exec)
 		if (*tok != '-')
 			return 0;
 		if ((n == 2 && !strncmp(tok, "-b", 2)) ||
-		    (n == 5 && !strncmp(tok, "--box", 5)))
-			exec_token(&p, &n);	/* the box name */
+		    (n == 5 && !strncmp(tok, "--box", 5))) {
+			tok = exec_token(&p, &n);	/* the box name */
+			if (tok && box && cap && n < cap) {
+				memcpy(box, tok, n);
+				box[n] = 0;
+			}
+		}
 	}
 	return 0;
+}
+
+int sh_exec_is_boxed(const char *exec)
+{
+	return sh_exec_box(exec, NULL, 0);
+}
+
+/*
+ * IS THERE ANYTHING BEHIND THIS LAUNCHER — asked so a menu never offers an
+ * application whose box is not on the machine. A launcher outlives its pack:
+ * `genlaunchers` reconciles the set, but only the paths that run it do, so a
+ * pack taken away through kdos-packd rather than through `kdos app remove`
+ * leaves a row that starts a container start and fails.
+ *
+ * ABSENCE MUST BE PROVED, NEVER ASSUMED, and the asymmetry is the whole of the
+ * rule: a false positive hides an application somebody installed, which is a
+ * worse failure than the ghost this removes. So two cheap positives are
+ * consulted and anything else counts as present.
+ *
+ *   - `<store>/<id>.kpack`, which is an installed pack.
+ *   - `~/.config/kdos/boxes/<id>.conf`, which is a box profile — what a
+ *     store-BUILT box has instead of a pack file, since podman holds it as an
+ *     image the pack store has never heard of.
+ *
+ * NEITHER FORKS AND NEITHER OPENS A SOCKET. The index is rebuilt every time a
+ * surface opens and already walks ~400 entries; asking podman or kdos-packd
+ * per row would put a process spawn or a round trip on each one.
+ *
+ * A row naming no box at all is present by definition — there is nothing to
+ * look for — and so is every row on a machine with no pack store, where the
+ * question cannot be answered and a blank menu would be the answer given.
+ */
+int sh_box_missing(const char *box)
+{
+	const char *store = getenv("KDOS_PACK_STORE");
+	const char *home = getenv("HOME");
+	char p[1024];
+
+	if (!box || !*box)
+		return 0;
+	/* A name with a slash in it is not a box id. It cannot come from
+	 * genlaunchers, so it is a hand-edited entry, and the one thing not to
+	 * do with it is build a path out of it. */
+	if (strchr(box, '/'))
+		return 0;
+
+	if (!store || !*store)
+		store = "/var/lib/kdos/packs";
+	if (!kb_is_dir(store))
+		return 0;		/* no store: the question has no answer */
+
+	snprintf(p, sizeof(p), "%s/%s.kpack", store, box);
+	if (kb_path_exists(p))
+		return 0;
+
+	if (home && *home) {
+		snprintf(p, sizeof(p), "%s/.config/kdos/boxes/%s.conf", home,
+			 box);
+		if (kb_path_exists(p))
+			return 0;
+	}
+	return 1;
 }
 
 /* ── the usage file ────────────────────────────────────────────────────── */
@@ -297,14 +365,25 @@ static void add_desktop_file(const char *path)
 	if (napps >= SH_MAX_APPS || kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
-	const char *type = kxdg_get(&e, "Type", "Application");
-	const char *name = kxdg_get(&e, "Name", NULL);
-	const char *exec = kxdg_get(&e, "Exec", NULL);
+	KxdgLaunch kl;
+
+	/*
+	 * THE LAUNCH KEYS THROUGH libkxdg'S ONE READER, which is also the test
+	 * that this entry can be started at all — Type=Application with an
+	 * Exec. Every surface that starts something reads them through this
+	 * same call, so none of them can disagree; see kxdg.h.
+	 */
+	if (kxdg_launch_read(&e, &kl) != 0) {
+		kxdg_free(&e);
+		return;
+	}
 
 	/* NoDisplay is the entry saying "I am not for a menu" — wine's is the
-	 * example kdos-appbox already documents. Hidden means deleted. */
-	if (strcmp(type, "Application") || !name || !exec ||
-	    kxdg_bool(&e, "NoDisplay", 0) || kxdg_bool(&e, "Hidden", 0)) {
+	 * example kdos-appbox already documents. Hidden means deleted. Neither
+	 * is libkxdg's to judge: the mime route opens a NoDisplay entry on
+	 * purpose, and this is the index a MENU is drawn from. */
+	if (!kl.name[0] || kxdg_bool(&e, "NoDisplay", 0) ||
+	    kxdg_bool(&e, "Hidden", 0)) {
 		kxdg_free(&e);
 		return;
 	}
@@ -312,7 +391,7 @@ static void add_desktop_file(const char *path)
 	struct sh_app *a = &apps[napps];
 	memset(a, 0, sizeof(*a));
 	snprintf(a->id, sizeof(a->id), "%s", id);
-	snprintf(a->name, sizeof(a->name), "%s", name);
+	kb_strlcpy(a->name, kl.name, sizeof(a->name));
 	/*
 	 * THE LINE THE ENTRY WROTE, FIELD CODES AND ALL. `sh_launch` spends
 	 * `%f`/`%F`/`%u`/`%U` on the documents a launch carries and decides
@@ -323,7 +402,7 @@ static void add_desktop_file(const char *path)
 	 * `kxdg_exec_split` drops every code and leaves no empty argument
 	 * behind, which is the whole reason nothing has to be deleted first.
 	 */
-	snprintf(a->exec, sizeof(a->exec), "%s", exec);
+	kb_strlcpy(a->exec, kl.exec, sizeof(a->exec));
 	snprintf(a->icon, sizeof(a->icon), "%s",
 		 kxdg_get(&e, "Icon", ""));
 	snprintf(a->comment, sizeof(a->comment), "%s",
@@ -333,26 +412,17 @@ static void add_desktop_file(const char *path)
 	snprintf(a->keywords, sizeof(a->keywords), "%s %s",
 		 kxdg_get(&e, "Keywords", ""), kxdg_get(&e, "GenericName", ""));
 	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
-	a->terminal = kxdg_bool(&e, "Terminal", 0);
 	/*
-	 * WHICH TERMINAL, for the few entries that need one in particular.
-	 * A program drawing pictures in the grid needs the emulator that links
-	 * the decoders; everything else gets the session's own, which is
-	 * lighter. Validated in sh_term_named(), so the key names one of two
-	 * emulators and never a program.
+	 * AND THE REST OF THE LAUNCH, off the record libkxdg filled: whether
+	 * the entry needs a terminal, which emulator it asked for, whether it
+	 * wants a floating window and the shape it wants. Copied rather than
+	 * re-read, so a key added to KxdgLaunch reaches this index, the
+	 * desktop's icons, the chooser and `kdos-appbox open` together.
 	 */
-	snprintf(a->term, sizeof(a->term), "%s",
-		 kxdg_get(&e, "X-KDOS-Term", ""));
-	/*
-	 * HOW THE WINDOW SHOULD OPEN, for the entries that have a shape rather
-	 * than a size somebody drags. Read here and in `desk.c`, which parses
-	 * an entry of its own — a key read in one and not the other is a
-	 * desktop icon that behaves differently from the same row in the Start
-	 * menu.
-	 */
-	a->floating = kxdg_bool(&e, "X-KDOS-Float", 0);
-	snprintf(a->size, sizeof(a->size), "%s",
-		 kxdg_get(&e, "X-KDOS-Size", ""));
+	a->terminal = kl.terminal;
+	kb_strlcpy(a->term, kl.term, sizeof(a->term));
+	a->floating = kl.floating;
+	kb_strlcpy(a->size, kl.size, sizeof(a->size));
 	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
 	 * distro's menus can answer and only this distro's users need asked.
@@ -364,7 +434,19 @@ static void add_desktop_file(const char *path)
 	 * index answers instead, so the Start menu and kdos-menu cannot
 	 * disagree with it.
 	 */
-	a->alien = sh_exec_is_boxed(a->exec);
+	char box[128];
+	a->alien = sh_exec_box(a->exec, box, sizeof(box));
+	/*
+	 * AND THE ROW IS DROPPED WHERE ITS BOX IS NOT THERE. Kept as an entry
+	 * with a mark instead, it would be a menu row that spends eighteen
+	 * seconds starting a container and then reports that the pack is
+	 * missing — the `[box]` tag exists to warn about that cost, not to
+	 * make it survivable.
+	 */
+	if (a->alien && sh_box_missing(box)) {
+		kxdg_free(&e);
+		return;		/* napps is not advanced: the slot is reused */
+	}
 	if (*a->exec)
 		napps++;
 	kxdg_free(&e);
@@ -431,16 +513,6 @@ int sh_apps_load(void)
 	qsort(apps, (size_t)napps, sizeof(apps[0]), cmp_name);
 	usage_load();
 	return napps;
-}
-
-int sh_apps_count(void)
-{
-	return napps;
-}
-
-const struct sh_app *sh_apps_get(int i)
-{
-	return i >= 0 && i < napps ? &apps[i] : NULL;
 }
 
 const struct sh_app *sh_apps_find(const char *id)
@@ -510,15 +582,14 @@ int sh_apps_in_group(int group, const struct sh_app **out, int max)
  * RANKED, because "fi" matching forty entries in alphabetical order is a list
  * nobody reads to the end of.
  *
- * `kb_fuzzy()` AND NOT A MATCHER OF OUR OWN. This used to be a
- * case-insensitive SUBSTRING in six bands, which meant `sm` found nothing at
- * all where a person plainly meant System Monitor — and it meant the launcher,
- * which had a subsequence matcher of its own, answered the same query
- * differently. One function in libkbase is what stops three surfaces ranking
- * one query three ways; see kbase.h for the ladder it scores by.
+ * `kb_fuzzy()` AND NOT A MATCHER OF OUR OWN. A case-insensitive SUBSTRING in
+ * bands finds nothing at all for `sm` where a person plainly means System
+ * Monitor, and a surface that rolls its own subsequence matcher answers the
+ * same query differently from the one beside it. One function in libkbase is
+ * what stops three surfaces ranking one query three ways; see kbase.h for the
+ * ladder it scores by.
  *
- * HIGHER IS BETTER HERE, which is the opposite of what the launcher's private
- * matcher meant by a score. The comparison below sorts descending, and a sort
+ * HIGHER IS BETTER HERE. The comparison below sorts descending, and a sort
  * left the other way round would rank a correct list backwards.
  *
  * The usage count still breaks ties, and the name breaks those: that is the
@@ -641,14 +712,9 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
 		nfiles = SH_LAUNCH_FILES;
 
 	/*
-	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
-	 * socket, set by the session for everything started inside it, and it
-	 * decides how a NON-terminal program is started below. A terminal one
-	 * needs no branch here: sh_term_argv_in() names the emulator, from the
-	 * entry's own X-KDOS-Term when it asked for one.
+	 * A terminal program needs no branch here: sh_term_argv_in() names the
+	 * emulator, from the entry's own X-KDOS-Term when it asked for one.
 	 */
-	const char *con = getenv("KDOS_CON");
-
 	if (l->terminal)
 		n = sh_term_argv_in(l->term, l->floating, l->size, argv, n,
 				    max, l->exec, id, sizeof(id));
@@ -696,30 +762,6 @@ int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles)
 		for (int i = 0; i < nfiles && n < max - 1; i++)
 			argv[n++] = files[i];
 	argv[n] = NULL;
-
-	/*
-	 * A GRAPHICAL APPLICATION ON THE CONSOLE IS THE SESSION'S TO START.
-	 * This desktop composites character cells and a Wayland client's
-	 * surface is pixels; the session gives the guest a cage — embedded in
-	 * a window, or full screen on a terminal of its own — and with it the
-	 * display the guest connects to. Forked from here it would have
-	 * neither, and a boxed application would exit at once with nothing on
-	 * the screen to say why.
-	 *
-	 * A terminal program is not one of these: it becomes a kdos-term
-	 * window above and belongs on this grid.
-	 */
-	if (con && *con && !l->terminal) {
-		const char *what = l->title && l->title[0] ? l->title : argv[0];
-
-		if (kcon_run(con, argv, what, 0) < 0) {
-			fprintf(stderr,
-				"kdos-shell: cannot start '%s' — the session "
-				"has no free terminal to give it\n", what);
-			return -1;
-		}
-		return 0;
-	}
 
 	sh_spawn(argv);
 	return 0;
@@ -777,4 +819,31 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 	};
 
 	sh_launch(&l, files, nfiles);
+}
+
+/*
+ * THE SAME LAUNCH FROM AN ID, for a surface that holds one and no index.
+ *
+ * The panel's quick-launch row and its taskbar chips are the callers: both
+ * know a desktop id and neither builds the application index, which walks
+ * every directory on the machine. Resolved through `sh_desktop_entry`, so it
+ * is the same search and the same key list the index reads.
+ */
+int sh_launch_id(const char *id, const char *const *files, int nfiles)
+{
+	struct sh_entry se;
+
+	if (sh_desktop_entry(id, &se) != 0)
+		return -1;
+
+	struct sh_launch l = {
+		.exec = se.exec,
+		.title = se.name[0] ? se.name : NULL,
+		.term = se.term,
+		.size = se.size,
+		.terminal = se.terminal,
+		.floating = se.floating,
+	};
+
+	return sh_launch(&l, files, nfiles);
 }

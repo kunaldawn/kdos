@@ -153,6 +153,70 @@ int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy)
 	return n;
 }
 
+/*
+ * A BROADCAST IS NOT A FILE READ, so this one call breaks the one-second
+ * ceiling above on purpose. mDNS and NetBIOS both answer by waiting: a
+ * responder has a moment to reply and the daemon has to spend it. Five seconds
+ * is what `nmblookup`'s own retries come to, and a shorter wait would report
+ * an empty network rather than a slow one.
+ */
+int sh_mountd_browse(ShServerRow *out, int max, char *why, size_t nwhy)
+{
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	const char *path = getenv("KDOS_MOUNTD_SOCKET");
+	struct timeval tv = { .tv_sec = 15, .tv_usec = 0 };
+	char buf[8192];
+	size_t got = 0;
+	ssize_t r;
+	int n = 0;
+
+	if (why && nwhy)
+		why[0] = '\0';
+	if (fd < 0)
+		return 0;
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
+		 path && *path ? path : SH_MOUNTD_SOCKET);
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		close(fd);
+		if (why && nwhy)
+			snprintf(why, nwhy, "kdos-mountd is not running "
+					    "(service start 58_mountd)");
+		return 0;
+	}
+	dprintf(fd, "browse\n");
+	shutdown(fd, SHUT_WR);
+	while (got + 1 < sizeof(buf) &&
+	       (r = read(fd, buf + got, sizeof(buf) - got - 1)) > 0)
+		got += (size_t)r;
+	buf[got] = '\0';
+	close(fd);
+
+	for (char *p = buf; *p && n < max;) {
+		char *nl = strchr(p, '\n');
+
+		if (nl)
+			*nl = '\0';
+
+		ShServerRow *sv = &out[n];
+
+		memset(sv, 0, sizeof(*sv));
+		/* `name\taddress`, and the `ok` the daemon ends with has no
+		 * tab, so it falls out here rather than needing a test of its
+		 * own. An address may be empty where a responder gave a name
+		 * and nothing else. */
+		if (sscanf(p, "%63[^\t]\t%45[^\n]", sv->name, sv->addr) >= 1 &&
+		    sv->name[0])
+			n++;
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	return n;
+}
+
 int sh_mountd_do(int idx, const char *verb, char *out, size_t nout)
 {
 	char req[64], buf[512];

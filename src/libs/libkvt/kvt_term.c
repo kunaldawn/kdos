@@ -47,10 +47,6 @@ struct kvt_term {
 	/* When synchronized output went on, for the watchdog. Zero when it is
 	 * off. See kvt_term_sync_hold(). */
 	unsigned long long sync_since;
-	/* The consumer's own sync callback, if it asked for one. The vte's is
-	 * this object's, because the watchdog has to see every transition. */
-	kvt_vte_sync_cb user_sync;
-	void *user_sync_data;
 };
 
 static void reap(struct kvt_term *t);
@@ -294,10 +290,8 @@ void kvt_term_scrollback(struct kvt_term *t, unsigned int lines)
  *
  * `kdos theme` writes `~/.config/kdos/term-colors.conf` — eighteen
  * `name = #rrggbb` lines — and this turns it into the array the vte wants.
- * It lives here rather than in either terminal because BOTH read it: the
- * window `kdos-term` opens and the one the console session opens are the same
- * terminal, and a colour that differed between them would be the same program
- * looking different depending on which desktop started it.
+ * It lives here rather than in the terminal because every consumer of the vte
+ * reads it, and a colour resolved twice is a colour that can differ.
  *
  * A MISSING FILE IS NOT AN ERROR. It is what a fresh account has before
  * anybody has chosen an accent, and the answer there is the built-in palette.
@@ -491,20 +485,6 @@ void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user)
 		kvt_vte_set_clip_cb(t->vte, cb, user);
 }
 
-void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user)
-{
-	if (t)
-		kvt_vte_set_bell_cb(t->vte, cb, user);
-}
-
-void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user)
-{
-	if (!t)
-		return;
-	t->user_sync = cb;
-	t->user_sync_data = user;
-}
-
 void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user)
 {
 	if (t)
@@ -512,19 +492,14 @@ void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user)
 }
 
 /*
- * The focus moved. Both desktops call this from the one place each decides
- * focus, so a window on a workspace somebody left is told it lost it — which
- * it did, and an editor that is not told does not reload a changed file.
+ * The focus moved. Called from the one place the surface decides focus, so a
+ * window on a workspace somebody left is told it lost it — which it did, and
+ * an editor that is not told does not reload a changed file.
  */
 void kvt_term_focus(struct kvt_term *t, int in)
 {
 	if (t)
 		kvt_vte_focus(t->vte, in != 0);
-}
-
-int kvt_term_sync_output(struct kvt_term *t)
-{
-	return t ? kvt_vte_sync_output(t->vte) : 0;
 }
 
 /* See kvt.h. The screen and its scrollback are not touched — what a child left
@@ -588,17 +563,16 @@ int kvt_term_sync_hold(struct kvt_term *t)
  * of that program is presented half-drawn, which is the tearing the mode
  * exists to prevent.
  *
- * This is the vte's callback for the life of the terminal; a consumer's own
- * is kept beside it and called after, so asking for one does not disarm the
- * watchdog.
+ * This is the vte's callback for the life of the terminal, and the only one:
+ * the vte holds a single sync callback, so handing that slot to a consumer
+ * would disarm the watchdog.
  */
 static void on_sync(struct kvt_vte *vte, bool on, void *data)
 {
 	struct kvt_term *t = data;
 
+	(void)vte;
 	t->sync_since = on ? kvt_mono_ms() : 0;
-	if (t->user_sync)
-		t->user_sync(vte, on, t->user_sync_data);
 }
 
 /*
@@ -854,21 +828,6 @@ const char *kvt_term_link_uri(struct kvt_term *t, unsigned int id)
 	return t ? kvt_vte_link_uri(t->vte, id) : NULL;
 }
 
-char *kvt_term_text(struct kvt_term *t, size_t *len_out)
-{
-	return t ? kvt_screen_text(t->screen, len_out) : NULL;
-}
-
-void kvt_term_show(struct kvt_term *t, const char *u8, size_t len)
-{
-	/* Into the state machine, which is where the child's own bytes go —
-	 * so the text lands on the screen and scrolls into the scrollback
-	 * exactly as it did the first time. `kvt_term_write` is the other
-	 * direction and would type this at the shell. */
-	if (t && u8 && len)
-		kvt_vte_input(t->vte, u8, len);
-}
-
 int kvt_term_mark_at(struct kvt_term *t, unsigned int y, int *status)
 {
 	if (status)
@@ -879,27 +838,4 @@ int kvt_term_mark_at(struct kvt_term *t, unsigned int y, int *status)
 int kvt_term_scroll_to_mark(struct kvt_term *t, int dir)
 {
 	return t ? kvt_screen_scroll_to_mark(t->screen, dir) : 0;
-}
-
-/*
- * The selection, onto the clipboard the rest of the desktop uses. One
- * implementation of "what is on the clipboard", so a copy out of a terminal
- * pastes into a KDOS surface and the other way round.
- */
-int
-kvt_term_copy_selection(struct kvt_term *t)
-{
-	if (!t)
-		return -1;
-
-	char *text = NULL;
-	int len = kvt_screen_selection_copy(t->screen, &text);
-
-	if (len < 0 || !text)
-		return -1;
-
-	int r = ktui_clip_copy(text);
-
-	free(text);
-	return r;
 }

@@ -7,10 +7,10 @@
  * ---------------------------------
  *   libkcolor — the KDOS palette, and the arithmetic on it
  *
- * One table for the distro. It used to exist twice — a bash `palette()` in
- * fs/usr/local/bin/kdos and a C `ki_themes[]` in the installer, whose own
- * comment admitted the duplication — and the theme generators each carried
- * their own copy of the colour maths on top of that.
+ * One table for the distro, and the one copy of the colour maths on it. The
+ * `kdos` command, the installer, the theme generators and the bootloader stamp
+ * all take their numbers from here; a second copy anywhere is a machine whose
+ * boot menu, installer and desktop can disagree about what an accent is.
  * ---------------------------------
  */
 
@@ -36,14 +36,25 @@
  * scheme. A scheme is not a set of colours somebody liked, it is a set that
  * clears those two floors.
  *
- * EVERY SCHEME HERE IS DARK, and that is a limit of the chrome rather than a
- * preference. `libkchrome` solves the focused plate along `dim`-to-`pdark` and
- * writes `text` on it — one label colour for every plate — so on a light ground
- * the plate darkens away from a dark label and no mix clears both the
- * separation floor and the legibility one: the best light candidate reaches
- * 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off the
- * bar where the label reads at 6.58:1. A light scheme needs the ladder to
- * choose its label per plate first, and `selftest.c` refuses one until then.
+ * A SCHEME'S GROUND MAY BE EITHER END, and what decides whether one is usable
+ * is the PLATE LADDER rather than the ground. `libkchrome` solves the focused
+ * plate along `dim`-to-`pdark` and writes `text` on it, and that plate has to
+ * do two things that pull against each other: stand off the bar, and carry its
+ * own label. A palette whose `dim`, `pdark` and `variant` leave no mix doing
+ * both is unusable whichever end its ground is; one that leaves a mix doing
+ * both is usable whichever end its ground is.
+ *
+ * `paper` is the light one and it is what proves the distinction: at 30% its
+ * plate separates at the hover floor and carries `text` at 7.51:1. WHAT
+ * REFUSES A SCHEME IS ITS PLATES, never which end its ground sits at: the
+ * ground is a proxy for the question, and a refusal written on it turns away
+ * this palette and admits a dark one whose plates fail.
+ *
+ * THE SOLVER AIMS AT 7:1 ON THE LABEL AND DOES NOT ALWAYS REACH IT. `bone`
+ * lands at 6.21:1 and no `pdark` fixes it — the separation floor binds first,
+ * and the best any mix reaches is 6.69:1. The floor asserted is therefore WCAG
+ * AA at 4.5:1, which is what every scheme can hold; 7:1 is the target the walk
+ * stops early on, not a promise.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KCOL_SCHEMES(X)                                                       \
@@ -60,9 +71,41 @@
 	X(borland, "BORLAND", "KDOS-Borland",                                 \
 	  5fd7d7, 24494d, ffd75f, ff5f5f, 020e12, f0fcfc, 07181c, 2f8f8f, 010c0f) \
 	X(perfect, "PERFECT", "KDOS-Perfect",                                 \
-	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38)
+	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38) \
+	X(paper, "PAPER", "KDOS-Paper",                                       \
+	  1a5fb4, c9c6bd, 9c6500, a51d2d, fbfaf6, 1a1a17, f2f0e9, 5b5750, eceae2)
 
 #define KCOL_HEX(x) ((uint32_t)0x##x)
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The default scheme, named once
+ *
+ * A consumer with nothing configured falls back to a row of the table above.
+ * Reaching for index 0 — `kcol_schemes[0]`, `ktui_themes[0]` — makes the
+ * default a property of WHERE A ROW SITS, so reordering the accent picker
+ * silently changes what an unconfigured machine boots in, and the compositor,
+ * the console, the cage and the chrome each end up holding their own copy of
+ * the assumption.
+ *
+ * The index is derived from the NAME instead, at compile time, so the table
+ * can be reordered freely and there is one line to edit to move the default.
+ * `KCOL_DEFAULT_ID` is the bare identifier as the X-macro spells it.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define KCOL_DEFAULT_ID bone
+
+#define KCOL_IDX_ENUM(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd)   \
+	KCOL_IDX_##id,
+
+enum { KCOL_SCHEMES(KCOL_IDX_ENUM) KCOL_IDX_COUNT };
+
+#define KCOL_CAT2(a, b) a##b
+#define KCOL_CAT(a, b) KCOL_CAT2(a, b)
+#define KCOL_STR2(x) #x
+#define KCOL_STR(x) KCOL_STR2(x)
+
+#define KCOL_DEFAULT_INDEX KCOL_CAT(KCOL_IDX_, KCOL_DEFAULT_ID)
+#define KCOL_DEFAULT_NAME  KCOL_STR(KCOL_DEFAULT_ID)
 
 typedef struct {
 	uint8_t r, g, b;
@@ -88,6 +131,74 @@ extern const int kcol_nscheme;
 
 /* NULL when the name is not one of ours. */
 const KcolScheme *kcol_find(const char *name);
+
+/* The scheme a machine with nothing configured is in. Never NULL. */
+const KcolScheme *kcol_default(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The bootloader's colours
+ *
+ * THE BOOT MENU IS THE FIRST SCREEN OF KDOS AND IT WEARS THE SAME PALETTE AS
+ * THE LAST ONE. The ISO step and the installer both stamp their `limine.conf`
+ * from here. Nine numbers written out as literals in each is a medium and a
+ * machine installed from it that can disagree about the colour of the menu,
+ * and the copy that is wrong is the one nobody is booting that day.
+ *
+ * Emits the whole LOOK of a `limine.conf` — the `interface_*` lines, the
+ * backdrop, the palettes, the margins, the wallpaper STYLE and the font SCALE
+ * — newline-terminated.
+ *
+ * WHAT IT DOES NOT EMIT IS EXACTLY THE TWO LINES THAT NAME PATHS: `wallpaper`
+ * and `term_font`. Which artwork and which face are installed is not a
+ * question an accent answers, and this library names no paths. Everything
+ * else about how the menu looks is here, so re-theming an installed machine
+ * moves the layout as well as the colours — a restamp that changed only the
+ * palette would leave a menu drawn at `2x2` over a `centered` backdrop, which
+ * is unreadable in any scheme.
+ *
+ * `term_background` CARRIES A LEADING TRANSPARENCY BYTE and it is `00`.
+ * Limine's own default is `80` whenever a wallpaper is set — half-transparent
+ * — so a config that sets a wallpaper and says nothing about the background
+ * prints the artwork THROUGH the menu text. That is not a theme choice to be
+ * retuned; it is the difference between a menu that can be read and one that
+ * cannot.
+ *
+ * Returns the number of bytes that would have been written, snprintf-style, so
+ * a truncated buffer is detectable rather than silent.
+ * ──────────────────────────────────────────────────────────────────────── */
+int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The Linux VT's sixteen — setvtrgb's `/etc/vtrgb`
+ *
+ * THE FIRST SURFACE A PERSON SEES IS A TEXT CONSOLE, not the desktop.
+ * kdos-getty loads this before it clears tty1, so the login prompt, the
+ * banner, `/etc/issue` and every program run before the session inherit the
+ * scheme. A palette left on some other accent is a boot that changes colour
+ * halfway through.
+ *
+ * WHICH IS WHY IT IS GENERATED AND NOT WRITTEN OUT. A hand-kept table is a
+ * second copy of the scheme, and the copy is what goes stale: moving
+ * KCOL_DEFAULT_ID has to move the console with it or the two disagree on
+ * every fresh install.
+ *
+ * SGR 30-37 REACH SLOTS 0-7 AND BOLD REACHES 8-15, so both halves are
+ * scheme-derived: `\e[1;32m` — what the logo and `/etc/issue` are written in
+ * — lands on slot 10 and never on slot 2. A bright ramp left generic is an
+ * accent that only applies to the text nobody emphasised.
+ *
+ * BLUE, MAGENTA AND CYAN ARE NOT THE SCHEME'S AND ARE NOT DERIVED FROM IT.
+ * No scheme names them, and a console whose eight colours collapse onto one
+ * accent cannot show `ls --color`, a diff or a syntax highlight — every
+ * class becomes the same lozenge. They are fixed hues chosen to read on a
+ * dark ground and on a light one, and they are the reason this is not
+ * `kcol_limine_conf`'s palette: a boot menu draws in five colours and a
+ * console draws in sixteen.
+ *
+ * Emits setvtrgb's format exactly — three lines, red then green then blue,
+ * sixteen decimal bytes each — and returns snprintf's count.
+ * ──────────────────────────────────────────────────────────────────────── */
+int kcol_vtrgb(const KcolScheme *sc, char *buf, size_t cap);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Conversions
@@ -115,6 +226,18 @@ uint32_t kcol_from_hls(double h, double l, double s);
 /* Linear blend, pct 0..100 of `b` over `a`. Integer maths, matching the
  * `mix_hex` the shell version used, so generated files do not shift by one. */
 uint32_t kcol_mix(uint32_t a, uint32_t b, int pct);
+
+/*
+ * STRAIGHT (not premultiplied) COMPOSITE of `fg` at `alpha` over `bg` — what a
+ * translucent plate LOOKS like, so a contrast can be measured against what
+ * reaches a screen rather than against the colour before it is laid down.
+ *
+ * The difference is not cosmetic: the focused plate measures about 0.8 lower
+ * raw than composited, which is the gap between a ladder that reads as working
+ * and one that reads as broken. The painting itself is pixman's and
+ * premultiplied; this is only ever for measuring.
+ */
+uint32_t kcol_over(uint32_t fg, uint32_t bg, uint8_t alpha);
 
 /* The float form the stylesheet generator uses: x + (y - x) * t, rounded the
  * way python rounds. NOT interchangeable with kcol_mix — they disagree by a
@@ -234,10 +357,13 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
 		       size_t *outlen);
 
 /*
- * The accent `kdos theme` last wrote, from $XDG_CACHE_HOME/kdos/theme. The
- * READ is shared because every front end resolves the same two paths; what
- * each does with the name is its own. Empty `out` means the default scheme,
- * which is not an error.
+ * The accent `kdos theme` last wrote, from $XDG_CACHE_HOME/kdos/theme.
+ *
+ * THE ONE READ OF THAT FILE, for every front end that links this library: the
+ * two paths and their order are a contract with `kdos theme`, and a second
+ * resolution of them drifts from this one the first time the fallback moves.
+ * What a front end does with the name is its own. Empty `out` means the
+ * default scheme, which is not an error.
  */
 int kcol_theme_name(char *out, size_t cap);
 

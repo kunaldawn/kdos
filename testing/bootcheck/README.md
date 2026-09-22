@@ -14,7 +14,7 @@ three verbs: run a command in the guest, type into the VT, and take a picture.
 ```sh
 testing/bootcheck/boot.sh soft                  # boot; pixman, like `make run`
 testing/bootcheck/guest.py 'kdos doctor'        # run on the serial root shell
-testing/bootcheck/type.py 'kdos-desktop\n'      # type into tty1
+testing/bootcheck/type.py 'kdos doctor\n'       # type into the focused window
 echo "screendump /tmp/x.ppm" > /tmp/kdos-bootcheck/mon.fifo
 kill $(cat /tmp/kdos-bootcheck/qemu.pid)
 ```
@@ -43,13 +43,15 @@ Four things it exists to encode, each of which cost a debug cycle:
   `-display egl-headless` it answers "no surface" and the picture has to come
   from the VNC framebuffer instead. `soft` is the mode to assert on.
 
-Two facts about the guest itself: **the serial console is a root login** (tty2
-and the serial port are root per `fs/etc/inittab`) while **tty1 autologins as
-`kdos`**, and the desktop is started by hand from tty1 — so `type.py` is how the
-session gets started and `guest.py` is how it gets inspected. Anything run as
-`kdos` from the serial side needs `su - kdos` (a LOGIN shell: a plain `su kdos`
-leaves podman resolving `HOME` to `/`) plus `XDG_RUNTIME_DIR`,
-`WAYLAND_DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` in its environment.
+Two facts about the guest itself: **the serial console is a root login** —
+`fs/etc/inittab` runs `/bin/bash -l` on `ttyS0` under init, so there is no
+prompt and no account to name, while tty2 is a plain getty that asks for
+one — and **tty1 autologins as `kdos`** and `~/.bash_profile`, seeded from
+`/etc/skel`, starts `kdos-desktop` there — so the desktop is already up before
+any step, `type.py` drives whatever surface has the focus in it, and
+`guest.py` inspects it from the serial root shell. Anything run as `kdos` from
+the serial side needs `su - kdos` (a LOGIN shell: a plain `su kdos` leaves
+podman resolving `HOME` to `/`) plus `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` and
+`DBUS_SESSION_BUS_ADDRESS` in its environment.
 
-**What is missing is the assertions** — see `KDOS-ROADMAP.md` Wave R, item R5,
-which lists the first eight and what each of them would have caught.
+**What is missing is the assertions** — this is plumbing, not a gate.

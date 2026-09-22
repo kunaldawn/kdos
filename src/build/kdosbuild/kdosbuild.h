@@ -7,22 +7,17 @@
  * ---------------------------------
  *   kdosbuild — the build orchestrator
  *
- * Replaces script/build.py and the python modules under script/buildlib. Runs
- * the phases, snapshots them, restores them, and draws it all on libktui — the
- * change that kills the third TUI toolkit (kinstall's, kdos-appbox's ncurses
- * one and buildlib's python curses one were three implementations of one).
+ * Runs the phases, snapshots them, restores them, and draws it all on libktui
+ * — the one TUI toolkit in the tree, shared with kinstall and kdos-appbox.
  *
- * ONE STRUCTURAL CHANGE FROM THE PYTHON, AND IT IS A SIMPLIFICATION.
- * build.py ran the build on a worker THREAD because curses' getch() blocks.
- * libktui's input has a timeout, so here the build IS the main loop: poll the
- * running child and the terminal together, read whichever is ready, redraw.
- * No threads, no locks, no "never let the worker die silently" wrapper, and
- * the progress callbacks that had to be careful never to draw concurrently
- * with the caller now cannot be.
+ * THE BUILD IS THE MAIN LOOP. libktui's input has a timeout, so the running
+ * child and the terminal are polled together and whichever is ready is read.
+ * There is no worker thread, which is why no progress callback has to guard
+ * against drawing concurrently with the caller — none can.
  *
  * The pieces that only INSPECT the tree — phase discovery, the metadata
- * block, build plans, the snapshot inventory — are libkbuild's, and are
- * verified against buildlib itself by testing/selftest.sh.
+ * block, build plans, the snapshot inventory — are libkbuild's, and
+ * testing/selftest.sh checks them against the repository itself.
  * ---------------------------------
  */
 
@@ -42,7 +37,7 @@
  * return more than that, so a phase that reaches this has already been
  * truncated upstream and the build must say so rather than carry on. */
 #define KB_MAX_PKGS    2048
-#define KB_MAX_LOG     2000	/* lines kept per step, as in build.py      */
+#define KB_MAX_LOG     2000	/* lines kept per step                      */
 #define KB_MAX_NOTICE  50
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -178,8 +173,9 @@ typedef struct {
 	double start_time;
 	long long total_lines;
 
+	/* The last phase a restore skipped and the last one --continue-from
+	 * skipped: the banner names one or the other. */
 	const KbuildPhase *restored_from;
-	const KbuildPhase *resumed_inside;
 	const KbuildPhase *continued_from;
 
 	BNotice notice[KB_MAX_NOTICE];
@@ -289,9 +285,9 @@ const char *human_count(long long n);
 /* ──────────────────────────────────────────────────────────────────────── */
 /* View geometry
  *
- * Every region's origin comes from here. It used to be three independent
- * calculations — hud_h in screen_build, the 45% cap in tree_width, the header
- * height inline — and at some widths the divider was drawn on top of the log
+ * Every region's origin comes from here. Split into independent calculations
+ * — hud_h in screen_build, a 45% cap in tree_width, the header height inline
+ * — they disagree at some widths and the divider is drawn on top of the log
  * text. One struct means a size that breaks the layout breaks it visibly in
  * one place, and can be asserted over every size.
  */
@@ -335,7 +331,15 @@ void report_snapshots_json(const KbuildPhase *ph, int nph,
 
 enum { PICK_QUIT = 0, PICK_FRESH, PICK_RESTORE, PICK_PLAN };
 
-int screen_startup(Manager *m, int *index, const char *commit);
+/* The startup picker. `index` receives the phase to restore when the result is
+ * PICK_RESTORE. `snapshot_enabled` carries the snapshot-writing choice BOTH
+ * ways: in as the state the screen opens on (the command line's), out as what
+ * the operator left it at. It is answered here rather than on the command line
+ * because the cost being chosen — tens of gigabytes and a large part of the
+ * run's wall clock — is only knowable once the phase list and the codec are on
+ * screen beside it. */
+int screen_startup(Manager *m, int *index, const char *commit,
+		   int *snapshot_enabled);
 int screen_plan(Manager *m, KbuildPlan *out);
 void screen_progress(Manager *m, const char *title);	/* restore HUD      */
 void screen_build(Manager *m, Sampler *s, Timings *t);

@@ -32,8 +32,8 @@
  * log.
  *
  * `name`, `version`, `release` and every recipe helper are INJECTED, because
- * the recipe can no longer source itself. They come from the parser, and each
- * is single-quoted on the way in.
+ * a recipe is parsed and never sourced and so cannot define them for itself.
+ * They come from the parser, and each is single-quoted on the way in.
  * ---------------------------------
  */
 
@@ -184,6 +184,61 @@ static int verify_source(const Recipe *r, const char *path, const char *file)
 	return 0;
 }
 
+/*
+ * EVERY `sha256 =` ENTRY IS CHECKED, not only the ones a `source =` names.
+ * A vendor bundle — `<name>-vendor-<version>.tar.xz` beside the recipe, which
+ * `build.sh` unpacks itself — is declared with a hash and named by no source
+ * entry, so a walk over `source =` alone would build 114 ports out of bytes
+ * nothing ever looked at.
+ *
+ * An entry whose file is in neither the port directory nor $SOURCE_DIR is
+ * skipped: a source that must be there is caught by extract_sources(), and
+ * refusing a port over a declared file its build never opens would fail builds
+ * for a hash that cannot affect them.
+ */
+static int verify_declared(const KpConf *c, const Recipe *r, const char *portdir)
+{
+	char list[4096];
+	kb_strlcpy(list, r->sha256, sizeof(list));
+
+	/* Alternating <hex> <name> tokens, as hash_for() walks them. */
+	char *hex = NULL, *save = NULL;
+	int k = 0;
+	for (char *t = strtok_r(list, " \t\n", &save); t;
+	     t = strtok_r(NULL, " \t\n", &save), k++) {
+		if (k % 2 == 0) {
+			hex = t;
+			continue;
+		}
+		if (!hex)
+			continue;
+
+		char *path = kb_path_join(portdir, t);
+		if (!kb_path_exists(path)) {
+			free(path);
+			path = kb_path_join(c->source_dir, t);
+			if (!kb_path_exists(path)) {
+				free(path);
+				continue;
+			}
+		}
+
+		char got[65];
+		if (kb_sha256_file(path, got) != 0) {
+			kp_err("Cannot read %s to verify it", path);
+			free(path);
+			return -1;
+		}
+		free(path);
+		if (!kb_str_ieq(got, hex)) {
+			kp_err("sha256 MISMATCH for %s\n  expected %s\n  got      %s",
+			       t, hex, got);
+			return -1;
+		}
+	}
+	return 0;
+}
+
 static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir,
 			   const char *src_dir, const char *src_root)
 {
@@ -233,8 +288,8 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 				kb_argv_add(&a, "--strip-components=1");
 		} else {
 			/* .zip and .tar.zst are recognised for naming but not
-			 * unpacked here — same as before; a recipe that wants
-			 * one unpacks it itself. */
+			 * unpacked here; a recipe that wants one unpacks it
+			 * itself. */
 			kb_argv_add(&a, "cp");
 			kb_argv_add(&a, path);
 			kb_argv_add(&a, src_dir);
@@ -355,8 +410,9 @@ static int roll_package(const char *pkg, const char *out)
  * may read, then `postinstall.sh` verbatim. It is packaged at the root of the
  * tarball and hoisted out again by kpkgadd, so it is never installed.
  *
- * It used to be bash's own `declare -f postinstall` dump plus a call. The hook
- * is a file now, so there is nothing to serialise.
+ * The hook is a FILE, copied through byte for byte: nothing here serialises a
+ * shell function, so a hook that runs under `bash postinstall.sh` in the port
+ * directory runs identically out of the package.
  */
 static void write_postinstall(const KpDecl *d, const char *portdir,
 			      const char *pkg)
@@ -460,6 +516,11 @@ int build_main(int argc, char **argv)
 	 * one source of nondeterminism that is not in the tar invocation.
 	 */
 	umask(022);
+
+	/* Before the work directory is touched: a bad hash must not cost the
+	 * tree that is already unpacked under it. */
+	if (verify_declared(&c, &r, portdir) != 0)
+		return 1;
 
 	char *src_root = kb_path_join(c.work_dir, r.name);
 	char verdir[512];

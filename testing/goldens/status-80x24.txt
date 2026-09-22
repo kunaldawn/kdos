@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-| Enter open  Esc Close                          [ Open ] [ Panel ] [ Close ]  |
+| Enter open | Esc Close                         [ Open ] [ Panel ] [ Close ]  |
 +==============================================================================+

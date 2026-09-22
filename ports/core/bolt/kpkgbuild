@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bolt
+version     = 0.9.11
+release     = 1
+source      = https://gitlab.freedesktop.org/bolt/bolt/-/archive/$version/$name-$version.tar.gz
+sha256      = cde4fc6d4a188e37d088cf59a5b2d174ac4b03d57bf9d084d711ba92105c33c0  bolt-0.9.11.tar.gz
+description = Thunderbolt device manager, so a dock behind firmware security is authorised
+homepage    = https://gitlab.freedesktop.org/bolt/bolt
+depends     = meson ninja glib polkit eudev dbus asciidoc

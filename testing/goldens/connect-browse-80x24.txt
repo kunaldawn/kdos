@@ -1,0 +1,24 @@
++=[ connect to server ]========================================================+
+|                                                                              |
+| no machine on this network answered ? type a name instead                    |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|------------------------------------------------------------------------------|
+| Enter use this server | Esc back                                             |
+| kdos-mountd is not running [ Connect? ] [ Browse ] [ Disconnect ] [ Close ]  |
++==============================================================================+

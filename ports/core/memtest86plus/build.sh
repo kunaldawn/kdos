@@ -31,7 +31,7 @@
 cd build/x86_64
 make -j1 all
 
-# 06_packaging places it beside refind on the ESP and kinstall copies it to the
+# 06_packaging places it on the medium beside the kernel and kinstall copies it
 # installed one; the package's job is only to put the payload somewhere both
 # can find it, under the name they already look for.
 install -Dm644 mt86plus $PKG/usr/share/kdos/memtest86plus/memtest.efi

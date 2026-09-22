@@ -27,10 +27,11 @@
  * `[engine]`, `[network]`, `[storage]`. Any format that carried the shell
  * inline would have to tell those apart from its own syntax.
  *
- * WHAT THIS BUYS, and it is the read path rather than the build path: kpkg no
- * longer runs bash to READ a recipe. It used to source the file and ask bash
- * to print the fields back, and serialise `postinstall()` with `declare -f`.
- * Metadata is parsed here, statically; bash is exec'd only to run a build.
+ * WHAT THIS BUYS, and it is the read path rather than the build path: kpkg
+ * runs no bash to READ a recipe. Metadata is parsed here, statically; bash is
+ * exec'd only to run a build. Reading through bash means sourcing the file,
+ * which hands a recipe the whole process and makes every query as expensive
+ * and as dangerous as an install.
  *
  * Any key that is not one of ours is a recipe-local helper — `_tag`, `vrsn`,
  * `_triplet` — which is how a version gets reshaped for a URL that `$version`
@@ -57,6 +58,11 @@ struct KpDecl {
 	char release[64];
 	char source[2048];
 	char sha256[4096];
+	/* Read by nothing here, and fields rather than helpers for that very
+	 * reason: set_key() files an unrecognised key into `var`, and `var` is
+	 * what kp_decl_prelude() assigns into the build environment. Drop these
+	 * three and every recipe's prose becomes $description and $homepage in
+	 * the shell a build.sh runs in. */
 	char description[512];
 	char homepage[256];
 	char depends[1024];
@@ -440,8 +446,6 @@ const char *kp_decl_version(const KpDecl *d) { return d->version; }
 const char *kp_decl_release(const KpDecl *d) { return d->release; }
 const char *kp_decl_source(const KpDecl *d) { return d->source; }
 const char *kp_decl_sha256(const KpDecl *d) { return d->sha256; }
-const char *kp_decl_description(const KpDecl *d) { return d->description; }
-const char *kp_decl_depends(const KpDecl *d) { return d->depends; }
 
 /* ──────────────────────────────────────────────────────────────────────── */
 

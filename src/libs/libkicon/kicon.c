@@ -166,8 +166,7 @@ static int ki_on = 1;
 static int ki_ready;
 static int ki_have_atlas;
 
-/* The sizes 06_packaging/01_appbox.sh flattens the alien apps' icons into, and
- * the ones hicolor themes conventionally carry. Ascending, so the first at or
+/* The sizes hicolor themes conventionally carry. Ascending, so the first at or
  * above the wanted size is the one to take. */
 static const int hicolor_sizes[] = { 16,  22,  24,	32,  48,
 				     64,  72,  96,	128, 192,
@@ -217,6 +216,17 @@ static uint64_t hash64(const char *s, uint64_t h)
 {
 	while (*s) {
 		h ^= (unsigned char)*s++;
+		h *= 1099511628211ull;
+	}
+	return h;
+}
+
+static uint64_t hash64_mem(const void *p, size_t n, uint64_t h)
+{
+	const unsigned char *b = p;
+
+	while (n--) {
+		h ^= *b++;
 		h *= 1099511628211ull;
 	}
 	return h;
@@ -477,7 +487,7 @@ static int data_dirs(char out[][512], int max)
 }
 
 /*
- * An application's own icon, out of the hicolor tree that 01_appbox.sh fills.
+ * An application's own icon, out of the system hicolor tree.
  * Never tinted. `want` is the pixel side.
  */
 static uint8_t *load_hicolor(const char *name, int want, int *w, int *h)
@@ -691,13 +701,13 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 		want = box_w < box_h ? box_w : box_h;
 
 	/*
-	 * THE ATLAS FIRST, and this order is a bug that was already shipped.
+	 * THE ATLAS FIRST, and the order is the whole of this lookup.
 	 *
-	 * `01_appbox.sh` flattens every context of the appbox image's icon
-	 * theme into hicolor's `apps/` — so `/usr/share/icons/hicolor/16x16/
-	 * apps/folder.png` exists, and looking there first meant every folder
-	 * on the desktop came out as Debian's blue one, at 16 pixels upscaled
-	 * to 32, with no tint. Photographed on a booted ISO.
+	 * hicolor's `apps/` is a shared tree any package may write into, and it
+	 * is not restricted to applications — a `folder.png` filed there by
+	 * somebody would otherwise win, and every folder on the desktop would
+	 * come back as that package's artwork, at 16 pixels upscaled to 32,
+	 * with no tint.
 	 *
 	 * The atlas can never shadow an application: it carries the theme's
 	 * places, devices, mimetypes, status, actions and emblems, and
@@ -746,6 +756,100 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 	/* The table's reference, taken only once it has accepted the picture:
 	 * a refused put leaves this file the sole owner, and a reference taken
 	 * before the put would never be given back. */
+	pixman_image_ref(img);
+	return slot;
+}
+
+/*
+ * A SPRITE FROM BYTES, for a picture that never came from a theme.
+ *
+ * The body below kicon_slot_pad's search is the same body — decode, to
+ * pixman, fit, cache, register — and only the source of the pixels differs,
+ * so what is NOT shared is the search: there is nothing to search for. A
+ * caller holding the bytes has already resolved the lookup this library
+ * exists to do.
+ *
+ * THE KEY IS THE BYTES. A name identifies a picture only because a theme
+ * says so; these have no name, and hashing the PNG means the same picture
+ * published twice is one slot and one decode. The cell box and the accent
+ * ride the key for pic_key's reasons — the accent because a cached picture
+ * outlives a retint, even though nothing here tints.
+ *
+ * A DECODE FAILURE IS REMEMBERED. The bytes come from another process and a
+ * surface redraws many times a second: a truncated PNG that was not memoed
+ * would be re-decoded, and re-rejected, on every frame.
+ */
+int kicon_slot_png(const void *png, size_t len, int cw, int ch)
+{
+	if (!kicon_enabled() || !png || !len || cw < 1 || ch < 1)
+		return -1;
+	if (cw > 16 || ch > 16 || len > KICON_PNG_MAX)
+		return -1;
+
+	char tag[64];
+
+	snprintf(tag, sizeof(tag), "|png|%d|%d|%d|%s", cw, ch, ki_scale,
+		 ktui_theme ? ktui_theme->name : "");
+
+	uint64_t key = hash64(tag, hash64_mem(png, len,
+					      1469598103934665603ull));
+	int slot = ktui_sprite_find(key);
+
+	if (slot >= 0) {
+		for (int i = 0; i < ncache; i++)
+			if (cache[i].key == key && cache[i].img) {
+				cache[i].used = ++ki_clock;
+				break;
+			}
+		return slot;
+	}
+	for (int i = 0; i < ncache; i++) {
+		if (!cache[i].img || cache[i].key != key)
+			continue;
+		slot = ktui_sprite_put(key, cache[i].img, cw, ch,
+				       fallback_cp());
+		if (slot < 0)
+			return -1;
+		pixman_image_ref(cache[i].img);
+		cache[i].used = ++ki_clock;
+		return slot;
+	}
+	if (miss_known(key))
+		return -1;
+
+	int box_w = cw * ki_cw * ki_scale;
+	int box_h = ch * ki_ch * ki_scale;
+	int w = 0, h = 0;
+	uint8_t *rgba = ki_png_mem(png, len, &w, &h);
+
+	if (!rgba) {
+		miss_add(key);
+		return -1;
+	}
+
+	pixman_image_t *src = to_pixman(rgba, w, h, 0);
+
+	free(rgba);
+	if (!src)
+		return -1;
+
+	pixman_image_t *img = fit(src, box_w, box_h, 0);
+
+	pic_unref(src);
+	if (!img)
+		return -1;
+
+	int ci = cache_put(key, img);
+
+	if (ci < 0) {
+		pic_unref(img);
+		return -1;
+	}
+	slot = ktui_sprite_put(key, img, cw, ch, fallback_cp());
+	if (slot < 0) {
+		cache_drop(ci);
+		return -1;
+	}
 	pixman_image_ref(img);
 	return slot;
 }

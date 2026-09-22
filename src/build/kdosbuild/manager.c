@@ -39,8 +39,8 @@ static BStep *step_new(const char *path, int is_group)
 	return s;
 }
 
-/* `# Title: ...` in the first five lines, else the filename tidied. The
- * python matched it case-insensitively and so does this. */
+/* `# Title: ...` in the first five lines, else the filename tidied. The key
+ * matches case-insensitively, so a step writing `# title:` is still titled. */
 static void step_derive_title(BStep *s)
 {
 	if (!s->is_group) {
@@ -316,15 +316,11 @@ void mgr_mark_continued(Manager *m, int phase_index)
 void mgr_mark_restored(Manager *m, int phase_index, int resume_inside)
 {
 	int ceiling = resume_inside ? phase_index - 1 : phase_index;
-	for (int i = 0; i < m->nroot; i++) {
+	for (int i = 0; i < m->nroot; i++)
 		if (m->root[i]->meta->index <= ceiling) {
 			m->root[i]->status = ST_SKIPPED;
 			m->restored_from = m->root[i]->meta;
-		} else if (resume_inside &&
-			   m->root[i]->meta->index == phase_index) {
-			m->resumed_inside = m->root[i]->meta;
 		}
-	}
 }
 
 BStep *mgr_phase_of(BStep *s)
@@ -460,6 +456,27 @@ static void set_family_status(BStep *s, int status)
 	}
 }
 
+/* A step the driver cannot even start is a FAILED step, and the stamp has to
+ * be terminal: the cursor only advances past a step that reached ST_DONE or
+ * stopped the run, so leaving one at ST_RUNNING re-enters start_step() on it
+ * for ever and leaks the log descriptor on every pass. */
+static void fail_start(Manager *m, BStep *s, const char *why)
+{
+	step_log(s, why);
+	if (m->log_fd >= 0) {
+		dprintf(m->log_fd, "%s\n", why);
+		close(m->log_fd);
+		m->log_fd = -1;
+	}
+	s->return_code = 999;
+	s->end_time = kb_now_s();
+	set_family_status(s, ST_FAIL);
+	m->error_step = s;
+	m->stop_requested = 1;
+	m->is_running = 0;
+	mgr_notice(m, "%s: %s", s->title, why);
+}
+
 static void start_step(Manager *m, BStep *s)
 {
 	set_family_status(s, ST_RUNNING);
@@ -477,11 +494,13 @@ static void start_step(Manager *m, BStep *s)
 	}
 	m->log_fd = open(logp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 
+	/* `rel` outlives the branch that fills it: KbArgv stores the pointer
+	 * and the exec happens after the fork, not inside the branch. */
+	char rel[512];
 	KbArgv a = {0};
 	if (s->have_cmd) {
 		a = s->cmd;
 	} else if (s->step_type == SX_CHROOT) {
-		char rel[512];
 		path_for(m, s->path, s->step_type, rel, sizeof(rel));
 		kb_argv_add(&a, m->chroot_exec);
 		kb_argv_add(&a, "bash");
@@ -495,8 +514,7 @@ static void start_step(Manager *m, BStep *s)
 
 	int pipefd[2];
 	if (pipe(pipefd) < 0) {
-		step_log(s, "INTERNAL ERROR: pipe failed");
-		s->return_code = 999;
+		fail_start(m, s, "INTERNAL ERROR: pipe failed");
 		return;
 	}
 
@@ -504,8 +522,7 @@ static void start_step(Manager *m, BStep *s)
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
-		step_log(s, "INTERNAL ERROR: fork failed");
-		s->return_code = 999;
+		fail_start(m, s, "INTERNAL ERROR: fork failed");
 		return;
 	}
 	if (pid == 0) {
@@ -790,10 +807,10 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			goto fail;
 		}
 		/* A CAP HERE IS A PHASE THAT SILENTLY BUILDS PART OF ITSELF.
-		 * This used to `break`, so a packages.txt whose resolved order
-		 * outgrew the array lost every package past it with nothing
-		 * said — the phase reported COMPLETE having never reached the
-		 * tail of its own list. */
+		 * A `break` on a packages.txt whose resolved order outgrows
+		 * the array loses every package past it with nothing said —
+		 * the phase reports COMPLETE having never reached the tail of
+		 * its own list. */
 		if (n == KB_MAX_PKGS) {
 			snprintf(detail, sizeof(detail),
 				 "kpkgdepends resolved more than %d packages; "
@@ -831,11 +848,11 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 		 *
 		 * It goes in the ENVIRONMENT rather than on the command line
 		 * because the kpkg in the tree is not necessarily the kpkg this
-		 * orchestrator was built beside: restoring a phase-1 or phase-2
-		 * snapshot puts an OLDER kpkg back, and an older one parsed
-		 * `--overwrite` as a package name and died with `Port not
-		 * found: --overwrite` on the first package of the phase. An
-		 * unknown env var is ignored by every version. */
+		 * orchestrator was built beside: a restored phase-1 or phase-2
+		 * snapshot carries an older kpkg, which takes `--overwrite`
+		 * for a package name and dies with `Port not found:
+		 * --overwrite` on the first package of the phase. An unknown
+		 * env var is ignored by every version. */
 		KbBuf cl = {0};
 		kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install%s %s",
 			      env, forced ? " -f" : "", tok);

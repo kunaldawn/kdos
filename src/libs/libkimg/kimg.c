@@ -7,8 +7,8 @@
  * non-static in a second file.
  *
  * EVERY DECODER IS OPTIONAL. A build without one refuses that format rather
- * than failing to link, because the console desktop must come up on an image
- * that ships no decoders at all.
+ * than failing to link, because a surface must come up on an image that ships
+ * no decoders at all.
  */
 
 #include "kimg.h"
@@ -661,10 +661,10 @@ static void sixel_bound(const uint8_t *p, size_t n, long *w, long *h)
 		 * libsixel acts on them before a single data character is
 		 * read: it grows the image to the declared width and height
 		 * the moment it parses them. A bound taken from the data
-		 * characters alone therefore missed exactly the field an
-		 * attacker would use, and `"1;1;40000;40000` with no pixels
-		 * after it is a six-gigabyte allocation this was meant to
-		 * refuse.
+		 * characters alone therefore misses exactly the field an
+		 * attacker uses: `"1;1;40000;40000` with no pixels after it
+		 * is a six-gigabyte allocation, and refusing it is what this
+		 * bound is for.
 		 */
 		if (c == '"') {
 			long par[4] = { 0, 0, 0, 0 };

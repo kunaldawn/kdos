@@ -12,7 +12,7 @@
  *   ║  ██║ ██╔╝██╔══██╗      kernel    6.12.4                    ║
  *   ║  █████╔╝ ██║  ██║      libc      musl                      ║
  *   ║  ██╔═██╗ ██║  ██║      userland  toybox                    ║
- *   ║  ██║  ██╗██████╔╝      session   kdos-con (phosphor)       ║
+ *   ║  ██║  ██╗██████╔╝      session   kdos-comp (phosphor)      ║
  *   ║  ╚═╝  ╚═╝╚═════╝       …                                   ║
  *   ╚════════════════════════════════════════════════════════════╝
  *
@@ -22,10 +22,6 @@
  * program's layout, colours and ANSI on a surface that draws in slots, and
  * would make the About window the one surface that cannot be drawn offscreen
  * for a golden.
- *
- * WHICH SESSION IS RUNNING IS $KDOS_CON's ANSWER, the same one `sh_term()` and
- * `kdos doctor` take. A machine reporting the desktop it is not on is worse
- * than a machine reporting nothing.
  * ---------------------------------
  */
 
@@ -163,23 +159,15 @@ static void gather(void)
 	fact("libc", "musl");
 	fact("userland", "toybox");
 
-	/*
-	 * The session, from the one fact that distinguishes them: the console
-	 * session exports its surface socket into every child's environment
-	 * and the compositor does not.
-	 */
-	const char *con = getenv("KDOS_CON");
-
-	fact("session", "%s", (con && *con) ? "kdos-con (console)"
-					    : "kdos-comp (wayland)");
+	fact("session", "kdos-comp (wayland)");
 	fact("terminal", "%s", sh_term());
 
 	/*
 	 * NO GRID SIZE. A surface knows the cells it was given and not the
 	 * ones the screen has, so reporting `ktui_w` here would print this
 	 * window's own size under a name every reader takes for the desktop's.
-	 * The display reports its grid where it knows it — the view's own log
-	 * line — and this window does not pretend to.
+	 * The display reports its grid where it knows it, and this window does
+	 * not pretend to.
 	 */
 
 	if (proc_field("/proc/cpuinfo", "model name", buf, sizeof(buf)) == 0)

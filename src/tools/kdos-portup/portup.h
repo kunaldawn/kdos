@@ -27,10 +27,8 @@
 /* -1 if a < b, 0 if equal, 1 if a > b. */
 /* The comparator is libkpkg's (kp_vercmp): `kdos cve` asks the same question
  * about the same strings, and two implementations would drift. */
-/* Digit-runs collapse to 'N', letter-runs to 'a', separators are kept. A
- * string that is ONE digit run records its length ("N8") so a date cannot
- * compare equal in shape to a bare "1". */
-void pu_shape(const char *v, char *out, size_t cap);
+/* The shape filter is libkpkg's too (kp_vershape), declared in kpkg.h beside
+ * the comparator it guards. */
 /* Extract version candidates from `raw` (filename or git tag). A generous,
  * shape-filter-ready extractor that handles diverse upstream naming conventions.
  * Uses a closure/fixpoint algorithm: iteratively trim archive suffixes
@@ -132,7 +130,7 @@ typedef struct {
 } PuResult;
 
 /* Pipeline: pu_list_upstream -> pu_extract every raw string -> keep the
- * candidates whose pu_shape matches the CURRENT version's -> kp_vercmp,
+ * candidates whose kp_vershape matches the CURRENT version's -> kp_vercmp,
  * walking from the highest match down -> pu_render_candidate ->
  * pu_http_head. Only a 200 proves PU_NEWER; a 404 means that particular
  * candidate does not exist there and the next-highest is tried rather than

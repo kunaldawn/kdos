@@ -43,10 +43,9 @@
 
 /*
  * A CELL'S PIXEL SIZE, WHERE THERE IS ONE. Under kdos-comp the backend knows;
- * under kdos-con this program has no pixels at all — the display it is
- * eventually drawn on does, and it scales what arrives. So a cell client
- * renders at a nominal size, which bounds what goes on the wire without
- * pretending to know the font somebody else is using.
+ * a `--tty` or `--dump` run has no pixels at all, and whatever eventually
+ * draws the grid does. So such a run renders at a nominal size, which bounds
+ * the picture without pretending to know the font somebody else is using.
  */
 #define NOMINAL_CW 10
 #define NOMINAL_CH 20
@@ -231,7 +230,7 @@ static void free_bits(pixman_image_t *img, void *data)
 	free(data);
 }
 
-/* WHAT A PICTURE LOOKS LIKE WHERE THERE ARE NO PIXELS — a tty, a view built
+/* WHAT A PICTURE LOOKS LIKE WHERE THERE ARE NO PIXELS — a tty, a build
  * without a pixel library, a dump. Something rather than nothing: a photograph
  * that rendered as blank cells is indistinguishable from output that never
  * arrived. The same shade libkicon falls back to, and the same reason its

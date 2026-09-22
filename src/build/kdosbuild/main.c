@@ -7,8 +7,8 @@
  * ---------------------------------
  *   kdosbuild — the command line
  *
- * Every flag build.py accepted, with the same names and the same meanings:
- * `make build BUILD_ARGS=...` has to keep working while both drivers exist.
+ * The flags `make build BUILD_ARGS=...` passes through, and the whole of what
+ * this program accepts: there is no second driver to agree with.
  * ---------------------------------
  */
 
@@ -47,11 +47,12 @@ static void usage(void)
 "\n"
 "  --build-dir DIR       build output directory (default: build)\n"
 "  --script-dir DIR      phase directory (default: script)\n"
-"  --fresh               skip the snapshot picker and run every phase\n"
+"  --fresh               skip the startup picker and run every phase\n"
 "  --restore PHASE       restore a snapshot and continue after it\n"
 "                        (phase name, directory name, 1-based index, 'latest')\n"
 "  --continue-from PHASE resume at PHASE on the existing tree, no restore\n"
-"  --no-snapshot         do not write snapshots during this build\n"
+"  --no-snapshot         do not write snapshots during this build; with a TUI\n"
+"                        this is what the picker opens on, and S toggles it\n"
 "  --plan                open the build-plan picker and run it on this tree\n"
 "  --phases LIST         only run these phases\n"
 "  --steps LIST          only run these scripts, PHASE:script.sh\n"
@@ -312,11 +313,11 @@ static int do_restore(Manager *m, const KbuildPhase *target, int plain,
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Headless
  *
- * build.py had no such mode: it went straight through curses.wrapper, so a
- * build with its output redirected drew a full-screen UI into a log file and
- * a build with no terminal at all could not start. kpkg already answers
- * TERM=dumb or a non-tty stdout with plain lines; this is the same rule, and
- * it is also what makes the engine testable without a pty.
+ * A driver that always took the terminal would draw a full-screen UI into a
+ * log file whenever its output was redirected, and could not start at all
+ * with no terminal. kpkg already answers TERM=dumb or a non-tty stdout with
+ * plain lines; this is the same rule, and it is also what makes the engine
+ * testable without a pty.
  *
  * ONE traversal, two renderings. `rep` is text or NDJSON (report.c); this loop
  * does not know which, so the two cannot disagree about what happened.
@@ -637,20 +638,27 @@ plain_out:
 	int dirty = 0;
 	snap_git_info(".", commit, sizeof(commit), &dirty);
 
-	/* Interactive entry points. A plan given on the command line wins. */
-	KbuildSnapshot *probe = kb_calloc(KBUILD_MAX_PHASES, sizeof(*probe));
-	int have_snaps = kbuild_snap_list(m.snap_root, probe,
-					  KBUILD_MAX_PHASES) > 0;
-	free(probe);
+	/* The command line sets what the picker OPENS on; what the operator
+	 * leaves it at is what the build uses. */
+	m.snapshot_enabled = !a.no_snapshot;
 
+	/* Interactive entry points. A plan given on the command line wins.
+	 *
+	 * THE PICKER OPENS WHETHER OR NOT A SNAPSHOT EXISTS. Both questions it
+	 * answers — restore from which phase, and write snapshots at all —
+	 * have to be asked on a tree with none, because that is precisely the
+	 * from-scratch run where the second one costs tens of gigabytes and
+	 * hours. Its row 0 is "start fresh", so a tree with no snapshot simply
+	 * opens on the only restore choice there is. */
 	if (!m.have_plan && a.want_plan) {
 		if (!screen_plan(&m, &m.plan))
 			goto quit;
 		m.have_plan = 1;
 	} else if (!m.have_plan && !preselected && !continue_at && !a.fresh &&
-		   have_snaps && isatty(STDIN_FILENO)) {
+		   isatty(STDIN_FILENO)) {
 		int index = 0;
-		int choice = screen_startup(&m, &index, commit);
+		int choice = screen_startup(&m, &index, commit,
+					    &m.snapshot_enabled);
 		if (choice == PICK_QUIT)
 			goto quit;
 		if (choice == PICK_RESTORE)
@@ -664,7 +672,6 @@ plain_out:
 
 	/* A plan that narrows anything suppresses snapshots: one taken from a
 	 * partially re-run tree would be filed under a phase it no longer is. */
-	m.snapshot_enabled = !a.no_snapshot;
 	if (m.have_plan && kbuild_plan_narrows(&m.plan) && !a.snapshot)
 		m.snapshot_enabled = 0;
 

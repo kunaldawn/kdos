@@ -44,18 +44,16 @@
 
 /*
  * `argv` rather than a bare command, because most of these are the SAME binary
- * told which surface it is: a layer-shell surface has one exclusive zone, so
- * the top and bottom panels cannot be one process, and it takes an `--output`
- * so it can be the panel of a PARTICULAR screen.
+ * told which surface it is: the edge, the font and the screen are all
+ * arguments, so one program is the taskbar of a PARTICULAR output.
  *
  * ONE SET OF CHROME PER OUTPUT, and that is what makes a second monitor a
  * desktop rather than a wallpaper. An unnamed layer surface is placed by the
- * compositor on ONE output — so a machine with two screens had a panel, a
- * window list and a row of desktop icons on the first and nothing at all on
- * the second, with no setting anywhere that could have changed it. libktui has
- * a single cell buffer, so a second screen cannot be a second surface of the
- * same process; it has to be a second process, which is exactly what the two
- * panels already are.
+ * compositor on ONE output, so a single process would leave a machine with two
+ * screens a panel, a window list and a row of desktop icons on the first and
+ * nothing at all on the second, with no setting anywhere that could change it.
+ * libktui has a single cell buffer, so a second screen cannot be a second
+ * surface of the same process; it has to be a second process.
  *
  * `want` is read once at startup from comp.conf. A child that is switched off
  * is never spawned and never reaped; it is not respawned into existence by a
@@ -78,26 +76,23 @@ static char kdos_panel_opacity_arg[16] = "80";
 
 static const struct {
 	const char *cmd;
-	const char *arg;		/* NULL for none */
 	const bool *want;		/* NULL = always */
 	bool per_output;
 } TEMPLATES[] = {
 	/*
-	 * ONE taskbar. There were two panels here — a menu bar at the top and
-	 * a second panel at the bottom — which is two exclusive zones and the
-	 * window list drawn twice. `panel = top|off` in comp.conf moves it or
-	 * turns it off; the edge is an ARGUMENT rather than a second row,
-	 * because two rows here would be two panels again.
+	 * ONE taskbar. A second row here would be a second exclusive zone and
+	 * the window list drawn twice; `panel = top|off` in comp.conf moves
+	 * this one or turns it off, and the edge is an ARGUMENT to it.
 	 */
-	{ "kdos-shell", NULL, &kdos_want_panel, true },
-	{ "kdos-desk", NULL, &kdos_conf.desktop_icons, true },
+	{ "kdos-shell", &kdos_want_panel, true },
+	{ "kdos-desk", &kdos_conf.desktop_icons, true },
 	/*
 	 * The dockapp column. Off by default — a slit nobody configured is a
 	 * column of dim `!` marks — and it had no row here at all for a
 	 * release, which meant writing ~/.config/kdos/slit.conf did nothing
 	 * whatever the file's own comment claimed.
 	 */
-	{ "kdos-slit", NULL, &kdos_conf.slit, true },
+	{ "kdos-slit", &kdos_conf.slit, true },
 	/*
 	 * The notification daemon is NOT per-output: it owns
 	 * org.freedesktop.Notifications, which is one bus name, and a second
@@ -105,26 +100,26 @@ static const struct {
 	 * screen the compositor puts them on, which is the honest limit of a
 	 * single-owner protocol.
 	 */
-	{ "kdos-notifyd", NULL, NULL, false },
+	{ "kdos-notifyd", NULL, false },
 	/*
 	 * The NetworkManager secret agent. Not per-output: it registers ONE
 	 * agent with NetworkManager on the system bus, and a second instance
 	 * would be a second passphrase box raised for the same question.
 	 */
-	{ "kdos-netagent", NULL, NULL, false },
+	{ "kdos-netagent", NULL, false },
 	/*
 	 * A stick going in is announced by the SESSION, because kdos-mountd is
 	 * root and has no session bus to raise a toast on. Not per-output for
 	 * the same reason as the daemon above: one subscription to one daemon,
 	 * and a second instance would offer every stick twice.
 	 */
-	{ "kdos-mediad", NULL, NULL, false },
+	{ "kdos-mediad", NULL, false },
 	/*
 	 * The clipboard history. NOT per-output either: it owns one socket in
 	 * $XDG_RUNTIME_DIR and holds the history in memory, and a second
 	 * instance would be a second history nobody could reach.
 	 */
-	{ "kdos-clip", NULL, &kdos_conf.clipboard, false },
+	{ "kdos-clip", &kdos_conf.clipboard, false },
 };
 #define NTEMPLATES ((int)(sizeof(TEMPLATES) / sizeof(TEMPLATES[0])))
 
@@ -156,16 +151,14 @@ static bool children_started;
 static bool gaveup_prompted;
 static struct wl_event_source *display_apply_timer;
 
-/* For the log lines: `kdos-shell --bottom on HDMI-A-1` rather than four rows
+/* For the log lines: `kdos-shell on HDMI-A-1` rather than one row per screen
  * all saying kdos-shell, which is what a crash-loop message has to tell
  * apart. */
 static const char *
 child_label(const struct kdos_child *c)
 {
 	static char buf[160];
-	snprintf(buf, sizeof(buf), "%s%s%s%s%s", TEMPLATES[c->tmpl].cmd,
-		 TEMPLATES[c->tmpl].arg ? " " : "",
-		 TEMPLATES[c->tmpl].arg ? TEMPLATES[c->tmpl].arg : "",
+	snprintf(buf, sizeof(buf), "%s%s%s", TEMPLATES[c->tmpl].cmd,
 		 c->output[0] ? " on " : "", c->output);
 	return buf;
 }
@@ -180,9 +173,6 @@ child_build_argv(struct kdos_child *c)
 {
 	int n = 0;
 	c->argv[n++] = TEMPLATES[c->tmpl].cmd;
-	if (TEMPLATES[c->tmpl].arg) {
-		c->argv[n++] = TEMPLATES[c->tmpl].arg;
-	}
 	if (c->output[0]) {
 		c->argv[n++] = "--output";
 		c->argv[n++] = c->output;
@@ -197,7 +187,7 @@ child_build_argv(struct kdos_child *c)
 	 *
 	 * The panel's thickness is its font size — a cell is half as wide as
 	 * it is tall — so this is the knob that makes the taskbar 40 pixels
-	 * while the menus it opens stay at the console's own 32. The panel
+	 * while the menus it opens stay at 32. The panel
 	 * does not forward --font to the popups it spawns, so setting it here
 	 * reaches the bar and nothing else.
 	 */
@@ -436,9 +426,8 @@ kdos_children_start(void)
 
 	for (int t = 0; t < NTEMPLATES; t++) {
 		if (TEMPLATES[t].want && !*TEMPLATES[t].want) {
-			wlr_log(WLR_INFO, "%s%s%s: off in comp.conf",
-				TEMPLATES[t].cmd, TEMPLATES[t].arg ? " " : "",
-				TEMPLATES[t].arg ? TEMPLATES[t].arg : "");
+			wlr_log(WLR_INFO, "%s: off in comp.conf",
+				TEMPLATES[t].cmd);
 			continue;
 		}
 		if (!TEMPLATES[t].per_output) {

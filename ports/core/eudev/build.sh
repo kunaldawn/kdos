@@ -9,10 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-scratch isinstalled libxslt && OPTS="--enable-manpages"
-
 autoreconf -f -i -s
-./configure $OPTS \
+./configure --enable-manpages \
 	--prefix=/usr \
 	--bindir=/sbin \
 	--sbindir=/sbin \

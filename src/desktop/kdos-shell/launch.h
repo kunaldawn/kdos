@@ -19,13 +19,6 @@
  *
  * WHAT THE SHARED PATH IS FOR, in the order it matters:
  *
- *   - THE SESSION STARTS A GRAPHICAL PROGRAM, NOT THE SURFACE. On the console
- *     desktop `$KDOS_CON` names the session's surface socket, and `kcon_run`
- *     hands the vector there: the session decides between a cage-backed
- *     window and a terminal of its own, and it is the session that gives the
- *     guest a Wayland display. A vector forked here instead has no display and
- *     nothing holding it, so a boxed application draws nowhere, exits, and
- *     leaves nothing on the screen to say why.
  *   - AN `Exec=` LINE IS NOT A LIST OF WORDS. `kxdg_exec_split` reads its
  *     quoting and its field codes; a `strtok(" ")` execs a file whose name
  *     begins with a quote, and hands `%U` to a program as a document to open.
@@ -48,6 +41,8 @@
 
 #ifndef SH_LAUNCH_H
 #define SH_LAUNCH_H
+
+#include <stddef.h>	/* size_t, for the box-name buffer below */
 
 /*
  * HOW MANY DOCUMENTS ONE LAUNCH CARRIES. The split writes the substituted
@@ -96,5 +91,37 @@ struct sh_launch {
  * document appended and none substituted.
  */
 int sh_launch(const struct sh_launch *l, const char *const *files, int nfiles);
+
+/*
+ * THE SAME LAUNCH, NAMED BY ITS DESKTOP-ENTRY ID.
+ *
+ * Resolves the id through the XDG data dirs and hands what it found to
+ * `sh_launch`, so a surface holding an id rather than a line carries no copy
+ * of the key list and cannot forget one: a row that read only `Exec` starts a
+ * `Terminal=true` application with no terminal round it. Returns what
+ * `sh_launch` returns, and -1 when the id names no entry that can be started.
+ */
+int sh_launch_id(const char *id, const char *const *files, int nfiles);
+
+/*
+ * IS THIS EXEC LINE THE BOX LAUNCHER, and which box does it name — apps.c's,
+ * and the only copy. The box-launcher test the Start menu marks its rows with
+ * is the test the "Open with" chooser marks its rows with, or the two surfaces
+ * disagree about which application costs a container start.
+ *
+ * `sh_exec_box` fills `box` with the `-b`/`--box` argument, or leaves it empty
+ * for a launcher that names none. `sh_exec_is_boxed` asks only the first half.
+ */
+int sh_exec_box(const char *exec, char *box, size_t cap);
+int sh_exec_is_boxed(const char *exec);
+
+/*
+ * IS THERE NOTHING BEHIND THAT BOX — 1 only where absence can be PROVED, so a
+ * machine that cannot answer keeps every row. Hiding an application somebody
+ * installed is a worse failure than showing one whose pack has gone, and every
+ * unknown resolves that way: an unnamed box, a name that is not an id, a
+ * machine with no pack store.
+ */
+int sh_box_missing(const char *box);
 
 #endif /* SH_LAUNCH_H */

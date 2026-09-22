@@ -69,19 +69,77 @@
 
 #define FIFO_PATH "/dev/.kdos-splash"
 
-/* PHOSPHOR — libkcolor's KCOL_SCHEMES row, spelled out because this binary is
- * static and links nothing. The splash is phosphor by scope: it runs before
- * any $HOME exists, so the accent (a session-level setting) cannot reach it.
- * The two derived values are kcol_mix results, not free-hand colours. */
-#define C_PHOS    0x39ff14
-#define C_PHOSDIM 0x1f8f0c
-#define C_DIM     0x12401f
-#define C_AMBER   0xffb000
-#define C_ALARM   0xff3131
-#define C_TEXT    0xb8ffc8
-#define C_DEEP    0x000a03
-#define C_HOT     0xe2ffe9	/* kcol_mix(C_TEXT, 0xffffff, 60) — beam flash */
-#define C_GLOW    0xe8ffed	/* kcol_mix(C_TEXT, 0xffffff, 68) — mascot rim */
+/*
+ * EVERY SCHEME, COMPILED IN — the header is included for its table and this
+ * binary still links nothing. `kcolor.h` is macros, a struct and declarations;
+ * expanding KCOL_SCHEMES here costs 252 bytes and no symbol from libkcolor.
+ *
+ * IT HAS TO BE COMPILED IN BECAUSE OF WHEN THIS RUNS. The splash is started by
+ * the INITRAMFS, before any root filesystem is mounted, so there is no
+ * `/etc/kdos/accent` to read at the moment it starts. It comes up in the
+ * default and `rcS` tells it the machine's real accent over the FIFO once /etc
+ * is readable — which is why these are variables and not constants.
+ */
+#include "kcolor.h"
+
+#define SPL_SCHEME(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd)     \
+	{ #id, KCOL_HEX(p), KCOL_HEX(dm), KCOL_HEX(sec), KCOL_HEX(urg),       \
+	  KCOL_HEX(dp), KCOL_HEX(txt), KCOL_HEX(pd) },
+
+static const struct spl_scheme {
+	const char *name;
+	uint32_t primary, dim, secondary, urgent, deep, text, pdark;
+} SPL_SCHEMES[] = { KCOL_SCHEMES(SPL_SCHEME) };
+
+#define SPL_NSCHEME ((int)(sizeof(SPL_SCHEMES) / sizeof(SPL_SCHEMES[0])))
+
+/* The accent in force, projected onto the names the drawing code uses. The two
+ * derived values are kcol_mix results, not free-hand colours. */
+static uint32_t C_PHOS, C_PHOSDIM, C_DIM, C_AMBER, C_ALARM, C_TEXT, C_DEEP;
+static uint32_t C_HOT;		/* mix(text, white, 60) — the beam flash    */
+static uint32_t C_GLOW;		/* mix(text, white, 68) — the mascot rim    */
+
+/* kcol_mix, transcribed: the same integer blend, so a value derived here and
+ * one derived by the library are the same number. */
+static uint32_t spl_mix(uint32_t a, uint32_t b, int pct)
+{
+	uint32_t out = 0;
+
+	for (int sh = 16; sh >= 0; sh -= 8) {
+		int x = (int)((a >> sh) & 0xff), y = (int)((b >> sh) & 0xff);
+		out |= (uint32_t)(x + (y - x) * pct / 100) << sh;
+	}
+	return out;
+}
+
+static void spl_peng_pal(uint32_t glow, uint32_t amber, uint32_t phos,
+			 uint32_t phosdim);
+
+/* Unknown names leave the palette exactly as it was: a splash is not the place
+ * to report a typo, and half-applying one would be worse than ignoring it. */
+static int spl_accent(const char *name)
+{
+	for (int i = 0; i < SPL_NSCHEME; i++) {
+		const struct spl_scheme *s = &SPL_SCHEMES[i];
+
+		if (strcmp(s->name, name))
+			continue;
+		C_PHOS = s->primary;
+		C_PHOSDIM = s->pdark;
+		C_DIM = s->dim;
+		C_AMBER = s->secondary;
+		C_ALARM = s->urgent;
+		C_TEXT = s->text;
+		C_DEEP = s->deep;
+		C_HOT = spl_mix(s->text, 0xffffff, 60);
+		C_GLOW = spl_mix(s->text, 0xffffff, 68);
+		/* peng_pal is declared below; filled through the forward
+		 * declaration so the palette has exactly one writer. */
+		spl_peng_pal(C_GLOW, C_AMBER, C_PHOS, C_PHOSDIM);
+		return 1;
+	}
+	return 0;
+}
 
 /* How long the tube takes to warm up. Boot is ~10s; this is the part of it
  * anyone actually watches, so it gets a full second. */
@@ -279,10 +337,25 @@ static const char *art[ART_ROWS] = {
 	"[=]  [=][=====]  [=====] [======]",
 };
 
-/* Mascot palette. Index 0 is transparent; order matches penguin.h. */
-static const uint32_t peng_pal[6] = {
-	0, 0x000000, C_GLOW, C_AMBER, C_PHOS, C_PHOSDIM
-};
+/*
+ * Mascot palette. Index 0 is transparent and index 1 is the mascot's own black;
+ * the rest follow the accent, so it is FILLED by spl_accent() rather than
+ * initialised — an accent arriving mid-boot has to move the penguin too, or it
+ * is the one thing on the screen still wearing the scheme the machine booted
+ * in. Order matches penguin.h.
+ */
+static uint32_t peng_pal[6];
+
+static void spl_peng_pal(uint32_t glow, uint32_t amber, uint32_t phos,
+			 uint32_t phosdim)
+{
+	peng_pal[0] = 0;
+	peng_pal[1] = 0x000000;
+	peng_pal[2] = glow;
+	peng_pal[3] = amber;
+	peng_pal[4] = phos;
+	peng_pal[5] = phosdim;
+}
 
 static int art_cw, art_ch, art_lt, art_x, art_y;
 static int peng_scale, peng_x, peng_y;
@@ -397,8 +470,8 @@ static void layout(void)
 
 	/*
 	 * The status column is a fixed-width block — name dotted to LINE_COLS,
-	 * a space, and up to "FAIL" — centered as a whole. Anchoring it at a
-	 * screen percentage (the old way) only looked centered at 1280 wide.
+	 * a space, and up to "FAIL" — centered as a whole. Anchored at a screen
+	 * percentage instead, it only looks centered at 1280 wide.
 	 */
 	body_w = (LINE_COLS + 6) * gw * body_scale;
 	body_x = (fbw - body_w) / 2;
@@ -823,6 +896,14 @@ static int handle(const char *cmd)
 		failed = 1;
 		break;
 	case 'T': total_steps += atoi(cmd + 1); break;
+	/*
+	 * THE ACCENT, ARRIVING MID-BOOT. The initramfs half of this runs in the
+	 * compiled-in default because no root filesystem is mounted yet; `rcS`
+	 * sends this once /etc is readable. Every frame after it is repainted
+	 * from the variables, so the change takes at the next frame and nothing
+	 * needs redrawing here.
+	 */
+	case 'A': spl_accent(cmd + 1); break;
 	case 'Q': finishing = 1; return 1;
 	default: break;
 	}
@@ -1105,6 +1186,11 @@ int main(int argc, char **argv)
 	const char *cmd = argc > 1 ? argv[1] : "run";
 	const char *arg = argc > 2 ? argv[2] : "";
 
+	/* BEFORE ANY ENTRY POINT, because the colours are variables now and an
+	 * unset one is black on black. The default is libkcolor's own, so the
+	 * splash and an unconfigured desktop come up in the same scheme. */
+	spl_accent(KCOL_DEFAULT_NAME);
+
 	if (!strcmp(cmd, "run"))
 		return run();
 	if (!strcmp(cmd, "preview") && argc > 4)
@@ -1121,10 +1207,12 @@ int main(int argc, char **argv)
 		return say("F%s\n", NULL, 0);
 	if (!strcmp(cmd, "detail"))
 		return say("D%s\n", arg, 0);
+	if (!strcmp(cmd, "accent"))
+		return say("A%s\n", arg, 0);
 	if (!strcmp(cmd, "quit"))
 		return say("Q%s\n", NULL, 1);
 
 	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|detail TEXT|\n"
-		"                    total N|quit}\n");
+		"                    total N|accent NAME|quit}\n");
 	return 1;
 }

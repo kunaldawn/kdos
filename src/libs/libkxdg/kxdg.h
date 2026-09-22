@@ -45,6 +45,39 @@ void kxdg_free(KxdgEntry *e);
 /* "true"/"TRUE"/"True" -> 1. Anything else, including absent, -> def. */
 int kxdg_bool(const KxdgEntry *e, const char *key, int def);
 
+/*
+ * THE LAUNCH HALF OF AN ENTRY, read once and in one place.
+ *
+ * Every surface that starts something — the application index, the desktop's
+ * icons, the Start menu, the "Open with" chooser and `kdos-appbox open` —
+ * reads it through this one struct, so a key added here reaches all of them at
+ * once. A surface that parsed the keys itself would make the same row behave
+ * differently depending on where it was clicked from. The fields are what
+ * deciding HOW to start something needs; everything else about an entry (its
+ * icon, its categories, its mime types) belongs to whoever is drawing it.
+ */
+#define KXDG_LAUNCH_EXEC 512
+typedef struct {
+	char exec[KXDG_LAUNCH_EXEC];	/* Exec, FIELD CODES INTACT — see
+					   kxdg_exec_split                  */
+	char name[128];			/* Name                             */
+	char term[24];			/* X-KDOS-Term: which emulator      */
+	char size[16];			/* X-KDOS-Size: COLSxROWS           */
+	int terminal;			/* Terminal=true                    */
+	int floating;			/* X-KDOS-Float=true                */
+} KxdgLaunch;
+
+/*
+ * Fill one from a loaded entry. Returns 0 when the entry can be started at
+ * all — Type=Application with an Exec — and -1 otherwise, so a caller's
+ * "is this a row" test and its read are the same call.
+ *
+ * NoDisplay and Hidden are NOT tested here: they say whether an entry belongs
+ * in a MENU, which is a question for whoever is drawing one, and the mime
+ * route opens NoDisplay entries on purpose.
+ */
+int kxdg_launch_read(const KxdgEntry *e, KxdgLaunch *out);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Exec (kxdg_exec.c)
  *

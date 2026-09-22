@@ -122,10 +122,11 @@ trap cleanup EXIT
 # unnamed produces an ordinary stick and says nothing about why.
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
-# tools install there — kdos, kdos-appbox — and leaving it out entirely made
-# `kdos-appbox image assemble` in 01_appbox.sh die with "command not found",
-# which podman then reported as an unreadable image format. Appending fixes
-# that without letting a /usr/local/bin binary shadow a /usr/bin one during a
+# tools install there — kdos, kdos-appbox — and 06_packaging calls kdos-appbox
+# by name: leave it off and `kdos-appbox genlaunchers` in 00_launchers.sh is not
+# on $PATH, that step's own guard reports it as not installed and exits 0, and
+# the image ships launchers for packs it does not carry. Appending fixes that
+# without letting a /usr/local/bin binary shadow a /usr/bin one during a
 # port's configure, which is a different bug and a much harder one to see.
 chroot "$CHROOT_DIR" /usr/bin/env -i \
     HOME=/root \

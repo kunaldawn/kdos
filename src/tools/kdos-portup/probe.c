@@ -404,14 +404,14 @@ static int dir_list(const PuRecipe *r, char out[][PU_MAX_RAW], int max,
 	if (dir_parent_url(r->first_source, parent, sizeof(parent)) != 0)
 		return 0;
 
-	/* Cost a debug cycle on imagemagick: its upstream directory was
-	 * retired (imagemagick.org/archive/releases/ now 404s, redirected
-	 * off /archive/ entirely) but still answers with a normal HTML error
-	 * page, not an empty body. pu_http_get has no -f, on purpose (a 404
-	 * still has to count as "the host answered" — see pu_http_head's own
-	 * comment on the same point) so an unchecked GET here scraped stray
-	 * digit-shaped text out of the error page's own markup as if it were
-	 * real filenames. Worse than the junk itself: a non-zero return stops
+	/* imagemagick is the live case: its upstream directory is retired
+	 * (imagemagick.org/archive/releases/ 404s, redirected off /archive/
+	 * entirely) but still answers with a normal HTML error page, not an
+	 * empty body. pu_http_get has no -f, on purpose (a 404 still has to
+	 * count as "the host answered" — see pu_http_head's own comment on
+	 * the same point), so an unchecked GET here scrapes stray digit-shaped
+	 * text out of the error page's own markup as if it were real
+	 * filenames. Worse than the junk itself: a non-zero return stops
 	 * pu_list_upstream from ever falling through to repology, which does
 	 * carry imagemagick's real current version. HEAD the page first and
 	 * only trust the body behind a 200.
@@ -669,7 +669,7 @@ static int add_if_matching_shape(char cands[][PU_MAX_VER], int n, int max,
 	if (n >= max || !cand[0])
 		return n;
 	char shape[PU_MAX_VER];
-	pu_shape(cand, shape, sizeof(shape));
+	kp_vershape(cand, shape, sizeof(shape));
 	if (strcmp(shape, want_shape) || already_have(cands, n, cand))
 		return n;
 	kb_strlcpy(cands[n], cand, PU_MAX_VER);
@@ -755,7 +755,7 @@ int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
 	}
 
 	char cur_shape[PU_MAX_VER];
-	pu_shape(r->version, cur_shape, sizeof(cur_shape));
+	kp_vershape(r->version, cur_shape, sizeof(cur_shape));
 
 	char (*matches)[PU_MAX_VER] = kb_calloc(PU_MATCH_MAX, PU_MAX_VER);
 	int nm = collect_matches(raws, nraw, cur_shape, 0, matches, PU_MATCH_MAX);
@@ -888,13 +888,13 @@ static int forge_org(const char *src, char *org, size_t cap)
 		 * dangerous direction — that is what ships a half-bumped
 		 * epoch.
 		 *
-		 * This used to take everything up to the literal "/-/" that
-		 * separates a GitLab project from the object fetched from it —
-		 * the project, not the org, since GitLab groups nest
-		 * arbitrarily (xorg/font/util is three levels). That made
+		 * Taking everything up to the literal "/-/" that separates a
+		 * GitLab project from the object fetched from it keys on the
+		 * PROJECT, not the org, since GitLab groups nest arbitrarily
+		 * (xorg/font/util is three levels). That gives
 		 * xorg/font/encodings and xorg/font/util, siblings under one
-		 * group and both in ports/core, produce different keys: no
-		 * two gitlab-hosted ports could ever share a group. */
+		 * group and both in ports/core, different keys: no two
+		 * gitlab-hosted ports could then ever share a group. */
 		const char *slash = strchr(host, '/');
 		if (!slash || sscanf(slash + 1, "%127[^/]", owner) != 1)
 			return -1;

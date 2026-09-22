@@ -110,8 +110,8 @@ static void add_c_files(KbArgv *a, const char *dir)
  * to argv[1] only when self itself is not one of the five tool names; a
  * binary named anything other than exactly "kpkg" therefore has no way to
  * reach the "meta" subcommand by invoking `<bin> meta <dir>` the way
- * pu_recipe_read's run_meta() (and, it turns out, ports/fetch's own `"$KPKG"
- * meta .`) does — verified live: `.kpkg-meta meta <dir>` prints "no tool
+ * pu_recipe_read's run_meta() does — as does ports/fetch's own `"$KPKG"
+ * meta .` — verified live: `.kpkg-meta meta <dir>` prints "no tool
  * named '.kpkg-meta'" while a binary named plain "kpkg" resolves the same
  * argv straight to front_main. So this tool builds its own copy under a
  * name that satisfies the dispatcher, in a directory of its own rather than
@@ -1068,7 +1068,7 @@ static int discover(const KpConf *conf, const char *kpkg_bin, char names[][64],
 /* ────────────────────────────────────────────────────────────────────────
  * --selftest — pure, offline assertions over this file's own logic
  *
- * kp_vercmp/pu_shape/pu_extract already have a table in src/libs/selftest.c,
+ * kp_vercmp/kp_vershape/pu_extract already have a table in src/libs/selftest.c,
  * built against the pipeline's earlier stages. Everything new in THIS file
  * is the line layout, the grouping decision and the cache's round trip —
  * none of it touches the network, so all three get exercised here with no

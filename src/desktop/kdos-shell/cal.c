@@ -327,14 +327,26 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 		prev_x = prev_end = next_x = next_end = today_x = today_end = 0;
 	}
 
-	/* The date in words, and the time — the two things the clock itself
-	 * cannot fit into one row of a panel. */
+	/* The date in WORDS, which is the one thing the panel's own clock
+	 * cannot fit into a row two cells high. */
 	time_t now = time(NULL);
 	struct tm nt;
 	char line[64];
+	int n;
+
 	localtime_r(&now, &nt);
-	snprintf(line, sizeof(line), "%d %s %d   %02d:%02d", nt.tm_mday,
-		 MONTHS[nt.tm_mon], nt.tm_year + 1900, nt.tm_hour, nt.tm_min);
+	n = snprintf(line, sizeof(line), "%d %s %d", nt.tm_mday,
+		     MONTHS[nt.tm_mon], nt.tm_year + 1900);
+	/*
+	 * AND THE TIME ONLY WHERE THE WHOLE OF IT FITS. ktui_draw_text clips
+	 * at the width it is handed, so on a popup narrow enough to cut the
+	 * tail a `10:24` is drawn as `10` — a bare number where a person is
+	 * reading a clock, which is worse than no clock at all. Eight is the
+	 * three spaces and the five of `HH:MM`.
+	 */
+	if (n > 0 && n + 8 <= w - 4)
+		snprintf(line + n, sizeof(line) - (size_t)n, "   %02d:%02d",
+			 nt.tm_hour, nt.tm_min);
 	ktui_draw_text(2, h - 2, w - 4, line, KT_MID, KT_SURFACE, KT_A_NONE);
 
 	/*

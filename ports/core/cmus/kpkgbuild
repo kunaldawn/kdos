@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cmus
+version     = 2.12.0
+release     = 1
+source      = https://github.com/cmus/cmus/archive/refs/tags/v$version.tar.gz
+sha256      = 44b96cd5f84b0d84c33097c48454232d5e6a19cd33b9b6503ba9c13b6686bfc7  cmus-2.12.0.tar.gz
+description = A console music player that browses a library, not a file at a time
+homepage    = https://cmus.github.io/
+depends     = ncurses alsa-lib flac libvorbis opusfile libmad

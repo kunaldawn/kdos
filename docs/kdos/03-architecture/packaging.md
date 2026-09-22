@@ -1,35 +1,45 @@
 # Packaging
 
-How host software is described, built, installed, verified and updated. This covers the ports
-tree, the package format, reproducibility, the signed binary host, deltas and vulnerability
-tracking. For writing a recipe, see [Writing ports](../05-developer/writing-ports.md); for
-application packs, which are a different system, see [Packs and boxes](packs-and-boxes.md).
+How host software is described, built, installed, verified and updated. This
+page covers the ports tree, the package format, the rebuild decision,
+reproducibility, the signed binary host, binary deltas and vulnerability
+tracking.
+
+For the recipe format itself, see
+[Writing ports](../05-developer/writing-ports.md). For application packs, which
+are a separate system answering a different question, see
+[Packs and boxes](packs-and-boxes.md).
 
 ## The ports tree
 
-A **port** is a directory describing one piece of software. It is two files:
+A **port** is a directory describing one piece of software, and it is two
+files:
 
 | File | What it is |
 |---|---|
-| `kpkgbuild` | Declarative metadata. **Parsed, never sourced** |
+| `kpkgbuild` | Declarative metadata. Parsed, never sourced |
 | `build.sh` | The build. Ordinary bash, with the working directory set to the unpacked source |
 
-Optionally beside them: `postinstall.sh`, patch files, and — for a port whose sources are release
-assets — the tarballs themselves.
+Optionally beside them: `postinstall.sh`, patch files, and — for a port whose
+sources are release assets — the tarballs themselves.
 
-The split is deliberate. Because the metadata is parsed rather than executed, reading a recipe
-costs no shell and cannot run anything; and because the build is a real script, syntax checking,
-linting, highlighting and diffing all work on it. See
-[Decisions](../01-philosophy/decisions.md).
+The split is deliberate. Because the metadata is parsed rather than executed,
+reading a recipe costs no shell and cannot run anything. Because the build is a
+real script, syntax checking, linting, highlighting and diffing all work on it.
+See [Decisions](../01-philosophy/decisions.md).
 
-**There are three port repositories**, searched in order, and they use one format:
+There are three port repositories, searched in order, and they use one format:
 
 ```
-PORT_REPO="/ports/core /kdos/src/packages /kdos/src/desktop"
+/ports/core              851 recipes — upstream software
+/kdos/src/packages        12 recipes — ours: the tools, the installer, the packer
+/kdos/src/desktop         13 recipes — ours: the compositor, the shell, the daemons
 ```
 
-`ports/core` is upstream software. `src/packages` and `src/desktop` are ours. Building the
-desktop is therefore not a special case anywhere in the build system.
+`PORT_REPO` in each phase environment lists the repositories that phase may
+resolve against. Phases 4 and 5 name the first two; the desktop phase names all
+three. Building the desktop is therefore not a special case anywhere in the
+build system.
 
 ## kpkg
 
@@ -43,13 +53,15 @@ One binary answering to five names, dispatched on its own basename:
 | `kpkgdel` | Remove a package |
 | `kpkgdepends` | Print the resolved install order, and nothing else |
 
-`kpkgdepends` writes **one bare space-separated line to stdout and nothing else**, because the
-build orchestrator parses it. Diagnostics from anything running inside the build chroot go to a
-log, and every token the orchestrator reads is validated against a strict pattern, so noise fails
-loudly instead of being installed as a package.
+`kpkgdepends` writes one bare space-separated line to stdout and nothing else,
+because the build orchestrator parses it. Diagnostics from anything running
+inside the build chroot go to a log, and every token the orchestrator reads is
+validated against a strict pattern, so noise fails loudly instead of being
+installed as a package.
 
-It links three of our libraries and nothing else, so it is cross-compiled early and exists on
-every tree from the first bootable image onward.
+`kpkg` links three of this tree's libraries and nothing else, so it is
+cross-compiled early and exists on every tree from the first bootable image
+onward.
 
 ## Packages
 
@@ -62,51 +74,86 @@ A package is a compressed tar archive plus a database entry.
 | Manifest | Every path the package owns, `./`-prefixed, directories with a trailing slash |
 | Install hook | `.POSTINSTALL` inside the archive, when the port has one |
 
-**A file conflict is between packages.** A path that exists but that no installed package claims
-is **adopted**, not refused. That is not a loosening — it is what the self-hosting bootstrap
-phase *is*: the earliest phases install a toolchain by hand, leaving files no database entry
-owns, and the bootstrap then rebuilds exactly those packages with `kpkg`.
+A file conflict is between *packages*. A path that exists but that no installed
+package claims is **adopted**, not refused. That is not a loosening; it is what
+the self-hosting bootstrap phase *is*. The earliest phases install a toolchain
+by hand, leaving files no database entry owns, and the bootstrap then rebuilds
+exactly those packages with `kpkg`.
 
-A path that another package **does** own is still a conflict. Where the userland genuinely
-overlaps — the compact userland ships many names that the full GNU tools also provide — the rule
-is that whoever comes last in the dependency order wins, expressed with an explicit overwrite
-flag. That flag does exactly one thing besides allowing the write: **the path changes hands in
-the database**, removed from the previous owner's manifest. Without that, removing the older
-package would delete a file the newer one installed.
+A path that another package **does** own is still a conflict. Where the
+userland genuinely overlaps — the compact userland ships many names that the
+full GNU tools also provide — the rule is that whoever comes last in the
+dependency order wins, expressed with an explicit overwrite flag. That flag
+does exactly one thing besides allowing the write: the path changes hands in
+the database, removed from the previous owner's manifest. Without that,
+removing the older package would delete a file the newer one installed.
 
-**An upgrade removes orphans.** A file present in the old version and absent from the new one is
-removed rather than left on disk owned by nothing.
+An upgrade removes orphans. A file present in the old version and absent from
+the new one is removed rather than left on disk owned by nothing.
+
+## What a build verifies
+
+`kpkgbuild` hashes **every** `sha256 =` entry whose file is present beside the
+recipe or in the source cache, before it touches the work directory. That is
+wider than the source list on purpose: the 114 Go, Rust and Python ports carry
+a vendor bundle — `<name>-vendor-<version>.tar.xz`, unpacked by `build.sh`
+itself — which is declared with a hash and named by no `source =` line, so a
+check that walked `source =` alone would compile those ports from bytes nothing
+had looked at.
+
+A declared file that is in neither place is skipped rather than refused: a
+source the build actually needs is caught when extraction cannot find it, and
+failing on a declared file the build never opens would refuse a port over a
+hash that cannot reach it.
+
+On top of that, no source is unpacked before its bytes match. A source the
+recipe names with no `sha256 =` for it is a hard failure, not a warning:
+`KDOS_ALLOW_UNVERIFIED=1` is the bring-up escape hatch for adding a port before
+its hash is known, and `testing/preflight.sh` asserts that no recipe in the
+tree needs it.
 
 ## Deciding what to rebuild
 
-The build must not recompile 764 ports on every run, and must not skip one whose recipe changed.
-Two hashes decide, and they are the same two the binary host uses.
+The build must not recompile 875 ports on every run, and must not skip one
+whose recipe changed. Two hashes decide, and they are the same two the binary
+host uses.
 
-**`E:` — the recipe hash.** SHA-256 over `kpkgbuild`, `build.sh`, `postinstall.sh` and every
-patch, sorted by name, each contributing its name *and* its bytes. It is an exact statement of
-what a package was built from.
+### `E:` — the recipe hash
 
-For a port that names a `source =`, nothing else in the directory is hashed: a tarball is content
-the recipe already names and the `sha256 =` beside it already covers.
+SHA-256 over `kpkgbuild`, `build.sh`, `postinstall.sh` and every patch, sorted
+by name, each contributing its name *and* its bytes. It is an exact statement
+of what a package was built from.
 
-**A source-less port is different, and this is the half that makes the rule true for our own
-code.** A port with no `source =` builds out of its own directory — nothing names those files and
-no checksum covers them. Hashing only the four recipe files would mean that editing a `.c` changes
-nothing the build can see: the port reports as installed and current, and the tree keeps the
-binary it already had. The symptom is never a build error; it is a shipped program behaving like
-an older one. So a source-less port hashes **its whole directory**, sorted at every level, **and
-all of `src/libs` with it** — because a `build.sh` names which libraries it compiles and parsing
-that would be a shell parser inside the package manager.
+For a port that names a `source =`, nothing else in the directory is hashed: a
+tarball or a vendor bundle is covered by its own `sha256 =` line, which
+`kpkgbuild` checks before it builds anything (see
+[What a build verifies](#what-a-build-verifies)). A file beside the recipe that
+no `sha256 =` names is in neither the key nor that check.
 
-The stated cost: editing one library rebuilds every port of ours, rather than only its consumers.
-An upstream port's hash is unaffected.
+A source-less port is different, and that difference is what makes the rule
+true for this tree's own code. A port with no `source =` builds out of its own
+directory — nothing names those files and no checksum covers them. Hashing only
+the four recipe files would mean that editing a `.c` changes nothing the build
+can see: the port reports as installed and current, and the tree keeps the
+binary it already had. The symptom is never a build error; it is a shipped
+program behaving like an older one.
 
-**`B:` — the build-config hash.** The architecture, the C library, the target triple, the compiler
-version and the compiler and linker flags. Two machines with the same `B:` produce comparable
-binaries; two with different `B:` do not, whatever the recipe says.
+So a source-less port hashes its **whole directory**, sorted at every level,
+**and all of `src/libs` with it** — because a `build.sh` names which libraries
+it compiles, and parsing that would be a shell parser inside the package
+manager.
 
-Both hashes include their field **names**, because a hash over values alone collides the moment
-two fields swap.
+The cost is stated: editing one library rebuilds every port of ours, rather
+than only its consumers. An upstream port's hash is unaffected.
+
+### `B:` — the build-config hash
+
+The architecture, the C library, the target triple, the compiler version and
+the compiler and linker flags. Two machines with the same `B:` produce
+comparable binaries; two with different `B:` do not, whatever the recipe says.
+
+Both hashes include their field **names**, because a hash over values alone
+collides the moment two fields swap.
 
 ### The three states
 
@@ -116,28 +163,32 @@ Skip-if-installed compares the recorded recipe hash to the port as it stands:
 |---|---|
 | Hashes match | Skip |
 | Hashes differ | Rebuild |
-| **No recorded hash, or a corrupt one** | **Skip** |
+| No recorded hash, or a corrupt one | **Skip** |
 
-The third row is what makes this safe on a tree that predates the mechanism: absent reads as
-*unknown*, never as *changed*, so no package is rebuilt merely for lacking a record. A record that
-is not exactly the right shape is treated the same way — reading it as a mismatch would rebuild
-that one package on every run forever with nothing saying why.
+The third row is what makes this safe on a tree that predates the mechanism:
+absent reads as *unknown*, never as *changed*, so no package is rebuilt merely
+for lacking a record. A record that is not exactly the right shape is treated
+the same way — reading it as a mismatch would rebuild that one package on every
+run forever with nothing saying why.
 
-The hash is recorded **after** a successful install, never before: a record written ahead of a
-build that then fails would claim a recipe is installed that is not.
+The hash is recorded **after** a successful install, never before. A record
+written ahead of a build that then fails would claim a recipe is installed that
+is not.
 
-`KPKG_STRICT_RECIPE=1` enables it. Every build phase environment sets it, so **the build is
-strict**; an interactive `kpkg install` is not.
+`KPKG_STRICT_RECIPE=1` enables the check. Every build phase environment sets
+it, so the build is strict; an interactive `kpkg install` is not.
 
-**The solver applies it, not the install loop.** An installed and current package is dropped
-before the loop runs, so a test placed downstream would reach only packages named on the command
-line and miss every *dependency* whose recipe changed.
+The solver applies it, not the install loop. An installed and current package
+is dropped before the loop runs, so a test placed downstream would reach only
+packages named on the command line and miss every *dependency* whose recipe
+changed.
 
 ## Reproducible packages
 
-**A package built twice from the same tree is byte-identical.** That is a property of one
-function — the archive roller inside `kpkg` — rather than of 764 recipes, which is exactly why
-`kpkg` rolls the archive itself instead of letting each `build.sh` do it.
+A package built twice from the same tree is byte-identical. That is a property
+of one function — the archive roller inside `kpkg` — rather than of 875
+recipes, which is exactly why `kpkg` rolls the archive itself instead of
+letting each `build.sh` do it.
 
 Every flag there addresses a specific source of drift:
 
@@ -150,14 +201,16 @@ Every flag there addresses a specific source of drift:
 | `--use-compress-program=xz -9 -T1` | Multi-threaded compression is not deterministic, and an environment variable can silently enable it |
 | `umask(022)` before the build | A file created without an explicit mode takes the builder's umask — the one source of drift that is not in the archive call |
 
-The other half is five lines in every phase environment: a **pinned** epoch (not the current
-date, and not derived from git, which the build container does not have), `TZ=UTC`, `LC_ALL=C`, a
-compiler flag that rewrites source paths, and a linker flag making the build identifier a function
-of the contents rather than random.
+The other half is five lines in every phase environment: a **pinned** epoch
+(not the current date, and not derived from git, which the build container does
+not have), `TZ=UTC`, `LC_ALL=C`, a compiler flag that rewrites source paths,
+and a linker flag making the build identifier a function of the contents rather
+than random.
 
-Reproducibility is not decoration. It is what makes a signed binary host meaningful, what lets a
-delta reconstruct a package that still verifies against the **original** signature, and what lets
-a rebuild be *compared* to what it was built from rather than merely produced.
+Reproducibility is not decoration. It is what makes a signed binary host
+meaningful, what lets a delta reconstruct a package that still verifies against
+the *original* signature, and what lets a rebuild be compared to what it was
+built from rather than merely produced.
 
 ## The binary host
 
@@ -168,12 +221,12 @@ cp builder.pub /etc/kdos/keys/           # on every machine that should trust it
 kpkg binhost /repo zlib                  # install it, or say why it will not
 ```
 
-The index is a flat file: single-character keys, one stanza per package, blank line between. It
-parses in a few dozen lines of C and reads fine in a pager.
+The index is a flat file: single-character keys, one stanza per package, blank
+line between. It parses in a few dozen lines of C and reads fine in a pager.
 
-**Three equality tests decide whether a prebuilt package is usable**, and there is no "close
-enough": the architecture, the build-config hash `B:`, and the recipe hash `E:`. Anything else
-builds from source. The exit code says which happened:
+Three equality tests decide whether a prebuilt package is usable, and there is
+no "close enough": the architecture, the build-config hash `B:`, and the recipe
+hash `E:`. Anything else builds from source. The exit code says which happened:
 
 | Exit | Meaning |
 |---|---|
@@ -181,46 +234,55 @@ builds from source. The exit code says which happened:
 | 1 | No match — build it from source |
 | 2 | Refused |
 
-That is Gentoo's entire USE-flag matching problem replaced by two equality tests, and it works
-because KDOS has no USE flags.
+That is Gentoo's entire USE-flag matching problem replaced by two equality
+tests, and it works because KDOS has no USE flags.
 
 ### Signing
 
-Ed25519, through a vendored public-domain implementation — the only third-party source under
-`src/`. See [The C libraries](../05-developer/c-libraries.md).
+Ed25519, through a vendored public-domain implementation — the only
+third-party source under `src/libs`. See
+[The C libraries](../05-developer/c-libraries.md).
 
-**One signature over the index covers every package transitively**, because the index carries
-each package's hash. A per-package sidecar exists for the separate case of a package travelling on
-a stick with no index beside it.
+One signature over the index covers every package transitively, because the
+index carries each package's hash. A per-package sidecar exists for the
+separate case of a package travelling on a stick with no index beside it.
 
-Rules the scheme keeps, each of which is a way signing usually rots:
+The scheme keeps six rules, each of which is a way signing usually rots.
 
-- **A key id is not a key.** The id on a signature line is a label, not a selector: every line is
-  tried against every key in the trusted directory and against nothing outside it, so what a tool
-  reports is the key that verified rather than the id the line claimed, and a line naming an
-  unknown id still verifies if a trusted key signed it. A signature that could supply its own key
-  verifies nothing.
-- **A bad signature is not a missing one.** Installing a package whose sidecar *fails* is refused;
-  one with no sidecar is allowed, because locally built packages are the majority and are never
-  signed. `KPKG_REQUIRE_SIG=1` is the stricter policy for a machine that only installs from a
-  host.
-- **`--insecure` says so out loud, every time.** A flag that prints nothing is a flag that gets
-  left in a script.
-- **The index is verified before it is believed, and a package's hash before it is unpacked.**
-  Verifying after installing is verifying nothing.
-- **Multi-signature from the start.** A signature file is one line per signature, so during a key
-  rollover both keys sign and a client trusting either keeps working. Retrofitting that is brutal.
-- **The signing key is written with restrictive permissions and exclusive creation**, and reading
-  it back refuses if the mode has loosened.
+A key id is not a key. The id on a signature line is a label, not a
+selector: every line is tried against every key in the trusted directory and
+against nothing outside it. What a tool reports is the key that verified rather
+than the id the line claimed, and a line naming an unknown id still verifies if
+a trusted key signed it. A signature that could supply its own key verifies
+nothing.
 
-**The trusted directory *is* the policy.** There is no revocation list and no online check:
-adding a key is copying a file in, removing trust is deleting one. And the loader does **not**
-descend into subdirectories, which is what keeps `/etc/kdos/keys` (host packages) and
-`/etc/kdos/keys/packs` (application packs) genuinely separate policies.
+A bad signature is not a missing one. Installing a package whose sidecar
+*fails* is refused; one with no sidecar is allowed, because locally built
+packages are the majority and are never signed. `KPKG_REQUIRE_SIG=1` is the
+stricter policy for a machine that only installs from a host.
 
-**Ports built from source are not signed and need no signature.** A port is compiled on this
-machine and its integrity is the `sha256 =` in its recipe. Signing answers "who made this binary",
-and for a port the answer is "you did".
+`--insecure` says so out loud, every time. A flag that prints nothing is a
+flag that gets left in a script.
+
+The index is verified before it is believed, and a package's hash before it
+is unpacked. Verifying after installing is verifying nothing.
+
+Multi-signature is supported from the start. A signature file is one line per signature,
+so during a key rollover both keys sign and a client trusting either keeps
+working. Retrofitting that is brutal.
+
+The signing key is written with restrictive permissions and exclusive
+creation, and reading it back refuses if the mode has loosened.
+
+The trusted directory *is* the policy. There is no revocation list and no
+online check: adding a key is copying a file in, removing trust is deleting
+one. The loader does **not** descend into subdirectories, which is what keeps
+`/etc/kdos/keys` (host packages) and `/etc/kdos/keys/packs` (application packs)
+genuinely separate policies.
+
+Ports built from source are not signed and need no signature. A port is
+compiled on this machine and its integrity is the `sha256 =` in its recipe.
+Signing answers "who made this binary", and for a port the answer is "you did".
 
 ## Deltas
 
@@ -230,20 +292,23 @@ kpkg delta zlib-1.3-1.tar.xz zlib-1.3.1-1.tar.xz
 
 Two decisions around a standard binary-diff tool are the whole of the work.
 
-**The delta is taken over the uncompressed archives.** Two compressed files built from nearly
-identical trees share almost no bytes — that is what a compressor does — so a delta between them
-is the size of the whole package. Decompressing first is the entire difference between a few
-kilobytes and the full package.
+The delta is taken over the **uncompressed** archives. Two compressed files
+built from nearly identical trees share almost no bytes — that is what a
+compressor does — so a delta between them is the size of the whole package.
+Decompressing first is the entire difference between a few kilobytes and the
+full package.
 
-**A delta is never trusted, and never needs to be.** It is applied and the **result** is hashed
-against the entry the signed index already carries. A tampered delta produces a package whose hash
-does not match and is discarded; it cannot make a client install anything the index did not
-already name. So there is no delta signature and no second trust path.
+A delta is never trusted, and never needs to be. It is applied and the
+**result** is hashed against the entry the signed index already carries. A
+tampered delta produces a package whose hash does not match and is discarded;
+it cannot make a client install anything the index did not already name. There
+is therefore no delta signature and no second trust path.
 
-A delta appears in the index as an ordinary stanza with an extra key naming the package file it
-applies to. There is no type field, because "it names what it patches" says the same thing. A
-client uses one only when it still **has** that old package, which is the ordinary case for a
-machine that has been updating rather than installing fresh.
+A delta appears in the index as an ordinary stanza with an extra key naming the
+package file it applies to. There is no type field, because "it names what it
+patches" says the same thing. A client uses one only when it still *has* that
+old package, which is the ordinary case for a machine that has been updating
+rather than installing fresh.
 
 ## Vulnerability tracking
 
@@ -251,30 +316,34 @@ machine that has been updating rather than installing fresh.
 kdos cve
 ```
 
-The question is a version comparison, not a scan: *is the version we pin older than the version
-the database says fixed this issue?* The comparator is the package manager's own version
-comparison, shared so that this and the upstream-version checker cannot disagree about what
-"newer" means.
+The question is a version comparison, not a scan: *is the version we pin older
+than the version the database says fixed this issue?* The comparator is the
+package manager's own version comparison, shared so that this and the
+upstream-version checker cannot disagree about what "newer" means.
 
-The data is a **vendored, pruned copy of Alpine's security database** — a committed, diffable text
-file merged from a dozen Alpine branches — so the answer is offline. See
-[Decisions](../01-philosophy/decisions.md) for why Alpine rather than the larger sources.
+The data is a vendored, pruned copy of Alpine's security database — a
+committed, diffable text file merged from a dozen Alpine branches — so the
+answer is offline. See [Decisions](../01-philosophy/decisions.md) for why
+Alpine rather than the larger sources.
 
 Four details, each of which changes the answer:
 
-- **Alpine's packaging revision is stripped** before comparing. Leaving it on makes every pin look
-  old.
-- **"Fixed in 0" means never affected** in that branch, and falls out of the comparison for free.
-- **The newest fix a pin is behind is the one reported**, because it closes every earlier one too,
-  and the identifiers from all matching rows are merged.
+- **Alpine's packaging revision is stripped** before comparing. Leaving it on
+  makes every pin look old.
+- **"Fixed in 0" means never affected** in that branch, and falls out of the
+  comparison for free.
+- **The newest fix a pin is behind is the one reported**, because it closes
+  every earlier one too, and the identifiers from all matching rows are merged.
 - **A `secdb =` key in a recipe** maps a port whose name differs from Alpine's.
 
-**A package the database does not carry is UNKNOWN, never clean.** A large fraction of the tree is
-in that state and the summary says so, because a checker that counted them as fine would be
-reporting a number it had not earned. The database's age is printed with every run.
+A package the database does not carry is reported as UNKNOWN, never clean. A
+large fraction of the tree is in that state and the summary says so, because a
+checker that counted them as fine would be reporting a number it had not
+earned. The database's age is printed with every run.
 
-`ports/update --cve` is the online cross-check, one request per port against a rate-limited
-service. That cost is why the vendored table is the everyday answer.
+`ports/update --cve` is the online cross-check, one request per port against a
+rate-limited service. That cost is why the vendored table is the everyday
+answer.
 
 ## See also
 

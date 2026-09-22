@@ -495,10 +495,10 @@ static void draw_osd(const char *label, int pct, int muted)
 
 /* ── one OSD at a time ─────────────────────────────────────────────────────
  *
- * A media key is HELD. Every press used to be a whole process — fork, connect,
- * load a 32-pixel bitmap font, create a layer surface, sit there for 1.2
- * seconds — so holding volume-up produced a queue of overlapping overlays, each
- * showing a value that was already stale, and a dozen font caches at once.
+ * A media key is HELD, and one press is a whole process — fork, connect, load
+ * a 32-pixel bitmap font, create a layer surface, sit there for 1.2 seconds.
+ * Without a lock, holding volume-up is a queue of overlapping overlays each
+ * showing a value that is already stale, and a dozen font caches at once.
  *
  * So the first one to take the lock is the one on screen, and every later press
  * applies its change (which it has already done by this point), tells the owner
@@ -631,7 +631,8 @@ static int usage(void)
 		"usage: kdos-osd volume [+N|-N|mute|toggle]\n"
 		"       kdos-osd mic [toggle|up|down|+N|-N]\n"
 		"       kdos-osd brightness [+N|-N]\n"
-		"       kdos-osd slider [--at-bottom X Y] [--font NAME]\n");
+		"       kdos-osd slider [--at-bottom X Y] [--font NAME]\n"
+		"       kdos-osd --dump [volume|mic|brightness]\n");
 	return 2;
 }
 
@@ -640,9 +641,10 @@ static int usage(void)
  * `kdos-osd slider [--at-bottom X Y]` — the popup a click on `VOL 62%` opens.
  *
  * The bezel above is a NOTIFICATION: it appears when a media key is pressed,
- * takes no input at all (it sat mid-screen and ate every click under it until
- * that was fixed), and goes away by itself. A slider is the opposite in every
- * one of those: it is aimed at, it is dragged, and it stays until dismissed.
+ * takes no input at all (it sits mid-screen, so an input region would eat
+ * every click under it), and goes away by itself. A slider is the opposite in
+ * every one of those: it is aimed at, it is dragged, and it stays until
+ * dismissed.
  * Sharing the drawing would mean one surface with two contradictory input
  * policies, so it shares the ALSA helpers and nothing else.
  *
@@ -782,13 +784,13 @@ static int slider_main(int at_x, int at_y, const char *font)
 	 * scale. No artwork is a slider with a glyph in it, not a failure. */
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
 	kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
@@ -909,6 +911,28 @@ int osd_main(int argc, char **argv)
 {
 	if (argc < 2)
 		return usage();
+
+	/*
+	 * ONE FRAME, OFFSCREEN, AS TEXT — see kdos-launcher --dump.
+	 *
+	 * AT A FIXED VALUE AND NOT AT THE MACHINE'S. A reference frame has to
+	 * be the same picture on every machine, and this overlay's whole
+	 * content is a number somebody's mixer happens to be at. Sixty per
+	 * cent unmuted is a bar with both ends visible, which is the frame
+	 * worth comparing.
+	 */
+	if (!strcmp(argv[1], "--dump")) {
+		const char *what = argc > 2 ? argv[2] : "volume";
+
+		if (strcmp(what, "volume") && strcmp(what, "mic") &&
+		    strcmp(what, "brightness"))
+			return usage();
+		sh_theme_from_cache();
+		ktui_offscreen_init(OSD_COLS, OSD_ROWS);
+		osd_show(what, 60, 0);
+		ktui_draw_dump();
+		return 0;
+	}
 
 	const char *what = argv[1];
 	const char *arg = argc > 2 ? argv[2] : NULL;

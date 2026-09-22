@@ -15,17 +15,29 @@
 kdos-theme icons "$PKG/usr/share/icons/KDOS" phosphor \
 	--src "$PORT_SRC/art" --marks "$PORT_SRC/marks"
 
-# hicolor gets the marks too, so every lookup path lands on the tux and not
+# hicolor gets the marks too, so every lookup path lands on the mark and not
 # just the theme-internal one. Any stale SVG from the pixel-art era has to
 # go: at a given size the toolkit picks scalable over a fixed-size PNG.
-for n in kdos-launcher; do
-	rm -f "$PKG/usr/share/icons/hicolor/scalable/apps/$n.svg"
-	for f in "$PORT_SRC"/marks/tux-*.png; do
-		s="${f##*/tux-}"; s="${s%.png}"
+#
+# BOTH MARKS, AND `start-here` IS THE ONE THAT MATTERS MOST. libkicon searches
+# the atlas and `icons/hicolor`, and NOT `~/.icons/<theme>` — so a mark that
+# only `kdos theme` generates into the theme tree resolves nowhere for a KDOS
+# surface, and `kicon_slot` hands back -1. The Start button asks for
+# `start-here`; without this it draws a fallback glyph, which is the most
+# visible icon on the desktop silently not being an icon.
+install_mark() {
+	_src=$1; _name=$2
+	rm -f "$PKG/usr/share/icons/hicolor/scalable/apps/$_name.svg"
+	for f in "$PORT_SRC"/marks/"$_src"-*.png; do
+		[ -e "$f" ] || continue
+		s="${f##*/$_src-}"; s="${s%.png}"
 		install -Dm644 "$f" \
-			"$PKG/usr/share/icons/hicolor/${s}x${s}/apps/$n.png"
+			"$PKG/usr/share/icons/hicolor/${s}x${s}/apps/$_name.png"
 	done
-done
+}
+install_mark tux  kdos-launcher
+install_mark logo start-here
+install_mark logo distributor-logo-kdos
 
 # `kdos theme <accent>` re-runs kdos-theme against $HOME — the artwork
 # is flat single-fill SVG, so the accent lives in the files and no CSS

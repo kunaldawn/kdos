@@ -17,8 +17,7 @@
  *
  * THE ZONE LIST IS `zone1970.tab`, READ, NOT A TABLE IN THIS FILE. tzdata
  * ships here and carries the canonical list; a hand-written one goes stale the
- * first time a country changes its rules, and it went stale in the installer
- * before this was written.
+ * first time a country changes its rules.
  *
  * SETTING IT IS A `kdos-powerd` VERB, because `/etc/localtime` and
  * `/etc/profile.d/20-timezone.sh` are root's and the person setting a zone is

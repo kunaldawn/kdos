@@ -23,6 +23,7 @@
 #include <stdlib.h>
 
 #include "kcell.h"
+#include "kcell_priv.h"
 
 /* pixman hands the image back to its destroy function and free() does not take
  * one; a cast between the two signatures is undefined behaviour. */

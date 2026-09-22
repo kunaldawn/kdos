@@ -137,14 +137,14 @@ int view_selftest(void)
 	vfail = 0;
 
 	/* No region may ever be drawn over another, at any size the terminal
-	 * can be. This is the assertion, not the instance: the divider landing
-	 * on the log text was one size out of this range. */
+	 * can be. This is the assertion, not the instance: a divider landing
+	 * on the log text is one size out of this range. */
 	int bad_size = 0;
 	/* A region left at zero size passes both checks above silently — it
 	 * neither overlaps anything nor leaves the screen. So a region that is
 	 * supposed to be ACTIVE at this size (its governing flag says so) is
-	 * also checked for positive width and height, or a future regression
-	 * that forgot to size one would pass this whole test. */
+	 * also checked for positive width and height, or a layout change that
+	 * forgets to size one passes this whole test. */
 	int bad_zero = 0;
 	for (int w = 40; w <= 300; w++)
 		for (int h = 10; h <= 100; h++) {
@@ -337,12 +337,12 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 
 	BStep *g2 = pv_group(m, &m->phase[2], 2, "06_packaging", "packaging", 0,
 			     "Packaging",
-			     "trim rootfs, theme, user, appbox, initramfs, ISO",
+			     "trim rootfs, launchers, theme, user, initramfs, ISO",
 			     "fs");
+	pv_step(m, g2, "00_launchers.sh", ST_PENDING, 0);
 	pv_step(m, g2, "00_theme.sh", ST_PENDING, 0);
-	pv_step(m, g2, "01_appbox.sh", ST_PENDING, 0);
-	pv_step(m, g2, "02_initramfs.sh", ST_PENDING, 0);
-	pv_step(m, g2, "03_iso.sh", ST_PENDING, 0);
+	pv_step(m, g2, "01_initramfs.sh", ST_PENDING, 0);
+	pv_step(m, g2, "02_iso.sh", ST_PENDING, 0);
 	/* Padded well past the tallest tree pane this file lays out (22 rows
 	 * at 100x30) so a selection near the end of the list forces REAL
 	 * scrolling. Feature 1's sticky header has nothing to pin without

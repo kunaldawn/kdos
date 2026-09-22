@@ -1,6 +1,6 @@
-+= Recording ==========================================+
++=[ Recording ]========================================+
 | Recording                                            |
-| default the card ALSA picks ? 16 kHz mono ? no model |
+| default the card ALSA picks ? 16 kHz mono ? ggml-tin |
 |------------------------------------------------------|
 | Input ---------------------------------------------- |
 | > default           the card ALSA picks              |

@@ -203,9 +203,9 @@ static int kind_pending;
 
 /*
  * The active connections, which arrive in the SAME ObjectManager reply — they
- * are ordinary exported objects and this surface used to skip them. One is
- * what DeactivateConnection takes, and its `Connection` property is the only
- * link back to the profile that started it.
+ * are ordinary exported objects and skipping them costs the surface its only
+ * handle on a running profile. One is what DeactivateConnection takes, and its
+ * `Connection` property is the only link back to the profile that started it.
  */
 struct net_act {
 	char path[160];
@@ -216,7 +216,6 @@ struct net_act {
 	char dev[160];
 	unsigned state;
 	unsigned vpn_state;
-	int is_vpn;
 };
 
 static struct net_act acts[NET_MAX_CONN];
@@ -250,16 +249,16 @@ struct row {
 
 /*
  * Every kind at once, and the device append is bounds-checked like the others.
- * It was safe only because ndev is capped at eight; a third kind reading a
- * third field makes an unchecked append a stack overwrite rather than a
- * truncated list.
+ * ndev's cap of eight is not the guard: an unchecked append is a stack
+ * overwrite rather than a truncated list as soon as the three kinds together
+ * can reach the end of this array.
  */
 static struct row rows[NET_MAX_DEV + NET_MAX_AP + NET_MAX_CONN];
 static int nrows;
 static int sel, top;
 /* Where the last frame put the list. The header band is two rows plus a rule,
- * so the first list row is no longer 1 — and a click test that still assumed
- * it would act on the row above the one under the pointer. */
+ * so the first list row is 4 and not 1 — a click test that assumes 1 acts on
+ * the row above the one under the pointer. */
 static int list_y0 = 4, list_rows;
 /* comp.conf's `icons = no`, through --no-icons. Off is not a degraded mode:
  * it is what a tty draws. */
@@ -506,7 +505,6 @@ static void vpn_prop(void *ctx, const char *key, sd_bus_message *m,
 {
 	struct net_act *a = ctx;
 
-	a->is_vpn = 1;
 	if (!strcmp(key, "VpnState") && take_u32(m, c, &a->vpn_state))
 		return;
 	sd_bus_message_skip(m, "v");
@@ -878,10 +876,10 @@ static int cmp_ap(const void *pa, const void *pb)
 #define NROWS_MAX ((int)(sizeof(rows) / sizeof(rows[0])))
 
 /*
- * A row is written WHOLE. They used to be filled field by field, so a device
- * row carried whatever `.ap` the previous build left in that slot — harmless
- * only while nothing read it, and a wrong-target action the moment a third
- * kind reads a third field.
+ * A row is written WHOLE — memset, then the fields this kind owns. Filling it
+ * field by field leaves a device row carrying whatever `.ap` the previous
+ * build left in that slot: harmless only while nothing reads it, and a
+ * wrong-target action the moment a third kind reads a third field.
  */
 static struct row *row_push(int kind, int dev)
 {
@@ -1000,8 +998,8 @@ static void build_rows(void)
 		sel = nrows ? nrows - 1 : 0;
 }
 
-/* Both the keyboard and the pointer move the selection, and they used to carry
- * a verbatim copy of this each. One of the two was always going to be missed. */
+/* Both the keyboard and the pointer move the selection, through this one
+ * function: a verbatim copy in each is a copy one change will miss. */
 static void select_row(int i)
 {
 	sel = i;
@@ -1630,8 +1628,9 @@ static void draw_frame(void)
 			break;
 		const struct row *r = &rows[idx];
 		int on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		if (r->kind == ROW_DEV) {
 			const struct net_dev *d = &devs[r->dev];
@@ -1999,13 +1998,13 @@ int net_main(int argc, char **argv)
 	 * scale, neither of which exists until the surface does. */
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
 	if (icons_on)

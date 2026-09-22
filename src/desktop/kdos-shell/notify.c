@@ -273,8 +273,9 @@ static void draw_frame(void)
 		const struct nrow *r = &rows[top + i];
 		int y = y0 + i;
 		int on = top + i == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 		char when[16], line[320];
 
 		ktui_draw_fill(krect(1, y, rw, 1), bg);
@@ -456,13 +457,13 @@ int notify_main(int argc, char **argv)
 	}
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
 	if (icons_on)

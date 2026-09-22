@@ -16,8 +16,9 @@ struct wlr_box;
 
 /*
  * Saturating arithmetic and the choice between two candidate edges are
- * libkwm's, so this compositor and kdos-con cannot drift on them. These stay as
- * thin inlines because every call site here is on the pointer's motion path.
+ * libkwm's, asserted against a fixture with no compositor running. These stay
+ * as thin inlines because every call site here is on the pointer's motion
+ * path.
  */
 static inline int
 clipped_add(int a, int b)

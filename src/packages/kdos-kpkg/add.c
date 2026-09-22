@@ -13,22 +13,20 @@
  * stripping suffixes: hyphens are legal in the NAME and not in the version or
  * the release.
  *
- * Five things the shell version got wrong, all fixed here and all of them
- * silent failures rather than loud ones:
+ * Five rules this file keeps, each one a SILENT failure when it is broken:
  *
- *  - A failed `mv` ran inside `find | while read`, so its `exit 1` only left
- *    the SUBSHELL. The script carried on and wrote a database entry claiming a
- *    complete install of a package that was half on disk.
- *  - The conflict scan iterated `for f in $(find ...)` while the install loop
- *    used `while read -r` — the two disagreed about any path containing a
- *    space. Both come off one list now.
- *  - An upgrade never removed orphans: a file present in the old version and
- *    absent from the new stayed on disk forever, owned by nothing.
- *  - `./.POSTINSTALL` was recorded in the manifest although it is deliberately
- *    never installed, so removing such a package tried to `rm -f /./.POSTINSTALL`.
- *  - `realpath -m` was called only to pretty-print the destination in a log
- *    line, and under `set -e` a failure of it aborted the install. That is the
- *    documented "Symbolic link loop" abort.
+ *  - A file that cannot be placed aborts the install and no database entry is
+ *    written. An entry written past a failure claims a complete install of a
+ *    package that is half on disk.
+ *  - The conflict scan and the install walk come off ONE list. Two walks
+ *    gathered separately disagree about any path containing a space.
+ *  - An upgrade removes orphans: a file present in the old version and absent
+ *    from the new otherwise stays on disk forever, owned by nothing.
+ *  - `./.POSTINSTALL` is kept out of the manifest. It is deliberately never
+ *    installed, so an entry for it has a removal try `rm -f /./.POSTINSTALL`.
+ *  - Nothing cosmetic may abort the install. A path canonicalisation done only
+ *    to pretty-print a destination in a log line fails on a symlink loop, and
+ *    an install that dies there dies for a reason that never mattered.
  * ---------------------------------
  */
 
@@ -203,10 +201,9 @@ static int check_conflict(const char *rel, void *u)
 		 * install`, leaving files no database entry owns, and the
 		 * self-hosting bootstrap then rebuilds exactly those packages
 		 * with kpkg. Refusing them makes the bootstrap impossible.
-		 * It used to work because the phase passed a blanket `-f`,
-		 * which skipped this scan altogether; `-f` now genuinely
-		 * forces a rebuild, so it cannot be handed out just to get
-		 * an overwrite. */
+		 * A blanket `-f` from the phase is not the alternative: `-f`
+		 * forces a rebuild as well as skipping this scan, so it
+		 * cannot be handed out merely to get an overwrite. */
 		const char *owner =
 			x->owned ? kp_owned_owner(x->owned, rel) : NULL;
 		if (owner && !(src_linkdir && dst_linkdir)) {
@@ -289,9 +286,9 @@ static int place(const char *rel, void *u)
 			 * file is a rename — but the target fs is not one
 			 * filesystem. /dev, /proc, /sys, /run and /tmp are all
 			 * separate mounts inside the build chroot, so a package
-			 * shipping ANY path under one of them gets EXDEV and,
-			 * before this fallback existed, aborted the install
-			 * half-written. fuse3 is the real case: its
+			 * shipping ANY path under one of them gets EXDEV;
+			 * without this copy fallback the install aborts
+			 * half-written. libfuse is the real case: its
 			 * install_helper mknods a /dev/fuse into DESTDIR. */
 			if (errno == EXDEV && copy_across(src, dst) == 0) {
 				unlink(src);
@@ -328,9 +325,10 @@ int add_main(int argc, char **argv)
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c.root, argv[++i], sizeof(c.root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
-			/* Unknown options used to fall through and become the
-			 * package FILE, so a stray flag produced "Package file
-			 * not found: --whatever". */
+			/* An unknown option is rejected rather than falling
+			 * through to become the package FILE: taken as one, a
+			 * stray flag produces "Package file not found:
+			 * --whatever". */
 			kp_err("unknown option: %s", argv[i]);
 			return 1;
 		} else

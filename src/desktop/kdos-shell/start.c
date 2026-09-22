@@ -61,7 +61,6 @@
 #include "kicon.h"
 #include "kcell.h"
 #include "kwl.h"
-#include "kcon.h"
 #include "shell.h"
 #include "routes.h"
 
@@ -70,7 +69,7 @@
 /*
  * THE MENU ASKS WIDE AND LAYS OUT FROM WHAT IT WAS GIVEN.
  *
- * This is a surface size, and a surface size here is a REQUEST: the console
+ * This is a surface size, and a surface size here is a REQUEST: a server
  * session clamps it to the work area, so on tty1 at eighty columns the menu is
  * eighty and the two-column shape is what draws. Asking for the narrow size
  * and branching on it would have been a three-column menu that only ever
@@ -149,10 +148,6 @@ struct row {
 	const char *keys;
 	const char *confirm;		/* ask first — the three that end
 					 * the session or the machine     */
-	/* This row's program IS a compositor, so on the console desktop it
-	 * goes on a terminal of its own WITHOUT a kiosk compositor round it.
-	 * The graphical session is the only one. */
-	int bare;
 };
 
 static struct row left[ST_MAX_ROWS];
@@ -851,7 +846,7 @@ static void build_routes(void)
 		 * substring both ways, so `network` already reaches
 		 * `setup.network`. */
 		r->keys = rt->cmd;
-		r->icon = "application-x-executable";
+		r->icon = "system-run";
 	}
 }
 
@@ -888,11 +883,10 @@ static void build_right(void)
 	rule_named(right, &nright, "PLACES");
 
 	/*
-	 * FROM libkxdg, WHICH IS THE ONLY READER. This column used to name
-	 * Documents, Downloads and Pictures under `$HOME` outright — a third
-	 * copy of a list `kdos-desk` and `kdos-menu` each had their own of, and
-	 * the one place a renamed user directory showed as a row that opened
-	 * the wrong folder.
+	 * FROM libkxdg, WHICH IS THE ONLY READER. Naming Documents, Downloads
+	 * and Pictures under `$HOME` outright here is a third copy of a list
+	 * `kdos-desk` and `kdos-menu` also draw, and a renamed user directory
+	 * then shows as a row that opens the wrong folder.
 	 */
 	np = kxdg_places(places, KXDG_PLACES_MAX);
 	for (int i = 0; i < np; i++) {
@@ -938,36 +932,17 @@ static void build_right(void)
 
 	r = push(right, &nright, "Files");
 	if (r) {
-		/* Static: the row outlives this function and argv points into
-		 * it. One row needs one, so there is one. */
-		static char id[160];
-		int k;
-
 		r->keys = "manager files browse";
 		r->icon = "folder-open";
 		/*
-		 * THE FILE MANAGER THIS DESKTOP HAS, WHICH IS NOT THE SAME
-		 * PROGRAM ON BOTH. The console's is `mc`: two panels, ten
-		 * function keys and a user menu, which is what a text desk is
-		 * for and what works on `tty1` with nothing else running. The
-		 * compositor's is `kdos-pick`, which is the chooser every
-		 * other surface already opens — a second file manager there
-		 * would be a second answer to a question the desktop answers.
-		 *
-		 * The branch is `sh_session_prog()`'s, so which desktop this
-		 * is is decided in one place.
+		 * `kdos-pick` AND NOT A SECOND FILE MANAGER. It is the chooser
+		 * every other surface already opens, so a second one here would
+		 * be a second answer to a question the desktop answers.
 		 */
-		if (!strcmp(sh_session_prog(), "kdos-con")) {
-			k = sh_term_argv(r->argv, 0, SH_ROUTE_ARGV, "mc", id,
-					 sizeof(id));
-			r->argv[k++] = "mc";
-			r->argv[k] = NULL;
-		} else {
-			r->argv[0] = "kdos-pick";
-			r->argv[1] = "--browse";
-			r->argv[2] = kb_home_dir();
-			r->argv[3] = NULL;
-		}
+		r->argv[0] = "kdos-pick";
+		r->argv[1] = "--browse";
+		r->argv[2] = kb_home_dir();
+		r->argv[3] = NULL;
 	}
 
 	/*
@@ -1049,7 +1024,7 @@ static void build_right(void)
 		 * a lane with no line in a menu is a lane nothing can reach.
 		 */
 		r->keys = "box container environment distrobox pack apps";
-		r->icon = "package-x-generic";
+		r->icon = "package";
 		r->argv[0] = "kdos-res";
 		r->argv[1] = "--page";
 		r->argv[2] = "boxes";
@@ -1060,28 +1035,11 @@ static void build_right(void)
 		r->icon = "video-display";
 		r->argv[0] = "kdos-display";
 	}
-	const char *con = getenv("KDOS_CON");
-
 	r = push(right, &nright, "Terminal");
 	if (r) {
 		r->keys = "shell console foot prompt";
 		r->icon = "system-run";
 		r->argv[0] = sh_term();
-	}
-	/*
-	 * THE GRAPHICAL SESSION, and only from the console — on the graphical
-	 * desktop you are already in it, and a row that started a second one
-	 * would be a row that starts a second compositor on a second terminal
-	 * for no reason anybody has.
-	 */
-	if (con && *con) {
-		r = push(right, &nright, "Desktop");
-		if (r) {
-			r->keys = "wayland graphical gui session compositor";
-			r->icon = "video-display";
-			r->argv[0] = "kdos-desktop";
-			r->bare = 1;
-		}
 	}
 	r = push(right, &nright, "Help");
 	if (r) {
@@ -1122,7 +1080,7 @@ static void build_right(void)
 	if (r) {
 		r->rsub = 1;
 		r->keys = "system preferences control panel more";
-		r->icon = "preferences-system";
+		r->icon = "configure";
 	}
 }
 
@@ -1394,16 +1352,19 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 		kch_px_row(x, y, w, KCH_T_ACTIVE);
 	/*
 	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
-	 * The plate is the whole highlight, so on the console and in a dump
-	 * the selected row was indistinguishable from every other row — a
-	 * menu with no visible cursor, on a display where the cursor is the
-	 * only thing saying what Enter will do. An accent fill with the slots
-	 * swapped is what a character grid has, and it is what the row's mark
-	 * is already coloured for.
+	 * The plate is the whole highlight, so without one the selected row is
+	 * indistinguishable from every other row — a menu with no visible
+	 * cursor, on a display where the cursor is the only thing saying what
+	 * Enter will do.
+	 *
+	 * IT IS THE SAME SELECTION RULE EVERY OTHER ROW ON THIS DESKTOP USES,
+	 * and it has to be: `kch_px_row` above solves its plate along
+	 * `dim`-to-`pdark`, so a cell fallback in the ACCENT would make the one
+	 * display without a pixel layer the loud one. A menu of a dozen rows is
+	 * where that is least affordable.
 	 */
 		if (!kch_px_live()) {
-			fg = KT_SURFACE;
-			bg = KT_ACCENT;
+			ktui_sel_slots(1, 1, KT_BG, &fg, &bg);
 			ktui_draw_fill(krect(x, y, w, 1), bg);
 		}
 	}
@@ -1651,10 +1612,10 @@ static void draw_frame(void)
 	/*
 	 * ── the left column ──
 	 *
-	 * ONE flag, TWO columns: the left clamp used to consume `sel_follow`
-	 * and the right one always saw zero, so a selection driven into the
-	 * right column could never scroll it into view. Each column follows
-	 * only while it holds the selection.
+	 * ONE flag, TWO columns: a left clamp that CONSUMES `sel_follow` leaves
+	 * the right one always seeing zero, so a selection driven into the
+	 * right column never scrolls it into view. Each column follows only
+	 * while it holds the selection.
 	 */
 	int follow = sel_follow;
 
@@ -1756,12 +1717,12 @@ static void draw_frame(void)
 	 * time. Escape and the `Clear search` row do the same thing.
 	 */
 	/*
-	 * LIT, NOT A SLAB. The first version filled the whole field with the
-	 * accent, and forty columns of it beside a dim list was the loudest
-	 * thing on the screen — photographed. A text field is a SUNKEN box:
-	 * one step off the page at rest, the fill when the pointer is on it or
-	 * it is active, and the ACCENT saved for the caret and the magnifier,
-	 * which is where the eye goes anyway.
+	 * LIT, NOT A SLAB. Filling the whole field with the accent puts forty
+	 * columns of it beside a dim list, which is the loudest thing on the
+	 * screen. A text field is a SUNKEN box: one step off the page at rest,
+	 * the fill when the pointer is on it or it is active, and the ACCENT
+	 * saved for the caret and the magnifier, which is where the eye goes
+	 * anyway.
 	 */
 	/*
 	 * THE WELL IS A PLATE, not a cell fill. A KT_SURFACE fill is opaque —
@@ -1968,20 +1929,6 @@ static int activate(struct row *r)
 		if (r->confirm && !confirm(r->confirm))
 			return 0;
 
-		/*
-		 * A COMPOSITOR CANNOT BE A CELL SURFACE. On the console desktop
-		 * it goes on a terminal of its own; everywhere else the row is
-		 * not built at all, so this branch is unreachable there.
-		 */
-		const char *con = getenv("KDOS_CON");
-
-		if (r->bare && con && *con) {
-			if (kcon_run(con, r->argv, r->label,
-					KCON_RUN_BARE) < 0)
-				fprintf(stderr, "kdos-start: no free terminal "
-						"for '%s'\n", r->label);
-			return 1;
-		}
 		sh_spawn(r->argv);
 		return 1;
 	}
@@ -2258,13 +2205,13 @@ int start_main(int argc, char **argv)
 	}
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
 	if (icons_on)

@@ -34,6 +34,21 @@ for _s in .msmtprc .mbsyncrc; do
     [ -f "/etc/skel/$_s" ] && chmod 600 "/etc/skel/$_s"
 done
 
+# The fs-manifest guard removes FILES, never the directory a removed file
+# emptied, and skel is copied wholesale into every home below — so an empty
+# config directory here is recreated in every home, where nothing reads it and
+# an audit counts it as live. git cannot carry an empty directory through fs/,
+# so one under skel's .config is never something fs/ asked for. Only .config:
+# the generated icon and theme trees legitimately contain empty leaves.
+#
+# Reverse sort puts a child before its parent, so a nest of empties collapses
+# in one pass. `find` here is toybox's, which has neither -empty nor -delete.
+if [ -d /etc/skel/.config ]; then
+    find /etc/skel/.config -mindepth 1 -type d | sort -r | while IFS= read -r _d; do
+        rmdir "$_d" 2>/dev/null || true
+    done
+fi
+
 while IFS=: read -r name _pw uid gid _gecos home shell; do
     case "$uid" in
         ''|*[!0-9]*) continue ;;
@@ -49,18 +64,17 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # would silently ship the previous build's dotfiles instead.
     #
     # cp -r overwrites but never DELETES, so a file skel has since dropped
-    # lingers in the home forever — a 256px icon from an older kdos-icons rode
-    # three rebuilds that way. The generated theme trees are wholly build
+    # lingers in the home forever. The generated theme trees are wholly build
     # output (00_theme.sh regenerates them from scratch every run) and nothing
     # user-authored lives there, so clear them first rather than merging onto
     # whatever the last build left.
     rm -rf "$home/.icons" "$home/.themes"
-    # Desktop state the home accumulated from a generator that no longer
-    # exists. Same reasoning as .icons/.themes: the home is MATERIALIZED from
+    # Desktop state a home accumulated from a generator this tree does not
+    # build. Same reasoning as .icons/.themes: the home is MATERIALIZED from
     # skel, so anything skel has stopped providing has to be cleared here or
     # it outlives the thing that made it. The fs-manifest guard cannot help —
     # it only owns paths fs/ itself provided.
-    rm -rf "$home/.config/cosmic"
+    rm -rf "$home/.config/cosmic" "$home/.config/kdos-con"
     # The KDE colour scheme is generated output like .icons and .themes, so it
     # is cleared for the same reason: an accent renamed or dropped upstream
     # would otherwise leave a stale .colors file offered in every KDE app's
@@ -68,9 +82,9 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # own settings into it and `kdos theme` merges rather than overwrites.
     rm -rf "$home/.local/share/color-schemes"
     # The compositor config dir is skel's wholesale (rc.xml). A file skel has
-    # stopped providing must not outlive it — a stale `autostart` here started
-    # a second kdos-shell beside the supervised one and lost kdos-notifyd the
-    # bus-name race on every boot.
+    # stopped providing must not outlive it: a stale `autostart` here starts a
+    # second kdos-shell beside the supervised one, and the loser of that
+    # bus-name race is whichever of the two asks second.
     rm -rf "$home/.config/kdos-comp"
     # Same reason, and the alien launchers need it most: they have been named
     # kdos-<id> and <upstream-id> at different times, so a merge leaves both

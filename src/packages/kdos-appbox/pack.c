@@ -154,7 +154,6 @@ int packd_ask(const char *req, char *out, size_t n)
 	return rc;
 }
 
-
 /* Every pack the daemon knows, one `id\tversion\tkind\tstate\tsize\torigin`
  * line each. */
 char *pack_list(void)
@@ -166,53 +165,6 @@ char *pack_list(void)
 		return NULL;
 	}
 	return buf;
-}
-
-/*
- * The pack that provides an application, by its shim name. The `command =`
- * keys are what genlaunchers wrote the shims from, so this is the same table
- * read from the other end.
- */
-int pack_of_command(const char *cmd, char *id, size_t n)
-{
-	char *list = pack_list();
-	char *line, *save;
-	int found = 0;
-
-	if (!list)
-		return -1;
-	for (line = strtok_r(list, "\n", &save); line && !found;
-	     line = strtok_r(NULL, "\n", &save)) {
-		char *tab = strchr(line, '\t');
-		char info[8192];
-		char req[256];
-		char *l2, *s2;
-
-		if (!tab)
-			continue;
-		*tab = 0;
-		snprintf(req, sizeof(req), "info %s", line);
-		if (packd_ask(req, info, sizeof(info)) != 0)
-			continue;
-		for (l2 = strtok_r(info, "\n", &s2); l2;
-		     l2 = strtok_r(NULL, "\n", &s2)) {
-			if (strncmp(l2, "command", 7))
-				continue;
-			char *eq = strchr(l2, '=');
-			if (!eq)
-				continue;
-			eq++;
-			while (*eq == ' ')
-				eq++;
-			if (!strcmp(eq, cmd)) {
-				kb_strlcpy(id, line, n);
-				found = 1;
-				break;
-			}
-		}
-	}
-	free(list);
-	return found ? 0 : -1;
 }
 
 /*
@@ -360,7 +312,18 @@ int pack_box_create(const Profile *p, const char *merged)
 	/* The profile's namespaces, the 1:1 mapping the Profile struct exists
 	 * to keep: a key that cannot be enforced is not offered, and each of
 	 * these is exactly one podman flag. */
-	if (!p->netns) {
+	/*
+	 * THREE NETWORK STATES AND `netnone` IS CHECKED FIRST, because it is
+	 * the only one a person asks for to take something away: a box that
+	 * asked for no network and was given the rootless default is a box
+	 * whose profile says one thing and whose traffic does another.
+	 * Neither flag means podman's own rootless default, which is the
+	 * private namespace `netns` asks for.
+	 */
+	if (p->netnone) {
+		kb_argv_add(&a, "--network");
+		kb_argv_add(&a, "none");
+	} else if (!p->netns) {
 		kb_argv_add(&a, "--network");
 		kb_argv_add(&a, "host");
 	}

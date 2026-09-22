@@ -1,7 +1,8 @@
-+= Style ======================================================================+
++=[ Style ]====================================================================+
 |  Accent  Font                                                                |
 |                                                                              |
-| the terminal this view runs in owns the font ? change it there               |
+| the display offers no face it can wear                                       |
+| the font is set in ~/.config/kdos/comp.conf ? chrome_font and panel_font     |
 |                                                                              |
 |                                                                              |
 |                                                                              |
@@ -19,6 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-|                                                                              |
-| ^v preview  Enter keep  Esc back  <> page                                    |
+| ^v preview | Enter keep | Esc back | <> page                                 |
 +==============================================================================+

@@ -134,8 +134,8 @@ int kwl_drag_start(const char *mime, const char *data, size_t len);
  *
  * `step` moves the size in the name by that many units of whichever key
  * carries it, `:pixelsize=N` or `:size=N`, clamped at both ends. A step of 0
- * puts back the name kwl_init() was given, which is what the console's own
- * font chords mean by a reset. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE
+ * puts back the name kwl_init() was given, which is what a reset chord
+ * means. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE
  * IT CARRIES, so a step that lands between two of them reloads a face of the
  * same size and the cell does not move at all. kwl_cell_w()/kwl_cell_h() are
  * how a caller tells: everything it cut for the old cell is still right when
@@ -160,25 +160,19 @@ int kwl_font_step(int step);
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);
 int kwl_cell_h(void);
-/* The surface's own height in LOGICAL pixels — the cell grid plus the rule.
- * What a panel passes as a popup's margin; `rows * cell_h` is short by the
- * rule. */
-int kwl_px_h(void);
-
 /*
  * The offset a popup of THIS panel passes as its own margin from the same
- * screen edge: the surface's height plus the panel's gap.
+ * screen edge: the surface's own height in logical pixels — the cell grid
+ * plus the rule — plus the panel's gap.
  *
- * Use this and never kwl_px_h() for that purpose. They are the same number
- * only while the bar is flush with the edge; with `margin_y` set they differ
- * by exactly the gap, and a popup placed with the height opens behind the bar
- * it belongs to.
+ * THE GAP IS PART OF IT. Height and offset are the same number only while the
+ * bar is flush with the edge; with `margin_y` set they differ by exactly the
+ * gap, and a popup placed with the bare height opens behind the bar it
+ * belongs to.
  */
 int kwl_popup_offset(void);
 /* Which side of this surface faces away from the bar — see kwl.c. */
 int kwl_edge_bottom(void);
-/* Print whatever the display has gone wrong with, if anything — see kwl.c. */
-void kwl_report_error(void);
 
 /*
  * THE BACKDROP — pixel chrome painted UNDER the cell grid, every frame.
@@ -202,26 +196,22 @@ void kwl_report_error(void);
  */
 void kwl_set_backdrop(KDispBackdropFn fn);
 /*
- * SOMETHING BELOW THE GRID CHANGED ITS PIXELS, so the next flush must commit
- * even though no cell moved.
+ * SOMETHING BELOW THE GRID CHANGED ITS PIXELS, asked at FLUSH TIME.
  *
  * The frame diff tracks cells, which is what the grid IS — but a surface with
  * a backdrop draws part of its picture underneath them, and a menu row
  * highlighted by a plate rather than by a cell attribute changes no text at
  * all. Without this the highlight stays where it is until something else
  * causes a frame.
- */
-void kwl_pixels_dirty(void);
-/*
- * THE SAME QUESTION, ASKED AT FLUSH TIME instead of announced.
  *
- * A backdrop that describes its picture as it draws cannot tell a change from
- * a redescription, and calling kwl_pixels_dirty() for each piece makes every
- * frame a commit — which is the "nothing changed: no commit at all" gate gone
- * for every surface that has a backdrop. A callback is asked once per flush,
- * after the picture is complete: it answers non-zero only when what the
- * backdrop would draw now differs from what it last drew, and a non-zero
- * answer costs a full repaint of the surface. NULL removes it.
+ * ASKED RATHER THAN ANNOUNCED, because a backdrop that describes its picture
+ * as it draws cannot tell a change from a redescription: a latch set from
+ * each piece makes every frame a commit, which is the "nothing changed: no
+ * commit at all" gate gone for every surface that has a backdrop. The
+ * callback is asked once per flush, after the picture is complete: it answers
+ * non-zero only when what the backdrop would draw now differs from what it
+ * last drew, and a non-zero answer costs a full repaint of the surface. NULL
+ * removes it.
  */
 void kwl_set_pixels_dirty_fn(int (*fn)(void));
 /*
@@ -255,7 +245,7 @@ int kwl_scale(void);
  * The pointer's shape over this surface, via cursor-shape-v1. Sticky: it is
  * re-sent on every pointer enter, so a consumer sets it when its hover target
  * changes, not per frame. A compositor without the protocol ignores it, which
- * leaves the arrow — the state every surface had before this existed.
+ * leaves the arrow — the shape a surface that never asks for one keeps.
  */
 void kwl_cursor_set(enum kdisp_cursor c);
 
@@ -267,12 +257,12 @@ void kwl_cursor_set(enum kdisp_cursor c);
  * the default, which is the whole surface.
  *
  * THE DESKTOP IS WHY THIS EXISTS. kdos-desk covers the entire output, so with
- * the default region it ate every click on the root window — and the
+ * the default region it eats every click on the root window — and the
  * compositor's own root-menu mousebind (right-press -> ShowMenu, menu.xml)
- * therefore never fired for as long as desktop icons were on, which is the
- * shipped default. The desk now claims only the cells its icons occupy, so a
- * click on bare wallpaper reaches the compositor exactly as it does with the
- * icons switched off.
+ * then never fires for as long as desktop icons are on, which is the shipped
+ * default. Claiming only the cells its icons occupy leaves a click on bare
+ * wallpaper reaching the compositor exactly as it does with the icons switched
+ * off.
  */
 void kwl_input_cells(const KRect *rects, int n);
 /* Rename this window while it runs — the compositor draws its frame and its
@@ -280,18 +270,17 @@ void kwl_input_cells(const KRect *rects, int n);
 void kwl_set_title(const char *title);
 
 /*
- * The connection and the seat, for a consumer that needs to bind protocols of
- * its own — kdos-shell binds foreign-toplevel and ext-workspace on exactly this
+ * The connection, for a consumer that needs to bind protocols of its own —
+ * kdos-shell binds foreign-toplevel and ext-workspace on exactly this
  * display. Deliberately shared rather than opened a second time: two
  * wl_displays would be two clients, with two seats and two sets of globals,
  * which would then have to be kept agreeing with each other about what one
- * panel is showing. Both are NULL before kwl_init() succeeds.
+ * panel is showing. NULL before kwl_init() succeeds.
  *
- * They are `void *` because kwl.h is included by files that do not otherwise
+ * It is a `void *` because kwl.h is included by files that do not otherwise
  * pull in wayland-client.h; cast at the use site.
  */
 void *kwl_display(void);
-void *kwl_seat(void);
 
 /*
  * The connection's fd, and one turn of the protocol, for a consumer that has

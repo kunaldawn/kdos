@@ -1,10 +1,10 @@
 # Build troubleshooting
 
-The failures that recur when building this tree, each with the symptom you will actually see, the
-cause, and the canonical fix. Almost every build failure on KDOS is one of these.
+Almost every build failure on this tree is one of a few dozen recurring problems. This page
+catalogues them by the symptom you will actually see, because most of them report something other
+than what is wrong — which is exactly why they are worth writing down.
 
-**Find the symptom, not the cause.** Most of these report something other than what is wrong —
-that is why they are worth a catalogue.
+Start from the symptom index. Each entry gives the message, the cause, and the canonical fix.
 
 ## Symptom index
 
@@ -44,12 +44,10 @@ that is why they are worth a catalogue.
 
 ## Rust with a binding generator
 
-**Symptom:** a Rust crate fails with `Dynamic loading not supported`.
+A Rust crate fails with `Dynamic loading not supported`.
 
-**Cause:** crates that generate bindings try to load the compiler front-end library dynamically at
-build time, which a statically linked C library does not support.
-
-**Fix:**
+Crates that generate bindings try to load the compiler front-end library dynamically at build time,
+which a statically linked C library does not support.
 
 ```bash
 export RUSTFLAGS="-C target-feature=-crt-static"
@@ -58,35 +56,37 @@ export LIBCLANG_PATH=/usr/lib
 
 ## A stream-editor extension that is not there
 
-**Symptom:** the build reaches the compiler and reports a **missing type** or an undefined
-constant. The real problem is a generated header, script or configuration file that is **zero bytes
-long**.
+The build reaches the compiler and reports a missing type or an undefined constant. The real
+problem is a generated header, script or configuration file that is zero bytes long.
 
-**Cause:** the compact userland's stream editor is POSIX, and upstream build systems routinely
-assume the full-featured one's extensions — a line-range delete from zero, case conversion,
-null-separated input, in-place editing with a suffix. It does not fail loudly: the pipeline
-produces **nothing**.
+The compact userland's stream editor is POSIX, and upstream build systems routinely assume the
+full-featured one's extensions: a line-range delete from zero, case conversion, null-separated
+input, in-place editing with a suffix. None of those fails loudly. The pipeline produces
+nothing.
 
-**Fix:** the tree ships the full-featured editor, which installs over the applet in a later phase.
-A port that needs it names it in `depends`.
+The tree ships the full-featured editor, which installs over the applet in a later phase. A port
+that needs it names it in `depends`.
 
 ## Missing compact-userland features
 
-**Symptom:** a build step reports a subcommand or option that does not exist — an expression length
-operation, or a relative-symlink option in an install script.
+A build step reports a subcommand or option that does not exist — an expression length operation,
+or a relative-symlink option in an install script.
 
-**Cause:** the compact userland's applets are a subset.
+The compact userland's applets are a subset of the GNU tools. `coreutils` installs exactly two
+programs over them, `expr` and `ln`, because `expr length` is undefined in POSIX and unimplemented,
+and `ln --relative` is what meson install scripts use to make a symlink inside `DESTDIR` that
+stays correct once the tree is moved. GNU `sed`, `gawk` and `findutils` sit over their applets for
+the same reason.
 
-**Fix:** the tree installs exactly **two** replacement applets over the compact ones for this
-reason, listed in that port's recipe. Adding to that list takes another path off the compact
-userland, which is the opposite of what this distribution is — so prefer a build flag.
+Growing that list takes another hundred paths off the compact userland, which is the opposite of
+what this distribution is. Prefer a build flag.
 
 ## A build that reaches the network
 
-**Symptom:** `is the internet available?`, `cannot compute hash on failed download`, or
-`Could not resolve host` — hours in.
+`is the internet available?`, `cannot compute hash on failed download`, or `Could not resolve host`
+— hours in.
 
-**Cause:** the build runs with no network at all. Four shapes cause this:
+The build runs with no network at all. Four shapes cause this:
 
 | Shape | Looks like |
 |---|---|
@@ -95,136 +95,128 @@ userland, which is the opposite of what this distribution is — so prefer a bui
 | A dependency fetched from version control at configure time | A clone attempt |
 | A Python build backend resolving a package | A package index request |
 
-**Fix — three answers, and which is right depends on what the thing is:**
+Which fix is right depends on what the thing being fetched actually is:
 
-- **A real library → a port.** Look for the project's own escape hatch first: many have a
-  "use the system copy" switch.
-- **A header-only submodule nobody else uses → a second `source`**, extracted where the probe
+- A real library becomes a port. Look for the project's own escape hatch first; many have a "use
+  the system copy" switch.
+- A header-only submodule nobody else uses becomes a second `source`, extracted where the probe
   already looks.
-- **A build-time generator → a host dependency.**
+- A build-time generator becomes a host dependency.
 
-There is also a generic override in CMake for pointing a fetch at a directory you supply.
+CMake also has a generic override for pointing a fetch at a directory you supply.
 
-**A virtualisation port is the worked example of the fourth shape**: its configuration builds a
-Python environment and, with downloads enabled — its **default** — drops the offline flag, so the
-installer goes to the network for packages vendored in the tarball itself and fails naming whichever
-it asked for first. Disabling downloads is the flag, and it has a second consequence worth knowing
-before it bites: it also stops a device-tree submodule being fetched, so some targets then fail
-configuration on a missing dependency.
+A virtualisation port is the worked example of the fourth shape. Its configuration builds a Python
+environment and, with downloads enabled — its default — drops the offline flag, so the installer
+goes to the network for packages vendored in the tarball itself and fails naming whichever it asked
+for first. Disabling downloads is the flag, and it has a second consequence worth knowing before it
+bites: it also stops a device-tree submodule being fetched, so some targets then fail configuration
+on a missing dependency.
 
 ## An unknown meson option
 
-**Symptom:** `Unknown options` at setup, **before a line is compiled**.
+`Unknown options` at setup, before a line is compiled.
 
-**Cause:** there is no universal spelling. One project's test-disable option is fatal in the next.
+There is no universal spelling; one project's test-disable option is fatal in the next.
 
-**Fix:** read the option file out of the tarball. Reach for meson's **built-in** options when you
-want a meson-level knob — those are always valid. `testing/preflight.sh` checks this for every
+Read the option file out of the tarball, and reach for meson's built-in options when you want a
+meson-level knob, because those are always valid. `testing/preflight.sh` checks this for every
 recipe, which turns an hour-long round trip into seconds.
 
 ## A meson feature given a boolean
 
-**Symptom:** a configure-time error saying the value is not one of the choices. It reads perfectly
-on the line.
+A configure-time error saying the value is not one of the choices. It reads perfectly on the line.
 
-**Cause:** meson's *feature* type takes enabled, disabled or auto, and **refuses a boolean**. The
-*boolean* type takes true and false. Both look identical in a recipe.
+meson's *feature* type takes `enabled`, `disabled` or `auto`, and refuses a boolean. The *boolean*
+type takes `true` and `false`. Both look identical in a recipe.
 
-**Fix:** match the type in the option file. Preflight checks the two types with a closed value set.
+Match the type in the option file. Preflight checks the two types with a closed value set.
 
 ## Go building into its own directory
 
-**Symptom:** the install step reports `Skipped dir` on a path that looks exactly like the binary it
-wanted.
+The install step reports `Skipped dir` on a path that looks exactly like the binary it wanted.
 
-**Cause:** building with an output name equal to a subdirectory of the same name writes the binary
-**inside** that directory.
-
-**Fix:** build into a directory of your own and install from there.
+Building with an output name equal to a subdirectory of the same name writes the binary inside that
+directory. Build into a directory of your own and install from there.
 
 ## An old CMake policy floor
 
-**Symptom:** `Compatibility with CMake < 3.5 has been removed`.
+`Compatibility with CMake < 3.5 has been removed`.
 
-**Fix:** `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
+```bash
+-DCMAKE_POLICY_VERSION_MINIMUM=3.5
+```
 
 ## A crate newer than the toolchain
 
-**Symptom:** `rustc <version> is not supported by the following packages`.
+`rustc <version> is not supported by the following packages`.
 
-**Cause:** the package manager **refuses** a crate whose declared minimum is higher than the
-toolchain, rather than degrading. This tree pins the toolchain, and the fetch container pins the
-same one — because a package manager newer than the one that will compile the port can write a lock
-file the target's refuses.
+Cargo refuses a crate whose declared minimum is higher than the toolchain, rather than degrading.
+This tree pins the toolchain, and the fetch container pins the same one, because a package manager
+newer than the one that will compile the port can write a lock file the target's refuses.
 
-**Fix:** pin the port to the newest release that builds, and say so in the recipe. Bumping one
-means bumping the toolchain, the fetch container and every vendored bundle together — a wave, not a
-version bump.
+Pin the port to the newest release that builds. Bumping one means bumping the toolchain, the fetch
+container and every vendored bundle together — a wave, not a version bump.
 
-**The declared minimum is not an oracle.** It gates the refusal and says nothing about what the
-code uses: a release declaring an older minimum can still fail on a language feature stabilised
+The declared minimum is not an oracle. It gates the refusal and says nothing about what the code
+uses, so a release declaring an older minimum can still fail on a language feature stabilised
 later. The only reliable test is compiling.
 
 ## A vendor bundle in the wrong place
 
-**Symptom:** `no matching package named '<crate>'` under an offline build, with the crate sitting
-in the vendor directory the whole time.
+`no matching package named '<crate>'` under an offline build, with the crate sitting in the vendor
+directory the whole time.
 
-**Cause:** the package manager finds its configuration by walking up from the **current
-directory**. A build that invokes it from a subdirectory, or with an explicit manifest path from a
-parent, never reads a configuration placed next to that manifest.
+Cargo finds its configuration by walking up from the current directory. A build that invokes it
+from a subdirectory, or with an explicit manifest path from a parent, never reads a configuration
+placed next to that manifest.
 
-**Fix:** unpack the bundle where the tool will be standing. Set `vendordir` in the recipe to say
-where the *vendoring* must run, which is beside the manifest — the two directories are not always
-the same place.
+Unpack the bundle where the tool will be standing. Set `vendordir` in the recipe to say where the
+*vendoring* must run, which is beside the manifest — the two directories are not always the same
+place.
 
 ## A Python backend resolving a system tool
 
-**Symptom:** a build system is compiled **from source** inside a step that is supposed to be
-downloading.
+A build system is compiled from source inside a step that is supposed to be downloading.
 
-**Cause:** the installer builds metadata while it downloads, and a backend that cannot find a
-system build tool resolves it as a **package of the same name** from the index — dragging in that
-tool's entire source tree.
+The installer builds metadata while it downloads, and a backend that cannot find a system build
+tool resolves it as a package of the same name from the index, dragging in that tool's entire
+source tree.
 
-**Fix — two answers:**
+Two fixes, and which applies depends on the tool:
 
-- **Name the backends as ports and disable build isolation**, when they are packages this tree
-  should have anyway.
-- **Give the fetch image what a metadata build needs**, so the installer never reaches for the
-  index's copy of a system tool. That is why the fetch container carries a build system, a
-  generator, development headers and a compiler.
+- Name the backends as ports and disable build isolation, when they are packages this tree should
+  have anyway.
+- Give the fetch image what a metadata build needs, so the installer never reaches for the index's
+  copy of a system tool. That is why the fetch container carries a build system, a generator,
+  development headers and a compiler.
 
-**And vendor without resolving dependencies** where the recipe names an explicit closure: letting
-the tool resolve drags in every dependency that is already a port and builds each one's metadata to
+And vendor without resolving dependencies where the recipe names an explicit closure: letting the
+tool resolve drags in every dependency that is already a port and builds each one's metadata to
 find that out.
 
 ## A backtick inside double quotes
 
-**Symptom:** `No rule to make target`, printed from the middle of an unrelated step.
+`No rule to make target`, printed from the middle of an unrelated step.
 
-**Cause:** an echo that *tells* somebody to run a command, written with backticks inside a
-double-quoted string, does not print that instruction — **the shell runs it**.
+An echo that *tells* somebody to run a command, written with backticks inside a double-quoted
+string, does not print that instruction. The shell runs it.
 
-**Fix:** quote a command a diagnostic names with **single** quotes. Preflight checks every echo in
-the build scripts.
+Quote a command a diagnostic names with single quotes. Preflight checks every echo in the build
+scripts.
 
 ## A misspelt CMake option
 
-**Symptom:** the option had no effect, and the build did the thing you disabled.
+The option had no effect, and the build did the thing you disabled.
 
-**Cause:** CMake prints a warning about manually-specified variables that were not used and
-**carries on** — the opposite of meson, which fails at setup.
+CMake prints a warning about manually-specified variables that were not used and carries on — the
+opposite of meson, which fails at setup.
 
-**Fix:** read that warning in the log rather than the exit status, and take option names from the
-project's own option declarations.
+Read that warning in the log rather than the exit status, and take option names from the project's
+own `option()` declarations.
 
 ## Newer-compiler diagnostics as errors
 
-**Symptom:** `error: incompatible pointer types`, or a similar diagnostic that was a warning
-elsewhere.
-
-**Fix:**
+`error: incompatible pointer types`, or a similar diagnostic that was a warning elsewhere.
 
 ```bash
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
@@ -232,41 +224,38 @@ export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 
 ## An upstream `-Werror`
 
-**Symptom:** the build fails on a warning you have never seen upstream report.
+The build fails on a warning you have never seen upstream report.
 
-**Cause:** an upstream `-Werror` is a promise about **upstream's** compiler and C library, not
-about these. Two fire here that upstream has never seen: a transposed-arguments warning on an
-allocation form that is correct, and a warning inside a C-library header the code does not include
-directly.
+An upstream `-Werror` is a promise about upstream's compiler and C library, not about these. Two
+fire here that upstream has never seen: a transposed-arguments warning on an allocation form that
+is correct, and a warning inside a C-library header the code does not include directly.
 
-**Fix:** `-Wno-error`, or meson's equivalent. It keeps every warning printed and stops upstream
+Pass `-Wno-error`, or meson's equivalent. It keeps every warning printed and stops upstream
 deciding which of them ends the build. Chasing them one suppression at a time is a round trip per
 diagnostic.
 
 ## Compiler flags passed as make arguments
 
-**Symptom:** an undeclared constant, or a size mismatch, that reads as a missing header.
+An undeclared constant, or a size mismatch, that reads like a missing header.
 
-**Cause:** a variable on the make command line beats **both** the environment and the makefile's
-own assignment — including its appending form. That is the wrong end of the precedence for compiler
-flags, because a makefile's own flags are its **configuration**: architecture width, installation
-paths, feature constants.
+A variable on the make command line beats both the environment and the makefile's own assignment,
+including its appending form. That is the wrong end of the precedence for compiler flags, because a
+makefile's own flags are its configuration: architecture width, installation paths, feature
+constants.
 
-**Fix: export the flags, never pass them as a make argument.** A makefile that appends then appends
-to yours, and one that assigns has already discarded the environment and needs nothing.
+Export the flags; never pass them as a make argument. A makefile that appends then appends to
+yours, and one that assigns has already discarded the environment and needs nothing.
 
 ## `C compiler cannot create executables`
 
-**Symptom:** exactly that, from an old configuration script.
+Exactly that, from an old configuration script.
 
-**Cause:** it blames the toolchain and almost never is the toolchain. **Read the port's own
-configuration log** — the real error is on the failing test program.
+The message blames the toolchain and almost never is the toolchain. Read the port's own
+`config.log` — the real error is on the failing test program.
 
 For anything with a pre-modern configuration script it is the test program's function definition
-style, which newer compilers promoted from warning to error.
-
-**Fix — suppress the whole family at once**, because each one otherwise costs another hour-long
-round trip:
+style, which newer compilers promoted from warning to error. Suppress the whole family at once,
+because each one otherwise costs another hour-long round trip:
 
 ```bash
 export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
@@ -276,50 +265,48 @@ export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 
 ## A missing meson prefix or library directory
 
-**Symptom:** the build and install succeed, and at run time a shared library cannot be loaded.
+The build and install succeed, and at run time a shared library cannot be loaded.
 
-**Cause:** meson's default library directory is not on the runtime linker's search path.
+meson's default library directory is not on the runtime linker's search path. Pass `--prefix=/usr
+--libdir=lib` on every meson setup.
 
-**Fix:** `--prefix=/usr --libdir=lib` on **every** meson setup.
-
-**The trap has a second edge:** a stale package-config file under the old prefix **shadows** the
-fixed one. After correcting a prefix, delete the old files *and* the old package-config file, then
-rebuild the consumers.
+The trap has a second edge: a stale package-config file under the old prefix shadows the fixed one.
+After correcting a prefix, delete the old files *and* the old package-config file, then rebuild the
+consumers.
 
 ## A CMake file with no project declaration
 
-**Symptom:** the library builds, installs, and then fails **every static link** on unwinder
-symbols.
+The library builds, installs, and then fails every static link on unwinder symbols.
 
-**Cause:** a CMake file with no project declaration gets an implicit one covering only C and C++ —
-so assembly sources are **silently dropped**, and the archive is missing the routines that are
-written in assembly.
+A CMake file with no `project()` gets an implicit one covering only C and C++, so assembly sources
+are silently dropped and the archive is missing the routines written in assembly.
 
-**Fix:** a top-level include file enabling the assembly language, passed through CMake's
-include-before-project option — which is included **by** the project declaration, the implicit one
+The fix is a top-level include file enabling the assembly language, passed through CMake's
+include-before-project option — which is included *by* the project declaration, the implicit one
 included. One line, and nothing upstream is touched.
 
-The parent build directory is **not** the answer: it pulls in a large module tree from a source
-package many times the size, for a handful of files.
+The parent build directory is not the answer: it pulls in a large module tree from a source package
+many times the size, for a handful of files.
 
 ## An ICU component not propagated
 
-**Symptom:** break-iterator symbols missing at link.
+Break-iterator symbols missing at link. The package-config file for one ICU component does not
+propagate the core one.
 
-**Cause:** the package-config file for one ICU component does not propagate the core one.
-
-**Fix:** `export LDFLAGS="$LDFLAGS -licuuc"`.
+```bash
+export LDFLAGS="$LDFLAGS -licuuc"
+```
 
 ## A parallel install race
 
-**Symptom:** `No rule to make target '\'`, naming an object that compiled a moment earlier, during
-`make install`.
+`No rule to make target '\'`, naming an object that compiled a moment earlier, during `make
+install`.
 
-**Cause:** every phase exports `MAKEFLAGS=-j12`, so the **install** runs parallel as well as the
-build. A project whose install targets regenerate their own dependency files races itself: a
-half-written `.dep` ends on a bare line continuation, and make reads the backslash as a target.
+Every phase exports `MAKEFLAGS=-j12`, so the install runs parallel as well as the build. A project
+whose install targets regenerate their own dependency files races itself: a half-written `.dep`
+ends on a bare line continuation, and make reads the backslash as a target.
 
-**Fix:** `make -j1 … install` for that project. A `-j` on the command line overrides the one in
+Use `make -j1 … install` for that project. A `-j` on the command line overrides the one in
 `MAKEFLAGS`, and only that invocation is serialised — the compile keeps its parallelism.
 
 Being a race, it passes as often as it fails, so a recipe that has built before is not evidence
@@ -327,30 +314,30 @@ against it.
 
 ## A dependency the list happened to satisfy
 
-**Symptom:** a header that is plainly missing — `sys/queue.h` is the one to expect on musl — in a
-port that has built many times before, on a **fresh** build only.
+A header that is plainly missing — `sys/queue.h` is the one to expect on musl — in a port that has
+built many times before, on a fresh build only.
 
-**Cause:** the port never declared the dependency, and was satisfied by whatever else had already
-pulled it in. `sys/queue.h` comes from `libbsd`, which nothing lists directly; it arrives as a
-dependency of other ports. Rebuild incrementally and it is already there. `make clean` first and the
-order decides, so a port earlier in the list than its accidental provider fails.
+The port never declared the dependency and was satisfied by whatever else had already pulled it in.
+`sys/queue.h` comes from `libbsd`, which nothing lists directly; it arrives as a dependency of
+other ports. Rebuild incrementally and it is already there. Run `make clean` first and the order
+decides, so a port earlier in the list than its accidental provider fails.
 
-**Fix:** name it in `depends`. The point of the key is that the solver orders the build, and a
-dependency that is only ever true by accident is one `make clean` away from not being.
+Name it in `depends`. The point of the key is that the solver orders the build, and a dependency
+that is only ever true by accident is one `make clean` away from not being.
 
 ## Gettext on musl
 
-**Symptom:** `undefined reference to libintl_gettext` (or `libintl_ngettext`) at link, from a
-program that compiled without complaint.
+`undefined reference to libintl_gettext` (or `libintl_ngettext`) at link, from a program that
+compiled without complaint.
 
-**Cause:** glibc answers `gettext()` from libc and musl does not. Upstream build systems routinely
-test `uname -s` and take Linux to mean glibc, so the one platform that needs `-lintl` is the one
-their test excludes.
+glibc answers `gettext()` from libc and musl does not. Upstream build systems routinely test `uname
+-s` and take Linux to mean glibc, so the one platform that needs `-lintl` is the one their test
+excludes.
 
-**Fix:** depend on `libintl` and put `-lintl` where that project's link line will keep it. Check
-which variable survives before choosing one: a `LIBS`-style variable set with `=` is clobbered by
-the Makefile, while `LDFLAGS` is usually appended to with `+=` and sits last on the link line, which
-is where a library reference belongs. Do not add `-liconv` alongside it out of habit — musl carries
+Depend on `libintl` and put `-lintl` where that project's link line will keep it. Check which
+variable survives before choosing one: a `LIBS`-style variable set with `=` is clobbered by the
+Makefile, while `LDFLAGS` is usually appended to with `+=` and sits last on the link line, which is
+where a library reference belongs. Do not add `-liconv` alongside it out of habit — musl carries
 iconv in libc and there is no library of that name.
 
 `libintl` exists because the `gettext` port is built `--disable-nls` and installs the header without
@@ -359,74 +346,74 @@ and version, so a caller's header and library cannot describe two different gett
 
 ## The wide curses API
 
-**Symptom:** `wget_wch`, `mvwaddnwstr` or another wide-character curses function reported as an
-implicit declaration, against an ncurses that certainly has it.
+`wget_wch`, `mvwaddnwstr` or another wide-character curses function reported as an implicit
+declaration, against an ncurses that certainly has it.
 
-**Cause:** this tree builds one ncurses, widec, with its headers **flat** in `/usr/include` and no
-`ncursesw/` directory. Two things follow. An include of `<ncursesw/ncurses.h>` resolves nowhere. And
-`curses.h` declares the wide functions only when `NCURSES_WIDECHAR` is 1, which it derives from
-`_XOPEN_SOURCE_EXTENDED`; without that define you get the narrow API from the wide library.
+This tree builds one ncurses, widec, with its headers flat in `/usr/include` and no `ncursesw/`
+directory. Two things follow. An include of `<ncursesw/ncurses.h>` resolves nowhere. And `curses.h`
+declares the wide functions only when `NCURSES_WIDECHAR` is 1, which it derives from
+`_XOPEN_SOURCE_EXTENDED` — without that define you get the narrow API from the wide library.
 
-**Fix:** `-D_XOPEN_SOURCE_EXTENDED`, and for the include path a directory of one symlink —
-`mkdir -p compat/ncursesw && ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h` — added with
-`-I`. Both are build flags; neither edits the source. Pass them through the **environment** when the
-Makefile appends its own with `+=`, because a command-line assignment replaces that variable
-instead of extending it and takes `-fPIC` with it.
+Pass `-D_XOPEN_SOURCE_EXTENDED`, and for the include path build a directory of one symlink:
+
+```bash
+mkdir -p compat/ncursesw && ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h
+```
+
+added with `-I`. Both are build flags; neither edits the source. Pass them through the environment
+when the Makefile appends its own with `+=`, because a command-line assignment replaces that
+variable instead of extending it and takes `-fPIC` with it.
 
 ## The time-protocol helper
 
-**Symptom:** a media framework's precision-time helper fails to link.
-
-**Fix:** disable that helper.
+A media framework's precision-time helper fails to link. Disable that helper.
 
 ## An empty submodule in a release archive
 
-**Symptom:** a directory the build expects exists and is empty.
+A directory the build expects exists and is empty. A release archive carries a git submodule's
+directory empty, because the archive is generated from the repository without recursing.
 
-**Cause:** **a release archive carries a git submodule's directory empty.** The archive is generated
-from the repository without recursing.
-
-**Fix:** add the submodule as a second `source` extracted where the build looks, or make it a port.
+Add the submodule as a second `source` extracted where the build looks, or make it a port.
 
 ## A configuration script preferring another compiler
 
-**Symptom:** `C compiler cannot create executables` from a configuration script with a working
-compiler on the search path the whole time.
+`C compiler cannot create executables` from a configuration script with a working compiler on the
+search path the whole time.
 
-**Cause:** the standard compiler-detection macro walks a **preference list**, and some projects put
-an alternative compiler first. The moment that alternative becomes a port, every such recipe
-silently changes toolchain.
+The standard compiler-detection macro walks a preference list, and some projects put an alternative
+compiler first. The moment that alternative becomes a port, every such recipe silently changes
+toolchain.
 
-**Fix:** every native phase environment sets the compiler **by name**. A distribution that builds
+Every native phase environment therefore sets the compiler by name. A distribution that builds
 itself cannot have its toolchain depend on which ports happen to be installed.
 
 ## URL and version landmines
 
 Not failures so much as time sinks:
 
-- **A project's usual mirror can be stale** while its real releases are elsewhere.
-- **Forge projects split between release assets and auto-generated archives**, at different URL
-  shapes.
-- **Some forges' release download paths need manually attached files**; use the archive path
-  instead.
-- **Some source hosts rate-limit archive generation.**
-- **The top-level directory in an archive varies.** Verify with a listing when the build reports
-  the source is not where it should be.
-- **Some hosts block automated fetching entirely**, so a version cannot be checked from a script.
+- A project's usual mirror can be stale while its real releases are elsewhere.
+- Forge projects split between release assets and auto-generated archives, at different URL shapes.
+- Some forges' release download paths need manually attached files; use the archive path instead.
+- Some source hosts rate-limit archive generation.
+- The top-level directory in an archive varies. Verify with a listing when the build reports the
+  source is not where it should be.
+- Some hosts block automated fetching entirely, so a version cannot be checked from a script.
 
 ## When the failure is not here
 
-In this order:
+Work through these in order:
 
-1. **The failing step's log**, under `build/logs/<phase>/`.
-2. **The port's own configuration log** inside the work directory, if a configuration script
-   failed. The message at the end of the build output is usually not the error.
-3. **`testing/preflight.sh`**, which catches the dull wiring failures in seconds.
-4. **Whether the port ever compiled here at all.** Preflight checks that every source file in our
-   own ports is compiled by its recipe, that every meson option exists, and that every dependency
-   resolves — three whole classes of failure that never reach a compiler.
-5. **Whether you are re-running an early phase on a later tree**, which is a different problem
-   wearing a build failure's clothes.
+1. The failing step's log, under `build/logs/<phase>/`.
+2. The port's own `config.log` inside the work directory, if a configuration script failed. The
+   message at the end of the build output is usually not the error.
+3. `testing/preflight.sh`, which catches the dull wiring failures in seconds.
+4. Whether the port ever compiled here at all. Preflight checks that every source a recipe
+   declares is in the port directory, that every source file in one of our own ports is compiled
+   by its recipe, that every meson option exists, and that every dependency resolves — four whole
+   classes of failure that never reach a compiler. The build has no network, so a declared source
+   that is not committed beside its recipe can only fail at the unpack.
+5. Whether you are re-running an early phase on a later tree, which is a different problem wearing
+   a build failure's clothes.
 
 ## See also
 

@@ -107,10 +107,17 @@ void ktui_slider_draw(KRect r, int val, int min, int max, int focus, int bg)
 	 * without asking is the one colour that row is already painted in.
 	 */
 	int rev = bg == KT_ACCENT;
+	/*
+	 * A SLIDER ON THE SELECTION FILL IS THE COMMON CASE IN A FORM, and the
+	 * fill is KT_DIM — so a track drawn in KT_DIM there is a track that has
+	 * vanished. Every role steps up one when the row underneath is filled.
+	 */
+	int on_dim = bg == KT_DIM;
 	int ink = rev ? KT_SURFACE : KT_ACCENT;
-	int rest = rev ? KT_MID : KT_DIM;
+	int rest = rev ? KT_MID : on_dim ? KT_MID : KT_DIM;
+	int done = rev ? KT_SURFACE : on_dim ? KT_TEXT : KT_MID;
 	int mark = rev ? KT_BG : KT_TEXT;
-	int edge = rev ? KT_SURFACE : KT_MID;
+	int edge = rev ? KT_SURFACE : on_dim ? KT_TEXT : KT_MID;
 
 	if (r.w < 1 || r.h < 1)
 		return;
@@ -120,11 +127,13 @@ void ktui_slider_draw(KRect r, int val, int min, int max, int focus, int bg)
 
 	ktui_draw_fill(r, bg);
 
+	/* Solid triangles, because these are END CAPS somebody presses to step
+	 * the value — `◀`/`▶` are the arrows that mean direction in text. */
 	if (caps) {
-		ktui_draw_text(r.x, r.y, 1, ktui_glyph[KT_G_LEFT],
+		ktui_draw_text(r.x, r.y, 1, ktui_glyph[KT_G_ARROW_L],
 			       val > min ? edge : rest, bg, KT_A_NONE);
 		ktui_draw_text(r.x + r.w - 1 - vw, r.y, 1,
-			       ktui_glyph[KT_G_RIGHT],
+			       ktui_glyph[KT_G_ARROW_R],
 			       val < max ? edge : rest, bg, KT_A_NONE);
 	}
 
@@ -137,10 +146,25 @@ void ktui_slider_draw(KRect r, int val, int min, int max, int focus, int bg)
 	 */
 	fill = tw ? slider_cell(val, tw, min, max) + 1 : 0;
 	(void)span;
+	/*
+	 * TWO DENSITIES AND A MARK, AND THE ACCENT IS SPENT ON THE MARK. An
+	 * accent-coloured filled run is the brightest thing on a settings page
+	 * and it repeats once per numeric row, so a form of eight numbers comes
+	 * out as eight bright bars with no hierarchy in it. `▒` for the track
+	 * and `█` in a quieter slot for the run say the same thing at a weight
+	 * the eye reads as texture, and leave the accent meaning "this is the
+	 * value".
+	 *
+	 * `▓` WOULD BE THE THIRD DENSITY AND THE CONSOLE FONT DOES NOT CARRY
+	 * IT. Only `░ ▒ █` are in `ter-kdos32n`, so a slider built on `▓`
+	 * renders its filled run as blanks on `tty1` — the slot separates the
+	 * two levels instead.
+	 */
 	for (int i = 0; i < tw; i++)
 		ktui_draw_text(tx + i, r.y, 1,
-			       ktui_glyph[i < fill ? KT_G_FULL : KT_G_SHADE],
-			       i < fill ? ink : rest, bg, KT_A_NONE);
+			       ktui_glyph[i < fill ? KT_G_FULL
+						   : KT_G_SHADE_MED],
+			       i < fill ? done : rest, bg, KT_A_NONE);
 
 	/*
 	 * AND THE THUMB IS A DIFFERENT MARK, not merely the end of the fill. A
@@ -241,8 +265,10 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
 
 	if (step < 1)
 		step = 1;
+	/* The focused plate is the selection fill, not the accent: a form of
+	 * numbered rows is otherwise a column of accent-coloured bars. */
 	ktui_slider_draw(r, *val, min, max, focus,
-			 focus ? KT_ACCENT : KT_SURFACE);
+			 focus ? KT_DIM : KT_SURFACE);
 	ktui_hit(r, id);
 
 	/*
@@ -309,6 +335,14 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
  * to "which row is that, and what did they mean by it".
  * ──────────────────────────────────────────────────────────────────────── */
 
+/* The row these surfaces draw by hand is still a row in a set, and the caret
+ * moving is the whole of what this control decides — so it says the position
+ * and leaves the name to the surface that painted it. */
+static void rows_announce(int sel, int count)
+{
+	ktui_announce(KT_A11Y_LIST, NULL, NULL, sel + 1, count);
+}
+
 int ktui_rows_hit(KRect r, int top, int count, int mx, int my)
 {
 	int i;
@@ -340,7 +374,10 @@ int ktui_rows_event(KRect r, int *sel, int *top, int count,
 			*sel = 0;
 		if (*sel >= count)
 			*sel = count - 1;
-		return *sel != was ? KTUI_ROWS_MOVED : KTUI_ROWS_NONE;
+		if (*sel == was)
+			return KTUI_ROWS_NONE;
+		rows_announce(*sel, count);
+		return KTUI_ROWS_MOVED;
 	}
 
 	if (ev->press != KT_MP_PRESS)
@@ -362,6 +399,7 @@ int ktui_rows_event(KRect r, int *sel, int *top, int count,
 	if (i == *sel)
 		return KTUI_ROWS_PICKED;
 	*sel = i;
+	rows_announce(*sel, count);
 	return KTUI_ROWS_MOVED;
 }
 

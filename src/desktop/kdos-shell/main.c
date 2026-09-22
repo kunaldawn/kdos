@@ -19,13 +19,12 @@
 #include <string.h>
 
 #include "shell.h"
-#include "kcon.h"	/* kcon_impl */
-#include "kwl.h"	/* kwl_impl — naming these is what links each one in */
+#include "kwl.h"	/* kwl_impl — naming it is what links it in */
 
-/* See the declaration: naming kwl_impl is what links Wayland into this
- * program. A console-only build would name a different one, or none. */
-const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
-const int kdos_disp_n = 2;
+/* Naming kwl_impl is what links Wayland into this program: libkdisp resolves
+ * the display server out of this table and there is one entry in it. */
+const KDispImpl *const kdos_disp[] = { &kwl_impl };
+const int kdos_disp_n = 1;
 
 
 static const struct {
@@ -60,6 +59,7 @@ static const struct {
 	{ "kdos-calc", calc_main },
 	{ "kdos-chars", chars_main },
 	{ "kdos-connect", connect_main },
+	{ "kdos-traymenu", traymenu_main },
 	{ "kdos-contacts", contacts_main },
 	{ "kdos-disks", disks_main },
 	{ "kdos-print", print_main },

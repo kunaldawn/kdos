@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cyrus-sasl
+version     = 2.1.28
+release     = 1
+source      = https://github.com/cyrusimap/$name/releases/download/$name-$version/$name-$version.tar.gz
+sha256      = 7ccfc6abd01ed67c1a0924b353e526f1b766b21f42d4562ee635a8ebfc5bb38c  cyrus-sasl-2.1.28.tar.gz
+description = SASL authentication library — the mechanism loader mbsync authenticates through
+homepage    = https://www.cyrusimap.org/sasl/
+depends     = openssl

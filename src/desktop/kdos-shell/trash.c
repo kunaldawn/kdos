@@ -146,8 +146,9 @@ static void draw(void)
 	for (int i = 0; i < rows && top + i < nitems; i++) {
 		const KbTrashItem *it = &items[top + i];
 		int y = 1 + i, on = top + i == sel;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
-		int fg = on ? KT_SURFACE : KT_TEXT;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 		char buf[512];
 		const char *orig = pretty_orig(it->orig, buf, sizeof(buf));
 

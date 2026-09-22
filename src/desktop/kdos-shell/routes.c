@@ -185,11 +185,6 @@ int sh_routes_load(void)
 	return nroutes;
 }
 
-int sh_routes_count(void)
-{
-	return nroutes;
-}
-
 const struct sh_route *sh_route_at(int i)
 {
 	if (i < 0 || i >= nroutes)

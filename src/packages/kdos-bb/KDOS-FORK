@@ -37,10 +37,9 @@ KDOS changes, all applied in place because this is our source now:
             not a cost: one draw is 1.35ms against a 16ms budget.
             SIXTEEN, because 666us under 1000000/60 is the margin that keeps
             the deadline from ever being AHEAD of the control tick it is
-            checked against, and because the consumers' floors differ -- the
-            console session composes on CON_FRAME_MS = 16, while kdos-term on
-            Wayland has no constant and takes the output's 16.667. A producer
-            past a floor beats against it at the difference. Further under is
+            checked against, and because kdos-term has no constant of its own
+            and takes the output's 16.667. A producer past a floor beats
+            against it at the difference. Further under is
             surplus nobody composes, further over is the halved rate.
             A DEADLINE MORE THAN A WHOLE PERIOD BEHIND IS MOVED, never
             chased: a stall must cost one late frame and not a burst of every

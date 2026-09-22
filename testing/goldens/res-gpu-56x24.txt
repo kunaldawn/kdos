@@ -1,4 +1,4 @@
-+=  Resources  ========================================+
++=[ Resources ]========================================+
 | GPU                                                  |
 | i915, engine time only                               |
 |------------------------------------------------------|
@@ -20,5 +20,5 @@
 |                                                      |
 |                                                      |
 | NVIDIA management library not present                |
-|F1 help  F10 pages  [/] page  Tab panes  Esc Close    |
+|F1 help  F10 pages | [/] page | Tab panes | Esc Close |
 +======================================================+

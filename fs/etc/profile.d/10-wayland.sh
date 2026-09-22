@@ -6,10 +6,14 @@
 uid=$(id -u)
 # A bare console (serial getty, rescue shell) can land here with HOME unset;
 # every $HOME-derived export below would then silently become "//..." and
-# follow the session around through su. Derive it from passwd instead.
+# follow the session around through su. Read the home field out of /etc/passwd
+# instead — there is no getent on musl, and an empty answer here lands the
+# desktop user on /root. $uid is numeric, so the match is on field 3, and only
+# the first line counts: two lines here would make every export below multi-line.
 if [ -z "$HOME" ]; then
-	HOME=$(getent passwd "$uid" | cut -d: -f6)
-	[ -n "$HOME" ] && export HOME || HOME=/root
+	HOME=$(grep "^[^:]*:[^:]*:$uid:" /etc/passwd 2>/dev/null | head -1 | cut -d: -f6)
+	[ -n "$HOME" ] || HOME=/root
+	export HOME
 fi
 if [ -z "$XDG_RUNTIME_DIR" ]; then
 	export XDG_RUNTIME_DIR="/run/user/$uid"
@@ -22,27 +26,12 @@ fi
 
 export XDG_SESSION_TYPE=wayland
 # THIS IS A FALLBACK FOR A SHELL NO SESSION STARTED, NOT THE SESSION'S ANSWER.
-# The name selects `kdos-console-mimeapps.list` or `kdos-mimeapps.list` and
-# `kdos-console-portals.conf` or `kdos-portals.conf`, so each session names
-# itself in the program that starts its display: `kdos-con-start` exports
-# `KDOS-Console:KDOS` and `kdos-desktop-start` exports `KDOS`, both before they
-# start anything and both over whatever a login shell guessed here. A guess
-# from `WAYLAND_DISPLAY` cannot do that job: a graphical session begins in a
-# login shell that has no compositor yet, so this file would name it the
-# console and leave every portal request routed to the console's backends.
-#
-# `Ctrl+Alt+F2`, a serial console and an ssh login reach here with no display
-# of any kind and no session to correct them; naming `KDOS` there sends every
-# link and every document to `kdos-mimeapps.list`, whose every row is a Wayland
-# client with nothing to connect to. The console's rows are the terminal ones,
-# which are the only ones that can run on a bare virtual terminal.
-if [ -z "$XDG_CURRENT_DESKTOP" ]; then
-	if [ -n "$WAYLAND_DISPLAY" ]; then
-		export XDG_CURRENT_DESKTOP=KDOS
-	else
-		export XDG_CURRENT_DESKTOP="KDOS-Console:KDOS"
-	fi
-fi
+# The name selects `kdos-mimeapps.list` and `kdos-portals.conf`, and
+# `kdos-desktop-start` exports it again before it starts anything — over
+# whatever a login shell filled in here. A graphical session begins in a login
+# shell that has no compositor yet, so this file cannot tell a session that is
+# coming up from a terminal that will never have one.
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-KDOS}"
 
 # The per-user session bus lives at a fixed runtime path (started by
 # kdos-desktop; the same path is visible inside the appbox). Point shells

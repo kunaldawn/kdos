@@ -36,7 +36,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/calcurse.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Calendar
+Name=Calendar (calcurse)
 GenericName=Calendar and Todo
 Comment=Appointments, todos and reminders
 Exec=calcurse

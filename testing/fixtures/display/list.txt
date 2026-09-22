@@ -1,0 +1,8 @@
+# One screen per line, tab separated:
+#   <name>	<WxH@Hz[*]>	<on|off>	<scale>	<transform>
+# A `*` marks the mode the screen prefers; `auto` is a screen whose mode the
+# compositor has not reported. Two screens of different densities, because the
+# row that is easy to get wrong is the scaled one.
+eDP-1	1920x1080@60*	on	1.0	normal
+HDMI-A-1	2560x1440@144	on	1.5	normal
+DP-2	auto	off	1.0	90

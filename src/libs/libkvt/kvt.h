@@ -35,19 +35,17 @@
  *   -Werror, so a handful of unused parameters and signed comparisons were
  *   made explicit. No behaviour moved.
  *
- * THE CELL STAYS UPSTREAM'S, AND THAT IS DELIBERATE.
+ * THE CELL STAYS UPSTREAM'S, AND IS PRIVATE.
  *
- * The plan said this fork would replace the internal cell with KtuiCell,
- * citing kcell.h's refusal of "a second answer to what a cell is". Having read
- * the source: that refusal is about two LIBRARIES OF THE TOOLKIT disagreeing,
- * and this is a terminal emulator's private screen buffer that nothing outside
- * this library ever sees. The toolkit still has exactly one cell.
+ * `struct cell` never leaves this library: kvt_grid.c converts to KtuiCell at
+ * the render boundary, once per frame, over the runs that changed. kcell.h's
+ * refusal of "a second answer to what a cell is" binds the TOOLKIT'S
+ * libraries to one another; a terminal emulator's private screen buffer is
+ * not one of them.
  *
- * Replacing it would also have cost three things the terminal needs and
- * KtuiCell cannot hold: 24-bit colour per cell, the per-cell age that drives
- * damage, and the symbol table that makes combining characters possible.
- * kvt_grid.c converts at the render boundary instead — once per frame, over
- * the runs that changed, in one function.
+ * Do not make KtuiCell the storage. It cannot hold three things the terminal
+ * needs: 24-bit colour per cell, the per-cell age that drives damage, and the
+ * symbol reference that makes combining characters possible.
  * ---------------------------------
  */
 
@@ -165,14 +163,12 @@ typedef void (*kvt_log_t) (void *data,
 
 #define KVT_UCS4_MAX_BITS 31
 #define KVT_UCS4_MAX ((1UL << KVT_UCS4_MAX_BITS) - 1UL)
-#define KVT_UCS4_INVALID (KVT_UCS4_MAX + 1)
 #define KVT_UCS4_REPLACEMENT (0xfffdUL)
 
 /* ucs4 to utf8 converter */
 
 unsigned int kvt_ucs4_get_width(uint32_t ucs4);
 size_t kvt_ucs4_to_utf8(uint32_t ucs4, char *out);
-char *kvt_ucs4_to_utf8_alloc(const uint32_t *ucs4, size_t len, size_t *len_out);
 
 /* symbols */
 
@@ -205,7 +201,6 @@ typedef uint_fast32_t kvt_age_t;
 #define KVT_SCREEN_REL_ORIGIN	0x04
 #define KVT_SCREEN_INVERSE	0x08
 #define KVT_SCREEN_HIDE_CURSOR	0x10
-#define KVT_SCREEN_FIXED_POS	0x20
 #define KVT_SCREEN_ALTERNATE	0x40
 
 struct kvt_screen_attr {
@@ -280,11 +275,7 @@ void kvt_screen_clear_sb(struct kvt_screen *con);
 
 void kvt_screen_sb_up(struct kvt_screen *con, unsigned int num);
 void kvt_screen_sb_down(struct kvt_screen *con, unsigned int num);
-void kvt_screen_sb_page_up(struct kvt_screen *con, unsigned int num);
-void kvt_screen_sb_page_down(struct kvt_screen *con, unsigned int num);
 void kvt_screen_sb_reset(struct kvt_screen *con);
-unsigned int kvt_screen_sb_get_line_count(struct kvt_screen *con);
-unsigned int kvt_screen_sb_get_line_pos(struct kvt_screen *con);
 
 void kvt_screen_set_def_attr(struct kvt_screen *con,
 			     const struct kvt_screen_attr *attr);
@@ -313,7 +304,6 @@ void kvt_screen_move_down(struct kvt_screen *con, unsigned int num,
 			  bool scroll);
 void kvt_screen_move_left(struct kvt_screen *con, unsigned int num);
 void kvt_screen_move_right(struct kvt_screen *con, unsigned int num);
-void kvt_screen_move_line_end(struct kvt_screen *con);
 void kvt_screen_move_line_home(struct kvt_screen *con);
 void kvt_screen_tab_right(struct kvt_screen *con, unsigned int num);
 void kvt_screen_tab_left(struct kvt_screen *con, unsigned int num);
@@ -321,7 +311,6 @@ void kvt_screen_insert_lines(struct kvt_screen *con, unsigned int num);
 void kvt_screen_delete_lines(struct kvt_screen *con, unsigned int num);
 void kvt_screen_insert_chars(struct kvt_screen *con, unsigned int num);
 void kvt_screen_delete_chars(struct kvt_screen *con, unsigned int num);
-void kvt_screen_erase_cursor(struct kvt_screen *con);
 void kvt_screen_erase_chars(struct kvt_screen *con, unsigned int num);
 void kvt_screen_erase_cursor_to_end(struct kvt_screen *con,
 				    bool protect);
@@ -415,7 +404,6 @@ int kvt_term_signal(struct kvt_term *t, int sig);
 
 void kvt_term_scroll(struct kvt_term *t, int lines);	/* -up, +down */
 struct kvt_screen *kvt_term_screen(struct kvt_term *t);
-int kvt_term_copy_selection(struct kvt_term *t);
 
 /* Write a registered picture into the screen at the cursor, as sprite cells
  * naming the tiles held under `key`. In the SCREEN, so it scrolls with the
@@ -525,16 +513,20 @@ struct kvt_vte;
 #define KVT_VTE_FLAG_PREPEND_ESCAPE			0x00010000 /* Prepend escape character to next output */
 #define KVT_VTE_FLAG_TITE_INHIBIT_MODE			0x00020000 /* Prevent switching to alternate screen buffer */
 
-/* keep in sync with kvt_shl_xkb_mods */
+/*
+ * The `mods` argument of kvt_vte_handle_keyboard. kvt_term_key() builds it
+ * from KT_MOD_*; these values are NOT those, so a caller reaching past
+ * kvt_term must translate or every chord is reported as a different one.
+ */
 enum kvt_vte_modifier {
 	KVT_SHIFT_MASK		= (1 << 0),
-	KVT_LOCK_MASK		= (1 << 1),
 	KVT_CONTROL_MASK	= (1 << 2),
 	KVT_ALT_MASK		= (1 << 3),
 	KVT_LOGO_MASK		= (1 << 4),
 };
 
-/* keep in sync with KVT_INPUT_INVALID */
+/* The `unicode` argument of kvt_vte_handle_keyboard when the key produced no
+ * character, so a keysym-only press is not also written as a glyph. */
 #define KVT_VTE_INVALID 0xffffffff
 
 enum kvt_vte_color {
@@ -573,13 +565,9 @@ enum kvt_vte_color {
  * and on mouse movement). The terminal will then send the position
  * of the mouse cursor as requested by the application.
  *
- * Since libtsm doesn't know anything about the UI or the mouse this can only
- * work if the terminal emulator built on top of libtsm cooperates.
- *
- * To implement mouse tracking a terminal emulator must first set a mouse
- * callback with kvt_vte_set_mouse_cb. This callback will be called whenever the
- * mouse mode changes in a way that is relevant to the terminal. It tells the
- * terminal if it needs to pass mouse events on click, on move, or not at all.
+ * This library knows nothing about the UI or the pointer, so the terminal
+ * cooperates: it asks kvt_vte_get_mouse_mode() (or kvt_term_mouse_mode())
+ * whether the child wants pointer events at all, and forwards only then.
  *
  * To pass the mouse events the terminal needs to call kvt_vte_handle_mouse with
  * all parameters filled appropriately. The function will then take care of
@@ -595,12 +583,6 @@ enum kvt_vte_color {
 #define KVT_VTE_MOUSE_MODE_SGR   1006 /* modern mode that allows unlimited x and y coordinates */
 #define KVT_VTE_MOUSE_MODE_PIXEL 1016 /* sends pixel coordinates instead of cell coordinates */
 #define KVT_VTE_BRACKETED_PASTE  2004 /* enclose paste data with escape characters */
-
-enum kvt_mouse_track_mode {
-	KVT_MOUSE_TRACK_DISABLE = 0, /* don't track mouse events */
-	KVT_MOUSE_TRACK_BTN = KVT_VTE_MOUSE_EVENT_BTN, /* call kvt_vte_handle_mouse only for mouse clicks */
-	KVT_MOUSE_TRACK_ANY = KVT_VTE_MOUSE_EVENT_ANY  /* call kvt_vte_handle_mouse for mouse clicks and mouse movement */
-};
 
 /* mouse buttons to be passed to kvt_vte_handle_mouse */
 #define KVT_MOUSE_BUTTON_LEFT       0
@@ -640,9 +622,9 @@ typedef void (*kvt_vte_osc_cb) (struct kvt_vte *vte,
  * bytes between the introducer and the terminator, and it is borrowed for the
  * length of the call.
  *
- * libkvt decodes NOTHING. It is linked by kdos-con, which links no pixel code
- * at all, and it has to stay that way — so the decoder is a function pointer
- * the consumer sets, backed by libkimg where a consumer wants pictures.
+ * libkvt decodes NOTHING, because a consumer that links no pixel code still
+ * links this — so the decoder is a function pointer the consumer sets, backed
+ * by libkimg where a consumer wants pictures.
  *
  * A payload past the cap set by kvt_vte_set_img_cb is DROPPED ENTIRELY rather
  * than truncated: half an image is not a smaller image, and a decoder handed
@@ -660,14 +642,6 @@ typedef void (*kvt_vte_img_cb) (struct kvt_vte *vte,
 				const uint8_t *payload,
 				size_t len,
 				void *data);
-
-typedef void (*kvt_vte_mouse_cb) (struct kvt_vte *vte,
-				  enum kvt_mouse_track_mode track_mode,
-				  bool track_pixels,
-				  void *data);
-
-typedef void (*kvt_vte_bell_cb) (struct kvt_vte *vte,
-				 void *data);
 
 /*
  * SYNCHRONIZED OUTPUT (DECSET 2026) WENT ON OR OFF.
@@ -692,20 +666,9 @@ typedef void (*kvt_vte_sync_cb) (struct kvt_vte *vte, bool on, void *data);
 typedef void (*kvt_vte_notify_cb) (struct kvt_vte *vte, const char *summary,
 				   const char *body, void *data);
 
-enum kvt_vte_led {
-	KVT_VTE_LED_SCROLL_LOCK = (1 << 0),
-	KVT_VTE_LED_NUM_LOCK    = (1 << 1),
-	KVT_VTE_LED_CAPS_LOCK   = (1 << 2),
-};
-
-typedef void (*kvt_vte_led_cb) (struct kvt_vte *vte,
-				unsigned int leds,
-				void *data);
-
 int kvt_vte_new(struct kvt_vte **out, struct kvt_screen *con,
 		kvt_vte_write_cb write_cb, void *data,
 		kvt_log_t log, void *log_data);
-void kvt_vte_ref(struct kvt_vte *vte);
 void kvt_vte_unref(struct kvt_vte *vte);
 
 void kvt_vte_set_osc_cb(struct kvt_vte *vte, kvt_vte_osc_cb osc_cb, void *osc_data);
@@ -725,35 +688,9 @@ typedef void (*kvt_vte_clip_cb)(struct kvt_vte *vte, const char *text,
 
 void kvt_vte_set_clip_cb(struct kvt_vte *vte, kvt_vte_clip_cb cb, void *data);
 void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user);
-/*
- * BEL, for a consumer that can show one. The state machine calls it and
- * decides nothing: what a bell looks like is a window's question, and a
- * terminal with no callback set swallows it exactly as it did before.
- */
-void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user);
-/*
- * Synchronized output went on or off. The terminal watches every transition
- * itself — that is what arms kvt_term_sync_hold()'s watchdog — and calls this
- * after its own, so asking for one costs the watchdog nothing.
- */
-void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user);
 void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user);
 /* The focus moved. Sends CSI I / CSI O only while the child asked for them. */
 void kvt_term_focus(struct kvt_term *t, int in);
-/*
- * Every line the screen still holds — the scrollback and then the screen —
- * oldest first, as plain text with trailing blanks trimmed. The caller frees
- * it. Characters only: colour and attributes are not what a saved session puts
- * back, and a picture cannot be put back at all.
- */
-char *kvt_screen_text(struct kvt_screen *con, size_t *len_out);
-/* The same for a terminal, and the other way: text the terminal SHOWS, as if
- * its child had written it. Never sent to the child — the one caller is a
- * session putting back what the last one printed, and a process cannot be
- * restored, only its output. */
-char *kvt_term_text(struct kvt_term *t, size_t *len_out);
-void kvt_term_show(struct kvt_term *t, const char *u8, size_t len);
-
 /* OSC 133's prompt marks. `kvt_screen_mark_at` answers for a VISIBLE row and
  * fills `status` with the exit code of the command run at that prompt, or -1
  * while it has not finished; `kvt_screen_scroll_to_mark` moves the view to the
@@ -768,9 +705,6 @@ int kvt_screen_scroll_to_mark(struct kvt_screen *con, int dir);
 unsigned int kvt_screen_link_at(struct kvt_screen *con, unsigned int x,
 				unsigned int y);
 const char *kvt_vte_link_uri(struct kvt_vte *vte, unsigned int id);
-
-/* True while the child has synchronized output on. */
-int kvt_term_sync_output(struct kvt_term *t);
 
 /*
  * PUT BACK THE MODES A CHILD SET, when it has gone.
@@ -828,8 +762,6 @@ void kvt_term_img_geom(struct kvt_term *t, int max_w_px, int max_h_px);
  * it; a client that is not told guesses, and a guessed scale looks like a
  * broken decoder. Zero refuses the report rather than inventing one. */
 void kvt_term_cell_px(struct kvt_term *t, int cw, int ch);
-void kvt_vte_set_mouse_cb(struct kvt_vte *vte, kvt_vte_mouse_cb mouse_cb, void *mouse_data);
-void kvt_vte_set_bell_cb(struct kvt_vte *vte, kvt_vte_bell_cb bell_cb, void *bell_data);
 void kvt_vte_set_sync_cb(struct kvt_vte *vte, kvt_vte_sync_cb cb, void *data);
 void kvt_vte_set_notify_cb(struct kvt_vte *vte, kvt_vte_notify_cb cb, void *data);
 /* CSI I / CSI O to the child, and only while it asked with DECSET 1004. */
@@ -840,7 +772,6 @@ bool kvt_vte_sync_output(struct kvt_vte *vte);
 /* The modes a child set, put back — see kvt_term_reset_modes(), which is the
  * one every consumer calls. The screen is not touched. */
 void kvt_vte_reset_modes(struct kvt_vte *vte);
-void kvt_vte_set_led_cb(struct kvt_vte *vte, kvt_vte_led_cb led_cb, void *led_data);
 
 /**
  * @brief Set color palette to one of the predefined palette on the vte object.
@@ -916,10 +847,8 @@ int kvt_vte_set_palette(struct kvt_vte *vte, const char *palette_name);
 int kvt_vte_set_custom_palette(struct kvt_vte *vte, uint8_t (*palette)[3]);
 
 void kvt_vte_get_def_attr(struct kvt_vte *vte, struct kvt_screen_attr *out);
-unsigned int kvt_vte_get_flags(struct kvt_vte *vte);
 
 unsigned int kvt_vte_get_mouse_mode(struct kvt_vte *vte);
-unsigned int kvt_vte_get_mouse_event(struct kvt_vte *vte);
 
 /*
  * What the child is told this terminal is called, in `TERM_PROGRAM_VERSION`.
@@ -929,8 +858,6 @@ unsigned int kvt_vte_get_mouse_event(struct kvt_vte *vte);
  */
 #ifdef KDOS_TERM_VERSION
 #define KVT_TERM_VERSION KDOS_TERM_VERSION
-#elif defined(KDOS_CON_VERSION)
-#define KVT_TERM_VERSION KDOS_CON_VERSION
 #else
 #define KVT_TERM_VERSION "0"
 #endif
@@ -939,18 +866,6 @@ void kvt_vte_reset(struct kvt_vte *vte);
 void kvt_vte_hard_reset(struct kvt_vte *vte);
 void kvt_vte_input(struct kvt_vte *vte, const char *u8, size_t len);
 
-/**
- * @brief Set backspace key to send either backspace or delete.
- *
- * Some terminals send ASCII backspace (010, 8, 0x08), some send ASCII delete
- * (0177, 127, 0x7f).
- *
- * The default for vte is to send ASCII backspace.
- *
- * @param vte The vte object to set on
- * @param enable Send ASCII delete if \c true, send ASCII backspace if \c false.
- */
-void kvt_vte_set_backspace_sends_delete(struct kvt_vte *vte, bool enable);
 bool kvt_vte_handle_keyboard(struct kvt_vte *vte, uint32_t keysym,
 			     uint32_t ascii, unsigned int mods,
 			     uint32_t unicode);
@@ -971,14 +886,11 @@ int kvt_vte_paste_needs_confirm(struct kvt_vte *vte, const char *data);
 /*
  * THE POINTER OVER A TERMINAL, and the selection it makes.
  *
- * IT LIVES HERE BECAUSE TWO PROGRAMS NEED IT. `kdos-term` is a window on the
- * graphical desktop and `kdos-con` runs terminals of its own inside the
- * session, and both must decide the same things: when the wheel belongs to the
- * child rather than to the scrollback, when a drag is a selection rather than
- * a mouse report, and that a press and a release in one cell is a click and
- * selects nothing. Written twice, the two would drift, and the difference
- * would be a terminal that behaves differently depending on which desktop it
- * is on.
+ * IT LIVES HERE AND NOT IN THE TERMINAL, because every consumer of the vte
+ * must decide the same things: when the wheel belongs to the child rather than
+ * to the scrollback, when a drag is a selection rather than a mouse report,
+ * and that a press and a release in one cell is a click and selects nothing.
+ * Written per consumer, they would drift.
  *
  * `KvtUi` is the caller's — one per terminal, zeroed once. Nothing in libkvt
  * keeps it, so a program with many terminals keeps many.

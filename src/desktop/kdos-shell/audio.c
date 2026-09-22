@@ -610,9 +610,9 @@ static void au_pw_free(void)
 /* ── wpctl ───────────────────────────────────────────────────────────────
  *
  * Switching PipeWire's default sink is a metadata write, and the program that
- * already knows how to do it is wireplumber's own. Spawned only when it is on
- * the PATH — an image with pipewire-media-session and no wireplumber has no
- * wpctl at all, and a control that silently did nothing there would be worse
+ * already knows how to do it is wireplumber's own. Still spawned only when it
+ * is on the PATH: this surface is the same binary on an image built without
+ * the session manager, and a control that silently did nothing would be worse
  * than one that says what it can and cannot do.
  */
 static int au_have_wpctl(void)
@@ -1123,9 +1123,9 @@ static void au_draw(struct au_ui *u)
 	sh_frame(w, h, "Sound", KT_ACCENT, KT_SURFACE, 1);
 
 	/*
-	 * The header says what is playing out of what, and how loud. That was
-	 * previously spread across a column heading, a right-aligned `default
-	 * hw:0` and a volume bar somewhere in the list — three places to look
+	 * The header says what is playing out of what, and how loud — in ONE
+	 * place. Split across a column heading, a right-aligned `default hw:0`
+	 * and a volume bar somewhere in the list, that is three places to look
 	 * for one answer, on the surface a person reaches by clicking `VOL 62%`
 	 * on the taskbar.
 	 */
@@ -1346,13 +1346,13 @@ int audio_main(int argc, char **argv)
 	/* AFTER kdisp_init: the icon layer needs the cell size and the scale. */
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
 	if (au_icons_on)

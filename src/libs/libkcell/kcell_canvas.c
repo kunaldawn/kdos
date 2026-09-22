@@ -88,8 +88,7 @@ static char cv_name[192];
  *
  * `fcft_from_name()` answers NULL with `fcft_init() not called` on the log
  * when FreeType's handle is NULL, and a consumer that draws only canvases
- * never loads a CELL font — libkcon's console surfaces never call
- * kcell_font_load(). The failure is silent twice over: every measurement then
+ * never loads a CELL font. The failure is silent twice over: every measurement then
  * answers zero and every string draws nothing, which reads as a layout that
  * chose to leave the text out.
  *

@@ -34,6 +34,7 @@
 #include <wayland-client.h>
 
 #include "ext-workspace-v1-client-protocol.h"
+#include "kbase.h"
 #include "kwl.h"
 #include "shell.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
@@ -198,6 +199,16 @@ void sh_theme_from_cache(void)
 		ktui_theme_set(name);
 	/* No file is not an error: ktui_theme_set already defaulted to
 	 * phosphor, which is what a fresh install wears. */
+
+	/*
+	 * NIGHT LIGHT RIDES THE SAME PATH AS THE ACCENT, and it must be read
+	 * after it: the accent is what projects the palette, so a warm shift
+	 * applied before it would be projected away. Every surface reaches the
+	 * palette through this one function, which is why the toggle is read
+	 * here rather than at each of them — one that read it for itself would
+	 * be a surface that warms on a different frame from the panel.
+	 */
+	ktui_theme_night(kb_toggle_on("night-light"));
 }
 
 /*
@@ -253,21 +264,19 @@ void sh_theme_poll(void)
 
 /*
  * `kdos theme <accent>` writes the state file and then SIGHUPs kdos-shell and
- * kdos-comp. The compositor half worked from the start (labwc's Reconfigure);
- * this half did not exist, and the failure had two faces depending on how the
- * session was started:
+ * kdos-comp; this is the panel's half of the live retint.
  *
- *   - default disposition: SIGHUP TERMINATES. The panel died and the
- *     compositor's supervisor respawned it, which re-read the state file and
- *     came up in the new accent — so it LOOKED like a live retint. But it is a
- *     crash per accent change, and RESPAWN_MAX is 5 in 30 s: trying four or
- *     five accents to pick one is enough to lose the panel for the session.
- *   - inherited SIG_IGN (a session started under nohup, say): nothing happened
- *     at all. Measured: SigIgn 0x1, SigCgt 0 on a running kdos-shell.
+ * It must be sigaction() and it must be installed. SIGHUP's default
+ * disposition TERMINATES: the panel would die on every accent change and be
+ * respawned into the new accent by the compositor's supervisor, which looks
+ * like a retint but is a crash per change, and RESPAWN_MAX is 5 in 30 s — four
+ * or five accents tried in a row loses the panel for the session. A session
+ * started under nohup instead hands the panel an inherited SIG_IGN, and
+ * sigaction() overrides that where signal-disposition inheritance would keep
+ * it (SigIgn 0x1, SigCgt 0 on the running process is the tell).
  *
- * sigaction() here settles both — it overrides an inherited SIG_IGN, and a
- * caught signal is not a fatal one. No SA_RESTART: the poll the loops sleep in
- * should come back at once, and both already treat EINTR as "go round again".
+ * No SA_RESTART: the poll the loops sleep in should come back at once, and
+ * both already treat EINTR as "go round again".
  */
 volatile sig_atomic_t sh_theme_dirty;
 
@@ -473,41 +482,57 @@ static void desktop_name(const char *app_id, char *out, size_t n, char *did,
 }
 
 /*
- * Name and Exec for a desktop-entry id — the favorites row's lookup, through
- * the same directories the taskbar label search reads, so the two can never
- * disagree about which entry an id means.
+ * A desktop-entry id resolved into a launch — the favorites row's lookup and
+ * the taskbar chip's, through the same directories the taskbar label search
+ * reads, so the two can never disagree about which entry an id means.
+ *
+ * The USER's directory is searched first and the first hit wins, which is what
+ * makes a ~/.local/share override an override; the index in apps.c resolves
+ * the same way.
  */
-int sh_desktop_entry(const char *id, char *name, size_t nname,
-		     char *exec, size_t nexec)
+int sh_desktop_entry(const char *id, struct sh_entry *out)
 {
 	char bases[8][512];
-	int nb, found = -1;
+	int nb;
 
-	if (name && nname)
-		*name = '\0';
-	if (exec && nexec)
-		*exec = '\0';
+	if (!out)
+		return -1;
+	memset(out, 0, sizeof(*out));
 	if (!id || !*id || strchr(id, '/'))
 		return -1;
 	nb = data_dirs(bases);
 
-	for (int i = 0; i < nb && found < 0; i++) {
+	for (int i = 0; i < nb; i++) {
 		char path[1024];
 		KxdgEntry e;
+		KxdgLaunch kl;
+
 		snprintf(path, sizeof(path), "%.400s/applications/%.100s.desktop",
 			 bases[i], id);
 		if (kxdg_load(&e, path, "Desktop Entry") != 0)
 			continue;
-		const char *v = kxdg_get(&e, "Name", NULL);
-		if (name && nname && v && *v)
-			snprintf(name, nname, "%s", v);
-		v = kxdg_get(&e, "Exec", NULL);
-		if (exec && nexec && v && *v)
-			snprintf(exec, nexec, "%s", v);
+		/*
+		 * THE ONE READER, so this and the application index cannot
+		 * come to different conclusions about the same file — see
+		 * kxdg.h. A file that parsed but names no runnable application
+		 * ends the search rather than falling through to a system
+		 * entry of the same id: an override that is broken is still
+		 * the answer that id resolves to.
+		 */
+		int ok = kxdg_launch_read(&e, &kl);
+
 		kxdg_free(&e);
-		found = 0;
+		if (ok != 0)
+			return -1;
+		kb_strlcpy(out->name, kl.name, sizeof(out->name));
+		kb_strlcpy(out->exec, kl.exec, sizeof(out->exec));
+		kb_strlcpy(out->term, kl.term, sizeof(out->term));
+		kb_strlcpy(out->size, kl.size, sizeof(out->size));
+		out->terminal = kl.terminal;
+		out->floating = kl.floating;
+		return 0;
 	}
-	return found;
+	return -1;
 }
 
 /*
@@ -582,9 +607,7 @@ static void task_box(struct sh_task *t)
  *
  * The list is short and the panel redraws on a change rather than on a timer,
  * so a copy of at most sixty-four rows is cheaper than a cache to keep in step
- * with the one the display server already keeps. It is also the only shape
- * that works on both desktops: the console publishes whole rows and announces
- * no per-window events for a listener to accumulate.
+ * with the one the display server already keeps.
  *
  * THE RESOLVED FIELDS ARE CARRIED OVER, not recomputed. `name`, `did` and
  * `box` cost a desktop-entry lookup and a read of the box registry, and they
@@ -596,6 +619,14 @@ static void task_box(struct sh_task *t)
  * ORDER IS THE SERVER'S. Position N in the panel is tasks[N] and the click map
  * is dense, so a list that reordered itself between the draw and the click
  * would activate the wrong window.
+ *
+ * A BAR LISTS ITS OWN SCREEN. One panel is supervised per output, so a bar
+ * that listed every window would put the same buttons on both screens and a
+ * click on either would raise a window somewhere else. `w.here` is the
+ * display server's answer and it is 1 wherever there is no answer — the
+ * display that composes every screen into one grid, and a compositor that
+ * has not yet said where a window is — so the unfiltered list is what a
+ * single screen gets.
  */
 void sh_tasks_refresh(struct sh_state *sh)
 {
@@ -605,9 +636,18 @@ void sh_tasks_refresh(struct sh_state *sh)
 
 	memcpy(prev, sh->tasks, sizeof(prev[0]) * (size_t)nprev);
 	sh->ntasks = 0;
+	sh->live_anywhere = 0;
 	for (int i = 0; sh->ntasks < SH_MAX_TASKS && kdisp_win_at(i, &w); i++) {
-		struct sh_task *t = &sh->tasks[sh->ntasks++];
+		struct sh_task *t;
 		int carried = 0;
+
+		/* COUNTED BEFORE THE FILTER, because it is a fact about the
+		 * WORKSPACE and a workspace spans every screen. */
+		if (!(w.flags & KDISP_WIN_MINIMISED))
+			sh->live_anywhere = 1;
+		if (!w.here)
+			continue;
+		t = &sh->tasks[sh->ntasks++];
 
 		memset(t, 0, sizeof(*t));
 		t->id = w.id;
@@ -755,9 +795,8 @@ static void reg_global(void *data, struct wl_registry *r, uint32_t name,
 {
 	struct sh_state *sh = data;
 	(void)version;
-	/* The window list is libkdisp's on both desktops; only the workspace
-	 * pager is still asked for here, because ext-workspace has no console
-	 * equivalent and the session draws its own pager there. */
+	/* The window list is libkdisp's; only the workspace pager is still
+	 * asked for here, because libkdisp does not model one. */
 	if (!strcmp(iface, ext_workspace_manager_v1_interface.name)) {
 		sh->ws_mgr = wl_registry_bind(
 			r, name, &ext_workspace_manager_v1_interface, 1);
@@ -780,7 +819,7 @@ int sh_connect(struct sh_state *sh)
 	 * The window list is what a panel IS. Without it there is a clock and
 	 * a row of workspace numbers, which is not worth a layer-shell surface
 	 * and an exclusive zone taken off every other window. Asked of
-	 * libkdisp, so the answer is the same question on both desktops.
+	 * libkdisp, so there is one answer to it.
 	 *
 	 * SUPPORTED, NOT NON-EMPTY. A freshly booted session has no windows
 	 * open and a panel must still start on it.
@@ -790,10 +829,10 @@ int sh_connect(struct sh_state *sh)
 	sh_tasks_refresh(sh);
 
 	/*
-	 * The workspace pager is the compositor's alone. NULL on the console,
-	 * and unguarded that is a null dereference from a chord a person can
-	 * press: `kdisp_init` succeeds there because the console backend
-	 * probes first, so a Wayland display asked for afterwards is simply
+	 * The workspace pager is the compositor's. NULL where the compositor
+	 * does not offer ext-workspace, and unguarded that is a null
+	 * dereference from a chord a person can press: `kdisp_init` succeeds
+	 * anyway, so a manager asked for afterwards is simply
 	 * absent. The session draws its own pager on that desktop.
 	 */
 	sh->display = kwl_display();
@@ -811,9 +850,9 @@ int sh_connect(struct sh_state *sh)
  * TAKE IN WHAT THE SERVERS SAID, once per turn.
  *
  * The window list is re-read rather than accumulated from events, and it is
- * re-read HERE rather than from a callback inside a pump: on the console the
- * only pump that reads the socket is the one that also delivers key events, so
- * a pump added for the list would swallow the panel's input. The refresh is a
+ * re-read HERE rather than from a callback inside a pump: the pump that reads
+ * the socket is the one that also delivers key events, so a pump added for the
+ * list would swallow the panel's input. The refresh is a
  * copy of at most sixty-four short rows and carries the resolved fields over,
  * so it costs no desktop-entry lookup on a frame where nothing changed.
  */
@@ -858,18 +897,6 @@ void sh_restore_task(struct sh_state *sh, int i)
 	if (i < 0 || i >= sh->ntasks || !sh->tasks[i].minimized)
 		return;
 	kdisp_win_minimise(sh->tasks[i].id, 0);
-}
-
-/*
- * Close, for the middle click every taskbar since the nineties has answered
- * that way. This is the protocol's polite close — the same request the window's
- * own close box sends, so an editor with unsaved work still gets to ask.
- */
-void sh_close_task(struct sh_state *sh, int i)
-{
-	if (i < 0 || i >= sh->ntasks)
-		return;
-	kdisp_win_close(sh->tasks[i].id);
 }
 
 /*
@@ -965,15 +992,9 @@ void sh_spawn(const char *const argv[])
 }
 
 /*
- * THE TERMINAL EMULATOR ON THIS DESKTOP, which is not the same program on the
- * two of them. foot is a Wayland client and there is no compositor on the
- * console path to be one under; kdos-term is a cell surface and opens as a
- * window on either. $KDOS_CON is the console session's surface socket and is
- * set by the session for everything started inside it, so its presence is the
- * question "am I on the console desktop" already answered.
- *
- * Both accept `-e CMD` and `-D DIR` with the same meaning, so a call site
- * picks the name here and needs no other branch.
+ * THE TERMINAL EMULATOR ON THIS DESKTOP, named in one place so a call site
+ * needs no branch of its own. `kdos-term` accepts the same `-e CMD` and
+ * `-D DIR`, so swapping the name here is the whole change.
  */
 /*
  * THE WALL CLOCK, AND THE ONE PLACE $KDOS_PANEL_NOW IS READ.
@@ -996,9 +1017,7 @@ time_t sh_wall(void)
 
 const char *sh_term(void)
 {
-	const char *con = getenv("KDOS_CON");
-
-	return (con && *con) ? "kdos-term" : "foot";
+	return "foot";
 }
 
 /*
@@ -1057,10 +1076,10 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
 	argv[n++] = prog;
 	/*
 	 * THE FLAG BELONGS TO THE EMULATOR AND NOT TO THE DESKTOP. `foot`
-	 * takes `--app-id`, `kdos-term` takes `--title`, and either can be the
-	 * one running here now that an entry may ask for the other: keying
-	 * this off which session is up would hand `kdos-term` a `--app-id` it
-	 * does not know the moment an entry asked for it under the compositor.
+	 * takes `--app-id`, `kdos-term` takes `--title`, and an entry may ask
+	 * for either whatever the session is. Keying this off which session is
+	 * up hands `kdos-term` a `--app-id` it does not know as soon as an
+	 * entry asks for it under the compositor.
 	 */
 	if (*base) {
 		if (!strcmp(prog, "foot")) {
@@ -1106,55 +1125,31 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
 }
 
 /*
- * The same, as the single command string the callers that re-split one need.
- * No argument here may contain a space: the identity is one word and `--app-id`
- * is joined to it with `=` for exactly that reason.
- */
-void sh_term_cmd(char *out, size_t n, const char *cmd)
-{
-	const char *argv[8];
-	char id[160];
-	int k = sh_term_argv(argv, 0, 8, cmd, id, sizeof(id));
-	size_t len = 0;
-
-	out[0] = '\0';
-	for (int i = 0; i < k && len < n; i++)
-		len += (size_t)snprintf(out + len, n - len, "%s ", argv[i]);
-	if (len < n)
-		snprintf(out + len, n - len, "%s", cmd);
-}
-
-/*
  * THE PROGRAM THAT IS THE SESSION, and killing it is what logging out means.
- * The compositor is the graphical session and `kdos-con` is the console one;
- * both end on SIGTERM and tear down in order, and neither publishes its pid,
- * so an exact-name `pkill` is the route. Exact, not a pattern: a pattern that
- * matched `kdos-con` would match `kdos-con-login` and `kdos-con-start` too.
+ * The compositor ends on SIGTERM and tears down in order, and it publishes no
+ * pid, so an exact-name `pkill` is the route. Exact, not a pattern: a pattern
+ * would match anything else carrying the name.
  *
- * Both names are inside the 15 characters `pkill -x` compares against, which
- * is the length at which an exact-name kill silently matches nothing.
+ * The name is inside the 15 characters `pkill -x` compares against, which is
+ * the length at which an exact-name kill silently matches nothing.
  */
 const char *sh_session_prog(void)
 {
-	const char *con = getenv("KDOS_CON");
-
-	return (con && *con) ? "kdos-con" : "kdos-comp";
+	return "kdos-comp";
 }
 
 /*
  * ── THE FRAME IS DRAWN BY WHOEVER OWNS IT ──────────────────────────────────
  *
- * Every surface here used to put its own double-line box round itself, which
- * was right while every one of them was a layer surface with no decoration of
- * any kind. The ones that are WINDOWS are xdg toplevels now, and a toplevel
- * wears the compositor's own `════ Title ════[_][=][X]` — so drawing the box
- * as well puts a second frame inside the first with the title written twice,
- * which is what a boxed application beside a native one made obvious.
+ * A surface here may be a layer surface with no decoration of any kind, or an
+ * xdg toplevel wearing the compositor's own `════ Title ════[_][=][X]`. A
+ * surface that draws its own double-line box unconditionally puts a second
+ * frame inside the toplevel's with the title written twice.
  *
  * So the box is drawn when nobody else is drawing one, and the background is
  * filled when somebody is. The caller's layout does not move either way: it
- * still starts at column 1, and that column is a margin inside the SSD instead
- * of the border it used to be.
+ * starts at column 1, and that column is a margin inside the SSD where there
+ * is one and the border itself where there is not.
  */
 /* ── the compositor's command socket ───────────────────────────────────── */
 

@@ -730,8 +730,9 @@ static void draw(const char *title)
 			break;
 		const struct row *r = &rows[idx];
 		bool on = idx == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_SURFACE;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
 
 		ktui_draw_fill(krect(1, list_top + i, lw - 2, 1), bg);
 		if (multi_mode)
@@ -795,11 +796,16 @@ static void draw(const char *title)
 				if (y >= r.y + r.h - 1)
 					break;
 			}
-			ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1),
-				       on ? KT_ACCENT : KT_SURFACE);
-			ktui_draw_text(r.x + 2, y, r.w - 4, places[i].name,
-				       on ? KT_SURFACE : KT_TEXT,
-				       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			{
+				int pfg, pbg;
+
+				ktui_sel_slots(on, 1, KT_SURFACE, &pfg, &pbg);
+				ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1),
+					       pbg);
+				ktui_draw_text(r.x + 2, y, r.w - 4,
+					       places[i].name, pfg, pbg,
+					       KT_A_NONE);
+			}
 			y++;
 		}
 	}
@@ -1084,7 +1090,8 @@ int pick_main(int argc, char **argv)
 	const char *font = NULL;
 	const char *title = "Open File";
 	const char *start = NULL;
-	int dump = 0, dump_places = 0;
+	const char *parent = NULL;	/* --parent, an xdg-foreign handle */
+	int dump = 0, dump_places = 0, dump_cells = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -1095,6 +1102,12 @@ int pick_main(int argc, char **argv)
 		 * compositor to hand. */
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
+		/* THE SAME FRAME, CELL BY CELL: a codepoint and a colour slot
+		 * per painted cell rather than a picture of them. A frame
+		 * golden cannot see a colour at all, and this dialog is the
+		 * one every boxed application's Open goes through. */
+		else if (!strcmp(argv[i], "--dump-cells"))
+			dump = dump_cells = 1;
 		/* The places rung, for a dump. The layout that matters about it
 		 * is whether a name fits, and that cannot be seen in the frame
 		 * underneath it. */
@@ -1102,6 +1115,21 @@ int pick_main(int argc, char **argv)
 			dump_places = 1;
 		else if (!strcmp(argv[i], "--title") && i + 1 < argc)
 			title = argv[++i];
+		/*
+		 * THE WINDOW THAT ASKED FOR THIS ONE, as an xdg-foreign
+		 * handle. The portal is the only caller: an application hands
+		 * it `parent_window` and the portal hands it here with the
+		 * `wayland:` prefix already off, because a chooser has no
+		 * business knowing which display protocols spell a handle
+		 * which way.
+		 *
+		 * A HINT AND NEVER A CONDITION. A handle the compositor does
+		 * not know, or no importer — where there
+		 * is no Wayland at all — each leave the window centred, which
+		 * is where it would have been.
+		 */
+		else if (!strcmp(argv[i], "--parent") && i + 1 < argc)
+			parent = argv[++i];
 		else if (!strcmp(argv[i], "--save"))
 			save_mode = true;
 		else if (!strcmp(argv[i], "--directory"))
@@ -1146,7 +1174,8 @@ int pick_main(int argc, char **argv)
 				"                 [--title T] [--name N] "
 				"[--dir D] "
 				"[--filter 'Label:*.png *.jpg']\n"
-				"                 [--dump] [--font F]\n");
+				"                 [--dump|--dump-cells] "
+				"[--font F] [--parent H]\n");
 			return 2;
 		}
 	}
@@ -1210,6 +1239,12 @@ int pick_main(int argc, char **argv)
 
 	if (dump) {
 		sh_theme_from_cache();
+		if (dump_cells) {
+			ktui_backend_set(sh_cells_backend(64, 22));
+			ktui_draw_init();
+			draw(title);
+			return 0;
+		}
 		ktui_offscreen_init(64, 22);
 		draw(title);
 		ktui_draw_dump();
@@ -1234,6 +1269,11 @@ int pick_main(int argc, char **argv)
 		 * empty titlebar, which is a frame that says nothing. */
 		.title = "Files",
 		.app_id = "kdos-pick",
+		/* WHOSE CHILD THIS IS. The compositor centres a child on its
+		 * parent, which is the only way a dialog reaches the window
+		 * that asked for it — a client cannot place its own toplevel.
+		 * NULL everywhere but the portal's invocation. */
+		.parent = parent,
 		.font = font,
 		.keyboard = 1,
 	};

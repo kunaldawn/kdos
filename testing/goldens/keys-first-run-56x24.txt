@@ -1,4 +1,4 @@
-+=  keys  =============================================+
++=[ keys ]=============================================+
 | Welcome to KDOS. I use KDOS btw.                     |
 |   Super+Enter    open a terminal                     |
 |   Alt+Tab        reach another terminal              |
@@ -13,11 +13,11 @@
 |   Super+q        close the window                    |
 |   Super+`        the drop-down terminal, over every  |
 |   Alt+Tab        next window                         |
+|   Alt+Shift+Tab  previous window                     |
+|   Alt+F4         close the window                    |
+|   Alt+Space      the window menu                     |
 | workspace                                            |
 |   Super+1        workspace 1                         |
-|                                                      |
-|                                                      |
-|                                                      |
 |                                                      |
 |                                                      |
 | Esc Close                                            |

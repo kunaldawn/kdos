@@ -232,19 +232,10 @@ btwn 100 500 100 -> no
 btwn 100 500 50 -> no
 btwn 300 300 300 -> no
 
-# The gap rule, and it is asymmetric on purpose. Snapping to a region's
-# OPPOSING edge (left meets right) keeps the configured gap between the two
-# windows; snapping to its ALIGNED edge (left meets left) keeps none, because
-# the two windows are being lined up rather than placed beside each other.
-gaprule oppose -> gap
-gaprule align  -> none
-
 # ─────────────────────────────────────────────────────────────────────────
-# ring — cycling windows, and finding an occupied workspace
-#   src/cycle/cycle.c get_next_selected_view()
+# wsadj — the nearest occupied workspace
 #   src/workspaces.c get_adjacent_occupied()
 #
-# ring  <n> <cur> <dir> -> <index>
 # wsadj <occupied> <cur> <reverse> <wrap> -> <index>
 #
 # `occupied` is one character per workspace, '1' occupied and '0' empty.
@@ -254,18 +245,6 @@ gaprule align  -> none
 # protocol has active, urgent and hidden but no "there is something here".
 # Two rules, two right answers, and this library picks neither.
 # ─────────────────────────────────────────────────────────────────────────
-
-# The sentinel between the last item and the first is stepped over, so the ring
-# always closes and a single window cycles to itself.
-ring 4 0 1 -> 1
-ring 4 3 1 -> 0
-ring 4 0 -1 -> 3
-ring 4 2 -1 -> 1
-ring 1 0 1 -> 0
-ring 1 0 -1 -> 0
-ring 0 0 1 -> -1
-ring 4 4 1 -> -1
-ring 4 -1 1 -> -1
 
 # The nearest occupied workspace in one direction. The current one is never the
 # answer even when it is occupied.
@@ -292,8 +271,8 @@ wsadj 0000 2 1 1 -> -1
 #
 # drag <dx> <dy> -> <yes|no>
 #
-# One cell. Both desktops must agree, or the same gesture picks a file up on
-# one and only selects it on the other.
+# One cell. Pixels are not a unit this model has, and a mixed one would pick a
+# file up at one scale and only select it at another.
 # ─────────────────────────────────────────────────────────────────────────
 
 drag 0 0 -> no
@@ -302,47 +281,3 @@ drag 0 1 -> yes
 drag -1 0 -> yes
 drag 0 -1 -> yes
 drag 3 -2 -> yes
-
-# ─────────────────────────────────────────────────────────────────────────
-# fit — bringing a window back inside a work area
-#   src/libs/libkwm/kwm_geom.c kwm_fit()
-#
-# fit <work x,y,w,h> <want x,y,w,h> -> <x,y,w,h>
-#
-# It MOVES BEFORE IT SHRINKS. A window pushed off the edge by a smaller screen
-# comes back the same size, because the screen may grow again and a window that
-# was quietly made smaller never grows back.
-#
-# This is the console's rule and has no kdos-comp call site: the compositor
-# leaves output layout to wlroots. It is here because the session has to refit
-# every window when a view detaches and a smaller one is promoted.
-# ─────────────────────────────────────────────────────────────────────────
-
-# Already inside: untouched.
-fit 0,0,80,24 10,5,20,10 -> 10,5,20,10
-fit 0,0,80,24 0,0,80,24 -> 0,0,80,24
-
-# Off an edge: moved back, same size.
-fit 0,0,80,24 70,5,20,10 -> 60,5,20,10
-fit 0,0,80,24 10,20,20,10 -> 10,14,20,10
-fit 0,0,80,24 -5,-5,20,10 -> 0,0,20,10
-
-# Too big for the area: shrunk to it, and to the origin.
-fit 0,0,80,24 10,5,100,10 -> 0,5,80,10
-fit 0,0,80,24 10,5,20,40 -> 10,0,20,24
-fit 0,0,80,24 10,5,100,40 -> 0,0,80,24
-
-# A MINIMUM WINS OVER THE WORK AREA, and the result hangs off the edge. A
-# program told fewer cells than it can compose on draws nothing at all and the
-# cells under it keep the last picture — a hole in the desktop that no repaint
-# fixes. Oversized and clipped is visibly a window.
-fit 0,0,40,12 0,0,20,10 min 56,24 -> 0,0,56,24
-fit 0,0,80,24 10,5,20,10 min 56,24 -> 10,0,56,24
-# A minimum smaller than the window changes nothing.
-fit 0,0,80,24 10,5,60,20 min 56,10 -> 10,4,60,20
-# And no minimum is the rule as it was.
-fit 0,0,40,12 0,0,20,10 min 0,0 -> 0,0,20,10
-
-# A work area that does not start at the origin — a panel above it.
-fit 0,2,80,22 0,0,20,10 -> 0,2,20,10
-fit 0,2,80,22 10,20,20,10 -> 10,14,20,10

@@ -1,26 +1,8 @@
-/* libkwm — cycling a ring of windows, and finding an occupied workspace.
- * See kwm.h. Ported from cycle.c's get_next_selected_view() and
+/* libkwm — finding an occupied workspace. See kwm.h. Ported from
  * workspaces.c's get_adjacent_occupied().
  */
 
 #include "kwm.h"
-
-int
-kwm_ring_next(int n, int cur, int dir)
-{
-	if (n <= 0 || cur < 0 || cur >= n)
-		return -1;
-
-	/*
-	 * The compositor walks a list whose head is a sentinel and steps over
-	 * it when it lands there, which is what makes the ring close. Over an
-	 * array that is the same thing as wrapping.
-	 */
-	if (dir > 0)
-		return (cur + 1) % n;
-
-	return (cur + n - 1) % n;
-}
 
 int
 kwm_ws_adjacent(const unsigned char *occupied, int n, int cur,

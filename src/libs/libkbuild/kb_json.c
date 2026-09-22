@@ -7,15 +7,16 @@
  * ---------------------------------
  *   libkbuild — the JSON the build tree already carries
  *
- * Snapshot manifests and the restore marker are written by python's json
- * module, so they have to be READ the way python reads them: a document that
- * does not parse is not a partial document, it is no document. Every caller
- * here treats a parse failure as "the snapshot is absent", which is the safe
- * direction — the dangerous one is a half-read manifest that looks complete.
+ * Snapshot manifests and the restore marker are read whole or not at all: a
+ * document that does not parse is not a partial document, it is no document.
+ * Every caller here treats a parse failure as "the snapshot is absent", which
+ * is the safe direction — the dangerous one is a half-read manifest that looks
+ * complete.
  *
- * This is a reader only. Nothing in KDOS generates JSON that is not either the
- * plan file (kb_plan.c writes those bytes directly, to match json.dump) or a
- * manifest written by build.py.
+ * This is a reader only, and nothing round-trips through it: whatever writes
+ * a JSON file emits its own bytes — kb_plan.c for the plan file,
+ * src/build/kdosbuild/snapshot.c for a snapshot manifest — so a format change
+ * has to land on the writer and on this parser separately.
  * ---------------------------------
  */
 
@@ -302,7 +303,9 @@ KjNode *kj_parse(const char *text)
 		return NULL;
 	}
 	skip(&s);
-	if (*s.p) {		/* trailing junk is a parse error, as in python */
+	/* A document is one value and nothing after it. Trailing junk fails the
+	 * parse rather than reading short and handing back a partial tree. */
+	if (*s.p) {
 		kj_free(root);
 		return NULL;
 	}
@@ -350,17 +353,9 @@ int kj_bool(const KjNode *obj, const char *key, int def)
 		return def;
 	if (n->type == KJ_BOOL)
 		return n->bval;
-	if (n->type == KJ_NUM)		/* python's bool(0) / bool(1) */
+	if (n->type == KJ_NUM)		/* zero is false, any other number true */
 		return n->num != 0;
 	if (n->type == KJ_STR)
 		return n->str[0] != 0;
 	return def;
-}
-
-int kj_len(const KjNode *n)
-{
-	int k = 0;
-	for (const KjNode *c = n ? n->child : NULL; c; c = c->next)
-		k++;
-	return k;
 }

@@ -307,10 +307,6 @@ void cat_free(void)
 /* ── what is in it ─────────────────────────────────────────────────────── */
 
 int cat_count(void) { return g_npack; }
-const CatPack *cat_at(int i)
-{
-	return i >= 0 && i < g_npack ? &g_pack[i] : NULL;
-}
 const CatPack *cat_find(const char *id) { return pack_by_id(id); }
 int cat_ngroups(void) { return g_ngroup; }
 const CatGroup *cat_group_at(int i)

@@ -8,14 +8,14 @@
  *   kpkgdepends — the install order, and nothing else
  *
  * ONE line on stdout, space-separated, newline-terminated. Nothing else, ever.
- * `script/buildlib/phases.py` splits this and validates every token against
- * ^[A-Za-z0-9][A-Za-z0-9._+-]*$, and treats empty output as a hard error;
+ * kdosbuild's manager.c splits this, validates every token against
+ * ^[A-Za-z0-9][A-Za-z0-9._+-]*$ and treats empty output as a hard error;
  * `script/chroot_exec.sh` writes its own diagnostics to a file for exactly
  * this reason. A banner, a version line or a progress bar here becomes a
  * bogus package name in a build.
  *
- * Errors go to stderr. There is no --help and no --version, because the shell
- * version had none and something may be parsing the absence.
+ * Errors go to stderr, and there is no --help and no --version: the contract
+ * is that stdout carries the order or nothing.
  * ---------------------------------
  */
 

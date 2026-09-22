@@ -2,9 +2,9 @@
 Type=Application
 Name=Terminal
 GenericName=Terminal Emulator
-Comment=A shell, on either desktop
+Comment=A shell, in a window
 Exec=kdos-term
-Icon=utilities-terminal
+Icon=system-run
 Terminal=false
 Categories=System;TerminalEmulator;
 Keywords=shell;prompt;command;console;pty;

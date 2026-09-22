@@ -1,13 +1,17 @@
-title: flatten the loaded image to one layer, or rebuilt dirs come up EMPTY
-cite: 01_appbox.sh
+title: flatten the image to one layer, or rebuilt dirs come up EMPTY
+cite: store.c
 port: kdos-appbox
 port: podman
 
-The rootful unpack records whiteout and opaque markers as trusted.overlay.*,
-which the ROOTLESS runtime mount cannot see. Multi-layer-rebuilt directories
-like /etc/alternatives are then empty inside the box.
+An overlay image records its whiteout and opaque markers as trusted.overlay.*,
+and a ROOTLESS mount cannot see that namespace. Ship an app's layers as they
+sit and every multi-layer-rebuilt directory — /etc/alternatives is the one that
+bites — is empty inside the box.
 
-Rootful `podman create` + export + import is the flatten. And wipe $STORAGE
-before loading: re-baking onto an existing store remapped already-remapped
-uids (clamped at 165535) and every distrobox enter died with
-"crun: readlink ''".
+`podman create` + `podman export` + tar is the flatten, and `kdos-appbox store
+export` runs it before `kdos-pack build` for exactly this: the exported tarball
+is one layer, so no marker and no xattr is in play and the pack mounts
+unprivileged.
+
+Tell-tale: the app starts and every alternative-managed command is "not found",
+while `podman run` on the same image works.

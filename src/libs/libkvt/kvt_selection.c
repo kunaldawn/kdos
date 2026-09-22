@@ -416,8 +416,8 @@ int kvt_screen_selection_copy(struct kvt_screen *con, char **out)
 /*
  * ── the pointer over a terminal ──────────────────────────────────────────
  *
- * One implementation for both desktops. See kvt.h for why it is here rather
- * than in either program.
+ * One implementation for every consumer. See kvt.h for why it is here rather
+ * than in the terminal.
  */
 
 int kvt_ui_mouse(struct kvt_term *t, KvtUi *ui, const KtuiEvent *ev,

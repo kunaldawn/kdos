@@ -1,27 +1,26 @@
 #!/bin/sh
-# session-common.sh — what BOTH sessions do, in one place.
+# session-common.sh — the session bring-up, in one place.
 #
-# Sourced, never executed. The graphical session and the console session
-# differ in which display they bring up and which portal backend they start;
-# everything below is the same work, and every one of these blocks carries a
-# trap that cost a debugging session to find. A second copy is a second place
-# to lose one.
+# Sourced, never executed. Everything below runs before the compositor does,
+# and every one of these blocks carries a trap that cost a debugging session
+# to find. A second copy is a second place to lose one.
 #
 #   kdos_session_open      $BROWSER, which the login shell may not have set
 #   kdos_session_runtime   XDG_RUNTIME_DIR, before anything uses it
-#   kdos_session_keymap    the console keymap as XKB variables
+#   kdos_session_keymap    the VT keymap as XKB variables
 #   kdos_session_boxes     the appbox warmup, and giving idle ones back
 #   kdos_session_bus       one session bus per user, at a fixed path
 #   kdos_session_audio     pipewire, once per user rather than per session
-#   kdos_session_once      the login sound, the first-run card, the restore
+#   kdos_session_once      the login sound, the first-run card, the offer of
+#                          the applications the install left pending, the
+#                          per-user timers, the session restore
 
-# ONE ROAD TO A LINK, ON A PATH THAT READS NO PROFILE. /etc/profile.d sets
-# $BROWSER for a login shell, and the `greet = yes` console session is exec'd
-# from a program that clears the environment and runs this script directly — so
-# the variable would exist on one supported login path and not the other, and
+# ONE ROAD TO A LINK, ON A PATH THAT MAY HAVE READ NO PROFILE.
+# /etc/profile.d sets $BROWSER for a login shell, and
 # `dbus-update-activation-environment BROWSER` pushes NOTHING for an unset name
-# rather than failing. Only fills a gap: a person who exported their own has
-# said what they want.
+# rather than failing — so a session started any other way would push nothing
+# and every boxed link would go nowhere. Only fills a gap: a person who
+# exported their own has said what they want.
 kdos_session_open() {
 	BROWSER="${BROWSER:-xdg-open}"
 	export BROWSER
@@ -32,18 +31,15 @@ kdos_session_runtime() {
 	export XDG_RUNTIME_DIR
 }
 
-# THE CONSOLE SESSION NEEDS THIS TOO. libkkms reads the same XKB variables
-# through xkbcommon that every Wayland client does, so leaving this in the
-# graphical script gave the console US QWERTY on a machine whose owner does not
-# type it.
 kdos_session_keymap() {
-	# The keyboard layout. The installer writes the CONSOLE keymap name to
-	# /etc/keymap and kdos-getty loadkeys it on every tty — but nothing carried it
-	# into the Wayland session, so a non-US user got US QWERTY in the desktop,
-	# the lock-screen password prompt included. xkbcommon reads these variables in
-	# every client and in kdos-comp itself; console names and XKB layout names are
-	# different vocabularies, hence the table. Anything not listed falls back to
-	# its first two letters, which is how most console maps are named anyway.
+	# The keyboard layout. The installer writes the VT keymap name to
+	# /etc/keymap and kdos-getty loadkeys it on every tty — and nothing else
+	# carries it into the session, so without this a non-US user gets US QWERTY
+	# in the desktop, the lock-screen password prompt included. xkbcommon reads
+	# these variables in every client and in kdos-comp itself; VT map names and
+	# XKB layout names are different vocabularies, hence the table. Anything not
+	# listed falls back to its first two letters, which is how most VT maps are
+	# named anyway.
 	if [ -r /etc/keymap ]; then
 		_km=$(cat /etc/keymap 2>/dev/null)
 		_layout= _variant=
@@ -57,7 +53,7 @@ kdos_session_keymap() {
 		it*)       _layout=it ;;
 		br*)       _layout=br ;;
 		ru*)       _layout=ru ;;
-		# The console names whose first two letters are a DIFFERENT layout —
+		# The VT map names whose first two letters are a DIFFERENT layout —
 		# `la` is Lao, not Latin American, and there is no `sg`, `sl` or `cr`.
 		sg*)       _layout=ch ;;
 		slovene)   _layout=si ;;
@@ -141,14 +137,24 @@ kdos_session_bus() {
 # because a session restart must not start a second pipewire: two of them
 # fight over the same devices and the loser's clients get silence.
 #
-# Not Wayland's and not the console's — a login sound and a boxed application's
-# audio are the same stack on either desktop.
+# Not the compositor's — a login sound and a boxed application's audio are the
+# same stack, and neither goes through it.
+#
+# WIREPLUMBER IS THE SESSION MANAGER AND PIPEWIRE BUILDS NONE. The daemon
+# routes nothing on its own: device discovery, which sink a stream lands on,
+# and a Bluetooth headset's profile are all policy, and policy lives here.
+# Without it there is a graph with nothing connected to anything — a machine
+# with working hardware and no sound.
+#
+# STARTED AFTER pipewire AND BEFORE pipewire-pulse: it connects to the
+# daemon's socket, and the PulseAudio shim announces sinks that do not exist
+# until something has created them.
 kdos_session_audio() {
 	if command -v pipewire >/dev/null 2>&1 && ! pgrep -f '^pipewire$' >/dev/null 2>&1; then
 		pipewire >/dev/null 2>&1 &
 		sleep 0.3
-		command -v pipewire-media-session >/dev/null 2>&1 && \
-			pipewire-media-session >/dev/null 2>&1 &
+		command -v wireplumber >/dev/null 2>&1 && \
+			wireplumber >/dev/null 2>&1 &
 		command -v pipewire-pulse >/dev/null 2>&1 && \
 			pipewire-pulse >/dev/null 2>&1 &
 	fi
@@ -160,12 +166,14 @@ kdos_session_audio() {
 #
 # The command is the caller's readiness test and must BLOCK until the display
 # is up, exporting whatever the children need to reach it, and return non-zero
-# if it never comes. What "up" means differs — a Wayland socket for one session,
-# a session socket for the other — and only the caller knows.
+# if it never comes — for kdos-desktop-start that is kdos-comp's socket
+# appearing under $XDG_RUNTIME_DIR and WAYLAND_DISPLAY being exported from it.
+# The test is the caller's rather than this file's because this file is sourced
+# before anything has a display to test.
 #
 # All of it is one backgrounded subshell, because none of it may delay the
-# display by a millisecond: the session starts whether or not any of the three
-# is installed or wanted.
+# display by a millisecond: the session starts whether or not any of these is
+# installed or wanted.
 kdos_session_once() {
 	(
 		"$@" || exit 0
@@ -198,14 +206,52 @@ kdos_session_once() {
 		# install actually runs.
 		if [ -s /var/lib/kdos/apps-pending ] && \
 		   [ ! -e "$_cfg/kdos/apps-offered" ] && \
-		   command -v kdos-notify >/dev/null 2>&1; then
-			mkdir -p "$_cfg/kdos"
-			: > "$_cfg/kdos/apps-offered"
+		   command -v kdos >/dev/null 2>&1 && \
+		   command -v gdbus >/dev/null 2>&1; then
+			# `grep -c` PRINTS THE ZERO AND THEN EXITS 1, so an
+			# `|| echo 0` behind it would put a second zero in the
+			# substitution and the toast would open with "0 0".
 			_napp=$(grep -cvE '^[[:space:]]*(#|$)' \
-				/var/lib/kdos/apps-pending 2>/dev/null || echo 0)
-			kdos-notify "Applications" \
-				"$_napp chosen during installation are ready to install — open the store" \
-				>/dev/null 2>&1 &
+				/var/lib/kdos/apps-pending 2>/dev/null)
+			[ -n "$_napp" ] || _napp=0
+			# `kdos notify` SENDS one; `kdos-notify` is the centre
+			# that displays what has already arrived and takes no
+			# summary at all.
+			#
+			# AND THE NAME HAS TO BE OWNED FIRST. The send is one
+			# `gdbus call`, double-forked and best effort — it
+			# reports nothing either way — and there is no
+			# activation file for org.freedesktop.Notifications, so
+			# a call made the moment the display is up reaches a
+			# notifier that is still starting and is simply lost.
+			# The wait is the only test there is, so the marker is
+			# written only once the name has appeared: a session
+			# that never got a notifier keeps the offer for the
+			# next login instead of burning its one shot. All of it
+			# in a subshell, because the restore below must not
+			# wait twenty seconds for a machine with no notifier.
+			(
+				_own=0
+				for _ in $(seq 1 100); do
+					dbus-send --session --print-reply \
+						--dest=org.freedesktop.DBus \
+						/org/freedesktop/DBus \
+						org.freedesktop.DBus.NameHasOwner \
+						string:org.freedesktop.Notifications \
+						2>/dev/null \
+						| grep -q 'boolean true' && {
+						_own=1
+						break
+					}
+					sleep 0.2
+				done
+				[ "$_own" = 1 ] || exit 0
+				kdos notify "Applications" \
+					"$_napp chosen during installation are ready to install — open the store" \
+					>/dev/null 2>&1
+				mkdir -p "$_cfg/kdos"
+				: > "$_cfg/kdos/apps-offered"
+			) &
 		fi
 
 		# Session restore, opt-in: ~/.config/kdos/session-restore has to

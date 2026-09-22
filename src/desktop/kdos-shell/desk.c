@@ -103,9 +103,8 @@ static int icons_on = 1;
  * hidden for this entry can never be run by its position. */
 enum { CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_EMPTY, CT_REFRESH, CT_SORT,
        CT_APPS, CT_WALL, CT_DISPLAY, CT_SETTINGS, CT_RULE,
-       /* The SESSION's own verbs, asked for by name. See CT_VERB below. */
-       CT_TILE, CT_CASCADE, CT_SHOWDESK, CT_WINDOWS, CT_RESTORE_ALL,
-       CT_CAPTURE, CT_LOCK };
+       /* The verbs that act on the whole desktop. See desk_verb(). */
+       CT_SHOWDESK, CT_CAPTURE, CT_LOCK };
 
 /*
  * THE TWO ID SPACES MUST NOT COLLIDE. The shared verbs are `KXDG_VERB_*` and
@@ -144,10 +143,12 @@ static const struct {
 	 * menu are different sets of rows, and the letter picks the first
 	 * SHOWN row that carries it.
 	 *
-	 * THE SHARED VERBS ARE IN BOTH SCOPES AND HAVE THE FIRST CLAIM on a
-	 * letter — o k e t f p s g m — so these are lettered around them. `s`
-	 * is Settings' here and Share's there, and the two never appear on one
-	 * menu: Share is a verb on a THING and the wallpaper has none.
+	 * THE SHARED VERBS HAVE THE FIRST CLAIM on a letter — o k e t f p s g
+	 * m x — so these are lettered around them. `s` is Settings' here and
+	 * Share's there, and the two never appear on one menu: Share is a verb
+	 * on a THING and the wallpaper has none. Only Terminal, Find, Places
+	 * and Git reach bare wallpaper — see ctx_show() — so an SC_DESK row may
+	 * take a letter one of the others holds, and an SC_BOTH row may not.
 	 */
 	/* Open, Open Terminal Here, Add to Places, Move to Trash and the rest
 	 * of the FILE verbs are libkxdg's — see the pane built below. What is
@@ -160,82 +161,42 @@ static const struct {
 	{ "Sort &Icons",         CT_SORT,     SC_DESK, 0, 0, 0 },
 	{ "Refres&h",            CT_REFRESH,  SC_BOTH, 0, 0, 0 },
 	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
-	/* The compositor's root menu used to own this corner of the screen and
-	 * now does not, so everything it offered has to be reachable here or
-	 * the change is a regression. */
+	/* The desktop owns this corner of the screen and the compositor's root
+	 * menu does not, so everything that menu offers has to be reachable
+	 * from these rows. */
 	{ "&Applications",       CT_APPS,     SC_DESK, 0, 0, 0 },
 	{ "&Change Wallpaper",   CT_WALL,     SC_DESK, 0, 0, 0 },
 	{ "&Display Settings",   CT_DISPLAY,  SC_DESK, 0, 0, 0 },
 	{ "&Settings",           CT_SETTINGS, SC_DESK, 0, 0, 0 },
 	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
 	/*
-	 * THE VERBS THAT ACT ON THE WHOLE DESKTOP, which were bound to chords
-	 * and to nothing else — a person using a mouse had no way to tile
-	 * their windows at all. The desktop's own right press is where a root
-	 * menu has always been, and this is the surface that owns it.
-	 *
-	 * ASKED FOR BY NAME through kdisp_session_action(), never run here:
-	 * the windows are the session's and a surface that tiled them itself
-	 * would be a second window model. The name is `keys.conf`'s, so the
-	 * row and the chord reach the same code.
+	 * THE VERBS THAT ACT ON THE WHOLE DESKTOP. The desktop's own right
+	 * press is where a root menu has always been, and this is the surface
+	 * that owns it; the rows carry the same commands the chords do, so a
+	 * row and its key do one thing. See desk_verb().
 	 */
-	{ "&Tile Windows",       CT_TILE,     SC_DESK, 0, 0, 0 },
-	{ "Casca&de Windows",    CT_CASCADE,  SC_DESK, 0, 0, 0 },
-	{ "Sho&w Desktop",       CT_SHOWDESK, SC_DESK, 0, 0, 0 },
-	{ "Window &List",        CT_WINDOWS,  SC_DESK, 0, 0, 0 },
-	{ "Restore &All",        CT_RESTORE_ALL, SC_DESK, 0, 0, 0 },
-	{ "Scree&nshot",         CT_CAPTURE,  SC_DESK, 0, 0, 0 },
+	{ "Sh&ow Desktop",       CT_SHOWDESK, SC_DESK, 0, 0, 0 },
+	{ "Sc&reenshot",         CT_CAPTURE,  SC_DESK, 0, 0, 0 },
 	{ "Loc&k Screen",        CT_LOCK,     SC_DESK, 0, 0, 0 },
 };
 #define NCTX ((int)(sizeof(CTX) / sizeof(CTX[0])))
 
 /*
- * ── THE DESKTOP'S OWN VERBS, ON TWO DIFFERENT SESSIONS ──────────────────
+ * ── THE DESKTOP'S OWN VERBS ─────────────────────────────────────────────
  *
- * The same row means the same thing on both desktops and gets there by
- * different roads, and this is the only place that knows which:
- *
- *   console     kdisp_session_action() — the name reaches kdos-con's bind
- *               table, which has every one of these.
- *   compositor  the command socket for the one labwc has an action for, and
- *               the PROGRAM for the two that are programs there.
- *
- * AND FOUR OF THEM DO NOT EXIST UNDER THE COMPOSITOR AT ALL. Tiling, cascading,
- * the window list and restore-all are the console session's own arithmetic;
- * labwc has no action for any of them and no chord runs them either — which
- * `selftest.sh`'s one-sided chord table already records. A row for one is
- * HIDDEN there rather than drawn and inert: a menu row that does nothing is a
- * lie about what the machine can do, which is the one thing this menu exists
- * not to be.
+ * The command socket for the one the compositor has an action for, and the
+ * PROGRAM for the two that are programs. A verb reaches this table only if the
+ * machine can actually do it: a menu row that does nothing is a lie about what
+ * the machine can do, which is the one thing this menu exists not to be.
  */
 /* Defined with the rest of the process plumbing below; the verb road is the
  * first caller. */
 static void spawn(const char *const argv[]);
 
-static int desk_on_console(void)
-{
-	const KDispImpl *d = kdisp_current();
-
-	return d && d->name && !strcmp(d->name, "console");
-}
-
-/* Which of the session rows this display can actually answer. */
-static int desk_verb_ok(const char *verb)
-{
-	if (desk_on_console())
-		return 1;
-	return !strcmp(verb, "show-desktop") || !strcmp(verb, "lock") ||
-	       !strcmp(verb, "capture-screen");
-}
-
 static void desk_verb(const char *verb)
 {
 	char out[256], err[128];
 
-	if (desk_on_console()) {
-		kdisp_session_action(verb);
-		return;
-	}
 	if (!strcmp(verb, "show-desktop")) {
 		sh_cmd_call("{\"cmd\":\"run\",\"action\":"
 			    "\"ToggleShowDesktop\"}", out, sizeof(out), err,
@@ -421,23 +382,22 @@ static int load_desktop_entry(struct entry *it)
 	if (kxdg_load(&e, it->path, "Desktop Entry") != 0)
 		return 0;
 
-	const char *name = kxdg_get(&e, "Name", NULL);
-	const char *exec = kxdg_get(&e, "Exec", NULL);
-	if (!name || !exec || !*exec) {
+	KxdgLaunch kl;
+
+	/* libkxdg's one reader — the same keys the Start menu reads, and read
+	 * through the same call for the reason the key list was shared: an
+	 * icon that behaved differently from the same row in the menu would be
+	 * one entry with two answers. */
+	if (kxdg_launch_read(&e, &kl) != 0 || !kl.name[0]) {
 		kxdg_free(&e);
 		return 0;
 	}
-	snprintf(it->name, sizeof(it->name), "%s", name);
-	snprintf(it->exec, sizeof(it->exec), "%s", exec);
-	it->terminal = kxdg_bool(&e, "Terminal", 0);
-	snprintf(it->term, sizeof(it->term), "%s",
-		 kxdg_get(&e, "X-KDOS-Term", ""));
-	/* The same two keys `apps.c` reads, and read here for the same reason
-	 * `X-KDOS-Term` is: a desktop icon that behaved differently from the
-	 * same row in the Start menu would be one entry with two answers. */
-	it->floating = kxdg_bool(&e, "X-KDOS-Float", 0);
-	snprintf(it->size, sizeof(it->size), "%s",
-		 kxdg_get(&e, "X-KDOS-Size", ""));
+	kb_strlcpy(it->name, kl.name, sizeof(it->name));
+	kb_strlcpy(it->exec, kl.exec, sizeof(it->exec));
+	it->terminal = kl.terminal;
+	kb_strlcpy(it->term, kl.term, sizeof(it->term));
+	it->floating = kl.floating;
+	kb_strlcpy(it->size, kl.size, sizeof(it->size));
 	it->is_app = true;
 	snprintf(it->icon, sizeof(it->icon), "%s", kxdg_get(&e, "Icon", ""));
 	kxdg_free(&e);
@@ -478,20 +438,20 @@ static void reload(void)
 		return;
 	desktop_dir(dir, sizeof(dir));
 	/*
-	 * MAKE IT IF IT IS NOT THERE. `/etc/skel` carries no Desktop folder,
-	 * so on a fresh login this directory did not exist — the readdir below
-	 * failed silently and the desktop showed Home and Trash and nothing
-	 * else, forever. "New Folder" then had nowhere to put anything and
-	 * dragging a file to the desktop had no destination, which reads as a
-	 * desktop that cannot hold files rather than as a missing directory.
-	 * Creating it costs one mkdir per rescan when it already exists.
+	 * MAKE IT IF IT IS NOT THERE. `/etc/skel` carries no Desktop folder, so
+	 * on a fresh login this directory does not exist — the readdir below
+	 * fails silently and the desktop shows Home and Trash and nothing else,
+	 * forever. "New Folder" then has nowhere to put anything and dragging a
+	 * file to the desktop has no destination, which reads as a desktop that
+	 * cannot hold files rather than as a missing directory. Creating it
+	 * costs one mkdir per rescan when it already exists.
 	 */
 	mkdir(dir, 0755);
 
 	/*
 	 * Home and Trash come FIRST — fixed cells at the START of the grid.
 	 * The grid fills left to right, so pins at the front survive a full
-	 * desktop (appended last, they were the first thing overflow dropped)
+	 * desktop (appended last, they are the first thing overflow drops)
 	 * and never move when a file is created; a desktop whose fixed icons
 	 * move is a desktop nobody builds muscle memory on.
 	 */
@@ -624,10 +584,10 @@ static void open_entry(const struct entry *it)
 
 	/*
 	 * Everything else — a file AND a directory — goes to the MIME handler,
-	 * which on this machine is kdos-appbox. A directory used to be a
-	 * hardcoded `foot -e mc` here, which is a SECOND answer to a question
-	 * `inode/directory=mc.desktop` in mimeapps.list already answers: change
-	 * the default file manager and the desktop would have kept opening mc.
+	 * which on this machine is kdos-appbox. A directory must not get a
+	 * hardcoded `foot -e mc` here: that is a SECOND answer to a question
+	 * `inode/directory=mc.desktop` in mimeapps.list already answers, and
+	 * changing the default file manager would leave the desktop opening mc.
 	 */
 	const char *argv[] = { "kdos-appbox", "open", it->path, NULL };
 	spawn(argv);
@@ -750,20 +710,19 @@ static void input_region(void)
 	shown = sig;
 
 	/*
-	 * THE WHOLE SURFACE, and that is a reversal.
+	 * THE WHOLE SURFACE, not only the cells the icons occupy.
 	 *
-	 * It used to claim only the cells its icons occupy, so a click on bare
-	 * wallpaper reached the compositor and labwc's root-menu mousebind
-	 * fired. The cost was that the DESKTOP had no menu of its own: New
-	 * Folder, Sort Icons and Refresh were reachable only by right-clicking
-	 * an existing icon, and on a fresh login the only icons are Home and
-	 * Trash. A desktop you cannot create anything on reads as read-only.
+	 * Claiming only the icon cells lets a click on bare wallpaper through
+	 * to the compositor, where labwc's root-menu mousebind fires — and
+	 * then the DESKTOP has no menu of its own: New Folder, Sort Icons and
+	 * Refresh are reachable only by right-clicking an existing icon, and
+	 * on a fresh login the only icons are Home and Trash. A desktop you
+	 * cannot create anything on reads as read-only.
 	 *
-	 * So the desktop answers its own wallpaper now, and everything labwc's
-	 * root menu offered is on it (Applications, Settings, Displays) —
-	 * dropping the claim without replacing what it fed would have been the
-	 * regression, and the menu is the replacement. `W-space` still opens
-	 * the compositor's own menu for anyone who wants it.
+	 * Claiming it all is only correct while this menu carries everything
+	 * labwc's root menu offers (Applications, Settings, Displays); a row
+	 * dropped from here is a verb with no way in. `W-space` opens the
+	 * compositor's own menu for anyone who wants it.
 	 */
 	kdisp_input_cells(NULL, -1);
 }
@@ -840,23 +799,6 @@ static int ctx_show(int i, void *user)
 	if (ctx_for < 0) {
 		if (!(CTX[i].scope & SC_DESK))
 			return 0;
-		/*
-		 * AND A SESSION VERB THIS DISPLAY DOES NOT HAVE IS HIDDEN.
-		 * Tiling, cascading, the window list and restore-all are the
-		 * console session's own; a row for one under the compositor
-		 * would be a row that does nothing, which is exactly what a
-		 * menu must not contain.
-		 */
-		switch (CTX[i].id) {
-		case CT_TILE:		return desk_verb_ok("tile");
-		case CT_CASCADE:	return desk_verb_ok("cascade");
-		case CT_SHOWDESK:	return desk_verb_ok("show-desktop");
-		case CT_WINDOWS:	return desk_verb_ok("windows");
-		case CT_RESTORE_ALL:	return desk_verb_ok("restore-all");
-		case CT_CAPTURE:	return desk_verb_ok("capture-screen");
-		case CT_LOCK:		return desk_verb_ok("lock");
-		default:		break;
-		}
 		return 1;
 	}
 	if (ctx_for >= nentries)
@@ -948,138 +890,6 @@ static int ctx_at(int *x, int *y, void *user)
 	return 1;
 }
 
-/*
- * THE CONSOLE'S BACKGROUND, AND ONLY THE CONSOLE'S.
- *
- * Under the compositor the wallpaper is a PNG the compositor draws and this
- * surface is transparent over it, so art painted here would be a rectangle of
- * opaque cells sitting on top of somebody's photograph. On the console there
- * is no wallpaper and no compositor: the ground is the theme's fill, and a
- * picture made of characters is what a screen of characters can have.
- *
- * Reloaded on the same signal the accent is, because it is drawn in slots and
- * a retint changes what those slots are.
- */
-static KtuiCell *bg;
-static int bg_w, bg_h;
-
-/*
- * AND THE SAME BACKGROUND AS A PICTURE, WHERE THE DISPLAY HAS PIXELS.
- *
- * One or the other and never both: sh_bg_path() answers with the kind it
- * found. The picture is the whole desktop and the character art is centred in
- * it, which is the difference between a photograph and a piece of art drawn
- * for a screen of its own size.
- */
-static ShPic bg_pic;
-static int bg_pic_w, bg_pic_h;		/* what it is currently cut for */
-
-static void bg_reload(void)
-{
-	char path[600];
-	const char *con = getenv("KDOS_CON");
-	int image = 0;
-
-	free(bg);
-	bg = NULL;
-	bg_w = bg_h = 0;
-	/* The tiles go with it: a retint is why this runs, and the slots it
-	 * registered are the table's to hand out again. */
-	sh_pic_free(&bg_pic);
-	bg_pic_w = bg_pic_h = 0;
-	/*
-	 * THE CONSOLE'S ONLY. Under the compositor the WALLPAPER IS THE
-	 * COMPOSITOR'S and this surface is transparent over it — see the note
-	 * in draw() — so a background drawn here would be a second one on top
-	 * of the first.
-	 */
-	if (!con || !*con)
-		return;
-	if (!sh_bg_path(path, sizeof(path), &image))
-		return;
-	if (!image) {
-		bg = sh_bg_load(path, &bg_w, &bg_h);
-		return;
-	}
-	if (sh_pic_load(&bg_pic, path) != 0)
-		sh_pic_free(&bg_pic);
-}
-
-/*
- * CUT TO COVER THE DESKTOP, CENTRED, AND NEVER STRETCHED.
- *
- * The crop is the largest centred rectangle of the file that has the screen's
- * own shape, and it is that rectangle which is scaled to every cell — so a
- * picture of any proportion fills the desktop with its middle rather than
- * being squashed into it. THE SHAPE IS IN PIXELS AND NOT IN CELLS: a cell is
- * about twice as tall as it is wide, so a ratio taken from the grid would
- * stretch every wallpaper by that factor.
- *
- * sh_pic_view() is a no-op while the crop and the cell size are unchanged, so
- * this runs on every frame and costs a comparison until the grid actually
- * moves — which is what a font step or a resized display is.
- */
-static void bg_pic_fit(int w, int h)
-{
-	int pw = w * sh_pic_cell_w(), ph = h * sh_pic_cell_h();
-	int sw = bg_pic.w, sh = bg_pic.h, sx, sy;
-
-	if (!bg_pic.img || w < 1 || h < 1 || pw < 1 || ph < 1)
-		return;
-	if ((long)sw * ph > (long)sh * pw)
-		sw = (int)((long)sh * pw / ph);
-	else
-		sh = (int)((long)sw * ph / pw);
-	if (sw < 1 || sh < 1)
-		return;
-	sx = (bg_pic.w - sw) / 2;
-	sy = (bg_pic.h - sh) / 2;
-	if (sh_pic_view(&bg_pic, sx, sy, sw, sh, w, h) != 0) {
-		/* No pixel path, or no room in the table. A tty and a view
-		 * over ssh both look like this, and there is nothing to draw
-		 * there but the theme's ground. */
-		bg_pic_w = bg_pic_h = 0;
-		return;
-	}
-	bg_pic_w = w;
-	bg_pic_h = h;
-}
-
-/*
- * CENTRED, and clipped rather than scaled. A BBS screen was eighty by
- * twenty-five and a display is not, so a piece anchored to a corner sits in one
- * on every screen larger than the one it was drawn for; a piece larger than the
- * screen loses its edges, which is what a picture too big for a frame does.
- *
- * A BLANK CELL OF THE ART IS NOT DRAWN. The art is behind the icons and their
- * labels, and painting its spaces would put the art's background over the
- * desktop's — every gap in the picture would become a rectangle in a slightly
- * different colour.
- */
-static void bg_draw(int w, int h)
-{
-	int ox, oy;
-
-	if (bg_pic.img) {
-		bg_pic_fit(w, h);
-		if (bg_pic_w == w && bg_pic_h == h)
-			sh_pic_draw(&bg_pic, 0, 0);
-		return;
-	}
-	if (!bg || bg_w < 1 || bg_h < 1)
-		return;
-	ox = (w - bg_w) / 2;
-	oy = (h - bg_h) / 2;
-	for (int y = 0; y < bg_h; y++)
-		for (int x = 0; x < bg_w; x++) {
-			const KtuiCell *c = &bg[y * bg_w + x];
-
-			if (!c->ch || c->ch == ' ')
-				continue;
-			ktui_draw_put(ox + x, oy + y, c);
-		}
-}
-
 static void draw(const char *status)
 {
 	int w = ktui_w, h = ktui_h;
@@ -1102,7 +912,6 @@ static void draw(const char *status)
 	 * painted normally.
 	 */
 	ktui_draw_clear();
-	bg_draw(w, h);
 
 	int drawn = drawn_count();
 	for (int i = 0; i < drawn; i++) {
@@ -1112,8 +921,9 @@ static void draw(const char *status)
 			break;
 
 		bool on = i == sel;
-		int fg = on ? KT_SURFACE : KT_TEXT;
-		int bg = on ? KT_ACCENT : KT_BG;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		/*
 		 * The PICTURE where there is one and the glyph where there is
@@ -1173,7 +983,7 @@ static void draw(const char *status)
 	 *
 	 * A BACKGROUND layer asks for the keyboard on demand: the arrows,
 	 * Enter, Delete and Shift+F10 are answered only while the display has
-	 * handed it the focus, and the console hands it over on a press on the
+	 * handed it the focus, and a server hands it over on a press on the
 	 * icon layer and takes it back on the next press on a window. A row
 	 * drawn the rest of the time names four keys that do nothing, along the
 	 * bottom of the wallpaper, for the whole session.
@@ -1232,7 +1042,7 @@ static void draw(const char *status)
 	 * AND THE ROW IS ONLY PAINTED WHILE THE DESKTOP OWNS THE KEYBOARD.
 	 * ktui_hint_row() fills its rectangle before it writes a word, so a
 	 * call with an empty pool is a bar of KT_BG across the bottom row of
-	 * the console's character art in exchange for no hints at all.
+	 * the wallpaper in exchange for no hints at all.
 	 */
 	if (owns && !edit_mode && !(status && *status))
 		ktui_hint_row(&keys, krect(1, h - 1, w - 2, 1), KT_BG);
@@ -1242,9 +1052,9 @@ static void draw(const char *status)
 /*
  * Move the selection to the trash, asking first.
  *
- * Delete used to be a keystroke with no question and no undo beyond finding the
- * trash by hand. The two pinned icons are refused rather than confirmed: Home
- * and Trash are places, not files.
+ * The question is the undo: a keystroke that trashes silently leaves no way
+ * back but finding the trash by hand. The two pinned icons are refused rather
+ * than confirmed: Home and Trash are places, not files.
  */
 static void trash_selected(char *status, size_t n)
 {
@@ -1328,8 +1138,8 @@ static void edit_commit(char *status, size_t n)
 static void ctx_run(int id, char *status, size_t n)
 {
 	/*
-	 * THE SHARED VERBS FIRST, and they are the ones this file no longer
-	 * decides anything about: what "Open Terminal Here" runs and where is
+	 * THE SHARED VERBS FIRST, and they are the ones this file decides
+	 * nothing about: what "Open Terminal Here" runs and where is
 	 * libkxdg's answer, and the chooser and `mc` get the same one.
 	 */
 	if (id < DESK_LOCAL) {
@@ -1438,22 +1248,10 @@ static void ctx_run(int id, char *status, size_t n)
 			spawn(argv);
 			break;
 		}
-		/* THE SESSION'S — see desk_verb(), which is the one place that
-		 * knows how each display answers one. */
-		case CT_TILE:
-			desk_verb("tile");
-			break;
-		case CT_CASCADE:
-			desk_verb("cascade");
-			break;
+		/* THE WHOLE DESKTOP'S — see desk_verb(), which is the one
+		 * place that knows how each is answered. */
 		case CT_SHOWDESK:
 			desk_verb("show-desktop");
-			break;
-		case CT_WINDOWS:
-			desk_verb("windows");
-			break;
-		case CT_RESTORE_ALL:
-			desk_verb("restore-all");
 			break;
 		case CT_CAPTURE:
 			desk_verb("capture-screen");
@@ -1507,14 +1305,81 @@ static void ctx_run(int id, char *status, size_t n)
 	}
 }
 
+/*
+ * A DESKTOP NOBODY'S HOME DIRECTORY DECIDES, so there is a reference frame of
+ * the surface whose whole content is somebody's files.
+ *
+ * The two pinned cells come first, exactly as reload() places them, and three
+ * ordinary entries follow — a folder, a file and an application — because the
+ * grid's arithmetic, the label truncation and the row wrap are what this
+ * surface has gone wrong at, and one icon shows none of them.
+ */
+static void dump_entries(void)
+{
+	static const struct {
+		const char *name;
+		int dir;
+		int app;
+	} ROW[] = {
+		{ "Projects", 1, 0 },
+		{ "a very long file name indeed.txt", 0, 0 },
+		{ "Text Editor", 0, 1 },
+	};
+
+	nentries = 0;
+
+	struct entry *it = &entries[nentries++];
+
+	memset(it, 0, sizeof(*it));
+	snprintf(it->name, sizeof(it->name), "Home");
+	snprintf(it->path, sizeof(it->path), "%s", "/home/kdos");
+	it->dir = true;
+	it->pinned = true;
+
+	it = &entries[nentries++];
+	memset(it, 0, sizeof(*it));
+	snprintf(it->name, sizeof(it->name), "Trash");
+	snprintf(it->path, sizeof(it->path), "%s",
+		 "/home/kdos/.local/share/Trash/files");
+	it->dir = true;
+	it->is_trash = true;
+	it->pinned = true;
+
+	for (size_t i = 0; i < sizeof(ROW) / sizeof(ROW[0]); i++) {
+		it = &entries[nentries++];
+		memset(it, 0, sizeof(*it));
+		snprintf(it->name, sizeof(it->name), "%s", ROW[i].name);
+		snprintf(it->path, sizeof(it->path), "/home/kdos/Desktop/%s",
+			 ROW[i].name);
+		it->dir = ROW[i].dir;
+		it->is_app = ROW[i].app;
+	}
+}
+
 int desk_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *output = NULL;
+	int dump = 0, dump_w = 0, dump_h = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/*
+		 * One frame, offscreen, as text — see kdos-launcher --dump.
+		 * The size is given because this surface has none of its own:
+		 * it is anchored to all four edges, so on a screen it is
+		 * whatever the output is, and a dump has no output.
+		 */
+		else if (!strcmp(argv[i], "--dump")) {
+			dump = 1;
+			dump_w = 80;
+			dump_h = 24;
+		} else if (!strcmp(argv[i], "--dump-size") && i + 2 < argc) {
+			dump = 1;
+			dump_w = atoi(argv[++i]);
+			dump_h = atoi(argv[++i]);
+		}
 		/* One desktop per screen: layer-shell puts an unnamed surface
 		 * on whichever output the compositor picks, so a second monitor
 		 * got a wallpaper and no icons. */
@@ -1527,9 +1392,30 @@ int desk_main(int argc, char **argv)
 		else {
 			fprintf(stderr,
 				"usage: kdos-desk [--output NAME] [--font NAME] "
-				"[--no-icons]\n");
+				"[--no-icons]\n"
+				"       kdos-desk --dump [--dump-size W H]\n");
 			return 2;
 		}
+	}
+
+	/*
+	 * BEFORE THE COMPOSITOR AND BEFORE THE ICON LAYER. A dump is cells: the
+	 * picture layer needs a real cell size in pixels and a display to
+	 * rescale to, and neither exists here — so the glyph tier under it is
+	 * what a dumped desktop shows, which is also what `icons = no` draws.
+	 */
+	if (dump) {
+		if (dump_w < 20 || dump_w > 500)
+			dump_w = 80;
+		if (dump_h < 4 || dump_h > 200)
+			dump_h = 24;
+		icons_on = 0;
+		sh_theme_from_cache();
+		dump_entries();
+		ktui_offscreen_init(dump_w, dump_h);
+		draw("");
+		ktui_draw_dump();
+		return 0;
 	}
 
 	KDispConfig cfg = {
@@ -1600,28 +1486,23 @@ int desk_main(int argc, char **argv)
 	}
 	/*
 	 * THE NOMINAL CELL WHERE THERE IS NO REAL ONE, and the sprite backend
-	 * before it. A console surface has no pixel size of its own —
-	 * kdisp_cell_w() answers 1 — so rasterising at it makes every icon a
+	 * before it. A display with no pixel size of its own answers 1 to
+	 * kdisp_cell_w(), so rasterising at it makes every icon a
 	 * picture a pixel or two across, which is a blank cell by a longer
 	 * route; sh_pic_cell_w() is the size the wire is bounded by and the
 	 * display rescales to its own font. sh_pic_backend() must come after
-	 * kdisp_init: the console backend clears its client state when it
-	 * connects, so a callback registered before that point is erased.
+	 * kdisp_init, because the budget it sets is in cells and the cell size
+	 * is the display's.
 	 */
 	sh_pic_backend();
-	/* AFTER the sprite backend, because a picture background registers
-	 * tiles through it and the theme it is drawn in has to be loaded
-	 * first. */
-	bg_reload();
 	if (icons_on)
 		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/*
 	 * `kdos theme <accent>` SIGHUPs this too. The desktop is as long-lived
 	 * as the panel — it is up for the whole session — so without the handler
-	 * an accent change left the icons and their labels in the old colour
-	 * until the next login, which is exactly what a photograph of the live
-	 * ISO showed.
+	 * an accent change leaves the icons and their labels in the previous
+	 * colour until the next login.
 	 */
 	sh_theme_watch();
 	reload();
@@ -1641,11 +1522,6 @@ int desk_main(int argc, char **argv)
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
-			/* The art is drawn in slots and reduced to them when
-			 * it is loaded, so a retint has to re-reduce it — and
-			 * the same signal is what `kdos background` sends when
-			 * the piece itself changes. */
-			bg_reload();
 			/* The pictures carry the accent too — tinted at load
 			 * through kcol_remap — so a retint drops them, or the
 			 * desktop comes up in the new palette wearing the old
@@ -1763,8 +1639,8 @@ int desk_main(int argc, char **argv)
 
 			/*
 			 * A press that leaves its cell is a drag, not a click.
-			 * The threshold is libkwm's, so the console desktop
-			 * picks a file up on exactly the same gesture.
+			 * The threshold is libkwm's, so every drag in this
+			 * tree starts on exactly the same gesture.
 			 */
 			if (ev.press == KT_MP_DRAG) {
 				if (drag_from >= 0 && !dragging &&

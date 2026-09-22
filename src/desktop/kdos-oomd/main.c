@@ -41,7 +41,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -203,7 +202,16 @@ static int box_of(int pid, char *out, size_t cap)
 static const char *const ko_protected[] = {
 	"kdos-comp", "kdos-shell", "kdos-desk", "kdos-notifyd",
 	"Xwayland", "dbus-daemon", "seatd", "ksvc",
-	"kdos-powerd", "kdos-energyd", "kdos-oomd", NULL
+	"kdos-powerd", "kdos-energyd", "kdos-oomd",
+	/*
+	 * THE SESSION MANAGER IS NOT NAMED "pipewire" AND THE PREFIX BELOW
+	 * DOES NOT REACH IT. wireplumber is where every routing decision
+	 * lives — which sink a stream lands on, a headset's profile, the
+	 * device list itself — so killing it leaves a running daemon with a
+	 * graph nothing is connected to, which is a machine whose audio
+	 * stopped for no reason a person can see.
+	 */
+	"wireplumber", NULL
 };
 
 static int is_protected(const KoProc *p)
@@ -213,7 +221,9 @@ static int is_protected(const KoProc *p)
 	for (int i = 0; ko_protected[i]; i++)
 		if (!strcmp(p->comm, ko_protected[i]))
 			return 1;
-	/* pipewire, pipewire-pulse, pipewire-media-session (comm-truncated). */
+	/* pipewire and pipewire-pulse; `comm` is truncated at 15 characters,
+	 * so the prefix is what matches both. wireplumber shares no prefix
+	 * with them and is named in the list above. */
 	if (!strncmp(p->comm, "pipewire", 8))
 		return 1;
 
@@ -497,18 +507,6 @@ static void kill_victim(const KoVictim *v, double some, double full)
 			"full=%.2f some=%.2f\n", g_last, full, some);
 }
 
-/* ── the allowed set ───────────────────────────────────────────────────── */
-
-static bool uid_allowed(uid_t uid)
-{
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return kb_user_in_group(pw->pw_name, pw->pw_gid, KO_GROUP) != 0;
-}
-
 /* ── the daemon ────────────────────────────────────────────────────────── */
 
 /*
@@ -539,8 +537,10 @@ static void answer(int c)
 	struct timeval tv = { .tv_sec = 2 };
 	setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+	/* Root or KO_GROUP, from libkbase — the one answer every root daemon
+	 * here gives to this question. The socket's mode is not the gate. */
 	if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-	    !uid_allowed(cred.uid)) {
+	    !kb_uid_allowed(cred.uid, KO_GROUP)) {
 		(void)!write(c, "err not permitted\n", 18);
 		close(c);
 		return;

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmtp
+version     = 1.1.23
+release     = 1
+source      = https://github.com/libmtp/libmtp/releases/download/v$version/libmtp-$version.tar.gz
+sha256      = 74a2b6e8cb4a0304e95b995496ea3ac644c29371649b892b856e22f12a0bdeed  libmtp-1.1.23.tar.gz
+description = Talk MTP to a phone or a player — the class gphoto2 cannot reach
+homepage    = https://libmtp.sourceforge.net/
+depends     = pkgconf libusb

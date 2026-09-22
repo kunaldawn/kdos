@@ -14,7 +14,7 @@
  * memory-safety bugs.
  *
  * That is why this is a library with ONE entry point rather than four calls
- * inside kdos-con. There is one place to audit, one place the budget is
+ * inside each consumer. There is one place to audit, one place the budget is
  * enforced, and one place a fifth format would be added.
  *
  * THE BUDGET IS ENFORCED BEFORE ANY ALLOCATION, from the size the format

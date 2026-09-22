@@ -390,9 +390,9 @@ static int write_index(const char *out)
 		   "[Icon Theme]\n"
 		   "Name=KDOS\n"
 		   "Comment=KDOS phosphor icon theme\n"
-		   /* hicolor supplies the alien apps' icons, installed there by
-		    * 06_packaging/01_appbox.sh, and the index.theme that makes
-		    * the lookup work at all comes from hicolor-icon-theme. */
+		   /* hicolor supplies the applications' own icons, and the
+		    * index.theme that makes the lookup work at all comes from
+		    * hicolor-icon-theme. */
 		   "Inherits=hicolor\n"
 		   "Directories=");
 	kb_buf_add(&full, dirs.p ? dirs.p : "", dirs.n);

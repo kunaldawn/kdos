@@ -204,13 +204,7 @@ int app_pack_by_exec(const char *exec, char *pack, size_t pn)
 	return found;
 }
 
-int app_lookup(const char *name, char *cmd, size_t n)
-{
-	return app_lookup_pack(name, cmd, n, NULL, 0);
-}
-
-/* The same lookup, also answering which pack provides it. User entries win, as
- * they always have. */
+/* User entries win over the baked table. */
 int app_lookup_pack(const char *name, char *cmd, size_t n, char *pack, size_t pn)
 {
 	char *ut = user_table();
@@ -250,51 +244,4 @@ int app_list(void)
 	free(buf);
 	free(ut);
 	return 0;
-}
-
-/* ------------------------------------------------------------------ */
-
-int app_table_load(App **out)
-{
-	char *buf = kb_calloc(1, 1 << 18);
-	char *ut = user_table();
-	const char *paths[2];
-	App *apps = NULL;
-	int n = 0, cap = 0, i;
-
-	paths[0] = APP_TABLE;
-	paths[1] = ut;
-	for (i = 0; i < 2; i++) {
-		char *line, *save;
-		if (kb_read_file(paths[i], buf, 1 << 18) < 0)
-			continue;
-		for (line = strtok_r(buf, "\n", &save); line;
-		     line = strtok_r(NULL, "\n", &save)) {
-			char *tab;
-			if (*line == '#' || !*line)
-				continue;
-			tab = strchr(line, '\t');
-			if (!tab)
-				continue;
-			*tab = '\0';
-			{
-				char *tab2 = strchr(tab + 1, '\t');
-				if (tab2)
-					*tab2 = '\0';
-			}
-			if (n == cap) {
-				cap = cap ? cap * 2 : 64;
-				apps = realloc(apps, (size_t)cap * sizeof(*apps));
-				if (!apps)
-					kb_die("out of memory");
-			}
-			snprintf(apps[n].name, sizeof(apps[n].name), "%s", line);
-			snprintf(apps[n].cmd, sizeof(apps[n].cmd), "%s", tab + 1);
-			n++;
-		}
-	}
-	free(buf);
-	free(ut);
-	*out = apps;
-	return n;
 }

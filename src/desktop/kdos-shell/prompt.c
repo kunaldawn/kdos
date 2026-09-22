@@ -201,18 +201,76 @@ static int prompt_input(const char *msg, const char *font,
 	return rc;
 }
 
+/*
+ * ONE FRAME OF THE DIALOG, so the loop and `--dump` draw the same thing rather
+ * than two descriptions of it. The four button edges come back out because the
+ * hit test is the loop's and the placement is this function's.
+ */
+static void prompt_draw(char lines[][MAX_MSG], int nlines, const char *yes,
+			const char *no, int sel, int *no_xp, int *no_endp,
+			int *yes_xp, int *yes_endp)
+{
+	int no_x = 0, no_end = 0, yes_x = 0, yes_end = 0;
+	int w = ktui_w, h = ktui_h;
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), "KDOS", KT_ACCENT, KT_SURFACE, 1);
+
+	for (int i = 0; i < nlines && 1 + i < h - 3; i++)
+		ktui_draw_text(2, 1 + i, w - 4, lines[i], KT_TEXT,
+			       KT_SURFACE, KT_A_NONE);
+
+	/* Right-aligned as a pair, which is where a hand goes looking
+	 * for the affirmative in every dialog since the mid-nineties. */
+	char nb[64], yb[64];
+	snprintf(nb, sizeof(nb), " %s ", no);
+	snprintf(yb, sizeof(yb), " %s ", yes);
+	int nw = ktui_utf8_width(nb) + 2, yw = ktui_utf8_width(yb) + 2;
+	int by = h - 2;
+	yes_x = w - 2 - yw;
+	yes_end = yes_x + yw;
+	no_x = yes_x - BTN_GAP - nw;
+	no_end = no_x + nw;
+	if (no_x < 2)
+		no_x = 2;
+
+	for (int b = 0; b < 2; b++) {
+		int x = b ? yes_x : no_x;
+		const char *label = b ? yb : nb;
+		bool on = sel == b;
+		int fg, bg;
+
+		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
+		ktui_draw_text(x, by, 1, "[", KT_MID, KT_SURFACE,
+			       KT_A_NONE);
+		ktui_draw_fill(krect(x + 1, by,
+				     ktui_utf8_width(label), 1), bg);
+		ktui_draw_text(x + 1, by, ktui_utf8_width(label), label,
+			       fg, bg, KT_A_NONE);
+		ktui_draw_text(x + 1 + ktui_utf8_width(label), by, 1, "]",
+			       KT_MID, KT_SURFACE, KT_A_NONE);
+	}
+
+	*no_xp = no_x;
+	*no_endp = no_end;
+	*yes_xp = yes_x;
+	*yes_endp = yes_end;
+}
+
 int prompt_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *msg = "Are you sure?";
 	const char *yes = "Yes", *no = "No";
 	const char *placeholder = "";
-	int input = 0;
+	int input = 0, dump = 0;
 	char lines[MAX_LINES][MAX_MSG];
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--input"))
 			input = 1;
+		/* One frame, offscreen, as text — see kdos-launcher --dump. */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else if (!strcmp(argv[i], "--placeholder") && i + 1 < argc)
 			placeholder = argv[++i];
 		else if (!strcmp(argv[i], "--message") && i + 1 < argc)
@@ -226,7 +284,8 @@ int prompt_main(int argc, char **argv)
 		else {
 			fprintf(stderr,
 				"usage: kdos-prompt --message TEXT "
-				"[--yes LABEL] [--no LABEL] [--font NAME]\n"
+				"[--yes LABEL] [--no LABEL] [--font NAME] "
+				"[--dump]\n"
 				"       kdos-prompt --input --message TEXT "
 				"[--placeholder TEXT]\n"
 				"exit: 0 yes, 1 no, 254 cancelled\n"
@@ -252,6 +311,21 @@ int prompt_main(int argc, char **argv)
 		cols = 28;
 	int nlines = wrap(msg, cols - 4, lines);
 	int rows = nlines + 4;
+
+	/*
+	 * BEFORE THE COMPOSITOR, because a dump needs none — and the frame is
+	 * the one the dialog opens on, with No selected, which is the answer
+	 * this dialog gives when nobody answers it.
+	 */
+	if (dump) {
+		int nx, ne, yx, ye;
+
+		sh_theme_from_cache();
+		ktui_offscreen_init(cols, rows);
+		prompt_draw(lines, nlines, yes, no, 0, &nx, &ne, &yx, &ye);
+		ktui_draw_dump();
+		return 0;
+	}
 
 	KDispConfig cfg = {
 		.role = KDISP_ROLE_OVERLAY,
@@ -282,43 +356,8 @@ int prompt_main(int argc, char **argv)
 	int no_x = 0, no_end = 0, yes_x = 0, yes_end = 0;
 
 	while (!kdisp_should_close()) {
-		int w = ktui_w, h = ktui_h;
-		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-		ktui_draw_box(krect(0, 0, w, h), "KDOS", KT_ACCENT, KT_SURFACE, 1);
-
-		for (int i = 0; i < nlines && 1 + i < h - 3; i++)
-			ktui_draw_text(2, 1 + i, w - 4, lines[i], KT_TEXT,
-				       KT_SURFACE, KT_A_NONE);
-
-		/* Right-aligned as a pair, which is where a hand goes looking
-		 * for the affirmative in every dialog since the mid-nineties. */
-		char nb[64], yb[64];
-		snprintf(nb, sizeof(nb), " %s ", no);
-		snprintf(yb, sizeof(yb), " %s ", yes);
-		int nw = ktui_utf8_width(nb) + 2, yw = ktui_utf8_width(yb) + 2;
-		int by = h - 2;
-		yes_x = w - 2 - yw;
-		yes_end = yes_x + yw;
-		no_x = yes_x - BTN_GAP - nw;
-		no_end = no_x + nw;
-		if (no_x < 2)
-			no_x = 2;
-
-		for (int b = 0; b < 2; b++) {
-			int x = b ? yes_x : no_x;
-			const char *label = b ? yb : nb;
-			bool on = sel == b;
-			int fg = on ? KT_SURFACE : KT_TEXT;
-			int bg = on ? KT_ACCENT : KT_SURFACE;
-			ktui_draw_text(x, by, 1, "[", KT_MID, KT_SURFACE,
-				       KT_A_NONE);
-			ktui_draw_fill(krect(x + 1, by,
-					     ktui_utf8_width(label), 1), bg);
-			ktui_draw_text(x + 1, by, ktui_utf8_width(label), label,
-				       fg, bg, KT_A_NONE);
-			ktui_draw_text(x + 1 + ktui_utf8_width(label), by, 1, "]",
-				       KT_MID, KT_SURFACE, KT_A_NONE);
-		}
+		prompt_draw(lines, nlines, yes, no, sel, &no_x, &no_end,
+			    &yes_x, &yes_end);
 		ktui_draw_flush();
 
 		KtuiEvent ev;

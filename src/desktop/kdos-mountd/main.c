@@ -61,6 +61,8 @@
 #include <grp.h>
 #include <pwd.h>
 #include <linux/netlink.h>
+#include <netdb.h>		/* getaddrinfo — "can musl already find it" */
+#include <stdarg.h>		/* the bounded option-string append */
 #include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -215,23 +217,21 @@ static const char *uevent_path(void)
 
 /* ── the allowed set ───────────────────────────────────────────────────── */
 
+/*
+ * Root or KM_GROUP, from libkbase — the one answer every root daemon here
+ * gives to this question — with one widening this daemon alone needs.
+ *
+ * FIXTURE MODE ADMITS ANYBODY, and grants nothing: it is reachable only from
+ * `--fixture-serve` on the command line, its paths are a scratch directory,
+ * and every child it would spawn is printed instead of run. The service script
+ * starts this daemon with no arguments, so there is no path from a running
+ * system into here. Gate anything real on kb_uid_allowed and never on this.
+ */
 static bool uid_allowed(uid_t uid)
 {
-	/*
-	 * FIXTURE MODE ADMITS ANYBODY, and grants nothing: it is reachable
-	 * only from `--fixture-serve` on the command line, its paths are a
-	 * scratch directory, and every child it would spawn is printed instead
-	 * of run. The service script starts this daemon with no arguments, so
-	 * there is no path from a running system into here.
-	 */
 	if (km_fixture)
 		return true;
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return kb_user_in_group(pw->pw_name, pw->pw_gid, KM_GROUP) != 0;
+	return kb_uid_allowed(uid, KM_GROUP) != 0;
 }
 
 /* ── reading the machine ───────────────────────────────────────────────── */
@@ -1135,6 +1135,314 @@ static int do_mount(int idx, uid_t uid, char *out, size_t nout)
 }
 
 /*
+ * ── the name of a server ───────────────────────────────────────────────
+ *
+ * FOUR KINDS OF NAME REACH THIS DAEMON AND musl RESOLVES TWO. An address
+ * literal and a name in /etc/hosts or the DNS go through `getaddrinfo` and
+ * need nothing from here. The other two are a BROADCAST away and no C library
+ * on this image makes one: `nsswitch.conf` is inert on musl and there is no
+ * winbind, so a name only a NetBIOS or a Bonjour query could answer reaches
+ * `mount.cifs` and fails inside it with a message nobody can act on.
+ *
+ *   - a name ending `.local` is Bonjour's, and `avahi-resolve-host-name`
+ *     asks the mDNS responder this image already supervises.
+ *   - a bare label with no dot in it is NetBIOS's, and `nmblookup` makes the
+ *     broadcast samba's client tools already carry.
+ *
+ * THE RESOLVER GOES FIRST EITHER WAY. A name in /etc/hosts is one somebody
+ * wrote down, and a broadcast answer must not override it.
+ *
+ * WHAT IS RESOLVED IS THE ADDRESS AND NOT THE UNC. The share is mounted under
+ * the name that was typed, with the address carried in `ip=` beside it: a
+ * mountpoint named after an address is a mountpoint nobody recognises, and a
+ * lease that changed would leave the old name on the filesystem for ever.
+ *
+ * AND IT BLOCKS THIS DAEMON, which serves one request at a time. It is
+ * bounded to the two name shapes the resolver cannot answer, so an address or
+ * a DNS name never waits for a broadcast.
+ */
+
+/* The dotted-quad in `line`, or nothing. Both helpers put the address FIRST on
+ * a line and follow it with a separator this never has to know: avahi answers
+ * `host.local\t192.168.1.5` after a name, nmblookup `192.168.1.5 KDOS<00>`.
+ * Anything that is not four numbers is not an answer. */
+static bool km_take_ipv4(const char *line, char *out, size_t nout)
+{
+	unsigned a, b, c4, d;
+	int len = 0;
+
+	if (sscanf(line, "%u.%u.%u.%u%n", &a, &b, &c4, &d, &len) != 4 ||
+	    len <= 0 || a > 255 || b > 255 || c4 > 255 || d > 255)
+		return false;
+	/* A longer run of digits and dots is a fifth label, not an address. */
+	if (line[len] && !isspace((unsigned char)line[len]) &&
+	    line[len] != '\t')
+		return false;
+	snprintf(out, nout, "%u.%u.%u.%u", a, b, c4, d);
+	return true;
+}
+
+/* The first address in a helper's output, scanning line by line. nmblookup
+ * prints a `querying …` line before the answer and avahi-resolve prints the
+ * name before the address, so neither first line nor last is the rule. */
+static bool km_first_ipv4(const char *text, char *out, size_t nout)
+{
+	const char *p = text;
+
+	while (p && *p) {
+		const char *nl = strchr(p, '\n');
+		char line[256];
+		size_t len = nl ? (size_t)(nl - p) : strlen(p);
+
+		if (len >= sizeof(line))
+			len = sizeof(line) - 1;
+		memcpy(line, p, len);
+		line[len] = '\0';
+		/* avahi puts the NAME first and the address after a tab. */
+		{
+			char *tab = strchr(line, '\t');
+
+			if (tab && km_take_ipv4(tab + 1, out, nout))
+				return true;
+		}
+		if (km_take_ipv4(line, out, nout))
+			return true;
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	return false;
+}
+
+/* Does the C library already know this name? A literal answers here too, which
+ * is why no separate test for one is needed. */
+static bool km_resolvable(const char *name)
+{
+	struct addrinfo hints = { .ai_family = AF_UNSPEC,
+				  .ai_socktype = SOCK_STREAM };
+	struct addrinfo *res = NULL;
+
+	if (getaddrinfo(name, NULL, &hints, &res) != 0)
+		return false;
+	freeaddrinfo(res);
+	return true;
+}
+
+/*
+ * The address for `server`, or an empty string for "the helper can find it
+ * itself". A name this image cannot resolve by any route is a hard failure
+ * with the reason in `out`: passing it on would spend a mount helper's whole
+ * timeout on a name that was never going to answer.
+ */
+static int km_resolve(const char *server, char *ip, size_t nip, char *out,
+		      size_t nout)
+{
+	size_t len = strlen(server);
+	bool dotlocal = len > 6 && !strcasecmp(server + len - 6, ".local");
+	bool bare = strchr(server, '.') == NULL;
+	char text[4096] = "";
+	KbArgv a = { 0 };
+
+	ip[0] = '\0';
+	if (!dotlocal && !bare)
+		return 0;
+	/* Under the fixture nothing is broadcast and nothing is resolved: the
+	 * assertion is about the request this daemon makes, and a name that
+	 * answered on the machine running the suite would make it a different
+	 * test on every network. */
+	if (km_fixture)
+		return 0;
+	if (km_resolvable(server))
+		return 0;
+
+	if (dotlocal)
+		kb_argv_add(&a, "/usr/bin/avahi-resolve-host-name");
+	else
+		kb_argv_add(&a, "/usr/bin/nmblookup");
+	/* `--` and then the name: a label beginning with a dash is a name
+	 * this daemon has already accepted and must not become an option. */
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, server);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, text, sizeof(text)) != 0 ||
+	    !km_first_ipv4(text, ip, nip)) {
+		ip[0] = '\0';
+		snprintf(out, nout,
+			 dotlocal
+				 ? "no machine on this network answers to %s"
+				 : "no machine on this network answers to the "
+				   "name %s",
+			 server);
+		return -1;
+	}
+	return 1;
+}
+
+/*
+ * ── who is offering a share ────────────────────────────────────────────
+ *
+ * THE BROWSE LIST HAS TWO SOURCES AND NEITHER IS A DIRECTORY. There is no
+ * browse master to ask here — samba is built without winbind and without a
+ * domain controller — so what this returns is what answered a broadcast in
+ * the moment it was asked, from both of the two broadcasts this image can
+ * make:
+ *
+ *   - `avahi-browse -ptrk _smb._tcp` for the machines that advertise the
+ *     service over mDNS, which is every Mac and most NAS boxes.
+ *   - `nmblookup -S -- '*'` for the machines that answer a NetBIOS broadcast.
+ *     `-S` does the node status in the SAME process, so a network of twenty
+ *     machines costs one child rather than twenty.
+ *
+ * A LIST IS NEVER HELD BETWEEN REQUESTS, for the reason the device list is
+ * not: a server that has gone must not be answered for out of this daemon's
+ * memory. And a row here is NOT an index into anything — a browse row carries
+ * the name itself, because the `cifs` verb names a server and there is no row
+ * for it to be a number in.
+ */
+#define KM_BROWSE_MAX 32
+
+struct kmserver {
+	char name[KM_NAME];
+	char addr[46];
+};
+
+static bool km_browse_add(struct kmserver *v, int *n, const char *name,
+			  const char *addr)
+{
+	if (!name || !*name || *n >= KM_BROWSE_MAX)
+		return false;
+	for (int i = 0; i < *n; i++)
+		if (!strcasecmp(v[i].name, name))
+			return false;
+	snprintf(v[*n].name, sizeof(v[0].name), "%s", name);
+	snprintf(v[*n].addr, sizeof(v[0].addr), "%s", addr ? addr : "");
+	(*n)++;
+	return true;
+}
+
+/*
+ * avahi's parsable format is semicolon separated and the fields are positional:
+ *   =;eth0;IPv4;Time Capsule;_smb._tcp;local;tc.local;192.168.1.9;445;…
+ * Field 3 is the service's own name, which is what a person recognises, and
+ * field 7 the address. A line that does not begin `=` is a browse event
+ * rather than a resolution and carries neither.
+ */
+static void km_browse_mdns(struct kmserver *v, int *n)
+{
+	char text[8192] = "";
+	KbArgv a = { 0 };
+
+	kb_argv_add(&a, "/usr/bin/avahi-browse");
+	kb_argv_add(&a, "-ptrk");
+	kb_argv_add(&a, "_smb._tcp");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, text, sizeof(text)) != 0)
+		return;
+	for (char *p = text; p && *p;) {
+		char *nl = strchr(p, '\n');
+		char *f[10] = { 0 };
+		int nf = 0;
+
+		if (nl)
+			*nl = '\0';
+		if (*p == '=') {
+			for (char *q = p; nf < 10;) {
+				char *sc = strchr(q, ';');
+
+				f[nf++] = q;
+				if (!sc)
+					break;
+				*sc = '\0';
+				q = sc + 1;
+			}
+			if (nf >= 8)
+				km_browse_add(v, n, f[3], f[7]);
+		}
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+}
+
+/*
+ * nmblookup -S prints an address, then that machine's name table indented:
+ *
+ *   192.168.1.5 *<00>
+ *   Looking up status of 192.168.1.5
+ *           KDOS            <20> -         B <ACTIVE>
+ *
+ * `<20>` is the file-server name and the only entry worth offering; `<00>` is
+ * the workstation name and `<1d>`/`<1e>` are browser elections. A machine with
+ * no `<20>` is one sharing nothing, and it is left out rather than listed as a
+ * server that will refuse every share.
+ */
+static void km_browse_netbios(struct kmserver *v, int *n)
+{
+	char text[16384] = "";
+	char addr[46] = "";
+	KbArgv a = { 0 };
+
+	kb_argv_add(&a, "/usr/bin/nmblookup");
+	kb_argv_add(&a, "-S");
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, "*");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, text, sizeof(text)) != 0)
+		return;
+	for (char *p = text; p && *p;) {
+		char *nl = strchr(p, '\n');
+		char name[KM_NAME] = "";
+
+		if (nl)
+			*nl = '\0';
+		if (km_take_ipv4(p, addr, sizeof(addr))) {
+			/* A new address begins a new name table. */
+		} else if (addr[0] && strstr(p, "<20>") &&
+			   !strstr(p, "<GROUP>") &&
+			   sscanf(p, " %63s", name) == 1 &&
+			   strcmp(name, "<20>")) {
+			/* THE GATE IS strstr AND NOT THE FORMAT. `sscanf`
+			 * counts ASSIGNMENTS, so a trailing literal that fails
+			 * to match still reports the name it already stored:
+			 * a format of `" %63s <20>"` accepts
+			 * `Looking up status of 192.168.1.5` and calls the
+			 * server `Looking`.
+			 *
+			 * A name with a character a share name cannot is one
+			 * this daemon would refuse on the way back in, so it
+			 * is not offered. */
+			if (km_host(name))
+				km_browse_add(v, n, name, addr);
+		}
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+}
+
+static void reply_browse(int c)
+{
+	struct kmserver v[KM_BROWSE_MAX];
+	int n = 0;
+	char line[256];
+
+	/* NOTHING IS BROADCAST UNDER THE FIXTURE. An empty list is a real
+	 * answer — a network with nothing on it gives the same one — so the
+	 * suite asserts the protocol and never the neighbours. */
+	if (!km_fixture) {
+		km_browse_mdns(v, &n);
+		km_browse_netbios(v, &n);
+	}
+	for (int i = 0; i < n; i++) {
+		int len = snprintf(line, sizeof(line), "%s\t%s\n", v[i].name,
+				   v[i].addr);
+
+		(void)!write(c, line, (size_t)len);
+	}
+	(void)!write(c, "ok\n", 3);
+}
+
+/*
  * ── a share on another machine ─────────────────────────────────────────
  *
  * THE HELPER RUNS, THE DAEMON DOES NOT MOUNT. `mount(2)` cannot raise a cifs
@@ -1156,13 +1464,98 @@ static int do_mount(int idx, uid_t uid, char *out, size_t nout)
  * file as owned by root, and a share nobody but root can read is a share that
  * did not mount as far as the person who asked is concerned.
  */
+/*
+ * A TICKET INSTEAD OF A PASSWORD.
+ *
+ * `sec=krb5` IS NOT A THIRD KIND OF SECRET, it is the absence of one: the
+ * ticket is already in the CALLER'S credential cache, put there by `kinit`,
+ * and nothing about it crosses this socket. What the kernel's cifs module does
+ * is raise a `cifs.spnego` key request; `request-key` runs `cifs.upcall`, and
+ * the helper reads that cache and hands back the blob.
+ *
+ * WHICH MAKES `cruid=` LOAD-BEARING. This daemon is root and the mount is the
+ * caller's, so without it the upcall looks in ROOT'S cache — which is empty,
+ * on a machine where nobody has any reason to kinit as root — and the mount
+ * fails with `Required key not available` naming no user.
+ *
+ * AND THE HELPER IS CHECKED BEFORE THE HELPER IS RUN. An image built without
+ * `cifs.upcall` answers that same message, which says nothing about why; the
+ * refusal here names the file.
+ */
+static bool krb5_ready(char *out, size_t nout)
+{
+	if (km_fixture)
+		return true;
+	if (access("/usr/sbin/cifs.upcall", X_OK) != 0) {
+		snprintf(out, nout, "this image has no cifs.upcall, so a "
+				    "ticket cannot reach the kernel");
+		return false;
+	}
+	if (access("/etc/request-key.d/cifs.spnego.conf", R_OK) != 0) {
+		snprintf(out, nout, "no request-key rule for cifs.spnego, so "
+				    "the kernel cannot ask for a ticket");
+		return false;
+	}
+	return true;
+}
+
+/*
+ * APPEND, AND NEVER PAST THE END. `snprintf` answers the length it WOULD have
+ * written, so a running total that takes that answer at face value goes past
+ * the buffer on the first truncation — and `cap - nopt` is then a `size_t`
+ * that has wrapped, which the next call takes as permission to write about
+ * eighteen exabytes. This is a root daemon, so the total is clamped and the
+ * caller tests it once at the end.
+ */
+static void opt_add(char *buf, size_t cap, size_t *n, const char *fmt, ...)
+	__attribute__((format(printf, 4, 5)));
+
+static void opt_add(char *buf, size_t cap, size_t *n, const char *fmt, ...)
+{
+	va_list ap;
+	int r;
+
+	if (*n >= cap) {
+		/* Already full: keep the overflow visible to the caller and
+		 * write nothing more. */
+		*n = cap;
+		return;
+	}
+	va_start(ap, fmt);
+	r = vsnprintf(buf + *n, cap - *n, fmt, ap);
+	va_end(ap);
+	if (r < 0) {
+		*n = cap;
+		return;
+	}
+	*n += (size_t)r;
+}
+
+/*
+ * `pass` IS NULL FOR A KERBEROS MOUNT and a password otherwise, and that one
+ * argument is the whole difference between the two verbs: everything else —
+ * the name resolution, the module load, the mountpoint, the ownership options
+ * — is the same mount.
+ */
 static int do_cifs(const char *server, const char *share, const char *user,
 		   const char *domain, const char *pass, size_t npass,
 		   uid_t uid, char *out, size_t nout)
 {
 	struct passwd *pw = getpwuid(uid);
-	char parent[192], dir[352], unc[352], opts[512];
+	/*
+	 * THE OPTION STRING HOLDS EVERY FIELD AT ITS CEILING AND THEN SOME. A
+	 * username may be 104 bytes and an NT domain 255, and with `sec=krb5`,
+	 * a `cruid=`, an `ip=` and the ownership tail a legal corporate share
+	 * spells about five hundred and thirty — which at 512 was a silently
+	 * truncated option string, and a truncated `dir_mode=07` is a mount
+	 * with permissions nobody asked for.
+	 */
+	char parent[192], dir[352], unc[352], opts[640], ip[46] = "";
 	char err[512] = "";
+	/* NAMED ONLY WHERE THERE IS A PASSWORD TO READ. `PASSWD_FD=0` tells
+	 * `mount.cifs` to take one off stdin; on a ticket mount there is
+	 * nothing on stdin, and an environment saying otherwise is a helper
+	 * waiting for a descriptor that is already at end of file. */
 	const char *env[1] = { "PASSWD_FD=0" };
 	KbArgv a = { 0 };
 	int rc;
@@ -1173,6 +1566,13 @@ static int do_cifs(const char *server, const char *share, const char *user,
 				    "cannot");
 		return -1;
 	}
+	if (!pass && !krb5_ready(out, nout))
+		return -1;
+	/* BEFORE THE MODULE AND BEFORE THE MOUNTPOINT. A name nothing answers
+	 * to must not leave a directory behind under /media, and loading a
+	 * kernel module for a mount that cannot happen is work for nothing. */
+	if (km_resolve(server, ip, sizeof(ip), out, nout) < 0)
+		return -1;
 	/*
 	 * THE MODULE IS LOADED BEFORE THE QUESTION IS ASKED. `cifs` is a
 	 * module on this image and nothing else here loads it, and
@@ -1233,13 +1633,51 @@ static int do_cifs(const char *server, const char *share, const char *user,
 		return -1;
 	}
 
-	snprintf(opts, sizeof(opts),
-		 "user=%s%s%s,uid=%u,gid=%u,file_mode=0600,dir_mode=0700,"
-		 "nosuid,nodev%s",
-		 user, strcmp(domain, "-") ? ",domain=" : "",
-		 strcmp(domain, "-") ? domain : "",
-		 (unsigned)uid, pw ? (unsigned)pw->pw_gid : 0u,
-		 exec_allowed() ? "" : ",noexec");
+	/* `ip=` IS THE WHOLE OF WHAT A BROADCAST BOUGHT. The UNC keeps the
+	 * name that was typed — a mountpoint named after an address is one
+	 * nobody recognises, and a lease that moved would leave the old
+	 * number on the filesystem for ever — and the helper is told where to
+	 * send the packets. Empty when the resolver could already answer,
+	 * which is every address and every DNS name. */
+	{
+		/*
+		 * BUILT BY APPENDING, because half of these options are
+		 * conditional and a single format string with five ternaries
+		 * in it is a string nobody can read and nobody can check.
+		 * Every append is bounded by `nopt`, and a truncation is
+		 * caught below rather than mounting with half an option.
+		 *
+		 * `-` IS THE WHOLE OF "no username", and a Kerberos mount is
+		 * where that is the ordinary case: the principal in the ticket
+		 * says who you are, and a `user=` beside it is a second answer
+		 * to a question already settled.
+		 */
+		size_t nopt = 0;
+
+		opts[0] = '\0';
+		if (!pass)
+			opt_add(opts, sizeof(opts), &nopt,
+				"sec=krb5,cruid=%u,", (unsigned)uid);
+		if (strcmp(user, "-"))
+			opt_add(opts, sizeof(opts), &nopt, "user=%s,", user);
+		if (strcmp(domain, "-"))
+			opt_add(opts, sizeof(opts), &nopt, "domain=%s,",
+				domain);
+		if (ip[0])
+			opt_add(opts, sizeof(opts), &nopt, "ip=%s,", ip);
+		opt_add(opts, sizeof(opts), &nopt,
+			"uid=%u,gid=%u,file_mode=0600,dir_mode=0700,"
+			"nosuid,nodev%s",
+			(unsigned)uid, pw ? (unsigned)pw->pw_gid : 0u,
+			exec_allowed() ? "" : ",noexec");
+		if (nopt >= sizeof(opts)) {
+			snprintf(out, nout, "that share's fields make an "
+					    "option string longer than one "
+					    "can be");
+			rmdir(dir);
+			return -1;
+		}
+	}
 
 	kb_argv_add(&a, "/sbin/mount.cifs");
 	kb_argv_add(&a, unc);
@@ -1248,7 +1686,8 @@ static int do_cifs(const char *server, const char *share, const char *user,
 	kb_argv_add(&a, opts);
 	kb_argv_end(&a);
 
-	rc = km_exec_env(&a, env, 1, pass, npass, err, sizeof(err));
+	rc = km_exec_env(&a, pass ? env : NULL, pass ? 1 : 0, pass, npass, err,
+			 sizeof(err));
 	if (rc != 0) {
 		/* The helper's own words, first line only: it prints a usage
 		 * block after some failures and a surface has one row. */
@@ -1970,6 +2409,23 @@ static int serve(void)
 					msg[0] ? msg : "no such device");
 		} else if (ntok == 1 && !strcmp(verb, "shares")) {
 			reply_shares(c);
+		} else if (ntok == 1 && !strcmp(verb, "browse")) {
+			reply_browse(c);
+		} else if (ntok == 5 && !strcmp(verb, "krb5")) {
+			/*
+			 * THE ONE SHARE VERB WITH NO SECOND FRAME. A ticket is
+			 * in the caller's credential cache and never on this
+			 * socket, so there is nothing to read after the line
+			 * and nothing to wipe afterwards — which is why this
+			 * is a verb of its own rather than `cifs` with an
+			 * empty count. km_count() refuses a zero.
+			 */
+			if (do_cifs(tok[1], tok[2], tok[3], tok[4], NULL, 0,
+				    cred.uid, msg, sizeof(msg)) == 0)
+				dprintf(c, "ok %s\n", msg);
+			else
+				dprintf(c, "err %s\n",
+					msg[0] ? msg : "refused");
 		} else if (ntok == 2 && !strcmp(verb, "disconnect")) {
 			char unc[KM_DEVS][352], at[KM_DEVS][256];
 			int n = shares(unc, at, KM_DEVS);
@@ -2082,10 +2538,21 @@ static int usage(void)
 		"       kdos-mount mount <index>\n"
 		"       kdos-mount unmount <index>\n"
 		"       kdos-mount smart <index>\n"
+		"       kdos-mount shares\n"
+		"       kdos-mount browse\n"
+		"       kdos-mount krb5 <server> <share> <user|-> <domain|->\n"
 		"       kdos-mount ping\n"
 		"       kdos-mount subscribe\n"
 		"\nThe index is a row from `list`. There is no form that takes\n"
 		"a device or a mountpoint: the daemon decides both.\n"
+		"\n`shares` lists what is CONNECTED; `browse` lists what\n"
+		"answered an mDNS and a NetBIOS broadcast just now, as\n"
+		"`name<TAB>address` a row. Neither row is an index: the\n"
+		"connect form names a server.\n"
+		"\n`krb5` mounts with the ticket `kinit` already put in your\n"
+		"credential cache. It takes no password, because none\n"
+		"crosses the socket; `-` is the whole of \"no username\" and\n"
+		"of \"no domain\".\n"
 		"\n`subscribe` writes `changed` whenever the list moves and\n"
 		"never exits; it names no device, because a row number is only\n"
 		"true of the list it came with. Ask again with `list`.\n");
@@ -2149,8 +2616,25 @@ int main(int argc, char **argv)
 	if (argc < 2)
 		return usage();
 	if (!strcmp(argv[1], "list") || !strcmp(argv[1], "ping") ||
+	    !strcmp(argv[1], "shares") || !strcmp(argv[1], "browse") ||
 	    !strcmp(argv[1], "subscribe"))
 		return ask(argv[1]);
+	if (!strcmp(argv[1], "krb5") && argc == 6) {
+		char word[512];
+
+		/* Re-rendered rather than passed through, the index verbs'
+		 * rule: what reaches the daemon is five tokens of this
+		 * command's own making. Every field is checked THERE, because
+		 * a check in a client is one nothing else talking to the
+		 * socket gets. */
+		if (snprintf(word, sizeof(word), "krb5 %s %s %s %s", argv[2],
+			     argv[3], argv[4], argv[5]) >= (int)sizeof(word)) {
+			fprintf(stderr, "kdos-mount: that is longer than a "
+					"request can be\n");
+			return 2;
+		}
+		return ask(word);
+	}
 	if ((!strcmp(argv[1], "mount") || !strcmp(argv[1], "unmount") ||
 	     !strcmp(argv[1], "smart")) && argc > 2) {
 		char word[64];

@@ -19,7 +19,8 @@
 #   - the Wayland base and Xwayland, but NOT the desktop
 #
 # The desktop — wlroots, kdos-comp, kdos-shell — is 05_desktop.
-# See docs/KDOS-DESKTOP.md for the architecture rationale.
+# See docs/kdos/05-developer/build-system.md for why the desktop is its own
+# phase.
 
 # ---------------------------------
 # Core Build Utilities (host-side)
@@ -44,12 +45,12 @@ bc
 elfutils
 rsync
 python3
-refind
 libburn
 libisofs
 libisoburn
 squashfs-tools
 mtools
+limine
 eudev
 dosfstools
 e2fsprogs
@@ -114,6 +115,11 @@ alsa-utils
 # PipeWire is the audio stack and alsamixer cannot see it: this is the mixer
 # that shows the graph — every stream, its device and where it is routed.
 wiremix
+# PipeWire builds no session manager of its own, and the daemon routes
+# nothing without one: device discovery, which sink a stream lands on and a
+# headset's profile are all policy. media-session, its old in-tree example,
+# is dead upstream.
+wireplumber
 bluez
 cups
 
@@ -163,12 +169,33 @@ ttf-dejavu
 # as a box — in foot, in an alien app, and in any filename that carries one.
 noto-cjk
 # Noto Sans and Noto Sans Mono, and the preference file that puts them at the
-# head of `sans-serif` and `monospace`. This is the face the cell grid is drawn
-# in, so it decides what every console surface looks like. It is installed
+# head of `sans-serif` and `monospace`. Anything that asks fontconfig for a
+# generic family gets Noto: libkcell's default and its monospace retry, the
+# canvas fallback, libkwl's font-step fallback and every boxed GTK or Qt app.
+# The desktop's own chrome, panel and terminal name Terminus. It is installed
 # BESIDE DejaVu and not instead of it: Noto Sans Mono carries the full box and
 # block sets but no diagonal arrows, four dingbats and three misc symbols, and
 # the preference file is numbered so fontconfig reaches DejaVu for those next.
 noto-fonts
+
+# The scripts noto-fonts itself does not carry: its sources are Latin, Greek
+# and Cyrillic, so Thai, Devanagari, Bengali, Tamil, Telugu, Gujarati, Hebrew,
+# Arabic, Khmer and Ethiopic all render as tofu without this. CJK is NOT here
+# — noto-cjk already ships the same 112 MB asset, and two packages owning one
+# file is a conflict at install time.
+noto-fonts-extra
+
+# The glyph range a prompt theme, a file manager's type column and a status bar
+# reach for. Upstream's own fontconfig rule prefers the PROPORTIONAL symbol
+# face for `monospace`, which puts a double-width icon in a single cell; the
+# recipe ships a corrected rule that keeps the cell grid's real family first.
+nerd-fonts-symbols
+libcbor
+libfido2
+# The colour emoji face, which the rest of the font configuration already
+# assumes: `70-no-bitmaps-except-emoji` carves bitmap fonts an exception BY
+# FAMILY, and with no such family every emoji on the image is a blank box.
+noto-emoji
 
 # ---------------------------------
 # Modern CLI tools (Rust / Go)
@@ -462,7 +489,8 @@ gpsd
 # ---------------------------------
 # Opening /dev/ttyUSB0 is trivial; knowing it exists, that it is an FTDI, and
 # which of three identical adapters it is, is sysfs walking every bench
-# program would otherwise reimplement.
+# program would otherwise reimplement. Reachability is the other half:
+# fs/etc/group and fs/etc/udev/rules.d.
 libserialport
 # A hundred hardware drivers behind one interface, so a program reads samples
 # without knowing which box produced them. The decoders are python modules —
@@ -567,8 +595,8 @@ exiv2
 qpdf
 
 # THE OTHER HALF OF THE PICTURE PATH. kdos-term decodes sixel, kitty and
-# iTerm2 pictures and nothing in this tree emitted one, so an image on the
-# console desktop was a filename. chafa converts anything to whichever of those
+# iTerm2 pictures and nothing in this tree emits one, so an image in a terminal
+# is a filename without this. chafa converts anything to whichever of those
 # the terminal admits to; timg adds video frames and is the entry the file
 # managers' previewers call. Neither renders a PDF: that wants poppler's glib
 # binding, which the poppler port does not build. Both are also reached from a
@@ -587,11 +615,19 @@ gtk-doc
 # MIME parsing that verifies a signature and decrypts a part correctly, which
 # is the whole value over a hand-rolled parser.
 gmime
+# WHAT mbsync AUTHENTICATES THROUGH, and it is two packages because the library
+# ships no XOAUTH2 of its own. cyrus-sasl is the mechanism LOADER — client side
+# only, with no saslauthd and no password store; the plugin beside it is the
+# mechanism a provider that has withdrawn application passwords requires.
+# Without both, an account on such a provider can be read in aerc and sent
+# through msmtp and cannot be mirrored into a local Maildir at all.
+cyrus-sasl
+cyrus-sasl-xoauth2
 # THE WRITER notmuch's comment below refers to. mbsync makes an IMAP mailbox
 # and ~/Mail equal in both directions and indexes nothing, which is why
 # `notmuch new` runs it from a pre-new hook and then indexes what it left: one
 # command fetches and files, and nothing has to remember the order. XOAUTH2 is
-# out of reach — that path is cyrus-sasl, which this tree does not build.
+# reached through the two packages above; OAUTHBEARER is not, and is aerc's.
 isync
 # The transport. `sendmail` on this image is a symlink to msmtp, so aerc, cron
 # and a shell script hand a message to one program instead of three settings.
@@ -620,6 +656,21 @@ w3m
 stfl
 libintl
 newsboat
+# THE OTHER ANSWER TO THE SAME QUESTION, and it is a different one rather than
+# a smaller one. newsboat is a reader with a database; sfeed is a PARSER that
+# writes one tab-separated line per item, and everything after that — the
+# curses reader, an mbox, a gopher page, a plain list — is a separate program
+# reading that file. That is what makes a feed greppable, and it is why the
+# two are both here: one is an application, the other is a pipeline.
+sfeed
+# MARKDOWN OUT, AND NOT MARKDOWN DRAWN. `glow` renders a document into a
+# terminal; this writes the HTML, which is what `w3m` reads and what a page
+# published anywhere needs. One C file.
+smu
+# IRC AS A DIRECTORY. A FIFO to write into and a text file to read, per channel
+# — so the client is `tail -f` and the composer is `echo`, and a bot is a shell
+# script with no library at all. There is no other IRC client on this image.
+ii
 # Its database is two plain text files — greppable, diffable, syncable with
 # the rest of $HOME, and a backup is a copy.
 # A missing AX_* macro does not fail at aclocal time — it survives into the
@@ -696,9 +747,16 @@ routino
 # PARI answers exact integer and number-theoretic questions; maxima answers
 # symbolic ones. Neither substitutes for the other.
 pari
+# WHAT LETS THE SPREADSHEET HAND A FILE BACK IN THE FORMAT IT ARRIVED IN.
+# sc-im READS .xlsx through libxml2 and libzip and gates its EXPORT on a
+# pkg-config probe for `xlsxwriter`; without this port that probe fails
+# silently at build time and the finished program answers `XLSX export support
+# not compiled in.` to a save.
+libxlsxwriter
 # A spreadsheet is a grid of cells, which is what this whole desktop is — so
 # it runs on tty1 at the console font with no compromise. libxml2 and libzip
-# are what let it read the .xlsx a spreadsheet actually arrives as.
+# are what let it read the .xlsx a spreadsheet actually arrives as, and
+# libxlsxwriter is what lets it write one back.
 sc-im
 # SQL over CSV, JSON and Parquet with no server and no import step. The two
 # autoload flags are the point: by default it DOWNLOADS an extension from
@@ -980,10 +1038,12 @@ caddy
 # xh explores and hurl asserts: a request plus what the answer must contain,
 # in a file that diffs. On a machine with no CI, that file IS the CI.
 hurl
-# A character-cell desktop is the ideal thing to read — tty1, the installer
-# and every kdos-shell surface is a grid BRLTTY takes verbatim out of
-# /dev/vcsa, with none of the guessing a toolkit tree needs. Boxed GUI apps
-# stay unreachable; docs/ACCESSIBILITY.md is the statement of record.
+# BRLTTY reads /dev/vcsa, so what it covers is tty1 and the installer — grids
+# of cells it takes verbatim, with none of the guessing a toolkit tree needs.
+# The graphical session is Wayland and publishes no accessibility tree, so no
+# desktop surface is reachable; a boxed GUI app has no cells here either and is
+# read by its own box's AT-SPI registry instead. The statement of record is
+# docs/kdos/02-user-guide/accessibility.md.
 # `expr length` is a GNU extension toybox does not implement — it yields the
 # empty string, and brltty's configure then reports a driver that is present
 # as unknown. One program, for the same reason sed and gawk are ports.
@@ -1071,9 +1131,9 @@ shfmt
 # Every documented appbox failure is podman state — a box stuck in `stopping`,
 # a half-built init, a storage driver mismatch.
 podman-tui
-# The KDOS repo no longer uses LFS, but `kdos rebuild` promises this stick can
-# rebuild this stick, and that extends to any other repo cloned on it: without
-# this a clone SUCCEEDS and checks out pointer files.
+# The KDOS repo keeps every source archive in LFS, and `kdos rebuild` promises
+# this stick can rebuild this stick — as it does for any other repo cloned on
+# it. Without this a clone SUCCEEDS and checks out pointer files.
 git-lfs
 
 # ---------------------------------
@@ -1103,6 +1163,42 @@ valkey
 # on the host able to open it; picocom is the program those rules exist for.
 # libnvme has been a port with no consumer since it landed — nvme-cli is it.
 smartmontools
+# The half smartmontools cannot do: it reports a drive's health and cannot
+# change its behaviour. APM, spindown and secure erase are here.
+hdparm
+# Linux software RAID. Without it an existing array is neither assembled at
+# boot nor readable afterwards, which is a disk that looks empty.
+mdadm
+# LVM shells out to thin_check before it will activate a thin pool and
+# refuses the pool when the call fails — and the shipped lvm.conf already
+# names /usr/sbin/thin_check by absolute path.
+# The speech API a screen reader talks to. espeak-ng is already here and is
+# the voice behind it; without this nothing on the image can drive it.
+dotconf
+speech-dispatcher
+# Intel thermal management. Without it a laptop reaches its throttle point
+# and stays there, which reads as a slow machine rather than a hot one.
+thermald
+# The TPM2 stack, so a LUKS key can be sealed to the chip instead of typed
+# on every boot.
+tpm2-tss
+tpm2-tools
+# Corporate VPN: AnyConnect, GlobalProtect, Fortinet and Pulse. The script is
+# what gives the tunnel its routes — openconnect execs it on every connect.
+#
+# NO NetworkManager PLUGIN. Upstream's checks webkit2gtk UNCONDITIONALLY, and
+# the dialog it builds with it is the thing the VPN service delegates
+# authentication to — so on a host with no GTK the plugin cannot be built,
+# and a build with the dialog disabled would be a connection type the surface
+# offers and cannot authenticate.
+vpnc-script
+openconnect
+# Fingerprint login. libfprint is the drivers and fprintd is the daemon plus
+# pam_fprintd, which is the half that actually unlocks anything.
+gusb
+libfprint
+fprintd
+thin-provisioning-tools
 nvme-cli
 lm-sensors
 dmidecode
@@ -1189,6 +1285,12 @@ mtr
 # dnsmasq is shipped and there was no way to ask this machine a DNS question;
 # drill comes with the library.
 ldns
+# A TICKET, BECAUSE A CORPORATE FILE SERVER OFTEN WILL NOT TAKE A PASSWORD.
+# `kinit` gets one and `cifs.upcall` — which is what puts krb5 in cifs-utils'
+# `depends` — hands it to the kernel's cifs module, so `sec=krb5` has somewhere
+# to call out to. The client half only: no KDC and no administration daemon
+# are installed.
+krb5
 # The two remote filesystems a workstation actually mounts. cifs-utils pulls
 # talloc, which samba requires unconditionally.
 cifs-utils
@@ -1203,6 +1305,12 @@ wayland
 wayland-protocols
 seatd
 libdisplay-info
+# THE 2 LINE, AND ITS CONSUMERS ARE WHY. baresip's video display and
+# whisper.cpp's streaming transcription both look for `sdl2` through
+# pkg-config and neither has an SDL3 path; without it a call cannot show the
+# other person and transcription is batch over a closed file. Built with no
+# X11 and no KMSDRM — a graphical program here runs under a compositor.
+sdl2
 gstreamer
 gst-plugins-base
 gst-plugins-good
@@ -1241,6 +1349,11 @@ vulkan-loader
 # which are also what says whether the machine has a Vulkan driver at all.
 # mesa-demos' Vulkan Wayland surface needs libdecor and nothing else in this
 # file does, so its `depends` is what puts that port in the install order.
+libmad
+cmus
+farbfeld
+blind
+libgrapheme
 mesa-demos
 glmark2
 vulkan-tools
@@ -1263,6 +1376,25 @@ libsixel
 # permission opens a device nothing can talk to.
 libgphoto2
 gphoto2
+
+# Android and every other MTP device. gphoto2 above covers PTP-mode still
+# cameras only, so without this a phone plugged into a USB port does nothing.
+libmtp
+
+# Thunderbolt authorisation. Where the firmware's security level is `user` or
+# `secure` — the shipping default on most business laptops — a TB3/TB4 dock is
+# enumerated and then never authorised, so the dock's ports stay dead.
+bolt
+
+# Firmware updates: UEFI, SSDs, docks, peripherals. Built without the capsule
+# binary, so the UEFI plugin reports unsupported rather than pretending.
+fwupd
+
+# The camera stack the shipped kernel config already assumes: it sets
+# CONFIG_VIDEO_INTEL_IPU6 and ~40 sensor drivers, none of which reach userspace
+# without this. python3-ply is its parser generator, build-time only.
+python3-ply
+libcamera
 # Check and repair an STL before a slicer refuses it — the failure that
 # otherwise appears as a print that starts and stops.
 admesh
@@ -1480,17 +1612,13 @@ sof-firmware
 tzdata
 
 # ---------------------------------
-# Device access libraries (serial, HID, USB)
+# Device access libraries (HID, USB)
 # ---------------------------------
-# What the flashing, SDR and instrument tools link against. Listed here rather
-# than arriving through a `depends` because those consumers are not in the tree
-# yet, and a library built only once something needs it is not a prerequisite.
-# Reachability is the other half: fs/etc/group and fs/etc/udev/rules.d.
-libserialport
-libftdi1
+# What the flashing, SDR and instrument tools link against. Both also arrive
+# through a `depends`, so naming them here fixes their position in the build
+# order, not whether they are built at all.
 hidapi
 libzip
-eigen3
 
 # ---------------------------------
 # Colour management and codecs
@@ -1515,8 +1643,64 @@ libvpx
 svt-av1
 libass
 libva
+
+# Intel's VA-API driver, and the memory-management library it cannot build
+# without. mesa's gallium-va covers r600, radeonsi, nouveau and virgl only, so
+# without these every Intel iGPU from Broadwell forward has no VA-API entry
+# point at all and ffmpeg and mpv fall back to software decode. The version
+# coupling is hard: media-driver 26.2.4 needs igdgmm 12.10.x, and against an
+# older one it fails 25 minutes into the compile rather than at configure.
+intel-gmmlib
+intel-media-driver
+
+# `vainfo` — the one command that answers which decode profiles a machine
+# actually has. A driver that did not load is otherwise silent.
+libva-utils
+
+# The mandatory codec of Bluetooth LE Audio. A codec left on meson's `auto`
+# produces a pipewire that negotiates SBC and says nothing, so pipewire names
+# this one explicitly.
+liblc3
+
 libde265
 libheif
+
+# Reaching this desktop from another machine. kdos-comp already offers
+# zwlr_screencopy_manager_v1, so the server side needs no code of ours — only
+# these three, in this order: aml is the event loop neatvnc links, and neatvnc
+# is the protocol library wayvnc drives. neatvnc must be 1.x; wayvnc 0.10.1
+# pins `>=1.0.0 <2.0.0` and fails at meson setup against a 0.9 series.
+aml
+neatvnc
+wayvnc
+
+# IRC and the rest of the chat networks, in cells. The three scripting plugins
+# are hard configure dependencies as well as runtime ones: dropping python3,
+# perl or lua from the recipe's depends stops the build rather than narrowing
+# it.
+weechat
+
+# Who owns a domain or an address range. Nothing else on the image answers it.
+whois
+
+# User-mode networking for rootless containers. podman 5.x treats slirp4netns
+# as deprecated and defaults to pasta.
+passt
+
+# The line editor lldb links for its prompt. Without it IOHandlerEditline
+# never builds an Editline and `(lldb)` loses history, arrow-key editing and
+# tab completion — and lldb offers no readline fallback.
+libedit
+
+# The debugger Rust and Zig point at; gdb above is the C story. Its version is
+# not a free choice — it must equal the llvm and clang the tree already pins,
+# or the plugin ABI does not match.
+lldb
+
+# The kernel profiler. Built from the same tarball as the `linux` port and
+# pinned to the same version: a perf built from a different kernel's source
+# does not fail, it silently reports unknown record types.
+perf
 
 # Boot splash. Lives in src/packages rather than ports/core because the source
 # is ours, not an upstream tarball. Draws the CRT power-on animation straight

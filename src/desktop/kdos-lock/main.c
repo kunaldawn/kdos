@@ -16,15 +16,13 @@
  *          ║  Enter to unlock                     ║
  *          ╚══════════════════════════════════════╝
  *
- * An ext-session-lock-v1 client on Wayland and a lock-role surface on the
- * console, and in both the protocol is the whole design: the SESSION SERVER
- * owns the locked state — kdos-comp there, kdos-con here — so this process
- * dying leaves the screen locked rather than open. That inverts the usual
- * risk — the dangerous bug in a lock screen is not "it crashed", it is "it
- * unlocked". There is exactly one call that unlocks anything (`kdisp_unlock`,
- * which each display implements as its own single message, never as an
- * inference from this process exiting) and exactly one thing that reaches it:
- * kdos-checkpass answering 0.
+ * An ext-session-lock-v1 client, and the protocol is the whole design: the
+ * COMPOSITOR owns the locked state, so this process dying leaves the screen
+ * locked rather than open. That inverts the usual risk — the dangerous bug in
+ * a lock screen is not "it crashed", it is "it unlocked". There is exactly one
+ * call that unlocks anything (`kdisp_unlock`, which libkwl implements as its
+ * own single message, never as an inference from this process exiting) and
+ * exactly one thing that reaches it: kdos-checkpass answering 0.
  *
  * FOUR RULES IT IS BUILT AROUND:
  *
@@ -54,13 +52,12 @@
 
 #include "kbase.h"
 #include "ktui.h"
-#include "kcon.h"
 #include "kwl.h"
 
-/* See the declaration: naming kwl_impl is what links Wayland into this
- * program. A console-only build would name a different one, or none. */
-static const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
-static const int kdos_disp_n = 2;
+/* Naming kwl_impl is what links Wayland into this program: libkdisp resolves
+ * the display server out of this table and there is one entry in it. */
+static const KDispImpl *const kdos_disp[] = { &kwl_impl };
+static const int kdos_disp_n = 1;
 
 
 #define LK_MAX_PASS 256
@@ -82,13 +79,10 @@ static int failed;
 /*
  * The logo as COLOURED RUNS, not as one string.
  *
- * It used to be stripped to plain text and painted in a single slot that
- * breathed between text and dim on a four-second clock. That was defensible
- * while logo.txt was one green: there was nothing else in the file to draw.
- * Now that the mascot carries a dark body, a white belly, an amber beak and a
- * glow ring, stripping the colour is throwing the picture away — photographed
- * on a booted ISO, the lock screen showed a featureless dark-green mass where
- * tty1 two seconds earlier had shown a penguin.
+ * logo.txt carries a dark body, a white belly, an amber beak and a glow ring.
+ * Stripping it to plain text and painting it in one slot throws the picture
+ * away: the lock screen draws a featureless dark-green mass where tty1 draws a
+ * penguin.
  *
  * The colours become libktui SLOTS rather than literal RGB, so the lock screen
  * follows the accent like everything else: an amber desktop gets an amber
@@ -155,7 +149,8 @@ static void theme_from_cache(void)
  * genlogo.py's five materials, as slots. The file is generated and its palette
  * is fixed there, so this table is small and closed: dark body, glow ring,
  * belly and eyes, beak and feet, and the wordmark's two tones. Anything
- * unrecognised reads as text, which is what an uncoloured banner was.
+ * unrecognised reads as text — an uncoloured banner, never a visible escape
+ * sequence.
  */
 static int slot_for(const char *sgr, size_t n)
 {
@@ -315,8 +310,8 @@ static void draw(const char *user, const char *host)
 	int shown = nchars < room ? nchars : room;
 	int k = 0;
 	for (int i = 0; i < shown && k + 3 < (int)sizeof(dots); i++) {
-		/* U+25CF BLACK CIRCLE — in the console font's charset as well
-		 * as in any desktop font, unlike the usual bullet operators. */
+		/* U+25CF BLACK CIRCLE — present in any desktop font, unlike
+		 * the usual bullet operators. */
 		dots[k++] = '\xe2';
 		dots[k++] = '\x97';
 		dots[k++] = '\x8f';
@@ -554,8 +549,8 @@ int main(int argc, char **argv)
 	pass_clear();
 	/*
 	 * Read BEFORE the shutdown. kdisp_shutdown() zeroes libkwl's state, so
-	 * asking afterwards always answered "not refused" — a second lock
-	 * client exited 0 while the compositor's log said it had been refused,
+	 * asking afterwards always answers "not refused" — a second lock client
+	 * would exit 0 while the compositor's log said it had been refused,
 	 * which is precisely the disagreement this exit code exists to prevent.
 	 */
 	int refused = kdisp_lock_finished();

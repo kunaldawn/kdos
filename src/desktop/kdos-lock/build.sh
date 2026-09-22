@@ -46,6 +46,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
 	xdg-decoration-unstable-v1-protocol.c
+# xdg-foreign: libkwl includes its header unconditionally, for kdos-pick's
+# one use of it — a dialog saying whose child it is, across processes. Any
+# port that links libkwl must generate it or the build stops at the include,
+# which is the lesson ext-session-lock already taught this file.
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
+	xdg-foreign-unstable-v2-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
@@ -67,15 +77,18 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
-PKGCFG="fcft pixman-1 xkbcommon wayland-client"
+# fontconfig is libkwl's: kwl_font.c enumerates the monospace families with
+# FcFontList, and fcft carries fontconfig as a Requires.private, so
+# `pkg-config --libs fcft` alone does not link it.
+PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" \
+	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-lock \
 	"$PORT_SRC"/main.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
@@ -84,7 +97,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-o kdos-checkpass "$PORT_SRC"/checkpass.c -lcrypt $LDFLAGS
 
 install -Dm755 kdos-lock "$PKG/usr/bin/kdos-lock"
-# 4755, and this is the only setuid bit KDOS ships. /etc/shadow is root-only
-# and the lock screen must not be root; see checkpass.c's header for what the
-# 120 lines behind this bit are allowed to do.
+# 4755, one of the two setuid bits KDOS ships (kdos-resctl is the other).
+# /etc/shadow is root-only and the lock screen must not be root; see
+# checkpass.c's header for what the 120 lines behind this bit are allowed to do.
 install -Dm4755 kdos-checkpass "$PKG/usr/bin/kdos-checkpass"

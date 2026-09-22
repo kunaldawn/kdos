@@ -82,48 +82,6 @@ static inline void kvt_shl_array_free(struct kvt_shl_array *arr)
 	free(arr);
 }
 
-/* Compute next higher power-of-2 of @v. Returns 4 in case v is 0. */
-static inline size_t kvt_shl_array_pow2(size_t v)
-{
-	size_t i;
-
-	if (!v)
-		return 4;
-
-	--v;
-
-	for (i = 1; i < 8 * sizeof(size_t); i *= 2)
-		v |= v >> i;
-
-	return ++v;
-}
-
-/* resize to length=size and zero out new array entries */
-static inline int kvt_shl_array_zresize(struct kvt_shl_array *arr, size_t size)
-{
-	void *tmp;
-	size_t newsize;
-
-	if (!arr)
-		return -EINVAL;
-
-	if (size > arr->size) {
-		newsize = kvt_shl_array_pow2(size);
-		tmp = realloc(arr->data, arr->element_size * newsize);
-		if (!tmp)
-			return -ENOMEM;
-
-		arr->data = tmp;
-		arr->size = newsize;
-
-		memset(((uint8_t*)arr->data) + arr->element_size * arr->length,
-		       0, arr->element_size * (size - arr->length));
-	}
-
-	arr->length = size;
-	return 0;
-}
-
 static inline int kvt_shl_array_push(struct kvt_shl_array *arr, const void *data)
 {
 	void *tmp;
@@ -149,14 +107,6 @@ static inline int kvt_shl_array_push(struct kvt_shl_array *arr, const void *data
 	return 0;
 }
 
-static inline void kvt_shl_array_pop(struct kvt_shl_array *arr)
-{
-	if (!arr || !arr->length)
-		return;
-
-	--arr->length;
-}
-
 static inline void *kvt_shl_array_get_array(struct kvt_shl_array *arr)
 {
 	if (!arr)
@@ -171,22 +121,6 @@ static inline size_t kvt_shl_array_get_length(struct kvt_shl_array *arr)
 		return 0;
 
 	return arr->length;
-}
-
-static inline size_t kvt_shl_array_get_bsize(struct kvt_shl_array *arr)
-{
-	if (!arr)
-		return 0;
-
-	return arr->length * arr->element_size;
-}
-
-static inline size_t kvt_shl_array_get_element_size(struct kvt_shl_array *arr)
-{
-	if (!arr)
-		return 0;
-
-	return arr->element_size;
 }
 
 #endif /* KVT_SHL_ARRAY_H */

@@ -56,7 +56,8 @@ static unsigned long long disk_mb(const Disk *d)
 
 static void probe_text(void)
 {
-	printf("firmware      %s%s\n", ki_sys.uefi ? "UEFI" : "BIOS",
+	printf("firmware      %s%s%s\n", ki_sys.uefi ? "UEFI" : "BIOS",
+	       ki_sys.fw_bits == 32 ? " (32-bit)" : "",
 	       ki_sys.secure_boot ? " (secure boot on)" : "");
 	printf("cpu           %s (%d cores)\n", ki_sys.cpu, ki_sys.cores);
 	printf("memory        %llu MB\n", ki_sys.mem_kb / 1024);

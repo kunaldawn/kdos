@@ -38,6 +38,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "xdg-foreign-unstable-v2-client-protocol.h"
 
 /*
  * Every output gets a lock surface, because the protocol will not report the
@@ -109,6 +110,24 @@ static struct {
 	struct xdg_wm_base *wm_base;
 	struct zwlr_layer_shell_v1 *layer_shell;
 	struct ext_session_lock_manager_v1 *lock_mgr;
+	/*
+	 * xdg-foreign-v2, and it is bound for EXACTLY ONE JOB: telling the
+	 * compositor which window this dialog belongs to, when the window
+	 * belongs to another process.
+	 *
+	 * A CLIENT CANNOT PLACE ITS OWN TOPLEVEL. There is no "open here" in
+	 * xdg-shell and there never will be — placement is the compositor's.
+	 * What a client CAN say is whose child it is, and a compositor that
+	 * knows that centres the child on the parent. `xdg_toplevel.set_parent`
+	 * says it within one process; across two, the parent exports a handle
+	 * and this imports it, which is the whole of what xdg-foreign is for.
+	 *
+	 * THE PORTAL IS THE ONLY CALLER. A FileChooser is handed
+	 * `parent_window` by the application that asked for it, and without
+	 * this the dialog opens in the middle of the screen whatever asked.
+	 */
+	struct zxdg_importer_v2 *importer;
+	struct zxdg_imported_v2 *imported;
 	/* cursor-shape-v1. Without it the pointer VANISHES over every libkwl
 	 * surface: on Wayland the focused client owns the cursor image, this
 	 * library never set one, and once kdos-desk covered the whole screen
@@ -266,10 +285,9 @@ static struct {
 	int dirty_n;
 	/* Whether the last flush reached a commit; see KtuiBackend.presented. */
 	int committed;
-	/* Something below the grid changed its pixels; see flush_commit(). */
-	int pixels_dirty;
-	/* Asked the same question at flush time, for a caller that can only
-	 * answer once its picture is complete. See kwl_set_pixels_dirty_fn(). */
+	/* Whether something below the grid changed its pixels, asked at flush
+	 * time so a caller answers once its picture is complete. See
+	 * kwl_set_pixels_dirty_fn(). */
 	int (*px_dirty_fn)(void);
 
 	/*
@@ -453,11 +471,10 @@ int kwl_should_close(void) { return K.closed; }
 int kwl_lock_engaged(void) { return K.lock_engaged; }
 /* A surface that has never been given the keyboard is treated as focused:
  * a panel is never entered and its terminal-less content does not care,
- * and the neutral answer is what every program did before this existed. */
+ * and the other answer dims every such surface for the whole of its life. */
 static int kwl_focused(void) { return K.kb_entered ? K.kb_here : 1; }
 int kwl_lock_finished(void) { return K.lock_finished; }
 void *kwl_display(void) { return K.display; }
-void *kwl_seat(void) { return K.seat; }
 
 int kwl_fd(void)
 {
@@ -546,9 +563,9 @@ int kwl_cell_h(void) { int h = kcell_h(); return h > 0 ? h : 16; }
  * The SURFACE's own height in logical pixels — the cells plus the rule.
  *
  * A panel that anchors a popup just above itself has to pass its own
- * thickness as the margin, and `rows * cell_h` stopped being that the moment
- * the bar grew a rule outside the grid: every popup would have sat three
- * pixels low and covered the line it was meant to clear.
+ * thickness as the margin, and that is not `rows * cell_h` while the bar
+ * carries a rule outside the grid: a popup placed from the cells alone sits
+ * three pixels low and covers the line it is meant to clear.
  */
 /*
  * IS SOMEBODY ELSE DRAWING THIS WINDOW'S FRAME?
@@ -586,7 +603,8 @@ static int panel_gap(void)
 		       ? K.cfg.margin_y : K.cfg.margin_x;
 }
 
-int kwl_px_h(void)
+/* The surface's own height in LOGICAL pixels — the cell grid plus the rule. */
+static int surface_px_h(void)
 {
 	return K.px_h > 0 ? K.px_h : K.rows * kcell_h() + K.rule;
 }
@@ -595,20 +613,20 @@ int kwl_px_h(void)
  * What a popup belonging to THIS panel passes as its own margin from the same
  * screen edge.
  *
- * NOT kwl_px_h(), and the difference is exactly the panel's gap. The two are
- * the same number only while the bar is flush with the edge, which is why
+ * NOT the bare height, and the difference is exactly the panel's gap. The two
+ * are the same number only while the bar is flush with the edge, which is why
  * seven call sites in the taskbar could pass the height and be right. Give the
  * bar a margin and every one of them opens its popup `gap` pixels too low —
  * the Start menu, the calendar and the volume slider all half-behind the bar
  * they belong to. Same shape as the exclusive-zone trap above: a second
  * derivation of one distance, correct right up until the distance changes.
  *
- * Horizontal panels, like kwl_px_h() itself: on a left or right bar the
+ * Horizontal panels, like the height itself: on a left or right bar the
  * surface's height is the whole output and neither number means anything.
  */
 int kwl_popup_offset(void)
 {
-	return kwl_px_h() + panel_gap();
+	return surface_px_h() + panel_gap();
 }
 
 /*
@@ -631,11 +649,6 @@ int kwl_edge_bottom(void)
 		return 0;
 	return K.cfg.corner == KDISP_CORNER_TOP_LEFT ||
 	       K.cfg.corner == KDISP_CORNER_TOP_RIGHT;
-}
-
-void kwl_pixels_dirty(void)
-{
-	K.pixels_dirty = 1;
 }
 
 void kwl_set_pixels_dirty_fn(int (*fn)(void))
@@ -707,7 +720,8 @@ static void push_event(const KtuiEvent *ev)
 	/*
 	 * Motion collapses onto motion: a drag produces one event per pointer
 	 * sample and only the newest position means anything. A button or a key
-	 * NEVER overwrites anything — that was the bug this queue exists for.
+	 * NEVER overwrites anything: a lost one is an input the user made and
+	 * the program never sees, which is what this queue exists to stop.
 	 *
 	 * A COLLAPSE ADDS NO EVENT, so the count does not move and the raw
 	 * events pending behind it still belong to the motion already queued.
@@ -1677,8 +1691,8 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 	 * the moment kdos-desk started, and a translucent panel would come out
 	 * at full strength the same way.
 	 *
-	 * Asked of libkcell rather than of the role, because the role no longer
-	 * decides it: the desktop clears KT_BG and the panel dims KT_SURFACE,
+	 * Asked of libkcell rather than of the role, because the role does not
+	 * decide it: the desktop clears KT_BG and the panel dims KT_SURFACE,
 	 * and both need the same format for the same reason.
 	 */
 	bool argb = kcell_needs_alpha();
@@ -1738,12 +1752,12 @@ static const struct wl_callback_listener frame_listener = {
  * different baselines, and keeping them apart is the whole of S1:
  *
  * The DAMAGE is the diff against `K.screen` — what the compositor is showing —
- * because damage describes what changed ON SCREEN. This is also the flicker
- * fix: an unchanged frame is NOT COMMITTED at all. The panel redraws on a
- * one-second tick, the desk on its rescan — and every one of those used to
- * attach a fresh buffer and damage its full surface even when not a cell had
- * moved; on a virtio guest with no GL every commit is a full framebuffer
- * upload, so the desktop pulsed at the union of everyone's timers.
+ * because damage describes what changed ON SCREEN. It is also what keeps the
+ * desktop still: an unchanged frame is NOT COMMITTED at all. The panel redraws
+ * on a one-second tick and the desk on its rescan, so attaching a fresh buffer
+ * and damaging the full surface when not a cell has moved costs a full
+ * framebuffer upload per redraw on a virtio guest with no GL, and the desktop
+ * pulses at the union of everyone's timers.
  *
  * The PAINT diffs against the buffer's OWN shadow, because commits alternate
  * buffers: the buffer being painted holds the frame before last, and a partial
@@ -1809,16 +1823,8 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		 * draw, and a latch set from that makes every frame a commit
 		 * and defeats this gate entirely.
 		 */
-		if (dirty_y0 < 0 && !K.pixels_dirty &&
-		    !(K.px_dirty_fn && K.px_dirty_fn()))
+		if (dirty_y0 < 0 && !(K.px_dirty_fn && K.px_dirty_fn()))
 			return;		/* nothing changed: no commit at all */
-	}
-	/* A pixel change the cell diff cannot see is a full frame: the diff
-	 * has no rows to name for it, and a partial damage would leave the
-	 * compositor showing the picture the backdrop just replaced. */
-	if (K.pixels_dirty) {
-		K.pixels_dirty = 0;
-		full = 1;
 	}
 
 	/*
@@ -1943,7 +1949,7 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		 * weight the titlebar's own rule is drawn at, which is the
 		 * point of matching it at all.
 		 */
-		KRgb rgb = ktui_theme->slot[K.cfg.rule_slot & 7];
+		KRgb rgb = ktui_theme->slot[KT_BG];
 		pixman_color_t c = { .red = (uint16_t)(rgb.r * 257),
 				     .green = (uint16_t)(rgb.g * 257),
 				     .blue = (uint16_t)(rgb.b * 257),
@@ -2461,12 +2467,12 @@ static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int fd,
 /*
  * DEAD KEYS. Without this a compose sequence produces nothing at all: xkb
  * hands out `dead_acute` as a keysym with no text, `xkb_state_key_get_utf32`
- * answers 0, and libkwl dropped the event — so `Compose e '` typed an `e` and
- * then swallowed the quote, and a French or Czech layout could not write half
- * its own alphabet.
+ * answers 0, and the event is dropped unread — `Compose e '` types an `e` and
+ * then swallows the quote, and a French or Czech layout cannot write half its
+ * own alphabet.
  *
  * The table is the locale's, from $XKB_DEFAULT_LAYOUT's Compose file by way of
- * $LC_CTYPE. A machine with no table at all keeps the old behaviour exactly —
+ * $LC_CTYPE. A machine with no table at all is left exactly as it is —
  * `compose_state` stays NULL and every branch below is skipped.
  */
 static void compose_init(void)
@@ -2546,7 +2552,7 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	/*
 	 * THE SWITCH FIRST, AND FOR THE RELEASE TOO. Everything below resolves
 	 * a character and drops what produces none, which is the whole of what
-	 * a cell desktop wants and none of what a pixel guest needs: it holds
+	 * a cell surface wants and none of what a pixel guest needs: it holds
 	 * the key down, repeats from its own keymap and reads a modifier that
 	 * types nothing. A press whose release never travelled is a key held
 	 * for ever, so this sits above every early return under it.
@@ -2630,10 +2636,9 @@ static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
  * CLICK AWAY CLOSES IT — for the callers that asked.
  *
  * The menu, the launcher and the run box are transient and have no business
- * surviving the moment the user's attention goes elsewhere: before this,
- * clicking on a window while a menu was open left the menu floating over that
- * window until somebody found the Escape key, and there is no useful
- * "unfocused menu" state.
+ * surviving the moment the user's attention goes elsewhere: a click on a window
+ * with a menu open otherwise leaves the menu floating over that window until
+ * somebody finds the Escape key, and there is no useful "unfocused menu" state.
  *
  * It is `dismiss_on_unfocus` rather than "every keyboard overlay" because a
  * DIALOG is not a menu — see the flag's comment in kwl.h for the file chooser,
@@ -2821,8 +2826,8 @@ static int wheel_dbg(void)
 /*
  * ONE PHYSICAL NOTCH IS ONE TICK, whatever the chain in front of us does.
  *
- * "The calendar moves two months per scroll" survived a correct reading of the
- * protocol here, and the reason is that this client is the LAST link of four:
+ * A correct reading of the protocol here is not enough to stop "the calendar
+ * moves two months per scroll", because this client is the LAST link of four:
  * the emulator, libinput, the compositor and this. Two of the three in front
  * are known to double a notch — QEMU's GTK display receives a smooth scroll
  * event AND the discrete one GTK emulates from it for legacy handlers, and
@@ -3172,10 +3177,9 @@ static const struct wl_pointer_listener pointer_listener = {
  * WHAT IS HERE IS ONLY WHAT wl_touch KNOWS: which slot, where in cells, and
  * that `frame` is the commit point exactly as it is for the pointer.
  *
- * The disambiguation is libktui's — ktui_gesture_feed — because the console
- * desktop's KMS backend feeds the same recogniser from libinput. A
- * disambiguator written inside a backend is written twice and disagrees twice,
- * and the two desktops would then differ on what a long press is.
+ * The disambiguation is libktui's — ktui_gesture_feed — so a second backend
+ * feeds the same recogniser rather than writing its own. A disambiguator
+ * written inside a backend is written twice and disagrees twice.
  */
 
 static int tc_cell(wl_fixed_t sx, wl_fixed_t sy, int *cx, int *cy)
@@ -3528,7 +3532,7 @@ int kwl_drag_start(const char *mime, const char *data, size_t len)
 /*
  * THE GRID THE CURRENT PIXELS AND THE CURRENT CELL MAKE.
  *
- * Split out of resize_cells() because the two halves of a grid move
+ * Separate from resize_cells() because the two halves of a grid move
  * independently: a configure moves the pixels, and a font change moves the
  * cell while the surface stays exactly the size it was. Both end here.
  */
@@ -3749,9 +3753,9 @@ static void overlay_clamp(int *cols, int *rows, int reserve)
 	if (reserve > 0 && reserve < h)
 		h -= reserve;
 	int max_cols = w / kcell_w() - 2;
-	/* One row of air, not four: the four were standing in for a panel
-	 * thickness this could not see, and `reserve` is now that thickness
-	 * measured rather than guessed. */
+	/* One row of air where `reserve` is known and four where it is not:
+	 * `reserve` is the panel's thickness measured, and without it the four
+	 * rows stand in for a thickness this cannot see. */
 	int max_rows = h / kcell_h() - (reserve > 0 ? 1 : 4);
 	if (max_cols > 4 && *cols > max_cols)
 		*cols = max_cols;
@@ -3877,6 +3881,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 			return;
 		K.seat = wl_registry_bind(r, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(K.seat, &seat_listener, NULL);
+	} else if (!strcmp(iface, zxdg_importer_v2_interface.name)) {
+		K.importer = wl_registry_bind(r, name,
+					      &zxdg_importer_v2_interface, 1);
 	} else if (!strcmp(iface, xdg_wm_base_interface.name)) {
 		K.wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(K.wm_base, &wm_base_listener, NULL);
@@ -3973,6 +3980,11 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
  * nothing can hand it to get_layer_surface or get_lock_surface afterwards.
  * The other globals go away with the compositor.
  */
+/* Defined with the window list far below; declared here because an unplugged
+ * screen is where a window's record of which screens it is on has to be
+ * corrected. */
+static void kwl_win_output_gone(int slot);
+
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name)
 {
 	(void)d;
@@ -3991,6 +4003,14 @@ static void reg_remove(void *d, struct wl_registry *r, uint32_t name)
 		K.output_scale[i] = 0;
 		K.output_transform[i] = 0;
 		K.output_w[i] = K.output_h[i] = 0;
+		/*
+		 * AND NO WINDOW IS ON IT ANY MORE. A slot is emptied rather
+		 * than compacted — the output listener carries its index as
+		 * user data — so the NEXT screen plugged in takes this number,
+		 * and a window left holding the bit would read as being on a
+		 * monitor it has never been near.
+		 */
+		kwl_win_output_gone(i);
 		if (K.on_output == i) {
 			K.on_output = -1;
 			apply_scale();
@@ -4169,19 +4189,19 @@ static int make_panel(void)
 		int cols = K.cfg.cols > 0 ? K.cfg.cols : 64;
 		int rows = K.cfg.rows > 0 ? K.cfg.rows : 16;
 		/*
-		 * CLAMPED TO THE OUTPUT, and this is a live defect it fixes.
+		 * CLAMPED TO THE OUTPUT.
 		 *
 		 * layer-shell honours the size a client asks for; it does not
 		 * shrink it. A surface taller than the USABLE area — the
-		 * output minus the taskbar's exclusive zone — is then centred
+		 * output minus the taskbar's exclusive zone — is centred
 		 * around a negative y, and the top of it is simply off the
-		 * screen: kdos-net asked for 24 rows on a 25-row display with
-		 * a 2-row panel and lost its title bar. Photographed.
+		 * screen: kdos-net asking for 24 rows on a 25-row display with
+		 * a 2-row panel loses its title bar. Photographed.
 		 *
 		 * The headroom is the caller's own margin where there is one —
-		 * that IS the bar's thickness, measured rather than the four
-		 * rows this used to guess at because the panel's height is a
-		 * setting and a popup cannot see it.
+		 * that IS the bar's thickness, measured rather than guessed,
+		 * because the panel's height is a setting and a popup cannot
+		 * see it.
 		 */
 		overlay_clamp(&cols, &rows, K.cfg.margin_y);
 		int mx = K.cfg.margin_x, my = K.cfg.margin_y;
@@ -4229,11 +4249,10 @@ static int make_panel(void)
 			 * own height, so the menu hangs off the bar rather
 			 * than covering it, and margin_x is where the word
 			 * that was clicked starts — already clamped by
-			 * place_clamp(), because the compositor does NOT do it
-			 * (this comment used to claim it did; the calendar,
-			 * opened from a clock at the far right of the panel,
-			 * hung off the edge of the screen with most of it
-			 * unreachable).
+			 * place_clamp(), because the compositor does NOT do
+			 * it: a calendar opened from a clock at the far
+			 * right of the panel otherwise hangs off the edge of
+			 * the screen with most of it unreachable.
 			 */
 			zwlr_layer_surface_v1_set_anchor(
 				K.layer_surface,
@@ -4359,15 +4378,15 @@ static int make_panel(void)
 	 */
 	/*
 	 * NONE IS SENT EXPLICITLY, and leaving it to the protocol's default is
-	 * how kdos-tip spent this whole arc spawning a process per hover and
-	 * never showing a tooltip.
+	 * how a surface that wants no keyboard spawns a process per hover and
+	 * never shows a tooltip. kdos-tip is that surface.
 	 *
 	 * A layer surface that requests nothing about its keyboard commits no
 	 * KEYBOARD_INTERACTIVITY state, and labwc arranges a layer off the back
 	 * of the state a commit CARRIES. Every other overlay in this desktop
-	 * asks for ON_DEMAND and so gets arranged; the one surface that wanted
-	 * no keyboard at all was created, mapped, given a buffer and left with
-	 * no box — no error anywhere, and a client that cannot tell. Measured:
+	 * asks for ON_DEMAND and so gets arranged; a surface that wants no
+	 * keyboard at all is created, mapped, given a buffer and left with no
+	 * box — no error anywhere, and a client that cannot tell. Measured:
 	 * the same binary with `keyboard = 1` draws the tip in the right place.
 	 *
 	 * NONE is the default, so this changes nothing else about any surface.
@@ -4581,6 +4600,27 @@ static int make_toplevel(void)
 	if (K.cfg.app_id)
 		xdg_toplevel_set_app_id(K.xdg_toplevel, K.cfg.app_id);
 	/*
+	 * WHOSE CHILD THIS IS, WHERE THE CALLER WAS TOLD. See K.importer.
+	 *
+	 * BEFORE THE FIRST COMMIT, because the parent is part of what the
+	 * compositor places on: labwc reads it when the surface maps, and a
+	 * parent set afterwards is a dialog that has already appeared
+	 * somewhere else and then jumps.
+	 *
+	 * A HANDLE THAT NO LONGER NAMES ANYTHING IS NOT AN ERROR. The
+	 * compositor answers the import with a `destroyed` event and the
+	 * dialog is simply parentless — which is the placement it would have
+	 * had anyway. The window that asked can close between the request
+	 * and the dialog, and a chooser that refused to open because of that
+	 * would be worse than one in the middle of the screen.
+	 */
+	if (K.importer && K.cfg.parent && K.cfg.parent[0]) {
+		K.imported = zxdg_importer_v2_import_toplevel(K.importer,
+							      K.cfg.parent);
+		if (K.imported)
+			zxdg_imported_v2_set_parent_of(K.imported, K.surface);
+	}
+	/*
 	 * Ask for a SERVER frame. A compositor that does not offer the
 	 * protocol simply has no manager to bind and the window is undecorated
 	 * as before, which is the honest fallback rather than a failure.
@@ -4622,7 +4662,7 @@ static int make_toplevel(void)
  * to bring up has looked like. Called from the one place a surface can fail to
  * start and from the one place every client ends.
  */
-void kwl_report_error(void)
+static void kwl_report_error(void)
 {
 	int e;
 
@@ -4689,12 +4729,13 @@ int kwl_init(const KDispConfig *cfg)
 								      : KT_SURFACE,
 				     (uint8_t)(cfg->opacity * 255 / 100));
 	/*
-	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the
-	 * console's own cell — the same default kdos-comp uses for the window
-	 * frames. It used to fall through to libkcell's generic
-	 * `monospace:size=11`, and the result was on the first live screenshot:
-	 * 32px Turbo Vision frames around an 11px DejaVu panel, a bar nobody
-	 * could read. One knob, all chrome — panel, menus, desk, pick, run,
+	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the cell
+	 * tty1 draws in — the same default kdos-comp uses for the window
+	 * frames. Falling through to libkcell's generic `monospace:size=11`
+	 * instead puts 32px Turbo Vision frames around an 11px panel: chrome
+	 * is measured against this cell, so the default has to be the cell the
+	 * rest of the chrome assumes. One knob, all chrome — panel, menus,
+	 * desk, pick, run,
 	 * launcher, notifyd, osd, lock. foot is CONTENT, not chrome, and keeps
 	 * its own 16px config.
 	 */
@@ -5002,9 +5043,9 @@ void kwl_layer_autohide(bool hidden)
  *
  * `set_size` is a REQUEST. The surface's real size arrives later, in the
  * compositor's configure, and `ktui_w`/`ktui_h` follow it — so a caller that
- * resized and then drew painted the new picture into the OLD buffer: the rows
- * past the old height were silently dropped, which for kdos-tip's window
- * preview meant a tooltip showing two rows of thumbnail and none of its text.
+ * resizes and then draws paints the new picture into the OLD buffer: the rows
+ * past the old height are silently dropped, which for kdos-tip's window
+ * preview is a tooltip showing two rows of thumbnail and none of its text.
  *
  * Bounded, and skipped entirely when the size did not change: wlroots sends a
  * configure only when it has something new to say, so an unconditional wait
@@ -5178,6 +5219,13 @@ void kwl_shutdown(void)
 	}
 	if (K.frame_cb)
 		wl_callback_destroy(K.frame_cb);
+	/* The import before the importer: the child object names the parent
+	 * one, and destroying a manager with a live object under it is a
+	 * protocol error on some compositors and a leak on the rest. */
+	if (K.imported)
+		zxdg_imported_v2_destroy(K.imported);
+	if (K.importer)
+		zxdg_importer_v2_destroy(K.importer);
 	buffer_free(&K.buf[0]);
 	buffer_free(&K.buf[1]);
 	for (int i = 0; i < K.nextra; i++) {
@@ -5258,11 +5306,24 @@ static struct kwl_win {
 	 * index: both consumers walk indices until kwl_win_at answers 0, and a
 	 * hole would hide every settled window behind it. */
 	unsigned pending;
+	/* One bit per slot in K.outputs, from the handle's output_enter and
+	 * output_leave. The compositor reports a window's outputs from its
+	 * GEOMETRY and not from whether it is mapped, so a minimised window
+	 * keeps the screen it is on and a task bar filtered on this still
+	 * lists it. Zero is "the server never said", which kwl_win_at reads
+	 * as every screen rather than none. */
+	unsigned outputs;
 	char app_id[64];
 	char title[128];
 } kwl_wins[KWL_WIN_MAX];
 static int kwl_nwins;
 static unsigned kwl_win_next_id = 1;
+
+static void kwl_win_output_gone(int slot)
+{
+	for (int i = 0; i < kwl_nwins; i++)
+		kwl_wins[i].outputs &= ~(1u << slot);
+}
 
 static struct kwl_win *kwl_win_for(struct zwlr_foreign_toplevel_handle_v1 *h)
 {
@@ -5293,18 +5354,40 @@ static void wtl_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
 			 app_id ? app_id : "");
 }
 
+/* The slot `o` was bound into, or -1 for an output this client never bound —
+ * which is what a compositor announcing more screens than KWL_MAX_OUTPUTS
+ * leaves. An unknown output moves no bit: a window on it reads as being on
+ * every screen, which lists it everywhere rather than nowhere. */
+static int kwl_output_slot(struct wl_output *o)
+{
+	for (int i = 0; i < K.noutputs; i++)
+		if (K.outputs[i] == o)
+			return i;
+	return -1;
+}
+
 static void wtl_output_enter(void *d,
 			     struct zwlr_foreign_toplevel_handle_v1 *h,
 			     struct wl_output *o)
 {
-	(void)d; (void)h; (void)o;
+	struct kwl_win *w = kwl_win_for(h);
+	int slot = kwl_output_slot(o);
+
+	(void)d;
+	if (w && slot >= 0)
+		w->outputs |= 1u << slot;
 }
 
 static void wtl_output_leave(void *d,
 			     struct zwlr_foreign_toplevel_handle_v1 *h,
 			     struct wl_output *o)
 {
-	(void)d; (void)h; (void)o;
+	struct kwl_win *w = kwl_win_for(h);
+	int slot = kwl_output_slot(o);
+
+	(void)d;
+	if (w && slot >= 0)
+		w->outputs &= ~(1u << slot);
 }
 
 static void wtl_state(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
@@ -5475,7 +5558,14 @@ static int kwl_win_at(int i, KDispWin *out)
 		return 0;
 	out->id = w->id;
 	out->flags = w->flags;
-	out->workspace = -1;
+	/* THE SURFACE'S OWN SCREEN, not the one `cfg.output` asked for: a
+	 * panel placed on a screen that was unplugged between the request and
+	 * the mapping is on whichever screen the compositor chose, and the
+	 * bar it draws must list that screen's windows. Both unknowns answer
+	 * "here": a surface that has had no enter yet, and a window whose
+	 * outputs the compositor never reported. */
+	out->here = K.on_output < 0 || !w->outputs ||
+		    (w->outputs & (1u << K.on_output)) != 0;
 	snprintf(out->app_id, sizeof(out->app_id), "%s", w->app_id);
 	snprintf(out->title, sizeof(out->title), "%s", w->title);
 	return 1;
@@ -5612,17 +5702,20 @@ static int font_stepped(const char *base, int step, char *out, size_t n)
 	return snprintf(out, n, "%s%s%d", base, key, size) < (int)n;
 }
 
-int kwl_font_step(int step)
+/*
+ * A FONT CHANGE, WHOLE — the one sequence every change of face or size goes
+ * through, whether the name came from a size step or from the picker.
+ *
+ * 0 when `want` is loaded and in force, including when it already was. -1 with
+ * NOTHING MOVED otherwise.
+ */
+static int font_apply(const char *want)
 {
-	char want[sizeof(K.font)], prev[sizeof(K.font)];
+	char prev[sizeof(K.font)];
 
-	if (!K.surface)
+	if (!K.surface || !want || !*want)
 		return -1;
 	snprintf(prev, sizeof(prev), "%s", K.font);
-	if (step == 0)
-		snprintf(want, sizeof(want), "%s", K.font_init);
-	else if (!font_stepped(prev, step, want, sizeof(want)))
-		return -1;
 	if (!strcmp(want, prev))
 		return 0;	/* the clamp, or a reset already in force */
 
@@ -5661,6 +5754,29 @@ int kwl_font_step(int step)
 	return 0;
 }
 
+int kwl_font_step(int step)
+{
+	char want[sizeof(K.font)];
+
+	if (!K.surface)
+		return -1;
+	if (step == 0)
+		snprintf(want, sizeof(want), "%s", K.font_init);
+	else if (!font_stepped(K.font, step, want, sizeof(want)))
+		return -1;
+	return font_apply(want);
+}
+
+int kwl_font_use(const char *name)
+{
+	return font_apply(name);
+}
+
+const char *kwl_font_name(void)
+{
+	return K.font;
+}
+
 const KDispImpl kwl_impl = {
 	.name = "wayland",
 	.probe = kwl_probe,
@@ -5677,7 +5793,6 @@ const KDispImpl kwl_impl = {
 	.drag_start = kwl_drag_start,
 	.cell_w = kwl_cell_w,
 	.cell_h = kwl_cell_h,
-	.px_h = kwl_px_h,
 	.scale = kwl_scale,
 	.decorated = kwl_decorated,
 	.popup_offset = kwl_popup_offset,
@@ -5686,7 +5801,6 @@ const KDispImpl kwl_impl = {
 	.set_backdrop = kwl_set_backdrop,
 	.input_cells = kwl_input_cells,
 	.set_title = kwl_set_title,
-	.report_error = kwl_report_error,
 	.focused = kwl_focused,
 	.lock_engaged = kwl_lock_engaged,
 	.lock_finished = kwl_lock_finished,
@@ -5696,4 +5810,14 @@ const KDispImpl kwl_impl = {
 	.win_activate = kwl_win_activate,
 	.win_close = kwl_win_close,
 	.win_set_state = kwl_win_set_state,
+	/*
+	 * NO `font_ask`. The list is fontconfig's and fontconfig answers in
+	 * this process, so the first `font_count` is already the whole list —
+	 * there is no round trip for a caller to start, and a slot that did
+	 * nothing would read as one that started something.
+	 */
+	.font_count = kwl_font_count,
+	.font_at = kwl_font_at,
+	.font_current = kwl_font_current,
+	.font_set = kwl_font_set,
 };

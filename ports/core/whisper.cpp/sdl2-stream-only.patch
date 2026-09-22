@@ -1,0 +1,35 @@
+`WHISPER_SDL2` is the flag that builds the streaming transcriber, and it also
+builds four other programs — talk-llama, command, lsp and wchess. One of them
+cannot be built here at all: talk-llama's CMakeLists `FetchContent`s llama.cpp
+from github AT CONFIGURE TIME, and this distribution builds with no network by
+rule, so the whole configure step ends in `Could not resolve host`.
+
+There is no flag for it. `WHISPER_USE_SYSTEM_LLAMA` is the only escape and it
+wants a llama port this tree does not have, so the subdirectory list is what
+has to change.
+
+The other three go with it rather than being built and then deleted: a chat
+front end, a voice-command demo, a language-server demo and a chess board are
+each a program nothing on this desktop opens, and `wchess` installs nothing at
+all — minutes of compiling for a file that never reaches the package.
+
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -111,9 +111,6 @@
+     add_subdirectory(parakeet-quantize)
+     if (WHISPER_SDL2)
+         add_subdirectory(stream)
+-        add_subdirectory(command)
+-        add_subdirectory(talk-llama)
+-        add_subdirectory(lsp)
+         if (GGML_SYCL)
+             add_subdirectory(sycl)
+         endif()
+@@ -121,7 +118,3 @@
+ 
+     add_subdirectory(deprecation-warning)
+ endif()
+-
+-if (WHISPER_SDL2)
+-    add_subdirectory(wchess)
+-endif (WHISPER_SDL2)

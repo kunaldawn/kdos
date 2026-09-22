@@ -48,17 +48,16 @@ const char *g_box = DEFAULT_BOX;
  *
  * Returns the shared session socket when anything at all is missing —
  * kdos-boxsock, the compositor's support for the protocol, the runtime dir. A
- * box on the shared socket is unconfined at the protocol level, which is what
- * KDOS did before this existed. Silently substituting an untagged socket for a
- * tagged one is the honest failure: the alternative is an app that does not
- * start at all because its sandbox could not be labelled.
+ * box on the shared socket is unconfined at the protocol level. Silently
+ * substituting an untagged socket for a tagged one is the honest failure: the
+ * alternative is an app that does not start at all because its sandbox could
+ * not be labelled.
  */
 /*
  * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
  *
- * A tagged socket is a listener on ONE compositor, and the console desktop
- * runs one per WINDOW — a kdos-cage for each embedded guest. Keyed on the box
- * alone the path is therefore the FIRST launch's compositor for ever after:
+ * A tagged socket is a listener on ONE compositor. Keyed on the box alone the
+ * path would be the FIRST launch's compositor for ever after:
  * the second launch of the same application finds the file already there,
  * connects to it, and its window opens inside the first launch's window.
  * kdos-boxsock derives the same component from the same variable, which is
@@ -413,14 +412,6 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 	 * VA-API and Vulkan find the render node by their own route, and
 	 * denying those is the `gpu` key's job.
 	 *
-	 * BOTH ENDS OF A CONSOLE GUEST ANSWER TO THE ONE KEY, so the saving is
-	 * real there: kdos-con reads the same profile and hands the value to
-	 * the cage as KDOS_EMBED_GPU, which pins the cage on pixman for
-	 * exactly the spellings resolved to software here. A `software` guest
-	 * on the console therefore draws with llvmpipe into wl_shm and is
-	 * composited out of that same memory, with no upload and no readback
-	 * for pixels the CPU already had.
-	 *
 	 * ADVISORY AND PRINTED AS SUCH: it is an environment variable an
 	 * application may unset, and `kdos-box profile` names it on the render
 	 * line rather than claiming confinement this cannot enforce.
@@ -663,13 +654,14 @@ int cmd_run(int argc, char **argv)
 }
 
 /*
- * WARM THE PINNED SET. One box per application means the image lane's single
- * warmup no longer covers anything: every application's first launch of the
- * session paid compose + create + boxinit + its own start, measured at 18 s
- * cold, and the warmup that used to hide that started a box nothing runs any
- * more. `~/.config/kdos/favorites` is the set the user CHOSE, so those are the
- * boxes worth having running before the first click — resolved through the
- * alien-apps table to their packs, composed and started one at a time.
+ * WARM THE PINNED SET. One box per application means a single shared warmup
+ * covers nothing: it would start a box no application runs in, while every
+ * application's first launch of the session still pays compose + create +
+ * boxinit + its own start, measured at 18 s cold. The warmup therefore has to
+ * name boxes. `~/.config/kdos/favorites` is the set the user CHOSE, so those
+ * are the boxes worth having running before the first click — resolved
+ * through the alien-apps table to their packs, composed and started one at a
+ * time.
  *
  * Non-blocking lock, so a second warmup is a no-op and never a queue; `nice`
  * is the caller's (kdos-desktop runs this at 10). A box that is started and

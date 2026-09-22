@@ -86,10 +86,43 @@ cp /usr/lib/libhistory.so.8 lib/libhistory.so.8
 cp /usr/lib/libncursesw.so.6 lib/libncursesw.so.6
 ln -sf bash bin/sh
 
-# Install blkid and dependencies
-cp /usr/bin/blkid bin/blkid
+# Install util-linux's blkid.
+#
+# EVERY LOOKUP IN THIS INIT IS `blkid -U <uuid>` — the root filesystem, the
+# ESP that holds the A/B state, and the LUKS container an encrypted root
+# lives inside. toybox's applet implements NEITHER HALF of that: `-U` is not
+# a lookup flag there, and its prober knows ext/vfat/ntfs/btrfs/f2fs/squashfs
+# and swap but NOT `crypto_LUKS`. With toybox's, every one of those lookups
+# answers nothing — an installed machine drops to a shell with "Root device
+# not found", A/B selection silently never engages, and an encrypted root
+# cannot be unlocked at all.
+#
+# THE APPLET IS COMPILED OUT, in the phase-4 recipe and in phase 1 alike, so
+# `./bin/toybox` does not list it and the applet loop above never claims the
+# name; `blkid` on this system is one binary, util-linux's, in /usr/sbin.
+# The removal is the guard on that: `cp` onto a symlink writes THROUGH
+# it, so were `bin/blkid` ever a link to `bin/toybox`, this copy would
+# overwrite the multicall binary. Exactly the switch_root rule, thirty lines
+# up.
+rm -f bin/blkid
+cp /usr/sbin/blkid bin/blkid
 cp /usr/lib/libblkid.so.1 lib/libblkid.so.1
 cp /usr/lib/libuuid.so.1 lib/libuuid.so.1
+# A prober that cannot name a LUKS container is a machine that cannot unlock
+# its own disk, and the failure is a passphrase prompt that never appears.
+if grep -qa 'Toybox .* multicall' bin/blkid; then
+    echo "FATAL: the initramfs blkid is toybox's applet." >&2
+    echo "       It cannot resolve -U and cannot see crypto_LUKS." >&2
+    exit 1
+fi
+
+# Install mdadm, for a root that lives on a software RAID array. Only
+# libudev beyond libc, and that is already carried below for udevd.
+if [ -x /usr/sbin/mdadm ]; then
+    cp /usr/sbin/mdadm bin/mdadm
+else
+    echo "Note: mdadm not installed — the initramfs cannot assemble an array"
+fi
 
 # Install eudev and dependencies
 cp /sbin/udevd bin/udevd
@@ -101,15 +134,30 @@ cp /usr/lib/libz.so.1 lib/libz.so.1
 cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 
 # Install kdos-bootctl, which decides WHICH root to boot when the machine has
-# two. rEFInd cannot count boots — that is a systemd-boot feature — so the
+# two. Limine cannot count boots — that is a systemd-boot feature — so the
 # counting is ours and it has to happen here rather than in rcS: a kernel that
 # boots into a wedged userland must still spend an attempt.
-if [ -x /usr/bin/kdos-bootctl ]; then
-    cp /usr/bin/kdos-bootctl bin/kdos-bootctl
-elif [ -x /usr/bin/kdos-tools ]; then
-    cp /usr/bin/kdos-tools bin/kdos-bootctl
-else
+#
+# /usr/bin/kdos-bootctl IS A SYMLINK TO /usr/sbin/ksvc and cp copies through it,
+# so what lands here is the whole tool — linked -lpng for `kdos theme`'s
+# wallpaper retint. libpng16 is therefore carried beside it; libz.so.1 is
+# already above and musl's libm is inside libc, so those two are the whole
+# closure.
+#
+# COPIED WHOLE OR NOT AT ALL, the cryptsetup rule one block down: a
+# kdos-bootctl that cannot exec makes A/B selection silently never run, and the
+# machine reads as one whose slot was never marked good rather than one missing
+# a library.
+BOOTCTL=""
+[ -x /usr/bin/kdos-bootctl ] && BOOTCTL=/usr/bin/kdos-bootctl
+[ -z "$BOOTCTL" ] && [ -x /usr/bin/kdos-tools ] && BOOTCTL=/usr/bin/kdos-tools
+if [ -z "$BOOTCTL" ]; then
     echo "Note: kdos-bootctl not installed — no A/B slot selection at boot"
+elif [ ! -f /usr/lib/libpng16.so.16 ]; then
+    echo "Note: no libpng16 for kdos-bootctl — no A/B slot selection at boot"
+else
+    cp $BOOTCTL bin/kdos-bootctl
+    cp /usr/lib/libpng16.so.16 lib/libpng16.so.16
 fi
 
 # Install cryptsetup, for an encrypted root.
@@ -231,13 +279,18 @@ MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
 # is what offers the choice and this is what makes the choice bootable.
 MODULES="$MODULES xfs f2fs"
 MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_generic sha512_generic crypto_null algif_skcipher"
+# Software RAID. A root ON an array needs these before anything can be
+# assembled, and a machine whose DATA disks are an array needs them before
+# udev settles — without md_mod the members are bare disks with a superblock
+# nobody reads, which looks like an empty drive rather than a missing module.
+# The personalities are listed individually because md_mod loads none of them.
+MODULES="$MODULES md_mod raid0 raid1 raid10 raid456 dm-raid"
 
 for MOD in $MODULES; do
     copy_module $MOD
 done
 
 # Copy modules.order and modules.builtin for depmod
-cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
 cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
 cp /lib/modules/$KERNEL_VER/modules.builtin $MOD_DIR/
 if [ -f /lib/modules/$KERNEL_VER/modules.builtin.modinfo ]; then
@@ -299,6 +352,30 @@ udevadm trigger --type=subsystems --action=add
 udevadm trigger --type=devices --action=add
 udevadm settle
 sp_ok
+
+#
+# ASSEMBLE ANY SOFTWARE RAID BEFORE ANYTHING LOOKS FOR A ROOT. An array's
+# members are bare partitions carrying a superblock until mdadm brings them
+# together; the filesystem UUID the boot is hunting for lives INSIDE the
+# array and does not exist on the disk, so a blkid run before this finds the
+# members and not the root.
+#
+# \`--scan\` AND NOT A CONFIG. Nothing here knows which arrays this machine
+# has; each member's own superblock does, which is also what makes a machine
+# whose disks were reordered still boot.
+#
+# SILENT WHEN THERE IS NO ARRAY: mdadm exits non-zero when it assembles
+# nothing, which is the ordinary case on the overwhelming majority of
+# machines and must not read as a failure.
+if [ -x /bin/mdadm ]; then
+    # The total is additive and only this branch knows it is going to run —
+    # the rule the unlock and the slot blocks already keep.
+    sp_total 1
+    sp_step "RAID"
+    mdadm --assemble --scan >/dev/null 2>&1 || true
+    udevadm settle
+    sp_ok
+fi
 
 echo "Loading essential filesystem modules..."
 sp_step "FILESYSTEM MODULES"
@@ -420,6 +497,20 @@ unlock_root() {
 # Failing to read it is not fatal: \`root=\` on the command line is what a machine
 # without A/B uses anyway, and it stays the fallback.
 #
+# AND THE SLOT'S OWN CONTAINER COMES WITH IT. \`select\` yields a FILESYSTEM
+# identifier; on an encrypted machine that filesystem is inside a LUKS
+# container, and the command line can name exactly one \`cryptdevice=\`. Two
+# slots inside two containers cannot both be named there, so each slot records
+# its own and \`crypt\` is asked for the one that belongs to the filesystem
+# \`select\` just chose. A slot that names none leaves \`CRYPTDEV\` exactly as the
+# command line set it, which is every machine installed without encryption and
+# every machine whose two slots share one container.
+#
+# THE ORDER IS LOAD-BEARING: this block runs BEFORE the unlock below, because
+# the unlock is what has to happen to the container this block names. Moving
+# the unlock above it would unlock whichever container the command line
+# mentions and then look for the other slot's filesystem inside it.
+#
 if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
     sp_total 1
     sp_step "BOOT SLOT"
@@ -434,6 +525,15 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
     if [ -n "\$ESP_DEV" ] && mount -t vfat "\$ESP_DEV" /esp 2>/dev/null; then
         SEL=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
                /bin/kdos-bootctl select 2>/dev/console)
+        # BOTH READS HAPPEN WHILE IT IS MOUNTED. \`crypt\` reads the same file
+        # \`select\` just wrote, so asking after the umount below reads nothing
+        # and silently drops the container — an encrypted second slot would
+        # then be unlocked with the first slot's container and fail to mount,
+        # which reads as a corrupt filesystem rather than as a missing lookup.
+        # It spends no attempt: \`select\` is the only verb that counts.
+        SLOT_CRYPT=""
+        [ -n "\$SEL" ] && SLOT_CRYPT=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
+               /bin/kdos-bootctl crypt "\$SEL" 2>/dev/null)
         # Unmounted immediately: the root filesystem mounts it again at
         # /boot/efi, and two mounts of one FAT filesystem is how a state file
         # gets written twice and read once.
@@ -441,6 +541,15 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
         if [ -n "\$SEL" ]; then
             echo "Boot slot selected: \$SEL"
             ROOT_UUID="\$SEL"
+            if [ -n "\$SLOT_CRYPT" ]; then
+                # The mapper name is this initramfs's own and not the state
+                # file's: only one container is ever open at a time here, so
+                # there is nothing for a per-slot name to disambiguate, and a
+                # name read out of a file on the ESP is a name somebody can
+                # edit into a path.
+                CRYPTDEV="UUID=\$SLOT_CRYPT:kdosroot"
+                echo "Slot container: \$SLOT_CRYPT"
+            fi
             sp_ok
         else
             echo "No usable boot state; keeping root=\$ROOT_UUID"
@@ -605,13 +714,70 @@ if [ "\$FOUND" == "1" ]; then
 
              # Setup OverlayFS
              sp_step "OVERLAY ROOT"
-             mkdir -p /mnt/overlay
-             mount -t tmpfs tmpfs /mnt/overlay
-             mkdir -p /mnt/overlay/upper /mnt/overlay/work /newroot
-
-             echo "Mounting OverlayFS..."
+             mkdir -p /newroot
              modprobe overlay
-             mount -t overlay overlay -o lowerdir=/mnt/system,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /newroot
+
+             # THE UPPER IS WHERE A LIVE SESSION'S WRITES LAND, and whether it
+             # survives a power-off is the whole of what persistence means. A
+             # filesystem labelled KDOS_PERSIST is used as the upper when one
+             # is present; with no store the upper is a tmpfs and the session
+             # is gone at reboot. \`kdos persist\` makes the store.
+             #
+             # \`nopersist\` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
+             # boot menu carries an entry that passes it. A store holding a
+             # change that stops the desktop coming up would otherwise be
+             # reachable only by taking the stick to another machine.
+             #
+             # THE STORE MUST CARRY XATTRS, HARDLINKS AND A d_type, so vfat,
+             # exfat and ntfs cannot hold one: overlayfs refuses such an upper
+             # with EINVAL, which is the same answer it gives for every other
+             # bad mount. Refusing them BY NAME here is what makes a
+             # hand-made store say what is wrong with it.
+             PERSIST=""
+             case " \$(cat /proc/cmdline) " in
+             *" nopersist "*)
+                 echo "nopersist: this session will not be saved" ;;
+             *)
+                 PERSIST=\$(blkid -L KDOS_PERSIST 2>/dev/null) ;;
+             esac
+
+             UPPER=""
+             if [ -n "\$PERSIST" ]; then
+                 PTYPE=\$(blkid -o value -s TYPE "\$PERSIST" 2>/dev/null)
+                 case "\$PTYPE" in
+                 vfat|exfat|ntfs|iso9660|squashfs)
+                     echo "persistence store \$PERSIST is \$PTYPE, which cannot hold an overlay upper"
+                     ;;
+                 *)
+                     mkdir -p /mnt/persist
+                     if mount "\$PERSIST" /mnt/persist; then
+                         mkdir -p /mnt/persist/upper /mnt/persist/work
+                         UPPER="upperdir=/mnt/persist/upper,workdir=/mnt/persist/work"
+                         echo "Persistent session on \$PERSIST (\$PTYPE)"
+                     else
+                         echo "persistence store \$PERSIST would not mount"
+                     fi
+                     ;;
+                 esac
+             fi
+
+             # A STORE THAT DOES NOT WORK MUST NOT COST THE BOOT. Everything
+             # above can fail on a medium somebody else wrote, and a stick that
+             # drops to a shell because its persistence is broken is worse than
+             # one that quietly forgets. Every failure lands here, and the
+             # session comes up exactly as it would with no store at all.
+             if [ -n "\$UPPER" ]; then
+                 echo "Mounting OverlayFS (persistent)..."
+                 mount -t overlay overlay -o lowerdir=/mnt/system,\$UPPER /newroot || UPPER=""
+                 [ -n "\$UPPER" ] || umount /mnt/persist 2>/dev/null
+             fi
+             if [ -z "\$UPPER" ]; then
+                 echo "Mounting OverlayFS..."
+                 mkdir -p /mnt/overlay
+                 mount -t tmpfs tmpfs /mnt/overlay
+                 mkdir -p /mnt/overlay/upper /mnt/overlay/work
+                 mount -t overlay overlay -o lowerdir=/mnt/system,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /newroot
+             fi
 
              # Check if switch root dir is valid
              if [ ! -d "/newroot" ]; then
@@ -650,6 +816,17 @@ if [ "\$FOUND" == "1" ]; then
             if [ -e /mnt/iso/system.sfs ]; then
                 mkdir -p /newroot/mnt/iso
                 mount --move /mnt/iso /newroot/mnt/iso
+            fi
+
+            # THE PERSISTENCE STORE MOVES FOR THE SAME REASON AND ONE MORE.
+            # Left in the initramfs namespace it is unreachable by name, so
+            # \`kdos persist\` could not report how full the store is that the
+            # session is writing to. It also has to be a mount the SHUTDOWN can
+            # see: /etc/inittab unmounts what is mounted, and a store that is
+            # not in the new root's table is never flushed by it.
+            if [ -n "\$UPPER" ]; then
+                mkdir -p /newroot/mnt/persist
+                mount --move /mnt/persist /newroot/mnt/persist
             fi
 
             # Switch Root

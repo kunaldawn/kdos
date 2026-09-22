@@ -222,7 +222,7 @@ int kpr_psi_read(const char *what, KprPsi *out);
 
 /* ── processes ───────────────────────────────────────────────────────────── */
 typedef struct {
-	int pid, ppid, uid, threads, nice, on_cpu;
+	int pid, ppid, uid, threads, nice;
 	char state;			/* R S D Z T ...                   */
 	char comm[24];
 	char *cmdline;			/* space-joined, may be NULL        */
@@ -272,9 +272,9 @@ unsigned long long kpr_mono_ms(void);
  * in `0::/`. conmon carries `-n <name>` in its argv and is the boundary of the
  * box. Returns 1 and fills out, or 0. */
 /*
- * How far up the parent chain the box walk climbs. ONE number: an app in a box
- * sits two or three below conmon, and four copies of this walk previously
- * carried four different bounds.
+ * How far up the parent chain the box walk climbs. ONE number for every caller:
+ * an app in a box sits two or three below conmon, and bounds that differ per
+ * caller are callers that disagree about which processes are in a box.
  */
 #define KPR_BOX_HOPS 16
 

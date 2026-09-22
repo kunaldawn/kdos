@@ -8,16 +8,26 @@
  *   kdos-bootctl — two root slots, and a boot that can change its mind
  *
  *   kdos-bootctl status                what the state file says
- *   kdos-bootctl set-slot a <uuid>     record where a slot lives
+ *   kdos-bootctl set-slot a <uuid> [<luks-uuid>]
+ *                                      record where a slot lives, and which
+ *                                      container it lives inside
+ *   kdos-bootctl crypt <fs-uuid>       the container UUID that filesystem is
+ *                                      inside, for the initramfs
  *   kdos-bootctl try <slot> [n]        boot that slot n times, then give up
  *   kdos-bootctl select                DECIDE and count down (the initramfs)
  *   kdos-bootctl mark-good             this boot worked (the end of rcS)
+ *   kdos-bootctl theme <accent>        repaint the boot menu and the text
+ *                                      consoles in that scheme
+ *   kdos-bootctl theme --print <name>  the theme block, to stdout
+ *   kdos-bootctl palette [<name>]      that scheme's setvtrgb table, to
+ *                                      stdout — the default scheme's is what
+ *                                      `fs/etc/vtrgb` has to be
  *
  * The shape is RAUC's state machine and none of its dependencies: a file with
  * `active`, `try` and `attempts` in it, one decision, and one place that
- * decrements. What it replaces is the thing rEFInd does not have — **boot
+ * decrements. What it replaces is the thing Limine does not have — **boot
  * counting**. systemd-boot counts by renaming files with `+N-M` suffixes;
- * rEFInd has nothing of the sort, so the counting is ours, and it belongs in the
+ * Limine has nothing of the sort, so the counting is ours, and it belongs in the
  * INITRAMFS rather than in `rcS`: a kernel that boots into a wedged userland
  * must still be caught, and `rcS` in that userland never runs to say so.
  *
@@ -31,9 +41,24 @@
  * state file that looked complete is exactly how a machine ends up booting a
  * slot that was never installed. Absent means "boot the root the kernel command
  * line already names", which is what a machine with no A/B setup does anyway.
+ *
+ * A SLOT KNOWS ITS OWN CONTAINER, AND THAT IS WHAT JOINS A/B TO ENCRYPTION.
+ * `select` yields a FILESYSTEM identifier; on an encrypted machine that
+ * filesystem is inside a LUKS container, and the container the kernel command
+ * line names is one fixed `cryptdevice=`. Two slots inside two containers
+ * cannot both be named there, so the second slot's container is recorded HERE
+ * — per slot, beside the filesystem it holds — and the initramfs asks for it
+ * after it has chosen. Without that, selecting slot B unlocks slot A's
+ * container and then looks for B's filesystem inside it, and finds nothing.
+ *
+ * `crypt_a`/`crypt_b` EMPTY IS THE UNENCRYPTED MACHINE and is the common
+ * case. The initramfs falls back to the command line's `cryptdevice=` when a
+ * slot names none, so a machine installed before slots carried containers
+ * boots exactly as it did.
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +73,9 @@
 
 typedef struct {
 	char slot[2][80];	/* a, b — the root UUID of each, "" if unset */
+	/* The LUKS container each slot's filesystem is inside, "" for a slot
+	 * that is not encrypted. See the note at the top of this file. */
+	char crypt[2][80];
 	int active;		/* 0 = a, 1 = b                              */
 	int trying;		/* -1 when not trying, else the slot index   */
 	int attempts;
@@ -119,6 +147,13 @@ static int state_load(BootState *st)
 			kb_strlcpy(st->slot[0], v, sizeof(st->slot[0]));
 		else if (!strcmp(k, "slot_b"))
 			kb_strlcpy(st->slot[1], v, sizeof(st->slot[1]));
+		/* An UNKNOWN key is skipped by the loop's own default, so a
+		 * state file written before these two existed parses as a
+		 * machine with no containers — which is what it is. */
+		else if (!strcmp(k, "crypt_a"))
+			kb_strlcpy(st->crypt[0], v, sizeof(st->crypt[0]));
+		else if (!strcmp(k, "crypt_b"))
+			kb_strlcpy(st->crypt[1], v, sizeof(st->crypt[1]));
 		else if (!strcmp(k, "active")) {
 			int i = slot_index(v);
 			if (i < 0) {
@@ -164,10 +199,13 @@ static int state_save(const BootState *st)
 		      "# reads it before it mounts a root filesystem.\n"
 		      "slot_a   = %s\n"
 		      "slot_b   = %s\n"
+		      "crypt_a  = %s\n"
+		      "crypt_b  = %s\n"
 		      "active   = %s\n"
 		      "try      = %s\n"
 		      "attempts = %d\n",
-		      st->slot[0], st->slot[1], slot_name(st->active),
+		      st->slot[0], st->slot[1], st->crypt[0], st->crypt[1],
+		      slot_name(st->active),
 		      st->trying >= 0 ? slot_name(st->trying) : "",
 		      st->attempts);
 
@@ -207,6 +245,224 @@ out:
 	return rc;
 }
 
+/* ── the bootloader's colours ──────────────────────────────────────────── */
+
+#define LIMINE_CONF_DEFAULT "/boot/efi/limine.conf"
+
+static const char *limine_path(void)
+{
+	/* Overridable for the same reason `KDOS_BOOTSTATE` is: the restamp has
+	 * to be exercisable against a fixture on a machine with no ESP. */
+	const char *e = getenv("KDOS_LIMINE_CONF");
+	return (e && *e) ? e : LIMINE_CONF_DEFAULT;
+}
+
+/* setvtrgb's table, read by kdos-getty onto every VT before it clears the
+ * screen. Overridable for the same reason the two above are. */
+#define VTRGB_DEFAULT "/etc/vtrgb"
+
+static const char *vtrgb_path(void)
+{
+	const char *e = getenv("KDOS_VTRGB");
+	return (e && *e) ? e : VTRGB_DEFAULT;
+}
+
+/*
+ * THE KEYS THE THEME OWNS, and nothing else in the file is this function's to
+ * touch. `cmdline`, `path`, `module_path`, `default_entry`, `timeout` and
+ * every entry are written by the installer and maintained by the updater; a
+ * restamp that rewrote the file from a template would discard an A/B slot
+ * somebody is mid-rollback on.
+ *
+ * `wallpaper` and `term_font` are NOT here, and they are the only two that are
+ * not: they name paths on the ESP, and which artwork and which face are
+ * installed is not a question an accent answers. `wallpaper_style` and
+ * `term_font_scale` ARE here, because they are layout — a restamp that moved
+ * only the colours would leave a machine installed earlier drawing its menu at
+ * `2x2` over a `centered` backdrop, which is the unreadable arrangement in
+ * every scheme.
+ */
+static const char *const THEME_KEYS[] = {
+	"interface_branding",
+	"interface_branding_colour",	"interface_branding_color",
+	"interface_help_hidden",
+	"interface_help_colour",	"interface_help_color",
+	"interface_help_colour_bright",	"interface_help_color_bright",
+	"backdrop",
+	"term_background",		"term_foreground",
+	"term_background_bright",	"term_foreground_bright",
+	"term_palette",			"term_palette_bright",
+	"term_margin",			"term_margin_gradient",
+	"wallpaper_style",		"term_font_scale",
+	NULL
+};
+
+/* The key of a `key: value` line, or -1 for a blank, a comment, an entry
+ * heading or an indented entry setting. Limine's entries are indented and its
+ * globals are not, so leading whitespace alone separates the two. */
+static int theme_key_line(const char *line, size_t n)
+{
+	size_t k = 0;
+
+	if (!n || line[0] == '#' || line[0] == '/' || line[0] == ' ' ||
+	    line[0] == '\t')
+		return -1;
+	while (k < n && line[k] != ':')
+		k++;
+	if (k == n)
+		return -1;
+	for (int i = 0; THEME_KEYS[i]; i++)
+		if (strlen(THEME_KEYS[i]) == k &&
+		    !strncmp(line, THEME_KEYS[i], k))
+			return i;
+	return -1;
+}
+
+/*
+ * Rewrite the theme block of a limine.conf in place.
+ *
+ * The new block lands where the FIRST owned line was, so a file keeps the
+ * shape whoever wrote it gave it; every other owned line is dropped. A file
+ * with no owned line at all takes the block immediately before its first
+ * entry, which is the only position both firmwares' parsers accept it in — a
+ * global written after an entry heading belongs to that entry.
+ */
+static int limine_restamp(const char *path, const KcolScheme *sc)
+{
+	char theme[1024];
+	size_t len = 0;
+	char *data = kb_read_all(path, &len);
+
+	if (!data)
+		return -1;
+	if (kcol_limine_conf(sc, theme, sizeof(theme)) >= (int)sizeof(theme)) {
+		free(data);
+		return -1;
+	}
+
+	KbBuf out = {0};
+	int placed = 0;
+	for (char *line = data; line && *line;) {
+		char *nl = strchr(line, '\n');
+		size_t n = nl ? (size_t)(nl - line) : strlen(line);
+		size_t t = n;
+
+		while (t && (line[t - 1] == '\r' || line[t - 1] == ' '))
+			t--;
+
+		if (theme_key_line(line, t) >= 0) {
+			if (!placed) {
+				kb_buf_str(&out, theme);
+				placed = 1;
+			}
+		} else {
+			/* An entry heading, and the block has nowhere else to
+			 * go: everything after this belongs to an entry. */
+			if (!placed && t && line[0] == '/') {
+				/* And a blank line: a global butted straight
+				 * against an entry heading parses, but reads
+				 * as part of the entry to anyone editing it. */
+				kb_buf_str(&out, theme);
+				kb_buf_str(&out, "\n");
+				placed = 1;
+			}
+			kb_buf_add(&out, line, n);
+			kb_buf_str(&out, "\n");
+		}
+		line = nl ? nl + 1 : NULL;
+	}
+	if (!placed)
+		kb_buf_str(&out, theme);
+	free(data);
+
+	/* The ESP is FAT and has no journal, so this is the same
+	 * temp/fsync/rename/fsync-the-directory the boot state gets: a
+	 * zero-length limine.conf is a machine that shows no menu. */
+	int rc = kb_write_file_atomic(path, out.p);
+	kb_buf_free(&out);
+	return rc;
+}
+
+static int cmd_theme(int argc, char **argv)
+{
+	int print = argc > 2 && !strcmp(argv[2], "--print");
+	const char *name = print ? (argc > 3 ? argv[3] : NULL)
+				 : (argc > 2 ? argv[2] : NULL);
+	const KcolScheme *sc;
+
+	/*
+	 * THE NAME IS ONE OF SEVEN COMPILED-IN STRINGS. That is the whole of
+	 * the validation and the whole of the safety argument for reaching
+	 * this from an unprivileged session: there is no path here to aim, and
+	 * a name that is not a scheme names nothing at all.
+	 */
+	sc = name ? kcol_find(name) : kcol_default();
+	if (!sc) {
+		fprintf(stderr, "bootctl: no accent named '%s'\n", name);
+		return 2;
+	}
+
+	if (print) {
+		char theme[1024];
+		if (kcol_limine_conf(sc, theme, sizeof(theme)) >=
+		    (int)sizeof(theme)) {
+			fprintf(stderr, "bootctl: theme block does not fit\n");
+			return 1;
+		}
+		fputs(theme, stdout);
+		return 0;
+	}
+
+	/*
+	 * AND THE TEXT CONSOLE, WHICH IS THE OTHER SURFACE A SESSION DOES NOT
+	 * OWN. The boot menu and tty1 are the two places an accent has to
+	 * reach through a file rather than through a running program, they
+	 * are both root's to write, and they are wanted together: a menu
+	 * retinted while the login prompt underneath it keeps the old accent
+	 * is a boot that changes colour halfway through.
+	 *
+	 * BEFORE THE ESP TEST AND NOT AFTER IT. The live medium has no
+	 * writable limine.conf and returns success below; the console there
+	 * is as retintable as anywhere else, and a return placed first would
+	 * make `kdos theme` a no-op on the ISO.
+	 */
+	{
+		char vt[512];
+
+		if (kcol_vtrgb(sc, vt, sizeof(vt)) >= (int)sizeof(vt)) {
+			fprintf(stderr, "bootctl: palette does not fit\n");
+			return 1;
+		}
+		if (kb_write_file_atomic(vtrgb_path(), vt) != 0)
+			fprintf(stderr, "bootctl: cannot rewrite %s: %s — "
+				"text consoles keep the old accent\n",
+				vtrgb_path(), strerror(errno));
+		else
+			printf("text consoles are now %s at the next "
+			       "login prompt\n", sc->name);
+	}
+
+	/*
+	 * A MACHINE WITH NO WRITABLE ESP IS NOT A FAILURE. The live medium is
+	 * read-only and a machine installed without one has no limine.conf at
+	 * all; refusing here would make `kdos theme` fail on the ISO, where
+	 * every other surface retints perfectly. Reported and exit 0.
+	 */
+	const char *path = limine_path();
+	if (!kb_path_exists(path)) {
+		printf("no bootloader configuration at %s — boot menu "
+		       "unchanged\n", path);
+		return 0;
+	}
+	if (limine_restamp(path, sc) != 0) {
+		fprintf(stderr, "bootctl: cannot rewrite %s: %s\n", path,
+			strerror(errno));
+		return 1;
+	}
+	printf("boot menu is now %s\n", sc->name);
+	return 0;
+}
+
 /* ── the commands ──────────────────────────────────────────────────────── */
 
 static int cmd_status(const BootState *st, int have, int json)
@@ -222,18 +478,23 @@ static int cmd_status(const BootState *st, int have, int json)
 	if (json) {
 		printf("{\"configured\": true, \"active\": \"%s\", "
 		       "\"trying\": %s%s%s, \"attempts\": %d, "
-		       "\"slot_a\": \"%s\", \"slot_b\": \"%s\"}\n",
+		       "\"slot_a\": \"%s\", \"slot_b\": \"%s\", "
+		       "\"crypt_a\": \"%s\", \"crypt_b\": \"%s\"}\n",
 		       slot_name(st->active),
 		       st->trying >= 0 ? "\"" : "null",
 		       st->trying >= 0 ? slot_name(st->trying) : "",
 		       st->trying >= 0 ? "\"" : "", st->attempts,
-		       st->slot[0], st->slot[1]);
+		       st->slot[0], st->slot[1], st->crypt[0], st->crypt[1]);
 		return 0;
 	}
 	printf("active   %s  %s\n", slot_name(st->active),
 	       st->slot[st->active][0] ? st->slot[st->active] : "(no root)");
+	if (st->crypt[st->active][0])
+		printf("         inside LUKS %s\n", st->crypt[st->active]);
 	printf("other    %s  %s\n", slot_name(!st->active),
 	       st->slot[!st->active][0] ? st->slot[!st->active] : "(no root)");
+	if (st->crypt[!st->active][0])
+		printf("         inside LUKS %s\n", st->crypt[!st->active]);
 	if (st->trying >= 0)
 		printf("trying   %s, %d attempt(s) left\n",
 		       slot_name(st->trying), st->attempts);
@@ -326,11 +587,70 @@ int bootctl_main(int argc, char **argv)
 		return cmd_select(&st, have);
 	if (!strcmp(cmd, "mark-good"))
 		return cmd_mark_good(&st, have);
+	/* No boot state needed and none consulted: the colours of the menu are
+	 * not the A/B machine's business, and a machine with no bootstate must
+	 * still be able to repaint its bootloader. */
+	if (!strcmp(cmd, "theme"))
+		return cmd_theme(argc, argv);
+	/*
+	 * THE CONSOLE PALETTE ON ITS OWN, WRITTEN NOWHERE. `fs/etc/vtrgb` is
+	 * generated and committed, so the tree carries a second copy of the
+	 * default scheme; this is what the selftest diffs it against, and a
+	 * copy nothing compares is the copy that goes stale.
+	 */
+	if (!strcmp(cmd, "palette")) {
+		char vt[512];
+		const KcolScheme *sc = argc > 2 ? kcol_find(argv[2])
+						: kcol_default();
+
+		if (!sc) {
+			fprintf(stderr, "bootctl: no accent named '%s'\n",
+				argv[2]);
+			return 2;
+		}
+		if (kcol_vtrgb(sc, vt, sizeof(vt)) >= (int)sizeof(vt)) {
+			fprintf(stderr, "bootctl: palette does not fit\n");
+			return 1;
+		}
+		fputs(vt, stdout);
+		return 0;
+	}
+
+	/*
+	 * WHICH CONTAINER THAT FILESYSTEM IS INSIDE, asked by the initramfs
+	 * after `select` has chosen.
+	 *
+	 * KEYED BY THE FILESYSTEM UUID AND NOT BY A SLOT NAME, which is what
+	 * makes it a single call with no state between the two. `select` has
+	 * already spent an attempt and may have rolled back; asking "which
+	 * slot did that turn out to be" would be a second decision, made
+	 * separately, that could disagree with the first.
+	 *
+	 * SILENT AND 1 WHERE THERE IS NO CONTAINER, so the caller's fallback
+	 * to the command line's own `cryptdevice=` is the empty answer rather
+	 * than a special case.
+	 */
+	if (!strcmp(cmd, "crypt")) {
+		if (argc < 3) {
+			fprintf(stderr, "usage: kdos-bootctl crypt <fs-uuid>\n");
+			return 2;
+		}
+		if (!have)
+			return 1;
+		for (int i = 0; i < 2; i++)
+			if (st.slot[i][0] && !strcmp(st.slot[i], argv[2])) {
+				if (!st.crypt[i][0])
+					return 1;
+				printf("%s\n", st.crypt[i]);
+				return 0;
+			}
+		return 1;
+	}
 
 	if (!strcmp(cmd, "set-slot")) {
 		if (argc < 4) {
 			fprintf(stderr, "usage: kdos-bootctl set-slot <a|b> "
-					"<uuid>\n");
+					"<uuid> [<luks-uuid>]\n");
 			return 2;
 		}
 		int i = slot_index(argv[2]);
@@ -347,6 +667,16 @@ int bootctl_main(int argc, char **argv)
 			st.active = i;
 		}
 		kb_strlcpy(st.slot[i], argv[3], sizeof(st.slot[i]));
+		/*
+		 * THE CONTAINER IS REWRITTEN EVERY TIME, including to empty
+		 * when none is given. A slot described without one is a slot
+		 * that is not encrypted, and keeping the previous value would
+		 * have an updater that reinstalled a plain filesystem over an
+		 * encrypted slot leave the initramfs unlocking a container
+		 * that is no longer in the way.
+		 */
+		kb_strlcpy(st.crypt[i], argc > 4 ? argv[4] : "",
+			   sizeof(st.crypt[i]));
 		return state_save(&st) == 0 ? 0 : 1;
 	}
 
@@ -391,6 +721,10 @@ int bootctl_main(int argc, char **argv)
 
 	fprintf(stderr,
 		"usage: kdos-bootctl {status [--json]|select|mark-good|\n"
-		"                     set-slot <a|b> <uuid>|try <a|b> [n]}\n");
+		"                     crypt <fs-uuid>|\n"
+		"                     set-slot <a|b> <uuid> [<luks-uuid>]|\n"
+		"                     try <a|b> [n]|\n"
+		"                     palette [<accent>]|\n"
+		"                     theme [--print] <accent>}\n");
 	return 2;
 }

@@ -416,14 +416,14 @@ int kd_install(const char *staged, char *msg, size_t n)
 
 accepted:
 	/*
-	 * A MOUNTED OLD VERSION MUST NOT OUTLIVE THE INSTALL. The mount table
-	 * is keyed by id and survives the rescan, so with the old version
-	 * still mounted every compose after this would put the NEW app diff
-	 * over the OLD runtime's bytes — measured after an update of rt-gtx:
+	 * A MOUNTED SUPERSEDED VERSION MUST NOT OUTLIVE THE INSTALL. The mount
+	 * table is keyed by id and survives the rescan, so leaving the
+	 * superseded version mounted puts every later compose's NEW app diff
+	 * over the OLD runtime's bytes — after an update of rt-gtx that is
 	 * kicad dying on `libSM.so.6: cannot open`, a library the new runtime
-	 * carries and the mounted one did not. Idle, the old mount is dropped
-	 * here so the next mount reads the new file; composed into a box, the
-	 * install is refused by the same rule `remove` applies, and
+	 * carries and the mounted one does not. Idle, the stale mount is
+	 * dropped here so the next mount reads the new file; composed into a
+	 * box, the install is refused by the same rule `remove` applies, and
 	 * `kdos app update` has already named the boxes to stop.
 	 */
 	{

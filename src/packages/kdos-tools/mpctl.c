@@ -224,11 +224,10 @@ static int mp_now(Mp *m, char *out, size_t cap)
 }
 
 /*
- * Where the panel looks. The directory is NOT created here: `kdos-con` makes
- * it 0700 before anything else runs and refuses one with any group or other
- * bit set, so a producer that got there first with the usual 0755 would stop
- * the desktop from starting. No directory means no session, and no session
- * means nothing to tell.
+ * Where the panel looks. The directory is NOT created here: it belongs to the
+ * session and a producer that got there first with the usual 0755 would leave
+ * it group-readable. No directory means no session, and no session means
+ * nothing to tell.
  */
 static int now_path(char *buf, size_t cap)
 {

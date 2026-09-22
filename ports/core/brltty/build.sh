@@ -26,12 +26,10 @@
 # Upstream's own configure has neither problem. `expr length` is still a GNU
 # extension toybox lacks, which is why coreutils is a dependency.
 
-# A CHARACTER-CELL DESKTOP IS THE IDEAL THING TO READ, which is the one real
-# accessibility advantage this project has and the reason this is a port rather
-# than a note. BRLTTY reads the Linux console out of /dev/vcsa — the whole of
-# tty1, the installer and every kdos-shell surface is a grid of cells it can
-# take verbatim, with none of the guessing a screen reader does over a
-# toolkit's accessibility tree.
+# WHAT THIS READS IS /dev/vcsa, so it covers tty1 and the installer — both
+# grids of cells it takes verbatim, with none of the guessing a screen reader
+# does over a toolkit's accessibility tree. It does not reach the graphical
+# session, which is Wayland and publishes no accessibility tree at all.
 #
 # THE DRIVER NAME IS `eSpeak-NG`, spelled exactly as the directory under
 # Drivers/Speech — configure matches it case-sensitively and answers anything

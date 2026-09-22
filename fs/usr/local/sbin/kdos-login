@@ -1,0 +1,28 @@
+#!/bin/sh
+# kdos-login TTY — hand tty1 to agetty, autologging in if login.conf says so.
+#
+# Reached from /etc/inittab through kdos-getty, which has already loaded the
+# console font and /etc/vtrgb onto this VT and set the delegated cgroup and the
+# real-time limits this process inherits.
+#
+# AGETTY AND NOT A LOGIN OF OUR OWN. Going through it keeps utmp, lastlog and
+# the shell's own profile on the path they are on for a serial line and for
+# ssh — and the profile is what starts the desktop, so a second way in here
+# would be a second place that has to remember to.
+#
+# A MISSING OR UNREADABLE login.conf ASKS. An unparseable file must not be a
+# machine that logs somebody in; it must be a machine that shows a prompt.
+set -u
+
+tty=${1:-tty1}
+who=
+
+if [ -r /etc/kdos/login.conf ]; then
+	who=$(sed -n 's/^[[:space:]]*autologin[[:space:]]*=[[:space:]]*\([^[:space:]#]*\).*/\1/p' \
+		/etc/kdos/login.conf | tail -1)
+fi
+
+if [ -n "$who" ]; then
+	exec /sbin/agetty --autologin "$who" --noclear "$tty" 38400 linux
+fi
+exec /sbin/agetty --noclear "$tty" 38400 linux

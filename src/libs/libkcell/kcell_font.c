@@ -55,10 +55,18 @@ struct glyph_slot {
 	const struct fcft_glyph *g;	/* NULL = known-missing, cached too */
 	/*
 	 * Upscaled masks, indexed by scale. [0] and [1] are never allocated:
-	 * scale 1 is g->pix, which fcft owns. Everything above it is ours and is
-	 * unref'd when the cache is flushed.
+	 * scale 1 is the slot's own scale-1 mask, and everything above it is
+	 * ours and is unref'd when the cache is flushed.
 	 */
 	pixman_image_t *up[KCELL_MAX_SCALE + 1];
+	/*
+	 * A SLANT THIS FONT DOES NOT HAVE, sheared out of the upright mask at
+	 * scale 1 — and when it is set it REPLACES `g->pix` as what everything
+	 * above is derived from, because a shear widens the box and moves the
+	 * bearing. NULL on every other slot, where the geometry is `g`'s.
+	 */
+	pixman_image_t *own;
+	int ox, oy, ow, oh;
 };
 
 /*
@@ -186,6 +194,10 @@ static void slot_free(struct glyph_slot *s)
 			cache_bytes -= mask_bytes(s->up[n]);
 			pixman_image_unref(s->up[n]);
 		}
+	if (s->own) {
+		cache_bytes -= mask_bytes(s->own);
+		pixman_image_unref(s->own);
+	}
 	free(s);
 }
 
@@ -371,12 +383,14 @@ static void drop_faces(void)
 int kcell_font_load(const char *name)
 {
 	/*
-	 * The desktop asks for Terminus by name — see docs/KDOS-TEXTMODE.md —
-	 * because it is the same rasterisation tty1 and the boot splash use.
-	 * The choice is load-bearing either way: libktui's rich tier uses
-	 * eighth blocks and the full box-drawing set, and a font missing them
-	 * renders a chart as blanks. The console's ter-kdos32n has neither,
-	 * which is exactly why the vt tier exists — see ktui_ramp_init().
+	 * The desktop asks for Terminus by name — `chrome_font` in
+	 * docs/kdos/06-reference/configuration.md — because it is the same
+	 * rasterisation tty1 and the boot splash use. The choice is
+	 * load-bearing either way: libktui's rich tier uses eighth blocks and
+	 * the full box-drawing set, and a font missing them renders a chart as
+	 * blanks. The VT font ter-kdos32n has neither, which is exactly why
+	 * the vt tier exists — see ktui_ramp_init() and "The glyph tiers" in
+	 * docs/kdos/03-architecture/design-language.md.
 	 */
 	const char *names[1] = { name && *name ? name : "monospace:size=11" };
 
@@ -484,19 +498,156 @@ static int face_style(int style)
 	return 0;
 }
 
+/*
+ * A SLANT SYNTHESISED FROM THE UPRIGHT MASK, sheared about the glyph's
+ * vertical MIDDLE and not about its baseline.
+ *
+ * The painter clips a glyph to the cell it belongs to, because a bitmap
+ * running into the neighbour damages a cell the neighbour has no reason to
+ * repaint. A baseline shear leans the whole letter to the right of its own
+ * cell and the top of every tall one is then cut off; shearing about the
+ * middle spends half the displacement on each side, which is the arrangement
+ * that keeps the most of the letter inside its cell. What is still lost is a
+ * pixel or so at each extreme of a glyph that already fills the cell — a
+ * corner clipped rather than a style dropped.
+ *
+ * 7/32 is a little over twelve degrees, which is the angle a type designer's
+ * oblique carries and the one FreeType synthesises. The shift is a WHOLE pixel
+ * per row: a fractional one needs the mask resampled, and an alpha mask
+ * resampled at a terminal's size is a blur rather than a slant.
+ */
+#define OBLIQUE_NUM 7
+#define OBLIQUE_DEN 32
+
+/* The pixman destroy hook both derived masks hand their allocation to. Named
+ * here because the shear is built beside the cache and the upscaler is built
+ * beside the paint path, and one of the two has to come first. */
+static void free_bits(pixman_image_t *img, void *data);
+
+/*
+ * Positive above the middle, negative below it, ROUNDED and not truncated.
+ * Truncation loses most of the angle at a terminal's size — at a sixteen-pixel
+ * cell it leaves a lean of two pixels where the angle asks for three and a
+ * half, which reads as a font that is slightly out of alignment rather than as
+ * an italic. Rounded away from zero on both sides, so the two halves stay
+ * symmetric.
+ */
+int kcell_oblique_shift(int row, int h)
+{
+	int d = (h / 2 - row) * OBLIQUE_NUM;
+
+	return d >= 0 ? (d + OBLIQUE_DEN / 2) / OBLIQUE_DEN
+		      : -((-d + OBLIQUE_DEN / 2) / OBLIQUE_DEN);
+}
+
+/*
+ * `*ox` comes back as what to ADD to the glyph's x bearing and `*ow` as the
+ * sheared mask's width, because the box grows by the whole travel of the
+ * shear and its left edge moves by the most negative shift.
+ */
+static pixman_image_t *oblique(pixman_image_t *src, int *ox, int *ow)
+{
+	pixman_format_code_t fmt = pixman_image_get_format(src);
+	int bpp;
+
+	switch (fmt) {
+	case PIXMAN_a8:
+		bpp = 1;
+		break;
+	case PIXMAN_a8r8g8b8:
+	case PIXMAN_x8r8g8b8:
+		bpp = 4;		/* a colour font; fcft hands these back */
+		break;
+	default:
+		return NULL;
+	}
+
+	int sw = pixman_image_get_width(src);
+	int sh = pixman_image_get_height(src);
+	int sstride = pixman_image_get_stride(src);
+	const uint8_t *sdata = (const uint8_t *)pixman_image_get_data(src);
+
+	if (sw <= 0 || sh <= 0 || !sdata)
+		return NULL;
+
+	int lo = kcell_oblique_shift(0, sh), hi = lo;
+
+	for (int y = 1; y < sh; y++) {
+		int d = kcell_oblique_shift(y, sh);
+
+		if (d < lo)
+			lo = d;
+		if (d > hi)
+			hi = d;
+	}
+	/* A glyph short enough that every row lands on the same column is an
+	 * upright glyph, and copying it would be a second mask holding the
+	 * first one's pixels. */
+	if (hi == lo)
+		return NULL;
+
+	int dw = sw + (hi - lo);
+	int dstride = ((dw * bpp) + 3) & ~3;
+	uint8_t *ddata = calloc(1, (size_t)dstride * (size_t)sh);
+
+	if (!ddata)
+		return NULL;
+
+	for (int y = 0; y < sh; y++) {
+		const uint8_t *srow = sdata + (size_t)y * (size_t)sstride;
+		uint8_t *drow = ddata + (size_t)y * (size_t)dstride;
+		int at = kcell_oblique_shift(y, sh) - lo;
+
+		memcpy(drow + (size_t)at * bpp, srow, (size_t)sw * bpp);
+	}
+
+	pixman_image_t *out = pixman_image_create_bits(fmt, dw, sh,
+						      (uint32_t *)ddata,
+						      dstride);
+
+	if (!out) {
+		free(ddata);
+		return NULL;
+	}
+	pixman_image_set_destroy_function(out, free_bits, ddata);
+	*ox = lo;
+	*ow = dw;
+	return out;
+}
+
+/*
+ * WHICH SLOT A REQUEST LANDS IN, which is not always the face it is drawn
+ * from. A synthesised SLANT is a different mask and therefore a slot of its
+ * own; a synthesised WEIGHT is the upright mask struck twice by the painter,
+ * so it shares the upright slot rather than duplicating it.
+ *
+ * The key this returns for a synthesised slant is never a live face index:
+ * face_style() would have answered with the italic face if there were one.
+ */
+static int slot_key(int style)
+{
+	int f = face_style(style);
+
+	if ((style & KCELL_ST_ITALIC) && !(f & KCELL_ST_ITALIC))
+		return f | KCELL_ST_ITALIC;
+	return f;
+}
+
 static struct glyph_slot *slot_for(uint32_t cp, int style)
 {
-	style = face_style(style);
-	if (!face[style])
+	int from = face_style(style);
+	int key = slot_key(style);
+
+	if (!face[from])
 		return NULL;
 
 	/* The face is part of the KEY, not of the answer: the same codepoint
 	 * rasterized from two faces is two glyphs, and a cache that held only
 	 * one of them would draw whichever a frame asked for first. */
-	unsigned h = ((cp + (unsigned)style * 0x9e3779b9u) * 2654435761u) %
+	unsigned h = ((cp + (unsigned)key * 0x9e3779b9u) * 2654435761u) %
 		     CACHE_BUCKETS;
 	for (struct glyph_slot *s = cache[h]; s; s = s->next)
-		if (s->cp == cp && s->style == (uint8_t)style)
+		if (s->cp == cp && s->style == (uint8_t)key)
 			return s;
 
 	/* Here and nowhere else: the slot about to be inserted is not in the
@@ -507,7 +658,7 @@ static struct glyph_slot *slot_for(uint32_t cp, int style)
 		cache_evict_one();
 
 	const struct fcft_glyph *g =
-		fcft_rasterize_char_utf32(face[style], cp,
+		fcft_rasterize_char_utf32(face[from], cp,
 					  FCFT_SUBPIXEL_NONE);
 
 	/*
@@ -520,8 +671,28 @@ static struct glyph_slot *slot_for(uint32_t cp, int style)
 	if (!s)
 		return NULL;
 	s->cp = cp;
-	s->style = (uint8_t)style;
+	s->style = (uint8_t)key;
 	s->g = g;
+	/*
+	 * THE SHEAR IS DONE ONCE, HERE. A slant drawn per frame would be a
+	 * per-cell allocation on the paint path; the cache already holds one
+	 * mask per face, and this is one more of the same kind. A shear that
+	 * refuses — a format this cannot walk, a glyph too short to lean —
+	 * leaves the upright mask, which is the style lost rather than the
+	 * cell empty.
+	 */
+	if (key != from && g && g->pix) {
+		int ox = 0, ow = 0;
+
+		s->own = oblique(g->pix, &ox, &ow);
+		if (s->own) {
+			s->ox = g->x + ox;
+			s->oy = g->y;
+			s->ow = ow;
+			s->oh = pixman_image_get_height(s->own);
+			cache_bytes += mask_bytes(s->own);
+		}
+	}
 	s->next = cache[h];
 	cache[h] = s;
 	cache_count++;
@@ -659,11 +830,6 @@ bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out)
 	return kcell_glyph_face(cp, scale, 0, out);
 }
 
-bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out)
-{
-	return kcell_glyph_face(cp, scale, italic ? KCELL_ST_ITALIC : 0, out);
-}
-
 bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out)
 {
 	if (scale < 1)
@@ -675,10 +841,22 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out)
 	if (!s || !s->g || !s->g->pix)
 		return false;
 
-	pixman_image_t *pix = s->g->pix;
+	/*
+	 * THE SLOT'S OWN MASK WHERE IT HAS ONE. A synthesised slant replaces
+	 * the face's mask AND its geometry — a shear widens the box and moves
+	 * the bearing — so both come from the same place or a glyph is drawn
+	 * with the box the upright one had.
+	 */
+	pixman_image_t *base = s->own ? s->own : s->g->pix;
+	int bx = s->own ? s->ox : s->g->x;
+	int by = s->own ? s->oy : s->g->y;
+	int bw = s->own ? s->ow : s->g->width;
+	int bh = s->own ? s->oh : s->g->height;
+
+	pixman_image_t *pix = base;
 	if (scale > 1) {
 		if (!s->up[scale]) {
-			s->up[scale] = upscale(s->g->pix, scale);
+			s->up[scale] = upscale(base, scale);
 			if (!s->up[scale])
 				return false;
 			cache_bytes += mask_bytes(s->up[scale]);
@@ -687,10 +865,10 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out)
 	}
 
 	out->pix = pix;
-	out->x = s->g->x * scale;
-	out->y = s->g->y * scale;
-	out->width = s->g->width * scale;
-	out->height = s->g->height * scale;
+	out->x = bx * scale;
+	out->y = by * scale;
+	out->width = bw * scale;
+	out->height = bh * scale;
 	/* Bold that no face answered is the caller's to strike twice; the
 	 * cache holds one mask per face, never a pre-emboldened copy. */
 	out->synth_bold = (style & KCELL_ST_BOLD) &&

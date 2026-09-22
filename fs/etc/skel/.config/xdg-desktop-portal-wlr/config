@@ -7,7 +7,11 @@
 # direction where the user does not find out.
 #
 # max_fps caps the capture, not the desktop: a 30 fps screen recording of a
-# 60 Hz session costs half the encode and looks the same.
+# 60 Hz session costs half the encode and looks the same. It is also what
+# bounds a recording of a screen NOBODY IS TOUCHING — the compositor answers a
+# capture whether or not anything changed, so a still desktop is committed and
+# encoded at this rate for as long as the recording runs, and at the output's
+# own rate if this line is removed.
 [screencast]
 max_fps=30
 chooser_type=simple

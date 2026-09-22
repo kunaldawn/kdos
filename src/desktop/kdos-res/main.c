@@ -30,14 +30,13 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include "kcon.h"
 #include "kwl.h"
 #include "res.h"
 
-/* See the declaration: naming kwl_impl is what links Wayland into this
- * program. A console-only build would name a different one, or none. */
-const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
-const int kdos_disp_n = 2;
+/* Naming kwl_impl is what links Wayland into this program: libkdisp resolves
+ * the display server out of this table and there is one entry in it. */
+const KDispImpl *const kdos_disp[] = { &kwl_impl };
+const int kdos_disp_n = 1;
 
 
 /*
@@ -253,22 +252,16 @@ int main(int argc, char **argv)
 
 	/* ── the window, or the terminal ───────────────────────────────── */
 	/*
-	 * WHICH DISPLAY SERVER IS THERE, and there are two.
-	 *
-	 * `WAYLAND_DISPLAY` alone was the test, so on the console session this
-	 * program took the terminal path — it registered `kcon_impl`, never
-	 * offered it a chance to probe, and drew its process table over
-	 * whatever terminal it had been started from instead of opening a
-	 * window. `$KDOS_CON` is the console session's surface socket and is in
-	 * every child's environment there, which is the same fact `sh_term()`
-	 * and `kdos doctor` decide on.
+	 * IS THERE A DISPLAY SERVER TO OPEN A WINDOW ON. Without one this draws
+	 * its process table over whatever terminal it was started from, which
+	 * is the right answer over ssh and on `tty2` and the wrong one in a
+	 * session.
 	 */
 	int gui = want_gui;
 	if (!want_tty && !want_gui) {
 		const char *wd = getenv("WAYLAND_DISPLAY");
-		const char *con = getenv("KDOS_CON");
 
-		gui = (wd && *wd) || (con && *con);
+		gui = wd && *wd;
 	}
 
 	if (gui) {
