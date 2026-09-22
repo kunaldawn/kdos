@@ -86,34 +86,15 @@ static const char *sock_path(void)
 /* ── the allowed set ───────────────────────────────────────────────────── */
 
 /*
- * Is `uid` root or a member of wheel?
- *
- * The membership test itself is libkbase's, because kdos-energyd gates its
- * socket on exactly the same question and two copies of a security decision
- * eventually disagree about one of them.
- */
-static bool in_wheel(const char *name, gid_t primary)
-{
-	return kb_user_in_group(name, primary, KP_GROUP) != 0;
-}
-
-static bool uid_allowed(uid_t uid)
-{
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return in_wheel(pw->pw_name, pw->pw_gid);
-}
-
-/*
  * `kdos-powerd --explain <user>` — would that user be permitted, and why.
  *
  * A refused power key is otherwise unattributable: the daemon's stderr goes to
  * the supervisor's log, which is the one place a user watching a dead
- * Super+power will not look. It reads the same two files the gate does and
- * needs no privilege, so it is also how the wheel parse gets tested.
+ * Super+power will not look.
+ *
+ * IT ASKS libkbase THE QUESTION THE SOCKET ASKS, so the explanation cannot
+ * drift from the decision. It needs no privilege, so it is also how the wheel
+ * parse gets tested.
  */
 static int explain(const char *user)
 {
@@ -126,7 +107,7 @@ static int explain(const char *user)
 		printf("%s: uid 0 — permitted\n", user);
 		return 0;
 	}
-	bool ok = in_wheel(pw->pw_name, pw->pw_gid);
+	bool ok = kb_uid_allowed(pw->pw_uid, KP_GROUP) != 0;
 	printf("%s: uid %u, primary gid %u, %s %s — %s\n", user,
 	       (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
 	       ok ? "in" : "not in", KP_GROUP,
@@ -706,8 +687,11 @@ static int serve(void)
 
 		struct ucred cred = {0};
 		socklen_t len = sizeof(cred);
+		/* Root or KP_GROUP, from libkbase — the one answer every root
+		 * daemon here gives to this question. The socket's mode is not
+		 * the gate. */
 		if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-		    !uid_allowed(cred.uid)) {
+		    !kb_uid_allowed(cred.uid, KP_GROUP)) {
 			/* Refused with a reason, and logged: an unexplained
 			 * dead power key is unattributable, and this is the
 			 * message that attributes it. */

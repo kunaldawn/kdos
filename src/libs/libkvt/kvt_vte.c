@@ -3276,8 +3276,7 @@ static void do_action(struct kvt_vte *vte, uint32_t data, int action)
 		case ACTION_DCS_START:
 			/*
 			 * `data` is the DCS final character, and `q` is sixel.
-			 * Every other DCS keeps going nowhere, which is what
-			 * it did before this existed.
+			 * Every other DCS is collected and dropped.
 			 */
 			img_reset(vte);
 			vte->img_kind = KVT_IMG_SIXEL;

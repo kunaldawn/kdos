@@ -959,8 +959,8 @@ static void draw(void)
 	b[DB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, DB_N, -1);
 	int room = bx - 3;
-	/* A MESSAGE takes whatever room is left. The keys are the row's now,
-	 * one row up, where the legend used to be written by hand. */
+	/* A MESSAGE takes whatever room is left. The keys are the hint row's,
+	 * one row up, and not a legend written by hand beside this. */
 	if (applied_note[0] && room > 0)
 		ktui_draw_text(2, h - 2, room, applied_note,
 			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,

@@ -17,10 +17,10 @@
  * There is deliberately no reverse-dependency check. `kpkgdel bash` will
  * remove bash. That is the distro this is.
  *
- * One fix: a name that is not installed no longer aborts the whole run. The
- * shell version had the check inside the loop with an `exit 1`, so
- * `kpkgdel a bogus c` removed `a`, then stopped and never touched `c` — while
- * reporting only that `bogus` was not installed.
+ * A name that is not installed is reported and skipped, never fatal. A check
+ * inside the loop with an `exit 1` makes `kpkgdel a bogus c` remove `a`, then
+ * stop and never touch `c` — while reporting only that `bogus` was not
+ * installed.
  * ---------------------------------
  */
 
@@ -91,8 +91,9 @@ int del_main(int argc, char **argv)
 		if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c.root, argv[++i], sizeof(c.root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
-			/* Unknown options used to be taken as package names, so
-			 * a stray flag read as "Package 'x' not installed". */
+			/* An unknown option is rejected rather than falling
+			 * through to the package list: taken as a name, a
+			 * stray flag reads as "Package 'x' not installed". */
 			kp_err("unknown option: %s", argv[i]);
 			return 1;
 		} else

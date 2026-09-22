@@ -148,10 +148,21 @@ authorisation design.
 
 The gate is the peer's credentials, not the socket's mode. Every socket is mode
 0666 and anyone may connect; the daemon reads the connecting process's real
-user id from the kernel and answers `err not permitted` to anyone who is not
-root or in `wheel`. A mode that *looked* like the authorisation is a mode
-somebody eventually loosens, and there is nothing in the message a client can
-forge.
+user id from the kernel with `SO_PEERCRED` and answers `err not permitted` to
+anyone who is not root or in `wheel`. A mode that *looked* like the
+authorisation is a mode somebody eventually loosens, and there is nothing in
+the message a client can forge.
+
+That test is `libkbase`'s `kb_uid_allowed()` and no daemon keeps a copy of it.
+This is the authorisation boundary of the whole system, and five copies are a
+rule that gets tightened on one socket and stays loose on the other four, with
+nothing in the tree to show which is which. A daemon that needs a different
+rule states the difference beside its own call and asks `kb_uid_allowed()` for
+the rest — `kdos-mountd`'s `--fixture-serve` mode is the only one that does,
+and it grants nothing: its paths are a scratch directory, every child it would
+spawn is printed instead of run, and the init script starts the daemon with no
+arguments. `kdos-powerd --explain <user>` asks the same function, so what it
+prints cannot drift from what the socket decides.
 
 The client never names a path. Every verb takes an identifier out of a list the
 daemon itself published a moment earlier, or out of a list compiled into it.

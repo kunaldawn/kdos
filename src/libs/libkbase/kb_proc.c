@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -642,6 +643,36 @@ int kb_user_in_group(const char *user, gid_t primary, const char *group)
 	}
 	free(txt);
 	return ok;
+}
+
+/*
+ * May a root daemon obey `uid` — is it root, or a member of `group`?
+ *
+ * THE AUTHORISATION BOUNDARY OF EVERY ROOT DAEMON HERE, in one function. Each
+ * of them reads the peer's uid from SO_PEERCRED, which the kernel fills in and
+ * the peer cannot forge, and asks this before acting as root on that peer's
+ * behalf. A copy per daemon is a rule that gets tightened on one socket and
+ * stays loose on the other four, with nothing to show which is which.
+ *
+ * THE GATE IS HERE AND NOT ON THE SOCKET'S MODE. The sockets are world
+ * writable and any uid may connect; an unauthorised one gets `err not
+ * permitted` and a closed connection. A mode that looked like the
+ * authorisation is a mode somebody eventually loosens.
+ *
+ * A uid with no passwd entry is refused: it is not an account, it cannot be in
+ * a group, and refusing is the safe direction for a caller that is about to
+ * act as root.
+ */
+int kb_uid_allowed(uid_t uid, const char *group)
+{
+	struct passwd *pw;
+
+	if (uid == 0)
+		return 1;
+	pw = getpwuid(uid);
+	if (!pw || !pw->pw_name)
+		return 0;
+	return kb_user_in_group(pw->pw_name, pw->pw_gid, group) != 0;
 }
 
 /*

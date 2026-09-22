@@ -216,8 +216,8 @@ static const char *EXEC_EXTRA[][2] = {
  * an alien-apps row and a /usr/local/bin shim, and deliberately NOT a .desktop:
  * a launcher for `wine` with no arguments opens nothing.
  *
- * Only emitted when the image actually carries the binary, so an appbox baked
- * before this segment existed does not get a shim that dies on "not found".
+ * Only emitted when the image actually carries the binary: a shim written for
+ * a binary an image does not have is a command that dies on "not found".
  */
 static const char *COMMANDS[] = {
 	"wine", "winecfg", "winetricks", NULL
@@ -762,9 +762,9 @@ static int write_shims(const char *share, const char *bindir)
 	char *table = kb_path_join(share, "alien-apps");
 	/* A WRITE THAT FAILED MUST NOT REPORT A LAUNCHER SET. Every output
 	 * here is under /usr, so a run as anyone but root writes nothing at
-	 * all — and this program went on to print "11 launchers, 188 mime
-	 * types, 0 shims" and exit 0, which reads as the pack lane having
-	 * taken over when the shipped table is still whoever wrote it last. */
+	 * all — and printing "11 launchers, 188 mime types, 0 shims" and
+	 * exiting 0 reads as the pack lane having taken over when the shipped
+	 * table is still whoever wrote it last. */
 	if (kb_write_all(table, t.p, t.n) != 0)
 		kb_die("cannot write %s: %s", table, strerror(errno));
 	free(table);
@@ -773,16 +773,17 @@ static int write_shims(const char *share, const char *bindir)
 	kb_mkdir_p(bindir);
 
 	/*
-	 * Every shim goes, whatever it used to point at — the dispatcher has
-	 * changed name once already and a stale symlink is a dead command. A
-	 * RELATIVE link target is the marker for one this program wrote.
+	 * Every shim goes and is written again, whatever it points at: a shim
+	 * naming a dispatcher under any other name is a dead command, and the
+	 * name is not guaranteed for ever. A RELATIVE link target is the
+	 * marker for one this program wrote.
 	 *
 	 * RESERVED IS CONSULTED HERE AS WELL AS AT CREATE TIME, and that is
 	 * what keeps `kdos-box` alive: it is the box manager's name on this
 	 * same binary, installed by the recipe as a relative symlink, so a
-	 * sweep that went by the marker alone deleted the front door to every
-	 * box on the machine — leaving `kdos-box: command not found` on a
-	 * system where nothing was missing but a link.
+	 * sweep going by the marker alone deletes the front door to every box
+	 * on the machine — leaving `kdos-box: command not found` on a system
+	 * where nothing is missing but a link.
 	 */
 	char **old = kb_listdir(bindir, NULL);
 	for (char **f = old; f && *f; f++) {

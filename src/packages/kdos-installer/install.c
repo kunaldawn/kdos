@@ -1599,22 +1599,49 @@ static void do_boot(void)
 	 * with its palette rather than keeping whichever arrangement it was
 	 * installed under.
 	 */
+	/*
+	 * THE FACE LIVES ON THE MEDIUM AND NOWHERE ELSE. `psf2limine.py` writes
+	 * font.bin straight into the ISO tree during packaging, so it is never
+	 * inside the root filesystem: /boot/limine/ exists on the ISO9660 volume
+	 * the initramfs mounts at /mnt/iso, and a running KDOS has no such
+	 * directory. Look in both, in that order, or an installed machine falls
+	 * back to Limine's built-in typeface while the stick it came from does
+	 * not.
+	 */
 	const char *fontline = "";
-	if (kb_path_exists("/boot/limine/font.bin")) {
-		copy_file("/boot/limine/font.bin",
-			  TARGET "/boot/efi/EFI/kdos/font.bin");
-		fontline = "term_font: boot():/EFI/kdos/font.bin\n"
-			   "term_font_size: 8x16\n";
-	}
-	/* Same rule. The artwork is dimmed IN THE FILE — Limine has no
-	 * wallpaper opacity — so how dark it is belongs to the generator that
-	 * made it and not to this step. */
+	static const char *const fonts[] = {
+		"/boot/limine/font.bin",
+		"/mnt/iso/boot/limine/font.bin",
+	};
+	for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
+		if (kb_path_exists(fonts[i])) {
+			copy_file(fonts[i], TARGET "/boot/efi/EFI/kdos/font.bin");
+			fontline = "term_font: boot():/EFI/kdos/font.bin\n"
+				   "term_font_size: 8x16\n";
+			break;
+		}
+	/*
+	 * The artwork, unlike the face, IS in the root filesystem: the same two
+	 * files packaging reads are shipped by the fs/ overlay, so this resolves
+	 * without a mounted medium and an install run from a running system gets
+	 * the same backdrop as one run from the stick. The order matches
+	 * `02_iso.sh` — the generated backdrop, then the banner.
+	 *
+	 * The file is dimmed IN ITSELF, because Limine has no wallpaper opacity.
+	 * How dark it is belongs to the generator that made it, not to this step.
+	 */
 	const char *paper = "";
-	if (kb_path_exists("/boot/limine/wallpaper.png")) {
-		copy_file("/boot/limine/wallpaper.png",
-			  TARGET "/boot/efi/EFI/kdos/wallpaper.png");
-		paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
-	}
+	static const char *const papers[] = {
+		"/usr/share/kdos/boot/kdos-backdrop.png",
+		"/usr/share/kdos/boot/kdos-banner.png",
+	};
+	for (size_t i = 0; i < sizeof(papers) / sizeof(papers[0]); i++)
+		if (kb_path_exists(papers[i])) {
+			copy_file(papers[i],
+				  TARGET "/boot/efi/EFI/kdos/wallpaper.png");
+			paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
+			break;
+		}
 
 	/*
 	 * THE COLOURS ARE THE INSTALLED SYSTEM'S ACCENT, out of libkcolor, and

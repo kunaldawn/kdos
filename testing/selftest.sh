@@ -70,8 +70,9 @@ trap 'rm -rf "$OUT"' EXIT
 #
 #     CC="cc -fsanitize=address,undefined -g" testing/selftest.sh
 #
-# which is how the kb_tar size-field overflow and the kxdg NULL memcpy were
-# found. One thing has to be arranged for it, and only one: LEAK CHECKING IS
+# which is the only way this suite sees an out-of-bounds read or a NULL deref
+# in a parser: a plain run takes both for a pass. One thing has to be arranged
+# for it, and only one: LEAK CHECKING IS
 # OFF BY DEFAULT HERE. Every program below is a one-shot that owns its parsed
 # state until it exits — kpkgbuild holds the recipe, kdosbuild holds the plan —
 # and LeakSanitizer reports that as a leak and makes the exit code non-zero, so
@@ -272,8 +273,10 @@ grep -q "audio=no gpu=yes cannot be enforced separately" "$BP" \
     || { echo "  FAIL  a key that cannot be enforced must say so"; cat "$BP"; exit 1; }
 echo "  ok    and a key it CANNOT enforce says so rather than reporting success"
 HOME="$BH" "$OUT/kdos-box" profile frozenbox > "$OUT/box2.txt" 2>&1 || true
-grep -q "persistence = frozen      (writes discarded)" "$OUT/box2.txt" \
-    || { echo "  FAIL  an app box is frozen"; cat "$OUT/box2.txt"; exit 1; }
+grep -q "persistence = frozen      recorded in the profile" "$OUT/box2.txt" \
+    || { echo "  FAIL  an app box records that it is frozen"; cat "$OUT/box2.txt"; exit 1; }
+grep -q "! frozen is not enforced" "$OUT/box2.txt" \
+    || { echo "  FAIL  frozen must be printed as unenforced"; cat "$OUT/box2.txt"; exit 1; }
 echo "  ok    an app box and a dev box differ in the profile, not in kind"
 
 # `export` names a secondary box's launcher so it cannot collide with the
@@ -5907,7 +5910,7 @@ echo "==> the tone ladder gives the bar a legible middle in every accent"
 # The eight VT slots cannot say what a raised button is: `variant` against
 # `backdrop` is 1.00:1, so a panel painted in its own background colour is the
 # same colour as the desktop. libkchrome derives the missing middle, and this
-# is the claim that it works — in all four accents, not just the one anybody
+# is the claim that it works — in every accent, not just the one anybody
 # looks at.
 #
 TONE_BIN="$OUT/tonecheck"

@@ -285,9 +285,9 @@ const char *human_count(long long n);
 /* ──────────────────────────────────────────────────────────────────────── */
 /* View geometry
  *
- * Every region's origin comes from here. It used to be three independent
- * calculations — hud_h in screen_build, the 45% cap in tree_width, the header
- * height inline — and at some widths the divider was drawn on top of the log
+ * Every region's origin comes from here. Split into independent calculations
+ * — hud_h in screen_build, a 45% cap in tree_width, the header height inline
+ * — they disagree at some widths and the divider is drawn on top of the log
  * text. One struct means a size that breaks the layout breaks it visibly in
  * one place, and can be asserted over every size.
  */

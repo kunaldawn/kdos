@@ -622,7 +622,7 @@ note "recipe fields" "checked $(ls -d ports/core/*/ src/packages/*/ 2>/dev/null 
 echo
 echo "==> shell that ships or builds is syntactically valid"
 _sh=0
-for f in script/*.sh script/*/*.sh fs/etc/init.d/* fs/usr/share/kdos/init \
+for f in script/*.sh script/*/*.sh fs/etc/init.d/* \
          ports/fetch testing/*.sh \
          ports/core/*/build.sh src/packages/*/build.sh \
          ports/core/*/postinstall.sh src/packages/*/postinstall.sh \

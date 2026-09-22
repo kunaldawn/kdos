@@ -14,12 +14,20 @@ ordinary Wayland buffer; the compositor's own chrome — titlebars, the root men
 window-switcher OSD — is drawn with pango and handed to the screen the same way. Nothing in either
 path carries what a control *is*, what it is called, or what it is set to.
 
-Half the material for one exists. `ktui_announce()` is in `libktui` and every interactive widget
-calls it — buttons, check boxes, radios, text inputs, lists, tables, tabs, choices, sliders and
-static text, ten roles. A control states its kind, its name, its value and its position in its set:
-"check box Night light, on", "tab Keys, 2 of 3". The record is rebuilt from scratch at the start of
-every frame and read, today, only by the library's own self-test. What is missing is a client, and
-a way for a client to reach it.
+Half the material for one exists. `ktui_announce()` is in `libktui`, and ten roles of widget call
+it — buttons, check boxes, radios, text inputs, lists, tables, tabs, choices, sliders and text
+areas. A control states its kind, its name, its value and its position in its set: "check box Night
+light, on", "tab Keys, 2 of 3"; where the rows are the caller's own draw callback the widget states
+the position and leaves the name to the surface that painted it. It states it under either hand: a
+control that says itself in the frame it draws covers the pointer and the keyboard at once, and a
+control whose selection moves in a handler says so from the press and the wheel as well as the key.
+A menu is in the set: a bar pane and a popped context menu each name the row the caret is on and
+count the rows a caret can reach, so the separators and the rows the scope rules hid are left out
+of both the ordinal and the total.
+
+The record is rebuilt from scratch at the start of every frame and drained by nothing on this
+image. Its only reader is the library's own self-test, which is what keeps it honest with no client
+to notice when it is wrong. What is missing is a client, and a way for a client to reach it.
 
 There is no braille route and no voice from any KDOS surface. `brltty`, `espeak-ng` and
 `speech-dispatcher` are ports and are on the image, because they are useful to somebody at a

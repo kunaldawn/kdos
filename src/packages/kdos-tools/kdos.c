@@ -137,9 +137,8 @@ void kdt_mkparent(const char *path)
  * libkcolor, so they carry the same KCOL_SCHEMES table this program does, and
  * they read the accent NAME from $XDG_CACHE_HOME/kdos/theme — which
  * write_state() below is what writes. A running session is retinted by
- * signalling it, not by handing it colours. That is the whole reason
- * kdos-theme-helper (Rust, and a dependency on cosmic-theme's ThemeBuilder)
- * could be deleted rather than ported.
+ * signalling it, not by handing it colours. That is why the session needs no
+ * theme-helper process of its own, and no theme-building library under it.
  *
  * Everything under this point exists for software that is NOT ours and cannot
  * be told: GTK and Qt apps in the appbox, foot, btop, starship. */
@@ -739,18 +738,18 @@ static void write_foot(const KcolScheme *sc)
 	kcol_format(a.btext, btxt);
 
 	/*
-	 * One section, and it is `[colors-dark]`, not `[colors]`. foot deprecated
-	 * the old section name and warns ONCE PER KEY on stderr — 24 keys, so
-	 * every terminal opened on this desktop began with 24 lines of
+	 * One section, and it is `[colors-dark]`, not `[colors]`. foot treats
+	 * `[colors]` as deprecated and warns ONCE PER KEY on stderr — 24 keys,
+	 * so every terminal opened on this desktop opens with 24 lines of
 	 * "deprecated: foot: [colors]: use [colors-dark] instead" above the first
 	 * prompt. `initial-color-theme` defaults to `dark`, so the dark section
 	 * alone is what foot reads; there is no light KDOS palette to write.
 	 *
 	 * cursor and urls are written HERE, per accent — foot.ini must carry
 	 * neither after its include, or every terminal wears the phosphor cursor
-	 * whatever the accent (the trap the old foot.ini shipped). bright0 is
-	 * kcol_muted, not dim: bright-black is what ls and vim use for de-
-	 * emphasised TEXT, and dim is unreadable as text.
+	 * whatever the accent. bright0 is kcol_muted, not dim: bright-black is
+	 * what ls and vim use for de-emphasised TEXT, and dim is unreadable as
+	 * text.
 	 */
 	KbBuf b = {0};
 	kb_buf_printf(&b,
@@ -2257,9 +2256,9 @@ static void kde_emit_section(KbBuf *b, const KdeKV *kv, int n, const char *sec)
  *
  * The file is NORMALISED rather than patched in place: sections in their
  * original order, foreign keys first, ours after, one blank line between. That
- * is what makes the result IDEMPOTENT — a patch-in-place version of this kept
- * moving [KDE] and re-emitting its own header comment, so `kdos theme` twice in
- * a row produced two different files and `--audit` had a permanent complaint.
+ * is what makes the result IDEMPOTENT — patching in place moves [KDE] and
+ * re-emits its own header comment, so `kdos theme` twice in a row produces two
+ * different files and `--audit` gains a permanent complaint.
  *
  * Blank lines and comments are dropped, which costs nothing: KConfig writes
  * neither, and every line this file cares about is `key=value`.
@@ -2267,11 +2266,11 @@ static void kde_emit_section(KbBuf *b, const KdeKV *kv, int n, const char *sec)
 
 /* Walk `old` line by line; `fn` is called with (section, trimmed line).
  *
- * Every allocation here is per-LINE, not a fixed buffer: the old 512-byte line
- * copy truncated — which is to say CORRUPTED — any long user value on every
- * accent switch (KDE recent-file lists and geometry blobs routinely run past
- * it), and the truncated line then survived as the file's new content. A line
- * this walk does not own must come out byte for byte. */
+ * Every allocation here is per-LINE, not a fixed buffer: a 512-byte line copy
+ * truncates — which is to say CORRUPTS — any long user value on every accent
+ * switch (KDE recent-file lists and geometry blobs routinely run past it), and
+ * the truncated line then survives as the file's new content. A line this walk
+ * does not own must come out byte for byte. */
 typedef void (*kde_line_fn)(const char *sec, const char *line, void *user);
 
 static void kde_walk(const char *old, kde_line_fn fn, void *user)
@@ -2320,8 +2319,8 @@ static void kde_walk(const char *old, kde_line_fn fn, void *user)
 	free(sec);
 }
 
-/* Grows without a ceiling: the old fixed 64 silently DROPPED every section
- * past it, and a KDE home accumulates one section per application. */
+/* Grows without a ceiling: a fixed cap silently DROPS every section past it,
+ * and a KDE home accumulates one section per application. */
 struct kde_secs {
 	char **name;
 	int n, cap;

@@ -41,7 +41,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -508,18 +507,6 @@ static void kill_victim(const KoVictim *v, double some, double full)
 			"full=%.2f some=%.2f\n", g_last, full, some);
 }
 
-/* ── the allowed set ───────────────────────────────────────────────────── */
-
-static bool uid_allowed(uid_t uid)
-{
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return kb_user_in_group(pw->pw_name, pw->pw_gid, KO_GROUP) != 0;
-}
-
 /* ── the daemon ────────────────────────────────────────────────────────── */
 
 /*
@@ -550,8 +537,10 @@ static void answer(int c)
 	struct timeval tv = { .tv_sec = 2 };
 	setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+	/* Root or KO_GROUP, from libkbase — the one answer every root daemon
+	 * here gives to this question. The socket's mode is not the gate. */
 	if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-	    !uid_allowed(cred.uid)) {
+	    !kb_uid_allowed(cred.uid, KO_GROUP)) {
 		(void)!write(c, "err not permitted\n", 18);
 		close(c);
 		return;

@@ -7,18 +7,18 @@
  * ---------------------------------
  *   libkcell — a cell grid, rasterised
  *
- * The fcft glyph cache and the cell -> ARGB painter, with no Wayland in either.
- * They were libkwl's, and libkwl is a CLIENT: it can only paint into a surface
- * it owns. kdos-comp has to paint window frames into buffers of its own, in the
- * middle of the scene graph, where no client can be — so the half of libkwl that
- * knows how to turn a KtuiCell into pixels had to become something both sides
- * can link.
+ * The fcft glyph cache and the cell -> ARGB painter, with NO WAYLAND IN EITHER,
+ * because both sides of the desktop link this. libkwl is a CLIENT: it can only
+ * paint into a surface it owns. kdos-comp paints window frames into buffers of
+ * its own, in the middle of the scene graph, where no client can be. Turning a
+ * KtuiCell into pixels is the half they share, so it may know about a font
+ * renderer and a pixel library and about nothing else.
  *
- * WHAT THIS COSTS, stated rather than discovered. CLAUDE.md called libkwl "the
- * ONE library with real -l dependencies"; it is two now, and kdos-comp gains
- * fcft. The part of that rule which is actually load-bearing is untouched and
- * must stay untouched: NOTHING IN PHASE 1 LINKS EITHER OF THEM, so kinstall
- * still links zero libraries on the first bootable image. If you are about to
+ * WHAT THIS COSTS, stated rather than discovered. This archive carries real
+ * `-l` dependencies — a font renderer and a pixel library — and kdos-comp
+ * gains fcft by linking it. The load-bearing rule must stay untouched: NOTHING
+ * IN PHASE 1 LINKS THIS OR libkwl, so kinstall links libkbase, libktui and
+ * libkcolor and nothing else on the first bootable image. If you are about to
  * add a `-l` to libktui to save a file here, that is the trade you are making.
  *
  * Dependency direction gains one edge and reverses none:

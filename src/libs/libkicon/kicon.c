@@ -702,13 +702,13 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 		want = box_w < box_h ? box_w : box_h;
 
 	/*
-	 * THE ATLAS FIRST, and this order is a bug that was already shipped.
+	 * THE ATLAS FIRST, and the order is the whole of this lookup.
 	 *
 	 * `01_appbox.sh` flattens every context of the appbox image's icon
 	 * theme into hicolor's `apps/` — so `/usr/share/icons/hicolor/16x16/
-	 * apps/folder.png` exists, and looking there first meant every folder
-	 * on the desktop came out as Debian's blue one, at 16 pixels upscaled
-	 * to 32, with no tint. Photographed on a booted ISO.
+	 * apps/folder.png` exists, and looking there first makes every folder
+	 * on the desktop Debian's blue one, at 16 pixels upscaled to 32, with
+	 * no tint. Photographed on a booted ISO.
 	 *
 	 * The atlas can never shadow an application: it carries the theme's
 	 * places, devices, mimetypes, status, actions and emblems, and

@@ -367,12 +367,12 @@ static const KtuiBackend *cur_backend(void)
 /*
  * Take the size and the capabilities from whichever backend is installed.
  *
- * ktui_w/ktui_h/ktui_caps used to be set only by ktui_term_init(), which meant
- * every drawing path silently assumed a terminal had been opened first. A
- * Wayland surface has neither an ioctl nor a TERM to answer that question — it
- * learns its size from a configure event — so without this the cell buffer was
- * allocated 0x0 and the first fill ran off the end of it. Found by segfault,
- * not by reading.
+ * EVERY DRAWING PATH READS ktui_w/ktui_h/ktui_caps, AND NOT EVERY PATH HAS A
+ * TERMINAL BEHIND IT. `ktui_term_init()` answers those three from an ioctl and
+ * from TERM; a Wayland surface has neither and learns its size from a
+ * configure event. Leave them to the terminal alone and a surface that never
+ * opened one allocates its cell buffer 0x0 and runs the first fill off the end
+ * of it.
  *
  * Offscreen is exempt: its size is the caller's declaration, not a
  * measurement, and re-reading it would overwrite the very thing being asked

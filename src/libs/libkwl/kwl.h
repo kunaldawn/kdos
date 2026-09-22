@@ -245,7 +245,7 @@ int kwl_scale(void);
  * The pointer's shape over this surface, via cursor-shape-v1. Sticky: it is
  * re-sent on every pointer enter, so a consumer sets it when its hover target
  * changes, not per frame. A compositor without the protocol ignores it, which
- * leaves the arrow — the state every surface had before this existed.
+ * leaves the arrow — the shape a surface that never asks for one keeps.
  */
 void kwl_cursor_set(enum kdisp_cursor c);
 
@@ -257,12 +257,12 @@ void kwl_cursor_set(enum kdisp_cursor c);
  * the default, which is the whole surface.
  *
  * THE DESKTOP IS WHY THIS EXISTS. kdos-desk covers the entire output, so with
- * the default region it ate every click on the root window — and the
+ * the default region it eats every click on the root window — and the
  * compositor's own root-menu mousebind (right-press -> ShowMenu, menu.xml)
- * therefore never fired for as long as desktop icons were on, which is the
- * shipped default. The desk now claims only the cells its icons occupy, so a
- * click on bare wallpaper reaches the compositor exactly as it does with the
- * icons switched off.
+ * then never fires for as long as desktop icons are on, which is the shipped
+ * default. Claiming only the cells its icons occupy leaves a click on bare
+ * wallpaper reaching the compositor exactly as it does with the icons switched
+ * off.
  */
 void kwl_input_cells(const KRect *rects, int n);
 /* Rename this window while it runs — the compositor draws its frame and its

@@ -383,6 +383,10 @@ int ktui_table_pick(KtuiTable *st, int count, int idx, KtuiTableSpan span,
 	if (span && span(idx, user) == KT_TABLE_SKIP)
 		return 0;
 	st->sel = idx;
+	/* THE POINTER MOVES THE CARET TOO. `ktui_table_key` is the other hand
+	 * and says the same thing; a row reached by a press that announced
+	 * nothing is a reader still on the row the keyboard left. */
+	ktui_announce(KT_A11Y_TABLE, NULL, NULL, st->sel + 1, count);
 	return 1;
 }
 
@@ -556,6 +560,11 @@ int ktui_dropdown_hit(KRect r, KtuiDrop *d, int n, int mx, int my)
 
 	d->sel = d->hi = pick;
 	d->open = 0;
+	/* Said on the press, as `ktui_dropdown_key` says it on the Enter: the
+	 * options are the caller's array and this is not given it, so the
+	 * position is what there is to say. */
+	if (changed)
+		ktui_announce(KT_A11Y_CHOICE, NULL, NULL, d->sel + 1, n);
 	return changed;
 }
 

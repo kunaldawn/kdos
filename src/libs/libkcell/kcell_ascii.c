@@ -23,11 +23,11 @@
  *      back. Without it everything collapses onto the mid-grey glyph
  *   4. nearest neighbour by Euclidean distance over the candidate table
  *
- * ONE ALGORITHM, ONE IMPLEMENTATION — this one. There used to be a GLES2 twin
- * in the pre-fork compositor's ascii.c; the labwc fork did not regraft it, so
- * the CPU half is the whole of it now and `kdos-ascii` (kdos-shell, by
- * basename) is its consumer. The disc positions are still handed out below rather
- * than inlined, for whoever writes the second one next.
+ * ONE ALGORITHM, ONE IMPLEMENTATION — this one, on the CPU, with `kdos-ascii`
+ * (kdos-shell, by basename) as its consumer. A GPU twin in a shader is the
+ * second implementation this invites, and two of them that drift are two
+ * pictures of the same image: the disc positions are handed out below rather
+ * than inlined, so the second one can take them from here.
  *
  * NO libm, which is the constraint the whole file is written under: libkcell
  * must stay linkable by anything libktui is, and libktui links nothing but
@@ -216,9 +216,9 @@ static float disc_mean(const uint8_t *cov, int cw, int ch, int stride, int d)
 
 /*
  * The disc positions, for a consumer that has to reproduce the sampling
- * somewhere else — a GPU shader was the one such consumer and went with the
- * pre-fork compositor. Handing them out still beats repeating the literals in
- * GLSL, where a drifted copy would make two halves quietly disagree.
+ * somewhere else — a GPU shader is the case this exists for. Handing them out
+ * beats repeating the literals in GLSL, where a drifted copy would make two
+ * halves quietly disagree.
  */
 void kcell_ascii_discs(float *out_xy)
 {

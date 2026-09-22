@@ -9,9 +9,9 @@
  *
  * Nothing on any page writes to a disk. Every decision lands in `cfg`, the
  * summary shows all of them at once, and the install step is the single
- * point of no return. That ordering is the whole reason this is a rewrite
- * and not a port: the old installer partitioned the disk in the middle of
- * the questionnaire, so backing out of question six was not a thing.
+ * point of no return. That ordering is the whole contract: a page that
+ * partitioned the disk as its question was answered would make backing out
+ * of question six impossible.
  * ---------------------------------
  */
 
@@ -92,9 +92,9 @@ static void welcome_draw(KRect b)
 	/*
 	 * THE WIDTH IS SHOWN ONLY WHERE IT IS THE UNUSUAL ONE. "UEFI (32-bit)"
 	 * is the machine a person needs told about — it is what makes the boot
-	 * path different from every other x86-64 install, and it is exactly the
-	 * case that used to have no boot path at all — while "UEFI (64-bit)"
-	 * on every other machine is a word nobody reads twice.
+	 * path different from every other x86-64 install, and it is the case a
+	 * generic image has no boot path for — while "UEFI (64-bit)" on every
+	 * other machine is a word nobody reads twice.
 	 */
 	snprintf(v, sizeof(v), "%s%s%s", ki_sys.uefi ? "UEFI" : "legacy BIOS",
 		 ki_sys.fw_bits == 32 ? "  (32-bit firmware)" : "",

@@ -98,7 +98,7 @@ static char why[128];
 static char status[128];
 static int sel, top;
 /* Where the last frame put the list. The header band is two rows plus a rule,
- * so the first device row is no longer 3 — recorded rather than recomputed,
+ * so the first device row is 4 and not 3 — recorded rather than recomputed,
  * because two places deriving one origin is how a click lands a row off. */
 static int list_y0 = 4, list_rows;
 /* comp.conf's `icons = no`, through --no-icons. */
@@ -613,10 +613,10 @@ static void draw_frame(void)
 	sh_frame(w, h, "Bluetooth", KT_ACCENT, KT_BG, 1);
 
 	/*
-	 * The adapter's state, as the header's subject line. It used to be a
-	 * row of five columns at the top of the list, which reads as another
-	 * device — and the one thing this window has to say before anything
-	 * else is whether the radio is even on.
+	 * The adapter's state, as the header's subject line — not a row of five
+	 * columns at the top of the list, which reads as another device. The
+	 * one thing this window has to say before anything else is whether the
+	 * radio is even on.
 	 */
 	if (adapter[0]) {
 		int nconn = 0;

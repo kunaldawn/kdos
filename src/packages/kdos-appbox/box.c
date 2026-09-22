@@ -432,10 +432,20 @@ void profile_print(const Profile *p)
 	printf("accent      = %s\n", p->accent[0] ? p->accent : "the session's");
 	printf("grant       = %s\n", p->grant[0] ? p->grant
 		: "none        (screencopy, data-control, … past the sandbox allowlist)");
+	/*
+	 * RECORDED, NOT IMPOSED. A box's upper layer is wherever its runtime
+	 * puts it: `distrobox create` makes a named container whose writes land
+	 * on disk, and the pack lane's ephemeral-or-not is kdos-packd's own
+	 * decision from the pack. No launch here consults this key, so only
+	 * `persistent` happens to describe what the box does, and the other two
+	 * are a preference the profile remembers for whatever reads it next.
+	 */
 	printf("persistence = %-11s %s\n", persist_name(p->persist),
-	       p->persist == PERSIST_FROZEN	? "(writes discarded)"
-	       : p->persist == PERSIST_EPHEMERAL ? "(upper on tmpfs)"
-						 : "(upper on disk)");
+	       "recorded in the profile");
+	if (p->persist != PERSIST_PERSISTENT)
+		printf("            ! %s is not enforced — a box's writes land"
+		       " where its runtime puts them, and every launch here"
+		       " keeps the upper on disk\n", persist_name(p->persist));
 	printf("network     = %-11s %s\n",
 	       p->netnone ? "none" : p->netns ? "private" : "host",
 	       p->netnone ? "--network none" :

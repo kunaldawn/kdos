@@ -13,9 +13,10 @@
  * first line.
  *
  * STRAIGHT alpha, not premultiplied, and that is deliberate: the tint runs on
- * the RGB and would have to divide the alpha back out first (the Xcursor
- * lesson, which cost a debug cycle in kdos-cursors). The premultiply happens
- * once, at the end, on the way into the pixman image.
+ * the RGB, and premultiplied pixels would have to have the alpha divided back
+ * out before it could — the same rule kdos-cursors keeps for its Xcursor
+ * images. The premultiply happens once, at the end, on the way into the pixman
+ * image.
  *
  * The longjmp trap is kdos-wallpaper.c's and is the same here: libpng reports
  * a bad file by longjmp'ing back AFTER the allocation, so every pointer the

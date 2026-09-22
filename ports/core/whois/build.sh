@@ -31,10 +31,12 @@ export CPPFLAGS="$CPPFLAGS -DHAVE_REGEXEC"
 MAKEVARS=(CONFIG_FILE=/etc/whois.conf HAVE_ICONV=1)
 
 # `mkpasswd` IS TOYBOX'S ON THIS IMAGE, so this package builds and installs
-# only the client. /usr/bin/mkpasswd is a file the toybox package owns, and two
-# packages claiming one path is what kpkgadd refuses with `File conflict
-# detected` — the install stops and the phase fails. -DHAVE_SHA_CRYPT is left
-# out for the same reason: mkpasswd.c is the only source that reads it.
+# only the client. /usr/bin/mkpasswd is a file the toybox package owns, and the
+# orchestrator installs every package with KPKG_OVERWRITE=1, so a second
+# claimant is absorbed rather than refused: nothing fails, the later package
+# takes the path, and which binary the image ends up with follows the install
+# order. -DHAVE_SHA_CRYPT is left out for the same reason: mkpasswd.c is the
+# only source that reads it.
 #
 # THE `all` TARGET BUILDS THE MESSAGE CATALOGUES, and those need xgettext and
 # msgfmt for translations no binary here can use: ENABLE_NLS is glibc-only, so

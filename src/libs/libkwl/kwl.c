@@ -471,7 +471,7 @@ int kwl_should_close(void) { return K.closed; }
 int kwl_lock_engaged(void) { return K.lock_engaged; }
 /* A surface that has never been given the keyboard is treated as focused:
  * a panel is never entered and its terminal-less content does not care,
- * and the neutral answer is what every program did before this existed. */
+ * and the other answer dims every such surface for the whole of its life. */
 static int kwl_focused(void) { return K.kb_entered ? K.kb_here : 1; }
 int kwl_lock_finished(void) { return K.lock_finished; }
 void *kwl_display(void) { return K.display; }
@@ -563,9 +563,9 @@ int kwl_cell_h(void) { int h = kcell_h(); return h > 0 ? h : 16; }
  * The SURFACE's own height in logical pixels — the cells plus the rule.
  *
  * A panel that anchors a popup just above itself has to pass its own
- * thickness as the margin, and `rows * cell_h` stopped being that the moment
- * the bar grew a rule outside the grid: every popup would have sat three
- * pixels low and covered the line it was meant to clear.
+ * thickness as the margin, and that is not `rows * cell_h` while the bar
+ * carries a rule outside the grid: a popup placed from the cells alone sits
+ * three pixels low and covers the line it is meant to clear.
  */
 /*
  * IS SOMEBODY ELSE DRAWING THIS WINDOW'S FRAME?
@@ -720,7 +720,8 @@ static void push_event(const KtuiEvent *ev)
 	/*
 	 * Motion collapses onto motion: a drag produces one event per pointer
 	 * sample and only the newest position means anything. A button or a key
-	 * NEVER overwrites anything — that was the bug this queue exists for.
+	 * NEVER overwrites anything: a lost one is an input the user made and
+	 * the program never sees, which is what this queue exists to stop.
 	 *
 	 * A COLLAPSE ADDS NO EVENT, so the count does not move and the raw
 	 * events pending behind it still belong to the motion already queued.
@@ -1690,8 +1691,8 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 	 * the moment kdos-desk started, and a translucent panel would come out
 	 * at full strength the same way.
 	 *
-	 * Asked of libkcell rather than of the role, because the role no longer
-	 * decides it: the desktop clears KT_BG and the panel dims KT_SURFACE,
+	 * Asked of libkcell rather than of the role, because the role does not
+	 * decide it: the desktop clears KT_BG and the panel dims KT_SURFACE,
 	 * and both need the same format for the same reason.
 	 */
 	bool argb = kcell_needs_alpha();
@@ -1751,12 +1752,12 @@ static const struct wl_callback_listener frame_listener = {
  * different baselines, and keeping them apart is the whole of S1:
  *
  * The DAMAGE is the diff against `K.screen` — what the compositor is showing —
- * because damage describes what changed ON SCREEN. This is also the flicker
- * fix: an unchanged frame is NOT COMMITTED at all. The panel redraws on a
- * one-second tick, the desk on its rescan — and every one of those used to
- * attach a fresh buffer and damage its full surface even when not a cell had
- * moved; on a virtio guest with no GL every commit is a full framebuffer
- * upload, so the desktop pulsed at the union of everyone's timers.
+ * because damage describes what changed ON SCREEN. It is also what keeps the
+ * desktop still: an unchanged frame is NOT COMMITTED at all. The panel redraws
+ * on a one-second tick and the desk on its rescan, so attaching a fresh buffer
+ * and damaging the full surface when not a cell has moved costs a full
+ * framebuffer upload per redraw on a virtio guest with no GL, and the desktop
+ * pulses at the union of everyone's timers.
  *
  * The PAINT diffs against the buffer's OWN shadow, because commits alternate
  * buffers: the buffer being painted holds the frame before last, and a partial
@@ -2466,12 +2467,12 @@ static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int fd,
 /*
  * DEAD KEYS. Without this a compose sequence produces nothing at all: xkb
  * hands out `dead_acute` as a keysym with no text, `xkb_state_key_get_utf32`
- * answers 0, and libkwl dropped the event — so `Compose e '` typed an `e` and
- * then swallowed the quote, and a French or Czech layout could not write half
- * its own alphabet.
+ * answers 0, and the event is dropped unread — `Compose e '` types an `e` and
+ * then swallows the quote, and a French or Czech layout cannot write half its
+ * own alphabet.
  *
  * The table is the locale's, from $XKB_DEFAULT_LAYOUT's Compose file by way of
- * $LC_CTYPE. A machine with no table at all keeps the old behaviour exactly —
+ * $LC_CTYPE. A machine with no table at all is left exactly as it is —
  * `compose_state` stays NULL and every branch below is skipped.
  */
 static void compose_init(void)
@@ -2635,10 +2636,9 @@ static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
  * CLICK AWAY CLOSES IT — for the callers that asked.
  *
  * The menu, the launcher and the run box are transient and have no business
- * surviving the moment the user's attention goes elsewhere: before this,
- * clicking on a window while a menu was open left the menu floating over that
- * window until somebody found the Escape key, and there is no useful
- * "unfocused menu" state.
+ * surviving the moment the user's attention goes elsewhere: a click on a window
+ * with a menu open otherwise leaves the menu floating over that window until
+ * somebody finds the Escape key, and there is no useful "unfocused menu" state.
  *
  * It is `dismiss_on_unfocus` rather than "every keyboard overlay" because a
  * DIALOG is not a menu — see the flag's comment in kwl.h for the file chooser,
@@ -2826,8 +2826,8 @@ static int wheel_dbg(void)
 /*
  * ONE PHYSICAL NOTCH IS ONE TICK, whatever the chain in front of us does.
  *
- * "The calendar moves two months per scroll" survived a correct reading of the
- * protocol here, and the reason is that this client is the LAST link of four:
+ * A correct reading of the protocol here is not enough to stop "the calendar
+ * moves two months per scroll", because this client is the LAST link of four:
  * the emulator, libinput, the compositor and this. Two of the three in front
  * are known to double a notch — QEMU's GTK display receives a smooth scroll
  * event AND the discrete one GTK emulates from it for legacy handlers, and
@@ -3532,7 +3532,7 @@ int kwl_drag_start(const char *mime, const char *data, size_t len)
 /*
  * THE GRID THE CURRENT PIXELS AND THE CURRENT CELL MAKE.
  *
- * Split out of resize_cells() because the two halves of a grid move
+ * Separate from resize_cells() because the two halves of a grid move
  * independently: a configure moves the pixels, and a font change moves the
  * cell while the surface stays exactly the size it was. Both end here.
  */
@@ -3753,9 +3753,9 @@ static void overlay_clamp(int *cols, int *rows, int reserve)
 	if (reserve > 0 && reserve < h)
 		h -= reserve;
 	int max_cols = w / kcell_w() - 2;
-	/* One row of air, not four: the four were standing in for a panel
-	 * thickness this could not see, and `reserve` is now that thickness
-	 * measured rather than guessed. */
+	/* One row of air where `reserve` is known and four where it is not:
+	 * `reserve` is the panel's thickness measured, and without it the four
+	 * rows stand in for a thickness this cannot see. */
 	int max_rows = h / kcell_h() - (reserve > 0 ? 1 : 4);
 	if (max_cols > 4 && *cols > max_cols)
 		*cols = max_cols;
@@ -4189,19 +4189,19 @@ static int make_panel(void)
 		int cols = K.cfg.cols > 0 ? K.cfg.cols : 64;
 		int rows = K.cfg.rows > 0 ? K.cfg.rows : 16;
 		/*
-		 * CLAMPED TO THE OUTPUT, and this is a live defect it fixes.
+		 * CLAMPED TO THE OUTPUT.
 		 *
 		 * layer-shell honours the size a client asks for; it does not
 		 * shrink it. A surface taller than the USABLE area — the
-		 * output minus the taskbar's exclusive zone — is then centred
+		 * output minus the taskbar's exclusive zone — is centred
 		 * around a negative y, and the top of it is simply off the
-		 * screen: kdos-net asked for 24 rows on a 25-row display with
-		 * a 2-row panel and lost its title bar. Photographed.
+		 * screen: kdos-net asking for 24 rows on a 25-row display with
+		 * a 2-row panel loses its title bar. Photographed.
 		 *
 		 * The headroom is the caller's own margin where there is one —
-		 * that IS the bar's thickness, measured rather than the four
-		 * rows this used to guess at because the panel's height is a
-		 * setting and a popup cannot see it.
+		 * that IS the bar's thickness, measured rather than guessed,
+		 * because the panel's height is a setting and a popup cannot
+		 * see it.
 		 */
 		overlay_clamp(&cols, &rows, K.cfg.margin_y);
 		int mx = K.cfg.margin_x, my = K.cfg.margin_y;
@@ -4249,11 +4249,10 @@ static int make_panel(void)
 			 * own height, so the menu hangs off the bar rather
 			 * than covering it, and margin_x is where the word
 			 * that was clicked starts — already clamped by
-			 * place_clamp(), because the compositor does NOT do it
-			 * (this comment used to claim it did; the calendar,
-			 * opened from a clock at the far right of the panel,
-			 * hung off the edge of the screen with most of it
-			 * unreachable).
+			 * place_clamp(), because the compositor does NOT do
+			 * it: a calendar opened from a clock at the far
+			 * right of the panel otherwise hangs off the edge of
+			 * the screen with most of it unreachable.
 			 */
 			zwlr_layer_surface_v1_set_anchor(
 				K.layer_surface,
@@ -4379,15 +4378,15 @@ static int make_panel(void)
 	 */
 	/*
 	 * NONE IS SENT EXPLICITLY, and leaving it to the protocol's default is
-	 * how kdos-tip spent this whole arc spawning a process per hover and
-	 * never showing a tooltip.
+	 * how a surface that wants no keyboard spawns a process per hover and
+	 * never shows a tooltip. kdos-tip is that surface.
 	 *
 	 * A layer surface that requests nothing about its keyboard commits no
 	 * KEYBOARD_INTERACTIVITY state, and labwc arranges a layer off the back
 	 * of the state a commit CARRIES. Every other overlay in this desktop
-	 * asks for ON_DEMAND and so gets arranged; the one surface that wanted
-	 * no keyboard at all was created, mapped, given a buffer and left with
-	 * no box — no error anywhere, and a client that cannot tell. Measured:
+	 * asks for ON_DEMAND and so gets arranged; a surface that wants no
+	 * keyboard at all is created, mapped, given a buffer and left with no
+	 * box — no error anywhere, and a client that cannot tell. Measured:
 	 * the same binary with `keyboard = 1` draws the tip in the right place.
 	 *
 	 * NONE is the default, so this changes nothing else about any surface.
@@ -5044,9 +5043,9 @@ void kwl_layer_autohide(bool hidden)
  *
  * `set_size` is a REQUEST. The surface's real size arrives later, in the
  * compositor's configure, and `ktui_w`/`ktui_h` follow it — so a caller that
- * resized and then drew painted the new picture into the OLD buffer: the rows
- * past the old height were silently dropped, which for kdos-tip's window
- * preview meant a tooltip showing two rows of thumbnail and none of its text.
+ * resizes and then draws paints the new picture into the OLD buffer: the rows
+ * past the old height are silently dropped, which for kdos-tip's window
+ * preview is a tooltip showing two rows of thumbnail and none of its text.
  *
  * Bounded, and skipped entirely when the size did not change: wlroots sends a
  * configure only when it has something new to say, so an unconditional wait

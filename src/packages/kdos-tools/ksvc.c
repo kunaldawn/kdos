@@ -7,31 +7,25 @@
  * ---------------------------------
  *   ksvc / service — the service table and the supervisor
  *
- * This was fs/usr/sbin/service plus the supervise/stop_service/check_status
- * functions in fs/etc/init.d/service_helper. The init.d scripts are still
- * shell: they are a service TABLE, and shell reads better as one. What moved
- * here is the part that was wrong in shell.
+ * The init.d scripts are shell: they are a service TABLE, and shell reads
+ * better as one. The supervisor and its client are here, because three rules
+ * they have to keep are the ones shell cannot.
  *
- * Two bugs the shell version had, both fixed by this file existing:
+ * - **The supervisor LEADS its process group.** It calls setsid(), so `stop`'s
+ *   `kill -- -$pid` reaches the daemon under it. A respawn loop in a
+ *   backgrounded subshell stays in its script's process group, so the group
+ *   kill addresses a group that pid does not lead, fails, and falls through to
+ *   a plain kill of the supervisor — killing the watcher and ORPHANING the
+ *   daemon, while `stop` reports success.
  *
- * - **The supervisor was never a process-group leader.** `supervise` put the
- *   respawn loop in a backgrounded subshell and recorded ITS pid, but a
- *   subshell in a non-interactive shell stays in the script's process group.
- *   `stop_service` then did `kill -- -$pid`, which addressed a group that pid
- *   did not lead, failed, and fell through to a plain `kill $pid` — killing
- *   the supervisor and ORPHANING the daemon it was watching. `service stop`
- *   reported success and left the daemon running. Here the supervisor calls
- *   setsid(), so it genuinely leads its group and the group kill reaches the
- *   daemon.
+ * - **The daemon command is a real argv**, never one word-split string. A
+ *   command flattened into a string and re-expanded unquoted makes the
+ *   splitting load-bearing, and a daemon path containing a space cannot then
+ *   be expressed at all.
  *
- * - **The daemon command was one word-split string.** `local command="$@"`
- *   flattened the arguments and `$command` was then expanded unquoted, so the
- *   splitting was load-bearing and a daemon path containing a space could not
- *   be expressed. ksvc takes a real argv.
- *
- * And one hole closed: `find_service` interpolated the user's argument into a
- * GLOB, so `service start '*'` matched whatever it liked. A service name here
- * is checked before it is used.
+ * - **A service name is checked before it is used.** It arrives from argv and
+ *   selects a file; interpolated into a glob instead, `service start '*'`
+ *   matches whatever it likes.
  * ---------------------------------
  */
 
@@ -107,8 +101,9 @@ static const char *script_name(const char *file)
 	return buf;
 }
 
-/* Exact match first, then a unique substring, which is what the two globs in
- * the shell version amounted to. */
+/* Exact match first, then a substring: the order prefix and the suffix are
+ * already stripped, so `ssh` reaches `20_sshd.sh` while an exactly-named
+ * service can never be shadowed by a longer one that contains it. */
 static char *find_script(const char *want)
 {
 	char **files = kb_listdir(INIT_DIR, NULL);

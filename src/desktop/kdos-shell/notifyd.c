@@ -472,8 +472,9 @@ static void sanitize(char *s)
  * The markup subset: <b> <i> <u> <a href="..."> and the four entities.
  * Unknown tags are STRIPPED, never shown — advertising `body-markup` means a
  * client may send anything HTML-shaped, and a literal `<img>` painted into a
- * toast is the failure the capability list used to avoid by lying the other
- * way. Only the FIRST link's target is kept; the count is what decides
+ * toast is what that promise must not be allowed to produce. Withdrawing the
+ * capability is the other way to be honest and costs the markup this surface
+ * does render. Only the FIRST link's target is kept; the count is what decides
  * whether a click can open anything (one link is unambiguous, two is a menu
  * this surface does not have).
  */
@@ -1187,13 +1188,13 @@ int notifyd_main(int argc, char **argv)
 			ktui_draw_invalidate();
 		}
 		/*
-		 * Drain the bus BEFORE deciding what to draw. This used to sit
-		 * after draw_toasts(), so a Notify was read only on the way
-		 * INTO poll: the toast joined the list, poll slept until its
-		 * expiry, expire_due() removed it at the top of the next pass,
-		 * and the toast was never drawn at all — accepted, given an
-		 * id, invisible. Traced with WAYLAND_DEBUG: the surface never
-		 * saw a single request between hide and expiry.
+		 * Drain the bus BEFORE deciding what to draw. Draining after
+		 * draw_toasts() reads a Notify only on the way INTO poll: the
+		 * toast joins the list, poll sleeps until its expiry,
+		 * expire_due() removes it at the top of the next pass, and the
+		 * toast is never drawn at all — accepted, given an id,
+		 * invisible, with no request reaching the surface between hide
+		 * and expiry.
 		 */
 		while (sd_bus_process(bus, NULL) > 0)
 			;
@@ -1217,13 +1218,13 @@ int notifyd_main(int argc, char **argv)
 		if (want != shown_rows) {
 			/*
 			 * With nothing to show the surface is DESTROYED, not
-			 * shrunk: kdisp_overlay_hide()/show() replace the old
-			 * one-cell workaround, and the show path completes the
+			 * shrunk to a cell: kdisp_overlay_show() completes the
 			 * initial-commit handshake before returning, so the
 			 * first toast after an idle period is drawn on a
-			 * surface that exists. The resize lesson still holds:
-			 * the configure lands in kdisp_pump() below and the cell
-			 * buffer follows only through ktui_draw_resize().
+			 * surface that exists. The resize rule still binds
+			 * here: the configure lands in kdisp_pump() below and
+			 * the cell buffer follows only through
+			 * ktui_draw_resize().
 			 */
 			if (want > 0)
 				kdisp_overlay_show(TOAST_COLS, want);
@@ -1329,11 +1330,10 @@ int notifyd_main(int argc, char **argv)
 		 * The configure that answers kdisp_overlay_resize() lands here, and
 		 * the cell buffer does NOT follow by itself — `ktui_w`/`ktui_h`
 		 * come from ktui_draw_resize(), exactly as panel.c and
-		 * launcher.c already do it. Without this the surface grew and
-		 * draw_toasts() went on believing it had the old three rows, so
-		 * a toast WITH A BODY (four rows) failed its `y + rows > h`
-		 * guard and the daemon painted an empty box. It only became
-		 * reachable when the surface started being resized at all.
+		 * launcher.c already do it. Without this the surface grows and
+		 * draw_toasts() goes on believing it has the three rows it
+		 * started with, so a toast WITH A BODY (four rows) fails its
+		 * `y + rows > h` guard and the daemon paints an empty box.
 		 */
 		if (srv >= 0 && (fds[2].revents & POLLIN)) {
 			int c = accept(srv, NULL, NULL);

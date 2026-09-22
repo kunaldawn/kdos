@@ -603,10 +603,10 @@ static void load_favorites(void)
 }
 
 /*
- * THROUGH sh_launch, LIKE EVERY OTHER LAUNCH SURFACE. This row used to split
- * the Exec line on whitespace and fork the child itself, which carried both
- * faults launch.h names: `Exec=foot --title="Install KDOS" -- sudo kinstall`
- * reached foot as `--title="Install` with a stray `KDOS"` after it.
+ * THROUGH sh_launch, LIKE EVERY OTHER LAUNCH SURFACE. Splitting the Exec line
+ * on whitespace here and forking the child from this file carries both faults
+ * launch.h names: `Exec=foot --title="Install KDOS" -- sudo kinstall` reaches
+ * foot as `--title="Install` with a stray `KDOS"` after it.
  *
  * THE PULSE RUNS WHETHER OR NOT IT STARTED, because it says "the click
  * landed" — a row that looked identical before and after is one people click
@@ -726,10 +726,10 @@ static int icons_on = 1;
 /*
  * WHETHER A PICTURE CAN BE DRAWN AT ALL ON THIS DISPLAY.
  *
- * A picture costs CELLS whether or not it inks any: the Start button spent
- * three of them on a logo that arrived blank, and its word sat four columns
- * into its own plate — which is what "Start is not aligned" was. So the test
- * has to be "can a picture be drawn at all here", asked in ONE place.
+ * A picture costs CELLS whether or not it inks any: a Start button that
+ * reserves three of them for a logo which then arrives blank sits its word
+ * four columns into its own plate. So the test has to be "can a picture be
+ * drawn at all here", asked in ONE place.
  *
  * sh_pic_cell_w() and not kdisp_cell_w(): a display with no pixel size of its
  * own answers 1, which is not "no pictures" but "ask the display".
@@ -765,7 +765,7 @@ static int icon_ok(void)
  * Haiku's Deskbar answer, and the only one that scales: per-window entries at
  * 80 columns (the shipped 1280x800 with the 32px font) hit the width floor at
  * three windows and the taskbar VANISHED, which is the worst thing a taskbar
- * can do. A bucket of one keeps the old click semantics; a bucket of N is
+ * can do. A bucket of one behaves as a plain window entry; a bucket of N is
  * labelled `Name ×N` and a left click opens kdos-menu's window list for it.
  *
  * The chip array is rebuilt every frame from the task list — cheap at 64
@@ -795,8 +795,8 @@ static int icon_ok(void);
 struct chip {
 	const char *label;
 	/* Name, the box that disambiguates it, and a member count: `GIMP (arch)
-	 * ×3`. Wider than the 48 it was, because a truncated label is a button
-	 * that says the wrong thing rather than one that says less. */
+	 * ×3`. Sized for all three at once: a truncated label is a button that
+	 * says the wrong thing rather than one that says less. */
 	char buf[112];
 	int first;		/* task index of the first member, or -1 */
 	int count;		/* 0 for a pinned application not running  */
@@ -812,10 +812,10 @@ static int plusn_x, plusn_end;	/* the +N overflow cell's span */
 static int list_x0, list_x1;	/* the whole row's span, for the wheel */
 
 /*
- * `launchers` is pass 3's rung: with the quick-launch row merged into this
- * one, the thing a narrow bar gives up last is no longer a separate strip, it
- * is the pinned applications that are NOT running. A running window is never
- * dropped — that is what the `+N` cell and icon mode are for.
+ * `launchers` is pass 3's rung. The quick-launch row is part of this one, so
+ * what a narrow bar gives up last is the pinned applications that are NOT
+ * running. A running window is never dropped — that is what the `+N` cell and
+ * icon mode are for.
  */
 static void build_chips(struct sh_state *sh, int launchers)
 {
@@ -1137,7 +1137,8 @@ static int chip_icon(const struct sh_state *sh, const struct chip *c,
  *
  * NEVER zero chips while there are windows: when they do not all fit, the
  * spare go behind a `+N` cell and the wheel (or a click on the cell) shifts
- * the window. That is the contract the old per-window list broke.
+ * the window. A row that can reach zero leaves a person with no way back to a
+ * window that is open.
  */
 /*
  * THE BADGE AND THE PROGRESS BAR — see unity.c for where the numbers come
@@ -1223,23 +1224,22 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		return;
 
 	/* The overflow cell's REAL width, reserved before the chips divide the
-	 * rest and measured at its widest (+N with everything but one hidden):
-	 * a hardcoded three cells left `+12` drawn as a bare `+`, which says
-	 * there are windows behind the cell and not how many. */
+	 * rest and measured at its widest (+N with everything but one hidden).
+	 * A hardcoded three cells draws `+12` as a bare `+`, which says there
+	 * are windows behind the cell and not how many. */
 	snprintf(pn, sizeof(pn), "+%d", nchips - 1);
 	pw = (int)strlen(pn);
 
 	/*
-	 * ICON MODE — the step every taskbar takes before it starts hiding
-	 * windows, and the one this row did not have.
+	 * ICON MODE — the rung between squeezed labels and hiding windows.
 	 *
-	 * The degradation used to be: full labels, then labels squeezed to the
-	 * six-cell floor, then straight to a `+N` cell with windows behind it.
-	 * On the shipped 80-column bar that meant a seventh window pushed one
-	 * out of sight while the row still had space for a picture of it —
-	 * which is the wrong trade, because a taskbar's entire job is to show
-	 * you what is open. Windows 7, KDE and XFCE all drop the TEXT first
-	 * and keep every button; so does this now.
+	 * The degradation ladder is: full labels, labels squeezed to the
+	 * six-cell floor, icons only, then a `+N` cell with windows behind it.
+	 * Icon mode must come before `+N`, because on the shipped 80-column bar
+	 * a seventh window would otherwise go out of sight while the row still
+	 * had space for a picture of it — the wrong trade, since a taskbar's
+	 * entire job is to show you what is open. Windows 7, KDE and XFCE all
+	 * drop the TEXT first and keep every button.
 	 *
 	 * Three cells per window: two for the icon and one of air. A chip with
 	 * no picture keeps the first letter of its name, so the row never
@@ -1291,28 +1291,20 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 	for (int k = 0; k < nvis && x + per <= limit; k++) {
 		const struct chip *c = &chips[chip_off + k];
 		/*
-		 * FILL, then draw with the slots swapped — not KT_A_REVERSE
-		 * over the label. The attribute inverts the cells the TEXT
-		 * occupies, so the spaces inside a name were left at the
-		 * panel's own background and the focused entry came out as one
-		 * highlighted block per WORD: `▓GNU▓ ▓Image▓ ▓Mani▓`.
-		 */
-		/*
-		 * A WINDOW BUTTON IS A BUTTON, and it did not look like one.
+		 * A WINDOW BUTTON MUST LOOK LIKE A BUTTON.
 		 *
-		 * An inactive chip was filled with KT_SURFACE — the panel's
-		 * own background — so it had no shape at all: the row read as
-		 * a line of floating words with no edges, which is what "the
-		 * task items need proper borders" is. KT_DIM is the palette's
-		 * FILL colour (`dim`, 0x12401f against a 0x04120a panel) and
-		 * is exactly what a raised tile wants; the label on it is
-		 * KT_TEXT at better than 4:1, so nothing is traded for the
-		 * shape. Active keeps the accent and the swapped slots.
+		 * An inactive chip filled with KT_SURFACE — the panel's own
+		 * background — has no shape at all, and the row reads as a
+		 * line of floating words with no edges. KT_DIM is the
+		 * palette's FILL colour (`dim`, 0x12401f against a 0x04120a
+		 * panel) and is exactly what a raised tile wants; the label on
+		 * it is KT_TEXT at better than 4:1, so nothing is traded for
+		 * the shape. Active keeps the accent and the swapped slots.
 		 *
 		 * FILL, then draw with the slots swapped — not KT_A_REVERSE
-		 * over the label. The attribute inverts the cells the TEXT
-		 * occupies, so the spaces inside a name were left at the
-		 * panel's own background and the focused entry came out as one
+		 * over the label. The attribute inverts only the cells the
+		 * TEXT occupies, which leaves the spaces inside a name at the
+		 * panel's own background and makes the focused entry one
 		 * highlighted block per WORD: `▓GNU▓ ▓Image▓ ▓Mani▓`.
 		 */
 		int hovered = sh->hover_task == chip_off + k;
@@ -1321,13 +1313,13 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		/*
 		 * THE PLATE IS PIXELS AND THE STATE IS AN UNDERLINE.
 		 *
-		 * The focused window used to be a slab of full accent — 14:1
-		 * against the bar, several hundred pixels wide, competing with
-		 * the Start button and the clock and the top rule, all of which
-		 * were also at 14:1. It is a raised plate plus a two-pixel
-		 * accent underline now, which is what Windows 7, Plasma and
-		 * Windows 11 all do, and the state reads BETTER for it because
-		 * nothing else on the bar is shouting any more.
+		 * The focused window is a raised plate plus a two-pixel accent
+		 * underline, which is what Windows 7, Plasma and Windows 11 all
+		 * do. It must not be a slab of full accent: that is 14:1
+		 * against the bar over several hundred pixels, competing with
+		 * the Start button, the clock and the top rule, which are also
+		 * at 14:1 — the state reads WORSE when everything on the bar is
+		 * shouting.
 		 *
 		 * The underline is also what says RUNNING at all: on the merged
 		 * row a button may be a pinned application that is not running,
@@ -1377,10 +1369,10 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		}
 		/*
 		 * The pinned row is dragged to reorder, and the spans it is
-		 * dragged by are recorded HERE now that the quick-launch strip
-		 * is gone. Same array, same handlers: a merged button that
-		 * carries a pin is the thing that used to be a quick-launch
-		 * icon.
+		 * dragged by are recorded HERE, on the merged row: a button
+		 * that carries a pin IS the pinned application, so there is no
+		 * separate strip to record them from. Same array and same
+		 * handlers as the drag code expects.
 		 */
 		if (c->fav >= 0 && c->fav < FAV_MAX) {
 			fav_x[c->fav] = x;
@@ -2065,19 +2057,18 @@ static int applet2(struct sh_state *sh, int id, int *right_x, int x_min,
  * The wing is laid out right to left and everything left of it — the meters
  * strip, the separator, the window list — starts where the walk stopped. So a
  * network readout that goes from `↓63` to `↓7` narrows the wing by a column and
- * every chart on the panel slides one cell sideways. Photographed four seconds
- * apart: `CPU` at column 24 and then at column 25, with the graphs apparently
- * scrolling backwards. Nothing was wrong with the charts.
+ * every chart on the panel slides one cell sideways — `CPU` at column 24 and
+ * then at column 25 four seconds later, with the graphs apparently scrolling
+ * backwards and nothing wrong with the charts at all.
  *
  * THREE CELLS, AND THE ODD NUMBER IS THE POINT. The icon is asked for as a
  * 3x1 sprite rather than 2x1: libkicon centres the largest square that fits,
  * so the picture is the same 32x32 and it is centred in the TILE rather than
  * in its left half. Three also centres the values that actually occur — a
  * count is one column and a rate or a level bar is three — where an even width
- * would leave every one of them half a cell off. That is the other half of
- * "the numbers are not aligned": with a two-cell tile and a one-character
- * value, `(width - vw) / 2` is zero, so the count sat under the icon's left
- * edge and read as belonging to the tray item beside it.
+ * would leave every one of them half a cell off. With a two-cell tile and a
+ * one-character value, `(width - vw) / 2` is zero, so the count sits under the
+ * icon's left edge and reads as belonging to the tray item beside it.
  */
 #define AP_TILE_W 3
 
@@ -2405,8 +2396,8 @@ static void panel_tick(struct sh_state *sh)
 {
 	/*
 	 * Started once a minute, HARVESTED nonblockingly: `kdos restarts` walks
-	 * every process's maps, and waiting for it froze the panel for the whole
-	 * walk.
+	 * every process's maps, and waiting for it freezes the panel for the
+	 * whole walk.
 	 */
 	static time_t last_restart_check;
 	time_t now = time(NULL);
@@ -2584,11 +2575,10 @@ static void load_widgets(void)
 	 * CLICKED. It publishes `ItemIsMenu`, so its Activate means "show my
 	 * menu" and the menu is com.canonical.dbusmenu, which this tray does
 	 * not render (a stated gap, not an oversight — it is a second protocol
-	 * with a nested-variant layout tree). So the keyboard picture beside
-	 * the clock answered nothing at all, which is what "the keyboard icon
-	 * does not do anything, why is it needed there" is. It is not needed
-	 * there: it is behind the chevron, where the popup can at least SAY
-	 * what it is, and `tray_hide =` in panel.conf brings it back.
+	 * with a nested-variant layout tree). A keyboard picture beside the
+	 * clock that answers nothing at all is chrome nobody can use, so it
+	 * goes behind the chevron, where the popup can at least SAY what it
+	 * is; `tray_hide =` in panel.conf brings it back out.
 	 */
 	memcpy(widgets, WIDGETS_SHIPPED, sizeof(widgets));
 	nwidgets = W_N;
@@ -2968,11 +2958,11 @@ static int clip_depth(void)
 /*
  * IS THIS DISK THE SYSTEM'S OWN? — mounted anywhere except /media.
  *
- * The count used to be "removable, full stop", which on the live ISO is the
- * disc this machine BOOTED FROM: the panel read `2` with nothing plugged in,
- * and the manager the applet opens — kdos-mountd, which refuses the boot
- * medium and anything in fstab — offered nothing at all. A readout that
- * disagrees with the window it opens is worse than no readout.
+ * The count must not be "removable, full stop": on the live ISO that takes in
+ * the disc this machine BOOTED FROM, so the panel reads `2` with nothing
+ * plugged in while the manager the applet opens — kdos-mountd, which refuses
+ * the boot medium and anything in fstab — offers nothing at all. A readout
+ * that disagrees with the window it opens is worse than no readout.
  *
  * The same two files the daemon reads, and the same conclusion from them: a
  * device the system has already mounted somewhere of its own is not a stick
@@ -3104,32 +3094,30 @@ static int media_count(int *mounted)
 
 /* ── the meters: CPU, memory and the network ───────────────────────────────
  *
- * THE SAMPLE INTERVAL IS A CLOCK, NOT THE DRAW LOOP, and getting that wrong is
- * the whole reason the CPU readout was unreadable.
+ * THE SAMPLE INTERVAL IS A CLOCK, NOT THE DRAW LOOP. Tie it to the loop and
+ * the CPU readout is unreadable.
  *
  * A rate is a difference over an elapsed time, and the panel's loop is woken
  * by EVENTS: the poll timeout is a second, but a pointer crossing the bar, a
  * window appearing, a tray property arriving or a frame callback all return
- * from it early. The old reading re-sampled /proc/stat on every one of those
- * and divided by whatever interval had happened to elapse — a few jiffies over
- * a few milliseconds — so moving the mouse made `CPU 0%` and `CPU 100%` flash
- * at pointer speed. It was not a rendering fault and no amount of redraw
- * throttling would have fixed it: the NUMBER was wrong.
+ * from it early. Re-sampling /proc/stat on every one of those divides by
+ * whatever interval happened to elapse — a few jiffies over a few
+ * milliseconds — and moving the mouse makes `CPU 0%` and `CPU 100%` flash at
+ * pointer speed. That is not a rendering fault and no amount of redraw
+ * throttling touches it: the NUMBER is wrong.
  *
  * So the meters keep their own monotonic deadline and every reader gets the
  * last completed sample.
  *
- * AND THE DEADLINE HAS TO BE THE POLL'S TOO, which is the other half of the
- * same bug and is what "the graph does not flow, it sticks and then jumps"
- * was. The loop waited a flat second and the sampler wanted a sample every
- * half one: a pointer crossing the bar at 490 ms returned from the poll early,
- * the tick found the deadline not yet due, and the NEXT wait ran its full
- * length — so the sample landed at 990 ms and the one after it at 1490. The
- * chart advances one pixel per sample, so an irregular sample interval is an
- * irregular chart, and moving the mouse was enough to cause it. The panel's
- * wait is now shortened to whatever is left of the interval, exactly as it
- * already is for the launch pulse and as libkwl's own poll is for a key
- * repeat.
+ * AND THE DEADLINE HAS TO BE THE POLL'S TOO. A flat one-second wait under a
+ * sampler that wants a sample every half one sticks and then jumps: a pointer
+ * crossing the bar at 490 ms returns from the poll early, the tick finds the
+ * deadline not yet due, and the NEXT wait runs its full length — so the sample
+ * lands at 990 ms and the one after it at 1490. The chart advances one pixel
+ * per sample, so an irregular sample interval is an irregular chart, and
+ * moving the mouse is enough to cause it. The panel's wait is shortened to
+ * whatever is left of the interval, exactly as it is for the launch pulse and
+ * as libkwl's own poll is for a key repeat.
  *
  * HALF A SECOND, not a whole one. The band is around sixty pixels wide and one
  * sample is one pixel: at a second apart a chart takes a minute to fill and
@@ -3867,23 +3855,23 @@ static int cpu_percent(void)
  *  │▓▓      │     │                             │         │      Sat 16 Aug│
  *  └──────────────────────────────────────────────────────────────────────┘
  *
- * ONE BAR, ON THE BOTTOM EDGE. There used to be two — a GNOME-2 menu bar at the
- * top and a GNOME-2 second panel at the bottom — which is two processes, two
- * layouts, two hit maps and the window list drawn TWICE. It also cost two
- * exclusive zones: on the shipped 1280x800 with a 32-pixel font that is 8% of
- * the screen spent on chrome that says the same thing at both ends of it.
+ * ONE BAR, ON THE BOTTOM EDGE. A GNOME-2 pair — a menu bar at the top and a
+ * second panel at the bottom — is two processes, two layouts, two hit maps and
+ * the window list drawn TWICE. It also costs two exclusive zones: on the
+ * shipped 1280x800 with a 32-pixel font that is 8% of the screen spent on
+ * chrome that says the same thing at both ends of it.
  *
  * The bottom edge specifically, because a taskbar is AIMED AT and the bottom
  * edge is the cheapest target a pointer has — it cannot be overshot. The top
  * edge is equally cheap and is where a menu bar goes; this desktop has no
  * global menu bar and is not getting one.
  *
- * `panel = bottom | top | off` and `panel_cells = 1 | 2` in comp.conf keep the
- * old shape reachable: `panel = top` is this same code with a different anchor.
- * Two rows is the default because that is what makes an icon square — a cell
- * is 16x32, so two cells across two rows is 32x64 and libkicon centres a 32x32
- * picture in it. At one row the bar is labels and glyphs, exactly as before,
- * and nothing on it REQUIRES a picture.
+ * `panel = bottom | top | off` and `panel_cells = 1 | 2` in comp.conf keep a
+ * top-anchored single row reachable: `panel = top` is this same code with a
+ * different anchor. Two rows is the default because that is what makes an icon
+ * square — a cell is 16x32, so two cells across two rows is 32x64 and libkicon
+ * centres a 32x32 picture in it. At one row the bar is labels and glyphs, and
+ * nothing on it REQUIRES a picture.
  *
  * The layout is still right to left after the left wing, and that is still
  * load-bearing: the right wing has a fixed width and the window list is what
@@ -4374,29 +4362,28 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			 * was drawn in. The stride is two cells and the screen
 			 * and its number occupy the FIRST of them — the second
 			 * is the gap that makes four of them read as four
-			 * things — so a two-cell backdrop lit a block twice as
-			 * wide as the thing under the pointer and closed the
-			 * gap to the workspace beside it. Photographed: one
-			 * square, a highlight of two. A workspace whose NAME
-			 * is two characters wide does occupy both, and then
-			 * the backdrop is two: the width is the label's.
+			 * things — so a two-cell backdrop lights a block
+			 * twice as wide as the thing under the pointer and
+			 * closes the gap to the workspace beside it. A
+			 * workspace whose NAME is two characters wide does
+			 * occupy both, and then the backdrop is two: the
+			 * width is the label's.
 			 */
 			int hw = lw;
 			/* KT_MID, the same fill every other hover on this bar
 			 * takes — and here it is not a preference: an
 			 * UNOCCUPIED screen is drawn in KT_DIM, so a KT_DIM
 			 * hover behind it is the same colour as the thing it
-			 * is meant to light. Measured on the booted ISO: the
-			 * top row of a hovered empty workspace was pixel-for-
-			 * pixel what it had been. The screen goes on TOP of
-			 * it, so the workspace's own state colour still wins
-			 * the cell it occupies. */
+			 * is meant to light — a hovered empty workspace comes
+			 * out pixel-for-pixel identical to an unhovered one.
+			 * The screen goes on TOP of it, so the workspace's own
+			 * state colour still wins the cell it occupies. */
 			/*
 			 * RECORDED, NOT FILLED, and the order is why. A cell
 			 * fill is painted AFTER the backdrop is replayed, so a
-			 * KT_MID fill over the little screen below wipes it —
-			 * a hovered workspace lost the very thing the hover
-			 * was pointing at. Both are backdrop ops now and the
+			 * KT_MID fill would wipe the little screen below it and
+			 * a hovered workspace would lose the very thing the
+			 * hover points at. Both are backdrop ops and the
 			 * screen is recorded second, which is what puts it on
 			 * top.
 			 */
@@ -4410,9 +4397,8 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			 * as it is wide — and the pager sits immediately
 			 * beside the network chart, which is a column graph.
 			 * Four tall filled columns next to a column graph read
-			 * as more of the graph; that is what they were
-			 * reported as. Inset to a landscape rectangle they
-			 * read as what they are, which is four screens.
+			 * as more of the graph. Inset to a landscape rectangle
+			 * they read as what they are, which is four screens.
 			 *
 			 * The hover backdrop above stays a cell fill: it is
 			 * the thing being lit, and it should light the whole
@@ -4421,16 +4407,14 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			{
 				/*
 				 * LANDSCAPE, AND IT IS MEASURED RATHER THAN
-				 * INSET. The first version took a cell and
-				 * shaved a couple of pixels off each side,
-				 * which was roughly square on the 16x32 cell
-				 * it was written for and is a TALL 6x10 on the
-				 * 10x20 one this bar wears — four tall bars
-				 * beside a column chart, which is exactly the
-				 * "more of the graph" read the inset was
-				 * supposed to remove. A screen is wider than
-				 * it is high, so the height is derived from
-				 * the width.
+				 * INSET. Taking a cell and shaving a couple of
+				 * pixels off each side is roughly square on a
+				 * 16x32 cell and a TALL 6x10 on the 10x20 one
+				 * this bar wears — four tall bars beside a
+				 * column chart, which is exactly the "more of
+				 * the graph" read an inset is meant to remove.
+				 * A screen is wider than it is high, so the
+				 * height is derived from the width.
 				 */
 				int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 				int sw = hw * cw - 2;
@@ -5327,15 +5311,15 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 	sh->meter_hit_x = x;
 	sh->meter_hit_end = x + cells;
 	/*
-	 * AND THE ROWS IT COVERS, because the click test used to name one.
+	 * AND THE ROWS IT COVERS, because the click test needs all of them.
 	 *
 	 * `row` is the strip's row for the GLYPH fallback, which is one row of
-	 * text; the tile is `rows` tall and starts above it. The hit test asked
-	 * for `cy == row`, so the top half of every chart — the whole of the
-	 * CPU and RAM readings and the received half of the network — was dead:
-	 * a click there fell through to the applet walk, matched nothing, and
-	 * did nothing at all. Aiming at the middle of a chart is what people
-	 * do.
+	 * text; the tile is `rows` tall and starts above it. A hit test that
+	 * asks for `cy == row` leaves the top half of every chart dead — the
+	 * whole of the CPU and RAM readings and the received half of the
+	 * network — and a click there falls through to the applet walk,
+	 * matches nothing and does nothing at all. Aiming at the middle of a
+	 * chart is what people do.
 	 */
 	meter_row0 = top;
 	meter_rows = rows;
@@ -5851,14 +5835,14 @@ static void draw_taskbar(struct sh_state *sh)
 	 * collapses the Start button to its mark. `pass 3` also drops the
 	 * quick-launch row.
 	 *
-	 * It used to be two passes with the meters inside both, so a single
-	 * window that did not fit took the Start button's word AND the entire
-	 * quick-launch row with it while a fifteen-cell chart stayed — which
-	 * is exactly backwards. Each rung gives up the least useful thing
+	 * The meters must have a rung of their own. Fold them into every pass
+	 * and a single window that does not fit takes the Start button's word
+	 * AND the entire quick-launch row with it while a fifteen-cell chart
+	 * stays — exactly backwards. Each rung gives up the least useful thing
 	 * left: a chart, then a word whose icon still says the same thing,
 	 * then a row of shortcuts that are all in the menu anyway. Nothing
 	 * here may drop a window BUTTON — that is what icon mode and the `+N`
-	 * cell are for, and it is why there are four rungs rather than two.
+	 * cell are for, and it is why there are four rungs.
 	 */
 	for (int pass = 0; pass < 4; pass++) {
 		int meters_on = pass == 0;
@@ -6281,15 +6265,15 @@ static void draw_taskbar(struct sh_state *sh)
 		 * bar that must not move: the date sits below the time, and
 		 * the strip stops one cell short of it.
 		 *
-		 * IT IS PART OF THE RIGHT WING, not a free row. It used to be
-		 * drawn on row 1 and the window list was then given everything
-		 * left of the APPLET row's edge — so with seven windows open
-		 * the chips ran straight across the charts and painted over
-		 * them: `CPU` gone, `RAM` starting mid-word under a task
-		 * button. A status area a window list can overwrite is not a
-		 * status area, and no panel that ships behaves that way. The
-		 * wing's left edge is now whichever of its two rows reaches
-		 * further left, and the chips stop there.
+		 * IT IS PART OF THE RIGHT WING, not a free row. Drawing it on
+		 * row 1 and giving the window list everything left of the
+		 * APPLET row's edge lets the chips run straight across the
+		 * charts with seven windows open and paint over them: `CPU`
+		 * gone, `RAM` starting mid-word under a task button. A status
+		 * area a window list can overwrite is not a status area, and
+		 * no panel that ships behaves that way. The wing's left edge
+		 * is whichever of its two rows reaches further left, and the
+		 * chips stop there.
 		 *
 		 * The floor it is given is the room the window list needs, so
 		 * on a narrow bar the strip degrades — fewer meters, shorter
@@ -6299,17 +6283,15 @@ static void draw_taskbar(struct sh_state *sh)
 		int wing_left = right_x;
 		if (h > 1 && meters_on) {
 			/*
-			 * ONE RIGHT EDGE NOW, AND IT IS THE WING'S.
+			 * ONE RIGHT EDGE, AND IT IS THE WING'S.
 			 *
-			 * The glyph strip used to be allowed to run under the
-			 * applets as far as the clock, because the applets
-			 * were one row of text with an empty row beneath
-			 * them. They are two-row tiles now — a picture, a
-			 * headline and a detail line — so that row belongs to
-			 * the network readout and the volume's level bar, and
-			 * a strip that reached the clock would draw straight
-			 * through both. Both the tile and the fallback stop
-			 * where the right-to-left walk stopped.
+			 * The applets are two-row tiles — a picture, a
+			 * headline and a detail line — so the row under them
+			 * belongs to the network readout and the volume's
+			 * level bar. A glyph strip allowed to run under the
+			 * applets as far as the clock draws straight through
+			 * both. Both the tile and the fallback stop where the
+			 * right-to-left walk stopped.
 			 */
 			int mr = right_x;
 			/*
@@ -6966,13 +6948,12 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	/*
 	 * WHERE THE POPUP GOES, computed once for every branch below.
 	 *
-	 * Every one of these used to open CENTRED, as a dialog in the middle
-	 * of the screen with no relationship to the thing that was clicked —
-	 * which is how a panel applet's own window is not supposed to behave
-	 * and is why they read as separate applications rather than as part
-	 * of the bar. Anchored bottom-left at the applet's own column, one
-	 * bar-height up: layer-shell has no coordinates, so "above this
-	 * readout" is an anchor plus a margin.
+	 * A popup opened CENTRED is a dialog in the middle of the screen with
+	 * no relationship to the thing that was clicked, and it reads as a
+	 * separate application rather than as part of the bar. Anchored
+	 * bottom-left at the applet's own column, one bar-height up:
+	 * layer-shell has no coordinates, so "above this readout" is an anchor
+	 * plus a margin.
 	 */
 	snprintf(xs, sizeof(xs), "%d",
 		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kdisp_cell_w());
@@ -7108,12 +7089,12 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_MORE: {
 		/*
 		 * THE CHIP SAYS THAT IT HAPPENED; THE POPUP SAYS WHO — and it
-		 * is a popup rather than `foot -e kdos stutter`, which is what
-		 * this used to open. A terminal that scrolls a fresh paragraph
-		 * every dropped frame is not a report, it is a firehose: it
-		 * covered the desktop, it never stopped, and closing it was
-		 * the only interaction it offered. kdos-status runs the same
-		 * tool INSIDE the popup and lets it be read.
+		 * is a popup rather than `foot -e kdos stutter`. A terminal
+		 * that scrolls a fresh paragraph every dropped frame is not a
+		 * report, it is a firehose: it covers the desktop, it never
+		 * stops, and closing it is the only interaction it offers.
+		 * kdos-status runs the same tool INSIDE the popup and lets it
+		 * be read.
 		 */
 		write_overflow();
 		const char *argv[] = { "kdos-status", at, xs, ys, NULL };
@@ -7232,9 +7213,9 @@ static void start_click(int btn)
 	const char *argv[] = { "kdos-start", at, "0", ys, NULL };
 
 	/* The same toggle every other button on this bar keeps, and the same
-	 * record: the Start button used to answer "is my menu up" through a
-	 * pipe of its own, which could say so and could not CLOSE it. One
-	 * mechanism, so the highlight and the toggle cannot disagree. */
+	 * record: a pipe of the Start button's own can answer "is my menu up"
+	 * and cannot CLOSE it. One mechanism, so the highlight and the toggle
+	 * cannot disagree. */
 	popup_toggle(POPUP_START, argv);
 }
 
@@ -7251,10 +7232,10 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 	/*
 	 * The meters strip is the one hit test here that needs the y — it does
 	 * not span the bar's full height and the applets sit on the same rows
-	 * further right, so without it a click on the CPU chart muted the
+	 * further right, so without it a click on the CPU chart mutes the
 	 * volume. It is the ROWS THAT WERE DRAWN, not one row: the tile is two
-	 * of them and this used to name the lower, which made the top half of
-	 * every chart inert.
+	 * of them, and naming only the lower leaves the top half of every
+	 * chart inert.
 	 */
 	if (meter_row0 >= 0 && cy >= meter_row0 && cy < meter_row0 + meter_rows &&
 	    in_span(cx, sh->meter_hit_x, sh->meter_hit_end)) {
@@ -7351,9 +7332,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		/*
 		 * A PINNED BUTTON IS DRAGGED TO REORDER, so its LEFT press
 		 * only arms — the release decides between a launch, an
-		 * activate and a reorder. That gesture used to live on the
-		 * quick-launch strip; the strip is this row now, so the press
-		 * that starts it has to be this one. A press that launched
+		 * activate and a reorder. The pinned strip IS this row, so
+		 * this is the press that has to arm it: a press that launched
 		 * would fire before a drag could begin.
 		 */
 		if (btn == SH_TRAY_BTN_LEFT && c->fav >= 0) {
@@ -7705,16 +7685,17 @@ int panel_main(int argc, char **argv)
 		sh_priv_dispatch(&sh);
 		if (dump_w < 20 || dump_w > 500)
 			dump_w = 100;
-		/* Read the numbers, run no policy: a dump on a laptop below 3%
-		 * used to suspend the machine it was diagnosing. */
+		/* Read the numbers, run no policy: a dump that runs the
+		 * battery policy suspends a laptop below 3% while somebody is
+		 * diagnosing it. */
 		/*
 		 * TWICE, BECAUSE A RATE IS A DIFFERENCE — and once past the
 		 * rate limiter, which is a frame-loop concern and not this
 		 * one.
 		 *
 		 * `meters_sample()` returns without reading anything inside
-		 * MET_MS of the last call, so a dump that measured once had
-		 * every rate at "no reading yet" and drew no meters strip at
+		 * MET_MS of the last call, so a dump that measures once has
+		 * every rate at "no reading yet" and draws no meters strip at
 		 * all. Two calls with the limiter stood down is one interval
 		 * of a recorded machine — see panel_root_advance(), which is
 		 * what makes the second reading DIFFER from the first.

@@ -264,21 +264,19 @@ void sh_theme_poll(void)
 
 /*
  * `kdos theme <accent>` writes the state file and then SIGHUPs kdos-shell and
- * kdos-comp. The compositor half worked from the start (labwc's Reconfigure);
- * this half did not exist, and the failure had two faces depending on how the
- * session was started:
+ * kdos-comp; this is the panel's half of the live retint.
  *
- *   - default disposition: SIGHUP TERMINATES. The panel died and the
- *     compositor's supervisor respawned it, which re-read the state file and
- *     came up in the new accent — so it LOOKED like a live retint. But it is a
- *     crash per accent change, and RESPAWN_MAX is 5 in 30 s: trying four or
- *     five accents to pick one is enough to lose the panel for the session.
- *   - inherited SIG_IGN (a session started under nohup, say): nothing happened
- *     at all. Measured: SigIgn 0x1, SigCgt 0 on a running kdos-shell.
+ * It must be sigaction() and it must be installed. SIGHUP's default
+ * disposition TERMINATES: the panel would die on every accent change and be
+ * respawned into the new accent by the compositor's supervisor, which looks
+ * like a retint but is a crash per change, and RESPAWN_MAX is 5 in 30 s — four
+ * or five accents tried in a row loses the panel for the session. A session
+ * started under nohup instead hands the panel an inherited SIG_IGN, and
+ * sigaction() overrides that where signal-disposition inheritance would keep
+ * it (SigIgn 0x1, SigCgt 0 on the running process is the tell).
  *
- * sigaction() here settles both — it overrides an inherited SIG_IGN, and a
- * caught signal is not a fatal one. No SA_RESTART: the poll the loops sleep in
- * should come back at once, and both already treat EINTR as "go round again".
+ * No SA_RESTART: the poll the loops sleep in should come back at once, and
+ * both already treat EINTR as "go round again".
  */
 volatile sig_atomic_t sh_theme_dirty;
 
@@ -1078,10 +1076,10 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
 	argv[n++] = prog;
 	/*
 	 * THE FLAG BELONGS TO THE EMULATOR AND NOT TO THE DESKTOP. `foot`
-	 * takes `--app-id`, `kdos-term` takes `--title`, and either can be the
-	 * one running here now that an entry may ask for the other: keying
-	 * this off which session is up would hand `kdos-term` a `--app-id` it
-	 * does not know the moment an entry asked for it under the compositor.
+	 * takes `--app-id`, `kdos-term` takes `--title`, and an entry may ask
+	 * for either whatever the session is. Keying this off which session is
+	 * up hands `kdos-term` a `--app-id` it does not know as soon as an
+	 * entry asks for it under the compositor.
 	 */
 	if (*base) {
 		if (!strcmp(prog, "foot")) {
@@ -1143,17 +1141,15 @@ const char *sh_session_prog(void)
 /*
  * ── THE FRAME IS DRAWN BY WHOEVER OWNS IT ──────────────────────────────────
  *
- * Every surface here used to put its own double-line box round itself, which
- * was right while every one of them was a layer surface with no decoration of
- * any kind. The ones that are WINDOWS are xdg toplevels now, and a toplevel
- * wears the compositor's own `════ Title ════[_][=][X]` — so drawing the box
- * as well puts a second frame inside the first with the title written twice,
- * which is what a boxed application beside a native one made obvious.
+ * A surface here may be a layer surface with no decoration of any kind, or an
+ * xdg toplevel wearing the compositor's own `════ Title ════[_][=][X]`. A
+ * surface that draws its own double-line box unconditionally puts a second
+ * frame inside the toplevel's with the title written twice.
  *
  * So the box is drawn when nobody else is drawing one, and the background is
  * filled when somebody is. The caller's layout does not move either way: it
- * still starts at column 1, and that column is a margin inside the SSD instead
- * of the border it used to be.
+ * starts at column 1, and that column is a margin inside the SSD where there
+ * is one and the border itself where there is not.
  */
 /* ── the compositor's command socket ───────────────────────────────────── */
 

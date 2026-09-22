@@ -115,10 +115,10 @@ struct sh_task {
 	 * And the desktop ID that Name came from, which is not always the
 	 * app_id: a GTK client on Wayland calls itself `mousepad` and its entry
 	 * is `org.xfce.mousepad.desktop`. The taskbar merges a running window
-	 * onto its PINNED button by comparing ids, so a window whose app_id is
-	 * not the id appeared twice — once as the pin and once as itself. The
-	 * lookup that finds the Name already knows the answer; it used to throw
-	 * it away. Empty when no entry claims this window.
+	 * onto its PINNED button by comparing ids, so a window carrying only its
+	 * app_id appears twice — once as the pin and once as itself. The lookup
+	 * that finds the Name already knows the id, so it is kept here rather
+	 * than thrown away. Empty when no entry claims this window.
 	 */
 	char did[128];
 	/*
@@ -253,13 +253,12 @@ struct sh_state {
 	/*
 	 * The right wing's applets, and where the last frame put each of them.
 	 *
-	 * Everything on that side of the panel used to be a picture: the clock,
-	 * the battery and the "something needs restarting" mark were drawn and
-	 * answered nothing, and there was no volume or network indicator at all
-	 * — so on a laptop with no media keys there was NO WAY to change the
-	 * volume from the desktop, and nothing said whether the machine was on
-	 * a network. Each is a span now, and each does the obvious thing when
-	 * it is clicked.
+	 * EVERY APPLET ON THAT SIDE IS A SPAN, not a picture. A readout that is
+	 * only drawn answers nothing: a clock, a battery or a "something needs
+	 * restarting" mark that cannot be clicked leaves a laptop with no media
+	 * keys no way to change the volume from the desktop, and nothing to ask
+	 * whether the machine is on a network. Each records its span here, and
+	 * each does the obvious thing when it is clicked.
 	 */
 	int ap_x[SH_AP_N], ap_end[SH_AP_N];
 
@@ -559,8 +558,8 @@ int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n);
  * The application index (apps.c)
  *
  * One answer to "what is installed on this machine", shared by the Start
- * menu, the launcher, the run box and the chooser — four surfaces that each
- * used to walk /usr/share/applications with their own rule about NoDisplay.
+ * menu, the launcher, the run box and the chooser — rather than four surfaces
+ * each walking /usr/share/applications with its own rule about NoDisplay.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define SH_MAX_APPS 512
@@ -782,9 +781,9 @@ void sh_theme_from_cache(void);
  * Everything else calls sh_theme_poll() once per loop instead. It needs no
  * signal and therefore no entry on that list — which matters, because SIGHUP
  * kills a process that installs no handler, so the list and the handlers are
- * two things that have to agree and already did not. A dialog is not
- * short-lived merely because it is modal: kdos-settings is where an accent
- * gets changed, and it was left wearing the old one.
+ * two things that have to agree. A dialog is not short-lived merely because it
+ * is modal: kdos-settings is where an accent gets changed, so it must retint
+ * too, and polling is the way it does it without joining the signal list.
  */
 extern volatile sig_atomic_t sh_theme_dirty;
 /* Raised by SIGUSR1: the bar was asked to go away or come back. Read and

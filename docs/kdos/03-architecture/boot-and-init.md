@@ -98,7 +98,19 @@ step reaches it through `kdos-bootctl theme --print`; `kinstall` links it
 directly. Two hand-copied sets of colour literals is how a stick and the
 machine installed from it end up different colours, and the one that is wrong
 is the one nobody is booting that day. The only lines the writers own are the
-two that name paths on the medium — `wallpaper` and `term_font`.
+two that name files rather than colours — `wallpaper` and `term_font`.
+
+Those two are the one place the writers cannot share code, because the files
+are not in the same place for both. `psf2limine.py` converts the console face
+during packaging and writes `font.bin` straight into the ISO tree, so it exists
+on the ISO9660 volume and nowhere in the root filesystem: `kinstall` looks for
+it at `/boot/limine/font.bin`, then at `/mnt/iso/boot/limine/font.bin`, which is
+where the initramfs mounts the medium. The backdrop is the opposite — it is
+shipped by the `fs/` overlay, so both writers read
+`/usr/share/kdos/boot/kdos-backdrop.png` and fall back to `kdos-banner.png`, and
+an install run from a system with no medium mounted still gets its artwork.
+Either file missing is survivable: Limine draws its own face on a plain
+backdrop and the entries are unchanged.
 
 ### Why the plate is opaque
 

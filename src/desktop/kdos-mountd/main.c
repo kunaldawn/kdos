@@ -217,23 +217,21 @@ static const char *uevent_path(void)
 
 /* ── the allowed set ───────────────────────────────────────────────────── */
 
+/*
+ * Root or KM_GROUP, from libkbase — the one answer every root daemon here
+ * gives to this question — with one widening this daemon alone needs.
+ *
+ * FIXTURE MODE ADMITS ANYBODY, and grants nothing: it is reachable only from
+ * `--fixture-serve` on the command line, its paths are a scratch directory,
+ * and every child it would spawn is printed instead of run. The service script
+ * starts this daemon with no arguments, so there is no path from a running
+ * system into here. Gate anything real on kb_uid_allowed and never on this.
+ */
 static bool uid_allowed(uid_t uid)
 {
-	/*
-	 * FIXTURE MODE ADMITS ANYBODY, and grants nothing: it is reachable
-	 * only from `--fixture-serve` on the command line, its paths are a
-	 * scratch directory, and every child it would spawn is printed instead
-	 * of run. The service script starts this daemon with no arguments, so
-	 * there is no path from a running system into here.
-	 */
 	if (km_fixture)
 		return true;
-	if (uid == 0)
-		return true;
-	struct passwd *pw = getpwuid(uid);
-	if (!pw || !pw->pw_name)
-		return false;
-	return kb_user_in_group(pw->pw_name, pw->pw_gid, KM_GROUP) != 0;
+	return kb_uid_allowed(uid, KM_GROUP) != 0;
 }
 
 /* ── reading the machine ───────────────────────────────────────────────── */

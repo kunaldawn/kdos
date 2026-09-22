@@ -161,9 +161,9 @@ static const struct {
 	{ "Sort &Icons",         CT_SORT,     SC_DESK, 0, 0, 0 },
 	{ "Refres&h",            CT_REFRESH,  SC_BOTH, 0, 0, 0 },
 	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
-	/* The compositor's root menu used to own this corner of the screen and
-	 * now does not, so everything it offered has to be reachable here or
-	 * the change is a regression. */
+	/* The desktop owns this corner of the screen and the compositor's root
+	 * menu does not, so everything that menu offers has to be reachable
+	 * from these rows. */
 	{ "&Applications",       CT_APPS,     SC_DESK, 0, 0, 0 },
 	{ "&Change Wallpaper",   CT_WALL,     SC_DESK, 0, 0, 0 },
 	{ "&Display Settings",   CT_DISPLAY,  SC_DESK, 0, 0, 0 },
@@ -438,20 +438,20 @@ static void reload(void)
 		return;
 	desktop_dir(dir, sizeof(dir));
 	/*
-	 * MAKE IT IF IT IS NOT THERE. `/etc/skel` carries no Desktop folder,
-	 * so on a fresh login this directory did not exist — the readdir below
-	 * failed silently and the desktop showed Home and Trash and nothing
-	 * else, forever. "New Folder" then had nowhere to put anything and
-	 * dragging a file to the desktop had no destination, which reads as a
-	 * desktop that cannot hold files rather than as a missing directory.
-	 * Creating it costs one mkdir per rescan when it already exists.
+	 * MAKE IT IF IT IS NOT THERE. `/etc/skel` carries no Desktop folder, so
+	 * on a fresh login this directory does not exist — the readdir below
+	 * fails silently and the desktop shows Home and Trash and nothing else,
+	 * forever. "New Folder" then has nowhere to put anything and dragging a
+	 * file to the desktop has no destination, which reads as a desktop that
+	 * cannot hold files rather than as a missing directory. Creating it
+	 * costs one mkdir per rescan when it already exists.
 	 */
 	mkdir(dir, 0755);
 
 	/*
 	 * Home and Trash come FIRST — fixed cells at the START of the grid.
 	 * The grid fills left to right, so pins at the front survive a full
-	 * desktop (appended last, they were the first thing overflow dropped)
+	 * desktop (appended last, they are the first thing overflow drops)
 	 * and never move when a file is created; a desktop whose fixed icons
 	 * move is a desktop nobody builds muscle memory on.
 	 */
@@ -584,10 +584,10 @@ static void open_entry(const struct entry *it)
 
 	/*
 	 * Everything else — a file AND a directory — goes to the MIME handler,
-	 * which on this machine is kdos-appbox. A directory used to be a
-	 * hardcoded `foot -e mc` here, which is a SECOND answer to a question
-	 * `inode/directory=mc.desktop` in mimeapps.list already answers: change
-	 * the default file manager and the desktop would have kept opening mc.
+	 * which on this machine is kdos-appbox. A directory must not get a
+	 * hardcoded `foot -e mc` here: that is a SECOND answer to a question
+	 * `inode/directory=mc.desktop` in mimeapps.list already answers, and
+	 * changing the default file manager would leave the desktop opening mc.
 	 */
 	const char *argv[] = { "kdos-appbox", "open", it->path, NULL };
 	spawn(argv);
@@ -710,20 +710,19 @@ static void input_region(void)
 	shown = sig;
 
 	/*
-	 * THE WHOLE SURFACE, and that is a reversal.
+	 * THE WHOLE SURFACE, not only the cells the icons occupy.
 	 *
-	 * It used to claim only the cells its icons occupy, so a click on bare
-	 * wallpaper reached the compositor and labwc's root-menu mousebind
-	 * fired. The cost was that the DESKTOP had no menu of its own: New
-	 * Folder, Sort Icons and Refresh were reachable only by right-clicking
-	 * an existing icon, and on a fresh login the only icons are Home and
-	 * Trash. A desktop you cannot create anything on reads as read-only.
+	 * Claiming only the icon cells lets a click on bare wallpaper through
+	 * to the compositor, where labwc's root-menu mousebind fires — and
+	 * then the DESKTOP has no menu of its own: New Folder, Sort Icons and
+	 * Refresh are reachable only by right-clicking an existing icon, and
+	 * on a fresh login the only icons are Home and Trash. A desktop you
+	 * cannot create anything on reads as read-only.
 	 *
-	 * So the desktop answers its own wallpaper now, and everything labwc's
-	 * root menu offered is on it (Applications, Settings, Displays) —
-	 * dropping the claim without replacing what it fed would have been the
-	 * regression, and the menu is the replacement. `W-space` still opens
-	 * the compositor's own menu for anyone who wants it.
+	 * Claiming it all is only correct while this menu carries everything
+	 * labwc's root menu offers (Applications, Settings, Displays); a row
+	 * dropped from here is a verb with no way in. `W-space` opens the
+	 * compositor's own menu for anyone who wants it.
 	 */
 	kdisp_input_cells(NULL, -1);
 }
@@ -1053,9 +1052,9 @@ static void draw(const char *status)
 /*
  * Move the selection to the trash, asking first.
  *
- * Delete used to be a keystroke with no question and no undo beyond finding the
- * trash by hand. The two pinned icons are refused rather than confirmed: Home
- * and Trash are places, not files.
+ * The question is the undo: a keystroke that trashes silently leaves no way
+ * back but finding the trash by hand. The two pinned icons are refused rather
+ * than confirmed: Home and Trash are places, not files.
  */
 static void trash_selected(char *status, size_t n)
 {
@@ -1139,8 +1138,8 @@ static void edit_commit(char *status, size_t n)
 static void ctx_run(int id, char *status, size_t n)
 {
 	/*
-	 * THE SHARED VERBS FIRST, and they are the ones this file no longer
-	 * decides anything about: what "Open Terminal Here" runs and where is
+	 * THE SHARED VERBS FIRST, and they are the ones this file decides
+	 * nothing about: what "Open Terminal Here" runs and where is
 	 * libkxdg's answer, and the chooser and `mc` get the same one.
 	 */
 	if (id < DESK_LOCAL) {
@@ -1502,9 +1501,8 @@ int desk_main(int argc, char **argv)
 	/*
 	 * `kdos theme <accent>` SIGHUPs this too. The desktop is as long-lived
 	 * as the panel — it is up for the whole session — so without the handler
-	 * an accent change left the icons and their labels in the old colour
-	 * until the next login, which is exactly what a photograph of the live
-	 * ISO showed.
+	 * an accent change leaves the icons and their labels in the previous
+	 * colour until the next login.
 	 */
 	sh_theme_watch();
 	reload();

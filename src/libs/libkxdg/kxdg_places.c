@@ -7,12 +7,12 @@
  * ---------------------------------
  *   The places column, from one reader.
  *
- * ONE ANSWER FOR THE WHOLE DESKTOP. This was two: `kdos-desk` read
- * `~/.config/user-dirs.dirs` for the desktop folder while `kdos-menu`'s Places
- * list assumed `$HOME/Desktop`, `$HOME/Documents` and four more. On a machine
- * where somebody had renamed one of them the two disagreed — the icons were in
- * the folder the file named and the menu opened an empty one beside it, which
- * reads as a broken menu rather than as two readers.
+ * ONE ANSWER FOR THE WHOLE DESKTOP. `kdos-desk`'s desktop folder and
+ * `kdos-menu`'s Places list are the same reader of `~/.config/user-dirs.dirs`.
+ * A second reader that assumes `$HOME/Desktop`, `$HOME/Documents` and four more
+ * disagrees with it on any machine where somebody has renamed one of them: the
+ * icons sit in the folder the file names and the menu opens an empty one beside
+ * it, which reads as a broken menu rather than as two readers.
  *
  * KDOS SEEDS `user-dirs.dirs` RATHER THAN GENERATING IT: there is no
  * xdg-user-dirs on this system, so the file is shipped in `/etc/skel` and is

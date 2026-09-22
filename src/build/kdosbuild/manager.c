@@ -786,10 +786,10 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			goto fail;
 		}
 		/* A CAP HERE IS A PHASE THAT SILENTLY BUILDS PART OF ITSELF.
-		 * This used to `break`, so a packages.txt whose resolved order
-		 * outgrew the array lost every package past it with nothing
-		 * said — the phase reported COMPLETE having never reached the
-		 * tail of its own list. */
+		 * A `break` on a packages.txt whose resolved order outgrows
+		 * the array loses every package past it with nothing said —
+		 * the phase reports COMPLETE having never reached the tail of
+		 * its own list. */
 		if (n == KB_MAX_PKGS) {
 			snprintf(detail, sizeof(detail),
 				 "kpkgdepends resolved more than %d packages; "
@@ -827,11 +827,11 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 		 *
 		 * It goes in the ENVIRONMENT rather than on the command line
 		 * because the kpkg in the tree is not necessarily the kpkg this
-		 * orchestrator was built beside: restoring a phase-1 or phase-2
-		 * snapshot puts an OLDER kpkg back, and an older one parsed
-		 * `--overwrite` as a package name and died with `Port not
-		 * found: --overwrite` on the first package of the phase. An
-		 * unknown env var is ignored by every version. */
+		 * orchestrator was built beside: a restored phase-1 or phase-2
+		 * snapshot carries an older kpkg, which takes `--overwrite`
+		 * for a package name and dies with `Port not found:
+		 * --overwrite` on the first package of the phase. An unknown
+		 * env var is ignored by every version. */
 		KbBuf cl = {0};
 		kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install%s %s",
 			      env, forced ? " -f" : "", tok);

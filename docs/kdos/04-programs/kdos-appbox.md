@@ -450,14 +450,15 @@ is a target binary.
 
 `~/.config/kdos/boxes/<name>.conf`, flat `key = value`.
 
-An application box and a development box differ in three keys, not in kind: `base`, `persistence`
-and `export`. That is what makes one manager over two lanes honest rather than a wrapper over two
-systems.
+An application box and a development box differ in one key that changes a launch — `base`, which
+picks the lane — and in two that only describe the box, `persistence` and `export`. They do not
+differ in kind, which is what makes one manager over two lanes honest rather than a wrapper over
+two systems.
 
 | Key | Maps onto |
 |---|---|
 | `base` | `pack:<id>`, `box:<name>` or `image:<ref>` |
-| `persistence` | Whether the writable layer survives |
+| `persistence` | Descriptive — the writable layer lands where the runtime puts it |
 | `export` | Descriptive — nothing exports on the strength of it |
 | `network`, `ipc` | Namespace flags — create-time |
 | `devices` | Whether `/dev` and `/sys` are bind-mounted in |
@@ -481,8 +482,8 @@ a container-engine flag or onto something KDOS enforces itself, and the profile 
 mechanism behind each line. A key that enforces nothing is printed as such rather than left to read
 as a switch. And an unknown key is reported by name.
 
-`export` and `wayland` are the two in that state, and `kdos-box profile` prints a `!` line under
-either one set to something it cannot deliver:
+`export`, `wayland` and `persistence` are the three in that state, and `kdos-box profile` prints a
+`!` line under any one of them set to something it cannot deliver:
 
 - **`wayland`** cannot take a display away. The box shares `$XDG_RUNTIME_DIR`, so a client that
   opens the default `wayland-0` reaches the session's own socket; withholding `WAYLAND_DISPLAY`
@@ -492,6 +493,10 @@ either one set to something it cannot deliver:
 - **`export`** triggers nothing. `kdos-appbox genlaunchers` writes launchers, shims and the MIME
   cache for every installed pack and every store box at once, and `kdos-box export <box> <app>` is
   the per-application route.
+- **`persistence`** is remembered rather than imposed. `distrobox create` makes a named container
+  whose writes land on disk, and on the pack lane kdos-packd decides ephemeral-or-not from the pack
+  itself; no launch reads the key. `persistent` therefore describes what every box already does,
+  and `ephemeral` and `frozen` are a preference the profile carries, not a confinement.
 
 A shared `/dev` cannot have a hole cut in it, so with `devices = shared` both `gpu` and `audio`
 ride on that key and there is no flag that grants a box a speaker and denies it a camera. `gpu` is

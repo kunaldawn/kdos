@@ -203,9 +203,9 @@ static int kind_pending;
 
 /*
  * The active connections, which arrive in the SAME ObjectManager reply — they
- * are ordinary exported objects and this surface used to skip them. One is
- * what DeactivateConnection takes, and its `Connection` property is the only
- * link back to the profile that started it.
+ * are ordinary exported objects and skipping them costs the surface its only
+ * handle on a running profile. One is what DeactivateConnection takes, and its
+ * `Connection` property is the only link back to the profile that started it.
  */
 struct net_act {
 	char path[160];
@@ -249,16 +249,16 @@ struct row {
 
 /*
  * Every kind at once, and the device append is bounds-checked like the others.
- * It was safe only because ndev is capped at eight; a third kind reading a
- * third field makes an unchecked append a stack overwrite rather than a
- * truncated list.
+ * ndev's cap of eight is not the guard: an unchecked append is a stack
+ * overwrite rather than a truncated list as soon as the three kinds together
+ * can reach the end of this array.
  */
 static struct row rows[NET_MAX_DEV + NET_MAX_AP + NET_MAX_CONN];
 static int nrows;
 static int sel, top;
 /* Where the last frame put the list. The header band is two rows plus a rule,
- * so the first list row is no longer 1 — and a click test that still assumed
- * it would act on the row above the one under the pointer. */
+ * so the first list row is 4 and not 1 — a click test that assumes 1 acts on
+ * the row above the one under the pointer. */
 static int list_y0 = 4, list_rows;
 /* comp.conf's `icons = no`, through --no-icons. Off is not a degraded mode:
  * it is what a tty draws. */
@@ -876,10 +876,10 @@ static int cmp_ap(const void *pa, const void *pb)
 #define NROWS_MAX ((int)(sizeof(rows) / sizeof(rows[0])))
 
 /*
- * A row is written WHOLE. They used to be filled field by field, so a device
- * row carried whatever `.ap` the previous build left in that slot — harmless
- * only while nothing read it, and a wrong-target action the moment a third
- * kind reads a third field.
+ * A row is written WHOLE — memset, then the fields this kind owns. Filling it
+ * field by field leaves a device row carrying whatever `.ap` the previous
+ * build left in that slot: harmless only while nothing reads it, and a
+ * wrong-target action the moment a third kind reads a third field.
  */
 static struct row *row_push(int kind, int dev)
 {
@@ -998,8 +998,8 @@ static void build_rows(void)
 		sel = nrows ? nrows - 1 : 0;
 }
 
-/* Both the keyboard and the pointer move the selection, and they used to carry
- * a verbatim copy of this each. One of the two was always going to be missed. */
+/* Both the keyboard and the pointer move the selection, through this one
+ * function: a verbatim copy in each is a copy one change will miss. */
 static void select_row(int i)
 {
 	sel = i;

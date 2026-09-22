@@ -24,9 +24,13 @@ Every root daemon in this system is built the same way. A new one that is not is
   owns the process and writes its pid file.
 - **One socket in `/run`**, named after the daemon.
 - **Mode 0666, with the peer's credentials as the real gate.** Anyone may connect; the daemon reads
-  the connecting process's real user id from the kernel and answers `err not permitted` to anyone
-  who is not root or in `wheel`. A mode that *looked* like the authorisation is a mode somebody
-  eventually loosens.
+  the connecting process's real user id from the kernel via `SO_PEERCRED` and answers `err not
+  permitted` to anyone who is not root or in `wheel`. A mode that *looked* like the authorisation is
+  a mode somebody eventually loosens.
+- **One implementation of that gate, `libkbase`'s `kb_uid_allowed()`.** No daemon keeps a copy. A
+  copy per daemon is a rule that gets tightened on one socket and stays loose on the other four,
+  with nothing to show which is which; a daemon that needs a different rule states the difference
+  beside its own call.
 - **One line per connection.** A short request, a short answer, no session state. The one exception
   is a subscription, which keeps its socket and is written to when something changes. It still
   holds no state — the daemon remembers a file descriptor and nothing else — and it is why a daemon
@@ -589,8 +593,8 @@ A new one matches the family when all of these are true:
 1. It runs in the foreground and is started by an `init.d` script under `ksvc`.
 2. Its script skips with a reason when the machine cannot support it, before supervision.
 3. It owns exactly one socket in `/run`, mode 0666.
-4. It authorises on the peer's credentials — root and `wheel` — and answers `err not permitted`
-   otherwise.
+4. It authorises on the peer's credentials — root and `wheel` — by calling `kb_uid_allowed()`, not
+   by writing its own copy of that test, and answers `err not permitted` otherwise.
 5. No verb takes a path. Identifiers come from a list the daemon published.
 6. It has a `--fixture` mode that decides and prints without acting.
 7. It links only libraries whose every line you are willing to run as root.

@@ -48,10 +48,10 @@ const char *g_box = DEFAULT_BOX;
  *
  * Returns the shared session socket when anything at all is missing —
  * kdos-boxsock, the compositor's support for the protocol, the runtime dir. A
- * box on the shared socket is unconfined at the protocol level, which is what
- * KDOS did before this existed. Silently substituting an untagged socket for a
- * tagged one is the honest failure: the alternative is an app that does not
- * start at all because its sandbox could not be labelled.
+ * box on the shared socket is unconfined at the protocol level. Silently
+ * substituting an untagged socket for a tagged one is the honest failure: the
+ * alternative is an app that does not start at all because its sandbox could
+ * not be labelled.
  */
 /*
  * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
@@ -654,13 +654,14 @@ int cmd_run(int argc, char **argv)
 }
 
 /*
- * WARM THE PINNED SET. One box per application means the image lane's single
- * warmup no longer covers anything: every application's first launch of the
- * session paid compose + create + boxinit + its own start, measured at 18 s
- * cold, and the warmup that used to hide that started a box nothing runs any
- * more. `~/.config/kdos/favorites` is the set the user CHOSE, so those are the
- * boxes worth having running before the first click — resolved through the
- * alien-apps table to their packs, composed and started one at a time.
+ * WARM THE PINNED SET. One box per application means a single shared warmup
+ * covers nothing: it would start a box no application runs in, while every
+ * application's first launch of the session still pays compose + create +
+ * boxinit + its own start, measured at 18 s cold. The warmup therefore has to
+ * name boxes. `~/.config/kdos/favorites` is the set the user CHOSE, so those
+ * are the boxes worth having running before the first click — resolved
+ * through the alien-apps table to their packs, composed and started one at a
+ * time.
  *
  * Non-blocking lock, so a second warmup is a no-op and never a queue; `nice`
  * is the caller's (kdos-desktop runs this at 10). A box that is started and

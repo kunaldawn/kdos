@@ -10,11 +10,8 @@
 
 void
 kwm_edge_check(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
-	       KwmEdge align, int lesser, void *user)
+	       KwmEdge align)
 {
-	(void)lesser;
-	(void)user;
-
 	if (cur.offset == tgt.offset)
 		return;
 

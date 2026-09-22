@@ -21,7 +21,7 @@
  * drifting one row per line, so the logo gets overpainted and the whole block
  * is drawn twice, offset. So fastfetch runs with --logo none, which emits
  * plain lines, and the logo column is pasted on here. Side effects worth
- * keeping: the logo can never come out missing, and its height no longer has
+ * keeping: the logo can never come out missing, and its height does not have
  * to be smaller than the info column's.
  *
  * It gets out of the way when it should: no animation unless stdout is a tty,
@@ -29,9 +29,9 @@
  * short for the banner (scrolling mid-animation looks like a glitch, not a
  * feature). Any keypress skips the rest instantly.
  *
- * The frame delay used to come from bash's `read -t`, specifically to avoid a
- * fork of sleep per frame on every login. In C it is a nanosleep and the
- * question does not arise; the keypress check is a zero-timeout poll on stdin.
+ * The frame delay is a nanosleep and the keypress check a zero-timeout poll
+ * on stdin: nothing in the animation forks, on a path that runs at every
+ * login and once per frame.
  * ---------------------------------
  */
 
@@ -67,10 +67,9 @@ static void push(char *s)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-/* Visible text with every SGR sequence removed. The shell version did this in
- * pure bash on purpose: `tr -d '\033'` drops the escape byte and leaves the
- * "[1;32m" visible for a frame, and a sed per line is a fork per line on every
- * login. */
+/* Visible text with every SGR sequence removed, in process and by hand:
+ * dropping the escape byte alone leaves the "[1;32m" visible for a frame, and
+ * an external filter per line is a fork per line on every login. */
 static char *strip_ansi(const char *s)
 {
 	char *out = kb_calloc(1, strlen(s) + 1);
@@ -335,9 +334,9 @@ static void animate(double delay)
  * the second font page).
  *
  * NOT printed in --plain, and not when stdout is redirected. `kdos-banner
- * --plain` is asserted byte-identical against the shell version it replaced,
- * and a login line that varies by day and pid would make every diff of it a
- * failure. The animated login is the surface this is for.
+ * --plain` has to be byte-stable so it can be diffed at all, and a line that
+ * varies by day and by boot makes every such diff a failure. The animated
+ * login is the surface this is for.
  */
 static void oracle_line(void)
 {
