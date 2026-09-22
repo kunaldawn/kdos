@@ -94,8 +94,7 @@ int kpk_footer_unpack(const uint8_t in[KPK_FOOTER_LEN], KpkFooter *f)
 /*
  * Every offset is checked against the file's own size, and the sections are
  * required to sit in the declared order. Without this a footer claiming
- * `meta_off = 0, meta_len = 2^63` is a read of the whole address space — the
- * kb_tar base-256 lesson, on a different field.
+ * `meta_off = 0, meta_len = 2^63` is a read of the whole address space.
  *
  * AND AGAINST WHAT EACH SECTION CAN HONESTLY BE, not only against the file.
  * These three spans are read WHOLE into memory by a root daemon before

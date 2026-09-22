@@ -45,8 +45,8 @@
  * ---------------------------------
  */
 
-/* Guarded: kdos-boxsock shipped an unguarded one of these and it collided with
- * the -D_GNU_SOURCE the build already passes, under -Werror. */
+/* Guarded: the build already passes -D_GNU_SOURCE, and an unguarded define
+ * here is a redefinition that -Werror turns into a build failure. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -134,14 +134,13 @@ static void picked_free(struct picked *p)
 /*
  * A chooser that is still open, and the call that is waiting for it.
  *
- * THE BUS LOOP MUST NOT BLOCK ON A DIALOG. The first version of this file
- * forked kdos-pick and sat in waitpid() inside the method handler, which meant
- * that for as long as anybody had a file dialog open this process answered
- * nothing at all: a second application's Open request queued behind the first,
- * and — worse, because it happens on every launch — a boxed app asking
- * Settings for the colour scheme hung until the dialog was dismissed. A portal
- * backend is a server; a server that stops serving while it thinks is a server
- * that is down.
+ * THE BUS LOOP MUST NOT BLOCK ON A DIALOG. Forking kdos-pick and waiting for
+ * it inside the method handler stops this process answering anything at all
+ * for as long as anybody has a file dialog open: a second application's Open
+ * request queues behind the first, and — worse, because it happens on every
+ * launch — a boxed app asking Settings for the colour scheme hangs until the
+ * dialog is dismissed. A portal backend is a server; a server that stops
+ * serving while it thinks is a server that is down.
  *
  * So the fork happens in the handler, the sd_bus_message is REFFED and the
  * handler returns "handled" without replying; the pipe joins the main loop's
@@ -422,8 +421,8 @@ out:
  * The portal spec makes this an opaque string with a scheme: `wayland:<h>`
  * for a Wayland toplevel that exported itself, `x11:<xid>` for an X window,
  * and an empty string for "no parent". Only the first is usable here, and an
- * unrecognised one is NOT an error — a dialog with no parent is centred,
- * which is what every dialog did before there was a parent at all.
+ * unrecognised one is NOT an error — a dialog with no usable parent handle is
+ * centred on the output, which is a worse placement and not a failure.
  */
 static const char *wayland_handle(const char *parent)
 {

@@ -4962,6 +4962,88 @@ static void test_ktui_announce(void)
 	ok(a && a->index == 2 && a->count == 3, "a text block says line 2 of 3");
 	ktui_frame_end();
 
+	/* THE POINTER SAYS IT TOO. A table row reached by a press and an
+	 * option reached by a press both move a caret a keyboard would have
+	 * announced, so both announce. */
+	KtuiTable tb = { 0 };
+
+	ktui_frame_begin(&ev);
+	ktui_table_pick(&tb, 9, 4, NULL, NULL);
+	a = a11y_find(KT_A11Y_TABLE);
+	ok(a && a->index == 5 && a->count == 9,
+	   "a table row picked with the pointer says row 5 of 9");
+	ktui_frame_end();
+
+	KtuiDrop dd = { 0 };
+
+	dd.open = 1;
+	ktui_frame_begin(&ev);
+	ktui_dropdown_hit(krect(0, 0, 12, 1), &dd, 4, 2, 3);
+	a = a11y_find(KT_A11Y_CHOICE);
+	ok(a && a->index == 3 && a->count == 4,
+	   "an option clicked out of an open list says 3 of 4");
+	ktui_frame_end();
+
+	/* AND A HAND-DRAWN ROW LIST, which owns its own loop and still moves
+	 * a caret somebody has to be told about. */
+	KtuiEvent click = { 0 };
+	int rsel = 0, rtop = 0;
+
+	click.type = KT_EVT_MOUSE;
+	click.btn = KT_MB_LEFT;
+	click.press = KT_MP_PRESS;
+	click.mx = 1;
+	click.my = 3;
+	ktui_frame_begin(&ev);
+	eq_int(ktui_rows_event(krect(0, 0, 20, 8), &rsel, &rtop, 6, &click),
+	       KTUI_ROWS_MOVED, "a press on another row moves the caret");
+	a = a11y_find(KT_A11Y_LIST);
+	ok(a && a->index == 4 && a->count == 6, "and says 4 of 6");
+	ktui_frame_end();
+
+	/*
+	 * A MENU COUNTS THE ROWS A CARET CAN REACH, not the rows it draws.
+	 * The pane below is five items around one rule, so the caret's third
+	 * stop is "3 of 4" and never "4 of 5" — the number a person hears has
+	 * to match the number of things they can pick.
+	 */
+	static const KtuiMenuItem mi[] = {
+		{ "&Open", 1, NULL, 1 },
+		{ "&Save", 2, NULL, 1 },
+		{ NULL, 0, NULL, 0 },		/* a rule */
+		{ "&Close", 3, NULL, 1 },
+		{ "&Quit", 4, NULL, 1 },
+	};
+	static const KtuiMenuPane mp[] = { { "&File", mi, 5 } };
+	KtuiMenu mu = { 0 };
+
+	mu.pane = mp;
+	mu.npane = 1;
+	ktui_frame_begin(&ev);
+	ktui_menu_open(&mu, 0, 0, 0);
+	a = a11y_find(KT_A11Y_LIST);
+	ok(a && !strcmp(a->label, "&Open") && a->index == 1 && a->count == 4,
+	   "an opened menu says its first row, 1 of 4");
+	ktui_frame_end();
+
+	KtuiEvent down = { 0 };
+
+	down.type = KT_EVT_KEY;
+	down.key = KT_K_DOWN;
+	/* One step per frame: the queue keeps every record a frame made, and
+	 * two steps inside one would leave the first for a11y_find to answer
+	 * with. */
+	ktui_frame_begin(&ev);
+	ktui_menu_event(&mu, &down, NULL);
+	ktui_frame_end();
+
+	ktui_frame_begin(&ev);
+	ktui_menu_event(&mu, &down, NULL);
+	a = a11y_find(KT_A11Y_LIST);
+	ok(a && !strcmp(a->label, "&Close") && a->index == 3 && a->count == 4,
+	   "and stepping over the rule says 3 of 4, by name");
+	ktui_frame_end();
+
 	/* THE QUEUE IS FIXED AND DROPS THE REST: nothing on the draw path
 	 * allocates, and a frame with more to say than it holds says what
 	 * fits. */

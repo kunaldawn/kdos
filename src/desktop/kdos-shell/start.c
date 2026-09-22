@@ -883,11 +883,10 @@ static void build_right(void)
 	rule_named(right, &nright, "PLACES");
 
 	/*
-	 * FROM libkxdg, WHICH IS THE ONLY READER. This column used to name
-	 * Documents, Downloads and Pictures under `$HOME` outright — a third
-	 * copy of a list `kdos-desk` and `kdos-menu` each had their own of, and
-	 * the one place a renamed user directory showed as a row that opened
-	 * the wrong folder.
+	 * FROM libkxdg, WHICH IS THE ONLY READER. Naming Documents, Downloads
+	 * and Pictures under `$HOME` outright here is a third copy of a list
+	 * `kdos-desk` and `kdos-menu` also draw, and a renamed user directory
+	 * then shows as a row that opens the wrong folder.
 	 */
 	np = kxdg_places(places, KXDG_PLACES_MAX);
 	for (int i = 0; i < np; i++) {
@@ -1613,10 +1612,10 @@ static void draw_frame(void)
 	/*
 	 * ── the left column ──
 	 *
-	 * ONE flag, TWO columns: the left clamp used to consume `sel_follow`
-	 * and the right one always saw zero, so a selection driven into the
-	 * right column could never scroll it into view. Each column follows
-	 * only while it holds the selection.
+	 * ONE flag, TWO columns: a left clamp that CONSUMES `sel_follow` leaves
+	 * the right one always seeing zero, so a selection driven into the
+	 * right column never scrolls it into view. Each column follows only
+	 * while it holds the selection.
 	 */
 	int follow = sel_follow;
 
@@ -1718,12 +1717,12 @@ static void draw_frame(void)
 	 * time. Escape and the `Clear search` row do the same thing.
 	 */
 	/*
-	 * LIT, NOT A SLAB. The first version filled the whole field with the
-	 * accent, and forty columns of it beside a dim list was the loudest
-	 * thing on the screen — photographed. A text field is a SUNKEN box:
-	 * one step off the page at rest, the fill when the pointer is on it or
-	 * it is active, and the ACCENT saved for the caret and the magnifier,
-	 * which is where the eye goes anyway.
+	 * LIT, NOT A SLAB. Filling the whole field with the accent puts forty
+	 * columns of it beside a dim list, which is the loudest thing on the
+	 * screen. A text field is a SUNKEN box: one step off the page at rest,
+	 * the fill when the pointer is on it or it is active, and the ACCENT
+	 * saved for the caret and the magnifier, which is where the eye goes
+	 * anyway.
 	 */
 	/*
 	 * THE WELL IS A PLATE, not a cell fill. A KT_SURFACE fill is opaque —

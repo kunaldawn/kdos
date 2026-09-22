@@ -7,10 +7,10 @@
  * ---------------------------------
  *   libkcolor — the KDOS palette, and the arithmetic on it
  *
- * One table for the distro. It used to exist twice — a bash `palette()` in
- * fs/usr/local/bin/kdos and a C `ki_themes[]` in the installer, whose own
- * comment admitted the duplication — and the theme generators each carried
- * their own copy of the colour maths on top of that.
+ * One table for the distro, and the one copy of the colour maths on it. The
+ * `kdos` command, the installer, the theme generators and the bootloader stamp
+ * all take their numbers from here; a second copy anywhere is a machine whose
+ * boot menu, installer and desktop can disagree about what an accent is.
  * ---------------------------------
  */
 
@@ -44,11 +44,11 @@
  * both is unusable whichever end its ground is; one that leaves a mix doing
  * both is usable whichever end its ground is.
  *
- * `paper` is the light one and it is what proved the distinction: at 30% its
- * plate separates at the hover floor and carries `text` at 7.51:1. The refusal
- * that used to sit in `selftest.c` measured the GROUND, which is a proxy — it
- * would have refused this palette and accepted a dark one that failed. The
- * assertion measures the plates now.
+ * `paper` is the light one and it is what proves the distinction: at 30% its
+ * plate separates at the hover floor and carries `text` at 7.51:1. WHAT
+ * REFUSES A SCHEME IS ITS PLATES, never which end its ground sits at: the
+ * ground is a proxy for the question, and a refusal written on it turns away
+ * this palette and admits a dark one whose plates fail.
  *
  * THE SOLVER AIMS AT 7:1 ON THE LABEL AND DOES NOT ALWAYS REACH IT. `bone`
  * lands at 6.21:1 and no `pdark` fixes it — the separation floor binds first,
@@ -139,10 +139,10 @@ const KcolScheme *kcol_default(void);
  * The bootloader's colours
  *
  * THE BOOT MENU IS THE FIRST SCREEN OF KDOS AND IT WEARS THE SAME PALETTE AS
- * THE LAST ONE. The nine numbers reached it as literals, written out twice —
- * once in the ISO step and once in the installer — so the medium and the
- * machine installed from it could disagree about the colour of the menu, and
- * the one that was wrong was the one nobody was booting that day.
+ * THE LAST ONE. The ISO step and the installer both stamp their `limine.conf`
+ * from here. Nine numbers written out as literals in each is a medium and a
+ * machine installed from it that can disagree about the colour of the menu,
+ * and the copy that is wrong is the one nobody is booting that day.
  *
  * Emits the whole LOOK of a `limine.conf` — the `interface_*` lines, the
  * backdrop, the palettes, the margins, the wallpaper STYLE and the font SCALE

@@ -82,8 +82,9 @@ static const char *arrow_lr(void)
 
 /* Bounded by `r`, never by the whole terminal: a fragment that would not fit
  * ENTIRELY inside r's width is not drawn at all, rather than being cut
- * mid-glyph. On the build screen r used to be the whole row, so at any width
- * <= 83 the footer's hints ran straight over the frame's own right border. */
+ * mid-glyph. On the build screen, an `r` spanning the whole row lets the
+ * footer's hints run straight over the frame's own right border at any width
+ * <= 83. */
 static void keyhint(KRect r, const char *const *keys, const char *const *labels,
 		    int n)
 {
@@ -541,8 +542,8 @@ static void draw_packages_frame(PackView *v)
 	ktui_scrollbar(krect(ktui_w - 2, top, 1, rows), nmatch, rows, off);
 
 	/* BKSP deletes ONE character — it is a text filter, not a mode. The
-	 * label used to read "clear", which promised something the handler
-	 * never did. */
+	 * label reads "del" and not "clear", which would promise something
+	 * the handler does not do. */
 	const char *keys[] = { arrow_ud(), "SPACE", "BKSP", "ENTER" };
 	static const char *labels[] = { "select", "toggle", "del", "done" };
 	keyhint(krect(2, ktui_h - 2, ktui_w - 4, 1), keys, labels, 4);
@@ -1302,18 +1303,18 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	x += 1;
 
 	/* `width` is already the rightmost usable column (the last one
-	 * is the scrollbar's) — subtracting again here used to leave
-	 * the title, the duration and the gauge all a column or two
-	 * short of that edge and the scrollbar, not overlapping it
-	 * but not reaching it either. Every one of them now ends
-	 * exactly at `width`.
+	 * is the scrollbar's), so nothing here subtracts from it again:
+	 * doing so leaves the title, the duration and the gauge all a
+	 * column or two short of that edge and the scrollbar, not
+	 * overlapping it but not reaching it either. Every one of them
+	 * ends exactly at `width`.
 	 *
 	 * A group row with children draws the 8-column gauge below,
 	 * never `t` (a group can carry a duration string too, e.g.
-	 * while it is ST_RUNNING) — budgeting on strlen(t) reserved
-	 * however wide that unused string happened to be, which is
-	 * usually less than 8, and let a long phase label run under
-	 * the gauge it was never measured against. */
+	 * while it is ST_RUNNING) — so the reserve for such a row is
+	 * the gauge's 8 and not strlen(t), which is usually less and
+	 * lets a long phase label run under a gauge it was never
+	 * measured against. */
 	int reserved = n->is_group && n->nchild ? 8 : (int)strlen(t);
 	int room = width - x - reserved;
 	if (room < 1)
@@ -1621,9 +1622,9 @@ static void draw_hud(BuildView *v)
 				     human_bytes(s->disk_free));
 
 	/* "out " (4) + the 10-cell sparkline + " %s/s" worst case (a five-digit,
-	 * comma-grouped rate, " 12,345/s" = 9) is 23 columns whole; the old >20
-	 * let the field start with only 21-22 free and lose the trailing "/s"
-	 * to ktui_draw_textf's own maxw clamp. */
+	 * comma-grouped rate, " 12,345/s" = 9) is 23 columns whole; a gate of
+	 * >20 lets the field start with only 21-22 free and loses the trailing
+	 * "/s" to ktui_draw_textf's own maxw clamp. */
 	if (r.w - x >= 23) {
 		x += ktui_draw_text(x, r.y, r.w - x, "out ", KT_DIM, KT_BG, 0);
 		ktui_sparkline(krect(x, r.y, 10, 1), s->history, s->nhistory, 0,
@@ -1693,12 +1694,12 @@ static void draw_hud(BuildView *v)
 		hx += hw;
 	}
 
-	/* Gated on where the LEFT-hand text actually ended (`hx`, now that it
-	 * tracks the heat strip too), not just on the notice's own width
-	 * fitting the row: a 70-90 column notice — a real snapshot summary —
-	 * fits the row easily on its own and used to draw straight over the
-	 * rootfs stats at 100 columns regardless of how far right they ran.
-	 * Dropped rather than overlapped; it is shown elsewhere too. */
+	/* Gated on where the LEFT-hand text actually ended (`hx`, which tracks
+	 * the heat strip too), not just on the notice's own width fitting the
+	 * row: a 70-90 column notice — a real snapshot summary — fits the row
+	 * easily on its own and otherwise draws straight over the rootfs stats
+	 * at 100 columns, however far right they ran. Dropped rather than
+	 * overlapped; it is shown elsewhere too. */
 	if (notice_w && hx + 2 + notice_w <= r.x + r.w)
 		ktui_draw_text_right(r.x, y, r.w, notice_buf, KT_WARN, KT_BG, 0);
 }
@@ -1709,13 +1710,13 @@ static void draw_footer(BuildView *v)
 	KRect fr = v->lay.footer;
 	/* Suffix-style hints: the bold key letter plus the label's remaining
 	 * letters spell the whole word (e.g. "[E]:rror" reads as "Error"),
-	 * which is what fits '/', E and O onto the row now that T has joined
-	 * F/S/Q — the old full-word labels didn't leave room. PGUP/DN drops
-	 * off the row for the same reason; it stays discoverable by trying
-	 * the obvious key while a log is on screen. Q leads the list rather
-	 * than trailing it: keyhint() drops whatever doesn't fit from the
-	 * END, and 80 columns is the most common width — putting the most
-	 * important key last was losing it exactly there. */
+	 * which is what fits '/', E and O onto a row that also carries T and
+	 * F/S/Q — full-word labels do not leave room. PGUP/DN drops off the
+	 * row for the same reason; it stays discoverable by trying the obvious
+	 * key while a log is on screen. Q leads the list rather than trailing
+	 * it: keyhint() drops whatever doesn't fit from the END, and 80
+	 * columns is the most common width, so the most important key placed
+	 * last is the one lost exactly there. */
 	const char *keys[] = { "Q", arrow_ud(), "SPC", "/", "E", "O", "F", "S", "T" };
 	const char *labels[] = { "uit", "sel", "fold", "find", "rror", "pen",
 				 "ollow", "nap", "heme" };
@@ -2150,9 +2151,10 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 		if (ev.type == KT_EVT_MOUSE) {
 			int in_log = v.lay.has_detail &&
 				     krect_hit(v.lay.detail, ev.mx, ev.my);
-			/* The wheel used to always scroll the tree, even with the
-			 * pointer over the log pane, so scrolling a log yanked the
-			 * selection out from under it. Route by pane instead. */
+			/* The wheel is routed by PANE. Always scrolling the
+			 * tree, even with the pointer over the log pane,
+			 * yanks the selection out from under a log somebody
+			 * is reading. */
 			if (ev.btn == KT_MB_WHEEL_UP) {
 				if (in_log)
 					v.log_scroll += 3;

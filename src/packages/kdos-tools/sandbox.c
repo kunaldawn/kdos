@@ -74,9 +74,9 @@ static const char *BASE_RO[] = {
 
 /* Named individually rather than allowing /dev wholesale. Every one of these
  * is opened for WRITING by ordinary programs — `>/dev/null` is the obvious
- * one, and it was a shell that found this: with /dev missing, the first
- * redirection in the sandboxed command died with "cannot create /dev/null"
- * and the program looked broken rather than confined.
+ * one, and a shell is the case that shows it: with /dev missing, the first
+ * redirection in the sandboxed command fails with "cannot create /dev/null"
+ * and the program looks broken rather than confined.
  *
  * /dev itself is deliberately NOT here. Allowing the whole tree read-write
  * hands over every disk, every input device and every DRM node, which is

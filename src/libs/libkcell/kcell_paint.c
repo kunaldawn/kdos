@@ -1164,9 +1164,9 @@ glyph:
  * Fill everything the grid does not reach with KT_BG.
  *
  * A cell grid on a surface whose height is not a multiple of the cell height
- * leaves a strip of whatever the buffer happened to contain — visible as a
- * black band along the bottom of the lock screen at 1280x800, which is a live
- * defect this fixes for every consumer at once. Two rectangles, not four: the
+ * leaves a strip of whatever the buffer happens to contain — a black band along
+ * the bottom of the lock screen at 1280x800. Covering it here covers every
+ * consumer at once. Two rectangles, not four: the
  * right-hand one is full height, so the bottom one only has to cover what is
  * left to its left.
  */

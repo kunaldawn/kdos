@@ -187,6 +187,34 @@ static int pickable(const KtuiMenu *m, int i)
 	return shown(m, i) && !is_rule(&p->item[i]) && p->item[i].enabled;
 }
 
+/*
+ * WHERE THE CARET IS, COUNTED IN ROWS A CARET CAN REACH. The raw index would
+ * number the rules and the hidden rows along with the rest, so a pane with two
+ * separators would announce "4 of 9" for the third thing a person can pick.
+ * Both numbers come off the same `pickable` walk the caret itself moves by.
+ *
+ * ONLY THE PATHS THAT MOVE THE CARET CALL THIS, and the draw never does: a
+ * menu redrawn every frame would otherwise restate its selection every frame
+ * and bury the move that mattered.
+ */
+static void announce_sel(const KtuiMenu *m)
+{
+	const KtuiMenuPane *p = pane_of(m);
+	int n = 0, at = 0;
+
+	if (!p)
+		return;
+	for (int i = 0; i < p->n; i++) {
+		if (!pickable(m, i))
+			continue;
+		n++;
+		if (i == m->sel)
+			at = n;
+	}
+	if (at)
+		ktui_announce(KT_A11Y_LIST, p->item[m->sel].label, NULL, at, n);
+}
+
 static void step(KtuiMenu *m, int dir)
 {
 	const KtuiMenuPane *p = pane_of(m);
@@ -195,8 +223,10 @@ static void step(KtuiMenu *m, int dir)
 		return;
 	for (int k = 0; k < p->n; k++) {
 		m->sel = (m->sel + dir + p->n) % p->n;
-		if (pickable(m, m->sel))
+		if (pickable(m, m->sel)) {
+			announce_sel(m);
 			return;
+		}
 	}
 }
 
@@ -224,6 +254,7 @@ void ktui_menu_open(KtuiMenu *m, int pane, int x, int y)
 	m->x = x;
 	m->y = y;
 	sel_first(m);
+	announce_sel(m);
 }
 
 void ktui_menu_close(KtuiMenu *m)
@@ -466,9 +497,15 @@ int ktui_menu_event(KtuiMenu *m, const KtuiEvent *ev, int *id)
 		}
 		/* A HOVER MOVES THE CARET, and it is the same caret Enter
 		 * uses: two of them would let the pointer sit on one row while
-		 * Enter ran another. */
-		if (row >= 0 && pickable(m, row))
+		 * Enter ran another.
+		 *
+		 * ONLY A MOVE IS ANNOUNCED. A pointer resting on a row still
+		 * delivers motion, and announcing each one would fill the queue
+		 * with the row the caret has not left. */
+		if (row >= 0 && pickable(m, row) && row != m->sel) {
 			m->sel = row;
+			announce_sel(m);
+		}
 		return KTUI_MENU_TAKEN;
 	}
 

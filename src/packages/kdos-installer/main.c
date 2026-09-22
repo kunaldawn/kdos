@@ -35,9 +35,9 @@ static int last_focus = -1;
 
 /*
  * The index of a page by its id. An unattended install jumps straight to the
- * install page and used to do it by a literal 8 — which is right until a page
- * is added in front of it, and then an unattended install lands on the wrong
- * screen with the child already forked. -1 when there is no such page.
+ * install page and must look it up by id: a literal index is right until a
+ * page is added in front of it, and then an unattended install lands on the
+ * wrong screen with the child already forked. -1 when there is no such page.
  */
 int page_index(const char *id)
 {

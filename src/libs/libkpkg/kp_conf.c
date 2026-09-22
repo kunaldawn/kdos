@@ -375,8 +375,8 @@ void kp_owned_free(KpOwned *o)
 
 /* An overwrite moves a path from one package to another. The old owner's
  * manifest has to lose it, or `kpkgdel <old>` deletes a file the new owner
- * installed — the "owned by nothing / owned by two" class of bug the rewrite
- * was meant to end. Rewritten whole: the file is a few hundred KB at most. */
+ * installed — the "owned by nothing / owned by two" failure this exists to
+ * prevent. Rewritten whole: the file is a few hundred KB at most. */
 int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 		     int n)
 {

@@ -215,21 +215,20 @@ typedef struct {
 } KwmBox;
 
 /*
- * The validator snapping uses: an edge counts when it lies between where the
- * moving edge is and where it is going. It is called by the compositor's own
- * region walk, which supplies a second validator for pointer resistance —
- * resistance has resist and attract zones and snapping does not, so the walk
- * takes the decision as a callback rather than writing either rule into itself.
+ * The rule snapping uses: an edge counts when it lies between where the moving
+ * edge is and where it is going, and of the candidates that qualify the nearest
+ * one the moving edge is pointing at wins.
  *
- * `lesser` and `user` ARE PART OF THAT CALLBACK'S SHAPE, not of this rule:
- * resistance needs to know which side of an axis it is on, and kdos-comp's
- * validators read rc.gap and the two edge-strength settings out of a global
- * this library cannot see. Snapping needs neither, so both are ignored here.
- * Dropping them from the signature would make this the one validator the walk
- * cannot call.
+ * THE COMPOSITOR'S REGION WALK DOES NOT CALL THIS DIRECTLY. That walk dispatches
+ * through a validator type of its own, carrying its own edge struct and a flag
+ * for which side of the axis the moving edge is on; snapping reaches this rule
+ * through a wrapper that copies the fields across. That flag is pointer
+ * resistance's, as are the resist and attract zones it sizes from rc.gap and the
+ * two edge-strength settings — a global this library cannot see. A parameter
+ * added here for the walk's benefit would be one this rule never reads.
  */
 void kwm_edge_check(int *best, KwmEdge cur, KwmEdge tgt, KwmEdge oppose,
-		    KwmEdge align, int lesser, void *user);
+		    KwmEdge align);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Placement

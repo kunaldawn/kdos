@@ -376,8 +376,8 @@ static struct sh_tray_item *add_item(struct sh_tray *t, const char *arg,
 	/*
 	 * Deferred, never read here: add_item runs inside a bus callback, and a
 	 * SYNCHRONOUS call from inside one does not get its reply — sd-bus is
-	 * already processing a message. That is why the first version of this
-	 * file drew items with no name at all.
+	 * already processing a message, so the properties come back empty and
+	 * the item is drawn with no name at all.
 	 */
 	it->needs_props = 1;
 	t->nitems++;

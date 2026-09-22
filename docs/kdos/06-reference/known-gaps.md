@@ -55,7 +55,12 @@ does not have. Configuration is text files.
 
 Nothing reads the desktop. `kdos-comp` draws pixels, so a screen reader would need the tree of
 accessible objects this project does not build — and no such tree exists for a KDOS surface, which
-composes its own cells and publishes them to nobody. What exists is a boxed application's own
+composes its own cells and publishes them to nobody. What a surface does keep is `libktui`'s
+announcement record: ten roles of control state their role there each frame, with their position in
+the set and — where the widget holds them rather than the caller's own draw callback — a name and a
+value, a menu included. Nothing carries that record out of the process — there is no socket,
+no bus name and no bridge — and the only thing that reads it is the library's self-test, so the gap
+is a route and a client rather than the material. What exists for applications is a boxed one's own
 registry, opted into with `~/.config/kdos/a11y`. There is no braille route and no voice for the
 desktop itself.
 

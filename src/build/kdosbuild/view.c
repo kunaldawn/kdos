@@ -137,14 +137,14 @@ int view_selftest(void)
 	vfail = 0;
 
 	/* No region may ever be drawn over another, at any size the terminal
-	 * can be. This is the assertion, not the instance: the divider landing
-	 * on the log text was one size out of this range. */
+	 * can be. This is the assertion, not the instance: a divider landing
+	 * on the log text is one size out of this range. */
 	int bad_size = 0;
 	/* A region left at zero size passes both checks above silently — it
 	 * neither overlaps anything nor leaves the screen. So a region that is
 	 * supposed to be ACTIVE at this size (its governing flag says so) is
-	 * also checked for positive width and height, or a future regression
-	 * that forgot to size one would pass this whole test. */
+	 * also checked for positive width and height, or a layout change that
+	 * forgets to size one passes this whole test. */
 	int bad_zero = 0;
 	for (int w = 40; w <= 300; w++)
 		for (int h = 10; h <= 100; h++) {

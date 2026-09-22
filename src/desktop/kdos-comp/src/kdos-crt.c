@@ -27,8 +27,8 @@
  *   (WLR_SCENE_DISABLE_DIRECT_SCANOUT before wlr_scene_create), and
  *   a foreign buffer that arrives anyway is committed unprocessed:
  *   a scanout state carries a CLIENT's buffer plus a dst box, not a
- *   picture of the desktop, and the first version of this pass
- *   stretched a 13-pixel panel over the whole screen.
+ *   picture of the desktop, so running the pass over one stretches
+ *   a 13-pixel panel across the whole screen.
  *
  * - The accent comes from $XDG_CACHE_HOME/kdos/theme (libkcolor's
  *   KCOL_SCHEMES — there is no second copy of the phosphor green) and
@@ -97,9 +97,9 @@ struct kdos_crt_output {
 	struct wlr_swapchain *out_sc;
 	/*
 	 * C7: a failure is a COOLDOWN, not a sentence — a transient commit
-	 * error (hotplug link renegotiation, VT switch) used to untheme
-	 * the screen for the session. 5 s, doubling per consecutive trip,
-	 * capped at 60 s; a completed pass resets the backoff.
+	 * error (hotplug link renegotiation, VT switch) would otherwise
+	 * untheme the screen for the session. 5 s, doubling per consecutive
+	 * trip, capped at 60 s; a completed pass resets the backoff.
 	 */
 	int64_t broken_until_ns;
 	int64_t cooldown_ns;
@@ -108,10 +108,9 @@ struct kdos_crt_output {
 
 static struct kdos_crt_gl *crt_gl;
 /* THIS session refused the pass, and the reason will not change in it.
- * kdos_conf.crt cannot carry that: kdos_conf_reload() re-reads the file
- * and puts the configured value back, so a SIGHUP on pixman used to
- * promise that a new session would turn on what this renderer had just
- * declined. */
+ * kdos_conf.crt cannot carry that: kdos_conf_reload() re-reads the file and
+ * puts the configured value back, so a SIGHUP on pixman would otherwise
+ * promise a pass this renderer has already declined. */
 static bool crt_declined;
 static struct wl_list crt_outputs = { .prev = &crt_outputs,
 	.next = &crt_outputs };

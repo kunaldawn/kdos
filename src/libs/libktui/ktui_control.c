@@ -335,6 +335,14 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
  * to "which row is that, and what did they mean by it".
  * ──────────────────────────────────────────────────────────────────────── */
 
+/* The row these surfaces draw by hand is still a row in a set, and the caret
+ * moving is the whole of what this control decides — so it says the position
+ * and leaves the name to the surface that painted it. */
+static void rows_announce(int sel, int count)
+{
+	ktui_announce(KT_A11Y_LIST, NULL, NULL, sel + 1, count);
+}
+
 int ktui_rows_hit(KRect r, int top, int count, int mx, int my)
 {
 	int i;
@@ -366,7 +374,10 @@ int ktui_rows_event(KRect r, int *sel, int *top, int count,
 			*sel = 0;
 		if (*sel >= count)
 			*sel = count - 1;
-		return *sel != was ? KTUI_ROWS_MOVED : KTUI_ROWS_NONE;
+		if (*sel == was)
+			return KTUI_ROWS_NONE;
+		rows_announce(*sel, count);
+		return KTUI_ROWS_MOVED;
 	}
 
 	if (ev->press != KT_MP_PRESS)
@@ -388,6 +399,7 @@ int ktui_rows_event(KRect r, int *sel, int *top, int count,
 	if (i == *sel)
 		return KTUI_ROWS_PICKED;
 	*sel = i;
+	rows_announce(*sel, count);
 	return KTUI_ROWS_MOVED;
 }
 

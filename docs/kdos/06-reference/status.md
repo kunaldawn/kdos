@@ -144,7 +144,9 @@ tested against recorded state; one of them has never made its decision on a live
 
 Accessibility is the largest single absence, and it is not a gap in a feature. Nothing reads this
 desktop, and closing that means building a tree of accessible objects this project does not have.
-See [Accessibility](../02-user-guide/accessibility.md).
+The toolkit holds half the material already — every focused control states what it is into a
+per-frame record that no shipped program drains — so what is missing is a route out of the process
+and a client at the end of it. See [Accessibility](../02-user-guide/accessibility.md).
 
 Nothing here is tested against a broad hardware matrix, and nothing pretends to be.
 

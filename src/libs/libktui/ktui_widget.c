@@ -15,9 +15,9 @@
 #include "kbase.h"
 #include "ktui.h"
 
-/* Frame state. Private: applications used to write these fields by hand —
- * `ui.consumed = 1` in two dozen places — which made every one of them a
- * caller that could not survive a change in here. */
+/* Frame state. Private, and reached only through the calls below: a field an
+ * application sets by hand — `ui.consumed = 1` — makes that caller part of
+ * this struct's shape, and no such caller survives a change to it. */
 typedef struct {
 	int focus;		/* id of the focused control               */
 	int nfocus;		/* focusables seen this frame              */

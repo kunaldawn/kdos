@@ -470,8 +470,8 @@ static void layout(void)
 
 	/*
 	 * The status column is a fixed-width block — name dotted to LINE_COLS,
-	 * a space, and up to "FAIL" — centered as a whole. Anchoring it at a
-	 * screen percentage (the old way) only looked centered at 1280 wide.
+	 * a space, and up to "FAIL" — centered as a whole. Anchored at a screen
+	 * percentage instead, it only looks centered at 1280 wide.
 	 */
 	body_w = (LINE_COLS + 6) * gw * body_scale;
 	body_x = (fbw - body_w) / 2;

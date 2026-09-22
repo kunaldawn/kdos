@@ -131,11 +131,11 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 	/*
 	 * WHOLE BUTTONS, FEWER OF THEM — never half a row of them.
 	 *
-	 * The rule used to be all or nothing, which was right while these were
-	 * full-screen windows and wrong the moment the same list became a
-	 * fifty-column panel popup: the five buttons kdos-net wants come to
-	 * sixty-one columns, so a popup showed NONE of them and fell back to a
-	 * row of key hints — the interface the buttons were added to replace.
+	 * All or nothing is right only while these are full-screen windows: the
+	 * same list is also a fifty-column panel popup, and the five buttons
+	 * kdos-net wants come to sixty-one columns, so a popup that insists on
+	 * the whole row shows NONE of them and falls back to a row of key hints
+	 * — the interface the buttons exist to replace.
 	 * They are ordered most-useful-first by every caller, so dropping from
 	 * the RIGHT gives up Close (the popup dismisses on Esc and on a click
 	 * away) before it gives up Connect. What is left of the row is still
@@ -162,7 +162,7 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 	 * The RETURN VALUE is the other half of that rule: the status line
 	 * shares this row, and clearing a span it was already drawn across cuts
 	 * it off mid-word — `Enter [ Connect ]`, photographed on the fifty-two
-	 * column popup, where the bar now fits and used to be dropped whole.
+	 * column popup, which is wide enough to carry both.
 	 * The caller draws its status clipped to this column instead.
 	 */
 	/* To the PAGE, which is not always KT_BG: half this desktop's surfaces

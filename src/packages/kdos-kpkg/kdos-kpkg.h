@@ -21,8 +21,8 @@
 #include "kpkg.h"
 #include "ksig.h"
 
-/* `==> ` on stdout, `ERROR: ` on stderr — the two the shell version had, and
- * the only two anything downstream has ever seen. */
+/* `==> ` on stdout, `ERROR: ` on stderr — the only two prefixes anything
+ * downstream matches on, so neither string is free to change. */
 void kp_msg(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void kp_err(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 

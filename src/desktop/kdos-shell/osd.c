@@ -495,10 +495,10 @@ static void draw_osd(const char *label, int pct, int muted)
 
 /* ── one OSD at a time ─────────────────────────────────────────────────────
  *
- * A media key is HELD. Every press used to be a whole process — fork, connect,
- * load a 32-pixel bitmap font, create a layer surface, sit there for 1.2
- * seconds — so holding volume-up produced a queue of overlapping overlays, each
- * showing a value that was already stale, and a dozen font caches at once.
+ * A media key is HELD, and one press is a whole process — fork, connect, load
+ * a 32-pixel bitmap font, create a layer surface, sit there for 1.2 seconds.
+ * Without a lock, holding volume-up is a queue of overlapping overlays each
+ * showing a value that is already stale, and a dozen font caches at once.
  *
  * So the first one to take the lock is the one on screen, and every later press
  * applies its change (which it has already done by this point), tells the owner
@@ -641,9 +641,10 @@ static int usage(void)
  * `kdos-osd slider [--at-bottom X Y]` — the popup a click on `VOL 62%` opens.
  *
  * The bezel above is a NOTIFICATION: it appears when a media key is pressed,
- * takes no input at all (it sat mid-screen and ate every click under it until
- * that was fixed), and goes away by itself. A slider is the opposite in every
- * one of those: it is aimed at, it is dragged, and it stays until dismissed.
+ * takes no input at all (it sits mid-screen, so an input region would eat
+ * every click under it), and goes away by itself. A slider is the opposite in
+ * every one of those: it is aimed at, it is dragged, and it stays until
+ * dismissed.
  * Sharing the drawing would mean one surface with two contradictory input
  * policies, so it shares the ALSA helpers and nothing else.
  *

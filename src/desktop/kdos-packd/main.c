@@ -44,7 +44,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -87,18 +86,6 @@ static const char *sock_path(void)
 {
 	const char *p = getenv("KDOS_PACKD_SOCKET");
 	return p && *p ? p : KD_SOCKET;
-}
-
-static int uid_allowed(uid_t uid)
-{
-	struct passwd *pw;
-
-	if (uid == 0)
-		return 1;
-	pw = getpwuid(uid);
-	if (!pw)
-		return 0;
-	return kb_user_in_group(pw->pw_name, pw->pw_gid, KD_GROUP);
 }
 
 /* ── the protocol ──────────────────────────────────────────────────────── */
@@ -346,8 +333,11 @@ static int serve(void)
 				continue;
 			break;
 		}
+		/* Root or KD_GROUP, from libkbase — the one answer every root
+		 * daemon here gives to this question. The socket's mode is not
+		 * the gate. */
 		if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-		    !uid_allowed(cred.uid)) {
+		    !kb_uid_allowed(cred.uid, KD_GROUP)) {
 			kd_log("refused uid %u (not root and not in %s)",
 			       (unsigned)cred.uid, KD_GROUP);
 			(void)!write(c, "err not permitted\n", 18);

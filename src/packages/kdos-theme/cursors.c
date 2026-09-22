@@ -148,9 +148,9 @@ static void recolor(unsigned char *dst, const unsigned char *src, size_t count,
 		uint32_t v = rd32(src + i * 4);
 		unsigned a = (v >> 24) & 0xff;
 		if (!a) {
-			/* A fully transparent pixel keeps no colour at all —
-			 * the destination stays zeroed, which is what the
-			 * bytearray this replaces did. */
+			/* A fully transparent pixel keeps no colour at all:
+			 * the destination stays zeroed, so an unpremultiply
+			 * by zero alpha is never attempted. */
 			wr32(dst + i * 4, 0);
 			continue;
 		}

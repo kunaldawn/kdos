@@ -71,15 +71,20 @@ diffs against what was last presented and sends only what changed.
 
 ```c
 while (running) {
-    KtuiEvent ev;
-    ktui_poll(&ev, timeout_ms);
-    /* handle ev */
-
-    ktui_draw_begin();
+    ktui_draw_clear();
     draw_everything();
-    ktui_draw_end();          /* diff and present */
+    ktui_draw_flush();        /* diff and present */
+
+    KtuiEvent ev;
+    if (!ktui_backend()->poll_event(&ev, timeout_ms))
+        continue;             /* a timeout, a resize, or nothing to read */
+    /* handle ev */
 }
 ```
+
+Events come through the backend vtable rather than a free function: `ktui_backend()` answers
+whichever backend the surface was initialised with, and `poll_event` is the one entry point every
+one of them implements.
 
 Three rules hold:
 

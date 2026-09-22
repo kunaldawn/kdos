@@ -17,7 +17,7 @@
  * be quoted at somebody an hour later, and a different one after a reboot, so
  * a machine that is up for a month is not showing one line for a month. NOT
  * the pid — that varies per PROCESS, so every login and every `kdos oracle`
- * drew a fresh line and neither half of the claim above held.
+ * draws a fresh line and neither half of the claim above holds.
  * ---------------------------------
  */
 

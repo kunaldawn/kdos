@@ -1130,6 +1130,33 @@ int ktui_activated(int id, KRect r);	/* Enter on focus, or a click      */
  * is: the material such a reader needs, stated by the only thing that knows
  * it — the widget, in the frame it drew.
  *
+ * THE ONLY READER IS THE SELF-TEST, AND THAT IS WHAT KEEPS THE RECORD HONEST
+ * WITH NO CLIENT TO NOTICE IT IS WRONG. src/libs/selftest.c drives a frame the
+ * way a program drives one and asserts on what the widgets said, so a label
+ * that goes stale, a position off by one, or a secret field that starts
+ * announcing its contents fails there and nowhere else. Take the writers out
+ * and what is lost is not the struct — it is every place that knows which
+ * control has focus at the instant it computes it. Putting them back means
+ * finding each one again in the draw, where focus is only a colour.
+ *
+ * BOTH HANDS ANNOUNCE, or the record is right only for a keyboard. A control
+ * that states itself in the frame it draws — button, check, radio, input,
+ * slider, list, and the tab strip, which is the only place holding the tab
+ * names — covers pointer and keyboard at once, because focus is focus, and it
+ * must not be made to announce a second time from a hit test that would say
+ * the same thing twice in one frame. A control whose selection moves inside a
+ * handler — table, dropdown, text area, row list, menu — announces from every
+ * handler it has, the press and the wheel as well as the key. A path that
+ * moves a selection in silence is a reader that has lost the caret and does
+ * not know it.
+ *
+ * THE MENU COUNTS WHAT A CARET CAN REACH. Its rules and its hidden rows are
+ * drawn and cannot hold the caret, so the ordinal and the total both come off
+ * the same walk the caret moves by: a pane of five rows around one separator
+ * announces four, and a person hearing "3 of 4" can count to the same row.
+ * Its hover announces only a row the caret has actually left, because a
+ * pointer resting still keeps delivering motion.
+ *
  * THE QUEUE IS PER FRAME AND FIXED. Nothing on the draw path allocates — a
  * widget that allocated to say its own name would drop frames on the link this
  * desktop is sold on — and it is cleared at the start of every frame, so a

@@ -4,7 +4,7 @@
  * A separate program because libkchrome is not on the zero-dependency
  * selftest binary's link line, and because what is being checked is a CLAIM
  * about the palette rather than about a function: that the derived tones give
- * a bar a legible middle, in all four accents, when the eight slots do not.
+ * a bar a legible middle, in every accent, when the eight slots do not.
  *
  * The claims, and each is a way the ladder fails silently:
  *
@@ -14,8 +14,8 @@
  *    a taskbar that cannot say which window you are in.
  *  - the ACTIVE plate clears 7:1 for its label wherever the palette allows
  *    it, and bone — which cannot, its `text` and `pdark` being close in
- *    luminance — still clears the 4.5:1 AA floor. Asserting 7:1 on all four
- *    would fail forever on a palette that has no such colour.
+ *    luminance — still clears the 4.5:1 AA floor. Asserting 7:1 on every
+ *    accent would fail forever on a palette that has no such colour.
  */
 #include <stdio.h>
 #include <string.h>

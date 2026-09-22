@@ -479,7 +479,7 @@ itself, and `kdos-box profile` names which.
 |---|---|---|---|
 | `base` | — | create time | `pack:<id>`, `box:<name>`, or `image:<ref>` |
 | `image` | — | create time | The reference, for a registry base |
-| `persistence` | `persistent` | | `persistent`, `ephemeral` (upper layer on tmpfs) or `frozen` (writes discarded) |
+| `persistence` | `persistent` | never | `persistent`, `ephemeral` or `frozen`. Recorded only: no launch reads it, and a box's writes land where its runtime puts them |
 | `network` | shared | create time | `host`, `private`, or `none` — private *plus* no interface at all |
 | `ipc` | shared | create time | IPC namespace |
 | `processes` | shared | create time | PID namespace |

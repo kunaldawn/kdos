@@ -87,10 +87,10 @@ struct item {
 	/* The desktop-file id, applications only — what the dedupe below keys
 	 * on. Empty for Places and System rows. */
 	char id[64];
-	/* Places only: the directory, as its OWN field. It used to ride inside
-	 * `exec` and be re-split on whitespace at launch, which turned
+	/* Places only: the directory, as its OWN field. Riding inside `exec`
+	 * means being re-split on whitespace at launch, which turns
 	 * "/run/media/kdos/My Disk" into two bogus argv entries — a mount with
-	 * a space in its name simply could not be opened. */
+	 * a space in its name then cannot be opened at all. */
 	char path[256];
 	int group;			/* index into GROUPS, or -1 */
 	int submenu;			/* -1, or the group this row opens */
@@ -283,12 +283,12 @@ static void load_places(void)
 	int np;
 
 	/*
-	 * FROM libkxdg, NOT FROM $HOME. These used to be six hardcoded names
-	 * under the home directory while `kdos-desk` read `user-dirs.dirs` for
-	 * the desktop folder — so on a machine where somebody had renamed one,
-	 * the icons were in the folder the file named and this menu opened an
-	 * empty one beside it. The user's own `~/.config/kdos/places` rows come
-	 * back in the same call.
+	 * FROM libkxdg, NOT FROM $HOME. Hardcoding six names under the home
+	 * directory disagrees with `kdos-desk`, which reads `user-dirs.dirs`:
+	 * on a machine where somebody has renamed one, the icons are in the
+	 * folder that file names and this menu opens an empty one beside it.
+	 * The user's own `~/.config/kdos/places` rows come back in the same
+	 * call.
 	 */
 	np = kxdg_places(places, KXDG_PLACES_MAX);
 	for (int i = 0; i < np; i++)

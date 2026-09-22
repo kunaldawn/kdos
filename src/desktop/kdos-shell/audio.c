@@ -1123,9 +1123,9 @@ static void au_draw(struct au_ui *u)
 	sh_frame(w, h, "Sound", KT_ACCENT, KT_SURFACE, 1);
 
 	/*
-	 * The header says what is playing out of what, and how loud. That was
-	 * previously spread across a column heading, a right-aligned `default
-	 * hw:0` and a volume bar somewhere in the list — three places to look
+	 * The header says what is playing out of what, and how loud — in ONE
+	 * place. Split across a column heading, a right-aligned `default hw:0`
+	 * and a volume bar somewhere in the list, that is three places to look
 	 * for one answer, on the surface a person reaches by clicking `VOL 62%`
 	 * on the taskbar.
 	 */

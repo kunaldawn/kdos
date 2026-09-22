@@ -520,17 +520,15 @@ int tip_main(int argc, char **argv)
 	 * A tooltip stuck on the desktop forever is the failure everybody who
 	 * has written one has shipped once.
 	 *
-	 * THE DEADLINE IS A CLOCK, NOT A TALLY OF POLL TIMEOUTS, and getting
-	 * that wrong is why hovering the bar produced a process and never a
-	 * tooltip.
+	 * THE DEADLINE IS A CLOCK, NOT A TALLY OF POLL TIMEOUTS. Tally them and
+	 * hovering the bar produces a process and never a tooltip.
 	 *
 	 * `poll_event` returns as soon as the display has ANYTHING to say, and
 	 * a mapped surface has a frame callback arriving every vblank — none of
-	 * which is a KtuiEvent, so each one came back 0 and the old loop
-	 * subtracted a FULL 500 ms slice for a wait that had lasted sixteen.
-	 * Six seconds of budget was spent in twelve frames: the tip flashed for
-	 * about a fifth of a second and exited 0, which from the outside is a
-	 * hover that did nothing at all.
+	 * which is a KtuiEvent, so each one comes back 0. A loop that subtracts
+	 * a FULL 500 ms slice per return charges six seconds of budget to
+	 * twelve frames: the tip flashes for about a fifth of a second and
+	 * exits 0, which from the outside is a hover that did nothing at all.
 	 */
 	int64_t end = tip_now_ms() + ms;
 

@@ -7,21 +7,20 @@
  * ---------------------------------
  *   apps.c — one index of what is installed
  *
- * `kdos-start`, `kdos-launcher`, `kdos-run` and `kdos-openwith` each walked
- * /usr/share/applications for themselves, which is four answers to "what is
- * installed on this machine" and four places for a rule about NoDisplay to be
- * slightly different. This is the answer `kdos-start` uses.
+ * ONE WALK OF /usr/share/applications, shared. Every surface that lists what
+ * is installed — `kdos-start`, `kdos-launcher`, `kdos-run`, `kdos-openwith` —
+ * reading the directory for itself is four answers to "what is installed on
+ * this machine" and four places for a rule about NoDisplay to drift apart.
  *
- * IT IS NOT YET THE ONLY ONE. `kdos-launcher` still keeps its own index —
- * frecency and the alien mark ride on its entries — and `kdos-run` and
- * `kdos-openwith` have their own reasons. What the launcher no longer keeps is
- * its own idea of WHERE applications live: it reads the XDG data directories in
- * this file's order, because ignoring `XDG_DATA_DIRS` made it the one surface
- * that could not find what the others listed.
+ * IT IS NOT THE ONLY INDEX. `kdos-launcher` keeps one of its own, because
+ * frecency and the alien mark ride on its entries, and `kdos-run` and
+ * `kdos-openwith` have their own reasons. What no surface keeps privately is
+ * WHERE applications live: the XDG data directories, in this file's order. A
+ * surface that ignores `XDG_DATA_DIRS` is the one that cannot find what the
+ * others list.
  *
- * WHAT IS HERE THAT WAS NOT ANYWHERE: a USAGE COUNT. A Start menu whose left
- * column is "the things you actually run" cannot be built without one, and
- * nothing on this desktop recorded a launch. It is a plain text file —
+ * THE USAGE COUNT LIVES HERE. A Start menu whose left column is "the things
+ * you actually run" cannot be built without one. It is a plain text file —
  * `$XDG_STATE_HOME/kdos/appusage`, `count last-used id` per line — written the
  * way every other state file in this tree is written (temp, fsync the file,
  * fsync the DIRECTORY, rename), and capped, because an unbounded history of
@@ -583,15 +582,14 @@ int sh_apps_in_group(int group, const struct sh_app **out, int max)
  * RANKED, because "fi" matching forty entries in alphabetical order is a list
  * nobody reads to the end of.
  *
- * `kb_fuzzy()` AND NOT A MATCHER OF OUR OWN. This used to be a
- * case-insensitive SUBSTRING in six bands, which meant `sm` found nothing at
- * all where a person plainly meant System Monitor — and it meant the launcher,
- * which had a subsequence matcher of its own, answered the same query
- * differently. One function in libkbase is what stops three surfaces ranking
- * one query three ways; see kbase.h for the ladder it scores by.
+ * `kb_fuzzy()` AND NOT A MATCHER OF OUR OWN. A case-insensitive SUBSTRING in
+ * bands finds nothing at all for `sm` where a person plainly means System
+ * Monitor, and a surface that rolls its own subsequence matcher answers the
+ * same query differently from the one beside it. One function in libkbase is
+ * what stops three surfaces ranking one query three ways; see kbase.h for the
+ * ladder it scores by.
  *
- * HIGHER IS BETTER HERE, which is the opposite of what the launcher's private
- * matcher meant by a score. The comparison below sorts descending, and a sort
+ * HIGHER IS BETTER HERE. The comparison below sorts descending, and a sort
  * left the other way round would rank a correct list backwards.
  *
  * The usage count still breaks ties, and the name breaks those: that is the

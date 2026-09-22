@@ -39,8 +39,8 @@ const int kdos_disp_n = 1;
 
 static int kwl_surface(void) { return kdisp_current() == &kwl_impl; }
 
-/* Zeroed: `selecting` is what says whether a drag is in progress, so the
- * sentinel the cell coordinates used to carry is not needed. */
+/* Zeroed: `selecting` is what says whether a drag is in progress, so the cell
+ * coordinates need no sentinel value of their own. */
 Term T;
 
 static volatile sig_atomic_t g_reload;

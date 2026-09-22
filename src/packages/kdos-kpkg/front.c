@@ -132,11 +132,12 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c->root, argv[++i], sizeof(c->root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
-			/* An unknown option used to fall through to the package
-			 * list, so `kpkg install --overwrite zig` on a kpkg that
-			 * predates the flag died with `Port not found:
-			 * --overwrite` — a message that names the flag but
-			 * blames the ports tree. */
+			/* An unknown option is rejected rather than falling
+			 * through to the package list: `kpkg install
+			 * --overwrite zig` on a kpkg that predates the flag
+			 * would otherwise report `Port not found: --overwrite`
+			 * — a message that names the flag but blames the
+			 * ports tree. */
 			kp_err("unknown option: %s", argv[i]);
 			return 1;
 		} else if (nwant < KP_MAX_ORDER)
@@ -465,8 +466,8 @@ static void report_diff(const char *a, const char *b)
 }
 
 /* `kpkg meta` — the recipe's fields as shell assignments, single-quoted.
- * ports/fetch used to `. ./kpkgbuild` for these; a recipe stopped being a
- * shell script, so it asks for them instead. Accepts a port NAME or a
+ * A recipe is not a shell script, so ports/fetch cannot source one for its
+ * fields and asks through this subcommand instead. Accepts a port NAME or a
  * directory, because fetch walks directories. */
 static int cmd_meta(const KpConf *c, const char *who)
 {
@@ -717,10 +718,10 @@ static int cmd_info(const KpConf *c, const char *name, int json)
 		return 1;
 	}
 
-	/* The description is READ now. The shell version printed `$1` here,
-	 * which inside its function was the package NAME — so every uninstalled
-	 * package described itself as its own name, and `# description :` was
-	 * parsed by nothing at all. */
+	/* The description is READ from the recipe. Printing the queried name
+	 * in its place has every uninstalled package describe itself as its
+	 * own name and leaves the recipe's `description` parsed by nothing at
+	 * all. */
 	char desc[256];
 	kp_description(dir, desc, sizeof(desc));
 

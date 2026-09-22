@@ -220,9 +220,9 @@ static int rc_role(const char *act, const char *detail)
 			return WEL_MENU;
 		return WEL_NONE;
 	}
-	/* The root menu is still what the RIGHT BUTTON opens, and it is still
-	 * worth a row on the card — it is no longer the tour's step, because
-	 * the chord a newcomer is told to press now opens the search. */
+	/* The root menu is what the RIGHT BUTTON opens, and it is worth a row
+	 * on the card — but not the tour's step, because the chord a newcomer
+	 * is told to press opens the search. */
 	if (!strcmp(act, "ShowMenu"))
 		return WEL_NONE;
 	if (!strcmp(act, "GoToDesktop"))

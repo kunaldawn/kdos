@@ -367,9 +367,23 @@ void kb_run_detach(const KbArgv *a);
 void kb_child_reset_signals(void);
 
 /* Membership of a group in /etc/group, counting the group's own gid as well as
- * its member list. The authorisation both root daemons here are built on, in
- * one place: two copies of a security decision eventually disagree. */
+ * its member list. Answer it here and nowhere else: two copies of a security
+ * decision eventually disagree, invisibly. */
 int kb_user_in_group(const char *user, gid_t primary, const char *group);
+
+/*
+ * MAY A ROOT DAEMON OBEY `uid` — is it root, or a member of `group`?
+ *
+ * The authorisation boundary every root daemon here is built on. Each reads
+ * the peer's uid from SO_PEERCRED, which the peer cannot forge, and asks this
+ * before acting as root on that peer's behalf; a daemon that needs a wider or
+ * narrower rule says so beside its own call, never by keeping a second copy of
+ * this one.
+ *
+ * A uid with no passwd entry is refused — refusal is the safe direction for a
+ * caller about to act as root.
+ */
+int kb_uid_allowed(uid_t uid, const char *group);
 
 /*
  * THE HUMAN ACCOUNTS ON THIS MACHINE, in /etc/passwd order.

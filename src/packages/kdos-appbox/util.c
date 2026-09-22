@@ -9,11 +9,12 @@
  *   KD's Homebrew Linux Distro
  * ---------------------------------
  *
- * What is left of this file after the process, path and locking helpers moved
- * to libkbase — where they had been living as a second, subtly different copy
- * of the installer's.
+ * Process, path and locking helpers belong in libkbase and not here: a second
+ * copy of them beside the installer's drifts from it quietly, and the two
+ * disagree about the cases nobody tests. What stays in this file is what only
+ * appbox has a use for.
  *
- * The no-shell rule moved with them and still holds: app names, package names
+ * The no-shell rule holds here as it does there: app names, package names
  * and file arguments all reach this program from .desktop files and the
  * command line, and a shell in the middle turns any of them into an injection
  * point.

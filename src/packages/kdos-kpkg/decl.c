@@ -27,10 +27,11 @@
  * `[engine]`, `[network]`, `[storage]`. Any format that carried the shell
  * inline would have to tell those apart from its own syntax.
  *
- * WHAT THIS BUYS, and it is the read path rather than the build path: kpkg no
- * longer runs bash to READ a recipe. It used to source the file and ask bash
- * to print the fields back, and serialise `postinstall()` with `declare -f`.
- * Metadata is parsed here, statically; bash is exec'd only to run a build.
+ * WHAT THIS BUYS, and it is the read path rather than the build path: kpkg
+ * runs no bash to READ a recipe. Metadata is parsed here, statically; bash is
+ * exec'd only to run a build. Reading through bash means sourcing the file,
+ * which hands a recipe the whole process and makes every query as expensive
+ * and as dangerous as an install.
  *
  * Any key that is not one of ours is a recipe-local helper — `_tag`, `vrsn`,
  * `_triplet` — which is how a version gets reshaped for a URL that `$version`

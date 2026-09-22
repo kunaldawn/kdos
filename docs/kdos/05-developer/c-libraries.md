@@ -27,7 +27,7 @@ painter is not made to link a Wayland client library to get it.
 
 | Library | Prefix | Owns | May link |
 |---|---|---|---|
-| `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, group membership, the argument-vector builder and process helpers, and the freedesktop trash | Nothing |
+| `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, group membership and the root-daemon authorisation gate, the argument-vector builder and process helpers, and the freedesktop trash | Nothing |
 | `libkcolor` | `kcol_` | The palette table, colour-space conversion, mixing, the readable muted colour, the hue-family classifier, remapping and retinting | Nothing |
 | `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, the keys contract, the selection rule every surface draws its rows with, the three glyph tiers, charts, offscreen rendering | Nothing |
 | `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, and the places column | `libkbase` |
@@ -97,6 +97,23 @@ been written.
 
 The freedesktop trash lives here, so a prompt and the desktop's delete key are one implementation.
 See [The kdos command](../04-programs/kdos-command.md#trash).
+
+### The root-daemon gate
+
+`kb_uid_allowed(uid, group)` is the whole authorisation boundary of the five root daemons: is this
+uid root, or a member of that group. Each daemon reads the peer's uid from `SO_PEERCRED` — which
+the kernel fills in and the peer cannot forge — and asks this one function before acting as root on
+the peer's behalf.
+
+It is one function because five copies are a rule that gets tightened on one socket and stays loose
+on the other four, with nothing in the tree to show which is which. A daemon that needs a different
+rule states the difference beside its own call and still asks this for the rest: `kdos-mountd`'s
+`--fixture-serve` mode is the only one that does, and it grants nothing, because its paths are a
+scratch directory and every child it would spawn is printed instead of run.
+
+A uid with no passwd entry is refused. Membership itself is `kb_user_in_group`, which counts the
+group's own gid as well as the member list — a user whose *primary* group is `wheel` never appears
+in that list, and that is exactly the account an installer creates.
 
 ### kb_fuzzy
 
@@ -308,9 +325,13 @@ a fact the widget states rather than a count somebody has to make.
 - Silence is the failure mode, never a stale name. A widget that says nothing announces nothing; a
   reader told the wrong control is worse off than one told nothing, and last frame's record is the
   wrong control by default.
-- A widget says what it knows and no more. A tab strip has its names and says them; a list and a
-  table take their rows from the caller's own callback, so they state the position and leave the
-  name to a surface that has it. A secret field announces that it is one and never its contents.
+- A widget says what it knows and no more. A tab strip has its names and says them, and so does a
+  menu, which holds its own rows; a list and a table take their rows from the caller's own
+  callback, so they state the position and leave the name to a surface that has it. A secret field
+  announces that it is one and never its contents.
+- A position counts what a caret can reach. A menu's separators and its rows hidden by the scope
+  rules are drawn and cannot be selected, so neither the ordinal nor the total counts them: a
+  person hearing "3 of 4" can count to the same row.
 - A repeated record is the same control. Dropping the repeat is the reader's job; the widget's job
   is to be right every frame.
 
@@ -680,7 +701,7 @@ state machine state. A caller hands over a libktui key and modifier set; `kvt_te
 into a keysym and lets the machine answer. Both terminals in this tree go through it, so there is
 one implementation rather than two that drift.
 
-### Links, prompts and screen text
+### Links and prompts
 
 A hyperlink is a 16-bit id on the screen's own cell, and the address is interned. `OSC 8` names an
 address for a run of text; the cell keeps an id into a per-terminal table, so the text scrolls into
@@ -691,13 +712,6 @@ terminal's buffer, not of every surface the toolkit draws. `kvt_ui_mouse()`'s co
 terminal's own grid for the same reason a link lookup's are — a caller whose terminal is a window
 subtracts its origin, or both the selection and the link land as far from the pointer as the window
 is from the corner.
-
-A screen can be read out as text and written back in. `kvt_screen_text()` gives the scrollback and
-then the screen, oldest first, characters only: colour, attributes and pictures are not what a
-saved session puts back, and a picture cannot be put back at all because the tiles it named belong
-to a program that has exited. The screen's empty tail is padding, not output, so it is trimmed — a
-terminal showing two lines would otherwise end with a dozen blank ones, and a caller feeding that
-back scrolls the two lines it cared about off the top.
 
 A prompt mark is on the line, and the exit status is walked back to. `OSC 133` says where a prompt
 starts and what the command typed at it exited with; the mark rides the line so it survives into

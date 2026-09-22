@@ -32,8 +32,8 @@
  * log.
  *
  * `name`, `version`, `release` and every recipe helper are INJECTED, because
- * the recipe can no longer source itself. They come from the parser, and each
- * is single-quoted on the way in.
+ * a recipe is parsed and never sourced and so cannot define them for itself.
+ * They come from the parser, and each is single-quoted on the way in.
  * ---------------------------------
  */
 
@@ -355,8 +355,9 @@ static int roll_package(const char *pkg, const char *out)
  * may read, then `postinstall.sh` verbatim. It is packaged at the root of the
  * tarball and hoisted out again by kpkgadd, so it is never installed.
  *
- * It used to be bash's own `declare -f postinstall` dump plus a call. The hook
- * is a file now, so there is nothing to serialise.
+ * The hook is a FILE, copied through byte for byte: nothing here serialises a
+ * shell function, so a hook that runs under `bash postinstall.sh` in the port
+ * directory runs identically out of the package.
  */
 static void write_postinstall(const KpDecl *d, const char *portdir,
 			      const char *pkg)

@@ -10,8 +10,8 @@
  * The one job: a NAME (or a file path) becomes a libktui sprite slot, or -1.
  * Minus one is not a failure — it is a tty, an install with no artwork,
  * `icons = off`, and a name nothing on this machine has a picture for. Every
- * caller draws its glyph tier then, exactly as it did before this library
- * existed, which is the rule the whole icon layer is built under.
+ * caller draws its glyph tier then, and a layout that only works once a picture
+ * loads is broken — that is the rule the whole icon layer is built under.
  *
  * NOTHING PIXMAN OR PNG APPEARS IN THIS HEADER. The dump harness that renders
  * the shell's front ends offscreen links neither, and it stubs this file's

@@ -130,8 +130,9 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		 * stretched wallpaper, so a banner that clears the text at one
 		 * resolution runs under it at another.
 		 *
-		 * Limine's own default over a wallpaper is `80`, which is the
-		 * unreadable menu this was first pinned to `00` for.
+		 * Limine's own default over a wallpaper is `80`, which is
+		 * half-transparent and an unreadable menu; `00` is what pins
+		 * the plate opaque.
 		 */
 		"term_background: 00%s\n"
 		"term_foreground: %s\n"

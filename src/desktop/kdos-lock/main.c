@@ -149,7 +149,8 @@ static void theme_from_cache(void)
  * genlogo.py's five materials, as slots. The file is generated and its palette
  * is fixed there, so this table is small and closed: dark body, glow ring,
  * belly and eyes, beak and feet, and the wordmark's two tones. Anything
- * unrecognised reads as text, which is what an uncoloured banner was.
+ * unrecognised reads as text — an uncoloured banner, never a visible escape
+ * sequence.
  */
 static int slot_for(const char *sgr, size_t n)
 {
@@ -548,8 +549,8 @@ int main(int argc, char **argv)
 	pass_clear();
 	/*
 	 * Read BEFORE the shutdown. kdisp_shutdown() zeroes libkwl's state, so
-	 * asking afterwards always answered "not refused" — a second lock
-	 * client exited 0 while the compositor's log said it had been refused,
+	 * asking afterwards always answers "not refused" — a second lock client
+	 * would exit 0 while the compositor's log said it had been refused,
 	 * which is precisely the disagreement this exit code exists to prevent.
 	 */
 	int refused = kdisp_lock_finished();
