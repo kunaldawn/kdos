@@ -2549,8 +2549,8 @@ static void preview_plan(Manager *m)
 {
 	static char *steps0[] = { "00_file_system.sh", "01_musl.sh",
 				  "02_toybox.sh" };
-	static char *steps2[] = { "00_theme.sh", "01_appbox.sh",
-				  "02_initramfs.sh", "03_iso.sh" };
+	static char *steps2[] = { "00_launchers.sh", "00_theme.sh",
+				  "01_initramfs.sh", "02_iso.sh" };
 	char **steps[KBUILD_MAX_PHASES] = { steps0, NULL, steps2 };
 	int nsteps[KBUILD_MAX_PHASES] = { 3, 0, 4 };
 	int phase_on[KBUILD_MAX_PHASES] = { 1, 1, 1 };

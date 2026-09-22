@@ -1030,9 +1030,16 @@ static void write_micro(const KcolScheme *sc)
 	free(f);
 }
 
-/* helix: no include exists — `inherits = "kdos"` from a theme of the person's
- * own is the composition it has. A palette entry must be hex or an index; a
- * colour NAME there is a parse error that loses the theme. */
+/* helix: the editor is in no `packages.txt`, so it is never built and never on
+ * the image. The theme is written anyway because a box takes `home = shared`
+ * by default and so is bind-mounted this `$HOME`: a helix installed in one
+ * reads this file, and nothing else would give it the accent. Nothing in
+ * /etc/skel selects it — the `theme = "kdos"` line is the person's to write,
+ * which is why the generated header says so.
+ *
+ * No include exists — `inherits = "kdos"` from a theme of the person's own is
+ * the composition it has. A palette entry must be hex or an index; a colour
+ * NAME there is a parse error that loses the theme. */
 static void write_helix(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("helix/themes/kdos.toml");
@@ -1054,6 +1061,8 @@ static void write_helix(const KcolScheme *sc)
 		"overwritten.\n"
 		"# Your own theme may `inherits = \"kdos\"`; helix has no "
 		"include.\n"
+		"# Select it with `theme = \"kdos\"` in your own "
+		"config.toml — that file is yours and is not shipped.\n"
 		"\"ui.background\" = { bg = \"deep\" }\n"
 		"\"ui.text\" = { fg = \"text\" }\n"
 		"\"ui.text.focus\" = { fg = \"primary\", modifiers = [\"bold\"] }\n"

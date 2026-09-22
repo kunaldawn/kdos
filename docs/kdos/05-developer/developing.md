@@ -35,7 +35,7 @@ Run `git lfs install` before cloning. Without it the working tree holds small te
 where the archives should be, and the first port to unpack one fails on a corrupt archive rather
 than on anything naming the cause. `git lfs pull` repairs a clone made without it.
 
-The LFS payload is 1,022 archives, 8.27 GB, against a free allowance of 10 GiB of storage and
+The LFS payload is 1,020 archives, 8.27 GB, against a free allowance of 10 GiB of storage and
 10 GiB a month of bandwidth, counted across every repository the account owns. Exceeding that
 allowance does not slow a clone down — it blocks LFS reads outright, so a fresh clone cannot check
 out at all. Keeping the repository usable therefore means a paid data pack. Only the three

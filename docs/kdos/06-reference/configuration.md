@@ -677,6 +677,13 @@ A marker file, not a setting. Creating one stops the matching init script runnin
 sudo touch /etc/service.disabled/cups
 ```
 
+The name is the init script's, with the order prefix and the `.sh` stripped — `42_networkmanager.sh`
+is `networkmanager`.
+
+`networkmanager` carries a second effect. `30_network` starts dhcpcd only when NetworkManager is
+absent or carries this marker, so turning NetworkManager off hands DHCP back to dhcpcd instead of
+leaving the machine with no client.
+
 ### `/etc/keymap`
 
 The console keymap, written by the installer, loaded on every terminal, and translated into a
@@ -766,8 +773,7 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/bat/themes/kdos.tmTheme` | bat's theme, selected by file stem | Generated |
 | `~/.config/micro/settings.json` | The editor | Selects the generated colorscheme |
 | `~/.config/micro/colorschemes/kdos.micro` | micro's colorscheme | Generated |
-| `~/.config/helix/config.toml` | The editor | Selects the generated theme |
-| `~/.config/helix/themes/kdos.toml` | helix's theme | Generated |
+| `~/.config/helix/themes/kdos.toml` | helix's theme | Generated. helix itself is in no `packages.txt` and is not on the image; the file is for a helix installed in a box, which sees this `$HOME`. Nothing ships a `config.toml` to select it — write `theme = "kdos"` yourself |
 | `~/.config/nvim/init.vim` | The editor | `termguicolors` and the generated colorscheme |
 | `~/.config/nvim/colors/kdos.vim` | neovim's colorscheme | Generated |
 | `~/.config/git/config` | Version control | Names delta as the pager and `[include]`s the generated colours |

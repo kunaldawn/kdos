@@ -40,9 +40,9 @@ The shipped set, in boot order:
 | `18_timers` | Periodic jobs: one supervised `snooze` per line of `/etc/kdos/timers.d` |
 | `20_dmesg`, `22_syslog` | Kernel and system logging |
 | `25_nftables` | The firewall — before the network comes up |
-| `30_network` | Basic networking |
+| `30_network` | dhcpcd, the fallback DHCP client. It stands down when NetworkManager is installed and `/etc/service.disabled/networkmanager` is absent — NetworkManager's DHCP client is internal and never defers to a running dhcpcd, so two clients on one link means two leases, two default routes and two writers of `/etc/resolv.conf` |
 | `35_chrony` | Time synchronisation |
-| `40_dbus` | The system message bus |
+| `40_dbus` | The system message bus, generating the machine id on its first start |
 | `41_polkitd` | polkit — before NetworkManager, which asks it on its first privileged call |
 | `42_networkmanager` | NetworkManager |
 | `45_avahi` | mDNS |

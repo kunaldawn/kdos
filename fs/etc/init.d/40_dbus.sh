@@ -11,7 +11,11 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        mkdir -p /run/dbus
+        mkdir -p /run/dbus /var/lib/dbus
+        # GetMachineId fails without this file and the bus never creates it
+        # itself; the id must differ per machine, so it is made on first boot
+        # and never carried in an image.
+        [ ! -f /var/lib/dbus/machine-id ] && dbus-uuidgen --ensure
         # --nofork keeps it in foreground for supervision
         supervise "$NAME" "$DAEMON" --system --nofork
         ;;

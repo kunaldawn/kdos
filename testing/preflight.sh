@@ -50,7 +50,10 @@ echo
 echo "==> every package named in a packages.txt has a port"
 for f in script/*/packages.txt; do
     missing=""
-    while read -r p; do
+    # `|| [ -n "$p" ]`: a packages.txt whose last line has no newline still
+    # names a package the build installs, and a plain `read` would drop it —
+    # this gate would then pass a phase whose last entry has no port.
+    while read -r p || [ -n "$p" ]; do
         [ -z "$p" ] && continue
         case "$p" in \#*) continue ;; esac
         if [ ! -f "ports/core/$p/kpkgbuild" ] && \
@@ -159,7 +162,7 @@ for f in fs/etc/init.d/*.sh; do
     # Read from a file, not a pipe: `bad` in a pipeline's subshell increments
     # a copy of $fail and the check reports without failing.
     sed -n 's/^[[:space:]]*DAEMON="\([^"]*\)".*/\1/p' "$f" > "$SP/daemons"
-    while read -r dpath; do
+    while read -r dpath || [ -n "$dpath" ]; do
         case "$(basename "$dpath")" in kdos-*) ;; *) continue ;; esac
         if ! grep -rqF -- "$dpath\"" ports/core/*/build.sh src/packages/*/build.sh \
                 src/desktop/*/build.sh 2>/dev/null; then
@@ -391,7 +394,7 @@ archive_magic() {
 }
 
 echo
-echo "==> every source a port ships is named by a sha256 in its recipe"
+echo "==> every source a port declares is on disk, hashed and non-empty"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The enumeration is the RECIPE's own source list
 # read through the same parser the build uses, NOT a glob of archive
@@ -432,7 +435,18 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
         idx=$((idx + 1))
         resolved="$resolved $base"
-        [ -f "$d/$base" ] || continue
+        # A DECLARED SOURCE THAT IS NOT ON DISK IS A BUILD THAT DIES AT THE
+        # UNPACK. `make build` runs with no network, so the copy committed
+        # beside the recipe is the only one there will ever be, and a name
+        # nothing provides is reported here rather than at whatever hour of
+        # the build its phase reaches that package. Every port is judged, not
+        # only the ones a packages.txt names: a port wired into no phase yet
+        # is exactly the one whose tarball was never committed.
+        if [ ! -f "$d/$base" ]; then
+            bad "$p" "declares $base, which is not in the port directory"
+            unhashed=$((unhashed + 1))
+            continue
+        fi
         # AN EMPTY ARCHIVE IS NOT AN ARCHIVE, and a hash does not catch it:
         # sha256 of nothing is a stable digest, so a recipe written while the
         # download was empty verifies clean everywhere and fails only when tar
@@ -467,11 +481,10 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     done
 
     # AN ARCHIVE THE RECIPE CANNOT NAME IS ONE THE BUILD WILL NOT FIND. The
-    # loop above skips a resolved name that is not on disk, which is right —
-    # tarballs are fetched rather than committed. The consequence is that a
-    # file sitting there under some OTHER name is invisible to every check
-    # here and fails at `Source not found`, minutes into a phase. That is what
-    # a hand-placed download looks like: kpkg renames a FIRST source to
+    # loop above judges the names the recipe resolves to; a file sitting in
+    # the port directory under some OTHER name is claimed by none of them and
+    # fails at `Source not found`, minutes into a phase. That is what a
+    # hand-placed download looks like: kpkg renames a FIRST source to
     # <name>-<version>.<ext> and a `.tgz` saved under the URL's own suffix
     # matches nothing.
     for f in "$d"/*.tar.* "$d"/*.tgz "$d"/*.tbz2 "$d"/*.txz "$d"/*.zip; do
@@ -502,7 +515,7 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
     fi
 done
-[ "$unhashed" = 0 ] && note "every source is hashed and non-empty" "ok"
+[ "$unhashed" = 0 ] && note "every source is present, hashed and non-empty" "ok"
 
 # The escape hatch must be unused in a committed tree.
 if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
@@ -517,34 +530,66 @@ echo "==> every reason names things that still exist"
 # then actively lies, which is worse than not existing at all. Same gate as
 # an unresolvable `# depends`.
 rot=0
+# Basenames of every file in the tree, which is what a `cite:` resolves
+# against. The list comes off the disk rather than out of `git ls-files`: a
+# run outside a checkout — a container that owns the tree differently, an
+# export — gets no file list from git and would then reject every cite. build/
+# is generated and .git/ is not the tree, so neither may answer for a cite.
+find . -path ./build -prune -o -path ./.git -prune -o -type f -print 2>/dev/null |
+    sed 's,.*/,,' | sort -u > "$SP/treenames"
 for r in src/packages/kdos-tools/reasons/*.txt; do
     [ -f "$r" ] || continue
     _rn=$(basename "$r" .txt)
     grep -q "^title:" "$r" || { bad "$_rn" "has no title:"; rot=$((rot + 1)); }
     grep -q "^path:\|^port:" "$r" || { bad "$_rn" "claims nothing"; rot=$((rot + 1)); }
 
-    sed -n 's/^port:[[:blank:]]*//p' "$r" | while read -r _p; do
+    # Every one of these loops reads from a file, never from a pipe: `bad` in
+    # a pipeline's subshell increments a copy of $fail, so the check would
+    # print FAIL and preflight would still exit 0.
+    sed -n 's/^port:[[:blank:]]*//p' "$r" > "$SP/rports"
+    while read -r _p || [ -n "$_p" ]; do
         [ -n "$_p" ] || continue
         if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ] && \
            [ ! -f "src/desktop/$_p/kpkgbuild" ]; then
             bad "$_rn" "names port '$_p', which no longer exists"
+            rot=$((rot + 1))
         fi
-    done
+    done < "$SP/rports"
 
     # A path is real if fs/ provides it, or if the reason also names a port
     # (which is what installs it — preflight cannot see an installed tree).
     _hasport=$(grep -c "^port:" "$r")
-    sed -n 's/^path:[[:blank:]]*//p' "$r" | while read -r _q; do
+    sed -n 's/^path:[[:blank:]]*//p' "$r" > "$SP/rpaths"
+    while read -r _q || [ -n "$_q" ]; do
         [ -n "$_q" ] || continue
         if [ ! -e "fs$_q" ] && [ "$_hasport" = 0 ]; then
             bad "$_rn" "names path '$_q', which fs/ does not provide and no port claims"
+            rot=$((rot + 1))
         fi
-    done
+    done < "$SP/rpaths"
 
-    sed -n 's/^see:[[:blank:]]*//p' "$r" | while read -r _s; do
+    sed -n 's/^see:[[:blank:]]*//p' "$r" > "$SP/rsees"
+    while read -r _s || [ -n "$_s" ]; do
         [ -n "$_s" ] || continue
-        [ -f "src/packages/kdos-tools/reasons/$_s.txt" ] || bad "$_rn" "sees '$_s', which is not a reason"
-    done
+        if [ ! -f "src/packages/kdos-tools/reasons/$_s.txt" ]; then
+            bad "$_rn" "sees '$_s', which is not a reason"
+            rot=$((rot + 1))
+        fi
+    done < "$SP/rsees"
+
+    # A cite is prose, and only the words in it that carry an extension are
+    # file names — those must still name a tracked file, by basename, wherever
+    # in the tree it lives. A cite is the one key a reader retypes into a
+    # search, so a cite naming a step or a source that is gone sends them
+    # looking for nothing.
+    sed -n 's/^cite:[[:blank:]]*//p' "$r" | tr ' \t,' '\n\n\n' > "$SP/cites"
+    while read -r _c || [ -n "$_c" ]; do
+        case "$_c" in *.*) ;; *) continue ;; esac
+        if ! grep -qxF "$_c" "$SP/treenames"; then
+            bad "$_rn" "cites '$_c', which is not a file in the tree"
+            rot=$((rot + 1))
+        fi
+    done < "$SP/cites"
 done
 [ "$rot" = 0 ] && note "reasons resolve" "$(ls src/packages/kdos-tools/reasons/*.txt 2>/dev/null | wc -l) recorded"
 
@@ -835,6 +880,8 @@ if [ -f build/fs/etc/shadow ]; then
     esac
     grep -q "^etc/shadow " script/01_phase1/00_file_system.sh \
         || bad "sensitive modes" "nothing in 00_file_system.sh narrows etc/shadow"
+else
+    note "sensitive modes" "skipped — no build tree"
 fi
 
 # polkitd reads every rule it finds with no ownership check, so a rules
@@ -849,6 +896,8 @@ if [ -f build/fs/etc/polkit-1/rules.d/50-kdos.rules ]; then
     else
         bad "polkit rules" "rules.d is uid $_ro and the file uid $_fo — the granted user can rewrite the grant"
     fi
+else
+    note "polkit rules" "skipped — no build tree"
 fi
 
 # udevd runs every RUN+= as root and reads every file it finds in rules.d with
@@ -867,6 +916,8 @@ if [ -d build/fs/etc/udev/rules.d ]; then
     else
         bad "udev rules" "rules.d is uid $_uo and these are not root's:$_ubad — RUN+= is root code"
     fi
+else
+    note "udev rules" "skipped — no build tree"
 fi
 
 # ── what a udev rule can and cannot grant ─────────────────────────────────
@@ -1087,7 +1138,7 @@ if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
         bad "13_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/phase1/kinstall and rebuild phase 1"
     fi
 else
-    note "kinstall freshness" "skipped — no built kinstall to compare"
+    note "kinstall freshness" "skipped — no build tree"
 fi
 
 # A PORT IS ITS RECIPE AND ITS TARBALL, AND THE TARBALL IS THE HALF THAT GOES
@@ -1381,8 +1432,12 @@ echo "==> every source file in one of OUR ports is compiled by its recipe"
 for d in src/desktop/*/ src/packages/*/; do
     b="$d/build.sh"
     [ -f "$b" ] || continue
-    # A recipe that globs *.c compiles whatever is there; nothing to check.
-    grep -q '\*\.c' "$b" && continue
+    # A recipe that globs its OWN source directory compiles whatever is
+    # there; nothing to check. The glob has to be anchored to $PORT_SRC: a
+    # bare `*.c` test also matches the `"$LIBS"/libk*/*.c` link line that
+    # nearly every recipe carries, which exempts precisely the recipes that
+    # hand-list their sources — the only ones where a file can be left out.
+    grep -qE '("?\$\{?PORT_SRC\}?"?|\.)/\*\.c' "$b" && continue
     for f in "$d"*.c; do
         [ -e "$f" ] || continue
         base=$(basename "$f")
@@ -1464,10 +1519,9 @@ echo "==> no chroot step reads the ports tree through /kdos/ports"
 # chroot_exec binds $REPO_ROOT onto /kdos with a NON-RECURSIVE `mount --bind`,
 # so the container's own mounts underneath it do not come along: /kdos/ports is
 # the empty directory that sat there before docker shadowed it, and the ports
-# tree is bound separately at /ports. Every env file and 01_appbox.sh already
-# say /ports; 01_packs.sh and 02_iso.sh said /kdos/ports and therefore found no
-# packs on a machine with 135 of them — exit 2 out of awk under `set -e`, with
-# an empty step log and nothing naming the path.
+# tree is bound separately at /ports. A step that spells it /kdos/ports finds
+# an empty directory on a machine holding every pack, and reports it as awk's
+# exit 2 under `set -e`: an empty step log and nothing naming the path.
 _kp=0
 for _f in script/*/*.sh; do
     [ -f "$_f" ] || continue
@@ -1746,7 +1800,7 @@ PYEOF
         note "icon names" "every name resolves in the atlas or in hicolor"
     fi
 else
-    note "icon names" "no built atlas — skipped"
+    note "icon names" "skipped — no build tree"
 fi
 
 echo
@@ -1803,7 +1857,7 @@ PYEOF
         note "chrome glyphs" "every glyph_utf8 entry is in the console font"
     fi
 else
-    note "chrome glyphs" "no built console font — skipped"
+    note "chrome glyphs" "skipped — no build tree"
 fi
 
 echo
@@ -1999,7 +2053,7 @@ echo "==> every desktop entry's icon and command exist on the image"
 # hicolor's `apps/` PNGs and to `pixmaps/` — SVG there is never read, because
 # nothing in the session rasterises one.
 if [ ! -d build/fs/usr/share/applications ]; then
-    note "desktop entries" "unchecked — no build tree"
+    note "desktop entries" "skipped — no build tree"
 else
     _ATLAS_SIZES="24 32 48 64"
     _ATLAS_CTX="places devices status mimetypes actions emblems"

@@ -288,7 +288,7 @@ static int place(const char *rel, void *u)
 			 * separate mounts inside the build chroot, so a package
 			 * shipping ANY path under one of them gets EXDEV;
 			 * without this copy fallback the install aborts
-			 * half-written. fuse3 is the real case: its
+			 * half-written. libfuse is the real case: its
 			 * install_helper mknods a /dev/fuse into DESTDIR. */
 			if (errno == EXDEV && copy_across(src, dst) == 0) {
 				unlink(src);

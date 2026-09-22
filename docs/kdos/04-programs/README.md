@@ -50,8 +50,9 @@ Their clients are ordinary unprivileged commands:
 
 ## Privileged helpers
 
-Two programs on the image are setuid root. Both are deliberately tiny, and both refuse to take a
-path from their caller. See [The security model](../03-architecture/security-model.md).
+Two programs of KDOS's own are setuid root. Both are deliberately tiny, and both refuse to take a
+path from their caller. The image's whole setuid inventory is in
+[The security model](../03-architecture/security-model.md#setuid-binaries).
 
 | Command | Does | Takes |
 |---|---|---|

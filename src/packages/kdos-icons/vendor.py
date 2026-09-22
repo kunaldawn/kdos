@@ -24,9 +24,10 @@
 # palette remap is a colour substitution rather than a redraw.
 #
 # What it throws away, and why:
-#   * apps/. The alien apps ship their own icons and 01_appbox.sh installs them
-#     into hicolor; overriding Firefox and GIMP with somebody's redraw makes the
-#     launcher HARDER to read, not easier. apps/ is also 76 MB of the 90.
+#   * apps/. An application's own mark is the one people recognise, and libkicon
+#     reads those out of the system hicolor tree untinted; overriding Firefox
+#     and GIMP with somebody's redraw makes the launcher HARDER to read, not
+#     easier. apps/ is also 76 MB of the 90.
 #   * All but six sizes. Upstream ships 8..128 plus every @2x alias.
 #   * Every folder/user colour variant except blue, which is upstream's DEFAULT
 #     (folder-cd.svg is a symlink to folder-blue-cd.svg) and becomes phosphor

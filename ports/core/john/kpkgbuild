@@ -9,10 +9,6 @@
 # ---------------------------------
 
 name        = john
-# A HYPHEN CANNOT APPEAR IN A VERSION: a package is
-# `<name>-<version>-<release>.tar.xz`, so `1.9.0-jumbo-1` makes that filename
-# ambiguous and preflight refuses it. Upstream's tag is the hyphenated form and
-# `_tag` carries it verbatim, so the URL is still upstream's own.
 version     = 1.9.0.jumbo1
 release     = 1
 _tag        = 1.9.0-Jumbo-1

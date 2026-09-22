@@ -23,7 +23,7 @@ KDOS is a single-user workstation. One human account ships, that account is in
 
 ## setuid binaries
 
-The shipped system carries eighteen setuid-root binaries. Exactly two are
+The shipped system carries twenty setuid-root binaries. Exactly two are
 KDOS's own.
 
 | Binary | Origin | For |
@@ -37,6 +37,8 @@ KDOS's own.
 | `ssh-keysign` | OpenSSH | Host-based authentication |
 | `dbus-daemon-launch-helper` | dbus | System bus activation |
 | `mount.nfs` | nfs-utils | Mounting an NFS share named in `fstab` as an ordinary user |
+| `unix_chkpwd` | pam | How `pam_unix` reads the 0600 shadow file for a caller that is not root — without it every unprivileged PAM check, `wayvnc`'s included, is refused |
+| `fusermount3` | libfuse | Mounting a userspace filesystem from a session with no user namespace — sshfs, gocryptfs, fuse-overlayfs and the document portal |
 | `newuidmap`, `newgidmap` | shadow | **Rootless containers** |
 
 The last two are why every application on the machine works. The container
@@ -416,6 +418,32 @@ every key in the directory and nothing outside it, so what a tool reports is
 the key that verified, not the id the line claimed.
 
 The rest of the signing design is in [Packaging](packaging.md).
+
+### TLS trust anchors
+
+A third trust root, and it is not a keyring: `/etc/ssl/cert.pem`, the Mozilla CA
+bundle `ca-certificates` installs as one file. `/etc/ssl/certs/ca-certificates.crt`
+and `/etc/ssl/ca-bundle.crt` are symlinks to it, so a consumer configured against
+any of the three reads the same 144 certificates.
+
+| Consumer | Reaches the bundle through |
+|---|---|
+| OpenSSL, and everything linked against it | `--openssldir=/etc/ssl`, which finds `cert.pem` |
+| GnuTLS, and everything linked against it | p11-kit's trust module, built `-D trust_paths=/etc/ssl/cert.pem` |
+
+GnuTLS is configured `--with-default-trust-store-pkcs11="pkcs11:"`, so p11-kit is
+its only source of anchors. p11-kit gives a trust path that is a plain **file** —
+not a directory — the anchor flag and marks every certificate parsed out of it
+`CKA_TRUSTED`, which is why there is no `anchors/` directory to populate and
+nothing to regenerate when the bundle is updated.
+
+The two halves fail independently, and the failure reads as a remote fault. Point
+the trust path at something the image does not ship and p11-kit loads zero tokens
+without a word — an absent path is not an error to it —
+`gnutls_certificate_set_x509_system_trust()` then returns zero anchors and every
+GnuTLS consumer rejects every peer, while `curl` and the rest of the OpenSSL side
+keep working. `msmtp`, `openconnect`, `weechat` and chrony's NTS are the four that
+show it first.
 
 ### An application is verified or it is not, and which one is knowable
 

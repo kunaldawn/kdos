@@ -22,4 +22,4 @@ The keys
   right now. A key that is not on that row is a key the surface does not
   answer in the state it is in.
 
-  [[key:W-d]]          the full keybind card
+  [[key:W-F1]]         the full keybind card

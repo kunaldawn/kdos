@@ -46,9 +46,18 @@ fi
 
 # 2. Create System SquashFS
 echo "Squashing Root Filesystem..."
-# Exclude pseudo filesystems, build artifacts, and caches
+# The pseudo filesystems, build artifacts and caches are excluded, and the
+# mountpoints they need are recreated as empty directories — an excluded /proc
+# is a root that cannot mount one.
+#
+# `-e` CONSUMES THE REST OF THE COMMAND LINE: every argument after it is an
+# exclude pattern, so it goes LAST and every option goes ahead of it. An option
+# placed after `-e` is not an error — it is silently taken as a filename to
+# exclude, which leaves the compressor at the gzip default, drops every
+# pseudo-directory, and appends to an existing system.sfs instead of replacing
+# it.
 mksquashfs / $ISO_ROOT/system.sfs \
-    -e proc sys dev tmp run mnt media var/cache var/log build kdos ports \
+    -noappend -comp xz \
     -p "proc d 555 0 0" \
     -p "sys d 555 0 0" \
     -p "dev d 755 0 0" \
@@ -56,7 +65,7 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "run d 755 0 0" \
     -p "mnt d 755 0 0" \
     -p "media d 755 0 0" \
-    -noappend -comp xz
+    -e proc sys dev tmp run mnt media var/cache var/log build kdos ports
 
 # 2a. The KDOS base pack, when KDOS_PACK_KDOS built one.
 #

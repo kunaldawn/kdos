@@ -407,9 +407,11 @@ Work through these in order:
 2. The port's own `config.log` inside the work directory, if a configuration script failed. The
    message at the end of the build output is usually not the error.
 3. `testing/preflight.sh`, which catches the dull wiring failures in seconds.
-4. Whether the port ever compiled here at all. Preflight checks that every source file in one of
-   our own ports is compiled by its recipe, that every meson option exists, and that every
-   dependency resolves — three whole classes of failure that never reach a compiler.
+4. Whether the port ever compiled here at all. Preflight checks that every source a recipe
+   declares is in the port directory, that every source file in one of our own ports is compiled
+   by its recipe, that every meson option exists, and that every dependency resolves — four whole
+   classes of failure that never reach a compiler. The build has no network, so a declared source
+   that is not committed beside its recipe can only fail at the unpack.
 5. Whether you are re-running an early phase on a later tree, which is a different problem wearing
    a build failure's clothes.
 

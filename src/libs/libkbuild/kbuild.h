@@ -8,7 +8,7 @@
  *   libkbuild — what the orchestrator knows about the build tree
  *
  * Phase discovery, the phase-env metadata block, and the snapshot path rules.
- * This is the part of script/buildlib that is pure inspection of the repo: it
+ * This is the part of the build system that is pure inspection of the repo: it
  * reads, it decides nothing, and it runs nothing.
  *
  * THE ENV FILES ARE PARSED, NEVER SOURCED. Several of them end with
@@ -54,8 +54,8 @@ typedef struct {
 } KbuildPhase;
 
 /* Ordered by directory name, which is what the numeric prefix is for. Only
- * directories matching ^[0-9]+_ are phases; buildlib/, util/ and __pycache__/
- * are not. */
+ * directories matching ^[0-9]+_ are phases; util/ and anything else beside
+ * them are not. */
 int kbuild_discover(const char *script_dir, KbuildPhase *out, int max);
 
 /* A phase with no KDOS_SNAPSHOT_PATHS is never snapshotted. */
@@ -79,7 +79,7 @@ void kbuild_unquote(const char *raw, char *out, size_t cap);
 const KbuildPhase *kbuild_find(const KbuildPhase *ph, int n, const char *token);
 
 /* ──────────────────────────────────────────────────────────────────────── */
-/* JSON — read only, and only for files python wrote
+/* JSON — the kj_* reader; every writer emits its own bytes
  *
  * kj_parse returns NULL for anything that does not parse whole. Every caller
  * treats that as "absent" rather than "partial": a half-read manifest that
@@ -123,7 +123,8 @@ char **kbuild_steps(const KbuildPhase *p, int *count);
 /* The names in a phase's packages.txt, comments and blanks stripped. */
 char **kbuild_packages(const KbuildPhase *p, int *count);
 
-/* Every port name in the repo, so a dependency-only port is selectable too. */
+/* Every port name under ports/core and src/packages, so a dependency-only port
+ * is selectable too; src/desktop reaches the index through packages.txt. */
 char **kbuild_ports(const char *repo_root, int *count);
 
 typedef struct {
@@ -169,17 +170,17 @@ int kbuild_plan_step_selected(const KbuildPlan *pl, const char *dir_name,
 int kbuild_plan_forced(const KbuildPlan *pl, const char *package);
 void kbuild_plan_summary(const KbuildPlan *pl, char *out, size_t cap);
 
-/* $BUILD_DIR/.devplan.json, byte-identical to python's json.dump(indent=2) so
- * the file round-trips while build.py still drives the build. */
+/* $BUILD_DIR/.devplan.json, written as two-space-indented JSON so the file is
+ * legible on disk and round-trips through the loader below. */
 int kbuild_plan_save(const KbuildPlan *pl, const char *build_dir);
 int kbuild_plan_load(KbuildPlan *pl, const char *build_dir);
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Snapshots — the inventory and what a restore would extract
  *
- * Creating and extracting archives runs tar as root and is still build.py's.
- * What lives here is what DECIDES: which snapshots exist, and which archive
- * supplies each path.
+ * Creating and extracting archives runs tar as root and belongs to the driver,
+ * in src/build/kdosbuild/snapshot.c. What lives here is what DECIDES: which
+ * snapshots exist, and which archive supplies each path.
  */
 
 #define KBUILD_MANIFEST        "manifest.json"

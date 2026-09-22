@@ -173,6 +173,13 @@ Three properties make that safe:
 A rebuild request that no selected phase ever reached is reported, rather than silently doing
 nothing.
 
+The picker's port list is every directory holding a `kpkgbuild` under `ports/core` and
+`src/packages`, plus every name in any phase's `packages.txt` — which is what puts the
+`src/desktop` recipes on it, each already named in `script/05_desktop/packages.txt`. A name is
+listed once: the first repository wins, and a packages.txt entry stamps the phase onto a port
+already there. The list grows to fit; it is never capped, because a port missing from it is a port
+the picker cannot ask to rebuild.
+
 ## kdosbuild
 
 The orchestrator lives in `src/build/kdosbuild/`. It is a C program linking `libkbase`,
@@ -192,6 +199,12 @@ by `script/kdosbuild.sh`.
 The build is the main loop. There are no threads: pump the running child, pump the sampler, draw,
 wait for a key with a deadline. Nothing has to be careful about drawing concurrently with a caller,
 because nothing can.
+
+A step the runner cannot start — the pipe or the fork refused, on a machine out of descriptors or
+out of memory — fails exactly like a step that exited non-zero: return code 999, the step and its
+phase marked failed, a named notice, and the run stopped. The stamp has to be terminal, because the
+cursor only moves past a step that finished or stopped the run; a step left marked running is
+started again on the next pump, for ever, leaking its log descriptor each time.
 
 ### Keys
 
@@ -318,6 +331,32 @@ A packaging step removes every installed package with no recipe in any port repo
 `testing/preflight.sh` reports the same thing in seconds instead of at the end of a whole build.
 Neither is fatal on failure: an orphan with a damaged manifest must not stop the ISO from being
 rolled.
+
+## Databases stamped into the image
+
+Two consumers read a compiled database that no package installs, because neither can be built until
+every package is in place. `script/06_packaging/00_udev_hwdb.sh` and
+`script/06_packaging/00_whatis.sh` build them.
+
+`udevadm hwdb --update` compiles `/etc/udev/hwdb.bin` from the `hwdb.d` text eudev ships. Half of
+eudev's rules open with `IMPORT{builtin}="hwdb ..."`, and that import returns nothing at all when
+the binary is absent, logging nothing above debug level: the laptop key quirks, the `EVDEV_ABS_*`
+touchpad overrides libinput sizes a device from, and `ID_VENDOR_FROM_DATABASE` /
+`ID_MODEL_FROM_DATABASE` are simply missing, and the machine reads as hardware with no quirks
+rather than as a missing file. The trie goes to `/etc/udev`, which libudev reads first, and not to
+`--usr`'s `/lib/udev` — that is `/usr/lib/udev` on a merged `/usr`, and the initramfs step copies
+`/usr/lib/udev` wholesale, so ~10 MB of trie would sit in RAM on every boot for a stage that
+imports no hwdb property.
+
+`makewhatis` writes a `mandoc.db` into each manual root on the manpath. `man` needs none — it falls
+back to walking the filesystem — but `apropos` and `whatis` reach `mansearch()` only and exit 0
+printing nothing without one, which is indistinguishable from "nothing matches".
+
+Both steps run after the orphan sweep, so a swept package's rules and pages are not indexed, and
+before the initramfs and ISO steps, which carry the tree into the image; lexicographic order does
+the sequencing. Neither trusts an exit status: `udevadm hwdb --update` exits 0 having written
+nothing when it finds no sources, and `makewhatis` exits non-zero for a single unreadable page
+while still writing a complete database. Each step asserts on the file it produced instead.
 
 ## Fetching and baking, in containers
 

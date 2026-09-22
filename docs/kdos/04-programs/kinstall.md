@@ -315,6 +315,11 @@ Each of these exists for the installer and would otherwise be decorative:
 - **The NVRAM entry names the binary this firmware can load**, from
   `/sys/firmware/efi/fw_platform_size`. The removable-media fallback chooses by itself;
   `efibootmgr --create` cannot, so an entry pointing at the wrong one is a boot option that fails.
+- **The entry names the partition the ESP is actually on**, read from the kernel's
+  `/sys/class/block/<node>/partition` rather than derived from the device name — only the wipe plan
+  lays the ESP out at index 1, and a reuse install takes whichever partition was picked. Where that
+  index cannot be read the entry is not created and the install warns: the removable-media fallback
+  still starts the disk, and a guessed index is a boot option the firmware cannot load.
 
 The ESP is a FAT filesystem, so nothing is copied onto it with an archive-preserving copy. FAT has
 no ownership to preserve: such a copy calls the ownership change on every file, the kernel refuses

@@ -30,8 +30,6 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_wireshark=OFF \
-	-DBUILD_qtshark=OFF \
-	-DBUILD_logray=OFF \
 	-DBUILD_androiddump=OFF \
 	-DBUILD_sshdump=OFF \
 	-DBUILD_ciscodump=OFF \

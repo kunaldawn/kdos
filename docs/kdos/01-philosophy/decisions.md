@@ -164,7 +164,7 @@ distributed.
 
 ## The tarballs are in the tree, through Git LFS
 
-Upstream archives live in the repository, held by Git LFS: 1,025 objects, about 8.3 GB, nine of
+Upstream archives live in the repository, held by Git LFS: 1,020 archives, about 8.3 GB, nine of
 them over the 100 MiB a github.com push refuses.
 
 The reason is that a clone is then the whole input to a build — `git clone` followed by

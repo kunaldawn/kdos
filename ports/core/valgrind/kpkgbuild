@@ -8,11 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# NOTE: valgrind has a long history of musl compatibility issues. Several
-# patches from upstream / musl-distros are typically needed. This is a
-# best-effort scaffold; expect to iterate.
-
 name        = valgrind
 version     = 3.27.0
 release     = 1

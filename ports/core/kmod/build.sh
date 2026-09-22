@@ -15,7 +15,6 @@ CFLAGS="$CFLAGS -include libgen.h" \
 ./configure --prefix=/usr          \
             --bindir=/bin          \
             --sysconfdir=/etc      \
-            --with-rootlibdir=/lib \
             --with-xz              \
             --with-zstd            \
             --with-zlib
