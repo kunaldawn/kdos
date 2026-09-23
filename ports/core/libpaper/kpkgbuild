@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libpaper
+version     = 2.2.8
+release     = 1
+source      = https://github.com/rrthomas/$name/releases/download/v$version/$name-$version.tar.gz
+sha256      = 1e330571690191874eca415ec76889dd11bab9887a2302d6a3665cd081c4d77b  libpaper-2.2.8.tar.gz
+description = Library and paper(1) tool for the system's default paper size and the known paper sizes
+homepage    = https://github.com/rrthomas/libpaper

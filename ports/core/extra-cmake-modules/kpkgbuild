@@ -15,4 +15,4 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 22c9f7ff930dae7329faebf2942d2424f4a298c43bb3f11e217be6b12f227f6e  extra-cmake-modules-6.30.0.tar.xz
 description = Extra modules and scripts for CMake (KDE)
 homepage    = https://api.kde.org/frameworks/extra-cmake-modules/html/
-depends     = cmake ninja
+depends     = cmake ninja python3-sphinx

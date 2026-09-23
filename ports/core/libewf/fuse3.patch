@@ -1,0 +1,253 @@
+--- a/ewftools/ewfmount.c
++++ b/ewftools/ewfmount.c
+@@ -158,11 +158,16 @@
+ 	ewftools_glob_t *glob                       = NULL;
+ #endif
+ 
+-#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE )
+ 	struct fuse_operations ewfmount_fuse_operations;
+ 
++#if defined( HAVE_LIBFUSE3 )
++	char *ewfmount_fuse_argv[ 2 ]               = { "ewfmount", NULL };
++	struct fuse_args ewfmount_fuse_arguments    = FUSE_ARGS_INIT(1, ewfmount_fuse_argv);
++#else
+ 	struct fuse_args ewfmount_fuse_arguments    = FUSE_ARGS_INIT(0, NULL);
+ 	struct fuse_chan *ewfmount_fuse_channel     = NULL;
++#endif
+ 	struct fuse *ewfmount_fuse_handle           = NULL;
+ 
+ #elif defined( HAVE_LIBDOKAN )
+@@ -425,9 +430,13 @@
+ 		goto on_error;
+ 	}
+ #endif
+-#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE )
+ 	if( option_extended_options != NULL )
+ 	{
++#if defined( HAVE_LIBFUSE3 )
++		ewfmount_fuse_arguments.argc = 0;
++		ewfmount_fuse_arguments.argv = NULL;
++#endif
+ 		/* This argument is required but ignored
+ 		 */
+ 		if( fuse_opt_add_arg(
+@@ -481,6 +490,32 @@
+ 	ewfmount_fuse_operations.getattr    = &mount_fuse_getattr;
+ 	ewfmount_fuse_operations.destroy    = &mount_fuse_destroy;
+ 
++#if defined( HAVE_LIBFUSE3 )
++	ewfmount_fuse_handle = fuse_new(
++	                        &ewfmount_fuse_arguments,
++	                        &ewfmount_fuse_operations,
++	                        sizeof( struct fuse_operations ),
++	                        ewfmount_mount_handle );
++
++	if( ewfmount_fuse_handle == NULL )
++	{
++		fprintf(
++		 stderr,
++		 "Unable to create fuse handle.\n" );
++
++		goto on_error;
++	}
++	if( fuse_mount(
++	     ewfmount_fuse_handle,
++	     mount_point ) != 0 )
++	{
++		fprintf(
++		 stderr,
++		 "Unable to fuse mount file system.\n" );
++
++		goto on_error;
++	}
++#else
+ 	ewfmount_fuse_channel = fuse_mount(
+ 	                         mount_point,
+ 	                         &ewfmount_fuse_arguments );
+@@ -508,6 +543,8 @@
+ 
+ 		goto on_error;
+ 	}
++#endif /* defined( HAVE_LIBFUSE3 ) */
++
+ 	if( verbose == 0 )
+ 	{
+ 		if( fuse_daemonize(
+@@ -531,6 +568,10 @@
+ 
+ 		goto on_error;
+ 	}
++#if defined( HAVE_LIBFUSE3 )
++	fuse_unmount(
++	 ewfmount_fuse_handle );
++#endif
+ 	fuse_destroy(
+ 	 ewfmount_fuse_handle );
+ 
+@@ -706,7 +747,7 @@
+ 
+ 	return( EXIT_FAILURE );
+ 
+-#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE ) */
++#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE ) */
+ 
+ on_error:
+ 	if( error != NULL )
+@@ -716,7 +757,7 @@
+ 		libcerror_error_free(
+ 		 &error );
+ 	}
+-#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE )
+ 	if( ewfmount_fuse_handle != NULL )
+ 	{
+ 		fuse_destroy(
+--- a/ewftools/mount_fuse.c
++++ b/ewftools/mount_fuse.c
+@@ -44,7 +44,7 @@
+ 
+ extern mount_handle_t *ewfmount_mount_handle;
+ 
+-#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE )
+ 
+ #if ( SIZEOF_OFF_T != 8 ) && ( SIZEOF_OFF_T != 4 )
+ #error Size of off_t not supported
+@@ -259,7 +259,11 @@
+ 	     buffer,
+ 	     name,
+ 	     stat_info,
+-	     0 ) == 1 )
++	     0
++#if defined( HAVE_LIBFUSE3 )
++	     , 0
++#endif
++	     ) == 1 )
+ 	{
+ 		libcerror_error_set(
+ 		 error,
+@@ -660,7 +664,11 @@
+      void *buffer,
+      fuse_fill_dir_t filler,
+      off_t offset EWFTOOLS_ATTRIBUTE_UNUSED,
+-     struct fuse_file_info *file_info EWFTOOLS_ATTRIBUTE_UNUSED )
++     struct fuse_file_info *file_info EWFTOOLS_ATTRIBUTE_UNUSED
++#if defined( HAVE_LIBFUSE3 )
++     , enum fuse_readdir_flags flags EWFTOOLS_ATTRIBUTE_UNUSED
++#endif
++     )
+ {
+ 	struct stat *stat_info                = NULL;
+ 	libcerror_error_t *error              = NULL;
+@@ -675,6 +683,10 @@
+ 
+ 	EWFTOOLS_UNREFERENCED_PARAMETER( offset )
+ 
++#if defined( HAVE_LIBFUSE3 )
++	EWFTOOLS_UNREFERENCED_PARAMETER( flags )
++#endif
++
+ #if defined( HAVE_DEBUG_OUTPUT )
+ 	if( libcnotify_verbose != 0 )
+ 	{
+@@ -1046,7 +1058,11 @@
+  */
+ int mount_fuse_getattr(
+      const char *path,
+-     struct stat *stat_info )
++     struct stat *stat_info
++#if defined( HAVE_LIBFUSE3 )
++     , struct fuse_file_info *file_info EWFTOOLS_ATTRIBUTE_UNUSED
++#endif
++     )
+ {
+ 	libcerror_error_t *error       = NULL;
+ 	mount_file_entry_t *file_entry = NULL;
+@@ -1058,6 +1074,10 @@
+ 	uint16_t file_mode             = 0;
+ 	int result                     = 0;
+ 
++#if defined( HAVE_LIBFUSE3 )
++	EWFTOOLS_UNREFERENCED_PARAMETER( file_info )
++#endif
++
+ #if defined( HAVE_DEBUG_OUTPUT )
+ 	if( libcnotify_verbose != 0 )
+ 	{
+@@ -1314,5 +1334,5 @@
+ 	return;
+ }
+ 
+-#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE ) */
++#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE ) */
+ 
+--- a/ewftools/mount_fuse.h
++++ b/ewftools/mount_fuse.h
+@@ -25,17 +25,21 @@
+ #include <common.h>
+ #include <types.h>
+ 
+-#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE3 )
++#define FUSE_USE_VERSION	30
++#else
+ #define FUSE_USE_VERSION	26
++#endif
+ 
+-#if defined( HAVE_LIBFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 )
+ #include <fuse.h>
+ 
+ #elif defined( HAVE_LIBOSXFUSE )
+ #include <osxfuse/fuse.h>
+ #endif
+ 
+-#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE ) */
++#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE ) */
+ 
+ #include "ewftools_libcerror.h"
+ #include "ewftools_libewf.h"
+@@ -46,7 +50,7 @@
+ extern "C" {
+ #endif
+ 
+-#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE )
++#if defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE )
+ 
+ int mount_fuse_set_stat_info(
+      struct stat *stat_info,
+@@ -89,7 +93,11 @@
+      void *buffer,
+      fuse_fill_dir_t filler,
+      off_t offset,
+-     struct fuse_file_info *file_info );
++     struct fuse_file_info *file_info
++#if defined( HAVE_LIBFUSE3 )
++     , enum fuse_readdir_flags flags
++#endif
++     );
+ 
+ int mount_fuse_releasedir(
+      const char *path,
+@@ -97,12 +105,16 @@
+ 
+ int mount_fuse_getattr(
+      const char *path,
+-     struct stat *stat_info );
++     struct stat *stat_info
++#if defined( HAVE_LIBFUSE3 )
++     , struct fuse_file_info *file_info
++#endif
++     );
+ 
+ void mount_fuse_destroy(
+       void *private_data );
+ 
+-#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBOSXFUSE ) */
++#endif /* defined( HAVE_LIBFUSE ) || defined( HAVE_LIBFUSE3 ) || defined( HAVE_LIBOSXFUSE ) */
+ 
+ #if defined( __cplusplus )
+ }

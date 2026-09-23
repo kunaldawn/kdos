@@ -10,4 +10,4 @@
 # ---------------------------------
 
 make PREFIX=/usr
-make PREFIX=/usr DESTDIR=$PKG install.bin install.crio install.podman
+make PREFIX=/usr DESTDIR=$PKG install install.crio install.podman

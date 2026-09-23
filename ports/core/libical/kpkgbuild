@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libical
+version     = 4.0.5
+release     = 1
+source      = https://github.com/libical/libical/releases/download/v$version/$name-$version.tar.gz
+sha256      = cc09a3ac41d60e6144e644bd3fcf97d47106d659c4a0b8965102581401e67c9c  libical-4.0.5.tar.gz
+description = Reference implementation of the iCalendar and vCard formats
+homepage    = https://libical.github.io/libical/
+depends     = cmake ninja perl pkgconf icu tzdata

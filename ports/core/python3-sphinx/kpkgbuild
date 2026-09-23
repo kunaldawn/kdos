@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-sphinx
+version     = 9.1.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/s/sphinx/sphinx-$version.tar.gz
+sha256      = 7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb  python3-sphinx-9.1.0.tar.gz
+sha256      = 0baa1f3d9e27d17c58bc820df928af985d54314f39e1093176915361e73b2708  python3-sphinx-vendor-9.1.0.tar.xz
+description = Documentation generator — the manual pages of LLVM, CMake, mpd and flashrom
+homepage    = https://www.sphinx-doc.org/
+depends     = python3 python3-setuptools python3-pip python3-flit-core python3-hatchling python3-hatch-vcs python3-docutils python3-jinja2 python3-markupsafe python3-pygments python3-packaging python3-certifi python3-yaml
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = alabaster babel imagesize requests charset-normalizer idna urllib3 roman-numerals snowballstemmer sphinxcontrib-applehelp sphinxcontrib-devhelp sphinxcontrib-htmlhelp sphinxcontrib-jsmath sphinxcontrib-qthelp sphinxcontrib-serializinghtml myst-parser markdown-it-py mdit-py-plugins mdurl sphinx-argparse

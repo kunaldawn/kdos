@@ -12,9 +12,10 @@ case "$1" in
         fi
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/sshd
-        # -A makes every host key type sshd offers by default that is missing,
-        # and leaves an existing key alone. A type sshd lists with no key file
-        # beside it is logged as an error on every start.
+        # -A makes each default host key type this OpenSSH knows that is
+        # missing and leaves an existing key alone. sshd offers only the types
+        # it finds a key file for, so a type left ungenerated is one a client
+        # that insists on it cannot connect with.
         ssh-keygen -A
         # -D = don't detach (foreground for supervision)
         supervise "$NAME" "$DAEMON" -D

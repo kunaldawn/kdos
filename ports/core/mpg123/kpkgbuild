@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mpg123
+version     = 1.33.7
+release     = 1
+source      = https://www.mpg123.de/download/$name-$version.tar.bz2
+sha256      = 31d0e35a4ca567ec9b5ebda6c3062bb4435d6d3eacd6ef0d95cadd7854dc03ee  mpg123-1.33.7.tar.bz2
+description = MPEG audio decoder — libmpg123, libout123, libsyn123 and the mpg123 and out123 commands
+homepage    = https://www.mpg123.de/
+depends     = alsa-lib pkgconf

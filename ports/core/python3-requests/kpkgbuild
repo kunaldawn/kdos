@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-requests
+version     = 2.34.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/r/requests/requests-$version.tar.gz
+sha256      = f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed  python3-requests-2.34.2.tar.gz
+description = HTTP for humans — the client library most python programs reach the network through
+homepage    = https://requests.readthedocs.io/
+depends     = python3 python3-setuptools python3-pip python3-charset-normalizer python3-idna python3-urllib3 python3-certifi

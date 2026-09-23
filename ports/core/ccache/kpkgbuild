@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/ccache/ccache/releases/download/v$version/$name-$version.tar.xz
 sha256      = b093ac5d38204cb4d9f29b0bbd570675aa5a592a78e6675b2c506dbe045234e7  ccache-4.14.tar.xz
 description = A fast compiler cache
-depends     = cmake ninja zlib zstd xxhash
+depends     = cmake ninja zlib zstd xxhash asciidoctor perl

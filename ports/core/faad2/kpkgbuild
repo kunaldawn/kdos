@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = faad2
+version     = 2.11.3
+release     = 1
+source      = https://github.com/knik0/faad2/archive/refs/tags/$version.tar.gz
+sha256      = 860ab62087e336c1844a70e33196c1790b525fb9a9e7b6ac4fab1a1a4e4d5ce8  faad2-2.11.3.tar.gz
+description = FAAD2 MPEG-2/MPEG-4 AAC decoder — libfaad and the faad command
+homepage    = https://github.com/knik0/faad2
+depends     = cmake

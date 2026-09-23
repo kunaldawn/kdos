@@ -23,7 +23,6 @@
 # Linux backend is dbus-fast, installed as pure python: SKIP_CYTHON leaves out
 # its optional Cython accelerator, which would otherwise be compiled or not
 # depending on whether Cython happens to be in the build root.
-#
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 

@@ -43,6 +43,17 @@ for ext in openssl psych zlib fiddle; do
 	fi
 done
 
+# rbinstall gzips ruby.1 and erb.1 whenever gzip is on $PATH, which makes the
+# package's file names depend on the build host; every other page on the image
+# is plain. The pages bundler, irb and rdoc carry sit inside their library
+# trees, where `man` never looks, and are installed where it does.
+find "$PKG/usr/share/man" -name '*.gz' -exec gunzip {} +
+for page in "$PKG"/usr/lib/ruby/*/bundler/man/*.[1-8] \
+	"$PKG"/usr/lib/ruby/gems/*/gems/irb-*/man/*.[1-8] \
+	"$PKG"/usr/lib/ruby/gems/*/gems/rdoc-*/man/*.[1-8]; do
+	install -Dm644 "$page" -t "$PKG/usr/share/man/man${page##*.}"
+done
+
 # The gem cache holds a second copy, as a .gem archive, of every bundled gem
 # already unpacked beside it; only `gem pristine` reads it.
 rm -rf "$PKG"/usr/lib/ruby/gems/*/cache

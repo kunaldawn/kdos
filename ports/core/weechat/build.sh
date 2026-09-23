@@ -12,8 +12,11 @@
 # EVERY SCRIPTING BACKEND IS A HARD CONFIGURE DEPENDENCY, not a feature that
 # degrades. `find_package(... REQUIRED)` sits in each plugin's CMakeLists, so a
 # backend switched on without its interpreter stops cmake before a line is
-# compiled. The set below is exactly the interpreters this image carries:
-# Python, Perl and Lua are ports; Ruby, Guile, PHP and JavaScript (v8) are not.
+# compiled. Python, Perl and Lua are ports and are on; Guile, PHP and
+# JavaScript (v8) are not ports.
+#
+# RUBY IS OFF ALTHOUGH THE PORT EXISTS. The plugin has not been built against
+# Ruby 4.0, and turning it on puts a libruby link under the plugin module.
 #
 # TCL IS OFF ALTHOUGH THE PORT EXISTS, and the reason is the probe rather than
 # the language. The tcl plugin asks cmake's own FindTCL, whose newest library
@@ -33,9 +36,12 @@
 # `ENABLE_SPELL=ON` reaches `find_package(Aspell REQUIRED)` and fails the same
 # way a missing interpreter does.
 #
-# MAN AND DOC ARE OFF because both are Asciidoctor, a Ruby program, and the
-# doc target answers a missing one with SEND_ERROR. Neither Ruby nor
-# asciidoctor is a port.
+# MAN IS ON AND DOC IS OFF. Both are asciidoctor, and a missing asciidoctor is
+# SEND_ERROR, so the depends line carries it. MAN builds weechat.1 and
+# weechat-headless.1 in English and each language upstream translates them
+# into, installed under /usr/share/man/<lang>/man1; DOC is the HTML guides,
+# and its autogen step loads every plugin, including the ones switched off
+# here.
 #
 # NLS IS OFF: the translations would put a libintl link under the binary and
 # under every plugin module for message catalogues nothing on this image
@@ -52,7 +58,7 @@ cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DLIBDIR=/usr/lib \
-	-DENABLE_MAN=OFF \
+	-DENABLE_MAN=ON \
 	-DENABLE_DOC=OFF \
 	-DENABLE_TESTS=OFF \
 	-DENABLE_NLS=OFF \

@@ -23,3 +23,7 @@ meson setup build \
 	-Dsandboxed-sound-validation=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+# The user units are installed whatever -Dsystemd says: systemd-user-unit-dir
+# only moves them, and D-Bus activation is what starts the portals here.
+rm -rf "$PKG/usr/lib/systemd"

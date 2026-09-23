@@ -21,8 +21,12 @@
 # held to the 0.24 series obd declares. Their own runtime dependencies,
 # platformdirs and typing-extensions, and every build backend they need are
 # ports, which is why the bundle is installed --no-deps with isolation off.
-mkdir -p vendor
-tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
+#
+# The bundle is unpacked beside the source, not inside it: obd is a flat
+# layout with no package list, and setuptools refuses to guess between `obd`
+# and a `vendor` directory sitting next to it.
+mkdir -p "$SRC_ROOT/vendor"
+tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C "$SRC_ROOT/vendor"
+pip3 install --no-deps --no-index --find-links="$SRC_ROOT/vendor" --no-build-isolation \
 	--root=$PKG --prefix=/usr \
 	pint flexcache flexparser .

@@ -15,3 +15,4 @@ export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 cargo build --release --frozen --offline
 install -Dm755 target/release/netavark "$PKG/usr/libexec/podman/netavark"
+make -C docs PREFIX=/usr DESTDIR=$PKG install

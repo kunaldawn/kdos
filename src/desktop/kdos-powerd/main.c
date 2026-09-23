@@ -143,14 +143,20 @@ static int do_reboot(int cmd)
 {
 	sync();
 	/*
-	 * Ask init first: /etc/init.d has services with stop actions, and
-	 * pulling the power out from under NetworkManager and the appbox's
-	 * containers is how a filesystem ends up dirty. SIGTERM to pid 1 is
-	 * what toybox init answers with a shutdown, and reboot(2) is the
-	 * fallback for an init that ignored it.
+	 * Ask init first: its first shutdown entry, /etc/init.d/rcK, runs
+	 * every service's stop action, and pulling the power out from under
+	 * NetworkManager and the appbox's containers is how a filesystem ends
+	 * up dirty. SIGUSR2 and SIGTERM to pid 1 are what toybox init answers
+	 * with a poweroff and a reboot.
+	 *
+	 * reboot(2) is the fallback for an init that ignored the signal, and
+	 * the wait before it must outlast rcK's walk down to 55_powerd, whose
+	 * stop ends this process: every supervised service ahead of it costs
+	 * ksvc a second. A wait shorter than that walk powers the machine off
+	 * mid-shutdown, before the mixer is saved or a filesystem unmounted.
 	 */
 	kill(1, cmd == RB_POWER_OFF ? SIGUSR2 : SIGTERM);
-	sleep(5);
+	sleep(60);
 	reboot(cmd);
 	return -1;		/* only reached if reboot(2) itself failed */
 }

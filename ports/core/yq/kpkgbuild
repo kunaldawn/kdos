@@ -16,5 +16,5 @@ sha256      = 132a28a669526f99dba52486ac80de3bdafdf9a1a52a0c6bd6045301aca0cd25  
 sha256      = caaa21fe0025ba2eca353f9d4982b55edb6808fc6c0cbdba5b95cc110146741f  yq-vendor-4.53.6.tar.xz
 description = yq — a portable YAML / JSON / TOML / XML processor (Go, Mike Farah)
 homepage    = https://github.com/mikefarah/yq
-depends     = go
+depends     = go lowdown
 vendoring   = go

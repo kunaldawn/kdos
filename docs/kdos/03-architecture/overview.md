@@ -28,7 +28,7 @@ initramfs init ─── splash, A/B slot selection, LUKS unlock, find the root
    │  switch_root (util-linux's)
    ▼
 init (toybox, PID 1)
-   ├─ /etc/init.d/rcS ──── 28 numbered service scripts, in order
+   ├─ /etc/init.d/rcS ──── 30 numbered service scripts, in order
    └─ kdos-getty on tty1 and tty2
           │
           ▼
@@ -131,6 +131,7 @@ init (PID 1, toybox)
  │   ├─ 30 network   35 chrony   40 dbus   41 polkitd
  │   ├─ 42 NetworkManager   45 avahi   45 seatd   50 alsa
  │   ├─ 54 thermald   55 tlp   60 bluetooth   70 sshd   80 cups
+ │   ├─ 81 cups-browsed   82 ipp-usb
  │   └─ the KDOS root daemons:
  │        55 kdos-powerd    /run/kdos-powerd.sock    suspend, poweroff, reboot
  │        56 kdos-energyd   /run/kdos-energyd.sock   per-application energy

@@ -61,8 +61,10 @@ are an administrator's rather than a user's.
 | `ping` | Liveness |
 
 Four verbs are a bare word; `timezone`, `autologin`, `firewall` and `accent` take an argument,
-joined into the request line by the client. Poweroff and reboot signal process 1 first and only
-then call the kernel directly, so the init system gets its chance to run its shutdown entries.
+joined into the request line by the client. Poweroff and reboot signal process 1 first, so init
+runs its shutdown entries — `/etc/init.d/rcK` stops every service, `kdos-powerd` among them, before
+anything is unmounted. Only if the daemon is still alive sixty seconds later, which means init
+ignored the signal, does it call the kernel directly.
 
 `suspend` asks before it locks. `ping` runs the same credentials gate suspend does, so a caller
 outside `wheel` — or a machine with no `kdos-powerd` at all — is refused before the screen is

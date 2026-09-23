@@ -26,6 +26,9 @@ meson setup build \
 	-D pam_unix=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+# pam_namespace.service is installed whatever the options: systemdunitdir
+# only moves it, and nothing here reads a unit.
+rm -rf "$PKG/usr/lib/systemd"
 
 # unix_chkpwd is how pam_unix reads a 0600 /etc/shadow on behalf of a caller
 # that is not root. meson installs it 0755; left that way it cannot open the

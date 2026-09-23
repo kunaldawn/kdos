@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = bpftool
+version     = 7.7.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libbpf/bpftool/releases/download/v$version/bpftool-libbpf-v$version-sources.tar.gz
+sha256      = 7d46a381f607432bdb5201a08b889924b6a4883bf09e8efca82a86a7d122cc97  bpftool-7.7.0.tar.gz
+description = Inspect and manage BPF programs and maps, and generate BPF skeletons
+homepage    = https://github.com/libbpf/bpftool
+depends     = make pkgconf llvm clang libcap elfutils zlib zstd openssl python3-docutils

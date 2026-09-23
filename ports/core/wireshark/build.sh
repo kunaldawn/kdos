@@ -50,3 +50,23 @@ cmake .. -G Ninja \
 	-DENABLE_WERROR=OFF
 ninja
 DESTDIR=$PKG ninja install
+
+# THE MANUAL PAGES ARE THE ONLY DOCUMENTATION KEPT, and there is no switch that
+# builds only them. With asciidoctor present the default target renders every
+# page twice, as roff and as HTML, plus both sets of release notes, and the
+# install puts the roff under /usr/share/man and the HTML under
+# /usr/share/doc/wireshark — where nothing else this package installs is HTML.
+# The user and developer guides are not in the default install.
+rm -f "$PKG"/usr/share/doc/wireshark/*.html
+
+# The page list is upstream's whole family, not what was built: wireshark,
+# stratoshark and the extcap tools switched off above each get a page. A page
+# stays when a program of its name is in the package — in /usr/bin, or an
+# extcap under the libexec directory — and section 4 describes formats, not
+# programs.
+for page in "$PKG"/usr/share/man/man1/*.1; do
+	prog=$(basename "$page" .1)
+	if ! find "$PKG" -path "$PKG/usr/share" -prune -o -type f -name "$prog" -print | grep -q .; then
+		rm -f "$page"
+	fi
+done

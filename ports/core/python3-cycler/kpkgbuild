@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cycler
+version     = 0.12.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/cycler/cycler-$version.tar.gz
+sha256      = 88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c  python3-cycler-0.12.1.tar.gz
+description = Composable style cycles — matplotlib's property cycle
+homepage    = https://pypi.org/project/cycler/
+depends     = python3 python3-setuptools python3-pip

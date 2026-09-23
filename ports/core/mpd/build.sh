@@ -24,6 +24,9 @@
 # asked it to open. What remains beside the streams is a local library indexed
 # into sqlite; the output plugins are alsa and pipewire for the tty1/session
 # split.
+#
+# The manual pages, mpd(1) and mpd.conf(5), are Sphinx output; the HTML manual
+# is off.
 meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -45,6 +48,8 @@ meson setup build \
 	-Dhttpd=false \
 	-Dupnp=disabled \
 	-Dsystemd=disabled \
-	-Ddocumentation=disabled
+	-Ddocumentation=enabled \
+	-Dhtml_manual=false \
+	-Dmanpages=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

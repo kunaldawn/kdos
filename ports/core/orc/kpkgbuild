@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = orc
+version     = 0.4.44
+release     = 1
+source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
+sha256      = 4aeb97aea2b58224029dc2b23d7d064cfa990cb4fb8c4da440bcbe9c95bc5d2d  orc-0.4.44.tar.xz
+description = Oil Runtime Compiler — JIT for the SIMD inner loops of GStreamer's plugins
+homepage    = https://gstreamer.freedesktop.org/modules/orc.html
+depends     = meson ninja
