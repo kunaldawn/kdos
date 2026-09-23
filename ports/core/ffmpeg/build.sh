@@ -49,6 +49,8 @@
 	--enable-libvorbis \
 	--enable-libmp3lame \
 	--enable-libass \
-	--enable-vaapi
+	--enable-vaapi \
+	--disable-libxcb \
+	--disable-xlib
 make
 make DESTDIR=$PKG install

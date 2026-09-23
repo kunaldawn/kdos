@@ -11,6 +11,7 @@
 
 meson setup build \
 	--prefix=/usr \
+	--libdir=lib \
 	--buildtype=release \
 	-D loongson-mmi=disabled \
 	-D vmx=disabled \

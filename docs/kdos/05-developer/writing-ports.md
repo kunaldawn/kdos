@@ -84,6 +84,7 @@ them to `build.sh` — but another tool gives each a defined meaning:
 | Key | Read by | Means |
 |---|---|---|
 | `vendordir` | `ports/fetch` | Where the vendoring tool must run, when that is not the top of the tree |
+| `vendorsync` | `ports/fetch` | Further Cargo manifests, relative to `vendordir`, whose crates go into the same Rust bundle — see [Where the bundle goes](#where-the-bundle-goes) |
 | `pyrequirements` | `ports/fetch` | `no` — a requirements file is *not* the dependency set here |
 | `pyruntime` | `ports/fetch` | `no` — do not vendor a runtime environment |
 | `group` | `ports/update` | Override the derived version-check grouping |
@@ -184,6 +185,10 @@ time, long after a clean build and install.
 Check option names against the tarball's own `meson_options.txt` or `meson.options`. meson fails at
 setup on an unknown option, before a line is compiled, and there is no universal spelling — one
 project's disable flag is fatal in the next. meson's built-in options are always valid.
+
+`-Ddocs=disabled` turns off the HTML and API references. Where a project puts its manual pages
+behind their own option (`-Dman=true`, `-Dman-pages=enabled`), that option stays on — see
+[Manual pages](#manual-pages).
 
 ### cmake
 
@@ -312,10 +317,9 @@ machine opens folders in whichever of them sorted first, which is not a decision
 And only where the type exists. `MimeType=` names a type in the shared MIME database, and a
 name with nothing behind it resolves to nothing and reports that nowhere. The opener chain keys off
 `/usr/share/mime/globs`, which is generated from `/usr/share/mime/packages`. A port introducing a
-type installs its own XML there *and* carries a `postinstall.sh` running `update-mime-database
-/usr/share/mime`, because the database is compiled on the target and `build.sh` cannot do it.
-`frotz` is the worked example below: `shared-mime-info` 2.5.1 defines no z-machine type, so the port
-defines it.
+type installs its own XML there, and `kpkg` regenerates the database — see
+[Shared indexes](#shared-indexes). `frotz` is the worked example below: `shared-mime-info` 2.5.1
+defines no z-machine type, so the port defines it.
 
 `selftest.sh` reads these entries out of the heredoc. A missing `Terminal=true`, a
 `Categories=` with no `Game` token, or an `Exec=` naming a path rather than a command fails at the
@@ -323,6 +327,31 @@ recipe rather than after a packaging run.
 
 `Keywords=` is what the menu searches. A row nobody can find by the word they know it by is a
 row that is not there.
+
+## Manual pages
+
+A port installs every manual page upstream ships or can generate, into
+`$PKG/usr/share/man/man<section>/`. `man` reads them in place, and the packaging step indexes them
+for `apropos` and `whatis`. A page missing from a package is missing from the machine: nothing
+else supplies it.
+
+| Upstream | The recipe |
+|---|---|
+| Installs its pages from `make install` or `meson install` | Nothing, unless a flag turned them off |
+| Puts them behind an option | Turns on the manual-page option only (`--enable-man`, `-Dman=true`, `-DENABLE_MAN=ON`), not a full-documentation one that pulls in an HTML toolchain |
+| Ships finished pages that its installer skips — most Rust, Go, Zig and Python projects | `install -Dm644 doc/foo.1 -t "$PKG/usr/share/man/man1"` |
+| Has the program write its own page (`foo --generate man`, a `man` subcommand) | Runs the freshly built binary into `$PKG/usr/share/man/man1` |
+| Generates them with a tool | Adds the tool to `depends` when it is a port |
+
+The generators that are ports: `scdoc`, `help2man`, `asciidoc` (`a2x`), `xmlto`, `libxslt`
+(`xsltproc`) with `docbook-xsl`, `python3-docutils` (`rst2man`), `perl` (`pod2man`) and `texinfo`.
+A page that needs a generator that is not a port — `asciidoctor`, `pandoc`, `ronn`, Sphinx — is
+not generated.
+
+A version beside another version installs no pages the other one installs, or the two packages
+conflict: `openssl3`, `lua54`, the `llvm21` slot and the cross toolchains ship none of the
+native port's pages. `man-pages` supplies the kernel and C library sections (2, 3, 4, 5, 7) and
+leaves out every page another port installs.
 
 ## Shipping a script the port carries
 
@@ -355,16 +384,53 @@ the recipe runs rather than while the script does.
 
 ## postinstall.sh
 
-The install-time hook, which becomes a marker inside the package. Six ports have one: `avahi`,
-`frotz`, `glib`, `linux`, `polkit` and `shared-mime-info`.
+The install-time hook, which becomes a marker inside the package. Five ports have one: `avahi`,
+`networkmanager-openvpn`, `polkit` and `prosody` create their system accounts (`polkit` also gives
+`/etc/polkit-1/rules.d` to the `polkitd` group, `prosody` its data directory to its account), and
+`linux` removes the module trees of other kernels — keeping the running kernel's when the root is
+`/` — and runs `depmod`.
+
+Every hook works on `PKG_ROOT`, the root kpkgadd is installing into, never on `/`. `kpkg install
+--root` and an A/B update both install into a tree that is not the running system, so a hook that
+wrote `/etc/passwd` or ran `depmod` on `/` would change the wrong machine and leave the new root
+without what it needs. Take the root as `"${PKG_ROOT:-/}"`, prefix it on every path, and hand it to
+the tool: `groupadd -R`, `useradd -R`, `depmod -b`. `chown` resolves a name against the running
+root's `/etc/passwd`, so read the ids out of `$PKG_ROOT/etc/passwd` and pass them as numbers. A hook
+runs on every install and reinstall, so each step checks before it acts.
 
 It runs once, while the package is installed into the image, so anything it writes is baked into
 that image and is identical on every machine installed from it. Per-machine state therefore cannot
 come from here; it is generated on first boot by the init script that needs it.
 
-Reach for it only where the job must happen on the target with target binaries — compiling a
-database that ships as source, or registering something in a runtime index. It is not a place to
-finish a build.
+Reach for it only where the job must happen on the target with target binaries and belongs to
+this one package. It is not a place to finish a build, and not a place to rebuild an index that
+other packages also feed.
+
+## Shared indexes
+
+Some files do nothing until an index built from every package's copy is rebuilt. `kpkgadd` and
+`kpkgdel` read the manifest they acted on and rebuild each index whose directory it touched, once,
+from what is then on disk:
+
+| A file under | Rebuilds |
+|---|---|
+| `/usr/share/glib-2.0/schemas/` | `glib-compile-schemas` |
+| `/usr/lib/gio/modules/` | `gio-querymodules` |
+| `/usr/lib/gdk-pixbuf-2.0/` | `gdk-pixbuf-query-loaders --update-cache` |
+| `/usr/share/mime/packages/` | `update-mime-database` |
+| `/usr/share/fonts/` | `fc-cache -s` |
+| `/usr/share/info/` | the info `dir`, regenerated with `install-info` over every page |
+
+A port therefore installs its schema, loader, MIME XML, font or info page and does nothing else.
+A per-port hook would rebuild the index only when that port is installed, not when the next one
+adds to it or the last one leaves.
+
+A missing tool is skipped: the index is written when the package carrying the tool arrives,
+because that package's own files touch the same directory. A failing tool is a warning, not a
+failed install. `kpkgbuild` drops `usr/share/info/dir` from every package — it is the index, and
+two packages each shipping one conflict. Under `--root`, each tool is handed the root-prefixed
+directory; the pixbuf loader cache, which only writes the path it was compiled with, is rebuilt
+only against `/`.
 
 ## Vendoring
 
@@ -386,6 +452,14 @@ reads a configuration placed next to the manifest — and every crate in the bun
 
 `vendordir` is the other half: it says where the vendoring tool must run, which is beside the
 manifest. The two directories are not always the same place.
+
+`vendorsync` names every other Cargo manifest the build runs, space-separated and relative to
+`vendordir`. A helper crate outside the workspace — an `xtask` that generates a manual page —
+resolves against its own lock file, so a bundle made from the top manifest alone lacks its crates
+and the offline build fails naming the first one. `ports/fetch` passes each entry to
+`cargo vendor --sync`, and the one bundle and its one configuration then serve every manifest.
+`oxipng` is the example: `vendorsync = xtask/Cargo.toml`, and `build.sh` runs
+`cargo run --frozen --offline --manifest-path xtask/Cargo.toml -- mangen` from the top of the tree.
 
 ### The three Python keys
 
@@ -564,8 +638,8 @@ install -Dm644 /dev/stdin \
 MIMEXML
 ```
 
-and `postinstall.sh` runs `update-mime-database /usr/share/mime` on the target, which is the one
-job `build.sh` cannot do.
+and installing the package rebuilds the MIME database on the target, which is the one job
+`build.sh` cannot do — see [Shared indexes](#shared-indexes).
 
 ## Adding a port, end to end
 
@@ -807,6 +881,14 @@ candidates are requested per port. A proved candidate that is not the newest ups
 with the newest in its line — a series directory written `${version%.*}` turns `0.21.8.2` into a
 `0.21.8/` upstream never made — so the review shows what the template cannot fetch.
 
+When every candidate misses, the newest one's file — the name the template gives that version — is
+looked for on upstream's own site: the recipe's homepage, and the download pages one hop from it
+that the directory adapter would follow. A link to exactly that file, answering a request of its
+own, leaves the answer unknown, since the template still cannot fetch it, but carries the file's URL
+and names its host: chafa tags on GitHub and uploads to its own site, so a GitHub template reads
+`newest 1.18.3 is at hpjansson.org, not at the recipe's URL`, and the recipe's `source` is what
+changes. A page that merely mentions the file proves nothing; only the request does.
+
 An HTTP request is tried three times, pausing two and then five seconds, when the answer is one a
 busy host gives and a missing file does not: no response at all, 429, or 5xx. A 200 whose body
 stopped part-way counts as no response, since a cut listing is missing its newest entries, and so
@@ -821,7 +903,8 @@ There are three outcomes, never two. *Unknown* is never folded into *current*, b
 be a confident wrong answer — the one thing this tool must not give. A listing that could not be
 reached, one whose tail was cut off by a cap or a failed transfer (archive indexes sort ascending,
 so the dropped entries are the newest), a later series directory that could not be listed, a tag
-list naming a later release under another prefix, one whose candidates all failed to resolve, and
+list naming a later release under another prefix, one whose candidates all failed to resolve — naming upstream's own copy of the newest when its
+site links one — and
 a source URL with no version in it are each unknown, with a reason that names the newest version
 upstream when one was seen. So are a source that is no URL, a recipe whose version is not written
 in its source URL (a bundle numbered apart from its sources), a pinned commit no release branch is

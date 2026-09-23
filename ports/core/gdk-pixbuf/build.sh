@@ -14,7 +14,7 @@ meson setup build \
 	-D glycin=disabled \
 	-D introspection=disabled \
 	-D documentation=false \
-	-D man=false \
+	-D man=true \
 	-D tests=false \
 	-D installed_tests=false
 meson compile -C build

@@ -19,14 +19,10 @@
 # carries two of each, and only one gets a security fix.
 #
 # ONLY WHAT THIS TREE ALREADY SHIPS *AND GS CAN BE POINTED AT* IS REMOVED.
-# jbig2dec, freetype, lcms2mt, leptonica, tesseract and brotli STAY: gs's
-# --with-jbig2dec takes a LOCAL SOURCE TREE and has no system-library path at
-# all, so the jbig2dec port cannot be reached from here and removing the
-# bundled copy is a configure ERROR rather than a lost feature; gs's lcms is a
-# forked "mt" variant, its leptonica/tesseract pair is the OCR device and is
-# version-locked to it, and neither brotli nor a matching freetype build is
-# wired up here.
-rm -rf jpeg libpng tiff zlib openjpeg
+# lcms2mt, leptonica and tesseract STAY: gs's lcms is a forked thread-safe
+# "mt" variant that the system lcms2 is not, and its leptonica/tesseract pair
+# is the OCR device and is version-locked to it.
+rm -rf brotli freetype jbig2dec jpeg libpng tiff zlib openjpeg
 
 # NOT --enable-dynamic. It is upstream-deprecated, it is refused outright
 # alongside the default hidden visibility, and with --with-drivers=ALL every

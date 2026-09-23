@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/trabucayre/openFPGALoade
 sha256      = ca965f933c52a2a9dbb318df4d4de70fac5f095a8e64523f81036ab467a4b567  openfpgaloader-1.1.1.tar.gz
 description = One programmer for every board the FPGA flow can target
 homepage    = https://trabucayre.github.io/openFPGALoader/
-depends     = cmake ninja pkgconf libftdi libusb hidapi zlib
+depends     = cmake ninja pkgconf libftdi libusb hidapi zlib eudev

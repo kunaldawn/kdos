@@ -86,3 +86,4 @@ export CFLAGS="$CFLAGS -std=gnu17 -include time.h"
 # library this size.
 make -j1
 make DESTDIR=$PKG install
+install -Dm644 utils/pluginviewer.8 -t "$PKG/usr/share/man/man8"

@@ -16,4 +16,4 @@ source      = $name-$version.tar.gz::https://github.com/steveicarus/iverilog/arc
 sha256      = c897bbfa9848688982c6d5c30529fc29d68df0b9ff22ffa73bad89db73a7ce49  iverilog-13_0.tar.gz
 description = Event-driven Verilog simulation with real delays and X propagation
 homepage    = https://steveicarus.github.io/iverilog/
-depends     = autoconf automake bison flex gperf readline zlib
+depends     = autoconf automake bison flex gperf readline zlib bzip2

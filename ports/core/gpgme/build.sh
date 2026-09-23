@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export PYTHON=/usr/bin/python3
-
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \

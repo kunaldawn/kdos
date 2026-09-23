@@ -9,10 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Fix assignment of read-only std* variables (musl)
-sed -i 's/stdin = fopen(_PATH_DEVNULL, "r")/freopen(_PATH_DEVNULL, "r", stdin)/g' tools/lvmcmdline.c
-sed -i 's/stdout = fopen(_PATH_DEVNULL, "w")/freopen(_PATH_DEVNULL, "w", stdout)/g' tools/lvmcmdline.c
-sed -i 's/stderr = fopen(_PATH_DEVNULL, "w")/freopen(_PATH_DEVNULL, "w", stderr)/g' tools/lvmcmdline.c
+patch -p1 -i $PORT_SRC/musl-stdio-freopen.patch
 
 CONFIG_SHELL=/bin/bash  \
 ./configure --prefix=/usr \

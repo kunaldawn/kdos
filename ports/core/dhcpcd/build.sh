@@ -10,6 +10,7 @@
 # ---------------------------------
 
 ./configure --libexecdir=/lib/dhcpcd \
-            --dbdir=/var/lib/dhcpcd
+            --dbdir=/var/lib/dhcpcd \
+            --privsepuser=dhcpcd
 make
 make DESTDIR=$PKG install

@@ -16,5 +16,5 @@ sha256      = 94800765601e9171bf5d58d066e640662842bcedcbab982b2c90787a2c987322  
 sha256      = f03768c312a93b6713fe596687928ae13b9722ffe9f3857065470c70728f64c3  python3-wheel-vendor-0.48.0.tar.xz
 description = The reference implementation of the Python wheel format
 homepage    = https://github.com/pypa/wheel
-depends     = python3 python3-setuptools python3-pip
+depends     = python3 python3-setuptools python3-pip python3-packaging
 vendoring   = python

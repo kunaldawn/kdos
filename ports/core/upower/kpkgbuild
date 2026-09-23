@@ -15,4 +15,4 @@ source      = https://gitlab.freedesktop.org/upower/upower/-/archive/v$version/u
 sha256      = de2cd848c927e267f37d1aa6b52631857055b0a1fc76c0e10e173723d83abeae  upower-1.91.4.tar.bz2
 description = D-Bus daemon for power-related stats and policy (battery, AC, suspend hints)
 homepage    = https://upower.freedesktop.org/
-depends     = meson glib dbus libgudev polkit
+depends     = meson glib dbus libgudev polkit libxslt docbook-xsl

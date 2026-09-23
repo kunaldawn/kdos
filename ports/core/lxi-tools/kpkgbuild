@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/lxi-tools/lxi-tools/arch
 sha256      = ef9d013189c9449f850d467dd35ac3840929e76a888cdb77e0edbce067da0b2d  lxi-tools-2.8.tar.gz
 description = Drive a bench instrument over ethernet with SCPI
 homepage    = https://lxi-tools.github.io/
-depends     = meson ninja pkgconf liblxi readline
+depends     = meson ninja pkgconf liblxi readline lua

@@ -19,3 +19,4 @@ cmake -S lld -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+install -Dm644 lld/docs/ld.lld.1 -t "$PKG/usr/share/man/man1"

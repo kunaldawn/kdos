@@ -10,4 +10,4 @@
 # ---------------------------------
 
 install -Dm755 "$name.py" "$PKG/usr/bin/$name"
-  	install -Dm644 "$name.1.gz" "$PKG/usr/share/man/man1/$name.1.gz"
+install -Dm644 "$name.1.gz" "$PKG/usr/share/man/man1/$name.1.gz"

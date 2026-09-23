@@ -20,6 +20,6 @@ patch -p1 -i "$PORT_SRC/musl-rewind-pipe.patch"
 export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 	-Wno-int-conversion -Wno-incompatible-pointer-types -Wno-return-mismatch"
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
-	--with-distro=KDOS --without-ffmpeg
+	--with-distro=KDOS --without-ffmpeg --without-ao
 make
 make DESTDIR=$PKG install

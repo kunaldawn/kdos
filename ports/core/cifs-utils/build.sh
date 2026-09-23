@@ -45,6 +45,7 @@ export CFLAGS="$CFLAGS -std=gnu17"
 	--disable-cifsacl \
 	--disable-pam \
 	--disable-systemd \
-	--disable-pythontools
+	--disable-pythontools \
+	--enable-man
 make
 make install DESTDIR=$PKG ROOTSBINDIR=/usr/sbin

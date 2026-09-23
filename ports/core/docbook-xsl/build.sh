@@ -52,4 +52,14 @@ for ver in $version current; do
 	    "http://docbook.sourceforge.net/release/xsl/$ver" \
 	    "/usr/share/xml/docbook/xsl-stylesheets-$version" \
 	    $PKG/etc/xml/catalog
+
+	xmlcatalog --noout --add "rewriteSystem" \
+	    "https://cdn.docbook.org/release/xsl-nons/$ver" \
+	    "/usr/share/xml/docbook/xsl-stylesheets-nons-$version" \
+	    $PKG/etc/xml/catalog
+
+	xmlcatalog --noout --add "rewriteURI" \
+	    "https://cdn.docbook.org/release/xsl-nons/$ver" \
+	    "/usr/share/xml/docbook/xsl-stylesheets-nons-$version" \
+	    $PKG/etc/xml/catalog
 done

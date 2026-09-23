@@ -23,4 +23,3 @@ cd src
 # default stand.
 make PREFIX=/usr LIBDIR=/usr/lib
 make PREFIX=/usr LIBDIR=/usr/lib DESTDIR=$PKG install
-make PREFIX=/usr LIBDIR=/usr/lib DESTDIR=$PKG install_uapi_headers

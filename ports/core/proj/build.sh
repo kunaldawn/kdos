@@ -27,3 +27,4 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DBUILD_TESTING=OFF -DBUILD_APPS=ON
 ninja
 DESTDIR=$PKG ninja install
+rm -f "$PKG/usr/share/man/man1/projsync.1"

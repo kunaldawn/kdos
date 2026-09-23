@@ -35,3 +35,10 @@ DESTDIR=$PKG ninja install
 # A non-archive source is not unpacked into $SRC_ROOT — it stays where kpkg
 # fetched it, which is the port directory.
 install -Dm644 $PORT_SRC/tessdata-eng-4.1.0.traineddata $PKG/usr/share/tessdata/eng.traineddata
+
+export XML_CATALOG_FILES=/etc/xml/catalog
+mkdir -p man
+for page in tesseract.1 unicharset.5; do
+	a2x -f manpage -D man ../doc/$page.asc
+	install -Dm644 man/$page -t "$PKG/usr/share/man/man${page##*.}"
+done

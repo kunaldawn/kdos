@@ -24,7 +24,6 @@
 ./configure --prefix=/usr --libdir=/usr/lib \
 	--without-emacs \
 	--without-desktop \
-	--without-api-docs \
 	--without-ruby
 make
 make DESTDIR=$PKG install

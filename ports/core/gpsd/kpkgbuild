@@ -15,4 +15,4 @@ source      = https://download.savannah.gnu.org/releases/$name/$name-$version.ta
 sha256      = dc4a62bad835282bae788772bc7cc8f8bec4c7a48e8dceeb37477a89091c4656  gpsd-3.27.5.tar.xz
 description = One daemon in front of every GPS, so a receiver is a socket rather than a serial protocol
 homepage    = https://gpsd.io/
-depends     = scons python3 pkgconf ncurses
+depends     = scons python3 pkgconf ncurses libusb dbus bluez

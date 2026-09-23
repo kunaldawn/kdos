@@ -15,4 +15,4 @@ source      = https://sigrok.org/download/source/$name/$name-$version.tar.gz
 sha256      = 4d341f90b6220d3e8cb251dacf726c41165285612248f2c52d15df4590a1ce3c  libsigrok-0.5.2.tar.gz
 description = One driver set for 100 logic analysers, scopes and meters
 homepage    = https://sigrok.org/
-depends     = autoconf automake libtool pkgconf glib libzip libusb libftdi libserialport
+depends     = autoconf automake libtool pkgconf glib libzip libusb libftdi libserialport hidapi bluez

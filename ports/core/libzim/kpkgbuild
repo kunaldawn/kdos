@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/openzim/libzim/archive/r
 sha256      = 38f8e2139a089f00196f288f52f2d0677a6becc218f380b54ca70b6f162398bd  libzim-9.8.2.tar.gz
 description = Read and write the ZIM archives Wikipedia offline ships as
 homepage    = https://openzim.org/
-depends     = meson xz zstd icu
+depends     = meson xz zstd icu xapian-core

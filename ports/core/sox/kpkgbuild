@@ -15,4 +15,4 @@ source      = https://downloads.sourceforge.net/sox/sox-$version.tar.gz
 sha256      = b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c  sox-14.4.2.tar.gz
 description = The audio Swiss army knife — convert, resample, filter and analyse from a prompt
 homepage    = https://sox.sourceforge.net/
-depends     = libsndfile libvorbis flac lame opus alsa-lib libogg
+depends     = libsndfile libvorbis flac lame opus opusfile alsa-lib libogg libmad libid3tag libpng file

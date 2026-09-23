@@ -15,4 +15,4 @@ source      = https://download.samba.org/pub/samba/stable/$name-$version.tar.gz
 sha256      = 45b7747a47452eff2b2159a44cc63eb43690d339fd1069088e023a015fed06c7  samba-4.24.7.tar.gz
 description = The interoperability layer — a Windows laptop or a printer speaks SMB
 homepage    = https://www.samba.org/
-depends     = python3 perl pkgconf gnutls libtasn1 zlib jansson readline popt libarchive icu ncurses e2fsprogs util-linux libtirpc rpcsvc-proto perl-parse-yapp
+depends     = python3 perl pkgconf gnutls libtasn1 zlib jansson readline popt libarchive icu ncurses e2fsprogs util-linux libtirpc rpcsvc-proto perl-parse-yapp libxslt docbook-xsl docbook-xml

@@ -15,4 +15,4 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821  libxml2-2.15.4.tar.xz
 description = Contains libraries and utilities used for parsing XML files
 homepage    = https://github.com/GNOME/libxml2
-depends     = icu xz zlib python3 doxygen
+depends     = icu xz zlib readline python3 doxygen

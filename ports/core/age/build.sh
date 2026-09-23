@@ -17,9 +17,8 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # short line somebody can read over a phone. It also takes an SSH key directly,
 # so a machine that already has one needs no new key material at all.
 export CGO_ENABLED=0
-go build -mod=vendor -ldflags "-s -w -X main.Version=v$version" -o age ./cmd/age
-go build -mod=vendor -ldflags "-s -w -X main.Version=v$version" -o age-keygen ./cmd/age-keygen
-install -Dm755 age        $PKG/usr/bin/age
-install -Dm755 age-keygen $PKG/usr/bin/age-keygen
-install -Dm644 doc/age.1        $PKG/usr/share/man/man1/age.1
-install -Dm644 doc/age-keygen.1 $PKG/usr/share/man/man1/age-keygen.1
+for cmd in age age-keygen age-inspect age-plugin-batchpass; do
+	go build -mod=vendor -ldflags "-s -w -X main.Version=v$version" -o $cmd ./cmd/$cmd
+	install -Dm755 $cmd $PKG/usr/bin/$cmd
+	install -Dm644 doc/$cmd.1 $PKG/usr/share/man/man1/$cmd.1
+done

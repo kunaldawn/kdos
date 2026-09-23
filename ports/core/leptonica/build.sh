@@ -20,6 +20,7 @@
 	--disable-static \
 	--with-libpng \
 	--with-jpeg \
+	--with-giflib \
 	--with-libtiff \
 	--with-libwebp \
 	--with-libopenjpeg \

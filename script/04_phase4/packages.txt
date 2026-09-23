@@ -97,6 +97,7 @@ dbus
 chrony
 sysklogd
 mandoc
+man-pages
 # Periodic jobs. snooze is one process per job under ksvc rather than a cron
 # daemon with its own scheduler — it fits the supervisor KDOS already has.
 snooze

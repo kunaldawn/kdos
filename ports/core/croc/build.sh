@@ -20,6 +20,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=0
 go build -mod=vendor -ldflags "-s -w -X main.Version=$version" -o croc.bin
 install -Dm755 croc.bin $PKG/usr/bin/croc-relay
+install -Dm644 packaging/croc.1 -t "$PKG/usr/share/man/man1"
 
 install -Dm755 /dev/stdin $PKG/usr/bin/croc <<'SH'
 #!/bin/sh

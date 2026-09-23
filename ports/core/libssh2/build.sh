@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr
+./configure --prefix=/usr --with-crypto=openssl --with-libz
 make
 make DESTDIR=$PKG install

@@ -35,12 +35,12 @@
 	--disable-pygobject \
 	--disable-introspection \
 	--disable-libevent \
-	--disable-manpages \
 	--disable-xmltoman \
 	--enable-libdaemon
 
 make
 make DESTDIR=$PKG install
+rm -rf "$PKG/run"
 
 # A PUBLIC HEADER MUST BE VALID UTF-8, and upstream's is ISO-8859-1: an "á"
 # in a comment in avahi-common/domain.h. Anything that reads a header AS TEXT

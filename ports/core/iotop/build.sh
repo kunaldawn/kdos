@@ -10,4 +10,4 @@
 # ---------------------------------
 
 make
-make DESTDIR=$PKG PREFIX=/usr install
+make DESTDIR=$PKG install

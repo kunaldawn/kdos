@@ -41,4 +41,5 @@ make
 
 for prog in $INSTALL_PROGRAMS; do
 	install -Dm755 "src/$prog" "$PKG/usr/bin/$prog"
+	install -Dm644 "man/$prog.1" -t "$PKG/usr/share/man/man1"
 done

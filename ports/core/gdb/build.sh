@@ -20,4 +20,5 @@
 	--disable-nls \
 	--disable-werror
 make CPPFLAGS="-DHAVE_ASM_TERMIOS_H=1 -DTCGETS2=0x802c542a -DTCSETS2=0x402c542b"
-make DESTDIR=$PKG install
+make -C gdb DESTDIR=$PKG install
+make -C gdbserver DESTDIR=$PKG install

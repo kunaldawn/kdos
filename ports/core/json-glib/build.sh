@@ -14,7 +14,7 @@ meson setup build \
 	-Dintrospection=disabled \
 	-Ddocumentation=disabled \
 	-Dgtk_doc=disabled \
-	-Dman=false \
+	-Dman=true \
 	-Dtests=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

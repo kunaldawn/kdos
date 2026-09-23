@@ -45,7 +45,7 @@ meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Dbuildtype=release \
 	-Ddocs=disabled \
-	-Dman=disabled \
+	-Dman=enabled \
 	-Dtests=disabled \
 	-Dexamples=disabled \
 	-Dffmpeg=enabled \
@@ -67,7 +67,8 @@ meson setup build \
 	-Droc=disabled \
 	-Dlibcamera=disabled \
 	-Dlv2=disabled \
-	-Dsndfile=disabled \
+	-Dsndfile=enabled \
+	-Dpw-cat=enabled \
 	-Davahi=disabled \
 	-Dlibsystemd=disabled \
 	-Dlogind=disabled \

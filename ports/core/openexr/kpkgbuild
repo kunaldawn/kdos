@@ -15,4 +15,4 @@ source      = https://github.com/AcademySoftwareFoundation/openexr/archive/refs/
 sha256      = 0dc41a9dd84c868ad89c892382f75f6835a73decbefab9366d6f168bf9322954  openexr-3.5.0.tar.gz
 description = High dynamic range image format — gives the already-ported imath a consumer
 homepage    = https://openexr.com/
-depends     = cmake imath zlib libdeflate zstd
+depends     = cmake imath libdeflate zstd help2man

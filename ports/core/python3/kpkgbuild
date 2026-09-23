@@ -17,4 +17,4 @@ _version    = ${version%.*}
 source      = https://www.python.org/ftp/python/$version/Python-$version.tar.xz
 sha256      = 3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81  python3-3.14.7.tar.xz
 description = Next generation of the python high-level scripting language
-depends     = libffi sqlite expat
+depends     = libffi sqlite expat openssl zlib bzip2 xz zstd ncurses readline gdbm util-linux

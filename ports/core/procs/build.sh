@@ -14,6 +14,10 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 cargo build --release --frozen --offline
 install -Dm755 target/release/procs $PKG/usr/bin/procs
 
+export XML_CATALOG_FILES=/etc/xml/catalog
+a2x -f manpage -D man man/procs.1.adoc
+install -Dm644 man/procs.1 -t "$PKG/usr/share/man/man1"
+
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/procs.desktop" <<'EOF'
 [Desktop Entry]

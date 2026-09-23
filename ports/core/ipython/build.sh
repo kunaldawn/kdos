@@ -11,7 +11,8 @@
 
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-pip3 install --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+pip3 install --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+install -Dm644 docs/man/ipython.1 -t "$PKG/usr/share/man/man1"
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/ipython.desktop" <<'EOF'

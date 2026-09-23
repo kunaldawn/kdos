@@ -40,6 +40,8 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 cargo build --release --frozen --offline
 
 install -Dm755 target/release/iamb $PKG/usr/bin/iamb
+install -Dm644 docs/iamb.1 -t "$PKG/usr/share/man/man1"
+install -Dm644 docs/iamb.5 -t "$PKG/usr/share/man/man5"
 
 # Terminal=true and a bare Exec: the launcher supplies the emulator, which is
 # what keeps the entry free of one. No X-KDOS-Term: that key names

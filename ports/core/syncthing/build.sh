@@ -21,7 +21,7 @@ export CGO_ENABLED=0
 go run -mod=vendor build.go -no-upgrade -version "v$version" build syncthing
 install -Dm755 syncthing $PKG/usr/bin/syncthing
 for s in 1 5 7; do
-	for m in man/*.$s; do
+	for m in man/syncthing*.$s; do
 		[ -e "$m" ] || continue
 		install -Dm644 "$m" $PKG/usr/share/man/man$s/$(basename "$m")
 	done

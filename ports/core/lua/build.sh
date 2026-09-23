@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-sed -i '/#define LUA_ROOT/s:/usr/local/:/usr/:' src/luaconf.h
+patch -p1 -i $PORT_SRC/lua-root-usr.patch
 make CC=cc MYCFLAGS="-DLUA_COMPAT_5_2 -DLUA_COMPAT_5_1 -fPIC" linux
 
 cd src

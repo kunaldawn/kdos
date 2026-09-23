@@ -27,5 +27,8 @@ install -dm755 "$PKG/lib/firmware"
 install -m644 regulatory.db     "$PKG/lib/firmware/regulatory.db"
 install -m644 regulatory.db.p7s "$PKG/lib/firmware/regulatory.db.p7s"
 
+install -Dm644 regulatory.bin.5 -t "$PKG/usr/share/man/man5"
+ln -s regulatory.bin.5 "$PKG/usr/share/man/man5/regulatory.db.5"
+
 install -dm755 "$PKG/usr/share/licenses/$name"
 install -m644 LICENSE "$PKG/usr/share/licenses/$name/"

@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/KhronosGroup/SPIRV-Tools
 sha256      = d0e4b27d5694ecf5c737be88fea4afb09049686626f112d536f5d9504d5cd7d1  spirv-tools-2026.4.rc2.tar.gz
 description = API and commands for processing SPIR-V modules
 homepage    = https://www.khronos.org/vulkan
-depends     = spirv-headers
+depends     = cmake ninja python3 spirv-headers

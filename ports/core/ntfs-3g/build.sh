@@ -16,6 +16,7 @@
 # and the name is only half true.
 ./configure \
 	--prefix=/usr \
+	--exec-prefix=/usr \
 	--libdir=/usr/lib \
 	--sbindir=/usr/sbin \
 	--mandir=/usr/share/man \

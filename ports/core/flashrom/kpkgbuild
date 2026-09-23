@@ -15,4 +15,4 @@ source      = $name-$version.tar.xz::https://download.flashrom.org/releases/flas
 sha256      = 654c9c61745c250cd3b5ccd0e56fc43ee76980f92a5e078420420639d66975a2  flashrom-1.8.0.tar.xz
 description = Read and write a SPI flash chip — including this machine's BIOS
 homepage    = https://flashrom.org/
-depends     = meson ninja pkgconf libusb libftdi pciutils
+depends     = meson ninja pkgconf libusb libftdi pciutils openssl

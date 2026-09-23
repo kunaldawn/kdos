@@ -31,6 +31,22 @@ make srec_cat srec_cmp srec_info srecord
 install -Dm755 srec_cat/srec_cat   $PKG/usr/bin/srec_cat
 install -Dm755 srec_cmp/srec_cmp   $PKG/usr/bin/srec_cmp
 install -Dm755 srec_info/srec_info $PKG/usr/bin/srec_info
-install -d $PKG/usr/share/man/man1
-install -m644 ../doc/srec_cat.1 ../doc/srec_cmp.1 ../doc/srec_info.1 \
-        $PKG/usr/share/man/man1/ 2>/dev/null || true
+srec_man() {
+	while IFS= read -r line || [ -n "$line" ]; do
+		case $line in
+		'.so '*)
+			inc=${line#.so }
+			if [ -f "doc/$inc" ]; then srec_man "doc/$inc"; else srec_man "../doc/$inc"; fi
+			;;
+		*)
+			printf '%s\n' "$line"
+			;;
+		esac
+	done < "$1"
+}
+for s in 1 5; do
+	install -d $PKG/usr/share/man/man$s
+	for m in ../doc/man$s/*.$s; do
+		srec_man "$m" > $PKG/usr/share/man/man$s/${m##*/}
+	done
+done

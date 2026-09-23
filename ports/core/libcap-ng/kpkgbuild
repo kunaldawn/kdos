@@ -15,3 +15,4 @@ source      = https://github.com/stevegrubb/libcap-ng/archive/refs/tags/v$versio
 sha256      = 399040138e0ca62fa2bcabd63da9af4431a246ef7a654561a0ca3cb00010a539  libcap-ng-0.9.6.tar.gz
 description = Alternate POSIX capabilities library (cleaner API; required by openvpn 2.6+)
 homepage    = https://github.com/stevegrubb/libcap-ng
+depends     = autoconf automake libtool pkgconf

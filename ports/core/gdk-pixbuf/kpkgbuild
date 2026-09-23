@@ -15,5 +15,5 @@ source      = https://download.gnome.org/sources/gdk-pixbuf/${version%.*}/$name-
 sha256      = 919f529512961a12e81cd4b4b466a48c3933469e7f9a310c6513cd4fb252ba3c  gdk-pixbuf-2.44.8.tar.xz
 description = gdk-pixbuf — image-loading library used by GTK and many notification daemons
 homepage    = https://gitlab.gnome.org/GNOME/gdk-pixbuf
-depends     = glib libpng libjpeg-turbo libtiff shared-mime-info meson
+depends     = glib libpng libjpeg-turbo libtiff shared-mime-info meson python3-docutils
 devseries   = odd-minor

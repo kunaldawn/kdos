@@ -36,7 +36,7 @@
 make
 make DESTDIR=$PKG install
 
-install -d "$PKG/etc/chrony" "$PKG/var/lib/chrony" "$PKG/run/chrony"
+install -d "$PKG/etc/chrony" "$PKG/var/lib/chrony"
 
 # The kernel already owns the RTC in both directions: CONFIG_RTC_HCTOSYS sets
 # the clock from it at boot and CONFIG_RTC_SYSTOHC writes back every 11 minutes.

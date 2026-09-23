@@ -19,6 +19,7 @@ export CARGO_NET_OFFLINE=true
 
 cargo build --release --frozen --offline
 install -Dm755 target/release/$name $PKG/usr/bin/$name
+install -Dm644 packaging/man/taskwarrior-tui.1 -t "$PKG/usr/share/man/man1"
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/taskwarrior-tui.desktop" <<'EOF'

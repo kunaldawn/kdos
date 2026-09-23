@@ -16,4 +16,4 @@ make CFLAGS="$CFLAGS" \
 	NO_REGEX=NeedsStartEnd \
 	NO_TCLTK=Yes \
 	NO_RUST=Yes \
-	DESTDIR=$PKG install
+	DESTDIR=$PKG install install-man

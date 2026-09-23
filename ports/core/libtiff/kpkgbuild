@@ -14,4 +14,4 @@ release     = 1
 source      = $name-$version.tar.gz::https://download.osgeo.org/$name/tiff-$version.tar.gz
 sha256      = 672bd7d10aee4606171afb864f3570b83340f6a33e2c186dc0512f7145ffdf6a  libtiff-4.7.2.tar.gz
 description = TIFF libraries and associated utilities
-depends     = cmake ninja
+depends     = cmake ninja zlib libjpeg-turbo xz zstd libdeflate

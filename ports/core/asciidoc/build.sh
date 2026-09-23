@@ -9,9 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-sed -i 's/python3 -m pip install/python3 -m pip install --no-build-isolation --no-deps/g' Makefile.in
 export XML_CATALOG_FILES=/etc/xml/catalog
 autoconf
 ./configure --prefix=/usr --sysconfdir=/etc
 make
-make DESTDIR=$PKG install
+python3 -m pip install --no-build-isolation --no-deps --root $PKG .
+install -Dm644 doc/asciidoc.1 doc/a2x.1 -t "$PKG/usr/share/man/man1"

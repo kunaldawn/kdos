@@ -1392,7 +1392,6 @@ fi
 _smi=$(ls ports/core/shared-mime-info/shared-mime-info-*.tar.xz 2>/dev/null | head -1)
 if grep -q 'MimeType=.*x-zmachine' ports/core/frotz/build.sh; then
     grep -q 'mime/packages/kdos-zmachine.xml' ports/core/frotz/build.sh &&
-    grep -q 'update-mime-database' ports/core/frotz/postinstall.sh &&
         echo "  and the z-machine type frotz claims is one frotz installs" ||
         { echo "  frotz claims a MIME type nothing on this image defines"
           exit 1; }
@@ -1453,6 +1452,57 @@ cmp -s "$RP/one.tar.xz" "$RP/pkgs/tiny-1.0-1.tar.xz" \
 TZ=UTC tar -tvf "$RP/one.tar.xz" | grep -q "0/0 .*2025-01-01" \
     || { echo "  the archive is not normalised (uid/gid or mtime)"; exit 1; }
 echo "  identical under a different umask, TZ and XZ_OPT; uid/gid 0, epoch mtime"
+
+echo
+
+# ── The shared indexes follow the manifest, both ways ──────────────────────
+#
+# A MIME XML defines no type and an info page has no menu entry until an index
+# built from every package's copy is rebuilt. kpkgadd and kpkgdel rebuild the
+# ones whose directory the manifest touched; the stubs below record what they
+# were asked to do, so the test needs neither tool.
+echo "==> kpkg rebuilds the shared indexes a package feeds"
+TR="$OUT/trig"
+rm -rf "$TR"; mkdir -p "$TR/ports/feed" "$TR/work" "$TR/pkgs" "$TR/root" "$TR/bin"
+cat > "$TR/ports/feed/kpkgbuild" <<'EOF'
+name        = feed
+version     = 1.0
+release     = 1
+description = a synthetic port whose files feed two shared indexes
+EOF
+cat > "$TR/ports/feed/build.sh" <<'EOF'
+install -Dm644 /dev/null "$PKG/usr/share/mime/packages/feed.xml"
+install -Dm644 /dev/null "$PKG/usr/share/info/feed.info"
+printf 'stale\n' > "$PKG/usr/share/info/dir"
+EOF
+# The MIME stub leaves a generated file behind, as the real tool does: that is
+# what keeps the database directory alive after the last XML is removed.
+for t in update-mime-database install-info; do
+    printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
+    chmod +x "$TR/bin/$t"
+done
+printf ': > "$1/globs"\n' >> "$TR/bin/update-mime-database"
+ktrig() {
+    env PATH="$TR/bin:$PATH" PORT_REPO="$TR/ports" WORK_DIR="$TR/work" \
+        PACKAGE_DIR="$TR/pkgs" PKGDB_DIR=/db KPKG_CONF=/nonexistent \
+        SOURCE_DATE_EPOCH=1735689600 TZ=UTC "$@" 2>&1
+}
+for t in kpkgbuild kpkgadd kpkgdel; do ln -sf kdos-kpkg "$OUT/$t"; done
+( cd "$TR/ports/feed" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic port did not build"; exit 1; }
+ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/feed-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the synthetic package did not install"; exit 1; }
+tar -tf "$TR/pkgs/feed-1.0-1.tar.xz" | grep -q 'usr/share/info/dir$' \
+    && { echo "  the package carries an info dir file every such package claims"; exit 1; }
+grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
+    || { echo "  installing a MIME XML did not regenerate the MIME database"; exit 1; }
+grep -qx "install-info --info-dir=$TR/root/usr/share/info $TR/root/usr/share/info/feed.info" "$TR/calls" \
+    || { echo "  installing an info page did not regenerate the info dir"; exit 1; }
+: > "$TR/calls"
+ktrig "$OUT/kpkgdel" --root "$TR/root" feed >/dev/null
+grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
+    || { echo "  removing a MIME XML left the MIME database naming its types"; exit 1; }
+echo "  install and removal both rebuild the MIME database and the info dir"
 
 echo
 
@@ -4137,7 +4187,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     }
     dumpbuild() {
         # The mime glob table is a COMPILED file that only exists on a booted
-        # target (update-mime-database writes it in a postinstall), so the
+        # target (kpkg rebuilds it when a package installs MIME XML), so the
         # harness is pointed at the fixture's copy. Without it kdos-openwith
         # resolves every file to application/octet-stream and the two traps
         # the fixture carries — longest suffix wins, and the default beats the

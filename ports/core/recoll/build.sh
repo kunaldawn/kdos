@@ -29,14 +29,13 @@
 # recollq is OFF BY DEFAULT and is half of what this port exists for, so it is
 # named explicitly rather than assumed. qtgui, webkit and webpreview are the
 # hard rule; python-chm wants libchm and aspell wants aspell, neither a port;
-# x11mon needs Xlib, and there is no Xorg here. libmagic is not a port either,
-# so type identification falls back to execing `file`, which toybox provides.
+# x11mon needs Xlib, and there is no Xorg here.
 cd src
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Dqtgui=false -Dwebkit=false -Dwebpreview=false \
 	-Dpython-chm=false -Dpython-aspell=false -Daspell=false \
-	-Dx11mon=false -Dsystemd=false -Dlibmagic=false \
+	-Dx11mon=false -Dsystemd=false -Dlibmagic=true \
 	-Drecollq=true -Dindexer=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

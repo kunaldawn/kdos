@@ -15,4 +15,4 @@ source      = https://git.sr.ht/~kennylevinsen/seatd/archive/$version.tar.gz
 sha256      = 302564d54d8e28191fadfd734f2675ecb0c9e0615a58011b89ef15dfa4dbaa96  seatd-0.9.3.tar.gz
 description = Minimal seat management daemon for non-systemd Wayland setups
 homepage    = https://git.sr.ht/~kennylevinsen/seatd
-depends     = meson scdoc
+depends     = meson pkgconf scdoc

@@ -13,6 +13,7 @@ meson setup build \
 	--prefix=/usr --libdir=lib \
 	-Dgrapheme-shaping=enabled \
 	-Drun-shaping=enabled \
+	-Ddocs=enabled \
 	-Dtest-text-shaping=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

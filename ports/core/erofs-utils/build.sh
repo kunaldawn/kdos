@@ -19,6 +19,13 @@ autoreconf -f -i -s
 	--enable-lzma \
 	--enable-multithreading \
 	--with-libzstd \
+	--with-zlib \
+	--without-xxhash \
+	--without-libcurl \
+	--without-openssl \
+	--without-libxml2 \
+	--without-json-c \
+	--without-libnl3 \
 	--without-uuid \
 	--without-selinux \
 	--disable-fuse

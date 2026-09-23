@@ -15,4 +15,4 @@ source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
 sha256      = ed6e5410f496d171818763af2265e7977154bc7f9b827e98acf8c5bed21dd5a7  gst-plugins-base-1.28.7.tar.xz
 description = GStreamer base plugin set (provides gstreamer-pbutils, audio/video conversion, file I/O)
 homepage    = https://gstreamer.freedesktop.org/
-depends     = gstreamer alsa-lib pango cairo libdrm wayland mesa
+depends     = gstreamer alsa-lib pango cairo libdrm wayland mesa libogg libvorbis opus

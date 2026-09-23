@@ -14,9 +14,9 @@
 # libnvme is built from this tree and installs under the libnvme3 name.
 #
 # -Dnvmf-autoconnect=disabled: its udev rules, dracut snippets and
-# dispatcher scripts start systemd units. -Ddocs-build=false: the man pages
-# want a python toolchain to render. -Dpython=disabled keeps the bindings
-# from appearing whenever swig happens to be installed. json-c is what makes
+# dispatcher scripts start systemd units. -Ddocs=man with -Ddocs-build=false
+# installs the pages prebuilt in the archive. -Dpython=disabled keeps the
+# bindings from appearing whenever swig happens to be installed. json-c is what makes
 # `-o json` work, which is what turns this into something a script can read.
 meson setup build \
 	--prefix=/usr \
@@ -25,6 +25,7 @@ meson setup build \
 	--buildtype=release \
 	-Dnvmf-autoconnect=disabled \
 	-Dpython=disabled \
+	-Ddocs=man \
 	-Ddocs-build=false \
 	-Dtests=false \
 	-Dexamples=false

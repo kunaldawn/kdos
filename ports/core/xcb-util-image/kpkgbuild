@@ -15,4 +15,4 @@ source      = https://www.x.org/releases/individual/xcb/$name-$version.tar.xz
 sha256      = ccad8ee5dadb1271fd4727ad14d9bd77a64e505608766c4e98267d9aede40d3d  xcb-util-image-0.4.1.tar.xz
 description = XCB port of Xlib XImage
 homepage    = https://xcb.freedesktop.org/
-depends     = xcb-util
+depends     = xcb-util xorgproto

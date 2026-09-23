@@ -91,6 +91,12 @@ removing the older package would delete a file the newer one installed.
 An upgrade removes orphans. A file present in the old version and absent from
 the new one is removed rather than left on disk owned by nothing.
 
+An install or removal ends by rebuilding the shared indexes its manifest fed —
+the GSettings schemas, the GIO module and pixbuf loader caches, the MIME
+database, the font cache and the info directory — from everything then on disk.
+No package owns those files, so no package ships them; the list is in
+[Writing ports](../05-developer/writing-ports.md#shared-indexes).
+
 ## What a build verifies
 
 `kpkgbuild` hashes **every** `sha256 =` entry whose file is present beside the

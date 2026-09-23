@@ -9,4 +9,4 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./install --prefix /usr -D $PKG
+./install --prefix "$PKG/usr"

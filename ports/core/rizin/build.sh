@@ -30,6 +30,7 @@ meson setup build \
 	-Duse_sys_capstone=enabled \
 	-Duse_sys_openssl=enabled \
 	-Duse_sys_zlib=enabled \
+	-Duse_sys_libzip=enabled \
 	-Duse_sys_xxhash=enabled \
 	-Denable_tests=false \
 	-Denable_rz_test=false

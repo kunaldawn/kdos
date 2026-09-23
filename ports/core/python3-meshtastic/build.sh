@@ -15,12 +15,14 @@
 # unattended. The radio is a serial device, so the dialout group and the
 # CP210x/CH341 udev rules this tree ships are what reach it.
 #
-# BLUETOOTH LE IS NOT INSTALLED, AND THAT IS STATED RATHER THAN DISCOVERED.
-# meshtastic's `bleak` dependency reaches dbus-fast and a build backend that is
-# itself written in Rust, which inside pip's isolated environment means
-# compiling maturin from source with no network. The SERIAL path — a radio on
-# USB, which is how a board is flashed and configured anyway — needs none of
-# it. `meshtastic --port /dev/ttyUSB0` works; `--ble` will fail on an import.
+# BLUETOOTH LE IS INSTALLED BECAUSE THE CLI IMPORTS IT UNCONDITIONALLY.
+# meshtastic/__main__.py imports BLEInterface at the top, so without bleak the
+# `meshtastic` command fails on an import before it reads an argument, serial
+# port or not. bleak is held at 3.0.1 because 3.0.2 builds with uv_build, a
+# Rust backend with no port here; 3.0.1 builds with poetry-core. bleak's
+# Linux backend is dbus-fast, installed as pure python: SKIP_CYTHON leaves out
+# its optional Cython accelerator, which would otherwise be compiled or not
+# depending on whether Cython happens to be in the build root.
 #
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
@@ -65,7 +67,7 @@ pyb pluggy
 pyb hatchling
 pyb hatch-vcs
 
-pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
+SKIP_CYTHON=1 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	--root=$PKG --prefix=/usr \
-	protobuf pypubsub PyYAML requests tabulate \
-	certifi charset-normalizer idna urllib3 .
+	protobuf pypubsub bleak dbus-fast requests tabulate \
+	charset-normalizer idna urllib3 .

@@ -14,4 +14,4 @@ release     = 1
 source      = https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v${version%.*}/$name-$version.tar.xz
 sha256      = fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec  util-linux-2.42.4.tar.xz
 description = Miscellaneous system utilities for Linux
-depends     = sqlite
+depends     = sqlite ncurses readline

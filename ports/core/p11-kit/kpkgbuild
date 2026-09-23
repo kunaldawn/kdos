@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/p11-glue/p11-kit/releases/download/$version/$name-$version.tar.xz
 sha256      = f2cc09111e44bf3fea58f023180b33acea90aa82d042d6fbb623fbc5ba033bb7  p11-kit-0.26.5.tar.xz
 description = Provides a way to load and enumerate PKCS #11 (a Cryptographic Token Interface Standard) modules
-depends     = libtasn1 libffi meson ninja ca-certificates
+depends     = libtasn1 libffi meson ninja ca-certificates libxslt docbook-xsl

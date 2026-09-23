@@ -17,4 +17,4 @@ sha256      = 9b7a064305e9fd94d124ffa6cc358592eb42b5da588fb4e07d09254aa40086db  
 sha256      = 7e7eaf580ec77f1a392ff1ab1013c13d3b04a6716f002f697f67f3c1113f0530  protobuf-36.2.tar.gz
 description = Protocol Buffers — Google's language-neutral data interchange format
 homepage    = https://protobuf.dev/
-depends     = zlib
+depends     = cmake zlib

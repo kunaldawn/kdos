@@ -23,3 +23,4 @@
 	--disable-ncap2 --enable-udunits2 --disable-doc
 make
 make DESTDIR=$PKG install
+rm -f "$PKG/usr/share/man/man1/ncap2.1"

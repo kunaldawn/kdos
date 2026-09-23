@@ -17,6 +17,14 @@ cmake -S . -B build -G Ninja \
 		-DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
 		-DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
 		-DCMAKE_INSTALL_DOCDIR=/usr/share/doc/libtiff \
-		-Wno-dev 
+		-Dwebp=OFF \
+		-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+for m in doc/man-prebuilt/*.1; do
+	b=${m##*/}
+	if [ -e "$PKG/usr/bin/${b%.1}" ]; then
+		install -Dm644 "$m" -t "$PKG/usr/share/man/man1"
+	fi
+done
+install -Dm644 doc/man-prebuilt/*.3tiff -t "$PKG/usr/share/man/man3"

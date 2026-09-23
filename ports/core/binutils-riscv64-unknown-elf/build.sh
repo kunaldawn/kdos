@@ -27,7 +27,8 @@ mkdir -p build && cd build
 	--with-pkgversion="KDOS"
 make
 make DESTDIR=$PKG install
-# The info and man pages are the HOST binutils' own, byte for byte, and a
-# second copy of them under a cross name is a file conflict rather than a
-# document.
-rm -rf "$PKG/usr/share/info" "$PKG/usr/share/man" "$PKG/usr/share/locale"
+# The info manuals and bfd-plugins/libdep.so carry the host binutils' own
+# names and would collide with it. The man1 pages carry the target prefix and
+# stay, less the three for Windows tools this target does not build.
+rm -rf "$PKG/usr/share/info" "$PKG/usr/share/locale" "$PKG/usr/lib/bfd-plugins"
+rm -f "$PKG"/usr/share/man/man1/riscv64-unknown-elf-{dlltool,windmc,windres}.1

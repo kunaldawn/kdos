@@ -160,7 +160,7 @@ fetch_port() {
     # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
     # basename is literally "kpkg", so this resolves through kdos-kpkg's
     # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
-    unset name version release source sha256 vendoring pypackages vendordir pyrequirements pyruntime
+    unset name version release source sha256 vendoring pypackages vendordir vendorsync pyrequirements pyruntime
     local meta
     meta=$("$KPKG" meta . 2>/dev/null) || {
         echo "⚠  $portname: Failed to read kpkgbuild"
@@ -349,7 +349,17 @@ fetch_port() {
             # no parser change, exactly as the Go branch already does.
             pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
             mkdir -p .cargo
-            cargo vendor > .cargo/config.toml || {
+            # A SECOND MANIFEST THE BUILD RUNS IS A SECOND DEPENDENCY SET.
+            # An xtask crate outside the workspace — oxipng's, which writes
+            # its manual page — resolves against its own Cargo.lock, and a
+            # bundle made from the top manifest alone lacks its crates, so
+            # the offline build fails naming the first one. `vendorsync =`
+            # lists those manifests, relative to where this runs.
+            local sync_args=() m
+            for m in $vendorsync; do
+                sync_args+=(--sync "$m")
+            done
+            cargo vendor "${sync_args[@]}" > .cargo/config.toml || {
                 echo "✗  $portname: cargo vendor failed"
                 popd >/dev/null
                 rm -rf "$tmp_dir"

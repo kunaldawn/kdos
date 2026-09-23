@@ -45,5 +45,6 @@ mkdir -p build && cd build
 	--with-pkgversion="KDOS"
 make all-gcc all-target-libgcc
 make DESTDIR=$PKG install-gcc install-target-libgcc
-# The host gcc's own documentation, installed a second time under a cross name.
-rm -rf "$PKG/usr/share/info" "$PKG/usr/share/man" "$PKG/usr/share/locale"
+# The info manuals and the man7 licence pages carry the host gcc's own names
+# and would collide with it; the man1 pages carry the target prefix and stay.
+rm -rf "$PKG/usr/share/info" "$PKG/usr/share/man/man7" "$PKG/usr/share/locale"

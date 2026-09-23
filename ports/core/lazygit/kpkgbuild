@@ -16,5 +16,5 @@ sha256      = df30ec1a5032b3c5672a30090fe787fb32d4122fd996d6d85e1d10135acfbc89  
 sha256      = 7be5963b66d40203a64d1c4b78c294ad72a92ac91f4933f686edf6b7321c1d68  lazygit-vendor-0.65.1.tar.xz
 description = lazygit — simple terminal UI for git commands
 homepage    = https://github.com/jesseduffield/lazygit
-depends     = go
+depends     = go git
 vendoring   = go

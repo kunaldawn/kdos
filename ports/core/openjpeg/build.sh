@@ -22,3 +22,6 @@ cmake .. \
 	-DBUILD_TESTING=OFF
 make
 make DESTDIR=$PKG install
+
+install -Dm644 ../doc/man/man1/*.1 -t $PKG/usr/share/man/man1
+install -Dm644 ../doc/man/man3/*.3 -t $PKG/usr/share/man/man3

@@ -21,3 +21,5 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # except when it does not.
 cargo build --release --frozen --offline
 install -Dm755 target/release/trip $PKG/usr/bin/trip
+install -d "$PKG/usr/share/man/man1"
+target/release/trip --generate-man > "$PKG/usr/share/man/man1/trip.1"

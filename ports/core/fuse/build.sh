@@ -11,6 +11,7 @@
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
+	-Dinitscriptdir= \
 	-Dexamples=false \
 	-Dtests=false
 meson compile -C build

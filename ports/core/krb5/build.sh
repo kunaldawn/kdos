@@ -63,6 +63,7 @@ cd src
 	--disable-nls \
 	--enable-dns-for-realm \
 	--with-crypto-impl=openssl \
+	--with-system-et \
 	--without-system-verto \
 	--without-ldap \
 	--without-readline \
@@ -100,9 +101,10 @@ rm -f "$PKG/usr/share/man/man1/ksu.1"*
 
 # AND THE MANUALS FOR THEM GO WITH THEM: a page for a program that is not on
 # the disk is a page that sends somebody looking for it.
-for _s in krb5kdc kadmind kadmin.local kdb5_util kprop kpropd \
-	  kproplog sserver kdc.conf; do
-	rm -f "$PKG/usr/share/man/man5/$_s."* "$PKG/usr/share/man/man8/$_s."*
+for _s in krb5kdc kadmind kadmin.local kdb5_util kdb5_ldap_util kprop kpropd \
+	  kproplog sserver sclient kdc.conf kadm5.acl; do
+	rm -f "$PKG/usr/share/man/man1/$_s."* \
+	      "$PKG/usr/share/man/man5/$_s."* "$PKG/usr/share/man/man8/$_s."*
 done
 
 # THE UPCALL NEEDS A RULE, AND IT IS cifs-utils' FILE IN krb5's PACKAGE ONLY

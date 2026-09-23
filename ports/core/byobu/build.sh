@@ -10,6 +10,6 @@
 # ---------------------------------
 
 ./autogen.sh
-./configure --prefix=/usr --disable-trustmux
+./configure --prefix=/usr --sysconfdir=/etc --disable-trustmux
 make
 make DESTDIR=$PKG install

@@ -29,6 +29,7 @@ BINM_MAN="man"
 BINM_APROPOS="apropos"
 BINM_WHATIS="whatis"
 BINM_MAKEWHATIS="makewhatis"
+BINM_PAGER="less"
 MANPATH_DEFAULT="/usr/share/man:/usr/local/share/man"
 EOF
 

@@ -19,6 +19,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
+export GEN_ARTIFACTS="$PWD/gen"
 
 # THE CASE AGAINST TeX HERE IS THE ERROR MESSAGES AND THE INSTALL SIZE. A
 # TeX Live distribution is gigabytes and answers a mistake with forty lines of
@@ -26,10 +27,11 @@ export CARGO_NET_OFFLINE=true
 # machine where nobody can search for the error text, that difference is
 # whether a document gets written.
 #
-# --no-default-features drops BOTH `embed-fonts`, which bakes a handful of
-# faces into the binary, and `self-update`, which reaches the network — the
-# second is the one that matters here, since an updater on an offline machine
-# is a command that can only ever fail. Fonts come from fontconfig, so typst
-# sees exactly what the rest of this machine does.
+# --no-default-features drops `http-server`, the live-reload server behind
+# `typst watch`; `self-update` is never enabled, so no updater is built. The
+# embedded fonts stay, because typst-cli asks typst-kit for them directly, and
+# system fonts come from fontconfig, so typst sees what the rest of this
+# machine does.
 cargo build --release --frozen --offline --bin typst --no-default-features
 install -Dm755 target/release/typst $PKG/usr/bin/typst
+install -Dm644 gen/*.1 -t "$PKG/usr/share/man/man1"

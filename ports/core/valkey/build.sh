@@ -20,7 +20,7 @@
 # compiles and then aborts under load, which is the worst kind of wrong for a
 # data store. musl's allocator is slower and correct.
 make MALLOC=libc BUILD_TLS=yes PREFIX=/usr
-make MALLOC=libc BUILD_TLS=yes PREFIX=/usr DESTDIR=$PKG install
+make MALLOC=libc BUILD_TLS=yes PREFIX=$PKG/usr install
 
 install -Dm644 valkey.conf   $PKG/etc/valkey/valkey.conf
 install -Dm644 sentinel.conf $PKG/etc/valkey/sentinel.conf

@@ -40,6 +40,36 @@
 	--enable-linux-aio \
 	--enable-virtfs \
 	--enable-tools \
+	--enable-gnutls \
+	--enable-cap-ng \
+	--enable-libusb \
+	--enable-pixman \
+	--enable-png \
+	--enable-vnc-jpeg \
+	--enable-zstd \
+	--enable-fdt=system \
+	--enable-curl \
+	--enable-bzip2 \
+	--enable-lzo \
+	--enable-libudev \
+	--enable-libdw \
+	--disable-capstone \
+	--disable-bpf \
+	--disable-fuse \
+	--disable-fuse-lseek \
+	--disable-vnc-sasl \
+	--disable-auth-pam \
+	--disable-brlapi \
+	--disable-libcbor \
+	--disable-valgrind \
+	--disable-xkbcommon \
+	--disable-libkeyutils \
+	--enable-seccomp \
+	--enable-alsa \
+	--disable-pa \
+	--disable-pipewire \
+	--disable-jack \
+	--disable-sndio \
 	--disable-gtk \
 	--disable-sdl \
 	--disable-opengl \

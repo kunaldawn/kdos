@@ -28,3 +28,4 @@ Categories=System;Filesystem;
 Keywords=disk;usage;space;du;dust;
 EOF
 chmod 644 "$PKG/usr/share/applications/dust.desktop"
+install -Dm644 man-page/dust.1 "$PKG/usr/share/man/man1/dust.1"

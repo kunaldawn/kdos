@@ -18,6 +18,6 @@
 # and dies on the missing file AFTER everything has already linked.
 scons prefix=/usr libdir=/usr/lib \
 	systemd=no qt=no xgps=no \
-	python_libdir=/usr/lib/python3/site-packages \
+	python_libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
 	--jobs=$(nproc) \
 	install DESTDIR=$PKG

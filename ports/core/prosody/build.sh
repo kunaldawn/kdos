@@ -25,6 +25,7 @@
 	--with-lua-include=/usr/include/lua$_lv \
 	--with-lua-lib=/usr/lib \
 	--lua-suffix=$_lv \
+	--idn-library=idn \
 	--no-example-certs \
 	--ostype=linux
 make

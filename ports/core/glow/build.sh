@@ -14,6 +14,8 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=0
 go build -mod=vendor -ldflags "-s -w -X main.Version=$version" -o glow
 install -Dm755 glow $PKG/usr/bin/glow
+HOME="$PWD/.home" XDG_CACHE_HOME="$PWD/.home" XDG_CONFIG_HOME="$PWD/.home" ./glow man | sed 's/\x1b\[[0-9;]*m//g' > glow.1
+install -Dm644 glow.1 -t $PKG/usr/share/man/man1
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/glow.desktop" <<'EOF'

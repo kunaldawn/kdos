@@ -15,6 +15,9 @@
 ./configure --prefix=/usr --sysconfdir=/etc
 make
 make DESTDIR=$PKG install
+install -Dm644 doc/tig.1 -t "$PKG/usr/share/man/man1"
+install -Dm644 doc/tigrc.5 -t "$PKG/usr/share/man/man5"
+install -Dm644 doc/tigmanual.7 -t "$PKG/usr/share/man/man7"
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/tig.desktop" <<'EOF'

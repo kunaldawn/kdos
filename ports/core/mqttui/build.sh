@@ -15,3 +15,4 @@ export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
 cargo build --release --frozen --offline
 install -Dm755 target/release/mqttui $PKG/usr/bin/mqttui
+install -Dm644 target/manpages/*.1 -t $PKG/usr/share/man/man1
