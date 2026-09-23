@@ -9,11 +9,12 @@
 # ---------------------------------
 
 name        = lua54-luafilesystem
-version     = 1.8.0
+version     = 1.9.0
 release     = 1
 _lv         = 5.4
-source      = $name-$version.tar.gz::https://github.com/lunarmodules/luafilesystem/archive/refs/tags/v1_8_0.tar.gz
-sha256      = 16d17c788b8093f2047325343f5e9b74cccb1ea96001e45914a58bbae8932495  lua54-luafilesystem-1.8.0.tar.gz
+_tag        = v${version//./_}
+source      = $name-$version.tar.gz::https://github.com/lunarmodules/luafilesystem/archive/refs/tags/$_tag.tar.gz
+sha256      = 1142c1876e999b3e28d1c236bf21ffd9b023018e336ac25120fb5373aade1450  lua54-luafilesystem-1.9.0.tar.gz
 description = stat, mkdir and readdir for Lua 5.4
 homepage    = https://github.com/lunarmodules/luafilesystem
 depends     = lua54

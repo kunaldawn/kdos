@@ -37,7 +37,7 @@ cmake .. -G Ninja \
 	-Denable-pipewire=ON \
 	-Denable-pulseaudio=OFF \
 	-Denable-jack=OFF \
-	-Denable-sdl2=OFF \
+	-Denable-sdl3=OFF \
 	-Denable-oss=OFF \
 	-Denable-readline=ON \
 	-Denable-libsndfile=ON

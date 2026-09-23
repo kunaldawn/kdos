@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-sed -i 's/^cmake_minimum_required.*)/cmake_minimum_required(VERSION 3.5)/g' apps/CMakeLists.txt
 cmake -S . -B build -G Ninja \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=lib \

@@ -1,0 +1,60 @@
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -239,7 +239,7 @@
+   ]
+ }
+ 
+-component("pdfium") {
++shared_library("pdfium") {
+   output_name = "pdfium"
+   libs = []
+   configs += [ ":pdfium_strict_config" ]
+--- a/public/cpp/fpdf_deleters.h
++++ b/public/cpp/fpdf_deleters.h
+@@ -5,15 +5,15 @@
+ #ifndef PUBLIC_CPP_FPDF_DELETERS_H_
+ #define PUBLIC_CPP_FPDF_DELETERS_H_
+ 
+-#include "public/fpdf_annot.h"
+-#include "public/fpdf_dataavail.h"
+-#include "public/fpdf_edit.h"
+-#include "public/fpdf_formfill.h"
+-#include "public/fpdf_javascript.h"
+-#include "public/fpdf_structtree.h"
+-#include "public/fpdf_text.h"
+-#include "public/fpdf_transformpage.h"
+-#include "public/fpdfview.h"
++#include "../fpdf_annot.h"
++#include "../fpdf_dataavail.h"
++#include "../fpdf_edit.h"
++#include "../fpdf_formfill.h"
++#include "../fpdf_javascript.h"
++#include "../fpdf_structtree.h"
++#include "../fpdf_text.h"
++#include "../fpdf_transformpage.h"
++#include "../fpdfview.h"
+ 
+ // Custom deleters for using FPDF_* types with std::unique_ptr<>.
+ 
+--- a/public/cpp/fpdf_scopers.h
++++ b/public/cpp/fpdf_scopers.h
+@@ -8,7 +8,7 @@
+ #include <memory>
+ #include <type_traits>
+ 
+-#include "public/cpp/fpdf_deleters.h"
++#include "../cpp/fpdf_deleters.h"
+ 
+ // Versions of FPDF types that clean up the object at scope exit.
+ 
+--- a/public/fpdfview.h
++++ b/public/fpdfview.h
+@@ -203,7 +203,7 @@
+ // Dictionary value types.
+ typedef int FPDF_OBJECT_TYPE;
+ 
+-#if defined(COMPONENT_BUILD)
++#if 1  // defined(COMPONENT_BUILD)
+ // FPDF_EXPORT should be consistent with |export| in the pdfium_fuzzer
+ // template in testing/fuzzers/BUILD.gn.
+ #if defined(WIN32)

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = tzdata
-version     = 2025b
+version     = 2026d
 release     = 1
 source      = https://github.com/eggert/tz/archive/refs/tags/$version.tar.gz
-sha256      = 7e281b316b85e20c9a67289805aa2a2ee041b5a41ccf5d096af3386ba76cf9d5  tzdata-2025b.tar.gz
+sha256      = 788a3d041a92c8ec4df0b7109fb2ce028bc6d73292f293994430b6e3fdb802ec  tzdata-2026d.tar.gz
 description = IANA time zone database — musl reads /usr/share/zoneinfo natively
 homepage    = https://www.iana.org/time-zones
 depends     = gawk

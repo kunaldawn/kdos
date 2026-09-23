@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = symbiyosys
-version     = 0.47
+version     = 0.69
 release     = 1
-source      = $name-$version.tar.gz::https://github.com/YosysHQ/sby/archive/refs/tags/yosys-$version.tar.gz
-sha256      = 3e4512983d674742fcaf3df84ff205b634c4edbf6a72afe28969e484d7215ca6  symbiyosys-0.47.tar.gz
+source      = $name-$version.tar.gz::https://github.com/YosysHQ/sby/archive/refs/tags/v$version.tar.gz
+sha256      = 65e1ee7610ade9297a1482a442d0aef79a79f5490229e7899b78747d3ca1ff8e  symbiyosys-0.69.tar.gz
 description = Formal property verification over yosys — sby, and the solvers behind it
 homepage    = https://github.com/YosysHQ/sby
 depends     = python3 yosys yices2

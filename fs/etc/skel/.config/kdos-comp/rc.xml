@@ -47,8 +47,8 @@
     looking like one machine.
 
     Plain `Terminus` was asked for here and NEVER ARRIVED. Terminus is a PCF
-    bitmap and **pango has not rendered bitmap fonts since 1.44** (this ships
-    1.57), so the request fell through to DejaVu Sans on every titlebar and
+    bitmap and **pango has not rendered bitmap fonts since 1.44**, so the
+    request fell through to DejaVu Sans on every titlebar and
     every menu — measured on a booted ISO, where the panel's text has 3
     luminance levels and the titlebar's has 143. fontconfig was never the
     problem: `fc-match Terminus` resolves correctly on the target.

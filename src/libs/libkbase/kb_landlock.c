@@ -10,7 +10,7 @@
  * Three syscalls and a prctl. No library, no capability, no namespace, no
  * root: any process can lock ITSELF down, and every child inherits it with
  * no way back out. That is why this belongs in libkbase, which links nothing
- * but musl — musl 1.2.5 already declares 444/445/446, so there is nothing to
+ * but musl — musl 1.2.6 already declares 444/445/446, so there is nothing to
  * link against and nothing to check for.
  *
  * The UAPI structs and constants are written out here rather than pulled from

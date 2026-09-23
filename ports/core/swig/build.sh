@@ -11,7 +11,6 @@
 
 ./configure \
 	--prefix=/usr \
-	--without-clisp \
 	--without-maximum-compile-warnings
 make
 make DESTDIR=$PKG install

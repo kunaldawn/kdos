@@ -24,17 +24,14 @@
 	--with-cups-group=lp \
 	--with-system-groups=lpadmin \
 	--with-domainsocket=/run/cups/cups.sock \
-	--disable-launchd \
 	--enable-acl \
 	--enable-dbus \
 	--with-dbusdir=/usr/share/dbus-1 \
-	--enable-gnutls \
 	--enable-libusb \
 	--enable-raw-printing \
 	--enable-relro \
-	--enable-ssl=yes \
+	--with-tls=gnutls \
 	--with-optim="$CFLAGS" \
-	--without-php \
 	--without-rcdir \
 	--without-systemd
 make

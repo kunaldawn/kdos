@@ -31,7 +31,7 @@ guarantee between lines, and no tested hardware matrix. You are the integrator. 
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 875 recipes. Every one parses, declares its metadata, carries a syntactically valid build script and checksums its sources — all checked by `testing/preflight.sh` |
+| The ports tree | Stable | 903 recipes. Every one parses, declares its metadata, carries a syntactically valid build script and checksums its sources — all checked by `testing/preflight.sh` |
 | kpkg | Stable | Built the whole tree. The dependency resolver is verified against its predecessor over every port individually and over every phase list; reproducibility is asserted by building a port twice under a deliberately hostile environment |
 | Reproducible packages | Stable | Real ports built twice come out byte-identical, including under a different umask, a different time zone and a threaded-compression variable |
 | The build system | Stable | Builds the distribution. The orchestrator additionally runs end to end against a synthetic tree: a build, a snapshot, a restore, plan narrowing and a deliberate failure |
@@ -101,8 +101,8 @@ should come back.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 875 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 851 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 903 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 879 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/packages` | 11 | `find src/packages -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 13 | `find src/desktop -name kpkgbuild \| wc -l` |
 | Catalogue applications | 183 | `grep -c '^app ' src/packages/kdos-appbox/catalogue` |

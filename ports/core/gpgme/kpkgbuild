@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = gpgme
-version     = 2.0.1
+version     = 2.2.0
 release     = 1
 source      = https://gnupg.org/ftp/gcrypt/gpgme/$name-$version.tar.bz2
-sha256      = 821ab0695c842eab51752a81980c92b0410c7eadd04103f791d5d2a526784966  gpgme-2.0.1.tar.bz2
+sha256      = 7160e80e84dafd00d956c84891c533bb7ab16a6a54fbe1574b2f3acf0496977b  gpgme-2.2.0.tar.bz2
 description = C library that allows cryptography support to be added to a program
 depends     = gnupg swig

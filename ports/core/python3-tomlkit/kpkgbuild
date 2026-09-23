@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-tomlkit
+version     = 0.15.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/t/tomlkit/tomlkit-$version.tar.gz
+sha256      = e25bbf38843005246210a12982776f27f99cb9be67160e14434d0c0d21ee1e97  python3-tomlkit-0.15.1.tar.gz
+description = Style-preserving TOML reading and writing — hatchling requires it
+homepage    = https://pypi.org/project/tomlkit/
+depends     = python3 python3-pip python3-poetry-core

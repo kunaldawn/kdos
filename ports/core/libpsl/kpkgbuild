@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = libpsl
-version     = 0.21.5
+version     = 0.23.3
 release     = 1
 source      = https://github.com/rockdaboot/libpsl/releases/download/$version/libpsl-$version.tar.gz
-sha256      = 1dcc9ceae8b128f3c0b3f654decd0e1e891afc6ff81098f227ef260449dae208  libpsl-0.21.5.tar.gz
+sha256      = 93941f85a1e7bd593fa94f299233cb5dfc91cd144fd9a78a6ceb75001c5b03be  libpsl-0.23.3.tar.gz
 description = Library for accessing and resolving information from the Public Suffix List
 depends     = libidn2 libunistring python3

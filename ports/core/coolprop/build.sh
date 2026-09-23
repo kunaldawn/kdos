@@ -14,24 +14,18 @@
 # the library. A saturation temperature or an enthalpy is available with
 # nothing else on the machine.
 #
-# 6.8.0 AND NOT 8.x, AND THE REASON IS THE SDIST RATHER THAN THE CODE. CoolProp
-# 8 replaced its bundled `externals/` with CPM, which downloads TEN upstreams —
-# Eigen, msgpack-c, nlohmann_json, valijson, IF97, REFPROP_headers,
-# boost_headers, multicomplex, fmt and Catch2 — most pinned to bare git commits
-# with no release tarball. Its sdist is 4 MB and cannot build without a
-# network; 6.8.0's is 26 MB because every one of those trees is IN it, which is
-# exactly what an offline build needs.
-#
-# -DCOOLPROP_NO_INCBIN, AND THE FILE IT AVOIDS IS NOT IN THE SDIST. The fluid
-# database is embedded with the incbin library, whose `.incbin` assembler
-# directive reads `all_fluids.json.z` at ASSEMBLY time — a file the release
-# build generates and the sdist does not carry, so g++ fails with
-# `{standard input}:10: Error: file not found`. The sdist ships the same bytes
-# as a C array in include/all_fluids_JSON_z.h instead, and this macro is what
-# selects it. Same data, same fluids; only the mechanism differs.
-export CFLAGS="$CFLAGS -DCOOLPROP_NO_INCBIN"
-export CXXFLAGS="$CXXFLAGS -DCOOLPROP_NO_INCBIN"
-
-# --no-build-isolation because setuptools, Cython and cmake are installed
-# ports; --no-deps because numpy is one too.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+# EVERY CPMAddPackage IS GIVEN A LOCAL TREE, or configure downloads it. Eigen,
+# fmt and nlohmann-json are ports and CPM is pointed at their installed
+# headers; the upstreams pinned to bare commits, and valijson, are extra
+# sources in the recipe and unpack beside $SRC. A package left out here is a
+# network fetch at configure time, which fails in the build chroot.
+pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr . \
+	--config-settings=cmake.define.CPM_Eigen_SOURCE=/usr/include/eigen3 \
+	--config-settings=cmake.define.CPM_fmt_SOURCE=/usr \
+	--config-settings=cmake.define.CPM_nlohmann_json_SOURCE=/usr \
+	--config-settings=cmake.define.CPM_msgpack-c_SOURCE=$SRC_ROOT/msgpack-c-$_msgpack \
+	--config-settings=cmake.define.CPM_IF97_SOURCE=$SRC_ROOT/IF97-$_if97 \
+	--config-settings=cmake.define.CPM_REFPROP_headers_SOURCE=$SRC_ROOT/REFPROP-headers-$_refprop \
+	--config-settings=cmake.define.CPM_boost_headers_SOURCE=$SRC_ROOT/boost-headers-$_boost \
+	--config-settings=cmake.define.CPM_multicomplex_SOURCE=$SRC_ROOT/multicomplex-$_multicomplex \
+	--config-settings=cmake.define.CPM_valijson_SOURCE=$SRC_ROOT/valijson-$_valijson

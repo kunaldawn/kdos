@@ -13,12 +13,13 @@
 # there is no ./configure until autogen.sh has made one.
 NOCONFIGURE=1 ./autogen.sh
 
-# --with-elisp needs emacs, which is not a port and never will be on this host.
-./configure \
+# EMACS=no keeps AM_PATH_LISPDIR from probing for emacs, which is not a port;
+# an emacs found on the build host would otherwise compile and install the
+# elisp front end.
+EMACS=no ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--sysconfdir=/etc \
-	--disable-static \
-	--with-elisp=no
+	--disable-static
 make
 make DESTDIR=$PKG install

@@ -16,7 +16,7 @@
  * one binary is one too many.
  *
  * `/usr/share/mime/globs` is COMPILED ON THE TARGET by update-mime-database, in
- * shared-mime-info's postinstall — the port builds --disable-update-mimedb and
+ * shared-mime-info's postinstall — the port builds -D update-mimedb=false and
  * ships only the source XML, so on a machine where that hook has not run this
  * file resolves nothing at all and every caller falls back. That is a real
  * state and not a hypothetical: it is what a booted ISO looked like before the

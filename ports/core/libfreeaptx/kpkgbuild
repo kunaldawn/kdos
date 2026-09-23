@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = libfreeaptx
-version     = 0.2.1
+version     = 0.2.2
 release     = 1
-source      = $name-$version.tar.gz::https://github.com/iamthehorker/libfreeaptx/archive/refs/tags/$version.tar.gz
-sha256      = 4c18b96c91fd0cdd1587b3f15ad8cdf7c274585924e1a4e1c81f091bcc9b0fc2  libfreeaptx-0.2.1.tar.gz
+source      = $name-$version.tar.gz::https://github.com/regularhunter/libfreeaptx/archive/refs/tags/$version.tar.gz
+sha256      = 5ab5ebddf3f2eb7ce47a505b87460b00fc1ede99c70010796d3575ab31ea80bf  libfreeaptx-0.2.2.tar.gz
 description = Free aptX and aptX HD codec, for Bluetooth headsets that speak them
-homepage    = https://github.com/iamthehorker/libfreeaptx
+homepage    = https://github.com/regularhunter/libfreeaptx

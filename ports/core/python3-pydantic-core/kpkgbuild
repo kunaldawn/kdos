@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pydantic-core
+version     = 2.46.5
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pydantic-core/pydantic_core-$version.tar.gz
+sha256      = 10416c15b8839ecc4ef4d0885da76da6fd0f67333a0eb8aff6d93c4b8f2910fc  python3-pydantic-core-2.46.5.tar.gz
+sha256      = b84d63f31547f376437c94d1ab23c32b2b79cafedf8100ae0c71ced7d36f0ba9  python3-pydantic-core-vendor-2.46.5.tar.xz
+description = pydantic's validation core, in Rust — pinned to the version pydantic names
+homepage    = https://github.com/pydantic/pydantic-core
+depends     = python3 python3-pip python3-maturin rust
+series      = 2.46.5
+vendoring   = rust

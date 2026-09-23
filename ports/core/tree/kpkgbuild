@@ -9,8 +9,8 @@
 # ---------------------------------
 
 name        = tree
-version     = 2.2.1
+version     = 2.3.2
 release     = 1
 source      = https://gitlab.com/OldManProgrammer/unix-tree/-/archive/$version/unix-tree-$version.tar.bz2
-sha256      = e911c4a2bea53586cc7be6f3d7d7f4d9c2f2bcbbad77d30700b31046e38f4bc5  tree-2.2.1.tar.bz2
+sha256      = 7e6bd141e89b6d951da8ce1757d16b832fb52ef69a7259a23669981f22a49cbb  tree-2.3.2.tar.bz2
 description = display directory contents, including directories, files, links, in a terminal

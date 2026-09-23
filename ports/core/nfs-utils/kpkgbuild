@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = nfs-utils
-version     = 2.9.2
+version     = 3.1.1
 release     = 1
 source      = https://www.kernel.org/pub/linux/utils/$name/$version/$name-$version.tar.xz
-sha256      = e1dd8a9c95af15492065942cc3b52b1339ffd586baa2280ed86c9d3dc4097e8c  nfs-utils-2.9.2.tar.xz
+sha256      = 7dbc05eb8b32828b322872b759a62cb3979cb4118f344dd8616813d1390e84e0  nfs-utils-3.1.1.tar.xz
 description = Correct POSIX semantics between Linux boxes
 homepage    = https://linux-nfs.org/
-depends     = autoconf automake libtool pkgconf libtirpc keyutils libevent sqlite util-linux
+depends     = autoconf automake libtool pkgconf libtirpc keyutils libevent sqlite util-linux libnl readline libxml2

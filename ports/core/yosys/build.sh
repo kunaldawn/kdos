@@ -15,7 +15,7 @@
 # published `yosys.tar.gz` has it. Without abc, synthesis runs and every
 # `abc` pass fails, which is most of what makes the output small enough to fit.
 #
-# THAT TARBALL IS FLAT — 37 top-level entries, no wrapping directory — and kpkg
+# THAT TARBALL IS FLAT — no wrapping directory — and kpkg
 # passes --strip-components=1 to the first source unconditionally, so every
 # top-level file is DISCARDED and each subdirectory's contents are promoted
 # into its place. Same shape as tzdata's, and the same answer: unpack it here,
@@ -24,9 +24,8 @@ mkdir -p unpacked
 tar xf "$PORT_SRC/$name-$version.tar.gz" -C unpacked
 cd unpacked
 
-# CMAKE, NOT `make config-gcc`. 0.68 has no Makefile at all; the hand-written
-# build with its ENABLE_* variables is gone and every switch is a YOSYS_* cache
-# entry now.
+# CMAKE, NOT `make config-gcc`. The source carries no Makefile; every switch
+# is a YOSYS_* cache entry, and an ENABLE_* variable is ignored.
 #
 # YOSYS_USE_BUNDLED_LIBS stays OFF so the readline, zlib, libffi and tcl in
 # this tree are the ones linked — abc is the one vendored thing kept, because

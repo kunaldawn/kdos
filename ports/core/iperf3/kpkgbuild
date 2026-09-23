@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = iperf3
-version     = 3.19.1
+version     = 3.21
 release     = 1
 source      = https://downloads.es.net/pub/iperf/iperf-$version.tar.gz
-sha256      = dc63f89ec581ea99f8b558d8eb35109de06383010db5a1906c208a562ba0c270  iperf3-3.19.1.tar.gz
+sha256      = 656e4405ebd620121de7ceca3eaf43a88f79ea1b857d041a6a0b1314801acdd8  iperf3-3.21.tar.gz
 description = iperf3 — network bandwidth measurement tool
 homepage    = https://software.es.net/iperf/
 depends     = openssl

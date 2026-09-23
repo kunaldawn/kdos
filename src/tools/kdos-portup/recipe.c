@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kpkg.h"
 #include "portup.h"
 
 /* `kpkg meta` prints shell assignments, one per line: name='curl'
@@ -154,18 +155,28 @@ int pu_recipe_read(const char *kpkg_bin, const char *portdir, PuRecipe *r)
 	meta_field(out.p, "source", r->source, sizeof(r->source));
 	meta_field(out.p, "vendoring", r->vendoring, sizeof(r->vendoring));
 	meta_field(out.p, "group", r->group, sizeof(r->group));
+	meta_field(out.p, "devseries", r->devseries, sizeof(r->devseries));
+	meta_field(out.p, "series", r->series, sizeof(r->series));
+	meta_field(out.p, "watch", r->watch, sizeof(r->watch));
 	kb_buf_free(&out);
+
+	/* `homepage` is a key kpkg stores but does not print, and nothing in
+	 * it is ever templated, so the plain recipe read is enough. */
+	kp_recipe_key(portdir, "homepage", r->homepage, sizeof(r->homepage));
 
 	/* `source` is every tarball on one line, port's own first, vendor
 	 * bundles after (mesa has 7 total). The updater only ever probes the
-	 * first, so split it out here rather than making every caller redo
-	 * the same strchr. */
+	 * first, so split it out here — URL half only — rather than making
+	 * every caller redo the same split. */
 	const char *sp = strchr(r->source, ' ');
 	size_t flen = sp ? (size_t)(sp - r->source) : strlen(r->source);
-	if (flen >= sizeof(r->first_source))
-		flen = sizeof(r->first_source) - 1;
-	memcpy(r->first_source, r->source, flen);
-	r->first_source[flen] = 0;
+	char first[sizeof(r->first_source)];
+	if (flen >= sizeof(first))
+		flen = sizeof(first) - 1;
+	memcpy(first, r->source, flen);
+	first[flen] = 0;
+	kb_strlcpy(r->first_source, pu_source_url(first),
+		   sizeof(r->first_source));
 
 	/* Patch count is a risk flag, not metadata: a bump can leave a patch
 	 * no longer applying, and the maintainer wants to know before they say
@@ -230,7 +241,7 @@ int pu_render_candidate(const char *kpkg_bin, const PuRecipe *r,
 					char *sp = strchr(got, ' ');
 					if (sp)
 						*sp = 0;
-					kb_strlcpy(url, got, cap);
+					kb_strlcpy(url, pu_source_url(got), cap);
 					rc = 0;
 				}
 			}

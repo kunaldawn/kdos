@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = spirv-tools
-version     = 1.4.335.0
+version     = 2026.4.rc2
 release     = 1
-source      = $name-$version.tar.gz::https://github.com/KhronosGroup/SPIRV-tools/archive/vulkan-sdk-$version/SPIRV-Tools-v$version.tar.gz
-sha256      = 8b3d5637061b52675e506ffa1100740031e38bdd96b8177978acfd898a705da2  spirv-tools-1.4.335.0.tar.gz
+source      = $name-$version.tar.gz::https://github.com/KhronosGroup/SPIRV-Tools/archive/v$version/SPIRV-Tools-$version.tar.gz
+sha256      = d0e4b27d5694ecf5c737be88fea4afb09049686626f112d536f5d9504d5cd7d1  spirv-tools-2026.4.rc2.tar.gz
 description = API and commands for processing SPIR-V modules
 homepage    = https://www.khronos.org/vulkan
 depends     = spirv-headers

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sdl2-compat
+version     = 2.32.72
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/sdl2-compat/releases/download/release-$version/sdl2-compat-$version.tar.gz
+sha256      = a14d2f78dad8e83ef1039b6534ace4d14f11f5b11d023af989affd70ac1bb35e  sdl2-compat-2.32.72.tar.gz
+description = The SDL2 library, headers and build files, answering every SDL2 call through SDL3
+homepage    = https://libsdl.org
+depends     = cmake ninja sdl3

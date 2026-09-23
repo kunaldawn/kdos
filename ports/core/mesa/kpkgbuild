@@ -11,8 +11,8 @@
 # optional	: libva libvdpau
 
 name        = mesa
-version     = 25.3.3
-release     = 2
+version     = 26.2.3
+release     = 1
 source      = https://mesa.freedesktop.org/archive/$name-$version.tar.xz
 source      = https://crates.io/api/v1/crates/syn/2.0.87/download#/syn-2.0.87.tar.gz
 source      = https://crates.io/api/v1/crates/unicode-ident/1.0.12/download#/unicode-ident-1.0.12.tar.gz
@@ -20,7 +20,7 @@ source      = https://crates.io/api/v1/crates/quote/1.0.35/download#/quote-1.0.3
 source      = https://crates.io/api/v1/crates/proc-macro2/1.0.86/download#/proc-macro2-1.0.86.tar.gz
 source      = https://crates.io/api/v1/crates/paste/1.0.14/download#/paste-1.0.14.tar.gz
 source      = https://crates.io/api/v1/crates/rustc-hash/2.1.1/download#/rustc-hash-2.1.1.tar.gz
-sha256      = 05328b3891c000e6a110a3e7321d8bfbb21631d132bf86bd3d4a8f45c535ef6b  mesa-25.3.3.tar.xz
+sha256      = 1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f  mesa-26.2.3.tar.xz
 sha256      = de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c  paste-1.0.14.tar.gz
 sha256      = 5e719e8df665df0d1c8fbfd238015744736151d4445ec0836b8e628aae103b77  proc-macro2-1.0.86.tar.gz
 sha256      = 291ec9ab5efd934aaf503a6466c5d5251535d108ee747472c3977cc5acc868ef  quote-1.0.35.tar.gz

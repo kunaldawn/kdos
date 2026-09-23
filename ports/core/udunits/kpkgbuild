@@ -16,3 +16,4 @@ sha256      = 590baec83161a3fd62c00efa66f6113cec8a7c461e3f61a5182167e0cc5d579e  
 description = Unit conversion for scientific data — what makes a grid's units mean something
 homepage    = https://www.unidata.ucar.edu/software/udunits/
 depends     = expat
+watch       = https://downloads.unidata.ucar.edu/udunits/release_info.json

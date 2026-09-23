@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = yazi
-version     = 26.8.15
+version     = 26.9.1
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/sxyazi/yazi/archive/refs/tags/v$version.tar.gz
-sha256      = 60bd4ca56398f0f6ea6dcf88cc18e325583bf5328aeec51d396070944a9495c8  yazi-26.8.15.tar.gz
-sha256      = f6920fef77cca69e2d7cfc8142b7b0ea772a6a5b92ebec92a61ebce5b6cf5eb6  yazi-vendor-26.8.15.tar.xz
+sha256      = 66857f1b670469daf258edd0bb2ea51d9ad3e2cab4eea9684028c80059fd6862  yazi-26.9.1.tar.gz
+sha256      = 548e8f3b74e5a65f3d258b22b86d5c4044e9e4c207b73d5c825b95918e21a3a1  yazi-vendor-26.9.1.tar.xz
 description = Async file manager with real image previews in the terminal
 homepage    = https://yazi-rs.github.io/
 depends     = rust pkgconf

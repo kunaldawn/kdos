@@ -170,7 +170,7 @@ fi
 if [ -x /usr/sbin/cryptsetup ]; then
     cp /usr/sbin/cryptsetup bin/cryptsetup
     for _l in libcryptsetup.so.12 libdevmapper.so.1.02 libjson-c.so.5 \
-              libpopt.so.0 libssl.so.3 libcrypto.so.3 libargon2.so.1 \
+              libpopt.so.0 libssl.so.4 libcrypto.so.4 libargon2.so.1 \
               libuuid.so.1 libblkid.so.1 libz.so.1; do
         [ -f /usr/lib/$_l ] && cp /usr/lib/$_l lib/$_l
     done

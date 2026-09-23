@@ -87,6 +87,9 @@ them to `build.sh` — but another tool gives each a defined meaning:
 | `pyrequirements` | `ports/fetch` | `no` — a requirements file is *not* the dependency set here |
 | `pyruntime` | `ports/fetch` | `no` — do not vendor a runtime environment |
 | `group` | `ports/update` | Override the derived version-check grouping |
+| `devseries` | `ports/update` | Upstream's development-series convention: `odd-minor`, `preview-minor`, or both — see [Filtering](#filtering) |
+| `series` | `ports/update` | The line the port stays on, as a version prefix matched on whole components: `21` for `llvm21`, `5.4` for `lua54` — see [Filtering](#filtering) |
+| `watch` | `ports/update` | Where upstream lists its releases when nothing reached from the source URL does: a forge repository, whose tags are read, or a page, listing, JSON index or manifest that names the release files — see [Discovery](#discovery) |
 
 ### Recipe helpers
 
@@ -311,7 +314,7 @@ name with nothing behind it resolves to nothing and reports that nowhere. The op
 `/usr/share/mime/globs`, which is generated from `/usr/share/mime/packages`. A port introducing a
 type installs its own XML there *and* carries a `postinstall.sh` running `update-mime-database
 /usr/share/mime`, because the database is compiled on the target and `build.sh` cannot do it.
-`frotz` is the worked example below: `shared-mime-info` 1.10 defines no z-machine type, so the port
+`frotz` is the worked example below: `shared-mime-info` 2.5.1 defines no z-machine type, so the port
 defines it.
 
 `selftest.sh` reads these entries out of the heredoc. A missing `Terminal=true`, a
@@ -411,6 +414,18 @@ ownership, single-threaded compression — because a plain archive records the e
 the builder's identity, and the checksum beside a bundle would then be a hash of one particular
 afternoon.
 
+### A bundle no tool writes
+
+`pdfium` carries a vendor bundle that `ports/fetch` cannot produce, because the dependencies it
+holds are gclient checkouts and not a language's packages: Chromium's `//build`,
+`third_party/abseil-cpp` and `generate_shim_headers.py`. Gitiles generates its archives on request
+and no two downloads of one hash the same, so the bundle is the tree's copy and its `sha256 =`
+line is its identity. Rebuild it by hand on a version bump: take each repository at the revision the
+new branch's `DEPS` names (`build_revision`, `abseil_revision`), and the script from the matching
+Chromium tag, lay them out under `vendor/` as they sit in a checkout, and pack them with the flag
+set above plus `--mode=go-w`. The recipe's `_build_rev` and `_abseil_rev` name those revisions,
+and `build.sh` refuses a tarball whose `DEPS` disagrees with them.
+
 ### A Rust port's version is pinned by this tree's compiler
 
 Cargo refuses a crate whose declared minimum Rust version is higher than the toolchain, rather than
@@ -420,6 +435,48 @@ toolchain, the fetch container and every vendored bundle together — a wave, no
 The declared minimum is not an oracle. It gates the refusal; it says nothing about what the code
 actually uses, so a release declaring an older minimum can still fail on a feature stabilised
 later. The only reliable test is compiling.
+
+## A second version beside the first
+
+Some software cannot move to the version the tree ships, and gets an older one installed beside it.
+Neither copy may write a path the other writes, or `kpkg` reports a conflict and one package
+shadows the other. There are three ways to keep them apart.
+
+**Versioned names.** `lua54` renames every path it installs: the interpreter is `lua5.4`, the
+headers are in `include/lua5.4`, the library is `liblua5.4` and the pkg-config file is
+`lua5.4.pc`. This works when the upstream build lets every name be chosen.
+
+**The runtime only.** `openssl3` installs `libssl.so.3` and `libcrypto.so.3` and nothing else: no
+headers, no `libssl.so` link, no pkg-config file, no `openssl` program and no manual pages. Every
+port in the tree builds against `openssl`, which is 4.x and whose sonames end in `.4`, so nothing
+here links the slot. It exists for a binary built elsewhere against OpenSSL 3 — an AppImage, a
+vendor tool, a `.so` a program loads — which the loader otherwise refuses for want of
+`libssl.so.3`. It follows the 3.5 long-term line (`series = 3.5`), so a binary that needs a symbol
+added in 3.6 still fails to load. It is built `no-module`, so the legacy provider is inside
+`libcrypto.so.3` and the slot never loads OpenSSL 4's `ossl-modules/legacy.so`, and it reads the
+same `/etc/ssl/openssl.cnf` and certificate store as `openssl`.
+
+**A private prefix.** `llvm21`, `clang21` and `lld21` install everything under `/usr/lib/llvm21`:
+`bin`, `lib`, `include` and `lib/cmake`. LLVM needs this, because its sonames already carry the
+version, but its headers (`include/llvm`), its CMake package (`lib/cmake/llvm`) and its tools
+(`llvm-config`, `clang`) do not. Nothing under the prefix is on `PATH` or on the linker's search
+path, so every consumer that does not ask for the slot still finds the system LLVM. The prefix is
+the recipe helper `_prefix`, derived from `version`. The slot is built the way the system LLVM is:
+`llvm21` and `clang21` as one shared object per component, `lld21` as static archives, all under
+the prefix, and the programs and shared libraries find each other through their `$ORIGIN/../lib`
+run path. zig links `libclang-cpp.so`, which clang
+builds in either shape.
+
+A consumer asks for the slot with build flags and a `depends` line naming the slot ports instead
+of `llvm`. `zig` passes `CMAKE_PREFIX_PATH=/usr/lib/llvm21`, which makes its `llvm-config` search
+look in the prefix before `PATH`. The zig binary it produces records `/usr/lib/llvm21/lib` as its
+run path, because zig adds the directory of every shared library it links to the run path when it
+builds for the host.
+
+The LLVM ports take their sources in two ways. From 22 on, upstream publishes only the whole
+`llvm-project-<version>.src.tar.xz`. Each port of the current series (`llvm`, `clang`, `lld`,
+`lldb`, `libclc`, `libunwind`) carries that one tarball and configures its own directory with
+`cmake -S <dir>`. The 21 slot uses the per-component tarballs, which were still published for 21.x.
 
 ## Rules a recipe must keep
 
@@ -445,7 +502,7 @@ later. The only reliable test is compiling.
   cannot carry, so on `tty1` it renders as a blank cell: a name arrives with a hole punched in
   front of it and the listing reads as broken. Turn them off where the program has a switch
   (`yazi`'s `[icon]`, `starship`'s `format`, `eza --icons=never`), check the default before writing
-  anything (`lazygit` 0.61's is already off), and where a program draws them with no way to be
+  anything (`lazygit` 0.65's is already off), and where a program draws them with no way to be
   told, name it in [known gaps](../06-reference/known-gaps.md). The answer is never a patched
   console font.
 
@@ -498,7 +555,7 @@ LICENCE
 
 A program that opens nothing is one nobody opens twice: `frotz` with no story prints usage and
 exits, so the desktop entry names the story the package carries. Because that entry claims two MIME
-types, the port has to define them first — `shared-mime-info` 1.10 has neither:
+types, the port has to define them first — `shared-mime-info` 2.5.1 has neither:
 
 ```bash
 install -Dm644 /dev/stdin \
@@ -519,7 +576,7 @@ job `build.sh` cannot do.
    `source`.
 3. **Fetch and record the checksum:**
    ```sh
-   ports/fetch <port>          # `make fetch` takes no argument and walks all 851
+   ports/fetch <port>          # `make fetch` takes no argument and walks all 879
    ```
 4. **Write `build.sh`** from the canonical shape for its build system.
 5. **Wire it in.** Add it to the `depends` of whatever needs it, and to the `packages.txt` of the
@@ -560,34 +617,224 @@ it is the same question asked of two archives.
 make updates                                   # the whole tree
 make updates PORTUP_ARGS="--check curl"        # one port, non-interactive
 make updates PORTUP_ARGS=--cve                 # cross-check vulnerabilities online
+make updates PORTUP_ARGS="--jobs 1 --refresh"  # one check at a time, ignoring the cache
 ```
 
 The version checker asks one question per port: does upstream have a release newer than the pin? It
-answers in six steps.
+answers in five steps.
 
-1. List upstream releases — a forge's tag feed, a directory listing, or a package-tracking service;
-   first non-empty wins.
-2. Extract version candidates from every raw string.
-3. Keep the ones whose shape matches the current version's.
-4. Compare, walking from the highest match down.
-5. Render the candidate through the real recipe parser. The recipe is copied to a temporary
-   directory, the version substituted, and the metadata expanded by the same parser the build uses,
-   so a helper chain falls out for free and no probe ever touches the real tree.
-6. Request the rendered URL. A not-found drops that candidate and tries the next-highest.
+1. **Discover.** Ask upstream what it has released, through the first adapter below that finds
+   anything.
+2. **Read.** Take a version out of every name the adapter returned, through the recipe's own URL.
+3. **Filter.** Drop what is not a later release of this numbering: another scheme, a pre-release, a
+   development series.
+4. **Compare**, walking from the highest candidate down.
+5. **Prove.** Render the candidate through the real recipe parser and request the result. The
+   recipe is copied to a temporary directory, the version substituted, and the metadata expanded by
+   the same parser the build uses, so a helper chain falls out for free and no probe ever touches
+   the real tree. A not-found drops that candidate and tries the next-highest.
 
-Correctness comes from that last request, not from the discovery step. A feed can name a version
-whose archive lives somewhere the recipe's template does not expect, and the tool would rather try
-the next candidate than report a version it never confirmed the build could fetch.
+Correctness comes from the last request, not from discovery. A listing can name a version whose
+archive lives somewhere the recipe's template does not expect, and the tool would rather try the
+next candidate than report a version it never confirmed the build could fetch.
+
+### Discovery
+
+The URL a recipe's first `source` names — with any `cachename::` prefix removed, since that half is
+where the archive lands and not where it comes from — decides which adapters apply. They are tried
+in this order:
+
+| Adapter | Applies to | Asks |
+|---|---|---|
+| Watch | A recipe with a `watch` key | That forge repository's tags, or that page read through the file name, one hop further as the homepage is |
+| Registry | `files.pythonhosted.org`, `static.crates.io`, a CPAN `authors/id/` path | PyPI's JSON (withdrawn and empty releases skipped), the crates.io API (yanked versions skipped), MetaCPAN's latest release |
+| Forge | GitHub (and `raw.githubusercontent.com`), Codeberg, sr.ht, Bitbucket, GitLab on any host whose URL carries `/-/`, a cgit `/snapshot/` URL | `git ls-remote --tags`. When git cannot answer: GitHub's tag and release feeds, Codeberg's and sr.ht's feeds, GitLab's tags API, cgit's tag page. When nothing answers and the URL names a commit, the branch heads (below) |
+| SourceForge | `downloads.sourceforge.net`, `sourceforge.net/projects/…/files/`, a project web host | The project's file feed, narrowed to the path above the first directory named for the version |
+| Directory | Anything else | The listing of the archive's directory — or, when a directory in the path is named for the version, of its parent (below) — and the download page one hop from either |
+| Homepage | A recipe with a `homepage`, whose source is on no forge or registry and names its version in the file name | The homepage's forge's tags, or the page's links read through the file name, and one hop further |
+| Repology | Every port, last | The package-tracking service, rate-limited to one request a second across the whole run and marked low-confidence; it is never upstream itself |
+
+Tags come from git rather than a forge's feed because git names every tag, unauthenticated and
+unmetered; a feed carries the newest ten, which a project that tags each of its crates, or maintains
+two majors at once, fills with the wrong ones. git runs without the user's own configuration and
+over https only, so a `url.*.insteadOf` rewrite to ssh cannot ask for a key from every worker at
+once.
+
+Git also names the commit behind every tag. A tag on the commit of a lower release, with a release
+of other code between the two, is a mistake rather than a release and is dropped: thermald's
+`v2.15.10` sits on `v2.5.10`'s commit, and offering it would downgrade 2.5.13 under a higher
+number. A tag on the commit of the release just before it stays — sby tags every yosys version,
+changed or not — and so does a release sharing its commit with a series tag that follows it
+(corrosion's `v0.6` on `v0.6.1`).
+
+A GitHub project that publishes a release for some of its tags and not for others leaves the tags
+past its newest release in doubt. They may be engineering drops — intel/media-driver tags `26.2.1`
+to `26.2.4` and publishes `26.2.4`, and its `26.3.x` tags are the next quarter's — or releases
+whose release object is late: bindgen's `0.73.x` were on crates.io before GitHub had a release for
+them. Nothing in the tags tells the two apart, so they stay candidates. When a tag later than the
+pin exists, the releases API is asked; if a tag of the pin's numbering between its oldest and
+newest release has none, and the pin is no later than the newest, the answer is marked
+low-confidence and names the newest tag without a release. The API allows sixty requests an hour
+and is asked only for a port that already has a later tag; when it refuses, the tags stand
+unmarked, so the verdict is the same either way.
+
+When the recipe's tag prefix names nothing later than the pin, the same list is read again with a
+`v` or no prefix. A family there that starts after the recipe's own ends is a change of scheme —
+sby's tags went from `yosys-0.47` to `v0.48` — and its newest release makes the answer unknown,
+naming it, since the recipe's template cannot fetch it and *current* would be wrong. A family whose
+numbers run alongside the recipe's is another project in the same repository (golang/tools'
+`v0.50.0` beside `gopls/v0.23.0`) and says nothing.
+
+A listing is not always where the archive is. The directory adapter reads it through the rules
+below, each of them general to a kind of host rather than to a port:
+
+- **A stand-in page is followed.** A meta refresh (`curl.se/ca/` sends a browser to
+  `/docs/caextract.html`), or an iframe that is the whole of a page with no versioned link of its
+  own (`nethack.org/download/`), is replaced by the page it names.
+- **An S3 bucket is listed at its root.** `s3.amazonaws.com/<bucket>/<prefix>/` answers 403, and
+  the bucket's `?prefix=<prefix>/` lists the keys. A listing S3 marks as cut leaves the answer
+  unknown.
+- **A page that names none of the port's files leads one hop further.** Links on the same host
+  whose last segment names a download (`download.html`, `downloads.html`, `download.php`,
+  `download/`, `TestDisk_Download`), releases (`releases.html`), or the current or latest release
+  (`mpfr-current/`) are read the same way, those below the page's own directory first — three at
+  most. A directory that cannot be read at all (403, 404) is replaced by its parent, which is
+  usually the project's page: netfilter's `files/` beside `downloads.html`, musl's `releases/`
+  beside a homepage that links the newest tarball.
+
+Only a name read through the file name counts on any of these pages; a page is prose, and prose is
+full of numbers.
+
+SourceForge's mirrors keep every file a project uploaded after the project leaves, so a file feed
+whose newest file is the pin is not proof of *current*: gnu-efi went to GitHub and libjpeg-turbo
+to its own site with their feeds ending at `3.0.18` and `3.0.1`. When the feed ends at the pin, the
+project's own SourceForge record is asked. A `moved` status sends the check to the repository it
+names: tags there that name the pin and nothing later mean the project still uploads its releases
+to SourceForge (procps-ng, psmisc) and the answer is *current*; anything else — a later tag, no
+tag of the pin, a repository git cannot list — makes it unknown, naming where it went. The tags
+are read through `v`, no prefix and the file's own, and failing those as a word followed by
+nothing but numbers and separators (smartmontools' `RELEASE_7_5`). Without a move repology is
+asked, and a version it calls upstream's newest that is later than the pin, of the pin's line and
+no pre-release, makes it unknown too; a project repology cannot answer for stays current.
+
+A source that names a commit, in a repository that tags no release, has one question left: is the
+commit still the tip of the default branch or of a branch named for releases (`master`, `main`,
+`stable`, `trunk`, `release…`)? At the tip, the port is current, and says so; anywhere else it is
+unknown. A version from any other adapter cannot be rendered into such a URL, so none is asked.
+
+`watch` is for the host no general rule reaches: a release index served as JSON to a script
+(`downloads.unidata.ucar.edu/<project>/release_info.json`), a channel manifest
+(`static.rust-lang.org/dist/channel-rust-stable.toml`), a browsable mirror of a host that serves
+no index (`build.openvpn.net/downloads/releases/`), or a forge repository nothing on the project's
+site links. It is tried first and still read through the recipe's own file name.
+
+A version written into a directory — `gnu/gcc/gcc-15.2.0/`, `ftp/python/3.14.2/`,
+`sources/pango/1.57/`, `dist/v8/`, `kernel/v7.x/` — means the archive's own directory never holds a
+newer release. The checker lists the parent of the outermost such directory and reads its siblings
+through that directory's own name, keeping those at or after the current one.
+
+- **Siblings named for a whole version** (`gcc-16.2.0/`): the three newest are read, so a `3.15.0/`
+  holding only `3.15.0a1` is not taken for a 3.15.0 release. A newer one past those three stays a
+  candidate unread, for the proof step to settle, and so does one whose files the recipe's archive
+  name cannot read — no version in it, only its directory's — since nothing in it can be judged a
+  pre-release.
+- **Siblings named for a series** (`1.58/`, `v9/`): the three newest are read, and the current
+  series as well, since only a series' files say which releases it holds. A later series that could
+  not be listed leaves the answer unknown, never current.
+
+A sibling is a link below the listed directory, resolved against the page it was read from: a
+link in the page's chrome (a footer's `linkedin.com/company/29561/`) is no later series. A page
+whose versioned links all lead elsewhere is not a listing, and its text is not read for siblings
+either — launchpad's series page names "Ubuntu RTM 14.09". A walk whose parent names no sibling at
+all, not even the current one, reads that page's download links instead (`mpfr.org` links only
+`mpfr-current/`).
+
+A walk makes at most eight requests.
+
+### Reading a version
+
+The recipe's URL says where its version sits: `gcc-15.2.0.tar.xz` is `gcc-` then the version then an
+archive suffix, and a tag `llvmorg-21.1.8` is `llvmorg-` then the version. A name is read only when
+it has the same text on either side — any archive suffix standing in for the recipe's. A directory
+holding every X library, every suckless tool or every GNU pretest then yields this port's versions
+and nobody else's. The version may be spelled with `_` or `-` for its dots (`boost_1_89_0`,
+`R_2_7_3`), with a mix of them (`ImageMagick-7.1.2-31` for `7.1.2.31`) or with none at all
+(`gs10071`, `unzip60`), and reads back dotted. A pin of digits alone may be written in groups
+(`cacert-2026-08-13.pem` for `20260813`) and reads back with the separators dropped, at the same
+group widths only. Only a URL with no version in it at all falls back to extracting every
+version-shaped run and keeping those shaped like the pin.
+
+### Filtering
+
+- **Class.** Dotted numbers of any length are one numbering — binutils went from 2.45.1 to 2.47 —
+  with a pre- or post-release marker (`1.4rc5`, `10.2p1`, `1.5.8.pl02`) or a trailing commit id set
+  aside. A leading year and a zero-padded part the pin does not pad (`600.0132` beside `26.2.4`) are
+  each another. So is any word that is not a pre- or post-release marker, a lone letter straight
+  after a digit (`3.6a`, `1.1.1w`), or a word the pin itself carries (`1.9.0.jumbo1`): a platform
+  build (`3.8.13-w64`), a patch beside a release (`1.8.1.3.patch`), a variant (`5.1.22_dict`) and
+  an archive's own suffix (`56.7z`) are files, not releases. Repology's strings are distributions'
+  spellings and must match the pin's exact shape.
+- **Pre-release.** `rc`, `alpha`, `beta`, `pre`, `preview`, `dev`, `snapshot`, `wip`, `test`,
+  `nightly`, `unstable`, `trunk`, `cr`; and PEP 440's `a1`/`b2`, though never inside a trailing
+  commit id (passt's `2025_02_17.a1e48a0`). A port that pins a pre-release follows that line.
+- **Pretest.** 90–99 in the third place or later — `1.25.91`, `4.4.0.90`, `26.0.99.902` — where the
+  pin has less there, unless the listing or the pin has 80–89 in that place with the same leading
+  numbers: a counter walks up through the eighties (`1.0.89`, then `1.0.92`), a pretest jumps
+  there. 100 and up is always a counter. A registry's answer is exempt, since the registry marks
+  its own pre-releases.
+- **Development series.** Declared by the recipe's `devseries` key, space-separated: `odd-minor`
+  (an odd second number is a development series — GLib, Perl) and `preview-minor` (a second number
+  of 90 or more previews the next major — Pango 1.90 is Pango 2). `gstreamer.freedesktop.org` is
+  `odd-minor` without asking. `download.gnome.org` is not: libxml2 2.15 and librsvg 2.63 are stable
+  there, so its odd-minor projects carry the key.
+- **Series.** A port that stays on one line declares it with the `series` key: a version prefix,
+  matched on whole components, so `21` holds `21.1.8` and not `210.1`, and `5.4` holds `5.4.9` and
+  not `5.5.0`. A release past it is never a candidate, and a directory walk skips a sibling that
+  holds none of the line. The newest such release is remembered: a port with nothing newer in its
+  line is *current*, and the answer names what is past it — `held to series 21; newest upstream
+  23.1.2`. The slots (`llvm21`, `lua54`, `openssl3`, `docbook-xml`) carry it, and so does a
+  hold a consumer forces (`python3-pydantic-core`, at the one version the pydantic vendored in
+  `ocrmypdf` names).
+
+### Proving
+
+A rendered URL identical to the recipe's own proves nothing — the version is not in it — and is
+never requested. A host that answers HEAD 403, 405 or 501 is asked again with a one-byte ranged
+GET, since refusing a method is not the same as having no such file. Three misses in a row within a
+major newer than the pin's skips the rest of that major: a template that cannot fetch its three
+newest releases cannot fetch any of them (`SDL2-<v>.tar.gz` under SDL 3's tags). At most twenty
+candidates are requested per port. A proved candidate that is not the newest upstream names comes
+with the newest in its line — a series directory written `${version%.*}` turns `0.21.8.2` into a
+`0.21.8/` upstream never made — so the review shows what the template cannot fetch.
+
+An HTTP request is tried three times, pausing two and then five seconds, when the answer is one a
+busy host gives and a missing file does not: no response at all, 429, or 5xx. A 200 whose body
+stopped part-way counts as no response, since a cut listing is missing its newest entries, and so
+does a redirect whose next hop never answered. A git tag
+listing has no status to read and is tried once more, after two seconds, on any failure. Repology's
+retries wait for their turn under its one-a-second limit like any other request, and a 429 from it
+waits ten seconds first.
+
+### Outcomes
 
 There are three outcomes, never two. *Unknown* is never folded into *current*, because that would
 be a confident wrong answer — the one thing this tool must not give. A listing that could not be
-reached, one whose tail was cut off by a cap (archive indexes sort ascending, so the dropped
-entries are the newest), and one whose candidates all failed to resolve are each unknown, with a
-reason.
+reached, one whose tail was cut off by a cap or a failed transfer (archive indexes sort ascending,
+so the dropped entries are the newest), a later series directory that could not be listed, a tag
+list naming a later release under another prefix, one whose candidates all failed to resolve, and
+a source URL with no version in it are each unknown, with a reason that names the newest version
+upstream when one was seen. So are a source that is no URL, a recipe whose version is not written
+in its source URL (a bundle numbered apart from its sources), a pinned commit no release branch is
+at, and a SourceForge feed ending at the pin of a project whose new repository tags later or cannot
+be read, or that repology knows a later release of. A *current* answer carries a reason too when there is more to it: a series held,
+or a pinned commit at a branch tip. A *newer* one names a GitHub tag with no release, marked
+low-confidence.
 
-Forge tag feeds need no authentication and have no rate limit worth worrying about, unlike the
-equivalent programmatic interfaces. The package-tracking service is the fallback of last resort,
-rate-limited and marked low-confidence; it is never upstream itself.
+Checks run eight at a time (`--jobs`), each in its own process; a whole-tree run takes minutes rather
+than an hour, and a check that dies before reporting leaves its port unknown. Results are cached for
+a day in `ports/.update-cache.json`, each stamped with the checker logic that reached it; an entry
+from other logic is checked again, so a changed checker never serves its predecessor's answers.
+`--refresh` ignores the cache.
 
 The grouping key is the forge organisation plus the current version, not a name prefix. A name rule
 misses the member of a release family whose repository is named differently, while all of them
@@ -598,8 +845,8 @@ Exit codes: 0 means every named port is current, 1 means `--check` found at leas
 means a bump was accepted but its archive never made it to disk — the one state this tool exists to keep a
 build from inheriting silently.
 
-The tool never runs version control. Accepting a bump rewrites a `version =` line and re-fetches
-the archive; committing that stays a human decision.
+The tool never runs version control on the tree. Accepting a bump rewrites a `version =` line and
+re-fetches the archive; committing that stays a human decision.
 
 ## Committing sources
 

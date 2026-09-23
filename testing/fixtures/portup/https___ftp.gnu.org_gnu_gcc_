@@ -1,0 +1,183 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+ <head>
+  <title>Index of /gnu/gcc</title>
+ </head>
+ <body>
+<h1>Index of /gnu/gcc</h1>
+  <table>
+   <tr><th valign="top"><img src="/icons/blank.gif" alt="[ICO]"></th><th><a href="?C=N;O=D">Name</a></th><th><a href="?C=M;O=A">Last modified</a></th><th><a href="?C=S;O=A">Size</a></th><th><a href="?C=D;O=A">Description</a></th></tr>
+   <tr><th colspan="5"><hr></th></tr>
+<tr><td valign="top"><img src="/icons/back.gif" alt="[PARENTDIR]"></td><td><a href="/gnu/">Parent Directory</a></td><td>&nbsp;</td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/unknown.gif" alt="[   ]"></td><td><a href="README.olderversions">README.olderversions</a></td><td align="right">2001-01-25 11:42  </td><td align="right">120 </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="g++-2.5.0-testsuite.tar.gz">g++-2.5.0-testsuite.tar.gz</a></td><td align="right">1993-10-29 03:00  </td><td align="right">185K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-1.42.tar.gz">gcc-1.42.tar.gz</a></td><td align="right">1992-09-20 00:00  </td><td align="right">1.8M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.3.3-testsuite.tar.gz">gcc-2.3.3-testsuite.tar.gz</a></td><td align="right">2001-01-25 11:37  </td><td align="right">214K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.7.2.3.tar.gz">gcc-2.7.2.3.tar.gz</a></td><td align="right">2001-01-25 11:39  </td><td align="right">6.8M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.8.0-2.8.1.diff.gz">gcc-2.8.0-2.8.1.diff.gz</a></td><td align="right">1998-03-04 03:00  </td><td align="right">123K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.8.0.tar.gz">gcc-2.8.0.tar.gz</a></td><td align="right">1998-01-14 03:00  </td><td align="right">8.1M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.8.1.tar.gz">gcc-2.8.1.tar.gz</a></td><td align="right">1998-03-04 03:00  </td><td align="right">8.1M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.95.1.tar.gz">gcc-2.95.1.tar.gz</a></td><td align="right">2001-03-22 11:44  </td><td align="right"> 12M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-2.95.1/">gcc-2.95.1/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.95.2.tar.gz">gcc-2.95.2.tar.gz</a></td><td align="right">2001-03-22 11:44  </td><td align="right"> 12M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-2.95.2/">gcc-2.95.2/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.95.3.tar.gz">gcc-2.95.3.tar.gz</a></td><td align="right">2001-03-22 11:44  </td><td align="right"> 12M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-2.95.3/">gcc-2.95.3/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-2.95.tar.gz">gcc-2.95.tar.gz</a></td><td align="right">2001-03-22 12:38  </td><td align="right"> 12M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-2.95/">gcc-2.95/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.0.1.tar.gz">gcc-3.0.1.tar.gz</a></td><td align="right">2001-08-20 13:37  </td><td align="right"> 17M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.0.1/">gcc-3.0.1/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.0.2.tar.gz">gcc-3.0.2.tar.gz</a></td><td align="right">2001-10-23 21:07  </td><td align="right"> 17M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.0.2/">gcc-3.0.2/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.0.3.tar.gz">gcc-3.0.3.tar.gz</a></td><td align="right">2001-12-20 18:43  </td><td align="right"> 18M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.0.3/">gcc-3.0.3/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.0.4.tar.gz">gcc-3.0.4.tar.gz</a></td><td align="right">2002-02-21 14:31  </td><td align="right"> 18M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.0.4/">gcc-3.0.4/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.0.tar.gz">gcc-3.0.tar.gz</a></td><td align="right">2001-06-18 03:15  </td><td align="right"> 17M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.0/">gcc-3.0/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.1.1.tar.gz">gcc-3.1.1.tar.gz</a></td><td align="right">2002-07-26 12:29  </td><td align="right"> 26M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.1.1/">gcc-3.1.1/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.1.tar.gz">gcc-3.1.tar.gz</a></td><td align="right">2002-05-15 02:28  </td><td align="right"> 26M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.1/">gcc-3.1/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.2.1.tar.gz">gcc-3.2.1.tar.gz</a></td><td align="right">2002-11-19 16:23  </td><td align="right"> 26M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.2.1/">gcc-3.2.1/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.2.2.tar.gz">gcc-3.2.2.tar.gz</a></td><td align="right">2003-02-04 22:56  </td><td align="right"> 25M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.2.2/">gcc-3.2.2/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.2.3.tar.gz">gcc-3.2.3.tar.gz</a></td><td align="right">2003-04-23 17:18  </td><td align="right"> 26M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.2.3/">gcc-3.2.3/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.2.tar.gz">gcc-3.2.tar.gz</a></td><td align="right">2002-08-15 03:30  </td><td align="right"> 26M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.2/">gcc-3.2/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.3.1.tar.gz">gcc-3.3.1.tar.gz</a></td><td align="right">2003-08-04 15:00  </td><td align="right"> 30M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3.1/">gcc-3.3.1/</a></td><td align="right">2003-08-07 17:52  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.3.2.tar.gz">gcc-3.3.2.tar.gz</a></td><td align="right">2003-10-16 22:53  </td><td align="right"> 30M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/unknown.gif" alt="[   ]"></td><td><a href="gcc-3.3.2.tar.gz.sig">gcc-3.3.2.tar.gz.sig</a></td><td align="right">2003-10-17 11:26  </td><td align="right"> 65 </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3.2/">gcc-3.3.2/</a></td><td align="right">2003-10-17 11:26  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3.3/">gcc-3.3.3/</a></td><td align="right">2004-02-25 11:01  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3.4/">gcc-3.3.4/</a></td><td align="right">2004-06-23 17:55  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3.5/">gcc-3.3.5/</a></td><td align="right">2005-01-04 20:00  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3.6/">gcc-3.3.6/</a></td><td align="right">2005-05-03 11:35  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-3.3.tar.gz">gcc-3.3.tar.gz</a></td><td align="right">2003-05-14 02:02  </td><td align="right"> 30M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.3/">gcc-3.3/</a></td><td align="right">2003-08-02 07:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.0/">gcc-3.4.0/</a></td><td align="right">2004-04-20 00:55  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.1/">gcc-3.4.1/</a></td><td align="right">2004-07-09 15:29  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.2/">gcc-3.4.2/</a></td><td align="right">2004-09-06 20:59  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.3/">gcc-3.4.3/</a></td><td align="right">2004-11-16 00:30  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.4/">gcc-3.4.4/</a></td><td align="right">2005-05-19 12:15  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.5/">gcc-3.4.5/</a></td><td align="right">2005-12-01 04:25  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-3.4.6/">gcc-3.4.6/</a></td><td align="right">2006-03-10 07:15  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.0.0/">gcc-4.0.0/</a></td><td align="right">2005-04-21 12:45  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.0.1/">gcc-4.0.1/</a></td><td align="right">2005-07-07 21:40  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.0.2/">gcc-4.0.2/</a></td><td align="right">2005-09-28 10:25  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.0.3/">gcc-4.0.3/</a></td><td align="right">2006-03-10 02:05  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.0.4/">gcc-4.0.4/</a></td><td align="right">2007-01-31 09:55  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.1.0/">gcc-4.1.0/</a></td><td align="right">2006-02-28 14:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.1.1/">gcc-4.1.1/</a></td><td align="right">2006-05-24 22:45  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.1.2/">gcc-4.1.2/</a></td><td align="right">2007-02-14 03:10  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.2.0/">gcc-4.2.0/</a></td><td align="right">2007-05-14 15:15  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.2.1/">gcc-4.2.1/</a></td><td align="right">2007-07-19 23:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.2.2/">gcc-4.2.2/</a></td><td align="right">2007-10-08 14:05  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.2.3/">gcc-4.2.3/</a></td><td align="right">2008-02-01 19:10  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.2.4/">gcc-4.2.4/</a></td><td align="right">2008-05-19 16:00  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.0/">gcc-4.3.0/</a></td><td align="right">2008-03-09 15:30  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.1/">gcc-4.3.1/</a></td><td align="right">2008-06-08 16:55  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.2/">gcc-4.3.2/</a></td><td align="right">2008-09-03 15:25  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.3/">gcc-4.3.3/</a></td><td align="right">2009-01-28 17:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.4/">gcc-4.3.4/</a></td><td align="right">2009-08-04 18:30  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.5/">gcc-4.3.5/</a></td><td align="right">2010-05-28 18:00  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.3.6/">gcc-4.3.6/</a></td><td align="right">2011-06-27 17:45  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.0/">gcc-4.4.0/</a></td><td align="right">2009-04-21 10:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.1/">gcc-4.4.1/</a></td><td align="right">2009-07-22 06:20  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.2/">gcc-4.4.2/</a></td><td align="right">2009-10-15 08:36  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.3/">gcc-4.4.3/</a></td><td align="right">2010-01-21 08:36  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.4/">gcc-4.4.4/</a></td><td align="right">2010-04-30 15:18  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.5/">gcc-4.4.5/</a></td><td align="right">2010-10-01 07:24  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.6/">gcc-4.4.6/</a></td><td align="right">2011-04-16 06:37  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.4.7/">gcc-4.4.7/</a></td><td align="right">2012-03-13 09:06  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.5.0/">gcc-4.5.0/</a></td><td align="right">2010-05-28 17:25  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.5.1/">gcc-4.5.1/</a></td><td align="right">2010-07-31 07:30  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.5.2/">gcc-4.5.2/</a></td><td align="right">2010-12-16 10:00  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.5.3/">gcc-4.5.3/</a></td><td align="right">2011-04-28 19:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.5.4/">gcc-4.5.4/</a></td><td align="right">2012-07-02 11:28  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.6.0/">gcc-4.6.0/</a></td><td align="right">2011-03-25 15:47  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.6.1/">gcc-4.6.1/</a></td><td align="right">2011-06-27 08:21  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.6.2/">gcc-4.6.2/</a></td><td align="right">2011-10-26 09:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.6.3/">gcc-4.6.3/</a></td><td align="right">2012-03-01 10:11  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.6.4/">gcc-4.6.4/</a></td><td align="right">2013-04-12 12:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.7.0/">gcc-4.7.0/</a></td><td align="right">2012-03-22 05:36  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.7.1/">gcc-4.7.1/</a></td><td align="right">2012-06-14 08:36  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.7.2/">gcc-4.7.2/</a></td><td align="right">2012-09-20 10:58  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.7.3/">gcc-4.7.3/</a></td><td align="right">2013-04-11 05:41  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.7.4/">gcc-4.7.4/</a></td><td align="right">2014-06-12 14:36  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.8.0/">gcc-4.8.0/</a></td><td align="right">2013-03-22 15:18  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.8.1/">gcc-4.8.1/</a></td><td align="right">2013-05-31 06:40  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.8.2/">gcc-4.8.2/</a></td><td align="right">2013-10-16 05:06  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.8.3/">gcc-4.8.3/</a></td><td align="right">2014-05-22 07:55  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.8.4/">gcc-4.8.4/</a></td><td align="right">2014-12-19 08:06  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.8.5/">gcc-4.8.5/</a></td><td align="right">2015-06-23 11:36  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.9.0/">gcc-4.9.0/</a></td><td align="right">2014-04-22 07:16  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.9.1/">gcc-4.9.1/</a></td><td align="right">2014-07-16 09:16  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.9.2/">gcc-4.9.2/</a></td><td align="right">2014-10-30 06:01  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.9.3/">gcc-4.9.3/</a></td><td align="right">2015-06-26 16:30  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-4.9.4/">gcc-4.9.4/</a></td><td align="right">2016-08-03 04:01  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-5.1.0/">gcc-5.1.0/</a></td><td align="right">2015-04-22 06:41  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-5.2.0/">gcc-5.2.0/</a></td><td align="right">2015-07-16 08:21  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-5.3.0/">gcc-5.3.0/</a></td><td align="right">2015-12-04 10:56  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-5.4.0/">gcc-5.4.0/</a></td><td align="right">2016-06-03 10:01  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-5.5.0/">gcc-5.5.0/</a></td><td align="right">2017-10-10 08:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-6.1.0/">gcc-6.1.0/</a></td><td align="right">2016-04-27 06:35  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-6.2.0/">gcc-6.2.0/</a></td><td align="right">2016-08-22 13:06  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-6.3.0/">gcc-6.3.0/</a></td><td align="right">2016-12-21 06:00  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-6.4.0/">gcc-6.4.0/</a></td><td align="right">2017-07-04 06:21  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-6.5.0/">gcc-6.5.0/</a></td><td align="right">2018-10-30 04:35  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-7.1.0/">gcc-7.1.0/</a></td><td align="right">2017-05-02 11:21  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-7.2.0/">gcc-7.2.0/</a></td><td align="right">2017-08-14 05:01  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-7.3.0/">gcc-7.3.0/</a></td><td align="right">2018-01-25 04:31  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-7.4.0/">gcc-7.4.0/</a></td><td align="right">2018-12-06 11:20  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-7.5.0/">gcc-7.5.0/</a></td><td align="right">2019-11-14 03:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-8.1.0/">gcc-8.1.0/</a></td><td align="right">2018-05-02 05:35  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-8.2.0/">gcc-8.2.0/</a></td><td align="right">2018-07-26 06:35  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-8.3.0/">gcc-8.3.0/</a></td><td align="right">2019-02-22 09:55  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-8.4.0/">gcc-8.4.0/</a></td><td align="right">2020-03-04 04:05  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-8.5.0/">gcc-8.5.0/</a></td><td align="right">2021-05-14 05:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-9.1.0/">gcc-9.1.0/</a></td><td align="right">2019-05-03 04:46  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-9.2.0/">gcc-9.2.0/</a></td><td align="right">2019-08-12 04:35  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-9.3.0/">gcc-9.3.0/</a></td><td align="right">2020-03-12 07:40  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-9.4.0/">gcc-9.4.0/</a></td><td align="right">2021-06-01 04:29  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-9.5.0/">gcc-9.5.0/</a></td><td align="right">2022-05-27 03:54  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-10.1.0/">gcc-10.1.0/</a></td><td align="right">2020-05-07 15:40  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-10.2.0/">gcc-10.2.0/</a></td><td align="right">2020-07-23 03:13  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-10.3.0/">gcc-10.3.0/</a></td><td align="right">2021-04-08 08:28  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-10.4.0/">gcc-10.4.0/</a></td><td align="right">2022-06-28 06:11  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-10.5.0/">gcc-10.5.0/</a></td><td align="right">2023-07-07 03:48  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-11.1.0/">gcc-11.1.0/</a></td><td align="right">2021-04-27 06:45  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-11.2.0/">gcc-11.2.0/</a></td><td align="right">2021-07-28 03:33  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-11.3.0/">gcc-11.3.0/</a></td><td align="right">2022-04-21 04:57  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-11.4.0/">gcc-11.4.0/</a></td><td align="right">2023-05-29 05:28  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-11.5.0/">gcc-11.5.0/</a></td><td align="right">2024-07-19 02:26  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-12.1.0/">gcc-12.1.0/</a></td><td align="right">2022-05-06 04:13  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-12.2.0/">gcc-12.2.0/</a></td><td align="right">2022-08-19 04:50  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-12.3.0/">gcc-12.3.0/</a></td><td align="right">2023-05-08 08:51  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-12.4.0/">gcc-12.4.0/</a></td><td align="right">2024-06-24 17:37  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-12.5.0/">gcc-12.5.0/</a></td><td align="right">2025-07-11 03:10  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-13.1.0/">gcc-13.1.0/</a></td><td align="right">2023-04-26 04:01  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-13.2.0/">gcc-13.2.0/</a></td><td align="right">2023-07-27 04:53  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-13.3.0/">gcc-13.3.0/</a></td><td align="right">2024-05-21 04:54  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-13.4.0/">gcc-13.4.0/</a></td><td align="right">2025-06-05 12:44  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-13.5.0/">gcc-13.5.0/</a></td><td align="right">2026-09-11 03:46  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-14.1.0/">gcc-14.1.0/</a></td><td align="right">2024-05-07 04:13  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-14.2.0/">gcc-14.2.0/</a></td><td align="right">2024-08-01 05:00  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-14.3.0/">gcc-14.3.0/</a></td><td align="right">2025-05-23 07:52  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-14.4.0/">gcc-14.4.0/</a></td><td align="right">2026-06-26 05:06  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-15.1.0/">gcc-15.1.0/</a></td><td align="right">2025-04-25 05:12  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-15.2.0/">gcc-15.2.0/</a></td><td align="right">2025-08-08 03:39  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-15.3.0/">gcc-15.3.0/</a></td><td align="right">2026-06-12 02:58  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-16.1.0/">gcc-16.1.0/</a></td><td align="right">2026-04-30 05:30  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/folder.gif" alt="[DIR]"></td><td><a href="gcc-16.2.0/">gcc-16.2.0/</a></td><td align="right">2026-08-07 04:40  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gcc-vms-1.42.tar.gz">gcc-vms-1.42.tar.gz</a></td><td align="right">1992-11-24 03:00  </td><td align="right">836K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="gnu-objc-issues-1.0.tar.gz">gnu-objc-issues-1.0.tar.gz</a></td><td align="right">1993-03-08 03:00  </td><td align="right">169K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/hand.right.gif" alt="[   ]"></td><td><a href="sed-2.05.bin.README">sed-2.05.bin.README</a></td><td align="right">1999-08-10 16:17  </td><td align="right">477 </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/unknown.gif" alt="[   ]"></td><td><a href="sed-2.05.bin.hpux10">sed-2.05.bin.hpux10</a></td><td align="right">1997-07-22 03:00  </td><td align="right">304K</td><td>&nbsp;</td></tr>
+   <tr><th colspan="5"><hr></th></tr>
+</table>
+<address>Apache/2.4.52 (Trisquel_GNU/Linux) Server at ftp.gnu.org Port 443</address>
+</body></html>

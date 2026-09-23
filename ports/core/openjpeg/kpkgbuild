@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = openjpeg
-version     = 2.5.3
+version     = 2.5.4
 release     = 1
 source      = https://github.com/uclouvain/openjpeg/archive/refs/tags/v$version.tar.gz
-sha256      = 368fe0468228e767433c9ebdea82ad9d801a3ad1e4234421f352c8b06e7aa707  openjpeg-2.5.3.tar.gz
+sha256      = a695fbe19c0165f295a8531b1e4e855cd94d0875d2f88ec4b61080677e27188a  openjpeg-2.5.4.tar.gz
 description = JPEG 2000 codec — what scanners, archives and PDFs put images in
 homepage    = https://www.openjpeg.org/
 depends     = cmake zlib libpng libtiff lcms2

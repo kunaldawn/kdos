@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = gef
-version     = 2025.01
+version     = 2026.01
 release     = 1
 source      = $name-$version.py::https://raw.githubusercontent.com/hugsy/gef/$version/gef.py
-sha256      = cf5795a042585d3791e5d63880050364f6338c10a91b409e530391c2391fe48d  gef-2025.01.py
+sha256      = 04cdfe961f1e9151933d32cf6b548d9e6a76a1aef8b27c020c575b8d4264ed20  gef-2026.01.py
 description = A gdb extension that makes a crash readable — context, heap and ROP
 homepage    = https://hugsy.github.io/gef/
 depends     = gdb python3

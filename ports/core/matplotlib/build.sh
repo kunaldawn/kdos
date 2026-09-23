@@ -13,10 +13,6 @@
 # first import otherwise probes for GUI toolkits, and on this host the ones it
 # looks for must not exist. A plot is a PNG, and libsixel is what puts it in a
 # terminal.
-#
-# qhull is NOT a dependency: matplotlib vendors it and there is no port, so the
-# bundled copy is the one built. It is used for Delaunay triangulation and
-# nothing else here consumes it.
 
 # NO VENDOR BUNDLE, for numpy's reason: mesonpy, pybind11 and setuptools_scm
 # are ports and --no-build-isolation reaches them.

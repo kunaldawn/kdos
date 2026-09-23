@@ -9,10 +9,14 @@
 # ---------------------------------
 
 name        = ncdu
-version     = 1.22
+version     = 2.11.1
 release     = 1
-source      = https://dev.yorhel.nl/download/ncdu-$version.tar.gz
-sha256      = 0ad6c096dc04d5120581104760c01b8f4e97d4191d6c9ef79654fa3c691a176b  ncdu-1.22.tar.gz
+source      = $name-$version.tar.gz::https://github.com/BratishkaErik/ncdu/archive/refs/tags/v$version.tar.gz
+source      = ncdudep-translate_c.tar.gz::https://codeberg.org/vancluever/translate-c/archive/119c5d0551c4b025d7a5d6963cf4dd32f9151a4b.tar.gz
+source      = ncdudep-aro.tar.gz::https://github.com/vancluever/arocc/archive/c32de628ac29c765f8794e86374810ae5fb5c115.tar.gz
+sha256      = 15fdf82c6e5c564ecfc0d794c2b6182972b5d80e37fff9a83c6c4e7af2c31a01  ncdu-2.11.1.tar.gz
+sha256      = 30f9ab7cf21677edfe9bc796f8fbb33cb008325e70154ba928be79aeb0146980  ncdudep-translate_c.tar.gz
+sha256      = 3b5740cf1f122d53589e8d6bbf99e37325b278d4270523367b19842094475cd7  ncdudep-aro.tar.gz
 description = ncdu — NCurses Disk Usage analyzer
-homepage    = https://dev.yorhel.nl/ncdu
-depends     = ncurses
+homepage    = https://github.com/BratishkaErik/ncdu
+depends     = zig ncurses zstd

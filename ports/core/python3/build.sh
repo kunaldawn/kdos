@@ -11,15 +11,13 @@
 
 ./configure \
 	--prefix=/usr \
-	--enable-computed-gotos \
-	--enable-dbmliborder=gdm:ndbm \
 	--enable-ipv6 \
 	--enable-loadable-sqlite-extensions \
 	--enable-optimizations \
 	--enable-shared \
+	--with-computed-gotos \
 	--with-lto \
 	--with-system-expat \
-	--with-system-ffi \
 	--with-system-libmpdec \
 	--with-tzpath=/usr/share/zoneinfo
 make EXTRA_CFLAGS="$CFLAGS"

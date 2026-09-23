@@ -77,6 +77,9 @@ zig
 clang
 llvm
 lld
+llvm21
+clang21
+lld21
 
 # ---------------------------------
 # Essential Utilities
@@ -110,6 +113,7 @@ curl
 git
 ca-certificates
 openssl
+openssl3
 
 # ---------------------------------
 # Base Libraries & Database
@@ -136,6 +140,9 @@ libcap
 bc
 elfutils
 gperf
+perl-class-inspector
+perl-file-sharedir-install
+perl-file-sharedir
 intltool
 itstool
 gettext

@@ -11,7 +11,7 @@
 name        = miller
 version     = 6.21.0
 release     = 1
-source      = miller-6.21.0.tar.gz::https://github.com/johnkerl/miller/archive/refs/tags/v6.21.0.tar.gz
+source      = $name-$version.tar.gz::https://github.com/johnkerl/miller/archive/refs/tags/v$version.tar.gz
 sha256      = f92366ed67ffdbc75e8daf99a5087bcaa786c50f7c0eec08a8846e14fe7b2e5d  miller-6.21.0.tar.gz
 sha256      = 08b4d831038f90ff331aea734d634bc87658a3db1c9940e62b534dc44ed82163  miller-vendor-6.21.0.tar.xz
 description = awk for CSV, TSV and JSON — named fields instead of column numbers

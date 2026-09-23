@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#" version="2.0">
+  <channel xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#">
+    <title>MAD (MPEG Audio Decoder)</title>
+    <link>https://sourceforge.net</link>
+    <description><![CDATA[Files from MAD (MPEG Audio Decoder) MAD is a high-quality fixed-point MPEG audio decoder with 24-bit output. The implementation is entirely new, based on the ISO/IEC standards, and performs especially well on systems without native floating-point support.]]></description>
+    <pubDate>Wed, 23 Sep 2026 13:34:11 UT</pubDate>
+    <managingEditor>noreply@sourceforge.net (SourceForge.net)</managingEditor>
+    <docs>http://blogs.law.harvard.edu/tech/rss</docs>
+    <item>
+      <title><![CDATA[/madplay/0.15.2b/madplay-0.15.2b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/madplay/0.15.2b/madplay-0.15.2b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/madplay/0.15.2b/madplay-0.15.2b.tar.gz.sign/download</guid>
+      <pubDate>Wed, 25 Feb 2004 03:12:59 UT</pubDate>
+      <description><![CDATA[/madplay/0.15.2b/madplay-0.15.2b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">469778</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/madplay/0.15.2b/madplay-0.15.2b.tar.gz.sign/download" filesize="174"><media:hash algo="md5">24169bb01ad4e0b8dc152b7b81b845c5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/madplay/0.15.2b/madplay-0.15.2b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/madplay/0.15.2b/madplay-0.15.2b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/madplay/0.15.2b/madplay-0.15.2b.tar.gz/download</guid>
+      <pubDate>Wed, 25 Feb 2004 03:12:58 UT</pubDate>
+      <description><![CDATA[/madplay/0.15.2b/madplay-0.15.2b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">469777</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/madplay/0.15.2b/madplay-0.15.2b.tar.gz/download" filesize="590929"><media:hash algo="md5">6814b47ceaa99880c754c5195aa1aac1</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/madplay/0.15.1b/madplay-0.15.1b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/madplay/0.15.1b/madplay-0.15.1b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/madplay/0.15.1b/madplay-0.15.1b.tar.gz/download</guid>
+      <pubDate>Wed, 18 Feb 2004 04:03:47 UT</pubDate>
+      <description><![CDATA[/madplay/0.15.1b/madplay-0.15.1b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">465738</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/madplay/0.15.1b/madplay-0.15.1b.tar.gz/download" filesize="589594"><media:hash algo="md5">49f31fe08af0be7bf29d9d11a13abecc</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/madplay/0.15.1b/madplay-0.15.1b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/madplay/0.15.1b/madplay-0.15.1b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/madplay/0.15.1b/madplay-0.15.1b.tar.gz.sign/download</guid>
+      <pubDate>Wed, 18 Feb 2004 04:03:49 UT</pubDate>
+      <description><![CDATA[/madplay/0.15.1b/madplay-0.15.1b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">465739</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/madplay/0.15.1b/madplay-0.15.1b.tar.gz.sign/download" filesize="174"><media:hash algo="md5">14b6d34eb6d9cb55cd1be6741bafbcc8</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libmad/0.15.1b/libmad-0.15.1b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libmad/0.15.1b/libmad-0.15.1b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libmad/0.15.1b/libmad-0.15.1b.tar.gz/download</guid>
+      <pubDate>Wed, 18 Feb 2004 04:03:39 UT</pubDate>
+      <description><![CDATA[/libmad/0.15.1b/libmad-0.15.1b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">465736</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/libmad/0.15.1b/libmad-0.15.1b.tar.gz/download" filesize="502379"><media:hash algo="md5">1be543bc30c56fb6bea1d7bf6a64e66c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libmad/0.15.1b/libmad-0.15.1b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libmad/0.15.1b/libmad-0.15.1b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libmad/0.15.1b/libmad-0.15.1b.tar.gz.sign/download</guid>
+      <pubDate>Wed, 18 Feb 2004 04:03:41 UT</pubDate>
+      <description><![CDATA[/libmad/0.15.1b/libmad-0.15.1b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">465737</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/libmad/0.15.1b/libmad-0.15.1b.tar.gz.sign/download" filesize="189"><media:hash algo="md5">5ea85ec8437b340fbea219657fce2e4e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz/download</guid>
+      <pubDate>Wed, 18 Feb 2004 04:03:29 UT</pubDate>
+      <description><![CDATA[/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">465734</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz/download" filesize="338143"><media:hash algo="md5">e5808ad997ba32c498803822078748c3</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz.sign/download</guid>
+      <pubDate>Wed, 18 Feb 2004 04:03:33 UT</pubDate>
+      <description><![CDATA[/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">465735</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/libid3tag/0.15.1b/libid3tag-0.15.1b.tar.gz.sign/download" filesize="189"><media:hash algo="md5">930726db1570f84774a434b1e43ac3ad</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/madplay/0.15.0b/madplay-0.15.0b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/madplay/0.15.0b/madplay-0.15.0b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/madplay/0.15.0b/madplay-0.15.0b.tar.gz.sign/download</guid>
+      <pubDate>Fri, 27 Jun 2003 00:56:31 UT</pubDate>
+      <description><![CDATA[/madplay/0.15.0b/madplay-0.15.0b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">345906</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/madplay/0.15.0b/madplay-0.15.0b.tar.gz.sign/download" filesize="189"><media:hash algo="md5">62ea87f0fd919ca838c63601d1345d5d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/madplay/0.15.0b/madplay-0.15.0b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/madplay/0.15.0b/madplay-0.15.0b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/madplay/0.15.0b/madplay-0.15.0b.tar.gz/download</guid>
+      <pubDate>Fri, 27 Jun 2003 00:56:30 UT</pubDate>
+      <description><![CDATA[/madplay/0.15.0b/madplay-0.15.0b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">345905</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/madplay/0.15.0b/madplay-0.15.0b.tar.gz/download" filesize="459074"><media:hash algo="md5">35762ddeb46fba8bbf0a260b6c425e82</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz/download</guid>
+      <pubDate>Fri, 27 Jun 2003 00:49:26 UT</pubDate>
+      <description><![CDATA[/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">345902</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz/download" filesize="240656"><media:hash algo="md5">a625307d2cda4f3c609b79c1e3a93d87</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz.sign/download</guid>
+      <pubDate>Fri, 27 Jun 2003 00:49:27 UT</pubDate>
+      <description><![CDATA[/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">345903</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/libid3tag/0.15.0b/libid3tag-0.15.0b.tar.gz.sign/download" filesize="189"><media:hash algo="md5">8c29d7f510f57efa001ed20220fb43d4</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libmad/0.15.0b/libmad-0.15.0b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libmad/0.15.0b/libmad-0.15.0b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libmad/0.15.0b/libmad-0.15.0b.tar.gz.sign/download</guid>
+      <pubDate>Fri, 27 Jun 2003 00:42:20 UT</pubDate>
+      <description><![CDATA[/libmad/0.15.0b/libmad-0.15.0b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">345899</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/libmad/0.15.0b/libmad-0.15.0b.tar.gz.sign/download" filesize="189"><media:hash algo="md5">67e4daeb6cb7efff5b152d698479b337</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/libmad/0.15.0b/libmad-0.15.0b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/libmad/0.15.0b/libmad-0.15.0b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/libmad/0.15.0b/libmad-0.15.0b.tar.gz/download</guid>
+      <pubDate>Fri, 27 Jun 2003 00:35:54 UT</pubDate>
+      <description><![CDATA[/libmad/0.15.0b/libmad-0.15.0b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">345895</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/libmad/0.15.0b/libmad-0.15.0b.tar.gz/download" filesize="401829"><media:hash algo="md5">2e4487cdf922a6da2546bad74f643205</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.14.1b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.1b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.1b.tar.gz.sign/download</guid>
+      <pubDate>Sat, 10 Nov 2001 00:31:47 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.14.1b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">107520</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.1b.tar.gz.sign/download" filesize="286"><media:hash algo="md5">4de3b3ef106942d36fc4e58ae9a06383</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.14.1b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.1b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.1b.tar.gz/download</guid>
+      <pubDate>Sat, 10 Nov 2001 00:31:43 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.14.1b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">107519</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.1b.tar.gz/download" filesize="714918"><media:hash algo="md5">4e70a3129d93a47b19202dade3b86f89</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.14.2b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.2b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.2b.tar.gz.sign/download</guid>
+      <pubDate>Sat, 10 Nov 2001 00:32:44 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.14.2b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">107518</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.2b.tar.gz.sign/download" filesize="286"><media:hash algo="md5">764ed74b8854d840c582672fb855cad4</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.14.2b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.2b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.2b.tar.gz/download</guid>
+      <pubDate>Sat, 10 Nov 2001 00:32:38 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.14.2b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">107517</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.2b.tar.gz/download" filesize="721345"><media:hash algo="md5">eb3bfbe634ba9d5b4928aa11e0f6819d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.14.0b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.0b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.0b.tar.gz.sign/download</guid>
+      <pubDate>Fri, 19 Oct 2001 00:55:50 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.14.0b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">100925</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.0b.tar.gz.sign/download" filesize="286"><media:hash algo="md5">a9e653ebd0a193fb87ca6195a15a3777</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.14.0b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.0b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.0b.tar.gz/download</guid>
+      <pubDate>Fri, 19 Oct 2001 00:55:37 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.14.0b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">100924</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.14.0b.tar.gz/download" filesize="703852"><media:hash algo="md5">f19e39bd96c761fabc637e06884b3a9a</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.13.0b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.13.0b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.13.0b.tar.gz.sign/download</guid>
+      <pubDate>Wed, 11 Apr 2001 22:45:22 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.13.0b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">52041</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.13.0b.tar.gz.sign/download" filesize="286"><media:hash algo="md5">61047c9c6204ce36d93f756bea42a054</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.13.0b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.13.0b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.13.0b.tar.gz/download</guid>
+      <pubDate>Wed, 11 Apr 2001 22:45:19 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.13.0b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">52040</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.13.0b.tar.gz/download" filesize="552379"><media:hash algo="md5">46c6b090e534b2a710a96c6dfc1d95fe</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.12.5b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.5b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.5b.tar.gz.sign/download</guid>
+      <pubDate>Fri, 16 Feb 2001 17:50:02 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.12.5b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">41090</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.5b.tar.gz.sign/download" filesize="286"><media:hash algo="md5">46fbac396232777bad8744e02f8e42f4</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.12.5b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.5b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.5b.tar.gz/download</guid>
+      <pubDate>Fri, 16 Feb 2001 17:49:48 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.12.5b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">41089</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.5b.tar.gz/download" filesize="549826"><media:hash algo="md5">b156bec0dc7d134bf1a5acdb4216a36d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.12.0a.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.0a.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.0a.tar.gz.sign/download</guid>
+      <pubDate>Thu, 26 Oct 2000 02:57:06 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.12.0a.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23552</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.0a.tar.gz.sign/download" filesize="286"><media:hash algo="md5">bbf532f90dcb84f6b82a03e5871fcfdb</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.12.0a.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.0a.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.0a.tar.gz/download</guid>
+      <pubDate>Thu, 26 Oct 2000 02:57:03 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.12.0a.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23551</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.12.0a.tar.gz/download" filesize="427369"><media:hash algo="md5">95154ea824520ccb3dcc8b8e67c891f8</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.11.4b.tar.gz.sign]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.11.4b.tar.gz.sign/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.11.4b.tar.gz.sign/download</guid>
+      <pubDate>Wed, 04 Oct 2000 23:40:53 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.11.4b.tar.gz.sign]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">20996</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP message</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp; charset=us-ascii" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.11.4b.tar.gz.sign/download" filesize="286"><media:hash algo="md5">60451fa1ae5c74e72b532797d743a04d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/mad-0.11.4b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.11.4b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/mad/files/OldFiles/mad-0.11.4b.tar.gz/download</guid>
+      <pubDate>Wed, 04 Oct 2000 23:30:28 UT</pubDate>
+      <description><![CDATA[/OldFiles/mad-0.11.4b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">20995</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/mad/files/OldFiles/mad-0.11.4b.tar.gz/download" filesize="250743"><media:hash algo="md5">228e32e130dcb07b8b9c6cb7849fd05e</media:hash></media:content>
+    </item>
+  </channel>
+</rss>

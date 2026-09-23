@@ -1095,7 +1095,7 @@ static int preview(const char *geom, const char *at, const char *out)
 	failed = 1;
 	static const char *FIX[] = {
 		"[KDOS] Starting NetworkManager...",
-		"<info>  NetworkManager (version 1.56.0) is starting...",
+		"<info>  NetworkManager (version 1.58.1) is starting...",
 		"<error> [1765.4] bus-manager: could not get the system bus: "
 		"Could not connect: No such file or directory",
 		"<error> [1765.4] Failed to initialize: no D-Bus connection",

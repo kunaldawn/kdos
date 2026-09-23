@@ -19,7 +19,6 @@
 	--without-brotli \
 	--without-libidn2 \
 	--without-libpsl \
-	--without-librtmp \
 	--without-nghttp2 \
 	--without-zstd 
 make

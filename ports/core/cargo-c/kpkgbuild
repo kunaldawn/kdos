@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = cargo-c
-version     = 0.10.19
+version     = 0.10.25
 release     = 1
 source      = https://github.com/lu-zero/cargo-c/archive/refs/tags/v$version.tar.gz
-sha256      = 4136fbb1c25b1afdf1aaf473d00e532b73bbe02c7c53cb44965aff41ed328d20  cargo-c-0.10.19.tar.gz
-sha256      = 15f4984843dd1f9ca60233892f1fd3ed2e2b82f5be9739629dea7094991c33d3  cargo-c-vendor-0.10.19.tar.xz
+sha256      = 8054b12ae8b64259e7b63e40368406dd6b6510d5d92b658152b361c5d816a5de  cargo-c-0.10.25.tar.gz
+sha256      = 4a3c7939bd6288aca5487986794ff672fed05a651ad85ded19a6c7ff0fec55ab  cargo-c-vendor-0.10.25.tar.xz
 description = Cargo subcommand to build and install C-ABI compatibile dynamic and static libraries
 depends     = rust openssl
 vendoring   = rust

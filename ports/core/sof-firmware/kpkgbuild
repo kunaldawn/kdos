@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = sof-firmware
-version     = 2025.01.1
+version     = 2026.09.1
 release     = 1
 source      = https://github.com/thesofproject/sof-bin/releases/download/v$version/sof-bin-$version.tar.gz
-sha256      = a36210d9c245e81b0d9674d6b27d1fd4122968cf925aefc55b486d3650f88323  sof-firmware-2025.01.1.tar.gz
+sha256      = 42ce40ec98f366365eab8e046d779b416d80b6ff2513b8f6be2a61a88e679b73  sof-firmware-2026.09.1.tar.gz
 description = Intel SOF DSP firmware and topologies — every Tiger Lake+ laptop is silent without it
 homepage    = https://github.com/thesofproject/sof-bin
 depends     =

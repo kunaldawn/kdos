@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = lvm2
-version     = 2.03.38
+version     = 2.03.42
 release     = 1
 source      = $name-$version.tgz::https://sourceware.org/pub/lvm2/LVM2.$version.tgz
-sha256      = 322d44bf40de318e6e6b52c56999aaeb86b16c8267187ac2e01a44d4dc526960  lvm2-2.03.38.tgz
+sha256      = 352703ef5b72ebb22d4f250284a29b89fe64d4049c6bf64c693f9af486c8081e  lvm2-2.03.42.tgz
 description = Set of tools that manage logical partitions
 depends     = libaio

@@ -54,10 +54,11 @@ static void clip(const char *file)
 		;
 }
 
-/* grim needs wlr-screencopy. kdos-comp implements it (wlroots supplies both
- * that and ext-image-copy-capture), so this probe should always succeed — it
- * stays because the failure it catches is otherwise mute: grim exits non-zero
- * with nothing useful on stderr when the global is missing. */
+/* grim needs ext-image-copy-capture or, failing that, wlr-screencopy.
+ * kdos-comp implements both (wlroots supplies them), so this probe should
+ * always succeed — it stays because the failure it catches is otherwise mute:
+ * grim exits non-zero with nothing useful on stderr when neither global is
+ * there. */
 static int grim_works(void)
 {
 	KbArgv a = {0};

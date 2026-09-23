@@ -1,4 +1,4 @@
-# /etc/protocols, created 2026-02-14T00:48:40+0530
+# /etc/protocols, created 2026-09-23T12:20:15+0530
 # Source: https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xml
 hopopt         0 HOPOPT
 icmp           1 ICMP

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cups-browsed
+version     = 2.1.1
+release     = 1
+source      = https://github.com/OpenPrinting/$name/releases/download/$version/$name-$version.tar.xz
+sha256      = d185169a74e6a5731b6bd74cba8d269f34e5c71cb71ef1841f2fa91637ba1d58  cups-browsed-2.1.1.tar.xz
+description = Daemon that turns printers announced on the network into local CUPS queues
+homepage    = https://github.com/OpenPrinting/cups-browsed
+depends     = cups libcupsfilters libppd avahi glib pkgconf

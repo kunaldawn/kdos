@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = usql
-version     = 0.21.4
+version     = 0.21.6
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/xo/usql/archive/refs/tags/v$version.tar.gz
-sha256      = 6dfe613eff669606ba52f8c4a046d70677c47b2af61e87dc471ae2c44e50cca7  usql-0.21.4.tar.gz
-sha256      = 2eae553f8a3febff1740c89ec5d3c6806a325827819c90b0b5e16e610e8dd266  usql-vendor-0.21.4.tar.xz
+sha256      = 2997ae39ff509694aa7ce8e60dcf6b2ff2c431e0908332a7c28e95db64521c15  usql-0.21.6.tar.gz
+sha256      = bf9f0c39971855f915f0fb310352221d121cf8afacbbb3f7014e948f36f2f11f  usql-vendor-0.21.6.tar.xz
 description = One psql-class client for postgres, sqlite and the rest
 homepage    = https://github.com/xo/usql
 depends     = go

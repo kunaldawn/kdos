@@ -17,7 +17,6 @@ cmake -S . -B build -G Ninja \
         -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
         -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
         -DWITH_JPEG8=ON \
-		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -Wno-dev 
 cmake --build build
 DESTDIR=$PKG cmake --install build

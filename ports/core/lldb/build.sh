@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The top-level CMakeLists reads ../cmake/Modules for CMakePolicy.cmake before
-# it reads anything else, so the shared module tarball must sit beside the
-# unpacked tree under exactly that name or configure dies on the first include.
-mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
-
 # A STANDALONE LLDB IS THE ONLY SHAPE THIS TREE CAN BUILD: llvm and clang are
 # already installed packages, and LLDBStandalone.cmake resolves them through
 # their installed cmake packages. Pointing LLVM_DIR and Clang_DIR at those
@@ -27,8 +22,7 @@ mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
 #
 # LLDB_INCLUDE_TESTS MUST BE SET: a standalone configure pins LLVM_INCLUDE_TESTS
 # ON as an internal cache entry and LLDB_INCLUDE_TESTS defaults to it, so the
-# default build reaches for llvm's third-party/unittest and Testing/Support
-# trees — neither of which a source tarball for lldb alone carries.
+# default build pulls in the test suite and the lit tooling it needs.
 #
 # LIBEDIT CARRIES THE INTERACTIVE PROMPT: IOHandlerEditline constructs an
 # Editline only when LLDB_ENABLE_LIBEDIT is on, and without it `(lldb)` is a
@@ -36,7 +30,7 @@ mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
 # lldb accepts no other line editor — readline is not a choice it offers.
 # An explicit ON is a hard requirement rather than a hint, so a missing
 # libedit stops configure instead of quietly producing the narrow prompt.
-cmake -B build -G Ninja \
+cmake -S lldb -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \

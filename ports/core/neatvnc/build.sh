@@ -9,6 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# nettle4.patch is upstream's three commits that move the crypto layer to the
+# nettle 4 API (digest functions take no length; sha.h is sha2.h) and require
+# nettle/hogweed >= 4. 1.0.1 as released compiles only against nettle 3, and
+# the third commit is load-bearing on its own: without it the WebSocket
+# handshake passes the digest size where the hash type goes and crashes on
+# every connection.
+patch -p1 -i $PORT_SRC/nettle4.patch
+
 # The build tries subproject('aml') before dependency('aml1'), and the release
 # tarball ships no subprojects directory. --wrap-mode=nodownload makes a wrap
 # that appeared anyway an error instead of a fetch: a build that reaches the

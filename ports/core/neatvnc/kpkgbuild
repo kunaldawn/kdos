@@ -10,7 +10,7 @@
 
 name        = neatvnc
 version     = 1.0.1
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/any1/$name/archive/v$version.tar.gz
 sha256      = c37678fb1f9bbb8bd0932eb6dbd68bf10e937777c376c6c278ed37510b2cbd4b  neatvnc-1.0.1.tar.gz
 description = VNC server library with an emphasis on efficient screen updates

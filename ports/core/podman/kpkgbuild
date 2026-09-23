@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = podman
-version     = 5.8.2
+version     = 6.1.2
 release     = 1
-source      = https://github.com/containers/podman/archive/v$version.tar.gz
-sha256      = b20ea65afc5a58ea1cea019bd51a5d84eb9042d25d3eb82c55010c8815732d84  podman-5.8.2.tar.gz
+source      = https://github.com/podman-container-tools/podman/archive/v$version.tar.gz
+sha256      = a4b2b10bd560cf9b4c50c282bd04bb74486ff6c78bebd51427f779fe985fc1bb  podman-6.1.2.tar.gz
 description = A daemonless container engine for OCI containers (Docker alternative)
 homepage    = https://podman.io/
-depends     = go conmon crun netavark aardvark-dns passt slirp4netns fuse-overlayfs libseccomp libgpgme
+depends     = go conmon crun netavark aardvark-dns passt fuse-overlayfs libseccomp libgpgme

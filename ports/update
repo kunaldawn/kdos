@@ -27,7 +27,7 @@ SRC="$REPO_ROOT/src/tools/kdos-portup"
 LIBS="$REPO_ROOT/src/libs"
 
 if [ ! -x "$BIN" ] || [ -n "$(find "$SRC" -newer "$BIN" -name '*.c' 2>/dev/null)" ]; then
-    echo "==> Building the port updater..."
+    echo "==> Building the port updater..." >&2
     cc -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra -Werror \
        -I"$LIBS/libkbase" -I"$LIBS/libkpkg" -I"$LIBS/libkbuild" -I"$SRC" \
        -o "$BIN" "$SRC"/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkpkg/*.c \

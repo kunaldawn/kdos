@@ -33,6 +33,8 @@
 # which of LLVM's 413 components each target transitively needs.
 export LDFLAGS="$LDFLAGS -Wl,--copy-dt-needed-entries"
 
+patch -p1 -i $PORT_SRC/llvm-definitions.patch
+
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -41,8 +43,6 @@ cmake .. -G Ninja \
 	-DUSE_SYSTEM_LIBBPF=ON \
 	-DBUILD_TESTING=OFF \
 	-DENABLE_MAN=OFF \
-	-DBUILD_FUZZ=OFF \
-	-DUSE_BLAZESYM=OFF \
 	-DSTATIC_LINKING=OFF
 ninja
 DESTDIR=$PKG ninja install

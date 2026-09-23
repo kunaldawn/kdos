@@ -16,7 +16,7 @@ A decision elsewhere in the book that looks arbitrary is usually one of these be
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from upstream tarballs by 875 recipes — 851 under
+The host is compiled in this repository from upstream tarballs by 903 recipes — 879 under
 `ports/core` for upstream software, 24 under `src/` for the desktop, the daemons and the tools —
 running from a cross toolchain, through a musl userland, through a self-hosting pass, through the
 build tools, the libraries, the desktop and finally the kernel.
@@ -86,10 +86,10 @@ No source exists to build, so these four ports ship binaries.
 
 | Port | Version | Payload | What it is |
 |---|---|---|---|
-| `linux-firmware` | 20260810 | 619 MB | Upstream's complete tree, unpruned, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits |
-| `intel-ucode` | 20260811 | 17 MB | Upstream's whole Intel microcode set, concatenated into one bundle that rides in front of the initramfs for the kernel's early loader |
-| `sof-firmware` | 2025.01.1 | 10 MB | Intel SOF audio DSP firmware and topologies. Not part of `linux-firmware`; Tiger Lake and newer are silent without it |
-| `wireless-regdb` | 2025.07.10 | 31 KB | The wireless regulatory database. It must ship prebuilt: the kernel sets `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y` and verifies upstream's signature, so a locally regenerated database is rejected in silence |
+| `linux-firmware` | 20260916 | 632 MB | Upstream's complete tree, unpruned, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits |
+| `intel-ucode` | 20260812 | 17 MB | Upstream's whole Intel microcode set, concatenated into one bundle that rides in front of the initramfs for the kernel's early loader |
+| `sof-firmware` | 2026.09.1 | 17 MB | Intel SOF audio DSP firmware and topologies. Not part of `linux-firmware`; Tiger Lake and newer are silent without it |
+| `wireless-regdb` | 2026.09.03 | 31 KB | The wireless regulatory database. It must ship prebuilt: the kernel sets `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y` and verifies upstream's signature, so a locally regenerated database is rejected in silence |
 
 The firmware tree ships whole rather than curated. Pruning it is a bet on which hardware the
 machine turns out to have, and losing that bet is silent — `request_firmware()` finds nothing and
@@ -101,8 +101,8 @@ Rust and Go are each written in themselves, so building either needs a working o
 
 | Port | Version | Bootstrap payload |
 |---|---|---|
-| `rust` | 1.98.0 | 150 MB of upstream 1.97.1 stage-0 binaries — `rustc` (101 MB), `rust-std` (37 MB) and `cargo` (11 MB) — beside the 233 MB source |
-| `go` | 1.27.0 | 57 MB of upstream 1.25.9 bootstrap toolchain beside the 33 MB source |
+| `rust` | 1.98.1 | 150 MB of upstream 1.97.1 stage-0 binaries — `rustc` (101 MB), `rust-std` (37 MB) and `cargo` (11 MB) — beside the 233 MB source |
+| `go` | 1.27.1 | 57 MB of upstream 1.25.9 bootstrap toolchain beside the 33 MB source |
 
 Both bootstraps are pinned by version and sha256 like every other source, so the offline build
 still holds. Everything the bootstraps produce — the shipped `rustc`, `cargo` and `go`, and every
@@ -199,7 +199,7 @@ Measured from the tree.
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 851 |
+| Port recipes in `ports/core` | 879 |
 | Port recipes under `src/` for KDOS's own software | 24 |
 | Packages installed on the built system | 833 |
 | Applications in the catalogue | 183 |

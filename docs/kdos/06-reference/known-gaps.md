@@ -92,7 +92,7 @@ under `/usr/share/fonts/nerd-fonts`, and its `66-nerd-font-symbols.conf` accepts
 fallback for `monospace` and `Terminus`, so anything with a pixel layer can draw one. What turns
 them off is each program's own configuration: `yazi`'s generated theme empties all five `[icon]`
 tables, `starship`'s format uses box drawing only, the `eza` aliases say `--icons=never` rather than
-relying on a default, and `lazygit` 0.61 already ships `showIcons: false`. Turning them back on is
+relying on a default, and `lazygit` 0.65 already ships `showIcons: false`. Turning them back on is
 editing those four, one program at a time, with the understanding that the same shell on `tty1` will
 show holes. There is no VT-font patching, and the console is where this cannot be fixed.
 
@@ -171,6 +171,10 @@ configured. That a password account synchronises is unproven here and can only b
 real account. The XOAUTH2 lane is unproven in the same way and one step further back: that
 `libxoauth2.so` is in `/usr/lib/sasl2` and that `mbsync` links `libsasl2` can be measured on the
 image; that a provider accepts the token `pizauth` mints cannot.
+
+`ocrmypdf` does not open a HEIF image. It asks for the `pillow_heif` module, and the HEIF plugin
+this tree builds is `python3-pi-heif`, whose module is `pi_heif`, so a phone's HEIC photo has to be
+converted to PNG or JPEG before it can be made into a searchable PDF.
 
 ## Hardware and platform
 

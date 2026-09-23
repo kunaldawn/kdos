@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = iamb
-version     = 0.0.11
+version     = 0.0.12
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/ulyssa/iamb/archive/refs/tags/v$version.tar.gz
-sha256      = a5cf4f248e0893b5657c5ad1234207c09968018c5462d4063c096f0db459dd7c  iamb-0.0.11.tar.gz
-sha256      = ab24c8656ff7c59c702e3eb2bb898eb13a740748fc23e0d85b79f4c3f9e21872  iamb-vendor-0.0.11.tar.xz
+sha256      = 54e3e87eece1aff22e9d6bd6798492a1d23ea5e831e9d0889b51272c7d4f6cdb  iamb-0.0.12.tar.gz
+sha256      = 6934e4094c372c9513e11203046533e78d878eb338c649e13437c65dc9a06395  iamb-vendor-0.0.12.tar.xz
 description = A Matrix client with vim's keys, on the grid
 homepage    = https://iamb.chat/
 depends     = rust

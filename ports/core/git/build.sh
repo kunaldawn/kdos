@@ -15,4 +15,5 @@ make CFLAGS="$CFLAGS" \
 	perllibdir="$(/usr/bin/perl -MConfig -wle 'print $Config{installvendorlib}')" \
 	NO_REGEX=NeedsStartEnd \
 	NO_TCLTK=Yes \
+	NO_RUST=Yes \
 	DESTDIR=$PKG install

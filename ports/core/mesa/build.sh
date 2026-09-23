@@ -51,7 +51,6 @@ meson setup build \
 	-D glx=disabled \
 	-D gallium-drivers=${OPT_MESA_GALLIUM}crocus,iris,nouveau,r300,r600,radeonsi,svga,llvmpipe,softpipe,virgl,i915 \
 	-D platforms=wayland \
-	-D shared-glapi=enabled \
 	-D vulkan-drivers=amd,intel,intel_hasvk,swrast,virtio \
 	-D vulkan-layers=device-select,intel-nullhw,overlay \
 	-D video-codecs=vc1dec,h264dec,h264enc,h265dec,h265enc \

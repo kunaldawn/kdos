@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = binutils-riscv64-unknown-elf
-version     = 2.45.1
+version     = 2.47
 release     = 1
 _up         = binutils-$version
 source      = $name-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/binutils/$_up.tar.xz
-sha256      = 5fe101e6fe9d18fdec95962d81ed670fdee5f37e3f48f0bef87bddf862513aa5  binutils-riscv64-unknown-elf-2.45.1.tar.xz
+sha256      = 154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff  binutils-riscv64-unknown-elf-2.47.tar.xz
 description = The assembler, linker and object tools for riscv64-unknown-elf
 homepage    = https://www.gnu.org/software/binutils/
 depends     = zlib texinfo bison flex

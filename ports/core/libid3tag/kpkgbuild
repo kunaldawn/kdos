@@ -9,9 +9,10 @@
 # ---------------------------------
 
 name        = libid3tag
-version     = 0.15.1b
+version     = 0.16.4
 release     = 1
-source      = https://downloads.sourceforge.net/mad/libid3tag-$version.tar.gz
-sha256      = 63da4f6e7997278f8a3fef4c6a372d342f705051d1eeb6a46a86b03610e26151  libid3tag-0.15.1b.tar.gz
+source      = $name-$version.tar.gz::https://codeberg.org/tenacityteam/libid3tag/releases/download/$version/id3tag-$version-source.tar.gz
+sha256      = 8b6bc96016f6ab3a52b753349ed442e15181de9db1df01884f829e3d4f3d1e78  libid3tag-0.16.4.tar.gz
 description = ID3 tag manipulation library (optional dep of imlib2 image audio metadata)
-homepage    = https://www.underbit.com/products/mad/
+homepage    = https://codeberg.org/tenacityteam/libid3tag
+depends     = cmake gperf zlib

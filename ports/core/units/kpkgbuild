@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = units
-version     = 2.24
+version     = 2.27
 release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
-sha256      = 1e502c4edfacf20b29284716c72e5ddb51a495a2365d7b03e7960494c4a0c902  units-2.24.tar.gz
+sha256      = e1bbdb09672e7c08eee986749e7a1629eb84a6bdf41f5a2a79d6804444abbe10  units-2.27.tar.gz
 description = A 3000-entry unit conversion database that is itself a reference document
 homepage    = https://www.gnu.org/software/units/
 depends     = readline

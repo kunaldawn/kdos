@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = shared-mime-info
-version     = 1.10
-release     = 2
-source      = https://freedesktop.org/~hadess/$name-$version.tar.xz
-sha256      = c625a83b4838befc8cafcd54e3619946515d9e44d63d61c4adf7f5513ddfbebf  shared-mime-info-1.10.tar.xz
+version     = 2.5.1
+release     = 1
+source      = https://gitlab.freedesktop.org/xdg/$name/-/archive/$version/$name-$version.tar.gz
+sha256      = ea248ea157b7fa0165f4fe282c84919fa84c3f175553642f229c8f1ab7539128  shared-mime-info-2.5.1.tar.gz
 description = A MIME database
-depends     = glib libxml2 intltool
+depends     = glib libxml2 gettext meson ninja

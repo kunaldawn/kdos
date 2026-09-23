@@ -11,7 +11,7 @@
 name        = gdal
 version     = 3.13.3
 release     = 1
-source      = gdal-3.13.3.tar.gz::https://github.com/OSGeo/gdal/releases/download/v3.13.3/gdal-3.13.3.tar.gz
+source      = $name-$version.tar.gz::https://github.com/OSGeo/gdal/releases/download/v$version/$name-$version.tar.gz
 sha256      = 5e0c388d83da2d686cc00a40272882432cdb54edff43d4af173e532844a0a0ea  gdal-3.13.3.tar.gz
 description = The universal adapter — 150+ raster and vector formats behind one API
 homepage    = https://gdal.org/

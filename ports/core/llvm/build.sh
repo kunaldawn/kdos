@@ -9,10 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
-mv $SRC_ROOT/third-party-${version}.src $SRC_ROOT/third-party
-
-cmake -B build -G Ninja \
+cmake -S llvm -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \

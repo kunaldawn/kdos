@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = bottom
-version     = 0.12.3
+version     = 0.14.9
 release     = 1
 source      = https://github.com/ClementTsang/bottom/archive/refs/tags/$version.tar.gz
-sha256      = 1c70894f0eceb7034075959ff3080cf4706c11d7c012912c24e777abe4e62b70  bottom-0.12.3.tar.gz
-sha256      = b0fa7679b98392778f80fb157783d31cdc59ea09f6eaef7a6ffca0163439c287  bottom-vendor-0.12.3.tar.xz
+sha256      = 1dbb940c763fb583b7e1c7dfa165b73ed9a0ba712e72cc97311c5b1c098d5b72  bottom-0.14.9.tar.gz
+sha256      = 6475e7880a74123f19ceccf99d7339038a0d261e66ae0a7ab2a29e61a4d09e56  bottom-vendor-0.14.9.tar.xz
 description = bottom (btm) — yet another cross-platform graphical process/system monitor
 homepage    = https://github.com/ClementTsang/bottom
 depends     = rust

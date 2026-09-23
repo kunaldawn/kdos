@@ -374,7 +374,8 @@ at a time. `libkimg` returns every frame with the delay after it; the first is p
 go into the store, so the timer, the eviction, the budget and the replace-the-pixels-under-the-same-key
 trick are all the ones already there. The frames are taken, not composed: `libnsgif` has already
 applied disposal and transparency, so each one is the complete canvas and compositing it over the
-first would show the first through anything transparent in a later one.
+first would show the first through anything transparent in a later one. An animation loops for as
+long as it is on the screen: `libkimg` does not return the file's loop count.
 
 A sixel is handed to the decoder with its introducer put back on. `libkvt` consumes the DCS final
 `q` as a state transition and passes the parameters separately, and a sixel decoder leaves its own

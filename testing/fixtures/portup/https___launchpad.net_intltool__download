@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>intltool project files : intltool</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/@@/apple-touch-icon.png?v=2022" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/@@/favicon-32x32.png?v=2022" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/@@/favicon-16x16.png?v=2022" />
+    <link rel="manifest" href="/@@/site.webmanifest?v=2022" />
+    <link rel="mask-icon" href="/@@/safari-pinned-tab.svg?v=2022" color="#e9531f" />
+    <link rel="shortcut icon" href="/@@/favicon.ico?v=2022" />
+    <meta name="msapplication-TileColor" content="#da532c" />
+    <meta name="msapplication-config" content="/@@/browserconfig.xml?v=2022" />
+    <meta name="theme-color" content="#ffffff" />
+    
+    
+    
+
+    
+  
+  <link type="text/css" rel="stylesheet" media="screen, print" href="/+icing/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/combo.css" />
+
+
+    
+
+    
+      <meta name="description" content="Automatically extracts translatable strings from oaf, glade, bonobo ui, nautilus theme and other XML files into the po files.
+
+Automatically merges translations from po files back into .oaf files (encoding to be 7-bit clean). The merging mechanism can also be extended to support other types of XML files.
+
+Versions prior to 0.41 are available on http://ftp.gnome.org/pub/gnome/sources/intltool/" />
+      <meta property="og:description" content="Automatically extracts translatable strings from oaf, glade, bonobo ui, nautilus theme and other XML files into the po files.
+
+Automatically merges translations from po files back into .oaf files (encoding to be 7-bit clean). The merging mechanism can also be extended to support other types of XML files.
+
+Versions prior to 0.41 are available on http://ftp.gnome.org/pub/gnome/sources/intltool/" />
+    
+
+    
+    
+      <meta property="og:title" content="intltool project files : intltool" />
+      <meta property="og:type" content="website" />
+      <meta property="og:image" content="/@@/launchpad-og-image.png" />
+      <meta property="og:url" content="https://launchpad.net/intltool/+download" />
+      <meta property="og:site_name" content="Launchpad" />
+    
+
+    
+
+    
+  
+
+  
+  
+  <script type="text/javascript">
+    var LP = {
+        cache: {},
+        links: {}
+    };
+  </script>
+
+  
+
+  <script type="text/javascript">var cookie_scope = '; Path=/; Secure; Domain=.launchpad.net';</script>
+
+   <script type="text/javascript" src="/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?yui/yui/yui-min.js&amp;lp/meta.js&amp;yui/loader/loader-min.js"></script>
+   <script type="text/javascript">
+        var raw = null;
+        if (LP.devmode) {
+           raw = 'raw';
+        }
+        YUI.GlobalConfig = {
+            combine: true,
+            comboBase: '/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?',
+            root: 'yui/',
+            filter: raw,
+            debug: false,
+            fetchCSS: false,
+            maxURLLength: 2000,
+            groups: {
+                lp: {
+                    combine: true,
+                    base: '/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?lp/',
+                    comboBase: '/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?',
+                    root: 'lp/',
+                    // comes from including lp/meta.js
+                    modules: LP_MODULES,
+                    fetchCSS: false
+                }
+            }
+        }</script>
+
+  <script type="text/javascript">
+      // we need this to create a single YUI instance all events and code
+      // talks across. All instances of YUI().use should be based off of
+      // LPJS instead.
+      var LPJS = new YUI();
+  </script>
+
+
+
+    <script id="base-layout-load-scripts" type="text/javascript">
+        //<![CDATA[
+        LPJS.use('base', 'node', 'console', 'event',
+            'oop', 'lp', 'lp.app.foldables','lp.app.sorttable',
+            'lp.app.inlinehelp', 'lp.app.links',
+            'lp.bugs.bugtask_index', 'lp.bugs.subscribers',
+            'lp.app.ellipsis', 'lp.code.branchmergeproposal.diff',
+            'lp.views.global',
+             function(Y) {
+
+            Y.on("domready", function () {
+                var global_view = new Y.lp.views.Global();
+                global_view.render();
+
+                Y.lp.app.sorttable.SortTable.init();
+                Y.lp.app.inlinehelp.init_help();
+                Y.lp.activate_collapsibles();
+                Y.lp.app.foldables.activate();
+                Y.lp.app.links.check_valid_lp_links();
+            });
+
+            Y.on('lp:context:web_link:changed', function(e) {
+                  window.location = e.new_value;
+            });
+        });
+        //]]>
+    </script>
+    <script id="base-helper-functions" type="text/javascript">
+         //<![CDATA[
+        // This code is pulled from lp.js that needs to be available on every
+        // request. Pulling here to get it outside the scope of the YUI block.
+        function setFocusByName(name) {
+            // Focus the first element matching the given name which can be focused.
+            var nodes = document.getElementsByName(name);
+            var i, node;
+            for (i = 0; i < nodes.length; i++) {
+                node = nodes[i];
+                if (node.focus) {
+                    try {
+                        // Trying to focus a hidden element throws an error in IE8.
+                        if (node.offsetHeight !== 0) {
+                            node.focus();
+                        }
+                    } catch (e) {
+                        LPJS.use('console', function(Y) {
+                            Y.log('In setFocusByName(<' +
+                                node.tagName + ' type=' + node.type + '>): ' + e);
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+
+        function selectWidget(widget_name, event) {
+          if (event && (event.keyCode === 9 || event.keyCode === 13)) {
+              // Avoid firing if user is tabbing through or simply pressing
+              // enter to submit the form.
+              return;
+          }
+          document.getElementById(widget_name).checked = true;
+        }
+        //]]>
+    </script>
+
+    
+      
+    
+  </head>
+
+  <body id="document" itemscope="" itemtype="http://schema.org/WebPage" class="tab-overview
+      main_only
+      public
+      yui3-skin-sam">
+          
+          
+          
+    <div class="yui-d0">
+      <div id="locationbar" class="login-logout">
+        
+
+<div id="logincontrol"><a href="https://launchpad.net/intltool/+download/+login">Log in / Register</a></div>
+
+
+
+      </div><!--id="locationbar"-->
+
+      <div id="watermark" class="watermark-apps-portlet">
+        <div>
+          <a href="https://launchpad.net/intltool"><img alt="" width="64" height="64" src="https://launchpadlibrarian.net/99051026/intltool-icon-large.png" /></a>
+        </div>
+        <div class="wide">
+          <h2 id="watermark-heading"><a href="https://launchpad.net/intltool">intltool</a></h2>
+        </div>
+        
+  <!-- Application Menu -->
+  <ul class="facetmenu">
+    
+      <li class="overview active"><a href="https://launchpad.net/intltool">Overview</a></li>
+      
+      
+    
+    
+      
+      <li class="branches"><a href="https://code.launchpad.net/intltool">Code</a></li>
+      
+    
+    
+      
+      <li class="bugs"><a href="https://bugs.launchpad.net/intltool">Bugs</a></li>
+      
+    
+    
+      
+      <li class="specifications"><a href="https://blueprints.launchpad.net/intltool">Blueprints</a></li>
+      
+    
+    
+      
+      <li class="translations"><a href="https://translations.launchpad.net/intltool">Translations</a></li>
+      
+    
+    
+      
+      <li class="answers"><a href="https://answers.launchpad.net/intltool">Answers</a></li>
+      
+    
+  </ul>
+
+      </div>
+
+      
+        <div id="maincontent" class="yui-main">
+          <div class="yui-b" dir="ltr">
+            <div class="context-publication">
+              <h1>Download project files</h1>
+              
+
+              <div id="registration" class="registering">
+                
+              </div>
+            </div>
+
+            
+            <div id="request-notifications">
+              
+            </div>
+
+            
+              <div>
+
+  <p>
+    <a href="/+help-registry/verify-downloads.html" target="help">How do I verify a
+    download?</a>
+  </p>
+  <br />
+
+  <form id="project-downloads" method="POST" action="https://launchpad.net/intltool/+download">
+
+    
+
+    <div class="freeform-batch">
+    
+      
+      
+        <div id="series-trunk">
+
+          
+            
+
+            
+
+              <div class="top-portlet">
+                <h3>
+                  <a href="/intltool/trunk/0.51.0">
+                    0.51.0 release</a>
+                  from the
+                  <a href="/intltool/trunk">trunk</a> series released
+                  <time title="2015-03-09 01:43:00 UTC" datetime="2015-03-09T01:43:00+00:00">2015-03-09</time>
+                </h3>
+
+                
+                <div>
+                  <table class="listing" style="margin-top: 1em;">
+                    <thead>
+                      <tr>
+                        <th width="35%">File</th>
+                        <th width="45%">Description</th>
+                        <th>Downloads</th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        
+                          
+  
+
+  
+    <td>
+      <img alt="download icon" src="/@@/download" /><strong>  <a title="Source (158.5 KiB)" href="https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz">intltool-0.51.0.tar.gz</a> </strong>(<a href="https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz/+md5">md5</a>, <a href="https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz.asc">sig</a>)
+    </td>
+    <td>Source</td>
+    <td style="text-align: center;">
+      
+        10,411,845
+        <br />
+        <span class="lesser greyed-out">
+          last downloaded
+          
+          <strong>
+            4 weeks
+            ago
+          </strong>
+        </span>
+      
+      
+    </td>
+    
+  
+
+
+                        
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="2" style="padding-top: 1em; text-align: right;">
+                          Total downloads:
+                        </th>
+                        <td style="border: none; text-align: center;">
+                          10,411,845
+                        </td>
+                        
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                
+
+                
+              </div>
+            
+
+            <br />
+          
+
+        </div>
+      
+      
+        <div id="series-trunk">
+
+          
+            <div class="portlet-border" />
+
+            
+
+              <div class="top-portlet">
+                <h3>
+                  <a href="/intltool/trunk/0.50.2">
+                    0.50.2 release</a>
+                  from the
+                  <a href="/intltool/trunk">trunk</a> series released
+                  <time title="2012-02-26 18:50:00 UTC" datetime="2012-02-26T18:50:00+00:00">2012-02-26</time>
+                </h3>
+
+                <div id="release-information-0-50-2">
+
+                  <div class="collapsible">
+                    <div>Release information</div>
+                    <div class="hide-on-load">
+                    <div>
+                      <strong>Release notes:</strong>
+                      <div style="margin-bottom: 0px;" id="release-notes-0-50-2"><p>intltool 0.50.2 is another minor release improving backwards compatibility.<br />
+Only one bug is fixed in this release:</p>
+<p>&nbsp;* Use --no-translations only if intltool &gt;= 0.50 is available (#903340).<br />
+&nbsp;&nbsp;&nbsp;Patch contributed by Hib Eris (<a rel="nofollow" href="https://launchpad.net/~hiberis">https:/<wbr />/launchpad.<wbr />net/~hiberis</a>).</p></div>
+                    </div>
+
+                    <div>
+                      <strong>Changelog:</strong>
+                      <div style="margin-bottom: 0px;" id="changelog-0-50-2"><p>&nbsp;&nbsp;735 Danilo Šegan      2012-02-26<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Up the version number to 0.50.2.</p>
+<p>&nbsp;&nbsp;734 Danilo Šegan      2012-02-26 [merge]<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fix #903340: Use --no-translations only if detected intltool on the system is 0.50 or better. Patch by Hib Eris.</p></div>
+                    </div>
+                  </div>
+                  </div>
+                </div>
+                <div>
+                  <table class="listing" style="margin-top: 1em;">
+                    <thead>
+                      <tr>
+                        <th width="35%">File</th>
+                        <th width="45%">Description</th>
+                        <th>Downloads</th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        
+                          
+  
+
+  
+    <td>
+      <img alt="download icon" src="/@@/download" /><strong>  <a title="intltool 0.50.2 release tarball (185.0 KiB)" href="https://launchpad.net/intltool/trunk/0.50.2/+download/intltool-0.50.2.tar.gz">intltool-0.50.2.tar.gz</a> </strong>(<a href="https://launchpad.net/intltool/trunk/0.50.2/+download/intltool-0.50.2.tar.gz/+md5">md5</a>, <a href="https://launchpad.net/intltool/trunk/0.50.2/+download/intltool-0.50.2.tar.gz.asc">sig</a>)
+    </td>
+    <td>intltool 0.50.2 release tarball</td>
+    <td style="text-align: center;">
+      
+        2,172,167
+        <br />
+        <span class="lesser greyed-out">
+          last downloaded
+          
+          <strong>
+            4 weeks
+            ago
+          </strong>
+        </span>
+      
+      
+    </td>
+    
+  
+
+
+                        
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="2" style="padding-top: 1em; text-align: right;">
+                          Total downloads:
+                        </th>
+                        <td style="border: none; text-align: center;">
+                          2,172,167
+                        </td>
+                        
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                
+
+                
+              </div>
+            
+
+            <br />
+          
+
+        </div>
+      
+      
+        <div id="series-trunk">
+
+          
+            <div class="portlet-border" />
+
+            
+
+              <div class="top-portlet">
+                <h3>
+                  <a href="/intltool/trunk/0.50.1">
+                    0.50.1 release</a>
+                  from the
+                  <a href="/intltool/trunk">trunk</a> series released
+                  <time title="2012-02-05 09:21:00 UTC" datetime="2012-02-05T09:21:00+00:00">2012-02-05</time>
+                </h3>
+
+                <div id="release-information-0-50-1">
+
+                  <div class="collapsible">
+                    <div>Release information</div>
+                    <div class="hide-on-load">
+                    <div>
+                      <strong>Release notes:</strong>
+                      <div style="margin-bottom: 0px;" id="release-notes-0-50-1"><p>intltool 0.50.1<br />
+===============</p>
+<p>intltool 0.50.1 is a minor release with the following improvements:</p>
+<p>&nbsp;* Support AM_SILENT_RULES (#402516).<br />
+&nbsp;&nbsp;&nbsp;Patch contributed by Hib Eris (<a rel="nofollow" href="https://launchpad.net/~hiberis">https:/<wbr />/launchpad.<wbr />net/~hiberis</a>).</p>
+<p>&nbsp;* Improve support for extracting messages from GSettings files (#922685).<br />
+&nbsp;&nbsp;&nbsp;Patch contributed by Ryan Lortie (<a rel="nofollow" href="https://launchpad.net/~desrt">https:/<wbr />/launchpad.<wbr />net/~desrt</a>).</p>
+<p>&nbsp;* Support attribute tag extraction for Glade/GtkBuilder files (#923841).<br />
+&nbsp;&nbsp;&nbsp;Patch contributed by Ryan Lortie (<a rel="nofollow" href="https://launchpad.net/~desrt">https:/<wbr />/launchpad.<wbr />net/~desrt</a>).</p>
+<p>&nbsp;* Start including a ChangeLog in tarballs and provide a NEWS file (#924386).<br />
+&nbsp;&nbsp;&nbsp;This introduces a soft dependency on &quot;bzr&quot;: it&#x27;s only required for<br />
+&nbsp;&nbsp;&nbsp;maintainers who wish to regenerate a ChangeLog file from the bzr checkout.</p>
+<p>&nbsp;* Fix quoting of XGETTEXT variable when setting MSGMERGE and GENPOT in Mak...</p></div>
+                    </div>
+
+                    <div>
+                      <strong>Changelog:</strong>
+                      <div style="margin-bottom: 0px;" id="changelog-0-50-1"><p>&nbsp;&nbsp;732 Danilo Šegan      2012-02-05<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Up the version to 0.50.1.</p>
+<p>&nbsp;&nbsp;731 Danilo Šegan      2012-02-05 [merge]<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fix #924386: include ChangeLog in dist tarballs and create a NEWS file.</p>
+<p>&nbsp;&nbsp;730 Danilo Šegan      2012-02-05 [merge]<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="/bugs/402516" class="bug-link">Bug #402516</a>: support silent rules when merging translations and building MO files. Patch by Hib Eris.</p>
+<p>&nbsp;&nbsp;729 Danilo Šegan      2012-02-05<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ignore whitespace indentation in empty lines. Part of #922685 fix.</p>
+<p>&nbsp;&nbsp;728 Danilo Šegan      2012-01-30 [merge]<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Add support for translatable attribute (well, any) tags in glade files. Patch by Ryan Lortie.</p>
+<p>&nbsp;&nbsp;727 Danilo Segan      2012-01-27 [merge]<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="/bugs/922685" class="bug-link">Bug #922685</a>: Keep and normalize paragraphs in gsettings extraction. Strip starting/ending whitespace.  Patch by Ryan Lortie.</p>
+<p>&nbsp;&nbsp;726 Danilo Šegan      2011-12-10<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fixes bug: <a rel="nofollow" href="https://launchpad.net/bugs/900738">https:/<wbr />/launchpad.<wbr />net/bugs/<wbr />900738</a><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fix quoting of XGETTEXT variable when setting MSGMERGE and GENPOT in Makefile.  Patch contributed by Matthias Klose.</p></div>
+                    </div>
+                  </div>
+                  </div>
+                </div>
+                <div>
+                  <table class="listing" style="margin-top: 1em;">
+                    <thead>
+                      <tr>
+                        <th width="35%">File</th>
+                        <th width="45%">Description</th>
+                        <th>Downloads</th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        
+                          
+  
+
+  
+    <td>
+      <img alt="download icon" src="/@@/download" /><strong>  <a title="intltool 0.50.1 release tarball (184.2 KiB)" href="https://launchpad.net/intltool/trunk/0.50.1/+download/intltool-0.50.1.tar.gz">intltool-0.50.1.tar.gz</a> </strong>(<a href="https://launchpad.net/intltool/trunk/0.50.1/+download/intltool-0.50.1.tar.gz/+md5">md5</a>, <a href="https://launchpad.net/intltool/trunk/0.50.1/+download/intltool-0.50.1.tar.gz.asc">sig</a>)
+    </td>
+    <td>intltool 0.50.1 release tarball</td>
+    <td style="text-align: center;">
+      
+        2,604
+        <br />
+        <span class="lesser greyed-out">
+          last downloaded
+          
+          <strong>
+            7 weeks
+            ago
+          </strong>
+        </span>
+      
+      
+    </td>
+    
+  
+
+
+                        
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="2" style="padding-top: 1em; text-align: right;">
+                          Total downloads:
+                        </th>
+                        <td style="border: none; text-align: center;">
+                          2,604
+                        </td>
+                        
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                
+
+                
+              </div>
+            
+
+            <br />
+          
+
+        </div>
+      
+      
+        <div id="series-trunk">
+
+          
+            <div class="portlet-border" />
+
+            
+
+              <div class="top-portlet">
+                <h3>
+                  <a href="/intltool/trunk/0.50.0">
+                    0.50.0 release</a>
+                  from the
+                  <a href="/intltool/trunk">trunk</a> series released
+                  <time title="2011-10-08 21:50:00 UTC" datetime="2011-10-08T21:50:00+00:00">2011-10-08</time>
+                </h3>
+
+                <div id="release-information-0-50-0">
+
+                  <div class="collapsible">
+                    <div>Release information</div>
+                    <div class="hide-on-load">
+                    <div>
+                      <strong>Release notes:</strong>
+                      <div style="margin-bottom: 0px;" id="release-notes-0-50-0"><p>Among the bug fixes, the following stand out.</p>
+<p>&nbsp;<a href="/bugs/580526" class="bug-link">Bug #580526</a>: Finally, support for gsettings gschema.xml files is merged in, which should enable maintainers to get a slightly simpler build setup (i.e. no need to use NOMERGE rule anymore, and you can have intltool directly extract translations from .gschema.xml files).<br />
+&nbsp;<a href="/bugs/790574" class="bug-link">Bug #790574</a>: Let xgettext extract Scheme strings out, and add support for &lt;code&gt;intltool-<wbr />update -m&lt;/code&gt; to find files with marked strings.<br />
+&nbsp;<a href="/bugs/806006" class="bug-link">Bug #806006</a>: Improve handling of quotes in `intltool-update -m` so you get less (no?) warnings about mismatched quotes, and Python processing doesn&#x27;t get messed up with docstrings and similar.<br />
+&nbsp;<a href="/bugs/520986" class="bug-link">Bug #520986</a>: one for the translators—<wbr />messages are extracted in the order they appear in original files now, thus allowing translators to infe...</p></div>
+                    </div>
+
+                    
+                  </div>
+                  </div>
+                </div>
+                <div>
+                  <table class="listing" style="margin-top: 1em;">
+                    <thead>
+                      <tr>
+                        <th width="35%">File</th>
+                        <th width="45%">Description</th>
+                        <th>Downloads</th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        
+                          
+  
+
+  
+    <td>
+      <img alt="download icon" src="/@@/download" /><strong>  <a title="intltool 0.50.0 release tarball (139.5 KiB)" href="https://launchpad.net/intltool/trunk/0.50.0/+download/intltool-0.50.0.tar.gz">intltool-0.50.0.tar.gz</a> </strong>(<a href="https://launchpad.net/intltool/trunk/0.50.0/+download/intltool-0.50.0.tar.gz/+md5">md5</a>)
+    </td>
+    <td>intltool 0.50.0 release tarball</td>
+    <td style="text-align: center;">
+      
+        61,395
+        <br />
+        <span class="lesser greyed-out">
+          last downloaded
+          
+          <strong>
+            4 weeks
+            ago
+          </strong>
+        </span>
+      
+      
+    </td>
+    
+  
+
+
+                        
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="2" style="padding-top: 1em; text-align: right;">
+                          Total downloads:
+                        </th>
+                        <td style="border: none; text-align: center;">
+                          61,395
+                        </td>
+                        
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                
+
+                
+              </div>
+            
+
+            <br />
+          
+
+        </div>
+      
+      
+        <div id="series-trunk">
+
+          
+            <div class="portlet-border" />
+
+            
+
+              <div class="top-portlet">
+                <h3>
+                  <a href="/intltool/trunk/0.41.1">
+                    0.41.1 release</a>
+                  from the
+                  <a href="/intltool/trunk">trunk</a> series released
+                  <time title="2010-03-24 14:26:00 UTC" datetime="2010-03-24T14:26:00+00:00">2010-03-24</time>
+                </h3>
+
+                <div id="release-information-0-41-1">
+
+                  <div class="collapsible">
+                    <div>Release information</div>
+                    <div class="hide-on-load">
+                    <div>
+                      <strong>Release notes:</strong>
+                      <div style="margin-bottom: 0px;" id="release-notes-0-41-1"><p>This release adds support for context on GtkBuilder UI elements, fixes for out-of-source tree builds and a few intltool-update fixes for Windows and .py.in.</p></div>
+                    </div>
+
+                    
+                  </div>
+                  </div>
+                </div>
+                <div>
+                  <table class="listing" style="margin-top: 1em;">
+                    <thead>
+                      <tr>
+                        <th width="35%">File</th>
+                        <th width="45%">Description</th>
+                        <th>Downloads</th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        
+                          
+  
+
+  
+    <td>
+      <img alt="download icon" src="/@@/download" /><strong>  <a title="GNOME 2.30 release (136.0 KiB)" href="https://launchpad.net/intltool/trunk/0.41.1/+download/intltool-0.41.1.tar.gz">intltool-0.41.1.tar.gz</a> </strong>(<a href="https://launchpad.net/intltool/trunk/0.41.1/+download/intltool-0.41.1.tar.gz/+md5">md5</a>, <a href="https://launchpad.net/intltool/trunk/0.41.1/+download/intltool-0.41.1.tar.gz.asc">sig</a>)
+    </td>
+    <td>GNOME 2.30 release</td>
+    <td style="text-align: center;">
+      
+        384,557
+        <br />
+        <span class="lesser greyed-out">
+          last downloaded
+          
+          <strong>
+            8 weeks
+            ago
+          </strong>
+        </span>
+      
+      
+    </td>
+    
+  
+
+
+                        
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="2" style="padding-top: 1em; text-align: right;">
+                          Total downloads:
+                        </th>
+                        <td style="border: none; text-align: center;">
+                          384,557
+                        </td>
+                        
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                
+
+                
+              </div>
+            
+
+            <br />
+          
+
+        </div>
+      
+      
+        <div id="series-trunk">
+
+          
+            <div class="portlet-border" />
+
+            
+
+              <div class="top-portlet">
+                <h3>
+                  <a href="/intltool/trunk/0.41.0">
+                    0.41.0 release</a>
+                  from the
+                  <a href="/intltool/trunk">trunk</a> series released
+                  <time title="2009-07-16 03:00:00 UTC" datetime="2009-07-16T03:00:00+00:00">2009-07-16</time>
+                </h3>
+
+                
+                <div>
+                  <table class="listing" style="margin-top: 1em;">
+                    <thead>
+                      <tr>
+                        <th width="35%">File</th>
+                        <th width="45%">Description</th>
+                        <th>Downloads</th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        
+                          
+  
+
+  
+    <td>
+      <img alt="download icon" src="/@@/download" /><strong>  <a title="Source (133.3 KiB)" href="https://launchpad.net/intltool/trunk/0.41.0/+download/intltool-0.41.0.tar.gz">intltool-0.41.0.tar.gz</a> </strong>(<a href="https://launchpad.net/intltool/trunk/0.41.0/+download/intltool-0.41.0.tar.gz/+md5">md5</a>, <a href="https://launchpad.net/intltool/trunk/0.41.0/+download/intltool-0.41.0.tar.gz.asc">sig</a>)
+    </td>
+    <td>Source</td>
+    <td style="text-align: center;">
+      
+        7,505
+        <br />
+        <span class="lesser greyed-out">
+          last downloaded
+          
+          <strong>
+            5 weeks
+            ago
+          </strong>
+        </span>
+      
+      
+    </td>
+    
+  
+
+
+                        
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th colspan="2" style="padding-top: 1em; text-align: right;">
+                          Total downloads:
+                        </th>
+                        <td style="border: none; text-align: center;">
+                          7,505
+                        </td>
+                        
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                
+
+                
+              </div>
+            
+
+            <br />
+          
+
+        </div>
+      
+      
+    
+    </div>
+    <div id="admin-links">
+      
+        
+          
+        
+      
+      
+        
+      
+      
+        
+      
+    </div>
+    
+
+  </form>
+</div>
+            
+            
+          </div><!-- yui-b -->
+        </div><!-- yui-main -->
+
+        
+          <!-- yui-b side -->
+        
+      <!-- yui-t4 -->
+
+      
+  <div id="footer" class="footer">
+    <div class="lp-arcana">
+        <div class="lp-branding">
+          <a href="https://launchpad.net/"><img src="/@@/launchpad-footer-logo.svg" alt="Launchpad" width="65" height="18" /></a>
+          &nbsp;&bull;&nbsp;
+          <a href="https://launchpad.net/+tour">Take the tour</a>
+          &nbsp;&bull;&nbsp;
+          <a href="https://documentation.ubuntu.com/launchpad/">Read the guide</a>
+          &nbsp;
+          <form id="globalsearch" method="get" accept-charset="UTF-8" action="https://launchpad.net/+search">
+            <input type="search" id="search-text" name="field.text" />
+            <input type="image" src="/@@/search" style="vertical-align:5%" alt="Search Launchpad" />
+          </form>
+        </div>
+        
+  
+
+    </div>
+
+    <div class="colophon">
+      &copy; 2004
+      <a href="http://canonical.com/">Canonical&nbsp;Ltd.</a>
+      &nbsp;&bull;&nbsp;
+      <a href="https://ubuntu.com/legal/launchpad-terms-of-service">Terms of use</a>
+      &nbsp;&bull;&nbsp;
+      <a href="https://www.ubuntu.com/legal/dataprivacy">Data privacy</a>
+      &nbsp;&bull;&nbsp;
+      <a href="/feedback">Contact Launchpad Support</a>
+      
+      &nbsp;&bull;&nbsp;
+      <a href="http://blog.launchpad.net/">Blog</a>
+      
+	&nbsp;&bull;&nbsp;
+	<a href="https://canonical.com/careers">Careers</a>
+      
+      &nbsp;&bull;&nbsp;
+      <a href="https://status.canonical.com/">System status</a>
+      <span id="lp-version">
+      &nbsp;&bull;&nbsp;
+        6c05f5b
+        
+        
+        (<a href="https://documentation.ubuntu.com/launchpad/developer/how-to/get-source-code/">Get the code!</a>)
+      </span>
+    </div>
+  </div>
+
+    </div><!-- yui-d0-->
+
+    
+  
+  
+  <script id="json-cache-script">LP.cache = {"related_features": {}, "context": {"self_link": "https://launchpad.net/api/devel/intltool", "web_link": "https://launchpad.net/intltool", "resource_type_link": "https://launchpad.net/api/devel/#project", "translations_usage": "Unknown", "official_answers": false, "official_blueprints": false, "official_codehosting": true, "official_bugs": true, "information_type": "Public", "active": true, "all_specifications_collection_link": "https://launchpad.net/api/devel/intltool/all_specifications", "valid_specifications_collection_link": "https://launchpad.net/api/devel/intltool/valid_specifications", "bug_reporting_guidelines": null, "content_templates": null, "bug_reported_acknowledgement": null, "official_bug_tags": [], "recipes_collection_link": "https://launchpad.net/api/devel/intltool/recipes", "webhooks_collection_link": "https://launchpad.net/api/devel/intltool/webhooks", "active_milestones_collection_link": "https://launchpad.net/api/devel/intltool/active_milestones", "all_milestones_collection_link": "https://launchpad.net/api/devel/intltool/all_milestones", "bug_supervisor_link": null, "translationgroup_link": null, "translationpermission": "Open", "qualifies_for_free_hosting": true, "reviewer_whiteboard": "tag:launchpad.net:2008:redacted", "is_permitted": "tag:launchpad.net:2008:redacted", "project_reviewed": "tag:launchpad.net:2008:redacted", "license_approved": "tag:launchpad.net:2008:redacted", "private": false, "display_name": "intltool", "icon_link": "https://launchpad.net/api/devel/intltool/icon", "logo_link": "https://launchpad.net/api/devel/intltool/logo", "name": "intltool", "owner_link": "https://launchpad.net/api/devel/~intltool", "project_group_link": null, "title": "intltool", "registrant_link": "https://launchpad.net/api/devel/~registry", "driver_link": null, "summary": "Utility scripts for internationalizing XML.", "description": "Automatically extracts translatable strings from oaf, glade, bonobo ui, nautilus theme and other XML files into the po files.\n\nAutomatically merges translations from po files back into .oaf files (encoding to be 7-bit clean). The merging mechanism can also be extended to support other types of XML files.\n\nVersions prior to 0.41 are available on http://ftp.gnome.org/pub/gnome/sources/intltool/", "date_created": "2005-05-04T00:00:00+00:00", "homepage_url": null, "wiki_url": null, "screenshots_url": null, "download_url": null, "programming_language": null, "sourceforge_project": null, "freshmeat_project": null, "brand_link": "https://launchpad.net/api/devel/intltool/brand", "branch_sharing_policy": "Public", "bug_sharing_policy": "Public", "specification_sharing_policy": "Public", "licenses": ["GNU GPL v2"], "license_info": null, "bug_tracker_link": null, "series_collection_link": "https://launchpad.net/api/devel/intltool/series", "development_focus_link": "https://launchpad.net/api/devel/intltool/trunk", "releases_collection_link": "https://launchpad.net/api/devel/intltool/releases", "translation_focus_link": null, "commercial_subscription_link": null, "commercial_subscription_is_due": false, "remote_product": null, "vcs": "Bazaar", "http_etag": "\"2f0509600a56daa16c5ac1df283bac27fed57150-021b5ef8f48901fdb0ecff5d98ed7af021867ed5\""}};</script>
+
+    
+  
+
+    
+  </body>
+
+
+  <!--
+    Facet name: overview
+    Page type: main_only
+    Has global search: True
+    Has application tabs: True
+    Has side portlets: False
+
+    At least 21 queries/external actions issued in 0.50 seconds
+
+    Features: {'profiling.enabled': None, 'hard_timeout': '5000', 'js.yui_version': None, 'app.mainsite_only.canonical_url': None, 'app.maintenance_message': None, 'baselayout.careers_link.disabled': None, 'visible_render_time': None}
+
+    r6c05f5b
+
+    -->
+
+</html>
+

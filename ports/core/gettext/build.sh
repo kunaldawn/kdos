@@ -16,9 +16,7 @@
 	--disable-csharp \
 	--without-git \
 	--without-emacs \
-	--with-included-libxml \
-	--with-included-libcroco \
-	--with-included-glib
+	--with-included-libxml
 make
 make DESTDIR=$PKG install
 

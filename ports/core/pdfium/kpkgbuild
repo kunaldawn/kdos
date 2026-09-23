@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pdfium
+version     = 7988
+release     = 1
+_chromium   = 153.0.$version.0
+_build_rev  = 73c0fa98c5cf963c60ea685c57826fa7ba6253d8
+_abseil_rev = d8e483edd8b44da1845874ee84b42489589bb90f
+source      = https://dev-www.libreoffice.org/src/$name-$version.tar.bz2
+sha256      = 0340b2fca57cecdf6e2e0366129a3340f6764c132cb090f57db96d9f0f349855  pdfium-7988.tar.bz2
+sha256      = 4268f9778821e4aa45e21ba2ca21641aacc4657bfa01692232b89ed64ad07546  pdfium-vendor-7988.tar.xz
+description = Chromium's PDF renderer, as a shared library with its C headers
+homepage    = https://pdfium.googlesource.com/pdfium/
+depends     = gn ninja python3 pkgconf freetype2 harfbuzz icu lcms2 libjpeg-turbo libpng openjpeg zlib

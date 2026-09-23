@@ -17,6 +17,8 @@
 # `source =` names.
 cd bcc
 
+patch -p1 -i $PORT_SRC/llvm23-mccontext.patch
+
 # IT IS HERE FOR bpftrace AND NOTHING ELSE. bpftrace's
 # `find_package(LibBcc REQUIRED)` is unconditional — it uses bcc's USDT probe
 # resolution — so the library is the deliverable and bcc's own hundred python

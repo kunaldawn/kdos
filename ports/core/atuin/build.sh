@@ -9,7 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+# THE CRATES GO BESIDE THE TREE, NOT INTO ITS vendor/. Upstream's vendor/ holds
+# axoasset as a `[patch.crates-io]` path crate with no `.cargo-checksum.json`;
+# a directory source over that vendor/ refuses the whole registry on it. The
+# bundle's own copy of axoasset is left out for the same reason, and the patch
+# still resolves to upstream's.
+mkdir .kdos-vendor
+tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz -C .kdos-vendor \
+	--exclude=vendor/axoasset
 
 # THE SYNC CLIENT IS NOT BUILT AND THE SERVER IS NOT EITHER. atuin's history is
 # every command anybody typed on this machine; shipping it able to post that to
@@ -17,8 +24,8 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # pinyin, on a more sensitive database. `--no-default-features` drops every
 # feature and the two named back are the local half: `client` is the SQLite
 # store, the search UI and the shell hooks, and `clipboard` is a yank out of
-# that UI. `sync`, `check-update` and `daemon` stay off, and they are the three
-# that reach the network.
+# that UI. `sync`, `check-update`, `daemon` and `ai` stay off, and they are the
+# four that reach the network; `pty-proxy` stays off with them.
 #
 # THE CLIPBOARD IS arboard AND IT REACHES THE DESKTOP'S. atuin asks it for
 # `wayland-data-control` on Linux, which is wl-clipboard-rs speaking
@@ -29,7 +36,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # creates both data-control managers, so a yank reaches kdos-clip like any
 # other program's. A login with no Wayland socket falls back to arboard's X11
 # path, and there is no X server on this image either.
-cargo build --release --frozen --offline \
+cargo build --release --frozen --offline --config .kdos-vendor/.cargo/config.toml \
 	--package atuin --no-default-features --features client,clipboard
 
 install -Dm755 target/release/atuin $PKG/usr/bin/atuin

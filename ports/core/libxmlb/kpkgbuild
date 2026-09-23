@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = libxmlb
-version     = 0.3.25
-release     = 2
+version     = 0.3.29
+release     = 1
 source      = https://github.com/hughsie/libxmlb/releases/download/${version}/libxmlb-${version}.tar.xz
-sha256      = 77f2768c9debd2e946173cdf9465efd987849805e7c58251c5772ea728a61d9a  libxmlb-0.3.25.tar.xz
+sha256      = 448294be33bfae62f00fa66e506f1cae80237ce71b7ab6530aefa75005eeb08a  libxmlb-0.3.29.tar.xz
 description = Library to help create and query binary XML blobs
 depends     = glib meson zstd xz

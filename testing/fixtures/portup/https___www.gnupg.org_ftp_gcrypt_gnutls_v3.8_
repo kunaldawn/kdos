@@ -1,0 +1,126 @@
+<!--?xml version="1.0" encoding="utf-8"?-->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<title>ftp.gnupg.org:gcrypt/gnutls/v3.8/</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<meta name="date" content="20260813T084750Z"/>
+<meta name="generator" content="ftp-indexer v0.2"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="stylesheet" href="/share/site.css" type="text/css"/>
+</head>
+<body>
+<div id="wrapper">
+<div id="header"><a href="https://gnupg.org/index.html" class="logo"><img src="/share/logo-gnupg-light-purple-bg.png"></a>&nbsp;</div>
+<main>
+<div id="content">
+<h2>ftp.gnupg.org:gcrypt/gnutls/v3.8/</h2>
+<div class="outline-text-2" id="text-1">
+</div>
+<div class="outline-text-3">
+<table class="ftp">
+<tr><td><img src="/share/up.png" width="22" height="22"/></td><td><a href="../">Parent Directory</a></td></tr>
+</table>
+</div>
+<h3>Files</h3>
+<div class="outline-text-3">
+<table class="ftp">
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.13.tar.xz">gnutls-3.8.13.tar.xz</a></td><td align="right"><abbr title="2026-04-29&nbsp;15:48:30 UTC">2026-04-29</abbr></td><td align="right"><abbr title="7275324 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.13.tar.xz.sig">gnutls-3.8.13.tar.xz.sig</a></td><td align="right"><abbr title="2026-04-29&nbsp;15:48:30 UTC">2026-04-29</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.13-w32.zip">gnutls-3.8.13-w32.zip</a></td><td align="right"><abbr title="2026-04-29&nbsp;15:48:30 UTC">2026-04-29</abbr></td><td align="right"><abbr title="4782423 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.13-w32.zip.sig">gnutls-3.8.13-w32.zip.sig</a></td><td align="right"><abbr title="2026-04-29&nbsp;15:48:30 UTC">2026-04-29</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.13-w64.zip">gnutls-3.8.13-w64.zip</a></td><td align="right"><abbr title="2026-04-29&nbsp;15:48:30 UTC">2026-04-29</abbr></td><td align="right"><abbr title="4816756 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.13-w64.zip.sig">gnutls-3.8.13-w64.zip.sig</a></td><td align="right"><abbr title="2026-04-29&nbsp;15:48:30 UTC">2026-04-29</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.12.tar.xz">gnutls-3.8.12.tar.xz</a></td><td align="right"><abbr title="2026-02-09&nbsp;15:36:38 UTC">2026-02-09</abbr></td><td align="right"><abbr title="6949604 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.12.tar.xz.sig">gnutls-3.8.12.tar.xz.sig</a></td><td align="right"><abbr title="2026-02-09&nbsp;15:36:38 UTC">2026-02-09</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.11.tar.xz">gnutls-3.8.11.tar.xz</a></td><td align="right"><abbr title="2025-11-20&nbsp;02:45:08 UTC">2025-11-20</abbr></td><td align="right"><abbr title="6939944 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.11.tar.xz.sig">gnutls-3.8.11.tar.xz.sig</a></td><td align="right"><abbr title="2025-11-20&nbsp;02:45:09 UTC">2025-11-20</abbr></td><td align="right"><abbr title="566 bytes">566</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.10.tar.xz">gnutls-3.8.10.tar.xz</a></td><td align="right"><abbr title="2025-07-09&nbsp;04:52:56 UTC">2025-07-09</abbr></td><td align="right"><abbr title="6909856 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.10.tar.xz.sig">gnutls-3.8.10.tar.xz.sig</a></td><td align="right"><abbr title="2025-07-09&nbsp;04:52:57 UTC">2025-07-09</abbr></td><td align="right"><abbr title="566 bytes">566</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.9.tar.xz">gnutls-3.8.9.tar.xz</a></td><td align="right"><abbr title="2025-02-08&nbsp;05:48:41 UTC">2025-02-08</abbr></td><td align="right"><abbr title="6847364 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.9.tar.xz.sig">gnutls-3.8.9.tar.xz.sig</a></td><td align="right"><abbr title="2025-02-08&nbsp;05:48:43 UTC">2025-02-08</abbr></td><td align="right"><abbr title="566 bytes">566</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.9-w32.zip">gnutls-3.8.9-w32.zip</a></td><td align="right"><abbr title="2025-02-08&nbsp;05:48:46 UTC">2025-02-08</abbr></td><td align="right"><abbr title="4476904 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.9-w32.zip.sig">gnutls-3.8.9-w32.zip.sig</a></td><td align="right"><abbr title="2025-02-08&nbsp;05:48:48 UTC">2025-02-08</abbr></td><td align="right"><abbr title="566 bytes">566</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.9-w64.zip">gnutls-3.8.9-w64.zip</a></td><td align="right"><abbr title="2025-02-08&nbsp;05:48:51 UTC">2025-02-08</abbr></td><td align="right"><abbr title="4429810 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.9-w64.zip.sig">gnutls-3.8.9-w64.zip.sig</a></td><td align="right"><abbr title="2025-02-08&nbsp;05:48:53 UTC">2025-02-08</abbr></td><td align="right"><abbr title="566 bytes">566</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.8.tar.xz">gnutls-3.8.8.tar.xz</a></td><td align="right"><abbr title="2024-11-05&nbsp;04:23:46 UTC">2024-11-05</abbr></td><td align="right"><abbr title="6696460 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.8.tar.xz.sig">gnutls-3.8.8.tar.xz.sig</a></td><td align="right"><abbr title="2024-11-05&nbsp;04:23:47 UTC">2024-11-05</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.8-w32.zip">gnutls-3.8.8-w32.zip</a></td><td align="right"><abbr title="2024-11-05&nbsp;04:23:51 UTC">2024-11-05</abbr></td><td align="right"><abbr title="4513759 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.8-w32.zip.sig">gnutls-3.8.8-w32.zip.sig</a></td><td align="right"><abbr title="2024-11-05&nbsp;04:23:52 UTC">2024-11-05</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.8-w64.zip">gnutls-3.8.8-w64.zip</a></td><td align="right"><abbr title="2024-11-05&nbsp;04:23:56 UTC">2024-11-05</abbr></td><td align="right"><abbr title="4463057 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.8-w64.zip.sig">gnutls-3.8.8-w64.zip.sig</a></td><td align="right"><abbr title="2024-11-05&nbsp;04:23:58 UTC">2024-11-05</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7.1.tar.xz">gnutls-3.8.7.1.tar.xz</a></td><td align="right"><abbr title="2024-08-15&nbsp;10:25:59 UTC">2024-08-15</abbr></td><td align="right"><abbr title="6695404 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7.1.tar.xz.sig">gnutls-3.8.7.1.tar.xz.sig</a></td><td align="right"><abbr title="2024-08-15&nbsp;10:26:01 UTC">2024-08-15</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7.tar.xz">gnutls-3.8.7.tar.xz</a></td><td align="right"><abbr title="2024-08-15&nbsp;07:34:07 UTC">2024-08-15</abbr></td><td align="right"><abbr title="6545468 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7.tar.xz.sig">gnutls-3.8.7.tar.xz.sig</a></td><td align="right"><abbr title="2024-08-15&nbsp;07:34:08 UTC">2024-08-15</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7-w32.zip">gnutls-3.8.7-w32.zip</a></td><td align="right"><abbr title="2024-08-15&nbsp;07:34:13 UTC">2024-08-15</abbr></td><td align="right"><abbr title="4511275 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7-w64.zip">gnutls-3.8.7-w64.zip</a></td><td align="right"><abbr title="2024-08-15&nbsp;07:34:17 UTC">2024-08-15</abbr></td><td align="right"><abbr title="4460993 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.7-w64.zip.sig">gnutls-3.8.7-w64.zip.sig</a></td><td align="right"><abbr title="2024-08-15&nbsp;07:34:18 UTC">2024-08-15</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.6.tar.xz">gnutls-3.8.6.tar.xz</a></td><td align="right"><abbr title="2024-07-03&nbsp;10:46:24 UTC">2024-07-03</abbr></td><td align="right"><abbr title="6517476 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.6.tar.xz.sig">gnutls-3.8.6.tar.xz.sig</a></td><td align="right"><abbr title="2024-07-03&nbsp;10:46:24 UTC">2024-07-03</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.6-w32.zip">gnutls-3.8.6-w32.zip</a></td><td align="right"><abbr title="2024-07-03&nbsp;10:46:26 UTC">2024-07-03</abbr></td><td align="right"><abbr title="4476898 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.6-w32.zip.sig">gnutls-3.8.6-w32.zip.sig</a></td><td align="right"><abbr title="2024-07-03&nbsp;10:46:26 UTC">2024-07-03</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.6-w64.zip">gnutls-3.8.6-w64.zip</a></td><td align="right"><abbr title="2024-07-03&nbsp;10:46:27 UTC">2024-07-03</abbr></td><td align="right"><abbr title="4426418 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.6-w64.zip.sig">gnutls-3.8.6-w64.zip.sig</a></td><td align="right"><abbr title="2024-07-03&nbsp;10:46:27 UTC">2024-07-03</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.5.tar.xz">gnutls-3.8.5.tar.xz</a></td><td align="right"><abbr title="2024-04-04&nbsp;11:11:14 UTC">2024-04-04</abbr></td><td align="right"><abbr title="6491504 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.5.tar.xz.sig">gnutls-3.8.5.tar.xz.sig</a></td><td align="right"><abbr title="2024-04-04&nbsp;11:11:14 UTC">2024-04-04</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.5-w32.zip">gnutls-3.8.5-w32.zip</a></td><td align="right"><abbr title="2024-04-04&nbsp;11:11:15 UTC">2024-04-04</abbr></td><td align="right"><abbr title="4282494 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.5-w32.zip.sig">gnutls-3.8.5-w32.zip.sig</a></td><td align="right"><abbr title="2024-04-04&nbsp;11:11:15 UTC">2024-04-04</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.5-w64.zip">gnutls-3.8.5-w64.zip</a></td><td align="right"><abbr title="2024-04-04&nbsp;11:11:16 UTC">2024-04-04</abbr></td><td align="right"><abbr title="4325718 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.5-w64.zip.sig">gnutls-3.8.5-w64.zip.sig</a></td><td align="right"><abbr title="2024-04-04&nbsp;11:11:16 UTC">2024-04-04</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.4.tar.xz">gnutls-3.8.4.tar.xz</a></td><td align="right"><abbr title="2024-03-19&nbsp;15:57:57 UTC">2024-03-19</abbr></td><td align="right"><abbr title="6487520 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.4.tar.xz.sig">gnutls-3.8.4.tar.xz.sig</a></td><td align="right"><abbr title="2024-03-19&nbsp;15:57:58 UTC">2024-03-19</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.4-w32.zip">gnutls-3.8.4-w32.zip</a></td><td align="right"><abbr title="2024-03-19&nbsp;15:58:26 UTC">2024-03-19</abbr></td><td align="right"><abbr title="4281746 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.4-w32.zip.sig">gnutls-3.8.4-w32.zip.sig</a></td><td align="right"><abbr title="2024-03-19&nbsp;15:58:26 UTC">2024-03-19</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.4-w64.zip">gnutls-3.8.4-w64.zip</a></td><td align="right"><abbr title="2024-03-19&nbsp;15:58:27 UTC">2024-03-19</abbr></td><td align="right"><abbr title="4324967 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.4-w64.zip.sig">gnutls-3.8.4-w64.zip.sig</a></td><td align="right"><abbr title="2024-03-19&nbsp;15:58:27 UTC">2024-03-19</abbr></td><td align="right"><abbr title="119 bytes">119</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.3.tar.xz">gnutls-3.8.3.tar.xz</a></td><td align="right"><abbr title="2024-01-16&nbsp;10:16:33 UTC">2024-01-16</abbr></td><td align="right"><abbr title="6463720 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.3.tar.xz.sig">gnutls-3.8.3.tar.xz.sig</a></td><td align="right"><abbr title="2024-01-16&nbsp;10:16:35 UTC">2024-01-16</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.3-w32.zip">gnutls-3.8.3-w32.zip</a></td><td align="right"><abbr title="2024-01-16&nbsp;10:16:39 UTC">2024-01-16</abbr></td><td align="right"><abbr title="4271098 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.3-w32.zip.sig">gnutls-3.8.3-w32.zip.sig</a></td><td align="right"><abbr title="2024-01-16&nbsp;10:16:40 UTC">2024-01-16</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.3-w64.zip">gnutls-3.8.3-w64.zip</a></td><td align="right"><abbr title="2024-01-16&nbsp;10:16:43 UTC">2024-01-16</abbr></td><td align="right"><abbr title="4312668 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.3-w64.zip.sig">gnutls-3.8.3-w64.zip.sig</a></td><td align="right"><abbr title="2024-01-16&nbsp;10:16:45 UTC">2024-01-16</abbr></td><td align="right"><abbr title="580 bytes">580</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.2.tar.xz">gnutls-3.8.2.tar.xz</a></td><td align="right"><abbr title="2023-11-15&nbsp;12:34:54 UTC">2023-11-15</abbr></td><td align="right"><abbr title="6456540 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.2.tar.xz.sig">gnutls-3.8.2.tar.xz.sig</a></td><td align="right"><abbr title="2023-11-15&nbsp;12:34:54 UTC">2023-11-15</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.2-w32.zip">gnutls-3.8.2-w32.zip</a></td><td align="right"><abbr title="2023-11-15&nbsp;12:34:55 UTC">2023-11-15</abbr></td><td align="right"><abbr title="4271070 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.2-w32.zip.sig">gnutls-3.8.2-w32.zip.sig</a></td><td align="right"><abbr title="2023-11-15&nbsp;12:34:55 UTC">2023-11-15</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.2-w64.zip">gnutls-3.8.2-w64.zip</a></td><td align="right"><abbr title="2023-11-15&nbsp;12:34:56 UTC">2023-11-15</abbr></td><td align="right"><abbr title="4312560 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.2-w64.zip.sig">gnutls-3.8.2-w64.zip.sig</a></td><td align="right"><abbr title="2023-11-15&nbsp;12:34:56 UTC">2023-11-15</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.1.tar.xz">gnutls-3.8.1.tar.xz</a></td><td align="right"><abbr title="2023-08-04&nbsp;10:00:01 UTC">2023-08-04</abbr></td><td align="right"><abbr title="6447056 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.1.tar.xz.sig">gnutls-3.8.1.tar.xz.sig</a></td><td align="right"><abbr title="2023-08-04&nbsp;10:00:01 UTC">2023-08-04</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.1-w32.zip">gnutls-3.8.1-w32.zip</a></td><td align="right"><abbr title="2023-08-04&nbsp;10:00:29 UTC">2023-08-04</abbr></td><td align="right"><abbr title="4428955 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.1-w32.zip.sig">gnutls-3.8.1-w32.zip.sig</a></td><td align="right"><abbr title="2023-08-04&nbsp;10:00:29 UTC">2023-08-04</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.1-w64.zip">gnutls-3.8.1-w64.zip</a></td><td align="right"><abbr title="2023-08-04&nbsp;10:00:36 UTC">2023-08-04</abbr></td><td align="right"><abbr title="4468633 bytes">4M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.1-w64.zip.sig">gnutls-3.8.1-w64.zip.sig</a></td><td align="right"><abbr title="2023-08-04&nbsp;10:00:36 UTC">2023-08-04</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/tar.png" width="22" height="22"/></td><td><a href="gnutls-3.8.0.tar.xz">gnutls-3.8.0.tar.xz</a></td><td align="right"><abbr title="2023-02-10&nbsp;09:46:47 UTC">2023-02-10</abbr></td><td align="right"><abbr title="6378480 bytes">6M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.0.tar.xz.sig">gnutls-3.8.0.tar.xz.sig</a></td><td align="right"><abbr title="2023-02-10&nbsp;09:46:47 UTC">2023-02-10</abbr></td><td align="right"><abbr title="684 bytes">684</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.0-w32.zip">gnutls-3.8.0-w32.zip</a></td><td align="right"><abbr title="2023-02-10&nbsp;09:50:03 UTC">2023-02-10</abbr></td><td align="right"><abbr title="4163220 bytes">3M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.0-w32.zip.sig">gnutls-3.8.0-w32.zip.sig</a></td><td align="right"><abbr title="2023-02-10&nbsp;09:50:04 UTC">2023-02-10</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.0-w64.zip">gnutls-3.8.0-w64.zip</a></td><td align="right"><abbr title="2023-02-10&nbsp;09:50:10 UTC">2023-02-10</abbr></td><td align="right"><abbr title="4190436 bytes">3M</abbr></td></tr>
+<tr><td><img src="/share/document.png" width="22" height="22"/></td><td><a href="gnutls-3.8.0-w64.zip.sig">gnutls-3.8.0-w64.zip.sig</a></td><td align="right"><abbr title="2023-02-10&nbsp;09:50:10 UTC">2023-02-10</abbr></td><td align="right"><abbr title="685 bytes">685</abbr></td></tr>
+</table>
+</div>
+
+</div><!-- end content -->
+</main>
+<div id="footer">
+<div id="nav_bottom">
+<ul>
+<li><a href="https://gnupg.org/privacy-policy.html">Privacy&nbsp;Policy</a></li>
+<li><a href="https://gnupg.org/imprint.html">Imprint</a></li>
+<li><a href="https://gnupg.org/blog/index.html">Blog</a></li>
+<li><a href="https://gnupg.org/index.html">Web</a></li>
+</ul>
+</div>
+<div class="footerbox">
+<a><img src="/share/traueranzeige-g10_v2015.png" alt="Traueranzeige: Wir nehmen Abschied von einem sicher geglaubten Freund, dem | Fernmeldegeheimniss | (Artikel 10 Grundgesetz) | * 23. Mai 1949, + 18. Dezember 2015" title="Article 10 of the German constitution (communication privacy) is not anymore with us." height="73px" width="200px"></a>
+<p></p>
+</div>
+<div id="cpyright">
+This web page is generated from a file listing and as such not copyrightable.
+Page last updated on 2026-08-13.
+</div>
+</div>
+</div><!-- end wrapper -->
+</body>
+</html>

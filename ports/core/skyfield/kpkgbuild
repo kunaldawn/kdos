@@ -11,7 +11,7 @@
 name        = skyfield
 version     = 1.55
 release     = 1
-source      = https://files.pythonhosted.org/packages/8f/50/d491b746eb3d6155d8206d86415b02d900567d463579173a518debaa4e1f/skyfield-1.55.tar.gz
+source      = https://files.pythonhosted.org/packages/source/s/$name/$name-$version.tar.gz
 sha256      = 05dce8aafbff3f007f01cabcd2eb1858c43d7465f58c13d22c5a828a6d2fc14b  skyfield-1.55.tar.gz
 description = Planet, moon and satellite positions from JPL kernels
 homepage    = https://pypi.org/project/skyfield/

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = sdcc
-version     = 4.5.0
+version     = 4.6.0
 release     = 1
 source      = https://downloads.sourceforge.net/project/$name/$name/$version/$name-src-$version.tar.bz2
-sha256      = d5030437fb436bb1d93a8dbdbfb46baaa60613318f4fb3f5871d72815d1eed80  sdcc-4.5.0.tar.bz2
+sha256      = 5fd6a93e5997ce01756868fe35e441095cfb637894a80c262514a634094973b6  sdcc-4.6.0.tar.bz2
 description = A C compiler for the 8-bit families AVR does not cover — 8051, STM8, Z80, PIC
 homepage    = https://sdcc.sourceforge.net/
 depends     = boost bison flex zlib

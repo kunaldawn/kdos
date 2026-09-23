@@ -9,10 +9,11 @@
 # ---------------------------------
 
 name        = networkmanager-openvpn
-version     = 1.12.0
+version     = 1.12.5
 release     = 1
 source      = https://gitlab.gnome.org/GNOME/NetworkManager-openvpn/-/archive/$version/NetworkManager-openvpn-$version.tar.bz2
-sha256      = 2052864d186896f01e784d56774252997b0746f00987badc0f99e868bb381e97  networkmanager-openvpn-1.12.0.tar.bz2
+sha256      = f3b24b01568acdb6a5ccdb5db0a8ab611dda1715e610c77ee4babfdd5d4711fe  networkmanager-openvpn-1.12.5.tar.bz2
 description = NetworkManager VPN plugin for OpenVPN
 homepage    = https://gitlab.gnome.org/GNOME/NetworkManager-openvpn
 depends     = networkmanager openvpn glib libsecret
+devseries   = odd-minor

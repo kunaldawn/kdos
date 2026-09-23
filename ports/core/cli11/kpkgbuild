@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = cli11
-version     = 2.4.2
+version     = 2.7.2
 release     = 1
 source      = https://github.com/CLIUtils/CLI11/archive/refs/tags/v$version.tar.gz
-sha256      = f2d893a65c3b1324c50d4e682c0cdc021dd0477ae2c048544f39eed6654b699a  cli11-2.4.2.tar.gz
+sha256      = 46eef3101da70852ec7af026e09d485ccee81813331c8c6052d39344443b83da  cli11-2.7.2.tar.gz
 description = Header-only command-line parser for C++ (Quickshell build dep)
 homepage    = https://github.com/CLIUtils/CLI11
 depends     = cmake

@@ -13,7 +13,6 @@
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--disable-logind \
-	--disable-nsl \
 	--disable-static \
 	--enable-lastlog \
 	--with-yescrypt \

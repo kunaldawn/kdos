@@ -1,0 +1,87 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta http-equiv="content-type" content="text/html; charset=utf-8"/><style type="text/css">body,html {background:#fff;font-family:"Bitstream Vera Sans","Lucida Grande","Lucida Sans Unicode",Lucidux,Verdana,Lucida,sans-serif;}tr.e {background:#f4f4f4;}th,td {padding:0.1em 0.5em;}th {text-align:left;font-weight:bold;background:#eee;border-bottom:1px solid #aaa;}#list {border:1px solid #aaa;width:100%;}a {color:#a33;}a:hover {color:#e33;}</style>
+
+<title>Index of /releases/lzip/</title>
+</head><body><h1>Index of /releases/lzip/</h1>
+<table id="list" cellpadding="0.1em" cellspacing="0">
+<colgroup><col width="55%"/><col width="20%"/><col width="25%"/></colgroup>
+<thead><tr><th><a href="?C=N&O=A">File Name</a>&nbsp;<a href="?C=N&O=D">&nbsp;↓&nbsp;</a></th><th><a href="?C=S&O=A">File Size</a>&nbsp;<a href="?C=S&O=D">&nbsp;↓&nbsp;</a></th><th><a href="?C=M&O=A">Date</a>&nbsp;<a href="?C=M&O=D">&nbsp;↓&nbsp;</a></th></tr></thead>
+<tbody><tr class="o"><td><a href="../">Parent directory/</a></td><td>-</td><td>-</td></tr><tr class="e"><td><a href="7zip/">7zip/</a></td><td>-</td><td>18-Oct-2016 15:13</td></tr>
+<tr class="o"><td><a href="busybox/">busybox/</a></td><td>-</td><td>26-Mar-2021 00:22</td></tr>
+<tr class="e"><td><a href="clzip/">clzip/</a></td><td>-</td><td>15-Mar-2026 17:31</td></tr>
+<tr class="o"><td><a href="kernel/">kernel/</a></td><td>-</td><td>29-Dec-2023 18:36</td></tr>
+<tr class="e"><td><a href="lunzip/">lunzip/</a></td><td>-</td><td>09-Mar-2026 16:25</td></tr>
+<tr class="o"><td><a href="lzd/">lzd/</a></td><td>-</td><td>02-Jan-2025 15:57</td></tr>
+<tr class="e"><td><a href="lziprecover/">lziprecover/</a></td><td>-</td><td>03-Aug-2026 09:08</td></tr>
+<tr class="o"><td><a href="lzlib/">lzlib/</a></td><td>-</td><td>11-Mar-2026 15:03</td></tr>
+<tr class="e"><td><a href="old/">old/</a></td><td>-</td><td>24-Jul-2015 14:23</td></tr>
+<tr class="o"><td><a href="pdlzip/">pdlzip/</a></td><td>-</td><td>07-Mar-2026 22:59</td></tr>
+<tr class="e"><td><a href="plzip/">plzip/</a></td><td>-</td><td>13-Mar-2026 20:57</td></tr>
+<tr class="o"><td><a href="tarlz/">tarlz/</a></td><td>-</td><td>01-Aug-2026 10:58</td></tr>
+<tr class="e"><td><a href="xlunzip/">xlunzip/</a></td><td>-</td><td>07-Jan-2026 16:58</td></tr>
+<tr class="o"><td><a href="README-lzip">README-lzip</a></td><td>    734</td><td>07-Jun-2013 23:22</td></tr>
+<tr class="e"><td><a href="README-texinfo">README-texinfo</a></td><td>    774</td><td>21-Oct-2014 17:22</td></tr>
+<tr class="o"><td><a href="lzip-1.11-w32.zip">lzip-1.11-w32.zip</a></td><td>   142K</td><td>26-Sep-2010 16:00</td></tr>
+<tr class="e"><td><a href="lzip-1.15.tar.gz">lzip-1.15.tar.gz</a></td><td>    95K</td><td>01-Oct-2013 11:30</td></tr>
+<tr class="o"><td><a href="lzip-1.15.tar.gz.sig">lzip-1.15.tar.gz.sig</a></td><td>     65</td><td>01-Oct-2013 11:30</td></tr>
+<tr class="e"><td><a href="lzip-1.15.tar.lz">lzip-1.15.tar.lz</a></td><td>    65K</td><td>01-Oct-2013 11:30</td></tr>
+<tr class="o"><td><a href="lzip-1.15.tar.lz.sig">lzip-1.15.tar.lz.sig</a></td><td>     65</td><td>01-Oct-2013 11:30</td></tr>
+<tr class="e"><td><a href="lzip-1.16.tar.gz">lzip-1.16.tar.gz</a></td><td>    84K</td><td>08-Sep-2014 14:41</td></tr>
+<tr class="o"><td><a href="lzip-1.16.tar.gz.sig">lzip-1.16.tar.gz.sig</a></td><td>     65</td><td>08-Sep-2014 14:41</td></tr>
+<tr class="e"><td><a href="lzip-1.16.tar.lz">lzip-1.16.tar.lz</a></td><td>    56K</td><td>08-Sep-2014 14:41</td></tr>
+<tr class="o"><td><a href="lzip-1.16.tar.lz.sig">lzip-1.16.tar.lz.sig</a></td><td>     65</td><td>08-Sep-2014 14:41</td></tr>
+<tr class="e"><td><a href="lzip-1.17.tar.gz">lzip-1.17.tar.gz</a></td><td>    89K</td><td>24-Jul-2015 12:05</td></tr>
+<tr class="o"><td><a href="lzip-1.17.tar.gz.sig">lzip-1.17.tar.gz.sig</a></td><td>     65</td><td>24-Jul-2015 12:05</td></tr>
+<tr class="e"><td><a href="lzip-1.17.tar.lz">lzip-1.17.tar.lz</a></td><td>    58K</td><td>24-Jul-2015 12:06</td></tr>
+<tr class="o"><td><a href="lzip-1.17.tar.lz.sig">lzip-1.17.tar.lz.sig</a></td><td>     65</td><td>24-Jul-2015 12:06</td></tr>
+<tr class="e"><td><a href="lzip-1.18.tar.gz">lzip-1.18.tar.gz</a></td><td>    93K</td><td>03-Jun-2016 11:48</td></tr>
+<tr class="o"><td><a href="lzip-1.18.tar.gz.sig">lzip-1.18.tar.gz.sig</a></td><td>     65</td><td>03-Jun-2016 11:48</td></tr>
+<tr class="e"><td><a href="lzip-1.18.tar.lz">lzip-1.18.tar.lz</a></td><td>    61K</td><td>03-Jun-2016 11:49</td></tr>
+<tr class="o"><td><a href="lzip-1.18.tar.lz.sig">lzip-1.18.tar.lz.sig</a></td><td>     65</td><td>03-Jun-2016 11:49</td></tr>
+<tr class="e"><td><a href="lzip-1.19-w32.zip">lzip-1.19-w32.zip</a></td><td>   411K</td><td>29-Apr-2017 11:48</td></tr>
+<tr class="o"><td><a href="lzip-1.19.tar.gz">lzip-1.19.tar.gz</a></td><td>    98K</td><td>29-Apr-2017 11:49</td></tr>
+<tr class="e"><td><a href="lzip-1.19.tar.gz.sig">lzip-1.19.tar.gz.sig</a></td><td>     72</td><td>29-Apr-2017 11:49</td></tr>
+<tr class="o"><td><a href="lzip-1.19.tar.lz">lzip-1.19.tar.lz</a></td><td>    65K</td><td>29-Apr-2017 11:49</td></tr>
+<tr class="e"><td><a href="lzip-1.19.tar.lz.sig">lzip-1.19.tar.lz.sig</a></td><td>     72</td><td>29-Apr-2017 11:49</td></tr>
+<tr class="o"><td><a href="lzip-1.20-w32.zip">lzip-1.20-w32.zip</a></td><td>   408K</td><td>26-Feb-2018 16:43</td></tr>
+<tr class="e"><td><a href="lzip-1.20.tar.gz">lzip-1.20.tar.gz</a></td><td>   101K</td><td>14-Feb-2018 19:14</td></tr>
+<tr class="o"><td><a href="lzip-1.20.tar.gz.sig">lzip-1.20.tar.gz.sig</a></td><td>     72</td><td>14-Feb-2018 19:14</td></tr>
+<tr class="e"><td><a href="lzip-1.20.tar.lz">lzip-1.20.tar.lz</a></td><td>    67K</td><td>14-Feb-2018 19:14</td></tr>
+<tr class="o"><td><a href="lzip-1.20.tar.lz.sig">lzip-1.20.tar.lz.sig</a></td><td>     72</td><td>14-Feb-2018 19:14</td></tr>
+<tr class="e"><td><a href="lzip-1.21.tar.gz">lzip-1.21.tar.gz</a></td><td>   103K</td><td>12-Jan-2019 20:34</td></tr>
+<tr class="o"><td><a href="lzip-1.21.tar.gz.sig">lzip-1.21.tar.gz.sig</a></td><td>     72</td><td>12-Jan-2019 20:34</td></tr>
+<tr class="e"><td><a href="lzip-1.21.tar.lz">lzip-1.21.tar.lz</a></td><td>    68K</td><td>12-Jan-2019 20:34</td></tr>
+<tr class="o"><td><a href="lzip-1.21.tar.lz.sig">lzip-1.21.tar.lz.sig</a></td><td>     72</td><td>12-Jan-2019 20:34</td></tr>
+<tr class="e"><td><a href="lzip-1.22-w64.zip">lzip-1.22-w64.zip</a></td><td>   262K</td><td>13-Oct-2021 14:44</td></tr>
+<tr class="o"><td><a href="lzip-1.22.tar.gz">lzip-1.22.tar.gz</a></td><td>   118K</td><td>09-Jan-2021 23:58</td></tr>
+<tr class="e"><td><a href="lzip-1.22.tar.gz.sig">lzip-1.22.tar.gz.sig</a></td><td>     72</td><td>09-Jan-2021 23:58</td></tr>
+<tr class="o"><td><a href="lzip-1.22.tar.lz">lzip-1.22.tar.lz</a></td><td>    81K</td><td>09-Jan-2021 23:58</td></tr>
+<tr class="e"><td><a href="lzip-1.22.tar.lz.sig">lzip-1.22.tar.lz.sig</a></td><td>     72</td><td>09-Jan-2021 23:58</td></tr>
+<tr class="o"><td><a href="lzip-1.23.tar.gz">lzip-1.23.tar.gz</a></td><td>   119K</td><td>03-Feb-2022 00:24</td></tr>
+<tr class="e"><td><a href="lzip-1.23.tar.gz.sig">lzip-1.23.tar.gz.sig</a></td><td>     72</td><td>03-Feb-2022 00:24</td></tr>
+<tr class="o"><td><a href="lzip-1.23.tar.lz">lzip-1.23.tar.lz</a></td><td>    82K</td><td>03-Feb-2022 00:24</td></tr>
+<tr class="e"><td><a href="lzip-1.23.tar.lz.sig">lzip-1.23.tar.lz.sig</a></td><td>     72</td><td>03-Feb-2022 00:24</td></tr>
+<tr class="o"><td><a href="lzip-1.24.1.tar.gz">lzip-1.24.1.tar.gz</a></td><td>   121K</td><td>01-Mar-2024 17:46</td></tr>
+<tr class="e"><td><a href="lzip-1.24.1.tar.gz.sig">lzip-1.24.1.tar.gz.sig</a></td><td>     72</td><td>01-Mar-2024 17:46</td></tr>
+<tr class="o"><td><a href="lzip-1.24.1.tar.lz">lzip-1.24.1.tar.lz</a></td><td>    83K</td><td>01-Mar-2024 17:46</td></tr>
+<tr class="e"><td><a href="lzip-1.24.1.tar.lz.sig">lzip-1.24.1.tar.lz.sig</a></td><td>     72</td><td>01-Mar-2024 17:46</td></tr>
+<tr class="o"><td><a href="lzip-1.24.tar.gz">lzip-1.24.tar.gz</a></td><td>   121K</td><td>29-Jan-2024 20:53</td></tr>
+<tr class="e"><td><a href="lzip-1.24.tar.gz.sig">lzip-1.24.tar.gz.sig</a></td><td>     72</td><td>29-Jan-2024 20:53</td></tr>
+<tr class="o"><td><a href="lzip-1.24.tar.lz">lzip-1.24.tar.lz</a></td><td>    83K</td><td>29-Jan-2024 20:53</td></tr>
+<tr class="e"><td><a href="lzip-1.24.tar.lz.sig">lzip-1.24.tar.lz.sig</a></td><td>     72</td><td>29-Jan-2024 20:53</td></tr>
+<tr class="o"><td><a href="lzip-1.25.tar.gz">lzip-1.25.tar.gz</a></td><td>   113K</td><td>17-Jan-2025 16:36</td></tr>
+<tr class="e"><td><a href="lzip-1.25.tar.gz.sig">lzip-1.25.tar.gz.sig</a></td><td>     72</td><td>17-Jan-2025 16:36</td></tr>
+<tr class="o"><td><a href="lzip-1.25.tar.lz">lzip-1.25.tar.lz</a></td><td>    74K</td><td>17-Jan-2025 16:36</td></tr>
+<tr class="e"><td><a href="lzip-1.25.tar.lz.sig">lzip-1.25.tar.lz.sig</a></td><td>     72</td><td>17-Jan-2025 16:36</td></tr>
+<tr class="o"><td><a href="lzip-1.26-rc1.tar.gz">lzip-1.26-rc1.tar.gz</a></td><td>   118K</td><td>10-Feb-2026 17:39</td></tr>
+<tr class="e"><td><a href="lzip-1.26-rc1.tar.lz">lzip-1.26-rc1.tar.lz</a></td><td>    77K</td><td>10-Feb-2026 17:39</td></tr>
+<tr class="o"><td><a href="lzip-1.26.tar.gz">lzip-1.26.tar.gz</a></td><td>   118K</td><td>17-Mar-2026 18:40</td></tr>
+<tr class="e"><td><a href="lzip-1.26.tar.gz.sig">lzip-1.26.tar.gz.sig</a></td><td>    543</td><td>17-Mar-2026 18:40</td></tr>
+<tr class="o"><td><a href="lzip-1.26.tar.lz">lzip-1.26.tar.lz</a></td><td>    77K</td><td>17-Mar-2026 18:40</td></tr>
+<tr class="e"><td><a href="lzip-1.26.tar.lz.sig">lzip-1.26.tar.lz.sig</a></td><td>    543</td><td>17-Mar-2026 18:40</td></tr>
+<tr class="o"><td><a href="p7zip_16.02_lzip-1.tar.bz2">p7zip_16.02_lzip-1.tar.bz2</a></td><td>   202K</td><td>06-Oct-2016 18:27</td></tr>
+<tr class="e"><td><a href="texinfo-4.13-lzip.tar.lz">texinfo-4.13-lzip.tar.lz</a></td><td>     1M</td><td>21-Oct-2014 17:30</td></tr>
+<tr class="o"><td><a href="texinfo-4.13-lzip.tar.lz.sig">texinfo-4.13-lzip.tar.lz.sig</a></td><td>     65</td><td>21-Oct-2014 17:30</td></tr>
+</tbody></table><i><font size="-1">Downloads will redirect to your nearest mirror site.<br>Files on mirrors may be subject to a replication delay of up to 24 hours.</br>In case of problems to avoid the mirror use http://download-mirror.savannah.gnu.org/releases/ or http://download-mirror.savannah.nongnu.org/releases/</font></i>
+

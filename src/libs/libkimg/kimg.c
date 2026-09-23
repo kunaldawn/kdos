@@ -28,7 +28,7 @@
 #include <webp/decode.h>
 #endif
 #ifdef KIMG_HAVE_GIF
-#include <libnsgif.h>
+#include <nsgif.h>
 #endif
 
 #ifdef KIMG_HAVE_SIXEL
@@ -476,10 +476,65 @@ static pixman_image_t *decode_webp(const uint8_t *p, size_t n,
  */
 #ifdef KIMG_HAVE_GIF
 /*
+ * THE BLOCK STRUCTURE IS WALKED BEFORE libnsgif SCANS IT, for two answers the
+ * library does not give.
+ *
+ * A STREAM THAT ENDS BEFORE ITS TRAILER IS REFUSED. nsgif_data_scan reports a
+ * GIF cut off after its first whole frame as a success with the frames that
+ * arrived, which would make a truncated payload a picture rather than the
+ * refusal kimg.h promises; the trailer is the only thing that says the sender
+ * finished.
+ *
+ * THE FRAME COUNT HAS A CEILING. libnsgif keeps a record for every image
+ * descriptor it scans and has no limit of its own, and the budget is charged
+ * per DECODED frame, so a few megabytes of empty one-pixel frames would be a
+ * few hundred thousand records before the budget had a say.
+ *
+ * Only lengths are read here, never pixels: a header, the colour tables whose
+ * sizes the flags give, and data sub-blocks that each lead with their length.
+ * Answers the image count, or -1 for a stream this refuses.
+ */
+#define GIF_FRAMES_MAX 4097
+
+static long gif_frames(const uint8_t *p, size_t n)
+{
+	size_t i = 13;
+	long frames = 0;
+
+	if (n < 13)
+		return -1;
+	if (p[10] & 0x80)
+		i += 3u * (2u << (p[10] & 7));
+	while (i < n) {
+		if (p[i] == 0x3b)
+			return frames;
+		if (p[i] == 0x21) {
+			i += 2;
+		} else if (p[i] == 0x2c) {
+			uint8_t flags;
+
+			if (n - i < 10 || ++frames > GIF_FRAMES_MAX)
+				return -1;
+			flags = p[i + 9];
+			i += 10;
+			if (flags & 0x80)
+				i += 3u * (2u << (flags & 7));
+			i++;	/* the LZW minimum code size */
+		} else {
+			return -1;
+		}
+		while (i < n && p[i])
+			i += (size_t)p[i] + 1;
+		i++;	/* the zero-length block that ends the run */
+	}
+	return -1;
+}
+
+/*
  * libnsgif asks the caller for its bitmaps. They are plain RGBA buffers here —
- * the library writes into `bitmap_get_buffer` and this file turns the finished
- * one into a pixman image, so no allocator of libnsgif's is ever handed to
- * pixman and the ownership stays on one side.
+ * the library writes into `get_buffer` and this file turns the finished one
+ * into a pixman image, so no allocator of libnsgif's is ever handed to pixman
+ * and the ownership stays on one side.
  */
 struct gifbm {
 	int w, h;
@@ -487,13 +542,16 @@ struct gifbm {
 };
 
 /*
- * THE BUDGET REACHES THIS CALLBACK, because libnsgif allocates through it
- * before anything else can refuse. gif_initialise walks every frame header
- * and grows the canvas to cover a frame that extends past the logical screen,
- * calling this with the enlarged size: a 100x100 screen whose first image
- * descriptor says 65535x65535 asks for 17 GB here, and the size test after
- * gif_initialise returns is far too late. Set for the duration of one decode
- * and cleared after, so no state outlives the call.
+ * THE BUDGET REACHES THIS CALLBACK, because it is the one allocation of the
+ * canvas and libnsgif makes it itself. nsgif_data_scan grows the canvas to
+ * cover a first frame that extends past the logical screen: a 100x100 screen
+ * whose first image descriptor says 65535x65535 asks for 17 GB here. The size
+ * is also tested between the scan and the first decode, which is what refuses
+ * it; this is the test that still holds if the library ever allocates
+ * earlier. The copy of the canvas libnsgif keeps for a restore-to-previous
+ * disposal is its own allocation and is never charged; the size test bounds
+ * it to one canvas. Set for the duration of one decode and cleared after, so
+ * no state outlives the call.
  */
 static const KimgBudget *gif_budget;
 
@@ -503,8 +561,8 @@ static void *gif_bm_create(int width, int height)
 
 	if (width <= 0 || height <= 0)
 		return NULL;
-	/* within() covers the overflow as well as the budget: this callback is
-	 * reached with the frame's own size, which need not be the canvas's. */
+	/* within() covers the overflow as well as the budget. libnsgif asks
+	 * with the canvas's size, grown by the first frame. */
 	if (!within(gif_budget, (long)width, (long)height))
 		return NULL;
 	b = calloc(1, sizeof(*b));
@@ -530,41 +588,28 @@ static void gif_bm_destroy(void *bitmap)
 	free(b);
 }
 
-static unsigned char *gif_bm_buffer(void *bitmap)
+static uint8_t *gif_bm_buffer(void *bitmap)
 {
 	struct gifbm *b = bitmap;
 
 	return b ? b->px : NULL;
 }
 
-static void gif_bm_set_opaque(void *bitmap, bool opaque)
-{
-	(void)bitmap;
-	(void)opaque;
-}
-
-static bool gif_bm_test_opaque(void *bitmap)
-{
-	(void)bitmap;
-	return false;
-}
-
-static void gif_bm_modified(void *bitmap)
-{
-	(void)bitmap;
-}
-
 static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
 		   KimgFrame *out, int max)
 {
-	gif_bitmap_callback_vt vt = {
-		gif_bm_create, gif_bm_destroy, gif_bm_buffer,
-		gif_bm_set_opaque, gif_bm_test_opaque, gif_bm_modified
+	/* The three the library requires; the opacity and modified
+	 * notifications are optional and nothing here would act on them. */
+	const nsgif_bitmap_cb_vt vt = {
+		.create = gif_bm_create,
+		.destroy = gif_bm_destroy,
+		.get_buffer = gif_bm_buffer,
 	};
-	gif_animation gif;
+	const nsgif_info_t *info;
+	nsgif_t *gif;
 	size_t charged = 0;
 	int got = 0;
-	long w, h;
+	long w, h, frames;
 
 	if (n < 10 || max < 1)
 		return 0;
@@ -572,24 +617,32 @@ static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
 	h = (long)p[8] | ((long)p[9] << 8);
 	if (!within(b, w, h))
 		return 0;
+	frames = gif_frames(p, n);
+	if (frames < 1)
+		return 0;
 
+	/* Byte-order RGBA, which is what from_rgba reads on either
+	 * endianness; the word-order formats would swap on one of them. */
+	if (nsgif_create(&vt, NSGIF_BITMAP_FMT_R8G8B8A8, &gif) != NSGIF_OK)
+		return 0;
 	gif_budget = b;
-	gif_create(&gif, &vt);
-	/* libnsgif takes the buffer as non-const and does not write to it. */
-	if (gif_initialise(&gif, n, (unsigned char *)p) != GIF_OK) {
-		gif_finalise(&gif);
+	if (nsgif_data_scan(gif, n, p) != NSGIF_OK) {
+		nsgif_destroy(gif);
 		gif_budget = NULL;
 		return 0;
 	}
-	if (!within(b, (long)gif.width, (long)gif.height)) {
-		gif_finalise(&gif);
+	info = nsgif_get_info(gif);
+	if (!within(b, (long)info->width, (long)info->height)) {
+		nsgif_destroy(gif);
 		gif_budget = NULL;
 		return 0;
 	}
 
-	for (unsigned f = 0; f < gif.frame_count && got < max; f++) {
+	for (uint32_t f = 0; f < info->frame_count && got < max; f++) {
+		const nsgif_frame_info_t *fi;
+		nsgif_bitmap_t *bitmap = NULL;
 		struct gifbm *bm;
-		size_t cost = (size_t)gif.width * (size_t)gif.height * 4;
+		size_t cost = (size_t)info->width * (size_t)info->height * 4;
 
 		/* THE BUDGET IS OVER THE WHOLE ANIMATION. A frame that would
 		 * cross it ends the decode and the frames already accepted
@@ -597,25 +650,27 @@ static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
 		 * far more than a decoder that allocated until it was killed. */
 		if (charged > b->max_bytes - cost)
 			break;
-		if (gif_decode_frame(&gif, f) != GIF_OK)
+		if (nsgif_frame_decode(gif, f, &bitmap) != NSGIF_OK)
 			break;
-		bm = gif.frame_image;
-		if (!bm || !bm->px)
+		bm = bitmap;
+		fi = nsgif_get_frame_info(gif, f);
+		if (!bm || !bm->px || !fi)
 			break;
-		out[got].img = from_rgba(bm->px, (int)gif.width,
-					 (int)gif.height);
+		out[got].img = from_rgba(bm->px, (int)info->width,
+					 (int)info->height);
 		if (!out[got].img)
 			break;
-		/* Centiseconds on the wire. Zero means "as fast as you like",
-		 * which every browser reads as ten hundredths — a zero here
-		 * would be a busy loop. */
-		out[got].gap_ms = gif.frames[f].frame_delay > 0
-					  ? (int)gif.frames[f].frame_delay * 10
-					  : 100;
+		/* Centiseconds on the wire, read raw: nsgif_frame_prepare's
+		 * clamp belongs to its own animation clock, which is not used
+		 * here. Zero means "as fast as you like", which every browser
+		 * reads as ten hundredths — a zero here would be a busy loop.
+		 * A frame with no graphic control extension carries libnsgif's
+		 * default of ten. */
+		out[got].gap_ms = fi->delay > 0 ? (int)fi->delay * 10 : 100;
 		charged += cost;
 		got++;
 	}
-	gif_finalise(&gif);
+	nsgif_destroy(gif);
 	gif_budget = NULL;
 	return got;
 }

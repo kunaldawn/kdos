@@ -9,9 +9,10 @@
 # ---------------------------------
 
 name        = pango
-version     = 1.57.0
-release     = 3
+version     = 1.58.2
+release     = 1
 source      = https://ftp.gnome.org/pub/gnome/sources/pango/${version%.*}/$name-$version.tar.xz
-sha256      = 890640c841dae77d3ae3d8fe8953784b930fa241b17423e6120c7bfdf8b891e7  pango-1.57.0.tar.xz
+sha256      = 342385b6ca3b7c73455d7c80a13b7dbe4489e00bc3bd4c5bd6ed4dce421e374a  pango-1.58.2.tar.xz
 description = Text layout and rendering library (Wayland-only build, no X11/Xft)
 depends     = cairo harfbuzz fribidi fontconfig glib meson
+devseries   = preview-minor

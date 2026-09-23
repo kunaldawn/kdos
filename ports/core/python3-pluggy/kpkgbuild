@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pluggy
+version     = 1.6.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pluggy/pluggy-$version.tar.gz
+sha256      = 7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3  python3-pluggy-1.6.0.tar.gz
+description = The plugin hook system hatchling and ocrmypdf are extended through
+homepage    = https://pypi.org/project/pluggy/
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm

@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = fzf
-version     = 0.72.0
+version     = 0.74.4
 release     = 1
 source      = https://github.com/junegunn/fzf/archive/v$version.tar.gz
-sha256      = ca5ce083cec5187503ceb96d837c20d8efde85f03e62bba3a8890f8da526f2fc  fzf-0.72.0.tar.gz
-sha256      = 9e7601e9b9b1833bbf7bd4c962194676979cbe7fff05051118ecb5d35069d4d0  fzf-vendor-0.72.0.tar.xz
+sha256      = 1046857c337f5bd05f6fa482446b5a42a011615105743efbe4efee0970b24bb7  fzf-0.74.4.tar.gz
+sha256      = 259dc9bdfad130205461bbc336f71c319ba3bbc9eaf9ea26d6e4c02da597f61a  fzf-vendor-0.74.4.tar.xz
 description = fzf — general-purpose command-line fuzzy finder
 homepage    = https://github.com/junegunn/fzf
 depends     = go

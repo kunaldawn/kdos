@@ -9,5 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr
-make DESTDIR=$PKG install
+meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib --buildtype=release
+meson compile -C build
+DESTDIR=$PKG meson install --no-rebuild -C build

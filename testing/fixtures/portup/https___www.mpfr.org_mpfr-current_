@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<title>GNU MPFR version 4.2.2</title>
+<link rel="shortcut icon" href="../favicon.ico" />
+<link rel="stylesheet" type="text/css" href="../styles/screen.css" media="screen,tv,projection" />
+<link rel="stylesheet" type="text/css" href="../styles/print.css" media="print" />
+<link rel="top" title="The GNU MPFR Library" href="../index.html" />
+<link rel="up" title="The GNU MPFR Library" href="../index.html" />
+</head>
+
+<body>
+
+<div class="logo"><a href="../index.html"><img src="../mpfr100.png" height="40" width="100" alt="[MPFR]" /></a></div>
+
+<h1><acronym>GNU</acronym> <acronym>MPFR</acronym> version 4.2.2 (released on 20 March 2025)</h1>
+
+<div>[<a href="#download">download</a>]
+[<a href="#doc">documentation</a>]
+[<a href="#bugs">bugs</a>]
+[<a href="#changes">changes</a>]
+[<a href="#platforms">platforms</a>]</div>
+
+<p>The <cite lang="fr" xml:lang="fr">fondue savoyarde</cite> release, patch level 2.</p>
+
+<p><acronym>MPFR</acronym> 4.2.2 requires <acronym>GMP</acronym> 5.0 or higher.</p>
+
+<h2 id="download">Download</h2>
+
+<p>The <acronym>MPFR</acronym> 4.2.2 source can be downloaded in the following archive formats:</p>
+<ul>
+<li><a href="mpfr-4.2.2.tar.xz">mpfr-4.2.2.tar.xz</a> (tar/xz, 1.5 <abbr>MB</abbr>, <a href="mpfr-4.2.2.tar.xz.asc" title="PGP signature for mpfr-4.2.2.tar.xz">signature</a>),</li>
+<li><a href="mpfr-4.2.2.tar.bz2">mpfr-4.2.2.tar.bz2</a> (tar/bzip2, 1.7 <abbr>MB</abbr>, <a href="mpfr-4.2.2.tar.bz2.asc" title="PGP signature for mpfr-4.2.2.tar.bz2">signature</a>),</li>
+<li><a href="mpfr-4.2.2.tar.gz">mpfr-4.2.2.tar.gz</a> (tar/gzip, 2.2 <abbr>MB</abbr>, <a href="mpfr-4.2.2.tar.gz.asc" title="PGP signature for mpfr-4.2.2.tar.gz">signature</a>),</li>
+<li><a href="mpfr-4.2.2.zip">mpfr-4.2.2.zip</a> (zip, 2.6 <abbr>MB</abbr>, <a href="mpfr-4.2.2.zip.asc" title="PGP signature for mpfr-4.2.2.zip">signature</a>).</li>
+</ul>
+
+<p>Each tarball is signed by Vincent Lefèvre. This can be verified using the <acronym title="Digital Signature Algorithm">DSA</acronym> key <abbr>ID</abbr> <samp>5831D11A0D4DB02A</samp>; this key can be retrieved with:</p>
+<pre>gpg --recv-keys 5831D11A0D4DB02A</pre>
+<p>or by downloading it from <a href="https://www.vinc17.net/pgp.html">https://www.vinc17.net/pgp.html</a>. The key fingerprint is:</p>
+<pre>A534 BE3F 83E2 41D9 1828  0AEB 5831 D11A 0D4D B02A</pre>
+<p>The signatures can be verified with:</p>
+<pre>gpg --verify <em>file.asc</em></pre>
+<p>You should check that the key fingerprint matches.</p>
+
+<p><acronym>MPFR</acronym> is also available via <a href="../ports.html">third-party packages and ports</a>.</p>
+
+<h2 id="doc">Documentation</h2>
+
+<ul>
+
+<li>The reference manual:
+[<a href="mpfr.html" title="Reference manual in HTML format">html</a>]
+[<a href="mpfr.dvi.gz" title="Reference manual in DVI format">dvi</a>]
+[<a href="mpfr.ps.gz" title="Reference manual in Postscript format">ps</a>]
+[<a href="mpfr.pdf" title="Reference manual in PDF format">pdf</a>]</li>
+
+<li>The <a href="../faq.html"><acronym>MPFR</acronym> <acronym title="Frequently Asked Questions">FAQ</acronym></a> (common to all <acronym>MPFR</acronym> versions).</li>
+
+</ul>
+
+<h2 id="bugs">Bugs</h2>
+
+<!-- For BUGS, use the latest version from the branch. Changes in this branch will be noted above. -->
+<p>See the <a href="https://gitlab.inria.fr/mpfr/mpfr/-/blob/4.2/BUGS"><samp>BUGS</samp></a> file. The <a href="mpfr.html#Reporting-Bugs"><cite>Reporting Bugs</cite></a> section of the <acronym>MPFR</acronym> manual gives details on how to report new bugs.</p>
+
+<h2 id="changes">Changes from version 4.2.1 to version 4.2.2</h2>
+
+<ul>
+
+<li>In order to resolve a portability issue with the <code>_Float128</code> fallback to <code>__float128</code> for binary128 support (<abbr>e.g.</abbr> with <cite>Clang</cite> and <cite>glibc</cite> 2.41), the prototypes of the corresponding conversion functions had to be changed, with <code>_Float128</code> replaced by <code>mpfr_float128</code>, where <code>mpfr_float128</code> is a macro defined as <code>_Float128</code> by default. This changes neither the <acronym>ABI</acronym> nor the <acronym>API</acronym> (except that the end user of <acronym>MPFR</acronym> would need to define <code>mpfr_float128</code> as the actual type for the binary128 format if this is not the standard <code>_Float128</code> type).</li>
+
+<li>Other bug fixes (see the <a href="https://www.mpfr.org/mpfr-4.2.1/#fixed">fixed bugs on the <acronym>MPFR</acronym> 4.2.1 page</a> and/or the <a href="https://gitlab.inria.fr/mpfr/mpfr/-/blob/4.2.2/ChangeLog"><samp>ChangeLog</samp></a> file). In particular, the formatted output functions behaved incorrectly with <samp>%c</samp> on the value 0; such a use is uncommon, but this bug may have security implications.</li>
+
+<li>Improved <acronym>MPFR</acronym> manual.</li>
+
+<li>Detect the use of <acronym>GMP</acronym>'s buggy <code>vsnprintf</code> replacement at configure time. With it, the tests of <code>"%a"</code> will be disabled to avoid an assertion failure in the <acronym>MPFR</acronym> testsuite. A warning will be displayed in the configure output in such a case.</li>
+
+</ul>
+
+<h2 id="platforms">Platforms Known to Support <cite><acronym>MPFR</acronym></cite></h2>
+
+<p><acronym>MPFR</acronym> 4.2.2 has been successfully compiled and checked on the following platforms:</p>
+
+<ul>
+<li><samp>aarch64-apple-darwin21.6.0</samp> (clang 14.0.0);</li>
+<li><samp>aarch64-unknown-linux-gnu</samp> (<acronym>gcc</acronym> 8.5.0 and 14.2.0, clang 19.1.7 on Termux/Android, <acronym>tcc</acronym> mob branch);</li>
+<li><samp>aarch64-unknown-linux-musl</samp> (<acronym>gcc</acronym> 14.2.0);</li>
+<li><samp>i586-unknown-freebsd13.3</samp> (clang 17.0.6);</li>
+<li><samp>i686-w64-mingw32</samp> (<cite>Wine</cite>, <acronym>gcc</acronym> 14-win32);</li>
+<li><samp>mips-unknown-linux-gnu</samp> (o32 and n32 <acronym title="Application Binary Interface">ABI</acronym>, <acronym>gcc</acronym> 8.3.0);</li>
+<li><samp>powerpc-ibm-aix7.3.1.0</samp> (IBM POWER8, <acronym>gcc</acronym> 10.3.0);</li>
+<li><samp>powerpc64-unknown-linux-gnu</samp> (IBM POWER7, <acronym>gcc</acronym> 4.8.5);</li>
+<li><samp>powerpc64le-unknown-linux-gnu</samp> (IBM POWER8, <acronym>gcc</acronym> 4.8.5; IBM POWER9, <acronym>gcc</acronym> 4.8.5 and 8.3.1, IBM XL C/C++ 16.1.1.3);</li>
+<li><samp>riscv64-unknown-freebsd15.0</samp> (clang 19.1.7);</li>
+<li><samp>riscv64-unknown-linux-gnu</samp> (<acronym>gcc</acronym> 13.3.0);</li>
+<li><samp>sparc-sun-solaris2.9</samp> (<acronym>gcc</acronym> 4.6.4);</li>
+<li><samp>sparc-sun-solaris2.10</samp> (<acronym>gcc</acronym> 5.5.0, Studio 12.6 Sun C 5.15 2017/05/30);</li>
+<li><samp>x86_64-pc-linux-gnu</samp> (<acronym>gcc</acronym> 4.8.5, 4.9.4, 5.5.0, 6.5.0, 8.4.0, 9.5.0, 10.5.0, 12.2.0, 14.2.0 and 15.0.1 snapshot, g++ 4.9 and 14.2.0, clang 3.6.2, 3.7.1, 6.0.1, 7.0.1, 8.0.1, 9.0.1, 10.0.1, 11.1.0, 12.0.1, 13.0.1, 14.0.6, 15.0.7, 16.0.6, 17.0.6 and 18.1.8, Intel oneAPI icx 2021.3.0, and <acronym>tcc</acronym> 0.9.27);</li>
+<li><samp>x86_64-pc-linux-musl</samp> (<acronym>gcc</acronym> 14.2.0);</li>
+<li><samp>x86_64-unknown-gnu0.9</samp> (Debian/Hurd, GNU-Mach, <acronym>gcc</acronym> 14.2.0).</li>
+</ul>
+
+<p><a href="../index.html">Back to the <cite><acronym>MPFR</acronym></cite> page.</a></p>
+
+<hr />
+
+<div class="footer"><a href="http://validator.w3.org/check/referer"><img
+  src="http://www.w3.org/Icons/valid-xhtml10"
+  alt="Valid XHTML 1.0!" height="31" width="88" /></a></div>
+
+</body>
+
+</html>

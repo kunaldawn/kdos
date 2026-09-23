@@ -1,0 +1,93 @@
+[
+ {
+  "tag_name": "v0.72.1",
+  "name": "v0.72.1",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.72.0",
+  "name": "v0.72.0",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.71.1",
+  "name": "v0.71.1",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.71.0",
+  "name": "v0.71.0",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.70.1",
+  "name": "v0.70.1",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.70.0",
+  "name": "v0.70.0",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.69.5",
+  "name": "v0.69.5",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.69.4",
+  "name": "v0.69.4",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.68.1",
+  "name": "v0.68.1",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.68.0",
+  "name": "v0.68.0",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.66.1",
+  "name": "v0.66.1",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.66.0",
+  "name": "v0.66.0",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ },
+ {
+  "tag_name": "v0.65.1",
+  "name": "v0.65.1",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-01-01T00:00:00Z"
+ }
+]

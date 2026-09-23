@@ -11,7 +11,7 @@
 name        = gphoto2
 version     = 2.5.32
 release     = 1
-source      = gphoto2-2.5.32.tar.bz2::https://github.com/gphoto/gphoto2/releases/download/v2.5.32/gphoto2-2.5.32.tar.bz2
+source      = $name-$version.tar.bz2::https://github.com/gphoto/gphoto2/releases/download/v$version/$name-$version.tar.bz2
 sha256      = 4e379a0f12f72b49ee5ee2283ffd806b5d12d099939d75197a3f4bbc7f27a1a1  gphoto2-2.5.32.tar.bz2
 description = Tethered capture and card download from a prompt
 homepage    = http://www.gphoto.org/

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = nco
-version     = 5.3.8
+version     = 5.4.0
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/nco/nco/archive/refs/tags/$version.tar.gz
-sha256      = f23b0b95525473d305ab15b96266d1458e3dfa193b9ee701af826913602d473d  nco-5.3.8.tar.gz
+sha256      = c6e03cacbde7eae908eabfe65b2c1edc7b1754e07597b8f7fe2fc894f21b2dca  nco-5.4.0.tar.gz
 description = Subset, regrid and do arithmetic on gridded data without loading it
 homepage    = https://nco.sourceforge.net/
 depends     = netcdf-c hdf5 zlib gsl udunits expat autoconf automake libtool

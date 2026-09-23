@@ -54,3 +54,10 @@ Requires:
 Libs: -L${libdir} -llua -lm -ldl
 Cflags: -I${includedir}
 EOF
+
+# A VERSIONED NAME AS WELL AS lua.pc, because lua54 ships lua5.4.pc beside
+# it. A consumer that names its Lua by version (wireplumber's
+# -Dsystem-lua-version asks for lua-X.Y, then luaX.Y) finds nothing for this
+# one without the link, and one that walks versioned names before plain `lua`
+# settles on 5.4.
+ln -s lua.pc $PKG/usr/lib/pkgconfig/lua$_majorver.pc

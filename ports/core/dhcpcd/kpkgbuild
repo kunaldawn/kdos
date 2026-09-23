@@ -9,8 +9,8 @@
 # ---------------------------------
 
 name        = dhcpcd
-version     = 10.3.0
+version     = 10.5.2
 release     = 1
 source      = https://github.com/NetworkConfiguration/dhcpcd/releases/download/v${version}/${name}-${version}.tar.xz
-sha256      = 06e4c1aaf958523f3fd1c57258c613c6c7ae56b8f1d678fa7943495d5ea6aeb5  dhcpcd-10.3.0.tar.xz
+sha256      = 3e476657fdb6eeb38b277da3a48d0ac0113ecce5858ebdcddff2b629faed52b4  dhcpcd-10.5.2.tar.xz
 description = An implementation of the DHCP client specified in RFC2131
