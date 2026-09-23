@@ -36,7 +36,9 @@ INSTALL_PROGRAMS="expr ln"
 # whole of what this port installs is `expr`.
 export FORCE_UNSAFE_CONFIGURE=1
 
-./configure --prefix=/usr --disable-nls --without-selinux
+# --with-libgmp gives `expr` arbitrary-precision integers; named, a missing gmp
+# stops configure instead of leaving an expr that refuses anything past 2^63.
+./configure --prefix=/usr --disable-nls --without-selinux --with-libgmp
 make
 
 for prog in $INSTALL_PROGRAMS; do

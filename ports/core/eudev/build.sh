@@ -18,7 +18,10 @@ autoreconf -f -i -s
 	--sysconfdir=/etc \
 	--libexecdir=/lib \
 	--with-rootprefix= \
-	--with-rootlibdir=/lib
+	--with-rootlibdir=/lib \
+	--enable-blkid \
+	--enable-kmod \
+	--disable-selinux
 make
 
 mkdir -pv $PKG/lib/udev/rules.d

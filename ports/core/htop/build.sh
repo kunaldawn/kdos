@@ -9,8 +9,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The process-backtrace screen and the crash backtrace want the nongnu
+# libunwind with libunwind-ptrace; the libunwind port is LLVM's, which has
+# neither, so both stay off. Demangling only serves those backtraces.
 ./autogen.sh
-./configure --prefix=/usr --disable-nls --mandir=/usr/share/man
+./configure --prefix=/usr --mandir=/usr/share/man \
+	--enable-sensors \
+	--enable-delayacct \
+	--enable-capabilities \
+	--enable-backtrace=no \
+	--without-libunwind \
+	--disable-demangling
 make
 make DESTDIR=$PKG install
 

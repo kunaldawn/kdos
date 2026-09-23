@@ -13,6 +13,10 @@
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=/usr/lib \
-	--disable-static
+	--disable-static \
+	--enable-freetype \
+	--disable-devel-docs \
+	--without-xmlto \
+	--without-fop
 make
 make DESTDIR=$PKG install

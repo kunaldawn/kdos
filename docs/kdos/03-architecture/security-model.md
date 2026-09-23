@@ -157,7 +157,7 @@ The image ships these in `/etc/passwd`, `/etc/group` and `/etc/shadow`:
 | `lp` | 10:10 | CUPS |
 | `nobody` | 99:99 | Anything that asks for an unprivileged account by that name |
 
-`polkitd`, `avahi`, `nm-openvpn` and `prosody` are made by their ports'
+`polkitd`, `avahi`, `nm-openvpn`, `pcscd` and `prosody` are made by their ports'
 `postinstall.sh` with `groupadd -r` and `useradd -r`, which pick a free id.
 Every id a shipped account uses therefore has a line of its own in both files:
 a primary gid with no `/etc/group` line looks free to `groupadd -r`, which
@@ -450,7 +450,14 @@ The rest of the signing design is in [Packaging](packaging.md).
 A third trust root, and it is not a keyring: `/etc/ssl/cert.pem`, the Mozilla CA
 bundle `ca-certificates` installs as one file. `/etc/ssl/certs/ca-certificates.crt`
 and `/etc/ssl/ca-bundle.crt` are symlinks to it, so a consumer configured against
-any of the three reads the same 144 certificates.
+any of the three reads the same 121 certificates.
+
+The bundle is built, not carried. The port pins `certdata.txt` at an NSS release
+tag — the port's version is that release — and converts it with curl's
+`mk-ca-bundle.pl` at a pinned curl release, the converter behind curl's own
+`cacert.pem`, with its defaults: the roots NSS trusts to issue server
+certificates. The converter also drops any root already expired when it runs,
+so a rebuild after a root's expiry ships one certificate fewer.
 
 | Consumer | Reaches the bundle through |
 |---|---|

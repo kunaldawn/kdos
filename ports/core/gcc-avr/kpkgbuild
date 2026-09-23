@@ -16,4 +16,4 @@ source      = $name-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/gcc/$_
 sha256      = e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e  gcc-avr-16.2.0.tar.xz
 description = The AVR compiler — every ATmega and ATtiny in the spare-parts drawer
 homepage    = https://gcc.gnu.org/
-depends     = binutils-avr gmp mpfr mpc zlib texinfo
+depends     = binutils-avr gmp mpfr mpc zlib zstd texinfo

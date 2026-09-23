@@ -16,6 +16,9 @@ cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
     -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
-    -Wno-dev 
+    -DBUILD_TESTING=OFF \
+    -DPYTHON=OFF \
+    -DPYBIND11=OFF \
+    -Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

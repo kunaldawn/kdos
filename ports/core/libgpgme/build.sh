@@ -9,9 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl needs _LARGEFILE64_SOURCE to expose ino64_t/off64_t used in
-# src/posix-io.c's dirent64 struct (glibc defines them unconditionally).
-export CFLAGS="${CFLAGS:-} -D_LARGEFILE64_SOURCE"
-./configure --prefix=/usr --disable-gpg-test --disable-gpgsm-test --disable-g13-test
+# The getdents fd-closing path declares its dirent64 with ino64_t and off64_t,
+# which musl exposes only under _LARGEFILE64_SOURCE; off, gpgme closes a
+# child's descriptors through the portable loop instead.
+./configure --prefix=/usr --disable-gpg-test --disable-gpgsm-test --disable-g13-test \
+	--disable-linux-getdents
 make
 make DESTDIR=$PKG install

@@ -33,7 +33,7 @@ export CFLAGS="$CFLAGS -std=gnu17"
 	--localstatedir=/var --disable-static \
 	--enable-universal-cups-filter --disable-individual-cups-filters \
 	--enable-imagefilters --enable-poppler --enable-ghostscript \
-	--disable-mutool --enable-foomatic --enable-driverless \
+	--disable-mutool --enable-foomatic --enable-driverless --disable-nls \
 	--with-shell=/bin/bash
 make
 # -j1 ON THE INSTALL: MKDIR_P is upstream's bundled install-sh, which tests

@@ -22,10 +22,12 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz -C .kdos-vendor \
 # every command anybody typed on this machine; shipping it able to post that to
 # a remote by configuration is the argument that turned off fcitx5's cloud
 # pinyin, on a more sensitive database. `--no-default-features` drops every
-# feature and the two named back are the local half: `client` is the SQLite
-# store, the search UI and the shell hooks, and `clipboard` is a yank out of
-# that UI. `sync`, `check-update`, `daemon` and `ai` stay off, and they are the
-# four that reach the network; `pty-proxy` stays off with them.
+# feature and the three named back are the local half: `client` is the SQLite
+# store, the search UI and the shell hooks, `clipboard` is a yank out of that
+# UI, and `pty-proxy` is `atuin hex` — the shell re-executed inside a local
+# pseudo-terminal so the search UI can draw inline; it links portable-pty and
+# crossterm and nothing that opens a socket. `sync`, `check-update`, `daemon`
+# and `ai` stay off, and they are the four that reach the network.
 #
 # THE CLIPBOARD IS arboard AND IT REACHES THE DESKTOP'S. atuin asks it for
 # `wayland-data-control` on Linux, which is wl-clipboard-rs speaking
@@ -37,6 +39,6 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz -C .kdos-vendor \
 # other program's. A login with no Wayland socket falls back to arboard's X11
 # path, and there is no X server on this image either.
 cargo build --release --frozen --offline --config .kdos-vendor/.cargo/config.toml \
-	--package atuin --no-default-features --features client,clipboard
+	--package atuin --no-default-features --features client,clipboard,pty-proxy
 
 install -Dm755 target/release/atuin $PKG/usr/bin/atuin

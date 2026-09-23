@@ -16,5 +16,5 @@ sha256      = f1cd5e358fd836051d4d88c189ecaa025a108b729281985525b45b13bc49e70f  
 sha256      = 1e5fa2c4e541b1f1429bca2acd18b8e6eda1e70fa6f89f1f25147364ebe7ea42  aerc-vendor-0.22.0.tar.xz
 description = A terminal mail client that speaks IMAP, Maildir and notmuch
 homepage    = https://aerc-mail.org/
-depends     = go scdoc notmuch
+depends     = go scdoc notmuch w3m mupdf chafa docx2txt gawk util-linux
 vendoring   = go

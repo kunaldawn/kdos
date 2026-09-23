@@ -14,4 +14,4 @@ release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
 sha256      = 9bba0214ccf7f1079c5d59210045227bcf619519840ebfa80cd3849cff5a5bf2  bison-3.8.2.tar.xz
 description = The GNU Bison parser generator
-depends     = m4
+depends     = m4 gettext

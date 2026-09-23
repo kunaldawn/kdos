@@ -12,7 +12,7 @@
 ./configure \
 	--prefix=/usr \
 	--disable-multi-os-directory \
-	--disable-exec-static-tramp \
+	--enable-exec-static-tramp \
 	--enable-pax_emutramp
 make
 make DESTDIR=$PKG install

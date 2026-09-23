@@ -23,6 +23,11 @@
 # BEFORE swapoff AND umount in /etc/inittab. A service stopped after its
 # filesystem went read-only cannot write what it came to save.
 #
+# THE FIREWALL IS NOT STOPPED. `25_nftables stop` flushes the ruleset, and it
+# would run after the network scripts, whose interfaces stay configured when
+# NetworkManager exits: the machine would sit on the network with nothing
+# filtering until power-off. The ruleset goes when the kernel does.
+#
 # A failing stop does not end the walk. A service that was never started —
 # skipped for want of hardware, or standing down for another — answers its stop
 # with "not running", and every service after it still needs its turn.
@@ -37,6 +42,7 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
     [ -x "$_script" ] || continue
     _name=$(basename "$_script" | sed 's/^[0-9][0-9]_//;s/\.sh$//')
     [ -f "${DISABLED_DIR}/${_name}" ] && continue
+    [ "$_name" = nftables ] && continue
     _scripts+=("$_script")
 done
 

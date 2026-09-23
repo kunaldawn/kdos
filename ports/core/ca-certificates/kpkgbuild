@@ -9,13 +9,16 @@
 # ---------------------------------
 
 name        = ca-certificates
-version     = 20260813
+version     = 3.130
 release     = 1
 
-_noyear     = ${version#????}
-_version    = ${version%????}-${_noyear%??}-${version#??????}
+_tag        = NSS_${version//./_}_RTM
+_curl       = 8.22.0
 
-source      = https://curl.se/ca/cacert-$_version.pem
-sha256      = f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9  cacert-2026-08-13.pem
+source      = certdata-$version.txt::https://raw.githubusercontent.com/nss-dev/nss/$_tag/lib/ckfw/builtins/certdata.txt
+source      = mk-ca-bundle-$_curl.pl::https://raw.githubusercontent.com/curl/curl/curl-${_curl//./_}/scripts/mk-ca-bundle.pl
+sha256      = beb7e6dfe6499926e52c075c27bcfbe4c957f8609c575b3860273ae2806f63eb  certdata-3.130.txt
+sha256      = 8e278f4982210b37e4f9a048bd6ed23df41e4a054085bd73f8242628f03d09ca  mk-ca-bundle-8.22.0.pl
 description = Bundle of CA Root Certificates from Mozilla
-homepage    = https://curl.se/docs/caextract.html
+homepage    = https://firefox-source-docs.mozilla.org/security/nss/
+depends     = perl

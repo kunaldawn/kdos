@@ -27,6 +27,13 @@ cd src
 # image already carries and updates openssl, and a second AES and a second
 # SHA-2 on the same disk are a second set of advisories to track.
 #
+# THE OTHER THREE OPENSSL USERS AND THE KEYRING ARE NAMED, not probed: left to
+# configure, each is dropped without an error when its probe misses. The TLS
+# module is what reaches a KDC through an MS-KKDCP HTTPS proxy, SPAKE's NIST
+# groups need libcrypto's EC, PKINIT is `kinit` with a certificate or a smart
+# card, and --with-keyutils is the kernel-keyring credential cache type,
+# `KEYRING:`, a krb5.conf may name instead of a file.
+#
 # --without-system-verto AND THE BUNDLED COPY IS BUILT. libverto is the event
 # abstraction the KDC and kadmind use, there is no port for it, and configure
 # stops rather than choosing: "Could not find libverto". The bundled one is
@@ -63,6 +70,10 @@ cd src
 	--disable-nls \
 	--enable-dns-for-realm \
 	--with-crypto-impl=openssl \
+	--with-tls-impl=openssl \
+	--with-spake-openssl \
+	--enable-pkinit \
+	--with-keyutils \
 	--with-system-et \
 	--without-system-verto \
 	--without-ldap \

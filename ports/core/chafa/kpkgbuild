@@ -15,4 +15,4 @@ source      = https://hpjansson.org/chafa/releases/$name-$version.tar.xz
 sha256      = fb995ef21dce6c73dd0dd454ba3e0f7fac08e053ea16060a2e5ce69a3746ee27  chafa-1.18.3.tar.xz
 description = chafa — images as terminal graphics: sixel, kitty, iTerm2 or Unicode
 homepage    = https://hpjansson.org/chafa/
-depends     = glib freetype2 libjpeg-turbo librsvg libtiff libwebp libheif
+depends     = glib freetype2 libjpeg-turbo librsvg libtiff libwebp libheif libavif libjxl

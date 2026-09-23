@@ -24,13 +24,20 @@ autoreconf -f -i
 #
 # --with-experimental brings in the tools that need libnl; --disable-asan is
 # not passed because it is already off, and sqlite is what airolib-ng stores a
-# precomputed table in.
+# precomputed table in. OpenSSL is the crypto backend; gcrypt is the other and
+# is off. hwloc is not a port, so the cracker's CPU-affinity support is off
+# rather than decided by whatever the chroot holds. libpcre (the ESSID regex
+# filter) has no switch and is not a port, so it is never found.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=/usr/lib \
 	--disable-static \
 	--with-experimental \
+	--enable-libnl \
+	--with-sqlite3 \
+	--without-gcrypt \
+	--disable-hwloc \
 	--without-opt
 make
 make DESTDIR=$PKG install

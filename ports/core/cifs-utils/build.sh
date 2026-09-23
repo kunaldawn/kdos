@@ -34,6 +34,16 @@ export CFLAGS="$CFLAGS -std=gnu17"
 # `pam` is off because it is not the authentication stack on this image —
 # `authfw=shadow` is.
 #
+# `cifscreds` stashes a share's password in the session keyring through
+# keyutils, and `smbinfo` and `smb2-quota` are standard-library python3 scripts
+# that read a mounted share's metadata and quotas. cifscreds is named on
+# because at the default configure drops it with only a warning when keyutils.h
+# is missing; the scripts are installed without any check for python3, so
+# `depends` is what makes their interpreter present.
+#
+# mount.cifs drops its capabilities through libcap-ng; with libcap-ng absent
+# configure falls back to libcap and then to keeping them all, so it is named.
+#
 # ROOTSBINDIR because the default puts mount.cifs in /sbin, and /sbin is a
 # symlink to /usr/sbin here — installing through it would put the file outside
 # the package's own manifest.
@@ -41,11 +51,14 @@ export CFLAGS="$CFLAGS -std=gnu17"
 	--prefix=/usr \
 	--sbindir=/usr/sbin \
 	--enable-cifsupcall \
+	--enable-cifscreds \
+	--enable-smbinfo \
+	--enable-pythontools \
+	--with-libcap-ng=yes \
 	--disable-cifsidmap \
 	--disable-cifsacl \
 	--disable-pam \
 	--disable-systemd \
-	--disable-pythontools \
 	--enable-man
 make
 make install DESTDIR=$PKG ROOTSBINDIR=/usr/sbin

@@ -25,6 +25,7 @@ autoreconf -fi
 	--disable-systemd \
 	--enable-drm \
 	--enable-udev \
+	--enable-dbus \
 	--disable-usb
 
 make

@@ -20,8 +20,17 @@
 # yet and fails a long way in.
 #
 # Every runtime gcc would normally add is off: libssp, libgomp, libquadmath,
-# libatomic and shared libgcc all assume a hosted target. On a Cortex-M there
-# is no OS to host them.
+# libatomic and shared libgcc all assume a hosted target. On an AVR there is no
+# OS to host them.
+#
+# zstd is declared and pinned (LTO bytecode compression); no port provides
+# isl, so Graphite is pinned off rather than left to the probe.
+#
+# MULTILIB IS WHAT MAKES THE PARTS WORK. Each AVR core family (avr2 … avr6,
+# the xmegas, avrtiny) gets its own libgcc in its own directory, and avr-libc
+# installs its per-core crt and libraries into the same names; a compiler
+# built without multilib searches only the top directory and links the wrong
+# libgcc for anything past the default core.
 mkdir -p build && cd build
 ../configure \
 	--target=avr \
@@ -41,7 +50,9 @@ mkdir -p build && cd build
 	--disable-libstdcxx-pch \
 	--disable-decimal-float \
 	--with-gnu-as --with-gnu-ld \
-	--disable-multilib \
+	--with-zstd=/usr \
+	--without-isl \
+	--enable-multilib \
 	--with-pkgversion="KDOS"
 make all-gcc all-target-libgcc
 make DESTDIR=$PKG install-gcc install-target-libgcc

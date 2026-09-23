@@ -3,8 +3,8 @@ ffmpeg on KDOS is GPL-2-or-later, not LGPL
 
 THE POSITION
 
-`build.sh` passes `--enable-gpl`, and with it `--enable-libx264` and
-`--enable-libx265`. Upstream ffmpeg is LGPL-2.1-or-later by default; the GPL
+`build.sh` passes `--enable-gpl`, and with it `--enable-libx264`,
+`--enable-libx265` and `--enable-librubberband`. Upstream ffmpeg is LGPL-2.1-or-later by default; the GPL
 components are opt-in, and opting in relicenses the resulting binary.
 
 WHY
@@ -40,6 +40,13 @@ COMPONENT LICENCES
   lame      LGPL-2.0-or-later    ports/core/lame
   libass    ISC                  ports/core/libass
   libva     MIT                  ports/core/libva
+  rubberband GPL-2.0-or-later    ports/core/rubberband
+  libplacebo LGPL-2.1-or-later   ports/core/libplacebo
+  lcms2     MIT                  ports/core/lcms2
+  liblc3    Apache-2.0           ports/core/liblc3
+  libjxl    BSD-3-Clause         ports/core/libjxl
+  zimg      WTFPL                ports/core/zimg
+  soxr      LGPL-2.1-or-later    ports/core/soxr
 
 PATENTS
 

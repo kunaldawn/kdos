@@ -13,8 +13,8 @@
 # an `ax0` interface the kernel routes over, and the NET/ROM and connected-mode
 # tools are what make it a store-and-forward network rather than a beacon.
 #
-# NO X: --with-xutils would build the FLTK and GL front ends, which this host
-# has by rule none of.
+# NO X: --without-xutils, because --with-xutils would build the FLTK and GL
+# front ends, which this host has by rule none of.
 #
 # A RULE-7 PATCH DROPPING TWO SUBDIRS, and the reason it is a patch rather than
 # a `make SUBDIRS=` override is that automake's SUBDIRS is RECURSIVE: an
@@ -27,6 +27,7 @@
 cd ax25tools
 patch -p1 -d .. -i "$PORT_SRC/no-tcpip.patch"
 ./autogen.sh
-./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --libdir=/usr/lib
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --libdir=/usr/lib \
+	--without-xutils
 make
 make DESTDIR=$PKG install

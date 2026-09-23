@@ -20,6 +20,8 @@ cmake -B build-shared -G Ninja \
 	-DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
 	-DBUILD_SHARED_LIBS=ON \
 	-DALLOW_EXTERNAL_SPIRV_TOOLS=ON \
+	-DENABLE_OPT=ON \
+	-DGLSLANG_TESTS=OFF \
 	-Wno-dev
 ninja -C build-shared
 
@@ -32,6 +34,8 @@ cmake -B build-static -G Ninja \
 	-DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
 	-DBUILD_SHARED_LIBS=OFF \
 	-DALLOW_EXTERNAL_SPIRV_TOOLS=ON \
+	-DENABLE_OPT=ON \
+	-DGLSLANG_TESTS=OFF \
 	-Wno-dev
 ninja -C build-static
 

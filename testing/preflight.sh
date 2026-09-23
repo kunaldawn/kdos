@@ -741,6 +741,10 @@ for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; d
             _hdbad=$((_hdbad + 1))
         }
         [ -d build/fs/usr/bin ] || continue
+        # A function is not a program: the heredoc's own, and service_helper's
+        # when an init script sources it.
+        _fn=" $(sed -n 's/^[[:space:]]*\([a-z_][a-z0-9_]*\)[[:space:]]*()[[:space:]]*{.*/\1/p' \
+                 "$_b" fs/etc/init.d/service_helper | tr '\n' ' ') "
         for _c in $(sed 's/^[[:space:]]*//; s/#.*//' "$_b" |
                     sed -n 's/^if \([a-z][a-z0-9_.-]*\) .*/\1/p
                             s/^set -- \([a-z][a-z0-9_.-]*\) .*/\1/p
@@ -751,6 +755,7 @@ for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; d
                 trap|exit|return|break|continue|command|export|local|read|\
                 eval|cd|shift|unset|wait|getopts|source) continue ;;
             esac
+            case "$_fn" in *" $_c "*) continue ;; esac
             [ -e "build/fs/usr/bin/$_c" ] || [ -e "build/fs/bin/$_c" ] ||
             [ -e "build/fs/usr/sbin/$_c" ] || [ -e "build/fs/sbin/$_c" ] || {
                 bad "$_p" "KDOS_SH heredoc runs '$_c', which is on no image"

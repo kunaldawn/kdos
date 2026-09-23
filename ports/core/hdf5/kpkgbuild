@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/HDFGroup/hdf5/releases/d
 sha256      = 1a1ab8209b35586fbc1aa279ba76d102130b95badcb20ca329587219112d8c16  hdf5-2.2.0.tar.gz
 description = The self-describing container scientific data actually arrives in
 homepage    = https://www.hdfgroup.org/
-depends     = cmake ninja zlib
+depends     = cmake ninja zlib libaec

@@ -11,11 +11,24 @@
 
 ./configure \
 	--prefix=/usr \
-	--disable-bsdcat \
-	--without-lz4 \
-	--without-zstd \
-	--without-lzma \
+	--enable-bsdtar \
+	--enable-bsdcpio \
+	--enable-bsdcat \
+	--enable-bsdunzip \
+	--enable-acl \
+	--enable-xattr \
+	--enable-posix-regex-lib=libc \
+	--with-zlib \
+	--with-bz2lib \
+	--with-lzma \
+	--with-zstd \
+	--with-lz4 \
+	--with-openssl \
+	--with-expat \
+	--without-xml2 \
+	--without-libb2 \
+	--without-lzo2 \
 	--without-nettle \
-	--without-xml2
+	--without-mbedtls
 make
 make DESTDIR=$PKG install

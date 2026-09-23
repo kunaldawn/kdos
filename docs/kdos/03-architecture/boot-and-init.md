@@ -20,7 +20,7 @@ the user's side, see [Getting started](../02-user-guide/getting-started.md).
 | 9 | Find and mount the root | The initramfs `init` |
 | 10 | `switch_root` | util-linux's, never toybox's |
 | 11 | `/etc/init.d/rcS` | init (toybox), as `sysinit` |
-| 12 | The 30 numbered service scripts | `rcS` |
+| 12 | The 31 numbered service scripts | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
 | 15 | `kdos-login`, which hands the tty to agetty | `kdos-getty` on tty1 |
@@ -585,7 +585,10 @@ executable, no marker under `/etc/service.disabled` — and runs each with `stop
 in reverse order. `swapoff -a` and `umount -a -r` follow, so every stop action
 still has a writable filesystem to save to; `50_alsa` storing the mixer levels
 is the plainest case. A stop that fails, such as a service that was skipped at
-boot answering "not running", does not end the walk.
+boot answering "not running", does not end the walk. `25_nftables` is the one
+script left out: its stop flushes the ruleset, and it would run after the network
+scripts while the interfaces are still configured, leaving the machine on the
+network with nothing filtering until power-off.
 
 Each supervised service costs `ksvc` a second to stop, so a shutdown takes
 about as many seconds as there are daemons running. `kdos-powerd` waits sixty

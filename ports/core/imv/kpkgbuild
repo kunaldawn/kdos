@@ -15,4 +15,4 @@ source      = https://git.sr.ht/~exec64/imv/archive/v$version.tar.gz
 sha256      = 8949c1df4b933b1d324e02ce49f1834a4b73dd25fa8103579e0ed105149e080e  imv-5.0.1.tar.gz
 description = Image viewer for Wayland (Wayland-only build, meson)
 homepage    = https://sr.ht/~exec64/imv
-depends     = meson pkgconf wayland wayland-protocols libxkbcommon mesa fontconfig pango cairo libpng libjpeg-turbo libtiff icu librsvg libnsgif inih libheif libwebp asciidoc docbook-xsl libxslt
+depends     = meson pkgconf wayland wayland-protocols libxkbcommon mesa fontconfig pango cairo libpng libjpeg-turbo libtiff icu librsvg libnsgif inih libheif libjxl libwebp asciidoc docbook-xsl libxslt

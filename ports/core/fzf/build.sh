@@ -19,3 +19,5 @@ install -Dm644 man/man1/fzf.1 $PKG/usr/share/man/man1/fzf.1
 install -Dm644 man/man1/fzf-tmux.1 $PKG/usr/share/man/man1/fzf-tmux.1
 install -Dm644 shell/key-bindings.bash $PKG/usr/share/fzf/key-bindings.bash
 install -Dm644 shell/completion.bash $PKG/usr/share/fzf/completion.bash
+install -Dm644 shell/key-bindings.zsh $PKG/usr/share/fzf/key-bindings.zsh
+install -Dm644 shell/completion.zsh $PKG/usr/share/fzf/completion.zsh

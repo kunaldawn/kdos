@@ -22,6 +22,9 @@
 # Every runtime gcc would normally add is off: libssp, libgomp, libquadmath,
 # libatomic and shared libgcc all assume a hosted target. On a Cortex-M there
 # is no OS to host them.
+#
+# zstd is declared and pinned (LTO bytecode compression); no port provides
+# isl, so Graphite is pinned off rather than left to the probe.
 mkdir -p build && cd build
 ../configure \
 	--target=arm-none-eabi \
@@ -41,6 +44,8 @@ mkdir -p build && cd build
 	--disable-libstdcxx-pch \
 	--disable-decimal-float \
 	--with-gnu-as --with-gnu-ld \
+	--with-zstd=/usr \
+	--without-isl \
 	--with-multilib-list=rmprofile \
 	--with-pkgversion="KDOS"
 make all-gcc all-target-libgcc

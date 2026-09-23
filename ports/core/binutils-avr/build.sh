@@ -24,6 +24,11 @@ mkdir -p build && cd build
 	--disable-gdb \
 	--disable-sim \
 	--enable-multilib \
+	--with-system-zlib \
+	--with-zstd \
+	--with-xxhash \
+	--without-debuginfod \
+	--without-msgpack \
 	--with-pkgversion="KDOS"
 make
 make DESTDIR=$PKG install

@@ -11,12 +11,14 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-cargo build --release --frozen --offline
+# use-jemalloc is upstream's release allocator and is off by default: fd's
+# parallel walker allocates from every thread at once, which musl's malloc
+# serialises. The crate is in the vendor bundle.
+cargo build --release --frozen --offline --features use-jemalloc
 install -Dm755 target/release/fd $PKG/usr/bin/fd
 
-# Since fd 9.x, bash/fish completions are no longer shipped in the
-# tarball; the freshly-built fd emits them via --gen-completions.
-# Only the zsh completion (_fd) and the man page are pre-shipped.
+# The tarball ships only the zsh completion (_fd) and the man page; the bash
+# and fish completions come from the built fd via --gen-completions.
 target/release/fd --gen-completions bash > fd.bash
 target/release/fd --gen-completions fish > fd.fish
 install -Dm644 fd.bash              $PKG/usr/share/bash-completion/completions/fd

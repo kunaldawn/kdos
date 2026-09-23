@@ -17,6 +17,15 @@
 #
 # libserialport is what makes `-P /dev/ttyUSB0` find the right adapter among
 # several, and the `dialout` rules are what let a non-root user open it.
+#
+# EVERY LIBRARY IS A BARE find_library WITH NO SWITCH, so the ones that are not
+# ports are pinned by setting their result: a cache value that is not
+# -NOTFOUND stops the search. libusb-0.1 (`usb`, libusb-compat) is not a port,
+# which leaves usbtiny, micronucleus, the USB jtagmkII/Dragon/AVRISP mkII path,
+# pickit2 and the flip1/flip2 DFU bootloaders out of this binary; `usb0` is
+# the Windows one and `ftdi` is the pre-1.0 libftdi that libftdi1 replaces.
+# libusb-1.0, hidapi, libftdi1, libelf, readline and libserialport are all
+# `depends`.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -27,6 +36,9 @@ cmake .. -G Ninja \
 	-DHAVE_LINUXGPIO=ON \
 	-DHAVE_LINUXSPI=ON \
 	-DHAVE_PARPORT=OFF \
+	-DHAVE_LIBUSB=OFF \
+	-DHAVE_LIBUSB_WIN32=OFF \
+	-DHAVE_LIBFTDI=OFF \
 	-DBUILD_DOC=OFF \
 	-DFORCE_DISABLE_PYTHON_SUPPORT=ON
 ninja

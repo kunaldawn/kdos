@@ -9,16 +9,18 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --with-blas-lib POINTS IT AT OpenBLAS RATHER THAN ITS OWN. GSL ships a
-# reference CBLAS that is correct and roughly an order of magnitude slower;
-# leaving it in place means every GSL consumer silently gets the slow one on a
-# machine that has a tuned BLAS installed.
+# THE PATCH POINTS CONSUMERS AT OpenBLAS RATHER THAN GSL'S OWN CBLAS. libgsl
+# leaves its cblas_* symbols undefined and each consumer supplies them at link
+# time, from whatever gsl.pc and `gsl-config --libs` name. Upstream names its
+# reference libgslcblas, which is correct and roughly an order of magnitude
+# slower, and configure has no option to change that. libgslcblas is still
+# installed, so a consumer that links -lgslcblas by name gets the slow one.
+patch -p1 -i "$PORT_SRC/openblas-default-cblas.patch"
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
-	--disable-static \
-	--with-external-cblas
-make GSL_CBLAS_LIB=-lopenblas
+	--disable-static
+make
 make DESTDIR=$PKG install
 
 # A PUBLIC HEADER MUST BE VALID UTF-8, and upstream's is ISO-8859-1: an author

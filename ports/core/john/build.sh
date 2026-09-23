@@ -24,14 +24,35 @@
 # change the alignment of the non-SIMD build.
 patch -p1 -i "$PORT_SRC/blake2-align.patch"
 
+# opencl-topology.patch has no flag either. opencl_common.h supplies AMD's
+# cl_device_topology_amd union only when CL_DEVICE_TOPOLOGY_AMD is undefined,
+# and current OpenCL headers define that macro without the union, so the GPU
+# build stops at an unknown type. The patch guards the union on
+# CL_DEVICE_TOPOLOGY_TYPE_PCIE_AMD, which those headers do not define.
+patch -p1 -i "$PORT_SRC/opencl-topology.patch"
+
+# -fcommon: the OpenCL formats declare file-scope globals (psalt, insize,
+# keyfiles_data, ...) under the same names as their CPU twins without `static`,
+# and GCC's -fno-common default turns every such pair into a multiple-definition
+# link error. -fcommon merges them the way the source was written for.
+export CFLAGS="$CFLAGS -fcommon"
+
 cd src
-./configure --prefix=/usr --disable-native-tests --without-openmpi
+./configure --prefix=/usr --disable-native-tests --disable-mpi \
+	--enable-pcap --enable-opencl
 
 # --disable-native-tests IS WHAT MAKES THIS REPRODUCIBLE. john's configure
 # probes THIS CPU's instruction set and bakes the best it finds into the
 # binary, so a package built on a machine with AVX-512 crashes on one without
 # it — and the failure is SIGILL at run time, not a link error. That is exactly
 # the blind optimisation `kdos march` exists to replace with a measurement.
+#
+# --enable-pcap fails configure without libpcap rather than dropping the
+# vncpcap2john / SIPdump / eapmd5tojohn helpers. --enable-opencl only asks:
+# the GPU formats come in when CL/cl.h and -lOpenCL link, which is why
+# opencl-headers and ocl-icd are `depends`; configure's "OpenCL support"
+# summary line is the one to read. The formats then run on whatever ICD
+# /etc/OpenCL/vendors names, and report no device when it names none.
 make -j1
 
 # WHAT IT IS FOR: reading a hash out of a LUKS header, a KeePass database, an
@@ -58,6 +79,11 @@ for f in *; do
 		cp -a "$f" $PKG/usr/share/john/
 	fi
 done
+
+# run/ztex holds prebuilt FPGA bitstreams and a USB controller image for the
+# ZTEX 1.15y board. --enable-ztex is not passed, so no program here can load
+# them and they are not shipped.
+rm -rf $PKG/usr/share/john/ztex
 
 # The *2john converters are the half people actually reach for — they read a
 # container and print the hash john takes. The scripted ones get a symlink so

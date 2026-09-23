@@ -20,6 +20,7 @@
 # and the three modules under share/cmake.
 mkdir -p build && cd build
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
-	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib
+	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
+	-DCORROSION_BUILD_TESTS=OFF
 make
 make DESTDIR=$PKG install

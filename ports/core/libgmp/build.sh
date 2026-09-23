@@ -11,6 +11,7 @@
 
 ./configure --prefix=/usr \
             --enable-cxx \
+            --enable-fat \
             --build=${XHOST:-x86_64-unknown-linux-musl}
 make
 make DESTDIR=$PKG install

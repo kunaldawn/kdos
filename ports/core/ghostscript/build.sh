@@ -30,7 +30,14 @@ rm -rf brotli freetype jbig2dec jpeg libpng tiff zlib openjpeg
 
 ./configure --prefix=/usr --libdir=/usr/lib \
 	--with-system-libtiff --disable-gtk \
-	--with-drivers=ALL --without-x
+	--with-drivers=ALL --without-x \
+	--enable-fontconfig \
+	--enable-cups --with-pdftoraster \
+	--enable-openjpeg \
+	--with-jbig2dec \
+	--with-libidn \
+	--with-libpaper \
+	--disable-dbus
 make so
 make
 make DESTDIR=$PKG install

@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr
+# --disable-debug: upstream's default is a -DDEBUG build.
+./configure --prefix=/usr --disable-debug --disable-libcdio
 make
 make -j1 DESTDIR=$PKG install

@@ -106,7 +106,9 @@ Rust and Go are each written in themselves, so building either needs a working o
 
 Both bootstraps are pinned by version and sha256 like every other source, so the offline build
 still holds. Everything the bootstraps produce — the shipped `rustc`, `cargo` and `go`, and every
-Rust and Go program in the tree — is compiled here.
+Rust and Go program in the tree — is compiled here. Go's source tarball also carries
+upstream-compiled objects — the race detector's runtime and the BoringCrypto module — and the `go`
+port deletes them from what it installs rather than ship binaries it did not build.
 
 ### Seven prebuilt font sets
 
@@ -142,10 +144,12 @@ machine that asks. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 ### Data files are data
 
-`ca-certificates`, `iana-etc`, `hwdata`, `xkeyboard-config`, `iso-codes` and `docbook-xml`/`xsl`
-are text or tables installed as they arrive. One is not purely text: `alsa-ucm-conf` carries a
-small number of binary `.bin` files, precomputed EQ coefficients for SOF DSPs, which belong with
-the firmware group in kind if not in size.
+`hwdata`, `xkeyboard-config`, `iso-codes` and `docbook-xml`/`xsl` are text or tables installed as
+they arrive. `iana-etc` is tables too, but generated at build time from IANA's own XML registries,
+each pinned by its hash, rather than carried as text somebody else produced. `ca-certificates` is
+generated the same way, from the `certdata.txt` of a pinned NSS release.
+One is not purely text: `alsa-ucm-conf` carries a small number of binary `.bin` files, precomputed
+EQ coefficients for SOF DSPs, which belong with the firmware group in kind if not in size.
 
 Everything else on the host — every library, every daemon, the compiler, the kernel and the whole
 desktop — is compiled here from a tarball whose URL and sha256 are in this repository.

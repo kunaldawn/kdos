@@ -31,6 +31,7 @@ xz
 readline
 ncurses
 bash
+bash-completion
 make
 flex
 bison

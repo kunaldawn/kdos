@@ -29,6 +29,10 @@ cp "$PORT_SRC/$_pytable" "$PORT_SRC/$_pystroke" modules/pinyinhelper/
 # cloud pinyin sends what you are typing to a remote service to be completed.
 # That is a keystroke leaving the machine, on a distro that builds offline and
 # ships an appbox so nothing has to phone home.
+#
+# The Lua loader is looked for with a find_package that has no switch, so it
+# is disabled by name: there is no fcitx5-lua port, and pinyin's Lua
+# extensions would otherwise appear or not depending on build order.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -40,6 +44,7 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_TEST=Off \
 	-D ENABLE_DATA=On \
 	-D ENABLE_TOOLS=On \
+	-D CMAKE_DISABLE_FIND_PACKAGE_Fcitx5ModuleLuaAddonLoader=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

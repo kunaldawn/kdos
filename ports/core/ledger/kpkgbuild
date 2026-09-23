@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/ledger/ledger/archive/re
 sha256      = 1cf012cdc8445cab0efc445064ef9b2d3f46ed0165dae803c40fe3d2b23fdaad  ledger-3.4.1.tar.gz
 description = Double-entry accounting over a text file you wrote by hand
 homepage    = https://ledger-cli.org/
-depends     = cmake ninja pkgconf boost gmp mpfr util-linux
+depends     = cmake ninja pkgconf boost gmp mpfr util-linux libedit icu texinfo gpgmepp

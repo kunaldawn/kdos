@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/bpftrace/bpftrace/archiv
 sha256      = 87bf01fc3269ada7109531b0d964ceb5527d1ef7b9c9a4269b3aabdf872f0e26  bpftrace-0.27.0.tar.gz
 description = Why is this slow, when the cause is inside the kernel
 homepage    = https://bpftrace.org/
-depends     = cmake ninja pkgconf flex bison llvm clang elfutils zlib zstd libbpf bcc cereal libpcap
+depends     = cmake ninja pkgconf flex bison llvm clang elfutils zlib zstd libbpf bcc cereal libpcap binutils asciidoctor gzip

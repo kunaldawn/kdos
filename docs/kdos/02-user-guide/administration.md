@@ -47,6 +47,7 @@ The shipped set, in boot order:
 | `42_networkmanager` | NetworkManager |
 | `45_avahi` | mDNS |
 | `45_seatd` | Seat management, which the desktop needs |
+| `47_pcscd` | Smart cards and security keys: the PC/SC daemon, with readers arriving through udev |
 | `50_alsa` | Sound card state |
 | `54_thermald` | Intel thermal management |
 | `55_powerd` | Suspend, poweroff and reboot for the desktop |
@@ -63,7 +64,7 @@ The shipped set, in boot order:
 
 Shutdown runs the same set backwards: `/etc/init.d/rcK` is the first `::shutdown` entry in
 `/etc/inittab`, and runs each enabled script with `stop` in reverse order before anything is
-unmounted. See [Boot and init](../03-architecture/boot-and-init.md#shutdown).
+unmounted. The firewall is the exception and stays loaded until power-off. See [Boot and init](../03-architecture/boot-and-init.md#shutdown).
 
 A daemon that cannot do its job on this machine is skipped rather than started and left to fail.
 `54_thermald` checks for an Intel processor, `56_energyd` for a readable CPU energy counter,
@@ -559,8 +560,11 @@ only, so without it an Android handset plugged into a USB port does nothing.
 ## Media, colour and time
 
 The host's `ffmpeg` is built with the full codec set: H.264, HEVC, VP8/VP9, AV1 encode and decode,
-MP3, Opus, Vorbis, FLAC, subtitle burn-in and hardware acceleration. One encoder per format,
-deliberately — a second one for the same format earns nothing.
+JPEG XL, MP3, Opus, Vorbis, FLAC, LC3, subtitle burn-in, HDR tone mapping (`zscale`,
+`libplacebo`), high-quality resampling (`soxr`), time-stretch (`rubberband`) and hardware
+acceleration through VA-API and Vulkan. One encoder per format, deliberately — a second one for the
+same format earns nothing. There is no `ffplay`: it needs SDL, and SDL reaches back to `ffmpeg`
+through PipeWire.
 
 Building it that way relicenses the shipped binary to GPL-2-or-later, and everything that links it
 inherits that. `ports/core/ffmpeg/LICENSE.notice` is the record a redistributor is expected to read.

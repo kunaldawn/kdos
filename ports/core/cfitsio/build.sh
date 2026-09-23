@@ -20,7 +20,13 @@
 # compiled whatever --disable-curl says, so the define is not optional.
 export CFLAGS="$CFLAGS -D_GNU_SOURCE"
 
+# The Fortran wrappers are C, compiled only when configure finds a Fortran
+# compiler; with none it drops them silently and wcslib and gnuastro lose the
+# f77 entry points. F77 is named so a missing gfortran fails the probe instead.
+# --with-bzip2 lets a .fits.bz2 open directly; it defaults off, and when named
+# a missing libbz2 stops configure.
 ./configure --prefix=/usr --libdir=/usr/lib \
-	--enable-reentrant --enable-shared --disable-static --disable-curl
+	--enable-reentrant --enable-shared --disable-static --disable-curl \
+	--with-bzip2 F77=gfortran
 make
 make DESTDIR=$PKG install

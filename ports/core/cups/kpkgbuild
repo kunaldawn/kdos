@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/OpenPrinting/cups/archive/v$version/$name-$version-source.tar.gz
 sha256      = 89fa632529d3e6a7cb9787ef29e39c4997be0323cc936e05cdb4c79387a35e8e  cups-2.4.19.tar.gz
 description = Print spooler and associated utilities
-depends     = gnutls libusb pam dbus xdg-utils avahi zlib acl
+depends     = gnutls libusb pam dbus xdg-utils avahi zlib acl libpaper

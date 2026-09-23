@@ -13,6 +13,7 @@
 # its own git-submodule copy of dtc is not fetched. Without this port the two
 # targets fail meson setup rather than silently going missing.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
-	-Dpython=disabled -Dtools=true -Dtests=false
+	-Dpython=disabled -Dtools=true -Dtests=false \
+	-Dyaml=enabled -Dvalgrind=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
