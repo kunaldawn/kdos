@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/KhronosGroup/SPIRV-LLVM-Translator/archive/refs/tags/v$version.tar.gz
 sha256      = 9e0bf1beb0ab7edca6cd8c17fd9bbb7ce3dcd520f3e969e0485ff5b00931f929  spirv-llvm-translator-23.1.1.tar.gz
 description = Tool and library for translation between LLVM IR and SPIR-V
-depends     = cmake ninja llvm spirv-headers
+depends     = cmake ninja llvm spirv-headers spirv-tools

@@ -9,9 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# INTROSPECTION STAYS OFF until glib itself installs its GIRs: g-ir-scanner
-# needs GLib-2.0.gir, GObject-2.0.gir and Gio-2.0.gir, which only a glib built
-# with introspection enabled writes, and the glib port builds without it.
+# Introspection is off. Turning it on takes gobject-introspection and
+# glib-introspection in depends: g-ir-scanner needs GLib-2.0.gir,
+# GObject-2.0.gir and Gio-2.0.gir, and glib-introspection is what installs them.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dintrospection=disabled \

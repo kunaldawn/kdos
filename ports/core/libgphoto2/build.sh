@@ -16,8 +16,9 @@
 # a dependency missing at build time into a failed build rather than a
 # libgphoto2 without that support.
 #
-# libxml2 feeds the Olympus Wi-Fi camlib, curl the Lumix Wi-Fi one, libgd the
-# picture-frame camlibs' image conversion, libexif thumbnails and EXIF dates.
+# libxml2 feeds ptp2's Olympus Wi-Fi support and the Lumix camlib, curl the
+# Lumix camlib, libgd the picture-frame camlibs' image conversion, libtiff the
+# jd11 camlib's raw DNG output, libexif thumbnails and EXIF dates.
 # lockdev and ttylock are serial-port lock libraries this tree does not have;
 # the doxygen reference is off by naming its program "no".
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \

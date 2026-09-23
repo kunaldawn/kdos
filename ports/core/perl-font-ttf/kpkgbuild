@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-font-ttf
+version     = 1.06
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/B/BH/BHALLISSY/Font-TTF-$version.tar.gz
+sha256      = 4b697d444259759ea02d2c442c9bffe5ffe14c9214084a01f743693a944cc293  perl-font-ttf-1.06.tar.gz
+description = Read, edit and write TrueType and OpenType font tables from perl
+homepage    = https://metacpan.org/dist/Font-TTF
+depends     = perl perl-io-string

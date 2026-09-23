@@ -29,8 +29,10 @@
 # pages (and makeinfo for the info pages built beside them), doxygen for
 # notmuch(3), bash-completion's pkg-config file for the completion. configure
 # also runs gpg against gmime's gpgme to prove session-key support and stops
-# if it cannot. s-expression queries follow sfsexp, which is not a port and
-# which configure has no switch for.
+# if it cannot. valgrind is declared for the same reason: with no switch,
+# configure compiles the debugger check against valgrind.h whenever pkg-config
+# finds it. s-expression queries follow sfsexp, which is not a port and which
+# configure has no switch for.
 ./configure --prefix=/usr --libdir=/usr/lib \
 	--with-docs \
 	--with-api-docs \

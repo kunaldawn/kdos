@@ -486,12 +486,16 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     # fails at `Source not found`, minutes into a phase. That is what a
     # hand-placed download looks like: kpkg renames a FIRST source to
     # <name>-<version>.<ext> and a `.tgz` saved under the URL's own suffix
-    # matches nothing.
+    # matches nothing. An archive with its own sha256 line is declared rather
+    # than unclaimed: build.sh unpacks it out of $PORT_SRC the way it unpacks a
+    # vendor bundle (bat's bat-assets bundle), and kpkg verifies every
+    # sha256 entry, not only the ones a source names.
     for f in "$d"/*.tar.* "$d"/*.tgz "$d"/*.tbz2 "$d"/*.txz "$d"/*.zip; do
         [ -f "$f" ] || continue
         fb=${f##*/}
         case " $resolved " in *" $fb "*) continue ;; esac
         [ "$fb" = "$name-vendor-$version.tar.xz" ] && continue
+        grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$fb\$" "$d/kpkgbuild" && continue
         bad "$p" "ships $fb, which no 'source =' line resolves to"
         unhashed=$((unhashed + 1))
     done

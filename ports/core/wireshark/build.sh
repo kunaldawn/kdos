@@ -86,15 +86,17 @@ for have in HAVE_LIBPCAP HAVE_LUA HAVE_KERBEROS HAVE_LIBGNUTLS \
 		exit 1
 	}
 done
-ninja
-DESTDIR=$PKG ninja install
-
 # THE MANUAL PAGES ARE THE ONLY DOCUMENTATION KEPT, and there is no switch that
-# builds only them. With asciidoctor present the default target renders every
-# page twice, as roff and as HTML, plus both sets of release notes, and the
-# install puts the roff under /usr/share/man and the HTML under
-# /usr/share/doc/wireshark — where nothing else this package installs is HTML.
-# The user and developer guides are not in the default install.
+# builds only them. With asciidoctor found, the install rule lists every page
+# twice, as roff and as HTML, plus both sets of release notes — but the only
+# default-target consumer of those files is the Qt GUI, which is off. `docs` is
+# the target that renders all of them; without it `ninja install` stops on the
+# first page it cannot find. The install puts the roff under /usr/share/man and
+# the HTML under /usr/share/doc/wireshark — where nothing else this package
+# installs is HTML. The user and developer guides are not in the install.
+ninja
+ninja docs
+DESTDIR=$PKG ninja install
 rm -f "$PKG"/usr/share/doc/wireshark/*.html
 
 # The page list is upstream's whole family, not what was built: wireshark,

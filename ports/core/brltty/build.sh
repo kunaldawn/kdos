@@ -82,7 +82,10 @@
 # (the Bluetooth path's device lookup), polkit (BrlAPI authorisation for a
 # session user), icu, expat (CLDR tables), libcap (dropping root
 # capabilities), pcre2's 32-bit library (--with-rgx-package), gettext
-# (translated messages) and alsa-lib (tunes over PCM and MIDI). No
+# (translated messages, whose msgmerge --enable-i18n needs) and alsa-lib
+# (tunes over PCM and MIDI). ac_cv_lib_intl_main=no keeps the i18n probe from
+# linking the `libintl` port whenever it happens to be installed: musl's own
+# gettext carries the translations. No
 # --with-service-package: its only candidate is libsystemd, and `no` keeps the
 # daemon a plain forking one. --with-curses=ncurses because brltty's
 # `ncursesw` choice includes <ncursesw/ncurses.h> and this ncurses installs
@@ -130,6 +133,7 @@
 	--without-swift \
 	--without-theta \
 	ac_cv_header_eci_h=no \
+	ac_cv_lib_intl_main=no \
 	--with-screen-driver=lx,em,tx,-all \
 	--with-speech-driver=eSpeak-NG
 make

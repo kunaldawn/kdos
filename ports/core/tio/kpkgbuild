@@ -15,4 +15,4 @@ source      = https://github.com/tio/tio/releases/download/v$version/$name-$vers
 sha256      = 06fe0c22e3e75274643c017928fbc85e86589bc1acd515d92f98eecd4bbab11b  tio-3.9.tar.xz
 description = A serial terminal that waits for the cable to come back
 homepage    = https://tio.github.io/
-depends     = meson ninja pkgconf glib inih lua
+depends     = meson ninja pkgconf glib lua

@@ -11,9 +11,10 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# use-jemalloc is upstream's release allocator and is off by default: fd's
-# parallel walker allocates from every thread at once, which musl's malloc
-# serialises. The crate is in the vendor bundle.
+# use-jemalloc makes jemalloc fd's global allocator; the feature is off by
+# default. fd's parallel walker allocates from every thread at once, which
+# musl's malloc serialises behind one lock. The crate and the jemalloc sources
+# it compiles are in the vendor bundle.
 cargo build --release --frozen --offline --features use-jemalloc
 install -Dm755 target/release/fd $PKG/usr/bin/fd
 

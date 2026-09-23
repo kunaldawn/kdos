@@ -33,8 +33,10 @@ export LIBCLANG_STATIC_PATH=/usr/lib/
 export RUST_BACKTRACE=1
 export RUSTFLAGS="-C prefer-dynamic"
 
-# Every probed dependency is pinned: an option left on auto turns a feature on
-# or off by whatever happens to be installed when mesa builds.
+# Every probed dependency that has a switch is pinned: an option left on auto
+# turns a feature on or off by whatever happens to be installed when mesa
+# builds. libudev has no switch and is linked whenever found, so eudev is in
+# depends.
 # nouveau in vulkan-drivers is NVK, and it is what the six vendored crates
 # above are for. gallium-rusticl installs /etc/OpenCL/vendors/rusticl.icd,
 # which only ocl-icd's loader reads. libunwind is off because the libunwind

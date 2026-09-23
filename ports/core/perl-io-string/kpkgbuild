@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-io-string
+version     = 1.08
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/G/GA/GAAS/IO-String-$version.tar.gz
+sha256      = 2a3f4ad8442d9070780e58ef43722d19d1ee21a803bf7c8206877a10482de5a0  perl-io-string-1.08.tar.gz
+description = Emulate a file handle over an in-memory string in perl
+homepage    = https://metacpan.org/dist/IO-String
+depends     = perl

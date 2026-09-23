@@ -109,6 +109,8 @@ meson setup build \
 	-Dlibcanberra=disabled \
 	-Dflatpak=disabled \
 	-Dgsettings=disabled \
+	-Dgsettings-pulse-schema=disabled \
+	-Davb=enabled \
 	-Dsnap=disabled \
 	-Drlimits-install=false \
 	"-Dsession-managers=[]"

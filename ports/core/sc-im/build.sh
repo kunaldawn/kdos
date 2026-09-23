@@ -35,6 +35,7 @@ cd src
 # -DGNUPLOT is set only when `which gnuplot` answers at build time, which is
 # why gnuplot is a dependency. Legacy .xls import needs libxls, which is not a
 # port, so its probe finds nothing.
+#
 # CFLAGS IS EXPORTED, NEVER PASSED ON THE COMMAND LINE. The Makefile builds its
 # whole configuration with `CFLAGS +=` — HELP_PATH, CONFIG_DIR, HISTORY_FILE,
 # the ncurses and colour switches, every -D the source reads — and a command-line

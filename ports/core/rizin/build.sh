@@ -23,11 +23,17 @@
 # -Duse_sys_capstone: capstone is already a port. Building the bundled one
 # would put a second disassembler engine on the machine with its own bugs. The
 # same holds for every other use_sys_* that has a port behind it — libmagic,
-# lz4, zstd, xz, pcre2 and the tree-sitter runtime — and each is `enabled`, so a
-# missing library fails setup instead of falling back to the vendored copy.
-# zydis, softfloat, libmspack, blake2 and blake3 are not ports, and their
-# defaults build the vendored copies. regenerate_cmds would rebuild cmd_descs
-# whenever PyYAML happens to be installed; the release carries them generated.
+# lz4, zstd, xz and pcre2 — and each is `enabled`, so a missing library fails
+# setup instead of falling back to the vendored copy. zydis, softfloat,
+# libmspack, blake2 and blake3 are not ports, and their defaults build the
+# vendored copies. regenerate_cmds would rebuild cmd_descs whenever PyYAML
+# happens to be installed; the release carries them generated.
+#
+# The tree-sitter runtime stays the bundled one: against a system runtime the
+# shell parser is regenerated whenever the tree-sitter CLI and node are both on
+# PATH, and both are ports here. The 0.27 CLI writes parser.c beside grammar.js in
+# the source tree, not into the build directory meson expects it in, so the
+# build fails on a missing parser.c.
 meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -44,7 +50,7 @@ meson setup build \
 	-Duse_lzma=true \
 	-Duse_sys_lzma=enabled \
 	-Duse_sys_pcre2=enabled \
-	-Duse_sys_tree_sitter=enabled \
+	-Duse_sys_tree_sitter=disabled \
 	-Dregenerate_cmds=disabled \
 	-Denable_tests=false \
 	-Denable_rz_test=false

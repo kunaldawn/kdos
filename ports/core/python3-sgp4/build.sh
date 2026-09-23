@@ -16,7 +16,7 @@
 #
 # PYTHON_SGP4_COMPILE=always makes the C++ propagator (sgp4.vallado_cpp)
 # mandatory: setup.py marks it optional, so a failed compile would otherwise
-# install the pure-python path, roughly a hundred times slower, and succeed.
+# install the much slower pure-python path and succeed.
 export PYTHON_SGP4_COMPILE=always
 
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

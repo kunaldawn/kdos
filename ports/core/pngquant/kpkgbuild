@@ -8,7 +8,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --no-build-isolation because every build dependency this needs is an
-# installed port; pip's isolated environment would try to fetch them from PyPI
-# and a build with no network fails there rather than at the compiler.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+name        = pngquant
+version     = 2.18.0
+release     = 1
+series      = 2
+source      = https://pngquant.org/$name-$version-src.tar.gz
+sha256      = e72194b52b36f040deaec49a1ddd5dcd8d4feecc3a5fe6c5e9589a9707b233d4  pngquant-2.18.0.tar.gz
+description = Lossy PNG compressor — reduces a truecolour PNG to a palette
+homepage    = https://pngquant.org/
+depends     = libimagequant libpng lcms2 zlib

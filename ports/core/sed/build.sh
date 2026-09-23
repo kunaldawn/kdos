@@ -10,13 +10,12 @@
 # ---------------------------------
 
 # TOYBOX sed IS POSIX AND UPSTREAM BUILD SYSTEMS ARE NOT. This is the third
-# GNU tool to override a toybox applet for that reason — `gawk` and
-# `findutils` are already here — and the case that forced it is worth
-# recording: xapian's configure generates its public `version.h` through a sed
-# script using `0,/regex/d`, a GNU address form toybox does not implement.
-# Toybox produced NOTHING, configure does not check, and the result was a
-# ZERO-BYTE version.h, a build that got as far as the compiler, and an error
-# about a type that does not name a type. Nothing anywhere said "sed".
+# GNU tool to override a toybox applet for that reason, beside `gawk` and
+# `findutils`. xapian's configure generates its public `version.h` through a
+# sed script using `0,/regex/d`, a GNU address form toybox does not implement:
+# under toybox the output is empty, configure does not check, and the build
+# stops at the compiler on a type that does not name a type, with nothing
+# saying "sed".
 #
 # That is the shape of every one of these: a GNU extension used silently, and
 # a failure several steps downstream that names something else entirely.

@@ -18,9 +18,6 @@
 # --with-vpnc-script says on every connect; leaving it to the default points
 # it at /etc/vpnc/vpnc-script, which nothing installs.
 #
-# --without-openssl-version-check: the check rejects any OpenSSL it was not
-# taught about, and this build does not use OpenSSL at all.
-#
 # THE SSO BROWSER IS NAMED BY ABSOLUTE PATH TOO. configure otherwise searches
 # PATH for xdg-open at build time and compiles in whatever it found, so SAML
 # login on AnyConnect, GlobalProtect and Pulse would depend on whether

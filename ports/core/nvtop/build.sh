@@ -18,9 +18,10 @@
 # A driver with no fdinfo stats gets no reading rather than a zero, which is
 # kdos-res's rule stated by somebody else's program.
 #
-# METAX, ENFLAME, V3D and ROCKCHIP default on and are pinned off with the
-# other ARM backends: the first two link proprietary vendor libraries this
-# distro cannot ship, the last two drive Raspberry Pi and Rockchip boards.
+# METAX, ENFLAME and V3D default on, and ROCKCHIP does on an ARM build; all
+# four are pinned off. The first two dlopen proprietary vendor libraries from
+# /opt that this distro cannot ship; the last two drive Raspberry Pi and
+# Rockchip boards.
 # USE_LIBUDEV_OVER_LIBSYSTEMD names eudev's libudev as the device-discovery
 # library rather than leaving it to whichever of the two is found.
 mkdir -p build && cd build

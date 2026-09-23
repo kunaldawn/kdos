@@ -15,4 +15,4 @@ source      = https://notmuchmail.org/releases/$name-$version.tar.xz
 sha256      = 4b4314bbf1c2029fdf793637e6c7bb15c1b1730d22be9aa04803c98c5bbc446f  notmuch-0.40.tar.xz
 description = Index every message once and search it in milliseconds — mail as a database
 homepage    = https://notmuchmail.org/
-depends     = xapian-core gmime gpgme gnupg talloc zlib pkgconf bash python3 doxygen python3-sphinx texinfo bash-completion
+depends     = xapian-core gmime gpgme gnupg talloc zlib pkgconf bash python3 doxygen python3-sphinx texinfo bash-completion valgrind

@@ -21,10 +21,14 @@
 # build/linux/multilib.sh, with the shared library as the product.
 #
 # HDR10+ is on in all three: its dynamic metadata is a 10-bit feature, and the
-# depth that encodes it is the one that has to be compiled with it.
+# depth that encodes it is the one that has to be compiled with it. Its
+# vendored json11 uses uint8_t without including <cstdint>, and none of the
+# libstdc++ headers it does include pulls that in, so every depth fails to
+# compile unless the header is forced.
 #
 # libnuma is OFF: it is not a port, the probe is automatic, and it only pays
 # on multi-socket machines.
+export CXXFLAGS="$CXXFLAGS -include cstdint"
 common=(
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5
 	-DCMAKE_BUILD_TYPE=Release

@@ -68,8 +68,9 @@ patch -p1 -i "$PORT_SRC/default-modules.patch"
 # native path; gst, because aufile already plays a file into a call; mqtt, a
 # network control surface; aptx, which wants libopenaptx and not the
 # libfreeaptx that is ported; and amr, av1, codec2, g722, g7221, gzrtp,
-# libg722, plc, portaudio and webrtc_aec, whose libraries are not ports here (webrtc_aec is written against webrtc-audio-processing 1.x, and
-# the port is 2.x). The rest are platform modules for other systems.
+# libg722, plc, portaudio and webrtc_aec, whose libraries are not ports here
+# (webrtc_aec is written against webrtc-audio-processing 1.x, and the port is
+# 2.x). The rest are platform modules for other systems.
 modules=(
 	account alsa aubridge auconv aufile augain auresamp ausine
 	avcodec avfilter avformat swscale

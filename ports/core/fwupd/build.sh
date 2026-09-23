@@ -31,8 +31,9 @@
 # gobject-introspection (the `gi` module), pango and cairo at SETUP time and
 # error()s when any is missing; no port provides the `gi` module.
 #
-# -Dintrospection=disabled: the typelib would be generated against glib's own
-# GIRs, and the glib port is built without them.
+# -Dintrospection=disabled. Turning it on takes gobject-introspection and
+# glib-introspection in depends: the typelib is generated against glib's own
+# GIRs, which glib-introspection installs.
 #
 # -Dopenssl=disabled keeps one crypto backend: gnutls is probed first and the
 # embedded jcat verifier takes whichever it finds, so enabling both would link

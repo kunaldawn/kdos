@@ -17,6 +17,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
+export LIBCLANG_PATH=/usr/lib
 
 # None of these is a second backend; each fills a gap in the symphonia build:
 #
@@ -25,7 +26,9 @@ export CARGO_NET_OFFLINE=true
 #                     libopus (the `opus` port) rather than building its own.
 #   rusty-soundtouch  playback speed without a pitch shift; the workspace pins
 #                     the crate's bundled SoundTouch, compiled from the vendor
-#                     tarball.
+#                     tarball. Its -ffi crate generates its bindings with
+#                     bindgen, which dlopens libclang (the `clang` port) at
+#                     build time; LIBCLANG_PATH saves it the search.
 #   rusty-simd        symphonia's SIMD decode paths.
 #   cover-viuer-sixel album art on a sixel terminal; kitty and iTerm are the
 #                     tui crate's defaults and sixel is not.

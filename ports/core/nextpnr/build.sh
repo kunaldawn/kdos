@@ -26,9 +26,12 @@
 #
 # -DUSE_OPENMP=ON parallelises the analytic placer through gcc's libgomp.
 #
-# machxo2 covers MachXO2 and MachXO3 from the same prjtrellis database ecp5
-# reads. nexus, mistral and himbaechel are left out of ARCH: their databases
-# come from prjoxide, the mistral source tree and apicula, none of them ports.
+# machxo2 reads the same prjtrellis database ecp5 does, and compiles a chip
+# database per device named in MACHXO2_DEVICES and no other: 1200 is the
+# LCMXO2-1200 and 6900 the LCMXO3-6900, upstream's default pair. A design for
+# any other MachXO2 or MachXO3 part finds no chipdb and stops. nexus, mistral
+# and himbaechel are left out of ARCH: their databases come from prjoxide, the
+# mistral source tree and apicula, none of them ports.
 mkdir -p build && cd build
 # CMP0167=NEW makes find_package(Boost) use BOOSTCONFIG.CMAKE rather than
 # CMake's own legacy FindBoost module. The module looks for a `libboost_system`
@@ -43,6 +46,7 @@ cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DARCH="ice40;ecp5;machxo2;generic" \
+	-DMACHXO2_DEVICES="1200;6900" \
 	-DBUILD_GUI=OFF \
 	-DBUILD_PYTHON=ON \
 	-Dpybind11_DIR="$(python3 -m pybind11 --cmakedir)" \

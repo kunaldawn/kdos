@@ -9,9 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The process-backtrace screen and the crash backtrace want the nongnu
-# libunwind with libunwind-ptrace; the libunwind port is LLVM's, which has
-# neither, so both stay off. Demangling only serves those backtraces.
+# The process-backtrace screen needs libunwind-ptrace, which only the nongnu
+# libunwind has, and that is not a port. The crash backtrace would link the
+# libunwind port, which is LLVM's and would put LLVM under htop, so it stays
+# off as well. Demangling only serves those backtraces.
 ./autogen.sh
 ./configure --prefix=/usr --mandir=/usr/share/man \
 	--enable-sensors \

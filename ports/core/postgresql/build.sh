@@ -24,8 +24,8 @@
 # --with-system-tzdata makes time zones follow the tzdata port rather than a
 # copy frozen into this build.
 #
-# --without-llvm: 18.6's JIT provider handles LLVM up to 22, and the llvm port
-# is 23. --without-ldap: openldap is not a port.
+# --without-llvm: the JIT provider's version guards in 18.6 stop at LLVM 22,
+# and the llvm port is 23. --without-ldap: openldap is not a port.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \

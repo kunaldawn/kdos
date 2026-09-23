@@ -21,11 +21,11 @@ patch -p1 -i $PORT_SRC/llvm23-mccontext.patch
 
 # THE LIBRARY IS HERE FOR bpftrace. bpftrace's `find_package(LibBcc REQUIRED)`
 # is unconditional — it uses bcc's USDT probe resolution — so the library is
-# the deliverable, and the compiled libbpf-tools below are the ready-made
-# tracers; bcc's own python tools are a second tracing UI with a python
-# dependency at runtime, on a machine where those and bpftrace's one-liners
-# are the interface. ENABLE_CLANG_JIT stays ON because that IS the library
-# bpftrace links.
+# the deliverable. The ready-made tracers are the compiled libbpf-tools below;
+# bcc's own python tools are a second tracing UI with a python dependency at
+# runtime, on a machine where libbpf-tools and bpftrace's one-liners are the
+# interface. ENABLE_CLANG_JIT stays ON because that IS the library bpftrace
+# links.
 mkdir -p build && cd build
 # ENABLE_LLVM_SHARED=OFF because THERE IS NO libLLVM.so HERE. ports/core/llvm
 # builds with BUILD_SHARED_LIBS=ON and LLVM_BUILD_LLVM_DYLIB=OFF — 413
