@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 # A CLIENT, NOT A REALM. What this image needs Kerberos for is a ticket a file
 # server will accept: `kinit` gets one, `cifs.upcall` hands it to the kernel's
 # cifs module, and `sec=krb5` then mounts a share on a machine that will not

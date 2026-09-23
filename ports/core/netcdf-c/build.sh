@@ -13,9 +13,9 @@ mkdir -p build && cd build
 # NCZarr and the DAP remote protocols are network clients; on a distro that
 # builds offline they are the half of netcdf nobody here can reach, and each
 # drags in another dependency to answer a URL.
-cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
+cmake .. -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
-	-DENABLE_DAP=OFF -DENABLE_NCZARR=OFF -DENABLE_TESTS=OFF \
-	-DENABLE_PLUGIN_INSTALL=OFF -DBUILD_UTILITIES=ON
+	-DNETCDF_ENABLE_DAP=OFF -DNETCDF_ENABLE_NCZARR=OFF -DNETCDF_ENABLE_TESTS=OFF \
+	-DNETCDF_PLUGIN_INSTALL=OFF -DNETCDF_BUILD_UTILITIES=ON
 make
 make DESTDIR=$PKG install

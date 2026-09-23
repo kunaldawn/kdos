@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = iverilog
-version     = 12_0
+version     = 13_0
 release     = 1
 _dotver     = ${version/_/.}
 source      = $name-$version.tar.gz::https://github.com/steveicarus/iverilog/archive/refs/tags/v$version.tar.gz
-sha256      = a68cb1ef7c017ef090ebedb2bc3e39ef90ecc70a3400afb4aa94303bc3beaa7d  iverilog-12_0.tar.gz
+sha256      = c897bbfa9848688982c6d5c30529fc29d68df0b9ff22ffa73bad89db73a7ce49  iverilog-13_0.tar.gz
 description = Event-driven Verilog simulation with real delays and X propagation
 homepage    = https://steveicarus.github.io/iverilog/
 depends     = autoconf automake bison flex gperf readline zlib

@@ -9,9 +9,10 @@
 # ---------------------------------
 
 name        = perl-xml-parser
-version     = 2.47
+version     = 2.59
 release     = 1
-source      = $name-$version.tar.gz::http://cpan.metacpan.org/authors/id/T/TO/TODDR/XML-Parser-$version.tar.gz
-sha256      = ad4aae643ec784f489b956abe952432871a622d4e2b5c619e8855accbfc4d1d8  perl-xml-parser-2.47.tar.gz
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/T/TO/TODDR/XML-Parser-$version.tar.gz
+sha256      = a358fd7c49f5e27717a644a9102bd21dc7fc25a415983279c59b1580e2b62a58  perl-xml-parser-2.59.tar.gz
 description = Expat-based XML parser module for perl
-depends     = expat perl
+homepage    = https://metacpan.org/dist/XML-Parser
+depends     = expat perl perl-file-sharedir perl-file-sharedir-install

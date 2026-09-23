@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>libFTDI &raquo; FTDI USB driver with bitbang mode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" type="text/css" media="screen" href="/en/main.css">
+<link rel="stylesheet" type="text/css" media="print" href="/en/print.css">
+</head>
+
+<body>
+
+<!-- header start -->
+
+<header>
+
+<div class="headercontainer">
+
+<nav id="navigation">
+
+<div id="logo"><a href="/en/"><img src="/de/pictures/intra2net.svg" alt="Intra2net AG" width="143" height="30"></a></div>
+
+<a href="#navigation"><div class="mobilemenu"><img src="/de/pictures/mobile-icon.svg" alt="Menu" width="23" height="15"></div></a>
+<a href="#"><div class="mobilemenu"><img src="/de/pictures/mobile-icon.svg" alt="Menu" width="23" height="15"></div></a>
+
+<ul class="navbar">
+
+<li id="Products"><a href="/en/products/">Products</a>
+	<div class="dropdown">
+		<div class="navgrid">
+			<div class="navgrid-unit navcol1_of_3">
+				<h4>SOFTWARE</h4>
+					<ul class="navmenu">
+						<li><a href="/en/products/index.php">Overview</a></li>
+						<li><a href="/en/products/business-server.php">Business Server</a></li>
+						<li><a href="/en/products/security-gateway.php">Security Gateway</a></li>
+						<li><a href="/en/products/network-security.php">Network Security</a></li>
+						<li><a href="/en/products/licensing/index.php">License Agreement</a></li>
+					</ul>
+			</div>
+			<div class="navgrid-unit navcol1_of_3">
+				<h4>HARDWARE</h4>
+					<ul class="navmenu">
+						<li><a href="/en/support/hardware-compatibility.php">System Requirements</a></li>
+					</ul>
+			</div>
+			<div class="navgrid-unit navcol1_of_3">
+				<h4>REFERENCES</h4>
+					<ul class="navmenu">
+						<li><a href="/en/products/customer-testimonials.php">Customer Testimonials</a></li>
+						<li><a href="/en/products/press-reviews.php">Press Reviews</a></li>
+					</ul>
+			</div>
+		</div> <!-- close .grid div -->
+	</div> <!-- close .dropdown div -->
+</li>
+
+<li id="Download"><a href="/en/download/">Download</a>
+	<div class="dropdown">
+		<ul>
+			<li><a href="/en/download/index.php">Software</a></li>
+			<li><a href="/en/download/price-list.php">Price list</a></li>
+		</ul>
+	</div>
+</li>
+
+<li id="Support"><a href="/en/support/">Support</a>
+	<div class="dropdown">
+		<ul>
+			<li><a href="/en/support/index.php">Overview</a></li>
+			<li><a href="/en/support/ticket-request.php">Request Support</a></li>
+			<li><a href="/en/support/product-manuals.php">Documentation</a></li>
+			<li><a href="/en/support/hardware-compatibility.php">System Requirements</a></li>
+			<li><a href="/en/support/antispam/">Blacklist Monitor</a></li>
+			<li><a href="/en/support/trainings.php">Training</a></li>
+			<li><a href="/en/support/remote-support.php">Remote Assistance</a></li>
+		</ul>
+	</div>
+</li>
+
+<li id="Partners"><a href="/en/partners/">Partners</a>
+	<div class="dropdown">
+		<ul>
+			<li><a href="/en/partners/index.php">Partner Search</a></li>
+			<li><a href="/en/partners/partner-application.php">Become a Partner</a></li>
+			<li><a href="/en/partners/partner-application-form.php">Reseller Registration</a></li>
+			<li><a href="/en/partners/partner-presentation-form.php">Presentation</a></li>
+			<li><a href="https://partner.intra2net.com/en/">Partnerweb</a></li>
+		</ul>
+	</div>
+</li>
+
+<li id="Company"><a href="/en/company/">Company</a>
+	<div class="dropdown">
+		<ul>
+			<li><a href="/en/company/index.php">Overview</a></li>
+			<li><a href="/en/company/press/index.php">Press</a></li>
+			<li><a href="/en/company/careers.php">Career</a></li>
+			<li><a href="/en/company/contact.php">Contact</a></li>
+		</ul>
+	</div>
+</li>
+
+
+<script type="text/javascript">
+<!--
+
+function DisplayPermanent() {
+			document.getElementById('dropdown-permanent').style.display = 'block';
+			document.getElementById('dropdown-permanent').style.visibility = 'visible';
+}
+
+function DisplayUnset() {
+			document.getElementById('dropdown-permanent').style.display = '';
+			document.getElementById('dropdown-permanent').style.visibility = '';
+}
+
+// -->
+</script>
+
+<li id="search" style=""><img src="/de/pictures/search.svg" id="searchicon" alt="Search" width="18" height="18">
+	<div class="dropdown dropdown-search" id="dropdown-permanent">
+		<div id="search">
+			<form name="formsearch" method="get" action="/search/search.cgi">
+				<input type="text" name="q" size="16" maxlength="64" id="searchinput" value="" onFocus="javascript:DisplayPermanent();" onBlur="javascript:DisplayUnset();">
+				<input type="submit" value="Search" style="min-height: 30px; height: 30px; min-width: 120px; padding: 0px;">
+			</form>
+		</div>
+	</div>
+</li>
+
+<!-- language switcher -->
+<div class="languageswitcher">
+
+<a href="/en/developer/libftdi/index.php"><b>EN</b></a></div>
+
+</ul> <!-- close #navbar ul -->
+
+</nav>
+
+
+
+
+
+</div> <!-- close div headercontainer -->
+</header>
+
+<div class="subcontainer">
+	<ul class="sublist">
+<li><a href="index.php" class="selected">libFTDI</a></li>
+<li><a href="download.php">Download</a></li>
+<li><a href="mailinglist.php">Mailinglist</a></li>
+<li><a href="repository.php">Repository</a></li>
+<li><a href="documentation.php">Documentation</a></li>
+<li><a href="links.php">Links</a></li>
+	</ul>
+</div> <!-- close subcontainer div -->
+
+<div class="separator"></div>
+
+
+<!-- header end -->
+
+<div class="page">
+<div class="content">
+
+
+<!-- Important notice in case of emergency  START
+
+
+<div class="important-notice" style="margin: 20px auto 20px auto; padding: 4px 24px; background-color: #A00; color: #FFF;">
+
+	<p>There is an outage with our telephony provider. Please use the following telephone numbers at the moment:<br>
+	Sales: +49-7071-9429001, Support: +49-7071-9429002</p>
+
+</div>
+
+
+Important notice in case of emergency  END -->
+
+
+<h1>libFTDI - FTDI USB driver with bitbang mode</h1>
+
+<p>libFTDI is an open source <b>library to talk to <a href="https://www.ftdichip.com/">FTDI</a> chips:</b>
+<ul>
+<li>FT230X</li>
+<li>FT4232H / FT2232H</li>
+<li>FT232R / FT245R</li>
+<li>FT2232L / FT2232D / FT2232C</li>
+<li>FT232BM / FT245BM (and the BL/BQ variants)</li>
+<li>FT8U232AM / FT8U245AM</li>
+</ul>
+The library is linked with your program in userspace, no kernel driver required.<br>
+libFTDI works perfectly with Linux, Windows, MacOS X and BSD variants thanks to libusb.</p>
+
+<p><a href="mailinglist.php">If you have questions or want to talk to other developers, join the mailing list.</a></p>
+
+
+<h2>News</h2>
+
+<p>
+
+<strong>2020-07-07:</strong> Version 1.5 of libftdi released
+<ul>
+
+<li>Implement tc[io]flush methods & deprecate broken purge_buffers methods
+  <p>Please check your code for ftdi_usb_purge_rx_buffer(),
+  ftdi_usb_purge_tx_buffer() and ftdi_usb_purge_buffers()
+  and migrate to the new ftdi_tc[io]flush() methods.</p>
+  <p>Old code will continue to function, but you'll get
+  a deprecation warning during compilation.</p></li>
+<li>Add program to test buffer flush (purge) functionality</li>
+<li>Add kernel driver auto attach/detach.<br>
+  See new AUTO_DETACH_REATACH_SIO_MODULE option</li>
+<li>Add ftdi_setflowctrl_xonxoff()</li>
+<li>ftdi_eeprom / eeprom handling:<ul>
+  <li>Unify handling of all boolean eeprom flags</li>
+  <li>Add device release number support</li>
+  <li>Add channel_a_driver support for type xxR chips</li>
+  <li>Add support for group0 drive levels on x232H chips</li>
+  <li>Fix handling of high_current_drive parameter</li>
+  <li>Fix inverted handling of VCP driver field for TYPE_R chips</li>
+  <li>New --verbose option for eeprom decode operation</li></ul></li>
+<li>Add example code for async mode</li>
+<li>Add SPDX license identifiers to the core library & ftdi_eeprom</li>
+<li>Various python SWIG wrapper improvements</li>
+<li>Various cmake file improvements</li>
+<li>Fix small bugs in error code paths</li>
+</ul>
+
+<strong>2017-08-07:</strong> Version 1.4 of libftdi released
+<ul>
+<li>New ftdi_usb_open_bus_addr() open function</li>
+<li>Use BM/R series baud rate computation for FT230X</li>
+<li>ftdi_get_error_string() now returns const char*</li>
+<li>C++ API: Ability to open devices with empty descriptor strings</li>
+<li>C++ API: Fix enumerations for buffer purge and modem controls</li>
+<li>small build fixes and improvements in the python examples</li>
+<li>ftdi_eeprom / eeprom handling:<ul>
+  <li>New API function: ftdi_eeprom_get_strings()</li>
+  <li>Fix USE_SERIAL handling for 230X type chips</li>
+  <li>Make ftdi_read_eeprom_location() endianness independent</li>
+  <li>Fix flashing of FT245R</li></ul></li>
+</ul>
+
+<strong>2016-05-20:</strong> Version 1.3 of libftdi released
+<ul>
+<li>Added ftdi_usb_get_strings2() to prevent automatic device close (Fahrzin Hemmati)</li>
+<li>Added ftdi_transfer_data_cancel() for cancellation of a submitted transfer,
+  avoided resubmission of a canceled transfer in the callbacks,
+  replaced calls to libusb_handle_events with
+  libusb_handle_events_timeout_completed (Eugene Hutorny)</li>
+<li>ftdi_eeprom / eeprom handling:<ul>
+  <li>Add support for arbitrary user data (Salvador Eduardo Tropea)</li>
+  <li>Add --build-eeprom support (Salvador Eduardo Tropea)</li>
+  <li>Fix use_usb_version config file option (Thilo Schulz)</li>
+  <li>Ability to include other config files in EEPROM config file (Thilo Schulz)</li>
+  <li>Add external oscillator enable bit (Raphael Assenat)</li>
+  <li>Support channel configuration (Stephan Linz)</li>
+  <li>Added --device option to ftdi_eeprom to specify FTDI device (Robin Haberkorn)</li>
+  <li>Fixed EEPROM user-area space checks for FT232R and FT245R chips (Robin Haberkorn)</li></ul></li>
+<li>Various improvements to CBUS handling, including the EEPROM (Robin Haberkorn)</li>
+<li>swig wrapper: Fix handling of binary strings in ftdi_write_data()
+  for python 3 (xantares09)</li>
+<li>cbus python example code (Rodney Sinclair)</li>
+<li>ftdi_stream: fix timeout setting (Ларионов Даниил)</li>
+<li>Fixed typo in CBUS defines: CBUSG_DRIVE1 -> CBUSH_DRIVE1</li>
+</ul>
+
+</p>
+
+
+<h2>License</h2>
+
+<p>The library itself is licensed under <a href="https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html">LGPL 2.1</a> (not any later),<br>
+the EEPROM programmer is licensed under <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL 2</a> (not any later)</p>
+
+
+<!-- footer start -->
+
+</div> <!-- close content <div> -->
+</div> <!-- close page <div> -->
+
+<footer>
+
+<div class="sitemap">
+
+<div class="sitemapcol1">
+	<a href="/en/products/index.php" class="sitemapheader">Products</a>
+	<ul class="sitemap">
+	<li><a href="/en/products/business-server.php">Intra2net Business Server</a></li>
+	<li><a href="/en/products/security-gateway.php">Intra2net Security Gateway</a></li>
+	<li><a href="/en/products/network-security.php">Intra2net Network Security</a></li>
+
+	</ul>
+</div>
+
+<div class="sitemapcol2">
+	<a href="/en/download/index.php" class="sitemapheader">Download</a>
+	<ul class="sitemap">
+	<li><a href="/en/download/index.php">Software</a></li>
+
+	<li><a href="/en/download/price-list.php">Price list</a></li>
+	<li><a href="/en/developer/">Open Source</a></li>
+	</ul>
+</div>
+
+<div class="sitemapcol3">
+	<a href="/en/support/index.php" class="sitemapheader">Support</a>
+	<ul class="sitemap">
+	<li><a href="/en/support/ticket-request.php">Request Support</a></li>
+	<li><a href="/en/support/product-manuals.php">Documentation</a></li>
+	<li><a href="/en/support/hardware-compatibility.php">System Requirements</a></li>
+	<li><a href="/en/support/antispam/">Blacklist Monitor</a></li>
+	<li><a href="/en/support/trainings.php">Training</a></li>
+	<li><a href="/en/support/remote-support.php">Remote Assistance</a></li>
+	</ul>
+</div>
+
+<div class="sitemapcol4">
+	<a href="/en/partners/index.php" class="sitemapheader">Partners</a>
+	<ul class="sitemap">
+	<li><a href="/en/partners/index.php">Partner Search</a></li>
+	<li><a href="/en/partners/partner-application.php">Become a Partner</a></li>
+	<li><a href="/en/partners/partner-application-form.php">Reseller Registration</a></li>
+	<li><a href="/en/partners/partner-presentation-form.php">Presentation</a></li>
+	<li><a href="https://partner.intra2net.com/">Partnerweb</a></li>
+	</ul>
+</div>
+
+<div class="sitemapcol5">
+	<a href="/en/company/index.php" class="sitemapheader">Company</a>
+	<ul class="sitemap">
+	<li><a href="/en/company/index.php">Overview</a></li>
+	<li><a href="/en/company/press/index.php">Press</a></li>
+	<li><a href="/en/company/careers.php">Career</a></li>
+	<li><a href="/en/company/contact.php">Contact</a></li>
+	</ul>
+</div>
+
+</div> <!-- close sitemap <div> -->
+
+
+<div class="footnote">
+
+	<div class="footnotecompany">
+
+		<!-- language switcher -->
+
+		<img src="/de/pictures/icon-language-switcher.svg" style="display: inline-block; margin-bottom: -4px; margin-right: 5px;">
+
+	<a href="/en/developer/libftdi/index.php"><b>English</b></a>	</div>
+
+	<div class="footnotelinks">
+
+		<a href="https://www.linkedin.com/company/intra2net/"><img src="/en/pictures/linkedin.svg" style="display: inline-block; margin: 0px 7px -2px 2px;">LinkedIn</a>
+		<a href="/en/legal-notice.php">Legal</a>
+		<a href="/en/privacy-policy.php">Privacy</a>
+
+		<a href="/en/company/">
+			&copy; 2026&nbsp; Intra2net AG		</a>
+
+	</div>
+
+</div>
+
+</footer>
+
+<!-- Matomo -->
+
+<script type="text/javascript">
+  var _paq = window._paq = window._paq || [];
+  /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+  _paq.push(["disableCookies"]);
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  (function() {
+    var u="https://intra2net.matomo.cloud/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '1']);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.type='text/javascript'; g.async=true; g.src='//cdn.matomo.cloud/intra2net.matomo.cloud/matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+
+<!-- End Matomo Code -->
+
+<!-- PHP error counter: 0 -->
+
+<!-- footer end -->
+
+
+</body>
+</html>
+

@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#" version="2.0">
+  <channel xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#">
+    <title>gnu-efi</title>
+    <link>https://sourceforge.net</link>
+    <description><![CDATA[Files from gnu-efi Develop EFI applications for ARM-64, ARM-32, x86_64, IA-64 (IPF), IA-32 (x86), and MIPS platforms using the GNU toolchain and the EFI development environment.]]></description>
+    <pubDate>Wed, 23 Sep 2026 13:32:42 UT</pubDate>
+    <managingEditor>noreply@sourceforge.net (SourceForge.net)</managingEditor>
+    <docs>http://blogs.law.harvard.edu/tech/rss</docs>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.18.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.18.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.18.tar.bz2/download</guid>
+      <pubDate>Fri, 22 Mar 2024 13:40:50 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">51637821</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.18.tar.bz2/download" filesize="167567"><media:hash algo="md5">0b93ad70dff96991dd87978fc4275bd1</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.17.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.17.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.17.tar.bz2/download</guid>
+      <pubDate>Tue, 02 May 2023 11:55:28 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">47277470</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.17.tar.bz2/download" filesize="165568"><media:hash algo="md5">832496719182e7d6a4b12bc7c0b534d2</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.15.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.15.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.15.tar.bz2/download</guid>
+      <pubDate>Mon, 08 Aug 2022 15:43:17 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">44046946</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.15.tar.bz2/download" filesize="159399"><media:hash algo="md5">192d94e995ddd4ebdce4903adfd06039</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.14.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.14.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.14.tar.bz2/download</guid>
+      <pubDate>Thu, 19 Aug 2021 16:29:05 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">37349924</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.14.tar.bz2/download" filesize="159295"><media:hash algo="md5">e2902ad09d53d7a94dc96a449dbb4058</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.13.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.13.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.13.tar.bz2/download</guid>
+      <pubDate>Mon, 08 Mar 2021 20:09:53 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">35116847</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.13.tar.bz2/download" filesize="155726"><media:hash algo="md5">8ec4221f505c78e6fc375c2fd7f0c549</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.12.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.12.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.12.tar.bz2/download</guid>
+      <pubDate>Mon, 11 May 2020 15:10:30 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">33107321</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.12.tar.bz2/download" filesize="154575"><media:hash algo="md5">926763ff37bc9db3a9035cec41eb2f45</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.11.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.11.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.11.tar.bz2/download</guid>
+      <pubDate>Mon, 28 Oct 2019 11:52:46 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">31892917</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.11.tar.bz2/download" filesize="154456"><media:hash algo="md5">21148bbcccec385a9bfdf5f678959577</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.10.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.10.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.10.tar.bz2/download</guid>
+      <pubDate>Thu, 03 Oct 2019 16:07:59 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">31697757</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.10.tar.bz2/download" filesize="154422"><media:hash algo="md5">960a8379b6f95ee73d7778b70bf2a089</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.9.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.9.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.9.tar.bz2/download</guid>
+      <pubDate>Thu, 11 Oct 2018 12:49:00 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">28844750</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.9.tar.bz2/download" filesize="154445"><media:hash algo="md5">32af17b917545a693e549af2439c4a99</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.8.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.8.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.8.tar.bz2/download</guid>
+      <pubDate>Wed, 14 Mar 2018 18:57:35 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27867699</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.8.tar.bz2/download" filesize="154397"><media:hash algo="md5">ae32011cfe6b1c40c0f244b9a49ba181</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.6.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.6.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.6.tar.bz2/download</guid>
+      <pubDate>Tue, 20 Jun 2017 14:16:08 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">26791910</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.6.tar.bz2/download" filesize="152088"><media:hash algo="md5">46f633758a8a37db9fd6909fe270c26b</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.5.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.5.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.5.tar.bz2/download</guid>
+      <pubDate>Mon, 09 Jan 2017 15:14:06 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">26135122</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.5.tar.bz2/download" filesize="151844"><media:hash algo="md5">1f719c9c135778aa6b087b89a1cc2423</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.4.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.4.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.4.tar.bz2/download</guid>
+      <pubDate>Thu, 17 Mar 2016 13:56:04 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">24710606</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.4.tar.bz2/download" filesize="143148"><media:hash algo="md5">612e0f327f31c4b8468ef55f4eeb9649</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.3.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.3.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.3.tar.bz2/download</guid>
+      <pubDate>Mon, 17 Aug 2015 20:11:00 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23495258</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.3.tar.bz2/download" filesize="142229"><media:hash algo="md5">15a4bcbc18a9a5e8110ed955970622e6</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.2.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.2.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.2.tar.bz2/download</guid>
+      <pubDate>Fri, 10 Apr 2015 12:52:53 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">22808482</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.2.tar.bz2/download" filesize="136134"><media:hash algo="md5">a9db2cabc01a2674715bd6aea2911f01</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi-3.0.1.tar.bz2]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.1.tar.bz2/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.1.tar.bz2/download</guid>
+      <pubDate>Mon, 05 Jan 2015 18:26:39 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">20716746</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi-3.0.1.tar.bz2/download" filesize="136071"><media:hash algo="md5">c4099c443b6b0c2b04dedc33e7814ec0</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0w.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0w.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0w.orig.tar.gz/download</guid>
+      <pubDate>Fri, 08 Aug 2014 20:08:53 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">15393185</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0w.orig.tar.gz/download" filesize="172913"><media:hash algo="md5">36d1c5e7b6edd4733700aaf749d9b80c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0v.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0v.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0v.orig.tar.gz/download</guid>
+      <pubDate>Tue, 01 Apr 2014 15:03:38 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">11852779</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0v.orig.tar.gz/download" filesize="160883"><media:hash algo="md5">57f0a308c0e939e5d18e40840a5484a9</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0u.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0u.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0u.orig.tar.gz/download</guid>
+      <pubDate>Wed, 12 Jun 2013 16:07:55 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8524045</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0u.orig.tar.gz/download" filesize="159662"><media:hash algo="md5">d15d3c700e79a1e2938544d73edc572d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0t.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0t.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0t.orig.tar.gz/download</guid>
+      <pubDate>Thu, 21 Feb 2013 15:57:03 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">7605611</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0t.orig.tar.gz/download" filesize="149681"><media:hash algo="md5">95916208cf543699799230ac1ea14272</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0s.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0s.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0s.orig.tar.gz/download</guid>
+      <pubDate>Mon, 05 Nov 2012 18:53:40 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">6936308</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0s.orig.tar.gz/download" filesize="147229"><media:hash algo="md5">11f63d52071f7382f56c9e81d0aece91</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0r.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0r.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0r.orig.tar.gz/download</guid>
+      <pubDate>Fri, 21 Sep 2012 18:05:28 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">6748953</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0r.orig.tar.gz/download" filesize="146653"><media:hash algo="md5">c5081850414bec34d3e254e8e970811b</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0q.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0q.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0q.orig.tar.gz/download</guid>
+      <pubDate>Mon, 30 Apr 2012 16:09:45 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">6156651</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0q.orig.tar.gz/download" filesize="276466"><media:hash algo="md5">698d93490e0c0171aa0e2a8eda44209f</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0p.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0p.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0p.orig.tar.gz/download</guid>
+      <pubDate>Mon, 12 Dec 2011 18:32:53 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5467402</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0p.orig.tar.gz/download" filesize="144989"><media:hash algo="md5">795503baf5593a2ee9f253c50adbc7f5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0m.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0m.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0m.orig.tar.gz/download</guid>
+      <pubDate>Wed, 24 Aug 2011 14:50:45 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">4839909</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0m.orig.tar.gz/download" filesize="144697"><media:hash algo="md5">d0a21125aee56c0c7291ad260e916cb3</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0l.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0l.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0l.orig.tar.gz/download</guid>
+      <pubDate>Fri, 22 Jul 2011 17:44:10 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">4734801</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0l.orig.tar.gz/download" filesize="140733"><media:hash algo="md5">fe9db068d0615a5df0d2afef546f408f</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0k.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0k.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0k.orig.tar.gz/download</guid>
+      <pubDate>Fri, 08 Apr 2011 15:04:23 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">3948867</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0k.orig.tar.gz/download" filesize="274420"><media:hash algo="md5">d9c9fe899db26bf6e571074759a67a99</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0j.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0j.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0j.orig.tar.gz/download</guid>
+      <pubDate>Thu, 29 Jul 2010 19:48:28 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">3186525</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0j.orig.tar.gz/download" filesize="135364"><media:hash algo="md5">cf8f864d50470d0b4904947c280dabaf</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/gnu-efi_3.0i.orig.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0i.orig.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0i.orig.tar.gz/download</guid>
+      <pubDate>Fri, 25 Sep 2009 15:43:39 UT</pubDate>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">2515280</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/gnu-efi/files/gnu-efi_3.0i.orig.tar.gz/download" filesize="135068"><media:hash algo="md5">558c914fc44f58b72b6ab509f7d169c2</media:hash></media:content>
+    </item>
+  </channel>
+</rss>

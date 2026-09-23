@@ -9,7 +9,7 @@
 # ---------------------------------
 
 name        = go
-version     = 1.27.0
+version     = 1.27.1
 release     = 1
 
 _bootstrap  = 1.25.9
@@ -17,7 +17,7 @@ _arch       = linux-amd64
 
 source      = https://go.dev/dl/go$version.src.tar.gz
 source      = https://go.dev/dl/go$_bootstrap.$_arch.tar.gz
-sha256      = 7002403d7cc44529ef6d26f69a44818263395ead7c16c05a5808ae047ebeb0e5  go-1.27.0.tar.gz
+sha256      = 4e408abae126d916b6164627193f2c54f0e3ca1312d693b86db45f862ab238b1  go-1.27.1.tar.gz
 sha256      = 00859d7bd6defe8bf84d9db9e57b9a4467b2887c18cd93ae7460e713db774bc1  go1.25.9.linux-amd64.tar.gz
 description = The Go programming language toolchain (with bootstrap)
 homepage    = https://go.dev/

@@ -14,9 +14,9 @@
 # units and a systemd-sleep hook.
 make TLP_WITH_SYSTEMD=0 TLP_WITH_ELOGIND=0 TLP_SBIN=/usr/sbin TLP_BIN=/usr/bin \
      TLP_TLIB=/usr/share/tlp TLP_ULIB=/usr/lib/udev TLP_CONFDIR=/etc/tlp.d \
-     TLP_CONFDEF=/usr/share/tlp/defaults.conf TLP_CONF=/etc/tlp.conf
+     TLP_CONFDEF=/usr/share/tlp/defaults.conf
 
 make TLP_WITH_SYSTEMD=0 TLP_WITH_ELOGIND=0 TLP_SBIN=/usr/sbin TLP_BIN=/usr/bin \
      TLP_TLIB=/usr/share/tlp TLP_ULIB=/usr/lib/udev TLP_CONFDIR=/etc/tlp.d \
-     TLP_CONFDEF=/usr/share/tlp/defaults.conf TLP_CONF=/etc/tlp.conf \
+     TLP_CONFDEF=/usr/share/tlp/defaults.conf \
      DESTDIR=$PKG install-tlp

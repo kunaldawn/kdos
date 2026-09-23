@@ -12,7 +12,7 @@
 # A CROSS BINUTILS AND NOTHING MORE. --with-sysroot names where the target's
 # own headers and libraries will live so the linker searches there rather than
 # in the host's /usr/lib, which is musl for x86_64 and would link silently
-# wrong. --disable-werror because a 2.45 binutils built by GCC 15 trips
+# wrong. --disable-werror because a binutils built by a newer GCC trips
 # warnings upstream has not caught up with, and none of them is about riscv64-unknown-elf.
 mkdir -p build && cd build
 ../configure \

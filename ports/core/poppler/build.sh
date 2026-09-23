@@ -40,8 +40,6 @@ cmake .. -G Ninja \
 	-DENABLE_LIBCURL=OFF \
 	-DENABLE_NSS3=OFF \
 	-DENABLE_LCMS=ON \
-	-DENABLE_LIBOPENJPEG=openjpeg2 \
-	-DENABLE_DCTDECODER=libjpeg \
-	-DWITH_NSS3=OFF
+	-DENABLE_LIBOPENJPEG=openjpeg2
 ninja
 DESTDIR=$PKG ninja install

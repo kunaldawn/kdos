@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = lame
-version     = 3.100
+version     = 4.0
 release     = 1
 source      = https://downloads.sourceforge.net/lame/$name-$version.tar.gz
-sha256      = ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e  lame-3.100.tar.gz
+sha256      = 3df5124d5ad3a98312ffd7ba6a9b36230e4f8a3e66d3ce0f425e336c32d216eb  lame-4.0.tar.gz
 description = LAME MP3 encoder
 homepage    = https://lame.sourceforge.io/
 depends     =

@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# -licuuc: libicuio.pc does not propagate icu-uc, so ubrk_* is unresolved.
-export LDFLAGS="$LDFLAGS -licuuc"
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
@@ -24,8 +22,11 @@ meson setup build \
 	-Dlibtiff=enabled \
 	-Dlibrsvg=enabled \
 	-Dlibnsgif=enabled \
-	-Dfreeimage=disabled \
+	-Dlibnsbmp=disabled \
 	-Dlibheif=enabled \
-	-Dlibjxl=disabled
+	-Dlibjxl=disabled \
+	-Dlibwebp=enabled \
+	-Dfarbfeld=enabled \
+	-Dqoi=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

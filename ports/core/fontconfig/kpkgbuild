@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = fontconfig
-version     = 2.17.1
+version     = 2.18.3
 release     = 1
 source      = https://gitlab.freedesktop.org/$name/$name/-/archive/$version/$name-$version.tar.gz
-sha256      = 82e73b26adad651b236e5f5d4b3074daf8ff0910188808496326bd3449e5261d  fontconfig-2.17.1.tar.gz
+sha256      = 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3  fontconfig-2.18.3.tar.gz
 description = A library and support programs used for configuring and customizing font access
 depends     = freetype2 gperf

@@ -9,14 +9,14 @@
 # ---------------------------------
 
 name        = iana-etc
-version     = 20260213
+version     = 20260911
 release     = 1
 source      = services
 source      = protocols
 source      = rpc
 source      = update.sh
-sha256      = 2f2878f46eb513b68777eda80aa73f01da25831ecb532078211414f9e990111f  services
-sha256      = 6c1e477c56735107d2b7a6a8d7174ce24dbd52d82558118beeaea171286b27a7  protocols
-sha256      = 5ccb751963bfed13fd8572986bd5be05c205ec9dfef9c5f50e6c971736ae4ebd  rpc
+sha256      = 285b42542033655be2fa7a5c9084885060d5fcfa94487a5642db590dc5d26e61  services
+sha256      = a1a3c23c21ccf4c45c9b6134ef1189e344e2a9f7dc126948918359f58f138380  protocols
+sha256      = bf1c5bb5edc597cd56a67fafe8457d328bf3746c15f4d4268c417bd8dd502904  rpc
 sha256      = 91c34b8634569623cb8996944c6904db6a57f6c4df6839a3cc38978ceb869327  update.sh
 description = Provides data for network services and protocols

@@ -1,0 +1,81 @@
+{
+  "package": "netcdf-c",
+  "packageName": "NetCDF-C",
+  "releases": [
+    {
+      "version": "4.10.1",
+      "releaseDate": "2026-07-09",
+      "status": "current",
+      "description": "",
+      "baseURL": "https://downloads.unidata.ucar.edu/netcdf-c/4.10.1/",
+      "resources": {
+        "src_zip": {
+          "type" : "Source Code",
+          "package": "netcdf-c-4.10.1.zip",
+          "name": "NetCDF-4 C libraries (.zip)",
+          "hash": {
+            "MD5": "netcdf-c-4.10.1.zip.md5",
+            "SHA1": "netcdf-c-4.10.1.zip.sha1",
+            "SHA256": "netcdf-c-4.10.1.zip.sha256"
+          },
+          "info": "MacOS, Windows, various *nix, and operating systems and 64-bit x86 and arm64-compatible processors."
+        },
+        "src_tar": {
+          "type": "Source Code",
+          "package": "netcdf-c-4.10.1.tar.gz",
+          "name": "NetCDF-4 C libraries (.tar.gz)",
+          "hash": {
+            "MD5": "netcdf-c-4.10.1.tar.gz.md5",
+            "SHA1": "netcdf-c-4.10.1.tar.gz.sha1",
+            "SHA256": "netcdf-c-4.10.1.tar.gz.sha256"
+          },
+          "info": "MacOS, Windows, various *nix, and operating systems and 64-bit x86 and arm64-compatible processors."
+        },
+        "nc3_64": {
+          "type": "Windows",
+          "package": "netCDF4.10.1-NC3-64.exe",
+          "name": "NetCDF-3 64-bit",
+          "hash": {
+            "MD5": "netCDF4.10.1-NC3-64.exe.md5",
+            "SHA1": "netCDF4.10.1-NC3-64.exe.sha1",
+            "SHA256": "netCDF4.10.1-NC3-64.exe.sha256"
+          },
+          "info": "NetCDF-3 for Windows operating system and 64-bit x86 or arm64-compatible processors. <a href='https://docs.unidata.ucar.edu/netcdf-c/current/winbin.html'>More Information</a> about prebuilt Windows binaries."
+        },
+        "nc3_64dap": {
+          "type": "Windows",
+          "package": "netCDF4.10.1-NC3-DAP-64.exe",
+          "name": "NetCDF-3+DAP 64-bit",
+          "hash": {
+            "MD5": "netCDF4.10.1-NC3-DAP-64.exe.md5",
+            "SHA1": "netCDF4.10.1-NC3-DAP-64.exe.sha1",
+            "SHA256": "netCDF4.10.1-NC3-DAP-64.exe.sha256"
+          },
+          "info": "NetCDF-3 with DAP support for Windows operating system and 64-bit x86 or arm64-compatible processors. <a href='https://docs.unidata.ucar.edu/netcdf-c/current/winbin.html'>More Information</a> about prebuilt Windows binaries."
+        },
+        "nc4_64": {
+          "type": "Windows",
+          "package": "netCDF4.10.1-NC4-64.exe",
+          "name": "NetCDF-4 64-bit",
+          "hash": {
+            "MD5": "netCDF4.10.1-NC4-64.exe.md5",
+            "SHA1": "netCDF4.10.1-NC4-64.exe.sha1",
+            "SHA256": "netCDF4.10.1-NC4-64.exe.sha256"
+          },
+          "info": "NetCDF-4 for Windows operating system and 64-bit x86 or arm64-compatible processors. <a href='https://docs.unidata.ucar.edu/netcdf-c/current/winbin.html'>More Information</a> about prebuilt Windows binaries."
+        },
+        "nc4_64dap": {
+          "type": "Windows",
+          "package": "netCDF4.10.1-NC4-DAP-64.exe",
+          "name": "NetCDF-4+DAP 64-bit",
+          "hash": {
+            "MD5": "netCDF4.10.1-NC4-DAP-64.exe.md5",
+            "SHA1": "netCDF4.10.1-NC4-DAP-64.exe.sha1",
+            "SHA256": "netCDF4.10.1-NC4-DAP-64.exe.sha256"
+          },
+          "info": "NetCDF-4 with DAP support for Windows operating system and 64-bit x86 or arm64-compatible processors.  <a href='https://docs.unidata.ucar.edu/netcdf-c/current/winbin.html'>More Information</a> about prebuilt Windows binaries."
+        }
+      }
+    }
+  ]
+}

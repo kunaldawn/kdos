@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = minicom
-version     = 2.10
+version     = 2.11.1
 release     = 1
-source      = minicom-2.10.tar.bz2::https://salsa.debian.org/minicom-team/minicom/-/archive/2.10/minicom-2.10.tar.bz2
-sha256      = 90e7ce2856b3eaaa3f452354d17981c49d32c426a255b6f0d3063a227c101538  minicom-2.10.tar.bz2
+source      = $name-$version.tar.bz2::https://salsa.debian.org/minicom-team/minicom/-/archive/$version/$name-$version.tar.bz2
+sha256      = 87cf0da91af0531357cd61b8e1906b907edd2c9ef82f9ae74c277e1893d0f98c  minicom-2.11.1.tar.bz2
 description = The serial terminal every board bring-up starts at
 homepage    = https://salsa.debian.org/minicom-team/minicom
 depends     = autoconf automake libtool ncurses gettext

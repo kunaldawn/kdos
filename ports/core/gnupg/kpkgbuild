@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = gnupg
-version     = 2.5.17
+version     = 2.5.24
 release     = 1
 source      = https://gnupg.org/ftp/gcrypt/$name/$name-$version.tar.bz2
-sha256      = 2c1fbe20e2958fd8fb53cf37d7c38e84a900edc0d561a1c4af4bc3a10888685d  gnupg-2.5.17.tar.bz2
+sha256      = bf149d01a2b9fcc0e4589b8ae8697d3d5c557ea48ed95a3fa55dd3b1187e6039  gnupg-2.5.24.tar.bz2
 description = GNU's tool for secure communication and data storage
 depends     = libassuan libgcrypt libgpg-error libksba npth pinentry

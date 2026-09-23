@@ -1,0 +1,881 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+   "http://www.w3.org/TR/html4/loose.dtd">
+<!--
+$NHDT-Branch: web367 $:$NHDT-Revision: 1.5 $
+-->
+<html lang="en">
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <title>NetHack 5.0.0: NetHack Archive</title>
+<style>
+
+
+
+
+
+
+
+
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: bold;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Mono"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-Bold.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-Bold.ttf) format("truetype")
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: normal;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Mono"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-Regular.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-Regular.ttf) format("truetype")
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: bold;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Next"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-Bold.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-Bold.ttf) format("truetype")
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: normal;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Next"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-Regular.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-Regular.ttf) format("truetype")
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: bold;
+  font-style: italic;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Mono"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-BoldItalic.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-BoldItalic.ttf) format("truetype")
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: normal;
+  font-style: italic;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Mono"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-RegularItalic.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleMono-RegularItalic.ttf) format("truetype")
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: bold;
+  font-style: italic;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Next"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-BoldItalic.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-BoldItalic.ttf) format("truetype")
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: normal;
+  font-style: italic;
+  unicode-range: U+000-5FF; 
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Next"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-RegularItalic.woff2) format("woff2"),
+    url(https://www.nethack.org/download/font/AtkinsonHyperlegibleNext-RegularItalic.ttf) format("truetype")
+}
+
+
+.nhbody {
+    font-size:100%
+}
+
+.nhfont-r-system {
+  font-family: serif;
+  font-style: normal;
+}
+.nhfont-r-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+}
+
+.nhfont-mb-system {
+  font-family: serif;
+  font-weight: bold;
+}
+.nhfont-mb-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: bold;
+}
+
+.nhfont-m-system {
+  font-family: monospace;
+}
+.nhfont-m-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: normal;
+}
+
+.nhfont-b-system {
+  font-weight: bold;
+}
+.nhfont-b-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: bold;
+}
+
+.nhfont-bim-system {
+  font-weight: bold;
+  font-style: italic;
+}
+.nhfont-bim-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-weight: bold;
+  font-style: italic;
+}
+
+.nhfont-im-system {
+  font-style: italic;
+}
+.nhfont-im-system {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-style: italic;
+}
+
+.nhfont-bi-system {
+  font-weight: bold;
+  font-style: italic;
+}
+.nhfont-bi-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: bold;
+  font-style: italic;
+}
+
+
+
+
+.nhfont-i-system {
+  font-style: italic;
+}
+.nhfont-i-atkinsonhyper {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: italic;
+}
+
+
+
+
+header.nhtheme-color.nhlayout-normal {
+    padding: .75em 0 0 0;
+    background-color:#00cc00;
+    border-radius:10px;
+}
+header.nhtheme-bw.nhlayout-normal {
+    padding: .75em 0 0 0;
+    background-color:#dcdcdc;
+    border-radius:10px;
+}
+header.nhtheme-color.nhlayout-simple {
+    padding: .75em 0 0 0;
+}
+header.nhtheme-bw.nhlayout-simple {
+    padding: .75em 0 0 0;
+}
+
+
+
+
+.navrow {
+    box-sizing: border-box;
+    height: 2em;
+}
+.navrow::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+.navrowlft {
+    float: left;
+    width: 30%;
+    position: relative;
+}
+#accesslinkwrapper {
+    position: absolute;
+    top: 0%;
+}
+.navrowctr {
+    float: left;
+    width: 40%;
+    text-align: center;
+}
+.navrowrit {
+    float: left;
+    width: 30%;
+    text-align: right;
+}
+.accshape {
+    background-color: white;
+    border-radius:7px;
+}
+
+.acclink {
+    position: absolute;
+    left:-10000px;
+    top:auto;
+    width:1px;
+    height:1px;
+    overflow:hidden;
+}
+.acclink:focus {
+    height:auto;
+    position:static;
+    width:auto;
+}
+acclinkwrap {
+    margin:0;
+    width:33%;
+}
+
+
+footer.nhtheme-color.nhlayout-normal {
+    padding: .75em 0 0 0;
+    background-color:#00cc00;
+    border-radius:10px;
+}
+footer.nhtheme-bw.nhlayout-normal {
+    padding: .75em 0 0 0;
+    background-color:#dcdcdc;
+    border-radius:10px;
+}
+footer.nhtheme-color.nhlayout-simple {
+    padding: .75em 0 0 0;
+}
+footer.nhtheme-bw.nhlayout-simple {
+    padding: .75em 0 0 0;
+}
+
+
+
+
+
+
+hr.nhtheme-color.nhlayout-normal.nhhide {
+    display:none;
+}
+hr.nhtheme-bw.nhlayout-normal.nhhide {
+    display:none;
+}
+hr.nhtheme-color.nhlayout-simple.nhhide {
+    height:3px;
+    border-width:0;
+    color:purple;
+    background-color:#9932cc;	    
+}
+hr.nhtheme-bw.nhlayout-simple.nhhide {
+    height:3px;
+    border-width:0;
+    color:black;
+    background-color:black;
+}
+
+
+hr.nhtheme-color {
+    height:3px;
+    border-width:0;
+    color:purple;
+    background-color:#9932cc;	    
+}
+hr.nhtheme-bw {
+    height:3px;
+    border-width:0;
+    color:black;
+    background-color:black;
+}
+
+h1.nhtheme-color {
+    color:green;
+}
+h1.nhtheme-bw {
+    color:black;
+}
+h2.nhtheme-color {
+    color:green;
+}
+h2.nhtheme-bw {
+    color:black;
+}
+
+
+
+
+.nhborder.nhtheme-color.nhlayout-simple {
+
+
+}
+.nhborder.nhtheme-color.nhlayout-normal {
+    border-style: solid;
+    border-width: 3px;
+    border-color: #00cc00;
+    border-radius: 10px;
+}
+.nhborder.nhtheme-bw.nhlayout-simple {
+
+
+}
+.nhborder.nhtheme-bw.nhlayout-normal {
+    border-style: solid;
+    border-width: 3px;
+    border-color: black;
+    border-radius: 10px;
+}
+
+
+.newsentry-date {
+ font-size:80%;
+ vertical-align: middle;
+}
+
+
+.indent5p {
+    padding-left: 5%;
+}
+</style>
+<script>
+
+//### PENDING!!!!!!
+//#there are 3? kinds of state but we can only deal with a transition between 2 states
+//#1. init - moving from nojs to json (but on is not a state, it's "saved or default"
+//#2. something changed by user, so between 2 of the entries in an options line in the table
+//#so the initial change call will be "init" to one of the options
+//#
+//#redo below to track above comment
+//DONE?
+
+//XXXX
+//this needs to be refactored because we need to be able to call
+//getstate, which does all 3.  (we need the oldstate across all 3)
+
+function onload_500setaccesslink() {
+    onload_setaccesslink2("../")
+    //onload_setaccesslink2("")
+}
+
+
+let d = {	
+    loader:0,
+    event:0,
+    ejf:0,	
+}
+
+
+
+
+
+function nhloader(){
+    if(d.loader){console.log("in nhloader");}
+    const re = /^onload_[0-9]{3}.*/;
+
+let worklist = [];
+    for(const p in window){
+        if(typeof window[p] === 'function'){
+
+            if(re.test(p)){
+		if(d.loader){console.log("ONLOAD GATHER " + p);}
+		worklist.push(p);
+            } else {
+
+	    }
+        } 
+    }
+    worklist.sort();
+    for(const x in worklist){
+	const fn = worklist[x];
+	if(d.loader){console.log("ONLOAD EXEC " + fn);}
+	window[fn]()
+    } 
+}
+
+
+function nhstorage(){
+    if(d.event){console.log("NHSTORAGE EVENT CAUGHT");}
+    getstate(0)      
+    enablejs(0)
+}       
+
+
+
+
+
+
+
+function onload_500hackstorage(){
+	
+    const re = /[/=]accessibility\.html($|\?)/;
+    if(document.location.protocol == "file:"
+	||
+       re.test(document.URL.test)
+    ){
+        console.log("debugging mode")
+        window.setInterval(storage_tick, 200)	
+    }
+}
+
+
+let storage_tick_hold = {}
+
+
+function storage_tick(){
+console.log("TICK")
+    let need = false;
+    for(var which of Object.keys(accessinfo)){
+        if(storage_tick_hold[which] != localStorage.getItem(which)){
+            need = true;    
+                            
+            storage_tick_hold[which] = localStorage.getItem(which)
+        }
+    }
+    if(need){
+        const e = new Event("storage")
+
+console.log("TICK SENDING")
+        window.dispatchEvent(e)
+    }
+}
+
+
+
+let bstate = {};
+let oldbstate = {}; 
+
+
+
+
+
+
+
+let is_first_getstate_call = 1;
+function getstate(first) {
+
+if(is_first_getstate_call && !first){
+    console.log("SANITY: first==0 but getstate not called yet")
+    console.trace()
+    is_first_getstate_call = 0
+    first = 1; 
+}else if(!is_first_getstate_call && first){
+    console.log("SANITY: first==1 but getstate already called")
+    console.trace()
+    first = 0;	
+}
+if(is_first_getstate_call){
+    is_first_getstate_call = 0
+}
+
+
+console.log("GETSTATEpre: "+JSON.stringify(bstate))
+    if(first){
+	    
+	for(let x of Object.keys(accessinfo)) {
+	    bstate[x] = accessinfo[x].default;
+	}
+    }
+
+    let needtick=0;	
+    if(typeof(Storage) !== "undefined"){
+            
+            
+        for(let x of Object.keys(accessinfo)){
+            let tmp = localStorage.getItem(x);
+            if(tmp){
+		if(tmp != bstate[x]){
+		    needtick = 1;
+		    bstate[x] = tmp;
+
+localStorage.setItem(x, bstate[x]);
+		}
+            } else {
+                localStorage.setItem(x, bstate[x]);
+            }
+        }
+    }
+
+
+
+
+let params = new URLSearchParams(document.location.search)
+for(let aname of Object.keys(accessinfo)){
+    var pval = params.get(aname);
+    if(pval){
+	    
+	bstate[aname] = pval;
+	
+    }
+}
+
+console.log("GETSTATEpost: "+JSON.stringify(bstate))
+
+    if(needtick){
+	console.log("SENDING ACC TICK");
+	storage_tick();
+    }
+}
+
+
+
+function leave_pre_nh_theme_undefined(){
+}
+
+
+
+function onload_500theme(){
+console.log("onload_500theme ENTRY")
+    enablejs(1)     
+}      
+
+
+
+
+
+const accessinfo = {
+    theme:{
+        default: "color",
+        options: ["color","bw"],
+        tags: ["Color","Black and White"]
+    },
+    font:{
+	default: "system",
+	options: ["system","atkinsonhyper"],
+	tags: ["System","Atkinson Hyperlegible"]
+    },
+
+
+
+
+
+    layout:{
+        default: "normal",
+        options: ["normal","simple"],
+        tags: ["Normal","Simplified"]
+    }
+}
+
+
+
+
+
+const fontvariations = ["r","i","bi","m","im","bim","b","mb"]
+
+function leave_pre_nhfont(args){
+    let oldclass = args[0]
+    let elements = args[1]
+
+    let fontname = (oldclass.split("-"))[1]
+console.log("leave_pre_nhfont " + oldclass)
+    for(const v of fontvariations) {
+	replaceclasses(elements, ["nhfont-"+v+"-"+fontname], [])
+    }
+}
+
+function enter_pre_nhfont(args){
+    let newclass = args[0]
+    let elements = args[1]
+
+    let fontname = (newclass.split("-"))[1]
+console.log("enter_pre_nhfont",newclass,fontname)
+console.log("elements",elements)
+
+    for(const e of elements){
+	const v = e.className.match("(^| )nhfont-([^ ]{1,3})")
+	replaceclasses([e], [], ["nhfont-"+v[2]+"-"+fontname])
+    }
+}
+
+function replaceclasses(elements, delclasses, insclasses){
+
+
+    for(let e of elements){
+
+
+	if(delclasses.length > 0){e.classList.remove(delclasses)}
+	if(insclasses.length > 0){e.classList.add(insclasses)}
+    }
+}
+
+
+
+function onload_setaccesslink2(prefix) {
+    let mydiv=document.getElementById("accesslinkwrapper");
+    if(mydiv){
+	
+
+    
+let ih = '<span id="acclinkwrap"><a class="accshape acclink" href="#mainskip">Skip to main</a></span>';
+ih += ' <a class="accshape" href="'+prefix+'common/accessibility.html">Accessibility</a>';
+	mydiv.innerHTML= ih;
+    }
+}
+
+function enablejs(firsttime){
+    if(firsttime){
+        getstate(1)
+            
+    }
+
+          
+
+    const ins = document.getElementsByClassName("nh-onload")     
+    let elements = {}
+console.log("ins="+ins)
+    elements = Array.from(Object.assign(elements, ins))
+    for(let e of elements){
+console.log("nh-onload-" + e.name)
+        callfnmaybe("nh-onload-" + e.name)
+    }
+
+    for(let x of Object.keys(accessinfo)) {
+        enablejsfor(x, firsttime, null);
+    }
+    oldbstate = Object.assign(oldbstate,bstate)
+console.log("new oldbstate: "+JSON.stringify(oldbstate))
+}
+
+
+
+
+function enablejsfor(mode, firsttime, newvalue){
+    let oldvalue = oldbstate[mode]
+    if(firsttime || !newvalue){	    
+	newvalue = bstate[mode]
+    }
+if(d.ejf){console.log("EJF: mode",mode,"old",oldvalue," new",newvalue)}
+    if(!firsttime && (oldvalue == newvalue)){
+if(d.ejf){console.log("doing nothing")}
+	return;
+    }
+
+    const baseclass = "nh"+mode
+    const oldclass = "nh"+mode+"-"+oldvalue
+    const newclass = "nh"+mode+"-"+newvalue
+if(d.ejf){console.log("oldclass",oldclass)}
+
+	
+	
+	
+	
+	
+	
+
+	
+	
+if(d.ejf){console.log("EJF: baseclass",baseclass)}
+    const elements = document.getElementsByClassName(baseclass)
+if(d.ejf){console.log("EJF: elements",elements)}
+if(d.ejf){console.log("EJFtype", Object.prototype.toString.call(elements))}
+if(d.ejf){console.log("EJFtype[0]", Object.prototype.toString.call(elements[0]))}
+    if(oldvalue){
+	    
+	callfnmaybe("leave_pre_"+baseclass,oldclass, elements)
+	callfnmaybe("leave_pre_"+oldclass, elements)
+    }
+
+	
+console.log("REMOVE",oldclass)
+    for(let e of elements){
+	e.classList.remove(oldclass)
+    }
+    if(oldvalue){
+	callfnmaybe("leave_post_"+baseclass,oldclass, elements)
+	callfnmaybe("leave_post_"+oldclass, elements)
+    }
+
+	
+	
+	
+	
+    callfnmaybe("enter_pre_"+baseclass, newclass, elements)
+    callfnmaybe("enter_pre_"+newclass, elements)
+console.log("ADD ",newclass)
+    for(let e of elements){
+	e.classList.add(newclass)
+    }
+    callfnmaybe("enter_post_"+baseclass, newclass, elements)
+    callfnmaybe("enter_post_"+newclass, elements)
+}
+
+
+
+function callfnmaybe(fname, ...rest){
+            
+    fname = fname.replaceAll("-","_")
+    if(typeof window[fname] === "function"){
+
+
+        return window[fname](rest)
+    }
+
+    return null
+}
+</script>
+</head>
+<body class="nhbody" onload="nhloader()" onstorage="nhstorage()" >
+	<header class="nhtheme nhlayout nhfont nhfont-r">
+	    <div class=navrow>
+		<div class=navrowlft>
+&nbsp;	<!-- left column -->
+		    <div id="accesslinkwrapper"></div>
+		</div>
+		<div class=navrowctr>
+[&nbsp;
+<a href="../index.html">Home</a>
+&nbsp;|&nbsp;
+<a href="../common/index.html">Version 5.0.0</a>
+&nbsp;|&nbsp;
+<a href="../common/contact.html">Contact Us</a>
+
+&nbsp;]
+    </div>
+<!--    <br> -->
+</div>
+</header>
+
+<div role="main" id="mainskip">
+<center><h1>The NetHack Archive</h1></center>
+<p>
+Here be the ghosts of NetHack past (and present).
+<p>
+From some of
+the dustiest corners of the internet we have assembled the source
+for every version of Hack and NetHack ever released.  Also included
+are various announcements and other miscellaneous files.  And we
+are slowly collecting old binaries as well.
+<br>
+<center>
+<br>
+<a href="/download/5.0.0/">5.0.0</a>
+<br>
+<a href="/download/3.6.7/">3.6.7</a>
+<a href="/download/3.6.6/">3.6.6</a>
+<a href="/download/3.6.5/">3.6.5</a>
+<a href="/download/3.6.4/">3.6.4</a>
+<a href="/download/3.6.3/">3.6.3</a>
+<a href="/download/3.6.2/">3.6.2</a>
+<a href="/download/3.6.1/">3.6.1</a>
+<a href="/download/3.6.0/">3.6.0</a>
+<br>
+<a href="/download/3.4.3/">3.4.3</a>
+<a href="/download/3.4.2/">3.4.2</a>
+<a href="/download/3.4.1/">3.4.1</a>
+<a href="/download/3.4.0/">3.4.0</a>
+<br>
+<a href="/download/3.3.1/">3.3.1</a>
+<a href="/download/3.3.0/">3.3.0</a>
+<br>
+<a href="/download/3.2.3/">3.2.3</a>
+<a href="/download/3.2.2/">3.2.2</a>
+<a href="/download/3.2.1/">3.2.1</a>
+<a href="/download/3.2.0/">3.2.0</a>
+<br>
+<a href="/download/3.1.3/">3.1.3</a>
+<a href="/download/3.1.2/">3.1.2</a>
+<a href="/download/3.1.1/">3.1.1</a>
+<a href="/download/3.1.0/">3.1.0</a>
+<br>
+<a href="/download/3.0.10/">3.0.10</a>
+<a href="/download/3.0.9/">3.0.9</a>
+<a href="/download/3.0.8/">3.0.8</a>
+<a href="/download/3.0.7/">3.0.7</a>
+<a href="/download/3.0.6/">3.0.6</a>
+<a href="/download/3.0.5/">3.0.5</a>
+<a href="/download/3.0.4/">3.0.4</a>
+<a href="/download/3.0.3/">3.0.3</a>
+<a href="/download/3.0.2/">3.0.2</a>
+<a href="/download/3.0.1/">3.0.1</a>
+<a href="/download/3.0.0/">3.0.0</a>
+<br>
+<a href="/download/2.3e/">2.3e</a>
+<a href="/download/2.2a/">2.2a</a>
+<br>
+<a href="/download/1.4f/">1.4f</a>
+<a href="/download/1.3d/">1.3d</a>
+<br>
+<a href="/download/Hack-1.0.3/">Hack-1.0.3</a>
+<a href="/download/Hack-1.0.2/">Hack-1.0.2</a>
+<a href="/download/Hack-1.0.1/">Hack-1.0.1</a>
+<a href="/download/Hack-1.0/">Hack-1.0</a>
+<p>
+<p>
+<a href="/download/LICENSE_HISTORY.html">LICENSE&nbsp;HISTORY</a>
+<p>
+<a href="/download/TOOLS/">TOOLS</a>
+</center>
+</div>
+<!-- <br> -->
+<div style="line-height:50%"></div>
+<hr class="nhtheme nhlayout nhhide">
+    <!-- XXX check nh-theme, nhjs-theme -->
+<footer id="footer" class="nh-theme nhjs-theme nhtheme nhlayout">
+<table id="footer:table" class="nhjs-theme nhfont nhfont-r" style="width:100%;text-align:left">
+<!--
+<table style="width:100%;text-align:left">
+-->
+<tr>
+  <td style="width:33%"><center><a href="../common/nethackis.html">About</a></center></td>
+  <td style="width:33%"><center><a href="../v500/bugs.html">Known Bug List</a></center></td>
+  <td style="width:33%"><center><a href="../common/index.html">Version 5.0.0</a></center></td>
+</tr>
+<tr>
+  <td style="width:33%"><center><a href="../common/license.html">License</a></center></td>
+  <td style="width:33%"><center><a href="../cgi-bin/bugsearch-.pl">Known Bug Search</a></center></td>
+  <td style="width:33%"><center><a href="/download/index.html">Archive</a></center></td>
+</tr>
+<tr>
+  <td style="width:33%"><center><a href="../common/policies.html">Policies</a></center></td>
+  <td style="width:33%"><center><a href="../common/index.html">Site Map</a></center></td>
+  <td style="width:33%"><center><a href="../common/news.html">Old News</a></center></td>
+</tr>
+<tr>
+  <td style="width:33%"><center><a href="../security/index.html">Security Issues</a></center></td>
+  <td style="width:33%"><center><a href="../common/git.html">Developer Resources</a></center></td>
+  <td style="width:33%"><center><a href="../common/previous.html">Old Versions</a></center></td>
+</tr>
+<tr>
+  <td style="width:33%"><center><a href="../common/contact.html">Contact Us</a></center></td>
+  <td style="width:33%;visibility:hidden"></td>
+  <td style="width:33%;visibility:hidden"></td>
+</tr>
+</table>
+<hr class="nhtheme">
+<div class="nhfont nhfont-r" style="margin-left:2em;margin-right:2em">
+Hosted courtesy of alt.org.
+
+</div>
+<div style="margin-left:2em;margin-right:2em">
+<small class="nhfont nhfont-r">
+NetHack is Copyright 1985-2026 by Stichting Mathematisch Centrum
+and M. Stephenson.
+<a href="/common/license.html">See our license</a> for details.<br>
+This site is Copyright 1999-2026 by Kenneth Lorber, Kensington, Maryland.
+</small>
+</div>
+<div style="padding-bottom:.25em"></div>
+</footer>
+</body>
+</html>

@@ -18,7 +18,6 @@
 ./configure --prefix=/usr                     \
 			--sysconfdir=/etc/ssh             \
 			--libexecdir=/usr/lib/$name       \
-			--with-md5-passwords              \
 			--with-privsep-path=/var/lib/sshd \
 			--without-zlib-version-check     \
 			--with-security-key-builtin

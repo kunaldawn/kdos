@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = fcitx5-anthy
-version     = 5.1.10
+version     = 5.1.11
 release     = 1
 source      = https://download.fcitx-im.org/fcitx5/$name/$name-$version.tar.zst
-sha256      = b7865d3c03ef51b776890bdf525165a544e30be446e2762e0c53c87e90590786  fcitx5-anthy-5.1.10.tar.zst
+sha256      = 9e59a151ab7c3a613fce137ed3dbd278a56ef87f69b6c1ec295c835b1977f356  fcitx5-anthy-5.1.11.tar.zst
 description = Japanese input for fcitx5, via anthy-unicode
 homepage    = https://github.com/fcitx/fcitx5-anthy
 depends     = cmake extra-cmake-modules fcitx5 anthy-unicode gettext

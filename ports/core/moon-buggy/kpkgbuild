@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = moon-buggy
-version     = 1.0.51
+version     = 1.1.0
 release     = 1
-source      = https://www.seehuhn.de/media/programs/$name-$version.tar.gz
-sha256      = 352dc16ccae4c66f1e87ab071e6a4ebeb94ff4e4f744ce1b12a769d02fe5d23f  moon-buggy-1.0.51.tar.gz
+source      = https://www.seehuhn.de/programs/$name/$name-$version.tar.gz
+sha256      = 259ae6e7b1838c40532af5c0f20cd7c6173cd5c552ede408114064475bcfc5b6  moon-buggy-1.1.0.tar.gz
 description = Drive a buggy across the moon, jumping craters and shooting meteors
 homepage    = https://www.seehuhn.de/pages/moon-buggy
 depends     = ncurses texinfo

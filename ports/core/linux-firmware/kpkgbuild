@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = linux-firmware
-version     = 20260810
+version     = 20260916
 release     = 1
 description = Device firmware blobs — upstream's complete tree, unpruned
 homepage    = https://gitlab.com/kernel-firmware/linux-firmware
 depends     = zstd
 source      = https://cdn.kernel.org/pub/linux/kernel/firmware/$name-$version.tar.xz
-sha256      = ac17c34fe73756926a961fbafadf8d8f07a3bd2dd2f4ea31a0fb5d50c714a49a  linux-firmware-20260810.tar.xz
+sha256      = f80dcb757a623deda62200c08e0e1a88c76fb6b54964f31b35fa74da1c90ccc5  linux-firmware-20260916.tar.xz

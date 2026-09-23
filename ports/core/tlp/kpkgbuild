@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = tlp
-version     = 1.8.0
+version     = 1.10.2
 release     = 1
 source      = https://github.com/linrunner/TLP/archive/$version/TLP-$version.tar.gz
-sha256      = 65515f7652064a1be2940c031e045b762924bb1dbd94f5e58e3b765113cf5210  tlp-1.8.0.tar.gz
+sha256      = a0b8bd8193d96853d2876c552b3b2bdf46bd1258fffc9ac598acc67eb73b56d5  tlp-1.10.2.tar.gz
 description = Laptop power saving — pure shell over /sys, no daemon
 homepage    = https://linrunner.de/tlp
 depends     = bash

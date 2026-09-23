@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>msmtp - download</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <link rel="stylesheet" type="text/css" href="/msmtp/css/style.css">
+</head>
+
+<body id="download">
+
+<nav>
+<section>
+    <span class="home">
+        <a href="/msmtp/">Home</a>
+    </span>
+    <span class="links">
+        <a href="/msmtp/news/">News</a>
+        <a href="/msmtp/download/">Download</a>
+        <a href="/msmtp/documentation/">Documentation</a>
+        <a href="/msmtp/contact/">Contact</a>
+    </span>
+</section>
+</nav>
+
+<main>
+<h1>Download</h1>
+
+<h2>Source Code</h2>
+
+<p>
+The source code is hosted on <a href="https://git.marlam.de/">git.marlam.de</a>.
+See the <a href="https://git.marlam.de/gitweb/?p=msmtp.git">web frontend for msmtp</a>.<br>
+You need the following packages to build from source (note that the package names may
+vary between distributions):
+<code>git autoconf automake libtool gettext texinfo pkg-config libgnutls-dev</code>.<br>
+And this is how it's done:<br>
+<code>$ git clone https://git.marlam.de/git/msmtp.git</code><br>
+<code>$ cd msmtp</code><br>
+<code>$ autoreconf -fi</code><br>
+<code>$ ./configure; make; make install</code><br>
+</p>
+
+A mirror of the main git repository is available at <a href="https://github.com/marlam/msmtp">github.com/marlam/msmtp</a>.
+
+<h2>Releases</h2>
+
+<p>
+<a href="../releases/msmtp-1.8.34.tar.xz">msmtp-1.8.34.tar.xz</a> (<a href="../releases/msmtp-1.8.34.tar.xz.sig">signature</a>) 2026-07-31<br>
+<a href="../releases/msmtp-1.8.33.tar.xz">msmtp-1.8.33.tar.xz</a> (<a href="../releases/msmtp-1.8.33.tar.xz.sig">signature</a>) 2026-07-11<br>
+<a href="../releases/msmtp-1.8.32.tar.xz">msmtp-1.8.32.tar.xz</a> (<a href="../releases/msmtp-1.8.32.tar.xz.sig">signature</a>) 2025-10-12<br>
+<a href="../releases/msmtp-1.8.31.tar.xz">msmtp-1.8.31.tar.xz</a> (<a href="../releases/msmtp-1.8.31.tar.xz.sig">signature</a>) 2025-09-06<br>
+<a href="../releases/msmtp-1.8.30.tar.xz">msmtp-1.8.30.tar.xz</a> (<a href="../releases/msmtp-1.8.30.tar.xz.sig">signature</a>) 2025-06-01<br>
+<a href="../releases/msmtp-1.8.29.tar.xz">msmtp-1.8.29.tar.xz</a> (<a href="../releases/msmtp-1.8.29.tar.xz.sig">signature</a>) 2025-05-29<br>
+<a href="../releases/msmtp-1.8.28.tar.xz">msmtp-1.8.28.tar.xz</a> (<a href="../releases/msmtp-1.8.28.tar.xz.sig">signature</a>) 2025-01-13<br>
+<a href="../releases/msmtp-1.8.27.tar.xz">msmtp-1.8.27.tar.xz</a> (<a href="../releases/msmtp-1.8.27.tar.xz.sig">signature</a>) 2024-10-06<br>
+<a href="../releases/msmtp-1.8.26.tar.xz">msmtp-1.8.26.tar.xz</a> (<a href="../releases/msmtp-1.8.26.tar.xz.sig">signature</a>) 2024-05-01<br>
+<a href="../releases/msmtp-1.8.25.tar.xz">msmtp-1.8.25.tar.xz</a> (<a href="../releases/msmtp-1.8.25.tar.xz.sig">signature</a>) 2023-10-29<br>
+<a href="../releases/msmtp-1.8.24.tar.xz">msmtp-1.8.24.tar.xz</a> (<a href="../releases/msmtp-1.8.24.tar.xz.sig">signature</a>) 2023-06-29<br>
+<a href="../releases/msmtp-1.8.23.tar.xz">msmtp-1.8.23.tar.xz</a> (<a href="../releases/msmtp-1.8.23.tar.xz.sig">signature</a>) 2023-01-30<br>
+<a href="../releases/msmtp-1.8.22.tar.xz">msmtp-1.8.22.tar.xz</a> (<a href="../releases/msmtp-1.8.22.tar.xz.sig">signature</a>) 2022-08-07<br>
+<a href="../releases/msmtp-1.8.21.tar.xz">msmtp-1.8.21.tar.xz</a> (<a href="../releases/msmtp-1.8.21.tar.xz.sig">signature</a>) 2022-08-07<br>
+<a href="../releases/msmtp-1.8.20.tar.xz">msmtp-1.8.20.tar.xz</a> (<a href="../releases/msmtp-1.8.20.tar.xz.sig">signature</a>) 2022-03-23<br>
+<a href="../releases/msmtp-1.8.19.tar.xz">msmtp-1.8.19.tar.xz</a> (<a href="../releases/msmtp-1.8.19.tar.xz.sig">signature</a>) 2021-11-04<br>
+<a href="../releases/msmtp-1.8.18.tar.xz">msmtp-1.8.18.tar.xz</a> (<a href="../releases/msmtp-1.8.18.tar.xz.sig">signature</a>) 2021-10-22<br>
+<a href="../releases/msmtp-1.8.17.tar.xz">msmtp-1.8.17.tar.xz</a> (<a href="../releases/msmtp-1.8.17.tar.xz.sig">signature</a>) 2021-10-03<br>
+<a href="../releases/msmtp-1.8.16.tar.xz">msmtp-1.8.16.tar.xz</a> (<a href="../releases/msmtp-1.8.16.tar.xz.sig">signature</a>) 2021-09-13<br>
+<a href="../releases/msmtp-1.8.15.tar.xz">msmtp-1.8.15.tar.xz</a> (<a href="../releases/msmtp-1.8.15.tar.xz.sig">signature</a>) 2021-03-12<br>
+<a href="../releases/msmtp-1.8.14.tar.xz">msmtp-1.8.14.tar.xz</a> (<a href="../releases/msmtp-1.8.14.tar.xz.sig">signature</a>) 2020-12-23<br>
+<a href="../releases/msmtp-1.8.13.tar.xz">msmtp-1.8.13.tar.xz</a> (<a href="../releases/msmtp-1.8.13.tar.xz.sig">signature</a>) 2020-11-13<br>
+<a href="../releases/msmtp-1.8.12.tar.xz">msmtp-1.8.12.tar.xz</a> (<a href="../releases/msmtp-1.8.12.tar.xz.sig">signature</a>) 2020-08-21<br>
+<a href="../releases/msmtp-1.8.11.tar.xz">msmtp-1.8.11.tar.xz</a> (<a href="../releases/msmtp-1.8.11.tar.xz.sig">signature</a>) 2020-06-03<br>
+<a href="../releases/msmtp-1.8.10.tar.xz">msmtp-1.8.10.tar.xz</a> (<a href="../releases/msmtp-1.8.10.tar.xz.sig">signature</a>) 2020-04-23<br>
+<a href="../releases/msmtp-1.8.9.tar.xz">msmtp-1.8.9.tar.xz</a> (<a href="../releases/msmtp-1.8.9.tar.xz.sig">signature</a>) 2020-04-23<br>
+<a href="../releases/msmtp-1.8.8.tar.xz">msmtp-1.8.8.tar.xz</a> (<a href="../releases/msmtp-1.8.8.tar.xz.sig">signature</a>) 2020-04-12<br>
+<a href="../releases/msmtp-1.8.7.tar.xz">msmtp-1.8.7.tar.xz</a> (<a href="../releases/msmtp-1.8.7.tar.xz.sig">signature</a>) 2019-12-24<br>
+<a href="../releases/msmtp-1.8.6.tar.xz">msmtp-1.8.6.tar.xz</a> (<a href="../releases/msmtp-1.8.6.tar.xz.sig">signature</a>) 2019-09-27<br>
+<a href="../releases/msmtp-1.8.5.tar.xz">msmtp-1.8.5.tar.xz</a> (<a href="../releases/msmtp-1.8.5.tar.xz.sig">signature</a>) 2019-07-12<br>
+<a href="../releases/msmtp-1.8.4.tar.xz">msmtp-1.8.4.tar.xz</a> (<a href="../releases/msmtp-1.8.4.tar.xz.sig">signature</a>) 2019-04-24<br>
+<a href="../releases/msmtp-1.8.3.tar.xz">msmtp-1.8.3.tar.xz</a> (<a href="../releases/msmtp-1.8.3.tar.xz.sig">signature</a>) 2019-02-11<br>
+<a href="../releases/msmtp-1.8.2.tar.xz">msmtp-1.8.2.tar.xz</a> (<a href="../releases/msmtp-1.8.2.tar.xz.sig">signature</a>) 2019-01-12<br>
+<a href="../releases/msmtp-1.8.1.tar.xz">msmtp-1.8.1.tar.xz</a> (<a href="../releases/msmtp-1.8.1.tar.xz.sig">signature</a>) 2018-12-08<br>
+<a href="../releases/msmtp-1.8.0.tar.xz">msmtp-1.8.0.tar.xz</a> (<a href="../releases/msmtp-1.8.0.tar.xz.sig">signature</a>) 2018-09-04<br>
+<!-- 
+<a href="../releases/msmtp-1.8.0rc1.tar.xz">msmtp-1.8.0rc1.tar.xz</a> (<a href="../releases/msmtp-1.8.0rc1.tar.xz.sig">signature</a>) 2018-08-20<br>
+ -->
+<a href="../releases/msmtp-1.6.8.tar.xz">msmtp-1.6.8.tar.xz</a> (<a href="../releases/msmtp-1.6.8.tar.xz.sig">signature</a>) 2018-06-28<br>
+<a href="../releases/msmtp-1.6.7.tar.xz">msmtp-1.6.7.tar.xz</a> (<a href="../releases/msmtp-1.6.7.tar.xz.sig">signature</a>) 2018-06-15<br>
+<a href="../releases/msmtp-1.6.6.tar.xz">msmtp-1.6.6.tar.xz</a> (<a href="../releases/msmtp-1.6.6.tar.xz.sig">signature</a>) 2016-11-14<br>
+<a href="../releases/msmtp-1.6.5.tar.xz">msmtp-1.6.5.tar.xz</a> (<a href="../releases/msmtp-1.6.5.tar.xz.sig">signature</a>) 2016-05-31<br>
+<a href="../releases/msmtp-1.6.4.tar.xz">msmtp-1.6.4.tar.xz</a> (<a href="../releases/msmtp-1.6.4.tar.xz.sig">signature</a>) 2016-02-01<br>
+<a href="../releases/msmtp-1.6.3.tar.xz">msmtp-1.6.3.tar.xz</a> (<a href="../releases/msmtp-1.6.3.tar.xz.sig">signature</a>) 2015-11-27<br>
+<a href="../releases/msmtp-1.6.2.tar.xz">msmtp-1.6.2.tar.xz</a> (<a href="../releases/msmtp-1.6.2.tar.xz.sig">signature</a>) 2015-04-24<br>
+<a href="../releases/msmtp-1.6.1.tar.xz">msmtp-1.6.1.tar.xz</a> (<a href="../releases/msmtp-1.6.1.tar.xz.sig">signature</a>) 2015-01-05<br>
+<a href="../releases/msmtp-1.6.0.tar.xz">msmtp-1.6.0.tar.xz</a> (<a href="../releases/msmtp-1.6.0.tar.xz.sig">signature</a>) 2014-12-30<br>
+<a href="../releases/msmtp-1.4.32.tar.bz2">msmtp-1.4.32.tar.bz2</a> 2014-03-09<br>
+</p>
+
+</main>
+
+</body>
+</html>

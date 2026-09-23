@@ -589,8 +589,8 @@ fetch_port() {
                 # from there drags in every dependency that is ALREADY A PORT
                 # and then builds each one's metadata to find that out — which
                 # means this image would need the development headers of every
-                # library any of them binds. ocrmypdf is the case: nine pure
-                # python packages, and resolving them reached cffi, then
+                # library any of them binds. ocrmypdf is the case: a dozen pure
+                # python packages, and resolving them reaches cffi, then
                 # cryptography, then lxml, each failing on a missing header for
                 # a package the target builds from its own port.
                 pip3 download --no-binary :all: --no-deps --dest vendor $reqs || {

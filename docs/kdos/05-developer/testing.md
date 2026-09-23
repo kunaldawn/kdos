@@ -320,7 +320,7 @@ variable moves one walk.
 | `oomd` | A tree arranged so only the memory budget can produce the right answer | That the budget check is load-bearing — its host process is larger than anything in either box |
 | `mountd` | A block-device tree plus two hand-built superblocks | The acceptance, and both refusals — the internal disk carries a real superblock so a broken check shows up as an extra row rather than as nothing |
 | `privacy` | Three processes, one holding a camera twice, one an audio device that must be ignored | The camera half, on a machine with no camera |
-| `portup` | Recorded upstream responses for six ports, one per discovery path | All three outcomes, offline |
+| `portup` | Recorded upstream responses — a registry index, git tag lists and branch heads, feeds, a releases API answer (cut to the fields read), directory listings, the pages a listing stands in for or links to — and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `--selftest`, and all three outcomes end to end, offline and unmoved by bumps to the live recipes |
 | `cve` | Four ports and a five-row database | A pin behind two fixes, one that only looks behind because of a packaging revision, a name mapping, and a package the database never heard of |
 | `clone` | Hand-built image headers | The two-record length rule |
 | `tray` | A second *process* that behaves like a real tray item | The whole protocol conversation |

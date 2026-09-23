@@ -18,6 +18,7 @@ meson setup build \
 	-Dtests=no \
 	-Dsystemd_journal=false \
 	-Dsystemdsystemunitdir=no \
+	-Dsystemdsystemgeneratordir=no \
 	-Dsession_tracking=no \
 	-Dsession_tracking_consolekit=false \
 	-Dpolkit=true \
@@ -25,6 +26,7 @@ meson setup build \
 	-Dofono=false \
 	-Dteamdctl=false \
 	-Dovs=false \
+	-Dclat=false \
 	-Dppp=false \
 	-Dnmcli=true \
 	-Dnmtui=true \
@@ -32,7 +34,6 @@ meson setup build \
 	-Diptables= \
 	-Dip6tables= \
 	-Dnft=/usr/sbin/nft \
-	-Ddhclient=no \
 	-Ddhcpcd= \
 	-Ddnsmasq=/usr/sbin/dnsmasq \
 	-Diwd=false \

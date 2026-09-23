@@ -9,10 +9,11 @@
 # ---------------------------------
 
 name        = expat
-version     = 2.7.3
+version     = 2.8.5
 release     = 1
-source      = https://github.com/libexpat/libexpat/releases/download/R_2_7_3/expat-$version.tar.gz
-sha256      = 821ac9710d2c073eaf13e1b1895a9c9aa66c1157a99635c639fbff65cdbdd732  expat-2.7.3.tar.gz
+_tag        = R_${version//./_}
+source      = https://github.com/libexpat/libexpat/releases/download/$_tag/expat-$version.tar.gz
+sha256      = 920dde485e15eda0cce8d2310b41d492c534e5e3d89ad407a0b4176dd2ff88fe  expat-2.8.5.tar.gz
 description = A stream oriented C library for parsing XML
 homepage    = https://libexpat.github.io
 depends     = autoconf automake libtool

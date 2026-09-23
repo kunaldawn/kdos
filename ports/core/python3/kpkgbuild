@@ -9,12 +9,12 @@
 # ---------------------------------
 
 name        = python3
-version     = 3.14.2
+version     = 3.14.7
 release     = 1
 
 _version    = ${version%.*}
 
 source      = https://www.python.org/ftp/python/$version/Python-$version.tar.xz
-sha256      = ce543ab854bc256b61b71e9b27f831ffd1bfd60a479d639f8be7f9757cf573e9  python3-3.14.2.tar.xz
+sha256      = 3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81  python3-3.14.7.tar.xz
 description = Next generation of the python high-level scripting language
 depends     = libffi sqlite expat

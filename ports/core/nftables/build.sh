@@ -15,7 +15,6 @@
 	--libdir=/usr/lib \
 	--with-cli=readline \
 	--with-json \
-	--disable-python \
 	--disable-static
 make
 make DESTDIR=$PKG install

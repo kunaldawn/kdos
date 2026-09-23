@@ -31,7 +31,7 @@ See [Decisions](../01-philosophy/decisions.md).
 There are three port repositories, searched in order, and they use one format:
 
 ```
-/ports/core              851 recipes — upstream software
+/ports/core              879 recipes — upstream software
 /kdos/src/packages        12 recipes — ours: the tools, the installer, the packer
 /kdos/src/desktop         13 recipes — ours: the compositor, the shell, the daemons
 ```
@@ -114,7 +114,7 @@ tree needs it.
 
 ## Deciding what to rebuild
 
-The build must not recompile 875 ports on every run, and must not skip one
+The build must not recompile 903 ports on every run, and must not skip one
 whose recipe changed. Two hashes decide, and they are the same two the binary
 host uses.
 

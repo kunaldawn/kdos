@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = hwdata
-version     = 0.403
+version     = 0.411
 release     = 1
 source      = https://github.com/vcrhonek/hwdata/archive/v$version/$name-$version.tar.gz
-sha256      = 77d0a69e5558d16d33bbb510a09093deaf11c882baf9ef6ec5f18a8ef96e2c13  hwdata-0.403.tar.gz
+sha256      = d75462181fbd307228e0a48b8d1449f1773ea4b1f17e8a1d56346907f999ce33  hwdata-0.411.tar.gz
 description = Hardware identification and configuration data
 homepage    = https://github.com/vcrhonek/hwdata

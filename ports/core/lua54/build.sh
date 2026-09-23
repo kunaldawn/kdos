@@ -8,7 +8,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A PARALLEL INSTALL, NOT A REPLACEMENT. ports/core/lua is 5.5.0 and stays the
+# A PARALLEL INSTALL, NOT A REPLACEMENT. ports/core/lua is 5.5 and stays the
 # system lua; Prosody 13 supports 5.2 through 5.4 and will not load on 5.5, so
 # this exists for it and for anything else in the same position.
 #

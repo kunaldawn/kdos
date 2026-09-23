@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = diamond
-version     = 2.2.5
+version     = 2.2.8
 release     = 1
-source      = diamond-2.2.5.tar.gz::https://github.com/bbuchfink/diamond/archive/refs/tags/v2.2.5.tar.gz
-sha256      = ca58297af1c60e02a36363f11d161a27f5bd4fed8b172cc56fab65805f37056a  diamond-2.2.5.tar.gz
+source      = $name-$version.tar.gz::https://github.com/bbuchfink/diamond/archive/refs/tags/v$version.tar.gz
+sha256      = a9cc37bd955fa7ed25447278a0b4f97e7036a9abd64f60e6565a56c28219c54c  diamond-2.2.8.tar.gz
 description = BLASTP/BLASTX at a thousand times the speed, which is what makes it usable
 homepage    = https://github.com/bbuchfink/diamond
 depends     = cmake zlib zstd

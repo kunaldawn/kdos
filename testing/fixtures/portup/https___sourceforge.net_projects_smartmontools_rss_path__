@@ -1,0 +1,1011 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#" version="2.0">
+  <channel xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#">
+    <title>S.M.A.R.T. Monitoring Tools</title>
+    <link>https://sourceforge.net</link>
+    <description><![CDATA[Files from S.M.A.R.T. Monitoring Tools smartmontools contains utility programs (smartctl, smartd) to control/monitor storage systems using the Self-Monitoring, Analysis and Reporting Technology System (S.M.A.R.T.) built into most modern ATA and SCSI disks. It is derived from smartsuite.]]></description>
+    <pubDate>Wed, 23 Sep 2026 13:48:25 UT</pubDate>
+    <managingEditor>noreply@sourceforge.net (SourceForge.net)</managingEditor>
+    <docs>http://blogs.law.harvard.edu/tech/rss</docs>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.md5/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:38:20 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423832</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.md5/download" filesize="68"><media:hash algo="md5">be549730eb205bf59b5120264926de7f</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.asc/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:38:16 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423831</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature Signature (old)</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe.asc/download" filesize="833"><media:hash algo="md5">f083ce3ced7a9a39d1eb9af7a2e02e81</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:38:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423830</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/vnd.microsoft.portable-executable; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.win32-setup.exe/download" filesize="1508408"><media:hash algo="md5">bb1e199ad6a3db3e1c27ae54b835cbd5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg.md5/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:38:03 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423829</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg.md5/download" filesize="56"><media:hash algo="md5">853e81e81fce0748e701d42d6dec3902</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg.asc/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:37:59 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423828</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature Signature (old)</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg.asc/download" filesize="833"><media:hash algo="md5">45f17877611e2b6c6a54dc18e84dc065</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:37:56 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423827</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">zlib compressed data</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/zlib; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.dmg/download" filesize="1619514"><media:hash algo="md5">414d905b7a6c6ea8861d4e6f7fa14c1c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz.md5/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:37:47 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423826</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz.md5/download" filesize="59"><media:hash algo="md5">c25746288f14b80700fdb68eef1ead77</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz.asc/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:37:32 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423825</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature Signature (old)</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz.asc/download" filesize="833"><media:hash algo="md5">89e595693618cb220720cdc001e5d1c1</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.5/smartmontools-7.5.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz/download</guid>
+      <pubDate>Wed, 30 Apr 2025 08:37:24 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.5/smartmontools-7.5.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">56423824</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">gzip compressed data, original size modulo 2^32 4495360</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.5/smartmontools-7.5.tar.gz/download" filesize="1122317"><media:hash algo="md5">38c38b0b82db7fc4906cdd50d15a7931</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.md5/download</guid>
+      <pubDate>Fri, 04 Aug 2023 15:59:31 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48045200</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.md5/download" filesize="84"><media:hash algo="md5">0b213a5d7d5454b0b045108c3b95c589</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.asc/download</guid>
+      <pubDate>Fri, 04 Aug 2023 15:59:28 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48045198</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe.asc/download" filesize="833"><media:hash algo="md5">ed012a8a490146f27a3bfd0e4ec17c12</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe/download</guid>
+      <pubDate>Fri, 04 Aug 2023 15:59:24 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48045197</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-x86-pre-vista-setup.exe/download" filesize="934146"><media:hash algo="md5">910a2245026e4ab4a0973894c11d87dc</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:23 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012973</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">cb4b7210392ce61242663eae355f425d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:21 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012972</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe.asc/download" filesize="833"><media:hash algo="md5">1adb6991b7ea49fb53e359aac7e12650</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:20 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012971</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.win32-setup.exe/download" filesize="1440243"><media:hash algo="md5">a0fae301f3962549f5ade0e22441afff</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg.md5/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:16 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012970</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg.md5/download" filesize="58"><media:hash algo="md5">4c70d9f58c368464db1cd5e9123a8df7</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg.asc/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:13 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012969</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg.asc/download" filesize="833"><media:hash algo="md5">2ce7440cac9b18278f1cf0bc2b7baeb7</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012968</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">data</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4-1.dmg/download" filesize="1574680"><media:hash algo="md5">c47f2c6b4dc4954c1526bd55a60d22d0</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz.md5/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:06 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012967</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz.md5/download" filesize="59"><media:hash algo="md5">6ecc7f3355489d5cc590b73c218e5b9e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz.asc/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:26:04 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012966</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz.asc/download" filesize="801"><media:hash algo="md5">e06c3a60b02a37abf70687584b053f84</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.4/smartmontools-7.4.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz/download</guid>
+      <pubDate>Tue, 01 Aug 2023 11:25:56 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.4/smartmontools-7.4.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">48012965</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.4/smartmontools-7.4.tar.gz/download" filesize="1094955"><media:hash algo="md5">178d31a6ff5256c093227ab45a3f52aa</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:45 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947046</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">8c3032f8fd0c15f68ea648eb294b4f13</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:45 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947045</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe/download" filesize="1277308"><media:hash algo="md5">976fef9c4eeffc7e63f3720e8e355a3d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:44 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947044</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe.asc/download" filesize="801"><media:hash algo="md5">f4ebbe61c1429a3bcafdd2ffc72650fa</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg.md5/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:43 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947043</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg.md5/download" filesize="58"><media:hash algo="md5">4c2dba91d78bc6cb6a3031fdd2ebfc35</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg.asc/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:35 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947042</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg.asc/download" filesize="801"><media:hash algo="md5">bf69002414138209aceb3f284d9e6bd5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:28 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947041</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">data</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3-1.dmg/download" filesize="1688027"><media:hash algo="md5">7004ede023177f8c263f0722e2b62570</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz.md5/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:16 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947040</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz.md5/download" filesize="59"><media:hash algo="md5">0250e0eb7fca78ea89312e90fd7da6cc</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz.asc/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947039</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz.asc/download" filesize="801"><media:hash algo="md5">418a5566fdfa52621a396355f15971ce</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.3/smartmontools-7.3.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz/download</guid>
+      <pubDate>Mon, 28 Feb 2022 17:04:02 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.3/smartmontools-7.3.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">40947038</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.3/smartmontools-7.3.tar.gz/download" filesize="1043932"><media:hash algo="md5">7a71d388124e3cd43abf6586a43cb1ff</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:21:46 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439696</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">c389847021aae48756264a10cb1ce0b3</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:21:38 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439695</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe.asc/download" filesize="801"><media:hash algo="md5">089b6e8c7681e5e4b8da6e542dbb4234</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:21:23 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439694</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.win32-setup.exe/download" filesize="1280994"><media:hash algo="md5">2c578aad97834a090de2101c6fb7f952</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz.md5/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:20:56 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439691</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz.md5/download" filesize="59"><media:hash algo="md5">ecb9034488c70f2f0918da45dfb2201b</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg.md5/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:20:28 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439690</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg.md5/download" filesize="58"><media:hash algo="md5">3f7a543c12130bdf1389ebd42d43c9ca</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg.asc/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:20:21 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439688</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg.asc/download" filesize="801"><media:hash algo="md5">2ddc34464475ef2342212ba3ac9d86f7</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:20:10 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439687</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">data</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2-1.dmg/download" filesize="1491843"><media:hash algo="md5">44e8f3624c61b93dea58ae2d790a3570</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz.asc/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:19:12 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439686</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz.asc/download" filesize="801"><media:hash algo="md5">ce6be0c99eee1467c3534b7cc5c37565</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.2/smartmontools-7.2.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz/download</guid>
+      <pubDate>Wed, 30 Dec 2020 17:18:58 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.2/smartmontools-7.2.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">34439685</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.2/smartmontools-7.2.tar.gz/download" filesize="992256"><media:hash algo="md5">e8d134c69ae4959a05cb56b31172ffb1</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:51 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185813</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">710bb9a8e97ffa187938fe8bb9938099</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:46 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185812</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe.asc/download" filesize="801"><media:hash algo="md5">b2f7d2eca2b23c2e67cbc54a80f987a8</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:41 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185811</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.win32-setup.exe/download" filesize="1259008"><media:hash algo="md5">aada99e3f2ddff29519a142637b4ffca</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg.md5/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:31 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185810</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg.md5/download" filesize="58"><media:hash algo="md5">0eee8636e7f5067c78018c5a3dce6dcf</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg.asc/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:26 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185809</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg.asc/download" filesize="801"><media:hash algo="md5">b399cadce7f3a4338a5855a699174d7f</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:16 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185808</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">data</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1-1.dmg/download" filesize="1431145"><media:hash algo="md5">f9a0819c369b80e9a8b569cf21628dee</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz.md5/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:21:04 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185807</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz.md5/download" filesize="59"><media:hash algo="md5">07b81f836180fe2652439e72e3241e99</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz.asc/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:20:59 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185806</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz.asc/download" filesize="801"><media:hash algo="md5">5f79abc14026b626941434b3f26d8aea</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.1/smartmontools-7.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz/download</guid>
+      <pubDate>Mon, 30 Dec 2019 15:20:46 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.1/smartmontools-7.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">32185805</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.1/smartmontools-7.1.tar.gz/download" filesize="971468"><media:hash algo="md5">430cd5f64caa4524018b536e5ecd9c29</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:13:41 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474900</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">ed32595f92da6c138be664ae350a07af</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:13:36 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474899</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe.asc/download" filesize="455"><media:hash algo="md5">72a2631af79fceade76c9d7ba016b125</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:13:31 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474897</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.win32-setup.exe/download" filesize="1265846"><media:hash algo="md5">7ab1f6335dd148f5194dc1a669ac61d8</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg.md5/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:13:24 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474896</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg.md5/download" filesize="58"><media:hash algo="md5">0ee3505d95a383e71b934d5ab8396f68</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg.asc/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:13:19 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474895</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg.asc/download" filesize="455"><media:hash algo="md5">51fd5c2a08ae83185ec819c53a98beb6</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:13:15 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474894</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">data</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0-1.dmg/download" filesize="1431782"><media:hash algo="md5">0bbd63996a9f17492c540a396ad33832</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz.md5/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:11:59 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474889</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz.md5/download" filesize="59"><media:hash algo="md5">b83903bc2b8dac31ab7ff7aabc766fa0</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz.asc/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:11:53 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474888</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz.asc/download" filesize="455"><media:hash algo="md5">bcffd4a79eb626e50c490399fb1e7f59</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/7.0/smartmontools-7.0.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz/download</guid>
+      <pubDate>Sun, 30 Dec 2018 15:11:44 UT</pubDate>
+      <description><![CDATA[/smartmontools/7.0/smartmontools-7.0.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">29474887</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/7.0/smartmontools-7.0.tar.gz/download" filesize="944925"><media:hash algo="md5">b2a80e4789af23d67dfe1e88a997abbf</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg/download</guid>
+      <pubDate>Sun, 05 Nov 2017 17:22:30 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363883</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#"># ISO 9660 CD-ROM filesystem data (bzip2 compressed data)</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg/download" filesize="1202234"><media:hash algo="md5">3cb2a739967bd11c7a424fd33a8053b4</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg.md5/download</guid>
+      <pubDate>Sun, 05 Nov 2017 17:22:29 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363882</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg.md5/download" filesize="58"><media:hash algo="md5">995101b53871a4de4be1161856d60a38</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg.asc/download</guid>
+      <pubDate>Sun, 05 Nov 2017 17:22:29 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363881</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.dmg.asc/download" filesize="455"><media:hash algo="md5">616a0f3ecdd0fb700955887fe5ec60f0</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe/download</guid>
+      <pubDate>Sun, 05 Nov 2017 15:43:35 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363764</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe/download" filesize="1347871"><media:hash algo="md5">f3abb6e80c758594d66b58939b751dd1</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Sun, 05 Nov 2017 15:43:33 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363763</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">05ba0fd3c538490fca097b617d3e276e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Sun, 05 Nov 2017 15:43:33 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363762</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6-1.win32-setup.exe.asc/download" filesize="473"><media:hash algo="md5">7bb90fc63c7bb1a3b1eedf394fd89e5c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz/download</guid>
+      <pubDate>Sun, 05 Nov 2017 15:43:12 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363760</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz/download" filesize="903847"><media:hash algo="md5">9ae2c6e7131cd2813edcc65cbe5f223f</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz.md5/download</guid>
+      <pubDate>Sun, 05 Nov 2017 15:43:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363759</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz.md5/download" filesize="59"><media:hash algo="md5">8f8e28eabdbbbd9aed98d18c4b0f2fdb</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.6/smartmontools-6.6.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz.asc/download</guid>
+      <pubDate>Sun, 05 Nov 2017 15:43:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.6/smartmontools-6.6.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27363758</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.6/smartmontools-6.6.tar.gz.asc/download" filesize="455"><media:hash algo="md5">cb3b13bd316b1513edb408e568f8cfb8</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.dmg.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg.md5/download</guid>
+      <pubDate>Tue, 10 May 2016 19:55:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.dmg.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25079920</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg.md5/download" filesize="58"><media:hash algo="md5">43e6ce186110bc4f0e26e42e84af1e51</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.dmg.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg.asc/download</guid>
+      <pubDate>Tue, 10 May 2016 19:55:10 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.dmg.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25079919</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg.asc/download" filesize="473"><media:hash algo="md5">56c9291c809ed911dec40bb7fd0b109b</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.dmg]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg/download</guid>
+      <pubDate>Tue, 10 May 2016 19:55:09 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.dmg]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25079918</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#"># ISO 9660 CD-ROM filesystem data (bzip2 compressed data)</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-bzip2; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.dmg/download" filesize="1133703"><media:hash algo="md5">ff4ca79978e2d05a69b6d3373824802a</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Sat, 07 May 2016 11:40:20 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25002689</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">3a8763ba63be412bde0585866e953651</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Sat, 07 May 2016 11:40:19 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25002688</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe.asc/download" filesize="473"><media:hash algo="md5">a47a80c3698cec7db022bc46ad31cf37</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe/download</guid>
+      <pubDate>Sat, 07 May 2016 11:40:18 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25002687</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-dosexec; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5-1.win32-setup.exe/download" filesize="1131627"><media:hash algo="md5">8445f34e7746b5f0b4474bc46b29d5a9</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz.md5/download</guid>
+      <pubDate>Sat, 07 May 2016 11:40:14 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25002686</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz.md5/download" filesize="59"><media:hash algo="md5">0fc11df4e708ec1172bfcc2481aa52ef</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz.asc/download</guid>
+      <pubDate>Sat, 07 May 2016 11:40:14 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25002685</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz.asc/download" filesize="473"><media:hash algo="md5">41828339e59e243292b32ffbdd20231a</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.5/smartmontools-6.5.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz/download</guid>
+      <pubDate>Sat, 07 May 2016 11:40:11 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.5/smartmontools-6.5.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">25002684</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.5/smartmontools-6.5.tar.gz/download" filesize="855642"><media:hash algo="md5">093aeec3f8f39fa9a37593c4012d3156</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Thu, 04 Jun 2015 16:47:45 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23043794</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">73709e85269de058572e5d661e971fe4</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Thu, 04 Jun 2015 16:47:44 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23043793</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe.asc/download" filesize="473"><media:hash algo="md5">683c511334d379da1e3cf1276161545d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe/download</guid>
+      <pubDate>Thu, 04 Jun 2015 16:47:43 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23043792</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4-1.win32-setup.exe/download" filesize="1095628"><media:hash algo="md5">b67786e0c577dfa40dbcc1d00affa8c3</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.4/smartmontools-6.4.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz.md5/download</guid>
+      <pubDate>Thu, 04 Jun 2015 16:47:40 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.4/smartmontools-6.4.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23043791</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz.md5/download" filesize="59"><media:hash algo="md5">d425e0f141cf2f5f72604c962acb7c6e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.4/smartmontools-6.4.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz.asc/download</guid>
+      <pubDate>Thu, 04 Jun 2015 16:47:39 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.4/smartmontools-6.4.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23043790</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz.asc/download" filesize="473"><media:hash algo="md5">26613da942aa254dec021c71320b7c13</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.4/smartmontools-6.4.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz/download</guid>
+      <pubDate>Thu, 04 Jun 2015 16:47:37 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.4/smartmontools-6.4.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">23043789</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.4/smartmontools-6.4.tar.gz/download" filesize="822539"><media:hash algo="md5">56812c8312fd123ed40ef65afde1049e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Sat, 26 Jul 2014 10:14:54 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">14869305</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">7ac969e9aaac6f1f2d197cc6ccb6f1c5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Sat, 26 Jul 2014 10:14:53 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">14869303</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe.asc/download" filesize="490"><media:hash algo="md5">14d64fac637f0ce84e53a9e7f963fcc5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe/download</guid>
+      <pubDate>Sat, 26 Jul 2014 10:14:51 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">14869301</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3-1.win32-setup.exe/download" filesize="841909"><media:hash algo="md5">91ebf65dcd395066f852f4fc5de37448</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.3/smartmontools-6.3.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz.md5/download</guid>
+      <pubDate>Sat, 26 Jul 2014 10:14:49 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.3/smartmontools-6.3.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">14869299</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz.md5/download" filesize="59"><media:hash algo="md5">c071b3e0f3e3084d50a5a2d22e3acec4</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.3/smartmontools-6.3.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz.asc/download</guid>
+      <pubDate>Sat, 26 Jul 2014 10:14:48 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.3/smartmontools-6.3.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">14869297</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz.asc/download" filesize="473"><media:hash algo="md5">50a5da8f3c94687b16270dc901414709</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.3/smartmontools-6.3.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz/download</guid>
+      <pubDate>Sat, 26 Jul 2014 10:14:46 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.3/smartmontools-6.3.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">14869295</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.3/smartmontools-6.3.tar.gz/download" filesize="809790"><media:hash algo="md5">2ea0c62206e110192a97b59291b17f54</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Fri, 26 Jul 2013 17:55:38 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8908107</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">fb072cacee420e1569120fccada47766</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Fri, 26 Jul 2013 17:55:36 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8908105</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe.asc/download" filesize="490"><media:hash algo="md5">a44041ef272fb6d418bafb2064f92a69</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe/download</guid>
+      <pubDate>Fri, 26 Jul 2013 17:55:34 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8908103</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2-1.win32-setup.exe/download" filesize="835021"><media:hash algo="md5">5d8fbcb6eeca086b5ef810ad2db341d7</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.2/smartmontools-6.2.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz.md5/download</guid>
+      <pubDate>Fri, 26 Jul 2013 17:55:31 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.2/smartmontools-6.2.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8908101</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz.md5/download" filesize="59"><media:hash algo="md5">451febab01ee12f72f0f6016213346bc</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.2/smartmontools-6.2.tar.gz.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz.asc/download</guid>
+      <pubDate>Fri, 26 Jul 2013 17:55:30 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.2/smartmontools-6.2.tar.gz.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8908099</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz.asc/download" filesize="487"><media:hash algo="md5">7168a675a7afc7ba44e934809603c3cf</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.2/smartmontools-6.2.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz/download</guid>
+      <pubDate>Fri, 26 Jul 2013 17:55:28 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.2/smartmontools-6.2.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8908097</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.2/smartmontools-6.2.tar.gz/download" filesize="791427"><media:hash algo="md5">d44f84081a12cef79cd17f78044351fc</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.md5/download</guid>
+      <pubDate>Fri, 31 May 2013 20:30:47 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8447183</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">165eef91f651fffaa68c3d08c2370170</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe/download</guid>
+      <pubDate>Fri, 31 May 2013 20:30:45 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8447179</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe/download" filesize="829858"><media:hash algo="md5">d977f37fec88f4b405b20b570e87f724</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.asc/download</guid>
+      <pubDate>Fri, 31 May 2013 20:30:45 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">8447181</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-2.win32-setup.exe.asc/download" filesize="490"><media:hash algo="md5">2c17867f2021186ab4dc8b2df697d42c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.md5/download</guid>
+      <pubDate>Sat, 16 Mar 2013 14:52:23 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">7769530</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.md5/download" filesize="70"><media:hash algo="md5">0176fefd2be2b62f05910a6493676d2e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.asc]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.asc/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.asc/download</guid>
+      <pubDate>Sat, 16 Mar 2013 14:52:22 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.asc]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">7769528</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PGP signature</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/pgp-signature; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe.asc/download" filesize="490"><media:hash algo="md5">6f31fd01871daf3c3a9a9accb03dd95b</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe/download</guid>
+      <pubDate>Sat, 16 Mar 2013 14:52:21 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">7769526</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">PE32 executable</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/octet-stream; charset=binary" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1-1.win32-setup.exe/download" filesize="829722"><media:hash algo="md5">877228fe95dd66fce3d160f2de94c7ad</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/smartmontools/6.1/smartmontools-6.1.tar.gz.md5]]></title>
+      <link>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1.tar.gz.md5/download</link>
+      <guid>https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1.tar.gz.md5/download</guid>
+      <pubDate>Sat, 16 Mar 2013 14:52:19 UT</pubDate>
+      <description><![CDATA[/smartmontools/6.1/smartmontools-6.1.tar.gz.md5]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">7769524</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">text</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="text/plain; charset=us-ascii" url="https://sourceforge.net/projects/smartmontools/files/smartmontools/6.1/smartmontools-6.1.tar.gz.md5/download" filesize="59"><media:hash algo="md5">0af5fc8ee8c8dd6a5a017e51c066bd8d</media:hash></media:content>
+    </item>
+  </channel>
+</rss>

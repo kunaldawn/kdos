@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = zoxide
-version     = 0.9.9
+version     = 0.10.0
 release     = 1
 source      = https://github.com/ajeetdsouza/zoxide/archive/v$version.tar.gz
-sha256      = eddc76e94db58567503a3893ecac77c572f427f3a4eabdfc762f6773abf12c63  zoxide-0.9.9.tar.gz
-sha256      = adeaea95263bdfd64b929e6822cfdddfedf4560453086122de8be21c99715e83  zoxide-vendor-0.9.9.tar.xz
+sha256      = 4fcd4272b013a10b637dbcc299c58a9924b94470a9042677ca1a204cc2e9150e  zoxide-0.10.0.tar.gz
+sha256      = a1d486590a75773c39877a60317790e9e4d3630ec9b62a099c9cd20e2d30ac15  zoxide-vendor-0.10.0.tar.xz
 description = zoxide — a smarter cd command for your terminal
 homepage    = https://github.com/ajeetdsouza/zoxide
 depends     = rust

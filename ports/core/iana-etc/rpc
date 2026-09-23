@@ -1,4 +1,4 @@
-# /etc/rpc, created 2026-02-14T00:48:40+0530
+# /etc/rpc, created 2026-09-23T12:20:15+0530
 # Source: https://www.iana.org/assignments/rpc-program-numbers/rpc-program-numbers.xml
 pmapprog        100000 portmap rpcbind portmapper sunrpc
 rstatd          100001 rstatprog

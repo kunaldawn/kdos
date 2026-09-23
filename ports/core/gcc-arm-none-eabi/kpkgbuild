@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = gcc-arm-none-eabi
-version     = 15.2.0
+version     = 16.2.0
 release     = 1
 _up         = gcc-$version
 source      = $name-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/gcc/$_up/$_up.tar.xz
-sha256      = 438fd996826b0c82485a29da03a72d71d6e3541a83ec702df4271f6fe025d24e  gcc-arm-none-eabi-15.2.0.tar.xz
+sha256      = e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e  gcc-arm-none-eabi-16.2.0.tar.xz
 description = The bare-metal Cortex-M and Cortex-R compiler
 homepage    = https://gcc.gnu.org/
 depends     = binutils-arm-none-eabi gmp mpfr mpc zlib texinfo

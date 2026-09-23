@@ -10,7 +10,7 @@
 # ---------------------------------
 
 # Disable systemd integration; KDOS has no systemd.
-export BUILDTAGS="seccomp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper"
+export BUILDTAGS="seccomp exclude_graphdriver_btrfs"
 
 # `binaries` builds podman, podman-remote, rootlessport, quadlet, etc.
 # Skip install.man — man pages need go-md2man (not packaged in kdos).

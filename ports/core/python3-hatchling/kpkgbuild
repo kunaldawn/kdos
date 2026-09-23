@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-hatchling
+version     = 1.32.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/hatchling/hatchling-$version.tar.gz
+sha256      = c4468f73144c054d2aab4ef0f0378c43b9878bf07f8ffd6b79690e970d375f07  python3-hatchling-1.32.4.tar.gz
+description = Hatch's PEP 517 backend, which bootstraps itself — scikit-build-core builds with it
+homepage    = https://pypi.org/project/hatchling/
+depends     = python3 python3-pip python3-packaging python3-pathspec python3-pluggy python3-tomlkit python3-trove-classifiers

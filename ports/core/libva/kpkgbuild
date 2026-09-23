@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = libva
-version     = 2.22.0
+version     = 2.24.1
 release     = 1
 source      = https://github.com/intel/libva/archive/refs/tags/$version.tar.gz
-sha256      = 467c418c2640a178c6baad5be2e00d569842123763b80507721ab87eb7af8735  libva-2.22.0.tar.gz
+sha256      = 0b4a3649ee8d683b9cce2ef094df4fb039d276c0cef7e49337c43d3b297b9f42  libva-2.24.1.tar.gz
 description = VA-API — hardware video decode and encode
 homepage    = https://github.com/intel/libva
 depends     = meson ninja libdrm wayland libxkbcommon

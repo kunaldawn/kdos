@@ -132,7 +132,8 @@ if [ -n "$KIMG_SRC" ]; then
         testing/fixtures/img/fuzz.c $KIMG_SRC $KIMG_LIBS
     ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
         "$OUT/kimgfuzz" testing/fixtures/img/*.png testing/fixtures/img/*.jpg \
-        testing/fixtures/img/*.webp testing/fixtures/img/*.six | sed 's/^/  /'
+        testing/fixtures/img/*.webp testing/fixtures/img/*.six \
+        testing/fixtures/img/*.gif | sed 's/^/  /'
 fi
 
 echo
@@ -1278,30 +1279,34 @@ esac
 
 echo
 echo "==> kdos-portup fixture-backed check (offline, no network)"
-# testing/fixtures/portup was recorded live against the six ports below, one
-# per discovery path: fuse (GitHub forge), zlib (a plain directory listing),
-# ca-certificates (directory listing that comes up empty, falling to repology
-# and only matching CURRENT's shape through the strip-separators/dot-collapse
-# normalisation), aalib (repology, genuinely CURRENT — upstream hasn't
-# released since 2001), mesa (a large directory listing), and imagemagick
-# (repology again, but UNKNOWN: its recipe's own source URL template is dead,
-# so no rendered candidate — including its own pinned version — ever proves).
-# Replaying them through --fixture exercises pu_list_upstream, pu_extract,
-# the shape filter and pu_render_candidate end to end with no curl involved —
-# proved separately with `unshare --net`, not just by inspection here — and
-# is what makes this reach all three outcomes (current/newer/unknown) without
-# a live network call.
+# testing/fixtures/portup carries recorded upstream responses AND, under
+# ports/, the recipes they were recorded against — kdos-portup reads its ports
+# from there under --fixture, so bumping a live recipe cannot change what this
+# replays. Seven ports: fuse (git tags under a release-asset tag prefix, whose
+# newest candidate was never recorded, so UNKNOWN), zlib (a plain directory
+# listing, NEWER), ca-certificates (a directory that is a meta refresh to the
+# page that lists, its date pin read through the file name's separators; the
+# newest file was never recorded, so NEWER at the one below it), aalib
+# (SourceForge unanswered, repology genuinely CURRENT —
+# upstream hasn't released since 2001), mesa (a large directory listing),
+# imagemagick (repology again, but UNKNOWN: no rendered candidate — including
+# its own pinned version — ever proves), and tokei (a `cachename::url`
+# source whose tags come from git, NEWER). Replaying them through --fixture
+# exercises discovery, pu_extract, the anchors and filters and
+# pu_render_candidate end to end with no curl or git involved, and reaches
+# all three outcomes (current/newer/unknown). --selftest replays one recorded
+# response per adapter on top of this.
 #
 # --fixture makes kdos-portup skip loading AND saving
 # ports/.update-cache.json entirely — fixture 200s are not evidence about the
 # real world and must never outlive this process — so there is nothing to
-# back up or restore around this run any more.
+# back up or restore around this run.
 CACHE="$PWD/ports/.update-cache.json"
 CACHE_BEFORE=$(md5sum "$CACHE" 2>/dev/null || true)
 set +e
 KDOS_PORTUP_REPO="$PWD" "$OUT/kdos-portup" --check --refresh --json \
     --fixture "$PWD/testing/fixtures/portup" \
-    fuse zlib ca-certificates aalib mesa imagemagick \
+    fuse zlib ca-certificates aalib mesa imagemagick tokei \
     > "$OUT/portup-fixture.json" 2> "$OUT/portup-fixture.err"
 rc=$?
 set -e
@@ -1315,7 +1320,9 @@ set -e
 grep -q '"state": "current"' "$OUT/portup-fixture.json" || { echo "  no current outcome reproduced"; exit 1; }
 grep -q '"state": "newer"'   "$OUT/portup-fixture.json" || { echo "  no newer outcome reproduced";   exit 1; }
 grep -q '"state": "unknown"' "$OUT/portup-fixture.json" || { echo "  no unknown outcome reproduced"; exit 1; }
-echo "  6 ports, all three outcomes reproduced from the recorded corpus"
+grep -q '"name": "tokei", "version": "14.0.0", "state": "newer"' "$OUT/portup-fixture.json" || {
+    echo "  a cachename::url source was not proved"; exit 1; }
+echo "  7 ports, all three outcomes reproduced from the recorded corpus"
 
 echo
 echo "==> kpkgdepends still agrees with the ports tree"

@@ -12,7 +12,6 @@
 ./configure \
 	--prefix=/usr \
 	--with-default-trust-store-pkcs11="pkcs11:" \
-	--disable-guile \
 	--with-zlib \
 	--without-tpm \
 	--without-tpm2

@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#" version="2.0">
+  <channel xmlns:files="https://sourceforge.net/api/files.rdf#" xmlns:media="http://video.search.yahoo.com/mrss/" xmlns:doap="http://usefulinc.com/ns/doap#" xmlns:sf="https://sourceforge.net/api/sfelements.rdf#">
+    <title>LAME (Lame Aint an MP3 Encoder)</title>
+    <link>https://sourceforge.net</link>
+    <description><![CDATA[Files from LAME (Lame Aint an MP3 Encoder) LAME is an educational tool to be used for learning about MP3 encoding. The goal of the LAME project is to improve the psycho acoustics, quality and speed of MP3 encoding. Note: we provide source code only!]]></description>
+    <pubDate>Wed, 23 Sep 2026 09:58:42 UT</pubDate>
+    <managingEditor>noreply@sourceforge.net (SourceForge.net)</managingEditor>
+    <docs>http://blogs.law.harvard.edu/tech/rss</docs>
+    <item>
+      <title><![CDATA[/lame/4.0/lame-4.0.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/4.0/lame-4.0.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/4.0/lame-4.0.tar.gz/download</guid>
+      <pubDate>Sat, 11 Jul 2026 07:49:57 UT</pubDate>
+      <description><![CDATA[/lame/4.0/lame-4.0.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">65003710</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">gzip compressed data, original size modulo 2^32 6195200</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/4.0/lame-4.0.tar.gz/download" filesize="1496810"><media:hash algo="md5">4b82945ffc410cb5d3947b9d6f890ae8</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.101/lame-3.101.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.101/lame-3.101.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.101/lame-3.101.tar.gz/download</guid>
+      <pubDate>Thu, 09 Jul 2026 12:29:55 UT</pubDate>
+      <description><![CDATA[/lame/3.101/lame-3.101.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">64962828</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">gzip compressed data, original size modulo 2^32 6113280</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.101/lame-3.101.tar.gz/download" filesize="1466586"><media:hash algo="md5">96f668bd3376dcd231a0855c1bfe128d</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.100/lame-3.100.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download</guid>
+      <pubDate>Fri, 13 Oct 2017 20:33:38 UT</pubDate>
+      <description><![CDATA[/lame/3.100/lame-3.100.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">27284749</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download" filesize="1524133"><media:hash algo="md5">83e260acbe4389b54fe08e0bdbf7cddb</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.99/lame-3.99.5.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.5.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.5.tar.gz/download</guid>
+      <pubDate>Tue, 28 Feb 2012 19:00:48 UT</pubDate>
+      <description><![CDATA[/lame/3.99/lame-3.99.5.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5785762</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.5.tar.gz/download" filesize="1445348"><media:hash algo="md5">84835b313d4a8b68f5349816d33e07ce</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.99/lame-3.99.4.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.4.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.4.tar.gz/download</guid>
+      <pubDate>Wed, 25 Jan 2012 13:50:13 UT</pubDate>
+      <description><![CDATA[/lame/3.99/lame-3.99.4.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5639424</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.4.tar.gz/download" filesize="1444640"><media:hash algo="md5">e54d7847bfd01f18d56c07e65147d75a</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.99/lame-3.99.3.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.3.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.3.tar.gz/download</guid>
+      <pubDate>Sat, 26 Nov 2011 19:59:11 UT</pubDate>
+      <description><![CDATA[/lame/3.99/lame-3.99.3.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5331770</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.3.tar.gz/download" filesize="1443843"><media:hash algo="md5">5ad31e33e70455eb3a7b79a5dd934fce</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.99/lame-3.99.2.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.2.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.2.tar.gz/download</guid>
+      <pubDate>Fri, 18 Nov 2011 09:36:13 UT</pubDate>
+      <description><![CDATA[/lame/3.99/lame-3.99.2.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5298331</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.2.tar.gz/download" filesize="1443127"><media:hash algo="md5">d049cc1c6b2be16805d5765cc0b23737</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.99/lame-3.99.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.1.tar.gz/download</guid>
+      <pubDate>Sat, 05 Nov 2011 17:40:15 UT</pubDate>
+      <description><![CDATA[/lame/3.99/lame-3.99.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5226502</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.1.tar.gz/download" filesize="1442085"><media:hash algo="md5">2576a7368b5c90a87adc9de6b9f0628c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.99/lame-3.99.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.tar.gz/download</guid>
+      <pubDate>Mon, 17 Oct 2011 23:50:30 UT</pubDate>
+      <description><![CDATA[/lame/3.99/lame-3.99.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">5142063</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.tar.gz/download" filesize="1441166"><media:hash algo="md5">7abacd1d0a65a63733335786015626db</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.98.4/lame-3.98.4.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.98.4/lame-3.98.4.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.98.4/lame-3.98.4.tar.gz/download</guid>
+      <pubDate>Wed, 14 Apr 2010 10:41:10 UT</pubDate>
+      <description><![CDATA[/lame/3.98.4/lame-3.98.4.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">2977021</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.98.4/lame-3.98.4.tar.gz/download" filesize="1336025"><media:hash algo="md5">8e9866ad6b570c6c95c8cba48060473f</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.98.2/lame-398-2.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.98.2/lame-398-2.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.98.2/lame-398-2.tar.gz/download</guid>
+      <pubDate>Mon, 22 Sep 2008 20:44:12 UT</pubDate>
+      <description><![CDATA[/lame/3.98.2/lame-398-2.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1488500</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.98.2/lame-398-2.tar.gz/download" filesize="1327643"><media:hash algo="md5">719dae0ee675d0c16e0e89952930ed35</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/lame-398-1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/OldFiles/lame-398-1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/OldFiles/lame-398-1.tar.gz/download</guid>
+      <pubDate>Sun, 21 Sep 2008 16:24:35 UT</pubDate>
+      <description><![CDATA[/OldFiles/lame-398-1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1487676</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/lame/files/OldFiles/lame-398-1.tar.gz/download" filesize="1327635"><media:hash algo="md5">3111c8e9c43a7b545b97fb83f3e2444c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.98/lame-398.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.98/lame-398.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.98/lame-398.tar.gz/download</guid>
+      <pubDate>Thu, 03 Jul 2008 23:04:06 UT</pubDate>
+      <description><![CDATA[/lame/3.98/lame-398.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1443433</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.98/lame-398.tar.gz/download" filesize="1415983"><media:hash algo="md5">f44b9f8e1b5d8835d0a77f9cc9cedd1c</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/lame-3.98b8.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b8.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b8.tar.gz/download</guid>
+      <pubDate>Sun, 13 Apr 2008 22:14:46 UT</pubDate>
+      <description><![CDATA[/OldFiles/lame-3.98b8.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1394035</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b8.tar.gz/download" filesize="1394709"><media:hash algo="md5">e0233eec244701d9bb6a171ed6bf0712</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/lame-3.98b7.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b7.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b7.tar.gz/download</guid>
+      <pubDate>Sun, 06 Apr 2008 15:31:43 UT</pubDate>
+      <description><![CDATA[/OldFiles/lame-3.98b7.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1389108</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b7.tar.gz/download" filesize="1394401"><media:hash algo="md5">f920db399da673d3739ab080153a2940</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/OldFiles/lame-3.98b6.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b6.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b6.tar.gz/download</guid>
+      <pubDate>Wed, 12 Mar 2008 20:36:13 UT</pubDate>
+      <description><![CDATA[/OldFiles/lame-3.98b6.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1372303</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/lame/files/OldFiles/lame-3.98b6.tar.gz/download" filesize="1954307"><media:hash algo="md5">0697a3a30655266ee91172c2b6915161</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.97/lame-3.97.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.97/lame-3.97.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.97/lame-3.97.tar.gz/download</guid>
+      <pubDate>Sun, 24 Sep 2006 14:23:39 UT</pubDate>
+      <description><![CDATA[/lame/3.97/lame-3.97.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1036681</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.97/lame-3.97.tar.gz/download" filesize="1328058"><media:hash algo="md5">90a4acbb730d150dfe80de145126eef7</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.97beta3/lame-3.97b3_.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.97beta3/lame-3.97b3_.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.97beta3/lame-3.97b3_.tar.gz/download</guid>
+      <pubDate>Sun, 20 Aug 2006 09:23:07 UT</pubDate>
+      <description><![CDATA[/lame/3.97beta3/lame-3.97b3_.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">1014350</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.97beta3/lame-3.97b3_.tar.gz/download" filesize="1328041"><media:hash algo="md5">4fbdad5d4203e75125cf5b875b171ac0</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.97beta2/lame-3.97b2.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.97beta2/lame-3.97b2.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.97beta2/lame-3.97b2.tar.gz/download</guid>
+      <pubDate>Mon, 28 Nov 2005 22:03:54 UT</pubDate>
+      <description><![CDATA[/lame/3.97beta2/lame-3.97b2.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">845393</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.97beta2/lame-3.97b2.tar.gz/download" filesize="1327960"><media:hash algo="md5">f3109237dfa9e025a2eb23fdae338166</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.97beta/lame-3.97b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.97beta/lame-3.97b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.97beta/lame-3.97b.tar.gz/download</guid>
+      <pubDate>Sun, 18 Sep 2005 15:47:21 UT</pubDate>
+      <description><![CDATA[/lame/3.97beta/lame-3.97b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">805776</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.97beta/lame-3.97b.tar.gz/download" filesize="1327542"><media:hash algo="md5">043f61564e33ec41cd9152366b535f78</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.96.1/lame-3.96.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.96.1/lame-3.96.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.96.1/lame-3.96.1.tar.gz/download</guid>
+      <pubDate>Sun, 25 Jul 2004 15:15:19 UT</pubDate>
+      <description><![CDATA[/lame/3.96.1/lame-3.96.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">554966</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.96.1/lame-3.96.1.tar.gz/download" filesize="1255629"><media:hash algo="md5">e1206c46a5e276feca11a7149e2fc6ac</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.96/lame-3.96.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.96/lame-3.96.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.96/lame-3.96.tar.gz/download</guid>
+      <pubDate>Sun, 11 Apr 2004 16:00:46 UT</pubDate>
+      <description><![CDATA[/lame/3.96/lame-3.96.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">495117</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.96/lame-3.96.tar.gz/download" filesize="1254175"><media:hash algo="md5">8fbcfff0cd4e9fef2fdeabbf8fa98600</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.95.1/lame-3.95.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.95.1/lame-3.95.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.95.1/lame-3.95.1.tar.gz/download</guid>
+      <pubDate>Mon, 12 Jan 2004 13:55:40 UT</pubDate>
+      <description><![CDATA[/lame/3.95.1/lame-3.95.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">444170</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.95.1/lame-3.95.1.tar.gz/download" filesize="1244071"><media:hash algo="md5">2cfac426cf8b7a2931db5d285ac44cf9</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.95/lame-3.95.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.95/lame-3.95.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.95/lame-3.95.tar.gz/download</guid>
+      <pubDate>Sun, 11 Jan 2004 10:24:48 UT</pubDate>
+      <description><![CDATA[/lame/3.95/lame-3.95.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">443633</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.95/lame-3.95.tar.gz/download" filesize="1243873"><media:hash algo="md5">665df17bf8ed4607386bb86fb95a7f76</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.94beta/lame-3.94b.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.94beta/lame-3.94b.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.94beta/lame-3.94b.tar.gz/download</guid>
+      <pubDate>Thu, 18 Dec 2003 18:58:44 UT</pubDate>
+      <description><![CDATA[/lame/3.94beta/lame-3.94b.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">433297</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.94beta/lame-3.94b.tar.gz/download" filesize="1238054"><media:hash algo="md5">9b35fcd9b407f136dfb8ae8a93f900d6</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.93.1/lame-3.93.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.93.1/lame-3.93.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.93.1/lame-3.93.1.tar.gz/download</guid>
+      <pubDate>Sun, 01 Dec 2002 16:52:12 UT</pubDate>
+      <description><![CDATA[/lame/3.93.1/lame-3.93.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">246731</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.93.1/lame-3.93.1.tar.gz/download" filesize="1037603"><media:hash algo="md5">1b79c08045eafc55e24ebd38d9e84329</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/py-lame/0.1/py-lame-0.1.zip]]></title>
+      <link>https://sourceforge.net/projects/lame/files/py-lame/0.1/py-lame-0.1.zip/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/py-lame/0.1/py-lame-0.1.zip/download</guid>
+      <pubDate>Sun, 17 Nov 2002 11:06:19 UT</pubDate>
+      <description><![CDATA[/py-lame/0.1/py-lame-0.1.zip]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">240813</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">empty (Zip archive data)</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/zip; charset=binary" url="https://sourceforge.net/projects/lame/files/py-lame/0.1/py-lame-0.1.zip/download" filesize="26991"><media:hash algo="md5">0b142ff410c4af26526c77eab5197abc</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/py-lame/0.1/py-lame-0.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/py-lame/0.1/py-lame-0.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/py-lame/0.1/py-lame-0.1.tar.gz/download</guid>
+      <pubDate>Sun, 17 Nov 2002 10:52:10 UT</pubDate>
+      <description><![CDATA[/py-lame/0.1/py-lame-0.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">240812</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/py-lame/0.1/py-lame-0.1.tar.gz/download" filesize="23514"><media:hash algo="md5">40c1cdab4359fd36d356159327b53cfb</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.93/lame-3.93.0.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.93/lame-3.93.0.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.93/lame-3.93.0.tar.gz/download</guid>
+      <pubDate>Sun, 17 Nov 2002 10:48:23 UT</pubDate>
+      <description><![CDATA[/lame/3.93/lame-3.93.0.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">240806</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.93/lame-3.93.0.tar.gz/download" filesize="1036360"><media:hash algo="md5">2c054c7eec1f966499d0945642bd8cba</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.92/lame-3.92.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.92/lame-3.92.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.92/lame-3.92.tar.gz/download</guid>
+      <pubDate>Mon, 15 Apr 2002 18:30:51 UT</pubDate>
+      <description><![CDATA[/lame/3.92/lame-3.92.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">157935</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.92/lame-3.92.tar.gz/download" filesize="970894"><media:hash algo="md5">4e1b83a7b08636d2ef43711e4c74d3a9</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.91/lame-3.91.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.91/lame-3.91.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.91/lame-3.91.tar.gz/download</guid>
+      <pubDate>Sat, 29 Dec 2001 15:53:27 UT</pubDate>
+      <description><![CDATA[/lame/3.91/lame-3.91.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">121736</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.91/lame-3.91.tar.gz/download" filesize="873212"><media:hash algo="md5">c09562caa789c946403f6f9661592ee5</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.90.1/lame-3.90.1.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.90.1/lame-3.90.1.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.90.1/lame-3.90.1.tar.gz/download</guid>
+      <pubDate>Sat, 22 Dec 2001 12:51:17 UT</pubDate>
+      <description><![CDATA[/lame/3.90.1/lame-3.90.1.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">120101</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.90.1/lame-3.90.1.tar.gz/download" filesize="865818"><media:hash algo="md5">f73b62c79e7d49f91069515132db8754</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.90/lame3.90.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.90/lame3.90.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.90/lame3.90.tar.gz/download</guid>
+      <pubDate>Fri, 21 Dec 2001 03:34:47 UT</pubDate>
+      <description><![CDATA[/lame/3.90/lame3.90.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">119732</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.90/lame3.90.tar.gz/download" filesize="865466"><media:hash algo="md5">1ebbee14cbe5951fca4d57a63345e18e</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.70/lame3.70.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.70/lame3.70.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.70/lame3.70.tar.gz/download</guid>
+      <pubDate>Wed, 12 Sep 2001 22:38:59 UT</pubDate>
+      <description><![CDATA[/lame/3.70/lame3.70.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">91148</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">POSIX tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip; charset=binary" url="https://sourceforge.net/projects/lame/files/lame/3.70/lame3.70.tar.gz/download" filesize="274950"><media:hash algo="md5">44e29880a21535a7c935046a531e15af</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.89beta/lame3.89beta.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.89beta/lame3.89beta.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.89beta/lame3.89beta.tar.gz/download</guid>
+      <pubDate>Wed, 12 Sep 2001 22:38:43 UT</pubDate>
+      <description><![CDATA[/lame/3.89beta/lame3.89beta.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">91147</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/lame/files/lame/3.89beta/lame3.89beta.tar.gz/download" filesize="818839"><media:hash algo="md5">b90b549e2a77f980f0d13d7630b8307a</media:hash></media:content>
+    </item>
+    <item>
+      <title><![CDATA[/lame/3.88beta/lame3.88beta.tar.gz]]></title>
+      <link>https://sourceforge.net/projects/lame/files/lame/3.88beta/lame3.88beta.tar.gz/download</link>
+      <guid>https://sourceforge.net/projects/lame/files/lame/3.88beta/lame3.88beta.tar.gz/download</guid>
+      <pubDate>Wed, 12 Sep 2001 22:38:50 UT</pubDate>
+      <description><![CDATA[/lame/3.88beta/lame3.88beta.tar.gz]]></description>
+      <files:sf-file-id xmlns:files="https://sourceforge.net/api/files.rdf#">91145</files:sf-file-id>
+      <files:extra-info xmlns:files="https://sourceforge.net/api/files.rdf#">tar archive</files:extra-info>
+      <media:content xmlns:media="http://video.search.yahoo.com/mrss/" type="application/x-gzip" url="https://sourceforge.net/projects/lame/files/lame/3.88beta/lame3.88beta.tar.gz/download" filesize="791852"><media:hash algo="md5">7884ed84fcb1427aee06c6000cd872df</media:hash></media:content>
+    </item>
+  </channel>
+</rss>

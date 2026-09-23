@@ -8,17 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# -std=gnu17 IS THE WHOLE OF THE PORT. This is 2006 C: signal.c declares its
-# handler argument as `RETSIGTYPE (*handler) ()`, an empty parameter list, which
-# C17 reads as "unspecified" and C23 reads as `(void)`. Under the compiler's
-# new default every install_signal() call is a hard error on an incompatible
-# pointer type, where it was a warning for twenty years.
-#
-# A FLAG AND NOT A PATCH, which is the rule: the code is correct under the
-# standard it was written to, and a patch here would be this tree carrying a
-# rewrite of somebody else's signal handling for the rest of time.
-export CFLAGS="$CFLAGS -std=gnu17"
-
 ./configure --prefix=/usr \
             --mandir=/usr/share/man \
             --infodir=/usr/share/info \

@@ -23,7 +23,7 @@ KDOS is a single-user workstation. One human account ships, that account is in
 
 ## setuid binaries
 
-The shipped system carries twenty setuid-root binaries. Exactly two are
+The shipped system carries nineteen setuid-root binaries. Exactly two are
 KDOS's own.
 
 | Binary | Origin | For |
@@ -32,7 +32,7 @@ KDOS's own.
 | `kdos-resctl` | **KDOS** | Signalling and renicing a process from the resource monitor |
 | `sudo` | sudo | Running as another user |
 | `su` | shadow | Switching to another account — util-linux's is disabled with `--disable-su` |
-| `passwd`, `chage`, `expiry`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
+| `passwd`, `chage`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
 | `pkexec`, `polkit-agent-helper-1` | polkit | Authorised privileged actions |
 | `ssh-keysign` | OpenSSH | Host-based authentication |
 | `dbus-daemon-launch-helper` | dbus | System bus activation |

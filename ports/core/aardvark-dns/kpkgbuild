@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = aardvark-dns
-version     = 1.17.1
+version     = 2.1.0
 release     = 1
 source      = https://github.com/containers/aardvark-dns/archive/refs/tags/v$version.tar.gz
-sha256      = 25b39bfad079a03862825b2f9db8b71b82fc80aad5552a9c76ea912edc9b889e  aardvark-dns-1.17.1.tar.gz
-sha256      = 21ded87c041727faff1ff985aa496bb53a058d01fb174b21ac7ee11ff9a8fea8  aardvark-dns-vendor-1.17.1.tar.xz
+sha256      = daf871488603e659b0501224cf0731ac317809b1d1701fc061cb4f6ae39a894f  aardvark-dns-2.1.0.tar.gz
+sha256      = bbeb6dac42e0e82fd4937235bfe52a8f71e52e605057c2a34eb854f8c3d0683d  aardvark-dns-vendor-2.1.0.tar.xz
 description = Authoritative DNS server for container networks (Rust)
 homepage    = https://github.com/containers/aardvark-dns
 depends     = rust

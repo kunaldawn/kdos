@@ -12,7 +12,7 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-D docs=disabled \
-	-D graphite=auto \
+	-D graphite2=auto \
 	-D benchmark=disabled \
 	-D introspection=disabled \
 	-D icu=disabled

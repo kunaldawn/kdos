@@ -23,8 +23,8 @@
 # window of its own, under the compositor. The gtk menu and every other toolkit
 # front end stay off by rule.
 #
-# THE PICTURE HAS A PLACE TO GO, AND `sdl2` IN `depends` IS THE WHOLE OF IT.
-# `modules/sdl` builds itself whenever pkg-config answers for `sdl2` and
+# THE PICTURE HAS A PLACE TO GO, AND `sdl2-compat` IN `depends` IS THE WHOLE OF
+# IT. `modules/sdl` builds itself whenever pkg-config answers for `sdl2` and
 # returns silently when it does not, so naming the port is what turns a call
 # that could send your camera and not show you theirs into one that can do
 # both. `x11` stays unbuilt by rule — there is no X server here — and
@@ -42,7 +42,7 @@
 # nowhere to draw on a machine carrying sdl.so.
 #
 # THE FIVE IT UNCOMMENTS ARE THE FIVE THIS RECIPE GUARANTEES: opus, libvpx,
-# ffmpeg and sdl2 are `depends`, so opus.so, vp8.so, vp9.so, avcodec.so and
+# ffmpeg and sdl2-compat are `depends`, so opus.so, vp8.so, vp9.so, avcodec.so and
 # sdl.so are installed beside the binary wherever this config is written. A
 # sixth line for a module whose library is not in `depends` would be the
 # start-up error above.

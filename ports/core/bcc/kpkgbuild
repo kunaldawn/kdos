@@ -10,7 +10,7 @@
 
 name        = bcc
 version     = 0.37.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/iovisor/bcc/releases/download/v$version/bcc-src-with-submodule-$version.tar.gz
 sha256      = 7734b780202b22dff335780b506b56833ec6cf7435e03b1346d5bf644b4e1f95  bcc-0.37.0.tar.gz
 description = The BPF Compiler Collection library, and USDT probe support

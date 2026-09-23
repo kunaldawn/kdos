@@ -9,10 +9,28 @@
 # ---------------------------------
 
 name        = coolprop
-version     = 6.8.0
+version     = 8.0.0
 release     = 1
+_msgpack    = 919908742b4fdbc575e77fe1a8657e70c9573c44
+_if97       = 7aaced024a702f0985474bf293cdaae9c8d06521
+_refprop    = b4faab1b73911c32c4b69c526c7e92f74edb67de
+_boost      = c68104660ca4bd80d0d5cb34c4eba0cf5bab3f73
+_multicomplex = 39bf9ca52c7882ff0788bb9087c7548ebd8fba4c
+_valijson   = 1.0.6
 source      = https://files.pythonhosted.org/packages/source/c/CoolProp/coolprop-$version.tar.gz
-sha256      = 927f982c7160311d8653520004f80c4166addcb978348c9d5999d1f115df6961  coolprop-6.8.0.tar.gz
+source      = coolprop-msgpack-c-$_msgpack.tar.gz::https://github.com/msgpack/msgpack-c/archive/$_msgpack.tar.gz
+source      = coolprop-IF97-$_if97.tar.gz::https://github.com/CoolProp/IF97/archive/$_if97.tar.gz
+source      = coolprop-REFPROP-headers-$_refprop.tar.gz::https://github.com/CoolProp/REFPROP-headers/archive/$_refprop.tar.gz
+source      = coolprop-boost-headers-$_boost.tar.gz::https://github.com/CoolProp/boost-headers/archive/$_boost.tar.gz
+source      = coolprop-multicomplex-$_multicomplex.tar.gz::https://github.com/usnistgov/multicomplex/archive/$_multicomplex.tar.gz
+source      = coolprop-valijson-$_valijson.tar.gz::https://github.com/tristanpenman/valijson/archive/refs/tags/v$_valijson.tar.gz
+sha256      = fb77fff0acf1623a25eb84963020b4f9d0b36d9431a8d8ae4221271effc30457  coolprop-8.0.0.tar.gz
+sha256      = d05fb365d0546323af9748f1f85ab7ff9ef80c103bc052594401ece410018589  coolprop-msgpack-c-919908742b4fdbc575e77fe1a8657e70c9573c44.tar.gz
+sha256      = f62207a854293b1814f2619477d71e17ffaf04cf448c2bd79d173336eb4d36f6  coolprop-IF97-7aaced024a702f0985474bf293cdaae9c8d06521.tar.gz
+sha256      = ca0c32502369c710f3525d704edda329337c0a1b157d93a793de95aa0fe4eabb  coolprop-REFPROP-headers-b4faab1b73911c32c4b69c526c7e92f74edb67de.tar.gz
+sha256      = cacfc88dd8959d0a70988d770a05f1320ecea19cc3159be1be2bea94785221d3  coolprop-boost-headers-c68104660ca4bd80d0d5cb34c4eba0cf5bab3f73.tar.gz
+sha256      = 4c63ccbe17d7348134825558cc04e8fd4eecee1c6cd56a4138c45f3c6034f9fc  coolprop-multicomplex-39bf9ca52c7882ff0788bb9087c7548ebd8fba4c.tar.gz
+sha256      = bf0839de19510ff7792d8a8aca94ea11a288775726b36c4c9a2662651870f8da  coolprop-valijson-1.0.6.tar.gz
 description = Thermophysical properties for 122 fluids, IAPWS-95 water/steam and humid air
 homepage    = http://www.coolprop.org/
-depends     = python3 python3-setuptools python3-pip python3-cython numpy cmake
+depends     = python3 python3-pip python3-scikit-build-core python3-nanobind python3-cython numpy cmake ninja eigen fmt nlohmann-json

@@ -177,7 +177,7 @@ network-enabled build would have done for you.
 
 A package built twice from the same tree is byte-identical. That is a property of one function —
 `roll_package()` in `kpkg`, which invokes tar with `--sort=name`, a pinned `--mtime` honouring
-`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 875 recipes. Concentrating it
+`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 903 recipes. Concentrating it
 there is precisely why `kpkg` rolls the archive itself instead of letting each recipe do it.
 
 Reproducibility is not decoration. It is what makes a signed binhost meaningful, what lets a delta

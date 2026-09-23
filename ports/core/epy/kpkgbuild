@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = epy
-version     = 2022.12.11
+version     = 2023.6.11
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/wustho/$name/archive/refs/tags/v$version.tar.gz
-sha256      = 2dd9df8703a51a6fd4d77fc5d2aa71c3db2c9d8d856f18d9a99725e6badbf3ed  epy-2022.12.11.tar.gz
-sha256      = 530e3a6af8f8956cee113d068822eb24e4f0891d5ff8e998a22a2afe6d4cddaa  epy-vendor-2022.12.11.tar.xz
+sha256      = 9f29b7fdc6312bc89adafd86acce93959b5d9eb62ea0a942c8d345c18ee5c87f  epy-2023.6.11.tar.gz
+sha256      = ebe762db38607343614e3628b321194ce00be642a40ac81f930485b3508a2a01  epy-vendor-2023.6.11.tar.xz
 description = An ebook reader in the terminal — epub, mobi, azw3, fb2
 homepage    = https://github.com/wustho/epy
 depends     = python3 python3-pip

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-hatch-vcs
+version     = 0.5.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/hatch-vcs/hatch_vcs-$version.tar.gz
+sha256      = 0395fa126940340215090c344a2bf4e2a77bcbe7daab16f41b37b98c95809ff9  python3-hatch-vcs-0.5.0.tar.gz
+description = Version from VCS for hatchling projects, through setuptools-scm
+homepage    = https://pypi.org/project/hatch-vcs/
+depends     = python3 python3-pip python3-hatchling python3-setuptools-scm

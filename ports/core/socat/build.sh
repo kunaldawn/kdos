@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 ./configure --prefix=/usr --mandir=/usr/share/man
 make
 make DESTDIR=$PKG install

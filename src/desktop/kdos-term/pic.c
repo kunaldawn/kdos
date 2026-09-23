@@ -747,9 +747,9 @@ static void gif_anim(int i, KimgFrame *fr, int n)
 	}
 	if (!store[i].nfr)
 		return;
-	/* A GIF loops forever unless it says otherwise, and libnsgif's
-	 * loop_count is the count of REPEATS — so zero is endless, which is
-	 * what -1 means here. */
+	/* Endless, which is what -1 means here: kimg_decode_all returns
+	 * frames and their delays and not the file's loop count, so every
+	 * GIF loops forever whatever its loop extension says. */
 	store[i].loops = -1;
 	store[i].cur = 0;
 	store[i].running = 1;

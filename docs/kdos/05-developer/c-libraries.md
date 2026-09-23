@@ -774,6 +774,19 @@ Two entry points: one picture, or every frame of the one format that has more th
 decoders are optional — PNG, JPEG, WebP, sixel and GIF — and the byte budget is enforced from the
 header the format declares, before any allocation.
 
+GIF goes through libnsgif's `nsgif_*` interface, and the byte stream is walked for its block
+structure before the library scans it. That walk is what refuses a stream that ends before its
+trailer — the library alone reports a GIF cut off after a whole frame as a success with the frames
+that arrived — and what caps the file at 4097 frames, because the library keeps a record for every
+image it scans and the budget is charged only for frames actually decoded. Each frame returned is
+the whole canvas with disposal and transparency already applied, read out of libnsgif's bitmap as
+byte-order RGBA. The canvas is the logical screen grown to cover the first frame only, so a later
+frame that reaches past it is clipped; a logical screen of zero, of one of the common monitor
+sizes such as 640x480, or of more than 2048 pixels on a side is taken as unset, and the first
+frame's extent becomes the canvas. The delay after it is the file's own centiseconds times ten, with a delay of zero
+read as 100 ms; a frame with no graphic control extension carries libnsgif's default of ten
+centiseconds. The file's loop count is not returned.
+
 A decoder must answer NULL or an image for any bytes at all, and must never read past the end of
 them. `testing/fixtures/img/fuzz.c` is the committed check on both.
 

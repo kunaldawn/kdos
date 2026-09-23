@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = multimon-ng
-version     = 1.6.0
+version     = 1.6.1
 release     = 1
-source      = multimon-ng-1.6.0.tar.gz::https://github.com/EliasOenal/multimon-ng/archive/refs/tags/1.6.0.tar.gz
-sha256      = 3f3b9e498dcadad992e95ed253f196f2e090506e7074cfd7509122815a165fc0  multimon-ng-1.6.0.tar.gz
+source      = $name-$version.tar.gz::https://github.com/EliasOenal/multimon-ng/archive/refs/tags/$version.tar.gz
+sha256      = ee303da8ec19f862e4bcc8350f2f4d26c102376690bae3812612130228d8c0a1  multimon-ng-1.6.1.tar.gz
 description = POCSAG, FLEX, AFSK, DTMF and the rest, demodulated from a stream of samples
 homepage    = https://github.com/EliasOenal/multimon-ng
 depends     = cmake alsa-lib

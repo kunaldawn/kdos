@@ -34,8 +34,9 @@ fetch:
 	bash ports/fetch
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
-# release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
-# section, e.g. make updates PORTUP_ARGS="--check curl"
+# release. Needs network, curl and git (tags are read with ls-remote); never
+# runs version control on the tree. See docs/kdos/05-developer/writing-ports.md
+# "Checking for new versions", e.g. make updates PORTUP_ARGS="--check curl"
 # --check exits 1 BY DESIGN when it finds an update, so a plain `make updates
 # PORTUP_ARGS="--check zlib"` would otherwise print "Error 1" for a check
 # that worked perfectly. 2 is the tool's own "unrecoverable" status (a revert

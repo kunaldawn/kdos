@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pkgconfig
+version     = 1.6.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pkgconfig/pkgconfig-$version.tar.gz
+sha256      = 4a5a6631ce937fafac457104a40d558785a658bbdca5c49b6295bc3fd651907f  python3-pkgconfig-1.6.0.tar.gz
+description = Python interface to pkg-config — how uharfbuzz finds the system harfbuzz
+homepage    = https://github.com/matze/pkgconfig
+depends     = python3 python3-pip python3-poetry-core pkgconf

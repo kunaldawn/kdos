@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = acl
-version     = 2.3.2
+version     = 2.4.0
 release     = 1
 source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz
-sha256      = 5f2bdbad629707aa7d85c623f994aa8a1d2dec55a73de5205bac0bf6058a2f7c  acl-2.3.2.tar.gz
+sha256      = 73c853c3d44e1f693e5a96a986f1bd19d3d0dac2c7d453e796177774bc4e5f6a  acl-2.4.0.tar.gz
 description = Utilities to administer Access Control Lists, which are used to define more fine-grained discretionary access rights for files and directories
 depends     = attr

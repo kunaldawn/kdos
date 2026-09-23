@@ -1,4 +1,4 @@
-# /etc/services, created 2026-02-14T00:48:40+0530
+# /etc/services, created 2026-09-23T12:20:15+0530
 # Source: https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xml
 tcpmux              1/tcp
 tcpmux              1/udp
@@ -7859,6 +7859,8 @@ prRegister       4457/udp
 mcp              4458/tcp
 mcp              4458/udp
 ntske            4460/tcp
+agtp             4480/tcp
+agtp-quic        4480/udp
 hpssmgmt         4484/tcp
 hpssmgmt         4484/udp
 assyst-dr        4485/tcp
@@ -8091,6 +8093,7 @@ roce             4791/udp
 unified-bus      4792/tcp
 unified-bus      4792/udp
 uet              4793/udp
+veroce           4794/udp
 iims             4800/tcp
 iims             4800/udp
 iwec             4801/tcp
@@ -8527,6 +8530,8 @@ hacl-poll        5315/udp
 hpbladems        5316/tcp
 hpdevms          5317/tcp
 pkix-cmc         5318/tcp
+roughtime        5319/tcp
+roughtime        5319/udp
 bsfserver-zn     5320/tcp
 bsfsvr-zn-ssl    5321/tcp
 kfserver         5343/tcp
@@ -8692,7 +8697,7 @@ amc              5506/udp
 psl-management   5507/tcp
 matter           5540/tcp
 matter           5540/udp
-qftest-licserve  5543/tcp
+qftest-lic-mcp   5543/tcp
 cbus             5550/tcp
 sgi-eventmond    5553/tcp
 sgi-eventmond    5553/udp
@@ -9266,6 +9271,8 @@ joaJewelSuite    6583/udp
 mshvlm           6600/tcp
 mstmg-sstp       6601/tcp
 wsscomfrmwk      6602/tcp
+bencher          6610/tcp
+bencher          6610/udp
 odette-ftps      6619/tcp
 odette-ftps      6619/udp
 kftp-data        6620/tcp
@@ -9486,6 +9493,7 @@ rothaga          7117/tcp
 virprot-lm       7121/tcp
 virprot-lm       7121/udp
 snif             7123/tcp
+snif             7123/udp
 scenidm          7128/tcp
 scenidm          7128/udp
 scenccs          7129/tcp
@@ -10252,6 +10260,8 @@ apani4           9163/tcp
 apani4           9163/udp
 apani5           9164/tcp
 apani5           9164/udp
+sirius-agent     9183/tcp
+sirius-agent     9183/udp
 sun-as-jpda      9191/tcp
 sun-as-jpda      9191/udp
 wap-wsp          9200/tcp
@@ -11245,6 +11255,8 @@ kingdomsonline  30260/tcp
 kingdomsonline  30260/udp
 gs-realtime     30400/tcp
 samsung-disc    30832/udp
+dilithium3      30939/tcp
+dilithium3      30939/udp
 ovobs           30999/tcp
 ovobs           30999/udp
 ka-sddp         31016/tcp
@@ -11334,6 +11346,9 @@ profinet-rtm    34963/tcp
 profinet-rtm    34963/udp
 profinet-cm     34964/tcp
 profinet-cm     34964/udp
+profinet-cm-sec 34965/tcp
+profinet-cm-sec 34965/udp
+profinet-rt-sec 34966/udp
 ethercat        34980/tcp
 ethercat        34980/udp
 heathview       35000/tcp

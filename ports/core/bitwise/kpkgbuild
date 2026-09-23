@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = bitwise
-version     = 0.60
+version     = 0.70
 release     = 1
-source      = bitwise-0.60.tar.gz::https://github.com/mellowcandle/bitwise/archive/refs/tags/v0.60.tar.gz
-sha256      = 601c3fc6f1a5d397356efad691f68aa81d7c773a8ea619ff8663d6f08bf3c3dd  bitwise-0.60.tar.gz
+source      = $name-$version.tar.gz::https://github.com/mellowcandle/bitwise/archive/refs/tags/v$version.tar.gz
+sha256      = e187fb50a9bfe408d6a389833c7db3ff253fe1ad4cbb155f0451f92b3facb932  bitwise-0.70.tar.gz
 description = Bit-level manipulation and base conversion, watched live in the terminal
 homepage    = https://github.com/mellowcandle/bitwise
 depends     = autoconf automake libtool pkgconf ncurses readline

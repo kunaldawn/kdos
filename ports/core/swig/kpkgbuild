@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = swig
-version     = 4.4.1
+version     = 4.5.1
 release     = 1
 source      = https://downloads.sourceforge.net/swig/$name-$version.tar.gz
-sha256      = 40162a706c56f7592d08fd52ef5511cb7ac191f3593cf07306a0a554c6281fcf  swig-4.4.1.tar.gz
+sha256      = 7fec50b27deddab5455a9633780b6341eddfb96215a7619e93a76eb27178f653  swig-4.5.1.tar.gz
 description = Generate scripting interfaces to C/C++ code
 depends     = pcre2

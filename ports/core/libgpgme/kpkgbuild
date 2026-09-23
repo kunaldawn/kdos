@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = libgpgme
-version     = 1.24.3
+version     = 2.2.0
 release     = 1
 source      = https://www.gnupg.org/ftp/gcrypt/gpgme/gpgme-$version.tar.bz2
-sha256      = bfc17f5bd1b178c8649fdd918956d277080f33df006a2dc40acdecdce68c50dd  libgpgme-1.24.3.tar.bz2
+sha256      = 7160e80e84dafd00d956c84891c533bb7ab16a6a54fbe1574b2f3acf0496977b  libgpgme-2.2.0.tar.bz2
 description = GnuPG Made Easy — high-level crypto API used by Podman/Skopeo
 homepage    = https://www.gnupg.org/software/gpgme/
 depends     = libgpg-error libassuan gnupg

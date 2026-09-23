@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = ouch
-version     = 0.8.1
+version     = 0.8.3
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/ouch-org/$name/archive/$version.tar.gz
-sha256      = 920f73d4b162bd1814b67c57906b7322345f198d763f28d04722a406f8352246  ouch-0.8.1.tar.gz
-sha256      = d06e1b409a32dbab51f67a65dbde9aa79234514146389184cbd107de0573b262  ouch-vendor-0.8.1.tar.xz
+sha256      = f695393cbbd89cf5a2095c32235e585a85432ccfb902c78d2a2e9787abbb439c  ouch-0.8.3.tar.gz
+sha256      = 013355b46504de190aafa8f6d2934f64e37f359f592df836ca093a5a0cdaf147  ouch-vendor-0.8.3.tar.xz
 description = Compress and decompress any archive format with one command
 homepage    = https://github.com/ouch-org/ouch
 depends     = rust clang

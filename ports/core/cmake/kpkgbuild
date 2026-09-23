@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = cmake
-version     = 4.2.1
+version     = 4.4.3
 release     = 1
 source      = https://www.cmake.org/files/v${version%.*}/$name-$version.tar.gz
-sha256      = 414aacfac54ba0e78e64a018720b64ed6bfca14b587047b8b3489f407a14a070  cmake-4.2.1.tar.gz
+sha256      = c46400618b4f1f2b43507f24fb22f3ae830c3416cf23b776e16e1d413aa892f0  cmake-4.4.3.tar.gz
 description = Modern toolset used for generating Makefiles
 depends     = curl libarchive libuv expat

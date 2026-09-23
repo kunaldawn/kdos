@@ -9,8 +9,8 @@
 # ---------------------------------
 
 name        = libexif
-version     = 0.6.25
+version     = 0.6.26
 release     = 1
 source      = https://github.com/$name/$name/releases/download/v$version/$name-$version.tar.gz
-sha256      = 16fdfa59cf9d301a9ccd5c1bc2fe05c78ee0ee2bf96e39640039e3dc0fd593cb  libexif-0.6.25.tar.gz
+sha256      = 985d04b8d361fe85acc9a95b949e0bfc4b8b979adace559a6fbdc528be7ec9e5  libexif-0.6.26.tar.gz
 description = Library for parsing, editing, and saving EXIF data

@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = libcap-ng
-version     = 0.9.3
+version     = 0.9.6
 release     = 1
 source      = https://github.com/stevegrubb/libcap-ng/archive/refs/tags/v$version.tar.gz
-sha256      = fe11ebbb55904763b3532f19069f13ec319042634620180a03bd4653d301563e  libcap-ng-0.9.3.tar.gz
+sha256      = 399040138e0ca62fa2bcabd63da9af4431a246ef7a654561a0ca3cb00010a539  libcap-ng-0.9.6.tar.gz
 description = Alternate POSIX capabilities library (cleaner API; required by openvpn 2.6+)
 homepage    = https://github.com/stevegrubb/libcap-ng

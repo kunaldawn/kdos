@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = openssl
-version     = 3.6.0
+version     = 4.0.2
 release     = 1
 source      = https://openssl.org/source/$name-$version.tar.gz
-sha256      = b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9  openssl-3.6.0.tar.gz
+sha256      = 736b467530f916737b7031310ccb21d8218c6229e61e8e160cd1d3458cd543a8  openssl-4.0.2.tar.gz
 description = Management tools and libraries relating to cryptography
 homepage    = https://www.openssl.org

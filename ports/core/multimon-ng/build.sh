@@ -10,9 +10,9 @@
 # ---------------------------------
 
 mkdir -p build && cd build
-# No Qt on the host, so the pulseaudio/Qt front end is out; ALSA is the input.
-cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
+# No X11 display and no pulseaudio input on the host; samples come from a file or stdin.
+cmake .. -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
-	-DPULSE_AUDIO=OFF
+	-DX11_SUPPORT=OFF -DPULSE_AUDIO_SUPPORT=OFF
 make
 make DESTDIR=$PKG install

@@ -13,7 +13,7 @@
     --prefix=/usr \
     --with-included-zlib=no \
     --disable-xxhash \
-    --enable-acl \
-    --enable-xattr
+    --enable-acl-support \
+    --enable-xattr-support
 make
 make DESTDIR=$PKG install

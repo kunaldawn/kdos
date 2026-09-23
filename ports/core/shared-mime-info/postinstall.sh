@@ -10,7 +10,7 @@
 # ---------------------------------
 
 # The package ships `packages/freedesktop.org.xml` and NOTHING ELSE: the build
-# passes --disable-update-mimedb, so the compiled database — `globs`, `types`,
+# passes -D update-mimedb=false, so the compiled database — `globs`, `types`,
 # `aliases`, `subclasses`, `mime.cache` — is never generated. Measured on a
 # booted ISO: /usr/share/mime contained one directory, and every consumer that
 # asks "what type is this file" got no answer at all.
