@@ -48,8 +48,20 @@ cmake -S lldb -B build -G Ninja \
 	-D LLDB_ENABLE_LIBEDIT=ON \
 	-D LLDB_INCLUDE_TESTS=OFF \
 	-D LLVM_INCLUDE_TESTS=OFF \
-	-D LLVM_ENABLE_SPHINX=OFF \
+	-D LLVM_ENABLE_SPHINX=ON \
+	-D SPHINX_OUTPUT_HTML=OFF \
+	-D SPHINX_OUTPUT_MAN=ON \
+	-D SPHINX_WARNINGS_AS_ERRORS=OFF \
+	-D LLVM_MAIN_SRC_DIR="$SRC/llvm" \
 	-Wno-dev
 
 cmake --build build
 DESTDIR=$PKG cmake --install build
+
+# The manual pages are built by target and installed by hand, as in llvm.
+# LLVM_MAIN_SRC_DIR must name this tree: the docs target puts
+# $LLVM_MAIN_SRC_DIR/../utils/docs on PYTHONPATH for the llvm_sphinx module
+# conf.py imports, and the value LLVMConfig carries is the llvm port's own
+# unpacked source, which no longer exists.
+cmake --build build --target docs-lldb-man
+install -Dm644 build/docs/man/*.1 -t "$PKG/usr/share/man/man1"

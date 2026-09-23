@@ -4,8 +4,9 @@ is not glibc, not from pthread_getattr_np().
 musl answers pthread_getattr_np() for the main thread with the part of the
 stack that is already mapped — a few pages at start-up, not the rlimit the
 stack may grow to. Ruby takes that answer as the stack's size, so a recursion
-a few hundred frames deep raises SystemStackError on a machine with megabytes
-of stack left. The replacement reads the [stack] mapping, bounds it by
+that re-enters the interpreter from C — a block called by map, a nested
+parse — raises SystemStackError short of a thousand levels under an 8 MB
+stack limit. The replacement reads the [stack] mapping, bounds it by
 RLIMIT_STACK (at most 100 MB) and by the mapping below it, and reports that.
 
 --- a/thread_pthread.c

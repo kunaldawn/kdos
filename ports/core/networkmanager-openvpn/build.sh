@@ -20,3 +20,7 @@
 	--disable-static
 make
 make DESTDIR=$PKG install
+
+# sysusers.d and tmpfiles.d land in $(prefix)/lib whatever the options, and
+# nothing here reads either: postinstall.sh makes the account and its chroot.
+rm -rf "$PKG/usr/lib/sysusers.d" "$PKG/usr/lib/tmpfiles.d"

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libimagequant
+version     = 4.4.1
+release     = 1
+source      = https://github.com/ImageOptim/libimagequant/archive/refs/tags/$version.tar.gz
+sha256      = 2464a3e922b5a220b633d674062b82f0670114f8f3dd30d1935a621c95965f1b  libimagequant-4.4.1.tar.gz
+sha256      = 367c231c9583eacd02744be76ca17283026135381229a3a2197fc58e97945c06  libimagequant-vendor-4.4.1.tar.xz
+description = Palette quantisation that turns a 32-bit image into a small 8-bit PNG or GIF
+homepage    = https://pngquant.org/lib/
+depends     = rust cargo-c
+vendoring   = rust

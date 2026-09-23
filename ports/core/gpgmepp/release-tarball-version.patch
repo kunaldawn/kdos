@@ -1,0 +1,12 @@
+--- a/cmake/modules/G10GetFullVersion.cmake
++++ b/cmake/modules/G10GetFullVersion.cmake
+@@ -107,7 +107,8 @@
+             endif()
+         endforeach()
+     endif()
+-    if(NOT DEFINED output OR output STREQUAL "")
++    if(NOT DEFINED output)
++    elseif(output STREQUAL "")
+         set(version "${version}-unknown")
+     elseif(output GREATER "0")
+         set(version "${version}-beta${output}")

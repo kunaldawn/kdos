@@ -9,8 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The polkitd account and the group on /etc/polkit-1/rules.d come from
-# postinstall.sh: they are properties of the root being installed into.
+# The polkitd account comes from postinstall.sh, because it is a property of
+# the root being installed into. /etc/polkit-1/rules.d is fs/'s, and phase 1
+# sets its owner and mode.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib --localstatedir=/var \
 	--buildtype=release \

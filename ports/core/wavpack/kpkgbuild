@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wavpack
+version     = 5.9.0
+release     = 1
+source      = https://www.wavpack.com/$name-$version.tar.xz
+sha256      = b5291bc4e6d69ebbd3da3800c5bf4a70f19bb92679b23e09b3b612c1e648d1ff  wavpack-5.9.0.tar.xz
+description = WavPack hybrid lossless audio codec — library and the wavpack, wvunpack, wvgain and wvtag commands
+homepage    = https://www.wavpack.com/
+depends     = cmake

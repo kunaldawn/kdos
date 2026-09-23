@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ccid
+version     = 1.8.4
+release     = 1
+source      = https://ccid.apdu.fr/files/$name-$version.tar.xz
+sha256      = 4ff98151a7feb828a711e2f9d68c6b6065a97c597a81c2cbbd11d7f7edcfe743  ccid-1.8.4.tar.xz
+description = USB CCID and ICCD smart card reader driver for pcsc-lite
+homepage    = https://ccid.apdu.fr/
+depends     = meson pkgconf flex perl pcsc-lite libusb zlib

@@ -15,4 +15,4 @@ source      = https://files.pythonhosted.org/packages/source/m/matplotlib/matplo
 sha256      = cec596316640f2b394b8f0daa0ea61a8eae82d017b620b9f202befb972a59ea4  matplotlib-3.11.2.tar.gz
 description = Publication 2D plotting, Agg only
 homepage    = https://pypi.org/project/matplotlib/
-depends     = python3 python3-setuptools python3-pip python3-meson-python python3-pybind11 python3-setuptools-scm numpy freetype2 libraqm harfbuzz fribidi qhull fonttools python3-packaging python3-pillow
+depends     = python3 python3-setuptools python3-pip python3-meson-python python3-pybind11 python3-setuptools-scm numpy freetype2 libraqm harfbuzz fribidi qhull fonttools python3-packaging python3-pillow python3-dateutil python3-pyparsing python3-cycler python3-kiwisolver python3-contourpy

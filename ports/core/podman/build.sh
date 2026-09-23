@@ -27,6 +27,11 @@ make DESTDIR=$PKG \
 	LIBEXECPODMAN=/usr/lib/podman \
 	install.bin install.remote install.man install.completions
 
+# install.bin always installs quadlet's generator links under lib/systemd and a
+# tmpfiles.d entry: the directory variables only move them, and nothing here
+# reads either.
+rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/tmpfiles.d"
+
 mkdir -p $PKG/etc/containers
 
 cat > $PKG/etc/containers/containers.conf <<'EOF'

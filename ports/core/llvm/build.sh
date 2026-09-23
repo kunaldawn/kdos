@@ -30,7 +30,19 @@ cmake -S llvm -B build -G Ninja \
 	-D LLVM_OPTIMIZED_TABLEGEN=ON \
 	-D LLVM_INCLUDE_BENCHMARKS=OFF \
 	-D LLVM_TARGETS_TO_BUILD=all \
+	-D LLVM_ENABLE_SPHINX=ON \
+	-D SPHINX_OUTPUT_HTML=OFF \
+	-D SPHINX_OUTPUT_MAN=ON \
+	-D SPHINX_WARNINGS_AS_ERRORS=OFF \
 	-Wno-dev
 
 cmake --build build
 DESTDIR=$PKG cmake --install build
+
+# THE MANUAL PAGES ARE ONE TARGET, BUILT AND INSTALLED BY NAME. LLVM_BUILD_DOCS
+# would put docs-llvm-man in the default build beside docs-dsymutil-man and
+# docs-llvm-dwarfdump-man, which rebuild the same tree into the same output
+# directory concurrently. SPHINX_WARNINGS_AS_ERRORS is off because the
+# release's own documents draw warnings, and -W would fail the build on them.
+cmake --build build --target docs-llvm-man
+install -Dm644 build/docs/man/*.1 -t "$PKG/usr/share/man/man1"

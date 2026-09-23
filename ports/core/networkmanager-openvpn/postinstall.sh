@@ -22,3 +22,12 @@ root="${PKG_ROOT:-/}"
 grep -q '^nm-openvpn:' "$root/etc/group" 2>/dev/null || groupadd -R "$root" -r nm-openvpn
 grep -q '^nm-openvpn:' "$root/etc/passwd" 2>/dev/null || \
 	useradd -R "$root" -r -g nm-openvpn -d /var/lib/openvpn/chroot -s /sbin/nologin nm-openvpn
+
+# openvpn is chrooted here as nm-openvpn. nm-openvpn-service passes --chroot
+# only when the directory and its tmp/ exist and the account can write both;
+# otherwise it runs openvpn unchrooted.
+while IFS=: read -r n _ uid gid _; do
+	[ "$n" = nm-openvpn ] || continue
+	install -d -m 755 "$root/var/lib/openvpn/chroot/tmp"
+	chown "$uid:$gid" "$root/var/lib/openvpn/chroot" "$root/var/lib/openvpn/chroot/tmp"
+done < "$root/etc/passwd"

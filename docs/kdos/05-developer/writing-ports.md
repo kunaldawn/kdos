@@ -343,10 +343,49 @@ else supplies it.
 | Has the program write its own page (`foo --generate man`, a `man` subcommand) | Runs the freshly built binary into `$PKG/usr/share/man/man1` |
 | Generates them with a tool | Adds the tool to `depends` when it is a port |
 
-The generators that are ports: `scdoc`, `help2man`, `asciidoc` (`a2x`), `xmlto`, `libxslt`
-(`xsltproc`) with `docbook-xsl`, `python3-docutils` (`rst2man`), `perl` (`pod2man`) and `texinfo`.
-A page that needs a generator that is not a port — `asciidoctor`, `pandoc`, `ronn`, Sphinx — is
-not generated.
+The generators that are ports: `scdoc`, `help2man`, `asciidoc` (`a2x`), `asciidoctor`, `xmlto`,
+`libxslt` (`xsltproc`) with `docbook-xsl`, `python3-docutils` (`rst2man`), `perl` (`pod2man`),
+`texinfo`, `go-md2man`, `lowdown` and `python3-sphinx` (`sphinx-build -b man`). A page that needs
+a generator that is not a port — `ronn` — is not generated.
+
+A build that looks for `asciidoctor` on `$PATH` uses it whenever it is there, so a recipe that
+does not name it ships a different package once any other port pulls it into the chroot. Name it
+in `depends` and set the documentation switches explicitly. Where upstream has no switch for the
+manual pages alone, build the pages' own targets (`newsboat`, `git-lfs`), run upstream's page
+script (`ccache`), or remove the HTML the install adds (`wireshark`): the package carries the pages
+and no HTML manual.
+
+Markdown pages come in two dialects, and each has its converter:
+
+| Source | Converter | The recipe |
+|---|---|---|
+| A `*.1.md` that upstream's docs `Makefile` feeds to `$(GOMD2MAN)` — the containers stack | `go-md2man` | Runs upstream's own docs and install targets |
+| A page that starts with a pandoc `%` title block and that upstream renders with `pandoc -s -t man` | `lowdown` | `lowdown -s -Tman -o <page> <page>.md`, then installs it |
+
+`lowdown` stands in for `pandoc`: it reads the same `%` title block into `.TH`, and `-M key=value`
+supplies what a pandoc invocation passes as `--variable` — `-M title=YQ -M section=1` for a page
+with no title block, `-M source=v$version` where the title block carries an unexpanded
+`$version` or a version older than the release. Render a new page once and read it with `mandoc -Tlint` before shipping it; a page
+that only draws style warnings is fine. `lowdown` is built with `bmake`, because its makefile is
+BSD make and GNU make stops at the first `.if`. `bmake` depends on `tzdata` because its install
+runs its unit tests, and two of them convert a time in a named zone: without the zoneinfo database
+they print UTC and the install fails.
+
+`python3-sphinx` installs Sphinx, and the part of its closure that is not a port, under
+`/usr/lib/python3-sphinx` rather than in `site-packages`: other ports vendor `requests` and
+`urllib3` into `site-packages`, and two packages owning one path is a conflict. The closure carries
+the default theme, `myst-parser` for Markdown sources and `sphinx-argparse`. The commands in
+`/usr/bin` put that prefix on `PYTHONPATH` and run Sphinx, and they are the only way in:
+`import sphinx` from a plain `python3` fails, so a build that probes for Sphinx as a module
+instead of running `sphinx-build` does not find it.
+
+A Sphinx recipe builds the man builder's output alone. Where a build system turns warnings into
+errors behind an option (`SPHINX_WARNINGS_AS_ERRORS` in LLVM), turn it off: the build has no
+network, so every intersphinx inventory fails to load and warns. Where a `conf.py` loads an
+extension this tree does not carry and the pages do not use, run `sphinx-build` directly with
+`-D extensions=<the list without it>`, which replaces the list `conf.py` sets (`khal`, `khard`).
+Nothing covers a `conf.py` that refuses to load without an HTML theme, or a documentation switch
+that builds the HTML manual and the pages together.
 
 A version beside another version installs no pages the other one installs, or the two packages
 conflict: `openssl3`, `lua54`, the `llvm21` slot and the cross toolchains ship none of the
@@ -384,11 +423,14 @@ the recipe runs rather than while the script does.
 
 ## postinstall.sh
 
-The install-time hook, which becomes a marker inside the package. Five ports have one: `avahi`,
-`networkmanager-openvpn`, `polkit` and `prosody` create their system accounts (`polkit` also gives
-`/etc/polkit-1/rules.d` to the `polkitd` group, `prosody` its data directory to its account), and
-`linux` removes the module trees of other kernels — keeping the running kernel's when the root is
-`/` — and runs `depmod`.
+The install-time hook, which becomes a marker inside the package. Six ports have one:
+
+- `avahi`, `networkmanager-openvpn`, `pcsc-lite`, `polkit` and `prosody` create their system
+  accounts.
+  `prosody` also gives its data directory to its account, and `networkmanager-openvpn` gives its
+  chroot to its account.
+- `linux` removes the module trees of other kernels, keeping the running kernel's when the root is
+  `/`, and runs `depmod`.
 
 Every hook works on `PKG_ROOT`, the root kpkgadd is installing into, never on `/`. `kpkg install
 --root` and an A/B update both install into a tree that is not the running system, so a hook that

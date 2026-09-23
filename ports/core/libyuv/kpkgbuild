@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libyuv
+version     = 0.0.1971
+release     = 1
+_snap       = 20260904
+source      = https://deb.debian.org/debian/pool/main/liby/libyuv/libyuv_$version.$_snap.orig.tar.xz
+sha256      = 9dc0432edf3f36cfa031b5e6a46c206d40773868a9e50605ac9f8dcb8d08c2cc  libyuv-0.0.1971.tar.xz
+description = YUV conversion, scaling and rotation — the fast colour path libavif converts through
+homepage    = https://chromium.googlesource.com/libyuv/libyuv/
+depends     = cmake libjpeg-turbo

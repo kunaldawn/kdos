@@ -142,6 +142,32 @@ kdos-resctl renice <pid> <-20..19>
 - It is never on the sampling path. A setuid fork once a second would be an
   attack surface with a schedule.
 
+## System accounts
+
+Every daemon that drops privilege drops to an account of its own, and none of
+them can log in: each has `/sbin/nologin` for a shell and `!` for a password.
+The image ships these in `/etc/passwd`, `/etc/group` and `/etc/shadow`:
+
+| Account | uid:gid | Used by |
+|---|---|---|
+| `dhcpcd` | 999:999 | `dhcpcd`'s privilege-separated children |
+| `messagebus` | 997:997 | `dbus-daemon`, the system bus |
+| `sshd` | 996:996 | `sshd`'s privilege separation |
+| `tss` | 993:993 | The TPM: tpm2-tss's udev rules give `/dev/tpm*` to the user and `/dev/tpmrm*` to the group |
+| `lp` | 10:10 | CUPS |
+| `nobody` | 99:99 | Anything that asks for an unprivileged account by that name |
+
+`polkitd`, `avahi`, `nm-openvpn` and `prosody` are made by their ports'
+`postinstall.sh` with `groupadd -r` and `useradd -r`, which pick a free id.
+Every id a shipped account uses therefore has a line of its own in both files:
+a primary gid with no `/etc/group` line looks free to `groupadd -r`, which
+would hand it to another daemon's group. A group a udev rule names has to exist
+too, because eudev logs `specified group '<x>' unknown`, carries on with gid 0, and
+grants nothing.
+
+The desktop account is not in `tss`, so the TPM is root's to use. The
+`tpm2_*` tools run under `sudo`, like any other administration.
+
 ## Root daemons
 
 Five daemons run as root and answer a socket in `/run`: `kdos-powerd`,

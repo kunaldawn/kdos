@@ -10,5 +10,5 @@
 # ---------------------------------
 
 ./configure PREFIX=/usr MANDIR=/usr/share/man
-make
-make DESTDIR=$PKG install
+bmake
+bmake DESTDIR=$PKG install

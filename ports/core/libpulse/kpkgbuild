@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libpulse
+version     = 17.0
+release     = 1
+source      = https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$version.tar.xz
+sha256      = 053794d6671a3e397d849e478a80b82a63cb9d8ca296bd35b73317bb5ceb87b5  libpulse-17.0.tar.xz
+description = PulseAudio client libraries and pactl/pacat — the server is pipewire-pulse
+homepage    = https://www.freedesktop.org/wiki/Software/PulseAudio/
+depends     = meson ninja pkgconf m4 perl perl-xml-parser gettext libintl libsndfile dbus glib

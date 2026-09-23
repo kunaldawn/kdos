@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-six
+version     = 1.17.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/s/six/six-$version.tar.gz
+sha256      = ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81  python3-six-1.17.0.tar.gz
+description = Python 2 and 3 compatibility shims — python-dateutil imports it
+homepage    = https://pypi.org/project/six/
+depends     = python3 python3-setuptools python3-pip

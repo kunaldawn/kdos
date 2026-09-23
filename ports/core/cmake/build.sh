@@ -10,9 +10,15 @@
 # ---------------------------------
 
 export CXXFLAGS="$CXXFLAGS -include cstdint"
+
+# --sphinx-man and no other Sphinx format: the pages are generated from Help/
+# and installed under --mandir, which defaults to PREFIX/man and so is named.
 ./bootstrap \
 	--prefix=/usr \
 	--datadir=/share/$name \
+	--mandir=/share/man \
+	--sphinx-man \
+	--sphinx-build=/usr/bin/sphinx-build \
 	--no-system-jsoncpp  \
 	--no-system-cppdap   \
 	--no-system-librhash \

@@ -20,7 +20,7 @@ the user's side, see [Getting started](../02-user-guide/getting-started.md).
 | 9 | Find and mount the root | The initramfs `init` |
 | 10 | `switch_root` | util-linux's, never toybox's |
 | 11 | `/etc/init.d/rcS` | init (toybox), as `sysinit` |
-| 12 | The 28 numbered service scripts | `rcS` |
+| 12 | The 30 numbered service scripts | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
 | 15 | `kdos-login`, which hands the tty to agetty | `kdos-getty` on tty1 |
@@ -544,14 +544,18 @@ doctor` checks it.
 
 `init` runs `/etc/init.d/rcS` as its `sysinit` entry. In order, `rcS`:
 
-1. Counts the enabled service scripts and tells the splash its step total.
-2. Mounts everything in `fstab`, then runs `chmod 1777 /tmp`, then `swapon -a`.
-3. Makes the root mount shared, which containers need.
-4. Runs each `NN_name.sh` in numeric order, logging each to
+1. Appends `/usr/local/sbin:/usr/local/bin` to `PATH`, because toybox init
+   hands its children `/sbin:/usr/sbin:/bin:/usr/bin` and `kdos` lives under
+   `/usr/local/bin`. Without it a system timer that runs `kdos` is skipped as
+   missing.
+2. Counts the enabled service scripts and tells the splash its step total.
+3. Mounts everything in `fstab`, then runs `chmod 1777 /tmp`, then `swapon -a`.
+4. Makes the root mount shared, which containers need.
+5. Runs each `NN_name.sh` in numeric order, logging each to
    `/run/kdos-init.<name>.log`, showing the splash a step per script and up to
    six lines of failure detail if one fails.
-5. Runs `kdos-bootctl mark-good`.
-6. Quits the splash, which runs the power-off animation and leaves a clean
+6. Runs `kdos-bootctl mark-good`.
+7. Quits the splash, which runs the power-off animation and leaves a clean
    framebuffer for the tty1 login.
 
 The quit is synchronous, and the desktop depends on that twice. Init starts the
@@ -570,6 +574,24 @@ The convention for the scripts themselves, and the reason `ksvc` exists rather
 than a shell supervisor, are in
 [Administration](../02-user-guide/administration.md#services) and
 [The daemons](../04-programs/daemons.md).
+
+### Shutdown
+
+toybox init answers `reboot`, `poweroff` and `kdos-powerd` by running the
+`::shutdown` entries of `/etc/inittab` in order, each to completion, and only
+then signalling every process. It never runs a service script's `stop` itself,
+so the first entry is `/etc/init.d/rcK`: it takes the scripts `rcS` would run —
+executable, no marker under `/etc/service.disabled` — and runs each with `stop`
+in reverse order. `swapoff -a` and `umount -a -r` follow, so every stop action
+still has a writable filesystem to save to; `50_alsa` storing the mixer levels
+is the plainest case. A stop that fails, such as a service that was skipped at
+boot answering "not running", does not end the walk.
+
+Each supervised service costs `ksvc` a second to stop, so a shutdown takes
+about as many seconds as there are daemons running. `kdos-powerd` waits sixty
+seconds before calling `reboot(2)` itself, which is longer than `rcK` takes to
+reach `55_powerd` and end it; the fallback therefore fires only under an init
+that ignored the signal.
 
 ### One DHCP client on the link
 
@@ -590,8 +612,8 @@ manager — a server install, or a recovery boot.
 `dhcpcd` is supervised with `-B`, which keeps it in the foreground so `ksvc`
 watches the daemon itself rather than a parent that has already exited. Its
 lease database is `/var/lib/dhcpcd`, which is also the home directory of the
-`dhcpcd` account uid 999 that its privilege-separated children run as; the
-account ships in `/etc/passwd`. `25_nftables` runs ahead of both scripts,
+`dhcpcd` account, uid and gid 999, that its privilege-separated children run
+as; the account ships in `/etc/passwd` and its group in `/etc/group`. `25_nftables` runs ahead of both scripts,
 because a firewall loaded after an address is configured is a window during
 which the machine is on the network with no policy.
 

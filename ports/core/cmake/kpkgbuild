@@ -14,4 +14,4 @@ release     = 1
 source      = https://www.cmake.org/files/v${version%.*}/$name-$version.tar.gz
 sha256      = c46400618b4f1f2b43507f24fb22f3ae830c3416cf23b776e16e1d413aa892f0  cmake-4.4.3.tar.gz
 description = Modern toolset used for generating Makefiles
-depends     = curl libarchive libuv expat
+depends     = curl libarchive libuv expat python3-sphinx

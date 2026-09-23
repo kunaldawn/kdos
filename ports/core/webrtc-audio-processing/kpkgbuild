@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = webrtc-audio-processing
+version     = 2.1
+release     = 1
+source      = https://freedesktop.org/software/pulseaudio/$name/$name-$version.tar.xz
+sha256      = ae9302824b2038d394f10213cab05312c564a038434269f11dbf68f511f9f9fe  webrtc-audio-processing-2.1.tar.xz
+description = WebRTC's audio processing module — echo cancellation, noise suppression, gain control
+homepage    = https://www.freedesktop.org/software/pulseaudio/webrtc-audio-processing/
+depends     = meson ninja pkgconf abseil-cpp

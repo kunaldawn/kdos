@@ -16,5 +16,5 @@ sha256      = 96677048168ddd1abe313e4c2e17f1cace72b60ee1bac8ca12a4bd7dfcadfbbb  
 sha256      = ea3c9c3c5ee9589e928bd09fdb1c249ffc6bbae5a9fece5dae153f0f50e39e3a  netavark-vendor-2.1.0.tar.xz
 description = Container network stack (network backend for Podman, Rust)
 homepage    = https://github.com/containers/netavark
-depends     = rust nftables protobuf
+depends     = rust nftables protobuf go-md2man
 vendoring   = rust

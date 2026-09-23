@@ -33,9 +33,10 @@ go build -mod=vendor -ldflags "-X main.GitVersion=v$version -X main.GitVersionFu
 go build -mod=vendor -o out/gocryptfs-xray ./gocryptfs-xray
 install -Dm755 out/gocryptfs       $PKG/usr/bin/gocryptfs
 install -Dm755 out/gocryptfs-xray  $PKG/usr/bin/gocryptfs-xray
-# The manual is markdown in the tarball and upstream renders it with pandoc,
-# which is not a port. The source is installed rather than nothing, so `-h` is
-# not the only description of the flags on the machine.
-install -Dm644 Documentation/MANPAGE.md       $PKG/usr/share/doc/gocryptfs/MANPAGE.md
-install -Dm644 Documentation/MANPAGE-XRAY.md  $PKG/usr/share/doc/gocryptfs/MANPAGE-XRAY.md
-install -Dm644 Documentation/MANPAGE-STATFS.md $PKG/usr/share/doc/gocryptfs/MANPAGE-STATFS.md
+# The manual is pandoc-style markdown with `%` title blocks, which lowdown
+# renders to the same page upstream's pandoc call produces. MANPAGE-STATFS.md
+# describes a helper this port does not install, so it gets no page.
+lowdown -s -Tman -o out/gocryptfs.1      Documentation/MANPAGE.md
+lowdown -s -Tman -o out/gocryptfs-xray.1 Documentation/MANPAGE-XRAY.md
+install -Dm644 out/gocryptfs.1      $PKG/usr/share/man/man1/gocryptfs.1
+install -Dm644 out/gocryptfs-xray.1 $PKG/usr/share/man/man1/gocryptfs-xray.1

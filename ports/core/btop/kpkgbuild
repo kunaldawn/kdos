@@ -15,3 +15,4 @@ source      = https://github.com/aristocratos/${name}/archive/refs/tags/v${versi
 sha256      = 933de2e4d1b2211a638be463eb6e8616891bfba73aef5d38060bd8319baeefc6  btop-1.4.7.tar.gz
 description = A monitor for system resources
 homepage    = https://github.com/aristocratos/btop
+depends     = lowdown

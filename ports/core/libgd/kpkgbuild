@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libgd
+version     = 2.3.3
+release     = 1
+source      = https://github.com/libgd/libgd/releases/download/gd-$version/$name-$version.tar.xz
+sha256      = 3fe822ece20796060af63b7c60acb151e5844204d289da0ce08f8fdf131e5a61  libgd-2.3.3.tar.xz
+sha256      = 0dc217c7f78ed3347857c4f35bbadf14d4ff38efc80bc2b8d02910f4e0db8d65  heif-stride.patch
+description = GD graphics library — draws lines, shapes, text and images into PNG, JPEG, GIF, WebP, TIFF, HEIF and BMP
+homepage    = https://libgd.github.io/
+depends     = pkgconf perl zlib libpng libjpeg-turbo libwebp libtiff libheif freetype2 fontconfig libraqm libimagequant

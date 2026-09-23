@@ -664,7 +664,9 @@ The installer appends to this file rather than replacing it, precisely because o
 
 Applies at boot. Terminal one runs `kdos-login`, which hands the tty to `agetty` and autologins
 where `login.conf` names an account. Terminal two is an ordinary login and is the recovery console.
-The serial line gives a login on demand. Both terminals are wrapped by the VT-font loader.
+The serial line gives a login on demand. Both terminals are wrapped by the VT-font loader. On
+shutdown, `/etc/init.d/rcK` runs every enabled service script's `stop` in reverse order, then swap is
+turned off and every filesystem remounted read-only.
 
 Renaming the desktop user must rewrite `login.conf`'s `autologin`, which names the account tty1 logs
 in. A name that matches nothing leaves the machine reachable only from terminal two.

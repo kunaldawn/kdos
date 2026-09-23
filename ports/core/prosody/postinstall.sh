@@ -23,5 +23,6 @@ grep -q '^prosody:' "$root/etc/passwd" 2>/dev/null || \
 # chown resolves a name against the running root's passwd, so the ids are read
 # out of PKG_ROOT's.
 while IFS=: read -r n _ uid gid _; do
-	[ "$n" = prosody ] && chown "$uid:$gid" "$root/var/lib/prosody"
+	[ "$n" = prosody ] || continue
+	chown "$uid:$gid" "$root/var/lib/prosody"
 done < "$root/etc/passwd"

@@ -16,5 +16,5 @@ sha256      = 8b293c77703e9a45b629a47ce16aad701a9f2f53af5a8fb6200abe274f08051c  
 sha256      = b2daff09bb55aef307a29496f79d6a77bcb149b908a7e733465c498d61c069b4  gocryptfs-vendor-2.6.1.tar.xz
 description = An encrypted directory that syncs as ordinary files
 homepage    = https://nuetzlich.net/gocryptfs/
-depends     = go fuse openssl
+depends     = go fuse openssl lowdown
 vendoring   = go

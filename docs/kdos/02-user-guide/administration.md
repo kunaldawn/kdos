@@ -56,8 +56,14 @@ The shipped set, in boot order:
 | `58_mountd` | Removable media |
 | `59_packd` | Application packs |
 | `60_bluetooth` | Bluetooth |
-| `70_sshd` | SSH, generating host keys on its first start |
+| `70_sshd` | SSH, generating every missing host key type with `ssh-keygen -A` first |
 | `80_cups` | Printing |
+| `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear |
+| `82_ipp-usb` | Driverless printing and scanning over USB: each IPP-over-USB device served on localhost as it is plugged in |
+
+Shutdown runs the same set backwards: `/etc/init.d/rcK` is the first `::shutdown` entry in
+`/etc/inittab`, and runs each enabled script with `stop` in reverse order before anything is
+unmounted. See [Boot and init](../03-architecture/boot-and-init.md#shutdown).
 
 A daemon that cannot do its job on this machine is skipped rather than started and left to fail.
 `54_thermald` checks for an Intel processor, `56_energyd` for a readable CPU energy counter,

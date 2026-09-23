@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-idna
+version     = 3.20
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/i/idna/idna-$version.tar.gz
+sha256      = a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44  python3-idna-3.20.tar.gz
+description = Internationalised domain names in applications (IDNA 2008 and UTS #46)
+homepage    = https://github.com/kjd/idna
+depends     = python3 python3-pip python3-flit-core

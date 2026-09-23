@@ -15,3 +15,4 @@ source      = https://www.crufty.net/ftp/pub/sjg/$name-$version.tar.gz
 sha256      = b6bd32964cbe451be2838822c9d200b7c7e76a2a5947c03feb71dc6bd72988bd  bmake-20260912.tar.gz
 description = NetBSD make, portable — the make that BSD-style makefiles need
 homepage    = https://www.crufty.net/help/sjg/bmake.htm
+depends     = tzdata
