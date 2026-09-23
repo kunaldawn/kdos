@@ -40,6 +40,9 @@ for f in target/completions/*; do
 	esac
 done
 
+# rmpc is only a client: the entry below plays the library mpd serves, so mpd
+# is a dependency. Its visualiser pane runs `cava`, which is not a port, so that
+# pane has nothing to draw.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/rmpc.desktop" <<'DESK'
 [Desktop Entry]

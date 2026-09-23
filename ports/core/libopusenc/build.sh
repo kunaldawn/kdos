@@ -14,6 +14,7 @@
 # headers, the encoder-delay bookkeeping that makes a decoded file line up
 # sample-for-sample with the input, and gapless chaining. Without it opusenc
 # does not build.
-./configure --prefix=/usr --libdir=/usr/lib --disable-static
+./configure --prefix=/usr --libdir=/usr/lib --disable-static \
+	--disable-doc --disable-examples
 make
 make DESTDIR=$PKG install

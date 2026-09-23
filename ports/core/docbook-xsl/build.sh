@@ -9,9 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ONE COPY, BOTH NAMES. The tarball is the nons release, so the namespaced
-# sourceforge URIs and the cdn xsl-nons URIs resolve into the same tree; a
-# second copy under another directory would be the same files twice.
+# ONE COPY. The tarball is the nons release, which is what both the
+# sourceforge release/xsl URIs and the cdn xsl-nons URIs name, so the catalog
+# resolves every one of them into this tree; a second copy under another
+# directory would be the same files twice. The namespaced release (xsl-ns,
+# cdn release/xsl) is not shipped and has no rewrite.
 # extensions/ and tools/ are prebuilt Java jars for saxon, xalan and the
 # webhelp indexer, and webhelp's template/ and docs/ are minified jQuery and a
 # rendered sample — none of it is read by xsltproc, which only needs the

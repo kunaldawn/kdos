@@ -41,6 +41,23 @@
 # unw_getcontext/unw_init_local/unw_step (checked with nm) samba's probe wants
 # the nongnu package and its pkg-config file, and does not find it. What is
 # lost is samba's own backtrace; the kernel still writes a core.
+#
+# --with-acl-support is what lets a Windows client change a file's permissions
+# at all; without it the security tab is read-only. --enable-avahi advertises
+# the share over mDNS, so a file manager on another machine finds it without a
+# typed address. vfs_io_uring has no switch of its own: samba builds it
+# whenever pkg-config finds liburing, so it is named in --with-shared-modules
+# to make a missing liburing a build failure rather than a module that is
+# silently not there. vfs_snapper is struck from the same list: it talks to
+# snapperd over D-Bus, snapper is not a port, and left in the default list it
+# makes dbus a configure-time requirement.
+#
+# Everything else here that samba would otherwise decide by what happens to be
+# installed is pinned. Spotlight is off: its only real backend queries an
+# Elasticsearch server nothing here runs. GlusterFS, CephFS, FAM, DMAPI, LTTng
+# and winexe's mingw cross-compiler are not ports. The kernel keyring stores
+# Kerberos credentials and there is no realm to join. regedit is on because
+# ncurses is a dependency.
 # --enable-fhs IS REQUIRED WITH --prefix=/usr, and samba says so and then
 # refuses: "Don't install directly under /usr or /usr/local without using the
 # FHS option". Without it waf's default layout puts everything under
@@ -62,12 +79,22 @@
 	--without-pam \
 	--without-systemd \
 	--without-winbind \
-	--without-acl-support \
+	--with-acl-support \
 	--without-quotas \
 	--without-ldb-lmdb \
 	--without-libunwind \
+	--without-lttng \
+	--without-fam \
+	--without-dmapi \
+	--without-winexe \
+	--without-kernel-keyring \
+	--with-regedit \
+	--with-shared-modules='vfs_io_uring,!vfs_snapper' \
+	--disable-spotlight \
+	--disable-glusterfs \
+	--disable-cephfs \
 	--disable-cups \
-	--disable-avahi \
+	--enable-avahi \
 	--disable-rpath \
 	--disable-rpath-install \
 	--nopyc --nopyo

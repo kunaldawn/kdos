@@ -26,6 +26,7 @@
 	--with-lua-lib=/usr/lib \
 	--lua-suffix=$_lv \
 	--idn-library=idn \
+	--with-random=getrandom \
 	--no-example-certs \
 	--ostype=linux
 make

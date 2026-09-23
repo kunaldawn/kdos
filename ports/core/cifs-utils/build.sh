@@ -37,8 +37,8 @@ export CFLAGS="$CFLAGS -std=gnu17"
 # `cifscreds` stashes a share's password in the session keyring through
 # keyutils, and `smbinfo` and `smb2-quota` are standard-library python3 scripts
 # that read a mounted share's metadata and quotas. cifscreds is named on
-# because at the default configure drops it with only a warning when keyutils.h
-# is missing; the scripts are installed without any check for python3, so
+# because, left at its default, configure drops it with only a warning when
+# keyutils.h is missing; the scripts are installed without any check for python3, so
 # `depends` is what makes their interpreter present.
 #
 # mount.cifs drops its capabilities through libcap-ng; with libcap-ng absent

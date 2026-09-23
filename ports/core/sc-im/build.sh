@@ -27,6 +27,14 @@ cd src
 # `libxml-2.0 libzip` and separately for `xlsxwriter`, and a probe that fails
 # is a feature quietly left out of a build that otherwise succeeds — which is
 # why they are `depends` and why there is nothing to pass here.
+#
+# LUA_PKGNAME IS NAMED because the Makefile otherwise takes the highest
+# versioned luaX.Y it can list, which leaves the scripting Lua to whichever of
+# lua and lua54 happens to be installed. Plain `lua` is the lua port's own
+# .pc, the one lua54 does not ship. Plotting is the same kind of probe:
+# -DGNUPLOT is set only when `which gnuplot` answers at build time, which is
+# why gnuplot is a dependency. Legacy .xls import needs libxls, which is not a
+# port, so its probe finds nothing.
 # CFLAGS IS EXPORTED, NEVER PASSED ON THE COMMAND LINE. The Makefile builds its
 # whole configuration with `CFLAGS +=` — HELP_PATH, CONFIG_DIR, HISTORY_FILE,
 # the ncurses and colour switches, every -D the source reads — and a command-line
@@ -35,8 +43,8 @@ cd src
 # the base and upstream appends to it.
 export CFLAGS="$CFLAGS -Wno-error"
 
-make prefix=/usr
-make prefix=/usr DESTDIR=$PKG install
+make prefix=/usr LUA_PKGNAME=lua
+make prefix=/usr LUA_PKGNAME=lua DESTDIR=$PKG install
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/sc-im.desktop" <<'EOF'

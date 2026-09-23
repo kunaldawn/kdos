@@ -3,13 +3,14 @@ musl and the kernel headers both define `struct statx`, so including
 stops in every file that reaches io_uring_engine.h.
 
 The include is there for the one `struct statx *` in the io_uring pending-op
-union and for the io_uring_prep_statx() beside it, both already inside
-`#ifndef WITHOUT_URING`. With no liburing the header is pulled in for a member
-nothing declares and nothing uses, so it moves inside the same guard.
+union and for the io_uring_prep_statx() beside it, both inside
+`#ifndef WITHOUT_URING`. liburing.h includes <sys/stat.h>, where musl already
+declares `struct statx` and the STATX_* masks, so the kernel header adds
+nothing but the second definition.
 
 --- a/io_uring_engine.h
 +++ b/io_uring_engine.h
-@@ -7,10 +7,10 @@
+@@ -7,7 +7,6 @@
  #include <string_view>
  #include <sys/socket.h>
  #include <sys/types.h>
@@ -17,7 +18,3 @@ nothing declares and nothing uses, so it moves inside the same guard.
  
  struct io_uring_sqe;
  #ifndef WITHOUT_URING
-+#include <linux/stat.h>
- #include <liburing.h>
- #endif
- 

@@ -30,6 +30,12 @@
 # lldb accepts no other line editor — readline is not a choice it offers.
 # An explicit ON is a hard requirement rather than a hint, so a missing
 # libedit stops configure instead of quietly producing the narrow prompt.
+#
+# TREE-SITTER HIGHLIGHTS RUST AND SWIFT SOURCE LISTINGS. The grammars ship in
+# the lldb tree as grammar.js, and the tree-sitter CLI turns each into a
+# parser at build time. Its default JavaScript runtime is node, which is not
+# a dependency here; `native` is the QuickJS runtime compiled into the CLI.
+export TREE_SITTER_JS_RUNTIME=native
 cmake -S lldb -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -46,6 +52,7 @@ cmake -S lldb -B build -G Ninja \
 	-D LLDB_ENABLE_LIBXML2=ON \
 	-D LLDB_ENABLE_LUA=OFF \
 	-D LLDB_ENABLE_LIBEDIT=ON \
+	-D LLDB_ENABLE_TREESITTER=ON \
 	-D LLDB_INCLUDE_TESTS=OFF \
 	-D LLVM_INCLUDE_TESTS=OFF \
 	-D LLVM_ENABLE_SPHINX=ON \

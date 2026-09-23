@@ -4,8 +4,9 @@ ffmpeg on KDOS is GPL-2-or-later, not LGPL
 THE POSITION
 
 `build.sh` passes `--enable-gpl`, and with it `--enable-libx264`,
-`--enable-libx265` and `--enable-librubberband`. Upstream ffmpeg is LGPL-2.1-or-later by default; the GPL
-components are opt-in, and opting in relicenses the resulting binary.
+`--enable-libx265` and `--enable-librubberband`. Upstream ffmpeg is
+LGPL-2.1-or-later by default; the GPL components are opt-in, and opting in
+relicenses the resulting binary.
 
 WHY
 
@@ -14,8 +15,9 @@ in front of you is the only machine — an encoder that cannot produce the forma
 every other computer reads is a missing capability rather than a reduced one.
 
 The LGPL alternative is available and is not taken: shipping libvpx, svt-av1,
-dav1d, opus, vorbis and lame while refusing x264/x265 yields working VP9, AV1,
-Opus, Vorbis and MP3 and no H.264 or HEVC encode. H.264 is what a phone
+dav1d, opus, vorbis and lame while refusing x264, x265 and rubberband yields
+working VP9, AV1, Opus, Vorbis and MP3, no H.264 or HEVC encode and no
+`rubberband` filter. H.264 is what a phone
 records, a camera writes and a colleague expects, so it stays.
 
 WHAT IT MEANS FOR ANYONE REDISTRIBUTING KDOS
@@ -29,24 +31,24 @@ WHAT IT MEANS FOR ANYONE REDISTRIBUTING KDOS
 
 COMPONENT LICENCES
 
-  x264      GPL-2.0-or-later     ports/core/x264
-  x265      GPL-2.0-or-later     ports/core/x265
-  libvpx    BSD-3-Clause         ports/core/libvpx
-  svt-av1   BSD-3-Clause + AOM   ports/core/svt-av1
-  dav1d     BSD-2-Clause         ports/core/dav1d
-  opus      BSD-3-Clause         ports/core/opus
-  libvorbis BSD-3-Clause         ports/core/libvorbis
-  libogg    BSD-3-Clause         ports/core/libogg
-  lame      LGPL-2.0-or-later    ports/core/lame
-  libass    ISC                  ports/core/libass
-  libva     MIT                  ports/core/libva
-  rubberband GPL-2.0-or-later    ports/core/rubberband
-  libplacebo LGPL-2.1-or-later   ports/core/libplacebo
-  lcms2     MIT                  ports/core/lcms2
-  liblc3    Apache-2.0           ports/core/liblc3
-  libjxl    BSD-3-Clause         ports/core/libjxl
-  zimg      WTFPL                ports/core/zimg
-  soxr      LGPL-2.1-or-later    ports/core/soxr
+  x264       GPL-2.0-or-later     ports/core/x264
+  x265       GPL-2.0-or-later     ports/core/x265
+  libvpx     BSD-3-Clause         ports/core/libvpx
+  svt-av1    BSD-3-Clause + AOM   ports/core/svt-av1
+  dav1d      BSD-2-Clause         ports/core/dav1d
+  opus       BSD-3-Clause         ports/core/opus
+  libvorbis  BSD-3-Clause         ports/core/libvorbis
+  libogg     BSD-3-Clause         ports/core/libogg
+  lame       LGPL-2.0-or-later    ports/core/lame
+  libass     ISC                  ports/core/libass
+  libva      MIT                  ports/core/libva
+  rubberband GPL-2.0-or-later     ports/core/rubberband
+  libplacebo LGPL-2.1-or-later    ports/core/libplacebo
+  lcms2      MIT                  ports/core/lcms2
+  liblc3     Apache-2.0           ports/core/liblc3
+  libjxl     BSD-3-Clause         ports/core/libjxl
+  zimg       WTFPL                ports/core/zimg
+  soxr       LGPL-2.1-or-later    ports/core/soxr
 
 PATENTS
 

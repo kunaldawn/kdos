@@ -16,4 +16,7 @@
 	--with-openssl=/usr \
 	--without-sctp
 make
-make DESTDIR=$PKG install
+# --without-ldconfig leaves LDCONFIG empty, and the install hook's
+# `if test -n "$(LDCONFIG)"; then $(LDCONFIG) || true; fi` is then a shell
+# syntax error that fails the install. LDCONFIG=: makes the hook a no-op.
+make DESTDIR=$PKG LDCONFIG=: install

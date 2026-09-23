@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/tmux/tmux/releases/download/${version}/${name}-${version}.tar.gz
 sha256      = 7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf  tmux-3.7c.tar.gz
 description = tmux - Terminal multiplexer
-depends     = libevent ncurses
+depends     = libevent ncurses utf8proc

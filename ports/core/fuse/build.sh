@@ -36,3 +36,8 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 # outside the rootfs being built, and records in the package database a file no
 # image ever carries.
 rm -rf "$PKG/dev"
+
+# fusermount is fuse 2's name for the helper, and the pure-Go FUSE client
+# restic vendors runs it by that name: with only fusermount3 on PATH, `restic
+# mount` cannot exec its helper. The link reaches the same setuid binary.
+ln -s fusermount3 "$PKG/usr/bin/fusermount"

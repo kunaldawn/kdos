@@ -46,13 +46,30 @@
 # libbpf and openssl. Lose any one of those and perf still builds — without
 # those verbs and with no error.
 #
-# Each NO_* names a library this image does not carry. perf answers a missing
-# dependency with a warning and a narrower binary, so the absent ones are
-# stated rather than probed: a detection that silently flips is a perf that
+# LIBPERL is opt-in upstream and is on: it is the Perl engine behind
+# `perf script -s foo.pl`, and it links perl's libperl.so, which exists only
+# because the perl port configures -Duseshrplib. Its feature check is fatal, so
+# a perl without the shared library stops this build rather than dropping the
+# engine.
+#
+# slang, capstone, python3, zlib, xz and zstd have no switch to demand them —
+# only a NO_* to refuse them — so their place in depends is what keeps the
+# report/top TUI, the capstone disassembler, `perf script` Python, and
+# compressed modules and `record -z`.
+#
+# The Python extension module (python/perf.so) is built whenever setuptools
+# imports, and `install` never installs it. PYTHON_SETUPTOOLS_INSTALLED=no
+# answers that probe, so the build does not depend on whether another port
+# happened to put setuptools in the chroot. The embedded Python engine is
+# unaffected.
+#
+# Each NO_* names a feature this image does not carry, most of them for want
+# of a library. perf answers a missing dependency with a warning and a
+# narrower binary, so the absent ones are stated rather than probed: a detection that silently flips is a perf that
 # loses a feature on an unrelated version bump.
 #   NO_LIBNUMA           numactl is not ported; drops `perf bench numa mem`
 #   NO_LIBPFM4           libpfm is not ported; drops its raw event names
-#   NO_LIBBABELTRACE     babeltrace is not ported; drops `perf data` CTF
+#   NO_BABELTRACE2       babeltrace2 is not ported; drops `perf data` CTF
 #   NO_LIBDEBUGINFOD     elfutils is configured --disable-debuginfod
 #   NO_JVMTI             no JDK, so no Java JIT agent
 #   NO_SDT               no sys/sdt.h; systemtap is not ported
@@ -62,6 +79,8 @@
 #                        already resolves
 #   NO_PERF_READ_VDSO32  no 32-bit libc to compile the vdso readers against
 #   NO_PERF_READ_VDSOX32 likewise for x32
+#   NO_BACKTRACE         musl has no execinfo.h
+#   NO_RUST              the Rust feature is `perf test` workloads only
 perf_make=(
 	make -C tools/perf
 	prefix=/usr
@@ -71,13 +90,17 @@ perf_make=(
 	BUILD_BPF_SKEL=1
 	NO_LIBNUMA=1
 	NO_LIBPFM4=1
-	NO_LIBBABELTRACE=1
+	NO_BABELTRACE2=1
 	NO_LIBDEBUGINFOD=1
 	NO_JVMTI=1
 	NO_SDT=1
 	NO_LIBLLVM=1
 	NO_PERF_READ_VDSO32=1
 	NO_PERF_READ_VDSOX32=1
+	NO_BACKTRACE=1
+	NO_RUST=1
+	LIBPERL=1
+	PYTHON_SETUPTOOLS_INSTALLED=no
 )
 
 "${perf_make[@]}"
@@ -92,3 +115,8 @@ perf_make=(
 # with `perf help record` opening nothing and 41 manuals gone with no error
 # anywhere.
 "${perf_make[@]}" DESTDIR="$PKG" install
+
+# install-tests copies Windows PE binaries in beside the shell tests, for a
+# `perf test` case about reading PE build ids. Nothing on this system runs
+# them.
+rm -f "$PKG"/usr/libexec/perf-core/tests/pe-file.exe*

@@ -17,7 +17,11 @@
         --with-env-editor \
         --with-rundir=/run/sudo \
         --with-vardir=/var/lib/sudo \
-        --with-passprompt="[sudo] password for %p: "
+        --with-passprompt="[sudo] password for %p: " \
+        --with-pam \
+        --enable-zlib=system \
+        --enable-openssl \
+        --without-sendmail
 make
 make DESTDIR=$PKG install
 rm -rf $PKG/run

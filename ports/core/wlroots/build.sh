@@ -31,8 +31,13 @@
 # session up at all: smithay refused software EGL, which is why COSMIC never
 # had that. kdos-desktop sets it when there is no +resource_blob.
 #
-# color-management is OFF for now: it needs lcms2, which is not a port yet.
-# Turning it on is one dependency and one flag — see docs/KDOS-ROADMAP.md N9.
+# color-management is ON and is lcms2: it is what turns an output's ICC
+# profile into the transform the renderer applies. Left at `auto`, a missing
+# lcms2 drops ICC support without a word; enabled, it stops configure.
+#
+# allocators are named for the same reason: `auto` probes gbm and udmabuf and
+# keeps whichever it finds, so a missing gbm would leave a compositor that
+# cannot allocate a scanout buffer on real hardware.
 
 # A CAPTURE OF AN IDLE SCREEN HAS TO BE ANSWERED. There is no build flag for
 # it: ext-image-copy-capture forces an output commit only where the session
@@ -47,9 +52,10 @@ meson setup build \
 	-Dexamples=false \
 	-Dbackends=drm,libinput \
 	-Drenderers=gles2,vulkan \
+	-Dallocators=gbm,udmabuf \
 	-Dsession=enabled \
 	-Dxwayland=enabled \
-	-Dcolor-management=disabled \
+	-Dcolor-management=enabled \
 	-Dlibliftoff=disabled \
 	-Dxcb-errors=disabled
 

@@ -15,6 +15,16 @@ autoreconf -f -i
 # needs a portmapper, a lock daemon and a status daemon — three more services
 # on a machine with no systemd to sequence them. configure has no switch that
 # leaves the v3 helpers out, so they are built and simply never started.
+# --enable-nfsv4server adds nfsv4.exportd, the export daemon a v4-only server
+# runs in place of rpc.mountd, with no portmapper beside it.
+#
+# --enable-gss builds rpc.gssd, the client half of Kerberos NFS (sec=krb5*).
+# It needs libtirpc built with its GSS-API layer and krb5's krb5-config.
+# --disable-svcgss leaves out rpc.svcgssd, the server half, as upstream's
+# default does. --disable-ldap: the umich_ldap idmap plugin wants openldap,
+# which is not a port, and configure links it whenever it finds it.
+# --enable-caps and --enable-uuid turn configure's silent probes for libcap and
+# libblkid into requirements.
 #
 # samba is the interoperability answer and this is the CORRECTNESS one: SMB
 # does not carry POSIX ownership, permissions, symlinks or byte-range locks the
@@ -28,7 +38,11 @@ autoreconf -f -i
 # <libgen.h>; glibc supplies both through headers it happens to pull in and
 # musl does not. An implicit basename() is the worse of the two — it returns
 # int, so the pointer is truncated to 32 bits rather than merely undeclared.
-export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -include stddef.h -include libgen.h"
+#
+# -Wno-error=format: gssd's debug lines print a pthread_t with %lx, which is an
+# integer on glibc and a pointer on musl, and configure promotes every format
+# warning to an error. The value printed is the same width either way.
+export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -include stddef.h -include libgen.h -Wno-error=format"
 
 ./configure \
 	--prefix=/usr \
@@ -36,8 +50,13 @@ export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -include stddef.h -include libgen.h
 	--libdir=/usr/lib \
 	--localstatedir=/var \
 	--enable-nfsv4 \
-	--disable-gss \
-	--disable-ipv6 \
+	--enable-nfsv4server \
+	--enable-gss \
+	--disable-svcgss \
+	--enable-ipv6 \
+	--enable-caps \
+	--enable-uuid \
+	--disable-ldap \
 	--without-systemd \
 	--with-statedir=/var/lib/nfs \
 	--with-rpcgen=internal

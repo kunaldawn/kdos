@@ -18,7 +18,9 @@
 # writes a path that ports/core/lua also writes, so kpkg reports no conflict
 # and neither package can shadow the other.
 patch -p1 -i $PORT_SRC/lua-root-usr.patch
-make CC=cc MYCFLAGS="-DLUA_COMPAT_5_3 -fPIC" linux
+# linux-readline links readline into lua5.4 only; `linux` is the
+# no-readline build. liblua5.4.so is built from liblua.a and does not link it.
+make CC=cc MYCFLAGS="-DLUA_COMPAT_5_3 -fPIC" linux-readline
 
 cd src
 cc -shared -ldl -Wl,-soname,liblua${_majorver}.so.${_majorver} \

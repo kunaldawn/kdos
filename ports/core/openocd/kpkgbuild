@@ -15,4 +15,4 @@ source      = $name-$version.tar.bz2::https://sourceforge.net/projects/$name/fil
 sha256      = af254788be98861f2bd9103fe6e60a774ec96a8c374744eef9197f6043075afa  openocd-0.12.0.tar.bz2
 description = On-chip debugging and flashing over JTAG or SWD
 homepage    = https://openocd.org/
-depends     = autoconf automake libtool pkgconf libusb libftdi hidapi
+depends     = autoconf automake libtool pkgconf libusb libftdi hidapi libjaylink capstone

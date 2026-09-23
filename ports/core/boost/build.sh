@@ -35,8 +35,8 @@
 # --with-icu=/usr GIVES Boost.Regex ITS UNICODE SIDE (u32regex). Left to
 # itself bootstrap turns ICU on when it happens to find the headers, so the
 # regex library's link line would follow build order; icu is in `depends`.
-# Boost.Python is not built: ledger and nextpnr, the two consumers that could
-# use it, both build with their Python bindings off.
+# Boost.Python is not built: ledger builds with its Python binding off and
+# nextpnr binds its Python through pybind11.
 ./bootstrap.sh --prefix=/usr --libdir=/usr/lib \
 	--with-icu=/usr \
 	--with-libraries=iostreams,system,filesystem,regex,date_time,test,program_options,thread

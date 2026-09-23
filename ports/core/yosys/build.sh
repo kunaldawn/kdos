@@ -31,6 +31,15 @@ cd unpacked
 # this tree are the ones linked — abc is the one vendored thing kept, because
 # it is the revision yosys was tested against and abc publishes no releases to
 # pin to independently. Python is off: pyosys is a binding nothing here uses.
+#
+# THE LIBRARIES CANNOT BE FORCED ON FROM THE COMMAND LINE. yosys has only
+# YOSYS_WITHOUT_* switches, and a library pkg-config does not find is silently
+# a feature compiled out. The generated yosys_config.h is checked instead, so a
+# missing readline, zlib, libffi or tcl stops the build here rather than
+# shipping a yosys without gzip input, DPI-C, line editing or SDC parsing.
+# The `show` pass renders with graphviz's `dot` (`-format svg`) or opens xdot
+# (no -format); graphviz is not a port and xdot is a GTK viewer, so both fail
+# and `show -format dot` — the .dot file alone — is what works here.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -39,8 +48,19 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DYOSYS_USE_BUNDLED_LIBS=OFF \
 	-DYOSYS_WITH_PYTHON=OFF \
+	-DYOSYS_WITHOUT_ZLIB=OFF \
+	-DYOSYS_WITHOUT_LIBFFI=OFF \
+	-DYOSYS_WITHOUT_READLINE=OFF \
+	-DYOSYS_WITHOUT_TCL=OFF \
 	-DYOSYS_WITHOUT_EDITLINE=ON \
+	-DYOSYS_ENABLE_UNIT_TESTS=OFF \
 	-DYOSYS_ENABLE_FUNCTIONAL_TESTS=OFF \
 	-DYOSYS_INSTALL_DRIVER=ON
+for f in ZLIB LIBFFI READLINE TCL; do
+	grep -q "^#define YOSYS_ENABLE_$f\$" kernel/yosys_config.h || {
+		echo "yosys: YOSYS_ENABLE_$f is off — its library was not found" >&2
+		exit 1
+	}
+done
 ninja
 DESTDIR=$PKG ninja install

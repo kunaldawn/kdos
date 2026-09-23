@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/GothenburgBitFactory/tim
 sha256      = a9c9966cfd9fed6c4d4895dc2de530902e736608f4033799af4fe06edf0dd438  timewarrior-1.10.0.tar.gz
 description = Where the time actually went, in a text file
 homepage    = https://timewarrior.net/
-depends     = cmake ninja python3
+depends     = cmake ninja python3 asciidoctor

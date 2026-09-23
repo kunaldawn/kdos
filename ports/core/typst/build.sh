@@ -27,11 +27,16 @@ export GEN_ARTIFACTS="$PWD/gen"
 # machine where nobody can search for the error text, that difference is
 # whether a document gets written.
 #
-# --no-default-features drops `http-server`, the live-reload server behind
-# `typst watch`; `self-update` is never enabled, so no updater is built. The
-# embedded fonts stay, because typst-cli asks typst-kit for them directly, and
-# system fonts come from fontconfig, so typst sees what the rest of this
-# machine does.
-cargo build --release --frozen --offline --bin typst --no-default-features
+# THE FEATURES ARE NAMED, NOT DEFAULTED. `http-server` is the localhost
+# live-reload server behind `typst watch` and HTML export, and needs nothing
+# off this machine. `self-update` is never named, so no updater is built. The
+# embedded fonts stay either way, because typst-cli asks typst-kit for them
+# directly, and system fonts come from fontconfig, so typst sees what the rest
+# of this machine does.
+cargo build --release --frozen --offline --bin typst \
+	--no-default-features --features embedded-fonts,http-server
 install -Dm755 target/release/typst $PKG/usr/bin/typst
 install -Dm644 gen/*.1 -t "$PKG/usr/share/man/man1"
+install -Dm644 gen/typst.bash "$PKG/usr/share/bash-completion/completions/typst"
+install -Dm644 gen/_typst -t "$PKG/usr/share/zsh/site-functions"
+install -Dm644 gen/typst.fish -t "$PKG/usr/share/fish/vendor_completions.d"

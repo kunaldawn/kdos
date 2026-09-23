@@ -17,7 +17,11 @@
 	--without-x \
 	--enable-vfs-smb=no \
 	--enable-vfs-sftp=yes \
-	--disable-doxygen-doc
+	--disable-doxygen-doc \
+	--enable-nls \
+	--disable-aspell \
+	--without-gpm-mouse \
+	--disable-tests
 make
 make DESTDIR=$PKG install
 

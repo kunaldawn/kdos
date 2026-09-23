@@ -19,5 +19,7 @@
 #
 # `tree` IS A HARD DEPENDENCY, not a nicety: `pass` with no argument lists the
 # store by running it, and without it the command that shows you what you have
-# prints nothing.
+# prints nothing. wl-clipboard and qrencode are found on $PATH the same way:
+# `pass -c` copies through wl-copy under Wayland, and `pass -q` (and
+# `pass otp uri -q`) draws the code with qrencode.
 make PREFIX=/usr WITH_ALLCOMP=yes DESTDIR=$PKG install

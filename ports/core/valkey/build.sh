@@ -19,8 +19,11 @@
 # malloc internals and its own thread-cache teardown; built against musl it
 # compiles and then aborts under load, which is the worst kind of wrong for a
 # data store. musl's allocator is slower and correct.
-make MALLOC=libc BUILD_TLS=yes PREFIX=/usr
-make MALLOC=libc BUILD_TLS=yes PREFIX=$PKG/usr install
+#
+# USE_SYSTEMD=no: left unset, the Makefile probes pkg-config for libsystemd and
+# links it when it finds one.
+make MALLOC=libc BUILD_TLS=yes USE_SYSTEMD=no PREFIX=/usr
+make MALLOC=libc BUILD_TLS=yes USE_SYSTEMD=no PREFIX=$PKG/usr install
 
 install -Dm644 valkey.conf   $PKG/etc/valkey/valkey.conf
 install -Dm644 sentinel.conf $PKG/etc/valkey/sentinel.conf

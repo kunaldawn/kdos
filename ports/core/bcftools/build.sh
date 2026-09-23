@@ -18,8 +18,9 @@
 # ffmpeg's `--enable-gpl` and is recorded rather than left implicit.
 #
 # --with-cblas=openblas: the CBLAS under gsl is OpenBLAS on this tree (see the
-# gsl recipe), and naming it keeps the plugins off gsl's reference gslcblas,
-# which the default search falls back to when no libcblas is installed.
+# gsl recipe), and naming it links bcftools to it directly. The default search
+# tries libcblas, then gsl's reference gslcblas, so without the name the choice
+# rests on the libcblas symlink the openblas recipe happens to add.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \

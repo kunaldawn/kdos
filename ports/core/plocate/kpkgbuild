@@ -15,4 +15,4 @@ source      = https://plocate.sesse.net/download/$name-$version.tar.gz
 sha256      = 68c1d5fbb11864403ae39c1a5937f13afd80b03e68041368831ef58cb613578e  plocate-1.1.25.tar.gz
 description = Finds a file by name in a prebuilt index, per user and without a setgid bit
 homepage    = https://plocate.sesse.net/
-depends     = zstd
+depends     = zstd liburing

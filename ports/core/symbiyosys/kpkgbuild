@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/YosysHQ/sby/archive/refs
 sha256      = 65e1ee7610ade9297a1482a442d0aef79a79f5490229e7899b78747d3ca1ff8e  symbiyosys-0.69.tar.gz
 description = Formal property verification over yosys — sby, and the solvers behind it
 homepage    = https://github.com/YosysHQ/sby
-depends     = python3 yosys yices2
+depends     = python3 python3-click yosys yices2 z3

@@ -16,5 +16,5 @@ sha256      = 9ea64b411f8314414f440ec765dfdf5a86c9f6159df47e2f60cff3db6b31157a  
 sha256      = 09b0766528db061730af57a65a05187c0a51d44d14789e29020fe60d71f9c4ad  taskwarrior-vendor-3.5.0.tar.xz
 description = Tasks with dates, dependencies and a query language
 homepage    = https://taskwarrior.org/
-depends     = cmake ninja pkgconf rust util-linux corrosion
+depends     = cmake ninja pkgconf rust util-linux corrosion sqlite
 vendoring   = rust

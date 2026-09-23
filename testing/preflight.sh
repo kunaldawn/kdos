@@ -398,8 +398,8 @@ echo "==> every source a port declares is on disk, hashed and non-empty"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The enumeration is the RECIPE's own source list
 # read through the same parser the build uses, NOT a glob of archive
-# extensions: that glob knew about six suffixes, so ca-certificates' .pem
-# and iana-etc's four plain files were invisible here and failed instead
+# extensions: that glob knew about six suffixes, so ca-certificates' and
+# iana-etc's plain files were invisible here and failed instead
 # two hours into phase 3. The hashes were bootstrapped from the git-LFS
 # pointers, where the oid IS the file's sha256.
 unhashed=0

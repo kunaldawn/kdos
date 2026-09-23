@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/nco/nco/archive/refs/tag
 sha256      = c6e03cacbde7eae908eabfe65b2c1edc7b1754e07597b8f7fe2fc894f21b2dca  nco-5.4.0.tar.gz
 description = Subset, regrid and do arithmetic on gridded data without loading it
 homepage    = https://nco.sourceforge.net/
-depends     = netcdf-c hdf5 zlib gsl udunits expat autoconf automake libtool
+depends     = netcdf-c hdf5 zlib gsl udunits expat curl gcc texinfo autoconf automake libtool

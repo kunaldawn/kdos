@@ -15,4 +15,4 @@ source      = https://downloads.sourceforge.net/project/$name/$name/$version/$na
 sha256      = 5fd6a93e5997ce01756868fe35e441095cfb637894a80c262514a634094973b6  sdcc-4.6.0.tar.bz2
 description = A C compiler for the 8-bit families AVR does not cover — 8051, STM8, Z80, PIC
 homepage    = https://sdcc.sourceforge.net/
-depends     = boost bison flex zlib
+depends     = boost bison flex zlib ncurses readline

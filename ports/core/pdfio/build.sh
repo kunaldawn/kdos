@@ -16,3 +16,9 @@
 	--enable-shared --disable-static --enable-libpng
 make
 make DESTDIR=$PKG install
+
+# The examples directory also carries the Roboto and code128 fonts md2pdf and
+# code128 demonstrate with — five TrueType files and their licences under
+# /usr/share/doc that no program opens. The example sources stay.
+rm -f "$PKG"/usr/share/doc/pdfio/examples/*.ttf \
+	"$PKG"/usr/share/doc/pdfio/examples/*-LICENSE.txt

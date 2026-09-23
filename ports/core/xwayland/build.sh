@@ -17,6 +17,7 @@ meson setup build \
 	-Dxwayland_ei=false \
 	-Dlibdecor=false \
 	-Dsystemd_notify=false \
+	-Dxselinux=false \
 	-Dglamor=true \
 	-Ddri3=true \
 	-Dglx=false \

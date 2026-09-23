@@ -14,7 +14,8 @@ export PYTHON=/usr/bin/python3
 	--prefix=/usr \
 	--with-icu \
 	--with-history \
-	--with-python 
+	--with-zlib \
+	--with-python
 make
 make DESTDIR=$PKG install
 install -Dm644 doc/xml2-config.1 dist-doc/xmllint.1 dist-doc/xmlcatalog.1 \

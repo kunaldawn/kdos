@@ -22,9 +22,15 @@
 # whisper.cpp's streaming transcription runs in a terminal with nothing above
 # it.
 #
-# PULSE IS OFF AND PIPEWIRE IS ON: there is no PulseAudio port, so the pulse
-# backend would be a dlopen that never finds its library. ALSA stays as the
-# floor underneath, for a machine with the session's sound server not running.
+# PIPEWIRE IS THE AUDIO BACKEND, AND PULSE AND ALSA ARE BEHIND IT. The pulse
+# backend is dlopened from libpulse and speaks to pipewire-pulse, for a
+# program that asks for SDL_AUDIO_DRIVER=pulseaudio; ALSA stays as the floor
+# underneath, for a machine with the session's sound server not running.
+#
+# HIDAPI OVER libusb is named because it is otherwise on only when libusb.h
+# happens to be installed, and hidraw alone misses the Xbox, PlayStation and
+# Nintendo pads that driver talks to directly. liburing backs SDL's async file
+# I/O; without it the same API runs on a thread pool.
 #
 # sdl2-compat dlopens libSDL3.so.0 from the default search path, so the library
 # lands in /usr/lib with no rpath.
@@ -45,13 +51,15 @@ cmake .. -G Ninja \
 	-DSDL_WAYLAND_LIBDECOR=ON \
 	-DSDL_ALSA=ON \
 	-DSDL_PIPEWIRE=ON \
-	-DSDL_PULSEAUDIO=OFF \
+	-DSDL_PULSEAUDIO=ON \
 	-DSDL_JACK=OFF \
 	-DSDL_SNDIO=OFF \
 	-DSDL_OSS=OFF \
 	-DSDL_DBUS=ON \
 	-DSDL_IBUS=OFF \
 	-DSDL_LIBUDEV=ON \
+	-DSDL_HIDAPI_LIBUSB=ON \
+	-DSDL_LIBURING=ON \
 	-DSDL_OPENGL=ON \
 	-DSDL_OPENGLES=ON \
 	-DSDL_VULKAN=ON \

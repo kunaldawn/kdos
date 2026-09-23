@@ -19,7 +19,6 @@ export XML_CATALOG_FILES=/etc/xml/catalog
             --disable-alsaconf \
             --enable-bat   \
             --enable-alsaloop \
-            --enable-alsatopology \
             --enable-nhlt \
             --enable-xmlto \
             --enable-rst2man \

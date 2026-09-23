@@ -38,7 +38,7 @@ KDOS's own.
 | `dbus-daemon-launch-helper` | dbus | System bus activation |
 | `mount.nfs` | nfs-utils | Mounting an NFS share named in `fstab` as an ordinary user |
 | `unix_chkpwd` | pam | How `pam_unix` reads the 0600 shadow file for a caller that is not root — without it every unprivileged PAM check, `wayvnc`'s included, is refused |
-| `fusermount3` | libfuse | Mounting a userspace filesystem from a session with no user namespace — sshfs, gocryptfs, fuse-overlayfs and the document portal |
+| `fusermount3` | libfuse | Mounting a userspace filesystem from a session with no user namespace — sshfs, gocryptfs, fuse-overlayfs, the document portal, `rclone mount`, and `restic mount` through the `fusermount` link beside it |
 | `newuidmap`, `newgidmap` | shadow | **Rootless containers** |
 
 The last two are why every application on the machine works. The container
@@ -157,7 +157,7 @@ The image ships these in `/etc/passwd`, `/etc/group` and `/etc/shadow`:
 | `lp` | 10:10 | CUPS |
 | `nobody` | 99:99 | Anything that asks for an unprivileged account by that name |
 
-`polkitd`, `avahi`, `nm-openvpn`, `pcscd` and `prosody` are made by their ports'
+`polkitd`, `avahi`, `nm-openvpn`, `pcscd`, `prosody` and `tcpdump` are made by their ports'
 `postinstall.sh` with `groupadd -r` and `useradd -r`, which pick a free id.
 Every id a shipped account uses therefore has a line of its own in both files:
 a primary gid with no `/etc/group` line looks free to `groupadd -r`, which
@@ -259,8 +259,9 @@ nothing to register as: with no session, an agent can only register a
 **unix-process** subject, and polkit finds that agent by an exact match on pid
 and start time, so a session-lifetime agent would never be found for a surface
 it did not itself spawn. `polkit-agent-helper-1` is on this machine and is
-setuid, so it could check a password — but nothing ever asks it to, because a
-flat refusal raises no challenge for an agent to answer.
+setuid, so it could check a password, through the same PAM `system-auth` stack
+`sudo` uses — but nothing ever asks it to, because a flat refusal raises no
+challenge for an agent to answer.
 
 The same reasoning reaches the other three consumers, and it is why none of
 them has a working privileged path here. Their actions are `auth_admin`, which
@@ -463,6 +464,7 @@ so a rebuild after a root's expiry ships one certificate fewer.
 |---|---|
 | OpenSSL, and everything linked against it | `--openssldir=/etc/ssl`, which finds `cert.pem` |
 | GnuTLS, and everything linked against it | p11-kit's trust module, built `-D trust_paths=/etc/ssl/cert.pem` |
+| Python code that asks `certifi.where()`, `requests` among it | `python3-certifi`, whose `certifi/cacert.pem` is a symlink to `/etc/ssl/cert.pem` |
 
 GnuTLS is configured `--with-default-trust-store-pkcs11="pkcs11:"`, so p11-kit is
 its only source of anchors. p11-kit gives a trust path that is a plain **file** —

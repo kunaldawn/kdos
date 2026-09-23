@@ -18,11 +18,16 @@
 # USE_PYTHON=OFF drops the boost::python binding; boost is still needed for
 # regex, filesystem and date_time, which the parser itself uses.
 #
-# THE LINE EDITOR AND ICU ARE PROBED, NOT OPTIONS, so both are checked in the
-# generated system.hh. CMakeLists takes libedit when it finds it and readline
-# otherwise, and uses Boost.Regex's ICU side only when a test program linking
-# it runs; without the check the REPL a bare `ledger` opens, and case-folded
-# matching of non-ASCII account names, would follow build order.
+# THE LINE EDITOR IS PROBED, NOT AN OPTION, so the generated system.hh is
+# checked: CMakeLists takes libedit when it finds it and readline otherwise,
+# and the REPL a bare `ledger` opens would follow build order.
+#
+# BOOST_REGEX_UNICODE_RUNS IS SET, NOT PROBED. The probe that decides whether
+# ledger uses Boost.Regex's ICU side assigns a narrow string literal to a
+# std::basic_string<uint32_t>, which GCC 15 refuses to compile, so it reports
+# no and case-folded matching of non-ASCII account and payee names falls back
+# to bytes. Boost here is built with ICU; with the result set, `bal активы`
+# matches `Активы:Банк`, and a missing ICU fails the link instead.
 #
 # USE_GPGME reads a journal that gpg encrypted, through gpgmepp.
 #
@@ -48,10 +53,10 @@ cmake .. -G Ninja \
 	-DBUILD_WEB_DOCS=OFF \
 	-DUSE_PYTHON=OFF \
 	-DUSE_GPGME=ON \
-	-DBUILD_LIBRARY=ON
-for _h in HAVE_EDIT HAVE_BOOST_REGEX_UNICODE; do
-	grep -q "^#define $_h 1" system.hh || { echo "ledger: $_h missing" >&2; exit 1; }
-done
+	-DBUILD_LIBRARY=ON \
+	-DBOOST_REGEX_UNICODE_RUNS=1
+grep -q '^#define HAVE_EDIT 1' system.hh \
+	|| { echo "ledger: libedit missing" >&2; exit 1; }
 ninja
 ninja doc
 DESTDIR=$PKG ninja install

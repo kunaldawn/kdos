@@ -21,8 +21,13 @@ export XML_CATALOG_FILES=/etc/xml/catalog
 meson setup build \
 	--prefix=/usr --libdir=lib --sysconfdir=/etc \
 	--buildtype=release \
+	-D trust_module=enabled \
 	-D trust_paths=/etc/ssl/cert.pem \
 	-D module_path=/usr/lib/pkcs11 \
+	-D libffi=enabled \
+	-D systemd=disabled \
+	-D bash_completion=enabled \
+	-D zsh_completion=enabled \
 	-D nls=false \
 	-D man=true
 meson compile -C build

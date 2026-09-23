@@ -472,10 +472,12 @@ you have, and losing that bet is silent.
 firmware and the topology files, because firmware with no topology loads and binds nothing, which
 is still silence.
 
-`wireless-regdb` ships prebuilt and must stay that way. The kernel verifies upstream's signature on
-it, so a locally regenerated database is rejected silently and leaves the radio in the world
-regulatory domain: working, with no 5 GHz DFS channels and reduced transmit power, and nothing
-anywhere saying why.
+`wireless-regdb` is built from upstream's `db.txt` and ships with upstream's own signature. The
+kernel verifies that signature, and a database it does not cover is rejected silently and leaves the
+radio in the world regulatory domain: working, with no 5 GHz DFS channels and reduced transmit
+power, and nothing anywhere saying why. The build therefore verifies upstream's signature against
+the database it generated and fails if it does not match, so an edited `db.txt` never reaches the
+image.
 
 ### Microcode
 

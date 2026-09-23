@@ -15,4 +15,4 @@ source      = https://github.com/shadow-maint/$name/releases/download/$version/$
 sha256      = b89f432b75ae55a2d852b446d0365484795fdf533ab97d550e325fa15594a224  shadow-4.20.2.tar.xz
 description = Programs for handling passwords in a secure way
 homepage    = https://github.com/shadow-maint/shadow
-depends     = acl
+depends     = acl attr

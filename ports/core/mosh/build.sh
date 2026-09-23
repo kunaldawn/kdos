@@ -12,6 +12,9 @@
 ./configure \
 	--prefix=/usr \
 	--mandir=/usr/share/man \
+	--with-crypto-library=openssl-with-openssl-ocb \
+	--enable-completion \
+	--without-utempter \
 	CXXFLAGS="$CXXFLAGS -std=gnu++17"
 make
 make DESTDIR=$PKG install

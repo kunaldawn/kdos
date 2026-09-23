@@ -15,4 +15,4 @@ source      = https://w1.fi/releases/wpa_supplicant-$version.tar.gz
 sha256      = 08e23937e16d0155e55cab2b51f51fbe10d80a1aa91c4e15442645059b737ef6  wpa_supplicant-2.12.tar.gz
 description = IEEE 802.1X / WPA/WPA2/WPA3 supplicant (Wi-Fi authentication backend for NetworkManager)
 homepage    = https://w1.fi/wpa_supplicant/
-depends     = openssl libnl dbus pkgconf
+depends     = openssl libnl dbus pkgconf pcsc-lite

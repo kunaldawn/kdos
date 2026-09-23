@@ -15,4 +15,4 @@ source      = $name-$version.tar.xz::https://gitlab.freedesktop.org/NetworkManag
 sha256      = 262864cfd198123d3e5dbe91937441b97ee9059d6d712e1a5bfbb1c54668d14d  networkmanager-1.58.1.tar.xz
 description = Network connection manager (Wi-Fi, Ethernet, VPN; libnm for the panel's network surface)
 homepage    = https://networkmanager.dev/
-depends     = meson glib dbus libnl libndp jansson libgudev polkit wpa_supplicant nftables dnsmasq libpsl newt curl readline
+depends     = meson glib dbus libnl libndp jansson libgudev polkit wpa_supplicant nftables dnsmasq libpsl newt curl readline libbpf clang bpftool

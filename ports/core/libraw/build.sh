@@ -27,6 +27,7 @@ autoreconf -f -i
 	--disable-examples \
 	--disable-openmp \
 	--enable-jpeg \
-	--enable-lcms
+	--enable-lcms \
+	--enable-zlib
 make
 make DESTDIR=$PKG install

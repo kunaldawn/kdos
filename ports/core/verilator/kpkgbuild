@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/verilator/verilator/arch
 sha256      = 8c8d2e11e6ad32f641dd250742a94195ddecb912e2e2dabe2f42ddbbb99c1092  verilator-5.052.tar.gz
 description = Fast Verilog simulation and the best free RTL lint
 homepage    = https://verilator.org/
-depends     = autoconf automake perl help2man bison flex python3 zlib
+depends     = autoconf automake perl help2man bison flex python3 zlib z3 ccache

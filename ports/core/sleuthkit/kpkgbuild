@@ -15,4 +15,4 @@ source      = https://github.com/sleuthkit/sleuthkit/releases/download/$name-$ve
 sha256      = 3a8c1e7d18a9b81f3e5e8aa78313974aceaafc6e051d636bc92cd7168286eca9  sleuthkit-4.15.0.tar.gz
 description = Filesystem forensics — reads images mount(8) refuses
 homepage    = https://www.sleuthkit.org/
-depends     = autoconf automake libtool pkgconf zlib sqlite perl
+depends     = autoconf automake libtool pkgconf zlib sqlite perl libewf

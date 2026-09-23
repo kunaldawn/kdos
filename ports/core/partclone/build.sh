@@ -18,12 +18,17 @@ autoreconf -f -i
 # One --enable per filesystem, and each is gated on its library being present:
 # without the flag the tool is simply not built, so a recipe that claims ext4
 # and omits it produces a partclone that cannot read ext4.
-# --disable-ntfs, AND THE REASON IS NOT THAT NTFS DOES NOT MATTER. partclone's
-# NTFS support wants ntfsprogs' INTERNAL headers (libntfs), which the ntfs-3g
-# port does not install — it ships libntfs-3g, a different library. configure
-# answers the absence with a warning and builds no partclone.ntfs, so asking
-# for it produces a recipe whose claim and whose output disagree. `ntfsclone`
-# from ntfsprogs is the tool for that filesystem and it is already installed.
+#
+# --enable-ntfs builds partclone.ntfs against libntfs-3g and <ntfs-3g/*.h>,
+# which the ntfs-3g port installs. configure answers a missing library with a
+# warning, not an error, and builds no partclone.ntfs, so ntfs-3g is in
+# depends. hfsp and apfs are built in and need no library.
+#
+# --enable-ncursesw is the -N progress screen; --enable-fuse builds imgfuse,
+# which mounts an image as block files without restoring it, against fuse3.
+# Both fail configure when their library is missing.
+#
+# openssl, zlib and zstd are unconditional: configure stops without them.
 #
 # ITS MAN PAGES NAME THEIR STYLESHEET BY URL — `docbook.sourceforge.net/
 # release/xsl/current/manpages/docbook.xsl` — and `make build` runs
@@ -56,9 +61,13 @@ fi
 	--enable-extfs \
 	--enable-fat \
 	--enable-exfat \
-	--disable-ntfs \
+	--enable-ntfs \
+	--enable-hfsp \
+	--enable-apfs \
 	--enable-btrfs \
 	--enable-xfs \
-	--enable-f2fs
+	--enable-f2fs \
+	--enable-ncursesw \
+	--enable-fuse
 make MAN_STYLESHEET="$MAN_XSL"
 make MAN_STYLESHEET="$MAN_XSL" DESTDIR=$PKG install

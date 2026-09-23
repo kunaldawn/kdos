@@ -15,4 +15,4 @@ source      = https://weechat.org/files/src/$name-$version.tar.xz
 sha256      = b8744c6f5dc5543062791f563e0516dbc96a36161e1a03c468b3b7dcc8be5aff  weechat-4.10.1.tar.xz
 description = Extensible IRC client for the terminal, with a relay and scripting
 homepage    = https://weechat.org/
-depends     = cmake pkgconf ncurses gnutls curl zlib zstd libgcrypt libgpg-error cjson python3 perl lua asciidoctor
+depends     = cmake pkgconf ncurses gnutls curl zlib zstd libgcrypt libgpg-error cjson python3 perl lua asciidoctor ruby tcl

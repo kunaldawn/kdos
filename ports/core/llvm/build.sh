@@ -9,6 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# LLVM_ENABLE_LIBEDIT=OFF: libedit is built in a later phase than this one,
+# and the automatic probe would make clang-repl's line editing, and the
+# HAVE_LIBEDIT that LLVMConfig exports, depend on build order.
+# LLVM_BINUTILS_INCDIR is what builds LLVMgold.so; it needs binutils'
+# plugin-api.h and is skipped without a word when the header is missing.
 cmake -S llvm -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_BUILD_TYPE=Release \
@@ -23,6 +28,14 @@ cmake -S llvm -B build -G Ninja \
 	-D LLVM_INCLUDE_TESTS=OFF \
 	-D LLVM_ENABLE_FFI=ON \
 	-D LLVM_ENABLE_RTTI=ON \
+	-D LLVM_ENABLE_ZLIB=FORCE_ON \
+	-D LLVM_ENABLE_ZSTD=FORCE_ON \
+	-D LLVM_ENABLE_LIBXML2=FORCE_ON \
+	-D LLVM_ENABLE_LIBEDIT=OFF \
+	-D LLVM_ENABLE_LIBPFM=OFF \
+	-D LLVM_ENABLE_Z3_SOLVER=OFF \
+	-D LLVM_ENABLE_BINDINGS=OFF \
+	-D LLVM_USE_PERF=ON \
 	-D LLVM_ENABLE_OCAMLDOC=OFF \
 	-D LLVM_INSTALL_UTILS=ON \
 	-D LLVM_ENABLE_LIBCXX=OFF \

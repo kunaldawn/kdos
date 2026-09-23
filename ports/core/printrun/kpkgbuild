@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/kliment/Printrun/archive
 sha256      = 4a2c25106db139a940aa45cf04ddeedf2afd775801c0ec6f008886230e1b5e3b  printrun-2.2.0.tar.gz
 description = pronsole and printcore — send a sliced job to a printer over USB serial
 homepage    = https://github.com/kliment/Printrun
-depends     = python3 python3-setuptools python3-pip python3-cython python3-pyserial python3-platformdirs
+depends     = python3 python3-setuptools python3-pip python3-cython python3-pyserial python3-platformdirs python3-psutil

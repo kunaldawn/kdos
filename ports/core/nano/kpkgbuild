@@ -14,4 +14,4 @@ release     = 1
 source      = https://www.nano-editor.org/dist/v${version%%.*}/$name-$version.tar.xz
 sha256      = 05ecb99247b782e8a5b3a25ed4101dd034b0236902f7449bc9795b717642f7e9  nano-9.2.tar.xz
 description = Simple text editor which aims to replace Pico, the default editor in the Pine package
-depends     = ncurses
+depends     = ncurses file zlib

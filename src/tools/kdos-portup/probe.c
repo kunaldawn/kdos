@@ -622,7 +622,7 @@ static void seps_to_dot(const char *s, char *out, size_t cap)
  * version and URL version are the same release spelled with different
  * separators:
  *
- *     ca-certificates  recipe 20251202   url .../cacert-2025-12-02.pem
+ *     a date pin       recipe 20251202   url .../cacert-2025-12-02.pem
  *     imagemagick      recipe 7.1.2.21   url .../ImageMagick-7.1.2-21.tar.xz
  *
  * Every extracted candidate is also tried with its separators stripped

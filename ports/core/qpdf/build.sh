@@ -15,9 +15,9 @@
 # all. Between them they cover what people actually need to do to a PDF without
 # starting a GUI in a container.
 #
-# --enable-crypto-gnutls: qpdf can use gnutls, openssl or its own bundled
-# implementation. gnutls is already here for wireshark and samba, and a
-# bundled crypto is a third copy nobody patches.
+# REQUIRE_CRYPTO_GNUTLS with USE_IMPLICIT_CRYPTO off: qpdf can use gnutls,
+# openssl or its own bundled implementation. gnutls is already here for
+# wireshark and samba, and a bundled crypto is a third copy nobody patches.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -28,6 +28,7 @@ cmake .. -G Ninja \
 	-DBUILD_STATIC_LIBS=OFF \
 	-DUSE_IMPLICIT_CRYPTO=OFF \
 	-DREQUIRE_CRYPTO_GNUTLS=ON \
-	-DBUILD_DOC=OFF
+	-DBUILD_DOC=OFF \
+	-DINSTALL_EXAMPLES=OFF
 ninja
 DESTDIR=$PKG ninja install

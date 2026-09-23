@@ -20,8 +20,14 @@
 # utils are the point of this port rather than a side effect. -DENABLE_UTILS=ON
 # is therefore load-bearing.
 #
-# -DENABLE_BOOST=OFF drops the splash renderer's optional SIMD path rather than
-# adding boost to a library whose consumers here are two command-line tools.
+# -DENABLE_BOOST=ON uses boost's headers for the Splash rasteriser's small
+# containers; nothing links boost at run time.
+#
+# pdfsig verifies and signs through the GPG backend (gpgmepp). The NSS backend
+# stays off because nss is not a port.
+#
+# BUILD_TESTING is not a poppler option; BUILD_CPP_TESTS and BUILD_MANUAL_TESTS
+# are what gate its test programs, and both default to ON.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -29,17 +35,23 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_SHARED_LIBS=ON \
-	-DBUILD_TESTING=OFF \
+	-DBUILD_CPP_TESTS=OFF \
+	-DBUILD_MANUAL_TESTS=OFF \
 	-DENABLE_UTILS=ON \
 	-DENABLE_CPP=ON \
 	-DENABLE_GLIB=OFF \
 	-DENABLE_QT5=OFF \
 	-DENABLE_QT6=OFF \
-	-DENABLE_BOOST=OFF \
-	-DENABLE_GPGME=OFF \
+	-DENABLE_BOOST=ON \
+	-DENABLE_GPGME=ON \
 	-DENABLE_LIBCURL=OFF \
 	-DENABLE_NSS3=OFF \
 	-DENABLE_LCMS=ON \
+	-DENABLE_LIBJPEG=ON \
+	-DENABLE_LIBTIFF=ON \
+	-DENABLE_HARFBUZZ=ON \
+	-DWITH_Cairo=ON \
+	-DWITH_PNG=ON \
 	-DENABLE_LIBOPENJPEG=openjpeg2
 ninja
 DESTDIR=$PKG ninja install

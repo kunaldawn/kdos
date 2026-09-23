@@ -15,4 +15,4 @@ source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${v
 sha256      = c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a  lldb-23.1.2.tar.xz
 description = Debugger from the LLVM project, for C, C++, Rust and Zig
 homepage    = https://lldb.llvm.org/
-depends     = llvm clang swig python3 ncurses libedit libxml2 zlib xz python3-sphinx
+depends     = llvm clang swig python3 ncurses libedit libxml2 zlib xz tree-sitter python3-sphinx

@@ -21,37 +21,91 @@
 # the DA reply — a serial line, an ssh login, or a terminal on tty2. Without it
 # mpv there has no video output at all and plays the sound of a film.
 #
-# -Dx11=disabled is the hard rule; -Dgl=enabled -Degl=enabled is what makes the
-# Wayland path work at all. -Dlua=disabled drops the scripting layer rather
-# than adding a lua to the host for it.
+# -Dx11=disabled is the hard rule, and every X11 sub-option (egl-x11, gl-x11,
+# vaapi-x11, vdpau, xv, x11-clipboard) is named off with it so none can come
+# back through a stray libX11 in the chroot. -Dgl=enabled -Degl=enabled with
+# egl-wayland, egl-drm, gbm and dmabuf-wayland is what makes the Wayland and
+# KMS paths work at all; vaapi with its drm and wayland halves is hardware
+# decode through libva.
 #
-# libplacebo is a HARD dependency of mpv 0.41 and is a port; ours is built with
-# no GPU backend (its Vulkan-Headers and glad submodules are empty in a release
-# archive), so `--vo=gpu-next` is unavailable and `--vo=gpu` — mpv's own GL
-# renderer, what it shipped for years — is what plays video here.
+# -Dlua=luajit is the scripting layer, and with it the on-screen controller,
+# the stats overlay and the console: all three are Lua scripts built into the
+# binary. mpv takes Lua 5.1 or 5.2 only, so the host's lua is no use to it;
+# luajit is 5.1 with the 5.2 extensions its port enables.
+#
+# libplacebo is a HARD dependency of mpv 0.41 and is a port. Its one GPU
+# backend is Vulkan (its OpenGL backend needs glad2, which is not a port), so
+# -Dvulkan=enabled is what gives `--vo=gpu-next` — first in mpv's default
+# order — a context to run in. `--vo=gpu`, mpv's own GL renderer, is the
+# fallback when no Vulkan device answers.
+#
+# rubberband is the af=rubberband pitch and tempo filter, zimg the software
+# scaler mpv prefers over libswscale for conversions and screenshots, jpeg the
+# screenshot writer; dvbin needs only the kernel's DVB headers. Everything else
+# is named off: no port (uchardet, libbluray, dvdnav, cdda, caca, vapoursynth,
+# mujs, shaderc, spirv-cross, cuda), a second route to the same sound server
+# (pulse, jack, openal, sdl2), or a legacy one (oss-audio). build-date is off
+# because a timestamp in the binary makes two builds of the same source differ.
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
 	--buildtype=release \
 	-Dlibmpv=true \
 	-Dcplayer=true \
+	-Dbuild-date=false \
+	-Dcplugins=enabled \
 	-Dx11=disabled \
+	-Degl-x11=disabled \
+	-Dgl-x11=disabled \
+	-Dvaapi-x11=disabled \
+	-Dvdpau=disabled \
+	-Dvdpau-gl-x11=disabled \
+	-Dxv=disabled \
+	-Dx11-clipboard=disabled \
 	-Dwayland=enabled \
 	-Dgl=enabled \
 	-Degl=enabled \
+	-Degl-wayland=enabled \
+	-Degl-drm=enabled \
+	-Dgbm=enabled \
+	-Ddmabuf-wayland=enabled \
 	-Ddrm=enabled \
-	-Dvulkan=disabled \
+	-Dvulkan=enabled \
+	-Dshaderc=disabled \
+	-Dspirv-cross=disabled \
+	-Dvaapi=enabled \
+	-Dvaapi-drm=enabled \
+	-Dvaapi-wayland=enabled \
+	-Dcuda-hwaccel=disabled \
+	-Dcuda-interop=disabled \
+	-Dcaca=disabled \
+	-Dsixel=enabled \
 	-Dalsa=enabled \
 	-Dpipewire=enabled \
 	-Dpulse=disabled \
+	-Djack=disabled \
+	-Dopenal=disabled \
+	-Dsndio=disabled \
+	-Doss-audio=disabled \
 	-Dsdl2-audio=disabled \
 	-Dsdl2-video=disabled \
 	-Dsdl2-gamepad=disabled \
-	-Dlua=disabled \
+	-Dlua=luajit \
 	-Djavascript=disabled \
+	-Drubberband=enabled \
+	-Dzimg=enabled \
+	-Djpeg=enabled \
+	-Dzlib=enabled \
+	-Diconv=enabled \
+	-Duchardet=disabled \
+	-Dlibavdevice=enabled \
 	-Dlibarchive=enabled \
 	-Dlcms2=enabled \
-	-Dsixel=enabled \
+	-Dlibbluray=disabled \
+	-Ddvdnav=disabled \
+	-Dcdda=disabled \
+	-Ddvbin=enabled \
+	-Dvapoursynth=disabled \
 	-Dmanpage-build=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

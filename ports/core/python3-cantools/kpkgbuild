@@ -16,6 +16,6 @@ sha256      = ddb1538b8ec9353d791da089ba30e1e46ec95f54a55276bbdd3da096876a0a82  
 sha256      = 4d5d10724e0cd717e88b1615625e45e8e2596775c44db0710046fb186c55e016  python3-cantools-vendor-44.1.0.tar.xz
 description = Decode a live candump into named signals, and generate the MCU-side C
 homepage    = https://github.com/cantools/cantools
-depends     = python3 python3-setuptools python3-pip python3-setuptools-scm can-utils
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm can-utils python3-packaging python3-typing-extensions matplotlib
 vendoring   = python
 pyrequirements = no

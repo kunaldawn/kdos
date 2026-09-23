@@ -17,12 +17,14 @@
 # configure succeeds and the pic targets fail at link time inside a build that
 # has otherwise finished.
 #
-# --disable-ucsim and --disable-device-lib because the simulator and the
-# prebuilt device libraries are a second build each, and what is wanted is the
-# compiler.
+# THE DEVICE LIBRARIES ARE THE C RUNTIME. Without them there is no crt0, no
+# stdlib and no multiply/divide helpers for mcs51, z80 or stm8, and an ordinary
+# program fails to link. ucsim is the simulator sdcdb drives, so code runs and
+# is stepped through with no board attached. Both are built from this tarball
+# with no further dependency; ucsim's serial-console tool finds ncurses and
+# sdcdb finds readline, which is why both are declared.
 ./configure --prefix=/usr \
 	--disable-pic14-port --disable-pic16-port \
-	--disable-ucsim --disable-device-lib \
 	--disable-doc
 make
 make DESTDIR=$PKG install

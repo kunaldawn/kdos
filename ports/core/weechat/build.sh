@@ -12,20 +12,18 @@
 # EVERY SCRIPTING BACKEND IS A HARD CONFIGURE DEPENDENCY, not a feature that
 # degrades. `find_package(... REQUIRED)` sits in each plugin's CMakeLists, so a
 # backend switched on without its interpreter stops cmake before a line is
-# compiled. Python, Perl and Lua are ports and are on; Guile, PHP and
-# JavaScript (v8) are not ports.
+# compiled. Python, Perl, Lua, Ruby and Tcl are ports and are on; Guile, PHP
+# and JavaScript (v8) are not ports.
 #
-# RUBY IS OFF ALTHOUGH THE PORT EXISTS. The plugin has not been built against
-# Ruby 4.0, and turning it on puts a libruby link under the plugin module.
+# RUBY IS 4.0 and the plugin links libruby, which the ruby port builds shared.
 #
-# TCL IS OFF ALTHOUGH THE PORT EXISTS, and the reason is the probe rather than
-# the language. The tcl plugin asks cmake's own FindTCL, whose newest library
-# name is `tcl8.7`; this image ships `libtcl9.0.so` with no unversioned link,
-# so the probe finds the header and `tclsh` but no library, and weechat turns
-# that into `Tcl not found` — a failed configure, not a missing plugin. The
-# plugin's own sources compile clean against Tcl 9 headers, so an unversioned
-# `libtcl.so` in the tcl port is all that stands between here and switching
-# this to ON.
+# TCL IS NAMED BY PATH because of the probe, not the language. The tcl plugin
+# asks cmake's own FindTCL, whose newest library name is `tcl8.7`; this image
+# ships `libtcl9.0.so` with no unversioned link, so left to search the probe
+# finds the header and `tclsh` but no library, and weechat turns that into
+# `Tcl not found` — a failed configure, not a missing plugin. TCL_LIBRARY and
+# TCL_INCLUDE_PATH hand FindTCL the answer; the plugin's own sources compile
+# clean against Tcl 9 headers.
 #
 # LUA IS THE 5.5 LIBRARY. `pkg_search_module(LUA lua lua5.4 …)` takes `lua.pc`
 # first, which is 5.5 here; the plugin uses no interface 5.5 dropped, and the
@@ -71,8 +69,10 @@ cmake .. \
 	-DENABLE_PYTHON=ON \
 	-DENABLE_PERL=ON \
 	-DENABLE_LUA=ON \
-	-DENABLE_TCL=OFF \
-	-DENABLE_RUBY=OFF \
+	-DENABLE_TCL=ON \
+	-DTCL_LIBRARY=/usr/lib/libtcl9.0.so \
+	-DTCL_INCLUDE_PATH=/usr/include \
+	-DENABLE_RUBY=ON \
 	-DENABLE_GUILE=OFF \
 	-DENABLE_PHP=OFF \
 	-DENABLE_JAVASCRIPT=OFF \

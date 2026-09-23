@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/ggml-org/whisper.cpp/arc
 sha256      = 57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae  whisper.cpp-1.9.4.tar.gz
 description = Speech to text on the CPU, with the model on the disk and nothing sent anywhere
 homepage    = https://github.com/ggml-org/whisper.cpp
-depends     = cmake sdl2-compat
+depends     = cmake sdl2-compat ffmpeg openblas

@@ -27,9 +27,16 @@ export CPPFLAGS="$CPPFLAGS \
 	-DSQLITE_ENABLE_MATH_FUNCTIONS \
 	-DSQLITE_ENABLE_RTREE=1 \
 	-DSQLITE_ENABLE_GEOPOLY=1"
+# --session is the changeset API (it brings the pre-update hook with it) and
+# --dbpage the raw-page table that the shell's .recover reads; both are
+# compile-time only. --enable-readline makes a missing readline stop the build
+# instead of leaving a shell with no line editing.
 ./configure --prefix=/usr \
 	--enable-fts3 \
 	--enable-fts4 \
-	--enable-fts5 
+	--enable-fts5 \
+	--session \
+	--dbpage \
+	--enable-readline
 make
 make DESTDIR=$PKG install

@@ -14,6 +14,10 @@
 #
 # --with-systemdsystemunitdir=no drops the unit and the D-Bus activation file
 # that starts it; the daemon is started by an init script like every other.
+#
+# --disable-werror: configure otherwise appends -Werror to CXXFLAGS, and a new
+# warning in the next compiler fails the build of an unchanged source.
+#
 # `m4/` IS NOT IN THE TARBALL AND autoreconf REQUIRES IT. configure.ac calls
 # GTK_DOC_CHECK, so autoreconf runs gtkdocize, which copies its makefile into
 # m4/ and fails on a directory that is not there — reported as
@@ -23,6 +27,7 @@ autoreconf -fi
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--localstatedir=/var \
 	--with-systemdsystemunitdir=no \
-	--with-dbus-sys-dir=/usr/share/dbus-1/system.d
+	--with-dbus-sys-dir=/usr/share/dbus-1/system.d \
+	--disable-werror
 make
 make DESTDIR=$PKG install
