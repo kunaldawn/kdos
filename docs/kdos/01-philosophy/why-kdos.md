@@ -24,9 +24,11 @@ There is no base image underneath it and no binary archive to fall back on. The 
 carries 833 installed packages.
 
 A claim like that is worth nothing without its exceptions, so [the exceptions are listed in
-full](#what-is-not-built-from-source) rather than glossed over: vendor firmware, two bootstrap
-compilers, seven font sets, some vendored artwork, one third-party C source set, and the Debian
-packages that make up the application catalogue.
+full](#what-is-not-built-from-source) rather than glossed over: firmware and code for other
+processors, compiled font data, three compiler bootstrap seeds, data with no other source form, some
+vendored artwork, one third-party C source set, and the Debian packages that make up the
+application catalogue. Everything the host installs and runs on its own processor is compiled here;
+the rule and its four exempt classes are in [Principles](principles.md#everything-that-runs-on-the-host-is-built-from-source).
 
 ## KDOS can build KDOS
 
@@ -80,9 +82,10 @@ containers is what keeps the second group small enough to compile from source in
 
 Each entry here was checked against the tree.
 
-### Vendor firmware and microcode
+### Firmware and code for another processor
 
-No source exists to build, so these three ports ship binaries.
+Code that runs on a DSP, a GPU, a microcontroller or a guest rather than on the host is shipped as
+upstream built it; for most of it no source is published. Three ports are nothing else:
 
 | Port | Version | Payload | What it is |
 |---|---|---|---|
@@ -100,28 +103,53 @@ The kernel sets `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y` and loads the database 
 signature verifies, so the build checks it against the generated file with upstream's certificate
 and fails on a mismatch: what ships is byte-for-byte the database upstream signed, or nothing.
 
-### Two bootstrap compilers
+The rest of this class rides inside ports that are otherwise compiled here:
 
-Rust and Go are each written in themselves, so building either needs a working one first.
+| Port | Payload |
+|---|---|
+| `intel-media-driver` | The closed EU kernels, compiled in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; rebuilding them from their assembly needs Intel's shader compiler, which is not a port |
+| `alsa-ucm-conf` | A small number of `.bin` files: precomputed EQ coefficients loaded into SOF DSPs |
+| `espflash`, `probe-rs`, `python3-esptool`, `openfpgaloader` | The flasher stubs, flash algorithms and bridge bitstreams each one uploads to the device it drives |
+| `qemu` | The guest firmware images from `pc-bios/` that its install copies unfiltered — SeaBIOS, EDK2, OpenSBI and the rest — which run inside the guest |
+
+### Three compiler bootstrap seeds
+
+Rust, Go and Zig are each written in themselves, so building any of them needs a working one first.
 
 | Port | Version | Bootstrap payload |
 |---|---|---|
 | `rust` | 1.98.1 | 150 MB of upstream 1.97.1 stage-0 binaries — `rustc` (101 MB), `rust-std` (37 MB) and `cargo` (11 MB) — beside the 233 MB source |
 | `go` | 1.27.1 | 57 MB of upstream 1.25.9 bootstrap toolchain beside the 33 MB source |
+| `zig` | 0.16.0 | `stage1/zig1.wasm`, inside the source tarball: a WebAssembly build of the compiler that the build translates to C and compiles to start its own bootstrap |
 
-Both bootstraps are pinned by version and sha256 like every other source, so the offline build
-still holds. Everything the bootstraps produce — the shipped `rustc`, `cargo` and `go`, and every
-Rust and Go program in the tree — is compiled here. Go's source tarball also carries
+Every seed is pinned by version and sha256 like every other source, so the offline build still
+holds, and no seed is installed. Everything the seeds produce — the shipped `rustc`, `cargo`, `go`
+and `zig`, and every Rust, Go and Zig program in the tree — is compiled here. Go's source tarball also carries
 upstream-compiled objects — the race detector's runtime and the BoringCrypto module — and the `go`
 port deletes them from what it installs rather than ship binaries it did not build.
 
-### Seven prebuilt font sets
+### Compiled font data
 
-`noto-fonts` (2.015), `noto-cjk` (2.004), `noto-emoji` (2.051), `noto-fonts-extra`,
-`nerd-fonts-symbols` (3.5.1), `ttf-dejavu` (2.37) and `terminus-ttf` (4.49.3) ship as built faces
-because upstream publishes them that way. Each recipe unpacks an archive and installs the `.ttf`,
-`.ttc` or `.otf` files in it; none runs a font compiler. A font is drawn rather than compiled, and
-regenerating one from its sources would produce different outlines.
+`noto-fonts` (2.015), `noto-cjk` (2.004), `noto-fonts-extra` and `nerd-fonts-symbols` (3.5.1)
+ship as built faces because upstream publishes them that way, and the sources behind them compile
+through toolchains this tree does not carry — fontmake and gftools for Noto, AFDKO for Noto CJK,
+the Nerd Fonts patcher and its icon sets for the symbols. Each recipe unpacks an archive and
+installs the `.ttf`, `.ttc` or `.otf` files in it. The same holds for the faces bundled inside
+`mupdf`, `matplotlib` and `seqkit` (the last through its Go vendor bundle), which are installed or
+compiled in as their upstreams ship them.
+
+Three faces are compiled here, each by its upstream's own pipeline:
+
+| Port | From | Through |
+|---|---|---|
+| `ttf-dejavu` (2.37) | The FontForge sources, `src/*.sfd` | Upstream's `make full-ttf`: `fontforge` writes each face and `ttpostproc.pl` finishes its tables through `perl-font-ttf` |
+| `terminus-ttf` (4.49.3) | `terminus-font` 4.49.1's BDF sources | mkttf: `mkitalic` slants the BDFs, `fontforge` gathers every size as a bitmap strike and traces the largest into outlines with `potrace` |
+| `noto-emoji` (2.051) | The 128-pixel PNG artwork and the region flags | Upstream's `Makefile` for the CBDT face `NotoColorEmoji.ttf`: `waveflag`, ImageMagick, `pngquant`, `zopflipng`, and the builder scripts on `fonttools` and nototools |
+
+`fontforge` is built without its GUI, so it brings no GTK to the host. `fontforge` stamps
+`SOURCE_DATE_EPOCH` into every face it writes, and `terminus-ttf` takes the year in its copyright
+notice from the same variable, so two builds of one recipe are the same file. `noto-emoji` ships the
+bitmap face only; the COLRv1 face is built by nanoemoji, which is not a port.
 
 The console font is a separate port and is built from source: `terminus-font` (4.49.1) goes from
 BDF through `configure` and `make` into the PSF that
@@ -147,17 +175,29 @@ The 183 applications and the runtimes beneath them are Debian trixie packages, b
 the medium: the catalogue records which packages an application is, and podman builds it on the
 machine that asks. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
-### Data files are data
+### Data with no other source form
 
 `hwdata`, `xkeyboard-config`, `iso-codes` and `docbook-xml`/`xsl` are text or tables installed as
 they arrive. `iana-etc` is tables too, but generated at build time from IANA's own XML registries,
 each pinned by its hash, rather than carried as text somebody else produced. `ca-certificates` is
 generated the same way, from the `certdata.txt` of a pinned NSS release.
-One is not purely text: `alsa-ucm-conf` carries a small number of binary `.bin` files, precomputed
-EQ coefficients for SOF DSPs, which belong with the firmware group in kind if not in size.
+
+Some data is binary or generated upstream, and the file as shipped is the form upstream maintains —
+there is nothing earlier to build it from:
+
+| Port | Data |
+|---|---|
+| `tesseract` | `eng.traineddata`, `tessdata_fast`'s English model, a second `source =` line |
+| `perl-xml-parser` | The `.enc` encoding maps under `share/` |
+| `libkiwix` | The JavaScript of the server's skin under `static/`, minified files included |
+| `fcitx5-chinese-addons` | The pinyin-to-character and stroke tables, two further `source =` lines |
+| `john` | The `.chr` character-frequency files |
+| `alsa-utils` | Recorded audio: the channel-name voice samples `speaker-test` plays |
 
 Everything else on the host — every library, every daemon, the compiler, the kernel and the whole
-desktop — is compiled here from a tarball whose URL and sha256 are in this repository.
+desktop — is compiled here from a tarball whose URL and sha256 are in this repository. A prebuilt
+object for the host that a tarball carries and that fits none of these classes is deleted from the
+package: `go` drops its race-detector runtime and BoringCrypto module, and `john` drops `run/ztex`.
 
 ## Who should run KDOS
 

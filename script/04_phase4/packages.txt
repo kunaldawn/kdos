@@ -246,6 +246,10 @@ hexyl
 # question — which faces exist and what is in them — is otherwise answered by
 # opening one in something that has no place on this host.
 fonttools
+# Compiles and edits faces from a script or from Python, with no GUI. It is
+# what turns DejaVu's drawing sources and Terminus's bitmaps into the TrueType
+# files ttf-dejavu and terminus-ttf install.
+fontforge
 # A terminal spreadsheet for any tabular file. `pyrequirements = no`: its
 # requirements.txt is the OPTIONAL loader set and reaches pandas and scipy,
 # where its install_requires is python-dateutil.
@@ -523,6 +527,11 @@ potrace
 # Lossless, which is the only reason it is safe to point at an archive: the
 # output decodes bit-identical, so nobody has to judge acceptable quality loss.
 oxipng
+# The other two PNG passes: pngquant reduces a truecolour image to a palette,
+# which is lossy, and zopflipng recompresses one losslessly and slowly.
+# noto-emoji runs every emoji image through both.
+pngquant
+zopfli
 # A MIDI file is a SCORE, not a recording — a few kilobytes of "which note,
 # how hard, when", worthless without a synthesiser. No SoundFont is shipped:
 # picking one is picking a sound.
@@ -1419,7 +1428,7 @@ python3-pillow
 python3-pycparser
 python3-cffi
 python3-pikepdf
-python3-pi-heif
+python3-pillow-heif
 # cryptography is what pdfminer.six binds through, and half of PyPI with it.
 # maturin is its build backend and bootstraps itself with setuptools-rust,
 # which is why three of these five exist only to compile the fourth.

@@ -16,5 +16,5 @@ source      = $name-$version.tar.gz::https://gitlab.freedesktop.org/mobile-broad
 sha256      = fbc75adcc0d7b0565f256e7ff4e8872b0a37c4413ff576665f7470932d9c1b68  modemmanager-1.24.2.tar.gz
 description = Mobile broadband modem daemon (3G/4G/5G over QMI, MBIM, QRTR and AT), mmcli and libmm-glib
 homepage    = https://modemmanager.org/
-depends     = meson pkgconf glib python3 gettext dbus eudev libgudev polkit libmbim libqmi libqrtr-glib bash-completion gobject-introspection
+depends     = meson pkgconf glib python3 gettext dbus eudev libgudev polkit libmbim libqmi libqrtr-glib bash-completion gobject-introspection glib-introspection
 devseries   = odd-minor

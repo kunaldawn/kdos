@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = glib-introspection
+version     = 2.90.0
+release     = 1
+source      = glib-$version.tar.xz::https://download.gnome.org/sources/glib/${version%.*}/glib-$version.tar.xz
+sha256      = 17d15cac2af80a33271127408e0abc2748eb297c595c2a26409e81e14e7d1b8f  glib-2.90.0.tar.xz
+description = GLib's introspection data: the GLib, GObject, GModule, Gio and GIRepository GIR and typelib files
+homepage    = https://gitlab.gnome.org/GNOME/glib
+depends     = glib gobject-introspection python3-docutils meson pcre2 libffi zlib util-linux elfutils
+devseries   = odd-minor
+group       = glib

@@ -9,15 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE SAME RECIPE BUILDS IN 03_phase3 AND AGAIN IN 04_phase4, so every probe is
-# pinned against what 03_phase3 can reach.
+# THE SHIPPED BUILD IS THE 03_phase3 ONE. 04_phase4 names this port again, but
+# kpkg skips a package whose recorded recipe hash matches the tree, so every
+# probe is pinned against what 03_phase3 can reach.
 #
-# udev is the one feature that follows the phase, and it has to: eudev depends
-# on util-linux, so it cannot be a depend here, and 03_phase3 builds this port
-# before eudev while 04_phase4 builds it after. The shipped build is the
-# phase-4 one, and it must have udev — without it lsblk, run by anybody but
-# root, reports no filesystem type, label or UUID. The choice is stated from
-# libudev's presence rather than left to the probe.
+# --without-udev: eudev depends on util-linux for libblkid, so libudev cannot be
+# declared and the bootstrap build never finds it. lsblk then reads a
+# filesystem's type, label and UUID only by probing the device, which it
+# attempts only as root, so for anybody else those columns are empty.
 #
 # --disable-asciidoc: the release tarball carries every manual page already
 # generated, and they install without asciidoctor. Regenerating them would pull
@@ -25,13 +24,7 @@
 #
 # libmagic (file), pam_lastlog2 (pam) and NLS (gettext) all come later than this
 # port in 03_phase3; declaring any of them would drag it into the bootstrap.
-# libmount's own udev reader is off in both phases: it is built on libsystemd.
-if pkg-config --exists libudev; then
-	_udev=--with-udev
-else
-	_udev=--without-udev
-fi
-
+# libmount's own udev reader is built on libsystemd.
 ./configure \
 	--prefix=/usr \
 	--disable-chfn-chsh \
@@ -45,7 +38,7 @@ fi
 	--without-python \
 	--without-systemd \
 	--without-systemdsystemunitdir \
-	$_udev \
+	--without-udev \
 	--disable-libmount-udev-support \
 	--with-libz \
 	--with-btrfs \

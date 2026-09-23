@@ -21,6 +21,7 @@ _mk=(CFLAGS="$CFLAGS"
 make "${_mk[@]}" install install-man
 make -C contrib/subtree "${_mk[@]}" install install-man
 
+# No git-completion.zsh: installed as site-functions/_git it comes first in
+# fpath and shadows zsh's own, fuller _git with a wrapper around the bash one.
 install -Dm644 contrib/completion/git-completion.bash "$PKG/usr/share/bash-completion/completions/git"
-install -Dm644 contrib/completion/git-completion.zsh "$PKG/usr/share/zsh/site-functions/_git"
 install -Dm644 contrib/completion/git-prompt.sh -t "$PKG/usr/share/git"

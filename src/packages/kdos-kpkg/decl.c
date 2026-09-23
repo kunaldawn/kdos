@@ -56,7 +56,7 @@ struct KpDecl {
 	char name[128];
 	char version[128];
 	char release[64];
-	char source[2048];
+	char source[4096];
 	char sha256[4096];
 	/* Read by nothing here, and fields rather than helpers for that very
 	 * reason: set_key() files an unrecognised key into `var`, and `var` is

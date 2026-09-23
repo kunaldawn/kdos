@@ -40,8 +40,9 @@ patch -p1 -i $PORT_SRC/lnav-tailer-static.patch
 # paste a log into a search box, so the machine has to be able to answer a
 # question about its own logs — and lnav's sqlite view is the only thing on
 # this system that can. libarchive is what lets it read a rotated .gz or .xz
-# without unpacking it first; its probe and bzip2's only test and never fail,
-# so the depends line is what keeps them in.
+# without unpacking it first. Its probe, bzip2's and cargo's only test and
+# never fail (--with-cargo turns nothing on; only --without-cargo acts), so
+# the depends line is what keeps all three in.
 #
 # --disable-system-paths: otherwise every /usr/local and /opt/local that
 # exists on the builder is added to the include and library paths.

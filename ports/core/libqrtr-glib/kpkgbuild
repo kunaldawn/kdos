@@ -16,5 +16,5 @@ source      = $name-$version.tar.gz::https://gitlab.freedesktop.org/mobile-broad
 sha256      = 9e5f988c6005af347f6d0ac95c872e473c9c10c3ec3714ee0b73d896db7d5766  libqrtr-glib-1.4.0.tar.gz
 description = Qualcomm IPC Router (QRTR) protocol library on GLib (used by libqmi and ModemManager)
 homepage    = https://gitlab.freedesktop.org/mobile-broadband/libqrtr-glib
-depends     = meson pkgconf glib gobject-introspection
+depends     = meson pkgconf glib gobject-introspection glib-introspection
 devseries   = odd-minor

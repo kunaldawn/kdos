@@ -15,6 +15,9 @@
 # stronger and puts -I/usr/include ahead of libstdc++'s own headers, which
 # breaks their #include_next.
 #
+# --with-liblinear=included: configure otherwise links any system linear.h it
+# finds, and liblinear is not a port.
+#
 # --without-ndiff keeps upstream's install-ndiff out: it runs pip with build
 # isolation, which fetches setuptools. ndiff is installed below with the
 # installed setuptools instead.
@@ -27,6 +30,7 @@
 	--with-libssh2=yes \
 	--with-libz=yes \
 	--with-libpcre=included \
+	--with-liblinear=included \
 	--with-liblua=included
 make
 make DESTDIR=$PKG install

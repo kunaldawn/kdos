@@ -10,8 +10,7 @@
 # ---------------------------------
 
 # A TAG ARCHIVE, so autotools has to run. --disable-introspection and no vala:
-# both generate bindings for languages nothing here uses, and the glib here
-# installs no GIRs for introspection to build against.
+# both generate bindings for languages nothing here uses.
 #
 # crypto stays ON. gmime's whole value over a hand-rolled MIME parser is that
 # it verifies a signature and decrypts a part correctly, and a mail client that

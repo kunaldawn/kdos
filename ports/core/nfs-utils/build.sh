@@ -15,6 +15,7 @@ autoreconf -f -i
 # needs a portmapper, a lock daemon and a status daemon — three more services
 # on a machine with no systemd to sequence them. configure has no switch that
 # leaves the v3 helpers out, so they are built and simply never started.
+#
 # --enable-nfsv4server adds nfsv4.exportd, the export daemon a v4-only server
 # runs in place of rpc.mountd, with no portmapper beside it.
 #
@@ -23,8 +24,12 @@ autoreconf -f -i
 # --disable-svcgss leaves out rpc.svcgssd, the server half, as upstream's
 # default does. --disable-ldap: the umich_ldap idmap plugin wants openldap,
 # which is not a port, and configure links it whenever it finds it.
-# --enable-caps and --enable-uuid turn configure's silent probes for libcap and
-# libblkid into requirements.
+# --enable-caps makes a missing <sys/capability.h> stop configure, and
+# --enable-uuid a missing libblkid; left to default, both drop out in silence.
+#
+# nfsv4.exportd links only while the build optimises: exportd.c defines
+# cleanup_lockfiles as a plain C99 `inline` with no external definition, so a
+# call the compiler does not inline — as at -O0 — is an undefined reference.
 #
 # samba is the interoperability answer and this is the CORRECTNESS one: SMB
 # does not carry POSIX ownership, permissions, symlinks or byte-range locks the

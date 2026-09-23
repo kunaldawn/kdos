@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = acpica
+version     = 20260408
+release     = 1
+source      = https://github.com/open-acpica/acpica/releases/download/$version/$name-unix-$version.tar.gz
+sha256      = e66ceb26d6d514ce164fe22f5a4f7ca165cc38349d7a97f41a21f19b364647a2  acpica-20260408.tar.gz
+description = ACPI Component Architecture tools — the iasl ASL compiler, acpidump and acpixtract
+homepage    = https://www.intel.com/content/www/us/en/developer/topic-technology/open/acpica/overview.html
+depends     = bison flex m4

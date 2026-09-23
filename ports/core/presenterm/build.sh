@@ -15,7 +15,21 @@
 # THE PICTURES ARE THE TERMINAL'S. presenterm draws images through the sixel
 # and kitty protocols, which kdos-term speaks — so a slide with a diagram in it
 # works on the console, and falls back to blocks where it does not.
+#
+# THE HIGHLIGHTING SETS ARE bat's. src/code/highlighting.rs embeds
+# bat/syntaxes.bin and bat/themes.bin with include_bytes!, and main.rs prints
+# bat/acknowledgements.txt for --acknowledgements; upstream copies all three
+# out of a bat checkout, and the tarball carries none of their sources. The bat
+# port compiles the sets from those sources and installs them under
+# /usr/share/bat/assets, so they replace upstream's copies before cargo runs.
+# presenterm reads them as bincode dumps of its own syntect's types and of
+# bat's lazy theme-set layout, which carry no version tag: a bat that links
+# another syntect major gives sets that abort presenterm at the first code
+# block, and a bump of either port checks the two Cargo.lock files agree.
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+install -m644 /usr/share/bat/assets/syntaxes.bin /usr/share/bat/assets/themes.bin \
+	/usr/share/bat/assets/acknowledgements.txt bat/
 
 cargo build --release --frozen --offline
 

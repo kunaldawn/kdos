@@ -14,6 +14,7 @@ release     = 1
 source      = https://github.com/sharkdp/bat/archive/v$version.tar.gz
 sha256      = 4474de87e084953eefc1120cf905a79f72bbbf85091e30cf37c9214eafcaa9c9  bat-0.26.1.tar.gz
 sha256      = 389113468c82f4c3085c5cb80ad778954e7fcf4bfdf7b42a1acc7ba50870b5d4  bat-vendor-0.26.1.tar.xz
+sha256      = 3d4439126841c3b0d62f3f0985ea17be85912d13092cdc33d5e7bb84f7f7ff2b  bat-assets-0.26.1.tar.xz
 description = bat — a cat clone with syntax highlighting and Git integration
 homepage    = https://github.com/sharkdp/bat
 depends     = rust zlib

@@ -65,8 +65,9 @@
 #
 # Each NO_* names a feature this image does not carry, most of them for want
 # of a library. perf answers a missing dependency with a warning and a
-# narrower binary, so the absent ones are stated rather than probed: a detection that silently flips is a perf that
-# loses a feature on an unrelated version bump.
+# narrower binary, so the absent ones are stated rather than probed: a
+# detection that silently flips is a perf that loses a feature on an unrelated
+# version bump.
 #   NO_LIBNUMA           numactl is not ported; drops `perf bench numa mem`
 #   NO_LIBPFM4           libpfm is not ported; drops its raw event names
 #   NO_BABELTRACE2       babeltrace2 is not ported; drops `perf data` CTF

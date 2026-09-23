@@ -590,6 +590,61 @@ The LLVM ports take their sources in two ways. From 22 on, upstream publishes on
 `lldb`, `libclc`, `libunwind`) carries that one tarball and configures its own directory with
 `cmake -S <dir>`. The 21 slot uses the per-component tarballs, which were still published for 21.x.
 
+## A second build of the same source
+
+A port builds once, so a package whose full build needs something that itself depends on the
+package is split in two. `glib` builds with introspection off, because `gobject-introspection`
+depends on `glib`. `glib-introspection` builds the same glib tarball again with
+`-D introspection=enabled`, against the installed `glib` and `gobject-introspection`, and packages
+only the GIR and typelib files that build writes: `GLib-2.0`, `GLibUnix-2.0`, `GObject-2.0`,
+`GModule-2.0`, `Gio-2.0`, `GioUnix-2.0` and `GIRepository-3.0`, under `/usr/share/gir-1.0` and
+`/usr/lib/girepository-1.0`. It installs the rest of the build into a staging directory inside the
+source tree and copies those two sets into `$PKG`. Packaging anything else would give two
+packages the same path.
+
+The second port carries the tarball under the first port's file name, through
+`glib-$version.tar.xz::<url>`, with the same checksum, and LFS stores the one object for both
+paths. Its `version` must equal the first port's: the typelib describes the library installed
+beside it. Both recipes carry `group = glib`, so the version checker offers the two only as one
+bump; `download.gnome.org` is no forge, and without the key each would be offered alone. Its meson
+options are the first port's, except the one being turned
+on.
+
+A port that builds introspection data from a glib library names both `gobject-introspection` and
+`glib-introspection` in `depends`: `g-ir-scanner` comes from the first, and every GIR it writes
+includes `GLib-2.0`, `GObject-2.0` or `Gio-2.0` from the second. `libqrtr-glib`, `libmbim`,
+`libqmi` and `modemmanager` do.
+
+## What is built from source
+
+Everything the host installs and runs on its own processor is compiled here from source; the
+Debian packages in boxes are outside the rule. A recipe that installs a program, a library, a
+module or a shared object it did not compile breaks the claim the whole tree makes: the binary cannot be read, cannot be rebuilt by `kdos rebuild`, and carries whatever its
+builder put in it. Four classes of payload are exempt, and each is exempt for a reason the next
+recipe has to be able to name.
+
+| Class | What it covers | Why it cannot be compiled here |
+|---|---|---|
+| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the guest firmware images `qemu` installs from its `pc-bios/` | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
+| Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`; the faces bundled inside `mupdf`, `matplotlib` and `seqkit` | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf` and `noto-emoji` |
+| Compiler bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm` | A compiler written in its own language needs a working one first. Each seed is used only to build, and never ships |
+| Data with no other source form | The `tesseract` English model, the `perl-xml-parser` `.enc` encoding maps, the JavaScript in `libkiwix`'s skin, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, and recorded audio such as the `speaker-test` samples in `alsa-utils` | The file is the form upstream maintains; there is nothing earlier to build it from |
+
+Every exempt payload is still a `source =` line with a `sha256`, so the offline build and the
+checksum hold for it exactly as for a tarball of C.
+
+What follows for a recipe:
+
+- **A prebuilt object for the host that fits no class is removed.** When a source tarball carries
+  one, use the flag that rebuilds it, or delete it from `$PKG` after the install. `go` deletes the
+  race detector's runtime and the BoringCrypto module; `john` deletes the `ztex` bitstreams and
+  controller image, which no program it builds can load. Shipping it makes the package contain a binary nobody here compiled.
+- **A new exemption names its class.** A payload that needs one of the four goes in the table
+  above and in the [inventory](../01-philosophy/why-kdos.md#what-is-not-built-from-source) in the
+  same change, or the list of exceptions stops being complete and stops being worth reading.
+- **A bootstrap seed never reaches `$PKG`.** What ships is what the seed built. A recipe that
+  installs the seed ships a compiler this tree did not compile.
+
 ## Rules a recipe must keep
 
 - **No rationale comments in `kpkgbuild`.** The banner header plus the metadata keys. Reasoning
@@ -1000,3 +1055,4 @@ the vendor bundle both, so the tree is never left with an archive nothing verifi
 - [Developing](developing.md) — the narrow rebuild loops
 - [Testing](testing.md) — `preflight.sh` and what it checks about recipes
 - [Decisions](../01-philosophy/decisions.md) — why a recipe is two files
+- [Why KDOS](../01-philosophy/why-kdos.md#what-is-not-built-from-source) — every payload not built from source, port by port

@@ -15,11 +15,12 @@ mkdir -p build && cd build
 # WITH_TESTS wants gtest, which is not a port. cJSON is found by pkg-config
 # with no option of its own.
 #
-# Three features are found by a silent find_library/find_path, so each is
-# pinned on here and its library declared in depends: the http_api listener
-# (libmicrohttpd), the persist-sqlite plugin (sqlite) and the mosquitto_ctrl
-# shell, which takes libedit's editline/readline.h ahead of readline whenever
-# both are installed.
+# Three features each need a library declared in depends. The http_api
+# listener (libmicrohttpd) and the mosquitto_ctrl shell are found by a silent
+# find_library/find_path and dropped without a word when it misses; the shell
+# takes libedit's editline/readline.h ahead of readline whenever both are
+# installed. The persist-sqlite plugin (sqlite) is a REQUIRED find_package, so
+# a missing sqlite stops configure.
 # HTTP_API_DIR is emptied because its cache default is the literal string
 # "Default http_api directory": an http_api listener with no http_dir of its
 # own would realpath() that, fail, and refuse to start.

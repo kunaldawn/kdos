@@ -18,9 +18,10 @@
 # what carries it, so nothing is lost at the other end.
 #
 # --with-alsa does not fail when its pkg-config probe misses; alsa-lib in
-# depends is what keeps the backend. OSS is off because musl ships
-# sys/soundcard.h, so the probe says yes to a /dev/dsp this kernel has no
-# driver behind; QSA is QNX's and off so the backend list is fixed.
+# depends is what keeps the backend. OSS is off: musl ships sys/soundcard.h, so
+# the probe would say yes, and the fallback it adds is the kernel's /dev/dsp
+# emulation, which reaches the card behind pipewire's back. QSA is QNX's and
+# off so the backend list is fixed.
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--with-alsa --without-pulseaudio --without-oss --without-qsa
 make

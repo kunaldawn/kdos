@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,11 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = python3-pi-heif
-version     = 1.4.0
-release     = 1
-source      = pi-heif-$version.tar.gz::https://files.pythonhosted.org/packages/source/p/pi-heif/pi_heif-$version.tar.gz
-sha256      = e1199d9d41d9ecc877cf3ae7322ff099f6404574f2e62da47590cd4ecb9ec554  pi-heif-1.4.0.tar.gz
-description = HEIF and AVIF for Pillow, through libheif
-homepage    = https://github.com/bigcat88/pillow_heif
-depends     = python3 python3-setuptools python3-pip python3-pillow libheif
+# iasl is what edk2 and the qemu firmware builds compile their ACPI tables
+# with. acpiexamples is upstream's sample of embedding the interpreter in a
+# program and is not a tool, so it is not installed.
+make
+make DESTDIR=$PKG install
+rm -f "$PKG/usr/bin/acpiexamples"

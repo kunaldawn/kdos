@@ -18,10 +18,11 @@
 # copy of traceevent in-tree; pinning that instead would have dodged two ports
 # and frozen powertop at 2022.
 #
-# -Dnls=false: the translation catalogues are compiled by gettext's msgfmt,
-# which is not a dependency here, and the image is English-only. pciutils and libnl are `required: false` upstream
-# with no option, so the `depends` line is what keeps device names and the
-# wireless tunables in.
+# -Dnls=false keeps the translation catalogues out: they are compiled by
+# gettext's msgfmt, which is not in `depends`.
+#
+# pciutils and libnl are `required: false` upstream with no option, so the
+# `depends` line is what keeps device names and the wireless tunables in.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dnls=false \
 	-Dtest-framework=false \

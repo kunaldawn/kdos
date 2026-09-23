@@ -22,7 +22,8 @@
 # CMAKE_REQUIRE_FIND_PACKAGE_* switch below makes a missing codec library a
 # configure error instead of a library silently narrower than this recipe
 # claims. ALSA is required the same way: it is what sndfile-play plays through,
-# and without it the program builds with no output at all.
+# and without it the program is built against OSS's /dev/dsp instead, which
+# bypasses the sound server and exists only while snd-pcm-oss is loaded.
 
 mkdir -p build
 cd build

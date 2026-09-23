@@ -21,8 +21,8 @@
 # Nothing else that reaches the network is on: upnp, webdav and qobuz would each
 # put a library browser or a service account behind a music player, and the
 # httpd and snapcast outputs would make a daemon that opens a listening socket
-# nobody asked it to open — snapcast is also the only user of nlohmann_json, so
-# that goes with it. zeroconf would advertise the daemon on the LAN, and udisks
+# nobody asked it to open. nlohmann_json is linked only by snapcast and qobuz, so
+# with both off it would build nothing and is disabled with them. zeroconf would advertise the daemon on the LAN, and udisks
 # (the only user of dbus here) has no udisks2 daemon to answer it. What remains
 # beside the streams is a local library indexed into sqlite; the output plugins
 # are alsa and pipewire for the tty1/session split.

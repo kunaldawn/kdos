@@ -37,4 +37,4 @@ make -j1 DESTDIR=$PKG install install-dev
 
 # xfs_scrub_all drives the per-mount scrub through systemd over D-Bus and
 # imports python-dbus at start; xfs_scrub itself runs directly.
-rm -f $PKG/usr/sbin/xfs_scrub_all
+rm -f $PKG/usr/sbin/xfs_scrub_all $PKG/usr/share/man/man8/xfs_scrub_all.8

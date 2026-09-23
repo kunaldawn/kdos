@@ -58,6 +58,7 @@
 # and winexe's mingw cross-compiler are not ports. The kernel keyring stores
 # Kerberos credentials and there is no realm to join. regedit is on because
 # ncurses is a dependency.
+#
 # --enable-fhs IS REQUIRED WITH --prefix=/usr, and samba says so and then
 # refuses: "Don't install directly under /usr or /usr/local without using the
 # FHS option". Without it waf's default layout puts everything under

@@ -14,9 +14,9 @@
 # ports, so both are off; dhcpcd is an optional client beside the internal one;
 # iptables is not a port and nft is the firewall, so its path is only a name.
 #
-# WWAN stays off: modem_manager makes the mobile-broadband-provider-info
-# database mandatory and that is not a port, and the Bluetooth plugin, DUN
-# included, is built only alongside WWAN. PPP needs pppd, which is not a port.
+# WWAN stays off: modem_manager takes a carrier's APN from the
+# mobile-broadband-provider-info database, and that is not a port; the
+# Bluetooth plugin, DUN included, is built only alongside WWAN. PPP needs pppd, which is not a port.
 # CLAT (464XLAT on IPv6-only networks) compiles a BPF program with clang and
 # generates its skeleton with bpftool.
 #

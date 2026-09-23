@@ -29,9 +29,9 @@
 # recollq is OFF BY DEFAULT and is half of what this port exists for, so it is
 # named explicitly rather than assumed. rclgrep, also off by default, runs the
 # same filters over a tree with no index at all. ext4-birthtime reads creation
-# times through statx, which the kernel and musl both have. qtgui, webkit and webpreview are the
-# hard rule; python-chm wants libchm and aspell wants aspell, neither a port;
-# x11mon needs Xlib, and there is no Xorg here.
+# times through statx, which the kernel and musl both have. qtgui, webkit and
+# webpreview are the hard rule; python-chm wants libchm and aspell wants
+# aspell, neither a port; x11mon needs Xlib, and there is no Xorg here.
 cd src
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

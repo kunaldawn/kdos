@@ -11,7 +11,11 @@
 name        = noto-emoji
 version     = 2.051
 release     = 1
+_nototools  = 0.4.1
 source      = $name-$version.tar.gz::https://github.com/googlefonts/noto-emoji/archive/refs/tags/v$version.tar.gz
+source      = https://files.pythonhosted.org/packages/source/n/notofonttools/notofonttools-$_nototools.tar.gz
 sha256      = 04f3d1e5605edebebac00a7a0becb390a4a3ead015066905b27935b30c18e745  noto-emoji-2.051.tar.gz
+sha256      = 8026153841fde759301ad2ef09ce54e85e629a540cc5da41abeaa7674f1693cb  notofonttools-0.4.1.tar.gz
 description = Noto Color Emoji — the colour emoji face the rest of the desktop assumes
 homepage    = https://github.com/googlefonts/noto-emoji
+depends     = python3 pkgconf fonttools imagemagick cairo pngquant zopfli

@@ -28,8 +28,9 @@
 # own testing/vnc-shot.py already drives a VM. GTK is the hard rule. SDL is off
 # because meson.build looks up x11 with no option to stop it and links libX11
 # into the SDL front end whenever that library is installed, which it is for
-# Xwayland. --disable-opengl because qemu's GL path is libepoxy, and the
-# libepoxy port is built against libX11.
+# Xwayland. --disable-opengl because with GTK, SDL and virglrenderer (not a
+# port) off, GL adds only the egl-headless display and GL scanout on the D-Bus
+# display, and costs mesa plus libepoxy, whose port depends on libX11.
 #
 # --disable-docs because docs/conf.py requires sphinx_rtd_theme even for the
 # man pages, and that theme is not a port.

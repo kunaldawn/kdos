@@ -50,7 +50,7 @@ typedef struct {
 	char name[128];
 	char version[128];
 	char release[64];
-	char source[2048];
+	char source[4096];
 	char sha256[4096];
 } Recipe;
 
@@ -242,7 +242,7 @@ static int verify_declared(const KpConf *c, const Recipe *r, const char *portdir
 static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir,
 			   const char *src_dir, const char *src_root)
 {
-	char list[2048];
+	char list[4096];
 	kb_strlcpy(list, r->source, sizeof(list));
 
 	int idx = 0;

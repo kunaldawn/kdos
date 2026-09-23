@@ -22,6 +22,11 @@ autoreconf -f -i -s
 # nothing left to supply.
 export CPPFLAGS="${CPPFLAGS:-} -DHAVE_LSEEK64=1"
 
+# include/f2fs_fs.h guards `typedef u8 bool` with `#ifndef bool`. In C23 `bool`
+# is a keyword rather than a macro, so the guard passes and the typedef stops
+# the compile; the code is C17.
+export CFLAGS="${CFLAGS:-} -std=gnu17"
+
 # --without-selinux because there is no libselinux on the host. The other three
 # are libraries this tree already ships, and a missing one here is answered by
 # silently dropping the feature rather than by failing: without blkid,

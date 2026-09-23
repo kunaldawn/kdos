@@ -20,10 +20,11 @@
 # -Dpipelines IS NAMED RATHER THAN LEFT AT `auto`, AND `virtual` IS THE REASON.
 # `auto` enables every handler whose architecture list contains 'any', which
 # includes `virtual`, a synthetic test camera that drives no hardware and links
-# libyuv into libcamera for nothing. The three named here are what this image can actually drive: `ipu3` for Intel
-# ISP hardware, `uvcvideo` for every USB webcam, and `simple` for the
-# MIPI/IPU6 sensors the kernel config enables — IPU6 has no handler of its own
-# and is driven as a simple pipeline plus the software ISP.
+# libyuv into libcamera for nothing. The three named here are what this image
+# can actually drive: `ipu3` for Intel ISP hardware, `uvcvideo` for every USB
+# webcam, and `simple` for the MIPI/IPU6 sensors the kernel config enables —
+# IPU6 has no handler of its own and is driven as a simple pipeline plus the
+# software ISP.
 #
 # -Dipas MUST CONTAIN A PIPELINE'S NAME OR THAT PIPELINE GETS NO TUNING. The IPA
 # module name matches the pipeline name; a pipeline whose IPA is absent runs

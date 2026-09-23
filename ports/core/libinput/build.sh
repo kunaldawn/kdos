@@ -23,8 +23,8 @@
 # Lua plugin support resolves lua5.4.pc from lua54; left on `auto` it would be
 # on or off by whether that port happened to be installed first. wlroots
 # creates its context without ever asking libinput to load plugins, so
-# without autoload-plugins a plugin dropped in /etc/libinput/plugins is
-# compiled in support for a file nothing reads.
+# without autoload-plugins the Lua support is compiled in and a plugin
+# dropped in /etc/libinput/plugins is never read.
 #
 # libwacom is off because it is not a port: tablets are identified by the
 # kernel's evdev capabilities alone, with no stylus/pad pairing.

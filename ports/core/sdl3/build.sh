@@ -27,10 +27,12 @@
 # program that asks for SDL_AUDIO_DRIVER=pulseaudio; ALSA stays as the floor
 # underneath, for a machine with the session's sound server not running.
 #
-# HIDAPI OVER libusb is named because it is otherwise on only when libusb.h
-# happens to be installed, and hidraw alone misses the Xbox, PlayStation and
-# Nintendo pads that driver talks to directly. liburing backs SDL's async file
-# I/O; without it the same API runs on a thread pool.
+# libusb AND liburing ARE DEPENDENCIES BECAUSE THE SWITCHES DO NOT ENFORCE
+# THEM. -DSDL_HIDAPI_LIBUSB=ON and -DSDL_LIBURING=ON only permit a probe, and a
+# probe that finds nothing configures without the feature and says nothing.
+# HIDAPI over libusb reaches the Xbox, PlayStation and Nintendo pads hidraw
+# alone misses. liburing (its liburing-ffi.pc) backs SDL's async file I/O;
+# without it the same API runs on a thread pool.
 #
 # sdl2-compat dlopens libSDL3.so.0 from the default search path, so the library
 # lands in /usr/lib with no rpath.

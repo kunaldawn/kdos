@@ -29,6 +29,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # and jump, and chafa where the terminal has no image protocol. A missing one
 # is a blank preview, not an error. The archive previewer and extractor exec
 # 7zz or 7z, which no port provides, so an archive previews as that error.
+
 # VERGEN_GIT_SHA IS SUPPLIED BECAUSE A TARBALL IS NOT A REPOSITORY. yazi's
 # build script uses vergen to stamp the binary with the commit it came from,
 # and with no .git present the crate emits nothing while the source still reads

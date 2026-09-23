@@ -27,8 +27,8 @@
 # format earns nothing. The Bluetooth codecs are off because PipeWire owns
 # Bluetooth audio, and libde265 because gst-libav already decodes HEVC.
 # webrtc, srtp and srt stay off until libnice, libsrtp and srt are ports.
-# introspection stays off: glib is built without its GIR data, which every
-# GStreamer GIR includes.
+# introspection stays off: every GStreamer GIR includes Gst-1.0 and the
+# GstBase GIRs, and gstreamer and gst-plugins-base are built without them.
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \

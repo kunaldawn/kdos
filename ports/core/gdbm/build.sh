@@ -12,7 +12,8 @@
 # --disable-nls: the image ships no message catalogues, and with NLS on the
 # result follows the build root: gettext's libintl.h maps every call to
 # libintl_gettext, which only the libintl port defines, and neither is
-# declared or reachable in 03_phase3 where python3 pulls this in.
+# declared, so in 03_phase3, where python3 pulls this in, whether gdbm links
+# libintl would follow the order the two happen to be built in.
 ./configure --prefix=/usr \
             --enable-libgdbm-compat \
             --with-readline \

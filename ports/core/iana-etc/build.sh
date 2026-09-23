@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
 # THE TABLES ARE BUILT HERE FROM IANA's OWN XML, not carried as generated text,
 # so the three files on the image are a function of three hashed registry
 # snapshots and nothing else. `version` is the newest <updated> date across the

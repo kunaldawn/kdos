@@ -172,10 +172,6 @@ real account. The XOAUTH2 lane is unproven in the same way and one step further 
 `libxoauth2.so` is in `/usr/lib/sasl2` and that `mbsync` links `libsasl2` can be measured on the
 image; that a provider accepts the token `pizauth` mints cannot.
 
-`ocrmypdf` does not open a HEIF image. It asks for the `pillow_heif` module, and the HEIF plugin
-this tree builds is `python3-pi-heif`, whose module is `pi_heif`, so a phone's HEIC photo has to be
-converted to PNG or JPEG before it can be made into a searchable PDF.
-
 A plain `python3 -m venv DIR` fails. It installs pip through `ensurepip`, which installs only from a
 `pip-*.whl` in `/usr/share/python-wheels`; `python3` ships no wheel of its own and nothing puts one
 there, so the command exits 1 and leaves an environment with no pip and no `activate` scripts.
@@ -198,6 +194,10 @@ placed. BIOS and 64-bit UEFI are the two that have been booted.
 
 Broad hardware enablement is not a goal. The firmware tree ships whole and unpruned, which covers a
 great deal, but nothing here is tested against a wide device matrix.
+
+`lsblk` shows a filesystem's type, label and UUID to root only. util-linux is built without libudev
+— eudev needs util-linux's libblkid first — so lsblk can learn them only by probing the device,
+which it does only as root. `sudo lsblk -f`, or `blkid` as root, answers.
 
 Much of `kdos doctor` cannot answer in a virtual machine, which is why it has a *skip with a reason*
 level rather than reporting those as passing.
@@ -241,6 +241,11 @@ hands back A's container and not B's, which is the failure the mechanism exists 
 Go has no race detector and no BoringCrypto. Both are objects upstream compiles and ships inside
 the source tarball, and the `go` port does not install them, so `go build -race`, `go test -race`
 and `GOEXPERIMENT=boringcrypto` fail to link. Every other Go build is unaffected.
+
+nmap has no `jdwp-exec` and no `jdwp-info` script. Both inject Java classes that upstream compiles
+and ships inside the source tarball, and the `nmap` port installs neither the classes nor the two
+scripts, so `--script jdwp-info` names nothing and the `default` category runs without it.
+`jdwp-inject`, which injects a class the user supplies, and `jdwp-version` are unaffected.
 
 There is no public binary host. The mechanism is complete — a signed index, three equality tests,
 deltas — but it is one you run yourself.
