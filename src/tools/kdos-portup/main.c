@@ -43,7 +43,7 @@
  * filters that reached it, and a changed checker serving its predecessor's
  * answers for a day reports exactly what the change was made to stop. Raise
  * it with every change to what a port's answer can be. */
-#define CACHE_LOGIC 4
+#define CACHE_LOGIC 5
 
 /* ────────────────────────────────────────────────────────────────────────
  * CLI options
@@ -1851,6 +1851,21 @@ static void selftest_adapters(void)
 	pu_check("/nonexistent/kpkg", &x, &xr);
 	st_ok(xr.state == PU_CURRENT,
 	      "an active project whose feed ends at the pin is current");
+
+	/* A release tagged on GitHub whose tarball upstream uploads only to
+	 * its own site: the homepage's download page links it. */
+	st_recipe(&x, "1.18.2",
+		  "https://github.com/hpjansson/chafa/releases/download/1.18.2/chafa-1.18.2.tar.xz");
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_UNKNOWN && !xr.url[0] &&
+	      strstr(xr.reason, "none at the recipe's URL (newest 1.18.3)"),
+	      "a tag whose file is at no candidate URL is unknown");
+	kb_strlcpy(x.homepage, "https://hpjansson.org/chafa/", sizeof(x.homepage));
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_UNKNOWN &&
+	      !strcmp(xr.url, "https://hpjansson.org/chafa/releases/chafa-1.18.3.tar.xz") &&
+	      !strcmp(xr.reason, "newest 1.18.3 is at hpjansson.org, not at the recipe's URL"),
+	      "and names upstream's own copy when its homepage links one");
 
 	st_recipe(&x, "4.9.3",
 		  "https://downloads.unidata.ucar.edu/netcdf-c/4.9.3/netcdf-c-4.9.3.tar.gz");

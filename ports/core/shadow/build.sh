@@ -23,9 +23,6 @@
 make
 make DESTDIR=$PKG install
 
-mkdir -p $PKG/bin $PKG/etc/cron/daily
-install -m 755 $PORT_SRC/pwck $PKG/etc/cron/daily
-
 # ROOTLESS PODMAN CANNOT MAP A UID WITHOUT THESE TWO BEING PRIVILEGED, and
 # every box on this distro is rootless podman. `newuidmap` writes
 # /proc/<pid>/uid_map for the user namespace a container runs in, which the

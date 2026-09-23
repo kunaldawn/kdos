@@ -8,11 +8,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The compiled MIME database is generated, not shipped: `globs`, `types` and
-# `mime.cache` are built from /usr/share/mime/packages by a program that has to
-# run on the TARGET, which is why build.sh cannot do it. Without this the
-# z-machine type the package just installed is an XML file nothing reads, and
-# `Enter` on a story file falls through to whatever claims text.
-#
-# The same hook, and the same reason, as shared-mime-info's own.
-update-mime-database /usr/share/mime
+
+name        = man-pages
+version     = 6.19
+release     = 1
+source      = https://www.kernel.org/pub/linux/docs/man-pages/$name-$version.tar.xz
+sha256      = 88a7c42ad2e03d8b96dc72d95e451f2d875ff0f43103a8eb8ac8242133bdcb05  man-pages-6.19.tar.xz
+description = Linux kernel and C library manual pages — system calls, library functions, devices, file formats, overviews
+homepage    = https://www.kernel.org/doc/man-pages/
+depends     = mandoc

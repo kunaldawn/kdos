@@ -38,14 +38,12 @@ make
 make BUILDROOT=$PKG install
 
 # Linux PAM Configuration
+install -d -m 755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/cups << "EOF"
-# Start uart.conf
-# Attach serial devices via UART HCI to BlueZ stack
-# Use one line per device
-# See the hciattach man page for options
-#
-# End of uart.conf
+auth    required pam_unix.so
+account required pam_unix.so
 EOF
+chmod 644 $PKG/etc/pam.d/cups
 
 # cleanup
 rm -fr $PKG/tmp $PKG/run $PKG/var/run

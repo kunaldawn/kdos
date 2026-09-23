@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr --enable-freetype-config
+./configure --prefix=/usr --enable-freetype-config --with-harfbuzz=no
 make
 make DESTDIR=$PKG install

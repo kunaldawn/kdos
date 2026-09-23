@@ -49,6 +49,7 @@ install -dm755 "$PKG/usr/share/zoneinfo"
 
 install -m644 zone.tab zone1970.tab iso3166.tab "$PKG/usr/share/zoneinfo/"
 install -m644 leapseconds "$PKG/usr/share/zoneinfo/"
+install -Dm644 tzfile.5 -t "$PKG/usr/share/man/man5"
 
 # UTC is the honest default for a machine that has not been told where it is;
 # kinstall replaces this symlink with the zone the user picked.

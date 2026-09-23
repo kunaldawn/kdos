@@ -15,4 +15,4 @@ source      = https://files.pythonhosted.org/packages/source/p/pyproject-metadat
 sha256      = 8809a4df6fe08279b39a8890669506ed3158e0617855ac9aff098fcbe772ae4c  python3-pyproject-metadata-0.12.1.tar.gz
 description = PEP 621 metadata, which meson-python reads
 homepage    = https://pypi.org/project/pyproject-metadata/
-depends     = python3 python3-setuptools python3-pip
+depends     = python3 python3-pip python3-flit-core python3-packaging

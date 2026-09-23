@@ -13,4 +13,4 @@ version     = 1.15
 release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz
 sha256      = 545886cf57fa88a65e967fbf705903d7fcb2567c82c7342493e82e8d7b1a210b  gzip-1.15.tar.gz
-description = Tar utility
+description = GNU compression utility

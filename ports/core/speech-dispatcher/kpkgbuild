@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/brailcom/speechd/release
 sha256      = b14a5238d287d2dcce4dd42bbd66ca65fa228e7e683708267f7b34036f7ba4b4  speech-dispatcher-0.12.1.tar.gz
 description = The speech API every screen reader speaks — espeak-ng is the voice behind it
 homepage    = https://freebsoft.org/speechd
-depends     = glib dotconf libsndfile espeak-ng alsa-lib
+depends     = glib dotconf libsndfile espeak-ng alsa-lib help2man

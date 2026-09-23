@@ -13,5 +13,5 @@
 # a make variable. The router is what runs on a booted machine; planetsplitter
 # is what turns an .osm extract into the database it reads, and both ship
 # because an extract with no preprocessing step is a file nothing can use.
-make prefix=/usr
-make prefix=/usr DESTDIR=$PKG install
+make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO=
+make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= DESTDIR=$PKG install

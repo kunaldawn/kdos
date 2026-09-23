@@ -16,5 +16,5 @@ sha256      = 9c4ba2046d4709f6a07e47933b1aa7edaf72a4d0a9f482b81d81798879070229  
 sha256      = 3ccf4860c716066cf8629c4497be79114fa80f0723e0a361b540003f647cc9c0  probe-rs-vendor-0.32.0.tar.xz
 description = ARM and RISC-V flash and debug over CMSIS-DAP, ST-Link and J-Link, with RTT
 homepage    = https://probe.rs/
-depends     = rust libusb pkgconf openssl
+depends     = rust pkgconf
 vendoring   = rust

@@ -27,7 +27,7 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dpam_modules_dir=/usr/lib/security \
 	-Dsystemd=false \
 	-Dlibsystemd=basu \
-	-Dman=false \
+	-Dman=true \
 	-Dgtk_doc=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

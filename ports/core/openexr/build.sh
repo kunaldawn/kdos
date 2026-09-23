@@ -22,4 +22,6 @@ cmake .. \
 	-DOPENEXR_BUILD_TOOLS=ON \
 	-DOPENEXR_BUILD_EXAMPLES=OFF
 make
+cmake -DOPENEXR_INSTALL_DOCS=ON .
+make
 make DESTDIR=$PKG install

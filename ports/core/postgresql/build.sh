@@ -39,4 +39,6 @@
 	--without-ldap \
 	--disable-rpath
 make world-bin
+make -C doc/src/sgml man
 make DESTDIR=$PKG install-world-bin
+make -C doc/src/sgml DESTDIR=$PKG install-man

@@ -14,7 +14,7 @@ meson setup build \
 	--buildtype=release \
 	-Dintrospection=false \
 	-Dgtk_doc=false \
-	-Dmanpage=false \
+	-Dmanpage=true \
 	-Dvapi=false \
 	-Dbash_completion=disabled
 meson compile -C build

@@ -43,3 +43,4 @@ export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -include stddef.h -include libgen.h
 	--with-rpcgen=internal
 make
 make DESTDIR=$PKG install
+rm -f "$PKG/usr/share/man/man7/nfs.systemd.7"

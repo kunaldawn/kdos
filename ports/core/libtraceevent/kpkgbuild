@@ -15,4 +15,4 @@ source      = https://git.kernel.org/pub/scm/libs/libtrace/$name.git/snapshot/$n
 sha256      = e6d82cb2392d04866203387fa092692e4282ccc36c8235dc129afd1ceba12684  libtraceevent-1.9.0.tar.gz
 description = Parser for the kernel's ftrace event format
 homepage    = https://git.kernel.org/pub/scm/libs/libtrace/libtraceevent.git
-depends     =
+depends     = meson asciidoc xmlto

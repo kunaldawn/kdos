@@ -15,4 +15,4 @@ source      = https://www.kernel.org/pub/linux/kernel/people/kdave/btrfs-progs/b
 sha256      = d1f55cc2971398c9142eaa79d203e63d586a3b4b867f956664a1d68322cd4e34  btrfs-progs-7.1.tar.xz
 description = Btrfs filesystem utilities
 homepage    = https://btrfs.readthedocs.io
-depends     = util-linux lzo zstd e2fsprogs musl-fts
+depends     = util-linux lzo zstd zlib eudev e2fsprogs musl-fts

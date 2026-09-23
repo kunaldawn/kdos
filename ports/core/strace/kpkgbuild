@@ -15,3 +15,4 @@ source      = https://github.com/strace/strace/releases/download/v$version/strac
 sha256      = 4bde6246926890dcee824f6e6ac42a06752f47d77e5097d86e3c0d6d4b709fe5  strace-7.2.tar.xz
 description = strace — diagnostic, debugging, and instructional userspace utility
 homepage    = https://strace.io/
+depends     = elfutils

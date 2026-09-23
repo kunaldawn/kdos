@@ -24,3 +24,4 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export OPENSSL_NO_VENDOR=1
 cargo build --release --frozen --offline --bin jj
 install -Dm755 target/release/jj $PKG/usr/bin/jj
+target/release/jj util install-man-pages "$PKG/usr/share/man"

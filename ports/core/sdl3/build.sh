@@ -54,6 +54,7 @@ cmake .. -G Ninja \
 	-DSDL_LIBUDEV=ON \
 	-DSDL_OPENGL=ON \
 	-DSDL_OPENGLES=ON \
-	-DSDL_VULKAN=ON
+	-DSDL_VULKAN=ON \
+	-DSDL_INSTALL_DOCS=ON
 ninja
 DESTDIR=$PKG ninja install

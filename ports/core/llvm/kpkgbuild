@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/llvm-project-${version}.src.tar.xz
 sha256      = c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a  llvm-23.1.2.tar.xz
 description = Collection of modular and reusable compiler and toolchain technologies
-depends     = cmake ninja libffi python3 libxml2
+depends     = cmake ninja libffi python3 libxml2 zstd

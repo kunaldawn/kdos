@@ -36,8 +36,8 @@ export LDFLAGS="-lintl"
 # status 127. The two programs are named directly instead; `install-newsboat`
 # and `install-podboat` each depend on one program and nothing else, so no
 # manual page is built and none is packaged.
-make prefix=/usr newsboat podboat
-make prefix=/usr DESTDIR=$PKG install-newsboat install-podboat
+make prefix=/usr newsboat podboat mo-files
+make prefix=/usr DESTDIR=$PKG install-newsboat install-podboat install-mo
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/newsboat.desktop" <<'ENTRY'

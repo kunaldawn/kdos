@@ -14,4 +14,4 @@ release     = 1
 source      = https://downloads.sourceforge.net/freetype/freetype-$version.tar.xz
 sha256      = 36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f  freetype2-2.14.3.tar.xz
 description = Font rasterization library
-depends     = libpng
+depends     = zlib bzip2 libpng brotli

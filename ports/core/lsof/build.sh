@@ -10,5 +10,5 @@
 # ---------------------------------
 
 ./configure --prefix=/usr --mandir=/usr/share/man
-make man8_MANS=
-make DESTDIR=$PKG install man8_MANS=
+make
+make DESTDIR=$PKG install

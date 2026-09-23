@@ -16,5 +16,5 @@ sha256      = ec4bdb88ab6c95686be3a4eeb4ad77d2b49d33d2ed7b0a65035cd52d2d87c443  
 sha256      = a14e8b7fcdb4145f9dad6446363fdbce08d28e7d1f89b89e7a8c6e4c538c9dc8  shfmt-vendor-3.14.1.tar.xz
 description = Parse, format and lint shell — over ~470 build.sh files
 homepage    = https://github.com/mvdan/sh
-depends     = go
+depends     = go scdoc
 vendoring   = go

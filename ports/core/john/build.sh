@@ -25,7 +25,7 @@
 patch -p1 -i "$PORT_SRC/blake2-align.patch"
 
 cd src
-./configure --disable-native-tests --without-openmpi
+./configure --prefix=/usr --disable-native-tests --without-openmpi
 
 # --disable-native-tests IS WHAT MAKES THIS REPRODUCIBLE. john's configure
 # probes THIS CPU's instruction set and bakes the best it finds into the
@@ -42,17 +42,29 @@ make -j1
 # and one clone away for anyone who wants it.
 install -dm755 $PKG/usr/share/john $PKG/usr/bin
 cd ../run
-for f in john *.pl *.py *.rb *.lua; do
-	[ -e "$f" ] || continue
-	install -Dm755 "$f" $PKG/usr/share/john/"$f"
+
+# --prefix=/usr builds john system-wide: it reads john.conf, the rules and the
+# .chr files from /usr/share/john and keeps its pot, log and session files in
+# ~/.john. Without it john looks for its configuration beside argv[0], which a
+# command found on $PATH does not have. Compiled programs and the links to
+# john go to /usr/bin; everything else in run/ — scripts, the python modules
+# they import, data — goes to /usr/share/john.
+for f in *; do
+	if [ -L "$f" ]; then
+		ln -s "$(readlink "$f")" $PKG/usr/bin/"$f"
+	elif [ -f "$f" ] && [ "$(head -c4 "$f")" = $'\x7fELF' ]; then
+		install -m755 "$f" $PKG/usr/bin/"$f"
+	else
+		cp -a "$f" $PKG/usr/share/john/
+	fi
 done
-cp -a *.conf *.chr *.lst rules dynamic*.conf $PKG/usr/share/john/ 2>/dev/null || true
-ln -s ../share/john/john $PKG/usr/bin/john
 
 # The *2john converters are the half people actually reach for — they read a
-# container and print the hash john takes. Each is a symlink so `zip2john` is a
-# command rather than a path somebody has to remember.
+# container and print the hash john takes. The scripted ones get a symlink so
+# `ssh2john.py` is a command rather than a path somebody has to remember.
 for f in *2john*; do
-	[ -f "$f" ] || continue
+	[ -e $PKG/usr/bin/"$f" ] && continue
+	[ "$(head -c2 "$f")" = '#!' ] || continue
+	chmod 755 $PKG/usr/share/john/"$f"
 	ln -s ../share/john/"$f" $PKG/usr/bin/"$f"
 done

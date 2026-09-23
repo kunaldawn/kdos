@@ -26,6 +26,7 @@
 	--with-alsa \
 	--without-libao \
 	--without-pulse \
+	--without-pipewire \
 	--without-nas \
 	--disable-python
 make

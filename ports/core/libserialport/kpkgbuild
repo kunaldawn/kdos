@@ -15,4 +15,4 @@ source      = https://sigrok.org/download/source/$name/$name-$version.tar.gz
 sha256      = 5deb92b5ca72c0347b07b786848350deca2dcfd975ce613b8e0e1d947a4b4ca9  libserialport-0.1.2.tar.gz
 description = Enumerate and open a serial port, portably
 homepage    = https://sigrok.org/wiki/Libserialport
-depends     = pkgconf libusb
+depends     = pkgconf

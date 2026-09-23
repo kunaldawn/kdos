@@ -19,3 +19,4 @@ make
 make DESTDIR=$PKG install
 
 ln -sf pkgconf "$PKG"/usr/bin/pkg-config
+ln -sf pkgconf.1 "$PKG"/usr/share/man/man1/pkg-config.1

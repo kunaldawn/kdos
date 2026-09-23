@@ -18,12 +18,11 @@
 # declaration to every translation unit and is a flag rather than a patch.
 export CPPFLAGS="${CPPFLAGS:-} -include libgen.h"
 
-# --without-qt: the qphotorec GUI is the one part of this that would put Qt on
-# the host, and the recovery tools are all ncurses. The three library flags are
-# what make the difference between reading a damaged ext4 and guessing at it.
+# --disable-qt: the qphotorec GUI is the one part of this that would put Qt on
+# the host, and the recovery tools are all ncurses.
 ./configure \
 	--prefix=/usr \
-	--without-qt \
+	--disable-qt \
 	--enable-sudo=no
 make
 make DESTDIR=$PKG install

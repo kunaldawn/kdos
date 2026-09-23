@@ -60,3 +60,7 @@ install -Dm644 dbus/fi.w1.wpa_supplicant1.service \
 	"$PKG/usr/share/dbus-1/system-services/fi.w1.wpa_supplicant1.service"
 install -Dm644 dbus/dbus-wpa_supplicant.conf \
 	"$PKG/etc/dbus-1/system.d/wpa_supplicant.conf"
+install -Dm644 doc/docbook/wpa_supplicant.8 doc/docbook/wpa_cli.8 \
+	doc/docbook/wpa_passphrase.8 doc/docbook/wpa_background.8 \
+	-t "$PKG/usr/share/man/man8"
+install -Dm644 doc/docbook/wpa_supplicant.conf.5 -t "$PKG/usr/share/man/man5"

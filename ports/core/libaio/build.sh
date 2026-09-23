@@ -10,4 +10,5 @@
 # ---------------------------------
 
 make
-make prefix=$PKG/usr install
+make DESTDIR=$PKG install
+install -Dm644 man/*.3 -t $PKG/usr/share/man/man3

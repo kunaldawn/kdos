@@ -18,3 +18,31 @@
  
  EXTRA_DIST = pathnames.h ax25tools.spec
  
+--- a/ax25tools/man/Makefile.am
++++ b/ax25tools/man/Makefile.am
+@@ -11,7 +11,6 @@
+ 	baycom.9 \
+ 	beacon.8 \
+ 	bpqparms.8 \
+-	dmascc_cfg.1 \
+ 	hdlcdrv.9 \
+ 	kissattach.8 \
+ 	kissnetd.8 \
+@@ -30,7 +29,6 @@
+ 	nrparms.8 \
+ 	nrports.5 \
+ 	nrsdrv.8 \
+-	rip98d.8 rip98d.conf.5 \
+ 	rose.4 \
+ 	rose_call.8 \
+ 	rsattach.8 \
+@@ -44,8 +42,7 @@
+ 	smmixer.8 \
+ 	soundmodem.9 \
+ 	spattach.8 \
+-	tcp_call.8 \
+-	ttylinkd.8 ttylinkd.conf.5
++	tcp_call.8
+  
+ EXTRA_DIST = $(man_MANS)
+ 

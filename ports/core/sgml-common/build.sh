@@ -12,6 +12,6 @@
 cp -f /usr/share/automake-*/install-sh .
 cp -f /usr/share/automake-*/missing .
 cp -f /usr/share/automake-*/mkinstalldirs .
-./configure --prefix=/usr --sysconfdir=/etc
+./configure --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man
 make
 make docdir=/usr/share/doc DESTDIR=$PKG install

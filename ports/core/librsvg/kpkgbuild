@@ -16,5 +16,5 @@ sha256      = 852b18e1a00b8605528825a27dc7748bff2a5dd254028f59dc22a34ea57e81b6  
 sha256      = 308b647074bb5ab1289edd13a281c3ef6d26da0a16491a52b0b2ff751856581c  librsvg-vendor-2.63.2.tar.xz
 description = SVG rendering library (Rust-based; used by imv for SVG support)
 homepage    = https://gitlab.gnome.org/GNOME/librsvg
-depends     = meson rust cargo-c gdk-pixbuf cairo pango harfbuzz fontconfig freetype2 glib libxml2
+depends     = meson rust cargo-c gdk-pixbuf cairo pango harfbuzz fontconfig freetype2 glib libxml2 python3-docutils
 vendoring   = rust

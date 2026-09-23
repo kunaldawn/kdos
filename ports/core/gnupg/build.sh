@@ -11,6 +11,8 @@
 
 ./configure \
 	--prefix=/usr \
+	--sysconfdir=/etc \
+	--localstatedir=/var \
 	--libexecdir=/usr/lib/$name \
 	--disable-ldap \
 	--disable-nls \

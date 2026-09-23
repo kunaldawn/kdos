@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr --enable-pinentry-tty
+./configure --prefix=/usr --enable-pinentry-tty --disable-libsecret
 make
 make DESTDIR=$PKG install

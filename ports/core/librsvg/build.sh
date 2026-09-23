@@ -18,7 +18,7 @@ meson setup build \
 	--buildtype=release \
 	-Dintrospection=disabled \
 	-Dvala=disabled \
-	-Ddocs=disabled \
+	-Ddocs=enabled \
 	-Dtests=false \
 	-Dpixbuf=enabled \
 	-Dpixbuf-loader=disabled \

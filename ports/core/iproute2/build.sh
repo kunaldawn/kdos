@@ -14,4 +14,4 @@
 # Fix missing UINT_MAX by adding limits.h via compiler flags
 export CFLAGS="$CFLAGS -include limits.h"    
 make
-make DESTDIR=$PKG install
+make DESTDIR=$PKG SBINDIR=/usr/sbin install

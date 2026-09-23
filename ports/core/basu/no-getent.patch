@@ -1,0 +1,13 @@
+musl has no getent, and meson stops at a run_command whose program is missing.
+
+--- a/meson.build
++++ b/meson.build
+@@ -193,7 +193,7 @@
+ 
+ nobody_user = get_option('nobody-user')
+ 
+-if not meson.is_cross_build()
++if false
+         getent_result = run_command('getent', 'passwd', '65534')
+         if getent_result.returncode() == 0
+                 name = getent_result.stdout().split(':')[0]

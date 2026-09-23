@@ -15,3 +15,4 @@ source      = https://github.com/lsof-org/lsof/releases/download/$version/lsof-$
 sha256      = 4a10391aab0b8ce1f539e82a1966693b2a6cf225972a6504ebb7ec4fa71675de  lsof-4.99.7.tar.gz
 description = lsof — lists open files held by running processes
 homepage    = https://github.com/lsof-org/lsof
+depends     = mandoc libtirpc

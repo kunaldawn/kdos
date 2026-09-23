@@ -54,11 +54,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 LICENCE
 
-# THE TYPE HAS TO EXIST BEFORE AN ENTRY CAN CLAIM IT. shared-mime-info 1.10 —
+# THE TYPE HAS TO EXIST BEFORE AN ENTRY CAN CLAIM IT. shared-mime-info 2.5.1 —
 # the version this image builds — defines no z-machine type at all, so a
 # `MimeType=application/x-zmachine;` line with nothing behind it resolves to
 # nothing and says so nowhere. The opener chain keys off /usr/share/mime/globs,
-# which is generated from this directory by the hook in postinstall.sh.
+# which kpkg regenerates from this directory when the package is installed.
 install -Dm644 /dev/stdin \
 	"$PKG/usr/share/mime/packages/kdos-zmachine.xml" <<'MIMEXML'
 <?xml version="1.0" encoding="UTF-8"?>

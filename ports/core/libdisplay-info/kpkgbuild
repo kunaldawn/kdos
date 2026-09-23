@@ -15,4 +15,4 @@ source      = https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/
 sha256      = 5b88699ca21dceb10ab8fb1b41d1cbd9eabeb3b775e11e86ce9d7d6a3158a318  libdisplay-info-0.4.0.tar.bz2
 description = EDID and DisplayID parser used by Wayland compositors
 homepage    = https://gitlab.freedesktop.org/emersion/libdisplay-info
-depends     = meson hwdata
+depends     = meson hwdata python3

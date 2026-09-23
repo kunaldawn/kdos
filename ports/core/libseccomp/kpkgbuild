@@ -15,3 +15,4 @@ source      = https://github.com/seccomp/libseccomp/releases/download/v$version/
 sha256      = 501f66c667225d53791b97e1d7cf85ab764c297d04881f60f38f451c4b0ee1be  libseccomp-2.6.1.tar.gz
 description = An enhanced, high-level userspace seccomp interface
 homepage    = https://github.com/seccomp/libseccomp
+depends     = gperf

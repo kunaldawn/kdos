@@ -16,5 +16,5 @@ sha256      = f4118f0f4a4c90432ba3b1637dd66b8d7f4abd797d63b527baaa6c2595f1552f  
 sha256      = 0a76a3dbe8de237523758fa8dda977c1ff9c003ef0799f7f699c295ecdfb99fd  caligula-vendor-0.5.0.tar.xz
 description = Writes an image to a removable disk, with a progress display and a verify pass
 homepage    = https://github.com/ifd3f/caligula
-depends     = rust clang
+depends     = rust
 vendoring   = rust

@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export XML_CATALOG_FILES=/etc/xml/catalog
+
 # trust_paths names the CA bundle ca-certificates lays down. A trust path
 # that is a plain file — not a directory — is loaded whole and every
 # certificate in it becomes an anchor, so there is no anchors/ directory to
@@ -21,6 +23,7 @@ meson setup build \
 	--buildtype=release \
 	-D trust_paths=/etc/ssl/cert.pem \
 	-D module_path=/usr/lib/pkcs11 \
-	-D nls=false
+	-D nls=false \
+	-D man=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

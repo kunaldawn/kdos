@@ -2564,6 +2564,97 @@ int pu_repology_vuln(const PuRecipe *r)
 }
 
 /* ────────────────────────────────────────────────────────────────────────
+ * Upstream's own copy
+ *
+ * A release every candidate URL misses may still be published, on a host the
+ * recipe's template does not name: chafa tags on GitHub and uploads its
+ * tarballs to hpjansson.org/chafa/releases/, linked from the homepage's
+ * download page. Only a link to the exact file the template names for the
+ * version counts, and only once a request for it answers — a page naming
+ * the file proves nothing about the file.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* The file the recipe's archive name gives version `v`, from the source's own
+ * name read through the version it pins. 0 when the source's name does not
+ * hold that version. */
+static int file_for(const PuRecipe *r, const char *v, char *out, size_t cap)
+{
+	char host[256], seg[24][160];
+	const char *path;
+	if (split_url(pu_source_url(r->first_source), host, sizeof(host),
+		      &path) != 0)
+		return 0;
+	int n = path_segments(path, seg, 24);
+	if (!n)
+		return 0;
+	int b = n - 1;
+	if (b > 0 && !strcmp(seg[b], "download"))
+		b--;
+	PuAnchor a;
+	if (!pu_anchor_from(seg[b], r->version, 0, &a))
+		return 0;
+	sibling_name(&a, v, out, cap);
+	return out[0] != 0;
+}
+
+/* The link on `body`, read against `page`, whose last path segment is
+ * `file`. */
+static int link_to(const char *page, const char *body, const char *file,
+		   char *out, size_t cap)
+{
+	size_t fl = strlen(file);
+	const char *v;
+	size_t vl;
+	for (const char *p = body; (p = next_href(p, &v, &vl));) {
+		char abs[1024];
+		if (resolve_url(page, v, vl, abs, sizeof(abs)) != 0)
+			continue;
+		const char *ap = url_path(abs);
+		size_t pl = strcspn(ap, "?");
+		if (pl <= fl || ap[pl - fl - 1] != '/' ||
+		    strncmp(ap + pl - fl, file, fl))
+			continue;
+		kb_strlcpy(out, abs, cap);
+		return 1;
+	}
+	return 0;
+}
+
+/* `file` linked from the recipe's homepage or from a download page one hop
+ * from it, and answering there: its URL into `out`. At most 1 + PU_HOPS pages
+ * are read. */
+static int site_file(const PuRecipe *r, const char *file, char *out,
+		     size_t cap)
+{
+	if (!r->homepage[0] || !file[0])
+		return 0;
+	PuFound f = { 0 };
+	Sink s = { NULL, &f, 0, 0 };
+	KbBuf b = {0};
+	char page[1024];
+	char at[1024] = "";
+	int code = get_page(&s, r->homepage, &b, page, sizeof(page));
+	if (ok2xx(code) && b.p && !link_to(page, b.p, file, at, sizeof(at))) {
+		char (*links)[1024] = kb_calloc(PU_HOPS, 1024);
+		int nl = hop_links(page, b.p, links, PU_HOPS);
+		for (int i = 0; i < nl && !at[0]; i++) {
+			KbBuf hb = {0};
+			char hp[1024];
+			int hc = get_page(&s, links[i], &hb, hp, sizeof(hp));
+			if (ok2xx(hc) && hb.p)
+				link_to(hp, hb.p, file, at, sizeof(at));
+			kb_buf_free(&hb);
+		}
+		free(links);
+	}
+	kb_buf_free(&b);
+	if (!at[0] || pu_http_head(at) != 200)
+		return 0;
+	kb_strlcpy(out, at, cap);
+	return 1;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
  * The entry points
  * ──────────────────────────────────────────────────────────────────────── */
 
@@ -2739,6 +2830,9 @@ int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
 	 * down. The pin's own major is never skipped — its template is known
 	 * to work there. */
 	char miss_major[16] = "", skip_major[16] = "", own_major[16];
+	/* The file the template names for the newest candidate, for when no
+	 * candidate is at the template's host. */
+	char newest_file[320] = "";
 	int misses = 0;
 	size_t oml = strspn(r->version, "0123456789");
 	if (oml >= sizeof(own_major))
@@ -2765,6 +2859,12 @@ int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
 		if (!strcmp(url, r->first_source)) {
 			unprovable++;
 			continue;
+		}
+		if (i == 0) {
+			const char *slash = strrchr(url, '/');
+			kb_strlcpy(newest_file, slash ? slash + 1 : url,
+				   sizeof(newest_file));
+			newest_file[strcspn(newest_file, "?#")] = 0;
 		}
 		tried++;
 		int code = pu_http_head(url);
@@ -2818,9 +2918,20 @@ int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
 			 "the source URL has no version in it to change; newest upstream %.32s, unproved",
 			 newest);
 	} else {
-		snprintf(out->reason, sizeof(out->reason),
-			 "%d newer version(s) upstream, none at the recipe's URL (newest %.32s)",
-			 ncand, newest);
+		char host[256];
+		const char *hpath;
+		if (!newest_file[0] && !unprovable)
+			file_for(r, newest, newest_file, sizeof(newest_file));
+		if (newest_file[0] &&
+		    site_file(r, newest_file, out->url, sizeof(out->url)) &&
+		    split_url(out->url, host, sizeof(host), &hpath) == 0)
+			snprintf(out->reason, sizeof(out->reason),
+				 "newest %.32s is at %.48s, not at the recipe's URL",
+				 newest, host);
+		else
+			snprintf(out->reason, sizeof(out->reason),
+				 "%d newer version(s) upstream, none at the recipe's URL (newest %.32s)",
+				 ncand, newest);
 	}
 	return 0;
 }

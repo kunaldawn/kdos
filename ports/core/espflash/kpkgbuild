@@ -16,5 +16,5 @@ sha256      = 4d6fd3b57e7fc33480df9e4db403352632a3d8af486ed2721a8f5ab3c666195e  
 sha256      = 209d8fbd41ffc804aa83013064e2fa27e7b49cc1466fe40fbcde42925c91f5cc  espflash-vendor-4.6.0.tar.xz
 description = Flash an ESP32 or ESP8266 over its own ROM bootloader, and watch its serial output
 homepage    = https://github.com/esp-rs/espflash
-depends     = rust eudev
+depends     = rust
 vendoring   = rust

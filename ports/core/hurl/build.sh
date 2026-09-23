@@ -32,3 +32,4 @@ export LIBCLANG_PATH=/usr/lib
 cargo build --release --frozen --offline --bin hurl --bin hurlfmt
 install -Dm755 target/release/hurl    $PKG/usr/bin/hurl
 install -Dm755 target/release/hurlfmt $PKG/usr/bin/hurlfmt
+install -Dm644 docs/manual/hurl.1 docs/manual/hurlfmt.1 -t "$PKG/usr/share/man/man1"

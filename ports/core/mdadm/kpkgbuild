@@ -15,3 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/md-raid-utilities/mdadm/
 sha256      = 202a7525e6f2b44395a9ef2c561082c7d6d8204e9addfe3f6268bfb141efc093  mdadm-4.6.tar.gz
 description = Assemble and manage Linux software RAID, so an existing array is readable
 homepage    = https://git.kernel.org/pub/scm/utils/mdadm/mdadm.git
+depends     = eudev

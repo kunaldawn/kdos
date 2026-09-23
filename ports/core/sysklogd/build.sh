@@ -21,7 +21,8 @@
 	--localstatedir=/var \
 	--runstatedir=/run \
 	--disable-static \
-	--without-systemd
+	--without-systemd \
+	--without-logger
 
 make
 make DESTDIR=$PKG install

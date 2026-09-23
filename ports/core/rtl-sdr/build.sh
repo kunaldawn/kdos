@@ -18,3 +18,4 @@ cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DDETACH_KERNEL_DRIVER=ON -DINSTALL_UDEV_RULES=OFF
 make
 make DESTDIR=$PKG install
+install -Dm644 ../debian/rtl_*.1 -t $PKG/usr/share/man/man1

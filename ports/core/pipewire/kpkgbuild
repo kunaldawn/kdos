@@ -15,4 +15,4 @@ source      = https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/$versio
 sha256      = 0cde58c124825bad462b32ab79f9aa286ee7b113cc73a5cda923a4365e752657  pipewire-1.6.9.tar.bz2
 description = Modern audio + video stream router (replaces PulseAudio, powers Wayland screencast)
 homepage    = https://pipewire.org/
-depends     = meson ninja eudev alsa-lib dbus glib libusb readline ffmpeg bluez sbc libfreeaptx ldacbt fdk-aac liblc3 gstreamer gst-plugins-base
+depends     = meson ninja doxygen python3 eudev alsa-lib dbus glib libusb readline ffmpeg bluez sbc libsndfile libfreeaptx ldacbt fdk-aac liblc3 gstreamer gst-plugins-base

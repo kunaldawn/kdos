@@ -52,6 +52,6 @@ meson setup build \
 	-Dlibarchive=enabled \
 	-Dlcms2=enabled \
 	-Dsixel=enabled \
-	-Dmanpage-build=disabled
+	-Dmanpage-build=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

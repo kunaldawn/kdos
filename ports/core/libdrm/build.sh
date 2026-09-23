@@ -11,7 +11,7 @@
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	-D man-pages=disabled \
+	-D man-pages=enabled \
 	-D valgrind=disabled \
 	-D cairo-tests=disabled \
 	-D intel=enabled

@@ -51,3 +51,4 @@ install -Dm755 fontdata $PKG/usr/bin/fontdata
 cd ..
 
 install -Dm644 docs/english/man/splat.1 $PKG/usr/share/man/man1/splat.1
+install -Dm644 docs/spanish/man/splat.1 $PKG/usr/share/man/es/man1/splat.1

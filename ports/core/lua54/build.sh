@@ -17,7 +17,7 @@
 # library is liblua5.4, and the pkg-config file is lua5.4.pc. Nothing here
 # writes a path that ports/core/lua also writes, so kpkg reports no conflict
 # and neither package can shadow the other.
-sed -i '/#define LUA_ROOT/s:/usr/local/:/usr/:' src/luaconf.h
+patch -p1 -i $PORT_SRC/lua-root-usr.patch
 make CC=cc MYCFLAGS="-DLUA_COMPAT_5_3 -fPIC" linux
 
 cd src
@@ -28,6 +28,8 @@ cd ..
 
 install -Dm755 src/lua  $PKG/usr/bin/lua$_majorver
 install -Dm755 src/luac $PKG/usr/bin/luac$_majorver
+install -Dm644 doc/lua.1  $PKG/usr/share/man/man1/lua$_majorver.1
+install -Dm644 doc/luac.1 $PKG/usr/share/man/man1/luac$_majorver.1
 install -d $PKG/usr/include/lua$_majorver
 install -m644 src/lua.h src/luaconf.h src/lualib.h src/lauxlib.h src/lua.hpp \
         $PKG/usr/include/lua$_majorver/

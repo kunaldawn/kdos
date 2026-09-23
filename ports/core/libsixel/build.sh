@@ -18,3 +18,4 @@ meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dgd=disabled -Dtests=disabled -Djpeg=enabled -Dpng=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+install -Dm644 src/sixel.5 -t "$PKG/usr/share/man/man5"

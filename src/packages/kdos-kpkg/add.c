@@ -473,6 +473,8 @@ int add_main(int argc, char **argv)
 		return 1;
 	}
 
+	KpTriggers trig = {0};
+
 	/* An upgrade drops what the old version owned and the new one does not.
 	 * Deepest first, so a directory is only removed once it is empty. */
 	if (upgrade) {
@@ -480,6 +482,8 @@ int add_main(int argc, char **argv)
 		char *old = kb_read_all(dbfile, &on);
 		size_t nn = 0;
 		char *nw = manifest(pkgfile, &nn);
+		if (old)
+			kp_triggers_note(&trig, old);
 		if (old && nw) {
 			char *body = strchr(old, '\n');
 			int lines = 0, pcap = 8192;
@@ -534,6 +538,7 @@ int add_main(int argc, char **argv)
 		kp_err("cannot list %s", pkgfile);
 		return 1;
 	}
+	kp_triggers_note(&trig, m);
 	kb_mkdir_p(db);
 	KbBuf entry = {0};
 	kb_buf_printf(&entry, "%s %s\n", ver, rel);
@@ -584,6 +589,8 @@ int add_main(int argc, char **argv)
 		unlink(hook_kept);
 		free(hook_kept);
 	}
+
+	kp_triggers_run(&trig, root);
 
 	kp_msg("Package '%s' installed successfully", name);
 	free(dbfile);

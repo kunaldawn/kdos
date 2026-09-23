@@ -15,4 +15,4 @@ source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
 sha256      = f042a370666815e7b941e9b7019024755bd1c6c2954afbfa515af378251799e2  libXfont2-2.0.9.tar.xz
 description = X font rasterisation library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libXfont2
-depends     = libfontenc freetype2 xtrans
+depends     = libfontenc freetype2 xtrans xorgproto zlib

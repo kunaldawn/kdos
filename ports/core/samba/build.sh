@@ -73,11 +73,14 @@
 	--nopyc --nopyo
 make
 make DESTDIR=$PKG install
+rm -rf "$PKG/run" "$PKG/var/run" "$PKG/var/lock"
+rm -f "$PKG/usr/share/man/man3/talloc.3"
 
 # smbd is not supervised by default: a file server that starts on every boot on
 # a laptop is a listening socket nobody asked for. The script is here so
 # `ksvc start samba` is one command, and enabling it is a decision.
-install -Dm755 /dev/stdin $PKG/etc/init.d/75_samba.sh <<'SH'
+install -d "$PKG/etc/init.d"
+cat > "$PKG/etc/init.d/75_samba.sh" <<'KDOS_SH'
 #!/bin/bash
 . /etc/init.d/service_helper
 
@@ -88,7 +91,7 @@ case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
         # A share nobody declared is a listening socket nobody asked for, so
-        # this needs an smb.conf with at least one section beyond [global].
+        # smbd starts only once a non-empty smb.conf exists.
         if [ ! -s /etc/samba/smb.conf ]; then
             echo "[SKIP] $NAME: no /etc/samba/smb.conf"
             exit 0
@@ -100,4 +103,5 @@ case "$1" in
     status) check_status "$NAME" ;;
     *)      echo "Usage: $0 {start|stop|status}"; exit 1 ;;
 esac
-SH
+KDOS_SH
+chmod 755 "$PKG/etc/init.d/75_samba.sh"

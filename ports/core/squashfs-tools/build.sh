@@ -10,8 +10,6 @@
 # ---------------------------------
 
 cd squashfs-tools
-# Patch to bypass strict GNU sed check as we are using toybox sed
-sed -i 's/if ! check_sed "${SED}"; then/if false; then/' generate-manpages/functions.sh
 
 SED=/usr/bin/sed make \
 	XZ_SUPPORT=1 \

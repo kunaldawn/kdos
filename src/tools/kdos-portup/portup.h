@@ -320,7 +320,9 @@ int pu_discover(const PuRecipe *r, PuFound *f);
 typedef struct {
 	int  state;
 	char candidate[PU_MAX_VER];
-	char url[1024];		/* the URL that was proved                  */
+	char url[1024];		/* the URL that was proved; with PU_UNKNOWN,
+				   upstream's own copy of the newest file
+				   when no candidate URL had it, if any     */
 	char reason[128];	/* why, when state is PU_UNKNOWN; with
 				   PU_NEWER, the newer version upstream that
 				   the recipe's URL could not reach, or the

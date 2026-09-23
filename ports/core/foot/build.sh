@@ -15,6 +15,7 @@ meson setup build \
 	--buildtype=release \
 	-Dgrapheme-clustering=enabled \
 	-Dterminfo=enabled \
+	-Dterminfo-base-name=foot-extra \
 	-Dime=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

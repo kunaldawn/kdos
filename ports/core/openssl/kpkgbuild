@@ -15,3 +15,4 @@ source      = https://openssl.org/source/$name-$version.tar.gz
 sha256      = 736b467530f916737b7031310ccb21d8218c6229e61e8e160cd1d3458cd543a8  openssl-4.0.2.tar.gz
 description = Management tools and libraries relating to cryptography
 homepage    = https://www.openssl.org
+depends     = perl zlib

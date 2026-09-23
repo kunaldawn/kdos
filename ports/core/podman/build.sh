@@ -13,20 +13,19 @@
 export BUILDTAGS="seccomp exclude_graphdriver_btrfs"
 
 # `binaries` builds podman, podman-remote, rootlessport, quadlet, etc.
-# Skip install.man — man pages need go-md2man (not packaged in kdos).
 make BUILDTAGS="$BUILDTAGS" \
 	PREFIX=/usr \
 	ETCDIR=/etc \
 	BINDIR=/usr/bin \
 	LIBEXECPODMAN=/usr/lib/podman \
-	binaries
+	binaries docs
 
 make DESTDIR=$PKG \
 	PREFIX=/usr \
 	ETCDIR=/etc \
 	BINDIR=/usr/bin \
 	LIBEXECPODMAN=/usr/lib/podman \
-	install.bin install.remote install.completions
+	install.bin install.remote install.man install.completions
 
 mkdir -p $PKG/etc/containers
 

@@ -9,5 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-find ucm2 -type f -iname "*.conf" -exec install -vDm 644 {} "$PKG/usr/share/alsa/"{} \;
-find ucm2 -type l -iname "*.conf" -exec cp -dv {} "$PKG/usr/share/alsa/"{} \;
+install -d "$PKG/usr/share/alsa"
+cp -R -P ucm2 "$PKG/usr/share/alsa/"
+find "$PKG/usr/share/alsa/ucm2" \( -name "*.md" -o -name .gitignore \) -delete

@@ -15,4 +15,4 @@ source      = https://github.com/linrunner/TLP/archive/$version/TLP-$version.tar
 sha256      = a0b8bd8193d96853d2876c552b3b2bdf46bd1258fffc9ac598acc67eb73b56d5  tlp-1.10.2.tar.gz
 description = Laptop power saving — pure shell over /sys, no daemon
 homepage    = https://linrunner.de/tlp
-depends     = bash
+depends     = bash perl

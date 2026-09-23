@@ -12,7 +12,7 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Ddocumentation=disabled \
-	-Dman-pages=disabled \
+	-Dman-pages=enabled \
 	-Dgeoclue=disabled \
 	-Dgudev=disabled \
 	-Dsystemd=disabled \

@@ -11,9 +11,10 @@
 name        = oxipng
 version     = 10.2.1
 release     = 1
+vendorsync  = xtask/Cargo.toml
 source      = $name-$version.tar.gz::https://github.com/oxipng/oxipng/archive/refs/tags/v$version.tar.gz
 sha256      = 460ccfcdcc9c3877b9f7fae1dfd4f2a3f93d3b2a2af3e3b62ca32b163f923cca  oxipng-10.2.1.tar.gz
-sha256      = 4a4ef65060978038aacac809497de14e9577cb97d8167103132ddb13cc771373  oxipng-vendor-10.2.1.tar.xz
+sha256      = 1aaa46c49e9e05f68b42fedc1b18a8396914d5dfc6da362601fc584d20cd91f7  oxipng-vendor-10.2.1.tar.xz
 description = Make a PNG smaller without changing a pixel
 homepage    = https://github.com/oxipng/oxipng
 depends     = rust

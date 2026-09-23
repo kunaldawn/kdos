@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/plougher/squashfs-tools/archive/refs/tags/$version.tar.gz
 sha256      = 547b7b7f4d2e44bf91b6fc554664850c69563701deab9fd9cd7e21f694c88ea6  squashfs-tools-4.7.5.tar.gz
 description = Tools to create and extract squashfs filesystems
-depends     = zlib xz lzo zstd lz4
+depends     = zlib xz lzo zstd lz4 sed

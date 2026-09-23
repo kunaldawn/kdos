@@ -42,13 +42,9 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DUSE_SYSTEM_LIBBPF=ON \
 	-DBUILD_TESTING=OFF \
-	-DENABLE_MAN=OFF \
+	-DENABLE_MAN=ON \
 	-DSTATIC_LINKING=OFF
 ninja
 DESTDIR=$PKG ninja install
 
-# The tools ARE the documentation for a language nobody remembers the syntax
-# of, so they are installed even with ENABLE_MAN off.
-install -dm755 $PKG/usr/share/bpftrace/tools
-cp -a $SRC/man/adoc $PKG/usr/share/bpftrace/ 2>/dev/null || true
-cp -a $SRC/tools/*.bt $PKG/usr/share/bpftrace/tools/ 2>/dev/null || true
+install -Dm644 $SRC/man/adoc/bpftrace.adoc -t $PKG/usr/share/bpftrace/adoc

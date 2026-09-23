@@ -16,6 +16,6 @@
 # cmake, on a tree that has cmake, ninja and meson as ports already.
 #
 # --no-build-isolation for the same reason, one level down: the only thing an
-# isolated environment would install here is setuptools, which is a port.
+# isolated environment would install here is flit-core, which is a port.
 
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

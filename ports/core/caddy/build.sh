@@ -24,6 +24,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=0
 go build -mod=vendor -ldflags "-s -w" -o caddy ./cmd/caddy
 install -Dm755 caddy $PKG/usr/bin/caddy
+./caddy manpage --directory $PKG/usr/share/man/man8
 
 install -Dm644 /dev/stdin $PKG/etc/caddy/Caddyfile <<'CFG'
 # `tls internal` is the whole point of this file. Caddy's default is to ask

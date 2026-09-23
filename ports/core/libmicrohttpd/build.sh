@@ -17,7 +17,6 @@
 	--libdir=/usr/lib \
 	--disable-static \
 	--disable-https \
-	--disable-doc \
 	--disable-examples
 make
 make DESTDIR=$PKG install

@@ -11,8 +11,10 @@
 
 meson setup build \
 	--prefix=/usr \
+	--libdir=lib \
 	--buildtype=release \
 	-D documentation=false \
+	-D man-pages=enabled \
 	-D nls=disabled \
 	-D selinux=disabled \
 	-D tests=false \

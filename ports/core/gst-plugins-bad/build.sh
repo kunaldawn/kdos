@@ -14,7 +14,7 @@
 # thinner package:
 #
 #   x265       HEVC encode          -Dgpl=enabled is required with it
-#   svtav1     AV1 encode           (dav1d decodes, in -base's own auto set)
+#   svtav1     AV1 encode           (AV1 decode is gst-libav's, through ffmpeg)
 #   openjpeg   JPEG 2000
 #   assrender  SSA/ASS subtitles over video
 #
@@ -28,6 +28,8 @@ meson setup build \
 	-Dexamples=disabled \
 	-Dtests=disabled \
 	-Dnls=disabled \
+	-Dx11=disabled \
+	-Dvulkan-windowing=wayland \
 	-Dgpl=enabled \
 	-Dx265=enabled \
 	-Dsvtav1=enabled \

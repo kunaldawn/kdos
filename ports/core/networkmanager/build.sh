@@ -13,7 +13,7 @@ meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib --localstatedir=/var \
 	-Dintrospection=false \
 	-Ddocs=false \
-	-Dman=false \
+	-Dman=true \
 	-Dvapi=false \
 	-Dtests=no \
 	-Dsystemd_journal=false \

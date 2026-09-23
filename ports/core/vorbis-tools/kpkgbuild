@@ -15,4 +15,4 @@ source      = https://downloads.xiph.org/releases/vorbis/$name-$version.tar.gz
 sha256      = a1fe3ddc6777bdcebf6b797e7edfe0437954b24756ffcc8c6b816b63e0460dde  vorbis-tools-1.4.3.tar.gz
 description = oggenc, oggdec, ogginfo and vorbiscomment
 homepage    = https://xiph.org/vorbis/
-depends     = libvorbis libogg flac libao curl
+depends     = pkgconf libvorbis libogg flac libao curl opusfile

@@ -15,3 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/unicode-org/icu/archive/
 sha256      = f06bcab72736ee9d55689033b8198a178562354128cf38edb2afc2e67e3fd931  icu-78.3.tar.gz
 description = International Components for Unicode library
 homepage    = https://icu.unicode.org
+depends     = python3

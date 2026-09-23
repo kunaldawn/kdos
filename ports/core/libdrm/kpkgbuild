@@ -16,4 +16,4 @@ release     = 1
 source      = https://dri.freedesktop.org/$name/$name-$version.tar.xz
 sha256      = ac5e74d157830eb8bee44c6a6bf3ad49774ef0dd2a72bdad74a8f20308b52a95  libdrm-2.4.134.tar.xz
 description = Provides a user space library for accessing the DRM, direct rendering manager, on operating systems that support the ioctl interface
-depends     = libpciaccess meson
+depends     = libpciaccess meson python3-docutils

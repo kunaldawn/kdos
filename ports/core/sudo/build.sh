@@ -15,9 +15,12 @@
         --with-secure-path \
         --with-all-insults \
         --with-env-editor \
+        --with-rundir=/run/sudo \
+        --with-vardir=/var/lib/sudo \
         --with-passprompt="[sudo] password for %p: "
 make
 make DESTDIR=$PKG install
+rm -rf $PKG/run
 
 mkdir -m 755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/sudo << "EOF"

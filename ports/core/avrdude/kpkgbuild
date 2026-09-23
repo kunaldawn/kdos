@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/avrdudes/avrdude/archive
 sha256      = 6c6fe3606f2ef331e502fb9c1d418ba09eb9705e811efbe18259025a9787ee3d  avrdude-8.3.tar.gz
 description = Flash an AVR — an Arduino, an ATtiny, a fuse byte
 homepage    = https://github.com/avrdudes/avrdude
-depends     = cmake ninja pkgconf flex bison libusb libftdi hidapi libserialport readline elfutils
+depends     = cmake ninja pkgconf flex bison libusb libftdi hidapi libserialport readline elfutils libgpiod
