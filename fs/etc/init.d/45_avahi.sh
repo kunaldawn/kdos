@@ -15,8 +15,10 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/avahi-daemon
         chown avahi:avahi /run/avahi-daemon 2>/dev/null
-        # -f = foreground, for ksvc. Not --daemonize.
-        supervise "$NAME" "$DAEMON" -f
+        # No flag: avahi-daemon stays in the foreground unless given -D, and
+        # ksvc must watch the daemon itself. -f takes a configuration FILE,
+        # so a bare -f is a usage error and a respawn loop.
+        supervise "$NAME" "$DAEMON"
         ;;
     stop)   stop_service "$NAME" ;;
     status) check_status "$NAME" ;;

@@ -40,7 +40,8 @@ case "$1" in
         fi
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/polkit-1
-        # --no-debug is the foreground mode; the supervisor owns the lifetime.
+        # polkitd never forks, so the supervisor watches the daemon itself.
+        # --no-debug only silences its diagnostic output on stdout.
         supervise "$NAME" "$DAEMON" --no-debug
         ;;
     stop)

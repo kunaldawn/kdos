@@ -8,11 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = python3-pyvisa
-version     = 1.16.2
+name        = python3-typing-extensions
+version     = 4.16.0
 release     = 1
-source      = https://files.pythonhosted.org/packages/source/p/pyvisa/pyvisa-$version.tar.gz
-sha256      = 75beb93eeafe20a50be5726fa4e3a645948c93d86819f9c1f8c542efa4085a38  python3-pyvisa-1.16.2.tar.gz
-description = The standard instrument-automation API, with no NI-VISA anywhere
-homepage    = https://pyvisa.readthedocs.io/
-depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-typing-extensions
+source      = https://files.pythonhosted.org/packages/source/t/typing-extensions/typing_extensions-$version.tar.gz
+sha256      = dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5  python3-typing-extensions-4.16.0.tar.gz
+description = Backported and experimental type hints for Python's typing module
+homepage    = https://github.com/python/typing_extensions
+depends     = python3 python3-pip python3-flit-core

@@ -8,11 +8,4 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = python3-pyvisa
-version     = 1.16.2
-release     = 1
-source      = https://files.pythonhosted.org/packages/source/p/pyvisa/pyvisa-$version.tar.gz
-sha256      = 75beb93eeafe20a50be5726fa4e3a645948c93d86819f9c1f8c542efa4085a38  python3-pyvisa-1.16.2.tar.gz
-description = The standard instrument-automation API, with no NI-VISA anywhere
-homepage    = https://pyvisa.readthedocs.io/
-depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-typing-extensions
+pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

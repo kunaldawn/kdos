@@ -14,14 +14,13 @@
 # Source this file from individual service scripts via:
 #   . /etc/init.d/service_helper
 #
-# These are three thin wrappers now: the supervisor lives in ksvc, which is C.
-# It had to move, because a respawn loop in a backgrounded subshell is not a
-# process-group leader — so `kill -- -$pid` in the old stop_service addressed a
-# group that pid did not lead, failed, fell back to killing the supervisor
-# alone, and left the daemon running while reporting success.
+# Three thin wrappers over ksvc, which is C. The supervisor must lead its own
+# process group so that stopping it signals the group and the daemon goes with
+# it; a respawn loop in a backgrounded shell subshell leads no group, and
+# stopping it leaves the daemon running while reporting success.
 #
-# The command is a real argv now. `supervise foo /usr/sbin/foo --daemon` — not
-# one string that a later unquoted expansion re-splits.
+# The command is an argument vector: `supervise foo /usr/sbin/foo --flag`, not
+# one string that a later unquoted expansion would re-split.
 
 supervise() {
     local name="$1"

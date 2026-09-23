@@ -10,6 +10,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# toybox init hands its children PATH=/sbin:/usr/sbin:/bin:/usr/bin, which
+# does not reach /usr/local. `kdos` and the rest of the KDOS commands live
+# there, and a service or timer that names one by its bare name would be
+# skipped as missing. Appended, so a name in both resolves to the base system.
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
+
 # The boot splash is already running: the initramfs started it and it survived
 # switch_root, because its FIFO lives on devtmpfs. Keep talking to the same
 # process so the screen never blinks between the two halves of boot.
@@ -87,12 +93,10 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
     echo "[KDOS] Running: $(basename $_script) start"
     splash step "$(echo "$_name" | tr '[:lower:]' '[:upper:]')"
 
-    # Redirect to a file and print it AFTERWARDS. The obvious version of this
-    # — `"$_script" start 2>&1 | tee "$_log"` — hangs the entire boot: a
-    # service that calls `supervise` leaves a supervisor process running with
-    # the pipe's write end inherited, so tee never sees EOF and rcS waits on
-    # it forever. Found by booting; 22_syslog was the first service to hit it
-    # and boot stopped dead there.
+    # Redirect to a file and print it AFTERWARDS, never through a pipe. A
+    # service that calls `supervise` leaves a supervisor running that holds
+    # any pipe's write end, so a `| tee` would never see EOF and rcS would
+    # wait on it for ever: the boot stops at the first supervised service.
     #
     # Every message still reaches the console and the serial line, which is
     # the only way to debug a machine that dies behind a splash — just after

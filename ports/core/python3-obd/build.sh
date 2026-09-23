@@ -15,6 +15,14 @@
 # fs/etc/udev/rules.d that give that group the CH341 and CP210x bridges these
 # cables are built from.
 #
-# --no-build-isolation because setuptools is an installed port; --no-deps
-# because pyserial is one too.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+# EVERY DECODED VALUE IS A pint QUANTITY, so pint is imported the moment `obd`
+# is. pint and its two helpers, flexcache and flexparser, have no other
+# consumer here and are vendored and installed into this package; pint is
+# held to the 0.24 series obd declares. Their own runtime dependencies,
+# platformdirs and typing-extensions, and every build backend they need are
+# ports, which is why the bundle is installed --no-deps with isolation off.
+mkdir -p vendor
+tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
+pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
+	--root=$PKG --prefix=/usr \
+	pint flexcache flexparser .

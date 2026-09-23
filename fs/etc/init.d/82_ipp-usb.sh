@@ -1,8 +1,8 @@
 #!/bin/bash
 . /etc/init.d/service_helper
 
-NAME="sshd"
-DAEMON="/usr/sbin/sshd"
+NAME="ipp-usb"
+DAEMON="/usr/sbin/ipp-usb"
 
 case "$1" in
     start)
@@ -11,13 +11,10 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        mkdir -p /run/sshd
-        # -A makes every host key type sshd offers by default that is missing,
-        # and leaves an existing key alone. A type sshd lists with no key file
-        # beside it is logged as an error on every start.
-        ssh-keygen -A
-        # -D = don't detach (foreground for supervision)
-        supervise "$NAME" "$DAEMON" -D
+        # standalone = run for ever and serve every IPP-over-USB device as it
+        # is plugged in, in the foreground for supervision (no -bg). udev mode
+        # exits with the last device, and nothing here starts it again.
+        supervise "$NAME" "$DAEMON" standalone
         ;;
     stop)
         stop_service "$NAME"

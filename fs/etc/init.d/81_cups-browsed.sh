@@ -1,8 +1,8 @@
 #!/bin/bash
 . /etc/init.d/service_helper
 
-NAME="sshd"
-DAEMON="/usr/sbin/sshd"
+NAME="cups-browsed"
+DAEMON="/usr/sbin/cups-browsed"
 
 case "$1" in
     start)
@@ -11,13 +11,10 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        mkdir -p /run/sshd
-        # -A makes every host key type sshd offers by default that is missing,
-        # and leaves an existing key alone. A type sshd lists with no key file
-        # beside it is logged as an error on every start.
-        ssh-keygen -A
-        # -D = don't detach (foreground for supervision)
-        supervise "$NAME" "$DAEMON" -D
+        # cups-browsed never forks, so it runs in the foreground for
+        # supervision with no flag. After 80_cups: it adds the printers it
+        # finds to that cupsd.
+        supervise "$NAME" "$DAEMON"
         ;;
     stop)
         stop_service "$NAME"
