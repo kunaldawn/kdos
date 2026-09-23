@@ -1,0 +1,14 @@
+--- a/xtask/src/main.rs
++++ b/xtask/src/main.rs
+@@ -44,7 +44,10 @@
+     let mut man_file = BufWriter::new(File::create(manpages_dir.join("oxipng.1"))?);
+     Man::new(package_cmd)
+         .date({
+-            let now = UtcDateTime::now()?;
++            let now = match env::var("SOURCE_DATE_EPOCH") {
++                Ok(epoch) => UtcDateTime::from_timespec(epoch.parse()?, 0)?,
++                Err(_) => UtcDateTime::now()?,
++            };
+             format!(
+                 "{:04}-{:02}-{:02}",
+                 now.year(),

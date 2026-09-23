@@ -98,9 +98,10 @@ make install INSTALL_ROOT=$PKG CONFLIBDIR=:
 
 # /dev/vcsa IS ROOT-AND-tty-GROUP, so BRLTTY runs as a service rather than as
 # the user. The ksvc script is the shape every other daemon here has, and it
-# SKIPS rather than fails when no braille device is attached — a respawn loop
-# around a daemon with no hardware is a boot that never settles.
-install -Dm755 /dev/stdin $PKG/etc/init.d/65_brltty.sh <<'SH'
+# SKIPS rather than fails until /etc/brltty.conf says what to drive — a respawn
+# loop around a daemon with nothing to do is a boot that never settles.
+install -d "$PKG/etc/init.d"
+cat > "$PKG/etc/init.d/65_brltty.sh" <<'KDOS_SH'
 #!/bin/bash
 . /etc/init.d/service_helper
 
@@ -110,12 +111,12 @@ DAEMON="/usr/bin/brltty"
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # No braille device and no explicit configuration means nothing to
-        # drive. BRLTTY would exit, and a supervised daemon that exits is a
-        # respawn loop; checking here is what keeps the boot quiet on the
-        # overwhelming majority of machines that have no display attached.
-        if [ ! -s /etc/brltty.conf ] && ! ls /dev/ttyUSB* /dev/ttyACM* >/dev/null 2>&1; then
-            echo "[SKIP] $NAME: no braille device and no /etc/brltty.conf"
+        # The configuration is the only opt-in. No braille driver is built,
+        # so an attached serial or USB device is no sign of a display this
+        # could drive, and nothing installs /etc/brltty.conf: a machine starts
+        # BRLTTY once somebody writes one naming the speech path they want.
+        if [ ! -s /etc/brltty.conf ]; then
+            echo "[SKIP] $NAME: no /etc/brltty.conf"
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
@@ -125,4 +126,5 @@ case "$1" in
     status) check_status "$NAME" ;;
     *)      echo "Usage: $0 {start|stop|status}"; exit 1 ;;
 esac
-SH
+KDOS_SH
+chmod 755 "$PKG/etc/init.d/65_brltty.sh"

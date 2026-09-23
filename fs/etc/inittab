@@ -35,5 +35,9 @@ tty2::respawn:/usr/local/sbin/kdos-getty tty2 /sbin/getty 38400 tty2
 # Restart
 ::restart:/sbin/init
 ::ctrlaltdel:/sbin/reboot
+# Shutdown entries run in order, each to completion, before init signals every
+# process. rcK stops the services first, while the filesystems they save to
+# are still writable.
+::shutdown:/etc/init.d/rcK
 ::shutdown:/sbin/swapoff -a
 ::shutdown:/bin/umount -a -r

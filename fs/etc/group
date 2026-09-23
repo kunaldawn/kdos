@@ -25,9 +25,11 @@ lock:x:54:
 nobody:x:99:
 users:x:100:kdos
 network:x:101:
+tss:x:993:
 seat:x:994:kdos
 lpadmin:x:995:kdos
 sshd:x:996:
 messagebus:x:997:
 wheel:x:998:kdos
+dhcpcd:x:999:
 kdos:x:1000:

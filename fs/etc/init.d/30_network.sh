@@ -34,8 +34,6 @@ case "$1" in
         ;;
     stop)
         stop_service "$NAME"
-        # Also ask dhcpcd to release leases gracefully
-        "$DAEMON" -k 2>/dev/null || true
         ;;
     status)
         check_status "$NAME"
