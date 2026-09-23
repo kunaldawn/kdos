@@ -23,6 +23,12 @@ go build -mod=vendor \
 	-ldflags "-s -w -X github.com/git-lfs/git-lfs/v3/config.Vendor=KDOS -X github.com/git-lfs/git-lfs/v3/config.GitCommit=v$version" \
 	-o git-lfs
 install -Dm755 git-lfs $PKG/usr/bin/git-lfs
+for sh in bash zsh fish; do
+	HOME="$PWD/.home" ./git-lfs completion $sh > git-lfs.$sh
+done
+install -Dm644 git-lfs.bash $PKG/usr/share/bash-completion/completions/git-lfs
+install -Dm644 git-lfs.zsh  $PKG/usr/share/zsh/site-functions/_git-lfs
+install -Dm644 git-lfs.fish $PKG/usr/share/fish/vendor_completions.d/git-lfs.fish
 
 # The manual pages only, from upstream's own list: `make man` also writes an
 # HTML copy of every page. MAN_ROFF_TARGETS names each page under the section

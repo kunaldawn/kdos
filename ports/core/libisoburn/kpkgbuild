@@ -14,4 +14,4 @@ release     = 1
 source      = https://files.libburnia-project.org/releases/libisoburn-$version.tar.gz
 sha256      = a977b03dc3686d9fdca600458b1578f9cac2b875609bd5ec21f5ada55f20ec50  libisoburn-1.5.8.pl02.tar.gz
 description = Frontend for libburn and libisofs which enables creation and expansion of ISO-9660 filesystems
-depends     = libburn libisofs zlib
+depends     = libburn libisofs zlib readline acl

@@ -12,7 +12,8 @@
 # EVERY BINDING IS OFF AND THE C LIBRARY IS THE DELIVERABLE. hamlib builds
 # python, tcl, perl and lua wrappers through swig; what anything on this
 # machine wants is `rigctl` at a prompt and the shared library that the SDR and
-# digital-mode software links.
+# digital-mode software links. libxml2 is what lets `rigmem` save and load a
+# radio's memory channels as a file.
 #
 # The radio is on a serial port, which is what the `dialout` group and the
 # CP210x/FTDI/CH341 udev rules in this tree already cover — hamlib is the
@@ -32,6 +33,11 @@ export CFLAGS="$CFLAGS -include sys/types.h"
 	--without-tcl-binding \
 	--without-perl-binding \
 	--without-lua-binding \
-	--with-libusb
+	--with-libusb \
+	--with-readline \
+	--with-xml-support \
+	--without-indi \
+	--disable-html-matrix \
+	--disable-pytest
 make
 make DESTDIR=$PKG install

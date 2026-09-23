@@ -9,9 +9,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# An empty udevrulesdir asks pkg-config for udev's directory, so whether
+# 99-fuse3.rules ships would follow build order; eudev's is /lib/udev.
+#
+# enable-io-uring is off because fuse-over-io-uring links libnuma as well as
+# liburing, and no port provides libnuma: left on, the feature would switch
+# itself on for whichever build root happened to carry both.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Dinitscriptdir= \
+	-Dudevrulesdir=/lib/udev/rules.d \
+	-Denable-io-uring=false \
 	-Dexamples=false \
 	-Dtests=false
 meson compile -C build

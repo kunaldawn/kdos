@@ -665,7 +665,8 @@ The installer appends to this file rather than replacing it, precisely because o
 Applies at boot. Terminal one runs `kdos-login`, which hands the tty to `agetty` and autologins
 where `login.conf` names an account. Terminal two is an ordinary login and is the recovery console.
 The serial line gives a login on demand. Both terminals are wrapped by the VT-font loader. On
-shutdown, `/etc/init.d/rcK` runs every enabled service script's `stop` in reverse order, then swap is
+shutdown, `/etc/init.d/rcK` runs every enabled service script's `stop` in reverse order — all but
+`25_nftables`, so the firewall stays loaded to the end — then swap is
 turned off and every filesystem remounted read-only.
 
 Renaming the desktop user must rewrite `login.conf`'s `autologin`, which names the account tty1 logs
@@ -747,10 +748,15 @@ over the file it has just recorded.
 `baresip` writes `~/.baresip/config` on a first run and only when there is none, so the default
 below is what a fresh account gets and an edited file is never overwritten.
 
-Five module lines are uncommented there that upstream leaves commented, and they are exactly the
-five this image builds: `opus.so`, `avcodec.so`, `vp8.so`, `vp9.so` and `sdl.so`. An uncommented
-line naming a module that is not installed is a start-up error, which is why upstream's default
-comments them all.
+Five module lines are uncommented there that upstream leaves commented, and they are the codec
+and display modules this image builds: `opus.so`, `avcodec.so`, `vp8.so`, `vp9.so` and `sdl.so`. An
+uncommented line naming a module that is not installed is a start-up error, which is why upstream's
+default comments them all.
+
+The audio line stays `alsa.so`, which reaches PipeWire through the ALSA default. `pipewire.so` is
+built beside it for a config that names it, as are `sndfile.so` (call recording), `snapshot.so`
+and `ctrl_dbus.so`, all left commented as upstream writes them, and the `aac.so` codec, which the
+generated config does not mention at all.
 
 The display is uncommented and the camera is not, and the asymmetry is the point: which screen a
 picture goes on is a property of the build, and which camera it comes from is a choice. Turning on

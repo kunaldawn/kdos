@@ -21,8 +21,8 @@
 	--with-tiff \
 	--with-webp \
 	--with-heif \
-	--without-avif \
-	--without-jxl
+	--with-avif \
+	--with-jxl
 make
 make DESTDIR=$PKG install
 install -Dm644 docs/chafa.1 -t "$PKG/usr/share/man/man1"

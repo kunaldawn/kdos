@@ -22,13 +22,14 @@
 # carries the .txt sources and none of the generated output a release tarball
 # would. --without-asciidoc leaves the Makefile still declaring calcurse.1 as a
 # prerequisite of all-am, and the build dies on `No rule to make target` after
-# every binary has already compiled.
+# every binary has already compiled. --enable-docs stays on because the help
+# screen reads the .txt topics it installs under the documentation directory.
 # a2x drives xsltproc against asciidoc's own manpage.xsl, which IMPORTS the
 # standard docbook-xsl stylesheet by URL — resolved only through the XML
 # catalog. Without this the import silently yields nothing and xsltproc exits 5.
 export XML_CATALOG_FILES=/etc/xml/catalog
 
-./configure --prefix=/usr --sysconfdir=/etc
+./configure --prefix=/usr --sysconfdir=/etc --enable-nls --enable-docs --with-asciidoc
 make
 make DESTDIR=$PKG install
 

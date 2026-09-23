@@ -23,6 +23,7 @@
 	--with-giflib \
 	--with-libtiff \
 	--with-libwebp \
+	--with-libwebpmux \
 	--with-libopenjpeg \
 	--with-zlib
 make

@@ -14,4 +14,4 @@ release     = 1
 source      = $name-$version.tar.gz::http://greenwoodsoftware.com/$name/$name-$version.tar.gz
 sha256      = d1008fb78dcae1323ddab664bcb352a61f022b1b131bd8018548e021d975ec7a  less-710.tar.gz
 description = A text file viewer
-depends     = ncurses
+depends     = ncurses pcre2

@@ -18,13 +18,14 @@ export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 # --enable-nasm is deliberately OFF: lame's hand-written assembly predates
 # x86_64 and the C path is what every distribution ships. The frontend is the
 # `lame` command itself, named explicitly because it is what the pre-C99
-# suppressions above are for. MP3 decoding comes only from libmpg123, which
-# has no port, and configure stops when it is missing unless the decoder is
-# disabled; the hip_* symbols then stay exported as stubs that decode nothing.
+# suppressions above are for. The decoder is libmpg123: it gives `lame
+# --decode`, MP3 input and a working hip_* API, and configure stops rather than
+# build without it. The frontend's VBR histogram draws through ncurses, which
+# configure links whenever it finds it.
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--enable-nasm=no \
 	--enable-frontend \
-	--disable-decoder \
+	--enable-decoder \
 	--disable-gtktest
 make
 make DESTDIR=$PKG install

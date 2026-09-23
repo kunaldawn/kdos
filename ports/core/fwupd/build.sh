@@ -28,8 +28,11 @@
 # capsule update method unsupported, which is the true answer.
 #
 # -Dplugin_uefi_capsule_splash rasterises the boot-time splash through python
-# gobject-introspection, pango and cairo at SETUP time and error()s when any is
-# missing; none of them is a host dependency here.
+# gobject-introspection (the `gi` module), pango and cairo at SETUP time and
+# error()s when any is missing; no port provides the `gi` module.
+#
+# -Dintrospection=disabled: the typelib would be generated against glib's own
+# GIRs, and the glib port is built without them.
 #
 # -Dopenssl=disabled keeps one crypto backend: gnutls is probed first and the
 # embedded jcat verifier takes whichever it finds, so enabling both would link
@@ -45,7 +48,7 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/
 	-Dlogind=disabled \
 	-Defi_binary=false \
 	-Dplugin_uefi_capsule_splash=false \
-	-Dplugin_modem_manager=disabled \
+	-Dplugin_modem_manager=enabled \
 	-Dpassim=disabled \
 	-Dp2p_policy=none \
 	-Dumockdev_tests=disabled \
@@ -59,6 +62,7 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/
 	-Dreadline=enabled \
 	-Dbluez=enabled \
 	-Dhsi=enabled \
+	-Dbash_completion=true \
 	-Dfish_completion=false \
 	-Dsupported_build=disabled \
 	-Dvendor_ids_dir=/usr/share/hwdata

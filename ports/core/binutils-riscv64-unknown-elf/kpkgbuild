@@ -16,4 +16,4 @@ source      = $name-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/binuti
 sha256      = 154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff  binutils-riscv64-unknown-elf-2.47.tar.xz
 description = The assembler, linker and object tools for riscv64-unknown-elf
 homepage    = https://www.gnu.org/software/binutils/
-depends     = zlib texinfo bison flex
+depends     = zlib zstd xxhash pkgconf texinfo bison flex

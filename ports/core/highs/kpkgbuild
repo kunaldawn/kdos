@@ -15,4 +15,4 @@ source      = highs-1.15.1.tar.gz::https://github.com/ERGO-Code/HiGHS/archive/re
 sha256      = a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16  highs-1.15.1.tar.gz
 description = The open LP and mixed-integer solver, and the one that is competitive
 homepage    = https://highs.dev/
-depends     = cmake ninja zlib
+depends     = cmake ninja zlib openblas

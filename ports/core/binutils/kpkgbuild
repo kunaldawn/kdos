@@ -14,4 +14,4 @@ release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/binutils/$name-$version.tar.xz
 sha256      = 154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff  binutils-2.47.tar.xz
 description = A collection of binary tools
-depends     = zlib
+depends     = zlib xxhash

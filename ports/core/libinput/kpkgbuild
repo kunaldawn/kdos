@@ -14,4 +14,4 @@ release     = 1
 source      = https://gitlab.freedesktop.org/libinput/libinput/-/archive/$version/libinput-$version.tar.gz
 sha256      = 7dd6c1ca964c86eb6810ccd6639cda634e68bdca43bf3afec39e94e942fac8d4  libinput-1.32.0.tar.gz
 description = library that handles input devices for display servers and other applications that need to directly deal with input devices
-depends     = eudev libevdev mtdev meson
+depends     = eudev libevdev mtdev lua54 meson

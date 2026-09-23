@@ -19,11 +19,20 @@
 # network feature and is not only that: a CRAM file stores reads as differences
 # against a reference it names by checksum, so without the fetch path a CRAM
 # with no local reference is unreadable rather than slow.
+#
+# libdeflate replaces zlib for BGZF deflate and CRC, which makes BAM
+# compression several times faster in samtools and bcftools as well.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--enable-libcurl \
-	--with-libdeflate=no \
+	--enable-s3 \
+	--enable-gcs \
+	--enable-ref-cache \
+	--enable-bz2 \
+	--enable-lzma \
+	--with-libdeflate \
+	--disable-plugins \
 	--disable-static
 make
 make DESTDIR=$PKG install

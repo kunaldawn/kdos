@@ -41,9 +41,15 @@
 # LIBVA_DRIVER_NAME; the driver is chosen by probing the PCI id, and a shell
 # profile pinning it is wrong on any machine with a second GPU.
 #
-# There is no X11 switch and none is wanted: find_package(X11) is followed by
-# pkg_check_modules(LIBVAX11 libva-x11), and libva here is built without its X11
-# backend, so libva-x11.pc is absent and the X path disables itself.
+# CMAKE_DISABLE_FIND_PACKAGE_X11=ON. The driver has no X11 option of its own:
+# it runs find_package(X11), which finds the libX11 that Xwayland brings, and
+# then keeps the X path only if libva-x11.pc exists as well. Disabling the find
+# keeps the driver off X whatever libX11 and libva happen to carry.
+#
+# CMAKE_DISABLE_FIND_PACKAGE_Backtrace=ON. musl has no execinfo.h, and the
+# driver links whichever backtrace library find_package(Backtrace) turns up,
+# so a stray libexecinfo on the builder would become a runtime dependency of
+# a driver no recipe declares it for.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -55,6 +61,8 @@ cmake .. -G Ninja \
 	-DBUILD_KERNELS=OFF \
 	-DINSTALL_DRIVER_SYSCONF=OFF \
 	-DMEDIA_BUILD_FATAL_WARNINGS=OFF \
-	-DMEDIA_RUN_TEST_SUITE=OFF
+	-DMEDIA_RUN_TEST_SUITE=OFF \
+	-DCMAKE_DISABLE_FIND_PACKAGE_X11=ON \
+	-DCMAKE_DISABLE_FIND_PACKAGE_Backtrace=ON
 ninja
 DESTDIR=$PKG ninja install

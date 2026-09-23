@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/harfbuzz/harfbuzz/releases/download/$version/harfbuzz-$version.tar.xz
 sha256      = b7132e148358a45185c9feafd049dbaf243649d3c44414b3534d9c95d18592b9  harfbuzz-14.5.0.tar.xz
 description = OpenType text shaping engine
-depends     = meson glib cairo
+depends     = meson glib cairo freetype2 libpng zlib

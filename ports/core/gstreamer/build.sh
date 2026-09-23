@@ -17,6 +17,10 @@ meson setup build \
 	-Dexamples=disabled \
 	-Dtests=disabled \
 	-Dptp-helper=disabled \
+	-Dlibdw=enabled \
+	-Dlibunwind=disabled \
+	-Dbash-completion=enabled \
+	-Dnls=disabled \
 	-Dgst_debug=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

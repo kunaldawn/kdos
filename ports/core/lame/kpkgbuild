@@ -15,4 +15,4 @@ source      = https://downloads.sourceforge.net/lame/$name-$version.tar.gz
 sha256      = 3df5124d5ad3a98312ffd7ba6a9b36230e4f8a3e66d3ce0f425e336c32d216eb  lame-4.0.tar.gz
 description = LAME MP3 encoder
 homepage    = https://lame.sourceforge.io/
-depends     =
+depends     = mpg123 ncurses

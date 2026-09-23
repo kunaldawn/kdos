@@ -10,21 +10,35 @@
 # ---------------------------------
 
 # Everything KDOS wants from avahi is the daemon plus the client library, so
-# CUPS can discover printers. All the bindings, all the toolkits and the whole
-# GObject/introspection chain are off: none of them is on the host, and
-# avahi-discover et al are python.
+# CUPS can discover printers. The client library IS the D-Bus API, so dbus is
+# on by name, as are expat for the service files, gdbm for the service-type
+# database, and the glib main-loop adapter cups-browsed builds on together with
+# the gobject wrapper that comes with glib.
+# The bindings, the toolkits and introspection are off: none of them is on the
+# host, and avahi-discover et al are python. Every one of them is named, on or
+# off, so the result does not depend on what else was built first.
 #
 # --with-distro=none stops it installing an init script for someone else's
-# init system; KDOS supervises it through ksvc like everything else.
+# init system, and --with-systemdsystemunitdir=no stops it asking pkg-config
+# for a unit directory; KDOS supervises it through ksvc like everything else.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--localstatedir=/var \
 	--libdir=/usr/lib \
 	--with-distro=none \
+	--with-systemdsystemunitdir=no \
+	--with-xml=expat \
 	--with-avahi-user=avahi \
 	--with-avahi-group=avahi \
 	--disable-static \
+	--enable-dbus \
+	--enable-gdbm \
+	--disable-dbm \
+	--enable-glib \
+	--enable-gobject \
+	--disable-qt3 \
+	--disable-qt4 \
 	--disable-qt5 \
 	--disable-qt6 \
 	--disable-gtk \
@@ -36,6 +50,10 @@
 	--disable-introspection \
 	--disable-libevent \
 	--disable-xmltoman \
+	--disable-doxygen-doc \
+	--disable-compat-libdns_sd \
+	--disable-compat-howl \
+	--disable-tests \
 	--enable-libdaemon
 
 make

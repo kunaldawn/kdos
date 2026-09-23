@@ -18,4 +18,4 @@ sha256      = 3d258a3bf97cc20c59eeebfe62c2432fae88adda74d3ad098681c76e0ebf446b  
 sha256      = 34ab0ee87a9eb26d3087fa9b49c2572ea8ee03db0c9705b83648301a3a3fc172  gcem-012ae73c6d0a2cb09ffe86475f5c6fba3926e200.tar.gz
 description = Play a MIDI file — the synthesiser that makes notes into sound
 homepage    = https://www.fluidsynth.org/
-depends     = cmake ninja pkgconf alsa-lib pipewire libsndfile readline dbus
+depends     = cmake ninja pkgconf gcc alsa-lib pipewire libsndfile readline dbus

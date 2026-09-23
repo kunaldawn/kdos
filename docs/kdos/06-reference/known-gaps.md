@@ -232,6 +232,10 @@ the end of initialisation confirms the slot. A second *encrypted* slot has there
 booted, because nothing fills one. What is measured is on the host: `select` rolling from B back to A
 hands back A's container and not B's, which is the failure the mechanism exists to prevent.
 
+Go has no race detector and no BoringCrypto. Both are objects upstream compiles and ships inside
+the source tarball, and the `go` port does not install them, so `go build -race`, `go test -race`
+and `GOEXPERIMENT=boringcrypto` fail to link. Every other Go build is unaffected.
+
 There is no public binary host. The mechanism is complete — a signed index, three equality tests,
 deltas — but it is one you run yourself.
 

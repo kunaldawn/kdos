@@ -13,6 +13,11 @@
 # LAPACK, the ODE and FFT libraries and octave all want a Fortran compiler, and
 # there is no separate gfortran tarball to add later. It is paid twice: phase 2
 # rebuilds this port with itself before phase 3 builds it again.
+#
+# zstd and isl are both probed and neither is reachable in 02_phase2, which
+# builds this recipe too: left to probe, LTO's zstd compression and Graphite
+# would follow build order, and declaring zstd would pull it into the
+# bootstrap. No port provides isl.
 mkdir -v build
 cd       build
 
@@ -22,6 +27,9 @@ cd       build
 	--enable-languages=c,c++,fortran,lto \
 	--disable-bootstrap \
 	--with-system-zlib \
+	--without-zstd \
+	--without-isl \
+	--enable-linker-build-id \
 	--disable-nls \
 	--disable-multilib \
 	--enable-threads=posix \

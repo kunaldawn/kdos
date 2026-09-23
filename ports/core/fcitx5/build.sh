@@ -11,6 +11,7 @@
 
 # kpkg copies a .tar.zst rather than unpacking it, the same as linux-firmware.
 tar -xf "$PORT_SRC/$name-$version.tar.zst" --strip-components=1
+cp "$PORT_SRC/$_endict" src/modules/spell/
 
 # ENABLE_X11=Off is the hard rule, not a size choice: X11 support here would
 # pull xcb-imdkit, cairo-xcb, xkbfile and seven xcb components onto the host for
@@ -20,8 +21,14 @@ tar -xf "$PORT_SRC/$name-$version.tar.zst" --strip-components=1
 # EVENT_LOOP_BACKEND=libuv, because the alternative is systemd. USE_SYSTEMD=Off
 # alone would still let an `auto` search find one if it ever appeared.
 #
-# BUILD_SPELL_DICT downloads en_dict.tar.gz at build time — the one thing in
-# this tree that would reach the network during `make build --network none`.
+# BUILD_SPELL_DICT compiles the English word list for keyboard hints, and the
+# spell module `file(DOWNLOAD)`s that list at BUILD time, which under
+# `--network none` is a dead build. The port carries it, and Fcitx5Download's
+# cmake skips the fetch when the file already sits where it would have put it
+# with the expected hash — the same fix as fcitx5-chinese-addons.
+#
+# ENABLE_ENCHANT stays off because there is no enchant port; the spell module
+# then answers from en_dict alone.
 #
 # ENABLE_XDGAUTOSTART installs a .desktop into /etc/xdg/autostart, which nothing
 # on KDOS reads; kdos-desktop-start launches fcitx5 by name.
@@ -40,12 +47,16 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_WAYLAND=On \
 	-D ENABLE_DBUS=On \
 	-D ENABLE_KEYBOARD=On \
+	-D ENABLE_EMOJI=On \
+	-D ENABLE_LIBUUID=On \
+	-D ENABLE_SERVER=On \
+	-D USE_SYSTEM_YOGA=Off \
 	-D ENABLE_ENCHANT=Off \
 	-D ENABLE_DOC=Off \
 	-D ENABLE_TEST=Off \
 	-D ENABLE_TESTING_ADDONS=On \
 	-D ENABLE_XDGAUTOSTART=Off \
-	-D BUILD_SPELL_DICT=Off \
+	-D BUILD_SPELL_DICT=On \
 	-D USE_SYSTEMD=Off \
 	-D EVENT_LOOP_BACKEND=libuv \
 	-D USE_SYSTEM_PLASMA_WAYLAND_PROTOCOLS=On \

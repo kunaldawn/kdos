@@ -26,6 +26,9 @@
 	--with-domainsocket=/run/cups/cups.sock \
 	--enable-acl \
 	--enable-dbus \
+	--enable-pam \
+	--enable-libpaper \
+	--with-dnssd=avahi \
 	--with-dbusdir=/usr/share/dbus-1 \
 	--enable-libusb \
 	--enable-raw-printing \
@@ -33,7 +36,8 @@
 	--with-tls=gnutls \
 	--with-optim="$CFLAGS" \
 	--without-rcdir \
-	--without-systemd
+	--without-systemd \
+	--with-ondemand=no
 make
 make BUILDROOT=$PKG install
 

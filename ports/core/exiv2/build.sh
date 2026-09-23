@@ -17,6 +17,10 @@
 # EXIV2_ENABLE_INIH=ON uses the `inih` port rather than exiv2's vendored copy.
 # Two inih implementations on one machine is two parsers of the same config
 # format, and the one nobody is looking at is the one that drifts.
+#
+# NLS stays off: the tree ships no message catalogues, so it would only add a
+# libintl link for strings nobody reads. WEBREADY and CURL stay off so the
+# library never opens a network URL handed to it as a path.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -24,9 +28,18 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_SHARED_LIBS=ON \
+	-DEXIV2_ENABLE_XMP=ON \
+	-DEXIV2_ENABLE_EXTERNAL_XMP=OFF \
 	-DEXIV2_ENABLE_PNG=ON \
+	-DEXIV2_ENABLE_BMFF=ON \
 	-DEXIV2_ENABLE_BROTLI=ON \
+	-DEXIV2_ENABLE_VIDEO=ON \
+	-DEXIV2_ENABLE_LENSDATA=ON \
 	-DEXIV2_ENABLE_INIH=ON \
+	-DEXIV2_ENABLE_NLS=OFF \
+	-DEXIV2_ENABLE_WEBREADY=OFF \
+	-DEXIV2_ENABLE_CURL=OFF \
+	-DEXIV2_BUILD_DOC=OFF \
 	-DEXIV2_BUILD_SAMPLES=OFF \
 	-DEXIV2_BUILD_UNIT_TESTS=OFF \
 	-DEXIV2_BUILD_EXIV2_COMMAND=ON

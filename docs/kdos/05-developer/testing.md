@@ -819,6 +819,7 @@ render rate by construction and is comparable between machines rather than betwe
 |---|---|
 | How fast can this machine draw a trivial scene | `es2gears_wayland`, printing `N frames in X seconds` every five seconds |
 | How fast can it draw real ones, as one comparable score | `glmark2-es2-wayland`, or `glmark2-wayland` for desktop GL |
+| The same with no compositor in the way | `glmark2-es2-drm` / `glmark2-drm` from a text console while no compositor holds the display, which they then drive themselves; `glmark2-es2-gbm` / `glmark2-gbm` render offscreen and need no display at all |
 | The same for Vulkan | `vkgears`, or `vkcube` for a swapchain that can be told its present mode |
 | Does this machine have a Vulkan driver at all, and which | `vulkaninfo --summary` — run it first under an emulator, because a Vulkan tool falls back to lavapipe on the CPU without saying so |
 | Which EGL renderer, extensions and configs a client gets | `eglinfo` |

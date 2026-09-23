@@ -16,4 +16,4 @@ source      = $name-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/gcc/$_
 sha256      = e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e  gcc-arm-none-eabi-16.2.0.tar.xz
 description = The bare-metal Cortex-M and Cortex-R compiler
 homepage    = https://gcc.gnu.org/
-depends     = binutils-arm-none-eabi gmp mpfr mpc zlib texinfo
+depends     = binutils-arm-none-eabi gmp mpfr mpc zlib zstd texinfo

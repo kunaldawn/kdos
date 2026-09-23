@@ -20,8 +20,20 @@
 # an EMPTY libbpf/ directory, so the default configuration fails in a way that
 # looks like a broken checkout. The `libbpf` port is what fills that in.
 #
-# No BLAZESYM (rust symbolisation for a case this does not need) and no static
-# link — LLVM here is shared and a static bpftrace would want the whole of it.
+# No BLAZESYM (rust symbolisation for a case this does not need; its search is
+# disabled so a stray install cannot switch it on) and no static link — LLVM
+# here is shared and a static bpftrace would want the whole of it.
+#
+# THE OPTIONAL LIBRARIES ARE REQUIRED HERE. bpftrace find_package()s libbfd and
+# libopcodes (the disassembler behind -d), libdw (uprobe arguments and struct
+# types from DWARF) and libpcap (skb_output) and quietly builds without any it
+# misses; CMAKE_REQUIRE_FIND_PACKAGE turns a missing one into a configure
+# error, and binutils, elfutils and libpcap are in `depends`.
+#
+# -DASCIIDOCTOR NAMES THE PROGRAM rather than letting cmake search for it: a
+# search that fails only warns and ships no bpftrace(8), where a named path that
+# is missing fails the man target.
+#
 # --copy-dt-needed-entries, AND THE DT_NEEDED CHAIN IS ALREADY CORRECT. This
 # LLVM is BUILD_SHARED_LIBS=ON, so `libLLVMBPFCodeGen.so` records a NEEDED on
 # `libLLVMBPFDesc.so` and the symbol IS reachable at run time. binutils has
@@ -43,8 +55,14 @@ cmake .. -G Ninja \
 	-DUSE_SYSTEM_LIBBPF=ON \
 	-DBUILD_TESTING=OFF \
 	-DENABLE_MAN=ON \
+	-DASCIIDOCTOR=/usr/bin/asciidoctor \
+	-DENABLE_SKB_OUTPUT=ON \
+	-DENABLE_SYSTEMD=OFF \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_LibBfd=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_LibOpcodes=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_LibDw=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_LibPcap=ON \
+	-DCMAKE_DISABLE_FIND_PACKAGE_LibBlazesym=ON \
 	-DSTATIC_LINKING=OFF
 ninja
 DESTDIR=$PKG ninja install
-
-install -Dm644 $SRC/man/adoc/bpftrace.adoc -t $PKG/usr/share/bpftrace/adoc

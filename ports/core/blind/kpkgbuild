@@ -15,4 +15,4 @@ source      = https://dl.suckless.org/tools/$name-$version.tar.gz
 sha256      = 24f903ccb5e118d75f38d3ae0d85fed909749f978bff47ff6973ee1bfddfcc5a  blind-1.1.tar.gz
 description = Video editing as a pipeline of small programs over raw frames
 homepage    = https://tools.suckless.org/blind/
-depends     = farbfeld
+depends     = farbfeld ffmpeg

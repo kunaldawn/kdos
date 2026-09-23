@@ -368,10 +368,12 @@ in the catalogue emits either. The three raster protocols the terminal implement
 modern program reaches for. See [kdos-term](../04-programs/kdos-term.md).
 
 **Braille and speech are ports, and neither reads the desktop.** `brltty` reads `/dev/vcsa`, so it
-covers `tty1` and the installer and nothing the compositor draws; `speech-dispatcher` is the API a
-screen reader speaks and `espeak-ng` is the voice behind it. BrlAPI is linked by nothing here and
-no KDOS surface talks to any of the three. They are on the image because they are useful to
-somebody at a terminal, not because the desktop is readable — see
+covers `tty1` and the installer; its other screen drivers read a `tmux` session or a terminal run
+under `brltty-pty`, and none of them reads anything the compositor draws. It carries a driver for
+nearly every braille display, loaded by name from `/etc/brltty.conf`. `speech-dispatcher` is the
+API a screen reader speaks and `espeak-ng` is the voice behind it. BrlAPI is linked by nothing here
+and no KDOS surface talks to `brltty`, `speech-dispatcher` or `espeak-ng`. They are on the image
+because they are useful to somebody at a terminal, not because the desktop is readable — see
 [Accessibility](../02-user-guide/accessibility.md).
 
 **An invitation in a message is read and never answered.** `aerc`'s calendar filter prints the

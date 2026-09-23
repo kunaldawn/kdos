@@ -15,8 +15,7 @@ ports/core/frotz/
 ├── build.sh                   the build — ordinary bash
 ├── postinstall.sh             optional install-time hook
 ├── *.patch                    optional
-├── frotz-2.55.tar.gz          the source, tracked in Git LFS
-└── Gnu_in_the_Zoo.zblorb      a second source
+└── frotz-2.55.tar.gz          the source, tracked in Git LFS
 ```
 
 `kpkgbuild` has no interpreter line and is never executed. Reading a recipe therefore costs no
@@ -37,11 +36,8 @@ lines:
 name        = frotz
 version     = 2.55
 release     = 1
-_story      = Gnu_in_the_Zoo.zblorb
 source      = $name-$version.tar.gz::https://gitlab.com/DavidGriffith/frotz/-/archive/$version/frotz-$version.tar.gz
-source      = https://ifarchive.org/if-archive/games/zcode/$_story
 sha256      = a8c4c4d7…  frotz-2.55.tar.gz
-sha256      = d0854f37…  Gnu_in_the_Zoo.zblorb
 description = Z-machine interpreter — Infocom-era interactive fiction in a terminal
 homepage    = https://661.org/proj/if/frotz/
 depends     = ncurses pkgconf
@@ -624,27 +620,23 @@ The LLVM ports take their sources in two ways. From 22 on, upstream publishes on
 
 ## Worked example: frotz
 
-`ports/core/frotz` exercises most of the format in one recipe. It carries two sources, renames the
-first, ships a desktop entry, defines a MIME type, and needs an install-time hook.
+`ports/core/frotz` exercises most of the format in one recipe. It renames its source, ships a
+desktop entry that opens a file, defines a MIME type, and needs an install-time hook.
 
-The metadata declares both sources and a helper naming the second:
+The metadata declares the source under the name the tree expects:
 
 ```
 name        = frotz
 version     = 2.55
 release     = 1
-_story      = Gnu_in_the_Zoo.zblorb
 source      = $name-$version.tar.gz::https://gitlab.com/DavidGriffith/frotz/-/archive/$version/frotz-$version.tar.gz
-source      = https://ifarchive.org/if-archive/games/zcode/$_story
 sha256      = a8c4c4d7…  frotz-2.55.tar.gz
-sha256      = d0854f37…  Gnu_in_the_Zoo.zblorb
 description = Z-machine interpreter — Infocom-era interactive fiction in a terminal
 homepage    = https://661.org/proj/if/frotz/
 depends     = ncurses pkgconf
 ```
 
-`_story` sits between `release` and `source` because the second `source` line reads it. The `::`
-form on the first source is there because GitLab names a generated archive after the tag.
+The `::` form on the source is there because GitLab names a generated archive after the tag.
 
 `build.sh` is the make-only shape, with two options chosen rather than defaulted:
 
@@ -659,19 +651,10 @@ model. `SOUND_TYPE=none` keeps an audio stack off every image for the handful of
 sound. `-Wno-error` is the answer where upstream's warnings meet this tree's `-Werror` and a patch
 is not needed.
 
-The story file is the second source, so it is already in `$SRC` under its own name and the recipe
-installs it by that name — plus the MIT notice, which the licence requires to travel with the work:
-
-```bash
-install -Dm644 "$_story" "$PKG/usr/share/$name/$_story"
-install -Dm644 /dev/stdin "$PKG/usr/share/licenses/$name/$_story.MIT" <<'LICENCE'
-…
-LICENCE
-```
-
-A program that opens nothing is one nobody opens twice: `frotz` with no story prints usage and
-exits, so the desktop entry names the story the package carries. Because that entry claims two MIME
-types, the port has to define them first — `shared-mime-info` 2.5.1 has neither:
+The package carries no story. The desktop entry is `Exec=frotz %f` with `Terminal=true`, the shape
+every terminal program here that opens a file uses, so a story is opened from the file manager or
+the opener chain. That entry claims two MIME types, so the port has to define them first —
+`shared-mime-info` 2.5.1 has neither:
 
 ```bash
 install -Dm644 /dev/stdin \
@@ -876,7 +859,7 @@ holding every X library, every suckless tool or every GNU pretest then yields th
 and nobody else's. The version may be spelled with `_` or `-` for its dots (`boost_1_89_0`,
 `R_2_7_3`), with a mix of them (`ImageMagick-7.1.2-31` for `7.1.2.31`) or with none at all
 (`gs10071`, `unzip60`), and reads back dotted. A pin of digits alone may be written in groups
-(`cacert-2026-08-13.pem` for `20260813`) and reads back with the separators dropped, at the same
+(`2026-08-13` for `20260813`) and reads back with the separators dropped, at the same
 group widths only. Only a URL with no version in it at all falls back to extracting every
 version-shaped run and keeping those shaped like the pin.
 

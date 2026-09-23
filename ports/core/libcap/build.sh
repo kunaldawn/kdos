@@ -9,4 +9,4 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-make GOLANG=no PAM_CAP=no RAISE_SETFCAP=no lib=lib prefix=/usr DESTDIR=$PKG install
+make GOLANG=no PAM_CAP=no USE_GPERF=yes RAISE_SETFCAP=no lib=lib prefix=/usr DESTDIR=$PKG install

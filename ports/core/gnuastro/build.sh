@@ -13,6 +13,9 @@
 # PATH_GHOSTSCRIPT when it finds `gs` in PATH, and pdf.c references the macro
 # UNCONDITIONALLY — so a missing gs is a configure WARNING followed by
 # `'PATH_GHOSTSCRIPT' undeclared` a thousand files later.
-./configure --prefix=/usr --libdir=/usr/lib --disable-static
+./configure --prefix=/usr --libdir=/usr/lib --disable-static \
+	--with-libjpeg \
+	--with-libtiff \
+	--without-libgit2
 make
 make DESTDIR=$PKG install

@@ -15,4 +15,4 @@ source      = https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/$name-$version
 sha256      = ce573bbea8e75b429f8c3d3e86498741ba3dc9628a1530d2f65268397ad059e8  cfitsio-4.7.0.tar.gz
 description = Read and write FITS, the format every telescope and every camera on one writes
 homepage    = https://heasarc.gsfc.nasa.gov/fitsio/
-depends     = zlib
+depends     = zlib bzip2 gcc

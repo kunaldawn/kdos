@@ -14,4 +14,4 @@ release     = 1
 source      = https://www.gnupg.org/ftp/gcrypt/gnutls/v${version%.*}/$name-${version}.tar.xz
 sha256      = ffed8ec1bf09c2426d4f14aae377de4753b53e537d685e604e99a8b16ca9c97e  gnutls-3.8.13.tar.xz
 description = Libraries and userspace tools which provide a secure layer over a reliable transport layer
-depends     = libidn2 libtasn1 libunistring p11-kit nettle
+depends     = libidn2 libtasn1 libunistring p11-kit nettle zlib zstd brotli tpm2-tss

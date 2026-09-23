@@ -19,6 +19,15 @@
 # A stale /usr/local/**/pkgconfig/*.pc shadows the correct one, so if such a
 # tree exists it must be deleted before consumers are rebuilt or they link
 # against the wrong path.
+#
+# Lua plugin support resolves lua5.4.pc from lua54; left on `auto` it would be
+# on or off by whether that port happened to be installed first. wlroots
+# creates its context without ever asking libinput to load plugins, so
+# without autoload-plugins a plugin dropped in /etc/libinput/plugins is
+# compiled in support for a file nothing reads.
+#
+# libwacom is off because it is not a port: tablets are identified by the
+# kernel's evdev capabilities alone, with no stylus/pad pairing.
 meson \
 --prefix=/usr \
 --libdir=lib \
@@ -27,6 +36,9 @@ meson \
 -Db_ndebug=false \
 -Dtests=false \
 -Ddocumentation=false \
+-Dmtdev=true \
+-Dlua-plugins=enabled \
+-Dautoload-plugins=true \
 -Dlibwacom=false \
 build
 meson compile -C build

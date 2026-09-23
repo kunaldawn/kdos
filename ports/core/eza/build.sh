@@ -10,7 +10,10 @@
 # ---------------------------------
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-cargo build --release --frozen --offline
+# vendored-libgit2 builds git2's bundled libgit2 whatever pkg-config finds,
+# since no libgit2 port exists to pin a system copy to; it compresses through
+# the system zlib.
+cargo build --release --frozen --offline --features vendored-libgit2
 install -Dm755 target/release/eza $PKG/usr/bin/eza
 for page in eza.1 eza_colors.5 eza_colors-explanation.5; do
 	lowdown -s -Tman -M source=v$version -o target/$page man/$page.md

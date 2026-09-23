@@ -28,7 +28,7 @@ initramfs init ─── splash, A/B slot selection, LUKS unlock, find the root
    │  switch_root (util-linux's)
    ▼
 init (toybox, PID 1)
-   ├─ /etc/init.d/rcS ──── 30 numbered service scripts, in order
+   ├─ /etc/init.d/rcS ──── 31 numbered service scripts, in order
    └─ kdos-getty on tty1 and tty2
           │
           ▼

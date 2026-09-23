@@ -28,7 +28,13 @@ export CPPFLAGS="${CPPFLAGS:-} -DHAVE_LSEEK64=1"
 # mkfs.f2fs cannot see that it is about to overwrite a filesystem, and without
 # lz4/lzo2 the compressed-file features are absent from a binary whose recipe
 # claims them.
+#
+# libuuid has no switch, only a probe that drops it quietly, and without it
+# uuid_generate() compiles to nothing and every mkfs.f2fs writes the same
+# all-zero filesystem UUID. Presetting the probe's cache answer makes it
+# required: a missing libuuid fails the link instead.
 ./configure \
+	ac_cv_lib_uuid_uuid_clear=yes \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--sbindir=/usr/sbin \

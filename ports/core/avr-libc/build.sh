@@ -24,6 +24,10 @@
 # should decide it, so the environment has to get out of the way.
 unset CC CXX CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
 
-./configure --prefix=/usr --host=avr --build="$(./config.guess)"
+#
+# --disable-doc: the 3avr man pages are a by-product of the doxygen HTML pass,
+# and that pass converts the malloc figures with fig2dev, which no port here
+# provides.
+./configure --prefix=/usr --host=avr --build="$(./config.guess)" --disable-doc
 make
 make DESTDIR=$PKG install

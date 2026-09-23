@@ -15,4 +15,4 @@ source      = https://ftp.gnu.org/gnu/gdb/gdb-$version.tar.xz
 sha256      = 1c036c0d72e4b3d1fb5c94c88632add6f9d76f4d7c4d2ea793c12a9f19a3228c  gdb-17.2.tar.xz
 description = GNU Debugger
 homepage    = https://www.gnu.org/software/gdb/
-depends     = ncurses readline expat python3 mpfr gmp zstd xz
+depends     = ncurses readline expat python3 mpfr gmp zstd xz zlib xxhash python3-pygments
