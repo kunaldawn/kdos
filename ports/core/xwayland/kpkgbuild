@@ -15,4 +15,4 @@ source      = https://www.x.org/releases/individual/xserver/$name-$version.tar.x
 sha256      = 173aea3d6f79609164c04528e1c8e4c9b60fcd59391c3c9dad4667297d727fb6  xwayland-24.1.13.tar.xz
 description = Rootless X server that runs X11 clients on a Wayland compositor
 homepage    = https://gitlab.freedesktop.org/xorg/xserver
-depends     = meson wayland wayland-protocols libdrm mesa pixman libxcvt libxkbcommon xorgproto xtrans libXau libXfont2 libxshmfence libepoxy xkbcomp xkeyboard-config libX11 libxkbfile libXdmcp openssl
+depends     = meson wayland wayland-protocols libdrm mesa pixman libxcvt libxkbcommon xorgproto xtrans libXau libXfont2 libxshmfence libepoxy xkbcomp xkeyboard-config libX11 libxkbfile libXdmcp openssl libbsd

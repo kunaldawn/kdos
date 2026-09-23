@@ -14,7 +14,7 @@ meson setup build \
 	-Ddocumentation=disabled \
 	-Dman-pages=enabled \
 	-Dgeoclue=disabled \
-	-Dgudev=disabled \
+	-Dgudev=enabled \
 	-Dsystemd=disabled \
 	-Dflatpak-interfaces=disabled \
 	-Dtests=disabled \

@@ -27,14 +27,33 @@ export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
 
+# THE REMOTE TAILER IS COMPILED HERE. lnav embeds two tailers and ships the
+# first that a remote host accepts over ssh: the Python one when the host has
+# python3, then a native binary. Upstream's native one is a prebuilt
+# Cosmopolitan executable; the patch replaces it with tailer.main.c linked
+# static against musl, so that fallback reaches x86-64 Linux hosts only.
+patch -p1 -i $PORT_SRC/lnav-tailer-static.patch
+
 ./autogen.sh
 
 # SQL OVER LOG LINES IS WHY THIS IS HERE AND NOT JUST less. Offline you cannot
 # paste a log into a search box, so the machine has to be able to answer a
 # question about its own logs — and lnav's sqlite view is the only thing on
 # this system that can. libarchive is what lets it read a rotated .gz or .xz
-# without unpacking it first.
-./configure --prefix=/usr --disable-static
+# without unpacking it first; its probe and bzip2's only test and never fail,
+# so the depends line is what keeps them in.
+#
+# --disable-system-paths: otherwise every /usr/local and /opt/local that
+# exists on the builder is added to the include and library paths.
+# The two cache answers keep re2c and cxxbridge unused whether or not the
+# builder has them: the scanners and the Rust bridge are then compiled from
+# the sources the tarball ships.
+./configure --prefix=/usr --disable-static \
+	--with-libarchive \
+	--with-cargo \
+	--disable-system-paths \
+	ac_cv_path_RE2C_CMD= \
+	ac_cv_path_CXXBRIDGE=
 make
 make DESTDIR=$PKG install
 

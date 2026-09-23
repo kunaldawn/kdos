@@ -22,10 +22,18 @@ export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 # --decode`, MP3 input and a working hip_* API, and configure stops rather than
 # build without it. The frontend's VBR histogram draws through ncurses, which
 # configure links whenever it finds it.
-./configure --prefix=/usr --libdir=/usr/lib --disable-static \
+#
+# THE STATIC LIBRARY IS BUILT FOR THE FRONTEND AND NOT SHIPPED. With the
+# decoder on, `lame` calls hip_set_pinfo and hip_finish_pinfo, which
+# libmp3lame.sym leaves out of the shared library's exports, so linking the
+# frontend against the .so fails with an undefined reference. libtool links an
+# uninstalled static archive in preference when one exists, and that carries
+# every symbol.
+./configure --prefix=/usr --libdir=/usr/lib --enable-static \
 	--enable-nasm=no \
 	--enable-frontend \
 	--enable-decoder \
 	--disable-gtktest
 make
 make DESTDIR=$PKG install
+rm -f "$PKG/usr/lib/libmp3lame.a"

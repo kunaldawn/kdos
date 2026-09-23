@@ -22,4 +22,8 @@
 # has nothing to add and everything to fetch. Vendoring instead means pip
 # resolving the backend's own chain, which ends at the PyPI `ninja` wrapper
 # whose sdist compiles CMake from source.
+#
+# openpyxl, lxml and jinja2 are imported at run time, not at build time: they
+# are what read_excel/to_excel, read_xml/read_html and DataFrame.style need,
+# and without them each of those raises ImportError.
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

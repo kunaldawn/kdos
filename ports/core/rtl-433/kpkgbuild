@@ -15,4 +15,4 @@ source      = rtl-433-25.12.tar.gz::https://github.com/merbanan/rtl_433/archive/
 sha256      = d283ec7a41a02d398e8918b20b65df3bf684cf4478371830662004005dadcdd2  rtl-433-25.12.tar.gz
 description = Decode the 433/868 MHz chatter of weather stations, sensors and tyre monitors
 homepage    = https://github.com/merbanan/rtl_433
-depends     = cmake rtl-sdr soapysdr openssl
+depends     = cmake rtl-sdr soapysdr openssl libusb

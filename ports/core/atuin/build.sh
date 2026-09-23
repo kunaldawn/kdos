@@ -18,16 +18,24 @@ mkdir .kdos-vendor
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz -C .kdos-vendor \
 	--exclude=vendor/axoasset
 
-# THE SYNC CLIENT IS NOT BUILT AND THE SERVER IS NOT EITHER. atuin's history is
-# every command anybody typed on this machine; shipping it able to post that to
-# a remote by configuration is the argument that turned off fcitx5's cloud
-# pinyin, on a more sensitive database. `--no-default-features` drops every
-# feature and the three named back are the local half: `client` is the SQLite
-# store, the search UI and the shell hooks, `clipboard` is a yank out of that
-# UI, and `pty-proxy` is `atuin hex` — the shell re-executed inside a local
-# pseudo-terminal so the search UI can draw inline; it links portable-pty and
-# crossterm and nothing that opens a socket. `sync`, `check-update`, `daemon`
-# and `ai` stay off, and they are the four that reach the network.
+# NOTHING IN THE BINARY CALLS THE SYNC CLIENT, AND THE SERVER IS NOT BUILT.
+# atuin's history is every command anybody typed on this machine; shipping it
+# able to post that to a remote by configuration is the argument that turned
+# off fcitx5's cloud pinyin, on a more sensitive database.
+# `--no-default-features` drops every feature and the three named back are the
+# local half: `client` is the SQLite store, the search UI and the shell hooks,
+# `clipboard` is a yank out of that UI, and `pty-proxy` is `atuin hex` — the
+# shell re-executed inside a local pseudo-terminal so the search UI can draw
+# inline; its one socket is a Unix socket in a per-user temporary directory,
+# which the shell inside uses to find it. `sync`, `check-update`, `daemon` and
+# `ai` stay off, and they are the four that reach the network: every command,
+# hook and auto-sync call into the network code is gated on them in the
+# `atuin` crate.
+# The `atuin-client` library underneath is still compiled with its default
+# `sync`, `hub` and `daemon` features, because the workspace crates beside it
+# (kv, scripts, dotfiles, history, pty-proxy) take it with defaults on and
+# Cargo unions features; that code is linked in and never called. Taking it
+# out of the binary needs a patch to the workspace manifests.
 #
 # THE CLIPBOARD IS arboard AND IT REACHES THE DESKTOP'S. atuin asks it for
 # `wayland-data-control` on Linux, which is wl-clipboard-rs speaking

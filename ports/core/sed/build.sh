@@ -24,10 +24,19 @@
 # It installs over toybox's symlink — whoever comes last in the dependency
 # order wins, which is the build's rule, and kpkg's --overwrite is what lets
 # the path change hands cleanly.
+#
+# --enable-acl makes a missing libacl a configure error rather than a `sed -i`
+# that silently drops a file's ACL when it replaces the file. --enable-xattr
+# does NOT fail the same way: it copies extended attributes through libattr's
+# attr_copy_fd, and with libattr absent configure only warns and builds
+# without it, which is why attr is declared.
 ./configure \
 	--prefix=/usr \
 	--bindir=/bin \
 	--disable-nls \
+	--enable-acl \
+	--enable-xattr \
+	--without-libsmack \
 	--without-selinux
 make
 make DESTDIR=$PKG install

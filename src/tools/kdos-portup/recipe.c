@@ -11,9 +11,9 @@
  * prints a recipe's fully expanded fields with every helper variable
  * resolved, and it accepts a directory, so a candidate version is probed by
  * copying the recipe into a temp dir with the version substituted and asking
- * `kpkg meta` to expand THAT. ca-certificates' two-helper date rewrite
- * (20260115 -> 2026-01-15) falls out with no special case, and a probe never
- * touches the real ports tree.
+ * `kpkg meta` to expand THAT. A helper that respells the version, such as
+ * expat's R_${version//./_} tag, falls out with no special case, and a probe
+ * never touches the real ports tree.
  * ---------------------------------
  */
 

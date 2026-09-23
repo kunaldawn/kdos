@@ -11,8 +11,9 @@
 
 # THE RELEASE TARBALL, NOT THE TAG ARCHIVE. It ships the generated
 # `configure`, so the build needs no autoreconf and no gettext autopoint.
-# ncurses is found by probe and linked when present; it is a depend so the
-# terminal colour detection is always built in.
-./configure --prefix=/usr --disable-static
+# --with-ncurses cannot make a missing ncurses an error: the library is found
+# by probe and linked when present, so it is a depend to keep the terminal
+# colour detection always built in.
+./configure --prefix=/usr --disable-static --with-ncurses --disable-nls
 make
 make DESTDIR=$PKG install

@@ -16,5 +16,5 @@ sha256      = fcc9351ab3976c73b4824cf7919f98f911f2442a606e2910fc2bd562111da220  
 sha256      = de35ac0ae09dbf992286c0e4c2b9d2f9f2b7c944cd67296cb6a8ab3f790f5042  rclone-vendor-1.75.1.tar.xz
 description = Did every byte reach the second stick — rclone check
 homepage    = https://rclone.org/
-depends     = go
+depends     = go fuse
 vendoring   = go

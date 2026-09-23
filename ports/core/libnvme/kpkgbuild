@@ -15,4 +15,4 @@ source      = https://github.com/linux-nvme/$name/archive/v$version/$name-$versi
 sha256      = 1d850d5a871559abf641d6e6b63bb86047e4cb26f3ad144597c2c64b3cff7231  libnvme-1.16.2.tar.gz
 description = C library for NVM Express on Linux
 homepage    = https://github.com/linux-nvme/libnvme
-depends     = meson ninja json-c
+depends     = meson ninja json-c openssl keyutils

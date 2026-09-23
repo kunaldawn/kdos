@@ -13,9 +13,10 @@
 # only through LLVM_EXTERNAL_CLANG_TOOLS_EXTRA_SOURCE_DIR. Without it the same
 # build produces a compiler and no language server while reporting success.
 #
-# libclang reads libxml2 for its XML comment output, and clang looks for it with
-# a QUIET find_package: CMAKE_REQUIRE_FIND_PACKAGE_LibXml2 turns a missing
-# libxml2 into a configure error instead of a libclang without it.
+# libxml2 reaches only c-index-test, which validates libclang's comment XML
+# against its schema with it. clang looks for it with a QUIET find_package, so
+# CMAKE_REQUIRE_FIND_PACKAGE_LibXml2 turns a missing libxml2 into a configure
+# error instead of a c-index-test built without it.
 #
 # CLANG_DEFAULT_OPENMP_RUNTIME stays libomp, which is not a port, so -fopenmp
 # fails at link. Pointing it at gcc's libgomp would link, but the driver passes

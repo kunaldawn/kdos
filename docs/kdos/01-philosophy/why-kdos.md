@@ -82,18 +82,23 @@ Each entry here was checked against the tree.
 
 ### Vendor firmware and microcode
 
-No source exists to build, so these four ports ship binaries.
+No source exists to build, so these three ports ship binaries.
 
 | Port | Version | Payload | What it is |
 |---|---|---|---|
 | `linux-firmware` | 20260916 | 632 MB | Upstream's complete tree, unpruned, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits |
 | `intel-ucode` | 20260812 | 17 MB | Upstream's whole Intel microcode set, concatenated into one bundle that rides in front of the initramfs for the kernel's early loader |
 | `sof-firmware` | 2026.09.1 | 17 MB | Intel SOF audio DSP firmware and topologies. Not part of `linux-firmware`; Tiger Lake and newer are silent without it |
-| `wireless-regdb` | 2026.09.03 | 31 KB | The wireless regulatory database. It must ship prebuilt: the kernel sets `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y` and verifies upstream's signature, so a locally regenerated database is rejected in silence |
 
 The firmware tree ships whole rather than curated. Pruning it is a bet on which hardware the
 machine turns out to have, and losing that bet is silent — `request_firmware()` finds nothing and
 the device does not work, which reads as broken hardware rather than as a missing file.
+
+`wireless-regdb` is not among them. Its `regulatory.db` is generated here from upstream's `db.txt`,
+and the only binary taken from the tarball is upstream's detached signature, `regulatory.db.p7s`.
+The kernel sets `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y` and loads the database only when that
+signature verifies, so the build checks it against the generated file with upstream's certificate
+and fails on a mismatch: what ships is byte-for-byte the database upstream signed, or nothing.
 
 ### Two bootstrap compilers
 

@@ -29,17 +29,42 @@ autoreconf -f -i
 # --disable-java because Autopsy is a Java application and is not shipped; the
 # bindings would build a jar nothing on this machine can run.
 #
-# --without-libewf and --without-afflib: both are forensic CONTAINER formats
-# (E01 and AFF), and neither library is a port. The consequence is stated
-# rather than hidden — a raw image, a split raw image and a live device all
-# work, and an E01 acquired by somebody else's tool does not.
+# E01 IS READ THROUGH THE libewf PORT; AFF IS NOT. libewf is the container
+# format most acquisitions arrive in, so an image from somebody else's tool
+# opens with `fls` directly. afflib, libvhdi, libvmdk and libvslvm are not
+# ports: a raw image, a split raw image, a live device and an E01 all work, and
+# an AFF, VHD(X), VMDK or an LVM volume inside an image does not.
+#
+# The libewf port exports libewf_handle_read_buffer_at_offset and no
+# libewf_handle_read_random, which is the name sleuthkit 4.15.0 calls. Both take
+# the same arguments; the define maps the one call at compile time, and without
+# it ewf.cpp fails on an undeclared function.
+export CPPFLAGS="$CPPFLAGS -Dlibewf_handle_read_random=libewf_handle_read_buffer_at_offset"
+
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--disable-static \
 	--disable-java \
+	--disable-cppunit \
 	--without-afflib \
-	--without-libewf \
-	--with-sqlite
+	--without-libbfio \
+	--without-libvhdi \
+	--without-libvmdk \
+	--without-libvslvm \
+	--with-libewf \
+	--with-zlib
+
+# --with-<lib> still falls back silently when the library does not link, and
+# sqlite has no switch at all: without a system one it compiles the bundled
+# copy. The defines below are what each one actually reached the build as, so
+# a missing dependency stops here instead of shipping a narrower tool.
+for def in HAVE_LIBEWF HAVE_LIBZ HAVE_LIBSQLITE3; do
+	grep -q "^#define $def 1" tsk/tsk_config.h || {
+		echo "sleuthkit: $def not set by configure" >&2
+		exit 1
+	}
+done
+
 make
 make DESTDIR=$PKG install

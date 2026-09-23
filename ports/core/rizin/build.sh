@@ -21,7 +21,13 @@
 # a terminal, which is the fast 90% and needs no JVM.
 #
 # -Duse_sys_capstone: capstone is already a port. Building the bundled one
-# would put a second disassembler engine on the machine with its own bugs.
+# would put a second disassembler engine on the machine with its own bugs. The
+# same holds for every other use_sys_* that has a port behind it — libmagic,
+# lz4, zstd, xz, pcre2 and the tree-sitter runtime — and each is `enabled`, so a
+# missing library fails setup instead of falling back to the vendored copy.
+# zydis, softfloat, libmspack, blake2 and blake3 are not ports, and their
+# defaults build the vendored copies. regenerate_cmds would rebuild cmd_descs
+# whenever PyYAML happens to be installed; the release carries them generated.
 meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -32,6 +38,14 @@ meson setup build \
 	-Duse_sys_zlib=enabled \
 	-Duse_sys_libzip=enabled \
 	-Duse_sys_xxhash=enabled \
+	-Duse_sys_magic=enabled \
+	-Duse_sys_lz4=enabled \
+	-Duse_sys_libzstd=enabled \
+	-Duse_lzma=true \
+	-Duse_sys_lzma=enabled \
+	-Duse_sys_pcre2=enabled \
+	-Duse_sys_tree_sitter=enabled \
+	-Dregenerate_cmds=disabled \
 	-Denable_tests=false \
 	-Denable_rz_test=false
 meson compile -C build

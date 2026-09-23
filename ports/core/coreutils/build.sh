@@ -36,8 +36,10 @@ INSTALL_PROGRAMS="expr ln"
 # whole of what this port installs is `expr`.
 export FORCE_UNSAFE_CONFIGURE=1
 
-# --with-libgmp gives `expr` arbitrary-precision integers; named, a missing gmp
-# stops configure instead of leaving an expr that refuses anything past 2^63.
+# `expr` does its big-integer arithmetic through libgmp when configure finds it
+# and through gnulib's bundled mini-gmp when it does not. --with-libgmp makes a
+# missing gmp stop configure, so the binary links the gmp `depends` names
+# instead of changing with whatever the build root carries.
 ./configure --prefix=/usr --disable-nls --without-selinux --with-libgmp
 make
 

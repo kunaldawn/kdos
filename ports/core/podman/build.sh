@@ -9,8 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Disable systemd integration; KDOS has no systemd.
-export BUILDTAGS="seccomp exclude_graphdriver_btrfs"
+# BUILDTAGS is set whole, which replaces upstream's probes: no systemd tag
+# (KDOS has no systemd), no apparmor, no libsubid, no btrfs driver, and
+# libsqlite3 so the database links the sqlite port instead of the copy bundled
+# with the Go binding.
+export BUILDTAGS="seccomp libsqlite3 exclude_graphdriver_btrfs"
 
 # `binaries` builds podman, podman-remote, rootlessport, quadlet, etc.
 make BUILDTAGS="$BUILDTAGS" \
@@ -18,6 +21,7 @@ make BUILDTAGS="$BUILDTAGS" \
 	ETCDIR=/etc \
 	BINDIR=/usr/bin \
 	LIBEXECPODMAN=/usr/lib/podman \
+	GOMD2MAN=/usr/bin/go-md2man \
 	binaries docs
 
 make DESTDIR=$PKG \
@@ -25,12 +29,14 @@ make DESTDIR=$PKG \
 	ETCDIR=/etc \
 	BINDIR=/usr/bin \
 	LIBEXECPODMAN=/usr/lib/podman \
-	install.bin install.remote install.man install.completions
+	install.bin install.remote install.man install.completions install.docker
 
-# install.bin always installs quadlet's generator links under lib/systemd and a
-# tmpfiles.d entry: the directory variables only move them, and nothing here
-# reads either.
-rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/tmpfiles.d"
+# install.bin and install.docker always install quadlet's generator links under
+# lib/systemd and tmpfiles.d entries: the directory variables only move them,
+# and nothing here reads any of them. The csh half of the DOCKER_HOST profile
+# goes too; no csh is installed.
+rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/tmpfiles.d" "$PKG/usr/share/user-tmpfiles.d"
+rm -f "$PKG/etc/profile.d/podman-docker.csh"
 
 mkdir -p $PKG/etc/containers
 

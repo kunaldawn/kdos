@@ -32,8 +32,10 @@
 # Xwayland — and `fakevideo` and `vidbridge` remain what they are, a null sink
 # and a loopback.
 #
-# Capture is the half that was never missing: the built avformat module
-# registers a video source and the shipped ffmpeg carries video4linux2.
+# CAPTURE IS v4l2.so, BECAUSE THAT IS WHAT THE GENERATED CONFIG NAMES: its
+# `video_source` line is `v4l2,/dev/video0`, so uncommenting the module is the
+# whole of turning a camera on. avformat.so registers a video source too, for
+# a stream or a file named in `video_source`.
 #
 # THE MODULES THIS IMAGE BUILDS ARE THE ONES ITS CONFIG LOADS, and the patch is
 # what makes that true. Upstream's generated `config` comments every codec and
@@ -58,17 +60,15 @@ patch -p1 -i "$PORT_SRC/default-modules.patch"
 # A module named here still returns silently when its library is missing, so
 # every library one links is in `depends` — alsa-lib, pipewire (native
 # audio), opus, libvpx, ffmpeg (avcodec/avformat/avfilter/swscale, and the
-# camera source), sdl2-compat, openssl through libre (dtls_srtp), glib
+# stream source), sdl2-compat, openssl through libre (dtls_srtp), glib
 # (ctrl_dbus and its gdbus-codegen), libsndfile (call recording), libpng
-# (snapshot) and fdk-aac (AAC-LD).
+# (snapshot), fdk-aac (AAC-LD) and v4l-utils (libv4l2, the camera).
 #
-# Left out, each for a reason that still holds: x11 by rule; gtk by rule;
-# pulse and jack, because pipewire is the native path; gst, because aufile
-# already plays a file into a call; mqtt, a network control surface; v4l2,
-# because avformat is the camera source; aptx, which wants libopenaptx and
-# not the libfreeaptx that is ported; and amr, av1, codec2, g722, g7221,
-# gzrtp, libg722, plc, portaudio and webrtc_aec, whose libraries are not
-# ports here (webrtc_aec is written against webrtc-audio-processing 1.x, and
+# Left out: x11 by rule; gtk by rule; pulse and jack, because pipewire is the
+# native path; gst, because aufile already plays a file into a call; mqtt, a
+# network control surface; aptx, which wants libopenaptx and not the
+# libfreeaptx that is ported; and amr, av1, codec2, g722, g7221, gzrtp,
+# libg722, plc, portaudio and webrtc_aec, whose libraries are not ports here (webrtc_aec is written against webrtc-audio-processing 1.x, and
 # the port is 2.x). The rest are platform modules for other systems.
 modules=(
 	account alsa aubridge auconv aufile augain auresamp ausine
@@ -77,7 +77,7 @@ modules=(
 	fakevideo g711 aac httpd httpreq ice in_band_dtmf l16 menu
 	mixausrc mixminus mwi natpmp netroam opus opus_multistream pcp
 	pipewire presence rtcpsummary sdl selfview serreg snapshot sndfile
-	srtp stdio stun syslog turn uuid vidbridge vidinfo vp8 vp9 vumeter
+	srtp stdio stun syslog turn uuid v4l2 vidbridge vidinfo vp8 vp9 vumeter
 )
 
 mkdir -p build && cd build

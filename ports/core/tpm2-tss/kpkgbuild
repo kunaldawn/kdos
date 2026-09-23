@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/tpm2-software/tpm2-tss/r
 sha256      = b53f0c5c8c4ce17f05701a410ca9688f725ca380c9bc4640eacd0eadb1fea124  tpm2-tss-4.2.0.tar.gz
 description = The TPM2 software stack — what talks to the chip that can hold a disk key
 homepage    = https://github.com/tpm2-software/tpm2-tss
-depends     = openssl json-c curl util-linux
+depends     = openssl json-c curl util-linux libusb libftdi

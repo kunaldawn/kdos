@@ -18,6 +18,12 @@
 # calculator and the reason this is here beside maxima: PARI answers exact
 # integer and number-theoretic questions, maxima answers symbolic ones, and
 # neither is a substitute for the other.
-./Configure --prefix=/usr --with-gmp --with-readline
+#
+# --graphic=svg: plothraw and friends write SVG, which needs no library.
+# Without it Configure takes X11 or fltk whenever it finds either, and falls
+# back to SVG only when it finds neither.
+# --mt=pthread is what makes parapply, parfor and the other par* functions run
+# on more than one core; without it they are serial.
+./Configure --prefix=/usr --with-gmp --with-readline --graphic=svg --mt=pthread
 make all
 make DESTDIR=$PKG install

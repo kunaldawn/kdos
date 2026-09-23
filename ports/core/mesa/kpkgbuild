@@ -8,8 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# optional	: libva libvdpau
-
 name        = mesa
 version     = 26.2.3
 release     = 1
@@ -28,4 +26,4 @@ sha256      = 357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d  
 sha256      = 25aa4ce346d03a6dcd68dd8b4010bcb74e54e62c90c573f394c46eae99aba32d  syn-2.0.87.tar.gz
 sha256      = 3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b  unicode-ident-1.0.12.tar.gz
 description = OpenGL compatible 3D graphics library (Wayland-only build)
-depends     = llvm python3-mako elfutils bison flex libdrm libglvnd glslang expat rust bindgen libclc python3-yaml spirv-llvm-translator cbindgen wayland wayland-protocols zlib zstd spirv-tools
+depends     = llvm python3-mako elfutils bison flex libdrm libglvnd glslang expat rust bindgen libclc python3-yaml spirv-llvm-translator cbindgen wayland wayland-protocols zlib zstd spirv-tools clang libva libdisplay-info lm-sensors eudev ocl-icd

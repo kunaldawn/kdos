@@ -15,7 +15,8 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # has to be restorable from a machine that is not this one — a rescue stick, a
 # borrowed laptop — and anything needing a python or a shared library at
 # restore time fails at exactly the moment it is needed. CGO_ENABLED=0 is what
-# makes that true.
+# makes that true. `restic mount` is the pure-Go FUSE client and runs fuse's
+# setuid helper under the name fusermount, so fuse is a dependency.
 export CGO_ENABLED=0
 go build -mod=vendor -ldflags "-s -w -X main.version=$version" -o restic ./cmd/restic
 install -Dm755 restic $PKG/usr/bin/restic
@@ -29,7 +30,9 @@ install -Dm755 restic $PKG/usr/bin/restic
 install -dm755 $PKG/usr/share/man/man1
 install -dm755 $PKG/usr/share/bash-completion/completions
 install -dm755 $PKG/usr/share/zsh/site-functions
+install -dm755 $PKG/usr/share/fish/vendor_completions.d
 
 ./restic generate --man $PKG/usr/share/man/man1
 ./restic generate --bash-completion $PKG/usr/share/bash-completion/completions/restic
 ./restic generate --zsh-completion $PKG/usr/share/zsh/site-functions/_restic
+./restic generate --fish-completion $PKG/usr/share/fish/vendor_completions.d/restic.fish

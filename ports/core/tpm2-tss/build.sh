@@ -22,10 +22,22 @@
 # staging into $PKG leaves the build host's accounts alone. The two dir flags
 # keep sysusers.d and tmpfiles.d out of the package even on a build host that
 # has systemd's tools.
+#
+# EVERY TCTI IS NAMED, because each one left to configure is built or dropped
+# by whatever happens to be installed. ltt2go (a TPM on a USB stick) needs
+# libusb and the two ftdi TCTIs (a discrete TPM behind an FTDI bridge) need
+# libftdi; libtpms is not a port, so its in-process simulator TCTI is off.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--localstatedir=/var \
 	--disable-static \
 	--disable-doxygen-doc \
+	--enable-fapi \
+	--enable-policy \
+	--enable-tcti-spidev \
+	--enable-tcti-spi-ltt2go \
+	--enable-tcti-spi-ftdi \
+	--enable-tcti-i2c-ftdi \
+	--disable-tcti-libtpms \
 	--with-udevrulesdir=/usr/lib/udev/rules.d \
 	--with-runstatedir=/run \
 	--with-sysusersdir=no \

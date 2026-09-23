@@ -18,6 +18,11 @@
 	--with-yescrypt \
 	--without-libbsd \
 	--without-libpam \
+	--with-acl \
+	--with-btrfs \
+	--without-audit \
+	--without-selinux \
+	--without-tcb \
 	--with-group-name-max-length=32 
 
 make

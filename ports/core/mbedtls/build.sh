@@ -19,6 +19,7 @@ cmake -S . -B build -G Ninja \
 	-D USE_STATIC_MBEDTLS_LIBRARY=ON \
 	-D INSTALL_MBEDTLS_HEADERS=ON \
 	-D MBEDTLS_FATAL_WARNINGS=OFF \
+	-D ENABLE_TESTING=OFF \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

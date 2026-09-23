@@ -23,7 +23,7 @@ meson setup build \
 	-Dx11=disabled \
 	-Dglut=disabled \
 	-Dosmesa=disabled \
-	-Dlibdrm=disabled \
+	-Dlibdrm=enabled \
 	-Dwith-system-data-files=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

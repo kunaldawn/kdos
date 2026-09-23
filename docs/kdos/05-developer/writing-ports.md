@@ -419,10 +419,10 @@ the recipe runs rather than while the script does.
 
 ## postinstall.sh
 
-The install-time hook, which becomes a marker inside the package. Six ports have one:
+The install-time hook, which becomes a marker inside the package. Seven ports have one:
 
-- `avahi`, `networkmanager-openvpn`, `pcsc-lite`, `polkit` and `prosody` create their system
-  accounts.
+- `avahi`, `networkmanager-openvpn`, `pcsc-lite`, `polkit`, `prosody` and `tcpdump` create their
+  system accounts.
   `prosody` also gives its data directory to its account, and `networkmanager-openvpn` gives its
   chroot to its account.
 - `linux` removes the module trees of other kernels, keeping the running kernel's when the root is
@@ -621,7 +621,8 @@ The LLVM ports take their sources in two ways. From 22 on, upstream publishes on
 ## Worked example: frotz
 
 `ports/core/frotz` exercises most of the format in one recipe. It renames its source, ships a
-desktop entry that opens a file, defines a MIME type, and needs an install-time hook.
+desktop entry that opens a file, and defines a MIME type that a shared index has to pick up on the
+target.
 
 The metadata declares the source under the name the tree expects:
 

@@ -23,6 +23,11 @@ export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
 
+# libsqlite3-sys links the system sqlite through pkg-config when this is set,
+# even with taskchampion's `bundled` feature on; without it the crate compiles
+# a private sqlite into the binary.
+export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+
 # CXXBRIDGE COMES FROM THE VENDOR BUNDLE. corrosion_add_cxxbridge() accepts a
 # cxxbridge only at exactly the cxx version the lockfile names, and otherwise
 # runs `cargo install cxxbridge-cmd`, which is a download. The bundle carries
@@ -54,3 +59,7 @@ cmake .. -G Ninja \
 	-DINSTALLED_CXXBRIDGE="$SRC_ROOT/cxxbridge/bin/cxxbridge"
 ninja
 DESTDIR=$PKG ninja install
+cd ..
+
+# Upstream installs the bash completion only as a sample under share/doc.
+install -Dm644 scripts/bash/task.sh "$PKG/usr/share/bash-completion/completions/task"

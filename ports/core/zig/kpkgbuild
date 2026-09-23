@@ -15,4 +15,4 @@ source      = https://ziglang.org/download/$version/zig-$version.tar.xz
 sha256      = 43186959edc87d5c7a1be7b7d2a25efffd22ce5807c7af99067f86f99641bfdf  zig-0.16.0.tar.xz
 description = Zig — general-purpose programming language and toolchain
 homepage    = https://ziglang.org/
-depends     = cmake ninja llvm21 clang21 lld21 libunwind
+depends     = cmake ninja llvm21 clang21 lld21 libunwind zlib zstd

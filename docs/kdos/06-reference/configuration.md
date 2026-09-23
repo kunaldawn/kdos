@@ -760,8 +760,9 @@ generated config does not mention at all.
 
 The display is uncommented and the camera is not, and the asymmetry is the point: which screen a
 picture goes on is a property of the build, and which camera it comes from is a choice. Turning on
-`avformat.so` is what sends yours — it registers a video source, and the shipped ffmpeg carries
-`video4linux2`. `x11.so` is not built, by rule. `fakevideo.so` is a null sink and `vidbridge.so` a
+`v4l2.so` is what sends yours: the generated `video_source` line already names `v4l2,/dev/video0`.
+`avformat.so` is the other video source, for a stream or file named in `video_source` instead.
+`x11.so` is not built, by rule. `fakevideo.so` is a null sink and `vidbridge.so` a
 loopback, and both stay commented because each is something a person chooses deliberately.
 
 ## Shipped configuration for software that is not ours
@@ -843,8 +844,9 @@ naming a program on the image, and `testing/preflight.sh` refuses one that is no
 | `/etc/profile.d/30-open.sh` | `$BROWSER` to `xdg-open`, which on this image is `kdos-appbox open` — so the variable and the mimeapps table are one road rather than two that drift |
 | `/etc/profile.d/20-lesspipe.sh` | `LESSOPEN` to `lesspipe.sh` and `LESS=-R` |
 | `/etc/profile.d/40-plocate.sh` | `LOCATE_PATH` to this account's own index |
+| `/etc/profile.d/podman-docker.sh` | `DOCKER_HOST` to the rootless Podman API socket, `$XDG_RUNTIME_DIR/podman/podman.sock`, so a Docker API client such as `lazydocker` finds `podman system service` once it is running. `/usr/bin/docker` is Podman's shim over `podman` |
 
-None of the three writes over a value you already exported. A login shell reads them, which is the
+None of them writes over a value you already exported. A login shell reads them, which is the
 only way into a session here. The `less` filter is driven by `file -L -s -b --mime` and nothing
 else, which is why `file` on this image is the one with a magic database.
 

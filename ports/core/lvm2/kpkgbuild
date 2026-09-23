@@ -14,4 +14,4 @@ release     = 1
 source      = $name-$version.tgz::https://sourceware.org/pub/lvm2/LVM2.$version.tgz
 sha256      = 352703ef5b72ebb22d4f250284a29b89fe64d4049c6bf64c693f9af486c8081e  lvm2-2.03.42.tgz
 description = Set of tools that manage logical partitions
-depends     = libaio eudev util-linux readline
+depends     = libaio eudev util-linux readline libnvme thin-provisioning-tools

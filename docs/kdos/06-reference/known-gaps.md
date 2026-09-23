@@ -140,7 +140,7 @@ is the path in the binary and the manager in the compositor, not the two meeting
 
 A video call has never been placed. `baresip` is the SIP phone here and its interface is a terminal
 menu; the far end's picture goes in an `sdl.so` window, and sending your own means turning on
-`avformat.so`, which the generated config leaves commented because which camera to send is a choice.
+`v4l2.so`, which the generated config leaves commented because which camera to send is a choice.
 The rig has no second endpoint and no camera, so what is measured is that the modules load.
 
 `mbsync` reaches XOAUTH2 and not OAUTHBEARER. `cyrus-sasl` is the mechanism loader and ships no
@@ -175,6 +175,12 @@ image; that a provider accepts the token `pizauth` mints cannot.
 `ocrmypdf` does not open a HEIF image. It asks for the `pillow_heif` module, and the HEIF plugin
 this tree builds is `python3-pi-heif`, whose module is `pi_heif`, so a phone's HEIC photo has to be
 converted to PNG or JPEG before it can be made into a searchable PDF.
+
+A plain `python3 -m venv DIR` fails. It installs pip through `ensurepip`, which installs only from a
+`pip-*.whl` in `/usr/share/python-wheels`; `python3` ships no wheel of its own and nothing puts one
+there, so the command exits 1 and leaves an environment with no pip and no `activate` scripts.
+`python3 -m venv --without-pip --system-site-packages DIR` works, and `python -m pip` inside it is
+the system pip installing into the environment.
 
 ## Hardware and platform
 

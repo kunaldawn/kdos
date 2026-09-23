@@ -20,6 +20,7 @@ meson setup build \
 	-D elogind=disabled \
 	-D selinux=disabled \
 	-D nis=disabled \
+	-D pwaccess=disabled \
 	-D pam_userdb=disabled \
 	-D examples=false \
 	-D xtests=false \
@@ -39,6 +40,11 @@ chmod -v 4755 $PKG/usr/sbin/unix_chkpwd
 # The stacks every other service includes by name. A service file naming one
 # that is absent falls through to `other` -> pam_deny, which reports itself as
 # "PAM account management error" and never mentions the missing stack.
+#
+# New hashes are sha512 because pam_unix hashes through musl's crypt(), which
+# knows DES, MD5, bcrypt, SHA-256 and SHA-512 and nothing else. Naming yescrypt
+# makes create_password_hash log "Algo yescrypt not supported by the crypto
+# backend" and refuse every password change made through PAM.
 install -vdm755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/system-auth << "EOF"
 # Begin /etc/pam.d/system-auth
@@ -47,7 +53,7 @@ auth      required   pam_unix.so  nullok
 auth      optional   pam_permit.so
 session   required   pam_limits.so
 session   required   pam_unix.so
-password  required   pam_unix.so  yescrypt shadow try_first_pass
+password  required   pam_unix.so  sha512 shadow try_first_pass
 # End /etc/pam.d/system-auth
 EOF
 
@@ -66,7 +72,7 @@ EOF
 
 cat > $PKG/etc/pam.d/system-password << "EOF"
 # Begin /etc/pam.d/system-password
-password  required   pam_unix.so  yescrypt shadow try_first_pass
+password  required   pam_unix.so  sha512 shadow try_first_pass
 # End /etc/pam.d/system-password
 EOF
 

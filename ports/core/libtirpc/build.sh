@@ -12,7 +12,7 @@
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
-	--disable-gssapi \
+	--enable-gssapi \
 	--enable-rpcdb
 make
 make DESTDIR=$PKG install

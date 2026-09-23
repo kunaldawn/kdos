@@ -411,7 +411,7 @@ python3-esptool
 # man's logic analyzer needing no hardware beyond the header pins.
 libgpiod
 # The standard instrument-automation API with no proprietary VISA anywhere:
-# pyvisa is the API and pyvisa-py is the backend that actually speaks USBTMC.
+# pyvisa is the API and pyvisa-py is the backend that speaks TCPIP and serial.
 python3-pyvisa
 python3-pyvisa-py
 # The same route for an ESP32 or ESP8266. Espressif's own esptool is the
@@ -1507,8 +1507,7 @@ libao
 # The converter with a published error floor. rubberband takes it rather than
 # its own builtin, which is correct and audibly worse on a long stretch.
 libsamplerate
-# Convert, resample, filter and analyse. `--without-ffmpeg` because sox's own
-# ffmpeg glue is written against an API two major versions old.
+# Convert, resample, filter and analyse.
 sox
 # oggenc, oggdec, ogginfo, vorbiscomment.
 vorbis-tools

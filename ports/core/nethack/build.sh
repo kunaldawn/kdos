@@ -59,6 +59,10 @@ CFLAGS+=-DCURSES_GRAPHICS
 CFLAGS+=-DCURSES_UNICODE -D_XOPEN_SOURCE_EXTENDED
 CFLAGS+=-DCONFIG_ERROR_SECURE=FALSE
 CFLAGS+=-DNOCRASHREPORT
+# The game offers to recover an interrupted game itself when it finds that
+# character's lock and level files; without it the player is told only to
+# destroy the old game or quit, and nethack-recover is the sole way back.
+CFLAGS+=-DSELF_RECOVER
 
 # Lua's own build reads SYSCFLAGS and never sees CFLAGS above.
 SYSCFLAGS=-DLUA_USE_POSIX

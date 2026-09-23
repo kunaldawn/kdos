@@ -17,6 +17,7 @@
 # fribidi rather than SheenBidi: it is the port this tree has, and libraqm
 # treats the two as interchangeable bidi backends.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
+	--wrap-mode=nofallback \
 	-Ddocs=false -Dtests=false -Dsheenbidi=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

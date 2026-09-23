@@ -25,8 +25,14 @@
 # EVERY GRAPHICAL FRONT END IS OFF and there is no loss: --enable-curses gives
 # a text console on the cell grid, and --enable-vnc means a guest with a real
 # framebuffer is watched from any viewer — which is exactly how this project's
-# own testing/vnc-shot.py already drives a VM. GTK and SDL are the hard rule;
-# --disable-opengl follows from mesa being built without GLX.
+# own testing/vnc-shot.py already drives a VM. GTK is the hard rule. SDL is off
+# because meson.build looks up x11 with no option to stop it and links libX11
+# into the SDL front end whenever that library is installed, which it is for
+# Xwayland. --disable-opengl because qemu's GL path is libepoxy, and the
+# libepoxy port is built against libX11.
+#
+# --disable-docs because docs/conf.py requires sphinx_rtd_theme even for the
+# man pages, and that theme is not a port.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -38,6 +44,7 @@
 	--enable-vnc \
 	--enable-slirp \
 	--enable-linux-aio \
+	--enable-linux-io-uring \
 	--enable-virtfs \
 	--enable-tools \
 	--enable-gnutls \
@@ -54,10 +61,76 @@
 	--enable-libudev \
 	--enable-libdw \
 	--disable-capstone \
-	--disable-bpf \
-	--disable-fuse \
-	--disable-fuse-lseek \
-	--disable-vnc-sasl \
+	--enable-bpf \
+	--enable-fuse \
+	--enable-fuse-lseek \
+	--enable-vnc-sasl \
+	--enable-gio \
+	--enable-dbus-display \
+	--enable-qemu-vnc \
+	--enable-passt \
+	--enable-tpm \
+	--enable-attr \
+	--enable-iconv \
+	--enable-slirp-smbd \
+	--enable-stack-protector \
+	--enable-multiprocess \
+	--enable-hv-balloon \
+	--enable-vhost-kernel \
+	--enable-vhost-net \
+	--enable-vhost-user \
+	--enable-vhost-crypto \
+	--enable-vhost-vdpa \
+	--enable-vhost-user-blk-server \
+	--enable-libvduse \
+	--enable-vduse-blk-export \
+	--enable-l2tpv3 \
+	--enable-keyring \
+	--enable-replication \
+	--enable-colo-proxy \
+	--enable-bochs \
+	--enable-cloop \
+	--enable-dmg \
+	--enable-qcow1 \
+	--enable-vdi \
+	--enable-vhdx \
+	--enable-vmdk \
+	--enable-vpc \
+	--enable-vvfat \
+	--enable-qed \
+	--enable-parallels \
+	--disable-nettle \
+	--disable-gcrypt \
+	--disable-malloc-trim \
+	--disable-gettext \
+	--disable-selinux \
+	--disable-numa \
+	--disable-mpath \
+	--disable-libiscsi \
+	--disable-libnfs \
+	--disable-libssh \
+	--disable-rbd \
+	--disable-rdma \
+	--disable-snappy \
+	--disable-lzfse \
+	--disable-vde \
+	--disable-netmap \
+	--disable-blkio \
+	--disable-libdaxctl \
+	--disable-libpmem \
+	--disable-qpl \
+	--disable-uadk \
+	--disable-qatzip \
+	--disable-af-xdp \
+	--disable-igvm \
+	--disable-usb-redir \
+	--disable-smartcard \
+	--disable-u2f \
+	--disable-canokey \
+	--disable-spice-protocol \
+	--disable-rutabaga-gfx \
+	--disable-oss \
+	--disable-sparse \
 	--disable-auth-pam \
 	--disable-brlapi \
 	--disable-libcbor \
@@ -67,11 +140,12 @@
 	--enable-seccomp \
 	--enable-alsa \
 	--disable-pa \
-	--disable-pipewire \
+	--enable-pipewire \
 	--disable-jack \
 	--disable-sndio \
 	--disable-gtk \
 	--disable-sdl \
+	--disable-sdl-image \
 	--disable-opengl \
 	--disable-virglrenderer \
 	--disable-spice \

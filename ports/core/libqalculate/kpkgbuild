@@ -15,4 +15,4 @@ source      = https://github.com/Qalculate/libqalculate/releases/download/v$vers
 sha256      = f3dfdcf97d5a9e3a5bc0ebe66afd184721b606276eee3ba0ada8c92a5e71d44c  libqalculate-5.12.0.tar.gz
 description = The calculator that parses what you actually typed
 homepage    = https://qalculate.github.io/
-depends     = autoconf automake libtool pkgconf gmp mpfr libxml2 icu readline curl
+depends     = autoconf automake libtool pkgconf gmp mpfr libxml2 icu readline curl gettext

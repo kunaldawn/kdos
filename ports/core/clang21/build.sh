@@ -11,9 +11,9 @@
 
 mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
 
-# clang looks for libxml2 with a QUIET find_package;
-# CMAKE_REQUIRE_FIND_PACKAGE_LibXml2 makes a missing one a configure error
-# rather than a libclang built without it.
+# libxml2 reaches only c-index-test's comment-XML schema check. clang looks for
+# it with a QUIET find_package, so CMAKE_REQUIRE_FIND_PACKAGE_LibXml2 makes a
+# missing one a configure error rather than a c-index-test built without it.
 cmake -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=$_prefix \
 	-D CMAKE_BUILD_TYPE=Release \

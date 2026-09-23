@@ -22,6 +22,7 @@ meson setup build \
 	-Dtests=false \
 	-Dpixbuf=enabled \
 	-Dpixbuf-loader=disabled \
+	-Davif=enabled \
 	-Dtriplet=x86_64-unknown-linux-musl
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

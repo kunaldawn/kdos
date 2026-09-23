@@ -14,6 +14,7 @@
 	--sysconfdir=/etc \
 	--mandir=/usr/share/man \
 	--with-crypto-library=openssl \
+	--disable-pkcs11 \
 	--enable-systemd=no \
 	--disable-plugin-auth-pam \
 	--disable-debug

@@ -19,9 +19,24 @@
 # its index, so this costs a binary rather than a search engine.
 #
 # Its configure is hand-written, not autoconf: --without-emacs and
-# --without-bash-completion are its own spellings, and it has no --disable-*
-# family. The python bindings are a separate directory nothing here builds.
+# --with-bash-completion are its own spellings, and it has no --disable-*
+# family. python3 is a requirement, not an option: configure stops without it
+# and notmuch-git is a python script. The cffi bindings are staged inside the
+# source tree when cffi is importable, and nothing installs them.
+#
+# Every --with-* below is a request that configure quietly drops when its tool
+# is absent, so `depends` is what holds each one: sphinx-build for the manual
+# pages (and makeinfo for the info pages built beside them), doxygen for
+# notmuch(3), bash-completion's pkg-config file for the completion. configure
+# also runs gpg against gmime's gpgme to prove session-key support and stops
+# if it cannot. s-expression queries follow sfsexp, which is not a port and
+# which configure has no switch for.
 ./configure --prefix=/usr --libdir=/usr/lib \
+	--with-docs \
+	--with-api-docs \
+	--with-bash-completion \
+	--with-zsh-completion \
+	--with-retry-lock \
 	--without-emacs \
 	--without-desktop \
 	--without-ruby

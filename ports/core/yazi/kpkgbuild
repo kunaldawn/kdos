@@ -16,5 +16,5 @@ sha256      = 66857f1b670469daf258edd0bb2ea51d9ad3e2cab4eea9684028c80059fd6862  
 sha256      = 548e8f3b74e5a65f3d258b22b86d5c4044e9e4c207b73d5c825b95918e21a3a1  yazi-vendor-26.9.1.tar.xz
 description = Async file manager with real image previews in the terminal
 homepage    = https://yazi-rs.github.io/
-depends     = rust pkgconf
+depends     = rust pkgconf file ffmpeg poppler resvg imagemagick jq fd ripgrep fzf zoxide chafa
 vendoring   = rust

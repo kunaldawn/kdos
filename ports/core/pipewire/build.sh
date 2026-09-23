@@ -32,6 +32,15 @@
 # and musl exports no large-file aliases at all — both come back NULL and are
 # called anyway, so every process started under it faults on its first open().
 
+# -Dpipewire-jack stays off with -Djack-devel: the replacement libjack is only
+# reachable through jack.pc, and once jack.pc is installed every consumer that
+# leaves JACK on `auto` (ffmpeg, mpv, sdl3, mpd, portaudio) gains it or not by
+# build order.
+#
+# Every other `auto` feature is named. The ones pinned off need a library that
+# is not a port (libmysofa, libebur128, onnxruntime, libffado, lc3plus, the
+# LDAC decoder, spandsp) or a subsystem this image does not use (SELinux).
+
 # THE LIMITS FILE IS NOT INSTALLED -- see -Drlimits-install below. Nothing on
 # this image could read it and nobody could match it: limits.d is PAM's and
 # shadow is built --without-libpam, so `login` links libc alone, while the match
@@ -49,27 +58,47 @@ meson setup build \
 	-Dtests=disabled \
 	-Dexamples=disabled \
 	-Dffmpeg=enabled \
+	-Dpw-cat-ffmpeg=enabled \
+	-Dalsa=enabled \
+	-Dpipewire-alsa=enabled \
+	-Dcompress-offload=enabled \
+	-Dudev=enabled \
+	-Ddbus=enabled \
+	-Dlibusb=enabled \
+	-Dselinux=disabled \
 	-Dbluez5=enabled \
 	-Dbluez5-codec-aptx=enabled \
 	-Dbluez5-codec-ldac=enabled \
 	-Dbluez5-codec-aac=enabled \
 	-Dbluez5-codec-lc3=enabled \
+	-Dbluez5-codec-opus=enabled \
+	-Dbluez5-codec-g722=enabled \
+	-Dbluez5-codec-lc3plus=disabled \
+	-Dbluez5-codec-ldac-dec=disabled \
+	-Dbluez5-plc-spandsp=disabled \
 	-Dreadline=enabled \
 	-Dlibpulse=disabled \
 	-Dfftw=disabled \
-	-Dopus=disabled \
+	-Dopus=enabled \
 	-Dgstreamer=enabled \
+	-Dgstreamer-device-provider=enabled \
 	-Djack=disabled \
 	-Dpipewire-jack=disabled \
 	-Dpipewire-v4l2=disabled \
 	-Dv4l2=enabled \
 	-Dvulkan=disabled \
 	-Droc=disabled \
-	-Dlibcamera=disabled \
+	-Dlibcamera=enabled \
 	-Dlv2=disabled \
 	-Dsndfile=enabled \
 	-Dpw-cat=enabled \
-	-Davahi=disabled \
+	-Davahi=enabled \
+	-Draop=enabled \
+	-Decho-cancel-webrtc=enabled \
+	-Dlibmysofa=disabled \
+	-Debur128=disabled \
+	-Donnxruntime=disabled \
+	-Dlibffado=disabled \
 	-Dlibsystemd=disabled \
 	-Dlogind=disabled \
 	-Dsystemd-system-service=disabled \

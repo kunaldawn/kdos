@@ -19,7 +19,7 @@
 # and its ffmpeg input does not compile against ffmpeg 8 — the libraries and
 # headers are found, then the feature test fails. Its mp3 support is libmad
 # either way, so the format set loses only what ffmpeg alone decodes (.wma,
-# .ape, .shn); mpv is on this image for anything stranger than that.
+# .ape, .shn, and the .m4a below); mpv is on this image for anything stranger than that.
 #
 # ALSA IS THE ONLY OUTPUT. Audio on this system reaches PipeWire through ALSA's
 # default device, so the ALSA plugin is the whole chain. A pulse output would be

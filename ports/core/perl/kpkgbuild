@@ -14,4 +14,5 @@ release     = 1
 source      = https://www.cpan.org/src/5.0/$name-$version.tar.gz
 sha256      = 3b855066b92491cb40e86affb1ca57d1a388aa43e51b91c7806a32c2f65f96c3  perl-5.44.0.tar.gz
 description = The Perl programming language
+depends     = zlib bzip2 gdbm
 devseries   = odd-minor

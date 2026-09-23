@@ -18,11 +18,22 @@
 # installs the pages prebuilt in the archive. -Dpython=disabled keeps the
 # bindings from appearing whenever swig happens to be installed. json-c is what makes
 # `-o json` work, which is what turns this into something a script can read.
+#
+# json-c, libkmod, openssl and keyutils default to auto and are forced on: a
+# missing one otherwise drops `-o json`, the fabrics module loading or the
+# TLS PSK support without a word. json-c and openssl carry meson subproject
+# fallbacks, and --wrap-mode=nodownload makes a missing one fail setup
+# instead of fetching it.
 meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=lib \
 	--buildtype=release \
+	--wrap-mode=nodownload \
+	-Djson-c=enabled \
+	-Dlibkmod=enabled \
+	-Dopenssl=enabled \
+	-Dkeyutils=enabled \
 	-Dnvmf-autoconnect=disabled \
 	-Dpython=disabled \
 	-Ddocs=man \

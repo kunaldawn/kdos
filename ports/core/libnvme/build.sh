@@ -16,6 +16,10 @@ meson setup build \
 	--buildtype=release \
 	-Ddocs=man \
 	-Dtests=false \
-	-Dexamples=false
+	-Dexamples=false \
+	-Dpython=disabled \
+	-Dopenssl=enabled \
+	-Dkeyutils=enabled \
+	-Djson-c=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

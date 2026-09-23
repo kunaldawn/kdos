@@ -18,7 +18,10 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
-cargo build --release --frozen --offline
+# io_uring compiles in the async engine, a pure-Rust crate from the vendor
+# tarball. It is used only when asked for with `--io-engine async`; the default
+# engine stays the synchronous one, so a kernel without io_uring loses nothing.
+cargo build --release --frozen --offline --features io_uring
 
 # ONE BINARY, MANY NAMES, dispatched on argv[0] — upstream's own shape since
 # the Rust rewrite. The symlinks are what make `thin_check` a command.

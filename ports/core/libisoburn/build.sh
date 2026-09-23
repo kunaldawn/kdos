@@ -20,7 +20,6 @@
 	--enable-libreadline \
 	--disable-libedit \
 	--enable-libacl \
-	--enable-xattr \
 	--enable-zlib \
 	--disable-libjte \
 	--disable-libcdio \

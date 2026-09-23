@@ -14,8 +14,12 @@
 #
 # --disable-unit-tests keeps a test corpus that is fetched over the network out
 # of an offline build.
+#
+# --as=nasm: the default picks yasm over nasm whenever yasm is installed, so the
+# assembler would follow build order; nasm is the one declared.
 ./configure \
 	--prefix=/usr \
+	--as=nasm \
 	--libdir=/usr/lib \
 	--enable-shared \
 	--disable-static \

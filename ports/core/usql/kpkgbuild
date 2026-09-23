@@ -16,5 +16,5 @@ sha256      = 2997ae39ff509694aa7ce8e60dcf6b2ff2c431e0908332a7c28e95db64521c15  
 sha256      = bf9f0c39971855f915f0fb310352221d121cf8afacbbb3f7014e948f36f2f11f  usql-vendor-0.21.6.tar.xz
 description = One psql-class client for postgres, sqlite and the rest
 homepage    = https://github.com/xo/usql
-depends     = go
+depends     = go sqlite duckdb
 vendoring   = go

@@ -21,6 +21,12 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 #
 # caddy's `tls internal` is the smaller answer for one machine; this is the one
 # for a network with several.
-export CGO_ENABLED=0
+#
+# cgo is what builds the two hardware key stores, so the CA's root key can
+# live off the disk. The PKCS#11 one dlopens whatever module the config names
+# and links nothing; the YubiKey PIV one links libpcsclite through pkg-config
+# and talks to the card through pcscd. With cgo off both compile out silently
+# and a `kms` block naming either fails only when the CA starts.
+export CGO_ENABLED=1
 go build -mod=vendor -ldflags "-s -w -X main.Version=$version" -o step-ca ./cmd/step-ca
 install -Dm755 step-ca $PKG/usr/bin/step-ca

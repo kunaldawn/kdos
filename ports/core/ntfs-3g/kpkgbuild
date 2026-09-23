@@ -15,3 +15,4 @@ source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.
 sha256      = bcf3cf301a79e42d330128ffb52d4cf615bd1d30c10a92d9d8d14f2bb4fcd9bf  ntfs-3g-2026.9.18.tar.gz
 description = NTFS driver and the ntfsprogs filesystem utilities
 homepage    = https://github.com/tuxera/ntfs-3g
+depends     = libgcrypt gnutls util-linux

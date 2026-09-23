@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/andmarti1424/sc-im/archi
 sha256      = 49adb76fc55bc3e6ea8ee414f41428db4aef947e247718d9210be8d14a6524bd  sc-im-0.8.5.tar.gz
 description = A spreadsheet on a cell grid, with vi keys
 homepage    = https://github.com/andmarti1424/sc-im
-depends     = ncurses libxml2 libzip libxlsxwriter pkgconf bison
+depends     = ncurses libxml2 libzip libxlsxwriter pkgconf bison lua gnuplot
