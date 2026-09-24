@@ -22,6 +22,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # acts when fsmonitor is configured. OPENSSL_NO_VENDOR makes any openssl-sys in
 # the graph link the port rather than build a private copy.
 export OPENSSL_NO_VENDOR=1
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline --bin jj
 install -Dm755 target/release/jj $PKG/usr/bin/jj
 target/release/jj util install-man-pages "$PKG/usr/share/man"

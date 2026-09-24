@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # UNITS IN THE TYPE SYSTEM IS THE WHOLE FEATURE. `bc` will happily add a
 # voltage to a resistance; this refuses, and converts when the conversion is
 # meaningful. On a bench where the other tools are a scope, an SDR and a

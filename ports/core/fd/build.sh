@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # use-jemalloc makes jemalloc fd's global allocator; the feature is off by
 # default. fd's parallel walker allocates from every thread at once, which
 # musl's malloc serialises behind one lock. The crate and the jemalloc sources

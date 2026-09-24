@@ -10,7 +10,7 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 
 | What you see | Section |
 |---|---|
-| `Dynamic loading not supported` from a Rust crate | [Rust with a binding generator](#rust-with-a-binding-generator) |
+| `Dynamic loading not supported` from a Rust crate, or a static archive's undefined references at its link | [Rust with a binding generator](#rust-with-a-binding-generator) |
 | `rustc-LLVM ERROR: '+<feature>' is not a recognized feature for this target` | [A Rust release older than the system LLVM](#a-rust-release-older-than-the-system-llvm) |
 | A missing type, from an empty generated header | [A stream-editor extension](#a-stream-editor-extension-that-is-not-there) |
 | `length: not found`, or a relative-link option rejected | [Missing compact-userland features](#missing-compact-userland-features) |
@@ -47,10 +47,14 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 
 ## Rust with a binding generator
 
-A Rust crate fails with `Dynamic loading not supported`.
+A Rust crate fails with `Dynamic loading not supported`, or its final link fails with undefined
+references into a library's `.a` (`libcurl.a` and its `nghttp2_*`).
 
-Crates that generate bindings try to load the compiler front-end library dynamically at build time,
-which a statically linked C library does not support.
+The musl target links statically unless told otherwise. A binding generator then cannot load the
+compiler front-end library at build time, and a crate that links a system library takes that
+library's static archive without the libraries it depends on. Where the link succeeds, the binary
+carries a private copy that no update to the library's port reaches. Every recipe that runs cargo
+exports the flag, and preflight fails one that does not:
 
 ```bash
 export RUSTFLAGS="-C target-feature=-crt-static"

@@ -15,5 +15,5 @@ source      = https://github.com/lu-zero/cargo-c/archive/refs/tags/v$version.tar
 sha256      = 8054b12ae8b64259e7b63e40368406dd6b6510d5d92b658152b361c5d816a5de  cargo-c-0.10.25.tar.gz
 sha256      = 4a3c7939bd6288aca5487986794ff672fed05a651ad85ded19a6c7ff0fec55ab  cargo-c-vendor-0.10.25.tar.xz
 description = Cargo subcommand to build and install C-ABI compatibile dynamic and static libraries
-depends     = rust openssl curl zlib
+depends     = rust openssl curl zlib libssh2
 vendoring   = rust

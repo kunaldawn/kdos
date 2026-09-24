@@ -30,6 +30,7 @@
 # nothing on this machine speaks.
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 
 install -Dm755 target/release/pizauth $PKG/usr/bin/pizauth

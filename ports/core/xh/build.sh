@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # network-interface is left out: on Linux --interface binds through
 # SO_BINDTODEVICE and the crate is only the fallback for other systems.
 cargo build --release --frozen --offline --no-default-features \

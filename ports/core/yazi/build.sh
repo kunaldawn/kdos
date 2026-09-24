@@ -40,6 +40,7 @@ export VERGEN_GIT_SHA="$version"
 export VERGEN_IDEMPOTENT=1
 
 export YAZI_GEN_COMPLETIONS=1
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 install -Dm755 target/release/yazi $PKG/usr/bin/yazi
 install -Dm755 target/release/ya   $PKG/usr/bin/ya
