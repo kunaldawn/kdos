@@ -21,6 +21,10 @@
 # be installed. libmpdec is not a port, so _decimal uses the copy CPython
 # carries. Bluetooth sockets need bluez's headers, and bluez is built long
 # after this bootstrap. _tkinter needs Tk, which is X11.
+#
+# OpenSSL 4 has no SSLv3 and no per-version method constructors, and declares
+# no OPENSSL_NO_* guard for either; _ssl declares and calls them unless the
+# guards are set, and fails to import on the unresolved symbols.
 ./configure \
 	--prefix=/usr \
 	--enable-ipv6 \
@@ -37,7 +41,8 @@
 	--with-tzpath=/usr/share/zoneinfo \
 	ac_cv_header_bluetooth_bluetooth_h=no \
 	ac_cv_header_bluetooth_h=no \
-	py_cv_module__tkinter=n/a
+	py_cv_module__tkinter=n/a \
+	CPPFLAGS="$CPPFLAGS -DOPENSSL_NO_SSL3 -DOPENSSL_NO_SSL3_METHOD -DOPENSSL_NO_TLS1_METHOD -DOPENSSL_NO_TLS1_1_METHOD -DOPENSSL_NO_TLS1_2_METHOD"
 make EXTRA_CFLAGS="$CFLAGS"
 make EXTRA_CFLAGS="$CFLAGS" DESTDIR=$PKG install maninstall
 
