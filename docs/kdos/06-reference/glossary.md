@@ -90,7 +90,7 @@ system.
 order, each holding either numbered scripts or a package list.
 
 **port** — One piece of host software as this repository describes it: a directory holding a
-`kpkgbuild` and a `build.sh`. There are three port repositories, holding 903 ports between them,
+`kpkgbuild` and a `build.sh`. There are three port repositories, holding 969 ports between them,
 and they use one format. See [Writing ports](../05-developer/writing-ports.md).
 
 **recipe hash** — The other of the two hashes: a hash over the recipe files, which for a

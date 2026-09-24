@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = fonttools
-version     = 4.65.0
+version     = 4.66.0
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/f/fonttools/fonttools-$version.tar.gz
-sha256      = 762ba5431358d0dbd4a01982484a1d494fb267e91f974cdcf20b80eab8560f6f  fonttools-4.65.0.tar.gz
+sha256      = ef0610dfe7bb5bf574d9bdad6f597403ebc9807d124ac6f148d7604b2609be98  fonttools-4.66.0.tar.gz
 description = Inspect, subset and convert font files from a prompt
 homepage    = https://pypi.org/project/fonttools/
 depends     = python3 python3-setuptools python3-pip python3-cython brotli python3-lxml

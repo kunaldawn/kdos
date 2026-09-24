@@ -91,8 +91,8 @@ Four classes are exempt, and nothing outside them is:
 
 - **Firmware and code for another processor.** `linux-firmware`, `intel-ucode`, `sof-firmware`,
   the closed GPU kernels in `intel-media-driver`, the SOF coefficient blobs in `alsa-ucm-conf`, the
-  device stubs inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`, and the guest
-  firmware images `qemu` installs from its tarball. It runs on a DSP, a GPU, a microcontroller or a guest,
+  device stubs inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`, and the
+  riscv64 EDK2 image `qemu` installs from its tarball. It runs on a DSP, a GPU, a microcontroller or a guest,
   and most of it has no published source.
 - **Compiled font data.** `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`, and
   the fonts bundled inside `mupdf`, `matplotlib` and `seqkit`. Their sources compile through
@@ -211,7 +211,7 @@ network-enabled build would have done for you.
 
 A package built twice from the same tree is byte-identical. That is a property of one function —
 `roll_package()` in `kpkg`, which invokes tar with `--sort=name`, a pinned `--mtime` honouring
-`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 903 recipes. Concentrating it
+`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 969 recipes. Concentrating it
 there is precisely why `kpkg` rolls the archive itself instead of letting each recipe do it.
 
 Reproducibility is not decoration. It is what makes a signed binhost meaningful, what lets a delta

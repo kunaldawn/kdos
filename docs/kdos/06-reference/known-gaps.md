@@ -247,6 +247,19 @@ and ships inside the source tarball, and the `nmap` port installs neither the cl
 scripts, so `--script jdwp-info` names nothing and the `default` category runs without it.
 `jdwp-inject`, which injects a class the user supplies, and `jdwp-version` are unaffected.
 
+qemu carries firmware only for what its three targets boot through their defaults and their firmware
+descriptors: the x86_64 PC machines, aarch64 and riscv64 `virt`, and microvm. The Nuvoton and ASPEED
+BMC boards inside `qemu-system-aarch64` stop at startup with *Could not find ROM image* unless
+`-bios` names one, and there is no 32-bit Arm UEFI, no 32-bit x86 OVMF and no OVMF build for microvm.
+The riscv64 `virt` UEFI image is upstream's rather than compiled here — see
+[what is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source).
+
+presenterm's seven syntect stock themes (`base16-ocean.dark`, `InspiredGitHub`, the Solarized pair
+and the rest) are the serialized `default.themedump` inside the vendored `syntect` crate, and are
+not compiled here. Their `.tmTheme` sources are in syntect's repository and not in the crate, and
+the only way to swap in a rebuilt dump is a patch to presenterm's theme loading. Its grammars and
+bat's themes are compiled here by the `bat` port.
+
 There is no public binary host. The mechanism is complete — a signed index, three equality tests,
 deltas — but it is one you run yourself.
 

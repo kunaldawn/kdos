@@ -17,7 +17,9 @@
 #
 # ONLY all-gcc AND all-target-libgcc ARE BUILT. A plain `make` here tries to
 # build the target libstdc++ as well, which needs the libc that does not exist
-# yet and fails a long way in.
+# yet and fails a long way in. libstdcxx-arm-none-eabi builds it from this
+# source once picolibc is installed, so its configure must keep this one's
+# prefix, sysroot and multilib set.
 #
 # Every runtime gcc would normally add is off: libssp, libgomp, libquadmath,
 # libatomic and shared libgcc all assume a hosted target. On a Cortex-M there

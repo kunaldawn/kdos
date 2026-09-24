@@ -1,0 +1,255 @@
+Put a .code16 or .code32 directive ahead of .arch in the x86 assembly iPXE
+shares between its BIOS and x86_64 EFI builds. GNU as 2.41 and later reject
+.arch i386 and .arch i586 while the assembler is still in 64-bit mode, so
+without this every one of these files fails in the bin-x86_64-efi build that
+the efi-*.rom NIC option ROMs come from.
+
+--- a/roms/ipxe/src/arch/x86/core/patch_cf.S
++++ b/roms/ipxe/src/arch/x86/core/patch_cf.S
+@@ -23,8 +23,8 @@
+ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL )
+ 
+ 	.text
+-	.arch i386
+ 	.code16
++	.arch i386
+ 
+ /****************************************************************************
+  * Set/clear CF on the stack as appropriate, assumes stack is as it should
+--- a/roms/ipxe/src/arch/x86/core/stack.S
++++ b/roms/ipxe/src/arch/x86/core/stack.S
+@@ -1,6 +1,5 @@
+ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL )
+ 
+-	.arch i386
+ 
+ #ifdef __x86_64__
+ #define STACK_SIZE 8192
+--- a/roms/ipxe/src/arch/x86/core/stack16.S
++++ b/roms/ipxe/src/arch/x86/core/stack16.S
+@@ -1,6 +1,5 @@
+ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL )
+ 
+-	.arch i386
+ 
+ /****************************************************************************
+  * Internal stack
+--- a/roms/ipxe/src/arch/x86/drivers/net/undiisr.S
++++ b/roms/ipxe/src/arch/x86/drivers/net/undiisr.S
+@@ -11,8 +11,8 @@
+ #define PIC2_ICR 0xa0
+ 	
+ 	.text
+-	.arch i386
+ 	.code16
++	.arch i386
+ 
+ 	.section ".text16", "ax", @progbits
+ 	.globl undiisr
+--- a/roms/ipxe/src/arch/x86/interface/pcbios/e820mangler.S
++++ b/roms/ipxe/src/arch/x86/interface/pcbios/e820mangler.S
+@@ -24,8 +24,8 @@
+ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL )
+ 
+ 	.text
+-	.arch i386
+ 	.code16
++	.arch i386
+ 
+ #define SMAP 0x534d4150
+ 
+--- a/roms/ipxe/src/arch/x86/interface/pxe/pxe_entry.S
++++ b/roms/ipxe/src/arch/x86/interface/pxe/pxe_entry.S
+@@ -26,6 +26,7 @@
+ 
+ #include <librm.h>
+ 
++	.code16
+ 	.arch i386
+ 
+ /****************************************************************************
+--- a/roms/ipxe/src/arch/x86/prefix/bootpart.S
++++ b/roms/ipxe/src/arch/x86/prefix/bootpart.S
+@@ -6,9 +6,9 @@
+ #define STACK_SIZE	0x2000
+ 	
+ 	.text
++	.code16
+ 	.arch i386
+ 	.section ".prefix", "awx", @progbits
+-	.code16
+ 
+ /*
+  * Find active partition
+--- a/roms/ipxe/src/arch/x86/prefix/dskprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/dskprefix.S
+@@ -25,10 +25,10 @@
+ .equ	SYSSEG, 0x1000			/* system loaded at SYSSEG<<4 */
+ 
+ 	.org	0
++	.code16
+ 	.arch i386
+ 	.text
+ 	.section ".prefix", "ax", @progbits
+-	.code16
+ 	.globl	_dsk_start
+ _dsk_start:
+ 
+--- a/roms/ipxe/src/arch/x86/prefix/exeprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/exeprefix.S
+@@ -37,9 +37,9 @@
+ #define PSP_CMDLINE_START 0x81
+ 
+ 	.text
++	.code16
+ 	.arch i386
+ 	.org 0
+-	.code16
+ 	.section ".prefix", "awx", @progbits
+ 
+ signature:
+--- a/roms/ipxe/src/arch/x86/prefix/hdprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/hdprefix.S
+@@ -3,9 +3,9 @@
+ #include <librm.h>
+ 
+ 	.text
++	.code16
+ 	.arch i386
+ 	.section ".prefix", "awx", @progbits
+-	.code16
+ 	.org 0
+ 	.globl	_hd_start
+ _hd_start:
+--- a/roms/ipxe/src/arch/x86/prefix/libprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/libprefix.S
+@@ -26,6 +26,7 @@
+ 
+ #include <librm.h>
+ 
++	.code16
+ 	.arch i386
+ 
+ /* Image compression enabled */
+--- a/roms/ipxe/src/arch/x86/prefix/lkrnprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/lkrnprefix.S
+@@ -5,8 +5,8 @@
+ #define BZI_LOAD_HIGH_ADDR 0x100000
+ 
+ 	.text
+-	.arch i386
+ 	.code16
++	.arch i386
+ 	.section ".prefix", "ax", @progbits
+ 	.globl	_lkrn_start
+ _lkrn_start:
+--- a/roms/ipxe/src/arch/x86/prefix/mbr.S
++++ b/roms/ipxe/src/arch/x86/prefix/mbr.S
+@@ -1,9 +1,9 @@
+ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL )
+ 
+ 	.text
++	.code16
+ 	.arch i386
+ 	.section ".prefix", "awx", @progbits
+-	.code16
+ 	.org 0
+ 
+ 	.globl mbr
+--- a/roms/ipxe/src/arch/x86/prefix/mromprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/mromprefix.S
+@@ -42,8 +42,8 @@
+ #include "pciromprefix.S"
+ 
+ 	.text
+-	.arch i386
+ 	.code16
++	.arch i386
+ 
+ /* Obtain access to payload by exposing the expansion ROM BAR at the
+  * address currently used by a suitably large memory BAR on the same
+--- a/roms/ipxe/src/arch/x86/prefix/nbiprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/nbiprefix.S
+@@ -3,8 +3,8 @@
+ #include <librm.h>
+ 
+ 	.text
+-	.arch i386
+ 	.code16
++	.arch i386
+ 	.section ".prefix", "ax", @progbits
+ 	.org 0
+ 
+--- a/roms/ipxe/src/arch/x86/prefix/nullprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/nullprefix.S
+@@ -2,10 +2,10 @@
+ 
+ 	.org	0
+ 	.text
++	.code16
+ 	.arch i386
+ 
+ 	.section ".prefix", "ax", @progbits
+-	.code16
+ _prefix:
+ 
+ 	.section ".text16", "ax", @progbits
+--- a/roms/ipxe/src/arch/x86/prefix/pxeprefix.S
++++ b/roms/ipxe/src/arch/x86/prefix/pxeprefix.S
+@@ -12,9 +12,9 @@
+ #define PXE_HACK_EB54			0x0001
+ 
+ 	.text
++	.code16
+ 	.arch i386
+ 	.org 0
+-	.code16
+ 
+ #include <librm.h>
+ #include <undi.h>
+--- a/roms/ipxe/src/arch/x86/prefix/unlzma.S
++++ b/roms/ipxe/src/arch/x86/prefix/unlzma.S
+@@ -44,6 +44,7 @@
+  */
+ 
+ 	.text
++	.code32
+ 	.arch i586
+ 	.section ".prefix.lib", "ax", @progbits
+ 
+--- a/roms/ipxe/src/arch/x86/prefix/usbdisk.S
++++ b/roms/ipxe/src/arch/x86/prefix/usbdisk.S
+@@ -3,9 +3,9 @@
+ #include <config/console.h>
+ 
+ 	.text
++	.code16
+ 	.arch i386
+ 	.section ".prefix", "awx", @progbits
+-	.code16
+ 	.org 0
+ 
+ #include "mbr.S"
+--- a/roms/ipxe/src/arch/x86/transitions/liba20.S
++++ b/roms/ipxe/src/arch/x86/transitions/liba20.S
+@@ -24,6 +24,7 @@
+ 
+ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL )
+ 
++	.code16
+ 	.arch i386
+ 
+ /****************************************************************************
+--- a/roms/ipxe/src/arch/x86/transitions/libkir.S
++++ b/roms/ipxe/src/arch/x86/transitions/libkir.S
+@@ -32,9 +32,9 @@
+ #define BOCHSBP xchgw %bx, %bx
+ 
+ 	.text
++	.code16
+ 	.arch i386
+ 	.section ".text16", "awx", @progbits
+-	.code16
+ 	
+ /****************************************************************************
+  * init_libkir (real-mode or 16:xx protected-mode far call)

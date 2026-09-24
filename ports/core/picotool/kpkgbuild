@@ -17,4 +17,4 @@ sha256      = 07946d294ab5c474b610660c53c5d94216e4ab13555de075ed521f98afc4f44c  
 source      = pico-sdk-$version.tar.gz::https://github.com/raspberrypi/pico-sdk/archive/refs/tags/$version.tar.gz
 description = RP2040 and RP2350 UF2 inspection and USB loading
 homepage    = https://github.com/raspberrypi/picotool
-depends     = cmake libusb pkgconf
+depends     = cmake libusb pkgconf gcc-arm-none-eabi binutils-arm-none-eabi picolibc-arm-none-eabi libstdcxx-arm-none-eabi

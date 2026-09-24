@@ -538,6 +538,43 @@ Chromium tag, lay them out under `vendor/` as they sit in a checkout, and pack t
 set above plus `--mode=go-w`. The recipe's `_build_rev` and `_abseil_rev` name those revisions,
 and `build.sh` refuses a tarball whose `DEPS` disagrees with them.
 
+`bat` carries `bat-assets-<version>.tar.xz`, the inputs to its highlighting sets. bat embeds
+`assets/syntaxes.bin`, `themes.bin` and `acknowledgements.bin` with `include_bytes!`. These are
+serialized syntect sets compiled from 92 git submodules of Sublime grammars and TextMate themes,
+and the release archive carries those submodules empty. The bundle is those submodules at the
+tag's pinned commits, cut down to what bat's asset build reads: every `.sublime-syntax`, every
+`.tmTheme`, and every `LICENSE*`, `NOTICE*` and `COPYING*` file. The cut is not a guess. Sets
+built from it are byte-identical to sets built from the full checkout. `build.sh` unpacks the
+bundle over the empty directories and applies upstream's `assets/patches`. It builds once, runs
+`bat cache --build --blank --acknowledgements --source=assets --target=assets`, and builds again.
+The second build recompiles only the bat crate. `--source` stays relative, because the syntax set
+records each grammar's path as it was given, and an absolute path would make the set's bytes
+depend on the build directory. Rebuild the bundle on a version bump:
+
+```sh
+git clone --depth 1 --branch v<version> https://github.com/sharkdp/bat
+cd bat && git submodule update --init --depth 1
+find $(git submodule status | awk '{print $2}') -name .git -prune -o -type f \
+    \( -name '*.sublime-syntax' -o -name '*.tmTheme' -o -iname 'license*' \
+       -o -iname 'notice*' -o -iname 'copying*' \) -print | sort > list
+tar --sort=name --mtime=@1735689600 --owner=0 --group=0 --numeric-owner --mode=go-w \
+    --format=gnu --use-compress-program='xz -9 -T1' -cf bat-assets-<version>.tar.xz -T list
+```
+
+The port installs the three sets and a plain-text `acknowledgements.txt` under
+`/usr/share/bat/assets`. `delta` and `presenterm` embed bat's sets too, so both depend on `bat` and
+copy these files over their own copies before cargo runs. For `delta` the copies are inside the
+vendored `bat` crate, and cargo verifies every vendored file against the crate's
+`.cargo-checksum.json`. `build.sh` therefore replaces the three entries with the new files'
+hashes, and cargo still checks the rest of the crate. The sets are bincode dumps of syntect's
+types and carry no version tag. `delta` refuses to build unless its vendored bat is the version
+installed, and a bump of `bat` or `presenterm` checks that both `Cargo.lock` files name the same
+syntect.
+
+`testing/preflight.sh` accepts an archive in a port directory if a `source =` line resolves to it,
+if it is the vendor bundle, or if it has its own `sha256 =` line. `kpkg` verifies every `sha256`
+entry, including the ones no source names.
+
 ### A Rust port's version is pinned by this tree's compiler
 
 Cargo refuses a crate whose declared minimum Rust version is higher than the toolchain, rather than
@@ -615,6 +652,18 @@ A port that builds introspection data from a glib library names both `gobject-in
 includes `GLib-2.0`, `GObject-2.0` or `Gio-2.0` from the second. `libqrtr-glib`, `libmbim`,
 `libqmi` and `modemmanager` do.
 
+The arm-none-eabi C++ runtime is split the same way. `gcc-arm-none-eabi` is built with no C
+library and installs only the compiler and `libgcc`; `picolibc-arm-none-eabi` is compiled with
+that compiler; `libstdcxx-arm-none-eabi` configures the same gcc tarball again with the
+compiler's prefix, sysroot and `rmprofile` multilib set, plus `--with-picolibc`, and installs only
+what `make install` in its `libstdc++-v3` directory writes: `libstdc++.a`, `libsupc++.a` and
+`libstdc++exp.a` for every multilib, and the headers under `/usr/arm-none-eabi/include/c++`. The
+top-level `install-target-libstdc++-v3` would install `libgcc` again, and the pretty-printers under
+`/usr/share/gcc-<version>` are the host `gcc`'s path, so neither is packaged. It carries
+`gcc-arm-none-eabi-$version.tar.xz` with that port's checksum, and both recipes carry
+`group = gcc-arm-none-eabi`. `picotool` depends on it: the three RP2350 stubs it embeds are
+pico-sdk projects, and the SDK compiles C++ into every one linked against `pico_stdlib`.
+
 ## What is built from source
 
 Everything the host installs and runs on its own processor is compiled here from source; the
@@ -625,10 +674,10 @@ recipe has to be able to name.
 
 | Class | What it covers | Why it cannot be compiled here |
 |---|---|---|
-| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the guest firmware images `qemu` installs from its `pc-bios/` | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
+| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` — every other guest firmware it ships is compiled from its `roms/` | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
 | Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`; the faces bundled inside `mupdf`, `matplotlib` and `seqkit` | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf` and `noto-emoji` |
 | Compiler bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm` | A compiler written in its own language needs a working one first. Each seed is used only to build, and never ships |
-| Data with no other source form | The `tesseract` English model, the `perl-xml-parser` `.enc` encoding maps, the JavaScript in `libkiwix`'s skin, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, and recorded audio such as the `speaker-test` samples in `alsa-utils` | The file is the form upstream maintains; there is nothing earlier to build it from |
+| Data with no other source form | The `tesseract` English model, the `perl-xml-parser` `.enc` encoding maps, the JavaScript in `libkiwix`'s skin, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, the RP2350 boot-ROM tails `picotool` embeds from `model/`, and recorded audio such as the `speaker-test` samples in `alsa-utils` | The file is the form upstream maintains; there is nothing earlier to build it from |
 
 Every exempt payload is still a `source =` line with a `sha256`, so the offline build and the
 checksum hold for it exactly as for a tarball of C.
@@ -731,7 +780,7 @@ and installing the package rebuilds the MIME database on the target, which is th
    `source`.
 3. **Fetch and record the checksum:**
    ```sh
-   ports/fetch <port>          # `make fetch` takes no argument and walks all 879
+   ports/fetch <port>          # `make fetch` takes no argument and walks all 945
    ```
 4. **Write `build.sh`** from the canonical shape for its build system.
 5. **Wire it in.** Add it to the `depends` of whatever needs it, and to the `packages.txt` of the

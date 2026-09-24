@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = python3-setuptools-scm
-version     = 10.2.3
+version     = 10.3.4
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/s/setuptools_scm/setuptools_scm-$version.tar.gz
-sha256      = f179ed3e2a63cf5823e5ee9aa9ca08386219400443a0553224d72dde3f206b44  python3-setuptools-scm-10.2.3.tar.gz
+sha256      = a69f28bfc245608781205e912faae437c2b2165773afa4e7b979d77447a69dd2  python3-setuptools-scm-10.3.4.tar.gz
 description = Version from VCS — matplotlib requires it at build time
 homepage    = https://pypi.org/project/setuptools_scm/
 depends     = python3 python3-setuptools python3-pip python3-packaging python3-vcs-versioning
