@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i $PORT_SRC/openssl4-asn1-string-length.patch
+
 ./configure \
     --prefix=/usr \
         --libexecdir=/usr/lib \
