@@ -11,6 +11,7 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 | What you see | Section |
 |---|---|
 | `Dynamic loading not supported` from a Rust crate | [Rust with a binding generator](#rust-with-a-binding-generator) |
+| `rustc-LLVM ERROR: '+<feature>' is not a recognized feature for this target` | [A Rust release older than the system LLVM](#a-rust-release-older-than-the-system-llvm) |
 | A missing type, from an empty generated header | [A stream-editor extension](#a-stream-editor-extension-that-is-not-there) |
 | `length: not found`, or a relative-link option rejected | [Missing compact-userland features](#missing-compact-userland-features) |
 | A package index reached during an offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
@@ -55,6 +56,19 @@ which a statically linked C library does not support.
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 ```
+
+## A Rust release older than the system LLVM
+
+`rustc-LLVM ERROR: '+amx-tf32' is not a recognized feature for this target`, at the first
+standard-library build.
+
+The `rust` port links rustc against the system LLVM, not the copy in its own tarball. When the
+system LLVM is a major version ahead of the one the release was cut against, rustc can name
+something that LLVM has since removed: a target feature, a pass, an intrinsic. Upstream's fixes for
+the newer LLVM land on rustc's development branch first. The port carries those commits as patches
+beside the recipe, the same ones other distributions shipping that pairing carry, until a release
+contains them. Drop each patch when the version it targets includes it; `patch` then refuses it as
+already applied.
 
 ## A stream-editor extension that is not there
 
