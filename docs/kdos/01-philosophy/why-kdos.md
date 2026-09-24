@@ -16,7 +16,7 @@ A decision elsewhere in the book that looks arbitrary is usually one of these be
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from upstream tarballs by 903 recipes — 879 under
+The host is compiled in this repository from upstream tarballs by 969 recipes — 945 under
 `ports/core` for upstream software, 24 under `src/` for the desktop, the daemons and the tools —
 running from a cross toolchain, through a musl userland, through a self-hosting pass, through the
 build tools, the libraries, the desktop and finally the kernel.
@@ -110,7 +110,7 @@ The rest of this class rides inside ports that are otherwise compiled here:
 | `intel-media-driver` | The closed EU kernels, compiled in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; rebuilding them from their assembly needs Intel's shader compiler, which is not a port |
 | `alsa-ucm-conf` | A small number of `.bin` files: precomputed EQ coefficients loaded into SOF DSPs |
 | `espflash`, `probe-rs`, `python3-esptool`, `openfpgaloader` | The flasher stubs, flash algorithms and bridge bitstreams each one uploads to the device it drives |
-| `qemu` | The guest firmware images from `pc-bios/` that its install copies unfiltered — SeaBIOS, EDK2, OpenSBI and the rest — which run inside the guest |
+| `qemu` | EDK2 for the riscv64 `virt` machine, `edk2-riscv-code.fd` and its variable store, unpacked from the tarball's `pc-bios/`: compiled by a riscv64 bare-metal gcc 15 it faults before reaching a boot option. The rest of the guest firmware it installs — SeaBIOS and SeaVGABIOS, qboot, the iPXE NIC ROMs, the `-kernel` option ROMs, EDK2 for x86_64 and aarch64, and OpenSBI — is compiled here from the sources in the tarball's `roms/` |
 
 ### Three compiler bootstrap seeds
 
@@ -192,6 +192,7 @@ there is nothing earlier to build it from:
 | `libkiwix` | The JavaScript of the server's skin under `static/`, minified files included |
 | `fcitx5-chinese-addons` | The pinyin-to-character and stroke tables, two further `source =` lines |
 | `john` | The `.chr` character-frequency files |
+| `picotool` | The last 512 bytes of each RP2350 revision's boot ROM, under `model/`, which a connected chip will not read out, and which it supplies in their place when it dumps the ROM. They are a copy of the mask ROM, not a build |
 | `alsa-utils` | Recorded audio: the channel-name voice samples `speaker-test` plays |
 
 Everything else on the host — every library, every daemon, the compiler, the kernel and the whole
@@ -248,7 +249,7 @@ Measured from the tree.
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 879 |
+| Port recipes in `ports/core` | 945 |
 | Port recipes under `src/` for KDOS's own software | 24 |
 | Packages installed on the built system | 833 |
 | Applications in the catalogue | 183 |

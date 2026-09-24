@@ -44,7 +44,7 @@ make build
 ```
 
 There is no fetch step. The upstream tarballs live in the tree through Git LFS — 1,020 archives
-across 879 ports — and the `sha256 =` line in each recipe sits beside the bytes it verifies.
+across 945 ports — and the `sha256 =` line in each recipe sits beside the bytes it verifies.
 
 If `git lfs install` has not run before the clone, the working tree holds three-line text pointers
 of about 130 bytes where the archives should be. The first port to unpack one fails on a corrupt

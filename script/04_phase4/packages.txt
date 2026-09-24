@@ -194,6 +194,7 @@ noto-fonts-extra
 nerd-fonts-symbols
 libcbor
 libfido2
+ccid
 # The colour emoji face, which the rest of the font configuration already
 # assumes: `70-no-bitmaps-except-emoji` carves bitmap fonts an exception BY
 # FAMILY, and with no such family every emoji on the image is a blank box.
@@ -348,8 +349,10 @@ gocryptfs
 # test a kernel, open an untrusted disk image, boot the installer of the
 # distro being migrated from. On a distro whose own test rig IS qemu.
 # qemu's aarch64 and riscv64 targets require libfdt, and --disable-download
-# means its own submodule copy is never fetched.
+# means its own submodule copy is never fetched. acpica's iasl compiles the
+# ACPI tables of the UEFI firmware qemu's recipe builds from its roms/ tree.
 dtc
+acpica
 qemu
 # Not a program, an EFI payload: bad RAM is the one fault a tool running under
 # an OS cannot honestly diagnose, because it is in the memory being tested.
@@ -388,6 +391,7 @@ stlink
 binutils-arm-none-eabi
 gcc-arm-none-eabi
 picolibc-arm-none-eabi
+libstdcxx-arm-none-eabi
 # RV32 and RV64 — the MCUs and the soft cores the FPGA flow above synthesises.
 binutils-riscv64-unknown-elf
 gcc-riscv64-unknown-elf

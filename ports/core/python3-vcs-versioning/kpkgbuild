@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = python3-vcs-versioning
-version     = 2.4.1
+version     = 2.5.0
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/v/vcs-versioning/vcs_versioning-$version.tar.gz
-sha256      = d4575de3115ec9434393c87c80ffb0eb98a16056bfe2b11ce0f3a97aff67fe0a  python3-vcs-versioning-2.4.1.tar.gz
+sha256      = 956a796e31f80fe714d219d6d1df15a6bf247d10f6d851bf4b98279d0a42da55  python3-vcs-versioning-2.5.0.tar.gz
 description = The VCS version machinery setuptools-scm is built on
 homepage    = https://pypi.org/project/vcs-versioning/
 depends     = python3 python3-setuptools python3-pip python3-packaging

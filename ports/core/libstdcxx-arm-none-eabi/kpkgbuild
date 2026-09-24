@@ -8,9 +8,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = libgmp
-version     = 6.3.0
+
+name        = libstdcxx-arm-none-eabi
+version     = 16.2.0
 release     = 1
-source      = https://ftp.gnu.org/gnu/gmp/gmp-$version.tar.xz
-sha256      = a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898  libgmp-6.3.0.tar.xz
-description = Contains math libraries that useful functions for arbitrary precision arithmetic
+_up         = gcc-$version
+source      = gcc-arm-none-eabi-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/gcc/$_up/$_up.tar.xz
+sha256      = e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e  gcc-arm-none-eabi-16.2.0.tar.xz
+description = The C++ standard library for arm-none-eabi, built against picolibc
+homepage    = https://gcc.gnu.org/
+depends     = gcc-arm-none-eabi binutils-arm-none-eabi picolibc-arm-none-eabi gmp mpfr mpc zlib zstd
+group       = gcc-arm-none-eabi

@@ -329,8 +329,10 @@ $(printf '%s' "$flat" \
     # header its sources need, which no meson_options.txt can define. A line
     # that assigns one of the toolchain flag variables is therefore dropped
     # before the -D's are read, or this reports a defect in a recipe that
-    # builds.
+    # builds. Nor is a -D a recipe searches for: `grep -q -- -DHAVE_AVAHI
+    # build/build.ninja` asserts a probe's macro landed, and names no option.
     cmdlines=$(grep -v '^[[:space:]]*#' "$d/build.sh" | grep -v 'install ' \
+               | grep -vE '(^|[[:space:]!(])grep[[:space:]]' \
                | grep -vE '^[[:space:]]*(export[[:space:]]+)?(C|CXX|CPP|LD|OBJC|OBJCXX|F|FC)FLAGS\+?=')
     passed=$(printf '%s\n' "$cmdlines" \
              | grep -oE '[-]D[a-zA-Z0-9_-]+[a-zA-Z0-9_:-]*' \
