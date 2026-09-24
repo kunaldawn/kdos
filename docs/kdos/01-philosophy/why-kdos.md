@@ -180,7 +180,9 @@ machine that asks. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 `hwdata`, `xkeyboard-config`, `iso-codes` and `docbook-xml`/`xsl` are text or tables installed as
 they arrive. `iana-etc` is tables too, but generated at build time from IANA's own XML registries,
 each pinned by its hash, rather than carried as text somebody else produced. `ca-certificates` is
-generated the same way, from the `certdata.txt` of a pinned NSS release.
+generated the same way, from the `certdata.txt` of a pinned NSS release. The time-zone rules
+`nodejs` compiles into its `Temporal` are the `zoneinfo64.res` the `icu` port builds from its own
+source, in place of the copy inside the tarball's vendored `zoneinfo64` crate.
 
 Some data is binary or generated upstream, and the file as shipped is the form upstream maintains —
 there is nothing earlier to build it from:
