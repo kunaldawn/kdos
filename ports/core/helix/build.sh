@@ -10,6 +10,7 @@
 # ---------------------------------
 
 export HELIX_DEFAULT_RUNTIME=/usr/lib/helix/runtime
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --locked
 install -Dm755 target/release/hx $PKG/usr/bin/hx
 install -d $PKG/usr/lib/helix

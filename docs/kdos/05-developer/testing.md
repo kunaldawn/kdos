@@ -26,7 +26,7 @@ distribution with it.
 
 ## preflight.sh
 
-Everything a full build would catch, minus the build: forty-seven checks, in seconds. Ten of them
+Everything a full build would catch, minus the build: forty-eight checks, in seconds. Ten of them
 read the built tree under `build/fs`, and on a tree with no build each prints `skipped — no build
 tree` instead of passing quietly, so a green run accounts for every check the file contains rather
 than hiding the ones that declined to run.
@@ -35,7 +35,7 @@ than hiding the ones that declined to run.
 |---|---|
 | Packages | Every package named in a phase list has a port; every list resolves to a dependency order with clean output and valid tokens; every dependency names a port that exists; the build tree carries no package whose port is gone |
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every source a port declares is in the port directory, non-empty and named by a checksum; every port of ours is built by something |
-| Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value types validated |
+| Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value types validated; every recipe that runs cargo links dynamically |
 | Sources | Every source file in one of *our* ports is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory — a glob of the shared `libk*` trees does not exempt it; a first source whose members are prefixed is accounted for; a flat first source is unpacked by its own recipe; every port's archive is in the tree through LFS |
 | Shipped configuration | The shipped compositor configuration keeps its default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount |
 | Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the makefile runs is on disk |

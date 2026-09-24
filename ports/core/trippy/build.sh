@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # IT NEEDS CAP_NET_RAW AND IS NOT GIVEN IT HERE, the same as bandwhich: raw
 # sockets are a capability, and this ships as an ordinary binary to be run as
 # root or granted the capability deliberately. There is no third setuid program

@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # `kdos march` ALREADY ENCODES THIS DISCIPLINE FOR ONE QUESTION: run it several
 # times, take the median, measure the machine's own noise, and refuse a "win"
 # that does not clear it. This is the same argument generalised to any command

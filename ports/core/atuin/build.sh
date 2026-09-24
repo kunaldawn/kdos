@@ -18,6 +18,8 @@ mkdir .kdos-vendor
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz -C .kdos-vendor \
 	--exclude=vendor/axoasset
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # NOTHING IN THE BINARY CALLS THE SYNC CLIENT, AND THE SERVER IS NOT BUILT.
 # atuin's history is every command anybody typed on this machine; shipping it
 # able to post that to a remote by configuration is the argument that turned

@@ -41,6 +41,8 @@ for _f in syntaxes.bin themes.bin acknowledgements.bin; do
 done
 printf '%s' "$_sum" > vendor/bat/.cargo-checksum.json
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # git2/vendored-libgit2: libgit2-sys otherwise links a system libgit2 whenever
 # pkg-config finds one in its version range, so the bundled copy is named.
 cargo build --release --frozen --offline --features git2/vendored-libgit2

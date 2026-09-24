@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # LOSSLESS, WHICH IS THE ONLY REASON IT IS SAFE TO RUN OVER AN ARCHIVE. oxipng
 # re-encodes the same pixels with better filters and a better deflate; the
 # output is bit-identical when decoded, so it can be pointed at a directory of

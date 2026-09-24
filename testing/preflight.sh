@@ -1526,6 +1526,22 @@ done
 note "echo backticks" "$((_bt)) build scripts run a command they meant to name"
 
 echo
+echo "==> every recipe that runs cargo builds against a shared C library"
+# The musl target links statically unless told otherwise. A crate that links a
+# system library then takes its .a and none of the libraries that one needs,
+# and the link fails at the end of a long compile (cargo-c on libcurl.a), or
+# succeeds with a private copy of the library that no update of its port
+# reaches.
+_cs=0
+for _f in ports/core/*/build.sh; do
+    grep -qE '(^|[[:space:]])cargo[[:space:]]+(build|install|cbuild|cinstall)' "$_f" || continue
+    grep -q -- '-crt-static' "$_f" && continue
+    bad "$(basename "$(dirname "$_f")")" "runs cargo without RUSTFLAGS=\"-C target-feature=-crt-static\""
+    _cs=$((_cs + 1))
+done
+note "crt-static" "$_cs cargo recipes link statically"
+
+echo
 echo "==> no chroot step reads the ports tree through /kdos/ports"
 # chroot_exec binds $REPO_ROOT onto /kdos with a NON-RECURSIVE `mount --bind`,
 # so the container's own mounts underneath it do not come along: /kdos/ports is

@@ -11,6 +11,7 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
 BTM_GENERATE=true cargo build --release --frozen --offline
 install -Dm755 target/release/btm $PKG/usr/bin/btm
 install -Dm644 target/tmp/bottom/manpage/btm.1 -t $PKG/usr/share/man/man1

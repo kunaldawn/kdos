@@ -10,6 +10,8 @@
 # ---------------------------------
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # vendored-libgit2 builds git2's bundled libgit2 whatever pkg-config finds,
 # since no libgit2 port exists to pin a system copy to; it compresses through
 # the system zlib.

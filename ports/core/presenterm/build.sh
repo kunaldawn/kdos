@@ -31,6 +31,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 install -m644 /usr/share/bat/assets/syntaxes.bin /usr/share/bat/assets/themes.bin \
 	/usr/share/bat/assets/acknowledgements.txt bat/
 
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 
 install -Dm755 target/release/presenterm $PKG/usr/bin/presenterm

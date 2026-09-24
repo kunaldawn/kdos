@@ -32,6 +32,8 @@ for p in assets/patches/*.patch; do
 	patch -d assets -p0 < "$p"
 done
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # vendored-libgit2: libgit2-sys otherwise links a system libgit2 whenever
 # pkg-config finds one in its version range, so the bundled copy is named.
 # libz-sys takes the system zlib whenever one is installed, which is why zlib

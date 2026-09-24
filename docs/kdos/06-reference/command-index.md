@@ -246,7 +246,7 @@ These run on a build machine and never ship on the target.
 | `kdos-portup` | Check ports for newer upstream releases | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/fetch` | Download and vendor sources | [Writing ports](../05-developer/writing-ports.md#vendoring) |
 | `ports/update` | Front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
-| `testing/preflight.sh` | 47 checks over the wiring, in seconds | [Testing](../05-developer/testing.md#preflightsh) |
+| `testing/preflight.sh` | 48 checks over the wiring, in seconds | [Testing](../05-developer/testing.md#preflightsh) |
 | `testing/selftest.sh` | The library and consumer suite | [Testing](../05-developer/testing.md#selftestsh) |
 | `testing/docscheck.sh` | This book: dead links, historical phrasing, the page contract | [Testing](../05-developer/testing.md) |
 | `testing/vnc-shot.py` | Drive and photograph a real session | [Testing](../05-developer/testing.md#the-qemu-rig) |
