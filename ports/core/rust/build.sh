@@ -9,6 +9,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The system LLVM is newer than the one this release is built against. It has
+# no AMX-TF32 extension, and a rustc that lists it fails on its first target
+# query with "'+amx-tf32' is not a recognized feature"; the first patch drops
+# the feature and its intrinsics. It also no longer assigns the global
+# identifiers ThinLTO's summaries are keyed on unless the pipeline asks; the
+# second adds that pass where rustc writes ThinLTO bitcode. Both are rustc's
+# own changes for this LLVM.
+patch -p1 -i $PORT_SRC/rust-llvm23-amx-tf32.patch
+patch -p1 -i $PORT_SRC/rust-llvm23-assign-guid.patch
+
 mkdir -p build/cache/$_date
 cp $PORT_SRC/rust-std-$_rust-$_triplet.tar.xz build/cache/$_date/
 cp $PORT_SRC/rustc-$_rust-$_triplet.tar.xz build/cache/$_date/
