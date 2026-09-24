@@ -69,7 +69,7 @@ DOCKER_TTY := $(shell test -t 0 && echo -it)
 build: check-iso-free
 	mkdir -p build
 	docker build -t os-dev .
-	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+	docker run --network none --cpus="8" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \

@@ -36,7 +36,8 @@ cd       build
 	--enable-__cxa_atexit \
 	--enable-default-pie \
 	--enable-default-ssp \
-	-with-pkgversion="KDOS"
+	-with-pkgversion="KDOS" \
+	CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 make
 make DESTDIR=$PKG install
 
