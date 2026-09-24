@@ -24,6 +24,7 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 | `No rule to make target` from inside a packaging step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
+| `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `C compiler cannot create executables` | [The configuration-script probe](#c-compiler-cannot-create-executables) |
@@ -220,6 +221,21 @@ own `option()` declarations.
 
 ```bash
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
+```
+
+## A language standard reaching the compiler's own runtime
+
+`unknown type name 'bool'` in a header under `gcc/config/`, while `libgcc` is being compiled.
+
+Every phase's `CFLAGS` pins a C standard older than C23, and GCC's configure copies `CFLAGS` into
+`CFLAGS_FOR_TARGET`, the flags for the runtime libraries it builds with the compiler it has just
+built. That runtime includes the target's own headers, which are written for the new compiler's
+default standard and use `bool` without `<stdbool.h>`.
+
+The phase-one compiler, the `gcc` port and the bare-metal cross-compiler ports each pass `CFLAGS_FOR_TARGET` with the `-std=` flag removed:
+
+```bash
+CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 ```
 
 ## An upstream `-Werror`
