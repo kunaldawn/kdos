@@ -9,6 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# V8 reads Temporal's time-zone rules through a private ICU header that a
+# system ICU does not install; the patch compiles the rules into the binary
+# instead, from the zoneinfo64 crate's resource file. That file is replaced
+# with the one the icu port compiles from its own source, so the rules are the
+# system ICU's tz release and not a copy shipped in the tarball.
+patch -p1 -i $PORT_SRC/v8-temporal-system-icu.patch
+install -m644 "/usr/share/icu/$(pkg-config --modversion icu-uc)/zoneinfo64.res" \
+	deps/crates/vendor/zoneinfo64-v0_3/src/data/zoneinfo64.res
+
 # --shared-openssl with --openssl-use-def-ca-store: TLS comes from the system
 # library and trusts /etc/ssl, not a copy of OpenSSL and a CA list compiled
 # into the binary.
