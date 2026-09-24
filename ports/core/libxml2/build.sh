@@ -12,6 +12,7 @@
 export PYTHON=/usr/bin/python3
 ./configure \
 	--prefix=/usr \
+	--sysconfdir=/etc \
 	--with-icu \
 	--with-history \
 	--with-zlib \
