@@ -25,6 +25,7 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
+| `'fenv_t' has not been declared`, then `Cannot compile std module`, in phase one | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `C compiler cannot create executables` | [The configuration-script probe](#c-compiler-cannot-create-executables) |
@@ -237,6 +238,20 @@ The phase-one compiler, the `gcc` port and the bare-metal cross-compiler ports e
 ```bash
 CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 ```
+
+## The installed C++ headers shadowing the ones being built
+
+`'fenv_t' has not been declared in '::'`, followed by `Cannot compile std module`, in the phase-one
+GCC log. Make carries on past it, so the step succeeds and the compiler ships with no `import std;`.
+
+Phase one builds the system compiler with the cross-compiler, whose own C++ headers are on its
+default search path. A libstdc++ wrapper such as `fenv.h` reaches the C library's header with
+`#include_next`, and the next directory holding that name is the cross-compiler's copy of the same
+wrapper. Its include guard is already set, so the C library's declarations never arrive.
+
+`script/01_phase1/10_gcc.sh` passes `CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++"`, which leaves only
+the headers of the libstdc++ being built. A compiler that builds its own runtime with the compiler
+it has just built already does this.
 
 ## An upstream `-Werror`
 
