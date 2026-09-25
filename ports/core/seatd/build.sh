@@ -15,6 +15,7 @@ meson setup build \
 	-Dlibseat-builtin=enabled \
 	-Dlibseat-logind=disabled \
 	-Dserver=enabled \
-	-Dexamples=disabled
+	-Dexamples=disabled \
+	-Dman-pages=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

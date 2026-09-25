@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = liburing
+version     = 2.15
+release     = 1
+source      = https://git.kernel.org/pub/scm/linux/kernel/git/axboe/liburing.git/snapshot/$name-$version.tar.gz
+sha256      = 28661631f95fce6b3a0f77e40442a937cf4c62cac76a2671ad68378cafb5c21e  liburing-2.15.tar.gz
+description = Linux kernel io_uring access library
+homepage    = https://github.com/axboe/liburing
+depends     = linux

@@ -25,7 +25,9 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # dynamically like everything else here.
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
+export OUCH_ARTIFACTS_FOLDER="$PWD/artifacts"
 
 cargo build --release --frozen --offline
 
 install -Dm755 target/release/ouch $PKG/usr/bin/ouch
+install -Dm644 artifacts/*.1 -t $PKG/usr/share/man/man1

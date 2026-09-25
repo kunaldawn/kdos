@@ -1,0 +1,29 @@
+--- a/tools/lvmcmdline.c
++++ b/tools/lvmcmdline.c
+@@ -3398,7 +3398,7 @@
+ 	int err = is_valid_fd(STDERR_FILENO);
+ 
+ 	if (!is_valid_fd(STDIN_FILENO) &&
+-	    !(stdin = fopen(_PATH_DEVNULL, "r"))) {
++	    !(freopen(_PATH_DEVNULL, "r", stdin))) {
+ 		if (err)
+ 			perror("stdin stream open");
+ 		else
+@@ -3408,7 +3408,7 @@
+ 	}
+ 
+ 	if (!is_valid_fd(STDOUT_FILENO) &&
+-	    !(stdout = fopen(_PATH_DEVNULL, "w"))) {
++	    !(freopen(_PATH_DEVNULL, "w", stdout))) {
+ 		if (err)
+ 			perror("stdout stream open");
+ 		/* else no stdout */
+@@ -3416,7 +3416,7 @@
+ 	}
+ 
+ 	if (!is_valid_fd(STDERR_FILENO) &&
+-	    !(stderr = fopen(_PATH_DEVNULL, "w"))) {
++	    !(freopen(_PATH_DEVNULL, "w", stderr))) {
+ 		printf("stderr stream open: %s\n",
+ 		       strerror(errno));
+ 		return 0;

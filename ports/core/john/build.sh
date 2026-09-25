@@ -24,14 +24,35 @@
 # change the alignment of the non-SIMD build.
 patch -p1 -i "$PORT_SRC/blake2-align.patch"
 
+# opencl-topology.patch has no flag either. opencl_common.h supplies AMD's
+# cl_device_topology_amd union only when CL_DEVICE_TOPOLOGY_AMD is undefined,
+# and current OpenCL headers define that macro without the union, so the GPU
+# build stops at an unknown type. The patch guards the union on
+# CL_DEVICE_TOPOLOGY_TYPE_PCIE_AMD, which those headers do not define.
+patch -p1 -i "$PORT_SRC/opencl-topology.patch"
+
+# -fcommon: the OpenCL formats declare file-scope globals (psalt, insize,
+# keyfiles_data, ...) under the same names as their CPU twins without `static`,
+# and GCC's -fno-common default turns every such pair into a multiple-definition
+# link error. -fcommon merges them the way the source was written for.
+export CFLAGS="$CFLAGS -fcommon"
+
 cd src
-./configure --disable-native-tests --without-openmpi
+./configure --prefix=/usr --disable-native-tests --disable-mpi \
+	--enable-pcap --enable-opencl
 
 # --disable-native-tests IS WHAT MAKES THIS REPRODUCIBLE. john's configure
 # probes THIS CPU's instruction set and bakes the best it finds into the
 # binary, so a package built on a machine with AVX-512 crashes on one without
 # it — and the failure is SIGILL at run time, not a link error. That is exactly
 # the blind optimisation `kdos march` exists to replace with a measurement.
+#
+# --enable-pcap fails configure without libpcap rather than dropping the
+# vncpcap2john / SIPdump / eapmd5tojohn helpers. --enable-opencl only asks:
+# the GPU formats come in when CL/cl.h and -lOpenCL link, which is why
+# opencl-headers and ocl-icd are `depends`; configure's "OpenCL support"
+# summary line is the one to read. The formats then run on whatever ICD
+# /etc/OpenCL/vendors names, and report no device when it names none.
 make -j1
 
 # WHAT IT IS FOR: reading a hash out of a LUKS header, a KeePass database, an
@@ -42,17 +63,34 @@ make -j1
 # and one clone away for anyone who wants it.
 install -dm755 $PKG/usr/share/john $PKG/usr/bin
 cd ../run
-for f in john *.pl *.py *.rb *.lua; do
-	[ -e "$f" ] || continue
-	install -Dm755 "$f" $PKG/usr/share/john/"$f"
+
+# --prefix=/usr builds john system-wide: it reads john.conf, the rules and the
+# .chr files from /usr/share/john and keeps its pot, log and session files in
+# ~/.john. Without it john looks for its configuration beside argv[0], which a
+# command found on $PATH does not have. Compiled programs and the links to
+# john go to /usr/bin; everything else in run/ — scripts, the python modules
+# they import, data — goes to /usr/share/john.
+for f in *; do
+	if [ -L "$f" ]; then
+		ln -s "$(readlink "$f")" $PKG/usr/bin/"$f"
+	elif [ -f "$f" ] && [ "$(head -c4 "$f")" = $'\x7fELF' ]; then
+		install -m755 "$f" $PKG/usr/bin/"$f"
+	else
+		cp -a "$f" $PKG/usr/share/john/
+	fi
 done
-cp -a *.conf *.chr *.lst rules dynamic*.conf $PKG/usr/share/john/ 2>/dev/null || true
-ln -s ../share/john/john $PKG/usr/bin/john
+
+# run/ztex holds prebuilt FPGA bitstreams and a USB controller image for the
+# ZTEX 1.15y board. --enable-ztex is not passed, so no program here can load
+# them and they are not shipped.
+rm -rf $PKG/usr/share/john/ztex
 
 # The *2john converters are the half people actually reach for — they read a
-# container and print the hash john takes. Each is a symlink so `zip2john` is a
-# command rather than a path somebody has to remember.
+# container and print the hash john takes. The scripted ones get a symlink so
+# `ssh2john.py` is a command rather than a path somebody has to remember.
 for f in *2john*; do
-	[ -f "$f" ] || continue
+	[ -e $PKG/usr/bin/"$f" ] && continue
+	[ "$(head -c2 "$f")" = '#!' ] || continue
+	chmod 755 $PKG/usr/share/john/"$f"
 	ln -s ../share/john/"$f" $PKG/usr/bin/"$f"
 done

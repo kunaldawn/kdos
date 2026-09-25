@@ -22,7 +22,7 @@
 # ../config.h, which only gettext-runtime's configure writes. So the runtime is
 # configured and intl alone is built and installed.
 #
-# --with-included-gettext IS THE WHOLE POINT. musl carries gettext() in libc as
+# --with-included-libintl IS THE WHOLE POINT. musl carries gettext() in libc as
 # an identity passthrough, so configure answers "GNU gettext in libc... yes",
 # decides the system already has one and builds no library at all — an empty
 # package, and `cannot find -lintl` at the first consumer. The header shipped
@@ -38,7 +38,7 @@ cd gettext-runtime
 	--disable-csharp \
 	--without-emacs \
 	--enable-nls \
-	--with-included-gettext
+	--with-included-libintl
 make -C intl
 make -C intl DESTDIR=$PKG install
 

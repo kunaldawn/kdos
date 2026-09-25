@@ -15,4 +15,4 @@ source      = https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/snapshot
 sha256      = 2e33d17f74cefadf85825f601829a68156f669348071be8470dcd700029a14af  libgpiod-2.3.1.tar.gz
 description = The chardev GPIO ABI — gpioset, gpioget and gpiomon
 homepage    = https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/
-depends     = meson pkgconf
+depends     = meson pkgconf help2man libedit

@@ -9,9 +9,10 @@
 # ---------------------------------
 
 name        = strace
-version     = 7.0
+version     = 7.2
 release     = 1
 source      = https://github.com/strace/strace/releases/download/v$version/strace-$version.tar.xz
-sha256      = 6c92419be3f2ec560b31728a4652217c59864c8642ba7b1b3771b1b013ad074b  strace-7.0.tar.xz
+sha256      = 4bde6246926890dcee824f6e6ac42a06752f47d77e5097d86e3c0d6d4b709fe5  strace-7.2.tar.xz
 description = strace — diagnostic, debugging, and instructional userspace utility
 homepage    = https://strace.io/
+depends     = elfutils

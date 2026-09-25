@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-typing-extensions
+version     = 4.16.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/t/typing-extensions/typing_extensions-$version.tar.gz
+sha256      = dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5  python3-typing-extensions-4.16.0.tar.gz
+description = Backported and experimental type hints for Python's typing module
+homepage    = https://github.com/python/typing_extensions
+depends     = python3 python3-pip python3-flit-core

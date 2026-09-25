@@ -11,8 +11,8 @@
 name        = libgphoto2
 version     = 2.5.34
 release     = 1
-source      = libgphoto2-2.5.34.tar.bz2::https://github.com/gphoto/libgphoto2/releases/download/v2.5.34/libgphoto2-2.5.34.tar.bz2
+source      = https://github.com/gphoto/$name/releases/download/v$version/$name-$version.tar.bz2
 sha256      = 5df9e774eb4ab6087a193afff84dcafe9f666e3443fe29e73e6779f659ff7f28  libgphoto2-2.5.34.tar.bz2
 description = Drive a camera over PTP — the udev rules already grant the class
 homepage    = http://www.gphoto.org/
-depends     = pkgconf libusb libexif libjpeg-turbo gettext
+depends     = pkgconf libusb libexif libjpeg-turbo gettext libtool libxml2 curl libtiff libgd

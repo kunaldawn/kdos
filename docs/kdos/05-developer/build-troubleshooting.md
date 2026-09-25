@@ -10,7 +10,9 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 
 | What you see | Section |
 |---|---|
-| `Dynamic loading not supported` from a Rust crate | [Rust with a binding generator](#rust-with-a-binding-generator) |
+| `Dynamic loading not supported` from a Rust crate, or a static archive's undefined references at its link | [Rust with a binding generator](#rust-with-a-binding-generator) |
+| `rustc-LLVM ERROR: '+<feature>' is not a recognized feature for this target` | [A Rust release older than the system LLVM](#a-rust-release-older-than-the-system-llvm) |
+| `'cstddef' file not found` from clang or bindgen, in a header that compiles with gcc | [An LLVM that guessed its triple](#an-llvm-that-guessed-its-triple) |
 | A missing type, from an empty generated header | [A stream-editor extension](#a-stream-editor-extension-that-is-not-there) |
 | `length: not found`, or a relative-link option rejected | [Missing compact-userland features](#missing-compact-userland-features) |
 | A package index reached during an offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
@@ -24,6 +26,8 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 | `No rule to make target` from inside a packaging step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
+| `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
+| `'fenv_t' has not been declared`, then `Cannot compile std module`, in phase one | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `C compiler cannot create executables` | [The configuration-script probe](#c-compiler-cannot-create-executables) |
@@ -44,15 +48,46 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 
 ## Rust with a binding generator
 
-A Rust crate fails with `Dynamic loading not supported`.
+A Rust crate fails with `Dynamic loading not supported`, or its final link fails with undefined
+references into a library's `.a` (`libcurl.a` and its `nghttp2_*`).
 
-Crates that generate bindings try to load the compiler front-end library dynamically at build time,
-which a statically linked C library does not support.
+The musl target links statically unless told otherwise. A binding generator then cannot load the
+compiler front-end library at build time, and a crate that links a system library takes that
+library's static archive without the libraries it depends on. Where the link succeeds, the binary
+carries a private copy that no update to the library's port reaches. Every recipe that runs cargo
+exports the flag, and preflight fails one that does not:
 
 ```bash
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 ```
+
+## An LLVM that guessed its triple
+
+`fatal error: 'cstddef' file not found` from clang, or from bindgen through libclang, while gcc
+compiles the same header.
+
+`clang -print-target-triple` answers with the triple compiled into LLVM. When the `llvm` port does
+not set one, LLVM guesses, and on this system the guess is `x86_64-unknown-linux-gnu`. Clang then
+looks for a gcc installation under that triple, finds none beside gcc's `x86_64-pc-linux-musl`, and
+searches no C++ header directory at all. It would also link against glibc's loader. The `llvm` and
+`llvm21` ports pass gcc's own triple, `$(cc -dumpmachine)`, as `LLVM_HOST_TRIPLE` and
+`LLVM_DEFAULT_TARGET_TRIPLE`. Clang and libclang compile the default in from LLVM's `llvm-config.h`,
+so a changed LLVM triple needs `clang` rebuilt as well, and a stale one shows as the wrong answer
+from `clang -print-target-triple` after `llvm` is fixed.
+
+## A Rust release older than the system LLVM
+
+`rustc-LLVM ERROR: '+amx-tf32' is not a recognized feature for this target`, at the first
+standard-library build.
+
+The `rust` port links rustc against the system LLVM, not the copy in its own tarball. When the
+system LLVM is a major version ahead of the one the release was cut against, rustc can name
+something that LLVM has since removed: a target feature, a pass, an intrinsic. Upstream's fixes for
+the newer LLVM land on rustc's development branch first. The port carries those commits as patches
+beside the recipe, the same ones other distributions shipping that pairing carry, until a release
+contains them. Drop each patch when the version it targets includes it; `patch` then refuses it as
+already applied.
 
 ## A stream-editor extension that is not there
 
@@ -221,6 +256,35 @@ own `option()` declarations.
 ```bash
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 ```
+
+## A language standard reaching the compiler's own runtime
+
+`unknown type name 'bool'` in a header under `gcc/config/`, while `libgcc` is being compiled.
+
+Every phase's `CFLAGS` pins a C standard older than C23, and GCC's configure copies `CFLAGS` into
+`CFLAGS_FOR_TARGET`, the flags for the runtime libraries it builds with the compiler it has just
+built. That runtime includes the target's own headers, which are written for the new compiler's
+default standard and use `bool` without `<stdbool.h>`.
+
+The phase-one compiler, the `gcc` port and the bare-metal cross-compiler ports each pass `CFLAGS_FOR_TARGET` with the `-std=` flag removed:
+
+```bash
+CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
+```
+
+## The installed C++ headers shadowing the ones being built
+
+`'fenv_t' has not been declared in '::'`, followed by `Cannot compile std module`, in the phase-one
+GCC log. Make carries on past it, so the step succeeds and the compiler ships with no `import std;`.
+
+Phase one builds the system compiler with the cross-compiler, whose own C++ headers are on its
+default search path. A libstdc++ wrapper such as `fenv.h` reaches the C library's header with
+`#include_next`, and the next directory holding that name is the cross-compiler's copy of the same
+wrapper. Its include guard is already set, so the C library's declarations never arrive.
+
+`script/01_phase1/10_gcc.sh` passes `CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++"`, which leaves only
+the headers of the libstdc++ being built. A compiler that builds its own runtime with the compiler
+it has just built already does this.
 
 ## An upstream `-Werror`
 

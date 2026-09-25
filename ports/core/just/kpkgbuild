@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = just
-version     = 1.50.0
+version     = 1.58.0
 release     = 1
 source      = https://github.com/casey/just/archive/$version.tar.gz
-sha256      = cca015e07739a1c26c6fc459f7d46e1e36ce0f7613114eddedd8cd3af55a10b7  just-1.50.0.tar.gz
-sha256      = bc61a0b1d9d5434396268e43f6ec9e2c1bd26c6e1ef672bc54edb0edb3387f57  just-vendor-1.50.0.tar.xz
+sha256      = c8a36e6e9397f2fdfcb0cc246fcdb790b52a784f3c8cabc0d8baeb031852a148  just-1.58.0.tar.gz
+sha256      = ad50098cdb3c3c04db1b0f3b6ed5f8a9312c5b21c1ac9f4834621bdbb3a25d4f  just-vendor-1.58.0.tar.xz
 description = just — a handy way to save and run project-specific commands
 homepage    = https://github.com/casey/just
 depends     = rust

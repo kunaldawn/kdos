@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr --mandir=/usr/share/man
-make man8_MANS=
-make DESTDIR=$PKG install man8_MANS=
+./configure --prefix=/usr --mandir=/usr/share/man \
+	--with-libtirpc \
+	--without-selinux
+make
+make DESTDIR=$PKG install

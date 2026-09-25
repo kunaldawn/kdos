@@ -5845,12 +5845,73 @@ static void test_kimg(void)
 					      8)
 			    : -1;
 
+		/* The whole composed canvas of each frame, pinned by value: a
+		 * decoder change that moves one pixel of disposal or
+		 * transparency changes a sum here. FNV-1a over the words'
+		 * values, so the sums are the same on either endianness. */
+		static const unsigned long long want[3] = {
+			0xf88813d71ad73e43ULL, 0xebc85996e7c6c683ULL,
+			0xf88813d71ad73e43ULL,
+		};
+		int same = got == 3;
+
 		eq_int(got, 3, "every frame of an animated GIF comes back");
 		for (int i = 0; i < got; i++) {
-			if (i == 0)
-				ok(fr[i].gap_ms > 0,
-				   "  each carries the delay after it");
+			const uint32_t *px = pixman_image_get_data(fr[i].img);
+			long npx = (long)pixman_image_get_width(fr[i].img) *
+				   pixman_image_get_height(fr[i].img);
+			unsigned long long h = 1469598103934665603ULL;
+
+			for (long k = 0; k < npx; k++) {
+				h ^= px[k];
+				h *= 1099511628211ULL;
+			}
+			if (i < 3 && (h != want[i] || fr[i].gap_ms != 100))
+				same = 0;
 			pixman_image_unref(fr[i].img);
+		}
+		ok(same, "  each is the composed canvas, with the delay after it");
+
+		/* Every frame whole and only the trailer missing: the one byte
+		 * that says the sender finished. */
+		b = img_slurp("notrailer.gif", &n);
+		got = b ? kimg_decode_all(b, n, KIMG_GIF, &img_budget, fr, 8)
+			: -1;
+		eq_int(got, 0, "a GIF that ends before its trailer is refused");
+		for (int i = 0; i < got; i++)
+			pixman_image_unref(fr[i].img);
+
+		/* The frame ceiling, one either side of it: one-pixel frames
+		 * cost the budget nothing, so only the count can stop them. */
+		for (int frames = 4097; frames <= 4098; frames++) {
+			static const unsigned char head[] = {
+				'G', 'I', 'F', '8', '9', 'a', 1, 0, 1, 0,
+				0x80, 0, 0, 0, 0, 0, 255, 255, 255
+			};
+			static const unsigned char one[] = {
+				0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0,
+				2, 2, 0x44, 0x01, 0
+			};
+			size_t len = sizeof(head) + (size_t)frames * sizeof(one)
+				     + 1;
+			unsigned char *g = malloc(len), *q = g;
+
+			if (!g)
+				continue;
+			memcpy(q, head, sizeof(head));
+			q += sizeof(head);
+			for (int i = 0; i < frames; i++, q += sizeof(one))
+				memcpy(q, one, sizeof(one));
+			*q = 0x3b;
+			got = kimg_decode_all(g, len, KIMG_GIF, &img_budget,
+					      fr, 8);
+			for (int i = 0; i < got; i++)
+				pixman_image_unref(fr[i].img);
+			free(g);
+			if (frames == 4097)
+				eq_int(got, 8, "4097 frames decode");
+			else
+				eq_int(got, 0, "  and 4098 are refused whole");
 		}
 
 		b = img_slurp("valid.gif", &n);

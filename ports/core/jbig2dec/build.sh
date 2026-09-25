@@ -13,9 +13,11 @@
 # than for most codecs, because JBIG2 is what a scanned page in a PDF is
 # encoded with and the decoder is reading somebody else's file.
 #
-# --without-libpng would drop jbig2dec's own test harness output; the library
-# itself does not need it, but the CLI writes PNG and that is the half a
-# scriptable machine uses to look at a page it cannot render.
-./configure --prefix=/usr --libdir=/usr/lib --disable-static
+# --with-libpng is for the CLI: the library itself does not need it, but the
+# CLI writes PNG and that is the half a scriptable machine uses to look at a
+# page it cannot render. The switch only asks — configure still drops PNG
+# output quietly if libpng or zlib fails to link, which is why both are
+# `depends`.
+./configure --prefix=/usr --libdir=/usr/lib --disable-static --with-libpng
 make
 make DESTDIR=$PKG install

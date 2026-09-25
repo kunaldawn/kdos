@@ -14,29 +14,59 @@
 # debug port, reads its registers and single-steps it — which is the only way
 # to find out why a board does not boot far enough to print anything.
 #
-# EVERY ADAPTER THE udev RULES ALREADY GRANT IS ENABLED: CMSIS-DAP, ST-Link,
-# the FTDI bit-bang adapters and the RP2040's native USB. That list and
-# fs/etc/udev/rules.d/70-kdos-*.rules are the same list, and it is deliberate —
-# a driver compiled in with no rule to open the device is a probe that is
-# present, enumerated and unusable.
+# EVERY ADAPTER IS NAMED, BECAUSE configure DEFAULTS EACH ONE TO auto: a
+# driver whose library is missing is dropped without a word, so the build
+# would be narrower on a tree that happened to install libftdi or hidapi
+# late. Naming them turns a missing library into a configure error.
+# fs/etc/udev/rules.d/70-kdos-debug.rules and 70-kdos-serial.rules grant the
+# dialout group the probes in common use — CMSIS-DAP, ST-Link, J-Link, the
+# Espressif and Raspberry Pi probes and the FTDI adapters; the rest are
+# drivers root can open, and a local rule for its vendor id is what lets a
+# user open one.
 #
-# --enable-jlink IS ABSENT AND THE COST IS STATED: it needs libjaylink, which
-# is not a port, so a SEGGER J-Link is not driven by openocd here. The udev
-# rule for one still ships because `JLinkExe` and pyocd can use it, and the
-# flag returns the day libjaylink lands.
+# J-LINK LINKS THE libjaylink PORT. --disable-internal-libjaylink is what
+# makes it: the release tarball carries its own copy, and configure builds
+# that one unless told not to.
+#
+# --with-capstone is what gives `arm disassemble` a disassembler; configure
+# otherwise probes for it and leaves the command out when it is missing.
+#
+# --disable-linuxgpiod: this release's driver is written against libgpiod's
+# v1 API and the libgpiod port is v2, so leaving it to auto-detection breaks
+# the build whenever libgpiod is installed first. The switch is missing
+# from --help, because the adapter list that should declare it lacks a
+# comma, but the variable it sets is the one the driver test reads.
 ./configure \
 	--prefix=/usr \
 	--disable-werror \
 	--enable-ftdi \
 	--enable-stlink \
-	--enable-cmsis-dap \
-	--enable-cmsis-dap-v2 \
-	--enable-picoprobe \
 	--enable-ti-icdi \
 	--enable-ulink \
+	--enable-usb-blaster-2 \
+	--enable-ft232r \
+	--enable-vsllink \
+	--enable-xds110 \
+	--enable-cmsis-dap-v2 \
+	--enable-osbdm \
+	--enable-opendous \
+	--enable-armjtagew \
+	--enable-rlink \
+	--enable-usbprog \
+	--enable-esp-usb-jtag \
+	--enable-cmsis-dap \
+	--enable-nulink \
+	--enable-kitprog \
+	--enable-usb-blaster \
+	--enable-presto \
+	--enable-openjtag \
 	--enable-buspirate \
+	--enable-jlink \
+	--disable-internal-libjaylink \
+	--disable-linuxgpiod \
 	--enable-jtag_vpi \
 	--enable-remote-bitbang \
+	--with-capstone \
 	--disable-doxygen-html
 make
 make DESTDIR=$PKG install

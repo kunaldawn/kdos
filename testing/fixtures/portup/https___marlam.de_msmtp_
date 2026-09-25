@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>msmtp - about</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <link rel="stylesheet" type="text/css" href="/msmtp/css/style.css">
+</head>
+
+<body id="_index">
+
+<nav>
+<section>
+    <span class="home">
+        <a href="/msmtp/">Home</a>
+    </span>
+    <span class="links">
+        <a href="/msmtp/news/">News</a>
+        <a href="/msmtp/download/">Download</a>
+        <a href="/msmtp/documentation/">Documentation</a>
+        <a href="/msmtp/contact/">Contact</a>
+    </span>
+</section>
+</nav>
+
+<main>
+<h1>About msmtp</h1>
+
+<p>
+msmtp is an SMTP client.
+</p>
+
+<p>
+In the default mode, it transmits a mail to an SMTP server which takes care of further delivery.<br>
+To use this program with your mail user agent (MUA), create a configuration 
+file with your mail account(s) and tell your MUA to call msmtp instead of 
+/usr/sbin/sendmail.
+</p>
+
+<p>
+Features include:
+<ul type=disc>
+<li>Sendmail compatible interface (command line options and exit codes)</li>
+<li>Support for multiple accounts</li>
+<li>TLS/SSL support including client certificates</li>
+<li>Support for Internationalized Domain Names (IDN)</li>
+<li>Many authentication methods</li>
+<li>Fast SMTP implementation using command pipelining</li>
+<li>DSN (Delivery Status Notification) support</li>
+<li>SOCKS proxy support</li>
+</ul>
+</p>
+
+<p>
+msmtp runs on a wide variety of platforms. It needs little more than an ANSI C 
+compiler and Berkeley-style sockets. It does not require any additional libraries,
+but it can use the following to enhance its feature set:
+<ul>
+<li> <a href="http://www.gnu.org/software/gnutls/">GnuTLS</a><br>
+The GnuTLS library provides TLS support.
+Alternatively, libtls from the <a href="https://www.libressl.org/">LibreSSL project</a> can be used.
+<li> <a href="http://josefsson.org/libgsasl/">GNU SASL</a><br>
+Using the GNU SASL library adds support for some additional authentication
+methods. You only need it for SCRAM-SHA-* and GSSAPI.</li>
+<li> <a href="https://www.gnu.org/software/libidn/">GNU libidn2</a><br>
+On modern Linux systems with recent glibc and GnuTLS libraries, msmtp has automatic
+support for Internationalized Domain Names (IDN).
+On other systems, IDN support is available via libidn2.</li>
+</ul>
+</p>
+
+<p>
+msmtp is <a href="http://www.gnu.org/philosophy/free-sw.html">free software</a>;
+you can redistribute it and/or modify it under the terms of the 
+<a href="http://www.gnu.org/licenses/gpl.html">GNU General Public License</a> 
+as published by the Free Software Foundation; either version 3 of the
+License, or (at your option) any later version. 
+</p>
+
+</main>
+
+</body>
+</html>

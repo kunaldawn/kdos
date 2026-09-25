@@ -34,8 +34,9 @@ fetch:
 	bash ports/fetch
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
-# release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
-# section, e.g. make updates PORTUP_ARGS="--check curl"
+# release. Needs network, curl and git (tags are read with ls-remote); never
+# runs version control on the tree. See docs/kdos/05-developer/writing-ports.md
+# "Checking for new versions", e.g. make updates PORTUP_ARGS="--check curl"
 # --check exits 1 BY DESIGN when it finds an update, so a plain `make updates
 # PORTUP_ARGS="--check zlib"` would otherwise print "Error 1" for a check
 # that worked perfectly. 2 is the tool's own "unrecoverable" status (a revert
@@ -68,7 +69,7 @@ DOCKER_TTY := $(shell test -t 0 && echo -it)
 build: check-iso-free
 	mkdir -p build
 	docker build -t os-dev .
-	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+	docker run --network none --cpus="8" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \

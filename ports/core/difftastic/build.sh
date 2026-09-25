@@ -11,6 +11,8 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
+
 # THE GRAMMARS ARE COMPILED IN, WHICH IS WHY THIS ONE WORKS OFFLINE AND THE
 # EDITOR PLUGINS DO NOT. Every tree-sitter consumer in an editor downloads and
 # compiles a grammar on first use; difftastic links about fifty of them into

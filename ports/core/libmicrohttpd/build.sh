@@ -17,7 +17,10 @@
 	--libdir=/usr/lib \
 	--disable-static \
 	--disable-https \
-	--disable-doc \
-	--disable-examples
+	--enable-epoll=yes \
+	--enable-poll=yes \
+	--disable-examples \
+	--disable-tools \
+	--disable-curl
 make
 make DESTDIR=$PKG install

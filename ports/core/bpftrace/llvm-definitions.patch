@@ -1,0 +1,24 @@
+LLVMConfig.cmake exports LLVM_DEFINITIONS as one space-separated string. Passed
+to add_definitions() whole, a string that opens with a valued definition
+(-D_GLIBCXX_USE_CXX11_ABI=1, which LLVM built against libstdc++ exports) becomes
+one definition whose value is the rest of the string, and every compile fails
+under -Werror=undef. Split it into a list first.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a781bf34..60466a21 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -167,7 +167,12 @@ endif()
+ 
+ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}: ${LLVM_CMAKE_DIR}")
+ include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+-add_definitions(${LLVM_DEFINITIONS})
++if(LLVM_DEFINITIONS MATCHES ";")
++  set(LLVM_DEFINITIONS_LIST ${LLVM_DEFINITIONS})
++else()
++  separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND "${LLVM_DEFINITIONS}")
++endif()
++add_definitions(${LLVM_DEFINITIONS_LIST})
+ 
+ string(REGEX REPLACE "(-rc[0-9]+|git)" "" CLANG_VERSION ${LLVM_PACKAGE_VERSION})
+ 

@@ -9,17 +9,26 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-    # Patch makefile to prevent color output from ls/grep
-    # Replace the fragile ls | grep pipeline with find
-    # Patch makefile to prevent color output from ls/grep
-    # Replace the fragile ls | grep pipeline with find
-    # Match matches $(shell ls $(LIB_SRCDIR)/legacy/*.c | $(GREP) ...)
-    sed -i 's/$(shell ls .*|.*(GREP).*)/$(shell find $(LIB_SRCDIR)\/legacy -name "*.c" | grep "v0\[$(ZSTD_LEGACY_SUPPORT)-7\]")/g' lib/libzstd.mk
+# THE LEGACY DECODERS ARE NAMED HERE, NOT FOUND BY THE MAKEFILE. libzstd.mk
+# collects them with `ls lib/legacy/*.c | grep`, which depends on what `ls` and
+# `grep` print in the build environment. A command-line ZSTD_LEGACY_FILES
+# overrides that assignment in lib/ and programs/ alike, and absolute paths
+# resolve from either directory. The list must match ZSTD_LEGACY_SUPPORT: 5
+# decodes frames written by zstd v0.5 to v0.7.
+#
+# THE CLI FORMATS AND THREADS ARE FORCED ON. programs/Makefile probes zlib, xz,
+# lz4 and pthread by compiling a test file and quietly drops whatever fails;
+# HAVE_*=1 skips the probe, so a missing library is a link error instead of a
+# zstd without --format=gzip, xz or lz4, or a single-threaded `zstd -T`.
+legacy=("$PWD"/lib/legacy/zstd_v0[5-7].c)
+zstd_vars=(
+	ZSTD_LEGACY_SUPPORT=5
+	ZSTD_LEGACY_FILES="${legacy[*]}"
+	HAVE_PTHREAD=1
+	HAVE_ZLIB=1
+	HAVE_LZMA=1
+	HAVE_LZ4=1
+)
 
-    # Extra safety
-    export TERM=dumb
-    unalias ls 2>/dev/null || true
-    unalias grep 2>/dev/null || true
-
-    make
-    make PREFIX=/usr DESTDIR=$PKG install
+make "${zstd_vars[@]}"
+make "${zstd_vars[@]}" PREFIX=/usr DESTDIR=$PKG install

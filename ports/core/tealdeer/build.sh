@@ -11,9 +11,11 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 install -Dm755 target/release/tldr $PKG/usr/bin/tldr
 install -Dm644 completion/bash_tealdeer $PKG/usr/share/bash-completion/completions/tldr
+install -Dm644 completion/zsh_tealdeer $PKG/usr/share/zsh/site-functions/_tldr
 
 # THE PAGE ARCHIVE IS SEEDED HERE AND AUTO-UPDATE IS OFF, and those are one
 # decision rather than two. Out of the box `tldr` downloads the archive on

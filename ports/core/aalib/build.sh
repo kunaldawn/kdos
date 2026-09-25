@@ -23,6 +23,13 @@ export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 	-Wno-int-conversion -Wno-incompatible-pointer-types \
 	-Wno-return-mismatch -Wno-declaration-missing-parameter-type"
 
+# The slang driver stays off: a found slang disables the curses driver, and
+# with --with-curses-driver=yes forcing both, slang is registered ahead of
+# curses and becomes every consumer's terminal driver in its place.
+#
+# gpm is not a port and --with-gpm-mouse takes only a directory (=no would
+# link -lgpm from "no/lib"), so the library probe itself is answered no.
+ac_cv_lib_gpm_Gpm_Repeat=no \
 ./configure --prefix=/usr \
             --libdir=/usr/lib \
             --mandir=/usr/share/man \

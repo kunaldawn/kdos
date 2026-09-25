@@ -11,13 +11,18 @@
 
 cd unix
 
-# IT IS HERE FOR yosys AND FOR NOTHING ELSE ON THIS HOST. yosys's command
-# language is Tcl and its `tcl` command — which is how a synthesis script does
-# anything conditional — needs a real interpreter linked in. There is no Tk and
-# there will not be: that is a GUI toolkit and the hard rule covers it.
+# IT IS HERE TO BE EMBEDDED, by yosys and by weechat. yosys's command language
+# is Tcl and its `tcl` command — which is how a synthesis script does anything
+# conditional — needs a real interpreter linked in; weechat's tcl plugin is the
+# same library loaded into the IRC client. There is no Tk and there will not
+# be: that is a GUI toolkit and the hard rule covers it.
 #
-# --disable-static because the only consumer links the shared library, and
-# a static libtcl in a synthesis binary is 4 MB nothing else can share.
+# --disable-static because both consumers link the shared library, and a
+# static libtcl in each binary is 4 MB nothing else can share.
+#
+# --with-tzdata=no: `clock` reads /usr/share/zoneinfo from the tzdata port.
+# Left to detection, tcl installs a second copy whenever that directory is
+# missing at configure time.
 #
 # --with-system-libtommath IS WHAT MAKES yosys COMPILE. With tcl's own vendored
 # copy, tclTomMath.h maps `mp_to_unsigned_bin` onto `TclBN_mp_to_unsigned_bin`
@@ -32,6 +37,7 @@ cd unix
 	--mandir=/usr/share/man \
 	--enable-64bit \
 	--with-system-libtommath \
+	--with-tzdata=no \
 	--disable-static
 make
 make DESTDIR=$PKG install

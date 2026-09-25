@@ -15,3 +15,4 @@
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 pip3 install --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+install -Dm644 scons.1 scons-time.1 sconsign.1 -t "$PKG/usr/share/man/man1"

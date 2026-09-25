@@ -9,11 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE RELEASE TARBALL, NOT THE TAG ARCHIVE — the fourth port in this tree to
-# need saying (bcc, yosys, rizin and here). pv keeps its autoconf inputs under
-# `autoconf/` and generates the top-level `configure` at release time, so a tag
-# archive has no `configure.ac` where autoreconf looks for one and the build
-# stops before it starts.
-./configure --prefix=/usr --disable-static
+# THE RELEASE TARBALL, NOT THE TAG ARCHIVE. It ships the generated
+# `configure`, so the build needs no autoreconf and no gettext autopoint.
+# --with-ncurses cannot make a missing ncurses an error: the library is found
+# by probe and linked when present, so it is a depend to keep the terminal
+# colour detection always built in.
+./configure --prefix=/usr --disable-static --with-ncurses --disable-nls
 make
 make DESTDIR=$PKG install

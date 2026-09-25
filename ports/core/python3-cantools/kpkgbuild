@@ -9,13 +9,13 @@
 # ---------------------------------
 
 name        = python3-cantools
-version     = 43.0.1
+version     = 44.1.0
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/c/cantools/cantools-$version.tar.gz
-sha256      = 43252688ac4e840263eba5bc446212f67e416d311f9e0fa196eac42d7cb71e07  python3-cantools-43.0.1.tar.gz
-sha256      = f5760ae012e95baed7cf2b24072bb73dc1d9c25fd7edba2981e45a89192014d2  python3-cantools-vendor-43.0.1.tar.xz
+sha256      = ddb1538b8ec9353d791da089ba30e1e46ec95f54a55276bbdd3da096876a0a82  python3-cantools-44.1.0.tar.gz
+sha256      = 4d5d10724e0cd717e88b1615625e45e8e2596775c44db0710046fb186c55e016  python3-cantools-vendor-44.1.0.tar.xz
 description = Decode a live candump into named signals, and generate the MCU-side C
 homepage    = https://github.com/cantools/cantools
-depends     = python3 python3-setuptools python3-pip python3-setuptools-scm can-utils
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm can-utils python3-packaging python3-typing-extensions matplotlib
 vendoring   = python
 pyrequirements = no

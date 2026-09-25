@@ -1,0 +1,13 @@
+Leave `rclone gui` out of the binary. The command embeds cmd/gui/dist.zip, a
+prebuilt web bundle this tree does not build, and it has no build tag.
+
+--- a/cmd/all/all.go
++++ b/cmd/all/all.go
+@@ -31,7 +31,6 @@
+ 	_ "github.com/rclone/rclone/cmd/genautocomplete"
+ 	_ "github.com/rclone/rclone/cmd/gendocs"
+ 	_ "github.com/rclone/rclone/cmd/gitannex"
+-	_ "github.com/rclone/rclone/cmd/gui"
+ 	_ "github.com/rclone/rclone/cmd/hashsum"
+ 	_ "github.com/rclone/rclone/cmd/link"
+ 	_ "github.com/rclone/rclone/cmd/listremotes"

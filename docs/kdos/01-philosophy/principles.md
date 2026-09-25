@@ -78,6 +78,40 @@ toolkit in builds without it, so `libcanberra`, were it ever added, builds `--di
 The cost is that the host has no widget toolkit. Anything a KDOS surface wants to draw has to be
 expressible in cells, and anything that is not goes in a box.
 
+## Everything that runs on the host is built from source
+
+Every program, library and module the host installs and runs on its own processor is compiled in
+this tree from a pinned upstream source. The application catalogue is outside the rule: it is
+Debian's packaging, built by podman into a box on the machine that asks, and never part of the
+host. A binary taken on trust cannot be read, cannot be rebuilt by `kdos rebuild` from the
+medium, and carries whatever its builder put in it — so one of them quietly ends the claim that
+the system is inspectable end to end.
+
+Four classes are exempt, and nothing outside them is:
+
+- **Firmware and code for another processor.** `linux-firmware`, `intel-ucode`, `sof-firmware`,
+  the closed GPU kernels in `intel-media-driver`, the SOF coefficient blobs in `alsa-ucm-conf`, the
+  device stubs inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`, and the
+  riscv64 EDK2 image `qemu` installs from its tarball. It runs on a DSP, a GPU, a microcontroller or a guest,
+  and most of it has no published source.
+- **Compiled font data.** `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`, and
+  the fonts bundled inside `mupdf`, `matplotlib` and `seqkit`. Their sources compile through
+  toolchains this tree does not carry. A face whose upstream build runs on ports — `ttf-dejavu`,
+  `terminus-ttf`, `noto-emoji` — is compiled here.
+- **Compiler bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain and
+  `zig1.wasm`. A self-hosted compiler needs a working one first; the seed builds and never ships.
+- **Data with no other source form.** The `tesseract` model, the `perl-xml-parser` encodings,
+  `libkiwix`'s JavaScript, the `fcitx5` tables, `john`'s `.chr` files and recorded audio.
+
+Each exemption is still a hashed `source =` line, so the offline build holds for it. A prebuilt
+object for the host that fits no class is deleted from the package or rebuilt by a flag, and a new
+exemption is added to the [inventory](why-kdos.md#what-is-not-built-from-source) in the same
+change. [Writing ports](../05-developer/writing-ports.md#what-is-built-from-source) has the rules a
+recipe keeps.
+
+The cost is capability. A feature whose only form is an upstream binary for the host — `go build
+-race`, BoringCrypto, a board whose loader is a prebuilt image — is absent rather than shipped.
+
 ## One implementation of an idea
 
 Where two programs would answer the same question, one of them owns the answer and the other asks
@@ -177,7 +211,7 @@ network-enabled build would have done for you.
 
 A package built twice from the same tree is byte-identical. That is a property of one function —
 `roll_package()` in `kpkg`, which invokes tar with `--sort=name`, a pinned `--mtime` honouring
-`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 875 recipes. Concentrating it
+`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 969 recipes. Concentrating it
 there is precisely why `kpkg` rolls the archive itself instead of letting each recipe do it.
 
 Reproducibility is not decoration. It is what makes a signed binhost meaningful, what lets a delta

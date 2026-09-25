@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pillow-heif
+version     = 1.8.0
+release     = 1
+source      = pillow-heif-$version.tar.gz::https://files.pythonhosted.org/packages/source/p/pillow-heif/pillow_heif-$version.tar.gz
+sha256      = e47c27432c6fd3d66c22f0de9f27fd379383b646c947520bc485854ce72060d0  pillow-heif-1.8.0.tar.gz
+description = HEIF and AVIF for Pillow, through libheif
+homepage    = https://github.com/bigcat88/pillow_heif
+depends     = python3 python3-setuptools python3-wheel python3-pip python3-pillow libheif pkgconf

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-calver
+version     = 2025.10.20
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/calver/calver-$version.tar.gz
+sha256      = c98b376c2424642224d456b2f70c51402343e008c63d204634665e1a2a2835f5  python3-calver-2025.10.20.tar.gz
+description = Date-based versions for setuptools — trove-classifiers builds with it
+homepage    = https://pypi.org/project/calver/
+depends     = python3 python3-setuptools python3-pip

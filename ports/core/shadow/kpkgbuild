@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = shadow
-version     = 4.19.3
+version     = 4.20.3
 release     = 1
 source      = https://github.com/shadow-maint/$name/releases/download/$version/$name-$version.tar.xz
-sha256      = 11a8f358910712cf957dd4fd205063fce7e386b68fc7dfe3a0e1e53155ec53c5  shadow-4.19.3.tar.xz
+sha256      = 623be9429f64fa2165bfc5957c6a642ec309c5cf23c0d53855c99f7591922297  shadow-4.20.3.tar.xz
 description = Programs for handling passwords in a secure way
 homepage    = https://github.com/shadow-maint/shadow
-depends     = acl
+depends     = acl attr

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gn
+version     = 0.2480
+release     = 1
+_commit     = 566d29033b5fd7c73e5e8bbcf7ab794194df68bd
+source      = $name-$version.tar.zst::https://ab-sn.lnl.gay/gn-$_commit.tar.zst
+sha256      = f6fca5af9e465a1b8f76ea52a21cb002fe635c2ad34a94958c257c8fa8f9d2f5  gn-0.2480.tar.zst
+description = Chromium's meta-build system, which writes ninja files from BUILD.gn
+homepage    = https://gn.googlesource.com/gn
+depends     = python3 ninja

@@ -15,4 +15,4 @@ source      = https://w1.fi/releases/$name-$version.tar.gz
 sha256      = f43502561c28ba47ab77e18e1a973d07361c68cc8b14178e619bd5796b70eabd  hostapd-2.12.tar.gz
 description = Turn a wireless card into an access point
 homepage    = https://w1.fi/hostapd/
-depends     = pkgconf openssl libnl iw
+depends     = pkgconf openssl libnl sqlite

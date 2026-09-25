@@ -9,8 +9,9 @@
 # ---------------------------------
 
 name        = libevdev
-version     = 1.13.6
+version     = 1.13.7
 release     = 1
 source      = https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
-sha256      = 73f215eccbd8233f414737ac06bca2687e67c44b97d2d7576091aa9718551110  libevdev-1.13.6.tar.xz
+sha256      = 0caf824971108f15bb2ad356433bae198d7d3bf1e82d43f63626e069e060bfa6  libevdev-1.13.7.tar.xz
 description = Common functions for Xorg input drivers
+depends     = meson ninja python3

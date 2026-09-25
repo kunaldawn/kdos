@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = glow
-version     = 2.1.2
+version     = 3.0.0
 release     = 1
 source      = https://github.com/charmbracelet/$name/archive/v$version.tar.gz
-sha256      = 1b933139da1d08647bf5b3f112cab9548fdc2b40c056c7fa3d84d8706de5265a  glow-2.1.2.tar.gz
-sha256      = 951dada32773f6af7e8394ee4ef9130d3fa92ad905a6c230baa25f343f93e441  glow-vendor-2.1.2.tar.xz
+sha256      = 18df6f3c09157021366b8c702b5badba405d37dbb42f132353eb50c1b0d3f464  glow-3.0.0.tar.gz
+sha256      = 1aa9ddde127b51a7dbaf5e3d4c328df37fe0849974dd360f15e536f61fb7e3d0  glow-vendor-3.0.0.tar.xz
 description = Render markdown on the command line
 homepage    = https://github.com/charmbracelet/glow
 depends     = go

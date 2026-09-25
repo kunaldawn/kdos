@@ -18,8 +18,17 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # reads and writes ordinary git repositories, so nothing has to be converted
 # and git keeps working on the same tree.
 #
-# --no-default-features drops the bundled `packed_gzip` and the self-updater;
-# the openssl and zstd it links are the ports.
+# The default features stay on: `git` is the whole point, and `watchman` only
+# acts when fsmonitor is configured. OPENSSL_NO_VENDOR makes any openssl-sys in
+# the graph link the port rather than build a private copy.
 export OPENSSL_NO_VENDOR=1
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline --bin jj
 install -Dm755 target/release/jj $PKG/usr/bin/jj
+target/release/jj util install-man-pages "$PKG/usr/share/man"
+for _sh in bash zsh fish; do
+	target/release/jj util completion $_sh > jj.$_sh
+done
+install -Dm644 jj.bash $PKG/usr/share/bash-completion/completions/jj
+install -Dm644 jj.zsh  $PKG/usr/share/zsh/site-functions/_jj
+install -Dm644 jj.fish $PKG/usr/share/fish/vendor_completions.d/jj.fish

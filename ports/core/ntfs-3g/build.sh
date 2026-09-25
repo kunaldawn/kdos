@@ -14,8 +14,13 @@
 # --enable-extras is what builds ntfsprogs — ntfsfix, ntfsresize, ntfsclone,
 # ntfsundelete and the rest. Without it the package is the mount helper alone
 # and the name is only half true.
+# --enable-crypto builds ntfsdecrypt and EFS support against libgcrypt and
+# gnutls. It defaults off, and once asked for it stops if either is missing.
+# --with-uuid gives mkntfs DCE UUIDs from util-linux's libuuid. --without-hd:
+# the Windows boot geometry comes from hwinfo's libhd, which is not a port.
 ./configure \
 	--prefix=/usr \
+	--exec-prefix=/usr \
 	--libdir=/usr/lib \
 	--sbindir=/usr/sbin \
 	--mandir=/usr/share/man \
@@ -24,6 +29,9 @@
 	--enable-extras \
 	--enable-posix-acls \
 	--enable-xattr-mappings \
+	--enable-crypto \
+	--with-uuid \
+	--without-hd \
 	--with-fuse=internal
 make
 make DESTDIR=$PKG install

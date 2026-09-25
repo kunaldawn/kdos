@@ -15,4 +15,4 @@ source      = ftp://ftp.infradead.org/pub/openconnect/openconnect-$version.tar.g
 sha256      = 5b32369467db6e5f317aa1ed12cfcbb81ed00bdbc765450b6bfcbdc300944a58  openconnect-9.21.tar.gz
 description = Client for AnyConnect, GlobalProtect, Fortinet and Pulse VPNs
 homepage    = https://www.infradead.org/openconnect/
-depends     = gnutls libxml2 zlib vpnc-script lz4
+depends     = gnutls libxml2 zlib vpnc-script lz4 krb5 tpm2-tss libtasn1 p11-kit pcsc-lite nettle xdg-utils

@@ -15,6 +15,7 @@
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--disable-doxygen-docs \
 	--disable-examples \
+	--disable-version-from-git \
 	--enable-ogg
 make
 make DESTDIR=$PKG install

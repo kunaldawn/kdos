@@ -14,8 +14,8 @@
 # writes a CMake config package instead, which recoll's `dependency('jsoncpp')`
 # would find only through cmake's own lookup — a second route to the same
 # library and one more thing to keep in step.
-# NO -D FLAGS: jsoncpp ships no meson_options.txt at all, so every project
-# option is a built-in and anything else fails at setup.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release
+# -Dtests=false: `tests` is jsoncpp's only project option and defaults on,
+# and the test build calls find_program('python3') at setup.
+meson setup build --prefix=/usr --libdir=lib --buildtype=release -Dtests=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export CFLAGS="$CFLAGS -include libgen.h"
 ./configure --prefix=/usr     	\
             --bindir=/bin     	\
             --sysconfdir=/etc   \

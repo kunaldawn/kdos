@@ -10,6 +10,15 @@
 # ---------------------------------
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+export CARGO_HOME="$SRC_ROOT/.cargo"
+export CARGO_NET_OFFLINE=true
+
+# pcre2-sys compiles its own bundled PCRE2 on any musl target unless
+# PCRE2_SYS_STATIC=0 says otherwise, and the system library links only into a
+# binary that is not crt-static — so both are set, and pcre2 on the depends
+# line is the library `rg -P` actually runs.
+export PCRE2_SYS_STATIC=0
+export RUSTFLAGS="-C target-feature=-crt-static"
 
 cargo build --release --frozen --offline --features 'pcre2'
 install -Dm755 target/release/rg $PKG/usr/bin/rg

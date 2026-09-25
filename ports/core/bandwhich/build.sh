@@ -16,5 +16,9 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # run as root or given the capability deliberately — there is no third setuid
 # program on this system, and a network sniffer is not the one to add. Modern
 # bandwhich needs no libpcap, which is why it is a port at all.
+mkdir -p gen
+export BANDWHICH_GEN_DIR="$SRC/gen"
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 install -Dm755 target/release/bandwhich $PKG/usr/bin/bandwhich
+install -Dm644 gen/bandwhich.1 -t "$PKG/usr/share/man/man1"

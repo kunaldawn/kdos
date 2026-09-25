@@ -10,9 +10,9 @@ beside it, so every line below is true wherever this config is written.
 
 THE DISPLAY IS UNCOMMENTED AND THE CAMERA IS NOT, and the asymmetry is the
 point: which screen a picture goes on is a property of the build, and which
-camera it comes from is a choice. `x11` above it stays commented because this
-image has no X server, and `fakevideo` below it is a null sink whose whole job
-is to be chosen deliberately.
+camera it comes from is a choice. `x11` above it stays commented because the
+recipe does not build it, and `fakevideo` below it is a null sink whose whole
+job is to be chosen deliberately.
 
 It is the GENERATED default and not a shipped file, because baresip writes
 `~/.baresip/config` only when there is none — a person who deletes theirs gets

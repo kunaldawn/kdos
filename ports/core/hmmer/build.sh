@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr
+./configure --prefix=/usr --enable-threads --disable-mpi --without-gsl
 make
 make DESTDIR=$PKG install
 # easel's own tools are built beside hmmer and are what the manual's examples

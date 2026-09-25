@@ -9,9 +9,10 @@
 # ---------------------------------
 
 name        = lsof
-version     = 4.99.6
+version     = 4.99.7
 release     = 1
 source      = https://github.com/lsof-org/lsof/releases/download/$version/lsof-$version.tar.gz
-sha256      = 6081dedf841cd61f8a022ff7cbe04ed78918a47dea3c39528c8571474167aa0f  lsof-4.99.6.tar.gz
+sha256      = 4a10391aab0b8ce1f539e82a1966693b2a6cf225972a6504ebb7ec4fa71675de  lsof-4.99.7.tar.gz
 description = lsof — lists open files held by running processes
 homepage    = https://github.com/lsof-org/lsof
+depends     = mandoc libtirpc

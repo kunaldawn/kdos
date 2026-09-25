@@ -23,3 +23,4 @@ sha256      = 02f159eb88c4254d95e831c51c144b1863b216d909b5ff45743a1ce6f5273090  
 sha256      = 4e4e037a2b83c98c6c94818390d4bdd3f6e10f6ec62dd79188594e26190dc7b4  docbook-xml-4.5.zip
 description = Document type definitions for verification of XML data files against the DocBook rule set
 depends     = libxml2 sgml-common libarchive
+series      = 4

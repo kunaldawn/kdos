@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = libevent
-version     = 2.1.12
+version     = 2.1.13
 release     = 1
 source      = https://github.com/$name/$name/releases/download/release-$version-stable/$name-$version-stable.tar.gz
-sha256      = 92e6de1be9ec176428fd2367677e61ceffc2ee1cb119035037a27d346b0403bb  libevent-2.1.12.tar.gz
+sha256      = f7e9383b8c0baa81b687e5b5eecc01beefaf1b19b64151d95ed61647fe7a315c  libevent-2.1.13.tar.gz
 description = Asynchronous event notification software library
 depends     = openssl

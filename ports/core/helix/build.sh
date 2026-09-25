@@ -9,11 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-cd $name-$version
+export HELIX_DEFAULT_RUNTIME=/usr/lib/helix/runtime
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --locked
 install -Dm755 target/release/hx $PKG/usr/bin/hx
 install -d $PKG/usr/lib/helix
 cp -r runtime $PKG/usr/lib/helix/
+rm -rf $PKG/usr/lib/helix/runtime/grammars/sources
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/hx.desktop" <<'EOF'

@@ -26,3 +26,5 @@ cc $CFLAGS $LDFLAGS -Wno-deprecated-non-prototype -Wno-format-truncation \
 
 install -Dm755 predict $PKG/usr/bin/predict
 install -Dm644 docs/man/predict.1 $PKG/usr/share/man/man1/predict.1
+install -d $PKG/usr/share/predict
+cp -r default vocalizer $PKG/usr/share/predict/

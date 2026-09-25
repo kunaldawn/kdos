@@ -15,3 +15,4 @@ source      = https://github.com/jpirko/libndp/archive/refs/tags/v$version.tar.g
 sha256      = e564f5914a6b1b799c3afa64c258824a801c1b79a29e2fe6525b682249c65261  libndp-1.9.tar.gz
 description = IPv6 Neighbor Discovery Protocol library (NetworkManager dep)
 homepage    = https://github.com/jpirko/libndp
+depends     = autoconf automake libtool

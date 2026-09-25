@@ -132,7 +132,8 @@ if [ -n "$KIMG_SRC" ]; then
         testing/fixtures/img/fuzz.c $KIMG_SRC $KIMG_LIBS
     ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
         "$OUT/kimgfuzz" testing/fixtures/img/*.png testing/fixtures/img/*.jpg \
-        testing/fixtures/img/*.webp testing/fixtures/img/*.six | sed 's/^/  /'
+        testing/fixtures/img/*.webp testing/fixtures/img/*.six \
+        testing/fixtures/img/*.gif | sed 's/^/  /'
 fi
 
 echo
@@ -1278,30 +1279,34 @@ esac
 
 echo
 echo "==> kdos-portup fixture-backed check (offline, no network)"
-# testing/fixtures/portup was recorded live against the six ports below, one
-# per discovery path: fuse (GitHub forge), zlib (a plain directory listing),
-# ca-certificates (directory listing that comes up empty, falling to repology
-# and only matching CURRENT's shape through the strip-separators/dot-collapse
-# normalisation), aalib (repology, genuinely CURRENT — upstream hasn't
-# released since 2001), mesa (a large directory listing), and imagemagick
-# (repology again, but UNKNOWN: its recipe's own source URL template is dead,
-# so no rendered candidate — including its own pinned version — ever proves).
-# Replaying them through --fixture exercises pu_list_upstream, pu_extract,
-# the shape filter and pu_render_candidate end to end with no curl involved —
-# proved separately with `unshare --net`, not just by inspection here — and
-# is what makes this reach all three outcomes (current/newer/unknown) without
-# a live network call.
+# testing/fixtures/portup carries recorded upstream responses AND, under
+# ports/, the recipes they were recorded against — kdos-portup reads its ports
+# from there under --fixture, so bumping a live recipe cannot change what this
+# replays. Seven ports: fuse (git tags under a release-asset tag prefix, whose
+# newest candidate was never recorded, so UNKNOWN), zlib (a plain directory
+# listing, NEWER), ca-certificates (a directory that is a meta refresh to the
+# page that lists, its date pin read through the file name's separators; the
+# newest file was never recorded, so NEWER at the one below it), aalib
+# (SourceForge unanswered, repology genuinely CURRENT —
+# upstream hasn't released since 2001), mesa (a large directory listing),
+# imagemagick (repology again, but UNKNOWN: no rendered candidate — including
+# its own pinned version — ever proves), and tokei (a `cachename::url`
+# source whose tags come from git, NEWER). Replaying them through --fixture
+# exercises discovery, pu_extract, the anchors and filters and
+# pu_render_candidate end to end with no curl or git involved, and reaches
+# all three outcomes (current/newer/unknown). --selftest replays one recorded
+# response per adapter on top of this.
 #
 # --fixture makes kdos-portup skip loading AND saving
 # ports/.update-cache.json entirely — fixture 200s are not evidence about the
 # real world and must never outlive this process — so there is nothing to
-# back up or restore around this run any more.
+# back up or restore around this run.
 CACHE="$PWD/ports/.update-cache.json"
 CACHE_BEFORE=$(md5sum "$CACHE" 2>/dev/null || true)
 set +e
 KDOS_PORTUP_REPO="$PWD" "$OUT/kdos-portup" --check --refresh --json \
     --fixture "$PWD/testing/fixtures/portup" \
-    fuse zlib ca-certificates aalib mesa imagemagick \
+    fuse zlib ca-certificates aalib mesa imagemagick tokei \
     > "$OUT/portup-fixture.json" 2> "$OUT/portup-fixture.err"
 rc=$?
 set -e
@@ -1315,7 +1320,9 @@ set -e
 grep -q '"state": "current"' "$OUT/portup-fixture.json" || { echo "  no current outcome reproduced"; exit 1; }
 grep -q '"state": "newer"'   "$OUT/portup-fixture.json" || { echo "  no newer outcome reproduced";   exit 1; }
 grep -q '"state": "unknown"' "$OUT/portup-fixture.json" || { echo "  no unknown outcome reproduced"; exit 1; }
-echo "  6 ports, all three outcomes reproduced from the recorded corpus"
+grep -q '"name": "tokei", "version": "14.0.0", "state": "newer"' "$OUT/portup-fixture.json" || {
+    echo "  a cachename::url source was not proved"; exit 1; }
+echo "  7 ports, all three outcomes reproduced from the recorded corpus"
 
 echo
 echo "==> kpkgdepends still agrees with the ports tree"
@@ -1385,7 +1392,6 @@ fi
 _smi=$(ls ports/core/shared-mime-info/shared-mime-info-*.tar.xz 2>/dev/null | head -1)
 if grep -q 'MimeType=.*x-zmachine' ports/core/frotz/build.sh; then
     grep -q 'mime/packages/kdos-zmachine.xml' ports/core/frotz/build.sh &&
-    grep -q 'update-mime-database' ports/core/frotz/postinstall.sh &&
         echo "  and the z-machine type frotz claims is one frotz installs" ||
         { echo "  frotz claims a MIME type nothing on this image defines"
           exit 1; }
@@ -1446,6 +1452,57 @@ cmp -s "$RP/one.tar.xz" "$RP/pkgs/tiny-1.0-1.tar.xz" \
 TZ=UTC tar -tvf "$RP/one.tar.xz" | grep -q "0/0 .*2025-01-01" \
     || { echo "  the archive is not normalised (uid/gid or mtime)"; exit 1; }
 echo "  identical under a different umask, TZ and XZ_OPT; uid/gid 0, epoch mtime"
+
+echo
+
+# ── The shared indexes follow the manifest, both ways ──────────────────────
+#
+# A MIME XML defines no type and an info page has no menu entry until an index
+# built from every package's copy is rebuilt. kpkgadd and kpkgdel rebuild the
+# ones whose directory the manifest touched; the stubs below record what they
+# were asked to do, so the test needs neither tool.
+echo "==> kpkg rebuilds the shared indexes a package feeds"
+TR="$OUT/trig"
+rm -rf "$TR"; mkdir -p "$TR/ports/feed" "$TR/work" "$TR/pkgs" "$TR/root" "$TR/bin"
+cat > "$TR/ports/feed/kpkgbuild" <<'EOF'
+name        = feed
+version     = 1.0
+release     = 1
+description = a synthetic port whose files feed two shared indexes
+EOF
+cat > "$TR/ports/feed/build.sh" <<'EOF'
+install -Dm644 /dev/null "$PKG/usr/share/mime/packages/feed.xml"
+install -Dm644 /dev/null "$PKG/usr/share/info/feed.info"
+printf 'stale\n' > "$PKG/usr/share/info/dir"
+EOF
+# The MIME stub leaves a generated file behind, as the real tool does: that is
+# what keeps the database directory alive after the last XML is removed.
+for t in update-mime-database install-info; do
+    printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
+    chmod +x "$TR/bin/$t"
+done
+printf ': > "$1/globs"\n' >> "$TR/bin/update-mime-database"
+ktrig() {
+    env PATH="$TR/bin:$PATH" PORT_REPO="$TR/ports" WORK_DIR="$TR/work" \
+        PACKAGE_DIR="$TR/pkgs" PKGDB_DIR=/db KPKG_CONF=/nonexistent \
+        SOURCE_DATE_EPOCH=1735689600 TZ=UTC "$@" 2>&1
+}
+for t in kpkgbuild kpkgadd kpkgdel; do ln -sf kdos-kpkg "$OUT/$t"; done
+( cd "$TR/ports/feed" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic port did not build"; exit 1; }
+ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/feed-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the synthetic package did not install"; exit 1; }
+tar -tf "$TR/pkgs/feed-1.0-1.tar.xz" | grep -q 'usr/share/info/dir$' \
+    && { echo "  the package carries an info dir file every such package claims"; exit 1; }
+grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
+    || { echo "  installing a MIME XML did not regenerate the MIME database"; exit 1; }
+grep -qx "install-info --info-dir=$TR/root/usr/share/info $TR/root/usr/share/info/feed.info" "$TR/calls" \
+    || { echo "  installing an info page did not regenerate the info dir"; exit 1; }
+: > "$TR/calls"
+ktrig "$OUT/kpkgdel" --root "$TR/root" feed >/dev/null
+grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
+    || { echo "  removing a MIME XML left the MIME database naming its types"; exit 1; }
+echo "  install and removal both rebuild the MIME database and the info dir"
 
 echo
 
@@ -4130,7 +4187,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     }
     dumpbuild() {
         # The mime glob table is a COMPILED file that only exists on a booted
-        # target (update-mime-database writes it in a postinstall), so the
+        # target (kpkg rebuilds it when a package installs MIME XML), so the
         # harness is pointed at the fixture's copy. Without it kdos-openwith
         # resolves every file to application/octet-stream and the two traps
         # the fixture carries — longest suffix wins, and the default beats the

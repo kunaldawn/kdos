@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = perl-uri
-version     = 5.34
+version     = 5.37
 release     = 1
 source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/O/OA/OALDERS/URI-$version.tar.gz
-sha256      = de64c779a212ff1821896c5ca2bb69e74767d2674cee411e777deea7a22604a8  perl-uri-5.34.tar.gz
+sha256      = 5a8750ddd8ee743d7cc89bebdd542a9b78a34023164ebe19dea0c248e121c21e  perl-uri-5.37.tar.gz
 description = Perl that module implements the URI class
 depends     = perl

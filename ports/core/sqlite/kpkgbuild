@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = sqlite
-version     = 3510200
+version     = 3530400
 release     = 1
 source      = https://sqlite.org/2026/$name-autoconf-$version.tar.gz
-sha256      = fbd89f866b1403bb66a143065440089dd76100f2238314d92274a082d4f2b7bb  sqlite-3510200.tar.gz
+sha256      = 0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c  sqlite-3530400.tar.gz
 description = Software library that implements a self-contained, serverless, zero-configuration, transactional SQL database engine
 depends     = zlib readline ncurses

@@ -36,9 +36,14 @@ INSTALL_PROGRAMS="expr ln"
 # whole of what this port installs is `expr`.
 export FORCE_UNSAFE_CONFIGURE=1
 
-./configure --prefix=/usr --disable-nls --without-selinux
+# `expr` does its big-integer arithmetic through libgmp when configure finds it
+# and through gnulib's bundled mini-gmp when it does not. --with-libgmp makes a
+# missing gmp stop configure, so the binary links the gmp `depends` names
+# instead of changing with whatever the build root carries.
+./configure --prefix=/usr --disable-nls --without-selinux --with-libgmp
 make
 
 for prog in $INSTALL_PROGRAMS; do
 	install -Dm755 "src/$prog" "$PKG/usr/bin/$prog"
+	install -Dm644 "man/$prog.1" -t "$PKG/usr/share/man/man1"
 done

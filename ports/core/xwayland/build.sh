@@ -17,9 +17,11 @@ meson setup build \
 	-Dxwayland_ei=false \
 	-Dlibdecor=false \
 	-Dsystemd_notify=false \
+	-Dxselinux=false \
 	-Dglamor=true \
 	-Ddri3=true \
 	-Dglx=false \
+	-Dsha1=libcrypto \
 	-Dxkb_dir=/usr/share/X11/xkb \
 	-Dxkb_output_dir=/var/lib/xkb \
 	-Dxkb_bin_dir=/usr/bin \

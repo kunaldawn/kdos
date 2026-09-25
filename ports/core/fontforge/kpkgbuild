@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fontforge
+version     = 20251009
+release     = 1
+source      = https://github.com/fontforge/fontforge/releases/download/$version/$name-$version.tar.xz
+sha256      = 69046500185a5581b58139dfad30c0b3d8128f00ebbfddc31f2fcf877e329e52  fontforge-20251009.tar.xz
+description = Outline and bitmap font editor, driven from scripts and Python — no GUI
+homepage    = https://fontforge.org/
+depends     = cmake freetype2 gettext glib libxml2 zlib libpng libjpeg-turbo libtiff giflib readline python3

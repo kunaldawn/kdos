@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-poetry-core
+version     = 2.5.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/poetry-core/poetry_core-$version.tar.gz
+sha256      = 81d04c9253b19d0604718268d781867c8f7b2128e5b25bbf1e84141eec6b89c4  python3-poetry-core-2.5.0.tar.gz
+description = Poetry's PEP 517 backend, which bootstraps itself — tomlkit builds with it
+homepage    = https://pypi.org/project/poetry-core/
+depends     = python3 python3-pip

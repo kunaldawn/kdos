@@ -47,6 +47,7 @@ The shipped set, in boot order:
 | `42_networkmanager` | NetworkManager |
 | `45_avahi` | mDNS |
 | `45_seatd` | Seat management, which the desktop needs |
+| `47_pcscd` | Smart cards and security keys: the PC/SC daemon, with readers arriving through udev |
 | `50_alsa` | Sound card state |
 | `54_thermald` | Intel thermal management |
 | `55_powerd` | Suspend, poweroff and reboot for the desktop |
@@ -56,8 +57,14 @@ The shipped set, in boot order:
 | `58_mountd` | Removable media |
 | `59_packd` | Application packs |
 | `60_bluetooth` | Bluetooth |
-| `70_sshd` | SSH, generating host keys on its first start |
+| `70_sshd` | SSH, generating every missing host key type with `ssh-keygen -A` first |
 | `80_cups` | Printing |
+| `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear |
+| `82_ipp-usb` | Driverless printing and scanning over USB: each IPP-over-USB device served on localhost as it is plugged in |
+
+Shutdown runs the same set backwards: `/etc/init.d/rcK` is the first `::shutdown` entry in
+`/etc/inittab`, and runs each enabled script with `stop` in reverse order before anything is
+unmounted. The firewall is the exception and stays loaded until power-off. See [Boot and init](../03-architecture/boot-and-init.md#shutdown).
 
 A daemon that cannot do its job on this machine is skipped rather than started and left to fail.
 `54_thermald` checks for an Intel processor, `56_energyd` for a readable CPU energy counter,
@@ -465,10 +472,12 @@ you have, and losing that bet is silent.
 firmware and the topology files, because firmware with no topology loads and binds nothing, which
 is still silence.
 
-`wireless-regdb` ships prebuilt and must stay that way. The kernel verifies upstream's signature on
-it, so a locally regenerated database is rejected silently and leaves the radio in the world
-regulatory domain: working, with no 5 GHz DFS channels and reduced transmit power, and nothing
-anywhere saying why.
+`wireless-regdb` is built from upstream's `db.txt` and ships with upstream's own signature. The
+kernel verifies that signature, and a database it does not cover is rejected silently and leaves the
+radio in the world regulatory domain: working, with no 5 GHz DFS channels and reduced transmit
+power, and nothing anywhere saying why. The build therefore verifies upstream's signature against
+the database it generated and fails if it does not match, so an edited `db.txt` never reaches the
+image.
 
 ### Microcode
 
@@ -553,8 +562,11 @@ only, so without it an Android handset plugged into a USB port does nothing.
 ## Media, colour and time
 
 The host's `ffmpeg` is built with the full codec set: H.264, HEVC, VP8/VP9, AV1 encode and decode,
-MP3, Opus, Vorbis, FLAC, subtitle burn-in and hardware acceleration. One encoder per format,
-deliberately — a second one for the same format earns nothing.
+JPEG XL, MP3, Opus, Vorbis, FLAC, LC3, subtitle burn-in, HDR tone mapping (`zscale`,
+`libplacebo`), high-quality resampling (`soxr`), time-stretch (`rubberband`) and hardware
+acceleration through VA-API and Vulkan. One encoder per format, deliberately — a second one for the
+same format earns nothing. There is no `ffplay`: it needs SDL, and SDL reaches back to `ffmpeg`
+through PipeWire.
 
 Building it that way relicenses the shipped binary to GPL-2-or-later, and everything that links it
 inherits that. `ports/core/ffmpeg/LICENSE.notice` is the record a redistributor is expected to read.

@@ -24,31 +24,30 @@
 	--with-cups-group=lp \
 	--with-system-groups=lpadmin \
 	--with-domainsocket=/run/cups/cups.sock \
-	--disable-launchd \
 	--enable-acl \
 	--enable-dbus \
+	--enable-pam \
+	--enable-libpaper \
+	--with-dnssd=avahi \
 	--with-dbusdir=/usr/share/dbus-1 \
-	--enable-gnutls \
 	--enable-libusb \
 	--enable-raw-printing \
 	--enable-relro \
-	--enable-ssl=yes \
+	--with-tls=gnutls \
 	--with-optim="$CFLAGS" \
-	--without-php \
 	--without-rcdir \
-	--without-systemd
+	--without-systemd \
+	--with-ondemand=no
 make
 make BUILDROOT=$PKG install
 
 # Linux PAM Configuration
+install -d -m 755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/cups << "EOF"
-# Start uart.conf
-# Attach serial devices via UART HCI to BlueZ stack
-# Use one line per device
-# See the hciattach man page for options
-#
-# End of uart.conf
+auth    required pam_unix.so
+account required pam_unix.so
 EOF
+chmod 644 $PKG/etc/pam.d/cups
 
 # cleanup
 rm -fr $PKG/tmp $PKG/run $PKG/var/run

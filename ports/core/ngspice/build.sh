@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -19,8 +20,13 @@
 # simulator into the tool the catalogue names: XSPICE is the code-model
 # interface every mixed-signal example uses, and CIDER is the device-level
 # solver. Both default OFF and neither fails without its dependency.
+#
+# --with-fftw3=yes still falls back to ngspice's own FFT when fftw3 is missing,
+# and libsndfile and libsamplerate (the sndprint command and the voltage
+# source's wav input) are unconditional AC_CHECK_LIB probes with no switch, so
+# all three are held by `depends` alone.
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--without-x --with-readline=yes --enable-xspice --enable-cider \
-	--enable-openmp --disable-debug
+	--enable-openmp --disable-debug --with-fftw3=yes
 make
 make DESTDIR=$PKG install

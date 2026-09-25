@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pdfio
+version     = 1.6.5
+release     = 1
+source      = https://github.com/michaelrsweet/$name/releases/download/v$version/$name-$version.tar.gz
+sha256      = 2b9e1db7c4a72cbc896098a6682a1e51fc2bfb979f00bec8bb515ee79c338084  pdfio-1.6.5.tar.gz
+description = C library for reading and writing PDF files
+homepage    = https://www.msweet.org/pdfio/
+depends     = zlib libpng pkgconf

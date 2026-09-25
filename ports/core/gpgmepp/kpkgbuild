@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gpgmepp
+version     = 2.2.0
+release     = 1
+source      = https://gnupg.org/ftp/gcrypt/gpgmepp/$name-$version.tar.xz
+sha256      = 6651c5f7f801543d5b676719df9fec8053b0a6f5aba40b98ca0d2bee11136f30  gpgmepp-2.2.0.tar.xz
+sha256      = 45dbabcdd58b3c1ba8c1548cb6cda60fe6b82efa9e300182e4422f0369d42111  release-tarball-version.patch
+description = GpgME++ — the C++ binding to GnuPG Made Easy
+homepage    = https://www.gnupg.org/software/gpgme/
+depends     = cmake ninja pkgconf libgpg-error gpgme

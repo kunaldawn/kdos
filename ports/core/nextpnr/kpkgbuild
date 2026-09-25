@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/YosysHQ/nextpnr/archive/
 sha256      = 2af682d94abf3f3e116f2fad36dc7db314fa93bfbb185e63619f2ec4f5fe40dc  nextpnr-0.11.1.tar.gz
 description = Place and route — the second stage of the open FPGA flow
 homepage    = https://github.com/YosysHQ/nextpnr
-depends     = cmake ninja pkgconf boost eigen python3 icestorm prjtrellis
+depends     = cmake ninja pkgconf boost eigen python3 python3-pybind11 icestorm prjtrellis

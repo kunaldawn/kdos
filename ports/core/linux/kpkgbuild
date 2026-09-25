@@ -15,3 +15,4 @@ source      = https://cdn.kernel.org/pub/linux/kernel/v${version:0:1}.x/$name-$v
 sha256      = 4ac34c47db2540ffb2713943f8d891ff1702e0ba6934525a493b7d1cad43145a  linux-7.2.7.tar.xz
 description = Linux kernel
 secdb       = linux-lts
+depends     = bc bison flex perl openssl elfutils zstd kmod dwarves rust bindgen clang

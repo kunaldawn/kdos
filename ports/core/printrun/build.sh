@@ -20,9 +20,11 @@ patch -p1 -i "$PORT_SRC/no-wx-on-console.patch"
 
 # --no-deps because requirements.txt is the GUI's: wxPython, pyglet, numpy,
 # lxml and dbus-python are what pronterface needs and pronsole does not. Of the
-# five things the console path really imports, dbus and psutil are already
-# inside try/except with working fallbacks, and serial and platformdirs are
-# ports. --no-build-isolation because the only build dependency is setuptools.
+# five things the console path really imports, serial, platformdirs and psutil
+# are ports and in `depends` (psutil is how pronsole raises its priority while
+# printing); dbus, for the sleep inhibit, is not a port and sits inside a
+# try/except with a working fallback. --no-build-isolation because the build
+# dependencies, setuptools and cython, are ports.
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 
 # pronterface and plater are the wx front ends and cannot run here; leaving
@@ -36,7 +38,9 @@ rm -f $PKG/usr/bin/__pycache__/pronterface.*.pyc $PKG/usr/bin/__pycache__/plater
 # the launcher and the taskbar's search; one naming a command this recipe has
 # just deleted is a row that opens nothing and says nothing about why.
 rm -f $PKG/usr/share/applications/pronterface.desktop \
-      $PKG/usr/share/applications/plater.desktop
+      $PKG/usr/share/applications/plater.desktop \
+      $PKG/usr/share/metainfo/pronterface.appdata.xml \
+      $PKG/usr/share/metainfo/plater.appdata.xml
 
 # THE COMMAND IS `pronsole`, not `pronsole.py`. Upstream's scripts keep their
 # suffix because setup.py lists the files rather than entry points, and every

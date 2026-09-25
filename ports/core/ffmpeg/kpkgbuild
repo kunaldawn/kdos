@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = ffmpeg
-version     = 8.1.1
-release     = 2
+version     = 9.0.2
+release     = 1
 source      = https://ffmpeg.org/releases/$name-$version.tar.xz
-sha256      = b6863adde98898f42602017462871b5f6333e65aec803fdd7a6308639c52edf3  ffmpeg-8.1.1.tar.xz
+sha256      = 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e  ffmpeg-9.0.2.tar.xz
 description = FFmpeg — record, convert, and stream audio/video
 homepage    = https://ffmpeg.org/
-depends     = alsa-lib zlib bzip2 xz gnutls libdrm libxml2 freetype2 fontconfig harfbuzz fribidi libwebp x264 x265 libvpx svt-av1 dav1d opus libvorbis libogg lame libass libva
+depends     = alsa-lib zlib bzip2 xz gnutls libdrm libxml2 freetype2 fontconfig harfbuzz fribidi libwebp x264 x265 libvpx svt-av1 dav1d opus libvorbis libogg lame libass libva perl vulkan-headers glslang spirv-headers libplacebo lcms2 liblc3 rubberband libjxl zimg soxr

@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = iproute2
-version     = 6.18.0
+version     = 7.2.0
 release     = 1
 source      = $name-$version.tar.xz::https://www.kernel.org/pub/linux/utils/net/$name/$name-$version.tar.xz
-sha256      = 6ba520e1975e4c50dc931eeae91ea37c198b8a173744885f8895b84325f9d456  iproute2-6.18.0.tar.xz
+sha256      = 4c2fa124c2cf0afd7ca34d1eeacba6ba048a56f6374e2aab93dafbdbd4eea9c0  iproute2-7.2.0.tar.xz
 description = Programs for basic and advanced IPV4-based networking
-depends     = elfutils libcap libmnl libtirpc
+depends     = elfutils libcap libmnl libtirpc libbpf

@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = util-linux
-version     = 2.41.3
+version     = 2.42.4
 release     = 1
 source      = https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v${version%.*}/$name-$version.tar.xz
-sha256      = 3330d873f0fceb5560b89a7dc14e4f3288bbd880e96903ed9b50ec2b5799e58b  util-linux-2.41.3.tar.xz
+sha256      = fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec  util-linux-2.42.4.tar.xz
 description = Miscellaneous system utilities for Linux
-depends     = sqlite
+depends     = sqlite ncurses readline zlib libcap-ng

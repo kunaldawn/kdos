@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --prefix=/usr --libdir=/usr/lib --disable-static
+./configure --prefix=/usr --libdir=/usr/lib --disable-static --enable-nls
 make
 make DESTDIR=$PKG install

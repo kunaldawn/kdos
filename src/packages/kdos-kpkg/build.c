@@ -50,7 +50,7 @@ typedef struct {
 	char name[128];
 	char version[128];
 	char release[64];
-	char source[2048];
+	char source[4096];
 	char sha256[4096];
 } Recipe;
 
@@ -242,7 +242,7 @@ static int verify_declared(const KpConf *c, const Recipe *r, const char *portdir
 static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir,
 			   const char *src_dir, const char *src_root)
 {
-	char list[2048];
+	char list[4096];
 	kb_strlcpy(list, r->source, sizeof(list));
 
 	int idx = 0;
@@ -452,6 +452,17 @@ static void strip_la(const char *dir)
 	kb_run(&a);
 }
 
+/* The info directory file is an index over every package's pages. Staged, it
+ * is a path each package with info pages claims — the second such install is
+ * a file conflict — and it lists only that one package. kpkgadd regenerates it
+ * from what is installed (triggers.c). */
+static void strip_info_dir(const char *pkg)
+{
+	char *dir = kb_path_join(pkg, "usr/share/info/dir");
+	unlink(dir);
+	free(dir);
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 int build_main(int argc, char **argv)
@@ -556,6 +567,7 @@ int build_main(int argc, char **argv)
 	kp_msg("Creating package...");
 	write_postinstall(decl, portdir, pkg);
 	strip_la(pkg);
+	strip_info_dir(pkg);
 
 	kb_mkdir_p(c.package_dir);
 	char pkgname[512];

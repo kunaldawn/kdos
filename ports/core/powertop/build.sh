@@ -17,6 +17,15 @@
 # which is why libtraceevent and libtracefs are ports now. 2.14 carried its own
 # copy of traceevent in-tree; pinning that instead would have dodged two ports
 # and frozen powertop at 2022.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release
+#
+# -Dnls=false keeps the translation catalogues out: they are compiled by
+# gettext's msgfmt, which is not in `depends`.
+#
+# pciutils and libnl are `required: false` upstream with no option, so the
+# `depends` line is what keeps device names and the wireless tunables in.
+meson setup build --prefix=/usr --libdir=lib --buildtype=release \
+	-Dnls=false \
+	-Dtest-framework=false \
+	-Denable-tests=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

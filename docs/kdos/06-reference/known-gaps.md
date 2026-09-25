@@ -92,7 +92,7 @@ under `/usr/share/fonts/nerd-fonts`, and its `66-nerd-font-symbols.conf` accepts
 fallback for `monospace` and `Terminus`, so anything with a pixel layer can draw one. What turns
 them off is each program's own configuration: `yazi`'s generated theme empties all five `[icon]`
 tables, `starship`'s format uses box drawing only, the `eza` aliases say `--icons=never` rather than
-relying on a default, and `lazygit` 0.61 already ships `showIcons: false`. Turning them back on is
+relying on a default, and `lazygit` 0.65 already ships `showIcons: false`. Turning them back on is
 editing those four, one program at a time, with the understanding that the same shell on `tty1` will
 show holes. There is no VT-font patching, and the console is where this cannot be fixed.
 
@@ -140,7 +140,7 @@ is the path in the binary and the manager in the compositor, not the two meeting
 
 A video call has never been placed. `baresip` is the SIP phone here and its interface is a terminal
 menu; the far end's picture goes in an `sdl.so` window, and sending your own means turning on
-`avformat.so`, which the generated config leaves commented because which camera to send is a choice.
+`v4l2.so`, which the generated config leaves commented because which camera to send is a choice.
 The rig has no second endpoint and no camera, so what is measured is that the modules load.
 
 `mbsync` reaches XOAUTH2 and not OAUTHBEARER. `cyrus-sasl` is the mechanism loader and ships no
@@ -172,6 +172,12 @@ real account. The XOAUTH2 lane is unproven in the same way and one step further 
 `libxoauth2.so` is in `/usr/lib/sasl2` and that `mbsync` links `libsasl2` can be measured on the
 image; that a provider accepts the token `pizauth` mints cannot.
 
+A plain `python3 -m venv DIR` fails. It installs pip through `ensurepip`, which installs only from a
+`pip-*.whl` in `/usr/share/python-wheels`; `python3` ships no wheel of its own and nothing puts one
+there, so the command exits 1 and leaves an environment with no pip and no `activate` scripts.
+`python3 -m venv --without-pip --system-site-packages DIR` works, and `python -m pip` inside it is
+the system pip installing into the environment.
+
 ## Hardware and platform
 
 x86-64 only. There is no other build target.
@@ -188,6 +194,10 @@ placed. BIOS and 64-bit UEFI are the two that have been booted.
 
 Broad hardware enablement is not a goal. The firmware tree ships whole and unpruned, which covers a
 great deal, but nothing here is tested against a wide device matrix.
+
+`lsblk` shows a filesystem's type, label and UUID to root only. util-linux is built without libudev
+— eudev needs util-linux's libblkid first — so lsblk can learn them only by probing the device,
+which it does only as root. `sudo lsblk -f`, or `blkid` as root, answers.
 
 Much of `kdos doctor` cannot answer in a virtual machine, which is why it has a *skip with a reason*
 level rather than reporting those as passing.
@@ -227,6 +237,28 @@ initramfs selects a slot, unlocks that slot's container and counts attempts, and
 the end of initialisation confirms the slot. A second *encrypted* slot has therefore never been
 booted, because nothing fills one. What is measured is on the host: `select` rolling from B back to A
 hands back A's container and not B's, which is the failure the mechanism exists to prevent.
+
+Go has no race detector and no BoringCrypto. Both are objects upstream compiles and ships inside
+the source tarball, and the `go` port does not install them, so `go build -race`, `go test -race`
+and `GOEXPERIMENT=boringcrypto` fail to link. Every other Go build is unaffected.
+
+nmap has no `jdwp-exec` and no `jdwp-info` script. Both inject Java classes that upstream compiles
+and ships inside the source tarball, and the `nmap` port installs neither the classes nor the two
+scripts, so `--script jdwp-info` names nothing and the `default` category runs without it.
+`jdwp-inject`, which injects a class the user supplies, and `jdwp-version` are unaffected.
+
+qemu carries firmware only for what its three targets boot through their defaults and their firmware
+descriptors: the x86_64 PC machines, aarch64 and riscv64 `virt`, and microvm. The Nuvoton and ASPEED
+BMC boards inside `qemu-system-aarch64` stop at startup with *Could not find ROM image* unless
+`-bios` names one, and there is no 32-bit Arm UEFI, no 32-bit x86 OVMF and no OVMF build for microvm.
+The riscv64 `virt` UEFI image is upstream's rather than compiled here — see
+[what is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source).
+
+presenterm's seven syntect stock themes (`base16-ocean.dark`, `InspiredGitHub`, the Solarized pair
+and the rest) are the serialized `default.themedump` inside the vendored `syntect` crate, and are
+not compiled here. Their `.tmTheme` sources are in syntect's repository and not in the crate, and
+the only way to swap in a rebuilt dump is a patch to presenterm's theme loading. Its grammars and
+bat's themes are compiled here by the `bat` port.
 
 There is no public binary host. The mechanism is complete — a signed index, three equality tests,
 deltas — but it is one you run yourself.

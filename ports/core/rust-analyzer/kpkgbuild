@@ -9,12 +9,12 @@
 # ---------------------------------
 
 name        = rust-analyzer
-version     = 2026.08.24
+version     = 2026.09.21
 release     = 1
 _tag        = ${version//./-}
 source      = $name-$version.tar.gz::https://github.com/rust-lang/rust-analyzer/archive/refs/tags/$_tag.tar.gz
-sha256      = 1101498074f16eb032af2556d9e18855045f2b1a3dd042efb7fd08408c724c55  rust-analyzer-2026.08.24.tar.gz
-sha256      = 9d94f84c73a9a2115d845d7bb12cb0e6fe697492a2752b35392f8acf615e24ed  rust-analyzer-vendor-2026.08.24.tar.xz
+sha256      = 7bdf8f0d86a99451bb2b04b5d58de08731caab41cd3993cf51256cfb45887618  rust-analyzer-2026.09.21.tar.gz
+sha256      = 4db091c82086679801b5aa8b375af4274095ce7683c11cb733b92b28e97c895d  rust-analyzer-vendor-2026.09.21.tar.xz
 description = The Rust language server
 homepage    = https://rust-analyzer.github.io/
 depends     = rust

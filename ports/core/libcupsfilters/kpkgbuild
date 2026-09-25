@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcupsfilters
+version     = 2.2.1
+release     = 1
+source      = https://github.com/OpenPrinting/$name/releases/download/$version/$name-$version.tar.xz
+sha256      = 0a22b849d5068c4c86b20fbb4192d3faa3dabcc9ee844c8fd73710ed821d4860  libcupsfilters-2.2.1.tar.xz
+description = The filter functions behind every CUPS print filter, as a library
+homepage    = https://github.com/OpenPrinting/libcupsfilters
+depends     = cups pdfio poppler ghostscript fontconfig lcms2 libexif libjpeg-turbo libpng libtiff libjxl dbus pkgconf

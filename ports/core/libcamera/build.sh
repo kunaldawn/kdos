@@ -19,12 +19,12 @@
 
 # -Dpipelines IS NAMED RATHER THAN LEFT AT `auto`, AND `virtual` IS THE REASON.
 # `auto` enables every handler whose architecture list contains 'any', which
-# includes `virtual` — and virtual needs libyuv, which no distribution ships and
-# which meson resolves through a wrap-git clone of chromium.googlesource.com.
-# The three named here are what this image can actually drive: `ipu3` for Intel
-# ISP hardware, `uvcvideo` for every USB webcam, and `simple` for the
-# MIPI/IPU6 sensors the kernel config enables — IPU6 has no handler of its own
-# and is driven as a simple pipeline plus the software ISP.
+# includes `virtual`, a synthetic test camera that drives no hardware and links
+# libyuv into libcamera for nothing. The three named here are what this image
+# can actually drive: `ipu3` for Intel ISP hardware, `uvcvideo` for every USB
+# webcam, and `simple` for the MIPI/IPU6 sensors the kernel config enables —
+# IPU6 has no handler of its own and is driven as a simple pipeline plus the
+# software ISP.
 #
 # -Dipas MUST CONTAIN A PIPELINE'S NAME OR THAT PIPELINE GETS NO TUNING. The IPA
 # module name matches the pipeline name; a pipeline whose IPA is absent runs
@@ -42,6 +42,11 @@
 # and defines glibc's fortify entry point __open64_2. musl has no such symbols,
 # so the lookups return NULL and are called anyway — every process started under
 # `libcamerify` would fault on its first open().
+
+# cam's KMS sink is on and its SDL2 sink is off. KMS previews on the console
+# with only libdrm; SDL2 would pull sdl3 and with it pipewire, which depends on
+# libcamera for its camera plugin, so the edge would close a cycle. -Dcam-jpeg
+# only feeds the SDL2 sink's MJPEG path and goes off with it.
 
 # -Dgstreamer=enabled builds `libcamerasrc`, which is the only way a pipeline
 # reads a libcamera camera. It costs nothing on this image: glib, gstreamer and
@@ -68,7 +73,7 @@ meson setup build \
 	-Dudev=enabled \
 	-Dgstreamer=enabled \
 	-Dcam=enabled \
-	-Dcam-output-kms=disabled \
+	-Dcam-output-kms=enabled \
 	-Dcam-output-sdl2=disabled \
 	-Dcam-jpeg=disabled \
 	-Dapps-output-dng=disabled \

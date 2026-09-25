@@ -54,6 +54,16 @@ char *kp_decl_expand(const KpDecl *d, const char *text, const KpPaths *p);
 void kp_decl_prelude(const KpDecl *d, KbBuf *b);
 void kp_decl_meta(const KpDecl *d);	/* the same, to stdout, for ports/fetch */
 
+/* The shared indexes a manifest feeds (triggers.c). Note every manifest an
+ * install or removal acted on — for an upgrade both the old and the new — then
+ * run once, after the database is written. */
+typedef struct {
+	unsigned hit;
+} KpTriggers;
+
+void kp_triggers_note(KpTriggers *t, const char *manifest);
+void kp_triggers_run(const KpTriggers *t, const char *root);
+
 int depends_main(int argc, char **argv);
 int add_main(int argc, char **argv);
 int del_main(int argc, char **argv);

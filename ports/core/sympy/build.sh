@@ -15,3 +15,4 @@
 # isolation on and nothing vendored, pip fails on
 # `Could not find a version that satisfies the requirement setuptools`.
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+install -Dm644 doc/man/isympy.1 -t "$PKG/usr/share/man/man1"

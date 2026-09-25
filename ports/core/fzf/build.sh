@@ -14,6 +14,10 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=0
 go build -ldflags "-s -w -X main.version=$version" -o fzf
 install -Dm755 fzf $PKG/usr/bin/fzf
+install -Dm755 bin/fzf-tmux $PKG/usr/bin/fzf-tmux
 install -Dm644 man/man1/fzf.1 $PKG/usr/share/man/man1/fzf.1
+install -Dm644 man/man1/fzf-tmux.1 $PKG/usr/share/man/man1/fzf-tmux.1
 install -Dm644 shell/key-bindings.bash $PKG/usr/share/fzf/key-bindings.bash
 install -Dm644 shell/completion.bash $PKG/usr/share/fzf/completion.bash
+install -Dm644 shell/key-bindings.zsh $PKG/usr/share/fzf/key-bindings.zsh
+install -Dm644 shell/completion.zsh $PKG/usr/share/fzf/completion.zsh

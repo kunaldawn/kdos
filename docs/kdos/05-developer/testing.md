@@ -26,7 +26,7 @@ distribution with it.
 
 ## preflight.sh
 
-Everything a full build would catch, minus the build: forty-seven checks, in seconds. Ten of them
+Everything a full build would catch, minus the build: forty-eight checks, in seconds. Ten of them
 read the built tree under `build/fs`, and on a tree with no build each prints `skipped — no build
 tree` instead of passing quietly, so a green run accounts for every check the file contains rather
 than hiding the ones that declined to run.
@@ -35,7 +35,7 @@ than hiding the ones that declined to run.
 |---|---|
 | Packages | Every package named in a phase list has a port; every list resolves to a dependency order with clean output and valid tokens; every dependency names a port that exists; the build tree carries no package whose port is gone |
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every source a port declares is in the port directory, non-empty and named by a checksum; every port of ours is built by something |
-| Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value types validated |
+| Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value types validated; every recipe that runs cargo links dynamically |
 | Sources | Every source file in one of *our* ports is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory — a glob of the shared `libk*` trees does not exempt it; a first source whose members are prefixed is accounted for; a flat first source is unpacked by its own recipe; every port's archive is in the tree through LFS |
 | Shipped configuration | The shipped compositor configuration keeps its default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount |
 | Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the makefile runs is on disk |
@@ -320,7 +320,7 @@ variable moves one walk.
 | `oomd` | A tree arranged so only the memory budget can produce the right answer | That the budget check is load-bearing — its host process is larger than anything in either box |
 | `mountd` | A block-device tree plus two hand-built superblocks | The acceptance, and both refusals — the internal disk carries a real superblock so a broken check shows up as an extra row rather than as nothing |
 | `privacy` | Three processes, one holding a camera twice, one an audio device that must be ignored | The camera half, on a machine with no camera |
-| `portup` | Recorded upstream responses for six ports, one per discovery path | All three outcomes, offline |
+| `portup` | Recorded upstream responses — a registry index, git tag lists and branch heads, feeds, a releases API answer (cut to the fields read), directory listings, the pages a listing stands in for or links to — and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `--selftest`, and all three outcomes end to end, offline and unmoved by bumps to the live recipes |
 | `cve` | Four ports and a five-row database | A pin behind two fixes, one that only looks behind because of a packaging revision, a name mapping, and a package the database never heard of |
 | `clone` | Hand-built image headers | The two-record length rule |
 | `tray` | A second *process* that behaves like a real tray item | The whole protocol conversation |
@@ -819,6 +819,7 @@ render rate by construction and is comparable between machines rather than betwe
 |---|---|
 | How fast can this machine draw a trivial scene | `es2gears_wayland`, printing `N frames in X seconds` every five seconds |
 | How fast can it draw real ones, as one comparable score | `glmark2-es2-wayland`, or `glmark2-wayland` for desktop GL |
+| The same with no compositor in the way | `glmark2-es2-drm` / `glmark2-drm` from a text console while no compositor holds the display, which they then drive themselves; `glmark2-es2-gbm` / `glmark2-gbm` render offscreen and need no display at all |
 | The same for Vulkan | `vkgears`, or `vkcube` for a swapchain that can be told its present mode |
 | Does this machine have a Vulkan driver at all, and which | `vulkaninfo --summary` — run it first under an emulator, because a Vulkan tool falls back to lavapipe on the CPU without saying so |
 | Which EGL renderer, extensions and configs a client gets | `eglinfo` |

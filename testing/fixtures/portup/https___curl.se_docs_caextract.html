@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head> <title>curl - Extract CA Certs from Mozilla</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+<link rel="stylesheet" type="text/css" href="/curl.css">
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" href="/logo/curl-symbol.svg" type="image/svg+xml">
+<link rel="alternate" type="application/rss+xml" title="curl Releases" href="https://github.com/curl/curl/releases.atom">
+</head>
+<body>
+<div class="main">
+<nav class="sitenav" aria-label="Primary navigation">
+<a class="curlsymbol sitenav-home" href="/" aria-label="curl home">
+  <img src="/logo/curl-white-symbol.svg" alt="">
+</a>
+<input class="sitenav-state" type="checkbox" id="sitenav-state"> <label class="sitenav-toggle" for="sitenav-state">  <span class="sitenav-toggle-icon" aria-hidden="true"></span>  <span>Menu</span> </label>
+<ul class="sitenav-list">
+<li class="sitenav-item"><a class="sitenav-link menuitem" href="/docs/" title="Documentation Overview">Docs Overview</a></li>
+<li class="sitenav-item">  <details class="sitenav-disclosure" name="sitenav-submenus">  <summary class="sitenav-summary">  <span class="sitenav-label">Project</span>  </summary>  <ul class="sitenav-submenu">
+  <li><a class="sitenav-overview" href="/docs/projdocs.html">Project overview</a></li>
+  <li><a href="/docs/bugs.html">Bug Report</a></li>
+  <li><a href="/docs/code-of-conduct.html">Code of conduct</a></li>
+  <li><a href="/docs/libs.html">Dependencies</a></li>
+  <li><a href="/donation.html">Donate</a></li>
+  <li><a href="/docs/faq.html">FAQ</a></li>
+  <li><a href="/docs/features.html">Features</a></li>
+  <li><a href="/docs/governance.html">Governance</a></li>
+  <li><a href="/docs/history.html">History</a></li>
+  <li><a href="/docs/install.html">Install</a></li>
+  <li><a href="/docs/knownbugs.html">Known Bugs</a></li>
+  <li><a href="/docs/knownrisks.html">Known Risks</a></li>
+  <li><a href="/logo/">Logo</a></li>
+  <li><a href="/docs/todo.html">TODO</a></li>
+  <li><a href="/about.html">website Info</a></li>
+</ul>  </details> </li>
+<li class="sitenav-item">  <details class="sitenav-disclosure" name="sitenav-submenus">  <summary class="sitenav-summary">  <span class="sitenav-label">Protocols</span>  </summary>  <ul class="sitenav-submenu">
+  <li><a class="sitenav-overview" href="/docs/protdocs.html">Protocols overview</a></li>
+  <li><a href="/docs/caextract.html">CA Extract</a></li>
+  <li><a href="/docs/http-cookies.html">HTTP cookies</a></li>
+  <li><a href="/docs/http3.html">HTTP/3</a></li>
+  <li><a href="/docs/mqtt.html">MQTT</a></li>
+  <li><a href="/docs/sslcerts.html">SSL certs</a></li>
+  <li><a href="/docs/ssl-compared.html">SSL libs compared</a></li>
+  <li><a href="/docs/url-syntax.html">URL syntax</a></li>
+  <li><a href="/docs/websocket.html">WebSocket</a></li>
+</ul>  </details> </li>
+<li class="sitenav-item">  <details class="sitenav-disclosure" name="sitenav-submenus">  <summary class="sitenav-summary">  <span class="sitenav-label">Releases</span>  </summary>  <ul class="sitenav-submenu">
+  <li><a class="sitenav-overview" href="/docs/reldocs.html">Releases overview</a></li>
+  <li><a href="/ch/">Changelog</a></li>
+  <li><a href="/docs/releases.html">Release Table</a></li>
+  <li><a href="/docs/versions.html">Version Numbering</a></li>
+  <li><a href="/docs/verify.html">Verify</a></li>
+</ul>  </details> </li>
+<li class="sitenav-item">  <details class="sitenav-disclosure" name="sitenav-submenus">  <summary class="sitenav-summary">  <span class="sitenav-label">Security</span>  </summary>  <ul class="sitenav-submenu">
+  <li><a class="sitenav-overview" href="/docs/secdocs.html">Security overview</a></li>
+  <li><a href="/docs/audits.html">Security Audits</a></li>
+  <li><a href="/docs/security.html">curl CVEs</a></li>
+  <li><a href="/dev/advisory.html">Security advisory details</a></li>
+  <li><a href="/docs/vulnerabilities.html">Vulnerability table</a></li>
+  <li><a href="/dev/vuln-disclosure.html">Vulnerability Disclosure Policy</a></li>
+</ul>  </details> </li>
+<li class="sitenav-item">  <details class="sitenav-disclosure" name="sitenav-submenus">  <summary class="sitenav-summary">  <span class="sitenav-label">Tool</span>  </summary>  <ul class="sitenav-submenu">
+  <li><a class="sitenav-overview" href="/docs/tooldocs.html">Tool overview</a></li>
+  <li><a href="/docs/comparison-table.html">Comparison Table</a></li>
+  <li><a href="/docs/manpage.html">curl man page</a></li>
+  <li><a href="/docs/httpscripting.html">HTTP Scripting</a></li>
+  <li><a href="/docs/mk-ca-bundle.html">mk-ca-bundle</a></li>
+  <li><a href="/docs/tutorial.html">Tutorial</a></li>
+  <li><a href="/docs/optionswhen.html">When options were added</a></li>
+</ul>  </details> </li>
+<li class="sitenav-item">  <details class="sitenav-disclosure" name="sitenav-submenus">  <summary class="sitenav-summary">  <span class="sitenav-label">Who and Why</span>  </summary>  <ul class="sitenav-submenu">
+  <li><a class="sitenav-overview" href="/docs/whodocs.html">Who and Why overview</a></li>
+  <li><a href="/docs/companies.html">Companies</a></li>
+  <li><a href="/docs/copyright.html">Copyright</a></li>
+  <li><a href="/sponsors.html">Sponsors</a></li>
+  <li><a href="/docs/thanks.html">Thanks</a></li>
+  <li><a href="/docs/thename.html">The name</a></li>
+</ul>  </details> </li>
+</ul>
+</nav>
+<div class="contents">
+<div class="where"><a href="/">curl</a> / <a href="/docs/">Docs</a> / <a href="/docs/protdocs.html">Protocols</a> / <b>CA Extract</b></div>
+<h1> CA certificates extracted from Mozilla </h1>
+<div class="relatedbox">
+<b>Related:</b>
+<br><a href="sslcerts.html">SSL Certs</a>
+</div>
+<p>
+ The Mozilla CA certificate store in PEM format (around 200KB uncompressed):
+<p>
+ <big><a href="../ca/cacert.pem">cacert.pem</a></big>
+<p>
+  This bundle was updated by Mozilla at <b> Thu Aug 13 03:12:01 2026 GMT </b>.
+<p>
+ This PEM file contains the datestamp of the conversion and we only make a new
+ conversion if there is a change in either the script or the source file. This
+ service checks for updates every day. Here's
+ the <a href="../ca/cacert.pem.sha256">sha256sum</a> of the current PEM file.
+<h2> filename </h2>
+<p>
+ Some programs expect this file to be named <tt>ca-bundle.crt</tt> (in
+ the correct path). curl on Windows has a system to find it if
+ named <tt>curl-ca-bundle.crt</tt>.
+<h2> CA file revisions per date of appearance </h2>
+<p><ul>
+<table><tr><th>Date</th><th>Certificates</th><tr>
+<tr ><td><a href="/ca/cacert-2026-08-13.pem">2026-08-13</a> (<a href="/ca/cacert-2026-08-13.pem.sha256">sha256</a>)</td> <td align=center>121</td></tr>
+<tr class="odd"><td><a href="/ca/cacert-2026-07-16.pem">2026-07-16</a> (<a href="/ca/cacert-2026-07-16.pem.sha256">sha256</a>)</td> <td align=center>119</td></tr>
+<tr ><td><a href="/ca/cacert-2026-05-14.pem">2026-05-14</a> (<a href="/ca/cacert-2026-05-14.pem.sha256">sha256</a>)</td> <td align=center>121</td></tr>
+<tr class="odd"><td><a href="/ca/cacert-2026-03-19.pem">2026-03-19</a> (<a href="/ca/cacert-2026-03-19.pem.sha256">sha256</a>)</td> <td align=center>145</td></tr>
+<tr ><td><a href="/ca/cacert-2025-12-02.pem">2025-12-02</a> (<a href="/ca/cacert-2025-12-02.pem.sha256">sha256</a>)</td> <td align=center>144</td></tr>
+<tr class="odd"><td><a href="/ca/cacert-2025-11-04.pem">2025-11-04</a> (<a href="/ca/cacert-2025-11-04.pem.sha256">sha256</a>)</td> <td align=center>148</td></tr>
+<tr ><td><a href="/ca/cacert-2025-09-09.pem">2025-09-09</a> (<a href="/ca/cacert-2025-09-09.pem.sha256">sha256</a>)</td> <td align=center>146</td></tr>
+<tr class="odd"><td><a href="/ca/cacert-2025-08-12.pem">2025-08-12</a> (<a href="/ca/cacert-2025-08-12.pem.sha256">sha256</a>)</td> <td align=center>146</td></tr>
+<tr ><td><a href="/ca/cacert-2025-07-15.pem">2025-07-15</a> (<a href="/ca/cacert-2025-07-15.pem.sha256">sha256</a>)</td> <td align=center>143</td></tr>
+<tr class="odd"><td><a href="/ca/cacert-2025-05-20.pem">2025-05-20</a> (<a href="/ca/cacert-2025-05-20.pem.sha256">sha256</a>)</td> <td align=center>143</td></tr>
+</table>
+</ul>
+<h2> Missing Name Constraints </h2>
+<p>
+  The converted PEM file only contains the digital signatures for CAs. Several
+of those CAs have constraints in Firefox (and other browsers) to only be
+allowed for certain domains and other similar additional conditions. Those
+constraints are thus <b>not</b> brought along in this cacert file!
+<h2> CA certificate store license </h2>
+<p>
+ The PEM file is only a converted version of the original one and thus it is
+ licensed under the same license as the Mozilla source file: MPL 2.0
+<h2> Automated downloads from here </h2>
+<p>
+ We do not mind you downloading the PEM file from us in an automated fashion.
+<p>
+ A suitable curl command line to only download it when it has changed:
+<pre>
+  curl <a href="/docs/manpage.html#--etag-compare">--etag-compare</a> etag.txt <a href="/docs/manpage.html#--etag-save">--etag-save</a> etag.txt <a href="/docs/manpage.html#-O">--remote-name</a> https://curl.se/ca/cacert.pem
+</pre>
+Or if you use an ancient curl version that does not support etags:
+<pre>
+  curl <a href="/docs/manpage.html#-O">--remote-name</a> <a href="/docs/manpage.html#-z">--time-cond</a> cacert.pem https://curl.se/ca/cacert.pem
+</pre>
+<h2> The conversion script mk-ca-bundle </h2>
+<p>
+ The <a href="mk-ca-bundle.html">mk-ca-bundle</a> tool
+ converts <a href="https://www.mozilla.org/">Mozilla</a>'s certificate store
+ to PEM format, suitable for (lib)curl and others.
+<h2> Convert from your local Firefox installation </h2>
+<p> You can also extract the ca certs off your Firefox installation, if you
+ have the 'certutil' tool installed and run
+ the <a href="https://github.com/curl/curl/blob/master/scripts/firefox-db2pem.sh">firefox-db2pem.sh</a>
+ script!
+</ol>
+</div>
+</div>
+</body>
+</html>

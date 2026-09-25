@@ -9,11 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-NOCONFIGURE=1 ./autogen.sh
 ./configure --prefix=/usr        \
             --sysconfdir=/etc    \
             --localstatedir=/var \
-            --disable-docs       \
-            --with-default-fonts=/usr/share/fonts
+            --with-default-fonts=/usr/share/fonts \
+            --disable-nls \
+            --disable-docbook
 make
 make DESTDIR=$PKG install

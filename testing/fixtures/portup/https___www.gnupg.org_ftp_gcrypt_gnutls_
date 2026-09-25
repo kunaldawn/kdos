@@ -1,0 +1,76 @@
+<!--?xml version="1.0" encoding="utf-8"?-->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<title>ftp.gnupg.org:gcrypt/gnutls/</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<meta name="date" content="20260814T080939Z"/>
+<meta name="generator" content="ftp-indexer v0.2"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="stylesheet" href="/share/site.css" type="text/css"/>
+</head>
+<body>
+<div id="wrapper">
+<div id="header"><a href="https://gnupg.org/index.html" class="logo"><img src="/share/logo-gnupg-light-purple-bg.png"></a>&nbsp;</div>
+<main>
+<div id="content">
+<h2>ftp.gnupg.org:gcrypt/gnutls/</h2>
+<div class="outline-text-2" id="text-1">
+<pre class="ftp-readme">
+More information on GnuTLS can be found at http://www.gnutls.org/
+
+</pre>
+</div>
+<h3>Directories</h3>
+<div class="outline-text-3">
+<table class="ftp">
+<tr><td><img src="/share/up.png" width="22" height="22"/></td><td><a href="../">Parent Directory</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="attic">attic</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="libtasn1">libtasn1</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v1.0">v1.0</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v1.2">v1.2</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v1.4">v1.4</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v1.6">v1.6</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.0">v2.0</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.10">v2.10</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.12">v2.12</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.2">v2.2</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.4">v2.4</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.6">v2.6</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v2.8">v2.8</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.0">v3.0</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.1">v3.1</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.2">v3.2</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.3">v3.3</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.4">v3.4</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.5">v3.5</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.6">v3.6</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.7">v3.7</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="v3.8">v3.8</a></td></tr>
+<tr><td><img src="/share/folder.png" width="22" height="22"/></td><td><a href="w32">w32</a></td></tr>
+</table>
+</div>
+
+</div><!-- end content -->
+</main>
+<div id="footer">
+<div id="nav_bottom">
+<ul>
+<li><a href="https://gnupg.org/privacy-policy.html">Privacy&nbsp;Policy</a></li>
+<li><a href="https://gnupg.org/imprint.html">Imprint</a></li>
+<li><a href="https://gnupg.org/blog/index.html">Blog</a></li>
+<li><a href="https://gnupg.org/index.html">Web</a></li>
+</ul>
+</div>
+<div class="footerbox">
+<a><img src="/share/traueranzeige-g10_v2015.png" alt="Traueranzeige: Wir nehmen Abschied von einem sicher geglaubten Freund, dem | Fernmeldegeheimniss | (Artikel 10 Grundgesetz) | * 23. Mai 1949, + 18. Dezember 2015" title="Article 10 of the German constitution (communication privacy) is not anymore with us." height="73px" width="200px"></a>
+<p></p>
+</div>
+<div id="cpyright">
+This web page is generated from a file listing and as such not copyrightable.
+Page last updated on 2026-08-14.
+</div>
+</div>
+</div><!-- end wrapper -->
+</body>
+</html>

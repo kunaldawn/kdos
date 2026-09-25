@@ -31,6 +31,7 @@ xz
 readline
 ncurses
 bash
+bash-completion
 make
 flex
 bison
@@ -97,6 +98,7 @@ dbus
 chrony
 sysklogd
 mandoc
+man-pages
 # Periodic jobs. snooze is one process per job under ksvc rather than a cron
 # daemon with its own scheduler — it fits the supervisor KDOS already has.
 snooze
@@ -192,6 +194,7 @@ noto-fonts-extra
 nerd-fonts-symbols
 libcbor
 libfido2
+ccid
 # The colour emoji face, which the rest of the font configuration already
 # assumes: `70-no-bitmaps-except-emoji` carves bitmap fonts an exception BY
 # FAMILY, and with no such family every emoji on the image is a blank box.
@@ -244,6 +247,10 @@ hexyl
 # question — which faces exist and what is in them — is otherwise answered by
 # opening one in something that has no place on this host.
 fonttools
+# Compiles and edits faces from a script or from Python, with no GUI. It is
+# what turns DejaVu's drawing sources and Terminus's bitmaps into the TrueType
+# files ttf-dejavu and terminus-ttf install.
+fontforge
 # A terminal spreadsheet for any tabular file. `pyrequirements = no`: its
 # requirements.txt is the OPTIONAL loader set and reaches pandas and scipy,
 # where its install_requires is python-dateutil.
@@ -342,8 +349,10 @@ gocryptfs
 # test a kernel, open an untrusted disk image, boot the installer of the
 # distro being migrated from. On a distro whose own test rig IS qemu.
 # qemu's aarch64 and riscv64 targets require libfdt, and --disable-download
-# means its own submodule copy is never fetched.
+# means its own submodule copy is never fetched. acpica's iasl compiles the
+# ACPI tables of the UEFI firmware qemu's recipe builds from its roms/ tree.
 dtc
+acpica
 qemu
 # Not a program, an EFI payload: bad RAM is the one fault a tool running under
 # an OS cannot honestly diagnose, because it is in the memory being tested.
@@ -382,6 +391,7 @@ stlink
 binutils-arm-none-eabi
 gcc-arm-none-eabi
 picolibc-arm-none-eabi
+libstdcxx-arm-none-eabi
 # RV32 and RV64 — the MCUs and the soft cores the FPGA flow above synthesises.
 binutils-riscv64-unknown-elf
 gcc-riscv64-unknown-elf
@@ -409,7 +419,7 @@ python3-esptool
 # man's logic analyzer needing no hardware beyond the header pins.
 libgpiod
 # The standard instrument-automation API with no proprietary VISA anywhere:
-# pyvisa is the API and pyvisa-py is the backend that actually speaks USBTMC.
+# pyvisa is the API and pyvisa-py is the backend that speaks TCPIP and serial.
 python3-pyvisa
 python3-pyvisa-py
 # The same route for an ESP32 or ESP8266. Espressif's own esptool is the
@@ -521,6 +531,11 @@ potrace
 # Lossless, which is the only reason it is safe to point at an archive: the
 # output decodes bit-identical, so nobody has to judge acceptable quality loss.
 oxipng
+# The other two PNG passes: pngquant reduces a truecolour image to a palette,
+# which is lossy, and zopflipng recompresses one losslessly and slowly.
+# noto-emoji runs every emoji image through both.
+pngquant
+zopfli
 # A MIDI file is a SCORE, not a recording — a few kilobytes of "which note,
 # how hard, when", worthless without a synthesiser. No SoundFont is shipped:
 # picking one is picking a sound.
@@ -703,9 +718,6 @@ tesseract
 # taskwarrior 3 builds its Rust core through corrosion and fetches it with a
 # git clone unless SYSTEM_CORROSION finds one.
 corrosion
-# And corrosion runs `cargo install cxxbridge-cmd` — another download — unless
-# find_program turns up one at EXACTLY the cxx version the project locks.
-cxxbridge-cmd
 taskwarrior
 # taskwarrior is a query language; this is the half you look at. It shells out
 # to the same `task` binary, so the two cannot disagree about what a task is.
@@ -792,16 +804,29 @@ highs
 # The python numeric stack
 # ---------------------------------
 # THE BUILD BACKENDS ARE PORTS, NOT VENDORED WHEELS. numpy and matplotlib build
-# through `mesonpy`, and under pip's build isolation each would fetch that
-# backend from PyPI — whose own chain ends at the `ninja` wrapper, whose sdist
-# COMPILES CMAKE FROM SOURCE. This tree has cmake, ninja and meson already.
+# through `mesonpy`, pybind11, pikepdf and coolprop through `scikit-build-core`,
+# and the rest through `hatchling` or `setuptools`. Under pip's build isolation
+# each would fetch its backend from PyPI — whose own chain ends at the `ninja`
+# wrapper, whose sdist COMPILES CMAKE FROM SOURCE. This tree has cmake, ninja
+# and meson already.
 python3-flit-core
 python3-packaging
+python3-pathspec
+python3-vcs-versioning
+python3-setuptools-scm
+python3-pluggy
+python3-calver
+python3-trove-classifiers
+python3-poetry-core
+python3-tomlkit
+python3-hatchling
+python3-hatch-vcs
+python3-scikit-build-core
+python3-nanobind
 python3-pyproject-metadata
 python3-meson-python
 python3-cython
 python3-pybind11
-python3-setuptools-scm
 # The array type, and what makes the shipped python a calculator. No wheels
 # exist for musl+3.14, so this is a from-source meson build; openblas is what
 # the linear algebra lands on rather than numpy's bundled reference kernels.
@@ -983,7 +1008,7 @@ baresip
 # samba is the INTEROPERABILITY answer (a Windows laptop, a phone or a printer
 # speaks SMB and often nothing else); nfs-utils is the CORRECTNESS one — SMB
 # does not carry POSIX ownership, symlinks or byte-range locks the way a Linux
-# program expects. --disable-nfsv3 removes rpcbind and two more daemons.
+# program expects. The v3 helpers are built and never started.
 nfs-utils
 # samba builds pidl, its IDL compiler, with Parse::Yapp, and stops rather than
 # degrading when the module is absent.
@@ -1161,7 +1186,6 @@ valkey
 # ---------------------------------
 # Every udev rule this tree ships grants `dialout` a device class with nothing
 # on the host able to open it; picocom is the program those rules exist for.
-# libnvme has been a port with no consumer since it landed — nvme-cli is it.
 smartmontools
 # The half smartmontools cannot do: it reports a drive's health and cannot
 # change its behaviour. APM, spindown and secure erase are here.
@@ -1305,12 +1329,13 @@ wayland
 wayland-protocols
 seatd
 libdisplay-info
-# THE 2 LINE, AND ITS CONSUMERS ARE WHY. baresip's video display and
-# whisper.cpp's streaming transcription both look for `sdl2` through
-# pkg-config and neither has an SDL3 path; without it a call cannot show the
-# other person and transcription is batch over a closed file. Built with no
-# X11 and no KMSDRM — a graphical program here runs under a compositor.
-sdl2
+# SDL3 carries the drivers; sdl2-compat is the SDL2 library baresip's video
+# display and whisper.cpp's streaming transcription link, answering through
+# SDL3 at run time. Without them a call cannot show the other person and
+# transcription is batch over a closed file. Built with no X11 and no KMSDRM —
+# a graphical program here runs under a compositor.
+sdl3
+sdl2-compat
 gstreamer
 gst-plugins-base
 gst-plugins-good
@@ -1407,7 +1432,7 @@ python3-pillow
 python3-pycparser
 python3-cffi
 python3-pikepdf
-python3-pi-heif
+python3-pillow-heif
 # cryptography is what pdfminer.six binds through, and half of PyPI with it.
 # maturin is its build backend and bootstraps itself with setuptools-rust,
 # which is why three of these five exist only to compile the fourth.
@@ -1415,9 +1440,21 @@ python3-semantic-version
 python3-setuptools-rust
 python3-maturin
 python3-cryptography
+# ocrmypdf's rasteriser and text-layer writer. pdfium is Chromium's PDF engine
+# built as a shared library with gn, which exists for it alone; pypdfium2
+# binds it. uharfbuzz shapes the text fpdf2 writes, against the system
+# harfbuzz through python3-pkgconfig. pydantic-core is the compiled half of
+# the pydantic ocrmypdf vendors, pinned to the one version that pydantic names.
+gn
+pdfium
+python3-pypdfium2
+python3-pkgconfig
+python3-uharfbuzz
+python3-pydantic-core
 # A scanned page is an image until something puts text behind it. tesseract
-# reads it and ghostscript rewrites the file; ocrmypdf is the one command that
-# adds an invisible text layer and leaves the scan itself alone.
+# reads it, pdfium rasterises it and fpdf2 writes the text layer; ghostscript
+# makes the PDF/A. ocrmypdf is the one command that adds an invisible text
+# layer and leaves the scan itself alone.
 ocrmypdf
 
 # The stick can slice and had no way to send: pronsole pushes the gcode down a
@@ -1456,7 +1493,7 @@ frotz
 # exists anywhere on this image.
 bsd-games
 
-# The arcade end of it. A 2006 program that needs -std=gnu17 and no patch.
+# The arcade end of it. It builds as it is, with no patch.
 moon-buggy
 # The one manufacturer-independent engine diagnostic there is, over a serial
 # adapter the dialout group and the CH341/CP210x udev rules already reach.
@@ -1483,8 +1520,7 @@ libao
 # The converter with a published error floor. rubberband takes it rather than
 # its own builtin, which is correct and audibly worse on a long stretch.
 libsamplerate
-# Convert, resample, filter and analyse. `--without-ffmpeg` because sox's own
-# ffmpeg glue is written against an API two major versions old.
+# Convert, resample, filter and analyse.
 sox
 # oggenc, oggdec, ogginfo, vorbiscomment.
 vorbis-tools
@@ -1502,7 +1538,11 @@ ghostscript
 # Without filters cups accepts a job, spools it, runs the paper through and
 # prints nothing on it; without gutenprint a consumer inkjet prints washed-out
 # garbage. The queue existing is not the same as the page coming out right.
+pdfio
+libcupsfilters
+libppd
 cups-filters
+cups-browsed
 gutenprint
 # mutool is the half of mupdf a scriptable machine wants: split, merge, draw,
 # extract, and a text dump a grep can reach. The X11 and GLUT viewers are out.
@@ -1683,8 +1723,8 @@ weechat
 # Who owns a domain or an address range. Nothing else on the image answers it.
 whois
 
-# User-mode networking for rootless containers. podman 5.x treats slirp4netns
-# as deprecated and defaults to pasta.
+# User-mode networking for rootless containers: pasta is the only rootless
+# network podman drives.
 passt
 
 # The line editor lldb links for its prompt. Without it IOHandlerEditline

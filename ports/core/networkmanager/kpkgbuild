@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = networkmanager
-version     = 1.56.0
+version     = 1.58.1
 release     = 1
-source      = https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/archive/$version/NetworkManager-$version.tar.bz2
-sha256      = 589281aed255b5872c0899240bb0ded1883cd7221aa5b54d42a90dffcb57fdec  networkmanager-1.56.0.tar.bz2
+source      = $name-$version.tar.xz::https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/releases/$version/downloads/NetworkManager-$version.tar.xz
+sha256      = 262864cfd198123d3e5dbe91937441b97ee9059d6d712e1a5bfbb1c54668d14d  networkmanager-1.58.1.tar.xz
 description = Network connection manager (Wi-Fi, Ethernet, VPN; libnm for the panel's network surface)
 homepage    = https://networkmanager.dev/
-depends     = meson glib dbus libnl libndp jansson libgudev libxslt polkit wpa_supplicant nftables dnsmasq libpsl newt
+depends     = meson glib dbus libnl libndp jansson libgudev polkit wpa_supplicant nftables dnsmasq libpsl newt curl readline libbpf clang bpftool

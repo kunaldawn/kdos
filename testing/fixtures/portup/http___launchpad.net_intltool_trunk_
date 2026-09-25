@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Series trunk : intltool</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/@@/apple-touch-icon.png?v=2022" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/@@/favicon-32x32.png?v=2022" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/@@/favicon-16x16.png?v=2022" />
+    <link rel="manifest" href="/@@/site.webmanifest?v=2022" />
+    <link rel="mask-icon" href="/@@/safari-pinned-tab.svg?v=2022" color="#e9531f" />
+    <link rel="shortcut icon" href="/@@/favicon.ico?v=2022" />
+    <meta name="msapplication-TileColor" content="#da532c" />
+    <meta name="msapplication-config" content="/@@/browserconfig.xml?v=2022" />
+    <meta name="theme-color" content="#ffffff" />
+    
+    
+    
+
+    
+  
+  <link type="text/css" rel="stylesheet" media="screen, print" href="/+icing/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/combo.css" />
+
+
+    
+
+    
+      
+      
+    
+
+    
+    
+      <meta property="og:title" content="Series trunk : intltool" />
+      <meta property="og:type" content="website" />
+      <meta property="og:image" content="/@@/launchpad-og-image.png" />
+      <meta property="og:url" content="https://launchpad.net/intltool/trunk/+index" />
+      <meta property="og:site_name" content="Launchpad" />
+    
+
+    
+
+    
+  
+
+  
+  
+  <script type="text/javascript">
+    var LP = {
+        cache: {},
+        links: {}
+    };
+  </script>
+
+  
+
+  <script type="text/javascript">var cookie_scope = '; Path=/; Secure; Domain=.launchpad.net';</script>
+
+   <script type="text/javascript" src="/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?yui/yui/yui-min.js&amp;lp/meta.js&amp;yui/loader/loader-min.js"></script>
+   <script type="text/javascript">
+        var raw = null;
+        if (LP.devmode) {
+           raw = 'raw';
+        }
+        YUI.GlobalConfig = {
+            combine: true,
+            comboBase: '/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?',
+            root: 'yui/',
+            filter: raw,
+            debug: false,
+            fetchCSS: false,
+            maxURLLength: 2000,
+            groups: {
+                lp: {
+                    combine: true,
+                    base: '/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?lp/',
+                    comboBase: '/+combo/rev6c05f5b586acbfd5d3a5f5142777242f41e711b8/?',
+                    root: 'lp/',
+                    // comes from including lp/meta.js
+                    modules: LP_MODULES,
+                    fetchCSS: false
+                }
+            }
+        }</script>
+
+  <script type="text/javascript">
+      // we need this to create a single YUI instance all events and code
+      // talks across. All instances of YUI().use should be based off of
+      // LPJS instead.
+      var LPJS = new YUI();
+  </script>
+
+
+
+    <script id="base-layout-load-scripts" type="text/javascript">
+        //<![CDATA[
+        LPJS.use('base', 'node', 'console', 'event',
+            'oop', 'lp', 'lp.app.foldables','lp.app.sorttable',
+            'lp.app.inlinehelp', 'lp.app.links',
+            'lp.bugs.bugtask_index', 'lp.bugs.subscribers',
+            'lp.app.ellipsis', 'lp.code.branchmergeproposal.diff',
+            'lp.views.global',
+             function(Y) {
+
+            Y.on("domready", function () {
+                var global_view = new Y.lp.views.Global();
+                global_view.render();
+
+                Y.lp.app.sorttable.SortTable.init();
+                Y.lp.app.inlinehelp.init_help();
+                Y.lp.activate_collapsibles();
+                Y.lp.app.foldables.activate();
+                Y.lp.app.links.check_valid_lp_links();
+            });
+
+            Y.on('lp:context:web_link:changed', function(e) {
+                  window.location = e.new_value;
+            });
+        });
+        //]]>
+    </script>
+    <script id="base-helper-functions" type="text/javascript">
+         //<![CDATA[
+        // This code is pulled from lp.js that needs to be available on every
+        // request. Pulling here to get it outside the scope of the YUI block.
+        function setFocusByName(name) {
+            // Focus the first element matching the given name which can be focused.
+            var nodes = document.getElementsByName(name);
+            var i, node;
+            for (i = 0; i < nodes.length; i++) {
+                node = nodes[i];
+                if (node.focus) {
+                    try {
+                        // Trying to focus a hidden element throws an error in IE8.
+                        if (node.offsetHeight !== 0) {
+                            node.focus();
+                        }
+                    } catch (e) {
+                        LPJS.use('console', function(Y) {
+                            Y.log('In setFocusByName(<' +
+                                node.tagName + ' type=' + node.type + '>): ' + e);
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+
+        function selectWidget(widget_name, event) {
+          if (event && (event.keyCode === 9 || event.keyCode === 13)) {
+              // Avoid firing if user is tabbing through or simply pressing
+              // enter to submit the form.
+              return;
+          }
+          document.getElementById(widget_name).checked = true;
+        }
+        //]]>
+    </script>
+
+    
+      
+    
+    
+    <script type="text/javascript">
+        LPJS.use('lang', 'node', 'lp.app.calendar', function(Y) {
+                Y.lp.app.calendar.setup_calendar_widgets();
+            });
+    </script>
+
+    
+    
+      <script type="text/javascript">
+          LPJS.use('lp.registry.structural_subscription', function(Y) {
+              var module = Y.lp.registry.structural_subscription;
+              Y.on('domready', function() {
+                module.setup({content_box: "#structural-subscription-content-box"});
+              });
+          });
+      </script>
+    
+    <meta name="go-import" content="launchpad.net/intltool/trunk bzr https://launchpad.net/~intltool/intltool/trunk" />
+  
+    
+  </head>
+
+  <body id="document" itemscope="" itemtype="http://schema.org/WebPage" class="tab-overview
+      main_side
+      public
+      yui3-skin-sam">
+          
+          
+          
+    <div class="yui-d0">
+      <div id="locationbar" class="login-logout">
+        
+
+<div id="logincontrol"><a href="https://launchpad.net/intltool/trunk/+login">Log in / Register</a></div>
+
+
+
+      </div><!--id="locationbar"-->
+
+      <div id="watermark" class="watermark-apps-portlet">
+        <div>
+          <a href="https://launchpad.net/intltool"><img alt="" width="64" height="64" src="https://launchpadlibrarian.net/99051026/intltool-icon-large.png" /></a>
+        </div>
+        <div class="wide">
+          <h2 id="watermark-heading"><a href="https://launchpad.net/intltool">intltool</a></h2>
+        </div>
+        
+  <!-- Application Menu -->
+  <ul class="facetmenu">
+    
+      <li class="overview active"><a href="https://launchpad.net/intltool">Overview</a></li>
+      
+      
+    
+    
+      
+      <li class="branches"><a href="https://code.launchpad.net/intltool">Code</a></li>
+      
+    
+    
+      
+      <li class="bugs"><a href="https://bugs.launchpad.net/intltool">Bugs</a></li>
+      
+    
+    
+      
+      <li class="specifications"><a href="https://blueprints.launchpad.net/intltool">Blueprints</a></li>
+      
+    
+    
+      
+      <li class="translations"><a href="https://translations.launchpad.net/intltool">Translations</a></li>
+      
+    
+    
+      
+      <li class="answers"><a href="https://answers.launchpad.net/intltool">Answers</a></li>
+      
+    
+  </ul>
+
+      </div>
+
+      <div class="yui-t4">
+        <div id="maincontent" class="yui-main">
+          <div class="yui-b" dir="ltr">
+            <div class="context-publication">
+              
+      <h1>intltool trunk series</h1>
+    
+              
+
+              <div id="registration" class="registering">
+                
+              </div>
+            </div>
+
+            
+            <div id="request-notifications">
+              
+            </div>
+
+            
+              <div>
+
+      <div class="top-portlet">
+        <div id="description"><p>The actively developed series of intltool.</p></div>
+
+        <div style="padding-top: 1em">
+          
+  
+  <div id="timeline-loading" class="hidden">
+    <img src="/@@/spinner" /> Loading graph...
+  </div>
+
+  <!-- Opera ignores overflow:hidden for iframe, so use scrolling=no. -->
+  <iframe id="timeline-iframe" name="timeline-iframe" class="timeline-iframe hidden" style="border: 0" scrolling="no" width="100%" height="216px"></iframe>
+  <script>
+  //<![CDATA[
+  function timeline_iframe(auto_resize, include_inactive, start, size) {
+      var timeline_url = "+timeline-graph?";
+      if (include_inactive == 'true') {
+          timeline_url += "include_inactive=true&";
+      }
+
+      if (auto_resize == 'true') {
+          timeline_url += 'resize_frame=timeline-iframe&';
+      }
+
+      start = parseInt(start);
+      size = parseInt(size);
+      if (start != NaN && start >= 0) {
+          timeline_url += "start=" + start + "&";
+      }
+      if (size != NaN && size >= 1) {
+          timeline_url += "size=" + size + "&";
+      }
+      LPJS.use('node', 'lp.registry.timeline', function(Y) {
+          if (!Y.lp.registry.timeline.isCanvasSupported()) {
+              return;
+          }
+          var loading_el = Y.one('#timeline-loading');
+          loading_el.setStyle('display', 'block');
+          var iframe = Y.one('#timeline-iframe');
+          iframe.set('src', timeline_url);
+          Y.on('load', function(e) {
+              loading_el.setStyle('display', 'none');
+              iframe.setStyle('display', 'block');
+          }, iframe);
+      });
+  }
+  //]]>
+  </script>
+  <script>
+      timeline_iframe(
+        'true',
+        'true',
+        'None',
+        'None'
+        );
+      </script>
+
+        </div>
+      </div>
+
+      <div class="yui-g">
+        <div class="yui-u first">
+          <div id="series-details" class="portlet">
+            <h2>Series information</h2>
+
+            <div class="two-column-list">
+              <dl id="series-project">
+                <dt>Project:</dt>
+                <dd><a href="/intltool" class="bg-image" style="background-image: url(https://launchpadlibrarian.net/99051025/intltool-icon.png)">intltool</a></dd>
+              </dl>
+
+              <dl id="series-name">
+                <dt>Series:</dt>
+                <dd>trunk</dd>
+              </dl>
+
+              <dl id="series-drivers">
+                <dt>Project drivers:</dt>
+                <dd>
+                  
+                    <a href="/~intltool" class="sprite team">intltool Developers</a>
+                  
+                </dd>
+              </dl>
+
+              <dl id="series-release-manager">
+                <dt>Release manager:</dt>
+                <dd>
+                  None
+                  
+                  
+                 </dd>
+               </dl>
+
+              <dl id="series-status">
+                <dt>Status:</dt>
+                <dd>
+                  Active Development
+                  
+                </dd>
+              </dl>
+
+              <dl id="series-focus">
+                <dt>Project development focus:</dt>
+                <dd>
+                  is
+                  
+                  the focus of development.
+                  
+                </dd>
+              </dl>
+            </div>
+
+            <dl id="series-releasefileglob" style="margin-bottom: 1em;" title="Launchpad automatically scans sites to import releases">
+              <dt>Release URL pattern:</dt>
+              <dd>
+                
+                  None
+                
+                
+               </dd>
+            </dl>
+
+            <p>
+              <a class="menu-link-rdf sprite download" href="https://launchpad.net/intltool/trunk/+rdf">Download RDF metadata</a>
+            </p>
+          </div>
+        </div>
+
+        <div class="yui-u">
+          <div class="portlet">
+  <h2>Code for this series</h2>
+
+
+
+
+  <p>The following branch has been registered as the mainline branch
+  for this release series:</p>
+
+  <div id="branch-details">
+    <a id="series-branch" class="sprite branch" href="https://code.launchpad.net/~intltool/intltool/trunk">lp:~intltool/intltool/trunk</a>
+    - <a href="https://code.launchpad.net/~intltool" class="sprite team">intltool Developers</a>
+    
+  </div>
+  <div id="branch-revision-details">
+    748 revisions.
+  </div>
+
+  <p>
+    You can get a copy of the development focus branch using the command:<br />
+    <tt class="command">
+      bzr branch lp:intltool
+    </tt>
+  </p>
+
+
+</div>
+
+
+          <p>
+            
+          </p>
+        </div>
+      </div>
+
+      <div class="portlet">
+        <h2>Milestones and releases</h2>
+
+        
+        <div>
+          
+
+<table style="width: 100%;" class="upper-batch-nav">
+  <tbody>
+    <tr>
+      <td style="white-space: nowrap" class="batch-navigation-index">
+        
+            <strong>1</strong>
+            
+              &rarr;
+              <strong>6</strong>
+            
+            of
+            6
+            results
+        
+      </td>
+      <td style="text-align: right; white-space: nowrap" class="batch-navigation-links">
+        
+        <span class="first inactive">First</span>
+        &bull;
+        
+        <span class="previous inactive">Previous</span>
+        &bull;
+        
+        <span class="next inactive"><strong>Next</strong></span>
+        
+          &bull;
+          
+          <span class="last inactive">Last</span>
+        
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="listing" id="series-trunk">
+  <thead>
+    <tr>
+      <th>Version</th>
+      <th>Expected</th>
+      <th>Released</th>
+      <th>Summary</th>
+    </tr>
+  </thead>
+  <tbody id="milestone-rows">
+    
+      
+  <tr>
+    <td>
+      <img src="/@@/milestone" alt="" />
+      <a href="/intltool/+milestone/0.51.0">intltool 0.51.0</a>
+    </td>
+    
+    <td>
+      <span title=""></span>
+      
+        
+          None
+        
+        
+      
+    </td>
+    <td>
+      <time title="2015-03-09 01:43:00 UTC" datetime="2015-03-09T01:43:00+00:00">2015-03-09</time>
+      
+    </td>
+    
+    <td>
+      
+      
+    </td>
+  </tr>
+
+
+    
+    
+      
+  <tr>
+    <td>
+      <img src="/@@/milestone" alt="" />
+      <a href="/intltool/+milestone/0.50.2">intltool 0.50.2</a>
+    </td>
+    
+    <td>
+      <span title="2012-02-26 00:00:00 UTC">2012-02-26</span>
+      
+    </td>
+    <td>
+      <time title="2012-02-26 18:50:00 UTC" datetime="2012-02-26T18:50:00+00:00">2012-02-26</time>
+      
+    </td>
+    
+    <td>
+      
+      
+    </td>
+  </tr>
+
+
+    
+    
+      
+  <tr>
+    <td>
+      <img src="/@@/milestone" alt="" />
+      <a href="/intltool/+milestone/0.50.1">intltool 0.50.1</a>
+    </td>
+    
+    <td>
+      <span title="2012-02-05 00:00:00 UTC">2012-02-05</span>
+      
+    </td>
+    <td>
+      <time title="2012-02-05 09:21:00 UTC" datetime="2012-02-05T09:21:00+00:00">2012-02-05</time>
+      
+    </td>
+    
+    <td>
+      
+      
+    </td>
+  </tr>
+
+
+    
+    
+      
+  <tr>
+    <td>
+      <img src="/@@/milestone" alt="" />
+      <a href="/intltool/+milestone/0.50.0">intltool 0.50.0</a>
+    </td>
+    
+    <td>
+      <span title="2011-10-08 00:00:00 UTC">2011-10-08</span>
+      
+    </td>
+    <td>
+      <time title="2011-10-08 21:50:00 UTC" datetime="2011-10-08T21:50:00+00:00">2011-10-08</time>
+      
+    </td>
+    
+    <td>
+      
+      
+    </td>
+  </tr>
+
+
+    
+    
+      
+  <tr>
+    <td>
+      <img src="/@@/milestone" alt="" />
+      <a href="/intltool/+milestone/0.41.1">intltool 0.41.1</a>
+    </td>
+    
+    <td>
+      <span title="2010-03-24 00:00:00 UTC">2010-03-24</span>
+      
+    </td>
+    <td>
+      <time title="2010-03-24 14:26:00 UTC" datetime="2010-03-24T14:26:00+00:00">2010-03-24</time>
+      
+    </td>
+    
+    <td>
+      
+      
+    </td>
+  </tr>
+
+
+    
+    
+      
+  <tr>
+    <td>
+      <img src="/@@/milestone" alt="" />
+      <a href="/intltool/+milestone/0.41.0">intltool 0.41.0</a>
+    </td>
+    
+    <td>
+      <span title="2009-07-15 00:00:00 UTC">2009-07-15</span>
+      
+    </td>
+    <td>
+      <time title="2009-07-16 03:00:00 UTC" datetime="2009-07-16T03:00:00+00:00">2009-07-16</time>
+      
+    </td>
+    
+    <td>
+      
+      
+    </td>
+  </tr>
+
+
+    
+  </tbody>
+</table>
+<table style="width: 100%;" class="lower-batch-nav">
+  <tbody>
+    <tr>
+      <td style="white-space: nowrap" class="batch-navigation-index">
+        
+            <strong>1</strong>
+            
+              &rarr;
+              <strong>6</strong>
+            
+            of
+            6
+            results
+        
+      </td>
+      <td style="text-align: right; white-space: nowrap" class="batch-navigation-links">
+        
+        <span class="first inactive">First</span>
+        &bull;
+        
+        <span class="previous inactive">Previous</span>
+        &bull;
+        
+        <span class="next inactive"><strong>Next</strong></span>
+        
+          &bull;
+          
+          <span class="last inactive">Last</span>
+        
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+          <ul class="table-actions" style="margin-bottom: 1em;">
+            <li>
+              
+            </li>
+            <li>
+              
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="yui-g">
+        <div class="yui-u first">
+          <div><div class="portlet" id="portlet-latest-bugs">
+  <h2><span class="see-all"><a href="https://bugs.launchpad.net/intltool/trunk">All bugs</a></span>
+    Latest bugs reported</h2>
+
+  <ul>
+  </ul>
+</div>
+</div>
+
+          <div><div class="portlet" id="portlet-packages">
+  <h2>
+    <span class="see-all">
+      <a href="https://launchpad.net/intltool/+packages">
+        All packages
+      </a>
+    </span>
+    Distribution packaging
+  </h2>
+
+  <p id="distribution-packaging-explanation">
+    
+      This series is packaged in the following distribution series:
+    
+    
+  </p>
+
+  <ul id="distribution-packaging">
+    <li>
+      <a class="sprite package-source" href="/bilimbitest/angry/+source/intltool">Bilimbi Test
+        Angry Aardvark
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/debian/lenny/+source/intltool">Debian
+        Lenny
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/debian/squeeze/+source/intltool">Debian
+        Squeeze
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/debian/sid/+source/intltool">Debian
+        Sid
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu-leb/oneiric/+source/intltool">Ubuntu Linaro Evaluation Build
+        Oneiric based series for Ubuntu LEB
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu-rtm/14.09-factory/+source/intltool">Ubuntu RTM
+        14.09-factory
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu-rtm/14.09/+source/intltool">Ubuntu RTM
+        14.09
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/lucid/+source/intltool">Ubuntu
+        Lucid
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/maverick/+source/intltool">Ubuntu
+        Maverick
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/natty/+source/intltool">Ubuntu
+        Natty
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/oneiric/+source/intltool">Ubuntu
+        Oneiric
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/precise/+source/intltool">Ubuntu
+        Precise
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/quantal/+source/intltool">Ubuntu
+        Quantal
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/raring/+source/intltool">Ubuntu
+        Raring
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/saucy/+source/intltool">Ubuntu
+        Saucy
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/trusty/+source/intltool">Ubuntu
+        Trusty
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/utopic/+source/intltool">Ubuntu
+        Utopic
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/vivid/+source/intltool">Ubuntu
+        Vivid
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/wily/+source/intltool">Ubuntu
+        Wily
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/xenial/+source/intltool">Ubuntu
+        Xenial
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/yakkety/+source/intltool">Ubuntu
+        Yakkety
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/zesty/+source/intltool">Ubuntu
+        Zesty
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/artful/+source/intltool">Ubuntu
+        Artful
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/bionic/+source/intltool">Ubuntu
+        Bionic
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/cosmic/+source/intltool">Ubuntu
+        Cosmic
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/disco/+source/intltool">Ubuntu
+        Disco
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/eoan/+source/intltool">Ubuntu
+        Eoan
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/focal/+source/intltool">Ubuntu
+        Focal
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/groovy/+source/intltool">Ubuntu
+        Groovy
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/hirsute/+source/intltool">Ubuntu
+        Hirsute
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/impish/+source/intltool">Ubuntu
+        Impish
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/jammy/+source/intltool">Ubuntu
+        Jammy
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/kinetic/+source/intltool">Ubuntu
+        Kinetic
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/lunar/+source/intltool">Ubuntu
+        Lunar
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/mantic/+source/intltool">Ubuntu
+        Mantic
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/noble/+source/intltool">Ubuntu
+        Noble
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/oracular/+source/intltool">Ubuntu
+        Oracular
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/plucky/+source/intltool">Ubuntu
+        Plucky
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/questing/+source/intltool">Ubuntu
+        Questing
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/resolute/+source/intltool">Ubuntu
+        Resolute
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/stonking/+source/intltool">Ubuntu
+        Stonking
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/hardy/+source/intltool">Ubuntu
+        Hardy
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/intrepid/+source/intltool">Ubuntu
+        Intrepid
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/jaunty/+source/intltool">Ubuntu
+        Jaunty
+        intltool</a>
+    </li>
+    <li>
+      <a class="sprite package-source" href="/ubuntu/karmic/+source/intltool">Ubuntu
+        Karmic
+        intltool</a>
+    </li>
+  </ul>
+
+  <ul class="horizontal">
+    <li>
+      
+    </li>
+  </ul>
+</div>
+</div>
+        </div>
+
+        <div class="yui-u">
+          
+
+          
+
+
+          <div class="portlet">
+            <h2>Related series, milestones, and releases</h2>
+
+            <ul id="related-series">
+              <li>
+                <a class="sprite info" href="https://launchpad.net/intltool/+series">View
+                  series for the
+                  intltool project</a>
+              </li>
+              <li>
+                <a class="sprite info" href="https://launchpad.net/intltool/+milestones">View
+                  milestones for the
+                  intltool project</a>
+              </li>
+              <li>
+                <a class="sprite info" href="https://launchpad.net/intltool/+download">View
+                  downloads for the
+                  intltool project</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="yui-u">
+          <div id="structural-subscription-content-box"></div>
+        </div>
+      </div>
+    </div>
+            
+            
+          </div><!-- yui-b -->
+        </div><!-- yui-main -->
+
+        
+          <div id="side-portlets" class="yui-b side">
+            
+      <div id="global-actions" class="portlet">
+        <ul>
+          
+          
+          
+          
+        </ul>
+      </div>
+
+      <div id="privacy" class="portlet public">
+    <span id="information-type-summary" class="sprite public">This series
+      contains <strong id="information-type">Public</strong> information</span>
+
+    <div id="information-type-description" style="padding-top: 5px">Everyone can see this information.
+</div>
+</div>
+
+
+
+      <div id="downloads" class="top-portlet downloads">
+        <h2>Downloads</h2>
+
+        
+          
+  <div class="version">
+    Latest version is 0.51.0
+  </div>
+
+  <ul>
+    <li>
+      <a href="https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz" title="Source">intltool-0.51.0.tar.gz</a>
+    </li>
+  </ul>
+
+  <div class="released">
+    released
+    <time title="2015-03-09 01:43:00 UTC" datetime="2015-03-09T01:43:00+00:00">on 2015-03-09</time>
+  </div>
+
+
+        
+
+        <p class="alternate">
+          <a class="sprite info" href="https://launchpad.net/intltool/+download">All downloads</a>
+           
+        </p>
+      </div>
+
+      <div id="involvement" class="portlet">
+  <h2>Get Involved</h2>
+
+  <ul class="involvement">
+    <li>
+      <a class="menu-link-report_bug sprite bugs" href="https://bugs.launchpad.net/intltool/trunk/+filebug">Report a bug</a>
+    </li>
+  </ul>
+
+  
+    
+    
+  
+
+  
+</div>
+
+    
+          </div><!-- yui-b side -->
+        
+      </div><!-- yui-t4 -->
+
+      
+  <div id="footer" class="footer">
+    <div class="lp-arcana">
+        <div class="lp-branding">
+          <a href="https://launchpad.net/"><img src="/@@/launchpad-footer-logo.svg" alt="Launchpad" width="65" height="18" /></a>
+          &nbsp;&bull;&nbsp;
+          <a href="https://launchpad.net/+tour">Take the tour</a>
+          &nbsp;&bull;&nbsp;
+          <a href="https://documentation.ubuntu.com/launchpad/">Read the guide</a>
+          &nbsp;
+          <form id="globalsearch" method="get" accept-charset="UTF-8" action="https://launchpad.net/+search">
+            <input type="search" id="search-text" name="field.text" />
+            <input type="image" src="/@@/search" style="vertical-align:5%" alt="Search Launchpad" />
+          </form>
+        </div>
+        
+  
+
+    </div>
+
+    <div class="colophon">
+      &copy; 2004
+      <a href="http://canonical.com/">Canonical&nbsp;Ltd.</a>
+      &nbsp;&bull;&nbsp;
+      <a href="https://ubuntu.com/legal/launchpad-terms-of-service">Terms of use</a>
+      &nbsp;&bull;&nbsp;
+      <a href="https://www.ubuntu.com/legal/dataprivacy">Data privacy</a>
+      &nbsp;&bull;&nbsp;
+      <a href="/feedback">Contact Launchpad Support</a>
+      
+      &nbsp;&bull;&nbsp;
+      <a href="http://blog.launchpad.net/">Blog</a>
+      
+	&nbsp;&bull;&nbsp;
+	<a href="https://canonical.com/careers">Careers</a>
+      
+      &nbsp;&bull;&nbsp;
+      <a href="https://status.canonical.com/">System status</a>
+      <span id="lp-version">
+      &nbsp;&bull;&nbsp;
+        6c05f5b
+        
+        
+        (<a href="https://documentation.ubuntu.com/launchpad/developer/how-to/get-source-code/">Get the code!</a>)
+      </span>
+    </div>
+  </div>
+
+    </div><!-- yui-d0-->
+
+    
+  
+  
+  <script id="json-cache-script">LP.cache = {"related_features": {}, "administratedTeams": [], "importances": ["Unknown", "Undecided", "Critical", "High", "Medium", "Low", "Wishlist"], "statuses": ["New", "Incomplete", "Opinion", "Invalid", "Won't Fix", "Expired", "Confirmed", "Triaged", "In Progress", "Deferred", "Fix Committed", "Fix Released", "Does Not Exist", "Unknown"], "information_types": ["Public", "Public Security", "Private Security", "Private", "Proprietary", "Embargoed"], "target_info": {"title": "intltool trunk series", "url": "https://launchpad.net/intltool/trunk"}, "context": {"self_link": "https://launchpad.net/api/devel/intltool/trunk", "web_link": "https://launchpad.net/intltool/trunk", "resource_type_link": "https://launchpad.net/api/devel/#project_series", "translations_usage": "Unknown", "all_specifications_collection_link": "https://launchpad.net/api/devel/intltool/trunk/all_specifications", "valid_specifications_collection_link": "https://launchpad.net/api/devel/intltool/trunk/valid_specifications", "bug_reporting_guidelines": null, "content_templates": null, "bug_reported_acknowledgement": null, "official_bug_tags": [], "active": true, "summary": "The actively developed series of intltool.", "drivers_collection_link": "https://launchpad.net/api/devel/intltool/trunk/drivers", "name": "trunk", "project_link": "https://launchpad.net/api/devel/intltool", "status": "Active Development", "date_created": "2005-06-15T02:17:43.115113+00:00", "owner_link": "https://launchpad.net/api/devel/~intltool", "driver_link": null, "title": "intltool trunk series", "display_name": "trunk", "releases_collection_link": "https://launchpad.net/api/devel/intltool/trunk/releases", "active_milestones_collection_link": "https://launchpad.net/api/devel/intltool/trunk/active_milestones", "all_milestones_collection_link": "https://launchpad.net/api/devel/intltool/trunk/all_milestones", "branch_link": "https://launchpad.net/api/devel/~intltool/intltool/trunk", "translations_autoimport_mode": "None", "release_finder_url_pattern": null, "http_etag": "\"b0112ad1d5b2f119239655434312aedcd83e2855-ff2e31a056fe5c9a4056194251ca2be31efa6b64\""}};</script>
+
+    
+  
+
+    
+  </body>
+
+
+  <!--
+    Facet name: overview
+    Page type: main_side
+    Has global search: True
+    Has application tabs: True
+    Has side portlets: True
+
+    At least 76 queries/external actions issued in 0.85 seconds
+
+    Features: {'profiling.enabled': None, 'hard_timeout': '10000', 'app.mainsite_only.canonical_url': None, 'js.yui_version': None, 'app.maintenance_message': None, 'baselayout.careers_link.disabled': None, 'visible_render_time': None}
+
+    r6c05f5b
+
+    -->
+
+</html>
+

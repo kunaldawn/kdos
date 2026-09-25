@@ -790,6 +790,11 @@ is the same binary with upstream's default, for when reaching the public relay i
 also why the sending window offers the code word and not the `getcroc.com` link croc prints beside
 it: that page is the public relay's, and on this image there is no public relay to reach.
 
+croc is built relay-only, with upstream's `croc_no_tailcat` tag. The Tailscale transport and
+`croc ssh`, the shared terminal built on it, run over Tailscale's public DERP servers and take no
+`--local`, so neither is in the binary: `croc ssh` answers that it is not supported in this build,
+and `croc-relay` has croc's own relay and nothing else.
+
 The transfer stays in front of the person. croc runs in the foreground of a terminal window and
 prints its own progress, and this program relays every byte of it untouched rather than
 summarising — what a transfer is doing is croc's to say. Reading croc's output and running croc

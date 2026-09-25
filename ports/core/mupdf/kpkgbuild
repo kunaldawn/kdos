@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = mupdf
-version     = 1.26.7
+version     = 1.28.4
 release     = 1
-source      = mupdf-1.26.7.tar.gz::https://mupdf.com/downloads/archive/mupdf-1.26.7-source.tar.gz
-sha256      = 52014fcecac48ae3ead947eb90572ff7da9acf9550711675872944e8ef8c4966  mupdf-1.26.7.tar.gz
+source      = $name-$version.tar.gz::https://mupdf.com/downloads/archive/mupdf-$version-source.tar.gz
+sha256      = 2d97e043a616f96b148657c9c3d81ad71c4bd2052c59a2a3315ad842599340f9  mupdf-1.28.4.tar.gz
 description = mutool — the PDF the command line can take apart, and a viewer with no toolkit
 homepage    = https://mupdf.com/
-depends     = freetype2 libjpeg-turbo openjpeg harfbuzz zlib jbig2dec curl brotli leptonica tesseract
+depends     = freetype2 libjpeg-turbo openjpeg harfbuzz zlib jbig2dec curl brotli leptonica tesseract libarchive openssl python3

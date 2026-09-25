@@ -9,14 +9,15 @@
 # ---------------------------------
 
 name        = iana-etc
-version     = 20260213
+version     = 20260911
 release     = 1
-source      = services
-source      = protocols
-source      = rpc
-source      = update.sh
-sha256      = 2f2878f46eb513b68777eda80aa73f01da25831ecb532078211414f9e990111f  services
-sha256      = 6c1e477c56735107d2b7a6a8d7174ce24dbd52d82558118beeaea171286b27a7  protocols
-sha256      = 5ccb751963bfed13fd8572986bd5be05c205ec9dfef9c5f50e6c971736ae4ebd  rpc
-sha256      = 91c34b8634569623cb8996944c6904db6a57f6c4df6839a3cc38978ceb869327  update.sh
-description = Provides data for network services and protocols
+_reg        = https://www.iana.org/assignments
+source      = protocol-numbers-$version.xml::$_reg/protocol-numbers/protocol-numbers.xml
+source      = service-names-port-numbers-$version.xml::$_reg/service-names-port-numbers/service-names-port-numbers.xml
+source      = rpc-program-numbers-$version.xml::$_reg/rpc-program-numbers/rpc-program-numbers.xml
+sha256      = 59cdd7930cd6152bd11713b8883503511fffb2add72345d21d043cecb969803b  protocol-numbers-20260911.xml
+sha256      = 30a69353af6e017ffd9e141d079f90a7b7117f113f122d2d89ee20ffb587da19  service-names-port-numbers-20260911.xml
+sha256      = fb8db0a6811a83dc9017b6349372895fdb4d384f3e34bc92de40fa4d724d7506  rpc-program-numbers-20260911.xml
+description = /etc/services, /etc/protocols and /etc/rpc, generated from IANA's registries
+homepage    = https://www.iana.org/protocols
+depends     = gawk

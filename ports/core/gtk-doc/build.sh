@@ -22,10 +22,12 @@
 #
 # autotools_support=true is what installs the m4 and gtk-doc.make at all —
 # with it off this port would be the scanner and nothing that needs it.
-# Nothing here builds documentation: the scanner wants a full GObject
-# introspection stack to be useful and this tree has none.
+# cmake_support=true installs GtkDocConfig.cmake, the data file a CMake project
+# calling find_package(GtkDoc) needs to configure.
+# The manual needs yelp-tools and the test suite python's parameterized
+# module, and neither is a port, so both stay off.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
-	-Dautotools_support=true -Dcmake_support=false \
+	-Dautotools_support=true -Dcmake_support=true \
 	-Dyelp_manual=false -Dtests=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

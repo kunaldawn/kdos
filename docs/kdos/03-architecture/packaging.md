@@ -31,7 +31,7 @@ See [Decisions](../01-philosophy/decisions.md).
 There are three port repositories, searched in order, and they use one format:
 
 ```
-/ports/core              851 recipes — upstream software
+/ports/core              945 recipes — upstream software
 /kdos/src/packages        12 recipes — ours: the tools, the installer, the packer
 /kdos/src/desktop         13 recipes — ours: the compositor, the shell, the daemons
 ```
@@ -91,6 +91,12 @@ removing the older package would delete a file the newer one installed.
 An upgrade removes orphans. A file present in the old version and absent from
 the new one is removed rather than left on disk owned by nothing.
 
+An install or removal ends by rebuilding the shared indexes its manifest fed —
+the GSettings schemas, the GIO module and pixbuf loader caches, the MIME
+database, the font cache and the info directory — from everything then on disk.
+No package owns those files, so no package ships them; the list is in
+[Writing ports](../05-developer/writing-ports.md#shared-indexes).
+
 ## What a build verifies
 
 `kpkgbuild` hashes **every** `sha256 =` entry whose file is present beside the
@@ -114,7 +120,7 @@ tree needs it.
 
 ## Deciding what to rebuild
 
-The build must not recompile 875 ports on every run, and must not skip one
+The build must not recompile 969 ports on every run, and must not skip one
 whose recipe changed. Two hashes decide, and they are the same two the binary
 host uses.
 

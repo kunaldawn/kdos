@@ -13,7 +13,7 @@ meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Dgtk=disabled \
-	-Ddbus=disabled \
+	-Ddbus=enabled \
 	-Ddemo=false \
 	-Dinstall_demo=false
 meson compile -C build

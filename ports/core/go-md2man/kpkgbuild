@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = go-md2man
+version     = 2.0.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/cpuguy83/go-md2man/archive/v$version.tar.gz
+sha256      = ca3a5b57e2c01759f5a00ad2a578d034c5370fae9aa7a6c3af5648b2fc802a92  go-md2man-2.0.7.tar.gz
+sha256      = 9017dba3e32bc0395ff2bbc82de25e576c9b5f982f3a90d4bd0f26e9da400963  go-md2man-vendor-2.0.7.tar.xz
+description = Converts Markdown to roff manual pages
+homepage    = https://github.com/cpuguy83/go-md2man
+depends     = go
+vendoring   = go

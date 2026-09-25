@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 # THE FAR SIDE IS A SERVER AND THE NEAR SIDE IS ~/Mail. mbsync moves messages
 # and does nothing else: it builds no index and sends nothing, so it is one
 # third of a mail system whose other two thirds are notmuch and msmtp. All

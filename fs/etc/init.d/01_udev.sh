@@ -18,10 +18,9 @@ case "$1" in
         # device with action "change", but /lib/udev/rules.d/80-drivers.rules
         # — the rule that modprobes a driver from MODALIAS — opens with
         # ACTION!="add", GOTO="drivers_end". A plain trigger therefore loads
-        # NO module at all: the HDA controller stayed unclaimed, "No
-        # soundcards found", alsa-lib answered "Unknown PCM default" and the demo
-        # aborted inside MikMod_Init. Subsystems before devices, so a bus
-        # module is in place before its children are replayed.
+        # NO module at all: the sound controller stays unclaimed and ALSA
+        # finds no card. Subsystems before devices, so a bus module is in
+        # place before its children are replayed.
         /usr/sbin/udevadm trigger --action=add --type=subsystems
         /usr/sbin/udevadm trigger --action=add --type=devices
         /usr/sbin/udevadm settle

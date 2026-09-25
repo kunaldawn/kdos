@@ -28,6 +28,13 @@ meson setup build \
 	-Dtests=disabled \
 	-Dnls=disabled \
 	-Dgpl=enabled \
-	-Dx264=enabled
+	-Dx264=enabled \
+	-Dorc=enabled \
+	-Dorc-compiler=disabled \
+	-Da52dec=disabled \
+	-Dcdio=disabled \
+	-Ddvdread=disabled \
+	-Dmpeg2dec=disabled \
+	-Dsidplay=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

@@ -11,9 +11,9 @@
 # optdepends	: cairo docbook-xml docbook-xml libxslt valgrind cunit
 
 name        = libdrm
-version     = 2.4.131
+version     = 2.4.134
 release     = 1
 source      = https://dri.freedesktop.org/$name/$name-$version.tar.xz
-sha256      = 45ba9983b51c896406a3d654de81d313b953b76e6391e2797073d543c5f617d5  libdrm-2.4.131.tar.xz
+sha256      = ac5e74d157830eb8bee44c6a6bf3ad49774ef0dd2a72bdad74a8f20308b52a95  libdrm-2.4.134.tar.xz
 description = Provides a user space library for accessing the DRM, direct rendering manager, on operating systems that support the ioctl interface
-depends     = libpciaccess meson
+depends     = libpciaccess meson python3-docutils

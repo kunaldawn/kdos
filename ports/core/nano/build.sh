@@ -12,6 +12,7 @@
 ./configure --prefix=/usr     \
   	            --sysconfdir=/etc \
   	            --enable-utf8     \
+	    --enable-libmagic \
 	    --disable-nls
 make
 make DESTDIR=$PKG install

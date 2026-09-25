@@ -15,4 +15,4 @@ source      = https://github.com/polkit-org/polkit/archive/refs/tags/$version.ta
 sha256      = 9b7bc16f086479dcc626c575976568ba4a85d34297a750d8ab3d2e57f6d8b988  polkit-127.tar.gz
 description = Authorization framework for unprivileged processes (NetworkManager, fwupd, bolt, fprintd)
 homepage    = https://github.com/polkit-org/polkit
-depends     = meson glib expat duktape dbus
+depends     = meson glib expat duktape dbus libxslt docbook-xsl docbook-xml pam

@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://framagit.org/medoc92/recoll/-/archi
 sha256      = 637ce857b0750a51cc8a92746b0567e355485fc774a056e10894b9e76c7dd96a  recoll-1.44.1.tar.gz
 description = One full-text index across PDFs, ODT, EPUB, mail and source
 homepage    = https://www.recoll.org/
-depends     = meson pkgconf xapian-core zlib libxslt poppler python3 jsoncpp
+depends     = meson pkgconf xapian-core zlib libxml2 libxslt file poppler python3 jsoncpp

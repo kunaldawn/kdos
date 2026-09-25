@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = z3
+version     = 5.1.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Z3Prover/z3/archive/refs/tags/z3-$version.tar.gz
+sha256      = c433e1add0431c5edf1644bd9951c40588024d2d288f0e4215e5fcb6e3b4277d  z3-5.1.0.tar.gz
+description = Microsoft Research's SMT solver and theorem prover — libz3, the z3 command and its Python bindings
+homepage    = https://github.com/Z3Prover/z3
+depends     = cmake ninja python3 gmp help2man

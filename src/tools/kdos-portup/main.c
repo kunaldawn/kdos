@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -37,6 +38,12 @@
 #define MAX_PORTS  4096
 #define GROUP_MAX  64		/* generous headroom over the 17-member max */
 #define CACHE_TTL  86400	/* 24h, per the design                      */
+/* The checker logic a cached verdict came from. An entry carrying any other
+ * value, or none, is a miss: a verdict is only as good as the discovery and
+ * filters that reached it, and a changed checker serving its predecessor's
+ * answers for a day reports exactly what the change was made to stop. Raise
+ * it with every change to what a port's answer can be. */
+#define CACHE_LOGIC 5
 
 /* ────────────────────────────────────────────────────────────────────────
  * CLI options
@@ -48,8 +55,17 @@ typedef struct {
 	int json;
 	int no_fetch;
 	int refresh;
+	int jobs;
 	const char *fixture;
 } Opts;
+
+/* Checks in flight at once. A check is almost all waiting on a remote host,
+ * so the run is bounded by the slowest ports rather than by their sum; eight
+ * keeps any one host at a handful of concurrent requests, which every forge
+ * and mirror in the tree serves without complaint. repology's one request a
+ * second is enforced across all of them (probe.c). */
+#define JOBS_DEFAULT 8
+#define JOBS_MAX     32
 
 /* ────────────────────────────────────────────────────────────────────────
  * Repo location and the on-demand kpkg-meta build
@@ -166,12 +182,15 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	kb_argv_add(&a, "-O2");
 	kb_argv_add(&a, "-std=gnu11");
 	kb_argv_add(&a, "-D_GNU_SOURCE");
+	kb_argv_add(&a, "-o");
+	kb_argv_add(&a, out);
+	/* Everything from here on is this function's own allocation: KbArgv
+	 * holds pointers and frees none of them. */
+	int own = a.n;
 	kb_argv_addf(&a, "-I%s", kdir);
 	kb_argv_addf(&a, "-I%s", lbase);
 	kb_argv_addf(&a, "-I%s", lpkg);
 	kb_argv_addf(&a, "-I%s", lsig);
-	kb_argv_add(&a, "-o");
-	kb_argv_add(&a, out);
 	add_c_files(&a, kdir);
 	add_c_files(&a, lbase);
 	add_c_files(&a, lpkg);
@@ -179,7 +198,10 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	add_c_files(&a, lmono);
 	kb_argv_end(&a);
 
-	if (kb_run_tty(&a) != 0)
+	int rc = kb_run_tty(&a);
+	for (int i = own; i < a.n; i++)
+		free((void *)a.v[i]);
+	if (rc != 0)
 		kb_die("failed to build the recipe reader (kpkg meta)");
 }
 
@@ -218,6 +240,7 @@ typedef struct {
 	char reason[128];
 	int low_confidence;
 	long long checked;
+	int logic;		/* CACHE_LOGIC when written */
 } CacheEntry;
 
 typedef struct {
@@ -297,6 +320,7 @@ static void cache_load(const char *path, Cache *c)
 		kb_strlcpy(ce->reason, kj_str(e, "reason", ""), sizeof(ce->reason));
 		ce->low_confidence = kj_bool(e, "low_confidence", 0);
 		ce->checked = (long long)kj_num(e, "checked", 0);
+		ce->logic = (int)kj_num(e, "logic", 0);
 	}
 	kj_free(root);
 }
@@ -327,6 +351,7 @@ static void cache_upsert(Cache *c, const char *name, const char *version,
 	kb_strlcpy(ce->reason, r->reason, sizeof(ce->reason));
 	ce->low_confidence = r->low_confidence;
 	ce->checked = now;
+	ce->logic = CACHE_LOGIC;
 }
 
 static void cache_save(const char *path, const Cache *c)
@@ -347,8 +372,9 @@ static void cache_save(const char *path, const Cache *c)
 		json_escape(&b, e->url);
 		kb_buf_str(&b, ", \"reason\": ");
 		json_escape(&b, e->reason);
-		kb_buf_printf(&b, ", \"low_confidence\": %s, \"checked\": %lld}",
-			      e->low_confidence ? "true" : "false", e->checked);
+		kb_buf_printf(&b, ", \"low_confidence\": %s, \"checked\": %lld, \"logic\": %d}",
+			      e->low_confidence ? "true" : "false", e->checked,
+			      e->logic);
 		kb_buf_str(&b, i + 1 < c->n ? ",\n" : "\n");
 	}
 	kb_buf_str(&b, "}\n");
@@ -356,17 +382,18 @@ static void cache_save(const char *path, const Cache *c)
 	kb_buf_free(&b);
 }
 
-/* A hit needs three things to agree: the port was checked before, the
- * recipe's version has not moved since (an accepted bump invalidates a
- * cached "current" for the OLD version), and the entry is inside its 24h
- * window. Any of those failing is an ordinary miss, not an error. */
+/* A hit needs four things to agree: the port was checked before, by this
+ * checker's logic (CACHE_LOGIC), the recipe's version has not moved since (an
+ * accepted bump invalidates a cached "current" for the OLD version), and the
+ * entry is inside its 24h window. Any of those failing is an ordinary miss,
+ * not an error. */
 static int try_cache(Cache *c, const PuRecipe *r, int refresh, long long now,
 		     PuResult *out)
 {
 	if (refresh)
 		return 0;
 	CacheEntry *e = cache_find(c, r->name);
-	if (!e || strcmp(e->version, r->version))
+	if (!e || e->logic != CACHE_LOGIC || strcmp(e->version, r->version))
 		return 0;
 	if (now - e->checked >= CACHE_TTL)
 		return 0;
@@ -514,10 +541,19 @@ static void print_port_line(const PortEntry *e, int prompt)
 		size_t before = b.n;
 		append_risk_flags(&b, &e->r, e->res.low_confidence);
 		int had_flags = b.n > before;
+		if (e->res.reason[0]) {
+			kb_buf_printf(&b, "%s(%s)", had_flags ? " " : "",
+				      e->res.reason);
+			had_flags = 1;
+		}
 		if (prompt)
 			kb_buf_str(&b, had_flags ? " [y/n/d/a/q]" : "[y/n/d/a/q]");
 	} else if (e->res.state == PU_UNKNOWN) {
 		kb_buf_printf(&b, "unknown: %s", e->res.reason);
+	} else if (e->res.reason[0]) {
+		/* A current port held to a series, or pinned to a branch
+		 * tip, says so. */
+		kb_buf_printf(&b, "  (%s)", e->res.reason);
 	}
 	rtrim(&b);
 	printf("%s\n", b.p ? b.p : "");
@@ -1014,65 +1050,184 @@ static void report_vulnerable(const KpConf *conf, const char *kpkg_bin,
 	       "from the vendored table\n");
 }
 
+/* One pu_check in a child process, its PuResult written whole to `fd`. The
+ * struct is plain data and smaller than a pipe's buffer, so the write never
+ * blocks on a parent that has not started reading yet. */
+static void check_in_child(const char *kpkg_bin, const PuRecipe *r, int fd)
+{
+	PuResult res;
+	pu_check(kpkg_bin, r, &res);
+	const char *p = (const char *)&res;
+	size_t left = sizeof(res);
+	while (left) {
+		ssize_t w = write(fd, p, left);
+		if (w <= 0)
+			break;
+		p += w;
+		left -= (size_t)w;
+	}
+	_exit(0);
+}
+
+/* Runs pu_check for every entry in `todo`, `jobs` at a time, each in its own
+ * process. A child that dies before writing its whole result leaves that
+ * port `unknown` with a reason — never `current`, and never a guess from
+ * half a struct. With jobs == 1 nothing forks. */
+static void run_checks(const char *kpkg_bin, PortEntry *pe, const int *todo,
+		       int ntodo, int jobs)
+{
+	if (jobs <= 1) {
+		for (int i = 0; i < ntodo; i++) {
+			fprintf(stderr, "[%d/%d] %s\n", i + 1, ntodo,
+				pe[todo[i]].r.name);
+			pu_check(kpkg_bin, &pe[todo[i]].r, &pe[todo[i]].res);
+		}
+		return;
+	}
+
+	struct { pid_t pid; int fd, idx; } w[JOBS_MAX];
+	int active = 0, next = 0, done = 0;
+
+	/* A child inherits the parent's unwritten stdio buffers, and a child
+	 * that exits through kb_die flushes them a second time. */
+	fflush(stdout);
+	fflush(stderr);
+
+	while (done < ntodo) {
+		while (active < jobs && next < ntodo) {
+			int idx = todo[next++];
+			fprintf(stderr, "[%d/%d] %s\n", next, ntodo, pe[idx].r.name);
+			int fds[2];
+			if (pipe(fds) != 0) {
+				pu_check(kpkg_bin, &pe[idx].r, &pe[idx].res);
+				done++;
+				continue;
+			}
+			pid_t pid = fork();
+			if (pid == 0) {
+				close(fds[0]);
+				check_in_child(kpkg_bin, &pe[idx].r, fds[1]);
+			}
+			close(fds[1]);
+			if (pid < 0) {
+				close(fds[0]);
+				pu_check(kpkg_bin, &pe[idx].r, &pe[idx].res);
+				done++;
+				continue;
+			}
+			w[active].pid = pid;
+			w[active].fd = fds[0];
+			w[active].idx = idx;
+			active++;
+		}
+		if (!active)
+			break;
+
+		int st;
+		pid_t pid = waitpid(-1, &st, 0);
+		if (pid < 0)
+			break;
+		for (int i = 0; i < active; i++) {
+			if (w[i].pid != pid)
+				continue;
+			PuResult res;
+			char *p = (char *)&res;
+			size_t got = 0;
+			while (got < sizeof(res)) {
+				ssize_t r = read(w[i].fd, p + got, sizeof(res) - got);
+				if (r <= 0)
+					break;
+				got += (size_t)r;
+			}
+			close(w[i].fd);
+			PuResult *out = &pe[w[i].idx].res;
+			if (got == sizeof(res)) {
+				*out = res;
+			} else {
+				memset(out, 0, sizeof(*out));
+				out->state = PU_UNKNOWN;
+				snprintf(out->reason, sizeof(out->reason),
+					 "the check did not finish");
+			}
+			w[i] = w[--active];
+			done++;
+			break;
+		}
+	}
+}
+
 /* Checks every named port (cache first, unless --refresh), storing a
  * PortEntry for each one that has an upstream source at all — the ports
  * that are ours (kdos-*) are dropped here, silently, exactly once,
  * rather than at every later call site that would otherwise have to know
- * the same rule. Progress goes to stderr: pu_check is network-bound and can
- * take minutes over the whole tree, and stderr keeps --json's stdout clean
- * while still telling a human something is happening. */
+ * the same rule. Recipes are read and the cache consulted first, in tree
+ * order; only the misses go to the network, `jobs` at a time. Progress goes
+ * to stderr: checking is network-bound and can take minutes over the whole
+ * tree, and stderr keeps --json's stdout clean while still telling a human
+ * something is happening. */
 static int discover(const KpConf *conf, const char *kpkg_bin, char names[][64],
-		    int nnames, Cache *cache, int refresh, int *any_newer)
+		    int nnames, Cache *cache, int refresh, int jobs,
+		    int *any_newer)
 {
 	long long now = (long long)time(NULL);
 	int n = 0;
+	int *todo = kb_calloc(MAX_PORTS, sizeof(int));
+	int ntodo = 0;
 
-	for (int i = 0; i < nnames; i++) {
-		fprintf(stderr, "[%d/%d] %s\n", i + 1, nnames, names[i]);
-
+	for (int i = 0; i < nnames && n < MAX_PORTS; i++) {
 		char *dir = kp_port_dir(conf, names[i]);
 		if (!dir) {
 			kb_warn("%s: no such port", names[i]);
 			continue;
 		}
 
-		PuRecipe r;
-		if (pu_recipe_read(kpkg_bin, dir, &r) != 0) {
+		PortEntry *e = &g_entries[n];
+		memset(e, 0, sizeof(*e));
+		if (pu_recipe_read(kpkg_bin, dir, &e->r) != 0) {
 			kb_warn("%s: could not read the recipe", names[i]);
 			free(dir);
 			continue;
 		}
 		free(dir);
 
-		if (!r.source[0])
+		if (!e->r.source[0])
 			continue;	/* ours: no upstream to check */
 
-		PuResult res;
-		if (!try_cache(cache, &r, refresh, now, &res)) {
-			pu_check(kpkg_bin, &r, &res);
-			cache_upsert(cache, r.name, r.version, &res, now);
+		if (!try_cache(cache, &e->r, refresh, now, &e->res)) {
+			/* What a port reads as until its check reports back. */
+			e->res.state = PU_UNKNOWN;
+			snprintf(e->res.reason, sizeof(e->res.reason),
+				 "the check did not finish");
+			todo[ntodo++] = n;
 		}
-		if (res.state == PU_NEWER)
-			*any_newer = 1;
+		n++;
+	}
 
-		if (n >= MAX_PORTS)
-			continue;
-		PortEntry *e = &g_entries[n++];
-		e->r = r;
-		e->res = res;
-		e->has_group = pu_group_key(&r, e->group, sizeof(e->group));
+	run_checks(kpkg_bin, g_entries, todo, ntodo, jobs);
+	for (int i = 0; i < ntodo; i++) {
+		PortEntry *e = &g_entries[todo[i]];
+		cache_upsert(cache, e->r.name, e->r.version, &e->res, now);
+	}
+	free(todo);
+
+	for (int i = 0; i < n; i++) {
+		PortEntry *e = &g_entries[i];
+		if (e->res.state == PU_NEWER)
+			*any_newer = 1;
+		e->has_group = pu_group_key(&e->r, e->group, sizeof(e->group));
 	}
 	return n;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * --selftest — pure, offline assertions over this file's own logic
+ * --selftest — offline assertions
  *
- * kp_vercmp/kp_vershape/pu_extract already have a table in src/libs/selftest.c,
- * built against the pipeline's earlier stages. Everything new in THIS file
- * is the line layout, the grouping decision and the cache's round trip —
- * none of it touches the network, so all three get exercised here with no
- * fixture required.
+ * kp_vercmp/kp_vershape/pu_extract have a table in src/libs/selftest.c. This
+ * one covers the rest: the line layout, the grouping decision, the cache's
+ * round trip and the rehash, which need nothing; the anchors and filters of
+ * match.c, which are pure; and every discovery adapter, replayed from the
+ * responses recorded under testing/fixtures/portup, so no check here makes a
+ * network request.
  * ──────────────────────────────────────────────────────────────────────── */
 
 static int st_checks, st_failed;
@@ -1208,6 +1363,7 @@ static void selftest_cache(void)
 		st_ok(!strcmp(ce->candidate, "8.21.0"), "round trip preserves candidate");
 		st_ok(ce->low_confidence == 1, "round trip preserves low_confidence");
 		st_ok(ce->checked == 1000, "round trip preserves the timestamp");
+		st_ok(ce->logic == CACHE_LOGIC, "round trip preserves the logic stamp");
 	}
 
 	CacheEntry *cw = cache_find(back, "weird\"name");
@@ -1229,6 +1385,11 @@ static void selftest_cache(void)
 	st_ok(try_cache(c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
 			1, 1000, &hit) == 0,
 	      "--refresh always misses");
+	CacheEntry *stale = cache_find(c, "curl");
+	stale->logic = CACHE_LOGIC - 1;
+	st_ok(try_cache(c, &(PuRecipe){ .name = "curl", .version = "8.17.0" },
+			0, 1000, &hit) == 0,
+	      "a verdict from another checker's logic is a miss");
 
 	unlink(tmpl);
 
@@ -1301,6 +1462,453 @@ static void selftest_rehash(void)
 	unlink(path); unlink(f1); unlink(f2); rmdir(dir);
 }
 
+static int anchor_reads(const char *name, const char *version, int archive,
+			const char *raw, const char *want)
+{
+	PuAnchor a;
+	char v[PU_MAX_VER];
+	if (!pu_anchor_from(name, version, archive, &a))
+		return 0;
+	if (pu_anchor_match(&a, raw, v, sizeof(v)))
+		return want == NULL;
+	return want && !strcmp(v, want);
+}
+
+static void selftest_match(void)
+{
+	st_ok(!strcmp(pu_source_url("tokei-14.0.0.tar.gz::https://github.com/x/y/v14.tar.gz"),
+		      "https://github.com/x/y/v14.tar.gz"),
+	      "a cache name is not part of the URL");
+	st_ok(!strcmp(pu_source_url("https://zlib.net/zlib-1.3.1.tar.gz"),
+		      "https://zlib.net/zlib-1.3.1.tar.gz"),
+	      "a plain source is its own URL");
+
+	/* A shared directory: only this port's own files are read. */
+	st_ok(anchor_reads("xcb-util-0.4.1.tar.xz", "0.4.1", 1,
+			   "xcb-util-0.4.2.tar.gz", "0.4.2"),
+	      "any archive suffix is read");
+	st_ok(anchor_reads("xcb-util-0.4.1.tar.xz", "0.4.1", 1,
+			   "xcb-util-cursor-0.1.6.tar.xz", NULL),
+	      "a sibling project sharing the prefix is not read");
+	st_ok(anchor_reads("xcb-util-0.4.1.tar.xz", "0.4.1", 1,
+			   "xcb-util-0.4.2.tar.xz.sig", NULL),
+	      "a signature is not an archive");
+	st_ok(anchor_reads("gcc-15.2.0.tar.xz", "15.2.0", 1,
+			   "https://ftp.gnu.org/gnu/gcc/gcc-16.1.0/gcc-16.1.0.tar.xz",
+			   "16.1.0"),
+	      "a URL is read by its last segment");
+	st_ok(anchor_reads("boost_1_89_0.tar.bz2", "1.89.0", 1,
+			   "boost_1_90_0.tar.bz2", "1.90.0"),
+	      "an underscore spelling reads back as dots");
+	st_ok(anchor_reads("llvmorg-21.1.8", "21.1.8", 0, "llvmorg-23.1.2",
+			   "23.1.2"),
+	      "a tag prefix is literal");
+	st_ok(anchor_reads("gopls/v0.20.0", "0.20.0", 0, "gopls/v0.21.1",
+			   "0.21.1"),
+	      "a tag spanning a slash is read whole");
+	st_ok(anchor_reads("gopls/v0.20.0", "0.20.0", 0, "v0.21.1", NULL),
+	      "and the repository's other tag family is not");
+	PuAnchor bare;
+	char got[PU_MAX_VER];
+	st_ok(pu_anchor_from("0.196", "0.196", 0, &bare) &&
+	      (bare.digits_only = 1) &&
+	      pu_anchor_match(&bare, "5.1K", got, sizeof(got)) != 0 &&
+	      !pu_anchor_match(&bare, "0.197/", got, sizeof(got)) &&
+	      !strcmp(got, "0.197"),
+	      "a bare directory name reads digits only, not a file size");
+	st_ok(anchor_reads("passt-2026_07_28.f8df3f1.tar.xz", "2026_07_28.f8df3f1",
+			   1, "passt-2026_08_02.a1b2c3d.tar.xz",
+			   "2026_08_02.a1b2c3d"),
+	      "a version carrying a commit id");
+	st_ok(pu_same_class("2026_08_02.a1b2c3d", "2026_07_28.f8df3f1"),
+	      "whose commit ids differ in shape");
+	st_ok(!pu_same_class("600.0132", "26.2.4"),
+	      "a zero-padded component is another numbering");
+	st_ok(pu_same_class("26.01", "25.10"), "unless the pin pads to the same width");
+	st_ok(!pu_same_class("5.0-post1", "5.0.9"),
+	      "a post-release of an older base is older");
+	st_ok(!pu_same_class("5.1.22_dict", "5.1.21"), "a variant file is no release");
+	st_ok(!pu_same_class("3.14.7-win32", "3.14.2"), "nor is a platform build");
+	st_ok(pu_same_class("3.6a", "3.5"), "a single-letter release is one");
+	st_ok(!pu_same_class("3.8.13-w64", "3.8.12"), "a Windows build is no release");
+	st_ok(!pu_same_class("1.8.1.3.patch", "1.8.1.2"), "nor a patch beside one");
+	st_ok(!pu_same_class("56.7z", "7.1.2.31"), "nor an archive suffix");
+	st_ok(pu_same_class("1.9.0.jumbo2", "1.9.0.jumbo1"),
+	      "a word the pin carries is part of the numbering");
+	st_ok(pu_same_class("2026e", "2026d") && pu_same_class("1.9.17p3", "1.9.17p2") &&
+	      pu_same_class("0.5.4+git20240101", "0.5.3+git20230121"),
+	      "tzdata's letter, sudo's p-level, a git date the pin carries");
+	st_ok(pu_in_series("21.1.8", "21") && !pu_in_series("210.1", "21") &&
+	      !pu_in_series("5.5.0", "5.4") && pu_in_series("1.0.199", "1.0.199") &&
+	      pu_in_series("4.5", ""),
+	      "a series holds whole components");
+	st_ok(anchor_reads("ghostscript-10.07.1.tar.xz", "10.07.1", 1,
+			   "ghostscript-10.08.0.tar.xz", "10.08.0"),
+	      "a zero-padded part reads as written");
+	st_ok(anchor_reads("gs10071", "10.07.1", 0, "gs10080", "10.08.0"),
+	      "a squashed spelling is dotted back at the pin's widths");
+	st_ok(anchor_reads("unzip60.tar.gz", "6.0", 1, "unzip610.tar.gz", NULL),
+	      "and one with more digits than the pin's parts is not read");
+	char longv[PU_MAX_VER + 8];
+	memset(longv, '1', sizeof(longv) - 1);
+	longv[sizeof(longv) - 1] = 0;
+	longv[1] = '.';
+	st_ok(!pu_anchor_from("x-1234", longv, 0, &bare),
+	      "a version longer than any buffer anchors nothing");
+	st_ok(anchor_reads("libevent-2.1.12-stable.tar.gz", "2.1.12", 1,
+			   "libevent-2.2.1-alpha.tar.gz", NULL),
+	      "a literal suffix after the version must be there");
+	st_ok(anchor_reads("ImageMagick-7.1.2-31.tar.xz", "7.1.2.31", 1,
+			   "ImageMagick-7.1.2-32.tar.xz", "7.1.2.32"),
+	      "a version spelled with mixed separators reads back dotted");
+	st_ok(anchor_reads("ImageMagick-7.1.2-31.tar.xz", "7.1.2.31", 1,
+			   "ImageMagick-6.9.13-56.7z", "6.9.13.56"),
+	      "and a .7z beside it is an archive, not a version's tail");
+	st_ok(anchor_reads("cacert-2026-08-13.pem", "20260813", 1,
+			   "/ca/cacert-2026-09-01.pem", "20260901"),
+	      "a date pin reads through the source's separators");
+	st_ok(anchor_reads("cacert-2026-08-13.pem", "20260813", 1,
+			   "cacert-2026-9-1.pem", NULL),
+	      "but only at the pin's group widths");
+	char ex[PU_MAX_CAND][PU_MAX_VER];
+	int nex = pu_extract("ImageMagick-6.9.13-56.7z", ex, PU_MAX_CAND);
+	int has7z = 0;
+	for (int i = 0; i < nex; i++)
+		has7z |= strstr(ex[i], "7z") != NULL;
+	st_ok(nex > 0 && !has7z, "the extractor trims a .7z suffix");
+
+	char pre[PU_MAX_VER];
+	st_ok(!pu_version_prefix("4.2.8", 2, pre, sizeof(pre)) &&
+	      !strcmp(pre, "4.2"), "a two-component series of 4.2.8");
+	st_ok(pu_version_prefix("4", 2, pre, sizeof(pre)) != 0,
+	      "no two-component series of 4");
+
+	/* Classes. */
+	st_ok(pu_same_class("2.47", "2.45.1"), "binutils' x.y after x.y.z");
+	st_ok(pu_same_class("4.0", "3.10.2"), "nettle's new major");
+	st_ok(pu_same_class("25.07.1", "25.07"), "helix's point release");
+	st_ok(pu_same_class("10.3p1", "10.2p1"), "OpenSSH's p-suffix");
+	st_ok(pu_same_class("1.5.8.pl02", "1.5.6"), "libburnia's .plNN");
+	st_ok(!pu_same_class("20260101", "1.2"), "a date is not a counter");
+	st_ok(!pu_same_class("2026.7.22", "84.0.0"), "a dotted date is not one either");
+	st_ok(!pu_same_class("22-init", "21.1.8"), "llvm's branch tag is no release");
+
+	/* Pre-releases. */
+	st_ok(pu_prerelease("1.26-rc1", "1.25"), "an rc");
+	st_ok(pu_prerelease("3.15.0b2", "3.14.7"), "a PEP 440 beta");
+	st_ok(pu_prerelease("2.9.0dev.12", "2.8.9"), "a dev build");
+	st_ok(pu_prerelease("2.0.0-b9", "1.8.1.1"), "a separated beta");
+	st_ok(!pu_prerelease("3.6a", "3.5"), "tmux's letter release");
+	st_ok(!pu_prerelease("2025_02_17.a1e48a0", "2025_01_21.4f2c8e7") &&
+	      !pu_prerelease("2026_01_20.386b5f5", "2025_01_21.4f2c8e7"),
+	      "a commit id holding a1 or b5 is no beta");
+
+	/* Pretests, judged against the rest of the list. */
+	char gnome[][PU_MAX_VER] = { "1.25.91", "1.25.90", "1.25.0", "1.24.0" };
+	char ctr[][PU_MAX_VER] = { "1.0.92", "1.0.91", "1.0.89", "1.0.88" };
+	st_ok(pu_pretest("1.25.91", "1.24.0", gnome, 4),
+	      "a GNOME/freedesktop x.y.9x");
+	st_ok(pu_pretest("4.4.0.90", "4.4.1", gnome, 0), "a GNU pretest");
+	st_ok(pu_pretest("26.0.99.902", "24.1.13", gnome, 0), "an X.Org x.y.99.z");
+	st_ok(!pu_pretest("1.94.100", "1.94.9", gnome, 0),
+	      "a micro counter past 99 is not a pretest");
+	st_ok(!pu_pretest("2.4.134", "2.4.131", gnome, 0),
+	      "not when the project's micro numbers are already that high");
+	st_ok(!pu_pretest("1.0.92", "1.0.60", ctr, 4),
+	      "nor when the list walks up through the eighties");
+	st_ok(!pu_pretest("1.0.92", "1.0.85", ctr, 1),
+	      "nor when the pin itself is in the eighties");
+	st_ok(!pu_prerelease("1.4rc6", "1.4rc5"),
+	      "a port that pins a pre-release follows that line");
+
+	/* Development series. */
+	const char *gst = "https://gstreamer.freedesktop.org/src/gst-libav/x.tar.xz";
+	const char *cpan = "https://www.cpan.org/src/5.0/perl-5.44.0.tar.gz";
+	st_ok(pu_devseries("1.29.2", "1.28.7", "", gst), "GStreamer's odd minor");
+	st_ok(!pu_devseries("5.45.2", "5.44.0", "", cpan),
+	      "no convention is assumed where none is declared");
+	st_ok(pu_devseries("5.45.2", "5.44.0", "odd-minor", cpan),
+	      "the recipe's devseries key declares one");
+	st_ok(pu_devseries("1.90.0", "1.58.2", "preview-minor", cpan),
+	      "preview-minor: Pango 1.90 is Pango 2");
+	st_ok(!pu_devseries("1.29.2", "1.29.1", "odd-minor", gst),
+	      "a port pinned in a development series follows it");
+}
+
+/* One adapter, replayed: a recipe as pu_recipe_read would leave it, and the
+ * newest candidate discovery must hand the decision engine. `absent`, when
+ * set, is a version that must NOT be among the candidates; `other`, when set,
+ * is what the tag list names under another prefix. */
+static void st_found_in(const char *what, const char *version, const char *url,
+			const char *homepage, const char *devseries,
+			const char *via, const char *top, const char *absent,
+			const char *other)
+{
+	PuRecipe r;
+	memset(&r, 0, sizeof(r));
+	kb_strlcpy(r.name, "selftest", sizeof(r.name));
+	kb_strlcpy(r.version, version, sizeof(r.version));
+	kb_strlcpy(r.source, url, sizeof(r.source));
+	kb_strlcpy(r.first_source, url, sizeof(r.first_source));
+	kb_strlcpy(r.homepage, homepage, sizeof(r.homepage));
+	kb_strlcpy(r.devseries, devseries, sizeof(r.devseries));
+
+	PuFound f = { 0 };
+	f.cand = kb_calloc(PU_MATCH_MAX, PU_MAX_VER);
+	pu_discover(&r, &f);
+
+	int ok = f.n > 0 && !strcmp(f.cand[0], top) && !strcmp(f.via, via) &&
+		 !strcmp(f.other_prefix, other ? other : "");
+	for (int i = 0; ok && absent && i < f.n; i++)
+		ok = strcmp(f.cand[i], absent) != 0;
+	st_checks++;
+	if (!ok) {
+		st_failed++;
+		printf("  NOT OK: %s (via %s, %d candidates, newest %s, other %s)\n",
+		       what, f.via[0] ? f.via : "-", f.n, f.n ? f.cand[0] : "-",
+		       f.other_prefix[0] ? f.other_prefix : "-");
+	}
+	free(f.cand);
+}
+
+static void st_recipe(PuRecipe *r, const char *version, const char *url)
+{
+	memset(r, 0, sizeof(*r));
+	kb_strlcpy(r->name, "selftest", sizeof(r->name));
+	kb_strlcpy(r->version, version, sizeof(r->version));
+	kb_strlcpy(r->source, url, sizeof(r->source));
+	kb_strlcpy(r->first_source, url, sizeof(r->first_source));
+}
+
+static void st_found(const char *what, const char *version, const char *url,
+		     const char *devseries, const char *via, const char *top,
+		     const char *absent)
+{
+	st_found_in(what, version, url, "", devseries, via, top, absent, NULL);
+}
+
+static void selftest_adapters(void)
+{
+	st_found("PyPI, from a hashed file URL", "4.0.2",
+		 "https://files.pythonhosted.org/packages/46/ef/0f1e/flit_core-4.0.2.tar.gz",
+		 "", "registry", "4.1.0", NULL);
+	st_found("PyPI, from a packages/source URL", "4.0.2",
+		 "https://files.pythonhosted.org/packages/source/f/flit_core/flit_core-4.0.2.tar.gz",
+		 "", "registry", "4.1.0", NULL);
+	st_found("crates.io", "1.0.10",
+		 "https://static.crates.io/crates/itoa/itoa-1.0.10.crate",
+		 "", "registry", "1.0.18", NULL);
+	st_found("MetaCPAN", "5.34",
+		 "https://cpan.metacpan.org/authors/id/O/OA/OALDERS/URI-5.34.tar.gz",
+		 "", "registry", "5.37", NULL);
+	st_found("SourceForge's file feed", "3.100",
+		 "https://downloads.sourceforge.net/lame/lame-3.100.tar.gz",
+		 "", "sourceforge", "4.0", NULL);
+	st_found("cgit snapshot, tags from git", "1.7.0",
+		 "https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/dtc-1.7.0.tar.gz",
+		 "", "forge", "1.8.1", NULL);
+	st_found("GitHub release asset under a tag prefix", "3.18.2",
+		 "https://github.com/libfuse/libfuse/releases/download/fuse-3.18.2/fuse-3.18.2.tar.gz",
+		 "", "forge", "3.18.3", NULL);
+	st_found("raw.githubusercontent is GitHub", "2025.01",
+		 "https://raw.githubusercontent.com/hugsy/gef/2025.01/gef.py",
+		 "", "forge", "2026.01", NULL);
+	st_found("GitLab's API when git has no answer", "1.24.0",
+		 "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.24.0/downloads/wayland-1.24.0.tar.xz",
+		 "", "forge", "1.26.0", "1.25.91");
+	st_found("a version-named directory's siblings", "15.2.0",
+		 "https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz",
+		 "", "directory", "16.2.0", NULL);
+	st_found("a series directory's newer siblings", "4.2.1",
+		 "https://cmake.org/files/v4.2/cmake-4.2.1.tar.gz",
+		 "", "directory", "4.4.3", "4.4.0-rc3");
+	st_found("a directory every suckless tool shares", "2.0",
+		 "https://dl.suckless.org/tools/ii-2.0.tar.gz",
+		 "", "directory", "2.0", NULL);
+	st_found("a release candidate beside its release", "1.25",
+		 "https://download.savannah.gnu.org/releases/lzip/lzip-1.25.tar.gz",
+		 "", "directory", "1.26", "1.26-rc1");
+	st_found("GStreamer's odd-minor development series", "1.28.0",
+		 "https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-1.28.0.tar.xz",
+		 "", "directory", "1.28.7", "1.29.2");
+	st_found("a typo tag on an older release's commit", "2.5.12",
+		 "https://github.com/intel/thermal_daemon/archive/refs/tags/v2.5.12.tar.gz",
+		 "", "forge", "2.5.13", "2.15.10");
+	st_found("a release tagged on the previous one's commit", "0.45",
+		 "https://github.com/YosysHQ/sby/archive/refs/tags/yosys-0.45.tar.gz",
+		 "", "forge", "0.47", NULL);
+	st_found_in("newer tags under another prefix", "0.47",
+		    "https://github.com/YosysHQ/sby/archive/refs/tags/yosys-0.47.tar.gz",
+		    "", "", "forge", "0.47", NULL, "0.69");
+	st_found("a series tag on its newest release's commit", "0.5.2",
+		 "https://github.com/corrosion-rs/corrosion/archive/refs/tags/v0.5.2.tar.gz",
+		 "", "forge", "0.6.1", NULL);
+	st_found_in("another module's tags in the same repository", "0.23.0",
+		    "https://github.com/golang/tools/archive/refs/tags/gopls/v0.23.0.tar.gz",
+		    "", "", "forge", "0.23.0", NULL, NULL);
+	st_found_in("a download page linked from the homepage", "1.3.1",
+		    "https://www.netfilter.org/pub/libnftnl/libnftnl-1.3.1.tar.xz",
+		    "https://netfilter.org/projects/libnftnl/downloads.html",
+		    "", "homepage", "1.3.2", NULL, NULL);
+
+	st_found("a meta refresh to the page that lists, a date in groups", "20251202",
+		 "https://curl.se/ca/cacert-2025-12-02.pem", "", "directory",
+		 "20260813", NULL);
+	st_found("an iframe standing in for the listing", "3.6.7",
+		 "https://www.nethack.org/download/3.6.7/nethack-367-src.tgz",
+		 "", "directory", "5.0.0", NULL);
+	st_found("a download page one hop from the directory's parent", "1.4",
+		 "https://www.intra2net.com/en/developer/libftdi/download/libftdi1-1.4.tar.bz2",
+		 "", "directory", "1.5", NULL);
+	st_found("a download page linking back with ../", "1.8.33",
+		 "https://marlam.de/msmtp/releases/msmtp-1.8.33.tar.xz",
+		 "", "directory", "1.8.34", NULL);
+	st_found("a page that links only its current release", "4.2.1",
+		 "https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.xz",
+		 "", "directory", "4.2.2", NULL);
+	st_found("an S3 bucket lists under ?prefix=", "0.18",
+		 "https://s3.amazonaws.com/json-c_releases/releases/json-c-0.18.tar.gz",
+		 "", "directory", "0.19", NULL);
+	st_found("Bitbucket is a git forge", "4.1",
+		 "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.1.tar.gz",
+		 "", "forge", "4.2", NULL);
+	st_found("a page whose links lead elsewhere is no listing", "0.50.2",
+		 "http://launchpad.net/intltool/trunk/0.50.2/+download/intltool-0.50.2.tar.gz",
+		 "", "directory", "0.51.0", "14.09");
+	st_found("a patch beside a release is no version", "1.8.1.2",
+		 "http://www.dest-unreach.org/socat/download/socat-1.8.1.2.tar.gz",
+		 "", "directory", "1.8.1.3", "1.8.1.3.patch");
+	st_found("a Windows build beside a release is no version", "3.8.12",
+		 "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.12.tar.xz",
+		 "", "directory", "3.8.13", "3.8.13-w64");
+
+	PuRecipe x;
+	PuFound xf = { 0 };
+	xf.cand = kb_calloc(PU_MATCH_MAX, PU_MAX_VER);
+
+	/* A link in the page chrome is no sibling directory: the frameworks
+	 * index's footer names linkedin.com/company/29561/. */
+	st_recipe(&x, "6.29.0",
+		  "https://download.kde.org/stable/frameworks/6.29/extra-cmake-modules-6.29.0.tar.xz");
+	pu_discover(&x, &xf);
+	st_ok(xf.n && !strcmp(xf.cand[0], "6.30.0") && !xf.truncated,
+	      "an off-listing href is not read as a later series");
+
+	st_recipe(&x, "0.5.2",
+		  "https://github.com/corrosion-rs/corrosion/archive/refs/tags/v0.5.2.tar.gz");
+	kb_strlcpy(x.series, "0.5", sizeof(x.series));
+	pu_discover(&x, &xf);
+	st_ok(xf.n && !strcmp(xf.cand[0], "0.5.2") && !strcmp(xf.outside, "0.6.1"),
+	      "a series key holds the line, and remembers what is past it");
+
+	/* A tag past the newest GitHub release may be an engineering drop
+	 * (intel) or a release whose release object is late (bindgen): it
+	 * stays a candidate, marked, never dropped into a current. */
+	st_recipe(&x, "26.2.3",
+		  "https://github.com/intel/media-driver/archive/refs/tags/intel-media-26.2.3.tar.gz");
+	pu_discover(&x, &xf);
+	st_ok(xf.n && !strcmp(xf.cand[0], "26.3.5") &&
+	      !strcmp(xf.unreleased, "26.3.5") && xf.low_confidence,
+	      "a tag GitHub has no release for stays, marked low confidence");
+	st_recipe(&x, "0.72.1",
+		  "https://github.com/rust-lang/rust-bindgen/archive/refs/tags/v0.72.1.tar.gz");
+	pu_discover(&x, &xf);
+	st_ok(xf.n && !strcmp(xf.cand[0], "0.73.2") &&
+	      !strcmp(xf.unreleased, "0.73.2") && xf.low_confidence,
+	      "a release whose GitHub release is late is still a candidate");
+	st_recipe(&x, "0.71.1",
+		  "https://github.com/rust-lang/rust-bindgen/archive/refs/tags/v0.71.1.tar.gz");
+	pu_discover(&x, &xf);
+	st_ok(xf.n && !strcmp(xf.cand[0], "0.73.2") && xf.low_confidence,
+	      "and so is one past a released one");
+
+	/* A SourceForge feed that ends at the pin is not proof of current:
+	 * the project may have left, and SourceForge or repology says so. */
+	PuResult xr;
+	st_recipe(&x, "3.0.18",
+		  "http://downloads.sourceforge.net/gnu-efi/gnu-efi-3.0.18.tar.bz2");
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_UNKNOWN && strstr(xr.reason, "4.0.4 is tagged at") &&
+	      strstr(xr.reason, "github.com/ncroxon/gnu-efi"),
+	      "a SourceForge project moved to later tags is unknown at its last file");
+	st_recipe(&x, "23.7",
+		  "https://sourceforge.net/projects/psmisc/files/psmisc/psmisc-23.7.tar.xz");
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_CURRENT,
+	      "and one whose new repository tags nothing past the pin is current");
+	st_recipe(&x, "7.5",
+		  "https://downloads.sourceforge.net/smartmontools/smartmontools-7.5.tar.gz");
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_CURRENT,
+	      "and so is one whose tags spell the version with underscores");
+	st_recipe(&x, "0.15.1b",
+		  "https://downloads.sourceforge.net/mad/libid3tag-0.15.1b.tar.gz");
+	kb_strlcpy(x.name, "libid3tag", sizeof(x.name));
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_UNKNOWN && strstr(xr.reason, "repology names 0.16.3"),
+	      "and so is one whose feed ends where repology knows later");
+	st_recipe(&x, "4.0", "https://downloads.sourceforge.net/lame/lame-4.0.tar.gz");
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_CURRENT,
+	      "an active project whose feed ends at the pin is current");
+
+	/* A release tagged on GitHub whose tarball upstream uploads only to
+	 * its own site: the homepage's download page links it. */
+	st_recipe(&x, "1.18.2",
+		  "https://github.com/hpjansson/chafa/releases/download/1.18.2/chafa-1.18.2.tar.xz");
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_UNKNOWN && !xr.url[0] &&
+	      strstr(xr.reason, "none at the recipe's URL (newest 1.18.3)"),
+	      "a tag whose file is at no candidate URL is unknown");
+	kb_strlcpy(x.homepage, "https://hpjansson.org/chafa/", sizeof(x.homepage));
+	pu_check("/nonexistent/kpkg", &x, &xr);
+	st_ok(xr.state == PU_UNKNOWN &&
+	      !strcmp(xr.url, "https://hpjansson.org/chafa/releases/chafa-1.18.3.tar.xz") &&
+	      !strcmp(xr.reason, "newest 1.18.3 is at hpjansson.org, not at the recipe's URL"),
+	      "and names upstream's own copy when its homepage links one");
+
+	st_recipe(&x, "4.9.3",
+		  "https://downloads.unidata.ucar.edu/netcdf-c/4.9.3/netcdf-c-4.9.3.tar.gz");
+	kb_strlcpy(x.watch, "https://downloads.unidata.ucar.edu/netcdf-c/release_info.json",
+		   sizeof(x.watch));
+	pu_discover(&x, &xf);
+	st_ok(xf.n && !strcmp(xf.cand[0], "4.10.1") && !strcmp(xf.via, "watch"),
+	      "a watch key names the release list");
+
+	st_recipe(&x, "0.24",
+		  "https://github.com/newsboat/stfl/archive/bbb2404580e845df2556560112c8aefa27494d66.tar.gz");
+	pu_discover(&x, &xf);
+	st_ok(!xf.n && xf.pinned && !strcmp(xf.head, "master"),
+	      "a pinned commit at a branch tip is found there");
+	st_recipe(&x, "0.23",
+		  "https://github.com/newsboat/stfl/archive/0123456789abcdef0123456789abcdef01234567.tar.gz");
+	pu_discover(&x, &xf);
+	st_ok(!xf.n && xf.pinned && !xf.head[0],
+	      "and one no branch has moved past is not");
+	free(xf.cand);
+
+	/* files/v4.3/ was never recorded: a later series than the pin's that
+	 * could not be listed leaves the walk incomplete. */
+	PuRecipe cm;
+	memset(&cm, 0, sizeof(cm));
+	kb_strlcpy(cm.name, "selftest", sizeof(cm.name));
+	kb_strlcpy(cm.version, "4.2.1", sizeof(cm.version));
+	kb_strlcpy(cm.first_source, "https://cmake.org/files/v4.2/cmake-4.2.1.tar.gz",
+		   sizeof(cm.first_source));
+	PuFound cf = { 0 };
+	cf.cand = kb_calloc(PU_MATCH_MAX, PU_MAX_VER);
+	pu_discover(&cm, &cf);
+	st_ok(cf.truncated, "an unread later series marks the walk incomplete");
+	free(cf.cand);
+
+	st_ok(pu_http_verdict(18, 200) == 0,
+	      "a 200 whose body was cut is no answer");
+	st_ok(pu_http_verdict(7, 301) == 0,
+	      "a redirect whose next hop failed is no answer");
+	st_ok(pu_http_verdict(28, 404) == 404, "a 404 is an answer however it ended");
+	st_ok(pu_http_verdict(0, 200) == 200, "a whole 200 is one");
+}
+
 static int run_selftest(void)
 {
 	printf("kdos-portup --selftest\n");
@@ -1308,6 +1916,8 @@ static int run_selftest(void)
 	selftest_grouping();
 	selftest_cache();
 	selftest_rehash();
+	selftest_match();
+	selftest_adapters();
 	printf("\n%d checks, %d failed\n", st_checks, st_failed);
 	return st_failed ? 1 : 0;
 }
@@ -1326,6 +1936,7 @@ int main(int argc, char **argv)
 	kb_set_progname("kdos-portup");
 
 	Opts o = {0};
+	o.jobs = JOBS_DEFAULT;
 	char *want[MAX_PORTS];
 	int nwant = 0;
 	int selftest = 0;
@@ -1344,6 +1955,13 @@ int main(int argc, char **argv)
 			o.cve = 1;
 		else if (!strcmp(a, "--selftest"))
 			selftest = 1;
+		else if (!strcmp(a, "--jobs")) {
+			if (i + 1 >= argc)
+				kb_die("--jobs needs a number");
+			o.jobs = atoi(argv[++i]);
+			if (o.jobs < 1 || o.jobs > JOBS_MAX)
+				kb_die("--jobs takes 1 to %d", JOBS_MAX);
+		}
 		else if (!strcmp(a, "--fixture")) {
 			if (i + 1 >= argc)
 				kb_die("--fixture needs a directory");
@@ -1355,14 +1973,29 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* git asks for credentials when a repository has moved or gone
+	 * private, on the terminal or through whatever helper the desktop
+	 * set. A batch check must hear "no" instead. */
+	setenv("GIT_TERMINAL_PROMPT", "0", 1);
+	unsetenv("GIT_ASKPASS");
+	unsetenv("SSH_ASKPASS");
+
+	char repo_root[1024];
+	find_repo_root(repo_root, sizeof(repo_root));
+
+	/* --selftest replays the recorded corpus whether or not --fixture
+	 * names it: its adapter checks are meaningless against the network. */
+	char fixture_default[1200];
+	if (selftest && !o.fixture) {
+		snprintf(fixture_default, sizeof(fixture_default),
+			 "%s/testing/fixtures/portup", repo_root);
+		o.fixture = fixture_default;
+	}
 	if (o.fixture)
 		pu_http_set_fixture_dir(o.fixture);
 
 	if (selftest)
 		return run_selftest();
-
-	char repo_root[1024];
-	find_repo_root(repo_root, sizeof(repo_root));
 
 	char kpkg_bin[1664];
 	ensure_kpkg_bin(repo_root, kpkg_bin, sizeof(kpkg_bin));
@@ -1374,6 +2007,16 @@ int main(int argc, char **argv)
 	char port_repo[4096];
 	snprintf(port_repo, sizeof(port_repo), "%s/ports/core %s/src/packages",
 		 repo_root, repo_root);
+	/* A fixture corpus carries the recipes its responses were recorded
+	 * against. Replaying it against the live tree's recipes would stop
+	 * reproducing anything the moment one of them is bumped. */
+	char fixture_ports[1200];
+	if (o.fixture) {
+		snprintf(fixture_ports, sizeof(fixture_ports), "%s/ports",
+			 o.fixture);
+		if (kb_is_dir(fixture_ports))
+			kb_strlcpy(port_repo, fixture_ports, sizeof(port_repo));
+	}
 	setenv("PORT_REPO", port_repo, 1);
 
 	KpConf conf;
@@ -1405,7 +2048,7 @@ int main(int argc, char **argv)
 	g_entries = kb_calloc(MAX_PORTS, sizeof(*g_entries));
 	int any_newer = 0;
 	g_nentries = discover(&conf, kpkg_bin, names, nnames, cache, o.refresh,
-			      &any_newer);
+			      o.jobs, &any_newer);
 
 
 	if (!o.fixture)

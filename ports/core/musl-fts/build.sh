@@ -19,3 +19,4 @@ sed -i '/pkgconfig_DATA/i pkgconfigdir = $(libdir)/pkgconfig' Makefile.am
 
 make
 make DESTDIR=$PKG install
+install -Dm644 fts.3 -t $PKG/usr/share/man/man3

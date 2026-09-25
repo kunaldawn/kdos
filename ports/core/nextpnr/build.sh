@@ -18,8 +18,20 @@
 # -DBUILD_GUI=OFF is the hard rule: nextpnr's viewer is Qt, and the 3rdparty
 # QtPropertyBrowser tree in the tarball exists only for it.
 #
-# -DBUILD_PYTHON=OFF drops the boost::python bindings; boost is still needed
-# for filesystem and program_options, which the CLI itself uses.
+# -DBUILD_PYTHON=ON embeds Python for --pre-pack, --post-route and --run
+# scripts, bound through pybind11. find_package(pybind11 CONFIG) finds nothing
+# on the default search path, because the python3-pybind11 wheel keeps its
+# CMake package inside site-packages, and a miss falls back to the copy in
+# 3rdparty/ without a word. pybind11_DIR names the system copy.
+#
+# -DUSE_OPENMP=ON parallelises the analytic placer through gcc's libgomp.
+#
+# machxo2 reads the same prjtrellis database ecp5 does, and compiles a chip
+# database per device named in MACHXO2_DEVICES and no other: 1200 is the
+# LCMXO2-1200 and 6900 the LCMXO3-6900, upstream's default pair. A design for
+# any other MachXO2 or MachXO3 part finds no chipdb and stops. nexus, mistral
+# and himbaechel are left out of ARCH: their databases come from prjoxide, the
+# mistral source tree and apicula, none of them ports.
 mkdir -p build && cd build
 # CMP0167=NEW makes find_package(Boost) use BOOSTCONFIG.CMAKE rather than
 # CMake's own legacy FindBoost module. The module looks for a `libboost_system`
@@ -33,11 +45,14 @@ cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DARCH="ice40;ecp5;generic" \
+	-DARCH="ice40;ecp5;machxo2;generic" \
+	-DMACHXO2_DEVICES="1200;6900" \
 	-DBUILD_GUI=OFF \
-	-DBUILD_PYTHON=OFF \
+	-DBUILD_PYTHON=ON \
+	-Dpybind11_DIR="$(python3 -m pybind11 --cmakedir)" \
+	-DBUILD_RUST=OFF \
 	-DBUILD_TESTS=OFF \
-	-DUSE_OPENMP=OFF \
+	-DUSE_OPENMP=ON \
 	-DICESTORM_INSTALL_PREFIX=/usr \
 	-DTRELLIS_INSTALL_PREFIX=/usr
 ninja

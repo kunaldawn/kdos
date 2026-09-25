@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zopfli
+version     = 1.0.3
+release     = 1
+source      = https://github.com/google/zopfli/archive/$name-$version.tar.gz
+sha256      = e955a7739f71af37ef3349c4fa141c648e8775bceb2195be07e86f8e638814bd  zopfli-1.0.3.tar.gz
+description = Deflate compressor that trades time for size, with zopflipng for PNG files
+homepage    = https://github.com/google/zopfli
+depends     = cmake

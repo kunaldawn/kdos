@@ -20,8 +20,17 @@
 # yet and fails a long way in.
 #
 # Every runtime gcc would normally add is off: libssp, libgomp, libquadmath,
-# libatomic and shared libgcc all assume a hosted target. On a Cortex-M there
-# is no OS to host them.
+# libatomic and shared libgcc all assume a hosted target. On a bare-metal RISC-V
+# core there is no OS to host them.
+#
+# zstd is declared and pinned (LTO bytecode compression); no port provides
+# isl, so Graphite is pinned off rather than left to the probe.
+#
+# MULTILIB IS WHAT MAKES THE MCUS WORK. The default set (riscv/t-elf-multilib)
+# builds libgcc for rv32i, rv32im, rv32iac, rv32imac, rv32imafc, rv64imac and
+# rv64imafdc beside the rv64gc/lp64d default, and picolibc builds one variant
+# per entry gcc reports. Without it only rv64gc links, and the rv32 parts —
+# nearly every RISC-V microcontroller — have no libgcc at all.
 mkdir -p build && cd build
 ../configure \
 	--target=riscv64-unknown-elf \
@@ -41,9 +50,13 @@ mkdir -p build && cd build
 	--disable-libstdcxx-pch \
 	--disable-decimal-float \
 	--with-gnu-as --with-gnu-ld \
-	--disable-multilib --with-abi=lp64d --with-arch=rv64gc \
-	--with-pkgversion="KDOS"
+	--with-zstd=/usr \
+	--without-isl \
+	--enable-multilib --with-abi=lp64d --with-arch=rv64gc \
+	--with-pkgversion="KDOS" \
+	CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 make all-gcc all-target-libgcc
 make DESTDIR=$PKG install-gcc install-target-libgcc
-# The host gcc's own documentation, installed a second time under a cross name.
-rm -rf "$PKG/usr/share/info" "$PKG/usr/share/man" "$PKG/usr/share/locale"
+# The info manuals and the man7 licence pages carry the host gcc's own names
+# and would collide with it; the man1 pages carry the target prefix and stay.
+rm -rf "$PKG/usr/share/info" "$PKG/usr/share/man/man7" "$PKG/usr/share/locale"

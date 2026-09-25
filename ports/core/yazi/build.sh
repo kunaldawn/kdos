@@ -18,11 +18,18 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # only an emulator this image ships; without it the session's own terminal is
 # used, which is lighter.
 
-# DO NOT DISABLE THE IMAGE PREVIEW. foot supports sixel, which is the shipped
-# terminal on this desktop, so yazi's previewer draws real thumbnails in a
-# window that is otherwise a character grid — the one place on this system
-# where a picture beats a filename, and the reason to have this beside mc and
-# kdos-pick rather than instead of them.
+# DO NOT DISABLE THE IMAGE PREVIEW. In kdos-term yazi's previewer draws real
+# thumbnails in a window that is otherwise a character grid — the one place on
+# this system where a picture beats a filename, and the reason to have this
+# beside mc and kdos-pick rather than instead of them.
+#
+# THE PREVIEWERS ARE OTHER PROGRAMS, which is why `depends` names them: yazi
+# execs file(1) for mime types, ffmpeg for video, pdftoppm (poppler) for PDF,
+# resvg for SVG, magick for the rest, jq for JSON, fd/rg/fzf/zoxide for search
+# and jump, and chafa where the terminal has no image protocol. A missing one
+# is a blank preview, not an error. The archive previewer and extractor exec
+# 7zz or 7z, which no port provides, so an archive previews as that error.
+
 # VERGEN_GIT_SHA IS SUPPLIED BECAUSE A TARBALL IS NOT A REPOSITORY. yazi's
 # build script uses vergen to stamp the binary with the commit it came from,
 # and with no .git present the crate emits nothing while the source still reads
@@ -33,9 +40,19 @@ export VERGEN_GIT_SHA="$version"
 export VERGEN_IDEMPOTENT=1
 
 export YAZI_GEN_COMPLETIONS=1
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 install -Dm755 target/release/yazi $PKG/usr/bin/yazi
 install -Dm755 target/release/ya   $PKG/usr/bin/ya
+
+# YAZI_GEN_COMPLETIONS makes each crate's build script write its completions
+# into that crate's own completions/ directory.
+for b in yazi-boot/completions/yazi yazi-cli/completions/ya; do
+	n=${b##*/}
+	install -Dm644 "$b.bash" "$PKG/usr/share/bash-completion/completions/$n"
+	install -Dm644 "${b%/*}/_$n" "$PKG/usr/share/zsh/site-functions/_$n"
+	install -Dm644 "$b.fish" "$PKG/usr/share/fish/vendor_completions.d/$n.fish"
+done
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/yazi.desktop" <<'EOF'

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = mafft
-version     = 7.525
+version     = 7.526
 release     = 1
-source      = mafft-7.525.tar.gz::https://mafft.cbrc.jp/alignment/software/mafft-7.525-without-extensions-src.tgz
-sha256      = edb34ae9b26d6b55328c18fa060ed741bca8cd599c2f4f8fad0e0871c8082265  mafft-7.525.tar.gz
+source      = $name-$version.tar.gz::https://gitlab.com/sysimm/mafft/-/archive/v$version/mafft-v$version.tar.gz
+sha256      = 2d81ba74ad6181df3c662b882f529734f3eb78af9b205d6840ca345612bf6410  mafft-7.526.tar.gz
 description = Multiple sequence alignment that scales past a handful of sequences
 homepage    = https://mafft.cbrc.jp/alignment/software/
 depends     = 

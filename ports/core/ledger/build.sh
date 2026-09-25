@@ -15,8 +15,26 @@
 # a machine meant to outlive its software — the data survives the tool, which
 # is not true of any accounting application with a database.
 #
-# --disable-python drops the boost::python binding; boost is still needed for
+# USE_PYTHON=OFF drops the boost::python binding; boost is still needed for
 # regex, filesystem and date_time, which the parser itself uses.
+#
+# THE LINE EDITOR IS PROBED, NOT AN OPTION, so the generated system.hh is
+# checked: CMakeLists takes libedit when it finds it and readline otherwise,
+# and the REPL a bare `ledger` opens would follow build order.
+#
+# BOOST_REGEX_UNICODE_RUNS IS SET, NOT PROBED. The probe that decides whether
+# ledger uses Boost.Regex's ICU side assigns a narrow string literal to a
+# std::basic_string<uint32_t>, which GCC 15 refuses to compile, so it reports
+# no and case-folded matching of non-ASCII account and payee names falls back
+# to bytes. Boost here is built with ICU; with the result set, `bal активы`
+# matches `Активы:Банк`, and a missing ICU fails the link instead.
+#
+# USE_GPGME reads a journal that gpg encrypted, through gpgmepp.
+#
+# BUILD_DOCS IS THE INFO MANUAL, and `ninja doc` has to run before the install:
+# the target is not in ALL, and the install rule names the .info file whether
+# or not it was built. BUILD_WEB_DOCS stays off.
+
 # THE UNIT TESTS DO NOT INHERIT THE VENDORED utfcpp INCLUDE. ledger carries
 # utfcpp in lib/utfcpp/v4/source and declares it PRIVATE on libledger, while
 # test/unit only adds src/ and links the library — so every test translation
@@ -31,11 +49,16 @@ cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
-	-DBUILD_DOCS=OFF \
+	-DBUILD_DOCS=ON \
 	-DBUILD_WEB_DOCS=OFF \
 	-DUSE_PYTHON=OFF \
-	-DBUILD_LIBRARY=ON
+	-DUSE_GPGME=ON \
+	-DBUILD_LIBRARY=ON \
+	-DBOOST_REGEX_UNICODE_RUNS=1
+grep -q '^#define HAVE_EDIT 1' system.hh \
+	|| { echo "ledger: libedit missing" >&2; exit 1; }
 ninja
+ninja doc
 DESTDIR=$PKG ninja install
 
 install -d "$PKG/usr/share/applications"

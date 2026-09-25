@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = partclone
-version     = 0.3.48
+version     = 0.3.50
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/Thomas-Tsai/partclone/archive/refs/tags/$version.tar.gz
-sha256      = af4f1c93fb2401eb617f1eafc13f115d7f583f6851a8195728d17b520fec7685  partclone-0.3.48.tar.gz
+sha256      = ba66e6c7b46da3339bc7369ca90d647383660f8e74874a82dd8034a39193876e  partclone-0.3.50.tar.gz
 description = Filesystem-aware imaging — copies the used blocks and skips the rest
 homepage    = https://partclone.org/
-depends     = autoconf automake libtool pkgconf e2fsprogs util-linux
+depends     = autoconf automake libtool pkgconf e2fsprogs util-linux liburcu xxhash libxslt docbook-xsl openssl zlib zstd ntfs-3g ncurses fuse

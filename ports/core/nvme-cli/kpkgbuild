@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = nvme-cli
-version     = 2.16
+version     = 3.1
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/linux-nvme/nvme-cli/archive/refs/tags/v$version.tar.gz
-sha256      = 989682ed7b250a2c7a8127e362ffc5d29f5c370127abe405be09c73216da2b97  nvme-cli-2.16.tar.gz
+sha256      = 8a6879f1f2af53743c03a8f77f247261306300d3f3b0edfd242c5f646bdfdccb  nvme-cli-3.1.tar.gz
 description = Is the NVMe dying — the drive's own log pages and self-tests
 homepage    = https://github.com/linux-nvme/nvme-cli
-depends     = meson ninja pkgconf libnvme json-c
+depends     = meson ninja pkgconf json-c openssl keyutils kmod

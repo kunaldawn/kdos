@@ -9,10 +9,13 @@
 # ---------------------------------
 
 name        = nethack
-version     = 3.6.7
+version     = 5.0.0
 release     = 1
-source      = $name-$version.tar.gz::https://www.nethack.org/download/$version/nethack-367-src.tgz
-sha256      = 98cf67df6debf9668a61745aa84c09bcab362e5d33f5b944ec5155d44d2aacb2  nethack-3.6.7.tar.gz
+_luaver     = 5.4.8
+source      = $name-$version.tar.gz::https://www.nethack.org/download/$version/nethack-${version//./}-src.tgz
+source      = https://www.lua.org/ftp/lua-$_luaver.tar.gz
+sha256      = 2959b7886aac76185b90aea0c9f80d14343f604de0ae96b3dd2a760f7ab3bde9  nethack-5.0.0.tar.gz
+sha256      = 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae  lua-5.4.8.tar.gz
 description = The dungeon of Doom, in characters — every save under the player's own home
 homepage    = https://www.nethack.org/
 depends     = ncurses zlib

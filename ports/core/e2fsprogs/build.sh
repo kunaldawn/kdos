@@ -19,7 +19,12 @@ cd build
              --disable-libblkid      \
              --disable-libuuid       \
              --disable-uuidd         \
-             --disable-fsck
+             --disable-fsck          \
+             --enable-fuse2fs        \
+             --with-libarchive       \
+             --with-udev-rules-dir=/lib/udev/rules.d \
+             --without-crond-dir     \
+             --without-systemd-unit-dir
 make
 make DESTDIR=$PKG install
 make DESTDIR=$PKG install-libs

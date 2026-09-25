@@ -23,7 +23,7 @@ KDOS is a single-user workstation. One human account ships, that account is in
 
 ## setuid binaries
 
-The shipped system carries twenty setuid-root binaries. Exactly two are
+The shipped system carries nineteen setuid-root binaries. Exactly two are
 KDOS's own.
 
 | Binary | Origin | For |
@@ -32,13 +32,13 @@ KDOS's own.
 | `kdos-resctl` | **KDOS** | Signalling and renicing a process from the resource monitor |
 | `sudo` | sudo | Running as another user |
 | `su` | shadow | Switching to another account — util-linux's is disabled with `--disable-su` |
-| `passwd`, `chage`, `expiry`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
+| `passwd`, `chage`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
 | `pkexec`, `polkit-agent-helper-1` | polkit | Authorised privileged actions |
 | `ssh-keysign` | OpenSSH | Host-based authentication |
 | `dbus-daemon-launch-helper` | dbus | System bus activation |
 | `mount.nfs` | nfs-utils | Mounting an NFS share named in `fstab` as an ordinary user |
 | `unix_chkpwd` | pam | How `pam_unix` reads the 0600 shadow file for a caller that is not root — without it every unprivileged PAM check, `wayvnc`'s included, is refused |
-| `fusermount3` | libfuse | Mounting a userspace filesystem from a session with no user namespace — sshfs, gocryptfs, fuse-overlayfs and the document portal |
+| `fusermount3` | libfuse | Mounting a userspace filesystem from a session with no user namespace — sshfs, gocryptfs, fuse-overlayfs, the document portal, `rclone mount`, and `restic mount` through the `fusermount` link beside it |
 | `newuidmap`, `newgidmap` | shadow | **Rootless containers** |
 
 The last two are why every application on the machine works. The container
@@ -142,6 +142,32 @@ kdos-resctl renice <pid> <-20..19>
 - It is never on the sampling path. A setuid fork once a second would be an
   attack surface with a schedule.
 
+## System accounts
+
+Every daemon that drops privilege drops to an account of its own, and none of
+them can log in: each has `/sbin/nologin` for a shell and `!` for a password.
+The image ships these in `/etc/passwd`, `/etc/group` and `/etc/shadow`:
+
+| Account | uid:gid | Used by |
+|---|---|---|
+| `dhcpcd` | 999:999 | `dhcpcd`'s privilege-separated children |
+| `messagebus` | 997:997 | `dbus-daemon`, the system bus |
+| `sshd` | 996:996 | `sshd`'s privilege separation |
+| `tss` | 993:993 | The TPM: tpm2-tss's udev rules give `/dev/tpm*` to the user and `/dev/tpmrm*` to the group |
+| `lp` | 10:10 | CUPS |
+| `nobody` | 99:99 | Anything that asks for an unprivileged account by that name |
+
+`polkitd`, `avahi`, `nm-openvpn`, `pcscd`, `prosody` and `tcpdump` are made by their ports'
+`postinstall.sh` with `groupadd -r` and `useradd -r`, which pick a free id.
+Every id a shipped account uses therefore has a line of its own in both files:
+a primary gid with no `/etc/group` line looks free to `groupadd -r`, which
+would hand it to another daemon's group. A group a udev rule names has to exist
+too, because eudev logs `specified group '<x>' unknown`, carries on with gid 0, and
+grants nothing.
+
+The desktop account is not in `tss`, so the TPM is root's to use. The
+`tpm2_*` tools run under `sudo`, like any other administration.
+
 ## Root daemons
 
 Five daemons run as root and answer a socket in `/run`: `kdos-powerd`,
@@ -233,8 +259,9 @@ nothing to register as: with no session, an agent can only register a
 **unix-process** subject, and polkit finds that agent by an exact match on pid
 and start time, so a session-lifetime agent would never be found for a surface
 it did not itself spawn. `polkit-agent-helper-1` is on this machine and is
-setuid, so it could check a password — but nothing ever asks it to, because a
-flat refusal raises no challenge for an agent to answer.
+setuid, so it could check a password, through the same PAM `system-auth` stack
+`sudo` uses — but nothing ever asks it to, because a flat refusal raises no
+challenge for an agent to answer.
 
 The same reasoning reaches the other three consumers, and it is why none of
 them has a working privileged path here. Their actions are `auth_admin`, which
@@ -424,12 +451,20 @@ The rest of the signing design is in [Packaging](packaging.md).
 A third trust root, and it is not a keyring: `/etc/ssl/cert.pem`, the Mozilla CA
 bundle `ca-certificates` installs as one file. `/etc/ssl/certs/ca-certificates.crt`
 and `/etc/ssl/ca-bundle.crt` are symlinks to it, so a consumer configured against
-any of the three reads the same 144 certificates.
+any of the three reads the same 121 certificates.
+
+The bundle is built, not carried. The port pins `certdata.txt` at an NSS release
+tag — the port's version is that release — and converts it with curl's
+`mk-ca-bundle.pl` at a pinned curl release, the converter behind curl's own
+`cacert.pem`, with its defaults: the roots NSS trusts to issue server
+certificates. The converter also drops any root already expired when it runs,
+so a rebuild after a root's expiry ships one certificate fewer.
 
 | Consumer | Reaches the bundle through |
 |---|---|
 | OpenSSL, and everything linked against it | `--openssldir=/etc/ssl`, which finds `cert.pem` |
 | GnuTLS, and everything linked against it | p11-kit's trust module, built `-D trust_paths=/etc/ssl/cert.pem` |
+| Python code that asks `certifi.where()`, `requests` among it | `python3-certifi`, whose `certifi/cacert.pem` is a symlink to `/etc/ssl/cert.pem` |
 
 GnuTLS is configured `--with-default-trust-store-pkcs11="pkcs11:"`, so p11-kit is
 its only source of anchors. p11-kit gives a trust path that is a plain **file** —

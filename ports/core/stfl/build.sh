@@ -31,8 +31,11 @@ ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h
 export CFLAGS="-I$PWD/compat -D_XOPEN_SOURCE_EXTENDED"
 
 # libdir is joined to prefix by the Makefile, so it is a leaf and not a path.
-make
-make prefix=/usr libdir=lib DESTDIR=$PKG install
+#
+# Every binding is named off. FOUND_SWIG=0 drops perl, python and ruby, which
+# go through SWIG; SPL has its own probe.
+make FOUND_SWIG=0 FOUND_SPL=0
+make FOUND_SWIG=0 FOUND_SPL=0 prefix=/usr libdir=lib DESTDIR=$PKG install
 
 # The install target creates the LINKER name and not the SONAME. The library
 # is built -Wl,-soname,libstfl.so.0, so that is the name a program linked

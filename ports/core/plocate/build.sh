@@ -18,15 +18,14 @@
 tar xzf "$PORT_SRC/${name}-${version}.tar.gz"
 
 # musl declares `struct statx` in <sys/stat.h> and the kernel headers declare
-# it too, so io_uring_engine.h's unconditional <linux/stat.h> is a
-# redefinition in every file that reaches it. The include belongs inside the
-# io_uring guard it is there for.
+# it too, so io_uring_engine.h's <linux/stat.h> is a redefinition in every file
+# that reaches it. liburing.h already brings in <sys/stat.h>, so the kernel
+# header goes.
 patch -p1 -i "$PORT_SRC/musl-statx.patch"
 
-# liburing is `required: false` upstream and is not a port here, so the build
-# takes its own pread path. The index is read once per query on a machine with
-# an SSD; the io_uring path is a throughput win on spinning disks and costs a
-# port that nothing else on this image would use.
+# liburing is `required: false` upstream and has no option, so the `depends`
+# line is what turns the io_uring lookup path on; without liburing installed
+# the build silently takes its own pread path instead.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--localstatedir=/var \

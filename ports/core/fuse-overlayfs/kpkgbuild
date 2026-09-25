@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = fuse-overlayfs
-version     = 1.16
+version     = 1.18
 release     = 1
 source      = https://github.com/containers/fuse-overlayfs/archive/v$version.tar.gz
-sha256      = 45968517603389ead067222d234bc8d8ed33e4b4f8ba16216bdd3e6aedcccea9  fuse-overlayfs-1.16.tar.gz
+sha256      = fdd1896c8de35a15eb14444d7880be81d635fcbbc4ad162d8bc3ccf5627aa8c7  fuse-overlayfs-1.18.tar.gz
 description = An implementation of overlay+shiftfs in FUSE for rootless containers
 homepage    = https://github.com/containers/fuse-overlayfs
 depends     = fuse

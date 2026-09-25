@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = byobu
-version     = 6.13
+version     = 7.19
 release     = 1
 source      = https://github.com/dustinkirkland/$name/archive/refs/tags/$version.tar.gz
-sha256      = 9690c629588e8f95d16b2461950d39934faaf8005dd2a283886d4e3bd6c86df6  byobu-6.13.tar.gz
+sha256      = d246c57ba380b4fa680b783997ff189c51b9f4dd12edf4b719a1f2d84a2e1d2e  byobu-7.19.tar.gz
 description = Text-based window manager and terminal multiplexer
-depends     = tmux
+depends     = tmux newt python3

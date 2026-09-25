@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl has no <execinfo.h>. Upstream guards the include in two of the three
-# files that want it and forgets the third; the patch adds the guard configure
-# already computes.
-patch -p1 -i "$PORT_SRC/musl-execinfo.patch"
-
-# And the 2.2.7 release does not compile on any libc: four writes to a display
-# flag its own header records as removed outlived the removal, and no header
-# declares the name.
-patch -p1 -i "$PORT_SRC/dead-dpms-flag.patch"
-
 # The tarball is a git archive, so there is no configure yet.
 autoreconf -fi
 
@@ -35,6 +25,7 @@ autoreconf -fi
 	--disable-systemd \
 	--enable-drm \
 	--enable-udev \
+	--enable-dbus \
 	--disable-usb
 
 make

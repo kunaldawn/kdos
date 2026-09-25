@@ -16,4 +16,4 @@ source      = $name-$version.tar.gz::https://github.com/openwall/john/archive/re
 sha256      = 16bfecad0cddad146564abb76b6e6b28a71653670c2799d60ca4035db5f3b9c4  john-1.9.0.jumbo1.tar.gz
 description = Prove your own hashes are weak; recover your own encrypted archive
 homepage    = https://www.openwall.com/john/
-depends     = autoconf pkgconf openssl zlib bzip2 gmp libpcap
+depends     = autoconf pkgconf openssl zlib bzip2 gmp libpcap opencl-headers ocl-icd

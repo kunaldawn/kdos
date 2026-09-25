@@ -17,9 +17,14 @@
 #
 # Both ship: picocom is the small one that is always there and reads a dead
 # router's console; this is the one for an edit-compile-flash loop.
+#
+# The completion directory is named because meson otherwise installs the
+# completion only when it finds bash-completion's pkg-config file, which this
+# port does not depend on.
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
-	--buildtype=release
+	--buildtype=release \
+	-Dbashcompletiondir=/usr/share/bash-completion/completions
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

@@ -14,6 +14,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=0
 make build
 install -Dm755 micro $PKG/usr/bin/micro
+install -Dm644 assets/packaging/micro.1 $PKG/usr/share/man/man1/micro.1
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/micro.desktop" <<'EOF'

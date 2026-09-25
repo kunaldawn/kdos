@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/Yubico/libfido2/archive/
 sha256      = ace062d14a482ff9325410ff63d06c8b5fe87e79ebc18dda07add2bc0188c77f  libfido2-1.17.0.tar.gz
 description = FIDO2/U2F over USB and NFC — what an ed25519-sk SSH key talks to
 homepage    = https://developers.yubico.com/libfido2/
-depends     = cmake libcbor openssl zlib eudev
+depends     = cmake libcbor openssl zlib eudev pcsc-lite

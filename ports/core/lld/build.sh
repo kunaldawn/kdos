@@ -9,9 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
-
-cmake -B build -G Ninja \
+cmake -S lld -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
@@ -21,3 +19,4 @@ cmake -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+install -Dm644 lld/docs/ld.lld.1 -t "$PKG/usr/share/man/man1"

@@ -328,13 +328,26 @@ cat $PORT_SRC/kdos.config >> .config
 # Resolve any missing dependencies
 make olddefconfig
 
+# olddefconfig drops an option whose toolchain is missing without a word, and
+# everything that depends on it goes too. CONFIG_RUST (the QR-code panic
+# screen, the Rust binder) needs rustc, bindgen, libclang and the rust port's
+# rust-src library sources; CONFIG_DEBUG_INFO_BTF (bpftrace, sched_ext, CO-RE
+# BPF programs) needs pahole from dwarves. Stop here rather than build a
+# kernel without them.
+for opt in CONFIG_RUST CONFIG_DRM_PANIC_SCREEN_QR_CODE CONFIG_DEBUG_INFO_BTF CONFIG_DEBUG_INFO_BTF_MODULES; do
+	grep -qx "$opt=y" .config || { echo "ERROR: $opt was dropped by olddefconfig" >&2; exit 1; }
+done
+
 # Build kernel and modules
 # musl host-tool fix (kernel >=5.12): host progs (insn_sanity, etc.) compile the
 # kernel's own uapi swab.h, but musl lacks glibc's implicit __always_inline /
 # __attribute_const__ from sys/cdefs.h. Define them for host compiles to match
 # tools/include/linux/compiler.h.
 make HOSTCFLAGS="-D__attribute_const__= -D__always_inline=inline" bzImage modules
-make INSTALL_MOD_PATH=$PKG DEPMOD=/bin/true modules_install
+# INSTALL_MOD_STRIP=1 is --strip-debug: DEBUG_INFO=y, which BTF needs, would
+# otherwise leave full DWARF in every shipped module. The .BTF section is not a
+# debug section and survives, and kbuild signs each module after stripping it.
+make INSTALL_MOD_PATH=$PKG INSTALL_MOD_STRIP=1 DEPMOD=/bin/true modules_install
 
 # Remove build and source symlinks to prevent recursion and invalid paths
 rm -f "$PKG/lib/modules/$version/build"

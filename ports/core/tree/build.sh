@@ -10,4 +10,4 @@
 # ---------------------------------
 
 make
-make PREFIX=$PKG/usr MANDIR=$PKG/usr/share/man/man1 install
+make PREFIX=$PKG/usr MANDIR=$PKG/usr/share/man install

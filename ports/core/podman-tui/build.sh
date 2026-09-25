@@ -21,9 +21,11 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 #
 # containers_image_openpgp swaps the cgo gpgme binding for the pure-Go one, and
 # excluding the btrfs graph driver drops a cgo header dependency — both are
-# what keep CGO_ENABLED=0 achievable.
+# what keep CGO_ENABLED=0 achievable. `remote` compiles podman's bindings as an
+# API client only, leaving out the local-engine code a socket client never
+# runs.
 export CGO_ENABLED=0
-go build -mod=vendor -tags "containers_image_openpgp exclude_graphdriver_btrfs" \
+go build -mod=vendor -tags "remote containers_image_openpgp exclude_graphdriver_btrfs" \
 	-ldflags "-s -w" -o podman-tui
 install -Dm755 podman-tui $PKG/usr/bin/podman-tui
 

@@ -35,19 +35,14 @@
 # A login with no Wayland socket falls back to arboard's X11 path, and there is
 # no X server here — so a yank from a bare terminal has nowhere to go and the
 # terminal's own selection is the answer.
-# THE TRAIT SOLVER RUNS OUT OF DEPTH BEFORE THE CODE RUNS OUT OF SENSE.
-# matrix-sdk's sync path is async functions nested deep enough that proving the
-# future is `Send` exceeds rustc's default recursion limit of 128, and the
-# build stops with `E0275: overflow evaluating the requirement … Send`. The
-# limit is a CRATE ATTRIBUTE and there is no flag for it on a stable compiler —
-# `-Z recursion-limit` is nightly's — so this is one of the few places a patch
-# is the only road. rustc's own diagnostic names the fix.
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-patch -p1 -i $PORT_SRC/recursion-limit.patch
 
+export RUSTFLAGS="-C target-feature=-crt-static"
 cargo build --release --frozen --offline
 
 install -Dm755 target/release/iamb $PKG/usr/bin/iamb
+install -Dm644 docs/iamb.1 -t "$PKG/usr/share/man/man1"
+install -Dm644 docs/iamb.5 -t "$PKG/usr/share/man/man5"
 
 # Terminal=true and a bare Exec: the launcher supplies the emulator, which is
 # what keeps the entry free of one. No X-KDOS-Term: that key names

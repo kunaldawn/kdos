@@ -22,16 +22,20 @@
 # the day it is written, so pointing this at a curated set is a decision for
 # whoever runs it. `yara` with no rules matches nothing and says so.
 #
-# NO `magic` MODULE: it links libmagic and there is no file(1) port here — a
-# rule using `magic.type` would fail to compile at load time rather than at
-# build time, which is the wrong end to find out. cuckoo and dotnet are off for
-# the same shape of reason: both want data this machine has no source for.
+# THE `magic` MODULE IS FORCED ON: it links file(1)'s libmagic, and without it
+# a rule using `magic.type` fails at load time rather than at build time, which
+# is the wrong end to find out. --enable-magic makes a missing libmagic stop
+# configure. cuckoo stays off: it reads Cuckoo sandbox reports, which this
+# machine has no source for. dotnet parses the scanned file itself and needs
+# no library, so it stays on.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--disable-static \
 	--enable-macho \
 	--enable-dex \
+	--enable-magic \
+	--disable-cuckoo \
 	--with-crypto
 make
 make DESTDIR=$PKG install

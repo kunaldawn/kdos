@@ -12,7 +12,7 @@
 # A CROSS BINUTILS AND NOTHING MORE. --with-sysroot names where the target's
 # own headers and libraries will live so the linker searches there rather than
 # in the host's /usr/lib, which is musl for x86_64 and would link silently
-# wrong. --disable-werror because a 2.45 binutils built by GCC 15 trips
+# wrong. --disable-werror because a binutils built by a newer GCC trips
 # warnings upstream has not caught up with, and none of them is about arm-none-eabi.
 mkdir -p build && cd build
 ../configure \
@@ -24,10 +24,16 @@ mkdir -p build && cd build
 	--disable-gdb \
 	--disable-sim \
 	--enable-multilib \
+	--with-system-zlib \
+	--with-zstd \
+	--with-xxhash \
+	--without-debuginfod \
+	--without-msgpack \
 	--with-pkgversion="KDOS"
 make
 make DESTDIR=$PKG install
-# The info and man pages are the HOST binutils' own, byte for byte, and a
-# second copy of them under a cross name is a file conflict rather than a
-# document.
-rm -rf "$PKG/usr/share/info" "$PKG/usr/share/man" "$PKG/usr/share/locale"
+# The info manuals and bfd-plugins/libdep.so carry the host binutils' own
+# names and would collide with it. The man1 pages carry the target prefix and
+# stay, less the three for Windows tools this target does not build.
+rm -rf "$PKG/usr/share/info" "$PKG/usr/share/locale" "$PKG/usr/lib/bfd-plugins"
+rm -f "$PKG"/usr/share/man/man1/arm-none-eabi-{dlltool,windmc,windres}.1

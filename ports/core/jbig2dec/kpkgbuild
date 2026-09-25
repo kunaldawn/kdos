@@ -15,4 +15,4 @@ source      = https://github.com/ArtifexSoftware/$name/releases/download/$versio
 sha256      = 7b63ff6470289547e7a3a0f145cb8ea6c2afffdd65645b7d87d3b7febc96fb3a  jbig2dec-0.20.tar.gz
 description = JBIG2 image decoder, the scanned-page codec in PDF
 homepage    = https://jbig2dec.com/
-depends     = libpng
+depends     = libpng zlib

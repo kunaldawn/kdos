@@ -52,6 +52,8 @@ mkdir -p build && cd build
     --disable-libssp           \
     --disable-libvtv           \
     --enable-languages=c,c++   \
+    CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}" \
+    CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++" \
     LDFLAGS_FOR_TARGET=-L$PWD/$KDOS_TARGET/libgcc
 
 make

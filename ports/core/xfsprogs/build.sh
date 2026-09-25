@@ -9,30 +9,32 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# xfsprogs hard-requires liburcu and inih: there is no --disable-urcu, which
-# is why liburcu is a port rather than an optional dependency.
-#
-# DEBUG= is not a style choice — the default build defines -DDEBUG and ships
-# assertion-heavy binaries.
 export DEBUG=-DNDEBUG
+# The unit, udev-rule and crontab directories stay off: every file they
+# install exists only to start the xfs_scrub systemd services, and the udev
+# rule would otherwise land wherever eudev's udev.pc points.
+# ac_cv_search_dm_task_create=no keeps xfs_io's dm-log-writes replay, a test
+# aid, from linking libdevmapper whenever lvm2 happens to be installed.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--sbindir=/usr/sbin \
-	--enable-editline=no \
-	--enable-scrub=no \
-	--enable-lto=no
+	--enable-gettext=yes \
+	--enable-editline=yes \
+	--enable-termcap=no \
+	--enable-scrub=yes \
+	--enable-libicu=yes \
+	--enable-healer=yes \
+	--enable-lto=no \
+	--with-systemd-unit-dir=no \
+	--with-udev-rule-dir=no \
+	--with-crond-dir=no \
+	ac_cv_search_dm_task_create=no
 
 make
 
-# -j1 FOR THE INSTALL ONLY. The phase exports MAKEFLAGS=-j12, and xfsprogs'
-# install targets regenerate their dependency files while other jobs are
-# reading them: a half-written .dep leaves a bare line continuation, and make
-# reports `No rule to make target '\'` against an object it was building
-# happily a moment earlier. It is a race, so it passes as often as it fails.
-# A command-line -j overrides the one in MAKEFLAGS.
 make -j1 DESTDIR=$PKG install install-dev
 
-# The install puts the shared libs in /usr/lib but leaves .la files behind;
-# they name build-tree paths and confuse anything that reads them later.
-find "$PKG" -name '*.la' -delete
+# xfs_scrub_all drives the per-mount scrub through systemd over D-Bus and
+# imports python-dbus at start; xfs_scrub itself runs directly.
+rm -f $PKG/usr/sbin/xfs_scrub_all $PKG/usr/share/man/man8/xfs_scrub_all.8

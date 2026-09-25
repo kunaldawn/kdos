@@ -329,8 +329,10 @@ $(printf '%s' "$flat" \
     # header its sources need, which no meson_options.txt can define. A line
     # that assigns one of the toolchain flag variables is therefore dropped
     # before the -D's are read, or this reports a defect in a recipe that
-    # builds.
+    # builds. Nor is a -D a recipe searches for: `grep -q -- -DHAVE_AVAHI
+    # build/build.ninja` asserts a probe's macro landed, and names no option.
     cmdlines=$(grep -v '^[[:space:]]*#' "$d/build.sh" | grep -v 'install ' \
+               | grep -vE '(^|[[:space:]!(])grep[[:space:]]' \
                | grep -vE '^[[:space:]]*(export[[:space:]]+)?(C|CXX|CPP|LD|OBJC|OBJCXX|F|FC)FLAGS\+?=')
     passed=$(printf '%s\n' "$cmdlines" \
              | grep -oE '[-]D[a-zA-Z0-9_-]+[a-zA-Z0-9_:-]*' \
@@ -398,8 +400,8 @@ echo "==> every source a port declares is on disk, hashed and non-empty"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The enumeration is the RECIPE's own source list
 # read through the same parser the build uses, NOT a glob of archive
-# extensions: that glob knew about six suffixes, so ca-certificates' .pem
-# and iana-etc's four plain files were invisible here and failed instead
+# extensions: that glob knew about six suffixes, so ca-certificates' and
+# iana-etc's plain files were invisible here and failed instead
 # two hours into phase 3. The hashes were bootstrapped from the git-LFS
 # pointers, where the oid IS the file's sha256.
 unhashed=0
@@ -486,12 +488,16 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     # fails at `Source not found`, minutes into a phase. That is what a
     # hand-placed download looks like: kpkg renames a FIRST source to
     # <name>-<version>.<ext> and a `.tgz` saved under the URL's own suffix
-    # matches nothing.
+    # matches nothing. An archive with its own sha256 line is declared rather
+    # than unclaimed: build.sh unpacks it out of $PORT_SRC the way it unpacks a
+    # vendor bundle (bat's bat-assets bundle), and kpkg verifies every
+    # sha256 entry, not only the ones a source names.
     for f in "$d"/*.tar.* "$d"/*.tgz "$d"/*.tbz2 "$d"/*.txz "$d"/*.zip; do
         [ -f "$f" ] || continue
         fb=${f##*/}
         case " $resolved " in *" $fb "*) continue ;; esac
         [ "$fb" = "$name-vendor-$version.tar.xz" ] && continue
+        grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$fb\$" "$d/kpkgbuild" && continue
         bad "$p" "ships $fb, which no 'source =' line resolves to"
         unhashed=$((unhashed + 1))
     done
@@ -741,6 +747,10 @@ for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; d
             _hdbad=$((_hdbad + 1))
         }
         [ -d build/fs/usr/bin ] || continue
+        # A function is not a program: the heredoc's own, and service_helper's
+        # when an init script sources it.
+        _fn=" $(sed -n 's/^[[:space:]]*\([a-z_][a-z0-9_]*\)[[:space:]]*()[[:space:]]*{.*/\1/p' \
+                 "$_b" fs/etc/init.d/service_helper | tr '\n' ' ') "
         for _c in $(sed 's/^[[:space:]]*//; s/#.*//' "$_b" |
                     sed -n 's/^if \([a-z][a-z0-9_.-]*\) .*/\1/p
                             s/^set -- \([a-z][a-z0-9_.-]*\) .*/\1/p
@@ -751,6 +761,7 @@ for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; d
                 trap|exit|return|break|continue|command|export|local|read|\
                 eval|cd|shift|unset|wait|getopts|source) continue ;;
             esac
+            case "$_fn" in *" $_c "*) continue ;; esac
             [ -e "build/fs/usr/bin/$_c" ] || [ -e "build/fs/bin/$_c" ] ||
             [ -e "build/fs/usr/sbin/$_c" ] || [ -e "build/fs/sbin/$_c" ] || {
                 bad "$_p" "KDOS_SH heredoc runs '$_c', which is on no image"
@@ -1513,6 +1524,22 @@ $(grep -nE '^[[:space:]]*echo[[:space:]]+"[^"]*`' "$_f" 2>/dev/null || true)
 EOF
 done
 note "echo backticks" "$((_bt)) build scripts run a command they meant to name"
+
+echo
+echo "==> every recipe that runs cargo builds against a shared C library"
+# The musl target links statically unless told otherwise. A crate that links a
+# system library then takes its .a and none of the libraries that one needs,
+# and the link fails at the end of a long compile (cargo-c on libcurl.a), or
+# succeeds with a private copy of the library that no update of its port
+# reaches.
+_cs=0
+for _f in ports/core/*/build.sh; do
+    grep -qE '(^|[[:space:]])cargo[[:space:]]+(build|install|cbuild|cinstall)' "$_f" || continue
+    grep -q -- '-crt-static' "$_f" && continue
+    bad "$(basename "$(dirname "$_f")")" "runs cargo without RUSTFLAGS=\"-C target-feature=-crt-static\""
+    _cs=$((_cs + 1))
+done
+note "crt-static" "$_cs cargo recipes link statically"
 
 echo
 echo "==> no chroot step reads the ports tree through /kdos/ports"

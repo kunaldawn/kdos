@@ -31,7 +31,7 @@
 
 #include "kdos-kpkg.h"
 
-static int remove_one(const KpConf *c, const char *name)
+static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 {
 	char *db = kp_db_dir(c);
 	char *dbfile = kb_path_join(db, name);
@@ -46,6 +46,7 @@ static int remove_one(const KpConf *c, const char *name)
 	}
 
 	kp_msg("Removing %s", name);
+	kp_triggers_note(trig, data);
 
 	const char *root = c->root[0] ? c->root : "/";
 
@@ -113,8 +114,10 @@ int del_main(int argc, char **argv)
 
 	/* Every named package is attempted; the worst status is the exit code. */
 	int rc = 0;
+	KpTriggers trig = {0};
 	for (int i = 0; i < n; i++)
-		if (remove_one(&c, names[i]))
+		if (remove_one(&c, names[i], &trig))
 			rc = 1;
+	kp_triggers_run(&trig, root);
 	return rc;
 }

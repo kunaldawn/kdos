@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = intel-media-driver
-version     = 26.2.4
+version     = 26.3.5
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/intel/media-driver/archive/refs/tags/intel-media-$version.tar.gz
-sha256      = a23185fca05c8fa8bdec09ea9ee8a20361163c87035ec978de4e2bb048a55534  intel-media-driver-26.2.4.tar.gz
+sha256      = 76f41c06cefc91d57e0b7d366b7a91b8420ec77939326491795f9fb26afca7e7  intel-media-driver-26.3.5.tar.gz
 description = Intel iHD VA-API driver for Broadwell and newer graphics
 homepage    = https://github.com/intel/media-driver
 depends     = intel-gmmlib libva libdrm libpciaccess cmake ninja pkgconf

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-httplib2
+version     = 0.32.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/httplib2/httplib2-$version.tar.gz
+sha256      = 48a0ef30a42db65d8f3399045e1d09ab0ba66e3b9efc360d07f80ea55d286025  python3-httplib2-0.32.0.tar.gz
+description = An HTTP client with caching, keep-alive and digest authentication
+homepage    = https://github.com/httplib2/httplib2
+depends     = python3 python3-pip python3-setuptools python3-pyparsing

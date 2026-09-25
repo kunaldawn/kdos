@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-us" lang="en-us">
+<head>
+	<meta name="generator" content="Hugo 0.57.0-DEV" />
+  <link href="//gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  
+  <link rel="canonical" href="https://hpjansson.org/chafa/" />
+
+  <title>Chafa: Terminal Graphics for the 21st Century</title>
+
+  <meta name="description" content="Turn pictures and animations into top-notch terminal graphics and ANSI art." />
+
+  
+  <link rel="icon" href="https://hpjansson.org/fav-1.gif" type="image/gif" />
+  <link rel="apple-touch-icon" sizes="180x180" href="https://hpjansson.org/apple-touch-icon.png" />
+  <link rel="manifest" href="https://hpjansson.org/site.webmanifest" />
+  <link rel="mask-icon" href="https://hpjansson.org/safari-pinned-tab.svg" color="#5bbad5" />
+  <meta name="msapplication-TileColor" content="#748ff2" />
+
+  
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Chafa: Terminal Graphics for the 21st Century" />
+  <meta property="og:description" content="Turn pictures and animations into top-notch terminal graphics and ANSI art." />
+  <meta property="og:url" content="https://hpjansson.org/chafa/" />
+  <meta property="article:section" content="Computing" />
+  <meta property="og:image" content="https://hpjansson.org/chafa/img/chafa-logo-still.png" />
+  <meta property="og:image:secure_url" content="https://hpjansson.org/chafa/img/chafa-logo-still.png" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:description" content="Turn pictures and animations into top-notch terminal graphics and ANSI art." />
+  <meta name="twitter:title" content="Chafa: Terminal Graphics for the 21st Century" />
+  <meta name="twitter:image" content="https://hpjansson.org/chafa/img/chafa-logo-still.png" />
+
+  
+  <link type="text/css" rel="stylesheet" href="./css/print.css" media="print">
+  <link type="text/css" rel="stylesheet" href="./css/syntax.css">
+  <link type="text/css" rel="stylesheet" href="./css/chaff.css">
+
+  <script>
+    document.documentElement.className += 
+      (("ontouchstart" in document.documentElement) ? ' touch' : ' no-touch');
+  </script>
+
+  
+</head>
+
+  
+  <body ontouchstart="">
+    <div id="header_wrap" class="outer">
+      <header class="inner">
+        <img id="logo" src="./img/chafa-logo.gif" alt="Chafa logo" />
+        <a id="dictdef" href="https://en.wiktionary.org/wiki/chafa" rel="nofollow">chafa /&#x2C8;t&#x283;afa/ (adj): cheap, low quality; lame</a>
+      </header>
+    </div>
+
+    <nav class="main-nav">
+      
+      
+        <a class="nav-item active" href="https://hpjansson.org/chafa/" title="Home">Home</a>
+      
+        <a class="nav-item" href="https://hpjansson.org/chafa/gallery/" title="Gallery">Gallery</a>
+      
+        <a class="nav-item" href="https://hpjansson.org/chafa/download/" title="Download">Download</a>
+      
+        <a class="nav-item" href="https://hpjansson.org/chafa/development/" title="Development">Development</a>
+      
+    </nav>
+
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h2>The future is (still) now</h2>
+
+<p>The premier UX of the 21st century just got a little better: With <code>chafa</code>,
+  you can now view very, very reasonable approximations
+  of pictures and animations in the comfort of your
+  favorite terminal emulator. The power of ANSI X3.64 compels you!</p>
+
+<h3>Example</h3>
+
+<p>You can get fair results by using only U+2580 (upper half
+block). Other terminal graphics packages do this, and so can Chafa
+with <code>chafa&nbsp;--symbols&nbsp;vhalf</code>. However, Chafa
+uses more symbols by default, greatly improving quality.</p>
+
+<div class="gallery">
+  <figure><img src="img/pat-orig-198.png" /><figcaption>Input</figcaption></figure>
+  <figure><img src="img/pat-vhalf-198.png" /><figcaption>U+2580 only</figcaption></figure>
+  <figure><img src="img/pat-chafa-198.png" /><figcaption>Chafa
+      default</figcaption></figure>
+</div>
+
+<p>
+There are more examples in the <a href="./gallery/">gallery</a>!
+</p>
+
+<h3>Features</h3>
+
+<ul>
+  <li>Supports most popular image formats, including animated GIFs.</li>
+  <li>Outputs to all popular terminal graphics formats: Sixels, Kitty, iTerm2, Unicode mosaics.</li>
+  <li>Combines Unicode symbols from multiple selectable ranges for optimal output.</li>
+  <li>Fullwidth character support, e.g. Chinese, Japanese, Korean.</li>
+  <li>Glyphs can be loaded from any font file supported by Freetype (TTF, OTF, PCF, etc).</li>
+  <li>Multiple color modes, including Truecolor, 256-color, 16-color and simple FG/BG.</li>
+  <li>RGB and DIN99d color spaces for improved color picking.</li>
+  <li>Alpha transparency support in any color mode, including in animations.</li>
+  <li>Works with most modern and classic terminals and terminal emulators.</li>
+  <li>Documented, stable C API.</li>
+  <li>Fast & lean: SIMD optimized, multithreaded.</li>
+  <li>Suitable for terminal graphics, ANSI art composition and even black & white print.</li>
+</ul>
+
+<p>
+Some of the features are discussed in a series of blog posts:
+</p>
+
+<ul>
+  <li><a href="https://hpjansson.org/blag/2018/04/24/introducing-chafa/">Introducing Chafa</a></li>
+  <li><a href="https://hpjansson.org/blag/2019/01/07/the-worst-ansi-renderer-except-for-all-the-others/">The worst ANSI art renderer, except for all the others</a></li>
+  <li><a href="https://hpjansson.org/blag/2019/08/05/chafa-1-2-0/">Chafa 1.2.0: Faster than ever, now with 75% more grit</a></li>
+  <li><a href="https://hpjansson.org/blag/2020/04/01/chafa-1-4-0-now-with-sixels/">Chafa 1.4.0: Now with sixels</a></li>
+  <li><a href="https://hpjansson.org/blag/2021/01/18/chafa-1-6-0-wider/">Chafa 1.6.0: Wider</a></li>
+  <li><a href="https://hpjansson.org/blag/2021/09/16/chafa-1-8-terminal-graphics-with-a-side-of-everything/">Chafa 1.8: Terminal graphics with a side of everything</a></li>
+  <li><a href="https://hpjansson.org/blag/2024/01/18/chafa-1-14-all-singing-all-dancing/">Chafa 1.14: All-singing, all-dancing</a></li>
+</ul>
+
+<h3>Documentation</h3>
+
+<p>Chafa will print a help text if run without arguments, or with <code>chafa --help</code>.
+It also comes with a <a href="./man/">man page</a> displayable with <code>man chafa</code>.</p>
+
+<p>The <a href="./gallery/">gallery</a> contains examples of how command-line options can
+be used to tweak the output.</p>
+
+<p>There is <a href="./ref/">C API documentation for application developers</a>.</p>
+
+<p><a href="https://mage.black/">Erica Ferrua Edwardsdóttir</a> is developing <a href="https://chafapy.mage.black/">Python bindings</a> that allow Chafa to be used in Python programs. These are documented on their own site.</p>
+
+<p><a href="https://hector.molinero.dev/">Héctor Molinero Fernández</a> maintains <a href="https://github.com/hectorm/chafa-wasm">JavaScript bindings</a> that allow Chafa to be used in Node.js, web browsers, and more. These are documented on their own site.</p>
+
+<h3>Community</h3>
+
+<p>Please bring your questions to our <s>secret business</s> friendly Matrix chat. Stay a
+while and listen, or talk about terminals, software or your choice of breakfast cereal. All
+are welcome, but an appreciation for terminals, programming and/or computer graphics is
+likely to enhance your experience.</p>
+
+<p><a href="https://matrix.to/#/#chafa:matrix.org" class="nohighlight"><img src="img/friendly-chat.svg" alt="Friendly Chat"/></a></p>
+
+<p>Although the chat's history is hidden from non-members, this is a public forum, so if
+your ambition is to overthrow the government/megacorps by way of an underground
+network of refurbished Minitels, you may want to keep it under your hat. Furthermore,
+and hopefully obviously, we treat our fellow humans with respect. Have fun!</p>
+
+
+
+      </section>
+    </div>
+
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <a id="author" href="https://hpjansson.org/">&copy; Hans Petter Jansson</a>
+      </footer>
+    </div>
+  </body>
+</html>
+

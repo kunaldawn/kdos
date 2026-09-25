@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libjaylink
+version     = 0.5.0
+release     = 1
+source      = https://gitlab.zapb.de/libjaylink/libjaylink/-/archive/$version/libjaylink-$version.tar.gz
+sha256      = 235b12d161b29d813026704f335536a6a916646ea2058302e4ca45ca2cd81325  libjaylink-0.5.0.tar.gz
+description = Library to drive SEGGER J-Link debug probes over USB and TCP
+homepage    = https://gitlab.zapb.de/libjaylink/libjaylink
+depends     = meson ninja pkgconf libusb

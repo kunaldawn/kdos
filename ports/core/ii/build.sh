@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# NEED_STRLCPY STAYS. musl does not provide strlcpy, so upstream's own copy is
-# what this links; dropping the define is the change a glibc host would tempt
-# somebody into and it does not build here.
 export CFLAGS="$CFLAGS -O2"
 make PREFIX=/usr
 make DESTDIR=$PKG PREFIX=/usr install

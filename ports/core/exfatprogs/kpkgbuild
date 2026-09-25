@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = exfatprogs
-version     = 1.4.2
+version     = 1.4.3
 release     = 1
 source      = https://github.com/exfatprogs/exfatprogs/releases/download/$version/exfatprogs-$version.tar.xz
-sha256      = 47c7c8ddeccbf50d39b903353f2cb3df79134367a4fd764fe2ce3755ff5877bf  exfatprogs-1.4.2.tar.xz
+sha256      = 57226a8ec1bfbce06d68a42cde8cd980414a9457882e691fbce4a4f86c8d5f08  exfatprogs-1.4.3.tar.xz
 description = exFAT filesystem utilities (mkfs, fsck, label)
 homepage    = https://github.com/exfatprogs/exfatprogs
-depends     =
+depends     = pkgconf util-linux musl-fts

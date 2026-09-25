@@ -9,14 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ONE compiled library, not all of them. libime is the only consumer in this
-# tree and it needs the headers plus Boost::iostreams; building the rest would
-# be forty minutes and ~200 MB of shared objects nothing links. `--with-` on
-# both bootstrap and b2, because bootstrap only decides what b2 CAN build.
-#
 # Boost's own layout puts headers under include/boost and the CMake config under
 # lib/cmake — libime does find_package(Boost CONFIG), so that config file is the
 # whole point of installing rather than pointing at a source tree.
+#
 # Eight compiled components, and the list is deliberate.
 #
 # `iostreams` is what libime — the input-method engine behind pinyin — links.
@@ -35,7 +31,14 @@
 #
 # Changing this list rebuilds Boost and forces a libime rebuild
 # with it, because libime's link line depends on what is built here.
+#
+# --with-icu=/usr GIVES Boost.Regex ITS UNICODE SIDE (u32regex). Left to
+# itself bootstrap turns ICU on when it happens to find the headers, so the
+# regex library's link line would follow build order; icu is in `depends`.
+# Boost.Python is not built: ledger builds with its Python binding off and
+# nextpnr binds its Python through pybind11.
 ./bootstrap.sh --prefix=/usr --libdir=/usr/lib \
+	--with-icu=/usr \
 	--with-libraries=iostreams,system,filesystem,regex,date_time,test,program_options,thread
 ./b2 \
 	--prefix=$PKG/usr \

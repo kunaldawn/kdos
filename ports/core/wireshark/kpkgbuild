@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = wireshark
-version     = 4.7.2
+version     = 4.7.3
 release     = 1
 source      = https://www.wireshark.org/download/src/$name-$version.tar.xz
-sha256      = f94df4731d9fcb86240950fde44b3db52ffdd04e918b558e613891d0b578dadc  wireshark-4.7.2.tar.xz
+sha256      = 7267c20b15ffb42111f8d0d073f93af8a2973d3c9263c49ea7fe85be0d2e8457  wireshark-4.7.3.tar.xz
 description = tshark and dumpcap — Wireshark's dissection engine, no GUI
 homepage    = https://www.wireshark.org/
-depends     = cmake ninja pkgconf python3 flex bison glib libpcap zlib zstd lz4 c-ares gnutls libgcrypt libxml2 libcap-ng speexdsp
+depends     = cmake ninja pkgconf python3 flex bison glib libpcap zlib zstd lz4 c-ares gnutls libgcrypt libxml2 pcre2 libcap libnl xxhash speexdsp asciidoctor lua krb5 nghttp2 nghttp3 brotli p11-kit

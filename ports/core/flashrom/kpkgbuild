@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = flashrom
-version     = 1.6.0
+version     = 1.8.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.flashrom.org/releases/flashrom-v$version.tar.xz
-sha256      = 8b9db3987df9b5fc81e70189d017905dd5f6be1e1410347f22687ab6d4c94423  flashrom-1.6.0.tar.xz
+sha256      = 654c9c61745c250cd3b5ccd0e56fc43ee76980f92a5e078420420639d66975a2  flashrom-1.8.0.tar.xz
 description = Read and write a SPI flash chip — including this machine's BIOS
 homepage    = https://flashrom.org/
-depends     = meson ninja pkgconf libusb libftdi pciutils
+depends     = meson ninja pkgconf libusb libftdi libjaylink pciutils openssl python3-sphinx bash-completion

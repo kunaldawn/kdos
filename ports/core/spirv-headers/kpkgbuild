@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = spirv-headers
-version     = 1.4.335.0
+version     = 1.202609.0
 release     = 1
-source      = https://github.com/KhronosGroup/SPIRV-Headers/archive/vulkan-sdk-$version/SPIRV-Headers-vulkan-sdk-$name-$version.tar.gz
-sha256      = 1c47ca6342ebe86f57b46b8dbeb266fa655a1ca8e10d07e45370ff2d9c36312e  spirv-headers-1.4.335.0.tar.gz
+source      = $name-$version.tar.gz::https://github.com/KhronosGroup/SPIRV-Headers/archive/v$version/SPIRV-Headers-$version.tar.gz
+sha256      = 0bac674ba1fd0a0d969b9c539a58322d37cb890a8af13b71177a64534c03b473  spirv-headers-1.202609.0.tar.gz
 description = SPIR-V Headers
 homepage    = https://www.khronos.org/registry/spir-v
 depends     = cmake ninja

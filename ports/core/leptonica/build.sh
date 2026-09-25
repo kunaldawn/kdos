@@ -20,8 +20,10 @@
 	--disable-static \
 	--with-libpng \
 	--with-jpeg \
+	--with-giflib \
 	--with-libtiff \
 	--with-libwebp \
+	--with-libwebpmux \
 	--with-libopenjpeg \
 	--with-zlib
 make

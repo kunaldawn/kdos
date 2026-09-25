@@ -19,6 +19,9 @@ autoreconf -f -i
 # autoconf reads everything after `--without-` as the PACKAGE NAME, so the
 # second spelling asks for a package called `tools=NO` and configure refuses
 # it. The CLI is the point of the port; the library alone has no consumer here.
-./configure --prefix=/usr --libdir=/usr/lib --disable-static --with-tools
+# --with-png only asks: a failed libpng check is a configure warning and a CLI
+# with no `-t PNG`, so libpng on the depends line is what holds it on.
+./configure --prefix=/usr --libdir=/usr/lib --disable-static --with-tools \
+	--with-png
 make
 make DESTDIR=$PKG install

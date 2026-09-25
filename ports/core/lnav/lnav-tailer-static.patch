@@ -1,0 +1,26 @@
+--- a/src/tailer/Makefile.am
++++ b/src/tailer/Makefile.am
+@@ -51,8 +51,11 @@
+ libtailerpp_a_SOURCES = \
+     tailerpp.cc
+ 
+-tailerbin.cc: tailer.main.py tailer.ape ../../tools/bin2c$(BUILD_EXEEXT)
+-	../../tools/bin2c$(BUILD_EXEEXT) -n tailer_bin tailerbin $(srcdir)/tailer.main.py $(srcdir)/tailer.ape
++tailer.static: tailer.main.c libtailercommon.a
++	$(CC) $(CPPFLAGS) -I$(srcdir) $(CFLAGS) $(LDFLAGS) -static -s -o $@ $(srcdir)/tailer.main.c libtailercommon.a
++
++tailerbin.cc: tailer.main.py tailer.static ../../tools/bin2c$(BUILD_EXEEXT)
++	../../tools/bin2c$(BUILD_EXEEXT) -n tailer_bin tailerbin $(srcdir)/tailer.main.py tailer.static
+ 
+ libtailerservice_a_CPPFLAGS = \
+     $(AM_CPPFLAGS) \
+@@ -115,7 +118,8 @@
+ 	*.errbak \
+ 	*.tmpbak \
+     tailerbin.h \
+-    tailerbin.cc
++    tailerbin.cc \
++    tailer.static
+ 
+ distclean-local:
+ 	$(RM_V)rm -f foo

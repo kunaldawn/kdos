@@ -10,8 +10,7 @@
 # ---------------------------------
 
 # A TAG ARCHIVE, so autotools has to run. --disable-introspection and no vala:
-# both generate bindings for languages nothing here uses, and gobject-
-# introspection would be a port carried for one consumer's optional feature.
+# both generate bindings for languages nothing here uses.
 #
 # crypto stays ON. gmime's whole value over a hand-rolled MIME parser is that
 # it verifies a signature and decrypts a part correctly, and a mail client that
@@ -38,6 +37,7 @@ autoreconf -fi
 	--disable-introspection \
 	--disable-vala \
 	--disable-gtk-doc \
-	--enable-crypto
+	--enable-crypto \
+	--with-libidn
 make
 make DESTDIR=$PKG install

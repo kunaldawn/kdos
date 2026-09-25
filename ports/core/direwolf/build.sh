@@ -12,10 +12,19 @@
 # software off the sound card, so an APRS station or a KISS TNC is a radio, an
 # audio cable and this — and the ax25-tools beside it turn that into a real
 # network interface.
+# Every optional backend is a bare find_package() that quietly drops the
+# feature when it misses; the CMAKE_REQUIRE_FIND_PACKAGE_ switches turn each
+# one into a configure failure, so gpsd, hamlib, GPIO and CM108 PTT and the
+# DNS-SD announce are always in the binary.
 mkdir -p build && cd build
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
-	-DUNITTEST=OFF
+	-DUNITTEST=OFF -DOPTIONAL_DNSSD=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_GPSD=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_hamlib=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_gpiod=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_udev=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_Avahi=ON
 make
 make DESTDIR=$PKG install
 

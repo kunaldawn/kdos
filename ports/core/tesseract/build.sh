@@ -27,11 +27,31 @@ cmake .. -G Ninja \
 	-DBUILD_SHARED_LIBS=ON \
 	-DBUILD_TRAINING_TOOLS=OFF \
 	-DDISABLE_TIFF=OFF \
+	-DDISABLE_ARCHIVE=OFF \
+	-DDISABLE_CURL=OFF \
 	-DGRAPHICS_DISABLED=ON \
 	-DUSE_SYSTEM_ICU=ON
+# DISABLE_*=OFF ONLY MEANS "LOOK": a library that is not found turns its
+# feature off and configure succeeds. CMAKE_REQUIRE_FIND_PACKAGE_CURL cannot
+# pin curl: FindCURL first asks for a CMake package config, which the
+# autotools-built curl does not install, and fails there before its pkg-config
+# fallback runs. The generated header is the answer, so check it:
+# without libarchive a compressed .traineddata will not load, without libcurl an
+# image URL is not an input, and without TIFF a multi-page scan is not.
+for def in HAVE_TIFFIO_H HAVE_LIBARCHIVE HAVE_LIBCURL; do
+	grep -q "^#define $def " config_auto.h || { echo "tesseract: $def not configured" >&2; exit 1; }
+done
 ninja
 DESTDIR=$PKG ninja install
 
 # A non-archive source is not unpacked into $SRC_ROOT — it stays where kpkg
 # fetched it, which is the port directory.
 install -Dm644 $PORT_SRC/tessdata-eng-4.1.0.traineddata $PKG/usr/share/tessdata/eng.traineddata
+
+# The CMake build installs no manual pages; upstream renders them only from its
+# autotools build, with `asciidoctor -b manpage`, which is the command used here.
+mkdir -p man
+for page in tesseract.1 unicharset.5; do
+	asciidoctor -b manpage -o man/$page ../doc/$page.asc
+	install -Dm644 man/$page -t "$PKG/usr/share/man/man${page##*.}"
+done

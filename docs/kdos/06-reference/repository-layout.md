@@ -131,7 +131,7 @@ Three directories hold ports, and they use one recipe format.
 
 | Directory | Holds | Recipes | Decided by |
 |---|---|---|---|
-| `ports/core/` | Upstream software | 851 | It is somebody else's source |
+| `ports/core/` | Upstream software | 945 | It is somebody else's source |
 | `src/packages/` | Our own software that is not the desktop | 11 | It is ours, and it is not a desktop component |
 | `src/desktop/` | The desktop | 13 | It is ours, and it draws or serves the session |
 

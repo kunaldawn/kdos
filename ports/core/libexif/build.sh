@@ -10,6 +10,7 @@
 # ---------------------------------
 
 ./configure --prefix=/usr \
-	    	--disable-nls
+	--enable-nls \
+	--disable-docs
 make
 make DESTDIR=$PKG install

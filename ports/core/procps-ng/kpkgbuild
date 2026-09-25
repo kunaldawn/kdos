@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = procps-ng
-version     = 4.0.6
+version     = 4.0.7
 release     = 1
 source      = https://sourceforge.net/projects/procps-ng/files/Production/$name-$version.tar.xz
-sha256      = 67bea6fbc3a42a535a0230c9e891e5ddfb4d9d39422d46565a2990d1ace15216  procps-ng-4.0.6.tar.xz
+sha256      = 9d2021f47a4501c667862c9942a92d1953694b21d11bcd1702e83eb594e3d67d  procps-ng-4.0.7.tar.xz
 description = Programs for monitoring processes
 depends     = ncurses

@@ -9,8 +9,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# An empty udevrulesdir asks pkg-config for udev's directory, so whether
+# 99-fuse3.rules ships would follow build order; eudev's is /lib/udev.
+#
+# enable-io-uring is off because fuse-over-io-uring links libnuma as well as
+# liburing, and no port provides libnuma: left on, the feature would switch
+# itself on for whichever build root happened to carry both.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
+	-Dinitscriptdir= \
+	-Dudevrulesdir=/lib/udev/rules.d \
+	-Denable-io-uring=false \
 	-Dexamples=false \
 	-Dtests=false
 meson compile -C build
@@ -27,3 +36,8 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 # outside the rootfs being built, and records in the package database a file no
 # image ever carries.
 rm -rf "$PKG/dev"
+
+# fusermount is fuse 2's name for the helper, and the pure-Go FUSE client
+# restic vendors runs it by that name: with only fusermount3 on PATH, `restic
+# mount` cannot exec its helper. The link reaches the same setuid binary.
+ln -s fusermount3 "$PKG/usr/bin/fusermount"

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = man-pages
+version     = 6.19
+release     = 1
+source      = https://www.kernel.org/pub/linux/docs/man-pages/$name-$version.tar.xz
+sha256      = 88a7c42ad2e03d8b96dc72d95e451f2d875ff0f43103a8eb8ac8242133bdcb05  man-pages-6.19.tar.xz
+description = Linux kernel and C library manual pages — system calls, library functions, devices, file formats, overviews
+homepage    = https://www.kernel.org/doc/man-pages/
+depends     = mandoc

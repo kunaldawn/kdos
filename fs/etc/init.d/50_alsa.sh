@@ -14,7 +14,7 @@ case "$1" in
         # leaves the card exactly as the kernel left it — which for HDA is
         # Master MUTED at 0%/-74dB. Every PCM then opens, reports RUNNING and
         # plays silence, so the card looks present and working while nothing
-        # comes out. That was "no audio on the TTY"; the desktop was fine only
+        # comes out of a console program. The desktop is unaffected only
         # because pipewire drives the mixer itself. `alsactl init` applies
         # /usr/share/alsa/init/, and answers 99 when it matched a generic rule
         # rather than a card-specific one — that is a success here, so its

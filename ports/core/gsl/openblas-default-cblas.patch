@@ -1,0 +1,31 @@
+--- a/gsl.pc.in
++++ b/gsl.pc.in
+@@ -2,7 +2,7 @@
+ exec_prefix=@exec_prefix@
+ libdir=@libdir@
+ includedir=@includedir@
+-GSL_CBLAS_LIB=-lgslcblas
++GSL_CBLAS_LIB=-lopenblas
+ 
+ Name: GSL
+ Description: GNU Scientific Library
+--- a/gsl-config.in
++++ b/gsl-config.in
+@@ -19,7 +19,7 @@
+   --version		output version information
+ 
+ An external CBLAS library can be specified using the GSL_CBLAS_LIB
+-environment variable. The GSL CBLAS library is used by default.
++environment variable. OpenBLAS is used by default.
+ 
+ EOF
+ 
+@@ -62,7 +62,7 @@
+        	;;
+ 
+     --libs)
+-        : ${GSL_CBLAS_LIB=-lgslcblas}
++        : ${GSL_CBLAS_LIB=-lopenblas}
+ 	echo @GSL_LIBS@ $GSL_CBLAS_LIB @GSL_LIBM@
+        	;;
+ 

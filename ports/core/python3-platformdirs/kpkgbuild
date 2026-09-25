@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = python3-platformdirs
-version     = 4.5.0
+version     = 4.11.12
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/p/platformdirs/platformdirs-$version.tar.gz
-sha256      = 70ddccdd7c99fc5942e9fc25636a8b34d04c24b335100223152c2803e4063312  python3-platformdirs-4.5.0.tar.gz
-sha256      = ce42de64309766bc47a406b09be72bafc20c8da231708849d7e4225f4609c623  python3-platformdirs-vendor-4.5.0.tar.xz
+sha256      = e8dc1cb58f1153fd7f61db1374317770baababec2480b37b8f01c6cc25b45267  python3-platformdirs-4.11.12.tar.gz
+sha256      = 408cb0f45fb5ed5a4744a15bf9ad74d311860e267fce26b8e0b07f84ea34e736  python3-platformdirs-vendor-4.11.12.tar.xz
 description = Where a python program's config, cache and data directories are
 homepage    = https://github.com/tox-dev/platformdirs
 depends     = python3 python3-setuptools python3-pip

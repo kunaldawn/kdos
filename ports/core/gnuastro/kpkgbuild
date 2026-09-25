@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = gnuastro
-version     = 0.23
+version     = 0.24
 release     = 1
-source      = https://ftp.gnu.org/gnu/gnuastro/gnuastro-0.23.tar.gz
-sha256      = f97e775ffb5981c63f8adfbe958fcebf9147c13f0e7e96407dddfdf33b3f7702  gnuastro-0.23.tar.gz
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = c4e6401eee5d81619b82d8d18a6447851b36e0754118ebf5bdfac7a03194f981  gnuastro-0.24.tar.gz
 description = The GNU astronomy toolset — arithmetic, cropping, photometry, on FITS
 homepage    = https://www.gnu.org/software/gnuastro/
-depends     = cfitsio wcslib gsl libjpeg-turbo libtiff curl ghostscript
+depends     = cfitsio wcslib gsl libjpeg-turbo libtiff curl ghostscript zlib bzip2 xz

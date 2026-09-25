@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 # A CLIENT, NOT A REALM. What this image needs Kerberos for is a ticket a file
 # server will accept: `kinit` gets one, `cifs.upcall` hands it to the kernel's
 # cifs module, and `sec=krb5` then mounts a share on a machine that will not
@@ -24,6 +26,13 @@ cd src
 # OPENSSL RATHER THAN THE BUILT-IN CRYPTO. Both are supported upstream; this
 # image already carries and updates openssl, and a second AES and a second
 # SHA-2 on the same disk are a second set of advisories to track.
+#
+# THE OTHER THREE OPENSSL USERS AND THE KEYRING ARE NAMED, not probed: left to
+# configure, each is dropped without an error when its probe misses. The TLS
+# module is what reaches a KDC through an MS-KKDCP HTTPS proxy, SPAKE's NIST
+# groups need libcrypto's EC, PKINIT is `kinit` with a certificate or a smart
+# card, and --with-keyutils is the kernel-keyring credential cache type,
+# `KEYRING:`, a krb5.conf may name instead of a file.
 #
 # --without-system-verto AND THE BUNDLED COPY IS BUILT. libverto is the event
 # abstraction the KDC and kadmind use, there is no port for it, and configure
@@ -61,6 +70,11 @@ cd src
 	--disable-nls \
 	--enable-dns-for-realm \
 	--with-crypto-impl=openssl \
+	--with-tls-impl=openssl \
+	--with-spake-openssl \
+	--enable-pkinit \
+	--with-keyutils \
+	--with-system-et \
 	--without-system-verto \
 	--without-ldap \
 	--without-readline \
@@ -98,9 +112,10 @@ rm -f "$PKG/usr/share/man/man1/ksu.1"*
 
 # AND THE MANUALS FOR THEM GO WITH THEM: a page for a program that is not on
 # the disk is a page that sends somebody looking for it.
-for _s in krb5kdc kadmind kadmin.local kdb5_util kprop kpropd \
-	  kproplog sserver kdc.conf; do
-	rm -f "$PKG/usr/share/man/man5/$_s."* "$PKG/usr/share/man/man8/$_s."*
+for _s in krb5kdc kadmind kadmin.local kdb5_util kdb5_ldap_util kprop kpropd \
+	  kproplog sserver sclient kdc.conf kadm5.acl; do
+	rm -f "$PKG/usr/share/man/man1/$_s."* \
+	      "$PKG/usr/share/man/man5/$_s."* "$PKG/usr/share/man/man8/$_s."*
 done
 
 # THE UPCALL NEEDS A RULE, AND IT IS cifs-utils' FILE IN krb5's PACKAGE ONLY

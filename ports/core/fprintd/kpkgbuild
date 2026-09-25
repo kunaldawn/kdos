@@ -15,4 +15,4 @@ source      = $name-v$version.tar.gz::https://gitlab.freedesktop.org/libfprint/f
 sha256      = a026ef34c31b25975275cc29a5e4eba2b54524769672095a5228098a08acd82c  fprintd-v1.94.5.tar.gz
 description = The fingerprint daemon and its PAM module, so a reader can unlock a session
 homepage    = https://fprint.freedesktop.org/
-depends     = meson ninja libfprint glib dbus polkit pam basu
+depends     = meson ninja libfprint glib dbus polkit pam basu perl gettext

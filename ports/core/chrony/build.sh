@@ -15,28 +15,34 @@
 # editline is --without-editline. Check ./configure --help before adding to
 # this list; a flag it does not recognise is ignored silently.
 #
-# --disable-sechash would drop NTS and authenticated NTP, so gnutls+nettle stay.
-# Everything else is off: no readline or editline (chronyc is used with one-shot
-# commands), no libcap (chronyd runs as root under ksvc), no seccomp (Alpine's
-# own musl build skips it), no NSS.
+# --disable-sechash would drop NTS and authenticated NTP, so gnutls+nettle stay;
+# nettle is the hash and AES-GCM-SIV provider, and NSS and libtomcrypt are named
+# off so neither can take its place. Every probe here falls back silently, so
+# `depends` is what holds a feature on.
+#
+# editline is libedit's editline/readline.h and gives an interactive chronyc
+# history and line editing; there is no GNU readline path in this configure.
+# Timestamping needs only linux/net_tstamp.h and lets chronyd use kernel and NIC
+# receive/transmit timestamps where the driver offers them.
+#
+# Off: no libcap (chronyd runs as root under ksvc), no seccomp (Alpine's own
+# musl build skips it).
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc/chrony \
 	--localstatedir=/var \
 	--chronyrundir=/run/chrony \
 	--chronyvardir=/var/lib/chrony \
-	--disable-readline \
-	--without-editline \
 	--without-libcap \
 	--without-seccomp \
 	--disable-scfilter \
-	--disable-timestamping \
-	--without-nss
+	--without-nss \
+	--without-tomcrypt
 
 make
 make DESTDIR=$PKG install
 
-install -d "$PKG/etc/chrony" "$PKG/var/lib/chrony" "$PKG/run/chrony"
+install -d "$PKG/etc/chrony" "$PKG/var/lib/chrony"
 
 # The kernel already owns the RTC in both directions: CONFIG_RTC_HCTOSYS sets
 # the clock from it at boot and CONFIG_RTC_SYSTOHC writes back every 11 minutes.

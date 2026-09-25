@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = python3-extension-helpers
-version     = 1.4.0
+version     = 1.5.0
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/e/extension-helpers/extension_helpers-$version.tar.gz
-sha256      = 78d04185f196e3e0bc5fd8418ce298b014c46f7ac609f6a8c10bf70e8c978324  python3-extension-helpers-1.4.0.tar.gz
+sha256      = 8cd43cb148c679b7ee7d187745ca3528df3e6952a9b14bb606ec23ee6cedc0a3  python3-extension-helpers-1.5.0.tar.gz
 description = The setuptools glue astropy compiles its C extensions through
 homepage    = https://github.com/astropy/extension-helpers
 depends     = python3 python3-setuptools python3-pip python3-setuptools-scm

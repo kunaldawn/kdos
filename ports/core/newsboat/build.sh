@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The documentation is asciidoctor's and asciidoctor is not a port, so only the
-# programs are built and installed. `install-newsboat` and `install-podboat`
-# are the two targets that carry no documentation dependency.
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
 # The Makefile drives cargo itself and passes no offline flag, so the switch
@@ -31,13 +28,17 @@ export CARGO_NET_OFFLINE=true
 # NOT -liconv: musl carries iconv in libc and there is no library of that name.
 export LDFLAGS="-lintl"
 
-# THE DEFAULT TARGET IS `doc $(NEWSBOAT) $(PODBOAT) mo-files`, AND THE DOCS ARE
-# asciidoctor's — not a port here, so `make` alone stops at doc/newsboat.1 with
-# status 127. The two programs are named directly instead; `install-newsboat`
-# and `install-podboat` each depend on one program and nothing else, so no
-# manual page is built and none is packaged.
-make prefix=/usr newsboat podboat
-make prefix=/usr DESTDIR=$PKG install-newsboat install-podboat
+# THE GOALS ARE NAMED, NOT `make` AND `make install`. The default target's
+# `doc` builds the two manual pages and the HTML manual and FAQ, and
+# `install-docs` installs that HTML, the changelog and contrib/ beside the
+# pages. The pages are their own targets — asciidoctor with upstream's
+# doc/man.rb converter — and are installed by hand, so no HTML is built.
+# install-completions copies the finished zsh and fish files from
+# contrib/completions; it builds nothing.
+make prefix=/usr newsboat podboat mo-files doc/newsboat.1 doc/podboat.1
+make prefix=/usr DESTDIR=$PKG install-newsboat install-podboat install-mo \
+	install-completions
+install -Dm644 doc/newsboat.1 doc/podboat.1 -t "$PKG/usr/share/man/man1"
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/newsboat.desktop" <<'ENTRY'

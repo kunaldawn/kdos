@@ -15,4 +15,4 @@ source      = $name-$version.tar.xz::https://github.com/rizinorg/rizin/releases/
 sha256      = 7ac1cd7daca7afdda742e15478b1f747fc1f813e496fee71839d1e109e543dca  rizin-0.9.1.tar.xz
 description = Disassembler and binary analysis on a cell grid
 homepage    = https://rizin.re/
-depends     = meson ninja pkgconf libzip openssl xxhash capstone
+depends     = meson ninja pkgconf zlib libzip openssl xxhash capstone file lz4 zstd xz pcre2

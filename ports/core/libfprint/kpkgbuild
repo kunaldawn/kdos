@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = libfprint
-version     = 1.94.9
+version     = 1.94.100
 release     = 1
 source      = $name-v$version.tar.gz::https://gitlab.freedesktop.org/libfprint/libfprint/-/archive/v$version/libfprint-v$version.tar.gz
-sha256      = 6398e7a28c91b3a16ff17e6a577c7a03692a5de509e8def817396f1120823ecf  libfprint-v1.94.9.tar.gz
+sha256      = edc90e02f330a7595ceaf37f2c6ec32ed43541347fe936d3273b0bb2524fd19c  libfprint-v1.94.100.tar.gz
 description = Fingerprint reader drivers, for the sensor most laptops now carry
 homepage    = https://fprint.freedesktop.org/
-depends     = meson ninja glib libusb gusb pixman openssl cairo
+depends     = meson ninja glib libusb gusb pixman openssl libgudev eudev

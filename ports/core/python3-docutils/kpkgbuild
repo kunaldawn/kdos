@@ -9,12 +9,12 @@
 # ---------------------------------
 
 name        = python3-docutils
-version     = 0.22.4
+version     = 0.23
 release     = 1
 source      = $name-$version.tar.gz::https://files.pythonhosted.org/packages/source/d/docutils/docutils-$version.tar.gz
-sha256      = 4db53b1fde9abecbb74d91230d32ab626d94f6badfc575d6db9194a49df29968  python3-docutils-0.22.4.tar.gz
-sha256      = 41c3f9d1aba80a411b2bde1364d54feb286d8388089a43108314eb0cf6b911ff  python3-docutils-vendor-0.22.4.tar.xz
+sha256      = 746f5060322511280a1e50eb76846ed6bf2342984b2ac04dc42caa1a8d78799e  python3-docutils-0.23.tar.gz
+sha256      = 7570d0c81de42023f35dabc64458abdfd94382db7517a5b46366002241da6db6  python3-docutils-vendor-0.23.tar.xz
 description = Set of tools for processing plaintext docs into formats such as HTML, XML, or LaTeX
 homepage    = https://docutils.sourceforge.io/
-depends     = python3-setuptools
+depends     = python3 python3-setuptools python3-pip python3-pygments
 vendoring   = python

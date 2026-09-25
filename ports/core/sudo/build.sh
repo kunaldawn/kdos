@@ -9,15 +9,24 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i $PORT_SRC/openssl4-asn1-string-length.patch
+
 ./configure \
     --prefix=/usr \
         --libexecdir=/usr/lib \
         --with-secure-path \
         --with-all-insults \
         --with-env-editor \
-        --with-passprompt="[sudo] password for %p: "
+        --with-rundir=/run/sudo \
+        --with-vardir=/var/lib/sudo \
+        --with-passprompt="[sudo] password for %p: " \
+        --with-pam \
+        --enable-zlib=system \
+        --enable-openssl \
+        --without-sendmail
 make
 make DESTDIR=$PKG install
+rm -rf $PKG/run
 
 mkdir -m 755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/sudo << "EOF"

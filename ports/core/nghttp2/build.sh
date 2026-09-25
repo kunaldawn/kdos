@@ -12,3 +12,4 @@
 ./configure --prefix=/usr --sysconfdir=/etc --enable-lib-only
 make
 make DESTDIR=$PKG install
+rm -rf "$PKG/usr/share/man"

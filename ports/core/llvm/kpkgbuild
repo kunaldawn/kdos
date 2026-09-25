@@ -9,13 +9,9 @@
 # ---------------------------------
 
 name        = llvm
-version     = 21.1.8
-release     = 2
-source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/llvm-${version}.src.tar.xz
-source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/cmake-${version}.src.tar.xz
-source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/third-party-${version}.src.tar.xz
-sha256      = 85735f20fd8c81ecb0a09abb0c267018475420e93b65050cc5b7634eab744de9  cmake-21.1.8.src.tar.xz
-sha256      = d9022ddadb40a15015f6b27e6549a7144704ded8828ba036ffe4b8165707de21  llvm-21.1.8.tar.xz
-sha256      = 7fe99424384aea529ffaeec9cc9dfb8b451fd1852c03fc109e426fe208a1f1a7  third-party-21.1.8.src.tar.xz
+version     = 23.1.2
+release     = 1
+source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/llvm-project-${version}.src.tar.xz
+sha256      = c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a  llvm-23.1.2.tar.xz
 description = Collection of modular and reusable compiler and toolchain technologies
-depends     = cmake ninja libffi python3 libxml2
+depends     = cmake ninja libffi python3 libxml2 zstd zlib binutils python3-sphinx

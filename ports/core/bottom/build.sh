@@ -11,8 +11,10 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-cargo build --release --frozen --offline
+export RUSTFLAGS="-C target-feature=-crt-static"
+BTM_GENERATE=true cargo build --release --frozen --offline
 install -Dm755 target/release/btm $PKG/usr/bin/btm
+install -Dm644 target/tmp/bottom/manpage/btm.1 -t $PKG/usr/share/man/man1
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/btm.desktop" <<'EOF'

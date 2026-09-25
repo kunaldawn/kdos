@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = parted
-version     = 3.6
+version     = 3.8
 release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
-sha256      = 3b43dbe33cca0f9a18601ebab56b7852b128ec1a3df3a9b30ccde5e73359e612  parted-3.6.tar.xz
+sha256      = a2b7811f47b0ddb1f7b1d0aa456f7c1270da70708ce231c2fe054c7199eafa63  parted-3.8.tar.xz
 description = Disk partitioning and partition resizing tool
-depends     = lvm2
+depends     = lvm2 util-linux readline ncurses

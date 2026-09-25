@@ -25,6 +25,8 @@
 	--disable-static \
 	--with-mbrola=no \
 	--with-sonic=no \
-	--with-pcaudiolib=yes
+	--with-pcaudiolib=yes \
+	RONN=no KRAMDOWN=no \
+	ac_cv_header_valgrind_memcheck_h=no
 make
 make DESTDIR=$PKG install

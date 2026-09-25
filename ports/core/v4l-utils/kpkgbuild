@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = v4l-utils
+version     = 1.32.0
+release     = 1
+source      = https://linuxtv.org/downloads/v4l-utils/$name-$version.tar.xz
+sha256      = 6828828a17775526eb93fb258a9294d1d1073d633c344dd71ecd4e7a1ffb7dfc  v4l-utils-1.32.0.tar.xz
+description = Video4Linux userspace — libv4l2 and libv4lconvert, libdvbv5, v4l2-ctl, media-ctl, ir-keytable, cec-ctl
+homepage    = https://linuxtv.org/wiki/index.php/V4l-utils
+depends     = meson ninja pkgconf perl bash gettext libintl argp-standalone libjpeg-turbo eudev json-c libbpf elfutils clang

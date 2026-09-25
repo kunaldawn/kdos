@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = gstreamer
-version     = 1.28.0
+version     = 1.28.7
 release     = 1
 source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
-sha256      = 6c8676bc39a2b41084fd4b21d2c37985c69ac979c03ce59575db945a3a623afd  gstreamer-1.28.0.tar.xz
+sha256      = 787329b2c5758e228a71d926a6dcf960bceaacca3cadd63874ba665dfcda013e  gstreamer-1.28.7.tar.xz
 description = GStreamer streaming media framework — core library
 homepage    = https://gstreamer.freedesktop.org/
-depends     = meson ninja glib bison flex
+depends     = meson ninja glib bison flex bash-completion

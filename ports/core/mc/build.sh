@@ -9,15 +9,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The chattr dialog (ext2fs attributes) has no switch: configure turns it on
+# whenever ext2fs.pc and e2p.pc are found, which is why e2fsprogs is in depends.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--mandir=/usr/share/man \
 	--with-screen=slang \
 	--without-x \
-	--enable-vfs-smb=no \
 	--enable-vfs-sftp=yes \
-	--disable-doxygen-doc
+	--disable-doxygen-doc \
+	--enable-nls \
+	--disable-aspell \
+	--without-gpm-mouse \
+	--disable-tests
 make
 make DESTDIR=$PKG install
 

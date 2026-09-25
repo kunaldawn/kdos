@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openssl3
+version     = 3.5.8
+release     = 1
+source      = openssl3-$version.tar.gz::https://openssl.org/source/openssl-$version.tar.gz
+sha256      = a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2  openssl3-3.5.8.tar.gz
+description = OpenSSL 3 runtime libraries for programs built against libssl.so.3
+homepage    = https://www.openssl.org
+depends     = perl zlib
+series      = 3.5

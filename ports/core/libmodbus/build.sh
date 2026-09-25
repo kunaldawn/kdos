@@ -10,6 +10,6 @@
 # ---------------------------------
 
 ./autogen.sh
-./configure --prefix=/usr --libdir=/usr/lib --disable-static --without-documentation
+./configure --prefix=/usr --libdir=/usr/lib --disable-static --disable-tests
 make
 make DESTDIR=$PKG install

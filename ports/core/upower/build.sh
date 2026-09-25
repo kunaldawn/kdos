@@ -13,7 +13,7 @@ meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Dintrospection=disabled \
 	-Dgtk-doc=false \
-	-Dman=false \
+	-Dman=true \
 	-Dinstalled_tests=false \
 	-Didevice=disabled \
 	-Dpolkit=enabled \
