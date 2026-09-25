@@ -203,11 +203,11 @@ run from a terminal prompts there. A program started from a launcher has no term
 signature or decryption that needs a passphrase fails, with no prompt anywhere, unless `gpg-agent`
 already holds it.
 
-`rga` does not search inside `.docx`, `.odt`, `.epub`, `.fb2`, `.ipynb` or `.html`. Its adapter for
-those runs `pandoc`, which is Haskell and needs a GHC bootstrap this tree does not carry, so each
-such file is reported as *Could not find executable "pandoc"* and yields no match — including plain
-HTML, which the adapter claims ahead of ripgrep. `rga --rga-adapters=-pandoc` drops the adapter, and
-HTML is then searched as text. PDFs, media, archives and compressed files are unaffected.
+`rga` does not search a `.htm` file. Its `pandoc` adapter, which reads `.docx`, `.odt`, `.epub`,
+`.fb2`, `.ipynb` and `.html` into text, claims `.htm` too and passes the extension as the input
+format, and pandoc has no reader named `htm`: each such file is reported as *Unknown input format
+'htm'* and yields no match. `rga --rga-adapters=-pandoc` drops the adapter, and the file is then
+searched as text. The other formats, `.html` included, are searched through pandoc.
 
 ## Hardware and platform
 
@@ -233,10 +233,16 @@ setting. `sudo btop` shows the panel.
 
 LVM volume groups are activated only at boot: by the initramfs on a disk boot, then by `03_lvm`. A
 disk carrying LVM that is plugged in later shows no logical volumes until `sudo vgchange -aay`:
-lvm2's own hotplug activation runs through `systemd-run`, so it is built off. A root on a logical
-volume boots, but the installer cannot put one there: it neither creates LVM nor lists a logical
-volume as a root, so that layout is set up by hand. A root on a thin or cache volume does not boot,
-because the initramfs does not carry `thin_check` or `cache_check` — see
+lvm2's own hotplug activation runs through `systemd-run`, so it is built off and its udev rule is
+not installed.
+
+A root on LVM has not been booted. The installer's erase plan creates the group and slot A's
+volume, its reuse plan lists existing volumes, and the initramfs carries `thin_check`,
+`cache_check` and the thin, cache and snapshot targets; the commands were run against a loop
+device in a container and the installer's probe and dry run were read back there, but no install
+onto LVM, plain, encrypted, thin or cached, has been started from the result. The installer lays
+out only one shape — a group of one physical volume on the target disk — and makes no `root_b`:
+slot B's room is left free, and its volume is made by hand like the rest of slot B — see
 [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
 
 `lsblk` shows a filesystem's type, label and UUID to root only. util-linux is built without libudev
@@ -321,19 +327,32 @@ failure the mechanism exists to prevent.
 
 Per-slot kernels have not been booted. `deploy`, the regenerated menu, the hand-picked entry and the
 rollback onto the confirmed slot's kernel are asserted on the host against a fixture ESP, and the
-`linux` postinstall's appended initramfs was assembled and inspected, not started. A candidate
-kernel that dies before its initramfs runs spends no attempt, because Limine counts nothing: the
-menu keeps leading with it until the confirmed slot's `/KDOS (slot <x>)` entry is picked by hand —
-see [One kernel per slot](../03-architecture/boot-and-init.md#one-kernel-per-slot). No update
-replaces the init inside an installed initramfs, so a machine installed from an image whose init
-does not read `kdos_slot=` rolls back onto the candidate's kernel until `mark-good` corrects the
-menu. A root installed from an image without `/boot/initramfs.modules` builds its new kernel's
+`linux` postinstall's appended initramfs was assembled and inspected, not started. The UEFI
+`BootNext` trial has not met a firmware: the load option is compared byte for byte with the
+specification's layout and the trial menu, rollback and clean-up are asserted against a fixture
+ESP, a fixture GPT image and a directory standing in for `efivarfs`. A firmware that ignores
+`BootNext`, or deletes a `Boot####` that is not in `BootOrder`, rolls every candidate back
+unbooted rather than looping. On BIOS a candidate kernel that dies before its initramfs runs
+spends no attempt, because Limine counts nothing: the menu keeps leading with it until the
+confirmed slot's `/KDOS (slot <x>)` entry is picked by hand — see
+[One boot through BootNext](../03-architecture/boot-and-init.md#one-boot-through-bootnext). No
+update replaces the init inside an installed initramfs, so on a machine installed from an image
+whose init does not read `kdos_slot=`, that init in the confirmed slot rolls a menu-led trial back
+onto the candidate's kernel until `mark-good` corrects the menu, and after a BootNext trial's
+reset boots the candidate's root on the confirmed slot's kernel once, where `mark-good` sees the
+confirmed slot's `kdos_slot=` and rolls back. Both are accepted until that slot is itself updated. A root installed from an image without `/boot/initramfs.modules` builds its new kernel's
 initramfs from the module set its image archive carries; that path is exercised on fixture
 archives only.
 
 Go has no race detector and no BoringCrypto. Both are objects upstream compiles and ships inside
 the source tarball, and the `go` port does not install them, so `go build -race`, `go test -race`
 and `GOEXPERIMENT=boringcrypto` fail to link. Every other Go build is unaffected.
+
+GHC has no profiling libraries. The `ghc` port builds Hadrian's `release` flavour without its
+profiled variants, so `ghc -prof` and `cabal --enable-profiling` fail to find the profiled `base`.
+Of GHC's documentation only the `ghc(1)` manual page is installed. The User's Guide and the Haddock
+pages of the shipped libraries are not, so `cabal haddock` writes pages whose references into
+`base` and the other GHC libraries are plain text rather than links.
 
 nmap has no `jdwp-exec` and no `jdwp-info` script. Both inject Java classes that upstream compiles
 and ships inside the source tarball, and the `nmap` port installs neither the classes nor the two
@@ -382,8 +401,8 @@ release bumps reinstall the names. A machine is one when `/var/lib/kpkg/db/toybo
 There is no public binary host. The mechanism is complete — a signed index, three equality tests,
 deltas — but it is one you run yourself.
 
-No port declares `vendoring = node`, though `ports/fetch` implements it beside the three that are
-used: 58 recipes declare `rust`, 32 `go` and 24 `python`. The npm path has never been run, so what
+No port declares `vendoring = node`, though `ports/fetch` implements it beside the four that are
+used: 60 recipes declare `rust`, 34 `go`, 25 `python` and 4 `haskell`. The npm path has never been run, so what
 stands behind it is the code and not a tarball it produced.
 
 ## Testing

@@ -317,7 +317,7 @@ It is the command-line half of the store, over the same catalogue the graphical 
 Every verb that builds, removes, exports or imports runs `kdos-appbox` as a child — one
 implementation, so a command line and a button cannot disagree about what installing means.
 
-`list` is what is installed; `--all` is the catalogue. Printing all 183 applications whenever
+`list` is what is installed; `--all` is the catalogue. Printing all 180 applications whenever
 somebody types `kdos app list` buries the handful they actually have.
 
 A size is labelled an estimate wherever it is printed. What apt resolves on the day depends on the
@@ -945,7 +945,7 @@ selects the tool, so `kdos-tools service list` works before the symlinks exist.
 | `ksvc` | The service supervisor |
 | `service` | The same, under the conventional name |
 | `kdos-getty` | Loads the console font and palette, then runs a getty |
-| `kdos-bootctl` | `status`, `select`, `mark-good`, `try`, `set-slot`, `crypt` and `deploy` for the A/B slots and each slot's kernel on the ESP, which rewrite the `/KDOS` entries of `limine.conf`, plus `theme` and `palette`, which own its theme lines and `/etc/vtrgb` — also copied into the initramfs |
+| `kdos-bootctl` | `status`, `select`, `mark-good`, `try`, `set-slot`, `crypt` and `deploy` for the A/B slots and each slot's kernel on the ESP, which rewrite the `/KDOS` entries of `limine.conf` — `try` and `mark-good` also arm and clear the UEFI `BootNext` trial — plus `theme` and `palette`, which own its theme lines and `/etc/vtrgb` — also copied into the initramfs |
 | `kdos-shot` | Screenshots: `region`, `screen`, `window`, `qr` |
 | `kdos-banner` | The login banner |
 | `kdos-fetch-app` | Install an alien application from a network |

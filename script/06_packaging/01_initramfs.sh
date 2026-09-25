@@ -305,6 +305,40 @@ if [ -f /var/lib/kpkg/db/lvm2 ] || [ -f /usr/lib/udev/rules.d/95-dm-notify.rules
     ln -sf ../usr/sbin/lvm bin/lvm
     ln -sf ../usr/sbin/dmsetup bin/dmsetup
     unset _p
+
+    # AND thin_check AND cache_check, for a root on a thin or a cached
+    # volume. lvm runs the one that matches before it activates a thin pool
+    # or a cache and refuses the volume when it cannot, and lvm2 depends on
+    # thin-provisioning-tools, so a missing one is a broken install and stops
+    # the build like a missing lvm does. Both names are argv[0] links to one
+    # binary, pdata_tools, which is copied once with its libraries.
+    #
+    # lvm.conf NAMES THEM, and names nothing else: every other setting stays
+    # the compiled default. The paths are this initramfs's, written here beside
+    # the copy that makes them true, rather than inherited from wherever
+    # lvm2's configure pointed.
+    for _p in /usr/sbin/thin_check /usr/sbin/cache_check; do
+        if [ ! -x $_p ]; then
+            echo "FATAL: lvm2 is installed but $_p is not." >&2
+            echo "       A thin or cached root would refuse to activate." >&2
+            exit 1
+        fi
+    done
+    _pdata=$(readlink -f /usr/sbin/thin_check)
+    copy_closure "usr/sbin/${_pdata##*/}" "$_pdata"
+    for _p in thin_check cache_check; do
+        [ "$_p" = "${_pdata##*/}" ] || ln -sf "${_pdata##*/}" usr/sbin/$_p
+    done
+    mkdir -p etc/lvm
+    cat > etc/lvm/lvm.conf <<'LVMCONF'
+# Written by 01_initramfs.sh. Every setting not named here is lvm2's compiled
+# default.
+global {
+	thin_check_executable = "/usr/sbin/thin_check"
+	cache_check_executable = "/usr/sbin/cache_check"
+}
+LVMCONF
+    unset _p _pdata
 else
     echo "Note: lvm2 not installed — the initramfs cannot activate a volume group"
 fi
@@ -414,6 +448,13 @@ MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_
 # nobody reads, which looks like an empty drive rather than a missing module.
 # The personalities are listed individually because md_mod loads none of them.
 MODULES="$MODULES md_mod raid0 raid1 raid10 raid456 dm-raid"
+# The device-mapper targets an LVM root can be built from beyond the linear one
+# dm-mod has built in: a thin volume, a cached or write-cached one, and a
+# snapshot. A group holding any of them activates only with its target loaded,
+# and the init loads these before its first vgchange -- lvm2's own modprobe
+# path is whatever its configure found at build time, not one this initramfs
+# is known to have.
+MODULES="$MODULES dm-snapshot dm-thin-pool dm-cache dm-cache-smq dm-writecache"
 
 for MOD in $MODULES; do
     copy_module $MOD
@@ -721,12 +762,15 @@ fi
 # activates the groups of a live session.
 #
 # --sysinit is no dmeventd monitoring, no background polling and no locking
-# failure: the three things an initramfs cannot provide. No lvm.conf is
-# carried, so the compiled defaults apply and every group is activated. The
-# groups stay active across switch_root.
+# failure: the three things an initramfs cannot provide. The lvm.conf carried
+# here names thin_check and cache_check and nothing else, so every other
+# setting is the compiled default and every group is activated. The groups
+# stay active across switch_root.
 #
-# A THIN OR CACHE VOLUME CANNOT BE THE ROOT: activating either runs
-# thin_check or cache_check, and thin-provisioning-tools is not carried here.
+# THE THIN, CACHE AND SNAPSHOT TARGETS ARE LOADED FIRST, on the first call
+# that finds a physical volume: a group holding one of those volumes activates
+# only with its target present, and lvm's own modprobe is a path its configure
+# chose. A kernel with them built in makes this a no-op.
 : "\${LVM_BIN:=/usr/sbin/lvm}"
 LVM_PVS=""
 activate_lvm() {
@@ -734,6 +778,10 @@ activate_lvm() {
     [ -x "\$LVM_BIN" ] || return 0
     pvs=\$(blkid -t TYPE=LVM2_member -o device 2>/dev/null)
     [ -n "\$pvs" ] && [ "\$pvs" != "\$LVM_PVS" ] || return 0
+    if [ -z "\$LVM_PVS" ]; then
+        modprobe -q -a dm-snapshot dm-thin-pool dm-cache dm-cache-smq \
+            dm-writecache 2>/dev/null || true
+    fi
     LVM_PVS="\$pvs"
     sp_total 1
     sp_step "VOLUME GROUPS"

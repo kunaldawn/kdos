@@ -346,6 +346,8 @@ Not configuration, and not storage: these are how one program tells another some
 | `/boot/initramfs.modules` | `01_initramfs.sh`, one module per line | The `linux` postinstall, which carries the new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
 | `/boot/initramfs-kdos.cpio.gz` | The `linux` postinstall: the image's initramfs with the new kernel's modules appended | `kdos-bootctl deploy` and `kinstall`, which take it over the image's `/boot/initramfs.cpio.gz` |
 | `EFI/kdos/<slot>/vmlinuz`, `EFI/kdos/<slot>/initramfs.cpio.gz` on the ESP | `kinstall` for slot `a`, `kdos-bootctl deploy` for either | Limine, through the `/KDOS` entries `kdos-bootctl` regenerates on every change of boot state |
+| `EFI/kdos/trial/` on the ESP: a copy of the loader and a `limine.conf` defaulting to the candidate | `kdos-bootctl try` on UEFI, deleted by every state that is not a pending trial | The firmware, for the one boot `BootNext` asks for |
+| `Boot####` "KDOS update trial" and `BootNext` in `efivarfs` | `kdos-bootctl try` on UEFI, deleted by `kdos-bootctl mark-good` | The firmware, once |
 | `/run/kdos-svc.<name>.log` | `ksvc supervise`, capped at 64 KiB with one `.old` | You, when syslog is not running; every line also goes to syslog |
 | `$XDG_RUNTIME_DIR/kdos-appbox.trace` | The launcher | You |
 | `$XDG_RUNTIME_DIR/kdos/screencast.pid` | `kdos-record`, while its pipeline runs | The next `kdos-record`, which stops that one, and the panel, which draws its lamp |
@@ -385,7 +387,9 @@ The ones below are the ones worth knowing; header guards and internal constants 
 | `KDOS_MOUNTD_CONF`, `KDOS_MOUNTD_MEDIA`, `KDOS_MOUNTD_UEVENT` | Its configuration file, its mount root, and a FIFO standing in for the kernel's uevent socket |
 | `KDOS_PACK_STORE`, `KDOS_PACK_MEDIUM`, `KDOS_PACK_MANIFEST` | Alternate pack locations |
 | `KDOS_INITRD` | An alternate boot image, for the microcode check |
-| `KDOS_BOOTSTATE` | An alternate boot-state file |
+| `KDOS_BOOTSTATE` | An alternate boot-state file; with it, no firmware variable is written unless `KDOS_EFIVARS` is also set, and no command line is read unless `KDOS_CMDLINE` is |
+| `KDOS_CMDLINE` | A file standing in for `/proc/cmdline`, whose `kdos_slot=` tells `kdos-bootctl mark-good` which slot's kernel is running |
+| `KDOS_EFIVARS`, `KDOS_ESP_DISK` | A directory standing in for `efivarfs`, and `<disk image>:<partition number>` standing in for the ESP's disk, for the `BootNext` trial |
 | `KDOS_*_SOCKET` | Move a daemon's socket. It grants nothing — authorisation never depended on the path |
 
 Every one of the mountd seams is read only under `--fixture`. A variable inherited from an init

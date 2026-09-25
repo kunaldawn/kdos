@@ -50,7 +50,7 @@ A recipe sits beside the sources, so a running KDOS can rebuild the installer na
 
 | File | Owns |
 |---|---|
-| `probe.c` | The `/sys` and superblock reader, the partition-table reader, the catalogue and group reader, and the archive hunt |
+| `probe.c` | The `/sys` and superblock reader, the partition-table reader, volume-group activation and the logical-volume list, the catalogue and group reader, and the archive hunt |
 | `pages.c` | The eleven wizard pages |
 | `install.c` | The forked install child and its line protocol |
 | `conf.c` | The answer file, and the filesystem table |
@@ -160,10 +160,61 @@ A filesystem whose `mkfs` is missing from the image is still listed, with the ro
 refused before anything is written. A control that snaps back under the cursor is worse than one
 that explains itself.
 
+## A root on LVM
+
+The erase plan can put the root on LVM, and the reuse plan can put it on a logical volume that
+already exists. Both end in the same place: `root=` and the `fstab` line name the filesystem's UUID,
+exactly as for a partition, and the initramfs activates every volume group before it looks for it —
+see [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
+
+**The erase plan's layout is fixed.** The ESP and any swap partition stay plain partitions. The
+root partition is typed Linux LVM and becomes the one physical volume of the group `kdos`, and the
+root is the volume `root_a`. With encryption on, the container is opened on the partition and the
+physical volume is the container, so the group is inside it and one passphrase opens everything in
+it. The commands go through `lvm pvcreate`, `lvm vgcreate` and `lvm lvcreate` rather than their
+symlinked names, which an image need not carry.
+
+**The volumes are named for the A/B slots.** `root_a` is slot A's root and slot B's goes beside it
+as `root_b`, so a second slot needs no repartitioning. `root_a` takes half the group when half still
+holds the install, the swap file when the swap is a file, and 256 MiB to spare, and all of it
+otherwise. The swap file counts because it is written onto the same root after the copy. `ki_lvm_half()` makes that
+decision, and the Layout page, the Summary, `--dump plan` and the Format step all call it, so the
+size shown is the size created. The other half is left unallocated; the installer makes no second
+volume, because an empty `root_b` is not a slot anything can boot or update.
+
+**The group name is refused before the point of no return** when a group called `kdos` has any
+physical volume on another disk: `vgcreate` would fail after the disk had been erased. The check
+asks `lvm pvs` for every physical volume and its group, so it sees a group with no volume, one whose
+volumes did not activate, and a group spanning the target disk and another. A group wholly on the
+target disk is no conflict, because the erase takes it.
+
+**What was on the disk is taken down first.** The prober activates every group, so a disk that held
+a previous install arrives at the Prepare step with its volumes live, and the kernel does not
+re-read a partition table under a partition something holds. On the erase plan Prepare walks the
+disk's and each partition's
+`holders` in `/sys`, top first: a logical volume's whole group is deactivated, a container is
+closed, any other device-mapper device is removed, and each is unmounted by device number first.
+The Format step does the same again, so a retried Format meets nothing the failed one left open.
+The old physical-volume label is then wiped from the new partition, because the erase writes the
+same layout at the same offsets and `pvcreate` would find the previous install's label there.
+
+**The reuse plan lists volumes from `/sys`, not from `lvs`.** A logical volume is a device-mapper
+device whose uuid is `LVM-` followed by two 32-character uuids and nothing more; a suffix marks a
+layer such as a thin pool's `-tpool`, and those are skipped. The dm name `vg-lv`, with each `-`
+inside a name doubled, gives the two names, and a volume whose name carries one of LVM's reserved
+sub-volume suffixes (`_tdata`, `_cmeta`, `_rimage_`, …) is skipped as well. A thin volume and a
+cached volume are ordinary volumes here. The list is every volume on the machine, not only the
+target disk's: the root need not share a disk with the ESP. The group activation that makes them
+visible runs once per process, as root only, so `--dump probe` run by a user does not fail on it.
+
+A physical volume, and any partition or volume with a holder, is refused as the root. `mkfs` fails
+on a held device after the point of no return, and a physical volume it did not fail on would be a
+volume group destroyed.
+
 ## The applications step
 
 The Applications page lists **groups**, not applications. Seven named bundles is a thing to read
-during an install; 183 rows is not. An answer file may still name an application by id — the
+during an install; 180 rows is not. An answer file may still name an application by id — the
 catalogue's expander takes either — and `essential` is what an empty answer file gets.
 
 What it reads is the shipped catalogue at `/usr/share/kdos/appstore/catalogue`, which carries a
@@ -227,7 +278,7 @@ Flat `key = value`, written by `--save` and read by `--config`.
 
 ```
 keymap timezone timezone_label disk plan esp root format_esp fstype
-swap swap_mb luks luks_passphrase hostname username fullname password
+swap swap_mb luks luks_passphrase lvm hostname username fullname password
 root_password root_locked theme alien_apps apps autologin reboot services
 ```
 
@@ -262,7 +313,9 @@ kinstall --dump probe [--json]
 kinstall --dump plan  [--json]
 ```
 
-Neither needs a terminal and neither runs anything.
+Neither needs a terminal and neither writes to a disk. Run as root, `probe` activates every volume
+group first, exactly as the wizard's probe does, so the logical volumes it lists are the ones the
+reuse plan would offer; run as a user it lists only the ones already active.
 
 `probe` is the machine as the prober sees it. `plan` calls the same planner the wizard does, so the
 step list and its skips are the real ones. The structured form is a rendering of the same

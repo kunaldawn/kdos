@@ -5,10 +5,11 @@ NAME="lvm"
 LVM="/usr/sbin/lvm"
 
 # Activates the LVM volume groups of the running system. lvm2 is built with
-# event activation off, because its udev rule activates a group through
-# systemd-run; with it off, nothing on hotplug activates a group either, and a
-# disk carrying LVM shows its logical volumes only once this has run — at boot,
-# or by hand with `vgchange -aay`.
+# event activation off and without its hotplug rule, 69-dm-lvm.rules, which
+# activates a group through systemd-run; so nothing on hotplug activates a
+# group, and a disk carrying LVM shows its logical volumes only once this has
+# run — at boot, or by hand with `vgchange -aay`. The installer runs the same
+# activation before it lists volumes.
 #
 # A disk boot has already activated every group the initramfs could see,
 # because a root on a logical volume has to exist before switch_root. Those

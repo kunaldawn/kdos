@@ -58,7 +58,7 @@ recipe helper.
 | `description` | | | One line. It is read and printed — not a comment |
 | `homepage` | | | |
 | `depends` | | | One line, space-separated port names — the solver reads the first and stops |
-| `vendoring` | | | `rust`, `go` or `python` — see [Vendoring](#vendoring) |
+| `vendoring` | | | `rust`, `go`, `python` or `haskell` — see [Vendoring](#vendoring) |
 | `pypackages` | | yes | An explicit Python dependency closure to vendor |
 | `secdb` | | | The name the security database uses, when it differs from ours |
 | `bench` | | | A command `kdos march` times |
@@ -80,6 +80,7 @@ them to `build.sh` — but another tool gives each a defined meaning:
 | Key | Read by | Means |
 |---|---|---|
 | `vendordir` | `ports/fetch` | Where the vendoring tool must run, when that is not the top of the tree |
+| `hsplan` | `ports/fetch` | A bootstrap plan, relative to `vendordir`, that is the Haskell dependency set — see [The Haskell bundle](#the-haskell-bundle) |
 | `vendorsync` | `ports/fetch` | Further Cargo manifests, relative to `vendordir`, whose crates go into the same Rust bundle — see [Where the bundle goes](#where-the-bundle-goes) |
 | `pyrequirements` | `ports/fetch` | `no` — a requirements file is *not* the dependency set here |
 | `pyruntime` | `ports/fetch` | `no` — do not vendor a runtime environment |
@@ -358,10 +359,15 @@ Markdown pages come in two dialects, and each has its converter:
 | A `*.1.md` that upstream's docs `Makefile` feeds to `$(GOMD2MAN)` — the containers stack | `go-md2man` | Runs upstream's own docs and install targets |
 | A page that starts with a pandoc `%` title block and that upstream renders with `pandoc -s -t man` | `lowdown` | `lowdown -s -Tman -o <page> <page>.md`, then installs it |
 
-`lowdown` stands in for `pandoc`: it reads the same `%` title block into `.TH`, and `-M key=value`
+`lowdown` stands in for `pandoc`, which is a port but a GHC build of 229 Hackage packages, too much
+to put under a port for its manual page. It reads the same `%` title block into `.TH`, and `-M key=value`
 supplies what a pandoc invocation passes as `--variable` — `-M title=YQ -M section=1` for a page
 with no title block, `-M source=v$version` where the title block carries an unexpanded
-`$version` or a version older than the release. Render a new page once and read it with `mandoc -Tlint` before shipping it; a page
+`$version` or a version older than the release. Pass `--out-no-smarty` when the page writes long
+options outside code spans, or each leading `--` renders as an en dash. A pandoc-only escape, `\ ` for a
+non-breaking space, reaches the page as a literal backslash; `shellcheck` ships a patch that
+replaces it with a space in its option headings. Inside a code span the backslash is literal in both
+renderers, so leave those alone. Render a new page once and read it with `mandoc -Tlint` before shipping it; a page
 that only draws style warnings is fine. `lowdown` is built with `bmake`, because its makefile is
 BSD make and GNU make stops at the first `.if`. `bmake` depends on `tzdata` because its install
 runs its unit tests, and two of them convert a time in a named zone: without the zoneinfo database
@@ -516,6 +522,7 @@ an archive beside the tarball. The build unpacks that archive and builds offline
 | `rust` | The vendor tree and its configuration | `cargo build --frozen --offline` |
 | `go` | The module vendor tree | `go build -mod=vendor` |
 | `python` | The wheels or source distributions | Install from the local directory |
+| `haskell` | Hackage source tarballs and their revised `.cabal` files, as a local repository | `cabal v2-install` against that repository alone, or upstream's bootstrap script |
 
 ### Where the bundle goes
 
@@ -568,6 +575,56 @@ additional ports.
 `pip install --root="$PKG"`, `--prefix` or `--target`, so a port's install into its package needs
 nothing. A `pip install` into the build root itself — the two backends `vdirsyncer` installs from
 its bundle before its own build, `expandvars` and `hatch-fancy-pypi-readme` — is refused unless it passes `--break-system-packages`.
+
+### The Haskell bundle
+
+`vendoring = haskell` writes a `vendor/` directory that cabal reads as a local `file+noindex`
+repository: each dependency's `<pkg>-<ver>.tar.gz` from Hackage, the `<pkg>-<ver>.cabal` revision
+in force for it beside the tarball, and `SHA256SUMS` over both. `ports/hackage-vendor` does the
+downloading, and it checks every file against a hash from somewhere other than the download
+before writing it.
+
+The dependency set comes from the first of these that the port has:
+
+- **`hsplan`**, a bootstrap plan inside the source — `plan-bootstrap-<seed>.json` under
+  `hadrian/bootstrap` for `ghc`, `bootstrap/linux-<ghc>.json` for `cabal-install`. A plan pins
+  each package's revision and both of its hashes. Those two ports build before any `cabal`
+  exists, so their `build.sh` lays the bundle out where upstream's `bootstrap.py` looks for
+  prefetched sources, and the script builds every package with its `Setup.hs` alone.
+- **`cabal.project.freeze` in the port directory**, a freeze pinned by hand. `pandoc` carries one
+  because the solver is free to turn a flag off to reach a solution. An unpinned freeze of
+  `pandoc-cli` settles on `-lua -server`, a `pandoc` without `--lua-filter` or the server, and on
+  the library's `-embed_data_files`, which leaves pandoc's templates in the build's cabal store and
+  fails every DOCX and EPUB conversion on the installed system. Write it with
+  `cabal freeze --constraint="<pkg> +<flag>"` beside the manifest, and pass the same flags and
+  constraints to `cabal v2-install`, so a freeze that disagrees fails the solve instead of building
+  the smaller program. A hand freeze pins the program's own library to its version, so a version
+  bump rewrites it before `ports/fetch` runs.
+- **`cabal freeze`**, run beside `vendordir`'s manifest by the fetch container's GHC and cabal,
+  which are the versions the `ghc` and `cabal-install` recipes name. `shellcheck` takes this
+  route: its solve needs no flag pinned.
+
+A freeze's tarballs are checked against the sha256 in Hackage's signed index, and each `.cabal`
+is the last revision at or before the freeze's `index-state`. A package the resolving GHC ships
+in its global package database is left out. The freeze goes into the bundle, and `build.sh`
+puts it back beside the manifest, so the offline solve lands on the set that was downloaded:
+
+```bash
+tar xf "$PORT_SRC/$name-vendor-$version.tar.xz" -C "$SRC_ROOT"
+cd "${vendordir:-.}"
+cp "$SRC_ROOT/vendor/cabal.project.freeze" .
+export CABAL_DIR="$SRC_ROOT/cabal"
+mkdir -p "$CABAL_DIR"
+printf 'repository hackage.haskell.org\n  url: file+noindex://%s\n' "$SRC_ROOT/vendor" \
+    > "$CABAL_DIR/config"
+cabal v2-install --installdir="$PKG/usr/bin" --install-method=copy exe:<program>
+```
+
+The repository takes Hackage's name because the freeze's `active-repositories` line does; under
+any other name cabal warns that no repository provides `hackage.haskell.org`. Its URL is the
+bundle and no other repository is configured, so a package missing from the bundle fails the solve
+by name instead of reaching for the network. `--offline` is not passed, because cabal counts a
+`file+noindex` package as a download and refuses every one of them under it.
 
 ### A vendor bundle hashes the same twice
 
@@ -744,7 +801,7 @@ recipe has to be able to name.
 |---|---|---|
 | Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the assembled i965 shader kernels `libva-intel-driver` includes from `src/shaders`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` — every other guest firmware it ships is compiled from its `roms/` | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
 | Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`; the faces bundled inside `mupdf`, `matplotlib` and `seqkit` | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf` and `noto-emoji` |
-| Compiler bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm` | A compiler written in its own language needs a working one first. Each seed is used only to build, and never ships |
+| Compiler bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm`; the upstream musl GHC `ghc` builds with | A compiler written in its own language needs a working one first. Each seed is used only to build, and never ships |
 | Data with no other source form | The `tesseract` English model, the `perl-xml-parser` `.enc` encoding maps, the JavaScript in `libkiwix`'s skin, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, the RP2350 boot-ROM tails `picotool` embeds from `model/`, and recorded audio such as the `speaker-test` samples in `alsa-utils` | The file is the form upstream maintains; there is nothing earlier to build it from |
 
 Every exempt payload is still a `source =` line with a `sha256`, so the offline build and the

@@ -84,6 +84,15 @@ static void probe_text(void)
 			       p->mounted ? "  mounted" : "");
 		}
 	}
+
+	printf("\nlogical vols  %d\n", ki_nlv);
+	for (int i = 0; i < ki_nlv; i++) {
+		const Lv *l = &ki_lv[i];
+		printf("  %-24s %8llu MB  %-8s %-16s%s%s\n", l->path,
+		       l->sectors / 2048, l->fstype[0] ? l->fstype : "-",
+		       l->label[0] ? l->label : "", l->held ? "  held" : "",
+		       l->mounted ? "  mounted" : "");
+	}
 }
 
 static void probe_json(void)
@@ -145,7 +154,31 @@ static void probe_json(void)
 		}
 		kb_buf_printf(&b, "%s]}", d->nparts ? "\n     " : "");
 	}
-	kb_buf_printf(&b, "%s]\n}\n", ki_ndisk ? "\n  " : "");
+	kb_buf_printf(&b, "%s],\n  \"logical_volumes\": [",
+		      ki_ndisk ? "\n  " : "");
+	for (int i = 0; i < ki_nlv; i++) {
+		const Lv *l = &ki_lv[i];
+		kb_buf_printf(&b, "%s\n    {\"path\": ", i ? "," : "");
+		kb_json_str(&b, l->path);
+		kb_buf_str(&b, ", \"vg\": ");
+		kb_json_str(&b, l->vg);
+		kb_buf_str(&b, ", \"lv\": ");
+		kb_json_str(&b, l->lv);
+		kb_buf_printf(&b, ", \"sectors\": %llu", l->sectors);
+		kb_buf_str(&b, ", \"fstype\": ");
+		kb_json_str(&b, l->fstype);
+		kb_buf_str(&b, ", \"label\": ");
+		kb_json_str(&b, l->label);
+		kb_buf_str(&b, ", \"uuid\": ");
+		kb_json_str(&b, l->uuid);
+		kb_buf_printf(&b, ", \"held\": %s, \"mounted\": %s",
+			      l->held ? "true" : "false",
+			      l->mounted ? "true" : "false");
+		kb_buf_str(&b, ", \"mountpoint\": ");
+		kb_json_str(&b, l->mountpoint);
+		kb_buf_str(&b, "}");
+	}
+	kb_buf_printf(&b, "%s]\n}\n", ki_nlv ? "\n  " : "");
 	fwrite(b.p, 1, b.n, stdout);
 	kb_buf_free(&b);
 }
@@ -223,7 +256,13 @@ static void plan_dump(int json)
 		       ki_fs(cfg.fstype)->opts, ki_fs(cfg.fstype)->passno);
 		printf("esp           %s%s\n", cfg.part_esp,
 		       cfg.format_esp ? " (format)" : "");
-		printf("root          %s\n", cfg.part_root);
+		if (cfg.plan == PLAN_WIPE && cfg.lvm)
+			printf("root          lvm %s/%s, %s of the group%s\n",
+			       KI_VG, KI_LV_A, ki_lvm_half() ? "half" : "all",
+			       cfg.luks ? ", inside LUKS2" : "");
+		else
+			printf("root          %s%s\n", cfg.part_root,
+			       cfg.luks ? ", inside LUKS2" : "");
 		printf("swap          %s", swap_name());
 		if (cfg.swap != SWAP_NONE)
 			printf(" %ld MB", cfg.swap_mb);
@@ -295,6 +334,13 @@ static void plan_dump(int json)
 		      cfg.format_esp ? "true" : "false");
 	kb_buf_str(&b, ", \"root\": ");
 	kb_json_str(&b, cfg.part_root);
+	kb_buf_printf(&b, ", \"luks\": %s", cfg.luks ? "true" : "false");
+	if (cfg.plan == PLAN_WIPE && cfg.lvm)
+		kb_buf_printf(&b, ", \"lvm\": {\"vg\": \"%s\", \"lv\": \"%s\", "
+			      "\"half\": %s}", KI_VG, KI_LV_A,
+			      ki_lvm_half() ? "true" : "false");
+	else
+		kb_buf_str(&b, ", \"lvm\": null");
 	kb_buf_printf(&b, ",\n  \"swap\": \"%s\", \"swap_mb\": %ld",
 		      swap_name(), cfg.swap_mb);
 	kb_buf_str(&b, ",\n  \"hostname\": ");

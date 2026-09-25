@@ -36,9 +36,8 @@ terminal, but no KDOS surface talks to any of them. A terminal program can reach
 desktop account joins when `brltty` is installed: BrlAPI admits a client through polkit, and the
 rule `brltty` ships grants that group without asking for an active session, which nothing here
 ever has. There is no `/etc/brlapi.key`; one generated at build time would be the same secret on
-every machine installed from the image. The catalogue also carries an `app.a11y` pack
-holding Debian's `brltty` and `espeak-ng`, reachable with `kdos-appbox -b app.a11y run espeak-ng`;
-it is the same story one container further out.
+every machine installed from the image. The application catalogue carries neither: the native
+ports are the only `brltty` and `espeak-ng`.
 
 At a terminal, `brltty` is a service: `65_brltty` starts it at boot once `/etc/brltty.conf` exists,
 and skips it until then. It reads `tty1` and the installer through `/dev/vcsa`. Its speech is

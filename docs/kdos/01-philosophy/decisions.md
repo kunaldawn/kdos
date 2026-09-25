@@ -63,7 +63,7 @@ when the store builds it, a signed pack per row when a set is exported. Installi
 disturbs nothing else, and a shared runtime's layers are stored once however many applications
 name it.
 
-The question was how 183 graphical applications reach the medium — as one container image, or as
+The question was how 180 graphical applications reach the medium — as one container image, or as
 separate artefacts.
 
 A single container image was rejected because it puts every application on every install whether

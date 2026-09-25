@@ -126,7 +126,7 @@ How that disk is used: the plan, the root filesystem, swap, and encryption.
 | Plan | What happens |
 |---|---|
 | Erase the whole disk | GPT, laid out for KDOS: a 512 MB EFI system partition, a swap partition if you asked for one, then root |
-| Use partitions that already exist | You assign the ESP and the root; every other partition on the disk is left alone, and the Partition step is skipped. The root partition you assign is reformatted, always |
+| Use partitions that already exist | You assign the ESP and the root; every other partition on the disk is left alone, and the Partition step is skipped. The root can be a partition or an existing logical volume, and whichever you assign is reformatted, always |
 | Partition it myself | `cfdisk` takes over the screen. Make an EFI System partition and a Linux partition, write the table and quit; the installer comes back on the reuse plan for you to assign them |
 
 Swap is a file on the root filesystem, a partition of its own, or nothing. The size box starts at
@@ -135,10 +135,23 @@ Swap is a file on the root filesystem, a partition of its own, or nothing. The s
 On the reuse plan there is a checkbox to reformat the ESP as FAT32. Leave it off when another
 operating system boots from the same ESP.
 
-The installer lists whole disks and their partitions only. A logical volume, a software RAID array
-or an opened LUKS container cannot be chosen as the root, and nothing in the installer creates LVM.
-The initramfs can boot a root on a logical volume, but a root there has to be set up by hand — see
-[Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
+On the erase plan, `Put the root on LVM` makes the root partition the one physical volume of a
+volume group named `kdos`, and the root is its logical volume `root_a`. The ESP and a swap partition
+stay plain partitions. `root_a` is slot A's root and takes half the group, and the other half is
+left free for slot B's `root_b` — see [A/B root slots](#ab-root-slots). On a disk where half would
+not hold the install and its swap file, `root_a` takes all of it; the page and the Summary say which. With
+encryption on as well, the group is inside the LUKS container, so one passphrase opens both slots.
+A volume group already named `kdos` with any part of it on another disk is refused on this page, because creating the
+new one would fail after the disk had been erased.
+
+On the reuse plan the root list holds the disk's partitions and then every logical volume on the
+machine, named `vg/lv`. The installer activates every volume group when it probes, so a disk
+carrying LVM shows its volumes. A thin or cached volume is offered and boots like any other; a
+thin pool's or a cache's internal volumes are not listed. An LVM physical volume, and a partition
+or volume something else holds open, are refused as the root, because formatting either would
+fail after the point of no return or destroy the group on it.
+
+A software RAID array and an opened LUKS container cannot be chosen as the root.
 
 Encryption is offered on the erase plan only, because encrypting a partition destroys what is on
 it and the reuse plan exists for people who are keeping something. Tick it and the passphrase
@@ -282,15 +295,20 @@ step. Discovering it after the point of no return would be the wrong place.
 
 The installer writes the initial boot state onto the ESP: slot A is the filesystem it has just
 made, slot B is empty, each slot's LUKS container is recorded beside it, and
-`bootstate=UUID=<esp>` is added to the kernel options. Slot A's kernel goes into its own ESP
+`bootstate=UUID=<esp>` is added to the kernel options. On an LVM install slot B's room is left free
+in the volume group, so its volume is `lvcreate -n root_b -l 100%FREE kdos` rather than a new
+partition. Slot A's kernel goes into its own ESP
 directory and each menu entry names its slot with `kdos_slot=a`; an update into slot B puts B's
 kernel beside it, so a rollback boots the old kernel with the old root.
 
 That is the state machine's starting position rather than a working dual-root setup — filling slot
-B is an updater's job. What it gives you now is the machinery: a candidate slot gets a fixed number
-of attempts, counted down in the initramfs before anything is mounted, and is promoted to active
-only when `rcS` reaches its end. A root that boots into a wedged userland still spends an attempt,
-so a bad update rolls itself back with no help from anything.
+B is an updater's job. What it gives you now is the machinery: a candidate slot is booted once
+through UEFI `BootNext` — three times led by the boot menu on BIOS, or where the firmware request
+cannot be written — counted down in the initramfs
+before anything is mounted, and is promoted to active only when `rcS` reaches its end. Through
+`BootNext` every boot after the candidate's one starts the confirmed slot, so even a kernel that panics before
+its initramfs rolls back with no help from anything; on the menu-led trial that kernel is left by
+picking the confirmed slot in the menu.
 
 Recording a container per slot is what joins A/B to encryption. The kernel command line can name
 exactly one `cryptdevice=`, so the initramfs asks the state file for the chosen slot's container
@@ -322,12 +340,13 @@ of real answers, walk the wizard to the Summary page and press `Save answer file
 | `timezone_label` | The zoneinfo name `/etc/localtime` is linked to, such as `Europe/Berlin` |
 | `disk` | The whole-disk device, such as `/dev/sda` |
 | `plan` | `wipe`, `reuse` or `manual`; anything else reads as `wipe` |
-| `esp`, `root` | The partitions to use on the `reuse` plan |
+| `esp`, `root` | What to use on the `reuse` plan: the ESP is a partition, the root a partition or a logical volume as `/dev/<vg>/<lv>` |
 | `format_esp` | `1` to reformat the ESP as FAT32, `0` to keep it |
 | `fstype` | `ext4`, `btrfs`, `xfs` or `f2fs` |
 | `swap` | `file`, `partition` or `none` |
 | `swap_mb` | Size in MiB |
 | `luks` | `1` for an encrypted root |
+| `lvm` | `1` to put the root on LVM on the `wipe` plan |
 | `luks_passphrase` | The passphrase, in the clear |
 | `hostname`, `username`, `fullname` | The machine and the account |
 | `password` | The user's password, in the clear |

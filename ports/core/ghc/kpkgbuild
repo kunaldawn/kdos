@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ghc
+version     = 9.12.4
+release     = 1
+
+_seed       = 9.10.3
+_seedarch   = x86_64-alpine3_12-linux-static
+hsplan      = plan-bootstrap-${_seed//./_}.json
+vendordir   = hadrian/bootstrap
+
+source      = https://downloads.haskell.org/~ghc/$version/ghc-$version-src.tar.xz
+source      = https://downloads.haskell.org/~ghc/$_seed/ghc-$_seed-$_seedarch.tar.xz
+sha256      = 02d1ee5080acf00e135b93b238f09015b06ff27254cde59669cf57c42c2bee43  ghc-9.12.4.tar.xz
+sha256      = 9928e01d2f49b7b75b2a4f1c37cf5de31cdcf68cd063cc3b3a010aa4d99f3962  ghc-9.10.3-x86_64-alpine3_12-linux-static.tar.xz
+sha256      = 1108bc8401e74b49f71d7dd237c8b1fbfdd5d55cbcdd11ec9a9e6a6eb87d9d1f  ghc-vendor-9.12.4.tar.xz
+description = The Glasgow Haskell Compiler, its libraries and GHCi
+homepage    = https://www.haskell.org/ghc/
+vendoring   = haskell
+depends     = gcc gmp libffi ncurses python3 python3-sphinx autoconf automake

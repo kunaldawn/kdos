@@ -9,8 +9,8 @@
 # ---------------------------------
 #
 # `ports/fetch` downloads tarballs, which needs nothing, and VENDORS rust, go,
-# node and python dependency trees, which needs each of those toolchains. This
-# carries them so the developer's machine does not have to.
+# node, python and Haskell dependency trees, which needs each of those
+# toolchains. This carries them so the developer's machine does not have to.
 #
 # THE VERSIONS ARE THE TREE'S OWN, passed in as build args from the recipes in
 # ports/core. A vendor bundle is resolved by the toolchain that produces it: a
@@ -41,6 +41,8 @@ FROM debian:trixie-slim
 ARG RUST_VERSION
 ARG GO_VERSION
 ARG NODE_VERSION
+ARG GHC_VERSION
+ARG CABAL_VERSION
 
 RUN apt-get -o APT::Update::Error-Mode=any update \
     && apt-get install -y --no-install-recommends \
@@ -49,6 +51,7 @@ RUN apt-get -o APT::Update::Error-Mode=any update \
         python3 python3-pip python3-venv python3-dev \
         tar xz-utils bzip2 zstd unzip \
         cmake ninja-build patchelf libffi-dev libssl-dev \
+        libgmp-dev libncurses-dev libnuma-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
@@ -63,10 +66,23 @@ RUN curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
 RUN curl -sSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
       | tar -xJ -C /usr/local --strip-components=1
 
-ENV PATH=/opt/cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
+# `cabal freeze` solves against the compiler it runs with, and the packages
+# that compiler ships are left out of the bundle — so a GHC other than the
+# tree's own leaves out the wrong set and pins versions the target's GHC
+# rejects. The upstream Debian build of the same version is that compiler.
+RUN curl -sSL "https://downloads.haskell.org/~ghc/${GHC_VERSION}/ghc-${GHC_VERSION}-x86_64-deb12-linux.tar.xz" \
+      | tar -xJ -C /tmp \
+    && cd /tmp/ghc-${GHC_VERSION}-x86_64-unknown-linux \
+    && ./configure --prefix=/opt/ghc >/dev/null && make install >/dev/null \
+    && rm -rf /tmp/ghc-${GHC_VERSION}-x86_64-unknown-linux
+
+RUN curl -sSL "https://downloads.haskell.org/~cabal/cabal-install-${CABAL_VERSION}/cabal-install-${CABAL_VERSION}-x86_64-linux-unknown.tar.xz" \
+      | tar -xJ -C /usr/local/bin cabal
+
+ENV PATH=/opt/ghc/bin:/opt/cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
 
 # A container runs as the CALLER's uid so the tarballs it writes are the
-# caller's. That uid has no passwd entry and no writable home, and cargo, go
-# and npm all want one — `ports/fetch` points HOME, CARGO_HOME and GOPATH at a
-# scratch directory for exactly that reason.
+# caller's. That uid has no passwd entry and no writable home, and cargo, go,
+# npm and cabal all want one — `ports/fetch` points HOME, CARGO_HOME, GOPATH
+# and CABAL_DIR at a scratch directory for exactly that reason.
 WORKDIR /kdos

@@ -44,9 +44,10 @@ cmake .. \
 make
 make DESTDIR=$PKG install
 
-# The pages are pandoc markdown and upstream renders them with pandoc, which
-# is not a port. Their title block reads 'AVIFENC(1) | General Commands
-# Manual', so title and section are passed rather than parsed.
+# The pages are pandoc markdown and upstream renders them with pandoc.
+# lowdown renders them without putting GHC in this port's build. Their title
+# block reads 'AVIFENC(1) | General Commands Manual', so title and section
+# are passed rather than parsed.
 install -d "$PKG/usr/share/man/man1"
 for page in avifenc avifdec; do
 	lowdown -s -Tman \

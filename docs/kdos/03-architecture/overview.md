@@ -78,7 +78,7 @@ to do work unrelated to the operating system — is in the outer ring, and no
 amount of desirability moves it inward.
 
 Measured against the tree: 945 recipes in `ports/core`, 11 in `src/packages`,
-13 in `src/desktop`, for 969 ports in total, and 183 `app` rows in the
+13 in `src/desktop`, for 969 ports in total, and 180 `app` rows in the
 catalogue.
 
 `src/packages/` and `src/desktop/` are port repositories in their own right,

@@ -25,7 +25,7 @@ carries 833 installed packages.
 
 A claim like that is worth nothing without its exceptions, so [the exceptions are listed in
 full](#what-is-not-built-from-source) rather than glossed over: firmware and code for other
-processors, compiled font data, three compiler bootstrap seeds, data with no other source form, some
+processors, compiled font data, four compiler bootstrap seeds, data with no other source form, some
 vendored artwork, one third-party C source set, and the Debian packages that make up the
 application catalogue. Everything the host installs and runs on its own processor is compiled here;
 the rule and its four exempt classes are in [Principles](principles.md#everything-that-runs-on-the-host-is-built-from-source).
@@ -67,11 +67,11 @@ and is written up in [Decisions](decisions.md#the-tarballs-are-in-the-tree-throu
 
 KDOS builds the desktop. It does not native-port Firefox, LibreOffice or Blender, and it will not.
 
-The outer ring is a catalogue of 183 applications over 7 shared runtimes, each declared as a chain
+The outer ring is a catalogue of 180 applications over 7 shared runtimes, each declared as a chain
 of Debian packages rather than shipped as bytes, and each built by podman on the machine that asks
 for one. An installed application runs in its own rootless container and behaves like ordinary
 system software: it appears in the launcher, registers as a MIME handler, takes the desktop's
-theme, and can be run from a terminal. Thirty-six `cmd` rows across 25 applications name commands
+theme, and can be run from a terminal. Thirty-three `cmd` rows across 22 applications name commands
 rather than applications — solvers, converters and toolchains driven from a prompt — and get no
 launcher entry, because a program with no window has nothing for a launcher to open.
 
@@ -114,21 +114,24 @@ The rest of this class rides inside ports that are otherwise compiled here:
 | `espflash`, `probe-rs`, `python3-esptool`, `openfpgaloader` | The flasher stubs, flash algorithms and bridge bitstreams each one uploads to the device it drives |
 | `qemu` | EDK2 for the riscv64 `virt` machine, `edk2-riscv-code.fd` and its variable store, unpacked from the tarball's `pc-bios/`: compiled by a riscv64 bare-metal gcc 15 it faults before reaching a boot option. The rest of the guest firmware it installs — SeaBIOS and SeaVGABIOS, qboot, the iPXE NIC ROMs, the `-kernel` option ROMs, EDK2 for x86_64 and aarch64, and OpenSBI — is compiled here from the sources in the tarball's `roms/` |
 
-### Three compiler bootstrap seeds
+### Four compiler bootstrap seeds
 
-Rust, Go and Zig are each written in themselves, so building any of them needs a working one first.
+Rust, Go, Zig and Haskell's GHC are each written in themselves, so building any of them needs a
+working one first.
 
 | Port | Version | Bootstrap payload |
 |---|---|---|
 | `rust` | 1.98.1 | 150 MB of upstream 1.97.1 stage-0 binaries — `rustc` (101 MB), `rust-std` (37 MB) and `cargo` (11 MB) — beside the 233 MB source |
 | `go` | 1.27.1 | 57 MB of upstream 1.25.9 bootstrap toolchain beside the 33 MB source |
 | `zig` | 0.16.0 | `stage1/zig1.wasm`, inside the source tarball: a WebAssembly build of the compiler that the build translates to C and compiles to start its own bootstrap |
+| `ghc` | 9.12.4 | 251 MB of upstream GHC 9.10.3 for musl, the statically linked Alpine build, beside the 34 MB source. It compiles Hadrian, GHC's build system, and GHC's first stage |
 
 Every seed is pinned by version and sha256 like every other source, so the offline build still
-holds, and no seed is installed. Everything the seeds produce — the shipped `rustc`, `cargo`, `go`
-and `zig`, and every Rust, Go and Zig program in the tree — is compiled here. Go's source tarball also carries
-upstream-compiled objects — the race detector's runtime and the BoringCrypto module — and the `go`
-port deletes them from what it installs rather than ship binaries it did not build.
+holds, and no seed is installed. Everything the seeds produce — the shipped `rustc`, `cargo`, `go`,
+`zig`, `ghc` and `cabal`, and every Rust, Go, Zig and Haskell program in the tree — is compiled
+here. Go's source tarball also carries upstream-compiled objects — the race detector's runtime and
+the BoringCrypto module — and the `go` port deletes them from what it installs rather than ship
+binaries it did not build.
 
 ### Compiled font data
 
@@ -172,7 +175,7 @@ dual-licensed BSD-2-Clause and CC0, compiled here like everything else. It is th
 
 ### The application catalogue is Debian
 
-The 183 applications and the runtimes beneath them are Debian trixie packages, built on
+The 180 applications and the runtimes beneath them are Debian trixie packages, built on
 `debian:trixie-slim`. Nothing inside them is compiled by this repository and nothing is carried on
 the medium: the catalogue records which packages an application is, and podman builds it on the
 machine that asks. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
@@ -256,12 +259,12 @@ Measured from the tree.
 | Port recipes in `ports/core` | 945 |
 | Port recipes under `src/` for KDOS's own software | 24 |
 | Packages installed on the built system | 833 |
-| Applications in the catalogue | 183 |
+| Applications in the catalogue | 180 |
 | Shared runtimes beneath them | 7 |
 | Catalogue groups offered by the installer and the store | 7 |
 | Base packs | 2 |
 | Data packs | 2 |
-| Boxed commands with no graphical launcher | 36 rows across 25 applications |
+| Boxed commands with no graphical launcher | 33 rows across 22 applications |
 | Kernel | 7.2.7 |
 | C libraries written for this system | 17 |
 | Upstream archives held in Git LFS | 1,020 archives, about 8.3 GB |

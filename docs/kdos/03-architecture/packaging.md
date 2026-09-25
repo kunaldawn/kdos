@@ -140,7 +140,7 @@ see [Known gaps](../06-reference/known-gaps.md#build-and-packaging).
 
 `kpkgbuild` hashes **every** `sha256 =` entry whose file is present beside the
 recipe or in the source cache, before it touches the work directory. That is
-wider than the source list on purpose: the 114 Go, Rust and Python ports carry
+wider than the source list on purpose: the 122 Go, Rust, Python and Haskell ports carry
 a vendor bundle — `<name>-vendor-<version>.tar.xz`, unpacked by `build.sh`
 itself — which is declared with a hash and named by no `source =` line, so a
 check that walked `source =` alone would compile those ports from bytes nothing

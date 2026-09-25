@@ -8,13 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ripgrep-all
-version     = 0.10.10
+name        = pandoc
+version     = 3.11
 release     = 1
-source      = $name-$version.tar.gz::https://github.com/phiresky/ripgrep-all/archive/refs/tags/v$version.tar.gz
-sha256      = 17fadc7b73a51608d57f82b4a11f3edc0da87716cc4b302103eed9d4b9010fe5  ripgrep-all-0.10.10.tar.gz
-sha256      = 9ee1fcafba597a3e8902e7139e21a2693412ce80d03c3c91bfe09886a6c50ac5  ripgrep-all-vendor-0.10.10.tar.xz
-description = ripgrep, but it looks inside PDFs, archives and spreadsheets
-homepage    = https://github.com/phiresky/ripgrep-all
-depends     = rust ripgrep fzf poppler ffmpeg pandoc xz bzip2 zstd sqlite
-vendoring   = rust
+source      = $name-$version.tar.gz::https://hackage.haskell.org/package/$name-cli-$version/$name-cli-$version.tar.gz
+sha256      = a9f3fc8c64962c8778b379cc2238c7c554541e1e94fd36a210c3f92e1729e929  pandoc-3.11.tar.gz
+sha256      = 478af84e39d210dedbee49b54beb891df4c24737ef2eb2298ba7664189c2204d  pandoc-vendor-3.11.tar.xz
+description = Converts between markup formats — Markdown, HTML, LaTeX, DOCX, ODT, EPUB and more
+homepage    = https://pandoc.org
+vendoring   = haskell
+depends     = ghc cabal-install zlib gmp libffi

@@ -84,7 +84,10 @@ entries whenever the boot state changes — see
 its own EFI binary first and then at `/boot/limine/`, `/boot/`, `/limine/` and
 `/` on each volume — and only that last set is searched on BIOS, so the root of
 the ESP is the one path both firmwares find. A second copy beside `BOOTX64.EFI`
-would be the copy that goes stale.
+would be the copy that goes stale. The one second copy is
+`EFI/kdos/trial/limine.conf`, beside a copy of the loader: `kdos-bootctl`
+writes it from the root's file for the length of a UEFI update trial and
+deletes it after — see [One boot through BootNext](#one-boot-through-bootnext).
 
 `fwupd` never touches the loader configuration. It writes the ESP only while a
 firmware update is staged: a capsule under `EFI/kdos/fw/` with `EFI/kdos/fwupdx64.efi` and a one-shot
@@ -339,6 +342,7 @@ root filesystems   xfs f2fs
 LUKS               dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts
                    sha256_generic sha512_generic crypto_null algif_skcipher
 software RAID      md_mod raid0 raid1 raid10 raid456 dm-raid
+LVM targets        dm-snapshot dm-thin-pool dm-cache dm-cache-smq dm-writecache
 ```
 
 ext4 and btrfs are built into the kernel; xfs and f2fs are modules and appear
@@ -352,7 +356,9 @@ copy step a no-op. The RAID personalities are listed individually because
 `md_mod` loads none of them, and a machine whose data disks are an array needs
 them before udev settles — without `md_mod` the members are bare disks with a
 superblock nobody reads, which looks like an empty drive rather than a missing
-module.
+module. The LVM targets are the ones a volume group can hold beyond the linear
+target `dm-mod` has built in — a thin volume, a cached or write-cached one, a
+snapshot — and a group holding one activates only with its target loaded.
 
 The list is also written to the image as `/boot/initramfs.modules`, which is
 what a later kernel's initramfs is built from — see [A new kernel](#a-new-kernel).
@@ -373,8 +379,13 @@ with nothing on screen. Their libraries are not listed by hand: `copy_closure`
 reads each program's `NEEDED` entries with `readelf` and copies the libraries
 they name, and theirs, from `/usr/lib` or `/lib`. For `lvm` that is
 libdevmapper, libdevmapper-event, libaio, libblkid, libudev, readline and
-libnvme with what libnvme links. The build stops when lvm2 is installed and
-either program is missing, when a rule names `dmsetup` or `lvm` anywhere but
+libnvme with what libnvme links. `thin_check` and `cache_check` come with
+them, as argv[0] links to thin-provisioning-tools' one binary, `pdata_tools`,
+which is copied with its closure; `lvm` runs the matching one before it
+activates a thin pool or a cache and refuses the volume without it. A carried
+`etc/lvm/lvm.conf` names those two paths and nothing else. The build stops when
+lvm2 is installed and `lvm`, `dmsetup`, `thin_check` or `cache_check` is
+missing, when a rule names `dmsetup` or `lvm` anywhere but
 `/usr/sbin`, and when a library in the closure is installed nowhere. The reader
 is proven first: `readelf`, or `llvm-readelf` in its place, must find libblkid
 among `blkid`'s `NEEDED` entries, or the build stops. A reader that is missing
@@ -524,17 +535,24 @@ boot goes on; if the root was in that group, the root lookup reports it
 missing.
 
 `--sysinit` turns off dmeventd monitoring, background polling and locking
-failures, none of which an initramfs can provide. No `lvm.conf` is carried, so
-the compiled defaults apply and every group found is activated. The groups stay
-active across `switch_root`, and `03_lvm`'s own `vgchange` leaves them as they
-are.
+failures, none of which an initramfs can provide. The carried `lvm.conf` names
+`thin_check` and `cache_check` and nothing else, so every other setting is the
+compiled default and every group found is activated. The groups stay active
+across `switch_root`, and `03_lvm`'s own `vgchange` leaves them as they are.
 
-A thin or cache volume cannot be the root. Activating either runs `thin_check`
-or `cache_check`, and thin-provisioning-tools is not in the initramfs.
+A root on a thin or a cached volume boots like any other. The first call that
+finds a physical volume loads the thin, cache, write-cache and snapshot targets
+before it runs `lvm`, because a group holding such a volume activates only with
+its target present and `lvm`'s own module loading uses whatever `modprobe` path
+its configure found. `lvm` then runs `thin_check` or `cache_check` on the pool's
+or the cache's metadata before activating it.
 
-The installer does not create LVM and does not offer a logical volume as the
-root: it lists whole disks and their partitions only. A root on LVM is set up by
-hand.
+The installer creates this layout on its erase plan and offers an existing
+logical volume as the root on its reuse plan — see
+[kinstall](../04-programs/kinstall.md#a-root-on-lvm). Either way `root=` is the
+filesystem's UUID and nothing on the command line names LVM. Under encryption
+the installer puts the group inside the container, so the activation after the
+unlock is the one that finds it.
 
 ## A/B slot selection
 
@@ -548,7 +566,8 @@ crypt_a  = <luks uuid>      the container that filesystem is inside, or empty
 crypt_b  = <luks uuid>
 active   = a                the slot known to work
 try      = b                a candidate, or empty
-attempts = 3                how many boots it gets
+attempts = 1                how many boots it has left
+bootnext = yes              tried through UEFI BootNext, or empty
 ```
 
 The counting lives in the initramfs, and that placement is the design. `rcS` is
@@ -559,8 +578,18 @@ prints the UUID to boot.
 
 `kdos-bootctl mark-good` is the other half and runs at the *end* of `rcS`,
 after every service that was going to fail has had its chance. A bad update
-therefore boots its allotted number of times and rolls itself back with no help
-from anything.
+therefore rolls itself back with no help from anything: on UEFI after its one
+boot, on BIOS after its allotted number. It confirms a candidate only on the
+candidate's own kernel: when the command line's `kdos_slot=` names another
+slot, the candidate's kernel never ran, and `mark-good` rolls it back instead.
+A command line with no `kdos_slot=` is taken as the candidate's.
+
+`try` picks between the two kinds of trial. Where the firmware has variables it
+writes a UEFI `BootNext` request and the candidate gets one boot — see
+[One boot through BootNext](#one-boot-through-bootnext). A BIOS boot has no
+such request, and so does a UEFI machine where the request cannot be written;
+there the menu leads with the candidate for `try`'s count of boots, three by
+default.
 
 The state file lives on the ESP, which is FAT and has no journal. A torn write
 there does not fail an update, it bricks the machine: the initramfs cannot tell
@@ -626,7 +655,7 @@ counting, so the menu is part of the state. `kdos-bootctl` regenerates the
 
 | Entry | Boots |
 |---|---|
-| `/KDOS`, `(verbose)`, `(single user)` | The slot `select` will choose next: the candidate while it has attempts left, else the active slot |
+| `/KDOS`, `(verbose)`, `(single user)` | The slot an unattended boot must reach: the active slot, except during a menu-led trial, where it is the candidate while it has attempts left |
 | `/KDOS (slot <x>)` | The other slot, when it has a root and a kernel |
 
 `default_entry` points at the first `/KDOS` entry. Every other line of the file
@@ -641,15 +670,15 @@ leads with. It boots its own slot and no other, because the running kernel is
 that slot's.
 
 - **The confirmed slot picked while a candidate is on trial** abandons the
-  candidate. That entry is the way back from a candidate kernel that dies before
-  the initramfs can count anything.
+  candidate. On BIOS that entry is the way back from a candidate kernel that
+  dies before the initramfs can count anything.
 - **Any other hand-picked entry** is one boot of that root. No attempt is spent
   and nothing is confirmed, except a candidate picked after its last attempt,
   which is still the candidate and is confirmed by `rcS` as usual.
 
-The last attempt moves the menu's lead back to the active slot. A candidate that
-fails that boot is therefore rolled back by the next boot of the confirmed
-slot's own kernel, with no reboot in between.
+In a menu-led trial the last attempt moves the menu's lead back to the active
+slot. A candidate that fails that boot is therefore rolled back by the next boot
+of the confirmed slot's own kernel, with no reboot in between.
 
 `try` refuses a slot that has no kernel on the ESP once any slot has a directory
 of its own. The menu could not lead with it, so the confirmed slot's entry would
@@ -663,15 +692,76 @@ The next `kdos update` of each slot therefore moves that slot into its own
 directory.
 
 The init inside an initramfs is the image's, and a `linux` update only appends
-modules to it. An init that does not read `kdos_slot=` still counts and rolls
-back, but leaves the menu alone, so its rollback boots the confirmed root on the
-candidate's kernel. `mark-good` regenerates the menu on every boot, confirmed or
-not, so a root whose `kdos-bootctl` has this regeneration corrects the menu on
-the first boot that reaches the end of `rcS`.
+modules to it, so a machine installed from an image whose init does not read
+`kdos_slot=` keeps that init, and the `kdos-bootctl` copied beside it, in its
+confirmed slot's initramfs until that slot is itself updated. That pair counts
+and rolls back but knows neither the menu nor `bootnext`:
+
+- In a menu-led trial its rollback boots the confirmed root on the candidate's
+  kernel. `mark-good` regenerates the menu on every boot, confirmed or not, so
+  a root whose `kdos-bootctl` has this regeneration corrects the menu on the
+  first boot that reaches the end of `rcS`.
+- In a BootNext trial the reset out of a candidate that died starts the
+  confirmed slot's kernel, and that old `select` spends the candidate's
+  attempt there: it boots the candidate's root on the confirmed slot's kernel,
+  with no modules for it. That root's `mark-good` reads `kdos_slot=` naming
+  the confirmed slot and rolls the candidate back, so the machine stays on the
+  confirmed slot. A root whose `kdos-bootctl` lacks that check confirms the
+  candidate instead, and its dead kernel then leads the menu until the
+  confirmed slot's entry is picked by hand. This is accepted rather than
+  repaired — no update rewrites the init of a slot it is not installing into.
 
 Two kernels and two initramfs images fit many times over in the 512 MiB ESP
 `kinstall` creates. An install that reuses a smaller ESP gets a warning when
 there is no room left for a second kernel.
+
+### One boot through BootNext
+
+A candidate kernel that panics or hangs before its initramfs runs cannot spend
+an attempt, so a menu that leads with it boots it again after every reset. On
+UEFI the menu therefore never leads with a candidate. `try` leaves
+`default_entry` on the confirmed slot and asks the **firmware** for one boot of
+the candidate instead:
+
+```
+EFI/kdos/trial/BOOTX64.EFI      a copy of EFI/BOOT/'s loader (BOOTIA32.EFI on 32-bit firmware)
+EFI/kdos/trial/limine.conf      limine.conf, with default_entry on /KDOS (slot <x>)
+Boot####  "KDOS update trial"   a load option starting that loader, not in BootOrder
+BootNext  = ####                one boot of it
+```
+
+Limine reads the `limine.conf` beside its own EFI binary before any other, so
+the trial copy sees the trial menu and every other boot sees the root's. The
+firmware deletes `BootNext` before it starts the loader, so whatever happens to
+that boot — a panic, a hang and the reset button, a userland that never reaches
+`mark-good` — the next boot starts `EFI/BOOT/` and the confirmed slot. The
+candidate's entry, in both menus, carries `panic=10` while it is on trial,
+unless the command
+line already sets `panic=`: the kernel is built with no panic timeout, and
+without the word a panicking candidate waits for the reset button.
+
+`select` sees the rest. The candidate's own entry spends its one boot; any other
+entry while a candidate is on trial is the fallback boot, and rolls it back.
+`mark-good` on the candidate's boot makes it the active slot, and only then does
+it lead the menu. Every `mark-good` also deletes the `Boot####` option and any
+`BootNext` still naming it, and every state that is not a pending trial deletes
+`EFI/kdos/trial/`.
+
+The option is written through `efivarfs`, which `rcS` mounts, rather than by
+`efibootmgr`. It is a fixed shape — the ESP's partition entry, read from the
+GPT itself (or from a primary MBR entry), and a path `kdos-bootctl` chose — and
+the number is the lowest one no `Boot####` uses, or the one already carrying the
+description. A state file pointed elsewhere with `KDOS_BOOTSTATE` writes no
+firmware variable unless `KDOS_EFIVARS` names a directory too, and reads no
+`kdos_slot=` unless `KDOS_CMDLINE` names a file standing in for
+`/proc/cmdline`, which is how the selftest runs against a fixture without
+reaching the NVRAM, or the slot, of the machine running it.
+
+Where the request cannot be made — no firmware variables, which is every BIOS
+boot, no per-slot directory to build a trial menu from, or a firmware that
+refuses the write — `try` says so and falls back to the menu-led trial. There a
+kernel that dies before its initramfs is recovered by hand, by picking the
+confirmed slot's `/KDOS (slot <x>)` entry.
 
 ## Tools that must not be toybox's
 
@@ -900,7 +990,8 @@ it.
 UEFI boot and a BIOS boot would fail the line. Without it
 `/sys/firmware/efi/efivars` is an empty directory: `efibootmgr` reports no EFI
 variables, the installer cannot write its NVRAM boot entry or read the Secure
-Boot state, and fwupd sees no UEFI devices.
+Boot state, fwupd sees no UEFI devices, and `kdos-bootctl try` cannot arm a
+`BootNext` trial and falls back to the menu-led one.
 
 `/run` is a fresh tmpfs, so `/run/lock` — and `/var/lock`, a link to it — exists
 only because `rcS` creates it, `1777`. minicom and picocom take their UUCP port

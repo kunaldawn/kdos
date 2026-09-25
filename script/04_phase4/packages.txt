@@ -1242,6 +1242,9 @@ doggo
 # preflight runs `bash -n` over ~470 build.sh files, which catches a syntax
 # error and nothing else. shfmt PARSES them.
 shfmt
+# shellcheck ANALYSES them: the unquoted expansion that splits, the `cd`
+# whose failure nothing checks, the variable read in a subshell and lost.
+shellcheck
 # Every documented appbox failure is podman state — a box stuck in `stopping`,
 # a half-built init, a storage driver mismatch.
 podman-tui
@@ -1284,7 +1287,9 @@ hdparm
 mdadm
 # LVM shells out to thin_check before it will activate a thin pool and
 # refuses the pool when the call fails — and the shipped lvm.conf already
-# names /usr/sbin/thin_check by absolute path.
+# names /usr/sbin/thin_check by absolute path. The initramfs carries it and
+# cache_check, for a root on a thin or a cached volume.
+thin-provisioning-tools
 # The speech API a screen reader talks to. espeak-ng is already here and is
 # the voice behind it; without this nothing on the image can drive it.
 dotconf
@@ -1312,7 +1317,6 @@ openconnect
 gusb
 libfprint
 fprintd
-thin-provisioning-tools
 nvme-cli
 lm-sensors
 dmidecode

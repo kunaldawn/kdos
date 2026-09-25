@@ -652,8 +652,8 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 		kb_argv_add(&t, slot);
 		kb_argv_end(&t);
 		if (kb_run_tty(&t) == 0)
-			printf("slot %s is the candidate: it gets three boots "
-			       "to prove itself, then rolls back\n", slot);
+			printf("slot %s is the candidate: a boot that does not "
+			       "confirm it rolls back\n", slot);
 		else
 			fprintf(stderr, "kdos update: slot %s was updated but "
 					"could not be marked as the candidate "

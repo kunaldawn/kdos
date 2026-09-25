@@ -107,7 +107,6 @@ app.scribus	Scribus	Graphics	194802512	rt-qt	available	Open Source Page Layout a
 app.gmic	app.gmic	Other	122102600	rt-gtk	available	
 app.rawtherapee	RawTherapee	Graphics	541981597	rt-gtk	available	An advanced raw photo development program
 app.texlive	TeXdoctk	Settings	126485427	base	available	Display TeX related documentation
-app.pandoc	app.pandoc	Other	67281740	base	available	
 app.aegisub	Aegisub	AudioVideo	73260353	rt-gtk	available	A free, cross-platform open source tool for creating and modifying subtitles
 app.mkvtoolnix	MKVToolNix GUI	AudioVideo	40388488	rt-qt	available	Matroska files creator and tools
 app.audio-plugins	Calf Plugin Pack for JACK	AudioVideo	60209088	rt-media	available	Process and produce sounds using a set of plugins with JACK interface
@@ -123,8 +122,6 @@ app.opencpn	OpenCPN	Graphics	202443881	rt-gtk	available	Chartplotter and Navigat
 app.thunderbird	Thunderbird	Network	156260430	rt-gtk	available	Thunderbird is a free and open source email, newsfeed, chat, and calendaring client
 app.apertium	app.apertium	Other	24838994	base	available	
 app.rtklib	app.rtklib	Other	5923727	base	available	
-app.a11y	app.a11y	Other	60662667	base	available	Support for braille devices
-app.baresip	app.baresip	Other	3556175	base	available	
 app.audacity	Audacity	AudioVideo	30208580	rt-gtk	available	Audacity is the world's most popular audio editing and recording app
 app.audacious	Audacious	AudioVideo	78257583	rt-gtk	available	Lightweight audio player
 app.baobab	Disk Usage Analyzer	System	1774929	rt-gtk	available	Check folder sizes and available disk space

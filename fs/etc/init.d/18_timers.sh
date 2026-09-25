@@ -88,7 +88,7 @@ timer_start() {   # <name> <spec> <command...>
         echo "[SKIP] $NAME: $_n needs $1, which is not on this image"
         return 0
     fi
-    # shellcheck disable=SC2086 — $_s IS a word list, which is the point.
+    # shellcheck disable=SC2086 # $_s IS a word list, which is the point.
     supervise "kdos-timer-$_n" snooze $_s "$@"
 }
 

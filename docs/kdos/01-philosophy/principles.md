@@ -98,8 +98,9 @@ Four classes are exempt, and nothing outside them is:
   the fonts bundled inside `mupdf`, `matplotlib` and `seqkit`. Their sources compile through
   toolchains this tree does not carry. A face whose upstream build runs on ports — `ttf-dejavu`,
   `terminus-ttf`, `noto-emoji` — is compiled here.
-- **Compiler bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain and
-  `zig1.wasm`. A self-hosted compiler needs a working one first; the seed builds and never ships.
+- **Compiler bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain,
+  `zig1.wasm` and the upstream musl GHC that `ghc` builds with. A self-hosted compiler needs a
+  working one first; the seed builds and never ships.
 - **Data with no other source form.** The `tesseract` model, the `perl-xml-parser` encodings,
   `libkiwix`'s JavaScript, the `fcitx5` tables, `john`'s `.chr` files and recorded
   audio.

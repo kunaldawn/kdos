@@ -8,13 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ripgrep-all
-version     = 0.10.10
+name        = shellcheck
+version     = 0.11.0
 release     = 1
-source      = $name-$version.tar.gz::https://github.com/phiresky/ripgrep-all/archive/refs/tags/v$version.tar.gz
-sha256      = 17fadc7b73a51608d57f82b4a11f3edc0da87716cc4b302103eed9d4b9010fe5  ripgrep-all-0.10.10.tar.gz
-sha256      = 9ee1fcafba597a3e8902e7139e21a2693412ce80d03c3c91bfe09886a6c50ac5  ripgrep-all-vendor-0.10.10.tar.xz
-description = ripgrep, but it looks inside PDFs, archives and spreadsheets
-homepage    = https://github.com/phiresky/ripgrep-all
-depends     = rust ripgrep fzf poppler ffmpeg pandoc xz bzip2 zstd sqlite
-vendoring   = rust
+source      = $name-$version.tar.gz::https://hackage.haskell.org/package/ShellCheck-$version/ShellCheck-$version.tar.gz
+sha256      = 81a72e9c195788301f38e4b2e250ab916cf3778993d428786bfb2fac2a847400  shellcheck-0.11.0.tar.gz
+sha256      = d20d1ed82e5560f113181a427e2e7df5a93ff1e356850040fdb0d7121c63c287  shellcheck-vendor-0.11.0.tar.xz
+description = Static analysis for sh and bash scripts — quoting, word splitting and portability
+homepage    = https://www.shellcheck.net
+vendoring   = haskell
+depends     = ghc cabal-install gmp libffi lowdown

@@ -1,6 +1,6 @@
 +=[ Applications ]=====================================+
 | Applications                                         |
-| 184 applications, 7 groups                           |
+| 181 applications, 7 groups                           |
 |------------------------------------------------------|
 |  Groups       All          Graphics     AudioVideo   |
 |      GROUP                          APPS   SIZE~     |
@@ -18,7 +18,7 @@
 |                                                      |
 |                                                      |
 |------------------------------------------------------|
-| 2 of 184 installed . space ticks, F5 builds them     |
+| 2 of 181 installed . space ticks, F5 builds them     |
 | Space tick | Enter tick group | F5 install ticked |  |
 |         [ Install ] [ Import ] [ Export ] [ Close ]  |
 +======================================================+

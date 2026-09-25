@@ -2286,7 +2286,7 @@ echo "  found when carried, reported when not, honest when there is no image"
 fi
 
 echo
-echo "==> a bad update boots three times and rolls itself back"
+echo "==> a bad update led by the menu boots three times and rolls itself back"
 # The A/B state machine, driven exactly as the machine drives it: `select` is
 # what the initramfs runs (decide and spend an attempt), `mark-good` what the
 # end of rcS runs. A boot that never reaches mark-good is a boot that failed,
@@ -2549,6 +2549,157 @@ fi
 echo "  per-slot kernels, the menu led by the next slot, the flat pair kept until unnamed"
 
 echo
+echo "==> on UEFI a candidate gets one boot, through BootNext"
+# The firmware variables are a directory and the disk is an image file: the
+# option `try` writes is compared byte for byte against one encoded here from
+# the UEFI specification's layout, independently of kdos-bootctl's encoder.
+# Deleting BootNext by hand is what the firmware does before it starts the
+# loader, so every boot below begins with it.
+BN="$OUT/esp-bootnext"
+rm -rf "$BN"
+mkdir -p "$BN/esp/EFI/kdos/a" "$BN/esp/EFI/kdos/b" "$BN/esp/EFI/BOOT" "$BN/fw/efivars"
+for s in a b; do
+    echo "kernel-$s" > "$BN/esp/EFI/kdos/$s/vmlinuz"
+    echo "initramfs-$s" > "$BN/esp/EFI/kdos/$s/initramfs.cpio.gz"
+done
+echo limine-x64 > "$BN/esp/EFI/BOOT/BOOTX64.EFI"
+echo limine-ia32 > "$BN/esp/EFI/BOOT/BOOTIA32.EFI"
+echo 64 > "$BN/fw/fw_platform_size"
+{
+    printf 'timeout: 10\ndefault_entry: 1\n\n'
+    printf '/KDOS\n    protocol: linux\n    path: boot():/EFI/kdos/a/vmlinuz\n'
+    printf '    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n'
+    printf '    cmdline: kdos_slot=a bootstate=UUID=ESP-1 root=UUID=AAAA-1111 rw quiet loglevel=3\n'
+} > "$BN/esp/limine.conf"
+python3 - "$BN" <<'PYEOF' || { echo "  could not build the fixture disk and variables"; exit 1; }
+import struct, sys, uuid
+d = sys.argv[1]
+G = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+part = uuid.UUID('0fc63daf-8483-4772-8e79-3d69d8477de4').bytes_le
+# A 512-byte-sector GPT: protective MBR, header at LBA 1, the array at LBA 2,
+# the ESP as its second entry from LBA 4096 to 1052671.
+img = bytearray(512 * 34)
+img[510:512] = b'\x55\xaa'
+img[446 + 4] = 0xEE
+hdr = b'EFI PART' + struct.pack('<IIIIQQQQ16sQIII', 0x10000, 92, 0, 0, 1, 0,
+                                34, 0, b'\0' * 16, 2, 128, 128, 0)
+img[512:512 + len(hdr)] = hdr
+ent = uuid.UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b').bytes_le + part + \
+      struct.pack('<QQQ', 4096, 1052671, 0)
+img[1024 + 128:1024 + 128 + len(ent)] = ent
+img[1024:1024 + 16] = b'\x11' * 16      # entry 1, some other partition
+open(d + '/disk.img', 'wb').write(img)
+def option(desc, path):
+    node = struct.pack('<BBHIQQ16sBB', 4, 1, 42, 2, 4096, 1048576, part, 2, 2)
+    p = (path + '\0').encode('utf-16-le')
+    node += struct.pack('<BBH', 4, 4, 4 + len(p)) + p + b'\x7f\xff\x04\x00'
+    return struct.pack('<IH', 1, len(node)) + (desc + '\0').encode('utf-16-le') + node
+attrs = struct.pack('<I', 7)
+open(d + '/want-x64', 'wb').write(attrs + option('KDOS update trial', '\\EFI\\kdos\\trial\\BOOTX64.EFI'))
+open(d + '/want-ia32', 'wb').write(attrs + option('KDOS update trial', '\\EFI\\kdos\\trial\\BOOTIA32.EFI'))
+open(d + '/want-next', 'wb').write(attrs + struct.pack('<H', 1))
+# Boot0000 is the firmware's own and must survive everything.
+open(d + '/fw/efivars/Boot0000-' + G, 'wb').write(attrs + option('KDOS', '\\EFI\\BOOT\\BOOTX64.EFI'))
+PYEOF
+EV="$BN/fw/efivars"
+G=8be4df61-93ca-11d2-aa0d-00e098032b8c
+cp "$EV/Boot0000-$G" "$BN/firmware-own"
+bn() { env KDOS_BOOTSTATE="$BN/esp/EFI/kdos/bootstate" KDOS_EFIVARS="$EV" \
+           KDOS_ESP_DISK="$BN/disk.img:2" "$OUT/kdos-bootctl" "$@"; }
+bn set-slot a AAAA-1111 >/dev/null
+bn set-slot b BBBB-2222 >/dev/null
+first_bn() { grep -m1 'path: boot()' "$1"; }
+
+bn try b >/dev/null || { echo "  try failed"; exit 1; }
+cmp -s "$EV/Boot0001-$G" "$BN/want-x64" \
+    || { echo "  the Boot0001 load option is not the one the spec lays out"; exit 1; }
+cmp -s "$EV/BootNext-$G" "$BN/want-next" || { echo "  BootNext does not name Boot0001"; exit 1; }
+cmp -s "$EV/Boot0000-$G" "$BN/firmware-own" || { echo "  the firmware's own option was touched"; exit 1; }
+cmp -s "$BN/esp/EFI/BOOT/BOOTX64.EFI" "$BN/esp/EFI/kdos/trial/BOOTX64.EFI" \
+    || { echo "  the trial directory has no copy of the loader"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/a/' \
+    || { echo "  the candidate leads the menu an unattended boot reads"; exit 1; }
+grep -q '^default_entry: 4$' "$BN/esp/EFI/kdos/trial/limine.conf" \
+    || { echo "  the trial menu does not default to the candidate"; exit 1; }
+grep -A5 '^/KDOS (slot b)$' "$BN/esp/EFI/kdos/trial/limine.conf" \
+    | grep -q 'kdos_slot=b .*root=UUID=BBBB-2222 .*panic=10' \
+    || { echo "  the candidate entry does not reset on a panic"; exit 1; }
+bn status | grep -q "trying   b once, through UEFI BootNext" \
+    || { echo "  status does not show the BootNext trial"; exit 1; }
+
+# The candidate's kernel dies before its initramfs: the firmware spent
+# BootNext, the reset starts EFI/BOOT/ and the confirmed slot, and that slot's
+# select rolls the candidate back. rcS's mark-good then removes the option.
+rm -f "$EV/BootNext-$G"
+test "$(bn select a 2>/dev/null)" = AAAA-1111 || { echo "  the reset did not boot a"; exit 1; }
+bn status | grep -q "trying   nothing" || { echo "  the dead candidate is still on trial"; exit 1; }
+test ! -e "$BN/esp/EFI/kdos/trial" || { echo "  the trial directory outlived the trial"; exit 1; }
+bn mark-good >/dev/null
+test ! -e "$EV/Boot0001-$G" || { echo "  mark-good left the trial option behind"; exit 1; }
+cmp -s "$EV/Boot0000-$G" "$BN/firmware-own" || { echo "  mark-good touched the firmware's option"; exit 1; }
+
+# One boot and a userland that never confirms: the next boot rolls back, and
+# nothing re-arms the candidate.
+bn try b >/dev/null
+rm -f "$EV/BootNext-$G"
+test "$(bn select b 2>/dev/null)" = BBBB-2222 || { echo "  the trial boot did not boot b"; exit 1; }
+bn status | grep -q "booted once and not confirmed" || { echo "  the trial boot was not spent"; exit 1; }
+test ! -e "$EV/BootNext-$G" || { echo "  the trial re-armed itself"; exit 1; }
+test "$(bn select a 2>/dev/null)" = AAAA-1111 || { echo "  the unconfirmed candidate was not rolled back"; exit 1; }
+
+# The good update: its boot reaches mark-good, which makes it the default.
+bn try b >/dev/null
+rm -f "$EV/BootNext-$G"
+test "$(bn select b 2>/dev/null)" = BBBB-2222 || { echo "  the trial boot did not boot b"; exit 1; }
+bn mark-good >/dev/null
+bn status | grep -q "^active   b" || { echo "  mark-good did not confirm the candidate"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
+    || { echo "  the confirmed candidate does not lead the menu"; exit 1; }
+grep -q 'panic=10' "$BN/esp/limine.conf" && { echo "  panic=10 outlived the trial"; exit 1; }
+test ! -e "$EV/Boot0001-$G" || { echo "  the trial option outlived the trial"; exit 1; }
+
+# An init that ignores kdos_slot=, after the candidate's kernel died: its
+# kdos-bootctl spent the attempt, dropped the bootnext key and booted the
+# candidate's root on the confirmed slot's kernel. mark-good on that kernel
+# rolls back rather than confirming a kernel that never ran.
+bn try a >/dev/null
+rm -f "$EV/BootNext-$G"
+grep -v '^bootnext' "$BN/esp/EFI/kdos/bootstate" \
+    | awk '/^attempts/ { print "attempts = 0"; next } { print }' > "$BN/old-state"
+cp "$BN/old-state" "$BN/esp/EFI/kdos/bootstate"
+printf 'kdos_slot=b bootstate=UUID=ESP-1 root=UUID=AAAA-1111 rw\n' > "$BN/cmdline"
+KDOS_CMDLINE="$BN/cmdline" bn mark-good >/dev/null 2>&1
+bn status | grep -q "^active   b" || { echo "  the old init's boot confirmed a kernel that never ran"; exit 1; }
+bn status | grep -q "trying   nothing" || { echo "  the old init's boot left the candidate on trial"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
+    || { echo "  the dead candidate's kernel leads the menu"; exit 1; }
+# The candidate's own kernel still confirms it.
+bn try a >/dev/null
+rm -f "$EV/BootNext-$G"
+bn select a >/dev/null 2>&1
+printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$BN/cmdline"
+KDOS_CMDLINE="$BN/cmdline" bn mark-good >/dev/null
+bn status | grep -q "^active   a" || { echo "  the candidate's own kernel did not confirm it"; exit 1; }
+
+# A 32-bit firmware is sent to the loader it can execute.
+echo 32 > "$BN/fw/fw_platform_size"
+bn try b >/dev/null
+cmp -s "$EV/Boot0001-$G" "$BN/want-ia32" \
+    || { echo "  a 32-bit firmware was sent to BOOTX64.EFI"; exit 1; }
+rm -f "$EV/BootNext-$G"
+bn select a >/dev/null 2>&1; bn mark-good >/dev/null
+
+# No firmware variables — a BIOS boot — is the menu-led trial, counted.
+env KDOS_BOOTSTATE="$BN/esp/EFI/kdos/bootstate" KDOS_EFIVARS="$BN/none" \
+    "$OUT/kdos-bootctl" try b >/dev/null 2>&1
+test -e "$EV/Boot0001-$G" && { echo "  a BIOS trial wrote a firmware variable"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
+    || { echo "  a trial with no BootNext is not led by the menu"; exit 1; }
+bn status | grep -q "trying   b, 3 attempt(s) left" \
+    || { echo "  a trial with no BootNext is not counted"; exit 1; }
+echo "  the spec's load option, the confirmed slot's default kept, one boot then rollback, confirmed only on its own kernel, BIOS counted"
+
+echo
 echo "==> the initramfs unlocks a LUKS root, or says why it cannot"
 # The generated init is a heredoc inside a packaging script, which is exactly
 # the kind of code nothing ever tests until it is 3 a.m. and a laptop will not
@@ -2643,6 +2794,12 @@ cat > "$LV/bin/lvm" <<'EOF'
 [ "$1 $2 $3" = "vgchange -aay --sysinit" ] || exit 2
 echo x >> "$LVM_CALLS"
 EOF
+# The targets a thin or cached root needs are loaded before the first
+# activation, once: the stub records what it was asked for, never loads it.
+cat > "$LV/bin/modprobe" <<'EOF'
+#!/bin/sh
+echo "$*" >> "$LVM_MODS"
+EOF
 chmod +x "$LV/bin/"*
 lvm_try() {
     ( . /dev/stdin <<EOF
@@ -2650,7 +2807,7 @@ $(sed -n '/^activate_lvm() {/,/^}/p' "$IR/init")
 EOF
       sp_total() { :; }; sp_step() { :; }; sp_ok() { :; }; sp_fail() { :; }
       udevadm() { :; }
-      export FAKE_PVS="$LV/pvs" LVM_CALLS="$LV/calls"
+      export FAKE_PVS="$LV/pvs" LVM_CALLS="$LV/calls" LVM_MODS="$LV/mods"
       PATH="$LV/bin:$PATH" LVM_BIN="$LV/bin/lvm" LVM_PVS=""
       : > "$LV/pvs"
       activate_lvm
@@ -2660,14 +2817,18 @@ EOF
       activate_lvm ) >/dev/null 2>&1
 }
 : > "$LV/calls"
+: > "$LV/mods"
 lvm_try
 [ "$(wc -l < "$LV/calls")" -eq 2 ] \
     || { echo "  activate_lvm ran lvm $(wc -l < "$LV/calls") times, not 2 (none, once per new PV set)"; exit 1; }
+[ "$(wc -l < "$LV/mods")" -eq 1 ] && grep -q 'dm-thin-pool' "$LV/mods" \
+    && grep -q 'dm-cache' "$LV/mods" \
+    || { echo "  the thin and cache targets are not loaded once, before the first activation"; exit 1; }
 grep -qE '^[[:space:]]+activate_lvm$' "$IR/init" \
     || { echo "  the init no longer activates volume groups after the unlock"; exit 1; }
 sed -n '/Wait for device to appear/,/^    done$/p' "$IR/init" | grep -q 'activate_lvm' \
     || { echo "  the root wait no longer activates a late physical volume's group"; exit 1; }
-echo "  volume groups: no lvm without a PV, once per newly seen set of PVs"
+echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin and cache targets first"
 
 # AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S, NOT THE NAME TOYBOX
 # CLAIMS. Every lookup in the generated init is `blkid -U` — the root

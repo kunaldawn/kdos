@@ -96,7 +96,7 @@ no container engine reports everything `available`.
 daemon. It is checked before anything that needs a daemon or a display, so it stays runnable where
 neither exists. See [Testing](../05-developer/testing.md).
 
-The shipped catalogue is `/usr/share/kdos/appstore/catalogue`, and it carries 183 applications and
+The shipped catalogue is `/usr/share/kdos/appstore/catalogue`, and it carries 180 applications and
 2 data rows on 2 base rows and 7 runtimes, grouped into 7 named bundles.
 
 ### install and uninstall

@@ -13,7 +13,9 @@
  *                                      container it lives inside
  *   kdos-bootctl crypt <fs-uuid>       the container UUID that filesystem is
  *                                      inside, for the initramfs
- *   kdos-bootctl try <slot> [n]        boot that slot n times, then give up
+ *   kdos-bootctl try <slot> [n]        boot that slot once through UEFI
+ *                                      BootNext, or n times led by the menu
+ *                                      where there is no BootNext
  *   kdos-bootctl deploy <root> [<slot>]
  *                                      put that root's kernel and initramfs
  *                                      in its slot's directory on the ESP
@@ -65,10 +67,20 @@
  * the kernel's modules live only in that root — so a slot booted on the other
  * slot's kernel has no modules at all. Limine picks the kernel before anything
  * of ours runs, which makes the MENU part of the state: every change of state
- * regenerates the /KDOS entries so the first one boots the slot `select` will
- * choose, and the other slot gets one entry of its own. The initramfs then
+ * regenerates the /KDOS entries so the first one boots the slot an unattended
+ * boot must reach, and the other slot gets one entry of its own. The initramfs then
  * hands `select` the slot its kernel belongs to, and a mismatch can only mean
  * the other entry was picked by hand.
+ *
+ * ON UEFI THE CANDIDATE NEVER LEADS THE MENU. A kernel that dies before its
+ * initramfs runs cannot count an attempt, so a menu led by it boots it again
+ * after every reset. `try` asks the firmware instead, through BootNext, for
+ * one boot of a Limine copy whose own menu defaults to the candidate; every
+ * other boot starts the confirmed slot, and the candidate leads only once
+ * `mark-good` has made it the active slot. A BIOS boot has no BootNext and
+ * keeps the menu-led trial: `n` counted boots, and a kernel that dies early is
+ * left by picking the confirmed slot's entry by hand. See the section on
+ * BootNext below.
  *
  * A FLAT EFI/kdos/vmlinuz IS A SLOT WITH NO DIRECTORY OF ITS OWN. It boots
  * either root, which is what an ESP holds before any `deploy`; a slot without
@@ -77,9 +89,11 @@
  * ---------------------------------
  */
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,6 +115,9 @@ typedef struct {
 	int active;		/* 0 = a, 1 = b                              */
 	int trying;		/* -1 when not trying, else the slot index   */
 	int attempts;
+	/* The candidate is booted once through UEFI BootNext, and the menu's
+	 * default stays on the active slot. 0 is the menu-led trial. */
+	int bootnext;
 } BootState;
 
 static const char *slot_name(int i)
@@ -188,6 +205,8 @@ static int state_load(BootState *st)
 			st->trying = v[0] ? slot_index(v) : -1;
 		} else if (!strcmp(k, "attempts")) {
 			st->attempts = atoi(v);
+		} else if (!strcmp(k, "bootnext")) {
+			st->bootnext = !strcmp(v, "yes");
 		}
 	}
 	free(data);
@@ -197,6 +216,8 @@ static int state_load(BootState *st)
 		return -1;
 	if (st->trying >= 0 && !st->slot[st->trying][0])
 		st->trying = -1;	/* trying a slot that has no root */
+	if (st->trying < 0)
+		st->bootnext = 0;
 	return 0;
 }
 
@@ -225,11 +246,13 @@ static int state_save(const BootState *st)
 		      "crypt_b  = %s\n"
 		      "active   = %s\n"
 		      "try      = %s\n"
-		      "attempts = %d\n",
+		      "attempts = %d\n"
+		      "bootnext = %s\n",
 		      st->slot[0], st->slot[1], st->crypt[0], st->crypt[1],
 		      slot_name(st->active),
 		      st->trying >= 0 ? slot_name(st->trying) : "",
-		      st->attempts);
+		      st->attempts,
+		      st->trying >= 0 && st->bootnext ? "yes" : "");
 
 	int rc = -1;
 	int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -543,13 +566,25 @@ static const char *slot_boot_dir(const char *esp, int i, char *buf, size_t n,
 	return NULL;
 }
 
-/* The slot the menu's first entry boots, which is the one `select` will choose
- * at the next boot: the candidate while it has attempts left, else the active
- * slot. A candidate whose last attempt has been spent is booted from the
- * active slot's entry, so the rollback happens without a second reboot. */
+/* The slot the menu's first entry boots, which is the one Limine starts when
+ * nobody picks. A trial through BootNext never moves it off the active slot:
+ * the candidate is reached through EFI/kdos/trial/ for one boot, and every
+ * other boot — the reset after a kernel that died before its initramfs among
+ * them — lands on the confirmed slot. A menu-led trial leads with the
+ * candidate while it has attempts left; its last attempt spent, the active
+ * slot's entry leads again, so the rollback happens without a second reboot. */
 static int next_slot(const BootState *st)
 {
+	if (st->bootnext)
+		return st->active;
 	return st->trying >= 0 && st->attempts > 0 ? st->trying : st->active;
+}
+
+/* A BootNext trial whose one boot has not been spent: the only state in which
+ * EFI/kdos/trial/ exists. */
+static int trial_pending(const BootState *st)
+{
+	return st->bootnext && st->trying >= 0 && st->attempts > 0;
 }
 
 /* The version a bzImage carries: the boot protocol's kernel_version field at
@@ -698,11 +733,94 @@ static void menu_entry(KbBuf *b, const char *title, const char *comment,
 	kb_buf_printf(b, " %s\n", extra);
 }
 
+/* Where a BootNext trial boots from: a copy of the ESP's own Limine binary
+ * and a limine.conf beside it. Limine reads the config beside its EFI binary
+ * before any other, so this directory's copy is the one the trial boot sees,
+ * and every other boot — which starts EFI/BOOT/ — sees the ESP root's. */
+#define TRIAL_DIR "EFI/kdos/trial"
+
+static void trial_clear(const char *esp)
+{
+	static const char *const files[] = {
+		"limine.conf", "BOOTX64.EFI", "BOOTIA32.EFI", NULL
+	};
+	char f[PATH_MAX];
+
+	for (int k = 0; files[k]; k++) {
+		snprintf(f, sizeof(f), "%s/" TRIAL_DIR "/%s", esp, files[k]);
+		unlink(f);
+	}
+	snprintf(f, sizeof(f), "%s/" TRIAL_DIR, esp);
+	rmdir(f);
+}
+
+/*
+ * The file around a new /KDOS block, with `default_entry` at `dflt`. An entry
+ * is its heading and the indented lines under it; the blank lines after one of
+ * ours go with it, and one is put back before whatever follows. default_entry
+ * keeps its line; a file without one gets it before the first entry, where a
+ * global still reads as a global.
+ */
+static void menu_rebuild(const char *conf, const char *block, int dflt_at,
+			 KbBuf *out)
+{
+	const char *cur = conf;
+	Line l;
+	int placed = 0, skipping = 0, dflt = 0;
+
+	while (line_next(&cur, &l)) {
+		if (skipping && (is_indented(&l) || !l.n))
+			continue;
+		if (skipping && !is_ours(&l)) {
+			skipping = 0;
+			kb_buf_str(out, "\n");
+		}
+		if (!is_indented(&l) && l.n >= 14 &&
+		    !strncmp(l.p, "default_entry:", 14)) {
+			if (!dflt)
+				kb_buf_printf(out, "default_entry: %d\n",
+					      dflt_at);
+			dflt = 1;
+			continue;
+		}
+		if (l.n && l.p[0] == '/' && !dflt) {
+			kb_buf_printf(out, "default_entry: %d\n\n", dflt_at);
+			dflt = 1;
+		}
+		if (is_ours(&l)) {
+			if (!placed)
+				kb_buf_str(out, block);
+			placed = 1;
+			skipping = 1;
+			continue;
+		}
+		kb_buf_add(out, l.p, l.full);
+	}
+	kb_buf_str(out, "");
+}
+
+/* Write `text` to `path` unless it already holds exactly that. */
+static int write_if_changed(const char *path, const char *text)
+{
+	char *old = kb_read_all(path, NULL);
+	int same = old && !strcmp(old, text);
+
+	free(old);
+	return same ? 0 : kb_write_file_atomic(path, text);
+}
+
 /*
  * Make the /KDOS entries of limine.conf match the state: the next slot's three
  * entries first, then one for the other slot when it has a root and a kernel.
  * Every other line of the file — the theme, the timeout, memtest86+ — is left
  * where it is. `default_entry` is pointed at the first /KDOS entry.
+ *
+ * A pending BootNext trial also gets EFI/kdos/trial/limine.conf: the same
+ * file with `default_entry` on the candidate's entry, which is the fourth of
+ * the block. That entry carries `panic=10` unless the command line already
+ * sets one, so a candidate kernel that panics resets the machine by itself
+ * and the reset boots the confirmed slot. Any other state removes the
+ * directory.
  *
  * Nothing is written when nothing changed, when the file has no /KDOS entry to
  * learn a command line from, when no slot has a directory of its own, or when
@@ -718,6 +836,8 @@ static int menu_sync(const BootState *st)
 
 	if (esp_root(esp, sizeof(esp)) != 0)
 		return 0;
+	if (!trial_pending(st))
+		trial_clear(esp);
 	menu_path(esp, conf_path, sizeof(conf_path));
 	for (int i = 0; i < 2; i++)
 		dir[i] = st->slot[i][0] ? slot_boot_dir(esp, i, dbuf[i],
@@ -738,11 +858,12 @@ static int menu_sync(const BootState *st)
 	}
 	kb_buf_str(&base, "");
 
-	int trying = st->trying >= 0 && st->attempts > 0;
+	int led = !st->bootnext && st->trying >= 0 && st->attempts > 0;
+	int trial = trial_pending(st) && dir[other];
 	char c[160];
 	KbBuf block = {0};
-	snprintf(c, sizeof(c), trying ? "Try the update in slot %s"
-				      : "Start this machine (slot %s)",
+	snprintf(c, sizeof(c), led ? "Try the update in slot %s"
+				   : "Start this machine (slot %s)",
 		 slot_name(next));
 	menu_entry(&block, "KDOS", c, dir[next], next, st->slot[next],
 		   base.p, "quiet loglevel=3");
@@ -756,15 +877,21 @@ static int menu_sync(const BootState *st)
 		   "loglevel=7 single");
 	if (dir[other]) {
 		char t[32];
+		int panics = !strncmp(base.p, "panic=", 6) ||
+			     strstr(base.p, " panic=");
 		snprintf(t, sizeof(t), "KDOS (slot %s)", slot_name(other));
-		snprintf(c, sizeof(c),
-			 trying ? "The confirmed root: picking it abandons "
-				  "the update"
-				: "The other root, for one boot: nothing is "
-				  "confirmed");
+		snprintf(c, sizeof(c), "%s",
+			 led ? "The confirmed root: picking it abandons the "
+			       "update"
+			 : st->bootnext && st->trying == other
+			     ? "The update on trial: one boot, then the "
+			       "confirmed root again"
+			     : "The other root, for one boot: nothing is "
+			       "confirmed");
 		kb_buf_str(&block, "\n");
 		menu_entry(&block, t, c, dir[other], other, st->slot[other],
-			   base.p, "quiet loglevel=3");
+			   base.p, trial && !panics ? "quiet loglevel=3 panic=10"
+						    : "quiet loglevel=3");
 	}
 	kb_buf_free(&base);
 
@@ -777,48 +904,24 @@ static int menu_sync(const BootState *st)
 		if (l.n && l.p[0] == '/')
 			first++;
 
-	/* Rebuild the file around the block. An entry is its heading and the
-	 * indented lines under it; the blank lines after one of ours go with
-	 * it, and one is put back before whatever follows. default_entry keeps
-	 * its line; a file without one gets it before the first entry, where
-	 * a global still reads as a global. */
 	KbBuf out = {0};
-	int placed = 0, skipping = 0, dflt = 0;
-	cur = conf;
-	while (line_next(&cur, &l)) {
-		if (skipping && (is_indented(&l) || !l.n))
-			continue;
-		if (skipping && !is_ours(&l)) {
-			skipping = 0;
-			kb_buf_str(&out, "\n");
-		}
-		if (!is_indented(&l) && l.n >= 14 &&
-		    !strncmp(l.p, "default_entry:", 14)) {
-			if (!dflt)
-				kb_buf_printf(&out, "default_entry: %d\n",
-					      first);
-			dflt = 1;
-			continue;
-		}
-		if (l.n && l.p[0] == '/' && !dflt) {
-			kb_buf_printf(&out, "default_entry: %d\n\n", first);
-			dflt = 1;
-		}
-		if (is_ours(&l)) {
-			if (!placed)
-				kb_buf_str(&out, block.p);
-			placed = 1;
-			skipping = 1;
-			continue;
-		}
-		kb_buf_add(&out, l.p, l.full);
-	}
-	kb_buf_free(&block);
-	kb_buf_str(&out, "");
+	menu_rebuild(conf, block.p, first, &out);
 
 	int rc = 0;
 	if (strcmp(out.p, conf) != 0)
 		rc = kb_write_file_atomic(conf_path, out.p);
+	if (rc == 0 && trial) {
+		char tdir[PATH_MAX], tconf[PATH_MAX];
+		KbBuf tout = {0};
+		snprintf(tdir, sizeof(tdir), "%s/" TRIAL_DIR, esp);
+		snprintf(tconf, sizeof(tconf), "%s/" TRIAL_DIR "/limine.conf",
+			 esp);
+		menu_rebuild(conf, block.p, first + 3, &tout);
+		rc = kb_mkdir_p(tdir) == 0 ? write_if_changed(tconf, tout.p)
+					   : -1;
+		kb_buf_free(&tout);
+	}
+	kb_buf_free(&block);
 	/* The flat pair goes once nothing names it; until then it is the
 	 * kernel a slot without a directory of its own boots. */
 	if (rc == 0 && !strstr(out.p, "boot():/EFI/kdos/vmlinuz")) {
@@ -888,17 +991,14 @@ done:
 	return 0;
 }
 
-/*
- * Which slot the filesystem mounted at `root` is: the device the mount table
- * names for it, against each slot's /dev/disk/by-uuid link, both resolved.
- * The mount table and not st_dev, because a btrfs root reports an anonymous
- * device number that is no block device at all. -1 when neither matches.
- */
-static int slot_of_root(const BootState *st, const char *root)
+/* The source the mount table names for the filesystem mounted at `path`, the
+ * last mount there winning. -1 when nothing is mounted there. */
+static int mount_source(const char *path, char *src, size_t srclen)
 {
-	char want[PATH_MAX], src[PATH_MAX] = "";
+	char want[PATH_MAX];
 
-	if (!realpath(root, want))
+	src[0] = 0;
+	if (!realpath(path, want))
 		return -1;
 	char *mi = kb_read_all("/proc/self/mountinfo", NULL);
 	if (!mi)
@@ -913,13 +1013,24 @@ static int slot_of_root(const BootState *st, const char *root)
 		if (sep && sscanf(l, "%*s %*s %*s %*s %4095s", mp) == 1 &&
 		    sscanf(sep + 3, "%63s %4095s", fs, dev) == 2 &&
 		    !strcmp(mp, want))
-			kb_strlcpy(src, dev, sizeof(src));	/* the last wins */
+			kb_strlcpy(src, dev, srclen);	/* the last wins */
 		l = nl ? nl + 1 : NULL;
 	}
 	free(mi);
+	return src[0] ? 0 : -1;
+}
 
-	char dev[PATH_MAX];
-	if (!src[0] || !realpath(src, dev))
+/*
+ * Which slot the filesystem mounted at `root` is: the device the mount table
+ * names for it, against each slot's /dev/disk/by-uuid link, both resolved.
+ * The mount table and not st_dev, because a btrfs root reports an anonymous
+ * device number that is no block device at all. -1 when neither matches.
+ */
+static int slot_of_root(const BootState *st, const char *root)
+{
+	char src[PATH_MAX], dev[PATH_MAX];
+
+	if (mount_source(root, src, sizeof(src)) != 0 || !realpath(src, dev))
 		return -1;
 	for (int i = 0; i < 2; i++) {
 		char by[PATH_MAX], real[PATH_MAX];
@@ -1252,6 +1363,428 @@ static int cmd_deploy(BootState *st, int have, int argc, char **argv)
 	return 0;
 }
 
+/* ── UEFI BootNext: one boot of the candidate ──────────────────────────── */
+
+/*
+ * A CANDIDATE KERNEL THAT DIES BEFORE ITS INITRAMFS COUNTS NOTHING, so on
+ * UEFI the counting is not what brings the machine back. `try` leaves the
+ * menu's default on the confirmed slot and asks the FIRMWARE for one boot of
+ * the candidate: a Boot#### load option that starts a copy of Limine in
+ * EFI/kdos/trial/, whose limine.conf defaults to the candidate's entry, and
+ * BootNext naming that option. The firmware deletes BootNext before it starts
+ * the loader, so whatever happens to that boot — a panic, a hang and the reset
+ * button, a userland that never confirms — the boot after it starts
+ * EFI/BOOT/ and the confirmed slot. The candidate becomes the default only at
+ * `mark-good`.
+ *
+ * WRITTEN THROUGH efivarfs AND NOT efibootmgr: the option is a fixed shape
+ * built from the ESP's own partition entry, and nothing in it comes from a
+ * name anybody typed. A state file pointed elsewhere with KDOS_BOOTSTATE
+ * touches no firmware variable unless KDOS_EFIVARS names a directory as well,
+ * so a fixture never reaches the NVRAM of the machine running it.
+ */
+
+#define EFI_GLOBAL_GUID "8be4df61-93ca-11d2-aa0d-00e098032b8c"
+#define TRIAL_DESC "KDOS update trial"
+/* NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS, the attributes every
+ * Boot#### and BootNext carry. */
+#define EFI_VAR_ATTRS 0x7u
+
+/* The efivarfs directory, or NULL where no firmware variable may be written. */
+static const char *efivars_dir(void)
+{
+	const char *e = getenv("KDOS_EFIVARS");
+
+	if (e && *e)
+		return e;
+	e = getenv("KDOS_BOOTSTATE");
+	if (e && *e && strcmp(e, BOOTSTATE_DEFAULT))
+		return NULL;
+	return "/sys/firmware/efi/efivars";
+}
+
+/* The loader this firmware can execute: fw_platform_size sits beside the
+ * efivars directory, and a kernel that does not publish it is read as 64. */
+static const char *efi_loader(const char *vars)
+{
+	char p[PATH_MAX], v[8] = "";
+
+	snprintf(p, sizeof(p), "%s/../fw_platform_size", vars);
+	kb_read_file(p, v, sizeof(v));
+	return atoi(v) == 32 ? "BOOTIA32.EFI" : "BOOTX64.EFI";
+}
+
+static void le16(unsigned char *p, unsigned v)
+{
+	p[0] = v & 0xff;
+	p[1] = (v >> 8) & 0xff;
+}
+
+static void le32(unsigned char *p, uint32_t v)
+{
+	for (int k = 0; k < 4; k++)
+		p[k] = (v >> (8 * k)) & 0xff;
+}
+
+static void le64(unsigned char *p, uint64_t v)
+{
+	for (int k = 0; k < 8; k++)
+		p[k] = (v >> (8 * k)) & 0xff;
+}
+
+static uint64_t get_le(const unsigned char *p, int n)
+{
+	uint64_t v = 0;
+
+	while (n--)
+		v = v << 8 | p[n];
+	return v;
+}
+
+/* What an EFI hard-drive device path node says about a partition. */
+typedef struct {
+	uint32_t number;	/* 1-based */
+	uint64_t start, size;	/* in the disk's logical blocks */
+	unsigned char sig[16];	/* GPT: the partition GUID as stored */
+	unsigned char mbr_type;	/* 1 MBR, 2 GPT */
+	unsigned char sig_type;	/* 1 MBR disk signature, 2 GUID */
+} EfiPart;
+
+/*
+ * The partition entry of `number` on `disk`, read from the table itself: the
+ * GPT header at LBA 1 of a 512- or a 4096-byte-sector disk, else a primary
+ * MBR entry. Everything the firmware matches a hard-drive node against comes
+ * from here, in the disk's own block units.
+ */
+static int efi_part_read(const char *disk, uint32_t number, EfiPart *ep)
+{
+	unsigned char s0[512], h[92], e[128];
+	int fd = open(disk, O_RDONLY | O_CLOEXEC), rc = -1;
+
+	memset(ep, 0, sizeof(*ep));
+	ep->number = number;
+	if (fd < 0)
+		return -1;
+	if (!number || pread(fd, s0, sizeof(s0), 0) != (ssize_t)sizeof(s0))
+		goto out;
+	for (unsigned lbs = 512; lbs <= 4096; lbs *= 8) {
+		if (pread(fd, h, sizeof(h), lbs) != (ssize_t)sizeof(h) ||
+		    memcmp(h, "EFI PART", 8))
+			continue;
+		uint64_t at = get_le(h + 72, 8);
+		uint32_t count = (uint32_t)get_le(h + 80, 4);
+		uint32_t esz = (uint32_t)get_le(h + 84, 4);
+		if (number > count || esz < sizeof(e) || esz > 4096 ||
+		    pread(fd, e, sizeof(e), (off_t)(at * lbs +
+				    (uint64_t)(number - 1) * esz)) !=
+			    (ssize_t)sizeof(e))
+			goto out;
+		static const unsigned char zero[16];
+		uint64_t first = get_le(e + 32, 8), last = get_le(e + 40, 8);
+		if (!memcmp(e, zero, 16) || last < first)
+			goto out;
+		memcpy(ep->sig, e + 16, 16);
+		ep->start = first;
+		ep->size = last - first + 1;
+		ep->mbr_type = 2;
+		ep->sig_type = 2;
+		rc = 0;
+		goto out;
+	}
+	if (s0[510] == 0x55 && s0[511] == 0xAA && number <= 4) {
+		const unsigned char *pe = s0 + 446 + 16 * (number - 1);
+		if (!pe[4] || pe[4] == 0xEE)
+			goto out;
+		memcpy(ep->sig, s0 + 440, 4);
+		ep->start = get_le(pe + 8, 4);
+		ep->size = get_le(pe + 12, 4);
+		ep->mbr_type = 1;
+		ep->sig_type = 1;
+		rc = 0;
+	}
+out:
+	close(fd);
+	return rc;
+}
+
+/*
+ * The disk and partition number the ESP at `esp` is on: the mount table's
+ * source, its /sys/class/block entry's `partition`, and the directory above
+ * that entry, which is the whole disk. KDOS_ESP_DISK=<image>:<n> stands in
+ * for all three.
+ */
+static int esp_disk(const char *esp, char *disk, size_t n, uint32_t *number)
+{
+	const char *e = getenv("KDOS_ESP_DISK");
+	char src[PATH_MAX], dev[PATH_MAX], p[PATH_MAX], name[NAME_MAX + 1];
+	char v[16] = "";
+
+	if (e && *e) {
+		const char *c = strrchr(e, ':');
+		if (!c || (size_t)(c - e) >= n)
+			return -1;
+		memcpy(disk, e, (size_t)(c - e));
+		disk[c - e] = 0;
+		*number = (uint32_t)strtoul(c + 1, NULL, 10);
+		return *number ? 0 : -1;
+	}
+	if (mount_source(esp, src, sizeof(src)) != 0 || !realpath(src, dev))
+		return -1;
+	const char *base = strrchr(dev, '/');
+	kb_strlcpy(name, base ? base + 1 : dev, sizeof(name));
+	snprintf(p, sizeof(p), "/sys/class/block/%s/partition", name);
+	if (kb_read_file(p, v, sizeof(v)) <= 0 || !(*number = (uint32_t)atoi(v)))
+		return -1;
+	snprintf(p, sizeof(p), "/sys/class/block/%s", name);
+	if (!realpath(p, src))
+		return -1;
+	char *slash = strrchr(src, '/');
+	if (!slash)
+		return -1;
+	*slash = 0;
+	slash = strrchr(src, '/');
+	kb_strlcpy(name, slash ? slash + 1 : src, sizeof(name));
+	snprintf(disk, n, "/dev/%s", name);
+	return 0;
+}
+
+/*
+ * An EFI_LOAD_OPTION: attributes, the device path's length, the description
+ * in UCS-2, then a hard-drive node, a file-path node and the end node. `path`
+ * is relative to the ESP and written with backslashes. Returns the length,
+ * and writes the option only when it fits in `cap`.
+ */
+static size_t load_option(unsigned char *out, size_t cap, const char *desc,
+			  const EfiPart *ep, const char *path)
+{
+	size_t dl = strlen(desc), pl = strlen(path);
+	size_t fnode = 4 + 2 * (1 + pl + 1);
+	size_t fpl = 42 + fnode + 4;
+	size_t need = 4 + 2 + 2 * (dl + 1) + fpl;
+
+	if (!out || cap < need || fpl > 0xffff)
+		return need;
+	unsigned char *p = out;
+	le32(p, 1);			/* LOAD_OPTION_ACTIVE */
+	le16(p + 4, (unsigned)fpl);
+	p += 6;
+	for (size_t k = 0; k <= dl; k++, p += 2)
+		le16(p, k < dl ? (unsigned char)desc[k] : 0);
+	/* MEDIA_DEVICE_PATH / MEDIA_HARDDRIVE_DP */
+	p[0] = 4;
+	p[1] = 1;
+	le16(p + 2, 42);
+	le32(p + 4, ep->number);
+	le64(p + 8, ep->start);
+	le64(p + 16, ep->size);
+	memcpy(p + 24, ep->sig, 16);
+	p[40] = ep->mbr_type;
+	p[41] = ep->sig_type;
+	p += 42;
+	/* MEDIA_DEVICE_PATH / MEDIA_FILEPATH_DP */
+	p[0] = 4;
+	p[1] = 4;
+	le16(p + 2, (unsigned)fnode);
+	p += 4;
+	le16(p, '\\');
+	p += 2;
+	for (size_t k = 0; k <= pl; k++, p += 2)
+		le16(p, k == pl ? 0 : path[k] == '/' ? '\\'
+						    : (unsigned char)path[k]);
+	/* END_DEVICE_PATH / END_ENTIRE */
+	p[0] = 0x7f;
+	p[1] = 0xff;
+	le16(p + 2, 4);
+	return need;
+}
+
+static void efivar_path(const char *vars, const char *name, char *out,
+			size_t n)
+{
+	snprintf(out, n, "%s/%s-" EFI_GLOBAL_GUID, vars, name);
+}
+
+/*
+ * One variable, replaced whole: efivarfs takes the attributes and the data in
+ * a single write, and a write to an existing variable appends nothing only
+ * because the old one is deleted first — which is also what gives a fixture
+ * directory the same bytes.
+ */
+static int efivar_write(const char *vars, const char *name,
+			const unsigned char *data, size_t len)
+{
+	char path[PATH_MAX];
+	unsigned char *buf = malloc(len + 4);
+	int rc = -1;
+
+	if (!buf)
+		return -1;
+	efivar_path(vars, name, path, sizeof(path));
+	unlink(path);
+	le32(buf, EFI_VAR_ATTRS);
+	memcpy(buf + 4, data, len);
+	int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+	if (fd >= 0) {
+		if (write(fd, buf, len + 4) == (ssize_t)(len + 4))
+			rc = 0;
+		if (close(fd) != 0)
+			rc = -1;
+	}
+	free(buf);
+	return rc;
+}
+
+/* A variable's data without its attributes; NULL when it does not exist. */
+static unsigned char *efivar_read(const char *vars, const char *name,
+				  size_t *len)
+{
+	char path[PATH_MAX];
+	size_t n = 0;
+
+	efivar_path(vars, name, path, sizeof(path));
+	unsigned char *d = (unsigned char *)kb_read_all(path, &n);
+	if (!d || n < 4) {
+		free(d);
+		return NULL;
+	}
+	memmove(d, d + 4, n - 4);
+	*len = n - 4;
+	return d;
+}
+
+/* Whether the load option `d` carries our description. */
+static int is_trial_option(const unsigned char *d, size_t n)
+{
+	size_t dl = strlen(TRIAL_DESC);
+
+	if (n < 6 + 2 * (dl + 1))
+		return 0;
+	for (size_t k = 0; k <= dl; k++)
+		if (get_le(d + 6 + 2 * k, 2) !=
+		    (k < dl ? (unsigned char)TRIAL_DESC[k] : 0u))
+			return 0;
+	return 1;
+}
+
+/* The number of our Boot#### option; with `pick`, the lowest number nothing
+ * uses when there is none. -1 when there is none to give. */
+static int trial_option(const char *vars, int pick)
+{
+	static unsigned char used[0x10000 / 8];
+	DIR *d = opendir(vars);
+	struct dirent *de;
+	int found = -1;
+
+	if (!d)
+		return -1;
+	memset(used, 0, sizeof(used));
+	while ((de = readdir(d))) {
+		unsigned num;
+		char tail[64], name[16];
+		if (sscanf(de->d_name, "Boot%4X-%63s", &num, tail) != 2 ||
+		    strlen(de->d_name) != 9 + strlen(EFI_GLOBAL_GUID) ||
+		    strcmp(tail, EFI_GLOBAL_GUID))
+			continue;
+		used[num / 8] |= 1u << (num % 8);
+		snprintf(name, sizeof(name), "Boot%04X", num);
+		size_t n = 0;
+		unsigned char *data = efivar_read(vars, name, &n);
+		if (data && found < 0 && is_trial_option(data, n))
+			found = (int)num;
+		free(data);
+	}
+	closedir(d);
+	if (found >= 0 || !pick)
+		return found;
+	for (unsigned k = 0; k < 0x10000; k++)
+		if (!(used[k / 8] & (1u << (k % 8))))
+			return (int)k;
+	return -1;
+}
+
+/*
+ * Arm the one-shot boot: the loader copied beside the trial limine.conf that
+ * menu_sync wrote, the Boot#### option naming it, then BootNext. Anything
+ * missing is reported and returns -1, and the caller falls back to the
+ * menu-led trial.
+ */
+static int trial_arm(const char *esp)
+{
+	const char *vars = efivars_dir();
+	char disk[PATH_MAX], src[PATH_MAX], dst[PATH_MAX], rel[64], name[16];
+	uint32_t number;
+	EfiPart ep;
+
+	if (!vars || !kb_path_exists(vars))
+		return -1;
+	const char *loader = efi_loader(vars);
+	snprintf(dst, sizeof(dst), "%s/" TRIAL_DIR "/limine.conf", esp);
+	if (!kb_path_exists(dst)) {
+		fprintf(stderr, "bootctl: no trial menu could be written\n");
+		return -1;
+	}
+	snprintf(src, sizeof(src), "%s/EFI/BOOT/%s", esp, loader);
+	snprintf(dst, sizeof(dst), "%s/" TRIAL_DIR "/%s", esp, loader);
+	if (copy_atomic(src, dst) != 0) {
+		fprintf(stderr, "bootctl: cannot copy %s into " TRIAL_DIR
+				": %s\n", src, strerror(errno));
+		return -1;
+	}
+	if (esp_disk(esp, disk, sizeof(disk), &number) != 0 ||
+	    efi_part_read(disk, number, &ep) != 0) {
+		fprintf(stderr, "bootctl: cannot read the ESP's partition "
+				"entry\n");
+		return -1;
+	}
+	int num = trial_option(vars, 1);
+	if (num < 0) {
+		fprintf(stderr, "bootctl: no free Boot#### number\n");
+		return -1;
+	}
+	snprintf(rel, sizeof(rel), TRIAL_DIR "/%s", loader);
+	size_t len = load_option(NULL, 0, TRIAL_DESC, &ep, rel);
+	unsigned char *opt = malloc(len);
+	unsigned char next[2];
+	int rc = -1;
+	if (opt) {
+		load_option(opt, len, TRIAL_DESC, &ep, rel);
+		snprintf(name, sizeof(name), "Boot%04X", (unsigned)num);
+		le16(next, (unsigned)num);
+		if (efivar_write(vars, name, opt, len) == 0 &&
+		    efivar_write(vars, "BootNext", next, 2) == 0)
+			rc = num;
+		else
+			fprintf(stderr, "bootctl: cannot write %s: %s\n",
+				name, strerror(errno));
+		free(opt);
+	}
+	return rc;
+}
+
+/* Our Boot#### option and a BootNext naming it, removed once no trial is
+ * pending. Silent where there are no firmware variables. */
+static void trial_disarm(void)
+{
+	const char *vars = efivars_dir();
+	char path[PATH_MAX], name[16];
+
+	if (!vars)
+		return;
+	int num = trial_option(vars, 0);
+	if (num < 0)
+		return;
+	size_t n = 0;
+	unsigned char *next = efivar_read(vars, "BootNext", &n);
+	if (next && n == 2 && get_le(next, 2) == (uint64_t)num) {
+		efivar_path(vars, "BootNext", path, sizeof(path));
+		unlink(path);
+	}
+	free(next);
+	snprintf(name, sizeof(name), "Boot%04X", (unsigned)num);
+	efivar_path(vars, name, path, sizeof(path));
+	unlink(path);
+}
+
 /* ── the commands ──────────────────────────────────────────────────────── */
 
 static int cmd_status(const BootState *st, int have, int json)
@@ -1267,12 +1800,14 @@ static int cmd_status(const BootState *st, int have, int json)
 	if (json) {
 		printf("{\"configured\": true, \"active\": \"%s\", "
 		       "\"trying\": %s%s%s, \"attempts\": %d, "
+		       "\"bootnext\": %s, "
 		       "\"slot_a\": \"%s\", \"slot_b\": \"%s\", "
 		       "\"crypt_a\": \"%s\", \"crypt_b\": \"%s\"}\n",
 		       slot_name(st->active),
 		       st->trying >= 0 ? "\"" : "null",
 		       st->trying >= 0 ? slot_name(st->trying) : "",
 		       st->trying >= 0 ? "\"" : "", st->attempts,
+		       st->bootnext ? "true" : "false",
 		       st->slot[0], st->slot[1], st->crypt[0], st->crypt[1]);
 		return 0;
 	}
@@ -1303,7 +1838,15 @@ static int cmd_status(const BootState *st, int have, int json)
 			       ver[0] ? ver : "(no version)", d,
 			       own ? "" : ", the pair either slot boots");
 		}
-	if (st->trying >= 0)
+	if (trial_pending(st))
+		printf("trying   %s once, through UEFI BootNext — any boot after "
+		       "that one starts %s\n", slot_name(st->trying),
+		       slot_name(st->active));
+	else if (st->trying >= 0 && st->bootnext)
+		printf("trying   %s, booted once and not confirmed — the next "
+		       "boot starts %s\n", slot_name(st->trying),
+		       slot_name(st->active));
+	else if (st->trying >= 0)
 		printf("trying   %s, %d attempt(s) left\n",
 		       slot_name(st->trying), st->attempts);
 	else
@@ -1327,6 +1870,50 @@ static int cmd_select(BootState *st, int have, int entry)
 {
 	if (!have)
 		return 1;	/* nothing to say; the caller keeps root= */
+
+	/*
+	 * A BOOTNEXT TRIAL HAS ONE BOOT, and the firmware has already spent
+	 * the request for it. The candidate's own entry spends the state's
+	 * copy too; any other entry is the confirmed slot's — the default the
+	 * firmware fell back to after a candidate that died, or never started
+	 * the trial loader at all — and rolls the candidate back. A candidate
+	 * picked by hand after its boot was spent is one more boot of it,
+	 * which rcS confirms as usual.
+	 */
+	if (st->trying >= 0 && st->bootnext) {
+		int boot = st->active;
+		if (entry == st->trying) {
+			boot = st->trying;
+			if (st->attempts > 0) {
+				st->attempts = 0;
+				if (state_save(st) != 0)
+					fprintf(stderr, "bootctl: WARNING: could "
+							"not write the boot "
+							"state\n");
+			} else
+				fprintf(stderr, "bootctl: slot %s picked from "
+						"the menu — one boot, nothing "
+						"counted\n",
+					slot_name(entry));
+		} else {
+			fprintf(stderr, "bootctl: slot %s did not confirm — "
+					"rolling back to %s\n",
+				slot_name(st->trying), slot_name(st->active));
+			st->trying = -1;
+			st->attempts = 0;
+			st->bootnext = 0;
+			if (state_save(st) != 0)
+				fprintf(stderr, "bootctl: WARNING: could not "
+						"write the boot state\n");
+			else if (menu_sync(st) != 0)
+				fprintf(stderr, "bootctl: WARNING: could not "
+						"rewrite the boot menu\n");
+		}
+		if (!st->slot[boot][0])
+			return 1;
+		printf("%s\n", st->slot[boot]);
+		return 0;
+	}
 
 	/*
 	 * THE ENTRY'S SLOT IS NOT THE ONE THE MENU LEADS WITH, so somebody
@@ -1403,10 +1990,54 @@ static int cmd_select(BootState *st, int have, int entry)
  * earlier would confirm a system that has not yet failed rather than one that
  * has succeeded.
  */
+/*
+ * The slot of the kernel running this, from the kdos_slot= its menu entry
+ * carries; -1 when the command line names none, as an entry written before
+ * menus carried it does. KDOS_CMDLINE stands in for /proc/cmdline; a state
+ * file other than the real one reads no command line without it, so a
+ * fixture run on a KDOS machine is not judged by that machine's own slot.
+ */
+static int running_slot(void)
+{
+	const char *e = getenv("KDOS_CMDLINE"), *s = getenv("KDOS_BOOTSTATE");
+	char buf[4096] = "";
+
+	if (!(e && *e) && s && *s && strcmp(s, BOOTSTATE_DEFAULT))
+		return -1;
+	if (kb_read_file(e && *e ? e : "/proc/cmdline", buf, sizeof(buf)) <= 0)
+		return -1;
+	for (char *w = strtok(buf, " \t\n"); w; w = strtok(NULL, " \t\n"))
+		if (!strncmp(w, "kdos_slot=", 10))
+			return slot_index(w + 10);
+	return -1;
+}
+
 static int cmd_mark_good(BootState *st, int have)
 {
 	if (!have)
 		return 0;	/* nothing to confirm is not a failure */
+	/* Every boot that gets here has had its BootNext, so the option that
+	 * served it goes whatever the state says. */
+	trial_disarm();
+	/*
+	 * A CANDIDATE IS CONFIRMED ONLY ON ITS OWN KERNEL. An init that
+	 * ignores kdos_slot= boots the candidate's root under the confirmed
+	 * slot's kernel after the candidate's kernel died; confirming that
+	 * boot would make the dead kernel the menu's lead. It rolls back.
+	 */
+	int run = running_slot();
+	if (st->trying >= 0 && run >= 0 && run != st->trying) {
+		fprintf(stderr, "bootctl: slot %s's kernel did not boot — rolling "
+				"back to %s\n",
+			slot_name(st->trying), slot_name(st->active));
+		st->trying = -1;
+		st->attempts = 0;
+		st->bootnext = 0;
+		if (state_save(st) != 0) {
+			fprintf(stderr, "bootctl: cannot write the boot state\n");
+			return 1;
+		}
+	}
 	/* The menu is brought into line on every boot, confirmed or not: an
 	 * initramfs whose init predates the menu's kdos_slot= counts and rolls
 	 * back without touching the menu, and this is the first code of ours
@@ -1421,6 +2052,7 @@ static int cmd_mark_good(BootState *st, int have)
 	st->active = st->trying;
 	st->trying = -1;
 	st->attempts = 0;
+	st->bootnext = 0;
 	if (state_save(st) != 0) {
 		fprintf(stderr, "bootctl: cannot write the boot state\n");
 		return 1;
@@ -1579,8 +2211,8 @@ int bootctl_main(int argc, char **argv)
 		 * hand and abandon the candidate on its first boot.
 		 */
 		char esp[1024], d[64];
-		int own, own_other;
-		if (esp_root(esp, sizeof(esp)) == 0) {
+		int own, own_other, on_esp = esp_root(esp, sizeof(esp)) == 0;
+		if (on_esp) {
 			int kernel = slot_boot_dir(esp, i, d, sizeof(d),
 						   &own) != NULL;
 			slot_boot_dir(esp, !i, d, sizeof(d), &own_other);
@@ -1592,10 +2224,24 @@ int bootctl_main(int argc, char **argv)
 				return 1;
 			}
 		}
+		/*
+		 * UEFI BOOTNEXT FIRST, THE MENU-LED TRIAL WHERE IT CANNOT BE
+		 * HAD. The state and the trial limine.conf are written before
+		 * BootNext, so the firmware is never asked for a boot whose
+		 * menu does not exist yet; a machine with no firmware
+		 * variables — a BIOS boot — or one whose firmware refuses the
+		 * write gets `n` counted boots led by the menu instead, and
+		 * recovering from a kernel that dies before its initramfs is
+		 * then a matter of picking the confirmed slot's entry.
+		 */
+		int n = argc > 3 ? atoi(argv[3]) : TRY_ATTEMPTS;
+		if (n < 1)
+			n = 1;
+		const char *vars = efivars_dir();
 		st.trying = i;
-		st.attempts = argc > 3 ? atoi(argv[3]) : TRY_ATTEMPTS;
-		if (st.attempts < 1)
-			st.attempts = 1;
+		st.bootnext = on_esp && vars && kb_path_exists(vars);
+		st.attempts = st.bootnext ? 1 : n;
+		trial_disarm();
 		if (state_save(&st) != 0)
 			return 1;
 		if (menu_sync(&st) != 0) {
@@ -1604,9 +2250,34 @@ int bootctl_main(int argc, char **argv)
 				slot_name(i));
 			return 1;
 		}
-		printf("will boot slot %s up to %d time(s), then roll back to "
-		       "%s\n", slot_name(i), st.attempts,
-		       slot_name(st.active));
+		if (st.bootnext && trial_arm(esp) < 0) {
+			fprintf(stderr, "bootctl: no UEFI BootNext — slot %s is "
+					"led by the menu instead\n",
+				slot_name(i));
+			trial_disarm();
+			st.bootnext = 0;
+			st.attempts = n;
+			if (state_save(&st) != 0)
+				return 1;
+			if (menu_sync(&st) != 0) {
+				fprintf(stderr, "bootctl: the boot menu could "
+						"not be rewritten — slot %s "
+						"will not boot\n",
+					slot_name(i));
+				return 1;
+			}
+		}
+		if (st.bootnext)
+			printf("will boot slot %s once, through UEFI BootNext; "
+			       "any boot after that one that has not confirmed "
+			       "it rolls back to %s\n", slot_name(i),
+			       slot_name(st.active));
+		else
+			printf("will boot slot %s up to %d time(s), then roll "
+			       "back to %s; a kernel that dies before its "
+			       "initramfs is left by picking /KDOS (slot %s)\n",
+			       slot_name(i), st.attempts,
+			       slot_name(st.active), slot_name(st.active));
 		return 0;
 	}
 

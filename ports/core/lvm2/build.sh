@@ -19,10 +19,12 @@ patch -p1 -i $PORT_SRC/musl-stdio-freopen.patch
 # without these tools.
 # dmeventd is what makes lvm.conf's monitoring work: thin-pool autoextend and
 # RAID repair. systemd and selinux have no port and are pinned off.
-# EVENT ACTIVATION IS OFF, because its udev rule activates a completed volume
-# group by running systemd-run, which does not exist here: left on, every
-# hotplugged PV fails that RUN and activates nothing. Off, the rule only
-# records the PV, and /etc/init.d/03_lvm.sh activates the groups at boot.
+# EVENT ACTIVATION IS OFF, and its udev rule, 69-dm-lvm.rules, is not
+# installed: the rule activates a completed volume group by running
+# /usr/bin/systemd-run, which does not exist here, and with activation off it
+# does nothing but run `lvm pvscan` on every block device event.
+# /etc/init.d/03_lvm.sh activates the groups at boot, and the initramfs before
+# it on a disk boot.
 CONFIG_SHELL=/bin/bash  \
 ./configure --prefix=/usr \
 	--libdir=/usr/lib \
@@ -51,3 +53,4 @@ CONFIG_SHELL=/bin/bash  \
 	--disable-selinux
 make 
 make DESTDIR=$PKG install_lvm2 install_device-mapper
+find "$PKG" -name 69-dm-lvm.rules -delete

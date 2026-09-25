@@ -27,6 +27,7 @@ kdos/
 │   │   ├── *.patch            optional
 │   │   └── <name>-<ver>.tar.* upstream archive — in the tree, through Git LFS
 │   ├── Containerfile.fetch    the fetch image, pinning this tree's toolchains
+│   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── fetch                  download and vendor sources
 │   └── update                 the upstream version checker's front end
 │

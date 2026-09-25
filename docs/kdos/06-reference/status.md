@@ -38,7 +38,7 @@ guarantee between lines, and no tested hardware matrix. You are the integrator. 
 | Snapshots and plans | Stable | Exercised by every incremental build, plus the synthetic-tree run |
 | The pack format | Stable | Byte-identical across rebuilds under a hostile environment; a small delta reconstructs its pack exactly; the parse-whole and hash-before-signature rules are asserted in the suite |
 | The binary host | In progress | Signing, the index, the three equality tests and deltas are all asserted against a synthetic port, including four distinct refusals. There is no public host — the mechanism is complete and unused |
-| The application catalogue | Stable | 183 applications and 2 datasets over 7 runtimes and 2 base packs, in 21 groups. Built on demand; nothing is baked into the image |
+| The application catalogue | Stable | 180 applications and 2 datasets over 7 runtimes and 2 base packs, in 21 groups. Built on demand; nothing is baked into the image |
 
 ## Boot and system
 
@@ -105,7 +105,7 @@ should come back.
 | — in `ports/core` | 945 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/packages` | 11 | `find src/packages -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 13 | `find src/desktop -name kpkgbuild \| wc -l` |
-| Catalogue applications | 183 | `grep -c '^app ' src/packages/kdos-appbox/catalogue` |
+| Catalogue applications | 180 | `grep -c '^app ' src/packages/kdos-appbox/catalogue` |
 | Catalogue datasets | 2 | `grep -c '^data ' src/packages/kdos-appbox/catalogue` |
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/packages/kdos-appbox/catalogue` |
 | Catalogue base packs | 2 | `grep -c '^base ' src/packages/kdos-appbox/catalogue` |

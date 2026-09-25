@@ -49,8 +49,8 @@ src_shard() {
 
 # ── everything below this block runs INSIDE a container ────────────────────
 #
-# Downloading a tarball needs nothing; VENDORING needs cargo, go, npm and pip,
-# at the versions this tree will compile the port with. Carrying four
+# Downloading a tarball needs nothing; VENDORING needs cargo, go, npm, pip and
+# cabal, at the versions this tree will compile the port with. Carrying five
 # toolchains on the developer's machine to run one script is what this avoids.
 #
 # IT RUNS AS THE CALLER, not as root: every file it writes is committed, and a
@@ -76,11 +76,13 @@ if [ -z "${KDOS_FETCH_INNER:-}" ] && [ -z "${KDOS_FETCH_HOST:-}" ]; then
     # it does not have and tries to download into a root-owned RUSTUP_HOME. It
     # is also the correct answer — a bundle must be resolved by the compiler
     # that will build it, not by the one upstream develops against.
-    echo "==> building the fetch image (rust $(ver rust), go $(ver go), node $(ver nodejs))"
+    echo "==> building the fetch image (rust $(ver rust), go $(ver go), node $(ver nodejs), ghc $(ver ghc), cabal $(ver cabal-install))"
     $ENGINE_OUT build -q -t kdos-fetch \
         --build-arg RUST_VERSION="$(ver rust)" \
         --build-arg GO_VERSION="$(ver go)" \
         --build-arg NODE_VERSION="$(ver nodejs)" \
+        --build-arg GHC_VERSION="$(ver ghc)" \
+        --build-arg CABAL_VERSION="$(ver cabal-install)" \
         -f "$SCRIPT_DIR/Containerfile.fetch" "$SCRIPT_DIR" >/dev/null
     mkdir -p "$REPO_ROOT/build/fetch-home"
     exec $ENGINE_OUT run --rm --network=host \
@@ -92,6 +94,7 @@ if [ -z "${KDOS_FETCH_INNER:-}" ] && [ -z "${KDOS_FETCH_HOST:-}" ]; then
         -e GOPATH=/kdos/build/fetch-home/go \
         -e GOCACHE=/kdos/build/fetch-home/gocache \
         -e npm_config_cache=/kdos/build/fetch-home/npm \
+        -e CABAL_DIR=/kdos/build/fetch-home/cabal \
         -e KPKG_BIN=/kdos/build/fetch-home/kpkg \
         -e RUSTUP_TOOLCHAIN="$(ver rust)" \
         -e KDOS_SOURCES_BASE="$KDOS_SOURCES_BASE" \
@@ -160,7 +163,7 @@ fetch_port() {
     # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
     # basename is literally "kpkg", so this resolves through kdos-kpkg's
     # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
-    unset name version release source sha256 vendoring pypackages vendordir vendorsync pyrequirements pyruntime
+    unset name version release source sha256 vendoring pypackages vendordir vendorsync pyrequirements pyruntime hsplan
     local meta
     meta=$("$KPKG" meta . 2>/dev/null) || {
         echo "⚠  $portname: Failed to read kpkgbuild"
@@ -507,6 +510,88 @@ fetch_port() {
                 return 1
             }
             vendor_tar "$portdir/$vendor_file" node_modules || {
+                echo "✗  $portname: Failed to create $vendor_file"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
+            popd >/dev/null
+
+            rm -rf "$tmp_dir"
+            echo "✓  $portname: Created $vendor_file"
+        fi
+    elif [ "$vendoring" = "haskell" ]; then
+        vendor_file="${name}-vendor-${version}.tar.xz"
+        if [ -f "./$vendor_file" ]; then
+             echo "✓  $portname: Vendor file $vendor_file exists"
+        else
+            echo "⚙  $portname: Generating vendor tarball (Haskell)..."
+            tmp_dir=$(mktemp -d)
+            first_src=$(echo $source | cut -d' ' -f1)
+            case $first_src in
+                *::*) filename="${first_src%%::*}" ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
+            esac
+
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+                echo "✗  $portname: Failed to extract $filename"
+                rm -rf "$tmp_dir"
+                return 1
+            }
+
+            # THE DEPENDENCY SET IS A PLAN OR A FREEZE, NEVER A FRESH SOLVE AT
+            # BUILD TIME. `hsplan =` names a bootstrap plan inside the source
+            # (GHC's Hadrian, cabal-install itself), which pins every
+            # revision and hash; ports/hackage-vendor downloads exactly that.
+            # Otherwise the set is a cabal freeze: the port directory's own
+            # cabal.project.freeze when it carries one, or what `cabal freeze`
+            # resolves beside `vendordir`'s manifest with the tree's ghc. The
+            # freeze rides in the bundle, and build.sh hands it back to cabal,
+            # so the offline build solves to the same set this downloaded.
+            # A package the resolving ghc already carries in its global
+            # database is not vendored — GHC ships it.
+            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
+            if [ -n "${hsplan:-}" ]; then
+                python3 "$SCRIPT_DIR/hackage-vendor" --plan "$hsplan" --out vendor || {
+                    echo "✗  $portname: hackage-vendor failed"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                }
+            else
+                local cabal_dir="${CABAL_DIR:-$HOME/.cabal}"
+                [ -f "$portdir/cabal.project.freeze" ] &&
+                    cp "$portdir/cabal.project.freeze" cabal.project.freeze
+                if ! CABAL_DIR="$cabal_dir" cabal update ||
+                   { [ ! -f cabal.project.freeze ] && ! CABAL_DIR="$cabal_dir" cabal freeze; } ||
+                   ! ghc-pkg list --global --simple-output | tr ' ' '\n' > .installed ||
+                   ! python3 "$SCRIPT_DIR/hackage-vendor" --freeze cabal.project.freeze \
+                        --index "$cabal_dir/packages/hackage.haskell.org/01-index.tar" \
+                        --installed .installed --out vendor; then
+                    echo "✗  $portname: Haskell vendoring failed"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                fi
+                cp cabal.project.freeze vendor/
+            fi
+
+            vendor_tar "$portdir/$vendor_file" vendor || {
                 echo "✗  $portname: Failed to create $vendor_file"
                 popd >/dev/null
                 rm -rf "$tmp_dir"

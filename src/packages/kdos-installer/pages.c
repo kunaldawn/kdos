@@ -759,6 +759,34 @@ static void part_row_generic(int idx, int x, int y, int w, int selected,
 		   p->label);
 }
 
+/*
+ * THE ROOT LIST IS THE DISK'S PARTITIONS AND THEN EVERY LOGICAL VOLUME, on
+ * any disk: a volume group is not a disk's, and the root need not share one
+ * with the ESP — the kernel and initramfs are on the ESP, and the initramfs
+ * activates every group before it looks for the root. A volume is named
+ * `vg/lv`, which is what `lvs` calls it.
+ */
+static void root_row(int idx, int x, int y, int w, int selected, int focus,
+		     void *u)
+{
+	Disk *d = (Disk *)u;
+	Lv *l;
+	int fg, bg;
+	char nm[160];
+
+	if (idx < d->nparts) {
+		part_row_generic(idx, x, y, w, selected, focus, u);
+		return;
+	}
+	l = &ki_lv[idx - d->nparts];
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	snprintf(nm, sizeof(nm), "%s/%s", l->vg, l->lv);
+	ktui_draw_textf(x + 1, y, w - 1, fg, bg, 0, "%-12s %8s  %-8s %s", nm,
+		   kb_human_size(l->sectors * 512ULL),
+		   l->fstype[0] ? l->fstype : "-",
+		   l->mounted ? l->mountpoint : l->label);
+}
+
 static void layout_enter(void)
 {
 	snprintf(swapbuf, sizeof(swapbuf), "%ld", cfg.swap_mb);
@@ -855,25 +883,31 @@ static void layout_draw(KRect b)
 			return;
 		}
 		int half = (b.w - 3) / 2;
-		int lh = d->nparts > 6 ? 6 : d->nparts;
+		int nroot = d->nparts + ki_nlv;
+		int lh = nroot > 6 ? 6 : nroot;
 
 		ktui_section(b.x, y, half, "EFI SYSTEM PARTITION");
-		ktui_section(b.x + half + 3, y, half, "ROOT PARTITION");
+		ktui_section(b.x + half + 3, y, half,
+			     ki_nlv ? "ROOT PARTITION OR VOLUME"
+				    : "ROOT PARTITION");
 		y++;
 
 		int e = ktui_id();
-		ktui_list(krect(b.x, y, half, lh), &esplist, d->nparts,
-			part_row_generic, d, e);
+		ktui_list(krect(b.x, y, half, d->nparts > 6 ? 6 : d->nparts),
+			  &esplist, d->nparts, part_row_generic, d, e);
 		if (ktui_focused(e) && esplist.sel < d->nparts)
 			kb_strlcpy(cfg.part_esp, d->part[esplist.sel].path,
 				 sizeof(cfg.part_esp));
 
 		int r = ktui_id();
-		ktui_list(krect(b.x + half + 3, y, half, lh), &rootlist, d->nparts,
-			part_row_generic, d, r);
-		if (ktui_focused(r) && rootlist.sel < d->nparts)
-			kb_strlcpy(cfg.part_root, d->part[rootlist.sel].path,
-				 sizeof(cfg.part_root));
+		ktui_list(krect(b.x + half + 3, y, half, lh), &rootlist, nroot,
+			  root_row, d, r);
+		if (ktui_focused(r) && rootlist.sel < nroot)
+			kb_strlcpy(cfg.part_root,
+				   rootlist.sel < d->nparts
+					   ? d->part[rootlist.sel].path
+					   : ki_lv[rootlist.sel - d->nparts].path,
+				   sizeof(cfg.part_root));
 		y += lh + 1;
 
 		ktui_check(b.x, y++, b.w, "Reformat the ESP as FAT32", &cfg.format_esp);
@@ -884,7 +918,10 @@ static void layout_draw(KRect b)
 		      KT_TEXT);
 		ktui_kv(b.x, y++, b.w, "root",
 		      cfg.part_root[0] ? cfg.part_root : "-", KT_ACCENT);
-		ktui_note(b.x, y++, b.w, "the root partition is reformatted, always");
+		ktui_note(b.x, y++, b.w,
+			  ki_nlv ? "the root is reformatted, always; a logical "
+				   "volume keeps its group and its neighbours"
+				 : "the root partition is reformatted, always");
 		y++;
 		ktui_section(b.x, y, b.w, "ROOT FILESYSTEM");
 		y++;
@@ -905,6 +942,22 @@ static void layout_draw(KRect b)
 		 SWAP_PART);
 
 	y++;
+	/*
+	 * THE ROOT ON LVM. The root partition becomes the one physical volume of
+	 * group `kdos`, and the root is its volume `root_a` — slot A's, with the
+	 * other half of the group left for slot B's `root_b` whenever the disk
+	 * holds two. The note says which, because half a disk left empty must
+	 * not be something a person finds out with `df`. Under encryption the
+	 * group goes INSIDE the container: one passphrase opens both slots.
+	 */
+	ktui_check(b.x, y++, b.w, "Put the root on LVM", &cfg.lvm);
+	if (cfg.lvm)
+		ktui_note(b.x + 4, y++, b.w,
+			  ki_lvm_half()
+				  ? "volume group kdos; root_a takes half, the "
+				    "rest is room for a second A/B slot"
+				  : "volume group kdos; root_a takes all of it — "
+				    "this disk has no room for a second slot");
 	/*
 	 * LUKS2 on the root partition. Offered on the WIPE plan only: encrypting
 	 * a partition destroys what is on it, and the reuse plan exists for
@@ -973,9 +1026,14 @@ static void layout_draw(KRect b)
 		ktui_draw_text(bx + i, y, 1, ktui_glyph[KT_G_FULL], KT_WARN, KT_BG, 0);
 	for (int i = 0; i < wswp; i++)
 		ktui_draw_text(bx + wesp + i, y, 1, ktui_glyph[KT_G_FULL], KT_MID, KT_BG, 0);
+	/* Slot B's half of the group is drawn as shade: space that is kept,
+	 * not space that is used. */
+	int lvhalf = cfg.lvm && ki_lvm_half();
+	int wa = lvhalf ? wroot / 2 : wroot;
 	for (int i = 0; i < wroot; i++)
-		ktui_draw_text(bx + wesp + wswp + i, y, 1, ktui_glyph[KT_G_FULL], KT_ACCENT,
-			  KT_BG, 0);
+		ktui_draw_text(bx + wesp + wswp + i, y, 1,
+			       ktui_glyph[i < wa ? KT_G_FULL : KT_G_SHADE],
+			       i < wa ? KT_ACCENT : KT_MID, KT_BG, 0);
 	y += 2;
 
 	char nm[96];
@@ -991,8 +1049,26 @@ static void layout_draw(KRect b)
 	pname(d->path, n++, nm, sizeof(nm));
 	char rootdesc[64];
 	snprintf(rootdesc, sizeof(rootdesc), "%s, mounted at /", cfg.fstype);
-	ktui_draw_textf(b.x, y++, b.w, KT_ACCENT, KT_BG, 0, "  %-14s %-9s %s", nm,
-		   kb_human_size(root), rootdesc);
+	if (cfg.lvm) {
+		ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
+				"  %-14s %-9s %s", nm, kb_human_size(root),
+				cfg.luks ? "LUKS2, holding LVM group " KI_VG
+					 : "LVM physical volume, group " KI_VG);
+		ktui_draw_textf(b.x, y++, b.w, KT_ACCENT, KT_BG, 0,
+				"    %-12s %-9s %s", KI_VG "/" KI_LV_A,
+				kb_human_size(lvhalf ? root / 2 : root),
+				rootdesc);
+		if (lvhalf)
+			ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
+					"    %-12s %-9s %s", "free",
+					kb_human_size(root - root / 2),
+					"room for " KI_VG "/" KI_LV_B
+					", a second A/B slot");
+	} else {
+		ktui_draw_textf(b.x, y++, b.w, KT_ACCENT, KT_BG, 0,
+				"  %-14s %-9s %s", nm, kb_human_size(root),
+				rootdesc);
+	}
 	y++;
 
 	ktui_para(b.x, y, b.w,
@@ -1041,22 +1117,72 @@ static int layout_validate(char *err, size_t n)
 					 "partition");
 			return 1;
 		}
+		/*
+		 * The root as the prober saw it, partition or volume. A PHYSICAL
+		 * VOLUME AND A HELD DEVICE ARE REFUSED HERE: mkfs on either
+		 * fails after the point of no return, and a PV that it did not
+		 * fail on would be a volume group destroyed with it.
+		 */
 		Disk *d = disk_by_path(cfg.disk);
-		if (d)
+		Lv *l = lv_by_path(cfg.part_root);
+		unsigned long long sectors = 0;
+		const char *fstype = "";
+		int held = 0;
+
+		if (l) {
+			sectors = l->sectors;
+			fstype = l->fstype;
+			held = l->held;
+		} else if (d) {
 			for (int i = 0; i < d->nparts; i++)
-				if (!strcmp(d->part[i].path, cfg.part_root) &&
-				    d->part[i].sectors * 512ULL <
-					    (unsigned long long)ki_sys.payload_kb *
-						    1024) {
-					snprintf(err, n,
-						 "%s is smaller than the %s this "
-						 "install needs",
-						 cfg.part_root,
-						 kb_human_size((unsigned long long)
-									ki_sys.payload_kb *
-								1024));
-					return 1;
+				if (!strcmp(d->part[i].path, cfg.part_root)) {
+					sectors = d->part[i].sectors;
+					fstype = d->part[i].fstype;
+					held = d->part[i].held;
 				}
+		}
+		if (!strcmp(fstype, "LVM2_member")) {
+			snprintf(err, n, "%s is an LVM physical volume — pick "
+					 "one of its logical volumes as the root",
+				 cfg.part_root);
+			return 1;
+		}
+		if (held) {
+			snprintf(err, n, "%s is in use by an open container or "
+					 "volume group — close it first",
+				 cfg.part_root);
+			return 1;
+		}
+		if (sectors && sectors * 512ULL <
+				       (unsigned long long)ki_sys.payload_kb * 1024) {
+			snprintf(err, n, "%s is smaller than the %s this install "
+					 "needs",
+				 cfg.part_root,
+				 kb_human_size((unsigned long long)
+						       ki_sys.payload_kb * 1024));
+			return 1;
+		}
+	}
+	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
+		Disk *d = disk_by_path(cfg.disk);
+
+		if (!kb_have_prog("lvm")) {
+			snprintf(err, n, "this image has no lvm — it cannot put "
+					 "the root on LVM");
+			return 1;
+		}
+		/* THE GROUP NAME IS FIXED, so one of that name with any
+		 * physical volume off the target disk is refused now: vgcreate
+		 * would stop the install after the disk was already erased.
+		 * One wholly on the target disk is erased with it and is no
+		 * conflict. */
+		if (d && ki_vg_off_disk(KI_VG, d->name)) {
+			snprintf(err, n, "a volume group named " KI_VG
+					 " is already on another disk — "
+					 "rename it with vgrename, or "
+					 "leave LVM off");
+			return 1;
+		}
 	}
 	if (cfg.swap != SWAP_NONE && cfg.swap_mb <= 0) {
 		snprintf(err, n, "swap size must be greater than zero");
@@ -1553,6 +1679,12 @@ static void summary_draw(KRect b)
 	      cfg.plan == PLAN_WIPE ? "erase the disk and repartition"
 				    : "use existing partitions",
 	      cfg.plan == PLAN_WIPE ? KT_ERR : KT_TEXT);
+	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
+		snprintf(v, sizeof(v), "LVM%s, %s/%s on %s of group %s",
+			 cfg.luks ? " inside LUKS2" : "", KI_VG, KI_LV_A,
+			 ki_lvm_half() ? "half" : "all", KI_VG);
+		ktui_kv(b.x, y++, b.w, "root", v, KT_TEXT);
+	}
 	if (cfg.plan == PLAN_REUSE) {
 		ktui_kv(b.x, y++, b.w, "ESP", cfg.part_esp, KT_TEXT);
 		ktui_kv(b.x, y++, b.w, "root (reformatted)", cfg.part_root, KT_ERR);

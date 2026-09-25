@@ -33,12 +33,12 @@ Podman on the machine that asks for it.
 
 | | |
 |---|---|
-| Applications | 183 |
+| Applications | 180 |
 | Shared runtimes | 7 |
 | Base rows | 2 |
 | Data rows | 2 |
 | Groups | 7 |
-| `cmd` rows — programs meant to be typed | 36, across 25 packs |
+| `cmd` rows — programs meant to be typed | 33, across 22 packs |
 
 The runtimes are `rt-gtk`, `rt-qt`, `rt-kde`, `rt-media`, `rt-sci`, `rt-electron` and `rt-wine`.
 An application is built `FROM` one of them and each runtime `FROM` a base, so a runtime's layers
@@ -169,9 +169,9 @@ next launch builds it again with the socket in place.
 
 ## Commands that live in boxes
 
-Not all containerised software is an application. Twenty-five packs carry a program meant to be
+Not all containerised software is an application. Twenty-two packs carry a program meant to be
 typed rather than clicked — `wine`, `gmic`, `ngspice`, `solve-field`, `cp2k`, `grib_ls`,
-`glxgears` and the rest, thirty-six in all, written down as the catalogue's `cmd` rows. These are
+`glxgears` and the rest, thirty-three in all, written down as the catalogue's `cmd` rows. These are
 solvers, benchmarks and tools driven from a prompt, and they deliberately get no menu entry: a
 launcher for `wine` with no arguments opens nothing.
 

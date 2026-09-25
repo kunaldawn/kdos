@@ -98,24 +98,21 @@ cmd app.openfoam simpleFoam
 cmd app.openfoam blockMesh
 cmd app.quantum-espresso pw.x
 cmd app.xtb xtb
-# Nine more base-runtime packs that are commands: a translator, a SIP phone,
-# a VHDL compiler, two emulators driven by their own key bindings, the JDK,
-# pandoc, rr, and RTKLIB's five tools.
+# Seven more base-runtime packs that are commands: a translator, a VHDL
+# compiler, two emulators driven by their own key bindings, the JDK, rr, and
+# RTKLIB's five tools.
 cmd app.apertium apertium
-cmd app.baresip baresip
 cmd app.ghdl ghdl
 cmd app.desmume desmume
 cmd app.mednafen mednafen
 cmd app.openjdk java
 cmd app.openjdk javac
 cmd app.openjdk jar
-cmd app.pandoc pandoc
 cmd app.rr rr
 cmd app.rtklib rnx2rtkp
 cmd app.rtklib rtkrcv
 cmd app.rtklib str2str
 cmd app.rtklib convbin
-cmd app.a11y espeak-ng
 
 # WHAT EVERY BOX PAYS FOR, and nothing else. Two things are deliberately out:
 # mesa-vulkan-drivers is 241 MB and 26 packages for an API one application in
@@ -385,7 +382,6 @@ app app.scribus          rt-qt        scribus
 app app.gmic             rt-gtk       gmic
 app app.rawtherapee      rt-gtk       rawtherapee hugin luminance-hdr entangle
 app app.texlive          base         texlive-latex-recommended texlive-fonts-recommended latexmk
-app app.pandoc           base         pandoc
 app app.aegisub          rt-gtk       aegisub subtitleeditor
 app app.mkvtoolnix       rt-qt        mkvtoolnix-gui mkvtoolnix
 app app.audio-plugins   rt-media     lsp-plugins x42-plugins calf-plugins zynaddsubfx drumgizmo
@@ -403,8 +399,6 @@ app app.opencpn          rt-gtk       opencpn
 app app.thunderbird      rt-gtk       thunderbird claws-mail
 app app.apertium         base         apertium
 app app.rtklib           base         rtklib
-app app.a11y             base         brltty espeak-ng
-app app.baresip          base         baresip
 
 
 # ── the rest of the applications ──────────────────────────────────────────
@@ -601,7 +595,6 @@ group games       app.aisleriot app.gnome-chess app.gnome-mines app.gnome-sudoku
 # That is what an application looks like until somebody writes one, and it
 # must never be an error — otherwise adding software is a two-file change
 # for no benefit.
-meta app.a11y                 app.a11y|Other|60662667|Support for braille devices
 meta app.aegisub              Aegisub|AudioVideo|73260353|A free, cross-platform open source tool for creating and modifying subtitles
 meta app.aisleriot            AisleRiot Solitaire|Game|27618164|Play many different solitaire games
 meta app.apertium             app.apertium|Other|24838994|
@@ -613,7 +606,6 @@ meta app.audacious            Audacious|AudioVideo|78257583|Lightweight audio pl
 meta app.audacity             Audacity|AudioVideo|30208580|Audacity is the world's most popular audio editing and recording app
 meta app.audio-plugins        Calf Plugin Pack for JACK|AudioVideo|60209088|Process and produce sounds using a set of plugins with JACK interface
 meta app.baobab               Disk Usage Analyzer|System|1774929|Check folder sizes and available disk space
-meta app.baresip              app.baresip|Other|3556175|
 meta app.bcnc                 bCNC|Science|362558563|libgphoto2 digital camera library
 meta app.bleachbit            BleachBit|System|36108790|Free space and maintain privacy
 meta app.blender              Blender|Graphics|355190212|Free and open source 3D creation suite
@@ -726,7 +718,6 @@ meta app.openfoam             app.openfoam|Other|313987950|
 meta app.openjdk              app.openjdk|Other|199443314|
 meta app.openscad             OpenSCAD|Graphics|17410621|The Programmers Solid 3D CAD Modeller
 meta app.openttd              OpenTTD|Game|72893150|A simulation game based on Transport Tycoon Deluxe
-meta app.pandoc               app.pandoc|Other|67281740|
 meta app.paraview             ParaView|Science|638795766|Data analysis and visualization
 meta app.pcmanfm              PCMan File Manager|System|5022734|Browse the file system and manage the files
 meta app.pdfarranger          PDF Arranger|Office|35959437|Merge, shuffle, and crop PDFs

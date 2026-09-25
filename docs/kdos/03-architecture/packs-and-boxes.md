@@ -181,7 +181,7 @@ or ship a pack on which a newly declared command does not exist.
 
 `src/packages/kdos-appbox/catalogue` defines what can be built, and ships to
 `/usr/share/kdos/appstore/catalogue`. Measured against the file it carries 2
-`base` rows, 7 `runtime` rows, 183 `app` rows, 2 `data` rows and 21 `group`
+`base` rows, 7 `runtime` rows, 180 `app` rows, 2 `data` rows and 21 `group`
 rows.
 
 | Row | Declares |
