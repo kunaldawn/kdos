@@ -302,10 +302,29 @@ Each of these exists for the installer and would otherwise be decorative:
 - `rcS` activates swap after mounting, or the swap option would do nothing.
 - `fstab` is appended to, never replaced — the shipped file carries the temporary-filesystem entry
   every graphical application depends on.
-- Renaming the user rewrites the account files, the primary group's own name, the home directory
-  and `login.conf`'s `autologin`, which is what tty1 logs in.
-- The kernel and initramfs are copied onto the ESP, and the boot configuration points at those
-  paths.
+- Renaming the user rewrites the account files, the primary group's own name, the home directory,
+  the owner of the `/etc/subuid` and `/etc/subgid` ranges and `login.conf`'s `autologin`, which is
+  what tty1 logs in. The subordinate ranges are looked up by name: one left on `kdos` gives the
+  renamed account no mapping, and no rootless box starts.
+- **Administrator is membership of `wheel` and nothing else.** The live image ships the account
+  in `wheel`, and the sudo port's `%wheel ALL=(ALL) ALL`, the polkit admin rules, `kdos-resctl`,
+  `kdos-packd`, `kdos-energyd` and `kdos-powerd`'s configuration verbs (firewall, autologin,
+  accent, timezone) grant on that membership — so a non-administrator is taken out of the group,
+  and no separate sudoers file is written for one who stays in it. Every other group membership is
+  kept, `seat` among them, and `seat` is what a non-administrator's desktop runs on: seatd hands it
+  the display, and `kdos-powerd`'s suspend, power-off and reboot, `kdos-mountd` and `kdos-oomd`
+  admit it as well as `wheel`. A non-administrator therefore keeps the lid, the power keys, the
+  panel's power items and removable-media mounting, and loses sudo, the polkit admin actions and
+  everything above.
+- The chosen hostname replaces the `127.0.1.1` line of `/etc/hosts` as well as `/etc/hostname`.
+  musl resolves the machine's own name from that file alone before the DNS, and the shipped line
+  names `kdos`.
+- The kernel and initramfs are copied onto the ESP into slot A's directory, `EFI/kdos/a/`, and
+  the boot configuration's entries point at those paths and carry `kdos_slot=a`. `kdos-bootctl`
+  regenerates those entries later, from the command line written here, and a later kernel reaches
+  the ESP through `kdos-bootctl deploy` — see
+  [A new kernel](../03-architecture/boot-and-init.md#a-new-kernel). An ESP with no room left for a
+  second slot's kernel is reported, because every A/B update would be refused.
 - **Both EFI binaries go onto the ESP**, so a disk written on one machine starts on the other: a
   64-bit CPU does not imply a 64-bit firmware, and firmware reads only the
   `EFI/BOOT/BOOT<arch>.EFI` it can execute. `BOOTIA32.EFI` is copied where it exists and skipped

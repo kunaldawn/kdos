@@ -88,14 +88,53 @@ does exactly one thing besides allowing the write: the path changes hands in
 the database, removed from the previous owner's manifest. Without that,
 removing the older package would delete a file the newer one installed.
 
+Ownership is compared on the **canonical** path. The root's `bin`, `sbin`,
+`lib` and `lib64` are links into `/usr`, so a package built with
+`--exec-prefix=` records `./bin/free` for the file another records as
+`./usr/bin/free`. Read as strings the two never collide: the scan passes, the
+file is claimed twice, and removing or upgrading either package deletes the
+other's file. `kpkg` reads which top-level names are such links off the root
+it installs into and folds each path through them before any comparison.
+
+toybox is built without every applet whose name another port on the image
+installs, so that name has one owner and one implementation. The GNU tools
+that the bootstrap cannot do without — `sed`, `find`, `xargs`, `awk`, `expr`,
+`ln` — are the exception: toybox keeps them, the GNU ports come after it in
+dependency order and take them over, and an upgrade of toybox alone puts its
+applets back until those ports are reinstalled.
+
+A name toybox compiles out needs a release bump to the port that owns it in
+the same change. A toybox installed after that port holds the name in its
+manifest, its upgrade removes the name, and `kpkg` skips a port whose recipe
+hash is current, so without the bump nothing puts the name back. The owners
+phase 3 installs before toybox are listed straight after it in phase 4, so
+their names return before a later build runs them.
+
 An upgrade removes orphans. A file present in the old version and absent from
-the new one is removed rather than left on disk owned by nothing.
+the new one is removed rather than left on disk owned by nothing — unless
+another package claims it, in which case it is that package's file and stays.
+A removal keeps the same rule.
 
 An install or removal ends by rebuilding the shared indexes its manifest fed —
 the GSettings schemas, the GIO module and pixbuf loader caches, the MIME
-database, the font cache and the info directory — from everything then on disk.
-No package owns those files, so no package ships them; the list is in
+database, the font cache and the X core fonts' `fonts.dir`, the info directory
+and the udev hardware database — from everything then on disk. The manual
+index is merged instead: an install that only adds pages adds those pages to
+`mandoc.db`, and it is rebuilt from the whole tree only when a page was
+removed, by a removal or as an upgrade's orphan, or when there is no
+`mandoc.db` yet. No package owns those files, so no package ships them; the list is in
 [Writing ports](../05-developer/writing-ports.md#shared-indexes).
+
+The system Python's `site-packages` is kpkg's too. `python3` ships the PEP 668
+`EXTERNALLY-MANAGED` marker, so `pip install` outside a virtual environment is
+refused rather than allowed to replace a port's files, which the next upgrade
+or removal of that port would delete or conflict with. `python3 -m venv DIR`
+is the way to install what is not a port: `python3-pip` ships the pip wheel
+that `ensurepip` installs into the environment. A `/etc/localtime` is kept out
+of every package for the same reason — a file the machine's owner changes
+cannot also be a file an upgrade rewrites. A machine whose installed `tzdata`
+manifest still lists it has the link removed as an orphan on the next upgrade —
+see [Known gaps](../06-reference/known-gaps.md#build-and-packaging).
 
 ## What a build verifies
 

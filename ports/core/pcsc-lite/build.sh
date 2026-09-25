@@ -12,8 +12,10 @@
 # libudev is the hotplug backend; libusb and libudev are exclusive, and libusb
 # is ccid's to link, not the daemon's. With polkit on, pcscd refuses every
 # client polkit does not grant org.debian.pcsc-lite.access_pcsc and
-# access_card, and with no session tracking here only allow_any is ever read.
-# The pcscd account is made by postinstall.sh.
+# access_card, and with no session tracking here only allow_any is ever read —
+# `no` for both, so fs/etc/polkit-1/rules.d/50-kdos.rules grants them to wheel
+# and a user outside it reaches no reader. The pcscd account is made by
+# postinstall.sh.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/var \
 	--buildtype=release \

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = virtiofsd
+version     = 1.14.0
+release     = 1
+source      = $name-$version.tar.gz::https://gitlab.com/virtio-fs/virtiofsd/-/archive/v$version/virtiofsd-v$version.tar.gz
+sha256      = 52b66e449ca583b4f050a2bff327ff812211a2c349b4130279fcfc6a64540f04  virtiofsd-1.14.0.tar.gz
+sha256      = 846b9b9431140febba6d079182a79754cb3f6fcc8d06fb7964297ef3b34d0d10  virtiofsd-vendor-1.14.0.tar.xz
+description = The virtio-fs daemon — shares a host directory with a qemu guest at local-filesystem speed
+homepage    = https://gitlab.com/virtio-fs/virtiofsd
+depends     = rust libseccomp libcap-ng
+vendoring   = rust

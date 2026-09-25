@@ -5,6 +5,7 @@ NAME="zram"
 CONF="/etc/kdos/zram.conf"
 DEV="/dev/zram0"
 SYS="/sys/block/zram0"
+ZSWAP="/sys/module/zswap/parameters/enabled"
 
 # NOT A SUPERVISED SERVICE. Setting up a compressed swap device is three writes
 # to sysfs and a swapon; the kernel then holds it. Under `supervise` this would
@@ -80,6 +81,20 @@ case "$1" in
         # RAM and swapping to a disk are not the same operation at the same
         # cost, and equal priorities would round-robin between them.
         swapon -p 100 "$DEV" || { echo "[FAIL] $NAME: swapon $DEV"; exit 1; }
+
+        # ZSWAP IS TURNED OFF ONCE ZRAM IS SWAP. The kernel starts with zswap
+        # on, and zswap is a compressed cache in front of whatever swap sits
+        # behind it: with zram there, a page is compressed into zswap's pool,
+        # then decompressed and compressed again into zram, and the pool holds
+        # RAM that zram would have used. Only after swapon succeeds — a machine
+        # whose zram failed keeps zswap in front of its disk swap.
+        [ -w "$ZSWAP" ] && echo N > "$ZSWAP" 2>/dev/null
+        # SWAP-IN READ-AHEAD IS OFF WHILE ZRAM IS SWAP. page-cluster reads
+        # 2^n pages per swap-in, sized for a disk's seek; on zram every extra
+        # page is a decompression nobody asked for. It is one setting for
+        # every swap device, so it is set here and not in sysctl.conf: a
+        # machine left with only disk swap keeps the kernel's read-ahead.
+        echo 0 > /proc/sys/vm/page-cluster 2>/dev/null
         echo "[KDOS] $NAME: $DEV, ${size}% of RAM, $algorithm"
         ;;
     stop)
@@ -88,6 +103,10 @@ case "$1" in
             swapoff "$DEV" 2>/dev/null
         fi
         [ -w "$SYS/reset" ] && echo 1 > "$SYS/reset" 2>/dev/null
+        # With zram gone, any disk swap left is what zswap and read-ahead
+        # are for; 3 is the kernel's default page-cluster.
+        [ -w "$ZSWAP" ] && echo Y > "$ZSWAP" 2>/dev/null
+        echo 3 > /proc/sys/vm/page-cluster 2>/dev/null
         ;;
     status)
         if [ ! -d "$SYS" ]; then

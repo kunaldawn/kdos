@@ -14,5 +14,5 @@ release     = 1
 source      = https://ftp.gnome.org/pub/gnome/sources/pango/${version%.*}/$name-$version.tar.xz
 sha256      = 342385b6ca3b7c73455d7c80a13b7dbe4489e00bc3bd4c5bd6ed4dce421e374a  pango-1.58.2.tar.xz
 description = Text layout and rendering library (Wayland-only build, no X11/Xft)
-depends     = cairo harfbuzz fribidi fontconfig freetype2 glib meson python3-docutils
+depends     = cairo harfbuzz fribidi fontconfig freetype2 glib libthai meson python3-docutils
 devseries   = preview-minor

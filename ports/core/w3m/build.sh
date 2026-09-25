@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# -std=gnu17: w3m declares its signal handlers as taking `(void)`, which under
-# C23 means no parameters rather than unspecified ones, so every mySignal()
-# call is a pointer-type mismatch GCC 15 and later treat as an error.
-export CFLAGS="$CFLAGS -std=gnu17"
-
 ./configure \
 	--prefix=/usr \
 	--libexecdir=/usr/lib \

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = aspell-en
+version     = 2026.02.25.0
+release     = 1
+_dictver    = ${version%.*}-${version##*.}
+source      = $name-$version.tar.bz2::https://ftp.gnu.org/gnu/aspell/dict/en/aspell6-en-$_dictver.tar.bz2
+sha256      = 77a5cb437c45d1115f3b593802c20651d8c93803ed1073278dc1a1240016f10d  aspell-en-2026.02.25.0.tar.bz2
+description = English dictionaries for Aspell (en_US, en_GB, en_CA, en_AU)
+homepage    = http://wordlist.aspell.net/
+depends     = aspell

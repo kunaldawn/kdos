@@ -16,5 +16,5 @@ sha256      = 32c8ffced718cda2d5b4bcedddb71299aaa035f035de6886100ab0f6469ca3dd  
 sha256      = 12f6823a2b5c5c764e9eb07f844b780e3f7fc3024df9abbc410bbba1e5a84658  podman-tui-vendor-2.0.0.tar.xz
 description = Poke podman state — where every appbox failure is diagnosed
 homepage    = https://github.com/containers/podman-tui
-depends     = go
+depends     = go podman
 vendoring   = go

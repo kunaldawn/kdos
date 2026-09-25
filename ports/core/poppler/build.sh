@@ -9,10 +9,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# EVERY GUI BINDING IS OFF AND THAT IS THE HARD RULE, NOT A PREFERENCE.
-# -DENABLE_QT5/QT6=OFF and -DENABLE_GLIB=OFF: there is no Qt and no GTK on this
-# host, and the glib binding additionally drags cairo and gdk-pixbuf in for a
-# renderer nothing here calls.
+# THE QT BINDINGS ARE OFF BY RULE: there is no Qt on this host.
+#
+# THE GLIB BINDING IS ON, and it needs glib and cairo and nothing else: GTK is
+# looked for only to build a demo, and gdk-pixbuf is never linked. poppler-glib
+# is how timg shows a PDF in a terminal. The binding is optional in poppler's
+# CMake, which turns it off without an error when glib is not found, so the
+# check after the install is what makes a missing poppler-glib a failed build.
+# Introspection stays off, because nothing on the host loads a Poppler
+# typelib, and so does the gtk-doc reference.
+#
+# -DENABLE_UNSTABLE_API_ABI_HEADERS=ON installs the private xpdf headers GDAL's
+# PDF driver compiles against. They carry no stability promise: a poppler
+# version bump has to be test-built with gdal too, because its PDF driver may no
+# longer compile against the new headers.
 #
 # WHAT IS ACTUALLY WANTED IS pdftotext. recoll's PDF filter shells out to it,
 # and without it recollindex walks a directory of PDFs, reports success and
@@ -39,7 +49,11 @@ cmake .. -G Ninja \
 	-DBUILD_MANUAL_TESTS=OFF \
 	-DENABLE_UTILS=ON \
 	-DENABLE_CPP=ON \
-	-DENABLE_GLIB=OFF \
+	-DENABLE_GLIB=ON \
+	-DENABLE_GOBJECT_INTROSPECTION=OFF \
+	-DENABLE_GTK_DOC=OFF \
+	-DBUILD_GTK_TESTS=OFF \
+	-DENABLE_UNSTABLE_API_ABI_HEADERS=ON \
 	-DENABLE_QT5=OFF \
 	-DENABLE_QT6=OFF \
 	-DENABLE_BOOST=ON \
@@ -55,3 +69,7 @@ cmake .. -G Ninja \
 	-DENABLE_LIBOPENJPEG=openjpeg2
 ninja
 DESTDIR=$PKG ninja install
+[ -f "$PKG/usr/lib/pkgconfig/poppler-glib.pc" ] || {
+	echo 'poppler: the glib binding was not built; timg would lose PDF support' >&2
+	exit 1
+}

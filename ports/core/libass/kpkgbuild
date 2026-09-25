@@ -15,4 +15,4 @@ source      = https://github.com/libass/libass/releases/download/$version/$name-
 sha256      = 2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc  libass-0.17.5.tar.xz
 description = SSA/ASS subtitle renderer — what lets ffmpeg burn subtitles in
 homepage    = https://github.com/libass/libass
-depends     = freetype2 fribidi harfbuzz fontconfig nasm
+depends     = freetype2 fribidi harfbuzz fontconfig libunibreak nasm

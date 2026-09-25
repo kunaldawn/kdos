@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-authen-sasl
+version     = 2.2100
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/E/EH/EHUELS/Authen-SASL-$version.tar.gz
+sha256      = 4f0f100aeed34b52977a94b7df973e7f0b8f92d167b09f2b249bab81e8590e57  perl-authen-sasl-2.2100.tar.gz
+description = SASL authentication framework for perl
+homepage    = https://metacpan.org/dist/Authen-SASL
+depends     = perl perl-digest-hmac perl-crypt-urandom

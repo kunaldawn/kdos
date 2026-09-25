@@ -64,7 +64,7 @@ kdos/
 │   │   ├── kdos-term/         the terminal
 │   │   ├── kdos-record/       the desktop recorder
 │   │   ├── kdos-boxsock/      one tagged compositor socket per box, per compositor
-│   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser
+│   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser, access
 │   │
 │   ├── packages/          ports that are ours — a port repository, 11 recipes
 │   │   ├── kdos-kpkg/         the package manager, under five names

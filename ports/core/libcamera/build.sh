@@ -60,6 +60,10 @@
 # remove the key is to build with no `openssl` program in the root, and then
 # every IPA module runs isolated in its own process instead of in-library.
 
+# -Dlibunwind=enabled gives a fatal log message its backtrace: musl has no
+# backtrace(), so libunwind-nongnu is the only unwinder libcamera can use here.
+# libdw would only add source lines to it and stays off.
+
 # -Dwerror=false: the project defaults to werror=true with warning_level=2, so a
 # compiler newer than the one upstream tested turns any new diagnostic into a
 # failed build.
@@ -87,7 +91,7 @@ meson setup build \
 	-Dsoftisp-gpu=disabled \
 	-Drpi-awb-nn=disabled \
 	-Dlibdw=disabled \
-	-Dlibunwind=disabled \
+	-Dlibunwind=enabled \
 	-Dtest=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

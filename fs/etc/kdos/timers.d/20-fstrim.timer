@@ -1,0 +1,16 @@
+# Tells every mounted SSD which blocks are free. The installer mounts ext4 and
+# xfs without `discard`, so without this a freed block is never reported and
+# the drive's write speed and wear degrade as it fills with blocks it believes
+# are still in use. btrfs and f2fs already discard as they free blocks, so on
+# them this is a cheap second pass. A filesystem whose device cannot discard
+# is skipped by fstrim itself.
+#
+# Daily, and at midday rather than overnight: fstrim cannot touch a timefile,
+# so there is no `-t` and a slot the machine was OFF for is simply missed. A
+# desktop switched off every night would never reach a 03:00 slot. ext4 skips
+# a block group it has trimmed and freed nothing in since, so on a mounted ext4
+# the runs after the first cost little.
+#
+# -s 20h: a machine ASLEEP at the slot runs it once when it wakes, within the
+# day.
+fstrim  -H 12 -M 47 -s 20h  --  fstrim -a

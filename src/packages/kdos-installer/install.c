@@ -36,6 +36,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/wait.h>
 
 #include "kinstall.h"
@@ -667,16 +668,59 @@ static const char *hash_password(const char *plain)
 	return h;
 }
 
+/* Rename the owner field of a subordinate-ID file (`/etc/subuid`,
+ * `/etc/subgid`). newuidmap and containers/storage look the range up by the
+ * user's NAME, so a range left keyed on the live account's name gives the
+ * renamed one no mapping and every rootless container — every box — exits
+ * before it starts. */
+static void rewrite_subid(const char *file, const char *oldu, const char *newu)
+{
+	char buf[16384], out[16384], path[256];
+	size_t ol = strlen(oldu);
+
+	snprintf(path, sizeof(path), "%s%s", TARGET, file);
+	if (slurp(path, buf, sizeof(buf)) <= 0)
+		return;
+	out[0] = 0;
+	char *save = NULL;
+	for (char *l = strtok_r(buf, "\n", &save); l;
+	     l = strtok_r(NULL, "\n", &save)) {
+		if (!strncmp(l, oldu, ol) && l[ol] == ':') {
+			cat(out, sizeof(out), newu);
+			cat(out, sizeof(out), l + ol);
+		} else {
+			cat(out, sizeof(out), l);
+		}
+		cat(out, sizeof(out), "\n");
+	}
+	if (!cfg.dry_run && kb_write_file(path, out) < 0)
+		fail("cannot write %s", path);
+	logf_("updated %s", path);
+}
+
 /* Rewrite one colon-separated database in place, field by field. Renaming
- * the live user touches passwd, shadow and group (as a member AND as the
- * primary group name) — miss any one of them and the installed system logs
- * nobody in. login.conf's `autologin` names the same account and is NOT
- * touched here: do_config is its single writer, runs before this step and
- * already writes cfg.username, so a second editor could only disagree with
- * it about whether the key is commented out. */
+ * the live user touches passwd, shadow, group (as a member AND as the
+ * primary group name) and the subordinate-ID ranges — miss any one of them
+ * and the installed system logs nobody in or starts no box. login.conf's
+ * `autologin` names the same account and is NOT touched here: do_config is
+ * its single writer, runs before this step and already writes cfg.username,
+ * so a second editor could only disagree with it about whether the key is
+ * commented out.
+ *
+ * `admin` is the whole of the Administrator choice. The sudo port's
+ * `%wheel ALL=(ALL) ALL`, the polkit admin rules and every root daemon's
+ * configuration verbs grant on membership of `wheel`, and the live image ships
+ * the account in it — so a non-administrator is taken OUT of `wheel` here, or
+ * unticking the box would leave full root through sudo.
+ *
+ * ONLY `wheel` IS FILTERED. Every other membership is kept and renamed, and
+ * `seat` is the one that matters: seatd hands the display to it, and
+ * kdos-powerd's suspend, power-off and reboot, kdos-mountd and kdos-oomd admit
+ * it as well as `wheel`. Dropping the account from `seat` would leave a
+ * non-administrator with no desktop at all. */
 static void rewrite_accounts(const char *oldu, const char *newu,
 			     const char *fullname, const char *userhash,
-			     const char *roothash)
+			     const char *roothash, int admin)
 {
 	char buf[65536], out[65536];
 	char path[256];
@@ -729,6 +773,9 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 			char *ms = NULL;
 			for (char *m = strtok_r(mem, ",", &ms); m;
 			     m = strtok_r(NULL, ",", &ms)) {
+				if (!admin && !strcmp(name, "wheel") &&
+				    (!strcmp(m, oldu) || !strcmp(m, newu)))
+					continue;
 				if (newmem[0])
 					cat(newmem, sizeof(newmem), ",");
 				cat(newmem, sizeof(newmem),
@@ -776,6 +823,11 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 		if (!cfg.dry_run)
 			chmod(path, 0600);
 		logf_("updated %s", path);
+	}
+
+	if (strcmp(oldu, newu)) {
+		rewrite_subid("/etc/subuid", oldu, newu);
+		rewrite_subid("/etc/subgid", oldu, newu);
 	}
 }
 
@@ -1242,6 +1294,43 @@ static void do_config(void)
 	wr("/etc/hostname", "%s\n", cfg.hostname);
 
 	/*
+	 * The machine's own name resolves through the `127.0.1.1` line of
+	 * `/etc/hosts` — musl reads that file and nothing else before the
+	 * DNS — and the image ships it naming `kdos`. Left alone, any other
+	 * hostname falls through to the DNS: NXDOMAIN online, a timeout
+	 * offline, for everything that resolves its own name.
+	 */
+	{
+		char hosts[8192] = "", *save = NULL;
+		int seen = 0;
+		if (slurp(TARGET "/etc/hosts", buf, sizeof(buf)) > 0) {
+			for (char *l = strtok_r(buf, "\n", &save); l;
+			     l = strtok_r(NULL, "\n", &save)) {
+				if (!strncmp(l, "127.0.1.1", 9) &&
+				    (l[9] == ' ' || l[9] == '\t')) {
+					if (seen++)
+						continue;
+					cat(hosts, sizeof(hosts), "127.0.1.1   ");
+					cat(hosts, sizeof(hosts), cfg.hostname);
+				} else {
+					cat(hosts, sizeof(hosts), l);
+				}
+				cat(hosts, sizeof(hosts), "\n");
+			}
+		} else {
+			cat(hosts, sizeof(hosts),
+			    "127.0.0.1   localhost\n"
+			    "::1         localhost ip6-localhost ip6-loopback\n");
+		}
+		if (!seen) {
+			cat(hosts, sizeof(hosts), "127.0.1.1   ");
+			cat(hosts, sizeof(hosts), cfg.hostname);
+			cat(hosts, sizeof(hosts), "\n");
+		}
+		wr("/etc/hosts", "%s", hosts);
+	}
+
+	/*
 	 * BOTH HALVES OR NEITHER. `/etc/localtime` is what a program reading
 	 * the zoneinfo tree follows; `TZ` is what musl reads, and it WINS
 	 * where it is set — so a `TZ` naming different rules from the symlink
@@ -1270,6 +1359,41 @@ static void do_config(void)
 			 * here, where the log is read. */
 			logf_("no zone file for %s; the machine will keep UTC",
 			      cfg.tz_label);
+		}
+	}
+
+	/*
+	 * THE WI-FI COUNTRY, FROM THE ZONE. cfg80211 starts in the world
+	 * regulatory domain, which keeps every 5 GHz DFS channel closed and caps
+	 * transmit power, until something names a country. `zone.tab` gives
+	 * each zone exactly one, so the zone just chosen is the answer; a zone
+	 * with no row (UTC) writes nothing. `kdos-powerd`'s `timezone` verb
+	 * rewrites the same file afterwards.
+	 */
+	if (cfg.tz_label[0]) {
+		char cc[3] = "";
+		char line[512];
+		FILE *zt = fopen("/usr/share/zoneinfo/zone.tab", "r");
+
+		while (zt && !cc[0] && fgets(line, sizeof(line), zt)) {
+			char c[3], z[128];
+
+			if (line[0] != '#' &&
+			    sscanf(line, "%2[A-Z]\t%*[^\t]\t%127[^\t\n]", c,
+				   z) == 2 &&
+			    strlen(c) == 2 && !strcmp(z, cfg.tz_label))
+				memcpy(cc, c, 3);
+		}
+		if (zt)
+			fclose(zt);
+		if (cc[0]) {
+			mkpath(TARGET "/etc/modprobe.d");
+			wr("/etc/modprobe.d/kdos-regdom.conf",
+			   "# Written by the KDOS installer from the timezone (%s):\n"
+			   "# the country the Wi-Fi radio's channels and transmit\n"
+			   "# power are set for.\n"
+			   "options cfg80211 ieee80211_regdom=%s\n",
+			   cfg.tz_label, cc);
 		}
 	}
 
@@ -1441,16 +1565,8 @@ static void do_accounts(void)
 			logf_("  home rename failed: %s", strerror(errno));
 	}
 
-	rewrite_accounts("kdos", cfg.username, cfg.fullname, uhash, rhash);
-
-	if (cfg.user_wheel) {
-		mkpath(TARGET "/etc/sudoers.d");
-		wr("/etc/sudoers.d/10-wheel",
-		   "# Written by the KDOS installer.\n"
-		   "%%wheel ALL=(ALL:ALL) ALL\n");
-		if (!cfg.dry_run)
-			chmod(TARGET "/etc/sudoers.d/10-wheel", 0440);
-	}
+	rewrite_accounts("kdos", cfg.username, cfg.fullname, uhash, rhash,
+			 cfg.user_wheel);
 	emit('P', "1");
 }
 
@@ -1531,6 +1647,35 @@ static void copy_file(const char *src, const char *dst)
 	close(in);
 	close(out);
 	logf_("copy %s -> %s", src, dst);
+}
+
+/*
+ * Room on the ESP for a second slot's kernel. An A/B update writes slot B's
+ * kernel and initramfs beside slot A's, so an ESP that holds one pair and not
+ * two installs and boots fine and then refuses every A/B update. The ESP this
+ * installer makes is 512 MiB, which holds several pairs; a reused one — a
+ * 100 MiB ESP another system made is the usual case — may not, and saying so
+ * now is the only time it costs nothing to hear.
+ */
+static void esp_room_for_b(void)
+{
+	struct stat k, i;
+	struct statvfs vf;
+
+	if (cfg.dry_run ||
+	    stat(TARGET "/boot/efi/EFI/kdos/a/vmlinuz", &k) != 0 ||
+	    stat(TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz", &i) != 0 ||
+	    statvfs(TARGET "/boot/efi", &vf) != 0)
+		return;
+	unsigned long long need = (unsigned long long)k.st_size +
+				  (unsigned long long)i.st_size + (1ULL << 20);
+	unsigned long long avail = (unsigned long long)vf.f_bavail * vf.f_frsize;
+	logf_("ESP: %llu MiB free, a second kernel needs %llu MiB",
+	      avail >> 20, need >> 20);
+	if (avail < need)
+		emit('W', "the ESP has %llu MiB free and a second root slot's "
+			  "kernel needs %llu MiB — A/B updates will be refused",
+		     avail >> 20, need >> 20);
 }
 
 static void do_boot(void)
@@ -1629,10 +1774,24 @@ static void do_boot(void)
 	copy_file(src, TARGET "/boot/efi/limine-bios.sys");
 	emit('P', "0.4");
 
+	/*
+	 * SLOT A'S OWN DIRECTORY, because each root slot boots its own kernel:
+	 * the modules for a kernel exist only in the root it was installed
+	 * into, so a slot booted on the other slot's kernel has none. An A/B
+	 * update fills EFI/kdos/b/ the same way through `kdos-bootctl deploy`,
+	 * which is also where the choice of initramfs below is made for every
+	 * later kernel — the `linux` postinstall's, where it wrote one, else
+	 * the image's own.
+	 */
 	emit('N', "kernel and initramfs onto the ESP");
-	copy_file(TARGET "/boot/vmlinuz-kdos", TARGET "/boot/efi/EFI/kdos/vmlinuz");
-	copy_file(TARGET "/boot/initramfs.cpio.gz",
-		  TARGET "/boot/efi/EFI/kdos/initramfs.cpio.gz");
+	mkpath(TARGET "/boot/efi/EFI/kdos/a");
+	copy_file(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
+			  ? TARGET "/boot/initramfs-kdos.cpio.gz"
+			  : TARGET "/boot/initramfs.cpio.gz",
+		  TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz");
+	copy_file(TARGET "/boot/vmlinuz-kdos",
+		  TARGET "/boot/efi/EFI/kdos/a/vmlinuz");
+	esp_room_for_b();
 
 	/* The menu's face and wallpaper, so an installed machine looks like the
 	 * medium it came from. Both are optional: absent, Limine draws its own
@@ -1745,25 +1904,25 @@ static void do_boot(void)
 	   "%s%s"
 	   "\n"
 	   "/KDOS\n"
-	   "    comment: Start this machine\n"
+	   "    comment: Start this machine (slot a)\n"
 	   "    protocol: linux\n"
-	   "    path: boot():/EFI/kdos/vmlinuz\n"
-	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
-	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\n"
+	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
+	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\n"
 	   "\n"
 	   "/KDOS (verbose)\n"
 	   "    comment: Every kernel message on the console\n"
 	   "    protocol: linux\n"
-	   "    path: boot():/EFI/kdos/vmlinuz\n"
-	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
-	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
+	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
+	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
 	   "/KDOS (single user)\n"
 	   "    comment: A root shell, no session\n"
 	   "    protocol: linux\n"
-	   "    path: boot():/EFI/kdos/vmlinuz\n"
-	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
-	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
+	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
+	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s",
 	   theme, paper, fontline,
 	   slot_opt, crypt_opt, root_uuid,
@@ -1772,9 +1931,12 @@ static void do_boot(void)
 
 	/*
 	 * The initial boot state, so the machine starts life as slot A with
-	 * nothing to roll back to. An updater that installs into the other
-	 * partition later fills in slot_b and calls `kdos-bootctl try b`; the
-	 * initramfs already knows how to count and roll back either way.
+	 * nothing to roll back to. Slot B is described later with
+	 * `kdos-bootctl set-slot b`; `kdos update` installs into it, puts its
+	 * kernel in EFI/kdos/b/ with `kdos-bootctl deploy` and calls
+	 * `kdos-bootctl try b`, and kdos-bootctl rewrites the /KDOS entries
+	 * above for every change of state. The entries written here are the
+	 * shape it regenerates, and the command line it carries over.
 	 *
 	 * Written straight rather than through kdos-bootctl: this runs from the
 	 * live image against a target at /mnt, and the tool's default path is

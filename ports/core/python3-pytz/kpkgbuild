@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pytz
+version     = 2026.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pytz/pytz-$version.tar.gz
+sha256      = 464303645bafafd72418898368b2429458f709cf1eb6a15372fbcc396b64da63  python3-pytz-2026.4.tar.gz
+description = The Olson time zone database for python datetime
+homepage    = https://pythonhosted.org/pytz/
+depends     = python3 python3-setuptools python3-pip

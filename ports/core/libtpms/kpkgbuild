@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libtpms
+version     = 0.10.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/stefanberger/libtpms/archive/refs/tags/v$version.tar.gz
+sha256      = edac03680f8a4a1c5c1d609a10e3f41e1a129e38ff5158f0c8deaedc719fb127  libtpms-0.10.2.tar.gz
+description = A software TPM 1.2 and 2.0 as a library — the TPM inside swtpm
+homepage    = https://github.com/stefanberger/libtpms
+depends     = openssl autoconf automake libtool perl pkgconf

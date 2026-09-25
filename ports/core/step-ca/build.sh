@@ -20,7 +20,9 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # against it automatically with the same config it would use publicly.
 #
 # caddy's `tls internal` is the smaller answer for one machine; this is the one
-# for a network with several.
+# for a network with several. The server only runs a ca.json it is given: the
+# `step` command (step-cli) creates the CA with `step ca init` and is the
+# client for everything after.
 #
 # cgo is what builds the two hardware key stores, so the CA's root key can
 # live off the disk. The PKCS#11 one dlopens whatever module the config names

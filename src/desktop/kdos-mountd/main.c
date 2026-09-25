@@ -21,7 +21,7 @@
  * THE CLIENT NEVER NAMES A PATH. It asks for an INDEX out of a list the daemon
  * itself published, and the daemon decides the device, the mountpoint and the
  * options. Every "just take a path and a mountpoint" design ends at
- * `mount /dev/sda2 /etc` from a shell as any user in wheel; there is nothing
+ * `mount /dev/sda2 /etc` from a shell as any user at the seat; there is nothing
  * here to aim, because there is no argument that means anything except a row
  * number the daemon wrote a moment ago.
  *
@@ -80,7 +80,11 @@
 #include "kbase.h"
 
 #define KM_SOCKET "/run/kdos-mountd.sock"
-#define KM_GROUP "wheel"
+/* The person at the machine mounts their own stick whether or not they
+ * administer it: `seat` is the group seatd hands the display to, and the
+ * installer keeps the desktop user in it on a non-administrator install. */
+#define KM_SEAT  "seat"
+#define KM_ADMIN "wheel"
 /*
  * THE LONGEST REQUEST LINE. A block-device verb is a word and three short
  * tokens; `cifs` is what sets this number. A DNS name may be 253 bytes, a
@@ -218,8 +222,9 @@ static const char *uevent_path(void)
 /* ── the allowed set ───────────────────────────────────────────────────── */
 
 /*
- * Root or KM_GROUP, from libkbase — the one answer every root daemon here
- * gives to this question — with one widening this daemon alone needs.
+ * Root, KM_SEAT or KM_ADMIN, each asked of libkbase — the one answer every
+ * root daemon here gives to this question — with one widening this daemon
+ * alone needs.
  *
  * FIXTURE MODE ADMITS ANYBODY, and grants nothing: it is reachable only from
  * `--fixture-serve` on the command line, its paths are a scratch directory,
@@ -231,7 +236,7 @@ static bool uid_allowed(uid_t uid)
 {
 	if (km_fixture)
 		return true;
-	return kb_uid_allowed(uid, KM_GROUP) != 0;
+	return kb_uid_allowed(uid, KM_SEAT) || kb_uid_allowed(uid, KM_ADMIN);
 }
 
 /* ── reading the machine ───────────────────────────────────────────────── */
@@ -2268,8 +2273,8 @@ static int serve(void)
 		if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
 		    !uid_allowed(cred.uid)) {
 			fprintf(stderr, "kdos-mountd: refused uid %u (not root "
-					"and not in %s)\n",
-				(unsigned)cred.uid, KM_GROUP);
+					"and in neither %s nor %s)\n",
+				(unsigned)cred.uid, KM_SEAT, KM_ADMIN);
 			(void)!write(c, "err not permitted\n", 18);
 			close(c);
 			continue;

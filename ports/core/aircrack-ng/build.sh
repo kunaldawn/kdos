@@ -14,7 +14,9 @@ autoreconf -f -i
 # `iw` IS A HARD PREREQUISITE AND IS IN depends FOR THAT REASON. airmon-ng puts
 # an interface into monitor mode by calling it; without iw the whole suite
 # installs and every capture fails on an interface it cannot reconfigure, which
-# reads as a card that does not support monitor mode.
+# reads as a card that does not support monitor mode. pciutils and usbutils
+# are in depends for the same reason: airmon-ng names a card's chipset and
+# driver with `lspci -d` and `lsusb -d`, and exits when either is missing.
 #
 # THE HONEST USE HERE IS DIAGNOSIS OF YOUR OWN LINK. With hostapd shipped, this
 # machine can BE the access point for an island network, and the questions that

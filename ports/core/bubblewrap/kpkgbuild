@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = bubblewrap
+version     = 0.13.0
+release     = 1
+source      = https://github.com/containers/bubblewrap/releases/download/v$version/bubblewrap-$version.tar.xz
+sha256      = 4734237473c0e5d695e4e9034a34e43b2dbf5164655bd13fa59ae376b2b7a765  bubblewrap-0.13.0.tar.xz
+description = Unprivileged sandboxing tool (bwrap), the sandbox xdg-desktop-portal decodes untrusted icons and sounds in
+homepage    = https://github.com/containers/bubblewrap
+depends     = meson libcap libxslt docbook-xsl docbook-xml bash-completion

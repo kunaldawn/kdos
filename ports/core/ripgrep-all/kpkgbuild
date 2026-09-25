@@ -16,5 +16,5 @@ sha256      = 17fadc7b73a51608d57f82b4a11f3edc0da87716cc4b302103eed9d4b9010fe5  
 sha256      = 9ee1fcafba597a3e8902e7139e21a2693412ce80d03c3c91bfe09886a6c50ac5  ripgrep-all-vendor-0.10.10.tar.xz
 description = ripgrep, but it looks inside PDFs, archives and spreadsheets
 homepage    = https://github.com/phiresky/ripgrep-all
-depends     = rust ripgrep poppler ffmpeg xz bzip2 zstd sqlite
+depends     = rust ripgrep fzf poppler ffmpeg xz bzip2 zstd sqlite
 vendoring   = rust

@@ -33,19 +33,33 @@
 # binary. mpv takes Lua 5.1 or 5.2 only, so the host's lua is no use to it;
 # luajit is 5.1 with the 5.2 extensions its port enables.
 #
-# libplacebo is a HARD dependency of mpv 0.41 and is a port. Its one GPU
-# backend is Vulkan (its OpenGL backend needs glad2, which is not a port), so
-# -Dvulkan=enabled is what gives `--vo=gpu-next` — first in mpv's default
-# order — a context to run in. `--vo=gpu`, mpv's own GL renderer, is the
-# fallback when no Vulkan device answers.
+# libplacebo is a HARD dependency of mpv 0.41 and is a port, built with both
+# its Vulkan and its OpenGL backend. `--vo=gpu-next` — first in mpv's default
+# order — runs on Vulkan where a device answers and on OpenGL through EGL
+# where none does, so a GPU or a virtual machine with no Vulkan driver still
+# gets the gpu-next renderer. `--vo=gpu`, mpv's own GL renderer, stays built.
 #
 # rubberband is the af=rubberband pitch and tempo filter, zimg the software
 # scaler mpv prefers over libswscale for conversions and screenshots, jpeg the
-# screenshot writer; dvbin needs only the kernel's DVB headers. Everything else
-# is named off: no port (uchardet, libbluray, dvdnav, cdda, caca, vapoursynth,
-# mujs, shaderc, spirv-cross, cuda), a second route to the same sound server
-# (pulse, jack, openal, sdl2), or a legacy one (oss-audio). build-date is off
-# because a timestamp in the binary makes two builds of the same source differ.
+# screenshot writer; dvbin needs only the kernel's DVB headers. uchardet is
+# `--sub-codepage=auto`, the default: an external subtitle in CP1251, GBK or
+# Shift-JIS is detected and converted rather than drawn as mojibake.
+#
+# The optical drive: libbluray is bd:// (an unencrypted disc or a backup, with
+# no BD-J menus), dvdnav is dvd:// (titles and chapters; mpv has no DVD menus,
+# which are GStreamer's rsndvdbin, and a CSS-encrypted disc needs libdvdcss,
+# which is not a port), and cdda is cdda:// through
+# libcdio-paranoia. mpv builds the last two only as a GPL build, which this
+# one is (-Dgpl defaults to true).
+#
+# Everything else is named off: no port (caca, vapoursynth, mujs,
+# spirv-cross, cuda), a second shader compiler beside libplacebo's glslang
+# (shaderc), a second route to the same sound server (pulse, jack, openal,
+# sdl2), or a legacy one (oss-audio). build-date is off because a
+# timestamp in the binary makes two builds of the same source differ.
+#
+# -Dcplugins=enabled is what loads mpv-mpris, the C plugin that puts mpv on the
+# session bus for the media keys and the panel.
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
@@ -97,13 +111,13 @@ meson setup build \
 	-Djpeg=enabled \
 	-Dzlib=enabled \
 	-Diconv=enabled \
-	-Duchardet=disabled \
+	-Duchardet=enabled \
 	-Dlibavdevice=enabled \
 	-Dlibarchive=enabled \
 	-Dlcms2=enabled \
-	-Dlibbluray=disabled \
-	-Ddvdnav=disabled \
-	-Dcdda=disabled \
+	-Dlibbluray=enabled \
+	-Ddvdnav=enabled \
+	-Dcdda=enabled \
 	-Ddvbin=enabled \
 	-Dvapoursynth=disabled \
 	-Dmanpage-build=enabled

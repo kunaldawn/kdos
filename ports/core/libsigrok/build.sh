@@ -24,6 +24,19 @@
 # and hidapi the serial meters, bluez and gio the BLE ones, libftdi the
 # FTDI-based analysers. librevisa, libgpib and libieee1284 are not ports, so
 # they are named off rather than left to whatever the build host has.
+#
+# sigrok-firmware-fx2lafw is in depends for the fx2lafw driver: an FX2 board
+# has no firmware of its own, and the driver uploads fx2lafw-*.fw from
+# /usr/share/sigrok-firmware on every plug-in.
+#
+# VXI-11, the LAN transport of networked scopes, supplies and meters, is built
+# only when configure can link clnt_create from <rpc/rpc.h>. musl has no Sun
+# RPC, so libtirpc provides it, and configure's probe finds it only through
+# these flags. The library compiles -std=c99, which hides the BSD integer
+# types tirpc's headers use; _DEFAULT_SOURCE exposes them. A probe that fails
+# drops VXI and the build still succeeds, so the result is checked.
+export CPPFLAGS="$CPPFLAGS -D_DEFAULT_SOURCE $(pkg-config --cflags libtirpc)"
+export LIBS="$LIBS $(pkg-config --libs libtirpc)"
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
@@ -41,5 +54,17 @@
 	--disable-python \
 	--disable-ruby \
 	--disable-java
+grep -q 'define HAVE_RPC 1' config.h || {
+	echo 'libsigrok: <rpc/rpc.h> not linkable, VXI-11 would be missing' >&2
+	exit 1
+}
 make
 make DESTDIR=$PKG install
+
+# contrib/60-libsigrok.rules sets ENV{ID_SIGROK}="1" on every USB device a
+# driver here supports and grants nothing; make install leaves it out, so it is
+# installed by hand. fs/etc/udev/rules.d/70-kdos-sigrok.rules turns the mark
+# into the dialout grant. 61-libsigrok-plugdev.rules and
+# 61-libsigrok-uaccess.rules stay out: the one names a group this system does
+# not have and the other a tag nothing here consumes.
+install -Dm644 contrib/60-libsigrok.rules "$PKG/usr/lib/udev/rules.d/60-libsigrok.rules"

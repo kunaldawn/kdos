@@ -479,8 +479,8 @@ static void time_draw(KRect b)
 	ktui_section(b.x, y, b.w, "TIME ZONE");
 	y++;
 	y += ktui_para(b.x, y, b.w,
-		  "KDOS carries no tzdata, so the zone is written as a POSIX TZ "
-		  "string that musl reads directly — DST rules included.", KT_MID);
+		  "/etc/localtime is linked to the zone's tzdata file, and TZ "
+		  "points musl at that same file — DST rules included.", KT_MID);
 	y++;
 
 	ktui_draw_text(b.x, y, 8, "filter", KT_MID, KT_BG, 0);

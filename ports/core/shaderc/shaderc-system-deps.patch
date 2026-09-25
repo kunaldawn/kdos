@@ -1,0 +1,68 @@
+Build shaderc against the installed glslang, SPIRV-Tools and SPIRV-Headers.
+
+shaderc's build adds glslang, SPIRV-Tools and SPIRV-Headers from third_party/
+with add_subdirectory, and a release archive carries those directories empty.
+SHADERC_SYSTEM_DEPS=ON takes them from their CMake packages instead: the
+imported targets are aliased to the names shaderc links, glslang_SOURCE_DIR
+points at the installed headers, and build-version.inc is written from the
+installed versions, since update_build_version.py reads the CHANGES files of
+source trees that are not there. Off, the build is upstream's.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -135,7 +135,28 @@
+ 
+ # Configure subdirectories.
+ # We depend on these for later projects, so they should come first.
+-add_subdirectory(third_party)
++option(SHADERC_SYSTEM_DEPS
++  "Build against the installed glslang, SPIRV-Tools and SPIRV-Headers instead of third_party" OFF)
++
++if(SHADERC_SYSTEM_DEPS)
++  find_package(SPIRV-Tools CONFIG REQUIRED)
++  find_package(SPIRV-Tools-opt CONFIG REQUIRED)
++  find_package(glslang CONFIG REQUIRED)
++  foreach(_target SPIRV-Tools-static glslang::glslang glslang::SPIRV)
++    set_target_properties(${_target} PROPERTIES IMPORTED_GLOBAL TRUE)
++  endforeach()
++  add_library(SPIRV-Tools ALIAS SPIRV-Tools-static)
++  add_library(glslang ALIAS glslang::glslang)
++  add_library(SPIRV ALIAS glslang::SPIRV)
++  # The sources include "SPIRV/GlslangToSpv.h" and "glslang/Public/..."
++  # relative to glslang's source root; installed, that root is
++  # <includedir>/glslang.
++  get_target_property(_glslang_include glslang::glslang INTERFACE_INCLUDE_DIRECTORIES)
++  list(GET _glslang_include 0 _glslang_include)
++  set(glslang_SOURCE_DIR "${_glslang_include}/glslang")
++else()
++  add_subdirectory(third_party)
++endif()
+ 
+ add_subdirectory(libshaderc_util)
+ add_subdirectory(libshaderc)
+@@ -144,11 +165,25 @@
+     add_subdirectory(examples)
+ endif()
+ 
++if(SHADERC_SYSTEM_DEPS)
++  # No source trees to read CHANGES from: the versions are the installed ones.
++  file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/CHANGES _shaderc_version
++    REGEX "^v[0-9]+\\.[0-9]+" LIMIT_COUNT 1)
++  string(REGEX MATCH "^v[0-9]+\\.[0-9]+[^ ]*" _shaderc_version "${_shaderc_version}")
++  find_package(PkgConfig REQUIRED)
++  pkg_check_modules(_spirv_tools REQUIRED SPIRV-Tools)
++  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/build-version.inc
++    "\"shaderc ${_shaderc_version}\\n\"\n"
++    "\"spirv-tools ${_spirv_tools_VERSION}\\n\"\n"
++    "\"glslang ${glslang_VERSION}\\n\"\n")
++  add_custom_target(build-version)
++else()
+ add_custom_target(build-version
+   ${Python_EXECUTABLE}
+   ${CMAKE_CURRENT_SOURCE_DIR}/utils/update_build_version.py
+   ${shaderc_SOURCE_DIR} ${spirv-tools_SOURCE_DIR} ${glslang_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/build-version.inc
+   COMMENT "Update build-version.inc in the Shaderc build directory (if necessary).")
++endif()
+ 
+ function(define_pkg_config_file NAME LIBS)
+   add_custom_target(${NAME}-pkg-config ALL

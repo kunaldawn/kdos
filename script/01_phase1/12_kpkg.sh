@@ -28,13 +28,22 @@ set -e
 source script/phase1.env.sh
 source script/util/port.sh
 
-if [ -f "$MARK/kpkg" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
-    exit 0
-fi
-
 SRC=$WORKSPACE/src/packages/kdos-kpkg
 LIBS=$WORKSPACE/src/libs
 OUT=$BUILD_DIR/tmp/kdos-kpkg
+
+# The mark holds a hash of every source the binary is compiled from, not just
+# its existence: kpkg is not a port, so nothing else rebuilds it, and a tree
+# whose kpkg predates a change to it keeps installing and upgrading with the
+# old logic for every later phase.
+SUM=$(find "$SRC" "$LIBS"/libkbase "$LIBS"/libkpkg "$LIBS"/libksig \
+        -type f \( -name '*.[ch]' -o -name kpkg.conf \) -print0 |
+    LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+
+if [ "$(cat "$MARK/kpkg" 2>/dev/null)" = "$SUM" ] &&
+   [ "${KDOS_REPLAY:-0}" != "1" ]; then
+    exit 0
+fi
 
 $KDOS_TARGET-gcc \
     -O2 -pipe -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
@@ -53,4 +62,4 @@ done
 
 cp "$SRC"/kpkg.conf $SYSROOT/etc/kpkg.conf
 
-touch "$MARK/kpkg"
+echo "$SUM" > "$MARK/kpkg"

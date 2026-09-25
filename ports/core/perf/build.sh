@@ -30,11 +30,10 @@
 # kernel tree with gcc 15 and musl headers stops the build on a warning that
 # cannot be fixed in a recipe.
 #
-# LIBUNWIND is opt-in upstream and stays off: this tree's libunwind is LLVM's,
-# which has neither unw_create_addr_space nor -lunwind-x86_64, so perf's
-# feature check would fail after linking it. DWARF call graphs come from libdw
+# LIBUNWIND is opt-in upstream and stays off. DWARF call graphs come from libdw
 # instead — perf's own preferred unwinder, and elfutils is already a dependency
-# for libelf.
+# for libelf — and perf unwinds with one of the two, so linking
+# libunwind-nongnu as well would add a library and no call graph.
 #
 # LIBBPF_DYNAMIC links the installed libbpf. tools/lib/bpf in this tarball is
 # the same 1.7 series, so building a second copy statically buys nothing and

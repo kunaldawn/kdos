@@ -15,4 +15,4 @@ source      = https://nmap.org/dist/nmap-$version.tar.bz2
 sha256      = a5d507f29437bef3bedd4771ff9aaa8fc1c2a109ddba1f5b1cf12027456929be  nmap-7.991.tar.bz2
 description = nmap — Network exploration tool and security scanner
 homepage    = https://nmap.org/
-depends     = openssl libpcap libssh2 zlib python3 python3-setuptools python3-pip
+depends     = openssl libpcap libssh2 zlib pcre2 python3 python3-setuptools python3-pip

@@ -26,21 +26,20 @@
 #
 # --without-systemd, --without-pam and --without-ads follow from what this
 # distro is: no systemd, `authfw=shadow` rather than PAM, and no Kerberos
-# realm to join.
+# realm to join. --without-ldap goes with --without-ads: samba's LDAP is the
+# domain-member and ldapsam account backends, and openldap being on the image
+# must not switch them on.
 #
 # --without-ldb-lmdb follows from --without-ad-dc: the lmdb backend exists for
 # the domain controller's database, which is not built here, and lmdb is not a
 # port. Samba makes it an ERROR rather than a downgrade — "ldb build (unless
 # --without-ldb-lmdb) requires lmdb 0.9.16 or later" — so it has to be said.
 #
-# --without-libunwind, AND IT COSTS A STACK TRACE ON A CRASH. musl has no
-# execinfo.h — backtrace() and backtrace_symbols() are a glibc extension — so
-# samba's fault handler cannot print one, and configure stops rather than
-# choosing for you. The alternative is the nongnu libunwind, which this tree
-# does not have: `ports/core/libunwind` is LLVM's, and although it exports
-# unw_getcontext/unw_init_local/unw_step (checked with nm) samba's probe wants
-# the nongnu package and its pkg-config file, and does not find it. What is
-# lost is samba's own backtrace; the kernel still writes a core.
+# --with-libunwind IS SAMBA'S CRASH BACKTRACE. musl has no execinfo.h —
+# backtrace() and backtrace_symbols() are a glibc extension — so without it
+# the fault handler cannot print one, and configure stops rather than choosing
+# for you. The probe wants libunwind-generic.pc and libunwind.h, which are
+# libunwind-nongnu's; naming the option makes a missing one a configure error.
 #
 # --with-acl-support is what lets a Windows client change a file's permissions
 # at all; without it the security tab is read-only. --enable-avahi advertises
@@ -51,6 +50,12 @@
 # silently not there. vfs_snapper is struck from the same list: it talks to
 # snapperd over D-Bus, snapper is not a port, and left in the default list it
 # makes dbus a configure-time requirement.
+#
+# --enable-cups lets a `[printers]` share hand Windows clients every queue the
+# local CUPS has, which is what a KDOS machine sharing its printer needs. waf
+# answers a missing libcups by building without printing rather than failing,
+# so config.h is checked after configure. --disable-iprint drops Novell
+# iPrint, which rides the same library and which nothing here serves.
 #
 # Everything else here that samba would otherwise decide by what happens to be
 # installed is pinned. Spotlight is off: its only real backend queries an
@@ -83,7 +88,7 @@
 	--with-acl-support \
 	--without-quotas \
 	--without-ldb-lmdb \
-	--without-libunwind \
+	--with-libunwind \
 	--without-lttng \
 	--without-fam \
 	--without-dmapi \
@@ -94,11 +99,16 @@
 	--disable-spotlight \
 	--disable-glusterfs \
 	--disable-cephfs \
-	--disable-cups \
+	--enable-cups \
+	--disable-iprint \
 	--enable-avahi \
 	--disable-rpath \
 	--disable-rpath-install \
 	--nopyc --nopyo
+grep -q 'define HAVE_CUPS 1' bin/default/include/config.h || {
+	echo 'samba: libcups not found, printer shares would be missing' >&2
+	exit 1
+}
 make
 make DESTDIR=$PKG install
 rm -rf "$PKG/run" "$PKG/var/run" "$PKG/var/lock"
@@ -108,7 +118,7 @@ rm -f "$PKG/usr/share/man/man3/talloc.3"
 # a laptop is a listening socket nobody asked for. The script is here so
 # `ksvc start samba` is one command, and enabling it is a decision.
 install -d "$PKG/etc/init.d"
-cat > "$PKG/etc/init.d/75_samba.sh" <<'KDOS_SH'
+cat > "$PKG/etc/init.d/83_samba.sh" <<'KDOS_SH'
 #!/bin/bash
 . /etc/init.d/service_helper
 
@@ -132,4 +142,4 @@ case "$1" in
     *)      echo "Usage: $0 {start|stop|status}"; exit 1 ;;
 esac
 KDOS_SH
-chmod 755 "$PKG/etc/init.d/75_samba.sh"
+chmod 755 "$PKG/etc/init.d/83_samba.sh"

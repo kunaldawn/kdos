@@ -31,9 +31,27 @@ to notice when it is wrong. What is missing is a client, and a way for a client 
 
 There is no braille route and no voice from any KDOS surface. `brltty`, `espeak-ng` and
 `speech-dispatcher` are ports and are on the image, because they are useful to somebody at a
-terminal, but no KDOS surface talks to any of them. The catalogue also carries an `app.a11y` pack
+terminal, but no KDOS surface talks to any of them. A terminal program can reach a running
+`brltty` through BrlAPI — `brltty-clip` is one — if its user is in the `brlapi` group, which the
+desktop account joins when `brltty` is installed: BrlAPI admits a client through polkit, and the
+rule `brltty` ships grants that group without asking for an active session, which nothing here
+ever has. There is no `/etc/brlapi.key`; one generated at build time would be the same secret on
+every machine installed from the image. The catalogue also carries an `app.a11y` pack
 holding Debian's `brltty` and `espeak-ng`, reachable with `kdos-appbox -b app.a11y run espeak-ng`;
 it is the same story one container further out.
+
+At a terminal, `brltty` is a service: `65_brltty` starts it at boot once `/etc/brltty.conf` exists,
+and skips it until then. It reads `tty1` and the installer through `/dev/vcsa`. Its speech is
+`espeak-ng` playing straight to the sound card (`KDOS_ALSA_DEFAULT=kdos_card`), because init starts
+no PipeWire. The card allows one owner at a time. While a desktop session's PipeWire holds it, the
+console voice cannot open it, and while the console voice is speaking, PipeWire cannot. Braille
+output does not use the card and is not affected.
+
+Contracted braille comes from `liblouis`, which `brltty` is built against. A contraction table
+named `louis:<file>` is one of liblouis's — `contraction-table louis:en-ueb-g2.ctb` in
+`/etc/brltty.conf`, or `-c louis:en-ueb-g2.ctb` on the command line, is Unified English Braille
+grade 2 — and `/usr/share/liblouis/tables` holds the literary and computer tables of well over a
+hundred languages. A bare table name is still one of brltty's own.
 
 ## What does exist: the magnifier
 

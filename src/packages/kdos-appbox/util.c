@@ -48,9 +48,11 @@ void tracef(const char *fmt, ...)
 }
 
 /*
- * Desktop notification straight over the bus — the host has no libnotify.
- * Only reachable at all because the session bus lives at a fixed path in
- * $XDG_RUNTIME_DIR, which the appbox shares.
+ * Desktop notification straight over the bus, through gdbus, which glib
+ * already puts on the host: this program compiles in its libk* sources and
+ * links no library of anybody else's, libnotify included. Only reachable at
+ * all because the session bus lives at a fixed path in $XDG_RUNTIME_DIR,
+ * which the appbox shares.
  */
 void notify(const char *summary, const char *body)
 {

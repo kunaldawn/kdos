@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libcdio-paranoia
+version     = 10.2+2.0.2
+release     = 1
+_tag        = release-${version/+/%2B}
+source      = https://github.com/libcdio/$name/releases/download/$_tag/$name-$version.tar.bz2
+sha256      = 186892539dedd661276014d71318c8c8f97ecb1250a86625256abd4defbf0d0c  libcdio-paranoia-10.2+2.0.2.tar.bz2
+description = Audio CD reading that verifies and repairs — cd-paranoia, and CD audio in mpv and mpd
+homepage    = https://github.com/libcdio/libcdio-paranoia
+depends     = libcdio pkgconf

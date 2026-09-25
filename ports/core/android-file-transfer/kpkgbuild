@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = android-file-transfer
+version     = 4.5
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/whoozle/android-file-transfer-linux/archive/refs/tags/v$version.tar.gz
+sha256      = 0f366a8d659926d3859a8628d4f7592692389b060f67da9a936d19b252b42d96  android-file-transfer-4.5.tar.gz
+description = aft-mtp-mount — an Android phone's storage as a FUSE directory — and the aft-mtp-cli shell
+homepage    = https://whoozle.github.io/android-file-transfer-linux/
+depends     = cmake pkgconf fuse readline file libmtp

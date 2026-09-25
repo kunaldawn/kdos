@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = geoclue
+version     = 2.8.2
+release     = 1
+source      = https://gitlab.freedesktop.org/geoclue/geoclue/-/archive/$version/geoclue-$version.tar.bz2
+sha256      = d4d65933b704d4c8d4ca9747dc511b883e35099abe534c8560f2aab3017e4cd4  geoclue-2.8.2.tar.bz2
+description = D-Bus geolocation service (what xdg-desktop-portal's Location portal asks)
+homepage    = https://gitlab.freedesktop.org/geoclue/geoclue/-/wikis/home
+depends     = meson glib gettext json-glib libsoup3 modemmanager avahi dbus

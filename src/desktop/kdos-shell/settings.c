@@ -621,7 +621,7 @@ static struct row rows[] = {
 	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-users",
 	  "Accounts…", NULL, 0, 0, 0, 0,
 	  "who has an account on this machine. It reads /etc/passwd and writes "
-	  "only the autologin, through the same wheel-gated daemon",
+	  "only the autologin, through kdos-powerd, for wheel only",
 	  "", "" },
 	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-time",
 	  "Date and time…", NULL, 0, 0, 0, 0,

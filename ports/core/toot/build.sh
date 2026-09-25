@@ -9,34 +9,23 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE CLOSURE IS IN THE BUNDLE. `pypackages` names toot's whole runtime set
-# and the build backends four of those tarballs ask for — `python-dateutil`
-# pins `setuptools_scm<8.0` while `urwid` wants `>=8`, so pip cannot resolve
-# the two in one batch and the backends have to be named rather than crawled.
-# `--no-build-isolation` is what makes that legal: each package builds against
-# what is already installed rather than against its own declared range.
+# THE CLOSURE IS IN THE BUNDLE, except where a module is already a port.
+# `pypackages` names the part of toot's runtime set that no other program here
+# imports: beautifulsoup4, soupsieve and pysocks. click, python-dateutil,
+# requests (with certifi, charset-normalizer, idna and urllib3), tomlkit,
+# typing-extensions (which beautifulsoup4 imports), urwid and wcwidth come from
+# their python3-* ports: a module two packages each
+# installed would be a path both own, and which of them the image kept would
+# follow build order.
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 
-# Backends into the build root, not into $PKG, and in bootstrap order — see
-# ports/core/khard/build.sh, which does the same for the same reason.
-pyb() { pip3 install --no-index --find-links=vendor --no-build-isolation "$@"; }
-pyb packaging
-# BEFORE setuptools-scm, which imports it while its own metadata is generated:
-# setuptools-scm 10 is split in two and names vcs-versioning in its build-system
-# requires. `--no-build-isolation` installs none of those, so the order of these
-# lines IS the build environment.
-pyb vcs-versioning
-pyb setuptools-scm
-pyb flit-core
-pyb poetry-core
-pyb hatchling
-pyb hatch-vcs
-
+# BUILD ISOLATION IS OFF, so each sdist builds with the backend already
+# installed: hatchling for beautifulsoup4 and soupsieve, setuptools for pysocks,
+# and setuptools-scm for toot itself — all ports in `depends`.
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	--root=$PKG --prefix=/usr \
-	beautifulsoup4 soupsieve click python-dateutil six pysocks tomlkit \
-	urwid wcwidth requests certifi charset-normalizer idna urllib3 .
+	beautifulsoup4 soupsieve pysocks .
 
 # `toot tui` AND NOT `toot`. The bare command prints its usage and exits, so a
 # menu row on it would open a terminal to show a help page and close — the TUI

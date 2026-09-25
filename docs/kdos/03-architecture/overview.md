@@ -28,7 +28,7 @@ initramfs init ─── splash, A/B slot selection, LUKS unlock, find the root
    │  switch_root (util-linux's)
    ▼
 init (toybox, PID 1)
-   ├─ /etc/init.d/rcS ──── 31 numbered service scripts, in order
+   ├─ /etc/init.d/rcS ──── the numbered service scripts, in order
    └─ kdos-getty on tty1 and tty2
           │
           ▼
@@ -125,13 +125,17 @@ that decides what to allow. See [The security model](security-model.md).
 init (PID 1, toybox)
  │
  ├─ /etc/init.d/rcS ──────────── the numbered service scripts, in order
- │   ├─ 01 udev   02 modules   05 hostname   10 sysctl   12 zram
+ │   ├─ 01 udev   02 modules   03 lvm   05 hostname   10 sysctl   12 zram
  │   ├─ 15 userdirs   18 timers   20 dmesg   22 syslog
  │   ├─ 25 nftables ── loaded before the network comes up
  │   ├─ 30 network   35 chrony   40 dbus   41 polkitd
- │   ├─ 42 NetworkManager   45 avahi   45 seatd   50 alsa
+ │   ├─ 42 NetworkManager   42 modemmanager   43 boltd   45 avahi
+ │   ├─ 45 seatd   47 pcscd   50 alsa
+ │   ├─ 51 mdmonitor   52 smartd   53 xfs_healer
  │   ├─ 54 thermald   55 tlp   60 bluetooth   70 sshd   80 cups
  │   ├─ 81 cups-browsed   82 ipp-usb
+ │   ├─ skipped until configured: 46 hostapd   63 gssd   65 brltty
+ │   │    72 nfsd   73 mosquitto   74 prosody   75 samba   76 postgresql
  │   └─ the KDOS root daemons:
  │        55 kdos-powerd    /run/kdos-powerd.sock    suspend, poweroff, reboot
  │        56 kdos-energyd   /run/kdos-energyd.sock   per-application energy
@@ -198,10 +202,10 @@ by the connecting process's credentials rather than by the socket's mode.
 
 | Daemon | Owns | Answers to |
 |---|---|---|
-| `kdos-powerd` | Suspend, poweroff, reboot, timezone, the accent | root and `wheel` |
+| `kdos-powerd` | Suspend, poweroff, reboot, timezone, the accent | root and `wheel`; `seat` for suspend, poweroff and reboot |
 | `kdos-energyd` | Reading the CPU energy counter, and attributing it | root and `wheel` |
-| `kdos-oomd` | Killing something before memory pressure wedges the desktop | root and `wheel` |
-| `kdos-mountd` | Mounting removable media | root and `wheel` |
+| `kdos-oomd` | Killing something before memory pressure wedges the desktop | root, `seat` and `wheel` |
+| `kdos-mountd` | Mounting removable media | root, `seat` and `wheel` |
 | `kdos-packd` | Mounting, installing and composing application packs | root and `wheel` |
 
 `kdos-boxsock` is frequently listed beside them and is not one of them: it runs
@@ -210,8 +214,8 @@ holding the security context open for that box's lifetime.
 
 No client of a root daemon ever names a path. Every verb takes an identifier
 out of a list the daemon itself published, or out of a list compiled into it.
-There is nothing to aim, which is what keeps a daemon reachable from `wheel`
-from becoming a way to mount a stick over `/etc`. See
+There is nothing to aim, which is what keeps a daemon reachable from the
+desktop user from becoming a way to mount a stick over `/etc`. See
 [The daemons](../04-programs/daemons.md) and
 [The security model](security-model.md).
 

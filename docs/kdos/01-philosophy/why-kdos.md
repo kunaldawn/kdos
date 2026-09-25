@@ -33,7 +33,8 @@ the rule and its four exempt classes are in [Principles](principles.md#everythin
 ## KDOS can build KDOS
 
 Phase 2 of the build is a genuine self-hosting pass. Inside the chroot, the system rebuilds `tar`,
-`musl`, `zlib`, `binutils`, `diffutils`, `m4`, `gawk` and `gcc` using the toolchain it built in
+`musl`, `zlib`, `binutils`, `diffutils`, `m4`, `gawk` and `gcc`, and builds the libraries those
+declare (`xxhash`, `gmp`, `mpfr`, `mpc`, `ncurses`, `readline`), using the toolchain it built in
 phase 1 — the compiler compiles itself, and what phase 3 goes on to build is built by a compiler
 that KDOS produced.
 
@@ -108,6 +109,7 @@ The rest of this class rides inside ports that are otherwise compiled here:
 | Port | Payload |
 |---|---|
 | `intel-media-driver` | The closed EU kernels, compiled in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; rebuilding them from their assembly needs Intel's shader compiler, which is not a port |
+| `libva-intel-driver` | The i965 driver's GPU shader kernels, the assembled `.g4b`–`.g10b` files in `src/shaders` that the driver includes as headers; their assembly is in the tarball, and reassembling it needs `intel-gen4asm`, which is not a port |
 | `alsa-ucm-conf` | A small number of `.bin` files: precomputed EQ coefficients loaded into SOF DSPs |
 | `espflash`, `probe-rs`, `python3-esptool`, `openfpgaloader` | The flasher stubs, flash algorithms and bridge bitstreams each one uploads to the device it drives |
 | `qemu` | EDK2 for the riscv64 `virt` machine, `edk2-riscv-code.fd` and its variable store, unpacked from the tarball's `pc-bios/`: compiled by a riscv64 bare-metal gcc 15 it faults before reaching a boot option. The rest of the guest firmware it installs — SeaBIOS and SeaVGABIOS, qboot, the iPXE NIC ROMs, the `-kernel` option ROMs, EDK2 for x86_64 and aarch64, and OpenSBI — is compiled here from the sources in the tarball's `roms/` |

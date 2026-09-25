@@ -1,0 +1,247 @@
+--- a/libfwupdplugin/fu-context.c
++++ b/libfwupdplugin/fu-context.c
+@@ -2010,6 +2010,19 @@
+ 	/* nothing found */
+ 	if (priv->esp_volumes->len == 0) {
+ 		g_autoptr(GPtrArray) devices = NULL;
++		g_autofree gchar *esp_location = fu_context_get_config_str(self, "EspLocation");
++
++		/* no udisks: a configured ESP mount point is described from sysfs */
++		if (esp_location != NULL && esp_location[0] != '\0') {
++			g_autoptr(GError) error_mnt = NULL;
++			g_autoptr(FuVolume) vol =
++			    fu_volume_new_esp_from_mount_path(esp_location, &error_mnt);
++			if (vol != NULL) {
++				fu_context_add_esp_volume(self, vol);
++				return g_ptr_array_ref(priv->esp_volumes);
++			}
++			g_debug("EspLocation %s: %s", esp_location, error_mnt->message);
++		}
+ 
+ 		/* check if udisks2 is working */
+ 		devices = fu_common_get_block_devices(error);
+--- a/libfwupdplugin/fu-volume.c
++++ b/libfwupdplugin/fu-volume.c
+@@ -18,9 +18,16 @@
+ #include <sys/mount.h>
+ #endif
+ 
++#ifdef __linux__
++#include <sys/stat.h>
++#include <sys/statfs.h>
++#include <sys/sysmacros.h>
++#endif
++
+ #include "fwupd-error.h"
+ 
+ #include "fu-common-private.h"
++#include "fu-string.h"
+ #include "fu-volume-private.h"
+ 
+ /**
+@@ -35,9 +42,13 @@
+ 	GDBusProxy *proxy_fs;
+ 	GDBusProxy *proxy_part;
+ 	gchar *mount_path;     /* only when mounted ourselves */
+-	gchar *partition_kind; /* only for tests */
+-	gchar *partition_uuid; /* only for tests */
++	gchar *partition_kind; /* only for tests, or probed from a mount path */
++	gchar *partition_uuid; /* only for tests, or probed from a mount path */
+ 	guint64 fs_free;       /* only for tests */
++	gchar *device_name;	  /* probed from a mount path, with no udisks proxy */
++	guint32 partition_number; /* probed from a mount path, with no udisks proxy */
++	guint64 partition_offset; /* probed from a mount path, with no udisks proxy */
++	guint64 partition_size;	  /* probed from a mount path, with no udisks proxy */
+ };
+ 
+ enum {
+@@ -97,6 +108,7 @@
+ 	g_free(self->mount_path);
+ 	g_free(self->partition_kind);
+ 	g_free(self->partition_uuid);
++	g_free(self->device_name);
+ 	if (self->proxy_blk != NULL)
+ 		g_object_unref(self->proxy_blk);
+ 	if (self->proxy_fs != NULL)
+@@ -294,7 +306,7 @@
+ 	g_return_val_if_fail(FU_IS_VOLUME(self), 0);
+ 
+ 	if (self->proxy_part == NULL)
+-		return 0;
++		return self->partition_size;
+ 	val = g_dbus_proxy_get_cached_property(self->proxy_part, "Size");
+ 	if (val == NULL)
+ 		return 0;
+@@ -319,7 +331,7 @@
+ 	g_return_val_if_fail(FU_IS_VOLUME(self), 0);
+ 
+ 	if (self->proxy_part == NULL)
+-		return 0;
++		return self->partition_offset;
+ 	val = g_dbus_proxy_get_cached_property(self->proxy_part, "Offset");
+ 	if (val == NULL)
+ 		return 0;
+@@ -344,7 +356,7 @@
+ 	g_return_val_if_fail(FU_IS_VOLUME(self), 0);
+ 
+ 	if (self->proxy_part == NULL)
+-		return 0;
++		return self->partition_number;
+ 	val = g_dbus_proxy_get_cached_property(self->proxy_part, "Number");
+ 	if (val == NULL)
+ 		return 0;
+@@ -593,6 +605,8 @@
+ 
+ 	g_return_val_if_fail(FU_IS_VOLUME(self), 0);
+ 
++	if (self->proxy_blk == NULL && self->device_name != NULL)
++		return fu_volume_get_block_size_from_device_name(self->device_name, error);
+ 	if (self->proxy_blk == NULL) {
+ 		g_set_error_literal(error,
+ 				    FWUPD_ERROR,
+@@ -897,6 +911,134 @@
+ 	return g_steal_pointer(&self);
+ }
+ 
++#ifdef __linux__
++static gchar *
++fu_volume_read_line(const gchar *dir, const gchar *attr)
++{
++	g_autofree gchar *fn = g_build_filename(dir, attr, NULL);
++	gchar *buf = NULL;
++	if (!g_file_get_contents(fn, &buf, NULL, NULL))
++		return NULL;
++	return g_strstrip(buf);
++}
++
++static gchar *
++fu_volume_read_key(const gchar *fn, const gchar *prefix)
++{
++	g_autofree gchar *buf = NULL;
++	g_auto(GStrv) lines = NULL;
++	if (!g_file_get_contents(fn, &buf, NULL, NULL))
++		return NULL;
++	lines = g_strsplit(buf, "\n", -1);
++	for (guint i = 0; lines[i] != NULL; i++) {
++		if (g_str_has_prefix(lines[i], prefix))
++			return g_strdup(lines[i] + strlen(prefix));
++	}
++	return NULL;
++}
++#endif
++
++/* private
++ *
++ * Describes the FAT filesystem mounted at @mount_path without udisks: the
++ * partition number, start and size come from the kernel's sysfs node for the
++ * mounted device, and the partition UUID and type from the udev database. A
++ * directory that is not itself a mount point is refused, because its device
++ * is the root filesystem's and a boot entry built from it would name the wrong
++ * partition. A partition the udev database has no entry for still returns a
++ * volume, with no UUID, so a capsule-on-disk update can use it and a boot
++ * entry cannot be built from it. */
++FuVolume *
++fu_volume_new_esp_from_mount_path(const gchar *mount_path, GError **error)
++{
++#ifdef __linux__
++	struct stat st_mnt = {0};
++	struct stat st_up = {0};
++	struct statfs st_fs = {0};
++	guint maj;
++	guint min;
++	guint64 tmp = 0;
++	g_autofree gchar *up = NULL;
++	g_autofree gchar *sysdir = NULL;
++	g_autofree gchar *udevdb = NULL;
++	g_autofree gchar *uevent = NULL;
++	g_autofree gchar *devname = NULL;
++	g_autofree gchar *number = NULL;
++	g_autofree gchar *start = NULL;
++	g_autofree gchar *size = NULL;
++	g_autoptr(FuVolume) self = NULL;
++
++	g_return_val_if_fail(mount_path != NULL, NULL);
++	g_return_val_if_fail(error == NULL || *error == NULL, NULL);
++
++	up = g_build_filename(mount_path, "..", NULL);
++	if (stat(mount_path, &st_mnt) != 0 || stat(up, &st_up) != 0) {
++		g_set_error(error,
++			    FWUPD_ERROR,
++			    FWUPD_ERROR_NOT_FOUND,
++			    "%s: %s",
++			    mount_path,
++			    fwupd_strerror(errno));
++		return NULL;
++	}
++	if (st_mnt.st_dev == st_up.st_dev) {
++		g_set_error(error,
++			    FWUPD_ERROR,
++			    FWUPD_ERROR_NOT_FOUND,
++			    "%s is not a mount point",
++			    mount_path);
++		return NULL;
++	}
++	if (statfs(mount_path, &st_fs) != 0 || st_fs.f_type != 0x4d44) {
++		g_set_error(error,
++			    FWUPD_ERROR,
++			    FWUPD_ERROR_NOT_SUPPORTED,
++			    "%s is not a FAT filesystem",
++			    mount_path);
++		return NULL;
++	}
++
++	maj = major(st_mnt.st_dev);
++	min = minor(st_mnt.st_dev);
++	sysdir = g_strdup_printf("/sys/dev/block/%u:%u", maj, min);
++	number = fu_volume_read_line(sysdir, "partition");
++	if (number == NULL) {
++		g_set_error(error,
++			    FWUPD_ERROR,
++			    FWUPD_ERROR_NOT_SUPPORTED,
++			    "%s is not on a partition",
++			    mount_path);
++		return NULL;
++	}
++
++	self = g_object_new(FU_TYPE_VOLUME, NULL);
++	self->mount_path = g_strdup(mount_path);
++	if (fu_strtoull(number, &tmp, 1, G_MAXUINT32, FU_INTEGER_BASE_10, NULL))
++		self->partition_number = (guint32)tmp;
++	start = fu_volume_read_line(sysdir, "start");
++	if (start != NULL && fu_strtoull(start, &tmp, 0, G_MAXUINT64 / 512, FU_INTEGER_BASE_10, NULL))
++		self->partition_offset = tmp * 512;
++	size = fu_volume_read_line(sysdir, "size");
++	if (size != NULL && fu_strtoull(size, &tmp, 0, G_MAXUINT64 / 512, FU_INTEGER_BASE_10, NULL))
++		self->partition_size = tmp * 512;
++	uevent = g_build_filename(sysdir, "uevent", NULL);
++	devname = fu_volume_read_key(uevent, "DEVNAME=");
++	if (devname != NULL)
++		self->device_name = g_build_filename("/dev", devname, NULL);
++
++	udevdb = g_strdup_printf("/run/udev/data/b%u:%u", maj, min);
++	self->partition_uuid = fu_volume_read_key(udevdb, "E:ID_PART_ENTRY_UUID=");
++	self->partition_kind = fu_volume_read_key(udevdb, "E:ID_PART_ENTRY_TYPE=");
++	return g_steal_pointer(&self);
++#else
++	g_set_error_literal(error,
++			    FWUPD_ERROR,
++			    FWUPD_ERROR_NOT_SUPPORTED,
++			    "probing a mount path needs Linux sysfs");
++	return NULL;
++#endif
++}
++
+ /**
+  * fu_volume_kind_convert_to_gpt:
+  * @kind: UDisk reported type string, e.g. `efi` or `0xef`
+--- a/libfwupdplugin/fu-volume-private.h
++++ b/libfwupdplugin/fu-volume-private.h
+@@ -13,6 +13,8 @@
+ 
+ FuVolume *
+ fu_volume_new_from_mount_path(const gchar *mount_path) G_GNUC_NON_NULL(1);
++FuVolume *
++fu_volume_new_esp_from_mount_path(const gchar *mount_path, GError **error) G_GNUC_NON_NULL(1);
+ 
+ void
+ fu_volume_set_partition_kind(FuVolume *self, const gchar *partition_kind) G_GNUC_NON_NULL(1, 2);

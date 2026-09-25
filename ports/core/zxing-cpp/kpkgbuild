@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = zxing-cpp
+version     = 2.3.0
+release     = 1
+series      = 2
+source      = https://github.com/$name/$name/archive/refs/tags/v$version.tar.gz
+sha256      = 64e4139103fdbc57752698ee15b5f0b0f7af9a0331ecbdc492047e0772c417ba  zxing-cpp-2.3.0.tar.gz
+description = Barcode and QR code reading and writing — what `mutool barcode` is built on
+homepage    = https://github.com/zxing-cpp/zxing-cpp
+depends     = cmake

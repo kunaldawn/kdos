@@ -622,6 +622,29 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 
 	printf("\n%d of %d taken, %d failed\n", done, n, failed);
 
+	/*
+	 * THE SLOT'S KERNEL GOES ONTO THE ESP BEFORE THE SLOT IS TRIED, every
+	 * time and whether or not `linux` was in this run. Each slot boots the
+	 * kernel in its own ESP directory, and the modules for it exist only
+	 * in that root; a slot whose directory was never filled, or holds a
+	 * kernel older than its /lib/modules, boots with no modular driver.
+	 * A deploy that fails leaves the slot untried.
+	 */
+	if (ab && !dry && !failed) {
+		KbArgv d = {0};
+		kb_argv_add(&d, "kdos-bootctl");
+		kb_argv_add(&d, "deploy");
+		kb_argv_add(&d, mnt);
+		kb_argv_add(&d, slot);
+		kb_argv_end(&d);
+		if (kb_run_tty(&d) != 0) {
+			fprintf(stderr, "kdos update: slot %s was updated but "
+					"its kernel could not be put on the "
+					"ESP — it will not be booted\n", slot);
+			failed++;
+		}
+	}
+
 	if (ab && !dry && !failed) {
 		KbArgv t = {0};
 		kb_argv_add(&t, "kdos-bootctl");

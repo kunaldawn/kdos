@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libnsbmp
+version     = 0.1.7
+release     = 1
+source      = https://download.netsurf-browser.org/libs/releases/libnsbmp-$version-src.tar.gz
+sha256      = 5407a7682a122baaaa5a15b505290e2d37df54c13c5edef4b09d12c862d82293  libnsbmp-0.1.7.tar.gz
+description = NetSurf BMP and ICO decoding library (imv decodes BMP with it)
+homepage    = https://www.netsurf-browser.org/projects/libnsbmp/
+depends     = buildsystem

@@ -90,7 +90,7 @@ the system is inspectable end to end.
 Four classes are exempt, and nothing outside them is:
 
 - **Firmware and code for another processor.** `linux-firmware`, `intel-ucode`, `sof-firmware`,
-  the closed GPU kernels in `intel-media-driver`, the SOF coefficient blobs in `alsa-ucm-conf`, the
+  the GPU kernels in `intel-media-driver` and `libva-intel-driver`, the SOF coefficient blobs in `alsa-ucm-conf`, the
   device stubs inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`, and the
   riscv64 EDK2 image `qemu` installs from its tarball. It runs on a DSP, a GPU, a microcontroller or a guest,
   and most of it has no published source.
@@ -101,7 +101,8 @@ Four classes are exempt, and nothing outside them is:
 - **Compiler bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain and
   `zig1.wasm`. A self-hosted compiler needs a working one first; the seed builds and never ships.
 - **Data with no other source form.** The `tesseract` model, the `perl-xml-parser` encodings,
-  `libkiwix`'s JavaScript, the `fcitx5` tables, `john`'s `.chr` files and recorded audio.
+  `libkiwix`'s JavaScript, the `fcitx5` tables, `john`'s `.chr` files and recorded
+  audio.
 
 Each exemption is still a hashed `source =` line, so the offline build holds for it. A prebuilt
 object for the host that fits no class is deleted from the package or rebuilt by a flag, and a new

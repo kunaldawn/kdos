@@ -10,11 +10,14 @@ case "$1" in
             echo "[SKIP] $NAME: $DAEMON not found"
             exit 0
         fi
-        # INTEL ONLY, AND IT SAYS SO RATHER THAN RESPAWNING. thermald refuses
-        # to start on a machine with no Intel thermal zones, and `supervise`
-        # would restart a refusing daemon for ever — so the check is here,
-        # before the respawn loop exists. The same rule 57_oomd.sh keeps
-        # about PSI.
+        # INTEL ONLY, AND IT SAYS SO RATHER THAN RESPAWNING. A machine that
+        # is not Intel is skipped here, before any supervisor exists. An
+        # Intel model thermald does not know, with no thermal-conf.xml for
+        # the platform — older parts, most virtual machines — passes this
+        # check and is found out by thermald itself, which then exits 2.
+        # `--final-exit 2` makes that exit the supervisor's last, where
+        # without it ksvc would restart a refusing daemon every five seconds
+        # for as long as the machine is up.
         if ! grep -qi 'GenuineIntel' /proc/cpuinfo 2>/dev/null; then
             echo "[SKIP] $NAME: not an Intel processor"
             exit 0
@@ -25,7 +28,7 @@ case "$1" in
         # --adaptive uses the firmware's own DPTF tables where the machine
         # ships them, which is what makes it match the vendor's tuning
         # rather than override it.
-        supervise "$NAME" "$DAEMON" --no-daemon --adaptive
+        supervise --final-exit 2 "$NAME" "$DAEMON" --no-daemon --adaptive
         ;;
     stop)
         stop_service "$NAME"

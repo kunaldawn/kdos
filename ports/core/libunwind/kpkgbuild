@@ -10,9 +10,10 @@
 
 name        = libunwind
 version     = 23.1.2
-release     = 1
+release     = 2
+_prefix     = /usr/lib/llvm-libunwind
 source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/llvm-project-${version}.src.tar.xz
 sha256      = c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a  libunwind-23.1.2.tar.xz
-description = LLVM libunwind
+description = LLVM libunwind, installed under /usr/lib/llvm-libunwind beside the system libunwind
 homepage    = https://libcxx.llvm.org/
 depends     = llvm python3

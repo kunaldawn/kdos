@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libunwind-nongnu
+version     = 1.8.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libunwind/libunwind/releases/download/v$version/libunwind-$version.tar.gz
+sha256      = be30d910e67f58d82e753231f1357f326a1a088acf126b21ff77e60aab19b90b  libunwind-nongnu-1.8.3.tar.gz
+description = The libunwind library — call-chain unwinding of this process, another one over ptrace, or a core file
+homepage    = https://www.nongnu.org/libunwind/
+depends     = xz zlib
+secdb       = libunwind

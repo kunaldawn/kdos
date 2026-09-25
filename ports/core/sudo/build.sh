@@ -32,6 +32,10 @@ mkdir -m 755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/sudo << "EOF"
 # Begin /etc/pam.d/sudo
 
+# an enrolled finger, when there is a reader and one is on file; the leading
+# dash skips the line on an image without fprintd rather than failing it
+-auth     sufficient  pam_fprintd.so
+
 # include the default auth settings
 auth      include     system-auth
 
@@ -47,8 +51,10 @@ session   include     system-session
 # End /etc/pam.d/sudo
 EOF
 chmod 644 $PKG/etc/pam.d/sudo
+# secure_path carries /usr/local: `kdos` and the rest of kdos-tools install
+# to /usr/local/bin, and `sudo kdos clone` finds nothing on a path without it.
 cat > $PKG/etc/sudoers.d/00-sudo << "EOF"
-Defaults secure_path="/usr/sbin:/usr/bin"
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 %wheel ALL=(ALL) ALL
 EOF
 chmod 644 $PKG/etc/sudoers.d/00-sudo

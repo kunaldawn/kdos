@@ -15,4 +15,4 @@ source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
 sha256      = 2b681170ddc22b6b283cafeed48f427c30a17056974a6a9ed137c354e0f7730c  gst-plugins-ugly-1.28.7.tar.xz
 description = GStreamer "ugly" plugin set (patent/license-encumbered codecs)
 homepage    = https://gstreamer.freedesktop.org/
-depends     = gst-plugins-base x264 orc
+depends     = gst-plugins-base x264 orc libcdio libdvdread

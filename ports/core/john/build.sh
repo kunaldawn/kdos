@@ -51,8 +51,10 @@ cd src
 # vncpcap2john / SIPdump / eapmd5tojohn helpers. --enable-opencl only asks:
 # the GPU formats come in when CL/cl.h and -lOpenCL link, which is why
 # opencl-headers and ocl-icd are `depends`; configure's "OpenCL support"
-# summary line is the one to read. The formats then run on whatever ICD
-# /etc/OpenCL/vendors names, and report no device when it names none.
+# summary line is the one to read. The formats then run on the ICD
+# /etc/OpenCL/vendors names, Mesa's rusticl, which offers a device only for the
+# drivers RUSTICL_ENABLE lists (/etc/profile.d/50-opencl.sh sets it), and
+# report no device when there is none.
 make -j1
 
 # WHAT IT IS FOR: reading a hash out of a LUKS header, a KeePass database, an

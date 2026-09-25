@@ -1,0 +1,28 @@
+# Rootful podman's bridge networks: `sudo podman run`, rootful distrobox, and
+# any network `podman network create` makes. netavark names each bridge
+# podman<N> and adds its own forward chain with policy accept — but an accept
+# ends only the chain that issued it, and the forward chain in
+# /etc/nftables.conf drops everything it was not told to pass, so without
+# these a container starts, gets an address, and reaches nothing.
+#
+# Rootless boxes are unaffected: pasta gives them the host's own sockets and
+# nothing is forwarded.
+#
+# SCOPED TO THE BRIDGE NAME, so this opens forwarding for containers and for
+# nothing else. The connection coming back is the main forward chain's first
+# rule; the published-port rule is a port somebody asked `-p` for, already
+# translated to the container's address.
+
+table inet filter {
+	chain forward {
+		iifname "podman*" accept
+		oifname "podman*" ct status dnat accept
+	}
+
+	# aardvark-dns answers a container's name lookups on the bridge's own
+	# address, which is this machine's input.
+	chain input {
+		iifname "podman*" udp dport 53 accept
+		iifname "podman*" tcp dport 53 accept
+	}
+}

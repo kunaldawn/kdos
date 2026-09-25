@@ -15,4 +15,4 @@ source      = https://www.musicpd.org/download/$name/0.24/$name-$version.tar.xz
 sha256      = 524c70bce3fcd268016156bdc97abcf5be1904f0c6fd622688999123e3c4c457  mpd-0.24.15.tar.xz
 description = A music daemon your player is only a client of
 homepage    = https://www.musicpd.org/
-depends     = meson ninja pkgconf ffmpeg alsa-lib pipewire libsndfile flac libvorbis opus sqlite icu fmt curl python3-sphinx zlib pcre2 expat libid3tag libsamplerate soxr fluidsynth libmikmod mpg123 lame liburing
+depends     = meson ninja pkgconf ffmpeg alsa-lib pipewire libsndfile flac libvorbis opus sqlite icu fmt curl python3-sphinx zlib pcre2 expat libid3tag libsamplerate soxr fluidsynth libmikmod mpg123 lame liburing libcdio libcdio-paranoia

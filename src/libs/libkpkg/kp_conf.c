@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "kpkg.h"
 
@@ -220,6 +221,54 @@ char **kp_all_ports(const KpConf *c, int *count)
 	return out;
 }
 
+/* The merged-/usr aliases, read off the root. A link is an alias only when it
+ * points at `usr/<its own name>` (or `/usr/<its own name>`): anything else is
+ * a layout this code does not understand, and treating it as an alias would
+ * merge two different files into one key. */
+void kp_canon_load(const KpConf *c, KpCanon *k)
+{
+	static const char *const names[] = { "bin", "sbin", "lib", "lib64",
+					     "lib32" };
+	const char *root = c->root[0] ? c->root : "/";
+	k->n = 0;
+	for (size_t i = 0; i < sizeof(names) / sizeof(*names); i++) {
+		char *link = kb_path_join(root, names[i]);
+		char target[64];
+		ssize_t tn = readlink(link, target, sizeof(target) - 1);
+		free(link);
+		if (tn <= 0)
+			continue;
+		target[tn] = 0;
+		const char *t = target;
+		if (*t == '/')
+			t++;
+		char want[16];
+		snprintf(want, sizeof(want), "usr/%s", names[i]);
+		if (strcmp(t, want))
+			continue;
+		kb_strlcpy(k->from[k->n], names[i], sizeof(k->from[k->n]));
+		kb_strlcpy(k->to[k->n], want, sizeof(k->to[k->n]));
+		k->n++;
+	}
+}
+
+char *kp_canon_path(const KpCanon *k, const char *rel)
+{
+	int dot = !strncmp(rel, "./", 2);
+	const char *p = dot ? rel + 2 : rel;
+	for (int i = 0; k && i < k->n; i++) {
+		size_t fl = strlen(k->from[i]);
+		/* `bin/x` and `bin/` are aliased; `bin` alone is the link
+		 * itself and `binutils/` is another name entirely. */
+		if (strncmp(p, k->from[i], fl) || p[fl] != '/')
+			continue;
+		KbBuf b = {0};
+		kb_buf_printf(&b, "%s%s%s", dot ? "./" : "", k->to[i], p + fl);
+		return b.p;
+	}
+	return kb_strdup(rel);
+}
+
 /* Every path any installed package claims, as one sorted list.
  *
  * The database is one file per package: line 1 is `<version> <release>` and
@@ -240,6 +289,7 @@ static int cmp_owned(const void *a, const void *b)
 KpOwned *kp_owned_load(const KpConf *c)
 {
 	KpOwned *o = kb_calloc(1, sizeof(*o));
+	kp_canon_load(c, &o->canon);
 	char *db = kp_db_dir(c);
 	char **names = kb_listdir(db, NULL);
 	if (!names) {
@@ -296,7 +346,7 @@ KpOwned *kp_owned_load(const KpConf *c)
 				free(pair);
 				pair = nv;
 			}
-			pair[o->n].path = kb_strdup(line);
+			pair[o->n].path = kp_canon_path(&o->canon, line);
 			pair[o->n].owner = owner;
 			o->n++;
 		}
@@ -353,8 +403,32 @@ static int owned_find(const KpOwned *o, const char *rel)
 /* `rel` is `usr/bin/tar`; the database spells it `./usr/bin/tar`. */
 const char *kp_owned_owner(const KpOwned *o, const char *rel)
 {
-	int i = owned_find(o, rel);
+	char *key = kp_canon_path(&o->canon, rel);
+	int i = owned_find(o, key);
+	free(key);
 	return i < 0 ? NULL : o->owner[i];
+}
+
+/* Equal keys sit side by side in the sorted table and the search lands on any
+ * one of them, so the run is walked both ways from where it landed. */
+const char *kp_owned_other(const KpOwned *o, const char *rel,
+			   const char *self)
+{
+	char *key = kp_canon_path(&o->canon, rel);
+	int i = owned_find(o, key);
+	const char *hit = NULL;
+	if (i >= 0) {
+		for (int j = i; j >= 0 && !hit &&
+				!cmp_stored_rel(o->path[j], key); j--)
+			if (strcmp(o->owner[j], self))
+				hit = o->owner[j];
+		for (int j = i + 1; j < o->n && !hit &&
+				!cmp_stored_rel(o->path[j], key); j++)
+			if (strcmp(o->owner[j], self))
+				hit = o->owner[j];
+	}
+	free(key);
+	return hit;
 }
 
 void kp_owned_free(KpOwned *o)
@@ -393,6 +467,12 @@ int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 		return 0;
 	}
 
+	KpCanon k;
+	kp_canon_load(c, &k);
+	char **want = kb_calloc((size_t)n, sizeof(*want));
+	for (int i = 0; i < n; i++)
+		want[i] = kp_canon_path(&k, paths[i]);
+
 	KbBuf out = {0};
 	int dropped = 0, first = 1;
 	for (char *line = data, *next; line && *line; line = next) {
@@ -409,9 +489,11 @@ int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 			 * hundreds of paths, and a fixed key buffer would also
 			 * truncate — leaving a long path in the old owner's
 			 * manifest, the double claim this function prevents. */
+			char *have = kp_canon_path(&k, line);
 			for (int i = 0; i < n && !drop; i++)
-				if (!cmp_stored_rel(line, paths[i]))
+				if (!cmp_stored_rel(have, want[i]))
 					drop = 1;
+			free(have);
 		}
 		first = 0;
 		if (drop)
@@ -420,6 +502,9 @@ int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 			kb_buf_printf(&out, "%s\n", line);
 	}
 	free(data);
+	for (int i = 0; i < n; i++)
+		free(want[i]);
+	free(want);
 
 	if (dropped)
 		kb_write_all(file, out.p, out.n);

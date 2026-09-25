@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mobile-broadband-provider-info
+version     = 20251101
+release     = 1
+source      = $name-$version.tar.gz::https://gitlab.gnome.org/GNOME/mobile-broadband-provider-info/-/archive/$version/mobile-broadband-provider-info-$version.tar.gz
+sha256      = 8e8c34edb2264b0e7d9a3af17d5a92c689d9275a6329078e84ccfc8637c51cba  mobile-broadband-provider-info-20251101.tar.gz
+description = Carrier APN database for mobile broadband (NetworkManager's WWAN connection wizard)
+homepage    = https://gitlab.gnome.org/GNOME/mobile-broadband-provider-info
+depends     = meson pkgconf libxslt

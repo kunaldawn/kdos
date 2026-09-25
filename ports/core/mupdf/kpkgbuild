@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://mupdf.com/downloads/archive/mupdf-$
 sha256      = 2d97e043a616f96b148657c9c3d81ad71c4bd2052c59a2a3315ad842599340f9  mupdf-1.28.4.tar.gz
 description = mutool — the PDF the command line can take apart, and a viewer with no toolkit
 homepage    = https://mupdf.com/
-depends     = freetype2 libjpeg-turbo openjpeg harfbuzz zlib jbig2dec curl brotli leptonica tesseract libarchive openssl python3
+depends     = freetype2 libjpeg-turbo openjpeg harfbuzz zlib jbig2dec curl brotli leptonica tesseract libarchive zxing-cpp openssl python3

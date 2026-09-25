@@ -39,6 +39,10 @@ if [ -f /kdos/build/initramfs.cpio.gz ]; then
     cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/boot/initramfs.cpio.gz
     # Also copy to /boot so it is included in system.sfs (and thus installed)
     cp /kdos/build/initramfs.cpio.gz /boot/initramfs.cpio.gz
+    # The image's initramfs is the one for the image's kernel. One a `linux`
+    # postinstall built in this tree for an earlier kernel would be preferred
+    # over it by kinstall and `kdos-bootctl deploy`, and boot a stale base.
+    rm -f /boot/initramfs-kdos.cpio.gz
 else
     echo "Error: /kdos/build/initramfs.cpio.gz not found!"
     exit 1

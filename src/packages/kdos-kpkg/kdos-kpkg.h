@@ -54,15 +54,20 @@ char *kp_decl_expand(const KpDecl *d, const char *text, const KpPaths *p);
 void kp_decl_prelude(const KpDecl *d, KbBuf *b);
 void kp_decl_meta(const KpDecl *d);	/* the same, to stdout, for ports/fetch */
 
-/* The shared indexes a manifest feeds (triggers.c). Note every manifest an
- * install or removal acted on — for an upgrade both the old and the new — then
- * run once, after the database is written. */
+/* The shared indexes a manifest feeds (triggers.c). Note what an install
+ * placed with _note and what it or a removal took off the disk with _gone —
+ * for an upgrade, the new manifest and each orphan it removed — then run
+ * once, after the database is written. _run releases what the notes kept. */
 typedef struct {
 	unsigned hit;
+	unsigned gone;
+	KbBuf man;	/* placed manual pages, NUL-separated, man-dir-relative */
+	int nman;
 } KpTriggers;
 
 void kp_triggers_note(KpTriggers *t, const char *manifest);
-void kp_triggers_run(const KpTriggers *t, const char *root);
+void kp_triggers_gone(KpTriggers *t, const char *manifest);
+void kp_triggers_run(KpTriggers *t, const char *root);
 
 int depends_main(int argc, char **argv);
 int add_main(int argc, char **argv);

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fwupd-efi
+version     = 1.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/fwupd/fwupd-efi/archive/refs/tags/$version.tar.gz
+sha256      = c9f1f9b9b967ea50eb0b478f0d7693d6673d4cd76c8e7eb80c55fc44ec928925  fwupd-efi-1.8.tar.gz
+description = The EFI program fwupd boots into to hand a firmware capsule to the machine's firmware
+homepage    = https://github.com/fwupd/fwupd-efi
+depends     = meson ninja pkgconf binutils python3 python3-pefile gnu-efi

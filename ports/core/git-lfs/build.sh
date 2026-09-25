@@ -42,3 +42,17 @@ make $_mk $(make -s $_mk --eval='kdos-man-list: ; @echo $(MAN_ROFF_TARGETS)' kdo
 for page in man/man*/*.[1-8]; do
 	install -Dm644 "$page" -t "$PKG/usr/share/man/man${page##*.}"
 done
+
+# THE FILTER IS REGISTERED SYSTEM-WIDE, BY THE PACKAGE. The binary alone does
+# nothing: git runs git-lfs only through the `lfs` filter, and a clone with no
+# filter configured checks out the pointer files. This is the block
+# `git lfs install --system` writes, owned by the package rather than written
+# by a hook, so removing git-lfs removes a `required` filter that would
+# otherwise fail every checkout of an LFS repository on a missing program.
+install -Dm644 /dev/stdin "$PKG/etc/gitconfig" <<'GITCONFIG'
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+GITCONFIG

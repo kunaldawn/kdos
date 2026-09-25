@@ -302,9 +302,11 @@ The tier decides who is there to run the job. A job that must run on a machine n
 into belongs in the system tier; a job that writes into `$HOME` belongs in the user tier, where it
 dies with the login that started it.
 
-Two timers ship enabled: `/etc/kdos/timers.d/10-update-check.timer` at 04:17 and
-`~/.config/kdos/timers.d/20-updatedb.timer` at 03:05, with `10-backup.timer` beside the latter
-commented out. The three times are deliberately different: two jobs at the same second on a laptop
+Three timers ship enabled. The system tier has `/etc/kdos/timers.d/10-update-check.timer` at 04:17
+and `/etc/kdos/timers.d/20-fstrim.timer` at 12:47, which runs `fstrim -a`. The user tier has
+`~/.config/kdos/timers.d/20-updatedb.timer` at 03:05, with `10-backup.timer` beside it commented
+out. The `fwupd` package adds `/etc/kdos/timers.d/30-fwupd-refresh.timer`, running
+`fwupdmgr refresh` as root at 13:43. The times are deliberately different: two jobs at the same second on a laptop
 that has just woken are two jobs competing for one disk.
 
 ### `~/.config/kdos/screensaver.txt`
@@ -580,7 +582,9 @@ deleting somebody's rollback while they were deciding whether to use it.
 
 `size` is how much swap the device may claim to hold, never how much memory it will occupy — the
 compressed pages live in that same memory. A value outside 1–90 is reported and 50 is used. An
-algorithm the kernel does not carry is reported and the kernel's own default stands.
+algorithm the kernel does not carry is reported and the kernel's own default stands. zswap is turned
+off once the device is swap, so no page is compressed twice, and `vm.page-cluster` is set to 0, since
+swap-in read-ahead on zram is wasted decompression; stopping the service restores both.
 
 ### `/etc/kdos/mountd.conf`
 
@@ -642,11 +646,16 @@ a rename that misses this key leaves the machine reachable only from terminal tw
 ### `/etc/nftables.conf`
 
 The firewall. Applies at boot, before the network starts, after a syntax check — so an unloadable
-ruleset leaves the previous state standing rather than half-applying a flush.
+ruleset leaves the previous state standing rather than half-applying. The file replaces only its own
+`inet filter` table: netavark's `inet netavark` and NetworkManager's `nm-shared-*` tables survive a
+reload, so a firewall toggle does not cut off running containers or hotspot clients.
 
 The shipped policy drops input and forwarding, accepts established traffic and loopback, answers the
 necessary ICMP and ICMPv6 types, and opens multicast DNS and DHCPv6. Anything that should be
-reachable needs a rule; the file carries commented examples.
+reachable needs a rule; the file carries commented examples. Every `*.nft` in `/etc/nftables.d` is
+included last and adds to `table inet filter` — a table of its own would survive a reload with its
+old rules: `50-kdos-services.nft` is `kdos-firewall`'s, and `40-podman.nft` lets rootful
+podman's bridges forward and reach their DNS.
 
 ### `/etc/fstab`
 
@@ -686,6 +695,12 @@ is `networkmanager`.
 `networkmanager` carries a second effect. `30_network` starts dhcpcd only when NetworkManager is
 absent or carries this marker, so turning NetworkManager off hands DHCP back to dhcpcd instead of
 leaving the machine with no client.
+
+### `/etc/modprobe.d/kdos-regdom.conf`
+
+The Wi-Fi country, as `options cfg80211 ieee80211_regdom=<CC>`. Written by the installer and by
+`kdos-power timezone` from the zone's row in `zone.tab`, and removed for a zone with no country.
+Applies when cfg80211 loads, which is the next boot; `iw reg set <CC>` changes the running radio.
 
 ### `/etc/keymap`
 
@@ -753,10 +768,12 @@ and display modules this image builds: `opus.so`, `avcodec.so`, `vp8.so`, `vp9.s
 uncommented line naming a module that is not installed is a start-up error, which is why upstream's
 default comments them all.
 
-The audio line stays `alsa.so`, which reaches PipeWire through the ALSA default. `pipewire.so` is
-built beside it for a config that names it, as are `sndfile.so` (call recording), `snapshot.so`
-and `ctrl_dbus.so`, all left commented as upstream writes them, and the `aac.so` codec, which the
-generated config does not mention at all.
+The audio module is `pipewire.so`, and `alsa.so` is written commented out: the build sets baresip's
+default audio device to `pipewire,default`, so `audio_player`, `audio_source` and `audio_alert`
+all name the PipeWire default node and a call goes to the graph without passing through the ALSA
+plugin. `sndfile.so` (call recording), `snapshot.so` and `ctrl_dbus.so` are built and left
+commented as upstream writes them, and the `aac.so` codec is built and not mentioned in the
+generated config at all.
 
 The display is uncommented and the camera is not, and the asymmetry is the point: which screen a
 picture goes on is a property of the build, and which camera it comes from is a choice. Turning on
@@ -802,6 +819,7 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/fcitx5/profile` | The input method | One group, `Default`, holding the four engines the image carries: `keyboard-us`, `pinyin`, `anthy` and `hangul` |
 | `~/.config/mimeapps.list` | This account's own handler choices | Ships with an empty `[Default Applications]` section, deliberately: this file outranks every system table, and *Open With*'s **always** tick is what writes to it |
 | `~/.bashrc`, `~/.bash_profile` | The shell | `.bashrc` reads `/etc/bash.bashrc` — through `/run/host` inside a box, because `$HOME` is bind-mounted into every one. `.bash_profile` is what starts the desktop on `tty1` |
+| `~/.zprofile` | The shell, when it is zsh | Starts the desktop on `tty1`, as `.bash_profile` does. `/etc/shells` lists zsh, so `chsh -s /usr/bin/zsh` is accepted; `/etc/zsh/zprofile` reads `/etc/profile` and its drop-ins, and `/etc/zsh/zshrc` carries the `atuin` hook and nothing of `/etc/bash.bashrc` |
 
 ### Default handlers
 
@@ -844,11 +862,65 @@ naming a program on the image, and `testing/preflight.sh` refuses one that is no
 | `/etc/profile.d/30-open.sh` | `$BROWSER` to `xdg-open`, which on this image is `kdos-appbox open` — so the variable and the mimeapps table are one road rather than two that drift |
 | `/etc/profile.d/20-lesspipe.sh` | `LESSOPEN` to `lesspipe.sh` and `LESS=-R` |
 | `/etc/profile.d/40-plocate.sh` | `LOCATE_PATH` to this account's own index |
-| `/etc/profile.d/podman-docker.sh` | `DOCKER_HOST` to the rootless Podman API socket, `$XDG_RUNTIME_DIR/podman/podman.sock` (root's is `/run/podman/podman.sock`), so a Docker API client such as `lazydocker` finds `podman system service` once it is running. `/usr/bin/docker` is Podman's shim over `podman` |
+| `/etc/profile.d/50-ssh-agent.sh` | `SSH_AUTH_SOCK` to `$XDG_RUNTIME_DIR/ssh-agent.socket`, starting `ssh-agent` there when nothing answers on it. One agent per account, shared by every login and everything the desktop starts, so a key added with `ssh-add` is asked for once. From `openssh` |
+| `/etc/profile.d/50-sfeed.sh` | `SFEED_YANKER` to `wl-copy -n`, so `sfeed_curses`'s yank reaches the clipboard. From `sfeed` |
+| `/etc/profile.d/gawk.sh` | No variables: the `gawkpath_*` and `gawklibpath_*` functions, which edit `AWKPATH` and `AWKLIBPATH`. From `gawk` |
+| `/etc/profile.d/50-opencl.sh` | `RUSTICL_ENABLE` to `iris,radeonsi`, the Intel and AMD drivers Mesa's OpenCL implementation exposes. Rusticl offers no device for any of them unless it is told to, so without it every OpenCL program finds none. `llvmpipe` is left out, so a machine with no supported GPU has no OpenCL device |
+| `/etc/profile.d/podman-docker.sh` | `DOCKER_HOST` to the rootless Podman API socket, `$XDG_RUNTIME_DIR/podman/podman.sock` (root's is `/run/podman/podman.sock`), so a Docker API client such as `lazydocker` finds `podman system service` while it is running — see [Containers](#containers) for what starts it. `/usr/bin/docker` is Podman's shim over `podman` |
 
 None of them writes over a value you already exported. A login shell reads them, which is the
 only way into a session here. The `less` filter is driven by `file -L -s -b --mime` and nothing
 else, which is why `file` on this image is the one with a magic database.
+
+What depends on the terminal is set per interactive shell instead, in `/etc/bash.bashrc`, and each
+line probes for its program first:
+
+| Variable or hook | Is |
+|---|---|
+| `MANPAGER` | `/usr/libexec/bat/man-pager`, from `bat`: it strips the page's overstrike and hands it to `bat -l man`. A script rather than a pipeline, because `mandoc`'s `man` splits the variable on spaces and runs it with no shell |
+| `GPG_TTY` | This shell's terminal, where the curses pinentry draws a passphrase prompt |
+| `GNUTERM` | `sixelgd`, only in `kdos-term` (`TERM_PROGRAM`) and `foot`, which decode sixel; elsewhere gnuplot's terminal is left unset, and `set term dumb` draws in characters |
+| `lfcd` | A function from `lf`'s own `lfcd.sh`: runs `lf` and leaves the shell in the directory `lf` quit in |
+| `atuin init bash` | Ctrl-R searches atuin's history database, and every command is recorded there. Up stays readline's. atuin brings its own copy of `bash-preexec`, which removes `ignorespace` from `HISTCONTROL` |
+
+System-wide files that ports install for the tools above:
+
+| Path | From | Does |
+|---|---|---|
+| `/etc/gitconfig` | `git-lfs` | Registers the `lfs` filter, so a clone of an LFS repository checks out content rather than pointer files, with no `git lfs install` |
+| `/etc/nanorc` | `nano` | Includes every syntax definition under `/usr/share/nano` |
+| `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` | `networkmanager` | `dns=dnsmasq`: a local caching `dnsmasq` on `127.0.0.1` with split DNS for VPNs. A file of the same name in `/etc/NetworkManager/conf.d` overrides it |
+| `/etc/resolvconf.conf` | `openresolv` | `resolvconf`'s own settings. It is the one writer of `/etc/resolv.conf`, for NetworkManager, dhcpcd and `wg-quick` alike |
+| `/etc/sudoers.d/00-sudo` | `sudo` | `%wheel` may run anything; `secure_path` is `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`, which is what lets `sudo kdos` find `kdos` |
+| `/etc/zsh/zprofile`, `/etc/zsh/zshrc` | `zsh` | A login zsh reads `/etc/profile`; every interactive one runs `atuin init zsh` |
+| `~/.config/tealdeer/config.toml` | `tealdeer`, in `/etc/skel` | `cache_dir` is `/usr/share/tldr`, where the pages are shipped, and nothing is downloaded. `tldr --update` needs a `cache_dir` you can write |
+
+### Containers
+
+`/etc/containers` is one package, `containers-common`, which `podman`, `buildah` and `skopeo` all
+depend on, because all three read all of it.
+
+| Path | Sets |
+|---|---|
+| `/etc/containers/containers.conf` | `cgroupfs` as the cgroup manager, since there is no systemd to delegate one; the file event logger; `crun`; `netavark` with the `nftables` firewall driver; `pasta` for a rootless container's network |
+| `/etc/containers/storage.conf` | The overlay driver, mounted through `fuse-overlayfs`; root's store under `/var/lib/containers/storage` |
+| `/etc/containers/registries.conf` | `docker.io` as the one registry a short name is looked up in |
+| `/etc/containers/policy.json` | Upstream's default: any image is accepted, and no signature is checked. Without this file every pull refuses to start |
+
+A pod's infra container and `--init` bind-mount `catatonit`, a static init at
+`/usr/lib/podman/catatonit`; a box profile's `init = yes` uses the same binary.
+
+**The Podman API socket starts on demand.** Both *Containers* entries — `podman-tui` and
+`lazydocker` — run behind `kdos-podman-api`, which starts `podman system service` when nothing
+answers on `$XDG_RUNTIME_DIR/podman/podman.sock` (`/run/podman/podman.sock` for root), sets
+`DOCKER_HOST` to it, and gives `podman-tui` a default connection named `kdos-local` through
+`CONTAINERS_CONF_OVERRIDE`. A default connection you set with `podman system connection default`
+outranks it, and a `CONTAINERS_CONF_OVERRIDE` you exported yourself is left alone. The service
+exits once no client has used it for five minutes. Typed at a prompt, `lazydocker` reaches the socket
+only while a service is running, through the `DOCKER_HOST` that `podman-docker.sh` exports;
+`kdos-podman-api lazydocker` starts one first. A bare `podman-tui` has no connection at all, running
+service or not, unless it runs behind `kdos-podman-api` or you add one with
+`podman system connection add`.
 
 ### Mail, calendar and contacts
 

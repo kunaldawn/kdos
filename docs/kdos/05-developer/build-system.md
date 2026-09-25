@@ -352,9 +352,12 @@ rolled.
 
 ## Databases stamped into the image
 
-Two consumers read a compiled database that no package installs, because neither can be built until
-every package is in place. `script/06_packaging/00_udev_hwdb.sh` and
-`script/06_packaging/00_whatis.sh` build them.
+Two consumers read a compiled database that no package installs, because each is built from every
+package's files. kpkg keeps both current on every install and removal — they are
+[shared indexes](writing-ports.md#shared-indexes) — and `script/06_packaging/00_udev_hwdb.sh` and
+`script/06_packaging/00_whatis.sh` rebuild them from scratch over the finished tree and assert on
+the result, so the image never carries an index that a build interrupted partway through left
+behind.
 
 `udevadm hwdb --update` compiles `/etc/udev/hwdb.bin` from the `hwdb.d` text eudev ships. Half of
 eudev's rules open with `IMPORT{builtin}="hwdb ..."`, and that import returns nothing at all when
@@ -375,6 +378,14 @@ before the initramfs and ISO steps, which carry the tree into the image; lexicog
 the sequencing. Neither trusts an exit status: `udevadm hwdb --update` exits 0 having written
 nothing when it finds no sources, and `makewhatis` exits non-zero for a single unreadable page
 while still writing a complete database. Each step asserts on the file it produced instead.
+
+Python bytecode is replaced rather than kept. `script/06_packaging/00_cleanup.sh` deletes every
+`__pycache__` the build left, because it mixes mtime-stamped bytecode with caches build tools wrote
+in the chroot, and then compiles `/usr/lib/python3*` again with `--invalidation-mode checked-hash`.
+A hash-based `.pyc` compiles to the same bytes from the same tree, and the interpreter checks the
+hash on import, so a source file a later upgrade replaces is recompiled rather than served stale.
+Deleting without recompiling costs every Python program a full compile of everything it imports on
+every start, because `/usr` is read-only to it.
 
 ## Fetching and baking, in containers
 

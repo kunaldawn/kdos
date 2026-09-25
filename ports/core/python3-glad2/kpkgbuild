@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-glad2
+version     = 2.0.8
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/g/glad2/glad2-$version.tar.gz
+sha256      = b84079b9fa404f37171b961bdd1d8da21370e6c818defb8481c5b3fe3d6436da  python3-glad2-2.0.8.tar.gz
+description = OpenGL and EGL loader generator — writes libplacebo's GL loader at build time
+homepage    = https://github.com/Dav1dde/glad
+depends     = python3 python3-setuptools python3-pip python3-jinja2

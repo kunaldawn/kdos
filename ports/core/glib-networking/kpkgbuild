@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = glib-networking
+version     = 2.90.0
+release     = 1
+source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$version.tar.xz
+sha256      = 83a75e3d9c36b66ee86d3281c2fc997816101968a5126ba322b2acb9a74dd8c0  glib-networking-2.90.0.tar.xz
+description = GIO modules for TLS and proxy resolution (the TLS backend every GIO and libsoup https connection needs)
+homepage    = https://gitlab.gnome.org/GNOME/glib-networking
+depends     = meson glib gnutls
+devseries   = odd-minor

@@ -177,6 +177,7 @@ anything. The full protocol is in [Filesystem and IPC](filesystem-and-ipc.md#soc
 | `xdg-terminal-exec` | Run a command in this desktop's terminal | [kdos-appbox](../04-programs/kdos-appbox.md#the-open-path) |
 | `kdos-openarchive` | Extract an archive `mc` cannot browse as a directory, beside itself | [kdos-shell](../04-programs/kdos-shell.md) |
 | `kdos-pack` | Build, sign, re-stamp, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
+| `kdos-podman-api` | Run a container client against this account's Podman API socket, starting `podman system service` when nothing answers on it | [Configuration](configuration.md#containers) |
 
 ## Packaging
 
@@ -193,7 +194,7 @@ anything. The full protocol is in [Filesystem and IPC](filesystem-and-ipc.md#soc
 | Command | What it does | Documented in |
 |---|---|---|
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
-| `kdos-bootctl` | A/B slot selection and confirmation, and the colours of the boot menu and text consoles | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
+| `kdos-bootctl` | A/B slot selection and confirmation, each slot's kernel on the ESP, and the colours of the boot menu and text consoles | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
 | `kdos-login` | Hand tty1 to `agetty`, autologging in where `login.conf` names an account | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
 | `kdos-getty` | Load the VT font and palette, then run a getty | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
@@ -203,8 +204,8 @@ anything. The full protocol is in [Filesystem and IPC](filesystem-and-ipc.md#soc
 
 `ksvc` takes `start`, `stop`, `restart`, `status`, `enable`, `disable`, `list`, `check`,
 `supervise`, `stop-supervised` and `help`. The last three are what an init script calls; the rest
-are what a person types. `kdos-bootctl` takes `status`, `select`, `try`, `set-slot`, `mark-good`,
-`attempts`, `active`, `crypt`, `theme [--print] ACCENT` and `palette [ACCENT]`.
+are what a person types. `kdos-bootctl` takes `status`, `select [SLOT]`, `try`, `set-slot`, `mark-good`,
+`crypt`, `deploy ROOT [SLOT]`, `theme [--print] ACCENT` and `palette [ACCENT]`.
 
 ## Tools and helpers
 
@@ -216,14 +217,17 @@ are what a person types. `kdos-bootctl` takes `status`, `select`, `try`, `set-sl
 | `kdos-theme` | Generate the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-share` | Send a file to another machine over `croc` | [The kdos command](../04-programs/kdos-command.md#share) |
 | `kdos-sfx` | Sound effects: `login`, `notify`, `error`, `degauss` | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
-| `kdos-mpctl` | The music, over mpd's unix socket: `toggle`, `stop`, `next`, `prev`, `now`, `watch` | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-mpctl` | The music: `toggle`, `stop`, `next`, `prev` to mpd or an MPRIS player, `now` and `watch` from mpd | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-fetch-app` | Install an alien application from a network | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-fetch-static` | Fetch a single verified static binary | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
+| `kdos-syncthing` | Syncthing, given a LAN-only configuration the first time it runs | [Administration](../02-user-guide/administration.md#syncing-and-serving-on-the-network) |
+| `update-ca-certificates` | Rewrite `/etc/ssl/cert.pem` from the Mozilla bundle and the local roots in `/etc/ca-certificates/trust-source/anchors/` | [Security model](../03-architecture/security-model.md#tls-trust-anchors) |
 
 `kdos-term` takes `-e` (also spelled `--exec`), `--title`, `--app-id`, `--font`, `--size WxH`,
 `--float`, `-D DIR` (also `--working-directory`), `--tty` and `--dump WxH`. Everything after `--`
 is the command. `kdos-mpctl watch`
-writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle`.
+writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle`; it reconnects when mpd
+restarts, and the session starts it once an mpd configuration exists.
 
 ## Privileged helpers
 

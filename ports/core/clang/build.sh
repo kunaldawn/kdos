@@ -18,10 +18,11 @@
 # CMAKE_REQUIRE_FIND_PACKAGE_LibXml2 turns a missing libxml2 into a configure
 # error instead of a c-index-test built without it.
 #
-# CLANG_DEFAULT_OPENMP_RUNTIME stays libomp, which is not a port, so -fopenmp
-# fails at link. Pointing it at gcc's libgomp would link, but the driver passes
-# -fopenmp to the frontend only for libomp and libiomp5, so every OpenMP pragma
-# would be dropped and the program would build serial with no diagnostic.
+# CLANG_DEFAULT_OPENMP_RUNTIME stays libomp, which the openmp port installs, so
+# -fopenmp compiles against its omp.h and links libomp. Pointing it at gcc's
+# libgomp would link, but the driver passes -fopenmp to the frontend only for
+# libomp and libiomp5, so every OpenMP pragma would be dropped and the program
+# would build serial with no diagnostic.
 cmake -S clang -B build -G Ninja \
     -D CMAKE_INSTALL_PREFIX=/usr \
     -D CMAKE_INSTALL_LIBEXECDIR=/usr/lib/clang \

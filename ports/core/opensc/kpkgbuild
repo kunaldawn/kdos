@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opensc
+version     = 0.27.1
+release     = 1
+source      = https://github.com/OpenSC/OpenSC/releases/download/$version/$name-$version.tar.gz
+sha256      = 976f4a23eaf3397a1a2c3a7aac80bf971a8c3d829c9a79f06145bfaeeae5eca7  opensc-0.27.1.tar.gz
+description = The PKCS#11 module for PIV, CAC, OpenPGP and national eID smart cards, and the tools to manage them
+homepage    = https://github.com/OpenSC/OpenSC
+depends     = pkgconf pcsc-lite openssl zlib readline p11-kit libxslt docbook-xsl bash-completion

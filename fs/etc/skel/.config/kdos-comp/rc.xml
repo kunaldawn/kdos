@@ -261,9 +261,12 @@
          rectangle. -->
     <keybind key="W-S-p"><action name="Execute" command="kdos-shot region"/></keybind>
 
-    <!-- THE TRANSPORT KEYS. A keyboard that has them expects them to work, and
-         `kdos-mpctl` is the one caller of MPRIS here. Volume and brightness are
-         labwc's own defaults and are not restated. -->
+    <!-- THE TRANSPORT KEYS. A keyboard that has them expects them to work.
+         The binding takes the key before a focused player sees it, so
+         `kdos-mpctl` routes it: to mpd over its socket or to an MPRIS player
+         on the session bus (mpv, cmus, a boxed player), whichever is playing.
+         Volume and brightness are labwc's own defaults and are not
+         restated. -->
     <keybind key="XF86AudioPlay"><action name="Execute" command="kdos-mpctl toggle"/></keybind>
     <keybind key="XF86AudioStop"><action name="Execute" command="kdos-mpctl stop"/></keybind>
     <keybind key="XF86AudioNext"><action name="Execute" command="kdos-mpctl next"/></keybind>
@@ -444,6 +447,19 @@
     <keybind key="XF86AudioMicMute"><action name="Execute" command="kdos-osd mic toggle"/></keybind>
     <keybind key="XF86MonBrightnessUp"><action name="Execute" command="kdos-osd brightness +10"/></keybind>
     <keybind key="XF86MonBrightnessDown"><action name="Execute" command="kdos-osd brightness -10"/></keybind>
+    <!-- The power button and the sleep key. The kernel's ACPI button driver
+         reports both as keys, and no daemon below the session listens for
+         them, so a key unbound here is a button that does nothing. Power
+         ASKS first, as W-Escape does: a button an elbow can reach is not one
+         that may drop unsaved work without a question. -->
+    <keybind key="XF86PowerOff">
+      <action name="If">
+        <prompt><message>Shut down the machine? Unsaved work will be lost.</message></prompt>
+        <then><action name="Execute" command="kdos-power poweroff"/></then>
+      </action>
+    </keybind>
+    <keybind key="XF86Sleep"><action name="Execute" command="kdos-power suspend"/></keybind>
+    <keybind key="XF86Suspend"><action name="Execute" command="kdos-power suspend"/></keybind>
   </keyboard>
 
   <!--

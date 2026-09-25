@@ -26,11 +26,15 @@
  * sudoers line is `%wheel ALL=(ALL) ALL`, so it is a shortcut to something
  * they already have rather than a new capability: the passphrases are files
  * under /etc/NetworkManager that `sudo cat` prints. The boundary this file
- * moves is convenience, not privilege.
+ * moves is convenience, not privilege. They also reach a smart card through
+ * pcscd, which is the card holder's own device behind the card's own PIN.
+ * They can also unlock and enable a modem and read its text messages through
+ * mmcli (ModemManager Device.Control and Messaging), which ModemManager
+ * otherwise allows only to an active session.
  *
  * A NAME NOT IN THIS LIST IS NOT GRANTED. Every id here is one a shipped
- * surface calls; adding a row is a decision, and the list is short so that
- * reading it is one.
+ * surface or a shipped user program calls; adding a row is a decision, and
+ * the list is short so that reading it is one.
  */
 
 polkit.addRule(function (action, subject) {
@@ -38,6 +42,18 @@ polkit.addRule(function (action, subject) {
         return undefined;   /* not ours to answer — fall through */
 
     switch (action.id) {
+    /*
+     * pcscd asks for these on every PC/SC connection and on every reader it
+     * hands out, and ships them allow_active only: without them only root
+     * reaches a smart card, and gpg's scdaemon, opensc, ykman and
+     * openconnect's certificate login all read "access denied". A card is
+     * its holder's own device and its PIN is the card's to check, so this is
+     * the same grant a logged-in desktop would get from the policy itself.
+     */
+    case "org.debian.pcsc-lite.access_pcsc":
+    case "org.debian.pcsc-lite.access_card":
+        return polkit.Result.YES;
+
     /* kdos-net: the list, joining, forgetting, and the wifi toggle. */
     case "org.freedesktop.NetworkManager.network-control":
     case "org.freedesktop.NetworkManager.wifi.scan":
@@ -64,6 +80,17 @@ polkit.addRule(function (action, subject) {
      */
     case "org.freedesktop.NetworkManager.wifi.share.open":
     case "org.freedesktop.NetworkManager.wifi.share.protected":
+        return polkit.Result.YES;
+
+    /*
+     * mmcli: unlocking a SIM, enabling a modem, and its text messages.
+     * NetworkManager needs neither — it is root, and polkit answers root
+     * without reading a rule — so these are for the person at a terminal,
+     * whose carrier's data-limit warnings arrive as SMS. ModemManager is built
+     * -Dpolkit=strict, which ships both allow_active only.
+     */
+    case "org.freedesktop.ModemManager1.Device.Control":
+    case "org.freedesktop.ModemManager1.Messaging":
         return polkit.Result.YES;
     }
 

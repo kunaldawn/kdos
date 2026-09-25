@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = uchardet
+version     = 0.0.8
+release     = 1
+source      = https://www.freedesktop.org/software/$name/releases/$name-$version.tar.xz
+sha256      = e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0  uchardet-0.0.8.tar.xz
+description = Guesses the character encoding of a text file — how mpv reads a subtitle that is not UTF-8
+homepage    = https://www.freedesktop.org/wiki/Software/uchardet/
+depends     = cmake

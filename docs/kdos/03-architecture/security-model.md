@@ -35,7 +35,7 @@ KDOS's own.
 | `passwd`, `chage`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
 | `pkexec`, `polkit-agent-helper-1` | polkit | Authorised privileged actions |
 | `ssh-keysign` | OpenSSH | Host-based authentication |
-| `dbus-daemon-launch-helper` | dbus | System bus activation |
+| `dbus-daemon-launch-helper` | dbus | System bus activation — `root:messagebus`, mode `4110`, so only the bus can run it |
 | `mount.nfs` | nfs-utils | Mounting an NFS share named in `fstab` as an ordinary user |
 | `unix_chkpwd` | pam | How `pam_unix` reads the 0600 shadow file for a caller that is not root — without it every unprivileged PAM check, `wayvnc`'s included, is refused |
 | `fusermount3` | libfuse | Mounting a userspace filesystem from a session with no user namespace — sshfs, gocryptfs, fuse-overlayfs, the document portal, `rclone mount`, and `restic mount` through the `fusermount` link beside it |
@@ -63,7 +63,9 @@ survive all three hops the system makes them take — the compressed system
 image, the installer's copy, and the pack image format — with no extended
 attribute anywhere in the chain.
 
-`kdos doctor` checks the four critical ones, because losing a setuid bit is the
+`kdos doctor` checks the five critical ones — `kdos-checkpass`, `kdos-resctl`,
+`newuidmap`, `newgidmap`, and `dbus-daemon-launch-helper` with its group,
+`messagebus` — because losing a setuid bit is the
 worst *silent* failure in the system. An archive copy without the right flag is
 all it takes.
 
@@ -83,7 +85,13 @@ KDOS ships it with none of that: no setgid bit, no `plocate` group, no shared
 database. The index is built **per user**, into that user's own cache, by that
 user's own timer — so it can only ever contain paths that user could already
 list, and the visibility check has nothing left to guard. `updatedb -o` and
-`$LOCATE_PATH` are upstream's own flags for it; nothing is patched.
+`--require-visibility no` are upstream's own flags for building it; the second
+is not optional, because with the check on `updatedb` insists on the `plocate`
+group and writes nothing. `$LOCATE_PATH` names it to the reader, and that is
+the one patch: upstream searches its compiled-in `/var/lib` database first and
+stops at the first database it cannot open, so on a system with no shared
+database every unpatched search fails before it reaches the user's own.
+Patched, a set `$LOCATE_PATH` replaces the default rather than following it.
 
 That is the reasoning the rest of this page uses. A mechanism is not made safe
 here, it is made unnecessary. The alternative would have been a third
@@ -157,8 +165,11 @@ The image ships these in `/etc/passwd`, `/etc/group` and `/etc/shadow`:
 | `lp` | 10:10 | CUPS |
 | `nobody` | 99:99 | Anything that asks for an unprivileged account by that name |
 
-`polkitd`, `avahi`, `nm-openvpn`, `pcscd`, `prosody` and `tcpdump` are made by their ports'
+`polkitd`, `avahi`, `avahi-autoipd`, `geoclue`, `mosquitto`, `nm-openvpn`, `pcscd`, `postgres`,
+`prosody` and `tcpdump` are made by their ports'
 `postinstall.sh` with `groupadd -r` and `useradd -r`, which pick a free id.
+The group `brlapi` is made the same way by `brltty`'s, with the desktop account
+in it: it is the group brltty's polkit rule admits to BrlAPI.
 Every id a shipped account uses therefore has a line of its own in both files:
 a primary gid with no `/etc/group` line looks free to `groupadd -r`, which
 would hand it to another daemon's group. A group a udev rule names has to exist
@@ -177,7 +188,13 @@ authorisation design.
 The gate is the peer's credentials, not the socket's mode. Every socket is mode
 0666 and anyone may connect; the daemon reads the connecting process's real
 user id from the kernel with `SO_PEERCRED` and answers `err not permitted` to
-anyone who is not root or in `wheel`. A mode that *looked* like the
+anyone it does not admit. Root and `wheel` reach every verb. `seat`, the group
+seatd hands the display to, also reaches what the person at the machine needs
+whether or not they administer it: `kdos-powerd`'s suspend, power-off and
+reboot, all of `kdos-mountd`, and `kdos-oomd`'s status. The installer keeps the
+desktop user in `seat` and takes a non-administrator out of `wheel`, so that
+account keeps the lid and the power keys and loses sudo, the polkit admin
+actions and every configuration verb. A mode that *looked* like the
 authorisation is a mode somebody eventually loosens, and there is nothing in
 the message a client can forge.
 
@@ -195,7 +212,7 @@ prints cannot drift from what the socket decides.
 The client never names a path. Every verb takes an identifier out of a list the
 daemon itself published a moment earlier, or out of a list compiled into it.
 There is nothing to aim: the design where a daemon takes a device and a mount
-point ends at mounting a stick over `/etc` from any shell in `wheel`.
+point ends at mounting a stick over `/etc` from any shell at the seat.
 `kdos-powerd accent` is the tightest case — the argument must resolve against
 `libkcolor`'s own scheme table, of which there are currently eight, so the
 daemon links the palette rather than copying a character class out of it.
@@ -229,9 +246,9 @@ security context open for that box's lifetime.
 
 ## polkit, and why the desktop has no authentication agent
 
-polkit is installed and `polkitd` is started by the init system. Four things
-on the image are built against it — NetworkManager, `bolt`, `fwupd` and
-`upower` — and NetworkManager's actions are the only ones a KDOS surface calls.
+polkit is installed and `polkitd` is started by the init system. NetworkManager,
+ModemManager, `bolt`, `fwupd`, `upower`, `fprintd`, `pcscd` and `brltty`'s
+BrlAPI server ask it, as does ModemManager on GeoClue's behalf, and NetworkManager's actions are the only ones a KDOS surface calls.
 What follows is measured against the shipped image, not against how polkit
 behaves on a distribution that has a session manager.
 
@@ -263,17 +280,34 @@ setuid, so it could check a password, through the same PAM `system-auth` stack
 `sudo` uses — but nothing ever asks it to, because a flat refusal raises no
 challenge for an agent to answer.
 
-The same reasoning reaches the other three consumers, and it is why none of
-them has a working privileged path here. Their actions are `auth_admin`, which
-is a challenge, and a challenge with no agent is a refusal; `bolt` ships a rule
-of its own that would grant `wheel`, but it tests `subject.active` and
-`subject.local`, which are never true on this machine, so it never fires. A
-thunderbolt enrolment or a firmware update is therefore a `sudo` away, not a
-prompt away.
+The same reasoning reaches `bolt`, `fwupd` and `upower`, and it is why none of
+them has a privileged path for the desktop user. Their actions are
+`auth_admin`, which is a challenge, and a challenge with no agent is a refusal;
+`bolt` and `fwupd` ship rules of their own that would grant `wheel`, but both
+test `subject.active` and `subject.local`, which are never true on this
+machine, so neither fires. `fprintd`'s enrol and verify actions are
+`allow_active` only. A thunderbolt enrolment, a firmware update or a
+fingerprint enrolment is therefore a `sudo` away, not a prompt away — polkit
+authorises uid 0 for every action.
+
+Three consumers are granted all the same, each for its own reason. `pcscd` asks
+on every PC/SC connection and allows only an active session, so without a
+grant no user reaches a smart card; the card is its holder's own device behind
+its own PIN, and `50-kdos.rules` grants both of its actions to `wheel`.
+ModemManager is built `-Dpolkit=strict`, which ships unlocking a SIM and
+reading its text messages `allow_active` only; NetworkManager needs no grant to
+drive a modem, being root, so `50-kdos.rules` grants `Device.Control` and
+`Messaging` to `wheel` for `mmcli` and nothing else of ModemManager's.
+`brltty`'s BrlAPI server asks for `org.a11y.brlapi.write-display`, and the rule
+brltty ships grants it to the `brlapi` group with no session test, so it works
+here unchanged. GeoClue's rule is the same shape: it grants ModemManager's
+`Device.Control` and `Location` to the `geoclue` account alone, with no session
+test, so the location service can switch on a modem's GPS; nobody logs in as
+that account.
 
 So the answer is a rules file, and there is no agent on this system.
-`fs/etc/polkit-1/rules.d/50-kdos.rules` names the actions this desktop calls
-and grants them to `wheel`. The rules file is also the form that degrades
+`fs/etc/polkit-1/rules.d/50-kdos.rules` names the actions a shipped surface or user program
+calls and grants them to `wheel`. The rules file is also the form that degrades
 gracefully: if a session provider is ever added, an explicit grant to `wheel`
 stays exactly as narrow as it was written, while a bus-policy grant would have
 to be unpicked.
@@ -301,15 +335,22 @@ That grant does let anybody in `wheel` read every stored passphrase. It is a
 shortcut rather than a new capability: the shipped sudoers line is
 `%wheel ALL=(ALL) ALL`, and the passphrases are files under
 `/etc/NetworkManager` that `sudo cat` prints. What the file still withholds is
-everything outside networking-as-a-user — the hostname, the machine-wide
+everything outside networking-as-a-user and smart-card access — the hostname, the machine-wide
 resolver, checkpoints, sleep and a daemon reload.
 
 `polkitd` is started by `/etc/init.d/41_polkitd.sh` rather than left to D-Bus
-activation. Activation would have dbus-daemon, running as `messagebus`, start a
-`User=root` service through `dbus-daemon-launch-helper` — which means the whole
-of this machine's network authorisation would hang off one setuid bit on a
-foreign binary. When that fails it fails silently: polkitd never starts, every
-check is refused, and the only symptom is a control that does nothing.
+activation. Activation has dbus-daemon, running as `messagebus`, start a
+`User=root` service through `dbus-daemon-launch-helper`, which it may execute
+only through the helper's group — and kpkg rolls every package `root:root`, so
+that group exists only because `dbus`'s `postinstall.sh` puts it back.
+Starting polkitd directly keeps the whole of this machine's network
+authorisation off that one dependency. When
+activation fails it fails silently: the service never starts, every call is
+refused, and the only trace is a `Spawn.ExecFailed` in the log. `kdos doctor`
+checks the helper's owner, group and mode for that reason. ModemManager is
+started by `/etc/init.d/42_modemmanager.sh` for the same reason. The daemons
+that are left to activation — `wpa_supplicant`, `fprintd`, `fwupd`, `boltd`,
+`upower`, `geoclue` and NetworkManager's dispatcher — are the ones that depend on it.
 
 The rules file and its directory are owned by root, and the build has to say
 so, because git records no owner either. polkitd reads every rule it finds with
@@ -411,6 +452,10 @@ does not pretend to have one. A memory budget is enforced by `kdos-oomd` rather
 than by the engine, because rootless containers on a machine with no cgroup
 delegation accept a memory limit and ignore it.
 
+A pulled image is not verified. `/etc/containers/policy.json` is upstream's
+default, which accepts any image and checks no signature, so a base image is
+trusted as far as the registry and the TLS connection to it are.
+
 ## Mount options
 
 | Mounted | Options |
@@ -423,6 +468,13 @@ delegation accept a memory limit and ignore it.
 `exec = yes` in the removable-media configuration is how somebody says they
 meant it. A setuid root binary on a stick from another machine is a local root
 hole that predates every other consideration on this page.
+
+`/tmp` is one directory shared by every user and written by every root job — the
+init scripts, the timers, a package's hooks. `/etc/sysctl.conf` sets
+`fs.protected_symlinks`, `fs.protected_hardlinks` and `fs.protected_fifos` to 1
+and `fs.protected_regular` to 2, which the kernel leaves at 0. At 0, a user who
+plants a link, a FIFO or a file at a name a root job is about to write in a
+sticky world-writable directory turns that write onto any file on the machine.
 
 ## Signing and trust
 
@@ -448,10 +500,13 @@ The rest of the signing design is in [Packaging](packaging.md).
 
 ### TLS trust anchors
 
-A third trust root, and it is not a keyring: `/etc/ssl/cert.pem`, the Mozilla CA
-bundle `ca-certificates` installs as one file. `/etc/ssl/certs/ca-certificates.crt`
-and `/etc/ssl/ca-bundle.crt` are symlinks to it, so a consumer configured against
-any of the three reads the same 121 certificates.
+A third trust root, and it is not a keyring: the Mozilla CA bundle
+`ca-certificates` installs as one file, `/usr/share/ca-certificates/mozilla.pem`,
+plus whatever local roots the administrator puts in
+`/etc/ca-certificates/trust-source/anchors/`. `/etc/ssl/cert.pem` is the two
+together — 121 Mozilla certificates and then each local one — and
+`/etc/ssl/certs/ca-certificates.crt` and `/etc/ssl/ca-bundle.crt` are symlinks to
+it, so a consumer configured against any of the three reads the same set.
 
 The bundle is built, not carried. The port pins `certdata.txt` at an NSS release
 tag — the port's version is that release — and converts it with curl's
@@ -463,14 +518,39 @@ so a rebuild after a root's expiry ships one certificate fewer.
 | Consumer | Reaches the bundle through |
 |---|---|
 | OpenSSL, and everything linked against it | `--openssldir=/etc/ssl`, which finds `cert.pem` |
-| GnuTLS, and everything linked against it | p11-kit's trust module, built `-D trust_paths=/etc/ssl/cert.pem` |
+| GnuTLS, and everything linked against it | p11-kit's trust module, built `-D trust_paths=/usr/share/ca-certificates/mozilla.pem:/etc/ca-certificates/trust-source` |
 | Python code that asks `certifi.where()`, `requests` among it | `python3-certifi`, whose `certifi/cacert.pem` is a symlink to `/etc/ssl/cert.pem` |
 
 GnuTLS is configured `--with-default-trust-store-pkcs11="pkcs11:"`, so p11-kit is
-its only source of anchors. p11-kit gives a trust path that is a plain **file** —
-not a directory — the anchor flag and marks every certificate parsed out of it
-`CKA_TRUSTED`, which is why there is no `anchors/` directory to populate and
-nothing to regenerate when the bundle is updated.
+its only source of anchors. p11-kit gives a trust path that is a plain **file** the
+anchor flag and marks every certificate parsed out of it `CKA_TRUSTED`; of a
+trust path that is a **directory** it trusts only what is in the `anchors/`
+subdirectory. GnuTLS therefore sees a local root the moment the file is there.
+
+OpenSSL does not: `/etc/ssl/cert.pem` is a generated file, and
+`update-ca-certificates` writes it — the Mozilla bundle, then the certificate
+blocks of every PEM file in the anchors directory, renamed into place so no
+reader sees half of it. `ca-certificates` runs it from its install hook, so an
+upgrade rewrites the bundle with the local roots still in it; the administrator
+runs it after adding or removing one. A DER file in the anchors directory has no
+certificate block, is skipped with a warning, and is then trusted by GnuTLS
+alone. To trust a local CA:
+
+```sh
+cp root.crt /etc/ca-certificates/trust-source/anchors/   # PEM
+update-ca-certificates
+```
+
+`caddy trust` does the same by itself: its trust-store library finds the
+anchors directory, writes Caddy's local root there, and runs
+`trust extract-compat`, which p11-kit hands to `update-ca-certificates`.
+Firefox and other NSS programs keep their own store and are not covered.
+
+GnuTLS reads a system-wide priority policy from `/etc/gnutls/config`. The image
+ships none, so every consumer uses the library's `NORMAL` priorities; a file
+written there restricts or widens them for every GnuTLS program at once. The path
+is compiled in from `--sysconfdir=/etc`, and a policy written anywhere else is
+ignored without a warning.
 
 The two halves fail independently, and the failure reads as a remote fault. Point
 the trust path at something the image does not ship and p11-kit loads zero tokens
@@ -596,8 +676,8 @@ who knows.
   member logged in over SSH and a background process running as them exactly as
   it covers somebody at the console. Adding a session provider later would not
   narrow it; the rule would have to be rewritten. And every root daemon answers
-  `wheel`. There is no separation between "can change the theme" and "can
-  reformat the disk".
+  `wheel` on every verb. There is no separation between "can change the theme"
+  and "can reformat the disk".
 - **A base naming a container registry fetches unsigned content** from somebody
   else's server. This is an online operation, the strict-signature setting does
   not cover it, and the tool announces it before doing anything rather than

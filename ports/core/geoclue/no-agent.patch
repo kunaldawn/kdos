@@ -1,0 +1,35 @@
+An empty [agent] whitelist means no agent can ever register, so a client
+is neither held for one at GetClient nor made to wait out the agent
+timeout at Start: both complete at once.
+
+diff -ru a/src/gclue-service-client.c b/src/gclue-service-client.c
+--- a/src/gclue-service-client.c
++++ b/src/gclue-service-client.c
+@@ -600,6 +600,13 @@
+         data->accuracy_level = ensure_valid_accuracy_level
+                 (data->accuracy_level, GCLUE_ACCURACY_LEVEL_EXACT);
+ 
++        /* No agent whitelisted == no agent to wait for */
++        if (priv->agent_proxy == NULL &&
++            gclue_config_get_num_allowed_agents (config) == 0) {
++                complete_start (data);
++                return TRUE;
++        }
++
+         /* No agent == No authorization */
+         if (priv->agent_proxy == NULL) {
+                 /* Already a pending Start()? Denied! */
+diff -ru a/src/gclue-service-manager.c b/src/gclue-service-manager.c
+--- a/src/gclue-service-manager.c
++++ b/src/gclue-service-manager.c
+@@ -347,7 +347,9 @@
+         user_id = gclue_client_info_get_user_id (info);
+         agent_proxy = g_hash_table_lookup (priv->agents,
+                                            GINT_TO_POINTER (user_id));
+-        if (agent_proxy == NULL) {
++        if (agent_proxy == NULL &&
++            gclue_config_get_num_allowed_agents
++                        (gclue_config_get_singleton ()) > 0) {
+                 /* Its possible that geoclue was just launched on GetClient
+                  * call, in which case agents need some time to register
+                  * themselves to us.

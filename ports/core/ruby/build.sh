@@ -11,9 +11,11 @@
 
 patch -p1 -i "$PORT_SRC/musl-main-stack.patch"
 
-# YJIT AND ZJIT ARE OFF. Both are Rust, and configure turns each on by itself
-# when it finds a new enough rustc, so leaving them unset makes the interpreter
-# depend on whether the rust port happens to be installed in the chroot.
+# YJIT IS ON AND ZJIT IS OFF. Both are Rust, and configure turns each on by
+# itself when it finds a new enough rustc, so each is named explicitly: rust is
+# in `depends`, so YJIT is always built, and `ruby --yjit` (or RUBY_YJIT_ENABLE)
+# turns it on per process. ZJIT is Ruby 4.0's experimental method JIT and stays
+# out of a shipped interpreter.
 #
 # --disable-install-doc skips the rdoc and ri indexes, which install generates
 # by running rdoc over the whole standard library; the manual pages under man/
@@ -26,7 +28,7 @@ patch -p1 -i "$PORT_SRC/musl-main-stack.patch"
 	--enable-shared \
 	--disable-rpath \
 	--disable-install-doc \
-	--disable-yjit \
+	--enable-yjit \
 	--disable-zjit \
 	--with-gmp \
 	--with-mantype=man

@@ -9,9 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# libdw only adds source lines to a libunwind backtrace, so it is off with
-# libunwind: the libunwind port is LLVM's, which installs no libunwind.pc for
-# meson to find, and libdw alone would be linked and never called.
+# libunwind (libunwind-nongnu) is what gst_debug_get_stack_trace() and the
+# leaks tracer's stack-traces-flags walk the stack with; musl has no
+# backtrace(), so without it both print nothing. libdw adds the source file and
+# line to each frame. Both are named, so a missing one fails setup.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \
@@ -20,8 +21,8 @@ meson setup build \
 	-Dexamples=disabled \
 	-Dtests=disabled \
 	-Dptp-helper=disabled \
-	-Dlibdw=disabled \
-	-Dlibunwind=disabled \
+	-Dlibdw=enabled \
+	-Dlibunwind=enabled \
 	-Dbash-completion=enabled \
 	-Dnls=disabled \
 	-Dgst_debug=true

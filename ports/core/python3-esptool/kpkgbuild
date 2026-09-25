@@ -13,11 +13,11 @@ version     = 5.4.0
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/e/esptool/esptool-$version.tar.gz
 sha256      = fd756598db0a26c9975fa18511b08687c54bf2ce7322ede80cf1f5117dad1f50  python3-esptool-5.4.0.tar.gz
-sha256      = 2f7c85b7a8ff946d173a6e13a646dd63c9e4c61682179abede9e8d4be473a30b  python3-esptool-vendor-5.4.0.tar.xz
+sha256      = 82077d588e62a2644bc2db194eecb4bbf40fd0be98398a8308f479e2676b1c54  python3-esptool-vendor-5.4.0.tar.xz
 description = Talk to the ESP8266 and ESP32 ROM bootloader over serial
 homepage    = https://github.com/espressif/esptool
-depends     = python3 python3-setuptools python3-pip python3-pyserial python3-cryptography python3-yaml python3-pygments python3-click
+depends     = python3 python3-setuptools python3-pip python3-pyserial python3-cryptography python3-yaml python3-pygments python3-click python3-rich
 vendoring   = python
 pyrequirements = no
 pyruntime   = no
-pypackages  = bitstring==4.3.1 bitarray reedsolo PyYAML intelhex rich-click rich markdown-it-py mdurl Pygments esp-pylib websockets
+pypackages  = bitstring==4.3.1 bitarray reedsolo PyYAML intelhex rich-click Pygments esp-pylib websockets

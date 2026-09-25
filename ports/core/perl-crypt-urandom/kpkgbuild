@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-crypt-urandom
+version     = 0.55
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/D/DD/DDICK/Crypt-URandom-$version.tar.gz
+sha256      = ef9f44141073c13573e85b148ff9a9089c45825b7d6608d832e4263899d3a2d4  perl-crypt-urandom-0.55.tar.gz
+description = The operating system's cryptographic random source for perl
+homepage    = https://metacpan.org/dist/Crypt-URandom
+depends     = perl

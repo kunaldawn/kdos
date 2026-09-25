@@ -6,8 +6,53 @@
 # enumerated and listed by lsusb — which presents as a dead dongle. This file
 # is the access half; neither works alone.
 
+# Every RTL2832U stick librtlsdr's device table knows — the Realtek reference
+# ids, and the Terratec, Compro, Dexatek, Peak/SVEON, MyGica and other branded
+# sticks. rtl-sdr's own rtl-sdr.rules lists the same ids with
+# GROUP="plugdev", a group this system does not have, so its recipe does not
+# install it and this list is kept to it instead.
 SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="2832", GROUP="dialout", MODE="0660"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="2838", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0413", ATTR{idProduct}=="6680", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0413", ATTR{idProduct}=="6f0f", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0458", ATTR{idProduct}=="707f", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00a9", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00b3", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00b4", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00b5", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00b7", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00b8", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00b9", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00c0", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00c6", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00d3", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00d7", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0ccd", ATTR{idProduct}=="00e0", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1554", ATTR{idProduct}=="5020", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15f4", ATTR{idProduct}=="0131", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15f4", ATTR{idProduct}=="0133", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="185b", ATTR{idProduct}=="0620", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="185b", ATTR{idProduct}=="0650", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="185b", ATTR{idProduct}=="0680", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d393", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d394", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d395", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d397", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d398", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d39d", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d3a4", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d3a8", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d3af", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1b80", ATTR{idProduct}=="d3b0", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d19", ATTR{idProduct}=="1101", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d19", ATTR{idProduct}=="1102", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d19", ATTR{idProduct}=="1103", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d19", ATTR{idProduct}=="1104", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f4d", ATTR{idProduct}=="a803", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f4d", ATTR{idProduct}=="b803", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f4d", ATTR{idProduct}=="c803", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f4d", ATTR{idProduct}=="d286", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f4d", ATTR{idProduct}=="d803", GROUP="dialout", MODE="0660"
 
 # HackRF One / Jawbreaker
 SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", GROUP="dialout", MODE="0660"

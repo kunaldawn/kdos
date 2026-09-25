@@ -37,9 +37,24 @@
 # leaves JACK on `auto` (ffmpeg, mpv, sdl3, mpd, portaudio) gains it or not by
 # build order.
 #
-# Every other `auto` feature is named. The ones pinned off need a library that
-# is not a port (libmysofa, libebur128, onnxruntime, libffado, lc3plus, the
-# LDAC decoder, spandsp) or a subsystem this image does not use (SELinux).
+# -Dfftw=enabled gives the filter-chain convolver FFTW's single-precision
+# transforms (fftw3f) for room correction and headphone impulse responses;
+# without it the convolver runs on its bundled pffft. -Dlibpulse=enabled builds
+# module-pulse-tunnel, the one module that sends a stream to a PulseAudio server
+# on another machine; libpulse is the client library only, so it adds no second
+# server beside pipewire-pulse.
+#
+# Every other `auto` feature is named, and each one pinned off has one of these
+# reasons:
+#   - its library is not a port: libmysofa, libebur128, onnxruntime, libffado,
+#     roc-toolkit, lv2 (lilv), libcanberra, lc3plus, the LDAC decoder, spandsp;
+#   - it is excluded by rule: every systemd and logind option, x11 and
+#     x11-xfixes, and SELinux, which this image does not use;
+#   - it has no consumer here: vulkan builds only the SPA compute source and
+#     blit filters, which no graph or session config on this image loads; sdl2
+#     only the examples (which are off); gsettings only the
+#     GNOME schema that module-gsettings reads, and flatpak and snap only the
+#     sandbox detection for those two packagers.
 
 # THE LIMITS FILE IS NOT INSTALLED -- see -Drlimits-install below. Nothing on
 # this image could read it and nobody could match it: limits.d is PAM's and
@@ -77,8 +92,8 @@ meson setup build \
 	-Dbluez5-codec-ldac-dec=disabled \
 	-Dbluez5-plc-spandsp=disabled \
 	-Dreadline=enabled \
-	-Dlibpulse=disabled \
-	-Dfftw=disabled \
+	-Dlibpulse=enabled \
+	-Dfftw=enabled \
 	-Dopus=enabled \
 	-Dgstreamer=enabled \
 	-Dgstreamer-device-provider=enabled \

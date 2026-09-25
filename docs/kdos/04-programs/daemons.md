@@ -22,11 +22,25 @@ Every root daemon in this system is built the same way. A new one that is not is
 
 - **Foreground, under `ksvc`.** No daemonising and no forking into the background. The supervisor
   owns the process and writes its pid file.
+- **Output goes to syslog.** The supervisor points the daemon's stdout and stderr, and its own
+  *Starting* and *Exited* lines, at a forwarder in its process group. Each line becomes a
+  daemon-facility syslog message tagged with the service name, and is also appended to
+  `/run/kdos-svc.<name>.log`, which is capped at 64 KiB with one previous generation as `.old`. The
+  file is what remains before `syslogd` is up and while it restarts. What the daemon inherited is
+  never kept, because under `rcS` that is the boot step's capture file on the `/run` tmpfs: a
+  crash-looping daemon would grow it in RAM until the reboot, and a foreground `chronyd -d` would
+  never reach `/var/log/messages`. The forwarder ignores the SIGTERM `service stop` sends the
+  group and exits when the daemon's end of the pipe closes, so what a daemon prints while it shuts
+  down is kept, and its writes never meet a pipe with no reader.
 - **One socket in `/run`**, named after the daemon.
 - **Mode 0666, with the peer's credentials as the real gate.** Anyone may connect; the daemon reads
   the connecting process's real user id from the kernel via `SO_PEERCRED` and answers `err not
-  permitted` to anyone who is not root or in `wheel`. A mode that *looked* like the authorisation is
-  a mode somebody eventually loosens.
+  permitted` to anyone it does not admit. What changes the system's configuration answers root and
+  `wheel`, the administrators. What the person at the machine needs whether or not they administer
+  it — suspend, power-off, reboot, mounting their own stick, `kdos-oomd`'s status — also answers
+  `seat`, the group seatd hands the display to. The installer keeps the desktop user in `seat` and
+  takes a non-administrator out of `wheel`, so that account keeps the lid and the power keys and
+  loses sudo. A mode that *looked* like the authorisation is a mode somebody eventually loosens.
 - **One implementation of that gate, `libkbase`'s `kb_uid_allowed()`.** No daemon keeps a copy. A
   copy per daemon is a rule that gets tightened on one socket and stays loose on the other four,
   with nothing to show which is which; a daemon that needs a different rule states the difference
@@ -42,19 +56,24 @@ Every root daemon in this system is built the same way. A new one that is not is
   it would do without doing it. That is the only way selection logic this consequential gets tested.
 - **A skip check in the init script, before supervision.** A daemon that cannot do its job on this
   machine is skipped and says why, because a refusing daemon under a respawn loop is a boot that
-  never settles.
+  never settles. A refusal only the daemon can detect is an exit status the script names with
+  `supervise --final-exit`, on which the supervisor stops rather than restarting it.
 
 ## kdos-powerd
 
 Suspend, poweroff and reboot for a desktop that is not root, plus the handful of `/etc` writes that
 are an administrator's rather than a user's.
 
+`ping`, `suspend`, `poweroff` and `reboot` answer root, `seat` and `wheel`. Every other verb answers
+root and `wheel` only, and the daemon checks that against the four words it lets `seat` use, so a
+verb added later is an administrator's by default.
+
 | Verb | Does |
 |---|---|
 | `suspend` | Suspend to RAM |
 | `poweroff` | Power off |
 | `reboot` | Reboot |
-| `timezone <Area/City>` | Point `/etc/localtime` and `TZ` at a zone |
+| `timezone <Area/City>` | Point `/etc/localtime` and `TZ` at a zone, and set the Wi-Fi country from it |
 | `autologin <user>\|off` | Which account tty1 logs in without asking |
 | `firewall list\|<service> on\|off` | Which named services answer the network |
 | `accent <scheme>` | Repaint the boot menu, the text console and the splash |
@@ -67,10 +86,19 @@ anything is unmounted. Only if the daemon is still alive sixty seconds later, wh
 ignored the signal, does it call the kernel directly.
 
 `suspend` asks before it locks. `ping` runs the same credentials gate suspend does, so a caller
-outside `wheel` — or a machine with no `kdos-powerd` at all — is refused before the screen is
-locked. Locking and then not suspending is a password prompt in exchange for nothing, off one
-click on the panel's power item. `--no-lock`, or `KDOS_NO_LOCK_ON_SUSPEND=1` for a caller that
+in neither `seat` nor `wheel` — or a machine with no `kdos-powerd` at all — is refused before the
+screen is locked. Locking and then not suspending is a password prompt in exchange for nothing, off
+one click on the panel's power item. `--no-lock`, or `KDOS_NO_LOCK_ON_SUSPEND=1` for a caller that
 cannot edit its own argument vector, skips the lock.
+
+The daemon is also the only thing on the machine that knows a suspend is happening — there is no
+logind to announce one — so it tells the two programs that must act around it. Before writing
+`mem` to `/sys/power/state` it calls NetworkManager's `Sleep(true)` through `dbus-send` and runs
+`tlp suspend`; after the write returns it runs `tlp resume` and then `Sleep(false)`. Without the
+first, NetworkManager wakes trusting a Wi-Fi association and a DHCP lease the time asleep has
+ended. Without the second, the radio states TLP saves and the settings firmware resets across S3
+are not restored. Each hook is skipped when its program is absent, and none of them can stop the
+suspend.
 
 ### accent
 
@@ -111,6 +139,15 @@ sourced the profile, which reads as the setting having done nothing. `TZ` is wri
 `:/etc/localtime`, the colon form that points musl at the same file, because that is the only value
 that cannot name different rules from the symlink beside it.
 
+The Wi-Fi country follows the zone. cfg80211 starts in the world regulatory domain, whose rules keep
+every 5 GHz DFS channel closed and cap transmit power until something names a country — and a
+driver that never takes one from an access point's beacons stays there. `zone.tab` maps each zone
+to exactly one country code, so the verb writes `options cfg80211 ieee80211_regdom=<CC>` to
+`/etc/modprobe.d/kdos-regdom.conf`, which holds from the next boot, and runs `iw reg set <CC>` for
+this one. A zone with no country, such as `UTC`, removes the file. Neither step failing fails the
+verb: a machine with no radio still has a timezone. The installer writes the same file from the
+zone chosen there.
+
 ### autologin
 
 `autologin` is here for the same reason the timezone is: `/etc/kdos/login.conf` is root's and the
@@ -133,13 +170,21 @@ a port could open any port; a client that can only name `ssh` opens exactly what
 says `ssh` is. `kdos-firewall` asks for the list rather than carrying a copy, so there is one answer
 to what a name means.
 
+The client takes `kdos-power firewall list` or `kdos-power firewall <name> on|off` and prints the
+daemon's whole reply on stdout, the `err` line included, exiting 1 on an `err`. For `list` that is
+a row per service (name, `on` or `off`, and what it opens, tab-separated) followed by `ok`. The
+surface reads it through a capture that discards stderr, so a reply sent there would be drawn as an
+empty table.
+
 The file is rewritten whole from the names that are on. Merging would mean parsing nftables syntax
 to find what to remove, and a parser that got it wrong would leave a port open that the surface
 showed as closed. Anything hand-written belongs in another file under `/etc/nftables.d`, which the
 daemon never reads or touches.
 
-The ruleset is checked before it is applied. `/etc/nftables.conf` begins with `flush ruleset`, so a
-bad file half-applied is a machine with no firewall at all; `nft --check` first means a bad ruleset
+The ruleset is checked before it is applied. `/etc/nftables.conf` deletes and rebuilds its own
+`inet filter` table and leaves every other table alone — netavark's NAT for rootful containers and
+NetworkManager's for the hotspot survive a toggle. A bad file half-applied would be a machine with
+no firewall at all; `nft --check` first means a bad ruleset
 is refused and the previous one stays in the kernel.
 
 ### Diagnosis and testing
@@ -152,7 +197,8 @@ kdos-powerd --firewall <service> <on|off>
 ```
 
 `--explain` answers "would this user be allowed, and why", which is what a dead power key gets
-diagnosed with.
+diagnosed with. It names the tier: every verb for `wheel`, only the power verbs for a `seat` member,
+nothing for anyone else.
 
 The three write flags exist for the same reason `--explain` does. The gate is the peer credentials
 on a connection and cannot be exercised without two uids, so each verb's own rules would otherwise
@@ -255,8 +301,8 @@ Five rules:
   the kill stands.
 
 Nothing in the protocol names a process, so there is nothing to aim. The socket answers `ping` and
-`status` and takes no argument; killing is the daemon's own decision or it does not happen. At most
-one kill per ten seconds.
+`status` and takes no argument, to root, `seat` and `wheel`; killing is the daemon's own decision or
+it does not happen. At most one kill per ten seconds.
 
 `--fixture <dir>` prints who would be killed and signals nobody.
 
@@ -298,7 +344,10 @@ between them.
 
 The client asks for an index out of a list the daemon published, and the daemon decides the device,
 the mountpoint and the options. Every "just take a path and a mountpoint" design ends at mounting a
-stick over `/etc` from any shell in `wheel`.
+stick over `/etc` from any shell at the seat.
+
+Every verb answers root, `seat` and `wheel`: mounting a stick is the desktop user's whether or not
+they administer the machine.
 
 A request is one line, and two frames where a secret is involved. Frame one is a verb and up to
 five tokens; frame two is the exact byte count frame one declared. A passphrase is a frame and not
@@ -574,7 +623,8 @@ rather than an accident.
 
 ## xdg-desktop-portal-kdos
 
-The portal backend: the file chooser, settings, and the application chooser. Covered in
+The portal backend: the file chooser, settings, the application chooser, and the access question
+that Camera, Screenshot and Location ask through `kdos-prompt`. Covered in
 [The session](../03-architecture/session.md#the-kdos-backend), including the two rules that matter
 most — every request is answered, and the bus loop does not block on the dialog.
 
@@ -595,8 +645,9 @@ A new one matches the family when all of these are true:
 1. It runs in the foreground and is started by an `init.d` script under `ksvc`.
 2. Its script skips with a reason when the machine cannot support it, before supervision.
 3. It owns exactly one socket in `/run`, mode 0666.
-4. It authorises on the peer's credentials — root and `wheel` — by calling `kb_uid_allowed()`, not
-   by writing its own copy of that test, and answers `err not permitted` otherwise.
+4. It authorises on the peer's credentials — root and `wheel`, and `seat` as well for what the
+   person at the machine needs without administering it — by calling `kb_uid_allowed()`, not by
+   writing its own copy of that test, and answers `err not permitted` otherwise.
 5. No verb takes a path. Identifiers come from a list the daemon published.
 6. It has a `--fixture` mode that decides and prints without acting.
 7. It links only libraries whose every line you are willing to run as root.

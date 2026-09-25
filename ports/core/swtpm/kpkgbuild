@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = swtpm
+version     = 0.10.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/stefanberger/swtpm/archive/refs/tags/v$version.tar.gz
+sha256      = f61cf6f1e9bbcb4cefb30b70cafaf1c4df54c6961e65cfa63830e8ad0e220134  swtpm-0.10.2.tar.gz
+description = A software TPM for virtual machines — qemu's -tpmdev emulator backend
+homepage    = https://github.com/stefanberger/swtpm
+depends     = libtpms glib json-glib gnutls libtasn1 openssl libseccomp autoconf automake libtool perl pkgconf

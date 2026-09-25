@@ -12,7 +12,9 @@
  * The manifest is walked in REVERSE, so a directory is only reached after
  * everything inside it: an entry ending in `/` is a directory and gets rmdir
  * (which fails harmlessly while it still holds files another package owns),
- * anything else gets unlink.
+ * anything else gets unlink — unless another installed package claims the
+ * same file, under either spelling of a merged-/usr path, in which case the
+ * file is that package's and stays.
  *
  * There is deliberately no reverse-dependency check. `kpkgdel bash` will
  * remove bash. That is the distro this is.
@@ -46,7 +48,7 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 	}
 
 	kp_msg("Removing %s", name);
-	kp_triggers_note(trig, data);
+	kp_triggers_gone(trig, data);
 
 	const char *root = c->root[0] ? c->root : "/";
 
@@ -63,15 +65,25 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 		l = nl ? nl + 1 : NULL;
 	}
 
+	/* Loaded per package, after the previous one's entry is gone, so a
+	 * file two named packages both claim goes with the second. */
+	KpOwned *owned = kp_owned_load(c);
 	for (int i = n - 1; i >= 0; i--) {
 		char *full = kb_path_join(root, paths[i]);
 		size_t pl = strlen(paths[i]);
+		const char *rel = paths[i];
+		if (!strncmp(rel, "./", 2))
+			rel += 2;
+		const char *other = NULL;
 		if (pl && paths[i][pl - 1] == '/')
 			rmdir(full);	/* only when it is already empty */
+		else if ((other = kp_owned_other(owned, rel, name)))
+			kp_msg("Keeping %s: %s claims it", paths[i], other);
 		else
 			unlink(full);
 		free(full);
 	}
+	kp_owned_free(owned);
 
 	free(data);
 	unlink(dbfile);

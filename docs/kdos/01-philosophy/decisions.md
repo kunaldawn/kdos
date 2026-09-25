@@ -409,10 +409,9 @@ outright, which is every container on the machine. A process joining the namespa
 is `ENOENT`. The symptom is `EPERM` from `CLONE_NEWUSER` for uid 0 with the full capability set as
 readily as for anybody, on a kernel reporting `CONFIG_USER_NS=y`, no LSM, no seccomp filter and
 nothing on the command line; `/proc/self/mountinfo` gives it away, with the root mount present on
-the right device and a parent id that is not in the table. toybox owns the name
-`/usr/sbin/switch_root` on the finished image and is installed after util-linux, so the packaging
-step copies util-linux's own file by its real name and then refuses to build an initramfs whose
-`switch_root` is toybox's.
+the right device and a parent id that is not in the table. The toybox recipe compiles the applet
+out, so `/usr/sbin/switch_root` is util-linux's file, and the packaging step refuses to build an
+initramfs whose `switch_root` is toybox's.
 
 ## See also
 

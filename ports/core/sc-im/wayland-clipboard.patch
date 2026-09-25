@@ -1,0 +1,24 @@
+Subject: [PATCH] Default the clipboard commands to wl-copy and wl-paste
+
+The Makefile hard-codes xclip for :ccopy and :cpaste with `CFLAGS +=`,
+which a flag passed from outside cannot override.
+
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -61,14 +61,14 @@
+ #to copy to tmux clipboard:
+ #CFLAGS += -DDEFAULT_COPY_TO_CLIPBOARD_CMD=\""tmux load-buffer"\"
+ #to copy to X clipboard:
+-CFLAGS += -DDEFAULT_COPY_TO_CLIPBOARD_CMD=\""xclip -i -selection clipboard <"\"
++CFLAGS += -DDEFAULT_COPY_TO_CLIPBOARD_CMD=\""wl-copy <"\"
+ #to copy to OSX clipboard:
+ #CFLAGS += -DDEFAULT_COPY_TO_CLIPBOARD_CMD=\""pbcopy <"\"
+ #
+ # Choose one of the proposed commands for pasting from different clipboards:
+ # You can later change it at runtime.
+ #CFLAGS += -DDEFAULT_PASTE_FROM_CLIPBOARD_CMD=\""tmux show-buffer"\"
+-CFLAGS += -DDEFAULT_PASTE_FROM_CLIPBOARD_CMD=\""xclip -o -selection clipboard"\"
++CFLAGS += -DDEFAULT_PASTE_FROM_CLIPBOARD_CMD=\""wl-paste -n"\"
+ #CFLAGS += -DDEFAULT_PASTE_FROM_CLIPBOARD_CMD=\""pbpaste"\"
+ 
+ # Command to open file or link under cursor

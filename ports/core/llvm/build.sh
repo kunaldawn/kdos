@@ -18,6 +18,9 @@
 # HAVE_LIBEDIT that LLVMConfig exports, depend on build order.
 # LLVM_BINUTILS_INCDIR is what builds LLVMgold.so; it needs binutils'
 # plugin-api.h and is skipped without a word when the header is missing.
+# LLVM_TOOL_LLVM_IR2VEC_BUILD=OFF: llvm-ir2vec links two helper libraries
+# declared BUILDTREE_ONLY, which BUILD_SHARED_LIBS turns into shared objects
+# that are never installed, so the installed binary cannot start.
 cmake -S llvm -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_BUILD_TYPE=Release \
@@ -44,6 +47,7 @@ cmake -S llvm -B build -G Ninja \
 	-D LLVM_USE_PERF=ON \
 	-D LLVM_ENABLE_OCAMLDOC=OFF \
 	-D LLVM_INSTALL_UTILS=ON \
+	-D LLVM_TOOL_LLVM_IR2VEC_BUILD=OFF \
 	-D LLVM_ENABLE_LIBCXX=OFF \
 	-D LLVM_ENABLE_LLD=OFF \
 	-D LLVM_OPTIMIZED_TABLEGEN=ON \
@@ -65,3 +69,6 @@ DESTDIR=$PKG cmake --install build
 # release's own documents draw warnings, and -W would fail the build on them.
 cmake --build build --target docs-llvm-man
 install -Dm644 build/docs/man/*.1 -t "$PKG/usr/share/man/man1"
+# The manual set is built from every CommandGuide page, including the one for
+# the tool the configure line above leaves out.
+rm -f "$PKG/usr/share/man/man1/llvm-ir2vec.1"

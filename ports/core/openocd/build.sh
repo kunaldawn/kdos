@@ -19,10 +19,11 @@
 # would be narrower on a tree that happened to install libftdi or hidapi
 # late. Naming them turns a missing library into a configure error.
 # fs/etc/udev/rules.d/70-kdos-debug.rules and 70-kdos-serial.rules grant the
-# dialout group the probes in common use — CMSIS-DAP, ST-Link, J-Link, the
-# Espressif and Raspberry Pi probes and the FTDI adapters; the rest are
-# drivers root can open, and a local rule for its vendor id is what lets a
-# user open one.
+# dialout group every adapter enabled here, by the ids upstream's
+# contrib/60-openocd.rules lists. That file is never a rule here: it grants
+# a plugdev group and a uaccess tag, and neither exists on this system. An
+# adapter missing from those two files is one only root can open, and a line
+# for its id there is what lets a user open it.
 #
 # J-LINK LINKS THE libjaylink PORT. --disable-internal-libjaylink is what
 # makes it: the release tarball carries its own copy, and configure builds

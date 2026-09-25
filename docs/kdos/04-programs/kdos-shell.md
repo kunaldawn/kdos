@@ -572,7 +572,11 @@ The media title comes from whichever source can answer. MPRIS over the session b
 a desktop player speaks, and a player that speaks it also answers the transport keys beside the
 cell. mpd speaks none, so `kdos-mpctl watch` writes the same answer to
 `$XDG_RUNTIME_DIR/kdos/nowplaying` and the widget falls back to that file, reading it at most once
-a second because the draw is not on a tick. The file's leading `>` or `||` is the play state and is
+a second because the draw is not on a tick. The session starts the watcher, and mpd itself with
+`--no-daemon`, once an mpd configuration file exists in one of the places mpd looks
+(`~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf`). The image ships
+none, and mpd exits at once without one. The watcher outlives mpd: when mpd goes away it empties
+the file, looks again every five seconds, and exits when the login's runtime directory is removed. The file's leading `>` or `||` is the play state and is
 stripped before the title is drawn. One widget reads both, because two cells disagreeing about what
 is playing is worse than one that is sometimes empty.
 
@@ -582,7 +586,7 @@ The `disk` meter charts `/`, because a chart has room for one number. The warnin
 writable filesystem, so it reaches a separate `/home` or the stick somebody is copying onto.
 
 It walks `/proc/mounts` and calls `statvfs` on the meter's ten-second cadence. One `statvfs` per
-mount, and one on a network mount can block. `kdos-mountd` cannot answer this: it is wheel-gated,
+mount, and one on a network mount can block. `kdos-mountd` cannot answer this: it is gated to `seat` and `wheel`,
 its reply carries no free-space field, and it lists the media that are *not* mounted, which is the
 complement of the set that can be full.
 

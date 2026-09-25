@@ -341,7 +341,7 @@ else supplies it.
 
 The generators that are ports: `scdoc`, `help2man`, `asciidoc` (`a2x`), `asciidoctor`, `xmlto`,
 `libxslt` (`xsltproc`) with `docbook-xsl`, `python3-docutils` (`rst2man`), `perl` (`pod2man`),
-`texinfo`, `go-md2man`, `lowdown` and `python3-sphinx` (`sphinx-build -b man`). A page that needs
+`texinfo`, `go-md2man`, `lowdown`, `xmltoman` and `python3-sphinx` (`sphinx-build -b man`). A page that needs
 a generator that is not a port — `ronn` — is not generated.
 
 A build that looks for `asciidoctor` on `$PATH` uses it whenever it is there, so a recipe that
@@ -368,8 +368,8 @@ runs its unit tests, and two of them convert a time in a named zone: without the
 they print UTC and the install fails.
 
 `python3-sphinx` installs Sphinx, and the part of its closure that is not a port, under
-`/usr/lib/python3-sphinx` rather than in `site-packages`: other ports vendor `requests` and
-`urllib3` into `site-packages`, and two packages owning one path is a conflict. The closure carries
+`/usr/lib/python3-sphinx` rather than in `site-packages`: `requests` and `urllib3` are ports in
+`site-packages` already, and two packages owning one path is a conflict. The closure carries
 the default theme, `myst-parser` for Markdown sources and `sphinx-argparse`. The commands in
 `/usr/bin` put that prefix on `PYTHONPATH` and run Sphinx, and they are the only way in:
 `import sphinx` from a plain `python3` fails, so a build that probes for Sphinx as a module
@@ -419,14 +419,25 @@ the recipe runs rather than while the script does.
 
 ## postinstall.sh
 
-The install-time hook, which becomes a marker inside the package. Seven ports have one:
+The install-time hook, which becomes a marker inside the package. These ports have one:
 
-- `avahi`, `networkmanager-openvpn`, `pcsc-lite`, `polkit`, `prosody` and `tcpdump` create their
-  system accounts.
-  `prosody` also gives its data directory to its account, and `networkmanager-openvpn` gives its
-  chroot to its account.
-- `linux` removes the module trees of other kernels, keeping the running kernel's when the root is
-  `/`, and runs `depmod`.
+- `avahi`, `geoclue`, `mosquitto`, `networkmanager-openvpn`, `pcsc-lite`, `polkit`, `postgresql`,
+  `prosody` and `tcpdump` create their system accounts. `avahi` makes two, `avahi` and `avahi-autoipd`.
+  `prosody` and `postgresql` also give their data directories to their accounts, and
+  `networkmanager-openvpn` gives its chroot to its account.
+- `linux` removes the module trees of other kernels. It keeps the running kernel's and those of
+  every kernel on the ESP, runs `depmod`, and builds the new kernel's initramfs into the root as
+  `/boot/initramfs-kdos.cpio.gz`. Installing into the running system, it then puts both into that
+  slot's ESP directory with `kdos-bootctl deploy /`; `kdos update` deploys the inactive slot itself
+  ([a new kernel](../03-architecture/boot-and-init.md#a-new-kernel)).
+- `dbus` gives `dbus-daemon-launch-helper` back its group, `messagebus`, and its mode `4110`: the
+  package is rolled `root:root`, and the bus can run the helper only through that group, so without
+  the hook no `User=root` service is ever activated.
+- `ca-certificates` writes `/etc/ssl/cert.pem` with its own `update-ca-certificates`: the Mozilla
+  bundle it ships plus the administrator's local roots, which a package-owned file would lose on
+  every upgrade.
+- `brltty` creates the `brlapi` group its polkit rule admits to BrlAPI, and puts the desktop account
+  in it when it first creates it.
 
 Every hook works on `PKG_ROOT`, the root kpkgadd is installing into, never on `/`. `kpkg install
 --root` and an A/B update both install into a tree that is not the running system, so a hook that
@@ -436,9 +447,17 @@ the tool: `groupadd -R`, `useradd -R`, `depmod -b`. `chown` resolves a name agai
 root's `/etc/passwd`, so read the ids out of `$PKG_ROOT/etc/passwd` and pass them as numbers. A hook
 runs on every install and reinstall, so each step checks before it acts.
 
-It runs once, while the package is installed into the image, so anything it writes is baked into
-that image and is identical on every machine installed from it. Per-machine state therefore cannot
-come from here; it is generated on first boot by the init script that needs it.
+The one exception is `linux`'s write to the ESP. The ESP is not part of any root: each slot's kernel
+lives in its own `EFI/kdos/<slot>/` there. The hook runs `kdos-bootctl deploy /` only when `PKG_ROOT`
+is the running system, whether or not the machine has slots. For any other root it only builds
+`/boot/initramfs-kdos.cpio.gz` into that root, and `kdos update` deploys it once the whole run has
+gone in.
+
+Anything a hook writes into the root while the package is installed into the image is baked into
+that image and is identical on every machine installed from it; `linux`'s ESP write is the one step
+that depends on the machine, and it runs at every kernel update into the running system.
+Per-machine state therefore cannot come from here; it is generated on first boot by the init script
+that needs it.
 
 Reach for it only where the job must happen on the target with target binaries and belongs to
 this one package. It is not a place to finish a build, and not a place to rebuild an index that
@@ -456,19 +475,36 @@ from what is then on disk:
 | `/usr/lib/gio/modules/` | `gio-querymodules` |
 | `/usr/lib/gdk-pixbuf-2.0/` | `gdk-pixbuf-query-loaders --update-cache` |
 | `/usr/share/mime/packages/` | `update-mime-database` |
-| `/usr/share/fonts/` | `fc-cache -s` |
+| `/usr/share/fonts/`, `/etc/fonts/` | `fc-cache -s`, into `/usr/lib/fontconfig/cache` — not `/var/cache`, which the image and every pack exclude |
 | `/usr/share/info/` | the info `dir`, regenerated with `install-info` over every page |
+| `/etc/udev/hwdb.d/`, `/usr/lib/udev/hwdb.d/` | `udevadm hwdb --update`, into `/etc/udev/hwdb.bin` |
+| `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search |
+| `/usr/share/fonts/` | `mkfontdir`, the `fonts.dir` of every subdirectory holding PCF or BDF faces, which Xwayland's core font path reads |
 
-A port therefore installs its schema, loader, MIME XML, font or info page and does nothing else.
-A per-port hook would rebuild the index only when that port is installed, not when the next one
-adds to it or the last one leaves.
+A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file or manual page
+and does nothing else. A per-port hook would rebuild the index only when that port is installed,
+not when the next one adds to it or the last one leaves.
 
 A missing tool is skipped: the index is written when the package carrying the tool arrives,
-because that package's own files touch the same directory. A failing tool is a warning, not a
-failed install. `kpkgbuild` drops `usr/share/info/dir` from every package — it is the index, and
-two packages each shipping one conflict. Under `--root`, each tool is handed the root-prefixed
-directory; the pixbuf loader cache, which only writes the path it was compiled with, is rebuilt
-only against `/`.
+because that package's own files touch a watched directory. fontconfig installs no font, so the
+font cache also watches `/etc/fonts/`; without it, a system whose fonts all came before fontconfig
+would have no cache. A failing tool is a warning, not a failed install. `kpkgbuild` drops
+`usr/share/info/dir` and every `usr/share/fonts/*/fonts.dir` from every package — each is the
+index, and two packages each shipping one conflict: `font-misc-misc` and `font-cursor-misc` both
+install into `misc/`. A font directory left with no bitmap face loses its `fonts.dir`, and with it
+the directory.
+
+The manual index is the one that is merged rather than rebuilt, and only when nothing was removed.
+Two packages in three carry manual pages, and reading every page on the system again for each one
+would add seconds to every install. The pages an install places go to `makewhatis -d`. A removal,
+an upgrade that orphans a page, or a missing `mandoc.db` rebuilds the whole tree, because a merge
+cannot drop an entry for a file that is already gone.
+
+Under `--root`, each tool is handed the root-prefixed directory, and `udevadm` and `fc-cache` get
+the root itself. The pixbuf loader cache cannot take a directory, because the tool writes the path
+it was compiled with. Under `--root` it therefore runs as the root's own
+`gdk-pixbuf-query-loaders`, through `chroot`. That needs root, which `kdos update` has when it
+installs into the inactive slot, and kpkg warns rather than skips when it lacks it.
 
 ## Vendoring
 
@@ -515,9 +551,23 @@ that is already a port and builds each one's metadata to find that out.
 
 `pyruntime = no` says a runtime environment must not be vendored.
 
+What a bundle installs into `site-packages` is named, and installed `--no-deps`. pip skips a
+requirement that is already installed in the build root, so a resolving install packages whatever
+no earlier port happened to install, and which package owns a module then follows build order —
+removing the one that owns it breaks the other with an `ImportError`. A module that more than one
+program imports is therefore a `python3-*` port of its own in both `depends` lines, never a member
+of either bundle: `wcwidth`, `urwid`, `configobj`, `pytz`, `click-log` and `rich` with its
+`markdown-it-py` and `mdurl` are the shared ones that `khal`, `khard`, `vdirsyncer`, `toot`,
+`ipython`, `python3-esptool` and `ocrmypdf` would otherwise each carry.
+
 A Python package's declared build backend is part of its version pin. Read the build-system
 requirements before picking a version: a project that moved to a newer backend can cost several
 additional ports.
+
+`python3` marks its `site-packages` as externally managed (PEP 668). The marker does not affect
+`pip install --root="$PKG"`, `--prefix` or `--target`, so a port's install into its package needs
+nothing. A `pip install` into the build root itself — the two backends `vdirsyncer` installs from
+its bundle before its own build, `expandvars` and `hatch-fancy-pypi-readme` — is refused unless it passes `--break-system-packages`.
 
 ### A vendor bundle hashes the same twice
 
@@ -624,8 +674,26 @@ builds for the host.
 
 The LLVM ports take their sources in two ways. From 22 on, upstream publishes only the whole
 `llvm-project-<version>.src.tar.xz`. Each port of the current series (`llvm`, `clang`, `lld`,
-`lldb`, `libclc`, `libunwind`) carries that one tarball and configures its own directory with
-`cmake -S <dir>`. The 21 slot uses the per-component tarballs, which were still published for 21.x.
+`lldb`, `libclc`, `libunwind`, `openmp`, `compiler-rt`) carries that one tarball and configures
+its own directory with `cmake -S <dir>`. The runtimes (`libunwind`, `openmp`, `compiler-rt`)
+configure `runtimes` and name themselves in `LLVM_ENABLE_RUNTIMES`, which is the build upstream
+supports for them: `openmp`'s own directory refuses to configure on its own. `compiler-rt`
+installs into clang's resource directory, `/usr/lib/clang/<major>`, where the driver looks for
+`libclang_rt.*`, and `openmp` installs `libomp` without its `libgomp.so` alias, which is gcc's.
+
+The 21 slot uses the per-component tarballs, which were still published for 21.x. `lld21`
+carries `libunwind-<version>.src.tar.xz` as a third source and moves it beside its own tree,
+because the Mach-O linker includes `mach-o/compact_unwind_encoding.h` from
+`../libunwind/include` relative to the LLVM source tree, and the header must come from the same
+release as the linker. The `libunwind` port installs that header only under its private prefix,
+which is neither beside the source tree nor on a default include path, and it is the current
+series, not 21.
+
+LLVM's `libunwind` is the one current-series port under a private prefix,
+`/usr/lib/llvm-libunwind`. `/usr/include/libunwind.h`, `libunwind.so` and the `libunwind*.pc`
+files belong to `libunwind-nongnu`, the library that unwinds another process through
+`libunwind-ptrace` and that `htop`, GStreamer, `libcamera` and `samba` link. Both own the same file
+names, so the LLVM one stays out of every default search path, and no port depends on it.
 
 ## A second build of the same source
 
@@ -674,7 +742,7 @@ recipe has to be able to name.
 
 | Class | What it covers | Why it cannot be compiled here |
 |---|---|---|
-| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` — every other guest firmware it ships is compiled from its `roms/` | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
+| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the assembled i965 shader kernels `libva-intel-driver` includes from `src/shaders`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` — every other guest firmware it ships is compiled from its `roms/` | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
 | Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`; the faces bundled inside `mupdf`, `matplotlib` and `seqkit` | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf` and `noto-emoji` |
 | Compiler bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm` | A compiler written in its own language needs a working one first. Each seed is used only to build, and never ships |
 | Data with no other source form | The `tesseract` English model, the `perl-xml-parser` `.enc` encoding maps, the JavaScript in `libkiwix`'s skin, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, the RP2350 boot-ROM tails `picotool` embeds from `model/`, and recorded audio such as the `speaker-test` samples in `alsa-utils` | The file is the form upstream maintains; there is nothing earlier to build it from |

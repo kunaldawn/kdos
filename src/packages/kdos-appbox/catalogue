@@ -446,7 +446,7 @@ app app.mousepad        rt-gtk       mousepad
 app app.pcmanfm         rt-gtk       pcmanfm
 app app.pdfarranger     rt-gtk       pdfarranger
 app app.qalculate       rt-gtk       qalculate-gtk
-app app.remmina         rt-gtk       remmina
+app app.remmina         rt-gtk       remmina remmina-plugin-vnc remmina-plugin-rdp
 app app.simple-scan     rt-gtk       simple-scan
 app app.solvespace      rt-gtk       solvespace
 app app.transmission    rt-gtk       transmission-gtk

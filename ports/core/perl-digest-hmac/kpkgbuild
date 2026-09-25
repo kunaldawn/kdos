@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-digest-hmac
+version     = 1.05
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/A/AR/ARODLAND/Digest-HMAC-$version.tar.gz
+sha256      = 215cb59cba610745cfb2d4b3f8ef756d590e57e3ad7986a992e87c4969fcdc7a  perl-digest-hmac-1.05.tar.gz
+description = Keyed-hashing for message authentication (HMAC) in perl
+homepage    = https://metacpan.org/dist/Digest-HMAC
+depends     = perl

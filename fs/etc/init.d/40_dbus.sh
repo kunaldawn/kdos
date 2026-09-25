@@ -15,7 +15,16 @@ case "$1" in
         # GetMachineId fails without this file and the bus never creates it
         # itself; the id must differ per machine, so it is made on first boot
         # and never carried in an image.
-        [ ! -f /var/lib/dbus/machine-id ] && dbus-uuidgen --ensure
+        [ -s /var/lib/dbus/machine-id ] || dbus-uuidgen --ensure
+        # /etc/machine-id is where machine-id(5) puts the same id, and a
+        # program written against that page reads it and nothing else — a
+        # box that binds the host's id in, an Electron or Chromium build —
+        # and gets no id at all without it. A link, so one
+        # file holds the id and the installer's exclusion of that file is the
+        # only one needed; -L keeps a link the installer copied, dangling
+        # until the line above writes its target, from being made again.
+        [ -e /etc/machine-id ] || [ -L /etc/machine-id ] || \
+            ln -s /var/lib/dbus/machine-id /etc/machine-id
         # --nofork keeps it in foreground for supervision
         supervise "$NAME" "$DAEMON" --system --nofork
         ;;

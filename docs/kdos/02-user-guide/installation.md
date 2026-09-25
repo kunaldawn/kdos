@@ -105,6 +105,11 @@ zone. The hardware clock is left exactly as it is.
 If the target carries no zone file for the name you picked, the install log says so and the machine
 keeps UTC.
 
+The zone also sets the Wi-Fi country. `zone.tab` gives each zone one country code, and the install
+writes it to `/etc/modprobe.d/kdos-regdom.conf` as cfg80211's regulatory domain; without it the
+radio stays in the world domain, with every 5 GHz DFS channel closed and transmit power capped. A
+zone with no country, such as `UTC`, writes nothing.
+
 ### 4. Disk
 
 Which disk, and nothing else. Each row carries the size, the transport and the model, and the
@@ -130,6 +135,11 @@ Swap is a file on the root filesystem, a partition of its own, or nothing. The s
 On the reuse plan there is a checkbox to reformat the ESP as FAT32. Leave it off when another
 operating system boots from the same ESP.
 
+The installer lists whole disks and their partitions only. A logical volume, a software RAID array
+or an opened LUKS container cannot be chosen as the root, and nothing in the installer creates LVM.
+The initramfs can boot a root on a logical volume, but a root there has to be set up by hand — see
+[Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
+
 Encryption is offered on the erase plan only, because encrypting a partition destroys what is on
 it and the reuse plan exists for people who are keeping something. Tick it and the passphrase
 fields appear.
@@ -137,7 +147,9 @@ fields appear.
 ### 6. Accounts
 
 Hostname, your full name and user name, your password, whether you are an administrator — a member
-of `wheel`, and so able to use `sudo` — and whether the root account is locked. Those last two are
+of `wheel`, and so able to use `sudo` and the desktop's administrative actions; unticked, the
+account is left out of `wheel` altogether and keeps suspend, power-off, reboot and mounting its own
+media, which answer `seat` as well — and whether the root account is locked. Those last two are
 validated together: root locked with you not an administrator is a machine nobody could ever gain
 privileges on, and `Next` says so rather than installing it.
 
@@ -148,7 +160,8 @@ back on — see [Installing unattended](#installing-unattended). The live image'
 not carried over either way.
 
 Choosing a user name other than `kdos` is a real rename. It rewrites `passwd`, `group` — the
-membership lists and the primary group's own name — and `shadow`, moves the home directory, and
+membership lists and the primary group's own name — `shadow`, and the owner of the
+`/etc/subuid` and `/etc/subgid` ranges rootless boxes map users through, moves the home directory, and
 writes the new name into the `autologin` key of `/etc/kdos/login.conf`, which is the only place the
 desktop account is named. `/etc/inittab` carries no account at all.
 
@@ -269,7 +282,9 @@ step. Discovering it after the point of no return would be the wrong place.
 
 The installer writes the initial boot state onto the ESP: slot A is the filesystem it has just
 made, slot B is empty, each slot's LUKS container is recorded beside it, and
-`bootstate=UUID=<esp>` is added to the kernel options.
+`bootstate=UUID=<esp>` is added to the kernel options. Slot A's kernel goes into its own ESP
+directory and each menu entry names its slot with `kdos_slot=a`; an update into slot B puts B's
+kernel beside it, so a rollback boots the old kernel with the old root.
 
 That is the state machine's starting position rather than a working dual-root setup — filling slot
 B is an updater's job. What it gives you now is the machinery: a candidate slot gets a fixed number
@@ -375,24 +390,26 @@ no run in which you are unsure which mode you are in.
 
 | Path | What |
 |---|---|
-| The ESP | Limine — both EFI binaries, `BOOTX64.EFI` and `BOOTIA32.EFI` — its generated `limine.conf`, the kernel, the initramfs and the BIOS second stage |
+| The ESP | Limine — both EFI binaries, `BOOTX64.EFI` and `BOOTIA32.EFI` — its generated `limine.conf`, the BIOS second stage, and slot A's kernel and initramfs in `EFI/kdos/a/` |
 | The ESP | The A/B boot state file, and the menu's font and wallpaper where the medium has them |
 | Root | The system, copied from the medium with `rsync` |
 | `/etc/fstab` | Appended to, never replaced — the shipped file carries the `/tmp` entry that every graphical application depends on |
-| `/etc/hostname` | The hostname |
+| `/etc/hostname`, `/etc/hosts` | The hostname, and the `127.0.1.1` line that resolves it locally |
 | `/etc/keymap` | The console keymap |
 | `/etc/localtime`, `/etc/profile.d/20-timezone.sh` | The zone, as a symlink and as `TZ` |
+| `/etc/modprobe.d/kdos-regdom.conf` | The zone's country, as the Wi-Fi regulatory domain |
 | `/etc/kdos/login.conf` | The `autologin` key, edited in place |
-| `/etc/passwd`, `/etc/group`, `/etc/shadow` | The account, renamed and hashed |
-| `/etc/sudoers.d/10-wheel` | `wheel` may use `sudo`, when you chose administrator |
+| `/etc/passwd`, `/etc/group`, `/etc/shadow` | The account, renamed and hashed; in `wheel` only when you chose administrator |
+| `/etc/subuid`, `/etc/subgid` | The account's subordinate ID ranges, under its new name |
 | `/etc/service.disabled/` | One flag file per service you turned off |
 | `/etc/resolv.conf` | Copied from the live system, so the installed machine resolves names on first boot |
 | `/swapfile` | The swap file, when you chose one |
 | `/var/lib/kdos/packs` | The pack store, and the staging directory an import goes through |
 | `/var/lib/kdos/apps-pending` | The application groups the first session should offer, on the pending route |
 
-The kernel and initramfs are copied **onto the ESP**, and the generated `limine.conf` points at
-those FAT paths. Limine reads FAT and ISO9660; it does not read xfs, f2fs or anything under LUKS,
+The kernel and initramfs are copied **onto the ESP**, into slot A's directory, and the generated
+`limine.conf` points at those FAT paths. Each root slot boots its own kernel from its own directory
+there — see [One kernel per slot](../03-architecture/boot-and-init.md#one-kernel-per-slot). Limine reads FAT and ISO9660; it does not read xfs, f2fs or anything under LUKS,
 all of which the installer will happily give you as a root. Putting the kernel where the loader can
 always reach it is what keeps those choices bootable.
 

@@ -1,0 +1,30 @@
+LOCATE_PATH, when set and not empty, replaces the compiled-in database instead
+of being searched after it. KDOS keeps no shared /var/lib/plocate database —
+each user's index is their own, named by LOCATE_PATH — and plocate exits on
+the first database it cannot open, so with the default kept in front every
+search fails before the user's own index is read.
+
+--- a/plocate.cpp
++++ b/plocate.cpp
+@@ -998,13 +998,17 @@
+ 		exit(1);
+ 	}
+ 
+-	if (dbpaths.empty()) {
+-		// No -d given, so use our default. Note that this happens
+-		// even if LOCATE_PATH exists, to match mlocate behavior.
++	// A set LOCATE_PATH replaces the compiled-in default rather than
++	// adding to it: a system with no shared database would otherwise
++	// fail on the default before any LOCATE_PATH database is read.
++	const char *locate_path = getenv("LOCATE_PATH");
++	if (locate_path != nullptr && *locate_path == '\0') {
++		locate_path = nullptr;
++	}
++	if (dbpaths.empty() && locate_path == nullptr) {
+ 		dbpaths.push_back(DBFILE);
+ 	}
+ 
+-	const char *locate_path = getenv("LOCATE_PATH");
+ 	if (locate_path != nullptr) {
+ 		parse_dbpaths(locate_path, &dbpaths);
+ 	}

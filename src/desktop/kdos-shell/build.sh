@@ -198,7 +198,7 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-print"
 ln -s kdos-shell "$PKG/usr/bin/kdos-time"
 # The accounts. Reading /etc/passwd is anybody's and creating an account is
 # root's, so this reads and does not write — except the autologin, which is a
-# KDOS file and goes through the same wheel-gated daemon the power verbs do.
+# KDOS file and goes through kdos-powerd as one of its wheel-only verbs.
 ln -s kdos-shell "$PKG/usr/bin/kdos-users"
 # What is behind and what is vulnerable. It computes neither: `kdos update
 # check --json` and `kdos cve --json` already answer, and a surface that

@@ -33,8 +33,13 @@ mkdir -p build && cd build
 # large matrix products to. Both are probes that disable themselves when the
 # library is missing, so each is checked below rather than trusted.
 #
-# NO VULKAN: ggml compiles its shaders with glslc, which is shaderc, and
-# shaderc is not a port. No CUDA, HIP, SYCL or OpenCL: none has a runtime here.
+# VULKAN IS THE GPU BACKEND, as one more module under /usr/lib/ggml: mesa's
+# radv, anv and nvk drivers answer it. The backend lists no device where the
+# only Vulkan driver is a CPU one such as lavapipe, so a machine with no GPU
+# transcribes on the CPU backends. Its shaders are compiled at build time by
+# glslc from the shaderc port, and a missing glslc stops configure. No CUDA,
+# HIP or SYCL: none has a runtime here. No OpenCL: ggml's OpenCL backend drives
+# only Adreno and Intel GPUs, and Vulkan already reaches Intel through anv.
 #
 # WHISPER_COMMON_FFMPEG lets whisper-cli read mp3, ogg, opus and the audio
 # track of a video directly; without it the input must be 16 kHz WAV.
@@ -61,13 +66,14 @@ cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DGGML_BACKEND_DIR=/usr/lib/ggml \
 	-DGGML_OPENMP=ON \
 	-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS \
-	-DGGML_VULKAN=OFF -DGGML_CUDA=OFF -DGGML_HIP=OFF \
+	-DGGML_VULKAN=ON -DGGML_CUDA=OFF -DGGML_HIP=OFF \
 	-DGGML_SYCL=OFF -DGGML_OPENCL=OFF -DGGML_RPC=OFF
 grep -q '^GGML_OPENMP_ENABLED:INTERNAL=ON$' CMakeCache.txt ||
 	{ echo "whisper.cpp: OpenMP not found at configure" >&2; exit 1; }
 make
 make DESTDIR=$PKG install
-for mod in libggml-blas.so libggml-cpu-x64.so libggml-cpu-haswell.so; do
+for mod in libggml-blas.so libggml-cpu-x64.so libggml-cpu-haswell.so \
+	libggml-vulkan.so; do
 	[ -f "$PKG/usr/lib/ggml/$mod" ] ||
 		{ echo "whisper.cpp: $mod was not built" >&2; exit 1; }
 done

@@ -18,4 +18,4 @@ sha256      = 7274a903c6aea8cfe479df3439ee31c72cb69c948973cf7d8896be907f2af6af  
 sha256      = c44a5d7847925eea9e4d2d04748d442cd28dd9299a0b572ef7d91eac4f5a6ceb  en_dict-20121020.tar.gz
 description = Input method framework, Wayland only on KDOS
 homepage    = https://fcitx-im.org
-depends     = cmake extra-cmake-modules nlohmann-json plasma-wayland-protocols libxkbcommon xkeyboard-config iso-codes wayland wayland-protocols cairo pango gdk-pixbuf librsvg glib expat gettext libuv dbus util-linux zstd zlib
+depends     = cmake extra-cmake-modules nlohmann-json plasma-wayland-protocols libxkbcommon xkeyboard-config iso-codes wayland wayland-protocols cairo pango gdk-pixbuf librsvg glib expat gettext libuv dbus util-linux zstd zlib enchant

@@ -355,7 +355,7 @@ pack has gone.
 | `COMMANDS` | Program names whose value is a command rather than an application: a table row and a shim, deliberately no desktop entry, because a launcher for a shell tool with no arguments opens nothing. Emitted only when the source really carries the binary, so a set baked before a segment existed gets no shim that dies on "not found" |
 | `ENTRIES` | The opposite case: software that is an application and ships no desktop entry at all, so there is nothing to parse. The name, category, MIME types and `Exec` are written here, because a shipped entry can be replaced by apt and its `Exec` has to name `kdos-appbox run`. `surf` is such a row — a browser with no launcher claims no scheme, so installing it would change nothing about what opens a link |
 | `RENAME` | Upstream's program name is not the one people know |
-| `RESERVED` | Names the sweep must not delete |
+| `RESERVED` | Names no shim may take and the sweep must not delete: shell and system tools, the box manager's own names, and the native `git`, `gnuplot` and `mpv`, which a shim earlier on `PATH` would shadow |
 | `EXEC_EXTRA` | Arguments an application needs only because it is containerised: one sandboxing toolkit wants a privileged helper it cannot have and exits rather than falling back |
 | `SKIP_NEEDS_KWIN` | Applications that ask a specific compositor's private interface and open an error dialog on any other |
 | `SKIP_ROOTLESS_INERT` | Applications needing raw block devices, which a rootless container cannot give them. A launcher that opens onto "permission denied" teaches somebody the machine is broken rather than that they wanted the host tool |

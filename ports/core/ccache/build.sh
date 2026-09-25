@@ -48,7 +48,10 @@ doc/scripts/generate-manpage asciidoctor "" doc/ccache-doc.css "$version" \
 	doc/manual.adoc build/ccache.1
 install -Dm644 build/ccache.1 -t "$PKG/usr/share/man/man1"
 
+# The masquerade directory: first in PATH, each name is ccache standing in for
+# the compiler it is named after. A compiler missing here is one a build
+# through the directory runs uncached, silently.
 install -d $PKG/usr/lib/ccache
-for c in gcc g++ cc c++; do
+for c in gcc g++ cc c++ clang clang++; do
 	ln -s /usr/bin/ccache $PKG/usr/lib/ccache/$c
 done

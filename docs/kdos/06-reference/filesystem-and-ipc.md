@@ -112,6 +112,7 @@ rather than making one.
 | `kdos-frames.sock` | Late-frame reports |
 | `kdos-notify.sock` | The notification daemon |
 | `kdos-clip.sock` | The clipboard history |
+| `ssh-agent.socket` | The account's `ssh-agent`, started by the first login shell that finds nothing answering there, and what `SSH_AUTH_SOCK` names |
 | `kdos-panel.overflow` | What the panel has hidden behind the chevron |
 | `kdos-comp.log` | The compositor's output |
 | `kdos-appbox.trace` | Stage timings for the last launches |
@@ -128,7 +129,8 @@ path. Replies are `ok` with optional data, or `err <reason>`. An unauthorised ca
 
 ### `/run/kdos-powerd.sock`
 
-Root and `wheel`.
+Root, `seat` and `wheel` for the four verbs below. `timezone`, `autologin`, `firewall` and `accent`
+answer root and `wheel` only.
 
 | Verb | Argument | Answers |
 |---|---|---|
@@ -152,7 +154,7 @@ instrument.
 
 ### `/run/kdos-oomd.sock`
 
-Root and `wheel`.
+Root, `seat` and `wheel`.
 
 | Verb | Argument | Answers |
 |---|---|---|
@@ -164,7 +166,7 @@ decision or it does not happen.
 
 ### `/run/kdos-mountd.sock`
 
-Root and `wheel`. Fifteen verbs.
+Root, `seat` and `wheel`. Fifteen verbs.
 
 | Verb | Argument | Answers |
 |---|---|---|
@@ -341,6 +343,10 @@ Not configuration, and not storage: these are how one program tells another some
 | `~/.local/share/kdos/alien-apps` | `kdos-appbox genlaunchers --user` | The same, winning over the system table |
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once per window | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
+| `/boot/initramfs.modules` | `01_initramfs.sh`, one module per line | The `linux` postinstall, which carries the new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
+| `/boot/initramfs-kdos.cpio.gz` | The `linux` postinstall: the image's initramfs with the new kernel's modules appended | `kdos-bootctl deploy` and `kinstall`, which take it over the image's `/boot/initramfs.cpio.gz` |
+| `EFI/kdos/<slot>/vmlinuz`, `EFI/kdos/<slot>/initramfs.cpio.gz` on the ESP | `kinstall` for slot `a`, `kdos-bootctl deploy` for either | Limine, through the `/KDOS` entries `kdos-bootctl` regenerates on every change of boot state |
+| `/run/kdos-svc.<name>.log` | `ksvc supervise`, capped at 64 KiB with one `.old` | You, when syslog is not running; every line also goes to syslog |
 | `$XDG_RUNTIME_DIR/kdos-appbox.trace` | The launcher | You |
 | `$XDG_RUNTIME_DIR/kdos/screencast.pid` | `kdos-record`, while its pipeline runs | The next `kdos-record`, which stops that one, and the panel, which draws its lamp |
 

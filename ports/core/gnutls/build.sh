@@ -11,6 +11,7 @@
 
 ./configure \
 	--prefix=/usr \
+	--sysconfdir=/etc \
 	--with-default-trust-store-pkcs11="pkcs11:" \
 	--with-zlib \
 	--with-zstd \

@@ -11,9 +11,11 @@
 
 # NO sensors-detect ON THE INSTALL LIST. That script probes the SMBus by
 # writing to it, which upstream itself warns can hang a machine or corrupt
-# EEPROMs; every sensor a modern kernel can read is already bound by a hwmon
-# driver at boot, so what is wanted here is the READER. The makefile installs
-# it unconditionally, so it is removed from the package after the install.
+# EEPROMs. Most hwmon drivers are bound by udev at boot; the three that
+# declare no modalias — the Nuvoton and ITE Super-I/O chips and drivetemp —
+# are loaded by /etc/modules-load.d/kdos-hwmon.conf, so what is wanted here is
+# the READER. The makefile installs sensors-detect unconditionally, so it is
+# removed from the package after the install.
 # PROG_EXTRA is empty: its one program, sensord, needs rrdtool.
 #
 # There is no configure: everything is a make variable, and every one must be

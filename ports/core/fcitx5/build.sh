@@ -15,8 +15,9 @@ cp "$PORT_SRC/$_endict" src/modules/spell/
 
 # ENABLE_X11=Off is the hard rule, not a size choice: X11 support here would
 # pull xcb-imdkit, cairo-xcb, xkbfile and seven xcb components onto the host for
-# an XIM frontend nothing on KDOS can use. X11 applications reach fcitx5 through
-# Xwayland and text-input-v3 like every other client.
+# an XIM frontend. The cost is that an X11 application under Xwayland, host or
+# boxed, has no input method: Xwayland carries no text-input for its X
+# clients, and XIM is the only route an X client has to an engine.
 #
 # EVENT_LOOP_BACKEND=libuv, because the alternative is systemd. USE_SYSTEMD=Off
 # alone would still let an `auto` search find one if it ever appeared.
@@ -27,8 +28,11 @@ cp "$PORT_SRC/$_endict" src/modules/spell/
 # cmake skips the fetch when the file already sits where it would have put it
 # with the expected hash — the same fix as fcitx5-chinese-addons.
 #
-# ENABLE_ENCHANT stays off because there is no enchant port; the spell module
-# then answers from en_dict alone.
+# ENABLE_ENCHANT gives the spell module enchant as a second provider beside
+# en_dict, fcitx's own built-in English word list. Enchant's Aspell provider
+# and the aspell-en dictionary are the ones weechat, profanity, mc and recoll
+# use. Upstream's `pkg_check_modules(... REQUIRED)` makes enchant a
+# hard configure dependency once the option is on.
 #
 # ENABLE_XDGAUTOSTART installs a .desktop into /etc/xdg/autostart, which nothing
 # on KDOS reads; kdos-desktop-start launches fcitx5 by name.
@@ -51,7 +55,7 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_LIBUUID=On \
 	-D ENABLE_SERVER=On \
 	-D USE_SYSTEM_YOGA=Off \
-	-D ENABLE_ENCHANT=Off \
+	-D ENABLE_ENCHANT=On \
 	-D ENABLE_DOC=Off \
 	-D ENABLE_TEST=Off \
 	-D ENABLE_TESTING_ADDONS=On \

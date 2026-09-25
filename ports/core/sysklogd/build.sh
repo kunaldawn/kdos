@@ -52,4 +52,9 @@ cron.*                                  -/var/log/cron
 # medium /var/log is RAM, so an unbounded log is an OOM, not a disk-space bug.
 rotate_size  1M
 rotate_count 5
+
+# No network socket at all. With no `listen` line syslogd otherwise opens UDP
+# *:514 and accepts any host's messages into these files. 1 would keep
+# forwarding to a remote `@host` action without listening; 2 is neither.
+secure_mode 2
 EOF

@@ -38,7 +38,7 @@ in [The daemons](daemons.md).
 | `kdos-mountd` | Mounting removable media, LUKS volumes, SMB shares and SMART queries |
 | `kdos-packd` | Mounting, installing and composing application packs |
 | `kdos-boxsock` | Tagging box clients so the compositor can identify them |
-| `xdg-desktop-portal-kdos` | The file-chooser, settings and application-chooser portal backends |
+| `xdg-desktop-portal-kdos` | The file-chooser, settings, application-chooser and access portal backends |
 
 Their clients are ordinary unprivileged commands:
 

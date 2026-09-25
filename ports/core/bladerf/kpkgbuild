@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bladerf
+version     = 2025.10
+release     = 1
+_noos       = 0bba46e6f6f75785a65d425ece37d0a04daf6157
+_fsk        = fb903684036217b9db9dcd6be8007548e12a377e
+source      = $name-$version.tar.gz::https://github.com/Nuand/bladeRF/archive/refs/tags/$version.tar.gz
+source      = no-OS-$_noos.tar.gz::https://codeload.github.com/analogdevicesinc/no-OS/tar.gz/$_noos
+source      = bladeRF-fsk-$_fsk.tar.gz::https://codeload.github.com/Nuand/bladeRF-fsk/tar.gz/$_fsk
+sha256      = f7a63f7ad53cf3478dc60cc476b377020a7c256ef37640b1a4fa715cd9784b23  bladerf-2025.10.tar.gz
+sha256      = b77a86780e82ff592dd3cbcbf916d6f421f5cb7b523b800255483b1992aea88d  no-OS-0bba46e6f6f75785a65d425ece37d0a04daf6157.tar.gz
+sha256      = 7953608a3f3c6171a913057d8b187c706d8372f1b41720144a5770242e981914  bladeRF-fsk-fb903684036217b9db9dcd6be8007548e12a377e.tar.gz
+description = libbladeRF and bladeRF-cli for the Nuand bladeRF and bladeRF 2.0 micro transceivers
+homepage    = https://www.nuand.com/
+depends     = cmake pkgconf libusb libedit ncurses help2man

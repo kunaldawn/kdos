@@ -36,3 +36,22 @@ grep -q '^name=zsh/pcre .*link=dynamic' config.modules || {
 }
 make
 make DESTDIR=$PKG install
+
+# /etc/zsh/zprofile, which a login zsh reads first. The environment every
+# session depends on — PATH, the XDG directories, the runtime directory and
+# everything in /etc/profile.d — lives in /etc/profile, which zsh never reads
+# on its own; without this an account whose login shell is zsh has none of it.
+# `emulate sh` because /etc/profile and its drop-ins are POSIX sh.
+install -Dm644 /dev/stdin "$PKG/etc/zsh/zprofile" <<'ZPROFILE'
+emulate sh -c '. /etc/profile'
+ZPROFILE
+
+# /etc/zsh/zshrc, the file --enable-etcdir makes every interactive zsh read.
+# It carries the hooks of the image's shell tools that have a zsh side, each
+# probed before it is used. atuin's zsh init records through zsh's own
+# preexec and precmd hooks, which bash needs bash-preexec for.
+install -Dm644 /dev/stdin "$PKG/etc/zsh/zshrc" <<'ZSHRC'
+if (( $+commands[atuin] )); then
+	eval "$(atuin init zsh --disable-up-arrow)"
+fi
+ZSHRC

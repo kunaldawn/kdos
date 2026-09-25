@@ -41,3 +41,10 @@ export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
 cargo build --release --frozen --offline
 install -Dm755 target/release/rga             $PKG/usr/bin/rga
 install -Dm755 target/release/rga-preproc     $PKG/usr/bin/rga-preproc
+
+# `rga-fzf <query>` is the interactive mode: it runs fzf with rga as both the
+# search and the preview, and hands the chosen file to rga-fzf-open, which
+# opens it through xdg-open. It finds rga and rga-fzf-open beside its own
+# binary and fzf on PATH, so fzf is in `depends`.
+install -Dm755 target/release/rga-fzf         $PKG/usr/bin/rga-fzf
+install -Dm755 target/release/rga-fzf-open    $PKG/usr/bin/rga-fzf-open

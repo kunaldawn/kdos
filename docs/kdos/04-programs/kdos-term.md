@@ -192,10 +192,11 @@ which words are emphasised is worse than one that shows them plainly.
 
 ## Notifications from a running program
 
-`make && notify-send done` does not work on this image, because `libnotify` is not a port and
-`notify-send` is not here. The escape sequences are, and they cost a parse rather than a
-dependency, so a long job can say so from inside the terminal it is running in and the desktop's
-own notification daemon shows it like any other toast.
+`make && notify-send done` works on the host, where `libnotify` puts the toast on the session bus
+directly. The escape sequences reach the same toast from where `notify-send` cannot — a shell on
+another machine over ssh, which has no session bus of this desktop's — and from any program that can
+print. They cost a parse rather than a dependency, so a long job can say so from inside the terminal it
+is running in and the desktop's own notification daemon shows it like any other toast.
 
 | Sequence | Whose | Carries |
 |---|---|---|

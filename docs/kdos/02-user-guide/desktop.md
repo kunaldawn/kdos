@@ -284,7 +284,9 @@ compact `N/M` readout, which is a readout and not a control: only what was drawn
 | Volume up, down, mute | Change the volume, with an on-screen gauge |
 | Mic mute | Mute the microphone |
 | Brightness up, down | Change the panel brightness, with an on-screen gauge |
-| Play/pause, stop, next, previous | Media transport, over MPRIS |
+| Play/pause, stop, next, previous | Media transport, through `kdos-mpctl`: to mpd, or to an MPRIS player — `mpv`, `cmus`, a boxed player — whichever is playing |
+| The power button | Shut the machine down — it asks first |
+| The sleep key | Suspend |
 
 `Super+Escape` writes the list of open windows *before* it asks the question, because after the
 answer there is no session left to ask. That list is read back only when

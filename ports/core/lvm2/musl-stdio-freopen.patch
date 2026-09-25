@@ -27,3 +27,19 @@
  		printf("stderr stream open: %s\n",
  		       strerror(errno));
  		return 0;
+--- a/lib/commands/toolcontext.c
++++ b/lib/commands/toolcontext.c
+@@ -1668,7 +1668,13 @@
+
+ 	/* Set in/out stream buffering before glibc */
+ 	if (set_buffering
++#ifdef __GLIBC__
+ 	    && !cmd->running_on_valgrind /* Skipping within valgrind execution. */
++#else
++	    /* musl's stdin and stdout are FILE *const: the reopen below stores
++	     * the new stream through them and the program faults. */
++	    && 0
++#endif
+ #ifdef SYS_gettid
+ 	    /* For threaded programs no changes of streams */
+             /* On linux gettid() is implemented only via syscall */

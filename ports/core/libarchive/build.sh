@@ -27,7 +27,7 @@
 	--with-expat \
 	--without-xml2 \
 	--without-libb2 \
-	--without-lzo2 \
+	--with-lzo2 \
 	--without-nettle \
 	--without-mbedtls
 make

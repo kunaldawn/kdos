@@ -77,9 +77,18 @@ zig
 clang
 llvm
 lld
+# libomp, the runtime clang -fopenmp links.
+openmp
+# clang's own runtimes: builtins, profile (source-based coverage) and UBSan.
+compiler-rt
 llvm21
 clang21
 lld21
+# LLVM's libunwind, under /usr/lib/llvm-libunwind. Built here, ahead of phase
+# 4, because /usr/include/libunwind.h and libunwind.so belong to
+# libunwind-nongnu there, and a tree that still has this package at /usr must
+# have it rebuilt into its prefix before the other one installs.
+libunwind
 
 # ---------------------------------
 # Essential Utilities
@@ -109,6 +118,8 @@ libarchive
 # ---------------------------------
 # Network & Security
 # ---------------------------------
+# libldap, for curl's ldap:// URLs and dirmngr's directory lookups.
+openldap
 curl
 git
 ca-certificates

@@ -1231,6 +1231,69 @@ static void test_pkg(void)
 	eq_str(dbtext, "1 1\n./usr/share/\n", "version line and all");
 	free(dbtext);
 	free(dbcheck);
+
+	/* Merged /usr: `./bin/free` and `./usr/bin/free` are one file when the
+	 * root's `bin` links to `usr/bin`. Compared as strings they never
+	 * collide, and the file is claimed twice. */
+	char *mroot = kb_path_join(dir, "mroot");
+	char *mbin = kb_path_join(mroot, "usr/bin");
+	kb_mkdir_p(mbin);
+	free(mbin);
+	char *mlink = kb_path_join(mroot, "bin");
+	ok(symlink("usr/bin", mlink) == 0, "a merged-/usr root");
+	free(mlink);
+	char *mlib = kb_path_join(mroot, "lib");
+	kb_mkdir_p(mlib);	/* a real directory is not an alias */
+	free(mlib);
+	char *mdb = kb_path_join(mroot, "db");
+	kb_mkdir_p(mdb);
+	char *mf = kb_path_join(mdb, "toybox");
+	kb_write_file(mf, "1 1\n./usr/bin/free\n./lib/x\n");
+	free(mf);
+	mf = kb_path_join(mdb, "procps");
+	kb_write_file(mf, "1 1\n./bin/free\n");
+	free(mf);
+	free(mdb);
+	setenv("KPKG_ROOT", mroot, 1);
+	setenv("PKGDB_DIR", "db", 1);
+	KpConf mconf;
+	kp_conf_load(&mconf);
+
+	KpCanon mk;
+	kp_canon_load(&mconf, &mk);
+	char *cp = kp_canon_path(&mk, "./bin/free");
+	eq_str(cp, "./usr/bin/free", "an aliased path takes its canonical name");
+	free(cp);
+	cp = kp_canon_path(&mk, "binutils/x");
+	eq_str(cp, "binutils/x", "a name that only starts like an alias is not one");
+	free(cp);
+	cp = kp_canon_path(&mk, "lib/x");
+	eq_str(cp, "lib/x", "a real top-level directory is not an alias");
+	free(cp);
+
+	ow = kp_owned_load(&mconf);
+	ok(kp_owned_owner(ow, "bin/free") != NULL,
+	   "either spelling finds the claim");
+	ok(kp_owned_owner(ow, "usr/lib/x") == NULL,
+	   "a path under a real directory keeps its own name");
+	eq_str(kp_owned_other(ow, "usr/bin/free", "toybox"), "procps",
+	       "the other claimant is found under the other spelling");
+	eq_str(kp_owned_other(ow, "bin/free", "procps"), "toybox",
+	       "from either side");
+	ok(kp_owned_other(ow, "lib/x", "toybox") == NULL,
+	   "a sole claimant has no other");
+	kp_owned_free(ow);
+
+	char *mdrop[] = { (char *)"bin/free" };
+	ok(kp_db_drop_paths(&mconf, "toybox", mdrop, 1) == 1,
+	   "an overwrite takes the path under the other spelling");
+	ow = kp_owned_load(&mconf);
+	eq_str(kp_owned_owner(ow, "usr/bin/free"), "procps",
+	       "and the file has one owner");
+	kp_owned_free(ow);
+	unsetenv("KPKG_ROOT");
+	kb_rmtree(mroot);
+	free(mroot);
 	setenv("PKGDB_DIR", "/dev/null", 1);
 
 	kb_rmtree(dir);
@@ -5359,8 +5422,9 @@ static void vt_on_notify(struct kvt_vte *vte, const char *summary,
  * ── A PROGRAM SAYING IT FINISHED ────────────────────────────────────────
  *
  * Three spellings because none of them won, and all three are what programs on
- * this image actually emit. `make && notify-send done` does not work here —
- * `libnotify` is not a port — so these escapes are the whole of that facility.
+ * this image actually emit. They are how a program with no session bus of this
+ * desktop's — a shell on another machine over ssh — raises a toast through the
+ * terminal it runs in.
  */
 static void test_vt_notify(void)
 {

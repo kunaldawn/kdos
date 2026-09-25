@@ -759,7 +759,7 @@ for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; d
             case "$_c" in
                 set|if|then|elif|else|fi|case|esac|until|while|for|do|done|\
                 trap|exit|return|break|continue|command|export|local|read|\
-                eval|cd|shift|unset|wait|getopts|source) continue ;;
+                eval|exec|cd|shift|unset|wait|getopts|source) continue ;;
             esac
             case "$_fn" in *" $_c "*) continue ;; esac
             [ -e "build/fs/usr/bin/$_c" ] || [ -e "build/fs/bin/$_c" ] ||

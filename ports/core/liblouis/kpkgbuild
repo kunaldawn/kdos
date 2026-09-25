@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liblouis
+version     = 3.39.0
+release     = 1
+source      = https://github.com/liblouis/liblouis/releases/download/v$version/$name-$version.tar.gz
+sha256      = 629fa8cb0dfd9ad457c5bf47a42f0953b673e62c8ad6b1d03ddc4e2bd20008f1  liblouis-3.39.0.tar.gz
+description = Braille translation — contracted and uncontracted tables for well over a hundred languages
+homepage    = https://liblouis.io/
+depends     = pkgconf texinfo help2man

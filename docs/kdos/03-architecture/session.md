@@ -14,7 +14,8 @@ new.
 
 A login on tty1 reaches the desktop without anyone typing a command:
 `kdos-login` autologs in the account `login.conf` names, and `.bash_profile`
-runs `kdos-desktop`.
+runs `kdos-desktop` — or `.zprofile`, for an account whose login shell is zsh,
+after `/etc/zsh/zprofile` has read `/etc/profile`.
 
 ```
 login shell
@@ -150,6 +151,14 @@ AAC and LC3 are enabled explicitly and linked from `libfreeaptx`, `ldacbt`,
 mandatory in the profile and always present. Without them every headset falls
 back to the worst codec the specification has.
 
+LE Audio needs the Bluetooth daemon's half as well. bluez registers the LC3
+(BAP) endpoints PipeWire offers only when its experimental D-Bus interfaces and
+the kernel's ISO-socket feature are both on, so `60_bluetooth` starts
+`bluetoothd -E --kernel=6fbaf188-05e0-496a-9885-d6ddfdb4e03e`. Without them an
+LE Audio headset or hearing aid falls back to A2DP and HFP, or does not connect.
+They are flags rather than a `main.conf` so the file the bluez package owns is
+not shadowed.
+
 ### Reaching the graph from inside a box
 
 A box reaches the audio graph because the base pack carries an audio client and
@@ -253,6 +262,7 @@ org.freedesktop.impl.portal.Screenshot=wlr
 org.freedesktop.impl.portal.FileChooser=kdos
 org.freedesktop.impl.portal.Settings=kdos
 org.freedesktop.impl.portal.AppChooser=kdos
+org.freedesktop.impl.portal.Access=kdos
 ```
 
 The session sets `XDG_CURRENT_DESKTOP` itself, in the program that starts its
@@ -296,8 +306,8 @@ Get that order wrong and ScreenCast stays empty for the whole session.
 
 ### The KDOS backend
 
-`src/desktop/xdg-desktop-portal-kdos` serves FileChooser, Settings and
-AppChooser. ScreenCast belongs to `xdg-desktop-portal-wlr` and this backend
+`src/desktop/xdg-desktop-portal-kdos` serves FileChooser, Settings, AppChooser
+and Access. ScreenCast belongs to `xdg-desktop-portal-wlr` and this backend
 does not implement it. It is a bus adapter and nothing more: it spawns
 `kdos-pick` and reads its output, so the file chooser stays an ordinary program
 you can run by hand, script, or replace.
@@ -342,6 +352,44 @@ alternative to holding the connection; it is a different thing entirely.
 output ends; the cast view does not exit — it *is* the stream — so the reply is
 built when its first line arrives and the process is left running until the
 session is closed.
+
+### Access, and what it unlocks
+
+The front end exports Camera, Screenshot and Location only when a backend
+answers `org.freedesktop.impl.portal.Access`, the grant-or-deny question each
+of them asks before it hands an application what it guards. The KDOS backend
+answers it with `kdos-prompt`: the title and subtitle the front end sends
+become the question, its grant and deny labels become the two buttons, and the
+dialog opens on Deny, which is the answer when nobody answers. Grant is
+response 0; Deny and Escape are both 1, a refusal; a prompt that could not be
+run is 2. The front end's body text is not shown, because it points at a
+privacy page in a settings application this desktop does not have.
+
+The answer is kept in the front end's permission store, under
+`~/.local/share/flatpak/db/`, keyed by application id, so each question is
+asked once. A boxed application has no id the front end can see: it
+recognises Flatpak, Snap and Linyaps sandboxes, and a KDOS box is none of
+them, so every box is the same unsandboxed host program to it and one answer
+covers every box. Removing the portal's file there asks again.
+
+Location is the system GeoClue service, `geoclue`, which D-Bus starts on the
+system bus as its own account when the first client asks and which exits after
+a minute with none. Its Wi-Fi and 3G sources ask beaconDB for a position from
+what `wpa_supplicant` and ModemManager see; the modem, NMEA-over-Avahi and
+compass sources read their devices directly. It runs with no consent agent:
+`/etc/geoclue/conf.d/90-kdos.conf` empties the agent whitelist, and the port's
+`no-agent.patch` reads an empty whitelist as leave to answer a client at once —
+upstream holds every client until an agent registers, which here would be
+never. So it answers whoever asks it on the system bus. The front end asks Access before
+Location only for a sandbox it recognises, which leaves a boxed application's
+position given without a question; see
+[Known gaps](../06-reference/known-gaps.md#applications-and-boxes).
+
+An icon or a sound an application hands a portal is decoded by
+`xdg-desktop-portal-validate-icon` and `-validate-sound`, and each of those
+re-executes itself under `bwrap` with no network, no home directory and a
+read-only `/usr`. `bwrap` is not setuid; it sandboxes through an unprivileged
+user namespace.
 
 ### Recording
 
@@ -536,6 +584,12 @@ route by itself when the variable is unset, and setting it is how a working GTK
 application stops accepting input. Neither is ever set to the engine's own
 name: that is the X11-era route, where each toolkit talks to the engine
 directly, and inside a container that engine does not exist.
+
+An X11 application has no input method, host or boxed. Xwayland passes no
+text-input to its X clients, and the one route an X client has to an engine is
+XIM, which fcitx5 provides only when built with X11 support — the port is built
+`ENABLE_X11=Off`, because that frontend is the X client libraries the host does
+not carry.
 
 The candidate window belongs to this desktop. `kdos-ime` owns
 `org.kde.impanel`, and fcitx5's kimpanel module has a higher UI priority than

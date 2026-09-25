@@ -190,10 +190,10 @@ this signals it: `SIGUSR1`, by exact `comm`, which reaches the panel and not the
 the notification daemon, the other `argv[0]`s of the same binary.
 
 It walks `/proc` itself instead of running `pkill`, and this is the one signal in `kdos` that has
-to. This image's `pkill` is toybox's, whose `-U` takes a user id — so `-USR1` parses as `-U SR1`
-and is refused, while `-HUP` survives only because there is no `-H`. A signal spelled so that it
-depends on which options a `pkill` happens to have stops being sent the day one is swapped, and it
-stops silently, because the refusal goes to a standard error nobody reads.
+to. procps-ng's `pkill`, the one on this image, takes `-USR1` as a signal before it reads any
+option, but toybox's takes `-U` for a user id and refuses `-USR1` as `-U SR1`. A signal spelled so
+that it depends on which options a `pkill` happens to have stops being sent the day one is swapped,
+and it stops silently, because the refusal goes to a standard error nobody reads.
 
 It outranks autohide. While the bar is put away the pointer will not bring it back; without that
 rule the bar returns the first time the mouse crosses the bottom row. Nothing is reported when no
@@ -263,7 +263,7 @@ tested, while a warning would make every virtual machine look broken.
 | Boxes | Whether the pack filesystem is loadable, whether `kdos-packd` answers and by which mount route, whether the home directory's filesystem can host a container layer, and whether every mounted pack still has a file behind it |
 | Session | Whether the compositor's **socket** exists rather than whether the variable is set, `XDG_RUNTIME_DIR`, and whether `kdos-comp`, `kdos-shell` and the wlroots portal are running |
 | Containers | The mount-namespace root, and the `subuid` and `subgid` mappings rootless containers need |
-| Desktop | The accent state file, the foot theme, the KDE bridge file, the portal configuration, `~/.local/bin` on `PATH`, Xwayland's socket, the session daemons and their sockets, and four setuid bits: `kdos-checkpass`, `kdos-resctl`, `newuidmap` and `newgidmap` |
+| Desktop | The accent state file, the foot theme, the KDE bridge file, the portal configuration, `~/.local/bin` on `PATH`, Xwayland's socket, the session daemons and their sockets, and five setuid bits: `kdos-checkpass`, `kdos-resctl`, `newuidmap`, `newgidmap`, and `dbus-daemon-launch-helper` with its group, `messagebus` |
 | Security | The default password. Root only — an ordinary user gets no section at all rather than a check that pretends it looked |
 
 "Add yourself to this group" is an instruction; "permission denied" is not. That difference is why
@@ -277,10 +277,12 @@ The box check reports, on a live session, that the home directory is on an overl
 persistent box cannot exist. That is a real rule stated to the person it affects rather than a
 failure.
 
-Losing a setuid bit is silent and catastrophic in each of three different ways: `kdos-checkpass`
+Losing a setuid bit is silent and catastrophic in each of four different ways: `kdos-checkpass`
 without it means every password at the lock screen is wrong, `kdos-resctl` without it means
-`kdos-res` cannot end a process, and a mapping helper without it means the container engine exits
-125 and no box starts.
+`kdos-res` cannot end a process, a mapping helper without it means the container engine exits
+125 and no box starts, and the bus's launch helper without its bit or its group means no D-Bus
+system service is ever activated — Wi-Fi's supplicant, fingerprints and firmware updates among
+them.
 
 `--cve` is delegated rather than inlined. The vulnerability answer is a table of findings with its
 own exit code and its own vintage to quote, and folding it into doctor's ok/warn lines would
@@ -915,7 +917,7 @@ slot state machine, and the exit code is the answer.
 | Verb | Does |
 |---|---|
 | `check` | What the ports tree pins that is not installed. `--json` for a surface, `--out PATH` to write that document atomically |
-| `apply` | Take it — binhost first, source second, A/B aware |
+| `apply` | Take it — binhost first, source second, A/B aware. On an A/B machine it installs into the mounted inactive slot, then puts that slot's kernel in its ESP directory with `kdos-bootctl deploy`, then marks it the candidate; a deploy that fails leaves the slot untried |
 | `theme` | Re-run the theme generators for `$HOME` after an art upgrade |
 
 ## kdos settings
@@ -943,13 +945,13 @@ selects the tool, so `kdos-tools service list` works before the symlinks exist.
 | `ksvc` | The service supervisor |
 | `service` | The same, under the conventional name |
 | `kdos-getty` | Loads the console font and palette, then runs a getty |
-| `kdos-bootctl` | `status`, `select`, `mark-good`, `try`, `set-slot` and `crypt` for the A/B slots, plus `theme` and `palette`, which own `limine.conf` and `/etc/vtrgb` — also copied into the initramfs |
+| `kdos-bootctl` | `status`, `select`, `mark-good`, `try`, `set-slot`, `crypt` and `deploy` for the A/B slots and each slot's kernel on the ESP, which rewrite the `/KDOS` entries of `limine.conf`, plus `theme` and `palette`, which own its theme lines and `/etc/vtrgb` — also copied into the initramfs |
 | `kdos-shot` | Screenshots: `region`, `screen`, `window`, `qr` |
 | `kdos-banner` | The login banner |
 | `kdos-fetch-app` | Install an alien application from a network |
 | `kdos-fetch-static` | Fetch a single verified static binary |
 | `kdos-sfx` | The machine's four noises: `login`, `notify`, `error`, `degauss` |
-| `kdos-mpctl` | Music player control over MPRIS: `toggle`, `stop`, `next`, `prev`, `now`, `watch` |
+| `kdos-mpctl` | Music player control: `toggle`, `stop`, `next`, `prev` go to mpd over its socket or to an MPRIS player on the session bus, whichever is playing; `now` and `watch` read mpd |
 | `kdos-share` | A file to another machine over `croc` — the name the Share verb resolves |
 
 `ksvc` is a C supervisor rather than a shell one because a shell one is not correctable. A respawn
@@ -959,10 +961,30 @@ daemon — reporting success as it goes. The C supervisor creates its own sessio
 signal reaches both. It also refuses a service name that is not a plain name, since a name
 interpolated into a glob is a name that can match anything.
 
+`ksvc supervise [--final-exit CODE]... <name> <command>...` restarts the daemon five seconds after
+any exit, except an exit with a status named by `--final-exit`. That status is one restarting
+cannot change — thermald on an Intel model it does not know, smartd with no disk to watch, mdadm with
+no array — so the supervisor says so once, removes its pid file and exits. A death by signal is
+always restarted. A daemon that finds out only after probing the hardware is otherwise restarted
+every five seconds for as long as the machine is up.
+
 `kdos-fetch-app` passes the application name as a positional argument, never interpolated into a
 command string. A nested shell invocation would let the outer shell expand the name before the
 inner one parses it, so a name containing a quote breaks out and runs as the box's root. The in-box
 package-manager fallback is still shell, because that is what it is — but the name arrives as `$1`.
+
+`kdos-mpctl` is what the transport keys run, and one player answers each key. mpd and every MPRIS
+player are ranked by state — playing, then paused, then anything else — and the highest takes the
+key, mpd on a tie. So a playing mpd always takes it, a paused mpd beats a paused MPRIS player, and
+a stopped mpd yields to any MPRIS player that is `Playing` or `Paused` but keeps the key over a
+stopped one; among MPRIS players the first at the best rank wins. `toggle` sends a stopped mpd
+`play`, because mpd's bare `pause` does nothing while it is stopped. MPRIS reaches `mpv` (through the `mpv-mpris` plugin in
+`/etc/mpv/scripts`), `cmus` and every boxed player, since a box shares the session bus. A player that
+does not answer within two seconds costs that key and nothing else. `libbasu` is opened at run time
+rather than linked, because this binary is also `ksvc`, `kdos-getty` and the `kdos-bootctl` the
+initramfs copies with a hand-kept library list. With no mpd and no player on the bus the verb says
+`no player on this login` and exits 1. `now` and `watch` read mpd alone: the panel reads MPRIS
+itself.
 
 ## See also
 

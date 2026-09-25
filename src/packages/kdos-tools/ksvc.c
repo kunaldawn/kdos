@@ -31,10 +31,12 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -146,13 +148,154 @@ static int run_script(const char *script, const char *action)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * A supervised daemon's stdout and stderr, and the supervisor's own Starting
+ * and Exited lines, go to syslog under the service's name — the daemon
+ * facility, one message per line — and to /run/kdos-svc.<name>.log, which
+ * holds at most LOG_CAP bytes and one previous generation beside it.
+ *
+ * Never the descriptors the supervisor was started with. Under rcS those are
+ * the boot step's capture file on the /run tmpfs, open for as long as the
+ * daemon lives: a chatty or crash-looping daemon fills RAM with it until the
+ * reboot, and a daemon run in the foreground so that it logs to stderr
+ * (chronyd -d) never reaches /var/log/messages at all.
+ *
+ * The file is what is left before syslogd is up and while it restarts; syslog
+ * drops a message nobody is listening for.
+ */
+#define LOG_CAP (64 * 1024)
+
+static void forward_lines(const char *name, int fd)
+{
+	char path[160], old[168];
+	snprintf(path, sizeof(path), RUN_DIR "/kdos-svc.%s.log", name);
+	snprintf(old, sizeof(old), "%s.old", path);
+
+	openlog(name, LOG_NDELAY, LOG_DAEMON);
+	int out = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0640);
+	off_t size = out >= 0 ? lseek(out, 0, SEEK_END) : 0;
+
+	FILE *in = fdopen(fd, "r");
+	if (!in)
+		_exit(1);
+	char line[1024];
+	while (fgets(line, sizeof(line), in)) {
+		size_t n = strcspn(line, "\n");
+		line[n] = 0;
+		if (!n)
+			continue;
+		syslog(LOG_INFO, "%s", line);
+		if (out < 0)
+			continue;
+		if (size + (off_t)n + 1 > LOG_CAP) {
+			close(out);
+			rename(path, old);
+			out = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND |
+					 O_CLOEXEC, 0640);
+			size = 0;
+			if (out < 0)
+				continue;
+		}
+		line[n] = '\n';
+		if (write(out, line, n + 1) == (ssize_t)(n + 1))
+			size += (off_t)n + 1;
+	}
+	_exit(0);
+}
+
+/*
+ * Point this process's stdio at a forwarder. The forwarder is forked from the
+ * supervisor after setsid(), so it is in the supervisor's process group, and
+ * it IGNORES that group's SIGTERM and SIGHUP and leaves on EOF instead. `stop`
+ * signals the whole group at once: a forwarder that died with it would leave
+ * the stopping daemon writing its shutdown lines into a pipe with no reader,
+ * losing them from syslog and the log file and killing any daemon that does
+ * not handle SIGPIPE partway through its cleanup. EOF comes when the last
+ * write end closes — the supervisor's on its SIGTERM, the daemon's (and any
+ * child's) on exit — and a SIGKILL of the group still ends it. The forwarder
+ * is never exec'd, so the daemon inherits none of these dispositions. The
+ * supervisor keeps the write end, so the forwarder outlives every respawn of
+ * the daemon. A pipe or fork that fails leaves the inherited descriptors in
+ * place: output going to the old place is better than a daemon that cannot
+ * start.
+ */
+static void route_output(const char *name)
+{
+	int p[2];
+	if (pipe(p) < 0)
+		return;
+	pid_t f = fork();
+	if (f < 0) {
+		close(p[0]);
+		close(p[1]);
+		return;
+	}
+	int null = open("/dev/null", O_RDWR);
+	if (f == 0) {
+		close(p[1]);
+		if (null >= 0) {
+			dup2(null, 0);
+			dup2(null, 1);
+			dup2(null, 2);
+		}
+		signal(SIGTERM, SIG_IGN);
+		signal(SIGHUP, SIG_IGN);
+		forward_lines(name, p[0]);
+	}
+	close(p[0]);
+	if (null >= 0) {
+		dup2(null, 0);
+		if (null > 2)
+			close(null);
+	}
+	dup2(p[1], 1);
+	dup2(p[1], 2);
+	if (p[1] > 2)
+		close(p[1]);
+}
+
+#define MAX_FINAL 8
+
+/*
+ * `--final-exit CODE` names an exit status that restarting cannot change: "this
+ * machine is not one I can serve", "there is nothing here to watch", "my
+ * configuration does not parse". A daemon that decides that only after probing
+ * the hardware cannot be caught by a skip check in its script, and without
+ * this the supervisor restarts it every RESPAWN_DELAY seconds for as long as
+ * the machine is up. On that code the supervisor says so once, removes its pid
+ * file and exits; every other status, and every death by signal, is still
+ * respawned.
+ */
 static int cmd_supervise(int argc, char **argv)
 {
+	int final[MAX_FINAL];
+	int nfinal = 0;
+
+	while (argc >= 2 && !strcmp(argv[0], "--final-exit")) {
+		char *end;
+		long c = strtol(argv[1], &end, 10);
+		if (*argv[1] == 0 || *end || c < 0 || c > 255)
+			kb_die("--final-exit wants an exit status, got '%s'",
+			       argv[1]);
+		if (nfinal == MAX_FINAL)
+			kb_die("at most %d --final-exit codes", MAX_FINAL);
+		final[nfinal++] = (int)c;
+		argc -= 2;
+		argv += 2;
+	}
 	if (argc < 2)
-		kb_die("usage: ksvc supervise <name> <command> [args...]");
+		kb_die("usage: ksvc supervise [--final-exit CODE]... <name> "
+		       "<command> [args...]");
 	const char *name = argv[0];
 	if (!name_ok(name))
 		kb_die("bad service name '%s'", name);
+
+	/* The child blocks on this pipe until the pid file exists, so a
+	 * supervisor that stops at once removes the file its parent wrote
+	 * rather than racing it and leaving a stale one behind. */
+	int gate[2];
+	if (pipe(gate) < 0)
+		kb_die("pipe: %s", strerror(errno));
 
 	pid_t pid = fork();
 	if (pid < 0)
@@ -160,9 +303,19 @@ static int cmd_supervise(int argc, char **argv)
 
 	if (pid == 0) {
 		/* Its OWN session and process group. This is the whole fix:
-		 * `ksvc stop` kills the group, and the group is exactly this
-		 * supervisor plus the daemon it spawns. */
+		 * `ksvc stop` signals the group, and the group is exactly this
+		 * supervisor, the daemon it spawns and their log forwarder —
+		 * which ignores the SIGTERM and drains until the daemon has
+		 * closed its end (see route_output). */
 		setsid();
+
+		close(gate[1]);
+		char b;
+		while (read(gate[0], &b, 1) < 0 && errno == EINTR)
+			;
+		close(gate[0]);
+
+		route_output(name);
 
 		for (;;) {
 			printf("[KDOS] (%s) Starting: %s\n", name, argv[1]);
@@ -179,6 +332,18 @@ static int cmd_supervise(int argc, char **argv)
 					;
 			int rc = WIFEXITED(st) ? WEXITSTATUS(st)
 					       : 128 + WTERMSIG(st);
+			for (int i = 0; WIFEXITED(st) && i < nfinal; i++) {
+				if (rc != final[i])
+					continue;
+				printf("[KDOS] (%s) Exited with code %d, a "
+				       "final status: not restarting\n",
+				       name, rc);
+				fflush(stdout);
+				char *pf = pidfile(name);
+				unlink(pf);
+				free(pf);
+				_exit(0);
+			}
 			printf("[KDOS] (%s) Exited with code %d. Restarting in "
 			       "%ds...\n", name, rc, RESPAWN_DELAY);
 			fflush(stdout);
@@ -186,11 +351,13 @@ static int cmd_supervise(int argc, char **argv)
 		}
 	}
 
+	close(gate[0]);
 	char buf[32];
 	snprintf(buf, sizeof(buf), "%d\n", (int)pid);
 	char *p = pidfile(name);
 	kb_write_file(p, buf);
 	free(p);
+	close(gate[1]);
 
 	printf("[KDOS] (%s) Supervisor started (pid %d)\n", name, (int)pid);
 	return 0;

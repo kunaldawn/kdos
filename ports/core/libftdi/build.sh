@@ -33,3 +33,7 @@ cmake .. -G Ninja \
 	-DFTDI_EEPROM=OFF
 ninja
 DESTDIR=$PKG ninja install
+
+# libftdipp1.pc is installed whether or not FTDIPP builds the library it
+# names, and a configure that finds it links -lftdipp1 and fails.
+rm -f "$PKG/usr/lib/pkgconfig/libftdipp1.pc"

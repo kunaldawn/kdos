@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = catatonit
+version     = 0.2.1
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/openSUSE/catatonit/releases/download/v$version/catatonit.tar.xz
+sha256      = 9950425501af862e12f618bdc930ea755c46db6a16072a1462b4fc93b2bd59bc  catatonit-0.2.1.tar.xz
+description = Static container init, for podman pods and --init
+homepage    = https://github.com/openSUSE/catatonit
+depends     = autoconf automake libtool

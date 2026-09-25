@@ -43,6 +43,7 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 | A submodule directory present but empty | [An empty submodule in a release archive](#an-empty-submodule-in-a-release-archive) |
 | A configuration script picking a different compiler | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
 | A downloaded archive that does not exist, or unpacks oddly | [URL and version landmines](#url-and-version-landmines) |
+| `Removing orphan` for a file another package still lists, then `not found` on that tool | [A package manager older than its source](#a-package-manager-older-than-its-source) |
 
 ---
 
@@ -462,6 +463,26 @@ Not failures so much as time sinks:
 - The top-level directory in an archive varies. Verify with a listing when the build reports the
   source is not where it should be.
 - Some hosts block automated fetching entirely, so a version cannot be checked from a script.
+
+## A package manager older than its source
+
+`kpkg` is not a port. `script/01_phase1/12_kpkg.sh` compiles it straight into the tree and records a
+hash of its sources in `build/mark/phase1/kpkg`. A run that includes phase one recompiles it when
+that hash changes; a run that starts later, such as `--continue-from 04_phase4`, never does, so
+every later install and upgrade uses the tree's older binary. An upgrade from an older `kpkg`
+removes a file as an orphan even though another package still lists it. The tool is then missing
+for every port built after it: toybox's upgrade takes `cmp`, and bzip2's test fails with
+`make: cmp: No such file or directory`.
+
+Recompile it on the tree in place before continuing. A plan that names the step suppresses
+snapshots and sets `KDOS_REPLAY`, so the phase-one snapshot is not overwritten:
+
+```sh
+make build BUILD_ARGS="--phases 01_phase1 --steps 01_phase1:12_kpkg.sh"
+```
+
+Files an older `kpkg` has already removed come back only when their owning port reinstalls. That
+needs a recipe change to the port, or a `--rebuild` of it.
 
 ## When the failure is not here
 

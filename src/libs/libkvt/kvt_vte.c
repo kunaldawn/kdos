@@ -3097,10 +3097,9 @@ static bool do_osc_internal(struct kvt_vte *vte, const char *end_seq)
 	 *   OSC 777 ; notify ; <sum> ; <body> urxvt's, which tmux forwards
 	 *   OSC 99 ; <params> ; <text>        kitty's, params before the body
 	 *
-	 * `make && notify-send done` does not work here — `libnotify` is not a
-	 * port and `notify-send` is not on the image — so a long job had no way
-	 * to say it was done from inside the terminal it was running in. These
-	 * are that way, and they cost a parse rather than a dependency.
+	 * They reach the desktop from where `notify-send` cannot — a shell on
+	 * another machine over ssh has no session bus of this desktop's — and
+	 * they cost the program a printf and this library a parse.
 	 *
 	 * THE CALLBACK IS THE TERMINAL'S, not this library's: raising a toast
 	 * means a session bus, and `libkvt` links nothing and must not start.

@@ -13,14 +13,17 @@
 # them is a second copy of each on the machine and only one of the two gets a
 # security fix.
 #
-# THE FOUR EXCEPTIONS ARE NAMED, because USE_SYSTEM_LIBS=yes turns EVERY one of
-# them on at once and a missing header is a build that dies a few files in.
+# THE THREE EXCEPTIONS ARE NAMED, because USE_SYSTEM_LIBS=yes turns EVERY one
+# of them on at once and a missing header is a build that dies a few files in.
 # gumbo-parser and mujs are mupdf's own maintained forks with no upstream to be
-# a port of; zxing-cpp has no port here, so barcode support stays off; and
-# lcms2mt is a forked variant of lcms2 that mupdf itself says is strongly
-# preferred. The rest — freetype, harfbuzz, jbig2dec, libjpeg, openjpeg, zlib,
-# curl, brotli, leptonica, tesseract and libarchive — are ports and come from
-# the system.
+# a port of, and lcms2mt is a forked variant of lcms2 that mupdf itself says is
+# strongly preferred. The rest — freetype, harfbuzz, jbig2dec, libjpeg,
+# openjpeg, zlib, curl, brotli, leptonica, tesseract, libarchive and zxing-cpp
+# — are ports and come from the system.
+#
+# barcode=yes is `mutool barcode`: decoding QR codes and barcodes out of a PDF
+# page or an image, and drawing new ones, through zxing-cpp. It stops the build
+# when zxing is missing, like the two below.
 #
 # tesseract=yes is OCR output (`mutool draw -F ocr.pdf`), reading tesseract's
 # eng.traineddata; archive=yes opens cbr, cb7 and tar comic archives through
@@ -32,8 +35,8 @@
 # X11 rather than Wayland. What ships is mutool and the shared library, which
 # is the half a scriptable machine wants.
 MUPDF_SYS="USE_SYSTEM_LIBS=yes USE_SYSTEM_GUMBO=no USE_SYSTEM_MUJS=no \
-	USE_SYSTEM_ZXINGCPP=no USE_SYSTEM_LCMS2=no"
-MUPDF_OPT="tesseract=yes archive=yes barcode=no HAVE_LIBCRYPTO=yes \
+	USE_SYSTEM_ZXINGCPP=yes USE_SYSTEM_LCMS2=no"
+MUPDF_OPT="tesseract=yes archive=yes barcode=yes HAVE_LIBCRYPTO=yes \
 	HAVE_X11=no HAVE_GLUT=no HAVE_OBJCOPY=yes"
 
 # THE HYPHENATION ZIPS ARE REBUILT FROM THE TEXT PATTERNS beside them, so what

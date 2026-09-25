@@ -16,15 +16,15 @@ the user's side, see [Getting started](../02-user-guide/getting-started.md).
 | 5 | The initramfs `init` | The kernel |
 | 6 | The splash | `kdos-splash`, from the initramfs |
 | 7 | A/B slot selection | `kdos-bootctl` |
-| 8 | Encrypted root unlock, if any | `cryptsetup` |
+| 8 | Encrypted root unlock and volume-group activation, if any | `cryptsetup`, `lvm` |
 | 9 | Find and mount the root | The initramfs `init` |
 | 10 | `switch_root` | util-linux's, never toybox's |
 | 11 | `/etc/init.d/rcS` | init (toybox), as `sysinit` |
-| 12 | The 31 numbered service scripts | `rcS` |
+| 12 | The numbered service scripts ([boot order](../02-user-guide/administration.md)) | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
 | 15 | `kdos-login`, which hands the tty to agetty | `kdos-getty` on tty1 |
-| 16 | The desktop | `~/.bash_profile`, on tty1 only |
+| 16 | The desktop | `~/.bash_profile` (or `~/.zprofile` for a zsh login), on tty1 only |
 
 Step 16 is [the session](session.md), and a login on tty1 reaches it without
 anyone typing a command. A machine whose GPU driver fails to come up lands on
@@ -75,14 +75,73 @@ offers, which include xfs, f2fs and anything under LUKS, so a kernel on the
 root filesystem would be a boot that depends on a driver the boot loader does
 not have.
 
-Two programs write the loader configuration and nothing else does.
+Three programs write the loader configuration and nothing else does.
 `script/06_packaging/02_iso.sh` writes the live medium's
 `boot/limine/limine.conf`; `kinstall` writes `limine.conf` at the root of the
-installed machine's ESP. That location is not arbitrary. Limine looks beside
+installed machine's ESP, and `kdos-bootctl` rewrites that file's `/KDOS`
+entries whenever the boot state changes — see
+[One kernel per slot](#one-kernel-per-slot). That location is not arbitrary. Limine looks beside
 its own EFI binary first and then at `/boot/limine/`, `/boot/`, `/limine/` and
 `/` on each volume — and only that last set is searched on BIOS, so the root of
 the ESP is the one path both firmwares find. A second copy beside `BOOTX64.EFI`
 would be the copy that goes stale.
+
+`fwupd` never touches the loader configuration. It writes the ESP only while a
+firmware update is staged: a capsule under `EFI/kdos/fw/` with `EFI/kdos/fwupdx64.efi` and a one-shot
+`BootNext` entry naming it, or a capsule under `EFI/UpdateCapsule/` for firmware
+that takes one from disk. The boot order is not changed; the next boot after
+the update is Limine's again.
+
+### A new kernel
+
+The `linux` package installs its kernel as `/boot/vmlinuz-kdos`, which nothing
+boots until `kdos-bootctl deploy` copies it into its slot's directory on the
+ESP. Each root slot boots its own kernel from `EFI/kdos/<slot>/`, because a
+kernel's modules exist only in the root it was installed into.
+
+The postinstall builds the new kernel's initramfs into the same root, as
+`/boot/initramfs-kdos.cpio.gz`. It is the image's own `/boot/initramfs.cpio.gz`
+with one archive appended. The base carries the microcode, which the early
+loader finds only at the very start of the file, and the init. The appended
+archive carries the new kernel's copies of the modules listed in
+`/boot/initramfs.modules` — the list `01_initramfs.sh` carried, written beside
+it — and their dependencies. A root with no such list gets the set the base
+archive itself carries: every module under its `lib/modules/`, found by walking
+past the uncompressed microcode archive to the compressed part. The kernel
+unpacks concatenated archives into one tree and the init's `modprobe` looks
+under `uname -r`, so it finds the new set. The init itself is therefore always
+the one the image shipped.
+
+Who deploys depends on the root:
+
+| Installed into | Deployed by | When |
+|---|---|---|
+| The running system | The postinstall, with `kdos-bootctl deploy /` | At once; the next boot runs the new kernel |
+| The inactive slot | `kdos update apply`, with `kdos-bootctl deploy <mount> <slot>` | After every package of the run went in, before `try` |
+
+`deploy` writes the initramfs and then the kernel, each beside the old file,
+flushed and renamed over it, so the directory never holds a new kernel beside an
+initramfs without its modules. It refuses before writing anything when the ESP
+cannot hold both files. It takes `/boot/initramfs-kdos.cpio.gz` where the
+postinstall wrote one, and the image's initramfs otherwise; packaging deletes
+the first from the image, so an ISO carries only the pair built together.
+
+`deploy` also refuses an initramfs that holds module trees for other kernels and
+none for this kernel's version, and writes nothing. That init could not load
+`vfat` to read the boot state, so it would count no attempt and never roll back,
+and it could not mount a root on xfs, f2fs, LUKS or md. The slot keeps the
+kernel it had, and `kdos update apply` does not try it. An initramfs with no
+module tree at all passes, as does one that cannot be read.
+
+On a machine with no boot state, `deploy` writes into the directory that the
+first `/KDOS` entry's `path:` names: `EFI/kdos/a/` on anything kinstall wrote,
+the flat `EFI/kdos/` on an older menu.
+
+In every root, the postinstall keeps the module tree of every kernel on the
+ESP, which it reads out of each bzImage's header, as well as the running
+kernel's. Until a root's own kernel is deployed, the next boot of that root runs
+one of those, and a root stripped of its modules boots with no GPU, network or
+sound driver.
 
 ### The menu
 
@@ -295,10 +354,32 @@ them before udev settles — without `md_mod` the members are bare disks with a
 superblock nobody reads, which looks like an empty drive rather than a missing
 module.
 
+The list is also written to the image as `/boot/initramfs.modules`, which is
+what a later kernel's initramfs is built from — see [A new kernel](#a-new-kernel).
+
 `cryptsetup` and its libraries are carried only when they are installed, and
 the build says so when they are not. A half-carried `cryptsetup` fails at the
 passphrase prompt rather than at build time, which is the wrong place to find
 out.
+
+`lvm` and `dmsetup` are carried whenever lvm2 is installed, and lvm2 arrives
+with `cryptsetup` and `parted` on every image that has them. They are copied to
+`/usr/sbin`, the paths lvm2's udev rules name, rather than to `bin/`: the rules
+travel with the rest of `/usr/lib/udev`, and `95-dm-notify.rules` runs
+`/usr/sbin/dmsetup udevcomplete` for every device-mapper change. `lvm`, and
+`cryptsetup` opening a container, wait for that call with no timeout, so a
+`dmsetup` the rule cannot find hangs the boot at the unlock or the activation
+with nothing on screen. Their libraries are not listed by hand: `copy_closure`
+reads each program's `NEEDED` entries with `readelf` and copies the libraries
+they name, and theirs, from `/usr/lib` or `/lib`. For `lvm` that is
+libdevmapper, libdevmapper-event, libaio, libblkid, libudev, readline and
+libnvme with what libnvme links. The build stops when lvm2 is installed and
+either program is missing, when a rule names `dmsetup` or `lvm` anywhere but
+`/usr/sbin`, and when a library in the closure is installed nowhere. The reader
+is proven first: `readelf`, or `llvm-readelf` in its place, must find libblkid
+among `blkid`'s `NEEDED` entries, or the build stops. A reader that is missing
+fails inside a command substitution, which `set -e` does not catch, and every
+program would be copied without its libraries.
 
 `kdos-bootctl` follows the same rule, and it needs `libpng16` to do so.
 `/usr/bin/kdos-bootctl` is a symlink to `/usr/sbin/ksvc`, which links libpng
@@ -335,6 +416,29 @@ every later test would read the wrong one, so a failed umount stops the scan
 and says so. Only the first pass narrates each device it tried; a hundred
 repetitions of the same two lines would bury the message that explains a failed
 boot.
+
+### Checking the root
+
+An ext2, ext3 or ext4 root is checked with `e2fsck -p` before it is mounted,
+which is the only point at which nothing is using it. `e2fsck` is carried with
+`libext2fs`, `libcom_err` and `libe2p` or not at all. Exit 1 and 2 mean it
+repaired something, and the root is not mounted, so there is nothing to reboot
+for. Exit 4 and above left errors behind: the splash says so and the boot goes
+on, because a shell on the serial console is one nobody at the screen can
+reach. btrfs, xfs and f2fs are not checked here; each checks itself at mount
+time, which is why the installer gives them pass number 0.
+
+Every other filesystem with a pass number is checked before it is mounted.
+`rcS` runs `fsck -A -R -T -a` before `mount -a`, which checks every one whose
+device exists before udev — in practice the ESP, which is FAT with no journal
+and holds the A/B boot state; errors it could not correct reach the splash. A
+filesystem on a logical volume the initramfs did not activate — any volume on
+a live boot, or on a disk that appeared after the initramfs ran — has no device
+until `03_lvm` activates its volume group, so `rcS`'s pass cannot check it;
+`03_lvm` runs
+`fsck -A -R -M -T -a` once the group is active, which checks only what is not
+yet mounted, then mounts it, and reports errors left uncorrected in its own
+log. Both passes write to `/run/kdos-fsck.log`.
 
 ## The splash
 
@@ -397,6 +501,41 @@ Three attempts, then a shell rather than a reboot loop. There is no
 per-keystroke feedback, because the splash owns the framebuffer and the shell
 owns the terminal. That is stated on screen rather than hidden.
 
+## Activating volume groups
+
+A root on an LVM logical volume boots with the ordinary command line: `root=`
+names the UUID of the filesystem on the volume, as it would for a partition.
+The generated init activates volume groups before it looks for that UUID,
+because a filesystem on a logical volume has no device node until its group is
+active.
+
+It activates on each side of the unlock, because LVM and LUKS stack both ways.
+A volume group inside a container exists only after the unlock, and a container
+on a logical volume needs its group active before the unlock. It activates again
+on each pass of the ten-second wait for the root, so a physical volume on a disk
+that enumerates late still brings up its group before the wait gives up. Each call first
+asks `blkid -t TYPE=LVM2_member` for the physical volumes, and runs `lvm
+vgchange -aay --sysinit` only when that set is not empty and differs from the
+set it last activated. A disk boot without LVM therefore costs one `blkid` per
+call and never starts `lvm`. A live boot, which has neither `root=` nor
+`cryptdevice=`, makes no call at all, and its groups are activated by `03_lvm`
+after `rcS`. A failed activation marks the stage failed on the splash and the
+boot goes on; if the root was in that group, the root lookup reports it
+missing.
+
+`--sysinit` turns off dmeventd monitoring, background polling and locking
+failures, none of which an initramfs can provide. No `lvm.conf` is carried, so
+the compiled defaults apply and every group found is activated. The groups stay
+active across `switch_root`, and `03_lvm`'s own `vgchange` leaves them as they
+are.
+
+A thin or cache volume cannot be the root. Activating either runs `thin_check`
+or `cache_check`, and thin-provisioning-tools is not in the initramfs.
+
+The installer does not create LVM and does not offer a logical volume as the
+root: it lists whole disks and their partitions only. A root on LVM is set up by
+hand.
+
 ## A/B slot selection
 
 Two root partitions, a state file on the ESP, and a boot that can change its
@@ -447,7 +586,7 @@ cannot both be named there, so the second is recorded per slot in the state
 file and the initramfs asks for it *after* `select` has chosen:
 
 ```sh
-SEL=$(kdos-bootctl select)                 # the filesystem, and one attempt spent
+SEL=$(kdos-bootctl select "$BOOT_SLOT")    # the filesystem, and one attempt spent
 SLOT_CRYPT=$(kdos-bootctl crypt "$SEL")    # its container, if it has one
 ```
 
@@ -468,15 +607,108 @@ Without this split, selecting slot B unlocks slot A's container and then looks
 for B's filesystem inside it. There is nothing there, and the failure reads as
 a corrupt filesystem rather than as a lookup that was never made.
 
-## Three tools that must not be toybox's
+### One kernel per slot
+
+Each slot boots the kernel in its own ESP directory, and the modules for that
+kernel exist only in that slot's root:
+
+```
+EFI/kdos/a/vmlinuz              slot A's kernel
+EFI/kdos/a/initramfs.cpio.gz    and the initramfs built with it
+EFI/kdos/b/...                  slot B's, once an update has deployed it
+EFI/kdos/bootstate              the state file above
+```
+
+Limine chooses the kernel before anything of ours runs and has no boot
+counting, so the menu is part of the state. `kdos-bootctl` regenerates the
+`/KDOS` entries of `limine.conf` on every change — `set-slot`, `try`, `deploy`,
+`select`, `mark-good` — and writes the file only when the text differs:
+
+| Entry | Boots |
+|---|---|
+| `/KDOS`, `(verbose)`, `(single user)` | The slot `select` will choose next: the candidate while it has attempts left, else the active slot |
+| `/KDOS (slot <x>)` | The other slot, when it has a root and a kernel |
+
+`default_entry` points at the first `/KDOS` entry. Every other line of the file
+— the theme, the timeout, memtest86+ — stays where it is. The command line comes
+from the first `/KDOS` entry: `root=` and `kdos_slot=` are set per slot, the
+verbosity per entry, and every other word carries over, including anything
+added by hand.
+
+Every entry carries `kdos_slot=<x>`, and the initramfs hands it to `select`.
+That is how a hand-picked entry is recognised: its slot is not the one the menu
+leads with. It boots its own slot and no other, because the running kernel is
+that slot's.
+
+- **The confirmed slot picked while a candidate is on trial** abandons the
+  candidate. That entry is the way back from a candidate kernel that dies before
+  the initramfs can count anything.
+- **Any other hand-picked entry** is one boot of that root. No attempt is spent
+  and nothing is confirmed, except a candidate picked after its last attempt,
+  which is still the candidate and is confirmed by `rcS` as usual.
+
+The last attempt moves the menu's lead back to the active slot. A candidate that
+fails that boot is therefore rolled back by the next boot of the confirmed
+slot's own kernel, with no reboot in between.
+
+`try` refuses a slot that has no kernel on the ESP once any slot has a directory
+of its own. The menu could not lead with it, so the confirmed slot's entry would
+boot, and `select` would read that as a hand pick and abandon the candidate.
+
+An ESP that no `deploy` has touched holds one flat pair, `EFI/kdos/vmlinuz` and
+`EFI/kdos/initramfs.cpio.gz`, that either slot boots. `kdos-bootctl` leaves a
+menu with no per-slot directory exactly as it is. A slot without a directory of
+its own boots the flat pair, and the pair is deleted once no entry names it.
+The next `kdos update` of each slot therefore moves that slot into its own
+directory.
+
+The init inside an initramfs is the image's, and a `linux` update only appends
+modules to it. An init that does not read `kdos_slot=` still counts and rolls
+back, but leaves the menu alone, so its rollback boots the confirmed root on the
+candidate's kernel. `mark-good` regenerates the menu on every boot, confirmed or
+not, so a root whose `kdos-bootctl` has this regeneration corrects the menu on
+the first boot that reaches the end of `rcS`.
+
+Two kernels and two initramfs images fit many times over in the 512 MiB ESP
+`kinstall` creates. An install that reuses a smaller ESP gets a warning when
+there is no room left for a second kernel.
+
+## Tools that must not be toybox's
 
 Toybox provides applets under names that also belong to full implementations,
-and `$PATH` puts `/usr/bin` ahead of `/usr/sbin`. Where the applet is not a
-drop-in, the recipe and phase 1 both switch it off, so the name resolves to the
-real tool everywhere. Both are needed: phase 1 installs toybox outside the
-package database, so a name it plants is owned by no package — the later port
-install replaces `/usr/bin/toybox` without removing the symlink, and the orphan
-sweep works from the database and never sees it.
+and `$PATH` puts `/usr/bin` ahead of `/usr/sbin`. The toybox recipe switches
+off every applet whose name another port on the image installs, so each name
+has one owner and resolves to the real tool everywhere. Where toybox's
+directory differs from the real tool's, phase 1 switches the applet off too:
+phase 1 installs toybox outside the package database, so a name it plants is
+owned by no package — the later port install replaces `/usr/bin/toybox`
+without removing the symlink, and the orphan sweep works from the database and
+never sees it. Phase 1 switches off `netcat` and `ulimit` for the same reason:
+no port installs either name at any path, so a link planted there would outlive
+the applet. A name in the same directory as the real tool needs no phase-1
+change, because the real port's install replaces the symlink.
+
+| Switched off | Because the image has |
+|---|---|
+| `mount`, `umount`, `losetup`, `swapon`, `swapoff`, `mkswap`, `switch_root`, `blkid`, `blkdiscard`, `blockdev`, `dmesg`, `kill`, `linux32`, `nsenter`, `unshare`, `rtcwake`, `fsfreeze`, `hwclock`, `pivot_root`, `mountpoint`, `eject`, `fallocate`, `flock`, `logger`, `renice`, `ionice`, `chrt`, `taskset`, `uclampset`, `setsid`, `rfkill`, `rev`, `cal`, `mcookie`, `uuidgen`, `getopt`, `prlimit` | util-linux |
+| `ps`, `top`, `free`, `pgrep`, `pkill`, `pidof`, `pmap`, `pwdx`, `sysctl`, `uptime`, `vmstat`, `w`, `watch` | procps-ng |
+| `chvt`, `deallocvt`, `openvt` | kbd |
+| `lspci`, `lsusb`, `killall`, `iotop`, `i2c*`, `gpiodetect`, `gpioget`, `gpioinfo`, `gpioset`, `partprobe`, `nc` | pciutils, usbutils, psmisc, iotop, i2c-tools, libgpiod, parted, netcat |
+| `readelf`, `strings`, `cmp`, `clear`, `reset`, `setfattr`, `bunzip2`, `bzcat`, `gunzip`, `zcat`, `lsattr`, `chattr`, `insmod`, `lsmod`, `rmmod`, `modinfo` | binutils, diffutils, ncurses, attr, bzip2, gzip, e2fsprogs, kmod |
+| `nologin`, `login`, `su`, `tar`, `patch`, `file` | shadow, tar, patch, file |
+| `netcat`, `ulimit` | no such command — `nc` is the netcat port's, `ulimit` is bash's builtin only |
+
+The applets are not drop-ins, and each difference is a feature the machine
+would lose: toybox's `swapon` and `swapoff` refuse `-a`, so with them the swap
+the installer writes into `fstab` is never turned on; its `umount` has no
+`-R`; its `mount` never runs a `mount.<type>` helper and does not know
+`nofail`; its `lspci` and `lsusb` have no `-d`, which `airmon-ng`'s driver
+detection rests on.
+
+`sed`, `find`, `xargs`, `awk`, `expr` and `ln` stay in toybox. Every configure
+script between toybox and the GNU ports runs them, and phase 1 has no other
+copy. The GNU ports come later in dependency order and take the names over; an
+upgrade of toybox alone puts its applets back until they are reinstalled.
 
 ### `blkid`
 
@@ -526,8 +758,11 @@ The cost is stated: `magic.mgc` is about ten megabytes.
 
 ### `switch_root`
 
-The initramfs installs `/usr/sbin/switch_root` over toybox's applet, and it
-must stay that way.
+The initramfs carries util-linux's `/usr/sbin/switch_root`, with its `mount`,
+`umount`, `losetup` and `dmesg`, and it must stay that way. The applets are
+compiled out, and the packaging step refuses an initramfs whose copy of any of
+the five reports itself as a Toybox multicall binary, or whose programs name a
+library it does not carry.
 
 Toybox's `switch_root` wipes the initramfs and calls `chroot()`. It never
 performs the move-mount that makes the new root the *mount namespace's* root.
@@ -549,11 +784,23 @@ doctor` checks it.
    `/usr/local/bin`. Without it a system timer that runs `kdos` is skipped as
    missing.
 2. Counts the enabled service scripts and tells the splash its step total.
-3. Mounts everything in `fstab`, then runs `chmod 1777 /tmp`, then `swapon -a`.
+3. Checks every non-root `fstab` filesystem with a pass number whose device
+   exists yet — one on a logical volume the initramfs did not activate is
+   left to `03_lvm`
+   ([Checking the root](#checking-the-root)) — mounts everything in `fstab`,
+   mounts `efivarfs` on a UEFI boot, creates `/run/lock` `1777`, brings the
+   loopback interface up, then runs `chmod 1777 /tmp` and `swapon -a`, and
+   links `/etc/localtime` to UTC when nothing is there. The `tzdata` package
+   does not own `/etc/localtime`, so an upgrade from one such version to the
+   next leaves a chosen zone alone. A machine whose installed `tzdata` manifest
+   still lists the link loses it once, on the next upgrade — see
+   [Known gaps](../06-reference/known-gaps.md#build-and-packaging).
 4. Makes the root mount shared, which containers need.
 5. Runs each `NN_name.sh` in numeric order, logging each to
    `/run/kdos-init.<name>.log`, showing the splash a step per script and up to
-   six lines of failure detail if one fails.
+   six lines of failure detail if one fails. A supervised daemon's own output
+   does not stay in that file: `ksvc` sends it to syslog and to
+   `/run/kdos-svc.<name>.log` — see [The daemons](../04-programs/daemons.md#the-shape-they-share).
 6. Runs `kdos-bootctl mark-good`.
 7. Quits the splash, which runs the power-off animation and leaves a clean
    framebuffer for the tty1 login.
@@ -612,6 +859,12 @@ client at all. Turning NetworkManager off hands DHCP back to `dhcpcd`, and that
 is what makes `dhcpcd` the fallback for a machine that runs no connection
 manager — a server install, or a recovery boot.
 
+Neither script owns the loopback interface. NetworkManager brings `lo` up only
+when it runs, and `dhcpcd` never touches it, so `rcS` brings it up before any
+service starts. Otherwise a machine on the fallback has no `127.0.0.1` or `::1`,
+and CUPS, chrony's command socket and everything else that talks to localhost
+fails.
+
 `dhcpcd` is supervised with `-B`, which keeps it in the foreground so `ksvc`
 watches the daemon itself rather than a parent that has already exited. Its
 lease database is `/var/lib/dhcpcd`, which is also the home directory of the
@@ -631,7 +884,29 @@ devtmpfs  /dev           devtmpfs defaults                  0 0
 tmpfs     /tmp           tmpfs    mode=1777,nosuid,nodev    0 0
 tmpfs     /run           tmpfs    mode=0755,nosuid,nodev    0 0
 cgroup2   /sys/fs/cgroup cgroup2  nsdelegate                0 0
+tracefs   /sys/kernel/tracing tracefs nosuid,nodev,noexec   0 0
+debugfs   /sys/kernel/debug   debugfs nosuid,nodev,noexec   0 0
+bpf       /sys/fs/bpf    bpf      nosuid,nodev,noexec,mode=0700 0 0
 ```
+
+The kernel mounts none of the last three. Without tracefs every tracepoint
+probe — `bpftrace`, `perf trace`, `trace-cmd` — finds an empty
+`/sys/kernel/tracing`, without debugfs the kernel's debug files —
+`/sys/kernel/debug/dri/`, `wakeup_sources`, what `powertop` reads — are
+absent, and without bpffs no pinned BPF object outlives the process that made
+it.
+
+`efivarfs` is mounted by `rcS` and not by `fstab`, because it exists only on a
+UEFI boot and a BIOS boot would fail the line. Without it
+`/sys/firmware/efi/efivars` is an empty directory: `efibootmgr` reports no EFI
+variables, the installer cannot write its NVRAM boot entry or read the Secure
+Boot state, and fwupd sees no UEFI devices.
+
+`/run` is a fresh tmpfs, so `/run/lock` — and `/var/lock`, a link to it — exists
+only because `rcS` creates it, `1777`. minicom and picocom take their UUCP port
+locks there as the user: without the directory they lock nothing and two
+programs can share one serial port, and with a `0755` one picocom refuses to
+start.
 
 `/tmp` must carry `mode=1777`, and the `chmod` in `rcS` is not redundant.
 Mounting it with default options gives a `0755` root-owned filesystem that

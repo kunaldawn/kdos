@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = step-cli
+version     = 0.30.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/smallstep/cli/archive/refs/tags/v$version.tar.gz
+sha256      = 0c8562b95150cc24bf69ba18fcf9f0bf671f334f5d3ccb39f287692b61531b7c  step-cli-0.30.6.tar.gz
+sha256      = d3194abd76b1d5190e42ffbaadaf6118fc6c93112fe1a05a7bb033de111c2acf  step-cli-vendor-0.30.6.tar.xz
+description = The step command — creates a CA for step-ca, and requests, renews and inspects certificates
+homepage    = https://smallstep.com/docs/step-cli/
+depends     = go
+vendoring   = go

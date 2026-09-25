@@ -46,9 +46,17 @@ delegates authentication to: on a host with no GTK the plugin cannot be built, a
 the dialog disabled would be a connection type the surface offers and cannot authenticate. WireGuard
 and OpenVPN are the two that do appear.
 
-Fingerprint login needs the reader enrolled from a terminal. `fprintd` and `pam_fprintd` ship, so a
-reader unlocks a session once a finger is on file, and `fprintd-enroll` is what puts one there. No
-surface offers enrolment.
+A fingerprint answers `sudo` and nothing else. `pam_fprintd` is in `sudo`'s PAM stack ahead of the
+password, but the lock screen checks the shadow file through `kdos-checkpass` and the console login
+is shadow's, built without PAM, so neither asks for a finger. Enrolment is a terminal command run as
+root — `sudo fprintd-enroll <user>` — because fprintd's polkit actions allow only an active session,
+which no subject here ever is. No surface offers enrolment. For an account with a finger on file,
+`sudo` over SSH waits on the machine's reader before it asks for the password, because the one remote test the module has without logind is
+`PAM_RHOST`, which `sudo` never sets.
+
+An X11 application gets no input method. Xwayland gives its X clients no text-input, and fcitx5 is
+built without the XIM frontend that X clients use, so CJK input works in Wayland clients only —
+host or boxed. See [the session](../03-architecture/session.md#input-methods).
 
 There is no input-method configuration tool. The one upstream ships is built on a toolkit this host
 does not have. Configuration is text files.
@@ -111,6 +119,15 @@ There are no per-box protocol grants beyond the profile's list. The compositor's
 fixed allowlist: a client is sandboxed or it is not. A profile can open named globals; teaching the
 filter to consult a box's profile for anything finer is deliberate work that is not done.
 
+A boxed application is given its position without being asked. The portal front end asks before
+Location only for an application in a sandbox it recognises — Flatpak, Snap or Linyaps — and a KDOS
+box is none of them, so it counts as an unsandboxed host program. GeoClue runs with no consent agent,
+its whitelist empty, and answers any client on the system bus. For the same reason the Camera and Screenshot questions
+are asked once for every box together, since the front end sees no application id on any of them,
+and no surface shows or changes a stored answer: each portal's answers are a file under
+`~/.local/share/flatpak/db/`, and removing it asks again. See
+[The session](../03-architecture/session.md#access-and-what-it-unlocks).
+
 A catalogue edit reaches a box only after the image is rebuilt. The base row carries `libva` and the
 VA-API driver set, but an installed application is a built image: editing the row changes nothing a
 running system can see until `kdos app install <id>` builds it again. A boxed browser built before
@@ -127,6 +144,12 @@ kernel refuses to stack a container's writable layer on an overlay. A pack is mo
 and is gone when the session ends; `kdos doctor` reports this as a property of the session rather
 than as a failure.
 
+The *Containers* entries have not been opened on a built image. `kdos-podman-api` starts
+`podman system service` for `podman-tui` and `lazydocker`; what is measured is its start, lock and
+idle-restart logic against a stand-in engine, not either tool connecting to a real service. A pod
+and `--init` rest on `catatonit`, which is measured to build static and run a command, not yet to
+start a pod.
+
 A box is not a security boundary against you. It shares your home directory in full, and it
 constrains what an application can do to the *desktop*, not to your data. See
 [The security model](../03-architecture/security-model.md#what-is-not-protected).
@@ -142,6 +165,8 @@ A video call has never been placed. `baresip` is the SIP phone here and its inte
 menu; the far end's picture goes in an `sdl.so` window, and sending your own means turning on
 `v4l2.so`, which the generated config leaves commented because which camera to send is a choice.
 The rig has no second endpoint and no camera, so what is measured is that the modules load.
+GStreamer's `webrtcbin` is in the same state: it is built, with `libnice`'s `nicesrc` and
+`nicesink` and `libsrtp`, and no pipeline has negotiated with a peer.
 
 `mbsync` reaches XOAUTH2 and not OAUTHBEARER. `cyrus-sasl` is the mechanism loader and ships no
 XOAUTH2 of its own, so the mechanism comes from `cyrus-sasl-xoauth2` beside it, and that plugin
@@ -172,11 +197,17 @@ real account. The XOAUTH2 lane is unproven in the same way and one step further 
 `libxoauth2.so` is in `/usr/lib/sasl2` and that `mbsync` links `libsasl2` can be measured on the
 image; that a provider accepts the token `pizauth` mints cannot.
 
-A plain `python3 -m venv DIR` fails. It installs pip through `ensurepip`, which installs only from a
-`pip-*.whl` in `/usr/share/python-wheels`; `python3` ships no wheel of its own and nothing puts one
-there, so the command exits 1 and leaves an environment with no pip and no `activate` scripts.
-`python3 -m venv --without-pip --system-site-packages DIR` works, and `python -m pip` inside it is
-the system pip installing into the environment.
+`gpg` asks for a passphrase only in a terminal. The pinentries built are `curses` and `tty`, because
+every graphical one is GTK, Qt, EFL or FLTK; each interactive `bash` exports `GPG_TTY`, so anything
+run from a terminal prompts there. A program started from a launcher has no terminal, and a
+signature or decryption that needs a passphrase fails, with no prompt anywhere, unless `gpg-agent`
+already holds it.
+
+`rga` does not search inside `.docx`, `.odt`, `.epub`, `.fb2`, `.ipynb` or `.html`. Its adapter for
+those runs `pandoc`, which is Haskell and needs a GHC bootstrap this tree does not carry, so each
+such file is reported as *Could not find executable "pandoc"* and yields no match — including plain
+HTML, which the adapter claims ahead of ripgrep. `rga --rga-adapters=-pandoc` drops the adapter, and
+HTML is then searched as text. PDFs, media, archives and compressed files are unaffected.
 
 ## Hardware and platform
 
@@ -195,9 +226,57 @@ placed. BIOS and 64-bit UEFI are the two that have been booted.
 Broad hardware enablement is not a goal. The firmware tree ships whole and unpruned, which covers a
 great deal, but nothing here is tested against a wide device matrix.
 
+`btop`'s GPU box is empty on Intel graphics unless btop runs as root. It reads the i915 PMU with
+`perf_event_open`, a system-wide event that the kernel's default `perf_event_paranoid` of 2 refuses
+to a process without `CAP_PERFMON`, and nothing grants that capability to the binary or lowers the
+setting. `sudo btop` shows the panel.
+
+LVM volume groups are activated only at boot: by the initramfs on a disk boot, then by `03_lvm`. A
+disk carrying LVM that is plugged in later shows no logical volumes until `sudo vgchange -aay`:
+lvm2's own hotplug activation runs through `systemd-run`, so it is built off. A root on a logical
+volume boots, but the installer cannot put one there: it neither creates LVM nor lists a logical
+volume as a root, so that layout is set up by hand. A root on a thin or cache volume does not boot,
+because the initramfs does not carry `thin_check` or `cache_check` — see
+[Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
+
 `lsblk` shows a filesystem's type, label and UUID to root only. util-linux is built without libudev
 — eudev needs util-linux's libblkid first — so lsblk can learn them only by probing the device,
 which it does only as root. `sudo lsblk -f`, or `blkid` as root, answers.
+
+The power button and the sleep key act only inside a graphical session. They arrive as keys, which
+the compositor's `rc.xml` binds; there is no acpid, and nothing below the session listens for them,
+so at a text login or on the console desktop the power button does nothing. Neither binding has
+been pressed on hardware.
+
+A USB modem that first presents itself as a storage device is not switched into a modem.
+`usb_modeswitch` is not a port, so such a stick shows up as a small read-only disk and ModemManager
+never sees it; a built-in WWAN card, and a stick that enumerates as a modem, connect through
+NetworkManager. Mobile broadband, PPPoE and Bluetooth tethering have been built and not connected on
+hardware.
+
+A UEFI capsule update has not been applied on this tree. What is verified is that `fwupd-efi`
+builds its loader with the NX flag and a KDOS SBAT line, and that the ESP probe the `fwupd` recipe
+patches in reads the right partition number, offset, UUID and type from a mounted ESP. No capsule
+has been staged and booted: the rig's firmware publishes no ESRT, so it has no device to update.
+
+A phone is mounted by hand. `kdos-mountd` offers block devices only, so an MTP phone never appears
+in its list; `aft-mtp-mount ~/Phone` is the way in, and no phone has been mounted on this tree.
+Likewise built and never exercised against the hardware: `opensc` with a card in a reader,
+`libwacom`'s pairing with a tablet, and the SoapySDR modules with a radio. SDRplay receivers have a
+udev grant and no driver, because SDRplay's API is a closed library.
+
+Intel Quick Sync through oneVPL has no runtime. `libvpl` and `vpl-gpu-rt` are not ports, so
+ffmpeg's and GStreamer's `qsv` paths find nothing; VA-API reaches the same decode and encode
+blocks through `intel-media-driver` and `libva-intel-driver`.
+
+An encrypted disc does not play. A CSS-encrypted DVD needs `libdvdcss` and an AACS-encrypted
+Blu-ray needs `libaacs`, and neither is a port, so `mpv`, `ffmpeg` and GStreamer open only an
+unencrypted disc or a backup. A `libdvdcss.so.2` installed by hand is loaded, because `libdvdread`
+looks for it at run time. A Blu-ray's BD-J menus do not run either: they are Java, and `libbluray`
+is built without its jar because the host has no JDK and no JVM, so a disc plays its titles without
+them. An audio CD lists as numbered tracks, because the CDDB lookup `cmus` and `libcdio` can make
+needs `libcddb`, which is not a port. None of the optical paths has read a disc on this tree: the
+rig has no drive, and what is verified is that each library builds and each consumer links it.
 
 Much of `kdos doctor` cannot answer in a virtual machine, which is why it has a *skip with a reason*
 level rather than reporting those as passing.
@@ -231,12 +310,26 @@ to the chip by hand, but nothing in the boot path unseals one: `unlock_root` rea
 `tty1` and has no second road. Wiring one means a sealed blob on the ESP, a PCR policy, and an answer
 for what happens when a firmware update changes the measurements — none of which is decided.
 
-Filling the second root slot is an updater's job, and there is no updater. What exists is the
-complete state machine: the installer writes the initial state and each slot's LUKS container, the
-initramfs selects a slot, unlocks that slot's container and counts attempts, and a boot that reaches
-the end of initialisation confirms the slot. A second *encrypted* slot has therefore never been
-booted, because nothing fills one. What is measured is on the host: `select` rolling from B back to A
-hands back A's container and not B's, which is the failure the mechanism exists to prevent.
+Nothing creates or first populates the second root slot. The installer lays down slot A only and
+writes a state with `slot_b` empty; a second slot's filesystem has to be made, filled with a copy of
+the system and recorded with `kdos-bootctl set-slot b` by hand. From there `kdos update apply`
+installs into the mounted inactive slot, deploys its kernel and tries it, the initramfs selects a
+slot, unlocks that slot's container and counts attempts, and a boot that reaches the end of
+initialisation confirms the slot. A second *encrypted* slot has never been booted. What is measured
+is on the host: `select` rolling from B back to A hands back A's container and not B's, which is the
+failure the mechanism exists to prevent.
+
+Per-slot kernels have not been booted. `deploy`, the regenerated menu, the hand-picked entry and the
+rollback onto the confirmed slot's kernel are asserted on the host against a fixture ESP, and the
+`linux` postinstall's appended initramfs was assembled and inspected, not started. A candidate
+kernel that dies before its initramfs runs spends no attempt, because Limine counts nothing: the
+menu keeps leading with it until the confirmed slot's `/KDOS (slot <x>)` entry is picked by hand —
+see [One kernel per slot](../03-architecture/boot-and-init.md#one-kernel-per-slot). No update
+replaces the init inside an installed initramfs, so a machine installed from an image whose init
+does not read `kdos_slot=` rolls back onto the candidate's kernel until `mark-good` corrects the
+menu. A root installed from an image without `/boot/initramfs.modules` builds its new kernel's
+initramfs from the module set its image archive carries; that path is exercised on fixture
+archives only.
 
 Go has no race detector and no BoringCrypto. Both are objects upstream compiles and ships inside
 the source tarball, and the `go` port does not install them, so `go build -race`, `go test -race`
@@ -254,11 +347,37 @@ BMC boards inside `qemu-system-aarch64` stop at startup with *Could not find ROM
 The riscv64 `virt` UEFI image is upstream's rather than compiled here — see
 [what is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source).
 
+A qemu guest cannot join a host bridge as an ordinary user. `-netdev bridge` runs
+`qemu-bridge-helper`, which is installed without its setuid bit and with no `/etc/qemu/bridge.conf`,
+so it serves only root, and only once root writes an `allow <bridge>` line there. Making it setuid
+would add a root program to the [setuid list](../03-architecture/security-model.md), and that is not
+decided. User-mode networking through `passt` needs no privilege.
+
+PROJ has no transformation grids, and there is no port that carries them. A transformation that
+needs a grid — NAD27 to NAD83, OSGB36, a national geoid — falls back to a ballpark one or fails
+naming the grid it wanted. proj is built with `ENABLE_CURL=OFF`, so the grids are never fetched on
+demand either, and the transformations that need no grid are the ones the bundled `proj.db`
+answers exactly.
+
 presenterm's seven syntect stock themes (`base16-ocean.dark`, `InspiredGitHub`, the Solarized pair
 and the rest) are the serialized `default.themedump` inside the vendored `syntect` crate, and are
 not compiled here. Their `.tmTheme` sources are in syntect's repository and not in the crate, and
 the only way to swap in a rebuilt dump is a patch to presenterm's theme loading. Its grammars and
 bat's themes are compiled here by the `bat` port.
+
+A `tzdata` upgrade on a machine whose installed `tzdata` manifest lists `/etc/localtime` resets the
+timezone to UTC, once. The new version does not own the link, so the upgrade removes it as an orphan,
+`rcS` links UTC on the next boot, and `TZ=':/etc/localtime'` follows it. kpkg has no rule that keeps
+a file a package gave up, so `kdos-power timezone <Area/City>` sets the zone again. Every later
+upgrade leaves it alone.
+
+Upgrading toybox by itself deletes tools on a machine whose installed toybox manifest lists names
+another port owns — `mount`, `umount`, `losetup`, `kill`, `dmesg`, `readelf`, `strings`, `cmp`,
+`gunzip`, `insmod`, `lsattr` and the rest. That happens when toybox was installed after util-linux,
+binutils, diffutils, gzip, bzip2, attr, kmod, ncurses, e2fsprogs or procps-ng. A same-path install
+takes the file into the later manifest, so the owning port's manifest does not list it, and toybox's upgrade
+removes it as an orphan. On such a machine toybox is upgraded together with those ports, whose
+release bumps reinstall the names. A machine is one when `/var/lib/kpkg/db/toybox`, the installed manifest, lists any of those names.
 
 There is no public binary host. The mechanism is complete — a signed index, three equality tests,
 deltas — but it is one you run yourself.

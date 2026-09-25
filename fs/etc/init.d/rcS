@@ -53,7 +53,49 @@ fi
 
 # Mount all filesystems in fstab
 splash step "MOUNTING FILESYSTEMS"
+# Check every fstab filesystem with a pass number before anything mounts it.
+# The root is left out (-R): the initramfs checked it before mounting it, and
+# a check of a mounted root would ask for a reboot. The ESP is the one the
+# installer marks, and it is FAT with no journal, holding the A/B boot state.
+# An entry on a logical volume the initramfs activated is checked here like any
+# other. One on a group it did not activate — any group on a live boot, or on a
+# disk that appeared after it ran — has no device yet, so fsck reports it with
+# bit 8, which is not shown here, and 03_lvm checks it once its group is active.
+# A filesystem with errors left uncorrected is still mounted — the machine
+# boots and says so, rather than stopping behind the splash. The report is held
+# until /run is mounted: written now, it would land on the root filesystem's
+# /run and be hidden under the tmpfs.
+_fsck_rc=0
+_fsck_out=""
+if command -v fsck >/dev/null 2>&1; then
+    _fsck_out=$(fsck -A -R -T -a </dev/null 2>&1)
+    _fsck_rc=$?
+fi
 mount -a
+[ -n "$_fsck_out" ] && printf '%s\n' "$_fsck_out" > /run/kdos-fsck.log
+if [ $((_fsck_rc & 4)) -ne 0 ]; then
+    splash detail "fsck: errors left uncorrected, see /run/kdos-fsck.log"
+    printf '%s\n' "$_fsck_out"
+fi
+unset _fsck_rc _fsck_out
+# efivarfs is not in fstab because it exists only on a UEFI boot, and a BIOS
+# boot would fail the line. Without it /sys/firmware/efi/efivars is an empty
+# directory: efibootmgr reports no EFI variables, the installer cannot write
+# its NVRAM boot entry or see Secure Boot, and fwupd has no UEFI devices.
+if [ -d /sys/firmware/efi/efivars ] && ! mountpoint -q /sys/firmware/efi/efivars; then
+    mount -t efivarfs -o nosuid,nodev,noexec efivarfs /sys/firmware/efi/efivars
+fi
+# /run is a fresh tmpfs, so /run/lock (and /var/lock, a link to it) exists only
+# once made here. minicom and picocom run as the user and take their UUCP port
+# locks there: absent, they lock nothing and two programs share one serial
+# port; created 0755, picocom refuses to start with "cannot lock".
+mkdir -p /run/lock
+chmod 1777 /run/lock
+# Loopback, before any service: NetworkManager brings lo up only when it runs,
+# and a machine on the dhcpcd fallback never runs it, which leaves 127.0.0.1
+# and ::1 unreachable for CUPS, chrony's command socket and everything else
+# that talks to localhost.
+ip link set lo up 2>/dev/null || ifconfig lo up 2>/dev/null
 # fstab asks for mode=1777, but a tmpfs that is already mounted ignores a mode
 # change on remount, and a 0755 /tmp locks every non-root user out of /tmp —
 # GTK/Wayland apps, GIMP, LibreOffice and fontconfig all fail in ways that look
@@ -63,6 +105,12 @@ chmod 1777 /tmp
 # or a /swapfile). `mount -a` ignores swap lines, and inittab already has the
 # matching swapoff on shutdown, so this is the only place it gets turned on.
 swapon -a 2>/dev/null || true
+# /etc/localtime belongs to no package, so a tzdata upgrade leaves a chosen
+# zone alone once the installed tzdata no longer lists it. UTC is linked here only when nothing is there —
+# every boot of the live medium, whose /etc starts as the image's — and a link
+# that exists, dangling or not, is the machine's own choice and is left alone.
+[ -L /etc/localtime ] || [ -e /etc/localtime ] || \
+    ln -s /usr/share/zoneinfo/UTC /etc/localtime 2>/dev/null
 splash ok
 
 # Console font and palette are NOT set here: fbcon's deferred take-over (which

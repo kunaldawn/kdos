@@ -30,6 +30,17 @@
 # declaring it would be a dependency cycle. vdpau, sndio, CUDA/NVENC and AMF
 # have no port, and vdpau's probe links libX11.
 #
+# --enable-opencl builds the *_opencl filters (tonemap, nlmeans, unsharp,
+# overlay and the rest) against ocl-icd's loader. They run on Mesa's rusticl,
+# which offers a device only for the drivers RUSTICL_ENABLE names
+# (/etc/profile.d/50-opencl.sh), and `-init_hw_device opencl` fails with no
+# device where it names none. libtesseract is the `ocr` filter, libqrencode the
+# `qrencode` filter and `qrencodesrc` source, and librsvg decodes SVG input.
+#
+# libbluray is the bluray: protocol and libdvdnav with libdvdread the dvdvideo
+# demuxer, so `ffmpeg -f dvdvideo -i /dev/sr0` rips a title with its chapters.
+# The DVD pair is GPL-only in ffmpeg, which this build already is.
+#
 # --glslc=glslang picks the SPIR-V compiler the Vulkan filters, encoders and
 # hwaccels are built with. Its probe only disables them when it fails, so the
 # check after configure is what turns a missing compiler into an error.
@@ -61,6 +72,9 @@
 	--enable-libvorbis \
 	--enable-libmp3lame \
 	--enable-libass \
+	--enable-libbluray \
+	--enable-libdvdnav \
+	--enable-libdvdread \
 	--enable-vaapi \
 	--enable-vulkan \
 	--glslc=glslang \
@@ -77,6 +91,10 @@
 	--enable-libjxl \
 	--enable-libzimg \
 	--enable-libsoxr \
+	--enable-opencl \
+	--enable-libtesseract \
+	--enable-libqrencode \
+	--enable-librsvg \
 	--enable-manpages \
 	--disable-htmlpages \
 	--disable-txtpages \
