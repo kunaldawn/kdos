@@ -9,6 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# LLVM_HOST_TRIPLE and LLVM_DEFAULT_TARGET_TRIPLE are gcc's own triple. Left
+# to LLVM, the guess on this system is x86_64-unknown-linux-gnu: clang and
+# libclang (so every bindgen) then find no gcc installation and no C++ headers,
+# and would link against glibc's loader.
 # LLVM_ENABLE_LIBEDIT=OFF: libedit is built in a later phase than this one,
 # and the automatic probe would make clang-repl's line editing, and the
 # HAVE_LIBEDIT that LLVMConfig exports, depend on build order.
@@ -17,6 +21,8 @@
 cmake -S llvm -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_BUILD_TYPE=Release \
+	-D LLVM_HOST_TRIPLE="$(cc -dumpmachine)" \
+	-D LLVM_DEFAULT_TARGET_TRIPLE="$(cc -dumpmachine)" \
 	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
 	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -include cstdint" \
 	-D LLVM_BINUTILS_INCDIR=/usr/include \

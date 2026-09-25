@@ -12,6 +12,7 @@ Start from the symptom index. Each entry gives the message, the cause, and the c
 |---|---|
 | `Dynamic loading not supported` from a Rust crate, or a static archive's undefined references at its link | [Rust with a binding generator](#rust-with-a-binding-generator) |
 | `rustc-LLVM ERROR: '+<feature>' is not a recognized feature for this target` | [A Rust release older than the system LLVM](#a-rust-release-older-than-the-system-llvm) |
+| `'cstddef' file not found` from clang or bindgen, in a header that compiles with gcc | [An LLVM that guessed its triple](#an-llvm-that-guessed-its-triple) |
 | A missing type, from an empty generated header | [A stream-editor extension](#a-stream-editor-extension-that-is-not-there) |
 | `length: not found`, or a relative-link option rejected | [Missing compact-userland features](#missing-compact-userland-features) |
 | A package index reached during an offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
@@ -60,6 +61,20 @@ exports the flag, and preflight fails one that does not:
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 ```
+
+## An LLVM that guessed its triple
+
+`fatal error: 'cstddef' file not found` from clang, or from bindgen through libclang, while gcc
+compiles the same header.
+
+`clang -print-target-triple` answers with the triple compiled into LLVM. When the `llvm` port does
+not set one, LLVM guesses, and on this system the guess is `x86_64-unknown-linux-gnu`. Clang then
+looks for a gcc installation under that triple, finds none beside gcc's `x86_64-pc-linux-musl`, and
+searches no C++ header directory at all. It would also link against glibc's loader. The `llvm` and
+`llvm21` ports pass gcc's own triple, `$(cc -dumpmachine)`, as `LLVM_HOST_TRIPLE` and
+`LLVM_DEFAULT_TARGET_TRIPLE`. Clang and libclang compile the default in from LLVM's `llvm-config.h`,
+so a changed LLVM triple needs `clang` rebuilt as well, and a stale one shows as the wrong answer
+from `clang -print-target-triple` after `llvm` is fixed.
 
 ## A Rust release older than the system LLVM
 

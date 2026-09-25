@@ -10,7 +10,7 @@
 
 name        = clang21
 version     = 21.1.8
-release     = 1
+release     = 2
 _prefix     = /usr/lib/llvm${version%%.*}
 source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/clang-${version}.src.tar.xz
 source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/cmake-${version}.src.tar.xz

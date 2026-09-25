@@ -12,9 +12,15 @@
 mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
 mv $SRC_ROOT/third-party-${version}.src $SRC_ROOT/third-party
 
+# LLVM_HOST_TRIPLE and LLVM_DEFAULT_TARGET_TRIPLE are gcc's own triple. Left
+# to LLVM, the guess on this system is x86_64-unknown-linux-gnu: clang and
+# libclang (so every bindgen) then find no gcc installation and no C++ headers,
+# and would link against glibc's loader.
 cmake -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=$_prefix \
 	-D CMAKE_BUILD_TYPE=Release \
+	-D LLVM_HOST_TRIPLE="$(cc -dumpmachine)" \
+	-D LLVM_DEFAULT_TARGET_TRIPLE="$(cc -dumpmachine)" \
 	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
 	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -include cstdint" \
 	-D LLVM_BUILD_LLVM_DYLIB=OFF \
