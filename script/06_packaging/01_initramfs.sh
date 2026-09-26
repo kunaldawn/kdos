@@ -35,33 +35,47 @@ for cmd in $(./bin/toybox); do
     [ "$cmd" != "toybox" ] && ln -sf toybox bin/$cmd
 done
 
-# Install util-linux switch_root, and NOT the name toybox claims.
+# Install util-linux's switch_root, mount, umount, losetup and dmesg.
 #
-# toybox switch_root only wipes the initramfs and chroot()s -- it never does
-# mount(newroot, "/", MS_MOVE). Two things follow and both are fatal to the
-# container lane. A process that JOINS a mount namespace via setns() -- podman
-# exec, distrobox enter, nsenter -m -- gets the empty initramfs rootfs as "/"
-# and every path is ENOENT. And every process on the machine is CHROOTED for
-# ever, because the task root is not the root of the mount namespace: the
-# kernel refuses CLONE_NEWUSER to a chrooted caller, so no user namespace can
-# be created by anybody, root included, and no box can start at all.
+# THE TOYBOX RECIPE COMPILES THESE APPLETS OUT, so the loop above claims none
+# of the names and each one here is util-linux's own file. switch_root is the
+# one that must never be toybox's: that applet only wipes the initramfs and
+# chroot()s -- it never does mount(newroot, "/", MS_MOVE). A process that JOINS
+# a mount namespace via setns() -- podman exec, distrobox enter, nsenter -m --
+# then gets the empty initramfs rootfs as "/" and every path is ENOENT, and
+# every process on the machine is CHROOTED for ever: the kernel refuses
+# CLONE_NEWUSER to a chrooted caller, so no user namespace can be created by
+# anybody, root included, and no box can start at all. The machine boots
+# perfectly either way, which is why the check below exists.
 #
-# /usr/sbin/switch_root IS TOYBOX ON THE FINISHED IMAGE -- toybox's symlink
-# farm is laid down after util-linux -- so the copy has to name util-linux's
-# own file, and the check below is here because following the wrong symlink
-# failed silently and booted perfectly.
-rm -f bin/switch_root
-cp /usr/sbin/switch_root.real bin/switch_root
-# util-linux's binary is translated, so it carries libintl. Nothing else in
-# here needs that library and an initramfs missing one is an init that cannot
-# exec: the kernel panics with "Attempted to kill init".
+# mount, umount and losetup are what `init` itself runs: the ISO scan, the
+# loop device under system.sfs, the overlay and the --move of every mount into
+# the new root. dmesg is for the rescue shell. The removal before each copy is
+# a guard: `cp` writes THROUGH a symlink, and a name still linked to
+# bin/toybox would take the copy over the multicall binary.
+for _p in /usr/sbin/switch_root /usr/bin/mount /usr/bin/umount \
+          /usr/sbin/losetup /usr/bin/dmesg; do
+    _n=${_p##*/}
+    rm -f bin/$_n
+    cp $_p bin/$_n
+    if grep -qa 'Toybox .* multicall' bin/$_n; then
+        echo "FATAL: the initramfs $_n is toybox's applet." >&2
+        if [ "$_n" = switch_root ]; then
+            echo "       It chroot()s instead of moving the new root, which leaves" >&2
+            echo "       every process chrooted and every user namespace refused." >&2
+        fi
+        exit 1
+    fi
+done
+unset _p _n
+# mount and umount link libmount, which links libblkid; losetup links
+# libsmartcols. libblkid and libuuid are copied with blkid below.
+cp /usr/lib/libmount.so.1 lib/libmount.so.1
+cp /usr/lib/libsmartcols.so.1 lib/libsmartcols.so.1
+# Carried for the programs below that are built with NLS: cryptsetup's
+# configure turns it on whenever gettext is installed, and the closure check
+# at the end refuses an initramfs whose programs name a library it lacks.
 cp /usr/lib/libintl.so.8 lib/libintl.so.8
-if grep -qa 'Toybox .* multicall' bin/switch_root; then
-    echo "FATAL: the initramfs switch_root is toybox's applet." >&2
-    echo "       It chroot()s instead of moving the new root, which leaves" >&2
-    echo "       every process chrooted and every user namespace refused." >&2
-    exit 1
-fi
 
 # Install the boot splash. Static, so it needs nothing else here, and it keeps
 # running across switch_root: its FIFO lives in /dev (devtmpfs is moved into the
@@ -102,8 +116,8 @@ ln -sf bash bin/sh
 # name; `blkid` on this system is one binary, util-linux's, in /usr/sbin.
 # The removal is the guard on that: `cp` onto a symlink writes THROUGH
 # it, so were `bin/blkid` ever a link to `bin/toybox`, this copy would
-# overwrite the multicall binary. Exactly the switch_root rule, thirty lines
-# up.
+# overwrite the multicall binary. The util-linux copies above keep the same
+# rule.
 rm -f bin/blkid
 cp /usr/sbin/blkid bin/blkid
 cp /usr/lib/libblkid.so.1 lib/libblkid.so.1
@@ -122,6 +136,30 @@ if [ -x /usr/sbin/mdadm ]; then
     cp /usr/sbin/mdadm bin/mdadm
 else
     echo "Note: mdadm not installed — the initramfs cannot assemble an array"
+fi
+
+# Install e2fsck, for the check an ext4 root gets before it is mounted. Here
+# and nowhere later: the root is mounted read-write below, and a filesystem
+# with errors recorded in its superblock would otherwise run until somebody
+# checks it by hand from other media. Copied WITH its libraries or not at all,
+# the cryptsetup rule — an e2fsck that cannot exec is skipped at boot rather
+# than failing it, and a skipped check is exactly the gap this closes.
+if [ -x /usr/sbin/e2fsck ]; then
+    _ok=1
+    for _l in libext2fs.so.2 libcom_err.so.2 libe2p.so.2; do
+        [ -f /usr/lib/$_l ] || _ok=0
+    done
+    if [ "$_ok" = 1 ]; then
+        cp /usr/sbin/e2fsck bin/e2fsck
+        for _l in libext2fs.so.2 libcom_err.so.2 libe2p.so.2; do
+            cp /usr/lib/$_l lib/$_l
+        done
+    else
+        echo "Note: e2fsck's libraries are missing — an ext4 root is mounted unchecked"
+    fi
+    unset _ok
+else
+    echo "Note: e2fsprogs not installed — an ext4 root is mounted unchecked"
 fi
 
 # Install eudev and dependencies
@@ -178,6 +216,131 @@ if [ -x /usr/sbin/cryptsetup ]; then
 else
     echo "Note: cryptsetup not installed — the initramfs cannot unlock a LUKS root"
     HAVE_CRYPT=0
+fi
+
+# copy_closure DEST SRC: SRC to DEST, then every library its NEEDED entries
+# name, and theirs, from /usr/lib or /lib into lib/. `ldd` is not available,
+# so NEEDED is read with readelf. A library that is installed nowhere stops
+# the build here, naming the program that wanted it.
+#
+# THE READER IS PROVEN BEFORE IT IS TRUSTED. A readelf that is absent or
+# prints another format fails inside a command substitution, which `set -e`
+# does not see: every program would be copied with no libraries and the final
+# check below would report nothing. binutils' readelf is first; llvm-readelf
+# prints the same NEEDED lines. Either must find libblkid in blkid, which is
+# known to link it, or the build stops.
+READELF=""
+for _r in readelf llvm-readelf; do
+    command -v $_r >/dev/null 2>&1 || continue
+    if $_r -d /usr/sbin/blkid 2>/dev/null | grep -q '(NEEDED).*\[libblkid\.so'; then
+        READELF=$_r
+        break
+    fi
+done
+unset _r
+if [ -z "$READELF" ]; then
+    echo "FATAL: no readelf reads NEEDED from /usr/sbin/blkid; the initramfs" >&2
+    echo "       library closure cannot be measured. binutils provides one." >&2
+    exit 1
+fi
+needed_libs() {
+    $READELF -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'
+}
+
+copy_closure() {
+    local _dest=$1 _src=$2 _lib _dir
+    cp "$_src" "$_dest"
+    for _lib in $(needed_libs "$_src"); do
+        [ -e "lib/$_lib" ] && continue
+        for _dir in /usr/lib /lib; do
+            if [ -f "$_dir/$_lib" ]; then
+                copy_closure "lib/$_lib" "$_dir/$_lib"
+                break
+            fi
+        done
+        if [ ! -e "lib/$_lib" ]; then
+            echo "FATAL: $_src needs $_lib, which is installed nowhere." >&2
+            exit 1
+        fi
+    done
+}
+
+# Install lvm and dmsetup, for a root on a logical volume.
+#
+# AT /usr/sbin, THE PATHS lvm2's UDEV RULES NAME, and not in bin/: the rules
+# are copied below with the rest of /usr/lib/udev. 95-dm-notify.rules runs
+# `/usr/sbin/dmsetup udevcomplete` for every device-mapper change, and every
+# program built on libdevmapper -- lvm, and cryptsetup opening a container --
+# waits for that call with no timeout. A dmsetup the rule cannot find is a
+# boot that hangs at the unlock or the activation, with nothing on screen.
+#
+# INSTALLED lvm2 MEANS THE INITRAMFS CARRIES BOTH, or the build stops: lvm2
+# arrives as a dependency of cryptsetup and parted, so its rules are on every
+# image that has them, and a missing binary is a package that did not install
+# properly rather than one that was left out.
+if [ -f /var/lib/kpkg/db/lvm2 ] || [ -f /usr/lib/udev/rules.d/95-dm-notify.rules ]; then
+    for _p in /usr/sbin/lvm /usr/sbin/dmsetup; do
+        if [ ! -x $_p ]; then
+            echo "FATAL: lvm2 is installed but $_p is not." >&2
+            echo "       Its udev rules run it, and a boot that opens any" >&2
+            echo "       device-mapper device waits for it for ever." >&2
+            exit 1
+        fi
+    done
+    # The rules take that directory from lvm2's configure (its sbindir), so
+    # it is read back rather than assumed: a rule naming dmsetup or lvm
+    # anywhere else is the same silent hang, and stops the build here.
+    _stray=$(cat /usr/lib/udev/rules.d/*.rules 2>/dev/null | grep -v '^[[:space:]]*#' \
+             | grep -o '[^ "=]*/\(dmsetup\|lvm\) ' | grep -v '^/usr/sbin/' || true)
+    if ! grep -q '/usr/sbin/dmsetup udevcomplete' /usr/lib/udev/rules.d/95-dm-notify.rules 2>/dev/null \
+       || [ -n "$_stray" ]; then
+        echo "FATAL: lvm2's udev rules do not run dmsetup and lvm from /usr/sbin," >&2
+        echo "       where the initramfs carries them:" $_stray >&2
+        exit 1
+    fi
+    unset _stray
+    mkdir -p usr/sbin
+    copy_closure usr/sbin/lvm /usr/sbin/lvm
+    copy_closure usr/sbin/dmsetup /usr/sbin/dmsetup
+    ln -sf ../usr/sbin/lvm bin/lvm
+    ln -sf ../usr/sbin/dmsetup bin/dmsetup
+    unset _p
+
+    # AND thin_check AND cache_check, for a root on a thin or a cached
+    # volume. lvm runs the one that matches before it activates a thin pool
+    # or a cache and refuses the volume when it cannot, and lvm2 depends on
+    # thin-provisioning-tools, so a missing one is a broken install and stops
+    # the build like a missing lvm does. Both names are argv[0] links to one
+    # binary, pdata_tools, which is copied once with its libraries.
+    #
+    # lvm.conf NAMES THEM, and names nothing else: every other setting stays
+    # the compiled default. The paths are this initramfs's, written here beside
+    # the copy that makes them true, rather than inherited from wherever
+    # lvm2's configure pointed.
+    for _p in /usr/sbin/thin_check /usr/sbin/cache_check; do
+        if [ ! -x $_p ]; then
+            echo "FATAL: lvm2 is installed but $_p is not." >&2
+            echo "       A thin or cached root would refuse to activate." >&2
+            exit 1
+        fi
+    done
+    _pdata=$(readlink -f /usr/sbin/thin_check)
+    copy_closure "usr/sbin/${_pdata##*/}" "$_pdata"
+    for _p in thin_check cache_check; do
+        [ "$_p" = "${_pdata##*/}" ] || ln -sf "${_pdata##*/}" usr/sbin/$_p
+    done
+    mkdir -p etc/lvm
+    cat > etc/lvm/lvm.conf <<'LVMCONF'
+# Written by 01_initramfs.sh. Every setting not named here is lvm2's compiled
+# default.
+global {
+	thin_check_executable = "/usr/sbin/thin_check"
+	cache_check_executable = "/usr/sbin/cache_check"
+}
+LVMCONF
+    unset _p _pdata
+else
+    echo "Note: lvm2 not installed — the initramfs cannot activate a volume group"
 fi
 
 # Install udev rules and helpers
@@ -285,10 +448,24 @@ MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_
 # nobody reads, which looks like an empty drive rather than a missing module.
 # The personalities are listed individually because md_mod loads none of them.
 MODULES="$MODULES md_mod raid0 raid1 raid10 raid456 dm-raid"
+# The device-mapper targets an LVM root can be built from beyond the linear one
+# dm-mod has built in: a thin volume, a cached or write-cached one, and a
+# snapshot. A group holding any of them activates only with its target loaded,
+# and the init loads these before its first vgchange -- lvm2's own modprobe
+# path is whatever its configure found at build time, not one this initramfs
+# is known to have.
+MODULES="$MODULES dm-snapshot dm-thin-pool dm-cache dm-cache-smq dm-writecache"
 
 for MOD in $MODULES; do
     copy_module $MOD
 done
+
+# The same list, kept on the image beside the initramfs it describes. A kernel
+# installed later has none of these modules in this initramfs, and the linux
+# package's postinstall reads this file to carry the new kernel's copies of
+# exactly this set; a second copy of the list there would be the one that
+# goes stale.
+printf '%s\n' $MODULES > /boot/initramfs.modules
 
 # Copy modules.order and modules.builtin for depmod
 cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
@@ -403,6 +580,9 @@ for i in \$(cat /proc/cmdline); do
             ;;
         bootstate=UUID=*)
             BOOTSTATE_UUID="\${i#bootstate=UUID=}"
+            ;;
+        kdos_slot=*)
+            BOOT_SLOT="\${i#kdos_slot=}"
             ;;
     esac
 done
@@ -523,8 +703,15 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
         sleep 1
     done
     if [ -n "\$ESP_DEV" ] && mount -t vfat "\$ESP_DEV" /esp 2>/dev/null; then
+        # \`kdos_slot=\` is the slot whose ESP directory this kernel came
+        # from, and it is handed to \`select\`: that slot's modules are the
+        # only ones this kernel can load, so a hand-picked entry boots its
+        # own slot and nothing else. Absent on a menu whose entries share
+        # one kernel, where \`select\` decides alone. \`select\` also rewrites
+        # the menu on the ESP when its decision moves the next boot.
         SEL=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
-               /bin/kdos-bootctl select 2>/dev/console)
+               /bin/kdos-bootctl select \${BOOT_SLOT:+"\$BOOT_SLOT"} \
+               2>/dev/console)
         # BOTH READS HAPPEN WHILE IT IS MOUNTED. \`crypt\` reads the same file
         # \`select\` just wrote, so asking after the umount below reads nothing
         # and silently drops the container — an encrypted second slot would
@@ -561,6 +748,54 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
     fi
 fi
 
+#
+# VOLUME GROUPS ARE ACTIVATED BEFORE ANYTHING LOOKS FOR THE ROOT, for the
+# reason the RAID block gives: a filesystem on a logical volume has no device
+# node until its group is active, and \`blkid -U\` finds nothing.
+#
+# ON EACH SIDE OF THE UNLOCK, because LVM and LUKS stack both ways: a group
+# inside a container exists only after the unlock, and a container on a
+# logical volume has to be active before it. Each call runs lvm only when
+# blkid reports a set of physical volumes it has not already activated, so a
+# disk boot with no LVM costs one blkid per call and never starts lvm, and a
+# live boot -- no root=, no cryptdevice= -- makes no call at all; 03_lvm.sh
+# activates the groups of a live session.
+#
+# --sysinit is no dmeventd monitoring, no background polling and no locking
+# failure: the three things an initramfs cannot provide. The lvm.conf carried
+# here names thin_check and cache_check and nothing else, so every other
+# setting is the compiled default and every group is activated. The groups
+# stay active across switch_root.
+#
+# THE THIN, CACHE AND SNAPSHOT TARGETS ARE LOADED FIRST, on the first call
+# that finds a physical volume: a group holding one of those volumes activates
+# only with its target present, and lvm's own modprobe is a path its configure
+# chose. A kernel with them built in makes this a no-op.
+: "\${LVM_BIN:=/usr/sbin/lvm}"
+LVM_PVS=""
+activate_lvm() {
+    local pvs
+    [ -x "\$LVM_BIN" ] || return 0
+    pvs=\$(blkid -t TYPE=LVM2_member -o device 2>/dev/null)
+    [ -n "\$pvs" ] && [ "\$pvs" != "\$LVM_PVS" ] || return 0
+    if [ -z "\$LVM_PVS" ]; then
+        modprobe -q -a dm-snapshot dm-thin-pool dm-cache dm-cache-smq \
+            dm-writecache 2>/dev/null || true
+    fi
+    LVM_PVS="\$pvs"
+    sp_total 1
+    sp_step "VOLUME GROUPS"
+    if "\$LVM_BIN" vgchange -aay --sysinit; then
+        udevadm settle 2>/dev/null || true
+        sp_ok
+    else
+        # Not a stop: a group that is partly missing need not hold the root,
+        # and the root lookup below says so when it does.
+        sp_fail
+    fi
+}
+[ -n "\$ROOT_UUID\$CRYPTDEV" ] && activate_lvm
+
 if [ -n "\$CRYPTDEV" ]; then
     # One extra stage on the progress bar, added here rather than up front:
     # the total is additive, and only this branch knows there is an unlock.
@@ -571,6 +806,7 @@ if [ -n "\$CRYPTDEV" ]; then
         # The filesystem inside the container has only just appeared, so the
         # udev pass that ran before the unlock never saw it.
         udevadm settle 2>/dev/null || true
+        activate_lvm
     else
         sp_fail
         echo "Failed to unlock \$CRYPTDEV — dropping to a shell"
@@ -584,8 +820,11 @@ if [ -n "\$ROOT_UUID" ]; then
     sp_total 3
     sp_step "ROOT DEVICE"
 
-    # Wait for device to appear (timeout 10s)
+    # Wait for device to appear (timeout 10s). A disk that enumerates late
+    # may carry the root's physical volume, so each pass activates any group
+    # that has appeared since; with no new PV that is one blkid and no lvm.
     for i in \$(seq 1 10); do
+        activate_lvm
         ROOT_DEV=\$(blkid -U "\$ROOT_UUID")
         if [ -n "\$ROOT_DEV" ]; then
             break
@@ -597,6 +836,27 @@ if [ -n "\$ROOT_UUID" ]; then
         echo "Found root device: \$ROOT_DEV"
         sp_ok
         sp_step "MOUNTING ROOT"
+        # An ext4 root is checked before it is mounted, which is the only
+        # point at which it is not in use. -p repairs what is safe to repair
+        # unattended. 1 and 2 are "repaired", and the root is not mounted so
+        # there is nothing to reboot for; 4 and above left errors behind, and
+        # the boot goes on and says so rather than stopping at a shell nobody
+        # can see behind the splash. btrfs, xfs and f2fs check themselves at
+        # mount time.
+        ROOT_TYPE=\$(blkid -o value -s TYPE "\$ROOT_DEV" 2>/dev/null)
+        case "\$ROOT_TYPE" in
+            ext2|ext3|ext4)
+                if [ -x /bin/e2fsck ]; then
+                    e2fsck -p "\$ROOT_DEV"
+                    FSCK_RC=\$?
+                    if [ \$FSCK_RC -ge 4 ]; then
+                        echo "e2fsck: \$ROOT_DEV still has errors (exit \$FSCK_RC)"
+                        [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
+                            "ROOT FILESYSTEM HAS ERRORS - RUN e2fsck" 2>/dev/null
+                    fi
+                fi
+                ;;
+        esac
         mount "\$ROOT_DEV" /newroot
 
         if [ -x /newroot/sbin/init ]; then
@@ -911,6 +1171,26 @@ rm -f $UCODE_CPIO
 if [ -n "$(ls -A $UCODE/kernel/x86/microcode)" ]; then
     ( cd $UCODE && find . | cpio -o -H newc ) > $UCODE_CPIO 2>/dev/null
 fi
+
+# EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. `ldd` is
+# not available, so NEEDED is read with the reader proven above, for each
+# program in bin/ and usr/sbin/ and each library in lib/. A file that is not
+# ELF -- a script -- names nothing. A missing one is an init that cannot exec -- the kernel
+# panics with "Attempted to kill init" -- or a tool that says "not found" at
+# the one moment it is needed.
+_missing=""
+for _f in bin/* usr/sbin/* lib/*.so*; do
+    [ -f "$_f" ] && [ ! -L "$_f" ] || continue
+    for _l in $($READELF -d "$_f" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'); do
+        [ -e "lib/$_l" ] || _missing="$_missing $_f:$_l"
+    done
+done
+if [ -n "$_missing" ]; then
+    echo "FATAL: the initramfs is missing libraries its programs need:" >&2
+    for _m in $_missing; do echo "       $_m" >&2; done
+    exit 1
+fi
+unset _missing _f _l _m
 
 # Pack Initramfs
 find . | cpio -o -H newc | gzip -9 > ../initramfs.gz.part

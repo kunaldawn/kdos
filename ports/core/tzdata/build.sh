@@ -51,10 +51,10 @@ install -m644 zone.tab zone1970.tab iso3166.tab "$PKG/usr/share/zoneinfo/"
 install -m644 leapseconds "$PKG/usr/share/zoneinfo/"
 install -Dm644 tzfile.5 -t "$PKG/usr/share/man/man5"
 
-# UTC is the honest default for a machine that has not been told where it is;
-# kinstall replaces this symlink with the zone the user picked.
-install -dm755 "$PKG/etc"
-ln -sf /usr/share/zoneinfo/UTC "$PKG/etc/localtime"
+# /etc/localtime IS NOT PACKAGED. kpkg overwrites what a package owns on every
+# upgrade, and a zone set by kinstall or `kdos-powerd timezone` would go back
+# to UTC with every tzdata release while TZ in 20-timezone.sh stayed put. rcS
+# links UTC only where no /etc/localtime exists.
 
 install -dm755 "$PKG/usr/share/licenses/$name"
 install -m644 LICENSE "$PKG/usr/share/licenses/$name/"

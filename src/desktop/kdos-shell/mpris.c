@@ -9,13 +9,14 @@
  *
  *   … │ ▶ Miles Davis — So What │ VOL 62%  41%  21:07
  *
- * The one panel widget every desktop has and this one did not. It matters more
- * here than elsewhere for a reason that is specific to KDOS: every media player
- * on this machine lives inside the appbox, and a boxed application's window is
- * on another workspace or minimised the moment you go back to work. MPRIS is
- * the only thing on this system that can pause it without finding it first —
- * and the box shares the session bus, so it works with no extra plumbing at
- * all.
+ * The one panel widget every desktop has. It matters more here than elsewhere
+ * for a reason that is specific to KDOS: almost every media player on this
+ * machine lives inside the appbox, and a boxed application's window is on
+ * another workspace or minimised the moment you go back to work. MPRIS is the
+ * only thing on this system that can pause it without finding it first — and
+ * the box shares the session bus, so it works with no extra plumbing at all.
+ * The native players answer the same way: mpv through the mpv-mpris plugin,
+ * cmus through its own MPRIS support.
  *
  * ONE PLAYER, THE ONE THAT IS PLAYING. A panel is one row: a list of players
  * would be a menu, and what a person aims at this cell for is "stop that". A

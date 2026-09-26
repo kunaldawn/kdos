@@ -1474,14 +1474,30 @@ cat > "$TR/ports/feed/build.sh" <<'EOF'
 install -Dm644 /dev/null "$PKG/usr/share/mime/packages/feed.xml"
 install -Dm644 /dev/null "$PKG/usr/share/info/feed.info"
 printf 'stale\n' > "$PKG/usr/share/info/dir"
+install -Dm644 /dev/null "$PKG/etc/udev/hwdb.d/60-feed.hwdb"
+install -Dm644 /dev/null "$PKG/usr/share/man/man1/feed.1"
+install -Dm644 /dev/null "$PKG/etc/fonts/conf.d/60-feed.conf"
+EOF
+mkdir -p "$TR/ports/page"
+cat > "$TR/ports/page/kpkgbuild" <<'EOF'
+name        = page
+version     = 1.0
+release     = 1
+description = a synthetic port that only adds a manual page
+EOF
+cat > "$TR/ports/page/build.sh" <<'EOF'
+install -Dm644 /dev/null "$PKG/usr/share/man/man1/page.1"
 EOF
 # The MIME stub leaves a generated file behind, as the real tool does: that is
-# what keeps the database directory alive after the last XML is removed.
-for t in update-mime-database install-info; do
+# what keeps the database directory alive after the last XML is removed. The
+# makewhatis stub writes the database, which is what the trigger measures.
+for t in update-mime-database install-info udevadm makewhatis fc-cache; do
     printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
     chmod +x "$TR/bin/$t"
 done
 printf ': > "$1/globs"\n' >> "$TR/bin/update-mime-database"
+printf 'd=$1; [ "$1" = -d ] && d=$2; echo db > "$d/mandoc.db"\n' \
+    >> "$TR/bin/makewhatis"
 ktrig() {
     env PATH="$TR/bin:$PATH" PORT_REPO="$TR/ports" WORK_DIR="$TR/work" \
         PACKAGE_DIR="$TR/pkgs" PKGDB_DIR=/db KPKG_CONF=/nonexistent \
@@ -1490,6 +1506,8 @@ ktrig() {
 for t in kpkgbuild kpkgadd kpkgdel; do ln -sf kdos-kpkg "$OUT/$t"; done
 ( cd "$TR/ports/feed" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
     || { echo "  the synthetic port did not build"; exit 1; }
+( cd "$TR/ports/page" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic page port did not build"; exit 1; }
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/feed-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic package did not install"; exit 1; }
 tar -tf "$TR/pkgs/feed-1.0-1.tar.xz" | grep -q 'usr/share/info/dir$' \
@@ -1498,11 +1516,92 @@ grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
     || { echo "  installing a MIME XML did not regenerate the MIME database"; exit 1; }
 grep -qx "install-info --info-dir=$TR/root/usr/share/info $TR/root/usr/share/info/feed.info" "$TR/calls" \
     || { echo "  installing an info page did not regenerate the info dir"; exit 1; }
+grep -qx "udevadm hwdb --update --root $TR/root" "$TR/calls" \
+    || { echo "  installing a hwdb.d file did not recompile the hwdb trie"; exit 1; }
+grep -qx "fc-cache -s --sysroot $TR/root" "$TR/calls" \
+    || { echo "  installing fontconfig configuration did not rebuild the font cache"; exit 1; }
+grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
+    || { echo "  a first manual page did not build the whole manual index"; exit 1; }
+: > "$TR/calls"
+ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the synthetic page package did not install"; exit 1; }
+grep -qx "makewhatis -d $TR/root/usr/share/man man1/page.1" "$TR/calls" \
+    || { echo "  an added manual page was not merged into the existing index"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgdel" --root "$TR/root" feed >/dev/null
 grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
     || { echo "  removing a MIME XML left the MIME database naming its types"; exit 1; }
-echo "  install and removal both rebuild the MIME database and the info dir"
+grep -qx "udevadm hwdb --update --root $TR/root" "$TR/calls" \
+    || { echo "  removing a hwdb.d file left its entries in the trie"; exit 1; }
+grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
+    || { echo "  removing a manual page did not rebuild the whole manual index"; exit 1; }
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache and manual index"
+
+echo
+
+# ── One file, two spellings, one owner; one fonts.dir per directory ────────
+#
+# On a merged-/usr root `./bin/x` and `./usr/bin/x` are the same file. An
+# upgrade that moves a path from one spelling to the other must not delete the
+# file it just placed, and neither an upgrade nor a removal may delete a file
+# another package claims. And two font packages sharing `misc/` each carry
+# none of the fonts.dir that lists both: kpkgadd writes it from the directory.
+echo "==> kpkg ownership follows merged /usr, and fonts.dir follows the directory"
+MU="$OUT/mergedusr"
+rm -rf "$MU"; mkdir -p "$MU/work" "$MU/pkgs" "$MU/root/usr/bin" "$MU/root/usr/share/fonts" "$MU/bin"
+ln -s usr/bin "$MU/root/bin"
+mkport() {
+    mkdir -p "$MU/ports/$1"
+    printf 'name        = %s\nversion     = %s\nrelease     = 1\ndescription = synthetic\n' \
+        "$1" "$2" > "$MU/ports/$1/kpkgbuild"
+    printf '%s\n' "$3" > "$MU/ports/$1/build.sh"
+    ( cd "$MU/ports/$1" && kmu "$OUT/kpkgbuild" >/dev/null ) \
+        || { echo "  the synthetic port $1-$2 did not build"; exit 1; }
+}
+printf '#!/bin/sh\necho "mkfontdir $*" >> "%s/calls"\n: > "$1/fonts.dir"\n' "$MU" > "$MU/bin/mkfontdir"
+printf '#!/bin/sh\n' > "$MU/bin/fc-cache"
+chmod +x "$MU/bin/mkfontdir" "$MU/bin/fc-cache"
+kmu() {
+    env PATH="$MU/bin:$PATH" PORT_REPO="$MU/ports" WORK_DIR="$MU/work" \
+        PACKAGE_DIR="$MU/pkgs" PKGDB_DIR=/db KPKG_CONF=/nonexistent \
+        SOURCE_DATE_EPOCH=1735689600 TZ=UTC "$@" 2>&1
+}
+mkport mover 1.0 'install -Dm755 /dev/null "$PKG/bin/mover"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/mover-1.0-1.tar.xz" >/dev/null
+rm -rf "$MU/ports/mover"
+mkport mover 2.0 'install -Dm755 /dev/null "$PKG/usr/bin/mover"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/mover-2.0-1.tar.xz" >/dev/null
+[ -e "$MU/root/usr/bin/mover" ] \
+    || { echo "  an upgrade from ./bin/x to ./usr/bin/x deleted the file it placed"; exit 1; }
+mkport short 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/shared"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/short-1.0-1.tar.xz" >/dev/null
+mkport long 1.0 'install -Dm755 /dev/null "$PKG/bin/shared"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" 2>&1 \
+    | grep -q "File conflict" \
+    || { echo "  a path claimed under its other spelling was not a conflict"; exit 1; }
+KPKG_OVERWRITE=1 kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" >/dev/null
+grep -q 'shared' "$MU/root/db/short" \
+    && { echo "  an overwrite left the path in the old owner's manifest"; exit 1; }
+printf './usr/bin/shared\n' >> "$MU/root/db/short"
+kmu "$OUT/kpkgdel" --root "$MU/root" short >/dev/null
+[ -e "$MU/root/usr/bin/shared" ] \
+    || { echo "  removing one of two claimants deleted the other's file"; exit 1; }
+mkport fonta 1.0 'install -Dm644 /dev/null "$PKG/usr/share/fonts/misc/a.pcf.gz"
+: > "$PKG/usr/share/fonts/misc/fonts.dir"'
+mkport fontb 1.0 'install -Dm644 /dev/null "$PKG/usr/share/fonts/misc/b.pcf.gz"
+: > "$PKG/usr/share/fonts/misc/fonts.dir"'
+tar -tf "$MU/pkgs/fonta-1.0-1.tar.xz" | grep -q 'fonts.dir$' \
+    && { echo "  a font package carries the fonts.dir its directory shares"; exit 1; }
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/fonta-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/fontb-1.0-1.tar.xz" 2>&1 \
+    | grep -q "File conflict" \
+    && { echo "  two font packages sharing misc/ conflict"; exit 1; }
+grep -qx "mkfontdir $MU/root/usr/share/fonts/misc" "$MU/calls" \
+    || { echo "  installing a bitmap face did not rebuild fonts.dir"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" fonta fontb >/dev/null
+[ -e "$MU/root/usr/share/fonts/misc" ] \
+    && { echo "  removing the last face left misc/ and its fonts.dir behind"; exit 1; }
+echo "  one owner under either spelling; fonts.dir written from the directory and removed with it"
 
 echo
 
@@ -2187,7 +2286,7 @@ echo "  found when carried, reported when not, honest when there is no image"
 fi
 
 echo
-echo "==> a bad update boots three times and rolls itself back"
+echo "==> a bad update led by the menu boots three times and rolls itself back"
 # The A/B state machine, driven exactly as the machine drives it: `select` is
 # what the initramfs runs (decide and spend an attempt), `mark-good` what the
 # end of rcS runs. A boot that never reaches mark-good is a boot that failed,
@@ -2280,6 +2379,327 @@ bootctl crypt AAAA-1111 >/dev/null 2>&1 \
 echo "  each slot carries its own LUKS container, across a rollback"
 
 echo
+echo "==> each slot boots its own kernel, and the menu follows the state"
+# A fixture ESP laid out the way kinstall leaves one — the state file at
+# EFI/kdos/bootstate is what tells kdos-bootctl where the ESP is — starting
+# from the flat EFI/kdos pair both slots boot before any deploy. The kernels
+# are bzImage headers carrying a version string and nothing else.
+ES="$OUT/esp-ab"
+rm -rf "$ES"
+mkdir -p "$ES/esp/EFI/kdos" "$ES/ra/boot" "$ES/rb/boot"
+esb() { env KDOS_BOOTSTATE="$ES/esp/EFI/kdos/bootstate" "$OUT/kdos-bootctl" "$@"; }
+mkbz() {
+    python3 - "$1" "$2" <<'PYEOF'
+import sys
+b = bytearray(0x400)
+b[0x202:0x206] = b'HdrS'
+b[0x20E] = 0x100 & 255; b[0x20F] = 0x100 >> 8
+v = (sys.argv[2] + ' (kdos@kdos) #1').encode()
+b[0x300:0x300 + len(v)] = v
+open(sys.argv[1], 'wb').write(b)
+PYEOF
+}
+mkbz "$ES/esp/EFI/kdos/vmlinuz" 7.2.6
+echo flat > "$ES/esp/EFI/kdos/initramfs.cpio.gz"
+mkbz "$ES/ra/boot/vmlinuz-kdos" 7.2.6
+echo image-a > "$ES/ra/boot/initramfs.cpio.gz"
+mkbz "$ES/rb/boot/vmlinuz-kdos" 7.2.7
+echo image-b > "$ES/rb/boot/initramfs.cpio.gz"
+echo kernel-b > "$ES/rb/boot/initramfs-kdos.cpio.gz"
+{
+    printf 'timeout: 10\ndefault_entry: 1\n\n'
+    for e in "KDOS|quiet loglevel=3" "KDOS (verbose)|loglevel=7" \
+             "KDOS (single user)|loglevel=7 single"; do
+        printf '/%s\n    protocol: linux\n    path: boot():/EFI/kdos/vmlinuz\n' "${e%%|*}"
+        printf '    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n'
+        printf '    cmdline: bootstate=UUID=ESP-1 root=UUID=AAAA-1111 rw nomodeset %s\n\n' "${e#*|}"
+    done
+    printf '/Memory Test (memtest86+)\n    protocol: efi\n    path: boot():/EFI/kdos/memtest.efi\n'
+} > "$ES/esp/limine.conf"
+cp "$ES/esp/limine.conf" "$ES/flat.conf"
+esb set-slot a AAAA-1111 >/dev/null
+esb set-slot b BBBB-2222 >/dev/null
+# A menu with no per-slot directory is left exactly as it is: that is what
+# keeps an ESP no deploy has touched booting.
+cmp -s "$ES/flat.conf" "$ES/esp/limine.conf" \
+    || { echo "  a menu with no per-slot kernel was rewritten"; exit 1; }
+esb deploy "$ES/rb" b >/dev/null || { echo "  deploy failed"; exit 1; }
+test "$(cat "$ES/esp/EFI/kdos/b/initramfs.cpio.gz")" = kernel-b \
+    || { echo "  deploy took the image's initramfs over the kernel's own"; exit 1; }
+esb status | grep -q "kernel   b  7.2.7 from EFI/kdos/b" \
+    || { echo "  status does not show slot b's own kernel"; exit 1; }
+# Slot A still has no directory: its entries stay on the flat pair, and the
+# pair stays on the ESP.
+grep -A3 '^/KDOS$' "$ES/esp/limine.conf" | grep -q 'path: boot():/EFI/kdos/vmlinuz' \
+    || { echo "  slot a lost the flat kernel it boots"; exit 1; }
+grep -A5 '^/KDOS (slot b)$' "$ES/esp/limine.conf" | grep -q 'kdos_slot=b .*root=UUID=BBBB-2222 rw nomodeset quiet' \
+    || { echo "  slot b's entry is missing or lost the hand-added words"; exit 1; }
+grep -q '^/Memory Test' "$ES/esp/limine.conf" \
+    || { echo "  an entry that is not ours was dropped"; exit 1; }
+
+# The candidate leads the menu for its attempts; the last attempt hands the
+# lead back, so its failure rolls back from the confirmed slot's own kernel.
+esb try b >/dev/null || { echo "  try failed"; exit 1; }
+first_path() { grep -m1 'path: boot()' "$ES/esp/limine.conf"; }
+first_path | grep -q '/EFI/kdos/b/vmlinuz' || { echo "  the candidate does not lead the menu"; exit 1; }
+esb select b >/dev/null 2>&1; esb select b >/dev/null 2>&1
+first_path | grep -q '/EFI/kdos/b/vmlinuz' || { echo "  the lead moved with attempts left"; exit 1; }
+test "$(esb select b 2>/dev/null)" = BBBB-2222 || { echo "  the last attempt did not boot b"; exit 1; }
+first_path | grep -q '/EFI/kdos/vmlinuz' || { echo "  the last attempt left the lead on b"; exit 1; }
+test "$(esb select a 2>/dev/null)" = AAAA-1111 || { echo "  no rollback onto a's kernel"; exit 1; }
+esb status | grep -q "trying   nothing" || { echo "  the rollback left a try flag"; exit 1; }
+
+# The other entry picked by hand boots its own slot, because the kernel is that
+# slot's: the confirmed slot abandons a candidate, anything else counts nothing.
+esb try b >/dev/null
+test "$(esb select a 2>/dev/null)" = AAAA-1111 || { echo "  a hand-picked a did not boot a"; exit 1; }
+esb status | grep -q "trying   nothing" || { echo "  picking the confirmed slot kept the candidate"; exit 1; }
+test "$(esb select b 2>/dev/null)" = BBBB-2222 || { echo "  a hand-picked b did not boot b"; exit 1; }
+esb mark-good >/dev/null
+esb status | grep -q "^active   a" || { echo "  a one-off boot was confirmed"; exit 1; }
+
+# Both slots in directories of their own: the flat pair nothing names goes.
+esb deploy "$ES/ra" a >/dev/null || { echo "  deploy a failed"; exit 1; }
+test ! -e "$ES/esp/EFI/kdos/vmlinuz" || { echo "  the unnamed flat kernel stayed"; exit 1; }
+test "$(cat "$ES/esp/EFI/kdos/a/initramfs.cpio.gz")" = image-a \
+    || { echo "  deploy did not fall back to the image's initramfs"; exit 1; }
+cp "$ES/esp/limine.conf" "$ES/settled.conf"
+esb mark-good >/dev/null
+cmp -s "$ES/settled.conf" "$ES/esp/limine.conf" || { echo "  an unchanged state rewrote the menu"; exit 1; }
+# A slot with no kernel is refused once the ESP has per-slot directories: the
+# menu could not lead with it, and select would abandon it on its first boot.
+rm -rf "$ES/esp/EFI/kdos/b"
+esb try b >/dev/null 2>&1 && { echo "  a slot with no kernel was tried"; exit 1; }
+# kinstall writes the first menu and kdos-bootctl every later one. The two are
+# the same text, or the first boot's mark-good rewrites a menu nothing changed.
+rm -rf "$ES/esp"
+mkdir -p "$ES/esp/EFI/kdos/a"
+echo k > "$ES/esp/EFI/kdos/a/vmlinuz"
+echo i > "$ES/esp/EFI/kdos/a/initramfs.cpio.gz"
+esb set-slot a AAAA-1111 LUKS-AAAA >/dev/null
+python3 - "$ES/esp/limine.conf" <<'PYEOF' || { echo "  could not render kinstall's limine.conf"; exit 1; }
+import re, sys
+s = open('src/packages/kdos-installer/install.c').read()
+m = re.search(r'wr\("/boot/efi/limine.conf",\n(.*?)\n\t   theme, paper', s, re.S)
+fmt = ''.join(re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1)))
+fmt = fmt.encode().decode('unicode_escape')
+st, cr = 'bootstate=UUID=ESP-1 ', 'cryptdevice=UUID=LUKS-AAAA:kdosroot '
+open(sys.argv[1], 'w').write(fmt % ('term_background: 000000\n', '', '',
+    st, cr, 'AAAA-1111', st, cr, 'AAAA-1111', st, cr, 'AAAA-1111',
+    '\n/Memory Test (memtest86+)\n    protocol: efi\n'))
+PYEOF
+cp "$ES/esp/limine.conf" "$ES/kinstall.conf"
+esb mark-good >/dev/null
+cmp -s "$ES/kinstall.conf" "$ES/esp/limine.conf" \
+    || { echo "  kdos-bootctl regenerates kinstall's menu differently"; exit 1; }
+
+# An initramfs is deployed beside a kernel only when it carries that kernel's
+# modules, or none at all. The archives are laid out as the image's is: an
+# uncompressed microcode cpio first, then gzip, then whatever the linux
+# postinstall appended as a second gzip member.
+mkird() {
+    python3 - "$@" <<'PYEOF'
+import gzip, sys
+def newc(names):
+    out = b''
+    for i, n in enumerate(names + ['TRAILER!!!']):
+        mode = 0o40755 if n.endswith('/') else 0o100644
+        nb = n.rstrip('/').encode() + b'\0'
+        f = [i + 1, mode, 0, 0, 1, 0, 0, 0, 0, 0, 0, len(nb), 0]
+        h = b'070701' + b''.join(b'%08X' % x for x in f) + nb
+        out += h + b'\0' * (-len(h) % 4)
+    return out + b'\0' * (-len(out) % 512)
+out, parts = sys.argv[1], sys.argv[2:]
+data = newc(['kernel', 'kernel/x86/microcode/GenuineIntel.bin'])
+for p in parts:
+    data += gzip.compress(newc(['init'] + ['lib/modules/%s/kernel/fs/fat/vfat.ko' % v
+                                          for v in p.split(',') if v]))
+open(out, 'wb').write(data)
+PYEOF
+}
+mkdir -p "$ES/rc/boot"
+mkbz "$ES/rc/boot/vmlinuz-kdos" 7.2.8
+mkird "$ES/rc/boot/initramfs.cpio.gz" 7.2.6
+esb deploy "$ES/rc" a >/dev/null 2>&1 \
+    && { echo "  an initramfs with another kernel's modules was deployed"; exit 1; }
+test "$(cat "$ES/esp/EFI/kdos/a/vmlinuz")" = k \
+    || { echo "  a refused deploy still replaced the kernel"; exit 1; }
+mkird "$ES/rc/boot/initramfs-kdos.cpio.gz" 7.2.6 7.2.8
+esb deploy "$ES/rc" a >/dev/null \
+    || { echo "  an initramfs carrying the kernel's modules was refused"; exit 1; }
+mkird "$ES/rc/boot/initramfs-kdos.cpio.gz" ""
+esb deploy "$ES/rc" a >/dev/null \
+    || { echo "  an initramfs with no module tree was refused"; exit 1; }
+# With no boot state the kernel goes where the menu boots it from, which is
+# slot A's directory on anything kinstall wrote.
+rm -f "$ES/esp/EFI/kdos/bootstate" "$ES/esp/EFI/kdos/vmlinuz"
+mkird "$ES/rc/boot/initramfs-kdos.cpio.gz" 7.2.8
+esb deploy "$ES/rc" >/dev/null || { echo "  deploy with no boot state failed"; exit 1; }
+test ! -e "$ES/esp/EFI/kdos/vmlinuz" && cmp -s "$ES/rc/boot/vmlinuz-kdos" "$ES/esp/EFI/kdos/a/vmlinuz" \
+    || { echo "  deploy with no boot state missed the directory the menu boots"; exit 1; }
+# The linux postinstall takes the module set from the image's archive when the
+# root has no /boot/initramfs.modules.
+if command -v cpio >/dev/null; then
+    ( . /dev/stdin <<EOF
+$(sed -n '/^archive_modules() (/,/^)/p' ports/core/linux/postinstall.sh)
+EOF
+      test "$(archive_modules "$ES/rc/boot/initramfs.cpio.gz")" = vfat ) \
+        || { echo "  the postinstall found no module set in the image's archive"; exit 1; }
+fi
+echo "  per-slot kernels, the menu led by the next slot, the flat pair kept until unnamed"
+
+echo
+echo "==> on UEFI a candidate gets one boot, through BootNext"
+# The firmware variables are a directory and the disk is an image file: the
+# option `try` writes is compared byte for byte against one encoded here from
+# the UEFI specification's layout, independently of kdos-bootctl's encoder.
+# Deleting BootNext by hand is what the firmware does before it starts the
+# loader, so every boot below begins with it.
+BN="$OUT/esp-bootnext"
+rm -rf "$BN"
+mkdir -p "$BN/esp/EFI/kdos/a" "$BN/esp/EFI/kdos/b" "$BN/esp/EFI/BOOT" "$BN/fw/efivars"
+for s in a b; do
+    echo "kernel-$s" > "$BN/esp/EFI/kdos/$s/vmlinuz"
+    echo "initramfs-$s" > "$BN/esp/EFI/kdos/$s/initramfs.cpio.gz"
+done
+echo limine-x64 > "$BN/esp/EFI/BOOT/BOOTX64.EFI"
+echo limine-ia32 > "$BN/esp/EFI/BOOT/BOOTIA32.EFI"
+echo 64 > "$BN/fw/fw_platform_size"
+{
+    printf 'timeout: 10\ndefault_entry: 1\n\n'
+    printf '/KDOS\n    protocol: linux\n    path: boot():/EFI/kdos/a/vmlinuz\n'
+    printf '    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n'
+    printf '    cmdline: kdos_slot=a bootstate=UUID=ESP-1 root=UUID=AAAA-1111 rw quiet loglevel=3\n'
+} > "$BN/esp/limine.conf"
+python3 - "$BN" <<'PYEOF' || { echo "  could not build the fixture disk and variables"; exit 1; }
+import struct, sys, uuid
+d = sys.argv[1]
+G = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+part = uuid.UUID('0fc63daf-8483-4772-8e79-3d69d8477de4').bytes_le
+# A 512-byte-sector GPT: protective MBR, header at LBA 1, the array at LBA 2,
+# the ESP as its second entry from LBA 4096 to 1052671.
+img = bytearray(512 * 34)
+img[510:512] = b'\x55\xaa'
+img[446 + 4] = 0xEE
+hdr = b'EFI PART' + struct.pack('<IIIIQQQQ16sQIII', 0x10000, 92, 0, 0, 1, 0,
+                                34, 0, b'\0' * 16, 2, 128, 128, 0)
+img[512:512 + len(hdr)] = hdr
+ent = uuid.UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b').bytes_le + part + \
+      struct.pack('<QQQ', 4096, 1052671, 0)
+img[1024 + 128:1024 + 128 + len(ent)] = ent
+img[1024:1024 + 16] = b'\x11' * 16      # entry 1, some other partition
+open(d + '/disk.img', 'wb').write(img)
+def option(desc, path):
+    node = struct.pack('<BBHIQQ16sBB', 4, 1, 42, 2, 4096, 1048576, part, 2, 2)
+    p = (path + '\0').encode('utf-16-le')
+    node += struct.pack('<BBH', 4, 4, 4 + len(p)) + p + b'\x7f\xff\x04\x00'
+    return struct.pack('<IH', 1, len(node)) + (desc + '\0').encode('utf-16-le') + node
+attrs = struct.pack('<I', 7)
+open(d + '/want-x64', 'wb').write(attrs + option('KDOS update trial', '\\EFI\\kdos\\trial\\BOOTX64.EFI'))
+open(d + '/want-ia32', 'wb').write(attrs + option('KDOS update trial', '\\EFI\\kdos\\trial\\BOOTIA32.EFI'))
+open(d + '/want-next', 'wb').write(attrs + struct.pack('<H', 1))
+# Boot0000 is the firmware's own and must survive everything.
+open(d + '/fw/efivars/Boot0000-' + G, 'wb').write(attrs + option('KDOS', '\\EFI\\BOOT\\BOOTX64.EFI'))
+PYEOF
+EV="$BN/fw/efivars"
+G=8be4df61-93ca-11d2-aa0d-00e098032b8c
+cp "$EV/Boot0000-$G" "$BN/firmware-own"
+bn() { env KDOS_BOOTSTATE="$BN/esp/EFI/kdos/bootstate" KDOS_EFIVARS="$EV" \
+           KDOS_ESP_DISK="$BN/disk.img:2" "$OUT/kdos-bootctl" "$@"; }
+bn set-slot a AAAA-1111 >/dev/null
+bn set-slot b BBBB-2222 >/dev/null
+first_bn() { grep -m1 'path: boot()' "$1"; }
+
+bn try b >/dev/null || { echo "  try failed"; exit 1; }
+cmp -s "$EV/Boot0001-$G" "$BN/want-x64" \
+    || { echo "  the Boot0001 load option is not the one the spec lays out"; exit 1; }
+cmp -s "$EV/BootNext-$G" "$BN/want-next" || { echo "  BootNext does not name Boot0001"; exit 1; }
+cmp -s "$EV/Boot0000-$G" "$BN/firmware-own" || { echo "  the firmware's own option was touched"; exit 1; }
+cmp -s "$BN/esp/EFI/BOOT/BOOTX64.EFI" "$BN/esp/EFI/kdos/trial/BOOTX64.EFI" \
+    || { echo "  the trial directory has no copy of the loader"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/a/' \
+    || { echo "  the candidate leads the menu an unattended boot reads"; exit 1; }
+grep -q '^default_entry: 4$' "$BN/esp/EFI/kdos/trial/limine.conf" \
+    || { echo "  the trial menu does not default to the candidate"; exit 1; }
+grep -A5 '^/KDOS (slot b)$' "$BN/esp/EFI/kdos/trial/limine.conf" \
+    | grep -q 'kdos_slot=b .*root=UUID=BBBB-2222 .*panic=10' \
+    || { echo "  the candidate entry does not reset on a panic"; exit 1; }
+bn status | grep -q "trying   b once, through UEFI BootNext" \
+    || { echo "  status does not show the BootNext trial"; exit 1; }
+
+# The candidate's kernel dies before its initramfs: the firmware spent
+# BootNext, the reset starts EFI/BOOT/ and the confirmed slot, and that slot's
+# select rolls the candidate back. rcS's mark-good then removes the option.
+rm -f "$EV/BootNext-$G"
+test "$(bn select a 2>/dev/null)" = AAAA-1111 || { echo "  the reset did not boot a"; exit 1; }
+bn status | grep -q "trying   nothing" || { echo "  the dead candidate is still on trial"; exit 1; }
+test ! -e "$BN/esp/EFI/kdos/trial" || { echo "  the trial directory outlived the trial"; exit 1; }
+bn mark-good >/dev/null
+test ! -e "$EV/Boot0001-$G" || { echo "  mark-good left the trial option behind"; exit 1; }
+cmp -s "$EV/Boot0000-$G" "$BN/firmware-own" || { echo "  mark-good touched the firmware's option"; exit 1; }
+
+# One boot and a userland that never confirms: the next boot rolls back, and
+# nothing re-arms the candidate.
+bn try b >/dev/null
+rm -f "$EV/BootNext-$G"
+test "$(bn select b 2>/dev/null)" = BBBB-2222 || { echo "  the trial boot did not boot b"; exit 1; }
+bn status | grep -q "booted once and not confirmed" || { echo "  the trial boot was not spent"; exit 1; }
+test ! -e "$EV/BootNext-$G" || { echo "  the trial re-armed itself"; exit 1; }
+test "$(bn select a 2>/dev/null)" = AAAA-1111 || { echo "  the unconfirmed candidate was not rolled back"; exit 1; }
+
+# The good update: its boot reaches mark-good, which makes it the default.
+bn try b >/dev/null
+rm -f "$EV/BootNext-$G"
+test "$(bn select b 2>/dev/null)" = BBBB-2222 || { echo "  the trial boot did not boot b"; exit 1; }
+bn mark-good >/dev/null
+bn status | grep -q "^active   b" || { echo "  mark-good did not confirm the candidate"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
+    || { echo "  the confirmed candidate does not lead the menu"; exit 1; }
+grep -q 'panic=10' "$BN/esp/limine.conf" && { echo "  panic=10 outlived the trial"; exit 1; }
+test ! -e "$EV/Boot0001-$G" || { echo "  the trial option outlived the trial"; exit 1; }
+
+# An init that ignores kdos_slot=, after the candidate's kernel died: its
+# kdos-bootctl spent the attempt, dropped the bootnext key and booted the
+# candidate's root on the confirmed slot's kernel. mark-good on that kernel
+# rolls back rather than confirming a kernel that never ran.
+bn try a >/dev/null
+rm -f "$EV/BootNext-$G"
+grep -v '^bootnext' "$BN/esp/EFI/kdos/bootstate" \
+    | awk '/^attempts/ { print "attempts = 0"; next } { print }' > "$BN/old-state"
+cp "$BN/old-state" "$BN/esp/EFI/kdos/bootstate"
+printf 'kdos_slot=b bootstate=UUID=ESP-1 root=UUID=AAAA-1111 rw\n' > "$BN/cmdline"
+KDOS_CMDLINE="$BN/cmdline" bn mark-good >/dev/null 2>&1
+bn status | grep -q "^active   b" || { echo "  the old init's boot confirmed a kernel that never ran"; exit 1; }
+bn status | grep -q "trying   nothing" || { echo "  the old init's boot left the candidate on trial"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
+    || { echo "  the dead candidate's kernel leads the menu"; exit 1; }
+# The candidate's own kernel still confirms it.
+bn try a >/dev/null
+rm -f "$EV/BootNext-$G"
+bn select a >/dev/null 2>&1
+printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$BN/cmdline"
+KDOS_CMDLINE="$BN/cmdline" bn mark-good >/dev/null
+bn status | grep -q "^active   a" || { echo "  the candidate's own kernel did not confirm it"; exit 1; }
+
+# A 32-bit firmware is sent to the loader it can execute.
+echo 32 > "$BN/fw/fw_platform_size"
+bn try b >/dev/null
+cmp -s "$EV/Boot0001-$G" "$BN/want-ia32" \
+    || { echo "  a 32-bit firmware was sent to BOOTX64.EFI"; exit 1; }
+rm -f "$EV/BootNext-$G"
+bn select a >/dev/null 2>&1; bn mark-good >/dev/null
+
+# No firmware variables — a BIOS boot — is the menu-led trial, counted.
+env KDOS_BOOTSTATE="$BN/esp/EFI/kdos/bootstate" KDOS_EFIVARS="$BN/none" \
+    "$OUT/kdos-bootctl" try b >/dev/null 2>&1
+test -e "$EV/Boot0001-$G" && { echo "  a BIOS trial wrote a firmware variable"; exit 1; }
+first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
+    || { echo "  a trial with no BootNext is not led by the menu"; exit 1; }
+bn status | grep -q "trying   b, 3 attempt(s) left" \
+    || { echo "  a trial with no BootNext is not counted"; exit 1; }
+echo "  the spec's load option, the confirmed slot's default kept, one boot then rollback, confirmed only on its own kernel, BIOS counted"
+
+echo
 echo "==> the initramfs unlocks a LUKS root, or says why it cannot"
 # The generated init is a heredoc inside a packaging script, which is exactly
 # the kind of code nothing ever tests until it is 3 a.m. and a laptop will not
@@ -2298,6 +2718,10 @@ open(sys.argv[1], 'w').write(body)
 PYEOF
 bash -n "$IR/init" || { echo "  the generated init is not valid bash"; exit 1; }
 grep -q "cryptdevice=" "$IR/init" || { echo "  the init does not parse cryptdevice="; exit 1; }
+# The entry's slot reaches `select`, or a hand-picked entry boots the other
+# slot's root on this slot's kernel.
+grep -q 'kdos-bootctl select \${BOOT_SLOT:+"\$BOOT_SLOT"}' "$IR/init" \
+    || { echo "  the init does not hand kdos_slot= to select"; exit 1; }
 # The passphrase must never reach argv: /proc/<pid>/cmdline is world-readable.
 grep -q -- "--key-file=-" "$IR/init" \
     || { echo "  the passphrase is not fed on stdin"; exit 1; }
@@ -2352,6 +2776,59 @@ luks_try "$IR/bad.tty" "UUID=1234-abcd:kdosroot" \
 luks_try "$IR/good.tty" "this-is-not-a-spec" \
     && { echo "  a malformed cryptdevice= was accepted"; exit 1; }
 echo "  cryptdevice= parsed, passphrase on stdin, three tries then a shell"
+
+# AND THE VOLUME GROUPS, ACTIVATED ONLY WHEN THERE ARE ANY. activate_lvm runs
+# on each side of the unlock; a disk boot with no LVM must never start lvm, a
+# second call that sees no new physical volume must not activate again, and
+# one that sees the volume group an unlock just revealed must. The stubs
+# answer `-t TYPE=LVM2_member -o device` and count the activations.
+LV="$OUT/lvm"
+mkdir -p "$LV/bin"
+cat > "$LV/bin/blkid" <<'EOF'
+#!/bin/sh
+[ "$1 $2 $3 $4" = "-t TYPE=LVM2_member -o device" ] || exit 2
+cat "$FAKE_PVS" 2>/dev/null
+EOF
+cat > "$LV/bin/lvm" <<'EOF'
+#!/bin/sh
+[ "$1 $2 $3" = "vgchange -aay --sysinit" ] || exit 2
+echo x >> "$LVM_CALLS"
+EOF
+# The targets a thin or cached root needs are loaded before the first
+# activation, once: the stub records what it was asked for, never loads it.
+cat > "$LV/bin/modprobe" <<'EOF'
+#!/bin/sh
+echo "$*" >> "$LVM_MODS"
+EOF
+chmod +x "$LV/bin/"*
+lvm_try() {
+    ( . /dev/stdin <<EOF
+$(sed -n '/^activate_lvm() {/,/^}/p' "$IR/init")
+EOF
+      sp_total() { :; }; sp_step() { :; }; sp_ok() { :; }; sp_fail() { :; }
+      udevadm() { :; }
+      export FAKE_PVS="$LV/pvs" LVM_CALLS="$LV/calls" LVM_MODS="$LV/mods"
+      PATH="$LV/bin:$PATH" LVM_BIN="$LV/bin/lvm" LVM_PVS=""
+      : > "$LV/pvs"
+      activate_lvm
+      printf '/dev/sda2\n' > "$LV/pvs"
+      activate_lvm; activate_lvm
+      printf '/dev/sda2\n/dev/mapper/kdosroot\n' > "$LV/pvs"
+      activate_lvm ) >/dev/null 2>&1
+}
+: > "$LV/calls"
+: > "$LV/mods"
+lvm_try
+[ "$(wc -l < "$LV/calls")" -eq 2 ] \
+    || { echo "  activate_lvm ran lvm $(wc -l < "$LV/calls") times, not 2 (none, once per new PV set)"; exit 1; }
+[ "$(wc -l < "$LV/mods")" -eq 1 ] && grep -q 'dm-thin-pool' "$LV/mods" \
+    && grep -q 'dm-cache' "$LV/mods" \
+    || { echo "  the thin and cache targets are not loaded once, before the first activation"; exit 1; }
+grep -qE '^[[:space:]]+activate_lvm$' "$IR/init" \
+    || { echo "  the init no longer activates volume groups after the unlock"; exit 1; }
+sed -n '/Wait for device to appear/,/^    done$/p' "$IR/init" | grep -q 'activate_lvm' \
+    || { echo "  the root wait no longer activates a late physical volume's group"; exit 1; }
+echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin and cache targets first"
 
 # AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S, NOT THE NAME TOYBOX
 # CLAIMS. Every lookup in the generated init is `blkid -U` — the root
@@ -2922,7 +3399,7 @@ BOXCHECK_STORE="$OUT/boxfix/store" BOXCHECK_HOME="$OUT/boxfix/home" \
     "$OUT/boxcheck"
 
 echo
-echo "==> kdos-powerd only lets root and wheel near the power"
+echo "==> kdos-powerd only lets root, seat and wheel near the power"
 # The gate is SO_PEERCRED on the connection, which cannot be tested without two
 # uids. `--explain` reads exactly the same two files the gate does and is the
 # diagnostic a user gets for a dead power key, so it is what is asserted here.
@@ -2947,6 +3424,50 @@ fi
 # The client says what to do when nothing is listening, rather than failing mute.
 KDOS_POWERD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-power" ping 2>&1 \
     | grep -q "no kdos-powerd" || { echo "  no message for a dead daemon"; exit 1; }
+# ── THE FIREWALL VERB, THROUGH THE CLIENT ────────────────────────────────
+#
+# `kdos-power firewall <name> on|off` is the argv the kdos-firewall surface
+# spawns, and `firewall list` is the table it draws, read from stdout. Driven
+# over a real test socket, because `--firewall` goes around the client and
+# would pass with a client that cannot join two words or read past 64 bytes.
+#
+# The firewall verb admits root or wheel only, so both ends run as root in
+# a user namespace; without one, and not root, the block is skipped.
+FWW="$OUT/fwwork"
+rm -rf "$FWW"
+mkdir -p "$FWW/etc/nftables.d"
+cat > "$FWW/run.sh" <<'FWEOF'
+set -u
+B="$1" W="$2"
+export KDOS_POWERD_SOCKET="$W/p.sock" KDOS_POWERD_ETC="$W/etc"
+"$B/kdos-powerd" 2>/dev/null &
+d=$!
+trap 'kill $d 2>/dev/null' EXIT
+i=0
+while [ ! -S "$W/p.sock" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+fail() { echo "  $1"; exit 1; }
+"$B/kdos-power" firewall list > "$W/l1" || fail "firewall list failed"
+[ "$(tail -n1 "$W/l1")" = ok ] || fail "the list does not end in ok"
+[ "$(grep -c "	" "$W/l1")" -ge 13 ] || fail "the list lost rows past the first read"
+grep -q "^mosh	off	" "$W/l1" || fail "mosh is not listed off"
+"$B/kdos-power" firewall mosh on > "$W/t1" || fail "firewall mosh on failed"
+grep -q "^ok mosh on" "$W/t1" || fail "the toggle reply is not on stdout"
+"$B/kdos-power" firewall list | grep -q "^mosh	on	" || fail "mosh did not read back on"
+"$B/kdos-power" firewall no-such-name on > "$W/t2" && fail "an unknown name exited 0"
+grep -q "^err " "$W/t2" || fail "the refusal is not on stdout"
+"$B/kdos-power" firewall mosh 2>/dev/null
+[ $? -eq 2 ] || fail "a toggle with no state is not a usage error"
+"$B/kdos-power" firewall list extra 2>/dev/null
+[ $? -eq 2 ] || fail "list with an argument is not a usage error"
+exit 0
+FWEOF
+if [ "$(id -u)" -eq 0 ]; then
+    sh "$FWW/run.sh" "$OUT" "$FWW" || exit 1
+elif unshare -r true 2>/dev/null; then
+    unshare -r sh "$FWW/run.sh" "$OUT" "$FWW" || exit 1
+else
+    echo "  the firewall client check is skipped (no user namespace)"
+fi
 # ── THE TIMEZONE VERB, AND WHAT IT REFUSES ───────────────────────────────
 #
 # A zone name is `Area/City`, so a SLASH IS LEGAL — which makes
@@ -2961,6 +3482,8 @@ TZW="$OUT/tzwork"
 rm -rf "$TZW"
 mkdir -p "$TZW/zi/Europe" "$TZW/etc/profile.d"
 : > "$TZW/zi/Europe/London"
+: > "$TZW/zi/UTC"
+printf '# comment\nGB\t+513030-0000731\tEurope/London\n' > "$TZW/zi/zone.tab"
 tzset_() {
     KDOS_POWERD_ZONEDIR="$TZW/zi" KDOS_POWERD_ETC="$TZW/etc" \
         "$OUT/kdos-powerd" --set-timezone "$1" 2>&1 || true
@@ -2982,6 +3505,18 @@ grep -q "TZ=':/etc/localtime'" "$TZW/etc/profile.d/20-timezone.sh" \
     && echo "  ok    and TZ names the same file rather than a rules string" \
     || { echo "  FAIL  the profile does not point TZ at /etc/localtime"
          tz_fail=1; }
+# The Wi-Fi country is the zone's zone.tab row, or cfg80211 stays on the
+# world rules with every 5 GHz DFS channel shut.
+grep -qx "options cfg80211 ieee80211_regdom=GB" \
+        "$TZW/etc/modprobe.d/kdos-regdom.conf" 2>/dev/null \
+    && echo "  ok    and the zone's country becomes cfg80211's regulatory domain" \
+    || { echo "  FAIL  no regulatory domain was written for Europe/London"
+         tz_fail=1; }
+tzwant "UTC" "ok" "a zone with no country is taken"
+[ ! -e "$TZW/etc/modprobe.d/kdos-regdom.conf" ] \
+    && echo "  ok    and it removes the country rather than keeping the old one" \
+    || { echo "  FAIL  UTC left a stale regulatory domain behind"; tz_fail=1; }
+tzwant "Europe/London" "ok" "and the real zone is taken back"
 tzwant "../../etc/shadow" "not a zone name" \
     "a traversal is refused by the character rule, before any stat"
 tzwant "Europe/../../../etc/shadow" "not a zone name" \
@@ -3934,6 +4469,16 @@ printf '%s\n' "\$*" >> "$OUT/opened.log"
 APPBOX
     chmod +x "$OUT/pbin/kdos-appbox"
     : > "$OUT/opened.log"
+    # Access asks kdos-prompt and answers with its exit status. The stand-in
+    # records its argv and says Deny, which must come back as response 1 — a
+    # refusal — and not 2, which would tell the front end nobody was asked.
+    cat > "$OUT/pbin/kdos-prompt" <<PROMPT
+#!/bin/sh
+printf '%s\n' "\$@" > "$OUT/prompt.args"
+exit 1
+PROMPT
+    chmod +x "$OUT/pbin/kdos-prompt"
+    : > "$OUT/prompt.args"
 
     PORTAL_ADDR=$(dbus-daemon --session --print-address --fork \
         --print-pid=3 3>"$OUT/portal-bus.pid")
@@ -3983,6 +4528,16 @@ APPBOX
         "file:///tmp/a%20b.txt" 0 > "$OUT/portal-uri.out" 2>&1
     uri_rc=$?
 
+    DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" timeout 2 busctl \
+        --address="$PORTAL_ADDR" call \
+        org.freedesktop.impl.portal.desktop.kdos \
+        /org/freedesktop/portal/desktop \
+        org.freedesktop.impl.portal.Access AccessDialog \
+        "osssssa{sv}" /org/f/p/r3 app.Test "" \
+        "Allow Test to Access Your Location?" "Test wants to use your location" \
+        "" 1 grant_label s "Grant Access" > "$OUT/portal-access.out" 2>&1
+    access_rc=$?
+
     wait $OPEN_PID 2>/dev/null
     kill $PORTAL_PID 2>/dev/null
     kill "$PORTAL_BUS_PID" 2>/dev/null
@@ -4017,8 +4572,20 @@ APPBOX
     grep -q "^ua{sv} 0 " "$OUT/portal-open.out" || {
         echo "  OpenFile did not report success: $(cat "$OUT/portal-open.out")"
         exit 1; }
+    [ "$access_rc" = 0 ] || {
+        echo "  AccessDialog did not answer: $(cat "$OUT/portal-access.out")"
+        exit 1; }
+    grep -q "^ua{sv} 1 " "$OUT/portal-access.out" || {
+        echo "  a Deny from kdos-prompt is not response 1: $(cat "$OUT/portal-access.out")"
+        exit 1; }
+    grep -qx "Grant Access" "$OUT/prompt.args" &&
+    grep -qx "Allow Test to Access Your Location? Test wants to use your location" \
+        "$OUT/prompt.args" || {
+        echo "  kdos-prompt was not handed the question and the grant label: $(cat "$OUT/prompt.args")"
+        exit 1; }
     echo "  Settings answered in ${took}ms with a dialog open; the deferred reply carried the URI"
     echo "  OpenURI answered at once and handed the decoded path on"
+    echo "  Access asked kdos-prompt and answered its Deny as a refusal"
 else
     echo "  portal (skipped — no sd-bus, dbus-daemon or busctl on this host)"
 fi

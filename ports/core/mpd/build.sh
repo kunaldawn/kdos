@@ -40,6 +40,9 @@
 # wavpack are off because ffmpeg decodes the same files. libsamplerate is the
 # resampler mpd uses when mpd.conf names none; soxr is the one a `resampler`
 # block with `plugin "soxr"` selects.
+# cdio_paranoia is the cdda:// input, an audio CD played from the drive through
+# libcdio-paranoia's error-correcting reads; iso9660 opens an .iso as a
+# directory of music files.
 # lame and vorbisenc are the recorder output's encoders. ICU collates and folds
 # case in the library, which also leaves iconv unused.
 #
@@ -100,8 +103,8 @@ meson setup build \
 	-Dzlib=enabled \
 	-Dbzip2=disabled \
 	-Dzzip=disabled \
-	-Diso9660=disabled \
-	-Dcdio_paranoia=disabled \
+	-Diso9660=enabled \
+	-Dcdio_paranoia=enabled \
 	-Dcurl=enabled \
 	-Dmms=disabled \
 	-Dnfs=disabled \

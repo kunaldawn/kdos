@@ -1,0 +1,12 @@
+# KDOS — logic analysers, scopes, meters and supplies driven by sigrok.
+#
+# libsigrok's 60-libsigrok.rules marks every device one of its drivers
+# supports with ENV{ID_SIGROK}="1" and grants nothing; this is the grant. The
+# mark is upstream's list, so a device libsigrok learns to drive is covered
+# when libsigrok is updated, with no table here to fall behind it.
+#
+# An FX2 analyser re-enumerates after libsigrok uploads fx2lafw to it, and
+# comes back under a new id that the same list marks, so both halves of that
+# dance are reachable by the console user.
+
+ENV{ID_SIGROK}=="1", GROUP="dialout", MODE="0660"

@@ -30,8 +30,15 @@ KDOS_RES ?= 1920x1080
 KDOS_XRES = $(word 1,$(subst x, ,$(KDOS_RES)))
 KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 
+# The only networked step: every port's sources from the archive, the cache or
+# upstream, verified against the recipe. `make build` never downloads, so run
+# this once after a clone and after any recipe change. fetch-check is offline
+# and exits 1 naming each archived source missing or corrupt.
 fetch:
 	bash ports/fetch
+
+fetch-check:
+	bash ports/fetch --check
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
 # release. Needs network, curl and git (tags are read with ls-remote); never
@@ -141,4 +148,4 @@ clean:
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true
 
-.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates

@@ -1,0 +1,15 @@
+# KDOS — GPIO character devices, for libgpiod's gpiodetect, gpioinfo,
+# gpioget, gpioset and gpiomon, and for the GPIO cables of openocd and
+# openFPGALoader.
+#
+# The kernel creates /dev/gpiochipN root-only. This covers the header pins of
+# a board and the USB bridges that expose GPIO — CP2112, MCP2221, FT232H in
+# GPIO mode — alike.
+#
+# UNSCOPED, UNLIKE 70-kdos-i2c.rules, AND THAT IS DELIBERATE. The kernel
+# refuses a request for a line a driver already holds, so the lines a user
+# can drive are the ones nothing on the machine claimed; and a GPIO keeps no
+# state across a reset, where a stray write to an SPD EEPROM on the SMBus is a
+# machine that no longer boots.
+
+SUBSYSTEM=="gpio", KERNEL=="gpiochip[0-9]*", GROUP="dialout", MODE="0660"

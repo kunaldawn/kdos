@@ -14,7 +14,8 @@ mkdir -p build && cd build
 # used: with it on, a missing grid is fetched from cdn.proj.org at RUN time,
 # which on this distro is a silent dependency on somebody else's server for a
 # coordinate transform. The bundled proj.db carries the transformations that
-# need no grid; `proj-data` is the offline answer for the rest.
+# need no grid. There is no grid package, so a transformation that needs a
+# grid falls back to a ballpark one or fails naming the grid it wanted.
 #
 # BUILD_PROJSYNC=OFF follows, and cmake makes it an error rather than inferring
 # it: projsync IS the grid downloader, so "projsync requires Curl" is the build

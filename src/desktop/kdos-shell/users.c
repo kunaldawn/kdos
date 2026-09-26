@@ -150,9 +150,10 @@ static void refresh(void)
 }
 
 /*
- * `kdos-power autologin <user>|off` — the same wheel-gated socket every power
- * verb goes through, because "may this person change how the machine logs in"
- * is the question that daemon already answers.
+ * `kdos-power autologin <user>|off` — the socket every power verb goes
+ * through, where this verb is one of the `wheel`-only ones, because "may this
+ * person change how the machine logs in" is a question that daemon already
+ * answers.
  */
 static void toggle_autologin(void)
 {

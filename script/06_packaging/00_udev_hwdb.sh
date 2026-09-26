@@ -12,6 +12,10 @@
 #
 # Compile the udev hardware database into /etc/udev/hwdb.bin.
 #
+# kpkg's hwdb trigger keeps the trie current on every install and removal.
+# This step rebuilds it from scratch over the finished tree and asserts on the
+# result, so the image never ships a trie a partial build left behind.
+#
 # EUDEV SHIPS hwdb.d AS TEXT AND INSTALLS NO TRIE, and half its rules open with
 # `IMPORT{builtin}="hwdb ..."`. That import returns nothing at all when the
 # binary is absent, and nothing logs it above debug level: 60-keyboard.hwdb's

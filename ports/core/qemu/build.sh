@@ -24,8 +24,10 @@
 #
 # EVERY GRAPHICAL FRONT END IS OFF and there is no loss: --enable-curses gives
 # a text console on the cell grid, and --enable-vnc means a guest with a real
-# framebuffer is watched from any viewer — which is exactly how this project's
-# own testing/vnc-shot.py already drives a VM. GTK is the hard rule. SDL is off
+# framebuffer is watched over VNC — on this desktop from the boxed Remmina
+# (app.remmina, which carries its VNC plugin) at localhost:5900, from another
+# machine's viewer, or by this project's own testing/vnc-shot.py, which drives
+# a VM exactly that way. GTK is the hard rule. SDL is off
 # because meson.build looks up x11 with no option to stop it and links libX11
 # into the SDL front end whenever that library is installed, which it is for
 # Xwayland. --disable-opengl because with GTK, SDL and virglrenderer (not a
@@ -40,6 +42,21 @@
 # built below from the firmware sources under roms/. --disable-containers
 # because configure otherwise answers a missing cross compiler by planning to
 # build firmware in a podman image, which a build with no network cannot pull.
+#
+# --enable-tpm builds the emulator backend, which talks to a swtpm process: the
+# swtpm port is the guest's TPM. -device vhost-user-fs-pci talks to the
+# virtiofsd port's daemon. Both are separate programs a guest's command line
+# names, not libraries this build links. -netdev bridge runs
+# qemu-bridge-helper, which is installed without its setuid bit and with no
+# /etc/qemu/bridge.conf, so it serves only root, and only once root writes an
+# `allow <bridge>` line there; passt is the unprivileged network.
+#
+# --enable-capstone is what makes `-d in_asm,out_asm` and the monitor's `x/i`
+# print instructions rather than bytes for the x86_64 and aarch64 guests;
+# capstone is in `depends`, because a missing one would be a configure error.
+# --disable-libkeyutils costs nothing at run time: qemu links libkeyutils only
+# into its crypto unit test, and `-object secret_keyring` reads the kernel
+# keyring through the syscall that --enable-keyring builds in.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -67,7 +84,7 @@
 	--enable-lzo \
 	--enable-libudev \
 	--enable-libdw \
-	--disable-capstone \
+	--enable-capstone \
 	--enable-bpf \
 	--enable-fuse \
 	--enable-fuse-lseek \

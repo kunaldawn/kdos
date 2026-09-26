@@ -37,7 +37,9 @@ install -Dm644 /dev/stdin $PKG/etc/caddy/Caddyfile <<'CFG'
 	local_certs
 }
 
-# The corpus, served to any browser on the LAN with no client install.
+# The corpus, served to any browser on the LAN with no client install, once
+# `kdos-power firewall caddy on` has opened 8443 — the firewall's `caddy` is
+# this port, so moving it means another rule of your own in /etc/nftables.d.
 # kiwix-serve is expected on 8080; change the port, not the shape.
 :8443 {
 	tls internal

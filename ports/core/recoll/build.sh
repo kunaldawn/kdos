@@ -30,13 +30,19 @@
 # named explicitly rather than assumed. rclgrep, also off by default, runs the
 # same filters over a tree with no index at all. ext4-birthtime reads creation
 # times through statx, which the kernel and musl both have. qtgui, webkit and
-# webpreview are the hard rule; python-chm wants libchm and aspell wants
-# aspell, neither a port; x11mon needs Xlib, and there is no Xorg here.
+# webpreview are the hard rule; python-chm wants libchm, which is not a port;
+# x11mon needs Xlib, and there is no Xorg here.
+#
+# ASPELL IS TWO OPTIONS AND NEEDS BOTH. `aspell` has recollindex build a
+# spelling dictionary from the index with the `aspell` command; `python-aspell`
+# builds the recollaspell module that rclaspell-sugg.py loads, and on Linux
+# that script is the only route a suggestion takes — with the first and not
+# the second, a query that matches nothing suggests nothing.
 cd src
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Dqtgui=false -Dwebkit=false -Dwebpreview=false \
-	-Dpython-chm=false -Dpython-aspell=false -Daspell=false \
+	-Dpython-chm=false -Dpython-aspell=true -Daspell=true \
 	-Dx11mon=false -Dsystemd=false -Dlibmagic=true \
 	-Drecollq=true -Dindexer=true -Drclgrep=true -Dext4-birthtime=true
 meson compile -C build

@@ -206,8 +206,9 @@ static void draw_marks(int y, int h)
 }
 
 /*
- * A PROGRAM IN THIS TERMINAL SAYS IT FINISHED — OSC 9, 777 or 99. `make &&
- * notify-send done` does not work on this image, and this is what does.
+ * A PROGRAM IN THIS TERMINAL SAYS IT FINISHED — OSC 9, 777 or 99. The escape
+ * works from a shell on another machine over ssh, where `notify-send` has no
+ * session bus of this desktop's to reach, and costs the program a printf.
  */
 static void on_notify(struct kvt_vte *vte, const char *summary,
 		      const char *body, void *user)

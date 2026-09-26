@@ -55,14 +55,16 @@
 #include "kxdg.h"
 
 /*
- * Shim names that must never be created in /usr/local/bin. The host userland
- * is musl + toybox + wlroots and currently collides with none of the Debian app
- * names, but the app set moves; a shim shadowing a host tool would be a very
- * confusing bug.
+ * Shim names that must never be created in /usr/local/bin. /usr/local/bin is
+ * ahead of /usr/bin on PATH, so a shim carrying a host tool's name shadows the
+ * native program and dispatches to a box instead. git, gnuplot and mpv are
+ * native ports that a pack's desktop entry could also name, which is why they
+ * are here beside the shell and system tools.
  */
 static const char *RESERVED[] = {
 	"sh", "bash", "env", "ls", "cp", "mv", "rm", "cat", "sed", "awk", "grep",
 	"find", "tar", "gzip", "python3", "perl", "make", "gcc", "kdos", "foot",
+	"git", "gnuplot", "mpv",
 	"kdos-appbox", "kdos-box", "xdg-open", "kdos-banner", "kdos-desktop",
 	"kdos-desktop-start",
 	"kdos-shot", "kdos-fetch-app", "kdos-fetch-static", "kdos-getty",

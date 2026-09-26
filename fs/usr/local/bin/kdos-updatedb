@@ -22,14 +22,23 @@
 # database, no `plocate` group and no setgid bit — see
 # docs/kdos/03-architecture/security-model.md.
 #
+# --require-visibility no follows from the same scoping: the visibility check
+# exists to filter a shared index per caller, and with it on updatedb insists
+# on a `plocate` group this system does not have and writes nothing.
+#
 # --prune-bind-mounts keeps a bind-mounted tree from being indexed twice under
 # two names; a box's graft into $HOME is exactly that shape.
+#
+# /usr/sbin/updatedb BY PATH: plocate's is the only one on the image, and its
+# options are the ones below; a `updatedb` earlier on a caller's $PATH would
+# be asked for options it does not have.
 set -eu
 
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/kdos"
 mkdir -p "$cache"
 
-exec updatedb \
+exec /usr/sbin/updatedb \
+	--require-visibility no \
 	--prune-bind-mounts yes \
 	--database-root "$HOME" \
 	--output "$cache/plocate.db" \

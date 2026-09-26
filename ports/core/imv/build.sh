@@ -24,7 +24,7 @@ meson setup build \
 	-Dlibtiff=enabled \
 	-Dlibrsvg=enabled \
 	-Dlibnsgif=enabled \
-	-Dlibnsbmp=disabled \
+	-Dlibnsbmp=enabled \
 	-Dlibheif=enabled \
 	-Dlibjxl=enabled \
 	-Dlibwebp=enabled \

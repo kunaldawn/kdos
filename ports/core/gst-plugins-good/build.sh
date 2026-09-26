@@ -9,6 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# souphttpsrc and the adaptivedemux2 HLS/DASH/MSS elements dlopen libsoup-3.0
+# at run time rather than linking it, so nothing at build time notices its
+# absence: without libsoup3 on the image both plugins load and register no
+# element, and playbin falls back to curlhttpsrc and plugins-bad's older
+# demuxers. libsoup3 is in depends for that reason, and carries
+# glib-networking, without which every https URL fails at the handshake.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \

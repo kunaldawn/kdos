@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libsoup3
+version     = 3.6.6
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/libsoup/${version%.*}/libsoup-$version.tar.xz
+sha256      = 51ed0ae06f9d5a40f401ff459e2e5f652f9a510b7730e1359ee66d14d4872740  libsoup3-3.6.6.tar.xz
+description = GNOME HTTP client/server library, the 3.x API (GStreamer's souphttpsrc and adaptivedemux2, GeoClue)
+homepage    = https://gitlab.gnome.org/GNOME/libsoup
+depends     = meson glib glib-networking libpsl nghttp2 sqlite brotli krb5 zlib
+devseries   = odd-minor

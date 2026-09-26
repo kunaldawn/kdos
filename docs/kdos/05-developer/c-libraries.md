@@ -1,82 +1,134 @@
 # The C libraries
 
-Everything KDOS writes is built on seventeen static libraries under `src/libs/`. This page covers
-the constraint they are built under, the dependency direction that must not be violated, and the
-invariants each one exists to protect.
+This page describes the seventeen `libk*` libraries under `src/libs/` that every program KDOS
+writes is built from: what each one owns, which of them may depend on which, which external
+libraries they are allowed to pull in, and the rules each library exists to enforce.
 
-Adding a library is a small decision. Giving one a new dependency is not.
+It is for people changing or extending KDOS's own C code. If you are writing a new window, menu or
+settings page, read [Writing desktop software](writing-desktop-software.md) first; it covers the
+same libraries from the point of view of someone building a surface on them, and sends you back
+here for the detail. The libraries' tests are described in [Testing](testing.md).
+
+After reading this page you should be able to find the library that owns a piece of behaviour, add
+to it without breaking the program that can least afford a new dependency, and add a library of
+your own.
+
+## How the libraries are built
+
+A `libk*` library is a directory of C sources and one public header (some also carry private
+headers of their own), not an installed archive or a shared object. Each program that uses a library compiles that library's `.c` files straight into its own
+binary, from its own `build.sh`, and names the external libraries it needs on its own link line.
+For example, `kinstall`'s build compiles `src/libs/libkbase/*.c`, `src/libs/libktui/*.c` and
+`src/libs/libkcolor/*.c` together with its own sources. `kdos-comp` is the one exception in shape
+only: its build compiles `libkbase`, `libkcolor` and `libkwm` into a local `libkdos.a` because
+meson takes its extra objects that way.
+
+Two consequences follow:
+
+- Nothing is installed under `/usr/lib` for these libraries, and nothing outside this tree can link
+  them.
+- A program's recipe has no upstream tarball, so its recipe hash covers the whole of `src/libs/`.
+  Editing any library therefore rebuilds every KDOS program on the next build, not only the ones
+  that use it. See [Developing](developing.md) for the narrow rebuild commands.
 
 ## The constraint
 
-A `libk*` library links nothing but the C library, with exactly one declared exception.
+The libraries a terminal program needs link nothing but the C library.
 
-That is not minimalism for its own sake. `libktui` has to be usable in phase 1, before any library
-exists to link against, because the installer is built there and links the toolkit. If a library
-ever needs a real link flag, every phase-1 consumer moves to a later phase with it.
+The reason is phase 1 of the build (see [The build system](build-system.md)). The installer,
+`kinstall`, and the package manager, `kpkg`, are both compiled there, before any other library
+exists to link against: `kinstall` uses `libkbase`, `libktui` and `libkcolor`, and `kpkg` uses
+`libkbase`, `libkpkg` and `libksig`. If any of those five ever needed a real `-l` flag, both
+programs would have to move to a later phase with it, and the first bootable image would lose its
+installer.
 
-`libkwl` is the exception, and being a separate archive is how the rule survives it. It is
-`libktui`'s Wayland backend — the cell grid painted into a compositor surface instead of a terminal
-— so it needs a font renderer, a pixel library, a keyboard library and a Wayland client library,
-none of which phase 1 has. Splitting it out rather than folding it into the toolkit is what keeps
-the installer linking zero libraries on the first bootable image.
+Twelve libraries keep that rule outright: `libkbase`, `libkcolor`, `libktui`, `libkxdg`, `libkpkg`,
+`libksig`, `libkbuild`, `libkproc`, `libkpack`, `libkvt`, `libkwm` and `libkdisp`. `libksig` carries
+its cryptography as vendored source rather than linking it, and `libkproc` opens NVIDIA's
+management library at run time only when one is installed, so neither adds a link flag.
 
-`libkcell` is a separate archive for the same reason one level down: a consumer wanting the cell
-painter is not made to link a Wayland client library to get it.
+The other five draw pixels, and pixels need real libraries. Each is a separate directory precisely
+so that the twelve above stay clean, and so that a program only pays for what it draws:
+
+| Library | External libraries it needs |
+|---|---|
+| `libkcell` | fcft (font rasterising) and pixman |
+| `libkicon` | pixman and libpng |
+| `libkimg` | pixman, plus libpng, libjpeg, libwebp, libsixel and libnsgif — each optional, switched on by a `KIMG_HAVE_*` define |
+| `libkwl` | wayland-client, xkbcommon, fontconfig, fcft and pixman |
+| `libkchrome` | pixman directly (the pixel tile), plus everything `libkcell`, `libkicon` and `libkwl` need, since it is built on them |
+
+`libkcell` and `libkwl` are split for the same reason one level down: a program that wants the
+cell painter is not made to link a Wayland client library to get it.
 
 ## The set
 
-| Library | Prefix | Owns | May link |
-|---|---|---|---|
-| `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, group membership and the root-daemon authorisation gate, the argument-vector builder and process helpers, and the freedesktop trash | Nothing |
-| `libkcolor` | `kcol_` | The palette table, colour-space conversion, mixing, the readable muted colour, the hue-family classifier, remapping and retinting | Nothing |
-| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, the keys contract, the selection rule every surface draws its rows with, the three glyph tiers, charts, offscreen rendering | Nothing |
-| `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, and the places column | `libkbase` |
-| `libkpkg` | `kp_` | The package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` |
-| `libksig` | `ksig_` | Signing and verification, key files, keyrings. The one library with vendored third-party source | `libkbase` |
-| `libkbuild` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only structured-data scanner | `libkbase` |
-| `libkproc` | `kpr_` | Every reading about the running machine, from a movable root: processes, uptime, container identity, processor, memory, block devices, network, power, graphics, sound PCMs — and the sample ring | `libkbase` |
-| `libkpack` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` |
-| `libkvt` | `kvt_` | The terminal: the VT100-VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. A hard fork of libtsm 4.7.1 | `libktui` |
-| `libkimg` | `kimg_` | The only place untrusted image bytes are decoded. Two entry points — one picture, or every frame of the one format that has more than one — five optional decoders, and a budget enforced from the header the format declares *before* any allocation | pixman, plus png/jpeg/webp/sixel/gif where present |
-| `libkwm` | `kwm_` | The window model the compositor obeys: placement, the tiled-state transition and its geometry, the neighbour-edge arithmetic, and the nearest occupied workspace | `libkbase` |
-| `libkdisp` | `kdisp_` | Which display server, decided once: the surface config, the seven roles, the lifecycle every surface asks for, and the window list a panel manages | `libktui` |
-| `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` |
-| `libkicon` | `kicon_` | A name becomes a sprite slot, or −1 | `libktui` |
-| `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, the pixel canvas, and the one scale-and-cut of a decoded picture into sprite tiles | A font renderer, a pixel library |
-| `libkwl` | `kwl_` | The toolkit's Wayland backend: surface roles, buffers, scale, the font in force, input, clipboard, compose, cursors, frame throttling | `libkcell`, plus Wayland client libraries |
+The prefix column is the one every exported symbol of that library carries (a second prefix marked
+"internal" is linker-visible but declared only in a private header); the "Built on" column
+lists the other `libk*` libraries it calls into.
+
+| Library | Prefix | Owns | Built on | Used by |
+|---|---|---|---|---|
+| `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, SHA-256 and MD5, base64, `file://` URIs, group membership and the root-daemon authorisation gate, the argument-vector builder and process helpers, Landlock self-sandboxing, and the freedesktop trash | — | Every KDOS program except `kdos-splash` and `kdos-bb`, plus `kpkg` and the build tools |
+| `libkcolor` | `kcol_` | The palette table, colour-space conversion, mixing, the readable muted colour, the hue-family classifier, remapping and retinting | `libkbase` | Every drawing program, `kdos-comp`, `kdos-theme`, `kdos-tools`, `kdos-powerd` |
+| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, the touch-gesture recogniser, character width, paste, immediate-mode widgets, menus, modals, the keys contract, the selection rule every surface draws its rows with, the three glyph tiers, charts, offscreen rendering | `libkcolor`, `libkbase` | `kinstall`, `kdosbuild`, `kdos-appbox`, `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
+| `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
+| `libkpkg` | `kp_` | The package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader `ports/fetch` uses), `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
+| `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings. The one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
+| `libkbuild` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only structured-data scanner | `libkbase` | `kdosbuild`, `kdos-portup` |
+| `libkproc` | `kpr_` | Every reading about the running machine, from a movable root: processes, uptime, box identity, processor, memory, block devices, network, power, graphics, sound PCMs — and the sample ring | `libkbase` | `kdos-res`, `kdos-shell`, `kdos-tools`, `kdos-oomd`, `kdos-energyd` |
+| `libkpack` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` | `kdos-pack`, `kdos-packd`, `kdos-tools` |
+| `libkvt` | `kvt_` | The terminal: the VT100–VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. A hard fork of libtsm 4.7.1 | `libktui`, `libkbase` | `kdos-term` |
+| `libkimg` | `kimg_` | The only place untrusted image bytes are decoded. Two entry points — one picture, or every frame of the one format that has more than one — five optional decoders, and a budget enforced from the header the format declares *before* any allocation | — | `kdos-shell`, `kdos-term` |
+| `libkwm` | `kwm_` | The window model the compositor obeys: placement, the tiled-state transition and its geometry, the neighbour-edge arithmetic, the nearest occupied workspace, and the drag threshold | — | `kdos-comp`, `kdos-shell` |
+| `libkdisp` | `kdisp_` | Which display server, decided once: the surface config, the seven roles, the lifecycle every surface asks for, the font list, and the window list a panel manages | `libktui` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
+| `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui`, `libkcolor`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` | `kdos-shell`, `kdos-res` |
+| `libkicon` | `kicon_`, `ki_` (internal) | A name becomes a sprite slot, or −1 | `libktui`, `libkcolor`, `libkxdg` | `kdos-shell`, `kdos-res` |
+| `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, the pixel canvas, and the one scale-and-cut of a decoded picture into sprite tiles | `libktui`, `libkcolor` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
+| `libkwl` | `kwl_` | The toolkit's Wayland backend: surface roles, buffers, scale, the font in force, input, touch, clipboard, compose, cursors, frame throttling | `libkcell`, `libkdisp`, `libktui`, `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
 
 ## Dependency direction
 
+Each arrow reads "calls into". The graph has no cycles, and it must stay that way: nothing lower
+down may call anything higher up.
+
 ```
-libkwl → libkcell → libktui → libkcolor → libkbase
-libkwl → libkdisp → libktui
-libkchrome → libkicon, libkcell, libkdisp, libkwl, libktui
-libkicon   → libktui
+libkwl     → libkcell, libkdisp, libktui, libkbase
+libkchrome → libkicon, libkcell, libkdisp, libkwl, libktui, libkcolor
+libkicon   → libkxdg, libktui, libkcolor
+libkcell   → libktui, libkcolor
 libkdisp   → libktui
+libkvt     → libktui, libkbase
+libktui    → libkcolor, libkbase
+libkcolor  → libkbase
 libkxdg    → libkbase
 libkpkg    → libkbase
 libksig    → libkbase
 libkbuild  → libkbase
 libkproc   → libkbase
-libkwm     → libkbase
 libkpack   → libksig, libkpkg, libkbase
 
-libkvt     → libktui, libkcolor, libkbase
-libkimg    → libkbase
+libkwm     (nothing)
+libkimg    (nothing of ours)
 ```
 
-Two edges are worth stating explicitly. `libkvt` is a terminal's private screen and reaches
-`libktui` only at its render boundary, in one file. `libkimg` decodes untrusted bytes and depends on
-nothing but `libkbase`, so the decoder cannot reach the toolkit.
+Three edges are worth stating explicitly:
+
+- `libkvt` is a terminal's private screen and reaches `libktui` only at its render boundary.
+- `libkimg` decodes untrusted bytes and calls no other `libk*` library, so a decoder bug cannot
+  reach into the toolkit.
+- `libkwm` calls nothing at all, which is what lets the compositor take it without taking anything
+  else, and lets the self-test replay it against a fixture with no display.
 
 ## libkbase
 
 The floor. Everything else is built on it: allocation, strings, files, paths, locking, time,
-process helpers.
+hashing, process helpers.
 
 A library does not own the exit path. The allocator calls whatever failure handler was registered
-rather than knowing that a terminal exists and that the program is called something specific. A
-companion call supplies the program name for that message and for the fatal and warning output.
+rather than knowing that a terminal exists and that the program is called something specific.
+`kb_set_progname()` supplies the program name for that message and for the fatal and warning
+output.
 
 Several members are worth knowing about specifically.
 
@@ -84,7 +136,7 @@ Several members are worth knowing about specifically.
 with the pack daemon copying one into the store as root on every install. Reading a file whole to
 write it whole asks for its size in anonymous memory for no reason.
 
-The process helpers send a child's error output to nothing unless verbose output is enabled, so
+The process helpers send a child's error output to nothing unless `kb_proc_verbose` is set, so
 anything whose *failure* is diagnosed by the child's own message has to turn that on.
 
 A secret reaches a child on a descriptor and never in `argv`. `kb_run_feed` writes to the child's
@@ -95,8 +147,32 @@ either put the secret in an argument list or report a status with no reason. The
 one pipe buffer in the feeding-and-reading forms: nothing is read back until the whole input has
 been written.
 
-The freedesktop trash lives here, so a prompt and the desktop's delete key are one implementation.
-See [The kdos command](../04-programs/kdos-command.md#trash).
+The freedesktop trash lives here (`kb_trash_put`, `kb_trash_list` and their neighbours), so
+`kdos trash` at a prompt and the desktop's delete key are one implementation. See
+[The kdos command](../04-programs/kdos-command.md#kdos-trash).
+
+Two hashes live here, for two different jobs. `kb_sha256_*` checks the `sha256 =` line of a recipe
+before an archive is unpacked. It lives in the base library because `libkpkg`, `libksig`,
+`libkpack` and the programs above them all hash, and none of them may link a crypto library. It
+proves the bytes are the ones the recipe named and says nothing about who named them —
+signatures are `libksig`'s. `kb_md5_*` names thumbnail cache files, because the freedesktop
+thumbnail standard names them by the MD5 of the source URI and a stronger hash would produce a
+cache no other program could share. It is a file name, never a security check.
+
+### Landlock
+
+`kb_landlock_*` is unprivileged self-sandboxing through the kernel's Landlock interface: three
+system calls and no library. A ruleset starts with nothing reachable, each `kb_landlock_allow()`
+opens one directory tree back up (read-only or read-write), and `kb_landlock_enforce()` makes it
+permanent for the process and everything it starts. The order is always new, allow, enforce, exec.
+`kdos sandbox` is built on it; see [The kdos command](../04-programs/kdos-command.md#kdos-sandbox).
+
+What the running kernel can police depends on its Landlock ABI version. Denying TCP needs ABI 4,
+and scoping abstract sockets and signals needs ABI 6. Below those versions the request is silently
+not applied, so a caller that must not run without it checks `kb_landlock_abi()` first and refuses.
+An ABI of `-EOPNOTSUPP` means Landlock is compiled into the kernel but not enabled in `CONFIG_LSM`
+or `lsm=`, which is the quiet failure worth reporting: without the check, everything runs with no
+sandbox and nothing says so.
 
 ### The root-daemon gate
 
@@ -198,8 +274,8 @@ pinning a solid two-state bar. Change the general form freely; leave that branch
 
 ### Resizing, the caret and the pointer
 
-A resize is not applied until the consumer applies it. The backend sets a flag; the reported size
-follows only when the loop calls the resize and invalidate functions. Any loop that owns a surface
+A resize is not applied until the consumer applies it. The backend sets `ktui_resized`; the cell
+buffer follows only when the loop calls `ktui_draw_resize()` and `ktui_draw_invalidate()`. Any loop that owns a surface
 owns this — a surface that was always a fixed size and then starts being resized will draw against
 stale dimensions and silently fail its own bounds checks.
 
@@ -362,6 +438,13 @@ into a frame copy whole cells.
 
 ### Two input queues
 
+A *guest* here is another program's graphical output shown inside a surface's cells — an embedded
+client whose pixels the surface displays and whose input it forwards. The *session* is the program
+hosting the guest and deciding which input it keeps for itself (a desktop chord, for example) and
+which it passes on; a *grabbed* guest is one that currently receives all pointer input. The raw
+queue exists for that forwarding: a guest needs real key codes and pointer distances, not
+characters and cells.
+
 The same physical input travels twice. `poll_event` answers a character and a cell.
 `KtuiBackend.poll_raw` answers a `KtuiRaw` — an evdev keycode with a separate press and release,
 the xkb mask and group, a pointer in the backend's own pixels with the cell those pixels were
@@ -392,22 +475,29 @@ The window model, and only the model. Placement, tiling and the workspace walk l
 nowhere else, out of the compositor that obeys them — which is what lets every one of them be
 asserted against a fixture with no display anywhere.
 
-Of the neighbour-edge search only the arithmetic is shared. `kwm_clip_add`, `kwm_clip_sub`,
-`kwm_edge_best` and `kwm_edge_check` are what `kdos-comp` calls, while the walk that *finds* the
-candidate edges is the compositor's, across its scene graph.
+`kdos-comp` calls eight entry points: `kwm_place`, `kwm_tile_geom`, `kwm_tile_next`,
+`kwm_ws_adjacent`, and the four pieces of the neighbour-edge search. Of that search only the
+arithmetic is shared — `kwm_clip_add`, `kwm_clip_sub`, `kwm_edge_best` and `kwm_edge_check` —
+while the walk that *finds* the candidate edges is the compositor's, across its scene graph. The
+desktop icons in `kdos-shell` call a ninth, `kwm_drag_threshold`, which starts a drag once the
+pointer leaves the cell it went down in; the threshold is in cells because every other geometry in
+this model is.
 
-Every entry point here has a caller in a shipped program. A rule kept in this library that nothing
-calls is a second answer to a question the compositor already answers, and the contract cannot
-arbitrate between two copies when only one of them ships — so a rule with no caller belongs in the
-one place that runs.
+Every entry point a consumer is meant to call has a caller in a shipped program;
+`kwm_edge_between`, the between-test `kwm_edge_check` applies to each candidate, is exported only so the
+self-test can pin it. A rule kept in this library that
+nothing calls is a second answer to a question the compositor already answers, and the contract
+cannot arbitrate between two copies when only one of them ships — so a rule with no caller belongs
+in the one place that runs.
 
 The library is handed rectangles and told what is being asked. What a window *is*, which output it
 is on, whether a client accepted its size and whether it is maximised all stay with the caller,
 which is what lets the compositor hand it rectangles and nothing else.
 
-The contract is `testing/fixtures/wm/geometry.txt`, every row of which cites the line of
-`kdos-comp` it was derived from, and the self-test replays the file rather than asserting anything
-of its own. Adding a case means adding a row and citing its line.
+The contract is `testing/fixtures/wm/geometry.txt`. Each section of it cites the function and
+lines of `kdos-comp` its rows were derived from, and the self-test replays the file rather than
+asserting anything of its own. Adding a case means adding a row, under a section that cites where
+the behaviour lives.
 
 Three things that file pins, each of which reads as a bug and is not:
 
@@ -477,14 +567,19 @@ that did nothing would read as one that had started something.
 
 A server that cannot answer an entry leaves it NULL, and the forwarder returns the neutral answer
 rather than crashing. A `--tty` run has no server-side decoration to report and nothing to hand out
-in place of a Wayland handle. `kwl_display` and `kwl_seat` are deliberately *not* in the vtable for
-that reason: they hand out a Wayland object and nothing else can stand in for one.
+in place of a Wayland handle. `kwl_display()` is deliberately *not* in the vtable for that reason:
+it hands out the Wayland connection itself, for a program such as `kdos-shell` that binds protocols
+of its own on it, and nothing else can stand in for one.
 
 ### Somebody else's windows
 
-Five entries cover them, and they are asked for. `win_count`, `win_at`, `win_activate`, `win_close`
-and `win_set_state` are what a panel, a task switcher and a window menu need — enough to draw a row
-and act on the one that was clicked.
+Five vtable entries cover them, and they are asked for. `win_count`, `win_at`, `win_activate`,
+`win_close` and `win_set_state` are what a panel, a task switcher and a window menu need — enough to
+draw a row and act on the one that was clicked. A caller reaches them as `kdisp_win_count()`,
+`kdisp_win_at()`, `kdisp_win_activate()`, `kdisp_win_close()`, and `kdisp_win_minimise()`,
+`kdisp_win_maximise()` and `kdisp_win_fullscreen()`, which all go through `win_set_state`.
+`kdisp_win_supported()` says whether the display offers a window list at all, which is how a caller
+tells a desktop with no windows open from a display that cannot say.
 
 `manage` on the configuration is a declaration and not a gate. A compositor hands the list and the
 verbs to whatever binds `wlr-foreign-toplevel-management` and cannot tell one client from another,
@@ -628,7 +723,7 @@ The deciding half of the build orchestrator. Covered in
 Every reading about the running machine, from a root that can be moved.
 
 That movable root is the single most valuable property in this library: it is what makes the
-resource monitor, the stutter attribution, the memory daemon and the removable-media daemon
+resource monitor, the stutter attribution (`kdos stutter`), the memory daemon and the energy daemon
 testable against recorded system state. A tool whose readings cannot be replayed cannot be tested
 at all.
 
@@ -636,9 +731,17 @@ Elapsed time may only be computed against the system uptime. Both a process's st
 uptime are seconds since boot; pairing the start time with a monotonic timestamp is a different
 epoch — and under a fixture, a different machine.
 
-The container identity walk turns a process id into a box name by walking the parent chain to the
-supervising process and reading its command line. It is used by four separate tools, which is why
-it is here rather than in any of them.
+The box identity walk (`kpr_box_of()`, `kpr_box_of_pid()`) turns a process id into a box name by
+walking the parent chain up to podman's per-container supervisor, `conmon`, and reading its command
+line. It is used by four separate programs — `kdos-shell`, `kdos stutter`, `kdos-oomd` and
+`kdos-energyd` — which is why it is here rather than in any of them, with one climb limit for all
+of them.
+
+Graphics readings come from the kernel's DRM interface (`kpr_drm_list()`). Only amdgpu and NVIDIA's
+management library publish a utilisation figure; everywhere else `busy_percent` is −1 and a
+renderer must show engine time and label it as such. The NVIDIA library is opened with `dlopen` at
+run time when `libnvidia-ml.so.1` is present, which it is not on a stock KDOS, so it adds no link
+dependency.
 
 A reading goes into a caller buffer wherever a buffer bounds the file. A process walk on a busy
 machine opens a few thousand files a tick, inside a draw loop, and a whole-file slurp pays an
@@ -671,16 +774,21 @@ per-core percentage to percent-of-machine, say — calls `kpr_cpu_online()`, bec
 offline below the highest index leaves `ncpu` where it was.
 
 `libkproc` links `libkbase` and nothing else, and that is what lets a root daemon take it. Two root
-daemons do, and every library they link is code running as root.
+daemons do — `kdos-oomd` and `kdos-energyd` — and every library they link is code running as
+root.
 
 ## libkpack
 
 The pack format. It links the base, signing and package libraries and nothing else, so a root
-daemon can take it.
+daemon — `kdos-packd` — can take it.
 
-Three rules it exists to keep are stated in
-[Packs and boxes](../03-architecture/packs-and-boxes.md#three-rules-the-format-keeps): parse whole
-or be absent, hash before signature, and nothing here mounts or executes.
+The rules it exists to keep are stated in
+[Packs and boxes](../03-architecture/packs-and-boxes.md#rules-the-format-keeps): a pack that does
+not parse whole is absent rather than partial, each section has its own size limit, the signature
+block ends exactly where the footer begins, and the payload hash is checked before the signature
+means anything. The format number in the footer says which byte span the payload digest covers
+(`KPK_FORMAT_MIN` to `KPK_FORMAT`, both read). Changing that span without raising the format makes
+every released pack fail its hash check and stop mounting. Nothing in this library mounts or executes a pack; that is the daemon's job.
 
 The solve takes an array of pointers. A pack's metadata structure is large, and an array of them is
 not something a function puts on its stack.
@@ -701,8 +809,8 @@ The consumer needs no `SIGCHLD` handler.
 The bytes a key produces are decided in here, never by the caller. The escape an arrow sends
 depends on application cursor mode, on keypad mode and on the modifier encoding, and all three are
 state machine state. A caller hands over a libktui key and modifier set; `kvt_term_key` turns it
-into a keysym and lets the machine answer. Both terminals in this tree go through it, so there is
-one implementation rather than two that drift.
+into a keysym and lets the machine answer. `kdos-term` goes through it, and so must any other
+terminal built here, so that there is one implementation rather than two that drift.
 
 ### Links and prompts
 
@@ -845,6 +953,14 @@ per name to produce a picture a pixel across, which is a blank cell reached the 
 means `kicon_enabled()` stays false and every lookup answers −1, so the caller draws its glyph. A
 consumer that ships pictures over a wire at a nominal cell size passes that size instead of the
 backend's, which is how such a consumer keeps its icons.
+
+The KDOS theme's own icons come from one memory-mapped atlas file holding every icon at every
+size it was rasterised at, sorted by name and size so a lookup is a binary search and the pager
+reads only the pages that are drawn. Every header field, directory entry and blob extent is checked
+against the mapped length before use, so a damaged atlas is absent rather than partial. The
+atlas is tinted into the accent like every other piece of KDOS artwork; an application's own icon,
+found as a PNG under `/usr/share/icons/hicolor`, is drawn untinted. The split is by where the
+picture came from, never by guessing from its name.
 
 A decoded picture outlives the sprite slot naming it. The table gives slots back under its byte
 budget, so a lookup that misses it re-registers the picture this library still holds rather than
@@ -1018,16 +1134,46 @@ as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button).
 
 ## libkwl
 
-The toolkit's Wayland backend, and the one library with real link dependencies beyond the cell
-painter's.
+The toolkit's Wayland backend, and the library with the most external dependencies: the Wayland
+client library, xkbcommon, fontconfig, fcft and pixman. It also carries touch input: `wl_touch`
+feeds `libktui`'s gesture recogniser, which turns a touch into a gesture and into the ordinary mouse
+events every widget already handles.
 
-Its rules are the ones a surface author meets, and they are written up from the author's side in
-[Writing desktop software](writing-desktop-software.md). In summary, each guarding a distinct
-failure:
+Two kinds of rule live here. The first set is what a surface author relies on or must do; each is
+written up from the author's side in [Writing desktop software](writing-desktop-software.md). The
+second set is for anyone changing `libkwl` itself.
+
+Three terms recur below. A *stash* is the saved frame a throttled commit leaves behind, published by
+the next frame callback. A *backdrop* is the pixel display list a surface records while it draws,
+which `libkwl` paints under its cells (see [libkchrome](#libkchrome)); its pieces are *plates*. A
+*pixel guest* is an embedded client's pixels shown in cells, as defined under
+[Two input queues](#two-input-queues).
+
+### What a surface author relies on
 
 - A toplevel must ask for its frame, or it gets no decoration at all.
 - Bind the layer shell at the version whose keyboard mode you want, or an older resource answers
   on-demand with exclusive and the surface holds the seat's keyboard against every window.
+- A Ctrl chord is the letter plus `KT_MOD_CTRL`, never the control code xkb folds it into — the tty
+  decoder delivers the letter, and a chord table has one vocabulary.
+- The cell painter leaves a clip on the image it was handed, so anything drawn into that same image
+  afterwards — the panel's frame rule — must drop the clip first or pixman writes nothing.
+- A surface with a backdrop installs `kwl_set_pixels_dirty_fn()` so `libkwl` can ask at flush time
+  whether its pixels moved. A latched dirty flag would not do: a backdrop redescribes the same
+  plates on every draw and cannot tell a change from a redescription, so latching from the
+  description makes every frame a commit and removes the unchanged-frame gate (the check that skips
+  committing a frame identical to the last) for every surface that has a backdrop.
+- `kwl_font_step()` owns its own copy of the font name: `KDispConfig.font` is the caller's pointer,
+  and the surface outlives whatever the caller built it in.
+- `kwl_init` ignores `SIGPIPE` process-wide, because every clipboard and drag payload is written
+  into a descriptor the receiver owns and the default disposition kills the surface when that
+  receiver closes early. `SIG_IGN` survives `execve`, so any consumer that forks and execs must
+  reset dispositions in the child or the whole launched tree inherits it.
+
+### Rules for anyone changing libkwl
+
+Each guards a distinct failure.
+
 - The event queue is a ring, not one slot, because a batch of callbacks arrives from a single read.
 - Key repeat is the client's job.
 - A wheel tick is not an axis event, and a wheel is already quantised while a touchpad is not.
@@ -1053,34 +1199,20 @@ failure:
   slot whose proxy is gone. Each omission lets a popup be sized for a screen that is not there.
 - A stash is content for the grid it was taken from, so every resize drops it; publishing it paints
   the old layout into the new geometry.
-- The cell painter leaves a clip on the image it was handed, so anything drawn into that same image
-  afterwards — the panel's frame rule — must drop the clip first or pixman writes nothing.
 - A compose table that fails to build is absent, never partial.
 - A font reload spoils every paint baseline, because it rewrites no cell. `kwl_font_step()` changes
   what a cell *looks* like and not what it says, so the damage diff, both buffer shadows and the
   unchanged-frame gate would all find nothing to do while every glyph on the screen is drawn at the
-  old size. It also owns its own copy of the name: `KDispConfig.font` is the caller's pointer and
-  the surface outlives whatever the caller built it in.
+  old size.
 - A lock surface must not receive the pre-configure commit, which is a protocol error there.
-- A Ctrl chord is the letter plus `KT_MOD_CTRL`, never the control code xkb folds it into — the tty
-  decoder delivers the letter, and a chord table has one vocabulary.
 - A drop's offer is owned apart from the drag's, because the leave that follows a drop arrives
   while the payload is still draining and a second drag may enter before it ends. One slot for both
   loses the first offer and destroys the second while it is live, so the next drag lands and does
   nothing.
-- A backdrop's "my pixels moved" is a flush-time question, not an announcement.
-  A latched dirty flag would do: a backdrop redescribes the same plates on every draw and cannot
-  tell a change from a redescription, so it installs `kwl_set_pixels_dirty_fn()` instead. Latching
-  from the description makes every frame a commit and removes the unchanged-frame gate for every
-  surface that has a backdrop.
 - A withdrawn seat capability takes everything derived from it: the `wl_keyboard`'s repeat and
   focus state, and the `wp_cursor_shape_device_v1` made from the `wl_pointer`. The protocol makes
   that device inert with the capability, and the re-create tests only for NULL, so a device kept
   across an unplug leaves every later shape request going to a dead proxy.
-- `kwl_init` ignores `SIGPIPE` process-wide, because every clipboard and drag payload is written
-  into a descriptor the receiver owns and the default disposition kills the surface when that
-  receiver closes early. `SIG_IGN` survives `execve`, so any consumer that forks and execs must
-  reset dispositions in the child or the whole launched tree inherits it.
 - The raw queue is filled, with one number this protocol cannot carry. `wl_pointer` reports a
   position and no distance, and this client binds no relative-pointer protocol, so the delta is the
   step between two surface positions — already accelerated, already clamped to the surface, and the
@@ -1088,22 +1220,37 @@ failure:
   codes, the four xkb components the compositor sends, `value120` and the axis source, and the
   keymap the compositor handed over.
 - A key held when the surface loses the keyboard is released into the raw stream here. The
-  compositor sends no release for it, and the raw arm carries a switch rather than a character, so
-  a press with no release is a key a pixel guest holds down for ever. Only codes this client
-  reported down are released, which is what keeps the two halves symmetrical.
+  compositor sends no release for it, and the raw queue carries a key switch rather than a
+  character, so a press with no release is a key a pixel guest holds down for ever. Only codes this
+  client reported down are released, which is what keeps the two halves symmetrical.
 
 ## Adding a library
 
 1. Decide what it owns, in one sentence. If that sentence has an "and" in it, it is two libraries.
 2. Pick a prefix and use it on every exported symbol.
 3. Place it in the dependency order and confirm nothing points back up.
-4. Link nothing but the C library, unless you are extending the one declared exception — in which
-   case say so here and move every phase-1 consumer.
-5. Add its assertions to `src/libs/selftest.c`, especially any invariant established by comparing
+4. Link nothing but the C library if a terminal program or a root daemon could ever want it. If it
+   genuinely needs an external library, keep it out of the phase-1 set (`libkbase`, `libkcolor`,
+   `libktui`, `libkpkg`, `libksig`) and out of everything they call, and add it to the table under
+   [The constraint](#the-constraint).
+5. Add its sources and include path to the `build.sh` of every program that uses it. There is no
+   archive to link; a program compiles the library's `.c` files itself. Some consumers are built
+   outside a recipe, and each names its libraries explicitly:
+   - `script/01_phase1/12_kpkg.sh` (`kpkg`) and `script/01_phase1/13_kinstall.sh` (`kinstall`),
+     the phase-1 builds. A library added under either program and missing here breaks the
+     bootstrap.
+   - `script/kdosbuild.sh`, which builds `kdosbuild` on the host.
+   - `src_kpkg_ensure` in `ports/srclib.sh`, the host recipe reader. Its source list,
+     `src/tools/kdos-portup/main.c`'s and `testing/selftest.sh`'s must agree.
+   - The `libkdos.a` line in `src/desktop/kdos-comp/build.sh`, which meson links into the
+     compositor.
+6. Add its assertions to `src/libs/selftest.c`, especially any invariant established by comparing
    against something this library replaced.
-6. Add it to the consumer compile check, so a header change that breaks a consumer fails on a
-   development host rather than in a phase.
-7. Keep the frame state and any global private, behind accessors.
+7. Add it to the consumer compile block in `testing/selftest.sh` ("every consumer still compiles
+   against the libraries"), so a header change that breaks a consumer fails on a development host
+   rather than hours into a build.
+8. Keep the frame state and any global private, behind accessors.
+9. Add a row to [The set](#the-set) and a section to this page.
 
 ## See also
 

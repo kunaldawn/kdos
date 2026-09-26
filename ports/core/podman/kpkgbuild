@@ -15,4 +15,4 @@ source      = https://github.com/podman-container-tools/podman/archive/v$version
 sha256      = a4b2b10bd560cf9b4c50c282bd04bb74486ff6c78bebd51427f779fe985fc1bb  podman-6.1.2.tar.gz
 description = A daemonless container engine for OCI containers (Docker alternative)
 homepage    = https://podman.io/
-depends     = go python3 conmon crun netavark aardvark-dns passt fuse-overlayfs libseccomp libgpgme sqlite gettext go-md2man
+depends     = go python3 containers-common catatonit conmon crun netavark aardvark-dns passt fuse-overlayfs libseccomp gpgme sqlite gettext go-md2man

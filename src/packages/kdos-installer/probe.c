@@ -18,12 +18,14 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 
 #include "kinstall.h"
 /* The catalogue reader, compiled into this program rather than shelled out to.
@@ -113,7 +115,14 @@ static void sniff_fs(const char *path, Part *p)
 	unsigned char boot[512];
 
 	if (pread(fd, boot, sizeof(boot), 0) == (ssize_t)sizeof(boot)) {
-		if (!memcmp(boot + 3, "NTFS    ", 8)) {
+		if (!memcmp(boot, "LUKS\xba\xbe", 6)) {
+			/* The container's uuid is ASCII in the header, the
+			 * same text `cryptsetup luksUUID` prints. */
+			kb_strlcpy(p->fstype, "crypto_LUKS", sizeof(p->fstype));
+			memcpy(p->uuid, boot + 168, sizeof(p->uuid) - 1);
+			p->uuid[sizeof(p->uuid) - 1] = 0;
+			trim_label(p->uuid);
+		} else if (!memcmp(boot + 3, "NTFS    ", 8)) {
 			kb_strlcpy(p->fstype, "ntfs", sizeof(p->fstype));
 		} else if (!memcmp(boot + 0x52, "FAT32", 5)) {
 			kb_strlcpy(p->fstype, "vfat", sizeof(p->fstype));
@@ -162,6 +171,19 @@ static void sniff_fs(const char *path, Part *p)
 		kb_strlcpy(p->fstype, "swap", sizeof(p->fstype));
 		uuid_fmt(p->uuid, sb + 0x40c);
 	}
+
+	/* An LVM physical volume: the label is in one of the first four
+	 * sectors, and pvcreate puts it in the second. Named as blkid names
+	 * it, so the Layout page and `blkid -t TYPE=LVM2_member` — what the
+	 * initramfs asks — agree about which device is one. */
+	if (!p->fstype[0] && pread(fd, sb, 2048, 0) == 2048)
+		for (int s = 0; s < 4; s++)
+			if (!memcmp(sb + s * 512, "LABELONE", 8) &&
+			    !memcmp(sb + s * 512 + 24, "LVM2 001", 8)) {
+				kb_strlcpy(p->fstype, "LVM2_member",
+					   sizeof(p->fstype));
+				break;
+			}
 
 	close(fd);
 }
@@ -316,6 +338,327 @@ static void disk_transport(Disk *d)
 	}
 }
 
+/* ──────────────────────────────────────────────────────────────────────── */
+
+Lv ki_lv[MAX_LVS];
+int ki_nlv;
+
+static int has_holders(const char *name)
+{
+	char path[256];
+	char **ents;
+	int n = 0;
+
+	snprintf(path, sizeof(path), "/sys/class/block/%.64s/holders", name);
+	ents = kb_listdir(path, NULL);
+	for (char **e = ents; e && *e; e++)
+		n++;
+	kb_strv_free(ents);
+	return n > 0;
+}
+
+/*
+ * THE STACK IS WALKED DOWN THROUGH `slaves`, which is what every dm device
+ * and array lists: an LV's are the PVs, a container's is the partition it
+ * was opened on. A partition's disk is its parent directory in sysfs. The
+ * depth bound is for a loop no kernel builds and a fixture could.
+ */
+static int on_disk(const char *dev, const char *disk, int depth)
+{
+	char path[256], real[PATH_MAX];
+	char **ents;
+	int hit = 0;
+
+	if (!strcmp(dev, disk))
+		return 1;
+	if (depth > 8)
+		return 0;
+	snprintf(path, sizeof(path), "/sys/class/block/%.64s/partition", dev);
+	if (kb_path_exists(path)) {
+		snprintf(path, sizeof(path), "/sys/class/block/%.64s", dev);
+		if (!realpath(path, real))
+			return 0;
+		char *slash = strrchr(real, '/');
+		if (!slash)
+			return 0;
+		*slash = 0;
+		return !strcmp(kb_basename(real), disk);
+	}
+	snprintf(path, sizeof(path), "/sys/class/block/%.64s/slaves", dev);
+	ents = kb_listdir(path, NULL);
+	for (char **e = ents; e && *e && !hit; e++)
+		hit = on_disk(*e, disk, depth + 1);
+	kb_strv_free(ents);
+	return hit;
+}
+
+int ki_dev_on_disk(const char *dev, const char *disk)
+{
+	return on_disk(dev, disk, 0);
+}
+
+/*
+ * THE GROUP BY NAME, FROM LVM'S OWN LIST OF PHYSICAL VOLUMES. The active
+ * volumes in ki_lv miss a group with no volume, one whose volumes did not
+ * activate, and the other half of a group that spans the target disk and
+ * another. `pvs` reads every label, so each of those still shows as a PV of
+ * the group on a device off the disk. A `pvs` that does not run is taken as
+ * no group: without lvm there is no vgcreate for the name to stop.
+ */
+int ki_vg_off_disk(const char *vg, const char *disk)
+{
+	KbArgv a = {0};
+	KbBuf out = {0};
+	char *save = NULL, *line;
+	int hit = 0;
+
+	if (!kb_have_prog("lvm"))
+		return 0;
+	kb_argv_add(&a, "lvm");
+	kb_argv_add(&a, "pvs");
+	kb_argv_add(&a, "--noheadings");
+	kb_argv_add(&a, "--separator");
+	kb_argv_add(&a, "|");
+	kb_argv_add(&a, "-o");
+	kb_argv_add(&a, "pv_name,vg_name");
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &out) != 0 || !out.p) {
+		kb_buf_free(&out);
+		return 0;
+	}
+	for (line = strtok_r(out.p, "\n", &save); line && !hit;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char *bar = strchr(line, '|'), *name, *g, *end;
+		char real[PATH_MAX];
+
+		if (!bar)
+			continue;
+		*bar = 0;
+		name = line;
+		while (isspace((unsigned char)*name))
+			name++;
+		g = bar + 1;
+		end = g + strlen(g);
+		while (end > g && isspace((unsigned char)end[-1]))
+			*--end = 0;
+		if (strcmp(g, vg))
+			continue;
+		/* /dev/mapper/<name> and /dev/<vg>/<lv> are links; the kernel
+		 * name sysfs knows is the target's. */
+		if (!realpath(name, real))
+			kb_strlcpy(real, name, sizeof(real));
+		hit = !ki_dev_on_disk(kb_basename(real), disk);
+	}
+	kb_buf_free(&out);
+	return hit;
+}
+
+/*
+ * `vg-lv`, with every `-` inside either name doubled. The first single `-`
+ * is the split; a name that has none is not an LVM volume's.
+ */
+int ki_dm_split(const char *name, char *vg, size_t vcap, char *lv,
+		size_t lcap)
+{
+	size_t o = 0;
+	const char *p = name;
+
+	while (*p) {
+		if (p[0] == '-' && p[1] == '-') {
+			if (o + 1 >= vcap)
+				return -1;
+			vg[o++] = '-';
+			p += 2;
+			continue;
+		}
+		if (*p == '-')
+			break;
+		if (o + 1 >= vcap)
+			return -1;
+		vg[o++] = *p++;
+	}
+	vg[o] = 0;
+	if (*p != '-' || !o)
+		return -1;
+	p++;
+	o = 0;
+	while (*p) {
+		char c;
+
+		if (p[0] == '-' && p[1] == '-') {
+			c = '-';
+			p += 2;
+		} else if (*p == '-') {
+			/* A single dash after the split: a layer device
+			 * (`-tpool`, `-real`, `-cow`), never a volume. */
+			return -1;
+		} else {
+			c = *p++;
+		}
+		if (o + 1 >= lcap)
+			return -1;
+		lv[o++] = c;
+	}
+	lv[o] = 0;
+	return o ? 0 : -1;
+}
+
+/* LVM's own sub-volumes, by the suffixes it reserves for them. */
+static int lv_internal(const char *lv)
+{
+	static const char *const sub[] = {
+		"_tdata", "_tmeta", "_cdata", "_cmeta", "_corig", "_cpool",
+		"_cvol", "_wcorig", "_rimage_", "_rmeta_", "_mimage_", "_mlog",
+		"_vorigin", "_vdata", "_pmspare", "_imeta", "_iorig",
+	};
+	for (size_t i = 0; i < sizeof(sub) / sizeof(sub[0]); i++)
+		if (strstr(lv, sub[i]))
+			return 1;
+	return 0;
+}
+
+/*
+ * EVERY GROUP ACTIVE BEFORE ANYTHING IS LISTED. lvm2 is built with no hotplug
+ * activation, and the initramfs of a live boot activates nothing, so without
+ * this a disk carrying LVM shows a physical volume and no volume on it. Once
+ * per process: a group does not appear between two pages, and a second
+ * vgchange on every visit to the Disk page is a pause for nothing. Only as
+ * root, because activation is a device-mapper ioctl, and `--dump probe` run by
+ * a user must not fail on it. `udevadm settle` after, or /dev/<vg>/<lv> is not
+ * there yet when the list is read.
+ */
+static void lvm_activate(void)
+{
+	static int done;
+	KbArgv a = {0}, s = {0};
+
+	if (done || geteuid() != 0 || !kb_have_prog("lvm"))
+		return;
+	done = 1;
+	kb_argv_add(&a, "lvm");
+	kb_argv_add(&a, "vgchange");
+	kb_argv_add(&a, "-aay");
+	kb_argv_end(&a);
+	kb_run(&a);
+	kb_argv_add(&s, "udevadm");
+	kb_argv_add(&s, "settle");
+	kb_argv_end(&s);
+	kb_run(&s);
+}
+
+static void lv_mounts(void)
+{
+	size_t len = 0;
+	char *buf = kb_read_all("/proc/mounts", &len);
+	char *save = NULL;
+
+	if (!buf)
+		return;
+	for (char *line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char dev[160], mnt[192];
+		struct stat st;
+
+		if (sscanf(line, "%159s %191s", dev, mnt) != 2 ||
+		    strncmp(dev, "/dev/", 5) || stat(dev, &st) != 0 ||
+		    !S_ISBLK(st.st_mode))
+			continue;
+		for (int i = 0; i < ki_nlv; i++) {
+			char sys[64], num[32];
+			unsigned ma, mi;
+
+			snprintf(sys, sizeof(sys), "/sys/block/%s/dev",
+				 ki_lv[i].dm);
+			if (kb_read_line_file(sys, num, sizeof(num)) < 0 ||
+			    sscanf(num, "%u:%u", &ma, &mi) != 2)
+				continue;
+			if (major(st.st_rdev) != ma || minor(st.st_rdev) != mi)
+				continue;
+			ki_lv[i].mounted = 1;
+			kb_strlcpy(ki_lv[i].mountpoint, mnt,
+				   sizeof(ki_lv[i].mountpoint));
+		}
+	}
+	free(buf);
+}
+
+static void probe_lvs(void)
+{
+	DIR *dir;
+	struct dirent *e;
+
+	ki_nlv = 0;
+	lvm_activate();
+	dir = opendir("/sys/block");
+	if (!dir)
+		return;
+	while ((e = readdir(dir)) && ki_nlv < MAX_LVS) {
+		char uuid[160], name[160];
+		Lv *l = &ki_lv[ki_nlv];
+
+		if (strncmp(e->d_name, "dm-", 3))
+			continue;
+		sysfs_str(uuid, sizeof(uuid), "/sys/block/%.32s/dm/uuid",
+			  e->d_name);
+		sysfs_str(name, sizeof(name), "/sys/block/%.32s/dm/name",
+			  e->d_name);
+		/* `LVM-` and two 32-character uuids, and nothing after: a
+		 * suffix is a layer (`-tpool`, `-pool`, `-real`, `-cow`). */
+		if (strncmp(uuid, "LVM-", 4) || strlen(uuid) != 4 + 64)
+			continue;
+		memset(l, 0, sizeof(*l));
+		if (ki_dm_split(name, l->vg, sizeof(l->vg), l->lv,
+				  sizeof(l->lv)) != 0 ||
+		    lv_internal(l->lv))
+			continue;
+		kb_strlcpy(l->dm, e->d_name, sizeof(l->dm));
+		l->sectors = sysfs_ull("/sys/block/%s/size", l->dm);
+		if (!l->sectors)
+			continue;
+		/* /dev/<vg>/<lv> is udev's, and what an answer file should
+		 * name; /dev/dm-N is the kernel's and always there. */
+		{
+			char pth[sizeof(l->path)];
+
+			snprintf(pth, sizeof(pth), "/dev/%s/%s", l->vg, l->lv);
+			if (!kb_path_exists(pth))
+				snprintf(pth, sizeof(pth), "/dev/%s", l->dm);
+			kb_strlcpy(l->path, pth, sizeof(l->path));
+		}
+		l->held = has_holders(l->dm);
+		{
+			Part p;
+
+			memset(&p, 0, sizeof(p));
+			sniff_fs(l->path, &p);
+			kb_strlcpy(l->fstype, p.fstype, sizeof(l->fstype));
+			kb_strlcpy(l->label, p.label, sizeof(l->label));
+			kb_strlcpy(l->uuid, p.uuid, sizeof(l->uuid));
+		}
+		ki_nlv++;
+	}
+	closedir(dir);
+
+	for (int i = 1; i < ki_nlv; i++) {
+		Lv t = ki_lv[i];
+		int k = i - 1;
+		while (k >= 0 && strcmp(ki_lv[k].path, t.path) > 0) {
+			ki_lv[k + 1] = ki_lv[k];
+			k--;
+		}
+		ki_lv[k + 1] = t;
+	}
+	lv_mounts();
+}
+
+Lv *lv_by_path(const char *path)
+{
+	for (int i = 0; i < ki_nlv; i++)
+		if (!strcmp(ki_lv[i].path, path))
+			return &ki_lv[i];
+	return NULL;
+}
+
 void probe_disks(void)
 {
 	ki_ndisk = 0;
@@ -385,6 +728,7 @@ void probe_disks(void)
 						     d->name, pe->d_name);
 				p->sectors = sysfs_ull("/sys/block/%s/%s/size",
 						       d->name, pe->d_name);
+				p->held = has_holders(pe->d_name);
 				sniff_fs(p->path, p);
 				d->nparts++;
 			}
@@ -418,6 +762,7 @@ void probe_disks(void)
 	}
 
 	apply_mounts();
+	probe_lvs();
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

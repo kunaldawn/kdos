@@ -193,6 +193,27 @@ kdos_session_once() {
 			kdos-keys --first-run >/dev/null 2>&1 &
 		fi
 
+		# THE MUSIC DAEMON, ONCE SOMEBODY HAS CONFIGURED ONE. mpd exits at
+		# once with no configuration file and the image ships none, so a
+		# file in one of the four places mpd itself looks is the opt-in.
+		# --no-daemon keeps it this login's child, ending with the login
+		# rather than outliving it; one already running is left alone.
+		# The watcher is what feeds the panel's media cell, and it
+		# reconnects across mpd restarts on its own, so one per login is
+		# enough — started even when this login found mpd already up.
+		if command -v mpd >/dev/null 2>&1; then
+			for _mc in "$_cfg/mpd/mpd.conf" "$HOME/.mpdconf" \
+				   "$HOME/.mpd/mpd.conf" /etc/mpd.conf; do
+				[ -r "$_mc" ] || continue
+				pgrep -u "$(id -u)" -x mpd >/dev/null 2>&1 || \
+					mpd --no-daemon >/dev/null 2>&1 &
+				pgrep -u "$(id -u)" -f '^kdos-mpctl watch' \
+					>/dev/null 2>&1 || \
+					kdos-mpctl watch >/dev/null 2>&1 &
+				break
+			done
+		fi
+
 		# APPLICATIONS CHOSEN DURING THE INSTALL ARE OFFERED, NEVER
 		# BUILT IN THE BACKGROUND. Building them is podman and apt —
 		# twenty minutes on a machine somebody has just booted for the

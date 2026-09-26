@@ -49,6 +49,13 @@ COMPONENT LICENCES
   libjxl     BSD-3-Clause         ports/core/libjxl
   zimg       WTFPL                ports/core/zimg
   soxr       LGPL-2.1-or-later    ports/core/soxr
+  libbluray  LGPL-2.1-or-later    ports/core/libbluray
+  libdvdnav  GPL-2.0-or-later     ports/core/libdvdnav
+  libdvdread GPL-2.0-or-later     ports/core/libdvdread
+  ocl-icd    BSD-2-Clause         ports/core/ocl-icd
+  tesseract  Apache-2.0           ports/core/tesseract
+  qrencode   LGPL-2.1-or-later    ports/core/qrencode
+  librsvg    LGPL-2.1-or-later    ports/core/librsvg
 
 PATENTS
 

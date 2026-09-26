@@ -1,11 +1,16 @@
 # Decisions
 
-This page records the choices in KDOS that were genuinely close: the ones where a reasonable
-engineer would have gone the other way. Each entry states the conclusion first, then the question
-behind it, then the alternatives and why they lost, then what the choice costs.
+This page covers the choices in KDOS that were genuinely close: the ones where a reasonable
+engineer could have gone the other way. It is for readers who want to know why KDOS is built the
+way it is, and for contributors about to propose a different approach. If you disagree with
+something in KDOS, look here first: your objection may already have an answer, and the obvious
+alternative may have a reason it does not work.
 
-It exists so that a reader who disagrees can see whether their objection was already answered, and
-so that nobody spends a weekend rediscovering why the obvious option does not work.
+Each entry states the conclusion first, then the question behind it, then the alternatives and
+why they lost, then what the choice costs. [Why KDOS](why-kdos.md) and
+[Principles](principles.md) give the background the entries assume. The index below lists every
+decision; the last section, [Narrowings](#narrowings), collects smaller choices that look like
+missing features.
 
 ## Index
 
@@ -17,8 +22,8 @@ so that nobody spends a weekend rediscovering why the obvious option does not wo
 | [The host C library](#musl-as-the-host-c-library) | musl, and runtime CPU dispatch is foreclosed by it |
 | [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's applications, never Plasma |
 | [Application delivery](#a-store-that-builds-and-a-medium-that-carries-nothing) | The medium carries a catalogue; podman builds what is asked for |
-| [Where upstream archives live](#the-tarballs-are-in-the-tree-through-git-lfs) | Git LFS, in the tree, so a clone is the whole input to a build |
-| [CPU optimisation](#march-measured-per-machine) | Measured per machine by `kdos march`, never a shipped feature level |
+| [Where upstream sources live](#upstream-archives-are-content-addressed-release-assets) | Release assets named by their sha256, fetched by `make fetch` |
+| [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, offline |
 | [Recipe format](#the-build-shell-lives-beside-the-recipe) | Two files: parsed metadata, plus ordinary bash |
 | [Binhost signing](#signing-the-index-not-every-package) | One signature over the index, multi-signature from the start |
@@ -34,7 +39,8 @@ imported wholesale, rebranded, and never merged from again. `KDOS-FORK` at its r
 tarball and its sha256. KDOS additions live in `src/kdos-*.c`, and upstream files carry minimal
 hooks marked `/* KDOS */`, so `grep` finds every touch point.
 
-The question was what to do about a compositor that needs a phosphor shader, a wallpaper it owns,
+The question was what to do about a compositor that needs a phosphor shader (the pass that
+renders the screen as a green CRT), a wallpaper it owns,
 a frame-timing channel, an idle policy and per-box client identity: write one on wlroots, or take
 an existing one.
 
@@ -52,18 +58,20 @@ distribution's opinions. Freezing means the source in the tree is the source tha
 in a pager, with no patch application step between the two.
 
 The cost is that upstream fixes do not arrive. A security fix in labwc has to be read and applied
-by hand. That is accepted deliberately; the alternative was maintaining a compositor outright.
+by hand. That is accepted deliberately; the alternative is maintaining a compositor outright.
 
 See [kdos-comp](../04-programs/kdos-comp.md) for the fork as built.
 
 ## One pack per application, not one image
 
 Each application is one artefact over a small set of shared runtimes: an image per catalogue row
-when the store builds it, a signed pack per row when a set is exported. Installing an application
+when the store builds it, and a [pack](../06-reference/glossary.md) per row when a set is
+exported (signed when a signing key is
+available). Installing an application
 disturbs nothing else, and a shared runtime's layers are stored once however many applications
 name it.
 
-The question was how 183 graphical applications reach the medium — as one container image, or as
+The question was how 180 graphical applications reach a machine: as one container image, or as
 separate artefacts.
 
 A single container image was rejected because it puts every application on every install whether
@@ -80,8 +88,8 @@ The cost is one supervisor process per running application.
 
 The application catalogue is built on `debian:trixie-slim`.
 
-The question was which base distribution the catalogue should use. KDOS itself is musl and would
-pair naturally with Alpine.
+The question was which base distribution the catalogue should use. KDOS itself uses musl as its C
+library and would pair naturally with Alpine.
 
 The catalogue is the reason Debian won. Alpine has no slicer, no VSCode build, and no Calibre or
 GTKWave in stable. Debian carries the best free software in essentially every segment the
@@ -93,8 +101,8 @@ Alpine is present all the same, as a base pack pinned to `alpine:3.24.1` — abo
 and musl. A clean scratch userland that needs no network is worth one row in the catalogue, and it
 is the one non-Debian rootfs small enough that carrying it is free.
 
-The cost is heaviness, and it is deliberate. The medium is the offline software library, in the
-tradition of a fat Knoppix stick. `--no-install-recommends` everywhere keeps it from being worse.
+The cost is heaviness, and it is deliberate: a Debian box is far larger than the same program on
+Alpine would be. Installing with `--no-install-recommends` everywhere keeps it from being worse.
 
 ## musl as the host C library
 
@@ -108,7 +116,8 @@ letting the loader pick — is not available, which is one reason
 assumes glibc extensions and needs a flag or a patch. And a header warning that glibc does not
 emit can turn an upstream `-Werror` build fatal.
 
-The application catalogue is glibc, inside boxes, which is exactly the point of the ring boundary.
+The application catalogue is glibc, inside boxes, which is exactly the point of the
+[ring](../06-reference/glossary.md) boundary: the host and the boxes need not share a C library.
 
 ## No KDE, GNOME or any existing desktop on the host
 
@@ -155,44 +164,99 @@ Three costs follow, and they are not small.
    nowhere to go and `kdos-box create` refuses. Import is the only route to software on a live
    stick.
 
-Which is why import exists and why the pack format stays. `kdos-appbox export` writes the built
-images as signed packs with an index; `import` stages them through `kdos-packd`, which hashes and
-signature-checks each one where it mounts it. An imported application is more verified than a
+Which is why import exists and why the pack format stays. `kdos-appbox export <file.ktar>
+<id|group>...` writes the built images as packs with an index, signed when a key is readable
+through `KDOS_PACK_KEY` and saying plainly that it is unsigned otherwise. `kdos-appbox import
+<file.ktar>` stages them through `kdos-packd`, which hashes and signature-checks each one where it
+mounts it. An imported application is more verified than a
 store-installed one, needs no network, and is what kinstall reads off a stick when there is no
 network during an install. The pack format is how a set is carried, not how software is
 distributed.
 
-## The tarballs are in the tree, through Git LFS
+## Upstream archives are content-addressed release assets
 
-Upstream archives live in the repository, held by Git LFS: 1,020 archives, about 8.3 GB, nine of
-them over the 100 MiB a github.com push refuses.
+Upstream source archives are not kept in git. A few small upstream files a recipe hashes — patch
+levels, IANA registries, `certdata.txt`, a language model — are, and they are never archived. Every
+other source file is a release asset in the GitHub repository `kunaldawn/kdos`, named by its own
+sha256 (the same string as the `sha256 =` line in the recipe that uses it). The assets fill
+releases in order — `sources-001`, then `sources-002` once that holds 1,000 files, and so on — and
+the committed file `ports/sources.idx` records which release holds each hash. A file's address is
 
-The reason is that a clone is then the whole input to a build — `git clone` followed by
-`make build`, with no fetch step between and nothing that can be missing. The `sha256 =` in each
-recipe is what verifies an archive, and a hash with nothing to hash is a promise nobody can check,
-so the thing git holds and the thing it identifies are in the same place.
+```
+https://github.com/kunaldawn/kdos/releases/download/sources-<NNN>/<hash>
+```
 
-Release assets were the strongest alternative: two GiB per file, no total-size or bandwidth limit,
-and no quota to buy. They lost because a clone is then not enough to build, and the step that
-closes the gap is one more thing to have run. Plain git blobs do not work at all on the stated
-remote, since nine files exceed the 100 MiB push limit.
+The recipes name 1,232 distinct files, about 8.3 GiB. Twenty-four files in the port directories
+are over the 100 MiB a github.com push refuses (twelve distinct files, since the LLVM source
+tarball serves eight ports), and the largest, `linux-firmware`, is 632 MiB. `KDOS_SOURCES_REPO`
+names a different archive repository, and `KDOS_SOURCES_BASE` a different download base; setting
+`KDOS_SOURCES_BASE` empty makes `make fetch` use upstream URLs only.
 
-What LFS costs is not small either. A free account provides 10 GiB of storage and 10 GiB of
-monthly bandwidth, shared across every repository the account owns. The archives are 7.7 GiB of
-that, which leaves about 2.3 GiB of margin, and a month's bandwidth is a handful of clones. Exceeding the allowance does not
-slow a clone down — it blocks LFS reads outright, taking the vendored art and the test fixtures
-with it, so a fresh clone cannot check out at all. A paid data pack is what keeps this working.
-`git lfs install` must also precede the clone, or the working tree holds pointer files and the
-first port to unpack one fails on a corrupt archive rather than on anything naming the cause.
+The hash is the identity and the URL is advisory. A recipe names contents, not a location, so a
+file that verifies is the file the recipe meant whether it came from the archive, from upstream or
+from a mirror added in ten years, and none of those invalidates a commit. Two different upstream
+releases under one filename cannot collide, and GitHub, which rewrites asset names containing
+characters outside `[A-Za-z0-9._-]`, never has to rewrite a bare hash.
 
-Two properties make the arrangement survivable. The hash is the identity and the URL is advisory,
-so a mirror can be added in ten years without invalidating a commit — a commit names contents
-rather than a location. And sources are append-only: an asset is never deleted and never replaced,
-because replacing one silently changes what an old commit builds. Assets are sharded by first
-letter, since a release holds a bounded number of them and this archive only grows; the shard is
-computed from the filename, so it costs no pin and no lookup.
+Filling releases in order keeps their number as small as the file count allows: a GitHub release
+holds at most 1,000 assets and has no other limit, so 1,700 files need two releases and 50,000
+need fifty. Deriving the release from the hash instead would need no index, but hashes are random,
+so every one of the releases such a scheme divides into exists from the first upload, and a scheme
+with few of them fills within years. The index is what the ordering costs: one committed line per
+file, `<hash> <NNN> <port>/<file>`, written by `ports/publish` after each verified upload. It is
+append-only like the archive, so the newest index names every file ever archived, and an old
+checkout can be fetched with it.
 
-## `-march` measured per machine
+The archive is append-only. An asset whose digest matches its name is never replaced or deleted,
+because replacing one would silently change what an old commit builds; a checkout from five years
+ago finds the bytes it was written against after upstream has moved or gone. For each KDOS
+release, `ports/publish --freeze <tag>` attaches `sources.sha256`, the list of every hash that
+tag's recipes name, to the release of that tag, creating it as a draft when it does not exist. The
+list is a convenience — one file that says what the release needs. What pins the hashes is the tag
+itself: its recipes carry them, and git cannot change those without changing the tag.
+
+The archive's releases share the repository's release page with the KDOS releases. Each one's
+notes list every file it holds, as `<hash>  <port>/<file>` lines, and they are created with
+`make_latest` off, so "latest" always means a KDOS release. GitHub's immutable releases stay off
+on the repository: the setting applies to every release in it, and it would freeze an archive
+release at its first publication, after which no source could be added to it.
+
+What it costs is that a clone alone does not build. `make fetch` has to run once after a clone
+and again after a recipe changes, and it is the only step that uses the network. For each file it
+takes the first copy whose hash matches, looking in this order:
+
+1. the port directory;
+2. the local cache, `ports/.srccache/` (or wherever `KDOS_SRCCACHE` points), which each port
+   directory hard-links into;
+3. the archive;
+4. the upstream URL in the recipe's `source =` line;
+5. for a port's own vendor bundle only, regenerating it reproducibly.
+
+It is safe to re-run. The cache means a branch switch downloads nothing, and so does a second
+checkout on the same machine once `KDOS_SRCCACHE` points both at one cache. A file that is missing
+from the archive, or an archive that cannot be reached, costs a download from upstream rather than
+a failed build, as long as upstream still has it.
+
+The other cost is on the publishing side. A new or bumped source has to reach the archive before
+the commit naming it is pushed, or that commit builds on the machine that wrote it and nowhere
+else. `ports/publish` uploads missing sources (it needs a token in `$KDOS_SOURCES_TOKEN` or
+`~/.config/kdos/sources-token`, mode 600). The pre-push hook in `script/hooks/` refuses a push
+whose recipes name a hash the archive lacks. It also refuses when it cannot reach the archive, or
+the archive answers with anything but found or not found, because absence cannot then be ruled
+out: a push made offline is refused even when nothing is unpublished. The hook is enabled per clone
+with `git config core.hooksPath script/hooks`, and `KDOS_SKIP_PUBLISH_CHECK=1` bypasses it. See
+[Writing ports](../05-developer/writing-ports.md#publishing-sources) for the procedure.
+
+Git LFS would make a clone the whole input to a build, and it is not used because the sources do
+not fit it. A free account has 10 GiB of LFS storage and 10 GiB of monthly bandwidth, shared across
+every repository the account owns. The current sources are 8.3 GiB of that storage on their own,
+and every version the repository's history names comes to about 17 GiB, well past it; a single
+clone uses most of a month's bandwidth. Past the allowance LFS reads
+are blocked outright, not slowed, so a repository that depends on it stops checking out. Release
+assets carry no total-size or bandwidth limit and allow 2 GiB per file. Plain git blobs are not
+possible at all, since 24 files exceed the push limit.
+
+## `-march` measured per machine, not chosen for a population
 
 CPU optimisation is measured on the machine that will run the result.
 [`kdos march`](../04-programs/kdos-command.md) builds a port twice, runs that port's own benchmark
@@ -229,9 +293,9 @@ A port is two files. `kpkgbuild` is declarative metadata that is parsed and neve
 `build.sh` beside it is ordinary bash. `bash -n`, shellcheck, syntax highlighting and `git diff`
 all work on it, and no parser has to understand shell.
 
-An argument-vector list with no shell at all was implemented and converted most of the tree, then
-ran into a stubborn minority of ports needing heredocs, loops, redirects, globs and command
-substitution.
+An argument-vector list with no shell at all fits most ports, but a stubborn minority need
+heredocs, loops, redirects, globs and command substitution, and a format that cannot express
+those cannot build them.
 
 Embedding a shell interpreter in `kpkg` was rejected because there is no embeddable evaluator: the
 candidates are either parsers that do not execute, or programs with their own `main()`, which
@@ -239,9 +303,10 @@ would mean vendoring tens of thousands of lines of third-party C into a tree tha
 none. It would buy nothing either, since bash is in the sysroot before `kpkg` is compiled and
 ships on the target regardless.
 
-The clinching detail is smaller and sharper. A recipe writes a configuration file whose body
-contains a line reading exactly `[build]`. Any format carrying the shell inline would have had to
-tell that apart from its own syntax.
+The clinching detail is smaller and sharper. The `rust` port's `build.sh` writes a `config.toml`
+whose body contains a line reading exactly `[build]`, the start of a TOML section. A recipe format
+carrying the shell inline under INI-style section headers, with `[build]` as one of them, would
+read that line as the start of its own section.
 
 See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
@@ -254,20 +319,30 @@ the separate case of a package travelling on a USB stick with no index beside it
 Signing every artefact as the primary mechanism was rejected because it multiplies the work and
 the number of things that can be individually wrong without improving what is proven.
 
-Multi-signature is in from day one, because a signature file is a line per signature: during a key
-rollover both keys sign and a client trusting either keeps working. Retrofitting that is brutal;
-designing it in is one loop. See [Packaging](../03-architecture/packaging.md).
+The signature file holds any number of signatures, one per line, so during a key rollover both
+keys sign and a client trusting either keeps working. Adding that to a format that holds only one
+signature would be a format change every client has to understand. See [Packaging](../03-architecture/packaging.md).
 
 ## Freezing a demo rather than writing one
 
 The ASCII-art demo is a frozen hard fork of the AA-project's `bb` 1.3rc1, recorded in `KDOS-FORK`,
 carrying the sources the binary actually needs and the authors' own credits scroll.
 
-Three defects are fixed in place: `clear_zbuff()` cleared `sizeof(long)` per cell against a
-`sizeof(int)` allocation, which is the same size on the hardware it was written for and double on
-x86-64, so the heap corrupts; the message scroll used `memcpy` on overlapping ranges, which musl is
-free not to survive; and `REGISTERS(n)` expanded to an x86-32-only `regparm` attribute that warns
-on every declaration.
+`KDOS-FORK` lists every change the fork makes. The changes fall into two groups:
+
+- **What it needs to run here.** `clear_zbuff()` clears exactly the `sizeof(int)` per cell it
+  allocates; clearing `sizeof(long)`, double on x86-64, corrupts the heap. The message scroll
+  moves overlapping ranges with `memmove`, because `memcpy` on them is undefined and musl does not
+  tolerate it. `REGISTERS(n)` expands to nothing, because the x86-32-only `regparm` attribute warns
+  on every declaration here. The drawing is paced to one frame per 16 ms, the mixer runs on its own
+  thread so the music does not starve while the window is being drawn, and the scene clock follows
+  the music player so the two stay in step. Each frame is wrapped in synchronized output (DECSET
+  2026), so a terminal that supports it, `kdos-term` included, draws whole frames rather than half
+  of two.
+- **What would otherwise be false.** The demo starts by itself, with `-nosound` and `-mixer` as
+  flags in place of upstream's two start-up questions; the flash words, the closing text and two
+  logo beats carry KDOS's mark; and the closing text turns its own pages in time with the last
+  module. Every contributor line and every Special Thanks in the credits is upstream's, unchanged.
 
 A demo written from scratch is not on the roadmap. `bb` is a set of scenes paced against three
 tracker modules it ships with, and reaching that from nothing is a project of its own; the frozen
@@ -280,9 +355,13 @@ fork is the whole of the plan.
 private modes, wrapping rules that differ between terminals that both claim VT100 — and none of it
 is a place to be original. What is original here is the boundary, not the parser.
 
-Upstream's cell stays. `kcell.h` refuses a second cell type, and that refusal is about two
-libraries of the toolkit disagreeing, not about a terminal's private screen buffer, which nothing
-outside the library ever sees. Upstream's cell earns its place: it carries 24-bit colour, a
+A *cell* is the record for one character position on the screen: the character and its colours
+and attributes. `libkvt` keeps libtsm's own cell record internally, and produces the toolkit's
+shared cell type — `KtuiCell`, defined in `libkcell`'s `kcell.h` (see
+[C libraries](../05-developer/c-libraries.md)) — only when the screen is drawn. `kcell.h` refuses
+a second cell type, but that refusal is about two libraries of the toolkit disagreeing, not about
+a terminal's private screen buffer, which nothing outside the library ever sees. Upstream's cell
+earns its place: it carries 24-bit colour, a
 per-cell age that drives damage tracking, and a symbol-table handle that is what makes combining
 characters possible at all. Reducing it to a `KtuiCell` at the boundary loses none of that until
 the moment the screen is drawn.
@@ -291,15 +370,16 @@ The conversion happens in one file. `kvt_grid.c` is the render boundary and is w
 cell becomes a `KtuiCell`. Three other files touch the toolkit, each for one narrow reason:
 `kvt_term.c` maps `KT_K_*` key codes into the escape bytes a child expects; `kvt_unicode.c` asks
 `ktui_wcwidth` so the library and the grid agree how wide a codepoint is; and `kvt_selection.c`
-holds `kvt_ui_mouse`, which decides what a drag over a terminal means, because every consumer of
-the vte needs that decision and two copies would drift.
+holds `kvt_ui_mouse`, which decides what a drag over a terminal means, because every program that
+embeds the terminal state machine needs that decision and two copies would drift.
 
 `kvt_grid.c`, `kvt_term.c` and `kvt_htable.c` (with its header) are the files carrying no upstream
 copyright. Every other file in the library carries libtsm's: the grid is this tree's render
 boundary, `kvt_term` is the screen-plus-state-machine-plus-child object upstream never had, and the
 hash table was written here rather than carried.
 
-Colour reduces to the palette's eight slots by nearest distance — one rule for the ANSI sixteen,
+Colour reduces to the palette's eight [slots](../06-reference/glossary.md) (named colour roles)
+by nearest distance — one rule for the ANSI sixteen,
 the 256 and truecolour alike. A table saying "red means the error slot" would be a second set of
 colour decisions sitting beside the palette, and `kdos theme` would move only one of them. The two
 default colours are the exception and are slots outright: a terminal's default foreground is a
@@ -322,8 +402,8 @@ The third column is what a sidebar would actually cost. The chooser already spen
 column on a preview pane, so a sidebar takes its width from the names: about thirty cells for a
 filename, in the window whose entire purpose is showing filenames.
 
-So the places are a rung and not a column. `Ctrl+P` opens them over the file list as a declared
-`Esc` rung, reaching the same list `kxdg_places()` gives the Start menu — every place, at full
+So the places are an overlay and not a column. `Ctrl+P` opens them over the file list as an
+overlay that `Esc` closes, reaching the same list `kxdg_places()` gives the Start menu — every place, at full
 width, and nothing taken from the names while it is closed. A boxed application's Open and Save
 get exactly what a native one gets, which is the other half of the decision: two dialogs of two
 widths would be two layouts to keep, two sets of reference frames, and two answers to how wide a
@@ -396,23 +476,19 @@ other. Screenshots are the host's own tool.
 a substitute. Fetching one happens at run time over the network, and nothing in the image may
 depend on that.
 
-**Editing a library rebuilds every port in this tree, not only its consumers.** A recipe names which
-libraries it compiles, and working out which of them a given edit actually reaches would be a
-shell parser inside the package manager, reading `build.sh` to find out what it compiles. The
-over-rebuild costs minutes; the parser would be a second, quieter build system.
+**Editing a library rebuilds every port of KDOS's own software, not only its consumers.** The 24
+ports under `src/` compile the `libk*` libraries into themselves, and each port's `build.sh` names
+the libraries it uses as a glob under `$LIBS`. Working out which ports an edit reaches would need a
+shell parser inside the package manager, so the whole of `src/libs` goes into each of those ports'
+recipe hash instead. Upstream ports under `ports/core` are never affected. Each rebuild takes
+seconds; the parser would be a second, quieter build system.
 
-**The initramfs carries util-linux's `switch_root` and not toybox's.** toybox's applet `chroot()`s
-into the new root and never moves that root onto the root of the mount namespace, so every process
-on the booted system is chrooted for ever — and `create_user_ns()` refuses a chrooted caller
-outright, which is every container on the machine. A process joining the namespace with `setns()`
-(podman exec, distrobox enter, `nsenter -m`) gets the empty initramfs rootfs as `/` and every path
-is `ENOENT`. The symptom is `EPERM` from `CLONE_NEWUSER` for uid 0 with the full capability set as
-readily as for anybody, on a kernel reporting `CONFIG_USER_NS=y`, no LSM, no seccomp filter and
-nothing on the command line; `/proc/self/mountinfo` gives it away, with the root mount present on
-the right device and a parent id that is not in the table. toybox owns the name
-`/usr/sbin/switch_root` on the finished image and is installed after util-linux, so the packaging
-step copies util-linux's own file by its real name and then refuses to build an initramfs whose
-`switch_root` is toybox's.
+**The initramfs carries util-linux's `switch_root` and not toybox's.** toybox's applet
+`chroot()`s into the new root rather than moving it onto the root of the mount namespace, which
+leaves every process on the booted system chrooted, and the kernel refuses a chrooted caller a new
+user namespace, so every rootless container would be refused. The toybox recipe compiles the applet
+out, and the packaging step refuses to build an initramfs whose `switch_root` is toybox's. See
+[Boot and init](../03-architecture/boot-and-init.md#switch_root).
 
 ## See also
 
@@ -421,3 +497,4 @@ step copies util-linux's own file by its real name and then refuses to build an 
 - [Packs and boxes](../03-architecture/packs-and-boxes.md) — the pack decision as built
 - [kdos-comp](../04-programs/kdos-comp.md) — the compositor fork as built
 - [Known gaps](../06-reference/known-gaps.md) — what these decisions leave undone
+- [Glossary](../06-reference/glossary.md) — the terms these entries use

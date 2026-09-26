@@ -9,6 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# :ccopy and :cpaste go through wl-copy and wl-paste. Upstream bakes xclip into
+# the default config, and there is no X clipboard on this image for it to
+# reach; the patch is the only way in, because the Makefile appends its own
+# -D after anything exported.
+patch -p1 -i $PORT_SRC/wayland-clipboard.patch
+
 cd src
 
 # A SPREADSHEET IS A GRID OF CELLS, WHICH IS WHAT THIS WHOLE DESKTOP IS. That

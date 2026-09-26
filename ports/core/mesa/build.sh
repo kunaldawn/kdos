@@ -39,8 +39,9 @@ export RUSTFLAGS="-C prefer-dynamic"
 # depends.
 # nouveau in vulkan-drivers is NVK, and it is what the six vendored crates
 # above are for. gallium-rusticl installs /etc/OpenCL/vendors/rusticl.icd,
-# which only ocl-icd's loader reads. libunwind is off because the libunwind
-# port is LLVM's and ships no libunwind.pc for this probe to find.
+# which only ocl-icd's loader reads. libunwind is off: it serves only mesa's
+# debug stack dumps, and would be linked into every process that loads a
+# driver.
 meson setup build \
 	--prefix=/usr --libdir=lib --sysconfdir=/etc \
 	--buildtype=release \

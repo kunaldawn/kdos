@@ -1,0 +1,42 @@
+# KDOS — game controllers as raw HID, for SDL's HIDAPI drivers.
+#
+# evdev gives SDL the sticks and buttons of any pad through /dev/input, which
+# 50-udev-default.rules already gives to `input`. The rest — the DualShock and
+# DualSense lightbar, gyro and adaptive triggers, the Switch Pro and Joy-Con,
+# the Steam Controller — is spoken over /dev/hidraw*, which the kernel makes
+# root-only; the rules other distributions ship for these pads grant through a
+# `uaccess` tag, which nothing here consumes.
+# Without this, those pads fall back to evdev and the features are absent
+# without an error.
+#
+# `input`, not dialout: every member of it already reads every keystroke and
+# every pointer motion through /dev/input, so the raw reports of a pad add
+# nothing that group could not see.
+#
+# KERNELS=="*:VVVV:*" MATCHES THE HID DEVICE ABOVE THE NODE, whose name is
+# BUS:VENDOR:PRODUCT.N — so one line covers a pad on a cable and the same pad
+# over Bluetooth, where there is no USB idVendor to match at all. The vendor
+# is upper-case because the kernel prints it so.
+#
+# Sony, Nintendo, Valve, 8BitDo, Microsoft, Hori, PDP, PowerA, Mad Catz.
+
+SUBSYSTEM=="hidraw", KERNELS=="*:054C:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:057E:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:28DE:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:2DC8:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:045E:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:0F0D:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:0E6F:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:24C6:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:20D6:*", GROUP="input", MODE="0660"
+SUBSYSTEM=="hidraw", KERNELS=="*:0738:*", GROUP="input", MODE="0660"
+
+# The devices SDL reaches only through libusb, never hidraw — its
+# SDL_libusb_required table: the GameCube adapter and the Switch 2 GameCube
+# controller, Joy-Con and Pro Controller. They open /dev/bus/usb, which the
+# hidraw lines above do not reach.
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="0337", GROUP="input", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2073", GROUP="input", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2066", GROUP="input", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2067", GROUP="input", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2069", GROUP="input", MODE="0660"

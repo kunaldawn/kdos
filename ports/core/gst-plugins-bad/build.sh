@@ -22,11 +22,20 @@
 #   assrender  SSA/ASS subtitles over video
 #   va, kms, wayland, vulkan, gl    hardware decode/encode and the video sinks
 #   webrtcdsp  echo cancellation and noise suppression
+#   webrtc     webrtcbin, peer-to-peer calls: ICE is libnice, the media is
+#              SRTP from libsrtp, the keys come from dtls and the data
+#              channels from sctp, which carries its own usrsctp
+#   srtp       srtpenc and srtpdec, which webrtcbin needs
+#   resindvd   rsndvdbin, DVD playback with menus    -Dgpl=enabled as well
+#   rsvg       SVG decode and SVG overlays on video
+#   sndfile    sfdec, the formats libsndfile reads (upstream builds no encoder)
+#   openexr    OpenEXR decode
+#   bz2        bzip2 decode and encode
 #
 # aom is off: svt-av1 is this tree's AV1 encoder, and a second encoder for one
 # format earns nothing. The Bluetooth codecs are off because PipeWire owns
 # Bluetooth audio, and libde265 because gst-libav already decodes HEVC.
-# webrtc, srtp and srt stay off until libnice, libsrtp and srt are ports.
+# srt stays off until srt is a port.
 # introspection stays off: every GStreamer GIR includes Gst-1.0 and the
 # GstBase GIRs, and gstreamer and gst-plugins-base are built without them.
 
@@ -56,6 +65,15 @@ meson setup build \
 	-Dcolormanagement=enabled \
 	-Danalyticsoverlay=enabled \
 	-Dwebrtcdsp=enabled \
+	-Dwebrtc=enabled \
+	-Dsrtp=enabled \
+	-Dsctp=enabled \
+	-Dsctp-internal-usrsctp=enabled \
+	-Dresindvd=enabled \
+	-Drsvg=enabled \
+	-Dsndfile=enabled \
+	-Dopenexr=enabled \
+	-Dbz2=enabled \
 	-Dva=enabled \
 	-Dudev=enabled \
 	-Ddrm=enabled \
@@ -81,17 +99,11 @@ meson setup build \
 	-Dopenaptx=disabled \
 	-Dlc3=disabled \
 	-Dlibde265=disabled \
-	-Dbz2=disabled \
 	-Dcodec2json=disabled \
 	-Dqroverlay=disabled \
-	-Dopenexr=disabled \
-	-Drsvg=disabled \
-	-Dsndfile=disabled \
 	-Dv4l2codecs=disabled \
 	-Duvch264=disabled \
 	-Duvcgadget=disabled \
-	-Dwebrtc=disabled \
-	-Dsrtp=disabled \
 	-Dsrt=disabled \
 	-Davtp=disabled \
 	-Dbs2b=disabled \
@@ -127,7 +139,6 @@ meson setup build \
 	-Dopenh264=disabled \
 	-Dopenmpt=disabled \
 	-Dopenni2=disabled \
-	-Dresindvd=disabled \
 	-Drtmp=disabled \
 	-Dsoundtouch=disabled \
 	-Dspandsp=disabled \

@@ -26,9 +26,9 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # THE PREVIEWERS ARE OTHER PROGRAMS, which is why `depends` names them: yazi
 # execs file(1) for mime types, ffmpeg for video, pdftoppm (poppler) for PDF,
 # resvg for SVG, magick for the rest, jq for JSON, fd/rg/fzf/zoxide for search
-# and jump, and chafa where the terminal has no image protocol. A missing one
-# is a blank preview, not an error. The archive previewer and extractor exec
-# 7zz or 7z, which no port provides, so an archive previews as that error.
+# and jump, 7zz (7zip) to list and extract archives, ISO and disk images, and
+# chafa where the terminal has no image protocol. A missing one is a blank
+# preview, not an error.
 
 # VERGEN_GIT_SHA IS SUPPLIED BECAUSE A TARBALL IS NOT A REPOSITORY. yazi's
 # build script uses vergen to stamp the binary with the commit it came from,

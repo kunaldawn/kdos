@@ -39,6 +39,10 @@ if [ -f /kdos/build/initramfs.cpio.gz ]; then
     cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/boot/initramfs.cpio.gz
     # Also copy to /boot so it is included in system.sfs (and thus installed)
     cp /kdos/build/initramfs.cpio.gz /boot/initramfs.cpio.gz
+    # The image's initramfs is the one for the image's kernel. One a `linux`
+    # postinstall built in this tree for an earlier kernel would be preferred
+    # over it by kinstall and `kdos-bootctl deploy`, and boot a stale base.
+    rm -f /boot/initramfs-kdos.cpio.gz
 else
     echo "Error: /kdos/build/initramfs.cpio.gz not found!"
     exit 1
@@ -94,9 +98,18 @@ fi
 # filesystem BESIDE system.sfs rather than inside it, so it costs the installed
 # system nothing and is readable from /mnt/iso the moment the live image is up.
 #
-# Opt-in because it roughly doubles the image: ports/ is 2.7 G of upstream
+# Opt-in because it roughly doubles the image: ports/ is about 11 G of upstream
 # tarballs that are already compressed, and squashing them again buys nothing.
 # `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
+#
+# The tarballs are not in git; they are what `make fetch` put in each port
+# directory, which is every source the build before this step needed — so the
+# stick is complete exactly when the build was. It also carries any archive a
+# branch switch or a version bump left beside a recipe that no longer names it
+# (preflight lists those); nothing on the stick reads one, so it costs space
+# only. ports/.srccache is left off:
+# each port directory holds its own hard link to the bytes, and the cache can
+# carry every version any branch of this checkout ever fetched.
 if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
     echo "Copying the sources onto the ISO (this is the big one)..."
     mkdir -p $ISO_ROOT/sources
@@ -109,7 +122,7 @@ if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
     # Build artefacts are not sources, and the appbox image chunks are already
     # in the payload the live system carries.
     rm -rf $ISO_ROOT/sources/ports/.portup-tools $ISO_ROOT/sources/ports/.kpkg-meta \
-           $ISO_ROOT/sources/ports/.update-cache.json
+           $ISO_ROOT/sources/ports/.update-cache.json $ISO_ROOT/sources/ports/.srccache
     # A stamp, so `kdos rebuild` can say what it is about to rebuild FROM.
     cat > $ISO_ROOT/sources/SOURCES <<EOS
 # The KDOS tree that built this image.

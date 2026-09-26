@@ -9,13 +9,19 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The hash methods offered are the ones musl's crypt() implements: SHA-256,
+# SHA-512 and bcrypt ($2b$). musl has no yescrypt, and it reads a `$y$` salt
+# as a traditional DES one and returns a DES hash, so --with-yescrypt would
+# offer `ENCRYPT_METHOD YESCRYPT` and store a weak hash for every password set
+# with it. ENCRYPT_METHOD is unset, and unset is SHA512.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--disable-logind \
 	--disable-static \
 	--enable-lastlog \
-	--with-yescrypt \
+	--with-bcrypt \
+	--without-yescrypt \
 	--without-libbsd \
 	--without-libpam \
 	--with-acl \

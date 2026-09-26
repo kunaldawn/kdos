@@ -21,23 +21,28 @@ mkdir -p build && cd build
 # library that fails differently depending on who is listening. Everything here
 # reads from disk.
 #
-# GDAL_USE_POPPLER=OFF: the PDF driver compiles against poppler's private
-# headers, which the poppler port does not install
-# (ENABLE_UNSTABLE_API_ABI_HEADERS), so turning it on fails the build.
+# GDAL_USE_POPPLER=ON is the PDF driver, which reads geospatial PDFs and writes
+# PDF rasters. It compiles against poppler's private headers, which the poppler
+# port installs for it (ENABLE_UNSTABLE_API_ABI_HEADERS).
 # GDAL_USE_PDFIUM=OFF: GDAL wants its own patched static PDFium, not the
-# pdfium port's.
+# pdfium port's, and one PDF backend is all the driver uses.
 #
-# No python bindings: nothing on the image imports osgeo.
+# BUILD_PYTHON_BINDINGS=ON is the osgeo module and every Python utility that
+# ships with it (gdal_calc.py, gdal_merge.py, gdal2tiles.py, ogrmerge.py and the
+# rest). SWIG generates the wrappers and setuptools installs them under
+# DESTDIR. numpy is what builds osgeo.gdal_array, which gdal_calc.py and most
+# raster scripting import; GDAL skips that module without an error when numpy
+# is missing, so the check after the install is what makes it fail.
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
-	-DBUILD_PYTHON_BINDINGS=OFF \
+	-DBUILD_PYTHON_BINDINGS=ON \
 	-DBUILD_JAVA_BINDINGS=OFF \
 	-DBUILD_CSHARP_BINDINGS=OFF \
 	-DBUILD_TESTING=OFF \
 	-DGDAL_USE_EXTERNAL_LIBS=OFF \
 	-DGDAL_USE_CURL=OFF \
-	-DGDAL_USE_POPPLER=OFF \
+	-DGDAL_USE_POPPLER=ON \
 	-DGDAL_USE_PDFIUM=OFF \
 	-DGDAL_USE_ZLIB=ON \
 	-DGDAL_USE_ICONV=ON \
@@ -73,3 +78,7 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DGDAL_USE_QHULL=ON
 ninja
 DESTDIR=$PKG ninja install
+ls "$PKG"/usr/lib/python3*/site-packages/osgeo/_gdal_array*.so >/dev/null 2>&1 || {
+	echo 'gdal: osgeo.gdal_array was not built; numpy was not found' >&2
+	exit 1
+}

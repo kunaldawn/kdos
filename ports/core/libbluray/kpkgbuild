@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libbluray
+version     = 1.5.0
+release     = 1
+source      = https://download.videolan.org/pub/videolan/$name/$version/$name-$version.tar.xz
+sha256      = f676408e91a5d321abf8b8d4dfdae36205c297dab5c54c3ec519639025f474a2  libbluray-1.5.0.tar.xz
+description = Blu-ray playlists and titles — mpv's bd:// and ffmpeg's bluray: protocol
+homepage    = https://www.videolan.org/developers/libbluray.html
+depends     = meson ninja pkgconf libudfread libxml2 freetype2 fontconfig

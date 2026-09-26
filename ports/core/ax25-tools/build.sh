@@ -31,3 +31,8 @@ patch -p1 -d .. -i "$PORT_SRC/no-tcpip.patch"
 	--without-xutils
 make
 make DESTDIR=$PKG install
+
+# Upstream's install hook makes the heard-station database world-writable.
+# Only mheardd writes it, and mheardd needs a raw AX.25 socket and so runs as
+# root; any other writer is a local user rewriting what `mheard` reports.
+chmod 644 "$PKG/var/ax25/mheard/mheard.dat"

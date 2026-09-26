@@ -41,3 +41,12 @@ cmake .. -G Ninja \
 	-DSTLINK_UDEV_RULES_DIR=/etc/udev/rules.d
 ninja
 DESTDIR=$PKG ninja install
+
+# UPSTREAM'S UDEV RULES ARE DELETED. Each sets `MODE:="0666"` on its ST-Link
+# — `:=` is final, so no later rule can take it back — which makes the probe
+# writable by every account and every sandboxed process on the machine, able
+# to erase or reflash whatever board it is soldered to. CMake has no switch
+# that skips them. fs/etc/udev/rules.d/70-kdos-debug.rules grants vendor 0483
+# to dialout at 0660, and is the only rule for these probes.
+rm -f "$PKG"/etc/udev/rules.d/49-stlink*.rules
+rmdir --ignore-fail-on-non-empty "$PKG/etc/udev/rules.d" "$PKG/etc/udev" 2>/dev/null || true

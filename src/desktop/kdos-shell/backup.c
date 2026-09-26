@@ -26,9 +26,9 @@
  * THE PASSWORD IS A FILE AND NEVER AN ARGUMENT. `--password-file` is restic's
  * own flag; /proc/<pid>/cmdline is world-readable, so `--password` would put
  * the key to every backup this machine has on a line any account can read.
- * There is no keyring on this desktop to put it in instead: libsecret is a
- * library with no daemon here, and `pass` needs a GnuPG key the installer does
- * not make.
+ * There is no keyring on this desktop to put it in instead: nothing here
+ * provides the Secret Service, and `pass` needs a GnuPG key the installer
+ * does not make.
  *
  * AND THE FILE'S MODE IS CHECKED BEFORE IT IS USED. A password file at 0644 is
  * the same disclosure by a different route, and it is the mode a text editor or

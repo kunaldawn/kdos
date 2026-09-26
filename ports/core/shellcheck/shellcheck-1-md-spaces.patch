@@ -1,0 +1,87 @@
+lowdown reads a backslash before a space as a literal backslash, where pandoc
+reads a non-breaking space, so each option heading would render with a stray
+`\` in it. A plain space renders the heading pandoc renders.
+
+--- a/shellcheck.1.md
++++ b/shellcheck.1.md
+@@ -31,26 +31,26 @@
+ 
+ # OPTIONS
+ 
+-**-a**,\ **--check-sourced**
++**-a**, **--check-sourced**
+ 
+ :   Emit warnings in sourced files. Normally, `shellcheck` will only warn
+     about issues in the specified files. With this option, any issues in
+     sourced files will also be reported.
+ 
+-**-C**[*WHEN*],\ **--color**[=*WHEN*]
++**-C**[*WHEN*], **--color**[=*WHEN*]
+ 
+ :   For TTY output, enable colors *always*, *never* or *auto*. The default
+     is *auto*. **--color** without an argument is equivalent to
+     **--color=always**.
+ 
+-**-i**\ *CODE1*[,*CODE2*...],\ **--include=***CODE1*[,*CODE2*...]
++**-i** *CODE1*[,*CODE2*...], **--include=***CODE1*[,*CODE2*...]
+ 
+ :   Explicitly include only the specified codes in the report. Subsequent **-i**
+     options are cumulative, but all the codes can be specified at once,
+     comma-separated as a single argument. Include options override any provided
+     exclude options.
+ 
+-**-e**\ *CODE1*[,*CODE2*...],\ **--exclude=***CODE1*[,*CODE2*...]
++**-e** *CODE1*[,*CODE2*...], **--exclude=***CODE1*[,*CODE2*...]
+ 
+ :   Explicitly exclude the specified codes from the report. Subsequent **-e**
+     options are cumulative, but all the codes can be specified at once,
+@@ -83,19 +83,19 @@
+ :   Prefer the specified configuration file over searching for one
+     in the default locations.
+ 
+-**-o**\ *NAME1*[,*NAME2*...],\ **--enable=***NAME1*[,*NAME2*...]
++**-o** *NAME1*[,*NAME2*...], **--enable=***NAME1*[,*NAME2*...]
+ 
+ :   Enable optional checks. The special name *all* enables all of them.
+     Subsequent **-o** options accumulate. This is equivalent to specifying
+     **enable** directives.
+ 
+-**-P**\ *SOURCEPATH*,\ **--source-path=***SOURCEPATH*
++**-P** *SOURCEPATH*, **--source-path=***SOURCEPATH*
+ 
+ :   Specify paths to search for sourced files, separated by `:` on Unix and
+     `;` on Windows. This is equivalent to specifying `search-path`
+     directives.
+ 
+-**-s**\ *shell*,\ **--shell=***shell*
++**-s** *shell*, **--shell=***shell*
+ 
+ :   Specify Bourne shell dialect. Valid values are *sh*, *bash*, *dash*, *ksh*,
+     and *busybox*.
+@@ -103,22 +103,22 @@
+     shebang, or `.bash/.bats/.dash/.ksh` extension, in that order. *sh* refers to
+     POSIX `sh` (not the system's), and will warn of portability issues.
+ 
+-**-S**\ *SEVERITY*,\ **--severity=***severity*
++**-S** *SEVERITY*, **--severity=***severity*
+ 
+ :   Specify minimum severity of errors to consider. Valid values in order of
+     severity are *error*, *warning*, *info* and *style*.
+     The default is *style*.
+ 
+-**-V**,\ **--version**
++**-V**, **--version**
+ 
+ :   Print version information and exit.
+ 
+-**-W** *NUM*,\ **--wiki-link-count=NUM**
++**-W** *NUM*, **--wiki-link-count=NUM**
+ 
+ :   For TTY output, show *NUM* wiki links to more information about mentioned
+     warnings. Set to 0 to disable them entirely.
+ 
+-**-x**,\ **--external-sources**
++**-x**, **--external-sources**
+ 
+ :   Follow `source` statements even when the file is not specified as input.
+     By default, `shellcheck` will only follow files specified on the command

@@ -66,6 +66,51 @@ const Filesystem *ki_fs(const char *name)
 	return &ki_filesystems[0];
 }
 
+unsigned long long ki_need_bytes(void)
+{
+	return (unsigned long long)(cfg.with_appbox
+					    ? ki_sys.payload_kb
+					    : ki_sys.payload_kb - ki_sys.appbox_kb) *
+	       1024;
+}
+
+/* The layout do_partition writes: a 512 MiB ESP, the swap partition when one
+ * was asked for, and the rest. */
+unsigned long long ki_wipe_root_bytes(void)
+{
+	Disk *d = disk_by_path(cfg.disk);
+	unsigned long long total, used = 512ULL << 20;
+
+	if (!d)
+		return 0;
+	total = d->sectors * (unsigned long long)d->sector_size;
+	if (cfg.swap == SWAP_PART && cfg.swap_mb > 0)
+		used += (unsigned long long)cfg.swap_mb << 20;
+	return total > used ? total - used : 0;
+}
+
+/*
+ * HALF, WHEN HALF HOLDS THE INSTALL WITH ROOM TO RUN. The margin is the one
+ * the Disk page asks of a whole disk less the ESP it also counts: a root that
+ * the copy fills to the last block installs and then cannot take an update.
+ * A swap file lives on that same root, so its size counts as install: left
+ * out, a half that only just clears the margin loses the swap file to ENOSPC.
+ * The LUKS header and LVM's metadata come out of the partition first, and
+ * 32 MiB covers both.
+ */
+int ki_lvm_half(void)
+{
+	unsigned long long root = ki_wipe_root_bytes();
+	unsigned long long need = ki_need_bytes() + (256ULL << 20);
+
+	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0)
+		need += (unsigned long long)cfg.swap_mb << 20;
+	if (root < (32ULL << 20))
+		return 0;
+	root -= 32ULL << 20;
+	return root / 2 >= need;
+}
+
 void conf_defaults(void)
 {
 	memset(&cfg, 0, sizeof(cfg));
@@ -129,6 +174,8 @@ static void set_kv(const char *k, const char *v)
 		cfg.swap_mb = atol(v);
 	else if (!strcmp(k, "luks"))
 		cfg.luks = atoi(v);
+	else if (!strcmp(k, "lvm"))
+		cfg.lvm = atoi(v);
 	else if (!strcmp(k, "luks_passphrase"))
 		/* Accepted for an unattended install, exactly like `password=`,
 		 * and written back no more than that one is. A passphrase on the
@@ -233,6 +280,7 @@ int conf_save(const char *path)
 		 "swap           = %s\n"
 		 "swap_mb        = %ld\n"
 		 "luks           = %d\n"
+		 "lvm            = %d\n"
 		 "\n"
 		 "hostname       = %s\n"
 		 "username       = %s\n"
@@ -251,7 +299,7 @@ int conf_save(const char *path)
 		 cfg.part_esp, cfg.part_root, cfg.format_esp, cfg.fstype,
 		 cfg.swap == SWAP_FILE ? "file"
 				       : cfg.swap == SWAP_PART ? "partition" : "none",
-		 cfg.swap_mb, cfg.luks,
+		 cfg.swap_mb, cfg.luks, cfg.lvm,
 		 cfg.hostname, cfg.username, cfg.fullname, cfg.root_locked,
 		 cfg.theme, cfg.with_appbox, cfg.apps, svc,
 		 cfg.reboot_after);

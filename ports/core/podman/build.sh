@@ -38,34 +38,74 @@ make DESTDIR=$PKG \
 rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/tmpfiles.d" "$PKG/usr/share/user-tmpfiles.d"
 rm -f "$PKG/etc/profile.d/podman-docker.csh"
 
-mkdir -p $PKG/etc/containers
+# /etc/containers is containers-common's: buildah and skopeo read it too.
 
-cat > $PKG/etc/containers/containers.conf <<'EOF'
-[engine]
-cgroup_manager = "cgroupfs"
-events_logger = "file"
-runtime = "crun"
+# THE API SOCKET STARTS WHEN A CLIENT ASKS FOR IT AND STOPS WHEN NONE IS LEFT.
+# lazydocker speaks the Docker API and podman-tui the Podman one, and both
+# reach this user's engine only through `podman system service`. There is no
+# socket activation without systemd, so each menu entry runs its tool behind
+# this script: it starts the service if nothing answers on the socket, points
+# DOCKER_HOST at it, and gives podman-tui a default connection to it through
+# CONTAINERS_CONF_OVERRIDE, which a default the user set with `podman system
+# connection` still outranks. The service runs with an idle timeout and exits
+# by itself once every client has been gone that long, so a closed window
+# leaves no daemon behind.
+#
+# The lock descriptor is closed for the service: it inherits every open one,
+# and a service holding the lock would block every later launch until it
+# exited.
+install -d "$PKG/usr/bin"
+cat > "$PKG/usr/bin/kdos-podman-api" <<'KDOS_SH'
+#!/bin/sh
+# kdos-podman-api COMMAND [ARG...] — run COMMAND against this user's Podman
+# API socket, starting `podman system service` first if nothing answers on it.
+[ $# -gt 0 ] || {
+	echo "usage: kdos-podman-api COMMAND [ARG...]" >&2
+	exit 2
+}
+if [ "$(id -u)" = 0 ]; then
+	_dir=/run/podman
+else
+	_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman"
+fi
+_sock="$_dir/podman.sock"
+_idle=300
 
-[network]
-network_backend = "netavark"
-firewall_driver = "nftables"
-default_rootless_network_cmd = "pasta"
-EOF
+_answers() {
+	podman --url "unix://$_sock" version >/dev/null 2>&1
+}
 
-cat > $PKG/etc/containers/storage.conf <<'EOF'
-[storage]
-driver = "overlay"
-runroot = "/run/containers/storage"
-graphroot = "/var/lib/containers/storage"
+if ! _answers; then
+	mkdir -p "$_dir" || exit 1
+	(
+		flock 9
+		if ! _answers; then
+			rm -f "$_sock"
+			env -u CONTAINER_HOST -u CONTAINER_CONNECTION \
+				setsid podman system service --time="$_idle" \
+				"unix://$_sock" </dev/null >/dev/null 2>&1 9>&- &
+			_i=0
+			while [ "$_i" -lt 100 ] && ! _answers; do
+				sleep 0.1
+				_i=$((_i + 1))
+			done
+		fi
+	) 9>"$_dir/.kdos-api.lock"
+	_answers || {
+		echo "kdos-podman-api: nothing answers on $_sock" >&2
+		exit 1
+	}
+fi
 
-[storage.options.overlay]
-mount_program = "/usr/bin/fuse-overlayfs"
-EOF
-
-cat > $PKG/etc/containers/registries.conf <<'EOF'
-unqualified-search-registries = ["docker.io"]
-EOF
-
-chmod 0644 $PKG/etc/containers/containers.conf \
-	$PKG/etc/containers/storage.conf \
-	$PKG/etc/containers/registries.conf
+DOCKER_HOST="unix://$_sock"
+export DOCKER_HOST
+if [ -z "${CONTAINERS_CONF_OVERRIDE:-}" ]; then
+	printf '[engine]\nactive_service = "kdos-local"\n\n[engine.service_destinations.kdos-local]\nuri = "unix://%s"\n' \
+		"$_sock" > "$_dir/kdos-api.conf.$$"
+	mv -f "$_dir/kdos-api.conf.$$" "$_dir/kdos-api.conf"
+	CONTAINERS_CONF_OVERRIDE="$_dir/kdos-api.conf"
+	export CONTAINERS_CONF_OVERRIDE
+fi
+exec "$@"
+KDOS_SH
+chmod 755 "$PKG/usr/bin/kdos-podman-api"

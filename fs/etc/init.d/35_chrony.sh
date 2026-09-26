@@ -20,7 +20,9 @@ case "$1" in
         # writes it back every 11 minutes — and chrony.conf's `rtcsync` tells
         # chronyd to leave the RTC to the kernel rather than fight it.
         #
-        # -d = foreground (chronyd's own flag; it is not a debug switch).
+        # -d = foreground (chronyd's own flag; it is not a debug switch). It
+        # also sends chronyd's messages to stderr instead of syslog, and
+        # ksvc forwards that stderr to syslog under the service's name.
         supervise "$NAME" "$DAEMON" -d
         ;;
     stop)

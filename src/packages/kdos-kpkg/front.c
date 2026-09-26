@@ -233,8 +233,8 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 
 		/* Unlike -f, --overwrite applies to every package in the order:
 		 * it is a property of the RUN, not of what was named. A phase
-		 * that rebuilds the userland has toybox and util-linux both
-		 * claiming /usr/bin/mount, and whichever comes last wins. */
+		 * that rebuilds the userland has toybox and GNU sed both
+		 * claiming /usr/bin/sed, and whichever comes last wins. */
 		if (install_pkgfile(c, found, forced, overwrite) != 0) {
 			kp_err("Failed to install %s", pkg);
 			free(found);

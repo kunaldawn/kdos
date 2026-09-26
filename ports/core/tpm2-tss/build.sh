@@ -26,8 +26,9 @@
 # EVERY TCTI CONFIGURE WOULD DETECT IS NAMED, because each one left to it is
 # built or dropped by whatever happens to be installed; the rest are built
 # unconditionally. ltt2go (a TPM on a USB stick) needs
-# libusb and the two ftdi TCTIs (a discrete TPM behind an FTDI bridge) need
-# libftdi; libtpms is not a port, so its in-process simulator TCTI is off.
+# libusb, the two ftdi TCTIs (a discrete TPM behind an FTDI bridge) need
+# libftdi, and the libtpms TCTI (a simulated TPM inside the calling process,
+# for testing TPM software with no chip) needs libtpms.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--localstatedir=/var \
 	--disable-static \
@@ -38,7 +39,7 @@
 	--enable-tcti-spi-ltt2go \
 	--enable-tcti-spi-ftdi \
 	--enable-tcti-i2c-ftdi \
-	--disable-tcti-libtpms \
+	--enable-tcti-libtpms \
 	--with-udevrulesdir=/usr/lib/udev/rules.d \
 	--with-runstatedir=/run \
 	--with-sysusersdir=no \

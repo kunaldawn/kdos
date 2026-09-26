@@ -13,22 +13,25 @@
 # which is why the wanted ones are named rather than left to be discovered.
 #
 # WHAT IS ON: pgp, because a message store on a shared stick that anybody can
-# read is not a private conversation; python and C plugins, which is the whole
-# extension mechanism; gdk-pixbuf, which scales an avatar before it is
-# uploaded; and the themes, which is what makes it a KDOS surface rather than
-# the default grey.
+# read is not a private conversation; omemo, through libomemo-c, which is the
+# end-to-end encryption dino and every current XMPP client speak, with the QR
+# code that verifies a fingerprint from a phone; python and C plugins, which
+# is the whole extension mechanism; gdk-pixbuf, which scales an avatar before
+# it is uploaded; notifications, through libnotify to kdos-notifyd, so an
+# incoming message raises a toast as `/notify` configures; spellcheck, through
+# enchant and its Aspell provider; and the themes, which is what makes it a
+# KDOS surface rather than the default grey.
 #
-# WHAT IS OFF, and each for a reason rather than by omission: notifications
-# needs libnotify, which is not a port; icons-and-clipboard is GTK, which the
-# host does not have by rule; xscreensaver is X11; omemo needs libsignal or
-# libomemo-c, neither of which is a port; otr needs libotr, which is not a
-# port; and spellcheck needs enchant, which is not a port either.
+# WHAT IS OFF, and each for a reason rather than by omission:
+# icons-and-clipboard is GTK, which the host does not have by rule;
+# xscreensaver is X11; and otr needs libotr, which is not a port.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dpgp=enabled -Dpython-plugins=enabled -Dc-plugins=enabled \
 	-Dgdk-pixbuf=enabled \
-	-Dnotifications=disabled -Dicons-and-clipboard=disabled \
-	-Dxscreensaver=disabled -Domemo=disabled \
-	-Dspellcheck=disabled -Dotr=disabled -Dtests=false
+	-Dnotifications=enabled -Dicons-and-clipboard=disabled \
+	-Dxscreensaver=disabled \
+	-Domemo=enabled -Domemo-backend=libomemo-c -Domemo-qrcode=enabled \
+	-Dspellcheck=enabled -Dotr=disabled -Dtests=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 

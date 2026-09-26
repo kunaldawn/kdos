@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hackrf
+version     = 2026.01.3
+release     = 1
+source      = https://github.com/greatscottgadgets/hackrf/releases/download/v$version/$name-$version.tar.xz
+sha256      = d2b76a1115d9b4df648c29efb2f3c8e80009b7cf9a8adf37abbfdba72101b086  hackrf-2026.01.3.tar.xz
+description = libhackrf and the hackrf_* tools for the HackRF One, Jawbreaker and rad1o transceivers
+homepage    = https://greatscottgadgets.com/hackrf/
+depends     = cmake pkgconf libusb fftw

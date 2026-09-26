@@ -24,7 +24,7 @@
 #     colour count; a screenshot of a real application is in the thousands and
 #     an empty surface is in single figures.
 #
-#   - THE CONTACT SHEET. 183 windows is not something anybody reviews one file
+#   - THE CONTACT SHEET. 180 windows is not something anybody reviews one file
 #     at a time.
 #
 # A PERCENTAGE WITHOUT ITS SKIPS IS A NUMBER DESIGNED TO LOOK GOOD, so the

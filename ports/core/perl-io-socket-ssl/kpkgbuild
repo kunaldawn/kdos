@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-io-socket-ssl
+version     = 2.099
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/S/SU/SULLR/IO-Socket-SSL-$version.tar.gz
+sha256      = a0be800ff4852b1567ee5500e772417ad7a360abff80c01b5b875c15d44be832  perl-io-socket-ssl-2.099.tar.gz
+description = TLS sockets for perl, over Net::SSLeay
+homepage    = https://metacpan.org/dist/IO-Socket-SSL
+depends     = perl perl-net-ssleay perl-uri

@@ -16,8 +16,7 @@
  * and the lookup for one of them is 450 stat() calls at worst spread over
  * several theme directories, on a machine whose whole aesthetic argument is
  * that the panel redraws in a millisecond. It also makes the artwork ONE
- * LFS object instead of 450, which is the difference between a clone and an
- * afternoon.
+ * blob in git instead of 450, and one entry to replace when a size changes.
  *
  * NOTHING IS TRUSTED. The header, every directory entry and every blob extent
  * are checked against the mapped length before anything is dereferenced —

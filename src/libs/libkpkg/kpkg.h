@@ -161,10 +161,37 @@ int kp_installed_current(const KpConf *c, const char *name);
 int kp_installed_recipe_hash(const KpConf *c, const char *name, char out[65]);
 int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash);
 
+/* The merged-/usr aliases of the install root: each top-level name (`bin`,
+ * `sbin`, `lib`, `lib64`, `lib32`) that is a symlink to `usr/<same>` there.
+ *
+ * ONE FILE HAS TWO SPELLINGS through such a link. A package built with
+ * `--exec-prefix=` records `./bin/free`, toybox records `./usr/bin/free`, and
+ * both name /usr/bin/free. Every ownership question — the conflict scan, the
+ * overwrite that moves a path between manifests, the orphan sweep of an
+ * upgrade, a removal — compares the CANONICAL spelling, or a shared file is
+ * invisible to the scan, claimed twice, and deleted by whichever of the two
+ * packages is upgraded or removed next.
+ *
+ * Read from the root rather than assumed, because a root whose `bin` is a
+ * real directory holds two different files under those two names. */
+typedef struct {
+	int n;
+	char from[5][8];
+	char to[5][16];
+} KpCanon;
+
+void kp_canon_load(const KpConf *c, KpCanon *k);
+/* `rel` with a leading alias replaced (`bin/free` -> `usr/bin/free`), newly
+ * allocated. A `./` prefix is kept when present, so a stored manifest line
+ * and a staged path each come back in their own spelling. */
+char *kp_canon_path(const KpCanon *k, const char *rel);
+
 /* Every path claimed by an installed package, sorted, for the conflict scan.
  * `owner[i]` is the package that claims `path[i]`, which is what an overwrite
  * needs: the path has to leave the old owner's manifest, or the file ends up
  * claimed twice and removing either package deletes the other's file.
+ * `path[i]` is the CANONICAL spelling (see KpCanon); two packages that claim
+ * one file under its two spellings appear as two entries under one key.
  *
  * `owner[i]` is a BORROWED pointer into `ownerv`, one copy per package rather
  * than one per path; it is valid until kp_owned_free and must not be freed or
@@ -175,19 +202,27 @@ typedef struct {
 	int n;
 	char **ownerv;
 	int nowner;
+	KpCanon canon;
 } KpOwned;
 
 KpOwned *kp_owned_load(const KpConf *c);
 /* The package claiming `rel` (`usr/bin/tar`; the database spells it
- * `./usr/bin/tar`), or NULL. A path no package claims is NOT a conflict: the
- * bootstrap phases install tar, musl, binutils and gcc by hand, so those files
- * exist with no database entry, and the self-hosting phase that rebuilds them
- * with kpkg cannot run if an unowned file counts as one. */
+ * `./usr/bin/tar`), under either spelling of a merged-/usr path, or NULL. A
+ * path no package claims is NOT a conflict: the bootstrap phases install tar,
+ * musl, binutils and gcc by hand, so those files exist with no database entry,
+ * and the self-hosting phase that rebuilds them with kpkg cannot run if an
+ * unowned file counts as one. */
 const char *kp_owned_owner(const KpOwned *o, const char *rel);
+/* A package OTHER than `self` claiming `rel`, or NULL. An upgrade's orphan
+ * sweep and a removal ask this before deleting a file: a path the old version
+ * listed that another package also claims is that package's file now. */
+const char *kp_owned_other(const KpOwned *o, const char *rel,
+			   const char *self);
 void kp_owned_free(KpOwned *o);
 
-/* Remove `paths` (relative, no `./`) from `pkg`'s manifest. The version line
- * and every other path are left as they were. Returns the number dropped. */
+/* Remove `paths` (relative, no `./`) from `pkg`'s manifest, matching either
+ * spelling of a merged-/usr path. The version line and every other path are
+ * left as they were. Returns the number dropped. */
 int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 		     int n);
 /* Version and release from line 1. Returns 0 when the package is installed. */

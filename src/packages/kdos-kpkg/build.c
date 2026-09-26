@@ -463,6 +463,24 @@ static void strip_info_dir(const char *pkg)
 	free(dir);
 }
 
+/* The same for each font directory's fonts.dir: X.Org's font packages write
+ * one at install time listing only their own faces, and two of them share
+ * `misc/`. kpkgadd writes it from the directory (triggers.c). */
+static void strip_font_dirs(const char *pkg)
+{
+	char *top = kb_path_join(pkg, "usr/share/fonts");
+	char **dirs = kb_listdir(top, NULL);
+	for (char **d = dirs; d && *d; d++) {
+		char *sub = kb_path_join(top, *d);
+		char *idx = kb_path_join(sub, "fonts.dir");
+		unlink(idx);
+		free(idx);
+		free(sub);
+	}
+	kb_strv_free(dirs);
+	free(top);
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 int build_main(int argc, char **argv)
@@ -568,6 +586,7 @@ int build_main(int argc, char **argv)
 	write_postinstall(decl, portdir, pkg);
 	strip_la(pkg);
 	strip_info_dir(pkg);
+	strip_font_dirs(pkg);
 
 	kb_mkdir_p(c.package_dir);
 	char pkgname[512];

@@ -21,7 +21,10 @@
  *  - The conflict scan and the install walk come off ONE list. Two walks
  *    gathered separately disagree about any path containing a space.
  *  - An upgrade removes orphans: a file present in the old version and absent
- *    from the new otherwise stays on disk forever, owned by nothing.
+ *    from the new otherwise stays on disk forever, owned by nothing. "Absent"
+ *    is judged on the canonical spelling, and a path another package claims
+ *    is never an orphan: `./bin/x` in the old version and `./usr/bin/x` in
+ *    the new are one file, and deleting it deletes what was just installed.
  *  - `./.POSTINSTALL` is kept out of the manifest. It is deliberately never
  *    installed, so an entry for it has a removal try `rm -f /./.POSTINSTALL`.
  *  - Nothing cosmetic may abort the install. A path canonicalisation done only
@@ -165,8 +168,13 @@ static void take_note(Ctx *x, const char *rel, const char *from)
 		x->taken_cap = x->taken_cap ? x->taken_cap * 2 : 64;
 		char **p = kb_calloc((size_t)x->taken_cap, sizeof(*p));
 		char **f = kb_calloc((size_t)x->taken_cap, sizeof(*f));
-		memcpy(p, x->taken, (size_t)x->ntaken * sizeof(*p));
-		memcpy(f, x->taken_from, (size_t)x->ntaken * sizeof(*f));
+		/* The first growth has no old arrays: memcpy from NULL is
+		 * undefined even for zero bytes. */
+		if (x->ntaken) {
+			memcpy(p, x->taken, (size_t)x->ntaken * sizeof(*p));
+			memcpy(f, x->taken_from,
+			       (size_t)x->ntaken * sizeof(*f));
+		}
 		free(x->taken);
 		free(x->taken_from);
 		x->taken = p;
@@ -482,9 +490,22 @@ int add_main(int argc, char **argv)
 		char *old = kb_read_all(dbfile, &on);
 		size_t nn = 0;
 		char *nw = manifest(pkgfile, &nn);
-		if (old)
-			kp_triggers_note(&trig, old);
 		if (old && nw) {
+			/* Both sides canonical, each line fenced by newlines so
+			 * that a path matches only as a whole line. */
+			KpOwned *owned = kp_owned_load(&c);
+			KbBuf keep = {0};
+			kb_buf_str(&keep, "\n");
+			for (char *l = nw, *e; l && *l; l = e ? e + 1 : NULL) {
+				e = strchr(l, '\n');
+				if (e)
+					*e = 0;
+				char *k = kp_canon_path(&owned->canon, l);
+				kb_buf_printf(&keep, "%s\n", k);
+				free(k);
+				if (e)
+					*e = '\n';
+			}
 			char *body = strchr(old, '\n');
 			int lines = 0, pcap = 8192;
 			/* Grown, not capped: zig's manifest is 20831 paths and
@@ -512,19 +533,36 @@ int add_main(int argc, char **argv)
 				l = nl ? nl + 1 : NULL;
 			}
 			for (int i = lines - 1; i >= 0; i--) {
-				char pat[1100];
-				snprintf(pat, sizeof(pat), "%s\n", paths[i]);
-				if (strstr(nw, pat))
+				char *k = kp_canon_path(&owned->canon, paths[i]);
+				KbBuf pat = {0};
+				kb_buf_printf(&pat, "\n%s\n", k);
+				int kept = strstr(keep.p, pat.p) != NULL;
+				kb_buf_free(&pat);
+				free(k);
+				if (kept)
 					continue;
 				char *victim = kb_path_join(root, paths[i]);
 				size_t vl = strlen(paths[i]);
-				if (vl && paths[i][vl - 1] == '/')
-					rmdir(victim);
-				else if (unlink(victim) == 0)
+				const char *rel = paths[i];
+				if (!strncmp(rel, "./", 2))
+					rel += 2;
+				const char *other = NULL;
+				if (vl && paths[i][vl - 1] == '/') {
+					if (rmdir(victim) == 0)
+						kp_triggers_gone(&trig, paths[i]);
+				} else if ((other = kp_owned_other(owned, rel,
+								   name))) {
+					kp_msg("Keeping %s: %s claims it",
+					       paths[i], other);
+				} else if (unlink(victim) == 0) {
 					kp_msg("Removing orphan %s", paths[i]);
+					kp_triggers_gone(&trig, paths[i]);
+				}
 				free(victim);
 			}
 			free(paths);
+			kb_buf_free(&keep);
+			kp_owned_free(owned);
 		}
 		free(old);
 		free(nw);

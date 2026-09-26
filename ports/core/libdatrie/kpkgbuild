@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libdatrie
+version     = 0.2.14
+release     = 1
+source      = https://github.com/tlwg/$name/releases/download/v$version/$name-$version.tar.xz
+sha256      = f04095010518635b51c2313efa4f290b7db828d6273e39b2b8858f859dfe81d5  libdatrie-0.2.14.tar.xz
+description = Double-array trie — the dictionary structure libthai looks words up in
+homepage    = https://linux.thai.net/projects/datrie
+depends     = pkgconf

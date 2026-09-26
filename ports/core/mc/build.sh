@@ -11,6 +11,10 @@
 
 # The chattr dialog (ext2fs attributes) has no switch: configure turns it on
 # whenever ext2fs.pc and e2p.pc are found, which is why e2fsprogs is in depends.
+#
+# Aspell is the editor's spell check. Configure needs aspell.h; the editor
+# then loads libaspell through GModule when a spell command first runs, and
+# aspell-en is the dictionary it finds.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -20,7 +24,7 @@
 	--enable-vfs-sftp=yes \
 	--disable-doxygen-doc \
 	--enable-nls \
-	--disable-aspell \
+	--enable-aspell \
 	--without-gpm-mouse \
 	--disable-tests
 make

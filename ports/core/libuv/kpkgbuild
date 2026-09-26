@@ -14,3 +14,4 @@ release     = 1
 source      = https://dist.libuv.org/dist/v$version/libuv-v$version.tar.gz
 sha256      = 66d511b9e6e334c0e62279eb234fbfb2b3110b1479c09b95b44c7afca8cff9e7  libuv-1.52.1.tar.gz
 description = Multi-platform support library with a focus on asynchronous I/O
+depends     = autoconf automake libtool

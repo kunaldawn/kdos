@@ -1,0 +1,35 @@
+Build the ffmpeg input against ffmpeg 8 and later.
+
+avcodec_close() is gone from ffmpeg 8's libavcodec, and cmus 2.12.0 calls it
+unconditionally before avcodec_free_context(), which has closed the context
+itself since libavcodec 57.48.101. The call now happens only on a libavcodec
+older than that, where avcodec_free_context() does not exist. Upstream's
+master carries the same change (3810797e4a), so a release after 2.12.0 no
+longer needs this patch.
+
+--- a/ip/ffmpeg.c
++++ b/ip/ffmpeg.c
+@@ -226,9 +226,10 @@
+ 	priv->codec = codec;
+ 	priv->input = ffmpeg_input_create();
+ 	if (priv->input == NULL) {
+-		avcodec_close(cc);
+ #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 48, 101)
+ 		avcodec_free_context(&cc);
++#else
++		avcodec_close(cc);
+ #endif
+ 		avformat_close_input(&ic);
+ 		free(priv);
+@@ -289,9 +290,10 @@
+ {
+ 	struct ffmpeg_private *priv = ip_data->private;
+ 
+-	avcodec_close(priv->codec_context);
+ #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 48, 101)
+ 	avcodec_free_context(&priv->codec_context);
++#else
++	avcodec_close(priv->codec_context);
+ #endif
+ 	avformat_close_input(&priv->input_context);
+ 	swr_free(&priv->swr);

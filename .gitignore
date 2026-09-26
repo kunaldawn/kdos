@@ -13,8 +13,9 @@
 /build/
 /build_test/
 
-# Host-built recipe reader (ports/fetch compiles it to read kpkgbuild files,
-# which are no longer shell and cannot be sourced). Its basename must be
+# Host-built recipe reader (src_kpkg_ensure in ports/srclib.sh compiles it
+# for ports/fetch and ports/publish to read kpkgbuild files, which are not
+# shell and cannot be sourced). Its basename must be
 # literally "kpkg" for kdos-kpkg's own basename dispatch to resolve it, hence
 # the dedicated directory rather than a bare ports/.kpkg-meta file.
 ports/.kpkg-meta
@@ -27,6 +28,25 @@ ports/.portup
 ports/.portup-tools/
 # Per-port check results, 24h TTL, written by kdos-portup on every run.
 ports/.update-cache.json
+
+# Upstream sources are not in git. `make fetch` puts each one in the local
+# cache (ports/.srccache/sha256-XX/<hash>, laid out like the kunaldawn/kdos
+# archive) and hard-links it into its port directory; `ports/publish` is what
+# puts a new one in the archive. Anchored to ports/core so the archive fixtures
+# under testing/fixtures stay tracked — ignoring those makes every test that
+# replays them silently absent on a fresh clone. A pattern never untracks a
+# file git already carries, so a patch or config file a recipe hashes is
+# unaffected, and testing/preflight.sh fails on a tracked archive a recipe
+# hashes.
+ports/.srccache/
+/ports/core/*/*.tar
+/ports/core/*/*.tar.*
+/ports/core/*/*.tgz
+/ports/core/*/*.tbz2
+/ports/core/*/*.txz
+/ports/core/*/*.zip
+/ports/core/*/*.7z
+/ports/core/*/*.part
 __pycache__/
 ports-archived/
 port-archive.sh

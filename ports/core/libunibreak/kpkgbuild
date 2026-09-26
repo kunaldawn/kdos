@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libunibreak
+version     = 8.0
+release     = 1
+_tag        = libunibreak_${version//./_}
+source      = https://github.com/adah1972/libunibreak/releases/download/$_tag/$name-$version.tar.gz
+sha256      = 9c4fad6e517338a098373acc9f35579ae2c325e6446666fb9ac2666ba15ceba4  libunibreak-8.0.tar.gz
+description = Unicode line, word and grapheme breaking — where libass may wrap a subtitle
+homepage    = https://github.com/adah1972/libunibreak
+depends     = pkgconf

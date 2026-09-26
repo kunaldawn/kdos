@@ -36,6 +36,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <sys/sysmacros.h>
 #include <sys/wait.h>
 
 #include "kinstall.h"
@@ -65,7 +67,7 @@ static const struct {
 } steps[S_COUNT] = {
 	{ "Prepare",     "unmount the target, stop swap" },
 	{ "Partition",   "write the GPT layout" },
-	{ "Format",      "encrypt if asked, then create the filesystems" },
+	{ "Format",      "encrypt and make the volume group if asked, then the filesystems" },
 	{ "Mount",       "attach the target at /mnt" },
 	{ "Copy system", "the live tree, verbatim" },
 	{ "Packs",       "the applications chosen from the medium" },
@@ -306,7 +308,7 @@ void install_abort(void)
  * ════════════════════════════════════════════════════════════════════════ */
 
 static int wfd = -1;
-static char part_esp[96], part_root[96], part_swap[96];
+static char part_esp[96], part_root[192], part_swap[96];
 
 /* Append into a fixed buffer without the strncat sizing dance. Truncates
  * rather than overflowing; every caller here is building a file we then
@@ -614,6 +616,118 @@ static void unmount_disk(const char *disk)
 	}
 }
 
+/*
+ * EVERY MOUNT OF ONE DEVICE, by its device number. A logical volume is
+ * mounted under /dev/mapper/<vg>-<lv> and chosen as /dev/<vg>/<lv>, so no
+ * comparison of names finds it; the number is the one thing both share.
+ */
+static void unmount_rdev(dev_t want)
+{
+	char buf[16384];
+	if (slurp("/proc/mounts", buf, sizeof(buf)) < 0)
+		return;
+	char *save = NULL;
+	for (char *l = strtok_r(buf, "\n", &save); l;
+	     l = strtok_r(NULL, "\n", &save)) {
+		char dev[192], mnt[192];
+		struct stat st;
+		if (sscanf(l, "%191s %191s", dev, mnt) != 2 ||
+		    stat(dev, &st) != 0 || !S_ISBLK(st.st_mode) ||
+		    st.st_rdev != want)
+			continue;
+		char *a[] = { "umount", "-l", mnt, NULL };
+		logf_("unmounting %s (%s)", mnt, dev);
+		try_(a);
+	}
+}
+
+static void unmount_dev(const char *path)
+{
+	struct stat st;
+	if (stat(path, &st) == 0 && S_ISBLK(st.st_mode))
+		unmount_rdev(st.st_rdev);
+}
+
+/*
+ * TAKE DOWN EVERYTHING STACKED ON ONE BLOCK DEVICE, top first. The prober
+ * activates every volume group, so a disk that carried LVM — a previous
+ * install on it is the usual case — arrives at the erase plan with its
+ * volumes live, and the kernel will not re-read a partition table under a
+ * partition something holds: sfdisk's new table would be written and not
+ * seen. A volume's whole group is deactivated, because it is losing a
+ * physical volume; a container is closed; any other dm device is removed.
+ * An array is named and left, and the partitioning that follows says why.
+ */
+static void release_holders(const char *name, int depth)
+{
+	char path[256];
+	char **ents;
+
+	if (depth > 8)
+		return;
+	snprintf(path, sizeof(path), "/sys/class/block/%.64s/holders", name);
+	ents = kb_listdir(path, NULL);
+	for (char **e = ents; e && *e; e++) {
+		char uuid[160] = "", dmname[160] = "", vg[128], lv[128];
+		char dev[96], sys[256];
+		unsigned ma, mi;
+
+		release_holders(*e, depth + 1);
+		if (strncmp(*e, "dm-", 3)) {
+			logf_("%s is held by %s — stop it before erasing this "
+			      "disk", name, *e);
+			continue;
+		}
+		/* By the number sysfs gives, not by a stat of /dev/dm-N: the
+		 * node is devtmpfs's, and a /dev without it still has the
+		 * mount to find. */
+		snprintf(sys, sizeof(sys), "/sys/block/%.64s/dev", *e);
+		if (kb_read_line_file(sys, dev, sizeof(dev)) >= 0 &&
+		    sscanf(dev, "%u:%u", &ma, &mi) == 2)
+			unmount_rdev(makedev(ma, mi));
+		snprintf(sys, sizeof(sys), "/sys/block/%.64s/dm/uuid", *e);
+		kb_read_line_file(sys, uuid, sizeof(uuid));
+		snprintf(sys, sizeof(sys), "/sys/block/%.64s/dm/name", *e);
+		kb_read_line_file(sys, dmname, sizeof(dmname));
+		if (!dmname[0])
+			continue;
+		if (!strncmp(uuid, "LVM-", 4) &&
+		    ki_dm_split(dmname, vg, sizeof(vg), lv, sizeof(lv)) == 0) {
+			char *a[] = { "lvm", "vgchange", "-an", vg, NULL };
+			try_(a);
+		} else if (!strncmp(uuid, "CRYPT-", 6)) {
+			char *a[] = { "cryptsetup", "close", dmname, NULL };
+			try_(a);
+		} else {
+			char *a[] = { "dmsetup", "remove", dmname, NULL };
+			try_(a);
+		}
+	}
+	kb_strv_free(ents);
+}
+
+/* The disk itself, then each of its partitions. */
+static void release_disk(const char *disk)
+{
+	char real[PATH_MAX], dir[300];
+	const char *base;
+	char **ents;
+
+	base = kb_basename(realpath(disk, real) ? real : disk);
+	release_holders(base, 0);
+	snprintf(dir, sizeof(dir), "/sys/block/%.64s", base);
+	ents = kb_listdir(dir, NULL);
+	for (char **e = ents; e && *e; e++) {
+		char chk[400];
+		if (strncmp(*e, base, strlen(base)))
+			continue;
+		snprintf(chk, sizeof(chk), "%s/%.64s/partition", dir, *e);
+		if (kb_path_exists(chk))
+			release_holders(*e, 0);
+	}
+	kb_strv_free(ents);
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static double rsync_total_pct;
@@ -667,16 +781,59 @@ static const char *hash_password(const char *plain)
 	return h;
 }
 
+/* Rename the owner field of a subordinate-ID file (`/etc/subuid`,
+ * `/etc/subgid`). newuidmap and containers/storage look the range up by the
+ * user's NAME, so a range left keyed on the live account's name gives the
+ * renamed one no mapping and every rootless container — every box — exits
+ * before it starts. */
+static void rewrite_subid(const char *file, const char *oldu, const char *newu)
+{
+	char buf[16384], out[16384], path[256];
+	size_t ol = strlen(oldu);
+
+	snprintf(path, sizeof(path), "%s%s", TARGET, file);
+	if (slurp(path, buf, sizeof(buf)) <= 0)
+		return;
+	out[0] = 0;
+	char *save = NULL;
+	for (char *l = strtok_r(buf, "\n", &save); l;
+	     l = strtok_r(NULL, "\n", &save)) {
+		if (!strncmp(l, oldu, ol) && l[ol] == ':') {
+			cat(out, sizeof(out), newu);
+			cat(out, sizeof(out), l + ol);
+		} else {
+			cat(out, sizeof(out), l);
+		}
+		cat(out, sizeof(out), "\n");
+	}
+	if (!cfg.dry_run && kb_write_file(path, out) < 0)
+		fail("cannot write %s", path);
+	logf_("updated %s", path);
+}
+
 /* Rewrite one colon-separated database in place, field by field. Renaming
- * the live user touches passwd, shadow and group (as a member AND as the
- * primary group name) — miss any one of them and the installed system logs
- * nobody in. login.conf's `autologin` names the same account and is NOT
- * touched here: do_config is its single writer, runs before this step and
- * already writes cfg.username, so a second editor could only disagree with
- * it about whether the key is commented out. */
+ * the live user touches passwd, shadow, group (as a member AND as the
+ * primary group name) and the subordinate-ID ranges — miss any one of them
+ * and the installed system logs nobody in or starts no box. login.conf's
+ * `autologin` names the same account and is NOT touched here: do_config is
+ * its single writer, runs before this step and already writes cfg.username,
+ * so a second editor could only disagree with it about whether the key is
+ * commented out.
+ *
+ * `admin` is the whole of the Administrator choice. The sudo port's
+ * `%wheel ALL=(ALL) ALL`, the polkit admin rules and every root daemon's
+ * configuration verbs grant on membership of `wheel`, and the live image ships
+ * the account in it — so a non-administrator is taken OUT of `wheel` here, or
+ * unticking the box would leave full root through sudo.
+ *
+ * ONLY `wheel` IS FILTERED. Every other membership is kept and renamed, and
+ * `seat` is the one that matters: seatd hands the display to it, and
+ * kdos-powerd's suspend, power-off and reboot, kdos-mountd and kdos-oomd admit
+ * it as well as `wheel`. Dropping the account from `seat` would leave a
+ * non-administrator with no desktop at all. */
 static void rewrite_accounts(const char *oldu, const char *newu,
 			     const char *fullname, const char *userhash,
-			     const char *roothash)
+			     const char *roothash, int admin)
 {
 	char buf[65536], out[65536];
 	char path[256];
@@ -729,6 +886,9 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 			char *ms = NULL;
 			for (char *m = strtok_r(mem, ",", &ms); m;
 			     m = strtok_r(NULL, ",", &ms)) {
+				if (!admin && !strcmp(name, "wheel") &&
+				    (!strcmp(m, oldu) || !strcmp(m, newu)))
+					continue;
 				if (newmem[0])
 					cat(newmem, sizeof(newmem), ",");
 				cat(newmem, sizeof(newmem),
@@ -777,6 +937,11 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 			chmod(path, 0600);
 		logf_("updated %s", path);
 	}
+
+	if (strcmp(oldu, newu)) {
+		rewrite_subid("/etc/subuid", oldu, newu);
+		rewrite_subid("/etc/subgid", oldu, newu);
+	}
 }
 
 /* ══════════════════════════════════════════════════════════════════════ */
@@ -795,6 +960,8 @@ static void do_prepare(void)
 	if (cfg.luks && !kb_have_prog("cryptsetup"))
 		fail("cryptsetup is not installed — cannot create an encrypted "
 		     "root");
+	if (cfg.plan == PLAN_WIPE && cfg.lvm && !kb_have_prog("lvm"))
+		fail("lvm is not installed — cannot put the root on LVM");
 	for (const char **p = (const char *[]){ "mount", "umount",
 						"mkfs.vfat", "rsync", NULL };
 	     *p; p++)
@@ -809,6 +976,11 @@ static void do_prepare(void)
 	char *um[] = { "umount", "-R", TARGET, NULL };
 	try_(um);
 	unmount_disk(cfg.disk);
+	if (cfg.plan == PLAN_WIPE)
+		release_disk(cfg.disk);
+	else if (cfg.part_root[0])
+		/* A logical volume is not under the disk's name. */
+		unmount_dev(cfg.part_root);
 	mkpath(TARGET);
 	emit('P', "1");
 }
@@ -822,12 +994,16 @@ static void do_partition(void)
 	char *wipe[] = { "wipefs", "-a", cfg.disk, NULL };
 	must(wipe);
 
+	/* `V` is sfdisk's name for the Linux LVM type, which is what a
+	 * physical volume's partition is marked as. */
+	char rtype = cfg.lvm ? 'V' : 'L';
 	if (cfg.swap == SWAP_PART && cfg.swap_mb > 0)
 		snprintf(layout, sizeof(layout),
-			 "label: gpt\n,%ldM,U\n,%ldM,S\n,,L\n", esp_mb, cfg.swap_mb);
+			 "label: gpt\n,%ldM,U\n,%ldM,S\n,,%c\n", esp_mb,
+			 cfg.swap_mb, rtype);
 	else
 		snprintf(layout, sizeof(layout),
-			 "label: gpt\n,%ldM,U\n,,L\n", esp_mb);
+			 "label: gpt\n,%ldM,U\n,,%c\n", esp_mb, rtype);
 
 	logf_("sfdisk layout:");
 	for (char *p = layout, *nl; (nl = strchr(p, '\n')); p = nl + 1) {
@@ -867,7 +1043,11 @@ static void do_partition(void)
 
 /* The raw partition holding the LUKS header, once part_root has been redirected
  * at the mapper device. Empty when the install is not encrypted. */
-static char luks_part[64];
+static char luks_part[192];
+
+/* The physical volume of an erase plan on LVM: the root partition, or the
+ * container opened on it. Empty when the root is not on LVM. */
+static char pv_dev[192];
 
 static void resolve_parts(void)
 {
@@ -896,13 +1076,70 @@ static void resolve_parts(void)
 		snprintf(part_root, sizeof(part_root), "/dev/mapper/%s",
 			 LUKS_NAME);
 	}
+	/*
+	 * AND WITH LVM, what was the root becomes the physical volume and the
+	 * root moves once more, to the volume. Under LUKS the group is inside
+	 * the container, which is the order that asks for one passphrase for
+	 * both slots; the initramfs activates on each side of the unlock, so
+	 * it finds the group either way.
+	 */
+	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
+		kb_strlcpy(pv_dev, part_root, sizeof(pv_dev));
+		snprintf(part_root, sizeof(part_root), "/dev/%s/%s", KI_VG,
+			 KI_LV_A);
+	}
 
 	logf_("ESP  = %s", part_esp);
 	logf_("root = %s", part_root);
 	if (luks_part[0])
 		logf_("LUKS = %s", luks_part);
+	if (pv_dev[0])
+		logf_("PV   = %s, group %s", pv_dev, KI_VG);
 	if (part_swap[0])
 		logf_("swap = %s", part_swap);
+}
+
+/*
+ * THE GROUP AND SLOT A'S VOLUME, on a physical volume that was a partition a
+ * moment ago. Every call goes through `lvm <command>` rather than the
+ * pvcreate/vgcreate names, which are symlinks an image may not carry.
+ *
+ * THE OLD SIGNATURES GO FIRST. The erase plan writes the same layout at the
+ * same offsets, so a disk that held an earlier install still has that
+ * install's PV label where the new partition starts: pvcreate refuses it, and
+ * vgcreate refuses the group name it still carries. A container has just been
+ * formatted over its partition and has none.
+ */
+static void make_volume_group(void)
+{
+	char vgdev[192];
+	char *pv[] = { "lvm", "pvcreate", "-y", pv_dev, NULL };
+	char *vg[] = { "lvm", "vgcreate", "-y", (char *)KI_VG, pv_dev, NULL };
+	char *lv[] = { "lvm", "lvcreate", "-y", "-n", (char *)KI_LV_A, "-l",
+		       ki_lvm_half() ? "50%VG" : "100%FREE", (char *)KI_VG,
+		       NULL };
+	char *us[] = { "udevadm", "settle", NULL };
+
+	if (!cfg.luks) {
+		char *wf[] = { "wipefs", "-a", pv_dev, NULL };
+		must(wf);
+	}
+	emit('N', "volume group %s on %s", KI_VG, pv_dev);
+	must(pv);
+	must(vg);
+	emit('N', "%s/%s, %s of the group", KI_VG, KI_LV_A,
+	     ki_lvm_half() ? "half" : "all");
+	must(lv);
+	try_(us);
+
+	snprintf(vgdev, sizeof(vgdev), "/dev/%s/%s", KI_VG, KI_LV_A);
+	for (int i = 0; i < 50 && !cfg.dry_run && !kb_path_exists(vgdev); i++) {
+		struct timespec ts = { 0, 100000000 };
+		nanosleep(&ts, NULL);
+	}
+	if (!cfg.dry_run && !kb_path_exists(vgdev))
+		fail("%s did not appear after lvcreate", vgdev);
+	emit('P', "0.5");
 }
 
 static void do_format(void)
@@ -911,8 +1148,18 @@ static void do_format(void)
 
 	if (!part_root[0])
 		fail("no root partition resolved");
-	if (!cfg.dry_run && !kb_path_exists(part_root))
-		fail("%s does not exist", part_root);
+	/* A retried Format meets whatever the failed one opened on this
+	 * disk, and luksFormat and pvcreate both refuse a held partition. */
+	if (cfg.plan == PLAN_WIPE)
+		release_disk(cfg.disk);
+	/* The device that has to exist now is the one the first command
+	 * writes: the container's partition, the physical volume's, or the
+	 * root itself. The mapper device and the volume appear later. */
+	const char *raw = luks_part[0] ? luks_part
+			  : pv_dev[0]  ? pv_dev
+				       : part_root;
+	if (!cfg.dry_run && !kb_path_exists(raw))
+		fail("%s does not exist", raw);
 
 	/*
 	 * LUKS2 first, because everything after this point talks to the mapper
@@ -934,10 +1181,15 @@ static void do_format(void)
 			       (char *)LUKS_NAME, NULL };
 		if (run_stdin(lo, cfg.luks_pass))
 			fail("cryptsetup open failed");
-		if (!cfg.dry_run && !kb_path_exists(part_root))
-			fail("%s did not appear after unlocking", part_root);
-		emit('P', "0.5");
+		if (!cfg.dry_run && !kb_path_exists(pv_dev[0] ? pv_dev
+							       : part_root))
+			fail("%s did not appear after unlocking",
+			     pv_dev[0] ? pv_dev : part_root);
+		emit('P', "0.4");
 	}
+
+	if (pv_dev[0])
+		make_volume_group();
 
 	emit('N', "mkfs %s on %s", cfg.fstype, part_root);
 	const Filesystem *fs = ki_fs(cfg.fstype);
@@ -1242,6 +1494,43 @@ static void do_config(void)
 	wr("/etc/hostname", "%s\n", cfg.hostname);
 
 	/*
+	 * The machine's own name resolves through the `127.0.1.1` line of
+	 * `/etc/hosts` — musl reads that file and nothing else before the
+	 * DNS — and the image ships it naming `kdos`. Left alone, any other
+	 * hostname falls through to the DNS: NXDOMAIN online, a timeout
+	 * offline, for everything that resolves its own name.
+	 */
+	{
+		char hosts[8192] = "", *save = NULL;
+		int seen = 0;
+		if (slurp(TARGET "/etc/hosts", buf, sizeof(buf)) > 0) {
+			for (char *l = strtok_r(buf, "\n", &save); l;
+			     l = strtok_r(NULL, "\n", &save)) {
+				if (!strncmp(l, "127.0.1.1", 9) &&
+				    (l[9] == ' ' || l[9] == '\t')) {
+					if (seen++)
+						continue;
+					cat(hosts, sizeof(hosts), "127.0.1.1   ");
+					cat(hosts, sizeof(hosts), cfg.hostname);
+				} else {
+					cat(hosts, sizeof(hosts), l);
+				}
+				cat(hosts, sizeof(hosts), "\n");
+			}
+		} else {
+			cat(hosts, sizeof(hosts),
+			    "127.0.0.1   localhost\n"
+			    "::1         localhost ip6-localhost ip6-loopback\n");
+		}
+		if (!seen) {
+			cat(hosts, sizeof(hosts), "127.0.1.1   ");
+			cat(hosts, sizeof(hosts), cfg.hostname);
+			cat(hosts, sizeof(hosts), "\n");
+		}
+		wr("/etc/hosts", "%s", hosts);
+	}
+
+	/*
 	 * BOTH HALVES OR NEITHER. `/etc/localtime` is what a program reading
 	 * the zoneinfo tree follows; `TZ` is what musl reads, and it WINS
 	 * where it is set — so a `TZ` naming different rules from the symlink
@@ -1270,6 +1559,41 @@ static void do_config(void)
 			 * here, where the log is read. */
 			logf_("no zone file for %s; the machine will keep UTC",
 			      cfg.tz_label);
+		}
+	}
+
+	/*
+	 * THE WI-FI COUNTRY, FROM THE ZONE. cfg80211 starts in the world
+	 * regulatory domain, which keeps every 5 GHz DFS channel closed and caps
+	 * transmit power, until something names a country. `zone.tab` gives
+	 * each zone exactly one, so the zone just chosen is the answer; a zone
+	 * with no row (UTC) writes nothing. `kdos-powerd`'s `timezone` verb
+	 * rewrites the same file afterwards.
+	 */
+	if (cfg.tz_label[0]) {
+		char cc[3] = "";
+		char line[512];
+		FILE *zt = fopen("/usr/share/zoneinfo/zone.tab", "r");
+
+		while (zt && !cc[0] && fgets(line, sizeof(line), zt)) {
+			char c[3], z[128];
+
+			if (line[0] != '#' &&
+			    sscanf(line, "%2[A-Z]\t%*[^\t]\t%127[^\t\n]", c,
+				   z) == 2 &&
+			    strlen(c) == 2 && !strcmp(z, cfg.tz_label))
+				memcpy(cc, c, 3);
+		}
+		if (zt)
+			fclose(zt);
+		if (cc[0]) {
+			mkpath(TARGET "/etc/modprobe.d");
+			wr("/etc/modprobe.d/kdos-regdom.conf",
+			   "# Written by the KDOS installer from the timezone (%s):\n"
+			   "# the country the Wi-Fi radio's channels and transmit\n"
+			   "# power are set for.\n"
+			   "options cfg80211 ieee80211_regdom=%s\n",
+			   cfg.tz_label, cc);
 		}
 	}
 
@@ -1441,16 +1765,8 @@ static void do_accounts(void)
 			logf_("  home rename failed: %s", strerror(errno));
 	}
 
-	rewrite_accounts("kdos", cfg.username, cfg.fullname, uhash, rhash);
-
-	if (cfg.user_wheel) {
-		mkpath(TARGET "/etc/sudoers.d");
-		wr("/etc/sudoers.d/10-wheel",
-		   "# Written by the KDOS installer.\n"
-		   "%%wheel ALL=(ALL:ALL) ALL\n");
-		if (!cfg.dry_run)
-			chmod(TARGET "/etc/sudoers.d/10-wheel", 0440);
-	}
+	rewrite_accounts("kdos", cfg.username, cfg.fullname, uhash, rhash,
+			 cfg.user_wheel);
 	emit('P', "1");
 }
 
@@ -1531,6 +1847,35 @@ static void copy_file(const char *src, const char *dst)
 	close(in);
 	close(out);
 	logf_("copy %s -> %s", src, dst);
+}
+
+/*
+ * Room on the ESP for a second slot's kernel. An A/B update writes slot B's
+ * kernel and initramfs beside slot A's, so an ESP that holds one pair and not
+ * two installs and boots fine and then refuses every A/B update. The ESP this
+ * installer makes is 512 MiB, which holds several pairs; a reused one — a
+ * 100 MiB ESP another system made is the usual case — may not, and saying so
+ * now is the only time it costs nothing to hear.
+ */
+static void esp_room_for_b(void)
+{
+	struct stat k, i;
+	struct statvfs vf;
+
+	if (cfg.dry_run ||
+	    stat(TARGET "/boot/efi/EFI/kdos/a/vmlinuz", &k) != 0 ||
+	    stat(TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz", &i) != 0 ||
+	    statvfs(TARGET "/boot/efi", &vf) != 0)
+		return;
+	unsigned long long need = (unsigned long long)k.st_size +
+				  (unsigned long long)i.st_size + (1ULL << 20);
+	unsigned long long avail = (unsigned long long)vf.f_bavail * vf.f_frsize;
+	logf_("ESP: %llu MiB free, a second kernel needs %llu MiB",
+	      avail >> 20, need >> 20);
+	if (avail < need)
+		emit('W', "the ESP has %llu MiB free and a second root slot's "
+			  "kernel needs %llu MiB — A/B updates will be refused",
+		     avail >> 20, need >> 20);
 }
 
 static void do_boot(void)
@@ -1629,10 +1974,24 @@ static void do_boot(void)
 	copy_file(src, TARGET "/boot/efi/limine-bios.sys");
 	emit('P', "0.4");
 
+	/*
+	 * SLOT A'S OWN DIRECTORY, because each root slot boots its own kernel:
+	 * the modules for a kernel exist only in the root it was installed
+	 * into, so a slot booted on the other slot's kernel has none. An A/B
+	 * update fills EFI/kdos/b/ the same way through `kdos-bootctl deploy`,
+	 * which is also where the choice of initramfs below is made for every
+	 * later kernel — the `linux` postinstall's, where it wrote one, else
+	 * the image's own.
+	 */
 	emit('N', "kernel and initramfs onto the ESP");
-	copy_file(TARGET "/boot/vmlinuz-kdos", TARGET "/boot/efi/EFI/kdos/vmlinuz");
-	copy_file(TARGET "/boot/initramfs.cpio.gz",
-		  TARGET "/boot/efi/EFI/kdos/initramfs.cpio.gz");
+	mkpath(TARGET "/boot/efi/EFI/kdos/a");
+	copy_file(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
+			  ? TARGET "/boot/initramfs-kdos.cpio.gz"
+			  : TARGET "/boot/initramfs.cpio.gz",
+		  TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz");
+	copy_file(TARGET "/boot/vmlinuz-kdos",
+		  TARGET "/boot/efi/EFI/kdos/a/vmlinuz");
+	esp_room_for_b();
 
 	/* The menu's face and wallpaper, so an installed machine looks like the
 	 * medium it came from. Both are optional: absent, Limine draws its own
@@ -1745,25 +2104,25 @@ static void do_boot(void)
 	   "%s%s"
 	   "\n"
 	   "/KDOS\n"
-	   "    comment: Start this machine\n"
+	   "    comment: Start this machine (slot a)\n"
 	   "    protocol: linux\n"
-	   "    path: boot():/EFI/kdos/vmlinuz\n"
-	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
-	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\n"
+	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
+	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\n"
 	   "\n"
 	   "/KDOS (verbose)\n"
 	   "    comment: Every kernel message on the console\n"
 	   "    protocol: linux\n"
-	   "    path: boot():/EFI/kdos/vmlinuz\n"
-	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
-	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
+	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
+	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
 	   "/KDOS (single user)\n"
 	   "    comment: A root shell, no session\n"
 	   "    protocol: linux\n"
-	   "    path: boot():/EFI/kdos/vmlinuz\n"
-	   "    module_path: boot():/EFI/kdos/initramfs.cpio.gz\n"
-	   "    cmdline: %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
+	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
+	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
+	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s",
 	   theme, paper, fontline,
 	   slot_opt, crypt_opt, root_uuid,
@@ -1772,9 +2131,12 @@ static void do_boot(void)
 
 	/*
 	 * The initial boot state, so the machine starts life as slot A with
-	 * nothing to roll back to. An updater that installs into the other
-	 * partition later fills in slot_b and calls `kdos-bootctl try b`; the
-	 * initramfs already knows how to count and roll back either way.
+	 * nothing to roll back to. Slot B is described later with
+	 * `kdos-bootctl set-slot b`; `kdos update` installs into it, puts its
+	 * kernel in EFI/kdos/b/ with `kdos-bootctl deploy` and calls
+	 * `kdos-bootctl try b`, and kdos-bootctl rewrites the /KDOS entries
+	 * above for every change of state. The entries written here are the
+	 * shape it regenerates, and the command line it carries over.
 	 *
 	 * Written straight rather than through kdos-bootctl: this runs from the
 	 * live image against a target at /mnt, and the tool's default path is

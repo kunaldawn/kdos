@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cabal-install
+version     = 3.18.1.0
+release     = 1
+
+_ghc        = 9.12.4
+hsplan      = bootstrap/linux-$_ghc.json
+
+source      = https://github.com/haskell/cabal/archive/refs/tags/cabal-install-v$version.tar.gz
+sha256      = c3d51e23a7e10cc9c13c59320267f831732d281ba3fc7897423e0b83b8221a41  cabal-install-3.18.1.0.tar.gz
+sha256      = f120fdae0a3db5af26647e36357c70228c38cc1d01cf8a9ef4a1b38aa6371794  cabal-install-vendor-3.18.1.0.tar.xz
+description = The cabal command — builds and installs Haskell packages
+homepage    = https://www.haskell.org/cabal/
+vendoring   = haskell
+depends     = ghc zlib pkgconf python3

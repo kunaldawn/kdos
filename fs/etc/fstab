@@ -9,3 +9,11 @@ devtmpfs        /dev            devtmpfs defaults       0       0
 tmpfs           /tmp            tmpfs   mode=1777,nosuid,nodev  0   0
 tmpfs           /run            tmpfs   mode=0755,nosuid,nodev  0   0
 cgroup2         /sys/fs/cgroup  cgroup2 nsdelegate      0       0
+# The kernel mounts none of these three: without tracefs every tracepoint
+# probe (bpftrace, perf trace, trace-cmd) finds an empty /sys/kernel/tracing,
+# without debugfs the kernel's debug files (/sys/kernel/debug/dri/,
+# wakeup_sources, powertop's readings) are absent, and without bpffs no pinned
+# BPF object survives the process that made it.
+tracefs         /sys/kernel/tracing tracefs nosuid,nodev,noexec 0   0
+debugfs         /sys/kernel/debug debugfs nosuid,nodev,noexec 0     0
+bpf             /sys/fs/bpf     bpf     nosuid,nodev,noexec,mode=0700 0 0

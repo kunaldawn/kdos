@@ -44,6 +44,10 @@ typedef struct {
 	int is_esp;
 	int mounted;
 	char mountpoint[64];
+	/* Another block device sits on this one — an open LUKS container, an
+	 * active volume group, an array. mkfs refuses it, and a reuse plan
+	 * that picked it would fail after the point of no return. */
+	int held;
 } Part;
 
 typedef struct {
@@ -84,12 +88,54 @@ typedef struct {
 	unsigned long long appbox_kb;	/* of which, the alien app store   */
 } SysInfo;
 
+/*
+ * A LOGICAL VOLUME, as the kernel sees it once its group is active: a dm
+ * device whose uuid starts `LVM-`. Read from /sys/block/dm-N and never from
+ * `lvs`, for the reason probe.c gives for not parsing lsblk.
+ *
+ * Only volumes a filesystem can go on are kept. A thin pool's or a cache's
+ * visible wrapper carries a suffix after the uuid, and its sub-volumes
+ * (`_tdata`, `_cmeta`, `_rimage_0`, …) are internal to LVM; offering either
+ * as a root is offering to format LVM's own metadata. A thin volume and a
+ * cached volume are ordinary volumes here, and boot: the initramfs carries
+ * thin_check and cache_check.
+ */
+#define MAX_LVS 64
+
+typedef struct {
+	char vg[64];
+	char lv[64];
+	char path[160];		/* /dev/<vg>/<lv>                          */
+	char dm[16];		/* dm-3                                    */
+	unsigned long long sectors;
+	char fstype[16];
+	char label[40];
+	char uuid[40];
+	int mounted;
+	char mountpoint[64];
+	int held;
+} Lv;
+
 extern Disk ki_disk[MAX_DISKS];
 extern int ki_ndisk;
 extern SysInfo ki_sys;
+extern Lv ki_lv[MAX_LVS];
+extern int ki_nlv;
 
 void probe_system(void);
+/* Also activates every volume group, once per process and only as root, then
+ * lists the logical volumes into ki_lv. */
 void probe_disks(void);
+Lv *lv_by_path(const char *path);
+/* A dm name, `vg-lv` with each `-` inside a name doubled, split into its
+ * two names. Non-zero for a name that is not a logical volume's. */
+int ki_dm_split(const char *name, char *vg, size_t vcap, char *lv, size_t lcap);
+/* Whether a block device (a kernel name: sda2, dm-3) sits, through any stack
+ * of containers and volume groups, on the disk named `disk` (sda). */
+int ki_dev_on_disk(const char *dev, const char *disk);
+/* Whether volume group `vg` has a physical volume anywhere but on `disk`,
+ * whether or not any of its volumes is active. Runs `lvm pvs`. */
+int ki_vg_off_disk(const char *vg, const char *disk);
 
 /* ────────────────────────────────────────────────────────────────────────
  * The applications this medium knows how to build.
@@ -175,9 +221,14 @@ typedef struct {
 	char disk[64];
 	int plan;
 	char part_esp[64];
-	char part_root[64];
+	/* A partition, or on the reuse plan a logical volume by its
+	 * /dev/<vg>/<lv> path — which is why this is wider than the ESP's. */
+	char part_root[160];
 	int format_esp;
 	char fstype[16];
+	/* The erase plan's root on LVM: the root partition becomes the one
+	 * physical volume of group KI_VG, and the root is its volume KI_LV_A. */
+	int lvm;
 	int swap;
 	long swap_mb;
 	/* LUKS2 on the root partition. The passphrase never reaches argv, never
@@ -249,6 +300,25 @@ typedef struct {
 extern const Filesystem ki_filesystems[];
 extern int ki_nfilesystems;
 const Filesystem *ki_fs(const char *name);
+
+/*
+ * THE ERASE PLAN'S VOLUME GROUP, and its volumes are named for the A/B slots.
+ * Slot A's root is KI_LV_A; slot B's, when one is made, is KI_LV_B in the
+ * same group — `lvcreate -n root_b -l 100%FREE kdos` — so a second slot needs
+ * no repartitioning. To leave it that room, slot A takes half the group
+ * whenever half still holds the install, and all of it on a disk too small for
+ * two; ki_lvm_half() is that decision, and the Layout page, the Summary and
+ * the Format step all ask it, so what is shown is what is created.
+ */
+#define KI_VG "kdos"
+#define KI_LV_A "root_a"
+#define KI_LV_B "root_b"
+
+/* Bytes this install copies onto the root, as the Disk page states it. */
+unsigned long long ki_need_bytes(void);
+/* The erase plan's root partition, in bytes, for the disk and swap chosen. */
+unsigned long long ki_wipe_root_bytes(void);
+int ki_lvm_half(void);
 
 void conf_defaults(void);
 int conf_load(const char *path);

@@ -15,4 +15,4 @@ source      = https://poppler.freedesktop.org/$name-$version.tar.xz
 sha256      = 8059eadb6805340768f138c465b57f8164c92b4a0773c37ef031ea6c0d987b2e  poppler-26.09.0.tar.xz
 description = PDF rendering library, and the pdftotext every indexer shells out to
 homepage    = https://poppler.freedesktop.org/
-depends     = cmake ninja pkgconf freetype2 fontconfig libjpeg-turbo libpng openjpeg lcms2 zlib libtiff harfbuzz cairo boost gpgmepp
+depends     = cmake ninja pkgconf freetype2 fontconfig libjpeg-turbo libpng openjpeg lcms2 zlib libtiff harfbuzz cairo glib boost gpgmepp

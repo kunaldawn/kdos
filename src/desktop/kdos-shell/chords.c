@@ -176,6 +176,8 @@ static void pretty_key(const char *in, char *out, size_t n)
 		{ "XF86MonBrightnessUp", "Brightness Up" },
 		{ "XF86MonBrightnessDown", "Brightness Down" },
 		{ "XF86Display", "Display" },
+		{ "XF86PowerOff", "Power" }, { "XF86Sleep", "Sleep" },
+		{ "XF86Suspend", "Suspend" },
 	};
 	char buf[64];
 	size_t used = 0;

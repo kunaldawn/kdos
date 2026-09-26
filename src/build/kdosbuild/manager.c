@@ -840,10 +840,10 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 		}
 
 		/* Overwrite for every package a phase installs. The userland
-		 * genuinely overlaps — toybox, util-linux, procps-ng and gawk
-		 * all ship /usr/bin/awk-shaped paths — and the build's rule has
-		 * always been that whoever comes last in the dependency order
-		 * wins. It is NOT -f: nothing is rebuilt by it, and the path
+		 * genuinely overlaps — toybox ships sed, find, xargs, awk, expr
+		 * and ln, and GNU sed, findutils, gawk and coreutils ship the
+		 * same paths over them — and the rule is that whoever comes
+		 * last in the dependency order wins. It is NOT -f: nothing is rebuilt by it, and the path
 		 * changes hands in the database instead of being claimed twice.
 		 *
 		 * It goes in the ENVIRONMENT rather than on the command line

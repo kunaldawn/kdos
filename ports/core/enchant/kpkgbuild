@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = enchant
+version     = 2.8.21
+release     = 1
+source      = https://github.com/rrthomas/enchant/releases/download/v$version/enchant-$version.tar.gz
+sha256      = dd2a762697c463148a8f59867089a5ebf2dd1449d869f93764b76c12bcf8acc0  enchant-2.8.21.tar.gz
+description = Spell-checking library over several engines, built with its Aspell provider
+homepage    = https://rrthomas.github.io/enchant/
+depends     = glib aspell aspell-en

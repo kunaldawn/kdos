@@ -5,3 +5,10 @@
 
 KERNEL=="usbtmc[0-9]*", GROUP="dialout", MODE="0660"
 KERNEL=="usbtmc",       GROUP="dialout", MODE="0660"
+
+# The same instrument as a raw USB device. pyvisa-py reaches it through pyusb
+# and libusb, which open /dev/bus/usb/BBB/DDD and detach the usbtmc driver,
+# so the /dev/usbtmc* rule above does not cover it. Matched on the interface
+# class — application-specific (fe), subclass 03 — rather than a vendor
+# table, so every USBTMC instrument is covered and nothing else is.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:fe03??:*", GROUP="dialout", MODE="0660"

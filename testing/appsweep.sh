@@ -21,7 +21,7 @@
 # past them: the pack mounts, the box starts, a launcher exists, a WINDOW MAPS
 # with the compositor naming both its app_id and its box, and the shot is not
 # blank. Whether the application is CORRECT is not a thing a screenshot knows,
-# and a sweep that claimed it would be 183 green ticks worth less than they
+# and a sweep that claimed it would be 180 green ticks worth less than they
 # look.
 #
 # THREE STATES, NEVER TWO. `skip` with a reason is a result — an app that wants
@@ -275,7 +275,7 @@ for id in $ids; do
 
     # 6. TEAR DOWN EVERY TIME, AND PURGE — `kdos-box remove` DELIBERATELY
     #    KEEPS the profile and the writable upper, which is right for a person
-    #    who may want them back and wrong for a sweep that will do this 183
+    #    who may want them back and wrong for a sweep that will do this 180
     #    times. Measured after one 8-app batch: every container was still
     #    there as `exited`, every profile still listed, and the NEXT boot's
     #    desktop never came up inside the rig's 240 s deadline. So the sweep

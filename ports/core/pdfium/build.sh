@@ -97,4 +97,21 @@ Version: $_chromium
 Libs: -L\${libdir} -lpdfium
 Cflags: -I\${includedir}
 PC
+
+# libvips looks the library up as `pdfium` and compares its version against a
+# pdfium BUILD number (>= 4200), so it gets a file of its own carrying
+# $version (the branch number) rather than the Chromium version above, which
+# would compare as 153 and fail. A symlink would hand both consumers the same
+# Version line, and one of them the wrong one.
+install -Dm644 /dev/stdin "$PKG/usr/lib/pkgconfig/pdfium.pc" <<PC
+prefix=/usr
+libdir=\${prefix}/lib
+includedir=\${prefix}/include/pdfium
+
+Name: pdfium
+Description: Chromium's PDF renderer
+Version: $version
+Libs: -L\${libdir} -lpdfium
+Cflags: -I\${includedir}
+PC
 install -Dm644 LICENSE "$PKG/usr/share/licenses/$name/LICENSE"

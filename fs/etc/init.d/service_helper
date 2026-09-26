@@ -21,11 +21,13 @@
 #
 # The command is an argument vector: `supervise foo /usr/sbin/foo --flag`, not
 # one string that a later unquoted expansion would re-split.
+#
+# `supervise --final-exit N foo ...` names an exit status restarting cannot
+# change — "not supported on this machine", "nothing here to watch": on it the
+# supervisor stops instead of restarting the daemon every five seconds for ever.
 
 supervise() {
-    local name="$1"
-    shift
-    ksvc supervise "$name" "$@"
+    ksvc supervise "$@"
 }
 
 stop_service() {

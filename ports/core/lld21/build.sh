@@ -10,6 +10,11 @@
 # ---------------------------------
 
 mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
+# The Mach-O linker includes mach-o/compact_unwind_encoding.h from
+# $LLVM_MAIN_SRC_DIR/../libunwind/include, which a standalone build resolves
+# beside the source tree. The header comes from the same release, so it is
+# the encoding this linker was written against.
+mv $SRC_ROOT/libunwind-${version}.src $SRC_ROOT/libunwind
 
 cmake -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=$_prefix \

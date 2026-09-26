@@ -1,0 +1,23 @@
+Name off64_t on musl whatever order the headers came in.
+
+dvd_filesystem.h is installed and reached through dvd_reader.h, and uses
+off64_t in the filesystem callbacks. It defines _LARGEFILE64_SOURCE and then
+includes sys/types.h, but a consumer that included sys/types.h first has
+already passed musl's include guard without it, so off64_t is never declared
+and the consumer fails to compile (libdvdnav, mpv, gst-plugins-bad). glibc and
+the BSDs have their own typedef here; musl's off_t is always 64 bit, so the
+same typedef is exact for it.
+
+--- a/src/dvdread/dvd_filesystem.h
++++ b/src/dvdread/dvd_filesystem.h
+@@ -40,6 +40,10 @@
+ #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+ /* off_t is already 64 bit here so off64_t is not provided. */
+ typedef off_t off64_t;
++#elif !defined(off64_t)
++/* musl: off_t is always 64 bit, and sys/types.h names off64_t only when it
++ * was first included with _LARGEFILE64_SOURCE already defined. */
++typedef off_t off64_t;
+ #endif
+ 
+ #define DVDREAD_NAME_MAX 255

@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# hackage-vendor — the Hackage half of `vendoring = haskell` in ports/fetch.
+#
+# Writes a directory cabal reads as a `file+noindex` repository: one
+# <pkg>-<ver>.tar.gz per dependency, the <pkg>-<ver>.cabal in force for it
+# beside the tarball, and SHA256SUMS over both. Nothing is written that was
+# not checked against a hash taken from somewhere other than the download.
+#
+#   --freeze FILE --index 01-index.tar [--installed LIST]
+#       FILE is a cabal freeze file. Every `any.<pkg> ==<ver>` in it is
+#       vendored, except a <pkg>-<ver> named in LIST (the resolving
+#       compiler's global package database, one id per line): those ship
+#       with GHC and a repository copy is never read. The tarball is
+#       checked against the sha256 in the index's signed package.json, and
+#       the .cabal is the last revision in the index — the last one at or
+#       before the freeze's `index-state`, when it names one, so a pinned
+#       freeze reproduces the bundle it was written for.
+#
+#   --plan FILE
+#       FILE is a GHC bootstrap plan (hadrian/bootstrap/plan-bootstrap-*.json),
+#       which pins each dependency's revision and both hashes itself, so no
+#       index is needed.
+#
+# A file that fails its hash aborts the run: a bundle short of one package is
+# an offline build that dies naming it, hours later.
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import tarfile
+import urllib.request
+from datetime import datetime, timezone
+
+HACKAGE = "https://hackage.haskell.org"
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def get(url):
+    with urllib.request.urlopen(url) as r:
+        return r.read()
+
+
+def fail(msg):
+    print(f"✗  hackage-vendor: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def read_freeze(path):
+    text = open(path).read()
+    pins = re.findall(r"any\.([A-Za-z0-9][A-Za-z0-9-]*)\s*==\s*([0-9][0-9.]*)", text)
+    stamp = None
+    m = re.search(r"index-state:\s*(?:hackage\.haskell\.org\s+)?(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)", text)
+    if m:
+        stamp = int(datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%SZ")
+                    .replace(tzinfo=timezone.utc).timestamp())
+    return pins, stamp
+
+
+def index_entries(index, wanted, stamp):
+    """For each (pkg, ver) in `wanted`: the tarball sha256 and the .cabal
+    revision in force at `stamp`. The index is append-only, so the last
+    matching entry at or before the stamp is the one cabal would read."""
+    cabal, digest = {}, {}
+    with tarfile.open(index) as t:
+        for m in t:
+            parts = m.name.split("/")
+            if len(parts) != 3 or (parts[0], parts[1]) not in wanted:
+                continue
+            if stamp is not None and m.mtime > stamp:
+                continue
+            key = (parts[0], parts[1])
+            if parts[2] == f"{parts[0]}.cabal":
+                cabal[key] = t.extractfile(m).read()
+            elif parts[2] == "package.json":
+                j = json.load(t.extractfile(m))
+                tgt = j["signed"]["targets"][f"<repo>/package/{parts[0]}-{parts[1]}.tar.gz"]
+                digest[key] = tgt["hashes"]["sha256"]
+    return cabal, digest
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--freeze")
+    ap.add_argument("--index")
+    ap.add_argument("--installed")
+    ap.add_argument("--plan")
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+
+    os.makedirs(a.out, exist_ok=True)
+    jobs = []  # (pkg, ver, tar sha256, cabal bytes or (url, sha256))
+
+    if a.plan:
+        plan = json.load(open(a.plan))
+        seen = set()
+        for d in plan["dependencies"]:
+            # A package with two components — a library and a sublibrary —
+            # is two entries naming one tarball.
+            if d.get("source") != "hackage" or (d["package"], d["version"]) in seen:
+                continue
+            seen.add((d["package"], d["version"]))
+            p, v, rev = d["package"], d["version"], d.get("revision") or 0
+            jobs.append((p, v, d["src_sha256"],
+                         (f"{HACKAGE}/package/{p}-{v}/revision/{rev}.cabal", d["cabal_sha256"])))
+    elif a.freeze and a.index:
+        pins, stamp = read_freeze(a.freeze)
+        installed = set()
+        if a.installed:
+            installed = {l.strip() for l in open(a.installed) if l.strip()}
+        wanted = {(p, v) for p, v in pins if f"{p}-{v}" not in installed}
+        cabal, digest = index_entries(a.index, wanted, stamp)
+        for p, v in sorted(wanted):
+            if (p, v) not in digest or (p, v) not in cabal:
+                fail(f"{p}-{v} is not in the index")
+            jobs.append((p, v, digest[(p, v)], cabal[(p, v)]))
+    else:
+        fail("give --plan, or --freeze with --index")
+
+    if not jobs:
+        fail("the plan names no Hackage package")
+
+    sums = []
+    for p, v, want, cab in sorted(jobs, key=lambda j: (j[0], j[1])):
+        tgz = f"{p}-{v}.tar.gz"
+        print(f"⬇  {tgz}")
+        data = get(f"{HACKAGE}/package/{p}-{v}/{tgz}")
+        if sha256(data) != want:
+            fail(f"{tgz}: sha256 {sha256(data)}, expected {want}")
+        if isinstance(cab, tuple):
+            url, cwant = cab
+            cab = get(url)
+            if sha256(cab) != cwant:
+                fail(f"{p}-{v}.cabal: sha256 {sha256(cab)}, expected {cwant}")
+        for name, blob in ((tgz, data), (f"{p}-{v}.cabal", cab)):
+            with open(os.path.join(a.out, name), "wb") as f:
+                f.write(blob)
+            sums.append(f"{sha256(blob)}  {name}\n")
+
+    with open(os.path.join(a.out, "SHA256SUMS"), "w") as f:
+        f.writelines(sorted(sums, key=lambda s: s[66:]))
+    print(f"✓  hackage-vendor: {len(jobs)} packages")
+
+
+if __name__ == "__main__":
+    main()

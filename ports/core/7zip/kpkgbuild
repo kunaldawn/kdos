@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = 7zip
+version     = 26.03
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ip7z/7zip/archive/refs/tags/$version.tar.gz
+sha256      = 74b11efd8559f9b3dc652e89dc8ebdf4acb66e514a745e44cf75582cdf4512fd  7zip-26.03.tar.gz
+description = 7-Zip's 7zz — packs and unpacks 7z, zip, rar, tar, iso, cab, deb, rpm and disk images
+homepage    = https://7-zip.org/

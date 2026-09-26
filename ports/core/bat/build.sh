@@ -45,6 +45,22 @@ cargo build --release --frozen --offline --features vendored-libgit2
 
 install -Dm755 target/release/bat $PKG/usr/bin/bat
 install -Dm644 gen/assets/manual/bat.1 -t "$PKG/usr/share/man/man1"
+install -Dm644 gen/assets/completions/bat.bash "$PKG/usr/share/bash-completion/completions/bat"
+install -Dm644 gen/assets/completions/bat.zsh  "$PKG/usr/share/zsh/site-functions/_bat"
+install -Dm644 gen/assets/completions/bat.fish "$PKG/usr/share/fish/vendor_completions.d/bat.fish"
+
+# THE MANPAGER /etc/bash.bashrc POINTS AT. mandoc's `man` splits $MANPAGER on
+# spaces and execs the words with no shell, so a `sh -c '… | bat'` value
+# reaches sh as broken quoting; it also hands the formatted page over as a
+# file argument rather than on stdin, where man-db pipes it. The page carries
+# backspace overstrike for bold and underline, which bat's man grammar does
+# not read, and util-linux builds no `col` on musl to strip it.
+install -d "$PKG/usr/libexec/bat"
+cat > "$PKG/usr/libexec/bat/man-pager" <<'KDOS_SH'
+#!/bin/sh
+sed -e 's/\x1b\[[0-9;]*m//g' -e 's/.\x08//g' "$@" | bat -l man -p
+KDOS_SH
+chmod 755 "$PKG/usr/libexec/bat/man-pager"
 
 # delta and presenterm embed the same sets and build-depend on this port for
 # them, so the copies here are the only ones in the tree. acknowledgements.txt

@@ -3332,7 +3332,7 @@ static int read_disk_used(double *pct)
  * The meter beside this has room for one number and takes the root; a warning
  * has to reach a separate /home or a stick somebody is copying onto. The
  * source is /proc/mounts and statvfs — kdos-mountd cannot answer it, being
- * wheel-gated, carrying no free-space field in its reply, and listing the
+ * gated to seat and wheel, carrying no free-space field in its reply, and listing the
  * media that are NOT mounted, which is the complement of the set that can be
  * full.
  *

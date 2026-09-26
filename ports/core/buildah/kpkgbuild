@@ -15,4 +15,4 @@ source      = https://github.com/podman-container-tools/buildah/archive/v$versio
 sha256      = b48e701c75a2bd30dfe63fda5f886c8a7e0c3dd17b6aa0feb74cc93099254ca4  buildah-1.45.1.tar.gz
 description = Build OCI / Docker container images
 homepage    = https://buildah.io/
-depends     = go crun libseccomp libgpgme btrfs-progs sqlite
+depends     = go containers-common crun netavark aardvark-dns passt libseccomp gpgme btrfs-progs sqlite

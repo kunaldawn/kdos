@@ -26,8 +26,8 @@ case "$1" in
 
         # CHECK BEFORE LOADING, AND REFUSE RATHER THAN HALF-APPLY.
         #
-        # The file starts with `flush ruleset`, so an error partway through
-        # would leave the rules read so far and none of the rest — typically
+        # The file deletes and rebuilds `inet filter`, so an error partway
+        # through would leave the rules read so far and none of the rest — typically
         # the input chain's drop policy with its accept rules missing, which is
         # a policy nobody wrote. `nft -c` runs the whole file against the
         # kernel and commits nothing, so an unloadable ruleset leaves the
@@ -44,12 +44,15 @@ case "$1" in
         "$NFT" -f "$CONF"
         ;;
     stop)
-        # `flush ruleset`, not a saved-state restore: the ruleset is a file,
-        # so there is no state to save. Stopping the firewall means the machine
-        # accepts everything, which is what stopping a firewall is.
+        # The firewall's own table is deleted, not a saved-state restore: the
+        # ruleset is a file, so there is no state to save. Stopping the
+        # firewall means the machine accepts everything, which is what stopping
+        # a firewall is. Only `inet filter` goes — `flush ruleset` would also
+        # take netavark's NAT for running containers and NetworkManager's for
+        # the hotspot, which are not this firewall's to remove.
         if [ -x "$NFT" ]; then
-            echo "[KDOS] Flushing $NAME ruleset..."
-            "$NFT" flush ruleset
+            echo "[KDOS] Removing $NAME ruleset..."
+            "$NFT" delete table inet filter 2>/dev/null
         fi
         ;;
     status)

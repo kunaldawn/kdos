@@ -13,6 +13,23 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         mkdir -pv /run/udev
         chmod 755 /run/udev
+        # The nodes of modules that load when their node is OPENED: uhid,
+        # uinput, snd/seq, vhost-net, cuse and the rest of modules.devname.
+        # No uevent names them before the module loads and nothing loads the
+        # module until the node exists, so without this /dev/uhid never
+        # appears and every Bluetooth keyboard and mouse pairs and then types
+        # nothing. Made BEFORE udevd starts, because udevd applies the rules'
+        # static_node= ownership (snd/seq to audio, vhost-net to kvm) to the
+        # nodes it finds at start-up and to no others.
+        if [ -x /usr/bin/kmod ]; then
+            /usr/bin/kmod static-nodes --format=tmpfiles 2>/dev/null |
+            while read -r _t _p _m _u _g _a _dev; do
+                case "$_t" in c*|b*) ;; *) continue ;; esac
+                [ -e "$_p" ] && continue
+                mkdir -p "${_p%/*}"
+                mknod -m "$_m" "$_p" "${_t%%!*}" "${_dev%%:*}" "${_dev##*:}"
+            done
+        fi
         "$DAEMON" --daemon
         # --action=add, and not the default. udevadm trigger replays every
         # device with action "change", but /lib/udev/rules.d/80-drivers.rules

@@ -1,0 +1,17 @@
+# KDOS — FIDO2/U2F security keys, for libfido2: `ssh-keygen -t ed25519-sk`,
+# an ssh login with an -sk key, and the fido2-* tools.
+#
+# Matched on ID_SECURITY_TOKEN rather than a vendor table. eudev's
+# 60-fido-id.rules runs fido_id on every hidraw node, and fido_id sets the
+# variable when the HID report descriptor declares the FIDO usage page — so a
+# key from a vendor nobody listed is covered the day it is plugged in.
+#
+# libfido2's own 70-u2f.rules is not installed. It grants a `plugdev` group
+# this system does not have, which eudev resolves to gid 0, and it sorts after
+# this file, so it would take the grant back.
+#
+# dialout, like every other device a person plugs in to drive: the key asks
+# for a touch before it signs anything, and the group is the line between the
+# console user and the other accounts on the machine.
+
+SUBSYSTEM=="hidraw", ENV{ID_SECURITY_TOKEN}=="1", GROUP="dialout", MODE="0660"

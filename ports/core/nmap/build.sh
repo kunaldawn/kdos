@@ -9,9 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --with-libpcap, --with-libssh2 and --with-libz take `yes` and still fall back
-# to the copies bundled in the tarball when the system library is missing, so
-# `depends` is what holds them to the system ones. The DIR spelling is no
+# --with-libpcap, --with-libssh2, --with-libz and --with-libpcre take `yes` and
+# still fall back to the copies bundled in the tarball when the system library
+# is missing, so `depends` is what holds them to the system ones. PCRE2 matters
+# most: it runs version detection's regexes over banners from the network. The DIR spelling is no
 # stronger and puts -I/usr/include ahead of libstdc++'s own headers, which
 # breaks their #include_next.
 #
@@ -29,7 +30,7 @@
 	--with-libpcap=yes \
 	--with-libssh2=yes \
 	--with-libz=yes \
-	--with-libpcre=included \
+	--with-libpcre=yes \
 	--with-liblinear=included \
 	--with-liblua=included
 make

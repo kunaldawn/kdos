@@ -20,6 +20,10 @@
 # `enabled` rather than `auto` throughout: this package exists for its codecs,
 # so a missing library must fail the build rather than produce an empty
 # package that `gst-inspect-1.0 x264enc` cannot explain.
+#
+# cdio is cdiocddasrc, an audio CD as a source (`cdda://`), and dvdread is
+# dvdreadsrc, a DVD title without its menus; rsndvdbin in gst-plugins-bad is
+# the one with menus. dvdread is GPL and rides on -Dgpl=enabled with x264.
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
@@ -32,8 +36,8 @@ meson setup build \
 	-Dorc=enabled \
 	-Dorc-compiler=disabled \
 	-Da52dec=disabled \
-	-Dcdio=disabled \
-	-Ddvdread=disabled \
+	-Dcdio=enabled \
+	-Ddvdread=enabled \
 	-Dmpeg2dec=disabled \
 	-Dsidplay=disabled
 meson compile -C build

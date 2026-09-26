@@ -35,7 +35,7 @@
 # Signing, hashing and encryption (seal --sign, encrypt) are off. picotool
 # compiles mbedtls from a source tree, 2.28 or 3.6 only, found at
 # PICO_MBEDTLS_PATH or the SDK's lib/mbedtls — a submodule the SDK tarball
-# carries empty — and the mbedtls port is 4.x, which it does not build.
+# carries empty — and no port carries an mbedtls source tree.
 rm -f enc_bootloader/enc_bootloader.elf enc_bootloader/enc_bootloader_mbedtls.elf \
 	xip_ram_perms/xip_ram_perms.elf picoboot_flash_id/flash_id.bin
 export PICO_TOOLCHAIN_PATH=/usr

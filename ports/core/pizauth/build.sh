@@ -18,13 +18,14 @@
 #          reports `Authentication library: built-in` and lists `oauthbearer`
 #          and `xoauth2`, and smtp_auth_oauthbearer() sits outside the
 #          `#endif /* !HAVE_LIBGSASL */`.
-#   mbsync CANNOT, and no token changes that. isync reaches XOAUTH2 only
-#          through cyrus-sasl, which this tree does not build, so the shipped
-#          binary carries no such string at all — see ports/core/isync/build.sh.
+#   mbsync CAN, for XOAUTH2 only. isync reaches it through cyrus-sasl and the
+#          cyrus-sasl-xoauth2 plugin, which wraps whatever `PassCmd` prints as
+#          the bearer token — see ports/core/isync/build.sh. OAUTHBEARER has
+#          no plugin here, so it is the one mechanism out of mbsync's reach.
 #
-# So a provider that has withdrawn application passwords is reachable here by
-# reading mail in aerc directly and sending through msmtp; what it cannot be is
-# MIRRORED into a local Maildir by mbsync.
+# So a provider that has withdrawn application passwords is mirrored by mbsync
+# when it offers XOAUTH2; one that offers only OAUTHBEARER is read in aerc
+# directly and sent to through msmtp.
 #
 # NO sd-notify. It is optional and it is systemd's readiness protocol, which
 # nothing on this machine speaks.

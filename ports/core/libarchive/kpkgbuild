@@ -14,4 +14,4 @@ release     = 1
 source      = https://libarchive.org/downloads/$name-$version.tar.xz
 sha256      = 888c934f9d95648ecb9163dc8e23ab80a476ecb81a8f1154704a227b5b676dde  libarchive-3.8.9.tar.xz
 description = Reading/writing various compression formats
-depends     = acl attr xz zstd lz4 bzip2 zlib openssl expat
+depends     = acl attr xz zstd lz4 lzo bzip2 zlib openssl expat

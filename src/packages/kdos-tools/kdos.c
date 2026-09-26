@@ -158,10 +158,10 @@ void kdt_mkparent(const char *path)
  */
 /*
  * SIGNALLED FROM HERE AND NOT THROUGH `pkill`, which is the one signal in this
- * program that cannot go that way: this image's `pkill` is toybox's, its `-U`
- * takes a user id, and `-USR1` is therefore parsed as `-U SR1` and refused —
- * `-HUP` survives only because there is no `-H`. A signal spelled so that it
- * depends on which options a `pkill` happens to have is a signal that stops
+ * program that cannot go that way: procps-ng's `pkill`, the one on this image,
+ * takes `-USR1` as a signal before it reads any option, but toybox's takes
+ * `-U` for a user id and refuses `-USR1` as `-U SR1`. A signal spelled so that
+ * it depends on which options a `pkill` happens to have is a signal that stops
  * being sent the day one is swapped, silently, because pkill's own refusal
  * goes to a stderr nobody reads.
  *
@@ -3763,7 +3763,9 @@ static void check_regdb(void)
 		      "here to load them");
 	else
 		warn_("regulatory.db present but the regulatory domain is 00 "
-		      "(world) — set one with: iw reg set <CC>");
+		      "(world) — kdos-power timezone <Area/City> writes the "
+		      "zone's country to /etc/modprobe.d/kdos-regdom.conf; "
+		      "iw reg set <CC> lasts this boot only");
 	free(a2);
 }
 
@@ -4285,6 +4287,28 @@ static int cmd_doctor(int argc, char **argv)
 		      "process it does not own (fix: chown root and chmod 4755)");
 
 	/*
+	 * The bus's activation helper, which needs its GROUP as well as its
+	 * bit: dbus-daemon runs as messagebus and may execute the helper only
+	 * through the group-execute permission, so a helper that is setuid but
+	 * root:root is refused with EACCES on every activation. wpa_supplicant,
+	 * fprintd, fwupd and boltd then never start, and the log says only
+	 * Spawn.ExecFailed.
+	 */
+	struct stat hst;
+	const struct group *mb = getgrnam("messagebus");
+	static const char helper[] = "/usr/lib/dbus/dbus-daemon-launch-helper";
+	if (stat(helper, &hst) != 0)
+		warn_("%s missing — no D-Bus system service can be activated",
+		      helper);
+	else if ((hst.st_mode & S_ISUID) && hst.st_uid == 0 &&
+		 (hst.st_mode & S_IXGRP) && mb && hst.st_gid == mb->gr_gid)
+		ok("dbus-daemon-launch-helper is setuid root, group messagebus");
+	else
+		warn_("dbus-daemon-launch-helper is not setuid root with group "
+		      "messagebus — no D-Bus system service can be activated "
+		      "(fix: chown root:messagebus and chmod 4110)");
+
+	/*
 	 * AND THE TWO THIS DISTRO DOES NOT OWN, which are the ones every BOX
 	 * depends on. podman runs `newuidmap` to write /proc/<pid>/uid_map for
 	 * the user namespace a rootless container needs; without the bit it
@@ -4577,8 +4601,8 @@ static int cmd_menu(int argc, char **argv)
  *
  *   make && kdos notify "the build finished"
  *
- * `notify-send` is not on this image and `libnotify` is not a port, so a long
- * job had no way to say it was done.
+ * The same toast `notify-send` raises, sent the way the terminal sends one
+ * for OSC 9, from the command every KDOS verb already lives under.
  *
  * `kdos-notify` IS NOT THE SENDER — it is the notification centre, a viewer of
  * what has already arrived. A toast is a `Notify` on the session bus, and this

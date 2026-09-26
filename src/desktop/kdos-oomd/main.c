@@ -25,7 +25,7 @@
  *
  * THE SHAPE IS kdos-powerd's: a root daemon in the foreground under ksvc, a
  * socket in /run answering one word per connection (`ping`, `status`) gated by
- * SO_PEERCRED — root and wheel — so `kdos doctor` has something to ask.
+ * SO_PEERCRED — root, seat and wheel — so `kdos doctor` has something to ask.
  * Killing takes no client and no argument: there is nothing in the protocol
  * that names a process, so there is nothing to aim.
  *
@@ -58,7 +58,8 @@
 #include "kproc.h"
 
 #define KO_SOCKET   "/run/kdos-oomd.sock"
-#define KO_GROUP    "wheel"
+#define KO_SEAT     "seat"	/* the desktop user, admin or not */
+#define KO_ADMIN    "wheel"
 /* 150 ms of full stall in a 1 s window: every runnable thread stuck on memory
  * for 15% of the last second. A desktop is already visibly hitching there. */
 #define KO_TRIGGER  "full 150000 1000000"
@@ -537,10 +538,12 @@ static void answer(int c)
 	struct timeval tv = { .tv_sec = 2 };
 	setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-	/* Root or KO_GROUP, from libkbase — the one answer every root daemon
-	 * here gives to this question. The socket's mode is not the gate. */
+	/* Root, KO_SEAT or KO_ADMIN, each asked of libkbase — the one answer
+	 * every root daemon here gives to this question. The socket's mode is
+	 * not the gate. */
 	if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-	    !kb_uid_allowed(cred.uid, KO_GROUP)) {
+	    (!kb_uid_allowed(cred.uid, KO_SEAT) &&
+	     !kb_uid_allowed(cred.uid, KO_ADMIN))) {
 		(void)!write(c, "err not permitted\n", 18);
 		close(c);
 		return;

@@ -26,8 +26,10 @@
 # without autoload-plugins the Lua support is compiled in and a plugin
 # dropped in /etc/libinput/plugins is never read.
 #
-# libwacom is off because it is not a port: tablets are identified by the
-# kernel's evdev capabilities alone, with no stylus/pad pairing.
+# libwacom is on and in depends: it is the tablet database that pairs a
+# stylus with its pad, groups pad buttons and rings into modes, and says
+# whether a tablet is built into a screen, which touch arbitration and output
+# mapping read. Without it a tablet is a generic absolute pointer.
 meson \
 --prefix=/usr \
 --libdir=lib \
@@ -39,7 +41,7 @@ meson \
 -Dmtdev=true \
 -Dlua-plugins=enabled \
 -Dautoload-plugins=true \
--Dlibwacom=false \
+-Dlibwacom=true \
 build
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-configobj
+version     = 5.0.9
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/configobj/configobj-$version.tar.gz
+sha256      = 03c881bbf23aa07bccf1b837005975993c4ab4427ba57f959afdd9d1a2386848  python3-configobj-5.0.9.tar.gz
+description = INI-style configuration files with validation, for python programs
+homepage    = https://github.com/DiffSK/configobj
+depends     = python3 python3-setuptools python3-pip

@@ -1,12 +1,34 @@
 # KDOS — in-circuit debuggers and programmers.
 #
 # These are hidraw or raw-USB devices, never ttys, so 70-kdos-serial.rules does
-# not reach them. openocd, avrdude, flashrom, dfu-util, esptool and
-# openFPGALoader all open them directly.
+# not reach them. openocd, avrdude, flashrom, dfu-util, esptool, probe-rs,
+# st-flash and openFPGALoader all open them directly.
+#
+# A PROBE IS TWO NODES WHEN IT SPEAKS HID. The usb rule grants the
+# /dev/bus/usb node libusb opens; hidapi — built hidraw-only here — opens
+# /dev/hidraw*, which a usb rule does not reach. CMSIS-DAP v1, EDBG, Atmel-ICE,
+# PICkit 4, Nu-Link and KitProg are HID, so each vendor that ships one has
+# both lines.
+#
+# The upstream rules of openocd, openFPGALoader, libjaylink and stlink are not
+# installed: they grant a `plugdev` group this system does not have, tag
+# `uaccess` for a logind it does not run, or set MODE:="0666". This file is
+# the one grant for these devices.
 
 # CMSIS-DAP / DAPLink (ARM mbed, and every board that clones it)
 SUBSYSTEM=="usb", ATTR{idVendor}=="0d28", GROUP="dialout", MODE="0660"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0d28", GROUP="dialout", MODE="0660"
+
+# CMSIS-DAP from any vendor. The specification has a probe carry "CMSIS-DAP"
+# in its product string, or in the HID interface's string, and that is what a
+# host uses to recognise one — so this covers the NXP LPC-Link2 and MCU-Link,
+# Keil ULINK, WCH-LinkE, pid.codes probes and every clone without a vendor
+# table that is wrong the day a new probe ships. A v2 probe whose product
+# string lacks it names the string only on a bulk interface, which has no node
+# of its own; such a probe needs its vendor line below.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{product}=="*CMSIS-DAP*", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{product}=="*CMSIS-DAP*", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{interface}=="*CMSIS-DAP*", GROUP="dialout", MODE="0660"
 
 # ST-Link v1/v2/v2-1/v3
 SUBSYSTEM=="usb", ATTR{idVendor}=="0483", GROUP="dialout", MODE="0660"
@@ -14,9 +36,102 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="0483", GROUP="dialout", MODE="0660"
 # SEGGER J-Link
 SUBSYSTEM=="usb", ATTR{idVendor}=="1366", GROUP="dialout", MODE="0660"
 
-# Atmel/Microchip ICE, PICkit
+# Atmel/Microchip ICE, PICkit, EDBG and the Xplained/Curiosity boards. The
+# Atmel-ICE, PICkit 4, EDBG and nEDBG are HID, which is how avrdude reaches
+# them.
 SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", GROUP="dialout", MODE="0660"
 SUBSYSTEM=="usb", ATTR{idVendor}=="04d8", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03eb", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", GROUP="dialout", MODE="0660"
+
+# The hobbyist AVR programmers avrdude drives over libusb: USBasp on the
+# V-USB shared id, USBtinyISP, USBprog (also openocd's), micronucleus, and
+# the Teensy loader's HID bootloader. Scoped to the product ids, because the
+# vendor ids are shared by unrelated hobby devices.
+SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1781", ATTR{idProduct}=="0c9f", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1781", ATTR{idProduct}=="0c63", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="16d0", ATTR{idProduct}=="0753", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="0478", GROUP="dialout", MODE="0660"
+
+# Altera/Intel USB-Blaster I, II and III — every product under this vendor id
+# is a programming cable.
+SUBSYSTEM=="usb", ATTR{idVendor}=="09fb", GROUP="dialout", MODE="0660"
+
+# TI XDS110 and Stellaris/Tiva ICDI, and both in DFU mode. 0451 is all of
+# Texas Instruments, so its lines are scoped to the probes.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0451", ATTR{idProduct}=="bef3", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0451", ATTR{idProduct}=="bef4", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0451", ATTR{idProduct}=="c32a", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1cbe", ATTR{idProduct}=="00fd", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1cbe", ATTR{idProduct}=="00ff", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1cbe", ATTR{idProduct}=="02a5", GROUP="dialout", MODE="0660"
+
+# Nuvoton Nu-Link, Nu-Link2 and Nu-Link-Pro. Nu-Link speaks HID.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="511b", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="511c", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="511d", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5200", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5201", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="511b", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="511c", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="511d", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5200", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5201", GROUP="dialout", MODE="0660"
+
+# Cypress KitProg (bulk mode and HID CMSIS-DAP mode) and the SuperSpeed
+# Explorer. 04b4 is all of Cypress, so these are scoped to the probes.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="f138", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="f139", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="0007", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="f138", GROUP="dialout", MODE="0660"
+
+# Olimex ARM-USB-OCD(-H), -TINY(-H) and ARM-JTAG-EW — Olimex's own id carries
+# nothing but its debug adapters.
+SUBSYSTEM=="usb", ATTR{idVendor}=="15ba", GROUP="dialout", MODE="0660"
+
+# Keil ULINK, ULINK2 and ULINK-ME before CMSIS-DAP firmware
+SUBSYSTEM=="usb", ATTR{idVendor}=="c251", ATTR{idProduct}=="2710", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="c251", ATTR{idProduct}=="2750", GROUP="dialout", MODE="0660"
+
+# The rest of openocd's adapter set: Amontec JTAGkey-HiSpeed, Raisonance
+# RLink, Freescale OSBDM, Infineon DAP miniWiggler, the Hitex sticks, the
+# ixo-usb-jtag Blaster emulation, isodebug, PLS SPC5, Ambiq, Ashling
+# Opella-LD and the Neo1973 debug board.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0fbb", ATTR{idProduct}=="1000", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="138e", ATTR{idProduct}=="9000", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="0042", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="0058", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="005e", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="058b", ATTR{idProduct}=="0043", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0640", ATTR{idProduct}=="0026", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0640", ATTR{idProduct}=="0028", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0640", ATTR{idProduct}=="002c", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0640", ATTR{idProduct}=="002d", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0640", ATTR{idProduct}=="0032", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="06ad", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="22b7", ATTR{idProduct}=="150d", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="263d", ATTR{idProduct}=="4001", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2aec", ATTR{idProduct}=="6010", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2aec", ATTR{idProduct}=="6011", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2aec", ATTR{idProduct}=="1106", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b6b", ATTR{idProduct}=="0040", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1457", ATTR{idProduct}=="5118", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="9e88", ATTR{idProduct}=="9e8f", GROUP="dialout", MODE="0660"
+
+# openFPGALoader's cables outside the FTDI and Blaster families: the Anlogic
+# cable, dirtyJTAG, orbtrace-mini, the NXP LPC-Link2 in its DFU state, and
+# the Numato Mimas A7.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0547", ATTR{idProduct}=="1002", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="336c", ATTR{idProduct}=="1002", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="c0ca", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="3442", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1fc9", ATTR{idProduct}=="0090", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2a19", ATTR{idProduct}=="1009", GROUP="dialout", MODE="0660"
+
+# WCH-LinkE in its HID CMSIS-DAP mode. Its bulk modes are the 1a86 usb line in
+# 70-kdos-serial.rules.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="8012", GROUP="dialout", MODE="0660"
 
 # Espressif USB-JTAG (ESP32-S2/S3/C3 native USB)
 SUBSYSTEM=="usb", ATTR{idVendor}=="303a", GROUP="dialout", MODE="0660"
@@ -24,5 +139,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="303a", GROUP="dialout", MODE="0660"
 # Raspberry Pi Debug Probe / RP2040 boot ROM
 SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", GROUP="dialout", MODE="0660"
 
-# Lattice / FTDI-based FPGA programmers reached as hidraw
+# Lattice / FTDI-based FPGA programmers reached as hidraw. The FT2232/FT232H
+# JTAG adapters openocd, openFPGALoader and probe-rs drive through MPSSE open
+# the raw usb node instead, which the 0403 line in 70-kdos-serial.rules grants.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0403", GROUP="dialout", MODE="0660"

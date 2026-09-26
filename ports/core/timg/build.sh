@@ -12,13 +12,12 @@
 # TWO LOADERS ARE OFF AND EACH IS A DEPENDENCY THIS TREE DOES NOT HAVE.
 #
 # GraphicsMagick is not a port, so the general loader is STB plus QOI and the
-# format-specific ones carry the rest: turbojpeg for JPEG, librsvg for SVG and
-# ffmpeg for video.
+# format-specific ones carry the rest: turbojpeg for JPEG, librsvg for SVG,
+# poppler-glib for PDF and ffmpeg for video. OpenSlide is not a port either.
 #
-# WITH_POPPLER wants poppler-glib and the poppler port builds -DENABLE_GLIB=OFF
-# — the glib binding drags cairo and gdk-pixbuf in for a host with no GTK. So
-# timg reads pictures and video here, not PDFs; `pdftoppm` and a pipe is the
-# route for those.
+# WITH_POPPLER is REQUIRED rather than optional once on: it fails the configure
+# when poppler-glib is missing, which is why poppler is in `depends`. Each page
+# of a PDF is a frame, so --frame-offset and --frames choose the pages.
 #
 # WITH_TURBOJPEG also requires libexif, which is REQUIRED rather than optional
 # in the same branch: it reads the orientation tag, and without it a photo
@@ -37,7 +36,7 @@ cmake .. \
 	-DWITH_QOI_IMAGE=On \
 	-DWITH_TURBOJPEG=On \
 	-DWITH_RSVG=On \
-	-DWITH_POPPLER=Off \
+	-DWITH_POPPLER=On \
 	-DWITH_LIBSIXEL=On \
 	-DWITH_VIDEO_DECODING=On \
 	-DWITH_VIDEO_DEVICE=On \

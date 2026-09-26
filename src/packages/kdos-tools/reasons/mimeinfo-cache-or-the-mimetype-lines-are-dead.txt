@@ -9,7 +9,8 @@ update-desktop-database because the host has no desktop-file-utils.
 
 The other half is the database itself: shared-mime-info builds
 -D update-mimedb=false, so the package carries packages/freedesktop.org.xml
-and nothing else — no globs, no mime.cache. Measured on a booted ISO,
-/usr/share/mime held one directory and every consumer asking "what type is
-this file" got no answer. postinstall.sh runs update-mime-database, which is a
-target binary and therefore something only an install-time hook can do.
+and nothing else — no globs, no mime.cache. Without them /usr/share/mime is
+one directory and every consumer asking "what type is this file" gets no
+answer. kpkg's shared-index trigger writes them: every install or removal
+whose manifest touches usr/share/mime/packages/ runs update-mime-database
+over the whole tree afterwards (writing-ports.md, "Shared indexes").

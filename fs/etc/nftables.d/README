@@ -11,9 +11,18 @@ refuses the load.
         }
     }
 
+Add to `inet filter` and declare no table of your own. The main file deletes
+and rebuilds only that table, so that netavark's and NetworkManager's NAT
+tables survive a reload; a table declared here would survive it too, keeping
+its old rules alongside the new ones.
+
 50-kdos-services.nft is `kdos-firewall`'s and is rewritten whole on every
 toggle. Anything you write by hand belongs in a file of your own, which the
 surface never touches.
+
+40-podman.nft ships here and re-opens the forward chain as well as input: it
+lets rootful podman's bridge networks (podman0, podman1, ...) route and reach
+aardvark-dns.
 
 The load is checked before it is applied — see /etc/init.d/25_nftables.sh —
 so a file with a syntax error refuses the whole ruleset rather than leaving

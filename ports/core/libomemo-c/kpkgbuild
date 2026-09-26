@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libomemo-c
+version     = 0.5.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/dino/libomemo-c/archive/refs/tags/v$version.tar.gz
+sha256      = d1b65dbf7bccc67523abfd5e429707f540b2532932d128b2982f0246be2b22a0  libomemo-c-0.5.1.tar.gz
+description = The Signal double ratchet with OMEMO's wire format — end-to-end encryption for XMPP clients
+homepage    = https://github.com/dino/libomemo-c
+depends     = protobuf-c protobuf meson pkgconf

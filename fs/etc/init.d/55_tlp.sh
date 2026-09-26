@@ -13,13 +13,20 @@ case "$1" in
         # NOT supervised: tlp is not a daemon. It applies a set of /sys
         # settings and exits, so handing it to ksvc would make the supervisor
         # respawn it forever.
+        #
+        # `init start`, not `start`: the init verb is the boot one, and is the
+        # only one that applies DEVICES_TO_{DIS,EN}ABLE_ON_STARTUP and
+        # RESTORE_DEVICE_STATE_ON_STARTUP. USB autosuspend is not applied here
+        # — TLP's udev rule sets it per device as coldplug adds them.
         echo "[KDOS] Applying $NAME power policy..."
-        "$DAEMON" start
+        "$DAEMON" init start
         ;;
     stop)
-        # `tlp start` is also how you re-apply after a policy change; there is
-        # no daemon to stop, so this restores the AC profile and exits.
-        [ -x "$DAEMON" ] && "$DAEMON" start
+        # `init stop` is the shutdown half: it records the radio states the
+        # next boot restores, applies DEVICES_TO_*_ON_SHUTDOWN and clears the
+        # saved profile. `tlp start` in its place would re-apply a profile to
+        # a machine that is about to lose power and leave the others unread.
+        [ -x "$DAEMON" ] && "$DAEMON" init stop
         ;;
     status)
         [ -x /usr/bin/tlp-stat ] && tlp-stat -s || echo "$NAME: not installed"

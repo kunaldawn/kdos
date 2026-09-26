@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xmltoman
+version     = 0.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/atsb/xmltoman/archive/refs/tags/$version.tar.gz
+sha256      = cdd5063ca8beb6fe51ec6ab85f70d31fc8ed034e85e32dd9b7c0b7142bb72fb6  xmltoman-0.6.tar.gz
+description = Convert manual pages written in XML to groff or HTML
+homepage    = https://github.com/atsb/xmltoman
+depends     = perl perl-xml-parser

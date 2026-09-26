@@ -25,8 +25,28 @@
 # ---------------------------------
 # Core Build Utilities (host-side)
 # ---------------------------------
-gzip
 toybox
+# A toybox upgrade removes the names its previous manifest held, and a toybox
+# installed after a port holds that port's names — cmp, readelf, strings,
+# gunzip, mount, insmod. So a name toybox compiles out needs a recipe change
+# (a release bump) to the port that owns it in the same change: kpkg skips a
+# port whose recipe hash is current wherever it is listed, and without the
+# bump the name stays missing. These are the owners phase 3 installs before
+# toybox, plus sed and findutils, which take back the sed, find and xargs a
+# toybox upgrade puts back; ncurses, e2fsprogs and procps-ng are bumped the
+# same way and reinstall below. Their place straight after toybox only brings
+# the names back before anything later needs them — bzip2's `make` runs `cmp`
+# — and a port listed only in phase 3 never reinstalls in a run that continues
+# from this phase.
+diffutils
+binutils
+sed
+findutils
+gzip
+bzip2
+attr
+kmod
+util-linux
 xz
 readline
 ncurses
@@ -63,7 +83,6 @@ ntfs-3g
 liburcu
 btrfs-progs
 xfsprogs
-util-linux
 gptfdisk
 sqlite
 iana-etc
@@ -106,6 +125,7 @@ snooze
 # compiled out without it. musl has no NSS module system, so `.local` name
 # resolution will never work — avahi's own API is what CUPS uses.
 libdaemon
+xmltoman
 avahi
 
 # ---------------------------------
@@ -137,6 +157,14 @@ powertop
 # Power-User CLI base
 # ---------------------------------
 git
+# git send-email's TLS and SMTP authentication are these perl modules, which it
+# loads only when a send needs them: without them every send over TLS or with a
+# login fails, and nothing else notices.
+perl-net-ssleay
+perl-io-socket-ssl
+perl-digest-hmac
+perl-crypt-urandom
+perl-authen-sasl
 nano
 less
 file
@@ -149,6 +177,9 @@ psmisc
 pciutils
 usbutils
 tree
+# Stack walking of another process (libunwind-ptrace): htop's backtrace
+# screen, GStreamer's and libcamera's traces, samba's crash report.
+libunwind-nongnu
 htop
 btop
 tmux
@@ -195,6 +226,10 @@ nerd-fonts-symbols
 libcbor
 libfido2
 ccid
+# The PKCS#11 module a smart card is used through. pcscd and ccid reach the
+# reader; without this nothing speaks PIV, CAC, OpenPGP or an eID card to it,
+# so `ssh -I`, openconnect's pkcs11: URIs and every p11-kit consumer see none.
+opensc
 # The colour emoji face, which the rest of the font configuration already
 # assumes: `70-no-bitmaps-except-emoji` carves bitmap fonts an exception BY
 # FAMILY, and with no such family every emoji on the image is a blank box.
@@ -354,6 +389,12 @@ gocryptfs
 dtc
 acpica
 qemu
+# The two daemons a guest's command line names: swtpm is its TPM (a Windows 11
+# installer refuses to run without one), virtiofsd serves a host directory
+# over virtio-fs.
+libtpms
+swtpm
+virtiofsd
 # Not a program, an EFI payload: bad RAM is the one fault a tool running under
 # an OS cannot honestly diagnose, because it is in the memory being tested.
 memtest86plus
@@ -419,8 +460,10 @@ python3-esptool
 # man's logic analyzer needing no hardware beyond the header pins.
 libgpiod
 # The standard instrument-automation API with no proprietary VISA anywhere:
-# pyvisa is the API and pyvisa-py is the backend that speaks TCPIP and serial.
+# pyvisa is the API and pyvisa-py is the backend that speaks USB, TCPIP and
+# serial. pyusb is how it reaches a USB instrument.
 python3-pyvisa
+python3-pyusb
 python3-pyvisa-py
 # The same route for an ESP32 or ESP8266. Espressif's own esptool is the
 # reference and is python reaching `cryptography` — seven new python ports and
@@ -476,6 +519,16 @@ rtl-sdr
 # One API in front of every radio, so rtl_433 and anything after it is written
 # once rather than per front end.
 soapysdr
+# The radios 70-kdos-sdr.rules grants, and the SoapySDR module for each:
+# without a module `SoapySDRUtil --find` lists nothing, whatever is plugged in.
+# SDRplay has no module: its API is a closed library.
+hackrf
+airspy
+bladerf
+soapyrtlsdr
+soapyhackrf
+soapyairspy
+soapybladerf
 # What is actually on 433 and 868 MHz: weather stations, tyre monitors, door
 # sensors — hardware people already own and cannot otherwise read.
 rtl-433
@@ -490,8 +543,8 @@ multimon-ng
 # is the price of a GPS daemon rather than a preference between build tools.
 scons
 # One daemon in front of every receiver, so a GPS is a socket rather than a
-# serial protocol every program reimplements. The 70-kdos-*.rules already grant
-# the serial classes one arrives on.
+# serial protocol every program reimplements. Plugging a receiver in starts it,
+# through the udev rule the port ships.
 gpsd
 
 # ---------------------------------
@@ -508,6 +561,9 @@ libserialport
 libsigrok
 libsigrokdecode
 sigrok-cli
+# The FX2 analysers are blank until libsigrok uploads this to them; sdcc
+# compiles it.
+sigrok-firmware-fx2lafw
 # An LXI device announces itself over mDNS, which avahi is already running —
 # so `lxi discover` finds a scope nobody typed an address for. VXI-11 is ONC
 # RPC, hence libtirpc.
@@ -552,7 +608,8 @@ opus-tools
 # terminal closing, the session locking and the client dying, and a client can
 # attach from anywhere that reaches the socket — including over ssh from another
 # machine on the LAN. mpd is the daemon half and ships no configuration, so it
-# has a library only once somebody writes one.
+# has a library only once somebody writes one — and the session starts it, and
+# the panel's now-playing watcher, only then.
 # mpd reaches for an fmt SUBPROJECT WRAP when the system one is absent, which
 # is a download in a build that has no network.
 fmt
@@ -593,6 +650,9 @@ timewarrior
 # template at build time, and its vendored copy of jinja is an empty submodule
 # in the release archive.
 python3-jinja2
+# libplacebo's OpenGL backend: its GL and EGL loader is generated by glad2 at
+# build time, and the vendored copy is another empty submodule.
+python3-glad2
 # mpv 0.41 has a bare dependency() on it — no port, no mpv, and its fallback
 # is a subproject wrap, which is a download.
 #
@@ -601,10 +661,26 @@ python3-jinja2
 # at all — meson says so and carries on — and mpv lost its Vulkan output. An
 # incremental build had the loader already and did not.
 libplacebo
+# A subtitle in a legacy encoding, detected rather than drawn as mojibake.
+uchardet
+# The optical drive, for mpv, mpd, cmus, ffmpeg and GStreamer: Blu-ray (its UDF
+# reader first), DVD with its menus, and audio CDs read with paranoia.
+libudfread
+libbluray
+libdvdread
+libdvdnav
+libcdio
+libcdio-paranoia
 mpv
+# The plugin that puts mpv on the session bus: the media keys and the panel's
+# now-playing cell reach it through MPRIS.
+mpv-mpris
 # 40 000 photos on a stick are 40 000 files named DSC_* until something reads
 # the date, the lens and the position out of them.
 exiv2
+# exiftool reads and writes the tags exiv2 has no table for: maker notes,
+# audio and video containers, PDF, and every RAW format a camera invents.
+exiftool
 # poppler turns a PDF into pixels; qpdf works on the FILE — split, merge,
 # remove a password you own, repair an xref so something else can open it.
 qpdf
@@ -694,9 +770,9 @@ autoconf-archive
 calcurse
 # A CALENDAR AND AN ADDRESS BOOK OVER A vdir — one directory of .ics or .vcf
 # files, which is greppable, diffable and backed up by copying it, and which
-# `kdos-cal` reads without asking khal anything at draw time. Each vendors its
-# own runtime closure: `pypackages` names it and ports/fetch crawls the build
-# backends from there, so two bundles carry what nineteen recipes would.
+# `kdos-cal` reads without asking khal anything at draw time. Each vendors the
+# part of its runtime closure no other program imports; what they share —
+# configobj, pytz, urwid, click-log — are python3-* ports.
 khal
 khard
 # WHAT MAKES A REMOTE COLLECTION AND THE LOCAL vdir EQUAL, the way mbsync does
@@ -992,7 +1068,9 @@ tree-sitter
 rust-analyzer
 # Let's Encrypt needs the internet and a self-signed cert per host means a
 # warning per host that people learn to click through. One root, trusted once,
-# speaking ACME so caddy renews against it with its public config.
+# speaking ACME so caddy renews against it with its public config. `step`
+# creates that CA (`step ca init`) and is its client.
+step-cli
 step-ca
 
 # ---------------------------------
@@ -1073,6 +1151,9 @@ hurl
 # empty string, and brltty's configure then reports a driver that is present
 # as unknown. One program, for the same reason sed and gawk are ports.
 coreutils
+# Contracted braille: grade 2 English and the literary and computer tables of
+# well over a hundred languages, which brltty's own tables do not carry.
+liblouis
 brltty
 
 # ---------------------------------
@@ -1093,6 +1174,8 @@ difftastic
 # recovery from a bad rebase is to re-clone from the remote, and there is no
 # remote.
 jujutsu
+# 7zz lists and extracts every archive, ISO and disk image yazi previews.
+7zip
 # foot supports sixel, so yazi draws real thumbnails in a window that is
 # otherwise a character grid — the one place here a picture beats a filename.
 yazi
@@ -1128,6 +1211,12 @@ tealdeer
 poppler
 # recoll stores its index metadata through it, by pkg-config.
 jsoncpp
+# Spell checking: the Aspell library and command, its English dictionary, and
+# enchant over them. recoll's suggestions, mc's editor, weechat and profanity
+# all check against this one dictionary.
+aspell
+aspell-en
+enchant
 recoll
 
 # ---------------------------------
@@ -1153,12 +1242,14 @@ doggo
 # preflight runs `bash -n` over ~470 build.sh files, which catches a syntax
 # error and nothing else. shfmt PARSES them.
 shfmt
+# shellcheck ANALYSES them: the unquoted expansion that splits, the `cd`
+# whose failure nothing checks, the variable read in a subshell and lost.
+shellcheck
 # Every documented appbox failure is podman state — a box stuck in `stopping`,
 # a half-built init, a storage driver mismatch.
 podman-tui
-# The KDOS repo keeps every source archive in LFS, and `kdos rebuild` promises
-# this stick can rebuild this stick — as it does for any other repo cloned on
-# it. Without this a clone SUCCEEDS and checks out pointer files.
+# Repositories that store large files through Git LFS. Without it a clone of
+# one SUCCEEDS and checks out pointer files in place of the files.
 git-lfs
 
 # ---------------------------------
@@ -1195,7 +1286,9 @@ hdparm
 mdadm
 # LVM shells out to thin_check before it will activate a thin pool and
 # refuses the pool when the call fails — and the shipped lvm.conf already
-# names /usr/sbin/thin_check by absolute path.
+# names /usr/sbin/thin_check by absolute path. The initramfs carries it and
+# cache_check, for a root on a thin or a cached volume.
+thin-provisioning-tools
 # The speech API a screen reader talks to. espeak-ng is already here and is
 # the voice behind it; without this nothing on the image can drive it.
 dotconf
@@ -1217,12 +1310,12 @@ tpm2-tools
 # offers and cannot authenticate.
 vpnc-script
 openconnect
-# Fingerprint login. libfprint is the drivers and fprintd is the daemon plus
-# pam_fprintd, which is the half that actually unlocks anything.
+# Fingerprint authentication for sudo. libfprint is the drivers and fprintd is
+# the daemon plus pam_fprintd, which sudo's PAM stack consults before the
+# password.
 gusb
 libfprint
 fprintd
-thin-provisioning-tools
 nvme-cli
 lm-sensors
 dmidecode
@@ -1262,8 +1355,8 @@ lnav
 zsh
 # The container layer is podman and distrobox, and nothing on the console shows
 # a container. lazydocker speaks the Docker API, which `podman system service`
-# serves over a socket — that service has to be running and $DOCKER_HOST has to
-# name it, and neither is the entry's job.
+# serves over a socket; its entry runs behind kdos-podman-api, which starts
+# that service on demand and names it in $DOCKER_HOST.
 lazydocker
 # Nothing here reaches the Fediverse: iamb is Matrix and profanity is XMPP.
 # `toot tui` is the screen and `toot post` is the command, in one port.
@@ -1302,6 +1395,9 @@ mosh
 nmap
 tcpdump
 iperf3
+# resolvconf, which wg-quick runs for a config's DNS= line and NetworkManager
+# writes /etc/resolv.conf through.
+openresolv
 wireguard-tools
 socat
 netcat
@@ -1337,11 +1433,23 @@ libdisplay-info
 sdl3
 sdl2-compat
 gstreamer
+# webrtcbin in gst-plugins-bad: ICE through libnice, whose nicesrc and
+# nicesink elements need gstreamer first, and SRTP through libsrtp.
+libnice
+libsrtp
 gst-plugins-base
+# The HTTP library souphttpsrc and the HLS/DASH demuxers load at run time, and
+# the GIO TLS module its https connections need.
+glib-networking
+libsoup3
 gst-plugins-good
 gst-plugins-bad
 gst-plugins-ugly
 gst-libav
+# The portal's icon and sound validators run inside bwrap, and its Location
+# portal asks geoclue.
+bubblewrap
+geoclue
 xdg-desktop-portal
 
 # LUKS. Needed on the ISO rather than only on an installed system: kinstall
@@ -1357,12 +1465,18 @@ wpa_supplicant
 libnftnl
 nftables
 dnsmasq
+# Mobile broadband and PPPoE: ModemManager drives the modem, the provider
+# database supplies a carrier's APN, pppd carries PPPoE and serial modems.
+ppp
+mobile-broadband-provider-info
+modemmanager
 openvpn
 networkmanager-openvpn
 foot
 grim
 slurp
 wl-clipboard
+libnsbmp
 imv
 vulkan-loader
 # THE GRAPHICS TOOLS ARE THE WAYLAND AND EGL ONES, because mesa here is built
@@ -1405,14 +1519,17 @@ gphoto2
 # Android and every other MTP device. gphoto2 above covers PTP-mode still
 # cameras only, so without this a phone plugged into a USB port does nothing.
 libmtp
+# The phone's storage as a directory: `aft-mtp-mount ~/Phone`. libmtp alone
+# offers only the mtp-* tools, which address files by numeric id.
+android-file-transfer
 
 # Thunderbolt authorisation. Where the firmware's security level is `user` or
 # `secure` — the shipping default on most business laptops — a TB3/TB4 dock is
 # enumerated and then never authorised, so the dock's ports stay dead.
 bolt
 
-# Firmware updates: UEFI, SSDs, docks, peripherals. Built without the capsule
-# binary, so the UEFI plugin reports unsupported rather than pretending.
+# Firmware updates: UEFI, SSDs, docks, peripherals. fwupd-efi is the capsule
+# loader the UEFI plugin boots into, and gnu-efi is what it is linked against.
 fwupd
 
 # The camera stack the shipped kernel config already assumes: it sets
@@ -1505,10 +1622,17 @@ prosody
 # And the client. A server nobody can connect to from the machine it runs on
 # is a daemon, not a way to talk to somebody.
 libstrophe
+# OMEMO, the end-to-end encryption dino-im speaks too.
+protobuf-c
+libomemo-c
+# notify-send and the library behind it; profanity raises its toasts through it.
+libnotify
 profanity
 # Speech to text with the model on the disk and nothing sent anywhere, which
 # is the whole reason it is here rather than in a box. The models are NOT
 # shipped: hundreds of megabytes each, and picking one picks a language.
+# glslc compiles the shaders of whisper's Vulkan (GPU) backend.
+shaderc
 whisper.cpp
 fastfetch
 
@@ -1549,6 +1673,8 @@ gutenprint
 # jbig2dec is the JBIG2 codec a scanned page in a PDF is encoded with, taken as
 # a port so mupdf does not carry a second copy of it.
 jbig2dec
+# `mutool barcode`: QR codes and barcodes read out of a page, and drawn.
+zxing-cpp
 mupdf
 
 # ---------------------------------
@@ -1598,6 +1724,8 @@ kdos-bb
 # Container Layer (Podman + distrobox)
 # ---------------------------------
 # Replaces Flatpak. Daemonless, rootless. See plan.md §6.
+containers-common
+catatonit
 podman
 buildah
 skopeo
@@ -1681,6 +1809,12 @@ x264
 x265
 libvpx
 svt-av1
+# Where a line of text may break: libunibreak for libass's subtitles (UAX #14),
+# and libthai over libdatrie's trie for pango, because Thai has no spaces
+# between words.
+libunibreak
+libdatrie
+libthai
 libass
 libva
 
@@ -1692,6 +1826,9 @@ libva
 # older one it fails 25 minutes into the compile rather than at configure.
 intel-gmmlib
 intel-media-driver
+# The i965 driver, for the iGPUs iHD refuses: Sandy Bridge, Ivy Bridge and
+# Haswell. libva tries iHD first, so it loads only where iHD declines.
+libva-intel-driver
 
 # `vainfo` — the one command that answers which decode profiles a machine
 # actually has. A driver that did not load is otherwise silent.

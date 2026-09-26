@@ -90,8 +90,10 @@
 # daemon a plain forking one. --with-curses=ncurses because brltty's
 # `ncursesw` choice includes <ncursesw/ncurses.h> and this ncurses installs
 # its wide headers straight into /usr/include; the TTY braille driver and
-# brltty-pty are what use it. LibLouis is not a port, so contracted braille is
-# brltty's own tables only; GPM is not on this image.
+# brltty-pty are what use it. --enable-liblouis makes a contraction table
+# named `louis:<file>` — `-c louis:en-ueb-g2.ctb` — a liblouis table, which is
+# where grade 2 and every other contracted braille comes from; without it
+# only brltty's own few contraction tables exist. GPM is not on this image.
 #
 # espeak-ng is what turns that into speech. STATED LIMIT: boxed GUI
 # applications remain unreachable — they have no cells and there is no at-spi
@@ -115,7 +117,7 @@
 	--disable-lua-bindings \
 	--disable-emacs-bindings \
 	--disable-lisp-bindings \
-	--disable-liblouis \
+	--enable-liblouis \
 	--disable-gpm \
 	--enable-i18n \
 	--enable-icu \
@@ -151,6 +153,16 @@ make
 # for it to do.
 make install INSTALL_ROOT=$PKG CONFLIBDIR=:
 
+# BrlAPI's default authorisation is `keyfile:/etc/brlapi.key+polkit`, and
+# neither half exists after `make install`: the key is generated only by an
+# install with no INSTALL_ROOT, and the polkit action and rule are a separate
+# target. The key would be one secret baked identically into every image, so
+# the polkit half is the one installed: org.a11y.brlapi.write-display, with
+# upstream's rule granting it to the brlapi group and testing no session, which
+# is what makes it work here where nothing is ever active. postinstall.sh makes
+# the group.
+make install-polkit INSTALL_ROOT=$PKG
+
 # /dev/vcsa IS ROOT-AND-tty-GROUP, so BRLTTY runs as a service rather than as
 # the user. The ksvc script is the shape every other daemon here has, and it
 # SKIPS rather than fails until /etc/brltty.conf says what to drive — a respawn
@@ -175,6 +187,12 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
+        # Speech plays through ALSA `default`, which is the session's
+        # PipeWire, and init starts no PipeWire: without this the voice is
+        # "Host is down" and silence. kdos_card is the card itself and is
+        # exclusive — while a desktop session's PipeWire holds the card this
+        # cannot open it, and while this speaks PipeWire cannot.
+        export KDOS_ALSA_DEFAULT=kdos_card
         supervise "$NAME" "$DAEMON" -n
         ;;
     stop)   stop_service "$NAME" ;;

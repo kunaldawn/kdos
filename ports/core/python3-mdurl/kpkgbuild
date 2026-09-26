@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-mdurl
+version     = 0.1.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/m/mdurl/mdurl-$version.tar.gz
+sha256      = bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba  python3-mdurl-0.1.2.tar.gz
+description = URL parsing and formatting for markdown-it-py
+homepage    = https://github.com/executablebooks/mdurl
+depends     = python3 python3-pip python3-flit-core

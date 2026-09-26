@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = airspy
+version     = 1.0.10
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/airspy/airspyone_host/archive/refs/tags/v$version.tar.gz
+sha256      = fcca23911c9a9da71cebeffeba708c59d1d6401eec6eb2dd73cae35b8ea3c613  airspy-1.0.10.tar.gz
+description = libairspy and the airspy_* tools for the Airspy R2 and Mini receivers
+homepage    = https://github.com/airspy/airspyone_host
+depends     = cmake pkgconf libusb

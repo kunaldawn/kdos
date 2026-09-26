@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   xdg-desktop-portal-kdos — FileChooser, Settings and AppChooser
+ *   xdg-desktop-portal-kdos — FileChooser, Settings, AppChooser and Access
  *
  * THE GAP THIS CLOSES. xdg-desktop-portal-wlr implements ScreenCast and
  * Screenshot and nothing else, and the usual second backend is
@@ -20,7 +20,8 @@
  * sandboxing and no permission checking of its own; that is the front end's
  * job, and duplicating it here would be a second policy to keep in agreement.
  *
- * WHAT IT DOES IS SPAWN kdos-pick AND READ ITS STDOUT. That is the whole
+ * WHAT IT DOES IS SPAWN kdos-pick AND READ ITS STDOUT — or, for an Access
+ * question, spawn kdos-prompt and read its exit status. That is the whole
  * mechanism, and it is deliberate: the chooser is a normal program with a
  * normal interface, so it can be run by hand, scripted, or replaced, and this
  * file stays a bus adapter rather than becoming a second file browser.
@@ -148,12 +149,19 @@ static void picked_free(struct picked *p)
  * supports exactly this — a method call may be answered at any later point
  * while a reference to it is held.
  */
+/* What the child is: each maps its exit status to a reply differently. */
+enum pend_kind {
+	PEND_PICK,			/* kdos-pick for OpenFile / SaveFile */
+	PEND_SAVEFILES,			/* kdos-pick --directory for SaveFiles */
+	PEND_ACCESS,			/* kdos-prompt for AccessDialog */
+};
+
 struct pending {
 	struct pending *next;
 	sd_bus_message *call;
 	pid_t pid;
 	int fd;
-	int savefiles;			/* the code mapping differs */
+	enum pend_kind kind;
 	char *buf;
 	size_t len, cap;
 };
@@ -167,7 +175,7 @@ static struct pending *pendings;
  * waitpid(), and neither would ever move.
  */
 static int start_picker(const char *const argv[], sd_bus_message *call,
-			int savefiles)
+			enum pend_kind kind)
 {
 	int fds[2];
 
@@ -206,7 +214,7 @@ static int start_picker(const char *const argv[], sd_bus_message *call,
 	p->call = sd_bus_message_ref(call);
 	p->pid = pid;
 	p->fd = fds[0];
-	p->savefiles = savefiles;
+	p->kind = kind;
 	p->next = pendings;
 	pendings = p;
 	return 0;
@@ -492,7 +500,7 @@ static int file_chooser(sd_bus_message *m, void *userdata, sd_bus_error *err,
 	 * `struct pending`. Returning 1 here is "handled"; the reply carries
 	 * the same serial because the message is still referenced.
 	 */
-	if (start_picker(argv, m, 0) != 0)
+	if (start_picker(argv, m, PEND_PICK) != 0)
 		return reply_uris(m, 2, NULL);
 	return 1;
 }
@@ -539,7 +547,7 @@ static int method_save_files(sd_bus_message *m, void *userdata, sd_bus_error *er
 	}
 	argv[n] = NULL;
 
-	if (start_picker(argv, m, 1) != 0)
+	if (start_picker(argv, m, PEND_SAVEFILES) != 0)
 		return reply_uris(m, 2, NULL);
 	return 1;
 }
@@ -727,6 +735,98 @@ static int method_update_choices(sd_bus_message *m, void *userdata,
 	return sd_bus_reply_method_return(m, NULL);
 }
 
+/* ── Access — the grant-or-deny question other portals ask ────────────────
+ *
+ * The front end asks this before it hands an application something it
+ * guards: the camera (Camera), a screenshot taken without its own dialog
+ * (Screenshot), and a position (Location) for an application in a sandbox
+ * it recognises — Flatpak, Snap or Linyaps. A KDOS box is none of them, and
+ * the front end gives a host program its position unasked. It exports each
+ * of those three portals ONLY when a back end answers Access, so without
+ * this interface they do not exist on the bus at all. The front end keeps the answer in its permission store per application
+ * id, so the question is asked once, not on every request; a boxed
+ * application has no id the front end can see, so one answer covers every box.
+ *
+ * THE QUESTION IS kdos-prompt, the same yes/no dialog the compositor uses,
+ * forked and waited for through `struct pending` like a chooser: a consent
+ * dialog left open must not stop Settings answering. It opens with the deny
+ * button selected, which is the answer when nobody answers.
+ *
+ * `body` is not shown. The front end's text there points at a privacy page in
+ * the settings, and this desktop has none; showing it would send somebody
+ * looking for a control that does not exist. `choices` is not offered either:
+ * the dialog has two buttons and no list, and no portal the front end exports
+ * here passes any.
+ */
+
+/* kdos-prompt's exit status to a portal response. 0 is Grant; 1 is Deny and
+ * 254 is Escape, and both are a refusal the user made, so both are 1. Anything
+ * else — 127 for a failed exec — means nobody was asked, which is 2. */
+static uint32_t access_code(int rc)
+{
+	if (rc == 0)
+		return 0;
+	if (rc == 1 || rc == 254)
+		return 1;
+	return 2;
+}
+
+static int method_access_dialog(sd_bus_message *m, void *userdata,
+				sd_bus_error *err)
+{
+	const char *handle, *app_id, *parent, *title, *subtitle, *body;
+	char grant[64] = "Grant Access", deny[64] = "Deny Access";
+	char msg[512];
+	(void)userdata;
+	(void)err;
+
+	if (sd_bus_message_read(m, "osssss", &handle, &app_id, &parent, &title,
+				&subtitle, &body) < 0)
+		return reply_empty(m, 2);
+
+	if (sd_bus_message_enter_container(m, 'a', "{sv}") > 0) {
+		while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+			const char *key = NULL, *v = NULL;
+			if (sd_bus_message_read(m, "s", &key) < 0) {
+				sd_bus_message_exit_container(m);
+				break;
+			}
+			if (!strcmp(key, "grant_label") ||
+			    !strcmp(key, "deny_label")) {
+				if (sd_bus_message_read(m, "v", "s", &v) >= 0 &&
+				    v && *v)
+					snprintf(!strcmp(key, "grant_label")
+						 ? grant : deny, sizeof(grant),
+						 "%s", v);
+			} else {
+				sd_bus_message_skip(m, "v");
+			}
+			sd_bus_message_exit_container(m);
+		}
+		sd_bus_message_exit_container(m);
+	}
+
+	/* The title is the question and the subtitle says who is asking; a
+	 * front end that sent neither still gets a question that names the
+	 * application. */
+	if (title && *title && subtitle && *subtitle)
+		snprintf(msg, sizeof(msg), "%s %s", title, subtitle);
+	else if (title && *title)
+		snprintf(msg, sizeof(msg), "%s", title);
+	else
+		snprintf(msg, sizeof(msg), "Allow %s access?",
+			 (app_id && *app_id) ? app_id : "this application");
+
+	const char *argv[] = { "kdos-prompt", "--message", msg,
+			       "--yes", grant, "--no", deny, NULL };
+
+	/* The strings are on this stack frame, which is safe: the child is a
+	 * fork, holding its own copy of them until it execs. */
+	if (start_picker(argv, m, PEND_ACCESS) != 0)
+		return reply_empty(m, 2);
+	return 1;
+}
+
 
 /*
  * The chooser has closed its stdout. Read what is left, reap it, and answer
@@ -749,11 +849,17 @@ static void pending_finish(struct pending *pend)
 		;
 	int rc = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 
+	if (pend->kind == PEND_ACCESS) {
+		reply_empty(pend->call, access_code(rc));
+		close(pend->fd);
+		return;
+	}
+
 	struct picked p;
 	pending_parse(pend, &p);
 
 	uint32_t code;
-	if (pend->savefiles) {
+	if (pend->kind == PEND_SAVEFILES) {
 		code = (rc == 0 && p.n > 0) ? 0 : 1;
 	} else if (rc == 0) {
 		code = p.n > 0 ? 0 : 1;
@@ -1165,6 +1271,13 @@ static const sd_bus_vtable app_chooser_vtable[] = {
 	SD_BUS_VTABLE_END
 };
 
+static const sd_bus_vtable access_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("AccessDialog", "osssssa{sv}", "ua{sv}",
+		      method_access_dialog, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_VTABLE_END
+};
+
 static const sd_bus_vtable settings_vtable[] = {
 	SD_BUS_VTABLE_START(0),
 	SD_BUS_METHOD("ReadAll", "as", "a{sa{sv}}", method_settings_read_all,
@@ -1178,7 +1291,7 @@ static const sd_bus_vtable settings_vtable[] = {
 int main(int argc, char **argv)
 {
 	sd_bus *bus = NULL;
-	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL;
+	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL, *ac = NULL;
 	int r;
 
 	for (int i = 1; i < argc; i++) {
@@ -1220,8 +1333,13 @@ int main(int argc, char **argv)
 				     app_chooser_vtable, NULL);
 	if (r < 0)
 		goto fail;
+	r = sd_bus_add_object_vtable(bus, &ac, PORTAL_PATH,
+				     "org.freedesktop.impl.portal.Access",
+				     access_vtable, NULL);
+	if (r < 0)
+		goto fail;
 	/*
-	 * The name is requested LAST, after both interfaces exist. The main
+	 * The name is requested LAST, after every interface exists. The main
 	 * portal daemon calls the moment the name appears, and a call that
 	 * landed before the vtable was installed would come back as
 	 * UnknownMethod — which the daemon caches as "this backend cannot do
@@ -1317,6 +1435,7 @@ int main(int argc, char **argv)
 fail:
 	if (r < 0)
 		fprintf(stderr, "xdg-desktop-portal-kdos: %s\n", strerror(-r));
+	sd_bus_slot_unref(ac);
 	sd_bus_slot_unref(ou);
 	sd_bus_slot_unref(st);
 	sd_bus_slot_unref(fc);

@@ -30,9 +30,11 @@
 # libusb AND liburing ARE DEPENDENCIES BECAUSE THE SWITCHES DO NOT ENFORCE
 # THEM. -DSDL_HIDAPI_LIBUSB=ON and -DSDL_LIBURING=ON only permit a probe, and a
 # probe that finds nothing configures without the feature and says nothing.
-# HIDAPI over libusb reaches the Xbox, PlayStation and Nintendo pads hidraw
-# alone misses. liburing (its liburing-ffi.pc) backs SDL's async file I/O;
-# without it the same API runs on a thread pool.
+# HIDAPI over libusb reaches the pads that have no usable hidraw node — the
+# GameCube adapter and the Switch 2 controllers; every other pad's HIDAPI
+# driver opens /dev/hidraw*, which fs/etc/udev/rules.d/70-kdos-gamepad.rules
+# grants to `input` along with those USB nodes. liburing (its liburing-ffi.pc)
+# backs SDL's async file I/O; without it the same API runs on a thread pool.
 #
 # sdl2-compat dlopens libSDL3.so.0 from the default search path, so the library
 # lands in /usr/lib with no rpath.

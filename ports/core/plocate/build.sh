@@ -23,6 +23,11 @@ tar xzf "$PORT_SRC/${name}-${version}.tar.gz"
 # header goes.
 patch -p1 -i "$PORT_SRC/musl-statx.patch"
 
+# The index is per user and named by LOCATE_PATH (/etc/profile.d/40-plocate.sh);
+# there is no shared database for the compiled-in default to find, and plocate
+# stops at the first database it cannot open.
+patch -p1 -i "$PORT_SRC/locate-path-replaces-default.patch"
+
 # liburing is `required: false` upstream and has no option, so the `depends`
 # line is what turns the io_uring lookup path on; without liburing installed
 # the build silently takes its own pread path instead.
@@ -47,6 +52,10 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 # already fallen back to root:root; this is what makes that deliberate rather
 # than incidental.
 chmod 0755 "$PKG/usr/bin/plocate"
+
+# `locate` is plocate. findutils builds without its own locate and updatedb,
+# so this name and plocate's /usr/sbin/updatedb are the only ones on $PATH.
+ln -s plocate "$PKG/usr/bin/locate"
 
 # And the shared database directory goes with it: nothing writes /var/lib/plocate
 # on this image, and an empty root-owned directory is an invitation to put a

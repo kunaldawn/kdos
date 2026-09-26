@@ -87,7 +87,10 @@ if command -v bat >/dev/null 2>&1; then
     # as a pager and bat is not a drop-in for that.
     alias cat='bat --paging=never --style=plain'
     export BAT_THEME="ansi"
-    export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+    # The bat port's own pager script, not a `sh -c` pipeline: mandoc execs
+    # $MANPAGER split on spaces with no shell. Probed, because a box that has
+    # bat does not have the script.
+    [ -x /usr/libexec/bat/man-pager ] && export MANPAGER=/usr/libexec/bat/man-pager
 fi
 
 # No aliases for `find` or `ps`: fd and procs take different arguments, and
@@ -97,9 +100,28 @@ command -v duf  >/dev/null 2>&1 && alias dff='duf'
 command -v procs >/dev/null 2>&1 && alias psx='procs'
 command -v btop >/dev/null 2>&1 && alias top='btop'
 command -v lazygit >/dev/null 2>&1 && alias lg='lazygit'
+# `lfcd`: lf, and this shell is left in the directory lf was in when it quit.
+command -v lf >/dev/null 2>&1 && [ -r /usr/share/lf/lfcd.sh ] && . /usr/share/lf/lfcd.sh
 command -v nvim >/dev/null 2>&1 && { alias vi='nvim'; alias vim='nvim'; export EDITOR=nvim; }
 [ -n "$EDITOR" ] || export EDITOR=nano
 export VISUAL="$EDITOR"
+
+# gpg-agent's pinentry is the curses one, and it draws on the terminal GPG_TTY
+# names. Per shell, because each terminal is its own tty: without it a caller
+# whose stdin is not the terminal (`git commit -S`, `pass`) gets "Inappropriate
+# ioctl for device" instead of a passphrase prompt.
+GPG_TTY=$(tty 2>/dev/null) && export GPG_TTY || unset GPG_TTY
+
+# gnuplot has no window here (no Qt, wx or X11), so with no GNUTERM its
+# terminal is `unknown` and `plot` draws nothing. Only where the terminal is
+# known to decode sixel — kdos-term, which names itself in TERM_PROGRAM, and
+# foot — because on the console or over ssh the stream is a screenful of junk;
+# there, `set term dumb` is the answer.
+if [ -z "${GNUTERM:-}" ] && command -v gnuplot >/dev/null 2>&1; then
+    case "${TERM_PROGRAM:-}:${TERM:-}" in
+        kdos-term:*|*:foot*) export GNUTERM=sixelgd ;;
+    esac
+fi
 
 # ── KDOS shorthands ──────────────────────────────────────────────────
 alias kfetch='kdos-fetch-app'
@@ -122,6 +144,16 @@ fi
 # ── zoxide (smarter cd) ──────────────────────────────────────────────
 if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init bash --cmd j)"
+fi
+
+# ── atuin (history database) ─────────────────────────────────────────
+# Ctrl-R becomes atuin's search, over fzf's; Up stays readline's. atuin's
+# init loads the bash-preexec copy it carries, which is the only thing that
+# calls its record hooks — so it goes before starship, which then hooks the
+# same hook lists instead of a PS0 or DEBUG hook of its own. bash-preexec drops
+# `ignorespace` from HISTCONTROL: a command typed after a space is recorded.
+if command -v atuin >/dev/null 2>&1; then
+    eval "$(atuin init bash --disable-up-arrow)"
 fi
 
 # ── bash-completion ──────────────────────────────────────────────────

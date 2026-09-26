@@ -81,6 +81,12 @@ modules=(
 	srtp stdio stun syslog turn uuid v4l2 vidbridge vidinfo vp8 vp9 vumeter
 )
 
+# THE GENERATED CONFIG TALKS TO PIPEWIRE BECAUSE DEFAULT_AUDIO_DEVICE SAYS SO.
+# It is what the first-run config writes as audio_player, audio_source and
+# audio_alert, and a value starting `pipewire` is also what makes that config
+# load pipewire.so and comment alsa.so out. Without it the default is
+# `alsa,default`, and every call goes through the pipewire-alsa plugin: one
+# more hop and one more buffer between the microphone and the far end.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -88,6 +94,7 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DSTATIC=OFF \
+	-DDEFAULT_AUDIO_DEVICE=pipewire,default \
 	"-DMODULES=$(IFS=';'; echo "${modules[*]}")"
 ninja
 DESTDIR=$PKG ninja install

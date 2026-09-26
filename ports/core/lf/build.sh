@@ -16,6 +16,9 @@ go build -ldflags "-s -w -X main.gVersion=r$version" -o lf
 install -Dm755 lf $PKG/usr/bin/lf
 install -Dm644 lf.1 $PKG/usr/share/man/man1/lf.1
 install -Dm644 etc/lfcd.sh $PKG/usr/share/lf/lfcd.sh
+install -Dm644 etc/lf.bash $PKG/usr/share/bash-completion/completions/lf
+install -Dm644 etc/lf.zsh  $PKG/usr/share/zsh/site-functions/_lf
+install -Dm644 etc/lf.fish $PKG/usr/share/fish/vendor_completions.d/lf.fish
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/lf.desktop" <<'EOF'

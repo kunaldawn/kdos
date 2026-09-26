@@ -30,9 +30,11 @@
 # -Werror-implicit-function-declaration this build sets is what would catch it
 # if that changed.
 #
-# SPELL IS OFF because it is Aspell or Enchant and neither is a port —
-# `ENABLE_SPELL=ON` reaches `find_package(Aspell REQUIRED)` and fails the same
-# way a missing interpreter does.
+# SPELL IS ON, THROUGH ENCHANT. ENABLE_ENCHANT swaps the plugin's
+# `find_package(Aspell REQUIRED)` for `pkg_check_modules(ENCHANT REQUIRED
+# enchant-2)`, so enchant is a hard configure dependency the way an interpreter
+# is. Enchant's provider is Aspell and its dictionary aspell-en, and a
+# dictionary another port adds reaches weechat with no rebuild.
 #
 # MAN IS ON AND DOC IS OFF. Both are asciidoctor, and a missing asciidoctor is
 # SEND_ERROR, so the depends line carries it. MAN builds weechat.1 and
@@ -76,8 +78,8 @@ cmake .. \
 	-DENABLE_GUILE=OFF \
 	-DENABLE_PHP=OFF \
 	-DENABLE_JAVASCRIPT=OFF \
-	-DENABLE_SPELL=OFF \
-	-DENABLE_ENCHANT=OFF
+	-DENABLE_SPELL=ON \
+	-DENABLE_ENCHANT=ON
 make
 make DESTDIR=$PKG install
 cd ..

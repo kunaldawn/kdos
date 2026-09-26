@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libwacom
+version     = 2.20.0
+release     = 1
+source      = https://github.com/linuxwacom/libwacom/releases/download/libwacom-$version/libwacom-$version.tar.xz
+sha256      = 370b45b5e05a91960df0aeb9c9481ae05846aab92ab2d4ec66945a0da4216888  libwacom-2.20.0.tar.xz
+description = The tablet database libinput reads to pair a stylus with its pad and tell a pen display from a tablet
+homepage    = https://github.com/linuxwacom/libwacom
+depends     = meson ninja pkgconf python3 glib libgudev libevdev eudev

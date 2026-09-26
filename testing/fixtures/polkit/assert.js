@@ -7,8 +7,8 @@
  */
 function sub(g) { return { isInGroup: function (n) { return n === g; } }; }
 
-/* Every id a shipped surface calls: kdos-net's list, join, forget and wifi
- * toggle, and the hotspot. */
+/* Every id a shipped surface or program calls: kdos-net's list, join, forget
+ * and wifi toggle, the hotspot, mmcli, and pcscd. */
 var GRANT = [
     "org.freedesktop.NetworkManager.network-control",
     "org.freedesktop.NetworkManager.wifi.scan",
@@ -23,7 +23,13 @@ var GRANT = [
      */
     "org.freedesktop.NetworkManager.settings.modify.system",
     "org.freedesktop.NetworkManager.wifi.share.open",
-    "org.freedesktop.NetworkManager.wifi.share.protected"
+    "org.freedesktop.NetworkManager.wifi.share.protected",
+    /* mmcli: a SIM's PIN, enabling a modem, and its text messages. */
+    "org.freedesktop.ModemManager1.Device.Control",
+    "org.freedesktop.ModemManager1.Messaging",
+    /* pcscd: gpg's scdaemon, opensc and ykman reaching a smart card. */
+    "org.debian.pcsc-lite.access_pcsc",
+    "org.debian.pcsc-lite.access_card"
 ];
 
 /* Named in the rules file's own comment as deliberately absent. If one starts
@@ -69,6 +75,6 @@ for (i = 0; i < GRANT.length; i++) {
 if (fails)
     print("  " + fails + " failed");
 else
-    print("  ok    wheel gets the eight the surfaces call, is refused the five\n" +
+    print("  ok    wheel gets the twelve the surfaces, mmcli and pcscd ask for, is refused the five\n" +
           "        the file says it withholds, and a subject outside wheel is\n" +
           "        not answered at all");
