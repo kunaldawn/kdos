@@ -14,8 +14,9 @@
 #
 # THE WANTED SET is every `sha256 =` file named by a recipe under ports/core
 # (or by the named ports) that git does not carry. --history adds every Git
-# LFS object any ref's history names that the local LFS store or the cache
-# holds; it seeds the archive with what old commits point at. Objects this
+# LFS object under ports/core that any ref's history names and the local LFS
+# store or the cache holds; it seeds the archive with what old commits'
+# recipes point at. Objects this
 # clone never downloaded are counted and skipped, not failed.
 #
 # THE BYTES come from the port directory, the cache (ports/.srccache) or the
@@ -492,14 +493,17 @@ while read -r h f; do want "$h" "$f"; done < <(port_lines "$REPO_ROOT" "${PORTS[
 [ ! -e "$TMP/badport" ] || RC=1
 
 # History names objects this clone never downloaded: old versions, and paths
-# outside ports/core. Only an object held in the LFS store or the cache is
-# wanted; the rest are counted and left to a clone that holds them, since
-# ports/fetch reads current recipes and cannot supply them.
+# outside ports/core. Only a ports/core object is wanted — the archive serves
+# what a recipe hashes, and nothing asks it for anything else — and only one
+# held in the LFS store or the cache; the rest are counted and left to a clone
+# that holds them, since ports/fetch reads current recipes and cannot supply
+# them.
 if [ "$HISTORY" = 1 ]; then
     if git -C "$REPO_ROOT" lfs version >/dev/null 2>&1; then
         declare -A NOCOPY=()
         while read -r h _ f; do
             src_is_hash "$h" || continue
+            case $f in ports/core/*) ;; *) continue ;; esac
             if [ -n "${SEEN[$h]:-}" ] || [ -f "$KDOS_LFS_STORE/${h:0:2}/${h:2:2}/$h" ] ||
                [ -f "$(src_cache_path "$h")" ]; then
                 want "$h" "$f"

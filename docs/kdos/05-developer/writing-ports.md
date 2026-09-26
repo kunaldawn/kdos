@@ -1396,7 +1396,7 @@ upload is accepted only when GitHub reports its digest as the expected hash.
 |---|---|
 | `--dry-run` | List what would be uploaded, with sizes and totals, and the shard releases it would touch. Needs no token and makes no API call |
 | `--check` | Presence only: list what is missing from the archive; exit 1 if anything is |
-| `--history` | Add every LFS object any ref's history names (`git lfs ls-files --all`, or every object in the store when git-lfs is absent), to seed the archive with what old commits point at. Only objects the local LFS store or the cache holds are wanted; the rest — old versions and paths this clone never downloaded, which `ports/fetch` cannot supply — are counted on one line and skipped without failing the run |
+| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`, or every object in the store when git-lfs is absent), to seed the archive with what old commits' recipes point at. Objects at other paths are never wanted, since no recipe asks the archive for them. Only objects the local LFS store or the cache holds are wanted; the rest — old versions and paths this clone never downloaded, which `ports/fetch` cannot supply — are counted on one line and skipped without failing the run |
 | `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. See [Cutting a release](developing.md#cutting-a-release) |
 
 Exit status is 0 when everything wanted is archived, 1 when something is missing or an upload
