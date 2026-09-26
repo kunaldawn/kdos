@@ -149,6 +149,9 @@ State the rule and its consequence. Never the story. See hard rule 2.
 ## Build and iteration
 
 ```sh
+git config core.hooksPath script/hooks           # once per clone: the pre-push source check
+make fetch                                       # every source; the only networked step
+make fetch-check                                 # offline: what is missing or wrong
 make build                                       # everything — no network
 make build BUILD_ARGS=--fresh                    # skip the picker
 make build BUILD_ARGS="--continue-from 04_phase4"
@@ -178,7 +181,16 @@ make run-hw         # accelerated: the pass is on
   switching between a container run and a host run** — a binary built against one
   C library cannot execute under the other, and the failure does not say so. A
   container run as root leaves them root-owned, so remove them **from a
-  container** rather than reaching for sudo.
+  container** rather than reaching for sudo. **`ports/.srccache` is not on that
+  list**: it is plain data — every fetched source, by hash — that either C
+  library reads, and the port directories are hard links into it. Deleting it
+  is safe but costs a full refetch.
+- **Upstream sources are not in git.** A recipe names each by its `sha256 =`;
+  `make fetch` resolves it from `ports/.srccache`, the `kunaldawn/kdos-sources`
+  archive or upstream. A recipe that names a new hash is not done until
+  `ports/publish <port>` has put the file in the archive — the pre-push hook
+  refuses the push otherwise. See
+  [`writing-ports.md`](docs/kdos/05-developer/writing-ports.md).
 - **A new opt-in packaging flag is two edits, not one.** The chroot is entered
   with a cleared environment, so a variable must be named in `script/chroot_exec.sh`
   as well as passed by the `Makefile`, or it reaches every host step and no

@@ -15,8 +15,9 @@
  *
  * KDOS can, because of three properties it already had and one this adds:
  *
- *   - the repo builds offline — every tarball and every vendor bundle is in
- *     ports/, which is why there is nothing to download
+ *   - the repo builds offline — `make fetch` places every tarball and every
+ *     vendor bundle in ports/ before the build, and the stick carries that
+ *     fetched ports/, which is why there is nothing to download
  *   - KDOS can build KDOS — the shipped system carries gcc, binutils, make,
  *     meson, ninja, python3 and kpkg
  *   - packages are reproducible (P12), so a rebuild can be COMPARED to what it

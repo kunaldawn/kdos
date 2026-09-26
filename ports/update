@@ -10,8 +10,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Compile-on-demand wrapper for kdos-portup, the shape ports/fetch already
-# uses for its own on-demand kpkg reader: build once into a gitignored path,
+# Compile-on-demand wrapper for kdos-portup, the shape ports/srclib.sh's
+# src_kpkg_ensure uses for the on-demand kpkg reader: build once into a gitignored path,
 # rebuild only when a source file is newer than the binary, then exec straight
 # through. kdos-portup's own find_repo_root() walks two directories up from
 # /proc/self/exe, so this binary has to live at exactly <repo_root>/ports/.portup

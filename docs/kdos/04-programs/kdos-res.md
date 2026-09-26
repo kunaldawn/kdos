@@ -1,11 +1,41 @@
 # kdos-res
 
-`kdos-res` is the system monitor. It reports processor, memory, graphics, storage, network,
-battery, energy, sensor and container readings across eleven pages, and it can end, stop or
-renice a process through a small setuid helper.
+`kdos-res` is the KDOS resource monitor — the program the desktop calls **Resources**. It shows
+what is using the machine across eleven pages: applications, processes, processor, memory,
+graphics, drives, network, batteries, energy, sensors and boxes. It can also end, stop or renice a
+process, through a small setuid helper called `kdos-resctl`.
 
-It runs as a window under the compositor, as a full-screen program in a terminal, and as an
-offscreen text dump for the test suite. All three draw the same grid of character cells.
+This page is for anyone using it day to day, for administrators who want to know what the helper
+may do, and for contributors changing it. If you only want to see what is using the machine, press
+`Ctrl+Shift+Escape` and read [Pages](#pages) and [Keys](#keys); the rest of the page is reference.
+
+It runs in three ways, and all three draw the same grid of character cells:
+
+| Face | When |
+|---|---|
+| A window under the compositor | `$WAYLAND_DISPLAY` is set, or `--gui` |
+| Full screen in the terminal it was started from | No Wayland display (over ssh, on `tty2`), or `--tty` |
+| An offscreen text dump | `--dump`, for the test suite |
+
+Which display server the window reaches is decided by
+[libkdisp](../05-developer/c-libraries.md), the display library, not by `kdos-res` itself. There is
+only ever one frame round the program. In the terminal and in a dump, `kdos-res` draws a box round
+the whole grid with **Resources** on its top edge. In a window the compositor's own title bar and
+border are that frame, so `kdos-res` draws none. If you ever see two frames nested one inside the
+other, something is drawing chrome the compositor already drew, and that is a fault.
+
+## Opening it
+
+| From | How |
+|---|---|
+| The panel's meters strip | Left click |
+| The keyboard | `Ctrl+Shift+Escape`, or `Super+Ctrl+T` |
+| The Start menu | **Resources**, or **Boxes** (which opens the Boxes page) |
+| A prompt | `kdos-res`, or `kdos-res --page boxes` |
+
+The window asks the compositor to float, at 104x26 cells. A monitor is looked at and dismissed
+rather than kept as one pane among others. The size is at or above the width where the sidebar
+shows full names; it is a request, and on a screen too small for it the compositor's size wins.
 
 ## Synopsis
 
@@ -16,263 +46,278 @@ kdos-res [--page ID] [--tty | --gui] [--fixture DIR] [--interval MS]
          [--version] [--help]
 ```
 
-## Description
-
-Most process tables on this system answer the wrong question. Every containerised application here
-is its own box, so an ordinary listing shows dozens of rows of internal process names and no row
-for the application a person actually launched. `kdos-res` resolves a process id to its box through
-the container supervisor's process chain, so a row reads `firefox-esr (appbox app.firefox-esr)`,
-and the Applications page rolls those rows up into one line per application.
-
-That identity is cheap here because the boundary already exists and the supervisor already knows
-the name. It is the one reading a general-purpose monitor on this machine cannot produce.
-
-![The Applications page: the page sidebar, the header band naming its subject, and a process identified as belonging to a box](../../screenshots/res-applications.png)
-
-With neither `--tty` nor `--gui`, the program looks for `$WAYLAND_DISPLAY`. Where it is set, a
-toplevel window opens; where it is not, the cells go to the terminal the command was typed in,
-which is the right answer over ssh and on `tty2`. Which display server the window reaches is
-[libkdisp](../05-developer/c-libraries.md)'s decision — `kdos-res` registers one implementation and
-calls `kdisp_init`.
-
-The window asks for 104x26 cells. That is at or above the width where the sidebar degrades, and
-the generic toplevel default is below it, so a window naming no size opens permanently in the
-narrow band with the sidebar collapsed and the footer hint clipped mid-word. The request is a
-default rather than a demand: the compositor's first configure wins on a screen too small for it.
-
-One frame is drawn, never two. Undecorated — in a terminal, in a dump — the program draws a box
-around the whole surface with its title on the top edge. Under the compositor the server-side
-decoration is that box, so the drawn one is suppressed and only its inset is kept. Two boxes
-nested one inside the other is the tell that a program drew chrome the compositor had already
-drawn.
-
 ## Options
 
 | Option | Effect |
 |---|---|
-| `--page ID` | Open on a page. `ID` is one of the identifiers in [Pages](#pages); anything else exits 2 with the list |
+| `--page ID` | Open on a page. `ID` is one of the identifiers in [Pages](#pages); anything else exits 2 with the usage text and the page list |
 | `--tty` | Draw in the terminal, whatever the environment says |
-| `--gui` | Open a window, whatever the environment says |
-| `--fixture DIR` | Read a recorded system state instead of the live one. See [Fixtures](#fixtures-and-reference-frames) |
-| `--interval MS` | Sampling period. Floored at 200 ms |
-| `--detail PID` | Open the detail page for one process. Dump only |
-| `--font NAME` | The font for the windowed face |
-| `--dump` | Render once offscreen and write the cells to standard output |
+| `--gui` | Open a window, whatever the environment says. With no display server reachable it exits 1 and suggests `--tty` |
+| `--fixture DIR` | Read a recorded system state instead of the live one. See [Fixtures and reference frames](#fixtures-and-reference-frames) |
+| `--interval MS` | Sampling period in milliseconds, overriding the configuration. Floored at 200 |
+| `--detail PID` | With `--dump`, draw the detail page for that process |
+| `--font NAME` | The font for the window |
+| `--dump` | Sample twice, render once offscreen and write the cells to standard output |
 | `--dump-cells` | The same as `--dump` |
-| `--dump-size WxH` | The offscreen grid. Default 80x24 |
-| `--json` | With `--dump`, prepares the frame and writes nothing |
-| `--version`, `--help` | Print and exit |
+| `--dump-size WxH` | The offscreen grid. Default 80x24. A malformed value exits 2 |
+| `--json` | With `--dump`, prepare the frame and write nothing |
+| `--version` | Print `kdos-res <version>` and exit 0 |
+| `--help`, `-h` | Print the usage text and exit 0 |
 
 An unrecognised option exits 2 with a usage line rather than being ignored, so a program that
-spawns `kdos-res` with a flag it does not have fails visibly.
+starts `kdos-res` with a flag it does not have fails visibly. The usage text reads its page list from
+the page table itself, so it always names every page.
 
-The help text reads its page list out of the page registry rather than repeating it. One
-hand-maintained copy of that list is one list that can fall short of the table while the flag it
-documents keeps working, which nobody can detect without already knowing the missing name.
+## What it shows that other monitors cannot
+
+Every containerised application on KDOS runs in a box of its own, so an ordinary process list shows
+rows of internal process names and no row for the application a person launched. `kdos-res` finds
+each process's box by walking up its parent chain to the container monitor (`conmon`), whose
+arguments name the box. The Processes page shows that name in a **BOX** column, the detail page
+shows it on an `appbox` line, and the Applications page rolls a whole box up into one line.
+
+![The Applications page: the page sidebar, the header band naming its subject, and a process identified as belonging to a box](../../screenshots/res-applications.png)
 
 ## Pages
 
-Eleven pages, registered in one table in sidebar order. The identifiers in that table are the only
-spelling: `--page` takes them, the configuration's sort key uses them, and the committed reference
-frames are named after them.
+Eleven pages, in sidebar order. The identifier is the one spelling: `--page` takes it, the
+configuration's `sort` key names a column on it, and the committed reference frames are named after
+it.
 
-| Page | Shows |
-|---|---|
-| `applications` | One row per application, however many processes it is |
-| `processes` | The process table |
-| `cpu` | Per-core and aggregate processor time |
-| `memory` | Memory and swap |
-| `gpu` | Graphics utilisation or engine time |
-| `drives` | Block devices, capacity and throughput |
-| `network` | Interfaces and their rates |
-| `batteries` | Charge, rate and health |
-| `energy` | The per-application energy share, asked of `kdos-energyd` |
-| `sensors` | Temperature, fan and voltage readings |
-| `boxes` | Box, state, processes, CPU, memory, energy share, disk, uptime |
+| Page | Identifier | Shows |
+|---|---|---|
+| Applications | `applications` | One row per application, however many processes it has. Sort by name, CPU, memory, disk or process count |
+| Processes | `processes` | The process table: PID, user, CPU, memory, disk, box and name. Sort by CPU, memory, PID, name or disk; `/` filters by process name, command line, box or user (case-insensitive substring) |
+| CPU | `cpu` | Per-core and aggregate processor time |
+| Memory | `memory` | Memory and swap figures, with a note that per-slot memory module details are not shown |
+| GPU | `gpu` | Graphics utilisation, or engine time where the driver publishes no percentage |
+| Drives | `drives` | Block devices, capacity and throughput |
+| Network | `network` | Interfaces and their rates |
+| Batteries | `batteries` | Charge, rate and health |
+| Energy | `energy` | Each application's share of energy use, asked of `kdos-energyd` |
+| Sensors | `sensors` | Temperature, fan and voltage readings |
+| Boxes | `boxes` | Each box: state, processes, CPU, memory, energy share, disk and uptime. Sort by name, CPU, memory, disk or process count |
 
 ![The Boxes page](../../screenshots/res-boxes.png)
 
-The Boxes page needs no subsystem of its own. The container-supervisor walk already turns a process
-id into a box name, and the page is a rollup keyed on that. Its energy column is the energy
-daemon's answer, asked for rather than recomputed, and it renders as a dash when that daemon is not
-running — never a zero, which is how a monitor reports a missing sensor as an idle machine. A box
-that is described and not running is still a row, for the same reason the box manager reads the
-profiles as well as the container engine.
+**The Boxes page** is a rollup keyed on the same box lookup the process table uses. Its energy
+column is the energy daemon's answer, asked for rather than recomputed, and it shows `-` when that
+daemon is not running — never `0`, which would report a missing reading as an idle machine. A box
+that has a profile but is not running is still listed, because it exists as far as the box manager
+is concerned.
 
 ### The sidebar and its three widths
 
-The sidebar is drawn from the same page registry the help text reads, and it has three states,
-measured in cells because that is the unit the whole program works in:
+The sidebar is drawn from the same page table, and it has three widths, measured in cells:
 
 | Window width | Sidebar |
 |---|---|
 | 100 cells or more | 18 cells, full page names |
 | 60 to 99 cells | 6 cells, three-character prefixes |
-| Under 60 cells | None; `F10` is the only way between pages |
+| Under 60 cells | None; `F10` and `[` / `]` are the ways between pages |
 
-The fallback is three characters rather than one, and the toolkit's tab strip takes the prefix
-where a name does not fit. A single initial makes Batteries and Boxes the same control, which is
-worse than a truncation: a truncation at least reads as incomplete.
-
-`F10` opens the page list as a modal over the body. The list is this program's menu, so it is on
-the menu key; `F1` opens this program's page under `/usr/share/kdos/doc`, which is what `F1` means
-on every surface here. `[` and `]` step between pages without opening anything.
+The narrow form uses three characters rather than one initial, because a single letter would make
+Batteries and Boxes the same control.
 
 ## Keys
 
-`kdos-res` answers the contract every surface answers, described in
+`kdos-res` answers the keys every KDOS surface answers, described in
 [the design language](../03-architecture/design-language.md#the-keys-every-surface-answers).
 
 | Key | Does |
 |---|---|
-| `F1` | This page, in the documentation viewer |
-| `F10` | The page list, over the body |
+| `F1` | Opens this program's documentation page in `kdos-doc` |
+| `F10` | The page list, as a dialog over the page; `F10` or `Enter` closes it |
 | `[`, `]` | Previous and next page |
-| `Tab` | Move focus between the sidebar and the page |
-| `↑`, `↓` | The sidebar's pages, or the page's rows, depending on focus |
-| `Enter` | Open the detail page for the selected row |
-| `Esc` | Unwind one level. See below |
-| `q` | Leave |
+| `Tab` | Moves focus between the sidebar and the page |
+| `↑`, `↓` | The sidebar's pages or the page's rows, depending on focus |
+| `Enter` | Opens the detail page for the selected row |
+| `Esc` | Unwinds one level. See below |
+| `q` | Leaves |
 
-Three raised states are declared rather than written into an `Escape` arm, and `Escape` takes
-exactly one of them per press:
+Page keys:
 
-| What is up | What `Escape` does | What the footer reads |
+| Page | Key | Does |
 |---|---|---|
-| A question about ending a process | Answers it, rather than dismissing it | `Esc Cancel` |
+| Applications | `s` | Next sort column |
+| Applications | `r` | Reverse the sort |
+| Applications | `e` | End the selected application (every process in it), after a confirmation |
+| Applications | `k` | Kill the selected application, after a confirmation |
+| Processes | `s`, `r` | Next sort column; reverse the sort |
+| Processes | `/` | Filter by process name, command line, box or user (case-insensitive substring). Type, `Backspace` to erase, `Enter` to keep the filter, `Esc` to clear it while you are still typing |
+| Boxes | `s`, `S` | Next sort column; reverse the sort |
+| Drives, Network | `↑`, `↓` | Select a row |
+| Drives, Network | `Enter` | Open the facts page for the selected drive or interface |
+| Network | `n` | Open the network settings (`kdos-net`) |
+| Energy | `↑`, `↓` | Scroll |
+| Energy | `g` | Ask `kdos-energyd` again |
+| Detail | `←`, `→`, `Tab` | Move between the buttons |
+| Detail | `↑`, `↓` | Scroll the facts |
+| Detail | `Enter` | Press the focused button |
+| A confirmation | `←`, `→`, `Tab` | Move between the two buttons |
+| A confirmation | `y`, `Enter` on the confirm button | Confirm |
+| A confirmation | `n`, `q`, `Esc` | Cancel |
+
+`Esc` takes exactly one step per press:
+
+| What is up | What `Esc` does | What the footer reads |
+|---|---|---|
+| A confirmation | Cancels it | `Esc Cancel` |
 | A detail page | Back to the list it came from | `Esc Back` |
 | The `F10` page list | Back to the page under it | `Esc Pages` |
-| Nothing | The page's own back-out, and only then the program | `Esc Close` |
+| Nothing | Leaves the program, unless the page uses `Esc` itself (see below) | `Esc Close` |
 
-While a confirmation is up it owns the keyboard, and neither `Esc` nor `q` leaves the program:
-something is waiting on that answer, and a dialog dismissed without one leaves it waiting.
+The one page that uses `Esc` itself is Processes, and only while a filter is being typed: there
+`Esc` clears the filter and stays on the page. Once `Enter` has kept a filter, the next `Esc`
+leaves the program with the filter still set. To clear a kept filter, press `/` and then `Esc`.
+
+While a confirmation is up it owns the keyboard, and neither `Esc` nor `q` leaves the program: a
+question is waiting on its answer.
+
+**The pointer.** Moving over a row highlights it, a click selects it, and a click on the row that is
+already selected opens its detail page. The wheel scrolls the list while it is longer than the
+window and moves the selection while it fits. The Applications, Processes and Boxes tables have a
+scrollbar you can drag.
 
 ## The detail page
 
-`Enter` on a process, an application, a drive or an interface opens a full-screen page for that one
-subject: identity, its own processor and memory rings, thread count, open descriptors and elapsed
-time.
+`Enter` on a process, an application, a box, a drive or a network interface opens a full-screen
+page for that one subject. For a process or an application it shows identity, its own processor and
+memory rings, thread count, open descriptors and elapsed time; for a box, a drive or an interface it
+lists that subject's facts.
 
-The rings start at the moment the page is opened. Keeping a ring per process would be hundreds of
-them, and back-filling one with zeroes would be inventing a past the program did not watch.
+The rings start when the page opens. Keeping history for every process would be hundreds of rings,
+and filling one with zeroes would invent a past the program did not watch.
 
-End, Kill and Nice live on this page and nowhere else. A key that ended a process from a table
-would be a key pressed while the cursor happens to be on a row, with nothing on the screen saying
-which row that is.
+The detail page carries five buttons: **End**, **Kill**, **Nice -**, **Nice +** and **Close**. The
+first four work only on a process's page; on an application's page they are disabled, and the
+Applications page's `e` and `k` act on the whole application instead. These buttons are the only
+per-process verbs in the program: a key that ended a process straight from a table would act on
+whatever row the cursor happened to be on, with nothing on the screen saying which. A button that
+cannot work on a process is shown disabled with the reason on the same row — for example
+"kdos-resctl has lost its setuid bit".
 
 ## Acting on a process
 
-`kdos-resctl` is the setuid helper. Its entire security argument is that there is nothing to aim:
-three verbs, no paths, no options.
+A process you own is signalled and reniced directly, with `kill(2)` and `setpriority(2)`. Anything
+else, and any renice below zero, goes through `kdos-resctl`, the setuid helper. Its whole security
+argument is that there is nothing to aim: three commands, no paths, no options.
 
 ```
-kdos-resctl dmi
+kdos-resctl dmi                                   the SMBIOS table; its path is compiled in
 kdos-resctl signal <pid> <TERM|KILL|STOP|CONT>
 kdos-resctl renice <pid> <-20..19>
 ```
 
-The full argument is in [the security model](../03-architecture/security-model.md). Two properties
-belong here. The helper is never on the sampling path, because a setuid fork once a second is an
-attack surface with a schedule. And `kdos doctor` checks its setuid bit for the same reason it
-checks the password checker's: losing it is silent, and the symptom is a verb that reports failure
-with no explanation.
+| Exit status | Meaning |
+|---|---|
+| 0 | Done |
+| 1 | Refused |
+| 2 | Usage error |
+| 3 | The operation itself failed |
 
-One confirmation dialog stands in front of the destructive verbs, and it names its subject. The
-toolkit's own modal belongs to a frame protocol this program does not drive, so the dialog is this
-program's. Cancel is preselected — a destructive button under the caret turns a reflex `Enter` into
-a kill — and the message says what will happen:
+The caller must be in the `wheel` group, by real user id — the same gate as `kdos-powerd` and
+`kdos-energyd`. The group is fixed when the helper is built and cannot be changed by an environment
+variable. The full argument is in [the security model](../03-architecture/security-model.md).
+
+The helper is never on the sampling path: a setuid program started once a second would be an
+attack surface on a schedule. `kdos doctor` checks that it exists and is setuid root, because losing
+the bit is silent and the only symptom is a button that cannot work.
+
+**Confirmations.** End and Kill are confirmed; the dialog is drawn by this program, Cancel is
+preselected so a reflex `Enter` does not kill anything, and the message says what will happen. The
+Applications page's `e` and `k` act on a whole application, and the count is why they are worth
+confirming — here, an application is a container's worth of processes:
 
 > End all Firefox — 41 processes in appbox app.firefox-esr. Unsaved work in them is lost.
-
-That count is why the Applications page's verbs are worth confirming at all: here, an application
-is a container's worth of processes.
 
 A renice is not confirmed. It is reversible, and a dialog on every nudge teaches people to click
 through the one that matters.
 
-The desktop's own chrome is confirmed rather than refused. `kdos-oomd` protects the compositor, the
-panel, the desktop and the notification daemon because it acts on its own initiative; a person
-aiming at a wedged panel is entitled to end it, and the supervisor brings it back. The dialog
-names what will happen instead of declining.
+The desktop's own processes are confirmed like anything else rather than refused. `kdos-oomd`
+protects the compositor, the panel, the desktop and the notification daemon because it acts on its
+own initiative; a person ending a wedged panel is entitled to, and the supervisor restarts it.
 
 ## Reading the numbers honestly
 
-No number is invented. Every reader answers "unreadable" where the machine publishes no value, and
-the cell renders a plain `-`. A `0` default is how a monitor reports a missing sensor as an idle
-machine.
+No number is invented. Where the machine publishes no value, the reading is "unreadable" and the
+cell shows `-`. A default of `0` is how a monitor reports a missing sensor as an idle machine.
 
-The GPU page is where that bites hardest. Only some drivers publish a utilisation percentage, so
-every other driver gets engine time, labelled as such, and a driver with no statistics at all gets
-no column rather than a column of zeroes.
+The GPU page is where that matters most. Only some drivers publish a utilisation percentage; every
+other driver gets engine time, labelled as such, and a driver with no statistics gets no column at
+all rather than a column of zeroes.
 
-Three further rules shape what is displayed:
+Three further rules shape what you see:
 
-- A counter that went backwards is a gap, never a spike, and both halves of a mirrored pair skip it
-  together. One half advancing while the other did not would put received and sent a sample out of
-  step for the rest of the session.
-- A rate is fed from the sampler, never from a page's per-frame preparation. Preparation runs once
-  per frame and a frame is not an interval; the offscreen dump draws exactly once after two
-  samples, so a chart fed from preparation is empty in every reference frame and the arithmetic
-  behind it is checked by nothing.
-- Elapsed time is computed against system uptime and against nothing else. A process's start time
-  and the uptime are both seconds since boot; pairing the start time with the sampler's monotonic
-  stamp is a different epoch, and under a fixture a different machine — the subtraction underflows
-  and draws the first digits of an enormous number. A start later than the uptime renders a dash.
+- **A counter that went backwards is a gap, never a spike**, and both halves of a paired reading
+  (received and sent) skip that sample together, so they stay in step.
+- **Rates come from the sampler, not from drawing.** A frame is not an interval, and the dump draws
+  once after two samples, so a rate computed while drawing would be empty in every reference frame.
+- **Elapsed time is measured against system uptime.** A process's start time and the uptime are both
+  seconds since boot; any other clock is a different epoch and, under a fixture, a different
+  machine. A start later than the uptime shows `-`.
 
-The sampling loop's deadline is also its poll deadline. Events wake this loop — a keystroke, a
-pointer crossing a row, a configure — so a poll that always waits the full interval samples at
-irregular intervals, and a chart then plots one uneven sample per pixel. The wait is whatever
-remains until the next sample and never more. A tick that overruns its own interval is reported on
-the screen: a monitor that has become the load it is measuring should say so rather than quietly
-becoming the machine's top consumer.
+The sampling deadline is also the wait deadline. Keystrokes, pointer movement and resizes all wake
+the loop, so a loop that always waited a full interval after each wake-up would sample unevenly and
+draw an uneven chart. It waits only for whatever remains until the next sample.
 
 ## The charts
 
-A full-width chart cannot be a sprite tile. The toolkit encodes a tile's sub-cell coordinate in
-four bits each way, so one sprite slot covers at most 16x16 cells — the size the panel's meters
-strip is built around. A page-wide chart here is many times that, so the pixel path is not merely
-unused, it is unreachable.
+Charts are drawn as character cells. Whole rows are the full block, and the top row of each column
+is the block-ramp character for the remainder, so the resolution is rows times the ramp's levels and
+the shape survives all three glyph tiers of the
+[design language](../03-architecture/design-language.md).
 
-The charts are therefore drawn as cells. Whole rows are the full block and the top row of each
-column is the ramp character for the remainder, so the resolution is rows times the ramp's level
-count and the shape survives all three glyph tiers.
+**For contributors.** A chart on these pages cannot be a pixel picture (a *tile*, described in
+[Writing desktop software](../05-developer/writing-desktop-software.md#pixel-tiles)). The toolkit
+stores a tile's position within a cell in four bits each way, so one tile covers at most 16x16
+cells, and a page-wide chart is larger than that. Two toolkit behaviours matter when adding a
+chart:
 
-Two shapes to avoid when adding one. The toolkit's one-row sparkline handed a ten-row band draws in
-the first row, on top of the label, leaving nine empty — which on a real screen reads as a chart
-that is not working. And a tile guarded by a check for an existing slot can never be created,
-because the slot only exists after the commit that guard prevents.
+- The toolkit's one-row sparkline draws only in the first row of whatever band it is given. Given
+  a ten-row band, it draws over the label in the first row and leaves the other nine empty.
+- A tile's picture is held in a numbered *slot* that exists only once the tile has been drawn for
+  the first time. Code that draws a tile only when its slot already exists therefore never draws
+  it.
 
 ## Configuration
 
-`~/.config/kdos/res.conf`, or `$XDG_CONFIG_HOME/kdos/res.conf` where that is set. Flat
-`key = value`, the same shape `panel.conf` uses. An unknown key is reported by name on standard
-error rather than ignored: a line that does not take effect and says nothing is indistinguishable
-from a setting that does nothing.
+`~/.config/kdos/res.conf`, or `$XDG_CONFIG_HOME/kdos/res.conf` where that is set. It is plain
+`key = value` lines with `#` comments, the same shape as `panel.conf`. A missing file means the
+defaults. An unknown key is reported by name on standard error rather than ignored.
 
 | Key | Values | Default | Does |
 |---|---|---|---|
 | `interval` | milliseconds | `1000` | Sampling period, clamped to 200–60000 |
-| `units` | `1024`, `1000` | `1024` | Which power the size units are |
+| `units` | `1024`, `1000` | `1024` | Which power the size units use |
 | `temperature` | `c`, `f` | `c` | Temperature scale |
-| `cpu_percent` | `core`, `machine` | `core` | Whether a percentage is of one core or of the machine |
+| `cpu_percent` | `core`, `machine` | `core` | Whether a percentage is of one core or of the whole machine |
 | `memory` | `rss`, `pss` | `rss` | Which memory figure a process row reports |
-| `kernel_threads` | `yes`, `no` | `no` | Show kernel threads in the process table |
-| `virtual_drives` | `yes`, `no` | `no` | Show loop and other virtual block devices |
-| `virtual_net` | `yes`, `no` | `no` | Show virtual network interfaces |
-| `icons` | `yes`, `no` | `yes` | Draw glyphs beside rows |
-| `sort` | a page identifier's column | `cpu` | Initial sort key |
-| `columns` | column list | empty | Column selection |
+| `kernel_threads` | boolean | `no` | Show kernel threads in the process table |
+| `virtual_drives` | boolean | `no` | Show loop and other virtual block devices |
+| `virtual_net` | boolean | `no` | Show virtual network interfaces |
+| `icons` | boolean | `yes` | Draw icons in the header band |
+| `sort` | a column name | `cpu` | Initial sort column. Processes: `cpu`, `memory`, `pid`, `name`, `disk`. Applications and Boxes: `name`, `cpu`, `memory`, `disk`, `procs`. A name a page does not have leaves that page on its own default |
+| `columns` | column list | empty | Read and stored; no page consults it |
 
-`yes`, `1`, `true` and `on` are all accepted for a boolean.
+`yes`, `1`, `true` and `on` are true for a boolean; anything else is false.
 
-The interval is floored rather than trusted. A monitor asked to sample every 10 ms becomes the load
-it is measuring, and the rates it prints are then mostly its own.
+A short interval is floored rather than trusted: a monitor sampling every 10 ms becomes the load it
+is measuring.
 
-`SIGHUP` re-reads this file and the accent, on the same signal `kdos theme` already sends. The
-handler sets a flag rather than doing the work: reparsing a file inside a signal handler means
-allocating inside one, and the loop is never more than one interval away from noticing. A program
-on the session's retint list that does not handle `SIGHUP` is killed by `kdos theme amber` and
-comes back looking retinted, which is the same picture with a different process id.
+Example:
+
+```
+# ~/.config/kdos/res.conf
+interval    = 2000
+temperature = f
+memory      = pss
+sort        = memory
+```
+
+`SIGHUP` re-reads this file and the accent — the signal `kdos theme` sends to every running surface.
+The handler only sets a flag, and the loop picks it up within one interval. The accent itself is the
+one word in `~/.cache/kdos/theme` (`$XDG_CACHE_HOME/kdos/theme`).
 
 ## Fixtures and reference frames
 
@@ -280,45 +325,52 @@ comes back looking retinted, which is the same picture with a different process 
 kdos-res --fixture testing/fixtures/res --page boxes --dump
 ```
 
-`--fixture` points every reader at a recorded system state instead of the live one — the same seam
-the stutter attribution, the memory daemon and the privacy indicator use. It is what makes a
-monitor's output deterministic enough to have committed reference frames at all. The fixture's own
-`passwd` file is used too, because resolving a uid against the developer's `/etc/passwd` makes a
-recorded machine render a different name on every host.
+A **fixture** is a recorded system state (see the [glossary](../06-reference/glossary.md)).
+`--fixture DIR` points every reader at `DIR/proc` and `DIR/sys` instead of the live ones, and uses
+`DIR/passwd` for user names when it exists, so the same recording renders the same names on every
+host. This is what makes the output deterministic enough to commit reference frames, called
+**goldens**, at all.
 
-A dump samples twice before drawing, against the fixture's two snapshots — `<fixture>/` and
-`<fixture>/next/`, one interval apart. Every rate on every page is a difference between two
-readings, so sampling one snapshot twice renders a machine doing nothing at all, and a reference
-frame of that can never catch an arithmetic error.
+A dump samples twice before drawing, against the fixture's two snapshots: `DIR/` and `DIR/next/`,
+one interval apart. Every rate is a difference between two readings, so sampling one snapshot twice
+would draw a machine doing nothing and a golden that could never catch an arithmetic error.
 
-Frames are committed for all eleven pages plus the detail page, at three widths: 56x24, where the
-sidebar is gone entirely; 80x24, where it is six cells of three-character prefixes; and 132x43,
-where it is the full eighteen.
+Goldens are committed in `testing/goldens/` for all eleven pages plus the detail page, at three
+sizes — 36 files named `res-<page>-<size>.txt`:
 
-A reference frame that reads the host's filesystem is not a reference frame. The detail page's
-footer explains why a verb is unavailable, which means stat-ing a helper binary — and the same
-fixture on two machines then produces two different frames. Under a fixture that question is not
-asked: a fixture is a recorded machine and the helper is a property of the running one, and
-nothing is executed against a fixture in any case.
-
-## Opening it
-
-| From | How |
+| Size | Sidebar |
 |---|---|
-| The panel's meters strip | Left click |
-| A keyboard | `Ctrl+Shift+Escape`, or `Super+Ctrl+T` |
-| The Start menu | The Resources entry |
-| A prompt | `kdos-res` |
+| 56x24 | None |
+| 80x24 | Six cells of three-character prefixes |
+| 132x43 | The full eighteen |
 
-The window asks the compositor to float. A monitor is looked at and dismissed rather than kept as
-one pane among others, which is the same request `btop`'s entry makes with `X-KDOS-Float`. It is
-set in the program rather than in a desktop entry because this surface attaches for itself, and a
-key on a `Terminal=false` row is a key nothing reads.
+Under a fixture, the detail page does not ask whether `kdos-resctl` is installed: a fixture is a
+recorded machine, the helper belongs to the running one, and the answer would make one fixture
+render differently on two hosts. Nothing is executed against a fixture.
+
+See [Testing](../05-developer/testing.md) for how the goldens are regenerated and compared.
+
+## Files
+
+| Path | What |
+|---|---|
+| `/usr/bin/kdos-res` | The monitor |
+| `/usr/bin/kdos-resctl` | The helper, mode 4755 |
+| `/usr/share/applications/kdos-res.desktop` | The **Resources** launcher |
+| `~/.config/kdos/res.conf` | Configuration |
 
 ## Limitations
 
-The Drives and Network lists do not scroll. They are short, and their pointer handling is
-select-and-open with no viewport, so the scrollbar and its drag exist on the two long tables only.
+- The Drives and Network lists have no scrollbar. They are short, and their pointer handling is
+  select-and-open with no viewport.
+- The sampler records when one sample takes longer than the interval, but no page displays it.
+- `columns` in the configuration is accepted and has no effect.
+- Per-slot memory module details are not shown. `kdos-resctl dmi` reads the SMBIOS table, but no
+  page asks it.
+- `Esc` clears a Processes filter only while it is being typed. With a kept filter, `Esc` leaves
+  the program; press `/` and then `Esc` to clear the filter instead.
+- While a Processes filter is being typed, `q`, `[`, `]`, `Tab` and `F10` keep their global
+  meaning, so a filter cannot contain those characters and typing `q` leaves the program.
 
 ## See also
 

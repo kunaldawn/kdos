@@ -8,23 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# UPSTREAM TARBALLS ARE IN THE TREE, THROUGH LFS. A clone must be able to build
-# the ISO with no second fetch: the `sha256 =` in each recipe is what verifies
-# an archive, and a hash with nothing to hash is a promise nobody can check.
-#
-# THE FILTER MUST BE INSTALLED BEFORE THEY ARE ADDED. A tarball staged before
-# `git lfs install` is an ordinary blob and stays one until the history is
-# rewritten — and seven of these are over the 100 MB github.com refuses on a
-# push, so the mistake does not surface until the push fails.
-#
-#     git lfs install --local
-#     git lfs ls-files | wc -l        # must equal the count of files on disk
-#
-# THE QUOTA IS THE CONSTRAINT AND IT IS SHARED ACROSS THE WHOLE ACCOUNT. These
-# are 7.1 GB against a free allowance of 10 GiB of storage and 10 GiB a month
-# of bandwidth, counted over every repository the account owns. Exceeding it
-# does not slow a clone down, it blocks LFS reads — including the 7 MB of
-# vendored art and fixtures that have nothing to do with ports, so a fresh
-# clone cannot check out at all. A paid data pack is what keeps this working;
-# without one, the margin is under 3 GiB and one month's bandwidth is a handful
-# of clones.
+# No path goes through a filter. Upstream sources are not in git at all: they
+# live in the kunaldawn/kdos-sources archive and are fetched by `make fetch`
+# (see .gitignore and ports/srclib.sh).

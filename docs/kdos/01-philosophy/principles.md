@@ -1,15 +1,18 @@
 # Principles
 
-These are the rules every change to KDOS is judged against. Each one exists because something
-breaks without it, and the break is usually far from where the offending patch was written, so
-each principle below is stated together with the failure it prevents and the price it charges.
+This page lists the rules every part of KDOS is built to, and every change to it is judged
+against. It is for anyone who wants to understand why the system behaves as it does, and for
+contributors, who will find a patch that breaks one of these rules pushed back in review. Read
+[Why KDOS](why-kdos.md) first for the ideas these rules serve.
 
-They are not preferences, and none of them is free. The cost is stated in every case.
+Each rule exists because something breaks without it, and the break usually shows up far from the
+change that caused it. So each principle below is stated together with the failure it prevents and
+the price it charges. They are not preferences, and none of them is free.
 
 ## No systemd
 
-Nothing named `systemd-*` runs on the host, and no component may depend on one. The replacements
-are each a small program doing one job.
+Nothing named `systemd-*` runs on the host, and no component depends on one. Each job systemd
+would do is done by a small program that does only that job.
 
 | Function | KDOS uses | Not |
 |---|---|---|
@@ -17,23 +20,29 @@ are each a small program doing one job.
 | sd-bus API | `basu` | `libsystemd` |
 | Device management | `eudev` | `systemd-udevd` |
 | Message bus | `dbus` | `dbus-broker` |
-| DNS | `dnsmasq` | `systemd-resolved` |
-| Network | `wpa_supplicant`, NetworkManager | `systemd-networkd` |
-| Service supervision | `ksvc` and `/etc/init.d` | units and targets |
+| DNS | `dnsmasq`, which NetworkManager runs as a local resolver | `systemd-resolved` |
+| Network | NetworkManager with `wpa_supplicant`; `dhcpcd` when NetworkManager is turned off | `systemd-networkd` |
+| Service supervision | `ksvc` and the scripts in `/etc/init.d` | units and targets |
 
-The price is paid in two places, both around containers. An init that provides no cgroup
-delegation gives rootless podman nothing to enforce a limit with, so a `--memory` limit passed to
-podman is accepted and silently does nothing. KDOS answers that in two steps:
-[`15_userdirs.sh`](../03-architecture/boot-and-init.md) delegates a cgroup2 subtree per user by
-hand at boot, and [`kdos-oomd`](../04-programs/daemons.md) reads each box's declared budget and
-prefers an over-budget box as a kill victim, so a profile key that cannot be enforced as a cap is
-at least honest about what it does. Separately, any service expecting socket activation or a user
-slice has to be given neither.
+The price is paid around containers. Rootless podman enforces a `--memory` or `--cpus` limit
+through a cgroup2 subtree that the user owns, and systemd is what normally hands one out. Without
+one, podman accepts the flag and silently does nothing. KDOS covers this in two ways:
+
+1. At boot, [`/etc/init.d/15_userdirs.sh`](../03-architecture/boot-and-init.md) delegates a
+   cgroup2 subtree to each user by hand (`/sys/fs/cgroup/user.slice/user-<uid>`, with the `cpu`,
+   `memory` and `pids` controllers enabled), which is the arrangement systemd's user slice would
+   provide.
+2. Where a limit still cannot be applied, [`kdos-oomd`](../04-programs/daemons.md) reads the
+   memory budget each box's profile declares and picks a box over its budget first when memory
+   runs out. A profile key that cannot be enforced as a hard cap is at least honest about what it
+   does.
+
+Separately, a service that expects socket activation or a user slice has to be run without them.
 
 ## No Xorg server, and one carve-out
 
-There is no `xorg-server` port, no display manager, and nothing X on the login path. `fs/etc/X11/`
-does not exist and must not be created.
+There is no `xorg-server` port, no display manager, and nothing X on the login path. There is no
+`/etc/X11/` directory in the system files under `fs/`, and a change that creates one is rejected.
 
 Xwayland is the single exception. The compositor runs it rootlessly so that X11-only applications
 inside boxes work, and it pulls in a client-side chain that exists only to satisfy it:
@@ -42,7 +51,7 @@ inside boxes work, and it pulls in a client-side chain that exists only to satis
 `xcb-util` ports: `xcb-util-wm`, which `script/05_desktop/packages.txt` names because Xwayland's
 xwm needs ICCCM and EWMH, and `xcb-util-renderutil`, which arrives through wlroots's `depends`.
 `xcb-util`, `xcb-util-image` and `xcb-util-cursor` are recipes nothing reaches, so nothing builds
-them. A recipe that wants any of these for a different reason gets pushed back.
+them. A recipe that wants any of these libraries for a reason other than Xwayland is rejected.
 
 Two consequences are worth knowing before you plan work around them. Mesa is built with
 `-D glx=disabled -D platforms=wayland` and Xwayland with `-Dglx=false`, so X clients get no
@@ -61,7 +70,7 @@ the boot splash and `tty1`. `libktui` composes the cells and knows nothing about
 escape sequences, and the boot splash writes PSF glyphs straight to `/dev/fb0` before any of that
 exists.
 
-There is one carve-out inside the desktop and it is worth knowing before your first titlebar. The
+There is one exception inside the desktop, and it is worth knowing before you change a titlebar. The
 compositor links `cairo` and `pangocairo` and draws its own chrome — titlebars, the root menu and
 the window-switcher OSD — with pango rather than with cells, at a size matched to the grid so the
 machine still looks like one machine. `~/.config/kdos-comp/rc.xml` states the rule and the size;
@@ -84,7 +93,7 @@ Every program, library and module the host installs and runs on its own processo
 this tree from a pinned upstream source. The application catalogue is outside the rule: it is
 Debian's packaging, built by podman into a box on the machine that asks, and never part of the
 host. A binary taken on trust cannot be read, cannot be rebuilt by `kdos rebuild` from the
-medium, and carries whatever its builder put in it — so one of them quietly ends the claim that
+source tree, and carries whatever its builder put in it — so one of them quietly ends the claim that
 the system is inspectable end to end.
 
 Four classes are exempt, and nothing outside them is:
@@ -201,28 +210,38 @@ The build runs with no network, and this is enforced rather than intended: `make
 `--network none` to the build container. A dependency that reaches out fails immediately and
 visibly, instead of working on the machine that added it and failing everywhere else a year later.
 
+The network is used in exactly one step, `make fetch`, which places every source file a recipe
+names in its port directory and checks each against the recipe's `sha256 =` line. It takes each
+file from the first place that has a matching copy: the port directory, the local cache
+`ports/.srccache/`, the KDOS source archive, then the upstream URL. `make fetch-check` repeats the
+verification offline. See [Decisions](decisions.md#upstream-archives-are-content-addressed-release-assets)
+for why the sources are held in an archive keyed by their hashes.
+
 For recipes this creates a whole class of build failure that has to be fixed rather than
 tolerated — a meson subproject wrap, a CMake `file(DOWNLOAD)`, a `FetchContent` git clone, a
 Python build backend resolving a system tool from PyPI. Each has a canonical fix in
 [Build troubleshooting](../05-developer/build-troubleshooting.md).
 
-The cost lands on whoever adds a port. Vendoring a dependency bundle by hand is work that a
-network-enabled build would have done for you.
+The cost lands on whoever adds a port. A language ecosystem that downloads its dependencies at
+build time (123 ports vendor them today: 60 Rust, 34 Go, 25 Python and 4 Haskell) needs a
+*vendor bundle*, a reproducible tarball of those dependencies that `make fetch` produces and the
+archive then holds. That is work a network-enabled build would have done for you.
 
 ## Reproducible by construction
 
-A package built twice from the same tree is byte-identical. That is a property of one function —
-`roll_package()` in `kpkg`, which invokes tar with `--sort=name`, a pinned `--mtime` honouring
-`SOURCE_DATE_EPOCH`, and `--owner=0` — rather than a property of 969 recipes. Concentrating it
-there is precisely why `kpkg` rolls the archive itself instead of letting each recipe do it.
+A package built twice from the same tree is byte-identical. That is a property of one function
+rather than of 1,038 recipes: `roll_package()` in `kpkg` invokes tar with `--sort=name`, a pinned
+`--mtime` taken from `SOURCE_DATE_EPOCH`, and `--owner=0`. Keeping it in one place is why `kpkg`
+rolls the package archive itself instead of letting each recipe do it.
 
-Reproducibility is not decoration. It is what makes a signed binhost meaningful, what lets a delta
+Reproducibility is not decoration. It is what makes a signed [binhost](../06-reference/glossary.md) (a server of prebuilt packages)
+meaningful, what lets a delta
 reconstruct a package that still verifies against the original signature, and what lets a rebuild
 be compared against what it was built from rather than merely produced. See
 [Packaging](../03-architecture/packaging.md).
 
-The constraint it imposes is that a recipe may not roll its own archive, however much it would
-like to.
+The constraint it imposes is that a recipe never rolls its own package archive; it installs
+files and `kpkg` packs them.
 
 ## Say what cannot be enforced
 
@@ -245,9 +264,9 @@ read better and mean less.
 No document, comment or shipped configuration file records history. Not what something was, not
 which bug a line fixed, not how a lesson was learned.
 
-Write the constraint — what the code does and what breaks if it changes. Do not write the
-changelog. A reader has the file in front of them and needs to know what is true and what they
-must not break; the story of how it came to be is in the commit that made it so.
+Write the constraint: what the code does and what breaks if it changes. Leave the changelog to
+git. A reader has the file in front of them and needs to know what is true and what they must not
+break; the story of how it came to be is in the commit that made it so.
 
 ```c
 /* WRONG — narrates a past defect */
@@ -262,8 +281,9 @@ must not break; the story of how it came to be is in the commit that made it so.
 Both sentences carry the same warning. Only the second is still true in five years, and only the
 second survives the surrounding code being rewritten.
 
-`testing/docscheck.sh` enforces the mechanical half of this across the book, alongside the page
-contract and dead-link checks.
+`testing/docscheck.sh` checks the mechanical half of this across the book: it flags common
+phrases that narrate the past, dead relative links, and pages missing a title or a `See also`
+section.
 
 ## Every change updates its documentation, in the same change
 
@@ -288,4 +308,5 @@ The price is that no change is ever only a code change.
 - [Decisions](decisions.md) — the arguments where two principles pulled against each other
 - [The design language](../03-architecture/design-language.md) — these principles applied to what you see
 - [The security model](../03-architecture/security-model.md) — including what is not protected
-- [CLAUDE.md](../../../CLAUDE.md) — the working rules for editing this tree
+- [Developing](../05-developer/developing.md) — building, testing and changing the tree
+- [Glossary](../06-reference/glossary.md) — the terms this book uses

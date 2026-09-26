@@ -272,10 +272,10 @@ echo "==> every meson -D a recipe passes is an option that port defines"
 # default_library, b_*, and the rest meson defines for every project) is
 # always valid and is not in that file, so the known set is listed here.
 #
-# A port whose tarball is absent is SKIPPED rather than failed. The archives
-# are in the tree through Git LFS, so the case this covers is a clone made
-# without `git lfs install`: the working tree then holds pointer files and
-# every meson option in it would be reported unknown.
+# A port whose tarball is absent is SKIPPED rather than failed. Upstream
+# sources are not in git; `make fetch` puts them in the port directories, so
+# the case this covers is a clone that has not been fetched yet, where there is
+# no meson_options.txt to read and every option would be reported unknown.
 meson_checked=0
 meson_builtin="auto_features backend b_asneeded b_colorout b_coverage b_lto \
 b_lundef b_ndebug b_pch b_pgo b_sanitize b_staticpic b_vscrt buildtype \
@@ -396,15 +396,23 @@ archive_magic() {
 }
 
 echo
-echo "==> every source a port declares is on disk, hashed and non-empty"
+echo "==> every source a port declares is hashed, and on disk once fetched"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The enumeration is the RECIPE's own source list
 # read through the same parser the build uses, NOT a glob of archive
-# extensions: that glob knew about six suffixes, so ca-certificates' and
-# iana-etc's plain files were invisible here and failed instead
-# two hours into phase 3. The hashes were bootstrapped from the git-LFS
-# pointers, where the oid IS the file's sha256.
+# extensions: a glob knows only the suffixes it lists, and a plain-file
+# source (ca-certificates', iana-etc's) is invisible to it and fails instead
+# hours into phase 3.
+#
+# A HASHED SOURCE THAT IS NOT ON DISK IS UNFETCHED, NOT BROKEN. Upstream
+# sources are not in git: `make fetch` resolves each `sha256 =` entry from the
+# local cache, the kunaldawn/kdos-sources archive or upstream, so a fresh clone
+# has none of them and must still pass here. They are counted and reported
+# with the command that supplies them; whether each one is in the archive is
+# what `ports/publish --check` and the pre-push hook answer.
 unhashed=0
+unfetched=0
+stale=""
 for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
@@ -437,16 +445,20 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
         idx=$((idx + 1))
         resolved="$resolved $base"
-        # A DECLARED SOURCE THAT IS NOT ON DISK IS A BUILD THAT DIES AT THE
-        # UNPACK. `make build` runs with no network, so the copy committed
-        # beside the recipe is the only one there will ever be, and a name
-        # nothing provides is reported here rather than at whatever hour of
-        # the build its phase reaches that package. Every port is judged, not
-        # only the ones a packages.txt names: a port wired into no phase yet
-        # is exactly the one whose tarball was never committed.
+        # A DECLARED SOURCE WITH NO HASH AND NO FILE IS A BUILD THAT DIES AT
+        # THE UNPACK. `make build` runs with no network, and `make fetch`
+        # takes nothing from the archive for a name the recipe does not hash,
+        # so a name nothing provides is reported here rather than at whatever
+        # hour of the build its phase reaches that package. Every port is
+        # judged, not only the ones a packages.txt names: a port wired into no
+        # phase yet is exactly the one whose source was never hashed.
         if [ ! -f "$d/$base" ]; then
-            bad "$p" "declares $base, which is not in the port directory"
-            unhashed=$((unhashed + 1))
+            if grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
+                unfetched=$((unfetched + 1))
+            else
+                bad "$p" "declares $base, which is neither in the port directory nor hashed"
+                unhashed=$((unhashed + 1))
+            fi
             continue
         fi
         # AN EMPTY ARCHIVE IS NOT AN ARCHIVE, and a hash does not catch it:
@@ -492,12 +504,25 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     # than unclaimed: build.sh unpacks it out of $PORT_SRC the way it unpacks a
     # vendor bundle (bat's bat-assets bundle), and kpkg verifies every
     # sha256 entry, not only the ones a source names.
+    #
+    # AN UNCLAIMED ARCHIVE GIT IGNORES IS A STALE FETCH, NOT A DEFECT. Fetched
+    # archives are untracked, so a checkout or pull that moves a port to
+    # another version leaves the old one in the port directory, and nothing
+    # the build reads names it. It is counted and reported, never failed:
+    # failing it would make every branch switch fail preflight. Only a
+    # TRACKED unclaimed archive, or one outside a checkout where git cannot
+    # say, is the hand-placed download this check exists for.
     for f in "$d"/*.tar.* "$d"/*.tgz "$d"/*.tbz2 "$d"/*.txz "$d"/*.zip; do
         [ -f "$f" ] || continue
         fb=${f##*/}
         case " $resolved " in *" $fb "*) continue ;; esac
         [ "$fb" = "$name-vendor-$version.tar.xz" ] && continue
         grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$fb\$" "$d/kpkgbuild" && continue
+        if ! git ls-files --error-unmatch -- "$f" >/dev/null 2>&1 \
+           && git check-ignore -q -- "$f" 2>/dev/null; then
+            stale="$stale $p/$fb"
+            continue
+        fi
         bad "$p" "ships $fb, which no 'source =' line resolves to"
         unhashed=$((unhashed + 1))
     done
@@ -507,11 +532,17 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     # $PORT_SRC, and the loop above enumerates the recipe's own source list —
     # so a bundle with no sha256 line beside it is invisible here and verified
     # by nothing, anywhere.
+    # An absent bundle WITH its sha256 line is unfetched, like any other
+    # hashed source; without one, nothing can fetch or verify it.
     if [ -n "${vendoring:-}" ]; then
         vf="$name-vendor-$version.tar.xz"
         if [ ! -f "$d/$vf" ]; then
-            bad "$p" "declares vendoring=$vendoring and ships no $vf"
-            unhashed=$((unhashed + 1))
+            if grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$vf\$" "$d/kpkgbuild"; then
+                unfetched=$((unfetched + 1))
+            else
+                bad "$p" "declares vendoring=$vendoring and neither ships nor hashes $vf"
+                unhashed=$((unhashed + 1))
+            fi
         elif [ ! -s "$d/$vf" ]; then
             bad "$p" "ships $vf as an empty file"
             unhashed=$((unhashed + 1))
@@ -521,7 +552,12 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
     fi
 done
-[ "$unhashed" = 0 ] && note "every source is present, hashed and non-empty" "ok"
+[ "$unhashed" = 0 ] && note "every source is hashed; every one on disk is non-empty" "ok"
+[ "$unfetched" = 0 ] || note "sources not fetched yet" "$unfetched — run make fetch before make build"
+if [ -n "$stale" ]; then
+    note "stale fetched archives no recipe names" "$(printf '%s\n' $stale | wc -l) — safe to delete; a fetched copy stays in ports/.srccache"
+    for s in $stale; do printf '      %s\n' "$s"; done
+fi
 
 # The escape hatch must be unused in a committed tree.
 if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
@@ -1152,34 +1188,76 @@ else
     note "kinstall freshness" "skipped — no build tree"
 fi
 
-# A PORT IS ITS RECIPE AND ITS TARBALL, AND THE TARBALL IS THE HALF THAT GOES
-# MISSING. `make build` runs with no network, so a source that is on the disk of
-# whoever added the port and not in the tree builds perfectly for them and fails
-# for everybody else — on a clone, at the unpack, with a message about a corrupt
-# archive rather than about a missing commit.
+# UPSTREAM SOURCES ARE NOT IN GIT. A port's recipe names each source by its
+# sha256, `make fetch` resolves that hash from ports/.srccache, the
+# kunaldawn/kdos-sources archive or upstream, and `ports/publish` puts a new one
+# in the archive. A recipe-hashed archive that git tracks as well is either the
+# bytes themselves in every clone's history forever, or a pointer file that
+# `make fetch` sees as a present-but-wrong source. An archive NO recipe hashes
+# (a test input a build.sh reads) is allowed and listed, since the archive has
+# no name for it.
 #
-# THE SECOND CHECK IS NOT THE SAME AS THE FIRST. A tarball can be tracked and
-# still be wrong: if .gitattributes has no pattern covering its extension, git
-# stores the bytes themselves instead of an LFS pointer, and the repository
-# grows by the size of the source. `git check-attr` answers what git WILL do
-# with a path, which is the only thing that settles it before a commit.
+# THE IGNORE RULES ARE WHAT KEEP A FETCHED TREE CLEAN. Every fetched source is
+# a file in its port directory; without a pattern for its suffix, `git add -A`
+# commits it. The patterns are anchored to ports/core, so the archive fixtures
+# under testing/fixtures must stay visible to git or every test replaying them
+# is silently absent on a clone. `git check-ignore` on a synthetic path answers
+# what git WILL do with a file nobody has written yet.
+#
+# THE THREE SCRIPTS ARE THE WHOLE MECHANISM. ports/srclib.sh (sourced) is the
+# archive's addressing; ports/fetch and ports/publish run it as programs, and
+# script/hooks/pre-push is what git runs once `git config core.hooksPath
+# script/hooks` is set. A syntax error in any of them surfaces only on the
+# command that needed it.
 echo
-echo "==> every port's source archive is in the tree, through LFS"
+echo "==> port sources: untracked, ignored, and the archive scripts sound"
 if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
-    pa_disk=$(find ports/core -type f \
-              \( -name '*.tar.*' -o -name '*.tgz' -o -name '*.zip' \
-                 -o -name '*.tar' -o -name '*.7z' \) | LC_ALL=C sort)
-    pa_trk=$(git ls-files ports/core | LC_ALL=C sort)
-    pa_missing=$(comm -23 <(printf '%s\n' "$pa_disk") <(printf '%s\n' "$pa_trk"))
-    pa_raw=$(printf '%s\n' "$pa_disk" | git check-attr --stdin filter 2>/dev/null \
-             | grep -v ": filter: lfs$" | cut -d: -f1)
-    if [ -n "$pa_missing" ]; then
-        bad "ports/core" "source archives not in git: $(printf '%s' "$pa_missing" | tr '\n' ' ')"
-    elif [ -n "$pa_raw" ]; then
-        bad ".gitattributes" "no LFS pattern covers: $(printf '%s' "$pa_raw" | tr '\n' ' ')"
+    pa_hashed=$(awk '/^sha256[[:blank:]]*=/ {
+                    n = split(FILENAME, a, "/"); print a[n-1] "/" $NF }' \
+                ports/core/*/kpkgbuild | LC_ALL=C sort -u)
+    pa_trk=$(git ls-files --cached ports/core \
+             | grep -E '\.(tar|tgz|tbz2|txz|zip|7z)$|\.tar\.' \
+             | sed 's|^ports/core/||' | LC_ALL=C sort)
+    pa_bad=$(comm -12 <(printf '%s\n' "$pa_hashed") <(printf '%s\n' "$pa_trk") | grep .)
+    pa_free=$(comm -13 <(printf '%s\n' "$pa_hashed") <(printf '%s\n' "$pa_trk") | grep .)
+    if [ -n "$pa_bad" ]; then
+        bad "ports/core" "$(printf '%s\n' "$pa_bad" | grep -c .) recipe-hashed archives are tracked by git — git rm --cached them: $(printf '%s\n' "$pa_bad" | head -5 | tr '\n' ' ')…"
     else
-        note "port sources" "$(printf '%s\n' "$pa_disk" | grep -c . ) archives, all tracked through LFS"
+        note "no recipe-hashed archive is tracked" "ok"
     fi
+    [ -z "$pa_free" ] || note "tracked archives no recipe hashes" "$(printf '%s' "$pa_free" | tr '\n' ' ')"
+
+    pa_open=""
+    for e in tar tar.gz tar.xz tar.bz2 tar.zst tgz tbz2 txz zip 7z tar.gz.part; do
+        git check-ignore -q --no-index "ports/core/.preflight-probe/probe.$e" \
+            || pa_open="$pa_open .$e"
+    done
+    git check-ignore -q --no-index ports/.srccache/sha256-00/probe \
+        || pa_open="$pa_open ports/.srccache/"
+    if [ -n "$pa_open" ]; then
+        bad ".gitignore" "does not ignore under ports/core:$pa_open"
+    else
+        note ".gitignore covers every source suffix and the cache" "ok"
+    fi
+    pa_fix=$(git ls-files testing/fixtures \
+             | grep -E '\.(tar|tgz|tbz2|txz|zip|7z)$|\.tar\.' \
+             | git check-ignore --no-index --stdin 2>/dev/null)
+    [ -z "$pa_fix" ] || bad ".gitignore" "ignores tracked fixtures: $(printf '%s' "$pa_fix" | tr '\n' ' ')"
+
+    pa_scripts=ok
+    for s in ports/srclib.sh ports/fetch ports/publish script/hooks/pre-push; do
+        if [ ! -f "$s" ]; then
+            bad "$s" "missing"; pa_scripts=; continue
+        fi
+        case "$s" in
+            *.sh) ;;
+            *) [ -x "$s" ] || { bad "$s" "is not executable"; pa_scripts=; } ;;
+        esac
+        bash -n "$s" 2>/dev/null || { bad "$s" "bash -n: $(bash -n "$s" 2>&1 | head -1)"; pa_scripts=; }
+    done
+    [ -n "$pa_scripts" ] && note "srclib.sh, fetch, publish, pre-push parse" "ok"
+    [ "$(git config core.hooksPath 2>/dev/null)" = script/hooks ] \
+        || note "pre-push hook" "not enabled — git config core.hooksPath script/hooks"
 else
     note "port sources" "skipped — not a git checkout"
 fi

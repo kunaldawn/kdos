@@ -1248,9 +1248,8 @@ shellcheck
 # Every documented appbox failure is podman state — a box stuck in `stopping`,
 # a half-built init, a storage driver mismatch.
 podman-tui
-# The KDOS repo keeps every source archive in LFS, and `kdos rebuild` promises
-# this stick can rebuild this stick — as it does for any other repo cloned on
-# it. Without this a clone SUCCEEDS and checks out pointer files.
+# Repositories that store large files through Git LFS. Without it a clone of
+# one SUCCEEDS and checks out pointer files in place of the files.
 git-lfs
 
 # ---------------------------------

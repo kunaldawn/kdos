@@ -11,12 +11,10 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# THE KDOS REPO ITSELF NO LONGER USES LFS — its tarballs travel as release
-# packfiles — but `kdos rebuild` promises this stick can rebuild this stick,
-# and that promise extends to any OTHER repository somebody clones on it. A
-# clone of an LFS repo without this SUCCEEDS and checks out pointer files: a
-# hundred-byte text file where a binary should be, which fails later and
-# somewhere else.
+# A machine that builds software clones repositories that store large files
+# through LFS. A clone of one without this SUCCEEDS and checks out pointer
+# files: a hundred-byte text file where a binary should be, which fails later
+# and somewhere else.
 export CGO_ENABLED=0
 go generate ./commands
 go build -mod=vendor \

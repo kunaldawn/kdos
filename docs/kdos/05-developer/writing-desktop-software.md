@@ -1,10 +1,47 @@
 # Writing desktop software
 
-This page is the implementation guide for a KDOS surface: the toolkit's model, choosing a role, the
-input rules, chrome, pictures, and how to look at what you drew without a screen.
+This page is for people writing a new piece of the KDOS desktop — a panel applet, a popup, a
+settings page, a window of its own — or changing one that exists. In KDOS such a thing is called a
+*surface*. The page covers how a surface is drawn, how it reaches the screen, which kind of window
+to ask for, the input and drawing rules the toolkit keeps for you, the shared chrome, pictures and
+colour, how to add a new name to `kdos-shell`, and how to look at what you drew without a screen.
 
-Read [the design language](../03-architecture/design-language.md) first. It is the specification;
-this page is how to implement it.
+Before you start:
+
+- Read [the design language](../03-architecture/design-language.md). It is the specification of
+  how a KDOS surface looks and behaves; this page is how to implement it.
+- Skim [The C libraries](c-libraries.md), at least its table of libraries. Everything here is built
+  on them, and that page holds the detail this one leaves out.
+- Look at an existing surface of the same shape. [kdos-shell](../04-programs/kdos-shell.md) holds
+  52 of them, and [kdos-res](../04-programs/kdos-res.md) is a complete window with charts.
+
+By the end you should be able to write a surface that draws the same at a prompt, in a window and
+in a test, add it to the desktop, and commit reference frames that catch a regression.
+
+### Building and trying a change
+
+Most new surfaces are a new front end inside `kdos-shell`, which lives in `src/desktop/kdos-shell/`.
+`kdos-shell` is a single binary installed under many names (`kdos-start`, `kdos-menu`, …); each
+name is a symlink, and the program picks the front end to run from the name it was started under.
+A program with a different life of its own gets its own directory under `src/desktop/`, with a
+recipe like the others there.
+
+| To | Run |
+|---|---|
+| Check the libraries, and that every consumer still compiles, on any host | `testing/selftest.sh` |
+| Run the same suite with every surface dump and reference frame, in the build container | `testing/devdeps-image.sh` |
+| Rebuild one desktop program in the build tree | `make build BUILD_ARGS="--phases 05_desktop --rebuild kdos-shell"` |
+| See the change on a running desktop without rebuilding the ISO | `testing/quick.sh kdos-shell -- --sleep 3 --shot build/shots/x.png` |
+
+The first two need no build and no display, and they are where most of the work happens. On a
+bare host `testing/selftest.sh` skips the surface dumps and their reference frames, so a pass there
+says nothing about how your surface draws; only the build image
+([Testing](testing.md#the-machine-where-nothing-is-skipped)) runs them. The last two are described
+in [Developing](developing.md) and [Testing](testing.md#the-fast-loop).
+
+`testing/quick.sh` needs a built tree and the rig image (see [Testing](testing.md#the-qemu-rig)),
+cannot deliver changes under `fs/` such as a new `menu.conf` row, and writes a PPM file whatever
+the extension. For a brand-new name, run the narrowed `make build` with packaging.
 
 ## What a surface is
 
@@ -14,17 +51,18 @@ A surface is a grid of character cells drawn by `libktui` onto one of three back
 |---|---|
 | A terminal | Anything run at a prompt |
 | `libkwl` | Anything under the compositor |
-| An offscreen buffer | `--dump`, and the committed reference frames |
+| An offscreen buffer | `--dump`, and the committed reference frames (called *goldens* in the test suite, under `testing/goldens/`) |
 
 Nothing above that line knows which. That is what makes a program identical at a prompt, in a
 window and in a test fixture.
 
-Every surface KDOS paints is one of these grids — the panel and its front ends, the resource
-monitor, the terminal, the lock screen, the installer, the boot splash and `tty1` — handed to
-`kdos-comp` as an ordinary Wayland surface. Two things on the screen are not. The compositor draws
-its own chrome with pango — titlebars, the root menu and the window-switcher OSD, at a size matched
-to the cell grid — and an application in a box draws whatever its toolkit draws. So the frame
-around your window is not yours to lay out, and the pixels inside somebody else's are not cells.
+Every surface on the KDOS desktop is one of these grids — the panel and its front ends (including
+the file chooser the desktop portal opens), the resource monitor, the terminal and the lock screen
+— handed to `kdos-comp` as an ordinary Wayland surface. The installer and the build screen are the
+same grids drawn on a terminal. Two things on the screen are not grids. The compositor draws its
+own chrome with pango — titlebars, the root menu and the window-switcher OSD, at a size matched to
+the cell grid — and an application in a box draws whatever its toolkit draws. So the frame around
+your window is not yours to lay out, and the pixels inside somebody else's are not cells.
 
 ### Reaching a display
 
@@ -41,7 +79,7 @@ const int kdos_disp_n = 1;
 Order is the policy. The first implementation whose `probe` succeeds is used, and a probe must be
 cheap and free of side effects, because `kdisp_init` probes implementations it will not go on to
 use. A program that links none of them still compiles and draws through the terminal backend, which
-is what a `--dump` is.
+is what a `--tty` run is.
 
 Every call site is then the same three lines regardless of server:
 
@@ -50,6 +88,9 @@ KDispConfig cfg = { .role = KDISP_ROLE_TOPLEVEL, .app_id = "kdos-thing", … };
 if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
         return 1;                            /* say so and exit, do not run blind */
 ```
+
+`app_id` must equal the name of the program's `.desktop` file, because that is how the panel and
+the window list match a window to its launcher; `kdos appid` checks that they match.
 
 `libkdisp` names no implementation and links none, so that array is what pulls Wayland into a
 program, and it is the one line that changes when a display server is added or removed. `kwl_impl`
@@ -61,8 +102,9 @@ of them is the same decision written fifty-five times in one program and again i
 is why the lifecycle is an interface.
 
 A cell dump does not go through it. `--dump-cells` installs its own `KtuiBackend` with
-`ktui_backend_set`, because the cell buffer is private to `libktui` and the vtable is its documented
-seam. Routing a dump through `kdisp_init` would change every committed golden.
+`ktui_backend_set` (in `kdos-shell`, the one `sh_cells_backend()` builds), because the cell buffer
+is private to `libktui` and the vtable is its documented seam. Routing a dump through `kdisp_init`
+would change every committed reference frame.
 
 ## The frame protocol
 
@@ -76,8 +118,14 @@ while (running) {
     ktui_draw_flush();        /* diff and present */
 
     KtuiEvent ev;
-    if (!ktui_backend()->poll_event(&ev, timeout_ms))
+    if (!ktui_backend()->poll_event(&ev, timeout_ms)) {
+        if (ktui_resized) {   /* apply a resize before the next draw */
+            ktui_resized = 0;
+            ktui_draw_resize();
+            ktui_draw_invalidate();
+        }
         continue;             /* a timeout, a resize, or nothing to read */
+    }
     /* handle ev */
 }
 ```
@@ -90,13 +138,14 @@ Three rules hold:
 
 - The frame state is private. Consume an event, query focus, take a wheel notch and read the focus
   rectangle through the accessors. There is no structure to assign to.
-- Chrome uses caller-local identifiers in the reserved range, which never join the focus ring and
-  never drag the page scroll. Claiming ordinary identifiers for chrome pushes every real control
+- Chrome uses identifiers from `KTUI_ID_CHROME` (10000) upward, above anything `ktui_id()` hands
+  out. These never join the focus ring and never drag the page scroll. Claiming ordinary identifiers for chrome pushes every real control
   down the ring and parks the caret on a decoration.
-- A resize is not applied until you apply it. The backend sets a flag; the reported size follows
-  only when your loop calls the resize and invalidate calls. Any loop that owns a surface owns
-  this: a surface that was a fixed size and then starts being resized draws against stale
-  dimensions and silently fails its own bounds checks, painting nothing.
+- A resize is not applied until you apply it. The backend sets `ktui_resized`; the cell buffer
+  follows only when your loop calls `ktui_draw_resize()` and `ktui_draw_invalidate()`, as in the
+  loop above. Any loop that owns a surface owns this: a surface that was a fixed size and then
+  starts being resized draws against stale dimensions and silently fails its own bounds checks,
+  painting nothing.
 
 ## Choosing a role
 
@@ -115,9 +164,15 @@ along it belongs to the display, because a layer surface is anchored to three si
 `.cols`/`.rows` on a panel and a server may attach at that size instead, which is a bar the length
 of a window sitting where nobody put it.
 
+The subsections below describe what each role asks of the display. Several of them — the frame
+request, the layer-shell version, the lock surface's first commit — are handled inside `libkwl`
+already, so a surface built on `libkdisp` gets them for free. They are written out because they are
+what breaks when somebody changes `libkwl` or adds a second display backend, and because each one
+fails silently.
+
 ### A toplevel must ask for its frame
 
-Bind the decoration protocol and ask for a server-side decoration on every toplevel. A client that
+`libkwl` binds the decoration protocol and asks for a server-side decoration on every toplevel. A client that
 never binds it has not said which side draws the decoration and gets whatever the compositor
 guesses, which here is no frame at all: nothing to drag, no close button, and the window controls
 unreachable by pointer.
@@ -135,12 +190,17 @@ compositor is told the same numbers and may ignore them.
 
 ### Bind the layer shell at the right version
 
-On-demand keyboard interactivity is a later-version request. An older resource answers it with
-*exclusive*, and the compositor then parks the seat's keyboard on that surface and refuses every
-window focus — so nothing typed reaches any window until an overlay takes the focus and gives it
-back.
+On-demand keyboard interactivity is a version-4 request of `zwlr_layer_shell_v1`. An older
+resource answers it with *exclusive*, and the compositor then parks the seat's keyboard on that
+surface and refuses every window focus — so nothing typed reaches any window until an overlay takes
+the focus and gives it back.
 
-The request is right, the protocol is right, and the number is wrong. It is invisible to everything.
+`libkwl` binds the layer shell at version 4, or at the compositor's version when that is lower.
+Below version 4 it says so on standard error: the desktop's background layer takes no keyboard
+(`kwl: layer-shell v<N> has no on-demand keyboard; this surface takes none`), and an overlay that
+wants the keyboard takes it exclusively until it exits (`… this surface holds the seat's keyboard
+until it exits`). Nothing else reports the mismatch; the only symptom is that typing stops reaching
+windows.
 
 ### A lock surface takes no pre-configure commit
 
@@ -188,7 +248,10 @@ close the surface during its own appearance.
 
 ## Input
 
-The backend's rules, each guarding a distinct failure.
+These are the rules the Wayland backend (`libkwl`) keeps so that every surface receives clean
+input. A surface author mostly meets them as behaviour to rely on — a click arrives once, a wheel
+notch moves one row — and as the reason a slider must remember its button across events. Each rule
+guards a distinct failure, and each matters again to anyone changing the backend.
 
 Motion arrives as a drag event. The protocol reports plain and dragged movement identically, so
 testing an event's pressed flag for truth makes every mouse *move* a click. Remember the button
@@ -315,15 +378,22 @@ if (r == KTUI_KEY_CLOSE) goto done;
 if (r == KTUI_KEY_TAKEN) continue;
 ```
 
-`ktui_keys()` returns PASS for everything it does not own, so an unconverted surface behaves byte
-for byte as it did. It takes every event and not only a key, because a surface with a menu would
+`ktui_keys()` returns `KTUI_KEY_PASS` for everything it does not own, so the surface's own
+dispatch still sees every event the contract does not claim. It takes every event and not only a key, because a surface with a menu would
 otherwise need a second call site in its pointer path — and two call sites for one widget disagree
 about which of them saw the click.
+
+`ktui_keys()` answers one of four values: `KTUI_KEY_PASS` (not its event — handle it yourself),
+`KTUI_KEY_TAKEN` (handled, draw again), `KTUI_KEY_CLOSE` (`Esc` arrived with no layer up; the
+surface should close itself, because the toolkit does not own the program's lifetime) and `KTUI_KEY_MENU` (an item of
+the surface's menu was picked; `keys.menu_id` names it). Layers are registered once at start, innermost last, because `Esc` unwinds them from the end; at
+most `KTUI_LAYER_MAX` (6) are allowed.
 
 `ktui_hint_row()` must run on every path that draws, including `--dump`. It clears the pool as its
 first act, before it measures the rect, so a zero-width rect is the right way to drain a frame
 where a message owns the row. A frame that skips it carries its hints into the next one, and
-`kdos-shell` is one binary with fifty-odd front ends sharing that pool.
+`kdos-shell` is one binary with 52 front ends sharing that pool. It draws nothing in a window
+shorter than eight rows or too narrow for one whole hint.
 
 Push only what the surface answers right now. `ktui_hint_if()` exists so a key that is inert in the
 current state does not appear; that is the entire value of the line over a fixed string.
@@ -346,9 +416,9 @@ terminal, with icons off, with no artwork, and for a name nothing has a picture 
 those is a normal state.
 
 ```c
-int slot = kicon_slot(name, w_cells, h_cells);
-if (slot >= 0) ktui_draw_sprite(x, y, slot, w_cells, h_cells);
-else           ktui_draw_text(x, y, fallback_glyph, ...);
+int slot = kicon_slot(name, 2, 1);           /* two cells wide, one tall */
+if (slot >= 0) ktui_draw_sprite(krect(x, y, 2, 1), slot, KT_TEXT, KT_BG);
+else           ktui_draw_text(x, y, 2, fallback_glyph, KT_MID, KT_BG, 0);
 ```
 
 A sprite is two cells wide and one tall wherever it sits beside text. A cell is twice as tall as
@@ -420,8 +490,12 @@ vanishes exactly when the row is selected.
 4. Declare it in `shell.h`. The table in `main.c` names the entry point and the header is where
    every other file learns of it.
 5. Add a route or a menu row if a person should be able to reach it. `routes.c` reads
-   `/etc/kdos/menu.conf`, so a shipped surface needs a row there; `testing/preflight.sh` checks the
-   four places together, because a surface wired in three of them is a chord that opens nothing.
+   `/etc/kdos/menu.conf` and then `~/.config/kdos/menu.conf`, so a shipped surface needs a row in
+   `fs/etc/kdos/menu.conf`. The binary dispatches on the name it was started under, so a surface
+   missing from any one of the table, the symlink, the header and the route is a chord that opens
+   nothing, and none of those four fails at build time. `testing/preflight.sh` checks that every
+   command `menu.conf` names exists, and checks all four places for `kdos-store`; for any other
+   name, keeping them together is up to you.
 6. Give it `--dump` and commit reference frames. That is four more edits, and the suite passes with
    none of them:
    - the `for s in …` harness list in `testing/selftest.sh`, so the file compiles into the dump
@@ -451,10 +525,17 @@ kdos-menu system --dump-cells
 kdos-res --fixture testing/fixtures/res --dump-size 66x10 --dump
 ```
 
-A `kdos-shell` front end draws its dump at a size compiled into the surface; only `kdos-res` takes
-`--dump-size`. The size a reference frame is taken at comes from `$KDOS_DUMP_SIZE`, which is the
-dump harness's — `testing/fixtures/shell/dumpmain.c` wraps `ktui_offscreen_init` for it — and not
-something a shipped binary reads.
+Every `kdos-shell` surface except `kdos-ascii`, `kdos-mediad`, `kdos-netagent` and `kdos-ime` takes `--dump`, and so
+does `kdos-res`. `--dump-cells` is taken by `kdos-start`, `kdos-menu`,
+`kdos-keys`, `kdos-settings`, `kdos-find`, `kdos-teams`, `kdos-doc`, `kdos-pick`, `kdos-openwith`
+and `kdos-res`.
+
+Most `kdos-shell` front ends draw their dump at a size compiled into the surface. A few take a size
+on the command line: `--dump-size WxH` on `kdos-res`, `kdos-keys`, `kdos-openwith`,
+`kdos-settings`, `kdos-teams` and `kdos-doc`, and `--dump-size W H` (two arguments) on `kdos-desk`.
+The size a committed reference frame is taken at comes from `$KDOS_DUMP_SIZE=WxH`, which only the
+dump harness reads — `testing/fixtures/shell/dumpmain.c` wraps `ktui_offscreen_init` for it — and
+no shipped binary does.
 
 | Flag | Produces | Catches |
 |---|---|---|
@@ -482,7 +563,7 @@ procedure:
 | 3b | Selection through `ktui_sel_slots`; secondary columns through `ktui_sel_dim` | `grep 'KT_ACCENT :'` — a match is a surface deciding for itself |
 | 4 | Motion, press, wheel, scrollbar, header sort | `grep -c KT_EVT_MOUSE` — zero is the defect |
 | 5 | Hit map recorded from the draw | Resize and click the top row |
-| 6 | Dump at two sizes, commit both | `testing/selftest.sh` |
+| 6 | Dump at two sizes, commit both | `testing/devdeps-image.sh` |
 | 7 | Read it at the vt tier, and use no glyph the console font lacks | `--dump` on a console; `testing/preflight.sh` reads the shipped font |
 | 8 | One `KtuiKeys`; `ktui_keys()` first, `ktui_hint_row()` last, on every path | `grep -c ktui_hint_row` — the dump path counts |
 | 9 | Every raised state a declared layer, never an `Esc` arm | `grep KT_K_ESC` — a remaining case is one the ladder should own |

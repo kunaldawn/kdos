@@ -1,82 +1,172 @@
 # kdos-bb
 
-`kdos-bb` is the ASCII-art demonstration KDOS ships: a hard fork of the AA-project's `bb`, frozen
-and maintained in place. It plays an audio-visual demo in a text terminal, on a bare console or
-under the compositor.
+`kdos-bb` is the ASCII-art demo that ships with KDOS: a hard fork of the AA-project's `bb`, a
+1990s audio-visual demo drawn entirely in text characters with a tracker soundtrack. It runs in any
+text terminal — a bare virtual console, a terminal window under the compositor, or over ssh.
 
-It is documented here for two reasons. It is a program the system ships, and the facts it
-establishes about the ASCII-art library, the module player and terminal frame pacing constrain
-anything else built on any of them.
+This page is for two readers. If you want to watch the demo, [Running it](#running-it),
+[Synopsis](#synopsis) and [Files](#files) are all you need. If you work on this program, or build
+anything on the same libraries — AAlib for the pictures, libmikmod for the music, a terminal for the
+frames — the rest explains how it works and what was measured: how fast a terminal program should
+draw, how to keep a frame from tearing, and how to keep a picture in step with its music. Start at
+[How the code is organised](#how-the-code-is-organised), which says where each part lives and
+defines the terms the later sections use.
+
+## Running it
+
+```sh
+kdos-bb                 # the whole demo, with music
+kdos-bb 2               # start at stage 2: the second biography
+kdos-bb -loop           # play forever
+kdos-bb -nosound        # silent
+```
+
+A bare `kdos-bb` starts at once: music is on and the mixer takes its defaults, so there is nothing to
+answer first. It has no launcher in the Start menu; run it from a terminal. The music plays through whatever ALSA's `default` device is —
+in a desktop session that is PipeWire (see [Audio on a bare console](#audio-on-a-bare-console) for
+a login with no session).
+
+The demo is in three **stages**, and a digit on the command line picks where it starts:
+
+| Stage | Starts at | Plays |
+|---|---|---|
+| 1 | The beginning | The whole demo, then the closing text |
+| 2 | The second author's biography | The rest of the demo, the credits, then the closing text |
+| 3 | The closing text | Only the closing text |
+
+### Keys
+
+| When | Key | Does |
+|---|---|---|
+| During the demo | `s`, `S`, `Backspace` | Skip the current part |
+| During the demo | `q`, `Esc` | Quit |
+| In the closing text | Any key | Stops the pages turning by themselves; from then on you turn them |
+| In the closing text | `b`, `k`, `↑`, `Backspace` | Page back |
+| In the closing text | `f`, `j`, `Space`, `↓`, `←` | Page forward |
+| In the closing text | `1`, `2`, `3` | Switch to the first, second or third soundtrack |
+| In the closing text | `q`, `Esc` | Leave |
 
 ## Synopsis
 
 ```
-kdos-bb [options] [1|2|3]
+kdos-bb [aalib-options] [-loop] [-nosound] [-mixer] [N]
 ```
-
-A bare `kdos-bb` starts immediately: music is on and the mixer takes its defaults, so there is
-nothing to answer before the demo runs. A trailing `1`, `2` or `3` starts at that stage.
 
 | Option | Does |
 |---|---|
-| any unrecognised argument | Prints the summary of options and exits 1. There is no `-help` flag: the parser takes `-loop`, `-nosound`, `-mixer`, aalib's own options and a stage digit, and everything else falls to the usage line |
-| `-loop` | Play in an infinite loop |
-| `-nosound` | Run silent. With no player to ask, the closing scroll falls back to a fixed rate instead of following the music |
-| `-mixer` | Show the sample rate and mixing settings, and wait for Continue |
-| `-driver`, `-kbddriver`, `-mousedriver` | Select an aalib driver |
-| `-width`, `-height`, `-min*`, `-max*`, `-rec*` | Geometry hints for the art library |
+| `-loop` | Play the demo in an endless loop. A loop never reaches the closing text, so `-loop` with stage 3 shows nothing, reads no keys and never ends; it has to be stopped from outside, for example with `kill` |
+| `-nosound` | Run silent. With no player to follow, the closing text turns its pages at a fixed rate instead of following the music |
+| `-mixer` | Show the sample rate and mixing settings before starting, and wait for Continue |
+| `N` | A single digit: the stage to start at (see [Running it](#running-it)). `2` or `3` starts at that stage; `1`, and any other digit up to `8`, starts at the beginning |
+| `-driver`, `-kbddriver`, `-mousedriver` | Select an AAlib output, keyboard or mouse driver |
+| `-width`, `-height`, `-minwidth`, `-minheight`, `-maxwidth`, `-maxheight`, `-recwidth`, `-recheight` | Geometry hints for AAlib |
 | `-dim`, `-bold`, `-reverse`, `-normal`, `-boldfont`, `-no<attr>` | Which character attributes the renderer may use |
 | `-extended`, `-eight` | Use all 256 characters; use eight-bit ASCII |
-| `-font <font>` | Name the console font where the library cannot determine it |
-| `-inverse`, `-noinverse`, `-bright`, `-contrast`, `-gamma` | Image controls |
-| `-nodither`, `-floyd_steinberg`, `-error_distribution`, `-random` | Dithering |
+| `-font <font>` | Name the console font where AAlib cannot determine it |
+| `-inverse`, `-noinverse`, `-bright <val>`, `-contrast <val>`, `-gamma <val>` | Image controls |
+| `-nodither`, `-floyd_steinberg`, `-error_distribution`, `-random <val>` | Dithering |
+| `-dimmul <val>`, `-boldmul <val>` | Brightness factors for dim and bold characters |
 
-`man kdos-bb` carries the full list.
+AAlib's own options are consumed first. Anything left that is not one of the demo's options prints a
+summary of options and exits 1 — there is no `-help` flag as such, so `kdos-bb -help` shows the
+summary by being unrecognised. `man kdos-bb` carries the full list.
 
-## Description
+| Exit status | Meaning |
+|---|---|
+| 0 | The demo finished, or you quit it |
+| 1 | An unrecognised argument; the summary was printed |
+| 2 | AAlib could not initialise an output driver |
+| 3 | AAlib could not initialise the keyboard |
 
-Upstream's demo, imported wholesale and never merged from again. `KDOS-FORK` at the root of the
-port records the upstream tarball and its checksum, and lists every change with its reason.
+## Files
+
+| Path | What |
+|---|---|
+| `/usr/bin/kdos-bb` | The program |
+| `/usr/share/kdos-bb/bb.s3m`, `bb2.s3m`, `bb3.s3m` | The three soundtrack modules |
+| `/usr/share/man/man1/kdos-bb.1` | The manual page |
+| `/usr/share/licenses/kdos-bb/COPYING`, `AUTHORS` | The licence and the upstream authors |
+
+The recipe is `src/packages/kdos-bb`, and it depends on `aalib`, `libmikmod` and `ncurses`.
+
+## The fork
+
+The fork takes no merges from upstream. `KDOS-FORK` at the root of the port names the upstream
+tarball and its checksum and lists every difference from it, file by file, with its reason.
 
 | | |
 |---|---|
 | Upstream | `bb` 1.3rc1, the AA-project demo |
 | Licence | GPL-2.0, kept — and the authors file with it, because the demo's own credits scroll is the authors' work |
 | Carried | 44 C files, 16 headers, and the three music tracks |
-| Dropped | The entire build-configuration apparatus, and upstream's distribution notes |
+| Dropped | The whole autotools build apparatus, and upstream's distribution notes |
 
-The build system is gone because it cannot work here. Upstream's configuration script probes the
-compiler with a function definition in a style modern compilers reject, so it fails with the
-thoroughly misleading "C compiler cannot create executables" and would need a handful of
-suppressions to answer a question with one answer on this target. A static configuration header
-states those answers and `build.sh` calls the compiler.
+The upstream build system cannot work here. Its configuration script probes the compiler with a
+function definition in a style modern compilers reject, so it fails with the misleading "C compiler
+cannot create executables". A static configuration header (`src/aconfig.h`) states the answers
+instead, and `build.sh` calls the compiler directly.
 
-The rebranding is deliberate rather than incidental. The demo is the AA-group's, and the credits
-scroll, the greetings and the history stay exactly as they are.
+The demo itself is the AA-group's: the credits scroll, the greetings and the history are theirs and
+are kept as they are. The fork differs from upstream in:
+
+- **Start-up.** The demo starts without asking. Upstream's music and mixer questions are the
+  `-nosound` and `-mixer` flags.
+- **Frame pacing, synchronized output, the mixer thread, music synchronisation and the closing
+  text**, each described in its own section below.
+- **The KDOS mascot**, shown in two beats that already show a logo.
+- **Reworded screens**, where the original text would be false on KDOS. Each keeps its original
+  count of entries, because the count is the clock: each entry is a fixed slice of the soundtrack.
 
 KDOS ships no demo of its own. This fork is the demo.
 
 ### Three memory rules the fork holds
 
-Each is a constraint on the C, and each fails loudly on a modern toolchain and quietly on the one
-this code was written for:
+Each is a constraint on the C code. Breaking any of them is harmless on 32-bit x86 with glibc, and on x86-64
+or with musl it corrupts memory or floods the build with warnings, so a build that happens to run elsewhere proves
+nothing here:
 
-- **A buffer is cleared at the element size it was allocated at.** Allocating per one integer type
-  and clearing per a wider one is the same size on the platform this was written for and twice the
-  size on a modern one: the heap corrupts and a later stage aborts inside the allocator.
-- **An overlapping move uses the overlapping-safe copy.** A scrolling buffer overlaps by every row
-  but one. One C library survives the non-overlapping form; another is free not to.
+- **A buffer is cleared at the element size it was allocated at.** Allocating per `int` and
+  clearing per `long` is the same size on 32-bit x86 and twice the size on x86-64: the heap
+  corrupts and a later stage aborts inside the allocator.
+- **An overlapping move uses `memmove`.** A scrolling buffer overlaps by every row but one. glibc
+  survives `memcpy` there; musl is free not to.
 - **A 32-bit-x86 calling-convention attribute is not expanded elsewhere.** Expanded on every
-  declaration it warns on each.
+  declaration, it warns on each.
 
-Two of the three are found by sanitizers rather than by reading, so build the port under them
-before trusting a change to any buffer here.
+Two of the three are found by sanitizers rather than by reading, so build the port under them before
+trusting a change to any buffer here.
+
+## How the code is organised
+
+The rest of this page is for contributors. The code is under `src/packages/kdos-bb/src/`:
+
+| File | What it holds |
+|---|---|
+| `bb.c` | The stages, the keys during the demo, the frame loop `timestuff()` with its cap (`BB_FRAME_US`), and `bbflush()`, which writes each frame inside synchronized output |
+| `main.c` | The music: loading and playing a module, the mixer thread, `sound_clock()` (where the player is) and `sound_sync()` (the servo) |
+| `timers.c` | The scene clock: `__lookup_timer()` reads it and `tl_slowdown_timer()` holds it back |
+| `credits2.c` | The closing text and its keys |
+| `scene*.c`, `credits.c` | The individual scenes |
+
+Terms used below:
+
+- A **scene** is one part of the demo. `timestuff()` runs it for a fixed time with two callbacks:
+  its **control**, which moves the animation on at a rate the scene states, and its **draw**, which
+  puts the current picture on the screen.
+- A scene in **waitmode** draws only on a turn of the loop where its control ran.
+- The **scene clock** is the microsecond count every scene is timed against. `TIME` in `bb.c` is
+  its current reading after any correction.
+- The **servo** is `sound_sync()`: it compares the scene clock with how far the music player has
+  got, and slows the scene clock so the picture stays with the music.
+- A **quantum** is one mixer buffer. The player's position moves a whole quantum at a time, so a
+  plot of it over time is a staircase; each step is a **riser**.
+- A **replica** is a standalone copy of the frame loop and the servo, driven by a simulated player
+  and clock, used to measure how they behave under a given fault.
 
 ## The demo caps its own frame rate
 
-A scene states a rate for its *control* and never for its *picture*. One draw cost twenty-five
-milliseconds on the hardware this was written for, so the loop paced itself and nothing in it had
-to; on anything modern it draws as fast as the machine turns it. Measured in a fifty-column window,
+A scene states a rate for its *control* and never for its *picture*, so without a cap the loop draws
+as fast as the machine allows. Measured in a fifty-column window,
 five to fifteen thousand frames a second; measured in a session terminal, seventeen megabytes a
 second of escape sequences — for a display that can show sixty frames, and with the demo and the
 session each spending a core on it.
@@ -258,11 +348,12 @@ The phase each track started with is kept, not corrected to zero. What is *heard
 zero would put the picture ahead of the sound by exactly the buffer it cannot measure. Only the
 growth is taken out.
 
-The servo removes accumulated phase and not only rate, and that turns on one variable. The rate is
-set so that an error standing still would be gone in one 200 ms interval, but the clamp refuses to
-pay more than 5% of any stretch of time — so whenever the error is larger than that, the rest is
-left standing, and it is `base`, the peg the error is measured from, that carries the unpaid
-remainder. Exactly two things may move it, each a phase that is genuinely new rather than an error:
+The servo removes accumulated phase and not only rate, and that depends on one variable in
+`sound_sync()`: `base`, the reference point the error is measured from. The rate is set so that an
+error standing still would be gone in one 200 ms interval, but the clamp pays at most 5% of any
+stretch of time, so whenever the error is larger than that the rest is left standing, and `base` is
+what remembers the unpaid remainder. Exactly two events reset `base`, because each starts a phase
+that is genuinely new rather than an error:
 
 - **A track that has started or restarted**, which is the `music < prev` reading — `bb3.s3m` is
   rewound in place when it falls inactive.
@@ -270,11 +361,10 @@ remainder. Exactly two things may move it, each a phase that is genuinely new ra
   minutes because it builds its answer as `1000000 ×` whole seconds in an `int`. `-loop` reaches
   it, and the phase either side is not comparable.
 
-Anything else that re-pegs `base` is a defect however good its reason looks, and it does not
-present as a bad frame — it presents as the demo finishing seconds away from its music. Two shapes
-are easy to write and both do exactly that:
+Resetting `base` at any other moment throws away the unpaid error. It does not show as a bad frame:
+it shows as the demo finishing seconds away from its music. Two changes would reset it that way:
 
-- **Measuring anything on `TIME`.** The interval, the average's time constant and the turnover test
+- **Measuring the servo's own timing on `TIME`.** The interval, the average's time constant and the turnover test
   are all on the **raw** reading — `TIME` plus everything the servo has handed
   `tl_slowdown_timer()`, which is what `__lookup_timer()` answered and goes backwards on nothing but
   the turnover. A clock the servo is bending is a ruler the servo is stretching: the trim is a rate,
@@ -282,14 +372,14 @@ are easy to write and both do exactly that:
   The turnover test is worse on the bent clock, because each spurious firing re-pegs `base`, throws
   away the error not yet paid and forgives a stall for good — after which the drift is bounded by
   nothing, since it is the *single largest* stall that sets it.
-- **Letting a loaded module answer zero.** `Player_Load()` leaves `sngtime` at zero and so does the
+- **Taking a loaded but unstarted module's position of zero as real.** `Player_Load()` leaves `sngtime` at zero and so does the
   first tick of a track, so `sound_clock()` carries a flag of its own and answers **no music** until
   `play()` has started the player. The window is not small: `bb.s3m` is loaded at the top of stage 1
   and `scene1()` reaches `play()` twenty-four seconds of scene clock later, and a standing zero
   across it reads as a player twenty-four seconds behind — which the servo then slews the whole
   picture to catch.
 
-Measured on a replica over 280 s of scene clock losing 85 ms of audio every 3 s, with a draw cost
+Measured on a replica (see [the terms](#how-the-code-is-organised)) over 280 s of scene clock losing 85 ms of audio every 3 s, with a draw cost
 of 1.35 ms:
 
 | `sound_sync()` | fps | Frame interval, s.d. | Peak to peak | Doubled frames | Corrections | Drift |
@@ -355,12 +445,31 @@ cells and uploading a texture every frame, so the pseudo-terminal backs up, the 
 write, no timer runs, the ring empties, and the music stutters. Minimise the same window and it is
 perfect, which is the tell that it is neither a mixer problem nor a buffer-size problem.
 
-So the mixer gets a thread with its own clock, and the render loop cannot reach it.
+So the mixer gets a thread with its own clock, and the render loop cannot reach it. The thread
+wakes on an absolute ten-millisecond deadline, so the time an update takes is inside the period
+rather than added to it, and a deadline already missed is moved forward rather than chased.
+
+The thread asks for real-time scheduling, `SCHED_FIFO` at priority 10. At the ordinary policy it
+runs only when the scheduler thinks it is due, and what else is due in this process is a render
+thread writing escape sequences as fast as it can; every wake-up lost past what the ring holds is an
+underrun, and each underrun is a short pause in the music. Ten is below every priority an audio
+server or a threaded interrupt takes — whatever drains the ring must be able to preempt the thread
+filling it — and above every ordinary thread. KDOS grants real-time priority to a login through
+`kdos-getty`, which raises the real-time resource limit. The request is never a requirement:
+
+| What the system allows | What the demo does |
+|---|---|
+| Real-time scheduling | The mixer thread runs at `SCHED_FIFO` 10 |
+| No real-time scheduling | The render thread lowers its own priority by 5 instead, which needs no privilege |
+| Neither | The mixer thread runs at the ordinary policy |
+| No thread at all | The mixer is fed from a ten-millisecond timer on the render loop |
+
+`KDOS_BB_DEBUG` reports which of these happened. See [Debugging](#debugging).
 
 ### The locking rule that goes with it
 
-Do not wrap a library call in the library's own lock. The obvious defensive pattern — lock, call,
-unlock — is a self-deadlock: the library's mutexes are not recursive, and its playback and update
+The fork never wraps a libmikmod call in libmikmod's own lock. That defensive pattern — lock, call,
+unlock — deadlocks the process against itself: the library's mutexes are not recursive, and its playback and update
 calls take that same lock themselves. The process stops dead with the demo frozen mid-frame and one
 thread.
 
@@ -378,88 +487,89 @@ being heard, and buys that by having less slack when something starves the feede
 what goes wrong, and the mixer thread is what fixes it; shrinking the ring on top of that would
 trade a delay nobody can point at for a crackle everybody can hear.
 
-There is no runtime lever either — the audio driver hardcodes the buffer time and its command-line
-hook is an empty function.
+There is no runtime setting for it either: the audio driver fixes the buffer time in its code, and
+its command-line hook is an empty function.
 
 ## Three library facts that outlive this program
 
-State these as rules for anything else built on the same libraries.
+These are rules for anything else built on the same libraries.
 
-- **Recommend the curses driver as well as the console one.** The ASCII-art library's console
-  driver writes cells into a device node an ordinary user cannot open, and its automatic
-  initialisation answers a failed *recommended* driver by sweeping its own driver list — landing on
-  the plain-output driver, which scrolls a fresh block of text up the terminal every frame.
-- **Register all the module loaders, not one format.** The public-domain music available online is
-  spread across several tracker formats; with a single loader registered, a track fails inside the
-  load call and the program plays silence.
-- **Own your own frame cap.** The library does no pacing: its flush writes whatever is in the text
-  buffer, every time it is called, and nothing in it knows what a screen refresh is. A program that
-  states no cap writes at the rate its own arithmetic happens to run at.
+- **Recommend the curses driver as well as the console one.** AAlib's console driver writes cells
+  into a device node an ordinary user cannot open, and its automatic initialisation answers a failed
+  *recommended* driver by sweeping its own driver list — landing on the plain-output driver, which
+  scrolls a fresh block of text up the terminal every frame.
+- **Register every module loader your music needs.** Public-domain tracker music is spread across
+  several formats, and a track whose loader is not registered fails inside the load call and plays
+  silence. This demo registers only the S3M loader, because all three of its tracks are S3M; a
+  program that plays music from anywhere else should register them all.
+- **Own your own frame cap.** AAlib does no pacing: its flush writes whatever is in the text buffer
+  every time it is called, and nothing in it knows what a screen refresh is. A program that states
+  no cap writes at the rate its own arithmetic happens to run at.
 
 ## Audio on a bare console
 
-Two stacked requirements, both in init scripts, and neither is about this program specifically:
+Two requirements in the boot scripts make sound work at all, and neither is specific to this
+program:
 
-- **Device coldplug must replay devices as additions.** The default replays every device as a
-  *change*, and the rule that loads a driver from a device alias skips anything that is not an
-  addition — so a plain trigger loads no module at all, the audio controller stays unclaimed, and
-  the sound library reports an unknown device.
-- **Sound state must fall back to initialising when restoring fails.** A live image has no saved
-  state, and a failed restore leaves the hardware exactly as the kernel did: muted at zero. The
-  initialise call returns a distinct status when it matched a generic rule, which is a success
-  here, so its status is deliberately ignored.
+- **Device coldplug replays devices as additions.** `/etc/init.d/01_udev.sh` triggers with the
+  `add` action. The default replays every device as a *change*, and the rule that loads a driver from
+  a device alias skips anything that is not an addition — so a plain trigger loads no module, the
+  audio controller stays unclaimed, and the sound library reports an unknown device.
+- **Sound state falls back to initialising when restoring fails.** `/etc/init.d/50_alsa.sh` runs
+  `alsactl restore` and, if that fails, `alsactl init`. A live image has no saved state, and a
+  failed restore leaves the hardware as the kernel left it: muted at zero. `alsactl init` returns a
+  distinct status when it matched a generic rule, which is a success here, so its status is ignored.
 
-The console has a sound server, and reaching it is a configuration file rather than a given.
-`kdos-desktop-start` starts PipeWire, but ALSA only routes `default` to it because
-`/etc/alsa/conf.d/99-kdos-pipewire.conf` says so: the directory PipeWire installs its own drop-in
-into is not one alsa-lib reads. See [the session](../03-architecture/session.md#audio).
+In a desktop session the sound server is PipeWire, which the session starts
+(`kdos_session_audio` in `/usr/local/lib/kdos/session-common.sh`). ALSA routes its `default` device
+to PipeWire only because `/etc/alsa/conf.d/99-kdos-pipewire.conf` says so: the directory PipeWire
+installs its own drop-in into is not one alsa-lib reads. See
+[the session](../03-architecture/session.md#audio).
 
 That matters to this demo more than to most. libmikmod opens the literal PCM name `default` and
-parses no options, so it goes wherever that name points. On the card chain it holds the device
-exclusively, which locks every other program and the daemon out of it for as long as the demo runs.
-On a login with no session and therefore no daemon, `KDOS_ALSA_DEFAULT=kdos_card kdos-bb` is the
-way to play at all.
+takes no options, so it goes wherever that name points. On the plain sound-card chain it holds the
+device exclusively, locking every other program out for as long as the demo runs. On a login with no
+session, and therefore no PipeWire, play straight to the card:
+
+```sh
+KDOS_ALSA_DEFAULT=kdos_card kdos-bb
+```
 
 ## Debugging
 
 ```sh
-KDOS_BB_DEBUG=1 kdos-bb 2>/tmp/sync.log
+KDOS_BB_DEBUG=1 kdos-bb 2>~/sync.log
 ```
 
 The demo's error output is the terminal it is drawing on, so redirect it.
 
-The trace reports which way the mixer is being fed — thread or timer — and whether the module
-loaded at all. It is silent otherwise. It is also what catches the self-deadlock described above:
-the log stops at the line before playback starts.
+The trace reports which way the mixer is being fed — a real-time thread, a thread with the render
+thread niced, an ordinary thread, or the timer fallback — and whether the module loaded at all. It is
+silent otherwise. It also catches the self-deadlock described under
+[the locking rule](#the-locking-rule-that-goes-with-it): the log stops at the line before playback
+starts.
 
-Every five seconds it reports the demo's clock against the player's position, with what the servo
-has had to take out and how long the mixer thread went unscheduled:
+Every five seconds it reports the demo's clock against the player's position, with what the servo has
+had to take out and how long the mixer thread went unscheduled:
 
 ```
 kdos-bb: sync  demo   80.01s, player  278/1000, held  -829016 us, err   1620 us, worst gap 10102 us
 ```
 
-**`held` is the audio time this machine has lost**, summed since the demo began — the exact figure
-the scene clock has been slowed by to stay with the player. A smooth climb is a card running at the
-wrong rate; a staircase is a stream that stopped and restarted, and each step is one stutter.
-
-**`err` is the phase the servo has not taken out yet**, at its worst since the previous line, and
-it is the one number that says whether the correction is keeping up. Bounded means it is; a figure
-that climbs line after line means the slew limit is below the rate the two clocks disagree at and
-the demo is coming apart regardless.
-
-**`worst gap` is the longest the mixer thread went unscheduled** since the previous line. Longer
-than the ring below it is silence and shorter costs nothing at all, and the two look identical from
-the render loop — so the number is printed rather than a verdict. It is recorded on the mixer
-thread and printed on the render thread: a real-time thread that writes to the terminal it is
-drawing on parks the highest-priority thread in the process behind the lowest.
+| Field | Meaning |
+|---|---|
+| `demo` | Seconds into the current track, on the scene clock |
+| `player` | How far through the module the player is, in thousandths |
+| `held` | The audio time this machine has lost since the demo began — the exact amount the scene clock has been slowed by to stay with the player. A smooth climb is a card running at the wrong rate; a staircase is a stream that stopped and restarted, and each step is one stutter |
+| `err` | The phase the servo has not taken out yet, at its worst since the previous line. Bounded means the correction is keeping up; a figure that climbs line after line means the slew limit is below the rate the two clocks disagree at |
+| `worst gap` | The longest the mixer thread went unscheduled since the previous line. Longer than the ring below it is silence, shorter costs nothing, and the two look identical from the render loop — so the number is printed rather than a verdict. It is recorded on the mixer thread and printed on the render thread, because a real-time thread writing to the terminal would park the highest-priority thread behind the lowest |
 
 ### What the player should read
 
-Not a formula. `song_progress()`'s rows-per-pattern is nominal, so its reading is skewed by an
-amount that belongs to the *module*: `bb.s3m` reads high, `bb3.s3m` reads low and shrinking,
-`bb2.s3m` reads low and growing. These figures are what an offline render of each track reports at
-the same point, so they are what a correctly playing one reports too:
+Not a formula. `song_progress()`'s rows-per-pattern is nominal, so its reading is skewed by an amount
+that belongs to the *module*: `bb.s3m` reads high, `bb3.s3m` reads low and shrinking, `bb2.s3m` reads
+low and growing. These figures are what an offline render of each track reports at the same point,
+so they are what a correctly playing one reports too:
 
 | Demo seconds into the track | 20 | 40 | 60 | 80 | 100 | 140 | 180 | 220 | 260 |
 |---|---|---|---|---|---|---|---|---|---|
@@ -467,13 +577,14 @@ the same point, so they are what a correctly playing one reports too:
 | `bb2.s3m` — the credits | 166 | 333 | 500 | 666 | 834 | — | — | — | — |
 | `bb3.s3m` — the extro | 59 | 132 | 205 | 278 | 350 | 496 | 641 | 787 | 932 |
 
-A player reading above its row is ahead of the animation; one reading below is behind it. Measured
-on the shipped image with sound, the extro reports 60 at 20 s and 278 at 80 s against 59 and 278 —
-in step to the thousandth.
+A player reading above its row is ahead of the animation; one reading below is behind it. Measured on
+the shipped image with sound, the extro reports 60 at 20 s and 278 at 80 s against 59 and 278 — in
+step to the thousandth.
 
 ## See also
 
 - [Decisions](../01-philosophy/decisions.md) — why a fork rather than writing one
 - [Administration](../02-user-guide/administration.md) — audio on the host
 - [Boot and init](../03-architecture/boot-and-init.md) — the init scripts named above
+- [kdos-term](kdos-term.md) — the terminal that honours synchronized output
 - [Testing](../05-developer/testing.md) — the rig flag that gives a guest a sound device

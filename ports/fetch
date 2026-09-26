@@ -10,102 +10,107 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Smart fetch - Download sources to ports directories
-# Reads kpkgbuild files to determine what to download
+# ports/fetch — put every port's sources in its directory, verified
 #
-# A recipe is a config file, not a shell script, so this cannot source it any
-# more. `kpkg meta` prints the same fields as shell assignments and this evals
-# those instead — one parser, in C, shared with the build. kpkg is compiled
-# here on the host for that, the way ports/appbox/fetch already compiles
-# kdos-appbox for `image pack`: it links nothing but libc and takes a second.
+#   ports/fetch [port…]               fetch, vendoring where a bundle must be made
+#   ports/fetch --check [port…]       offline: list what is missing or corrupt
+#   ports/fetch --tree <dir> [port…]  fetch for another checkout's ports/core
+#
+# THIS IS THE ONLY NETWORKED STEP. `make build` reads nothing but port
+# directories, so a tree fetched once builds offline for as long as it likes.
+#
+# A recipe is a config file, not a shell script, so this cannot source it.
+# `kpkg meta` prints the same fields as shell assignments and this evals those
+# instead — one parser, in C, shared with the build. ports/srclib.sh compiles
+# kpkg for that wherever this runs, and says where every archived file lives.
+#
+# EVERY FILE A `sha256 =` LINE NAMES, AND GIT DOES NOT TRACK, IS RESOLVED IN
+# ONE ORDER, stopping at the first copy that verifies:
+#
+#   1. the port directory      a file already there
+#   2. the cache               ports/.srccache/sha256-XX/<hash>, hard-linked in
+#   3. the archive             $KDOS_SOURCES_BASE/sha256-XX/<hash>
+#   4. the recipe's `source =` the URL that names this filename, if one does
+#   5. regeneration            only for the port's own vendor bundle
+#
+# The hash is the identity and every location is advisory: a copy from the
+# archive and a copy from upstream are the same file or neither verifies. The
+# archive is asked before upstream because it cannot 404 when an upstream host
+# goes. Whatever verifies is entered into the cache, so a branch switch costs
+# no second download — nor does a second checkout or a re-clone, when
+# KDOS_SRCCACHE names a cache they share.
+#
+# A FILE WITH NO HASH comes from upstream only — you have just bumped
+# `version =` and the new tarball has never existed here. The archive cannot
+# hold it, and reaching for our own copy of an unverifiable file would be
+# trusting the wrong thing entirely. A vendor bundle with no hash is generated.
+#
+# Set KDOS_SOURCES_BASE empty to skip the archive; KDOS_SRCCACHE moves the
+# cache. Both are read by ports/srclib.sh.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PORT_REPO="$SCRIPT_DIR/core"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# OUR OWN ARCHIVE OF EVERY TARBALL WE HAVE EVER USED. A release asset is named
-# `<name>-<version>.<ext>`, which the recipe already determines — so an
-# append-only archive serves every commit ever made with NOTHING TO PIN, and a
-# five-year-old checkout finds the exact tarball it was written against. The
-# guarantee is that an asset is never deleted.
-#
-# SHARDED BY FIRST LETTER, because a release holds at most 1000 assets and this
-# archive only ever grows: 524 tarballs today, ~725 after the catalogue lands,
-# and one more for every version bump forever. A single release would hit the
-# cap inside a year and the never-delete guarantee would be the thing that
-# broke. The shard is computed from the filename, so it costs no pin and no
-# lookup — `curl-8.21.0.tar.xz` is always in `sources-c`.
-#
-# Set KDOS_SOURCES_BASE empty to fetch only from upstream.
-KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/kunaldawn/kdos/releases/download}"
+# shellcheck source=ports/srclib.sh
+. "$SCRIPT_DIR/srclib.sh"
 
-# The shard a filename belongs to: its first character, lowercased, with
-# anything that is not a letter or a digit collected under `0`.
-src_shard() {
-    printf '%s' "$1" | cut -c1 | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/0/'
+usage() {
+    echo "usage: ports/fetch [--check] [--tree <dir>] [port…]" >&2
+    exit "${1:-2}"
 }
 
-# ── everything below this block runs INSIDE a container ────────────────────
+MODE=fetch
+TREE=""
+PORTS=()
+while [ $# -gt 0 ]; do
+    case $1 in
+        --check) MODE=check ;;
+        --tree)
+            [ -n "${2:-}" ] || usage
+            TREE=$(cd "$2" 2>/dev/null && pwd) || { echo "ports/fetch: no directory $2" >&2; exit 2; }
+            shift
+            ;;
+        -h|--help) usage 0 ;;
+        -*) usage ;;
+        *) PORTS+=("$1") ;;
+    esac
+    shift
+done
+
+# --tree FETCHES FOR ANOTHER CHECKOUT with this tree's archive logic, reader
+# and cache. A checkout older than ports/srclib.sh cannot fetch from the
+# archive with its own ports/fetch, and this script cannot be run from inside
+# one — it needs srclib.sh beside it — so it is pointed at that checkout
+# instead. It never generates a vendor bundle: that needs the other checkout's
+# toolchain versions, which are its own ports/fetch's business.
+PORT_REPO="${TREE:-$REPO_ROOT}/ports/core"
+[ -d "$PORT_REPO" ] || { echo "ports/fetch: no ports/core under ${TREE:-$REPO_ROOT}" >&2; exit 2; }
+
+# WHO MAY GENERATE A VENDOR BUNDLE. Downloading needs curl and sha256sum;
+# VENDORING needs cargo, go, npm, pip and cabal, at the versions this tree
+# will compile the port with. So the default run is two passes: this host
+# resolves everything it can from the port directory, the cache, the archive
+# and upstream, and only a port whose vendor bundle is still missing after that
+# is handed to the kdos-fetch container, which generates it. A clone whose
+# archive is complete never builds the container image.
 #
-# Downloading a tarball needs nothing; VENDORING needs cargo, go, npm, pip and
-# cabal, at the versions this tree will compile the port with. Carrying five
-# toolchains on the developer's machine to run one script is what this avoids.
 #
-# IT RUNS AS THE CALLER, not as root: every file it writes is committed, and a
-# root-owned tarball in a git tree is somebody else's problem later. That uid
-# has no passwd entry inside, so HOME and each toolchain's cache are pointed at
-# a scratch directory under build/ — cargo and go both refuse to run without a
-# writable home.
-if [ -z "${KDOS_FETCH_INNER:-}" ] && [ -z "${KDOS_FETCH_HOST:-}" ]; then
-    ENGINE_OUT="${ENGINE_OUT:-}"
-    if [ -z "$ENGINE_OUT" ]; then
-        if command -v docker >/dev/null 2>&1; then ENGINE_OUT=docker
-        elif command -v podman >/dev/null 2>&1; then ENGINE_OUT=podman
-        else
-            echo "ports/fetch: no docker or podman — set KDOS_FETCH_HOST=1 to" >&2
-            echo "             use this machine's own toolchains instead" >&2
-            exit 1
-        fi
-    fi
-    ver() { sed -n "s/^version[[:space:]]*=[[:space:]]*//p" \
-                   "$PORT_REPO/$1/kpkgbuild" | head -1; }
-    # RUSTUP_TOOLCHAIN OVERRIDES A PROJECT'S OWN rust-toolchain.toml, and it
-    # has to: atuin pins `channel = "1.93"`, which rustup reads as a toolchain
-    # it does not have and tries to download into a root-owned RUSTUP_HOME. It
-    # is also the correct answer — a bundle must be resolved by the compiler
-    # that will build it, not by the one upstream develops against.
-    echo "==> building the fetch image (rust $(ver rust), go $(ver go), node $(ver nodejs), ghc $(ver ghc), cabal $(ver cabal-install))"
-    $ENGINE_OUT build -q -t kdos-fetch \
-        --build-arg RUST_VERSION="$(ver rust)" \
-        --build-arg GO_VERSION="$(ver go)" \
-        --build-arg NODE_VERSION="$(ver nodejs)" \
-        --build-arg GHC_VERSION="$(ver ghc)" \
-        --build-arg CABAL_VERSION="$(ver cabal-install)" \
-        -f "$SCRIPT_DIR/Containerfile.fetch" "$SCRIPT_DIR" >/dev/null
-    mkdir -p "$REPO_ROOT/build/fetch-home"
-    exec $ENGINE_OUT run --rm --network=host \
-        --user "$(id -u):$(id -g)" \
-        -v "$REPO_ROOT":/kdos \
-        -e KDOS_FETCH_INNER=1 \
-        -e HOME=/kdos/build/fetch-home \
-        -e CARGO_HOME=/kdos/build/fetch-home/cargo \
-        -e GOPATH=/kdos/build/fetch-home/go \
-        -e GOCACHE=/kdos/build/fetch-home/gocache \
-        -e npm_config_cache=/kdos/build/fetch-home/npm \
-        -e CABAL_DIR=/kdos/build/fetch-home/cabal \
-        -e KPKG_BIN=/kdos/build/fetch-home/kpkg \
-        -e RUSTUP_TOOLCHAIN="$(ver rust)" \
-        -e KDOS_SOURCES_BASE="$KDOS_SOURCES_BASE" \
-        kdos-fetch bash /kdos/ports/fetch "$@"
+# The recipe reader is compiled on this host too; a default run on a host with
+# no C compiler hands the whole run, both passes, to the container instead.
+#
+#   KDOS_FETCH_HOST=1   one pass on this host, generating with its own toolchains
+#   KDOS_FETCH_INNER=1  set by the container for its own run; generates
+#   ENGINE_OUT          docker or podman; found on PATH when unset
+if [ "$MODE" = check ] || [ -n "$TREE" ]; then
+    GENERATE=0; OUTER=0
+elif [ -n "${KDOS_FETCH_INNER:-}" ] || [ -n "${KDOS_FETCH_HOST:-}" ]; then
+    GENERATE=1; OUTER=0
+else
+    GENERATE=0; OUTER=1
 fi
-# kdos-kpkg's PRIMARY dispatch is argv[0]'s basename (main.c's `self`); the
-# argv[1] fallback it also has is one dispatcher refactor away from silently
-# breaking every caller that relies on it, the way it already broke this
-# script's own `.kpkg-meta meta .` once. So the on-demand build's OUTPUT
-# NAME is what has to be "kpkg" — not an extra argv token at the call site.
-KPKG="${KPKG_BIN:-$SCRIPT_DIR/.kpkgbin/kpkg}"
+NEEDGEN=()
 
 # A VENDOR BUNDLE IS AN ARTEFACT AND MUST HASH THE SAME TWICE. Plain `tar -cJf`
 # records the extraction time and the builder's uid, so two runs of the same
@@ -124,24 +129,496 @@ vendor_tar() {
         -cf "$out" "$@"
 }
 
+# source_file <entry> <first:0|1> <name> <version> — the filename a `source =`
+# entry is saved under. It must agree with kdos-kpkg's source_file() in
+# build.c, which looks for exactly this name at build time: `file::url` names
+# it outright, a bare URL is its basename, EXCEPT for the first entry, which is
+# saved as `<name>-<version>.<ext>`.
+source_file() {
+    local src=$1 ext=""
+    case $src in
+        *::*) printf '%s\n' "${src%%::*}"; return ;;
+        http://*|https://*|ftp://*) ;;
+        *) printf '%s\n' "$src"; return ;;
+    esac
+    if [ "$2" = 1 ]; then
+        case $src in
+            *.tar.gz|*.tgz)   ext=tar.gz ;;
+            *.tar.bz2|*.tbz2) ext=tar.bz2 ;;
+            *.tar.xz|*.txz)   ext=tar.xz ;;
+            *.tar.zst)        ext=tar.zst ;;
+            *.zip)            ext=zip ;;
+        esac
+    fi
+    if [ -n "$ext" ]; then
+        printf '%s-%s.%s\n' "$3" "$4" "$ext"
+    else
+        printf '%s\n' "${src##*/}"
+    fi
+}
 
-if [ ! -x "$KPKG" ]; then
-    echo "==> Building the recipe reader..."
-    mkdir -p "$(dirname "$KPKG")"
-    # kdos-kpkg links libkbase, libkpkg AND libksig — kdos-kpkg.h includes
-    # ksig.h. The same command line lives in src/tools/kdos-portup/main.c and
-    # testing/selftest.sh; all three must list the same set, or the recipe
-    # reader fails to compile and this exits before downloading anything.
-    ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE \
-        -I"$REPO_ROOT/src/libs/libkbase" -I"$REPO_ROOT/src/libs/libkpkg" \
-        -I"$REPO_ROOT/src/libs/libksig" \
-        -I"$REPO_ROOT/src/packages/kdos-kpkg" -o "$KPKG" \
-        "$REPO_ROOT"/src/packages/kdos-kpkg/*.c \
-        "$REPO_ROOT"/src/libs/libkbase/*.c "$REPO_ROOT"/src/libs/libkpkg/*.c \
-        "$REPO_ROOT"/src/libs/libksig/*.c "$REPO_ROOT"/src/libs/libksig/monocypher/*.c
-fi
+# is_tracked <portdir> <file> — git carries this file, so it is neither
+# fetched nor checked. In another checkout a file git carries through the LFS
+# filter is an archive, not a tracked file: without LFS its working copy is a
+# pointer that verifies against nothing.
+is_tracked() {
+    local path="$1/$2"
+    if [ -z "$TREE" ]; then
+        src_tracked "$path"
+        return
+    fi
+    git -C "$TREE" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 || return 1
+    [ "$(git -C "$TREE" check-attr filter -- "$path" 2>/dev/null | awk '{print $NF}')" != lfs ]
+}
 
-echo "==> Fetching sources for all ports..."
+# download <url> <dest> [fresh] — to <dest>.part, which a verified caller
+# renames. A partial .part is resumed unless `fresh` is given; a resume onto
+# bytes from some other stream fails its hash, and the caller then asks for
+# the same URL fresh. A server that refuses a range request gets one clean
+# retry from the start.
+download() {
+    local part="$2.part" meter=-sS resume=(-C -)
+    [ -t 2 ] && meter=--progress-bar
+    if [ "${3:-}" = fresh ]; then
+        rm -f "$part"
+        resume=()
+    fi
+    curl -fL --retry 3 --connect-timeout 20 "$meter" "${resume[@]}" -o "$part" "$1" && return 0
+    if [ -s "$part" ]; then
+        rm -f "$part"
+        curl -fL --retry 3 --connect-timeout 20 "$meter" -o "$part" "$1" && return 0
+    fi
+    rm -f "$part"
+    return 1
+}
+
+# obtain <portdir> <port> <hash> <file> [url] — steps 1 to 4 of the order in
+# the header. Returns 0 with <file> verified in place and in the cache.
+obtain() {
+    local dir=$1 port=$2 h=$3 f=$4 url=${5:-} dest="$1/$4" u got mode
+    if [ -e "$dest" ]; then
+        if src_hash_ok "$dest" "$h"; then
+            src_cache_put "$dest" "$h" || echo "⚠  $port: could not enter $f into $KDOS_SRCCACHE"
+            echo "✓  $port: $f"
+            return 0
+        fi
+        echo "⚠  $port: $f does not match its sha256 — replacing it"
+        rm -f "$dest"
+    fi
+    if src_cache_get "$h" "$dest"; then
+        echo "✓  $port: $f (cache)"
+        return 0
+    fi
+    # A LEFTOVER .part IS ONLY A GUESS. It may hold the start of other bytes
+    # — an interrupted download of a tarball upstream has since re-rolled —
+    # and a resume onto it fails the hash however good the server is. So a
+    # resumed download that fails is asked for once more from zero, from the
+    # same URL, before the next location is tried.
+    for u in $(src_url "$h") $url; do
+        mode=""
+        [ -s "$dest.part" ] && mode=resume
+        while :; do
+            case $mode in
+                resume) echo "⬇  $port: $f <- $u (resuming)" ;;
+                fresh)  echo "⬇  $port: $f <- $u (from zero)" ;;
+                *)      echo "⬇  $port: $f <- $u" ;;
+            esac
+            download "$u" "$dest" "$mode" || break
+            if src_hash_ok "$dest.part" "$h"; then
+                mv -f "$dest.part" "$dest"
+                src_cache_put "$dest" "$h" || echo "⚠  $port: could not enter $f into $KDOS_SRCCACHE"
+                echo "✓  $port: $f verified"
+                return 0
+            fi
+            got=$(sha256sum "$dest.part" | cut -d' ' -f1)
+            echo "✗  $port: sha256 MISMATCH for $f from $u"
+            echo "   expected $h"
+            echo "   got      $got"
+            rm -f "$dest.part"
+            [ "$mode" = resume ] || break
+            mode=fresh
+        done
+    done
+    return 1
+}
+
+# gen_vendor — step 5: build $portdir/$vendor_file.part from the port's first
+# source with the ecosystem's own vendoring tool. Reads fetch_port's locals.
+gen_vendor() {
+    local filename=$main_file out="$portdir/$vendor_file.part" tmp_dir
+    cd "$portdir" || return 1
+    rm -f "$out"
+
+    if [ "$vendoring" = "rust" ]; then
+        echo "⚙  $port: Generating vendor tarball..."
+        tmp_dir=$(mktemp -d)
+        tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+            echo "✗  $port: Failed to extract $filename"
+            rm -rf "$tmp_dir"
+            return 1
+        }
+
+        # A CARGO PROJECT IS NOT ALWAYS AT THE TARBALL ROOT. lnav ships
+        # its Rust extension as src/third-party/lnav-rs-ext with its own
+        # Cargo.toml; `cargo vendor` at the root finds no manifest at all.
+        # `vendordir =` is an ordinary recipe helper — kpkgbuild treats
+        # any unknown key as one — so build.sh reads the same value with
+        # no parser change, exactly as the Go branch already does.
+        pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
+        mkdir -p .cargo
+        # A SECOND MANIFEST THE BUILD RUNS IS A SECOND DEPENDENCY SET.
+        # An xtask crate outside the workspace — oxipng's, which writes
+        # its manual page — resolves against its own Cargo.lock, and a
+        # bundle made from the top manifest alone lacks its crates, so
+        # the offline build fails naming the first one. `vendorsync =`
+        # lists those manifests, relative to where this runs.
+        local sync_args=() m
+        for m in $vendorsync; do
+            sync_args+=(--sync "$m")
+        done
+        cargo vendor "${sync_args[@]}" > .cargo/config.toml || {
+            echo "✗  $port: cargo vendor failed"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+
+        # A VENDORED bindgen IS A BUILD THAT dlopens libclang, AND A
+        # STATIC-MUSL RUST BINARY CANNOT dlopen ANYTHING. The failure
+        # arrives from inside bindgen rather than from the linker —
+        # "Unable to find libclang: ... Dynamic loading not supported" —
+        # so it reads as a missing library on a machine where libclang is
+        # right there, and it costs a full rebuild to find. The two lines
+        # that fix it are in CLAUDE.md's recurring-fixes table; this says
+        # so HERE, where the vendor tree is unpacked and the answer is one
+        # `test -d` rather than a decompression of somebody's bundle.
+        if [ -d vendor/bindgen ] &&
+           ! grep -q 'crt-static' "$portdir/build.sh" 2>/dev/null; then
+            echo "⚠  $port: vendors bindgen, and build.sh does not set"
+            echo "   RUSTFLAGS=-C target-feature=-crt-static — the build"
+            echo "   will fail inside bindgen with 'Dynamic loading not"
+            echo "   supported'. Add that and LIBCLANG_PATH=/usr/lib."
+        fi
+
+        local lock=()
+        [ -f Cargo.lock ] && lock=(Cargo.lock)
+        vendor_tar "$out" vendor .cargo "${lock[@]}" || {
+            echo "✗  $port: Failed to create $vendor_file"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        popd >/dev/null
+        rm -rf "$tmp_dir"
+
+    elif [ "$vendoring" = "go" ]; then
+        echo "⚙  $port: Generating vendor tarball (Go)..."
+        tmp_dir=$(mktemp -d)
+        tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+            echo "✗  $port: Failed to extract $filename"
+            rm -rf "$tmp_dir"
+            return 1
+        }
+
+        # A GO MODULE IS NOT ALWAYS AT THE TARBALL ROOT. golang.org/x/tools
+        # tags a gopls release and ships gopls as a SUBDIRECTORY with its
+        # own go.mod; vendoring at the root would either fail outright or
+        # — worse — vendor the PARENT module, producing a bundle that
+        # builds something else. `vendordir =` in the recipe is an
+        # ordinary recipe helper (kpkgbuild treats any unknown key as
+        # one), so build.sh reads the same value with no parser change.
+        pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
+        go mod vendor || {
+            echo "✗  $port: go mod vendor failed"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+
+        vendor_tar "$out" vendor || {
+            echo "✗  $port: Failed to create $vendor_file"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        popd >/dev/null
+        rm -rf "$tmp_dir"
+
+    elif [ "$vendoring" = "node" ]; then
+        echo "⚙  $port: Generating vendor tarball (Node)..."
+        tmp_dir=$(mktemp -d)
+        tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+            echo "✗  $port: Failed to extract $filename"
+            rm -rf "$tmp_dir"
+            return 1
+        }
+
+        pushd "$tmp_dir" >/dev/null
+        npm install --ignore-scripts --no-audit --no-fund || {
+            echo "✗  $port: npm install failed"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        vendor_tar "$out" node_modules || {
+            echo "✗  $port: Failed to create $vendor_file"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        popd >/dev/null
+        rm -rf "$tmp_dir"
+
+    elif [ "$vendoring" = "haskell" ]; then
+        echo "⚙  $port: Generating vendor tarball (Haskell)..."
+        tmp_dir=$(mktemp -d)
+        tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+            echo "✗  $port: Failed to extract $filename"
+            rm -rf "$tmp_dir"
+            return 1
+        }
+
+        # THE DEPENDENCY SET IS A PLAN OR A FREEZE, NEVER A FRESH SOLVE AT
+        # BUILD TIME. `hsplan =` names a bootstrap plan inside the source
+        # (GHC's Hadrian, cabal-install itself), which pins every
+        # revision and hash; ports/hackage-vendor downloads exactly that.
+        # Otherwise the set is a cabal freeze: the port directory's own
+        # cabal.project.freeze when it carries one, or what `cabal freeze`
+        # resolves beside `vendordir`'s manifest with the tree's ghc. The
+        # freeze rides in the bundle, and build.sh hands it back to cabal,
+        # so the offline build solves to the same set this downloaded.
+        # A package the resolving ghc already carries in its global
+        # database is not vendored — GHC ships it.
+        pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
+        if [ -n "${hsplan:-}" ]; then
+            python3 "$SCRIPT_DIR/hackage-vendor" --plan "$hsplan" --out vendor || {
+                echo "✗  $port: hackage-vendor failed"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
+        else
+            local cabal_dir="${CABAL_DIR:-$HOME/.cabal}"
+            [ -f "$portdir/cabal.project.freeze" ] &&
+                cp "$portdir/cabal.project.freeze" cabal.project.freeze
+            if ! CABAL_DIR="$cabal_dir" cabal update ||
+               { [ ! -f cabal.project.freeze ] && ! CABAL_DIR="$cabal_dir" cabal freeze; } ||
+               ! ghc-pkg list --global --simple-output | tr ' ' '\n' > .installed ||
+               ! python3 "$SCRIPT_DIR/hackage-vendor" --freeze cabal.project.freeze \
+                    --index "$cabal_dir/packages/hackage.haskell.org/01-index.tar" \
+                    --installed .installed --out vendor; then
+                echo "✗  $port: Haskell vendoring failed"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            cp cabal.project.freeze vendor/
+        fi
+
+        vendor_tar "$out" vendor || {
+            echo "✗  $port: Failed to create $vendor_file"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        popd >/dev/null
+        rm -rf "$tmp_dir"
+
+    elif [ "$vendoring" = "python" ] || [ -n "$pypackages" ]; then
+        echo "⚙  $port: Generating vendor tarball (Python)..."
+        tmp_dir=$(mktemp -d)
+
+        # Extract the main source if there is one; a pypackages-only
+        # recipe has none.
+        if [ -n "$source" ] && [ -f "$filename" ]; then
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+                echo "✗  $port: Failed to extract $filename"
+                rm -rf "$tmp_dir"
+                return 1
+            }
+        fi
+
+        pushd "$tmp_dir" >/dev/null
+        mkdir -p vendor
+
+        # Download pypackages if defined. This — and the setup.py/
+        # pyproject.toml branch below it — is the python equivalent of
+        # `cargo vendor`/`go mod vendor`: the one call that has to
+        # succeed for the bundle to be worth anything, so unlike the
+        # best-effort recursive build-dependency crawl further down
+        # (which may legitimately find nothing for a given package),
+        # its failure has to abort the whole vendor step.
+        if [ -n "$pypackages" ]; then
+            echo "   Downloading requested pypackages..."
+            # Convert pkg:ver -> pkg==ver
+            local reqs="" pkg req
+            for pkg in $pypackages; do
+                req=$(echo "$pkg" | sed 's/:/==/g' | sed 's/=/==/g' | sed 's/====/==/g')
+                reqs="$reqs $req"
+            done
+            # --no-deps, BECAUSE `pypackages` IS THE CLOSURE. The recipe
+            # names exactly what it wants vendored; letting pip resolve
+            # from there drags in every dependency that is ALREADY A PORT
+            # and then builds each one's metadata to find that out — which
+            # means this image would need the development headers of every
+            # library any of them binds. ocrmypdf is the case: a dozen pure
+            # python packages, and resolving them reaches cffi, then
+            # cryptography, then lxml, each failing on a missing header for
+            # a package the target builds from its own port.
+            # shellcheck disable=SC2086
+            pip3 download --no-binary :all: --no-deps --dest vendor $reqs || {
+                echo "✗  $port: pypackages download failed"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
+        elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+            # A RUNTIME DEPENDENCY THAT IS ITSELF A PORT MUST NOT BE
+            # VENDORED. Every recipe here installs `--no-deps`, so the
+            # runtime set in this bundle is never used — and downloading it
+            # anyway means pip resolving those packages' own build chains.
+            # skyfield's `numpy` is the case: a port, and its sdist reaches
+            # the PyPI `ninja` wrapper whose build compiles CMake from
+            # source. `pyruntime = no` says the runtime set is satisfied by
+            # ports, leaving only what the BUILD needs.
+            if [ "${pyruntime:-yes}" = "no" ]; then
+                echo "   'pyruntime = no' — runtime deps are ports, downloading build deps only"
+            else
+                echo "   Downloading runtime dependencies (source only)..."
+                pip3 download --no-binary :all: --dest vendor . || {
+                    echo "✗  $port: runtime dependency download failed"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                }
+            fi
+        fi
+
+        # A requirements.txt IS NOT A DECLARED DEPENDENCY SET. The name is a
+        # convention with no defined meaning, and projects routinely use it
+        # for the OPTIONAL set: visidata's lists pandas and, through it,
+        # scipy — thirty megabytes and a Fortran compiler, for a terminal
+        # spreadsheet whose install_requires is python-dateutil alone.
+        # `pyrequirements = no` in a recipe says the file is not the list,
+        # and the sdist's own metadata is then what is vendored.
+        if [ -f "requirements.txt" ] && [ "${pyrequirements:-yes}" != "no" ]; then
+            echo "   Found requirements.txt, downloading dependencies..."
+            pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  requirements.txt dependency download failed"
+        elif [ -f "requirements.txt" ]; then
+            echo "   requirements.txt present but 'pyrequirements = no' — using the sdist metadata"
+        fi
+
+        # Check main package build dependencies
+        local build_reqs
+        if [ -f "pyproject.toml" ]; then
+            echo "   Checking pyproject.toml for build-system requires..."
+            build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < pyproject.toml 2>/dev/null || true)
+
+            if [ -n "$build_reqs" ]; then
+                echo "   Downloading build dependencies (source only)..."
+                echo "$build_reqs" > requirements.txt
+                pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  Build dependency download failed"
+                rm requirements.txt
+            fi
+        fi
+
+        # Recursive build dependency fetching
+        echo "   Recursively fetching build dependencies..."
+        local found_new final_count tarball base sub_tmp
+        touch processed.txt
+        while true; do
+            found_new=false
+            rm -f batch_requirements.txt
+            touch batch_requirements.txt
+
+            # Iterate over all tarballs in vendor
+            for tarball in vendor/*.tar.gz vendor/*.tar.bz2 vendor/*.tar.xz vendor/*.zip; do
+                [ -f "$tarball" ] || continue
+                base=$(basename "$tarball")
+
+                # Skip if already processed
+                if grep -Fxq "$base" processed.txt; then
+                    continue
+                fi
+
+                found_new=true
+
+                # Extract pyproject.toml to a temp location
+                if tar -tf "$tarball" | grep -q "pyproject.toml"; then
+                    sub_tmp=$(mktemp -d)
+                    tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" --strip-components=1 2>/dev/null || tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" 2>/dev/null
+
+                    if [ -f "$sub_tmp/pyproject.toml" ]; then
+                        # Parse build-system.requires
+                        build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < "$sub_tmp/pyproject.toml" 2>/dev/null || true)
+
+                        if [ -n "$build_reqs" ]; then
+                            echo "$build_reqs" >> batch_requirements.txt
+                            echo "     Found dependencies in $tarball: $build_reqs"
+                        fi
+                    fi
+                    rm -rf "$sub_tmp"
+                fi
+
+                # Mark as processed
+                echo "$base" >> processed.txt
+            done
+
+            # If we collected any requirements in this batch, download them all at once
+            if [ -s "batch_requirements.txt" ]; then
+                echo "   Downloading batched build dependencies..."
+                pip3 download --no-binary :all: --dest vendor -r batch_requirements.txt || echo "⚠  Batched build dependency download failed"
+                rm batch_requirements.txt
+            fi
+
+            # If we didn't find any new tarballs to process, break
+            if [ "$found_new" = false ]; then
+                break
+            fi
+
+            final_count=$(find vendor -mindepth 1 -maxdepth 1 | wc -l)
+            echo "   Fetched new build dependencies (total: $final_count)..."
+        done
+        rm processed.txt
+
+        # AN EMPTY VENDOR DIRECTORY IS A FAILED FETCH, NOT A SMALL ONE.
+        # Every pip step above reports its own failure and carries on, so a
+        # requirements.txt that could not be downloaded leaves nothing here
+        # and the bundle is written anyway — a recipe that then builds
+        # `--no-index --find-links=vendor` fails on the target instead,
+        # naming whichever dependency pip asked for first.
+        if [ -z "$(ls -A vendor 2>/dev/null)" ]; then
+            echo "✗  $port: vendor/ is empty — nothing was downloaded"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        vendor_tar "$out" vendor || {
+            echo "✗  $port: Failed to create $vendor_file"
+            popd >/dev/null
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        popd >/dev/null
+        rm -rf "$tmp_dir"
+    else
+        echo "✗  $port: no way to generate $vendor_file"
+        return 1
+    fi
+    return 0
+}
+
+CHECK_BAD=0
+CHECK_SEEN=0
+
+# unreadable — a recipe the reader rejects is a failure in both modes. Its
+# files were never looked at, so a pass would vouch for sources nobody checked.
+unreadable() {
+    echo "✗  $port: cannot read its kpkgbuild"
+    [ "$MODE" = check ] && CHECK_BAD=$((CHECK_BAD + 1))
+    return 0
+}
 
 fetch_port() {
     # `if fetch_port …` disables set -e for this whole function, so every
@@ -149,711 +626,262 @@ fetch_port() {
     # cargo vendor returns the last echo's status — 0 — and kdos-portup's
     # accept path sees success, never reverts, and leaves a bumped recipe
     # beside a broken vendor bundle.
-    local portdir=$1
-    local portname=$(basename "$portdir")
+    local portdir=$1 port=${1##*/}
 
-    cd "$portdir" || return 1
-    
-    # Check if kpkgbuild exists
-    if [ ! -f "./kpkgbuild" ]; then
-        echo "⚠  $portname: No kpkgbuild found"
+    if [ ! -f "$portdir/kpkgbuild" ]; then
+        [ "$MODE" = check ] || echo "⚠  $port: No kpkgbuild found"
         return 0
     fi
-    
-    # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
-    # basename is literally "kpkg", so this resolves through kdos-kpkg's
-    # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
-    unset name version release source sha256 vendoring pypackages vendordir vendorsync pyrequirements pyruntime hsplan
-    local meta
-    meta=$("$KPKG" meta . 2>/dev/null) || {
-        echo "⚠  $portname: Failed to read kpkgbuild"
-        return 0
-    }
+
+    local name="" version="" release="" source="" sha256="" vendoring="" pypackages=""
+    local vendordir="" vendorsync="" pyrequirements="" pyruntime="" hsplan="" meta
+    meta=$(cd "$portdir" && "$KPKG" meta . 2>/dev/null) || { unreadable; return 1; }
     eval "$meta"
-    
-    [ -z "$source" ] && [ -z "$pypackages" ] && {
-        echo "⚠  $portname: No source or pypackages defined"
+
+    if [ -z "$source" ] && [ -z "$pypackages" ]; then
+        [ "$MODE" = check ] || echo "⚠  $port: No source or pypackages defined"
         return 0
-    }
-    
-    # Download each source
-    src_idx=0
+    fi
+
+    # Every remote `source =` entry, by the filename it is saved under.
+    local -A url_of=() hashed=()
+    local files=() main_file="" src f idx=0
     for src in $source; do
+        f=$(source_file "$src" "$([ $idx -eq 0 ] && echo 1 || echo 0)" "$name" "$version")
+        [ $idx -eq 0 ] && main_file=$f
         case $src in
-            *::*)
-                # Format: filename::url
-                filename="${src%%::*}"
-                url="${src#*::}"
-                ;;
-            http://*|https://*|ftp://*)
-                # Automatic renaming to name-version.ext
-                url="$src"
-                
-                # Default filename to basename
-                filename=$(basename "$url")
-
-                # Detect extension
-                if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then
-                    ext="tar.gz"
-                elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then
-                    ext="tar.bz2"
-                elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then
-                    ext="tar.xz"
-                elif [[ "$url" =~ \.tar\.zst$ ]]; then
-                    ext="tar.zst"
-                elif [[ "$url" =~ \.zip$ ]]; then
-                    ext="zip"
-                else
-                    ext=""
-                fi
-                
-                if [ -n "$ext" ] && [ $src_idx -eq 0 ]; then
-                    filename="$name-$version.$ext"
-                fi
-                ;;
-            *)
-                # Local file or plain filename
-                filename="$src"
-                
-                # If it's just a filename (no path separators), checks if it exists
-                if [[ "$filename" != */* ]]; then
-                    echo "⊙  $portname: $src (local file)"
-                    continue
-                else
-                    # It might be a path relative to port dir? 
-                    echo "⊙  $portname: $src (local file path)"
-                    continue
-                fi
-                ;;
+            *::*) url_of[$f]=${src#*::}; files+=("$f") ;;
+            http://*|https://*|ftp://*) url_of[$f]=$src; files+=("$f") ;;
         esac
-        
-        # A ZERO-BYTE FILE IS NOT A DOWNLOAD. An interrupted or refused
-        # transfer leaves the -O target created and empty, and treating it as
-        # present makes every later run skip the fetch — while sha256sum of
-        # nothing is a perfectly stable digest, so a recipe written from that
-        # state verifies clean and the build is the first thing to notice.
-        if [ -f "./$filename" ] && [ ! -s "./$filename" ]; then
-            echo "⚠  $portname: $filename is empty — refetching"
-            rm -f "./$filename"
-        fi
-
-        # The hash for THIS file, if the recipe names one. It decides where we
-        # are allowed to fetch from, so it is resolved before any download.
-        # `kpkg meta` emits $sha256 as alternating "<hex> <name>" tokens.
-        want=""
-        if [ -n "$sha256" ]; then
-            want=$(echo "$sha256" | tr -s ' \t' '\n\n' | awk -v f="$filename" \
-                   'NR%2==1{h=$0} NR%2==0 && $0==f {print h; exit}')
-        fi
-
-        if [ -f "./$filename" ]; then
-            echo "✓  $portname: $filename exists"
-        else
-            # WHERE WE MAY FETCH FROM DEPENDS ON WHETHER WE KNOW THE HASH.
-            #
-            # With a hash, our own archive and upstream are interchangeable:
-            # the hash is the identity and the URL is advisory, which is what
-            # lets a mirror be added in ten years without invalidating a
-            # commit. Ours is tried FIRST because it is the copy that cannot
-            # 404 when SourceForge finally goes.
-            #
-            # WITHOUT a hash — you have just bumped `version =` and the new
-            # tarball has never existed here — upstream is the ONLY source.
-            # Our archive cannot hold it, and reaching for our own release for
-            # an unverifiable file would be trusting the wrong thing entirely.
-            srcs="$url"
-            if [ -n "$want" ] && [ -n "${KDOS_SOURCES_BASE:-}" ]; then
-                srcs="$KDOS_SOURCES_BASE/sources-$(src_shard "$filename")/$filename $url"
-            fi
-            got_it=0
-            for u in $srcs; do
-                echo "⬇  $portname: $filename <- $u"
-                wget -q --show-progress -O "./$filename" "$u" || { rm -f "./$filename"; continue; }
-                # A server can answer 200 with nothing; wget is content with that.
-                [ -s "./$filename" ] || { rm -f "./$filename"; continue; }
-                got_it=1
-                break
-            done
-            if [ "$got_it" != 1 ]; then
-                echo "✗  $portname: Failed to download $filename"
-                return 1
-            fi
-            echo "✓  $portname: Downloaded $filename"
-        fi
-
-        # Verify against the recipe's sha256, if it names one for this file.
-        # A freshly downloaded tarball is the ONLY moment the bytes are not
-        # yet pinned by git, so this is where a substituted upstream would
-        # get caught. `kpkg meta` emits $sha256 as alternating
-        # "<hex> <name>" tokens.
-        if [ -n "$sha256" ]; then
-            if [ -n "$want" ]; then
-                got=$(sha256sum "./$filename" | cut -d" " -f1)
-                if [ "$got" != "$want" ]; then
-                    echo "✗  $portname: sha256 MISMATCH for $filename"
-                    echo "   expected $want"
-                    echo "   got      $got"
-                    rm -f "./$filename"
-                    return 1
-                fi
-                echo "✓  $portname: sha256 verified"
-            elif [ -z "${KDOS_ALLOW_UNVERIFIED:-}" ]; then
-                echo "⚠  $portname: no sha256 for $filename in the recipe"
-            fi
-        fi
-
-        src_idx=$((src_idx + 1))
+        idx=$((idx + 1))
     done
-    
-    # Handle vendoring if requested
-    if [ "$vendoring" = "rust" ]; then
-        vendor_file="${name}-vendor-${version}.tar.xz"
-        if [ -f "./$vendor_file" ]; then
-             echo "✓  $portname: Vendor file $vendor_file exists"
-        else
-            echo "⚙  $portname: Generating vendor tarball..."
-            
-            # Create temp dir
-            tmp_dir=$(mktemp -d)
-            
-            # Extract main source (assume first source is main)
-            first_src=$(echo $source | cut -d' ' -f1)
-            case $first_src in
-                *::*) filename="${first_src%%::*}" ;;
-                http://*|https://*|ftp://*)
-                     url="$first_src"
-                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
-                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
-                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
-                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
-                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
-                     else ext=""; fi
-                     
-                     if [ -n "$ext" ]; then
-                         filename="$name-$version.$ext"
-                     else
-                         filename=$(basename "$url")
-                     fi
-                     ;;
-                *) filename="$first_src" ;;
-            esac
-            
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
-                echo "✗  $portname: Failed to extract $filename"
-                rm -rf "$tmp_dir"
-                return 1
-            }
 
-            # A CARGO PROJECT IS NOT ALWAYS AT THE TARBALL ROOT. lnav ships
-            # its Rust extension as src/third-party/lnav-rs-ext with its own
-            # Cargo.toml; `cargo vendor` at the root finds no manifest at all.
-            # `vendordir =` is an ordinary recipe helper — kpkgbuild treats
-            # any unknown key as one — so build.sh reads the same value with
-            # no parser change, exactly as the Go branch already does.
-            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
-            mkdir -p .cargo
-            # A SECOND MANIFEST THE BUILD RUNS IS A SECOND DEPENDENCY SET.
-            # An xtask crate outside the workspace — oxipng's, which writes
-            # its manual page — resolves against its own Cargo.lock, and a
-            # bundle made from the top manifest alone lacks its crates, so
-            # the offline build fails naming the first one. `vendorsync =`
-            # lists those manifests, relative to where this runs.
-            local sync_args=() m
-            for m in $vendorsync; do
-                sync_args+=(--sync "$m")
-            done
-            cargo vendor "${sync_args[@]}" > .cargo/config.toml || {
-                echo "✗  $portname: cargo vendor failed"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
+    local vendor_file=""
+    case $vendoring in
+        rust|go|node|haskell|python) vendor_file="$name-vendor-$version.tar.xz" ;;
+    esac
+    [ -n "$pypackages" ] && vendor_file="$name-vendor-$version.tar.xz"
 
-            # A VENDORED bindgen IS A BUILD THAT dlopens libclang, AND A
-            # STATIC-MUSL RUST BINARY CANNOT dlopen ANYTHING. The failure
-            # arrives from inside bindgen rather than from the linker —
-            # "Unable to find libclang: ... Dynamic loading not supported" —
-            # so it reads as a missing library on a machine where libclang is
-            # right there, and it costs a full rebuild to find. The two lines
-            # that fix it are in CLAUDE.md's recurring-fixes table; this says
-            # so HERE, where the vendor tree is unpacked and the answer is one
-            # `test -d` rather than a decompression of somebody's bundle.
-            if [ -d vendor/bindgen ] &&
-               ! grep -q 'crt-static' "$portdir/build.sh" 2>/dev/null; then
-                echo "⚠  $portname: vendors bindgen, and build.sh does not set"
-                echo "   RUSTFLAGS=-C target-feature=-crt-static — the build"
-                echo "   will fail inside bindgen with 'Dynamic loading not"
-                echo "   supported'. Add that and LIBCLANG_PATH=/usr/lib."
+    local list h rc=0 need_gen=0 vendor_hash=""
+    list=$(src_port_hashes "$portdir") || { unreadable; return 1; }
+    while read -r h f <&3; do
+        src_is_hash "$h" || continue
+        hashed[$f]=1
+        is_tracked "$portdir" "$f" && continue
+        [ "$f" = "$vendor_file" ] && vendor_hash=$h
+
+        if [ "$MODE" = check ]; then
+            CHECK_SEEN=$((CHECK_SEEN + 1))
+            if [ ! -e "$portdir/$f" ]; then
+                echo "✗  $port/$f: missing"
+                CHECK_BAD=$((CHECK_BAD + 1))
+            elif ! src_hash_ok "$portdir/$f" "$h"; then
+                echo "✗  $port/$f: does not match its sha256"
+                CHECK_BAD=$((CHECK_BAD + 1))
             fi
+            continue
+        fi
 
-            # Create vendor tarball
-            if [ -f Cargo.lock ]; then
-                vendor_tar "$portdir/$vendor_file" vendor .cargo Cargo.lock || {
-                    echo "✗  $portname: Failed to create $vendor_file"
-                    popd >/dev/null
-                    rm -rf "$tmp_dir"
-                    return 1
-                }
+        obtain "$portdir" "$port" "$h" "$f" "${url_of[$f]:-}" && continue
+        if [ "$f" = "$vendor_file" ]; then
+            need_gen=1
+            continue
+        fi
+        if [ -n "${url_of[$f]:-}" ] || [ -n "$KDOS_SOURCES_BASE" ]; then
+            echo "✗  $port: Failed to download $f"
+        else
+            echo "✗  $port: $f is in no cache, and the archive is off and no source names it"
+        fi
+        rc=1
+    done 3<<< "$list"
+
+    [ "$MODE" = check ] && return 0
+
+    # UNHASHED SOURCES: upstream only, and said so.
+    for f in "${files[@]}"; do
+        [ -n "${hashed[$f]:-}" ] && continue
+        if [ -s "$portdir/$f" ]; then
+            echo "✓  $port: $f exists"
+        else
+            # A ZERO-BYTE FILE IS NOT A DOWNLOAD: an interrupted transfer
+            # leaves one, and its digest is as stable as any other.
+            rm -f "$portdir/$f"
+            echo "⬇  $port: $f <- ${url_of[$f]}"
+            if download "${url_of[$f]}" "$portdir/$f"; then
+                mv -f "$portdir/$f.part" "$portdir/$f"
+                echo "✓  $port: Downloaded $f"
             else
-                vendor_tar "$portdir/$vendor_file" vendor .cargo || {
-                    echo "✗  $portname: Failed to create $vendor_file"
-                    popd >/dev/null
-                    rm -rf "$tmp_dir"
-                    return 1
-                }
+                echo "✗  $port: Failed to download $f"
+                rc=1
+                continue
             fi
-            popd >/dev/null
-
-            # Cleanup
-            rm -rf "$tmp_dir"
-            echo "✓  $portname: Created $vendor_file"
         fi
-    elif [ "$vendoring" = "go" ]; then
-        vendor_file="${name}-vendor-${version}.tar.xz"
-        if [ -f "./$vendor_file" ]; then
-             echo "✓  $portname: Vendor file $vendor_file exists"
+        [ -n "${KDOS_ALLOW_UNVERIFIED:-}" ] ||
+            echo "⚠  $port: no sha256 for $f in the recipe"
+    done
+
+    if [ -n "$vendor_file" ] && [ -z "${hashed[$vendor_file]:-}" ]; then
+        if [ -s "$portdir/$vendor_file" ]; then
+            echo "✓  $port: Vendor file $vendor_file exists"
         else
-            echo "⚙  $portname: Generating vendor tarball (Go)..."
-            tmp_dir=$(mktemp -d)
-            first_src=$(echo $source | cut -d' ' -f1)
-            case $first_src in
-                *::*) filename="${first_src%%::*}" ;;
-                http://*|https://*|ftp://*)
-                     url="$first_src"
-                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
-                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
-                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
-                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
-                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
-                     else ext=""; fi
-                     
-                     if [ -n "$ext" ]; then
-                         filename="$name-$version.$ext"
-                     else
-                         filename=$(basename "$url")
-                     fi
-                     ;;
-                *) filename="$first_src" ;;
-            esac
-            
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
-                echo "✗  $portname: Failed to extract $filename"
-                rm -rf "$tmp_dir"
-                return 1
-            }
-
-            # A GO MODULE IS NOT ALWAYS AT THE TARBALL ROOT. golang.org/x/tools
-            # tags a gopls release and ships gopls as a SUBDIRECTORY with its
-            # own go.mod; vendoring at the root would either fail outright or
-            # — worse — vendor the PARENT module, producing a bundle that
-            # builds something else. `vendordir =` in the recipe is an
-            # ordinary recipe helper (kpkgbuild treats any unknown key as
-            # one), so build.sh reads the same value with no parser change.
-            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
-            go mod vendor || {
-                echo "✗  $portname: go mod vendor failed"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
-
-            vendor_tar "$portdir/$vendor_file" vendor || {
-                echo "✗  $portname: Failed to create $vendor_file"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
-            popd >/dev/null
-
-            rm -rf "$tmp_dir"
-            echo "✓  $portname: Created $vendor_file"
-        fi
-    elif [ "$vendoring" = "node" ]; then
-        vendor_file="${name}-vendor-${version}.tar.xz"
-        if [ -f "./$vendor_file" ]; then
-             echo "✓  $portname: Vendor file $vendor_file exists"
-        else
-            echo "⚙  $portname: Generating vendor tarball (Node)..."
-            tmp_dir=$(mktemp -d)
-            first_src=$(echo $source | cut -d' ' -f1)
-            case $first_src in
-                *::*) filename="${first_src%%::*}" ;;
-                http://*|https://*|ftp://*)
-                     url="$first_src"
-                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
-                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
-                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
-                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
-                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
-                     else ext=""; fi
-                     
-                     if [ -n "$ext" ]; then
-                         filename="$name-$version.$ext"
-                     else
-                         filename=$(basename "$url")
-                     fi
-                     ;;
-                *) filename="$first_src" ;;
-            esac
-            
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
-                echo "✗  $portname: Failed to extract $filename"
-                rm -rf "$tmp_dir"
-                return 1
-            }
-
-            pushd "$tmp_dir" >/dev/null
-            npm install --ignore-scripts --no-audit --no-fund || {
-                echo "✗  $portname: npm install failed"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
-            vendor_tar "$portdir/$vendor_file" node_modules || {
-                echo "✗  $portname: Failed to create $vendor_file"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
-            popd >/dev/null
-
-            rm -rf "$tmp_dir"
-            echo "✓  $portname: Created $vendor_file"
-        fi
-    elif [ "$vendoring" = "haskell" ]; then
-        vendor_file="${name}-vendor-${version}.tar.xz"
-        if [ -f "./$vendor_file" ]; then
-             echo "✓  $portname: Vendor file $vendor_file exists"
-        else
-            echo "⚙  $portname: Generating vendor tarball (Haskell)..."
-            tmp_dir=$(mktemp -d)
-            first_src=$(echo $source | cut -d' ' -f1)
-            case $first_src in
-                *::*) filename="${first_src%%::*}" ;;
-                http://*|https://*|ftp://*)
-                     url="$first_src"
-                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
-                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
-                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
-                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
-                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
-                     else ext=""; fi
-
-                     if [ -n "$ext" ]; then
-                         filename="$name-$version.$ext"
-                     else
-                         filename=$(basename "$url")
-                     fi
-                     ;;
-                *) filename="$first_src" ;;
-            esac
-
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
-                echo "✗  $portname: Failed to extract $filename"
-                rm -rf "$tmp_dir"
-                return 1
-            }
-
-            # THE DEPENDENCY SET IS A PLAN OR A FREEZE, NEVER A FRESH SOLVE AT
-            # BUILD TIME. `hsplan =` names a bootstrap plan inside the source
-            # (GHC's Hadrian, cabal-install itself), which pins every
-            # revision and hash; ports/hackage-vendor downloads exactly that.
-            # Otherwise the set is a cabal freeze: the port directory's own
-            # cabal.project.freeze when it carries one, or what `cabal freeze`
-            # resolves beside `vendordir`'s manifest with the tree's ghc. The
-            # freeze rides in the bundle, and build.sh hands it back to cabal,
-            # so the offline build solves to the same set this downloaded.
-            # A package the resolving ghc already carries in its global
-            # database is not vendored — GHC ships it.
-            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
-            if [ -n "${hsplan:-}" ]; then
-                python3 "$SCRIPT_DIR/hackage-vendor" --plan "$hsplan" --out vendor || {
-                    echo "✗  $portname: hackage-vendor failed"
-                    popd >/dev/null
-                    rm -rf "$tmp_dir"
-                    return 1
-                }
-            else
-                local cabal_dir="${CABAL_DIR:-$HOME/.cabal}"
-                [ -f "$portdir/cabal.project.freeze" ] &&
-                    cp "$portdir/cabal.project.freeze" cabal.project.freeze
-                if ! CABAL_DIR="$cabal_dir" cabal update ||
-                   { [ ! -f cabal.project.freeze ] && ! CABAL_DIR="$cabal_dir" cabal freeze; } ||
-                   ! ghc-pkg list --global --simple-output | tr ' ' '\n' > .installed ||
-                   ! python3 "$SCRIPT_DIR/hackage-vendor" --freeze cabal.project.freeze \
-                        --index "$cabal_dir/packages/hackage.haskell.org/01-index.tar" \
-                        --installed .installed --out vendor; then
-                    echo "✗  $portname: Haskell vendoring failed"
-                    popd >/dev/null
-                    rm -rf "$tmp_dir"
-                    return 1
-                fi
-                cp cabal.project.freeze vendor/
-            fi
-
-            vendor_tar "$portdir/$vendor_file" vendor || {
-                echo "✗  $portname: Failed to create $vendor_file"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
-            popd >/dev/null
-
-            rm -rf "$tmp_dir"
-            echo "✓  $portname: Created $vendor_file"
-        fi
-    elif [ "$vendoring" = "python" ] || [ -n "$pypackages" ]; then
-        vendor_file="${name}-vendor-${version}.tar.xz"
-        if [ -f "./$vendor_file" ]; then
-             echo "✓  $portname: Vendor file $vendor_file exists"
-        else
-            echo "⚙  $portname: Generating vendor tarball (Python)..."
-            tmp_dir=$(mktemp -d)
-            
-            # Extract main source if it exists
-            if [ -n "$source" ]; then
-                first_src=$(echo $source | cut -d' ' -f1)
-                case $first_src in
-                    *::*) filename="${first_src%%::*}" ;;
-                    http://*|https://*|ftp://*)
-                         url="$first_src"
-                         if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
-                         elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
-                         elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
-                         elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
-                         elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
-                         else ext=""; fi
-                         
-                         if [ -n "$ext" ]; then
-                             filename="$name-$version.$ext"
-                         else
-                             filename=$(basename "$url")
-                         fi
-                         ;;
-                    *) filename="$first_src" ;;
-                esac
-                
-                if [ -f "$filename" ]; then
-                    tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
-                        echo "✗  $portname: Failed to extract $filename"
-                        rm -rf "$tmp_dir"
-                        return 1
-                    }
-                fi
-            fi
-            case $first_src in
-                *::*) filename="${first_src%%::*}" ;;
-                http://*|https://*|ftp://*)
-                     url="$first_src"
-                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
-                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
-                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
-                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
-                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
-                     else ext=""; fi
-                     
-                     if [ -n "$ext" ]; then
-                         filename="$name-$version.$ext"
-                     else
-                         filename=$(basename "$url")
-                     fi
-                     ;;
-                *) filename="$first_src" ;;
-            esac
-            
-            pushd "$tmp_dir" >/dev/null
-            mkdir -p vendor
-            
-            # Download pypackages if defined. This — and the setup.py/
-            # pyproject.toml branch below it — is the python equivalent of
-            # `cargo vendor`/`go mod vendor`: the one call that has to
-            # succeed for the bundle to be worth anything, so unlike the
-            # best-effort recursive build-dependency crawl further down
-            # (which may legitimately find nothing for a given package),
-            # its failure has to abort the whole vendor step.
-            if [ -n "$pypackages" ]; then
-                echo "   Downloading requested pypackages..."
-                # Convert pkg:ver -> pkg==ver
-                reqs=""
-                for pkg in $pypackages; do
-                    req=$(echo "$pkg" | sed 's/:/==/g' | sed 's/=/==/g' | sed 's/====/==/g')
-                    reqs="$reqs $req"
-                done
-                # --no-deps, BECAUSE `pypackages` IS THE CLOSURE. The recipe
-                # names exactly what it wants vendored; letting pip resolve
-                # from there drags in every dependency that is ALREADY A PORT
-                # and then builds each one's metadata to find that out — which
-                # means this image would need the development headers of every
-                # library any of them binds. ocrmypdf is the case: a dozen pure
-                # python packages, and resolving them reaches cffi, then
-                # cryptography, then lxml, each failing on a missing header for
-                # a package the target builds from its own port.
-                pip3 download --no-binary :all: --no-deps --dest vendor $reqs || {
-                    echo "✗  $portname: pypackages download failed"
-                    popd >/dev/null
-                    rm -rf "$tmp_dir"
-                    return 1
-                }
-            elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
-                # A RUNTIME DEPENDENCY THAT IS ITSELF A PORT MUST NOT BE
-                # VENDORED. Every recipe here installs `--no-deps`, so the
-                # runtime set in this bundle is never used — and downloading it
-                # anyway means pip resolving those packages' own build chains.
-                # skyfield's `numpy` is the case: a port, and its sdist reaches
-                # the PyPI `ninja` wrapper whose build compiles CMake from
-                # source. `pyruntime = no` says the runtime set is satisfied by
-                # ports, leaving only what the BUILD needs.
-                if [ "${pyruntime:-yes}" = "no" ]; then
-                    echo "   'pyruntime = no' — runtime deps are ports, downloading build deps only"
-                else
-                    echo "   Downloading runtime dependencies (source only)..."
-                    pip3 download --no-binary :all: --dest vendor . || {
-                        echo "✗  $portname: runtime dependency download failed"
-                        popd >/dev/null
-                        rm -rf "$tmp_dir"
-                        return 1
-                    }
-                fi
-            fi
-            
-            # A requirements.txt IS NOT A DECLARED DEPENDENCY SET. The name is a
-            # convention with no defined meaning, and projects routinely use it
-            # for the OPTIONAL set: visidata's lists pandas and, through it,
-            # scipy — thirty megabytes and a Fortran compiler, for a terminal
-            # spreadsheet whose install_requires is python-dateutil alone.
-            # `pyrequirements = no` in a recipe says the file is not the list,
-            # and the sdist's own metadata is then what is vendored.
-            if [ -f "requirements.txt" ] && [ "${pyrequirements:-yes}" != "no" ]; then
-                echo "   Found requirements.txt, downloading dependencies..."
-                pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  requirements.txt dependency download failed"
-            elif [ -f "requirements.txt" ]; then
-                echo "   requirements.txt present but 'pyrequirements = no' — using the sdist metadata"
-            fi
-
-            # Check main package build dependencies
-            if [ -f "pyproject.toml" ]; then
-                echo "   Checking pyproject.toml for build-system requires..."
-                build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < pyproject.toml 2>/dev/null || true)
-
-                if [ -n "$build_reqs" ]; then
-                    echo "   Downloading build dependencies (source only)..."
-                    echo "$build_reqs" > requirements.txt
-                    pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  Build dependency download failed"
-                    rm requirements.txt
-                fi
-            fi
-
-            # Recursive build dependency fetching
-            echo "   Recursively fetching build dependencies..."
-            touch processed.txt
-            while true; do
-                initial_count=$(ls vendor | wc -l)
-                found_new=false
-                rm -f batch_requirements.txt
-                touch batch_requirements.txt
-                
-                # Iterate over all tarballs in vendor
-                for tarball in vendor/*.tar.gz vendor/*.tar.bz2 vendor/*.tar.xz vendor/*.zip; do
-                    [ -f "$tarball" ] || continue
-                    basename=$(basename "$tarball")
-                    
-                    # Skip if already processed
-                    if grep -Fxq "$basename" processed.txt; then
-                        continue
-                    fi
-                    
-                    found_new=true
-                    
-                    # Extract pyproject.toml to a temp location
-                    if tar -tf "$tarball" | grep -q "pyproject.toml"; then
-                        sub_tmp=$(mktemp -d)
-                        tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" --strip-components=1 2>/dev/null || tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" 2>/dev/null
-                        
-                        if [ -f "$sub_tmp/pyproject.toml" ]; then
-                            # Parse build-system.requires
-                            build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < "$sub_tmp/pyproject.toml" 2>/dev/null || true)
-                            
-                            if [ -n "$build_reqs" ]; then
-                                echo "$build_reqs" >> batch_requirements.txt
-                                echo "     Found dependencies in $tarball: $build_reqs"
-                            fi
-                        fi
-                        rm -rf "$sub_tmp"
-                    fi
-                    
-                    # Mark as processed
-                    echo "$basename" >> processed.txt
-                done
-                
-                # If we collected any requirements in this batch, download them all at once
-                if [ -s "batch_requirements.txt" ]; then
-                    echo "   Downloading batched build dependencies..."
-                    pip3 download --no-binary :all: --dest vendor -r batch_requirements.txt || echo "⚠  Batched build dependency download failed"
-                    rm batch_requirements.txt
-                fi
-
-                # If we didn't find any new tarballs to process, break
-                if [ "$found_new" = false ]; then
-                    break
-                fi
-                
-                final_count=$(ls vendor | wc -l)
-                echo "   Fetched new build dependencies (total: $final_count)..."
-            done
-            rm processed.txt
-
-            # AN EMPTY VENDOR DIRECTORY IS A FAILED FETCH, NOT A SMALL ONE.
-            # Every pip step above reports its own failure and carries on, so a
-            # requirements.txt that could not be downloaded leaves nothing here
-            # and the bundle is written anyway — a recipe that then builds
-            # `--no-index --find-links=vendor` fails on the target instead,
-            # naming whichever dependency pip asked for first.
-            if [ -z "$(ls -A vendor 2>/dev/null)" ]; then
-                echo "✗  $portname: vendor/ is empty — nothing was downloaded"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            fi
-
-            vendor_tar "$portdir/$vendor_file" vendor || {
-                echo "✗  $portname: Failed to create $vendor_file"
-                popd >/dev/null
-                rm -rf "$tmp_dir"
-                return 1
-            }
-            popd >/dev/null
-
-            rm -rf "$tmp_dir"
-            echo "✓  $portname: Created $vendor_file"
+            need_gen=1
         fi
     fi
 
+    [ "$need_gen" = 1 ] || return $rc
+
+    # A BUNDLE IS GENERATED FROM THE PORT'S OTHER FILES, so a port that is
+    # missing one cannot be generated anywhere, and is never handed to the
+    # container, whose image alone is five toolchains to download.
+    if [ "$rc" != 0 ]; then
+        echo "✗  $port: cannot generate $vendor_file without its source"
+        return 1
+    fi
+
+    local why="not in the archive"
+    [ -n "$KDOS_SOURCES_BASE" ] || why="archive off"
+    [ -n "$vendor_hash" ] || why="no sha256 in the recipe"
+    if [ "$GENERATE" != 1 ]; then
+        if [ "$OUTER" = 1 ]; then
+            echo "…  $port: $vendor_file $why — must be generated"
+            NEEDGEN+=("$port")
+            return 0
+        fi
+        echo "✗  $port: $vendor_file $why — --tree never generates; run that checkout's own ports/fetch $port"
+        return 1
+    fi
+    echo "…  $port: $vendor_file $why — generating"
+
+    # A subshell, because gen_vendor changes directory and every later port
+    # resolves its paths from the directory this started in.
+    ( gen_vendor ) || { rm -f "$portdir/$vendor_file.part"; return 1; }
+
+    # A GENERATED BUNDLE IS HELD TO ITS HASH LIKE A DOWNLOAD. One that does
+    # not match was resolved by different toolchain versions or against a
+    # registry that moved; the recipe's hash still names the bundle the
+    # archive should hold.
+    if [ -n "$vendor_hash" ]; then
+        if ! src_hash_ok "$portdir/$vendor_file.part" "$vendor_hash"; then
+            echo "✗  $port: sha256 MISMATCH for the generated $vendor_file"
+            echo "   expected $vendor_hash"
+            echo "   got      $(sha256sum "$portdir/$vendor_file.part" | cut -d' ' -f1)"
+            rm -f "$portdir/$vendor_file.part"
+            return 1
+        fi
+        mv -f "$portdir/$vendor_file.part" "$portdir/$vendor_file"
+        src_cache_put "$portdir/$vendor_file" "$vendor_hash" ||
+            echo "⚠  $port: could not enter $vendor_file into $KDOS_SRCCACHE"
+    else
+        mv -f "$portdir/$vendor_file.part" "$portdir/$vendor_file"
+        echo "⚠  $port: no sha256 for $vendor_file in the recipe"
+    fi
+    echo "✓  $port: Created $vendor_file"
     return 0
 }
 
-# Fetch all ports, or only the ones named on the command line — a single
-# accepted version bump (kdos-portup) has no business re-fetching all ~390.
-total=0
-success=0
-failed=0
+# ── generation runs INSIDE a container ─────────────────────────────────────
+#
+# in_container <port…> — run this script in the kdos-fetch container with
+# KDOS_FETCH_INNER set, over the named ports (every port when none is named).
+#
+# IT RUNS AS THE CALLER, not as root: every file it writes lands in the
+# caller's tree and cache, and a root-owned bundle there is somebody else's
+# problem later. That uid has no passwd entry inside, so HOME and each
+# toolchain's cache are pointed at a scratch directory under build/ — cargo and
+# go both refuse to run without a writable home. A cache outside the tree is
+# mounted beside it.
+ver() { sed -n "s/^version[[:space:]]*=[[:space:]]*//p" \
+               "$PORT_REPO/$1/kpkgbuild" | head -1; }
 
+in_container() {
+    local cache_in cache_mount=()
+    ENGINE_OUT="${ENGINE_OUT:-}"
+    if [ -z "$ENGINE_OUT" ]; then
+        if command -v docker >/dev/null 2>&1; then ENGINE_OUT=docker
+        elif command -v podman >/dev/null 2>&1; then ENGINE_OUT=podman
+        else
+            echo "ports/fetch: this needs docker or podman —" >&2
+            echo "             or set KDOS_FETCH_HOST=1 to use this machine's own toolchains" >&2
+            return 1
+        fi
+    fi
+
+    mkdir -p "$KDOS_SRCCACHE"
+    KDOS_SRCCACHE=$(cd "$KDOS_SRCCACHE" && pwd)
+    case $KDOS_SRCCACHE in
+        "$REPO_ROOT"/*) cache_in="/kdos/${KDOS_SRCCACHE#"$REPO_ROOT"/}" ;;
+        *) cache_in=/srccache; cache_mount=(-v "$KDOS_SRCCACHE":/srccache) ;;
+    esac
+
+    # RUSTUP_TOOLCHAIN OVERRIDES A PROJECT'S OWN rust-toolchain.toml, and it
+    # has to: atuin pins `channel = "1.93"`, which rustup reads as a toolchain
+    # it does not have and tries to download into a root-owned RUSTUP_HOME. It
+    # is also the correct answer — a bundle must be resolved by the compiler
+    # that will build it, not by the one upstream develops against.
+    echo "==> building the fetch image (rust $(ver rust), go $(ver go), node $(ver nodejs), ghc $(ver ghc), cabal $(ver cabal-install))"
+    $ENGINE_OUT build -q -t kdos-fetch \
+        --build-arg RUST_VERSION="$(ver rust)" \
+        --build-arg GO_VERSION="$(ver go)" \
+        --build-arg NODE_VERSION="$(ver nodejs)" \
+        --build-arg GHC_VERSION="$(ver ghc)" \
+        --build-arg CABAL_VERSION="$(ver cabal-install)" \
+        -f "$SCRIPT_DIR/Containerfile.fetch" "$SCRIPT_DIR" >/dev/null || return 1
+    mkdir -p "$REPO_ROOT/build/fetch-home"
+    $ENGINE_OUT run --rm --network=host \
+        --user "$(id -u):$(id -g)" \
+        -v "$REPO_ROOT":/kdos \
+        "${cache_mount[@]}" \
+        -e KDOS_FETCH_INNER=1 \
+        -e HOME=/kdos/build/fetch-home \
+        -e CARGO_HOME=/kdos/build/fetch-home/cargo \
+        -e GOPATH=/kdos/build/fetch-home/go \
+        -e GOCACHE=/kdos/build/fetch-home/gocache \
+        -e npm_config_cache=/kdos/build/fetch-home/npm \
+        -e CABAL_DIR=/kdos/build/fetch-home/cabal \
+        -e KPKG_BIN=/kdos/build/fetch-home/kpkg \
+        -e RUSTUP_TOOLCHAIN="$(ver rust)" \
+        -e KDOS_SOURCES_REPO="$KDOS_SOURCES_REPO" \
+        -e KDOS_SOURCES_BASE="$KDOS_SOURCES_BASE" \
+        -e KDOS_SRCCACHE="$cache_in" \
+        kdos-fetch bash /kdos/ports/fetch "$@"
+}
+
+# THE RECIPE READER IS COMPILED ON THIS HOST. A default fetch on a host that
+# cannot compile it — no C compiler — is handed to the container whole: its
+# image carries one, and the container's run then does both passes itself.
+# --check and --tree read recipes and never enter the container, so they need
+# a host compiler.
+if ! src_kpkg_ensure; then
+    if [ "$OUTER" = 1 ]; then
+        echo "==> cannot build the recipe reader on this host — fetching inside the container"
+        in_container "${PORTS[@]}"
+        exit $?
+    fi
+    what=--tree
+    [ "$MODE" = check ] && what=--check
+    [ -z "$TREE" ] && [ "$MODE" = fetch ] && what="a KDOS_FETCH_HOST run"
+    echo "ports/fetch: failed to build the recipe reader — $what needs a C compiler on this host (\$CC, default cc)" >&2
+    exit 1
+fi
+
+# Fetch all ports, or only the ones named on the command line — a single
+# accepted version bump (kdos-portup) has no business re-fetching them all.
 wanted() {
-    local name=$1
-    shift
-    # $# is the FILTER list, name already shifted off — checking it before
-    # the shift counted the name itself as a "filter" and excluded every
-    # port when the script was run with no arguments at all.
-    [ $# -eq 0 ] && return 0
-    local w
-    for w in "$@"; do
+    local name=$1 w
+    [ ${#PORTS[@]} -eq 0 ] && return 0
+    for w in "${PORTS[@]}"; do
         [ "$w" = "$name" ] && return 0
     done
     return 1
 }
 
+[ "$MODE" = check ] || echo "==> Fetching sources for $PORT_REPO..."
+total=0
+success=0
+failed=0
 for portdir in "$PORT_REPO"/*; do
     [ -d "$portdir" ] || continue
-    wanted "$(basename "$portdir")" "$@" || continue
+    wanted "${portdir##*/}" || continue
     total=$((total + 1))
 
     if fetch_port "$portdir"; then
@@ -863,12 +891,28 @@ for portdir in "$PORT_REPO"/*; do
     fi
 done
 
-if [ $# -gt 0 ] && [ "$total" -eq 0 ]; then
-    echo "==> No port under $PORT_REPO matches: $*"
+if [ ${#PORTS[@]} -gt 0 ] && [ "$total" -eq 0 ]; then
+    echo "==> No port under $PORT_REPO matches: ${PORTS[*]}"
     exit 1
 fi
 
-echo ""
-echo "==> Summary: $success/$total successful, $failed failed"
-[ $failed -eq 0 ] || exit 1
+if [ "$MODE" = check ]; then
+    if [ "$CHECK_BAD" -gt 0 ]; then
+        if [ -n "$TREE" ]; then
+            echo "==> $CHECK_BAD problem(s) in $CHECK_SEEN archived sources — run ports/fetch --tree $TREE"
+        else
+            echo "==> $CHECK_BAD problem(s) in $CHECK_SEEN archived sources — run make fetch"
+        fi
+        exit 1
+    fi
+    echo "==> All $CHECK_SEEN archived sources present and verified"
+    exit 0
+fi
 
+echo ""
+echo "==> Summary: $success/$total successful, $failed failed${NEEDGEN[*]:+, ${#NEEDGEN[@]} to generate}"
+[ "$OUTER" = 1 ] && [ ${#NEEDGEN[@]} -gt 0 ] || exit $((failed > 0))
+
+inner=0
+in_container "${NEEDGEN[@]}" || inner=1
+[ "$failed" -eq 0 ] && [ "$inner" -eq 0 ] || exit 1

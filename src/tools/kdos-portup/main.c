@@ -73,8 +73,8 @@ typedef struct {
  * `ports/update` (the wrapper) always runs this binary from
  * <repo_root>/ports/.portup, so walking two directories up from
  * /proc/self/exe finds repo_root without the caller ever having to say so —
- * the same trick ports/fetch's own compile-on-demand block relies on via
- * $SCRIPT_DIR. KDOS_PORTUP_REPO is a maintenance escape hatch, not part of
+ * the same trick ports/srclib.sh's src_kpkg_ensure relies on via
+ * $SRCLIB_ROOT. KDOS_PORTUP_REPO is a maintenance escape hatch, not part of
  * the documented CLI: it is what lets this binary be pointed at a scratch
  * copy of the tree for testing without touching /proc/self/exe at all.
  * ──────────────────────────────────────────────────────────────────────── */
@@ -119,19 +119,15 @@ static void add_c_files(KbArgv *a, const char *dir)
 }
 
 /* `kpkg meta` is the one parser this tool trusts for a recipe's expanded
- * fields (see portup.h). Building it here mirrors ports/fetch's own
- * compile-on-demand block for ports/.kpkg-meta — same sources, same flags —
- * except for the OUTPUT NAME, and that difference is load-bearing.
- * kdos-kpkg dispatches on argv[0]'s basename (main.c's `self`), falling back
- * to argv[1] only when self itself is not one of the five tool names; a
- * binary named anything other than exactly "kpkg" therefore has no way to
- * reach the "meta" subcommand by invoking `<bin> meta <dir>` the way
- * pu_recipe_read's run_meta() does — as does ports/fetch's own `"$KPKG"
- * meta .` — verified live: `.kpkg-meta meta <dir>` prints "no tool
- * named '.kpkg-meta'" while a binary named plain "kpkg" resolves the same
- * argv straight to front_main. So this tool builds its own copy under a
- * name that satisfies the dispatcher, in a directory of its own rather than
- * reusing ports/.kpkg-meta's (broken) path. */
+ * fields (see portup.h). Building it here mirrors ports/srclib.sh's
+ * src_kpkg_ensure, which builds ports/.kpkgbin/kpkg — same sources, same
+ * flags — into a directory of this tool's own. The OUTPUT NAME is
+ * load-bearing: kdos-kpkg dispatches on argv[0]'s basename (main.c's
+ * `self`), falling back to argv[1] only when self itself is not one of the
+ * five tool names, so a binary named anything other than exactly "kpkg"
+ * has no way to reach the "meta" subcommand by invoking `<bin> meta <dir>`
+ * the way pu_recipe_read's run_meta() and ports/srclib.sh's
+ * `"$KPKG" meta .` both do — it prints "no tool named '<bin>'". */
 static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 {
 	char dir[1536];
@@ -161,7 +157,7 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	/*
 	 * kdos-kpkg links THREE libraries — libkbase, libkpkg and libksig —
 	 * because kdos-kpkg.h includes ksig.h. This command line is duplicated
-	 * in ports/fetch and testing/selftest.sh; all three must list the same
+	 * in ports/srclib.sh (src_kpkg_ensure) and testing/selftest.sh; all three must list the same
 	 * set, or the ones that do not fail to compile the recipe reader and
 	 * the tool exits before doing any work.
 	 *
@@ -693,14 +689,22 @@ static int accept_one(const char *repo_root, PortEntry *e, int no_fetch)
 		kb_warn("%s: bumped and fetched, but the sha256 lines could not be rewritten — record them by hand",
 			e->r.name);
 	printf("  accepted %s -> %s\n", e->r.name, cand);
-	/* The fetch downloads the NEW tarball; nothing here ever deletes the
-	 * old one. Both are LFS-tracked and often tens of megabytes, so the
-	 * maintainer needs to know it is still sitting in the port directory —
-	 * but deciding what leaves the repository is their call, not this
-	 * tool's, so this is a note and never an rm. */
-	if (!no_fetch)
+	/* The fetch places the NEW tarball; nothing here ever deletes the old
+	 * one. It is gitignored and a hard link into ports/.srccache, but it is
+	 * still a file in the port directory that no recipe line names, and
+	 * testing/preflight.sh reports exactly that — so the maintainer is told,
+	 * and deciding what to remove is their call, never this tool's.
+	 *
+	 * THE NEW SOURCE EXISTS ONLY HERE UNTIL IT IS PUBLISHED. The recipe now
+	 * names a hash the kunaldawn/kdos-sources archive does not hold, so
+	 * every other clone's `make fetch` falls back to upstream and the
+	 * pre-push hook refuses the commit, until `ports/publish` uploads it. */
+	if (!no_fetch) {
 		printf("    note: the old v%s tarball is still in %s — remove it by hand if it is no longer wanted\n",
 		       old_ver, e->r.portdir);
+		printf("    next: ports/publish %s — before pushing the bump\n",
+		       e->r.name);
+	}
 	return 0;
 }
 
@@ -757,11 +761,15 @@ static int accept_group(const char *repo_root, PortEntry **m, int n, int no_fetc
 	}
 	for (int i = 0; i < n; i++) {
 		printf("  accepted %s -> %s\n", m[i]->r.name, cand[i]);
-		/* Same note as accept_one, per member — a group bump leaves one
-		 * superseded tarball behind for every port it touched. */
-		if (!no_fetch)
+		/* Same notes as accept_one, per member — a group bump leaves one
+		 * superseded tarball behind, and one unpublished source, for every
+		 * port it touched. */
+		if (!no_fetch) {
 			printf("    note: the old v%s tarball is still in %s — remove it by hand if it is no longer wanted\n",
 			       old_ver[i], m[i]->r.portdir);
+			printf("    next: ports/publish %s — before pushing the bump\n",
+			       m[i]->r.name);
+		}
 	}
 	return 0;
 }

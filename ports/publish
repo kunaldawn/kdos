@@ -1,0 +1,576 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/publish — put every source a recipe names into the archive
+# ---------------------------------
+#
+#   ports/publish [--dry-run] [--check] [--history] [--freeze <kdos-tag>] [port…]
+#
+# THE WANTED SET is every `sha256 =` file named by a recipe under ports/core
+# (or by the named ports) that git does not carry. --history adds every Git
+# LFS object any ref's history names that the local LFS store or the cache
+# holds; it seeds the archive with what old commits point at. Objects this
+# clone never downloaded are counted and skipped, not failed.
+#
+# THE BYTES come from the port directory, the cache (ports/.srccache) or the
+# LFS store, and are hashed again immediately before upload: the archive is
+# addressed by hash, so an asset whose bytes do not match its name poisons
+# every checkout that asks for it.
+#
+# PRESENCE is an anonymous HEAD on the asset's download URL, which costs no
+# API quota; only a missing asset reaches the API. A 404 is absence; any other
+# status or a network failure stops the run, since it proves nothing.
+#
+#   --check    presence only: print what is missing, exit 1 if anything is
+#   --dry-run  print the uploads, their sizes and totals; needs no token
+#   --freeze   write build/freeze/sources-<tag>.sha256 for ports/core at
+#              <tag>, require every hash in it to be archived, and attach it
+#              as `sources.sha256` to release <tag> on $KDOS_REPO, creating a
+#              DRAFT release when none exists. Publishing that release with
+#              immutable releases enabled on $KDOS_REPO freezes the list: a
+#              later rewrite of the archive is then detectable from it.
+#
+# EXIT: 0 everything is archived, 1 something is missing or failed, 2 an
+# asset's digest disagrees with its name and could not be repaired.
+#
+# THE TOKEN is $KDOS_SOURCES_TOKEN or ~/.config/kdos/sources-token, which is
+# refused when its group or others can read it. It reaches curl only through
+# a mode-600 header file (`-H @file`), never an argument, so no process list
+# shows it, and it is removed from the environment before any child starts.
+#
+# PACING. GitHub throttles content creation separately from its hourly quota:
+# at least $KDOS_PUBLISH_DELAY (default 8) seconds pass between creating
+# calls, which holds a long run under 75 per minute and 480 per hour. A 403 or
+# 429 carrying retry-after or x-ratelimit-reset waits and retries; a bare 429,
+# or a 403 naming a secondary rate limit, waits 60 seconds. An upload meeting
+# a 5xx or a dropped connection is retried twice. A run that
+# stops is resumed by running it again: presence is checked first, so only
+# what is still missing is uploaded.
+#
+# DELETION. An asset is deleted only when its name is a hash and its digest is
+# a different hash (or it is an upload GitHub never completed): such an asset
+# is corrupt by definition, holds the name, and is re-uploaded once. An asset
+# GitHub reports with no digest is asked for again and then hashed from a
+# download; an unknown digest is never a reason to delete. Nothing else is
+# ever deleted — the archive is append-only.
+#
+# KDOS_GITHUB_API and KDOS_GITHUB_UPLOADS replace the two GitHub endpoints,
+# for running this against a local stand-in.
+
+set -e
+
+# Taken out of the environment before the first child process, and with any
+# xtrace off: `bash -x ports/publish` would otherwise print it.
+{ _xt=$-; set +x; } 2>/dev/null
+SRC_TOK=${KDOS_SOURCES_TOKEN:-}
+unset KDOS_SOURCES_TOKEN
+if [[ $_xt == *x* ]]; then set -x; fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ports/srclib.sh
+. "$SCRIPT_DIR/srclib.sh"
+REPO_ROOT="$SRCLIB_ROOT"
+
+GH_API="${KDOS_GITHUB_API:-https://api.github.com}"
+GH_UPLOADS="${KDOS_GITHUB_UPLOADS:-https://uploads.github.com}"
+KDOS_REPO="${KDOS_REPO:-kunaldawn/kdos}"
+DELAY="${KDOS_PUBLISH_DELAY:-8}"
+LFS_POINTER='^version https://git-lfs.github.com/spec/v1'
+
+die() { echo "ports/publish: $*" >&2; exit 1; }
+
+DRY=0 CHECK=0 HISTORY=0 FREEZE=""
+PORTS=()
+while [ $# -gt 0 ]; do
+    case $1 in
+        --dry-run) DRY=1 ;;
+        --check)   CHECK=1 ;;
+        --history) HISTORY=1 ;;
+        --freeze)  [ -n "${2:-}" ] || die "--freeze needs a tag"
+                   FREEZE=$2; shift ;;
+        -h|--help) echo "usage: ports/publish [--dry-run] [--check] [--history] [--freeze <kdos-tag>] [port…]"
+                   exit 0 ;;
+        -*)        die "unknown option $1" ;;
+        *)         PORTS+=("$1") ;;
+    esac
+    shift
+done
+
+[ -n "$KDOS_SOURCES_BASE" ] || die "KDOS_SOURCES_BASE is empty; there is no archive to publish to"
+
+GIT_DIR_ABS=$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir) || die "not a git checkout"
+KDOS_LFS_STORE="${KDOS_LFS_STORE:-$GIT_DIR_ABS/lfs/objects}"
+
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/kdos-publish.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+chmod 700 "$TMP"
+
+RC=0
+fail()     { echo "  FAILED   $*" >&2; [ "$RC" = 2 ] || RC=1; }
+conflict() { echo "  CONFLICT $*" >&2; RC=2; }
+
+# ── what git carries ──────────────────────────────────────────────────────
+#
+# A path git tracks is not archived — unless the tracked blob is a Git LFS
+# pointer, which is 130 bytes of text naming the file, not the file. A commit
+# that stores its archives as LFS objects tracks every one of them that way,
+# so a check that treats "tracked" as "carried" would find nothing to archive
+# in exactly the commits --history and --freeze exist for.
+declare -A CARRIED
+load_carried() {  # <commit>, or nothing for the index
+    local p
+    declare -A ptr=()
+    CARRIED=()
+    if [ -n "${1:-}" ]; then
+        while IFS= read -r -d '' p; do ptr[${p#"$1":}]=1; done < <(
+            git -C "$REPO_ROOT" grep -l -z -I -e "$LFS_POINTER" "$1" -- ports/core || true)
+        while IFS= read -r -d '' p; do [ -n "${ptr[$p]:-}" ] || CARRIED[$p]=1; done < <(
+            git -C "$REPO_ROOT" ls-tree -r -z --name-only "$1" -- ports/core)
+    else
+        while IFS= read -r -d '' p; do ptr[$p]=1; done < <(
+            git -C "$REPO_ROOT" grep -l -z -I --cached -e "$LFS_POINTER" -- ports/core || true)
+        while IFS= read -r -d '' p; do [ -n "${ptr[$p]:-}" ] || CARRIED[$p]=1; done < <(
+            git -C "$REPO_ROOT" ls-files -z -- ports/core)
+    fi
+}
+
+# ── the wanted set ────────────────────────────────────────────────────────
+W_HASH=() W_LABEL=()
+declare -A SEEN
+want() {  # <hash> <label>
+    src_is_hash "$1" || return 0
+    [ -z "${SEEN[$1]:-}" ] || return 0
+    SEEN[$1]=1
+    W_HASH+=("$1"); W_LABEL+=("$2")
+}
+
+# port_lines <dir holding ports/core> [port…] — "<hash>  <port>/<file>" for
+# every uncarried `sha256 =` file, on stdout. CARRIED must be loaded. It runs
+# in a subshell, so an unreadable recipe is reported by $TMP/badport, not RC.
+badport() { echo "  FAILED   $*" >&2; : > "$TMP/badport"; }
+port_lines() {
+    local core=$1/ports/core d port h f
+    shift
+    local dirs=()
+    if [ $# -gt 0 ]; then
+        for port in "$@"; do
+            [ -f "$core/$port/kpkgbuild" ] || { badport "$port: no such port"; continue; }
+            dirs+=("$core/$port")
+        done
+    else
+        for d in "$core"/*/; do [ -f "$d/kpkgbuild" ] && dirs+=("${d%/}"); done
+    fi
+    for d in "${dirs[@]}"; do
+        port=${d##*/}
+        local lines
+        lines=$(src_port_hashes "$d") || { badport "$port: kpkg cannot read its recipe"; continue; }
+        while read -r h f; do
+            [ -n "$h" ] || continue
+            [ -n "${CARRIED[ports/core/$port/$f]:-}" ] && continue
+            printf '%s  %s/%s\n' "$h" "$port" "$f"
+        done <<< "$lines"
+    done
+}
+
+# ── presence ──────────────────────────────────────────────────────────────
+#
+# Only a 404 is evidence of absence. Any other status (a 403, a 5xx during an
+# outage) or a curl failure says the archive cannot answer, and publish stops
+# rather than report archived files missing or upload blind.
+present() {
+    local rc=0 code
+    code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
+                --max-time 120 --retry 2 "$(src_url "$1")") || rc=$?
+    [ "$rc" = 0 ] || die "cannot reach the archive at $KDOS_SOURCES_BASE (curl exit $rc)"
+    case $code in
+        200) return 0 ;;
+        404) return 1 ;;
+        *)   die "archive unreachable at $KDOS_SOURCES_BASE (HTTP $code)" ;;
+    esac
+}
+
+# find_bytes <hash> <label> — a local file holding exactly those bytes.
+find_bytes() {
+    local c
+    for c in "$REPO_ROOT/ports/core/$2" "$(src_cache_path "$1")" \
+             "$KDOS_LFS_STORE/${1:0:2}/${1:2:2}/$1"; do
+        if src_hash_ok "$c" "$1"; then printf '%s\n' "$c"; return 0; fi
+    done
+    return 1
+}
+
+# ── the API ───────────────────────────────────────────────────────────────
+#
+# Xtrace is off for the whole function: the token passes through variables,
+# a test and a printf, and a trace would print it at each.
+load_token() {
+    { local xt=$-; set +x; } 2>/dev/null
+    local tok="$SRC_TOK" f="$HOME/.config/kdos/sources-token" mode
+    SRC_TOK=""
+    if [ -z "$tok" ]; then
+        [ -f "$f" ] || die "no token: set KDOS_SOURCES_TOKEN or write $f (mode 600)"
+        mode=$(stat -c %a "$f")
+        (( 8#$mode & 8#077 )) && die "refusing $f: mode $mode lets others read it (chmod 600 it)"
+        tok=$(< "$f")
+    fi
+    tok=${tok//[$'\r\n\t ']/}
+    [ -n "$tok" ] || die "the token is empty"
+    ( umask 077; printf 'Authorization: Bearer %s\n' "$tok" > "$TMP/auth" )
+    tok=""
+    if [[ $xt == *x* ]]; then set -x; fi
+}
+
+# json_str <key> — the first string value of <key> in $TMP/body.
+json_str() {
+    grep -o "\"$1\": *\"[^\"]*\"" "$TMP/body" | head -1 | sed 's/.*: *"//; s/"$//'
+}
+
+# release_from_body — the release id, taken from upload_url, the one field
+# that names it and nothing nested.
+release_from_body() {
+    json_str upload_url | grep -o '/releases/[0-9]*/assets' | tr -dc 0-9
+}
+
+# retry_wait — seconds to wait before retrying a 403/429, empty for a 403
+# that is a refusal rather than a throttle.
+retry_wait() {
+    local ra rem reset now
+    ra=$(grep -i '^retry-after:' "$TMP/hdr" | tail -1 | tr -dc 0-9)
+    [ -n "$ra" ] && { echo "$ra"; return; }
+    rem=$(grep -i '^x-ratelimit-remaining:' "$TMP/hdr" | tail -1 | tr -dc 0-9)
+    reset=$(grep -i '^x-ratelimit-reset:' "$TMP/hdr" | tail -1 | tr -dc 0-9)
+    if [ "$rem" = 0 ] && [ -n "$reset" ]; then
+        now=$(date +%s)
+        echo $(( reset > now ? reset - now + 1 : 1 ))
+        return
+    fi
+    # A secondary limit may carry neither header; GitHub asks for at least a
+    # minute before the next try.
+    if [ "$HTTP" = 429 ] || grep -qi 'secondary rate limit' "$TMP/body" 2>/dev/null; then
+        echo 60
+    fi
+}
+
+# gh <method> <url> [curl args…] — sets HTTP; body in $TMP/body.
+HTTP=000
+gh() {
+    local method=$1 url=$2 tries=0 wait
+    shift 2
+    while :; do
+        HTTP=$(curl -sS -X "$method" -H @"$TMP/auth" \
+                    -H 'Accept: application/vnd.github+json' \
+                    -H 'X-GitHub-Api-Version: 2022-11-28' -H 'Expect:' \
+                    --connect-timeout 20 -D "$TMP/hdr" -o "$TMP/body" \
+                    -w '%{http_code}' "$@" "$url") || HTTP=000
+        case $HTTP in 403|429) ;; *) return 0 ;; esac
+        wait=$(retry_wait)
+        [ -n "$wait" ] && [ "$tries" -lt 6 ] || return 0
+        echo "  throttled (HTTP $HTTP); waiting ${wait}s" >&2
+        sleep "$wait"
+        tries=$((tries + 1))
+    done
+}
+
+# Microseconds, so the gap is never a second short of $DELAY. EPOCHREALTIME
+# carries the locale's decimal separator (a comma under de_DE), so every
+# non-digit is stripped, and 10# keeps a leading zero from reading as octal.
+LAST_CREATE=0
+usec_now() { local t=${EPOCHREALTIME//[!0-9]/}; echo $(( 10#$t )); }
+pace() {
+    local now w
+    now=$(usec_now)
+    w=$(( LAST_CREATE + DELAY * 1000000 - now ))
+    if [ "$w" -gt 0 ]; then sleep "$(printf '%d.%06d' $((w / 1000000)) $((w % 1000000)))"; fi
+    LAST_CREATE=$(usec_now)
+}
+
+# shard_release <tag> — sets SHARD_RID to the release id on the archive repo,
+# creating the release on 404. It runs in this shell, not a substitution, so
+# the id cache and the pacing clock survive it.
+declare -A RID
+SHARD_RID=""
+shard_release() {
+    SHARD_RID=${RID[$1]:-}
+    [ -n "$SHARD_RID" ] && return 0
+    local id="" try
+    for try in 1 2; do
+        gh GET "$GH_API/repos/$KDOS_SOURCES_REPO/releases/tags/$1"
+        if [ "$HTTP" = 200 ]; then id=$(release_from_body); break; fi
+        [ "$HTTP" = 404 ] || { echo "  release $1: HTTP $HTTP" >&2; return 1; }
+        pace
+        gh POST "$GH_API/repos/$KDOS_SOURCES_REPO/releases" \
+            -H 'Content-Type: application/json' \
+            --data "{\"tag_name\":\"$1\",\"name\":\"$1\",\"draft\":false,\"prerelease\":false,\"make_latest\":\"false\"}"
+        if [ "$HTTP" = 201 ]; then
+            echo "  created  release $1" >&2
+            id=$(release_from_body); break
+        fi
+        # 422: another run created it between the GET and the POST.
+        [ "$HTTP" = 422 ] || { echo "  release $1: create HTTP $HTTP" >&2; return 1; }
+    done
+    [ -n "$id" ] || return 1
+    RID[$1]=$id
+    SHARD_RID=$id
+}
+
+# asset_info <repo> <release id> <name> — "<asset id> <digest|null> <state>"
+# for that asset, or nothing. The listing is split on each asset's own "url",
+# so the nested uploader object never lends an asset its fields.
+asset_info() {
+    local page=1 out n
+    while [ "$page" -le 10 ]; do
+        gh GET "$GH_API/repos/$1/releases/$2/assets?per_page=100&page=$page"
+        [ "$HTTP" = 200 ] || return 1
+        out=$(awk -v name="$3" '
+            BEGIN { RS = "\"url\": *\"[^\"]*/releases/assets/" }
+            NR > 1 {
+                n++
+                if (!hit && index($0, "\"name\"") && $0 ~ ("\"name\": *\"" name "\"")) {
+                    id = $0; sub(/".*/, "", id)
+                    d = "null"; st = "?"
+                    if (match($0, /"digest": *"[^"]*"/)) { d = substr($0, RSTART, RLENGTH); sub(/.*: *"/, "", d); sub(/"$/, "", d) }
+                    if (match($0, /"state": *"[^"]*"/))  { st = substr($0, RSTART, RLENGTH); sub(/.*: *"/, "", st); sub(/"$/, "", st) }
+                    hit = id " " d " " st
+                }
+            }
+            END { print n + 0; if (hit) print hit }' "$TMP/body")
+        n=$(head -1 <<< "$out")
+        if [ "$(wc -l <<< "$out")" -gt 1 ]; then tail -1 <<< "$out"; return 0; fi
+        [ "$n" -lt 100 ] && return 0
+        page=$((page + 1))
+    done
+    return 0
+}
+
+# known_digest <repo> <asset id> <sha256> — the digest of an uploaded asset
+# whose digest GitHub reported as null or left out, which its schema allows.
+# The asset is asked for again after a short wait; if it still has none, it
+# is downloaded and hashed. Prints "sha256:<hex>", or "null" when neither
+# answers. An unknown digest is never grounds for deletion.
+known_digest() {
+    local d try
+    for try in 1 2 3; do
+        sleep 2
+        gh GET "$GH_API/repos/$1/releases/assets/$2"
+        [ "$HTTP" = 200 ] || break
+        d=$(json_str digest)
+        [ -n "$d" ] && { echo "$d"; return 0; }
+    done
+    rm -f "$TMP/dl"
+    curl -sSfL -H @"$TMP/auth" -H 'Accept: application/octet-stream' \
+         --connect-timeout 20 -o "$TMP/dl" "$GH_API/repos/$1/releases/assets/$2" 2>/dev/null &&
+        [ -s "$TMP/dl" ] && { echo "sha256:$(sha256sum "$TMP/dl" | cut -d' ' -f1)"; rm -f "$TMP/dl"; return 0; }
+    rm -f "$TMP/dl"
+    echo null
+}
+
+# put_asset <repo> <release id> <name> <file> <sha256> <content-type> <may-delete>
+# 0 uploaded or already there with that digest, 1 failed, 2 conflict.
+#
+# A 5xx or a dropped connection is retried twice within an attempt. Such an
+# upload can leave a `starter` asset holding the name; the retry then meets a
+# 422, and the starter is deleted and the file uploaded again below.
+put_asset() {
+    local repo=$1 rid=$2 name=$3 file=$4 want=sha256:$5 ctype=$6 may_delete=$7
+    local attempt try info aid digest state
+    for attempt in 1 2; do
+        for try in 1 2 3; do
+            pace
+            gh POST "$GH_UPLOADS/repos/$repo/releases/$rid/assets?name=$name" \
+                -H "Content-Type: $ctype" -T "$file"
+            case $HTTP in 000|5??) ;; *) break ;; esac
+            [ "$try" = 3 ] || echo "  $name: upload HTTP $HTTP; retrying" >&2
+        done
+        if [ "$HTTP" = 201 ]; then
+            aid=$(grep -o '/releases/assets/[0-9]*"' "$TMP/body" | head -1 | tr -dc 0-9)
+            digest=$(json_str digest)
+            state=uploaded
+        elif [ "$HTTP" = 422 ] && grep -q already_exists "$TMP/body"; then
+            info=$(asset_info "$repo" "$rid" "$name") || return 1
+            [ -n "$info" ] || { echo "  $name: 422 already_exists, but no such asset is listed" >&2; return 1; }
+            read -r aid digest state <<< "$info"
+        else
+            echo "  $name: upload HTTP $HTTP $(json_str message)" >&2
+            return 1
+        fi
+        [ "$digest" = "$want" ] && return 0
+        # A null or absent digest on a completed asset is unknown, not wrong.
+        if { [ -z "$digest" ] || [ "$digest" = null ]; } && [ "$state" != starter ] && [ -n "$aid" ]; then
+            digest=$(known_digest "$repo" "$aid")
+            [ "$digest" = "$want" ] && return 0
+        fi
+        [ -n "$digest" ] || digest=null
+        if [ "$may_delete" != 1 ] || [ "$attempt" = 2 ] || [ -z "$aid" ] ||
+           { [ "$digest" = null ] && [ "$state" != starter ]; }; then
+            echo "  $name: asset $aid has digest $digest, expected $want" >&2
+            return 2
+        fi
+        echo "  deleting asset $aid ($name): digest $digest does not match its name" >&2
+        gh DELETE "$GH_API/repos/$repo/releases/assets/$aid"
+        [ "$HTTP" = 204 ] || { echo "  $name: delete HTTP $HTTP" >&2; return 2; }
+    done
+    return 2
+}
+
+human() { numfmt --to=iec --suffix=B "$1"; }
+
+# ── --freeze ──────────────────────────────────────────────────────────────
+#
+# The list is computed from the recipes AT THE TAG, not the working tree, so
+# it states what that release was built from whatever has been bumped since.
+if [ -n "$FREEZE" ]; then
+    commit=$(git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$FREEZE^{commit}" ||
+             git -C "$REPO_ROOT" rev-parse -q --verify "$FREEZE^{commit}") ||
+        die "no such tag: $FREEZE"
+    mapfile -t recipes < <(git -C "$REPO_ROOT" ls-tree -r --name-only "$commit" -- ports/core |
+                           grep -E '^ports/core/[^/]+/kpkgbuild$')
+    [ "${#recipes[@]}" -gt 0 ] || die "$FREEZE has no ports/core"
+    src_kpkg_ensure || die "cannot build the recipe reader"
+    safe=${FREEZE//\//-}
+    tree="$REPO_ROOT/build/freeze/tree-$safe"
+    list="$REPO_ROOT/build/freeze/sources-$safe.sha256"
+    rm -rf "$tree"; mkdir -p "$tree"
+    git -C "$REPO_ROOT" archive "$commit" -- "${recipes[@]}" | tar -x -C "$tree"
+    load_carried "$commit"
+    port_lines "$tree" | LC_ALL=C sort -u > "$list"
+    rm -rf "$tree"
+    [ ! -e "$TMP/badport" ] || die "could not read every recipe at $FREEZE"
+    echo "==> $FREEZE: $(wc -l < "$list") sources -> ${list#"$REPO_ROOT"/}"
+    missing=0
+    while read -r h f; do
+        present "$h" || { echo "  missing  $h  $f"; missing=$((missing + 1)); }
+    done < "$list"
+    [ "$missing" = 0 ] || die "$missing sources are not archived; run ports/publish first"
+    if [ "$DRY" = 1 ] || [ "$CHECK" = 1 ]; then
+        echo "==> would attach sources.sha256 ($(human "$(stat -c %s "$list")")) to $KDOS_REPO release $FREEZE"
+        exit 0
+    fi
+    load_token
+    # A DRAFT release is invisible to the by-tag lookup, so the listing is
+    # searched instead.
+    rid="" page=1
+    while [ -z "$rid" ] && [ "$page" -le 20 ]; do
+        gh GET "$GH_API/repos/$KDOS_REPO/releases?per_page=100&page=$page"
+        [ "$HTTP" = 200 ] || die "listing releases on $KDOS_REPO: HTTP $HTTP"
+        grep -q '"tag_name"' "$TMP/body" || break
+        rid=$(awk -v tag="$FREEZE" '
+            BEGIN { RS = "\"url\": *\"[^\"]*/releases/" }
+            /^[0-9]+"/ && $0 ~ ("\"tag_name\": *\"" tag "\"") { id = $0; sub(/".*/, "", id); print id; exit }' "$TMP/body")
+        page=$((page + 1))
+    done
+    if [ -z "$rid" ]; then
+        pace
+        gh POST "$GH_API/repos/$KDOS_REPO/releases" -H 'Content-Type: application/json' \
+            --data "{\"tag_name\":\"$FREEZE\",\"target_commitish\":\"$commit\",\"name\":\"$FREEZE\",\"draft\":true,\"prerelease\":false}"
+        [ "$HTTP" = 201 ] || die "creating the draft release $FREEZE on $KDOS_REPO: HTTP $HTTP"
+        rid=$(release_from_body)
+        echo "  created  draft release $FREEZE on $KDOS_REPO"
+    fi
+    rc=0
+    put_asset "$KDOS_REPO" "$rid" sources.sha256 "$list" \
+        "$(sha256sum "$list" | cut -d' ' -f1)" text/plain 0 || rc=$?
+    case $rc in
+        0) echo "==> sources.sha256 is on $KDOS_REPO release $FREEZE" ;;
+        2) echo "ports/publish: release $FREEZE already carries a different sources.sha256;" >&2
+           echo "               delete it by hand only while the release is still a draft" >&2
+           exit 2 ;;
+        *) exit 1 ;;
+    esac
+    exit 0
+fi
+
+# ── the archive ───────────────────────────────────────────────────────────
+src_kpkg_ensure || die "cannot build the recipe reader"
+load_carried
+while read -r h f; do want "$h" "$f"; done < <(port_lines "$REPO_ROOT" "${PORTS[@]}")
+[ ! -e "$TMP/badport" ] || RC=1
+
+# History names objects this clone never downloaded: old versions, and paths
+# outside ports/core. Only an object held in the LFS store or the cache is
+# wanted; the rest are counted and left to a clone that holds them, since
+# ports/fetch reads current recipes and cannot supply them.
+if [ "$HISTORY" = 1 ]; then
+    if git -C "$REPO_ROOT" lfs version >/dev/null 2>&1; then
+        declare -A NOCOPY=()
+        while read -r h _ f; do
+            src_is_hash "$h" || continue
+            if [ -n "${SEEN[$h]:-}" ] || [ -f "$KDOS_LFS_STORE/${h:0:2}/${h:2:2}/$h" ] ||
+               [ -f "$(src_cache_path "$h")" ]; then
+                want "$h" "$f"
+            else
+                NOCOPY[$h]=1
+            fi
+        done < <(git -C "$REPO_ROOT" lfs ls-files --all -l)
+        [ "${#NOCOPY[@]}" = 0 ] ||
+            echo "==> ${#NOCOPY[@]} objects history names are in neither the LFS store nor the cache; skipped"
+    else
+        while IFS= read -r f; do want "${f##*/}" "lfs:${f##*/}"; done < <(
+            find "$KDOS_LFS_STORE" -mindepth 3 -maxdepth 3 -type f 2>/dev/null)
+    fi
+fi
+
+echo "==> ${#W_HASH[@]} sources wanted; checking the archive"
+MISS_I=()
+for i in "${!W_HASH[@]}"; do
+    present "${W_HASH[$i]}" || MISS_I+=("$i")
+done
+
+if [ "$CHECK" = 1 ]; then
+    for i in "${MISS_I[@]}"; do printf '  missing  %s  %s\n' "${W_HASH[$i]}" "${W_LABEL[$i]}"; done
+    echo "==> ${#MISS_I[@]} of ${#W_HASH[@]} missing"
+    [ "${#MISS_I[@]}" = 0 ] && [ "$RC" = 0 ] && exit 0
+    exit 1
+fi
+
+# Shard order, so each release is looked up once and consecutively.
+PLAN=() total=0
+declare -A SHARDS
+while read -r i; do
+    [ -n "$i" ] || continue
+    h=${W_HASH[$i]}
+    if ! file=$(find_bytes "$h" "${W_LABEL[$i]}"); then
+        fail "$h  ${W_LABEL[$i]}: no local copy hashes to it (run ports/fetch)"
+        continue
+    fi
+    size=$(stat -c %s "$file")
+    total=$((total + size))
+    SHARDS[$(src_shard "$h")]=1
+    PLAN+=("$h|$file|${W_LABEL[$i]}|$size")
+done < <(for i in "${MISS_I[@]}"; do echo "${W_HASH[$i]} $i"; done | LC_ALL=C sort | cut -d' ' -f2)
+
+if [ "$DRY" = 1 ]; then
+    for p in "${PLAN[@]}"; do
+        IFS='|' read -r h file label size <<< "$p"
+        printf '  upload   %s  %-10s %s/%s  %s\n' "$(src_shard "$h")" "$(human "$size")" \
+            "$KDOS_SOURCES_REPO" "$h" "$label"
+    done
+    echo "==> would upload ${#PLAN[@]} files, $(human "$total"), into ${#SHARDS[@]} shard releases (each created if absent)"
+    exit "$RC"
+fi
+
+[ "${#PLAN[@]}" = 0 ] && { echo "==> nothing to upload"; exit "$RC"; }
+load_token
+n=0
+for p in "${PLAN[@]}"; do
+    IFS='|' read -r h file label size <<< "$p"
+    n=$((n + 1))
+    # Hashed again here: the plan's check may be minutes old on a long run.
+    src_hash_ok "$file" "$h" || { fail "$h  $label: changed on disk"; continue; }
+    shard=$(src_shard "$h")
+    shard_release "$shard" || { fail "$h  $label: no release $shard"; continue; }
+    rc=0
+    put_asset "$KDOS_SOURCES_REPO" "$SHARD_RID" "$h" "$file" "$h" application/octet-stream 1 || rc=$?
+    case $rc in
+        0) printf '  [%d/%d] %s  %s  %s\n' "$n" "${#PLAN[@]}" "$shard" "$(human "$size")" "$label" ;;
+        2) conflict "$h  $label" ;;
+        *) fail "$h  $label" ;;
+    esac
+done
+echo "==> done: $n planned, exit $RC"
+exit "$RC"

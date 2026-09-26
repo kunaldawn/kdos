@@ -1,0 +1,118 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   script/hooks/pre-push — refuse a push naming a source the archive lacks
+# ---------------------------------
+#
+# Enabled per clone with
+#
+#     git config core.hooksPath script/hooks
+#
+# which replaces .git/hooks entirely, git-lfs's own hooks included.
+#
+# A recipe's `sha256 =` is a promise that ports/fetch can find those bytes. A
+# commit whose recipe names a hash the archive does not hold builds on the
+# machine that wrote it and nowhere else, and nothing notices until somebody
+# else's fetch fails. So for every ref pushed, the hashes its recipes name that
+# the remote side's recipes do not are HEAD-checked against the archive, and
+# the push is refused while any is missing — `ports/publish` uploads them.
+#
+# The remote side is the remote's current sha for the ref; for a new branch,
+# every refs/remotes/* tip. A file git itself carries at the pushed commit (a
+# patch, a config file) is not archived and is not checked; a Git LFS pointer
+# is not the file and is. Deleting a ref passes.
+#
+# AN UNREACHABLE ARCHIVE REFUSES THE PUSH, and so does one answering anything
+# but 200 or 404. Offline or mid-outage, absence cannot be ruled out, and a
+# silent pass is exactly the push this exists to stop.
+# KDOS_SKIP_PUBLISH_CHECK=1 bypasses the whole check.
+
+[ "${KDOS_SKIP_PUBLISH_CHECK:-}" = 1 ] && exit 0
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+# shellcheck source=ports/srclib.sh
+. "$ROOT/ports/srclib.sh" || { echo "pre-push: cannot read ports/srclib.sh" >&2; exit 1; }
+
+refuse() {
+    echo "pre-push: $*" >&2
+    echo "pre-push: (KDOS_SKIP_PUBLISH_CHECK=1 git push … skips this check)" >&2
+    exit 1
+}
+
+[ -n "$KDOS_SOURCES_BASE" ] || refuse "KDOS_SOURCES_BASE is empty, so no source can be confirmed archived"
+
+LFS_POINTER='^version https://git-lfs.github.com/spec/v1'
+
+hashes_at() {
+    git grep -h -o -E '\b[0-9a-f]{64}\b' "$1" -- 'ports/core/*/kpkgbuild' 2>/dev/null
+}
+
+mapfile -t LINES
+declare -A CHECKED MISSING_LABEL
+MISSING=()
+
+for line in "${LINES[@]}"; do
+    read -r _lref lsha _rref rsha <<< "$line"
+    [ -n "$lsha" ] || continue
+    [[ "$lsha" =~ ^0+$ ]] && continue
+
+    if [[ ! "$rsha" =~ ^0+$ ]] && git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+        bases=("$rsha")
+    else
+        mapfile -t bases < <(git for-each-ref --format='%(objectname)' refs/remotes/)
+    fi
+    new=$(comm -23 <(hashes_at "$lsha" | LC_ALL=C sort -u) \
+                   <(for b in "${bases[@]}"; do hashes_at "$b"; done | LC_ALL=C sort -u))
+    [ -n "$new" ] || continue
+
+    # "<hash> <port>/<file>" for every hash, and what git carries, at $lsha.
+    declare -A label=() ptr=() carried=()
+    while IFS= read -r m; do
+        m=${m#"$lsha":ports/core/}
+        port=${m%%/*}
+        read -r h f <<< "${m#*:}"
+        label[$h]=$port/$f
+    done < <(git grep -o -E '[0-9a-f]{64}[[:space:]]+[^[:space:]]+' "$lsha" -- 'ports/core/*/kpkgbuild')
+    while IFS= read -r -d '' p; do ptr[${p#"$lsha":}]=1; done < <(
+        git grep -l -z -I -e "$LFS_POINTER" "$lsha" -- ports/core 2>/dev/null)
+    while IFS= read -r -d '' p; do [ -n "${ptr[$p]:-}" ] || carried[$p]=1; done < <(
+        git ls-tree -r -z --name-only "$lsha" -- ports/core)
+
+    while read -r h; do
+        [ -n "${CHECKED[$h]:-}" ] && continue
+        CHECKED[$h]=1
+        l=${label[$h]:-?}
+        [ -n "${carried[ports/core/$l]:-}" ] && continue
+        # Only a 404 is absence. Any other status — a 403, a 5xx during an
+        # outage — is an archive that cannot answer, and is reported as that,
+        # not as a source to upload.
+        rc=0
+        code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
+                    --max-time 120 --retry 2 "$(src_url "$h")") || rc=$?
+        [ "$rc" = 0 ] || refuse "cannot reach the source archive at $KDOS_SOURCES_BASE (curl exit $rc);
+pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refused"
+        case $code in
+            200) ;;
+            404) MISSING+=("$h"); MISSING_LABEL[$h]=$l ;;
+            *)   refuse "source archive unreachable at $KDOS_SOURCES_BASE (HTTP $code);
+pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refused" ;;
+        esac
+    done <<< "$new"
+    unset label ptr carried
+done
+
+[ "${#MISSING[@]}" = 0 ] && exit 0
+
+echo "pre-push: these sources are named by a recipe but not in the archive:" >&2
+declare -A PORTS
+for h in "${MISSING[@]}"; do
+    printf '  %s  (%s)\n' "${MISSING_LABEL[$h]}" "$h" >&2
+    PORTS[${MISSING_LABEL[$h]%%/*}]=1
+done
+refuse "publish them first:  ports/publish ${!PORTS[*]}"

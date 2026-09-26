@@ -1,8 +1,10 @@
 # Program reference
 
 This section documents every program KDOS itself ships: what it is, how it is invoked, and the
-internals worth knowing. Software in `ports/core/` comes from upstream projects and is documented
-by those projects; nothing here duplicates a manual page that already exists elsewhere.
+internals worth knowing. It is for anyone who has met a `kdos-*` command and wants to know what it
+does and where it is described, and for contributors looking for the program that owns a piece of
+behaviour. Software in `ports/core/` comes from upstream projects and is documented by those
+projects; nothing here duplicates a manual page that already exists elsewhere.
 
 One property of the system shapes the whole section. Several KDOS binaries dispatch on the name
 they were invoked as, so the number of commands on a KDOS machine is far larger than the number of
@@ -19,26 +21,31 @@ list is the [command index](../06-reference/command-index.md).
 | `kdos-res` | The resource monitor | [kdos-res](kdos-res.md) |
 | `kdos-term` | The terminal, with three inline-picture protocols | [kdos-term](kdos-term.md) |
 | `kdos-lock` | The lock screen | [The daemons](daemons.md) |
-| `kdos-record` | The screen recorder: the ScreenCast portal into a GStreamer pipeline | [The session](../03-architecture/session.md) |
+| `kdos-record` | The screen recorder: the ScreenCast portal into a GStreamer pipeline. Run it again to stop | [The session](../03-architecture/session.md#recording) |
 | `kdos-desktop` | Starts a session from a virtual terminal. A shell script | [The session](../03-architecture/session.md) |
 | `kdos-desktop-start` | Brings up audio and the portals, then the compositor. A shell script | [The session](../03-architecture/session.md) |
 | `kdos-bb` | The forked ASCII-art demo | [kdos-bb](kdos-bb.md) |
 
 ## Root daemons
 
-Each of these runs in the foreground under `ksvc`, owns one socket in `/run`, and authorises
-requests by the calling process's credentials. They install into `/usr/sbin`. All are documented
-in [The daemons](daemons.md).
+Five daemons run as root. Each runs in the foreground under `ksvc`, owns one socket in `/run`,
+authorises requests by the calling process's credentials, and installs into `/usr/sbin`. All are
+documented in [The daemons](daemons.md).
 
 | Command | Owns |
 |---|---|
-| `kdos-powerd` | Suspend, poweroff, reboot, the time zone, the autologin account and the firewall service list |
+| `kdos-powerd` | Suspend, poweroff, reboot, the time zone, the accent, the autologin account and the firewall service list |
 | `kdos-energyd` | The CPU energy counter, attributed per application |
 | `kdos-oomd` | Killing something before memory pressure wedges the desktop |
 | `kdos-mountd` | Mounting removable media, LUKS volumes, SMB shares and SMART queries |
-| `kdos-packd` | Mounting, installing and composing application packs |
-| `kdos-boxsock` | Tagging box clients so the compositor can identify them |
-| `xdg-desktop-portal-kdos` | The file-chooser, settings, application-chooser and access portal backends |
+| `kdos-packd` | Mounting, installing and composing application packs, and verifying their signatures |
+
+Two further programs on the same page are not root daemons and own no socket in `/run`:
+
+| Command | Installed at | Runs as |
+|---|---|---|
+| `kdos-boxsock` | `/usr/bin` | One process per box, giving that box its own tagged Wayland socket so the compositor knows which box a window came from |
+| `xdg-desktop-portal-kdos` | `/usr/lib/xdg-desktop-portal-kdos` | Activated over D-Bus in your session: the file-chooser, settings, application-chooser and access portal backends |
 
 Their clients are ordinary unprivileged commands:
 
@@ -82,11 +89,12 @@ path from their caller. The image's whole setuid inventory is in
 | `kdos-bootctl` | Chooses and confirms the A/B root slot | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md) |
-| `kdos-shot` | Screenshots | [The desktop](../02-user-guide/desktop.md) |
+| `kdos-shot` | Screenshots | [The kdos command](kdos-command.md#kdos-shot) |
 | `kdos-theme` | Generates the GTK, icon and cursor themes. The generator, not the picker — the picker is `kdos-style` | [Theming](../02-user-guide/theming.md) |
-| `kdos-mpctl` | Music player control | [The kdos command](kdos-command.md) |
-| `kdos-share` | Sends a file to another machine over `croc` | [The kdos command](kdos-command.md) |
-| `kdos-sfx`, `kdos-fetch-app`, `kdos-fetch-static` | Small helpers | [The kdos command](kdos-command.md) |
+| `kdos-mpctl` | Music player control: which player a media key reaches | [The kdos command](kdos-command.md#kdos-mpctl) |
+| `kdos-share` | Sends a file to another machine over `croc` | [The kdos command](kdos-command.md#kdos-share) |
+| `kdos-sfx` | Plays the machine's four sounds: `login`, `notify`, `error`, `degauss` | [The kdos command](kdos-command.md#the-other-names-on-this-binary) |
+| `kdos-fetch-app`, `kdos-fetch-static` | Install an alien application from a network; fetch one verified static binary | [The kdos command](kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
 
 ## Build and development tools
 
@@ -95,9 +103,11 @@ These run on a build host and never ship on the target.
 | Command | Does | Documented in |
 |---|---|---|
 | `kdosbuild` | The build orchestrator | [The build system](../05-developer/build-system.md) |
-| `kdos-portup` | Checks every port for a newer upstream release | [Writing ports](../05-developer/writing-ports.md) |
-| `ports/fetch` | Downloads and vendors sources | [Writing ports](../05-developer/writing-ports.md) |
-| `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md) |
+| `kdos-portup` | Checks every port for a newer upstream release. Compiled on demand by `ports/update` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
+| `ports/fetch` | Fetches every source a recipe names, from the cache, the source archive or upstream, and generates missing vendor bundles. `make fetch` runs it | [Developing](../05-developer/developing.md#where-sources-come-from) |
+| `ports/publish` | Uploads sources the archive lacks, and freezes a release's source list | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `script/hooks/pre-push` | Refuses a push whose recipes name a source the archive does not hold. Enabled with `git config core.hooksPath script/hooks` | [Developing](../05-developer/developing.md#getting-the-source) |
+| `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `testing/*` | The test and rig harnesses | [Testing](../05-developer/testing.md) |
 
 ## Binaries that answer to several names

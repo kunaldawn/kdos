@@ -1,90 +1,151 @@
 # Accessibility
 
-This page states what accessibility support exists on a KDOS machine and what does not, so that
-nobody spends an afternoon looking for a setting that is not there. The short answer: nothing on
-this image reads the desktop aloud. What does exist is a screen magnifier with no key bound to it,
-and an opt-in that turns the ordinary Linux stack back on inside a box.
+This page is for anyone who relies on a screen reader, braille, speech or magnification, and for
+anyone setting up a KDOS machine for such a person. It states plainly what accessibility support
+exists and what does not, so nobody spends an afternoon looking for a setting that is not there.
+
+The short answer:
+
+- **Nothing reads the KDOS desktop aloud or to a braille display.** The panel, the menus, the
+  settings and every other KDOS window are invisible to a screen reader.
+- **At a text console, BRLTTY works** — braille and speech for the login prompt, a shell and the
+  installer. See [Braille and speech at a text console](#braille-and-speech-at-a-text-console).
+- **The compositor has a screen magnifier**, but no key is bound to it until you add one. See
+  [What does exist: the magnifier](#what-does-exist-the-magnifier).
+- **Text size is adjustable** for everything KDOS draws.
+- **A containerised application can use its own toolkit's accessibility support**, which is off by
+  default and one file away. See [A containerised application can be read](#a-containerised-application-can-be-read).
 
 ## The desktop itself is not read
 
-`kdos-comp` draws pixels. A screen reader on a pixel desktop works from a tree of accessible
-objects that the toolkit publishes — AT-SPI, in the world this borrows from — and KDOS builds no
-such tree. Every KDOS surface composes its own grid of cells and hands it to the compositor as an
-ordinary Wayland buffer; the compositor's own chrome — titlebars, the root menu, the
-window-switcher OSD — is drawn with pango and handed to the screen the same way. Nothing in either
-path carries what a control *is*, what it is called, or what it is set to.
+A screen reader works from a tree of *accessible objects* that an application's toolkit publishes
+— on Linux, through the AT-SPI accessibility bus — describing each control: what it is, what it is
+called and what it is set to. KDOS builds no such tree. Every KDOS window draws its own grid of
+character cells and hands the compositor an ordinary picture of it, and the compositor's own window
+decorations, root menu and window switcher are drawn the same way. Nothing in either path tells a
+reader what a control is.
 
-Half the material for one exists. `ktui_announce()` is in `libktui`, and ten roles of widget call
-it — buttons, check boxes, radios, text inputs, lists, tables, tabs, choices, sliders and text
-areas. A control states its kind, its name, its value and its position in its set: "check box Night
-light, on", "tab Keys, 2 of 3"; where the rows are the caller's own draw callback the widget states
-the position and leaves the name to the surface that painted it. It states it under either hand: a
-control that says itself in the frame it draws covers the pointer and the keyboard at once, and a
-control whose selection moves in a handler says so from the press and the wheel as well as the key.
-A menu is in the set: a bar pane and a popped context menu each name the row the caret is on and
-count the rows a caret can reach, so the separators and the rows the scope rules hid are left out
-of both the ordinal and the total.
+Half of what a reader would need does exist. The toolkit KDOS's own windows are built on,
+`libktui`, keeps a record of what each control would announce, through `ktui_announce()`. Ten kinds
+of control fill it in — buttons, check boxes, radio buttons, text inputs, lists, tables, tabs,
+choices, sliders and text areas. Each states its kind, its name, its value and its position in its
+set, for example "check box Night light, on" or "tab Keys, 2 of 3". It does so whether the control
+was reached by keyboard or by mouse. Menus count only the rows the cursor can land on, so the
+position a reader would hear matches the rows a person can actually reach.
 
-The record is rebuilt from scratch at the start of every frame and drained by nothing on this
-image. Its only reader is the library's own self-test, which is what keeps it honest with no client
-to notice when it is wrong. What is missing is a client, and a way for a client to reach it.
+That record is rebuilt at the start of every frame, and nothing on the system reads it except the
+library's own self-test. What is missing is a program that reads it, and a way for that program to
+reach it. See [What would have to change](#what-would-have-to-change).
 
-There is no braille route and no voice from any KDOS surface. `brltty`, `espeak-ng` and
-`speech-dispatcher` are ports and are on the image, because they are useful to somebody at a
-terminal, but no KDOS surface talks to any of them. A terminal program can reach a running
-`brltty` through BrlAPI — `brltty-clip` is one — if its user is in the `brlapi` group, which the
-desktop account joins when `brltty` is installed: BrlAPI admits a client through polkit, and the
-rule `brltty` ships grants that group without asking for an active session, which nothing here
-ever has. There is no `/etc/brlapi.key`; one generated at build time would be the same secret on
-every machine installed from the image. The application catalogue carries neither: the native
-ports are the only `brltty` and `espeak-ng`.
+## Braille and speech at a text console
 
-At a terminal, `brltty` is a service: `65_brltty` starts it at boot once `/etc/brltty.conf` exists,
-and skips it until then. It reads `tty1` and the installer through `/dev/vcsa`. Its speech is
-`espeak-ng` playing straight to the sound card (`KDOS_ALSA_DEFAULT=kdos_card`), because init starts
-no PipeWire. The card allows one owner at a time. While a desktop session's PipeWire holds it, the
-console voice cannot open it, and while the console voice is speaking, PipeWire cannot. Braille
-output does not use the card and is not affected.
+`brltty`, `espeak-ng` and `speech-dispatcher` are installed on the image. No KDOS window talks to
+any of them, but they work at a text console.
 
-Contracted braille comes from `liblouis`, which `brltty` is built against. A contraction table
-named `louis:<file>` is one of liblouis's — `contraction-table louis:en-ueb-g2.ctb` in
-`/etc/brltty.conf`, or `-c louis:en-ueb-g2.ctb` on the command line, is Unified English Braille
-grade 2 — and `/usr/share/liblouis/tables` holds the literary and computer tables of well over a
-hundred languages. A bare table name is still one of brltty's own.
+**Starting BRLTTY.** BRLTTY runs as a system service, `65_brltty`, which starts at boot once
+`/etc/brltty.conf` exists and is not empty. Until you write that file — naming your braille
+display's driver, or a speech driver — the service skips itself. BRLTTY reads the text console
+through `/dev/vcsa`, so it covers `tty1`, `tty2` and the installer.
+
+**Speech.** BRLTTY's voice is `espeak-ng`, playing straight to the sound card, because no audio
+server runs at boot. The sound card accepts one user at a time: while a desktop session's audio
+server holds it, the console voice cannot speak, and while the console voice is speaking, the
+desktop has no sound. Braille output does not use the sound card and is not affected.
+
+**Contracted braille.** BRLTTY is built with `liblouis`, so contraction tables for well over a
+hundred languages are available from `/usr/share/liblouis/tables`. Name a liblouis table with a
+`louis:` prefix — for Unified English Braille grade 2:
+
+```
+contraction-table louis:en-ueb-g2.ctb
+```
+
+in `/etc/brltty.conf`, or `-c louis:en-ueb-g2.ctb` on the command line. A table name without the
+prefix is one of BRLTTY's own.
+
+**Programs that talk to BRLTTY.** A terminal program can reach a running BRLTTY through BrlAPI —
+`brltty-clip` is one — if its user is in the `brlapi` group. The desktop account is added to that
+group when BRLTTY is installed. BrlAPI admits clients through a polkit rule that grants the
+`brlapi` group directly. There is no `/etc/brlapi.key`: a key generated when the image is built
+would be the same secret on every machine installed from it.
+
+The application catalogue carries no screen reader, BRLTTY or espeak-ng of its own; the ones
+installed on the host are the only copies.
 
 ## What does exist: the magnifier
 
-`kdos-comp` magnifies. Three actions drive it — `ToggleMagnify`, `ZoomIn` and `ZoomOut` — and a
-`<magnifier>` block in `~/.config/kdos-comp/rc.xml` sets its `width`, `height`, `initScale`,
-`increment` and `useFilter`. The defaults are a 400x400 inset at 2x, stepping by 0.2, filtered;
-setting `width` or `height` to `-1` magnifies the whole output instead.
+The compositor, `kdos-comp`, can magnify the screen. Three actions drive it:
 
-**Nothing in the shipped `rc.xml` binds any of the three**, so on a fresh install the magnifier
-exists and no key reaches it. Add a `keybind` of your own:
+| Action | Effect |
+|---|---|
+| `ToggleMagnify` | Turn the magnifier on or off |
+| `ZoomIn` | Magnify more |
+| `ZoomOut` | Magnify less |
+
+**No key is bound to any of them** in the shipped configuration, so on a fresh install the
+magnifier exists but nothing reaches it. Add key bindings of your own to
+`~/.config/kdos-comp/rc.xml`, inside its `<keyboard>` section:
 
 ```xml
 <keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
+<keybind key="W-A-equal"><action name="ZoomIn"/></keybind>
+<keybind key="W-A-minus"><action name="ZoomOut"/></keybind>
 ```
 
-The phosphor pass steps aside while the magnifier is on, whole-frame: the two cannot both process
-the same buffer, and an accessibility zoom read through scanlines is harder to read rather than
-easier. See [Theming](theming.md#the-phosphor-pass).
+None of these three chords is used by the shipped file. If you pick others, check them against the
+bindings the file already has and against [the desktop's keybindings](desktop.md). To load the
+edited file, run `kdos-comp -r`, or choose **Reload Configuration** from the menu you get by right-clicking the
+desktop.
 
-The other lever that exists is size. `chrome_font` and `panel_font` in `~/.config/kdos/comp.conf`
-set the pixel size every KDOS surface draws at, and the Font page of `kdos-style` changes the face
-without touching either size. A larger `chrome_font` is a larger desktop, in cells rather than in
-scaling. See [Theming](theming.md#fonts).
+A `<magnifier>` block in the same file sets how it behaves:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `width` | `400` | Width of the magnified inset, in pixels. `-1` magnifies the whole screen |
+| `height` | `400` | Height of the inset. `-1` magnifies the whole screen |
+| `initScale` | `2.0` | Magnification when it is turned on; at least 1 |
+| `increment` | `0.2` | How much `ZoomIn` and `ZoomOut` change it |
+| `useFilter` | `yes` | Smooth the magnified pixels |
+
+While the magnifier is on, the phosphor pass — the CRT-style scanline effect — is switched off for
+the whole screen, because magnified scanlines are harder to read, not easier. See
+[Theming](theming.md#the-phosphor-pass).
+
+## Larger text
+
+Everything KDOS draws is sized by its font, so a larger font is a larger desktop. Two keys in
+`~/.config/kdos/comp.conf` set the pixel size:
+
+| Key | Sets | Default |
+|---|---|---|
+| `chrome_font` | The panel (unless `panel_font` is set), the desktop icons, the dock-app column and notifications | `Terminus:pixelsize=32` |
+| `panel_font` | The panel only; empty falls back to `chrome_font` | `Terminus:pixelsize=20` |
+
+`Terminus` is a bitmap font, so choose a size it has: 12, 14, 16, 18, 20, 22, 24, 28 or 32. A size
+it does not have comes back as the nearest one it does. For anything larger — a doubled cell on a
+4K screen, for example — name the scalable version of the same typeface, which draws at any size:
+`Terminus (TTF):pixelsize=64`. Both keys are read when the session starts, so log out and back in
+after changing them.
+
+These keys do not reach every KDOS window. The popups the panel opens, and programs you start
+yourself such as `kdos-res`, draw at `Terminus:pixelsize=32` unless they are started with
+`--font <name>`. `kdos-term` takes its font from `font` in its own `term.conf`, or from `--font`. The window title bars are set separately, by `<theme><font>` in
+`~/.config/kdos-comp/rc.xml`, in points.
+
+The Font page of `kdos-style` changes the typeface without touching either size, and the eight
+accents include `paper`, a light scheme. See [Theming](theming.md#fonts).
 
 ## A containerised application can be read
 
-Inside a box, the ordinary Linux accessibility stack applies. An application in a box runs against
-that box's own accessibility registry, which is a complete AT-SPI world of its own: the toolkit
-publishes its tree, and a reader installed in the same box walks it.
+Inside a box — the container a graphical application from the catalogue runs in — the ordinary
+Linux accessibility stack applies. An application in a box has that box's own accessibility bus: its
+toolkit publishes its tree of accessible objects there, and a screen reader running in the same box
+can read it. The catalogue ships no screen reader, so you would install one into the box yourself
+(`kdos-box enter <box>` gives you a shell inside it).
 
-It is off by default, because nothing on the host owns `org.a11y.Bus` and the probe for it can only
-time out — so every containerised application would pay a start-up delay for a service that is
-never there. Off means two variables in the box's environment: `NO_AT_BRIDGE=1` and
-`GTK_A11Y=none`.
+This is off by default. Nothing on the host answers on the accessibility bus, so with it on, every
+containerised application would wait at start-up for a service that is never there. Off means two
+variables in the box's environment: `NO_AT_BRIDGE=1` and `GTK_A11Y=none`.
 
 To turn it on for every box, create an empty file:
 
@@ -92,28 +153,28 @@ To turn it on for every box, create an empty file:
 touch ~/.config/kdos/a11y
 ```
 
-To turn it on for one launch, set the variable in front of whatever you were going to type:
+To turn it on for one launch, set `KDOS_A11Y` in front of the command:
 
 ```sh
-KDOS_A11Y=1 gimp                     # the shim on your PATH
+KDOS_A11Y=1 gimp                         # the command on your PATH
 KDOS_A11Y=1 kdos-appbox -b app.gimp run gimp
 ```
 
-`KDOS_A11Y=0` is an explicit off and wins over the file.
+`KDOS_A11Y=0` turns it off for that launch even when the file exists; any other non-empty value
+turns it on.
 
-What that buys you is what the application's own toolkit offers. It does not reach the panel, the
-Start menu, the file chooser or anything else KDOS draws.
+What this gives you is whatever the application's own toolkit offers. It does not reach the panel,
+the Start menu, the file chooser or anything else KDOS draws.
 
 ## What would have to change
 
-Stated so that the size of the job is clear rather than implied:
+For a screen reader to work on the KDOS desktop, two things would have to be built:
 
-- A reader needs something to read. The announcement record would have to leave the process that
-  composed it — a socket, a bus interface, or an AT-SPI bridge built on the record `libktui`
-  already keeps.
-- And something to read it with. That means a client, and a decision about what it may do: a reader
-  that could type would be a keylogger with a friendly name, so whatever carries the announcements
-  has to grant less than a client that places windows does.
+- **Something to read.** The announcement record `libktui` keeps would have to leave the program
+  that made it — over a socket, a bus interface, or a bridge to AT-SPI built on that record.
+- **Something to read it with**, and a decision about what that reader may do. A reader that could
+  also type into other windows would be indistinguishable from a keylogger, so whatever carries the
+  announcements has to grant less than the interface a window manager uses.
 
 Neither is built. See [Known gaps](../06-reference/known-gaps.md).
 
@@ -123,3 +184,4 @@ Neither is built. See [Known gaps](../06-reference/known-gaps.md).
 - [C libraries](../05-developer/c-libraries.md#libktui) — `ktui_announce()`, and what a widget says
 - [Known gaps](../06-reference/known-gaps.md) — this, stated as the gap it is
 - [The desktop](desktop.md) — the keyboard route to every surface
+- [Theming](theming.md) — fonts, accents and the phosphor pass
