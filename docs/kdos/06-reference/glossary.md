@@ -165,7 +165,8 @@ from a literal value. (For the A/B root filesystems, see *root slot*.)
 
 **source archive** — The content-addressed store of every upstream source file the recipes name:
 release assets of the GitHub repository `kunaldawn/kdos`, each named by its own sha256, in
-256 releases `sha256-00` to `sha256-ff` after the hash's first byte. Append-only. `make fetch`
+numbered releases `sources-001`, `sources-002`, … filled 1,000 files at a time. The committed file
+`ports/sources.idx` says which release holds each hash. Append-only. `make fetch`
 reads it; `ports/publish` adds to it. See
 [Where sources come from](../05-developer/developing.md#where-sources-come-from).
 

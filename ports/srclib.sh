@@ -13,34 +13,43 @@
 # hashes does this port name", so the three callers cannot disagree about
 # either.
 #
-# THE ARCHIVE IS CONTENT-ADDRESSED. An archived file is the release asset
+# THE ARCHIVE IS A SERIES OF RELEASES OF THE MAIN REPOSITORY, filled in order:
+# `sources-001`, `sources-002`, … Each holds up to $SRC_RELEASE_CAP files, and
+# a new one is opened only when the last is full, so the release page carries
+# as few of them as the file count allows — a release holds at most 1000
+# assets, and nothing else about it is limited. An archived file is the asset
 #
-#     https://github.com/kunaldawn/kdos/releases/download/sha256-<h:0:2>/<h>
+#     https://github.com/kunaldawn/kdos/releases/download/sources-<NNN>/<h>
 #
 # where <h> is the 64-hex `sha256 =` the recipe already carries. The recipe
 # hash, the asset name and the digest GitHub computes for the asset are the
-# same string, so a URL needs no index, no manifest and no lookup, and a file
-# that verifies is the file the recipe meant whatever path it came by.
+# same string, so a file that verifies is the file the recipe meant whatever
+# path it came by. The name is the bare hash because GitHub rewrites asset
+# names containing anything outside [A-Za-z0-9._-] — a `+` in an upstream
+# filename would otherwise produce a URL nothing requests — and because two
+# upstream releases of different bytes under one filename cannot collide on a
+# hash.
 #
-# The name is the bare hash because GitHub rewrites asset names containing
-# anything outside [A-Za-z0-9._-] — a `+` in an upstream filename would
-# otherwise produce a URL nothing requests — and because two upstream
-# releases of different bytes under one filename cannot collide on a hash.
+# WHICH RELEASE HOLDS A HASH IS RECORDED IN ports/sources.idx, committed:
 #
-# 256 RELEASES, ONE PER LEADING BYTE, because a release holds at most 1000
-# assets. Hashes spread evenly, so a shard reaches that cap only somewhere past
-# 200,000 archives; a filename-keyed shard skews by first letter (`lib*`,
-# `python-*`) and fills within a couple of years.
+#     <hash> <NNN> <port>/<file>
+#
+# one line per archived file, sorted by hash. ports/publish appends a line
+# only after GitHub reports the uploaded asset's digest equal to its name. The
+# index is append-only like the archive, so the newest one names every file
+# ever archived, and an old checkout is fetched with it (ports/fetch --tree)
+# as well as with its own. A hash the index does not name is not archived as
+# far as fetch is concerned, and comes from upstream.
 #
 # APPEND-ONLY. An asset is never replaced or deleted once its digest matches
 # its name: a five-year-old checkout finds the exact bytes it was written
 # against because nothing was allowed to take them away.
 #
-# THE SHARDS ARE RELEASES OF THE MAIN REPOSITORY, so its release page lists
-# them beside the KDOS releases (make_latest false keeps "latest" on a KDOS
-# release). GitHub's immutable releases must stay OFF on it: the setting is
-# repository-wide, and it freezes a shard at its first publication, after
-# which no new source can ever be added to it.
+# The archive's releases sit on the repository's release page beside the KDOS
+# releases; make_latest false keeps "latest" on a KDOS release. GitHub's
+# immutable releases must stay OFF on the repository: the setting is
+# repository-wide, and it freezes an archive release at its first
+# publication, after which no source can be added to it.
 
 KDOS_SOURCES_REPO="${KDOS_SOURCES_REPO:-kunaldawn/kdos}"
 # Empty means upstream only — no archive is consulted.
@@ -49,8 +58,8 @@ KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/$KDOS_SOURCES_REPO/rel
 SRCLIB_PORTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRCLIB_ROOT="$(dirname "$SRCLIB_PORTS")"
 
-# The local cache, laid out exactly like the archive, gitignored, with each
-# port directory holding a hard link into it. It belongs to this checkout, so
+# The local cache, one file per hash, gitignored, with each port directory
+# holding a hard link into it. It belongs to this checkout, so
 # a branch switch downloads nothing; a second checkout or a re-clone downloads
 # nothing only when KDOS_SRCCACHE names a cache shared between them.
 KDOS_SRCCACHE="${KDOS_SRCCACHE:-$SRCLIB_PORTS/.srccache}"
@@ -66,20 +75,44 @@ src_is_hash() {
     [[ "$1" =~ ^[0-9a-f]{64}$ ]]
 }
 
-# src_shard <hash> — the release tag holding it.
-src_shard() {
-    printf 'sha256-%s\n' "${1:0:2}"
+# At most this many files per archive release: GitHub's 1000-asset limit.
+SRC_RELEASE_CAP="${KDOS_RELEASE_CAP:-1000}"
+
+KDOS_SOURCES_INDEX="${KDOS_SOURCES_INDEX:-$SRCLIB_PORTS/sources.idx}"
+
+# src_release_tag <n> — the tag of archive release <n>.
+src_release_tag() {
+    printf 'sources-%03d\n' "$((10#$1))"
 }
 
-# src_url <hash> — where the archive serves it. Empty when the archive is off.
+# src_index_load [file] — read an index into SRC_REL (hash -> release number)
+# and SRC_NAME (hash -> port/file). A missing file is an empty index. Lines
+# that are blank, comments or malformed are skipped, not trusted.
+declare -gA SRC_REL=() SRC_NAME=()
+src_index_load() {
+    local f=${1:-$KDOS_SOURCES_INDEX} h n name
+    SRC_REL=() SRC_NAME=()
+    [ -f "$f" ] || return 0
+    while read -r h n name; do
+        src_is_hash "$h" || continue
+        [[ $n =~ ^[0-9]+$ ]] || continue
+        SRC_REL[$h]=$((10#$n))
+        SRC_NAME[$h]=$name
+    done < "$f"
+}
+
+# src_url <hash> — where the archive serves it: the release the loaded index
+# names. Fails when the archive is off or the index does not name the hash.
 src_url() {
     [ -n "$KDOS_SOURCES_BASE" ] || return 1
-    printf '%s/%s/%s\n' "$KDOS_SOURCES_BASE" "$(src_shard "$1")" "$1"
+    [ -n "${SRC_REL[$1]:-}" ] || return 1
+    printf '%s/%s/%s\n' "$KDOS_SOURCES_BASE" "$(src_release_tag "${SRC_REL[$1]}")" "$1"
 }
 
-# src_cache_path <hash>
+# src_cache_path <hash> — the cache splits by leading byte only to keep each
+# directory small; it has nothing to do with where the archive keeps a file.
 src_cache_path() {
-    printf '%s/%s/%s\n' "$KDOS_SRCCACHE" "$(src_shard "$1")" "$1"
+    printf '%s/sha256-%s/%s\n' "$KDOS_SRCCACHE" "${1:0:2}" "$1"
 }
 
 # src_hash_ok <file> <hash> — the file exists, is not empty, and hashes to

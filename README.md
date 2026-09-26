@@ -153,7 +153,8 @@ The steps:
    ```
 2. Fetch the sources. A clone holds recipes, not upstream archives. `make fetch` takes each file
    from the local cache `ports/.srccache/`, then from the KDOS source archive
-   (`kunaldawn/kdos`, where each file is stored under its own sha256), then from the
+   (release assets of `kunaldawn/kdos`, each stored under its own sha256; the committed
+   `ports/sources.idx` says which release holds which file), then from the
    recipe's upstream URL, and keeps the first copy whose hash matches. Rust, Go, Python and Haskell
    ports need a vendor bundle of their dependencies; one that no location holds is generated in a
    container.
@@ -209,7 +210,8 @@ adding a port end to end. A version bump looks like this:
 ports/update <port>                 # accept the new version; the version and sha256 lines are rewritten and the source fetched
 testing/preflight.sh                # the tree's wiring, in about two minutes
 make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"
-ports/publish <port>                # upload the new source to the archive (needs a maintainer token)
+ports/publish <port>                # upload the new source and add its line to ports/sources.idx (maintainer token)
+git commit ports/core/<port> ports/sources.idx
 git push                            # the pre-push hook refuses a push naming a source the archive lacks
 ```
 

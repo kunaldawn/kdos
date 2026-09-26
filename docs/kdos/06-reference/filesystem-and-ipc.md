@@ -546,8 +546,10 @@ refuses a push whose recipes name a source not yet in the archive.
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository whose releases hold the source archive |
-| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | Where archived sources are downloaded from, as `$KDOS_SOURCES_BASE/sha256-<first two hex digits>/<sha256>`. Set it empty to fetch from upstream only |
-| `KDOS_SRCCACHE` | `ports/.srccache` | The local source cache, laid out like the archive. Point two checkouts at one cache to download each file once |
+| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | Where archived sources are downloaded from, as `$KDOS_SOURCES_BASE/sources-<NNN>/<sha256>`, with `NNN` from the index. Set it empty to fetch from upstream only |
+| `KDOS_SRCCACHE` | `ports/.srccache` | The local source cache, one file per hash. Point two checkouts at one cache to download each file once |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index saying which archive release holds each hash |
+| `KDOS_RELEASE_CAP` | `1000` | Files per archive release before `ports/publish` opens the next |
 | `KDOS_FETCH_HOST=1` | unset | Run `ports/fetch` entirely on this machine, generating vendor bundles with its own toolchains, instead of handing missing bundles to the fetch container |
 | `SOURCE_DATE_EPOCH` | `1735689600` | The timestamp written into generated vendor bundles, so they are reproducible |
 | `KDOS_SOURCES_TOKEN` | read from `~/.config/kdos/sources-token` (mode 600) | The GitHub token `ports/publish` uploads with |

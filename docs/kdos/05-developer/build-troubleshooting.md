@@ -672,8 +672,9 @@ Check the machine can reach `https://github.com` at all. Then use the variables 
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository holding the archive |
-| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror laid out as `sha256-XX/<hash>` works unchanged. Empty skips the archive and fetches from upstream alone; `ports/publish` and the pre-push hook then refuse to run |
-| `KDOS_SRCCACHE` | `ports/.srccache` | The local cache, laid out like the archive. Files already there need no network |
+| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror laid out as `sources-NNN/<hash>` works unchanged. Empty skips the archive and fetches from upstream alone; `ports/publish` and the pre-push hook then refuse to run |
+| `KDOS_SRCCACHE` | `ports/.srccache` | The local cache, one file per hash. Files already there need no network |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | Which archive release holds each hash. A hash it does not name is fetched from upstream |
 
 ## When the failure is not here
 

@@ -19,9 +19,12 @@
 # A recipe's `sha256 =` is a promise that ports/fetch can find those bytes. A
 # commit whose recipe names a hash the archive does not hold builds on the
 # machine that wrote it and nowhere else, and nothing notices until somebody
-# else's fetch fails. So for every ref pushed, the hashes its recipes name that
-# the remote side's recipes do not are HEAD-checked against the archive, and
-# the push is refused while any is missing — `ports/publish` uploads them.
+# else's fetch fails. So for every ref pushed, each hash its recipes name that
+# the remote side's recipes do not must appear in ports/sources.idx AS OF THE
+# PUSHED COMMIT — the index is what tells fetch where a file lives, so an
+# uncommitted index line is as good as no upload — and is then HEAD-checked at
+# the release that line names. The push is refused while any is missing;
+# `ports/publish` uploads them and writes the index lines to commit.
 #
 # The remote side is the remote's current sha for the ref; for a new branch,
 # every refs/remotes/* tip. A file git itself carries at the pushed commit (a
@@ -49,6 +52,9 @@ refuse() {
 
 LFS_POINTER='^version https://git-lfs.github.com/spec/v1'
 
+IDX=$(mktemp) || exit 1
+trap 'rm -f "$IDX"' EXIT
+
 hashes_at() {
     git grep -h -o -E '\b[0-9a-f]{64}\b' "$1" -- 'ports/core/*/kpkgbuild' 2>/dev/null
 }
@@ -71,6 +77,9 @@ for line in "${LINES[@]}"; do
                    <(for b in "${bases[@]}"; do hashes_at "$b"; done | LC_ALL=C sort -u))
     [ -n "$new" ] || continue
 
+    git show "$lsha:ports/sources.idx" > "$IDX" 2>/dev/null || : > "$IDX"
+    src_index_load "$IDX"
+
     # "<hash> <port>/<file>" for every hash, and what git carries, at $lsha.
     declare -A label=() ptr=() carried=()
     while IFS= read -r m; do
@@ -89,12 +98,16 @@ for line in "${LINES[@]}"; do
         CHECKED[$h]=1
         l=${label[$h]:-?}
         [ -n "${carried[ports/core/$l]:-}" ] && continue
+        if ! url=$(src_url "$h"); then
+            MISSING+=("$h"); MISSING_LABEL[$h]="$l — not in ports/sources.idx"
+            continue
+        fi
         # Only a 404 is absence. Any other status — a 403, a 5xx during an
         # outage — is an archive that cannot answer, and is reported as that,
         # not as a source to upload.
         rc=0
         code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
-                    --max-time 120 --retry 2 "$(src_url "$h")") || rc=$?
+                    --max-time 120 --retry 2 "$url") || rc=$?
         [ "$rc" = 0 ] || refuse "cannot reach the source archive at $KDOS_SOURCES_BASE (curl exit $rc);
 pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refused"
         case $code in
@@ -109,10 +122,10 @@ done
 
 [ "${#MISSING[@]}" = 0 ] && exit 0
 
-echo "pre-push: these sources are named by a recipe but not in the archive:" >&2
+echo "pre-push: these sources are named by a recipe but not in the archive at that commit:" >&2
 declare -A PORTS
 for h in "${MISSING[@]}"; do
     printf '  %s  (%s)\n' "${MISSING_LABEL[$h]}" "$h" >&2
     PORTS[${MISSING_LABEL[$h]%%/*}]=1
 done
-refuse "publish them first:  ports/publish ${!PORTS[*]}"
+refuse "publish them and commit the index first:  ports/publish ${!PORTS[*]} && git commit ports/sources.idx"

@@ -1339,11 +1339,12 @@ group bump are not rewritten; record each member's new hashes by hand, as after 
 ## Publishing sources
 
 Upstream archives are not committed. Git carries the recipe, and the archive it names is a release
-asset in the `kunaldawn/kdos` repository, named by its own sha256 and stored under the
-release `sha256-<first two hex digits>`. That is where every other checkout's `make fetch` looks
-for it first (see [Where sources come from](developing.md#where-sources-come-from)). A new or bumped
+asset in the `kunaldawn/kdos` repository, named by its own sha256, in one of the numbered
+releases `sources-001`, `sources-002`, …, and the committed file `ports/sources.idx` says which.
+That is where every other checkout's `make fetch` looks for it first (see [Where sources come from](developing.md#where-sources-come-from)). A new or bumped
 source therefore has to reach the archive before the commit naming it is pushed, or the commit
-builds on the machine that wrote it and nowhere else. Patches, configuration files and anything
+builds on the machine that wrote it and nowhere else — and so does the index line saying where
+it went, which is why `ports/sources.idx` is committed with the recipe. Patches, configuration files and anything
 else git tracks are not archived, even when a recipe hashes them.
 
 Uploading needs a token with write access to `kunaldawn/kdos`, so publishing is a
@@ -1363,9 +1364,10 @@ A version bump, end to end:
 ```sh
 ports/update <port>                 # accept the bump: version and sha256 lines are rewritten, the source fetched
 make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"
-ports/publish <port>                # upload what the archive lacks (maintainer token; else --check and say so in the PR)
-git commit ports/core/<port>        # the recipe; the archive itself is gitignored
-git push                            # the pre-push hook confirms every new hash is archived
+ports/publish <port>                # upload what the archive lacks and add its lines to ports/sources.idx
+                                    # (maintainer token; else --check and say so in the PR)
+git commit ports/core/<port> ports/sources.idx   # the recipe and the index; the archive itself is gitignored
+git push                            # the pre-push hook confirms every new hash is indexed and archived
 ```
 
 After `ports/update --no-fetch`, or after a group bump, the `sha256 =` lines still name the old
@@ -1376,7 +1378,7 @@ refuses the unhashed archive and `ports/publish` has nothing to publish.
 ### `ports/publish`
 
 ```
-ports/publish [--dry-run] [--check] [--history] [--freeze <kdos-tag>] [port…]
+ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze <kdos-tag>] [port…]
 ```
 
 `ports/publish` uploads every file a `sha256 =` line names, under all of `ports/core` or only the
@@ -1385,18 +1387,28 @@ and is not the file. The bytes come from the port directory, the cache, or the l
 are hashed again immediately before upload, because an asset whose bytes do not match its name
 would poison every checkout that asks for it.
 
-Presence is an anonymous `HEAD` on the asset's download URL, which costs no API quota, so a rerun
-uploads only what is still missing and an interrupted run is resumed by running it again. Only a
-404 counts as missing; any other status, or a network failure, stops the run with
-`archive unreachable`, because an outage proves nothing about what the archive holds. Only a
-missing asset reaches the API: the shard's release is looked up and created when absent, and the
-upload is accepted only when GitHub reports its digest as the expected hash.
+A file is present when `ports/sources.idx` names its hash and an anonymous `HEAD` on the asset's
+download URL answers 200; the `HEAD` costs no API quota. A hash the index does not name is missing
+without asking. So a rerun uploads only what is still missing, and an interrupted run is resumed by
+running it again. Only a 404 counts as missing; any other status, or a network failure, stops the
+run with `archive unreachable`, because an outage proves nothing about what the archive holds.
+
+A new file goes into the highest-numbered archive release while that holds fewer than 1,000
+assets, counted on GitHub rather than in the index, since another branch may have added some; a
+full release opens the next, created with `make_latest` off. A file the index names but GitHub
+lacks goes back into the release its line names. An upload is accepted only when GitHub reports
+its digest as the expected hash, and its line — `<hash> <NNN> <port>/<file>` — is appended to
+`ports/sources.idx` at once, so a run that dies keeps every line it earned; the file is sorted when
+the run ends. Every release a run adds to has its notes rewritten from the index: a file count and
+a `sha256sum`-format list of `<hash>  <port>/<file>`. **Commit `ports/sources.idx`** — `make fetch`
+and the pre-push hook read it from the tree, and a file no committed line names cannot be found.
 
 | Flag | Does |
 |---|---|
-| `--dry-run` | List what would be uploaded, with sizes and totals, and the shard releases it would touch. Needs no token and makes no API call |
+| `--dry-run` | List what would be uploaded, with sizes, totals and target releases (estimated from the index). Needs no token and makes no API call |
 | `--check` | Presence only: list what is missing from the archive; exit 1 if anything is |
 | `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`, or every object in the store when git-lfs is absent), to seed the archive with what old commits' recipes point at. Objects at other paths are never wanted, since no recipe asks the archive for them. Only objects the local LFS store or the cache holds are wanted; the rest — old versions and paths this clone never downloaded, which `ports/fetch` cannot supply — are counted on one line and skipped without failing the run |
+| `--describe` | Rewrite every archive release's notes from the index, uploading nothing. Needs the token |
 | `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. See [Cutting a release](developing.md#cutting-a-release) |
 
 Exit status is 0 when everything wanted is archived, 1 when something is missing or an upload
@@ -1427,6 +1439,8 @@ deleted and replaced.
 |---|---|---|
 | `KDOS_SOURCES_TOKEN` | `~/.config/kdos/sources-token` | The upload token |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating calls |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and appended to |
+| `KDOS_RELEASE_CAP` | `1000` | Files per archive release before the next opens; GitHub's limit is 1000 |
 | `KDOS_LFS_STORE` | `<git dir>/lfs/objects` | The LFS store read for bytes and by `--history` |
 | `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `--freeze` attaches to |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | The two endpoints, replaced to run against a local stand-in |

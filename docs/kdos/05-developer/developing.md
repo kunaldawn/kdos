@@ -71,20 +71,27 @@ cannot reach the archive at all, since it then cannot prove the sources are ther
 ### Where sources come from
 
 Every source file is stored in the repository `kunaldawn/kdos` as a release asset named by
-its own SHA-256 hash, in one of 256 releases keyed by the hash's first two hex digits:
+its own SHA-256 hash. The assets fill numbered releases in order — `sources-001` holds the first
+1,000 files, `sources-002` the next 1,000, and so on — and the committed file `ports/sources.idx`
+says which release holds which hash, one line per file:
 
 ```
-https://github.com/kunaldawn/kdos/releases/download/sha256-<first two hex digits>/<sha256>
+bb32…e1f0 001 curl/curl-8.22.0.tar.xz
 ```
 
-For example, a file whose recipe hash starts `bb32…` lives at `…/download/sha256-bb/bb32…`. The
-recipe hash, the asset's name and the digest GitHub computes for the asset are the same string, so no
-index is needed, and a file that verifies is the file the recipe meant whichever route it came by.
-The archive is append-only: an asset whose digest matches its name is never replaced or deleted, so
-an old checkout can still find the exact bytes it was written against after upstream has moved on
-or gone. There are 256 releases because a GitHub release holds at most 1000 assets.
-`ports/srclib.sh` holds this addressing, and `ports/fetch`, `ports/publish` and the pre-push hook all
-read it from there.
+so that file's address is
+
+```
+https://github.com/kunaldawn/kdos/releases/download/sources-001/bb32…e1f0
+```
+
+The recipe hash, the asset's name and the digest GitHub computes for the asset are the same string,
+so a file that verifies is the file the recipe meant whichever route it came by. The archive and the
+index are append-only: an asset whose digest matches its name is never replaced or deleted, so an
+old checkout can still find the exact bytes it was written against after upstream has moved on or
+gone. Each archive release's notes on GitHub list every file it holds, so you can also find a file
+by browsing the Releases page. `ports/srclib.sh` holds this addressing, and `ports/fetch`,
+`ports/publish` and the pre-push hook all read it from there.
 
 `ports/fetch` resolves each file a `sha256 =` line names, other than files git tracks itself (such as
 patches), by trying these locations in order and stopping at the first copy that verifies:
@@ -92,8 +99,8 @@ patches), by trying these locations in order and stopping at the first copy that
 | | Location |
 |---|---|
 | 1 | The port directory: a file already there |
-| 2 | The cache, `ports/.srccache/sha256-XX/<hash>` |
-| 3 | The archive, `$KDOS_SOURCES_BASE/sha256-XX/<hash>` |
+| 2 | The cache, `ports/.srccache/sha256-XX/<hash>` (`XX` is the hash's first two hex digits) |
+| 3 | The archive, `$KDOS_SOURCES_BASE/sources-NNN/<hash>`, with `NNN` from `ports/sources.idx`; a hash the index does not name skips this step |
 | 4 | The recipe's `source =` URL for that file |
 | 5 | Generation, only for the port's own `<name>-vendor-<version>.tar.xz` |
 
@@ -472,9 +479,9 @@ in `$KDOS_SOURCES_TOKEN` or `~/.config/kdos/sources-token` (readable only by you
 [Publishing sources](writing-ports.md#publishing-sources).
 
 The release starts as a draft so the ISO and the list go out together when you publish it. Leave
-GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's 256 `sha256-XX`
+GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's `sources-NNN`
 releases live in the same repository, the setting applies to all of them, and it would freeze each
-shard at its first publication, after which no new source could be added to it.
+at its first publication, after which no new source could be added to it.
 
 ## See also
 

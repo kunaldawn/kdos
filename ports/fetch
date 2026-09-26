@@ -29,7 +29,8 @@
 #
 #   1. the port directory      a file already there
 #   2. the cache               ports/.srccache/sha256-XX/<hash>, hard-linked in
-#   3. the archive             $KDOS_SOURCES_BASE/sha256-XX/<hash>
+#   3. the archive             $KDOS_SOURCES_BASE/sources-NNN/<hash>, NNN from
+#                              ports/sources.idx; a hash it does not name skips this
 #   4. the recipe's `source =` the URL that names this filename, if one does
 #   5. regeneration            only for the port's own vendor bundle
 #
@@ -46,7 +47,8 @@
 # trusting the wrong thing entirely. A vendor bundle with no hash is generated.
 #
 # Set KDOS_SOURCES_BASE empty to skip the archive; KDOS_SRCCACHE moves the
-# cache. Both are read by ports/srclib.sh.
+# cache; KDOS_SOURCES_INDEX names another index. All are read by
+# ports/srclib.sh.
 
 set -e
 
@@ -80,13 +82,17 @@ while [ $# -gt 0 ]; do
 done
 
 # --tree FETCHES FOR ANOTHER CHECKOUT with this tree's archive logic, reader
-# and cache. A checkout older than ports/srclib.sh cannot fetch from the
+# cache and index. A checkout older than ports/srclib.sh cannot fetch from the
 # archive with its own ports/fetch, and this script cannot be run from inside
 # one — it needs srclib.sh beside it — so it is pointed at that checkout
 # instead. It never generates a vendor bundle: that needs the other checkout's
 # toolchain versions, which are its own ports/fetch's business.
 PORT_REPO="${TREE:-$REPO_ROOT}/ports/core"
 [ -d "$PORT_REPO" ] || { echo "ports/fetch: no ports/core under ${TREE:-$REPO_ROOT}" >&2; exit 2; }
+
+# THIS tree's index, also for --tree: the index only ever grows, so the
+# newest one names every file an older checkout's recipes can ask for.
+src_index_load
 
 # WHO MAY GENERATE A VENDOR BUNDLE. Downloading needs curl and sha256sum;
 # VENDORING needs cargo, go, npm, pip and cabal, at the versions this tree

@@ -36,7 +36,8 @@ kdos/
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
-│   ├── .srccache/             the local source cache, laid out like the archive — ignored
+│   ├── .srccache/             the local source cache, one file per hash — ignored
+│   ├── sources.idx            which source-archive release holds each hash — committed
 │   ├── srclib.sh              the source archive's addressing, shared by fetch, publish and the hook
 │   ├── fetch                  download and verify sources; generate vendor bundles (`make fetch`)
 │   ├── publish                upload sources to the archive; freeze a release's hash list
@@ -218,6 +219,7 @@ Four files in the tree make this work:
 | File | Does |
 |---|---|
 | `ports/srclib.sh` | The archive's addressing and hash checks, sourced by the other three |
+| `ports/sources.idx` | One line per archived file, `<sha256> <NNN> <port>/<file>`: the file is asset `<sha256>` of release `sources-<NNN>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook; append-only, and committed with the recipe that needs it |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive or upstream, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
 | `ports/publish` | Uploads sources the archive does not hold yet (needs a token); `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
 | `script/hooks/pre-push` | Refuses a `git push` whose recipes name a hash the archive does not hold |

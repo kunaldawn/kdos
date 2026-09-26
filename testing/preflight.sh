@@ -1204,8 +1204,9 @@ fi
 # is silently absent on a clone. `git check-ignore` on a synthetic path answers
 # what git WILL do with a file nobody has written yet.
 #
-# THE THREE SCRIPTS ARE THE WHOLE MECHANISM. ports/srclib.sh (sourced) is the
-# archive's addressing; ports/fetch and ports/publish run it as programs, and
+# THE THREE SCRIPTS AND THE INDEX ARE THE WHOLE MECHANISM. ports/srclib.sh
+# (sourced) is the archive's addressing and ports/sources.idx says which
+# release holds each file; ports/fetch and ports/publish run it as programs, and
 # script/hooks/pre-push is what git runs once `git config core.hooksPath
 # script/hooks` is set. A syntax error in any of them surfaces only on the
 # command that needed it.
@@ -1256,6 +1257,27 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
         bash -n "$s" 2>/dev/null || { bad "$s" "bash -n: $(bash -n "$s" 2>&1 | head -1)"; pa_scripts=; }
     done
     [ -n "$pa_scripts" ] && note "srclib.sh, fetch, publish, pre-push parse" "ok"
+
+    # ports/sources.idx is how fetch finds an archived file: a malformed line
+    # is a file nothing can locate, and a hash on two lines names two releases
+    # for one file. Absent is fine — nothing is archived yet.
+    if [ -f ports/sources.idx ]; then
+        pa_idx_bad=$(grep -vE '^(#|$)' ports/sources.idx \
+                     | grep -cvE '^[0-9a-f]{64} [0-9]{3,} [^ /]+/[^ ]+$')
+        pa_idx_dup=$(grep -E '^[0-9a-f]{64} ' ports/sources.idx | cut -d' ' -f1 \
+                     | LC_ALL=C sort | uniq -d | grep -c .)
+        pa_idx_n=$(grep -cE '^[0-9a-f]{64} ' ports/sources.idx)
+        if [ "$pa_idx_bad" != 0 ] || [ "$pa_idx_dup" != 0 ]; then
+            bad "ports/sources.idx" "$pa_idx_bad malformed line(s), $pa_idx_dup hash(es) listed twice"
+        elif ! grep -E '^[0-9a-f]{64} ' ports/sources.idx | LC_ALL=C sort -c -k1,1 2>/dev/null; then
+            bad "ports/sources.idx" "not sorted by hash — ports/publish writes it sorted"
+        else
+            note "ports/sources.idx" "$pa_idx_n archived files, well-formed"
+        fi
+    else
+        note "ports/sources.idx" "absent — nothing archived yet"
+    fi
+
     [ "$(git config core.hooksPath 2>/dev/null)" = script/hooks ] \
         || note "pre-push hook" "not enabled — git config core.hooksPath script/hooks"
 else

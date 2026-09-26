@@ -187,9 +187,11 @@ make run-hw         # accelerated: the pass is on
   is safe but costs a full refetch.
 - **Upstream sources are not in git.** A recipe names each by its `sha256 =`;
   `make fetch` resolves it from `ports/.srccache`, the `kunaldawn/kdos`
-  archive or upstream. A recipe that names a new hash is not done until
-  `ports/publish <port>` has put the file in the archive — the pre-push hook
-  refuses the push otherwise. See
+  archive (releases `sources-NNN`, located through the committed
+  `ports/sources.idx`) or upstream. A recipe that names a new hash is not done
+  until `ports/publish <port>` has put the file in the archive and its index
+  line is committed with the recipe — the pre-push hook refuses the push
+  otherwise. See
   [`writing-ports.md`](docs/kdos/05-developer/writing-ports.md).
 - **A new opt-in packaging flag is two edits, not one.** The chroot is entered
   with a cleared environment, so a variable must be named in `script/chroot_exec.sh`

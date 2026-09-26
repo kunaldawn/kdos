@@ -10,7 +10,7 @@
 #   ports/publish — put every source a recipe names into the archive
 # ---------------------------------
 #
-#   ports/publish [--dry-run] [--check] [--history] [--freeze <kdos-tag>] [port…]
+#   ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze <kdos-tag>] [port…]
 #
 # THE WANTED SET is every `sha256 =` file named by a recipe under ports/core
 # (or by the named ports) that git does not carry. --history adds every Git
@@ -24,12 +24,29 @@
 # addressed by hash, so an asset whose bytes do not match its name poisons
 # every checkout that asks for it.
 #
-# PRESENCE is an anonymous HEAD on the asset's download URL, which costs no
-# API quota; only a missing asset reaches the API. A 404 is absence; any other
-# status or a network failure stops the run, since it proves nothing.
+# PRESENCE means ports/sources.idx names the hash AND an anonymous HEAD on the
+# asset's download URL answers 200; the HEAD costs no API quota. A hash the
+# index does not name is unpublished without asking. A 404 is absence; any
+# other status or a network failure stops the run, since it proves nothing.
+#
+# WHERE A NEW FILE GOES. The archive is releases sources-001, sources-002, …
+# filled in order: a new file goes into the highest-numbered release while it
+# holds fewer than $SRC_RELEASE_CAP assets (counted on GitHub, not in the
+# index, since another branch may have added some), and a full release opens
+# the next. A file the index names but GitHub lacks goes back into the release
+# its line names. Each verified upload appends its line to ports/sources.idx
+# at once, so a run that dies keeps every line it earned; the file is sorted
+# when the run ends. THE INDEX MUST BE COMMITTED — fetch and the pre-push hook
+# read it from the tree, and an upload no committed line names is invisible.
+#
+# RELEASE NOTES. Every release a run touches has its notes rewritten from the
+# index: its file count and a `sha256sum`-format list of `<hash>  <port>/<file>`.
 #
 #   --check    presence only: print what is missing, exit 1 if anything is
-#   --dry-run  print the uploads, their sizes and totals; needs no token
+#   --dry-run  print the uploads, their sizes, totals and target releases;
+#              needs no token
+#   --describe rewrite every archive release's notes from the index, and
+#              upload nothing
 #   --freeze   write build/freeze/sources-<tag>.sha256 for ports/core at
 #              <tag>, require every hash in it to be archived, and attach it
 #              as `sources.sha256` to release <tag> on $KDOS_REPO, creating a
@@ -86,16 +103,17 @@ LFS_POINTER='^version https://git-lfs.github.com/spec/v1'
 
 die() { echo "ports/publish: $*" >&2; exit 1; }
 
-DRY=0 CHECK=0 HISTORY=0 FREEZE=""
+DRY=0 CHECK=0 HISTORY=0 DESCRIBE=0 FREEZE=""
 PORTS=()
 while [ $# -gt 0 ]; do
     case $1 in
         --dry-run) DRY=1 ;;
         --check)   CHECK=1 ;;
         --history) HISTORY=1 ;;
+        --describe) DESCRIBE=1 ;;
         --freeze)  [ -n "${2:-}" ] || die "--freeze needs a tag"
                    FREEZE=$2; shift ;;
-        -h|--help) echo "usage: ports/publish [--dry-run] [--check] [--history] [--freeze <kdos-tag>] [port…]"
+        -h|--help) echo "usage: ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze <kdos-tag>] [port…]"
                    exit 0 ;;
         -*)        die "unknown option $1" ;;
         *)         PORTS+=("$1") ;;
@@ -185,9 +203,10 @@ port_lines() {
 # outage) or a curl failure says the archive cannot answer, and publish stops
 # rather than report archived files missing or upload blind.
 present() {
-    local rc=0 code
+    local rc=0 code url
+    url=$(src_url "$1") || return 1
     code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
-                --max-time 120 --retry 2 "$(src_url "$1")") || rc=$?
+                --max-time 120 --retry 2 "$url") || rc=$?
     [ "$rc" = 0 ] || die "cannot reach the archive at $KDOS_SOURCES_BASE (curl exit $rc)"
     case $code in
         200) return 0 ;;
@@ -291,33 +310,134 @@ pace() {
     LAST_CREATE=$(usec_now)
 }
 
-# shard_release <tag> — sets SHARD_RID to the release id on the archive repo,
-# creating the release on 404. It runs in this shell, not a substitution, so
-# the id cache and the pacing clock survive it.
+# archive_release <n> [nocreate] — sets REL_ID to the id of release
+# sources-<n> on the archive repo, creating it on 404 unless told not to. It
+# runs in this shell, not a substitution, so the id cache and the pacing clock
+# survive it.
 declare -A RID
-SHARD_RID=""
-shard_release() {
-    SHARD_RID=${RID[$1]:-}
-    [ -n "$SHARD_RID" ] && return 0
-    local id="" try
+REL_ID=""
+archive_release() {
+    local tag id="" try
+    tag=$(src_release_tag "$1")
+    REL_ID=${RID[$1]:-}
+    [ -n "$REL_ID" ] && return 0
     for try in 1 2; do
-        gh GET "$GH_API/repos/$KDOS_SOURCES_REPO/releases/tags/$1"
+        gh GET "$GH_API/repos/$KDOS_SOURCES_REPO/releases/tags/$tag"
         if [ "$HTTP" = 200 ]; then id=$(release_from_body); break; fi
-        [ "$HTTP" = 404 ] || { echo "  release $1: HTTP $HTTP" >&2; return 1; }
+        [ "$HTTP" = 404 ] || { echo "  release $tag: HTTP $HTTP" >&2; return 1; }
+        [ "${2:-}" != nocreate ] || return 1
         pace
         gh POST "$GH_API/repos/$KDOS_SOURCES_REPO/releases" \
             -H 'Content-Type: application/json' \
-            --data "{\"tag_name\":\"$1\",\"name\":\"$1\",\"draft\":false,\"prerelease\":false,\"make_latest\":\"false\"}"
+            --data "{\"tag_name\":\"$tag\",\"name\":\"$tag\",\"draft\":false,\"prerelease\":false,\"make_latest\":\"false\"}"
         if [ "$HTTP" = 201 ]; then
-            echo "  created  release $1" >&2
+            echo "  created  release $tag" >&2
             id=$(release_from_body); break
         fi
         # 422: another run created it between the GET and the POST.
-        [ "$HTTP" = 422 ] || { echo "  release $1: create HTTP $HTTP" >&2; return 1; }
+        [ "$HTTP" = 422 ] || { echo "  release $tag: create HTTP $HTTP" >&2; return 1; }
     done
     [ -n "$id" ] || return 1
     RID[$1]=$id
-    SHARD_RID=$id
+    REL_ID=$id
+}
+
+# asset_count <release id> — how many assets GitHub holds in it.
+asset_count() {
+    local page=1 n total=0
+    while :; do
+        gh GET "$GH_API/repos/$KDOS_SOURCES_REPO/releases/$1/assets?per_page=100&page=$page"
+        [ "$HTTP" = 200 ] || return 1
+        n=$(grep -c '"browser_download_url"' "$TMP/body" || true)
+        total=$((total + n))
+        [ "$n" -lt 100 ] && break
+        page=$((page + 1))
+    done
+    echo "$total"
+}
+
+# open_release — sets OPEN_N, OPEN_ID and OPEN_COUNT to the release new files
+# go into: the highest-numbered one the index names (sources-001 when it names
+# none), or the next, and the one after, while each is full on GitHub.
+OPEN_N="" OPEN_ID="" OPEN_COUNT=0
+open_release() {
+    local n=${OPEN_N:-0} h c
+    if [ "$n" = 0 ]; then
+        n=1
+        for h in "${!SRC_REL[@]}"; do [ "${SRC_REL[$h]}" -gt "$n" ] && n=${SRC_REL[$h]}; done
+    fi
+    while :; do
+        archive_release "$n" || return 1
+        c=$(asset_count "$REL_ID") || return 1
+        [ "$c" -lt "$SRC_RELEASE_CAP" ] && break
+        n=$((n + 1))
+    done
+    OPEN_N=$n OPEN_ID=$REL_ID OPEN_COUNT=$c
+}
+
+# ── the index ─────────────────────────────────────────────────────────────
+IDX_HEADER='# ports/sources.idx — where the KDOS source archive keeps each file.
+#
+#   <sha256> <NNN> <port>/<file>
+#
+# The file is the asset <sha256> of release sources-<NNN> on the repository
+# that serves the archive. One line per file, sorted by hash. ports/publish
+# writes the lines; commit this file with the recipe change that needs them.
+# Never edit or remove a line: the archive is append-only, and a line is the
+# only way ports/fetch finds its file.'
+
+# index_add <hash> <n> <label> — record one verified upload, at once.
+index_add() {
+    local name=${3#ports/core/}
+    [ -s "$KDOS_SOURCES_INDEX" ] || printf '%s\n' "$IDX_HEADER" > "$KDOS_SOURCES_INDEX"
+    printf '%s %03d %s\n' "$1" "$2" "$name" >> "$KDOS_SOURCES_INDEX"
+    SRC_REL[$1]=$2 SRC_NAME[$1]=$name
+    INDEX_DIRTY=1
+}
+
+# index_sort — the header, then one line per hash in hash order.
+INDEX_DIRTY=0
+index_sort() {
+    [ "$INDEX_DIRTY" = 1 ] && [ -f "$KDOS_SOURCES_INDEX" ] || return 0
+    { printf '%s\n' "$IDX_HEADER"
+      grep -E '^[0-9a-f]{64} ' "$KDOS_SOURCES_INDEX" | LC_ALL=C sort -u -k1,1
+    } > "$KDOS_SOURCES_INDEX.tmp" && mv -f "$KDOS_SOURCES_INDEX.tmp" "$KDOS_SOURCES_INDEX"
+    INDEX_DIRTY=0
+}
+
+# describe <n> — rewrite release sources-<n>'s notes from the index. A
+# release body holds 125,000 characters; a list that would pass that is cut
+# short with a pointer to the index, which is complete.
+describe() {
+    local n=$1 tag h count
+    tag=$(src_release_tag "$n")
+    archive_release "$n" nocreate || { echo "  $tag: no such release" >&2; return 1; }
+    for h in "${!SRC_REL[@]}"; do
+        [ "${SRC_REL[$h]}" = "$n" ] && printf '%s  %s\n' "$h" "${SRC_NAME[$h]}"
+    done | LC_ALL=C sort -k2 > "$TMP/list"
+    count=$(wc -l < "$TMP/list")
+    awk -v tag="$tag" -v count="$count" '
+        function esc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/\t/, " ", s); return s }
+        BEGIN {
+            body = "Part of the KDOS source archive: " count " upstream source files, each stored as an asset named by its SHA-256.\\n\\n"
+            body = body "`make fetch` finds a file here through `ports/sources.idx`; download one by hand from `.../releases/download/" tag "/<sha256>`. The list below is in `sha256sum` format.\\n\\n```\\n"
+            limit = 120000; cut = 0
+        }
+        {
+            line = esc($0) "\\n"
+            if (length(body) + length(line) > limit) { cut++; next }
+            body = body line
+        }
+        END {
+            body = body "```\\n"
+            if (cut) body = body "\\n" cut " more files are listed in `ports/sources.idx`.\\n"
+            printf "{\"body\":\"%s\"}", body
+        }' "$TMP/list" > "$TMP/notes.json"
+    pace
+    gh PATCH "$GH_API/repos/$KDOS_SOURCES_REPO/releases/$REL_ID" \
+        -H 'Content-Type: application/json' --data-binary @"$TMP/notes.json"
+    [ "$HTTP" = 200 ] || { echo "  $tag: notes HTTP $HTTP $(json_str message)" >&2; return 1; }
+    echo "  notes    $tag  ($count files)"
 }
 
 # asset_info <repo> <release id> <name> — "<asset id> <digest|null> <state>"
@@ -487,6 +607,18 @@ if [ -n "$FREEZE" ]; then
 fi
 
 # ── the archive ───────────────────────────────────────────────────────────
+src_index_load
+
+if [ "$DESCRIBE" = 1 ]; then
+    declare -A NS=()
+    for h in "${!SRC_REL[@]}"; do NS[${SRC_REL[$h]}]=1; done
+    [ "${#NS[@]}" -gt 0 ] || die "ports/sources.idx names no archived file"
+    [ "$DRY" = 1 ] && { echo "==> would rewrite the notes of ${#NS[@]} releases"; exit 0; }
+    load_token
+    for n in $(printf '%s\n' "${!NS[@]}" | sort -n); do describe "$n" || RC=1; done
+    exit "$RC"
+fi
+
 src_kpkg_ensure || die "cannot build the recipe reader"
 load_carried
 while read -r h f; do want "$h" "$f"; done < <(port_lines "$REPO_ROOT" "${PORTS[@]}")
@@ -526,15 +658,19 @@ for i in "${!W_HASH[@]}"; do
 done
 
 if [ "$CHECK" = 1 ]; then
-    for i in "${MISS_I[@]}"; do printf '  missing  %s  %s\n' "${W_HASH[$i]}" "${W_LABEL[$i]}"; done
+    for i in "${MISS_I[@]}"; do
+        h=${W_HASH[$i]}
+        why="not in ports/sources.idx"
+        [ -z "${SRC_REL[$h]:-}" ] || why="indexed in $(src_release_tag "${SRC_REL[$h]}") but absent there"
+        printf '  missing  %s  %s  (%s)\n' "$h" "${W_LABEL[$i]}" "$why"
+    done
     echo "==> ${#MISS_I[@]} of ${#W_HASH[@]} missing"
     [ "${#MISS_I[@]}" = 0 ] && [ "$RC" = 0 ] && exit 0
     exit 1
 fi
 
-# Shard order, so each release is looked up once and consecutively.
-PLAN=() total=0
-declare -A SHARDS
+# Hash order, so a run's uploads are reproducible.
+PLAN=() total=0 NEW=0
 while read -r i; do
     [ -n "$i" ] || continue
     h=${W_HASH[$i]}
@@ -544,37 +680,69 @@ while read -r i; do
     fi
     size=$(stat -c %s "$file")
     total=$((total + size))
-    SHARDS[$(src_shard "$h")]=1
+    [ -n "${SRC_REL[$h]:-}" ] || NEW=$((NEW + 1))
     PLAN+=("$h|$file|${W_LABEL[$i]}|$size")
 done < <(for i in "${MISS_I[@]}"; do echo "${W_HASH[$i]} $i"; done | LC_ALL=C sort | cut -d' ' -f2)
 
 if [ "$DRY" = 1 ]; then
+    # Targets are estimated from the index alone; the real run counts each
+    # release's assets on GitHub, which another branch may have added to.
+    declare -A CNT=()
+    n=1
+    for h in "${!SRC_REL[@]}"; do
+        CNT[${SRC_REL[$h]}]=$(( ${CNT[${SRC_REL[$h]}]:-0} + 1 ))
+        [ "${SRC_REL[$h]}" -gt "$n" ] && n=${SRC_REL[$h]}
+    done
+    c=${CNT[$n]:-0}
+    declare -A TARGETS=()
     for p in "${PLAN[@]}"; do
         IFS='|' read -r h file label size <<< "$p"
-        printf '  upload   %s  %-10s %s/%s  %s\n' "$(src_shard "$h")" "$(human "$size")" \
-            "$KDOS_SOURCES_REPO" "$h" "$label"
+        if [ -n "${SRC_REL[$h]:-}" ]; then
+            t=${SRC_REL[$h]}
+        else
+            [ "$c" -lt "$SRC_RELEASE_CAP" ] || { n=$((n + 1)); c=0; }
+            t=$n; c=$((c + 1))
+        fi
+        TARGETS[$t]=1
+        printf '  upload   %s  %-10s %s  %s\n' "$(src_release_tag "$t")" "$(human "$size")" "$h" "$label"
     done
-    echo "==> would upload ${#PLAN[@]} files, $(human "$total"), into ${#SHARDS[@]} shard releases (each created if absent)"
+    echo "==> would upload ${#PLAN[@]} files ($NEW new to the index), $(human "$total"), into ${#TARGETS[@]} releases"
     exit "$RC"
 fi
 
 [ "${#PLAN[@]}" = 0 ] && { echo "==> nothing to upload"; exit "$RC"; }
 load_token
+trap 'index_sort; rm -rf "$TMP"' EXIT
+declare -A TOUCHED=()
 n=0
 for p in "${PLAN[@]}"; do
     IFS='|' read -r h file label size <<< "$p"
     n=$((n + 1))
     # Hashed again here: the plan's check may be minutes old on a long run.
     src_hash_ok "$file" "$h" || { fail "$h  $label: changed on disk"; continue; }
-    shard=$(src_shard "$h")
-    shard_release "$shard" || { fail "$h  $label: no release $shard"; continue; }
+    if [ -n "${SRC_REL[$h]:-}" ]; then
+        rel=${SRC_REL[$h]}
+        archive_release "$rel" || { fail "$h  $label: no release $(src_release_tag "$rel")"; continue; }
+        rid=$REL_ID
+    else
+        if [ -z "$OPEN_N" ] || [ "$OPEN_COUNT" -ge "$SRC_RELEASE_CAP" ]; then
+            [ -z "$OPEN_N" ] || OPEN_N=$((OPEN_N + 1))
+            open_release || { fail "$h  $label: cannot open an archive release"; continue; }
+        fi
+        rel=$OPEN_N rid=$OPEN_ID
+    fi
     rc=0
-    put_asset "$KDOS_SOURCES_REPO" "$SHARD_RID" "$h" "$file" "$h" application/octet-stream 1 || rc=$?
+    put_asset "$KDOS_SOURCES_REPO" "$rid" "$h" "$file" "$h" application/octet-stream 1 || rc=$?
     case $rc in
-        0) printf '  [%d/%d] %s  %s  %s\n' "$n" "${#PLAN[@]}" "$shard" "$(human "$size")" "$label" ;;
+        0) [ -n "${SRC_REL[$h]:-}" ] || { index_add "$h" "$rel" "$label"; OPEN_COUNT=$((OPEN_COUNT + 1)); }
+           TOUCHED[$rel]=1
+           printf '  [%d/%d] %s  %s  %s\n' "$n" "${#PLAN[@]}" "$(src_release_tag "$rel")" "$(human "$size")" "$label" ;;
         2) conflict "$h  $label" ;;
         *) fail "$h  $label" ;;
     esac
 done
+index_sort
+for rel in $(printf '%s\n' "${!TOUCHED[@]}" | sort -n); do describe "$rel" || RC=1; done
 echo "==> done: $n planned, exit $RC"
+[ "${#TOUCHED[@]}" = 0 ] || echo "==> ports/sources.idx changed — commit it with the recipes that need it"
 exit "$RC"

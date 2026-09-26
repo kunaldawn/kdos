@@ -68,13 +68,16 @@ verifies, looking in this order:
 2. the local cache, `ports/.srccache/sha256-XX/<hash>` (`XX` is the hash's
    first two hex digits), hard-linked into the port directory;
 3. the KDOS source archive,
-   `https://github.com/kunaldawn/kdos/releases/download/sha256-XX/<hash>`;
+   `https://github.com/kunaldawn/kdos/releases/download/sources-NNN/<hash>`,
+   where `ports/sources.idx` gives `NNN` for each hash;
 4. the recipe's own `source =` URL upstream;
 5. for a port's own vendor bundle only, generating it again.
 
-The source archive is content-addressed and append-only: 256 GitHub releases
-named `sha256-00` to `sha256-ff`, each asset named by its bare hash, and nothing
-is ever replaced or removed. A five-year-old checkout therefore finds the exact
+The source archive is content-addressed and append-only: numbered GitHub
+releases `sources-001`, `sources-002`, … filled 1,000 files at a time, each
+asset named by its bare hash, and nothing is ever replaced or removed. The
+committed index `ports/sources.idx` has one line per file,
+`<hash> <NNN> <port>/<file>`, and each release's notes list what it holds. A five-year-old checkout therefore finds the exact
 bytes it was written against even after the upstream host has gone. The
 tree's recipes name 1,232 distinct files, 8.28 GiB, which is what a complete
 archive holds; stored by hash, a file several ports use — the llvm monorepo
@@ -90,6 +93,7 @@ The useful commands and settings:
 | `ports/fetch --tree <dir> [port…]` | Fetch for another checkout's `ports/core` |
 | `KDOS_SOURCES_BASE=` (empty) | Skip the archive and go straight to upstream |
 | `KDOS_SOURCES_REPO` | The archive repository (default `kunaldawn/kdos`) |
+| `KDOS_SOURCES_INDEX` | The index to read (default `ports/sources.idx`) |
 | `KDOS_SRCCACHE` | Move the cache, for example to share one between checkouts |
 | `KDOS_FETCH_HOST=1` | Do everything in one pass on this host, generating bundles with its own toolchains |
 

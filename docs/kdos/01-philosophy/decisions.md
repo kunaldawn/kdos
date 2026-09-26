@@ -177,13 +177,13 @@ distributed.
 
 Upstream source archives are not kept in git. A few small upstream files a recipe hashes — patch
 levels, IANA registries, `certdata.txt`, a language model — are, and they are never archived. Every
-other source file is a release asset in the GitHub repository
-`kunaldawn/kdos`, named by its own sha256 (the same string as the `sha256 =` line in the
-recipe that uses it), in one of 256 releases named `sha256-00` to `sha256-ff` after the hash's
-first byte. A file's address is therefore
+other source file is a release asset in the GitHub repository `kunaldawn/kdos`, named by its own
+sha256 (the same string as the `sha256 =` line in the recipe that uses it). The assets fill
+releases in order — `sources-001`, then `sources-002` once that holds 1,000 files, and so on — and
+the committed file `ports/sources.idx` records which release holds each hash. A file's address is
 
 ```
-https://github.com/kunaldawn/kdos/releases/download/sha256-<first two hex digits>/<hash>
+https://github.com/kunaldawn/kdos/releases/download/sources-<NNN>/<hash>
 ```
 
 The recipes name 1,232 distinct files, about 8.3 GiB. Twenty-four files in the port directories
@@ -194,12 +194,18 @@ names a different archive repository, and `KDOS_SOURCES_BASE` a different downlo
 
 The hash is the identity and the URL is advisory. A recipe names contents, not a location, so a
 file that verifies is the file the recipe meant whether it came from the archive, from upstream or
-from a mirror added in ten years, and none of those invalidates a commit. The name being the hash
-also means a URL needs no index, no manifest and no lookup, and that two different upstream
-releases under one filename cannot collide. Hashes spread evenly over the 256 shards, so a shard
-reaches the 1,000-asset limit of a release only somewhere past 200,000 archives; a filename-keyed
-shard would skew by first letter and fill within years. GitHub also rewrites asset names containing
-characters outside `[A-Za-z0-9._-]`, which a bare hash never has.
+from a mirror added in ten years, and none of those invalidates a commit. Two different upstream
+releases under one filename cannot collide, and GitHub, which rewrites asset names containing
+characters outside `[A-Za-z0-9._-]`, never has to rewrite a bare hash.
+
+Filling releases in order keeps their number as small as the file count allows: a GitHub release
+holds at most 1,000 assets and has no other limit, so 1,700 files need two releases and 50,000
+need fifty. Deriving the release from the hash instead would need no index, but hashes are random,
+so every one of the releases such a scheme divides into exists from the first upload, and a scheme
+with few of them fills within years. The index is what the ordering costs: one committed line per
+file, `<hash> <NNN> <port>/<file>`, written by `ports/publish` after each verified upload. It is
+append-only like the archive, so the newest index names every file ever archived, and an old
+checkout can be fetched with it.
 
 The archive is append-only. An asset whose digest matches its name is never replaced or deleted,
 because replacing one would silently change what an old commit builds; a checkout from five years
@@ -209,10 +215,11 @@ tag's recipes name, to the release of that tag, creating it as a draft when it d
 list is a convenience — one file that says what the release needs. What pins the hashes is the tag
 itself: its recipes carry them, and git cannot change those without changing the tag.
 
-The archive's 256 releases share the repository's release page with the KDOS releases; they are
-created with `make_latest` off, so "latest" always means a KDOS release. GitHub's immutable releases
-stay off on the repository: the setting applies to every release in it, and it would freeze each
-shard at its first publication, after which no new source could be added to it.
+The archive's releases share the repository's release page with the KDOS releases. Each one's
+notes list every file it holds, as `<hash>  <port>/<file>` lines, and they are created with
+`make_latest` off, so "latest" always means a KDOS release. GitHub's immutable releases stay off
+on the repository: the setting applies to every release in it, and it would freeze an archive
+release at its first publication, after which no source could be added to it.
 
 What it costs is that a clone alone does not build. `make fetch` has to run once after a clone
 and again after a recipe changes, and it is the only step that uses the network. For each file it
