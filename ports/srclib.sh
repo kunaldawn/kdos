@@ -15,7 +15,7 @@
 #
 # THE ARCHIVE IS CONTENT-ADDRESSED. An archived file is the release asset
 #
-#     https://github.com/kunaldawn/kdos-sources/releases/download/sha256-<h:0:2>/<h>
+#     https://github.com/kunaldawn/kdos/releases/download/sha256-<h:0:2>/<h>
 #
 # where <h> is the 64-hex `sha256 =` the recipe already carries. The recipe
 # hash, the asset name and the digest GitHub computes for the asset are the
@@ -35,8 +35,14 @@
 # APPEND-ONLY. An asset is never replaced or deleted once its digest matches
 # its name: a five-year-old checkout finds the exact bytes it was written
 # against because nothing was allowed to take them away.
+#
+# THE SHARDS ARE RELEASES OF THE MAIN REPOSITORY, so its release page lists
+# them beside the KDOS releases (make_latest false keeps "latest" on a KDOS
+# release). GitHub's immutable releases must stay OFF on it: the setting is
+# repository-wide, and it freezes a shard at its first publication, after
+# which no new source can ever be added to it.
 
-KDOS_SOURCES_REPO="${KDOS_SOURCES_REPO:-kunaldawn/kdos-sources}"
+KDOS_SOURCES_REPO="${KDOS_SOURCES_REPO:-kunaldawn/kdos}"
 # Empty means upstream only — no archive is consulted.
 KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/$KDOS_SOURCES_REPO/releases/download}"
 

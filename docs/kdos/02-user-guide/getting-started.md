@@ -61,7 +61,7 @@ order:
 
 1. the port's own directory;
 2. the download cache, `ports/.srccache/`;
-3. the KDOS source archive — GitHub release assets on `kunaldawn/kdos-sources`, each named by the
+3. the KDOS source archive — GitHub release assets on `kunaldawn/kdos`, each named by the
    file's `sha256`;
 4. the upstream URL in the recipe's `source =` line;
 5. for a Rust, Go, Node, Python or Haskell port only, regenerating the port's vendored dependency

@@ -646,7 +646,7 @@ pre-push: these sources are named by a recipe but not in the archive:
 pre-push: publish them first:  ports/publish <port>
 ```
 
-The pushed commits name a source hash the `kunaldawn/kdos-sources` archive does not hold, so the
+The pushed commits name a source hash the `kunaldawn/kdos` archive does not hold, so the
 push would publish a recipe that builds only on this machine. Run the named command, which uploads
 from the port directory or the cache, then push again. Uploading needs a token with write access to
 the archive; the token, pacing and flags are in [`ports/publish`](writing-ports.md#portspublish),
@@ -671,7 +671,7 @@ Check the machine can reach `https://github.com` at all. Then use the variables 
 
 | Variable | Default | Effect |
 |---|---|---|
-| `KDOS_SOURCES_REPO` | `kunaldawn/kdos-sources` | The GitHub repository holding the archive |
+| `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository holding the archive |
 | `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror laid out as `sha256-XX/<hash>` works unchanged. Empty skips the archive and fetches from upstream alone; `ports/publish` and the pre-push hook then refuse to run |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local cache, laid out like the archive. Files already there need no network |
 

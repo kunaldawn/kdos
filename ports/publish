@@ -32,9 +32,9 @@
 #   --freeze   write build/freeze/sources-<tag>.sha256 for ports/core at
 #              <tag>, require every hash in it to be archived, and attach it
 #              as `sources.sha256` to release <tag> on $KDOS_REPO, creating a
-#              DRAFT release when none exists. Publishing that release with
-#              immutable releases enabled on $KDOS_REPO freezes the list: a
-#              later rewrite of the archive is then detectable from it.
+#              DRAFT release when none exists. The list is a readable roll-call
+#              of what the tag needs; the tag's own recipes are what pin the
+#              hashes, since git cannot rewrite them without changing the tag.
 #
 # EXIT: 0 everything is archived, 1 something is missing or failed, 2 an
 # asset's digest disagrees with its name and could not be repaired.

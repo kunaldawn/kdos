@@ -164,7 +164,7 @@ resolves against the current accent. Everything drawn takes its colour from a sl
 from a literal value. (For the A/B root filesystems, see *root slot*.)
 
 **source archive** — The content-addressed store of every upstream source file the recipes name:
-release assets of the GitHub repository `kunaldawn/kdos-sources`, each named by its own sha256, in
+release assets of the GitHub repository `kunaldawn/kdos`, each named by its own sha256, in
 256 releases `sha256-00` to `sha256-ff` after the hash's first byte. Append-only. `make fetch`
 reads it; `ports/publish` adds to it. See
 [Where sources come from](../05-developer/developing.md#where-sources-come-from).

@@ -441,7 +441,7 @@ the names.
 tests, deltas — but it is one you run yourself.
 
 **The source archive has one public location.** Upstream sources live only as release assets on
-`kunaldawn/kdos-sources`. If it cannot be reached, `make fetch` falls back to each recipe's upstream
+`kunaldawn/kdos`. If it cannot be reached, `make fetch` falls back to each recipe's upstream
 URL, which works only while upstream still serves the exact file. `KDOS_SOURCES_BASE` can point
 `make fetch` at another copy laid out the same way, and nothing publishes such a copy. See
 [Developing](../05-developer/developing.md#where-sources-come-from).

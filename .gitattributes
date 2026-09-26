@@ -9,5 +9,5 @@
 # ---------------------------------
 
 # No path goes through a filter. Upstream sources are not in git at all: they
-# live in the kunaldawn/kdos-sources archive and are fetched by `make fetch`
+# live in the kunaldawn/kdos archive and are fetched by `make fetch`
 # (see .gitignore and ports/srclib.sh).

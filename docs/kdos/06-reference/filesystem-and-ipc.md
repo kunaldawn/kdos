@@ -545,7 +545,7 @@ refuses a push whose recipes name a source not yet in the archive.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `KDOS_SOURCES_REPO` | `kunaldawn/kdos-sources` | The GitHub repository whose releases hold the source archive |
+| `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository whose releases hold the source archive |
 | `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | Where archived sources are downloaded from, as `$KDOS_SOURCES_BASE/sha256-<first two hex digits>/<sha256>`. Set it empty to fetch from upstream only |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local source cache, laid out like the archive. Point two checkouts at one cache to download each file once |
 | `KDOS_FETCH_HOST=1` | unset | Run `ports/fetch` entirely on this machine, generating vendor bundles with its own toolchains, instead of handing missing bundles to the fetch container |

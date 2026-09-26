@@ -696,7 +696,7 @@ static int accept_one(const char *repo_root, PortEntry *e, int no_fetch)
 	 * and deciding what to remove is their call, never this tool's.
 	 *
 	 * THE NEW SOURCE EXISTS ONLY HERE UNTIL IT IS PUBLISHED. The recipe now
-	 * names a hash the kunaldawn/kdos-sources archive does not hold, so
+	 * names a hash the kunaldawn/kdos archive does not hold, so
 	 * every other clone's `make fetch` falls back to upstream and the
 	 * pre-push hook refuses the commit, until `ports/publish` uploads it. */
 	if (!no_fetch) {

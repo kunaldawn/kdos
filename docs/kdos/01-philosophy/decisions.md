@@ -178,12 +178,12 @@ distributed.
 Upstream source archives are not kept in git. A few small upstream files a recipe hashes — patch
 levels, IANA registries, `certdata.txt`, a language model — are, and they are never archived. Every
 other source file is a release asset in the GitHub repository
-`kunaldawn/kdos-sources`, named by its own sha256 (the same string as the `sha256 =` line in the
+`kunaldawn/kdos`, named by its own sha256 (the same string as the `sha256 =` line in the
 recipe that uses it), in one of 256 releases named `sha256-00` to `sha256-ff` after the hash's
 first byte. A file's address is therefore
 
 ```
-https://github.com/kunaldawn/kdos-sources/releases/download/sha256-<first two hex digits>/<hash>
+https://github.com/kunaldawn/kdos/releases/download/sha256-<first two hex digits>/<hash>
 ```
 
 The recipes name 1,232 distinct files, about 8.3 GiB. Twenty-four files in the port directories
@@ -205,9 +205,14 @@ The archive is append-only. An asset whose digest matches its name is never repl
 because replacing one would silently change what an old commit builds; a checkout from five years
 ago finds the bytes it was written against after upstream has moved or gone. For each KDOS
 release, `ports/publish --freeze <tag>` attaches `sources.sha256`, the list of every hash that
-tag's recipes name, to the release of that tag on the main repository, creating it as a draft when
-it does not exist. Published with GitHub's immutable releases enabled, that list cannot change, so
-a rewrite of the archive is detectable from outside it.
+tag's recipes name, to the release of that tag, creating it as a draft when it does not exist. The
+list is a convenience — one file that says what the release needs. What pins the hashes is the tag
+itself: its recipes carry them, and git cannot change those without changing the tag.
+
+The archive's 256 releases share the repository's release page with the KDOS releases; they are
+created with `make_latest` off, so "latest" always means a KDOS release. GitHub's immutable releases
+stay off on the repository: the setting applies to every release in it, and it would freeze each
+shard at its first publication, after which no new source could be added to it.
 
 What it costs is that a clone alone does not build. `make fetch` has to run once after a clone
 and again after a recipe changes, and it is the only step that uses the network. For each file it

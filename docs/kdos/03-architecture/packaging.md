@@ -68,7 +68,7 @@ verifies, looking in this order:
 2. the local cache, `ports/.srccache/sha256-XX/<hash>` (`XX` is the hash's
    first two hex digits), hard-linked into the port directory;
 3. the KDOS source archive,
-   `https://github.com/kunaldawn/kdos-sources/releases/download/sha256-XX/<hash>`;
+   `https://github.com/kunaldawn/kdos/releases/download/sha256-XX/<hash>`;
 4. the recipe's own `source =` URL upstream;
 5. for a port's own vendor bundle only, generating it again.
 
@@ -89,7 +89,7 @@ The useful commands and settings:
 | `ports/fetch [port…]` | Fetch only the named ports |
 | `ports/fetch --tree <dir> [port…]` | Fetch for another checkout's `ports/core` |
 | `KDOS_SOURCES_BASE=` (empty) | Skip the archive and go straight to upstream |
-| `KDOS_SOURCES_REPO` | The archive repository (default `kunaldawn/kdos-sources`) |
+| `KDOS_SOURCES_REPO` | The archive repository (default `kunaldawn/kdos`) |
 | `KDOS_SRCCACHE` | Move the cache, for example to share one between checkouts |
 | `KDOS_FETCH_HOST=1` | Do everything in one pass on this host, generating bundles with its own toolchains |
 

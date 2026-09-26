@@ -208,7 +208,7 @@ The per-library dependencies are in [The C libraries](../05-developer/c-librarie
 ## Where the upstream sources are
 
 Upstream source archives are not stored in git. Each one is a release asset in the
-`kunaldawn/kdos-sources` repository, named by its own SHA-256 hash, and `make fetch` downloads them
+`kunaldawn/kdos` repository, named by its own SHA-256 hash, and `make fetch` downloads them
 into the port directories. It is the only build step that uses the network. The details —
 the lookup order, the cache, the vendor bundles and the environment variables — are in
 [Developing](../05-developer/developing.md#where-sources-come-from).

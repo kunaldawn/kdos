@@ -70,11 +70,11 @@ cannot reach the archive at all, since it then cannot prove the sources are ther
 
 ### Where sources come from
 
-Every source file is stored in the repository `kunaldawn/kdos-sources` as a release asset named by
+Every source file is stored in the repository `kunaldawn/kdos` as a release asset named by
 its own SHA-256 hash, in one of 256 releases keyed by the hash's first two hex digits:
 
 ```
-https://github.com/kunaldawn/kdos-sources/releases/download/sha256-<first two hex digits>/<sha256>
+https://github.com/kunaldawn/kdos/releases/download/sha256-<first two hex digits>/<sha256>
 ```
 
 For example, a file whose recipe hash starts `bb32…` lives at `…/download/sha256-bb/bb32…`. The
@@ -150,7 +150,7 @@ fetch, because without LFS its working copy is only a pointer.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `KDOS_SOURCES_REPO` | `kunaldawn/kdos-sources` | The archive repository |
+| `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The archive repository |
 | `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The archive's download base. Set it empty to use upstream only |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The cache. A path outside the repository is mounted into the fetch container |
 | `KDOS_FETCH_HOST` | unset | `1`: one pass on your machine, generating vendor bundles with its own toolchains |
@@ -443,10 +443,9 @@ the last thing built before packaging. What each phase contains, and how one run
 
 ## Cutting a release
 
-A KDOS release is three things: a git tag, an ISO, and a frozen list of every source hash the tag's
-recipes name. The list makes any later change to the source archive detectable. The archive is a
-repository that anyone with write access to it could alter, but a list attached to an immutable
-release cannot be changed.
+A KDOS release is three things: a git tag, an ISO, and a list of every source hash the tag's
+recipes name. The list is one file that says what the release needs to build; the hashes
+themselves are pinned by the tag, whose recipes git cannot change without changing the tag.
 
 ```sh
 git tag v0.3 && git push origin v0.3
@@ -472,10 +471,10 @@ It never replaces an existing `sources.sha256` with different contents; it exits
 in `$KDOS_SOURCES_TOKEN` or `~/.config/kdos/sources-token` (readable only by you); see
 [Publishing sources](writing-ports.md#publishing-sources).
 
-With immutable releases enabled on `kunaldawn/kdos`, publishing the draft freezes the ISO and the
-list together; that is why the release starts as a draft. They are off on `kunaldawn/kdos-sources`:
-the setting applies to the whole repository, and it would freeze each of the 256 shard releases at
-its first publication, after which no new source could be added to it.
+The release starts as a draft so the ISO and the list go out together when you publish it. Leave
+GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's 256 `sha256-XX`
+releases live in the same repository, the setting applies to all of them, and it would freeze each
+shard at its first publication, after which no new source could be added to it.
 
 ## See also
 

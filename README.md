@@ -153,7 +153,7 @@ The steps:
    ```
 2. Fetch the sources. A clone holds recipes, not upstream archives. `make fetch` takes each file
    from the local cache `ports/.srccache/`, then from the KDOS source archive
-   (`kunaldawn/kdos-sources`, where each file is stored under its own sha256), then from the
+   (`kunaldawn/kdos`, where each file is stored under its own sha256), then from the
    recipe's upstream URL, and keeps the first copy whose hash matches. Rust, Go, Python and Haskell
    ports need a vendor bundle of their dependencies; one that no location holds is generated in a
    container.
@@ -213,7 +213,7 @@ ports/publish <port>                # upload the new source to the archive (need
 git push                            # the pre-push hook refuses a push naming a source the archive lacks
 ```
 
-Uploading to the source archive needs write access to `kunaldawn/kdos-sources`. Without it, run
+Uploading to the source archive needs write access to `kunaldawn/kdos`. Without it, run
 `ports/publish --check <port>` to list what the archive lacks and name those ports in your pull
 request, so a maintainer publishes them. The pre-push hook also refuses a push when it cannot reach
 the archive at all; `KDOS_SKIP_PUBLISH_CHECK=1` skips the check for a push you know is safe.

@@ -1339,14 +1339,14 @@ group bump are not rewritten; record each member's new hashes by hand, as after 
 ## Publishing sources
 
 Upstream archives are not committed. Git carries the recipe, and the archive it names is a release
-asset in the `kunaldawn/kdos-sources` repository, named by its own sha256 and stored under the
+asset in the `kunaldawn/kdos` repository, named by its own sha256 and stored under the
 release `sha256-<first two hex digits>`. That is where every other checkout's `make fetch` looks
 for it first (see [Where sources come from](developing.md#where-sources-come-from)). A new or bumped
 source therefore has to reach the archive before the commit naming it is pushed, or the commit
 builds on the machine that wrote it and nowhere else. Patches, configuration files and anything
 else git tracks are not archived, even when a recipe hashes them.
 
-Uploading needs a token with write access to `kunaldawn/kdos-sources`, so publishing is a
+Uploading needs a token with write access to `kunaldawn/kdos`, so publishing is a
 maintainer's step. If you are contributing without that access, say in your pull request which
 ports carry new or changed sources; `ports/publish --check <port>` shows which of their hashes the
 archive lacks.
@@ -1413,7 +1413,7 @@ delete.
 
 The token is read from `$KDOS_SOURCES_TOKEN`, or from `~/.config/kdos/sources-token`, which is
 refused when its group or others can read it. It needs write access to the contents of
-`kunaldawn/kdos-sources`. It reaches curl only through a mode-600 header file, never an argument, so
+`kunaldawn/kdos`. It reaches curl only through a mode-600 header file, never an argument, so
 no process list shows it, and it is removed from the environment before any child starts.
 
 GitHub throttles content creation separately from its hourly quota, so at least

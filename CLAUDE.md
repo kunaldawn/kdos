@@ -186,7 +186,7 @@ make run-hw         # accelerated: the pass is on
   library reads, and the port directories are hard links into it. Deleting it
   is safe but costs a full refetch.
 - **Upstream sources are not in git.** A recipe names each by its `sha256 =`;
-  `make fetch` resolves it from `ports/.srccache`, the `kunaldawn/kdos-sources`
+  `make fetch` resolves it from `ports/.srccache`, the `kunaldawn/kdos`
   archive or upstream. A recipe that names a new hash is not done until
   `ports/publish <port>` has put the file in the archive — the pre-push hook
   refuses the push otherwise. See

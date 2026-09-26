@@ -30,7 +30,7 @@ ports/.portup-tools/
 ports/.update-cache.json
 
 # Upstream sources are not in git. `make fetch` puts each one in the local
-# cache (ports/.srccache/sha256-XX/<hash>, laid out like the kunaldawn/kdos-sources
+# cache (ports/.srccache/sha256-XX/<hash>, laid out like the kunaldawn/kdos
 # archive) and hard-links it into its port directory; `ports/publish` is what
 # puts a new one in the archive. Anchored to ports/core so the archive fixtures
 # under testing/fixtures stay tracked — ignoring those makes every test that

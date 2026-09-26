@@ -406,7 +406,7 @@ echo "==> every source a port declares is hashed, and on disk once fetched"
 #
 # A HASHED SOURCE THAT IS NOT ON DISK IS UNFETCHED, NOT BROKEN. Upstream
 # sources are not in git: `make fetch` resolves each `sha256 =` entry from the
-# local cache, the kunaldawn/kdos-sources archive or upstream, so a fresh clone
+# local cache, the kunaldawn/kdos archive or upstream, so a fresh clone
 # has none of them and must still pass here. They are counted and reported
 # with the command that supplies them; whether each one is in the archive is
 # what `ports/publish --check` and the pre-push hook answer.
@@ -1190,7 +1190,7 @@ fi
 
 # UPSTREAM SOURCES ARE NOT IN GIT. A port's recipe names each source by its
 # sha256, `make fetch` resolves that hash from ports/.srccache, the
-# kunaldawn/kdos-sources archive or upstream, and `ports/publish` puts a new one
+# kunaldawn/kdos archive or upstream, and `ports/publish` puts a new one
 # in the archive. A recipe-hashed archive that git tracks as well is either the
 # bytes themselves in every clone's history forever, or a pointer file that
 # `make fetch` sees as a present-but-wrong source. An archive NO recipe hashes
