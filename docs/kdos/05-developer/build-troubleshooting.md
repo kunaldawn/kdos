@@ -109,6 +109,7 @@ lists everything preflight checks.
 | `Skipped dir` on a path that looks like the binary | [Go building into its own directory](#go-building-into-its-own-directory) |
 | `C compiler cannot create executables` | [`C compiler cannot create executables`](#c-compiler-cannot-create-executables) |
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
+| `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
@@ -856,6 +857,19 @@ alternative compiler first. The moment that alternative becomes a port, every su
 changes toolchain. The environment of phase three and every later phase therefore sets `CC=gcc` by
 name: a distribution that builds itself cannot have its toolchain depend on which ports happen to
 be installed. A configuration script that ignores `CC` needs its own switch, passed in the recipe.
+
+### A build calling `python`
+
+A makefile runs `python` and the shell cannot find it. The `python3` port installs `python3` and
+`python3.<minor>` and no `python`, so a build that names the unversioned program fails. Most
+makefiles that do so read it from a variable; pass the variable on the `make` line, which also
+reaches the makefiles it calls:
+
+```bash
+make -C roms bios PYTHON=python3
+```
+
+The `qemu` port does this for SeaBIOS, iPXE and the option ROMs.
 
 ### Autoconf lowering the C++ standard
 

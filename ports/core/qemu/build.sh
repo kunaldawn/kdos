@@ -206,7 +206,7 @@ export CC="gcc -std=gnu11"
 # SeaBIOS and SeaVGABIOS: bios-256k.bin is what pc and q35 load, bios.bin
 # the 128 KiB image for old machine types, bios-microvm.bin microvm's; one
 # vgabios per emulated display adapter. qboot is microvm's fast-boot BIOS.
-make -C roms bios vgabios qboot FIRMWARE_EXTRAVERSION=-kdos
+make -C roms bios vgabios qboot PYTHON=python3 FIRMWARE_EXTRAVERSION=-kdos
 
 # iPXE: every emulated NIC loads its option ROM at startup and a missing one
 # stops qemu, so these are required, not optional. efi-*.rom is the BIOS
