@@ -904,7 +904,11 @@ The build fails on a warning you have never seen upstream report.
 An upstream `-Werror` is a promise about upstream's compiler and C library, not about these. A
 compiler newer than the one upstream tested, or musl's headers in place of glibc's, produces
 warnings upstream has never seen. Turn `-Werror` off: `-Wno-error` in `CFLAGS`,
-`--disable-werror` for a configure script that offers it, `-Dwerror=false` for meson. That keeps
+`--disable-werror` for a configure script that offers it, `-Dwerror=false` for meson, or the
+variable a makefile appends after its own `-Werror` where it replaces `CFLAGS` wholesale:
+`EXTRA_OPTFLAGS=-Wno-error` for edk2's BaseTools, as the `qemu` port sets. Where no variable
+reaches the flags, a patch that appends `-Wno-error` after upstream's `-Werror` is the smallest
+change: the `qemu` port's `edk2-gcc-no-werror.patch` does that for edk2's firmware. That keeps
 every warning printed and stops upstream deciding which of them ends the build. Chasing them one
 suppression at a time costs a round trip per diagnostic.
 

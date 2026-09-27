@@ -196,12 +196,15 @@ make DESTDIR=$PKG install
 # --build-id to the link. CC keeps -std=gnu11 because the PCCTS parser
 # generator in edk2's BaseTools and iPXE's drivers are pre-C23 C that
 # declares functions with empty parentheses and calls them with arguments,
-# which C23 makes an error.
+# which C23 makes an error. EXTRA_OPTFLAGS is the last word of the CFLAGS
+# that edk2's BaseTools build its host programs with, after upstream's
+# -Werror; -Wno-error there keeps a warning a newer gcc adds from stopping
+# EfiRom, which the iPXE images below need, and the firmware build after them.
 fw=$PKG/usr/share/qemu
 install -d "$fw/firmware"
 (
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
-export CC="gcc -std=gnu11"
+export CC="gcc -std=gnu11" EXTRA_OPTFLAGS=-Wno-error
 
 # SeaBIOS and SeaVGABIOS: bios-256k.bin is what pc and q35 load, bios.bin
 # the 128 KiB image for old machine types, bios-microvm.bin microvm's; one
@@ -216,6 +219,12 @@ make -C roms bios vgabios qboot PYTHON=python3 FIRMWARE_EXTRAVERSION=-kdos
 # 6-byte MAC addresses through 16-bit words. The patch lets GNU as 2.41 and
 # later assemble iPXE's shared x86 sources for x86_64.
 patch -p1 -i "$PORT_SRC/ipxe-arch-i386.patch"
+# edk2-gcc-no-werror.patch adds -Wno-error after the -Werror in edk2's gcc
+# flags, which neither edk2's build command nor the platform files can reach;
+# gcc 16 warns on code this edk2 release predates. It is applied here because
+# efirom runs edk2's setup, which copies those flags into Conf/tools_def.txt,
+# and every later edk2 build reads that copy.
+patch -p1 -i "$PORT_SRC/edk2-gcc-no-werror.patch"
 make -C roms pxerom efirom PYTHON=python3 NO_WERROR=1 \
 	EXTRA_CFLAGS=-std=gnu11 BUILD_TIMESTAMP="$SOURCE_DATE_EPOCH"
 
@@ -315,10 +324,13 @@ truncate -s 64M pc-bios/edk2-aarch64-code.fd pc-bios/edk2-arm-vars.fd
 # widths are built, each into its own output directory. O= is created first
 # and passed absolute: the makefile resolves it with readlink -f, and a
 # readlink that prints nothing for a missing path puts the build under /.
+# REPRODUCIBLE_FLAGS is empty unless REPRODUCIBLE=y and is appended to CFLAGS
+# after OpenSBI's -Werror, so -Wno-error there keeps a warning a newer clang
+# adds from stopping the build.
 for xlen in 64 32; do
 	mkdir -p "$SRC/opensbi-rv$xlen"
 	make -C roms/opensbi LLVM=1 PLATFORM=generic PLATFORM_RISCV_XLEN=$xlen \
-		O="$SRC/opensbi-rv$xlen"
+		REPRODUCIBLE_FLAGS=-Wno-error O="$SRC/opensbi-rv$xlen"
 	cp "$SRC/opensbi-rv$xlen/platform/generic/firmware/fw_dynamic.bin" \
 		"pc-bios/opensbi-riscv$xlen-generic-fw_dynamic.bin"
 done

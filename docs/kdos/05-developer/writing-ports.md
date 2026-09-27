@@ -579,7 +579,7 @@ font.
 ## Patches
 
 A patch is the last resort after a build flag, and it is a file, never an edit made in place: a
-unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 91 of
+unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 92 of
 them sit in port directories under `ports/core`. `kpkg` does not apply them. `build.sh` does, from
 the unpacked source it starts in, normally before it configures:
 
