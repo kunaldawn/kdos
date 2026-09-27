@@ -13,7 +13,8 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         # Suspend and poweroff are root's, and the desktop is not root. The
         # daemon is the whole of what stands between them: a socket in /run
-        # gated by SO_PEERCRED, root and wheel only. No setuid binary, no
+        # gated by SO_PEERCRED: root and wheel for every verb, seat for the
+        # four power verbs (ping, suspend, poweroff, reboot). No setuid binary, no
         # polkit prompt (a lid-close cannot answer one), no logind.
         #
         # It runs in the foreground by design — `supervise` owns the respawn.

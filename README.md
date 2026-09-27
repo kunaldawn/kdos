@@ -28,54 +28,63 @@ rendering, so the screenshot shows the cell grid underneath it.</sub>
 
 ---
 
-This README is the front door for anyone who has just found KDOS: what it is, what it can do, how
-to try it, how to build it, and where to read next. The full documentation is a book under
-[`docs/kdos/`](docs/kdos/README.md).
+This page is for anyone who has just found KDOS: what it is, how it differs from other
+distributions, what it can do, how to try and build it, and where to read next. The full
+documentation is a book under [`docs/kdos/`](docs/kdos/README.md).
 
 ## What KDOS is
 
 KDOS is a complete operating system built in this repository from upstream source archives: a
 cross toolchain, a musl userland, a self-hosting bootstrap, 1,014 upstream ports, a Wayland
-compositor, a panel, a terminal, an installer and a package manager. There is no base image and
-no binary archive to fall back on.
+compositor, a panel, a terminal, an installer and a package manager. There is no base image and no
+binary archive to fall back on.
 
-It exists to answer one question honestly: what does a desktop look like when every part of it is
-built here, from source you can read, and every exception is written down? Four properties follow
-from that, and they shape everything else in the tree.
+Four properties shape the rest of the tree.
 
-**It is built from source, and the exceptions are listed.** Firmware and microcode ship prebuilt
-because no source exists for them. The Rust, Go, Zig and Haskell compilers each need a working
-compiler of their own kind, so each starts from a pinned upstream bootstrap. A few ports carry
-prebuilt data or firmware stubs inside their source, three sets of artwork (icons, cursors and a
-GTK theme) are vendored and recoloured at build time, and the application catalogue is Debian
-binaries by design. The complete list, with versions and sizes, is in
+**It is built from source, and the exceptions are listed.** Firmware and microcode ship as
+upstream built them, most of it because no source is published. The Rust, Go, Zig and Haskell
+compilers each need a working compiler of their own kind, so each starts from a pinned upstream
+bootstrap. The Noto and Nerd Fonts symbol fonts install upstream's built font files, and a few
+ports install data that has no other source form. The application catalogue is Debian binaries by
+design, and runs only in boxes. The complete list is in
 [Why KDOS](docs/kdos/01-philosophy/why-kdos.md#what-is-not-built-from-source).
 
-**KDOS can build KDOS.** Phase 2 of the build is a self-hosting pass: inside the new system it
-rebuilds tar, musl, zlib, binutils, diffutils, m4, gawk and gcc with itself. The shipped system
-carries gcc, binutils, rust, cmake, meson, ninja, python3, make and the package manager, so a
-running installation can rebuild every port in the tree, the compiler, the kernel and the desktop
-included.
+**KDOS can build KDOS.** Phase 2 of the build rebuilds tar, musl, zlib, binutils, diffutils, m4,
+gawk and gcc inside the new system, with itself. The shipped system carries gcc, binutils, rust,
+cmake, meson, ninja, python3, make and the package manager, so a running installation can rebuild
+any single port, the compiler and the kernel included, once its source is present. A full rebuild
+of the system still needs a build machine.
 
 **The build runs offline.** Every source file a recipe uses is named by a `sha256 =` line in that
-recipe. `make fetch` is the one step that touches the network: it gathers each file, checks it
-against its hash, and keeps it. After that, `make build` runs in a container started with
-`--network none`.
+recipe. `make fetch` is the one step that touches the network. After it, `make build` runs in a
+container started with `--network none`.
 
-**Applications live in containers.** KDOS builds the desktop, not Firefox. Graphical applications
-come from a catalogue of 180, each declared as a set of Debian packages over one of seven shared
-runtimes and built by podman on the machine that asks for it. Each one runs rootless, in its own
-container (a *box*), and behaves like ordinary system software.
+**Applications live in boxes.** KDOS builds the desktop, not Firefox. Graphical applications come
+from a catalogue of 180, each declared as a set of Debian packages over one of seven shared
+runtimes or directly on the Debian base, and built by podman on the machine that asks for it.
+Each runs rootless in its own container, called a *box*.
+
+## How it differs
+
+Most distributions ship glibc, GNU coreutils, systemd, a display manager, GTK and Qt, and prebuilt
+binary packages from an archive. KDOS replaces each of these: musl for the C library; toybox for
+the core userland, with util-linux, procps-ng and a few GNU tools where toybox falls short; toybox
+`init`, numbered shell scripts and the `ksvc` supervisor in place of systemd; Wayland only, with
+rootless Xwayland for X11 clients and no display manager; no GUI toolkit on the host at all, since
+every KDOS surface draws character cells; and packages compiled from 1,038 recipes, on a build
+host for the installation image and on the machine itself for updates.
+[How KDOS differs](docs/kdos/01-philosophy/how-kdos-differs.md) compares each choice with the
+usual alternatives, says why KDOS chose differently, and lists what is given up.
 
 ## What it can do today
 
 | Area | What is there |
 |---|---|
-| The desktop | A Wayland compositor (`kdos-comp`, a fork of labwc 0.20.0 with sixteen KDOS additions and a CRT-style phosphor shader), a panel program, `kdos-shell`, whose one binary provides 52 surfaces (the panel itself, the Start menu, launcher, settings, file chooser, notifications, network, Bluetooth, audio, displays, the store and more), a terminal, a resource monitor and a lock screen |
-| Applications | 180 catalogue applications — among them Firefox ESR, Thunderbird, LibreOffice, GIMP, Krita, Inkscape, Blender, FreeCAD, KiCad, Kdenlive, OBS Studio, VSCodium and Wine — each built on demand into its own box, and movable between machines as a signed file |
+| The desktop | A Wayland compositor (`kdos-comp`, a fork of labwc 0.20.0 whose KDOS code lives in sixteen source files of its own, with a CRT-style phosphor shader), a panel program, `kdos-shell`, whose one binary provides 52 surfaces (the panel itself, the Start menu, launcher, settings, file chooser, notifications, network, Bluetooth, audio, displays, the store and more), a terminal, a resource monitor and a lock screen |
+| Applications | 180 catalogue applications, among them Firefox ESR, Thunderbird, LibreOffice, GIMP, Krita, Inkscape, Blender, FreeCAD, KiCad, Kdenlive, OBS Studio, VSCodium and Wine, each built on demand into its own box and movable between machines as a pack file, signed when a signing key is configured |
 | The host | 1,014 upstream ports built on musl: PipeWire audio, NetworkManager, Xwayland for X11 programs, podman and QEMU, GCC and Clang/LLVM, Rust, Go, Zig, Haskell, Node.js and Python, cross toolchains for ARM, RISC-V and AVR, SDR and FPGA tooling, and CUPS printing |
 | Boot and install | A boot splash, an optionally encrypted root, A/B root slots, and `kinstall`, a text-mode installer that also runs unattended from an answer file |
-| Its own software | 17 C libraries written for this system, and 24 recipes of its own: the desktop, five root daemons, the package manager, the installer, the `kdos` command and its 31 subcommands, `help` included |
+| Its own software | 17 C libraries written for this system, the package manager and the installer (both compiled in phase 1 directly from `src/packages/`), and 24 recipes of its own: the desktop, five root daemons, the `kdos` command and its 31 subcommands, `help` included |
 
 <table>
 <tr>
@@ -88,7 +97,7 @@ container (a *box*), and behaves like ordinary system software.
 </tr>
 </table>
 
-## Status and honest limits
+## Status and limits
 
 This is the v0.2 line. It installs, boots, runs a desktop and runs applications, and its interfaces
 are stable enough to document. It is not a release with a support commitment or a tested hardware
@@ -97,7 +106,7 @@ matrix: whoever runs it is the integrator.
 Some things you may expect are not there. Nothing reads the desktop aloud to a screen reader; there
 is no graphical login screen; there is no public server of prebuilt packages; nothing creates the
 second A/B root slot for you. Every such gap is listed in
-[Known gaps](docs/kdos/06-reference/known-gaps.md), and how mature each subsystem is, with the
+[Known gaps](docs/kdos/06-reference/known-gaps.md), and the maturity of each subsystem, with the
 evidence behind each verdict, is in [Status](docs/kdos/06-reference/status.md).
 
 KDOS suits someone comfortable with a build log, a package recipe and the C that draws the panel.
@@ -107,108 +116,107 @@ commercial support.
 
 ## Trying it
 
-No v0.2 image is published. The one release on this repository,
-[v0.1](https://github.com/kunaldawn/kdos/releases), carries an ISO of an earlier line that the
-book does not describe. To run v0.2, build it (next section), then boot the result in a virtual
-machine:
+No v0.2 image is published. The [releases](https://github.com/kunaldawn/kdos/releases) on this
+repository are `v0.1`, whose ISO belongs to an earlier line that the book does not describe, and
+`sources-001` and `sources-002`, which hold the source archive and no image. To run v0.2, build it
+(next section), then boot the result in a virtual machine:
 
 ```sh
 make run          # QEMU with KVM and UEFI, 4 GB of memory, software rendering
 make run-hw       # accelerated graphics with the phosphor pass on; needs Docker and the NVIDIA container toolkit
 ```
 
-`make run` needs QEMU, `/dev/kvm` and the OVMF firmware at `/usr/share/ovmf/OVMF.fd`. Log in as
-`kdos` with the password `kdos`; the session starts on the first virtual terminal.
+`make run` needs QEMU, `/dev/kvm` and the OVMF firmware at `/usr/share/ovmf/OVMF.fd`. On the live
+image the session starts on the first virtual terminal, logged in as `kdos` (password `kdos`).
 
-To try it on real hardware, write the image to a USB stick, boot it, and install with
-`sudo kinstall`. Nothing is written to disk until you confirm the installer's summary page:
+To try it on real hardware, write the image to a USB stick. This overwrites the whole of
+`/dev/sdX`:
 
 ```sh
 sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
+
+Boot the stick and install with `sudo kinstall`. The installer writes nothing to disk until you
+confirm its summary page.
 
 [Getting started](docs/kdos/02-user-guide/getting-started.md) walks through all of this, and
 [Installation](docs/kdos/02-user-guide/installation.md) covers the installer page by page.
 
 ## Building from source
 
-What you need: Docker, `git`, `curl`, `sha256sum` and a C compiler on a Linux machine. Every
-compiler the build uses runs inside a container, so nothing else is installed on your machine.
+You need a Linux machine with Docker, `git`, `curl`, `sha256sum` and a C compiler. Every compiler
+the build itself uses runs inside a container built from the repository's `Dockerfile`, so no
+other toolchain is installed on your machine.
 
-What it costs:
-
-| | |
+| Cost | |
 |---|---|
-| Time | Most of a day for the first build. The whole system is compiled, GCC several times over and the kernel included. Later builds are narrow and short |
-| Disk | About 8.9 GB of upstream sources, plus on the order of 100 GB under `build/`, most of it optional phase snapshots (about 84 GB for a full set) |
+| Time | Most of a day for the first build: the whole system is compiled, GCC several times over and the kernel included. Later builds are narrow and short |
+| Disk | About 8.3 GiB (8.9 GB) of upstream sources, plus tens of gigabytes under `build/`, and about 84 GB more for a complete set of the optional phase snapshots |
 | Network | For `git clone`, `make fetch`, and the first `make build`, which builds its container image. The compile itself runs with the network off |
 
-The steps:
+```sh
+git clone https://github.com/kunaldawn/kdos
+cd kdos
+git config core.hooksPath script/hooks   # once per clone: the pre-push source check
+make fetch                               # every upstream source, verified by sha256
+make fetch-check                         # optional, offline: anything missing or wrong
+make build                               # the result is build/iso-build/kdos.iso
+make run
+```
 
-1. Clone the repository and turn on the pre-push check, once per clone:
-   ```sh
-   git clone https://github.com/kunaldawn/kdos
-   cd kdos
-   git config core.hooksPath script/hooks
-   ```
-2. Fetch the sources. A clone holds recipes, not upstream archives. `make fetch` takes each file
-   from the local cache `ports/.srccache/`, then from the KDOS source archive
-   (release assets of `kunaldawn/kdos`, each stored under its own sha256; the committed
-   `ports/sources.idx` says which release holds which file), then from the
-   recipe's upstream URL, and keeps the first copy whose hash matches. Rust, Go, Python and Haskell
-   ports need a vendor bundle of their dependencies; one that no location holds is generated in a
-   container.
-   ```sh
-   make fetch
-   make fetch-check     # optional: confirms offline that every source is present and verified
-   ```
-3. Build. The result is `build/iso-build/kdos.iso`:
-   ```sh
-   make build
-   ```
-   On a terminal, the build first asks whether to start fresh or restore a snapshot.
-4. Boot it with `make run`.
+A clone holds recipes, not upstream archives. `make fetch` takes each file from the local cache
+`ports/.srccache/`, then from the KDOS source archive (release assets of `kunaldawn/kdos`, located
+through the committed `ports/sources.idx`), then from the recipe's upstream URL, and keeps the
+first copy whose hash matches. Run it again after a pull or a branch switch; it downloads only what
+is new. On a terminal, `make build` first asks whether to start fresh or restore a snapshot.
 
-After a pull or a branch switch, run `make fetch` again; it downloads only what is new. To rebuild
-one port, one desktop program or only the packaging instead of everything, see
-[Developing](docs/kdos/05-developer/developing.md#rebuilding-one-thing).
+[How KDOS is built](docs/kdos/05-developer/how-kdos-is-built.md) follows the build from
+`git clone` to a bootable ISO, phase by phase. [Developing](docs/kdos/05-developer/developing.md)
+lists every make target and shows how to rebuild one port, one desktop program or only the
+packaging instead of everything.
 
-## Where to read next
+## The book
 
-The book under [`docs/kdos/`](docs/kdos/README.md) has 43 pages in six parts, and three reading
-paths through them:
+The documentation under [`docs/kdos/`](docs/kdos/README.md) is one book in six parts. Its index
+page carries the full table of contents and four reading paths.
 
-| If you are… | Start with |
-|---|---|
-| Evaluating or installing KDOS | [Why KDOS](docs/kdos/01-philosophy/why-kdos.md), then [Getting started](docs/kdos/02-user-guide/getting-started.md) and [The desktop](docs/kdos/02-user-guide/desktop.md) |
-| Running a KDOS machine | [Administration](docs/kdos/02-user-guide/administration.md), then [The kdos command](docs/kdos/04-programs/kdos-command.md) and [Configuration](docs/kdos/06-reference/configuration.md) |
-| Working on the source | [Principles](docs/kdos/01-philosophy/principles.md), then [Architecture overview](docs/kdos/03-architecture/overview.md) and [Developing](docs/kdos/05-developer/developing.md) |
+| Part | Covers | Start with |
+|---|---|---|
+| I. Introduction | What KDOS is, how it differs, its principles and decisions | [Why KDOS](docs/kdos/01-philosophy/why-kdos.md) |
+| II. Using KDOS | Installing, the desktop, applications, theming, administration, accessibility | [Getting started](docs/kdos/02-user-guide/getting-started.md) |
+| III. Architecture | Boot, the session, packaging, packs and boxes, security, design, windows | [Architecture overview](docs/kdos/03-architecture/overview.md) |
+| IV. Programs | The compositor, the panel, the terminal, the daemons, the installer, the `kdos` command | [The programs](docs/kdos/04-programs/README.md) |
+| V. Building and developing | The build, recipes, the C libraries, desktop software, testing | [How KDOS is built](docs/kdos/05-developer/how-kdos-is-built.md) |
+| VI. Reference | Ports, commands, configuration, paths, gaps, roadmap, status, glossary | [Command index](docs/kdos/06-reference/command-index.md) |
 
-For a single command, [Command index](docs/kdos/06-reference/command-index.md) lists every one
-KDOS installs; for the tree, [Repository layout](docs/kdos/06-reference/repository-layout.md)
-annotates every directory.
+## Repository layout
 
 ```
-ports/core/       1,014 upstream ports, two files each
+ports/core/       1,014 upstream ports: a kpkgbuild and a build.sh each, patches where needed
+ports/            fetch, update and publish tools, and sources.idx
 src/libs/         17 C libraries written for this system
 src/desktop/      the compositor, the panel, the terminal, the root daemons
 src/packages/     the package manager, the installer, the tools, the theme
+src/build/        kdosbuild, the build orchestrator behind make build
+src/tools/        kdos-portup, the port-bump tool behind ports/update
 fs/               copied as-is into the target root filesystem
 script/           the eight build phases and their package lists
 testing/          preflight, the self-test, fixtures, goldens, the QEMU rig
 docs/kdos/        the book
 ```
 
+[Repository layout](docs/kdos/06-reference/repository-layout.md) annotates every directory.
+
 ## Contributing
 
 Most contributions are ports: adding a piece of software or updating one. A port is a directory
 under `ports/core/` holding two files, `kpkgbuild` (declarative metadata) and `build.sh`.
-[Writing ports](docs/kdos/05-developer/writing-ports.md) covers the format and walks through
-adding a port end to end. A version bump looks like this:
+[Writing ports](docs/kdos/05-developer/writing-ports.md) covers the format and walks through adding
+a port end to end. A version bump looks like this:
 
 ```sh
 ports/update <port>                 # accept the new version; the version and sha256 lines are rewritten and the source fetched
-testing/preflight.sh                # the tree's wiring, in about two minutes
+testing/preflight.sh                # the tree's wiring, in two to three minutes
 make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"
 ports/publish <port>                # upload the new source and add its line to ports/sources.idx (maintainer token)
 git commit ports/core/<port> ports/sources.idx
@@ -230,7 +238,7 @@ before a full build are in [Testing](docs/kdos/05-developer/testing.md).
 
 The KDOS-authored parts are MIT (see [`LICENSE`](LICENSE)). Vendored artwork keeps its upstream
 licence: see `LICENSE.notice` in `src/packages/kdos-cursors/`, `kdos-icons/` and
-`kdos-gtk-theme/`, each of which records exactly what was changed. Monocypher is dual-licensed
-BSD-2-Clause or CC0-1.0. `kdos-comp` and `kdos-bb` are forks of GPL-2.0 projects and keep that
-licence along with their upstream copyright headers. Every port under `ports/core/` is upstream's
-own code under upstream's own terms.
+`kdos-gtk-theme/`, each of which records what was changed. Monocypher, vendored in `libksig`, is
+dual-licensed BSD-2-Clause or CC0-1.0. `kdos-comp` and `kdos-bb` are forks of GPL-2.0 projects and
+keep that licence along with their upstream copyright headers. Every port under `ports/core/` is
+upstream's own code under upstream's own terms.

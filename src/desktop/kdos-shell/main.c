@@ -99,8 +99,10 @@ int main(int argc, char **argv)
 		if (!strcmp(TOOLS[i].name, self))
 			return TOOLS[i].fn(argc, argv);
 
-	/* Invoked under an unexpected name: the first argument selects, so
-	 * `kdos-shell kdos-launcher` works before the symlink exists. */
+	/* Invoked under a name not in the table: the first argument selects,
+	 * so `./a.out kdos-launcher` works before any link exists.
+	 * `kdos-shell` is in the table (the panel), so `kdos-shell
+	 * kdos-launcher` never reaches this. */
 	if (argc > 1)
 		for (int i = 0; i < NTOOLS; i++)
 			if (!strcmp(TOOLS[i].name, argv[1]))

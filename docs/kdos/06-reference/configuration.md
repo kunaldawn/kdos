@@ -1,8 +1,13 @@
 # Configuration
 
-This page lists every configuration file on a KDOS system that a person may edit, every key in each
-one, its default, and when a change takes effect. It is for anyone who wants to change how the
-desktop looks or behaves, and for whoever administers the machine.
+This chapter lists every configuration file on a KDOS system that a person may edit, every key in
+each one, its default, and when a change takes effect. It also lists the files the image ships for
+third-party programs, the environment a login sets, and the generated files that must not be
+edited. It is for anyone who wants to change how the desktop looks or behaves and for whoever
+administers the machine. It is a reference: the chapters on
+[the session](../03-architecture/session.md) and
+[administration](../02-user-guide/administration.md) explain the same files in the context of the
+jobs they belong to.
 
 There is no settings database and no abstraction layer. Each file below is read directly by the
 program that acts on it, so the file *is* the setting. The Settings program (`kdos-settings`) writes
@@ -28,11 +33,14 @@ Terms such as *surface*, *chrome*, *accent*, *box* and *pack* are defined in the
 A new account is populated from `/etc/skel`. Editing a file there changes the defaults for accounts
 created afterwards and leaves existing accounts alone.
 
-Where a program honours `$XDG_CONFIG_HOME`, `~/.config` below means that directory.
+Where a program honours `$XDG_CONFIG_HOME`, `~/.config` below means that directory. Three files are
+always looked up under `$HOME/.config` whatever that variable says: box profiles, `kdos/a11y` and
+`kdos/displays.conf`.
 
 ## When a change takes effect
 
-Every key table below uses one of these words.
+Where a key table has an *Applies* column, it uses one of these words. The other tables say in
+prose when a change counts.
 
 | Word | Meaning |
 |---|---|
@@ -41,20 +49,24 @@ Every key table below uses one of these words.
 | next login | The value becomes part of a supervised program's command line, so it is read once per session |
 | create time | When a box is created. A running box keeps what it was created with |
 | boot | Read once during startup |
+| next launch | The next time an application in that box is launched |
+| next collection | The next `kdos-box gc` pass |
+| — | Recorded only; nothing acts on the key |
 
 ## File format
 
 Most KDOS configuration files are `key = value`, one per line; the few that are not (`favorites`,
 `slit.conf`, `displays.conf`, `timers.d`, and the files whose presence alone is the setting) show
-their format in their own section. A line whose first non-blank
-character is `#` is a comment. The files are *parsed, never sourced*: there is no shell, no command
-substitution and no variable expansion, apart from the two path spellings noted under `comp.conf`.
-A `#` after a value is part of the value, not a comment.
+their format in their own section. A line whose first non-blank character is `#` is a comment.
+The files are *parsed, never sourced*: there is no shell, no command substitution and no variable
+expansion, apart from the two path spellings noted under `comp.conf`.
+A `#` after a value is part of the value, not a comment, except in `backup.conf`, where a `#`
+anywhere on a line starts a comment, so a path there cannot contain `#`.
 
 Where a key takes yes or no, `yes`, `true`, `on` and `1` mean yes, and `no`, `false`, `off` and `0`
 mean no. `comp.conf` matches these in any case; the other files want them in lower case. In
-`panel.conf`, `start_label` and `task_labels` take only `yes` or `on`, and `no` or `off`, and report
-any other value.
+`panel.conf`, `start_label` takes only `yes` or `on`, and `no` or `off`; `task_labels` takes those
+and `auto`. Both report any other value.
 
 `comp.conf`, `res.conf`, `term.conf`, box profiles and sandbox profiles report a key they do not
 recognise, by name. `comp.conf` messages go to the compositor's log,
@@ -68,7 +80,8 @@ name it does not recognise, and skips an unknown key without a message.
 
 ### `~/.config/kdos/comp.conf`
 
-The compositor's KDOS settings: the phosphor effect, the idle timers, the lid, the wallpaper, and
+The compositor's KDOS settings: the phosphor pass (the CRT-imitating shader over the whole desktop;
+see the [Glossary](glossary.md)), the idle timers, the lid, the wallpaper, and
 the shape of the panel and other chrome the compositor starts. Keyboard bindings, mouse behaviour,
 workspaces and window rules belong to [`rc.xml`](#configkdos-comprcxml); a line of that kind here
 is reported by name and ignored.
@@ -78,10 +91,10 @@ The shipped file has every key commented out at its default, with an explanation
 | Key | Default | Range | Applies | Means |
 |---|---|---|---|---|
 | `wallpaper` | `/usr/share/backgrounds/kdos/default-wallpaper.png` | path or `none` | immediate | The desktop background, scaled to cover the output and centred. See the note below about the retinted copy |
-| `crt` | `55` | 0–100 | immediate | Strength of the phosphor effect, in per cent. `0` turns it off |
-| `crt_scanlines` | `0` | 0–100 | immediate | Scanline depth. `60` is the strength the rest of the effect is tuned against |
-| `crt_curve` | `0` | 0–100 | immediate | Screen curvature |
-| `crt_fullscreen` | `on` | yes/no | immediate | Whether the effect covers a fullscreen window. `off` skips it on that output while the fullscreen window has focus |
+| `crt` | `55` | 0–100 | see below | Strength of the phosphor pass, in per cent. `0` turns it off. Any change is immediate except raising it from `0`, which waits for the next login. See the note on the phosphor pass below |
+| `crt_scanlines` | `0` | 0–100 | immediate | Scanline depth. `60` is the strength the rest of the pass is tuned against |
+| `crt_curve` | `0` | 0–100 | immediate | Screen curvature. Whether the pointer follows the curve is decided at login; see below |
+| `crt_fullscreen` | `yes` | yes/no | immediate | Whether the pass covers a fullscreen window. `off` skips it on an output whose topmost window on the current workspace, not counting minimised ones, is fullscreen, whether or not that window has focus |
 | `idle_dim` | `300` | 0–86400 | immediate | Seconds of inactivity before the screen dims; `0` never |
 | `idle_lock` | `600` | 0–86400 | immediate | Seconds of inactivity before the session locks; `0` never |
 | `idle_off` | `900` | 0–86400 | immediate | Seconds of inactivity before the outputs power off; `0` never |
@@ -94,17 +107,26 @@ The shipped file has every key commented out at its default, with an explanation
 | `panel_opacity` | `80` | 20–100 | next login | Opacity of the panel's background, in per cent. Text and icons stay opaque |
 | `panel_autohide` | `no` | yes/no | next login | Whether the panel retreats to a one-row strip until the pointer reaches it |
 | `desktop_icons` | `yes` | yes/no | next login | Whether `~/Desktop` is drawn as icons on the background |
-| `icons` | `yes` | yes/no | next login | Whether the desktop's surfaces draw pictures at all. `no` gives every surface its text-only form |
+| `icons` | `yes` | yes/no | next login | Whether the panel and the desktop icons draw pictures. `no` gives those two their text-only form; the menus, popups and windows the panel opens still draw theirs |
 | `slit` | `no` | yes/no | next login | The column of small status gadgets, configured in [`slit.conf`](#configkdosslitconf) |
 | `clipboard` | `yes` | yes/no | next login | The clipboard history, which also keeps a copied selection alive after the program it came from closes |
-| `chrome_font` | `Terminus:pixelsize=32` | fontconfig pattern | next login | The font every KDOS surface draws with |
+| `chrome_font` | `Terminus:pixelsize=32` | fontconfig pattern | next login | The font of the surfaces the compositor starts and supervises, apart from the panel bar. See the note on the two font keys below |
 | `clock_format` | `%H:%M` | `strftime` format | next login | The panel clock. `%a %d %H:%M` adds the day and date |
 
 **Values out of range are refused.** A number outside a key's range, or one that does not parse
 (`idle_dim = 5m`), is reported and the default stands. A line with an empty value is reported and
 ignored; to turn the wallpaper off, write `wallpaper = none`. `panel_opacity` stops at 20 because a
-panel at zero opacity is not see-through, it is a row of invisible controls that still catch the
-pointer.
+panel much fainter than that is all but invisible, while its controls still catch the pointer.
+
+**The phosphor pass at login.** Three decisions about the pass are taken once, when the compositor
+starts, from the `comp.conf` in force at that moment. Whether the pass exists at all: raising `crt`
+from `0` during a session logs that the pass is off until a new session and draws nothing. Direct
+scanout (a fullscreen client's buffer sent to the display without compositing) is switched off for
+the whole session while the pass is on, and lowering `crt` to `0` mid-session removes the effect but
+does not switch scanout back on. The hardware cursor: with `crt` and `crt_curve` both above `0` at
+login, the pointer is drawn in software so that it bends with the picture; turning `crt_curve` on
+mid-session keeps the hardware cursor, which does not follow the distortion and drifts off its
+hotspot towards the screen edges.
 
 **Paths.** A `wallpaper` value may begin `~/` or `$HOME/`; both are expanded. No other value is.
 
@@ -118,11 +140,15 @@ because a blanked screen over a remote display looks exactly like a crashed comp
 virtual lid event is a stray ACPI report rather than a decision. Setting any one `idle_*` key switches
 the virtual-machine default off for all three: the keys you set take your values and the others take
 their normal defaults (300, 600 and 900). Write `idle_lock = 0` explicitly if you still want no
-lock. Setting `lid_close` does the same for the lid. Only a line that parses counts: `idle_dim = 5m` is refused and does not
-switch the timers back on.
+lock. Setting `lid_close` does the same for the lid. Only a line that parses counts:
+`idle_dim = 5m` is refused and does not switch the timers back on. The machine is taken to be
+virtual from its DMI system-vendor string, or when the compositor runs nested or headless with no
+seat session; a hypervisor that string does not name leaves the timers on.
 
-**A startup-only key changed during a session** is reported by name when the compositor reloads,
-and the running value is kept until the next login.
+**A startup-only key changed during a session** is reported in the log when the compositor
+reloads, and the running value is kept until the next login. `panel_font`, `chrome_font` and
+`clock_format` are each named in a message of their own. The other panel keys, `icons`, `slit`,
+`desktop_icons` and `clipboard` share one message, which names all of them except `clipboard`.
 
 The two font keys have three writers besides your editor:
 
@@ -130,11 +156,17 @@ The two font keys have three writers besides your editor:
   copying every other line of the file byte for byte, comments included.
 - `kdos-settings` writes either pattern whole: `chrome_font` on its Appearance page, `panel_font` on
   its Panel page.
-- `kdos theme style` writes `chrome_font` when a style file names it.
+- `kdos theme style` writes `chrome_font` when a style file names it. The same command rewrites
+  `crt`, `crt_scanlines`, `crt_curve`, `crt_fullscreen` and `clock_format` when the style names
+  them, keeping every other line of the file, and appends a key the file does not yet carry.
 
-Whichever writes it, the effect is *next login*. Every surface is its own process and reads
-`comp.conf` once as it starts, so a face chosen in the picker is live in that window at once and on
-any other surface the next time that surface starts.
+Only the compositor reads the two keys, and it hands them on as a `--font` argument to the
+programs it starts and supervises: `panel_font` to the panel bar (`kdos-shell`), `chrome_font` to
+the others, such as the desktop icons (`kdos-desk`), the slit and the notifications (`kdos-notifyd`).
+They take a change at the next login. Every other surface, including the menus and popups the panel
+opens, is started without `--font` and draws in the toolkit's built-in `Terminus:pixelsize=32`
+whatever these keys say. A face chosen in `kdos-style`'s picker is live at once in that window
+alone.
 
 Terminus is a bitmap font with the sizes 12, 14, 16, 18, 20, 22, 24, 28 and 32. Name one of those,
 or the nearest size it does have is used instead. The sizes are pixels and there is no automatic
@@ -175,14 +207,13 @@ sample, since reading it walks `/sys/class/hwmon` and a temperature does not cha
 half a second. Where no sensor answers, the meter holds its last value rather than drawing zero.
 
 The `update` widget shows how many installed packages are older than the version this system's
-recipes describe. It reads the
-`behind` field of `/var/lib/kdos/update.json`, which the system's
+recipes describe. It reads the `behind` field of `/var/lib/kdos/update.json`, which the system's
 [update-check timer](#etckdostimersd-and-configkdostimersd) writes nightly with
 `kdos update check --json`; `$XDG_STATE_HOME/kdos/update.json` is the fallback for a machine whose
 timer is off and whose owner ran the check themselves. The file is re-read at most once a minute.
 With no file the badge is not drawn.
 
-Every default is restored before the file is parsed, on each reload, so deleting a line really does
+Every default is restored before the file is parsed, on each reload, so deleting a line does
 return that key to its default.
 
 ### `~/.config/kdos/launcher.conf`
@@ -226,19 +257,24 @@ org.xfce.mousepad code=ED
 gimp code=IM
 ```
 
-Delete every line for a bare desktop. Each surface shows the first eight identifiers; later lines
-are read and never shown. An identifier with no installed entry is skipped silently, so a boxed
-application that is not installed yet leaves no dead launcher.
+Delete every line for a bare desktop. Blank lines and lines starting with `#` are skipped. Each
+surface shows at most eight rows; an identifier with no installed entry is skipped silently, so a
+boxed application that is not installed yet leaves no dead launcher.
 
 **Two-letter codes.** A line may carry `code=XX`. The code is drawn at the right of the row, in the
 Start menu and in `kdos-palette`, and typing those two letters (in either case) with nothing else
-in the search field opens that row at once — no arrow keys and no `Enter`. This is the shorthand
-DESQview's Open Window menu used. Letters are only taken as a code while a code could still match
-them; with no coded line, or a first letter no code starts with, they are an ordinary search.
-`kdos-launcher` does not act on codes.
+in the search field opens that row at once — no arrow keys and no `Enter`. The Start menu checks
+for a code when the second letter lands, so a third letter is always an ordinary search. The
+palette holds a first letter back only while some code starts with it; with no coded line, or a
+first letter no code starts with, the letters go into the search field. `kdos-launcher` does not
+act on codes.
 
-Anything else after the identifier is ignored rather than refused, so a line written for a later
-version still launches.
+The Start menu and the palette read the first word of a line as the identifier and ignore anything
+else after it, so a line that carries a field these surfaces do not know still launches. The
+panel's quick-launch row does not split the line: it looks up the whole line as the identifier, so
+a line that carries `code=` or any other word finds no entry and is not shown on the panel. All
+seven shipped lines carry a code, so on a new account the panel's quick-launch row is empty and the
+pinned applications appear only in the Start menu and the palette.
 
 **The terminal.** A line naming `foot` or `kdos-term` opens whichever terminal emulator the session
 uses — the same one every chord, menu row and `Terminal=true` entry gets. Every other line opens
@@ -276,11 +312,13 @@ Ships absent. Its existence is the setting; its contents are ignored. With it, t
 applications that were running when the session ended are started again at the next login, two
 seconds apart, in the background.
 
-The list is `$XDG_STATE_HOME/kdos/session`, written by `kdos-session-save` from the menu's Log Out,
-Restart and Shut Down rows (and from `Super+Escape`), before the confirmation dialog. Each line is
-`app <name>` for a boxed application or `native <app_id>` for a host program. Only the `app` lines
-are relaunched. Where windows reappear on screen is decided by `comp.conf`'s `window_memory`, not by
-this list.
+The list is `$XDG_STATE_HOME/kdos/session`, written by `kdos-session-save` before the confirmation
+dialog of the desktop menu's Log Out, Restart and Shut Down rows (`~/.config/kdos-comp/menu.xml`)
+and of `Super+Escape` (`rc.xml`). The Start menu's power row does not run it, so a session ended
+from there leaves the previous list in place. Each line is `app <name>` for a boxed application
+found running among `/usr/share/kdos/alien-apps`, or `native <app_id>` for a host window. Only the
+`app` lines are relaunched, and only when `kdos-appbox` is installed. Where windows reappear on
+screen is decided by `comp.conf`'s `window_memory`, not by this list.
 
 To turn it on:
 
@@ -297,6 +335,7 @@ separate arguments, so a directory with a space in its name stays one path.
 | Key | Default | Means |
 |---|---|---|
 | `repo` | — | The restic repository |
+| `password-file` | `~/.config/kdos/backup.pass` | The file holding the repository's password |
 | `include` | — | A directory to back up. Repeatable, eight at most |
 | `exclude` | — | A directory to leave out. Repeatable, eight at most |
 
@@ -341,7 +380,7 @@ The two tiers differ in when a job can fire:
 | Tier | Started by | Fires |
 |---|---|---|
 | `/etc/kdos/timers.d/` | The system supervisor, at boot (`/etc/init.d/18_timers.sh`), as root | Every occurrence, whether or not anybody is logged in |
-| `~/.config/kdos/timers.d/` | Your session, at login, and stopped when it ends | Every occurrence while that login lasts |
+| `~/.config/kdos/timers.d/` | Your session, at login; the next session start on the same boot stops the previous set | Every occurrence until the next login on the same boot, or a reboot; a logout does not stop them |
 
 `snooze` waits for its slot, runs the command once and exits, so something has to start it again.
 For the system tier the supervisor does that; each system job is a service named
@@ -391,7 +430,9 @@ file enables. Nothing reads the desktop itself; see
 ### `~/.config/kdos/displays.conf`
 
 The screen layout `kdos-display` keeps. It is written when you keep a layout in `kdos-display`, and
-replayed by `kdos-display --apply`, which the compositor runs at each login. One line per screen:
+replayed by `kdos-display --apply`, which the compositor runs whenever a screen appears — at login
+and on every hotplug, debounced by one second so a dock bringing up three screens triggers one
+replay. One line per screen:
 
 ```
 output <name> mode <W>x<H>@<mHz> scale <milli> transform <n> pos <x> <y>
@@ -400,7 +441,8 @@ output <name> off
 
 Refresh is in millihertz and scale in thousandths (`scale 1500` is 1.5×). A screen switched off
 has its own `off` line, so it stays off at the next login. A screen the file does not name is left
-as the compositor brought it up.
+as the compositor brought it up, and a line that does not parse is skipped. The file is written to
+a temporary name and renamed into place, so an interrupted write never leaves half a layout.
 
 ### `~/.local/state/kdos/toggles/`
 
@@ -409,7 +451,7 @@ The on/off switches a desktop needs at hand. A file's presence means on; there i
 | Toggle | Means | Read by |
 |---|---|---|
 | `stay-awake` | Never dim, lock or blank on idle | The compositor's idle timers |
-| `night-light` | Warm the colour palette | Every surface, on the retint signal |
+| `night-light` | Warm the colour palette | Every surface, on the reload signal (`SIGHUP`) |
 | `dnd` | Do not disturb: hold notifications back | The notification daemon, `kdos-notifyd` |
 
 `kdos toggle` lists them, `kdos toggle <name>` flips one, and `kdos toggle <name> on|off` sets it.
@@ -418,8 +460,9 @@ The menu routes `toggle.night`, `toggle.quiet` and `toggle.awake` do the same (s
 
 These are state files rather than configuration keys because another process sets them — a chord,
 a menu row, a script before a long build — and their readers must not hold a copy. `stay-awake` and
-`dnd` are checked on a timer their readers already run. `night-light` is applied on the retint
-signal, which `kdos toggle` sends after writing the file.
+`dnd` are checked on a timer their readers already run. `night-light` is applied when a surface
+receives `SIGHUP`, which `kdos toggle` sends to the compositor and every long-lived surface after
+writing the file, as `kdos theme` does after an accent change.
 
 `stay-awake` suppresses all three idle steps, not only the first: somebody who turned the
 screensaver off for a presentation did not ask to be locked either.
@@ -449,8 +492,47 @@ toggle.night       = kdos toggle night-light
 ```
 
 The name is `verb.noun`, and the verb describes what you are doing rather than which program does
-it: someone looking for Wi-Fi is setting something up, whichever surface owns it. The shipped verbs
-are `setup`, `style`, `system`, `learn`, `capture`, `share`, `toggle` and `about`.
+it: someone looking for Wi-Fi is setting something up, whichever surface owns it. The system file
+ships 35 routes under eight verbs: `setup` (10), `system` (7), `style` (5), `capture` (5),
+`toggle` (3), `learn` (2), `share` (2) and `about` (1):
+
+| Route | Runs |
+|---|---|
+| `setup.network` | `kdos-net` |
+| `setup.bluetooth` | `kdos-bt` |
+| `setup.sound` | `kdos-audio` |
+| `setup.displays` | `kdos-display` |
+| `setup.devices` | `kdos-devices` |
+| `setup.printers` | `kdos-print` |
+| `setup.users` | `kdos-users` |
+| `setup.time` | `kdos-time` |
+| `setup.tui` | `kdos app tui` |
+| `setup.applications` | `kdos-store` |
+| `style.theme` | `kdos-style` |
+| `style.font` | `kdos-style --page font` |
+| `style.background` | `kdos-settings --page appearance` |
+| `style.panel` | `kdos-settings --page panel` |
+| `style.desktop` | `kdos-settings --page desktop` |
+| `system.settings` | `kdos-settings` |
+| `system.monitor` | `kdos-res` |
+| `system.power` | `kdos-energy` |
+| `system.disks` | `kdos-disks` |
+| `system.connect` | `kdos-connect` |
+| `system.boxes` | `kdos-res --page boxes` |
+| `system.notifications` | `kdos-notify` |
+| `learn.keys` | `kdos-keys` |
+| `learn.docs` | `kdos-doc` |
+| `capture.region` | `kdos-shot region` |
+| `capture.screen` | `kdos-shot screen` |
+| `capture.record` | `kdos-record` |
+| `capture.sound` | `kdos-rec` |
+| `capture.qr` | `kdos-shot qr` |
+| `share.file` | `kdos-share` |
+| `share.clipboard` | `kdos-share --clipboard` |
+| `toggle.night` | `kdos toggle night-light` |
+| `toggle.quiet` | `kdos toggle dnd` |
+| `toggle.awake` | `kdos toggle stay-awake` |
+| `about.system` | `kdos-about` |
 
 The command is split on spaces and run without a shell. There is no quoting, so a route cannot
 become a way to run arbitrary shell code from a file you own.
@@ -470,7 +552,8 @@ surface that asks for it and is never run.
 
 Below 100 columns the Start menu folds its system group behind one `Settings ▸` row, and the labels
 named in `@toplevel` stay listed beside it. The value is labels as the menu draws them, separated
-by spaces or commas, matched whole and case-insensitively. A label that matches no row is ignored
+by spaces or commas, matched whole and case-insensitively. Because a space separates labels, a
+label that itself contains a space cannot be promoted. A label that matches no row is ignored
 silently.
 
 `kdos-settings` writes `@toplevel` on its Panel page into *your* copy, copying every other line of
@@ -486,21 +569,25 @@ The resource monitor, `kdos-res`. The file is optional; an unknown key is report
 
 | Key | Default | Means |
 |---|---|---|
-| `interval` | `1000` | Sampling interval in milliseconds, clamped to 200–60000. A monitor sampling faster than 200 ms mostly measures itself |
-| `units` | `1024` | `1024` gives KiB/MiB/GiB; `1000` gives kB/MB/GB |
+| `interval` | `1000` | Sampling interval in milliseconds, clamped to 200–60000; a value that is not a number counts as 0 and becomes 200. A monitor sampling faster than 200 ms mostly measures itself |
+| `units` | `1024` | `1024` gives binary sizes with the suffixes `K`, `M`, `G`; `1000` gives `kB`, `MB`, `GB` |
 | `temperature` | `c` | `c` or `f`, everywhere a sensor is shown |
-| `cpu_percent` | `core` | `core`: eight busy threads read 800%, as in `top`. `machine`: the same load reads 100% |
-| `memory` | `rss` | `rss` counts a shared page against every process using it; `pss` divides it between them, so the numbers add up |
+| `cpu_percent` | `core` | `core`: eight busy threads read 800%, as in `top`. `machine`: the same load reads 100%. Applies to the Processes page and the process detail; the Apps and Boxes pages always count per core |
+| `memory` | `rss` | Accepts `rss` and `pss` and stores the choice, but no page reads it: every memory figure is the resident set size (RSS), which counts a shared page against every process using it |
 | `kernel_threads` | `no` | Show kernel threads in the process table. The footer says how many are hidden either way |
-| `virtual_drives` | `no` | Show loop, zram and device-mapper devices on the Drives page |
+| `virtual_drives` | `no` | Show loop, `ram`, `zram` and device-mapper devices on the Drives page |
 | `virtual_net` | `no` | Show loopback, bridges and container interfaces on the Network page |
-| `icons` | `yes` | Draw pictures beside rows; `no` is text only |
+| `icons` | `yes` | Draw the page's picture in the header band; `no` leaves the header text only. Rows carry no pictures either way |
 | `sort` | `cpu` | The column the Processes, Apps and Boxes pages sort on. Processes accepts `cpu`, `memory`, `pid`, `name`, `disk`; Apps and Boxes accept `name`, `cpu`, `memory`, `disk`, `procs`. A name a page does not have leaves that page on its own default |
 | `columns` | empty | Parsed and stored, but no page applies it: every page draws all of its columns |
 
 `kdos-settings` writes all of these on its Hardware page and signals `kdos-res`, so a change
 applies immediately. After a hand edit, `pkill -HUP -x kdos-res` applies it. The `-x` matters:
 without it the signal also reaches `kdos-resctl`, a separate helper whose name starts the same way.
+
+A reload re-reads the file over the values already in force and does not restore the defaults
+first, so deleting a line leaves the old value running until `kdos-res` next starts. To return a
+key to its default at once, write the default value.
 
 ### `~/.config/kdos/term.conf`
 
@@ -510,11 +597,11 @@ key is reported by name. Numbers outside a key's range are clamped to it.
 | Key | Default | Range | Means |
 |---|---|---|---|
 | `shell` | `$SHELL`, then `/bin/sh` | command | What `kdos-term` runs when given no command. Split like a desktop entry's `Exec`; no shell is involved |
-| `font` | the toolkit's default | fontconfig name | The font and the size a window opens at. `Ctrl+=` and `Ctrl+-` step it for that window alone; `Ctrl+0` returns to this value |
+| `font` | `Terminus:pixelsize=32`, the toolkit's default | fontconfig name | The font and the size a window opens at. `Ctrl+=` and `Ctrl+-` step it for that window alone; `Ctrl+0` returns to this value |
 | `columns` | `80` | 20–1000 | Columns asked for when the window first opens |
 | `rows` | `24` | 4–1000 | Rows asked for when the window first opens |
 | `scrollback` | `2000` | 0–200000 | Lines kept above the screen |
-| `images` | `yes` | yes/no | Decode pictures. `no` turns the three image protocols off in the parser, not merely in the drawing |
+| `images` | `yes` | yes/no | Decode pictures. With `no`, the parser still delimits the three image protocols' sequences, with a 4 KB cap in place of `image_max`, and discards them undecoded; a kitty query (`a=q`) is answered with `ENOTSUP`, so a program falls back at once instead of waiting for a reply |
 | `image_max` | `1024` | 4–65536 | The largest single image payload accepted, in kilobytes |
 | `image_cells` | `200` | 1–1000 | The widest and tallest a picture may be, in cells |
 | `paste_guard` | `yes` | yes/no | The check behind the paste filter: hold back an unbracketed paste that still contains a control byte other than tab, and ask with a **Paste** / **Cancel** dialog. `no` turns the guard off; the filter stays on either way |
@@ -531,10 +618,14 @@ with a control byte left in it, and in practice its dialog never appears. See
 Below 100, `opacity` lets the desktop show through the terminal's background; text is never made
 transparent.
 
-`kdos-settings` writes all of these on its Desktop page and signals `kdos-term`, so a change reaches
-every open terminal. The file is re-read on `SIGHUP`, which `kdos theme` also sends. A window whose
-font size or transparency you stepped by hand keeps what you stepped: this file is where a window
-*starts*.
+`kdos-settings` writes all of these on its Desktop page and signals `kdos-term`. The file is
+re-read on `SIGHUP`, which `kdos theme` also sends. A window takes `shell`, `font`, `columns`,
+`rows`, `scrollback` and `opacity` when it opens, so a reload changes them only for windows opened
+afterwards; the same holds for turning `images` on in a window that opened with it off.
+`paste_guard`, `image_cells` and turning `images` off are consulted per paste and per picture, so
+open windows follow them at once. As with `res.conf`, a reload does not restore defaults first, so a
+deleted line keeps its last value until the terminal restarts. A window whose font size you stepped
+with `Ctrl+=` or `Ctrl+-` keeps what you stepped: this file is where a window *starts*.
 
 ### `~/.config/kdos/boxes/<name>.conf`
 
@@ -542,32 +633,39 @@ One file per box — the container a boxed application runs in (see
 [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box)). Each key maps onto a
 container-engine flag or onto something KDOS enforces itself, and `kdos-box profile <name>` prints
 which, including what the key cannot enforce. Edit these with `kdos-box profile`, or through
-`kdos-settings`, which runs that command rather than writing the file itself.
+`kdos-settings`, which runs that command rather than writing the file itself. A box with no profile
+file takes every default below, which is what a plain `distrobox create` gives.
+
+A box is made on one of two *lanes*, chosen by `base`: the *pack lane* (`pack:<id>`) creates it with
+`podman create --rootfs` over a composed pack, and the *store lane* (`image:<ref>`) with
+`distrobox create` over a container image. The lanes honour different subsets of the keys below;
+[kdos-appbox](../04-programs/kdos-appbox.md#two-ways-an-application-reaches-a-box) has the full
+flag-by-flag mapping.
 
 Namespace keys (`network`, `ipc`, `processes`, `devices`, `home`) are yes-or-no in effect: `private`
 (or any yes spelling) gives the box its own; anything else shares the host's.
 
 | Key | Default | Applies | Means |
 |---|---|---|---|
-| `base` | — | create time | `pack:<id>`, `box:<name>`, or `image:<ref>` |
+| `base` | — | create time | `pack:<id>` or `image:<ref>`. `box:<name>` parses, but `kdos-box create` does not complete with it; see [known gaps](known-gaps.md#kdos-box-create-with-a-box-base-never-finishes) |
 | `image` | — | create time | The registry reference, for an image base |
 | `persistence` | `persistent` | — | `persistent`, `ephemeral` or `frozen`. Recorded only: no launch reads it, and a box's writes land wherever its runtime puts them |
-| `network` | `host` | create time | `host`, `private`, or `none` — a private namespace with no interface at all |
+| `network` | `host` | create time | `host`, `private`, or `none`. On a pack box `none` is a private namespace with no interface at all; a store-lane box gets `--unshare-netns` for both `private` and `none`, so it keeps an interface |
 | `ipc` | shared | create time | IPC namespace |
 | `processes` | shared | create time | PID namespace |
 | `devices` | shared | create time | Whether the host's `/dev` and `/sys` are shared |
-| `home` | shared | create time | `private` gives the box its own home under `~/.local/share/kdos/boxes/<name>` instead of your `$HOME` |
+| `home` | shared | create time | `private` gives the box its own home under `$XDG_DATA_HOME/kdos/boxes/<name>` (by default `~/.local/share/kdos/boxes/<name>`) instead of your `$HOME` |
 | `init` | `no` | create time | Whether the engine runs an init (`catatonit`) inside the container |
 | `wayland` | `yes` | next launch | Whether the box gets its own tagged compositor socket. `no` cannot be enforced — the box shares `$XDG_RUNTIME_DIR`, which holds the session's socket — and the profile printer says so |
 | `audio` | `yes` | create time | Follows `devices`; see below |
 | `gpu` | `yes` | create time | The graphics card's device nodes |
 | `render` | `auto` | next launch | Which graphics the box's applications get: `auto`, `gpu`, or `software` |
-| `memory` | — | create time | Memory limit such as `4G`, passed to the engine as `--memory`. The memory daemon also prefers a box over its limit when it has to kill something, since rootless containers often cannot enforce the flag |
-| `cpus` | — | create time | CPU quota, as the engine's own `--cpus` value |
-| `pids` | — | create time | Process-count limit (`--pids-limit`) |
-| `autostop` | `0` | next collection | Idle time after which `kdos-box gc` stops the box: `90s`, `30m`, `2h`, or bare seconds. `0` disables |
+| `memory` | — | create time | Memory limit such as `4G`, passed to the engine as `--memory` on the pack lane only; a store-lane box receives no limit. The memory daemon also prefers a box over its limit when it has to kill something, since rootless containers often cannot enforce the flag |
+| `cpus` | — | create time | CPU quota, as the engine's `--cpus` value, on the pack lane only |
+| `pids` | — | create time | Process-count limit (`--pids-limit`), on the pack lane only |
+| `autostop` | `0` | next collection | Running time, counted from when the box started, after which `kdos-box gc` stops it if none of its windows is open: `90s`, `30m`, `2h`, or bare seconds. `0` disables |
 | `accent` | — | immediate | The box's colour, drawn as a chip on its windows' title bars |
-| `grant` | — | immediate | Compositor features the sandbox otherwise refuses, comma-separated (see below) |
+| `grant` | — | next client, after a compositor reload | Compositor features the sandbox otherwise refuses, comma-separated (see below). A running client keeps what it bound |
 | `export` | — | — | Recorded only. `auto` does not create launchers by itself: `kdos-appbox genlaunchers` covers every installed pack and store box, and `kdos-box export` covers one application |
 | `display` | — | — | Recorded only; nothing on this desktop reads it. It is kept so that rewriting a profile does not drop it |
 
@@ -594,7 +692,9 @@ list grants nothing. Each opens the matching Wayland protocols to that box's win
 
 ### `~/.config/kdos/sandbox/<profile>.conf`
 
-Profiles for `kdos sandbox`, which runs a *native* (non-boxed) program under a Landlock ruleset. A
+Profiles for `kdos sandbox`, which runs a *native* (non-boxed) program under a Landlock ruleset.
+Landlock is the kernel's access-control interface that an unprivileged process applies to itself;
+the kernel reports which version of it (its ABI) it supports, and rules about TCP need ABI 4. A
 profile is named on the command line — `kdos sandbox <profile> -- <cmd>` — and combines with the
 command-line options.
 
@@ -602,11 +702,15 @@ command-line options.
 |---|---|---|
 | `read` | yes | A path the program may read |
 | `write` | yes | A path the program may read and write |
-| `network` | no | `off` denies TCP bind and connect. Needs Landlock ABI 4; on an older kernel `--explain` says it cannot be enforced |
+| `network` | no | `off` denies TCP bind and connect. Any other value leaves the network open. Needs Landlock ABI 4 |
 | `tcp-connect` | yes | A TCP port the program may still connect to while `network = off` |
 
-An unknown key is reported. `kdos sandbox <profile> --explain` prints exactly what will be asked
-for. See [`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox).
+A profile holds at most 64 `read` paths, 64 `write` paths and 64 ports. An unknown key is reported.
+`kdos sandbox <profile> --explain` prints exactly what will be asked for, including what this
+kernel cannot enforce. Nothing runs unconfined: with no Landlock at all, or with `network = off` on a
+kernel below ABI 4, `kdos sandbox` refuses to start the program rather than run it with less
+confinement than the profile asked for. See
+[`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox).
 
 ---
 
@@ -630,13 +734,37 @@ Applies at next login, or on reload for the parts the compositor re-reads.
 
 ### `~/.config/kdos-comp/menu.xml`
 
-The desktop's root and window menus. It lists no applications on purpose: those come from a program
-that reads the same desktop entries everything else does, so the menu cannot go stale.
+The desktop's root menu (a right click on the background) and the window menu, in labwc's format.
+The root menu lists no applications by name: its Applications, Places and System rows run
+`kdos-menu`, which reads the same desktop entries everything else does, so the menu cannot go
+stale. Its Log Out, Restart and Shut Down rows save the session list before they ask; see
+[`session-restore`](#configkdossession-restore). Applies at next login, or when the compositor
+reloads its configuration.
 
 ### `~/.config/kdos-comp/themerc-override`
 
 Generated by `kdos theme`; do not edit. The dotted keys of a style file are kept in
 `~/.config/kdos/style-themerc` and appended after the generated block, where they win.
+
+### `~/.config/kdos-comp/environment`
+
+Optional `KEY=value` lines, one per line, in labwc's format, plus any `*.env` file in
+`~/.config/kdos-comp/environment.d/`. The image ships neither. The compositor reads them when it
+starts and again when it reloads its configuration, and each line overwrites the value the login
+shell exported, so this is where to change a variable for the compositor and everything it starts
+without editing `/etc/profile.d` (see [Shell environment](#shell-environment)). A value may use
+`~` and `$VARIABLE`. Do not write `FOO=$FOO:bar`: each reload would append again, and a value that
+grows past the compositor's size limit is refused.
+
+The pointer size is the usual case. The login sets `XCURSOR_SIZE=24`; the compositor reads the
+variable after this file, when it loads the cursor theme, so
+
+```ini
+XCURSOR_SIZE=48
+```
+
+gives a larger pointer from the next login, or from the next reload for the compositor's own
+pointer. The `KDOS-cursors` theme holds the sizes 24, 32, 48, 64 and 96.
 
 ---
 
@@ -648,10 +776,11 @@ The pack daemon, `kdos-packd`, which installs and mounts application packs.
 
 | Key | Default | Applies | Means |
 |---|---|---|---|
-| `retain` | `1` | next start | How many superseded versions of a pack the store keeps |
+| `retain` | `1` | next start | How many superseded versions of a pack the store keeps, at most 8 |
 
 Retention is what makes rollback possible: `1` keeps the version you just replaced. `0` keeps none,
-and a rollback then answers that no earlier version is kept.
+and a rollback then answers that no earlier version is kept. A negative value counts as `0`, and a
+value above 8 keeps 8. The environment variable `KDOS_PACK_RETAIN`, when set, overrides the file.
 
 Old versions are removed right after an install and at no other time, so a background job never
 deletes a rollback while you are deciding whether to use it.
@@ -665,11 +794,14 @@ Compressed swap in RAM.
 | `size` | `50` | 1–90 | boot | Swap size as a percentage of RAM |
 | `algorithm` | `zstd` | a compressor the kernel carries | boot | Compression algorithm |
 
-`size` is how much swap the device may claim to hold, not how much memory it uses — the compressed
-pages live in that same memory. A value outside 1–90 is reported and 50 is used. An algorithm the
-kernel does not carry is reported and the kernel's default stands. While the device is active,
-zswap is turned off (so no page is compressed twice) and `vm.page-cluster` is 0 (read-ahead on zram
-is wasted decompression); stopping the service restores both.
+The service is `/etc/init.d/12_zram.sh`. `size` is how much swap the device may claim to hold, not
+how much memory it uses — the compressed pages live in that same memory. Only the leading run of
+letters and digits in the `size` value is read: `12.5` is taken as 12, and a run that contains a
+letter is ignored, leaving 50. A value outside 1–90 is reported and 50 is used. An algorithm
+the kernel does not carry is reported and the kernel's default stands. The device is swap at
+priority 100, ahead of any disk swap. While it is active, zswap is turned off (so no page is
+compressed twice) and `vm.page-cluster` is 0 (read-ahead on zram is wasted decompression);
+stopping the service turns zswap back on and sets `vm.page-cluster` to the kernel default of 3.
 
 ### `/etc/kdos/mountd.conf`
 
@@ -701,8 +833,11 @@ Not shipped. Tells `kdos update` where to take binary packages from.
 |---|---|---|
 | `binhost` | — | A directory holding a signed package index (made with `kpkg index <dir> --sign <key>`). A path, never a URL: a USB stick, an NFS mount or a local directory |
 
-`KDOS_BINHOST` overrides it. Without either, `kdos update` has nothing to install from and says so.
-The index's signature is checked against [`/etc/kdos/keys/`](#etckdoskeys). See
+`KDOS_BINHOST` overrides it. A binhost only saves compiling: `kdos update apply` takes a prebuilt
+package where the binhost has one that matches this machine's recipe and builds from the ports tree
+where it does not. Without a binhost every package is built, and `kdos update apply --binhost-only`
+refuses to start. `kdos update check --json` reports the binhost it found and whether its index is
+signed. The index's signature is checked against [`/etc/kdos/keys/`](#etckdoskeys). See
 [`kdos update`](../04-programs/kdos-command.md#kdos-update).
 
 ### `/etc/kdos/keys/`
@@ -739,25 +874,25 @@ Which account tty1 logs in without a password, and nothing else.
 |---|---|---|---|
 | `autologin` | `kdos` | boot | The account tty1 logs in automatically |
 
-With the key absent or commented out, tty1 shows a password prompt. Turning autologin off comments
-the line out rather than emptying it — an empty value would name an account called `""`. That is
-what `kdos-power autologin off` writes, and what the installer writes when you choose no autologin.
+With the key absent, commented out or empty, tty1 shows a password prompt. `kdos-power autologin
+off` and the installer, when you choose no autologin, comment the line out.
 
-This is the only place the desktop account is named: `/etc/inittab` names none. **If you rename the
-desktop user, update this key**, or tty1 fails to log in and the machine is reachable only from
-tty2.
+This is the only place the desktop account is named: `/etc/inittab` names none. If the desktop user is
+renamed, this key must be changed with it, or tty1 fails to log in and the machine is reachable
+only from tty2.
 
 ### `/etc/nftables.conf`
 
-The firewall. It is applied at boot, before the network starts, after a syntax check — a ruleset
-that does not load leaves the previous state standing rather than half-applying. The file replaces
-only its own `inet filter` table, so podman's `inet netavark` table and NetworkManager's
-`nm-shared-*` tables survive a reload, and changing the firewall does not cut off running
-containers or hotspot clients.
+The firewall. `/etc/init.d/25_nftables.sh` applies it at boot, before the network starts, after a
+syntax check (`nft -c`) — a ruleset that does not load leaves the previous state standing rather
+than half-applying. The file replaces only its own `inet filter` table, so podman's `inet netavark`
+table and NetworkManager's `nm-shared-*` tables survive a reload, and changing the firewall does not
+cut off running containers or hotspot clients.
 
 The shipped policy:
 
-- **Input** is dropped by default. Accepted: established and related traffic, loopback, the
+- **Input** is dropped by default, and packets in the `invalid` connection state are dropped
+  explicitly. Accepted: established and related traffic, loopback, the
   necessary ICMP and ICMPv6 types (including neighbour discovery and router advertisements),
   multicast DNS (UDP 5353), NetBIOS name service (UDP 137 to 137), DHCPv6 client replies (UDP 546),
   and DNS and DHCP from the NetworkManager hotspot range `10.42.0.0/16`.
@@ -771,23 +906,29 @@ stale rules across a reload):
 
 | File | Written by | Does |
 |---|---|---|
-| `50-kdos-services.nft` | `kdos-firewall`, through `kdos-powerd` | Opens the services you turned on |
 | `40-podman.nft` | Shipped | Lets rootful podman's bridges forward and reach their DNS |
+| `50-kdos-services.nft` | Shipped empty; rewritten by `kdos-firewall`, through `kdos-powerd` | Opens the services you turned on |
+
+The firewall is the one service `/etc/init.d/rcK` does not stop at shutdown, so the machine is
+never unprotected while the other services wind down.
 
 See [The firewall](../02-user-guide/administration.md#the-firewall) for opening a service.
 
 ### `/etc/fstab`
 
 Applies at boot. The shipped entries mount the kernel's pseudo-filesystems (`/proc`, `/sys`,
-`/dev`, tracefs, debugfs and bpf), the cgroup v2 hierarchy with `nsdelegate`, and two temporary
-filesystems: `/tmp` at mode 1777 and `/run` at mode 0755.
+`/dev`, tracefs, debugfs and bpf, the last three `nosuid,nodev,noexec`), the cgroup v2 hierarchy
+with `nsdelegate`, and two temporary filesystems, both `nosuid,nodev`: `/tmp` at mode 1777 and
+`/run` at mode 0755.
 
-`/tmp` must be mode 1777. With default options, the mount is root-only and *hides* the correctly
-permissioned directory underneath, so no ordinary user can write there — and every graphical
-application depends on it. A mounted filesystem ignores a mode change on remount, so the boot
-sequence also sets the mode explicitly.
+`/tmp` must be mode 1777, or no ordinary user can write there, and every graphical application
+depends on it. A tmpfs that is already mounted ignores a mode change on remount, so
+`/etc/init.d/rcS` also runs `chmod 1777 /tmp` itself. It creates `/run/lock` at mode 1777 for the
+same reason: the serial-port tools take their locks there as the user.
 
-The installer appends to this file rather than replacing it, to keep those entries.
+`mount -a` ignores swap lines, so `rcS` turns on any swap entry with `swapon -a`; the installer
+writes one for a swap partition or a swap file. The installer appends to this file rather than
+replacing it, to keep the shipped entries.
 
 ### `/etc/inittab`
 
@@ -798,11 +939,14 @@ Applies at boot. What each line starts:
 | tty1 | `kdos-login`, which hands the terminal to `agetty` and logs in the account `login.conf` names, if any |
 | tty2 | An ordinary `getty` login: the recovery console |
 | Serial line `ttyS0` | A root login shell (`bash -l`) after you press Enter, with no password |
+| `sysinit` | `/etc/init.d/rcS`, which starts every enabled service script in order |
+| `restart` | `/sbin/init`, executed in place of the running init when init is told to restart |
+| `ctrlaltdel` | `/sbin/reboot` |
 
 tty1 and tty2 both start through `kdos-getty`, which loads the console font and colour palette
-first. On shutdown, `/etc/init.d/rcK` runs every enabled service script's `stop` in reverse order —
-except the firewall, which stays loaded to the end — then turns swap off and remounts every
-filesystem read-only.
+first, and both respawn when their login ends. On shutdown, `/etc/init.d/rcK` runs every enabled
+service script's `stop` in reverse order — except the firewall, which stays loaded to the end —
+then `swapoff -a` turns swap off and `umount -a -r` remounts every filesystem read-only.
 
 ### `/etc/service.disabled/<name>`
 
@@ -819,6 +963,15 @@ The name is the init script's with the order prefix and `.sh` removed: `42_netwo
 absent or disabled this way, so turning NetworkManager off hands DHCP back to `dhcpcd` rather than
 leaving the machine with no DHCP client.
 
+The marker stops only the boot-time start. The image also ships
+`/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service`, which lets the system
+bus start NetworkManager as root on the first call to its name, and `kdos-netagent`, which every
+desktop session runs, makes that call when it registers as NetworkManager's secret agent. On a
+machine with the marker and the package still installed, NetworkManager therefore starts at the
+first desktop login, outside the service supervisor and beside the `dhcpcd` that `30_network`
+started, and both lease every interface. A machine that must not run NetworkManager needs the
+activation file removed as well, or the `networkmanager` package removed.
+
 ### `/etc/modprobe.d/kdos-regdom.conf`
 
 The Wi-Fi regulatory country, as `options cfg80211 ieee80211_regdom=<CC>`. Written by the installer
@@ -828,78 +981,53 @@ running radio.
 
 ### `/etc/keymap`
 
-The console keymap name, written by the installer. `kdos-getty` loads it on every terminal, and the
-session translates it into a graphical keyboard layout when it starts.
+The console keymap name, written by the installer and not shipped with the image. `kdos-getty`
+loads it on every terminal, and the session translates it into a graphical keyboard layout
+(`XKB_DEFAULT_LAYOUT`) when it starts. Console map names and graphical layout names are different
+vocabularies, so the session carries a table for the names that differ and otherwise takes the
+map's first two letters.
+
+### `/etc/kpkg.conf`
+
+Where the package manager `kpkg` keeps its trees. The file is written as shell assignments,
+`NAME="${NAME:-default}"`. `kpkg` parses it itself, reading `NAME=value` with no space before the
+`=` (a line spelt `NAME = value` is ignored) and unwrapping the `${...:-...}`. It is also sourced by
+bash at the start of every port's build, so a shell expression in it runs there. An exported
+environment variable of the same name always wins over the file, which is what the phase environment
+files of the build rely on. `KPKG_CONF` names a different file.
+
+| Key | Default | Means |
+|---|---|---|
+| `PORT_REPO` | `/ports/core` | The ports tree, or several separated by spaces |
+| `SOURCE_DIR` | `/var/cache/kpkg/sources` | Downloaded source archives |
+| `PACKAGE_DIR` | `/var/cache/kpkg/packages` | Built packages |
+| `WORK_DIR` | `/var/cache/kpkg/work` | Where a port is unpacked and built |
+| `PKGDB_DIR` | `/var/lib/kpkg/db` | The installed-package database |
+
+See [Packaging](../03-architecture/packaging.md).
+
+### Other machine files
+
+Files the image ships, under `/etc` and one under `/usr/share`, that an administrator may need to
+find. Each is in the
+format of the program that reads it.
+
+| Path | Read by | Does |
+|---|---|---|
+| `/etc/hostname` | `/etc/init.d/05_hostname.sh`, at boot | The machine's name, set with `hostname -F` |
+| `/etc/ld-musl-x86_64.path` | musl's dynamic loader, at every program start | The shared-library search path, one directory per line: `/usr/lib`, then `/usr/lib64`. It replaces musl's built-in default, so `/usr/local/lib` is not searched. There is no `ldconfig` and no cache to rebuild: a directory added here applies to the next program started |
+| `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service` | `dbus-daemon`, the system bus | Lets the bus start `/usr/sbin/NetworkManager` as root on the first call to its name, whether or not `/etc/service.disabled/networkmanager` exists; see [above](#etcservicedisabledname) |
+| `/etc/sysctl.conf` | `/etc/init.d/10_sysctl.sh`, at boot | Unprivileged ICMP sockets for every group (`ping` needs no setuid bit), the `protected_*` link, FIFO and regular-file protections, fatal-signal logging and per-task delay accounting |
+| `/etc/modules-load.d/*.conf` | `/etc/init.d/02_modules.sh`, at boot | Modules loaded unconditionally: `tun` and `overlay` for containers, the virtual-machine display drivers, the `nct6775`, `it87` and `drivetemp` sensor drivers, and `i2c-dev` |
+| `/etc/modprobe.d/kdos-sdr.conf` | `modprobe` | Blacklists `dvb_usb_rtl28xxu`, so an RTL-SDR stick is free for the SDR tools rather than claimed as a TV tuner |
+| `/etc/alsa/conf.d/99-kdos-pipewire.conf` | Every ALSA program | Routes the ALSA default device to PipeWire |
+| `/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf` | PipeWire | In a virtual machine only, raises the audio quantum (the block of frames PipeWire processes in one cycle) to 4096, and its ceiling to 8192 |
+| `/etc/polkit-1/rules.d/50-kdos.rules` | `polkitd` | Grants members of `wheel` the named polkit actions the desktop calls, without a prompt; see the [security model](../03-architecture/security-model.md) |
+| `/etc/udev/rules.d/70-kdos-*.rules` | `udevd` | Device access by group: serial, SDR, logic-analyser, debug-probe, instrument, scanner, camera, security-key and GPIO devices to `dialout`, gamepads to `input`, I²C buses and backlight brightness to `video` |
 
 ---
 
-## Speech-to-text models
-
-`kdos-rec` greys out *Transcribe* until a [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-model is on the machine. There is no configuration key; three locations are searched in order and
-the first hit wins.
-
-| Order | Location |
-|---|---|
-| 1 | `$KDOS_WHISPER_MODEL` — one file, named exactly |
-| 2 | `$XDG_DATA_HOME/whisper.cpp/models/`, by default `~/.local/share/whisper.cpp/models/` |
-| 3 | `/usr/share/whisper.cpp/models/` |
-
-When `$KDOS_WHISPER_MODEL` is set it is the only candidate. No directory is searched after it, and a
-file that is missing or fails the check below leaves transcription unavailable rather than quietly
-using a different model.
-
-In a directory the pattern is `ggml-*.bin`, and the first in sorted name order wins (not the newest,
-so the choice is reproducible).
-
-A file counts only if its first four bytes are `lmgg`, the model format's magic, so a half-finished
-download reads as *no model* rather than as a crash. The surface's header line names the model it
-found, or the directory it searched.
-
-The directory name is upstream's own, so a model fetched by upstream's
-`models/download-ggml-model.sh` and one fetched by KDOS land in the same place.
-
-**Getting a model.** No model ships. `kdos speech list` prints the catalogue, smallest first: the
-English-only `tiny.en-q5_1`, `tiny.en`, `base.en-q5_1`, `base.en`, `small.en-q5_1`, `small.en` and
-`medium.en`, the multilingual `tiny`, `base` and `small`, and `large-v3-turbo` and `large-v3`.
-`kdos speech get <name>` downloads one into `$XDG_DATA_HOME/whisper.cpp/models` (no privilege
-needed); with no name it gets `base.en`. The name is looked up in a table, never pasted into a URL;
-the download is checked against a SHA-256 built into the tool, and the file is moved into place only
-after both that and the `lmgg` check pass, so an interrupted download never leaves a file behind.
-Upstream signs nothing; the checksum only says the bytes are the ones this tree was written against
-(see the [security model](../03-architecture/security-model.md)). See
-[`kdos speech`](../04-programs/kdos-command.md#kdos-speech).
-
-While there is no model, `kdos-rec`'s third button reads *Get model* and opens a terminal running
-that command. The window keeps checking, so the button becomes *Transcribe* by itself when the file
-arrives.
-
-`whisper-stream`, which transcribes a live microphone, uses the same model. It runs in a terminal
-and opens no window; nothing on the desktop starts it. `kdos-rec`'s *Transcribe* runs `whisper-cli`
-on the file it has just recorded.
-
-## Video in a call
-
-The SIP phone `baresip` writes `~/.baresip/config` on its first run, and only when the file does not
-exist, so the defaults below are what a new account gets and an edited file is never overwritten.
-
-Five module lines that upstream leaves commented are uncommented, because this image builds those
-modules: `opus.so`, `avcodec.so`, `vp8.so`, `vp9.so` and `sdl.so`. (A line naming a module that is
-not installed is a startup error, which is why upstream comments them all.)
-
-The audio module is `pipewire.so`; `alsa.so` is written commented out. The build sets baresip's
-default audio device to `pipewire,default`, so `audio_player`, `audio_source` and `audio_alert` all
-name the PipeWire default and a call goes straight to PipeWire. `sndfile.so` (call recording),
-`snapshot.so` and `ctrl_dbus.so` are built and left commented as upstream writes them; the `aac.so`
-codec is built and not mentioned in the generated file.
-
-The display is on and the camera is off: which screen a picture goes to is a property of the build,
-while sending your camera is a choice. Uncommenting `v4l2.so` turns the camera on; the generated
-`video_source` line already names `v4l2,/dev/video0`. `avformat.so` is the other video source, for a
-stream or file named in `video_source`. `x11.so` is not built. `fakevideo.so` (a null sink) and
-`vidbridge.so` (a loopback) stay commented.
-
-## Shipped configuration for software that is not ours
+## Shipped configuration for third-party software
 
 `/etc/skel` also carries configuration for third-party programs, so a new account gets a working,
 consistently coloured setup rather than each program's own defaults. These files are yours to edit,
@@ -913,12 +1041,12 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/btop/themes/kdos.theme` | btop's colours | Generated |
 | `~/.config/kdos/term-colors.conf` | The sixteen terminal colours, as this desktop's terminals draw them | Generated |
 | `~/.config/kdos/ls-colors` | `LS_COLORS`, loaded by `~/.bashrc` | Generated |
-| `~/.config/kdos/fzf-colors` | fzf's `--color` flags, read by `/etc/profile.d/30-kdos-colors.sh` | Generated. See the note on `FZF_DEFAULT_OPTS` under [Shell environment](#shell-environment) |
+| `~/.config/kdos/fzf-colors` | fzf's `--color` flags, sourced by `/etc/profile.d/30-kdos-colors.sh` | Generated. See the note on `FZF_DEFAULT_OPTS` under [Shell environment](#shell-environment) |
 | `~/.config/bat/config` | The pager `bat` | One line: `--theme="kdos"` |
 | `~/.config/bat/themes/kdos.tmTheme` | bat's theme, selected by file name | Generated |
 | `~/.config/micro/settings.json` | The editor `micro` | Selects the generated colour scheme |
 | `~/.config/micro/colorschemes/kdos.micro` | micro's colour scheme | Generated |
-| `~/.config/helix/themes/kdos.toml` | helix's theme | Generated. helix is not on the image; the file is for a helix installed in a box, which shares this `$HOME`. Nothing selects it: write `theme = "kdos"` in helix's `config.toml` yourself |
+| `~/.config/helix/themes/kdos.toml` | helix's theme | Generated. helix is not on the image: the tree has a `helix` port, but no phase package list names it. The file is for a helix installed in a box, which shares this `$HOME`. Nothing selects it: write `theme = "kdos"` in helix's `config.toml` yourself |
 | `~/.config/nvim/init.vim` | The editor `neovim` | Turns on `termguicolors` and selects the generated colour scheme |
 | `~/.config/nvim/colors/kdos.vim` | neovim's colour scheme | Generated |
 | `~/.config/git/config` | git | Sets `delta` as the pager and includes the generated colours |
@@ -941,6 +1069,7 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/mimeapps.list` | Your own choices of which application opens which file type | Ships with an empty `[Default Applications]` section. This file outranks the system tables, and *Open With*'s **always** option writes to it |
 | `~/.config/tealdeer/config.toml` | The `tldr` client `tealdeer` | Installed into `/etc/skel` by the `tealdeer` package. `cache_dir` is `/usr/share/tldr`, where the pages ship, so nothing is downloaded. `tldr --update` needs a `cache_dir` you can write |
 | `~/.bashrc`, `~/.bash_profile` | bash | `.bashrc` reads `/etc/bash.bashrc` — through `/run/host` inside a box, since `$HOME` is shared with every box — and `~/.config/kdos/ls-colors`. `.bash_profile` starts the desktop on tty1 |
+| `~/.hushlogin` | `login` | Empty. Its presence stops `login` printing `/etc/motd` and the last-login line, so the banner `/etc/bash.bashrc` draws is the only one. Deleting it makes each console login print both before that banner |
 | `~/.zprofile` | zsh | Starts the desktop on tty1, as `.bash_profile` does. `/etc/shells` lists zsh, so `chsh -s /usr/bin/zsh` is accepted. `/etc/zsh/zprofile` reads `/etc/profile` and its drop-ins; `/etc/zsh/zshrc` sets up `atuin` and nothing from `/etc/bash.bashrc` |
 
 ### Default handlers
@@ -987,31 +1116,36 @@ inherits them.
 
 | Path | Sets |
 |---|---|
-| `/etc/profile.d/10-wayland.sh` | The session basics: `XDG_RUNTIME_DIR` (created at `/run/user/<uid>` if missing), `XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDOS` unless already set, `DBUS_SESSION_BUS_ADDRESS` when the session bus exists, the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults, `~/.local/bin` and `/usr/games` on `PATH`, `XCURSOR_THEME=KDOS-cursors`, `XCURSOR_SIZE=24`, and Wayland back ends for Qt, GTK, Firefox, Java, SDL and Clutter |
+| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty, `XDG_RUNTIME_DIR` (created at `/run/user/<uid>`, mode 0700, if missing), `XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDOS` unless already set, `DBUS_SESSION_BUS_ADDRESS` when the session bus exists, the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults, `~/.local/bin` and `/usr/games` on `PATH`, `XCURSOR_THEME=KDOS-cursors`, `XCURSOR_SIZE=24`, and Wayland back ends for Qt, GTK, Firefox, Java, SDL and Clutter |
 | `/etc/profile.d/20-timezone.sh` | `TZ=:/etc/localtime`. Written by the installer and by `kdos-power timezone`; not shipped with the image |
 | `/etc/profile.d/20-lesspipe.sh` | `LESSOPEN` to `lesspipe.sh`, and `LESS=-R` |
-| `/etc/profile.d/30-kdos-colors.sh` | `FZF_DEFAULT_OPTS` from the generated `~/.config/kdos/fzf-colors` |
+| `/etc/profile.d/30-kdos-colors.sh` | Sources the generated `~/.config/kdos/fzf-colors` and appends its colours to `FZF_DEFAULT_OPTS` |
 | `/etc/profile.d/30-open.sh` | `BROWSER` to `xdg-open`, which on this image is `kdos-appbox open`, so the variable and the handler tables above agree |
 | `/etc/profile.d/40-plocate.sh` | `LOCATE_PATH` to this account's own file index |
 | `/etc/profile.d/50-ssh-agent.sh` | `SSH_AUTH_SOCK` to `$XDG_RUNTIME_DIR/ssh-agent.socket`, starting `ssh-agent` there when nothing answers. One agent per account, shared by every login and everything the desktop starts, so `ssh-add` asks for a passphrase once. From `openssh` |
 | `/etc/profile.d/50-sfeed.sh` | `SFEED_YANKER` to `wl-copy -n`, so `sfeed_curses`'s yank reaches the clipboard. From `sfeed` |
-| `/etc/profile.d/gawk.sh` | No variables: the `gawkpath_*` and `gawklibpath_*` functions, which edit `AWKPATH` and `AWKLIBPATH`. From `gawk` |
 | `/etc/profile.d/50-opencl.sh` | `RUSTICL_ENABLE` to `iris,radeonsi`, the Intel and AMD drivers of Mesa's OpenCL implementation. Without it Rusticl offers no device and every OpenCL program finds none. `llvmpipe` is left out, so a machine with no supported GPU has no OpenCL device |
+| `/etc/profile.d/gawk.sh` | No variables: the `gawkpath_*` and `gawklibpath_*` functions, which edit `AWKPATH` and `AWKLIBPATH`. From `gawk` |
 | `/etc/profile.d/podman-docker.sh` | `DOCKER_HOST` to the rootless Podman API socket, `$XDG_RUNTIME_DIR/podman/podman.sock` (root's is `/run/podman/podman.sock`), so a Docker API client such as `lazydocker` finds `podman system service` while it runs — see [Containers](#containers) for what starts it. `/usr/bin/docker` is Podman's `docker` shim |
 
 Apart from `10-wayland.sh` (session type, cursor and toolkit back ends) and `40-plocate.sh`
-(`LOCATE_PATH`), which set their values unconditionally, none of these overwrites a value you
-already exported. The `less` filter decides
-what a file is with `file -L -s -b --mime` and nothing else, which is why the image ships the `file`
-with a full magic database.
+(`LOCATE_PATH`), which set their values unconditionally, and `30-kdos-colors.sh`, which appends to
+whatever `FZF_DEFAULT_OPTS` holds, none of these overwrites a value you already exported. The
+`less` filter decides what a file is with `file -L -s -b --mime` and nothing else, which is why the
+image ships `file` with a full magic database.
 
-What depends on the terminal is set in every interactive bash instead, in `/etc/bash.bashrc`. Apart from
-`EDITOR`, each line first checks that its program is installed:
+What depends on the terminal is set in every interactive bash instead, in `/etc/bash.bashrc`, which
+guards itself so it runs once per shell. The history settings, the colour and `-i` aliases, the
+`nano` fallback for `EDITOR` and `GPG_TTY` are set in every interactive shell; every other entry
+first checks that its program is installed:
 
 | Variable or hook | Is |
 |---|---|
+| History | `HISTSIZE=50000`, `HISTFILESIZE=100000`, `HISTCONTROL=ignoreboth:erasedups`, timestamps, and `history -a` after every command, so concurrent shells do not lose each other's history |
+| Aliases | Colour for `grep` and `diff`; `-i` on `cp`, `mv` and `rm`; `ls`, `ll`, `la`, `lt` and `l` through `eza` when it is installed; `cat` through `bat`; `top` through `btop`; `lg` for lazygit |
+| Prompt | `starship` when installed, else a plain prompt that names the box inside one. Every prompt emits the OSC 133 marks a terminal uses to find where each command's output starts and ends |
 | `EDITOR`, `VISUAL` | `nvim` when neovim is installed, replacing any exported value (with `vi` and `vim` aliased to it). Otherwise an `EDITOR` you exported is kept, else `nano`. `VISUAL` always equals `EDITOR` |
-| `MANPAGER` | `/usr/libexec/bat/man-pager`, from `bat`: it strips the page's overstrike and hands it to `bat -l man`. It is a script rather than a pipeline because `mandoc`'s `man` splits the variable on spaces and runs it without a shell |
+| `MANPAGER` | Set only when `bat` is installed: `/usr/libexec/bat/man-pager`, from `bat`: it strips the page's overstrike and hands it to `bat -l man`. It is a script rather than a pipeline because `mandoc`'s `man` splits the variable on spaces and runs it without a shell |
 | `BAT_THEME` | `ansi` |
 | `FZF_DEFAULT_OPTS`, `FZF_DEFAULT_COMMAND` | fzf's layout and a fixed phosphor-green colour set, and `fd --type f --hidden --follow --exclude .git` as the file source. This assignment replaces the accent colours `30-kdos-colors.sh` set at login |
 | `GPG_TTY` | This shell's terminal, where the curses `pinentry` asks for a passphrase |
@@ -1086,6 +1220,74 @@ its own `theme-dark.toml` preset key by key, so only what the palette decides is
 preset's icons, separators and file-type rules stay. `[flavor]` is not written, because it is the
 one part the preset splits between dark and light mode.
 
+### Speech-to-text models
+
+`kdos-rec` cannot transcribe until a [whisper.cpp](https://github.com/ggml-org/whisper.cpp) model
+is on the machine; until then its *Transcribe* button reads *Get model*. There is no configuration
+key; three locations are searched in order and the first hit wins.
+
+| Order | Location |
+|---|---|
+| 1 | `$KDOS_WHISPER_MODEL` — one file, named exactly |
+| 2 | `$XDG_DATA_HOME/whisper.cpp/models/`, by default `~/.local/share/whisper.cpp/models/` |
+| 3 | `/usr/share/whisper.cpp/models/` |
+
+When `$KDOS_WHISPER_MODEL` is set it is the only candidate. No directory is searched after it, and a
+file that is missing or fails the check below leaves transcription unavailable rather than quietly
+using a different model.
+
+In a directory the pattern is `ggml-*.bin`, and the first in sorted name order wins (not the newest,
+so the choice is reproducible).
+
+A file counts only if its first four bytes are `lmgg`, the model format's magic, so a half-finished
+download reads as *no model* rather than as a crash. The surface's header line names the model it
+found, or the directory it searched.
+
+The directory name is upstream's own, so a model fetched by upstream's
+`models/download-ggml-model.sh` and one fetched by KDOS land in the same place.
+
+**Getting a model.** No model ships. `kdos speech list` prints the catalogue of twelve, grouped by
+size from about 32 MB to about 3.1 GB: `tiny.en-q5_1`, `tiny.en`, `tiny`, `base.en-q5_1`, `base.en`,
+`base`, `small.en-q5_1`, `small.en`, `small`, `medium.en`, `large-v3-turbo` and `large-v3`. A name
+containing `.en` is English-only; a `-q5_1` suffix marks a quantised, smaller copy of the model
+named without it. `kdos speech get <name>` downloads one into `$XDG_DATA_HOME/whisper.cpp/models`
+(no privilege needed); with no name it gets `base.en`. The name is looked up in a table, never
+pasted into a URL; the download is checked against a SHA-256 built into the tool, and the file is
+moved into place only after both that and the `lmgg` check pass, so an interrupted download never
+leaves a file behind.
+Upstream signs nothing; the checksum only says the bytes are the ones this tree was written against
+(see the [security model](../03-architecture/security-model.md)). See
+[`kdos speech`](../04-programs/kdos-command.md#kdos-speech).
+
+While there is no model, `kdos-rec`'s second button, beside *Record*, reads *Get model* and opens a terminal running
+that command. The window keeps checking, so the button becomes *Transcribe* by itself when the file
+arrives.
+
+`whisper-stream`, which transcribes a live microphone, uses the same model. It runs in a terminal
+and opens no window; nothing on the desktop starts it. `kdos-rec`'s *Transcribe* runs `whisper-cli`
+on the file it has just recorded.
+
+### `~/.baresip/config`
+
+The SIP phone `baresip` writes `~/.baresip/config` on its first run, and only when the file does not
+exist, so the defaults below are what a new account gets and an edited file is never overwritten.
+
+Five module lines that upstream leaves commented are uncommented, because this image builds those
+modules: `opus.so`, `avcodec.so`, `vp8.so`, `vp9.so` and `sdl.so`. (A line naming a module that is
+not installed is a startup error, which is why upstream comments them all.)
+
+The audio module is `pipewire.so`; `alsa.so` is written commented out. The build sets baresip's
+default audio device to `pipewire,default`, so `audio_player`, `audio_source` and `audio_alert` all
+name the PipeWire default and a call goes straight to PipeWire. `sndfile.so` (call recording),
+`snapshot.so` and `ctrl_dbus.so` are built and left commented as upstream writes them; the `aac.so`
+codec is built and not mentioned in the generated file.
+
+The display is on and the camera is off: which screen a picture goes to is a property of the build,
+while sending your camera is a choice. Uncommenting `v4l2.so` turns the camera on; the generated
+`video_source` line already names `v4l2,/dev/video0`. `avformat.so` is the other video source, for a
+stream or file named in `video_source`. `x11.so` is not built. `fakevideo.so` (a null sink) and
+`vidbridge.so` (a loopback) stay commented.
+
 ## Generated files you should not edit
 
 `kdos theme` rewrites all of these whenever the accent or style changes, and seeds them into
@@ -1121,5 +1323,19 @@ one part the preset splits between dark and light mode.
 - [Theming](../02-user-guide/theming.md) — the generated files and what regenerates them
 - [kdos-comp](../04-programs/kdos-comp.md) — the compositor keys in context
 - [kdos-appbox](../04-programs/kdos-appbox.md) — box profiles in full
-- [The `kdos` command](../04-programs/kdos-command.md) — `kdos theme`, `kdos toggle`, `kdos update`, `kdos sandbox`
+- [The `kdos` command](../04-programs/kdos-command.md) — `kdos theme`, `kdos toggle`,
+  `kdos update`, `kdos sandbox`
+- [Packaging](../03-architecture/packaging.md) — `kpkg`, the binhost and the ports tree behind
+  `kpkg.conf` and `update.conf`
+- [The ports catalogue](ports-catalogue.md) — every port, several of which install the
+  third-party files listed here
+- [How KDOS is built](../05-developer/how-kdos-is-built.md) — how the `fs/` overlay that carries
+  the shipped defaults in this chapter reaches the image
+- [How KDOS differs](../01-philosophy/how-kdos-differs.md#configuration) — configuration through
+  plain files, compared with declarative systems and settings databases
 - [Filesystem and IPC](filesystem-and-ipc.md) — the paths and sockets these files name
+
+<!-- book-nav -->
+---
+
+*Part VI — Reference, chapter 40.* Previous: [39. Command index](command-index.md) · [Contents](../README.md) · Next: [41. Filesystem and IPC](filesystem-and-ipc.md)

@@ -340,10 +340,10 @@ static struct row rows[] = {
 	  NULL, 0, 0, 0, 0,
 	  "the notification area, left to right. An unknown name is reported "
 	  "on stderr, never ignored",
-	  "pager tray more media privacy mpris clipboard cpu stutter restart "
-	  "net volume battery notify clock",
-	  "pager tray more media privacy mpris clipboard cpu stutter restart "
-	  "net volume battery notify clock" },
+	  "pager tray more media privacy mpris clipboard cpu stutter update "
+	  "restart net volume battery notify clock",
+	  "pager tray more media privacy mpris clipboard cpu stutter update "
+	  "restart net volume battery notify clock" },
 	/* ── res.conf, the monitor's own file ────────────────────────
 	 * Every row here changes a READING, and a reading measured
 	 * differently is a different number — so each says what it changes

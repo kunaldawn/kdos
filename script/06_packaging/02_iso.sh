@@ -102,14 +102,15 @@ fi
 # tarballs that are already compressed, and squashing them again buys nothing.
 # `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
 #
-# The tarballs are not in git; they are what `make fetch` put in each port
-# directory, which is every source the build before this step needed — so the
-# stick is complete exactly when the build was. It also carries any archive a
-# branch switch or a version bump left beside a recipe that no longer names it
-# (preflight lists those); nothing on the stick reads one, so it costs space
-# only. ports/.srccache is left off:
-# each port directory holds its own hard link to the bytes, and the cache can
-# carry every version any branch of this checkout ever fetched.
+# The copy reads /kdos, and inside the chroot /kdos is a non-recursive bind of
+# the build container's /workspace: script/ and src/ are bound back over it,
+# ports/ is bound at /ports instead, so /kdos/ports is the empty mount point and
+# the medium's ports/ arrives empty. fs/ is not copied, and the three top-level
+# files are not mounted into the container. A stick made here therefore carries
+# no tree `kdos rebuild` can build from; reading /ports and copying fs/ are
+# both needed before it does. ports/.srccache is left off: each port directory
+# holds its own hard link to the bytes, and the cache can carry every version
+# any branch of this checkout ever fetched.
 if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
     echo "Copying the sources onto the ISO (this is the big one)..."
     mkdir -p $ISO_ROOT/sources

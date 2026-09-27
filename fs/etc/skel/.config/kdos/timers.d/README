@@ -1,4 +1,4 @@
-Your own periodic jobs, one per line, started at login and reaped with it.
+Your own periodic jobs, one per line, started by your session at login.
 
     NAME  TIMESPEC...  --  COMMAND...
 
@@ -18,12 +18,14 @@ that writes a file takes a flag naming it. That is what lets this file be
 parsed instead of sourced, and it is why a line here cannot run something you
 did not write.
 
-ONE RUN PER LOGIN. `snooze` waits for its slot, runs the command once and
-exits; the system table repeats because its supervisor starts it again, and
-nothing here may write the pidfile that supervisor needs. So a job in this file
-fires at most once per session — which is right for a reminder and is not a
-nightly job. Use /etc/kdos/timers.d for something that must run every night
-whether or not anybody is logged in.
+EVERY SLOT WHILE THE LOOP LIVES. `snooze` waits for its slot, runs the command
+once and exits, so the session runs each row in a loop that starts it again: a
+job here fires at every occurrence of its slot, not once per login. The loops
+are the session's children, not a root service, and their process ids are in
+$XDG_RUNTIME_DIR/kdos/timers.pid. Nothing stops them when you log out; the
+next login on the same boot stops the previous set before starting its own,
+and a reboot ends them. Use /etc/kdos/timers.d for a job that must run whether
+or not anybody has logged in since boot.
 
 A COMMAND HERE CANNOT TAKE AN ARGUMENT WITH A SPACE IN IT. The row is split
 into words and never quoted, so `-- kdos notify "Good morning"` reaches the
