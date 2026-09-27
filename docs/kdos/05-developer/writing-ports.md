@@ -1211,11 +1211,13 @@ installs into clang's resource directory, `/usr/lib/clang/<major>`, where the dr
 `libclang_rt.*`, and `openmp` installs `libomp` without its `libgomp.so` alias, which is gcc's.
 
 The 21 slot uses the per-component tarballs that upstream published for 21.x. `lld21` carries
-`libunwind-<version>.src.tar.xz` as a third source and moves it beside its own tree, because the
-Mach-O linker includes `mach-o/compact_unwind_encoding.h` from `../libunwind/include` relative to
-the LLVM source tree, and the header must come from the same release as the linker. The
-`libunwind` port installs that header only under its private prefix, which is neither beside the
-source tree nor on a default include path, and it is the current series, not 21.
+`libunwind-<version>.src.tar.xz` as a third source and names its `include` directory in the C++
+flags, because the Mach-O linker includes `mach-o/compact_unwind_encoding.h` and the header must
+come from the same release as the linker. The linker's own include path is
+`$LLVM_MAIN_SRC_DIR/../libunwind/include`, which does not resolve in a standalone build: there is no
+LLVM source tree beside it, and a path through a missing directory fails even when its target
+exists. The `libunwind` port installs that header only under its private prefix, which is not on a
+default include path, and it is the current series, not 21.
 
 LLVM's `libunwind` is the one current-series port under a private prefix,
 `/usr/lib/llvm-libunwind`. `/usr/include/libunwind.h`, `libunwind.so` and the `libunwind*.pc`
