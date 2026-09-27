@@ -133,8 +133,8 @@ and the lock screen. Its one named group, "The resource monitor", holds `kdos-re
 after it: the root daemons, the pack tools, the input method, the two portals and the recorder.
 
 A list names only the ports a phase wants; each port's `depends =` pulls in the rest. Following
-the `depends =` lines from the 787 names reaches 1,022 ports: 999 of the 1,014 in `ports/core`, and
-every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 15 `ports/core`
+the `depends =` lines from the 787 names reaches 1,023 ports: 1,000 of the 1,014 in `ports/core`, and
+every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 14 `ports/core`
 recipes nothing reaches are built only on request.
 
 A list is a plain file: one port name per line, with `#` comments. The comments do two jobs. After

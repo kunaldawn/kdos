@@ -99,7 +99,7 @@ and `kpkg` installs dependencies first. The five lists hold 826 names between th
 distinct: 37 ports are named in more than one list. All 8 phase-2 ports appear again in
 `03_phase3`, 2 of those also in `04_phase4`, and 29 further phase-3 ports appear again in
 `04_phase4`. A port already installed from the same recipe is skipped when a later list names it
-again. A reading of every recipe's `depends =` lines reaches 999 of the 1,014 ports under
+again. A reading of every recipe's `depends =` lines reaches 1,000 of the 1,014 ports under
 `ports/core` from the lists. [The ports catalogue](../06-reference/ports-catalogue.md) lists every
 port by phase and list group, and those named more than once. The comment headings inside a list,
 such as "Core Services" or "Modern CLI tools" in phase 4, divide it into list groups for the

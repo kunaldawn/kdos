@@ -76,14 +76,14 @@ phase.
 | [Phase 4: userland and the Wayland base](#phase-4-userland-and-the-wayland-base) | 697 | 666 |
 | [The desktop phase](#the-desktop-phase) | 22 | 22 |
 | [The kernel phase](#the-kernel-phase) | 1 | 1 |
-| [Installed as dependencies](#installed-as-dependencies) | none | 235 |
-| [Not installed](#not-installed) | none | 15 |
+| [Installed as dependencies](#installed-as-dependencies) | none | 236 |
+| [Not installed](#not-installed) | none | 14 |
 | Total | 826 | 1,038 |
 
 The five lists name 787 distinct ports in 826 lines; 37 ports are named in more than
-one list. Following `depends =` from those 787 names reaches 1,022 ports: all
-787 listed ports and 235 more. With `kdos-installer`, which phase 1 builds by script,
-that leaves 15 recipes in `ports/core` that no phase installs.
+one list. Following `depends =` from those 787 names reaches 1,023 ports: all
+787 listed ports and 236 more. With `kdos-installer`, which phase 1 builds by script,
+that leaves 14 recipes in `ports/core` that no phase installs.
 
 Ports per list group, counting each port under its first listing only:
 
@@ -1386,7 +1386,7 @@ the full tools again (see
 
 ## Installed as dependencies
 
-No list names these 235 ports. Each is installed because a port that is installed names it in
+No list names these 236 ports. Each is installed because a port that is installed names it in
 `depends =`, directly or through another dependency. They are grouped here by what they are for;
 the grouping is this chapter's, not the tree's.
 
@@ -1467,6 +1467,7 @@ the grouping is this chapter's, not the tree's.
 | `gnu-efi` | 4.0.4 | GNU EFI library |
 | `go-md2man` | 2.0.7 | Converts Markdown to roff manual pages |
 | `gobject-introspection` | 1.86.0 | GObject introspection: g-ir-scanner, g-ir-compiler, libgirepository-1.0 and the base GIR/typelib data (cairo, freetype2, fontconfig, libxml2, GL, DBus) |
+| `musl-ldd` | 1.2.5 | LDD script for Musl |
 | `lowdown` | 3.2.1 | Markdown translator to roff manual pages, HTML and LaTeX |
 | `sgml-common` | 0.6.3 | Creating and maintaining centralized SGML catalogs |
 
@@ -1712,7 +1713,7 @@ the grouping is this chapter's, not the tree's.
 
 ## Not installed
 
-Nothing in any list reaches these 15 recipes through `depends =`, and no phase script builds
+Nothing in any list reaches these 14 recipes through `depends =`, and no phase script builds
 them, so none is on the image. Their sources are fetched and checked like any other port's, and
 each builds on request with `kpkg install <name>` wherever the ports tree is on `PORT_REPO`, as it
 is inside the build chroot.
@@ -1723,7 +1724,6 @@ is inside the build chroot.
 | `double-conversion` | 3.4.0 | Binary-decimal and decimal-binary routines for IEEE doubles (Qt6 dep) |
 | `helix` | 25.07.1 | helix — modal text editor (Rust) |
 | `icon-naming-utils` | 0.8.90 | Perl script used for maintaining backwards compatibility with current desktop icon themes |
-| `musl-ldd` | 1.2.5 | LDD script for Musl |
 | `musl-locales` | 20260425 | A locale command and message catalogues for musl |
 | `perl-xml-simple` | 2.25 | Perl module that reads and writes XML as nested data structures (config files especially) |
 | `setconf` | 0.7.7 | Utility for changing settings in configuration files |
