@@ -388,7 +388,8 @@ kdos_conf_reload(void)
 }
 
 /* The accent, from the same one-word file kdos-shell reads. Absent is
- * the normal case on a fresh system and means phosphor. */
+ * the normal case on a fresh system and means the library default,
+ * kcol_default(). */
 const KcolScheme *
 kdos_accent_scheme(void)
 {

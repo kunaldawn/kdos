@@ -282,7 +282,8 @@ spawn_one(struct kdos_child *c)
 	c->pid = p;
 }
 
-/* A free slot, or NULL when the table is full (40 = ten outputs' worth). */
+/* A free slot, or NULL when the table is full (40 = the four session-wide
+ * children plus three per output, twelve outputs' worth). */
 static struct kdos_child *
 child_alloc(void)
 {

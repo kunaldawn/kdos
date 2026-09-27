@@ -14,10 +14,15 @@
 # ON TOP of: the device builds a stack of podman images, one per row, so a
 # runtime's bytes are stored once however many applications sit on it.
 #
-# ORDER MATTERS: a row's parent must appear ABOVE it. The resolver walks a
-# chain upward in one pass and a forward reference is a chain it cannot close —
-# reorder the file and an install fails naming the missing parent rather than
-# looping.
+# ROWS MAY STAND IN ANY ORDER, with one exception. The whole file is read
+# before any chain is resolved, and a parent is looked up by id wherever it
+# stands. A chain that names a parent not in the file, or runs past 16 rows
+# (which is also where a cycle ends), cannot be closed, and the install stops
+# for that application rather than looping.
+#
+# THE EXCEPTION IS `meta`: it is applied as it is read, so it must come AFTER
+# the pack row it describes. One placed above that row is dropped without a
+# message and the application presents as its bare id.
 #
 # A row's third field is a ROW id here, never an image tag. The builder
 # resolves it to `kdos/<id>`, the image it built for that row.

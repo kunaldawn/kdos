@@ -13,8 +13,9 @@ Read the map below before touching anything.
 
 | Working on… | Read |
 |---|---|
-| Anything at all, first time | [`docs/kdos/README.md`](docs/kdos/README.md) — the book's index and three reading paths |
+| Anything at all, first time | [`docs/kdos/README.md`](docs/kdos/README.md) — the book's title page, reading paths and table of contents |
 | Why the system is shaped this way | [`01-philosophy/why-kdos.md`](docs/kdos/01-philosophy/why-kdos.md), [`principles.md`](docs/kdos/01-philosophy/principles.md), [`decisions.md`](docs/kdos/01-philosophy/decisions.md) |
+| How KDOS differs from other distributions, and why | [`01-philosophy/how-kdos-differs.md`](docs/kdos/01-philosophy/how-kdos-differs.md) |
 | The boot path, initramfs, splash, A/B slots, the login | [`03-architecture/boot-and-init.md`](docs/kdos/03-architecture/boot-and-init.md) |
 | The session bus, portals, audio, supervised chrome, the box environment | [`03-architecture/session.md`](docs/kdos/03-architecture/session.md) |
 | Ports, packages, the solver, reproducibility, the binhost, deltas | [`03-architecture/packaging.md`](docs/kdos/03-architecture/packaging.md) |
@@ -30,6 +31,7 @@ Read the map below before touching anything.
 | Any root daemon | [`04-programs/daemons.md`](docs/kdos/04-programs/daemons.md) |
 | The installer | [`04-programs/kinstall.md`](docs/kdos/04-programs/kinstall.md) |
 | The `kdos` command and its subcommands | [`04-programs/kdos-command.md`](docs/kdos/04-programs/kdos-command.md) |
+| The build end to end, from clone to ISO | [`05-developer/how-kdos-is-built.md`](docs/kdos/05-developer/how-kdos-is-built.md) |
 | Build targets and the fast iteration loops | [`05-developer/developing.md`](docs/kdos/05-developer/developing.md) |
 | Phases, the chroot, snapshots, build plans | [`05-developer/build-system.md`](docs/kdos/05-developer/build-system.md) |
 | **Writing or changing a recipe** | [`05-developer/writing-ports.md`](docs/kdos/05-developer/writing-ports.md) |
@@ -38,6 +40,7 @@ Read the map below before touching anything.
 | **Writing a new surface** | [`05-developer/writing-desktop-software.md`](docs/kdos/05-developer/writing-desktop-software.md) |
 | Tests, fixtures, goldens, the rig | [`05-developer/testing.md`](docs/kdos/05-developer/testing.md) |
 | Every command / config key / socket / path | [`06-reference/`](docs/kdos/06-reference/command-index.md) |
+| Every port, by phase and group | [`06-reference/ports-catalogue.md`](docs/kdos/06-reference/ports-catalogue.md) |
 | What does not exist | [`06-reference/known-gaps.md`](docs/kdos/06-reference/known-gaps.md) |
 
 **If a page and the tree disagree, measure the tree and fix the page in the same
@@ -150,7 +153,7 @@ State the rule and its consequence. Never the story. See hard rule 2.
 
 ```sh
 git config core.hooksPath script/hooks           # once per clone: the pre-push source check
-make fetch                                       # every source; the only networked step
+make fetch                                       # every source; networked, as is the first builder-image build
 make fetch-check                                 # offline: what is missing or wrong
 make build                                       # everything — no network
 make build BUILD_ARGS=--fresh                    # skip the picker
@@ -177,7 +180,7 @@ make run-hw         # accelerated: the pass is on
   `--continue-from` is for.
 - **A build started inside a backgrounded call dies with it.**
 - **Editing a library rebuilds every port of ours**, not only its consumers.
-- **Clear `ports/.kpkg-meta`, `.portup`, `.portup-tools`, `.kpkgbin` when
+- **Clear `ports/.portup`, `.portup-tools`, `.kpkgbin` when
   switching between a container run and a host run** — a binary built against one
   C library cannot execute under the other, and the failure does not say so. A
   container run as root leaves them root-owned, so remove them **from a
@@ -201,8 +204,8 @@ make run-hw         # accelerated: the pass is on
 **Before believing a change:**
 
 ```sh
-testing/preflight.sh                     # the wiring, in seconds
-testing/selftest.sh                      # libraries and consumers, ~30s
+testing/preflight.sh                     # the wiring, about 2.5 minutes
+testing/selftest.sh                      # libraries and consumers, about 2.5 minutes
 CC="cc -fsanitize=address,undefined -g" testing/selftest.sh   # when you touch a parser
 ```
 

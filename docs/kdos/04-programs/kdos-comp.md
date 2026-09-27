@@ -1,52 +1,90 @@
 # kdos-comp
 
-This page describes `kdos-comp`, the KDOS compositor: the program that draws the screen, places
-and decorates windows, reads the keyboard and mouse, and keeps the desktop's own panel, icons and
-notification daemon running. It is for anyone configuring the desktop beyond the settings window,
-diagnosing a desktop problem, or working on the compositor itself.
+`kdos-comp` is the KDOS compositor: the program that draws the screen, places and decorates
+windows, reads the keyboard and the pointer, and starts and supervises the panel, the desktop icons
+and the session's small daemons. This chapter describes how it is configured, what it adds to the
+Wayland compositor it is forked from, how each addition behaves, and how to work on its code. It is
+for anyone configuring the desktop beyond the settings window, diagnosing a desktop problem, or
+changing the compositor itself. Read [The desktop](../02-user-guide/desktop.md) first for the
+user's view of the same desktop, and [The session](../03-architecture/session.md) for what starts
+the compositor.
 
-`kdos-comp` is a frozen hard fork of the labwc 0.20.0 Wayland compositor, carrying sixteen KDOS
-additions. If you only want to change a key binding or a setting, read
-[Configuration](#configuration) and [Bindings](#bindings). If the desktop misbehaves, start with
-[Debugging](#debugging) and the session log. To change the compositor's code, read
-[Working on the compositor](#working-on-the-compositor). The user's view of the same desktop is
-[The desktop](../02-user-guide/desktop.md).
-
-The case for forking an existing compositor rather than writing one is set out in
-[Decisions](../01-philosophy/decisions.md).
+If you only want to change a setting or a key binding, read [Configuration](#configuration) and
+[Bindings](#bindings). If the desktop misbehaves, start with [Debugging](#debugging) and the
+session log. To change the compositor's code, read
+[Working on the compositor](#working-on-the-compositor). The case for forking an existing
+compositor rather than writing one is set out in
+[Decisions](../01-philosophy/decisions.md#the-compositor-is-a-frozen-fork-of-labwc), and how that
+desktop compares with those of other distributions in
+[How KDOS differs](../01-philosophy/how-kdos-differs.md#the-desktop).
 
 ## Overview
+
+`kdos-comp` is a hard fork of the [labwc](https://labwc.github.io/) 0.20.0 Wayland compositor,
+built on wlroots (the `wlroots` port, version 0.20.2). A *hard fork* here means the source tree is
+labwc's own, renamed and extended in place, and upstream changes are not merged into it. The KDOS
+additions live in files of their own (sixteen `kdos-*.c` sources, a shared header and the
+application-first switcher); upstream files carry only small, marked hooks into them (see
+[Finding the KDOS additions](#finding-the-kdos-additions)).
 
 | | |
 |---|---|
 | Binary | `/usr/bin/kdos-comp` |
-| Upstream configuration | `~/.config/kdos-comp/rc.xml` and `menu.xml`, both copied from `/etc/skel` for a new user; also read from `/etc/xdg/kdos-comp/` |
+| Upstream configuration | `~/.config/kdos-comp/rc.xml` and `menu.xml`, both copied from `/etc/skel` for a new user; `/etc/xdg/kdos-comp/` is also searched, and nothing ships there |
 | Generated theme | `~/.config/kdos-comp/themerc-override`, written by `kdos theme` |
 | KDOS configuration | `~/.config/kdos/comp.conf` (`$XDG_CONFIG_HOME/kdos/comp.conf`) |
-| Started by | `kdos-desktop-start`, the session script — see [The session](../03-architecture/session.md) |
+| Started by | `kdos-desktop-start`, with no options — see [The session](../03-architecture/session.md) |
 | Log | `$XDG_RUNTIME_DIR/kdos-comp.log`; the previous session's is kept as `kdos-comp.log.old` |
 | Command socket | `$XDG_RUNTIME_DIR/kdos-cmd.sock` |
 | Frame-timing socket | `$XDG_RUNTIME_DIR/kdos-frames.sock` |
-| Built with | meson, from `src/desktop/kdos-comp` in the repository — there is no source archive to fetch |
+| Source and recipe | `src/desktop/kdos-comp/` in the repository, with its `kpkgbuild` and `build.sh`; built by meson in the `05_desktop` phase, with no source archive to fetch |
 
-The tree is labwc 0.20.0 under the name kdos-comp, and upstream changes are not merged into it.
-`KDOS-FORK` at the root of the port records the upstream tarball and its checksum. Upstream's licence (GPL-2.0)
-and copyright headers are kept.
+`KDOS-FORK` at the root of the source tree records the upstream tarball and its checksum. Upstream's
+licence (GPL-2.0) and copyright headers are kept.
+
+The program has four parts. labwc's core does the window management: placement, focus, moving
+and resizing, workspaces, bindings, menus and decorations. The KDOS additions sit beside it:
+[the phosphor pass](#the-phosphor-pass), [the wallpaper](#the-wallpaper),
+[idle, dim, lock and lid](#idle-dim-lock-and-lid),
+[window groups and window memory](#window-groups-and-window-memory) and
+[box identity](#box-identity). Seven [supervised children](#supervised-children) (the panel, the
+desktop icons, the dockapp column and four small session daemons) are started and restarted by the
+compositor. Two sockets let other KDOS programs talk to it:
+[the command socket](#the-command-socket) and [the frames socket](#the-frames-socket).
+
+### How labwc's documentation applies
 
 Because this is a fork rather than a set of patches, labwc's documentation for `rc.xml`, `menu.xml`
 and the theme applies as written: window management, key and mouse bindings, window rules, theme
-keys and menus all work as labwc's documentation describes. The one difference is the directory:
-where labwc reads `~/.config/labwc/`, `kdos-comp` reads `~/.config/kdos-comp/`, and that is also
-where labwc's `environment`, `autostart` and `shutdown` files go.
+keys and menus all behave as labwc's documentation describes. The differences are these:
 
-The manual pages are not installed (the port builds with `-Dman-pages=disabled`), so
-`man labwc-config` finds nothing on a KDOS machine. Read the 0.20.0 pages upstream at
-[labwc.github.io](https://labwc.github.io/): `labwc-config(5)` for `rc.xml`, `labwc-actions(5)`
-for the actions, `labwc-menu(5)` for `menu.xml` and `labwc-theme(5)` for the theme keys.
+- **The configuration directory.** Where labwc reads `~/.config/labwc/`, `kdos-comp` reads
+  `~/.config/kdos-comp/`, and that is also where labwc's `environment`, `autostart` and `shutdown`
+  files go. None of the three is shipped. Themes are still looked up under
+  `themes/<name>/labwc/`, as upstream does.
+- **Additions.** Three actions for window groups (see [KDOS actions](#kdos-actions)), an `apps`
+  style for the window switcher (see [The app-first window switcher](#the-app-first-window-switcher)),
+  and a `flat kdos` title-bar fill in the theme (see [Decorations](#decorations)).
+- **The prompt command runs without a shell.** See [The prompt command](#the-prompt-command).
+- **Windows on other workspaces are reported as minimised** to foreign-toplevel clients, the
+  programs, such as the panel, that list other programs' windows through the wlr
+  foreign-toplevel protocol. See
+  [Smaller changes to upstream behaviour](#smaller-changes-to-upstream-behaviour).
+- **Things that are not built.** The fork strips upstream's `docs/`, `clients/` (the `labnag` dialog
+  and `lab-sensible-terminal`), `t/` (its tests), `po/` and `data/` directories, and the recipe
+  configures meson with `-Dxwayland=enabled -Dicon=disabled -Dsvg=disabled -Dnls=disabled
+  -Dman-pages=disabled -Dlabnag=disabled -Dsystemd-session=disabled`. So there are no window icons
+  in title bars, no SVG button images, no translations, no session file and no systemd target.
+
+The manual pages are not installed, so `man labwc-config` finds nothing on a KDOS machine. Read the
+0.20.0 pages upstream at [labwc.github.io](https://labwc.github.io/): `labwc-config(5)` for
+`rc.xml`, `labwc-actions(5)` for the actions, `labwc-menu(5)` for `menu.xml` and `labwc-theme(5)`
+for the theme keys.
 
 ### Command-line options
 
-These are labwc's, under the new name.
+These are labwc's, under the new name. `kdos-comp -v` prints `kdos-comp (labwc fork)`, the labwc
+version, the compiled-in features and the wlroots version.
 
 | Option | Does |
 |---|---|
@@ -59,47 +97,55 @@ These are labwc's, under the new name.
 | `-r`, `--reconfigure` | Tell the running compositor to reload its configuration |
 | `-s`, `--startup <command>` | Run a command on startup |
 | `-S`, `--session <command>` | Run a command on startup and exit when it exits |
-| `-t`, `--title <fmtstr>` | The window title to use when running nested inside another compositor |
+| `-t`, `--title <fmtstr>` | The window title to use when running nested inside another compositor; the default is `kdos-comp - %o` |
 | `-v`, `--version` | Show the version and quit |
-| `-V`, `--verbose` | Informational logging — already the default here; after `-d` it lowers the level back |
+| `-V`, `--verbose` | Informational logging, which is already the default here; after `-d` it lowers the level back |
 
 `-r` and `-e` find the running compositor through `LABWC_PID`, which `kdos-comp` sets in the
-environment of everything it starts. `kdos theme` reloads the compositor by sending `SIGHUP`
-directly.
+environment of everything it starts. From a shell that the compositor did not start (a text
+console, or an SSH login) they fail with `LABWC_PID not set`; send `SIGHUP` or `SIGTERM` to the
+process instead. `kdos theme` reloads the compositor by sending `SIGHUP` directly.
 
 ## Configuration
 
 Configuration is split between two files, and the split is strict:
 
 - `~/.config/kdos/comp.conf` holds only the KDOS keys listed below;
-- `~/.config/kdos-comp/rc.xml` holds everything labwc understands — bindings, startup commands,
+- `~/.config/kdos-comp/rc.xml` holds everything labwc understands: bindings, startup commands,
   workspaces, mouse behaviour, window rules and theme settings.
 
-`comp.conf` is one `key = value` per line, with `#` starting a comment line. The shipped file has
-every key commented out, so the defaults below are what an unedited machine runs with. The same
-keys are listed in [Configuration](../06-reference/configuration.md#configkdoscompconf), and most
-can be changed from the settings window.
+`comp.conf` is one `key = value` per line, parsed and never executed as a script. A line whose first
+non-blank character is `#` is a comment. The shipped file has every key commented out at its
+default, with an explanation beside each, so the defaults below are what an unedited machine runs
+with. The same keys are listed in
+[Configuration](../06-reference/configuration.md#configkdoscompconf), and most can be changed from
+the settings window.
 
-Every line that does not take effect is written to the log by name: a binding, startup,
-workspace or mouse line (those belong in `rc.xml`), an unknown key, a key with an empty value
-(write `wallpaper = none` rather than `wallpaper =`), and a value out of range or of the wrong
-kind. A setting that silently does nothing cannot be told from a typo, so check the log when a
-change seems ignored. A `panel_bottom` line has no effect, and the log names
-`panel = bottom|top|off` as the key to use.
+Every line that does not take effect is written to the log with its file name and line number:
+
+- a line with no `=`;
+- a key with an empty value (write `wallpaper = none` rather than `wallpaper =`);
+- an unknown key;
+- a value out of range, or of the wrong kind, in which case the default stands;
+- a line starting with `bind`, `startup`, `workspaces` or `mouse`, which belongs in `rc.xml`;
+- a `panel_bottom` line, for which the log names `panel = bottom|top|off` as the key to use.
+
+A setting that silently did nothing could not be told from a typo, so check the log when a change
+seems to be ignored.
 
 A path value may start with `~/` or `$HOME/`; both are expanded. A yes/no value accepts `yes`/`no`,
 `true`/`false`, `on`/`off` and `1`/`0`, in any case.
 
 ### Keys applied on reload
 
-These take effect as soon as the compositor reloads, which happens on `SIGHUP`, `kdos-comp -r`, the
-Reload Configuration entry in the desktop's right-click menu, and every `kdos theme`.
+These take effect when the compositor reloads, which happens on `SIGHUP`, `kdos-comp -r`, the
+**Reload Configuration** entry in the desktop's right-click menu, and every `kdos theme`.
 
 | Key | Default | Range | Does |
 |---|---|---|---|
-| `wallpaper` | `/usr/share/backgrounds/kdos/default-wallpaper.png` | a PNG path, or `none` | The wallpaper — see [The wallpaper](#the-wallpaper) for which file wins |
-| `crt` | `55` | 0–100 | Phosphor pass strength, per cent. `0` turns the pass off |
-| `crt_scanlines` | `0` | 0–100 | Scanline depth; `60` is a good strength if you want them |
+| `wallpaper` | `/usr/share/backgrounds/kdos/default-wallpaper.png` | a PNG path, or `none` | The wallpaper; see [The wallpaper](#the-wallpaper) for which file wins |
+| `crt` | `55` | 0–100 | Strength of [the phosphor pass](#the-phosphor-pass), per cent. `0` turns the pass off |
+| `crt_scanlines` | `0` | 0–100 | Scanline depth; `60` is the strength the rest of the pass is tuned against |
 | `crt_curve` | `0` | 0–100 | Barrel distortion |
 | `crt_fullscreen` | `yes` | yes/no | Whether the pass runs over a fullscreen window |
 | `idle_dim` | `300` | 0–86400 s | Seconds of inactivity before the screen dims; `0` is never |
@@ -108,64 +154,86 @@ Reload Configuration entry in the desktop's right-click menu, and every `kdos th
 | `lid_close` | `suspend` | `suspend`, `lock`, `off` | What closing a laptop lid does; any other value is refused by name |
 | `window_memory` | `yes` | yes/no | Whether an application opens where its window last was |
 
-In a virtual machine the idle timers and the lid default to off unless `comp.conf` sets them —
-see [Idle, dim, lock and lid](#idle-dim-lock-and-lid).
+Three limits apply to the phosphor keys, because two decisions about the pass are made once, when
+the compositor starts:
+
+- If `crt` is `0` at login, or the renderer cannot run the pass, the pass is never set up. Raising
+  `crt` afterwards takes effect at the next login, and the reload logs that.
+- Lowering `crt` to `0` during a session returns frames unprocessed, but direct scanout stays off
+  until the next login (see [How it is implemented](#how-it-is-implemented)).
+- A non-zero `crt_curve` at login switches the session to a software cursor, because the hardware
+  cursor plane is drawn after the shader and would not follow the distortion. Turning curvature on
+  during a session leaves the hardware cursor in place, and the pointer drifts away from what it
+  points at towards the screen's edges until the next login.
+
+In a virtual machine the idle timers and the lid default to off unless `comp.conf` sets them; see
+[Idle, dim, lock and lid](#idle-dim-lock-and-lid).
 
 ### Keys applied at the next login
 
-Each of these becomes part of a supervised child's command line, so a change takes effect when the
-session next starts. A reload logs the change by name, for example
-`panel_font changed — applies at the next login`, and keeps the running value until then, so the
+Each of these becomes part of a [supervised child](#supervised-children)'s command line, so a change
+takes effect when the session next starts. A reload logs the change, for example `comp.conf:
+panel_font changed — applies at the next login`, and keeps the running value until then, so the
 compositor never believes a setting that the panel on screen is not using.
 
 | Key | Default | Range | Does |
 |---|---|---|---|
 | `panel` | `bottom` | `bottom`, `top`, `off` (or `none`) | Where the panel goes, or no panel |
 | `panel_cells` | `2` | 1–4 | Panel height in text cells |
-| `panel_font` | `Terminus:pixelsize=20` | a font pattern | The bar's own font; empty follows `chrome_font` |
+| `panel_font` | `Terminus:pixelsize=20` | a fontconfig pattern | The bar's own font; it does not follow `chrome_font` |
 | `panel_autohide` | `no` | yes/no | Whether the bar hides when the pointer leaves it |
 | `panel_margin` | `0` | 0–64 px | Gap between the bar and the screen edge |
-| `panel_opacity` | `80` | 20–100 % | Bar opacity |
+| `panel_opacity` | `80` | 20–100 % | Opacity of the bar's background |
 | `desktop_icons` | `yes` | yes/no | Whether the desktop icon surface runs |
-| `slit` | `no` | yes/no | The dockapp column |
+| `slit` | `no` | yes/no | The dockapp column (the slit): one line of text per *dockapp*, a command re-run on an interval, as set in `~/.config/kdos/slit.conf` |
 | `clipboard` | `yes` | yes/no | The clipboard history daemon |
 | `icons` | `yes` | yes/no | Whether the panel and the desktop draw pictures at all |
-| `chrome_font` | `Terminus:pixelsize=32` | a font pattern | The font every KDOS surface draws with |
+| `chrome_font` | `Terminus:pixelsize=32` | a fontconfig pattern | The font of every [supervised child](#supervised-children) except the panel: the desktop icons, the slit and the session daemons. The panel does not pass it on to the menus and popups it opens, which draw in `libkwl`'s default |
 | `clock_format` | `%H:%M` | a `strftime` format | The panel clock |
+
+`chrome_font` and `clock_format` are empty in the compositor when unset, and the defaults shown are
+what the receiving programs use in that case: the `Terminus:pixelsize=32` of `libkwl` (the
+Wayland drawing library, see [The C libraries](../05-developer/c-libraries.md#the-set)) and the
+panel's `%H:%M`.
 
 `panel_opacity` stops at 20 rather than 0. A bar at zero would not be see-through; it would be
 invisible while still catching the pointer, with no way back except editing this file from a text
 console.
 
-The panel's height follows its font: a cell is half as wide as it is tall, so
-`Terminus:pixelsize=20` with two cells makes a 40-pixel bar while the menus it opens stay at the
-32-pixel chrome font.
+The panel's height follows its font. A cell is half as wide as it is tall, so
+`Terminus:pixelsize=20` with two cells makes a 40-pixel bar, while the menus it opens stay at the
+32-pixel chrome font. Terminus is a bitmap face, so name a size it has (12, 14, 16, 18, 20, 22, 24,
+28 or 32 pixels); any other size is answered with the nearest one it has.
 
-The two font keys are also written by the font page of `kdos-style` and by `kdos-settings`. They
-change only the family and keep the size each key already carried, leaving every other line of
-`comp.conf` as it was. The compositor passes `--font` to each supervised child as it starts it, so
-the desktop picks up the new family as each surface next starts.
+The font page of `kdos-style` also writes both font keys. It changes only the family, keeps the
+size each key already carried and leaves every other line of `comp.conf` as it was.
+`kdos-settings` edits the two keys as plain text, so the value typed there, size included, is the
+value written. Surfaces that read `comp.conf` when they start, such as a menu opened after
+the change, show the new family at once; the supervised children receive their font from the
+compositor, which keeps the value it read at login.
 
 ### Files whose existence is the setting
 
-Two files ship absent, and absent is a working default for both. The compositor does not read them
-itself; they are listed here because they sit beside `comp.conf`.
+Two files ship absent, and absent is a working default for both. The compositor does not read them;
+they are listed here because they sit beside `comp.conf`.
 
 | File | Enables | Read by |
 |---|---|---|
-| `~/.config/kdos/session-restore` | Reopening the previous session's windows at login | The session scripts |
+| `~/.config/kdos/session-restore` | Reopening the previous session's applications at login | The session scripts |
 | `~/.config/kdos/a11y` | The accessibility stack inside boxes | `kdos-appbox` |
 
-`~/.config/kdos/favorites` has the same shape but ships with a handful of pinned entries, because
-an empty list makes both the quick-launch row and the Start menu's pinned column look broken on a
-new machine. Delete every line if you want it empty. An identifier with no matching desktop entry
-is skipped silently, so an application that is not installed leaves no launcher that opens
-nothing.
+`~/.config/kdos/favorites` has a similar role but ships with seven pinned entries, because an empty
+list leaves the Start menu's pinned column and the palette's pinned rows blank on a new machine.
+Delete every line if you want it empty. The panel's quick-launch row reads the whole line as the
+identifier, and every shipped line carries a `code=`, so on a new account that row is empty; see
+[Configuration](../06-reference/configuration.md#configkdosfavorites). An identifier with no
+matching desktop entry is skipped silently, so an application that is not installed leaves no
+launcher that opens nothing.
 
 ## Bindings
 
 The shipped bindings are listed in [The desktop](../02-user-guide/desktop.md), and `Super+F1` shows
-the card generated from your own `rc.xml`. Two rules about editing `rc.xml` matter more than any
+a card generated from your own `rc.xml`. Two rules about editing `rc.xml` matter more than any
 single binding, because breaking either one breaks the whole desktop without any message.
 
 ### The one line that must not be lost
@@ -179,23 +247,23 @@ single binding, because breaking either one breaks the whole desktop without any
 </keyboard>
 ```
 
-The compositor loads its built-in bindings only when your file defines none of that kind, so a
-file that binds a single key throws every default away: click-to-focus, dragging by the title bar,
-the window buttons, resizing by the border, the root menu, window cycling, close, and the snap
-arrows. On a running system the symptom is "the mouse does not work", and nothing checks for it —
-not the compiler, not the recipe parser, not XML validation. Put your own bindings after
-`<default />`, because when a key is bound twice the later binding wins.
+The compositor loads its built-in bindings only when your file defines none of that kind, so a file
+that binds a single key throws every default away: click-to-focus, dragging by the title bar, the
+window buttons, resizing by the border, the root menu, window cycling, close and the snap arrows.
+On a running system the symptom is that the mouse appears not to work, and nothing at run time
+warns about it. Put your own bindings after `<default />`: when a key is bound twice, the later
+binding wins.
 
-`testing/preflight.sh` fails a shipped `rc.xml` that gets this wrong.
+`testing/preflight.sh` fails a shipped `rc.xml` that binds anything in `<keyboard>` or `<mouse>`
+without `<default />` in that section. It does not see the copy in your home directory.
 
 ### `--` may not appear inside an XML comment
 
 `rc.xml` is XML, and XML forbids `--` inside a `<!-- -->` comment. A comment that mentions a
 command-line option such as `--app-id` makes the whole file invalid, and a compositor that cannot
-parse its configuration loads none of the bindings in it. Nothing says so; the chords are simply
-missing, one by one, in whatever order you happen to try them. `testing/preflight.sh` parses the
-shipped file with a real XML parser for this reason; run `xmllint --noout rc.xml` after editing
-yours.
+parse its configuration loads none of the bindings in it. Nothing says so; the chords are missing,
+one by one, in whatever order you happen to try them. `testing/preflight.sh` parses the shipped
+file with a real XML parser for this reason. Run `xmllint --noout rc.xml` after editing yours.
 
 ### KDOS actions
 
@@ -210,56 +278,86 @@ shipped `rc.xml` does not bind them. To reach them, add bindings after `<default
 <keybind key="W-A-g"><action name="NextInTabGroup"/></keybind>
 ```
 
+### The app-first window switcher
+
+The window switcher accepts a third on-screen style, `apps`, beside labwc's `classic` and
+`thumbnail`. It shows one row per application rather than one per window, with a count when an
+application has several windows (`Firefox ×4`). `Tab`, `Left` and `Right` step between
+applications; `Up` and `Down` step between the windows of the selected application, and the
+selected row shows the title of the window that would be focused. Releasing the modifier focuses
+that window. Windows are grouped by application identifier, and a window with none is a group of
+its own.
+
+The shipped `rc.xml` leaves the switcher at labwc's default, `classic`. To use the application
+style:
+
+```xml
+<windowSwitcher>
+  <osd style="apps" />
+</windowSwitcher>
+```
+
+The deprecated attribute form, `<windowSwitcher style="…">`, does not accept `apps`.
+
 ## Decorations
 
-The window frame is generated from the same palette as everything else, into
-`themerc-override`, which the compositor reads over its built-in theme. Frames therefore retint
-live with the panel and the phosphor pass. The reasoning is in
+The window frame is generated from the same palette as everything else, into `themerc-override`,
+which the compositor reads over its built-in theme. Frames therefore retint live with the panel and
+the phosphor pass. `kdos theme` rewrites that file whole on every run, so edits made to it by hand
+are lost; lines that must survive belong in a style file (`kdos theme style`, see
+[The kdos command](kdos-command.md#kdos-theme)), which keeps them in `~/.config/kdos/style-themerc`
+and appends them after the generated block. The reasoning behind the frame's look is in
 [the design language](../03-architecture/design-language.md); the mechanics are these:
 
 - `<cornerRadius>0</cornerRadius>` in `rc.xml`, and `border.width: 2` in the generated override.
-  A one-pixel hairline, as modern toolkits draw, disappears beside a 32-pixel text cell.
-- The title bar is drawn with the same double rule the cell grid uses. The title-bar fill is one
-  pixel wide and stretched, so anything that varies only vertically costs nothing — and a double
-  horizontal rule varies only vertically.
+  A one-pixel hairline disappears beside a 32-pixel text cell.
+- The title bar carries the same double rule the cell grid draws. The generated theme selects it
+  with `window.active.title.bg: flat kdos` (and the same for `inactive`), a fill value the fork
+  adds. The title-bar fill is one pixel wide and stretched, so anything that varies only
+  vertically costs nothing, and a double horizontal rule varies only vertically. Its edges are
+  hard steps, not gradients.
 - The title text and every button sit on the plain background instead. A rule behind a word looks
   like a word struck through, and a rule behind the minimise button, itself a horizontal line,
   would leave the button unreadable.
-- Button glyphs are small bitmaps enlarged by a whole number with nearest-neighbour filtering.
-  Upstream's resize path only ever shrinks, so without this the glyphs would sit at their own few
-  pixels in the middle of a large button.
-- The hover highlight is translucent. There are no separate hover icons: the plain image is copied
-  and a colour laid over it, so an opaque colour would paint the symbol out and leave every button
-  blank under the pointer.
+- Button glyphs are eight-by-eight bitmaps, enlarged by a whole number with nearest-neighbour
+  filtering. Upstream's resize path only shrinks and upstream's glyphs are six pixels square, so
+  without this change they would sit at their own few pixels in the middle of a 32-pixel button.
+- The hover highlight is translucent (`window.button.hover.bg.color` with alpha `66`). There are
+  no separate hover icons: the plain image is copied and a colour laid over it, so an opaque colour
+  would paint the symbol out and leave every button blank under the pointer.
 
 The title-bar font must name a scalable face. Pango, which draws the titles, does not render bitmap
 fonts, so naming the bitmap console font silently falls back to a generic sans for every title bar
-and menu. The shipped `rc.xml` names `Terminus (TTF)` at 24 points — 32 pixels at 96 dpi — so a
-title bar is exactly one cell tall. A machine without that font falls back to Noto Sans, which
-`56-noto-preferred.conf` puts first for `sans-serif`.
+and menu. The shipped `rc.xml` names `Terminus (TTF)` at 24 points (32 pixels at 96 dpi) for the
+title bars, the menus and the on-screen display, so a title bar is exactly one cell tall. The
+face comes from the `terminus-ttf` port. A machine without it falls back to Noto Sans, which the
+`noto-fonts` port's preference file puts first for `sans-serif`.
 
 To tell the two apart, measure rather than look: count the brightness levels of the text in a
 screenshot. Bitmap text has three and no midtones; an antialiased face has well over a hundred.
 
 The generated theme sets `menu.width.max: 900`. The upstream default is sized for a small font,
-which at 32 pixels truncates menu entries at about eleven characters. A maximum only ever
+and at 32 pixels it truncates menu entries at about eleven characters. A maximum only ever
 truncates, so a generous one costs a short menu nothing.
 
 ## The prompt command
 
 `<core><promptCommand>` in `rc.xml` is:
 
-```
+```sh
 kdos-prompt --message '%m' --no '%n' --yes '%y'
 ```
 
-labwc's conditional action (`If` with a prompt) runs the prompt command and acts on its exit
-status: zero takes the affirmative branch, a specific code means cancelled, and anything else takes
-the negative branch.
+labwc's conditional action (`If` with a `<prompt>`) runs the prompt command and acts on its exit
+status: `0` takes the `then` branch, `254` means cancelled, and anything else takes the `else`
+branch. Upstream's own prompt program, `labnag`, is not built. `kdos-prompt` is `kdos-shell` under
+another name and answers with the same exit codes. It is what lets ending the session
+(`Super+Escape`), restarting and shutting down ask before they act.
 
-Upstream's own prompt program, labnag, is not built (`-Dlabnag=disabled`). `kdos-prompt` —
-`kdos-shell` under another name — answers with the same exit codes. It is what lets ending the
-session, restarting and shutting down ask before they act.
+Upstream runs this one command through `/bin/sh -c`. The fork splits it into an argument vector
+with glib's shell-word parser and executes it directly, so the quoting in the default command
+works, but variables, globbing and other shell expansion do not. The same holds for every
+`Execute` action, as it does upstream.
 
 ## Frame pacing and the output mode
 
@@ -267,13 +365,15 @@ Nothing in the compositor sets a frame rate. It draws only when an output's back
 the screen is ready for another frame; the handler composites once and returns. There is no timer
 and no fixed period, so the rate is the display mode's: a 144 Hz panel gets 144 frames a second for
 the same reason a 60 Hz one gets 60. An output with nothing to redraw skips the frame, which is why
-an idle desktop costs nothing.
+an idle desktop costs almost nothing.
 
 Two rate limits exist, and neither holds the frame rate back. Interactive resizing sends a window
-at most one new size per refresh interval of its output. The shutdown animation steps every 16 ms,
-after the display has already stopped.
+at most one new size per refresh interval of its output (250 per second when the output reports no
+refresh rate). The shutdown animation steps every 16 ms, after the event loop has already stopped.
 
-**Choosing the mode.** The resolution comes first and then the highest refresh rate that works:
+### Choosing the mode
+
+The resolution comes first and then the highest refresh rate that works:
 
 1. The panel's preferred mode (its EDID preferred timing) fixes the resolution.
 2. Every mode at that resolution with a higher refresh rate is tried, fastest first.
@@ -282,97 +382,121 @@ after the display has already stopped.
    is tried, in the order the output lists them. If none of those passes either, the output is
    committed with no fixed mode.
 
-Taking the preferred mode's own rate would be a trap: panels commonly advertise 60 Hz as preferred
-and list 120 or 144 Hz elsewhere, and the session would sit at 60 Hz with nothing on the desktop
-offering a choice. Trying fastest first is safe, because a rate the cable or link cannot carry
-fails its test and the next one down is tried.
+Taking the preferred mode's own rate would leave many machines below their panel's rate: panels
+commonly advertise 60 Hz as preferred and list 120 or 144 Hz elsewhere, and the session would sit at
+60 Hz with nothing on the desktop offering a choice. Trying fastest first is safe, because a rate
+the cable or link cannot carry fails its test and the next one down is tried.
 
 Two things override this. A mode a program requests through the output-management protocol (for
 example `kdos-display`) is tried exactly as asked, which is how you pin a rate. And
 `reuseOutputMode` in `rc.xml` keeps a mode that is already set ahead of any of this, which stops a
 handover from re-setting the mode of a screen that is already working.
 
+### When an output appears
+
+Each new output gets its own panel, desktop icons and dockapp column
+(see [Supervised children](#supervised-children)), and the compositor runs
+`kdos-display --apply`, which re-applies the layout saved in `~/.config/kdos/displays.conf`. The
+apply is delayed by one second and restarted by each further output, so a dock that brings up three
+screens causes one apply, not three.
+
 ## The phosphor pass
 
 The compositor draws the whole desktop through a shader that imitates a CRT: optional scanlines on
 every third physical row, a three-tap horizontal bleed, a vignette, optional barrel distortion, and
-a faint phosphor floor so that black is never quite black. It is on by default at 55 per cent, with
-scanlines and curvature off. The user's guide is
+a faint phosphor floor in the accent colour so that black is never quite black. It is on by default
+at 55 per cent, with scanlines and curvature off. The user's guide is
 [Theming](../02-user-guide/theming.md#the-phosphor-pass).
 
 Scanlines ship off because they fight the text underneath. The desktop is a grid of 16×32 cells,
 and a dark line on every third physical row crosses the glyphs at a period nothing on screen
 shares, so crisp two-colour text arrives striped. `crt_scanlines = 60` turns them on.
 
-The pass needs the GLES2 renderer. On software rendering — including a virtual machine with plain
-graphics — it is switched off at startup and the log says so.
+The pass needs the GLES2 renderer. On software rendering, including a virtual machine with plain
+graphics, it is switched off at startup and the log says so.
+
+Two short animations belong to the pass and run only when it is active:
+
+- **The degauss.** Every reload, and therefore every theme change, plays 400 ms of decaying
+  horizontal wobble with a slight brightening, the way a CRT's degauss coil shook the picture. The
+  compositor forces frames while it runs, so it plays on a static desktop too.
+- **The power-down.** When the compositor exits, the last picture collapses to a bright horizontal
+  line over about 350 ms and then to a dot over about 100 ms, with a hard 600 ms deadline so that
+  it can never hold up a shutdown. Up to eight outputs take part.
 
 ### How it is implemented
 
 wlroots, the library under the compositor, has no shader interface: its rendering pass offers
-textures and rectangles, and its scene graph has no callback node. What it does offer is a
-documented seam — the scene's build-state call accepts a custom swapchain. So the scene composites
-into a buffer of the compositor's own, and KDOS code copies that buffer into the output's real
-buffer with the effect applied. Both swapchains come from the library's own configuration call,
-so neither needs guesswork about formats or modifiers.
+textures and rectangles, and its scene graph (the tree of buffers the compositor composites into
+each frame, called the *scene* below) has no callback node. What it does offer is a
+documented seam: the scene's build-state call accepts a custom swapchain. So the scene composites
+into a buffer of the compositor's own, and KDOS code draws that buffer into the output's real
+buffer with the effect applied. Both swapchains come from the library's own configuration call, so
+neither needs guesswork about formats or modifiers. The output buffer is committed with
+whole-output damage every frame, because the pass reads neighbouring pixels and warps the picture,
+so a one-pixel change in the scene is not a one-pixel change on screen.
 
-Four constraints shape it:
+Five constraints shape it:
 
 - **Direct scanout is off for the whole session while the pass is on.** In that mode the scene
   hands the display one client's buffer and a rectangle rather than a picture of the desktop, and
-  the pass would stretch, say, the panel over the whole screen. wlroots has exactly one switch for
-  it, the `WLR_SCENE_DISABLE_DIRECT_SCANOUT` environment variable read when the scene is created,
-  so the pass sets it before the scene exists. A foreign buffer that arrives anyway is shown
-  unprocessed rather than mangled.
+  the pass would stretch, say, the panel over the whole screen. wlroots has one switch for it that
+  covers every output, the `WLR_SCENE_DISABLE_DIRECT_SCANOUT` environment variable read when the
+  scene is created, so the compositor sets it before the scene exists whenever `crt` is non-zero.
+  A foreign buffer that arrives anyway is shown unprocessed rather than mangled, and the log says
+  so once per output.
 - **The texture is imported every frame and destroyed after the pass.** Caching one per swapchain
   slot looks like an easy optimisation and deadlocks the swapchain: importing locks the buffer, a
   slot is reused only when its last lock goes, and a full set of cached textures leaves no free
   buffer, so the scene stops rendering.
 - **Neither fallback can produce a black screen.** A renderer other than GLES2 gets no pass at all,
-  reported at startup — a fullscreen post-process in software is a slideshow. Anything that fails at
-  run time puts that output on the plain path for a cooldown: five seconds, doubling after each
-  consecutive failure up to a minute, and reset by a pass that completes. Sixty identical error
-  lines a second would be worse than missing scanlines, and giving up for good would leave a screen
-  unthemed for the whole session over one hot-plug hiccup.
-- **The magnifier takes the frame instead, whole.** The magnified inset is drawn inside the call the
-  pass replaces, so with both on, a magnified frame would lose the inset whenever the scene redrew
-  and keep it whenever it did not, flickering between two pictures. The pass stands aside while the
-  magnifier is on, which is also right for its own sake: an accessibility zoom is harder to read
-  through scanlines.
+  reported at startup, because a full-screen post-process in software cannot keep up with the
+  refresh rate. Anything that fails at run time puts that output on the plain path for a cooldown:
+  five seconds, doubling after each consecutive failure up to a minute, and reset by a pass that
+  completes. Sixty identical error lines a second would be worse than a missing effect, and giving
+  up for good would leave a screen unthemed for the whole session over one transient failure such
+  as a hot-plug.
+- **labwc's magnifier (the `ToggleMagnify`, `ZoomIn` and `ZoomOut` actions) takes the frame instead,
+  whole.** The magnified inset is drawn inside the call the pass replaces, so with both on, a
+  magnified frame would lose the inset whenever the scene redrew and keep it whenever it did not,
+  flickering between two pictures. The pass stands aside while the magnifier is on, which is also
+  right for its own sake: an accessibility zoom is harder to read through scanlines.
+- **Night light survives the pass.** The scene applies the gamma-control protocol as a colour
+  transform in the state it builds, and the pass carries that transform onto its own commit.
+  Dropping it would make night light do nothing while the pass is on.
 
 The curvature is normalised by how far the corners move, so no setting crops the desktop.
 
-Colours come from the shared palette and the accent is re-read on reload, so a theme change
-retints the running shader with the same signal that repaints the panel.
+The phosphor colour is the accent's primary colour from the shared palette, read from
+`$XDG_CACHE_HOME/kdos/theme` at startup and again on every reload, so a theme change retints the
+running shader with the same signal that repaints the panel.
 
 ### What it costs
 
-The pass does not limit the frame rate. Timed off-screen at the shipped defaults on a GeForce RTX
-4060:
+The pass does not limit the frame rate: it runs inside the same frame event as the composite, once
+per frame that has something to draw. Its costs are these:
 
-| Resolution | Pass | Plain copy of the same buffer |
-|---|---|---|
-| 1920×1080 | 0.033 ms | 0.018 ms |
-| 2560×1440 | 0.060 ms | 0.033 ms |
-| 3840×2160 | 0.138 ms | 0.070 ms |
+- one extra full-screen draw per frame, with three texture reads per pixel for the bleed, so the
+  whole screen is redrawn even when only a small part of it changed;
+- a second swapchain per output (at 3840×2160 each buffer in it is about 33 MB);
+- no direct scanout, so a fullscreen video is composited rather than handed straight to the
+  display controller.
 
-The effect costs roughly as much as moving the pixels a second time, and even the 4K figure is two
-per cent of a 144 Hz frame.
-
-`crt_fullscreen = off` skips the pass for fullscreen windows: one render instead of two for video
-and games. It is a battery setting rather than a frame-rate one.
+`crt_fullscreen = no` skips the pass on an output whose topmost window on the current workspace is
+fullscreen: one render instead of two for video and games. Direct scanout stays off either way, so
+it is a battery setting rather than a frame-rate one. `crt = 0` removes the extra draw altogether.
 
 ### Inspecting it without a screen
 
 `KDOS_CRT_DUMP=<prefix>` writes the pass's input and output once, as `<prefix>-in.ppm` and
-`<prefix>-out.ppm`.
-`KDOS_CRT_DUMP_FRAME=<n>` waits until frame *n* before dumping, to get past the empty first frame.
-The input is read back through the texture the shader sampled rather than from the buffer, because
-that buffer is not always readable.
+`<prefix>-out.ppm`. `KDOS_CRT_DUMP_FRAME=<n>` waits until frame *n* before dumping, to get past the
+empty first frames. The input is read back through the texture the shader sampled rather than from
+the buffer, because that buffer is not always readable; when the input is an external image it
+cannot be read back at all, and only the output is written.
 
-One property only real hardware can confirm. The composite and the pass share one GL context, so
-their order is guaranteed, but the final display commit relies on implicit buffer fencing. Getting
-that wrong shows up as a torn frame, not as an error.
+One property only real hardware can confirm. The composite and the pass run in wlroots' one GL
+context, so their order is guaranteed, but the final display commit relies on implicit buffer
+fencing. Getting that wrong shows up as a torn frame, not as an error.
 
 ## The wallpaper
 
@@ -382,97 +506,121 @@ answer on Wayland, would be the one program on this desktop that is not a charac
 
 Which image is drawn:
 
-1. With `wallpaper = none`, no image; the background is the accent's deep colour.
-2. Otherwise, `~/.cache/kdos/wallpaper.png` when it exists. `kdos theme` writes this file: the
-   shipped wallpaper retinted to the accent.
+1. With `wallpaper = none`, no image.
+2. Otherwise, `$XDG_CACHE_HOME/kdos/wallpaper.png` (`~/.cache/kdos/wallpaper.png`) when it exists.
+   `kdos theme` writes this file: the shipped wallpaper retinted to the accent.
 3. Otherwise, the `wallpaper =` path from `comp.conf`.
 
-A missing or unreadable file also leaves the accent's deep colour, and the log names the path.
-Because the retinted cache takes precedence, a picture of your own is replaced at the next accent
-change; [Theming](../02-user-guide/theming.md#wallpaper) explains how to keep one. The image is
-scaled to cover the output and centred. Only PNG is decoded.
+Under every output, image or no image, lies a rectangle in the accent's deep colour, so
+`wallpaper = none` and a missing or unreadable file both show that colour; the log names the path
+that failed. Because the retinted cache takes precedence, a picture of your own is replaced at the
+next accent change; [Theming](../02-user-guide/theming.md#wallpaper) explains how to keep one. The
+image is scaled to cover the output and centred, so an image of another aspect ratio is cropped
+rather than distorted. Only PNG is decoded.
 
-The file carries the smallest buffer implementation that works, because wlroots has no public way
-to make a buffer from memory. The decoder converts the PNG's channel order to the one the buffer
-needs, and only a fully initialised buffer can leave it, because libpng reports a bad file by
-jumping back after the allocation.
+A reload re-decodes the image only when the chosen file or its modification time has changed, and
+redraws the deep-colour rectangles every time, since the accent may have moved.
+
+`kdos-wallpaper.c` implements its own minimal wlroots buffer, because wlroots has no public way to
+make a buffer from memory. The decoder converts the PNG's channel order to the one the
+buffer needs, and only a fully initialised buffer can leave it, because libpng reports a bad file
+by jumping back after the allocation.
 
 ## Idle, dim, lock and lid
 
-One timer drives three stages — dim, then lock, then screens off — each measured from your last
-input rather than from the previous stage. Ten seconds before the lock, a toast says
-`Locking soon`, and any input keeps the session open. Input ends the dim and powers the screens
-back on; it never unlocks.
+One timer drives three stages (dim, then lock, then screens off), each measured from your last input
+rather than from the previous stage. A stage set to `0` is skipped, so `idle_off` alone works. Ten
+seconds before the lock, a notification says `Locking soon`, and any input keeps the session open.
+Input ends the dim and powers the screens back on; it never unlocks. A screen that fails to power
+back on is retried at the next input.
 
 The idle policy stops completely while any program holds an idle inhibitor (a video player, for
-example) or while the `stay-awake` toggle is on (`kdos toggle stay-awake`, `Super+Ctrl+i`).
+example) or while the `stay-awake` toggle is on (`kdos toggle stay-awake`, bound to
+`Super+Ctrl+i`). The toggle is read every time the timer is re-armed, so it takes effect without a
+reload.
 
-The dim is a translucent layer raised over everything, with the lock screen raised above it; it
-does not touch gamma. The lock stage starts `kdos-lock` — see
-[daemons](daemons.md#kdos-lock).
+The dim is a black layer at 55 per cent opacity raised over everything, with the lock screen raised
+above it; it does not touch gamma, which some backends cannot set and which would stay applied if
+the compositor died. The lock stage starts `kdos-lock` (see [The daemons](daemons.md#kdos-lock)),
+unless the session is already locked.
 
-**In a virtual machine** the three timers default to zero (never) and `lid_close` to `off`, unless
-`comp.conf` sets them. A blanked screen over a remote display cannot be told from a crashed
-compositor. Only a line that parses counts: `idle_dim = 5m` is refused and leaves the virtual
-machine default in place.
+### In a virtual machine
 
-**The lid.** `lid_close = suspend` hands the machine to `kdos-power suspend`, which locks first;
-`lock` locks and powers the screens off; `off` only powers the screens off, which suits a closed
-laptop driving an external monitor. Opening the lid powers the screens back on and counts as input;
-it never unlocks.
+The three timers default to zero (never) and `lid_close` to `off`, unless `comp.conf` sets them. A
+blanked screen over a remote display cannot be told from a crashed compositor. The machine counts as
+virtual when the firmware names a hypervisor, and also when the compositor runs nested or headless
+with no seat session. Setting any one of the three timers overrides the virtual-machine default for
+all three, so `idle_dim = 0` alone leaves the lock and screen-off timers at their defaults of 600
+and 900 seconds. Only a line that parses counts: `idle_dim = 5m` is refused and leaves the
+virtual-machine default in place.
 
-**The compositor, not the lock program, owns the locked state.** If the lock program dies without
+### The lid
+
+No other program on KDOS watches the lid switch; the compositor receives it from libinput.
+`lid_close = suspend` hands the machine to `kdos-power suspend`, which locks first; `lock` locks and
+powers the screens off; `off` only powers the screens off, which suits a closed laptop driving an
+external monitor. Opening the lid powers the screens back on and counts as input; it never unlocks.
+
+### Who owns the locked state
+
+The compositor, not the lock program, owns the locked state. If the lock program dies without
 unlocking, the session stays locked: the lock surfaces keep covering every screen, and a new lock
-program can take over from the one that died, which is exactly the recovery a crash needs. A lock
-screen that unlocked when it crashed would be the failure the lock protocol exists to prevent.
+program can take over from the one that died, which is the recovery a crash needs. A lock screen
+that unlocked when it crashed would be the failure the lock protocol exists to prevent.
 
 ## The frames socket
 
 The compositor writes one line of JSON per late frame to `$XDG_RUNTIME_DIR/kdos-frames.sock`. This
 is what [`kdos stutter`](kdos-command.md#kdos-stutter) reads.
 
-A client first receives a `hello` record naming the compositor and wlroots versions and the counts
-so far, then one `miss` record per late frame:
+A client first receives a `hello` record naming the compositor and wlroots versions, with the
+monotonic time and the session's frame and miss counts so far. After that it receives one `miss`
+record per late frame:
 
 ```json
 {"event":"miss","mono_ms":…,"wall_ms":…,"output":"eDP-1","source":"present","late_ms":…,"dropped":7,"render_ms":…,"refresh_hz":60.00}
 ```
 
-- **`source`** says where the timing came from. Presentation events carry when the picture actually
-  reached the screen, and are used where the backend has them. Headless and nested backends do not
-  report presentation, so the frame clock is the fallback. The two are labelled rather than
-  averaged: a presentation gap is what you saw, and a frame gap is what the compositor was given.
+- **`source`** says where the timing came from: `present` or `frame`. Presentation events carry
+  when the picture actually reached the screen, and are used where the backend has them. Headless
+  and nested backends do not report presentation, so the frame clock is the fallback. The two are
+  labelled rather than averaged: a presentation gap is what you saw, and a frame gap is what the
+  compositor was given.
 - **A frame is late** when it arrives more than one and a half refresh intervals after the previous
-  one. An output with nothing to draw is not counted as late.
-- **`render_ms`** is the compositor's own render cost. When it is a large fraction of the frame
-  budget, the desktop itself was late — the one causal claim the tooling makes.
+  one. `late_ms` is the gap, and `dropped` is the number of whole intervals missed. A gap that
+  follows a frame with nothing to draw is idleness, not lateness, and is not counted.
+- **`render_ms`** is the compositor's own render cost for the frame. When it is a large fraction of
+  the frame budget, the desktop itself was late, which is the one causal claim the tooling makes.
 
 The socket never slows the frame loop: both ends are non-blocking, and a reader that cannot keep up
-loses lines. There is no history, so a reader that connects late has missed what happened.
+loses lines. There is no history, so a reader that connects late has missed what happened. Each
+miss is also written to the log at debug level.
 
 This is deliberately not a Wayland protocol. It is a channel between two KDOS programs; a client
 that wants its own timing has the standard presentation-time protocol.
 
 ## The command socket
 
-Other KDOS programs ask the compositor questions over `$XDG_RUNTIME_DIR/kdos-cmd.sock`:
-one JSON request line in, one JSON response line out, then the connection closes.
+Other KDOS programs ask the compositor questions over `$XDG_RUNTIME_DIR/kdos-cmd.sock`: one JSON
+request line in, one JSON response line out, then the connection closes.
 [`kdos hey`](kdos-command.md#kdos-hey) is the command-line front end.
 
 | Request | Answers or does |
 |---|---|
-| `{"cmd":"list"}` | Every window: id, app_id, title, workspace, geometry, pid, box, instance and state (focused, minimized, maximized, fullscreen, shaded) |
-| `{"cmd":"outputs"}` | The outputs and their scales |
+| `{"cmd":"list"}` | Every window: `id`, `app_id`, `title`, `workspace`, `x`, `y`, `w`, `h`, `pid`, `box`, `instance`, and the states `focused`, `minimized`, `maximized`, `fullscreen` and `shaded` |
+| `{"cmd":"outputs"}` | Every output: `name`, `w`, `h`, `scale`, `x`, `y` and `enabled` |
 | `{"cmd":"boxes"}` | The distinct boxes that currently have a window on screen |
 | `{"cmd":"run","action":"Close","id":7}` | Runs a labwc action, on the window with that id when one is given |
 | `{"cmd":"peek","on":true}` | Fades every window to reveal the desktop; `false` or no `on` restores them |
 | `{"cmd":"thumb","app_id":"foot","w":64,"h":36}` | Writes a picture of that application's front window and answers with its path |
 
+A success answers `{"ok":true,…}`. Every refusal is `{"ok":false,"err":"…"}` with a reason, never a
+silent no-op.
+
 A window's `id` is fixed for the life of the session and never reused, so an id handed back late
 cannot reach the wrong window. `run` resolves the action name against the same table `rc.xml` is
 parsed with, so it can do exactly what a key binding can. An action that needs an argument the
-request cannot carry — `Execute`'s command, `SnapToEdge`'s direction — is refused. Every refusal is
-`{"ok":false,…}` with a reason, never a silent no-op.
+request cannot carry, such as `Execute`'s command or `SnapToEdge`'s direction, is refused.
 
 The socket protects the compositor and the machine:
 
@@ -487,55 +635,73 @@ The socket protects the compositor and the machine:
 - There is no history and no subscription. A program that wants a stream of events wants the
   frames socket.
 
-The box collector uses `boxes` to ask whether a box still has a window before stopping it.
+`kdos-box gc` uses `boxes` to ask whether a box still has a window before stopping it.
 
 ## Window thumbnails
 
 A Wayland client cannot see another client's pixels, so the compositor renders a window to a file
 on request (the `thumb` verb above). That is what the panel's hover preview is made of.
 
-The preview is drawn as solid blocks from the palette's brightness ladder rather than through the
-shape-matching character renderer. A large window squeezed into a small grid puts many source
-pixels in each cell, so no shape is left to match and every textured cell would pick the same
-character.
+The compositor picks the most recently active window with the requested application identifier,
+box-filters its buffer down to the requested size and writes a binary PPM. The size must be between
+8×8 and 160×100 pixels; the file is small on purpose, because the consumer reduces it to a few dozen
+text cells. A box filter rather than point sampling is used because the content is mostly text, and
+a one-pixel stroke would rarely be the pixel a point sampler kept.
+
+The panel draws the preview as solid blocks from the palette's brightness ladder rather than
+through the shape-matching character renderer. A large window squeezed into a small grid puts many
+source pixels in each cell, so no shape is left to match and every textured cell would pick the
+same character.
 
 The preview is never required. No compositor, no socket, a window whose pixels are not readable (a
-common case for GPU-rendered windows on real hardware), or a file that does not parse — each one
-leaves the tooltip as the two lines of text it always carries.
+client drawing into GPU memory, which is common on real hardware), a buffer in a format other than
+32-bit ARGB or XRGB, or a file that does not parse: each one leaves the tooltip as the two lines of
+text it always carries.
 
 ## Window groups and window memory
 
-**Window groups** stack several windows into one frame with a tab per member, like tabs in a
+### Window groups
+
+Window groups stack several windows into one frame with a tab per member, like tabs in a
 browser: `AddToTabGroup` stacks the focused window onto the one behind it, `RemoveFromTabGroup`
 takes it back out, and `NextInTabGroup` steps through the tabs. Clicking a tab raises that member.
 The hidden members are minimised, so focus cycling and the panel's window list treat them
 correctly, and all members share the showing member's position and size. Dragging a tab moves that
-window; it does not take it out of the group — use `RemoveFromTabGroup`.
+window; it does not take it out of the group. Use `RemoveFromTabGroup` for that.
 
-**Window memory** (`window_memory = yes`) reopens an application where you left it. When a window
-closes, its application id, geometry, workspace and shaded state are saved to
-`~/.local/state/kdos/winpos`; when a window of that application next opens, the record is applied.
-It applies only where the compositor would otherwise have chosen the position:
+### Window memory
+
+Window memory (`window_memory = yes`) reopens an application where you left it. When a window
+closes, its application identifier, geometry, workspace and shaded state are saved to
+`$XDG_STATE_HOME/kdos/winpos` (`~/.local/state/kdos/winpos`); when a window of that application
+next opens, the record is applied. The file keeps the 200 most recently used applications, and is
+written to a temporary file, flushed, and renamed into place so that a crash cannot leave it half
+written. The record applies only where the compositor would otherwise have chosen the position:
 
 - a window that positions itself, is placed by a window rule, or opens maximised, tiled or
   fullscreen is left alone;
 - dialogs and other windows with a parent are neither saved nor restored;
+- a second window of an application already open at the remembered position on the same workspace
+  is left to the ordinary cascade, rather than opened exactly on top of the first;
 - a restored rectangle is clamped into the output's usable area, so a window never comes back
   off-screen or under the panel.
 
 ## Box identity
 
-The compositor knows which box each window came from. `kdos-boxsock` gives every box its own
-Wayland socket and tags each client that connects through it with a security context naming the
-box.
+The compositor knows which box each window came from. A *box* is the container an application runs
+in (see [Packs and boxes](../03-architecture/packs-and-boxes.md)). `kdos-boxsock` gives every box
+its own Wayland socket and tags each client that connects through it with a security context
+naming the box, and a second field distinguishing two runs of the same application.
 
 An X11 window needs another route. Its Wayland client is Xwayland, running on the host with no
 context, so the context lookup would answer nothing for every X11-only application in the
 catalogue. The window does carry its client's process id, and every process a box starts has
 `KDOS_BOX=<name>` in its environment, so the compositor reads that from `/proc/<pid>/environ` and
-caches it per window.
+caches the answer.
 
-**The box chip** is a small square in the box's colour at the left of the title. To give a box a
+### The box chip
+
+The box chip is a small square in the box's colour at the left of the title. To give a box a
 colour, set `accent = <name>` in its profile, `~/.config/kdos/boxes/<name>.conf` (see
 [Configuration](../06-reference/configuration.md#configkdosboxesnameconf)):
 
@@ -546,13 +712,17 @@ colour, set `accent = <name>` in its profile, `~/.config/kdos/boxes/<name>.conf`
 - It is rebuilt rather than patched on every title change and resize, so a drag never stacks chips.
 - The profile is read once per window and re-read on reload, because an accent switch changes which
   windows wear a chip.
-- On an inactive window the colour is dimmed: the chip identifies the box; it does not show focus.
+- On an inactive window the colour is drawn at a third of its strength: the chip identifies the
+  box; it does not show focus.
 
-**Grants.** A client from a box may bind only a fixed allowlist of Wayland interfaces. A
-`grant = …` line in the same profile adds named interfaces, such as `screencopy` for a screen
-recorder in its own box. The grantable names are listed in
-[The session](../03-architecture/session.md#granting-a-box-more-than-the-allowlist). A box's grants
-are read once, on its first request, and re-read after a reload.
+### Grants
+
+A client from a box may bind only a fixed allowlist of Wayland interfaces. A `grant = …` line in the
+same profile adds named interfaces, such as `screencopy` for a screen recorder in its own box. The
+grantable names are listed in [The
+session](../03-architecture/session.md#granting-a-box-more-than-the-allowlist). A box's grants are
+read once, on its first request, and re-read after a reload; a client that is already running keeps
+what it bound.
 
 ## Supervised children
 
@@ -581,34 +751,73 @@ The single-instance children are single for concrete reasons:
 - `kdos-clip` owns one socket in `$XDG_RUNTIME_DIR` and keeps the history in memory, so a second
   would be a second history nobody could reach.
 
-The panel receives its settings from `comp.conf` on its command line (`--top` or `--bottom`,
-`--cells`, `--clock`, `--autohide`, `--margin`, `--opacity`, `--font`); the panel and the desktop
-icons also receive `--no-icons` when `icons = no`. That is why those keys apply at the next login.
+The per-output children are per output because a layer surface (a surface that a program places
+on a screen layer above or below the windows, through the wlr layer-shell protocol) without a named
+output is placed on one screen only, and the libraries these programs draw with hold a single
+cell buffer, so a second screen needs a second process. Each is started with `--output <name>`.
+When an output goes away, its children are sent `SIGTERM` and not restarted. The table holds 40
+children: the four session-wide ones plus three per output, which is twelve outputs' worth.
 
-**When a child keeps crashing.** A child that exits more than five times within 30 seconds is not
-restarted again. The log records it, and a dialog says which program was given up on. Reload
-Configuration (in the desktop's right-click menu), or `kdos-comp -r`, resets the counters and gives it another run of
-attempts.
+The children receive their settings from `comp.conf` on their command line, which is why those keys
+apply at the next login:
 
-Before starting a child, the compositor clears every signal the session had ignored, as well as the
-signal mask. Ignored signals survive `exec`, so a session started under something like `nohup`
+- every child gets `--font` with `chrome_font` when it is set, except the panel, which gets
+  `panel_font` instead;
+- the panel also gets `--top` or `--bottom`, `--cells`, `--margin`, `--opacity`, and `--clock` and
+  `--autohide` when those are set;
+- the panel and the desktop icons get `--no-icons` when `icons = no`. No other child is given it,
+  because a child that does not parse a flag exits with a usage error and would never start.
+
+### When a child keeps crashing
+
+A child that exits more than five times within 30 seconds is not restarted again. The log records
+it, and a `kdos-prompt` dialog names the program that was given up on (one dialog per reload,
+however many children fail). **Reload Configuration** in the desktop's right-click menu, or
+`kdos-comp -r`, resets the counters and gives it another run of attempts.
+
+Before starting a child, the compositor clears the signal mask and resets every signal the session
+had ignored. Ignored signals survive `exec`, so a session started under something like `nohup`
 would otherwise pass that on, and the live retint, which is delivered as `SIGHUP`, would never
 arrive.
 
 Programs launched by key bindings are not supervised: a terminal opened with a key is not part of
 the desktop's chrome.
 
-The per-output rules and the session start-up around them are in
+The session start-up around these children is in
 [The session](../03-architecture/session.md#supervised-chrome).
 
 ## Xwayland
 
-The compositor runs Xwayland rootless, so X11-only applications in boxes work. Xwayland is built
-without GLX, because the graphics stack is built without X11 platform support, so X11 clients get
-no OpenGL. See [Principles](../01-philosophy/principles.md).
+The compositor runs Xwayland rootless, so X11-only applications in boxes work. Xwayland starts
+when the first X11 client connects, unless `rc.xml` asks for it to persist. It is built with
+glamor and DRI3 but without GLX, because the graphics stack is built without X11 platform support.
+An X11 client that draws through GLX therefore gets no OpenGL; one that draws through EGL uses its
+box's Mesa and is unaffected. See [Principles](../01-philosophy/principles.md).
 
-The compositor sets `DISPLAY` only in the environment of programs it starts itself, so
-`kdos-appbox` finds the X socket on its own and adds `DISPLAY` to a box's environment.
+The compositor sets `DISPLAY` only in the environment of programs it starts itself. A launcher run
+from elsewhere may not have it, so `kdos-appbox` finds the X socket in `/tmp/.X11-unix` on its own
+and adds `DISPLAY` to a box's environment.
+
+## Smaller changes to upstream behaviour
+
+Several additions are too small for a section of their own:
+
+- **Peek.** The `peek` verb on the command socket sets every window to 12 per cent opacity while the
+  pointer rests on the panel's Show Desktop button, and back when it leaves. Nothing is minimised
+  or unfocused, so a peek interrupted by a crash changes no window state. Labwc's own Show Desktop
+  action, which minimises, is unchanged.
+- **Click-away for menus.** The desktop's menus, launcher, run box and similar front ends are
+  layer surfaces that take the keyboard on demand and close when they lose it. A press anywhere
+  other than the focused one (the desktop, the wallpaper, the panel) releases its keyboard, so the
+  menu closes. Layer surfaces that hold the keyboard exclusively, such as a lock screen, are left
+  alone.
+- **Windows on other workspaces are reported minimised** through the wlr foreign-toplevel protocol,
+  unless they are shown on every workspace. The panel derives which workspaces have windows from
+  this, since the workspace protocol has no such state.
+- **The application-identifier ledger.** Every application identifier a mapped window presents is
+  appended, once, to `~/.local/share/kdos/observed-app-ids`, which
+  [`kdos appid`](kdos-command.md#kdos-appid) compares launchers against.
+- **The default terminal** in labwc's built-in bindings and menu is `foot`.
 
 ## Shutdown
 
@@ -616,7 +825,7 @@ The compositor sets `DISPLAY` only in the environment of programs it starts itse
 this order:
 
 1. the command socket, so no `kdos hey run` can act on a session that is ending;
-2. the shutdown animation — the screen collapsing to a dot — which is limited to a fixed deadline;
+2. the power-down animation (see [The phosphor pass](#the-phosphor-pass)), limited to 600 ms;
 3. the wallpaper, the frames socket, window memory, window groups, box chips, the lid, peek and the
    idle policy;
 4. the phosphor pass;
@@ -625,14 +834,14 @@ and then the server itself. The panel and the notification daemon notice the com
 and exit on their own.
 
 When the compositor exits with a non-zero status, `kdos-desktop-start` prints the last 20 lines of
-the log and offers to restart the session. After three crashes within 60 seconds it stops offering
-and returns you to the text console.
+the log and offers to restart the session. At the third crash within 60 seconds it stops offering
+and returns you to the text console. A clean exit is a logout.
 
 ## Debugging
 
-The first place to look is `$XDG_RUNTIME_DIR/kdos-comp.log` (usually `/run/user/1000/kdos-comp.log`),
-with the previous session's in `kdos-comp.log.old`. `kdos doctor` checks that the compositor, its
-sockets and the portals are up.
+The first place to look is `$XDG_RUNTIME_DIR/kdos-comp.log` (usually
+`/run/user/1000/kdos-comp.log`), with the previous session's in `kdos-comp.log.old`.
+`kdos doctor` checks, among other things, that the compositor's two sockets and the portals are up.
 
 | Variable or option | Effect |
 |---|---|
@@ -641,9 +850,9 @@ sockets and the portals are up.
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before dumping |
 
 The fork logs at the informational level by default, where upstream logs errors only. At errors
-only, the KDOS additions' decisions — which wallpaper was loaded, whether the phosphor pass is on,
-which `comp.conf` lines were ignored — would be invisible, and an empty log would look like a hung
-session.
+only, the KDOS additions' decisions would be invisible: which wallpaper was loaded, whether the
+phosphor pass is on and why not, the idle timers and each idle stage as it fires, the lid policy,
+and which `comp.conf` lines were ignored. An empty log would look like a hung session.
 
 ## Working on the compositor
 
@@ -651,50 +860,102 @@ This section is for someone changing the compositor's code rather than configuri
 
 ### Finding the KDOS additions
 
-The KDOS code is easy to find. It lives in sixteen `src/desktop/kdos-comp/src/kdos-*.c` files plus one
-shared header, `src/desktop/kdos-comp/include/kdos.h`. Upstream files carry only small hooks, each marked with a comment beginning
-`/* KDOS` — grep for that to find every touch point. There are 107 such markers across 29 upstream
-files, 29 of them in `main.c`.
+The KDOS code lives in sixteen `src/desktop/kdos-comp/src/kdos-*.c` files, one shared header,
+`src/desktop/kdos-comp/include/kdos.h`, through which every addition enters, and one further
+source file, `src/cycle/osd-apps.c`, the application-first switcher. Upstream files carry only
+small hooks, each marked with a comment containing `KDOS`. Most begin `/* KDOS`: there are 107
+such comments across 29 upstream files (23 sources and 6 headers), 29 of them in `main.c`. Some
+hooks sit inside a longer comment whose line begins ` * KDOS:`, and four files carry only that form
+or the `LAB_GRADIENT_KDOS_RULE` fill: `include/theme.h`, `include/buffer.h`,
+`src/input/keyboard.c` and `src/ssd/ssd-button.c`. Grep for `KDOS` rather than `/* KDOS` to find
+them all. The three `meson.build` files mark their changes with `# KDOS`.
+
+Three kinds of change carry no marker. The calls into `libkwm` (see below) are found by grepping
+for `kwm_`, and the stripped upstream directories are recorded only in the top-level `meson.build`.
+The fastest-first mode selection (see [Choosing the mode](#choosing-the-mode)) is
+`highest_refresh_at()` and the loop that calls it in `output_test_auto()` in `src/output.c`.
 
 | File (under `src/desktop/kdos-comp/src/`) | What it adds |
 |---|---|
-| `kdos-config.c` | The KDOS configuration file and its reload |
-| `kdos-child.c` | [Supervised children](#supervised-children): the panel, desktop icons and session daemons |
+| `kdos-config.c` | The KDOS configuration file, its reload, and the accent lookup every addition shares |
+| `kdos-child.c` | [Supervised children](#supervised-children) and the display-layout apply on a new output |
 | `kdos-wallpaper.c` | [The wallpaper](#the-wallpaper), as part of the scene rather than a separate program |
-| `kdos-crt.c` | [The phosphor pass](#the-phosphor-pass) |
+| `kdos-crt.c` | [The phosphor pass](#the-phosphor-pass), the degauss and the power-down |
 | `kdos-frames.c` | [The frames socket](#the-frames-socket), reporting late frames |
-| `kdos-idle.c` | [Idle, dim, lock and lid](#idle-dim-lock-and-lid): the idle policy |
-| `kdos-lid.c` | Laptop lid behaviour |
+| `kdos-idle.c` | [Idle, dim, lock and lid](#idle-dim-lock-and-lid): the idle policy and the virtual-machine test |
+| `kdos-lid.c` | The lid switch and `lid_close` |
 | `kdos-cmd.c` | [The command socket](#the-command-socket) other KDOS programs query |
 | `kdos-thumb.c` | [Window thumbnails](#window-thumbnails) for hover previews |
 | `kdos-peek.c` | Fading windows to reveal the desktop |
-| `kdos-appid.c` | Recording the application identifiers windows actually present |
+| `kdos-appid.c` | The ledger of application identifiers windows actually present |
 | `kdos-boxchip.c` | [The box colour chip](#box-identity) on a title bar |
 | `kdos-grant.c` | Per-box grants beyond the sandbox allowlist |
 | `kdos-group.c` | [Window groups](#window-groups-and-window-memory) (tabbed stacks) |
 | `kdos-layerfocus.c` | Closing menus and other on-demand surfaces when you click elsewhere |
 | `kdos-winpos.c` | [Window memory](#window-groups-and-window-memory): reopening windows where they were |
 
+The box lookup itself (`kdos_view_box()` and the `/proc` read for X11 windows) lives in the
+upstream `view.c`, beside the security-context lookup it extends.
+
 ### What the compositor does not decide
 
 The compositor owns no window-model arithmetic. Where a new window lands, what a tiled state
 becomes and what rectangle it occupies, which edge a moving edge stops against, and how workspace
 stepping skips empty workspaces all come from the `libkwm` library. `kdos-comp` calls eight of its
-functions: `kwm_place`, `kwm_tile_geom`, `kwm_tile_next`, `kwm_ws_adjacent`, `kwm_edge_check`,
-`kwm_edge_best`, `kwm_clip_add` and `kwm_clip_sub`. The library is tested against a fixture with no
-compositor running, so every one of those rules can be checked without booting anything.
+functions: `kwm_place` (in `placement.c`), `kwm_tile_geom` and `kwm_tile_next` (in `view.c`),
+`kwm_edge_check` (in `snap.c`), `kwm_ws_adjacent` (in `workspaces.c`), and `kwm_edge_best`,
+`kwm_clip_add` and `kwm_clip_sub` (in `include/edges.h`, the edge-search arithmetic). The library is tested
+against a fixture with no compositor running, so every one of those rules can be checked without
+booting anything.
 
 What stays here is what only a compositor can do: walking its own window list, asking the
 decoration how thick it is, working out which edges are actually visible, and deciding how a drag
 feels as it crosses one. See [The window model](../03-architecture/window-model.md).
 
+### Building and testing
+
+`build.sh` compiles `libkbase`, `libkcolor` and `libkwm` from `src/libs/` into one static archive,
+hands it to meson through `LDFLAGS`, and then runs the ordinary meson build and install. Editing
+any of those libraries therefore changes the compositor. The compositor is built in the
+`05_desktop` phase, after the Wayland base it needs (see
+[How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop)); the ports it
+ships beside are listed in
+[The ports catalogue](../06-reference/ports-catalogue.md#unheaded-wlroots-the-compositor-box-socket-shell-terminal-and-lock-screen).
+To rebuild only the compositor:
+
+```sh
+make build BUILD_ARGS="--phases 05_desktop --rebuild kdos-comp"
+```
+
+Three checks cover it without a full build:
+
+- `testing/selftest.sh` compiles every `kdos-*.c` file against the installed wlroots headers,
+  where the host has pkg-config entries for `wlroots-0.20`, GLES2, EGL, wayland-server, pixman,
+  libdrm, libpng, libxml2, cairo, pango and glib; elsewhere it reports the step as skipped.
+- `testing/preflight.sh` checks the shipped `rc.xml` for well-formed XML and `<default />`, and
+  that every command named in `rc.xml` and `menu.xml` exists.
+- `testing/quick.sh kdos-comp` rebuilds the port and patches it into a booted ISO for a screenshot;
+  see [Testing](../05-developer/testing.md) for what that harness can and cannot show.
+
+The [QEMU rig](../05-developer/testing.md#the-qemu-rig) boots with plain graphics and uses
+software rendering, so the phosphor pass never appears in its screenshots. Use `KDOS_CRT_DUMP` or
+real hardware to see it.
+
 ## See also
 
-- [The session](../03-architecture/session.md) — what starts the compositor, and what it starts
-- [The desktop](../02-user-guide/desktop.md) — the bindings and the user-facing behaviour
-- [Theming](../02-user-guide/theming.md) — the accent, the wallpaper and the phosphor pass from the user's side
-- [The window model](../03-architecture/window-model.md) — the arithmetic `libkwm` owns
-- [The design language](../03-architecture/design-language.md) — why the frame looks like that
-- [kdos-shell](kdos-shell.md) — the chrome it supervises
-- [The kdos command](kdos-command.md) — `kdos hey` and `kdos stutter`
-- [Configuration](../06-reference/configuration.md) — every key above, with defaults
+- [The session](../03-architecture/session.md): what starts the compositor, and what it starts
+- [The desktop](../02-user-guide/desktop.md): the bindings and the user-facing behaviour
+- [Theming](../02-user-guide/theming.md): the accent, the wallpaper and the phosphor pass from the
+  user's side
+- [The window model](../03-architecture/window-model.md): the arithmetic `libkwm` owns
+- [The design language](../03-architecture/design-language.md): why the frame looks the way it does
+- [kdos-shell](kdos-shell.md): the chrome it supervises
+- [The kdos command](kdos-command.md): `kdos hey`, `kdos stutter`, `kdos theme` and `kdos appid`
+- [Configuration](../06-reference/configuration.md): every key above, with defaults
+- [How KDOS differs](../01-philosophy/how-kdos-differs.md#the-desktop): the desktop beside those of
+  other distributions
+
+<!-- book-nav -->
+---
+
+*Part IV — Programs, chapter 21.* Previous: [20. The programs](README.md) · [Contents](../README.md) · Next: [22. kdos-shell](kdos-shell.md)

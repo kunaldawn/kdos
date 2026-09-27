@@ -183,8 +183,10 @@ int kp_recipe_hash(const char *portdir, char out[65])
 		 * library rebuilds every port of ours rather than only its
 		 * consumers; every one of them takes seconds, and the
 		 * alternative is shipping a binary compiled against a library
-		 * this tree no longer has. Ports under `ports/core` name a
-		 * `source =` and never reach here, so the walk is ours alone.
+		 * that differs from the one in this tree. The walk needs a `../../libs`
+		 * beside the port, which every port under `src/` has; a
+		 * source-less port under `ports/core` has none and hashes
+		 * its own directory alone.
 		 */
 		snprintf(libs, sizeof(libs), "%s/../../libs", portdir);
 		if (kb_is_dir(libs))

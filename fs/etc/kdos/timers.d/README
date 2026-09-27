@@ -18,5 +18,7 @@ that silently did not start is indistinguishable from one that has not fired
 yet, and the difference can be months.
 
 The per-user table is ~/.config/kdos/timers.d/ and has the same shape. It is
-started by the session at login and dies with it, which is what a job that
-writes into $HOME should do.
+started by the session at login, as loops that are the session's children
+and not a supervised service. Nothing stops them at logout: the next login on
+the same boot stops the previous set before starting its own, and a reboot
+ends them.
