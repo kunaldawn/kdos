@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/openssl-4.patch"
+
 # Makefile.PL finds OpenSSL by running the `openssl` program under
 # OPENSSL_PREFIX, and with no prefix it guesses among a list of directories;
 # naming /usr pins it to the openssl port. PERL_MM_USE_DEFAULT answers its
