@@ -116,6 +116,7 @@ lists everything preflight checks.
 | `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
 | A BSD header missing on a fresh build only | [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy) |
 | GStreamer's core compiling or failing in a Rust helper (`gst-ptp-helper`) | [The time-protocol helper](#the-time-protocol-helper) |
+| `hGetContents: invalid argument (cannot decode byte sequence …)`, or `invalid or incomplete multibyte or wide character` from a tool reading a file | [A tool decoding files as ASCII](#a-tool-decoding-files-as-ascii) |
 | A submodule directory present but empty | [An empty submodule in a release archive](#an-empty-submodule-in-a-release-archive) |
 | A downloaded archive that does not exist, or unpacks oddly | [Source URLs and archive layouts](#source-urls-and-archive-layouts) |
 
@@ -932,6 +933,17 @@ its Rust build can fail the port, would depend on what else the target tree happ
 [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy)). The port
 disables it with `-Dptp-helper=disabled` on its `meson setup` line; a recipe building GStreamer's
 core elsewhere needs the same option.
+
+### A tool decoding files as ASCII
+
+A tool fails reading a file that is valid UTF-8: GHC's Hadrian with `hGetContents: invalid
+argument (cannot decode byte sequence starting from 226)` on Sphinx's log, or Tcl with `invalid or
+incomplete multibyte or wide character`. Every phase environment exports `LC_ALL=C` for
+reproducible output, and under musl that locale's character set is ASCII, so a tool that decodes
+text in the locale's encoding rejects any byte over 127. Run that one command under
+`LC_ALL=C.UTF-8`, which musl provides with no locale files installed; the `ghc` port does this for
+its Hadrian call. Do not change the phase environment: the formatted dates and sort orders it
+holds steady are what make the rest of the tree reproducible.
 
 ### An empty submodule in a release archive
 

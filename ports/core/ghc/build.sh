@@ -55,7 +55,10 @@ _hadrian="$SRC/hadrian/bootstrap/_build/bin/hadrian"
 # Only the manual page is built. The libraries' Haddock HTML, with its
 # hyperlinked source, is 750 MB; without it no Haddock page links into the
 # shipped libraries' documentation, and the User's Guide is not installed.
-"$_hadrian" -j \
+# C.UTF-8 because Hadrian reads Sphinx's log in the locale's encoding, and the
+# manual page's source has characters outside ASCII: under the phase env's
+# LC_ALL=C the read fails and the build with it.
+LC_ALL=C.UTF-8 "$_hadrian" -j \
 	--flavour=release+no_profiled_libs \
 	--docs=no-haddocks \
 	--docs=no-sphinx-pdfs \
